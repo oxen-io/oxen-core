@@ -51,7 +51,15 @@
 
 // MONEY_SUPPLY - total number coins to be generated
 #define MONEY_SUPPLY                                    ((uint64_t)(-1))
-#define EMISSION_SPEED_FACTOR_PER_MINUTE                (20)
+#define TAIL_EMISSION_SUPPLY_TARGET                     ((uint64_t)150000000000000000)
+#define TAIL_INFLATION_FACTOR                           ((uint64_t)50000000)
+#define EMISSION_SPEED_FACTOR                           (21)
+#define EMISSION_SLOWDOWN_TRANSITION_DAYS               124
+#define EMISSION_SLOWDOWN_TRANSITION_HEIGHT             64000
+#define EMISSION_SLOWDOWN_SUPPLY_TARGET                 ((uint64_t)67000000000000000)
+#define EMISSION_SLOWDOWN_DAILY_DECREASE                ((uint64_t)1470000000)
+#define EMISSION_SLOWDOWN_BASE_REWARD                   ((uint64_t)46000000000)
+#define INITIAL_EMISSION_PHASE_REWARD                   ((uint64_t)232000000000)
 #define FINAL_SUBSIDY_PER_MINUTE                        ((uint64_t)300000000000) // 3 * pow(10, 11)
 
 #define CRYPTONOTE_REWARD_BLOCKS_WINDOW                 100

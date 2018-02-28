@@ -86,7 +86,7 @@ namespace cryptonote {
     return CRYPTONOTE_MAX_TX_SIZE;
   }
   //-----------------------------------------------------------------------------------------------
-  bool get_block_reward(size_t median_size, size_t current_block_size, uint64_t already_generated_coins, uint64_t &reward, uint8_t version) {
+  bool get_block_reward(size_t median_size, size_t current_block_size, uint64_t already_generated_coins, uint64_t &reward, uint8_t version, uint64_t height) {
 
     //premine reward
     if (already_generated_coins == 0)
@@ -98,12 +98,33 @@ namespace cryptonote {
     static_assert(DIFFICULTY_TARGET_V2%60==0&&DIFFICULTY_TARGET_V1%60==0,"difficulty targets must be a multiple of 60");
     const int target = version < 2 ? DIFFICULTY_TARGET_V1 : DIFFICULTY_TARGET_V2;
     const int target_minutes = target / 60;
-    const int emission_speed_factor = EMISSION_SPEED_FACTOR_PER_MINUTE - (target_minutes-1);
 
-    uint64_t base_reward = (MONEY_SUPPLY - already_generated_coins) >> emission_speed_factor;
-    if (base_reward < FINAL_SUBSIDY_PER_MINUTE*target_minutes)
+    uint64_t base_reward = 0;
+    if (already_generated_coins > EMISSION_SLOWDOWN_SUPPLY_TARGET)
     {
-      base_reward = FINAL_SUBSIDY_PER_MINUTE*target_minutes;
+      base_reward = 0;
+      if (already_generated_coins < TAIL_EMISSION_SUPPLY_TARGET)
+      {
+        base_reward = (TAIL_EMISSION_SUPPLY_TARGET - already_generated_coins) >> EMISSION_SPEED_FACTOR;
+      }
+      base_reward += (already_generated_coins / TAIL_INFLATION_FACTOR);
+    }
+    else
+    {
+      if (height < EMISSION_SLOWDOWN_TRANSITION_HEIGHT)
+      {
+        base_reward = INITIAL_EMISSION_PHASE_REWARD;
+      }
+      else
+      {
+        uint64_t transition_days_elapsed = 1 + (long) (( height - EMISSION_SLOWDOWN_TRANSITION_HEIGHT) / 720);
+        base_reward = EMISSION_SLOWDOWN_BASE_REWARD;
+        base_reward += (EMISSION_SLOWDOWN_TRANSITION_DAYS - transition_days_elapsed) * EMISSION_SLOWDOWN_DAILY_DECREASE;
+        if (base_reward < EMISSION_SLOWDOWN_BASE_REWARD)
+        {
+          base_reward = EMISSION_SLOWDOWN_BASE_REWARD;
+        }
+      }
     }
 
     uint64_t full_reward_zone = get_min_block_size(version);

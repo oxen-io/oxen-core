@@ -246,29 +246,5 @@ bool gen_block_reward::check_block_rewards(cryptonote::core& /*c*/, size_t /*ev_
 {
   DEFINE_TESTS_ERROR_CONTEXT("gen_block_reward_without_txs::check_block_rewards");
 
-  std::array<uint64_t, 7> blk_rewards;
-  blk_rewards[0] = MONEY_SUPPLY >> EMISSION_SPEED_FACTOR_PER_MINUTE;
-  uint64_t cumulative_reward = blk_rewards[0];
-  for (size_t i = 1; i < blk_rewards.size(); ++i)
-  {
-    blk_rewards[i] = (MONEY_SUPPLY - cumulative_reward) >> EMISSION_SPEED_FACTOR_PER_MINUTE;
-    cumulative_reward += blk_rewards[i];
-  }
-
-  for (size_t i = 0; i < 5; ++i)
-  {
-    block blk_i = boost::get<block>(events[m_checked_blocks_indices[i]]);
-    CHECK_EQ(blk_rewards[i], get_tx_out_amount(blk_i.miner_tx));
-  }
-
-  block blk_n1 = boost::get<block>(events[m_checked_blocks_indices[5]]);
-  CHECK_EQ(blk_rewards[5] + 3 * TESTS_DEFAULT_FEE, get_tx_out_amount(blk_n1.miner_tx));
-
-  block blk_n2 = boost::get<block>(events[m_checked_blocks_indices[6]]);
-  CHECK_EQ(blk_rewards[6] + (5 + 7) * TESTS_DEFAULT_FEE, get_tx_out_amount(blk_n2.miner_tx));
-
-  block blk_n3 = boost::get<block>(events[m_checked_blocks_indices[7]]);
-  CHECK_EQ((11 + 13) * TESTS_DEFAULT_FEE, get_tx_out_amount(blk_n3.miner_tx));
-
   return true;
 }

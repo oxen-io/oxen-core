@@ -37,215 +37,61 @@ using namespace cryptonote;
 namespace
 {
   //--------------------------------------------------------------------------------------------------------------------
-  class block_reward_and_already_generated_coins : public ::testing::Test
-  {
-  protected:
-    static const size_t current_block_size = CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V1 / 2;
 
-    bool m_block_not_too_big;
-    uint64_t m_block_reward;
+  struct reward_test
+  {
+    uint64_t height;
+    uint64_t supply;
+    uint64_t expected_reward;
   };
 
-  #define TEST_ALREADY_GENERATED_COINS(already_generated_coins, expected_reward)                              \
-    m_block_not_too_big = get_block_reward(0, current_block_size, already_generated_coins, m_block_reward,1); \
-    ASSERT_TRUE(m_block_not_too_big);                                                                         \
-    ASSERT_EQ(m_block_reward, expected_reward);
+  static const reward_test tests[] = {
+    {1, 40000232000000000, 232000000000},
+    {21916, 45084512000000000, 232000000000},
+    {43831, 50168792000000000, 232000000000},
+    {65746, 55242052220000000, 223870000000},
+    {87661, 59660373170000000, 179770000000},
+    {109576, 63098033600000000, 134200000000},
+    {131491, 65555205500000000, 90100000000},
+    {153406, 67028492442583801, 40904467723},
+    {175321, 67920441692888160, 40496992162},
+    {197236, 68803505666322522, 40093575727},
+    {219151, 69677772874811670, 39694177979},
+    {241066, 70543330948556595, 39298758888},
+    {262981, 71400266644817810, 38907278820},
+    {284896, 72248665856611529, 38519698536},
+    {5872351, 150000001145623291, 3000000022},
+    {5872352, 150000004145623313, 3000000082},
+    {5872353, 150000007145623395, 3000000142}
+  };
 
-  TEST_F(block_reward_and_already_generated_coins, handles_first_values)
-  {
-  	// 17592186044415 from neozaru, confirmed by fluffypony
-    TEST_ALREADY_GENERATED_COINS(0, UINT64_C(17592186044415));
-    TEST_ALREADY_GENERATED_COINS(m_block_reward, UINT64_C(17592169267200));
-    TEST_ALREADY_GENERATED_COINS(UINT64_C(2756434948434199641), UINT64_C(14963444829249));
-  }
-
-  TEST_F(block_reward_and_already_generated_coins, correctly_steps_from_2_to_1)
-  {
-    TEST_ALREADY_GENERATED_COINS(MONEY_SUPPLY - ((2 << 20) + 1), FINAL_SUBSIDY_PER_MINUTE);
-    TEST_ALREADY_GENERATED_COINS(MONEY_SUPPLY -  (2 << 20)     , FINAL_SUBSIDY_PER_MINUTE);
-    TEST_ALREADY_GENERATED_COINS(MONEY_SUPPLY - ((2 << 20) - 1), FINAL_SUBSIDY_PER_MINUTE);
-  }
-
-  TEST_F(block_reward_and_already_generated_coins, handles_max)
-  {
-    TEST_ALREADY_GENERATED_COINS(MONEY_SUPPLY - ((1 << 20) + 1), FINAL_SUBSIDY_PER_MINUTE);
-    TEST_ALREADY_GENERATED_COINS(MONEY_SUPPLY -  (1 << 20)     , FINAL_SUBSIDY_PER_MINUTE);
-    TEST_ALREADY_GENERATED_COINS(MONEY_SUPPLY - ((1 << 20) - 1), FINAL_SUBSIDY_PER_MINUTE);
-  }
-
-  //--------------------------------------------------------------------------------------------------------------------
-  class block_reward_and_current_block_size : public ::testing::Test
+  class block_reward_schedule : public ::testing::Test
   {
   protected:
+
     virtual void SetUp()
     {
-      m_block_not_too_big = get_block_reward(0, 0, already_generated_coins, m_standard_block_reward, 1);
-      ASSERT_TRUE(m_block_not_too_big);
-      ASSERT_LT(CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V1, m_standard_block_reward);
     }
 
-    void do_test(size_t median_block_size, size_t current_block_size)
+    void do_test(uint64_t height, uint64_t supply)
     {
-      m_block_not_too_big = get_block_reward(median_block_size, current_block_size, already_generated_coins, m_block_reward, 1);
+      m_success = get_block_reward(0, 0, supply, m_reward, 6, height);
     }
 
-    static const uint64_t already_generated_coins = 0;
-
-    bool m_block_not_too_big;
-    uint64_t m_block_reward;
-    uint64_t m_standard_block_reward;
+    uint64_t m_reward;
+    bool m_success;
   };
 
-  TEST_F(block_reward_and_current_block_size, handles_block_size_less_relevance_level)
+  TEST_F(block_reward_schedule, matches_expected)
   {
-    do_test(0, CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V1 - 1);
-    ASSERT_TRUE(m_block_not_too_big);
-    ASSERT_EQ(m_block_reward, m_standard_block_reward);
-  }
-
-  TEST_F(block_reward_and_current_block_size, handles_block_size_eq_relevance_level)
-  {
-    do_test(0, CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V1);
-    ASSERT_TRUE(m_block_not_too_big);
-    ASSERT_EQ(m_block_reward, m_standard_block_reward);
-  }
-
-  TEST_F(block_reward_and_current_block_size, handles_block_size_gt_relevance_level)
-  {
-    do_test(0, CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V1 + 1);
-    ASSERT_TRUE(m_block_not_too_big);
-    ASSERT_LT(m_block_reward, m_standard_block_reward);
-  }
-
-  TEST_F(block_reward_and_current_block_size, handles_block_size_less_2_relevance_level)
-  {
-    do_test(0, 2 * CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V1 - 1);
-    ASSERT_TRUE(m_block_not_too_big);
-    ASSERT_LT(m_block_reward, m_standard_block_reward);
-    ASSERT_LT(0, m_block_reward);
-  }
-
-  TEST_F(block_reward_and_current_block_size, handles_block_size_eq_2_relevance_level)
-  {
-    do_test(0, 2 * CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V1);
-    ASSERT_TRUE(m_block_not_too_big);
-    ASSERT_EQ(0, m_block_reward);
-  }
-
-  TEST_F(block_reward_and_current_block_size, handles_block_size_gt_2_relevance_level)
-  {
-    do_test(0, 2 * CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V1 + 1);
-    ASSERT_FALSE(m_block_not_too_big);
-  }
-
-#ifdef __x86_64__ // For 64-bit systems only, because block size is limited to size_t.
-  TEST_F(block_reward_and_current_block_size, fails_on_huge_median_size)
-  {
-#if !defined(NDEBUG)
-    size_t huge_size = std::numeric_limits<uint32_t>::max() + UINT64_C(2);
-    ASSERT_DEATH(do_test(huge_size, huge_size + 1), "");
-#endif
-  }
-
-  TEST_F(block_reward_and_current_block_size, fails_on_huge_block_size)
-  {
-#if !defined(NDEBUG)
-    size_t huge_size = std::numeric_limits<uint32_t>::max() + UINT64_C(2);
-    ASSERT_DEATH(do_test(huge_size - 2, huge_size), "");
-#endif
-  }
-#endif // __x86_64__
-
-  //--------------------------------------------------------------------------------------------------------------------
-  class block_reward_and_last_block_sizes : public ::testing::Test
-  {
-  protected:
-    virtual void SetUp()
+    for (const auto& test : tests)
     {
-      m_last_block_sizes.push_back(3  * CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V1);
-      m_last_block_sizes.push_back(5  * CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V1);
-      m_last_block_sizes.push_back(7  * CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V1);
-      m_last_block_sizes.push_back(11 * CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V1);
-      m_last_block_sizes.push_back(13 * CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V1);
-
-      m_last_block_sizes_median = 7 * CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V1;
-
-      m_block_not_too_big = get_block_reward(epee::misc_utils::median(m_last_block_sizes), 0, already_generated_coins, m_standard_block_reward, 1);
-      ASSERT_TRUE(m_block_not_too_big);
-      ASSERT_LT(CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V1, m_standard_block_reward);
+      do_test(test.height, test.supply);
+      ASSERT_TRUE(m_success);
+      ASSERT_EQ(m_reward, test.expected_reward);
     }
-
-    void do_test(size_t current_block_size)
-    {
-      m_block_not_too_big = get_block_reward(epee::misc_utils::median(m_last_block_sizes), current_block_size, already_generated_coins, m_block_reward, 1);
-    }
-
-    static const uint64_t already_generated_coins = 0;
-
-    std::vector<size_t> m_last_block_sizes;
-    uint64_t m_last_block_sizes_median;
-    bool m_block_not_too_big;
-    uint64_t m_block_reward;
-    uint64_t m_standard_block_reward;
-  };
-
-  TEST_F(block_reward_and_last_block_sizes, handles_block_size_less_median)
-  {
-    do_test(m_last_block_sizes_median - 1);
-    ASSERT_TRUE(m_block_not_too_big);
-    ASSERT_EQ(m_block_reward, m_standard_block_reward);
   }
 
-  TEST_F(block_reward_and_last_block_sizes, handles_block_size_eq_median)
-  {
-    do_test(m_last_block_sizes_median);
-    ASSERT_TRUE(m_block_not_too_big);
-    ASSERT_EQ(m_block_reward, m_standard_block_reward);
-  }
-
-  TEST_F(block_reward_and_last_block_sizes, handles_block_size_gt_median)
-  {
-    do_test(m_last_block_sizes_median + 1);
-    ASSERT_TRUE(m_block_not_too_big);
-    ASSERT_LT(m_block_reward, m_standard_block_reward);
-  }
-
-  TEST_F(block_reward_and_last_block_sizes, handles_block_size_less_2_medians)
-  {
-    do_test(2 * m_last_block_sizes_median - 1);
-    ASSERT_TRUE(m_block_not_too_big);
-    ASSERT_LT(m_block_reward, m_standard_block_reward);
-    ASSERT_LT(0, m_block_reward);
-  }
-
-  TEST_F(block_reward_and_last_block_sizes, handles_block_size_eq_2_medians)
-  {
-    do_test(2 * m_last_block_sizes_median);
-    ASSERT_TRUE(m_block_not_too_big);
-    ASSERT_EQ(0, m_block_reward);
-  }
-
-  TEST_F(block_reward_and_last_block_sizes, handles_block_size_gt_2_medians)
-  {
-    do_test(2 * m_last_block_sizes_median + 1);
-    ASSERT_FALSE(m_block_not_too_big);
-  }
-
-  TEST_F(block_reward_and_last_block_sizes, calculates_correctly)
-  {
-    ASSERT_EQ(0, m_last_block_sizes_median % 8);
-
-    do_test(m_last_block_sizes_median * 9 / 8);
-    ASSERT_TRUE(m_block_not_too_big);
-    ASSERT_EQ(m_block_reward, m_standard_block_reward * 63 / 64);
-
-    // 3/2 = 12/8
-    do_test(m_last_block_sizes_median * 3 / 2);
-    ASSERT_TRUE(m_block_not_too_big);
-    ASSERT_EQ(m_block_reward, m_standard_block_reward * 3 / 4);
-
-    do_test(m_last_block_sizes_median * 15 / 8);
-    ASSERT_TRUE(m_block_not_too_big);
-    ASSERT_EQ(m_block_reward, m_standard_block_reward * 15 / 64);
-  }
+  //TODO: block size deduction for the reward is well-tested, but
+  //      there should be tests added here for that regardless.
 }
