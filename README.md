@@ -63,11 +63,11 @@ build the library binary manually. This can be done with the following command `
 
 Clone recursively to pull-in needed submodule(s):
 
-`$ git clone --recursive https://github.com/monero-project/monero`
+`$ git clone --recursive https://github.com/loki-project/loki`
 
 If you already have a repo cloned, initialize and update:
 
-`$ cd monero && git submodule init && git submodule update`
+`$ cd loki && git submodule init && git submodule update`
 
 ### Build instructions
 
@@ -79,7 +79,7 @@ invokes cmake commands as needed.
 * Install the dependencies
 * Change to the root of the source code directory and build:
 
-        cd monero
+        cd loki
         make
 
     *Optional*: If your machine has several cores and enough memory, enable
@@ -129,7 +129,7 @@ Tested on a Raspberry Pi Zero with a clean install of minimal Raspbian Stretch (
 	CONF_SWAPSIZE=1024  
 	sudo /etc/init.d/dphys-swapfile start  
 ```
-* Clone monero and checkout most recent release version:
+* Clone loki and checkout most recent release version:
 ```
         git clone https://github.com/loki-project/loki.git
 	cd loki
@@ -143,15 +143,15 @@ Tested on a Raspberry Pi Zero with a clean install of minimal Raspbian Stretch (
 
 * The resulting executables can be found in `build/release/bin`
 
-* Add `PATH="$PATH:$HOME/monero/build/release/bin"` to `.profile`
+* Add `PATH="$PATH:$HOME/loki/build/release/bin"` to `.profile`
 
-* Run Monero with `lokid --detach`
+* Run Loki with `lokid --detach`
 
 * You may wish to reduce the size of the swap file after the build has finished, and delete the boost directory from your home directory
 
 #### *Note for Raspbian Jessie users:*
 
-If you are using the older Raspbian Jessie image, compiling Monero is a bit more complicated. The version of Boost available in the Debian Jessie repositories is too old to use with Monero, and thus you must compile a newer version yourself. The following explains the extra steps, and has been tested on a Raspberry Pi 2 with a clean install of minimal Raspbian Jessie.
+If you are using the older Raspbian Jessie image, compiling Loki is a bit more complicated. The version of Boost available in the Debian Jessie repositories is too old to use with Loki, and thus you must compile a newer version yourself. The following explains the extra steps, and has been tested on a Raspberry Pi 2 with a clean install of minimal Raspbian Jessie.
 
 * As before, `apt-get update && apt-get upgrade` to install all of the latest software, and increase the system swap size
 
@@ -162,7 +162,7 @@ If you are using the older Raspbian Jessie image, compiling Monero is a bit more
 	sudo /etc/init.d/dphys-swapfile start  
 ```
 
-* Then, install the dependencies for Monero except `libunwind` and `libboost-all-dev`
+* Then, install the dependencies for Loki except `libunwind` and `libboost-all-dev`
 
 * Install the latest version of boost (this may first require invoking `apt-get remove --purge libboost*` to remove a previous version if you're not using a clean install):
 ```
@@ -232,7 +232,7 @@ application.
 
 ### On FreeBSD:
 
-The project can be built from scratch by following instructions for Linux above. If you are running monero in a jail you need to add the flag: `allow.sysvipc=1` to your jail configuration, otherwise lmdb will throw the error message: `Failed to open lmdb environment: Function not implemented`.
+The project can be built from scratch by following instructions for Linux above. If you are running loki in a jail you need to add the flag: `allow.sysvipc=1` to your jail configuration, otherwise lmdb will throw the error message: `Failed to open lmdb environment: Function not implemented`.
 
 ### On OpenBSD:
 
@@ -247,7 +247,7 @@ The doxygen and graphviz packages are optional and require the xbase set.
 The Boost package has a bug that will prevent librpc.a from building correctly. In order to fix this, you will have to Build boost yourself from scratch. Follow the directions here (under "Building Boost"):
 https://github.com/bitcoin/bitcoin/blob/master/doc/build-openbsd.md
 
-You will have to add the serialization, date_time, and regex modules to Boost when building as they are needed by Monero.
+You will have to add the serialization, date_time, and regex modules to Boost when building as they are needed by Loki.
 
 To build: `env CC=egcc CXX=eg++ CPP=ecpp DEVELOPER_LOCAL_TOOLS=1 BOOST_ROOT=/path/to/the/boost/you/built make release-static-64`
 
@@ -322,7 +322,7 @@ cmake ..
 doas make install
 ```
 
-Build monero: `env DEVELOPER_LOCAL_TOOLS=1 BOOST_ROOT=/usr/local make release-static`
+Build loki: `env DEVELOPER_LOCAL_TOOLS=1 BOOST_ROOT=/usr/local make release-static`
 
 ### On Solaris:
 
@@ -356,7 +356,7 @@ By default, in either dynamically or statically linked builds, binaries target t
 * ```make release-static-win64``` builds binaries on 64-bit Windows portable across 64-bit Windows systems
 * ```make release-static-win32``` builds binaries on 64-bit or 32-bit Windows portable across 32-bit Windows systems
 
-## Running monerod
+## Running lokid
 
 The build places the binary in `bin/` sub-directory within the build directory
 from which cmake was invoked (repository root by default). To run in
@@ -372,7 +372,7 @@ of the argument without the leading dashes, for example `log-level=1`.
 
 To run in background:
 
-    ./bin/lokid --log-file monerod.log --detach
+    ./bin/lokid --log-file lokid.log --detach
 
 ## Internationalization
 
@@ -398,7 +398,7 @@ setting the following configuration parameters and environment variables:
    connect from remote hosts. On other systems, it may be needed for local wallets
    as well.
 * Do NOT pass `--detach` when running through torsocks with systemd, (see
-  [utils/systemd/lokid.service](utils/systemd/monerod.service) for details).
+  [utils/systemd/lokid.service](utils/systemd/lokid.service) for details).
 
 Example command line to start lokid through Tor:
 
@@ -442,7 +442,7 @@ Enter `echo core | sudo tee /proc/sys/kernel/core_pattern` to stop cores from be
 
 Run the build.
 
-When it terminates with an output along the lines of "Segmentation fault (core dumped)", there should be a core dump file in the same directory as monerod. It may be named just `core`, or `core.xxxx` with numbers appended.
+When it terminates with an output along the lines of "Segmentation fault (core dumped)", there should be a core dump file in the same directory as lokid. It may be named just `core`, or `core.xxxx` with numbers appended.
 
 You can now analyse this core dump with `gdb` as follows:
 
@@ -456,7 +456,7 @@ Type `gdb /path/to/lokid`
 
 Pass command-line options with `--args` followed by the relevant arguments
 
-Type `run` to run monerod
+Type `run` to run lokid
 
 ### Analysing memory corruption
 
