@@ -162,6 +162,13 @@ namespace cryptonote
 
   bool checkpoints::init_default_checkpoints(network_type nettype)
   {
+    if (nettype == STAGENET) {
+      ADD_CHECKPOINT(0,     "33a7da5b8e209ed1caa0a04ae5d92be8a7e41489bf92bc6310971035c3017696");
+      ADD_CHECKPOINT(1,     "4578e98e0c49eeb7ced2a15265a83fd38411282a2286befa006f6870a74ff76c");
+      ADD_CHECKPOINT(10,    "78b26e67887d0be0079b12e7b6928b6df6bd09cf44e43db3239a2745e2de69ab");
+      ADD_CHECKPOINT(4800,  "7017560622b8ceb98965bcffd994034d6864ecd164e7ea3bdf1aed03ffb6363f");
+      return true;
+    }
     return true;
   }
 
