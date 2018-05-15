@@ -108,7 +108,7 @@ VOLUME /root/.bitmonero
 
 # Generate your wallet via accessing the container and run:
 # cd /wallet
-# monero-wallet-cli
+# loki-wallet-cli
 VOLUME /wallet
 
 EXPOSE 18080
