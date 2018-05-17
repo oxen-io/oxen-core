@@ -159,7 +159,7 @@ namespace tools
 
 #ifndef WIN32
     if (command_line::has_arg(*m_vm, arg_detach))
-	{
+    {
       MWARNING("Forking to background...");
       std::string pidfile;
       if (command_line::has_arg(*m_vm, arg_pidfile))
@@ -167,7 +167,7 @@ namespace tools
         pidfile = command_line::get_arg(*m_vm, arg_pidfile);
       }
       posix::fork(pidfile);
-	}
+    }
 #endif
 
     boost::optional<epee::net_utils::http::login> http_login{};
