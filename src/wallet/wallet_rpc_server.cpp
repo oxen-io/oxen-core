@@ -63,6 +63,7 @@ namespace
   const command_line::arg_descriptor<bool> arg_trusted_daemon = {"trusted-daemon", "Enable commands which rely on a trusted daemon", false};
   const command_line::arg_descriptor<std::string> arg_wallet_dir = {"wallet-dir", "Directory for newly created wallets"};
   const command_line::arg_descriptor<bool> arg_prompt_for_password = {"prompt-for-password", "Prompts for password when not provided", false};
+  const command_line::arg_descriptor<std::string> arg_auto_renew = {"auto-renew", "Automatically stake loki for service nodes after each period"};
 
   constexpr const char default_rpc_username[] = "loki";
 
@@ -75,6 +76,12 @@ namespace
     }
     return pwd_container;
   }
+  //------------------------------------------------------------------------------------------------------------------------------
+  static inline uint64_t xx__get_staking_requirement()
+  {
+      uint64_t result = 1000ULL * 1000000000ULL;
+      return result;
+  }
 }
 
 namespace tools
@@ -85,7 +92,9 @@ namespace tools
   }
 
   //------------------------------------------------------------------------------------------------------------------------------
-  wallet_rpc_server::wallet_rpc_server():m_wallet(NULL), rpc_login_file(), m_stop(false), m_trusted_daemon(false), m_vm(NULL)
+  wallet_rpc_server::wallet_rpc_server():m_wallet(NULL), rpc_login_file(), m_stop(false),
+                                         m_auto_renew(false), m_auto_renew_move_excess_from_height(0),
+                                         m_trusted_daemon(false), m_vm(NULL)
   {
   }
   //------------------------------------------------------------------------------------------------------------------------------
@@ -105,12 +114,27 @@ namespace tools
     m_stop = false;
     m_net_server.add_idle_handler([this](){
       try {
-        if (m_wallet) m_wallet->refresh();
+        if (m_wallet)
+        {
+          m_wallet->refresh();
+        }
       } catch (const std::exception& ex) {
         LOG_ERROR("Exception at while refreshing, what=" << ex.what());
       }
       return true;
     }, 20000);
+
+    if (m_auto_renew)
+    {
+      m_net_server.add_idle_handler([this]() {
+        if (m_wallet)
+        {
+          try_auto_renew();
+        }
+        return true;
+      }, 20000);
+    }
+
     m_net_server.add_idle_handler([this](){
       if (m_stop.load(std::memory_order_relaxed))
       {
@@ -180,6 +204,17 @@ namespace tools
 #endif
         return false;
       }
+    }
+
+    if (command_line::has_arg(*m_vm, arg_auto_renew))
+    {
+        std::string addr_as_str = command_line::get_arg(*m_vm, arg_auto_renew);
+        if (!cryptonote::get_account_address_from_str(m_auto_renew_addr, m_wallet->nettype(), addr_as_str))
+        {
+            LOG_ERROR(tr("Address supplied was not valid: ") + addr_as_str);
+            return false;
+        }
+        m_auto_renew = true;
     }
 
     if (disable_auth)
@@ -2508,6 +2543,105 @@ namespace tools
     }
   }
   //------------------------------------------------------------------------------------------------------------------------------
+  bool wallet_rpc_server::try_auto_renew()
+  {
+    std::string error;
+    const uint64_t staking_balance  = m_wallet->unlocked_balance(0);
+    const uint64_t required_balance = xx__get_staking_requirement();
+    const uint64_t curr_height      = m_wallet->get_daemon_blockchain_height(error);
+
+    if (!error.empty())
+    {
+      LOG_ERROR(tr("Error getting daemon blockchain height") + error);
+      return false;
+    }
+
+    if (staking_balance > required_balance)
+    {
+      if (m_auto_renew_move_excess_from_height == 0)
+      {
+        m_auto_renew_move_excess_from_height = curr_height;
+
+        std::set<uint32_t> subaddresses;
+        {
+          size_t num_addresses = m_wallet->get_num_subaddresses(0);
+          for (size_t i = 0; i < num_addresses; i++)
+              subaddresses.insert(i);
+        }
+
+        // Calculate the transaction fee to send excess balance
+        uint64_t excess_balance = staking_balance - required_balance;
+        uint64_t transaction_fee = 0;
+        {
+          cryptonote::tx_destination_entry dest(excess_balance, m_auto_renew_addr.address, m_auto_renew_addr.is_subaddress);
+          std::vector<cryptonote::tx_destination_entry> dest_vector;
+          dest_vector.push_back(dest);
+
+          std::vector<wallet2::pending_tx> ptx_vector =
+              m_wallet->create_transactions_2(dest_vector, m_wallet->adjust_mixin(0), 0 /*unlock_time*/, m_wallet->adjust_priority(0), {} /*extra*/, 0 /*subaddr_account*/, subaddresses, m_trusted_daemon);
+
+          if (ptx_vector.empty())
+          {
+            LOG_ERROR(tr("No outputs found, or daemon is not ready"));
+            return false;
+          }
+
+          for (const wallet2::pending_tx &ptx : ptx_vector)
+              transaction_fee += ptx.fee;
+        }
+
+        // Re-create the transactions using the adjusted amount to account for fees
+        excess_balance -= transaction_fee;
+        std::vector<wallet2::pending_tx> ptx_vector;
+        {
+          std::vector<cryptonote::tx_destination_entry> dest_vector;
+          cryptonote::tx_destination_entry dest(excess_balance, m_auto_renew_addr.address, m_auto_renew_addr.is_subaddress);
+          dest_vector.push_back(dest);
+
+          ptx_vector =
+              m_wallet->create_transactions_2(dest_vector, m_wallet->adjust_mixin(0), 0 /*unlock_time*/, m_wallet->adjust_priority(0), {} /*extra*/, 0 /*subaddr_account*/, subaddresses, m_trusted_daemon);
+
+          if (ptx_vector.empty())
+          {
+            LOG_ERROR(tr("No outputs found, or daemon is not ready"));
+            return false;
+          }
+        }
+
+        m_wallet->commit_tx(ptx_vector);
+        printf("hello world: The wallet's staking balance is %zu\n", staking_balance);
+        printf("hello world: Moving excess of: %zu leaving: %zu for staking + fee: %zu\n", excess_balance, staking_balance - excess_balance, transaction_fee);
+      }
+      else if (m_auto_renew_move_excess_from_height + 20 > curr_height)
+      {
+        m_auto_renew_move_excess_from_height = 0;
+      }
+    }
+
+    if (staking_balance == required_balance)
+    {
+      m_auto_renew_move_excess_from_height = 0;
+
+      const uint64_t num_blocks_for_90_days = (60 * 60 * 24 * 90) / DIFFICULTY_TARGET_V2;
+      const uint64_t unlock_at_height       = curr_height + 10; // num_blocks_for_90_days;
+      const bool     is_subaddress          = false;
+
+      printf("hello world: The wallet's staking balance matches the required balance unlocking at height: %zu\n", unlock_at_height);
+
+      std::vector<wallet2::pending_tx> ptx_vector =
+        m_wallet->create_transactions_all(0 /*amounts below?*/, m_wallet->get_address(), is_subaddress, m_wallet->adjust_mixin(0), unlock_at_height, m_wallet->adjust_priority(0), {}, 0 /*subaddr acc*/, std::set<uint32_t>{} /*subaddr indices*/, m_trusted_daemon);
+
+      if (ptx_vector.empty())
+      {
+        LOG_ERROR(tr("No outputs found, or daemon is not ready"));
+        return false;
+      }
+      m_wallet->commit_tx(ptx_vector);
+    }
+
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
   bool wallet_rpc_server::on_is_multisig(const wallet_rpc::COMMAND_RPC_IS_MULTISIG::request& req, wallet_rpc::COMMAND_RPC_IS_MULTISIG::response& res, epee::json_rpc::error& er)
   {
     if (!m_wallet) return not_open(er);
@@ -2895,6 +3029,7 @@ int main(int argc, char** argv) {
   command_line::add_arg(desc_params, arg_from_json);
   command_line::add_arg(desc_params, arg_wallet_dir);
   command_line::add_arg(desc_params, arg_prompt_for_password);
+  command_line::add_arg(desc_params, arg_auto_renew);
 
   const auto vm = wallet_args::main(
     argc, argv,
@@ -2991,6 +3126,7 @@ int main(int argc, char** argv) {
     LOG_ERROR(tools::wallet_rpc_server::tr("Wallet initialization failed: ") << e.what());
     return 1;
   }
+
 just_dir:
   tools::wallet_rpc_server wrpc;
   if (wal) wrpc.set_wallet(wal.release());

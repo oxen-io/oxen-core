@@ -215,6 +215,7 @@ namespace tools
       void fill_transfer_entry(tools::wallet_rpc::transfer_entry &entry, const crypto::hash &payment_id, const tools::wallet2::pool_payment_details &pd);
       bool not_open(epee::json_rpc::error& er);
       void handle_rpc_exception(const std::exception_ptr& e, epee::json_rpc::error& er, int default_error_code);
+      bool try_auto_renew();
 
       template<typename Ts, typename Tu>
       bool fill_response(std::vector<tools::wallet2::pending_tx> &ptx_vector,
@@ -225,6 +226,11 @@ namespace tools
       std::string m_wallet_dir;
       tools::private_file rpc_login_file;
       std::atomic<bool> m_stop;
+
+      bool m_auto_renew;
+      uint64_t m_auto_renew_move_excess_from_height;
+      cryptonote::address_parse_info m_auto_renew_addr;
+
       bool m_trusted_daemon;
       const boost::program_options::variables_map *m_vm;
   };
