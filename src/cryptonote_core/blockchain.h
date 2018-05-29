@@ -100,6 +100,14 @@ namespace cryptonote
       uint64_t already_generated_coins; //!< the total coins minted after that block
     };
 
+    class TxHook
+    {
+    public:
+      TxHook(Blockchain& blockchain);
+      virtual void add_tx(const transaction& tx) = 0;
+      virtual void remove_tx(const transaction& tx) = 0;
+    };
+
     /**
      * @brief Blockchain constructor
      *
@@ -959,6 +967,11 @@ namespace cryptonote
      */
     void on_new_tx_from_block(const cryptonote::transaction &tx);
 
+    /**
+     * @brief add a hook for processing new and removed transactions
+     */
+    void add_tx_hook(TxHook& tx_hook);
+
   private:
 
     // TODO: evaluate whether or not each of these typedefs are left over from blockchain_storage
@@ -1025,6 +1038,7 @@ namespace cryptonote
     // some invalid blocks
     blocks_ext_by_hash m_invalid_blocks;     // crypto::hash -> block_extended_info
 
+    std::vector<TxHook*> m_tx_hooks;
 
     checkpoints m_checkpoints;
     bool m_enforce_dns_checkpoints;

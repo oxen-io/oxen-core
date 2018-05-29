@@ -3609,6 +3609,10 @@ leave:
       return_tx_to_pool(txs);
       return false;
     }
+
+    for (transaction& tx : txs)
+      for (TxHook* hook : m_tx_hooks)
+        hook->add_tx(tx);
   }
   else
   {
@@ -4561,6 +4565,16 @@ bool Blockchain::for_all_outputs(std::function<bool(uint64_t amount, const crypt
 bool Blockchain::for_all_outputs(uint64_t amount, std::function<bool(uint64_t height)> f) const
 {
   return m_db->for_all_outputs(amount, f);;
+}
+
+void Blockchain::add_tx_hook(Blockchain::TxHook& tx_hook)
+{
+  m_tx_hooks.push_back(&tx_hook);
+}
+
+Blockchain::TxHook::TxHook(Blockchain& blockchain)
+{
+  blockchain.add_tx_hook(*this);
 }
 
 namespace cryptonote {
