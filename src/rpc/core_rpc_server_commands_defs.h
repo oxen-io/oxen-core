@@ -2250,4 +2250,30 @@ namespace cryptonote
     };
   };
 
+  struct COMMAND_RPC_GET_QUORUM_LIST
+  {
+    struct request
+    {
+      uint64_t height;
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(height)
+      END_KV_SERIALIZE_MAP()
+    };
+
+    struct response
+    {
+      std::string status;
+
+      // TODO: Quorum size is fixed, but no easy way to serialize a std::array or primitive array[]
+      std::vector<std::string> quorum_list;
+      bool untrusted;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(status)
+        KV_SERIALIZE(quorum_list)
+        KV_SERIALIZE(untrusted)
+      END_KV_SERIALIZE_MAP()
+    };
+  };
+
 }
