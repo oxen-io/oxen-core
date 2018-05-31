@@ -483,12 +483,11 @@ namespace cryptonote
     return true;
   }
   //---------------------------------------------------------------
-  bool add_pub_spendkey_to_tx_extra(std::vector<uint8_t>& tx_extra, const crypto::public_key& pub_spendkey)
+  bool add_pub_spendkey_to_tx_extra(std::vector<uint8_t>& tx_extra, const crypto::public_key& tx_pub_key)
   {
-    // convert to variant
-    tx_extra_field field = tx_extra_pub_spendkey{ pub_spendkey };
-    bool r = add_serializable_tx_extra_field_to_tx_extra(tx_extra, field, TX_EXTRA_TAG_PUB_SPENDKEY);
-    CHECK_AND_NO_ASSERT_MES_L1(r, false, "failed to serialize tx extra pub_spendkey");
+    tx_extra.resize(tx_extra.size() + 1 + sizeof(crypto::public_key));
+    tx_extra[tx_extra.size() - 1 - sizeof(crypto::public_key)] = TX_EXTRA_TAG_PUB_SPENDKEY;
+    *reinterpret_cast<crypto::public_key*>(&tx_extra[tx_extra.size() - sizeof(crypto::public_key)]) = tx_pub_key;
     return true;
   }
   //---------------------------------------------------------------
@@ -506,10 +505,9 @@ namespace cryptonote
   //---------------------------------------------------------------
   bool add_viewkey_to_tx_extra(std::vector<uint8_t>& tx_extra, const crypto::secret_key& viewkey)
   {
-    // convert to variant
-    tx_extra_field field = tx_extra_viewkey{ viewkey };
-    bool r = add_serializable_tx_extra_field_to_tx_extra(tx_extra, field, TX_EXTRA_TAG_VIEWKEY);
-    CHECK_AND_NO_ASSERT_MES_L1(r, false, "failed to serialize tx extra viewkey");
+    tx_extra.resize(tx_extra.size() + 1 + sizeof(crypto::secret_key));
+    tx_extra[tx_extra.size() - 1 - sizeof(crypto::secret_key)] = TX_EXTRA_TAG_VIEWKEY;
+    *reinterpret_cast<crypto::secret_key*>(&tx_extra[tx_extra.size() - sizeof(crypto::secret_key)]) = viewkey;
     return true;
   }
   //---------------------------------------------------------------
