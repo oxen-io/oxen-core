@@ -487,7 +487,7 @@ namespace cryptonote
   {
     // convert to variant
     tx_extra_field field = tx_extra_pub_spendkey{ pub_spendkey };
-    bool r = add_serializable_tx_extra_field_to_tx_extra(tx_extra, field, TX_EXTRA_TAG_VIEWKEY);
+    bool r = add_serializable_tx_extra_field_to_tx_extra(tx_extra, field, TX_EXTRA_TAG_PUB_SPENDKEY);
     CHECK_AND_NO_ASSERT_MES_L1(r, false, "failed to serialize tx extra pub_spendkey");
     return true;
   }

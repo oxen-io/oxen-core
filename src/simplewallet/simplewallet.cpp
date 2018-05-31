@@ -4743,6 +4743,12 @@ bool simple_wallet::stake_all(const std::vector<std::string> &args_)
     return true;
   }
 
+  if (!add_pub_spendkey_to_tx_extra(extra, m_wallet->get_account().get_keys().m_account_address.m_spend_public_key))
+  {
+    fail_msg_writer() << tr("failed add public spend key to tx extra");
+    return true;
+  }
+
   LOCK_IDLE_SCOPE();
 
   try
