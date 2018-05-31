@@ -3609,15 +3609,14 @@ leave:
       return_tx_to_pool(txs);
       return false;
     }
-
-    for (transaction& tx : txs)
-      for (TxHook* hook : m_tx_hooks)
-        hook->add_tx(tx);
   }
   else
   {
     LOG_ERROR("Blocks that failed verification should not reach here");
   }
+
+  for (BlockHookFn hook : m_new_block_hooks)
+    hook(bl, txs);
 
   TIME_MEASURE_FINISH(addblock);
 
@@ -4567,14 +4566,9 @@ bool Blockchain::for_all_outputs(uint64_t amount, std::function<bool(uint64_t he
   return m_db->for_all_outputs(amount, f);;
 }
 
-void Blockchain::add_tx_hook(Blockchain::TxHook& tx_hook)
+void Blockchain::hook_new_block(Blockchain::BlockHookFn new_block_hook)
 {
-  m_tx_hooks.push_back(&tx_hook);
-}
-
-Blockchain::TxHook::TxHook(Blockchain& blockchain)
-{
-  blockchain.add_tx_hook(*this);
+  m_new_block_hooks.push_back(new_block_hook);
 }
 
 namespace cryptonote {

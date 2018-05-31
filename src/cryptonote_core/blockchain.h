@@ -100,13 +100,7 @@ namespace cryptonote
       uint64_t already_generated_coins; //!< the total coins minted after that block
     };
 
-    class TxHook
-    {
-    public:
-      TxHook(Blockchain& blockchain);
-      virtual void add_tx(const transaction& tx) = 0;
-      virtual void remove_tx(const transaction& tx) = 0;
-    };
+    typedef std::function<void(const block& block, const std::vector<transaction>& txs)> BlockHookFn;
 
     /**
      * @brief Blockchain constructor
@@ -970,7 +964,7 @@ namespace cryptonote
     /**
      * @brief add a hook for processing new and removed transactions
      */
-    void add_tx_hook(TxHook& tx_hook);
+    void hook_new_block(BlockHookFn new_block_hook);
 
   private:
 
@@ -1038,7 +1032,7 @@ namespace cryptonote
     // some invalid blocks
     blocks_ext_by_hash m_invalid_blocks;     // crypto::hash -> block_extended_info
 
-    std::vector<TxHook*> m_tx_hooks;
+    std::vector<BlockHookFn> m_new_block_hooks;
 
     checkpoints m_checkpoints;
     bool m_enforce_dns_checkpoints;
