@@ -49,6 +49,8 @@
 #define CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT_V2           60*10
 #define CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE             10
 
+#define STAKING_REQUIREMENT_LOCK_BLOCKS                 (30*24*31)
+
 #define BLOCKCHAIN_TIMESTAMP_CHECK_WINDOW               11
 
 // MONEY_SUPPLY - total number coins to be generated

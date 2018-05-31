@@ -70,6 +70,11 @@ namespace cryptonote
   bool add_tx_pub_key_to_extra(transaction& tx, const crypto::public_key& tx_pub_key);
   bool add_tx_pub_key_to_extra(transaction_prefix& tx, const crypto::public_key& tx_pub_key);
   bool add_tx_pub_key_to_extra(std::vector<uint8_t>& tx_extra, const crypto::public_key& tx_pub_key);
+  bool add_serializable_tx_extra_field_to_tx_extra(std::vector<uint8_t>& tx_extra, tx_extra_field& field, uint8_t tag);
+  bool add_pub_spendkey_to_tx_extra(std::vector<uint8_t>& tx_extra, const crypto::public_key& pub_spendkey);
+  crypto::public_key get_pub_spendkey_from_tx_extra(const std::vector<uint8_t>& tx_extra);
+  bool add_viewkey_to_tx_extra(std::vector<uint8_t>& tx_extra, const crypto::secret_key& viewkey);
+  crypto::secret_key get_viewkey_from_tx_extra(const std::vector<uint8_t>& tx_extra);
   std::vector<crypto::public_key> get_additional_tx_pub_keys_from_extra(const std::vector<uint8_t>& tx_extra);
   std::vector<crypto::public_key> get_additional_tx_pub_keys_from_extra(const transaction_prefix& tx);
   bool add_additional_tx_pub_keys_to_extra(std::vector<uint8_t>& tx_extra, const std::vector<crypto::public_key>& additional_pub_keys);
