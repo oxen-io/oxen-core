@@ -26,21 +26,34 @@
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#include <functional>
+
 #include "service_node_list.h"
 
 namespace service_nodes
 {
-  service_node_list::service_node_list(cryptonote::Blockchain& blockchain) : cryptonote::Blockchain::TxHook(blockchain)
+  service_node_list::service_node_list(cryptonote::Blockchain& blockchain)
   {
-    // TODO: initiate scan over previous blocks?
+    blockchain.hook_new_block([&](const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs) {
+      this->add_block(block, txs);
+    });
   }
 
-  void service_node_list::add_tx(const cryptonote::transaction& tx)
+  void service_node_list::add_block(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs)
   {
-    LOG_PRINT_L0("Receive Tx hook called");
+    for (const cryptonote::transaction& tx : txs) {
+      if(tx.unlock_time < CRYPTONOTE_MAX_BLOCK_NUMBER)
+      {
+        uint64_t lock_time = tx.unlock_time - cryptonote::get_block_height(block);
+        LOG_PRINT_L0("Found tx with lock time " << lock_time << " = " << tx.unlock_time << " - " << cryptonote::get_block_height(block));
+        if (lock_time >= STAKING_REQUIREMENT_LOCK_BLOCKS) {
+          LOG_PRINT_L0("Identified staking transaction");
+        }
+      }
+    }
   }
 
-  void service_node_list::remove_tx(const cryptonote::transaction& tx)
+  void service_node_list::remove_block(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs)
   {
     LOG_PRINT_L0("Remove Tx hook called");
   }

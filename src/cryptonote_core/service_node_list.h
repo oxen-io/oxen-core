@@ -32,11 +32,14 @@
 
 namespace service_nodes
 {
-  class service_node_list : public cryptonote::Blockchain::TxHook
+  class service_node_list
   {
   public:
     service_node_list(cryptonote::Blockchain& blockchain);
-    void add_tx(const cryptonote::transaction& tx);
-    void remove_tx(const cryptonote::transaction& tx);
+    void add_block(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs);
+    void remove_block(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs);
+
+  private:
+    std::vector<crypto::public_key> m_list;
   };
 }
