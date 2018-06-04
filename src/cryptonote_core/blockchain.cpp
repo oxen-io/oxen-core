@@ -452,6 +452,10 @@ bool Blockchain::init(BlockchainDB* db, const network_type nettype, bool offline
   }
 
   update_next_cumulative_size_limit();
+
+  for (InitHookFn hook : m_init_hooks)
+    hook();
+
   return true;
 }
 //------------------------------------------------------------------
@@ -904,6 +908,14 @@ bool Blockchain::switch_to_alternative_blockchain(std::list<blocks_ext_by_hash::
   {
     block b = pop_block_from_blockchain();
     disconnected_chain.push_front(b);
+
+    std::list<cryptonote::transaction> txs;
+    std::list<crypto::hash> missed_txs; // TODO: what is this?
+    get_transactions(b.tx_hashes, txs, missed_txs);
+    std::vector<cryptonote::transaction> txs_vector{ std::make_move_iterator(std::begin(txs)),
+                                                     std::make_move_iterator(std::end(txs)) };
+    for (RemoveBlockHookFn& hook : m_remove_block_hooks)
+      hook(b, txs_vector); // TODO: fix these hooks so they can take lists as well as vectors
   }
 
   auto split_height = m_db->height();
@@ -3615,7 +3627,7 @@ leave:
     LOG_ERROR("Blocks that failed verification should not reach here");
   }
 
-  for (BlockHookFn hook : m_new_block_hooks)
+  for (NewBlockHookFn hook : m_new_block_hooks)
     hook(bl, txs);
 
   TIME_MEASURE_FINISH(addblock);
@@ -4566,9 +4578,19 @@ bool Blockchain::for_all_outputs(uint64_t amount, std::function<bool(uint64_t he
   return m_db->for_all_outputs(amount, f);;
 }
 
-void Blockchain::hook_new_block(Blockchain::BlockHookFn new_block_hook)
+void Blockchain::hook_init(Blockchain::InitHookFn init_hook)
+{
+  m_init_hooks.push_back(init_hook);
+}
+
+void Blockchain::hook_new_block(Blockchain::NewBlockHookFn new_block_hook)
 {
   m_new_block_hooks.push_back(new_block_hook);
+}
+
+void Blockchain::hook_remove_block(Blockchain::RemoveBlockHookFn remove_block_hook)
+{
+  m_remove_block_hooks.push_back(remove_block_hook);
 }
 
 namespace cryptonote {

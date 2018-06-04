@@ -100,7 +100,9 @@ namespace cryptonote
       uint64_t already_generated_coins; //!< the total coins minted after that block
     };
 
-    typedef std::function<void(const block& block, const std::vector<transaction>& txs)> BlockHookFn;
+    typedef std::function<void(const block& block, const std::vector<transaction>& txs)> NewBlockHookFn;
+    typedef std::function<void(const block& block, const std::vector<transaction>& txs)> RemoveBlockHookFn;
+    typedef std::function<void()> InitHookFn;
 
     /**
      * @brief Blockchain constructor
@@ -964,7 +966,9 @@ namespace cryptonote
     /**
      * @brief add a hook for processing new and removed transactions
      */
-    void hook_new_block(BlockHookFn new_block_hook);
+    void hook_new_block(NewBlockHookFn new_block_hook);
+    void hook_remove_block(RemoveBlockHookFn remove_block_hook);
+    void hook_init(InitHookFn init_hook);
 
   private:
 
@@ -1032,7 +1036,9 @@ namespace cryptonote
     // some invalid blocks
     blocks_ext_by_hash m_invalid_blocks;     // crypto::hash -> block_extended_info
 
-    std::vector<BlockHookFn> m_new_block_hooks;
+    std::vector<NewBlockHookFn> m_new_block_hooks;
+    std::vector<RemoveBlockHookFn> m_remove_block_hooks;
+    std::vector<InitHookFn> m_init_hooks;
 
     checkpoints m_checkpoints;
     bool m_enforce_dns_checkpoints;

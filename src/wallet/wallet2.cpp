@@ -1085,83 +1085,6 @@ void wallet2::scan_output(const cryptonote::transaction &tx, const crypto::publi
   ++num_vouts_received;
 }
 //----------------------------------------------------------------------------------------------------
-void wallet2::process_service_nodes_pubkeys_tx(const cryptonote::transaction& tx, uint64_t block_height, const crypto::public_key& tx_pub_key)
-{
-  if (tx.unlock_time < CRYPTONOTE_MAX_BLOCK_NUMBER && tx.unlock_time >= block_height + STAKING_REQUIREMENT_LOCK_BLOCKS)
-  {
-    uint64_t lock_time = tx.unlock_time - block_height;
-    std::cout << "Found tx with lock time " << lock_time << " = " << tx.unlock_time << " - " << block_height << std::endl;
-
-    crypto::secret_key viewkey = get_viewkey_from_tx_extra(tx.extra);
-    crypto::public_key pub_spendkey = get_pub_spendkey_from_tx_extra(tx.extra);
-
-    if (viewkey != crypto::null_skey && pub_spendkey != crypto::null_pkey)
-    {
-      crypto::public_key pub_viewkey = crypto::null_pkey;
-      bool r = crypto::secret_key_to_public_key(viewkey, pub_viewkey);
-      if (!r) return;
-
-      std::cout << __FILE__ << __LINE__ << std::endl;
-
-      // Reuse code in a really bad way
-
-      cryptonote::account_public_address account_addr{ pub_spendkey, pub_viewkey };
-
-      wallet2 wallet;
-      wallet.generate("temp", "", account_addr, viewkey, false);
-
-      hw::device& hwdev = wallet.m_account.get_device();
-      boost::unique_lock<hw::device> hwdev_lock (hwdev);
-      crypto::key_derivation derivation;
-      std::vector<crypto::key_derivation> additional_derivations;
-      std::vector<crypto::public_key> additional_tx_pub_keys;
-      std::unordered_map<cryptonote::subaddress_index, uint64_t> tx_money_got_in_outs;  // per receiving subaddress index
-      std::vector<size_t> outs;
-      int num_vouts_received = 0;
-
-      std::vector<tx_scan_info_t> tx_scan_info(tx.vout.size());
-
-      std::cout << __FILE__ << __LINE__ << std::endl;
-
-      hwdev_lock.lock();
-      hwdev.set_mode(hw::device::TRANSACTION_PARSE);
-      if (!hwdev.generate_key_derivation(tx_pub_key, viewkey, derivation))
-      {
-        MWARNING("Failed to generate key derivation from tx pubkey, skipping");
-        static_assert(sizeof(derivation) == sizeof(rct::key), "Mismatched sizes of key_derivation and rct::key");
-        memcpy(&derivation, rct::identity().bytes, sizeof(derivation));
-      }
-      hwdev_lock.unlock();
-
-      std::cout << __FILE__ << __LINE__ << std::endl;
-
-      for (size_t i = 0; i < tx.vout.size(); ++i)
-      {
-        wallet.check_acc_out_precomp(tx.vout[i], derivation, additional_derivations, i, tx_scan_info[i]);
-        THROW_WALLET_EXCEPTION_IF(tx_scan_info[i].error, error::acc_outs_lookup_error, tx, tx_pub_key, wallet.m_account.get_keys());
-        if (tx_scan_info[i].received)
-        {
-          hwdev_lock.lock();
-          hwdev.set_mode(hw::device::NONE);
-          hwdev.conceal_derivation(tx_scan_info[i].received->derivation, tx_pub_key, additional_tx_pub_keys, derivation, additional_derivations);
-          wallet.scan_output(tx, tx_pub_key, i, tx_scan_info[i], num_vouts_received, tx_money_got_in_outs, outs);
-
-          std::cout << "Received " << tx_scan_info[i].amount << " and money transeferred is " << tx_scan_info[i].money_transfered << std::endl;
-
-          hwdev_lock.unlock();
-        }
-      }
-    }
-  }
-}
-//----------------------------------------------------------------------------------------------------
-void wallet2::detach_service_nodes_pubkeys(uint64_t height)
-{
-  // TODO: remove adds [and deletes] from table here.
-  // maybe it would be better to reset and rescan blockchain
-  std::cout << "Detach all the pubkey modifications from " << height << std::endl;
-}
-//----------------------------------------------------------------------------------------------------
 void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote::transaction& tx, const std::vector<uint64_t> &o_indices, uint64_t height, uint64_t ts, bool miner_tx, bool pool, bool double_spend_seen)
 {
   //ensure device is let in NONE mode in any case
@@ -1440,8 +1363,6 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
       }
     }
   }
-
-  process_service_nodes_pubkeys_tx(tx, height, tx_pub_key);
 
   uint64_t tx_money_spent_in_ins = 0;
   // The line below is equivalent to "boost::optional<uint32_t> subaddr_account;", but avoids the GCC warning: '*((void*)& subaddr_account +4)' may be used uninitialized in this function
@@ -2505,8 +2426,6 @@ void wallet2::detach_blockchain(uint64_t height)
   //               C
   THROW_WALLET_EXCEPTION_IF(height < m_blockchain.offset() && m_blockchain.size() > m_blockchain.offset(),
       error::wallet_internal_error, "Daemon claims reorg below last checkpoint");
-
-  detach_service_nodes_pubkeys(height);
 
   size_t transfers_detached = 0;
 

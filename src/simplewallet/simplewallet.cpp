@@ -89,8 +89,6 @@ typedef cryptonote::simple_wallet sw;
 
 #define DEFAULT_MIX 9
 
-#define DEFAULT_STAKE_LOCK_TIME 30*24*90 // 90 days
-
 #define OUTPUT_EXPORT_FILE_MAGIC "Loki output export\003"
 
 #define LOCK_IDLE_SCOPE() \
@@ -4704,7 +4702,7 @@ bool simple_wallet::stake_all(const std::vector<std::string> &args_)
   size_t mixins = DEFAULT_MIX;
 
   uint64_t unlock_block = 0;
-  uint64_t locked_blocks = DEFAULT_STAKE_LOCK_TIME;
+  uint64_t locked_blocks = STAKING_REQUIREMENT_LOCK_BLOCKS;
 
   if (local_args.size() >= 1) {
     try

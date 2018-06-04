@@ -30,6 +30,8 @@
 
 #include "blockchain.h"
 
+#define SUBADDRESS_LOOKAHEAD_MINOR 200
+
 namespace service_nodes
 {
   class service_node_list
@@ -38,8 +40,11 @@ namespace service_nodes
     service_node_list(cryptonote::Blockchain& blockchain);
     void add_block(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs);
     void remove_block(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs);
+    bool process_tx(const cryptonote::transaction& tx, uint64_t block_height, crypto::public_key& pub_spendkey_out);
+    void init();
 
   private:
-    std::vector<crypto::public_key> m_list;
+    std::list<crypto::public_key> m_service_nodes_pubkeys;
+    cryptonote::Blockchain& m_blockchain;
   };
 }
