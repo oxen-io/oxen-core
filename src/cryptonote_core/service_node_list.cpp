@@ -40,11 +40,11 @@ namespace service_nodes
   service_node_list::service_node_list(cryptonote::Blockchain& blockchain)
     : m_blockchain(blockchain)
   {
-    blockchain.hook_new_block([&](const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs) {
+    blockchain.hook_add_block([&](const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs) {
       add_block(block, txs);
     });
-    blockchain.hook_remove_block([&](const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs) {
-      remove_block(block, txs);
+    blockchain.hook_rollback_block([&](const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs) {
+      rollback_block(block, txs);
     });
     blockchain.hook_init([&]() {
       init();
@@ -217,7 +217,7 @@ namespace service_nodes
     }
   }
 
-  void service_node_list::remove_block(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs)
+  void service_node_list::rollback_block(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs)
   {
     uint64_t block_height = cryptonote::get_block_height(block);
     for (auto i = txs.rbegin(); i != txs.rend(); i++)

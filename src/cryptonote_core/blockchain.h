@@ -100,8 +100,8 @@ namespace cryptonote
       uint64_t already_generated_coins; //!< the total coins minted after that block
     };
 
-    typedef std::function<void(const block& block, const std::vector<transaction>& txs)> NewBlockHookFn;
-    typedef std::function<void(const block& block, const std::vector<transaction>& txs)> RemoveBlockHookFn;
+    typedef std::function<void(const block& block, const std::vector<transaction>& txs)> AddBlockHookFn;
+    typedef std::function<void(const block& block, const std::vector<transaction>& txs)> RollbackBlockHookFn;
     typedef std::function<void()> InitHookFn;
 
     /**
@@ -964,10 +964,10 @@ namespace cryptonote
     void on_new_tx_from_block(const cryptonote::transaction &tx);
 
     /**
-     * @brief add a hook for processing new and removed transactions
+     * @brief add a hook for processing new blocks and rollbacks for reorgs
      */
-    void hook_new_block(NewBlockHookFn new_block_hook);
-    void hook_remove_block(RemoveBlockHookFn remove_block_hook);
+    void hook_add_block(AddBlockHookFn add_block_hook);
+    void hook_rollback_block(RollbackBlockHookFn rollback_block_hook);
     void hook_init(InitHookFn init_hook);
 
   private:
@@ -1036,8 +1036,8 @@ namespace cryptonote
     // some invalid blocks
     blocks_ext_by_hash m_invalid_blocks;     // crypto::hash -> block_extended_info
 
-    std::vector<NewBlockHookFn> m_new_block_hooks;
-    std::vector<RemoveBlockHookFn> m_remove_block_hooks;
+    std::vector<AddBlockHookFn> m_add_block_hooks;
+    std::vector<RollbackBlockHookFn> m_rollback_block_hooks;
     std::vector<InitHookFn> m_init_hooks;
 
     checkpoints m_checkpoints;

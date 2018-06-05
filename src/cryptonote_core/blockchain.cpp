@@ -914,7 +914,7 @@ bool Blockchain::switch_to_alternative_blockchain(std::list<blocks_ext_by_hash::
     get_transactions(b.tx_hashes, txs, missed_txs);
     std::vector<cryptonote::transaction> txs_vector{ std::make_move_iterator(std::begin(txs)),
                                                      std::make_move_iterator(std::end(txs)) };
-    for (RemoveBlockHookFn& hook : m_remove_block_hooks)
+    for (RollbackBlockHookFn& hook : m_rollback_block_hooks)
       hook(b, txs_vector); // TODO: fix these hooks so they can take lists as well as vectors
   }
 
@@ -3627,7 +3627,7 @@ leave:
     LOG_ERROR("Blocks that failed verification should not reach here");
   }
 
-  for (NewBlockHookFn hook : m_new_block_hooks)
+  for (AddBlockHookFn hook : m_add_block_hooks)
     hook(bl, txs);
 
   TIME_MEASURE_FINISH(addblock);
@@ -4583,14 +4583,14 @@ void Blockchain::hook_init(Blockchain::InitHookFn init_hook)
   m_init_hooks.push_back(init_hook);
 }
 
-void Blockchain::hook_new_block(Blockchain::NewBlockHookFn new_block_hook)
+void Blockchain::hook_add_block(Blockchain::AddBlockHookFn add_block_hook)
 {
-  m_new_block_hooks.push_back(new_block_hook);
+  m_add_block_hooks.push_back(add_block_hook);
 }
 
-void Blockchain::hook_remove_block(Blockchain::RemoveBlockHookFn remove_block_hook)
+void Blockchain::hook_rollback_block(Blockchain::RollbackBlockHookFn rollback_block_hook)
 {
-  m_remove_block_hooks.push_back(remove_block_hook);
+  m_rollback_block_hooks.push_back(rollback_block_hook);
 }
 
 namespace cryptonote {
