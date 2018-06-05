@@ -43,8 +43,8 @@ namespace service_nodes
     blockchain.hook_add_block([&](const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs) {
       add_block(block, txs);
     });
-    blockchain.hook_rollback_block([&](const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs) {
-      rollback_block(block, txs);
+    blockchain.hook_detach_blockchain([&](uint64_t height) {
+      detach_blockchain(height);
     });
     blockchain.hook_init([&]() {
       init();
@@ -53,13 +53,17 @@ namespace service_nodes
 
   void service_node_list::init()
   {
-    LOG_PRINT_L0("Recalculating service nodes list (this may take some time)");
     // TODO: Save this calculation, only do it if it's not here.
+    LOG_PRINT_L0("Recalculating service nodes list, scanning last 30 days");
+
+    m_service_nodes_last_reward.clear();
+
     uint64_t current_height = m_blockchain.get_current_blockchain_height();
-    for (uint64_t start_height = 1; start_height <= current_height; start_height += 1000)
+    uint64_t start_height = (current_height >= STAKING_REQUIREMENT_LOCK_BLOCKS ? current_height - STAKING_REQUIREMENT_LOCK_BLOCKS : 0);
+    for (uint64_t height = start_height; height <= current_height; height += 1000)
     {
       std::list<std::pair<cryptonote::blobdata, cryptonote::block>> blocks;
-      if (!m_blockchain.get_blocks(start_height, 1000, blocks))
+      if (!m_blockchain.get_blocks(height, 1000, blocks))
       {
         LOG_ERROR("Unable to initialize service nodes list");
         return;
@@ -85,7 +89,7 @@ namespace service_nodes
   // It also sets the pub_spendkey_out argument to the public spendkey in the
   // transaction.
   //
-  bool service_node_list::process_tx(const cryptonote::transaction& tx, uint64_t block_height, crypto::public_key& pub_spendkey_out)
+  bool service_node_list::process_registration_tx(const cryptonote::transaction& tx, uint64_t block_height, crypto::public_key& pub_spendkey_out)
   {
     if (tx.unlock_time < CRYPTONOTE_MAX_BLOCK_NUMBER && tx.unlock_time == block_height + STAKING_REQUIREMENT_LOCK_BLOCKS)
     {
@@ -198,48 +202,48 @@ namespace service_nodes
 
   void service_node_list::add_block(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs)
   {
-    if (!m_service_nodes_pubkeys.empty())
+    uint64_t block_height = cryptonote::get_block_height(block);
+
+    if (block.miner_tx.vout.size() >= 3)
     {
-      m_service_nodes_pubkeys.push_back(m_service_nodes_pubkeys.front());
-      m_service_nodes_pubkeys.pop_front();
+      // TODO: ensure validation of miner tx in validate_miner_tx()
+
+      // TODO: update block reward
+      // m_service_nodes_last_reward[pubkey] = block_height;
     }
 
-    // TODO: find nodes that should be removed from the list that expire on this block
+    for (const crypto::public_key key : get_expired_nodes(block_height))
+    {
+      auto i = m_service_nodes_last_reward.find(key);
+      if (i != m_service_nodes_last_reward.end())
+      {
+        m_service_nodes_last_reward.erase(i);
+        // TODO: store the rollback information!
+      }
+    }
 
-    uint64_t block_height = cryptonote::get_block_height(block);
     for (const cryptonote::transaction& tx : txs)
     {
       crypto::public_key pub_spendkey = crypto::null_pkey;
-      if (process_tx(tx, block_height, pub_spendkey))
+      if (process_registration_tx(tx, block_height, pub_spendkey))
       {
-        m_service_nodes_pubkeys.push_back(pub_spendkey);
+        // TODO: store rollback info
+        m_service_nodes_last_reward[pub_spendkey] = block_height;
       }
     }
   }
 
-  void service_node_list::rollback_block(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs)
+  void service_node_list::detach_blockchain(uint64_t height)
   {
-    uint64_t block_height = cryptonote::get_block_height(block);
-    for (auto i = txs.rbegin(); i != txs.rend(); i++)
-    {
-      crypto::public_key pub_spendkey = crypto::null_pkey;
-      if (process_tx(*i, block_height, pub_spendkey))
-      {
-        if (m_service_nodes_pubkeys.back() != pub_spendkey)
-        {
-          LOG_ERROR("Tried rolling back a tx that wasn't at the end of the service node list");
-          // TODO: Tom what should we do here? Trigger a rescan?
-        }
-        m_service_nodes_pubkeys.pop_back();
-      }
-    }
-
-    // TODO: find nodes that should be added to the list that expire on this block
-
-    if (!m_service_nodes_pubkeys.empty())
-    {
-      m_service_nodes_pubkeys.push_front(m_service_nodes_pubkeys.back());
-      m_service_nodes_pubkeys.pop_back();
-    }
+    // TODO: process reorgs efficiently. This could make a good intro/bootcamp project.
+    // For now we just rescan the last 30 days.
+    init();
   }
+
+  std::vector<crypto::public_key> service_node_list::get_expired_nodes(uint64_t block_height)
+  {
+    std::vector<crypto::public_key> expired_nodes;
+    return expired_nodes;
+  }
+
 }

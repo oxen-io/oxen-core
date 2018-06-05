@@ -914,11 +914,12 @@ bool Blockchain::switch_to_alternative_blockchain(std::list<blocks_ext_by_hash::
     get_transactions(b.tx_hashes, txs, missed_txs);
     std::vector<cryptonote::transaction> txs_vector{ std::make_move_iterator(std::begin(txs)),
                                                      std::make_move_iterator(std::end(txs)) };
-    for (RollbackBlockHookFn& hook : m_rollback_block_hooks)
-      hook(b, txs_vector); // TODO: fix these hooks so they can take lists as well as vectors
   }
 
   auto split_height = m_db->height();
+
+  for (DetachBlockchainHookFn& hook : m_detach_blockchain_hooks)
+    hook(split_height); // TODO: fix these hooks so they can take lists as well as vectors
 
   //connecting new alternative chain
   for(auto alt_ch_iter = alt_chain.begin(); alt_ch_iter != alt_chain.end(); alt_ch_iter++)
@@ -4588,9 +4589,9 @@ void Blockchain::hook_add_block(Blockchain::AddBlockHookFn add_block_hook)
   m_add_block_hooks.push_back(add_block_hook);
 }
 
-void Blockchain::hook_rollback_block(Blockchain::RollbackBlockHookFn rollback_block_hook)
+void Blockchain::hook_detach_blockchain(Blockchain::DetachBlockchainHookFn detach_blockchain_hook)
 {
-  m_rollback_block_hooks.push_back(rollback_block_hook);
+  m_detach_blockchain_hooks.push_back(detach_blockchain_hook);
 }
 
 namespace cryptonote {

@@ -101,7 +101,7 @@ namespace cryptonote
     };
 
     typedef std::function<void(const block& block, const std::vector<transaction>& txs)> AddBlockHookFn;
-    typedef std::function<void(const block& block, const std::vector<transaction>& txs)> RollbackBlockHookFn;
+    typedef std::function<void(uint64_t height)> DetachBlockchainHookFn;
     typedef std::function<void()> InitHookFn;
 
     /**
@@ -967,7 +967,7 @@ namespace cryptonote
      * @brief add a hook for processing new blocks and rollbacks for reorgs
      */
     void hook_add_block(AddBlockHookFn add_block_hook);
-    void hook_rollback_block(RollbackBlockHookFn rollback_block_hook);
+    void hook_detach_blockchain(DetachBlockchainHookFn detach_blockchain_hook);
     void hook_init(InitHookFn init_hook);
 
   private:
@@ -1037,7 +1037,7 @@ namespace cryptonote
     blocks_ext_by_hash m_invalid_blocks;     // crypto::hash -> block_extended_info
 
     std::vector<AddBlockHookFn> m_add_block_hooks;
-    std::vector<RollbackBlockHookFn> m_rollback_block_hooks;
+    std::vector<DetachBlockchainHookFn> m_detach_blockchain_hooks;
     std::vector<InitHookFn> m_init_hooks;
 
     checkpoints m_checkpoints;

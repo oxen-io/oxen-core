@@ -34,26 +34,19 @@
 
 namespace service_nodes
 {
-  struct deleted_pubkey
-  {
-    crypto::public_key key;
-    size_t index;
-    uint64_t block_height;
-  };
-
   class service_node_list
   {
   public:
     service_node_list(cryptonote::Blockchain& blockchain);
     void add_block(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs);
-    void rollback_block(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs);
-    bool process_tx(const cryptonote::transaction& tx, uint64_t block_height, crypto::public_key& pub_spendkey_out);
+    void detach_blockchain(uint64_t height);
+    bool process_registration_tx(const cryptonote::transaction& tx, uint64_t block_height, crypto::public_key& pub_spendkey_out);
     void init();
 
+    std::vector<crypto::public_key> get_expired_nodes(uint64_t block_height);
+
   private:
-    std::list<crypto::public_key> m_service_nodes_pubkeys;
-    std::list<deleted_pubkey> m_deleted_pubkeys;
-    uint64_t m_deletion_history_block_height;
+    std::unordered_map<crypto::public_key, uint64_t> m_service_nodes_last_reward;
     cryptonote::Blockchain& m_blockchain;
   };
 }
