@@ -243,6 +243,39 @@ namespace service_nodes
   std::vector<crypto::public_key> service_node_list::get_expired_nodes(uint64_t block_height)
   {
     std::vector<crypto::public_key> expired_nodes;
+
+    if (block_height >= STAKING_REQUIREMENT_LOCK_BLOCKS)
+    {
+      std::list<std::pair<cryptonote::blobdata, cryptonote::block>> blocks;
+      if (!m_blockchain.get_blocks(block_height - STAKING_REQUIREMENT_LOCK_BLOCKS, 1, blocks))
+      {
+        LOG_ERROR("Unable to get historical blocks");
+        // TODO: what should we do in the case of error? return false?
+      }
+      else
+      {
+        const cryptonote::block block = blocks.begin()->second;
+        std::list<cryptonote::transaction> txs;
+        std::list<crypto::hash> missed_txs;
+        if (!m_blockchain.get_transactions(block.tx_hashes, txs, missed_txs))
+        {
+          LOG_ERROR("Unable to get transactions for block " << block.hash);
+          // TODO: what should we do in the case of error? return false?
+        }
+        else
+        {
+          for (const cryptonote::transaction& tx : txs)
+          {
+            crypto::public_key pubkey;
+            if (process_registration_tx(tx, block_height - STAKING_REQUIREMENT_LOCK_BLOCKS, pubkey))
+            {
+              expired_nodes.push_back(pubkey);
+            }
+          }
+        }
+      }
+    }
+
     return expired_nodes;
   }
 
