@@ -50,7 +50,6 @@
 #define CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE             10
 
 #define STAKING_REQUIREMENT_LOCK_BLOCKS                 (30*24*31)
-#define STAKING_REQUIREMENT                             1000
 #define STAKING_RELOCK_WINDOW_BLOCKS                    (30*6)
 
 #define BLOCKCHAIN_TIMESTAMP_CHECK_WINDOW               11

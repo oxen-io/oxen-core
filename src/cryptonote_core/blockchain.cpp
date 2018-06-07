@@ -839,6 +839,11 @@ difficulty_type Blockchain::get_difficulty_for_next_block()
   return diff;
 }
 //------------------------------------------------------------------
+uint64_t Blockchain::get_staking_requirement(uint64_t height)
+{
+  return UINT64_C(1000000000000);
+}
+//------------------------------------------------------------------
 // This function removes blocks from the blockchain until it gets to the
 // position where the blockchain switch started and then re-adds the blocks
 // that had been removed.
