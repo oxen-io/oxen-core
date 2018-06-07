@@ -453,8 +453,8 @@ bool Blockchain::init(BlockchainDB* db, const network_type nettype, bool offline
 
   update_next_cumulative_size_limit();
 
-  for (InitHookFn hook : m_init_hooks)
-    hook();
+  for (InitHook* hook : m_init_hooks)
+    hook->init();
 
   return true;
 }
@@ -913,18 +913,12 @@ bool Blockchain::switch_to_alternative_blockchain(std::list<blocks_ext_by_hash::
   {
     block b = pop_block_from_blockchain();
     disconnected_chain.push_front(b);
-
-    std::list<cryptonote::transaction> txs;
-    std::list<crypto::hash> missed_txs; // TODO: what is this?
-    get_transactions(b.tx_hashes, txs, missed_txs);
-    std::vector<cryptonote::transaction> txs_vector{ std::make_move_iterator(std::begin(txs)),
-                                                     std::make_move_iterator(std::end(txs)) };
   }
 
   auto split_height = m_db->height();
 
-  for (DetachBlockchainHookFn& hook : m_detach_blockchain_hooks)
-    hook(split_height); // TODO: fix these hooks so they can take lists as well as vectors
+  for (BlockchainDetachedHook* hook : m_blockchain_detached_hooks)
+    hook->blockchain_detached(split_height);
 
   //connecting new alternative chain
   for(auto alt_ch_iter = alt_chain.begin(); alt_ch_iter != alt_chain.end(); alt_ch_iter++)
@@ -3633,8 +3627,8 @@ leave:
     LOG_ERROR("Blocks that failed verification should not reach here");
   }
 
-  for (AddBlockHookFn hook : m_add_block_hooks)
-    hook(bl, txs);
+  for (BlockAddedHook* hook : m_block_added_hooks)
+    hook->block_added(bl, txs);
 
   TIME_MEASURE_FINISH(addblock);
 
@@ -4584,19 +4578,19 @@ bool Blockchain::for_all_outputs(uint64_t amount, std::function<bool(uint64_t he
   return m_db->for_all_outputs(amount, f);;
 }
 
-void Blockchain::hook_init(Blockchain::InitHookFn init_hook)
+void Blockchain::hook_init(Blockchain::InitHook& init_hook)
 {
-  m_init_hooks.push_back(init_hook);
+  m_init_hooks.push_back(&init_hook);
 }
 
-void Blockchain::hook_add_block(Blockchain::AddBlockHookFn add_block_hook)
+void Blockchain::hook_block_added(Blockchain::BlockAddedHook& block_added_hook)
 {
-  m_add_block_hooks.push_back(add_block_hook);
+  m_block_added_hooks.push_back(&block_added_hook);
 }
 
-void Blockchain::hook_detach_blockchain(Blockchain::DetachBlockchainHookFn detach_blockchain_hook)
+void Blockchain::hook_blockchain_detached(Blockchain::BlockchainDetachedHook& blockchain_detached_hook)
 {
-  m_detach_blockchain_hooks.push_back(detach_blockchain_hook);
+  m_blockchain_detached_hooks.push_back(&blockchain_detached_hook);
 }
 
 namespace cryptonote {

@@ -40,15 +40,9 @@ namespace service_nodes
   service_node_list::service_node_list(cryptonote::Blockchain& blockchain)
     : m_blockchain(blockchain)
   {
-    blockchain.hook_add_block([&](const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs) {
-      add_block(block, txs);
-    });
-    blockchain.hook_detach_blockchain([&](uint64_t height) {
-      detach_blockchain(height);
-    });
-    blockchain.hook_init([&]() {
-      init();
-    });
+    blockchain.hook_block_added(*this);
+    blockchain.hook_blockchain_detached(*this);
+    blockchain.hook_init(*this);
   }
 
   void service_node_list::init()
@@ -78,9 +72,7 @@ namespace service_nodes
           LOG_ERROR("Unable to get transactions for block " << block.hash);
           return;
         }
-        std::vector<cryptonote::transaction> txs_vector{ std::make_move_iterator(std::begin(txs)),
-                                                         std::make_move_iterator(std::end(txs)) };
-        add_block(block, txs_vector);
+        block_added_generic(block, txs);
       }
     }
   }
@@ -189,7 +181,7 @@ namespace service_nodes
             return false;
           }
 
-          if (money_transferred >= STAKING_REQUIREMENT)
+          if (money_transferred >= m_blockchain.get_staking_requirement(block_height))
           {
             pub_spendkey_out = pub_spendkey;
             return true;
@@ -200,7 +192,13 @@ namespace service_nodes
     return false;
   }
 
-  void service_node_list::add_block(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs)
+  void service_node_list::block_added(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs)
+  {
+    block_added_generic(block, txs);
+  }
+
+  template<typename T>
+  void service_node_list::block_added_generic(const cryptonote::block& block, const T& txs)
   {
     uint64_t block_height = cryptonote::get_block_height(block);
 
@@ -233,7 +231,7 @@ namespace service_nodes
     }
   }
 
-  void service_node_list::detach_blockchain(uint64_t height)
+  void service_node_list::blockchain_detached(uint64_t height)
   {
     // TODO: process reorgs efficiently. This could make a good intro/bootcamp project.
     // For now we just rescan the last 30 days.

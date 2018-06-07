@@ -35,17 +35,23 @@
 namespace service_nodes
 {
   class service_node_list
+    : public cryptonote::Blockchain::BlockAddedHook,
+      public cryptonote::Blockchain::BlockchainDetachedHook,
+      public cryptonote::Blockchain::InitHook
   {
   public:
     service_node_list(cryptonote::Blockchain& blockchain);
-    void add_block(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs);
-    void detach_blockchain(uint64_t height);
-    bool process_registration_tx(const cryptonote::transaction& tx, uint64_t block_height, crypto::public_key& pub_spendkey_out);
+    void block_added(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs);
+    void blockchain_detached(uint64_t height);
     void init();
 
     std::vector<crypto::public_key> get_expired_nodes(uint64_t block_height);
 
   private:
+    bool process_registration_tx(const cryptonote::transaction& tx, uint64_t block_height, crypto::public_key& pub_spendkey_out);
+    template<typename T>
+    void block_added_generic(const cryptonote::block& block, const T& txs);
+
     std::unordered_map<crypto::public_key, uint64_t> m_service_nodes_last_reward;
     cryptonote::Blockchain& m_blockchain;
   };

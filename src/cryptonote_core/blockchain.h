@@ -100,9 +100,23 @@ namespace cryptonote
       uint64_t already_generated_coins; //!< the total coins minted after that block
     };
 
-    typedef std::function<void(const block& block, const std::vector<transaction>& txs)> AddBlockHookFn;
-    typedef std::function<void(uint64_t height)> DetachBlockchainHookFn;
-    typedef std::function<void()> InitHookFn;
+    class BlockAddedHook
+    {
+    public:
+      virtual void block_added(const block& block, const std::vector<transaction>& txs) = 0;
+    };
+
+    class BlockchainDetachedHook
+    {
+    public:
+      virtual void blockchain_detached(uint64_t height) = 0;
+    };
+
+    class InitHook
+    {
+    public:
+      virtual void init() = 0;
+    };
 
     /**
      * @brief Blockchain constructor
@@ -289,6 +303,13 @@ namespace cryptonote
      * @return the target
      */
     difficulty_type get_difficulty_for_next_block();
+
+    /**
+     * @brief returns the staking requirement for the block at height
+     *
+     * @return the target
+     */
+    uint64_t get_staking_requirement(uint64_t height);
 
     /**
      * @brief adds a block to the blockchain
@@ -966,9 +987,9 @@ namespace cryptonote
     /**
      * @brief add a hook for processing new blocks and rollbacks for reorgs
      */
-    void hook_add_block(AddBlockHookFn add_block_hook);
-    void hook_detach_blockchain(DetachBlockchainHookFn detach_blockchain_hook);
-    void hook_init(InitHookFn init_hook);
+    void hook_block_added(BlockAddedHook& block_added_hook);
+    void hook_blockchain_detached(BlockchainDetachedHook& blockchain_detached_hook);
+    void hook_init(InitHook& init_hook);
 
   private:
 
@@ -1036,9 +1057,9 @@ namespace cryptonote
     // some invalid blocks
     blocks_ext_by_hash m_invalid_blocks;     // crypto::hash -> block_extended_info
 
-    std::vector<AddBlockHookFn> m_add_block_hooks;
-    std::vector<DetachBlockchainHookFn> m_detach_blockchain_hooks;
-    std::vector<InitHookFn> m_init_hooks;
+    std::vector<BlockAddedHook*> m_block_added_hooks;
+    std::vector<BlockchainDetachedHook*> m_blockchain_detached_hooks;
+    std::vector<InitHook*> m_init_hooks;
 
     checkpoints m_checkpoints;
     bool m_enforce_dns_checkpoints;
