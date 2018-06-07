@@ -4702,7 +4702,7 @@ bool simple_wallet::stake_all(const std::vector<std::string> &args_)
   size_t mixins = DEFAULT_MIX;
 
   uint64_t unlock_block = 0;
-  uint64_t locked_blocks = STAKING_REQUIREMENT_LOCK_BLOCKS;
+  const uint64_t locked_blocks = STAKING_REQUIREMENT_LOCK_BLOCKS;
 
   if (local_args.size() >= 1) {
     try

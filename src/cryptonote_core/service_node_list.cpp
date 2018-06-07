@@ -29,6 +29,7 @@
 #include <functional>
 
 #include "ringct/rctSigs.h"
+#include "wallet/wallet2.h"
 
 #include "service_node_list.h"
 
@@ -62,7 +63,7 @@ namespace service_nodes
         LOG_ERROR("Unable to initialize service nodes list");
         return;
       }
-      for (const auto block_pair : blocks)
+      for (const auto& block_pair : blocks)
       {
         const cryptonote::block& block = block_pair.second;
         std::list<cryptonote::transaction> txs;
@@ -77,116 +78,129 @@ namespace service_nodes
     }
   }
 
+  bool service_node_list::reg_tx_has_correct_unlock_time(const cryptonote::transaction& tx, uint64_t block_height)
+  {
+    return tx.unlock_time < CRYPTONOTE_MAX_BLOCK_NUMBER && tx.unlock_time == block_height + STAKING_REQUIREMENT_LOCK_BLOCKS;
+  }
+
+
+  bool service_node_list::reg_tx_extract_fields(const cryptonote::transaction& tx, crypto::secret_key& viewkey, crypto::public_key& pub_viewkey, crypto::public_key& pub_spendkey, crypto::public_key& tx_pub_key)
+  {
+    viewkey = cryptonote::get_viewkey_from_tx_extra(tx.extra);
+    pub_spendkey = cryptonote::get_pub_spendkey_from_tx_extra(tx.extra);
+    tx_pub_key = cryptonote::get_tx_pub_key_from_extra(tx.extra);
+    pub_viewkey = crypto::null_pkey;
+    if (!crypto::secret_key_to_public_key(viewkey, pub_viewkey))
+      return false;
+    return viewkey != crypto::null_skey &&
+      pub_spendkey != crypto::null_pkey &&
+      tx_pub_key != crypto::null_pkey &&
+      pub_viewkey != crypto::null_pkey;
+  }
+
+  void service_node_list::reg_tx_calculate_subaddresses(
+      const crypto::secret_key& viewkey,
+      const crypto::public_key& pub_viewkey,
+      const crypto::public_key& pub_spendkey,
+      std::vector<crypto::public_key>& subaddresses,
+      hw::device& hwdev)
+  {
+    cryptonote::account_public_address public_address{ pub_spendkey, pub_viewkey };
+    cryptonote::account_base account_base;
+    account_base.create_from_viewkey(public_address, viewkey);
+    subaddresses = hwdev.get_subaddress_spend_public_keys(account_base.get_keys(), 0 /* major account */, 0 /* minor account */, SUBADDRESS_LOOKAHEAD_MINOR);
+  }
+
+  bool service_node_list::is_reg_tx_staking_output(const cryptonote::transaction& tx, int i, uint64_t block_height, crypto::key_derivation derivation, std::vector<crypto::public_key> subaddresses, hw::device& hwdev)
+  {
+    if (tx.vout[i].target.type() != typeid(cryptonote::txout_to_key))
+    {
+      return false;
+    }
+
+    crypto::public_key subaddress_spendkey;
+    if (!crypto::derive_subaddress_public_key(boost::get<cryptonote::txout_to_key>(tx.vout[i].target).key,
+                                              derivation, i, subaddress_spendkey))
+    {
+      return false;
+    }
+
+    if (std::find(subaddresses.begin(), subaddresses.end(), subaddress_spendkey) == subaddresses.end())
+    {
+      return false;
+    }
+
+    rct::key mask;
+    uint64_t money_transferred = 0;
+
+    crypto::secret_key scalar1;
+    hwdev.derivation_to_scalar(derivation, i, scalar1);
+    try
+    {
+      switch (tx.rct_signatures.type)
+      {
+      case rct::RCTTypeSimple:
+      case rct::RCTTypeSimpleBulletproof:
+        money_transferred = rct::decodeRctSimple(tx.rct_signatures, rct::sk2rct(scalar1), i, mask, hwdev);
+        break;
+      case rct::RCTTypeFull:
+      case rct::RCTTypeFullBulletproof:
+        money_transferred = rct::decodeRct(tx.rct_signatures, rct::sk2rct(scalar1), i, mask, hwdev);
+        break;
+      default:
+        LOG_ERROR("Unsupported rct type: " << tx.rct_signatures.type);
+        return false;
+      }
+    }
+    catch (const std::exception &e)
+    {
+      LOG_ERROR("Failed to decode input " << i);
+      return false;
+    }
+
+    return money_transferred >= m_blockchain.get_staking_requirement(block_height);
+  }
+
   // This function takes a tx and returns true if it is a staking transaction.
   // It also sets the pub_spendkey_out argument to the public spendkey in the
   // transaction.
   //
   bool service_node_list::process_registration_tx(const cryptonote::transaction& tx, uint64_t block_height, crypto::public_key& pub_spendkey_out)
   {
-    if (tx.unlock_time < CRYPTONOTE_MAX_BLOCK_NUMBER && tx.unlock_time == block_height + STAKING_REQUIREMENT_LOCK_BLOCKS)
+    if (!reg_tx_has_correct_unlock_time(tx, block_height))
     {
-      uint64_t lock_time = tx.unlock_time - block_height;
-      LOG_PRINT_L0("Found tx with lock time " << lock_time << " = " << tx.unlock_time << " - " << block_height);
+      return false;
+    }
 
-      crypto::secret_key viewkey = cryptonote::get_viewkey_from_tx_extra(tx.extra);
-      crypto::public_key pub_spendkey = cryptonote::get_pub_spendkey_from_tx_extra(tx.extra);
-      crypto::public_key tx_pub_key = cryptonote::get_tx_pub_key_from_extra(tx.extra);
+    crypto::secret_key viewkey;
+    crypto::public_key pub_spendkey, pub_viewkey, tx_pub_key;
+    
+    if (!reg_tx_extract_fields(tx, viewkey, pub_viewkey, pub_spendkey, tx_pub_key))
+    {
+      return false;
+    }
 
-      if (viewkey != crypto::null_skey && pub_spendkey != crypto::null_pkey && tx_pub_key != crypto::null_pkey)
+    // TODO(jcktm) - change all this stuff regarding key derivation from
+    // the viewkey to be using the actual output decryption key in the tx
+    // extra field, or use an old style transaction output so the amount
+    // is not encrypted.
+
+    crypto::key_derivation derivation;
+
+    crypto::generate_key_derivation(tx_pub_key, viewkey, derivation);
+
+    hw::device& hwdev = hw::get_device("default");
+
+    std::vector<crypto::public_key> subaddresses;
+
+    reg_tx_calculate_subaddresses(viewkey, pub_viewkey, pub_spendkey, subaddresses, hwdev);
+
+    for (size_t i = 0; i < tx.vout.size(); ++i)
+    {
+      if (is_reg_tx_staking_output(tx, i, block_height, derivation, subaddresses, hwdev))
       {
-        crypto::public_key pub_viewkey = crypto::null_pkey;
-        if (!crypto::secret_key_to_public_key(viewkey, pub_viewkey))
-        {
-          LOG_ERROR("Couldn't calculate public key from secret key. Skipping transaction.");
-          return false;
-        }
-
-        // TODO(jcktm) - change all this stuff regarding key derivation from
-        // the viewkey to be using the actual output decryption key in the tx
-        // extra field, or use an old style transaction output so the amount
-        // is not encrypted.
-
-        crypto::key_derivation derivation;
-        crypto::generate_key_derivation(tx_pub_key, viewkey, derivation);
-
-        hw::device& hwdev = hw::get_device("default");
-        cryptonote::account_public_address public_address{ pub_spendkey, pub_viewkey };
-        cryptonote::account_base account_base;
-        account_base.create_from_viewkey(public_address, viewkey);
-        const std::vector<crypto::public_key> subaddresses = hwdev.get_subaddress_spend_public_keys(account_base.get_keys(), 0 /* major account */, 0 /* minor account */, SUBADDRESS_LOOKAHEAD_MINOR);
-
-        for (size_t i = 0; i < tx.vout.size(); ++i)
-        {
-          if (tx.vout[i].target.type() != typeid(cryptonote::txout_to_key))
-          {
-            LOG_ERROR("wrong type id in transaction out, skipping");
-            return false;
-          }
-
-          crypto::public_key subaddress_spendkey;
-          if (!crypto::derive_subaddress_public_key(boost::get<cryptonote::txout_to_key>(tx.vout[i].target).key,
-                                                    derivation, i, subaddress_spendkey))
-          {
-            LOG_ERROR("Couldn't derive subaddress public key for tx out, skipping");
-            return false;
-          }
-
-          if (std::find(subaddresses.begin(), subaddresses.end(), subaddress_spendkey) == subaddresses.end())
-          {
-            LOG_ERROR("Couldn't find subaddress in derived addresses for tx out, skipping");
-            return false;
-          }
-
-          //boost::unique_lock<hw::device> hwdev_lock (hwdev); // TODO: What is going on here?
-          //hwdev_lock.lock();
-          hwdev.set_mode(hw::device::NONE);
-          cryptonote::keypair in_ephemeral;
-          crypto::key_image ki;
-          bool r = cryptonote::generate_key_image_helper_precomp(account_base.get_keys(),
-                                                                 boost::get<cryptonote::txout_to_key>(tx.vout[i].target).key,
-                                                                 derivation, i, {0, 0}, in_ephemeral, ki, hwdev);
-          //hwdev_lock.unlock();
-
-          if (!r)
-          {
-            LOG_ERROR("could not generate key image for tx out, skipping");
-            return false;
-          }
-
-          rct::key mask;
-          uint64_t money_transferred = 0;
-
-          crypto::secret_key scalar1;
-          hwdev.derivation_to_scalar(derivation, i, scalar1);
-          try
-          {
-            switch (tx.rct_signatures.type)
-            {
-            case rct::RCTTypeSimple:
-            case rct::RCTTypeSimpleBulletproof:
-              money_transferred = rct::decodeRctSimple(tx.rct_signatures, rct::sk2rct(scalar1), i, mask, hwdev);
-              break;
-            case rct::RCTTypeFull:
-            case rct::RCTTypeFullBulletproof:
-              money_transferred = rct::decodeRct(tx.rct_signatures, rct::sk2rct(scalar1), i, mask, hwdev);
-              break;
-            default:
-              LOG_ERROR("Unsupported rct type: " << tx.rct_signatures.type);
-              break;
-            }
-          }
-          catch (const std::exception &e)
-          {
-            LOG_ERROR("Failed to decode input " << i);
-            return false;
-          }
-
-          if (money_transferred >= m_blockchain.get_staking_requirement(block_height))
-          {
-            pub_spendkey_out = pub_spendkey;
-            return true;
-          }
-        }
+        pub_spendkey_out = pub_spendkey;
+        return true;
       }
     }
     return false;
@@ -216,7 +230,7 @@ namespace service_nodes
       if (i != m_service_nodes_last_reward.end())
       {
         m_service_nodes_last_reward.erase(i);
-        // TODO: store the rollback information!
+        // TODO: store the rollback information
       }
     }
 
@@ -242,35 +256,31 @@ namespace service_nodes
   {
     std::vector<crypto::public_key> expired_nodes;
 
-    if (block_height >= STAKING_REQUIREMENT_LOCK_BLOCKS)
+    if (block_height < STAKING_REQUIREMENT_LOCK_BLOCKS)
+      return expired_nodes;
+
+    std::list<std::pair<cryptonote::blobdata, cryptonote::block>> blocks;
+    if (!m_blockchain.get_blocks(block_height - STAKING_REQUIREMENT_LOCK_BLOCKS, 1, blocks))
     {
-      std::list<std::pair<cryptonote::blobdata, cryptonote::block>> blocks;
-      if (!m_blockchain.get_blocks(block_height - STAKING_REQUIREMENT_LOCK_BLOCKS, 1, blocks))
+      LOG_ERROR("Unable to get historical blocks");
+      return expired_nodes;
+    }
+
+    const cryptonote::block& block = blocks.begin()->second;
+    std::list<cryptonote::transaction> txs;
+    std::list<crypto::hash> missed_txs;
+    if (!m_blockchain.get_transactions(block.tx_hashes, txs, missed_txs))
+    {
+      LOG_ERROR("Unable to get transactions for block " << block.hash);
+      return expired_nodes;
+    }
+
+    for (const cryptonote::transaction& tx : txs)
+    {
+      crypto::public_key pubkey;
+      if (process_registration_tx(tx, block_height - STAKING_REQUIREMENT_LOCK_BLOCKS, pubkey))
       {
-        LOG_ERROR("Unable to get historical blocks");
-        // TODO: what should we do in the case of error? return false?
-      }
-      else
-      {
-        const cryptonote::block block = blocks.begin()->second;
-        std::list<cryptonote::transaction> txs;
-        std::list<crypto::hash> missed_txs;
-        if (!m_blockchain.get_transactions(block.tx_hashes, txs, missed_txs))
-        {
-          LOG_ERROR("Unable to get transactions for block " << block.hash);
-          // TODO: what should we do in the case of error? return false?
-        }
-        else
-        {
-          for (const cryptonote::transaction& tx : txs)
-          {
-            crypto::public_key pubkey;
-            if (process_registration_tx(tx, block_height - STAKING_REQUIREMENT_LOCK_BLOCKS, pubkey))
-            {
-              expired_nodes.push_back(pubkey);
-            }
-          }
-        }
+        expired_nodes.push_back(pubkey);
       }
     }
 

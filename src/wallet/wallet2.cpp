@@ -104,9 +104,6 @@ using namespace cryptonote;
 
 #define SECOND_OUTPUT_RELATEDNESS_THRESHOLD 0.0f
 
-#define SUBADDRESS_LOOKAHEAD_MAJOR 50
-#define SUBADDRESS_LOOKAHEAD_MINOR 200
-
 #define KEY_IMAGE_EXPORT_FILE_MAGIC "Loki key image export\002"
 
 #define MULTISIG_EXPORT_FILE_MAGIC "Loki multisig export\001"
