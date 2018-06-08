@@ -101,6 +101,11 @@ namespace cryptonote
     return base_reward / 20;
   }
 
+  uint64_t get_service_node_reward(uint64_t height, uint64_t base_reward, int hard_fork_version)
+  {
+    return hard_fork_version >= 8 ? base_reward / 2 : 0;
+  }
+
   bool get_deterministic_output_key(const account_public_address& address, const keypair& tx_key, size_t output_index, crypto::public_key& output_key)
   {
 
@@ -146,7 +151,7 @@ namespace cryptonote
   }
 
   //---------------------------------------------------------------
-  bool construct_miner_tx(size_t height, size_t median_size, uint64_t already_generated_coins, size_t current_block_size, uint64_t fee, const account_public_address &miner_address, transaction& tx, const blobdata& extra_nonce, size_t max_outs, uint8_t hard_fork_version, network_type nettype) {
+  bool construct_miner_tx(size_t height, size_t median_size, uint64_t already_generated_coins, size_t current_block_size, uint64_t fee, const account_public_address &miner_address, transaction& tx, const blobdata& extra_nonce, size_t max_outs, uint8_t hard_fork_version, network_type nettype, const account_public_address service_node_address) {
     tx.vin.clear();
     tx.vout.clear();
     tx.extra.clear();
@@ -180,23 +185,16 @@ namespace cryptonote
 
     //TODO: declining governance reward schedule
     uint64_t governance_reward = 0;
+    uint64_t service_node_reward = 0;
     if (already_generated_coins != 0)
     {
       governance_reward = get_governance_reward(height, block_reward);
+      service_node_reward = get_service_node_reward(height, block_reward, hard_fork_version);
       block_reward -= governance_reward;
+      block_reward -= service_node_reward;
     }
 
     block_reward += fee;
-
-    // from hard fork 2, we cut out the low significant digits. This makes the tx smaller, and
-    // keeps the paid amount almost the same. The unpaid remainder gets pushed back to the
-    // emission schedule
-    // from hard fork 4, we use a single "dusty" output. This makes the tx even smaller,
-    // and avoids the quantization. These outputs will be added as rct outputs with identity
-    // masks, to they can be used as rct inputs.
-    if (hard_fork_version >= 2 && hard_fork_version < 4) {
-      block_reward = block_reward - block_reward % ::config::BASE_REWARD_CLAMP_THRESHOLD;
-    }
 
     std::vector<uint64_t> out_amounts;
     decompose_amount_into_digits(block_reward, hard_fork_version >= 2 ? 0 : ::config::DEFAULT_DUST_THRESHOLD,
@@ -238,6 +236,22 @@ namespace cryptonote
 
       tx_out out;
       summary_amounts += out.amount = out_amounts[no];
+      out.target = tk;
+      tx.vout.push_back(out);
+    }
+
+    if (hard_fork_version >= 8)
+    {
+      crypto::key_derivation derivation = AUTO_VAL_INIT(derivation);;
+      crypto::public_key out_eph_public_key = AUTO_VAL_INIT(out_eph_public_key);
+      bool r = crypto::generate_key_derivation(service_node_address.m_view_public_key, txkey.sec, derivation);
+      CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to generate_key_derivation(" << service_node_address.m_view_public_key << ", " << txkey.sec << ")");
+      txout_to_key tk;
+
+      tk.key = out_eph_public_key;
+
+      tx_out out;
+      summary_amounts += out.amount = service_node_reward;
       out.target = tk;
       tx.vout.push_back(out);
     }

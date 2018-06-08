@@ -1113,6 +1113,27 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
     return false;
   }
 
+  uint64_t hard_fork_version = get_current_hard_fork_version();
+
+  if (hard_fork_version >= 8)
+  {
+    uint64_t service_node_reward = get_service_node_reward(m_db->height(), base_reward, hard_fork_version);
+
+    if (b.miner_tx.vout.size() < 2)
+    {
+      MERROR("Service node output missing");
+      return false;
+    }
+
+    if (b.miner_tx.vout[b.miner_tx.vout.size()-2].amount != service_node_reward)
+    {
+      MERROR("Service node reward amount incorrect. Should be " << print_money(service_node_reward) << ", is: " << print_money(b.miner_tx.vout[b.miner_tx.vout.size()-2].amount));
+      return false;
+    }
+
+    // TODO: verify that the correct service node is the recipient of this transaction.
+  }
+
   if (already_generated_coins != 0)
   {
     uint64_t governance_reward = get_governance_reward(m_db->height(), base_reward);
