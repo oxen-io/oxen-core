@@ -33,3 +33,5 @@
 #include <stddef.h>
 
 void generate_random_bytes_not_thread_safe(size_t n, void *result);
+void err(int n, const char *x);
+void errx(int n, const char *x);
