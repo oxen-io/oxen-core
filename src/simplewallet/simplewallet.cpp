@@ -4677,7 +4677,7 @@ bool simple_wallet::locked_sweep_all(const std::vector<std::string> &args_)
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::stake_all(const std::vector<std::string> &args_)
 {
-  // stake_all [index=<N1>[,<N2>,...]] [priority] [lockblocks]
+  // stake_all [index=<N1>[,<N2>,...]] [priority]
 
   if (m_wallet->ask_password() && !get_and_verify_password()) { return true; }
   if (!try_connect_to_daemon())
@@ -4702,25 +4702,7 @@ bool simple_wallet::stake_all(const std::vector<std::string> &args_)
   size_t mixins = DEFAULT_MIX;
 
   uint64_t unlock_block = 0;
-  const uint64_t locked_blocks = STAKING_REQUIREMENT_LOCK_BLOCKS;
-
-  if (local_args.size() >= 1) {
-    try
-    {
-      locked_blocks = boost::lexical_cast<uint64_t>(local_args[0]);
-    }
-    catch (const std::exception &e)
-    {
-      fail_msg_writer() << tr("bad locked_blocks parameter");
-      return true;
-    }
-    if (locked_blocks > 1000000)
-    {
-      fail_msg_writer() << tr("Locked blocks too high, max 1000000 (˜4 yrs)");
-      return true;
-    }
-    local_args.erase(local_args.begin());
-  }
+  uint64_t locked_blocks = STAKING_REQUIREMENT_LOCK_BLOCKS;
 
   std::string err;
   uint64_t bc_height = get_daemon_blockchain_height(err);
@@ -4752,7 +4734,7 @@ bool simple_wallet::stake_all(const std::vector<std::string> &args_)
   try
   {
     // figure out what tx will be necessary
-    auto ptx_vector = m_wallet->create_transactions_all(0, address, false, mixins, unlock_block /* unlock_time */, priority, extra, m_current_subaddress_account, subaddr_indices, m_trusted_daemon);
+    auto ptx_vector = m_wallet->create_transactions_all(0, address, false, mixins, unlock_block /* unlock_time */, priority, extra, m_current_subaddress_account, subaddr_indices, is_daemon_trusted());
 
     if (ptx_vector.empty())
     {
@@ -4839,7 +4821,7 @@ bool simple_wallet::stake_all(const std::vector<std::string> &args_)
   }
   catch (const std::exception& e)
   {
-    handle_transfer_exception(std::current_exception(), m_trusted_daemon);
+    handle_transfer_exception(std::current_exception(), is_daemon_trusted());
   }
   catch (...)
   {
