@@ -151,7 +151,7 @@ namespace cryptonote
   }
 
   //---------------------------------------------------------------
-  bool construct_miner_tx(size_t height, size_t median_size, uint64_t already_generated_coins, size_t current_block_size, uint64_t fee, const account_public_address &miner_address, transaction& tx, const blobdata& extra_nonce, size_t max_outs, uint8_t hard_fork_version, network_type nettype, const account_public_address service_node_address) {
+  bool construct_miner_tx(size_t height, size_t median_size, uint64_t already_generated_coins, size_t current_block_size, uint64_t fee, const account_public_address &miner_address, transaction& tx, const blobdata& extra_nonce, size_t max_outs /* deprecated */, uint8_t hard_fork_version, network_type nettype, const account_public_address service_node_address) {
     tx.vin.clear();
     tx.vout.clear();
     tx.extra.clear();
@@ -196,46 +196,22 @@ namespace cryptonote
 
     block_reward += fee;
 
-    std::vector<uint64_t> out_amounts;
-    decompose_amount_into_digits(block_reward, hard_fork_version >= 2 ? 0 : ::config::DEFAULT_DUST_THRESHOLD,
-      [&out_amounts](uint64_t a_chunk) { out_amounts.push_back(a_chunk); },
-      [&out_amounts](uint64_t a_dust) { out_amounts.push_back(a_dust); });
-
-    CHECK_AND_ASSERT_MES(1 <= max_outs, false, "max_out must be non-zero");
-    if (height == 0 || hard_fork_version >= 4)
-    {
-      // the genesis block was not decomposed, for unknown reasons
-      while (max_outs < out_amounts.size())
-      {
-        //out_amounts[out_amounts.size() - 2] += out_amounts.back();
-        //out_amounts.resize(out_amounts.size() - 1);
-        out_amounts[1] += out_amounts[0];
-        for (size_t n = 1; n < out_amounts.size(); ++n)
-          out_amounts[n - 1] = out_amounts[n];
-        out_amounts.resize(out_amounts.size() - 1);
-      }
-    }
-    else
-    {
-      CHECK_AND_ASSERT_MES(max_outs >= out_amounts.size(), false, "max_out exceeded");
-    }
-
     uint64_t summary_amounts = 0;
-    for (size_t no = 0; no < out_amounts.size(); no++)
+
     {
       crypto::key_derivation derivation = AUTO_VAL_INIT(derivation);;
       crypto::public_key out_eph_public_key = AUTO_VAL_INIT(out_eph_public_key);
       bool r = crypto::generate_key_derivation(miner_address.m_view_public_key, txkey.sec, derivation);
       CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to generate_key_derivation(" << miner_address.m_view_public_key << ", " << txkey.sec << ")");
 
-      r = crypto::derive_public_key(derivation, no, miner_address.m_spend_public_key, out_eph_public_key);
-      CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to derive_public_key(" << derivation << ", " << no << ", "<< miner_address.m_spend_public_key << ")");
+      r = crypto::derive_public_key(derivation, 0, miner_address.m_spend_public_key, out_eph_public_key);
+      CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to derive_public_key(" << derivation << ", " << 0 << ", "<< miner_address.m_spend_public_key << ")");
 
       txout_to_key tk;
       tk.key = out_eph_public_key;
 
       tx_out out;
-      summary_amounts += out.amount = out_amounts[no];
+      summary_amounts += out.amount = block_reward;
       out.target = tk;
       tx.vout.push_back(out);
     }
@@ -280,7 +256,7 @@ namespace cryptonote
 
       crypto::public_key out_eph_public_key = AUTO_VAL_INIT(out_eph_public_key);
 
-      if (!get_deterministic_output_key(governance_wallet_address.address, gov_key, out_amounts.size(), out_eph_public_key))
+      if (!get_deterministic_output_key(governance_wallet_address.address, gov_key, tx.vout.size(), out_eph_public_key))
       {
         MERROR("Failed to generate deterministic output key for governance wallet output creation");
         return false;
@@ -295,12 +271,9 @@ namespace cryptonote
       tx.vout.push_back(out);
     }
 
-    CHECK_AND_ASSERT_MES(summary_amounts == (block_reward + governance_reward), false, "Failed to construct miner tx, summary_amounts = " << summary_amounts << " not equal total block_reward = " << (block_reward + governance_reward));
+    CHECK_AND_ASSERT_MES(summary_amounts == (block_reward + governance_reward + service_node_reward), false, "Failed to construct miner tx, summary_amounts = " << summary_amounts << " not equal total block_reward = " << (block_reward + governance_reward + service_node_reward));
 
-    if (hard_fork_version >= 4)
-      tx.version = 2;
-    else
-      tx.version = 1;
+    tx.version = 2;
 
     //lock
     tx.unlock_time = height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
