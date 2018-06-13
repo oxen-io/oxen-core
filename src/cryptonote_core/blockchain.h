@@ -55,6 +55,11 @@
 #include "cryptonote_basic/hardfork.h"
 #include "blockchain_db/blockchain_db.h"
 
+namespace service_nodes
+{
+  class service_node_list;
+};
+
 namespace cryptonote
 {
   class tx_memory_pool;
@@ -118,12 +123,18 @@ namespace cryptonote
       virtual void init() = 0;
     };
 
+    class ValidateMinerTxHook
+    {
+    public:
+      virtual bool validate_miner_tx(const crypto::hash& prev_id, const cryptonote::transaction& miner_tx, uint64_t base_reward) = 0;
+    };
+
     /**
      * @brief Blockchain constructor
      *
      * @param tx_pool a reference to the transaction pool to be kept by the Blockchain
      */
-    Blockchain(tx_memory_pool& tx_pool);
+    Blockchain(tx_memory_pool& tx_pool, service_nodes::service_node_list& service_node_list);
 
     /**
      * @brief Initialize the Blockchain state
@@ -990,6 +1001,7 @@ namespace cryptonote
     void hook_block_added(BlockAddedHook& block_added_hook);
     void hook_blockchain_detached(BlockchainDetachedHook& blockchain_detached_hook);
     void hook_init(InitHook& init_hook);
+    void hook_validate_miner_tx(ValidateMinerTxHook& validate_miner_tx_hook);
 
   private:
 
@@ -1012,6 +1024,8 @@ namespace cryptonote
     BlockchainDB* m_db;
 
     tx_memory_pool& m_tx_pool;
+
+    service_nodes::service_node_list& m_service_node_list;
 
     mutable epee::critical_section m_blockchain_lock; // TODO: add here reader/writer lock
 
@@ -1060,6 +1074,7 @@ namespace cryptonote
     std::vector<BlockAddedHook*> m_block_added_hooks;
     std::vector<BlockchainDetachedHook*> m_blockchain_detached_hooks;
     std::vector<InitHook*> m_init_hooks;
+    std::vector<ValidateMinerTxHook*> m_validate_miner_tx_hooks;
 
     checkpoints m_checkpoints;
     bool m_enforce_dns_checkpoints;

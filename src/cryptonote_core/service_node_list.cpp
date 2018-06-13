@@ -30,6 +30,7 @@
 
 #include "ringct/rctSigs.h"
 #include "wallet/wallet2.h"
+#include "cryptonote_tx_utils.h"
 
 #include "service_node_list.h"
 
@@ -44,6 +45,7 @@ namespace service_nodes
     blockchain.hook_block_added(*this);
     blockchain.hook_blockchain_detached(*this);
     blockchain.hook_init(*this);
+    blockchain.hook_validate_miner_tx(*this);
   }
 
   void service_node_list::init()
@@ -165,7 +167,7 @@ namespace service_nodes
   // It also sets the pub_spendkey_out argument to the public spendkey in the
   // transaction.
   //
-  bool service_node_list::process_registration_tx(const cryptonote::transaction& tx, uint64_t block_height, crypto::public_key& pub_spendkey_out)
+  bool service_node_list::process_registration_tx(const cryptonote::transaction& tx, uint64_t block_height, crypto::public_key& pub_spendkey_out, crypto::public_key& pub_viewkey_out, crypto::secret_key& sec_viewkey_out)
   {
     if (!reg_tx_has_correct_unlock_time(tx, block_height))
     {
@@ -200,6 +202,8 @@ namespace service_nodes
       if (is_reg_tx_staking_output(tx, i, block_height, derivation, subaddresses, hwdev))
       {
         pub_spendkey_out = pub_spendkey;
+        pub_viewkey_out = pub_viewkey;
+        sec_viewkey_out = viewkey;
         return true;
       }
     }
@@ -211,17 +215,71 @@ namespace service_nodes
     block_added_generic(block, txs);
   }
 
+  crypto::public_key service_node_list::find_service_node_from_miner_tx(const cryptonote::transaction& miner_tx)
+  {
+    if (miner_tx.vout.size() != 3)
+    {
+      MERROR("Miner tx should have 3 outputs");
+      return crypto::null_pkey;
+    }
+
+    if (miner_tx.vout[1].target.type() != typeid(cryptonote::txout_to_key))
+    {
+      MERROR("Service node output target type should be txout_to_key");
+      return crypto::null_pkey;
+    }
+
+    crypto::public_key tx_pub_key = cryptonote::get_tx_pub_key_from_extra(miner_tx);
+
+    for (std::pair<crypto::public_key, uint64_t> spendkey_blockheight : m_service_nodes_last_reward)
+    {
+      const crypto::public_key& pub_spendkey = spendkey_blockheight.first;
+      const crypto::public_key& pub_viewkey = m_pub_viewkey_lookup[pub_spendkey];
+      crypto::secret_key sec_viewkey = m_sec_viewkey_lookup[pub_spendkey];
+
+      crypto::key_derivation derivation;
+      crypto::generate_key_derivation(tx_pub_key, sec_viewkey, derivation);
+
+      crypto::public_key subaddress_spendkey;
+      if (!crypto::derive_subaddress_public_key(boost::get<cryptonote::txout_to_key>(miner_tx.vout[1].target).key,
+                                                derivation, 1, subaddress_spendkey))
+      {
+        MERROR("Could not derive subaddress spendkey");
+        continue;
+      }
+
+      hw::device& hwdev = hw::get_device("default");
+      std::vector<crypto::public_key> subaddresses;
+      reg_tx_calculate_subaddresses(sec_viewkey, pub_viewkey, pub_spendkey, subaddresses, hwdev);
+
+      // if (subaddresses[1] == subaddress_spendkey)
+      if (std::find(subaddresses.begin(), subaddresses.end(), subaddress_spendkey) != subaddresses.end())
+      {
+        MWARNING("Found subaddress_spendkey in subaddresses for pub spendkey = " << pub_spendkey);
+        return pub_spendkey;
+      }
+    }
+
+    MWARNING("Couldn't find the serice node pubkey recipient of miner tx output");
+
+    return crypto::null_pkey;
+  }
+
   template<typename T>
   void service_node_list::block_added_generic(const cryptonote::block& block, const T& txs)
   {
     uint64_t block_height = cryptonote::get_block_height(block);
+    int hard_fork_version = m_blockchain.get_hard_fork_version(block_height);
 
-    if (block.miner_tx.vout.size() >= 3)
+    if (hard_fork_version < 8)
+      return;
+
+    assert(block.miner_tx.vout.size() == 3);
+
+    crypto::public_key pubkey = find_service_node_from_miner_tx(block.miner_tx);
+    if (m_service_nodes_last_reward.count(pubkey) == 1)
     {
-      // TODO: ensure validation of miner tx in validate_miner_tx()
-
-      // TODO: update block reward
-      // m_service_nodes_last_reward[pubkey] = block_height;
+      m_service_nodes_last_reward[pubkey] = block_height;
     }
 
     for (const crypto::public_key key : get_expired_nodes(block_height))
@@ -237,10 +295,15 @@ namespace service_nodes
     for (const cryptonote::transaction& tx : txs)
     {
       crypto::public_key pub_spendkey = crypto::null_pkey;
-      if (process_registration_tx(tx, block_height, pub_spendkey))
+      crypto::public_key pub_viewkey = crypto::null_pkey;
+      crypto::secret_key sec_viewkey;
+      if (process_registration_tx(tx, block_height, pub_spendkey, pub_viewkey, sec_viewkey))
       {
         // TODO: store rollback info
+        LOG_PRINT_L0("Added pubspendkey = " << pub_spendkey << " at blockheight " << block_height);
         m_service_nodes_last_reward[pub_spendkey] = block_height;
+        m_pub_viewkey_lookup[pub_spendkey] = pub_viewkey;
+        m_sec_viewkey_lookup[pub_spendkey] = sec_viewkey;
       }
     }
   }
@@ -278,7 +341,9 @@ namespace service_nodes
     for (const cryptonote::transaction& tx : txs)
     {
       crypto::public_key pubkey;
-      if (process_registration_tx(tx, block_height - STAKING_REQUIREMENT_LOCK_BLOCKS, pubkey))
+      crypto::public_key pub_viewkey;
+      crypto::secret_key sec_viewkey;
+      if (process_registration_tx(tx, block_height - STAKING_REQUIREMENT_LOCK_BLOCKS, pubkey, pub_viewkey, sec_viewkey))
       {
         expired_nodes.push_back(pubkey);
       }
@@ -287,4 +352,81 @@ namespace service_nodes
     return expired_nodes;
   }
 
+  cryptonote::account_public_address service_node_list::select_winner(const crypto::hash& prev_id)
+  {
+    uint64_t lowest_height = std::numeric_limits<uint64_t>::max();
+    crypto::public_key pub_spendkey = crypto::null_pkey;
+    for (std::pair<crypto::public_key, uint64_t> spendkey_blockheight : m_service_nodes_last_reward)
+    {
+      LOG_PRINT_L0("pub spendkey " << spendkey_blockheight.first << " was last rewarded at height " << spendkey_blockheight.second);
+      if (spendkey_blockheight.second < lowest_height)
+      {
+        lowest_height = spendkey_blockheight.second;
+        pub_spendkey = spendkey_blockheight.first;
+      }
+    }
+    crypto::public_key pub_viewkey = (pub_spendkey == crypto::null_pkey ? crypto::null_pkey : m_pub_viewkey_lookup[pub_spendkey]);
+    LOG_PRINT_L0("selected winner " << pub_spendkey << ", " << pub_viewkey);
+    return cryptonote::account_public_address{ pub_spendkey, pub_viewkey };
+  }
+
+  /// validates the miner TX for the next block
+  //
+  bool service_node_list::validate_miner_tx(const crypto::hash& prev_id, const cryptonote::transaction& miner_tx, uint64_t base_reward)
+  {
+    uint64_t hard_fork_version = m_blockchain.get_current_hard_fork_version();
+
+    if (hard_fork_version < 8)
+      return true;
+
+    uint64_t service_node_reward = cryptonote::get_service_node_reward(m_blockchain.get_current_blockchain_height(), base_reward, hard_fork_version);
+
+    if (miner_tx.vout.size() != 3)
+    {
+      MERROR("Miner TX should have exactly 3 outputs");
+      return false;
+    }
+
+    if (miner_tx.vout[1].amount != service_node_reward)
+    {
+      MERROR("Service node reward amount incorrect. Should be " << cryptonote::print_money(service_node_reward) << ", is: " << cryptonote::print_money(miner_tx.vout[miner_tx.vout.size()-2].amount));
+      return false;
+    }
+
+    if (miner_tx.vout[1].target.type() != typeid(cryptonote::txout_to_key))
+    {
+      MERROR("Service node output target type should be txout_to_key");
+      return false;
+    }
+
+    crypto::key_derivation derivation;
+    crypto::public_key tx_pub_key = cryptonote::get_tx_pub_key_from_extra(miner_tx);
+    cryptonote::account_public_address winner = select_winner(prev_id);
+    crypto::secret_key viewkey = m_sec_viewkey_lookup[winner.m_spend_public_key];
+    crypto::generate_key_derivation(tx_pub_key, viewkey, derivation);
+
+    crypto::public_key subaddress_spendkey;
+    if (!crypto::derive_subaddress_public_key(boost::get<cryptonote::txout_to_key>(miner_tx.vout[1].target).key,
+                                              derivation, 1, subaddress_spendkey))
+    {
+      MERROR("Could not derive subaddress spendkey");
+      return false;
+    }
+
+    hw::device& hwdev = hw::get_device("default");
+    std::vector<crypto::public_key> subaddresses;
+    reg_tx_calculate_subaddresses(viewkey, winner.m_view_public_key, winner.m_spend_public_key, subaddresses, hwdev);
+
+    if (std::find(subaddresses.begin(), subaddresses.end(), subaddress_spendkey) == subaddresses.end())
+    // if (subaddresses[1] != subaddress_spendkey)
+    {
+      MERROR("Could not find the service node reward txout public key subaddress for the winner");
+      return false;
+    }
+
+    MWARNING("Found subaddress_spendkey = " << subaddress_spendkey << " in the miner tx so miner tx is all gucci");
+
+    // we're gucci.
+    return true;
+  }
 }

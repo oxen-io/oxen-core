@@ -151,7 +151,7 @@ namespace cryptonote
   }
 
   //---------------------------------------------------------------
-  bool construct_miner_tx(size_t height, size_t median_size, uint64_t already_generated_coins, size_t current_block_size, uint64_t fee, const account_public_address &miner_address, transaction& tx, const blobdata& extra_nonce, size_t max_outs /* deprecated */, uint8_t hard_fork_version, network_type nettype, const account_public_address service_node_address) {
+  bool construct_miner_tx(size_t height, size_t median_size, uint64_t already_generated_coins, size_t current_block_size, uint64_t fee, const account_public_address &miner_address, transaction& tx, const blobdata& extra_nonce, size_t max_outs /* unused */, uint8_t hard_fork_version, network_type nettype, const account_public_address service_node_address) {
     tx.vin.clear();
     tx.vout.clear();
     tx.extra.clear();
@@ -222,8 +222,10 @@ namespace cryptonote
       crypto::public_key out_eph_public_key = AUTO_VAL_INIT(out_eph_public_key);
       bool r = crypto::generate_key_derivation(service_node_address.m_view_public_key, txkey.sec, derivation);
       CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to generate_key_derivation(" << service_node_address.m_view_public_key << ", " << txkey.sec << ")");
-      txout_to_key tk;
+      r = crypto::derive_public_key(derivation, 1, service_node_address.m_spend_public_key, out_eph_public_key);
+      CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to derive_public_key(" << derivation << ", " << 0 << ", "<< service_node_address.m_spend_public_key << ")");
 
+      txout_to_key tk;
       tk.key = out_eph_public_key;
 
       tx_out out;
