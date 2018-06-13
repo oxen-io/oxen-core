@@ -252,15 +252,11 @@ namespace service_nodes
       std::vector<crypto::public_key> subaddresses;
       reg_tx_calculate_subaddresses(sec_viewkey, pub_viewkey, pub_spendkey, subaddresses, hwdev);
 
-      // if (subaddresses[1] == subaddress_spendkey)
       if (std::find(subaddresses.begin(), subaddresses.end(), subaddress_spendkey) != subaddresses.end())
       {
-        MWARNING("Found subaddress_spendkey in subaddresses for pub spendkey = " << pub_spendkey);
         return pub_spendkey;
       }
     }
-
-    MWARNING("Couldn't find the serice node pubkey recipient of miner tx output");
 
     return crypto::null_pkey;
   }
@@ -300,7 +296,6 @@ namespace service_nodes
       if (process_registration_tx(tx, block_height, pub_spendkey, pub_viewkey, sec_viewkey))
       {
         // TODO: store rollback info
-        LOG_PRINT_L0("Added pubspendkey = " << pub_spendkey << " at blockheight " << block_height);
         m_service_nodes_last_reward[pub_spendkey] = block_height;
         m_pub_viewkey_lookup[pub_spendkey] = pub_viewkey;
         m_sec_viewkey_lookup[pub_spendkey] = sec_viewkey;
@@ -358,7 +353,6 @@ namespace service_nodes
     crypto::public_key pub_spendkey = crypto::null_pkey;
     for (std::pair<crypto::public_key, uint64_t> spendkey_blockheight : m_service_nodes_last_reward)
     {
-      LOG_PRINT_L0("pub spendkey " << spendkey_blockheight.first << " was last rewarded at height " << spendkey_blockheight.second);
       if (spendkey_blockheight.second < lowest_height)
       {
         lowest_height = spendkey_blockheight.second;
@@ -366,7 +360,6 @@ namespace service_nodes
       }
     }
     crypto::public_key pub_viewkey = (pub_spendkey == crypto::null_pkey ? crypto::null_pkey : m_pub_viewkey_lookup[pub_spendkey]);
-    LOG_PRINT_L0("selected winner " << pub_spendkey << ", " << pub_viewkey);
     return cryptonote::account_public_address{ pub_spendkey, pub_viewkey };
   }
 
@@ -418,13 +411,9 @@ namespace service_nodes
     reg_tx_calculate_subaddresses(viewkey, winner.m_view_public_key, winner.m_spend_public_key, subaddresses, hwdev);
 
     if (std::find(subaddresses.begin(), subaddresses.end(), subaddress_spendkey) == subaddresses.end())
-    // if (subaddresses[1] != subaddress_spendkey)
     {
-      MERROR("Could not find the service node reward txout public key subaddress for the winner");
       return false;
     }
-
-    MWARNING("Found subaddress_spendkey = " << subaddress_spendkey << " in the miner tx so miner tx is all gucci");
 
     // we're gucci.
     return true;
