@@ -314,11 +314,13 @@ namespace service_nodes
   {
     std::vector<crypto::public_key> expired_nodes;
 
-    if (block_height < STAKING_REQUIREMENT_LOCK_BLOCKS)
+    if (block_height < STAKING_REQUIREMENT_LOCK_BLOCKS + STAKING_RELOCK_WINDOW_BLOCKS)
       return expired_nodes;
 
+    const uint64_t expired_nodes_block_height = block_height - STAKING_REQUIREMENT_LOCK_BLOCKS - STAKING_RELOCK_WINDOW_BLOCKS;
+
     std::list<std::pair<cryptonote::blobdata, cryptonote::block>> blocks;
-    if (!m_blockchain.get_blocks(block_height - STAKING_REQUIREMENT_LOCK_BLOCKS, 1, blocks))
+    if (!m_blockchain.get_blocks(expired_nodes_block_height, 1, blocks))
     {
       LOG_ERROR("Unable to get historical blocks");
       return expired_nodes;
@@ -338,7 +340,7 @@ namespace service_nodes
       crypto::public_key pubkey;
       crypto::public_key pub_viewkey;
       crypto::secret_key sec_viewkey;
-      if (process_registration_tx(tx, block_height - STAKING_REQUIREMENT_LOCK_BLOCKS, pubkey, pub_viewkey, sec_viewkey))
+      if (process_registration_tx(tx, expired_nodes_block_height, pubkey, pub_viewkey, sec_viewkey))
       {
         expired_nodes.push_back(pubkey);
       }
