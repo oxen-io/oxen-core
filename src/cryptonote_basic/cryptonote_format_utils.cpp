@@ -467,6 +467,62 @@ namespace cryptonote
     return true;
   }
   //---------------------------------------------------------------
+  bool add_serializable_tx_extra_field_to_tx_extra(std::vector<uint8_t>& tx_extra, tx_extra_field& field, uint8_t tag)
+  {
+    std::ostringstream oss;
+    binary_archive<true> ar(oss);
+    bool r = ::do_serialize(ar, field);
+    if (!r) return false;
+
+    const size_t pos = tx_extra.size();
+    const std::string tx_extra_str = oss.str();
+    tx_extra.resize(tx_extra.size() + 1 + tx_extra_str.size());
+    tx_extra[pos] = tag;
+    memcpy(&tx_extra[pos+1], tx_extra_str.data(), tx_extra_str.size());
+
+    return true;
+  }
+  //---------------------------------------------------------------
+  bool add_pub_spendkey_to_tx_extra(std::vector<uint8_t>& tx_extra, const crypto::public_key& tx_pub_key)
+  {
+    tx_extra.resize(tx_extra.size() + 1 + sizeof(crypto::public_key));
+    tx_extra[tx_extra.size() - 1 - sizeof(crypto::public_key)] = TX_EXTRA_TAG_PUB_SPENDKEY;
+    *reinterpret_cast<crypto::public_key*>(&tx_extra[tx_extra.size() - sizeof(crypto::public_key)]) = tx_pub_key;
+    return true;
+  }
+  //---------------------------------------------------------------
+  crypto::public_key get_pub_spendkey_from_tx_extra(const std::vector<uint8_t>& tx_extra)
+  {
+    // parse
+    std::vector<tx_extra_field> tx_extra_fields;
+    parse_tx_extra(tx_extra, tx_extra_fields);
+    // find corresponding field
+    tx_extra_pub_spendkey pub_spendkey;
+    if (!find_tx_extra_field_by_type(tx_extra_fields, pub_spendkey))
+      return crypto::null_pkey;
+    return pub_spendkey.data;
+  }
+  //---------------------------------------------------------------
+  bool add_viewkey_to_tx_extra(std::vector<uint8_t>& tx_extra, const crypto::secret_key& viewkey)
+  {
+    tx_extra.resize(tx_extra.size() + 1 + sizeof(crypto::secret_key));
+    tx_extra[tx_extra.size() - 1 - sizeof(crypto::secret_key)] = TX_EXTRA_TAG_VIEWKEY;
+    *reinterpret_cast<crypto::secret_key*>(&tx_extra[tx_extra.size() - sizeof(crypto::secret_key)]) = viewkey;
+    return true;
+  }
+  //---------------------------------------------------------------
+  crypto::secret_key get_viewkey_from_tx_extra(const std::vector<uint8_t>& tx_extra)
+  {
+    // parse
+    std::vector<tx_extra_field> tx_extra_fields;
+    parse_tx_extra(tx_extra, tx_extra_fields);
+    // find corresponding field
+    tx_extra_viewkey viewkey;
+    if (!find_tx_extra_field_by_type(tx_extra_fields, viewkey))
+      return crypto::null_skey;
+    return viewkey.data;
+  }
+  //---------------------------------------------------------------
   bool remove_field_from_tx_extra(std::vector<uint8_t>& tx_extra, const std::type_info &type)
   {
     if (tx_extra.empty())
