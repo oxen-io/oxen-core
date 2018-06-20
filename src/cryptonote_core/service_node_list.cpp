@@ -413,7 +413,7 @@ namespace service_nodes
 
   /// validates the miner TX for the next block
   //
-  bool service_node_list::validate_miner_tx(const crypto::hash& prev_id, const cryptonote::transaction& miner_tx, uint64_t base_reward)
+  bool service_node_list::validate_miner_tx(const crypto::hash& prev_id, const cryptonote::transaction& miner_tx, uint64_t height, uint64_t base_reward)
   {
     uint64_t hard_fork_version = m_blockchain.get_current_hard_fork_version();
 
@@ -430,7 +430,7 @@ namespace service_nodes
 
     if (miner_tx.vout[1].amount != service_node_reward)
     {
-      MERROR("Service node reward amount incorrect. Should be " << cryptonote::print_money(service_node_reward) << ", is: " << cryptonote::print_money(miner_tx.vout[miner_tx.vout.size()-2].amount));
+      MERROR("Service node reward amount incorrect. Should be " << cryptonote::print_money(service_node_reward) << ", is: " << cryptonote::print_money(miner_tx.vout[1].amount));
       return false;
     }
 
@@ -440,30 +440,23 @@ namespace service_nodes
       return false;
     }
 
-    crypto::key_derivation derivation;
-    crypto::public_key tx_pub_key = cryptonote::get_tx_pub_key_from_extra(miner_tx);
-    cryptonote::account_public_address winner = select_winner(prev_id);
-    crypto::secret_key viewkey = m_sec_viewkey_lookup[winner.m_spend_public_key];
-    crypto::generate_key_derivation(tx_pub_key, viewkey, derivation);
+    crypto::key_derivation derivation = AUTO_VAL_INIT(derivation);;
+    crypto::public_key out_eph_public_key = AUTO_VAL_INIT(out_eph_public_key);
+    cryptonote::account_public_address service_node_address = select_winner(prev_id);
+    cryptonote::keypair gov_key = cryptonote::get_deterministic_keypair_from_height(height);
 
-    crypto::public_key subaddress_spendkey;
-    if (!crypto::derive_subaddress_public_key(boost::get<cryptonote::txout_to_key>(miner_tx.vout[1].target).key,
-                                              derivation, 1, subaddress_spendkey))
+    bool r = crypto::generate_key_derivation(service_node_address.m_view_public_key, gov_key.sec, derivation);
+    CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to generate_key_derivation(" << service_node_address.m_view_public_key << ", " << gov_key.sec << ")");
+    r = crypto::derive_public_key(derivation, 1, service_node_address.m_spend_public_key, out_eph_public_key);
+    CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to derive_public_key(" << derivation << ", " << 1 << ", "<< service_node_address.m_spend_public_key << ")");
+
+    if (boost::get<cryptonote::txout_to_key>(miner_tx.vout[1].target).key != out_eph_public_key)
     {
-      MERROR("Could not derive subaddress spendkey");
+      MERROR("Invalid service node reward output");
       return false;
     }
 
-    hw::device& hwdev = hw::get_device("default");
-    std::vector<crypto::public_key> subaddresses;
-    reg_tx_calculate_subaddresses(viewkey, winner.m_view_public_key, winner.m_spend_public_key, subaddresses, hwdev);
-
-    if (std::find(subaddresses.begin(), subaddresses.end(), subaddress_spendkey) == subaddresses.end())
-    {
-      return false;
-    }
-
-    // we're gucci.
+    // we're all louis
     return true;
   }
 

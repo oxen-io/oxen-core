@@ -102,7 +102,7 @@ static const struct {
 } testnet_hard_forks[] = {
   // version 7 from the start of the blockchain, inhereted from Monero testnet
   { 7, 1, 0, 1512211236 },
-  { 8, 187, 0, 1528768370 },
+  { 8, 50, 0, 1528768370 },
 };
 static const uint64_t testnet_hard_fork_version_1_till = 0;
 
@@ -996,7 +996,7 @@ difficulty_type Blockchain::get_next_difficulty_for_alternative_chain(const std:
   std::vector<difficulty_type> cumulative_difficulties;
   uint8_t version = get_current_hard_fork_version();
   size_t difficulty_blocks_count;
-  assert(version==7);
+
   difficulty_blocks_count = DIFFICULTY_BLOCKS_COUNT_V2;
 
   // if the alt chain isn't long enough to calculate the difficulty target
@@ -1116,7 +1116,7 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
   }
 
   for (ValidateMinerTxHook* hook : m_validate_miner_tx_hooks)
-    if (!hook->validate_miner_tx(b.prev_id, b.miner_tx, base_reward))
+    if (!hook->validate_miner_tx(b.prev_id, b.miner_tx, m_db->height(), base_reward))
       return false;
 
   if (already_generated_coins != 0)

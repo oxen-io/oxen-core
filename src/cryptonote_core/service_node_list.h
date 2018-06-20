@@ -45,7 +45,7 @@ namespace service_nodes
     void block_added(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs);
     void blockchain_detached(uint64_t height);
     void init();
-    bool validate_miner_tx(const crypto::hash& prev_id, const cryptonote::transaction& miner_tx, uint64_t base_reward);
+    bool validate_miner_tx(const crypto::hash& prev_id, const cryptonote::transaction& miner_tx, uint64_t height, uint64_t base_reward);
 
     std::vector<crypto::public_key> get_expired_nodes(uint64_t block_height);
     cryptonote::account_public_address select_winner(const crypto::hash& prev_id);
