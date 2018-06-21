@@ -4705,13 +4705,6 @@ bool simple_wallet::stake_all(const std::vector<std::string> &args_)
     return true;
   }
 
-  crypto::public_key service_node_key;
-  if (!epee::string_tools::hex_to_pod(local_args[0], service_node_key))
-  {
-    fail_msg_writer() << tr("failed to parse service node pubkey");
-    return true;
-  }
-
   priority = m_wallet->adjust_priority(priority);
 
   size_t mixins = DEFAULT_MIX;
@@ -4732,11 +4725,16 @@ bool simple_wallet::stake_all(const std::vector<std::string> &args_)
 
   std::vector<uint8_t> extra;
 
-  if (!add_account_public_address_to_tx_extra(extra, address, service_node_key))
+  tx_extra_service_node_register register_;
+  register_.public_view_key = address.m_view_public_key;
+  register_.public_spend_key = address.m_spend_public_key;
+
+  if (!epee::string_tools::hex_to_pod(local_args[0], register_.service_node_key))
   {
-    fail_msg_writer() << tr("failed to add account public address to tx extra");
+    fail_msg_writer() << tr("failed to parse service node pubkey");
     return true;
   }
+  add_service_node_register_to_tx_extra(extra, register_);
 
   LOCK_IDLE_SCOPE();
 
