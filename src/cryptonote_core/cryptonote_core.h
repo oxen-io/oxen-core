@@ -774,6 +774,26 @@ namespace cryptonote
       */
      bool offline() const { return m_offline; }
 
+     /**
+      * @brief Get the deterministic list of service node's public keys for quorum testing
+      *
+      * @param height Block height to deterministically recreate the quorum list from
+      * @param quorum The quorum entries are put into this param
+
+      * @return Whether the list could be made
+      */
+     bool get_quorum_list_for_height(uint64_t height, std::vector<crypto::public_key>& quorum) const;
+
+     /**
+      * @brief Get the size of the deterministic list of service node's public keys for quorum testing
+      *
+      * @param height Block height to deterministically get the size from
+      * @param quorum_size The size of the list is put into this param
+
+      * @return Whether the list size could be determined
+      */
+     bool get_quorum_list_size_for_height(uint64_t block_height, uint32_t &quorum_size) const;
+
    private:
 
      /**
