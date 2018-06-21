@@ -35,8 +35,9 @@
 #include "string_tools.h"
 using namespace epee;
 
-#include <random>
 #include <unordered_set>
+#include <random>
+
 #include "cryptonote_core.h"
 #include "common/command_line.h"
 #include "common/util.h"
@@ -633,11 +634,12 @@ namespace cryptonote
     }
     bad_semantics_txes_lock.unlock();
 
-    uint8_t version = m_blockchain_storage.get_current_hard_fork_version();
-    const size_t max_tx_version = version == 1 ? 1 : 2;
+    int version = m_blockchain_storage.get_current_hard_fork_version();
+    unsigned int max_tx_version = version == 1 ? 1 : version < 8 ? 2 : 3;
+
     if (tx.version == 0 || tx.version > max_tx_version)
     {
-      // v2 is the latest one we know
+      // v3 is the latest one we know
       tvc.m_verifivation_failed = true;
       return false;
     }
@@ -771,16 +773,9 @@ namespace cryptonote
     st_inf.top_block_id_str = epee::string_tools::pod_to_hex(m_blockchain_storage.get_tail_id());
     return true;
   }
-
   //-----------------------------------------------------------------------------------------------
   bool core::check_tx_semantic(const transaction& tx, bool keeped_by_block) const
   {
-    if(!tx.vin.size())
-    {
-      MERROR_VER("tx with empty inputs, rejected for tx id= " << get_transaction_hash(tx));
-      return false;
-    }
-
     if(!check_inputs_types_supported(tx))
     {
       MERROR_VER("unsupported input types for tx id= " << get_transaction_hash(tx));
@@ -792,14 +787,6 @@ namespace cryptonote
       MERROR_VER("tx with invalid outputs, rejected for tx id= " << get_transaction_hash(tx));
       return false;
     }
-    if (tx.version > 1)
-    {
-      if (tx.rct_signatures.outPk.size() != tx.vout.size())
-      {
-        MERROR_VER("tx with mismatched vout/outPk count, rejected for tx id= " << get_transaction_hash(tx));
-        return false;
-      }
-    }
 
     if(!check_money_overflow(tx))
     {
@@ -807,27 +794,12 @@ namespace cryptonote
       return false;
     }
 
-    if (tx.version == 1)
-    {
-      uint64_t amount_in = 0;
-      get_inputs_money_amount(tx, amount_in);
-      uint64_t amount_out = get_outs_money_amount(tx);
-
-      if(amount_in <= amount_out)
-      {
-        MERROR_VER("tx with wrong amounts: ins " << amount_in << ", outs " << amount_out << ", rejected for tx id= " << get_transaction_hash(tx));
-        return false;
-      }
-    }
-    // for version > 1, ringct signatures check verifies amounts match
-
     if(!keeped_by_block && get_object_blobsize(tx) >= m_blockchain_storage.get_current_cumulative_blocksize_limit() - CRYPTONOTE_COINBASE_BLOB_RESERVED_SIZE)
     {
       MERROR_VER("tx is too large " << get_object_blobsize(tx) << ", expected not bigger than " << m_blockchain_storage.get_current_cumulative_blocksize_limit() - CRYPTONOTE_COINBASE_BLOB_RESERVED_SIZE);
       return false;
     }
 
-    //check if tx use different key images
     if(!check_tx_inputs_keyimages_diff(tx))
     {
       MERROR_VER("tx uses a single key image more than once");
@@ -846,33 +818,99 @@ namespace cryptonote
       return false;
     }
 
-    if (tx.version >= 2)
+    if (tx.version == transaction::version_1)
     {
-      const rct::rctSig &rv = tx.rct_signatures;
-      switch (rv.type) {
-        case rct::RCTTypeNull:
-          // coinbase should not come here, so we reject for all other types
-          MERROR_VER("Unexpected Null rctSig type");
+      uint64_t amount_in = 0;
+      get_inputs_money_amount(tx, amount_in);
+      uint64_t amount_out = get_outs_money_amount(tx);
+
+      if(amount_in <= amount_out)
+      {
+        MERROR_VER("tx with wrong amounts: ins " << amount_in << ", outs " << amount_out << ", rejected for tx id= " << get_transaction_hash(tx));
+        return false;
+      }
+    }
+
+    if(tx.version <= transaction::version_2 && !tx.vin.size())
+    {
+      MERROR_VER("tx with empty inputs, rejected for tx id= " << get_transaction_hash(tx));
+      return false;
+    }
+
+    if (tx.version >= transaction::version_2) // for version >= 2, ringct signatures check verifies amounts match
+    {
+      if (tx.rct_signatures.outPk.size() != tx.vout.size())
+      {
+        MERROR_VER("tx with mismatched vout/outPk count, rejected for tx id= " << get_transaction_hash(tx));
+        return false;
+      }
+
+      if (tx.version == transaction::version_2)
+      {
+        const rct::rctSig &rv = tx.rct_signatures;
+        switch (rv.type) {
+          case rct::RCTTypeNull:
+            // coinbase should not come here, so we reject for all other types
+            MERROR_VER("Unexpected Null rctSig type");
+            return false;
+          case rct::RCTTypeSimple:
+          case rct::RCTTypeSimpleBulletproof:
+            if (!rct::verRctSimple(rv, true))
+            {
+              MERROR_VER("rct signature semantics check failed");
+              return false;
+            }
+            break;
+          case rct::RCTTypeFull:
+          case rct::RCTTypeFullBulletproof:
+            if (!rct::verRct(rv, true))
+            {
+              MERROR_VER("rct signature semantics check failed");
+              return false;
+            }
+            break;
+          default:
+            MERROR_VER("Unknown rct type: " << rv.type);
+            return false;
+        }
+      }
+      else if (tx.version == transaction::version_3_deregister_tx)
+      {
+        // TODO(doyle): Version should only be valid from the hardfork height
+        tx_extra_service_node_deregister deregister;
+        if (!get_service_node_deregister_from_tx_extra(tx.extra, deregister))
+        {
+          MERROR_VER("TX version partial_deregister_tx or deregister_tx did not contain deregister data");
           return false;
-        case rct::RCTTypeSimple:
-        case rct::RCTTypeSimpleBulletproof:
-          if (!rct::verRctSimple(rv, true))
+        }
+
+        // Check service node to deregister is valid
+        {
+          auto xx__is_service_node_registered = ([](uint64_t block_height, uint32_t service_node_index) -> bool {
+            // Check service_node_index is in list bounds
+            // MERROR_VER("TX version deregister_tx specifies invalid service node index: " << deregister.service_node_index << ", value must be between [0, " << quorum.size() << "]");
+            return true;
+          });
+
+          if (!xx__is_service_node_registered(deregister.block_height, deregister.service_node_index))
           {
-            MERROR_VER("rct signature semantics check failed");
+            MERROR_VER("TX version 3 deregister_tx trying to deregister a non-active node");
             return false;
           }
-          break;
-        case rct::RCTTypeFull:
-        case rct::RCTTypeFullBulletproof:
-          if (!rct::verRct(rv, true))
-          {
-            MERROR_VER("rct signature semantics check failed");
-            return false;
-          }
-          break;
-        default:
-          MERROR_VER("Unknown rct type: " << rv.type);
+        }
+
+        uint32_t quorum_size;
+        if (!get_quorum_list_size_for_height(deregister.block_height, quorum_size))
+        {
+          MERROR_VER("TX version 3 deregister_tx could not get quorum for height: " << deregister.block_height);
           return false;
+        }
+
+        if (deregister.votes.size() != quorum_size)
+        {
+          MERROR_VER("TX version 3 deregister_tx requires the number of voters to match: " << deregister.votes.size() << ", which does not match quorum size: " << quorum_size);
+          return false;
+        }
       }
     }
 
@@ -998,6 +1036,30 @@ namespace cryptonote
     if (keeped_by_block)
       get_blockchain_storage().on_new_tx_from_block(tx);
 
+    if (tx.version == transaction::version_3_deregister_tx)
+    {
+      tx_extra_service_node_deregister deregister;
+      if (!get_service_node_deregister_from_tx_extra(tx.extra, deregister))
+      {
+        LOG_PRINT_L1("TX version deregister_tx did not contain deregister data");
+        return false;
+      }
+
+      std::vector<crypto::public_key> quorum;
+      if (!get_quorum_list_for_height(deregister.block_height, quorum))
+      {
+        LOG_PRINT_L1("TX version 3 deregister_tx could not get quorum for height: " << deregister.block_height);
+        return false;
+      }
+
+      if (!loki::service_node_deregister::verify(deregister, tvc.m_vote_ctx, quorum))
+      {
+        tvc.m_verifivation_failed = true;
+        LOG_PRINT_L1("tx " << tx_hash << ": version 3 deregister_tx signed votes do not validate with the spend keys in the quorum.");
+        return false;
+      }
+    }
+
     if(m_mempool.have_tx(tx_hash))
     {
       LOG_PRINT_L2("tx " << tx_hash << "already have transaction in tx_pool");
@@ -1043,6 +1105,7 @@ namespace cryptonote
       LOG_ERROR("Failed to parse relayed transaction");
       return;
     }
+
     txs.push_back(std::make_pair(tx_hash, std::move(tx_blob)));
     m_mempool.set_relayed(txs);
   }
@@ -1219,8 +1282,12 @@ namespace cryptonote
       return false;
     }
     add_new_block(b, bvc);
-    if(update_miner_blocktemplate && bvc.m_added_to_main_chain)
-       update_miner_block_template();
+
+    if (bvc.m_added_to_main_chain)
+    {
+      if(update_miner_blocktemplate)
+         update_miner_block_template();
+    }
     return true;
 
     CATCH_ENTRY_L0("core::handle_incoming_block()", false);
@@ -1565,58 +1632,14 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
   static std::vector<crypto::public_key> xx__get_service_nodes_pub_keys_for_height(uint64_t height)
   {
+      loki::xx__service_node::init();
+
       (void)height; // TODO(doyle): Mock function needs to be implemented
-
       std::vector<crypto::public_key> result;
-      const char *XX__PUB_KEYS[] =
+      result.resize(loki::xx__service_node::public_spend_keys.size());
+      for (size_t i = 0; i < result.size(); i++)
       {
-        "cab4ae6148233461074c6bc4c72b8a53ee91d9cfbda5813c3422a3e2897b21e3",
-        "bfae23724257762880ec334b7f83cdda345ff677c34ef141e8ea5cbbe0f61f33",
-        "04932a89171e0a33e3a079e5c61a7454a5bff9fd467ff81cbc18a5ee5ff37bab",
-        "ea505c9ccf83d73654268562487a077423cde586fe5799113e93a8a0b46e9fe5",
-        "4931ddac1a7981f0dd7259bee59281cf540ba6a9ef59a10ef9fe504214ff1f11",
-        "fa0fe218380fa8cc642fad13855789273f9283512dab99010374122c2df92dca",
-        "f6b29bb886e2cf64de7b0887c84d821e96ec56f6e28903f4faa6fecf18b445dd",
-        "7123ae098051a459cf6fc2fdeccad6210136f6e55f8218439864a53501498dc6",
-        "b4aa98188bd958ad7dd10eb19b091ac25647c3b28255b6a02633f57ebf633c9f",
-        "1e4c7a3e7e7dec98e9b5da2ba8d8ea013cb71115a22e926ba060dd8ca9084004",
-        "23f2052a043c17f1e93558ff5fcf1a183c4139384c7d115b32a98d55081dc996",
-        "742db561f88c64e696cec912b8ad4faea78aac871d3d340b664ec63463664113",
-        "28630fa9cc33c0b8a518894becce01b8f0b4eb9f234e2780404dc751ae9d1d99",
-        "ccacea809b1dbe1dc5021281662490b55db41d86dea0715b6b1322a7c344d641",
-        "cd3beb0621b26f0b16cda9c759601997cc054c3e673fa9d91dd1ceb1542a2eec",
-        "40b8be419aff1126a31a2cbb6702aced9960c075919dc2fe44efabdda973a7d1",
-        "42237ef07f9f7570d31dd19fa1141b8ec0b23f9c976a744381452c0d2ea24b98",
-        "0a583ae027590cf6f21a76d6fb7b582d904cd3661fa59a00b1d8bf780e0b8748",
-        "8a60f7a39c88dc8b425a72988d577ec0f198bcecc31162c12b8f696cce441622",
-        "160dc084804efa96129dcc846ea9aeb793e5b208dc947587f2aa5dda4634a877",
-        "cb92e9e8ce31522eeb731b9d069ca4fb327df0f5c1df81c32e45cad5cffdc0f0",
-        "ac7e0e825120d28575182c86e36c6f05666192f573e032f036871969009fa1c7",
-        "89555379367ec70306a00b0460b468c0973987ed6c8084ddac3cf51c505280cd",
-        "7dc31ac32a88bce95808b07cfa27eaad30ebc319c64719a8b63ceacd0542060e",
-        "96bbc02ce1cb673cec7dc649e6ff111d116fcb1660a06a39d09755fd3ba8e133",
-        "7b10fa062ae91169166a32d29e585695cf9204375484252eda89d76ddeb5b163",
-        "65e318c3dac1013de3cdc47e097deca020fe18f12b4c496f7f63935bc99bc2ea",
-        "b34dc0a57f68f1049733e0f610f29ef70f72e5cc237edfc7844cc7b06645066a",
-        "2dd94991268ee71b2356e8d748477a29ddf1aef8a9c329a0279753c599f38c23",
-        "ab3a704dd71dacd1361155e668253ae70bca58cf790141c4174f47403696ffb3",
-        "ceb1256e951a434d2a274be8d33a4773f797207121f774897c43ba258c1f7026",
-        "8502b21a22da7494130f689b58b91fcd48a17071c5554b6c9ec11863caf2e179",
-        "bb25528e6278ddfc0fd91752b9d73d98f01acef361783528b0e6d6d7116c5261",
-        "f7d7c629a96063ed85e2126029e9406b176a45b4876eb22d979ce32eed5ac5d1",
-        "2e7c51924bf910b4fe5ed9d89a9bfe40222fe91cb70dc660bc2e21a8318241e7",
-      };
-
-      size_t const size = sizeof(XX__PUB_KEYS) / sizeof(XX__PUB_KEYS[0]);
-      result.reserve(size);
-
-      {
-        for (size_t i = 0; i < size; i++)
-        {
-          crypto::public_key key;
-          epee::string_tools::hex_to_pod(XX__PUB_KEYS[i], key);
-          result.push_back(key);
-        }
+        result[i] = loki::xx__service_node::public_spend_keys[i];
       }
 
       return result;
@@ -1670,6 +1693,38 @@ namespace cryptonote
       quorum[i] = pub_keys[pub_keys_indexes[i]];
 
     return true;
+  }
+  //-----------------------------------------------------------------------------------------------
+  bool core::add_deregister_vote(const loki::service_node_deregister::vote& vote, vote_verification_context &vvc)
+  {
+    std::vector<crypto::public_key> quorum;
+    if (!get_quorum_list_for_height(vote.block_height, quorum))
+    {
+      vvc.m_verification_failed  = true;
+      vvc.m_invalid_block_height = true;
+      LOG_ERROR("Could not get quorum for height: " << vote.block_height);
+      return false;
+    }
+
+    cryptonote::transaction deregister_tx;
+    bool result = m_deregister_vote_pool.add_vote(vote, vvc, quorum, deregister_tx);
+    if (result && vvc.m_full_tx_deregister_made)
+    {
+      tx_verification_context tvc;
+      blobdata const tx_blob = tx_to_blob(deregister_tx);
+
+      handle_incoming_tx(tx_blob, tvc, false /*keeped_by_block*/, false /*relayed*/, false /*do_not_relay*/);
+      if (!tvc.m_verifivation_failed)
+      {
+        // TODO(doyle): logging
+      }
+      else
+      {
+        printf("Full deregister tx submitted for block height (%zu) snode (%d)\n", vote.block_height, vote.service_node_index);
+      }
+    }
+
+    return result;
   }
   //-----------------------------------------------------------------------------------------------
   std::time_t core::get_start_time() const
