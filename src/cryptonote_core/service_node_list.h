@@ -53,12 +53,12 @@ namespace service_nodes
     std::vector<crypto::public_key> get_service_nodes_pubkeys();
 
   private:
-    bool process_registration_tx(const cryptonote::transaction& tx, uint64_t block_height, crypto::public_key& pub_spendkey_out, crypto::public_key& pub_viewkey_out);
+    bool process_registration_tx(const cryptonote::transaction& tx, uint64_t block_height, cryptonote::account_public_address& address_out);
     template<typename T>
     void block_added_generic(const cryptonote::block& block, const T& txs);
 
     bool reg_tx_has_correct_unlock_time(const cryptonote::transaction& tx, uint64_t block_height);
-    bool reg_tx_extract_fields(const cryptonote::transaction& tx, crypto::public_key& pub_viewkey, crypto::public_key& pub_spendkey, crypto::public_key& tx_pub_key);
+    bool reg_tx_extract_fields(const cryptonote::transaction& tx, cryptonote::account_public_address& address, crypto::public_key& tx_pub_key);
     bool is_reg_tx_staking_output(const cryptonote::transaction& tx, int i, uint64_t block_height, crypto::key_derivation derivation, hw::device& hwdev);
 
     crypto::public_key find_service_node_from_miner_tx(const cryptonote::transaction& miner_tx, uint64_t block_height);

@@ -104,15 +104,13 @@ namespace service_nodes
   }
 
 
-  bool service_node_list::reg_tx_extract_fields(const cryptonote::transaction& tx, crypto::public_key& pub_viewkey, crypto::public_key& pub_spendkey, crypto::public_key& tx_pub_key)
+  bool service_node_list::reg_tx_extract_fields(const cryptonote::transaction& tx, cryptonote::account_public_address& address, crypto::public_key& tx_pub_key)
   {
-    cryptonote::account_public_address address = cryptonote::get_account_public_address_from_tx_extra(tx.extra);
-    pub_spendkey = address.m_spend_public_key;
-    pub_viewkey = address.m_view_public_key;
+    address = cryptonote::get_account_public_address_from_tx_extra(tx.extra);
     tx_pub_key = cryptonote::get_tx_pub_key_from_extra(tx.extra);
-    return pub_spendkey != crypto::null_pkey &&
-      tx_pub_key != crypto::null_pkey &&
-      pub_viewkey != crypto::null_pkey;
+    return address.m_spend_public_key != crypto::null_pkey &&
+      address.m_view_public_key != crypto::null_pkey &&
+      tx_pub_key != crypto::null_pkey;
   }
 
   bool service_node_list::is_reg_tx_staking_output(const cryptonote::transaction& tx, int i, uint64_t block_height, crypto::key_derivation derivation, hw::device& hwdev)
@@ -154,19 +152,20 @@ namespace service_nodes
   }
 
   // This function takes a tx and returns true if it is a staking transaction.
-  // It also sets the pub_spendkey_out argument to the public spendkey in the
-  // transaction.
+  // It also sets the address argument to the public spendkey and pub viewkey of
+  // the transaction.
   //
-  bool service_node_list::process_registration_tx(const cryptonote::transaction& tx, uint64_t block_height, crypto::public_key& pub_spendkey_out, crypto::public_key& pub_viewkey_out)
+  bool service_node_list::process_registration_tx(const cryptonote::transaction& tx, uint64_t block_height, cryptonote::account_public_address& address)
   {
     if (!reg_tx_has_correct_unlock_time(tx, block_height))
     {
       return false;
     }
 
-    crypto::public_key pub_spendkey, pub_viewkey, tx_pub_key;
+    crypto::public_key tx_pub_key;
+    cryptonote::account_public_address service_node_address;
     
-    if (!reg_tx_extract_fields(tx, pub_viewkey, pub_spendkey, tx_pub_key))
+    if (!reg_tx_extract_fields(tx, service_node_address, tx_pub_key))
     {
       return false;
     }
@@ -174,7 +173,7 @@ namespace service_nodes
     cryptonote::keypair gov_key = cryptonote::get_deterministic_keypair_from_height(1);
 
     crypto::key_derivation derivation;
-    crypto::generate_key_derivation(pub_viewkey, gov_key.sec, derivation);
+    crypto::generate_key_derivation(service_node_address.m_view_public_key, gov_key.sec, derivation);
 
     hw::device& hwdev = hw::get_device("default");
 
@@ -182,8 +181,7 @@ namespace service_nodes
     {
       if (is_reg_tx_staking_output(tx, i, block_height, derivation, hwdev))
       {
-        pub_spendkey_out = pub_spendkey;
-        pub_viewkey_out = pub_viewkey;
+        address = service_node_address;
         return true;
       }
     }
@@ -269,10 +267,12 @@ namespace service_nodes
     size_t index = 1;
     for (const cryptonote::transaction& tx : txs)
     {
-      crypto::public_key pub_spendkey = crypto::null_pkey;
-      crypto::public_key pub_viewkey = crypto::null_pkey;
-      if (process_registration_tx(tx, block_height, pub_spendkey, pub_viewkey))
+      cryptonote::account_public_address address;
+      if (process_registration_tx(tx, block_height, address))
       {
+        crypto::public_key pub_spendkey = address.m_spend_public_key;
+        crypto::public_key pub_viewkey = address.m_view_public_key;
+
         auto iter = m_service_nodes_last_reward.find(pub_spendkey);
         if (iter == m_service_nodes_last_reward.end())
         {
@@ -332,11 +332,10 @@ namespace service_nodes
 
     for (const cryptonote::transaction& tx : txs)
     {
-      crypto::public_key pubkey;
-      crypto::public_key pub_viewkey;
-      if (process_registration_tx(tx, expired_nodes_block_height, pubkey, pub_viewkey))
+      cryptonote::account_public_address address;
+      if (process_registration_tx(tx, expired_nodes_block_height, address))
       {
-        expired_nodes.push_back(pubkey);
+        expired_nodes.push_back(address.m_spend_public_key);
       }
     }
 
