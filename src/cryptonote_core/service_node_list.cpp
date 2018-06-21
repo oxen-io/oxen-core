@@ -31,6 +31,7 @@
 #include "ringct/rctSigs.h"
 #include "wallet/wallet2.h"
 #include "cryptonote_tx_utils.h"
+#include "cryptonote_basic/tx_extra.h"
 
 #include "service_node_list.h"
 
@@ -108,7 +109,18 @@ namespace service_nodes
 
   bool service_node_list::reg_tx_extract_fields(const cryptonote::transaction& tx, cryptonote::account_public_address& address, crypto::public_key& tx_pub_key) const
   {
-    address = cryptonote::get_account_public_address_from_tx_extra(tx.extra);
+    cryptonote::tx_extra_service_node_register register_;
+    if (cryptonote::get_service_node_register_from_tx_extra(tx.extra, register_))
+    {
+      address.m_spend_public_key = register_.public_view_key;
+      address.m_view_public_key = register_.public_spend_key;
+    }
+    else
+    {
+      address.m_spend_public_key = crypto::null_pkey;
+      address.m_view_public_key = crypto::null_pkey;
+    }
+
     tx_pub_key = cryptonote::get_tx_pub_key_from_extra(tx.extra);
     return address.m_spend_public_key != crypto::null_pkey &&
       address.m_view_public_key != crypto::null_pkey &&

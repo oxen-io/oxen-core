@@ -4719,11 +4719,10 @@ bool simple_wallet::stake_all(const std::vector<std::string> &args_)
 
   std::vector<uint8_t> extra;
 
-  if (!add_account_public_address_to_tx_extra(extra, address))
-  {
-    fail_msg_writer() << tr("failed to add account public address to tx extra");
-    return true;
-  }
+  tx_extra_service_node_register register_;
+  register_.public_view_key = address.m_view_public_key;
+  register_.public_spend_key = address.m_spend_public_key;
+  add_service_node_register_to_tx_extra(extra, register_);
 
   LOCK_IDLE_SCOPE();
 
