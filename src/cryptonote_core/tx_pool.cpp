@@ -114,7 +114,7 @@ namespace cryptonote
     CRITICAL_REGION_LOCAL(m_transactions_lock);
 
     PERF_TIMER(add_tx);
-    if (tx.version == 0)
+    if (tx.version == transaction::version_0)
     {
       // v0 never accepted
       LOG_PRINT_L1("transaction version 0 is invalid");
@@ -142,7 +142,7 @@ namespace cryptonote
     // fee per kilobyte, size rounded up.
     uint64_t fee;
 
-    if (tx.version == 1)
+    if (tx.version == transaction::version_1)
     {
       uint64_t inputs_amount = 0;
       if(!get_inputs_money_amount(tx, inputs_amount))
@@ -174,7 +174,7 @@ namespace cryptonote
       fee = tx.rct_signatures.txnFee;
     }
 
-    if (!kept_by_block && !m_blockchain.check_fee(blob_size, fee))
+    if (!kept_by_block && !m_blockchain.check_fee(blob_size, fee) && tx.version != transaction::version_3_deregister_tx)
     {
       tvc.m_verifivation_failed = true;
       tvc.m_fee_too_low = true;
@@ -298,7 +298,7 @@ namespace cryptonote
       }
       tvc.m_added_to_pool = true;
 
-      if(meta.fee > 0 && !do_not_relay)
+      if((meta.fee > 0 || tx.version == 3) && !do_not_relay)
         tvc.m_should_be_relayed = true;
     }
 
@@ -563,6 +563,7 @@ namespace cryptonote
     CRITICAL_REGION_LOCAL1(m_blockchain);
     const uint64_t now = time(NULL);
     m_blockchain.for_all_txpool_txes([this, now, &txs](const crypto::hash &txid, const txpool_tx_meta_t &meta, const cryptonote::blobdata *){
+      // TODO(doyle): Looks like 0 fee full deregistration is accpted but never relayed because of this?
       // 0 fee transactions are never relayed
       if(meta.fee > 0 && !meta.do_not_relay && now - meta.last_relayed_time > get_relay_delay(now, meta.receive_time))
       {

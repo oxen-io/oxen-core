@@ -2006,6 +2006,46 @@ namespace cryptonote
     return r;
   }
   //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_submit_deregister_vote(const COMMAND_RPC_SEND_DEREGISTER_VOTE::request& req, COMMAND_RPC_SEND_DEREGISTER_VOTE::response &resp)
+  {
+    PERF_TIMER(on_submit_deregister_vote);
+
+    vote_verification_context vvc = {};
+    if(!m_core.add_deregister_vote(req.vote, vvc))
+    {
+      resp.status = "Failed";
+      resp.reason = "";
+
+      if ((resp.invalid_block_height = vvc.m_invalid_block_height))
+        add_reason(resp.reason, "could not get quorum for block height");
+
+      if ((resp.voters_quorum_index_out_of_bounds = vvc.m_voters_quorum_index_out_of_bounds))
+        add_reason(resp.reason, "quorum index was not in bounds of quorum");
+
+      if ((resp.service_node_index_out_of_bounds = vvc.m_service_node_index_out_of_bounds))
+        add_reason(resp.reason, "service node index was not in bounds of the service node list");
+
+      if ((resp.signature_not_valid = vvc.m_signature_not_valid))
+        add_reason(resp.reason, "signature could not be verified with the voter's key");
+
+      const std::string punctuation = resp.reason.empty() ? "" : ": ";
+
+      if (vvc.m_verification_failed)
+      {
+        LOG_PRINT_L0("[on_submit_deregister_vote]: deregister vote verification failed" << punctuation << resp.reason);
+      }
+      else
+      {
+        LOG_PRINT_L0("[on_submit_deregister_vote]: Failed to process deregister vote" << punctuation << resp.reason);
+      }
+
+      return true;
+    }
+
+    resp.status = CORE_RPC_STATUS_OK;
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::on_relay_tx(const COMMAND_RPC_RELAY_TX::request& req, COMMAND_RPC_RELAY_TX::response& res, epee::json_rpc::error& error_resp)
   {
     PERF_TIMER(on_relay_tx);
@@ -2218,6 +2258,8 @@ namespace cryptonote
     return r;
   }
   //------------------------------------------------------------------------------------------------------------------------------
+
+
   const command_line::arg_descriptor<std::string, false, true, 2> core_rpc_server::arg_rpc_bind_port = {
       "rpc-bind-port"
     , "Port for RPC server"

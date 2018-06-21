@@ -121,6 +121,7 @@ namespace cryptonote
       MAP_URI_AUTO_JON2("/get_outs", on_get_outs, COMMAND_RPC_GET_OUTPUTS)      
       MAP_URI_AUTO_JON2_IF("/update", on_update, COMMAND_RPC_UPDATE, !m_restricted)
       MAP_URI_AUTO_JON2("/get_quorum_list", on_get_quorum_list, COMMAND_RPC_GET_QUORUM_LIST)
+      MAP_URI_AUTO_JON2("/submit_deregister_vote", on_submit_deregister_vote, COMMAND_RPC_SEND_DEREGISTER_VOTE)
       BEGIN_JSON_RPC_MAP("/json_rpc")
         MAP_JON_RPC("get_block_count",           on_getblockcount,              COMMAND_RPC_GETBLOCKCOUNT)
         MAP_JON_RPC("getblockcount",             on_getblockcount,              COMMAND_RPC_GETBLOCKCOUNT)
@@ -193,7 +194,8 @@ namespace cryptonote
     bool on_stop_save_graph(const COMMAND_RPC_STOP_SAVE_GRAPH::request& req, COMMAND_RPC_STOP_SAVE_GRAPH::response& res);
     bool on_update(const COMMAND_RPC_UPDATE::request& req, COMMAND_RPC_UPDATE::response& res);
     bool on_get_quorum_list(const COMMAND_RPC_GET_QUORUM_LIST::request& req, COMMAND_RPC_GET_QUORUM_LIST::response& res);
-    
+    bool on_submit_deregister_vote(const COMMAND_RPC_SEND_DEREGISTER_VOTE::request& req, COMMAND_RPC_SEND_DEREGISTER_VOTE::response& resp);
+
     //json_rpc
     bool on_getblockcount(const COMMAND_RPC_GETBLOCKCOUNT::request& req, COMMAND_RPC_GETBLOCKCOUNT::response& res);
     bool on_getblockhash(const COMMAND_RPC_GETBLOCKHASH::request& req, COMMAND_RPC_GETBLOCKHASH::response& res, epee::json_rpc::error& error_resp);

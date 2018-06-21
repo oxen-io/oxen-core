@@ -52,6 +52,7 @@
 #include "common/base58.h"
 #include "common/scoped_message_writer.h"
 #include "cryptonote_protocol/cryptonote_protocol_handler.h"
+#include "cryptonote_core/service_node_deregister.h"
 #include "simplewallet.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "storages/http_abstract_invoke.h"
@@ -2023,6 +2024,14 @@ simple_wallet::simple_wallet()
                            boost::bind(&simple_wallet::stake_all, this, _1),
                            tr("stake_all [index=<N1>[,<N2>,...]] [<priority>] [lockblocks]"),
                            tr("Send all unlocked balance to the same address. Lock it for [lockblocks] (max. 1000000). If the parameter \"index<N1>[,<N2>,...]\" is specified, the wallet stakes outputs received by those address indices. <priority> is the priority of the stake. The higher the priority, the higher the transaction fee. Valid values in priority order (from lowest to highest) are: unimportant, normal, elevated, priority. If omitted, the default value (see the command \"set priority\") is used."));
+  m_cmd_binder.set_handler("xx__deregister_service_node",
+                           boost::bind(&simple_wallet::xx__deregister_service_node, this, _1),
+                           tr("xx__deregister_service_node [partial] <node id>"),
+                           tr("Submit a deregistration transaction for the given node id."));
+  m_cmd_binder.set_handler("xx__get_quorum",
+                           boost::bind(&simple_wallet::xx__get_quorum, this, _1),
+                           tr("xx__get_quorum <block height>"),
+                           tr("Get the quorum for the given height"));
   m_cmd_binder.set_handler("sweep_unmixable",
                            boost::bind(&simple_wallet::sweep_unmixable, this, _1),
                            tr("Deprecated"));
@@ -4839,7 +4848,200 @@ bool simple_wallet::stake_all(const std::vector<std::string> &args_)
   return true;
 }
 //----------------------------------------------------------------------------------------------------
+bool simple_wallet::xx__deregister_service_node(const std::vector<std::string> &args_)
+{
+  // TODO: This should be an internal function that the wallet rpc can invoke
+  // autonomously and make partial votes as the state of the blockchain changes.
+  // So we need to register as an RPC call.
 
+  // xx__deregister_node [partial] <node id>
+
+  tools::wallet2::pending_tx ptx;
+  ptx.tx.unlock_time = 0;
+
+  int num_votes                       = 10;
+  int service_node_key_str_arg_index  = 0;
+  bool is_partial_cmd = false;
+
+  if (args_.size() == 1)
+  {
+    ptx.tx.version = transaction::version_3_deregister_tx;
+  }
+  else if (args_.size() == 2)
+  {
+    is_partial_cmd = true;
+    service_node_key_str_arg_index = 1;
+    num_votes = 1;
+  }
+  else
+  {
+    fail_msg_writer() << "expected 1 or 2 arguments, received: " << args_.size();
+    return true;
+  }
+
+  loki::xx__service_node::init();
+  tx_extra_service_node_deregister deregister = {};
+  deregister.votes.resize(num_votes);
+  {
+    std::vector<uint8_t> &extra = ptx.tx.extra;
+    {
+      std::string err;
+      uint64_t bc_height = std::max((get_daemon_blockchain_height(err) - 5 /*Always use 5 blocks back*/), (uint64_t)0);
+      if (!err.empty())
+      {
+        fail_msg_writer() << tr("failed to get blockchain height: ") << err;
+        return true;
+      }
+      /* deregister.block_height = bc_height; */
+      deregister.block_height = 20;
+    }
+
+    const std::string& service_node_key_str = args_[service_node_key_str_arg_index];
+    crypto::public_key service_node_key = {};
+    {
+      if (!epee::string_tools::hex_to_pod(service_node_key_str, service_node_key))
+      {
+        fail_msg_writer() << tr("failed to parse service node key: ") << service_node_key_str;
+        return true;
+      }
+    }
+
+    // Get the index of this service node in the quorum
+    {
+      COMMAND_RPC_GET_QUORUM_LIST::request req = AUTO_VAL_INIT(req);
+      COMMAND_RPC_GET_QUORUM_LIST::response res;
+      req.height = 32;
+
+      bool r = m_wallet->invoke_http_json("/get_quorum_list", req, res);
+      const std::string err = interpret_rpc_response(r, res.status);
+
+      if (!err.empty())
+      {
+        fail_msg_writer() << tr("Failed to retrieve quorum: ") << err;
+        return true;
+      }
+
+      for (int i = 0; i < num_votes; i++)
+      {
+        bool found_my_service_node_in_quorum = false;
+        const std::string this_service_node_key = loki::xx__service_node::public_spend_keys_str[i];
+
+        for (size_t j = 0; j < res.quorum.size(); j++)
+        {
+          const std::string &entry_str = res.quorum[j];
+          if (entry_str == this_service_node_key)
+          {
+            deregister.votes[i].voters_quorum_index = i;
+            found_my_service_node_in_quorum = true;
+            break;
+          }
+        }
+
+        if (!found_my_service_node_in_quorum)
+        {
+          fail_msg_writer() << tr("Failed to find service node in quorum: ") << service_node_key;
+          return true;
+        }
+      }
+    }
+
+
+    // Generate signatures
+    srand(time(NULL));
+    for (int i = 0; i < num_votes; i++)
+    {
+      size_t index = rand() % 10;
+      const crypto::public_key &public_spend_key = loki::xx__service_node::public_spend_keys[index];
+      const crypto::secret_key &secret_spend_key = loki::xx__service_node::secret_spend_keys[index];
+
+      tx_extra_service_node_deregister::vote *vote = &deregister.votes[i];
+      vote->voters_quorum_index = index;
+
+      crypto::hash hash = loki::service_node_deregister::make_unsigned_vote_hash(deregister);
+      auto *signature = reinterpret_cast<crypto::signature *>(&vote->signature);
+      crypto::generate_signature(hash, public_spend_key, secret_spend_key, *signature);
+    }
+
+  }
+
+  if (is_partial_cmd)
+  {
+    for (int i = 0; i < num_votes; i++)
+    {
+      loki::service_node_deregister::vote vote = {};
+      vote.block_height                        = deregister.block_height;
+      vote.service_node_index                  = deregister.service_node_index;
+      vote.voters_quorum_index                 = deregister.votes[i].voters_quorum_index;
+      vote.signature                           = *reinterpret_cast<crypto::signature *>(&deregister.votes[i].signature);
+
+      try
+      {
+        m_wallet->commit_deregister_vote(vote);
+      }
+      catch (const std::exception &e)
+      {
+        handle_transfer_exception(std::current_exception(), is_daemon_trusted());
+      }
+    }
+  }
+  else
+  {
+    add_service_node_deregister_to_tx_extra(ptx.tx.extra, deregister);
+    try
+    {
+      m_wallet->commit_tx(ptx);
+    }
+    catch (const std::exception &e)
+    {
+      handle_transfer_exception(std::current_exception(), is_daemon_trusted());
+    }
+  }
+  return true;
+}
+//----------------------------------------------------------------------------------------------------
+bool simple_wallet::xx__get_quorum(const std::vector<std::string> &args_)
+{
+  // xx__get_quorum <block height>
+  if (!try_connect_to_daemon())
+    return true;
+
+  const int expect_num_args = 1;
+  if (args_.size() != expect_num_args)
+  {
+    fail_msg_writer() << tr("expected 1 argument (block height) received: ") << args_.size();
+    return true;
+  }
+
+  COMMAND_RPC_GET_QUORUM_LIST::request req = AUTO_VAL_INIT(req);
+  COMMAND_RPC_GET_QUORUM_LIST::response res;
+  try
+  {
+      req.height = boost::lexical_cast<uint64_t>(args_[0]);
+  }
+  catch(const boost::bad_lexical_cast &)
+  {
+    fail_msg_writer() << tr("bad block height parameter: ") << args_[0];
+    return true;
+  }
+
+  bool r = m_wallet->invoke_http_json("/get_quorum_list", req, res);
+  const std::string err = interpret_rpc_response(r, res.status);
+  if (err.empty())
+  {
+    for (size_t i = 0; i < res.quorum.size(); i++)
+    {
+      const std::string &entry = res.quorum[i];
+      message_writer() << "[" << i << "] " << entry;
+    }
+  }
+  else
+  {
+    fail_msg_writer() << tr("Failed to retrieve quorum: ") << err;
+  }
+
+  return true;
+}
+//----------------------------------------------------------------------------------------------------
 bool simple_wallet::sweep_unmixable(const std::vector<std::string> &args_)
 {
   if (m_wallet->ask_password() && !get_and_verify_password()) { return true; }

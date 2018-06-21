@@ -41,6 +41,7 @@
 #include "common/download.h"
 #include "common/threadpool.h"
 #include "common/command_line.h"
+#include "service_node_deregister.h"
 #include "tx_pool.h"
 #include "blockchain.h"
 #include "service_node_list.h"
@@ -794,6 +795,15 @@ namespace cryptonote
       */
      bool get_quorum_list_size_for_height(uint64_t block_height, uint32_t &quorum_size) const;
 
+     /**
+      * @brief Add a vote to deregister a service node from network
+      *
+      * @param vote The vote for deregistering a service node.
+
+      * @return Whether the vote was added to the partial deregister pool
+      */
+     bool add_deregister_vote(const loki::service_node_deregister::vote& vote, vote_verification_context &vvc);
+
    private:
 
      /**
@@ -971,6 +981,7 @@ namespace cryptonote
 
      uint64_t m_test_drop_download_height = 0; //!< height under which to drop incoming blocks, if doing so
 
+     loki::deregister_vote_pool m_deregister_vote_pool;
      tx_memory_pool m_mempool; //!< transaction pool instance
      Blockchain m_blockchain_storage; //!< Blockchain instance
      service_nodes::service_node_list m_service_node_list;
