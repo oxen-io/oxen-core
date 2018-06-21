@@ -32,9 +32,9 @@
 
 #include <boost/program_options/variables_map.hpp>
 
-#include "cryptonote_core/service_node_deregister.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
 #include "cryptonote_basic/verification_context.h"
+#include "cryptonote_core/service_node_deregister.h"
 #include <unordered_map>
 
 namespace tests
@@ -106,6 +106,7 @@ namespace tests
     uint64_t prevalidate_block_hashes(uint64_t height, const std::list<crypto::hash> &hashes) { return 0; }
 
     // TODO(loki): Write tests
+    virtual void set_deregister_vote_relayed(const std::vector<loki::service_node_deregister::vote>& votes) {}
     bool add_deregister_vote(const loki::service_node_deregister::vote& vote, cryptonote::vote_verification_context &vvc) { return false; }
   };
 }

@@ -806,6 +806,7 @@ namespace cryptonote
     NOTIFY_NEW_TRANSACTIONS::request r;
     r.txs.push_back(tx_blob);
     m_core.get_protocol()->relay_transactions(r, fake_context);
+
     //TODO: make sure that tx has reached other nodes here, probably wait to receive reflections from other nodes
     res.status = CORE_RPC_STATUS_OK;
     return true;
@@ -2008,6 +2009,7 @@ namespace cryptonote
   //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::on_submit_deregister_vote(const COMMAND_RPC_SEND_DEREGISTER_VOTE::request& req, COMMAND_RPC_SEND_DEREGISTER_VOTE::response &resp)
   {
+    // TODO(doyle): When is on_relay_tx called, because that is another trigger point for sending data over p2p
     PERF_TIMER(on_submit_deregister_vote);
 
     vote_verification_context vvc = {};
@@ -2040,6 +2042,15 @@ namespace cryptonote
       }
 
       return true;
+    }
+
+    if (vvc.m_added_to_pool)
+    {
+      NOTIFY_NEW_DEREGISTER_VOTE::request r;
+      r.votes.push_back(req.vote);
+
+      cryptonote_connection_context fake_context = AUTO_VAL_INIT(fake_context);
+      m_core.get_protocol()->relay_deregister_vote(r, fake_context);
     }
 
     resp.status = CORE_RPC_STATUS_OK;
