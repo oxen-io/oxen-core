@@ -1977,6 +1977,35 @@ namespace cryptonote
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_get_quorum_list(const COMMAND_RPC_GET_QUORUM_LIST::request& req, COMMAND_RPC_GET_QUORUM_LIST::response& res)
+  {
+    PERF_TIMER(on_get_quorum_list);
+    bool r;
+
+    if (use_bootstrap_daemon_if_necessary<COMMAND_RPC_GET_QUORUM_LIST>(invoke_http_mode::JON, "/get_quorum_list", req, res, r))
+    {
+      return r;
+    }
+
+    std::vector<crypto::public_key> quorum;
+    r = m_core.get_quorum_list_for_height(req.height, quorum);
+    if (r)
+    {
+      res.status = CORE_RPC_STATUS_OK;
+      res.quorum.reserve(quorum.size());
+
+      for (const auto &key : quorum)
+        res.quorum.push_back(epee::string_tools::pod_to_hex(key));
+    }
+    else
+    {
+      res.status  = "Block height: " + req.height;
+      res.status += ", returned null hash or failed to derive quorum list";
+    }
+
+    return r;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::on_relay_tx(const COMMAND_RPC_RELAY_TX::request& req, COMMAND_RPC_RELAY_TX::response& res, epee::json_rpc::error& error_resp)
   {
     PERF_TIMER(on_relay_tx);
@@ -2165,8 +2194,30 @@ namespace cryptonote
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_get_quorum_list_json(const COMMAND_RPC_GET_QUORUM_LIST::request& req, COMMAND_RPC_GET_QUORUM_LIST::response& res, epee::json_rpc::error& error_resp)
+  {
+    PERF_TIMER(on_get_quorum_list_json);
+    bool r;
+    if (use_bootstrap_daemon_if_necessary<COMMAND_RPC_GET_QUORUM_LIST>(invoke_http_mode::JON_RPC, "get_quorum_list", req, res, r))
+    {
+      return r;
+    }
 
+    r = on_get_quorum_list(req, res);
 
+    if (r)
+    {
+      res.status = CORE_RPC_STATUS_OK;
+    }
+    else
+    {
+      error_resp.code    = CORE_RPC_ERROR_CODE_TOO_BIG_HEIGHT;
+      error_resp.message = res.status;
+    }
+
+    return r;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
   const command_line::arg_descriptor<std::string, false, true, 2> core_rpc_server::arg_rpc_bind_port = {
       "rpc-bind-port"
     , "Port for RPC server"
