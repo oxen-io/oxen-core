@@ -52,6 +52,8 @@ namespace loki
     std::vector<crypto::secret_key> secret_spend_keys;
     std::vector<crypto::public_key> public_spend_keys;
 
+    const char *deregister_cmd = "xx__deregister_service_node partial 42d0681beffac7e34f85dfc3b8fefd9ffb60854205f6068705c89eef43800903";
+
     const char *secret_spend_keys_str[] =
     {
       "42d0681beffac7e34f85dfc3b8fefd9ffb60854205f6068705c89eef43800903",
@@ -648,10 +650,72 @@ namespace loki
           printf("    ");
           printf("    ");
           printf("    ");
-          printf("[%zu] %.*s (index %d in quorum)\n", i, 10, sig.c_str(), pool_entry.m_vote.voters_quorum_index);
+          printf("[%zu: P2P: %010zu] %.*s (index %d in quorum)\n", i, pool_entry.m_time_last_sent_p2p, 10, sig.c_str(), pool_entry.m_vote.voters_quorum_index);
         }
       }
     }
+  }
+
+  void deregister_vote_pool::set_relayed(const std::vector<service_node_deregister::vote>& votes)
+  {
+    CRITICAL_REGION_LOCAL(m_lock);
+    const time_t now = time(NULL);
+
+    for (const service_node_deregister::vote &find_vote : votes)
+    {
+      for (pool_group &deregisters_for : m_deregisters)
+      {
+        if (deregisters_for.block_height == find_vote.block_height)
+        {
+          std::vector<pool_entry> &entries = deregisters_for.service_node[find_vote.service_node_index];
+          int xx__vote_index = 0;
+          for (auto &entry : entries)
+          {
+            service_node_deregister::vote &vote = entry.m_vote;
+            if (vote.voters_quorum_index == find_vote.voters_quorum_index)
+            {
+              printf("Service node deregister vote was updated block (%zu) for service node (%d), vote index (%d) with time %zu\n", find_vote.block_height, find_vote.service_node_index, xx__vote_index, now);
+              xx__print_service_node();
+              entry.m_time_last_sent_p2p = now;
+              break;
+            }
+            xx__vote_index++;
+          }
+          break;
+        }
+      }
+    }
+  }
+
+  std::vector<service_node_deregister::vote> deregister_vote_pool::get_relayable_votes() const
+  {
+    CRITICAL_REGION_LOCAL(m_lock);
+    const cryptonote::cryptonote_connection_context fake_context = AUTO_VAL_INIT(fake_context);
+
+    // TODO(doyle): Rate-limiting: A better threshold value that follows suite
+    // with transaction relay time back-off
+    const time_t now       = time(NULL);
+    const time_t THRESHOLD = 60 * 2;
+
+    std::vector<service_node_deregister::vote> result;
+    for (const pool_group &deregisters_for : m_deregisters)
+    {
+      for (auto it = deregisters_for.service_node.begin();
+           it != deregisters_for.service_node.end();
+           it++)
+      {
+        const std::vector<pool_entry> &entries = it->second;
+        for (const auto &entry : entries)
+        {
+          const time_t last_sent = now - entry.m_time_last_sent_p2p;
+          if (last_sent > THRESHOLD)
+          {
+            result.push_back(entry.m_vote);
+          }
+        }
+      }
+    }
+    return result;
   }
 
   bool deregister_vote_pool::add_vote(const service_node_deregister::vote& new_vote,
@@ -705,7 +769,7 @@ namespace loki
     if (new_deregister_is_unique)
     {
       vvc.m_added_to_pool = true;
-      deregister_votes.emplace_back(pool_entry(new_vote));
+      deregister_votes.emplace_back(pool_entry(0, new_vote));
       xx__print_service_node();
 
       if (deregister_votes.size() == quorum.size())
@@ -730,5 +794,33 @@ namespace loki
     }
 
     return true;
+  }
+
+  void deregister_vote_pool::remove_expired_votes(uint64_t height)
+  {
+    uint64_t const ALIVE_HEIGHT_WINDOW = 20;
+    if (height < ALIVE_HEIGHT_WINDOW)
+    {
+      return;
+    }
+
+    CRITICAL_REGION_LOCAL(m_lock);
+    const time_t now                  = time(NULL);
+    const time_t ALIVE_SECONDS_WINDOW = DIFFICULTY_TARGET_V2 * ALIVE_HEIGHT_WINDOW;
+
+    uint64_t minimum_height = height - ALIVE_HEIGHT_WINDOW;
+    for (auto it = m_deregisters.begin(); it != m_deregisters.end();)
+    {
+      time_t lifetime = now - it->time_group_created;
+      if (it->block_height < minimum_height && lifetime >= ALIVE_SECONDS_WINDOW)
+      {
+        printf("Removing stale votes from height: %zu, the min height is: %zu || min life time is: %zu\n", it->block_height, minimum_height, ALIVE_SECONDS_WINDOW);
+        it = m_deregisters.erase(it);
+      }
+      else
+      {
+        it++;
+      }
+    }
   }
 }; // namespace loki

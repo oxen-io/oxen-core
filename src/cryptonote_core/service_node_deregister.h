@@ -103,7 +103,10 @@ namespace loki
       class pool_entry
       {
         public:
-          pool_entry(service_node_deregister::vote vote) : m_vote(vote) {}
+          pool_entry(uint64_t time_last_sent_p2p, service_node_deregister::vote vote)
+            : m_time_last_sent_p2p(time_last_sent_p2p), m_vote(vote) {}
+
+          uint64_t m_time_last_sent_p2p;
           service_node_deregister::vote m_vote;
       };
 
@@ -120,7 +123,12 @@ namespace loki
        */
       bool add_vote(const service_node_deregister::vote& new_vote, cryptonote::vote_verification_context& vvc,
                     const std::vector<crypto::public_key>& quorum, cryptonote::transaction &tx);
+
+      // TODO(doyle): Review relay behaviour and all the cases when it should be triggered
       void xx__print_service_node() const;
+      void set_relayed           (const std::vector<service_node_deregister::vote>& votes);
+      void remove_expired_votes  (uint64_t height);
+      std::vector<service_node_deregister::vote> get_relayable_votes() const;
 
     private:
       std::vector<pool_group> m_deregisters;

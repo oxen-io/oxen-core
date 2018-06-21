@@ -1110,6 +1110,24 @@ namespace cryptonote
     m_mempool.set_relayed(txs);
   }
   //-----------------------------------------------------------------------------------------------
+  void core::set_deregister_vote_relayed(const std::vector<loki::service_node_deregister::vote>& votes)
+  {
+    m_deregister_vote_pool.set_relayed(votes);
+  }
+  //-----------------------------------------------------------------------------------------------
+  bool core::relay_deregister_vote()
+  {
+    NOTIFY_NEW_DEREGISTER_VOTE::request req;
+    req.votes = m_deregister_vote_pool.get_relayable_votes();
+    if (!req.votes.empty())
+    {
+      cryptonote_connection_context fake_context = AUTO_VAL_INIT(fake_context);
+      get_protocol()->relay_deregister_vote(req, fake_context);
+    }
+
+    return true;
+  }
+  //-----------------------------------------------------------------------------------------------
   bool core::get_block_template(block& b, const account_public_address& adr, difficulty_type& diffic, uint64_t& height, uint64_t& expected_reward, const blobdata& ex_nonce)
   {
     return m_blockchain_storage.create_block_template(b, adr, diffic, height, expected_reward, ex_nonce);
@@ -1285,6 +1303,8 @@ namespace cryptonote
 
     if (bvc.m_added_to_main_chain)
     {
+      m_deregister_vote_pool.remove_expired_votes(get_current_blockchain_height());
+
       if(update_miner_blocktemplate)
          update_miner_block_template();
     }
@@ -1427,6 +1447,7 @@ namespace cryptonote
 
     m_fork_moaner.do_call(boost::bind(&core::check_fork_time, this));
     m_txpool_auto_relayer.do_call(boost::bind(&core::relay_txpool_transactions, this));
+    m_deregisters_auto_relayer.do_call(boost::bind(&core::relay_deregister_vote, this));
     m_check_updates_interval.do_call(boost::bind(&core::check_updates, this));
     m_check_disk_space_interval.do_call(boost::bind(&core::check_disk_space, this));
     m_miner.on_idle();

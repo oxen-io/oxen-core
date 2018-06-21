@@ -84,8 +84,9 @@ public:
   uint64_t prevalidate_block_hashes(uint64_t height, const std::list<crypto::hash> &hashes) { return 0; }
   void stop() {}
 
-  // TODO(loki): Write testst
-  bool add_deregister_vote(const loki::service_node_deregister::vote& vote, cryptonote::vote_verification_context &vvc) { return false; }
+  // TODO(loki): Write tests
+  bool add_deregister_vote(const loki::service_node_deregister::vote& vote, cryptonote::vote_verification_context &vvc) { return true; }
+  virtual void set_deregister_vote_relayed(const std::vector<loki::service_node_deregister::vote>& votes) {}
 };
 
 typedef nodetool::node_server<cryptonote::t_cryptonote_protocol_handler<test_core>> Server;
