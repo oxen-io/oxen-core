@@ -483,44 +483,24 @@ namespace cryptonote
     return true;
   }
   //---------------------------------------------------------------
-  bool add_pub_spendkey_to_tx_extra(std::vector<uint8_t>& tx_extra, const crypto::public_key& tx_pub_key)
+  bool add_account_public_address_to_tx_extra(std::vector<uint8_t>& tx_extra, const cryptonote::account_public_address& address)
   {
-    tx_extra.resize(tx_extra.size() + 1 + sizeof(crypto::public_key));
-    tx_extra[tx_extra.size() - 1 - sizeof(crypto::public_key)] = TX_EXTRA_TAG_PUB_SPENDKEY;
-    *reinterpret_cast<crypto::public_key*>(&tx_extra[tx_extra.size() - sizeof(crypto::public_key)]) = tx_pub_key;
+    tx_extra.resize(tx_extra.size() + 1 + sizeof(cryptonote::account_public_address));
+    tx_extra[tx_extra.size() - 1 - sizeof(cryptonote::account_public_address)] = TX_EXTRA_TAG_ACCOUNT_PUBLIC_ADDRESS;
+    *reinterpret_cast<cryptonote::account_public_address*>(&tx_extra[tx_extra.size() - sizeof(cryptonote::account_public_address)]) = address;
     return true;
   }
   //---------------------------------------------------------------
-  crypto::public_key get_pub_spendkey_from_tx_extra(const std::vector<uint8_t>& tx_extra)
+  cryptonote::account_public_address get_account_public_address_from_tx_extra(const std::vector<uint8_t>& tx_extra)
   {
     // parse
     std::vector<tx_extra_field> tx_extra_fields;
     parse_tx_extra(tx_extra, tx_extra_fields);
     // find corresponding field
-    tx_extra_pub_spendkey pub_spendkey;
-    if (!find_tx_extra_field_by_type(tx_extra_fields, pub_spendkey))
-      return crypto::null_pkey;
-    return pub_spendkey.data;
-  }
-  //---------------------------------------------------------------
-  bool add_viewkey_to_tx_extra(std::vector<uint8_t>& tx_extra, const crypto::secret_key& viewkey)
-  {
-    tx_extra.resize(tx_extra.size() + 1 + sizeof(crypto::secret_key));
-    tx_extra[tx_extra.size() - 1 - sizeof(crypto::secret_key)] = TX_EXTRA_TAG_VIEWKEY;
-    *reinterpret_cast<crypto::secret_key*>(&tx_extra[tx_extra.size() - sizeof(crypto::secret_key)]) = viewkey;
-    return true;
-  }
-  //---------------------------------------------------------------
-  crypto::secret_key get_viewkey_from_tx_extra(const std::vector<uint8_t>& tx_extra)
-  {
-    // parse
-    std::vector<tx_extra_field> tx_extra_fields;
-    parse_tx_extra(tx_extra, tx_extra_fields);
-    // find corresponding field
-    tx_extra_viewkey viewkey;
-    if (!find_tx_extra_field_by_type(tx_extra_fields, viewkey))
-      return crypto::null_skey;
-    return viewkey.data;
+    tx_extra_account_public_address address;
+    if (!find_tx_extra_field_by_type(tx_extra_fields, address))
+      return cryptonote::account_public_address{ crypto::null_pkey, crypto::null_pkey };
+    return cryptonote::account_public_address{ address.m_spend_public_key, address.m_view_public_key };
   }
   //---------------------------------------------------------------
   bool remove_field_from_tx_extra(std::vector<uint8_t>& tx_extra, const std::type_info &type)

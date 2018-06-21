@@ -30,7 +30,6 @@
 
 #pragma once
 
-
 #define TX_EXTRA_PADDING_MAX_COUNT          255
 #define TX_EXTRA_NONCE_MAX_COUNT            255
 
@@ -39,8 +38,7 @@
 #define TX_EXTRA_NONCE                      0x02
 #define TX_EXTRA_MERGE_MINING_TAG           0x03
 #define TX_EXTRA_TAG_ADDITIONAL_PUBKEYS     0x04
-#define TX_EXTRA_TAG_VIEWKEY                0x70
-#define TX_EXTRA_TAG_PUB_SPENDKEY           0x71
+#define TX_EXTRA_TAG_ACCOUNT_PUBLIC_ADDRESS 0x70
 #define TX_EXTRA_MYSTERIOUS_MINERGATE_TAG   0xDE
 
 #define TX_EXTRA_NONCE_PAYMENT_ID           0x00
@@ -172,21 +170,14 @@ namespace cryptonote
     END_SERIALIZE()
   };
 
-  struct tx_extra_viewkey
+  struct tx_extra_account_public_address
   {
-    crypto::secret_key data;
+    crypto::public_key m_spend_public_key;
+    crypto::public_key m_view_public_key;
 
     BEGIN_SERIALIZE()
-      FIELD(data)
-    END_SERIALIZE()
-  };
-
-  struct tx_extra_pub_spendkey
-  {
-    crypto::public_key data;
-
-    BEGIN_SERIALIZE()
-      FIELD(data)
+      FIELD(m_spend_public_key)
+      FIELD(m_view_public_key)
     END_SERIALIZE()
   };
 
@@ -208,8 +199,7 @@ namespace cryptonote
                          tx_extra_nonce,
                          tx_extra_merge_mining_tag,
                          tx_extra_additional_pub_keys,
-                         tx_extra_viewkey,
-                         tx_extra_pub_spendkey,
+                         tx_extra_account_public_address,
                          tx_extra_mysterious_minergate> tx_extra_field;
 }
 
@@ -218,6 +208,5 @@ VARIANT_TAG(binary_archive, cryptonote::tx_extra_pub_key, TX_EXTRA_TAG_PUBKEY);
 VARIANT_TAG(binary_archive, cryptonote::tx_extra_nonce, TX_EXTRA_NONCE);
 VARIANT_TAG(binary_archive, cryptonote::tx_extra_merge_mining_tag, TX_EXTRA_MERGE_MINING_TAG);
 VARIANT_TAG(binary_archive, cryptonote::tx_extra_additional_pub_keys, TX_EXTRA_TAG_ADDITIONAL_PUBKEYS);
-VARIANT_TAG(binary_archive, cryptonote::tx_extra_viewkey, TX_EXTRA_TAG_VIEWKEY);
-VARIANT_TAG(binary_archive, cryptonote::tx_extra_pub_spendkey, TX_EXTRA_TAG_PUB_SPENDKEY);
+VARIANT_TAG(binary_archive, cryptonote::tx_extra_account_public_address, TX_EXTRA_TAG_ACCOUNT_PUBLIC_ADDRESS);
 VARIANT_TAG(binary_archive, cryptonote::tx_extra_mysterious_minergate, TX_EXTRA_MYSTERIOUS_MINERGATE_TAG);

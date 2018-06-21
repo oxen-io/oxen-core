@@ -4717,15 +4717,9 @@ bool simple_wallet::stake_all(const std::vector<std::string> &args_)
 
   std::vector<uint8_t> extra;
 
-  if (!add_viewkey_to_tx_extra(extra, m_wallet->get_account().get_keys().m_view_secret_key))
+  if (!add_account_public_address_to_tx_extra(extra, address))
   {
-    fail_msg_writer() << tr("failed add view key to tx extra");
-    return true;
-  }
-
-  if (!add_pub_spendkey_to_tx_extra(extra, m_wallet->get_account().get_keys().m_account_address.m_spend_public_key))
-  {
-    fail_msg_writer() << tr("failed add public spend key to tx extra");
+    fail_msg_writer() << tr("failed to add account public address to tx extra");
     return true;
   }
 
@@ -4734,7 +4728,7 @@ bool simple_wallet::stake_all(const std::vector<std::string> &args_)
   try
   {
     // figure out what tx will be necessary
-    auto ptx_vector = m_wallet->create_transactions_all(0, address, false, mixins, unlock_block /* unlock_time */, priority, extra, m_current_subaddress_account, subaddr_indices, is_daemon_trusted());
+    auto ptx_vector = m_wallet->create_transactions_all(0, address, false, mixins, unlock_block /* unlock_time */, priority, extra, m_current_subaddress_account, subaddr_indices, is_daemon_trusted(), true);
 
     if (ptx_vector.empty())
     {

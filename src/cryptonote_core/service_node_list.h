@@ -45,7 +45,7 @@ namespace service_nodes
     void block_added(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs);
     void blockchain_detached(uint64_t height);
     void init();
-    bool validate_miner_tx(const crypto::hash& prev_id, const cryptonote::transaction& miner_tx, uint64_t height, uint64_t base_reward);
+    bool validate_miner_tx(const crypto::hash& prev_id, const cryptonote::transaction& miner_tx, uint64_t height, int hard_fork_version, uint64_t base_reward);
 
     std::vector<crypto::public_key> get_expired_nodes(uint64_t block_height);
     cryptonote::account_public_address select_winner(const crypto::hash& prev_id);
@@ -53,16 +53,15 @@ namespace service_nodes
     std::vector<crypto::public_key> get_service_nodes_pubkeys();
 
   private:
-    bool process_registration_tx(const cryptonote::transaction& tx, uint64_t block_height, crypto::public_key& pub_spendkey_out, crypto::public_key& pub_viewkey_out, crypto::secret_key& sec_viewkey_out);
+    bool process_registration_tx(const cryptonote::transaction& tx, uint64_t block_height, crypto::public_key& pub_spendkey_out, crypto::public_key& pub_viewkey_out);
     template<typename T>
     void block_added_generic(const cryptonote::block& block, const T& txs);
 
     bool reg_tx_has_correct_unlock_time(const cryptonote::transaction& tx, uint64_t block_height);
-    bool reg_tx_extract_fields(const cryptonote::transaction& tx, crypto::secret_key& viewkey, crypto::public_key& pub_viewkey, crypto::public_key& pub_spendkey, crypto::public_key& tx_pub_key);
-    void reg_tx_calculate_subaddresses(const crypto::secret_key& viewkey, const crypto::public_key& pub_viewkey, const crypto::public_key& pub_spendkey, std::vector<crypto::public_key>& subaddresses, hw::device& hwdev);
-    bool is_reg_tx_staking_output(const cryptonote::transaction& tx, int i, uint64_t block_height, crypto::key_derivation derivation, std::vector<crypto::public_key> subaddresses, hw::device& hwdev);
+    bool reg_tx_extract_fields(const cryptonote::transaction& tx, crypto::public_key& pub_viewkey, crypto::public_key& pub_spendkey, crypto::public_key& tx_pub_key);
+    bool is_reg_tx_staking_output(const cryptonote::transaction& tx, int i, uint64_t block_height, crypto::key_derivation derivation, hw::device& hwdev);
 
-    crypto::public_key find_service_node_from_miner_tx(const cryptonote::transaction& miner_tx);
+    crypto::public_key find_service_node_from_miner_tx(const cryptonote::transaction& miner_tx, uint64_t block_height);
 
     class rollback_event
     {
@@ -105,7 +104,6 @@ namespace service_nodes
     // hence a std::pair<uint64_t, size_t> is used here for this value.
     std::unordered_map<crypto::public_key, std::pair<uint64_t, size_t>> m_service_nodes_last_reward;
     std::unordered_map<crypto::public_key, crypto::public_key> m_pub_viewkey_lookup;
-    std::unordered_map<crypto::public_key, crypto::secret_key> m_sec_viewkey_lookup;
     std::list<rollback_event*> m_rollback_events;
     cryptonote::Blockchain& m_blockchain;
   };

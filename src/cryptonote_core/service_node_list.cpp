@@ -104,48 +104,20 @@ namespace service_nodes
   }
 
 
-  bool service_node_list::reg_tx_extract_fields(const cryptonote::transaction& tx, crypto::secret_key& viewkey, crypto::public_key& pub_viewkey, crypto::public_key& pub_spendkey, crypto::public_key& tx_pub_key)
+  bool service_node_list::reg_tx_extract_fields(const cryptonote::transaction& tx, crypto::public_key& pub_viewkey, crypto::public_key& pub_spendkey, crypto::public_key& tx_pub_key)
   {
-    viewkey = cryptonote::get_viewkey_from_tx_extra(tx.extra);
-    pub_spendkey = cryptonote::get_pub_spendkey_from_tx_extra(tx.extra);
+    cryptonote::account_public_address address = cryptonote::get_account_public_address_from_tx_extra(tx.extra);
+    pub_spendkey = address.m_spend_public_key;
+    pub_viewkey = address.m_view_public_key;
     tx_pub_key = cryptonote::get_tx_pub_key_from_extra(tx.extra);
-    pub_viewkey = crypto::null_pkey;
-    if (!crypto::secret_key_to_public_key(viewkey, pub_viewkey))
-      return false;
-    return viewkey != crypto::null_skey &&
-      pub_spendkey != crypto::null_pkey &&
+    return pub_spendkey != crypto::null_pkey &&
       tx_pub_key != crypto::null_pkey &&
       pub_viewkey != crypto::null_pkey;
   }
 
-  void service_node_list::reg_tx_calculate_subaddresses(
-      const crypto::secret_key& viewkey,
-      const crypto::public_key& pub_viewkey,
-      const crypto::public_key& pub_spendkey,
-      std::vector<crypto::public_key>& subaddresses,
-      hw::device& hwdev)
-  {
-    cryptonote::account_public_address public_address{ pub_spendkey, pub_viewkey };
-    cryptonote::account_base account_base;
-    account_base.create_from_viewkey(public_address, viewkey);
-    subaddresses = hwdev.get_subaddress_spend_public_keys(account_base.get_keys(), 0 /* major account */, 0 /* minor account */, SUBADDRESS_LOOKAHEAD_MINOR);
-  }
-
-  bool service_node_list::is_reg_tx_staking_output(const cryptonote::transaction& tx, int i, uint64_t block_height, crypto::key_derivation derivation, std::vector<crypto::public_key> subaddresses, hw::device& hwdev)
+  bool service_node_list::is_reg_tx_staking_output(const cryptonote::transaction& tx, int i, uint64_t block_height, crypto::key_derivation derivation, hw::device& hwdev)
   {
     if (tx.vout[i].target.type() != typeid(cryptonote::txout_to_key))
-    {
-      return false;
-    }
-
-    crypto::public_key subaddress_spendkey;
-    if (!crypto::derive_subaddress_public_key(boost::get<cryptonote::txout_to_key>(tx.vout[i].target).key,
-                                              derivation, i, subaddress_spendkey))
-    {
-      return false;
-    }
-
-    if (std::find(subaddresses.begin(), subaddresses.end(), subaddress_spendkey) == subaddresses.end())
     {
       return false;
     }
@@ -185,43 +157,33 @@ namespace service_nodes
   // It also sets the pub_spendkey_out argument to the public spendkey in the
   // transaction.
   //
-  bool service_node_list::process_registration_tx(const cryptonote::transaction& tx, uint64_t block_height, crypto::public_key& pub_spendkey_out, crypto::public_key& pub_viewkey_out, crypto::secret_key& sec_viewkey_out)
+  bool service_node_list::process_registration_tx(const cryptonote::transaction& tx, uint64_t block_height, crypto::public_key& pub_spendkey_out, crypto::public_key& pub_viewkey_out)
   {
     if (!reg_tx_has_correct_unlock_time(tx, block_height))
     {
       return false;
     }
 
-    crypto::secret_key viewkey;
     crypto::public_key pub_spendkey, pub_viewkey, tx_pub_key;
     
-    if (!reg_tx_extract_fields(tx, viewkey, pub_viewkey, pub_spendkey, tx_pub_key))
+    if (!reg_tx_extract_fields(tx, pub_viewkey, pub_spendkey, tx_pub_key))
     {
       return false;
     }
 
-    // TODO(jcktm) - change all this stuff regarding key derivation from
-    // the viewkey to be using the actual output decryption key in the tx
-    // extra field, or use an old style transaction output so the amount
-    // is not encrypted.
+    cryptonote::keypair gov_key = cryptonote::get_deterministic_keypair_from_height(1);
 
     crypto::key_derivation derivation;
-
-    crypto::generate_key_derivation(tx_pub_key, viewkey, derivation);
+    crypto::generate_key_derivation(pub_viewkey, gov_key.sec, derivation);
 
     hw::device& hwdev = hw::get_device("default");
 
-    std::vector<crypto::public_key> subaddresses;
-
-    reg_tx_calculate_subaddresses(viewkey, pub_viewkey, pub_spendkey, subaddresses, hwdev);
-
     for (size_t i = 0; i < tx.vout.size(); ++i)
     {
-      if (is_reg_tx_staking_output(tx, i, block_height, derivation, subaddresses, hwdev))
+      if (is_reg_tx_staking_output(tx, i, block_height, derivation, hwdev))
       {
         pub_spendkey_out = pub_spendkey;
         pub_viewkey_out = pub_viewkey;
-        sec_viewkey_out = viewkey;
         return true;
       }
     }
@@ -233,7 +195,7 @@ namespace service_nodes
     block_added_generic(block, txs);
   }
 
-  crypto::public_key service_node_list::find_service_node_from_miner_tx(const cryptonote::transaction& miner_tx)
+  crypto::public_key service_node_list::find_service_node_from_miner_tx(const cryptonote::transaction& miner_tx, uint64_t height)
   {
     if (miner_tx.vout.size() != 3)
     {
@@ -247,30 +209,21 @@ namespace service_nodes
       return crypto::null_pkey;
     }
 
-    crypto::public_key tx_pub_key = cryptonote::get_tx_pub_key_from_extra(miner_tx);
+    cryptonote::keypair gov_key = cryptonote::get_deterministic_keypair_from_height(height);
 
     for (const auto& spendkey_blockheight : m_service_nodes_last_reward)
     {
       const crypto::public_key& pub_spendkey = spendkey_blockheight.first;
       const crypto::public_key& pub_viewkey = m_pub_viewkey_lookup[pub_spendkey];
-      crypto::secret_key sec_viewkey = m_sec_viewkey_lookup[pub_spendkey];
 
       crypto::key_derivation derivation;
-      crypto::generate_key_derivation(tx_pub_key, sec_viewkey, derivation);
+      crypto::public_key out_eph_public_key = AUTO_VAL_INIT(out_eph_public_key);
+      bool r = crypto::generate_key_derivation(pub_viewkey, gov_key.sec, derivation);
+      CHECK_AND_ASSERT_MES(r, crypto::null_pkey, "while creating outs: failed to generate_key_derivation(" << pub_viewkey << ", " << gov_key.sec << ")");
+      r = crypto::derive_public_key(derivation, 1, pub_spendkey, out_eph_public_key);
+      CHECK_AND_ASSERT_MES(r, crypto::null_pkey, "while creating outs: failed to derive_public_key(" << derivation << ", " << 1 << ", "<< pub_spendkey << ")");
 
-      crypto::public_key subaddress_spendkey;
-      if (!crypto::derive_subaddress_public_key(boost::get<cryptonote::txout_to_key>(miner_tx.vout[1].target).key,
-                                                derivation, 1, subaddress_spendkey))
-      {
-        MERROR("Could not derive subaddress spendkey");
-        continue;
-      }
-
-      hw::device& hwdev = hw::get_device("default");
-      std::vector<crypto::public_key> subaddresses;
-      reg_tx_calculate_subaddresses(sec_viewkey, pub_viewkey, pub_spendkey, subaddresses, hwdev);
-
-      if (std::find(subaddresses.begin(), subaddresses.end(), subaddress_spendkey) != subaddresses.end())
+      if (boost::get<cryptonote::txout_to_key>(miner_tx.vout[1].target).key == out_eph_public_key)
       {
         return pub_spendkey;
       }
@@ -296,7 +249,7 @@ namespace service_nodes
       m_rollback_events.pop_front();
     }
 
-    crypto::public_key pubkey = find_service_node_from_miner_tx(block.miner_tx);
+    crypto::public_key pubkey = find_service_node_from_miner_tx(block.miner_tx, block_height);
     if (m_service_nodes_last_reward.count(pubkey) == 1)
     {
       m_rollback_events.push_back(new rollback_change(block_height, pubkey, m_service_nodes_last_reward[pubkey]));
@@ -318,8 +271,7 @@ namespace service_nodes
     {
       crypto::public_key pub_spendkey = crypto::null_pkey;
       crypto::public_key pub_viewkey = crypto::null_pkey;
-      crypto::secret_key sec_viewkey;
-      if (process_registration_tx(tx, block_height, pub_spendkey, pub_viewkey, sec_viewkey))
+      if (process_registration_tx(tx, block_height, pub_spendkey, pub_viewkey))
       {
         auto iter = m_service_nodes_last_reward.find(pub_spendkey);
         if (iter == m_service_nodes_last_reward.end())
@@ -332,11 +284,8 @@ namespace service_nodes
           m_rollback_events.push_back(new rollback_change(block_height, pub_spendkey, iter->second));
           iter->second = std::pair<uint64_t, size_t>(block_height, index);
         }
-        // FIXME check that the assignment of the viewkey and sec viewkey here
-        // cannot be used for nafarious purposes to cause a chain split or
-        // otherwise.
+        // TODO: change lookup by pub_spendkey to lookup by account_public_address.
         m_pub_viewkey_lookup[pub_spendkey] = pub_viewkey;
-        m_sec_viewkey_lookup[pub_spendkey] = sec_viewkey;
       }
       index++;
     }
@@ -385,8 +334,7 @@ namespace service_nodes
     {
       crypto::public_key pubkey;
       crypto::public_key pub_viewkey;
-      crypto::secret_key sec_viewkey;
-      if (process_registration_tx(tx, expired_nodes_block_height, pubkey, pub_viewkey, sec_viewkey))
+      if (process_registration_tx(tx, expired_nodes_block_height, pubkey, pub_viewkey))
       {
         expired_nodes.push_back(pubkey);
       }
@@ -413,14 +361,12 @@ namespace service_nodes
 
   /// validates the miner TX for the next block
   //
-  bool service_node_list::validate_miner_tx(const crypto::hash& prev_id, const cryptonote::transaction& miner_tx, uint64_t height, uint64_t base_reward)
+  bool service_node_list::validate_miner_tx(const crypto::hash& prev_id, const cryptonote::transaction& miner_tx, uint64_t height, int hard_fork_version, uint64_t base_reward)
   {
-    uint64_t hard_fork_version = m_blockchain.get_current_hard_fork_version();
-
     if (hard_fork_version < 8)
       return true;
 
-    uint64_t service_node_reward = cryptonote::get_service_node_reward(m_blockchain.get_current_blockchain_height(), base_reward, hard_fork_version);
+    uint64_t service_node_reward = cryptonote::get_service_node_reward(height, base_reward, hard_fork_version);
 
     if (miner_tx.vout.size() != 3)
     {
@@ -456,7 +402,6 @@ namespace service_nodes
       return false;
     }
 
-    // we're all louis
     return true;
   }
 
