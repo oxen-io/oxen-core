@@ -4946,8 +4946,7 @@ bool simple_wallet::xx__deregister_service_node(const std::vector<std::string> &
       vote->voters_quorum_index = index;
 
       crypto::hash hash = loki::service_node_deregister::make_unsigned_vote_hash(deregister);
-      auto *signature = reinterpret_cast<crypto::signature *>(&vote->signature);
-      crypto::generate_signature(hash, public_spend_key, secret_spend_key, *signature);
+      crypto::generate_signature(hash, public_spend_key, secret_spend_key, vote->signature);
     }
 
   }
@@ -4960,7 +4959,7 @@ bool simple_wallet::xx__deregister_service_node(const std::vector<std::string> &
       vote.block_height                        = deregister.block_height;
       vote.service_node_index                  = deregister.service_node_index;
       vote.voters_quorum_index                 = deregister.votes[i].voters_quorum_index;
-      vote.signature                           = *reinterpret_cast<crypto::signature *>(&deregister.votes[i].signature);
+      vote.signature                           = deregister.votes[i].signature;
 
       try
       {

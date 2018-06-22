@@ -580,8 +580,7 @@ namespace loki
       const crypto::hash hash = make_unsigned_vote_hash(deregister);
       for (const cryptonote::tx_extra_service_node_deregister::vote& vote : deregister.votes)
       {
-        const auto* signature = reinterpret_cast<const crypto::signature *>(&vote.signature);
-        if (!verify_vote(hash, vote.voters_quorum_index, *signature, quorum, vvc))
+        if (!verify_vote(hash, vote.voters_quorum_index, vote.signature, quorum, vvc))
         {
           all_votes_verified = false;
           break;
@@ -782,7 +781,7 @@ namespace loki
         for (const auto& entry : deregister_votes)
         {
           cryptonote::tx_extra_service_node_deregister::vote tx_vote = {};
-          tx_vote.signature           = *reinterpret_cast<const cryptonote::tx_extra_service_node_deregister::signature_pod *>(&new_vote.signature);
+          tx_vote.signature           = new_vote.signature;
           tx_vote.voters_quorum_index = new_vote.voters_quorum_index;
           deregister.votes.push_back(tx_vote);
         }

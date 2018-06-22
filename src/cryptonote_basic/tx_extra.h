@@ -204,14 +204,10 @@ namespace cryptonote
 
   struct tx_extra_service_node_deregister
   {
-    // TODO: We don't use crypto::signatures because template overrides on serialization for sigs
-    // don't encode size. So the receiving end must be able to anticipate how many signatures
-    // there are and preallocate. This is possibly doable when we finalize quorum sizes
-    struct signature_pod { char data[sizeof(crypto::signature)]; };
     struct vote
     {
-      signature_pod signature;
-      uint32_t      voters_quorum_index;
+      crypto::signature signature;
+      uint32_t          voters_quorum_index;
     };
 
     uint64_t          block_height;

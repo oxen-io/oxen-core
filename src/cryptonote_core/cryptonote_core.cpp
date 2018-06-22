@@ -776,6 +776,12 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
   bool core::check_tx_semantic(const transaction& tx, bool keeped_by_block) const
   {
+    if(!tx.vin.size() && tx.version != transaction::version_3_deregister_tx)
+    {
+      MERROR_VER("tx with empty inputs, rejected for tx id= " << get_transaction_hash(tx));
+      return false;
+    }
+
     if(!check_inputs_types_supported(tx))
     {
       MERROR_VER("unsupported input types for tx id= " << get_transaction_hash(tx));
@@ -788,10 +794,32 @@ namespace cryptonote
       return false;
     }
 
+    if (tx.version > transaction::version_1 && tx.version < transaction::version_3_deregister_tx)
+    {
+      if (tx.rct_signatures.outPk.size() != tx.vout.size())
+      {
+        MERROR_VER("tx with mismatched vout/outPk count, rejected for tx id= " << get_transaction_hash(tx));
+        return false;
+      }
+    }
+
     if(!check_money_overflow(tx))
     {
       MERROR_VER("tx has money overflow, rejected for tx id= " << get_transaction_hash(tx));
       return false;
+    }
+
+    if (tx.version == transaction::version_1)
+    {
+      uint64_t amount_in = 0;
+      get_inputs_money_amount(tx, amount_in);
+      uint64_t amount_out = get_outs_money_amount(tx);
+
+      if(amount_in <= amount_out)
+      {
+        MERROR_VER("tx with wrong amounts: ins " << amount_in << ", outs " << amount_out << ", rejected for tx id= " << get_transaction_hash(tx));
+        return false;
+      }
     }
 
     if(!keeped_by_block && get_object_blobsize(tx) >= m_blockchain_storage.get_current_cumulative_blocksize_limit() - CRYPTONOTE_COINBASE_BLOB_RESERVED_SIZE)
@@ -818,99 +846,72 @@ namespace cryptonote
       return false;
     }
 
-    if (tx.version == transaction::version_1)
+    if (tx.version == transaction::version_2) // ringct signatures check verifies amounts match
     {
-      uint64_t amount_in = 0;
-      get_inputs_money_amount(tx, amount_in);
-      uint64_t amount_out = get_outs_money_amount(tx);
-
-      if(amount_in <= amount_out)
-      {
-        MERROR_VER("tx with wrong amounts: ins " << amount_in << ", outs " << amount_out << ", rejected for tx id= " << get_transaction_hash(tx));
+      const rct::rctSig &rv = tx.rct_signatures;
+      switch (rv.type) {
+        case rct::RCTTypeNull:
+        // coinbase should not come here, so we reject for all other types
+        MERROR_VER("Unexpected Null rctSig type");
         return false;
-      }
-    }
-
-    if(tx.version <= transaction::version_2 && !tx.vin.size())
-    {
-      MERROR_VER("tx with empty inputs, rejected for tx id= " << get_transaction_hash(tx));
-      return false;
-    }
-
-    if (tx.version >= transaction::version_2) // for version >= 2, ringct signatures check verifies amounts match
-    {
-      if (tx.rct_signatures.outPk.size() != tx.vout.size())
-      {
-        MERROR_VER("tx with mismatched vout/outPk count, rejected for tx id= " << get_transaction_hash(tx));
-        return false;
-      }
-
-      if (tx.version == transaction::version_2)
-      {
-        const rct::rctSig &rv = tx.rct_signatures;
-        switch (rv.type) {
-          case rct::RCTTypeNull:
-            // coinbase should not come here, so we reject for all other types
-            MERROR_VER("Unexpected Null rctSig type");
-            return false;
-          case rct::RCTTypeSimple:
-          case rct::RCTTypeSimpleBulletproof:
-            if (!rct::verRctSimple(rv, true))
-            {
-              MERROR_VER("rct signature semantics check failed");
-              return false;
-            }
-            break;
-          case rct::RCTTypeFull:
-          case rct::RCTTypeFullBulletproof:
-            if (!rct::verRct(rv, true))
-            {
-              MERROR_VER("rct signature semantics check failed");
-              return false;
-            }
-            break;
-          default:
-            MERROR_VER("Unknown rct type: " << rv.type);
-            return false;
-        }
-      }
-      else if (tx.version == transaction::version_3_deregister_tx)
-      {
-        // TODO(doyle): Version should only be valid from the hardfork height
-        tx_extra_service_node_deregister deregister;
-        if (!get_service_node_deregister_from_tx_extra(tx.extra, deregister))
-        {
-          MERROR_VER("TX version partial_deregister_tx or deregister_tx did not contain deregister data");
-          return false;
-        }
-
-        // Check service node to deregister is valid
-        {
-          auto xx__is_service_node_registered = ([](uint64_t block_height, uint32_t service_node_index) -> bool {
-            // Check service_node_index is in list bounds
-            // MERROR_VER("TX version deregister_tx specifies invalid service node index: " << deregister.service_node_index << ", value must be between [0, " << quorum.size() << "]");
-            return true;
-          });
-
-          if (!xx__is_service_node_registered(deregister.block_height, deregister.service_node_index))
+        case rct::RCTTypeSimple:
+        case rct::RCTTypeSimpleBulletproof:
+          if (!rct::verRctSimple(rv, true))
           {
-            MERROR_VER("TX version 3 deregister_tx trying to deregister a non-active node");
+            MERROR_VER("rct signature semantics check failed");
             return false;
           }
-        }
+          break;
 
-        uint32_t quorum_size;
-        if (!get_quorum_list_size_for_height(deregister.block_height, quorum_size))
+        case rct::RCTTypeFull:
+        case rct::RCTTypeFullBulletproof:
+          if (!rct::verRct(rv, true))
+          {
+            MERROR_VER("rct signature semantics check failed");
+            return false;
+          }
+          break;
+        default:
+          MERROR_VER("Unknown rct type: " << rv.type);
+          return false;
+      }
+    }
+    else if (tx.version == transaction::version_3_deregister_tx)
+    {
+      // TODO(doyle): Version should only be valid from the hardfork height
+      tx_extra_service_node_deregister deregister;
+      if (!get_service_node_deregister_from_tx_extra(tx.extra, deregister))
+      {
+        MERROR_VER("TX version partial_deregister_tx or deregister_tx did not contain deregister data");
+        return false;
+      }
+
+      // Check service node to deregister is valid
+      {
+        auto xx__is_service_node_registered = ([](uint64_t block_height, uint32_t service_node_index) -> bool {
+          // Check service_node_index is in list bounds
+          // MERROR_VER("TX version deregister_tx specifies invalid service node index: " << deregister.service_node_index << ", value must be between [0, " << quorum.size() << "]");
+          return true;
+        });
+
+        if (!xx__is_service_node_registered(deregister.block_height, deregister.service_node_index))
         {
-          MERROR_VER("TX version 3 deregister_tx could not get quorum for height: " << deregister.block_height);
+          MERROR_VER("TX version 3 deregister_tx trying to deregister a non-active node");
           return false;
         }
+      }
 
-        if (deregister.votes.size() != quorum_size)
-        {
-          MERROR_VER("TX version 3 deregister_tx requires the number of voters to match: " << deregister.votes.size() << ", which does not match quorum size: " << quorum_size);
-          return false;
-        }
+      uint32_t quorum_size;
+      if (!get_quorum_list_size_for_height(deregister.block_height, quorum_size))
+      {
+        MERROR_VER("TX version 3 deregister_tx could not get quorum for height: " << deregister.block_height);
+        return false;
+      }
+
+      if (deregister.votes.size() != quorum_size)
+      {
+        MERROR_VER("TX version 3 deregister_tx requires the number of voters to match: " << deregister.votes.size() << ", which does not match quorum size: " << quorum_size);
+        return false;
       }
     }
 
