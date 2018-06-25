@@ -34,6 +34,7 @@
 #include <boost/filesystem.hpp>
 #include <boost/range/adaptor/reversed.hpp>
 
+#include "common/rules.h"
 #include "include_base_utils.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
 #include "tx_pool.h"
@@ -3205,25 +3206,7 @@ uint64_t Blockchain::get_dynamic_per_kb_fee_estimate(uint64_t grace_blocks) cons
 bool Blockchain::is_tx_spendtime_unlocked(uint64_t unlock_time) const
 {
   LOG_PRINT_L3("Blockchain::" << __func__);
-  if(unlock_time < CRYPTONOTE_MAX_BLOCK_NUMBER)
-  {
-    // ND: Instead of calling get_current_blockchain_height(), call m_db->height()
-    //    directly as get_current_blockchain_height() locks the recursive mutex.
-    if(m_db->height()-1 + CRYPTONOTE_LOCKED_TX_ALLOWED_DELTA_BLOCKS >= unlock_time)
-      return true;
-    else
-      return false;
-  }
-  else
-  {
-    //interpret as time
-    uint64_t current_time = static_cast<uint64_t>(time(NULL));
-    if(current_time + CRYPTONOTE_LOCKED_TX_ALLOWED_DELTA_SECONDS_V2 >= unlock_time)
-      return true;
-    else
-      return false;
-  }
-  return false;
+  return cryptonote::rules::is_output_unlocked(unlock_time, m_db->height());
 }
 //------------------------------------------------------------------
 // This function locates all outputs associated with a given input (mixins)

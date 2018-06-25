@@ -41,6 +41,7 @@
 #include "include_base_utils.h"
 using namespace epee;
 
+#include "common/rules.h"
 #include "cryptonote_config.h"
 #include "wallet2.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
@@ -4286,27 +4287,7 @@ bool wallet2::is_transfer_unlocked(uint64_t unlock_time, uint64_t block_height) 
 //----------------------------------------------------------------------------------------------------
 bool wallet2::is_tx_spendtime_unlocked(uint64_t unlock_time, uint64_t block_height) const
 {
-  if(unlock_time < CRYPTONOTE_MAX_BLOCK_NUMBER)
-  {
-    //interpret as block index
-    if(m_local_bc_height-1 + CRYPTONOTE_LOCKED_TX_ALLOWED_DELTA_BLOCKS >= unlock_time)
-      return true;
-    else
-      return false;
-  }else
-  {
-    //interpret as time
-    uint64_t current_time = static_cast<uint64_t>(time(NULL));
-    // XXX: this needs to be fast, so we'd need to get the starting heights
-    // from the daemon to be correct once voting kicks in
-    uint64_t v2height = m_nettype == TESTNET ? 624634 : m_nettype == STAGENET ? (uint64_t)-1/*TODO*/ : 1009827;
-    uint64_t leeway = CRYPTONOTE_LOCKED_TX_ALLOWED_DELTA_SECONDS_V2;
-    if(current_time + leeway >= unlock_time)
-      return true;
-    else
-      return false;
-  }
-  return false;
+  return cryptonote::rules::is_output_unlocked(unlock_time, m_local_bc_height);
 }
 //----------------------------------------------------------------------------------------------------
 namespace
