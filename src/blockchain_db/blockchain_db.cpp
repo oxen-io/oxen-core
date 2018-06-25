@@ -335,6 +335,13 @@ transaction BlockchainDB::get_tx(const crypto::hash& h) const
   return tx;
 }
 
+uint64_t BlockchainDB::get_output_unlock_time(const uint64_t amount, const uint64_t amount_index) const
+{
+  output_data_t odata = get_output_key(amount, amount_index);
+
+  return odata.unlock_time;
+}
+
 void BlockchainDB::reset_stats()
 {
   num_calls = 0;
