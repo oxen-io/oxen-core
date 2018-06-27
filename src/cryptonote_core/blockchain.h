@@ -320,7 +320,7 @@ namespace cryptonote
      *
      * @return the target
      */
-    uint64_t get_staking_requirement(uint64_t height);
+    uint64_t get_staking_requirement(uint64_t height) const;
 
     /**
      * @brief adds a block to the blockchain

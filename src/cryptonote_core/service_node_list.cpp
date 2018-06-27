@@ -57,7 +57,6 @@ namespace service_nodes
 
     while (!m_rollback_events.empty())
     {
-      delete m_rollback_events.front();
       m_rollback_events.pop_front();
     }
 
@@ -89,7 +88,7 @@ namespace service_nodes
       }
     }
 
-    m_rollback_events.push_back(new prevent_rollback(current_height));
+    m_rollback_events.push_back(std::unique_ptr<rollback_event>(new prevent_rollback(current_height)));
   }
 
   std::vector<cryptonote::account_public_address> service_node_list::get_service_nodes_pubkeys()
@@ -248,14 +247,17 @@ namespace service_nodes
 
     while (!m_rollback_events.empty() && m_rollback_events.front()->m_block_height < block_height - ROLLBACK_EVENT_EXPIRATION_BLOCKS)
     {
-      delete m_rollback_events.front();
       m_rollback_events.pop_front();
     }
 
     cryptonote::account_public_address winner_address = find_service_node_from_miner_tx(block.miner_tx, block_height);
     if (m_service_nodes_last_reward.count(winner_address) == 1)
     {
-      m_rollback_events.push_back(new rollback_change(block_height, winner_address, m_service_nodes_last_reward[winner_address]));
+      m_rollback_events.push_back(
+        std::unique_ptr<rollback_event>(
+          new rollback_change(block_height, winner_address, m_service_nodes_last_reward[winner_address])
+        )
+      );
       m_service_nodes_last_reward[winner_address] = std::pair<uint64_t, size_t>(block_height, 0);
     }
 
@@ -264,7 +266,7 @@ namespace service_nodes
       auto i = m_service_nodes_last_reward.find(address);
       if (i != m_service_nodes_last_reward.end())
       {
-        m_rollback_events.push_back(new rollback_change(block_height, address, i->second));
+        m_rollback_events.push_back(std::unique_ptr<rollback_event>(new rollback_change(block_height, address, i->second)));
         m_service_nodes_last_reward.erase(i);
       }
     }
@@ -278,12 +280,12 @@ namespace service_nodes
         auto iter = m_service_nodes_last_reward.find(address);
         if (iter == m_service_nodes_last_reward.end())
         {
-          m_rollback_events.push_back(new rollback_new(block_height, address));
+          m_rollback_events.push_back(std::unique_ptr<rollback_event>(new rollback_new(block_height, address)));
           m_service_nodes_last_reward[address] = std::pair<uint64_t, size_t>(block_height, index);
         }
         else
         {
-          m_rollback_events.push_back(new rollback_change(block_height, address, iter->second));
+          m_rollback_events.push_back(std::unique_ptr<rollback_event>(new rollback_change(block_height, address, iter->second)));
           iter->second = std::pair<uint64_t, size_t>(block_height, index);
         }
       }
@@ -300,7 +302,6 @@ namespace service_nodes
         init();
         break;
       }
-      delete m_rollback_events.back();
       m_rollback_events.pop_back();
     }
   }

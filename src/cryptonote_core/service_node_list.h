@@ -103,7 +103,7 @@ namespace service_nodes
     // registrations that occured in the same block. index = 0 for block reward, 1 for first transaction, etc.
     // hence a std::pair<uint64_t, size_t> is used here for this value.
     std::unordered_map<cryptonote::account_public_address, std::pair<uint64_t, size_t>> m_service_nodes_last_reward;
-    std::list<rollback_event*> m_rollback_events;
+    std::list<std::unique_ptr<rollback_event>> m_rollback_events;
     cryptonote::Blockchain& m_blockchain;
 
   };

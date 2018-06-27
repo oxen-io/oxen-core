@@ -841,7 +841,7 @@ difficulty_type Blockchain::get_difficulty_for_next_block()
   return diff;
 }
 //------------------------------------------------------------------
-uint64_t Blockchain::get_staking_requirement(uint64_t height)
+uint64_t Blockchain::get_staking_requirement(uint64_t height) const
 {
   return UINT64_C(1000000000000);
 }
