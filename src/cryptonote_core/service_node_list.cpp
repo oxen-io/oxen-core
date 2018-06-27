@@ -103,7 +103,7 @@ namespace service_nodes
 
   bool service_node_list::reg_tx_has_correct_unlock_time(const cryptonote::transaction& tx, uint64_t block_height)
   {
-    return tx.unlock_time < CRYPTONOTE_MAX_BLOCK_NUMBER && tx.unlock_time == block_height + STAKING_REQUIREMENT_LOCK_BLOCKS;
+    return tx.unlock_time < CRYPTONOTE_MAX_BLOCK_NUMBER && tx.unlock_time >= block_height + STAKING_REQUIREMENT_LOCK_BLOCKS;
   }
 
 
