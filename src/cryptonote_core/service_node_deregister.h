@@ -83,17 +83,20 @@ namespace loki
       uint32_t          service_node_index;
       uint32_t          voters_quorum_index;
       crypto::signature signature;
+
+      bool get_pubkey(const std::vector<crypto::public_key>& quorum, crypto::public_key& pubkey) const;
     };
 
-    crypto::hash make_unsigned_vote_hash(const cryptonote::tx_extra_service_node_deregister& deregister);
-    crypto::hash make_unsigned_vote_hash(const vote& v);
+    crypto::signature sign_vote(uint64_t block_height, uint32_t service_node_index, const crypto::public_key& pub, const crypto::secret_key& sec);
+    bool verify_vote(uint64_t block_height, uint32_t service_node_index, crypto::public_key p, crypto::signature s);
+    bool verify_votes(uint64_t block_height, uint32_t service_node_index, const std::vector<std::pair<crypto::public_key, crypto::signature>>& keys_and_sigs);
 
-    bool verify(const cryptonote::tx_extra_service_node_deregister& deregister,
-                cryptonote::vote_verification_context& vvc,
-                const std::vector<crypto::public_key> &quorum);
+    bool verify_deregister(const cryptonote::tx_extra_service_node_deregister& deregister,
+                           cryptonote::vote_verification_context& vvc,
+                           const std::vector<crypto::public_key> &quorum);
 
-    bool verify(const vote& v, cryptonote::vote_verification_context &vvc,
-                const std::vector<crypto::public_key> &quorum);
+    bool verify_vote(const vote& v, cryptonote::vote_verification_context &vvc,
+                     const std::vector<crypto::public_key> &quorum);
   };
 
   // TODO(doyle): We need to a scheme to remove dead votes, see tx_memory_pool::on_idle

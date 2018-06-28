@@ -43,6 +43,7 @@ namespace cryptonote
     bool m_signature_not_valid;
     bool m_added_to_pool;
     bool m_full_tx_deregister_made;
+    bool m_not_enough_votes;
   };
 
   struct tx_verification_context
