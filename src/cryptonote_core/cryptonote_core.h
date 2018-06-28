@@ -214,7 +214,7 @@ namespace cryptonote
      /**
       * @brief mark the deregister vote as having been relayed in the vote pool
       */
-     virtual void set_deregister_vote_relayed(const std::vector<loki::service_node_deregister::vote>& votes);
+     virtual void set_deregister_votes_relayed(const std::vector<loki::service_node_deregister::vote>& votes);
 
      /**
       * @brief gets the miner instance
@@ -790,16 +790,6 @@ namespace cryptonote
      bool get_quorum_list_for_height(uint64_t height, std::vector<crypto::public_key>& quorum) const;
 
      /**
-      * @brief Get the size of the deterministic list of service node's public keys for quorum testing
-      *
-      * @param height Block height to deterministically get the size from
-      * @param quorum_size The size of the list is put into this param
-
-      * @return Whether the list size could be determined
-      */
-     bool get_quorum_list_size_for_height(uint64_t block_height, uint32_t &quorum_size) const;
-
-     /**
       * @brief Add a vote to deregister a service node from network
       *
       * @param vote The vote for deregistering a service node.
@@ -965,7 +955,7 @@ namespace cryptonote
       *
       * @return true, necessary for binding this function to a periodic invoker
       */
-     bool relay_deregister_vote();
+     bool relay_deregister_votes();
 
      /**
       * @brief checks DNS versions

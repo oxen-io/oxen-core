@@ -2050,7 +2050,7 @@ namespace cryptonote
       r.votes.push_back(req.vote);
 
       cryptonote_connection_context fake_context = AUTO_VAL_INIT(fake_context);
-      m_core.get_protocol()->relay_deregister_vote(r, fake_context);
+      m_core.get_protocol()->relay_deregister_votes(r, fake_context);
     }
 
     resp.status = CORE_RPC_STATUS_OK;
