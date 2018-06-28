@@ -253,7 +253,7 @@ int main(int argc, char* argv[])
     LOG_PRINT_L0("No inputs given");
     return 1;
   }
-  std::vector<std::unique_ptr<Blockchain>> core_storage(inputs.size());
+  std::vector<Blockchain*> core_storage(inputs.size());
   for (size_t n = 0; n < inputs.size(); ++n)
   {
     // This is done this way because of the circular constructors.
@@ -268,7 +268,7 @@ int main(int argc, char* argv[])
         m_mempool(m_blockchain) { }
     };
     BlockchainObjects* blockchain_objects = new BlockchainObjects();
-    core_storage[n].reset(&(blockchain_objects->m_blockchain));
+    core_storage[n] = &(blockchain_objects->m_blockchain);
 
     BlockchainDB* db = new_db(db_type);
     if (db == NULL)

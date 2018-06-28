@@ -181,9 +181,9 @@ int main(int argc, char* argv[])
       m_mempool(m_blockchain) { }
   };
   BlockchainObjects* blockchain_objects = new BlockchainObjects();
-  std::unique_ptr<Blockchain> core_storage;
+  Blockchain* core_storage;
   tx_memory_pool& m_mempool = blockchain_objects->m_mempool;
-  core_storage.reset(&(blockchain_objects->m_blockchain));
+  core_storage = &(blockchain_objects->m_blockchain);
   BlockchainDB* db = new_db(db_type);
   if (db == NULL)
   {
