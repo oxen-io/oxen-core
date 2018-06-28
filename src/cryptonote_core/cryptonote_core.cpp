@@ -1053,7 +1053,7 @@ namespace cryptonote
         return false;
       }
 
-      if (!loki::service_node_deregister::verify(deregister, tvc.m_vote_ctx, quorum))
+      if (!loki::service_node_deregister::verify_deregister(deregister, tvc.m_vote_ctx, quorum))
       {
         tvc.m_verifivation_failed = true;
         LOG_PRINT_L1("tx " << tx_hash << ": version 3 deregister_tx signed votes do not validate with the spend keys in the quorum.");
