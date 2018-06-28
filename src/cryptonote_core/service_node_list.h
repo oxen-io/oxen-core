@@ -57,18 +57,18 @@ namespace service_nodes
     template<typename T>
     void block_added_generic(const cryptonote::block& block, const T& txs);
 
-    bool reg_tx_has_correct_unlock_time(const cryptonote::transaction& tx, uint64_t block_height);
-    bool reg_tx_extract_fields(const cryptonote::transaction& tx, cryptonote::account_public_address& address, crypto::public_key& tx_pub_key);
-    bool is_reg_tx_staking_output(const cryptonote::transaction& tx, int i, uint64_t block_height, crypto::key_derivation derivation, hw::device& hwdev);
+    bool reg_tx_has_correct_unlock_time(const cryptonote::transaction& tx, uint64_t block_height) const;
+    bool reg_tx_extract_fields(const cryptonote::transaction& tx, cryptonote::account_public_address& address, crypto::public_key& tx_pub_key) const;
+    bool is_reg_tx_staking_output(const cryptonote::transaction& tx, int i, uint64_t block_height, crypto::key_derivation derivation, hw::device& hwdev) const;
 
-    cryptonote::account_public_address find_service_node_from_miner_tx(const cryptonote::transaction& miner_tx, uint64_t block_height);
+    cryptonote::account_public_address find_service_node_from_miner_tx(const cryptonote::transaction& miner_tx, uint64_t block_height) const;
 
     class rollback_event
     {
     public:
       rollback_event(uint64_t block_height);
       virtual ~rollback_event() { }
-      virtual bool apply(std::unordered_map<cryptonote::account_public_address, std::pair<uint64_t, size_t>>& service_nodes_last_reward) = 0;
+      virtual bool apply(std::unordered_map<cryptonote::account_public_address, std::pair<uint64_t, size_t>>& service_nodes_last_reward) const = 0;
       uint64_t m_block_height;
     };
 
@@ -76,7 +76,7 @@ namespace service_nodes
     {
     public:
       rollback_change(uint64_t block_height, cryptonote::account_public_address address, std::pair<uint64_t, size_t> height_index);
-      bool apply(std::unordered_map<cryptonote::account_public_address, std::pair<uint64_t, size_t>>& service_nodes_last_reward);
+      bool apply(std::unordered_map<cryptonote::account_public_address, std::pair<uint64_t, size_t>>& service_nodes_last_reward) const;
     private:
       cryptonote::account_public_address m_address;
       std::pair<uint64_t, size_t> m_height_index;
@@ -86,7 +86,7 @@ namespace service_nodes
     {
     public:
       rollback_new(uint64_t block_height, cryptonote::account_public_address address);
-      bool apply(std::unordered_map<cryptonote::account_public_address, std::pair<uint64_t, size_t>>& service_nodes_last_reward);
+      bool apply(std::unordered_map<cryptonote::account_public_address, std::pair<uint64_t, size_t>>& service_nodes_last_reward) const;
     private:
       cryptonote::account_public_address m_address;
     };
@@ -95,7 +95,7 @@ namespace service_nodes
     {
     public:
       prevent_rollback(uint64_t block_height);
-      bool apply(std::unordered_map<cryptonote::account_public_address, std::pair<uint64_t, size_t>>& service_nodes_last_reward);
+      bool apply(std::unordered_map<cryptonote::account_public_address, std::pair<uint64_t, size_t>>& service_nodes_last_reward) const;
     };
 
     // Service nodes are organized by time since last reward or registration

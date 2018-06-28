@@ -101,13 +101,12 @@ namespace service_nodes
     return ret;
   }
 
-  bool service_node_list::reg_tx_has_correct_unlock_time(const cryptonote::transaction& tx, uint64_t block_height)
+  bool service_node_list::reg_tx_has_correct_unlock_time(const cryptonote::transaction& tx, uint64_t block_height) const
   {
     return tx.unlock_time < CRYPTONOTE_MAX_BLOCK_NUMBER && tx.unlock_time >= block_height + STAKING_REQUIREMENT_LOCK_BLOCKS;
   }
 
-
-  bool service_node_list::reg_tx_extract_fields(const cryptonote::transaction& tx, cryptonote::account_public_address& address, crypto::public_key& tx_pub_key)
+  bool service_node_list::reg_tx_extract_fields(const cryptonote::transaction& tx, cryptonote::account_public_address& address, crypto::public_key& tx_pub_key) const
   {
     address = cryptonote::get_account_public_address_from_tx_extra(tx.extra);
     tx_pub_key = cryptonote::get_tx_pub_key_from_extra(tx.extra);
@@ -116,7 +115,7 @@ namespace service_nodes
       tx_pub_key != crypto::null_pkey;
   }
 
-  bool service_node_list::is_reg_tx_staking_output(const cryptonote::transaction& tx, int i, uint64_t block_height, crypto::key_derivation derivation, hw::device& hwdev)
+  bool service_node_list::is_reg_tx_staking_output(const cryptonote::transaction& tx, int i, uint64_t block_height, crypto::key_derivation derivation, hw::device& hwdev) const
   {
     if (tx.vout[i].target.type() != typeid(cryptonote::txout_to_key))
     {
@@ -196,7 +195,7 @@ namespace service_nodes
     block_added_generic(block, txs);
   }
 
-  cryptonote::account_public_address service_node_list::find_service_node_from_miner_tx(const cryptonote::transaction& miner_tx, uint64_t height)
+  cryptonote::account_public_address service_node_list::find_service_node_from_miner_tx(const cryptonote::transaction& miner_tx, uint64_t height) const
   {
     if (miner_tx.vout.size() != 3)
     {
@@ -415,7 +414,7 @@ namespace service_nodes
   {
   }
 
-  bool service_node_list::rollback_change::apply(std::unordered_map<cryptonote::account_public_address, std::pair<uint64_t, size_t>>& service_nodes_last_reward)
+  bool service_node_list::rollback_change::apply(std::unordered_map<cryptonote::account_public_address, std::pair<uint64_t, size_t>>& service_nodes_last_reward) const
   {
     auto iter = service_nodes_last_reward.find(m_address);
     if (iter == service_nodes_last_reward.end())
@@ -432,7 +431,7 @@ namespace service_nodes
   {
   }
 
-  bool service_node_list::rollback_new::apply(std::unordered_map<cryptonote::account_public_address, std::pair<uint64_t, size_t>>& service_nodes_last_reward)
+  bool service_node_list::rollback_new::apply(std::unordered_map<cryptonote::account_public_address, std::pair<uint64_t, size_t>>& service_nodes_last_reward) const
   {
     auto iter = service_nodes_last_reward.find(m_address);
     if (iter == service_nodes_last_reward.end())
@@ -448,7 +447,7 @@ namespace service_nodes
   {
   }
 
-  bool service_node_list::prevent_rollback::apply(std::unordered_map<cryptonote::account_public_address, std::pair<uint64_t, size_t>>& service_nodes_last_reward)
+  bool service_node_list::prevent_rollback::apply(std::unordered_map<cryptonote::account_public_address, std::pair<uint64_t, size_t>>& service_nodes_last_reward) const
   {
     MERROR("Unable to rollback any further!");
     return false;
