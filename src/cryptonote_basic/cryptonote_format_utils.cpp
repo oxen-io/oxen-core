@@ -467,22 +467,6 @@ namespace cryptonote
     return true;
   }
   //---------------------------------------------------------------
-  bool add_serializable_tx_extra_field_to_tx_extra(std::vector<uint8_t>& tx_extra, tx_extra_field& field, uint8_t tag)
-  {
-    std::ostringstream oss;
-    binary_archive<true> ar(oss);
-    bool r = ::do_serialize(ar, field);
-    if (!r) return false;
-
-    const size_t pos = tx_extra.size();
-    const std::string tx_extra_str = oss.str();
-    tx_extra.resize(tx_extra.size() + 1 + tx_extra_str.size());
-    tx_extra[pos] = tag;
-    memcpy(&tx_extra[pos+1], tx_extra_str.data(), tx_extra_str.size());
-
-    return true;
-  }
-  //---------------------------------------------------------------
   bool add_account_public_address_to_tx_extra(std::vector<uint8_t>& tx_extra, const cryptonote::account_public_address& address)
   {
     tx_extra.resize(tx_extra.size() + 1 + sizeof(cryptonote::account_public_address));
