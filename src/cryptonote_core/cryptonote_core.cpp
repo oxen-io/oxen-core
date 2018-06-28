@@ -794,7 +794,7 @@ namespace cryptonote
       return false;
     }
 
-    if (tx.version > transaction::version_1 && tx.version < transaction::version_3_deregister_tx)
+    if (tx.version == transaction::version_2)
     {
       if (tx.rct_signatures.outPk.size() != tx.vout.size())
       {
@@ -851,9 +851,9 @@ namespace cryptonote
       const rct::rctSig &rv = tx.rct_signatures;
       switch (rv.type) {
         case rct::RCTTypeNull:
-        // coinbase should not come here, so we reject for all other types
-        MERROR_VER("Unexpected Null rctSig type");
-        return false;
+          // coinbase should not come here, so we reject for all other types
+          MERROR_VER("Unexpected Null rctSig type");
+          return false;
         case rct::RCTTypeSimple:
         case rct::RCTTypeSimpleBulletproof:
           if (!rct::verRctSimple(rv, true))
@@ -876,45 +876,6 @@ namespace cryptonote
           return false;
       }
     }
-    else if (tx.version == transaction::version_3_deregister_tx)
-    {
-      // TODO(doyle): Version should only be valid from the hardfork height
-      tx_extra_service_node_deregister deregister;
-      if (!get_service_node_deregister_from_tx_extra(tx.extra, deregister))
-      {
-        MERROR_VER("TX version partial_deregister_tx or deregister_tx did not contain deregister data");
-        return false;
-      }
-
-      // Check service node to deregister is valid
-      {
-        auto xx__is_service_node_registered = ([](uint64_t block_height, uint32_t service_node_index) -> bool {
-          // Check service_node_index is in list bounds
-          // MERROR_VER("TX version deregister_tx specifies invalid service node index: " << deregister.service_node_index << ", value must be between [0, " << quorum.size() << "]");
-          return true;
-        });
-
-        if (!xx__is_service_node_registered(deregister.block_height, deregister.service_node_index))
-        {
-          MERROR_VER("TX version 3 deregister_tx trying to deregister a non-active node");
-          return false;
-        }
-      }
-
-      uint32_t quorum_size;
-      if (!get_quorum_list_size_for_height(deregister.block_height, quorum_size))
-      {
-        MERROR_VER("TX version 3 deregister_tx could not get quorum for height: " << deregister.block_height);
-        return false;
-      }
-
-      if (deregister.votes.size() != quorum_size)
-      {
-        MERROR_VER("TX version 3 deregister_tx requires the number of voters to match: " << deregister.votes.size() << ", which does not match quorum size: " << quorum_size);
-        return false;
-      }
-    }
-
     return true;
   }
   //-----------------------------------------------------------------------------------------------
@@ -1046,6 +1007,21 @@ namespace cryptonote
         return false;
       }
 
+      // Check service node to deregister is valid
+      {
+        auto xx__is_service_node_registered = ([](uint64_t block_height, uint32_t service_node_index) -> bool {
+          // Check service_node_index is in list bounds
+          // MERROR_VER("TX version deregister_tx specifies invalid service node index: " << deregister.service_node_index << ", value must be between [0, " << quorum.size() << "]");
+          return true;
+        });
+
+        if (!xx__is_service_node_registered(deregister.block_height, deregister.service_node_index))
+        {
+          MERROR_VER("TX version 3 deregister_tx trying to deregister a non-active node");
+          return false;
+        }
+      }
+
       std::vector<crypto::public_key> quorum;
       if (!get_quorum_list_for_height(deregister.block_height, quorum))
       {
@@ -1061,6 +1037,9 @@ namespace cryptonote
       }
     }
 
+    // TODO(doyle): Because there is now a vote threshold, we need to prevent
+    // different combinations of votes beign submitted to the network. This
+    // logic probably wants to live in m_mempool.have_tx()
     if(m_mempool.have_tx(tx_hash))
     {
       LOG_PRINT_L2("tx " << tx_hash << "already have transaction in tx_pool");
@@ -1111,19 +1090,19 @@ namespace cryptonote
     m_mempool.set_relayed(txs);
   }
   //-----------------------------------------------------------------------------------------------
-  void core::set_deregister_vote_relayed(const std::vector<loki::service_node_deregister::vote>& votes)
+  void core::set_deregister_votes_relayed(const std::vector<loki::service_node_deregister::vote>& votes)
   {
     m_deregister_vote_pool.set_relayed(votes);
   }
   //-----------------------------------------------------------------------------------------------
-  bool core::relay_deregister_vote()
+  bool core::relay_deregister_votes()
   {
     NOTIFY_NEW_DEREGISTER_VOTE::request req;
     req.votes = m_deregister_vote_pool.get_relayable_votes();
     if (!req.votes.empty())
     {
       cryptonote_connection_context fake_context = AUTO_VAL_INIT(fake_context);
-      get_protocol()->relay_deregister_vote(req, fake_context);
+      get_protocol()->relay_deregister_votes(req, fake_context);
     }
 
     return true;
@@ -1448,7 +1427,7 @@ namespace cryptonote
 
     m_fork_moaner.do_call(boost::bind(&core::check_fork_time, this));
     m_txpool_auto_relayer.do_call(boost::bind(&core::relay_txpool_transactions, this));
-    m_deregisters_auto_relayer.do_call(boost::bind(&core::relay_deregister_vote, this));
+    m_deregisters_auto_relayer.do_call(boost::bind(&core::relay_deregister_votes, this));
     m_check_updates_interval.do_call(boost::bind(&core::check_updates, this));
     m_check_disk_space_interval.do_call(boost::bind(&core::check_disk_space, this));
     m_miner.on_idle();
@@ -1667,13 +1646,6 @@ namespace cryptonote
       return result;
   }
   //-----------------------------------------------------------------------------------------------
-  bool core::get_quorum_list_size_for_height(uint64_t height, uint32_t &quorum_size) const
-  {
-    (void)height;
-    quorum_size = 10;
-    return true;
-  }
-  //-----------------------------------------------------------------------------------------------
   bool core::get_quorum_list_for_height(uint64_t height, std::vector<crypto::public_key>& quorum) const
   {
     const std::vector<crypto::public_key> pub_keys = xx__get_service_nodes_pub_keys_for_height(height);
@@ -1686,24 +1658,15 @@ namespace cryptonote
     }
 
     // Generate index mapping to pub_keys
-    std::vector<size_t> pub_keys_indexes;
-    {
-      pub_keys_indexes.reserve(pub_keys.size());
-      for (size_t i = 0; i < pub_keys.size(); i++) pub_keys_indexes.push_back(i);
-    }
+    std::vector<size_t> pub_keys_indexes(pub_keys.size());
+    for (size_t i = 0; i < pub_keys.size(); i++) pub_keys_indexes[i] = i;
 
-    uint32_t xx__quorum_size;
-    if (!get_quorum_list_size_for_height(height, xx__quorum_size))
-    {
-      LOG_ERROR("Could not determine quorum list size for height: " << height);
-      return false;
-    }
+    size_t const quorum_size = std::min(pub_keys.size(), (size_t)10);
+    quorum.resize(quorum_size);
 
-    // Shuffle indexes and pull out from quorum
-    quorum.resize(xx__quorum_size);
+    // Shuffle indexes and pull out from the pub key list into quorum
     if (0) // TODO(doyle): Temp. For debugging with deterministic lists
     {
-      // TODO(doyle): We should use more of the data from the hash
       uint64_t seed = 0;
       std::memcpy(&seed, block_hash.data, std::min(sizeof(seed), sizeof(block_hash.data)));
 
@@ -1735,14 +1698,11 @@ namespace cryptonote
       tx_verification_context tvc;
       blobdata const tx_blob = tx_to_blob(deregister_tx);
 
-      handle_incoming_tx(tx_blob, tvc, false /*keeped_by_block*/, false /*relayed*/, false /*do_not_relay*/);
-      if (!tvc.m_verifivation_failed)
+      result = handle_incoming_tx(tx_blob, tvc, false /*keeped_by_block*/, false /*relayed*/, false /*do_not_relay*/);
+      if (!result || tvc.m_verifivation_failed)
       {
-        // TODO(doyle): logging
-      }
-      else
-      {
-        printf("Full deregister tx submitted for block height (%zu) snode (%d)\n", vote.block_height, vote.service_node_index);
+        LOG_ERROR("A full deregister tx for height: " << vote.block_height << " and service node: " 
+                  << vote.service_node_index << " could not be verified and was not added to the memory pool.");
       }
     }
 

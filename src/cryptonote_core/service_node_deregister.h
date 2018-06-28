@@ -30,6 +30,7 @@
 
 #include <vector>
 #include <unordered_map>
+#include <utility>
 
 #include "crypto/crypto.h"
 #include "cryptonote_basic/cryptonote_basic.h"
@@ -45,23 +46,6 @@ namespace cryptonote
 
 namespace loki
 {
-  // TODO(doyle): Complexity analysis for managing votes, determine the upper
-  // and lower bounds of what numbers we expect.
-
-  // std::vector<Block Height Entries> partial_deregisters
-  // My assumption is that the block heights we keep votes around for
-  // is going to be very small and short lived < 10 entries ~ 20mins worth of
-  // blocks, avg block time 120s. So linearly scanning for a block height is
-  // effective with low code complexity/computation and memory usage.
-
-  // std::unordered_map<Node Index, std::Vector<Votes>> service_node_votes
-  // In each block height we have our quorum 10 SNodes querying 1% of the
-  // network. Assuming a very generous 50,000 node network, 1% of nodes is 500,
-  // with each needing 10 votes to kick off the network, so 500 entries in the
-  // map with 10 votes each.
-  // As opposed to (500 nodes * 10 votes) = 5000 votes to sort and search if in
-  // a vector per block height.
-
   namespace xx__service_node
   {
     extern const char *secret_spend_keys_str[100];
@@ -83,8 +67,6 @@ namespace loki
       uint32_t          service_node_index;
       uint32_t          voters_quorum_index;
       crypto::signature signature;
-
-      bool get_pubkey(const std::vector<crypto::public_key>& quorum, crypto::public_key& pubkey) const;
     };
 
     crypto::signature sign_vote(uint64_t block_height, uint32_t service_node_index, const crypto::public_key& pub, const crypto::secret_key& sec);
@@ -99,43 +81,60 @@ namespace loki
                      const std::vector<crypto::public_key> &quorum);
   };
 
-  // TODO(doyle): We need to a scheme to remove dead votes, see tx_memory_pool::on_idle
   class deregister_vote_pool
   {
     public:
-      class pool_entry
-      {
-        public:
-          pool_entry(uint64_t time_last_sent_p2p, service_node_deregister::vote vote)
-            : m_time_last_sent_p2p(time_last_sent_p2p), m_vote(vote) {}
-
-          uint64_t m_time_last_sent_p2p;
-          service_node_deregister::vote m_vote;
-      };
-
-      struct pool_group
-      {
-        using service_node_index = uint32_t;
-        uint64_t block_height;
-        time_t   time_group_created;
-        std::unordered_map<service_node_index, std::vector<pool_entry>> service_node;
-      };
-
       /**
        *  @return True if vote was valid and in the pool already or just added (check vote verfication for specific case).
        */
       bool add_vote(const service_node_deregister::vote& new_vote, cryptonote::vote_verification_context& vvc,
                     const std::vector<crypto::public_key>& quorum, cryptonote::transaction &tx);
 
-      // TODO(doyle): Review relay behaviour and all the cases when it should be triggered
+      // TODO(loki): Review relay behaviour and all the cases when it should be triggered
+      void                                       set_relayed         (const std::vector<service_node_deregister::vote>& votes);
+      void                                       remove_expired_votes(uint64_t height);
+      std::vector<service_node_deregister::vote> get_relayable_votes () const;
+
       void xx__print_service_node() const;
-      void set_relayed           (const std::vector<service_node_deregister::vote>& votes);
-      void remove_expired_votes  (uint64_t height);
-      std::vector<service_node_deregister::vote> get_relayable_votes() const;
+
 
     private:
-      std::vector<pool_group> m_deregisters;
+      struct deregister
+      {
+          deregister(uint64_t time_last_sent_p2p, service_node_deregister::vote vote)
+            : m_time_last_sent_p2p(time_last_sent_p2p), m_vote(vote) {}
+
+          uint64_t m_time_last_sent_p2p;
+          service_node_deregister::vote m_vote;
+      };
+
+      struct deregister_group
+      {
+        uint64_t block_height;
+        uint32_t service_node_index;
+        time_t   time_group_created;
+
+        bool operator==(const deregister_group &other) const
+        {
+          bool result = (block_height == other.block_height) && (service_node_index == other.service_node_index);
+          return result;
+        }
+      };
+
+      struct deregister_group_hasher
+      {
+        size_t operator()(const deregister_group& deregister) const
+        {
+          size_t res = 17;
+          res = res * 31 + std::hash<uint64_t>()(deregister.block_height);
+          res = res * 31 + std::hash<uint32_t>()(deregister.service_node_index);
+          res = res * 31 + std::hash<uint32_t>()(deregister.time_group_created);
+          return res;
+        }
+      };
+
+      std::unordered_map<deregister_group, std::vector<deregister>, deregister_group_hasher> m_deregisters;
       mutable epee::critical_section m_lock;
   };
-
 }; // namespace loki
+

@@ -43,6 +43,7 @@
 #undef LOKI_DEFAULT_LOG_CATEGORY
 #define LOKI_DEFAULT_LOG_CATEGORY "service_nodes"
 
+
 namespace loki
 {
   namespace xx__service_node
@@ -492,19 +493,17 @@ namespace loki
 
   };
 
-  struct copy_region
-  {
-    void const *ptr;
-    size_t num_bytes;
-  };
-
   static crypto::hash make_hash_from(uint64_t block_height, uint32_t service_node_index)
   {
-    char buf[sizeof(uint64_t) + sizeof(uint32_t)];
-    *(reinterpret_cast<uint64_t*>(&buf[0])) = block_height;
-    *(reinterpret_cast<uint32_t*>(&buf[sizeof(uint64_t)])) = service_node_index;
-    crypto::hash result = crypto::null_hash;
-    crypto::cn_fast_hash(buf, sizeof(uint64_t) + sizeof(uint32_t), result);
+    const int buf_size = sizeof(block_height) + sizeof(service_node_index);
+    char buf[buf_size];
+
+    memcpy(buf, reinterpret_cast<void *>(&block_height), sizeof(block_height));
+    memcpy(buf + sizeof(block_height), reinterpret_cast<void *>(&service_node_index), sizeof(service_node_index));
+
+    crypto::hash result;
+    crypto::cn_fast_hash(buf, buf_size, result);
+
     return result;
   }
 
@@ -525,23 +524,21 @@ namespace loki
   {
     crypto::hash hash = make_hash_from(block_height, service_node_index);
     for (auto& key_and_sig : keys_and_sigs)
+    {
       if (!crypto::check_signature(hash, key_and_sig.first, key_and_sig.second))
+      {
         return false;
+      }
+    }
+
     return true;
   }
 
-  static bool xx__is_service_node_registered(uint64_t block_height, uint32_t service_node_index)
-  {
-    // TODO(doyle): Check service_node_index is in list bounds
-    // MERROR_VER("TX version deregister_tx specifies invalid service node index: " << deregister.service_node_index << ", value must be between [0, " << quorum.size() << "]");
-    return true;
-  }
-
-  static bool verify_votes_helper(const cryptonote::tx_extra_service_node_deregister& deregister, 
+  static bool verify_votes_helper(const cryptonote::tx_extra_service_node_deregister& deregister,
                                   cryptonote::vote_verification_context &vvc,
                                   const std::vector<crypto::public_key> &quorum)
   {
-    if (xx__is_service_node_registered(deregister.block_height, deregister.service_node_index))
+    for (const cryptonote::tx_extra_service_node_deregister::vote &vote : deregister.votes)
     {
       bool all_votes_verified = true;
       std::vector<std::pair<crypto::public_key, crypto::signature>> keys_and_sigs;
@@ -557,29 +554,23 @@ namespace loki
       }
       return service_node_deregister::verify_votes(deregister.block_height, deregister.service_node_index, keys_and_sigs);
     }
-    else
-    {
-      // TODO(doyle): Update the log print to print out the correct bounds
-      vvc.m_service_node_index_out_of_bounds = true;
-      LOG_PRINT_L1("Service node index to deregister in partial deregister was out of bounds: " << deregister.service_node_index << ", expected to be in range of: [0, ]");
-    }
 
     vvc.m_verification_failed = true;
     return false;
   }
 
-  bool service_node_deregister::verify_deregister(const cryptonote::tx_extra_service_node_deregister& deregister, 
+  bool service_node_deregister::verify_deregister(const cryptonote::tx_extra_service_node_deregister& deregister,
                                                   cryptonote::vote_verification_context &vvc,
                                                   const std::vector<crypto::public_key> &quorum)
   {
-    if (!verify_votes_helper(deregister, vvc, quorum))
-      return false;
     if (deregister.votes.size() < MIN_VOTES_TO_KICK_SERVICE_NODE)
     {
       vvc.m_not_enough_votes = true;
       return false;
     }
-    return true;
+
+    bool result = verify_votes_helper(deregister, vvc, quorum);
+    return result;
   }
 
   bool service_node_deregister::verify_vote(const vote& v, cryptonote::vote_verification_context &vvc,
@@ -596,28 +587,21 @@ namespace loki
   {
     CRITICAL_REGION_LOCAL(m_lock);
     printf("\nReceived new deregister vote, current state is: \n");
-    for (auto const &deregister_at_height : m_deregisters)
+    for (auto const &deregister_entry : m_deregisters)
     {
-      printf("    ");
-      printf("block[%zu]\n", deregister_at_height.block_height);
+      const deregister_group &deregisters_for = deregister_entry.first;
 
-      for (auto it = deregister_at_height.service_node.begin(); it != deregister_at_height.service_node.end(); it++)
+      printf("  ");
+      printf("block[%zu]\n",              deregisters_for.block_height);
+      printf("snode_quorum_index[%d]:\n", deregisters_for.service_node_index);
+
+      const std::vector<deregister> &deregister_vector = deregister_entry.second;
+      for (size_t i = 0; i < deregister_vector.size(); i++)
       {
-        printf("    ");
-        printf("    ");
-        printf("snode_quorum_index[%d]:\n", it->first);
-
-        const auto &vote_list = it->second;
-        for (size_t i = 0; i < vote_list.size(); i++)
-        {
-          auto const &pool_entry      = vote_list[i];
-          const std::string sig = epee::string_tools::pod_to_hex(pool_entry.m_vote.signature);
-
-          printf("    ");
-          printf("    ");
-          printf("    ");
-          printf("[%zu: P2P: %010zu] %.*s (index %d in quorum)\n", i, pool_entry.m_time_last_sent_p2p, 10, sig.c_str(), pool_entry.m_vote.voters_quorum_index);
-        }
+        const auto &deregister = deregister_vector[i];
+        const std::string sig  = epee::string_tools::pod_to_hex(deregister.m_vote.signature);
+        printf("  "); printf("  ");
+        printf("[%zu: P2P: %010zu] %.*s (index %d in quorum)\n", i, deregister.m_time_last_sent_p2p, 10, sig.c_str(), deregister.m_vote.voters_quorum_index);
       }
     }
   }
@@ -629,25 +613,25 @@ namespace loki
 
     for (const service_node_deregister::vote &find_vote : votes)
     {
-      for (pool_group &deregisters_for : m_deregisters)
+      deregister_group desired_group   = {};
+      desired_group.block_height       = find_vote.block_height;
+      desired_group.service_node_index = find_vote.service_node_index;
+
+      auto deregister_entry = m_deregisters.find(desired_group);
+      if (deregister_entry != m_deregisters.end())
       {
-        if (deregisters_for.block_height == find_vote.block_height)
+        std::vector<deregister> &deregister_vector = deregister_entry->second;
+        int xx__vote_index = 0;
+        for (auto &deregister : deregister_vector)
         {
-          std::vector<pool_entry> &entries = deregisters_for.service_node[find_vote.service_node_index];
-          int xx__vote_index = 0;
-          for (auto &entry : entries)
+          if (deregister.m_vote.voters_quorum_index == find_vote.voters_quorum_index)
           {
-            service_node_deregister::vote &vote = entry.m_vote;
-            if (vote.voters_quorum_index == find_vote.voters_quorum_index)
-            {
-              printf("Service node deregister vote was updated block (%zu) for service node (%d), vote index (%d) with time %zu\n", find_vote.block_height, find_vote.service_node_index, xx__vote_index, now);
-              xx__print_service_node();
-              entry.m_time_last_sent_p2p = now;
-              break;
-            }
-            xx__vote_index++;
+            deregister.m_time_last_sent_p2p = now;
+            printf("Service node deregister vote was updated block (%zu) for service node (%d), vote index (%d) with time %zu\n", find_vote.block_height, find_vote.service_node_index, xx__vote_index, now);
+            xx__print_service_node();
+            break;
           }
-          break;
+          xx__vote_index++;
         }
       }
     }
@@ -664,20 +648,15 @@ namespace loki
     const time_t THRESHOLD = 60 * 2;
 
     std::vector<service_node_deregister::vote> result;
-    for (const pool_group &deregisters_for : m_deregisters)
+    for (const auto &deregister_entry : m_deregisters)
     {
-      for (auto it = deregisters_for.service_node.begin();
-           it != deregisters_for.service_node.end();
-           it++)
+      const std::vector<deregister>& deregister_vector = deregister_entry.second;
+      for (const deregister &entry : deregister_vector)
       {
-        const std::vector<pool_entry> &entries = it->second;
-        for (const auto &entry : entries)
+        const time_t last_sent = now - entry.m_time_last_sent_p2p;
+        if (last_sent > THRESHOLD)
         {
-          const time_t last_sent = now - entry.m_time_last_sent_p2p;
-          if (last_sent > THRESHOLD)
-          {
-            result.push_back(entry.m_vote);
-          }
+          result.push_back(entry.m_vote);
         }
       }
     }
@@ -691,39 +670,22 @@ namespace loki
   {
     if (!service_node_deregister::verify_vote(new_vote, vvc, quorum))
     {
-      LOG_PRINT_L1("Verification failed for deregister vote");
+      LOG_PRINT_L1("Signature verification failed for deregister vote");
       return false;
     }
 
     CRITICAL_REGION_LOCAL(m_lock);
     time_t const now = time(NULL);
-    std::vector<pool_group>::iterator deregisters_for;
+    std::vector<deregister> *deregister_votes;
     {
-      bool group_found = false;
-      for (auto it = m_deregisters.begin(); it != m_deregisters.end(); it++)
-      {
-        if (it->block_height == new_vote.block_height)
-        {
-          deregisters_for = it;
-          group_found = true;
-          break;
-        }
-      }
-
-      if (!group_found)
-      {
-        m_deregisters.resize(m_deregisters.size() + 1);
-        deregisters_for               = m_deregisters.end() - 1;
-        deregisters_for->block_height = new_vote.block_height;
-        deregisters_for->time_group_created = now;
-      }
+      deregister_group desired_group   = {};
+      desired_group.block_height       = new_vote.block_height;
+      desired_group.service_node_index = new_vote.service_node_index;
+      deregister_votes                 = &m_deregisters[desired_group];
     }
 
-    bool new_deregister_is_unique             = true;
-    const uint32_t deregister_index           = new_vote.service_node_index;
-    std::vector<pool_entry> &deregister_votes = deregisters_for->service_node[deregister_index];
-
-    for (const auto &entry : deregister_votes)
+    bool new_deregister_is_unique = true;
+    for (const auto &entry : *deregister_votes)
     {
       if (entry.m_vote.voters_quorum_index == new_vote.voters_quorum_index)
       {
@@ -735,17 +697,17 @@ namespace loki
     if (new_deregister_is_unique)
     {
       vvc.m_added_to_pool = true;
-      deregister_votes.emplace_back(pool_entry(0, new_vote));
+      deregister_votes->emplace_back(deregister(0 /*time_last_sent_p2p*/, new_vote));
       xx__print_service_node();
 
-      if (deregister_votes.size() == quorum.size())
+      if (deregister_votes->size() >= MIN_VOTES_TO_KICK_SERVICE_NODE)
       {
         cryptonote::tx_extra_service_node_deregister deregister;
         deregister.block_height       = new_vote.block_height;
         deregister.service_node_index = new_vote.service_node_index;
-        deregister.votes.reserve(deregister_votes.size());
+        deregister.votes.reserve(deregister_votes->size());
 
-        for (const auto& entry : deregister_votes)
+        for (const auto& entry : *deregister_votes)
         {
           cryptonote::tx_extra_service_node_deregister::vote tx_vote = {};
           tx_vote.signature           = new_vote.signature;
@@ -755,7 +717,9 @@ namespace loki
 
         vvc.m_full_tx_deregister_made = true;
         tx.version = cryptonote::transaction::version_3_deregister_tx;
-        cryptonote::add_service_node_deregister_to_tx_extra(tx.extra, deregister);
+
+        // TODO(doyle): This needs to assert, fatal error, should be caught earlier
+        bool result = cryptonote::add_service_node_deregister_to_tx_extra(tx.extra, deregister);
       }
     }
 
@@ -777,10 +741,10 @@ namespace loki
     uint64_t minimum_height = height - ALIVE_HEIGHT_WINDOW;
     for (auto it = m_deregisters.begin(); it != m_deregisters.end();)
     {
-      time_t lifetime = now - it->time_group_created;
-      if (it->block_height < minimum_height && lifetime >= ALIVE_SECONDS_WINDOW)
+      const deregister_group &deregister_for = it->first;
+      time_t lifetime = now - deregister_for.time_group_created;
+      if (deregister_for.block_height < minimum_height && lifetime >= ALIVE_SECONDS_WINDOW)
       {
-        printf("Removing stale votes from height: %zu, the min height is: %zu || min life time is: %zu\n", it->block_height, minimum_height, ALIVE_SECONDS_WINDOW);
         it = m_deregisters.erase(it);
       }
       else
@@ -790,3 +754,4 @@ namespace loki
     }
   }
 }; // namespace loki
+

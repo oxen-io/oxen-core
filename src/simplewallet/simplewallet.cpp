@@ -4942,15 +4942,13 @@ bool simple_wallet::xx__deregister_service_node(const std::vector<std::string> &
       const crypto::public_key &public_spend_key = loki::xx__service_node::public_spend_keys[index];
       const crypto::secret_key &secret_spend_key = loki::xx__service_node::secret_spend_keys[index];
 
-      tx_extra_service_node_deregister::vote *vote = &deregister.votes[i];
-      vote->voters_quorum_index = index;
-
-      vote->signature = loki::service_node_deregister::sign_vote(deregister.block_height,
-                                                                 deregister.service_node_index,
-                                                                 public_spend_key,
-                                                                 secret_spend_key);
+      tx_extra_service_node_deregister::vote& vote = deregister.votes[i];
+      vote.voters_quorum_index = index;
+      vote.signature = loki::service_node_deregister::sign_vote(deregister.block_height,
+                                                                deregister.service_node_index,
+                                                                public_spend_key,
+                                                                secret_spend_key);
     }
-
   }
 
   if (is_partial_cmd)
@@ -4975,7 +4973,12 @@ bool simple_wallet::xx__deregister_service_node(const std::vector<std::string> &
   }
   else
   {
-    add_service_node_deregister_to_tx_extra(ptx.tx.extra, deregister);
+    if (!add_service_node_deregister_to_tx_extra(ptx.tx.extra, deregister))
+    {
+      fail_msg_writer() << tr("Failed to add service node deregister to tx_extra");
+      return false;
+    }
+
     try
     {
       m_wallet->commit_tx(ptx);

@@ -472,19 +472,21 @@ namespace cryptonote
     return true;
   }
   //---------------------------------------------------------------
-  void add_service_node_deregister_to_tx_extra(std::vector<uint8_t>& tx_extra, const tx_extra_service_node_deregister& deregistration)
+  bool add_service_node_deregister_to_tx_extra(std::vector<uint8_t>& tx_extra, const tx_extra_service_node_deregister& deregistration)
   {
     tx_extra_field field = tx_extra_service_node_deregister{deregistration.block_height, deregistration.service_node_index, deregistration.votes};
 
     std::ostringstream oss;
     binary_archive<true> ar(oss);
     bool r = ::do_serialize(ar, field);
-    CHECK_AND_ASSERT_MES_NO_RET(r, "failed to serialize tx extra service node deregister");
+    CHECK_AND_ASSERT_MES(r, false, "failed to serialize tx extra service node deregister");
 
     std::string tx_extra_str = oss.str();
     size_t pos = tx_extra.size();
     tx_extra.resize(tx_extra.size() + tx_extra_str.size());
     memcpy(&tx_extra[pos], tx_extra_str.data(), tx_extra_str.size());
+
+    return true;
   }
   //---------------------------------------------------------------
   void add_service_node_register_to_tx_extra(std::vector<uint8_t>& tx_extra, const tx_extra_service_node_register& registration)
