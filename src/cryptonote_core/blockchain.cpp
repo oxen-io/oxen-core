@@ -1769,11 +1769,8 @@ std::vector<uint64_t> Blockchain::get_random_outputs(uint64_t amount, uint64_t c
   {
     for (uint64_t i = 0; i < num_outs; i++)
     {
-      // get tx_hash, tx_out_index from DB
-      tx_out_index toi = m_db->get_output_tx_and_index(amount, i);
-
       // if tx is unlocked, add output to indices
-      if (is_tx_spendtime_unlocked(m_db->get_tx_unlock_time(toi.first)))
+      if (is_output_spendtime_unlocked(m_db->get_output_unlock_time(amount, i)))
       {
         indices.push_back(i);
       }
@@ -1808,12 +1805,9 @@ std::vector<uint64_t> Blockchain::get_random_outputs(uint64_t amount, uint64_t c
       }
       seen_indices.emplace(i);
 
-      // get tx_hash, tx_out_index from DB
-      tx_out_index toi = m_db->get_output_tx_and_index(amount, i);
-
       // if the output's transaction is unlocked, add the output's index to
       // our list.
-      if (is_tx_spendtime_unlocked(m_db->get_tx_unlock_time(toi.first)))
+      if (is_output_spendtime_unlocked(m_db->get_output_unlock_time(amount, i)))
       {
         indices.push_back(i);
       }
@@ -1906,11 +1900,8 @@ bool Blockchain::get_random_rct_outs(const COMMAND_RPC_GET_RANDOM_RCT_OUTPUTS::r
   {
     for (uint64_t i = 0; i < num_outs; i++)
     {
-      // get tx_hash, tx_out_index from DB
-      tx_out_index toi = m_db->get_output_tx_and_index(0, i);
-
       // if tx is unlocked, add output to result_outs
-      if (is_tx_spendtime_unlocked(m_db->get_tx_unlock_time(toi.first)))
+      if (is_output_spendtime_unlocked(m_db->get_output_unlock_time(0, i)))
       {
         add_out_to_get_rct_random_outs(res.outs, 0, i);
       }
@@ -1945,12 +1936,9 @@ bool Blockchain::get_random_rct_outs(const COMMAND_RPC_GET_RANDOM_RCT_OUTPUTS::r
       }
       seen_indices.emplace(i);
 
-      // get tx_hash, tx_out_index from DB
-      tx_out_index toi = m_db->get_output_tx_and_index(0, i);
-
       // if the output's transaction is unlocked, add the output's index to
       // our list.
-      if (is_tx_spendtime_unlocked(m_db->get_tx_unlock_time(toi.first)))
+      if (is_output_spendtime_unlocked(m_db->get_output_unlock_time(0, i)))
       {
         add_out_to_get_rct_random_outs(res.outs, 0, i);
       }
@@ -2005,7 +1993,7 @@ bool Blockchain::get_outs(const COMMAND_RPC_GET_OUTPUTS_BIN::request& req, COMMA
     // get tx_hash, tx_out_index from DB
     const output_data_t od = m_db->get_output_key(i.amount, i.index);
     tx_out_index toi = m_db->get_output_tx_and_index(i.amount, i.index);
-    bool unlocked = is_tx_spendtime_unlocked(m_db->get_tx_unlock_time(toi.first));
+    bool unlocked = is_output_spendtime_unlocked(od.unlock_time);
 
     res.outs.push_back({od.pubkey, od.commitment, unlocked, od.height, toi.first});
   }
@@ -2017,8 +2005,7 @@ void Blockchain::get_output_key_mask_unlocked(const uint64_t& amount, const uint
   const auto o_data = m_db->get_output_key(amount, index);
   key = o_data.pubkey;
   mask = o_data.commitment;
-  tx_out_index toi = m_db->get_output_tx_and_index(amount, index);
-  unlocked = is_tx_spendtime_unlocked(m_db->get_tx_unlock_time(toi.first));
+  unlocked = is_output_spendtime_unlocked(o_data.unlock_time);
 }
 //------------------------------------------------------------------
 bool Blockchain::get_output_distribution(uint64_t amount, uint64_t from_height, uint64_t to_height, uint64_t &start_height, std::vector<uint64_t> &distribution, uint64_t &base) const
@@ -3203,7 +3190,7 @@ uint64_t Blockchain::get_dynamic_per_kb_fee_estimate(uint64_t grace_blocks) cons
 //------------------------------------------------------------------
 // This function checks to see if a tx is unlocked.  unlock_time is either
 // a block index or a unix time.
-bool Blockchain::is_tx_spendtime_unlocked(uint64_t unlock_time) const
+bool Blockchain::is_output_spendtime_unlocked(uint64_t unlock_time) const
 {
   LOG_PRINT_L3("Blockchain::" << __func__);
   return cryptonote::rules::is_output_unlocked(unlock_time, m_db->height());
@@ -3231,7 +3218,7 @@ bool Blockchain::check_tx_input(size_t tx_version, const txin_to_key& txin, cons
     bool handle_output(uint64_t unlock_time, const crypto::public_key &pubkey, const rct::key &commitment)
     {
       //check tx unlock time
-      if (!m_bch.is_tx_spendtime_unlocked(unlock_time))
+      if (!m_bch.is_output_spendtime_unlocked(unlock_time))
       {
         MERROR_VER("One of outputs for one of inputs has wrong tx.unlock_time = " << unlock_time);
         return false;
