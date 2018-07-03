@@ -61,6 +61,8 @@ namespace loki
 
   namespace service_node_deregister
   {
+    const uint64_t VOTE_LIFETIME_BY_HEIGHT = (60 * 60 * 2) / DIFFICULTY_TARGET_V2;
+
     struct vote
     {
       uint64_t          block_height;

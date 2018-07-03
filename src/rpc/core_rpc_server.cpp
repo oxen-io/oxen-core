@@ -2009,7 +2009,6 @@ namespace cryptonote
   //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::on_submit_deregister_vote(const COMMAND_RPC_SEND_DEREGISTER_VOTE::request& req, COMMAND_RPC_SEND_DEREGISTER_VOTE::response &resp)
   {
-    // TODO(doyle): When is on_relay_tx called, because that is another trigger point for sending data over p2p
     PERF_TIMER(on_submit_deregister_vote);
 
     vote_verification_context vvc = {};

@@ -40,6 +40,7 @@
 #include "blockchain.h"
 #include "blockchain_db/blockchain_db.h"
 #include "cryptonote_basic/cryptonote_boost_serialization.h"
+#include "cryptonote_core/service_node_deregister.h"
 #include "cryptonote_config.h"
 #include "cryptonote_basic/miner.h"
 #include "misc_language.h"
@@ -3000,6 +3001,48 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
     default:
       MERROR_VER("Unsupported rct type: " << rv.type);
       return false;
+    }
+  }
+  else if (tx.version == transaction::version_3_deregister_tx)
+  {
+    // Check the inputs (votes) of the transaction have not been already been
+    // submitted to the blockchain under another transaction using a different
+    // combination of votes.
+    tx_extra_service_node_deregister deregister;
+    if (!get_service_node_deregister_from_tx_extra(tx.extra, deregister))
+    {
+      MERROR_VER("TX version deregister did not have the deregister metadata in the tx_extra");
+      return false;
+    }
+
+    const uint64_t height            = deregister.block_height;
+    const size_t num_blocks_to_check = loki::service_node_deregister::VOTE_LIFETIME_BY_HEIGHT * 2;
+
+    std::list<std::pair<cryptonote::blobdata,block>> blocks;
+    std::list<cryptonote::blobdata> txs;
+    if (get_blocks(height, num_blocks_to_check, blocks, txs))
+    {
+      for (blobdata const &blob : txs)
+      {
+        transaction existing_tx;
+        if (!parse_and_validate_tx_from_blob(blob, existing_tx))
+          continue;
+
+        if (existing_tx.version != transaction::version_3_deregister_tx)
+          continue;
+
+        tx_extra_service_node_deregister existing_deregister;
+        if (!get_service_node_deregister_from_tx_extra(existing_tx.extra, existing_deregister))
+          continue;
+
+        if (existing_deregister.block_height       == deregister.block_height &&
+            existing_deregister.service_node_index == deregister.service_node_index)
+        {
+          tvc.m_double_spend = true;
+          return false;
+        }
+
+      }
     }
   }
   return true;

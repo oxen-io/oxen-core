@@ -642,8 +642,7 @@ namespace loki
     CRITICAL_REGION_LOCAL(m_lock);
     const cryptonote::cryptonote_connection_context fake_context = AUTO_VAL_INIT(fake_context);
 
-    // TODO(doyle): Rate-limiting: A better threshold value that follows suite
-    // with transaction relay time back-off
+    // TODO(doyle): Rate-limiting: A better threshold value that follows suite with transaction relay time back-off
     const time_t now       = time(NULL);
     const time_t THRESHOLD = 60 * 2;
 
@@ -718,8 +717,15 @@ namespace loki
         vvc.m_full_tx_deregister_made = true;
         tx.version = cryptonote::transaction::version_3_deregister_tx;
 
-        // TODO(doyle): This needs to assert, fatal error, should be caught earlier
-        bool result = cryptonote::add_service_node_deregister_to_tx_extra(tx.extra, deregister);
+        vvc.m_full_tx_deregister_made = cryptonote::add_service_node_deregister_to_tx_extra(tx.extra, deregister);
+        if (vvc.m_full_tx_deregister_made)
+        {
+          tx.version = cryptonote::transaction::version_3_deregister_tx;
+        }
+        else
+        {
+          LOG_PRINT_L1("Could not create version 3 deregistration transaction from votes");
+        }
       }
     }
 
@@ -728,17 +734,16 @@ namespace loki
 
   void deregister_vote_pool::remove_expired_votes(uint64_t height)
   {
-    uint64_t const ALIVE_HEIGHT_WINDOW = 20;
-    if (height < ALIVE_HEIGHT_WINDOW)
+    if (height < service_node_deregister::VOTE_LIFETIME_BY_HEIGHT)
     {
       return;
     }
 
     CRITICAL_REGION_LOCAL(m_lock);
     const time_t now                  = time(NULL);
-    const time_t ALIVE_SECONDS_WINDOW = DIFFICULTY_TARGET_V2 * ALIVE_HEIGHT_WINDOW;
+    const time_t ALIVE_SECONDS_WINDOW = DIFFICULTY_TARGET_V2 * service_node_deregister::VOTE_LIFETIME_BY_HEIGHT;
 
-    uint64_t minimum_height = height - ALIVE_HEIGHT_WINDOW;
+    uint64_t minimum_height = height - service_node_deregister::VOTE_LIFETIME_BY_HEIGHT;
     for (auto it = m_deregisters.begin(); it != m_deregisters.end();)
     {
       const deregister_group &deregister_for = it->first;
