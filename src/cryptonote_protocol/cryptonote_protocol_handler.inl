@@ -776,16 +776,13 @@ namespace cryptonote
 
     for(auto it = arg.votes.begin(); it != arg.votes.end();)
     {
-      // TODO(doyle): Peer banning? We drop connection but don't ban yet. Need
-      // to find out when it's appropriate to start banning
-
       cryptonote::vote_verification_context vvc = {};
       m_core.add_deregister_vote(*it, vvc);
 
       if (vvc.m_verification_failed)
       {
         LOG_PRINT_CCONTEXT_L1("Deregister vote verification failed, dropping connection");
-        drop_connection(context, false, false);
+        drop_connection(context, true /*add_fail*/, false /*flush_all_spans i.e. delete cached block data from this peer*/);
         return 1;
       }
 

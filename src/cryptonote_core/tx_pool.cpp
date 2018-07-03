@@ -108,6 +108,36 @@ namespace cryptonote
 
   }
   //---------------------------------------------------------------------------------
+  bool tx_memory_pool::have_deregister_tx_already(transaction const &tx) const
+  {
+    if (tx.version != transaction::version_3_deregister_tx)
+      return false;
+
+    tx_extra_service_node_deregister deregister;
+    if (!get_service_node_deregister_from_tx_extra(tx.extra, deregister))
+      return false;
+
+    std::list<transaction> pool_txs;
+    get_transactions(pool_txs);
+    for (const transaction& pool_tx : pool_txs)
+    {
+      if (pool_tx.version != transaction::version_3_deregister_tx)
+        continue;
+
+      tx_extra_service_node_deregister pool_tx_deregister;
+      if (!get_service_node_deregister_from_tx_extra(pool_tx.extra, pool_tx_deregister))
+        continue;
+
+      if ((pool_tx_deregister.block_height       == deregister.block_height) &&
+          (pool_tx_deregister.service_node_index == deregister.service_node_index))
+      {
+        return true;
+      }
+    }
+
+    return false;
+  }
+  //---------------------------------------------------------------------------------
   bool tx_memory_pool::add_tx(transaction &tx, /*const crypto::hash& tx_prefix_hash,*/ const crypto::hash &id, size_t blob_size, tx_verification_context& tvc, bool kept_by_block, bool relayed, bool do_not_relay, uint8_t version)
   {
     // this should already be called with that lock, but let's make it explicit for clarity
@@ -205,6 +235,15 @@ namespace cryptonote
       }
     }
 
+    if (have_deregister_tx_already(tx))
+    {
+      mark_double_spend(tx);
+      LOG_PRINT_L1("Transaction version 3 with id= "<< id << " already has a deregister for height");
+      tvc.m_verifivation_failed = true;
+      tvc.m_double_spend = true;
+      return false;
+    }
+
     if (!m_blockchain.check_tx_outputs(tx, tvc))
     {
       LOG_PRINT_L1("Transaction with id= "<< id << " has at least one invalid output");
@@ -224,6 +263,16 @@ namespace cryptonote
     bool ch_inp_res = m_blockchain.check_tx_inputs(tx, max_used_block_height, max_used_block_id, tvc, kept_by_block);
     if(!ch_inp_res)
     {
+      // NOTE: If this TX V3 (i.e. staking transactions) was stored in a block
+      // from another daemon beforehand and then P2Ped over, but fails the
+      // inputs check (i.e. another deregistration TX for the same
+      // height/service node already exists in our blockchain, but has
+      // a different combo of votes) then this TX should be discarded and the
+      // earliest one kept. Eventually other daemons will sync this block which
+      // will become the canonical deregister TX.
+      if (tx.version == transaction::version_3_deregister_tx)
+        kept_by_block = false;
+
       // if the transaction was valid before (kept_by_block), then it
       // may become valid again, so ignore the failed inputs check.
       if(kept_by_block)
@@ -563,9 +612,7 @@ namespace cryptonote
     CRITICAL_REGION_LOCAL1(m_blockchain);
     const uint64_t now = time(NULL);
     m_blockchain.for_all_txpool_txes([this, now, &txs](const crypto::hash &txid, const txpool_tx_meta_t &meta, const cryptonote::blobdata *){
-      // TODO(doyle): Looks like 0 fee full deregistration is accpted but never relayed because of this?
-      // 0 fee transactions are never relayed
-      if(meta.fee > 0 && !meta.do_not_relay && now - meta.last_relayed_time > get_relay_delay(now, meta.receive_time))
+      if(!meta.do_not_relay && now - meta.last_relayed_time > get_relay_delay(now, meta.receive_time))
       {
         // if the tx is older than half the max lifetime, we don't re-relay it, to avoid a problem
         // mentioned by smooth where nodes would flush txes at slightly different times, causing
@@ -576,6 +623,16 @@ namespace cryptonote
           try
           {
             cryptonote::blobdata bd = m_blockchain.get_txpool_tx_blob(txid);
+            if (meta.fee == 0)
+            {
+              cryptonote::transaction tx;
+              if (cryptonote::parse_and_validate_tx_from_blob(bd, tx) &&
+                  tx.version != transaction::version_3_deregister_tx)
+              {
+                  return true;
+              }
+            }
+
             txs.push_back(std::make_pair(txid, bd));
           }
           catch (const std::exception &e)

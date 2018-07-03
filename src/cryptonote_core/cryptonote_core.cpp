@@ -1037,9 +1037,6 @@ namespace cryptonote
       }
     }
 
-    // TODO(doyle): Because there is now a vote threshold, we need to prevent
-    // different combinations of votes beign submitted to the network. This
-    // logic probably wants to live in m_mempool.have_tx()
     if(m_mempool.have_tx(tx_hash))
     {
       LOG_PRINT_L2("tx " << tx_hash << "already have transaction in tx_pool");
@@ -1689,6 +1686,34 @@ namespace cryptonote
       vvc.m_invalid_block_height = true;
       LOG_ERROR("Could not get quorum for height: " << vote.block_height);
       return false;
+    }
+
+    {
+      uint64_t latest_block_height = std::max(get_current_blockchain_height(), get_target_blockchain_height());
+      uint64_t delta_height = latest_block_height - vote.block_height;
+
+      if (vote.block_height < latest_block_height && delta_height > loki::service_node_deregister::VOTE_LIFETIME_BY_HEIGHT)
+      {
+        LOG_ERROR("Received vote for height: " << vote.block_height
+                  << " and service node: "     << vote.service_node_index
+                  << ", is older than: "       << loki::service_node_deregister::VOTE_LIFETIME_BY_HEIGHT
+                  << " blocks and has been rejected.");
+        vvc.m_invalid_block_height = true;
+      }
+      else if (vote.block_height > latest_block_height)
+      {
+        LOG_ERROR("Received vote for height: " << vote.block_height
+                  << " and service node: "     << vote.service_node_index
+                  << ", is newer than: "       << latest_block_height
+                  << " (latest block height) and has been rejected.");
+        vvc.m_invalid_block_height = true;
+      }
+
+      if (vvc.m_invalid_block_height)
+      {
+        vvc.m_verification_failed = true;
+        return false;
+      }
     }
 
     cryptonote::transaction deregister_tx;
