@@ -36,6 +36,8 @@
 using namespace epee;
 
 #include <unordered_set>
+#include <random>
+
 #include "cryptonote_core.h"
 #include "common/command_line.h"
 #include "common/util.h"
@@ -1560,6 +1562,98 @@ namespace cryptonote
     boost::filesystem::path path(m_config_folder);
     boost::filesystem::space_info si = boost::filesystem::space(path);
     return si.available;
+  }
+  //-----------------------------------------------------------------------------------------------
+  static std::vector<std::string> xx__get_service_nodes_pub_keys_for_height(uint64_t height)
+  {
+      (void)height; // TODO(doyle): Mock function needs to be implemented
+
+      std::vector<std::string> result;
+      const char *XX__PUB_KEYS[] =
+      {
+        "cab4ae6148233461074c6bc4c72b8a53ee91d9cfbda5813c3422a3e2897b21e3",
+        "bfae23724257762880ec334b7f83cdda345ff677c34ef141e8ea5cbbe0f61f33",
+        "04932a89171e0a33e3a079e5c61a7454a5bff9fd467ff81cbc18a5ee5ff37bab",
+        "ea505c9ccf83d73654268562487a077423cde586fe5799113e93a8a0b46e9fe5",
+        "4931ddac1a7981f0dd7259bee59281cf540ba6a9ef59a10ef9fe504214ff1f11",
+        "fa0fe218380fa8cc642fad13855789273f9283512dab99010374122c2df92dca",
+        "f6b29bb886e2cf64de7b0887c84d821e96ec56f6e28903f4faa6fecf18b445dd",
+        "7123ae098051a459cf6fc2fdeccad6210136f6e55f8218439864a53501498dc6",
+        "b4aa98188bd958ad7dd10eb19b091ac25647c3b28255b6a02633f57ebf633c9f",
+        "1e4c7a3e7e7dec98e9b5da2ba8d8ea013cb71115a22e926ba060dd8ca9084004",
+        "23f2052a043c17f1e93558ff5fcf1a183c4139384c7d115b32a98d55081dc996",
+        "742db561f88c64e696cec912b8ad4faea78aac871d3d340b664ec63463664113",
+        "28630fa9cc33c0b8a518894becce01b8f0b4eb9f234e2780404dc751ae9d1d99",
+        "ccacea809b1dbe1dc5021281662490b55db41d86dea0715b6b1322a7c344d641",
+        "cd3beb0621b26f0b16cda9c759601997cc054c3e673fa9d91dd1ceb1542a2eec",
+        "40b8be419aff1126a31a2cbb6702aced9960c075919dc2fe44efabdda973a7d1",
+        "42237ef07f9f7570d31dd19fa1141b8ec0b23f9c976a744381452c0d2ea24b98",
+        "0a583ae027590cf6f21a76d6fb7b582d904cd3661fa59a00b1d8bf780e0b8748",
+        "8a60f7a39c88dc8b425a72988d577ec0f198bcecc31162c12b8f696cce441622",
+        "160dc084804efa96129dcc846ea9aeb793e5b208dc947587f2aa5dda4634a877",
+        "cb92e9e8ce31522eeb731b9d069ca4fb327df0f5c1df81c32e45cad5cffdc0f0",
+        "ac7e0e825120d28575182c86e36c6f05666192f573e032f036871969009fa1c7",
+        "89555379367ec70306a00b0460b468c0973987ed6c8084ddac3cf51c505280cd",
+        "7dc31ac32a88bce95808b07cfa27eaad30ebc319c64719a8b63ceacd0542060e",
+        "96bbc02ce1cb673cec7dc649e6ff111d116fcb1660a06a39d09755fd3ba8e133",
+        "7b10fa062ae91169166a32d29e585695cf9204375484252eda89d76ddeb5b163",
+        "65e318c3dac1013de3cdc47e097deca020fe18f12b4c496f7f63935bc99bc2ea",
+        "b34dc0a57f68f1049733e0f610f29ef70f72e5cc237edfc7844cc7b06645066a",
+        "2dd94991268ee71b2356e8d748477a29ddf1aef8a9c329a0279753c599f38c23",
+        "ab3a704dd71dacd1361155e668253ae70bca58cf790141c4174f47403696ffb3",
+        "ceb1256e951a434d2a274be8d33a4773f797207121f774897c43ba258c1f7026",
+        "8502b21a22da7494130f689b58b91fcd48a17071c5554b6c9ec11863caf2e179",
+        "bb25528e6278ddfc0fd91752b9d73d98f01acef361783528b0e6d6d7116c5261",
+        "f7d7c629a96063ed85e2126029e9406b176a45b4876eb22d979ce32eed5ac5d1",
+        "2e7c51924bf910b4fe5ed9d89a9bfe40222fe91cb70dc660bc2e21a8318241e7",
+      };
+
+      size_t const size = sizeof(XX__PUB_KEYS) / sizeof(XX__PUB_KEYS[0]);
+      result.reserve(size);
+
+      for (size_t i = 0; i < size; i++)
+        result.push_back(XX__PUB_KEYS[i]);
+
+      return result;
+  }
+  //-----------------------------------------------------------------------------------------------
+  bool core::get_quorum_list_for_height(uint64_t height, std::array<std::string, 10>& quorum_list) const
+  {
+    const std::vector<std::string> pub_keys   = xx__get_service_nodes_pub_keys_for_height(height);
+    const crypto::hash             block_hash = get_block_id_by_height(height);
+
+    if (block_hash == crypto::null_hash)
+    {
+      LOG_ERROR("Block height: " << height << " returned null hash");
+      return false;
+    }
+
+    // Generate index mapping to pub_keys
+    std::vector<size_t> pub_keys_indexes;
+    {
+        pub_keys_indexes.reserve(pub_keys.size());
+        for (size_t i = 0; i < pub_keys.size(); i++) pub_keys_indexes.push_back(i);
+    }
+
+    // Swap first 10 indexes randomly
+    {
+        uint32_t seed = 0;
+        std::memcpy(&seed, block_hash.data, std::min(sizeof(seed), sizeof(block_hash.data)));
+
+        std::mt19937 mersenne_twister(seed);
+        std::uniform_int_distribution<size_t> rng(0, pub_keys.size() - 1);
+
+        for (size_t i = 0; i < quorum_list.max_size(); i++)
+        {
+            size_t swap_index = rng(mersenne_twister);
+            std::swap(pub_keys_indexes[i], pub_keys_indexes[swap_index]);
+        }
+    }
+
+    for (size_t i = 0; i < quorum_list.max_size(); i++)
+        quorum_list[i] = pub_keys[pub_keys_indexes[i]];
+
+    return true;
   }
   //-----------------------------------------------------------------------------------------------
   std::time_t core::get_start_time() const
