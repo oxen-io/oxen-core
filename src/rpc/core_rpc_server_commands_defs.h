@@ -2265,7 +2265,7 @@ namespace cryptonote
     };
   };
 
-  struct COMMAND_RPC_GET_QUORUM_LIST
+  struct COMMAND_RPC_GET_QUORUM_STATE
   {
     struct request
     {
@@ -2278,12 +2278,14 @@ namespace cryptonote
     struct response
     {
       std::string status;
-      std::vector<std::string> quorum;
+      std::vector<std::string> quorum_nodes;
+      std::vector<std::string> nodes_to_test;
       bool untrusted;
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(status)
-        KV_SERIALIZE(quorum)
+        KV_SERIALIZE(quorum_nodes)
+        KV_SERIALIZE(nodes_to_test)
         KV_SERIALIZE(untrusted)
       END_KV_SERIALIZE_MAP()
     };

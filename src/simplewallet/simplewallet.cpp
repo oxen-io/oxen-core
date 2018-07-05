@@ -4908,11 +4908,11 @@ bool simple_wallet::xx__deregister_service_node(const std::vector<std::string> &
 
     // Get the index of this service node in the quorum
     {
-      COMMAND_RPC_GET_QUORUM_LIST::request req = AUTO_VAL_INIT(req);
-      COMMAND_RPC_GET_QUORUM_LIST::response res;
+      COMMAND_RPC_GET_QUORUM_STATE::request req = AUTO_VAL_INIT(req);
+      COMMAND_RPC_GET_QUORUM_STATE::response res;
       req.height = 32;
 
-      bool r = m_wallet->invoke_http_json("/get_quorum_list", req, res);
+      bool r = m_wallet->invoke_http_json("/get_quorum_state", req, res);
       const std::string err = interpret_rpc_response(r, res.status);
 
       if (!err.empty())
@@ -4926,9 +4926,9 @@ bool simple_wallet::xx__deregister_service_node(const std::vector<std::string> &
         bool found_my_service_node_in_quorum = false;
         const std::string this_service_node_key = loki::xx__service_node::public_spend_keys_str[i];
 
-        for (size_t j = 0; j < res.quorum.size(); j++)
+        for (size_t j = 0; j < res.quorum_nodes.size(); j++)
         {
-          const std::string &entry_str = res.quorum[j];
+          const std::string &entry_str = res.quorum_nodes[j];
           if (entry_str == this_service_node_key)
           {
             deregister.votes[i].voters_quorum_index = i;
@@ -5016,8 +5016,8 @@ bool simple_wallet::xx__get_quorum(const std::vector<std::string> &args_)
     return true;
   }
 
-  COMMAND_RPC_GET_QUORUM_LIST::request req = AUTO_VAL_INIT(req);
-  COMMAND_RPC_GET_QUORUM_LIST::response res;
+  COMMAND_RPC_GET_QUORUM_STATE::request req = AUTO_VAL_INIT(req);
+  COMMAND_RPC_GET_QUORUM_STATE::response res;
   try
   {
       req.height = boost::lexical_cast<uint64_t>(args_[0]);
@@ -5028,13 +5028,21 @@ bool simple_wallet::xx__get_quorum(const std::vector<std::string> &args_)
     return true;
   }
 
-  bool r = m_wallet->invoke_http_json("/get_quorum_list", req, res);
+  bool r = m_wallet->invoke_http_json("/get_quorum_state", req, res);
   const std::string err = interpret_rpc_response(r, res.status);
   if (err.empty())
   {
-    for (size_t i = 0; i < res.quorum.size(); i++)
+    message_writer() << "Quorum Nodes [" << res.quorum_nodes.size() << "]";
+    for (size_t i = 0; i < res.quorum_nodes.size(); i++)
     {
-      const std::string &entry = res.quorum[i];
+      const std::string &entry = res.quorum_nodes[i];
+      message_writer() << "[" << i << "] " << entry;
+    }
+
+    message_writer() << "Nodes To Test [" << res.nodes_to_test.size() << "]";
+    for (size_t i = 0; i < res.nodes_to_test.size(); i++)
+    {
+      const std::string &entry = res.nodes_to_test[i];
       message_writer() << "[" << i << "] " << entry;
     }
   }

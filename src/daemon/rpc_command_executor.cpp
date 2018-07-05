@@ -567,10 +567,10 @@ bool t_rpc_command_executor::print_blockchain_info(uint64_t start_block_index, u
   return true;
 }
 
-bool t_rpc_command_executor::print_quorum_list(uint64_t height)
+bool t_rpc_command_executor::print_quorum_state(uint64_t height)
 {
-  cryptonote::COMMAND_RPC_GET_QUORUM_LIST::request req;
-  cryptonote::COMMAND_RPC_GET_QUORUM_LIST::response res;
+  cryptonote::COMMAND_RPC_GET_QUORUM_STATE::request req;
+  cryptonote::COMMAND_RPC_GET_QUORUM_STATE::response res;
   epee::json_rpc::error error_resp;
 
   req.height = height;
@@ -578,25 +578,34 @@ bool t_rpc_command_executor::print_quorum_list(uint64_t height)
 
   if (m_is_rpc)
   {
-    if (!m_rpc_client->json_rpc_request(req, res, "get_quorum_list", fail_message.c_str()))
+    if (!m_rpc_client->json_rpc_request(req, res, "get_quorum_state", fail_message.c_str()))
     {
       return true;
     }
   }
   else
   {
-    if (!m_rpc_server->on_get_quorum_list_json(req, res, error_resp) || res.status != CORE_RPC_STATUS_OK)
+    if (!m_rpc_server->on_get_quorum_state_json(req, res, error_resp) || res.status != CORE_RPC_STATUS_OK)
     {
       tools::fail_msg_writer() << make_error(fail_message, res.status);
       return true;
     }
   }
 
-  for (size_t i = 0; i < res.quorum.size(); i++)
+  tools::msg_writer() << "Quorum Service Nodes [" << res.quorum_nodes.size() << "]";
+  for (size_t i = 0; i < res.quorum_nodes.size(); i++)
   {
-    const std::string &entry = res.quorum[i];
+    const std::string &entry = res.quorum_nodes[i];
     tools::msg_writer() << "[" << i << "] " << entry;
   }
+
+  tools::msg_writer() << "Service Nodes To Test [" << res.nodes_to_test.size() << "]";
+  for (size_t i = 0; i < res.nodes_to_test.size(); i++)
+  {
+    const std::string &entry = res.quorum_nodes[i];
+    tools::msg_writer() << "[" << i << "] " << entry;
+  }
+
 
   return true;
 }

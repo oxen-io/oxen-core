@@ -27,6 +27,7 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <functional>
+#include <random>
 
 #include "ringct/rctSigs.h"
 #include "wallet/wallet2.h"
@@ -68,6 +69,10 @@ namespace service_nodes
     {
       start_height = current_height - STAKING_REQUIREMENT_LOCK_BLOCKS - STAKING_RELOCK_WINDOW_BLOCKS;
     }
+
+    const size_t max_height              = m_blockchain.get_current_blockchain_height();
+    const size_t cache_state_from_height = (max_height < circular_quorum_state_buffer::SIZE) ? 0 : circular_quorum_state_buffer::SIZE;
+
     for (uint64_t height = start_height; height <= current_height; height += 1000)
     {
       std::list<std::pair<cryptonote::blobdata, cryptonote::block>> blocks;
@@ -76,6 +81,8 @@ namespace service_nodes
         LOG_ERROR("Unable to initialize service nodes list");
         return;
       }
+
+      uint64_t real_height = height;
       for (const auto& block_pair : blocks)
       {
         const cryptonote::block& block = block_pair.second;
@@ -86,7 +93,11 @@ namespace service_nodes
           LOG_ERROR("Unable to get transactions for block " << block.hash);
           return;
         }
+
         block_added_generic(block, txs);
+
+        if (real_height++ >= cache_state_from_height)
+          store_quorum_state_from_rewards_list(real_height);
       }
     }
 
@@ -103,6 +114,22 @@ namespace service_nodes
           return memcmp(reinterpret_cast<const void*>(&a), reinterpret_cast<const void*>(&b), sizeof(a)) < 0;
         });
     return ret;
+  }
+
+  const quorum_state* service_node_list::get_quorum_state(uint64_t height) const
+  {
+    quorum_state const *result = nullptr;
+    for (size_t i = 0; i < circular_quorum_state_buffer::SIZE; i ++)
+    {
+      quorum_state const *check = m_quorum_states.quorums + i;
+      if (check->height == height)
+      {
+        result = check;
+        break;
+      }
+    }
+
+    return result;
   }
 
   bool service_node_list::is_service_node(const crypto::public_key& pubkey) const
@@ -438,6 +465,86 @@ namespace service_nodes
     }
 
     return true;
+  }
+
+  void service_node_list::store_quorum_state_from_rewards_list(uint64_t height)
+  {
+    const crypto::hash block_hash = m_blockchain.get_block_id_by_height(height);
+    if (block_hash == crypto::null_hash)
+    {
+      MERROR("Block height: " << height << " returned null hash");
+      return;
+    }
+
+    if (m_service_nodes_last_reward.size() == 0)
+    {
+      return;
+    }
+
+    std::vector<const cryptonote::account_public_address *> full_node_list  (m_service_nodes_last_reward.size());
+    std::vector<size_t>                                     pub_keys_indexes(m_service_nodes_last_reward.size());
+    {
+      size_t index = 0;
+      for (const auto& reward_pair : m_service_nodes_last_reward)
+      {
+        full_node_list[index]   = &reward_pair.first;
+        pub_keys_indexes[index] = index;
+        ++index;
+      }
+
+      // Shuffle indexes
+      if (0) // TODO(doyle): Temp. For debugging with deterministic lists
+      {
+        uint64_t seed = 0;
+        std::memcpy(&seed, block_hash.data, std::min(sizeof(seed), sizeof(block_hash.data)));
+
+        std::mt19937_64 mersenne_twister(seed);
+        std::shuffle(pub_keys_indexes.begin(), pub_keys_indexes.end(), mersenne_twister);
+      }
+    }
+
+    // Assign indexes from shuffled list into quorum and list of nodes to test
+    quorum_state& quorum_state = m_quorum_states.next_free_slot();
+    {
+      quorum_state.height                     = height;
+      std::vector<crypto::public_key>& quorum = quorum_state.quorum_nodes;
+      {
+        // TODO(doyle): Reserve, and only resize when there's a large delta in size.
+        quorum.clear();
+        quorum.resize(std::max(full_node_list.size(), (size_t)10));
+        for (size_t i = 0; i < quorum.size(); i++)
+        {
+          size_t node_index                                   = pub_keys_indexes[i];
+          const cryptonote::account_public_address *node_addr = full_node_list[node_index];
+          quorum[i] = node_addr->m_spend_public_key;
+        }
+      }
+
+      std::vector<crypto::public_key>& nodes_to_test = quorum_state.nodes_to_test;
+      {
+        size_t num_remaining_nodes = pub_keys_indexes.size() - quorum.size();
+        size_t num_nodes_to_test   = static_cast<size_t>(num_remaining_nodes * 0.1f);
+
+        nodes_to_test.clear();
+        nodes_to_test.resize(num_nodes_to_test);
+
+        const int pub_keys_offset = quorum.size();
+        for (size_t i = 0; i < nodes_to_test.size(); i++)
+        {
+          size_t node_index                                   = pub_keys_indexes[pub_keys_offset + i];
+          const cryptonote::account_public_address *node_addr = full_node_list[node_index];
+          nodes_to_test[i] = node_addr->m_spend_public_key;
+        }
+      }
+
+    }
+  }
+
+  quorum_state& service_node_list::circular_quorum_state_buffer::next_free_slot()
+  {
+    int index            = this->circular_index++ % SIZE;
+    quorum_state& result = quorums[index];
+    return result;
   }
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

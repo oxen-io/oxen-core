@@ -783,11 +783,10 @@ namespace cryptonote
       * @brief Get the deterministic list of service node's public keys for quorum testing
       *
       * @param height Block height to deterministically recreate the quorum list from
-      * @param quorum The quorum entries are put into this param
 
-      * @return Whether the list could be made
+      * @return Nullptr if height was valid otherwise quorum state
       */
-     bool get_quorum_list_for_height(uint64_t height, std::vector<crypto::public_key>& quorum) const;
+     const service_nodes::quorum_state *get_quorum_state(uint64_t height) const;
 
      /**
       * @brief Add a vote to deregister a service node from network

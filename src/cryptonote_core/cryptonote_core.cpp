@@ -36,7 +36,6 @@
 using namespace epee;
 
 #include <unordered_set>
-#include <random>
 
 #include "cryptonote_core.h"
 #include "common/command_line.h"
@@ -1055,32 +1054,17 @@ namespace cryptonote
         return false;
       }
 
-      // Check service node to deregister is valid
-      {
-        auto xx__is_service_node_registered = ([](uint64_t block_height, uint32_t service_node_index) -> bool {
-          // Check service_node_index is in list bounds
-          // MERROR_VER("TX version deregister_tx specifies invalid service node index: " << deregister.service_node_index << ", value must be between [0, " << quorum.size() << "]");
-          return true;
-        });
-
-        if (!xx__is_service_node_registered(deregister.block_height, deregister.service_node_index))
-        {
-          MERROR_VER("TX version 3 deregister_tx trying to deregister a non-active node");
-          return false;
-        }
-      }
-
-      std::vector<crypto::public_key> quorum;
-      if (!get_quorum_list_for_height(deregister.block_height, quorum))
+      service_nodes::quorum_state const *quorum_state = m_service_node_list.get_quorum_state(deregister.block_height);
+      if (!quorum_state)
       {
         LOG_PRINT_L1("TX version 3 deregister_tx could not get quorum for height: " << deregister.block_height);
         return false;
       }
 
-      if (!loki::service_node_deregister::verify_deregister(deregister, tvc.m_vote_ctx, quorum))
+      if (!loki::service_node_deregister::verify_deregister(deregister, tvc.m_vote_ctx, *quorum_state))
       {
         tvc.m_verifivation_failed = true;
-        LOG_PRINT_L1("tx " << tx_hash << ": version 3 deregister_tx signed votes do not validate with the spend keys in the quorum.");
+        LOG_PRINT_L1("tx " << tx_hash << ": version 3 deregister_tx could not be completely verified.");
         return false;
       }
     }
@@ -1676,66 +1660,14 @@ namespace cryptonote
     return si.available;
   }
   //-----------------------------------------------------------------------------------------------
-  static std::vector<crypto::public_key> xx__get_service_nodes_pub_keys_for_height(uint64_t height)
+  const service_nodes::quorum_state *core::get_quorum_state(uint64_t height) const
   {
-      loki::xx__service_node::init();
-
-      (void)height; // TODO(doyle): Mock function needs to be implemented
-      std::vector<crypto::public_key> result;
-      result.resize(loki::xx__service_node::public_spend_keys.size());
-      for (size_t i = 0; i < result.size(); i++)
-      {
-        result[i] = loki::xx__service_node::public_spend_keys[i];
-      }
-
-      return result;
-  }
-  //-----------------------------------------------------------------------------------------------
-  bool core::get_quorum_list_for_height(uint64_t height, std::vector<crypto::public_key>& quorum) const
-  {
-    const std::vector<crypto::public_key> pub_keys = xx__get_service_nodes_pub_keys_for_height(height);
-    const crypto::hash  block_hash = get_block_id_by_height(height);
-
-    if (block_hash == crypto::null_hash)
-    {
-      LOG_ERROR("Block height: " << height << " returned null hash");
-      return false;
-    }
-
-    // Generate index mapping to pub_keys
-    std::vector<size_t> pub_keys_indexes(pub_keys.size());
-    for (size_t i = 0; i < pub_keys.size(); i++) pub_keys_indexes[i] = i;
-
-    size_t const quorum_size = std::min(pub_keys.size(), (size_t)10);
-    quorum.resize(quorum_size);
-
-    // Shuffle indexes and pull out from the pub key list into quorum
-    if (0) // TODO(doyle): Temp. For debugging with deterministic lists
-    {
-      uint64_t seed = 0;
-      std::memcpy(&seed, block_hash.data, std::min(sizeof(seed), sizeof(block_hash.data)));
-
-      std::mt19937_64 mersenne_twister(seed);
-      std::shuffle(pub_keys_indexes.begin(), pub_keys_indexes.end(), mersenne_twister);
-    }
-
-    for (size_t i = 0; i < quorum.size(); i++)
-      quorum[i] = pub_keys[pub_keys_indexes[i]];
-
-    return true;
+    const service_nodes::quorum_state *result = m_service_node_list.get_quorum_state(height);
+    return result;
   }
   //-----------------------------------------------------------------------------------------------
   bool core::add_deregister_vote(const loki::service_node_deregister::vote& vote, vote_verification_context &vvc)
   {
-    std::vector<crypto::public_key> quorum;
-    if (!get_quorum_list_for_height(vote.block_height, quorum))
-    {
-      vvc.m_verification_failed  = true;
-      vvc.m_invalid_block_height = true;
-      LOG_ERROR("Could not get quorum for height: " << vote.block_height);
-      return false;
-    }
-
     {
       uint64_t latest_block_height = std::max(get_current_blockchain_height(), get_target_blockchain_height());
       uint64_t delta_height = latest_block_height - vote.block_height;
@@ -1764,8 +1696,17 @@ namespace cryptonote
       }
     }
 
+    const service_nodes::quorum_state *quorum_state = m_service_node_list.get_quorum_state(vote.block_height);
+    if (!quorum_state)
+    {
+      vvc.m_verification_failed  = true;
+      vvc.m_invalid_block_height = true;
+      LOG_ERROR("Could not get quorum state for height: " << vote.block_height);
+      return false;
+    }
+
     cryptonote::transaction deregister_tx;
-    bool result = m_deregister_vote_pool.add_vote(vote, vvc, quorum, deregister_tx);
+    bool result = m_deregister_vote_pool.add_vote(vote, vvc, *quorum_state, deregister_tx);
     if (result && vvc.m_full_tx_deregister_made)
     {
       tx_verification_context tvc;

@@ -75,7 +75,7 @@ public:
 
   bool print_blockchain_info(const std::vector<std::string>& args);
 
-  bool print_quorum_list(const std::vector<std::string>& args);
+  bool print_quorum_state(const std::vector<std::string>& args);
 
   bool set_log_level(const std::vector<std::string>& args);
 

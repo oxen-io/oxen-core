@@ -96,10 +96,10 @@ t_command_server::t_command_server(
     , "Print a given transaction."
     );
   m_command_lookup.set_handler(
-      "print_quorum_list"
-    , std::bind(&t_command_parser_executor::print_quorum_list, &m_parser, p::_1)
-    , "print_quorum_list <height>"
-    , "Print the quorum list for the block height."
+      "print_quorum_state"
+    , std::bind(&t_command_parser_executor::print_quorum_state, &m_parser, p::_1)
+    , "print_quorum_state <height>"
+    , "Print the quorum state for the block height."
     );
   m_command_lookup.set_handler(
       "is_key_image_spent"
