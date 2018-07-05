@@ -65,6 +65,7 @@ namespace service_nodes
   private:
 
     bool process_registration_tx(const cryptonote::transaction& tx, uint64_t block_height, cryptonote::account_public_address& address, crypto::public_key& key) const;
+    std::vector<const cryptonote::account_public_address *> get_service_node_pubkeys() const;
     template<typename T>
     void block_added_generic(const cryptonote::block& block, const T& txs);
 

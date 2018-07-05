@@ -1989,7 +1989,8 @@ namespace cryptonote
     }
 
     const service_nodes::quorum_state *quorum_state = m_core.get_quorum_state(req.height);
-    if (quorum_state)
+    r = (quorum_state != nullptr);
+    if (r)
     {
       res.status = CORE_RPC_STATUS_OK;
       res.quorum_nodes.reserve (quorum_state->quorum_nodes.size());
