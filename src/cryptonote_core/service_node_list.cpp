@@ -110,18 +110,18 @@ namespace service_nodes
     }
 
     std::sort(result.begin(), result.end(),
-        [](const cryptonote::account_public_address* a, const cryptonote::account_public_address* b) {
-          return memcmp(reinterpret_cast<const void*>(&a->m_spend_public_key), reinterpret_cast<const void*>(&b->m_spend_public_key), sizeof(a)) < 0;
-        });
+      [](const cryptonote::account_public_address* a, const cryptonote::account_public_address* b) {
+        return memcmp(reinterpret_cast<const void*>(&a->m_spend_public_key), reinterpret_cast<const void*>(&b->m_spend_public_key), sizeof(a)) < 0;
+      });
     return result;
   }
 
   const quorum_state* service_node_list::get_quorum_state(uint64_t height) const
   {
-    quorum_state const *result = nullptr;
+    const quorum_state* result = nullptr;
     for (size_t i = 0; i < circular_quorum_state_buffer::SIZE; i ++)
     {
-      quorum_state const *check = m_quorum_states.quorums + i;
+      const quorum_state *check = m_quorum_states.quorums + i;
       if (check->height == height)
       {
         result = check;
@@ -212,6 +212,23 @@ namespace service_nodes
     return money_transferred >= m_blockchain.get_staking_requirement(block_height);
   }
 
+  bool service_node_list::process_deregistration_tx(const cryptonote::transaction& tx, cryptonote::account_public_address& address)
+  {
+    cryptonote::tx_extra_service_node_deregister deregister;
+    if (!cryptonote::get_service_node_deregister_from_tx_extra(tx.extra, deregister))
+    {
+      return false;
+    }
+
+    if (const quorum_state* state = get_quorum_state(deregister.block_height))
+    {
+      address = state->nodes_to_test[deregister.service_node_index];
+      return true;
+    }
+
+    return false;
+  }
+
   // This function takes a tx and returns true if it is a staking transaction.
   // It also sets the address argument to the public spendkey and pub viewkey of
   // the transaction.
@@ -296,6 +313,7 @@ namespace service_nodes
     return null_address;
   }
 
+
   template<typename T>
   void service_node_list::block_added_generic(const cryptonote::block& block, const T& txs)
   {
@@ -353,7 +371,20 @@ namespace service_nodes
           crypto::public_key& service_node_key = m_service_nodes_keys[address];
           m_rollback_events.push_back(std::unique_ptr<rollback_event>(new rollback_change(block_height, address, iter->second, service_node_key)));
           iter->second = std::pair<uint64_t, size_t>(block_height, index);
-          service_node_key = key;
+        }
+      }
+      else if (process_deregistration_tx(tx, address))
+      {
+        auto iter = m_service_nodes_last_reward.find(address);
+        if (iter != m_service_nodes_last_reward.end())
+        {
+          crypto::public_key& service_node_key = m_service_nodes_keys[address];
+          m_rollback_events.push_back(std::unique_ptr<rollback_event>(new rollback_change(block_height, address, iter->second, service_node_key)));
+          m_service_nodes_last_reward.erase(iter);
+        }
+        else
+        {
+          MWARNING("Tried to kick off a service node that is no longer registered: " << epee::string_tools::pod_to_hex(address.m_spend_public_key));
         }
       }
       index++;
@@ -513,7 +544,7 @@ namespace service_nodes
     quorum_state& quorum_state = m_quorum_states.next_free_slot();
     {
       quorum_state.height                     = height;
-      std::vector<crypto::public_key>& quorum = quorum_state.quorum_nodes;
+      std::vector<cryptonote::account_public_address>& quorum = quorum_state.quorum_nodes;
       {
         // TODO(doyle): Reserve, and only resize when there's a large delta in size.
         quorum.clear();
@@ -522,11 +553,11 @@ namespace service_nodes
         {
           size_t node_index                                   = pub_keys_indexes[i];
           const cryptonote::account_public_address *node_addr = full_node_list[node_index];
-          quorum[i] = node_addr->m_spend_public_key;
+          quorum[i] = *node_addr;
         }
       }
 
-      std::vector<crypto::public_key>& nodes_to_test = quorum_state.nodes_to_test;
+      std::vector<cryptonote::account_public_address>& nodes_to_test = quorum_state.nodes_to_test;
       {
         size_t num_remaining_nodes = pub_keys_indexes.size() - quorum.size();
         size_t num_nodes_to_test   = std::max(num_remaining_nodes/NTH_OF_THE_NETWORK_TO_TEST,
@@ -540,7 +571,7 @@ namespace service_nodes
         {
           size_t node_index                                   = pub_keys_indexes[pub_keys_offset + i];
           const cryptonote::account_public_address *node_addr = full_node_list[node_index];
-          nodes_to_test[i] = node_addr->m_spend_public_key;
+          nodes_to_test[i] = *node_addr;
         }
       }
 
@@ -549,8 +580,8 @@ namespace service_nodes
 
   quorum_state& service_node_list::circular_quorum_state_buffer::next_free_slot()
   {
-    int index            = this->circular_index++ % SIZE;
-    quorum_state& result = quorums[index];
+    this->circular_index  = (this->circular_index + 1) % SIZE;
+    quorum_state& result = quorums[this->circular_index];
     return result;
   }
 

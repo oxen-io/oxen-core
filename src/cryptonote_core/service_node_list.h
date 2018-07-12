@@ -36,10 +36,9 @@ namespace service_nodes
 {
   struct quorum_state
   {
-    using public_spend_key = crypto::public_key;
     uint64_t height;
-    std::vector<public_spend_key> quorum_nodes;
-    std::vector<public_spend_key> nodes_to_test;
+    std::vector<cryptonote::account_public_address> quorum_nodes;
+    std::vector<cryptonote::account_public_address> nodes_to_test;
   };
 
   class service_node_list
@@ -58,13 +57,14 @@ namespace service_nodes
     std::vector<cryptonote::account_public_address> get_expired_nodes(uint64_t block_height) const;
     cryptonote::account_public_address select_winner(const crypto::hash& prev_id);
 
-    std::vector<crypto::public_key> get_service_nodes_pubkeys() const;
     bool is_service_node(const crypto::public_key& pubkey) const;
     const quorum_state* get_quorum_state(uint64_t height) const;
 
   private:
 
     bool process_registration_tx(const cryptonote::transaction& tx, uint64_t block_height, cryptonote::account_public_address& address, crypto::public_key& key) const;
+    bool process_deregistration_tx(const cryptonote::transaction& tx, cryptonote::account_public_address& address);
+
     std::vector<const cryptonote::account_public_address *> get_service_node_pubkeys() const;
     template<typename T>
     void block_added_generic(const cryptonote::block& block, const T& txs);

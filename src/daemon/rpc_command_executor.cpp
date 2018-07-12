@@ -602,7 +602,7 @@ bool t_rpc_command_executor::print_quorum_state(uint64_t height)
   tools::msg_writer() << "Service Nodes To Test [" << res.nodes_to_test.size() << "]";
   for (size_t i = 0; i < res.nodes_to_test.size(); i++)
   {
-    const std::string &entry = res.quorum_nodes[i];
+    const std::string &entry = res.nodes_to_test[i];
     tools::msg_writer() << "[" << i << "] " << entry;
   }
 

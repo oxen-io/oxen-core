@@ -546,7 +546,7 @@ namespace loki
       return false;
     }
 
-    const std::vector<crypto::public_key>& quorum = quorum_state.quorum_nodes;
+    const std::vector<cryptonote::account_public_address>& quorum = quorum_state.quorum_nodes;
     for (const cryptonote::tx_extra_service_node_deregister::vote &vote : deregister.votes)
     {
       bool all_votes_verified = true;
@@ -560,7 +560,7 @@ namespace loki
           return false;
         }
 
-        keys_and_sigs.push_back(std::make_pair(quorum[vote.voters_quorum_index], vote.signature));
+        keys_and_sigs.push_back(std::make_pair(quorum[vote.voters_quorum_index].m_spend_public_key, vote.signature));
       }
 
       return service_node_deregister::verify_votes_signature(deregister.block_height, deregister.service_node_index, keys_and_sigs);
