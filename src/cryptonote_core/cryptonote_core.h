@@ -783,11 +783,10 @@ namespace cryptonote
       * @brief Get the deterministic list of service node's public keys for quorum testing
       *
       * @param height Block height to deterministically recreate the quorum list from
-      * @param quorum The quorum entries are put into this param
 
-      * @return Whether the list could be made
+      * @return Nullptr if height was valid otherwise quorum state
       */
-     bool get_quorum_list_for_height(uint64_t height, std::vector<crypto::public_key>& quorum) const;
+     const service_nodes::quorum_state *get_quorum_state(uint64_t height) const;
 
      /**
       * @brief Add a vote to deregister a service node from network
@@ -971,6 +970,13 @@ namespace cryptonote
       */
      bool check_disk_space();
 
+     /**
+      * @brief Initializes service node key by loading or creating.
+      *
+      * @return true on success, false otherwise
+      */
+     bool init_service_node_key();
+
      bool m_test_drop_download = true; //!< whether or not to drop incoming blocks (for testing)
 
      uint64_t m_test_drop_download_height = 0; //!< height under which to drop incoming blocks, if doing so
@@ -1011,6 +1017,10 @@ namespace cryptonote
 
      std::atomic_flag m_checkpoints_updating; //!< set if checkpoints are currently updating to avoid multiple threads attempting to update at once
      bool m_disable_dns_checkpoints;
+
+     bool m_service_node;
+     crypto::secret_key m_service_node_key;
+     crypto::public_key m_service_node_pubkey;
 
      size_t block_sync_size;
 

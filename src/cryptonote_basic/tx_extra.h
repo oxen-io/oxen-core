@@ -171,17 +171,6 @@ namespace cryptonote
     END_SERIALIZE()
   };
 
-  struct tx_extra_account_public_address
-  {
-    crypto::public_key m_spend_public_key;
-    crypto::public_key m_view_public_key;
-
-    BEGIN_SERIALIZE()
-      FIELD(m_spend_public_key)
-      FIELD(m_view_public_key)
-    END_SERIALIZE()
-  };
-
   struct tx_extra_mysterious_minergate
   {
     std::string data;
@@ -195,10 +184,12 @@ namespace cryptonote
   {
     crypto::public_key public_view_key;
     crypto::public_key public_spend_key;
+    crypto::public_key service_node_key;
 
     BEGIN_SERIALIZE()
       FIELD(public_view_key)
       FIELD(public_spend_key)
+      FIELD(service_node_key)
     END_SERIALIZE()
   };
 

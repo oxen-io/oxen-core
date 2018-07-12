@@ -125,7 +125,7 @@ bool t_command_parser_executor::print_blockchain_info(const std::vector<std::str
   return m_executor.print_blockchain_info(start_index, end_index);
 }
 
-bool t_command_parser_executor::print_quorum_list(const std::vector<std::string>& args)
+bool t_command_parser_executor::print_quorum_state(const std::vector<std::string>& args)
 {
   if(args.size() != 1)
   {
@@ -140,7 +140,7 @@ bool t_command_parser_executor::print_quorum_list(const std::vector<std::string>
     return false;
   }
 
-  return m_executor.print_quorum_list(height);
+  return m_executor.print_quorum_state(height);
 }
 
 

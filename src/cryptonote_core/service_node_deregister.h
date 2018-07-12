@@ -41,7 +41,11 @@
 namespace cryptonote
 {
   struct vote_verification_context;
-  class Blockchain;
+};
+
+namespace service_nodes
+{
+  struct quorum_state;
 };
 
 namespace loki
@@ -72,15 +76,15 @@ namespace loki
     };
 
     crypto::signature sign_vote(uint64_t block_height, uint32_t service_node_index, const crypto::public_key& pub, const crypto::secret_key& sec);
-    bool verify_vote(uint64_t block_height, uint32_t service_node_index, crypto::public_key p, crypto::signature s);
-    bool verify_votes(uint64_t block_height, uint32_t service_node_index, const std::vector<std::pair<crypto::public_key, crypto::signature>>& keys_and_sigs);
+    bool verify_vote_signature (uint64_t block_height, uint32_t service_node_index, crypto::public_key p, crypto::signature s);
+    bool verify_votes_signature(uint64_t block_height, uint32_t service_node_index, const std::vector<std::pair<crypto::public_key, crypto::signature>>& keys_and_sigs);
 
     bool verify_deregister(const cryptonote::tx_extra_service_node_deregister& deregister,
                            cryptonote::vote_verification_context& vvc,
-                           const std::vector<crypto::public_key> &quorum);
+                           const service_nodes::quorum_state &quorum);
 
     bool verify_vote(const vote& v, cryptonote::vote_verification_context &vvc,
-                     const std::vector<crypto::public_key> &quorum);
+                     const service_nodes::quorum_state &quorum);
   };
 
   class deregister_vote_pool
@@ -90,7 +94,7 @@ namespace loki
        *  @return True if vote was valid and in the pool already or just added (check vote verfication for specific case).
        */
       bool add_vote(const service_node_deregister::vote& new_vote, cryptonote::vote_verification_context& vvc,
-                    const std::vector<crypto::public_key>& quorum, cryptonote::transaction &tx);
+                    const service_nodes::quorum_state& quorum, cryptonote::transaction &tx);
 
       // TODO(loki): Review relay behaviour and all the cases when it should be triggered
       void                                       set_relayed         (const std::vector<service_node_deregister::vote>& votes);

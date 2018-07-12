@@ -1978,25 +1978,29 @@ namespace cryptonote
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
-  bool core_rpc_server::on_get_quorum_list(const COMMAND_RPC_GET_QUORUM_LIST::request& req, COMMAND_RPC_GET_QUORUM_LIST::response& res)
+  bool core_rpc_server::on_get_quorum_state(const COMMAND_RPC_GET_QUORUM_STATE::request& req, COMMAND_RPC_GET_QUORUM_STATE::response& res)
   {
-    PERF_TIMER(on_get_quorum_list);
+    PERF_TIMER(on_get_quorum_state);
     bool r;
 
-    if (use_bootstrap_daemon_if_necessary<COMMAND_RPC_GET_QUORUM_LIST>(invoke_http_mode::JON, "/get_quorum_list", req, res, r))
+    if (use_bootstrap_daemon_if_necessary<COMMAND_RPC_GET_QUORUM_STATE>(invoke_http_mode::JON, "/get_quorum_state", req, res, r))
     {
       return r;
     }
 
-    std::vector<crypto::public_key> quorum;
-    r = m_core.get_quorum_list_for_height(req.height, quorum);
+    const service_nodes::quorum_state *quorum_state = m_core.get_quorum_state(req.height);
+    r = (quorum_state != nullptr);
     if (r)
     {
       res.status = CORE_RPC_STATUS_OK;
-      res.quorum.reserve(quorum.size());
+      res.quorum_nodes.reserve (quorum_state->quorum_nodes.size());
+      res.nodes_to_test.reserve(quorum_state->nodes_to_test.size());
 
-      for (const auto &key : quorum)
-        res.quorum.push_back(epee::string_tools::pod_to_hex(key));
+      for (const auto &key : quorum_state->quorum_nodes)
+        res.quorum_nodes.push_back(epee::string_tools::pod_to_hex(key));
+
+      for (const auto &key : quorum_state->nodes_to_test)
+        res.nodes_to_test.push_back(epee::string_tools::pod_to_hex(key));
     }
     else
     {
@@ -2244,16 +2248,16 @@ namespace cryptonote
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
-  bool core_rpc_server::on_get_quorum_list_json(const COMMAND_RPC_GET_QUORUM_LIST::request& req, COMMAND_RPC_GET_QUORUM_LIST::response& res, epee::json_rpc::error& error_resp)
+  bool core_rpc_server::on_get_quorum_state_json(const COMMAND_RPC_GET_QUORUM_STATE::request& req, COMMAND_RPC_GET_QUORUM_STATE::response& res, epee::json_rpc::error& error_resp)
   {
     PERF_TIMER(on_get_quorum_list_json);
     bool r;
-    if (use_bootstrap_daemon_if_necessary<COMMAND_RPC_GET_QUORUM_LIST>(invoke_http_mode::JON_RPC, "get_quorum_list", req, res, r))
+    if (use_bootstrap_daemon_if_necessary<COMMAND_RPC_GET_QUORUM_STATE>(invoke_http_mode::JON_RPC, "get_quorum_list", req, res, r))
     {
       return r;
     }
 
-    r = on_get_quorum_list(req, res);
+    r = on_get_quorum_state(req, res);
 
     if (r)
     {

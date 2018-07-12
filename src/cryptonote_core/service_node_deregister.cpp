@@ -31,6 +31,7 @@
 #include "cryptonote_basic/verification_context.h"
 #include "cryptonote_basic/connection_context.h"
 #include "cryptonote_protocol/cryptonote_protocol_defs.h"
+#include "cryptonote_core/service_node_list.h"
 #include "cryptonote_core/blockchain.h"
 
 #include "misc_log_ex.h"
@@ -514,13 +515,13 @@ namespace loki
     return result;
   }
 
-  bool service_node_deregister::verify_vote(uint64_t block_height, uint32_t service_node_index, crypto::public_key p, crypto::signature s)
+  bool service_node_deregister::verify_vote_signature(uint64_t block_height, uint32_t service_node_index, crypto::public_key p, crypto::signature s)
   {
     std::vector<std::pair<crypto::public_key, crypto::signature>> keys_and_sigs{ std::make_pair(p, s) };
-    return verify_votes(block_height, service_node_index, keys_and_sigs);
+    return verify_votes_signature(block_height, service_node_index, keys_and_sigs);
   }
 
-  bool service_node_deregister::verify_votes(uint64_t block_height, uint32_t service_node_index, const std::vector<std::pair<crypto::public_key, crypto::signature>>& keys_and_sigs)
+  bool service_node_deregister::verify_votes_signature(uint64_t block_height, uint32_t service_node_index, const std::vector<std::pair<crypto::public_key, crypto::signature>>& keys_and_sigs)
   {
     crypto::hash hash = make_hash_from(block_height, service_node_index);
     for (auto& key_and_sig : keys_and_sigs)
@@ -536,8 +537,16 @@ namespace loki
 
   static bool verify_votes_helper(const cryptonote::tx_extra_service_node_deregister& deregister,
                                   cryptonote::vote_verification_context &vvc,
-                                  const std::vector<crypto::public_key> &quorum)
+                                  const service_nodes::quorum_state &quorum_state)
   {
+    if (deregister.service_node_index >= quorum_state.nodes_to_test.size())
+    {
+      vvc.m_service_node_index_out_of_bounds = true;
+      LOG_PRINT_L1("Service node index in deregister vote was out of bounds:  " << deregister.service_node_index << ", expected to be in range of: [0, " << quorum_state.nodes_to_test.size() << "]");
+      return false;
+    }
+
+    const std::vector<cryptonote::account_public_address>& quorum = quorum_state.quorum_nodes;
     for (const cryptonote::tx_extra_service_node_deregister::vote &vote : deregister.votes)
     {
       bool all_votes_verified = true;
@@ -550,9 +559,11 @@ namespace loki
           LOG_PRINT_L1("Voter's index in deregister vote was out of bounds:  " << vote.voters_quorum_index << ", expected to be in range of: [0, " << quorum.size() << "]");
           return false;
         }
-        keys_and_sigs.push_back(std::make_pair(quorum[vote.voters_quorum_index], vote.signature));
+
+        keys_and_sigs.push_back(std::make_pair(quorum[vote.voters_quorum_index].m_spend_public_key, vote.signature));
       }
-      return service_node_deregister::verify_votes(deregister.block_height, deregister.service_node_index, keys_and_sigs);
+
+      return service_node_deregister::verify_votes_signature(deregister.block_height, deregister.service_node_index, keys_and_sigs);
     }
 
     vvc.m_verification_failed = true;
@@ -561,7 +572,7 @@ namespace loki
 
   bool service_node_deregister::verify_deregister(const cryptonote::tx_extra_service_node_deregister& deregister,
                                                   cryptonote::vote_verification_context &vvc,
-                                                  const std::vector<crypto::public_key> &quorum)
+                                                  const service_nodes::quorum_state &quorum_state)
   {
     if (deregister.votes.size() < MIN_VOTES_TO_KICK_SERVICE_NODE)
     {
@@ -569,18 +580,18 @@ namespace loki
       return false;
     }
 
-    bool result = verify_votes_helper(deregister, vvc, quorum);
+    bool result = verify_votes_helper(deregister, vvc, quorum_state);
     return result;
   }
 
   bool service_node_deregister::verify_vote(const vote& v, cryptonote::vote_verification_context &vvc,
-                                            const std::vector<crypto::public_key> &quorum)
+                                            const service_nodes::quorum_state &quorum_state)
   {
     cryptonote::tx_extra_service_node_deregister deregister;
     deregister.block_height = v.block_height;
     deregister.service_node_index = v.service_node_index;
     deregister.votes.push_back(cryptonote::tx_extra_service_node_deregister::vote{ v.signature, v.voters_quorum_index });
-    return verify_votes_helper(deregister, vvc, quorum);
+    return verify_votes_helper(deregister, vvc, quorum_state);
   }
 
   void deregister_vote_pool::xx__print_service_node() const
@@ -664,10 +675,10 @@ namespace loki
 
   bool deregister_vote_pool::add_vote(const service_node_deregister::vote& new_vote,
                                       cryptonote::vote_verification_context& vvc,
-                                      const std::vector<crypto::public_key>& quorum,
+                                      const service_nodes::quorum_state& quorum_state,
                                       cryptonote::transaction &tx)
   {
-    if (!service_node_deregister::verify_vote(new_vote, vvc, quorum))
+    if (!service_node_deregister::verify_vote(new_vote, vvc, quorum_state))
     {
       LOG_PRINT_L1("Signature verification failed for deregister vote");
       return false;
