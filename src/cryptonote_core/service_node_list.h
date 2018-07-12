@@ -87,7 +87,7 @@ namespace service_nodes
     bool is_registration_tx(const cryptonote::transaction& tx, uint64_t block_timestamp, uint64_t block_height, int index, crypto::public_key& key, service_node_info& info) const;
     bool is_deregistration_tx(const cryptonote::transaction& tx, crypto::public_key& address) const;
 
-    std::vector<crypto::public_key> get_service_node_pubkeys() const;
+    std::vector<crypto::public_key> get_service_nodes_pubkeys() const;
 
     template<typename T>
     void block_added_generic(const cryptonote::block& block, const T& txs);

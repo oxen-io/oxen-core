@@ -45,6 +45,7 @@
 #include "tx_pool.h"
 #include "blockchain.h"
 #include "service_node_list.h"
+#include "quorum_cop.h"
 #include "cryptonote_basic/miner.h"
 #include "cryptonote_basic/connection_context.h"
 #include "cryptonote_basic/cryptonote_stat_info.h"
@@ -105,6 +106,15 @@ namespace cryptonote
       * @return true
       */
      bool on_idle();
+
+     /**
+      * @brief handles an incoming uptime proof
+      *
+      * Parses an incoming uptime proof
+      *
+      * @return true if we haven't seen it before and thus need to relay.
+      */
+     bool handle_uptime_proof(uint64_t timestamp, const crypto::public_key& pubkey, const crypto::signature& sig);
 
      /**
       * @brief handles an incoming transaction
@@ -968,6 +978,13 @@ namespace cryptonote
      bool relay_deregister_votes();
 
      /**
+      * @brief attempts to submit an uptime proof to the network, if this is running in service node mode
+      *
+      * @return true
+      */
+     bool submit_uptime_proof();
+
+     /**
       * @brief checks DNS versions
       *
       * @return true on success, false otherwise
@@ -1006,6 +1023,7 @@ namespace cryptonote
      tx_memory_pool m_mempool; //!< transaction pool instance
      Blockchain m_blockchain_storage; //!< Blockchain instance
      service_nodes::service_node_list m_service_node_list;
+     service_nodes::quorum_cop m_quorum_cop;
 
      i_cryptonote_protocol* m_pprotocol; //!< cryptonote protocol instance
 
@@ -1025,6 +1043,7 @@ namespace cryptonote
      epee::math_helper::once_a_time_seconds<60*2, false> m_deregisters_auto_relayer; //!< interval for checking re-relaying deregister votes
      epee::math_helper::once_a_time_seconds<60*60*12, true> m_check_updates_interval; //!< interval for checking for new versions
      epee::math_helper::once_a_time_seconds<60*10, true> m_check_disk_space_interval; //!< interval for checking for disk space
+     epee::math_helper::once_a_time_seconds<60*60, true> m_submit_uptime_proof_interval; //!< interval for submitting uptime proof
 
      std::atomic<bool> m_starter_message_showed; //!< has the "daemon will sync now" message been shown?
 

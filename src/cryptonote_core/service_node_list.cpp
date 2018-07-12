@@ -67,11 +67,10 @@ namespace service_nodes
     }
 
     uint64_t current_height = m_blockchain.get_current_blockchain_height();
+
     uint64_t start_height = 0;
     if (current_height >= STAKING_REQUIREMENT_LOCK_BLOCKS + STAKING_RELOCK_WINDOW_BLOCKS)
-    {
       start_height = current_height - STAKING_REQUIREMENT_LOCK_BLOCKS - STAKING_RELOCK_WINDOW_BLOCKS;
-    }
 
     for (uint64_t height = start_height; height <= current_height; height += 1000)
     {
@@ -100,7 +99,7 @@ namespace service_nodes
     m_rollback_events.push_back(std::unique_ptr<rollback_event>(new prevent_rollback(current_height)));
   }
 
-  std::vector<crypto::public_key> service_node_list::get_service_node_pubkeys() const
+  std::vector<crypto::public_key> service_node_list::get_service_nodes_pubkeys() const
   {
     std::vector<crypto::public_key> result;
     for (const auto& iter : m_service_nodes_infos)
@@ -543,7 +542,7 @@ namespace service_nodes
       return;
     }
 
-    std::vector<crypto::public_key> full_node_list = get_service_node_pubkeys();
+    std::vector<crypto::public_key> full_node_list = get_service_nodes_pubkeys();
     std::vector<size_t>                              pub_keys_indexes(full_node_list.size());
     {
       size_t index = 0;
