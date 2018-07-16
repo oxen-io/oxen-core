@@ -884,6 +884,12 @@ namespace cryptonote
       bool not_rct;
       bool untrusted;
 
+      bool invalid_block_height;
+      bool voters_quorum_index_out_of_bounds;
+      bool service_node_index_out_of_bounds;
+      bool signature_not_valid;
+      bool not_enough_votes;
+
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(status)
         KV_SERIALIZE(reason)
@@ -897,6 +903,12 @@ namespace cryptonote
         KV_SERIALIZE(fee_too_low)
         KV_SERIALIZE(not_rct)
         KV_SERIALIZE(untrusted)
+
+        KV_SERIALIZE(invalid_block_height)
+        KV_SERIALIZE(voters_quorum_index_out_of_bounds)
+        KV_SERIALIZE(service_node_index_out_of_bounds)
+        KV_SERIALIZE(signature_not_valid)
+        KV_SERIALIZE(not_enough_votes)
       END_KV_SERIALIZE_MAP()
     };
   };

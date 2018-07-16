@@ -782,6 +782,19 @@ namespace cryptonote
         add_reason(res.reason, "fee too low");
       if ((res.not_rct = tvc.m_not_rct))
         add_reason(res.reason, "tx is not ringct");
+
+      const vote_verification_context &vvc = tvc.m_vote_ctx;
+      if ((res.invalid_block_height = vvc.m_invalid_block_height))
+        add_reason(res.reason, "block height was invalid");
+      if ((res.voters_quorum_index_out_of_bounds = vvc.m_voters_quorum_index_out_of_bounds))
+        add_reason(res.reason, "voters quorum index specified out of bounds");
+      if ((res.service_node_index_out_of_bounds = vvc.m_service_node_index_out_of_bounds))
+        add_reason(res.reason, "service node index specified out of bounds");
+      if ((res.signature_not_valid = vvc.m_signature_not_valid))
+        add_reason(res.reason, "signature was not valid");
+      if ((res.not_enough_votes = vvc.m_not_enough_votes))
+        add_reason(res.reason, "not enough votes");
+
       const std::string punctuation = res.reason.empty() ? "" : ": ";
       if (tvc.m_verifivation_failed)
       {
@@ -1988,7 +2001,7 @@ namespace cryptonote
       return r;
     }
 
-    const service_nodes::quorum_state *quorum_state = m_core.get_quorum_state(req.height);
+    const std::shared_ptr<service_nodes::quorum_state> quorum_state = m_core.get_quorum_state(req.height);
     r = (quorum_state != nullptr);
     if (r)
     {

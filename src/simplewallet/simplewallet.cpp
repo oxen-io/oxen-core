@@ -2026,7 +2026,7 @@ simple_wallet::simple_wallet()
                            tr("Send all unlocked balance to the same address. Lock it for [lockblocks] (max. 1000000). If the parameter \"index<N1>[,<N2>,...]\" is specified, the wallet stakes outputs received by those address indices. <priority> is the priority of the stake. The higher the priority, the higher the transaction fee. Valid values in priority order (from lowest to highest) are: unimportant, normal, elevated, priority. If omitted, the default value (see the command \"set priority\") is used."));
   m_cmd_binder.set_handler("xx__deregister_service_node",
                            boost::bind(&simple_wallet::xx__deregister_service_node, this, _1),
-                           tr("xx__deregister_service_node [partial] <node id>"),
+                           tr("xx__deregister_service_node <partial|full> <height> <node id>"),
                            tr("Submit a deregistration transaction for the given node id."));
   m_cmd_binder.set_handler("xx__get_quorum",
                            boost::bind(&simple_wallet::xx__get_quorum, this, _1),
@@ -4719,7 +4719,7 @@ bool simple_wallet::stake_all(const std::vector<std::string> &args_)
   size_t mixins = DEFAULT_MIX;
 
   uint64_t unlock_block = 0;
-  uint64_t locked_blocks = STAKING_REQUIREMENT_LOCK_BLOCKS;
+  uint64_t locked_blocks = STAKING_REQUIREMENT_LOCK_BLOCKS + 20; /* DO NOT COMMIT: Because the time you submit and the time the block gets accepted is always going to be > 1, which fails the is_reg_tx check */
 
   std::string err;
   uint64_t bc_height = get_daemon_blockchain_height(err);
@@ -4783,8 +4783,8 @@ bool simple_wallet::stake_all(const std::vector<std::string> &args_)
       return true;
     if (ptx_vector.size() > 1) {
       prompt << boost::format(tr("Staking %s for %u blocks in %llu transactions for a total fee of %s.  Is this okay?  (Y/Yes/N/No): ")) %
-        locked_blocks %
         print_money(total_sent) %
+        locked_blocks %
         ((unsigned long long)ptx_vector.size()) %
         print_money(total_fee);
     }
@@ -4853,137 +4853,90 @@ bool simple_wallet::xx__deregister_service_node(const std::vector<std::string> &
   // autonomously and make partial votes as the state of the blockchain changes.
   // So we need to register as an RPC call.
 
-  // xx__deregister_node [partial] <node id>
+  // xx__deregister_node <partial|full> <height> <node id>
 
-  tools::wallet2::pending_tx ptx;
-  ptx.tx.unlock_time = 0;
-
-  int num_votes                       = 10;
-  int service_node_key_str_arg_index  = 0;
-  bool is_partial_cmd = false;
-
-  if (args_.size() == 1)
+  if (args_.size() != 3)
   {
-    ptx.tx.version = transaction::version_3_deregister_tx;
-  }
-  else if (args_.size() == 2)
-  {
-    is_partial_cmd = true;
-    service_node_key_str_arg_index = 1;
-    num_votes = 1;
-  }
-  else
-  {
-    fail_msg_writer() << "expected 1 or 2 arguments, received: " << args_.size();
+    fail_msg_writer() << "expected 3 arguments, received: " << args_.size();
     return true;
   }
 
-  loki::xx__service_node::init();
-  tx_extra_service_node_deregister deregister = {};
-  deregister.votes.resize(num_votes);
+  srand(time(NULL));
+  uint64_t block_height = boost::lexical_cast<uint64_t>(args_[1]);
+  const std::string &kick_service_node_pubkey = args_[2];
+#if 0
   {
-    std::vector<uint8_t> &extra = ptx.tx.extra;
+    std::string err;
+    block_height = std::max((get_daemon_blockchain_height(err) - 5 /*Always use 5 blocks back*/), (uint64_t)0);
+    if (!err.empty())
     {
-      std::string err;
-      uint64_t bc_height = std::max((get_daemon_blockchain_height(err) - 5 /*Always use 5 blocks back*/), (uint64_t)0);
-      if (!err.empty())
-      {
-        fail_msg_writer() << tr("failed to get blockchain height: ") << err;
-        return true;
-      }
-      /* deregister.block_height = bc_height; */
-      deregister.block_height = 20;
+      fail_msg_writer() << tr("failed to get blockchain height: ") << err;
+      return true;
     }
+  }
+#endif
 
-    const std::string& service_node_key_str = args_[service_node_key_str_arg_index];
-    crypto::public_key service_node_key = {};
+  COMMAND_RPC_GET_QUORUM_STATE::response res;
+  {
+    COMMAND_RPC_GET_QUORUM_STATE::request req = AUTO_VAL_INIT(req);
+    req.height = block_height;
+
+    bool r = m_wallet->invoke_http_json("/get_quorum_state", req, res);
+    const std::string err = interpret_rpc_response(r, res.status);
+
+    if (!err.empty())
     {
-      if (!epee::string_tools::hex_to_pod(service_node_key_str, service_node_key))
-      {
-        fail_msg_writer() << tr("failed to parse service node key: ") << service_node_key_str;
-        return true;
-      }
+      fail_msg_writer() << tr("Failed to retrieve quorum: ") << err;
+      return true;
     }
+  }
 
-    // Get the index of this service node in the quorum
+  loki::xx__service_node::init();
+  if (args_[0] == "full")
+  {
+    tools::wallet2::pending_tx ptx;
+    ptx.tx.unlock_time = 0;
+    ptx.tx.version = transaction::version_3_deregister_tx;
+
+    tx_extra_service_node_deregister deregister = {};
+    deregister.block_height = block_height;
+
+    bool found_service_node_in_nodes_to_test    = false;
+    for (size_t i = 0; i < res.nodes_to_test.size(); i++)
     {
-      COMMAND_RPC_GET_QUORUM_STATE::request req = AUTO_VAL_INIT(req);
-      COMMAND_RPC_GET_QUORUM_STATE::response res;
-      req.height = 32;
-
-      bool r = m_wallet->invoke_http_json("/get_quorum_state", req, res);
-      const std::string err = interpret_rpc_response(r, res.status);
-
-      if (!err.empty())
+      const std::string &entry_str = res.nodes_to_test[i];
+      if (entry_str == kick_service_node_pubkey)
       {
-        fail_msg_writer() << tr("Failed to retrieve quorum: ") << err;
-        return true;
-      }
-
-      for (int i = 0; i < num_votes; i++)
-      {
-        bool found_my_service_node_in_quorum = false;
-        const std::string this_service_node_key = loki::xx__service_node::public_spend_keys_str[i];
-
-        for (size_t j = 0; j < res.quorum_nodes.size(); j++)
-        {
-          const std::string &entry_str = res.quorum_nodes[j];
-          if (entry_str == this_service_node_key)
-          {
-            deregister.votes[i].voters_quorum_index = i;
-            found_my_service_node_in_quorum = true;
-            break;
-          }
-        }
-
-        if (!found_my_service_node_in_quorum)
-        {
-          fail_msg_writer() << tr("Failed to find service node in quorum: ") << service_node_key;
-          return true;
-        }
+        deregister.service_node_index       = i;
+        found_service_node_in_nodes_to_test = true;
+        break;
       }
     }
 
-
-    // Generate signatures
-    srand(time(NULL));
-    for (int i = 0; i < num_votes; i++)
+    if (!found_service_node_in_nodes_to_test)
     {
-      size_t index = rand() % 10;
-      const crypto::public_key &public_spend_key = loki::xx__service_node::public_spend_keys[index];
-      const crypto::secret_key &secret_spend_key = loki::xx__service_node::secret_spend_keys[index];
+      fail_msg_writer() << tr("Failed to find service node in quorum: ") << kick_service_node_pubkey;
+      return true;
+    }
 
-      tx_extra_service_node_deregister::vote& vote = deregister.votes[i];
-      vote.voters_quorum_index = index;
+    for (size_t i = 0; i < res.quorum_nodes.size(); i++)
+    {
+      tx_extra_service_node_deregister::vote vote;
+      vote.voters_quorum_index = i;
+
+#if 0
+      crypto::public_key public_spend_key;
+      epee::string_tools::hex_to_pod(res.quorum_nodes[i], public_spend_key);
       vote.signature = loki::service_node_deregister::sign_vote(deregister.block_height,
                                                                 deregister.service_node_index,
                                                                 public_spend_key,
-                                                                secret_spend_key);
+                                                                secret_key);
+#else
+      memset((void *)&vote.signature, 'X', sizeof(vote.signature));
+#endif
+      deregister.votes.push_back(vote);
     }
-  }
 
-  if (is_partial_cmd)
-  {
-    for (int i = 0; i < num_votes; i++)
-    {
-      loki::service_node_deregister::vote vote = {};
-      vote.block_height                        = deregister.block_height;
-      vote.service_node_index                  = deregister.service_node_index;
-      vote.voters_quorum_index                 = deregister.votes[i].voters_quorum_index;
-      vote.signature                           = deregister.votes[i].signature;
-
-      try
-      {
-        m_wallet->commit_deregister_vote(vote);
-      }
-      catch (const std::exception &e)
-      {
-        handle_transfer_exception(std::current_exception(), is_daemon_trusted());
-      }
-    }
-  }
-  else
-  {
     if (!add_service_node_deregister_to_tx_extra(ptx.tx.extra, deregister))
     {
       fail_msg_writer() << tr("Failed to add service node deregister to tx_extra");
@@ -4999,6 +4952,37 @@ bool simple_wallet::xx__deregister_service_node(const std::vector<std::string> &
       handle_transfer_exception(std::current_exception(), is_daemon_trusted());
     }
   }
+  else if (args_[0] == "partial")
+  {
+    loki::service_node_deregister::vote vote = {};
+    vote.block_height                        = block_height;
+    vote.service_node_index                  = rand() % res.nodes_to_test.size();
+    vote.voters_quorum_index                 = rand() % res.quorum_nodes.size();
+
+    crypto::secret_key secret_spend_key = crypto::null_skey;
+    crypto::public_key public_spend_key;
+    epee::string_tools::hex_to_pod(res.quorum_nodes[vote.voters_quorum_index], public_spend_key);
+#if 0
+    vote.signature = loki::service_node_deregister::sign_vote(vote.block_height, vote.service_node_index, public_spend_key, secret_key);
+#else
+      memset((void *)&vote.signature, 'X', sizeof(vote.signature));
+#endif
+
+    try
+    {
+      m_wallet->commit_deregister_vote(vote);
+    }
+    catch (const std::exception &e)
+    {
+      handle_transfer_exception(std::current_exception(), is_daemon_trusted());
+    }
+  }
+  else
+  {
+    fail_msg_writer() << "expected 3 arguments, received: " << args_.size();
+    return true;
+  }
+
   return true;
 }
 //----------------------------------------------------------------------------------------------------

@@ -784,9 +784,9 @@ namespace cryptonote
       *
       * @param height Block height to deterministically recreate the quorum list from
 
-      * @return Nullptr if height was valid otherwise quorum state
+      * @return Null shared ptr if quorum has not been determined yet for height
       */
-     const service_nodes::quorum_state *get_quorum_state(uint64_t height) const;
+     const std::shared_ptr<service_nodes::quorum_state> get_quorum_state(uint64_t height) const;
 
      /**
       * @brief Add a vote to deregister a service node from network

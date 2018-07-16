@@ -169,7 +169,7 @@ namespace cryptonote
   core::core(i_cryptonote_protocol* pprotocol):
               m_mempool(m_blockchain_storage),
               m_service_node_list(m_blockchain_storage),
-              m_blockchain_storage(m_mempool, m_service_node_list),
+              m_blockchain_storage(m_mempool, m_service_node_list, m_deregister_vote_pool),
               m_miner(this),
               m_miner_address(boost::value_initialized<account_public_address>()),
               m_starter_message_showed(false),
@@ -1045,30 +1045,6 @@ namespace cryptonote
     if (keeped_by_block)
       get_blockchain_storage().on_new_tx_from_block(tx);
 
-    if (tx.version == transaction::version_3_deregister_tx)
-    {
-      tx_extra_service_node_deregister deregister;
-      if (!get_service_node_deregister_from_tx_extra(tx.extra, deregister))
-      {
-        LOG_PRINT_L1("TX version deregister_tx did not contain deregister data");
-        return false;
-      }
-
-      service_nodes::quorum_state const *quorum_state = m_service_node_list.get_quorum_state(deregister.block_height);
-      if (!quorum_state)
-      {
-        LOG_PRINT_L1("TX version 3 deregister_tx could not get quorum for height: " << deregister.block_height);
-        return false;
-      }
-
-      if (!loki::service_node_deregister::verify_deregister(deregister, tvc.m_vote_ctx, *quorum_state))
-      {
-        tvc.m_verifivation_failed = true;
-        LOG_PRINT_L1("tx " << tx_hash << ": version 3 deregister_tx could not be completely verified.");
-        return false;
-      }
-    }
-
     if(m_mempool.have_tx(tx_hash))
     {
       LOG_PRINT_L2("tx " << tx_hash << "already have transaction in tx_pool");
@@ -1309,14 +1285,8 @@ namespace cryptonote
       return false;
     }
     add_new_block(b, bvc);
-
-    if (bvc.m_added_to_main_chain)
-    {
-      m_deregister_vote_pool.remove_expired_votes(get_current_blockchain_height());
-
-      if(update_miner_blocktemplate)
-         update_miner_block_template();
-    }
+    if(update_miner_blocktemplate && bvc.m_added_to_main_chain)
+       update_miner_block_template();
     return true;
 
     CATCH_ENTRY_L0("core::handle_incoming_block()", false);
@@ -1660,9 +1630,9 @@ namespace cryptonote
     return si.available;
   }
   //-----------------------------------------------------------------------------------------------
-  const service_nodes::quorum_state *core::get_quorum_state(uint64_t height) const
+  const std::shared_ptr<service_nodes::quorum_state> core::get_quorum_state(uint64_t height) const
   {
-    const service_nodes::quorum_state *result = m_service_node_list.get_quorum_state(height);
+    const std::shared_ptr<service_nodes::quorum_state> result = m_service_node_list.get_quorum_state(height);
     return result;
   }
   //-----------------------------------------------------------------------------------------------
@@ -1696,7 +1666,7 @@ namespace cryptonote
       }
     }
 
-    const service_nodes::quorum_state *quorum_state = m_service_node_list.get_quorum_state(vote.block_height);
+    const std::shared_ptr<service_nodes::quorum_state> quorum_state = m_service_node_list.get_quorum_state(vote.block_height);
     if (!quorum_state)
     {
       vvc.m_verification_failed  = true;

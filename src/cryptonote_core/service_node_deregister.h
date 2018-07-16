@@ -65,7 +65,8 @@ namespace loki
 
   namespace service_node_deregister
   {
-    const uint64_t VOTE_LIFETIME_BY_HEIGHT = (60 * 60 * 2) / DIFFICULTY_TARGET_V2;
+    const uint64_t VOTE_LIFETIME_BY_HEIGHT       = (60 * 60 * 2) / DIFFICULTY_TARGET_V2;
+    const uint64_t DEREGISTER_LIFETIME_BY_HEIGHT = VOTE_LIFETIME_BY_HEIGHT;
 
     struct vote
     {
@@ -93,12 +94,15 @@ namespace loki
       /**
        *  @return True if vote was valid and in the pool already or just added (check vote verfication for specific case).
        */
-      bool add_vote(const service_node_deregister::vote& new_vote, cryptonote::vote_verification_context& vvc,
-                    const service_nodes::quorum_state& quorum, cryptonote::transaction &tx);
+      bool add_vote(const service_node_deregister::vote& new_vote,
+                    cryptonote::vote_verification_context& vvc,
+                    service_nodes::quorum_state &quorum_state,
+                    cryptonote::transaction &tx);
 
       // TODO(loki): Review relay behaviour and all the cases when it should be triggered
       void                                       set_relayed         (const std::vector<service_node_deregister::vote>& votes);
       void                                       remove_expired_votes(uint64_t height);
+      void                                       remove_used_votes   (std::vector<cryptonote::transaction> const &txs);
       std::vector<service_node_deregister::vote> get_relayable_votes () const;
 
       void xx__print_service_node() const;

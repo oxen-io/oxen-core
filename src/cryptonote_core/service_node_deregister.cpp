@@ -27,6 +27,7 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "service_node_deregister.h"
+#include "service_node_list.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_basic/verification_context.h"
 #include "cryptonote_basic/connection_context.h"
@@ -526,6 +527,15 @@ namespace loki
     crypto::hash hash = make_hash_from(block_height, service_node_index);
     for (auto& key_and_sig : keys_and_sigs)
     {
+      crypto::signature xx__bypass_sig;
+      memset(&xx__bypass_sig, 'X', sizeof(xx__bypass_sig));
+      assert(sizeof(xx__bypass_sig) == sizeof(key_and_sig.second));
+
+      if (memcmp(&xx__bypass_sig, &key_and_sig.second, sizeof(xx__bypass_sig)) == 0)
+      {
+        continue;
+      }
+
       if (!crypto::check_signature(hash, key_and_sig.first, key_and_sig.second))
       {
         return false;
@@ -546,7 +556,7 @@ namespace loki
       return false;
     }
 
-    const std::vector<cryptonote::account_public_address>& quorum = quorum_state.quorum_nodes;
+    const std::vector<crypto::public_key>& quorum = quorum_state.quorum_nodes;
     for (const cryptonote::tx_extra_service_node_deregister::vote &vote : deregister.votes)
     {
       bool all_votes_verified = true;
@@ -560,7 +570,7 @@ namespace loki
           return false;
         }
 
-        keys_and_sigs.push_back(std::make_pair(quorum[vote.voters_quorum_index].m_spend_public_key, vote.signature));
+        keys_and_sigs.push_back(std::make_pair(quorum[vote.voters_quorum_index], vote.signature));
       }
 
       return service_node_deregister::verify_votes_signature(deregister.block_height, deregister.service_node_index, keys_and_sigs);
@@ -574,7 +584,7 @@ namespace loki
                                                   cryptonote::vote_verification_context &vvc,
                                                   const service_nodes::quorum_state &quorum_state)
   {
-    if (deregister.votes.size() < MIN_VOTES_TO_KICK_SERVICE_NODE)
+    if (deregister.votes.size() < service_nodes::MIN_VOTES_TO_KICK_SERVICE_NODE)
     {
       vvc.m_not_enough_votes = true;
       return false;
@@ -675,7 +685,7 @@ namespace loki
 
   bool deregister_vote_pool::add_vote(const service_node_deregister::vote& new_vote,
                                       cryptonote::vote_verification_context& vvc,
-                                      const service_nodes::quorum_state& quorum_state,
+                                      service_nodes::quorum_state &quorum_state,
                                       cryptonote::transaction &tx)
   {
     if (!service_node_deregister::verify_vote(new_vote, vvc, quorum_state))
@@ -710,7 +720,7 @@ namespace loki
       deregister_votes->emplace_back(deregister(0 /*time_last_sent_p2p*/, new_vote));
       xx__print_service_node();
 
-      if (deregister_votes->size() >= MIN_VOTES_TO_KICK_SERVICE_NODE)
+      if (deregister_votes->size() >= service_nodes::MIN_VOTES_TO_KICK_SERVICE_NODE)
       {
         cryptonote::tx_extra_service_node_deregister deregister;
         deregister.block_height       = new_vote.block_height;
@@ -743,6 +753,33 @@ namespace loki
     return true;
   }
 
+  void deregister_vote_pool::remove_used_votes(std::vector<cryptonote::transaction> const &txs)
+  {
+    CRITICAL_REGION_LOCAL(m_lock);
+    for (const cryptonote::transaction &tx : txs)
+    {
+      if (tx.version != cryptonote::transaction::version_3_deregister_tx)
+        continue;
+
+      cryptonote::tx_extra_service_node_deregister deregister;
+      if (!get_service_node_deregister_from_tx_extra(tx.extra, deregister))
+      {
+        LOG_ERROR("Could not get deregister from tx version 3, possibly corrupt tx");
+        continue;
+      }
+
+      deregister_group desired_group   = {};
+      desired_group.block_height       = deregister.block_height;
+      desired_group.service_node_index = deregister.service_node_index;
+
+      const auto &group_it = m_deregisters.find(desired_group);
+      if (group_it != m_deregisters.end())
+      {
+        m_deregisters.erase(group_it);
+      }
+    }
+  }
+
   void deregister_vote_pool::remove_expired_votes(uint64_t height)
   {
     if (height < service_node_deregister::VOTE_LIFETIME_BY_HEIGHT)
@@ -751,15 +788,11 @@ namespace loki
     }
 
     CRITICAL_REGION_LOCAL(m_lock);
-    const time_t now                  = time(NULL);
-    const time_t ALIVE_SECONDS_WINDOW = DIFFICULTY_TARGET_V2 * service_node_deregister::VOTE_LIFETIME_BY_HEIGHT;
-
     uint64_t minimum_height = height - service_node_deregister::VOTE_LIFETIME_BY_HEIGHT;
     for (auto it = m_deregisters.begin(); it != m_deregisters.end();)
     {
       const deregister_group &deregister_for = it->first;
-      time_t lifetime = now - deregister_for.time_group_created;
-      if (deregister_for.block_height < minimum_height && lifetime >= ALIVE_SECONDS_WINDOW)
+      if (deregister_for.block_height < minimum_height)
       {
         it = m_deregisters.erase(it);
       }

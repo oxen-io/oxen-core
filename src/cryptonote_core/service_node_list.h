@@ -34,11 +34,16 @@
 
 namespace service_nodes
 {
+  const size_t QUORUM_SIZE                    = 10;
+  const size_t MIN_VOTES_TO_KICK_SERVICE_NODE = 7;
+  const size_t NTH_OF_THE_NETWORK_TO_TEST     = 100;
+  const size_t MIN_NODES_TO_TEST              = 50;
+
   struct quorum_state
   {
-    uint64_t height;
-    std::vector<cryptonote::account_public_address> quorum_nodes;
-    std::vector<cryptonote::account_public_address> nodes_to_test;
+    void clear() { quorum_nodes.clear(); nodes_to_test.clear(); }
+    std::vector<crypto::public_key> quorum_nodes;
+    std::vector<crypto::public_key> nodes_to_test;
   };
 
   class service_node_list
@@ -58,14 +63,14 @@ namespace service_nodes
     cryptonote::account_public_address select_winner(const crypto::hash& prev_id);
 
     bool is_service_node(const crypto::public_key& pubkey) const;
-    const quorum_state* get_quorum_state(uint64_t height) const;
+    const std::shared_ptr<quorum_state> get_quorum_state(uint64_t height) const;
 
   private:
 
-    bool process_registration_tx(const cryptonote::transaction& tx, uint64_t block_height, cryptonote::account_public_address& address, crypto::public_key& key) const;
-    bool process_deregistration_tx(const cryptonote::transaction& tx, cryptonote::account_public_address& address);
+    bool is_registration_tx(const cryptonote::transaction& tx, uint64_t block_height, cryptonote::account_public_address& address, crypto::public_key& key) const;
+    bool is_deregistration_tx(const cryptonote::transaction& tx, cryptonote::account_public_address& address) const;
 
-    std::vector<const cryptonote::account_public_address *> get_service_node_pubkeys() const;
+    std::vector<crypto::public_key> get_service_node_pubkeys() const;
     template<typename T>
     void block_added_generic(const cryptonote::block& block, const T& txs);
 
@@ -113,17 +118,6 @@ namespace service_nodes
       bool apply(std::unordered_map<cryptonote::account_public_address, std::pair<uint64_t, size_t>>& service_nodes_last_reward, std::unordered_map<cryptonote::account_public_address, crypto::public_key>& service_nodes_keys) const;
     };
 
-    struct circular_quorum_state_buffer
-    {
-      quorum_state& next_free_slot();
-
-      const static int SIZE = loki::service_node_deregister::VOTE_LIFETIME_BY_HEIGHT;
-      quorum_state quorums[SIZE];
-
-    private:
-      int circular_index;
-    };
-
     // Service nodes are organized by time since last reward or registration
     // This value is given by block height, and differentiated by transaction index for
     // registrations that occured in the same block. index = 0 for block reward, 1 for first transaction, etc.
@@ -133,7 +127,8 @@ namespace service_nodes
     std::list<std::unique_ptr<rollback_event>> m_rollback_events;
     cryptonote::Blockchain& m_blockchain;
 
-    circular_quorum_state_buffer m_quorum_states;
+    using block_height = uint64_t;
+    std::map<block_height, std::shared_ptr<quorum_state>> m_quorum_states;
   };
 
   const static cryptonote::account_public_address null_address{ crypto::null_pkey, crypto::null_pkey };
