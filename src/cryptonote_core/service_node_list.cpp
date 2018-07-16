@@ -373,6 +373,7 @@ namespace service_nodes
           crypto::public_key& service_node_key = m_service_nodes_keys[address];
           m_rollback_events.push_back(std::unique_ptr<rollback_event>(new rollback_change(block_height, address, iter->second, service_node_key)));
           iter->second = std::pair<uint64_t, size_t>(block_height, index);
+          service_node_key = key;
         }
       }
       else if (is_deregistration_tx(tx, address))
