@@ -204,14 +204,26 @@ namespace service_nodes
 
   bool service_node_list::is_deregistration_tx(const cryptonote::transaction& tx, cryptonote::account_public_address &address) const
   {
+    if (tx.version != cryptonote::transaction::version_3_deregister_tx)
+    {
+        return false;
+    }
+
     cryptonote::tx_extra_service_node_deregister deregister;
     if (!cryptonote::get_service_node_deregister_from_tx_extra(tx.extra, deregister))
     {
+      LOG_ERROR("Transaction deregister did not have deregister data in tx extra, possibly corrupt tx in blockchain");
       return false;
     }
 
     if (const std::shared_ptr<quorum_state> state = get_quorum_state(deregister.block_height))
     {
+      if (deregister.service_node_index >= state->nodes_to_test.size())
+      {
+          LOG_ERROR("Service node index to vote off has become invalid, quorum rules have changed without a hardfork.");
+          return false;
+      }
+
       const crypto::public_key &snode_pubkey = state->nodes_to_test[deregister.service_node_index];
       for (const auto& key_it : m_service_nodes_keys)
       {
