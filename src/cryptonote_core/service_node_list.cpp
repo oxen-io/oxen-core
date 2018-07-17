@@ -434,9 +434,9 @@ namespace service_nodes
       m_rollback_events.pop_back();
     }
 
-    while (m_quorum_states.end()->first > height)
+    while (!m_quorum_states.empty() && (--m_quorum_states.end())->first > height)
     {
-      m_quorum_states.erase(m_quorum_states.end());
+      m_quorum_states.erase(--m_quorum_states.end());
     }
   }
 
@@ -555,14 +555,11 @@ namespace service_nodes
       for (size_t i = 0; i < full_node_list.size(); i++) { pub_keys_indexes[i] = i; }
 
       // Shuffle indexes
-      if (0) // xx__remove_me For debugging with deterministic lists
-      {
-        uint64_t seed = 0;
-        std::memcpy(&seed, block_hash.data, std::min(sizeof(seed), sizeof(block_hash.data)));
+      uint64_t seed = 0;
+      std::memcpy(&seed, block_hash.data, std::min(sizeof(seed), sizeof(block_hash.data)));
 
-        std::mt19937_64 mersenne_twister(seed);
-        std::shuffle(pub_keys_indexes.begin(), pub_keys_indexes.end(), mersenne_twister);
-      }
+      std::mt19937_64 mersenne_twister(seed);
+      std::shuffle(pub_keys_indexes.begin(), pub_keys_indexes.end(), mersenne_twister);
     }
 
     // Assign indexes from shuffled list into quorum and list of nodes to test

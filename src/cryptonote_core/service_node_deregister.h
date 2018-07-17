@@ -50,19 +50,6 @@ namespace service_nodes
 
 namespace loki
 {
-  namespace xx__service_node
-  {
-    extern const char *secret_spend_keys_str[100];
-    extern const char *secret_view_keys_str[100];
-    extern const char *public_spend_keys_str[100];
-    extern const char *public_view_keys_str[100];
-    extern std::vector<crypto::secret_key> secret_view_keys;
-    extern std::vector<crypto::public_key> public_view_keys;
-    extern std::vector<crypto::secret_key> secret_spend_keys;
-    extern std::vector<crypto::public_key> public_spend_keys;
-    void init();
-  };
-
   namespace service_node_deregister
   {
     const uint64_t VOTE_LIFETIME_BY_HEIGHT       = (60 * 60 * 2) / DIFFICULTY_TARGET_V2;
@@ -96,7 +83,7 @@ namespace loki
        */
       bool add_vote(const service_node_deregister::vote& new_vote,
                     cryptonote::vote_verification_context& vvc,
-                    service_nodes::quorum_state &quorum_state,
+                    const service_nodes::quorum_state &quorum_state,
                     cryptonote::transaction &tx);
 
       // TODO(loki): Review relay behaviour and all the cases when it should be triggered
@@ -104,9 +91,6 @@ namespace loki
       void                                       remove_expired_votes(uint64_t height);
       void                                       remove_used_votes   (std::vector<cryptonote::transaction> const &txs);
       std::vector<service_node_deregister::vote> get_relayable_votes () const;
-
-      void xx__print_service_node() const;
-
 
     private:
       struct deregister

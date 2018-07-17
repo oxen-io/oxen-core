@@ -34,8 +34,8 @@
 
 namespace service_nodes
 {
-  const size_t QUORUM_SIZE                    = 10;
-  const size_t MIN_VOTES_TO_KICK_SERVICE_NODE = 7;
+  const size_t QUORUM_SIZE                    = 3;
+  const size_t MIN_VOTES_TO_KICK_SERVICE_NODE = 3;
   const size_t NTH_OF_THE_NETWORK_TO_TEST     = 100;
   const size_t MIN_NODES_TO_TEST              = 50;
 
