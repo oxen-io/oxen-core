@@ -303,16 +303,6 @@ namespace cryptonote
     bool ch_inp_res = m_blockchain.check_tx_inputs(tx, max_used_block_height, max_used_block_id, tvc, kept_by_block);
     if(!ch_inp_res)
     {
-      // NOTE: If this TX V3 (i.e. staking transactions) was stored in a block
-      // from another daemon beforehand and then P2Ped over, but fails the
-      // inputs check (i.e. another deregistration TX for the same
-      // height/service node already exists in our blockchain, but has
-      // a different combo of votes) then this TX should be discarded and the
-      // earliest one kept. Eventually other daemons will sync this block which
-      // will become the canonical deregister TX.
-      if (tx.version == transaction::version_3_deregister_tx)
-        kept_by_block = false;
-
       // if the transaction was valid before (kept_by_block), then it
       // may become valid again, so ignore the failed inputs check.
       if(kept_by_block)

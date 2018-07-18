@@ -434,7 +434,7 @@ namespace service_nodes
       m_rollback_events.pop_back();
     }
 
-    while (!m_quorum_states.empty() && (--m_quorum_states.end())->first > height)
+    while (!m_quorum_states.empty() && (--m_quorum_states.end())->first >= height)
     {
       m_quorum_states.erase(--m_quorum_states.end());
     }
