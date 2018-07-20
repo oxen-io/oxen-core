@@ -2337,8 +2337,15 @@ void wallet2::refresh(uint64_t start_height, uint64_t & blocks_fetched, bool& re
     LOG_PRINT_L1("Failed to check pending transactions");
   }
 
-  //TODO: check if should be using per_output_unlock
-  // use_fork_rules -> set m_per_output_unlock
+  //TODO: use correct fork version, set as 9 for now (8 is bulletproofs it seems)
+  if (use_fork_rules(9, 10))
+  {
+    m_per_output_unlock = true;
+  }
+  else 
+  {
+    m_per_output_unlock = false;
+  }
 
   LOG_PRINT_L1("Refresh done, blocks received: " << blocks_fetched << ", balance (all accounts): " << print_money(balance_all()) << ", unlocked: " << print_money(unlocked_balance_all()));
 }
