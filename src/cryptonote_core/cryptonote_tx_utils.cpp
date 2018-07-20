@@ -550,7 +550,7 @@ namespace cryptonote
 
         if (tx.version > 2)
         {
-          tx.unlock_times.push_back(0); // 0 unlock time for change
+          tx.output_unlock_times.push_back(0); // 0 unlock time for change
         }
       }
       else
@@ -561,7 +561,7 @@ namespace cryptonote
 
         if (tx.version > 2)
         {
-          tx.unlock_times.push_back(unlock_time); // for now, all non-change have same unlock time
+          tx.output_unlock_times.push_back(unlock_time); // for now, all non-change have same unlock time
         }
       }
 
