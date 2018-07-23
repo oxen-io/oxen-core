@@ -26,92 +26,196 @@
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#include "service_node_deregister.h"
+#include "service_node_list.h"
 #include "cryptonote_config.h"
-
+#include "cryptonote_core.h"
 #include "quorum_cop.h"
-
-// TODO: rebase on top of doyle's changes and use the other constant.
-const uint64_t VOTE_LIFETIME_BY_HEIGHT = (60 * 60 * 2) / DIFFICULTY_TARGET_V2;
 
 namespace service_nodes
 {
-  quorum_cop::quorum_cop(cryptonote::Blockchain& blockchain, service_nodes::service_node_list& service_node_list)
-    : m_service_node_list(service_node_list), m_last_height(0)
+  quorum_cop::quorum_cop(cryptonote::core& core, service_nodes::service_node_list& service_node_list)
+    : m_core(core), m_service_node_list(service_node_list), m_last_height(0)
   {
-    blockchain.hook_block_added(*this);
-    blockchain.hook_blockchain_detached(*this);
   }
 
   void quorum_cop::blockchain_detached(uint64_t height)
   {
-    // TODO: check for big reorg and if too big panic.
+    uint64_t delta_height = std::abs(static_cast<int64_t>(m_core.get_current_blockchain_height() - height));
+    if (delta_height > REORG_SAFETY_BUFFER_IN_BLOCKS)
+    {
+      LOG_ERROR("The blockchain was detached with a change in height: " << delta_height <<
+                ", which is greater than the recommended REORG_SAFETY_BUFFER_IN_BLOCKS: " << REORG_SAFETY_BUFFER_IN_BLOCKS);
+    }
+
+    m_last_height = (height < REORG_SAFETY_BUFFER_IN_BLOCKS) ? height : height - REORG_SAFETY_BUFFER_IN_BLOCKS;
+  }
+
+  static bool participates_in_quorum(const std::vector<crypto::public_key>& quorum, crypto::public_key const &my_key, size_t *index_in_quorum = nullptr)
+  {
+    size_t index = 0;
+    for (crypto::public_key const &quorum_key : quorum)
+    {
+      if (quorum_key == my_key) break;
+      ++index;
+    }
+
+    if (index_in_quorum)
+      *index_in_quorum = index;
+
+    bool result = index >= quorum.size();
+    return result;
   }
 
   void quorum_cop::block_added(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs)
   {
-    uint64_t height = cryptonote::get_block_height(block);
-
-    if (height < REORG_SAFETY_BUFFER_IN_BLOCKS)
+    crypto::public_key my_pubkey;
+    crypto::secret_key my_seckey;
+    if (!m_core.get_service_node_keys(my_pubkey, my_seckey))
       return;
 
-    if (height >= VOTE_LIFETIME_BY_HEIGHT)
-      m_last_height = std::max(m_last_height, height - VOTE_LIFETIME_BY_HEIGHT);
+    uint64_t const height        = cryptonote::get_block_height(block);
+    uint64_t const latest_height = m_core.get_current_blockchain_height();
 
-    while (m_last_height < height - REORG_SAFETY_BUFFER_IN_BLOCKS)
+    if (latest_height < loki::service_node_deregister::VOTE_LIFETIME_BY_HEIGHT)
+      return;
+
+    uint64_t const execute_justice_from_height = latest_height - loki::service_node_deregister::VOTE_LIFETIME_BY_HEIGHT;
+    if (height < execute_justice_from_height)
+      return;
+
+    if (height == latest_height)
     {
-      std::cout << "Processing quorum cop stuff for height = " << m_last_height << std::endl;
-      // XXX IN HERE, go through the quorum for m_last_height and for each of
-      // the pubkeys, check if the uptime proof was seen in the last hour and
-      // five minutes. If not, submit a vote to the vote pool.
-
-      m_last_height++;
+      const std::shared_ptr<quorum_state> latest_quorum = m_core.get_quorum_state(latest_height);
+      if (participates_in_quorum(latest_quorum->nodes_to_test, my_pubkey))
+      {
+        m_core.submit_uptime_proof();
+      }
     }
+
+    if (m_last_height < execute_justice_from_height)
+      m_last_height = execute_justice_from_height;
+
+    time_t const now = time(nullptr);
+    for (;m_last_height < (height - REORG_SAFETY_BUFFER_IN_BLOCKS); m_last_height++)
+    {
+      const std::shared_ptr<quorum_state> state = m_core.get_quorum_state(m_last_height);
+      if (!state)
+      {
+        // TODO(loki): Fatal error
+        LOG_ERROR("Quorum state for height: " << m_last_height << "was not cached in daemon!");
+        continue;
+      }
+
+      size_t my_index_in_quorum = 0;
+      if (!participates_in_quorum(state->quorum_nodes, my_pubkey, &my_index_in_quorum))
+      {
+        continue;
+      }
+
+      for (size_t node_index = 0; node_index < state->nodes_to_test.size(); ++node_index)
+      {
+        const crypto::public_key &node_key = state->nodes_to_test[node_index];
+        bool vote_off_node = false;
+
+        CRITICAL_REGION_LOCAL(m_lock);
+        auto const it = m_uptime_proof_seen.find(node_key);
+        if (it == m_uptime_proof_seen.end())
+        {
+          vote_off_node = true;
+        }
+        else
+        {
+          size_t time_since_proof = now - it->second;
+          vote_off_node           = (time_since_proof > UPTIME_PROOF_MAX_TIME_IN_SECONDS) ? true : false;
+        }
+
+        if (!vote_off_node)
+          continue;
+
+        loki::service_node_deregister::vote vote = {};
+        vote.block_height        = m_last_height;
+        vote.service_node_index  = node_index;
+        vote.voters_quorum_index = my_index_in_quorum;
+        vote.signature           = loki::service_node_deregister::sign_vote(vote.block_height, vote.service_node_index, my_pubkey, my_seckey);
+
+        cryptonote::vote_verification_context vvc = {};
+        if (!m_core.add_deregister_vote(vote, vvc))
+        {
+          if (vvc.m_invalid_block_height)
+            LOG_ERROR("block height was invalid: " << vote.block_height);
+
+          if (vvc.m_voters_quorum_index_out_of_bounds)
+            LOG_ERROR("voters quorum index specified out of bounds: " << vote.voters_quorum_index);
+
+          if (vvc.m_service_node_index_out_of_bounds)
+            LOG_ERROR("service node index specified out of bounds: " << vote.service_node_index);
+
+          if (vvc.m_signature_not_valid)
+            LOG_ERROR("signature was not valid, was the signature signed properly?");
+        }
+      }
+    }
+
+    prune_uptime_proof_below(execute_justice_from_height);
+  }
+
+  static crypto::hash make_hash(crypto::public_key const &pubkey, uint64_t timestamp)
+  {
+    // TODO(doyle): Errrr clarify what this is. Looks like crypto::cn_fast_hash should be sizeof(buf)
+    char buf[44] = "SUP"; // Meaningless magic bytes
+    crypto::hash result;
+    memcpy(buf + 4, reinterpret_cast<const void *>(&pubkey), sizeof(pubkey));
+    memcpy(buf + 4 + sizeof(pubkey), reinterpret_cast<const void *>(&timestamp), sizeof(timestamp));
+    crypto::cn_fast_hash(buf, sizeof(buf), result);
+
+    return result;
   }
 
   bool quorum_cop::handle_uptime_proof(uint64_t timestamp, const crypto::public_key& pubkey, const crypto::signature& sig)
   {
     uint64_t now = time(nullptr);
 
-    if (timestamp < now - SECONDS_UPTIME_PROOF_BUFFER || timestamp > now + SECONDS_UPTIME_PROOF_BUFFER)
+    if ((timestamp < now - UPTIME_PROOF_BUFFER_IN_SECONDS) || (timestamp > now + UPTIME_PROOF_BUFFER_IN_SECONDS))
       return false;
 
     if (!m_service_node_list.is_service_node(pubkey))
-      return false; // this pubkey is not a service node
+      return false;
 
-    if (m_uptime_proof_seen[pubkey] > now - SECONDS_UPTIME_PROOF_FREQUENCY + 2 * SECONDS_UPTIME_PROOF_BUFFER)
-    {
+    CRITICAL_REGION_LOCAL(m_lock);
+    if (m_uptime_proof_seen[pubkey] > now - UPTIME_PROOF_MAX_TIME_IN_SECONDS)
       return false; // already received one uptime proof for this node recently.
-    }
 
-    char buf[44] = "SUP"; // Meaningless magic bytes
-    crypto::hash hash;
-    memcpy(buf + 4, reinterpret_cast<const void *>(&pubkey), 32);
-    memcpy(buf + 4 + 32, reinterpret_cast<const void *>(&timestamp), 8);
-    crypto::cn_fast_hash(buf, 40, hash);
-
+    crypto::hash hash = make_hash(pubkey, timestamp);
     if (!crypto::check_signature(hash, pubkey, sig))
       return false;
 
-    // TODO: remove old/expired nodes (memleak)
-    // TODO: make thread safe
-
     m_uptime_proof_seen[pubkey] = timestamp;
-
     return true;
   }
 
   void quorum_cop::generate_uptime_proof_request(const crypto::public_key& pubkey, const crypto::secret_key& seckey, cryptonote::NOTIFY_UPTIME_PROOF::request& req) const
   {
-    uint64_t timestamp = time(nullptr);
+    req.timestamp     = time(nullptr);
+    req.pubkey        = pubkey;
 
-    char buf[44] = "SUP"; // Meaningless magic bytes
-    crypto::hash hash;
-    memcpy(buf + 4, reinterpret_cast<const void *>(&pubkey), 32);
-    memcpy(buf + 4 + 32, reinterpret_cast<const void *>(&timestamp), 8);
-    crypto::cn_fast_hash(buf, 40, hash);
-
-    req.timestamp = timestamp;
-    req.pubkey = pubkey;
+    crypto::hash hash = make_hash(req.pubkey, req.timestamp);
     crypto::generate_signature(hash, pubkey, seckey, req.sig);
+  }
+
+  void quorum_cop::prune_uptime_proof_below(uint64_t height)
+  {
+    std::list<cryptonote::block> blocks;
+    if (!m_core.get_blocks(height, 1, blocks))
+    {
+      LOG_ERROR("Error quorum cop could not retrieve block with height: " << height << ", from db");
+      return;
+    }
+
+    const uint64_t prune_from_timestamp = blocks.front().timestamp;
+    CRITICAL_REGION_LOCAL(m_lock);
+
+    for (auto it = m_uptime_proof_seen.begin(); it != m_uptime_proof_seen.end();)
+      it = (it->second < prune_from_timestamp) ? m_uptime_proof_seen.erase(it) : it;
   }
 }

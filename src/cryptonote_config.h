@@ -58,8 +58,9 @@
 
 #define BLOCKCHAIN_TIMESTAMP_CHECK_WINDOW               11
 
-#define SECONDS_UPTIME_PROOF_BUFFER                     (5*60)
-#define SECONDS_UPTIME_PROOF_FREQUENCY                  (60*60)
+#define UPTIME_PROOF_BUFFER_IN_SECONDS                  (5*60)
+#define UPTIME_PROOF_FREQUENCY_IN_SECONDS               (60*60)
+#define UPTIME_PROOF_MAX_TIME_IN_SECONDS                (UPTIME_PROOF_FREQUENCY_IN_SECONDS + (2 * UPTIME_PROOF_BUFFER_IN_SECONDS))
 
 // MONEY_SUPPLY - total number coins to be generated
 #define MONEY_SUPPLY                                    ((uint64_t)(-1))

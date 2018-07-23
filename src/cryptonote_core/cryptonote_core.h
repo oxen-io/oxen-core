@@ -818,6 +818,24 @@ namespace cryptonote
       */
      bool cmd_prepare_registration(const boost::program_options::variables_map& vm, const std::vector<std::string>& args);
 
+     /**
+      * @brief Return the account associated to this service node.
+
+      * @param pub_key The public key for the service node, unmodified if not a service node
+
+      * @param sec_key The secret key for the service node, unmodified if not a service node
+
+      * @return True if we are a service node
+      */
+     bool get_service_node_keys(crypto::public_key &pub_key, crypto::secret_key &sec_key) const;
+
+     /**
+      * @brief attempts to submit an uptime proof to the network, if this is running in service node mode
+      *
+      * @return true
+      */
+     bool submit_uptime_proof();
+
    private:
 
      /**
@@ -978,13 +996,6 @@ namespace cryptonote
      bool relay_deregister_votes();
 
      /**
-      * @brief attempts to submit an uptime proof to the network, if this is running in service node mode
-      *
-      * @return true
-      */
-     bool submit_uptime_proof();
-
-     /**
       * @brief checks DNS versions
       *
       * @return true on success, false otherwise
@@ -1043,7 +1054,7 @@ namespace cryptonote
      epee::math_helper::once_a_time_seconds<60*2, false> m_deregisters_auto_relayer; //!< interval for checking re-relaying deregister votes
      epee::math_helper::once_a_time_seconds<60*60*12, true> m_check_updates_interval; //!< interval for checking for new versions
      epee::math_helper::once_a_time_seconds<60*10, true> m_check_disk_space_interval; //!< interval for checking for disk space
-     epee::math_helper::once_a_time_seconds<60*60, true> m_submit_uptime_proof_interval; //!< interval for submitting uptime proof
+     epee::math_helper::once_a_time_seconds<UPTIME_PROOF_FREQUENCY_IN_SECONDS, true> m_submit_uptime_proof_interval; //!< interval for submitting uptime proof
 
      std::atomic<bool> m_starter_message_showed; //!< has the "daemon will sync now" message been shown?
 

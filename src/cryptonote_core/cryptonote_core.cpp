@@ -172,7 +172,7 @@ namespace cryptonote
               m_mempool(m_blockchain_storage),
               m_service_node_list(m_blockchain_storage),
               m_blockchain_storage(m_mempool, m_service_node_list, m_deregister_vote_pool),
-              m_quorum_cop(m_blockchain_storage, m_service_node_list),
+              m_quorum_cop(*this, m_service_node_list),
               m_miner(this),
               m_miner_address(boost::value_initialized<account_public_address>()),
               m_starter_message_showed(false),
@@ -528,6 +528,8 @@ namespace cryptonote
     m_blockchain_storage.set_user_options(blocks_threads,
         blocks_per_sync, sync_mode, fast_sync);
 
+    // NOTE: Hooks must be registered before blockchain is initialised for the blockchain init hook to occur.
+    m_service_node_list.register_hooks(m_quorum_cop);
     r = m_blockchain_storage.init(db.release(), m_nettype, m_offline, test_options);
 
     r = m_mempool.init(max_txpool_size);
@@ -1093,10 +1095,13 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
   bool core::submit_uptime_proof()
   {
-    cryptonote_connection_context fake_context = AUTO_VAL_INIT(fake_context);
-    NOTIFY_UPTIME_PROOF::request r;
-    m_quorum_cop.generate_uptime_proof_request(m_service_node_pubkey, m_service_node_key, r);
-    get_protocol()->relay_uptime_proof(r, fake_context);
+    if (m_service_node)
+    {
+      cryptonote_connection_context fake_context = AUTO_VAL_INIT(fake_context);
+      NOTIFY_UPTIME_PROOF::request r;
+      m_quorum_cop.generate_uptime_proof_request(m_service_node_pubkey, m_service_node_key, r);
+      get_protocol()->relay_uptime_proof(r, fake_context);
+    }
     return true;
   }
   //-----------------------------------------------------------------------------------------------
@@ -1718,6 +1723,15 @@ namespace cryptonote
     }
 
     return result;
+  }
+  bool core::get_service_node_keys(crypto::public_key &pub_key, crypto::secret_key &sec_key) const
+  {
+    if (m_service_node)
+    {
+      pub_key = m_service_node_pubkey;
+      sec_key = m_service_node_key;
+    }
+    return m_service_node;
   }
   //-----------------------------------------------------------------------------------------------
   std::string core::prepare_registration(const std::vector<std::string>& args)

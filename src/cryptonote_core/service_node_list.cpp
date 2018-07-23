@@ -29,6 +29,7 @@
 #include <functional>
 #include <random>
 
+
 #include "ringct/rctSigs.h"
 #include "wallet/wallet2.h"
 #include "cryptonote_tx_utils.h"
@@ -36,6 +37,7 @@
 #include "common/int-util.h"
 #include "common/scoped_message_writer.h"
 #include "common/i18n.h"
+#include "quorum_cop.h"
 
 #include "service_node_list.h"
 
@@ -46,12 +48,24 @@ namespace service_nodes
 {
 
   service_node_list::service_node_list(cryptonote::Blockchain& blockchain)
-    : m_blockchain(blockchain)
+    : m_blockchain(blockchain), m_hooks_registered(false)
   {
-    blockchain.hook_block_added(*this);
-    blockchain.hook_blockchain_detached(*this);
-    blockchain.hook_init(*this);
-    blockchain.hook_validate_miner_tx(*this);
+  }
+
+  void service_node_list::register_hooks(service_nodes::quorum_cop &quorum_cop)
+  {
+    if (m_hooks_registered)
+    {
+      m_hooks_registered = true;
+      m_blockchain.hook_block_added(*this);
+      m_blockchain.hook_blockchain_detached(*this);
+      m_blockchain.hook_init(*this);
+      m_blockchain.hook_validate_miner_tx(*this);
+
+      // NOTE: There is an implicit dependency on service node lists hooks
+      m_blockchain.hook_block_added(quorum_cop);
+      m_blockchain.hook_blockchain_detached(quorum_cop);
+    }
   }
 
   void service_node_list::init()

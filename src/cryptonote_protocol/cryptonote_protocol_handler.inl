@@ -822,8 +822,6 @@ namespace cryptonote
     if(context.m_state != cryptonote_connection_context::state_normal)
       return 1;
 
-    std::cout << " RECEIVED NOTIFY NEW TRANSACTIONS! " << std::endl;
-
     // while syncing, core will lock for a long time, so we ignore
     // those txes as they aren't really needed anyway, and avoid a
     // long block before replying

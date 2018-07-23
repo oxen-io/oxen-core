@@ -304,7 +304,7 @@ namespace cryptonote
   /************************************************************************/
   struct NOTIFY_UPTIME_PROOF
   {
-    const static int ID = BC_COMMANDS_POOL_BASE + 10;
+    const static int ID = BC_COMMANDS_POOL_BASE + 11;
 
     struct request
     {
