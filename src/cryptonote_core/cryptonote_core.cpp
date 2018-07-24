@@ -1459,8 +1459,12 @@ namespace cryptonote
     m_deregisters_auto_relayer.do_call(boost::bind(&core::relay_deregister_votes, this));
     m_check_updates_interval.do_call(boost::bind(&core::check_updates, this));
     m_check_disk_space_interval.do_call(boost::bind(&core::check_disk_space, this));
-    if (m_service_node)
+    if (m_service_node && m_service_node_list.is_service_node(m_service_node_pubkey))
+    {
       m_submit_uptime_proof_interval.do_call(boost::bind(&core::submit_uptime_proof, this));
+      m_uptime_proof_pruner.do_call(boost::bind(&service_nodes::quorum_cop::prune_uptime_proof, &m_quorum_cop));
+    }
+
     m_miner.on_idle();
     m_mempool.on_idle();
     return true;

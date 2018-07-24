@@ -41,14 +41,14 @@ namespace service_nodes
 
   void quorum_cop::blockchain_detached(uint64_t height)
   {
-    uint64_t delta_height = std::abs(static_cast<int64_t>(m_core.get_current_blockchain_height() - height));
+    uint64_t delta_height = std::abs(static_cast<int64_t>(m_last_height - height));
     if (delta_height > REORG_SAFETY_BUFFER_IN_BLOCKS)
     {
-      LOG_ERROR("The blockchain was detached with a change in height: " << delta_height <<
-                ", which is greater than the recommended REORG_SAFETY_BUFFER_IN_BLOCKS: " << REORG_SAFETY_BUFFER_IN_BLOCKS);
+      LOG_ERROR("The blockchain was detached, quorum cop has processed votes for: " << delta_height <<
+                " blocks which is greater than the recommended REORG_SAFETY_BUFFER_IN_BLOCKS: " << REORG_SAFETY_BUFFER_IN_BLOCKS);
     }
 
-    m_last_height = (height < REORG_SAFETY_BUFFER_IN_BLOCKS) ? height : height - REORG_SAFETY_BUFFER_IN_BLOCKS;
+    m_last_height = height;
   }
 
   static bool participates_in_quorum(const std::vector<crypto::public_key>& quorum, crypto::public_key const &my_key, size_t *index_in_quorum = nullptr)
@@ -63,7 +63,7 @@ namespace service_nodes
     if (index_in_quorum)
       *index_in_quorum = index;
 
-    bool result = index >= quorum.size();
+    bool result = (index < quorum.size());
     return result;
   }
 
@@ -73,6 +73,13 @@ namespace service_nodes
     crypto::secret_key my_seckey;
     if (!m_core.get_service_node_keys(my_pubkey, my_seckey))
       return;
+
+    time_t const now         = time(nullptr);
+    bool been_alive_for_2hrs = (now - m_core.get_start_time()) >= (60 * 60 * 2);
+    if (!been_alive_for_2hrs)
+    {
+      return;
+    }
 
     uint64_t const height        = cryptonote::get_block_height(block);
     uint64_t const latest_height = m_core.get_current_blockchain_height();
@@ -84,19 +91,10 @@ namespace service_nodes
     if (height < execute_justice_from_height)
       return;
 
-    if (height == latest_height)
-    {
-      const std::shared_ptr<quorum_state> latest_quorum = m_core.get_quorum_state(latest_height);
-      if (participates_in_quorum(latest_quorum->nodes_to_test, my_pubkey))
-      {
-        m_core.submit_uptime_proof();
-      }
-    }
-
     if (m_last_height < execute_justice_from_height)
       m_last_height = execute_justice_from_height;
 
-    time_t const now = time(nullptr);
+
     for (;m_last_height < (height - REORG_SAFETY_BUFFER_IN_BLOCKS); m_last_height++)
     {
       const std::shared_ptr<quorum_state> state = m_core.get_quorum_state(m_last_height);
@@ -116,19 +114,9 @@ namespace service_nodes
       for (size_t node_index = 0; node_index < state->nodes_to_test.size(); ++node_index)
       {
         const crypto::public_key &node_key = state->nodes_to_test[node_index];
-        bool vote_off_node = false;
 
         CRITICAL_REGION_LOCAL(m_lock);
-        auto const it = m_uptime_proof_seen.find(node_key);
-        if (it == m_uptime_proof_seen.end())
-        {
-          vote_off_node = true;
-        }
-        else
-        {
-          size_t time_since_proof = now - it->second;
-          vote_off_node           = (time_since_proof > UPTIME_PROOF_MAX_TIME_IN_SECONDS) ? true : false;
-        }
+        bool vote_off_node = (m_uptime_proof_seen.find(node_key) != m_uptime_proof_seen.end());
 
         if (!vote_off_node)
           continue;
@@ -156,8 +144,6 @@ namespace service_nodes
         }
       }
     }
-
-    prune_uptime_proof_below(execute_justice_from_height);
   }
 
   static crypto::hash make_hash(crypto::public_key const &pubkey, uint64_t timestamp)
@@ -179,6 +165,8 @@ namespace service_nodes
     if ((timestamp < now - UPTIME_PROOF_BUFFER_IN_SECONDS) || (timestamp > now + UPTIME_PROOF_BUFFER_IN_SECONDS))
       return false;
 
+    // TODO(doyle): the only dependency on m_service_node_lists which could be
+    // replaced by the lists stored in db when that is implemented - 2018-07-24
     if (!m_service_node_list.is_service_node(pubkey))
       return false;
 
@@ -203,19 +191,20 @@ namespace service_nodes
     crypto::generate_signature(hash, pubkey, seckey, req.sig);
   }
 
-  void quorum_cop::prune_uptime_proof_below(uint64_t height)
+  bool quorum_cop::prune_uptime_proof()
   {
-    std::list<cryptonote::block> blocks;
-    if (!m_core.get_blocks(height, 1, blocks))
-    {
-      LOG_ERROR("Error quorum cop could not retrieve block with height: " << height << ", from db");
-      return;
-    }
-
-    const uint64_t prune_from_timestamp = blocks.front().timestamp;
+    uint64_t now = time(nullptr);
+    const uint64_t prune_from_timestamp = now - UPTIME_PROOF_MAX_TIME_IN_SECONDS;
     CRITICAL_REGION_LOCAL(m_lock);
 
     for (auto it = m_uptime_proof_seen.begin(); it != m_uptime_proof_seen.end();)
-      it = (it->second < prune_from_timestamp) ? m_uptime_proof_seen.erase(it) : it;
+    {
+      if (it->second < prune_from_timestamp)
+        m_uptime_proof_seen.erase(it);
+      else
+        it++;
+    }
+
+    return true;
   }
 }
