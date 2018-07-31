@@ -41,30 +41,13 @@ namespace service_nodes
 
   void quorum_cop::blockchain_detached(uint64_t height)
   {
-    uint64_t delta_height = std::abs(static_cast<int64_t>(m_last_height - height));
+    uint64_t delta_height = m_last_height - height;
     if (delta_height > REORG_SAFETY_BUFFER_IN_BLOCKS)
     {
       LOG_ERROR("The blockchain was detached, quorum cop has processed votes for: " << delta_height <<
                 " blocks which is greater than the recommended REORG_SAFETY_BUFFER_IN_BLOCKS: " << REORG_SAFETY_BUFFER_IN_BLOCKS);
+      m_last_height = height;
     }
-
-    m_last_height = height;
-  }
-
-  static bool participates_in_quorum(const std::vector<crypto::public_key>& quorum, crypto::public_key const &my_key, size_t *index_in_quorum = nullptr)
-  {
-    size_t index = 0;
-    for (crypto::public_key const &quorum_key : quorum)
-    {
-      if (quorum_key == my_key) break;
-      ++index;
-    }
-
-    if (index_in_quorum)
-      *index_in_quorum = index;
-
-    bool result = (index < quorum.size());
-    return result;
   }
 
   void quorum_cop::block_added(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs)
@@ -74,9 +57,10 @@ namespace service_nodes
     if (!m_core.get_service_node_keys(my_pubkey, my_seckey))
       return;
 
-    time_t const now         = time(nullptr);
-    bool been_alive_for_2hrs = (now - m_core.get_start_time()) >= (60 * 60 * 2);
-    if (!been_alive_for_2hrs)
+    time_t const now          = time(nullptr);
+    time_t const min_lifetime = 60 * 60 * 2;
+    bool alive_for_min_time   = (now - m_core.get_start_time()) >= min_lifetime;
+    if (!alive_for_min_time)
     {
       return;
     }
@@ -105,12 +89,15 @@ namespace service_nodes
         continue;
       }
 
-      size_t my_index_in_quorum = 0;
-      if (!participates_in_quorum(state->quorum_nodes, my_pubkey, &my_index_in_quorum))
-      {
-        continue;
-      }
+      auto it = std::find_if(state->quorum_nodes.begin(), state->quorum_nodes.end(), [&my_pubkey](crypto::public_key const &key) {
+          bool result = (my_pubkey == key);
+          return result;
+      });
 
+      if (it == state->quorum_nodes.end())
+        continue;
+
+      size_t my_index_in_quorum = it - state->quorum_nodes.begin();
       for (size_t node_index = 0; node_index < state->nodes_to_test.size(); ++node_index)
       {
         const crypto::public_key &node_key = state->nodes_to_test[node_index];
