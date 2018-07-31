@@ -167,6 +167,8 @@ namespace cryptonote
 
     // tx information
     size_t   version;
+
+    // not used after version 2, but remains for compatibility
     uint64_t unlock_time;  //number of block (or time), used as a limitation like: spend this tx not early then block/time
 
     std::vector<txin_v> vin;
@@ -174,8 +176,14 @@ namespace cryptonote
     //extra
     std::vector<uint8_t> extra;
 
+    std::vector<uint64_t> output_unlock_times;
+
     BEGIN_SERIALIZE()
       VARINT_FIELD(version)
+      if (version > 2)
+      {
+        FIELD(output_unlock_times)
+      }
       if(version == 0 || CURRENT_TRANSACTION_VERSION < version) return false;
       VARINT_FIELD(unlock_time)
       FIELD(vin)
@@ -319,6 +327,7 @@ namespace cryptonote
   {
     version = 1;
     unlock_time = 0;
+    output_unlock_times.clear();
     vin.clear();
     vout.clear();
     extra.clear();

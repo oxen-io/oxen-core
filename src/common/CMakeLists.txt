@@ -38,6 +38,7 @@ set(common_sources
   i18n.cpp
   password.cpp
   perf_timer.cpp
+  rules.cpp
   threadpool.cpp
   updates.cpp)
 
@@ -66,6 +67,7 @@ set(common_private_headers
   i18n.h
   password.h
   perf_timer.h
+  rules.h
   stack_trace.h
   threadpool.h
   updates.h)
