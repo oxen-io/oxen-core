@@ -162,7 +162,7 @@ namespace cryptonote
       version_0 = 0,
       version_1,
       version_2,
-      version_3_deregister_tx,
+      version_3_per_output_unlock_times,
     };
 
     // tx information
@@ -177,12 +177,14 @@ namespace cryptonote
     std::vector<uint8_t> extra;
 
     std::vector<uint64_t> output_unlock_times;
+    bool is_deregister; //service node deregister tx
 
     BEGIN_SERIALIZE()
       VARINT_FIELD(version)
       if (version > 2)
       {
         FIELD(output_unlock_times)
+        FIELD(is_deregister)
       }
       if(version == 0 || CURRENT_TRANSACTION_VERSION < version) return false;
       VARINT_FIELD(unlock_time)
@@ -220,6 +222,7 @@ namespace cryptonote
     void set_hash_valid(bool v) const { hash_valid.store(v,std::memory_order_release); }
     bool is_blob_size_valid() const { return blob_size_valid.load(std::memory_order_acquire); }
     void set_blob_size_valid(bool v) const { blob_size_valid.store(v,std::memory_order_release); }
+    bool is_deregister_tx() const { return (version == version_3_per_output_unlock_times) && is_deregister; }
 
     BEGIN_SERIALIZE_OBJECT()
       if (!typename Archive<W>::is_saving())
@@ -328,6 +331,7 @@ namespace cryptonote
     version = 1;
     unlock_time = 0;
     output_unlock_times.clear();
+    is_deregister = false;
     vin.clear();
     vout.clear();
     extra.clear();

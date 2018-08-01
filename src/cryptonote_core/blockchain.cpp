@@ -2564,7 +2564,7 @@ bool Blockchain::have_tx_keyimges_as_spent(const transaction &tx) const
 bool Blockchain::expand_transaction_2(transaction &tx, const crypto::hash &tx_prefix_hash, const std::vector<std::vector<rct::ctkey>> &pubkeys)
 {
   PERF_TIMER(expand_transaction_2);
-  CHECK_AND_ASSERT_MES(tx.version == 2, false, "Transaction version is not 2");
+  CHECK_AND_ASSERT_MES(tx.version >= 2, false, "Transaction version is not greater than 2");
 
   rct::rctSig &rv = tx.rct_signatures;
 
@@ -2651,7 +2651,7 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
 
   // from hard fork 2, we require mixin at least 2 unless one output cannot mix with 2 others
   // if one output cannot mix with 2 others, we accept at most 1 output that can mix
-  if (hf_version >= 2 && tx.version != transaction::version_3_deregister_tx)
+  if (hf_version >= 2 && !tx.is_deregister_tx())
   {
     size_t n_unmixable = 0, n_mixable = 0;
     size_t mixin = std::numeric_limits<size_t>::max();
@@ -2702,7 +2702,10 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
     }
 
     // min/max tx version based on HF, and we accept v1 txes if having a non mixable
-    const size_t max_tx_version = (hf_version <= 3) ? 1 : 2;
+    const size_t max_tx_version = (hf_version <= 3) ? 1 : (hf_version < 9)
+      ? transaction::version_2
+      : transaction::version_3_per_output_unlock_times;
+
     if (tx.version > max_tx_version)
     {
       MERROR_VER("transaction version " << (unsigned)tx.version << " is higher than max accepted version " << max_tx_version);
@@ -2860,7 +2863,7 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
       }
     }
   }
-  else if (tx.version == transaction::version_2)
+  else if (!tx.is_deregister_tx())
   {
     if (!expand_transaction_2(tx, tx_prefix_hash, pubkeys))
     {
@@ -3002,7 +3005,8 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
       return false;
     }
   }
-  else if (tx.version == transaction::version_3_deregister_tx)
+
+  if (tx.is_deregister_tx())
   {
     // Check the inputs (votes) of the transaction have not been already been
     // submitted to the blockchain under another transaction using a different
@@ -3044,7 +3048,7 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
           continue;
         }
 
-        if (existing_tx.version != transaction::version_3_deregister_tx)
+        if (!existing_tx.is_deregister_tx())
           continue;
 
         tx_extra_service_node_deregister existing_deregister;

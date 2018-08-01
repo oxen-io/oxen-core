@@ -214,7 +214,7 @@ namespace service_nodes
 
   void service_node_list::process_deregistration_tx(const cryptonote::transaction& tx, uint64_t block_height)
   {
-    if (tx.version != cryptonote::transaction::version_3_deregister_tx)
+    if (!tx.is_deregister_tx())
       return;
 
     cryptonote::tx_extra_service_node_deregister deregister;
