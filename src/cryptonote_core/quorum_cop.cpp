@@ -41,11 +41,18 @@ namespace service_nodes
 
   void quorum_cop::blockchain_detached(uint64_t height)
   {
-    uint64_t delta_height = m_last_height - height;
-    if (delta_height > REORG_SAFETY_BUFFER_IN_BLOCKS)
+    if (m_last_height >= height)
     {
-      LOG_ERROR("The blockchain was detached, quorum cop has processed votes for: " << delta_height <<
-                " blocks which is greater than the recommended REORG_SAFETY_BUFFER_IN_BLOCKS: " << REORG_SAFETY_BUFFER_IN_BLOCKS);
+      uint64_t delta_height = m_last_height - height;
+      if (delta_height > REORG_SAFETY_BUFFER_IN_BLOCKS)
+      {
+        LOG_ERROR("The blockchain was detached to height: " << height << ", quorum cop has already processed votes for: " << delta_height <<
+                  " blocks which is greater than the recommended REORG_SAFETY_BUFFER_IN_BLOCKS: " << REORG_SAFETY_BUFFER_IN_BLOCKS);
+      }
+      else
+      {
+        LOG_WARNING("The blockchain was detached to height: " << height << ", quorum cop has already processed votes for: " << delta_height << " blocks";
+      }
       m_last_height = height;
     }
   }
@@ -187,7 +194,7 @@ namespace service_nodes
     for (auto it = m_uptime_proof_seen.begin(); it != m_uptime_proof_seen.end();)
     {
       if (it->second < prune_from_timestamp)
-        m_uptime_proof_seen.erase(it);
+        it = m_uptime_proof_seen.erase(it);
       else
         it++;
     }
