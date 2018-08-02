@@ -43,16 +43,8 @@ namespace service_nodes
   {
     if (m_last_height >= height)
     {
-      uint64_t delta_height = m_last_height - height;
-      if (delta_height > REORG_SAFETY_BUFFER_IN_BLOCKS)
-      {
-        LOG_ERROR("The blockchain was detached to height: " << height << ", quorum cop has already processed votes for: " << delta_height <<
-                  " blocks which is greater than the recommended REORG_SAFETY_BUFFER_IN_BLOCKS: " << REORG_SAFETY_BUFFER_IN_BLOCKS);
-      }
-      else
-      {
-        LOG_WARNING("The blockchain was detached to height: " << height << ", quorum cop has already processed votes for: " << delta_height << " blocks";
-      }
+      LOG_ERROR("The blockchain was detached to height: " << height << ", but quorum cop has already processed votes up to " << m_last_height);
+      LOG_ERROR("This implies a reorg occured that was over " << REORG_SAFETY_BUFFER_IN_BLOCKS << ". This should never happen! Please report this to the devs.");
       m_last_height = height;
     }
   }
@@ -96,11 +88,7 @@ namespace service_nodes
         continue;
       }
 
-      auto it = std::find_if(state->quorum_nodes.begin(), state->quorum_nodes.end(), [&my_pubkey](crypto::public_key const &key) {
-          bool result = (my_pubkey == key);
-          return result;
-      });
-
+      auto it = std::find(state->quorum_nodes.begin(), state->quorum_nodes.end(), my_pubkey);
       if (it == state->quorum_nodes.end())
         continue;
 
@@ -142,7 +130,6 @@ namespace service_nodes
 
   static crypto::hash make_hash(crypto::public_key const &pubkey, uint64_t timestamp)
   {
-    // TODO(doyle): Errrr clarify what this is. Looks like crypto::cn_fast_hash should be sizeof(buf)
     char buf[44] = "SUP"; // Meaningless magic bytes
     crypto::hash result;
     memcpy(buf + 4, reinterpret_cast<const void *>(&pubkey), sizeof(pubkey));
