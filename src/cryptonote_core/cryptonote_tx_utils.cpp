@@ -185,6 +185,8 @@ namespace cryptonote
     tx.vin.clear();
     tx.vout.clear();
     tx.extra.clear();
+    tx.output_unlock_times.clear();
+    tx.is_deregister = false;
 
     keypair txkey = keypair::generate(hw::get_device("default"));
     add_tx_pub_key_to_extra(tx, txkey.pub);
@@ -248,6 +250,7 @@ namespace cryptonote
       summary_amounts += out.amount = block_reward;
       out.target = tk;
       tx.vout.push_back(out);
+      tx.output_unlock_times.push_back(height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW);
     }
 
     if (hard_fork_version >= 9)
@@ -268,6 +271,7 @@ namespace cryptonote
         summary_amounts += out.amount = get_portion_of_reward(service_node_info[i].second, total_service_node_reward);
         out.target = tk;
         tx.vout.push_back(out);
+        tx.output_unlock_times.push_back(height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW);
       }
     }
 
@@ -308,11 +312,12 @@ namespace cryptonote
       summary_amounts += out.amount = governance_reward;
       out.target = tk;
       tx.vout.push_back(out);
+      tx.output_unlock_times.push_back(height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW);
     }
 
     CHECK_AND_ASSERT_MES(summary_amounts == (block_reward + governance_reward + total_paid_service_node_reward), false, "Failed to construct miner tx, summary_amounts = " << summary_amounts << " not equal total block_reward = " << (block_reward + governance_reward + total_paid_service_node_reward));
 
-    tx.version = 2;
+    tx.version = 3;
 
     //lock
     tx.unlock_time = height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;

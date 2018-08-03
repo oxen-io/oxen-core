@@ -152,8 +152,8 @@ namespace service_nodes
   {
     uint64_t unlock_time = tx.unlock_time;
 
-    if (tx.version == cryptonote::transaction::version_3_per_output_unlock_times)
-      unlock_time = (i < tx.output_unlock_times.size() ? tx.output_unlock_times[i] : 0);
+    if (tx.version >= cryptonote::transaction::version_3_per_output_unlock_times)
+      unlock_time = tx.output_unlock_times[i];
 
     return unlock_time < CRYPTONOTE_MAX_BLOCK_NUMBER && unlock_time >= block_height + STAKING_REQUIREMENT_LOCK_BLOCKS;
   }
