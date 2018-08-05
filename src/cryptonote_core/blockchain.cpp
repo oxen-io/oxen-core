@@ -786,7 +786,7 @@ difficulty_type Blockchain::get_difficulty_for_next_block()
   auto height = m_db->height();
 
   uint8_t version = get_current_hard_fork_version();
-  assert(version == 7);
+  assert(version == 8);
   size_t difficulty_blocks_count = DIFFICULTY_BLOCKS_COUNT_V2;
 
   // ND: Speedup
@@ -983,7 +983,7 @@ difficulty_type Blockchain::get_next_difficulty_for_alternative_chain(const std:
   std::vector<difficulty_type> cumulative_difficulties;
   uint8_t version = get_current_hard_fork_version();
   size_t difficulty_blocks_count;
-  assert(version==7);
+  assert(version == 8);
   difficulty_blocks_count = DIFFICULTY_BLOCKS_COUNT_V2;
 
   // if the alt chain isn't long enough to calculate the difficulty target
