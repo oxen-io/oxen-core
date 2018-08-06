@@ -33,8 +33,13 @@
 #include <cstddef>
 #include <string>
 #include "device.hpp"
+#ifdef WIN32
+#include <winscard.h>
+#define MAX_ATR_SIZE            33
+#else
 #include <PCSC/winscard.h>
 #include <PCSC/wintypes.h>
+#endif
 #include <boost/thread/mutex.hpp>
 #include <boost/thread/recursive_mutex.hpp>
 
@@ -97,6 +102,9 @@ namespace hw {
         void logRESP(void);
         unsigned int  exchange(unsigned int ok=0x9000, unsigned int mask=0xFFFF);
         void reset_buffer(void);
+        int set_command_header(BYTE ins, BYTE p1 = 0x00, BYTE p2 = 0x00);
+        int set_command_header_noopt(BYTE ins, BYTE p1 = 0x00, BYTE p2 = 0x00);
+        void send_simple(BYTE ins, BYTE p1 = 0x00);
 
         // hw running mode
         device_mode mode;

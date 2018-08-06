@@ -444,6 +444,12 @@ struct Wallet
     virtual std::string publicSpendKey() const = 0;
 
     /*!
+     * \brief publicMultisigSignerKey - returns public signer key
+     * \return                        - public multisignature signer key or empty string if wallet is not multisig
+     */
+    virtual std::string publicMultisigSignerKey() const = 0;
+
+    /*!
      * \brief store - stores wallet to file.
      * \param path - main filename to store wallet to. additionally stores address file and keys file.
      *               to store to the same file - just pass empty string;
@@ -502,6 +508,21 @@ struct Wallet
     * \param recoveringFromSeed - true/false
     */
     virtual void setRecoveringFromSeed(bool recoveringFromSeed) = 0;
+
+   /*!
+    * \brief setRecoveringFromDevice - set state to recovering from device
+    *
+    * \param recoveringFromDevice - true/false
+    */
+    virtual void setRecoveringFromDevice(bool recoveringFromDevice) = 0;
+
+    /*!
+     * \brief setSubaddressLookahead - set size of subaddress lookahead
+     *
+     * \param major - size fot the major index
+     * \param minor - size fot the minor index
+     */
+    virtual void setSubaddressLookahead(uint32_t major, uint32_t minor) = 0;
 
     /**
      * @brief connectToDaemon - connects to the daemon. TODO: check if it can be removed
@@ -825,6 +846,21 @@ struct Wallet
      */
     virtual bool verifySignedMessage(const std::string &message, const std::string &addres, const std::string &signature) const = 0;
 
+    /*!
+     * \brief signMultisigParticipant   signs given message with the multisig public signer key
+     * \param message                   message to sign
+     * \return                          signature in case of success. Sets status to Error and return empty string in case of error
+     */
+    virtual std::string signMultisigParticipant(const std::string &message) const = 0;
+    /*!
+     * \brief verifyMessageWithPublicKey verifies that message was signed with the given public key
+     * \param message                    message
+     * \param publicKey                  hex encoded public key
+     * \param signature                  signature of the message
+     * \return                           true if the signature is correct. false and sets error state in case of error
+     */
+    virtual bool verifyMessageWithPublicKey(const std::string &message, const std::string &publicKey, const std::string &signature) const = 0;
+
     virtual bool parse_uri(const std::string &uri, std::string &address, std::string &payment_id, uint64_t &amount, std::string &tx_description, std::string &recipient_name, std::vector<std::string> &unknown_parameters, std::string &error) = 0;
 
     virtual std::string getDefaultDataDir() const = 0;
@@ -864,6 +900,12 @@ struct Wallet
     
     //! Initiates a light wallet import wallet request
     virtual bool lightWalletImportWalletRequest(std::string &payment_id, uint64_t &fee, bool &new_request, bool &request_fulfilled, std::string &payment_address, std::string &status) = 0;
+
+    //! locks/unlocks the keys file; returns true on success
+    virtual bool lockKeysFile() = 0;
+    virtual bool unlockKeysFile() = 0;
+    //! returns true if the keys file is locked
+    virtual bool isKeysFileLocked() = 0;
 };
 
 /**
@@ -994,6 +1036,23 @@ struct WalletManager
     }
 
     /*!
+     * \brief  creates wallet using hardware device.
+     * \param  path                 Name of wallet file to be created
+     * \param  password             Password of wallet file
+     * \param  nettype              Network type
+     * \param  deviceName           Device name
+     * \param  restoreHeight        restore from start height (0 sets to current height)
+     * \param  subaddressLookahead  Size of subaddress lookahead (empty sets to some default low value)
+     * \return                      Wallet instance (Wallet::status() needs to be called to check if recovered successfully)
+     */
+    virtual Wallet * createWalletFromDevice(const std::string &path,
+                                            const std::string &password,
+                                            NetworkType nettype,
+                                            const std::string &deviceName,
+                                            uint64_t restoreHeight = 0,
+                                            const std::string &subaddressLookahead = "") = 0;
+
+    /*!
      * \brief Closes wallet. In case operation succeeded, wallet object deleted. in case operation failed, wallet object not deleted
      * \param wallet        previously opened / created wallet instance
      * \return              None
@@ -1017,6 +1076,10 @@ struct WalletManager
      * @param password - password to verify
      * @param no_spend_key - verify only view keys?
      * @return - true if password is correct
+     *
+     * @note
+     * This function will fail when the wallet keys file is opened because the wallet program locks the keys file.
+     * In this case, Wallet::unlockKeysFile() and Wallet::lockKeysFile() need to be called before and after the call to this function, respectively.
      */
     virtual bool verifyWalletPassword(const std::string &keys_file_name, const std::string &password, bool no_spend_key) const = 0;
 
