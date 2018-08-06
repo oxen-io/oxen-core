@@ -86,10 +86,18 @@ namespace service_nodes
     if (current_height >= STAKING_REQUIREMENT_LOCK_BLOCKS + STAKING_RELOCK_WINDOW_BLOCKS)
       start_height = current_height - STAKING_REQUIREMENT_LOCK_BLOCKS - STAKING_RELOCK_WINDOW_BLOCKS;
 
-    for (uint64_t height = start_height; height <= current_height; height += 1000)
+
+    // NOTE: Blockchain interface reserves on our behalf, just remember to clear.
+    std::vector<std::pair<cryptonote::blobdata, cryptonote::block>> blocks;
+    std::vector<cryptonote::transaction> txs;
+    std::vector<crypto::hash> missed_txs;
+
+    const size_t num_blocks_per_load = 1000;
+    for (uint64_t height = start_height;
+        height <= current_height;
+        height += num_blocks_per_load, blocks.clear())
     {
-      std::vector<std::pair<cryptonote::blobdata, cryptonote::block>> blocks;
-      if (!m_blockchain.get_blocks(height, 1000, blocks))
+      if (!m_blockchain.get_blocks(height, num_blocks_per_load, blocks))
       {
         LOG_ERROR("Unable to initialize service nodes list");
         return;
@@ -98,8 +106,6 @@ namespace service_nodes
       for (const auto& block_pair : blocks)
       {
         const cryptonote::block& block = block_pair.second;
-        std::vector<cryptonote::transaction> txs;
-        std::vector<crypto::hash> missed_txs;
         if (!m_blockchain.get_transactions(block.tx_hashes, txs, missed_txs))
         {
           LOG_ERROR("Unable to get transactions for block " << block.hash);
@@ -107,6 +113,8 @@ namespace service_nodes
         }
 
         block_added_generic(block, txs);
+        txs.clear();
+        missed_txs.clear();
       }
     }
 
