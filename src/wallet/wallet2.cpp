@@ -10920,4 +10920,15 @@ uint64_t wallet2::get_segregation_fork_height() const
 void wallet2::generate_genesis(cryptonote::block& b) const {
   cryptonote::generate_genesis_block(b, get_config(m_nettype).GENESIS_TX, get_config(m_nettype).GENESIS_NONCE);
 }
+//----------------------------------------------------------------------------------------------------
+bool wallet2::contains_address(const cryptonote::account_public_address& address) const {
+  size_t accounts = get_num_subaddress_accounts() + m_subaddress_lookahead_major;
+  for (uint32_t i = 0; i < accounts; i++) {
+    size_t subaddresses = get_num_subaddresses(i) + m_subaddress_lookahead_minor;
+    for (uint32_t j = 0; j < subaddresses; j++)
+      if (get_subaddress({i, j}) == address)
+        return true;
+  }
+  return false;
+}
 }
