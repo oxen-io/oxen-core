@@ -73,16 +73,19 @@ namespace service_nodes
     // TODO: Save this calculation, only do it if it's not here.
     LOG_PRINT_L0("Recalculating service nodes list, scanning last 30 days");
 
-    if (load()) return;
-    clear(true);
-
     uint64_t current_height = m_blockchain.get_current_blockchain_height();
 
-    uint64_t start_height = 0;
-    if (current_height >= STAKING_REQUIREMENT_LOCK_BLOCKS + STAKING_RELOCK_WINDOW_BLOCKS)
-      start_height = current_height - STAKING_REQUIREMENT_LOCK_BLOCKS - STAKING_RELOCK_WINDOW_BLOCKS;
+    bool loaded = load();
 
-    for (uint64_t height = start_height; height <= current_height; height += 1000)
+    if (loaded && m_height == current_height) return;
+
+    if (!loaded || m_height > current_height) clear(true);
+
+    uint64_t start_height = m_height;
+    if (current_height >= STAKING_REQUIREMENT_LOCK_BLOCKS + STAKING_RELOCK_WINDOW_BLOCKS)
+      start_height = std::max(start_height, current_height - STAKING_REQUIREMENT_LOCK_BLOCKS - STAKING_RELOCK_WINDOW_BLOCKS);
+
+    for (uint64_t height = start_height; height < current_height; height += 1000)
     {
       std::list<std::pair<cryptonote::blobdata, cryptonote::block>> blocks;
       if (!m_blockchain.get_blocks(height, 1000, blocks))
@@ -454,6 +457,9 @@ namespace service_nodes
     uint64_t block_height = cryptonote::get_block_height(block);
     int hard_fork_version = m_blockchain.get_hard_fork_version(block_height);
 
+    assert(m_height == block_height);
+    m_height++;
+
     if (hard_fork_version < 9)
       return;
 
@@ -517,6 +523,8 @@ namespace service_nodes
 
   void service_node_list::blockchain_detached(uint64_t height)
   {
+    m_height = height;
+
     while (!m_rollback_events.empty() && m_rollback_events.back()->m_block_height >= height)
     {
       if (!m_rollback_events.back()->apply(m_service_nodes_infos))
@@ -818,6 +826,8 @@ namespace service_nodes
       }
     }
 
+    data_to_store.height = m_height;
+
     std::stringstream ss;
     binary_archive<true> ba(ss);
     bool r = ::serialization::serialize(ba, data_to_store);
@@ -855,6 +865,8 @@ namespace service_nodes
     binary_archive<false> ba(ss);
     bool r = ::serialization::serialize(ba, data_in);
     CHECK_AND_ASSERT_MES(r, false, "Failed to parse service node data from blob");
+
+    m_height = data_in.height;
 
     for (const auto& info : data_in.infos)
     {
@@ -916,6 +928,7 @@ namespace service_nodes
 
     // not currently done in init(), so maybe don't?
     m_quorum_states.clear();
+    m_height = 0;
   }
 
   bool convert_registration_args(cryptonote::network_type nettype, const std::vector<std::string>& args, std::vector<cryptonote::account_public_address>& addresses, std::vector<uint32_t>& portions, uint32_t& portions_for_operator, uint64_t& initial_contribution)
