@@ -227,10 +227,12 @@ namespace service_nodes
     {
       std::vector<node_info_for_serialization> infos;
       std::vector<rollback_event_variant> events;
+      uint64_t height;
 
       BEGIN_SERIALIZE()
         FIELD(infos)
         FIELD(events)
+        FIELD(height)
       END_SERIALIZE()
     };
 
@@ -239,14 +241,16 @@ namespace service_nodes
     void clear(bool delete_db_entry = false);
     bool load();
 
+    using block_height = uint64_t;
+
     std::unordered_map<crypto::public_key, service_node_info> m_service_nodes_infos;
     std::list<std::unique_ptr<rollback_event>> m_rollback_events;
     cryptonote::Blockchain& m_blockchain;
     bool m_hooks_registered;
+    block_height m_height;
 
     cryptonote::BlockchainDB* m_db;
 
-    using block_height = uint64_t;
     std::map<block_height, std::shared_ptr<quorum_state>> m_quorum_states;
   };
 
