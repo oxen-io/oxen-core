@@ -423,6 +423,52 @@ bool fill_output_entries(std::vector<output_index>& out_indices, size_t sender_o
   return 0 == rest && sender_out_found;
 }
 
+static uint64_t get_amount(const cryptonote::account_base& account, const cryptonote::transaction& tx, int i, rct::key& mask)
+{
+  crypto::public_key tx_pub_key = get_tx_pub_key_from_extra(tx);
+  crypto::key_derivation derivation;
+  if (!crypto::generate_key_derivation(tx_pub_key, account.get_keys().m_view_secret_key, derivation))
+    return 0;
+
+  if (tx.vout[i].target.type() != typeid(cryptonote::txout_to_key))
+    return 0;
+
+  hw::device& hwdev = hw::get_device("default");
+
+  uint64_t money_transferred = 0;
+
+  crypto::secret_key scalar1;
+  hwdev.derivation_to_scalar(derivation, i, scalar1);
+  try
+  {
+    switch (tx.rct_signatures.type)
+    {
+    case rct::RCTTypeSimple:
+    case rct::RCTTypeSimpleBulletproof:
+      money_transferred = rct::decodeRctSimple(tx.rct_signatures, rct::sk2rct(scalar1), i, mask, hwdev);
+      break;
+    case rct::RCTTypeFull:
+    case rct::RCTTypeFullBulletproof:
+      money_transferred = rct::decodeRct(tx.rct_signatures, rct::sk2rct(scalar1), i, mask, hwdev);
+      break;
+    case rct::RCTTypeNull:
+      money_transferred = tx.vout[i].amount;
+      mask = rct::identity();
+      break;
+    default:
+      LOG_PRINT_L0("Unsupported rct type: " << tx.rct_signatures.type);
+      return 0;
+    }
+  }
+  catch (const std::exception &e)
+  {
+    LOG_PRINT_L0("Failed to decode input " << i);
+    return 0;
+  }
+
+  return money_transferred;
+}
+
 bool fill_tx_sources(std::vector<tx_source_entry>& sources, const std::vector<test_event_entry>& events,
                      const block& blk_head, const cryptonote::account_base& from, uint64_t amount, size_t nmix)
 {
@@ -452,16 +498,24 @@ bool fill_tx_sources(std::vector<tx_source_entry>& sources, const std::vector<te
             if (oi.spent)
                 continue;
 
+            rct::key mask;
+            uint64_t transferred = get_amount(from, *oi.p_tx, oi.out_no, mask);
+
+            if (transferred == 0)
+              continue;
+
             cryptonote::tx_source_entry ts;
             ts.amount = oi.amount;
             ts.real_output_in_tx_index = oi.out_no;
             ts.real_out_tx_key = get_tx_pub_key_from_extra(*oi.p_tx); // incoming tx public key
+            ts.real_out_additional_tx_keys = get_additional_tx_pub_keys_from_extra(*oi.p_tx);
+            ts.mask = mask;
             size_t realOutput;
             if (!fill_output_entries(outs[0], sender_out, nmix, realOutput, ts.outputs))
               continue;
 
             ts.real_output = realOutput;
-            ts.rct = false;
+            ts.rct = true;
 
             sources.push_back(ts);
 
