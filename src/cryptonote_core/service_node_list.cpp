@@ -142,6 +142,23 @@ namespace service_nodes
     return result;
   }
 
+  std::vector<service_node_pubkey_info> service_node_list::get_service_node_list_state() const
+  {
+    // TODO(doyle): Is order important here?
+    std::vector<service_node_pubkey_info> result;
+    result.reserve(m_service_nodes_infos.size());
+
+    for (const auto &it : m_service_nodes_infos)
+    {
+      service_node_pubkey_info entry = {};
+      entry.pubkey                   = it.first;
+      entry.info                     = it.second;
+      result.push_back(entry);
+    }
+
+    return result;
+  }
+
   bool service_node_list::is_service_node(const crypto::public_key& pubkey) const
   {
     return m_service_nodes_infos.find(pubkey) != m_service_nodes_infos.end();

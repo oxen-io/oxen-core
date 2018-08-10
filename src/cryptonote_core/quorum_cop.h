@@ -63,13 +63,22 @@ namespace service_nodes
                   "Safety buffer should always be less than the vote lifetime");
     bool prune_uptime_proof();
 
+    using timestamp = uint64_t;
+
+    struct pubkey_timestamp
+    {
+      crypto::public_key pubkey;
+      timestamp          last_uptime_proof;
+    };
+
+    uint64_t get_uptime_proof(const crypto::public_key &pubkey) const;
+
   private:
 
     cryptonote::core& m_core;
     service_node_list& m_service_node_list;
     uint64_t m_last_height;
 
-    using timestamp = uint64_t;
     std::unordered_map<crypto::public_key, timestamp> m_uptime_proof_seen;
     epee::critical_section m_lock;
   };
