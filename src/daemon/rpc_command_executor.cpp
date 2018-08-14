@@ -33,14 +33,11 @@
 #include "common/password.h"
 #include "common/scoped_message_writer.h"
 #include "daemon/rpc_command_executor.h"
+#include "common/int-util.h"
 #include "rpc/core_rpc_server_commands_defs.h"
 #include "cryptonote_core/cryptonote_core.h"
 #include "cryptonote_basic/hardfork.h"
 #include <boost/format.hpp>
-#include <boost/filesystem.hpp>
-#include "rapidjson/document.h"
-#include "rapidjson/writer.h"
-#include "rapidjson/stringbuffer.h"
 
 #include <fstream>
 #include <ctime>
@@ -2028,20 +2025,44 @@ bool t_rpc_command_executor::get_service_node_key()
   return true;
 }
 
+// Returns lowest x such that (STAKING_PORTIONS * x/amount) >= portions
+static uint64_t get_amount_to_make_portions(uint64_t amount, uint32_t portions)
+{
+  uint64_t lo, hi, resulthi, resultlo;
+  lo = mul128(amount, portions, &hi);
+  if (lo > UINT64_MAX - (STAKING_PORTIONS - 1))
+    hi++;
+  lo += STAKING_PORTIONS-1;
+  div128_32(hi, lo, STAKING_PORTIONS, &resulthi, &resultlo);
+  return resultlo;
+}
+static uint64_t get_actual_amount(uint64_t amount, uint32_t portions)
+{
+  uint64_t lo, hi, resulthi, resultlo;
+  lo = mul128(amount, portions, &hi);
+  div128_32(hi, lo, STAKING_PORTIONS, &resulthi, &resultlo);
+  return resultlo;
+}
+
 bool t_rpc_command_executor::prepare_registration()
 {
-  cryptonote::COMMAND_RPC_GET_HEIGHT::request req;
-  cryptonote::COMMAND_RPC_GET_HEIGHT::response res;
+  std::string categories = mlog_get_categories();
+  mlog_set_categories("");
+
+  cryptonote::COMMAND_RPC_GET_INFO::request req;
+  cryptonote::COMMAND_RPC_GET_INFO::response res;
 
   if (m_is_rpc)
   {
     std::cout << "Cannot prepare registration over RPC" << std::endl;
+    mlog_set_categories(categories.c_str());
     return true;
   }
   // TODO: ensure the block height is up to date?
-  if (!m_rpc_server->on_get_height(req, res) || res.status != CORE_RPC_STATUS_OK)
+  if (!m_rpc_server->on_get_info(req, res) || res.status != CORE_RPC_STATUS_OK)
   {
-    std::cout << "Could not get current block height" << std::endl;
+    std::cout << "Could not get current blockchain info" << std::endl;
+    mlog_set_categories(categories.c_str());
     return true;
   }
 
@@ -2050,21 +2071,27 @@ bool t_rpc_command_executor::prepare_registration()
 #endif
 
   size_t number_participants = 1;
-  uint64_t initial_contribution;
-  uint64_t operator_contribution;
-  double operating_cost_percent = 100.0;
+  uint32_t operating_cost_portions = STAKING_PORTIONS;
   bool is_solo_stake = false;
   const auto nettype = m_rpc_server->nettype();
-  
-  std::vector<std::string> addresses;
-  std::vector<uint64_t> contributions;
 
-  const uint64_t staking_requirement = service_nodes::get_staking_requirement(nettype, res.height);
-  const uint64_t min_contribution = staking_requirement / 4;
+  std::vector<std::string> addresses;
+  std::vector<uint32_t> contributions;
+
+  const uint64_t block_height = std::max(res.height, res.target_height);
+  const uint64_t staking_requirement =
+    std::max(service_nodes::get_staking_requirement(nettype, block_height),
+             service_nodes::get_staking_requirement(nettype, block_height + 30 * 24)); // allow 1 day
+  uint32_t portions_remaining = STAKING_PORTIONS;
+  uint64_t total_reserved_contributions = 0;
+
+  // anything less than DUST will be added to operator stake
+  const uint64_t DUST = (staking_requirement / STAKING_PORTIONS + 1) * (MAX_NUMBER_OF_CONTRIBUTORS - 1);
+
   std::cout << "Current staking requirement: " << cryptonote::print_money(staking_requirement) << " " << cryptonote::get_unit() << std::endl;
   
   std::string solo_stake;
-  std::cout << "Will the operator contribute the entire stake? (Y/Yes/N/No):" << std::endl;
+  std::cout << "Will the operator contribute the entire stake? (Y/Yes/N/No): ";
   std::cin >> solo_stake;
   if(command_line::is_yes(solo_stake))
   {
@@ -2077,26 +2104,29 @@ bool t_rpc_command_executor::prepare_registration()
   else
   {
     std::cout << "Invalid answer. Aborted." << std::endl;
+    mlog_set_categories(categories.c_str());
     return true;
   }
 
   if(is_solo_stake)
   {
-    operator_contribution = staking_requirement;
-    contributions.push_back(staking_requirement);
+    contributions.push_back(STAKING_PORTIONS);
+    portions_remaining = 0;
+    total_reserved_contributions += get_actual_amount(staking_requirement, STAKING_PORTIONS);
   }
   else
   {
     std::string operating_cost_string;
-    std::cout << "What percentage of the total staking reward would the operator like to reserve as an operator fee [0-100]%:" << std::endl;
+    std::cout << "What percentage of the total staking reward would the operator like to reserve as an operator fee [0-100]%: ";
     std::cin >> operating_cost_string;
     
     // remove any trailing '%'
     if(!operating_cost_string.empty() && operating_cost_string.back() == '%')
     {
-        operating_cost_string.pop_back();
+      operating_cost_string.pop_back();
     }
 
+    double operating_cost_percent;
     try
     {
       operating_cost_percent = boost::lexical_cast<double>(operating_cost_string);
@@ -2104,163 +2134,137 @@ bool t_rpc_command_executor::prepare_registration()
     catch(...)
     {
       std::cout << "Invalid value." << std::endl;
+      mlog_set_categories(categories.c_str());
       return true;
     }
     
     if(operating_cost_percent < 0.0 || operating_cost_percent > 100.0)
     {
       std::cout << "Invalid value. Should be between [0-100]" << std::endl;
+      mlog_set_categories(categories.c_str());
       return true;
     }
 
-    std::cout << "How much loki does the operator want to reserve in the stake?" << std::endl;
+    operating_cost_portions = (operating_cost_percent / 100.0) * STAKING_PORTIONS;
+
+    const uint32_t min_contribution_portions = std::min(portions_remaining, MIN_PORTIONS);
+
+    const uint64_t min_contribution = get_amount_to_make_portions(staking_requirement, min_contribution_portions);
+
+    std::cout << "Minimum amount that can be reserved: " << cryptonote::print_money(min_contribution) << " " << cryptonote::get_unit() << std::endl;
+
+    std::cout << "How much loki does the operator want to reserve in the stake? ";
     std::string contribution_string;
     std::cin >> contribution_string;
-    if(!cryptonote::parse_amount(operator_contribution, contribution_string))
+    uint64_t operator_cut;
+    if(!cryptonote::parse_amount(operator_cut, contribution_string))
     {
       std::cout << "Invalid amount. Aborted." << std::endl;
+      mlog_set_categories(categories.c_str());
       return true;
     }
-    else if(operator_contribution < min_contribution)
+    uint64_t lo, hi, resultlo, resulthi;
+    lo = mul128(operator_cut, STAKING_PORTIONS, &hi);
+    div128_64(hi, lo, staking_requirement, &resulthi, &resultlo);
+    uint32_t portions = resultlo;
+    if(portions < min_contribution_portions)
     {
       std::cout << "The operator needs to contribute at least 25% of the stake requirement (" << cryptonote::print_money(min_contribution) << " " << cryptonote::get_unit() << "). Aborted." << std::endl;
+      mlog_set_categories(categories.c_str());
       return true;
     }
-    else if(operator_contribution > staking_requirement)
+    else if(portions > portions_remaining)
     {
       std::cout << "The operator contribution is higher than the staking requirement. Any excess contribution will be locked for the staking duration, but won't yield any additional reward." << std::endl;
+      portions = portions_remaining;
     }
-    contributions.push_back(operator_contribution);
+    contributions.push_back(portions);
+    portions_remaining -= portions;
+    total_reserved_contributions += get_actual_amount(staking_requirement, portions);
   }
 
-  std::cout << "How much loki will the operator stake initially?" << std::endl;
-  std::string initial_contribution_string;
-  std::cin >> initial_contribution_string;
-  if(!cryptonote::parse_amount(initial_contribution, initial_contribution_string))
-  {
-    std::cout << "Invalid value. Aborted." << std::endl;
-    return true;
-  }
-  else if(initial_contribution < min_contribution)
-  {
-    std::cout << "The operator needs to initially contribute at least 25% of the stake requirement (" << cryptonote::print_money(min_contribution) << " " << cryptonote::get_unit() << "). Aborted." << std::endl;
-    return true;
-  }
-  else if(initial_contribution > operator_contribution)
-  {
-    std::cout << "The operator's initial contribution cannot be higher than the reserved portion." << std::endl;
-    return true;
-  }
-
-  if(!is_solo_stake)
+  if (!is_solo_stake)
   {
     std::string allow_multiple_contributors;
-    std::cout << "Do you want to reserve portions of the stake for other contributors? (Y/Yes/N/No):" << std::endl;
+    std::cout << "Do you want to reserve portions of the stake for other specific contributors? (Y/Yes/N/No): ";
     std::cin >> allow_multiple_contributors;
     if(command_line::is_yes(allow_multiple_contributors))
     {
-      std::cout << "Number of additional contributors [1-" << (MAX_NUMBER_OF_CONTRIBUTORS - 1) << "]:" << std::endl;
+      std::cout << "Number of additional contributors [1-" << (MAX_NUMBER_OF_CONTRIBUTORS - 1) << "]: ";
       int additional_contributors;
       if(!(std::cin >> additional_contributors) || additional_contributors < 1 || additional_contributors > (MAX_NUMBER_OF_CONTRIBUTORS - 1))
       {
         std::cout << "Invalid value. Should be between [1-" << (MAX_NUMBER_OF_CONTRIBUTORS - 1) << "]" << std::endl;
+        mlog_set_categories(categories.c_str());
         return true;
       }
       number_participants += static_cast<size_t>(additional_contributors);
     }
   }
 
-  uint64_t stake_remaining = staking_requirement - operator_contribution;
   for (size_t contributor_index = 0; contributor_index < number_participants; ++contributor_index)
   {
     const bool is_operator = (contributor_index == 0);
     const std::string contributor_name = is_operator ? "the operator" : "contributor " + std::to_string(contributor_index);
 
-    if(!is_operator)
+    if (!is_operator)
     {
-      std::cout << "There is " << cryptonote::print_money(stake_remaining) << " " << cryptonote::get_unit() << " left to meet the staking requirement." << std::endl;
-      std::cout << "How much loki does " << contributor_name << " want to reserve in the stake?" << std::endl;
+      const uint64_t min_contribution_portions = std::min(portions_remaining, MIN_PORTIONS);
+      const uint64_t min_contribution = get_amount_to_make_portions(staking_requirement, min_contribution_portions);
+      const uint64_t amount_left = get_amount_to_make_portions(staking_requirement, portions_remaining);
+      std::cout << "The minimum amount possible to contribute is " << cryptonote::print_money(min_contribution) << " " << cryptonote::get_unit() << std::endl;
+      std::cout << "There is " << cryptonote::print_money(amount_left) << " " << cryptonote::get_unit() << " left to meet the staking requirement." << std::endl;
+      std::cout << "How much loki does " << contributor_name << " want to reserve in the stake? ";
       uint64_t contribution_amount;
       std::string contribution_string;
       std::cin >> contribution_string;
-      if(!cryptonote::parse_amount(contribution_amount, contribution_string))
+      if (!cryptonote::parse_amount(contribution_amount, contribution_string))
       {
         std::cout << "Invalid amount. Aborted." << std::endl;
+        mlog_set_categories(categories.c_str());
         return true;
       }
-      contributions.push_back(contribution_amount);
-      stake_remaining -= contribution_amount;
+      uint64_t lo, hi, resultlo, resulthi;
+      lo = mul128(contribution_amount, STAKING_PORTIONS, &hi);
+      div128_64(hi, lo, staking_requirement, &resulthi, &resultlo);
+      uint32_t portions = resultlo;
+      if (portions < min_contribution_portions)
+      {
+        std::cout << "Invalid amount. Aborted." << std::endl;
+        mlog_set_categories(categories.c_str());
+        return true;
+      }
+      if (portions > portions_remaining)
+        portions = portions_remaining;
+      contributions.push_back(portions);
+      portions_remaining -= portions;
+      total_reserved_contributions += get_actual_amount(staking_requirement, portions);
     }
 
-    std::cout << "Enter the loki address for " << contributor_name << ":" << std::endl;
+    std::cout << "Enter the loki address for " << contributor_name << ": ";
     std::string address_string;
     // the addresses will be validated later down the line
     if(!(std::cin >> address_string))
     {
       std::cout << "Invalid address. Aborted." << std::endl;
+      mlog_set_categories(categories.c_str());
       return true;
     }
-    addresses.push_back(address_string);    
+    addresses.push_back(address_string);
   }
 
   assert(addresses.size() == contributions.size());
 
-  uint64_t total_reserved_contributions = std::accumulate(contributions.begin(), contributions.end(), uint64_t(0));
+  const uint64_t amount_left = staking_requirement - total_reserved_contributions;
 
-  if(!is_solo_stake)
+  if (!is_solo_stake)
   {
-    // check min staking rule (25% each, except for the last portion)
-    const size_t number_contribution_under_minimum = std::count_if(
-      contributions.begin(),
-      contributions.end(),
-      [&](uint64_t contrib) -> bool { return contrib < min_contribution; });
-    
-    if(number_contribution_under_minimum > 1)
-    {
-      std::cout << "Too many contributions are below 25% of the staking requirement (" << cryptonote::print_money(min_contribution) << " " << cryptonote::get_unit() << "). Aborted." << std::endl;
-      return true;
-    }
-    else if(number_contribution_under_minimum == 1 && total_reserved_contributions < staking_requirement)
-    {
-      std::cout << "No contribution under 25% (" << cryptonote::print_money(min_contribution) << " " << cryptonote::get_unit() << ") is allowed unless the total staking requirement is met. Aborted." << std::endl;
-      return true;
-    }
-    else if(number_participants == (MAX_NUMBER_OF_CONTRIBUTORS) && total_reserved_contributions < staking_requirement)
-    {
-      std::cout << "The maximum number of contributors has been reached, but the total reserved contribution does not meet the staking requirement. Aborted." << std::endl;
-      return true;
-    }
-    else if(number_contribution_under_minimum == 1)
-    {
-      // make sure the only contribution <25% is last
-      const auto it = std::find_if(
-        contributions.begin(),
-        contributions.end(),
-        [&](uint64_t contrib) -> bool { return contrib < min_contribution; });
-      if(it != contributions.end())
-      {
-        size_t index = it - contributions.begin();
-        if(index != (contributions.size() - 1) && index > 0)
-        {
-          // swap
-          uint64_t temp = contributions[index];
-          contributions[index] = contributions[index+1];
-          contributions[index+1] = temp;
-
-          std::string temp_address = addresses[index];
-          addresses[index] = addresses[index+1];
-          addresses[index+1] = temp_address;
-        }
-      }
-    }
-
     std::cout << "Total staking contributions reserved: " << cryptonote::print_money(total_reserved_contributions) << " " << cryptonote::get_unit() << std::endl;
-    if(total_reserved_contributions < staking_requirement)
+    if (amount_left > DUST)
     {
-      const uint64_t remaining = staking_requirement - total_reserved_contributions;
       std::cout << "Your total reservations do not equal the staking requirement." << std::endl;
-      std::cout << "You will leave the remaining portion of " << cryptonote::print_money(remaining) << " open to contributions from anyone, and the Service Node will not activate until the full staking requirement is filled." << std::endl;
-      std::cout << "Is this ok? (Y/Yes/N/No):" << std::endl;
+      std::cout << "You will leave the remaining portion of " << cryptonote::print_money(amount_left) << " " << cryptonote::get_unit() << " open to contributions from anyone, and the Service Node will not activate until the full staking requirement is filled." << std::endl;
+      std::cout << "Is this ok? (Y/Yes/N/No): ";
       std::string accept_pool_staking;
       std::cin >> accept_pool_staking;
       if(command_line::is_yes(accept_pool_staking))
@@ -2270,34 +2274,40 @@ bool t_rpc_command_executor::prepare_registration()
       else if(command_line::is_no(accept_pool_staking))
       {
         std::cout << "Staking requirements not met. Aborted." << std::endl;
+        mlog_set_categories(categories.c_str());
         return true;
       }
       else
       {
         std::cout << "Invalid answer. Aborted." << std::endl;
+        mlog_set_categories(categories.c_str());
         return true;
       }
     }
   }
 
   std::cout << "Summary:" << std::endl;
-  std::cout << "Operating costs as % of reward: " << operating_cost_percent << "%" << std::endl;
-  std::cout << "Operator initial contribution: " << cryptonote::print_money(initial_contribution) << " " << cryptonote::get_unit() << std::endl;
-  printf("%-25s%-25s%-25s%-25s\n", "Contributor", "Address", "Contribution", "Contribution(%)");
-  printf("%-25s%-25s%-25s%-25s\n", "___________", "_______", "____________", "_______________");
+  std::cout << "Operating costs as % of reward: " << (operating_cost_portions * 100.0 / STAKING_PORTIONS) << "%" << std::endl;
+  printf("%-16s%-9s%-19s%-s\n", "Contributor", "Address", "Contribution", "Contribution(%)");
+  printf("%-16s%-9s%-19s%-s\n", "___________", "_______", "____________", "_______________");
+
   for (size_t i = 0; i < number_participants; ++i)
   {
     const std::string participant_name = (i==0) ? "Operator" : "Contributor " + std::to_string(i);
-    printf("%-25s%-25s%-25s%-25.2f\n", participant_name.c_str(), addresses[i].substr(0,6).c_str(), cryptonote::print_money(contributions[i]).c_str(), (double)contributions[i] * 100 / staking_requirement);
+    uint64_t amount = get_actual_amount(staking_requirement, contributions[i]);
+    if (amount_left <= DUST && i == 0)
+      amount += amount_left; // add dust to the operator.
+    printf("%-16s%-9s%-19s%-.2f\n", participant_name.c_str(), addresses[i].substr(0,6).c_str(), cryptonote::print_money(amount).c_str(), (double)contributions[i] * 100 / STAKING_PORTIONS);
   }
 
-  if(total_reserved_contributions < staking_requirement)
-  {
-    const uint64_t remaining = staking_requirement - total_reserved_contributions;
-    printf("%-25s%-25s%-25s%-25.2f\n", "(open)", "", cryptonote::print_money(remaining).c_str(), (double)remaining * 100 / staking_requirement);
-  }
+  if (amount_left > DUST)
+    printf("%-16s%-9s%-19s%-.2f\n", "(open)", "", cryptonote::print_money(amount_left).c_str(), amount_left * 100.0 / staking_requirement);
 
-  std::cout << "Do you confirm the information above is correct? (Y/Yes/N/No):" << std::endl;
+  std::cout << "\nBecause the actual requirement will depend on the time that you register, the\n";
+  std::cout << "amounts shown here are used as a guide only, and the percentages will remain\n";
+  std::cout << "the same." << std::endl;
+
+  std::cout << "\nDo you confirm the information above is correct? (Y/Yes/N/No): ";
   std::string confirm_string;
   std::cin >> confirm_string;
   if(command_line::is_yes(confirm_string))
@@ -2307,34 +2317,49 @@ bool t_rpc_command_executor::prepare_registration()
   else if(command_line::is_no(confirm_string))
   {
     std::cout << "Aborted by user." << std::endl;
-    return 1;
+    mlog_set_categories(categories.c_str());
+    return true;
   }
   else
   {
     std::cout << "Invalid answer. Aborted." << std::endl;
+    mlog_set_categories(categories.c_str());
+    return true;
   }
 
   // <operator cut> <address> <fraction> [<address> <fraction> [...]]] <initial contribution>
   std::vector<std::string> args = {
-    std::to_string(operating_cost_percent / 100.0),
+    std::to_string(operating_cost_portions),
   };
 
   for (size_t i = 0; i < number_participants; ++i)
   {
     args.push_back(addresses[i]);
-    args.push_back(std::to_string((double)contributions[i] / staking_requirement));
+    args.push_back(std::to_string(contributions[i]));
   }
-  args.push_back(cryptonote::print_money(initial_contribution));
+  {
+    uint64_t amount = get_actual_amount(staking_requirement, contributions[0]);
+    if (amount_left <= DUST)
+      amount += amount_left; // add dust to operator
+    args.push_back(cryptonote::print_money(amount));
+  }
+
+  for (size_t i = 0; i < addresses.size(); i++)
+  {
+    for (size_t j = 0; j < i; j++)
+    {
+      if (addresses[i] == addresses[j])
+      {
+        std::cout << "Must not provide the same address twice" << std::endl;
+        mlog_set_categories(categories.c_str());
+        return true;
+      }
+    }
+  }
+
+  mlog_set_categories(categories.c_str());
 
   bool result = get_service_node_registration_cmd(args);
-
-  // // save to disk
-  // boost::filesystem::path filepath = tools::get_default_data_dir();
-  // filepath /= "staking_parameters.json";
-  // std::ofstream myfile;
-  // myfile.open(filepath.string().c_str());
-  // myfile << json_output;
-  // myfile.close();
 
   return true;
 }
