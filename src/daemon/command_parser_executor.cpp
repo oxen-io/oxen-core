@@ -155,6 +155,18 @@ bool t_command_parser_executor::get_service_node_registration_cmd(const std::vec
   return result;
 }
 
+bool t_command_parser_executor::prepare_registration()
+{
+  // disable messages during interactive prompt
+  std::string categories = mlog_get_categories();
+  mlog_set_categories("");
+
+  bool result = m_executor.prepare_registration();
+  // restore messages
+  mlog_set_categories(categories.c_str());
+  return result;
+}
+
 bool t_command_parser_executor::set_log_level(const std::vector<std::string>& args)
 {
   if(args.size() > 1)

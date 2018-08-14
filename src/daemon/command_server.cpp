@@ -108,6 +108,12 @@ t_command_server::t_command_server(
     , "Generate the required registration command"
     );
   m_command_lookup.set_handler(
+      "prepare_registration"
+    , std::bind(&t_command_parser_executor::prepare_registration, &m_parser)
+    , "prepare_registration"
+    , "Interactive prompt to prepare the registration. The resulting registration data is saved to disk."
+    );
+  m_command_lookup.set_handler(
       "is_key_image_spent"
     , std::bind(&t_command_parser_executor::is_key_image_spent, &m_parser, p::_1)
     , "is_key_image_spent <key_image>"
