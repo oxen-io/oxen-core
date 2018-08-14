@@ -102,7 +102,7 @@ namespace service_nodes
 
     bool is_service_node(const crypto::public_key& pubkey) const;
     const std::shared_ptr<quorum_state> get_quorum_state(uint64_t height) const;
-    std::vector<service_node_pubkey_info> get_service_node_list_state() const;
+    std::vector<service_node_pubkey_info> get_service_node_list_state(const std::vector<crypto::public_key> &service_node_pubkeys) const;
 
   private:
     bool is_registration_tx(const cryptonote::transaction& tx, uint64_t block_timestamp, uint64_t block_height, uint32_t index, crypto::public_key& key, service_node_info& info) const;

@@ -1679,9 +1679,9 @@ namespace cryptonote
     return result;
   }
   //-----------------------------------------------------------------------------------------------
-  std::vector<service_nodes::service_node_pubkey_info> core::get_service_node_list_state() const
+  std::vector<service_nodes::service_node_pubkey_info> core::get_service_node_list_state(const std::vector<crypto::public_key> &service_node_pubkeys) const
   {
-    std::vector<service_nodes::service_node_pubkey_info> result = m_service_node_list.get_service_node_list_state();
+    std::vector<service_nodes::service_node_pubkey_info> result = m_service_node_list.get_service_node_list_state(service_node_pubkeys);
     return result;
   }
   //-----------------------------------------------------------------------------------------------

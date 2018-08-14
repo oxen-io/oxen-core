@@ -1998,12 +1998,13 @@ bool t_rpc_command_executor::get_service_node_registration_cmd(const std::vector
     return true;
 }
 
-bool t_rpc_command_executor::get_service_node_list_state()
+bool t_rpc_command_executor::get_service_node_list_state(const std::vector<std::string> &args)
 {
-    cryptonote::COMMAND_RPC_GET_SERVICE_NODE_LIST_STATE::request req;
-    cryptonote::COMMAND_RPC_GET_SERVICE_NODE_LIST_STATE::response res;
+    cryptonote::COMMAND_RPC_GET_SERVICE_NODE_LIST_STATE::request req = {};
+    cryptonote::COMMAND_RPC_GET_SERVICE_NODE_LIST_STATE::response res = {};
     std::string fail_message = "Unsuccessful";
     epee::json_rpc::error error_resp;
+    req.service_node_pubkeys = args;
 
     if (m_is_rpc)
     {

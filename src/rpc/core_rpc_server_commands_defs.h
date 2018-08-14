@@ -2350,7 +2350,9 @@ namespace cryptonote
   {
     struct request
     {
+      std::vector<std::string> service_node_pubkeys; // pass empty vector to get all the service nodes
       BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(service_node_pubkeys);
       END_KV_SERIALIZE_MAP()
     };
 

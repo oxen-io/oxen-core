@@ -2290,7 +2290,22 @@ namespace cryptonote
                                                              epee::json_rpc::error& error_resp)
   {
     PERF_TIMER(on_get_service_node_list_state);
-    std::vector<service_nodes::service_node_pubkey_info> pubkey_info_list = m_core.get_service_node_list_state();
+
+    std::vector<crypto::public_key> pubkeys(req.service_node_pubkeys.size());
+    for (size_t i = 0; i < req.service_node_pubkeys.size(); i++)
+    {
+      if (!string_tools::hex_to_pod(req.service_node_pubkeys[i], pubkeys[i]))
+      {
+        error_resp.code    = CORE_RPC_ERROR_CODE_WRONG_PARAM;
+        error_resp.message = "Could not convert to a public key, arg: ";
+        error_resp.message += std::to_string(i);
+        error_resp.message += " which is pubkey: ";
+        error_resp.message += req.service_node_pubkeys[i];
+        return false;
+      }
+    }
+
+    std::vector<service_nodes::service_node_pubkey_info> pubkey_info_list = m_core.get_service_node_list_state(pubkeys);
 
     // TODO(doyle): Reassignment into agnostic structure, is it ideal?
     res.status = CORE_RPC_STATUS_OK;
