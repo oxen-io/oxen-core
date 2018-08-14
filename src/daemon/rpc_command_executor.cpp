@@ -2232,7 +2232,6 @@ bool t_rpc_command_executor::prepare_registration()
     }
     else if(number_contribution_under_minimum == 1)
     {
-      std::cout << "one contribution under 25%" << std::endl;
       // make sure the only contribution <25% is last
       const auto it = std::find_if(
         contributions.begin(),
@@ -2241,7 +2240,6 @@ bool t_rpc_command_executor::prepare_registration()
       if(it != contributions.end())
       {
         size_t index = it - contributions.begin();
-        std::cout << "found at " << index << std::endl;
         if(index != (contributions.size() - 1) && index > 0)
         {
           // swap
