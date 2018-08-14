@@ -144,7 +144,6 @@ namespace service_nodes
 
   std::vector<service_node_pubkey_info> service_node_list::get_service_node_list_state(const std::vector<crypto::public_key> &service_node_pubkeys) const
   {
-    // TODO(doyle): Is order important here?
     std::vector<service_node_pubkey_info> result;
 
     if (service_node_pubkeys.empty())

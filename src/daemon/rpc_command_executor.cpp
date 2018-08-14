@@ -2089,8 +2089,13 @@ bool t_rpc_command_executor::get_service_node_list_state(const std::vector<std::
 
       std::sort(unregistered.begin(), unregistered.end(),
           [](const cryptonote::COMMAND_RPC_GET_SERVICE_NODE_LIST_STATE::response::entry *a, const cryptonote::COMMAND_RPC_GET_SERVICE_NODE_LIST_STATE::response::entry *b) {
-          bool result = a->contributors.size() < b->contributors.size();
-          return result;
+          uint64_t a_remaining = a->staking_requirement - a->total_reserved;
+          uint64_t b_remaining = b->staking_requirement - b->total_reserved;
+
+          if (b_remaining == a_remaining)
+            return b->portions_for_operator < a->portions_for_operator;
+
+          return b_remaining < a_remaining;
       });
 
       std::stable_sort(registered.begin(), registered.end(),

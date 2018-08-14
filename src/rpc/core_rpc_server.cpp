@@ -2307,7 +2307,6 @@ namespace cryptonote
 
     std::vector<service_nodes::service_node_pubkey_info> pubkey_info_list = m_core.get_service_node_list_state(pubkeys);
 
-    // TODO(doyle): Reassignment into agnostic structure, is it ideal?
     res.status = CORE_RPC_STATUS_OK;
     res.service_node_states.reserve(pubkey_info_list.size());
     for (const auto &pubkey_info : pubkey_info_list)
