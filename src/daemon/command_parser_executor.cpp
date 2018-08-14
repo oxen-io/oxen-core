@@ -164,7 +164,13 @@ bool t_command_parser_executor::get_service_node_key(const std::vector<std::stri
 
 bool t_command_parser_executor::prepare_registration()
 {
+  // disable messages during interactive prompt
+  std::string categories = mlog_get_categories();
+  mlog_set_categories("");
+
   bool result = m_executor.prepare_registration();
+  // restore messages
+  mlog_set_categories(categories.c_str());
   return result;
 }
 

@@ -2064,7 +2064,7 @@ bool t_rpc_command_executor::prepare_registration()
   std::cout << "Current staking requirement: " << cryptonote::print_money(staking_requirement) << " " << cryptonote::get_unit() << std::endl;
   
   std::string solo_stake;
-  std::cout << "Will the operator contribute to the stake in its entirety? (Y/Yes/N/No):" << std::endl;
+  std::cout << "Will the operator contribute the entire stake? (Y/Yes/N/No):" << std::endl;
   std::cin >> solo_stake;
   if(command_line::is_yes(solo_stake))
   {
@@ -2088,7 +2088,7 @@ bool t_rpc_command_executor::prepare_registration()
   else
   {
     std::string operating_cost_string;
-    std::cout << "What percentage of the total staking reward would the operator like to take as an operator fee [0-100]%:" << std::endl;
+    std::cout << "What percentage of the total staking reward would the operator like to reserve as an operator fee [0-100]%:" << std::endl;
     std::cin >> operating_cost_string;
     
     // remove any trailing '%'
@@ -2113,7 +2113,7 @@ bool t_rpc_command_executor::prepare_registration()
       return true;
     }
 
-    std::cout << "What contribution should be reserved for the operator?" << std::endl;
+    std::cout << "How much loki does the operator want to reserve in the stake?" << std::endl;
     std::string contribution_string;
     std::cin >> contribution_string;
     if(!cryptonote::parse_amount(operator_contribution, contribution_string))
@@ -2133,7 +2133,7 @@ bool t_rpc_command_executor::prepare_registration()
     contributions.push_back(operator_contribution);
   }
 
-  std::cout << "How much of that contribution will the operator stake initially?" << std::endl;
+  std::cout << "How much loki will the operator stake initially?" << std::endl;
   std::string initial_contribution_string;
   std::cin >> initial_contribution_string;
   if(!cryptonote::parse_amount(initial_contribution, initial_contribution_string))
@@ -2169,24 +2169,17 @@ bool t_rpc_command_executor::prepare_registration()
       number_participants += static_cast<size_t>(additional_contributors);
     }
   }
- 
+
+  uint64_t stake_remaining = staking_requirement - operator_contribution;
   for (size_t contributor_index = 0; contributor_index < number_participants; ++contributor_index)
   {
     const bool is_operator = (contributor_index == 0);
     const std::string contributor_name = is_operator ? "the operator" : "contributor " + std::to_string(contributor_index);
-    std::cout << "Enter the loki address for " << contributor_name << ":" << std::endl;
-    std::string address_string;
-    // the addresses will be validated later down the line
-    if(!(std::cin >> address_string))
-    {
-      std::cout << "Invalid address. Aborted." << std::endl;
-      return true;
-    }
-    addresses.push_back(address_string);
-    
+
     if(!is_operator)
     {
-      std::cout << "What contribution should be reserved for " << contributor_name << "?" << std::endl;
+      std::cout << "There is " << cryptonote::print_money(stake_remaining) << " " << cryptonote::get_unit() << " left to meet the staking requirement." << std::endl;
+      std::cout << "How much loki does " << contributor_name << " want to reserve in the stake?" << std::endl;
       uint64_t contribution_amount;
       std::string contribution_string;
       std::cin >> contribution_string;
@@ -2196,7 +2189,18 @@ bool t_rpc_command_executor::prepare_registration()
         return true;
       }
       contributions.push_back(contribution_amount);
+      stake_remaining -= contribution_amount;
     }
+
+    std::cout << "Enter the loki address for " << contributor_name << ":" << std::endl;
+    std::string address_string;
+    // the addresses will be validated later down the line
+    if(!(std::cin >> address_string))
+    {
+      std::cout << "Invalid address. Aborted." << std::endl;
+      return true;
+    }
+    addresses.push_back(address_string);    
   }
 
   assert(addresses.size() == contributions.size());
@@ -2211,20 +2215,45 @@ bool t_rpc_command_executor::prepare_registration()
       contributions.end(),
       [&](uint64_t contrib) -> bool { return contrib < min_contribution; });
     
-    if (number_contribution_under_minimum > 1)
+    if(number_contribution_under_minimum > 1)
     {
       std::cout << "Too many contributions are below 25% of the staking requirement (" << cryptonote::print_money(min_contribution) << " " << cryptonote::get_unit() << "). Aborted." << std::endl;
       return true;
     }
-    else if (number_contribution_under_minimum == 1 && total_reserved_contributions < staking_requirement)
+    else if(number_contribution_under_minimum == 1 && total_reserved_contributions < staking_requirement)
     {
       std::cout << "No contribution under 25% (" << cryptonote::print_money(min_contribution) << " " << cryptonote::get_unit() << ") is allowed unless the total staking requirement is met. Aborted." << std::endl;
       return true;
     }
-    else if (number_participants == (MAX_NUMBER_OF_CONTRIBUTORS) && total_reserved_contributions < staking_requirement)
+    else if(number_participants == (MAX_NUMBER_OF_CONTRIBUTORS) && total_reserved_contributions < staking_requirement)
     {
       std::cout << "The maximum number of contributors has been reached, but the total reserved contribution does not meet the staking requirement. Aborted." << std::endl;
       return true;
+    }
+    else if(number_contribution_under_minimum == 1)
+    {
+      std::cout << "one contribution under 25%" << std::endl;
+      // make sure the only contribution <25% is last
+      const auto it = std::find_if(
+        contributions.begin(),
+        contributions.end(),
+        [&](uint64_t contrib) -> bool { return contrib < min_contribution; });
+      if(it != contributions.end())
+      {
+        size_t index = it - contributions.begin();
+        std::cout << "found at " << index << std::endl;
+        if(index != (contributions.size() - 1) && index > 0)
+        {
+          // swap
+          uint64_t temp = contributions[index];
+          contributions[index] = contributions[index+1];
+          contributions[index+1] = temp;
+
+          std::string temp_address = addresses[index];
+          addresses[index] = addresses[index+1];
+          addresses[index+1] = temp_address;
+        }
+      }
     }
 
     std::cout << "Total staking contributions reserved: " << cryptonote::print_money(total_reserved_contributions) << " " << cryptonote::get_unit() << std::endl;
