@@ -4850,10 +4850,18 @@ bool simple_wallet::register_service_node(const std::vector<std::string> &args_)
     return true;
   }
 
-  const auto& response = m_wallet->get_service_nodes(service_node_key_as_str);
-  if (response.service_node_states.size() >= 1)
+  try
   {
-    fail_msg_writer() << tr("This service node is already registered");
+    const auto& response = m_wallet->get_service_nodes(service_node_key_as_str);
+    if (response.service_node_states.size() >= 1)
+    {
+      fail_msg_writer() << tr("This service node is already registered");
+      return true;
+    }
+  }
+  catch(const std::exception &e)
+  {
+    fail_msg_writer() << e.what();
     return true;
   }
 
@@ -5081,6 +5089,7 @@ bool simple_wallet::stake(const std::vector<std::string> &args_)
   }
 
   // Check if client can stake into this service node, if so, how much.
+  try
   {
     const auto& response = m_wallet->get_service_nodes(service_node_key_as_str);
     if (response.service_node_states.size() != 1)
@@ -5132,6 +5141,11 @@ bool simple_wallet::stake(const std::vector<std::string> &args_)
       fail_msg_writer() << tr("Warning: You must contribute ") << print_money(must_contrib_total) << tr(" loki to meet your registration requirements for this service node");
       fail_msg_writer() << tr("You have only specified ") << print_money(amount);
     }
+  }
+  catch(const std::exception &e)
+  {
+    fail_msg_writer() << e.what();
+    return true;
   }
 
   std::vector<uint8_t> extra;
