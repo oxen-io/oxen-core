@@ -2058,7 +2058,17 @@ bool t_rpc_command_executor::prepare_registration()
     mlog_set_categories(categories.c_str());
     return true;
   }
-  // TODO: ensure the block height is up to date?
+
+  cryptonote::COMMAND_RPC_GET_SERVICE_NODE_KEY::request keyreq = {};
+  cryptonote::COMMAND_RPC_GET_SERVICE_NODE_KEY::response keyres = {};
+  epee::json_rpc::error error_resp;
+  if (!m_rpc_server->on_get_service_node_key(keyreq, keyres, error_resp) || keyres.status != CORE_RPC_STATUS_OK)
+  {
+    tools::fail_msg_writer() << "Cannot get service node key. Make sure you are running daemon with --service-node flag";
+    mlog_set_categories(categories.c_str());
+    return true;
+  }
+
   if (!m_rpc_server->on_get_info(req, res) || res.status != CORE_RPC_STATUS_OK)
   {
     std::cout << "Could not get current blockchain info" << std::endl;
