@@ -2027,7 +2027,7 @@ namespace cryptonote
   //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::on_get_service_node_key(const COMMAND_RPC_GET_SERVICE_NODE_KEY::request& req, COMMAND_RPC_GET_SERVICE_NODE_KEY::response& res, epee::json_rpc::error &error_resp)
   {
-    PERF_TIMER(on_get_quorum_state);
+    PERF_TIMER(on_get_service_node_key);
 
     crypto::public_key pubkey;
     crypto::secret_key seckey;

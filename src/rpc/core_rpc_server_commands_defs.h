@@ -2341,6 +2341,7 @@ namespace cryptonote
       std::string status;
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(service_node_pubkey)
+        KV_SERIALIZE(status)
       END_KV_SERIALIZE_MAP()
     };
   };
