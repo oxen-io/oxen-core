@@ -2285,11 +2285,9 @@ namespace cryptonote
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
-  bool core_rpc_server::on_get_service_node_list_state(const COMMAND_RPC_GET_SERVICE_NODE_LIST_STATE::request& req,
-                                                             COMMAND_RPC_GET_SERVICE_NODE_LIST_STATE::response& res,
-                                                             epee::json_rpc::error& error_resp)
+  bool core_rpc_server::on_get_service_node(const COMMAND_RPC_GET_SERVICE_NODE::request& req, COMMAND_RPC_GET_SERVICE_NODE::response& res, epee::json_rpc::error& error_resp)
   {
-    PERF_TIMER(on_get_service_node_list_state);
+    PERF_TIMER(on_get_sn);
 
     std::vector<crypto::public_key> pubkeys(req.service_node_pubkeys.size());
     for (size_t i = 0; i < req.service_node_pubkeys.size(); i++)
@@ -2311,7 +2309,7 @@ namespace cryptonote
     res.service_node_states.reserve(pubkey_info_list.size());
     for (const auto &pubkey_info : pubkey_info_list)
     {
-      COMMAND_RPC_GET_SERVICE_NODE_LIST_STATE::response::entry entry = {};
+      COMMAND_RPC_GET_SERVICE_NODE::response::entry entry = {};
       entry.service_node_pubkey           = string_tools::pod_to_hex(pubkey_info.pubkey);
       entry.last_reward_block_height      = pubkey_info.info.last_reward_block_height;
       entry.last_reward_transaction_index = pubkey_info.info.last_reward_transaction_index;
@@ -2320,7 +2318,7 @@ namespace cryptonote
       entry.contributors.reserve(pubkey_info.info.contributors.size());
       for (service_nodes::service_node_info::contribution const &contributor : pubkey_info.info.contributors)
       {
-        COMMAND_RPC_GET_SERVICE_NODE_LIST_STATE::response::contribution new_contributor = {};
+        COMMAND_RPC_GET_SERVICE_NODE::response::contribution new_contributor = {};
         new_contributor.amount   = contributor.amount;
         new_contributor.reserved = contributor.reserved;
         new_contributor.address  = string_tools::pod_to_hex(contributor.address);
