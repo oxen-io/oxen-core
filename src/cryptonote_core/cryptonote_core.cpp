@@ -162,7 +162,7 @@ namespace cryptonote
   , "Set maximum txpool size in bytes."
   , DEFAULT_TXPOOL_MAX_SIZE
   };
-  static const command_line::arg_descriptor<bool> arg_service_node  = {
+  const command_line::arg_descriptor<bool> arg_service_node  = {
     "service-node"
   , "Run as a service node"
   };
