@@ -52,6 +52,7 @@ using namespace epee;
 #include "mnemonics/electrum-words.h"
 #include "rpc/rpc_args.h"
 #include "rpc/core_rpc_server_commands_defs.h"
+#include "daemonizer/posix_fork.h"
 
 #undef LOKI_DEFAULT_LOG_CATEGORY
 #define LOKI_DEFAULT_LOG_CATEGORY "wallet.rpc"
@@ -63,6 +64,10 @@ namespace
   const command_line::arg_descriptor<bool> arg_trusted_daemon = {"trusted-daemon", "Enable commands which rely on a trusted daemon", false};
   const command_line::arg_descriptor<std::string> arg_wallet_dir = {"wallet-dir", "Directory for newly created wallets"};
   const command_line::arg_descriptor<bool> arg_prompt_for_password = {"prompt-for-password", "Prompts for password when not provided", false};
+#ifndef WIN32
+  const command_line::arg_descriptor<bool> arg_detach = {"detach", "Run as daemon"};
+  const command_line::arg_descriptor<std::string> arg_pidfile = {"pidfile", "File path to write the daemon's PID to (optional, requires --detach)", ""};
+#endif
 
   constexpr const char default_rpc_username[] = "loki";
 
@@ -151,6 +156,17 @@ namespace tools
       tmpwal = tools::wallet2::make_dummy(*m_vm, password_prompter);
       walvars = tmpwal.get();
     }
+
+#ifndef WIN32
+    if (command_line::has_arg(*m_vm, arg_detach))
+    {
+      MWARNING("Forking to background...");
+      std::string pidfile;
+      pidfile = command_line::get_arg(*m_vm, arg_pidfile);
+      posix::fork(pidfile);
+    }
+#endif
+
     boost::optional<epee::net_utils::http::login> http_login{};
     std::string bind_port = command_line::get_arg(*m_vm, arg_rpc_bind_port);
     const bool disable_auth = command_line::get_arg(*m_vm, arg_disable_rpc_login);
@@ -2901,6 +2917,10 @@ int main(int argc, char** argv) {
   command_line::add_arg(desc_params, arg_from_json);
   command_line::add_arg(desc_params, arg_wallet_dir);
   command_line::add_arg(desc_params, arg_prompt_for_password);
+#ifndef WIN32
+  command_line::add_arg(desc_params, arg_detach);
+  command_line::add_arg(desc_params, arg_pidfile);
+#endif
 
   boost::optional<po::variables_map> vm;
   bool should_terminate = false;
