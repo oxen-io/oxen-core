@@ -2013,6 +2013,7 @@ static void print_service_node_list_state(std::vector<cryptonote::COMMAND_RPC_GE
 
     tools::msg_writer(color) << indent1 << "[" << i << "] Service Node: "              << entry.service_node_pubkey;
     tools::msg_writer(color) << indent2 << "Total Contributed / Staking Requirement: " << cryptonote::print_money(entry.total_contributed) << " / " << cryptonote::print_money(entry.staking_requirement);
+    tools::msg_writer() << indent2 << "Node expires at block height " << entry.expiration_block;
 
     tools::msg_writer() << indent2 << "Total Reserved    / Staking Requirement: " << cryptonote::print_money(entry.total_reserved) << " / " << cryptonote::print_money(entry.staking_requirement);
 

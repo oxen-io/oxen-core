@@ -85,6 +85,7 @@ namespace service_nodes
     uint64_t total_contributed;
     uint64_t total_reserved;
     uint64_t staking_requirement;
+    uint64_t lock_blocks;
     uint32_t portions_for_operator;
     cryptonote::account_public_address operator_address;
 
