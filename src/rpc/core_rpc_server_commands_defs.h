@@ -2385,6 +2385,7 @@ namespace cryptonote
         uint64_t                           staking_requirement;
         uint32_t                           portions_for_operator;
         std::string                        operator_address;
+        uint64_t                           expiration_block;
 
         BEGIN_KV_SERIALIZE_MAP()
             KV_SERIALIZE(service_node_pubkey)
@@ -2397,6 +2398,7 @@ namespace cryptonote
             KV_SERIALIZE(staking_requirement)
             KV_SERIALIZE(portions_for_operator)
             KV_SERIALIZE(operator_address)
+            KV_SERIALIZE(expiration_block)
         END_KV_SERIALIZE_MAP()
       };
 

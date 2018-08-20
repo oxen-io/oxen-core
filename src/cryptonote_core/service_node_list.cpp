@@ -356,6 +356,7 @@ namespace service_nodes
     info.total_contributed = 0;
     info.total_reserved = 0;
     info.contributors.clear();
+    info.lock_blocks = get_staking_requirement_lock_blocks();
 
     for (size_t i = 0; i < service_node_addresses.size(); i++)
     {

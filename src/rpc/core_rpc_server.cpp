@@ -2332,6 +2332,7 @@ namespace cryptonote
       entry.staking_requirement           = pubkey_info.info.staking_requirement;
       entry.portions_for_operator         = pubkey_info.info.portions_for_operator;
       entry.operator_address              = string_tools::pod_to_hex(pubkey_info.info.operator_address);
+      entry.expiration_block              = pubkey_info.info.lock_blocks + pubkey_info.info.registration_height;
 
       res.service_node_states.push_back(entry);
     }
