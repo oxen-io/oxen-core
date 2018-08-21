@@ -650,7 +650,7 @@ bool construct_tx_to_key(const std::vector<test_event_entry>& events,
 
 bool construct_tx_to_key(const std::vector<test_event_entry>& events, cryptonote::transaction& tx, const block& blk_head,
                          const cryptonote::account_base& from, const cryptonote::account_base& to, uint64_t amount,
-                         uint64_t fee, size_t nmix)
+                         uint64_t fee, size_t nmix, bool stake)
 {
   vector<tx_source_entry> sources;
   vector<tx_destination_entry> destinations;

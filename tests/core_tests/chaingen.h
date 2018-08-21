@@ -55,7 +55,7 @@
 #undef MONERO_DEFAULT_LOG_CATEGORY
 #define MONERO_DEFAULT_LOG_CATEGORY "tests.core"
 
-
+#define TESTS_DEFAULT_FEE ((uint64_t)200000000) // 2 * pow(10, 8)
 
 struct callback_entry
 {
@@ -106,16 +106,25 @@ struct event_visitor_settings
 {
   int valid_mask;
   bool txs_keeped_by_block;
+  crypto::secret_key service_node_key;
 
   enum settings
   {
-    set_txs_keeped_by_block = 1 << 0
+    set_txs_keeped_by_block = 1 << 0,
+    set_service_node_key = 1 << 1
   };
 
   event_visitor_settings(int a_valid_mask = 0, bool a_txs_keeped_by_block = false)
     : valid_mask(a_valid_mask)
     , txs_keeped_by_block(a_txs_keeped_by_block)
   {
+  }
+
+  static event_visitor_settings make_set_service_node_key(const crypto::secret_key& a_service_node_key)
+  {
+    event_visitor_settings settings(set_service_node_key);
+    settings.service_node_key = a_service_node_key;
+    return settings;
   }
 
 private:
@@ -126,6 +135,7 @@ private:
   {
     ar & valid_mask;
     ar & txs_keeped_by_block;
+    ar & service_node_key;
   }
 };
 
@@ -228,7 +238,7 @@ bool construct_tx_to_key(const std::vector<test_event_entry>& events,
                          uint64_t amount);
 bool construct_tx_to_key(const std::vector<test_event_entry>& events, cryptonote::transaction& tx,
                          const cryptonote::block& blk_head, const cryptonote::account_base& from, const cryptonote::account_base& to,
-                         uint64_t amount, uint64_t fee, size_t nmix);
+                         uint64_t amount, uint64_t fee, size_t nmix, bool stake=false);
 cryptonote::transaction construct_tx_with_fee(std::vector<test_event_entry>& events, const cryptonote::block& blk_head,
                                             const cryptonote::account_base& acc_from, const cryptonote::account_base& acc_to,
                                             uint64_t amount, uint64_t fee);
@@ -619,6 +629,25 @@ inline bool do_replay_file(const std::string& filename)
 
 #define REWIND_BLOCKS(VEC_EVENTS, BLK_NAME, PREV_BLOCK, MINER_ACC) REWIND_BLOCKS_N(VEC_EVENTS, BLK_NAME, PREV_BLOCK, MINER_ACC, CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW)
 
+inline cryptonote::transaction make_registration_tx(
+    std::vector<test_event_entry>& events,
+    const cryptonote::account_base& account,
+    const cryptonote::keypair& service_node_keys,
+    uint64_t operator_cut,
+    const std::vector<cryptonote::account_public_address>& addresses,
+    const std::vector<uint64_t>& portions,
+    const cryptonote::block& head)
+{
+  uint64_t staking_requirement =
+      service_nodes::get_staking_requirement(cryptonote::FAKECHAIN, cryptonote::get_block_height(head) + 1);
+
+  uint64_t amount = service_nodes::portions_to_amount(portions[0], staking_requirement);
+
+  cryptonote::transaction tx;
+  construct_tx_to_key(events, tx, head, account, account, amount, TESTS_DEFAULT_FEE, 9, true /* staking */);
+  return tx;
+}
+
 #define MAKE_TX_MIX(VEC_EVENTS, TX_NAME, FROM, TO, AMOUNT, NMIX, HEAD)                       \
   cryptonote::transaction TX_NAME;                                                             \
   construct_tx_to_key(VEC_EVENTS, TX_NAME, HEAD, FROM, TO, AMOUNT, TESTS_DEFAULT_FEE, NMIX); \
@@ -719,4 +748,3 @@ inline bool do_replay_file(const std::string& filename)
 #define CHECK_EQ(v1, v2) CHECK_AND_ASSERT_MES(v1 == v2, false, "[" << perr_context << "] failed: \"" << QUOTEME(v1) << " == " << QUOTEME(v2) << "\", " << v1 << " != " << v2)
 #define CHECK_NOT_EQ(v1, v2) CHECK_AND_ASSERT_MES(!(v1 == v2), false, "[" << perr_context << "] failed: \"" << QUOTEME(v1) << " != " << QUOTEME(v2) << "\", " << v1 << " == " << v2)
 #define MK_COINS(amount) (UINT64_C(amount) * COIN)
-#define TESTS_DEFAULT_FEE ((uint64_t)20000000000) // 2 * pow(10, 10)
