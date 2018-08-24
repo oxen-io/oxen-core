@@ -110,7 +110,7 @@ struct gen_block_invalid_prev_id : public gen_block_verification_base<1>
   bool check_block_verification_context(const cryptonote::block_verification_context& bvc, size_t event_idx, const cryptonote::block& /*blk*/);
 };
 
-struct gen_block_invalid_nonce : public gen_block_verification_base<3>
+struct gen_block_invalid_nonce : public gen_block_verification_base<5>
 {
   bool generate(std::vector<test_event_entry>& events) const;
 };
