@@ -219,9 +219,13 @@ public:
   bool construct_block_manually_tx(cryptonote::block& blk, const cryptonote::block& prev_block,
     const cryptonote::account_base& miner_acc, const std::vector<crypto::hash>& tx_hashes, size_t txs_size);
 
+    explicit test_generator(uint8_t hf_version = 7) : hf_version_(hf_version) {}
+
+    void set_hf_version(uint8_t ver) { hf_version_ = ver; }
+
 private:
   std::unordered_map<crypto::hash, block_info> m_blocks_info;
-  uint8_t hf_version_ = 7;
+  uint8_t hf_version_;
 };
 
 inline cryptonote::difficulty_type get_test_difficulty() {return 1;}
@@ -238,7 +242,7 @@ bool construct_tx_to_key(const std::vector<test_event_entry>& events,
                          uint64_t amount);
 bool construct_tx_to_key(const std::vector<test_event_entry>& events, cryptonote::transaction& tx,
                          const cryptonote::block& blk_head, const cryptonote::account_base& from, const cryptonote::account_base& to,
-                         uint64_t amount, uint64_t fee, size_t nmix, bool stake=false);
+                         uint64_t amount, uint64_t fee, size_t nmix, bool stake=false, uint64_t unlock_time=0);
 cryptonote::transaction construct_tx_with_fee(std::vector<test_event_entry>& events, const cryptonote::block& blk_head,
                                             const cryptonote::account_base& acc_from, const cryptonote::account_base& acc_to,
                                             uint64_t amount, uint64_t fee);
@@ -249,11 +253,12 @@ void fill_tx_sources_and_destinations(const std::vector<test_event_entry>& event
                                       const cryptonote::account_base& from, const cryptonote::account_base& to,
                                       uint64_t amount, uint64_t fee, size_t nmix,
                                       std::vector<cryptonote::tx_source_entry>& sources,
-                                      std::vector<cryptonote::tx_destination_entry>& destinations);
+                                      std::vector<cryptonote::tx_destination_entry>& destinations, uint64_t *change_amount = nullptr);
 
 /// Get the amount transferred to `account` in `tx` as output `i`
 uint64_t get_amount(const cryptonote::account_base& account, const cryptonote::transaction& tx, int i);
 uint64_t get_balance(const cryptonote::account_base& addr, const std::vector<cryptonote::block>& blockchain, const map_hash2tx_t& mtx);
+uint64_t get_unlocked_balance(const cryptonote::account_base& addr, const std::vector<cryptonote::block>& blockchain, const map_hash2tx_t& mtx);
 
 //--------------------------------------------------------------------------
 template<class t_test_class>
@@ -591,7 +596,14 @@ inline bool do_replay_file(const std::string& filename)
   register_callback(#METHOD, boost::bind(&CLASS::METHOD, this, _1, _2, _3));
 
 #define MAKE_GENESIS_BLOCK(VEC_EVENTS, BLK_NAME, MINER_ACC, TS)                       \
-  test_generator generator;                                                           \
+  test_generator generator;                                               \
+  cryptonote::block BLK_NAME;                                                           \
+  generator.construct_block(BLK_NAME, MINER_ACC, TS);                                 \
+  VEC_EVENTS.push_back(BLK_NAME);
+
+/// TODO: use hf_ver from test options
+#define MAKE_GENESIS_BLOCK_WITH_HF_VERSION(VEC_EVENTS, BLK_NAME, MINER_ACC, TS, HF_VER)                       \
+  test_generator generator(HF_VER);                                               \
   cryptonote::block BLK_NAME;                                                           \
   generator.construct_block(BLK_NAME, MINER_ACC, TS);                                 \
   VEC_EVENTS.push_back(BLK_NAME);
@@ -644,7 +656,8 @@ inline cryptonote::transaction make_registration_tx(
   uint64_t amount = service_nodes::portions_to_amount(portions[0], staking_requirement);
 
   cryptonote::transaction tx;
-  construct_tx_to_key(events, tx, head, account, account, amount, TESTS_DEFAULT_FEE, 9, true /* staking */);
+  construct_tx_to_key(events, tx, head, account, account, amount, TESTS_DEFAULT_FEE, 9, true /* staking */, STAKING_REQUIREMENT_LOCK_BLOCKS_TESTNET);
+  events.push_back(tx);
   return tx;
 }
 

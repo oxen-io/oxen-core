@@ -49,19 +49,30 @@ bool gen_service_nodes::generate(std::vector<test_event_entry> &events) const
   uint64_t ts_start = 1338224400;
 
   GENERATE_ACCOUNT(miner);
-  MAKE_GENESIS_BLOCK(events, blk_0, miner, ts_start);                           //  0
-  MAKE_ACCOUNT(events, alice);                                                  //  1
 
-  MAKE_NEXT_BLOCK(events, blk_0a, blk_0, miner);
-  REWIND_BLOCKS(events, blk_1, blk_0a, miner);
+  MAKE_GENESIS_BLOCK(events, blk_0, miner, ts_start);
+  MAKE_ACCOUNT(events, alice);
+
+  generator.set_hf_version(8);
+  MAKE_NEXT_BLOCK(events, blk_a, blk_0, miner);
+
+  generator.set_hf_version(9);
+  MAKE_NEXT_BLOCK(events, blk_b, blk_a, miner);
+
+
+  REWIND_BLOCKS_N(events, blk_c, blk_b, miner, 10);
+
+  REWIND_BLOCKS(events, blk_1, blk_c, miner);
 
   MAKE_TX(events, tx_0, miner, alice, MK_COINS(101), blk_1);
   MAKE_NEXT_BLOCK_TX1(events, blk_2, blk_1, miner, tx_0);
 
-  REWIND_BLOCKS_N(events, blk_3, blk_2, miner, 100);
+  REWIND_BLOCKS(events, blk_3, blk_2, miner);
 
   cryptonote::transaction alice_registration =
     make_registration_tx(events, alice, m_alice_service_node_keys, 0, { alice.get_keys().m_account_address }, { STAKING_PORTIONS }, blk_3);
+
+  MAKE_NEXT_BLOCK_TX1(events, blk_4, blk_3, miner, alice_registration);
 
   DO_CALLBACK(events, "check_stuff");
 
@@ -83,7 +94,9 @@ bool gen_service_nodes::check_stuff(cryptonote::core& c, size_t ev_index, const 
   r = find_block_chain(events, chain, mtx, get_block_hash(blocks.back()));
   CHECK_TEST_CONDITION(r);
 
-  CHECK_EQ(MK_COINS(100), get_balance(alice, blocks, mtx));
+  const uint64_t staking_requirement = MK_COINS(100);
+
+  CHECK_EQ(MK_COINS(101) - TESTS_DEFAULT_FEE - staking_requirement, get_unlocked_balance(alice, blocks, mtx));
 
   return true;
 }
