@@ -165,11 +165,6 @@ struct gen_block_miner_tx_with_txin_to_key : public gen_block_verification_base<
   bool generate(std::vector<test_event_entry>& events) const;
 };
 
-struct gen_block_miner_tx_out_is_small : public gen_block_verification_base<1>
-{
-  bool generate(std::vector<test_event_entry>& events) const;
-};
-
 struct gen_block_miner_tx_out_is_big : public gen_block_verification_base<1>
 {
   bool generate(std::vector<test_event_entry>& events) const;

@@ -375,22 +375,6 @@ bool gen_block_miner_tx_with_txin_to_key::generate(std::vector<test_event_entry>
   return true;
 }
 
-bool gen_block_miner_tx_out_is_small::generate(std::vector<test_event_entry>& events) const
-{
-  BLOCK_VALIDATION_INIT_GENERATE();
-
-  MAKE_MINER_TX_MANUALLY(miner_tx, blk_0);
-  miner_tx.vout[0].amount *= 2;
-
-  block blk_1;
-  generator.construct_block_manually(blk_1, blk_0, miner_account, test_generator::bf_miner_tx, 0, 0, 0, crypto::hash(), 0, miner_tx);
-  events.push_back(blk_1);
-
-  DO_CALLBACK(events, "check_block_purged");
-
-  return true;
-}
-
 bool gen_block_miner_tx_out_is_big::generate(std::vector<test_event_entry>& events) const
 {
   BLOCK_VALIDATION_INIT_GENERATE();
