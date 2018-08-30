@@ -39,7 +39,8 @@ class gen_service_nodes : public test_chain_unit_base
 public:
   gen_service_nodes();
   bool generate(std::vector<test_event_entry> &events) const;
-  bool check_stuff(cryptonote::core& c, size_t ev_index, const std::vector<test_event_entry> &events);
+  bool check_registered(cryptonote::core& c, size_t ev_index, const std::vector<test_event_entry> &events);
+  bool check_deregistered(cryptonote::core& c, size_t ev_index, const std::vector<test_event_entry> &events);
 private:
   cryptonote::keypair m_alice_service_node_keys;
 };

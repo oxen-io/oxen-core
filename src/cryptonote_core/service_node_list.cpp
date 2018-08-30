@@ -804,7 +804,7 @@ namespace service_nodes
 
   uint64_t service_node_list::get_staking_requirement_lock_blocks() const
   {
-    return m_blockchain.nettype() == cryptonote::TESTNET || m_blockchain.nettype() == cryptonote::FAKECHAIN ? STAKING_REQUIREMENT_LOCK_BLOCKS_TESTNET : STAKING_REQUIREMENT_LOCK_BLOCKS;
+    return service_nodes::get_staking_requirement_lock_blocks(m_blockchain.nettype());
   }
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1156,6 +1156,16 @@ namespace service_nodes
     cmd = stream.str();
     return true;
   }
+
+  uint64_t get_staking_requirement_lock_blocks(cryptonote::network_type nettype)
+  {
+    switch(nettype) {
+      case cryptonote::TESTNET: return STAKING_REQUIREMENT_LOCK_BLOCKS_TESTNET;
+      case cryptonote::FAKECHAIN: return STAKING_REQUIREMENT_LOCK_BLOCKS_FAKENET;
+      default: return STAKING_REQUIREMENT_LOCK_BLOCKS;
+    }
+  }
+
   uint64_t get_staking_requirement(cryptonote::network_type m_nettype, uint64_t height)
   {
     if (m_nettype == cryptonote::TESTNET || m_nettype == cryptonote::FAKECHAIN)

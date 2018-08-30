@@ -106,7 +106,8 @@ void test_generator::add_block(const cryptonote::block& blk, size_t tsx_size, st
 
 bool test_generator::construct_block(cryptonote::block& blk, uint64_t height, const crypto::hash& prev_id,
                                      const cryptonote::account_base& miner_acc, uint64_t timestamp, uint64_t already_generated_coins,
-                                     std::vector<size_t>& block_sizes, const std::list<cryptonote::transaction>& tx_list)
+                                     std::vector<size_t>& block_sizes, const std::list<cryptonote::transaction>& tx_list,
+                                     const crypto::public_key& sn_pub_key /* = crypto::null_key */, const std::vector<sn_contributor_t>& sn_infos)
 {
   /// a temporary workaround
   blk.major_version = hf_version_;
@@ -137,7 +138,8 @@ bool test_generator::construct_block(cryptonote::block& blk, uint64_t height, co
   size_t target_block_size = txs_size + get_object_blobsize(blk.miner_tx);
   while (true)
   {
-    if (!construct_miner_tx(height, misc_utils::median(block_sizes), already_generated_coins, target_block_size, total_fee, miner_acc.get_keys().m_account_address, blk.miner_tx, blobdata(), hf_version_))
+
+    if (!construct_miner_tx(height, misc_utils::median(block_sizes), already_generated_coins, target_block_size, total_fee, miner_acc.get_keys().m_account_address, blk.miner_tx, blobdata(), hf_version_, cryptonote::MAINNET, sn_pub_key, sn_infos))
       return false;
 
     size_t actual_block_size = txs_size + get_object_blobsize(blk.miner_tx);
@@ -199,7 +201,8 @@ bool test_generator::construct_block(cryptonote::block& blk, const cryptonote::a
 
 bool test_generator::construct_block(cryptonote::block& blk, const cryptonote::block& blk_prev,
                                      const cryptonote::account_base& miner_acc,
-                                     const std::list<cryptonote::transaction>& tx_list/* = {}*/)
+                                     const std::list<cryptonote::transaction>& tx_list/* = {}*/,
+                                     const crypto::public_key& sn_pub_key /* = crypto::null_key */, const std::vector<sn_contributor_t>& sn_infos)
 {
   uint64_t height = boost::get<txin_gen>(blk_prev.miner_tx.vin.front()).height + 1;
   crypto::hash prev_id = get_block_hash(blk_prev);
@@ -209,7 +212,7 @@ bool test_generator::construct_block(cryptonote::block& blk, const cryptonote::b
   std::vector<size_t> block_sizes;
   get_last_n_block_sizes(block_sizes, prev_id, CRYPTONOTE_REWARD_BLOCKS_WINDOW);
 
-  return construct_block(blk, height, prev_id, miner_acc, timestamp, already_generated_coins, block_sizes, tx_list);
+  return construct_block(blk, height, prev_id, miner_acc, timestamp, already_generated_coins, block_sizes, tx_list, sn_pub_key, sn_infos);
 }
 
 bool test_generator::construct_block_manually(block& blk, const block& prev_block, const account_base& miner_acc,
@@ -737,7 +740,7 @@ bool construct_tx_to_key(const std::vector<test_event_entry>& events,
 
 bool construct_tx_to_key(const std::vector<test_event_entry>& events, cryptonote::transaction& tx, const block& blk_head,
                          const cryptonote::account_base& from, const cryptonote::account_base& to, uint64_t amount,
-                         uint64_t fee, size_t nmix, bool stake, uint64_t unlock_time)
+                         uint64_t fee, size_t nmix, bool stake, boost::optional<const register_info> reg_info, uint64_t unlock_time)
 {
   vector<tx_source_entry> sources;
   vector<tx_destination_entry> destinations;
@@ -746,7 +749,38 @@ bool construct_tx_to_key(const std::vector<test_event_entry>& events, cryptonote
   fill_tx_sources_and_destinations(events, blk_head, from, to, amount, fee, nmix, sources, destinations, &change_amount);
   tx_destination_entry change_addr{change_amount, from.get_keys().m_account_address, false /* is subaddr */ };
 
-  return cryptonote::construct_tx(from.get_keys(), sources, destinations, change_addr, {}, tx, unlock_time, stake, true);
+
+  std::vector<uint8_t> extra;
+
+  if (stake) {
+
+    if (!reg_info) {
+      LOG_ERROR("Stake tx has not registration info");
+      return false;
+    }
+
+    add_service_node_pubkey_to_tx_extra(extra, reg_info->service_node_keypair.pub);
+
+    const uint64_t exp_timestamp = time(nullptr) + STAKING_AUTHORIZATION_EXPIRATION_WINDOW;
+
+    crypto::hash hash;
+    bool hashed = cryptonote::get_registration_hash(reg_info->addresses, reg_info->operator_cut, reg_info->portions, exp_timestamp, hash);
+    if (!hashed)
+    {
+      MERROR("Could not make registration hash from addresses and portions");
+      return false;
+    }
+
+    crypto::signature signature;
+    crypto::generate_signature(hash, reg_info->service_node_keypair.pub, reg_info->service_node_keypair.sec, signature);
+
+    add_service_node_register_to_tx_extra(extra, reg_info->addresses, reg_info->operator_cut, reg_info->portions, exp_timestamp, signature);
+    add_service_node_contributor_to_tx_extra(extra, reg_info->addresses.at(0));
+
+  }
+
+
+  return cryptonote::construct_tx(from.get_keys(), sources, destinations, change_addr, extra, tx, unlock_time, stake, true);
 }
 
 transaction construct_tx_with_fee(std::vector<test_event_entry>& events, const block& blk_head,

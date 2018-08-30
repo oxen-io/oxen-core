@@ -284,6 +284,8 @@ namespace service_nodes
   bool make_registration_cmd(cryptonote::network_type nettype, const std::vector<std::string> args, const crypto::public_key& service_node_pubkey,
                              const crypto::secret_key service_node_key, std::string &cmd, bool make_friendly);
 
+  uint64_t get_staking_requirement_lock_blocks(cryptonote::network_type m_nettype);
+
   uint64_t get_staking_requirement(cryptonote::network_type nettype, uint64_t height);
 
   uint64_t portions_to_amount(uint64_t portions, uint64_t staking_requirement);
