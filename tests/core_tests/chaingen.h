@@ -166,13 +166,6 @@ class test_generator
 public:
   struct block_info
   {
-    block_info()
-      : prev_id()
-      , already_generated_coins(0)
-      , block_size(0)
-    {
-    }
-
     block_info(crypto::hash a_prev_id, uint64_t an_already_generated_coins, size_t a_block_size)
       : prev_id(a_prev_id)
       , already_generated_coins(an_already_generated_coins)

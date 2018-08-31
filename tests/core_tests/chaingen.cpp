@@ -101,7 +101,7 @@ void test_generator::add_block(const cryptonote::block& blk, size_t tsx_size, st
   const size_t block_size = tsx_size + get_object_blobsize(blk.miner_tx);
   uint64_t block_reward;
   cryptonote::get_block_reward(misc_utils::median(block_sizes), block_size, already_generated_coins, block_reward, hf_version_, 0);
-  m_blocks_info[get_block_hash(blk)] = block_info(blk.prev_id, already_generated_coins + block_reward, block_size);
+  m_blocks_info.insert({get_block_hash(blk), block_info(blk.prev_id, already_generated_coins + block_reward, block_size)});
 }
 
 bool test_generator::construct_block(cryptonote::block& blk, uint64_t height, const crypto::hash& prev_id,
@@ -273,14 +273,14 @@ struct output_index {
     size_t out_no; // index of out in transaction
     size_t idx;
     bool spent;
+    bool is_sn_reward = false;
     const cryptonote::block *p_blk;
     const cryptonote::transaction *p_tx;
 
     output_index(const cryptonote::txout_target_v &_out, uint64_t _a, size_t _h, uint64_t ut, size_t tno, size_t ono, const cryptonote::block *_pb, const cryptonote::transaction *_pt)
         : out(_out), amount(_a), blk_height(_h), unlock_time(ut), tx_no(tno), out_no(ono), idx(0), spent(false), p_blk(_pb), p_tx(_pt) { }
 
-    output_index(const output_index &other)
-        : out(other.out), amount(other.amount), mask(other.mask), blk_height(other.blk_height), tx_no(other.tx_no), out_no(other.out_no), idx(other.idx), spent(other.spent), p_blk(other.p_blk), p_tx(other.p_tx), unlock_time(other.unlock_time) {  }
+    output_index(const output_index &other) = default;
 
     const std::string toString() const {
         std::stringstream ss;
@@ -407,13 +407,20 @@ bool init_output_indices(output_index_vec& outs, output_vec& outs_mine, const st
                     outs[tx_global_idx].idx = tx_global_idx;
                     outs[tx_global_idx].mask = rct::zeroCommit(out.amount);
                     // Is out to me?
-                    if (is_out_to_acc(from.get_keys(), boost::get<txout_to_key>(out.target), get_tx_pub_key_from_extra(tx), get_additional_tx_pub_keys_from_extra(tx), j)) {
-                        outs_mine.push_back(tx_global_idx);
-                        auto& out = outs.back();
-                        if (out.amount == 0) {
-                          out.amount = get_amount(from, tx, j);
-                          out.mask = tx.rct_signatures.outPk[j].mask;
+                    const auto gov_key = cryptonote::get_deterministic_keypair_from_height(height);
+
+                    const bool to_acc_regular = is_out_to_acc(from.get_keys(), boost::get<txout_to_key>(out.target), get_tx_pub_key_from_extra(tx), get_additional_tx_pub_keys_from_extra(tx), j);
+                    const bool to_acc_sn_reward = to_acc_regular ? false : is_out_to_acc(from.get_keys(), boost::get<txout_to_key>(out.target), gov_key.pub, {}, j);
+
+                    if (to_acc_regular || to_acc_sn_reward) {
+                      outs_mine.push_back(tx_global_idx);
+                        auto& oi = outs.back();
+                        oi.is_sn_reward = to_acc_sn_reward;
+                        if (oi.amount == 0) {
+                          oi.amount = get_amount(from, tx, j);
+                          oi.mask = tx.rct_signatures.outPk[j].mask;
                         }
+
                     }
                 }
             }
@@ -439,10 +446,14 @@ bool init_spent_output_indices(output_index_vec& outs,
         crypto::public_key out_key = boost::get<txout_to_key>(oi.out).key;
         std::unordered_map<crypto::public_key, cryptonote::subaddress_index> subaddresses;
         subaddresses[from.get_keys().m_account_address.m_spend_public_key] = {0,0};
+
+        const auto tx_pk = oi.is_sn_reward ? get_deterministic_keypair_from_height(oi.blk_height).pub
+                                           : get_tx_pub_key_from_extra(*oi.p_tx);
+
         generate_key_image_helper(from.get_keys(),
                                   subaddresses,
                                   out_key,
-                                  get_tx_pub_key_from_extra(*oi.p_tx),
+                                  tx_pk,
                                   get_additional_tx_pub_keys_from_extra(*oi.p_tx),
                                   oi.out_no,
                                   in_ephemeral,

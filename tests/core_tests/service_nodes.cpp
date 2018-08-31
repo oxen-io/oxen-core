@@ -40,14 +40,14 @@ using namespace cryptonote;
 gen_service_nodes::gen_service_nodes()
 {
   /// NOTE: we don't generate random keys here, because the verification will call its own constructor
-  constexpr char* pub_key_str = "cf6ae1d4e902f7a85af58d6069c29f09702e25fd07cf28d359e64401002db2a1";
-  constexpr char* sec_key_str = "ead4cc692c4237f62f9cefaf5e106995b2dda79a29002a546876f9ee7abcc203";
+  constexpr char pub_key_str[] = "cf6ae1d4e902f7a85af58d6069c29f09702e25fd07cf28d359e64401002db2a1";
+  constexpr char sec_key_str[] = "ead4cc692c4237f62f9cefaf5e106995b2dda79a29002a546876f9ee7abcc203";
 
   epee::string_tools::hex_to_pod(pub_key_str, m_alice_service_node_keys.pub);
   epee::string_tools::hex_to_pod(sec_key_str, m_alice_service_node_keys.sec);
 
   REGISTER_CALLBACK("check_registered", gen_service_nodes::check_registered);
-  REGISTER_CALLBACK("check_deregistered", gen_service_nodes::check_deregistered);
+  REGISTER_CALLBACK("check_expired", gen_service_nodes::check_expired);
 }
 //-----------------------------------------------------------------------------------------------------
 bool gen_service_nodes::generate(std::vector<test_event_entry> &events) const
@@ -82,9 +82,8 @@ bool gen_service_nodes::generate(std::vector<test_event_entry> &events) const
 
   DO_CALLBACK(events, "check_registered");
   std::vector<test_generator::sn_contributor_t> sn_info = {{alice.get_keys().m_account_address, STAKING_PORTIONS}};
-  REWIND_BLOCKS_N_V2(events, blk_5, blk_4, miner, service_nodes::get_staking_requirement_lock_blocks(cryptonote::FAKECHAIN), m_alice_service_node_keys.pub, sn_info);
-  DO_CALLBACK(events, "check_deregistered");
-
+  REWIND_BLOCKS_N_V2(events, blk_5, blk_4, miner, service_nodes::get_staking_requirement_lock_blocks(cryptonote::FAKECHAIN), m_alice_service_node_keys.pub, sn_info); // 15 + 2N + M
+  DO_CALLBACK(events, "check_expired");
 
   return true;
 }
@@ -115,9 +114,9 @@ bool gen_service_nodes::check_registered(cryptonote::core& c, size_t ev_index, c
   return true;
 }
 
-bool gen_service_nodes::check_deregistered(cryptonote::core& c, size_t ev_index, const std::vector<test_event_entry> &events)
+bool gen_service_nodes::check_expired(cryptonote::core& c, size_t ev_index, const std::vector<test_event_entry> &events)
 {
-  DEFINE_TESTS_ERROR_CONTEXT("gen_service_nodes::check_deregistered");
+  DEFINE_TESTS_ERROR_CONTEXT("gen_service_nodes::check_expired");
 
   cryptonote::account_base alice = boost::get<cryptonote::account_base>(events[1]);
 
@@ -133,14 +132,12 @@ bool gen_service_nodes::check_deregistered(cryptonote::core& c, size_t ev_index,
   r = find_block_chain(events, chain, mtx, get_block_hash(blocks.back()));
   CHECK_TEST_CONDITION(r);
 
-  const uint64_t staking_requirement = MK_COINS(100);
-
-  /// check that staked amount is unlocked
-  CHECK_EQ(MK_COINS(101) - TESTS_DEFAULT_FEE, get_unlocked_balance(alice, blocks, mtx));
-
-  /// check that alice is deregistered
+  /// check that alice's registration expired
   const auto info_v = c.get_service_node_list_state({m_alice_service_node_keys.pub});
   CHECK_EQ(info_v.empty(), true);
+
+  /// check that alice received some service node rewards (TODO: check the balance precisely)
+  CHECK_TEST_CONDITION(get_balance(alice, blocks, mtx) > MK_COINS(101) - TESTS_DEFAULT_FEE);
 
   return true;
 
