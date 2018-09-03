@@ -65,7 +65,7 @@ namespace cryptonote
     //      will work correctly.
     time_t const MIN_RELAY_TIME = (60 * 5); // only start re-relaying transactions after that many seconds
     time_t const MAX_RELAY_TIME = (60 * 60 * 4); // at most that many seconds between resends
-    float const ACCEPT_THRESHOLD = 1.0f;
+    double const ACCEPT_THRESHOLD = 1.0f;
 
     // a kind of increasing backoff within min/max bounds
     uint64_t get_relay_delay(time_t now, time_t received)
