@@ -52,3 +52,19 @@ struct get_test_options<gen_service_nodes> {
     hard_forks
   };
 };
+
+class test_prefer_deregisters : public test_chain_unit_base
+{
+public:
+  test_prefer_deregisters();
+  bool generate(std::vector<test_event_entry> &events);
+  bool check_prefer_deregisters(cryptonote::core& c, size_t ev_index, const std::vector<test_event_entry> &events);
+};
+
+template<>
+struct get_test_options<test_prefer_deregisters> {
+  const std::pair<uint8_t, uint64_t> hard_forks[3] = {std::make_pair(7, 0), std::make_pair(8, 1), std::make_pair(9, 2)};
+  const cryptonote::test_options test_options = {
+    hard_forks
+  };
+};

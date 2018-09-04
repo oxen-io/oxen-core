@@ -262,6 +262,36 @@ bool test_generator::construct_block_manually_tx(cryptonote::block& blk, const c
   return construct_block_manually(blk, prev_block, miner_acc, bf_tx_hashes, 0, 0, 0, crypto::hash(), 0, transaction(), tx_hashes, txs_size);
 }
 
+cryptonote::transaction make_registration_tx(std::vector<test_event_entry>& events,
+                                             const cryptonote::account_base& account,
+                                             const cryptonote::keypair& service_node_keys,
+                                             uint64_t operator_cut,
+                                             const std::vector<cryptonote::account_public_address>& addresses,
+                                             const std::vector<uint64_t>& portions,
+                                             const cryptonote::block& head)
+{
+    const auto new_height = cryptonote::get_block_height(head) + 1;
+    const auto staking_requirement = service_nodes::get_staking_requirement(cryptonote::FAKECHAIN, new_height);
+
+    uint64_t amount = service_nodes::portions_to_amount(portions[0], staking_requirement);
+
+    cryptonote::transaction tx;
+    boost::optional<const register_info> reg_info =
+      register_info{ service_node_keys, portions, operator_cut, addresses };
+    const auto unlock_time = new_height + service_nodes::get_staking_requirement_lock_blocks(cryptonote::FAKECHAIN);
+    construct_tx_to_key(
+      events, tx, head, account, account, amount, TESTS_DEFAULT_FEE, 9, true /* staking */, reg_info, unlock_time);
+    events.push_back(tx);
+    return tx;
+}
+
+cryptonote::transaction make_registration_tx(std::vector<test_event_entry>& events,
+                                             const cryptonote::account_base& account,
+                                             const cryptonote::keypair& service_node_keys,
+                                             const cryptonote::block& head)
+{
+  return make_registration_tx(events, account, service_node_keys, 0, { account.get_keys().m_account_address }, { STAKING_PORTIONS }, head);
+}
 
 struct output_index {
     const cryptonote::txout_target_v out;
@@ -538,6 +568,8 @@ bool fill_tx_sources(std::vector<tx_source_entry>& sources, const std::vector<te
 
         const output_index& oi = outs[sender_out];
         if (oi.spent) continue;
+
+        if (!cryptonote::rules::is_output_unlocked(oi.unlock_time, get_block_height(blk_head))) continue;
 
         cryptonote::tx_source_entry ts;
 
