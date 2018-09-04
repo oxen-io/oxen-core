@@ -106,11 +106,6 @@ namespace service_nodes
         block_added_generic(block, txs);
       }
     }
-
-    if (!m_rollback_events.empty())
-    {
-      m_rollback_events.push_front(std::unique_ptr<rollback_event>(new prevent_rollback(m_rollback_events.front()->m_block_height)));
-    }
   }
 
   std::vector<crypto::public_key> service_node_list::get_service_nodes_pubkeys() const
