@@ -377,3 +377,21 @@ TEST(service_nodes, min_portions)
   }
 
 }
+
+// Test service node receive rewards proportionate to the amount they contributed.
+TEST(service_nodes, service_node_rewards_proportional_to_portions)
+{
+
+  {
+    const auto reward_a = cryptonote::get_portion_of_reward(MIN_PORTIONS, COIN);
+    const auto reward_b = cryptonote::get_portion_of_reward(3 * MIN_PORTIONS, COIN);
+    ASSERT_TRUE(3 * reward_a == reward_b);
+  }
+
+  {
+    const auto reward_a = cryptonote::get_portion_of_reward(STAKING_PORTIONS/2, COIN);
+    const auto reward_b = cryptonote::get_portion_of_reward(STAKING_PORTIONS, COIN);
+    ASSERT_TRUE(2 * reward_a == reward_b);
+  }
+
+}
