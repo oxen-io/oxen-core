@@ -677,10 +677,10 @@ cryptonote::transaction make_registration_tx(std::vector<test_event_entry>& even
                                              const std::vector<uint64_t>& portions,
                                              const cryptonote::block& head);
 
-cryptonote::transaction make_registration_tx(std::vector<test_event_entry>& events,
-                                             const cryptonote::account_base& account,
-                                             const cryptonote::keypair& service_node_keys,
-                                             const cryptonote::block& head);
+cryptonote::transaction make_default_registration_tx(std::vector<test_event_entry>& events,
+                                                     const cryptonote::account_base& account,
+                                                     const cryptonote::keypair& service_node_keys,
+                                                     const cryptonote::block& head);
 
 #define MAKE_TX_MIX(VEC_EVENTS, TX_NAME, FROM, TO, AMOUNT, NMIX, HEAD)                       \
   cryptonote::transaction TX_NAME;                                                             \

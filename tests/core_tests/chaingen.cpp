@@ -285,7 +285,7 @@ cryptonote::transaction make_registration_tx(std::vector<test_event_entry>& even
     return tx;
 }
 
-cryptonote::transaction make_registration_tx(std::vector<test_event_entry>& events,
+cryptonote::transaction make_default_registration_tx(std::vector<test_event_entry>& events,
                                              const cryptonote::account_base& account,
                                              const cryptonote::keypair& service_node_keys,
                                              const cryptonote::block& head)

@@ -36,23 +36,95 @@ using namespace std;
 using namespace epee;
 using namespace cryptonote;
 
+
+
+struct last_reward_point {
+  uint64_t height;
+  uint64_t priority;
+};
+
+bool operator < (const last_reward_point& lhs, const last_reward_point& rhs) {
+  return (lhs.height < rhs.height) || (lhs.priority < rhs.priority);
+}
+
 struct sn_registration {
+  uint64_t valid_until; /// block height
   cryptonote::keypair keys;
   sn_contributor_t contribution;
+  last_reward_point last_reward;
 };
+
+
+struct VoterIdx {
+  size_t idx_in_nodes; /// index in sorted service node list
+  size_t idx_in_quorum;
+};
+
+class sn_list {
+
+  public:
+  std::vector<sn_registration> sn_owners_;
+
+    const sn_registration& at(size_t idx) { return sn_owners_.at(idx); }
+
+    void expire_old(uint64_t height) {
+
+      /// remove_if is stable, no need for re-sorting
+      const auto new_end = std::remove_if(sn_owners_.begin(), sn_owners_.end(), [height](const sn_registration& reg) {
+        return reg.valid_until < height;
+      });
+
+      sn_owners_.erase(new_end, sn_owners_.end());
+
+    }
+
+    const boost::optional<uint32_t> get_winner_idx(uint64_t height)
+    {
+
+      boost::optional<uint32_t> winner_idx = boost::none;
+
+      last_reward_point cur_min = { std::numeric_limits<uint64_t>::max(), std::numeric_limits<uint32_t>::max() };
+
+      for (auto i = 0u; i < sn_owners_.size(); ++i) {
+        const auto& sn = sn_owners_[i];
+        if (sn.last_reward < cur_min) {
+          cur_min = sn.last_reward;
+          winner_idx = i;
+        }
+      }
+
+      if (winner_idx) { sn_owners_[*winner_idx].last_reward.height = height; }
+
+      return winner_idx;
+    }
+
+    size_t size() const { return sn_owners_.size(); }
+
+    void add_registrations(const std::vector<sn_registration>& regs)
+    {
+      sn_owners_.insert(sn_owners_.begin(), regs.begin(), regs.end());
+    } 
+};
+
+
 class linear_chain_generator
 {
 
   private:
     test_generator gen_;
     std::vector<test_event_entry>& events_;
-    std::vector<cryptonote::block> blocks_;
+    std::vector<const cryptonote::block> blocks_;
 
-    std::vector<sn_registration> sn_owners_;
+    sn_list sn_list_;
 
-    int next_winner_idx = 0;
+    /// keep new registrations here until the next block
+    std::vector<sn_registration> registration_buffer_;
 
     cryptonote::account_base first_miner_;
+
+    uint64_t height() const {
+      return get_block_height(blocks_.back());
+    }
 
   public:
     linear_chain_generator(std::vector<test_event_entry> &events)
@@ -79,33 +151,40 @@ class linear_chain_generator
 
     void create_block(const std::vector<cryptonote::transaction>& txs = {})
     {
-      const auto sn_pk = crypto::null_pkey;
-      const std::vector<sn_contributor_t> contribs = { { { crypto::null_pkey, crypto::null_pkey },
-                                                          STAKING_PORTIONS } };
-
-      cryptonote::block blk;
-      gen_.construct_block(blk, blocks_.back(), first_miner_, { txs.begin(), txs.end() }, sn_pk, contribs);
+      const auto blk = create_block_on_fork(blocks_.back(), txs);
       blocks_.push_back(blk);
-      events_.push_back(blk);
     }
 
-    void create_block_sn(const std::vector<cryptonote::transaction>& txs = {})
+    cryptonote::block create_block_on_fork(const cryptonote::block& prev, const std::vector<cryptonote::transaction>& txs = {})
     {
 
-      const auto winner = sn_owners_.at(next_winner_idx);
+      const auto height = get_block_height(prev) + 1;
 
-      next_winner_idx++;
-      if (next_winner_idx >= sn_owners_.size()) {
-        next_winner_idx = 0;
+      const auto winner_idx = sn_list_.get_winner_idx(height); 
+
+      auto sn_pk = crypto::null_pkey;
+      std::vector<sn_contributor_t> contribs = { { { crypto::null_pkey, crypto::null_pkey }, STAKING_PORTIONS } };
+
+      if (winner_idx) {
+
+        auto& winner = sn_list_.at(*winner_idx);
+
+        sn_pk = winner.keys.pub;
+        contribs = { winner.contribution };
+
+      } else {
       }
 
-      const auto sn_pk = winner.keys.pub;
-      const std::vector<sn_contributor_t> contribs = { winner.contribution };
+      cryptonote::block blk;
+      gen_.construct_block(blk, prev, first_miner_, { txs.begin(), txs.end() }, sn_pk, contribs);
+      events_.push_back(blk);
 
-      cryptonote::block gen_block;
-      gen_.construct_block(gen_block, blocks_.back(), first_miner_, { txs.begin(), txs.end() }, sn_pk, contribs);
-      blocks_.push_back(gen_block);
-      events_.push_back(gen_block);
+      /// now we can add sn from the buffer to be used in consequent nodes
+      sn_list_.add_registrations(registration_buffer_);
+      registration_buffer_.clear();
+      sn_list_.expire_old(height);
+
+      return blk;
     }
 
     void rewind_until_v9()
@@ -142,9 +221,11 @@ class linear_chain_generator
     cryptonote::transaction create_registration_tx(const cryptonote::account_base& acc, const cryptonote::keypair& sn_keys)
     {
       const sn_contributor_t contr = {acc.get_keys().m_account_address, STAKING_PORTIONS};
-      const sn_registration owner = {sn_keys, contr};
-      sn_owners_.push_back(owner);
-      return make_registration_tx(events_, acc, sn_keys, blocks_.back());
+      const uint32_t expires = height() + service_nodes::get_staking_requirement_lock_blocks(cryptonote::FAKECHAIN);
+
+      const auto reg_idx = registration_buffer_.size();
+      registration_buffer_.push_back({expires, sn_keys, contr, {height(), reg_idx} });
+      return make_default_registration_tx(events_, acc, sn_keys, blocks_.back());
     }
 
     cryptonote::transaction create_registration_tx()
@@ -153,55 +234,70 @@ class linear_chain_generator
       return create_registration_tx(first_miner_, sn_keys);
     }
 
-    const cryptonote::account_base& first_miner() const {
-      return first_miner_;
+    const cryptonote::account_base& first_miner() const { return first_miner_; }
+
+    /// Note: should be carefull with returing a reference to vector elements
+    const cryptonote::block& chain_head() const { return blocks_.back(); }
+
+    /// get a copy of the service node list
+    const sn_list get_sn_list() const { return sn_list_; }
+
+    void set_sn_list(const sn_list& list) { sn_list_ = list; }
+
+    std::vector<VoterIdx> get_quorum_idxs(const cryptonote::block& prev) const
+    {
+
+      if (sn_list_.size() <= 10) {
+        std::cerr << "Not enough service nodes\n";
+        return {};
+      }
+
+      std::vector<size_t> pub_keys_indexes;
+      {
+        uint64_t seed = 0;
+        const crypto::hash block_hash = cryptonote::get_block_hash(prev);
+        std::memcpy(&seed, block_hash.data, std::min(sizeof(seed), sizeof(block_hash.data)));
+
+        pub_keys_indexes.resize(sn_list_.size());
+        for (size_t i = 0; i < pub_keys_indexes.size(); i++) { pub_keys_indexes[i] = i; }
+        service_nodes::loki_shuffle(pub_keys_indexes, seed);
+      }
+
+      std::vector<VoterIdx> quorum_idxs;
+      for (auto i = 0u; i < service_nodes::QUORUM_SIZE; ++i) {
+        quorum_idxs.push_back({pub_keys_indexes[i], i});
+      }
+
+      return quorum_idxs;
+
     }
 
-    cryptonote::transaction create_deregister_tx(uint32_t idx_to_kick) {
+
+    /// specify voters manually
+    cryptonote::transaction create_deregister_tx(uint32_t idx_to_kick, const cryptonote::block& prev, const std::vector<VoterIdx>& voters) const {
 
       cryptonote::transaction deregister_tx;
 
-      /// sort service node pub keys; create a copy so that we don't modify the original
-      auto sn_owners_sorted = sn_owners_;
+      auto sn_owners_sorted = sn_list_.sn_owners_;
 
+      /// TODO: make sorting unnecessary
       std::sort(sn_owners_sorted.begin(), sn_owners_sorted.end(),
       [](const sn_registration &a, const sn_registration &b) {
         return memcmp(reinterpret_cast<const void*>(&a.keys.pub), reinterpret_cast<const void*>(&b.keys.pub), sizeof(a.keys.pub)) < 0;
       });
 
-      /// NOTE: need to know which service nodes will end up in the quorum
-      std::vector<size_t> pub_keys_indexes;
-      {
-        uint64_t seed = 0;
-        const crypto::hash block_hash = cryptonote::get_block_hash(blocks_.back());
-        std::memcpy(&seed, block_hash.data, std::min(sizeof(seed), sizeof(block_hash.data)));
-
-        pub_keys_indexes.resize(sn_owners_sorted.size());
-        for (size_t i = 0; i < sn_owners_sorted.size(); i++) { pub_keys_indexes[i] = i; }
-
-        service_nodes::loki_shuffle(pub_keys_indexes, seed);
-      }
-
-      const std::vector<size_t> quorum_idxs(pub_keys_indexes.begin(), pub_keys_indexes.begin() + service_nodes::QUORUM_SIZE);
-      const std::vector<size_t> to_test(pub_keys_indexes.begin() + service_nodes::QUORUM_SIZE, pub_keys_indexes.end());
-
-      if (idx_to_kick >= to_test.size()) {
-        std::cerr << "Node to test does not exist\n";
-        return {};
-      }
-
       cryptonote::tx_extra_service_node_deregister deregister;
-      deregister.block_height = get_block_height(blocks_.back());
+      deregister.block_height = get_block_height(prev);
       deregister.service_node_index = idx_to_kick; /// idx inside nodes to test
 
       /// need to create MIN_VOTES_TO_KICK_SERVICE_NODE (7) votes
-      for (uint32_t i = 0u; i < quorum_idxs.size(); ++i) {
-        const auto idx = quorum_idxs[i];
+      for (uint32_t i = 0u; i < voters.size(); ++i) {
+        const auto idx = voters[i].idx_in_nodes;
         const auto pk = sn_owners_sorted.at(idx).keys.pub;
         const auto sk = sn_owners_sorted.at(idx).keys.sec;
         const auto signature = loki::service_node_deregister::sign_vote(deregister.block_height, deregister.service_node_index, pk, sk);
 
-        deregister.votes.push_back({signature, i}); /// index in quorum
+        deregister.votes.push_back({signature, (uint32_t)voters[i].idx_in_quorum});
       }
 
       const bool full_tx_deregister_made = cryptonote::add_service_node_deregister_to_tx_extra(deregister_tx.extra, deregister);
@@ -213,6 +309,20 @@ class linear_chain_generator
       events_.push_back(deregister_tx);
 
       return deregister_tx;
+    }
+
+
+    cryptonote::transaction create_deregister_tx(uint32_t idx_to_kick, const cryptonote::block& prev) const {
+
+      const auto quorum_idxs = get_quorum_idxs(prev);
+
+      return create_deregister_tx(idx_to_kick, prev, quorum_idxs);
+
+    }
+
+    cryptonote::transaction create_deregister_tx(uint32_t idx_to_kick) const {
+
+      return create_deregister_tx(idx_to_kick, blocks_.back());
 
     }
 };
@@ -259,9 +369,7 @@ bool gen_service_nodes::generate(std::vector<test_event_entry> &events) const
   DO_CALLBACK(events, "check_registered");
 
   for (auto i = 0u; i < service_nodes::get_staking_requirement_lock_blocks(cryptonote::FAKECHAIN); ++i) {
-    /// TODO: expire sn automatically, so the generator can decide whether to announce winners
-    /// (and this could be replaced with a regular create_blocks)
-    gen.create_block_sn();
+    gen.create_block();
   } // 15 + 2N + M
 
   DO_CALLBACK(events, "check_expired");
