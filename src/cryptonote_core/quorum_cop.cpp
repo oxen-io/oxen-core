@@ -61,6 +61,11 @@ namespace service_nodes
 
   void quorum_cop::block_added(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs)
   {
+    uint64_t const height        = cryptonote::get_block_height(block);
+
+    if (m_core.get_hard_fork_version(height) < 9)
+      return;
+
     crypto::public_key my_pubkey;
     crypto::secret_key my_seckey;
     if (!m_core.get_service_node_keys(my_pubkey, my_seckey))
@@ -74,7 +79,6 @@ namespace service_nodes
       return;
     }
 
-    uint64_t const height        = cryptonote::get_block_height(block);
     uint64_t const latest_height = std::max(m_core.get_current_blockchain_height(), m_core.get_target_blockchain_height());
 
     if (latest_height < loki::service_node_deregister::VOTE_LIFETIME_BY_HEIGHT)
