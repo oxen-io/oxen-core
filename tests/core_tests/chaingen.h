@@ -252,7 +252,7 @@ struct register_info {
 
 bool construct_tx_to_key(const std::vector<test_event_entry>& events, cryptonote::transaction& tx,
                          const cryptonote::block& blk_head, const cryptonote::account_base& from, const cryptonote::account_base& to,
-                         uint64_t amount, uint64_t fee, size_t nmix, bool stake=false, boost::optional<const register_info> reg_info = boost::none, uint64_t unlock_time=0);
+                         uint64_t amount, uint64_t fee, size_t nmix, bool stake=false, const std::vector<uint8_t>& extra = {}, uint64_t unlock_time=0);
 
 cryptonote::transaction construct_tx_with_fee(std::vector<test_event_entry>& events, const cryptonote::block& blk_head,
                                             const cryptonote::account_base& acc_from, const cryptonote::account_base& acc_to,
@@ -681,6 +681,12 @@ cryptonote::transaction make_default_registration_tx(std::vector<test_event_entr
                                                      const cryptonote::account_base& account,
                                                      const cryptonote::keypair& service_node_keys,
                                                      const cryptonote::block& head);
+
+
+cryptonote::transaction make_deregistration_tx(const std::vector<test_event_entry>& events,
+                                               const cryptonote::account_base& account,
+                                               const cryptonote::block& head,
+                                               const cryptonote::tx_extra_service_node_deregister& deregister, uint64_t fee = 0);
 
 #define MAKE_TX_MIX(VEC_EVENTS, TX_NAME, FROM, TO, AMOUNT, NMIX, HEAD)                       \
   cryptonote::transaction TX_NAME;                                                             \

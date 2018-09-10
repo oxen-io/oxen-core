@@ -274,9 +274,7 @@ class linear_chain_generator
 
 
     /// specify voters manually
-    cryptonote::transaction create_deregister_tx(uint32_t idx_to_kick, const cryptonote::block& prev, const std::vector<VoterIdx>& voters) const {
-
-      cryptonote::transaction deregister_tx;
+    cryptonote::transaction create_deregister_tx(uint32_t idx_to_kick, const cryptonote::block& prev, const std::vector<VoterIdx>& voters, uint64_t fee = 0) const {
 
       auto sn_owners_sorted = sn_list_.sn_owners_;
 
@@ -300,11 +298,7 @@ class linear_chain_generator
         deregister.votes.push_back({signature, (uint32_t)voters[i].idx_in_quorum});
       }
 
-      const bool full_tx_deregister_made = cryptonote::add_service_node_deregister_to_tx_extra(deregister_tx.extra, deregister);
-      if (full_tx_deregister_made) {
-          deregister_tx.version = cryptonote::transaction::version_3_per_output_unlock_times;
-          deregister_tx.is_deregister = true;
-      }
+      const auto deregister_tx = make_deregistration_tx(events_, first_miner_, prev, deregister, fee);
 
       events_.push_back(deregister_tx);
 
@@ -312,17 +306,17 @@ class linear_chain_generator
     }
 
 
-    cryptonote::transaction create_deregister_tx(uint32_t idx_to_kick, const cryptonote::block& prev) const {
+    cryptonote::transaction create_deregister_tx(uint32_t idx_to_kick, const cryptonote::block& prev, uint64_t fee = 0) const {
 
       const auto quorum_idxs = get_quorum_idxs(prev);
 
-      return create_deregister_tx(idx_to_kick, prev, quorum_idxs);
+      return create_deregister_tx(idx_to_kick, prev, quorum_idxs, fee);
 
     }
 
-    cryptonote::transaction create_deregister_tx(uint32_t idx_to_kick) const {
+    cryptonote::transaction create_deregister_tx(uint32_t idx_to_kick, uint64_t fee = 0) const {
 
-      return create_deregister_tx(idx_to_kick, blocks_.back());
+      return create_deregister_tx(idx_to_kick, blocks_.back(), fee);
 
     }
 };
@@ -511,4 +505,39 @@ bool test_prefer_deregisters::check_prefer_deregisters(cryptonote::core& c, size
 
   return true;
 
+}
+//-----------------------------------------------------------------------------------------------------
+//------------------------------ Test Zero-Fee Deregisters Fail ---------------------------------------
+//-----------------------------------------------------------------------------------------------------
+test_zero_fee_deregister::test_zero_fee_deregister() {
+  REGISTER_CALLBACK_METHOD(test_zero_fee_deregister, mark_invalid_tx);
+}
+//-----------------------------------------------------------------------------------------------------
+bool test_zero_fee_deregister::generate(std::vector<test_event_entry> &events)
+{
+
+  linear_chain_generator gen(events);
+
+  gen.create_genesis_block();
+
+  gen.rewind_until_v9();
+
+  /// give miner some outputs to spend and unlock them
+  gen.rewind_blocks_n(20);
+  gen.rewind_blocks();
+
+  /// register 11 random service nodes
+  std::vector<cryptonote::transaction> reg_txs;
+  for (auto i = 0; i < 11; ++i) {
+    const auto tx = gen.create_registration_tx();
+    reg_txs.push_back(tx);
+  }
+
+  gen.create_block(reg_txs);
+
+  /// create a deregister with a fee, should fail
+  DO_CALLBACK(events, "mark_invalid_tx");
+  gen.create_deregister_tx(0, MK_COINS(1));
+
+  return true;
 }
