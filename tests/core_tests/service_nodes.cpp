@@ -215,7 +215,7 @@ class linear_chain_generator
   private:
     test_generator gen_;
     std::vector<test_event_entry>& events_;
-    std::vector<const cryptonote::block> blocks_;
+    std::vector<cryptonote::block> blocks_;
 
     sn_list sn_list_;
 
