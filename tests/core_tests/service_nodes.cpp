@@ -258,7 +258,7 @@ class linear_chain_generator
     const cryptonote::block& chain_head() const { return blocks_.back(); }
 
     /// get a copy of the service node list
-    const sn_list get_sn_list() const { return sn_list_; }
+    sn_list get_sn_list() const { return sn_list_; }
 
     void set_sn_list(const sn_list& list) { sn_list_ = list; }
 
