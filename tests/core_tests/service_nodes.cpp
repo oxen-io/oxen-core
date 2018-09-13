@@ -740,3 +740,112 @@ bool test_zero_fee_deregister::generate(std::vector<test_event_entry> &events)
 
   return true;
 }
+//-----------------------------------------------------------------------------------------------------
+//-------------------------------- Test Deregister Safety Buffer --------------------------------------
+//-----------------------------------------------------------------------------------------------------
+
+// Test if a person registers onto the network and they get included in the nodes to test (i.e. heights 0, 5, 10). If
+// they get dereigstered in the nodes to test, height 5, and rejoin the network before height 10 (and are in the nodes
+// to test), they don't get deregistered. This scenario will most likely happen with an autostaker.
+test_deregister_safety_buffer::test_deregister_safety_buffer() {
+  REGISTER_CALLBACK_METHOD(test_deregister_safety_buffer, mark_invalid_tx);
+}
+//-----------------------------------------------------------------------------------------------------
+bool test_deregister_safety_buffer::generate(std::vector<test_event_entry> &events)
+{
+  DEFINE_TESTS_ERROR_CONTEXT("test_deregister_safety_buffer::generate");
+
+  linear_chain_generator gen(events);
+
+  gen.create_genesis_block();
+
+  const auto miner = gen.first_miner();
+
+  gen.rewind_until_v9();
+
+  /// give miner some outputs to spend and unlock them
+  gen.rewind_blocks_n(40);
+  gen.rewind_blocks();
+
+  /// save generated keys here
+  std::vector<cryptonote::keypair> used_sn_keys;
+
+  /// register 21 random service nodes
+  std::vector<cryptonote::transaction> reg_txs;
+
+  constexpr auto SERVICE_NODES_NEEDED = service_nodes::QUORUM_SIZE * 2 + 1;
+  static_assert(SN_KEYS_COUNT >= SERVICE_NODES_NEEDED, "not enough pre-computed service node keys");
+
+  for (auto i = 0u; i < SERVICE_NODES_NEEDED; ++i)
+  {
+    const auto sn_keys = get_static_keys(i);
+    used_sn_keys.push_back(sn_keys);
+
+    const auto tx = gen.create_registration_tx(miner, sn_keys);
+    reg_txs.push_back(tx);
+  }
+
+  gen.create_block({reg_txs});
+
+  const auto heightA = gen.height();
+
+  /// Note: would've used sets, but need `less` for public keys etc.
+  std::vector<crypto::public_key> sn_set_A;
+
+  for (const auto& sn : gen.get_quorum_idxs(heightA).to_test) {
+    sn_set_A.push_back(sn.sn_pk);
+  }
+
+  /// create 5 blocks and find public key to be tested twice
+  for (auto i = 0; i < 5; ++i) {
+    gen.create_block();
+  }
+
+  const auto heightB = gen.height();
+
+  std::vector<crypto::public_key> sn_set_B;
+
+  for (const auto& sn : gen.get_quorum_idxs(heightB).to_test) {
+    sn_set_B.push_back(sn.sn_pk);
+  }
+
+  /// Guaranteed to contain at least one element
+  std::vector<crypto::public_key> tested_twice;
+
+  for (const auto& sn : sn_set_A) {
+    if (std::find(sn_set_B.begin(), sn_set_B.end(), sn) != sn_set_B.end()) {
+      tested_twice.push_back(sn);
+    }
+  }
+
+  /// Pick a node to deregister
+  const auto pk = tested_twice.at(0);
+
+  /// Deregister for heightA
+  {
+    const auto dereg_tx = gen.build_deregister(pk).with_height(heightA).build();
+    gen.create_block({dereg_tx});
+  }
+
+  /// Register the node again
+  {
+    // find secret key for pk:
+    auto it = std::find_if(used_sn_keys.begin(), used_sn_keys.end(), [&pk](const cryptonote::keypair& keys) {
+      return keys.pub == pk;
+    });
+
+    if (it == used_sn_keys.end()) { MERROR("SN pub key not found in generated keys"); return false; };
+
+    const auto tx = gen.create_registration_tx(miner, *it);
+    gen.create_block({tx});
+  }
+
+  /// Try to deregister the node again for heightB (should fail)
+  {
+    DO_CALLBACK(events, "mark_invalid_tx");
+    const auto dereg_tx = gen.build_deregister(pk).with_height(heightB).build();
+  }
+
+  return true;
+
+}
