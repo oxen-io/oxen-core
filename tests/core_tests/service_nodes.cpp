@@ -237,8 +237,6 @@ class linear_chain_generator
 
     void create_block(const std::vector<cryptonote::transaction>& txs = {});
 
-    cryptonote::block create_block_on_fork(const cryptonote::block& prev, const std::vector<cryptonote::transaction>& txs = {});
-
     void rewind_until_v9();
     void rewind_blocks_n(int n);
     void rewind_blocks();
@@ -257,11 +255,6 @@ class linear_chain_generator
     /// Note: should be carefull with returing a reference to vector elements
     const cryptonote::block& chain_head() const { return blocks_.back(); }
 
-    /// get a copy of the service node list
-    sn_list get_sn_list() const { return sn_list_; }
-
-    void set_sn_list(const sn_list& list) { sn_list_ = list; }
-
     QuorumState get_quorum_idxs(const cryptonote::block& block) const;
 
     QuorumState get_quorum_idxs(uint64_t height) const;
@@ -274,7 +267,7 @@ class linear_chain_generator
 
     boost::optional<uint32_t> get_idx_in_tested(const crypto::public_key& pk, uint64_t height) const;
 
-    void deregister(const crypto::public_key& pk) {
+    void remove_node(const crypto::public_key& pk) {
       sn_list_.remove_node(pk);
     }
 
@@ -347,33 +340,7 @@ void linear_chain_generator::create_genesis_block()
 
 void linear_chain_generator::create_block(const std::vector<cryptonote::transaction>& txs)
 {
-  const auto blk = create_block_on_fork(blocks_.back(), txs);
-  blocks_.push_back(blk);
-}
-
-void linear_chain_generator::rewind_until_v9()
-{
-  gen_.set_hf_version(8);
-  create_block();
-  gen_.set_hf_version(9);
-  create_block();
-}
-
-void linear_chain_generator::rewind_blocks_n(int n)
-{
-  for (auto i = 0; i < n; ++i) {
-    create_block();
-  }
-}
-
-void linear_chain_generator::rewind_blocks()
-{
-  rewind_blocks_n(CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW);
-}
-
-cryptonote::block linear_chain_generator::create_block_on_fork(const cryptonote::block& prev,
-                                                               const std::vector<cryptonote::transaction>& txs)
-{
+  const auto prev = blocks_.back();
 
   const auto height = get_block_height(prev) + 1;
 
@@ -399,7 +366,27 @@ cryptonote::block linear_chain_generator::create_block_on_fork(const cryptonote:
   registration_buffer_.clear();
   sn_list_.expire_old(height);
 
-  return blk;
+  blocks_.push_back(blk);
+}
+
+void linear_chain_generator::rewind_until_v9()
+{
+  gen_.set_hf_version(8);
+  create_block();
+  gen_.set_hf_version(9);
+  create_block();
+}
+
+void linear_chain_generator::rewind_blocks_n(int n)
+{
+  for (auto i = 0; i < n; ++i) {
+    create_block();
+  }
+}
+
+void linear_chain_generator::rewind_blocks()
+{
+  rewind_blocks_n(CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW);
 }
 
 QuorumState linear_chain_generator::get_quorum_idxs(const cryptonote::block& block) const
@@ -828,6 +815,7 @@ bool test_deregister_safety_buffer::generate(std::vector<test_event_entry> &even
   {
     const auto dereg_tx = gen.build_deregister(pk).with_height(heightA).build();
     gen.create_block({dereg_tx});
+    gen.remove_node(pk);
   }
 
   /// Register the node again
@@ -887,40 +875,35 @@ bool test_deregisters_on_split::generate(std::vector<test_event_entry> &events)
   gen.create_block(reg_txs);
 
   /// chain split
-  const auto pivot_block = gen.chain_head();
+  auto fork = gen;
 
   /// public key of the node to deregister (valid at the height of the pivot block)
   const auto pk = gen.get_test_pk(0);
-  const auto pivot_height = gen.height();
-
-  /// Get a copy, so we can undo all the changes on reorg
-  const auto sn_list_before_split = gen.get_sn_list();
+  const auto split_height = gen.height();
 
   /// create deregistration A
-  auto quorumA = gen.get_quorum_idxs(pivot_block).voters;
+  auto quorumA = gen.get_quorum_idxs(split_height).voters;
   quorumA.erase(quorumA.begin()); /// remove first voter
-  const auto dereg_A = gen.build_deregister(pk).with_voters(quorumA).with_height(pivot_height).build();
+  const auto dereg_A = gen.build_deregister(pk).with_voters(quorumA).with_height(split_height).build();
 
   /// create deregistration on alt chain (B)
-  auto quorumB = gen.get_quorum_idxs(pivot_block).voters;
+  auto quorumB = gen.get_quorum_idxs(split_height).voters;
   quorumB.erase(quorumB.begin() + 1); /// remove second voter
   SET_EVENT_VISITOR_SETT(events, event_visitor_settings::set_txs_keeped_by_block, true);
-  const auto dereg_B = gen.build_deregister(pk).with_voters(quorumB).with_height(pivot_height).build(); /// events[68]
+  const auto dereg_B = gen.build_deregister(pk).with_voters(quorumB).with_height(split_height).build(); /// events[68]
   SET_EVENT_VISITOR_SETT(events, event_visitor_settings::set_txs_keeped_by_block, false);
 
   /// continue main chain with deregister A
   gen.create_block({dereg_A});
 
-  gen.set_sn_list(sn_list_before_split);
-
   /// continue alt chain with deregister B
-  const auto alt_head = gen.create_block_on_fork(pivot_block, { dereg_B });
+  fork.create_block({ dereg_B });
 
   /// actually remove pk form the local service node list
-  gen.deregister(pk);
+  fork.remove_node(pk);
 
   /// one more block on alt chain to switch
-  gen.create_block_on_fork(alt_head);
+  fork.create_block();
 
   DO_CALLBACK(events, "test_on_split");
 
@@ -1046,16 +1029,14 @@ bool sn_test_rollback::generate(std::vector<test_event_entry>& events)
   gen.rewind_blocks_n(5);
 
   /// chain split here
-  const auto pivot_block = gen.chain_head();
-  /// get a copy, so we can undo all the changes on reorg
-  const auto sn_list_before_split = gen.get_sn_list();
+  auto fork = gen;
 
   // deregister some node (A) on main
   {
     const auto pk = gen.get_test_pk(0);
     const auto dereg_tx = gen.build_deregister(pk).build();
     gen.create_block({dereg_tx});
-    gen.deregister(pk);
+    gen.remove_node(pk);
   }
 
   /// create a new service node (B) in the next block
@@ -1066,20 +1047,10 @@ bool sn_test_rollback::generate(std::vector<test_event_entry>& events)
   }
 
   /// create blocks on the alt chain and trigger chain switch
-  gen.set_sn_list(sn_list_before_split);
-
-  auto alt_head = gen.create_block_on_fork(pivot_block);
-  alt_head = gen.create_block_on_fork(alt_head);
-
-  // this will trigger chain reorganization
-  alt_head = gen.create_block_on_fork(alt_head);
+  fork.rewind_blocks_n(3);
 
   // create a few more blocks to test winner selection
-  alt_head = gen.create_block_on_fork(alt_head);
-  alt_head = gen.create_block_on_fork(alt_head);
-  alt_head = gen.create_block_on_fork(alt_head);
-  alt_head = gen.create_block_on_fork(alt_head);
-  alt_head = gen.create_block_on_fork(alt_head);
+  fork.rewind_blocks_n(15);
 
   DO_CALLBACK(events, "test_registrations");
 
