@@ -964,3 +964,185 @@ bool test_deregisters_on_split::test_on_split(cryptonote::core& c, size_t ev_ind
 
   return true;
 }
+//-----------------------------------------------------------------------------------------------------
+//------------------------------ Should not Add Old Deregistration -------------------------------------
+//-----------------------------------------------------------------------------------------------------
+
+// Daemon A has a deregistration TX (X) in the pool. Daemon B creates a block before receiving X.
+// Daemon A accepts the block without X. Now X is too old and should not be added in future blocks.
+deregister_too_old::deregister_too_old()
+{
+  REGISTER_CALLBACK_METHOD(deregister_too_old, mark_invalid_block);
+}
+//-----------------------------------------------------------------------------------------------------
+bool deregister_too_old::generate(std::vector<test_event_entry>& events)
+{
+  linear_chain_generator gen(events);
+  gen.create_genesis_block();
+
+  gen.rewind_until_v9();
+
+  /// generate some outputs and unlock them
+  gen.rewind_blocks_n(20);
+  gen.rewind_blocks();
+ 
+  /// register 11 service nodes (10 voters and 1 to test)
+  std::vector<cryptonote::transaction> reg_txs;
+  for (auto i = 0; i < 11; ++i) {
+    const auto sn = get_static_keys(i);
+    const auto tx = gen.create_registration_tx(gen.first_miner(), sn);
+    reg_txs.push_back(tx);
+  }
+
+  gen.create_block(reg_txs);
+
+  // create a deregister for this height
+  const auto pk = gen.get_test_pk(0);
+  const auto dereg_tx = gen.build_deregister(pk).build();
+
+  /// create enough block to make deregistrations invalid (60 - 1 blocks)
+  gen.rewind_blocks_n(loki::service_node_deregister::DEREGISTER_LIFETIME_BY_HEIGHT-1);
+
+  /// In the real world, this transaction should not make it into a block, but in this case we do try to add it (as in
+  /// tests we must add specify transactions manually), which should exercise the same validation code and reject the
+  /// block
+  DO_CALLBACK(events, "mark_invalid_block");
+  gen.create_block({dereg_tx});
+
+  return true;
+}
+//-----------------------------------------------------------------------------------------------------
+//---------------------------- Test Rollback System for Service Nodes ---------------------------------
+//-----------------------------------------------------------------------------------------------------
+sn_test_rollback::sn_test_rollback()
+{
+  REGISTER_CALLBACK("test_registrations", sn_test_rollback::test_registrations);
+}
+//-----------------------------------------------------------------------------------------------------
+bool sn_test_rollback::generate(std::vector<test_event_entry>& events)
+{
+  linear_chain_generator gen(events);
+  gen.create_genesis_block();
+
+  gen.rewind_until_v9();
+
+  /// generate some outputs and unlock them
+  gen.rewind_blocks_n(20);
+  gen.rewind_blocks();
+
+  constexpr auto init_sn_count = 11;
+
+  /// register some service nodes
+  std::vector<cryptonote::transaction> reg_txs;
+  for (auto i = 0; i < init_sn_count; ++i) {
+    const auto sn = get_static_keys(i);
+    const auto tx = gen.create_registration_tx(gen.first_miner(), sn);
+    reg_txs.push_back(tx);
+  }
+
+  gen.create_block(reg_txs);
+
+  /// create a few blocks with active service nodes
+  gen.rewind_blocks_n(5);
+
+  /// chain split here
+  const auto pivot_block = gen.chain_head();
+  /// get a copy, so we can undo all the changes on reorg
+  const auto sn_list_before_split = gen.get_sn_list();
+
+  // deregister some node (A) on main
+  {
+    const auto pk = gen.get_test_pk(0);
+    const auto dereg_tx = gen.build_deregister(pk).build();
+    gen.create_block({dereg_tx});
+    gen.deregister(pk);
+  }
+
+  /// create a new service node (B) in the next block
+  {
+    const auto sn = get_static_keys(init_sn_count);
+    const auto tx = gen.create_registration_tx(gen.first_miner(), sn);
+    gen.create_block({tx});
+  }
+
+  /// create blocks on the alt chain and trigger chain switch
+  gen.set_sn_list(sn_list_before_split);
+
+  auto alt_head = gen.create_block_on_fork(pivot_block);
+  alt_head = gen.create_block_on_fork(alt_head);
+
+  // this will trigger chain reorganization
+  alt_head = gen.create_block_on_fork(alt_head);
+
+  // create a few more blocks to test winner selection
+  alt_head = gen.create_block_on_fork(alt_head);
+  alt_head = gen.create_block_on_fork(alt_head);
+  alt_head = gen.create_block_on_fork(alt_head);
+  alt_head = gen.create_block_on_fork(alt_head);
+  alt_head = gen.create_block_on_fork(alt_head);
+
+  DO_CALLBACK(events, "test_registrations");
+
+  return true;
+}
+
+using sn_info_t = service_nodes::service_node_pubkey_info;
+
+static bool contains(const std::vector<sn_info_t>& infos, const crypto::public_key& key)
+{
+  const auto it =
+    std::find_if(infos.begin(), infos.end(), [&key](const sn_info_t& info) { return info.pubkey == key; });
+  return it != infos.end();
+}
+
+bool sn_test_rollback::test_registrations(cryptonote::core& c, size_t ev_index, const std::vector<test_event_entry> &events)
+{
+
+  DEFINE_TESTS_ERROR_CONTEXT("sn_test_rollback::test_registrations");
+
+  const auto sn_list = c.get_service_node_list_state({});
+
+  /// Test that node A is still registered
+  {
+    /// obtain public key of node A
+    constexpr size_t dereg_evnt_idx = 70;
+
+    const auto event_a = events.at(dereg_evnt_idx);
+
+    CHECK_TEST_CONDITION(event_a.type() == typeid(cryptonote::transaction));
+    const auto dereg_tx = boost::get<cryptonote::transaction>(event_a);
+    CHECK_TEST_CONDITION(dereg_tx.is_deregister);
+
+    tx_extra_service_node_deregister deregistration;
+    get_service_node_deregister_from_tx_extra(dereg_tx.extra, deregistration);
+
+    const auto quorum_state = c.get_quorum_state(deregistration.block_height);
+    const auto pk_a = quorum_state->nodes_to_test.at(deregistration.service_node_index);
+
+    /// Check present
+    const bool found_a = contains(sn_list, pk_a);
+    CHECK_AND_ASSERT_MES(found_a, false, "Node deregistered in alt chain is not found in the main chain after reorg.");
+  }
+
+  /// Test that node B is not registered
+  {
+    /// obtain public key of node B
+    constexpr size_t reg_evnt_idx = 72;
+    const auto event_b = events.at(reg_evnt_idx);
+    CHECK_TEST_CONDITION(event_b.type() == typeid(cryptonote::transaction));
+    const auto reg_tx = boost::get<cryptonote::transaction>(event_b);
+
+    crypto::public_key pk_b;
+    if (!cryptonote::get_service_node_pubkey_from_tx_extra(reg_tx.extra, pk_b)) {
+      MERROR("Could not get service node key from tx extra");
+      return false;
+    }
+
+    /// Check not present
+    const bool found_b = contains(sn_list, pk_b);
+    CHECK_AND_ASSERT_MES(!found_b, false, "Node registered in alt chain is present in the main chain after reorg.");
+  }
+
+  return true;
+
+}
