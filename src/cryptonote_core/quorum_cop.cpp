@@ -159,7 +159,7 @@ namespace service_nodes
       return false;
 
     CRITICAL_REGION_LOCAL(m_lock);
-    if (m_uptime_proof_seen[pubkey] >= now - (UPTIME_PROOF_FREQUENCY_IN_SECONDS / 2))
+    if (m_uptime_proof_seen[pubkey] >= now - UPTIME_PROOF_MIN_TIME_IN_SECONDS)
       return false; // already received one uptime proof for this node recently.
 
     crypto::hash hash = make_hash(pubkey, timestamp);

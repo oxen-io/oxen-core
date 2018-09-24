@@ -64,8 +64,9 @@ static_assert(STAKING_PORTIONS % 3 == 0, "Use a multiple of three, so that it di
 #define BLOCKCHAIN_TIMESTAMP_CHECK_WINDOW               11
 
 #define UPTIME_PROOF_BUFFER_IN_SECONDS                  (5*60)
-#define UPTIME_PROOF_FREQUENCY_IN_SECONDS               (60*60)
-#define UPTIME_PROOF_MAX_TIME_IN_SECONDS                (UPTIME_PROOF_FREQUENCY_IN_SECONDS * 2 + UPTIME_PROOF_BUFFER_IN_SECONDS)
+#define UPTIME_PROOF_MIN_TIME_IN_SECONDS                (30*60)
+#define UPTIME_PROOF_FREQUENCY_IN_SECONDS               (UPTIME_PROOF_MIN_TIME_IN_SECONDS + 60)
+#define UPTIME_PROOF_MAX_TIME_IN_SECONDS                (UPTIME_PROOF_MIN_TIME_IN_SECONDS * 4 + UPTIME_PROOF_BUFFER_IN_SECONDS)
 
 // MONEY_SUPPLY - total number coins to be generated
 #define MONEY_SUPPLY                                    ((uint64_t)(-1))
