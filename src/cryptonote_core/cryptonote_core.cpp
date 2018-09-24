@@ -1449,7 +1449,10 @@ namespace cryptonote
     // wait one block before starting uptime proofs.
     if (!states.empty() && states[0].info.registration_height + 1 < get_current_blockchain_height())
     {
-      m_submit_uptime_proof_interval.do_call(boost::bind(&core::submit_uptime_proof, this));
+      time_t const now = time(nullptr);
+      if (now - get_start_time() >= 60) {
+        m_submit_uptime_proof_interval.do_call(boost::bind(&core::submit_uptime_proof, this));
+      }
     }
     else
     {
