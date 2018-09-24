@@ -411,6 +411,7 @@ namespace cryptonote
     {
       r = init_service_node_key();
       CHECK_AND_ASSERT_MES(r, false, "Failed to create or load service node key");
+      m_service_node_list.set_my_service_node_keys(&m_service_node_pubkey);
     }
 
     boost::filesystem::path folder(m_config_folder);
@@ -1103,7 +1104,10 @@ namespace cryptonote
       cryptonote_connection_context fake_context = AUTO_VAL_INIT(fake_context);
       NOTIFY_UPTIME_PROOF::request r;
       m_quorum_cop.generate_uptime_proof_request(m_service_node_pubkey, m_service_node_key, r);
-      get_protocol()->relay_uptime_proof(r, fake_context);
+      bool relayed = get_protocol()->relay_uptime_proof(r, fake_context);
+
+      if (relayed)
+        MGINFO("Submitted uptime-proof for service node (yours): " << m_service_node_pubkey);
     }
     return true;
   }
@@ -1444,17 +1448,27 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
   void core::do_uptime_proof_call()
   {
-    std::vector<service_nodes::service_node_pubkey_info> states = get_service_node_list_state({ m_service_node_pubkey });
-
     // wait one block before starting uptime proofs.
+    std::vector<service_nodes::service_node_pubkey_info> const states = get_service_node_list_state({ m_service_node_pubkey });
     if (!states.empty() && states[0].info.registration_height + 1 < get_current_blockchain_height())
     {
-      m_submit_uptime_proof_interval.do_call(boost::bind(&core::submit_uptime_proof, this));
+      // If we haven't received our proof back from peers on the network, change ping granularity so
+      // that we resend after the acceptable window of time for other peers to accept our ping.
+      if (m_quorum_cop.get_uptime_proof(states[0].pubkey) == 0)
+      {
+        // NOTE: Need another once_a_time instance one because it is templated for absolutely no reason, Can't change the timing of the existing one
+        static epee::math_helper::once_a_time_seconds<UPTIME_PROOF_BUFFER_IN_SECONDS, true /*start_immediately*/> uptime_proof_not_known_interval;
+        uptime_proof_not_known_interval.do_call(boost::bind(&core::submit_uptime_proof, this));
+      }
+      else
+      {
+        m_submit_uptime_proof_interval.do_call(boost::bind(&core::submit_uptime_proof, this));
+      }
     }
     else
     {
-      // reset the interval so that we're ready when we register.
-      m_submit_uptime_proof_interval = epee::math_helper::once_a_time_seconds<UPTIME_PROOF_FREQUENCY_IN_SECONDS, true>();
+      // reset the interval so that we're ready when we register, OR if we get deregistered this primes us up for re-registration in the same session
+      m_submit_uptime_proof_interval = epee::math_helper::once_a_time_seconds<UPTIME_PROOF_FREQUENCY_IN_SECONDS, true /*start_immediately*/>();
     }
   }
   //-----------------------------------------------------------------------------------------------
