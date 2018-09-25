@@ -1452,23 +1452,19 @@ namespace cryptonote
     std::vector<service_nodes::service_node_pubkey_info> const states = get_service_node_list_state({ m_service_node_pubkey });
     if (!states.empty() && states[0].info.registration_height + 1 < get_current_blockchain_height())
     {
-      // If we haven't received our proof back from peers on the network, change ping granularity so
-      // that we resend after the acceptable window of time for other peers to accept our ping.
-      if (m_quorum_cop.get_uptime_proof(states[0].pubkey) == 0)
-      {
-        // NOTE: Need another once_a_time instance one because it is templated for absolutely no reason, Can't change the timing of the existing one
-        static epee::math_helper::once_a_time_seconds<UPTIME_PROOF_BUFFER_IN_SECONDS, true /*start_immediately*/> uptime_proof_not_known_interval;
-        uptime_proof_not_known_interval.do_call(boost::bind(&core::submit_uptime_proof, this));
-      }
-      else
-      {
-        m_submit_uptime_proof_interval.do_call(boost::bind(&core::submit_uptime_proof, this));
-      }
+      // Code snippet from Github @Jagerman
+      m_check_uptime_proof_interval.do_call([&states, this](){
+        uint64_t last_uptime = m_quorum_cop.get_uptime_proof(states[0].pubkey);
+        if (last_uptime <= static_cast<uint64_t>(time(nullptr) - UPTIME_PROOF_FREQUENCY_IN_SECONDS))
+          this->submit_uptime_proof();
+
+        return true;
+      });
     }
     else
     {
       // reset the interval so that we're ready when we register, OR if we get deregistered this primes us up for re-registration in the same session
-      m_submit_uptime_proof_interval = epee::math_helper::once_a_time_seconds<UPTIME_PROOF_FREQUENCY_IN_SECONDS, true /*start_immediately*/>();
+      m_check_uptime_proof_interval = epee::math_helper::once_a_time_seconds<UPTIME_PROOF_BUFFER_IN_SECONDS, true /*start_immediately*/>();
     }
   }
   //-----------------------------------------------------------------------------------------------
@@ -1498,8 +1494,13 @@ namespace cryptonote
     m_deregisters_auto_relayer.do_call(boost::bind(&core::relay_deregister_votes, this));
     m_check_updates_interval.do_call(boost::bind(&core::check_updates, this));
     m_check_disk_space_interval.do_call(boost::bind(&core::check_disk_space, this));
-    if (m_service_node)
+
+    time_t const lifetime = time(nullptr) - get_start_time();
+    if (m_service_node && lifetime > DIFFICULTY_TARGET_V2) // Give us some time to connect to peers before sending uptimes
+    {
       do_uptime_proof_call();
+    }
+
     m_uptime_proof_pruner.do_call(boost::bind(&service_nodes::quorum_cop::prune_uptime_proof, &m_quorum_cop));
 
     m_miner.on_idle();
