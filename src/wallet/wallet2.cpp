@@ -1328,7 +1328,8 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
               tx_money_got_in_outs.end(),
               [&tx_scan_info,&tx,&o](const tx_money_got_in_out& value)
               {
-                return value.index == tx_scan_info[o].received->index;
+                return value.index == tx_scan_info[o].received->index &&
+                  value.amount == tx.vout[o].amount;
               }
             );
           if (iter == tx_money_got_in_outs.end())
@@ -1373,7 +1374,8 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
               tx_money_got_in_outs.end(),
               [&tx_scan_info,&tx,&o](const tx_money_got_in_out& value)
               {
-                return value.index == tx_scan_info[o].received->index;
+                return value.index == tx_scan_info[o].received->index &&
+                  value.amount == tx.vout[o].amount;
               }
             );
           if (iter == tx_money_got_in_outs.end())
