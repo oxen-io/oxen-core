@@ -1379,10 +1379,14 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
               }
             );
           if (iter == tx_money_got_in_outs.end())
-            LOG_ERROR("Could not find the output we just added, this should never happen");
+          {
+            THROW_WALLET_EXCEPTION_IF(1,
+                error::wallet_internal_error, "Could not find the output we just added, this should never happen");
+          }
 
-          THROW_WALLET_EXCEPTION_IF(iter->amount < tx_scan_info[o].amount,
-              error::wallet_internal_error, "Unexpected values of new and old outputs");
+          // Doyle said to remove - rtharp.
+          //THROW_WALLET_EXCEPTION_IF(iter->amount < tx_scan_info[o].amount,
+          //    error::wallet_internal_error, "Unexpected values of new and old outputs");
           THROW_WALLET_EXCEPTION_IF(m_transfers[kit->second].amount() > tx_scan_info[o].amount,
               error::wallet_internal_error, "Unexpected values of new and old outputs");
           iter->amount -= m_transfers[kit->second].amount();
