@@ -44,7 +44,7 @@ namespace rpc
   struct block_with_transactions
   {
     cryptonote::block block;
-    std::unordered_map<crypto::hash, cryptonote::transaction> transactions;
+    std::vector<cryptonote::transaction> transactions;
   };
 
   typedef std::vector<uint64_t> tx_output_indices;
@@ -181,6 +181,7 @@ namespace rpc
     bool mainnet;
     bool testnet;
     bool stagenet;
+    std::string nettype;
     crypto::hash top_block_hash;
     uint64_t cumulative_difficulty;
     uint64_t block_size_limit;

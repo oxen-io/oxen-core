@@ -50,9 +50,9 @@ namespace rpc
 
   void DaemonHandler::handle(const GetBlocksFast::Request& req, GetBlocksFast::Response& res)
   {
-    std::vector<std::pair<blobdata, std::vector<blobdata> > > blocks;
+    std::vector<std::pair<std::pair<blobdata, crypto::hash>, std::vector<std::pair<crypto::hash, blobdata> > > > blocks;
 
-    if(!m_core.find_blockchain_supplement(req.start_height, req.block_ids, blocks, res.current_height, res.start_height, req.prune, COMMAND_RPC_GET_BLOCKS_FAST_MAX_COUNT))
+    if(!m_core.find_blockchain_supplement(req.start_height, req.block_ids, blocks, res.current_height, res.start_height, req.prune, true, COMMAND_RPC_GET_BLOCKS_FAST_MAX_COUNT))
     {
       res.status = Message::STATUS_FAILED;
       res.error_details = "core::find_blockchain_supplement() returned false";
@@ -69,7 +69,7 @@ namespace rpc
     {
       cryptonote::rpc::block_with_transactions& bwt = res.blocks[block_count];
 
-      if (!parse_and_validate_block_from_blob(it->first, bwt.block))
+      if (!parse_and_validate_block_from_blob(it->first.first, bwt.block))
       {
         res.blocks.clear();
         res.output_indices.clear();
@@ -86,11 +86,27 @@ namespace rpc
           res.error_details = "incorrect number of transactions retrieved for block";
           return;
       }
-      std::vector<transaction> txs;
+
+      cryptonote::rpc::block_output_indices& indices = res.output_indices[block_count];
+
+      // miner tx output indices
+      {
+        cryptonote::rpc::tx_output_indices tx_indices;
+        if (!m_core.get_tx_outputs_gindexs(get_transaction_hash(bwt.block.miner_tx), tx_indices))
+        {
+          res.status = Message::STATUS_FAILED;
+          res.error_details = "core::get_tx_outputs_gindexs() returned false";
+          return;
+        }
+        indices.push_back(std::move(tx_indices));
+      }
+
+      auto hash_it = bwt.block.tx_hashes.begin();
+      bwt.transactions.reserve(it->second.size());
       for (const auto& blob : it->second)
       {
-        txs.resize(txs.size() + 1);
-        if (!parse_and_validate_tx_from_blob(blob, txs.back()))
+        bwt.transactions.emplace_back();
+        if (!parse_and_validate_tx_from_blob(blob.second, bwt.transactions.back()))
         {
           res.blocks.clear();
           res.output_indices.clear();
@@ -98,41 +114,17 @@ namespace rpc
           res.error_details = "failed retrieving a requested transaction";
           return;
         }
-      }
-
-      cryptonote::rpc::block_output_indices& indices = res.output_indices[block_count];
-
-      // miner tx output indices
-      {
-        cryptonote::rpc::tx_output_indices tx_indices;
-        bool r = m_core.get_tx_outputs_gindexs(get_transaction_hash(bwt.block.miner_tx), tx_indices);
-        if (!r)
-        {
-          res.status = Message::STATUS_FAILED;
-          res.error_details = "core::get_tx_outputs_gindexs() returned false";
-          return;
-        }
-        indices.push_back(tx_indices);
-      }
-
-      // assume each block returned is returned with all its transactions
-      // in the correct order.
-      auto tx_it = txs.begin();
-      for (const crypto::hash& h : bwt.block.tx_hashes)
-      {
-        bwt.transactions.emplace(h, *tx_it);
-        tx_it++;
 
         cryptonote::rpc::tx_output_indices tx_indices;
-        bool r = m_core.get_tx_outputs_gindexs(h, tx_indices);
-        if (!r)
+        if (!m_core.get_tx_outputs_gindexs(*hash_it, tx_indices))
         {
           res.status = Message::STATUS_FAILED;
           res.error_details = "core::get_tx_outputs_gindexs() returned false";
           return;
         }
 
-        indices.push_back(tx_indices);
+        indices.push_back(std::move(tx_indices));
+        ++hash_it;
       }
 
       it++;

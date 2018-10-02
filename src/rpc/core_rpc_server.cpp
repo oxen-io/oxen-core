@@ -48,7 +48,6 @@ using namespace epee;
 #include "rpc/rpc_args.h"
 #include "core_rpc_server_error_codes.h"
 #include "p2p/net_node.h"
-#include "get_output_distribution_cache.h"
 #include "version.h"
 
 #undef LOKI_DEFAULT_LOG_CATEGORY
@@ -185,6 +184,7 @@ namespace cryptonote
     res.mainnet = m_nettype == MAINNET;
     res.testnet = m_nettype == TESTNET;
     res.stagenet = m_nettype == STAGENET;
+    res.nettype = m_nettype == MAINNET ? "mainnet" : m_nettype == TESTNET ? "testnet" : m_nettype == STAGENET ? "stagenet" : "fakechain";
     res.cumulative_difficulty = m_core.get_blockchain_storage().get_db().get_block_cumulative_difficulty(res.height - 1);
     res.block_size_limit = m_core.get_blockchain_storage().get_current_cumulative_blocksize_limit();
     res.block_size_median = m_core.get_blockchain_storage().get_current_cumulative_blocksize_median();
@@ -198,6 +198,7 @@ namespace cryptonote
       boost::shared_lock<boost::shared_mutex> lock(m_bootstrap_daemon_mutex);
       res.was_bootstrap_ever_used = m_was_bootstrap_ever_used;
     }
+    res.database_size = m_core.get_blockchain_storage().get_db().get_database_size();
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
@@ -217,9 +218,9 @@ namespace cryptonote
     if (use_bootstrap_daemon_if_necessary<COMMAND_RPC_GET_BLOCKS_FAST>(invoke_http_mode::BIN, "/getblocks.bin", req, res, r))
       return r;
 
-    std::vector<std::pair<cryptonote::blobdata, std::vector<cryptonote::blobdata> > > bs;
+    std::vector<std::pair<std::pair<cryptonote::blobdata, crypto::hash>, std::vector<std::pair<crypto::hash, cryptonote::blobdata> > > > bs;
 
-    if(!m_core.find_blockchain_supplement(req.start_height, req.block_ids, bs, res.current_height, res.start_height, req.prune, COMMAND_RPC_GET_BLOCKS_FAST_MAX_COUNT))
+    if(!m_core.find_blockchain_supplement(req.start_height, req.block_ids, bs, res.current_height, res.start_height, req.prune, !req.no_miner_tx, COMMAND_RPC_GET_BLOCKS_FAST_MAX_COUNT))
     {
       res.status = "Failed";
       return false;
@@ -231,37 +232,33 @@ namespace cryptonote
     for(auto& bd: bs)
     {
       res.blocks.resize(res.blocks.size()+1);
-      res.blocks.back().block = bd.first;
-      pruned_size += bd.first.size();
-      unpruned_size += bd.first.size();
+      res.blocks.back().block = bd.first.first;
+      pruned_size += bd.first.first.size();
+      unpruned_size += bd.first.first.size();
       res.output_indices.push_back(COMMAND_RPC_GET_BLOCKS_FAST::block_output_indices());
       res.output_indices.back().indices.push_back(COMMAND_RPC_GET_BLOCKS_FAST::tx_output_indices());
-      block b;
-      if (!parse_and_validate_block_from_blob(bd.first, b))
+      if (!req.no_miner_tx)
       {
-        res.status = "Invalid block";
-        return false;
+        bool r = m_core.get_tx_outputs_gindexs(bd.first.second, res.output_indices.back().indices.back().indices);
+        if (!r)
+        {
+          res.status = "Failed";
+          return false;
+        }
       }
-      bool r = m_core.get_tx_outputs_gindexs(get_transaction_hash(b.miner_tx), res.output_indices.back().indices.back().indices);
-      if (!r)
-      {
-        res.status = "Failed";
-        return false;
-      }
-      size_t txidx = 0;
       ntxes += bd.second.size();
       res.blocks.back().txs.reserve(bd.second.size());
       res.output_indices.back().indices.reserve(bd.second.size());
-      for (std::vector<cryptonote::blobdata>::iterator i = bd.second.begin(); i != bd.second.end(); ++i)
+      for (std::vector<std::pair<crypto::hash, cryptonote::blobdata>>::iterator i = bd.second.begin(); i != bd.second.end(); ++i)
       {
-        unpruned_size += i->size();
-        res.blocks.back().txs.push_back(std::move(*i));
-        i->clear();
-        i->shrink_to_fit();
+        unpruned_size += i->second.size();
+        res.blocks.back().txs.push_back(std::move(i->second));
+        i->second.clear();
+        i->second.shrink_to_fit();
         pruned_size += res.blocks.back().txs.back().size();
 
         res.output_indices.back().indices.push_back(COMMAND_RPC_GET_BLOCKS_FAST::tx_output_indices());
-        bool r = m_core.get_tx_outputs_gindexs(b.tx_hashes[txidx++], res.output_indices.back().indices.back().indices);
+        bool r = m_core.get_tx_outputs_gindexs(i->first, res.output_indices.back().indices.back().indices);
         if (!r)
         {
           res.status = "Failed";
@@ -980,14 +977,30 @@ namespace cryptonote
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_get_transaction_pool_hashes_bin(const COMMAND_RPC_GET_TRANSACTION_POOL_HASHES_BIN::request& req, COMMAND_RPC_GET_TRANSACTION_POOL_HASHES_BIN::response& res, bool request_has_rpc_origin)
+  {
+    PERF_TIMER(on_get_transaction_pool_hashes);
+    bool r;
+    if (use_bootstrap_daemon_if_necessary<COMMAND_RPC_GET_TRANSACTION_POOL_HASHES_BIN>(invoke_http_mode::JON, "/get_transaction_pool_hashes.bin", req, res, r))
+      return r;
+
+    m_core.get_pool_transaction_hashes(res.tx_hashes, !request_has_rpc_origin || !m_restricted);
+    res.status = CORE_RPC_STATUS_OK;
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::on_get_transaction_pool_hashes(const COMMAND_RPC_GET_TRANSACTION_POOL_HASHES::request& req, COMMAND_RPC_GET_TRANSACTION_POOL_HASHES::response& res, bool request_has_rpc_origin)
   {
     PERF_TIMER(on_get_transaction_pool_hashes);
     bool r;
-    if (use_bootstrap_daemon_if_necessary<COMMAND_RPC_GET_TRANSACTION_POOL_HASHES>(invoke_http_mode::JON, "/get_transaction_pool_hashes.bin", req, res, r))
+    if (use_bootstrap_daemon_if_necessary<COMMAND_RPC_GET_TRANSACTION_POOL_HASHES>(invoke_http_mode::JON, "/get_transaction_pool_hashes", req, res, r))
       return r;
 
-    m_core.get_pool_transaction_hashes(res.tx_hashes, !request_has_rpc_origin || !m_restricted);
+    std::vector<crypto::hash> tx_hashes;
+    m_core.get_pool_transaction_hashes(tx_hashes, !request_has_rpc_origin || !m_restricted);
+    res.tx_hashes.reserve(tx_hashes.size());
+    for (const crypto::hash &tx_hash: tx_hashes)
+      res.tx_hashes.push_back(epee::string_tools::pod_to_hex(tx_hash));
     res.status = CORE_RPC_STATUS_OK;
     return true;
   }
@@ -1205,6 +1218,68 @@ namespace cryptonote
       return false;
     }
     res.status = CORE_RPC_STATUS_OK;
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_generateblocks(const COMMAND_RPC_GENERATEBLOCKS::request& req, COMMAND_RPC_GENERATEBLOCKS::response& res, epee::json_rpc::error& error_resp)
+  {
+    PERF_TIMER(on_generateblocks);
+
+    CHECK_CORE_READY();
+    
+    res.status = CORE_RPC_STATUS_OK;
+
+    if(m_core.get_nettype() != FAKECHAIN)
+    {
+      error_resp.code = CORE_RPC_ERROR_CODE_REGTEST_REQUIRED;
+      error_resp.message = "Regtest required when generating blocks";      
+      return false;
+    }
+
+    COMMAND_RPC_GETBLOCKTEMPLATE::request template_req;
+    COMMAND_RPC_GETBLOCKTEMPLATE::response template_res;
+    COMMAND_RPC_SUBMITBLOCK::request submit_req;
+    COMMAND_RPC_SUBMITBLOCK::response submit_res;
+
+    template_req.reserve_size = 1;
+    template_req.wallet_address = req.wallet_address;
+    submit_req.push_back(boost::value_initialized<std::string>());
+    res.height = m_core.get_blockchain_storage().get_current_blockchain_height();
+
+    bool r;
+
+    for(size_t i = 0; i < req.amount_of_blocks; i++)
+    {
+      r = on_getblocktemplate(template_req, template_res, error_resp);
+      res.status = template_res.status;
+      
+      if (!r) return false;
+
+      blobdata blockblob;
+      if(!string_tools::parse_hexstr_to_binbuff(template_res.blocktemplate_blob, blockblob))
+      {
+        error_resp.code = CORE_RPC_ERROR_CODE_WRONG_BLOCKBLOB;
+        error_resp.message = "Wrong block blob";
+        return false;
+      }
+      block b = AUTO_VAL_INIT(b);
+      if(!parse_and_validate_block_from_blob(blockblob, b))
+      {
+        error_resp.code = CORE_RPC_ERROR_CODE_WRONG_BLOCKBLOB;
+        error_resp.message = "Wrong block blob";
+        return false;
+      }
+      miner::find_nonce_for_given_block(b, template_res.difficulty, template_res.height);
+
+      submit_req.front() = string_tools::buff_to_hex_nodelimer(block_to_blob(b));
+      r = on_submitblock(submit_req, submit_res, error_resp);
+      res.status = submit_res.status;
+
+      if (!r) return false;
+
+      res.height = template_res.height;
+    }
+
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
@@ -1563,6 +1638,7 @@ namespace cryptonote
     res.mainnet = m_nettype == MAINNET;
     res.testnet = m_nettype == TESTNET;
     res.stagenet = m_nettype == STAGENET;
+    res.nettype = m_nettype == MAINNET ? "mainnet" : m_nettype == TESTNET ? "testnet" : m_nettype == STAGENET ? "stagenet" : "fakechain";
     res.cumulative_difficulty = m_core.get_blockchain_storage().get_db().get_block_cumulative_difficulty(res.height - 1);
     res.block_size_limit = m_core.get_blockchain_storage().get_current_cumulative_blocksize_limit();
     res.block_size_median = m_core.get_blockchain_storage().get_current_cumulative_blocksize_median();
@@ -1576,6 +1652,7 @@ namespace cryptonote
       boost::shared_lock<boost::shared_mutex> lock(m_bootstrap_daemon_mutex);
       res.was_bootstrap_ever_used = m_was_bootstrap_ever_used;
     }
+    res.database_size = m_core.get_blockchain_storage().get_db().get_database_size();
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
@@ -1773,10 +1850,22 @@ namespace cryptonote
     PERF_TIMER(on_get_alternate_chains);
     try
     {
-      std::list<std::pair<Blockchain::block_extended_info, uint64_t>> chains = m_core.get_blockchain_storage().get_alternative_chains();
+      std::list<std::pair<Blockchain::block_extended_info, std::vector<crypto::hash>>> chains = m_core.get_blockchain_storage().get_alternative_chains();
       for (const auto &i: chains)
       {
-        res.chains.push_back(COMMAND_RPC_GET_ALTERNATE_CHAINS::chain_info{epee::string_tools::pod_to_hex(get_block_hash(i.first.bl)), i.first.height, i.second, i.first.cumulative_difficulty});
+        res.chains.push_back(COMMAND_RPC_GET_ALTERNATE_CHAINS::chain_info{epee::string_tools::pod_to_hex(get_block_hash(i.first.bl)), i.first.height, i.second.size(), i.first.cumulative_difficulty, {}, std::string()});
+        res.chains.back().block_hashes.reserve(i.second.size());
+        for (const crypto::hash &block_id: i.second)
+          res.chains.back().block_hashes.push_back(epee::string_tools::pod_to_hex(block_id));
+        if (i.first.height < i.second.size())
+        {
+          res.status = "Error finding alternate chain attachment point";
+          return true;
+        }
+        cryptonote::block main_chain_parent_block;
+        try { main_chain_parent_block = m_core.get_blockchain_storage().get_db().get_block_from_height(i.first.height - i.second.size()); }
+        catch (const std::exception &e) { res.status = "Error finding alternate chain attachment point"; return true; }
+        res.chains.back().main_chain_parent_block = epee::string_tools::pod_to_hex(get_block_hash(main_chain_parent_block));
       }
       res.status = CORE_RPC_STATUS_OK;
     }
@@ -2121,6 +2210,10 @@ namespace cryptonote
   bool core_rpc_server::on_get_output_distribution(const COMMAND_RPC_GET_OUTPUT_DISTRIBUTION::request& req, COMMAND_RPC_GET_OUTPUT_DISTRIBUTION::response& res, epee::json_rpc::error& error_resp)
   {
     PERF_TIMER(on_get_output_distribution);
+    bool r;
+    if (use_bootstrap_daemon_if_necessary<COMMAND_RPC_GET_OUTPUT_DISTRIBUTION>(invoke_http_mode::JON_RPC, "get_output_distribution", req, res, r))
+      return r;
+
     try
     {
       for (uint64_t amount: req.amounts)
@@ -2137,37 +2230,16 @@ namespace cryptonote
 
         if (d.cached && amount == 0 && d.cached_from == req.from_height && d.cached_to == req.to_height)
         {
-          res.distributions.push_back({amount, d.cached_start_height, d.cached_distribution, d.cached_base});
-          if (req.cumulative)
+          res.distributions.push_back({amount, d.cached_start_height, req.binary, d.cached_distribution, d.cached_base});
+          if (!req.cumulative)
           {
             auto &distribution = res.distributions.back().distribution;
-            distribution[0] += d.cached_base;
-            for (size_t n = 1; n < distribution.size(); ++n)
-              distribution[n] += distribution[n-1];
+            for (size_t n = distribution.size() - 1; n > 0; --n)
+              distribution[n] -= distribution[n-1];
+            distribution[0] -= d.cached_base;
           }
           continue;
         }
-
-        // this is a slow operation, so we have precomputed caches of common cases
-        bool found = false;
-        for (const auto &slot: get_output_distribution_cache)
-        {
-          if (slot.amount == amount && slot.from_height == req.from_height && slot.to_height == req.to_height)
-          {
-            res.distributions.push_back({amount, slot.start_height, slot.distribution, slot.base});
-            found = true;
-            if (req.cumulative)
-            {
-              auto &distribution = res.distributions.back().distribution;
-              distribution[0] += slot.base;
-              for (size_t n = 1; n < distribution.size(); ++n)
-                distribution[n] += distribution[n-1];
-            }
-            break;
-          }
-        }
-        if (found)
-          continue;
 
         std::vector<uint64_t> distribution;
         uint64_t start_height, base;
@@ -2194,14 +2266,14 @@ namespace cryptonote
           d.cached = true;
         }
 
-        if (req.cumulative)
+        if (!req.cumulative)
         {
-          distribution[0] += base;
-          for (size_t n = 1; n < distribution.size(); ++n)
-            distribution[n] += distribution[n-1];
+          for (size_t n = distribution.size() - 1; n > 0; --n)
+            distribution[n] -= distribution[n-1];
+          distribution[0] -= base;
         }
 
-        res.distributions.push_back({amount, start_height, std::move(distribution), base});
+        res.distributions.push_back({amount, start_height, req.binary, std::move(distribution), base});
       }
     }
     catch (const std::exception &e)

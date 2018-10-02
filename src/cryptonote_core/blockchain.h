@@ -148,10 +148,11 @@ namespace cryptonote
      * @param nettype network type
      * @param offline true if running offline, else false
      * @param test_options test parameters
+     * @param fixed_difficulty fixed difficulty for testing purposes; 0 means disabled
      *
      * @return true on success, false if any initialization steps fail
      */
-    bool init(BlockchainDB* db, const network_type nettype = MAINNET, bool offline = false, const cryptonote::test_options *test_options = NULL);
+    bool init(BlockchainDB* db, const network_type nettype = MAINNET, bool offline = false, const cryptonote::test_options *test_options = NULL, difficulty_type fixed_difficulty = 0);
 
     /**
      * @brief Initialize the Blockchain state
@@ -454,7 +455,7 @@ namespace cryptonote
      *
      * @return true if a block found in common or req_start_block specified, else false
      */
-    bool find_blockchain_supplement(const uint64_t req_start_block, const std::list<crypto::hash>& qblock_ids, std::vector<std::pair<cryptonote::blobdata, std::vector<cryptonote::blobdata> > >& blocks, uint64_t& total_height, uint64_t& start_height, bool pruned, size_t max_count) const;
+    bool find_blockchain_supplement(const uint64_t req_start_block, const std::list<crypto::hash>& qblock_ids, std::vector<std::pair<std::pair<cryptonote::blobdata, crypto::hash>, std::vector<std::pair<crypto::hash, cryptonote::blobdata> > > >& blocks, uint64_t& total_height, uint64_t& start_height, bool pruned, bool get_miner_tx_hash, size_t max_count) const;
 
     /**
      * @brief retrieves a set of blocks and their transactions, and possibly other transactions
@@ -762,11 +763,12 @@ namespace cryptonote
      * @brief sets various performance options
      *
      * @param maxthreads max number of threads when preparing blocks for addition
-     * @param blocks_per_sync number of blocks to cache before syncing to database
+     * @param sync_on_blocks whether to sync based on blocks or bytes
+     * @param sync_threshold number of blocks/bytes to cache before syncing to database
      * @param sync_mode the ::blockchain_db_sync_mode to use
      * @param fast_sync sync using built-in block hashes as trusted
      */
-    void set_user_options(uint64_t maxthreads, uint64_t blocks_per_sync,
+    void set_user_options(uint64_t maxthreads, bool sync_on_blocks, uint64_t sync_threshold,
         blockchain_db_sync_mode sync_mode, bool fast_sync);
 
     /**
@@ -793,6 +795,13 @@ namespace cryptonote
      * @return the HardFork object
      */
     HardFork::State get_hard_fork_state() const;
+
+    /**
+     * @brief gets the hardfork heights of given network
+     *
+     * @return the HardFork object
+     */
+    static const std::vector<HardFork::Params>& get_hard_fork_heights(network_type nettype);
 
     /**
      * @brief gets the current hardfork version in use/voted for
@@ -833,6 +842,13 @@ namespace cryptonote
      * @return the version
      */
     uint8_t get_hard_fork_version(uint64_t height) const { return m_hardfork->get(height); }
+
+    /**
+     * @brief returns the earliest block a given version may activate
+     *
+     * @return the height
+     */
+    uint64_t get_earliest_ideal_height_for_version(uint8_t version) const { return m_hardfork->get_earliest_ideal_height_for_version(version); }
 
     /**
      * @brief get information about hardfork voting for a version
@@ -972,7 +988,7 @@ namespace cryptonote
      *
      * @return a list of chains
      */
-    std::list<std::pair<block_extended_info,uint64_t>> get_alternative_chains() const;
+    std::list<std::pair<block_extended_info,std::vector<crypto::hash>>> get_alternative_chains() const;
 
     void add_txpool_tx(transaction &tx, const txpool_tx_meta_t &meta);
     void update_txpool_tx(const crypto::hash &txid, const txpool_tx_meta_t &meta);
@@ -1053,11 +1069,13 @@ namespace cryptonote
     bool m_fast_sync;
     bool m_show_time_stats;
     bool m_db_default_sync;
-    uint64_t m_db_blocks_per_sync;
+    bool m_db_sync_on_blocks;
+    uint64_t m_db_sync_threshold;
     uint64_t m_max_prepare_blocks_threads;
     uint64_t m_fake_pow_calc_time;
     uint64_t m_fake_scan_time;
     uint64_t m_sync_counter;
+    uint64_t m_bytes_to_sync;
     std::vector<uint64_t> m_timestamps;
     std::vector<difficulty_type> m_difficulties;
     uint64_t m_timestamps_and_difficulties_height;
@@ -1088,8 +1106,18 @@ namespace cryptonote
 
     network_type m_nettype;
     bool m_offline;
+    difficulty_type m_fixed_difficulty;
 
     std::atomic<bool> m_cancel;
+
+    // block template cache
+    block m_btc;
+    account_public_address m_btc_address;
+    blobdata m_btc_nonce;
+    difficulty_type m_btc_difficulty;
+    uint64_t m_btc_pool_cookie;
+    uint64_t m_btc_expected_reward;
+    bool m_btc_valid;
 
     /**
      * @brief collects the keys for all outputs being "spent" as an input
@@ -1446,5 +1474,17 @@ namespace cryptonote
      * that implicit data.
      */
     bool expand_transaction_2(transaction &tx, const crypto::hash &tx_prefix_hash, const std::vector<std::vector<rct::ctkey>> &pubkeys);
+
+    /**
+     * @brief invalidates any cached block template
+     */
+    void invalidate_block_template_cache();
+
+    /**
+     * @brief stores a new cached block template
+     *
+     * At some point, may be used to push an update to miners
+     */
+    void cache_block_template(const block &b, const cryptonote::account_public_address &address, const blobdata &nonce, const difficulty_type &diff, uint64_t expected_reward, uint64_t pool_cookie);
   };
 }  // namespace cryptonote

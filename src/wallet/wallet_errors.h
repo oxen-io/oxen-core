@@ -53,6 +53,7 @@ namespace tools
     //         wallet_not_initialized
     //       multisig_export_needed
     //       multisig_import_needed
+    //       password_needed
     //   std::logic_error
     //     wallet_logic_error *
     //       file_exists
@@ -70,6 +71,7 @@ namespace tools
     //         get_out_indexes_error
     //         tx_parse_error
     //         get_tx_pool_error
+    //         out_of_hashchain_bounds_error
     //       transfer_error *
     //         get_random_outs_general_error
     //         not_enough_unlocked_money
@@ -207,6 +209,14 @@ namespace tools
     {
       explicit multisig_import_needed(std::string&& loc)
         : wallet_runtime_error(std::move(loc), "Not enough multisig data was found to sign: import multisig data from more other participants")
+      {
+      }
+    };
+    //----------------------------------------------------------------------------------------------------
+    struct password_needed : public wallet_runtime_error
+    {
+      explicit password_needed(std::string&& loc, const std::string &msg = "Password needed")
+        : wallet_runtime_error(std::move(loc), msg)
       {
       }
     };
@@ -397,6 +407,16 @@ namespace tools
     {
       explicit get_tx_pool_error(std::string&& loc)
         : refresh_error(std::move(loc), "error getting transaction pool")
+      {
+      }
+
+      std::string to_string() const { return refresh_error::to_string(); }
+    };
+    //----------------------------------------------------------------------------------------------------
+    struct out_of_hashchain_bounds_error : public refresh_error
+    {
+      explicit out_of_hashchain_bounds_error(std::string&& loc)
+        : refresh_error(std::move(loc), "Index out of bounds of of hashchain")
       {
       }
 

@@ -80,7 +80,9 @@ namespace {
       << "hash: " << header.hash << std::endl
       << "difficulty: " << boost::lexical_cast<std::string>(header.difficulty) << std::endl
       << "POW hash: " << header.pow_hash << std::endl
-      << "reward: " << boost::lexical_cast<std::string>(header.reward);
+      << "block size: " << header.block_size << std::endl
+      << "num txes: " << header.num_txes << std::endl
+      << "reward: " << cryptonote::print_money(header.reward);
   }
 
   std::string get_human_time_ago(time_t t, time_t now)
@@ -576,7 +578,7 @@ bool t_rpc_command_executor::print_blockchain_info(uint64_t start_block_index, u
     if (!first)
       std::cout << std::endl;
     std::cout
-      << "height: " << header.height << ", timestamp: " << header.timestamp << ", difficulty: " << header.difficulty
+      << "height: " << header.height << ", timestamp: " << header.timestamp
       << ", size: " << header.block_size << ", transactions: " << header.num_txes << std::endl
       << "major version: " << (unsigned)header.major_version << ", minor version: " << (unsigned)header.minor_version << std::endl
       << "block id: " << header.hash << ", previous block id: " << header.prev_hash << std::endl
@@ -1693,7 +1695,7 @@ bool t_rpc_command_executor::print_coinbase_tx_sum(uint64_t height, uint64_t cou
   return true;
 }
 
-bool t_rpc_command_executor::alt_chain_info()
+bool t_rpc_command_executor::alt_chain_info(const std::string &tip)
 {
   cryptonote::COMMAND_RPC_GET_INFO::request ireq;
   cryptonote::COMMAND_RPC_GET_INFO::response ires;
@@ -1728,12 +1730,32 @@ bool t_rpc_command_executor::alt_chain_info()
     }
   }
 
-  tools::msg_writer() << boost::lexical_cast<std::string>(res.chains.size()) << " alternate chains found:";
-  for (const auto &chain: res.chains)
+  if (tip.empty())
   {
-    uint64_t start_height = (chain.height - chain.length + 1);
-    tools::msg_writer() << chain.length << " blocks long, from height " << start_height << " (" << (ires.height - start_height - 1)
-        << " deep), diff " << chain.difficulty << ": " << chain.block_hash;
+    tools::msg_writer() << boost::lexical_cast<std::string>(res.chains.size()) << " alternate chains found:";
+    for (const auto &chain: res.chains)
+    {
+      uint64_t start_height = (chain.height - chain.length + 1);
+      tools::msg_writer() << chain.length << " blocks long, from height " << start_height << " (" << (ires.height - start_height - 1)
+          << " deep), diff " << chain.difficulty << ": " << chain.block_hash;
+    }
+  }
+  else
+  {
+    const auto i = std::find_if(res.chains.begin(), res.chains.end(), [&tip](cryptonote::COMMAND_RPC_GET_ALTERNATE_CHAINS::chain_info &info){ return info.block_hash == tip; });
+    if (i != res.chains.end())
+    {
+      const auto &chain = *i;
+      tools::success_msg_writer() << "Found alternate chain with tip " << tip;
+      uint64_t start_height = (chain.height - chain.length + 1);
+      tools::msg_writer() << chain.length << " blocks long, from height " << start_height << " (" << (ires.height - start_height - 1)
+          << " deep), diff " << chain.difficulty << ":";
+      for (const std::string &block_id: chain.block_hashes)
+        tools::msg_writer() << "  " << block_id;
+      tools::msg_writer() << "Chain parent on main chain: " << chain.main_chain_parent_block;
+    }
+    else
+      tools::fail_msg_writer() << "Block hash " << tip << " is not the tip of any known alternate chain";
   }
   return true;
 }
@@ -1960,7 +1982,7 @@ bool t_rpc_command_executor::sync_info()
       for (const auto &s: res.spans)
         if (s.rate > 0.0f && s.connection_id == p.info.connection_id)
           nblocks += s.nblocks, size += s.size;
-      tools::success_msg_writer() << address << "  " << epee::string_tools::pad_string(p.info.peer_id, 16, '0', true) << "  " << p.info.height << "  "  << p.info.current_download << " kB/s, " << nblocks << " blocks / " << size/1e6 << " MB queued";
+      tools::success_msg_writer() << address << "  " << epee::string_tools::pad_string(p.info.peer_id, 16, '0', true) << "  " << epee::string_tools::pad_string(p.info.state, 16) << "  " << p.info.height << "  "  << p.info.current_download << " kB/s, " << nblocks << " blocks / " << size/1e6 << " MB queued";
     }
 
     uint64_t total_size = 0;

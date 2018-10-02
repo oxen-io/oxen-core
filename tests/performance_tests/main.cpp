@@ -51,27 +51,9 @@
 #include "sc_reduce32.h"
 #include "cn_fast_hash.h"
 #include "rct_mlsag.h"
+#include "equality.h"
 
 namespace po = boost::program_options;
-
-std::string glob_to_regex(const std::string &val)
-{
-  std::string newval;
-
-  bool escape = false;
-  for (char c: val)
-  {
-    if (c == '*')
-      newval += escape ? "*" : ".*";
-    else if (c == '?')
-      newval += escape ? "?" : ".";
-    else if (c == '\\')
-      newval += '\\', escape = !escape;
-    else
-      newval += c;
-  }
-  return newval;
-}
 
 int main(int argc, char** argv)
 {
@@ -97,7 +79,7 @@ int main(int argc, char** argv)
   if (!r)
     return 1;
 
-  const std::string filter = glob_to_regex(command_line::get_arg(vm, arg_filter));
+  const std::string filter = tools::glob_to_regex(command_line::get_arg(vm, arg_filter));
 
   performance_timer timer;
   timer.start();
@@ -169,6 +151,11 @@ int main(int argc, char** argv)
   TEST_PERFORMANCE3(filter, test_ringct_mlsag, 1, 5, true);
   TEST_PERFORMANCE3(filter, test_ringct_mlsag, 1, 10, true);
   TEST_PERFORMANCE3(filter, test_ringct_mlsag, 1, 100, true);
+
+  TEST_PERFORMANCE2(filter, test_equality, memcmp32, true);
+  TEST_PERFORMANCE2(filter, test_equality, memcmp32, false);
+  TEST_PERFORMANCE2(filter, test_equality, verify32, false);
+  TEST_PERFORMANCE2(filter, test_equality, verify32, false);
 
   std::cout << "Tests finished. Elapsed time: " << timer.elapsed_ms() / 1000 << " sec" << std::endl;
 

@@ -39,7 +39,6 @@
 #include "cryptonote_protocol/cryptonote_protocol_handler_common.h"
 #include "storages/portable_storage_template_helper.h"
 #include "common/download.h"
-#include "common/threadpool.h"
 #include "common/command_line.h"
 #include "service_node_deregister.h"
 #include "tx_pool.h"
@@ -64,6 +63,8 @@ namespace cryptonote
   extern const command_line::arg_descriptor<std::string, false, true, 2> arg_data_dir;
   extern const command_line::arg_descriptor<bool, false> arg_testnet_on;
   extern const command_line::arg_descriptor<bool, false> arg_stagenet_on;
+  extern const command_line::arg_descriptor<bool, false> arg_regtest_on;
+  extern const command_line::arg_descriptor<difficulty_type> arg_fixed_difficulty;
   extern const command_line::arg_descriptor<bool> arg_offline;
 
   /************************************************************************/
@@ -533,7 +534,7 @@ namespace cryptonote
       *
       * @note see Blockchain::find_blockchain_supplement(const uint64_t, const std::list<crypto::hash>&, std::vector<std::pair<cryptonote::blobdata, std::vector<transaction> > >&, uint64_t&, uint64_t&, size_t) const
       */
-     bool find_blockchain_supplement(const uint64_t req_start_block, const std::list<crypto::hash>& qblock_ids, std::vector<std::pair<cryptonote::blobdata, std::vector<cryptonote::blobdata> > >& blocks, uint64_t& total_height, uint64_t& start_height, bool pruned, size_t max_count) const;
+     bool find_blockchain_supplement(const uint64_t req_start_block, const std::list<crypto::hash>& qblock_ids, std::vector<std::pair<std::pair<cryptonote::blobdata, crypto::hash>, std::vector<std::pair<crypto::hash, cryptonote::blobdata> > > >& blocks, uint64_t& total_height, uint64_t& start_height, bool pruned, bool get_miner_tx_hash, size_t max_count) const;
 
      /**
       * @brief gets some stats about the daemon
@@ -677,6 +678,13 @@ namespace cryptonote
       * @return what it says above
       */
      uint8_t get_hard_fork_version(uint64_t height) const;
+
+     /**
+      * @brief return the earliest block a given version may activate
+      *
+      * @return what it says above
+      */
+     uint64_t get_earliest_ideal_height_for_version(uint8_t version) const;
 
      /**
       * @brief gets start_time
@@ -1082,8 +1090,6 @@ namespace cryptonote
 
      std::unordered_set<crypto::hash> bad_semantics_txes[2];
      boost::mutex bad_semantics_txes_lock;
-
-     tools::threadpool& m_threadpool;
 
      enum {
        UPDATES_DISABLED,

@@ -81,6 +81,16 @@ namespace cryptonote
   , "Run on stagenet. The wallet must be launched with --stagenet flag."
   , false
   };
+  const command_line::arg_descriptor<bool> arg_regtest_on  = {
+    "regtest"
+  , "Run in a regression testing mode."
+  , false
+  };
+  const command_line::arg_descriptor<difficulty_type> arg_fixed_difficulty  = {
+    "fixed-difficulty"
+  , "Fixed difficulty used for testing."
+  , 0
+  };
   const command_line::arg_descriptor<std::string, false, true, 2> arg_data_dir = {
     "data-dir"
   , "Specify data directory"
@@ -181,7 +191,6 @@ namespace cryptonote
               m_last_dns_checkpoints_update(0),
               m_last_json_checkpoints_update(0),
               m_disable_dns_checkpoints(false),
-              m_threadpool(tools::threadpool::getInstance()),
               m_update_download(0),
               m_nettype(UNDEFINED)
   {
@@ -263,6 +272,8 @@ namespace cryptonote
 
     command_line::add_arg(desc, arg_testnet_on);
     command_line::add_arg(desc, arg_stagenet_on);
+    command_line::add_arg(desc, arg_regtest_on);
+    command_line::add_arg(desc, arg_fixed_difficulty);
     command_line::add_arg(desc, arg_dns_checkpoints);
     command_line::add_arg(desc, arg_prep_blocks_threads);
     command_line::add_arg(desc, arg_fast_block_sync);
@@ -389,7 +400,8 @@ namespace cryptonote
   {
     start_time = std::time(nullptr);
 
-    if (test_options != NULL)
+    const bool regtest = command_line::get_arg(vm, arg_regtest_on);
+    if (test_options != NULL || regtest)
     {
       m_nettype = FAKECHAIN;
     }
@@ -449,9 +461,20 @@ namespace cryptonote
     MGINFO("Loading blockchain from folder " << folder.string() << " ...");
 
     const std::string filename = folder.string();
-    // default to fast:async:1
+    // default to fast:async:1 if overridden
     blockchain_db_sync_mode sync_mode = db_defaultsync;
-    uint64_t blocks_per_sync = 1;
+    bool sync_on_blocks = true;
+    uint64_t sync_threshold = 1;
+
+    if (m_nettype == FAKECHAIN)
+    {
+      // reset the db by removing the database file before opening it
+      if (!db->remove_data_file(filename))
+      {
+        MERROR("Failed to remove data file in " << filename);
+        return false;
+      }
+    }
 
     try
     {
@@ -491,7 +514,7 @@ namespace cryptonote
         else if(options[0] == "fastest")
         {
           db_flags = DBF_FASTEST;
-          blocks_per_sync = 1000; // default to fastest:async:1000
+          sync_threshold = 1000; // default to fastest:async:1000
           sync_mode = db_sync_mode_is_default ? db_defaultsync : db_async;
         }
         else
@@ -509,9 +532,22 @@ namespace cryptonote
       if(options.size() >= 3 && !safemode)
       {
         char *endptr;
-        uint64_t bps = strtoull(options[2].c_str(), &endptr, 0);
-        if (*endptr == '\0')
-          blocks_per_sync = bps;
+        uint64_t threshold = strtoull(options[2].c_str(), &endptr, 0);
+        if (*endptr == '\0' || !strcmp(endptr, "blocks"))
+        {
+          sync_on_blocks = true;
+          sync_threshold = threshold;
+        }
+        else if (!strcmp(endptr, "bytes"))
+        {
+          sync_on_blocks = false;
+          sync_threshold = threshold;
+        }
+        else
+        {
+          LOG_ERROR("Invalid db sync mode: " << options[2]);
+          return false;
+        }
       }
 
       if (db_salvage)
@@ -528,12 +564,18 @@ namespace cryptonote
     }
 
     m_blockchain_storage.set_user_options(blocks_threads,
-        blocks_per_sync, sync_mode, fast_sync);
+        sync_on_blocks, sync_threshold, sync_mode, fast_sync);
+
+    const std::pair<uint8_t, uint64_t> regtest_hard_forks[3] = {std::make_pair(1, 0), std::make_pair(Blockchain::get_hard_fork_heights(MAINNET).back().version, 1), std::make_pair(0, 0)};
+    const cryptonote::test_options regtest_test_options = {
+      regtest_hard_forks
+    };
+    const difficulty_type fixed_difficulty = command_line::get_arg(vm, arg_fixed_difficulty);
 
     BlockchainDB *initialized_db = db.release();
     m_service_node_list.set_db_pointer(initialized_db);
     m_service_node_list.register_hooks(m_quorum_cop);
-    r = m_blockchain_storage.init(initialized_db, m_nettype, m_offline, test_options);
+    r = m_blockchain_storage.init(initialized_db, m_nettype, m_offline, regtest ? &regtest_test_options : test_options, fixed_difficulty);
 
     r = m_mempool.init(max_txpool_size);
     CHECK_AND_ASSERT_MES(r, false, "Failed to initialize memory pool");
@@ -737,15 +779,17 @@ namespace cryptonote
   bool core::handle_incoming_txs(const std::vector<blobdata>& tx_blobs, std::vector<tx_verification_context>& tvc, bool keeped_by_block, bool relayed, bool do_not_relay)
   {
     TRY_ENTRY();
+    CRITICAL_REGION_LOCAL(m_incoming_tx_lock);
 
     struct result { bool res; cryptonote::transaction tx; crypto::hash hash; crypto::hash prefix_hash; bool in_txpool; bool in_blockchain; };
     std::vector<result> results(tx_blobs.size());
 
     tvc.resize(tx_blobs.size());
+    tools::threadpool& tpool = tools::threadpool::getInstance();
     tools::threadpool::waiter waiter;
     std::vector<blobdata>::const_iterator it = tx_blobs.begin();
     for (size_t i = 0; i < tx_blobs.size(); i++, ++it) {
-      m_threadpool.submit(&waiter, [&, i, it] {
+      tpool.submit(&waiter, [&, i, it] {
         try
         {
           results[i].res = handle_incoming_tx_pre(*it, tvc[i], results[i].tx, results[i].hash, results[i].prefix_hash, keeped_by_block, relayed, do_not_relay);
@@ -757,7 +801,7 @@ namespace cryptonote
         }
       });
     }
-    waiter.wait();
+    waiter.wait(&tpool);
     it = tx_blobs.begin();
     for (size_t i = 0; i < tx_blobs.size(); i++, ++it) {
       if (!results[i].res)
@@ -772,7 +816,7 @@ namespace cryptonote
       }
       else
       {
-        m_threadpool.submit(&waiter, [&, i, it] {
+        tpool.submit(&waiter, [&, i, it] {
           try
           {
             results[i].res = handle_incoming_tx_post(*it, tvc[i], results[i].tx, results[i].hash, results[i].prefix_hash, keeped_by_block, relayed, do_not_relay);
@@ -785,7 +829,7 @@ namespace cryptonote
         });
       }
     }
-    waiter.wait();
+    waiter.wait(&tpool);
 
     bool ok = true;
     it = tx_blobs.begin();
@@ -1166,9 +1210,9 @@ namespace cryptonote
     return m_blockchain_storage.find_blockchain_supplement(qblock_ids, resp);
   }
   //-----------------------------------------------------------------------------------------------
-  bool core::find_blockchain_supplement(const uint64_t req_start_block, const std::list<crypto::hash>& qblock_ids, std::vector<std::pair<cryptonote::blobdata, std::vector<cryptonote::blobdata> > >& blocks, uint64_t& total_height, uint64_t& start_height, bool pruned, size_t max_count) const
+  bool core::find_blockchain_supplement(const uint64_t req_start_block, const std::list<crypto::hash>& qblock_ids, std::vector<std::pair<std::pair<cryptonote::blobdata, crypto::hash>, std::vector<std::pair<crypto::hash, cryptonote::blobdata> > > >& blocks, uint64_t& total_height, uint64_t& start_height, bool pruned, bool get_miner_tx_hash, size_t max_count) const
   {
-    return m_blockchain_storage.find_blockchain_supplement(req_start_block, qblock_ids, blocks, total_height, start_height, pruned, max_count);
+    return m_blockchain_storage.find_blockchain_supplement(req_start_block, qblock_ids, blocks, total_height, start_height, pruned, get_miner_tx_hash, max_count);
   }
   //-----------------------------------------------------------------------------------------------
   bool core::get_random_outs_for_amounts(const COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::request& req, COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::response& res) const
@@ -1543,6 +1587,11 @@ namespace cryptonote
   uint8_t core::get_hard_fork_version(uint64_t height) const
   {
     return get_blockchain_storage().get_hard_fork_version(height);
+  }
+  //-----------------------------------------------------------------------------------------------
+  uint64_t core::get_earliest_ideal_height_for_version(uint8_t version) const
+  {
+    return get_blockchain_storage().get_earliest_ideal_height_for_version(version);
   }
   //-----------------------------------------------------------------------------------------------
   bool core::check_updates()

@@ -62,14 +62,13 @@ namespace rct {
 
     //generates a random scalar which can be used as a secret key or mask
     void skGen(key &sk) {
-        sk = crypto::rand<key>();
-        sc_reduce32(sk.bytes);
+        random32_unbiased(sk.bytes);
     }
 
     //generates a random scalar which can be used as a secret key or mask
     key skGen() {
-        key sk = crypto::rand<key>();
-        sc_reduce32(sk.bytes);
+        key sk;
+        skGen(sk);
         return sk;
     }
 
@@ -79,9 +78,8 @@ namespace rct {
         CHECK_AND_ASSERT_THROW_MES(rows > 0, "0 keys requested");
         keyV rv(rows);
         size_t i = 0;
-        crypto::rand(rows * sizeof(key), (uint8_t*)&rv[0]);
         for (i = 0 ; i < rows ; i++) {
-            sc_reduce32(rv[i].bytes);
+            skGen(rv[i]);
         }
         return rv;
     }
@@ -134,12 +132,9 @@ namespace rct {
     }
     
     key zeroCommit(xmr_amount amount) {
-        key mask = identity();
-        mask = scalarmultBase(mask);
         key am = d2h(amount);
         key bH = scalarmultH(am);
-        addKeys(mask, mask, bH);
-        return mask;
+        return addKeys(G, bH);
     }
 
     key commit(xmr_amount amount, const key &mask) {
