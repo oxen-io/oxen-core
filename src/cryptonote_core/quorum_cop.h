@@ -49,7 +49,7 @@ namespace service_nodes
       public cryptonote::Blockchain::InitHook
   {
   public:
-    quorum_cop(cryptonote::core& core, service_nodes::service_node_list& service_node_list);
+    quorum_cop(cryptonote::core& core);
 
     void init();
     void block_added(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs);
@@ -68,7 +68,6 @@ namespace service_nodes
   private:
 
     cryptonote::core& m_core;
-    service_node_list& m_service_node_list;
     uint64_t m_last_height;
 
     using timestamp = uint64_t;

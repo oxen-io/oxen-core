@@ -161,7 +161,6 @@ namespace service_nodes
 
     void store_quorum_state_from_rewards_list(uint64_t height);
 
-  public:
     struct rollback_event
     {
       enum rollback_type

@@ -172,7 +172,7 @@ namespace cryptonote
               m_mempool(m_blockchain_storage),
               m_service_node_list(m_blockchain_storage),
               m_blockchain_storage(m_mempool, m_service_node_list, m_deregister_vote_pool),
-              m_quorum_cop(*this, m_service_node_list),
+              m_quorum_cop(*this),
               m_miner(this),
               m_miner_address(boost::value_initialized<account_public_address>()),
               m_starter_message_showed(false),
@@ -1708,6 +1708,11 @@ namespace cryptonote
   {
     const std::shared_ptr<service_nodes::quorum_state> result = m_service_node_list.get_quorum_state(height);
     return result;
+  }
+  //-----------------------------------------------------------------------------------------------
+  bool core::is_service_node(const crypto::public_key& pubkey) const
+  {
+    return m_service_node_list.is_service_node(pubkey);
   }
   //-----------------------------------------------------------------------------------------------
   std::vector<service_nodes::service_node_pubkey_info> core::get_service_node_list_state(const std::vector<crypto::public_key> &service_node_pubkeys) const

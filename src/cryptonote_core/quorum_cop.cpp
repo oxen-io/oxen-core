@@ -37,8 +37,8 @@
 
 namespace service_nodes
 {
-  quorum_cop::quorum_cop(cryptonote::core& core, service_nodes::service_node_list& service_node_list)
-    : m_core(core), m_service_node_list(service_node_list), m_last_height(0)
+  quorum_cop::quorum_cop(cryptonote::core& core)
+    : m_core(core), m_last_height(0)
   {
     init();
   }
@@ -153,9 +153,7 @@ namespace service_nodes
     if ((timestamp < now - UPTIME_PROOF_BUFFER_IN_SECONDS) || (timestamp > now + UPTIME_PROOF_BUFFER_IN_SECONDS))
       return false;
 
-    // TODO(doyle): the only dependency on m_service_node_lists which could be
-    // replaced by the lists stored in db when that is implemented - 2018-07-24
-    if (!m_service_node_list.is_service_node(pubkey))
+    if (!m_core.is_service_node(pubkey))
       return false;
 
     CRITICAL_REGION_LOCAL(m_lock);
