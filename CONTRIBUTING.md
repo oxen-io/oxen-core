@@ -9,7 +9,6 @@ of software solid and usable.
 ## General guidelines
 
 * Comments are encouraged.
-* If modifying code for which Doxygen headers exist, that header must be modified to match.
 * Tests would be nice to have if you're adding functionality.
 
 Patches are preferably to be sent via a Github pull request. If that
