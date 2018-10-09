@@ -1704,10 +1704,9 @@ namespace cryptonote
     return si.available;
   }
   //-----------------------------------------------------------------------------------------------
-  const std::shared_ptr<service_nodes::quorum_state> core::get_quorum_state(uint64_t height) const
+  const std::shared_ptr<const service_nodes::quorum_state> core::get_quorum_state(uint64_t height) const
   {
-    const std::shared_ptr<service_nodes::quorum_state> result = m_service_node_list.get_quorum_state(height);
-    return result;
+    return m_service_node_list.get_quorum_state(height);
   }
   //-----------------------------------------------------------------------------------------------
   bool core::is_service_node(const crypto::public_key& pubkey) const
@@ -1749,7 +1748,7 @@ namespace cryptonote
       return false;
     }
 
-    const std::shared_ptr<service_nodes::quorum_state> quorum_state = m_service_node_list.get_quorum_state(vote.block_height);
+    const auto quorum_state = m_service_node_list.get_quorum_state(vote.block_height);
     if (!quorum_state)
     {
       vvc.m_verification_failed  = true;

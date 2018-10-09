@@ -49,7 +49,7 @@ namespace service_nodes
       public cryptonote::Blockchain::InitHook
   {
   public:
-    quorum_cop(cryptonote::core& core);
+    explicit quorum_cop(cryptonote::core& core);
 
     void init();
     void block_added(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs);

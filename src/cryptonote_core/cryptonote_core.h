@@ -796,7 +796,7 @@ namespace cryptonote
 
       * @return Null shared ptr if quorum has not been determined yet for height
       */
-     const std::shared_ptr<service_nodes::quorum_state> get_quorum_state(uint64_t height) const;
+     const std::shared_ptr<const service_nodes::quorum_state> get_quorum_state(uint64_t height) const;
 
      /**
       * @brief Get a snapshot of the service node list state at the time of the call.
