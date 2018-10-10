@@ -168,7 +168,7 @@ namespace service_nodes
     return true;
   }
 
-  void quorum_cop::generate_uptime_proof_request(const crypto::public_key& pubkey, const crypto::secret_key& seckey, cryptonote::NOTIFY_UPTIME_PROOF::request& req) const
+  void generate_uptime_proof_request(const crypto::public_key& pubkey, const crypto::secret_key& seckey, cryptonote::NOTIFY_UPTIME_PROOF::request& req)
   {
     req.timestamp     = time(nullptr);
     req.pubkey        = pubkey;
@@ -196,6 +196,8 @@ namespace service_nodes
 
   uint64_t quorum_cop::get_uptime_proof(const crypto::public_key &pubkey) const
   {
+
+    CRITICAL_REGION_LOCAL(m_lock);
     const auto& it = m_uptime_proof_seen.find(pubkey);
     if (it == m_uptime_proof_seen.end())
     {

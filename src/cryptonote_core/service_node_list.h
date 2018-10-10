@@ -265,7 +265,7 @@ namespace service_nodes
     void clear(bool delete_db_entry = false);
     bool load();
 
-    mutable std::recursive_mutex sn_mutex_;
+    mutable std::recursive_mutex m_sn_mutex;
 
     using block_height = uint64_t;
 
