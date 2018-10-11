@@ -28,7 +28,7 @@
 
 #include <functional>
 #include <random>
-
+#include <algorithm>
 
 #include "ringct/rctSigs.h"
 #include "wallet/wallet2.h"
@@ -47,6 +47,14 @@
 
 namespace service_nodes
 {
+  static uint64_t uniform_distribution_portable(std::mt19937_64& mersenne_twister, uint64_t n)
+  {
+    uint64_t secureMax = mersenne_twister.max() - mersenne_twister.max() % n;
+    uint64_t x;
+    do x = mersenne_twister(); while (x >= secureMax);
+    return  x / (secureMax / n);
+  }
+
   uint64_t service_node_info::get_min_contribution() const
   {
     uint64_t result = get_min_node_contribution(staking_requirement, total_reserved);
@@ -312,7 +320,114 @@ namespace service_nodes
 
 
     m_rollback_events.push_back(std::unique_ptr<rollback_event>(new rollback_change(block_height, key, iter->second)));
+    uint64_t swarm_id = iter->second.swarm_id;
     m_service_nodes_infos.erase(iter);
+    check_and_process_swarm_decomission(swarm_id);
+  }
+
+  void service_node_list::check_and_process_swarm_decomission(uint64_t swarm_id)
+  {
+    size_t count = 0;
+    for (const auto& entry : m_service_nodes_infos)
+      if (entry.second.swarm_id == swarm_id)
+        count++;
+    if (count == MIN_SWARM_SIZE - 1)
+    {
+      // XXX XXX XXX XXX
+      // All nodes should fetch data from this swarm at this point only.
+      // The registered nodes will eventually disappear and after this point,
+      // it is already considered gone. It only exists to retrieve data from.
+      //
+      // XXX XXX XXX XXX
+      //         internship optimization hardfork idea:
+      //         when nodes have been decomissioned for more than 10 blocks,
+      //         move the nodes into new swarms immediately.
+    }
+  }
+
+  uint64_t service_node_list::get_new_node_swarm_id(uint64_t block_height, uint32_t index) const
+  {
+    // XXX XXX XXX improvement proposal: have the swarm id be "remembered" from
+    // the last time, if the new node was already registered before. This would
+    // have huge performance gains preventing nodes from having to resync every
+    // time they rejoin the network.
+
+    crypto::hash hash = m_blockchain.get_block_id_by_height(block_height);
+    uint64_t seed = 0;
+    std::memcpy(&seed, hash.data, sizeof(seed));
+    seed += index;
+    std::mt19937_64 mersenne_twister(seed);
+
+    std::vector<uint64_t> swarm_ids = get_swarm_ids();
+
+    if (swarm_ids.empty())
+      return 0;
+
+    const size_t swarm_index = (size_t)uniform_distribution_portable(mersenne_twister, swarm_ids.size());
+
+    return swarm_ids[swarm_index];
+  }
+
+  void service_node_list::check_and_process_swarm_overflow(uint64_t swarm_id, uint64_t block_height)
+  {
+    uint64_t count = 0;
+    for (const auto& entry : m_service_nodes_infos)
+      if (entry.second.swarm_id == swarm_id)
+        count++;
+
+    if (count > MAX_SWARM_SIZE)
+    {
+      crypto::hash hash = m_blockchain.get_block_id_by_height(block_height);
+      uint64_t seed = 0;
+      std::memcpy(&seed, hash.data, sizeof(seed));
+      seed += swarm_id;
+      std::mt19937_64 mersenne_twister(seed);
+
+      bool move_to_new_swarm = (bool)uniform_distribution_portable(mersenne_twister, 2);
+      uint64_t new_swarm = uniform_distribution_portable(mersenne_twister, UINT64_MAX);
+      for (auto& entry : m_service_nodes_infos)
+      {
+        if (entry.second.swarm_id == swarm_id)
+        {
+          if (move_to_new_swarm)
+          {
+            m_rollback_events.push_back(std::unique_ptr<rollback_event>(new rollback_change(block_height, entry.first, entry.second)));
+            entry.second.swarm_id = new_swarm;
+          }
+          move_to_new_swarm = !move_to_new_swarm;
+        }
+      }
+    }
+
+    // XXX NOTE FOR DATA MIGRATION DEVS:
+    // nodes that are members of new_swarm should now query every
+    // single service node for data that belongs to new_swarm.
+
+    // XXX intern task for speed improvements.
+    // Use http://mathworld.wolfram.com/VoronoiDiagram.html to calculate exactly
+    // which service nodes to query (doesn't have to query all)
+  }
+
+  std::vector<uint64_t> service_node_list::get_swarm_ids() const
+  {
+    std::map<uint64_t, size_t> counts;
+    for (const auto& entry : m_service_nodes_infos)
+      counts[entry.second.swarm_id]++;
+    std::vector<uint64_t> swarm_ids;
+    swarm_ids.reserve(counts.size());
+    for (const auto& entry : counts)
+      if (entry.second >= MIN_SWARM_SIZE)
+        swarm_ids.push_back(entry.first);
+    return swarm_ids;
+  }
+
+  std::vector<crypto::public_key> service_node_list::get_swarm(uint64_t swarm_id) const
+  {
+    std::vector<crypto::public_key> snodes;
+    for (const auto& entry : m_service_nodes_infos)
+      if (entry.second.swarm_id == swarm_id)
+        snodes.push_back(entry.first);
+    return snodes;
   }
 
   bool check_service_node_portions(const std::vector<uint64_t>& portions)
@@ -386,6 +501,9 @@ namespace service_nodes
     info.last_reward_transaction_index = index;
     info.total_contributed = 0;
     info.total_reserved = 0;
+
+    info.swarm_id = get_new_node_swarm_id(block_height, index);
+
     info.contributors.clear();
 
     for (size_t i = 0; i < service_node_addresses.size(); i++)
@@ -402,6 +520,33 @@ namespace service_nodes
     }
 
     return true;
+  }
+
+  static int count_bits(unsigned char byte)
+  {
+    return byte == 0 ? 0 : 1 + count_bits(byte & (byte-1));
+  }
+
+  uint64_t service_node_list::get_swarm_id_for_pubkey(const crypto::public_key& pubkey) const
+  {
+    std::vector<uint64_t> swarm_ids = get_swarm_ids();
+    std::vector<std::pair<size_t, uint64_t> > swarm_ids_with_distance(swarm_ids.size());
+    std::pair<size_t, uint64_t> best = std::make_pair(1024, 0);
+    for (size_t i = 0; i < swarm_ids.size(); i++)
+    {
+      char data[32];
+      memcpy(data + 0 * sizeof(swarm_ids[i]), &swarm_ids[i], sizeof(swarm_ids[i]));
+      memcpy(data + 1 * sizeof(swarm_ids[i]), &swarm_ids[i], sizeof(swarm_ids[i]));
+      memcpy(data + 2 * sizeof(swarm_ids[i]), &swarm_ids[i], sizeof(swarm_ids[i]));
+      memcpy(data + 3 * sizeof(swarm_ids[i]), &swarm_ids[i], sizeof(swarm_ids[i]));
+
+      size_t distance = 0;
+      for (size_t i = 0; i < sizeof(data); i++)
+        distance += count_bits(((unsigned char)data[i]) ^ (unsigned char)pubkey.data[i]);
+
+      best = std::min(best, std::make_pair(distance, swarm_ids[i]));
+    }
+    return best.second;
   }
 
   void service_node_list::process_registration_tx(const cryptonote::transaction& tx, uint64_t block_timestamp, uint64_t block_height, uint32_t index)
@@ -426,6 +571,8 @@ namespace service_nodes
 
     m_rollback_events.push_back(std::unique_ptr<rollback_event>(new rollback_new(block_height, key)));
     m_service_nodes_infos[key] = info;
+
+    check_and_process_swarm_overflow(info.swarm_id, block_height);
   }
 
   bool service_node_list::get_contribution(const cryptonote::transaction& tx, uint64_t block_height, cryptonote::account_public_address& address, uint64_t& transferred) const
@@ -553,7 +700,9 @@ namespace service_nodes
       if (i != m_service_nodes_infos.end())
       {
         m_rollback_events.push_back(std::unique_ptr<rollback_event>(new rollback_change(block_height, pubkey, i->second)));
+        uint64_t swarm_id = i->second.swarm_id;
         m_service_nodes_infos.erase(i);
+        check_and_process_swarm_decomission(swarm_id);
       }
       // Service nodes may expire early if they double staked by accident, so
       // expiration doesn't mean the node is in the list.
@@ -763,14 +912,6 @@ namespace service_nodes
     }
 
     return true;
-  }
-
-  static uint64_t uniform_distribution_portable(std::mt19937_64& mersenne_twister, uint64_t n)
-  {
-    uint64_t secureMax = mersenne_twister.max() - mersenne_twister.max() % n;
-    uint64_t x;
-    do x = mersenne_twister(); while (x >= secureMax);
-    return  x / (secureMax / n);
   }
 
   void loki_shuffle(std::vector<size_t>& a, uint64_t seed)
