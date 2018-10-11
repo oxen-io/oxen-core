@@ -36,7 +36,7 @@ namespace nodetool
     const command_line::arg_descriptor<std::string> arg_p2p_bind_ip        = {"p2p-bind-ip", "Interface for p2p network protocol", "0.0.0.0"};
     const command_line::arg_descriptor<std::string, false, true, 2> arg_p2p_bind_port = {
         "p2p-bind-port"
-      , "Port for p2p network protocol"
+      , "Port for p2p network protocol (option ignored on mainnet)"
       , std::to_string(config::P2P_DEFAULT_PORT)
       , {{ &cryptonote::arg_testnet_on, &cryptonote::arg_stagenet_on }}
       , [](std::array<bool, 2> testnet_stagenet, bool defaulted, std::string val)->std::string {

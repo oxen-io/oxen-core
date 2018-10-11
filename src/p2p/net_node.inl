@@ -49,6 +49,7 @@
 #include "crypto/crypto.h"
 #include "storages/levin_abstract_invoke2.h"
 #include "cryptonote_core/cryptonote_core.h"
+#include "cryptonote_config.h"
 
 #include <miniupnp/miniupnpc/miniupnpc.h>
 #include <miniupnp/miniupnpc/upnpcommands.h>
@@ -261,7 +262,8 @@ namespace nodetool
     m_nettype = testnet ? cryptonote::TESTNET : stagenet ? cryptonote::STAGENET : cryptonote::MAINNET;
 
     m_bind_ip = command_line::get_arg(vm, arg_p2p_bind_ip);
-    m_port = command_line::get_arg(vm, arg_p2p_bind_port);
+    bool m_service_node = command_line::get_arg(vm, cryptonote::arg_service_node);
+    m_port = (m_service_node && m_nettype == cryptonote::MAINNET) ? std::to_string(::config::P2P_DEFAULT_PORT) : command_line::get_arg(vm, arg_p2p_bind_port);
     m_external_port = command_line::get_arg(vm, arg_p2p_external_port);
     m_allow_local_ip = command_line::get_arg(vm, arg_p2p_allow_local_ip);
     m_no_igd = command_line::get_arg(vm, arg_no_igd);
