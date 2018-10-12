@@ -39,6 +39,12 @@ namespace service_nodes
   const size_t NTH_OF_THE_NETWORK_TO_TEST     = 100;
   const size_t MIN_NODES_TO_TEST              = 50;
 
+  const size_t MAX_SWARM_SIZE               = 11;
+
+  // if a swarm has strictly less nodes than this, it is considered unhealthy
+  // and nearby swarms will mirror it's data. It will disappear, and is already considered gone.
+  const size_t MIN_SWARM_SIZE               = 4;
+
   class quorum_cop;
 
   struct quorum_state
@@ -83,6 +89,7 @@ namespace service_nodes
     uint64_t total_reserved;
     uint64_t staking_requirement;
     uint64_t portions_for_operator;
+    uint64_t swarm_id;
     cryptonote::account_public_address operator_address;
 
     bool is_fully_funded() const { return total_contributed >= staking_requirement; }
@@ -101,6 +108,7 @@ namespace service_nodes
       VARINT_FIELD(total_reserved)
       VARINT_FIELD(staking_requirement)
       VARINT_FIELD(portions_for_operator)
+      VARINT_FIELD(swarm_id)
       FIELD(operator_address)
     END_SERIALIZE()
   };
@@ -130,6 +138,12 @@ namespace service_nodes
     crypto::public_key select_winner(const crypto::hash& prev_id) const;
 
     bool is_service_node(const crypto::public_key& pubkey) const;
+
+    // returns 0 if there are no swarms.
+    uint64_t get_swarm_id_for_pubkey(const crypto::public_key& pubkey) const;
+    std::vector<uint64_t> get_swarm_ids() const;
+    std::vector<crypto::public_key> get_swarm(uint64_t swarm_id) const;
+    size_t get_swarm_size(uint64_t swarm_id) const;
 
     /// Note(maxim): this should not affect thread-safety as the returned object is const
     const std::shared_ptr<const quorum_state> get_quorum_state(uint64_t height) const;
@@ -264,6 +278,10 @@ namespace service_nodes
 
     void clear(bool delete_db_entry = false);
     bool load();
+
+    void check_and_process_swarm_overflow(uint64_t swarm_id, uint64_t block_height);
+    void check_and_process_swarm_decomission(uint64_t swarm_id);
+    uint64_t get_new_node_swarm_id(uint64_t block_height, uint32_t index) const;
 
     mutable std::recursive_mutex m_sn_mutex;
 
