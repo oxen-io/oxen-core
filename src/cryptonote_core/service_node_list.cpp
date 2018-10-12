@@ -327,11 +327,7 @@ namespace service_nodes
 
   void service_node_list::check_and_process_swarm_decomission(uint64_t swarm_id)
   {
-    size_t count = 0;
-    for (const auto& entry : m_service_nodes_infos)
-      if (entry.second.swarm_id == swarm_id)
-        count++;
-    if (count == MIN_SWARM_SIZE - 1)
+    if (get_swarm_size(swarm_id) == MIN_SWARM_SIZE - 1);
     {
       // XXX XXX XXX XXX
       // All nodes should fetch data from this swarm at this point only.
@@ -352,16 +348,16 @@ namespace service_nodes
     // have huge performance gains preventing nodes from having to resync every
     // time they rejoin the network.
 
+    std::vector<uint64_t> swarm_ids = get_swarm_ids();
+
+    if (swarm_ids.empty())
+      return 0;
+
     crypto::hash hash = m_blockchain.get_block_id_by_height(block_height);
     uint64_t seed = 0;
     std::memcpy(&seed, hash.data, sizeof(seed));
     seed += index;
     std::mt19937_64 mersenne_twister(seed);
-
-    std::vector<uint64_t> swarm_ids = get_swarm_ids();
-
-    if (swarm_ids.empty())
-      return 0;
 
     const size_t swarm_index = (size_t)uniform_distribution_portable(mersenne_twister, swarm_ids.size());
 
@@ -370,12 +366,7 @@ namespace service_nodes
 
   void service_node_list::check_and_process_swarm_overflow(uint64_t swarm_id, uint64_t block_height)
   {
-    uint64_t count = 0;
-    for (const auto& entry : m_service_nodes_infos)
-      if (entry.second.swarm_id == swarm_id)
-        count++;
-
-    if (count > MAX_SWARM_SIZE)
+    if (get_swarm_size(swarm_id) > MAX_SWARM_SIZE)
     {
       crypto::hash hash = m_blockchain.get_block_id_by_height(block_height);
       uint64_t seed = 0;
@@ -419,6 +410,15 @@ namespace service_nodes
       if (entry.second >= MIN_SWARM_SIZE)
         swarm_ids.push_back(entry.first);
     return swarm_ids;
+  }
+
+  size_t service_node_list::get_swarm_size(uint64_t swarm_id) const
+  {
+    size_t n = 0;
+    for (const auto& entry : m_service_nodes_infos)
+      if (entry.second.swarm_id == swarm_id)
+        n++;
+    return n;
   }
 
   std::vector<crypto::public_key> service_node_list::get_swarm(uint64_t swarm_id) const

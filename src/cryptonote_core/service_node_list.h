@@ -143,6 +143,7 @@ namespace service_nodes
     uint64_t get_swarm_id_for_pubkey(const crypto::public_key& pubkey) const;
     std::vector<uint64_t> get_swarm_ids() const;
     std::vector<crypto::public_key> get_swarm(uint64_t swarm_id) const;
+    size_t get_swarm_size(uint64_t swarm_id) const;
 
     /// Note(maxim): this should not affect thread-safety as the returned object is const
     const std::shared_ptr<const quorum_state> get_quorum_state(uint64_t height) const;
