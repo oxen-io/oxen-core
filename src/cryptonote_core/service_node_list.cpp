@@ -417,16 +417,23 @@ namespace service_nodes
     auto iter = m_service_nodes_infos.find(key);
     if (iter != m_service_nodes_infos.end())
     {
-      service_node_info &old_info = iter->second;
-      uint64_t expiry_height = old_info.registration_height + get_staking_requirement_lock_blocks(m_blockchain.nettype());
+      int hard_fork_version = m_blockchain.get_hard_fork_version(block_height);
+      if (hard_fork_version >= cryptonote::Blockchain::version_10_swarms)
+      {
+        service_node_info &old_info = iter->second;
+        uint64_t expiry_height = old_info.registration_height + get_staking_requirement_lock_blocks(m_blockchain.nettype());
+        if (block_height < expiry_height)
+          return;
 
-      if (block_height < expiry_height)
+        // NOTE: Node preserves its position in list if it reregisters during grace period.
+        registered_during_grace_period = true;
+        info.last_reward_block_height = old_info.last_reward_block_height;
+        info.last_reward_transaction_index = old_info.last_reward_transaction_index;
+      }
+      else
+      {
         return;
-
-      // NOTE: Node preserves its position in list if it reregisters during grace period.
-      registered_during_grace_period = true;
-      info.last_reward_block_height = old_info.last_reward_block_height;
-      info.last_reward_transaction_index = old_info.last_reward_transaction_index;
+      }
     }
 
     if (m_service_node_pubkey && *m_service_node_pubkey == key)
@@ -652,21 +659,58 @@ namespace service_nodes
   std::vector<crypto::public_key> service_node_list::get_expired_nodes(uint64_t block_height) const
   {
     std::vector<crypto::public_key> expired_nodes;
+    int hard_fork_version = m_blockchain.get_hard_fork_version(block_height);
 
-    const uint64_t lock_blocks = get_staking_requirement_lock_blocks(m_blockchain.nettype()) + STAKING_REQUIREMENT_LOCK_BLOCKS_EXCESS;
+    uint64_t lock_blocks = get_staking_requirement_lock_blocks(m_blockchain.nettype());
+    if (hard_fork_version >= cryptonote::Blockchain::version_10_swarms)
+      lock_blocks += STAKING_REQUIREMENT_LOCK_BLOCKS_EXCESS;
 
     if (block_height < lock_blocks)
       return expired_nodes;
 
-    for (auto &it : m_service_nodes_infos)
+    if (hard_fork_version >= cryptonote::Blockchain::version_10_swarms)
     {
-      crypto::public_key const &pubkey = it.first;
-      service_node_info  const &info   = it.second;
-
-      uint64_t node_expiry_height = info.registration_height + lock_blocks;
-      if (block_height >= node_expiry_height)
+      for (auto &it : m_service_nodes_infos)
       {
-        expired_nodes.push_back(pubkey);
+        crypto::public_key const &pubkey = it.first;
+        service_node_info  const &info   = it.second;
+
+        uint64_t node_expiry_height = info.registration_height + lock_blocks;
+        if (block_height >= node_expiry_height)
+        {
+          expired_nodes.push_back(pubkey);
+        }
+      }
+    }
+    else
+    {
+      const uint64_t expired_nodes_block_height = block_height - lock_blocks;
+      std::vector<std::pair<cryptonote::blobdata, cryptonote::block>> blocks;
+      if (!m_blockchain.get_blocks(expired_nodes_block_height, 1, blocks))
+      {
+          LOG_ERROR("Unable to get historical blocks");
+          return expired_nodes;
+      }
+
+      const cryptonote::block& block = blocks.begin()->second;
+      std::vector<cryptonote::transaction> txs;
+      std::vector<crypto::hash> missed_txs;
+      if (!m_blockchain.get_transactions(block.tx_hashes, txs, missed_txs))
+      {
+        LOG_ERROR("Unable to get transactions for block " << block.hash);
+        return expired_nodes;
+      }
+
+      uint32_t index = 0;
+      for (const cryptonote::transaction& tx : txs)
+      {
+        crypto::public_key key;
+        service_node_info info;
+        if (is_registration_tx(tx, block.timestamp, expired_nodes_block_height, index, key, info))
+        {
+          expired_nodes.push_back(key);
+        }
+        index++;
       }
     }
 

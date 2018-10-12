@@ -4781,12 +4781,19 @@ bool simple_wallet::register_service_node_main(
     const auto& response = m_wallet->get_service_nodes(service_node_key_as_str);
     if (response.service_node_states.size() >= 1)
     {
-      cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::entry const &node_info = response.service_node_states[0];
-      uint64_t expiry_height = node_info.registration_height + staking_requirement_lock_blocks;
-
-      if (bc_height < expiry_height)
+      bool can_reregister = false;
+      if (m_wallet->use_fork_rules(cryptonote::Blockchain::version_10_swarms, 0))
       {
-        if (!autostake) fail_msg_writer() << tr("This service node is already registered");
+        cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::entry const &node_info = response.service_node_states[0];
+        uint64_t expiry_height = node_info.registration_height + staking_requirement_lock_blocks;
+        if (bc_height >= expiry_height)
+          can_reregister = true;
+      }
+
+      if (!can_reregister)
+      {
+        if (!autostake)
+          fail_msg_writer() << tr("This service node is already registered");
         return true;
       }
     }
