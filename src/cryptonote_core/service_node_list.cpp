@@ -414,13 +414,13 @@ namespace service_nodes
     // NOTE: A node doesn't expire until registration_height + lock blocks excess now which acts as the grace period
     // So it is possible to find the node still in our list.
     bool registered_during_grace_period = false;
-    auto iter = m_service_nodes_infos.find(key);
+    const auto iter = m_service_nodes_infos.find(key);
     if (iter != m_service_nodes_infos.end())
     {
       int hard_fork_version = m_blockchain.get_hard_fork_version(block_height);
       if (hard_fork_version >= cryptonote::Blockchain::version_10_swarms)
       {
-        service_node_info &old_info = iter->second;
+        service_node_info const &old_info = iter->second;
         uint64_t expiry_height = old_info.registration_height + get_staking_requirement_lock_blocks(m_blockchain.nettype());
         if (block_height < expiry_height)
           return;
@@ -676,7 +676,7 @@ namespace service_nodes
         service_node_info  const &info   = it.second;
 
         uint64_t node_expiry_height = info.registration_height + lock_blocks;
-        if (block_height >= node_expiry_height)
+        if (block_height > node_expiry_height)
         {
           expired_nodes.push_back(pubkey);
         }
