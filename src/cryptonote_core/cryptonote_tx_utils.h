@@ -58,6 +58,7 @@ namespace cryptonote
 
   uint64_t get_governance_reward(uint64_t height, uint64_t base_reward);
   uint64_t get_service_node_reward(uint64_t height, uint64_t base_reward, int hard_fork_version);
+  const std::string& get_governance_wallet_address_str(network_type nettype, int hard_fork_version);
 
   bool get_deterministic_output_key(const account_public_address& address, const keypair& tx_key, size_t output_index, crypto::public_key& output_key);
 

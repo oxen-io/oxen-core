@@ -1038,7 +1038,7 @@ bool construct_miner_tx_with_extra_output(cryptonote::transaction& tx,
 
         cryptonote::address_parse_info governance_wallet_address;
         cryptonote::get_account_address_from_str(
-          governance_wallet_address, cryptonote::MAINNET, ::config::GOVERNANCE_WALLET_ADDRESS);
+          governance_wallet_address, cryptonote::MAINNET, get_governance_wallet_address_str(cryptonote::MAINNET, hard_fork_version));
 
         crypto::public_key out_eph_public_key = AUTO_VAL_INIT(out_eph_public_key);
 

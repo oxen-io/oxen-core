@@ -1156,22 +1156,7 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
       return false;
     }
 
-    std::string governance_wallet_address_str;
-    switch (m_nettype)
-    {
-      case STAGENET:
-        governance_wallet_address_str = ::config::stagenet::GOVERNANCE_WALLET_ADDRESS;
-        break;
-      case TESTNET:
-        governance_wallet_address_str = ::config::testnet::GOVERNANCE_WALLET_ADDRESS;
-        break;
-      case FAKECHAIN: case MAINNET:
-        governance_wallet_address_str = ::config::GOVERNANCE_WALLET_ADDRESS;
-        break;
-      default:
-        return false;
-    }
-
+    const std::string& governance_wallet_address_str = get_governance_wallet_address_str(m_nettype, m_hardfork->get_current_version());
     if (!validate_governance_reward_key(m_db->height(), governance_wallet_address_str, b.miner_tx.vout.size() - 1, boost::get<txout_to_key>(b.miner_tx.vout.back().target).key, m_nettype))
     {
       MERROR("Governance reward public key incorrect.");

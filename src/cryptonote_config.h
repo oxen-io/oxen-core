@@ -189,8 +189,12 @@ namespace config
   std::string const GENESIS_TX = "021e01ff000380808d93f5d771027c4fd4553bc9886f1f49e3f76d945bf71e8632a94e6c177b19cbc780e7e6bdb48080b4ccd4dfc60302c8b9f6461f58ef3f2107e577c7425d06af584a1c7482bf19060e84059c98b4c3808088fccdbcc32302732b53b0b0db706fcc3087074fb4b786da5ab72b2065699f9453448b0db27f892101ed71f2ce3fc70d7b2036f8a4e4b3fb75c66c12184b55a908e7d1a1d6995566cf00";
   uint32_t const GENESIS_NONCE = 1022201;
 
-  std::string const GOVERNANCE_WALLET_ADDRESS = "LCFxT37LAogDn1jLQKf4y7aAqfi21DjovX9qyijaLYQSdrxY1U5VGcnMJMjWrD9RhjeK5Lym67wZ73uh9AujXLQ1RKmXEyL";
-  
+  std::string const GOVERNANCE_WALLET_ADDRESS[] =
+  {
+    "LCFxT37LAogDn1jLQKf4y7aAqfi21DjovX9qyijaLYQSdrxY1U5VGcnMJMjWrD9RhjeK5Lym67wZ73uh9AujXLQ1RKmXEyL", // hardfork v7-9
+    "L6hD1XVf7J16LsMnBtVrsEbUbcxvQvuR1LCUpizjKXVsarjJvdPCAWcfdMqQn5XPLBbf4HoZL38VqeZSPfq4PWKs7Gphshs", // hardfork v10
+  };
+
   namespace testnet
   {
     uint64_t const CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX = 156;
@@ -205,7 +209,12 @@ namespace config
     std::string const GENESIS_TX = "03011e001e01ff00018080c9db97f4fb270259b546996f69aa71abe4238995f41d780ab1abebcac9f00e808f147bdb9e3228420112573af8c309b69a1a646f41b5212ba7d9c4590bf86e04f36c486467cfef9d3d72000000000000000000000000000000000000000000000000000000000000000000";
     uint32_t const GENESIS_NONCE = 10001;
 
-    std::string const GOVERNANCE_WALLET_ADDRESS = "T6SUprTYE5rQpep9iQFxyPcKVd91DFR1fQ1Qsyqp5eYLiFc8XuYd3reRE71qDL8c3DXioUbDEpDFdaUpetnL37NS1R3rzoKxi";
+    std::string const GOVERNANCE_WALLET_ADDRESS[] =
+    {
+      "T6SUprTYE5rQpep9iQFxyPcKVd91DFR1fQ1Qsyqp5eYLiFc8XuYd3reRE71qDL8c3DXioUbDEpDFdaUpetnL37NS1R3rzoKxi", // hardfork v7-9
+      "T6UBhy3UCD1Kefoe8pbuZUcA4VPF7twyA3qgjJFZRU5PAWWqk8AA4dbKADuLQcNn1RPs8c4qaFCoe7g88r3rKVdx2zHNgfp89", // hardfork v10
+    };
+
   }
 
   namespace stagenet
@@ -228,6 +237,14 @@ namespace config
 
 namespace cryptonote
 {
+  enum network_version
+  {
+    network_version_7 = 7,
+    network_version_8,
+    network_version_9_service_nodes,
+    network_version_10_swarms,
+  };
+
   enum network_type : uint8_t
   {
     MAINNET = 0,

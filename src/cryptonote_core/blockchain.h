@@ -81,14 +81,6 @@ namespace cryptonote
   class Blockchain
   {
   public:
-    enum version
-    {
-      version_7 = 7,
-      version_8,
-      version_9,
-      version_10_swarms,
-    };
-
     /**
      * @brief Now-defunct (TODO: remove) struct from in-memory blockchain
      */

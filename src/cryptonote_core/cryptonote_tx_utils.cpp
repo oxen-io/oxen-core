@@ -145,21 +145,7 @@ namespace cryptonote
     keypair gov_key = get_deterministic_keypair_from_height(height);
 
     cryptonote::address_parse_info governance_wallet_address;
-    switch (nettype)
-    {
-      case STAGENET:
-        cryptonote::get_account_address_from_str(governance_wallet_address, cryptonote::STAGENET, governance_wallet_address_str);
-        break;
-      case TESTNET:
-        cryptonote::get_account_address_from_str(governance_wallet_address, cryptonote::TESTNET, governance_wallet_address_str);
-        break;
-      case FAKECHAIN: case MAINNET:
-        cryptonote::get_account_address_from_str(governance_wallet_address, cryptonote::MAINNET, governance_wallet_address_str);
-        break;
-      default:
-        return false;
-    }
-
+    cryptonote::get_account_address_from_str(governance_wallet_address, nettype, governance_wallet_address_str);
     crypto::public_key correct_key;
 
     if (!get_deterministic_output_key(governance_wallet_address.address, gov_key, output_index, correct_key))
@@ -169,6 +155,37 @@ namespace cryptonote
     }
 
     return correct_key == output_key;
+  }
+
+  const std::string& get_governance_wallet_address_str(network_type nettype, int hard_fork_version)
+  {
+    switch (nettype)
+    {
+      case STAGENET: return ::config::stagenet::GOVERNANCE_WALLET_ADDRESS;
+
+      case TESTNET:
+      {
+        if (hard_fork_version <= cryptonote::network_version_9_service_nodes)
+          return ::config::testnet::GOVERNANCE_WALLET_ADDRESS[0];
+
+        return ::config::testnet::GOVERNANCE_WALLET_ADDRESS[1];
+      }
+
+      case FAKECHAIN: case MAINNET:
+      {
+        if (hard_fork_version <= cryptonote::network_version_9_service_nodes)
+          return ::config::GOVERNANCE_WALLET_ADDRESS[0];
+
+        return ::config::GOVERNANCE_WALLET_ADDRESS[1];
+      }
+
+      default:
+      {
+        assert(false); // developer error, this should never happen
+        static std::string empty_string;
+        return empty_string;
+      }
+    }
   }
 
   //---------------------------------------------------------------
@@ -289,23 +306,7 @@ namespace cryptonote
       std::string governance_wallet_address_str;
 
       cryptonote::address_parse_info governance_wallet_address;
-
-      switch (nettype)
-      {
-        case STAGENET:
-          cryptonote::get_account_address_from_str(governance_wallet_address, cryptonote::STAGENET, ::config::stagenet::GOVERNANCE_WALLET_ADDRESS);
-          break;
-        case TESTNET:
-          cryptonote::get_account_address_from_str(governance_wallet_address, cryptonote::TESTNET, ::config::testnet::GOVERNANCE_WALLET_ADDRESS);
-          break;
-        case FAKECHAIN: case MAINNET:
-          cryptonote::get_account_address_from_str(governance_wallet_address, cryptonote::MAINNET, ::config::GOVERNANCE_WALLET_ADDRESS);
-          break;
-        default:
-          return false;
-      }
-
-
+      cryptonote::get_account_address_from_str(governance_wallet_address, nettype, get_governance_wallet_address_str(nettype, hard_fork_version));
       crypto::public_key out_eph_public_key = AUTO_VAL_INIT(out_eph_public_key);
 
       if (!get_deterministic_output_key(governance_wallet_address.address, gov_key, tx.vout.size(), out_eph_public_key))

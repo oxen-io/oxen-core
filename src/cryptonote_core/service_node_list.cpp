@@ -429,7 +429,7 @@ namespace service_nodes
     if (iter != m_service_nodes_infos.end())
     {
       int hard_fork_version = m_blockchain.get_hard_fork_version(block_height);
-      if (hard_fork_version >= cryptonote::Blockchain::version_10_swarms)
+      if (hard_fork_version >= cryptonote::network_version_10_swarms)
       {
         service_node_info const &old_info = iter->second;
         uint64_t expiry_height = old_info.registration_height + get_staking_requirement_lock_blocks(m_blockchain.nettype());
@@ -672,13 +672,13 @@ namespace service_nodes
     int hard_fork_version = m_blockchain.get_hard_fork_version(block_height);
 
     uint64_t lock_blocks = get_staking_requirement_lock_blocks(m_blockchain.nettype());
-    if (hard_fork_version >= cryptonote::Blockchain::version_10_swarms)
+    if (hard_fork_version >= cryptonote::network_version_10_swarms)
       lock_blocks += STAKING_REQUIREMENT_LOCK_BLOCKS_EXCESS;
 
     if (block_height < lock_blocks)
       return expired_nodes;
 
-    if (hard_fork_version >= cryptonote::Blockchain::version_10_swarms)
+    if (hard_fork_version >= cryptonote::network_version_10_swarms)
     {
       for (auto &it : m_service_nodes_infos)
       {
