@@ -106,9 +106,10 @@ static const struct {
   time_t time;
 } testnet_hard_forks[] = {
   // version 7 from the start of the blockchain, inhereted from Monero testnet
-  { 7, 1, 0, 1533631121 },
-  { 8, 2, 0, 1533631122 },
-  { 9, 3, 0, 1533631123 },
+  { 7,  1, 0, 1533631121 },
+  { 8,  2, 0, 1533631122 },
+  { 9,  3, 0, 1533631123 },
+  { 10, 4, 0, 1533631124 },
 };
 
 static const struct {
@@ -1134,21 +1135,35 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
     }
   }
 
+  uint64_t height = cryptonote::get_block_height(b);
   std::vector<size_t> last_blocks_weights;
   get_last_n_blocks_weights(last_blocks_weights, CRYPTONOTE_REWARD_BLOCKS_WINDOW);
-  if (!get_block_reward(epee::misc_utils::median(last_blocks_weights), cumulative_block_weight, already_generated_coins, base_reward, version, cryptonote::get_block_height(b)))
+  if (!get_block_reward(epee::misc_utils::median(last_blocks_weights), cumulative_block_weight, already_generated_coins, base_reward, version, height))
   {
     MERROR_VER("block weight " << cumulative_block_weight << " is bigger than allowed for this blockchain");
     return false;
   }
 
+  int hard_fork_version = get_current_hard_fork_version();
   for (ValidateMinerTxHook* hook : m_validate_miner_tx_hooks)
-    if (!hook->validate_miner_tx(b.prev_id, b.miner_tx, m_db->height(), get_current_hard_fork_version(), base_reward))
+    if (!hook->validate_miner_tx(b.prev_id, b.miner_tx, m_db->height(), hard_fork_version, base_reward))
       return false;
 
-  if (already_generated_coins != 0)
+  if (already_generated_coins != 0 && height_has_governance_output(*this, height))
   {
-    uint64_t governance_reward = get_governance_reward(m_db->height(), base_reward);
+    uint64_t governance_reward = 0;
+    if (m_hardfork->get_current_version() <= network_version_9_service_nodes)
+    {
+      governance_reward = get_governance_reward_v7_to_9(base_reward);
+    }
+    else
+    {
+       if (!get_governance_reward_v10(*this, height, governance_reward))
+       {
+         MERROR("Governance reward could not be calculated post v10 hardfork");
+         return false;
+       }
+    }
 
     if (b.miner_tx.vout.back().amount != governance_reward)
     {
@@ -1156,8 +1171,7 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
       return false;
     }
 
-    const std::string& governance_wallet_address_str = get_governance_wallet_address_str(m_nettype, m_hardfork->get_current_version());
-    if (!validate_governance_reward_key(m_db->height(), governance_wallet_address_str, b.miner_tx.vout.size() - 1, boost::get<txout_to_key>(b.miner_tx.vout.back().target).key, m_nettype))
+    if (!validate_governance_reward_key(m_db->height(), *cryptonote::get_config(m_nettype, hard_fork_version).GOVERNANCE_WALLET_ADDRESS, b.miner_tx.vout.size() - 1, boost::get<txout_to_key>(b.miner_tx.vout.back().target).key, m_nettype))
     {
       MERROR("Governance reward public key incorrect.");
       return false;
@@ -1350,10 +1364,20 @@ bool Blockchain::create_block_template(block& b, const account_public_address& m
   //make blocks coin-base tx looks close to real coinbase tx to get truthful blob weight
   uint8_t hf_version = m_hardfork->get_current_version();
 
+#if 1
+  loki_miner_tx_context miner_context(
+      m_nettype,
+      this,
+      height,
+      m_service_node_list.select_winner(b.prev_id),
+      m_service_node_list.get_winner_addresses_and_portions(b.prev_id));
+  bool r = construct_miner_tx(height, median_weight, already_generated_coins, txs_weight, fee, miner_address, b.miner_tx, ex_nonce, hf_version, miner_context);
+#else
   crypto::public_key winner = m_service_node_list.select_winner(b.prev_id);
   std::vector<std::pair<account_public_address, uint64_t>> service_node_addresses = m_service_node_list.get_winner_addresses_and_portions(b.prev_id);
-
   bool r = construct_miner_tx(height, median_weight, already_generated_coins, txs_weight, fee, miner_address, b.miner_tx, ex_nonce, hf_version, m_nettype, winner, service_node_addresses);
+#endif
+
   CHECK_AND_ASSERT_MES(r, false, "Failed to construct miner tx, first chance");
   size_t cumulative_weight = txs_weight + get_transaction_weight(b.miner_tx);
 #if defined(DEBUG_CREATE_BLOCK_TEMPLATE)
@@ -1362,7 +1386,11 @@ bool Blockchain::create_block_template(block& b, const account_public_address& m
 #endif
   for (size_t try_count = 0; try_count != 10; ++try_count)
   {
+#if 1
+    r = construct_miner_tx(height, median_weight, already_generated_coins, cumulative_weight, fee, miner_address, b.miner_tx, ex_nonce, hf_version, miner_context);
+#else
     r = construct_miner_tx(height, median_weight, already_generated_coins, cumulative_weight, fee, miner_address, b.miner_tx, ex_nonce, hf_version, m_nettype, winner, service_node_addresses);
+#endif
 
     CHECK_AND_ASSERT_MES(r, false, "Failed to construct miner tx, second chance");
     size_t coinbase_weight = get_transaction_weight(b.miner_tx);

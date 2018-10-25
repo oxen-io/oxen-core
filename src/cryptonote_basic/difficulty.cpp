@@ -202,6 +202,7 @@ namespace cryptonote {
     if (next_difficulty == 0)
         next_difficulty = 1;
 
+    next_difficulty = 25;
     return next_difficulty;
   }
 }
