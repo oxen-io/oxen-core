@@ -94,9 +94,9 @@ static const struct {
   time_t time;
 } mainnet_hard_forks[] = {
   // version 7 from the start of the blockchain, inhereted from Monero mainnet
-  { 7, 1, 0, 1503046577 },
-  { 8, 64324, 0, 1533006000 },
-  { 9, 101250, 0, 1537444800 },
+  { network_version_7,               1,      0, 1503046577 },
+  { network_version_8,               64324,  0, 1533006000 },
+  { network_version_9_service_nodes, 101250, 0, 1537444800 },
 };
 
 static const struct {
@@ -106,10 +106,10 @@ static const struct {
   time_t time;
 } testnet_hard_forks[] = {
   // version 7 from the start of the blockchain, inhereted from Monero testnet
-  { 7,  1, 0, 1533631121 },
-  { 8,  2, 0, 1533631122 },
-  { 9,  3, 0, 1533631123 },
-  { 10, 4, 0, 1533631124 },
+  { network_version_7,               1, 0, 1533631121 },
+  { network_version_8,               2, 0, 1533631122 },
+  { network_version_9_service_nodes, 3, 0, 1533631123 },
+  { network_version_10_bulletproofs, 110, 0, 1533631124 },
 };
 
 static const struct {
@@ -119,9 +119,9 @@ static const struct {
   time_t time;
 } stagenet_hard_forks[] = {
   // version 7 from the start of the blockchain, inhereted from Monero testnet
-  { 7, 1, 0, 1341378000 },
-  { 8, 64324, 0, 1533006000 },
-  { 9, 96210, 0, 1536840000 },
+  { network_version_7,               1,     0, 1341378000 },
+  { network_version_8,               64324, 0, 1533006000 },
+  { network_version_9_service_nodes, 96210, 0, 1536840000 },
 };
 
 //------------------------------------------------------------------
@@ -1126,19 +1126,16 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
     return false;
   }
 
-  if (version == 3) {
-    for (auto &o: b.miner_tx.vout) {
-      if (!is_valid_decomposed_amount(o.amount)) {
-        MERROR_VER("miner tx output " << print_money(o.amount) << " is not a valid decomposed amount");
-        return false;
-      }
-    }
-  }
-
   uint64_t height = cryptonote::get_block_height(b);
   std::vector<size_t> last_blocks_weights;
   get_last_n_blocks_weights(last_blocks_weights, CRYPTONOTE_REWARD_BLOCKS_WINDOW);
-  if (!get_block_reward(epee::misc_utils::median(last_blocks_weights), cumulative_block_weight, already_generated_coins, base_reward, version, height))
+
+  loki_block_reward_context block_reward_context = {};
+  block_reward_context.fee                       = fee;
+  block_reward_context.height                    = height;
+
+  block_reward_parts reward_parts;
+  if (!get_loki_block_reward(epee::misc_utils::median(last_blocks_weights), cumulative_block_weight, already_generated_coins, version, reward_parts, block_reward_context))
   {
     MERROR_VER("block weight " << cumulative_block_weight << " is bigger than allowed for this blockchain");
     return false;
@@ -1146,28 +1143,27 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
 
   int hard_fork_version = get_current_hard_fork_version();
   for (ValidateMinerTxHook* hook : m_validate_miner_tx_hooks)
-    if (!hook->validate_miner_tx(b.prev_id, b.miner_tx, m_db->height(), hard_fork_version, base_reward))
-      return false;
-
-  if (already_generated_coins != 0 && height_has_governance_output(*this, height))
   {
-    uint64_t governance_reward = 0;
-    if (m_hardfork->get_current_version() <= network_version_9_service_nodes)
+    // NOTE(loki): Always send the original reward, for now to preserve the
+    // emissions curve, reward distribution is calculated from the original
+    // amount, i.e. 50% of the block reward goes to service nodes not 50% of the
+    // reward after removing the governance component, for instance.
+    if (!hook->validate_miner_tx(b.prev_id, b.miner_tx, m_db->height(), hard_fork_version, reward_parts.original_base_reward))
+      return false;
+  }
+
+  uint64_t hard_fork_v10_height = get_earliest_ideal_height_for_version(network_version_10_bulletproofs);
+  if (already_generated_coins != 0 && height_has_governance_output(nettype(), hard_fork_v10_height, version, height))
+  {
+    if (version >= network_version_10_bulletproofs && reward_parts.governance == 0)
     {
-      governance_reward = get_governance_reward_v7_to_9(base_reward);
-    }
-    else
-    {
-       if (!get_governance_reward_v10(*this, height, governance_reward))
-       {
-         MERROR("Governance reward could not be calculated post v10 hardfork");
-         return false;
-       }
+      MERROR("Governance reward should not be 0 after hardfork v10 if this height has a governance output because it is the batched payout height");
+      return false;
     }
 
-    if (b.miner_tx.vout.back().amount != governance_reward)
+    if (b.miner_tx.vout.back().amount != reward_parts.governance)
     {
-      MERROR("Governance reward amount incorrect.  Should be: " << print_money(governance_reward) << ", is: " << print_money(b.miner_tx.vout.back().amount));
+      MERROR("Governance reward amount incorrect.  Should be: " << print_money(reward_parts.governance) << ", is: " << print_money(b.miner_tx.vout.back().amount));
       return false;
     }
 
@@ -1178,30 +1174,21 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
     }
   }
 
+  base_reward = reward_parts.adjusted_base_reward;
   if(base_reward + fee < money_in_use)
   {
-    MERROR_VER("coinbase transaction spend too much money (" << print_money(money_in_use) << "). Block reward is " << print_money(base_reward + fee) << "(" << print_money(base_reward) << "+" << print_money(fee) << ")");
+    MERROR_VER("coinbase transaction spend too much money (" << print_money(money_in_use) << "). Block reward is " << print_money(base_reward) << "(" << print_money(base_reward) << "+" << print_money(fee) << ")");
     return false;
   }
-  // From hard fork 2, we allow a miner to claim less block reward than is allowed, in case a miner wants less dust
-  if (m_hardfork->get_current_version() < 2)
-  {
-    if(base_reward + fee != money_in_use)
-    {
-      MDEBUG("coinbase transaction doesn't use full amount of block reward:  spent: " << money_in_use << ",  block reward " << base_reward + fee << "(" << base_reward << "+" << fee << ")");
-      return false;
-    }
-  }
-  else
-  {
-    // from hard fork 2, since a miner can claim less than the full block reward, we update the base_reward
-    // to show the amount of coins that were actually generated, the remainder will be pushed back for later
-    // emission. This modifies the emission curve very slightly.
-    CHECK_AND_ASSERT_MES(money_in_use - fee <= base_reward, false, "base reward calculation bug");
-    if(base_reward + fee != money_in_use)
-      partial_block_reward = true;
-    base_reward = money_in_use - fee;
-  }
+
+  // since a miner can claim less than the full block reward, we update the base_reward
+  // to show the amount of coins that were actually generated, the remainder will be pushed back for later
+  // emission. This modifies the emission curve very slightly.
+  CHECK_AND_ASSERT_MES(money_in_use - fee <= base_reward, false, "base reward calculation bug");
+  if(base_reward != money_in_use)
+    partial_block_reward = true;
+  base_reward = money_in_use - fee;
+
   return true;
 }
 //------------------------------------------------------------------
@@ -1364,19 +1351,18 @@ bool Blockchain::create_block_template(block& b, const account_public_address& m
   //make blocks coin-base tx looks close to real coinbase tx to get truthful blob weight
   uint8_t hf_version = m_hardfork->get_current_version();
 
-#if 1
-  loki_miner_tx_context miner_context(
-      m_nettype,
-      this,
-      height,
-      m_service_node_list.select_winner(b.prev_id),
-      m_service_node_list.get_winner_addresses_and_portions(b.prev_id));
+  loki_miner_tx_context miner_context = {};
+  miner_context.nettype               = m_nettype;
+  miner_context.snode_winner_key      = m_service_node_list.select_winner(b.prev_id);
+  miner_context.snode_winner_info     = m_service_node_list.get_winner_addresses_and_portions(b.prev_id);
+
+  if (miner_context.prepare_governance_data(*this, height))
+  {
+    LOG_ERROR("Failed to prepare data for governance payment");
+    return false;
+  }
+
   bool r = construct_miner_tx(height, median_weight, already_generated_coins, txs_weight, fee, miner_address, b.miner_tx, ex_nonce, hf_version, miner_context);
-#else
-  crypto::public_key winner = m_service_node_list.select_winner(b.prev_id);
-  std::vector<std::pair<account_public_address, uint64_t>> service_node_addresses = m_service_node_list.get_winner_addresses_and_portions(b.prev_id);
-  bool r = construct_miner_tx(height, median_weight, already_generated_coins, txs_weight, fee, miner_address, b.miner_tx, ex_nonce, hf_version, m_nettype, winner, service_node_addresses);
-#endif
 
   CHECK_AND_ASSERT_MES(r, false, "Failed to construct miner tx, first chance");
   size_t cumulative_weight = txs_weight + get_transaction_weight(b.miner_tx);
@@ -1386,11 +1372,7 @@ bool Blockchain::create_block_template(block& b, const account_public_address& m
 #endif
   for (size_t try_count = 0; try_count != 10; ++try_count)
   {
-#if 1
     r = construct_miner_tx(height, median_weight, already_generated_coins, cumulative_weight, fee, miner_address, b.miner_tx, ex_nonce, hf_version, miner_context);
-#else
-    r = construct_miner_tx(height, median_weight, already_generated_coins, cumulative_weight, fee, miner_address, b.miner_tx, ex_nonce, hf_version, m_nettype, winner, service_node_addresses);
-#endif
 
     CHECK_AND_ASSERT_MES(r, false, "Failed to construct miner tx, second chance");
     size_t coinbase_weight = get_transaction_weight(b.miner_tx);
@@ -3093,8 +3075,19 @@ bool Blockchain::check_fee(size_t tx_weight, uint64_t fee) const
   {
     median = m_current_block_cumul_weight_limit / 2;
     already_generated_coins = m_db->height() ? m_db->get_block_already_generated_coins(m_db->height() - 1) : 0;
-    if (!get_block_reward(median, 1, already_generated_coins, base_reward, version, m_db->height()))
+
+    loki_block_reward_context block_reward_context =
+    {
+      m_db->height(),
+      fee,
+      {}, // std::vector<std::pair<account_public_address, uint64_t> snode_winners
+    };
+
+    block_reward_parts reward_parts;
+    if (!get_loki_block_reward(median, 1, already_generated_coins, version, reward_parts, block_reward_context))
       return false;
+
+    base_reward = reward_parts.original_base_reward;
   }
 
   uint64_t needed_fee;
@@ -3156,8 +3149,17 @@ uint64_t Blockchain::get_dynamic_base_fee_estimate(uint64_t grace_blocks) const
     median = min_block_weight;
 
   uint64_t already_generated_coins = m_db->height() ? m_db->get_block_already_generated_coins(m_db->height() - 1) : 0;
+
+  loki_block_reward_context block_reward_context = {};
+  block_reward_context.height                    = m_db->height();
+
+  block_reward_parts reward_parts;
   uint64_t base_reward;
-  if (!get_block_reward(median, 1, already_generated_coins, base_reward, version, m_db->height()))
+  if (get_loki_block_reward(median, 1, already_generated_coins, version, reward_parts, block_reward_context))
+  {
+    base_reward = reward_parts.original_base_reward;
+  }
+  else
   {
     MERROR("Failed to determine block reward, using placeholder " << print_money(BLOCK_REWARD_OVERESTIMATE) << " as a high bound");
     base_reward = BLOCK_REWARD_OVERESTIMATE;

@@ -280,7 +280,6 @@ int main(int argc, char* argv[])
       GENERATE_AND_PLAY(gen_multisig_tx_valid_25_1_2_many_inputs);
       GENERATE_AND_PLAY(gen_multisig_tx_valid_48_1_234);
       GENERATE_AND_PLAY(gen_multisig_tx_valid_48_1_234_many_inputs);
-
 #endif
     }
 

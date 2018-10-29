@@ -254,7 +254,7 @@ namespace cryptonote
     network_version_7 = 7,
     network_version_8,
     network_version_9_service_nodes, // Proof Of Stake w/ Service Nodes
-    network_version_10_bulletproofs, // Bulletproofs, Service Node Grace Registration Period, Rotating Governance Keys
+    network_version_10_bulletproofs, // Bulletproofs, Service Node Grace Registration Period, Batched Governance
     network_version_11_swarms,
   };
 
@@ -336,10 +336,8 @@ namespace cryptonote
 
       case TESTNET:
       {
-#if 0
-        if (hard_fork_version >= network_version_10_bulletproofs)
+        if (hard_fork_version >= 11)
           testnet.GOVERNANCE_WALLET_ADDRESS = &::config::testnet::GOVERNANCE_WALLET_ADDRESS[1];
-#endif
 
         return testnet;
       }

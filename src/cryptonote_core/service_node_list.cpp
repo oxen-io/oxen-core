@@ -781,7 +781,7 @@ namespace service_nodes
     if (hard_fork_version < 9)
       return true;
 
-    uint64_t total_service_node_reward = cryptonote::get_service_node_reward(height, base_reward, hard_fork_version);
+    uint64_t total_service_node_reward = cryptonote::service_node_reward_formula(base_reward, hard_fork_version);
 
     crypto::public_key winner = select_winner(prev_id);
 

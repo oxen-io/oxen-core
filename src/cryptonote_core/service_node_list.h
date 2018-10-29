@@ -300,6 +300,8 @@ namespace service_nodes
   inline uint64_t get_min_node_contribution(uint64_t staking_requirement, uint64_t total_reserved) { return std::min(staking_requirement - total_reserved, staking_requirement / MAX_NUMBER_OF_CONTRIBUTORS); }
 
   const static cryptonote::account_public_address null_address{ crypto::null_pkey, crypto::null_pkey };
+  const static std::vector<std::pair<cryptonote::account_public_address, uint64_t>> null_winner =
+    {std::pair<cryptonote::account_public_address, uint64_t>({null_address, STAKING_PORTIONS})};
 }
 
 VARIANT_TAG(binary_archive, service_nodes::service_node_list::data_members_for_serialization, 0xa0);

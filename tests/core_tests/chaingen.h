@@ -222,13 +222,12 @@ public:
   bool construct_block_manually_tx(cryptonote::block& blk, const cryptonote::block& prev_block,
     const cryptonote::account_base& miner_acc, const std::vector<crypto::hash>& tx_hashes, size_t txs_size);
 
-    explicit test_generator(uint8_t hf_version = 7) : hf_version_(hf_version) {}
+  explicit test_generator(int hf_version = 7) : m_hf_version(hf_version) {}
 
-    void set_hf_version(uint8_t ver) { hf_version_ = ver; }
+  int m_hf_version;
 
 private:
   std::unordered_map<crypto::hash, block_info> m_blocks_info;
-  uint8_t hf_version_;
 };
 
 /// ------------ Service Nodes -----------
@@ -393,11 +392,7 @@ class dereg_tx_builder {
 inline cryptonote::difficulty_type get_test_difficulty() {return 1;}
 void fill_nonce(cryptonote::block& blk, const cryptonote::difficulty_type& diffic, uint64_t height);
 
-bool construct_miner_tx_with_extra_output(cryptonote::transaction& tx,
-                                          const cryptonote::account_public_address& miner_address,
-                                          size_t height,
-                                          uint64_t already_generated_coins,
-                                          const cryptonote::account_public_address& extra_address);
+crypto::public_key get_output_key(const cryptonote::keypair& txkey, const cryptonote::account_public_address& addr, size_t output_index);
 
 bool construct_miner_tx_manually(size_t height, uint64_t already_generated_coins,
                                  const cryptonote::account_public_address& miner_address, cryptonote::transaction& tx,
@@ -431,11 +426,11 @@ class TxBuilder {
   const cryptonote::account_base& m_from;
   const cryptonote::account_base& m_to;
   uint64_t m_amount;
+  uint64_t m_fee;
+  uint64_t m_unlock_time;
+  std::vector<uint8_t> m_extra;
 
   /// optional fields
-  boost::optional<uint64_t> m_fee;
-  boost::optional<std::vector<uint8_t>> m_extra;
-  boost::optional<uint64_t> m_unlock_time;
   bool m_per_output_unlock = false;
   bool m_is_staking = false;
 
@@ -455,6 +450,8 @@ public:
     , m_from(from)
     , m_to(to)
     , m_amount(amount)
+    , m_fee(TESTS_DEFAULT_FEE)
+    , m_unlock_time(0)
   {}
 
   TxBuilder&& with_fee(uint64_t fee) {
@@ -497,24 +494,16 @@ public:
     std::vector<cryptonote::tx_destination_entry> destinations;
     uint64_t change_amount;
 
-    const auto fee = m_fee ? *m_fee : TESTS_DEFAULT_FEE;
     const auto nmix = 9;
-
     fill_tx_sources_and_destinations(
-      m_events, m_head, m_from, m_to, m_amount, fee, nmix, sources, destinations, &change_amount);
+      m_events, m_head, m_from, m_to, m_amount, m_fee, nmix, sources, destinations, &change_amount);
 
     const bool is_subaddr = false;
 
     cryptonote::tx_destination_entry change_addr{ change_amount, m_from.get_keys().m_account_address, is_subaddr };
 
-    std::vector<uint8_t> extra;
-    if (m_extra) extra = *m_extra;
-
-    const auto unlock_time = m_unlock_time ? *m_unlock_time : 0;
-
-
     return cryptonote::construct_tx(
-      m_from.get_keys(), sources, destinations, change_addr, extra, m_tx, unlock_time, m_is_staking, m_per_output_unlock);
+      m_from.get_keys(), sources, destinations, change_addr, m_extra, m_tx, m_unlock_time, m_is_staking, m_per_output_unlock);
 
   }
 };

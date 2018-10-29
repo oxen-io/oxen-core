@@ -412,7 +412,6 @@ namespace cryptonote
     void invalidate_hashes() { set_hash_valid(false); }
     bool is_hash_valid() const { return hash_valid.load(std::memory_order_acquire); }
     void set_hash_valid(bool v) const { hash_valid.store(v,std::memory_order_release); }
-    bool has_governance_reward();
 
     transaction miner_tx;
     std::vector<crypto::hash> tx_hashes;

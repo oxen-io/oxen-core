@@ -33,6 +33,7 @@
 using namespace epee;
 
 #include "cryptonote_basic_impl.h"
+#include "cryptonote_core/blockchain.h"
 #include "string_tools.h"
 #include "serialization/binary_utils.h"
 #include "serialization/container.h"
@@ -43,6 +44,8 @@ using namespace epee;
 #include "crypto/hash.h"
 #include "common/int-util.h"
 #include "common/dns_utils.h"
+#include "cryptonote_core/service_node_list.h"
+#include "cryptonote_core/cryptonote_tx_utils.h"
 
 #undef LOKI_DEFAULT_LOG_CATEGORY
 #define LOKI_DEFAULT_LOG_CATEGORY "cn"
@@ -89,7 +92,7 @@ namespace cryptonote {
     return CRYPTONOTE_MAX_TX_SIZE;
   }
   //-----------------------------------------------------------------------------------------------
-  bool get_block_reward(size_t median_weight, size_t current_block_weight, uint64_t already_generated_coins, uint64_t &reward, uint8_t version, uint64_t height) {
+  bool get_base_block_reward(size_t median_weight, size_t current_block_weight, uint64_t already_generated_coins, uint64_t &reward, uint8_t version, uint64_t height) {
 
     //premine reward
     if (already_generated_coins == 0)
