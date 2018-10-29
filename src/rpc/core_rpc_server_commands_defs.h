@@ -985,6 +985,23 @@ namespace cryptonote
     };
   };
 
+
+  //-----------------------------------------------
+  struct COMMAND_RPC_GET_SERVICE_NODE_LIST
+  {
+    struct request
+    {
+      BEGIN_KV_SERIALIZE_MAP()
+      END_KV_SERIALIZE_MAP()
+    };
+
+    struct response
+    {
+      BEGIN_KV_SERIALIZE_MAP()
+      END_KV_SERIALIZE_MAP()
+    };
+  };
+
     
   //-----------------------------------------------
   struct COMMAND_RPC_STOP_MINING

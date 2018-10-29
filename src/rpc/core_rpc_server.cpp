@@ -211,6 +211,11 @@ namespace cryptonote
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_get_service_node_list(const COMMAND_RPC_GET_SERVICE_NODE_LIST::request& req, COMMAND_RPC_GET_SERVICE_NODE_LIST::response& res)
+  {
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
   class pruned_transaction {
     transaction& tx;
   public:
