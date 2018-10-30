@@ -213,7 +213,8 @@ namespace config
 #if 0
     uint64_t const GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS = ((60 * 60 * 24) / DIFFICULTY_TARGET_V2);
 #else
-    uint64_t const GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS = 100;
+    uint64_t const GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS = ((60 * 60 * 24 * 7) / DIFFICULTY_TARGET_V2);
+    // uint64_t const GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS = 100;
 #endif
     std::string const GOVERNANCE_WALLET_ADDRESS[] =
     {
@@ -268,16 +269,16 @@ namespace cryptonote
   };
   struct config_t
   {
-    uint64_t const CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX;
-    uint64_t const CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX;
-    uint64_t const CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX;
-    uint16_t const P2P_DEFAULT_PORT;
-    uint16_t const RPC_DEFAULT_PORT;
-    uint16_t const ZMQ_RPC_DEFAULT_PORT;
-    boost::uuids::uuid const NETWORK_ID;
-    std::string const GENESIS_TX;
-    uint32_t const GENESIS_NONCE;
-    uint64_t const GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS;
+    uint64_t CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX;
+    uint64_t CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX;
+    uint64_t CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX;
+    uint16_t P2P_DEFAULT_PORT;
+    uint16_t RPC_DEFAULT_PORT;
+    uint16_t ZMQ_RPC_DEFAULT_PORT;
+    boost::uuids::uuid NETWORK_ID;
+    std::string GENESIS_TX;
+    uint32_t GENESIS_NONCE;
+    uint64_t GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS;
     std::string const *GOVERNANCE_WALLET_ADDRESS;
   };
   inline const config_t& get_config(network_type nettype, int hard_fork_version = 7)
@@ -328,7 +329,12 @@ namespace cryptonote
     {
       case MAINNET: case FAKECHAIN:
       {
-        if (hard_fork_version >= network_version_10_bulletproofs)
+        if (nettype == FAKECHAIN)
+          mainnet.GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS = 100;
+
+        if (hard_fork_version <= network_version_9_service_nodes)
+          mainnet.GOVERNANCE_WALLET_ADDRESS = &::config::GOVERNANCE_WALLET_ADDRESS[0];
+        else
           mainnet.GOVERNANCE_WALLET_ADDRESS = &::config::GOVERNANCE_WALLET_ADDRESS[1];
 
         return mainnet;

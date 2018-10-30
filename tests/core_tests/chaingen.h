@@ -174,16 +174,18 @@ public:
     {
     }
 
-    block_info(crypto::hash a_prev_id, uint64_t an_already_generated_coins, size_t a_block_weight)
+    block_info(crypto::hash a_prev_id, uint64_t an_already_generated_coins, size_t a_block_weight, cryptonote::block a_block)
       : prev_id(a_prev_id)
       , already_generated_coins(an_already_generated_coins)
       , block_weight(a_block_weight)
+      , block(a_block)
     {
     }
 
     crypto::hash prev_id;
     uint64_t already_generated_coins;
     size_t block_weight;
+    cryptonote::block block;
   };
 
   enum block_fields
@@ -199,7 +201,9 @@ public:
     bf_hf_version= 1 << 8
   };
 
-  void get_block_chain(std::vector<block_info>& blockchain, const crypto::hash& head, size_t n) const;
+  void get_block_chain(std::vector<block_info>& blockchain,        const crypto::hash& head, size_t n) const;
+  void get_block_chain(std::vector<cryptonote::block>& blockchain, const crypto::hash& head, size_t n) const;
+
   void get_last_n_block_weights(std::vector<size_t>& block_weights, const crypto::hash& head, size_t n) const;
   uint64_t get_already_generated_coins(const crypto::hash& blk_id) const;
   uint64_t get_already_generated_coins(const cryptonote::block& blk) const;
@@ -298,7 +302,8 @@ class linear_chain_generator
       : gen_(), events_(events)
     { }
 
-    uint64_t height() const { return get_block_height(blocks_.back()); }
+    uint64_t                              height() const { return get_block_height(blocks_.back()); }
+    const std::vector<cryptonote::block>& blocks() const { return blocks_; }
 
     cryptonote::account_base create_account();
 
@@ -309,6 +314,7 @@ class linear_chain_generator
     cryptonote::block create_block_on_fork(const cryptonote::block& prev, const std::vector<cryptonote::transaction>& txs = {});
 
     void rewind_until_v9();
+    void rewind_until_version(const std::vector<std::pair<uint8_t, uint64_t>> &hard_forks, int hard_fork_version);
     void rewind_blocks_n(int n);
     void rewind_blocks();
 

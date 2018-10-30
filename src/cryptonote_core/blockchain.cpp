@@ -109,7 +109,7 @@ static const struct {
   { network_version_7,               1, 0, 1533631121 },
   { network_version_8,               2, 0, 1533631122 },
   { network_version_9_service_nodes, 3, 0, 1533631123 },
-  { network_version_10_bulletproofs, 110, 0, 1533631124 },
+  { network_version_10_bulletproofs, 4, 0, 1533631124 },
 };
 
 static const struct {
@@ -1133,6 +1133,11 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
   loki_block_reward_context block_reward_context = {};
   block_reward_context.fee                       = fee;
   block_reward_context.height                    = height;
+  if (!get_governance_reward(*this, height, block_reward_context.batched_governance))
+  {
+    MERROR_VER("Failed to calculate batched governance reward");
+    return false;
+  }
 
   block_reward_parts reward_parts;
   if (!get_loki_block_reward(epee::misc_utils::median(last_blocks_weights), cumulative_block_weight, already_generated_coins, version, reward_parts, block_reward_context))
@@ -1141,19 +1146,17 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
     return false;
   }
 
-  int hard_fork_version = get_current_hard_fork_version();
   for (ValidateMinerTxHook* hook : m_validate_miner_tx_hooks)
   {
     // NOTE(loki): Always send the original reward, for now to preserve the
     // emissions curve, reward distribution is calculated from the original
     // amount, i.e. 50% of the block reward goes to service nodes not 50% of the
     // reward after removing the governance component, for instance.
-    if (!hook->validate_miner_tx(b.prev_id, b.miner_tx, m_db->height(), hard_fork_version, reward_parts.original_base_reward))
+    if (!hook->validate_miner_tx(b.prev_id, b.miner_tx, m_db->height(), version, reward_parts.original_base_reward))
       return false;
   }
 
-  uint64_t hard_fork_v10_height = get_earliest_ideal_height_for_version(network_version_10_bulletproofs);
-  if (already_generated_coins != 0 && height_has_governance_output(nettype(), hard_fork_v10_height, version, height))
+  if (already_generated_coins != 0 && block_has_governance_output(nettype(), b))
   {
     if (version >= network_version_10_bulletproofs && reward_parts.governance == 0)
     {
@@ -1167,7 +1170,7 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
       return false;
     }
 
-    if (!validate_governance_reward_key(m_db->height(), *cryptonote::get_config(m_nettype, hard_fork_version).GOVERNANCE_WALLET_ADDRESS, b.miner_tx.vout.size() - 1, boost::get<txout_to_key>(b.miner_tx.vout.back().target).key, m_nettype))
+    if (!validate_governance_reward_key(m_db->height(), *cryptonote::get_config(m_nettype, version).GOVERNANCE_WALLET_ADDRESS, b.miner_tx.vout.size() - 1, boost::get<txout_to_key>(b.miner_tx.vout.back().target).key, m_nettype))
     {
       MERROR("Governance reward public key incorrect.");
       return false;
@@ -1356,9 +1359,9 @@ bool Blockchain::create_block_template(block& b, const account_public_address& m
   miner_context.snode_winner_key      = m_service_node_list.select_winner(b.prev_id);
   miner_context.snode_winner_info     = m_service_node_list.get_winner_addresses_and_portions(b.prev_id);
 
-  if (miner_context.prepare_governance_data(*this, height))
+  if (!get_governance_reward(*this, height, miner_context.batched_governance))
   {
-    LOG_ERROR("Failed to prepare data for governance payment");
+    LOG_ERROR("Failed to calculate batched governance reward");
     return false;
   }
 

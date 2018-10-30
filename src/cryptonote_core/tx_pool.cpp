@@ -1268,6 +1268,11 @@ namespace cryptonote
     //baseline empty block
     loki_block_reward_context block_reward_context = {};
     block_reward_context.height                    = height;
+    if (!get_governance_reward(m_blockchain, height, block_reward_context.batched_governance))
+    {
+      MERROR("Failed to calculated batched governance reward");
+      return false;
+    }
 
     block_reward_parts reward_parts = {};
     get_loki_block_reward(median_weight, total_weight, already_generated_coins, version, reward_parts, block_reward_context);
