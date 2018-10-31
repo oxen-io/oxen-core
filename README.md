@@ -22,7 +22,7 @@ Portions Copyright (c) 2012-2013 The Cryptonote developers.
 
 ## Information
 
-Loki is a privacy cryptocurrency based on Monero. Loki currently offers an incentivised full node layer and over the coming months we look to support a secondary p2p network that offers private communications based on the Signal protocol.
+Loki is a private cryptocurrency based on Monero. Loki currently offers an incentivised full node layer, over the coming months we will be looking to support a secondary p2p network (Lokinet) and a messenger that offers private communications based on the Signal protocol (Loki Messenger).
 
 More information on the project can be found on the website and in the whitepaper.
 
