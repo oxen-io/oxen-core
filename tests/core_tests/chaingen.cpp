@@ -449,42 +449,37 @@ bool test_generator::construct_block(cryptonote::block& blk, uint64_t height, co
   size_t target_block_weight = txs_weight + get_transaction_weight(blk.miner_tx);
   while (true)
   {
-    std::vector<block> blockchain;
-    blockchain.reserve(height);
-    get_block_chain(blockchain, prev_id, height);
+    cryptonote::loki_miner_tx_context miner_tx_context(cryptonote::FAKECHAIN, sn_pub_key, sn_infos);
 
-    cryptonote::loki_miner_tx_context miner_context = {};
-    miner_context.nettype                           = cryptonote::FAKECHAIN;
-    miner_context.snode_winner_key                  = sn_pub_key;
-    miner_context.snode_winner_info                 = sn_infos;
-
-    if (m_hf_version >= network_version_10_bulletproofs)
+    if (m_hf_version >= cryptonote::network_version_10_bulletproofs &&
+        cryptonote::height_has_governance_output(cryptonote::FAKECHAIN, m_hf_version, height))
     {
-      if (cryptonote::height_has_governance_output(cryptonote::FAKECHAIN, m_hf_version, height))
+      std::vector<block> blockchain;
+      blockchain.reserve(height);
+      get_block_chain(blockchain, prev_id, height);
+
+      const cryptonote::config_t &network = cryptonote::get_config(cryptonote::FAKECHAIN, m_hf_version);
+      uint64_t num_blocks                 = network.GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS;
+      uint64_t start_height               = height - num_blocks;
+
+      if (height < num_blocks)
       {
-        const cryptonote::config_t &network = cryptonote::get_config(cryptonote::FAKECHAIN, m_hf_version);
-        uint64_t num_blocks                 = network.GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS;
-        uint64_t start_height               = height - num_blocks;
+        start_height = 0;
+        num_blocks   = height;
+      }
 
-        if (height < num_blocks)
-        {
-          start_height = 0;
-          num_blocks   = height;
-        }
+      for (const block &entry : blockchain)
+      {
+        uint64_t block_height = cryptonote::get_block_height(entry);
+        if (block_height < start_height)
+          continue;
 
-        for (const block &entry : blockchain)
-        {
-          uint64_t block_height = cryptonote::get_block_height(entry);
-          if (block_height < start_height)
-            continue;
-
-          if (entry.major_version >= network_version_10_bulletproofs)
-            miner_context.batched_governance += cryptonote::derive_governance_from_block_reward(cryptonote::FAKECHAIN, entry);
-        }
+        if (entry.major_version >= network_version_10_bulletproofs)
+          miner_tx_context.batched_governance += cryptonote::derive_governance_from_block_reward(cryptonote::FAKECHAIN, entry);
       }
     }
 
-    if (!construct_miner_tx(height, misc_utils::median(block_weights), already_generated_coins, target_block_weight, total_fee, miner_acc.get_keys().m_account_address, blk.miner_tx, blobdata(), m_hf_version, miner_context))
+    if (!construct_miner_tx(height, misc_utils::median(block_weights), already_generated_coins, target_block_weight, total_fee, miner_acc.get_keys().m_account_address, blk.miner_tx, blobdata(), m_hf_version, miner_tx_context))
       return false;
 
     size_t actual_block_weight = txs_weight + get_transaction_weight(blk.miner_tx);

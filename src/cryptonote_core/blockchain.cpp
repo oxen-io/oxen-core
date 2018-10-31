@@ -109,7 +109,6 @@ static const struct {
   { network_version_7,               1, 0, 1533631121 },
   { network_version_8,               2, 0, 1533631122 },
   { network_version_9_service_nodes, 3, 0, 1533631123 },
-  { network_version_10_bulletproofs, 4, 0, 1533631124 },
 };
 
 static const struct {
@@ -1133,7 +1132,7 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
   loki_block_reward_context block_reward_context = {};
   block_reward_context.fee                       = fee;
   block_reward_context.height                    = height;
-  if (!get_governance_reward(*this, height, block_reward_context.batched_governance))
+  if (!get_batched_governance_reward(*this, height, block_reward_context.batched_governance))
   {
     MERROR_VER("Failed to calculate batched governance reward");
     return false;
@@ -1354,18 +1353,17 @@ bool Blockchain::create_block_template(block& b, const account_public_address& m
   //make blocks coin-base tx looks close to real coinbase tx to get truthful blob weight
   uint8_t hf_version = m_hardfork->get_current_version();
 
-  loki_miner_tx_context miner_context = {};
-  miner_context.nettype               = m_nettype;
-  miner_context.snode_winner_key      = m_service_node_list.select_winner(b.prev_id);
-  miner_context.snode_winner_info     = m_service_node_list.get_winner_addresses_and_portions(b.prev_id);
+  loki_miner_tx_context miner_tx_context(m_nettype,
+                                         m_service_node_list.select_winner(b.prev_id),
+                                         m_service_node_list.get_winner_addresses_and_portions(b.prev_id));
 
-  if (!get_governance_reward(*this, height, miner_context.batched_governance))
+  if (!miner_tx_context.calc_batched_governance(*this, height))
   {
     LOG_ERROR("Failed to calculate batched governance reward");
     return false;
   }
 
-  bool r = construct_miner_tx(height, median_weight, already_generated_coins, txs_weight, fee, miner_address, b.miner_tx, ex_nonce, hf_version, miner_context);
+  bool r = construct_miner_tx(height, median_weight, already_generated_coins, txs_weight, fee, miner_address, b.miner_tx, ex_nonce, hf_version, miner_tx_context);
 
   CHECK_AND_ASSERT_MES(r, false, "Failed to construct miner tx, first chance");
   size_t cumulative_weight = txs_weight + get_transaction_weight(b.miner_tx);
@@ -1375,7 +1373,7 @@ bool Blockchain::create_block_template(block& b, const account_public_address& m
 #endif
   for (size_t try_count = 0; try_count != 10; ++try_count)
   {
-    r = construct_miner_tx(height, median_weight, already_generated_coins, cumulative_weight, fee, miner_address, b.miner_tx, ex_nonce, hf_version, miner_context);
+    r = construct_miner_tx(height, median_weight, already_generated_coins, cumulative_weight, fee, miner_address, b.miner_tx, ex_nonce, hf_version, miner_tx_context);
 
     CHECK_AND_ASSERT_MES(r, false, "Failed to construct miner tx, second chance");
     size_t coinbase_weight = get_transaction_weight(b.miner_tx);

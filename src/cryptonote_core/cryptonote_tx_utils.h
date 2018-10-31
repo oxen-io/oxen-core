@@ -39,13 +39,20 @@ namespace cryptonote
   class Blockchain;
 
   //---------------------------------------------------------------
-  struct loki_miner_tx_context // NOTE(loki): All the custom fields required by Loki to use construct_miner_tx for us
+  struct loki_miner_tx_context // NOTE(loki): All the custom fields required by Loki to use construct_miner_tx
   {
     using stake_portions = uint64_t;
+
+    loki_miner_tx_context(network_type type         = MAINNET,
+                          crypto::public_key winner = crypto::null_pkey,
+                          std::vector<std::pair<account_public_address, stake_portions>> winner_info = {});
+
     network_type                                                   nettype;
     crypto::public_key                                             snode_winner_key;
-    std::vector<std::pair<account_public_address, stake_portions>> snode_winner_info;
-    uint64_t                                                       batched_governance;
+    std::vector<std::pair<account_public_address, stake_portions>> snode_winner_info;  // NOTE: If empty we use service_nodes::null_winner
+    uint64_t                                                       batched_governance; // NOTE: Optional until hardfork v10
+
+    bool calc_batched_governance(const Blockchain& blockchain, uint64_t height);
   };
 
   bool construct_miner_tx(
@@ -89,10 +96,6 @@ namespace cryptonote
     uint64_t miner_reward() { return base_miner + base_miner_fee; }
   };
 
-  bool     block_has_governance_output        (network_type nettype, cryptonote::block const &block);
-  uint64_t derive_governance_from_block_reward(network_type nettype, const cryptonote::block &block);
-  bool     get_governance_reward              (const cryptonote::Blockchain &blockchain, uint64_t height, uint64_t& reward);
-
   struct loki_block_reward_context
   {
     using portions = uint64_t;
@@ -111,8 +114,14 @@ namespace cryptonote
   uint64_t service_node_reward_formula(uint64_t base_reward, int hard_fork_version);
   uint64_t get_portion_of_reward      (uint64_t portions, uint64_t total_service_node_reward);
 
+  // Governance
   uint64_t governance_reward_formula            (uint64_t base_reward);
-  bool     height_has_governance_output         (cryptonote::network_type nettype, int hard_fork_version, uint64_t height);
+  bool     block_has_governance_output          (network_type nettype, cryptonote::block const &block);
+  bool     height_has_governance_output         (network_type nettype, int hard_fork_version, uint64_t height);
+
+  bool     get_batched_governance_reward        (const Blockchain &blockchain, uint64_t height, uint64_t& reward);
+  uint64_t derive_governance_from_block_reward  (network_type nettype, const cryptonote::block &block);
+
   keypair  get_deterministic_keypair_from_height(uint64_t height);
   bool     get_deterministic_output_key         (const account_public_address& address, const keypair& tx_key, size_t output_index, crypto::public_key& output_key);
   bool     validate_governance_reward_key       (uint64_t height, const std::string& governance_wallet_address_str, size_t output_index, const crypto::public_key& output_key, const cryptonote::network_type nettype);

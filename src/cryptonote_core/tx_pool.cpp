@@ -1268,7 +1268,7 @@ namespace cryptonote
     //baseline empty block
     loki_block_reward_context block_reward_context = {};
     block_reward_context.height                    = height;
-    if (!get_governance_reward(m_blockchain, height, block_reward_context.batched_governance))
+    if (!get_batched_governance_reward(m_blockchain, height, block_reward_context.batched_governance))
     {
       MERROR("Failed to calculated batched governance reward");
       return false;

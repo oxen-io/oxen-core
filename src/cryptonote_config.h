@@ -192,8 +192,7 @@ namespace config
   uint64_t const GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS = ((60 * 60 * 24 * 7) / DIFFICULTY_TARGET_V2);
   std::string const GOVERNANCE_WALLET_ADDRESS[] =
   {
-    "LCFxT37LAogDn1jLQKf4y7aAqfi21DjovX9qyijaLYQSdrxY1U5VGcnMJMjWrD9RhjeK5Lym67wZ73uh9AujXLQ1RKmXEyL", // hardfork v7-9
-    "L6hD1XVf7J16LsMnBtVrsEbUbcxvQvuR1LCUpizjKXVsarjJvdPCAWcfdMqQn5XPLBbf4HoZL38VqeZSPfq4PWKs7Gphshs", // hardfork v10
+    "LCFxT37LAogDn1jLQKf4y7aAqfi21DjovX9qyijaLYQSdrxY1U5VGcnMJMjWrD9RhjeK5Lym67wZ73uh9AujXLQ1RKmXEyL", // hardfork v7-10
   };
 
   namespace testnet
@@ -210,21 +209,11 @@ namespace config
     std::string const GENESIS_TX = "03011e001e01ff00018080c9db97f4fb270259b546996f69aa71abe4238995f41d780ab1abebcac9f00e808f147bdb9e3228420112573af8c309b69a1a646f41b5212ba7d9c4590bf86e04f36c486467cfef9d3d72000000000000000000000000000000000000000000000000000000000000000000";
     uint32_t const GENESIS_NONCE = 10001;
 
-#if 0
-    uint64_t const GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS = ((60 * 60 * 24) / DIFFICULTY_TARGET_V2);
-#else
-    uint64_t const GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS = ((60 * 60 * 24 * 7) / DIFFICULTY_TARGET_V2);
-    // uint64_t const GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS = 100;
-#endif
+    uint64_t const GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS = 1000;
     std::string const GOVERNANCE_WALLET_ADDRESS[] =
     {
-#if 0
       "T6SUprTYE5rQpep9iQFxyPcKVd91DFR1fQ1Qsyqp5eYLiFc8XuYd3reRE71qDL8c3DXioUbDEpDFdaUpetnL37NS1R3rzoKxi", // hardfork v7-9
-      "T6UBhy3UCD1Kefoe8pbuZUcA4VPF7twyA3qgjJFZRU5PAWWqk8AA4dbKADuLQcNn1RPs8c4qaFCoe7g88r3rKVdx2zHNgfp89", // hardfork v10
-#else
-      "T6TRTVFeV5ZNeXmv8CDed5BmvwrZ4CnFz11C1kbLeiMFN5zcPQw1UfxdbaXXBTSgjNMtAwCfTjbPN14jSidtzJUL1m8y9rC5h",
-      "T6SE6c3UVh6TwXF1GqFaf9apsW7ukZ1qe5jDqgeaQLhyWk9pkzH8JgeWV2mZhwBBznNyZDZFgZkY9NNRwq2xcoJm1KXsb4Z7K",
-#endif
+      "T6TzkJb5EiASaCkcH7idBEi1HSrpSQJE1Zq3aL65ojBMPZvqHNYPTL56i3dncGVNEYCG5QG5zrBmRiVwcg6b1cRM1SRNqbp44", // hardfork v10
     };
 
   }
@@ -244,7 +233,11 @@ namespace config
     uint32_t const GENESIS_NONCE = 10002;
 
     uint64_t const GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS = ((60 * 60 * 24 * 7) / DIFFICULTY_TARGET_V2);
-    std::string const GOVERNANCE_WALLET_ADDRESS = "59f7FCwYMiwMnFr8HwsnfJ2hK3DYB1tryhjsfmXqEBJojKyqKeNWoaDaZaauoZPiZHUYp2wJuy5s9H96qy4q9xUVCXXHmTU";
+    std::string const GOVERNANCE_WALLET_ADDRESS[] =
+    {
+      "59f7FCwYMiwMnFr8HwsnfJ2hK3DYB1tryhjsfmXqEBJojKyqKeNWoaDaZaauoZPiZHUYp2wJuy5s9H96qy4q9xUVCXXHmTU", // hardfork v7-9
+      "59f7FCwYMiwMnFr8HwsnfJ2hK3DYB1tryhjsfmXqEBJojKyqKeNWoaDaZaauoZPiZHUYp2wJuy5s9H96qy4q9xUVCXXHmTU", // hardfork v10
+    };
   }
 }
 
@@ -322,7 +315,7 @@ namespace cryptonote
       ::config::stagenet::GENESIS_TX,
       ::config::stagenet::GENESIS_NONCE,
       ::config::stagenet::GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS,
-      &::config::stagenet::GOVERNANCE_WALLET_ADDRESS,
+      &::config::stagenet::GOVERNANCE_WALLET_ADDRESS[0],
     };
 
     switch (nettype)
@@ -332,17 +325,14 @@ namespace cryptonote
         if (nettype == FAKECHAIN)
           mainnet.GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS = 100;
 
-        if (hard_fork_version <= network_version_9_service_nodes)
-          mainnet.GOVERNANCE_WALLET_ADDRESS = &::config::GOVERNANCE_WALLET_ADDRESS[0];
-        else
-          mainnet.GOVERNANCE_WALLET_ADDRESS = &::config::GOVERNANCE_WALLET_ADDRESS[1];
-
         return mainnet;
       }
 
       case TESTNET:
       {
-        if (hard_fork_version >= 11)
+        if (hard_fork_version <= network_version_9_service_nodes)
+          testnet.GOVERNANCE_WALLET_ADDRESS = &::config::testnet::GOVERNANCE_WALLET_ADDRESS[0];
+        else
           testnet.GOVERNANCE_WALLET_ADDRESS = &::config::testnet::GOVERNANCE_WALLET_ADDRESS[1];
 
         return testnet;
@@ -350,6 +340,11 @@ namespace cryptonote
 
       case STAGENET:
       {
+        if (hard_fork_version <= network_version_9_service_nodes)
+          stagenet.GOVERNANCE_WALLET_ADDRESS = &::config::stagenet::GOVERNANCE_WALLET_ADDRESS[0];
+        else
+          stagenet.GOVERNANCE_WALLET_ADDRESS = &::config::stagenet::GOVERNANCE_WALLET_ADDRESS[1];
+
         return stagenet;
       }
 
