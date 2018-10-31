@@ -3077,18 +3077,8 @@ bool Blockchain::check_fee(size_t tx_weight, uint64_t fee) const
     median = m_current_block_cumul_weight_limit / 2;
     already_generated_coins = m_db->height() ? m_db->get_block_already_generated_coins(m_db->height() - 1) : 0;
 
-    loki_block_reward_context block_reward_context =
-    {
-      m_db->height(),
-      fee,
-      {}, // std::vector<std::pair<account_public_address, uint64_t> snode_winners
-    };
-
-    block_reward_parts reward_parts;
-    if (!get_loki_block_reward(median, 1, already_generated_coins, version, reward_parts, block_reward_context))
+    if (!get_base_block_reward(median, 1, already_generated_coins, base_reward, version, m_db->height()))
       return false;
-
-    base_reward = reward_parts.original_base_reward;
   }
 
   uint64_t needed_fee;
@@ -3151,16 +3141,8 @@ uint64_t Blockchain::get_dynamic_base_fee_estimate(uint64_t grace_blocks) const
 
   uint64_t already_generated_coins = m_db->height() ? m_db->get_block_already_generated_coins(m_db->height() - 1) : 0;
 
-  loki_block_reward_context block_reward_context = {};
-  block_reward_context.height                    = m_db->height();
-
-  block_reward_parts reward_parts;
   uint64_t base_reward;
-  if (get_loki_block_reward(median, 1, already_generated_coins, version, reward_parts, block_reward_context))
-  {
-    base_reward = reward_parts.original_base_reward;
-  }
-  else
+  if (!get_base_block_reward(median, 1, already_generated_coins, base_reward, version, m_db->height()))
   {
     MERROR("Failed to determine block reward, using placeholder " << print_money(BLOCK_REWARD_OVERESTIMATE) << " as a high bound");
     base_reward = BLOCK_REWARD_OVERESTIMATE;
