@@ -276,6 +276,7 @@ namespace cryptonote
     : nettype(type)
     , snode_winner_key(winner)
     , snode_winner_info(winner_info)
+    , batched_governance(0)
   {
   }
 

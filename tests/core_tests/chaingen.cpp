@@ -415,6 +415,40 @@ void test_generator::add_block(const cryptonote::block& blk, size_t txs_weight, 
   m_blocks_info.insert({get_block_hash(blk), block_info(blk.prev_id, already_generated_coins + block_reward, block_weight, blk)});
 }
 
+static void manual_calc_batched_governance(const test_generator &generator, const crypto::hash &head, loki_miner_tx_context &miner_tx_context, int hard_fork_version, uint64_t height)
+{
+  miner_tx_context.batched_governance = 0;
+
+  if (hard_fork_version >= cryptonote::network_version_10_bulletproofs &&
+      cryptonote::height_has_governance_output(cryptonote::FAKECHAIN, hard_fork_version, height))
+  {
+    const cryptonote::config_t &network = cryptonote::get_config(cryptonote::FAKECHAIN, hard_fork_version);
+    uint64_t num_blocks                 = network.GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS;
+    uint64_t start_height               = height - num_blocks;
+
+    if (height < num_blocks)
+    {
+      start_height = 0;
+      num_blocks   = height;
+    }
+
+    std::vector<block> blockchain;
+    blockchain.reserve(num_blocks);
+    generator.get_block_chain(blockchain, head, num_blocks);
+
+    for (const block &entry : blockchain)
+    {
+      uint64_t block_height = cryptonote::get_block_height(entry);
+      if (block_height < start_height)
+        continue;
+
+      if (entry.major_version >= network_version_10_bulletproofs)
+        miner_tx_context.batched_governance += cryptonote::derive_governance_from_block_reward(cryptonote::FAKECHAIN, entry);
+    }
+  }
+
+}
+
 bool test_generator::construct_block(cryptonote::block& blk, uint64_t height, const crypto::hash& prev_id,
                                      const cryptonote::account_base& miner_acc, uint64_t timestamp, uint64_t already_generated_coins,
                                      std::vector<size_t>& block_weights, const std::list<cryptonote::transaction>& tx_list,
@@ -447,38 +481,12 @@ bool test_generator::construct_block(cryptonote::block& blk, uint64_t height, co
 
   blk.miner_tx = AUTO_VAL_INIT(blk.miner_tx);
   size_t target_block_weight = txs_weight + get_transaction_weight(blk.miner_tx);
+
+  cryptonote::loki_miner_tx_context miner_tx_context(cryptonote::FAKECHAIN, sn_pub_key, sn_infos);
+  manual_calc_batched_governance(*this, prev_id, miner_tx_context, m_hf_version, height);
+
   while (true)
   {
-    cryptonote::loki_miner_tx_context miner_tx_context(cryptonote::FAKECHAIN, sn_pub_key, sn_infos);
-
-    if (m_hf_version >= cryptonote::network_version_10_bulletproofs &&
-        cryptonote::height_has_governance_output(cryptonote::FAKECHAIN, m_hf_version, height))
-    {
-      std::vector<block> blockchain;
-      blockchain.reserve(height);
-      get_block_chain(blockchain, prev_id, height);
-
-      const cryptonote::config_t &network = cryptonote::get_config(cryptonote::FAKECHAIN, m_hf_version);
-      uint64_t num_blocks                 = network.GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS;
-      uint64_t start_height               = height - num_blocks;
-
-      if (height < num_blocks)
-      {
-        start_height = 0;
-        num_blocks   = height;
-      }
-
-      for (const block &entry : blockchain)
-      {
-        uint64_t block_height = cryptonote::get_block_height(entry);
-        if (block_height < start_height)
-          continue;
-
-        if (entry.major_version >= network_version_10_bulletproofs)
-          miner_tx_context.batched_governance += cryptonote::derive_governance_from_block_reward(cryptonote::FAKECHAIN, entry);
-      }
-    }
-
     if (!construct_miner_tx(height, misc_utils::median(block_weights), already_generated_coins, target_block_weight, total_fee, miner_acc.get_keys().m_account_address, blk.miner_tx, blobdata(), m_hf_version, miner_tx_context))
       return false;
 
@@ -580,13 +588,11 @@ bool test_generator::construct_block_manually(block& blk, const block& prev_bloc
   else
   {
     // TODO: This will work, until size of constructed block is less then CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE
+    cryptonote::loki_miner_tx_context miner_tx_context(cryptonote::FAKECHAIN);
+    manual_calc_batched_governance(*this, prev_id, miner_tx_context, m_hf_version, height);
 
-    // TODO(loki): If generating blocks on hard fork 10, this only works
-    // assuming that there's no batched governance payout during the duration of
-    // the test, otherwise we need to prepare the governance data on the loki
-    // miner context
     size_t current_block_weight = txs_weight + get_transaction_weight(blk.miner_tx);
-    if (!construct_miner_tx(height, misc_utils::median(block_weights), already_generated_coins, current_block_weight, 0, miner_acc.get_keys().m_account_address, blk.miner_tx, blobdata(), m_hf_version))
+    if (!construct_miner_tx(height, misc_utils::median(block_weights), already_generated_coins, current_block_weight, 0, miner_acc.get_keys().m_account_address, blk.miner_tx, blobdata(), m_hf_version, miner_tx_context))
       return false;
   }
 
