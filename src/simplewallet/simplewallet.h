@@ -246,15 +246,37 @@ namespace cryptonote
 
     struct transfer_view
     {
+      enum struct type_t { in, out, block, stake, snode };
+
+      static const char *type_string(type_t type)
+      {
+        switch(type)
+        {
+          case type_t::in:       return "in";
+          case type_t::out:      return "out";
+          case type_t::block:    return "block";
+          case type_t::stake:    return "stake";
+          case type_t::snode:    return "snode";
+          default: assert(true); return "xxxxx";
+        }
+      }
+
+      struct dest_output
+      {
+        std::string wallet_addr;
+        uint64_t    amount;
+        uint64_t    unlock_time;
+      };
+
       boost::variant<uint64_t, std::string> block;
       uint64_t timestamp;
-      std::string direction;
+      type_t type;
       bool confirmed;
       uint64_t amount;
       crypto::hash hash;
       std::string payment_id;
       uint64_t fee;
-      std::vector<std::pair<std::string, uint64_t>> outputs;
+      std::vector<dest_output> outputs;
       std::set<uint32_t> index;
       std::string note;
     };

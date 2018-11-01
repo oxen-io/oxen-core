@@ -1983,6 +1983,7 @@ void wallet2::process_outgoing(const crypto::hash &txid, const cryptonote::trans
   entry.first->second.m_block_height = height;
   entry.first->second.m_timestamp = ts;
   entry.first->second.m_unlock_time = tx.unlock_time;
+  entry.first->second.m_unlock_times = tx.output_unlock_times;
 
   add_rings(tx);
 }
