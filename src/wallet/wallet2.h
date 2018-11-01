@@ -120,9 +120,36 @@ namespace tools
     }
   };
 
+  enum struct pay_type
+  {
+    unspecified, // For serialized data before this was introduced in hardfork 10
+    in,
+    out,
+    stake,
+    miner,
+    service_node,
+    governance
+  };
+
+  inline const char *pay_type_string(pay_type type)
+  {
+    switch(type)
+    {
+      case pay_type::unspecified:  return "n/a";
+      case pay_type::in:           return "in";
+      case pay_type::out:          return "out";
+      case pay_type::stake:        return "stake";
+      case pay_type::miner:        return "miner";
+      case pay_type::service_node: return "snode";
+      case pay_type::governance:   return "gov";
+      default: assert(true);       return "xxxxx";
+    }
+  }
+
   struct tx_money_got_in_out
   {
     cryptonote::subaddress_index index;
+    pay_type type;
     uint64_t amount;
     uint64_t unlock_time;
   };
@@ -297,8 +324,10 @@ namespace tools
       uint64_t m_block_height;
       uint64_t m_unlock_time;
       uint64_t m_timestamp;
-      bool m_coinbase;
+      pay_type m_type;
       cryptonote::subaddress_index m_subaddr_index;
+
+      bool is_coinbase() const { return ((m_type == pay_type::miner) || (m_type == pay_type::service_node) || (m_type == pay_type::governance)); }
     };
 
     struct address_tx : payment_details
@@ -1666,24 +1695,24 @@ namespace boost
       a & x.m_timestamp;
       if (ver < 2)
       {
-        x.m_coinbase = false;
+        x.m_type = tools::pay_type::unspecified;
         x.m_subaddr_index = {};
         return;
       }
       a & x.m_subaddr_index;
       if (ver < 3)
       {
-        x.m_coinbase = false;
+        x.m_type = tools::pay_type::unspecified;
         x.m_fee = 0;
         return;
       }
       a & x.m_fee;
       if (ver < 4)
       {
-        x.m_coinbase = false;
+        x.m_type = tools::pay_type::unspecified;
         return;
       }
-      a & x.m_coinbase;
+      a & x.m_type;
     }
 
     template <class Archive>

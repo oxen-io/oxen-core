@@ -246,21 +246,6 @@ namespace cryptonote
 
     struct transfer_view
     {
-      enum struct type_t { in, out, block, stake, snode };
-
-      static const char *type_string(type_t type)
-      {
-        switch(type)
-        {
-          case type_t::in:       return "in";
-          case type_t::out:      return "out";
-          case type_t::block:    return "block";
-          case type_t::stake:    return "stake";
-          case type_t::snode:    return "snode";
-          default: assert(true); return "xxxxx";
-        }
-      }
-
       struct dest_output
       {
         std::string wallet_addr;
@@ -270,7 +255,7 @@ namespace cryptonote
 
       boost::variant<uint64_t, std::string> block;
       uint64_t timestamp;
-      type_t type;
+      tools::pay_type type;
       bool confirmed;
       uint64_t amount;
       crypto::hash hash;
