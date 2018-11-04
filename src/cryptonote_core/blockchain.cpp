@@ -856,7 +856,11 @@ difficulty_type Blockchain::get_difficulty_for_next_block()
     m_difficulties = difficulties;
   }
   size_t target = get_difficulty_target();
-  difficulty_type diff = next_difficulty_v2(timestamps, difficulties, target);
+  difficulty_type diff = 0;
+  if (version <= Blockchain::version_9)
+    diff = next_difficulty_v2(timestamps, difficulties, target);
+  else
+    diff = next_difficulty_v3_lwma2_hotfix(timestamps, difficulties, target);
 
   CRITICAL_REGION_LOCAL1(m_difficulty_lock);
   m_difficulty_for_next_block_top_hash = top_hash;
@@ -1075,8 +1079,14 @@ difficulty_type Blockchain::get_next_difficulty_for_alternative_chain(const std:
   // FIXME: This will fail if fork activation heights are subject to voting
   size_t target = DIFFICULTY_TARGET_V2;
 
+  difficulty_type diff = 0;
+  if (get_current_hard_fork_version() <= Blockchain::version_9)
+    diff = next_difficulty_v2(timestamps, cumulative_difficulties, target);
+  else
+    diff = next_difficulty_v3_lwma2_hotfix(timestamps, cumulative_difficulties, target);
+
   // calculate the difficulty target for the block and return it
-  return next_difficulty_v2(timestamps, cumulative_difficulties, target);
+  return diff;
 }
 //------------------------------------------------------------------
 // This function does a sanity check on basic things that all miner
