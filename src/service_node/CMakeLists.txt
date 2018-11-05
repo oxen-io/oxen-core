@@ -1,5 +1,5 @@
 # Copyright (c) 2018, The Loki Project
-# Copyright (c) 2014-2018, The Monero Project
+# Copyright (c) 2016-2018, The Monero Project
 #
 # All rights reserved.
 #
@@ -27,55 +27,37 @@
 # STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-set(cryptonote_core_sources
-  blockchain.cpp
-  cryptonote_core.cpp
-  service_node_list.cpp
-  service_node_deregister.cpp
-  quorum_cop.cpp
-  tx_pool.cpp
-  cryptonote_tx_utils.cpp)
+set(servicenode_sources
+  http_server.cpp)
 
-set(cryptonote_core_headers)
+set(servicenode_headers)
 
-set(cryptonote_core_private_headers
-  blockchain_storage_boost_serialization.h
-  blockchain.h
-  service_node_list.h
-  quorum_cop.h
-  cryptonote_core.h
-  service_node_deregister.h
-  tx_pool.h
-  cryptonote_tx_utils.h)
+set(servicenode_private_headers
+  http_server.h)
 
-if(PER_BLOCK_CHECKPOINT)
-  set(Blocks "blocks")
-else()
-  set(Blocks "")
-endif()
+loki_private_headers(service_node
+  ${servicenode_private_headers})
 
-loki_private_headers(cryptonote_core
-  ${cryptonote_core_private_headers})
-loki_add_library(cryptonote_core
-  ${cryptonote_core_sources}
-  ${cryptonote_core_headers}
-  ${cryptonote_core_private_headers})
-target_link_libraries(cryptonote_core
-  PUBLIC
-    version
-    common
-    cncrypto
-    blockchain_db
-    multisig
-    ringct
-    device
-    service_node
-    ${Boost_DATE_TIME_LIBRARY}
-    ${Boost_PROGRAM_OPTIONS_LIBRARY}
-    ${Boost_SERIALIZATION_LIBRARY}
-    ${Boost_FILESYSTEM_LIBRARY}
-    ${Boost_SYSTEM_LIBRARY}
-    ${Boost_THREAD_LIBRARY}
+add_library(service_node
+  ${servicenode_sources}
+  ${servicenode_headers}
+  ${servicenode_private_headers})
+
+add_subdirectory(storage/storage)
+add_subdirectory(storage/pow)
+
+target_link_libraries(service_node
   PRIVATE
-    ${Blocks}
-    ${EXTRA_LIBRARIES})
+  epee
+  ${Boost_LIBRARIES}
+  PUBLIC
+  sn_storage
+  pow
+)
+
+target_include_directories(service_node
+    PUBLIC
+    ${CMAKE_CURRENT_LIST_DIR}
+    PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}/..
+)

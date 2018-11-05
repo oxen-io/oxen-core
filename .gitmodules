@@ -9,3 +9,7 @@
 [submodule "external/rapidjson"]
 	path = external/rapidjson
 	url = https://github.com/Tencent/rapidjson
+[submodule "src/service_node/storage"]
+	path = src/service_node/storage
+	url = https://github.com/loki-project/loki-storage-server
+	branch = master

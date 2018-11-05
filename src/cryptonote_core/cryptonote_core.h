@@ -54,6 +54,10 @@
 PUSH_WARNINGS
 DISABLE_VS_WARNINGS(4355)
 
+namespace service_node {
+  class storage_server;
+}
+
 namespace cryptonote
 {
    struct test_options {
@@ -90,6 +94,11 @@ namespace cryptonote
        * @param pprotocol pre-constructed protocol object to store and use
        */
      core(i_cryptonote_protocol* pprotocol);
+
+      /**
+       * @brief default destructor needed for std:unique_ptr
+       */
+     ~core();
 
     /**
      * @copydoc Blockchain::handle_get_objects
@@ -1041,6 +1050,8 @@ namespace cryptonote
       * @brief do the uptime proof logic and calls for idle loop.
       */
      void do_uptime_proof_call();
+
+     std::unique_ptr<service_node::storage_server> m_storage_server;
 
      bool m_test_drop_download = true; //!< whether or not to drop incoming blocks (for testing)
 

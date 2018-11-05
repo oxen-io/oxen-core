@@ -952,6 +952,8 @@ find_library(ZMQ_LIB zmq)
 find_library(PGM_LIBRARY pgm)
 find_library(NORM_LIBRARY norm)
 find_library(SODIUM_LIBRARY sodium)
+find_path(SODIUM_INCLUDE_PATH sodium.h)
+include_directories(${SODIUM_INCLUDE_PATH})
 
 if(NOT ZMQ_INCLUDE_PATH)
   message(FATAL_ERROR "Could not find required header zmq.hpp")
