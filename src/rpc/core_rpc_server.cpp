@@ -211,8 +211,9 @@ namespace cryptonote
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
-  bool core_rpc_server::on_get_service_node_list(const COMMAND_RPC_GET_SERVICE_NODE_LIST::request& req, COMMAND_RPC_GET_SERVICE_NODE_LIST::response& res)
+  bool core_rpc_server::on_get_all_service_node_keys(const COMMAND_RPC_GET_ALL_SERVICE_NODE_KEYS::request& req, COMMAND_RPC_GET_ALL_SERVICE_NODE_KEYS::response& res)
   {
+    m_core.get_all_service_node_public_keys(res.keys);
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------

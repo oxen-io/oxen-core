@@ -1234,6 +1234,19 @@ namespace service_nodes
     return true;
   }
 
+  void service_node_list::get_all_node_public_keys(std::vector<crypto::public_key>& keys) const
+  {
+    keys.clear();
+    keys.resize(m_service_nodes_infos.size());
+
+    size_t i = 0;
+    for (const auto &it : m_service_nodes_infos)
+    {
+      keys[i++] = it.first;
+    }
+  }
+
+
   bool service_node_list::load()
   {
     LOG_PRINT_L1("service_node_list::load()");
