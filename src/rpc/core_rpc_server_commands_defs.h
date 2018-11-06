@@ -997,10 +997,10 @@ namespace cryptonote
 
     struct response
     {
-      std::vector<crypto::public_key> keys;
+      std::vector<std::string> keys;
 
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_CONTAINER_POD_AS_BLOB(keys)
+        KV_SERIALIZE(keys)
       END_KV_SERIALIZE_MAP()
     };
   };

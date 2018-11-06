@@ -211,9 +211,18 @@ namespace cryptonote
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
-  bool core_rpc_server::on_get_all_service_node_keys(const COMMAND_RPC_GET_ALL_SERVICE_NODE_KEYS::request& req, COMMAND_RPC_GET_ALL_SERVICE_NODE_KEYS::response& res)
+  bool core_rpc_server::on_get_all_service_node_keys(const COMMAND_RPC_GET_ALL_SERVICE_NODE_KEYS::request& req, COMMAND_RPC_GET_ALL_SERVICE_NODE_KEYS::response& res, epee::json_rpc::error& error_resp)
   {
-    m_core.get_all_service_node_public_keys(res.keys);
+    std::vector<crypto::public_key> keys;
+    m_core.get_all_service_node_public_keys(keys);
+
+    res.keys.clear();
+    res.keys.resize(keys.size());
+    size_t i = 0;
+    for (const auto& key : keys)
+    {
+      res.keys[i++] = string_tools::pod_to_hex(key);
+    }
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
