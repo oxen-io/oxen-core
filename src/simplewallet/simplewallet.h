@@ -54,6 +54,8 @@
 // Hardcode Monero's donation address (see #1447)
 constexpr const char MONERO_DONATION_ADDR[] = "44AFFq5kSiGBoZ4NMDwYtN18obc8AemS33DBLWs3H7otXft3XjrpDtQGv7SqSsaBYBb98uNbr2VBBEt7f2wfn3RVGQBEP3A";
 
+const int AUTOSTAKE_INTERVAL = 60 * 40; // once every 40 minutes.
+
 /*!
  * \namespace cryptonote
  * \brief Holds cryptonote related classes and helpers.
@@ -153,6 +155,8 @@ namespace cryptonote
     bool transfer(const std::vector<std::string> &args);
     bool transfer_new(const std::vector<std::string> &args);
     bool locked_transfer(const std::vector<std::string> &args);
+    bool stake(const std::vector<std::string> &args_);
+    bool register_service_node(const std::vector<std::string> &args_);
     bool locked_sweep_all(const std::vector<std::string> &args);
     bool sweep_main(uint64_t below, bool locked, const std::vector<std::string> &args);
     bool sweep_all(const std::vector<std::string> &args);
@@ -185,6 +189,7 @@ namespace cryptonote
     bool get_reserve_proof(const std::vector<std::string> &args);
     bool check_reserve_proof(const std::vector<std::string> &args);
     bool show_transfers(const std::vector<std::string> &args);
+    bool export_transfers(const std::vector<std::string> &args);
     bool unspent_outputs(const std::vector<std::string> &args);
     bool rescan_blockchain(const std::vector<std::string> &args);
     bool refresh_main(uint64_t start_height, bool reset = false, bool is_init = false);
@@ -222,6 +227,9 @@ namespace cryptonote
     bool blackballed(const std::vector<std::string>& args);
     bool version(const std::vector<std::string>& args);
 
+    bool register_service_node_main(const std::vector<std::string>& service_node_key_as_str, uint64_t expiration_timestamp, const cryptonote::account_public_address& address, uint32_t priority, const std::vector<uint64_t>& portions, const std::vector<uint8_t>& extra, std::set<uint32_t>& subaddr_indices, bool autostake);
+    bool stake_main(const crypto::public_key& service_node_key, const cryptonote::address_parse_info& parse_info, uint32_t priority, std::set<uint32_t>& subaddr_indices, uint64_t amount, double amount_fraction, bool autostake);
+
     uint64_t get_daemon_blockchain_height(std::string& err);
     bool try_connect_to_daemon(bool silent = false, uint32_t* version = nullptr);
     bool ask_wallet_create_if_needed();
@@ -231,6 +239,23 @@ namespace cryptonote
     bool print_ring_members(const std::vector<tools::wallet2::pending_tx>& ptx_vector, std::ostream& ostr);
     std::string get_prompt() const;
     bool print_seed(bool encrypted);
+    bool is_daemon_trusted() const { return *m_trusted_daemon; }
+
+    struct transfer_view
+    {
+      boost::variant<uint64_t, std::string> block;
+      uint64_t timestamp;
+      std::string direction;
+      bool confirmed;
+      uint64_t amount;
+      crypto::hash hash;
+      std::string payment_id;
+      uint64_t fee;
+      std::vector<std::pair<std::string, uint64_t>> outputs;
+      std::set<uint32_t> index;
+      std::string note;
+    };
+    bool get_transfers(std::vector<std::string>& args_, std::vector<transfer_view>& transfers) const;
 
     /*!
      * \brief Prints the seed with a nice message
@@ -333,7 +358,7 @@ namespace cryptonote
     bool m_restore_deterministic_wallet;  // recover flag
     bool m_restore_multisig_wallet;  // recover flag
     bool m_non_deterministic;  // old 2-random generation
-    bool m_trusted_daemon;
+    boost::optional<bool> m_trusted_daemon;
     bool m_allow_mismatched_daemon_version;
     bool m_restoring;           // are we restoring, by whatever method?
     uint64_t m_restore_height;  // optional

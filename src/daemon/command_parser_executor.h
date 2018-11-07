@@ -75,6 +75,18 @@ public:
 
   bool print_blockchain_info(const std::vector<std::string>& args);
 
+  bool print_quorum_state(const std::vector<std::string>& args);
+
+  bool print_sn_key(const std::vector<std::string>& args);
+
+  bool print_sr(const std::vector<std::string>& args);
+
+  bool prepare_registration();
+
+  bool print_sn(const std::vector<std::string>& args);
+
+  bool print_sn_status(const std::vector<std::string>& args);
+
   bool set_log_level(const std::vector<std::string>& args);
 
   bool set_log_categories(const std::vector<std::string>& args);

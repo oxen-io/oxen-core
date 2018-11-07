@@ -50,6 +50,9 @@ typedef struct mdb_txn_cursors
   MDB_cursor *m_txc_output_amounts;
 
   MDB_cursor *m_txc_txs;
+  MDB_cursor *m_txc_txs_pruned;
+  MDB_cursor *m_txc_txs_prunable;
+  MDB_cursor *m_txc_txs_prunable_hash;
   MDB_cursor *m_txc_tx_indices;
   MDB_cursor *m_txc_tx_outputs;
 
@@ -59,6 +62,8 @@ typedef struct mdb_txn_cursors
   MDB_cursor *m_txc_txpool_blob;
 
   MDB_cursor *m_txc_hf_versions;
+
+  MDB_cursor *m_txc_service_node_data;
 } mdb_txn_cursors;
 
 #define m_cur_blocks	m_cursors->m_txc_blocks
@@ -67,12 +72,16 @@ typedef struct mdb_txn_cursors
 #define m_cur_output_txs	m_cursors->m_txc_output_txs
 #define m_cur_output_amounts	m_cursors->m_txc_output_amounts
 #define m_cur_txs	m_cursors->m_txc_txs
+#define m_cur_txs_pruned	m_cursors->m_txc_txs_pruned
+#define m_cur_txs_prunable	m_cursors->m_txc_txs_prunable
+#define m_cur_txs_prunable_hash	m_cursors->m_txc_txs_prunable_hash
 #define m_cur_tx_indices	m_cursors->m_txc_tx_indices
 #define m_cur_tx_outputs	m_cursors->m_txc_tx_outputs
 #define m_cur_spent_keys	m_cursors->m_txc_spent_keys
 #define m_cur_txpool_meta	m_cursors->m_txc_txpool_meta
 #define m_cur_txpool_blob	m_cursors->m_txc_txpool_blob
 #define m_cur_hf_versions	m_cursors->m_txc_hf_versions
+#define m_cur_service_node_data	m_cursors->m_txc_service_node_data
 
 typedef struct mdb_rflags
 {
@@ -83,12 +92,16 @@ typedef struct mdb_rflags
   bool m_rf_output_txs;
   bool m_rf_output_amounts;
   bool m_rf_txs;
+  bool m_rf_txs_pruned;
+  bool m_rf_txs_prunable;
+  bool m_rf_txs_prunable_hash;
   bool m_rf_tx_indices;
   bool m_rf_tx_outputs;
   bool m_rf_spent_keys;
   bool m_rf_txpool_meta;
   bool m_rf_txpool_blob;
   bool m_rf_hf_versions;
+  bool m_rf_service_node_data;
 } mdb_rflags;
 
 typedef struct mdb_threadinfo
@@ -218,6 +231,8 @@ public:
   virtual uint64_t get_tx_unlock_time(const crypto::hash& h) const;
 
   virtual bool get_tx_blob(const crypto::hash& h, cryptonote::blobdata &tx) const;
+  virtual bool get_pruned_tx_blob(const crypto::hash& h, cryptonote::blobdata &tx) const;
+  virtual bool get_prunable_tx_hash(const crypto::hash& tx_hash, crypto::hash &prunable_hash) const;
 
   virtual uint64_t get_tx_count() const;
 
@@ -227,9 +242,9 @@ public:
 
   virtual uint64_t get_num_outputs(const uint64_t& amount) const;
 
-  virtual output_data_t get_output_key(const uint64_t& amount, const uint64_t& index);
+  virtual output_data_t get_output_key(const uint64_t& amount, const uint64_t& index) const;
   virtual output_data_t get_output_key(const uint64_t& global_index) const;
-  virtual void get_output_key(const uint64_t &amount, const std::vector<uint64_t> &offsets, std::vector<output_data_t> &outputs, bool allow_partial = false);
+  virtual void get_output_key(const uint64_t &amount, const std::vector<uint64_t> &offsets, std::vector<output_data_t> &outputs, bool allow_partial = false) const;
 
   virtual tx_out_index get_output_tx_and_index_from_global(const uint64_t& index) const;
   virtual void get_output_tx_and_index_from_global(const std::vector<uint64_t> &global_indices,
@@ -254,7 +269,7 @@ public:
 
   virtual bool for_all_key_images(std::function<bool(const crypto::key_image&)>) const;
   virtual bool for_blocks_range(const uint64_t& h1, const uint64_t& h2, std::function<bool(uint64_t, const crypto::hash&, const cryptonote::block&)>) const;
-  virtual bool for_all_transactions(std::function<bool(const crypto::hash&, const cryptonote::transaction&)>) const;
+  virtual bool for_all_transactions(std::function<bool(const crypto::hash&, const cryptonote::transaction&)>, bool pruned) const;
   virtual bool for_all_outputs(std::function<bool(uint64_t amount, const crypto::hash &tx_hash, uint64_t height, size_t tx_idx)> f) const;
   virtual bool for_all_outputs(uint64_t amount, const std::function<bool(uint64_t height)> &f) const;
 
@@ -293,6 +308,8 @@ public:
    */
   std::map<uint64_t, std::tuple<uint64_t, uint64_t, uint64_t>> get_output_histogram(const std::vector<uint64_t> &amounts, bool unlocked, uint64_t recent_cutoff, uint64_t min_count) const;
 
+  bool get_output_distribution(uint64_t amount, uint64_t from_height, uint64_t to_height, std::vector<uint64_t> &distribution, uint64_t &base) const;
+
 private:
   void do_resize(uint64_t size_increase=0);
 
@@ -309,7 +326,7 @@ private:
 
   virtual void remove_block();
 
-  virtual uint64_t add_transaction_data(const crypto::hash& blk_hash, const transaction& tx, const crypto::hash& tx_hash);
+  virtual uint64_t add_transaction_data(const crypto::hash& blk_hash, const transaction& tx, const crypto::hash& tx_hash, const crypto::hash& tx_prunable_hash);
 
   virtual void remove_transaction_data(const crypto::hash& tx_hash, const transaction& tx);
 
@@ -371,7 +388,15 @@ private:
   // migrate from DB version 0 to 1
   void migrate_0_1();
 
+  // migrate from DB version 1 to 2
+  void migrate_1_2();
+
   void cleanup_batch();
+
+
+  virtual void set_service_node_data(const std::string& data);
+  virtual bool get_service_node_data(std::string& data);
+  virtual void clear_service_node_data();
 
 private:
   MDB_env* m_env;
@@ -381,6 +406,9 @@ private:
   MDB_dbi m_block_info;
 
   MDB_dbi m_txs;
+  MDB_dbi m_txs_pruned;
+  MDB_dbi m_txs_prunable;
+  MDB_dbi m_txs_prunable_hash;
   MDB_dbi m_tx_indices;
   MDB_dbi m_tx_outputs;
 
@@ -394,6 +422,8 @@ private:
 
   MDB_dbi m_hf_starting_heights;
   MDB_dbi m_hf_versions;
+
+  MDB_dbi m_service_node_data;
 
   MDB_dbi m_properties;
 

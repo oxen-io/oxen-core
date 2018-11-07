@@ -55,21 +55,19 @@ namespace cryptonote
   /*                                                                      */
   /************************************************************************/
 
-  //! pair of <transaction fee, transaction hash> for organization
-  typedef std::pair<std::pair<double, std::time_t>, crypto::hash> tx_by_fee_and_receive_time_entry;
+  //! tuple of <deregister, transaction fee, receive time> for organization
+  typedef std::pair<std::tuple<bool, double, std::time_t>, crypto::hash> tx_by_fee_and_receive_time_entry;
 
   class txCompare
   {
   public:
     bool operator()(const tx_by_fee_and_receive_time_entry& a, const tx_by_fee_and_receive_time_entry& b)
     {
-      // sort by greatest first, not least
-      if (a.first.first > b.first.first) return true;
-      else if (a.first.first < b.first.first) return false;
-      else if (a.first.second < b.first.second) return true;
-      else if (a.first.second > b.first.second) return false;
-      else if (a.second != b.second) return true;
-      else return false;
+      std::string ahash(a.second.data, sizeof(a.second.data));
+      std::string bhash(b.second.data, sizeof(b.second.data));
+      //      prioritize      deregister             fee                   arrival time      hash
+      return std::make_tuple(!std::get<0>(a.first), -std::get<1>(a.first), std::get<2>(a.first), ahash)
+           < std::make_tuple(!std::get<0>(b.first), -std::get<1>(b.first), std::get<2>(b.first), bhash);
     }
   };
 
@@ -228,7 +226,7 @@ namespace cryptonote
      *
      * @return true
      */
-    bool fill_block_template(block &bl, size_t median_size, uint64_t already_generated_coins, size_t &total_size, uint64_t &fee, uint64_t &expected_reward, uint8_t version);
+    bool fill_block_template(block &bl, size_t median_size, uint64_t already_generated_coins, size_t &total_size, uint64_t &fee, uint64_t &expected_reward, uint8_t version, uint64_t height);
 
     /**
      * @brief get a list of all transactions in the pool
@@ -237,7 +235,7 @@ namespace cryptonote
      * @param include_unrelayed_txes include unrelayed txes in the result
      *
      */
-    void get_transactions(std::list<transaction>& txs, bool include_unrelayed_txes = true) const;
+    void get_transactions(std::vector<transaction>& txs, bool include_unrelayed_txes = true) const;
 
     /**
      * @brief get a list of all transaction hashes in the pool
@@ -324,14 +322,14 @@ namespace cryptonote
      *
      * @return true
      */
-    bool get_relayable_transactions(std::list<std::pair<crypto::hash, cryptonote::blobdata>>& txs) const;
+    bool get_relayable_transactions(std::vector<std::pair<crypto::hash, cryptonote::blobdata>>& txs) const;
 
     /**
      * @brief tell the pool that certain transactions were just relayed
      *
      * @param txs the list of transactions (and their hashes)
      */
-    void set_relayed(const std::list<std::pair<crypto::hash, cryptonote::blobdata>>& txs);
+    void set_relayed(const std::vector<std::pair<crypto::hash, cryptonote::blobdata>>& txs);
 
     /**
      * @brief get the total number of transactions in the pool
@@ -447,6 +445,14 @@ namespace cryptonote
      * @return true if the spent key image is present, otherwise false
      */
     bool have_tx_keyimg_as_spent(const crypto::key_image& key_im) const;
+
+    /**
+     * @brief check if the deregistration tx already exists in the pool.
+
+     * @return true if it already exists
+     *
+     */
+    bool have_deregister_tx_already(transaction const &tx) const;
 
     /**
      * @brief check if any spent key image in a transaction is in the pool

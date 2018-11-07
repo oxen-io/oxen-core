@@ -77,6 +77,7 @@ namespace tools
     //         tx_not_possible
     //         not_enough_outs_to_mix
     //         tx_not_constructed
+    //         vote_rejected
     //         tx_rejected
     //         tx_sum_overflow
     //         tx_too_big
@@ -119,14 +120,16 @@ namespace tools
       "failed to get blocks",
       "failed to get hashes",
       "failed to get out indices",
-      "failed to get random outs"
+      "failed to get random outs",
+      "failed to get service_node_list",
     };
     enum failed_rpc_request_message_indices
     {
       get_blocks_error_message_index,
       get_hashes_error_message_index,
       get_out_indices_error_message_index,
-      get_random_outs_error_message_index
+      get_random_outs_error_message_index,
+      get_service_nodes_error_message_index
     };
 
     template<typename Base, int msg_index>
@@ -367,6 +370,8 @@ namespace tools
     };
     //----------------------------------------------------------------------------------------------------
     typedef failed_rpc_request<refresh_error, get_blocks_error_message_index> get_blocks_error;
+    //----------------------------------------------------------------------------------------------------
+    typedef failed_rpc_request<refresh_error, get_service_nodes_error_message_index> get_service_nodes_error;
     //----------------------------------------------------------------------------------------------------
     typedef failed_rpc_request<refresh_error, get_hashes_error_message_index> get_hashes_error;
     //----------------------------------------------------------------------------------------------------
@@ -616,6 +621,34 @@ namespace tools
 
     private:
       cryptonote::transaction m_tx;
+      std::string m_status;
+      std::string m_reason;
+    };
+    //----------------------------------------------------------------------------------------------------
+    struct vote_rejected : public transfer_error
+    {
+      explicit vote_rejected(std::string&& loc, const std::string& status, const std::string& reason)
+        : transfer_error(std::move(loc), "vote was rejected by daemon")
+        , m_status(status)
+        , m_reason(reason)
+      {
+      }
+
+      const std::string& status() const { return m_status; }
+      const std::string& reason() const { return m_reason; }
+
+      std::string to_string() const
+      {
+        std::ostringstream ss;
+        ss << transfer_error::to_string() << ", status = " << m_status;
+        if (!m_reason.empty())
+        {
+          ss << " (" << m_reason << ")";
+        }
+        return ss.str();
+      }
+
+    private:
       std::string m_status;
       std::string m_reason;
     };

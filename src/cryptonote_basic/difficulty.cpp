@@ -37,6 +37,7 @@
 #include <boost/math/special_functions/round.hpp>
 
 #include "common/int-util.h"
+#include "common/round.h"
 #include "crypto/hash.h"
 #include "cryptonote_config.h"
 #include "difficulty.h"
@@ -153,7 +154,7 @@ namespace cryptonote {
 
     size_t N = DIFFICULTY_WINDOW_V2 - 1;
 
-    // Return a difficulty of 1 for first 3 blocks if it's the start of the chain.
+    // Return a difficulty of 1 for first 4 blocks if it's the start of the chain.
     if (timestamps.size() < 4) {
       return 1;
     }
@@ -190,7 +191,7 @@ namespace cryptonote {
     harmonic_mean_D = N / sum_inverse_D;
 
     // Keep LWMA sane in case something unforeseen occurs.
-    if (static_cast<int64_t>(boost::math::round(LWMA)) < T / 20)
+    if (static_cast<int64_t>(loki_round(LWMA)) < T / 20)
       LWMA = static_cast<double>(T / 20);
 
     nextDifficulty = harmonic_mean_D * T / LWMA * adjust;
@@ -198,6 +199,10 @@ namespace cryptonote {
     // No limits should be employed, but this is correct way to employ a 20% symmetrical limit:
     // nextDifficulty=max(previous_Difficulty*0.8,min(previous_Difficulty/0.8, next_Difficulty));
     next_difficulty = static_cast<uint64_t>(nextDifficulty);
+
+    if (next_difficulty == 0)
+        next_difficulty = 1;
+
     return next_difficulty;
   }
 }

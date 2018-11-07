@@ -398,9 +398,10 @@ private:
    * @param blk_hash the hash of the block containing the transaction
    * @param tx the transaction to be added
    * @param tx_hash the hash of the transaction
+   * @param tx_prunable_hash the hash of the prunable part of the transaction
    * @return the transaction ID
    */
-  virtual uint64_t add_transaction_data(const crypto::hash& blk_hash, const transaction& tx, const crypto::hash& tx_hash) = 0;
+  virtual uint64_t add_transaction_data(const crypto::hash& blk_hash, const transaction& tx, const crypto::hash& tx_hash, const crypto::hash& tx_prunable_hash) = 0;
 
   /**
    * @brief remove data about a transaction
@@ -526,8 +527,9 @@ protected:
    * @param blk_hash hash of the block which has the transaction
    * @param tx the transaction to add
    * @param tx_hash_ptr the hash of the transaction, if already calculated
+   * @param tx_prunable_hash_ptr the hash of the prunable part of the transaction, if already calculated
    */
-  void add_transaction(const crypto::hash& blk_hash, const transaction& tx, const crypto::hash* tx_hash_ptr = NULL);
+  void add_transaction(const crypto::hash& blk_hash, const transaction& tx, const crypto::hash* tx_hash_ptr = NULL, const crypto::hash* tx_prunable_hash_ptr = NULL);
 
   mutable uint64_t time_tx_exists = 0;  //!< a performance metric
   uint64_t time_commit1 = 0;  //!< a performance metric
@@ -1081,6 +1083,22 @@ public:
    */
   virtual uint64_t get_tx_unlock_time(const crypto::hash& h) const = 0;
 
+  // return unlock time of output with the given amount and output amount index
+  /**
+   * @brief fetch an output's unlock time/height
+   *
+   * The subclass should return the stored unlock time for the output
+   * with the given amount and output amount index.
+   *
+   * If no such output exists, the subclass should throw OUTPUT_DNE.
+   *
+   * @param amount the amount of the requested output
+   * @param amount_index the amount index of the requested output
+   *
+   * @return the unlock time/height
+   */
+  uint64_t get_output_unlock_time(const uint64_t amount, const uint64_t global_index) const;
+
   // return tx with hash <h>
   // throw if no such tx exists
   /**
@@ -1118,6 +1136,33 @@ public:
    * @return true iff the transaction was found
    */
   virtual bool get_tx_blob(const crypto::hash& h, cryptonote::blobdata &tx) const = 0;
+
+  /**
+   * @brief fetches the pruned transaction blob with the given hash
+   *
+   * The subclass should return the pruned transaction stored which has the given
+   * hash.
+   *
+   * If the transaction does not exist, the subclass should return false.
+   *
+   * @param h the hash to look for
+   *
+   * @return true iff the transaction was found
+   */
+  virtual bool get_pruned_tx_blob(const crypto::hash& h, cryptonote::blobdata &tx) const = 0;
+
+  /**
+   * @brief fetches the prunable transaction hash
+   *
+   * The subclass should return the hash of the prunable transaction data.
+   *
+   * If the transaction hash does not exist, the subclass should return false.
+   *
+   * @param h the tx hash to look for
+   *
+   * @return true iff the transaction was found
+   */
+  virtual bool get_prunable_tx_hash(const crypto::hash& tx_hash, crypto::hash &prunable_hash) const = 0;
 
   /**
    * @brief fetches the total number of transactions ever
@@ -1200,7 +1245,7 @@ public:
    *
    * @return the requested output data
    */
-  virtual output_data_t get_output_key(const uint64_t& amount, const uint64_t& index) = 0;
+  virtual output_data_t get_output_key(const uint64_t& amount, const uint64_t& index) const = 0;
 
   /**
    * @brief get some of an output's data
@@ -1269,7 +1314,7 @@ public:
    * @param offsets a list of amount-specific output indices
    * @param outputs return-by-reference a list of outputs' metadata
    */
-  virtual void get_output_key(const uint64_t &amount, const std::vector<uint64_t> &offsets, std::vector<output_data_t> &outputs, bool allow_partial = false) = 0;
+  virtual void get_output_key(const uint64_t &amount, const std::vector<uint64_t> &offsets, std::vector<output_data_t> &outputs, bool allow_partial = false) const = 0;
   
   /*
    * FIXME: Need to check with git blame and ask what this does to
@@ -1426,10 +1471,11 @@ public:
    * not found.  Current implementations simply return false.
    *
    * @param std::function fn the function to run
+   * @param bool pruned whether to only get pruned tx data, or the whole
    *
    * @return false if the function returns false for any transaction, otherwise true
    */
-  virtual bool for_all_transactions(std::function<bool(const crypto::hash&, const cryptonote::transaction&)>) const = 0;
+  virtual bool for_all_transactions(std::function<bool(const crypto::hash&, const cryptonote::transaction&)>, bool pruned) const = 0;
 
   /**
    * @brief runs a function over all outputs stored
@@ -1496,6 +1542,8 @@ public:
    */
   virtual std::map<uint64_t, std::tuple<uint64_t, uint64_t, uint64_t>> get_output_histogram(const std::vector<uint64_t> &amounts, bool unlocked, uint64_t recent_cutoff, uint64_t min_count) const = 0;
 
+  virtual bool get_output_distribution(uint64_t amount, uint64_t from_height, uint64_t to_height, std::vector<uint64_t> &distribution, uint64_t &base) const = 0;
+
   /**
    * @brief is BlockchainDB in read-only mode?
    *
@@ -1509,6 +1557,10 @@ public:
    * @brief fix up anything that may be wrong due to past bugs
    */
   virtual void fixup();
+
+  virtual void set_service_node_data(const std::string& data) = 0;
+  virtual bool get_service_node_data(std::string& data) = 0;
+  virtual void clear_service_node_data() = 0;
 
   /**
    * @brief set whether or not to automatically remove logs

@@ -184,7 +184,7 @@ bool tests::proxy_core::handle_incoming_tx(const cryptonote::blobdata& tx_blob, 
     return true;
 }
 
-bool tests::proxy_core::handle_incoming_txs(const std::list<blobdata>& tx_blobs, std::vector<tx_verification_context>& tvc, bool keeped_by_block, bool relayed, bool do_not_relay)
+bool tests::proxy_core::handle_incoming_txs(const std::vector<blobdata>& tx_blobs, std::vector<tx_verification_context>& tvc, bool keeped_by_block, bool relayed, bool do_not_relay)
 {
     tvc.resize(tx_blobs.size());
     size_t i = 0;
@@ -221,6 +221,12 @@ bool tests::proxy_core::handle_incoming_block(const cryptonote::blobdata& block_
         return false;
 
     return true;
+}
+
+bool tests::proxy_core::handle_uptime_proof(uint64_t timestamp, const crypto::public_key& pubkey, const crypto::signature& sig)
+{
+  // TODO: add tests for core uptime proof checking.
+  return false; // never relay these for tests.
 }
 
 bool tests::proxy_core::get_short_chain_history(std::list<crypto::hash>& ids) {

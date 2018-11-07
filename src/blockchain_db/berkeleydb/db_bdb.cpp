@@ -313,7 +313,7 @@ void BlockchainBDB::remove_block()
         throw1(DB_ERROR("Failed to add removal of block hash to db transaction"));
 }
 
-void BlockchainBDB::add_transaction_data(const crypto::hash& blk_hash, const transaction& tx, const crypto::hash& tx_hash)
+void BlockchainBDB::add_transaction_data(const crypto::hash& blk_hash, const transaction& tx, const crypto::hash& tx_hash, const crypto::hash& tx_prunable_hash)
 {
     LOG_PRINT_L3("BlockchainBDB::" << __func__);
     check_open();
@@ -655,7 +655,7 @@ bool BlockchainBDB::for_all_blocks(std::function<bool(uint64_t, const crypto::ha
     return ret;
 }
 
-bool BlockchainBDB::for_all_transactions(std::function<bool(const crypto::hash&, const cryptonote::transaction&)> f) const
+bool BlockchainBDB::for_all_transactions(std::function<bool(const crypto::hash&, const cryptonote::transaction&)> f, bool pruned) const
 {
     LOG_PRINT_L3("BlockchainBDB::" << __func__);
     check_open();
@@ -1650,7 +1650,7 @@ output_data_t BlockchainBDB::get_output_key(const uint64_t& global_index) const
     return v;
 }
 
-output_data_t BlockchainBDB::get_output_key(const uint64_t& amount, const uint64_t& index)
+output_data_t BlockchainBDB::get_output_key(const uint64_t& amount, const uint64_t& index) const
 {
     LOG_PRINT_L3("BlockchainBDB::" << __func__);
     check_open();
@@ -2135,7 +2135,7 @@ void BlockchainBDB::get_output_global_indices(const uint64_t& amount, const std:
 
 }
 
-void BlockchainBDB::get_output_key(const uint64_t &amount, const std::vector<uint64_t> &offsets, std::vector<output_data_t> &outputs)
+void BlockchainBDB::get_output_key(const uint64_t &amount, const std::vector<uint64_t> &offsets, std::vector<output_data_t> &outputs) const
 {
     LOG_PRINT_L3("BlockchainBDB::" << __func__);
     check_open();
@@ -2339,6 +2339,19 @@ void BlockchainBDB::fixup()
   LOG_PRINT_L3("BlockchainBDB::" << __func__);
   // Always call parent as well
   BlockchainDB::fixup();
+}
+
+void BlockchainBDB::set_service_node_data(const std::string& data)
+{
+}
+
+bool BlockchainBDB::get_service_node_data(std::string& data)
+{
+  return false;
+}
+
+void BlockchainBDB::clear_service_node_data()
+{
 }
 
 }  // namespace cryptonote

@@ -41,15 +41,31 @@
 #define CRYPTONOTE_MAX_TX_SIZE                          1000000000
 #define CRYPTONOTE_PUBLIC_ADDRESS_TEXTBLOB_VER          0
 #define CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW            30
-#define CURRENT_TRANSACTION_VERSION                     2
-#define CURRENT_BLOCK_MAJOR_VERSION                     6
-#define CURRENT_BLOCK_MINOR_VERSION                     6
+#define CURRENT_TRANSACTION_VERSION                     3
+#define CURRENT_BLOCK_MAJOR_VERSION                     7
+#define CURRENT_BLOCK_MINOR_VERSION                     7
 #define CURRENT_BLOCK_MAJOR_VERSION_TESTNET             7
 #define CURRENT_BLOCK_MINOR_VERSION_TESTNET             7
 #define CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT_V2           60*10
 #define CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE             10
 
+#define STAKING_REQUIREMENT_LOCK_BLOCKS_EXCESS          20
+#define STAKING_PORTIONS                                UINT64_C(0xfffffffffffffffc)
+#define MAX_NUMBER_OF_CONTRIBUTORS                      4
+#define MIN_PORTIONS                                    (STAKING_PORTIONS / MAX_NUMBER_OF_CONTRIBUTORS)
+
+static_assert(STAKING_PORTIONS % MAX_NUMBER_OF_CONTRIBUTORS == 0, "Use a multiple of four, so that it divides easily by max number of contributors.");
+static_assert(STAKING_PORTIONS % 2 == 0, "Use a multiple of two, so that it divides easily by two contributors.");
+static_assert(STAKING_PORTIONS % 3 == 0, "Use a multiple of three, so that it divides easily by three contributors.");
+
+#define STAKING_AUTHORIZATION_EXPIRATION_WINDOW         (60*60*24*7*2)  // 2 weeks
+#define STAKING_AUTHORIZATION_EXPIRATION_AUTOSTAKE      (60*60*24*365*2) // 2 years
+
 #define BLOCKCHAIN_TIMESTAMP_CHECK_WINDOW               11
+
+#define UPTIME_PROOF_BUFFER_IN_SECONDS                  (5*60) // The acceptable window of time to accept a peer's uptime proof from its reported timestamp
+#define UPTIME_PROOF_FREQUENCY_IN_SECONDS               (60*60)
+#define UPTIME_PROOF_MAX_TIME_IN_SECONDS                (UPTIME_PROOF_FREQUENCY_IN_SECONDS * 2 + UPTIME_PROOF_BUFFER_IN_SECONDS)
 
 // MONEY_SUPPLY - total number coins to be generated
 #define MONEY_SUPPLY                                    ((uint64_t)(-1))
@@ -78,7 +94,6 @@
 
 #define ORPHANED_BLOCKS_MAX_COUNT                       100
 
-
 #define DIFFICULTY_TARGET_V2                            120  // seconds
 #define DIFFICULTY_WINDOW_V2                            60
 #define DIFFICULTY_LAG                                  15  // !!!
@@ -99,6 +114,8 @@
 
 #define CRYPTONOTE_MEMPOOL_TX_LIVETIME                    (86400*3) //seconds, three days
 #define CRYPTONOTE_MEMPOOL_TX_FROM_ALT_BLOCK_LIVETIME     604800 //seconds, one week
+
+#define MEMPOOL_PRUNE_DEREGISTER_LIFETIME               (2 * 60 * 60) // seconds, 2 hours
 
 #define COMMAND_RPC_GET_BLOCKS_FAST_MAX_COUNT           1000
 
@@ -173,16 +190,16 @@ namespace config
     uint64_t const CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX = 156;
     uint64_t const CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 157;
     uint64_t const CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX = 158;
-    uint16_t const P2P_DEFAULT_PORT = 38150;
-    uint16_t const RPC_DEFAULT_PORT = 38151;
-    uint16_t const ZMQ_RPC_DEFAULT_PORT = 38152;
+    uint16_t const P2P_DEFAULT_PORT = 38156;
+    uint16_t const RPC_DEFAULT_PORT = 38157;
+    uint16_t const ZMQ_RPC_DEFAULT_PORT = 38158;
     boost::uuids::uuid const NETWORK_ID = { {
-        0x44, 0xb3, 0xe9, 0xef, 0x80, 0xc0, 0x08, 0x19, 0xb4, 0x2c, 0x83, 0xec, 0xef, 0x59, 0x24, 0xfd
+        0x5f, 0x3a, 0x78, 0x65, 0xe1, 0x6f, 0xca, 0xb8, 0x02, 0xa1, 0xdc, 0x17, 0x61, 0x64, 0x15, 0xbe,
       } }; // Bender's daydream
-    std::string const GENESIS_TX = "023c01ff000380808d93f5d77102f56d7e3964e698b1f191c712f44b117c18730b7ade87a283d62f320d67b6d13a8080b4ccd4dfc603028a90618702a3467272fdf91f846af7781e51a0ef15e0d2758a492a61052924ed808088fccdbcc32302ee870fafbc9773a3e7a38ff3d4757234cca81caa7672a16b78ffacf3916079752101bdc9cab7a702c1636778ec61cef1c037cceaf1e3d2146fea6ecacd872d29587e00";
+    std::string const GENESIS_TX = "03011e001e01ff00018080c9db97f4fb270259b546996f69aa71abe4238995f41d780ab1abebcac9f00e808f147bdb9e3228420112573af8c309b69a1a646f41b5212ba7d9c4590bf86e04f36c486467cfef9d3d72000000000000000000000000000000000000000000000000000000000000000000";
     uint32_t const GENESIS_NONCE = 10001;
 
-    std::string const GOVERNANCE_WALLET_ADDRESS = "T6U5dnmhyw1XsDryZUZL4hAwkNDYahFLEbhyfipTJ2ZZLV1Epm5zHTf6SQzxre9V8R9zjSPN6WWiT9adBQYt7Wut2xjon6dgT";
+    std::string const GOVERNANCE_WALLET_ADDRESS = "T6SUprTYE5rQpep9iQFxyPcKVd91DFR1fQ1Qsyqp5eYLiFc8XuYd3reRE71qDL8c3DXioUbDEpDFdaUpetnL37NS1R3rzoKxi";
   }
 
   namespace stagenet

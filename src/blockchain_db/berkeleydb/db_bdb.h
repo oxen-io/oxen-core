@@ -300,9 +300,9 @@ public:
 
   virtual uint64_t get_indexing_base() const { return 1; }
 
-  virtual output_data_t get_output_key(const uint64_t& amount, const uint64_t& index);
+  virtual output_data_t get_output_key(const uint64_t& amount, const uint64_t& index) const;
   virtual output_data_t get_output_key(const uint64_t& global_index) const;
-  virtual void get_output_key(const uint64_t &amount, const std::vector<uint64_t> &offsets, std::vector<output_data_t> &outputs);
+  virtual void get_output_key(const uint64_t &amount, const std::vector<uint64_t> &offsets, std::vector<output_data_t> &outputs) const;
 
   virtual tx_out_index get_output_tx_and_index_from_global(const uint64_t& index) const;
   virtual void get_output_tx_and_index_from_global(const std::vector<uint64_t> &global_indices,
@@ -360,7 +360,7 @@ private:
 
   virtual void remove_block();
 
-  virtual void add_transaction_data(const crypto::hash& blk_hash, const transaction& tx, const crypto::hash& tx_hash);
+  virtual void add_transaction_data(const crypto::hash& blk_hash, const transaction& tx, const crypto::hash& tx_hash, const crypto::hash& tx_prunable_hash);
 
   virtual void remove_transaction_data(const crypto::hash& tx_hash, const transaction& tx);
 
@@ -381,7 +381,7 @@ private:
 
   virtual bool for_all_key_images(std::function<bool(const crypto::key_image&)>) const;
   virtual bool for_all_blocks(std::function<bool(uint64_t, const crypto::hash&, const cryptonote::block&)>) const;
-  virtual bool for_all_transactions(std::function<bool(const crypto::hash&, const cryptonote::transaction&)>) const;
+  virtual bool for_all_transactions(std::function<bool(const crypto::hash&, const cryptonote::transaction&)>, bool pruned) const;
   virtual bool for_all_outputs(std::function<bool(uint64_t amount, const crypto::hash &tx_hash, size_t tx_idx)> f) const;
 
   // Hard fork related storage
@@ -425,6 +425,10 @@ private:
   //
   // fix up anything that may be wrong due to past bugs
   virtual void fixup();
+
+  virtual void set_service_node_data(const std::string& data);
+  virtual bool get_service_node_data(std::string& data);
+  virtual void clear_service_node_data();
 
   bool m_run_checkpoint;
   std::unique_ptr<boost::thread> m_checkpoint_thread;

@@ -1,6 +1,6 @@
 #define DEF_LOKI_VERSION_TAG "@VERSIONTAG@"
-#define DEF_LOKI_VERSION "0.1.0-master"
-#define DEF_LOKI_RELEASE_NAME "Occasional Odin"
+#define DEF_LOKI_VERSION "1.0.4"
+#define DEF_LOKI_RELEASE_NAME "Magic Mani"
 #define DEF_LOKI_VERSION_FULL DEF_LOKI_VERSION "-" DEF_LOKI_VERSION_TAG
 
 #include "version.h"

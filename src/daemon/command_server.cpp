@@ -96,6 +96,42 @@ t_command_server::t_command_server(
     , "Print a given transaction."
     );
   m_command_lookup.set_handler(
+      "print_quorum_state"
+    , std::bind(&t_command_parser_executor::print_quorum_state, &m_parser, p::_1)
+    , "print_quorum_state <height>"
+    , "Print the quorum state for the block height."
+    );
+  m_command_lookup.set_handler(
+      "print_sn_key"
+    , std::bind(&t_command_parser_executor::print_sn_key, &m_parser, p::_1)
+    , "print_sn_key"
+    , "Print this daemon's service node key, if it is one and launched in service node mode."
+    );
+  m_command_lookup.set_handler(
+      "print_sr"
+    , std::bind(&t_command_parser_executor::print_sr, &m_parser, p::_1)
+    , "print_sr <height>"
+    , "Print the staking requirement for the height."
+    );
+  m_command_lookup.set_handler(
+      "prepare_registration"
+    , std::bind(&t_command_parser_executor::prepare_registration, &m_parser)
+    , "prepare_registration"
+    , "Interactive prompt to prepare the registration. The resulting registration data is saved to disk."
+    );
+  m_command_lookup.set_handler(
+      "print_sn"
+    , std::bind(&t_command_parser_executor::print_sn, &m_parser, p::_1)
+    , "print_sn [<pubkey> [...]]"
+    , "Print service node registration info for the current height"
+    );
+  m_command_lookup.set_handler(
+      "print_sn_status"
+    , std::bind(&t_command_parser_executor::print_sn_status, &m_parser, p::_1)
+    , "print_sn_status"
+    , "Print service node registration info for this service node"
+    );
+  m_command_lookup.set_handler(
       "is_key_image_spent"
     , std::bind(&t_command_parser_executor::is_key_image_spent, &m_parser, p::_1)
     , "is_key_image_spent <key_image>"
