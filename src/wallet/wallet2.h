@@ -1235,6 +1235,8 @@ namespace tools
     bool unblackball_output(const std::pair<uint64_t, uint64_t> &output);
     bool is_output_blackballed(const std::pair<uint64_t, uint64_t> &output) const;
 
+    std::vector<wallet2::pending_tx> create_stake_tx(const crypto::public_key& service_node_key, const cryptonote::account_public_address& address, uint64_t amount);
+
     bool lock_keys_file();
     bool unlock_keys_file();
     bool is_keys_file_locked() const;

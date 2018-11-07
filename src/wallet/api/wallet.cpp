@@ -40,6 +40,8 @@
 #include "common_defines.h"
 #include "common/util.h"
 
+#include "cryptonote_core/service_node_rules.h"
+
 #include "mnemonics/electrum-words.h"
 #include "mnemonics/english.h"
 #include <boost/format.hpp>
@@ -287,6 +289,12 @@ bool Wallet::paymentIdValid(const string &paiment_id)
     if (tools::wallet2::parse_long_payment_id(paiment_id, pid))
         return true;
     return false;
+}
+
+bool Wallet::serviceNodePubkeyValid(const std::string &str)
+{
+    crypto::public_key sn_key;
+    return epee::string_tools::hex_to_pod(str, sn_key);
 }
 
 bool Wallet::addressValid(const std::string &str, NetworkType nettype)
@@ -2319,6 +2327,108 @@ bool WalletImpl::isKeysFileLocked()
 {
     return m_wallet->is_keys_file_locked();
 }
+
+PendingTransaction* WalletImpl::stakePending(const std::string& sn_key_str, const std::string& address_str, const std::string& amount_str)
+{
+
+  crypto::public_key sn_key;
+  if (!epee::string_tools::hex_to_pod(sn_key_str, sn_key)) {
+    LOG_ERROR("failed to parse service node pubkey");
+    return nullptr;
+  }
+
+  cryptonote::address_parse_info addr_info;
+  if (!cryptonote::get_account_address_from_str_or_url(addr_info, m_wallet->nettype(), address_str)) {
+    LOG_ERROR("failed to parse address");
+    return nullptr;
+  } else {
+    std::cerr << "address parsed: OK\n";
+  }
+
+  uint64_t amount;
+  if (!cryptonote::parse_amount(amount, amount_str)) {
+    LOG_ERROR("amount is wrong: " << amount_str << ", " << "expected number from " << print_money(1)
+              << " to " << print_money(std::numeric_limits<uint64_t>::max()));
+    return nullptr;
+  }
+
+  if (addr_info.has_payment_id) {
+    LOG_ERROR("Do not use payment ids for staking.");
+    return nullptr;
+  }
+
+  if (!m_wallet->contains_address(addr_info.address)) {
+    LOG_ERROR("The specified address is not owned by this wallet.");
+    return nullptr;
+  }
+
+  {
+    /// check that the service node is registered
+    const auto& response = m_wallet->get_service_nodes({ sn_key_str });
+    if (response.service_node_states.size() != 1)
+    {
+      LOG_ERROR("Could not find service node in service node list, please make sure it is registered first.");
+      return nullptr;
+    }
+
+    const auto& snode_info = response.service_node_states.front();
+
+    const bool full = snode_info.contributors.size() >= MAX_NUMBER_OF_CONTRIBUTORS;
+
+    /// maximum to contribute (unless we have some amount reserved for us)
+    uint64_t max_contrib_total = snode_info.staking_requirement - snode_info.total_reserved;
+
+    /// decrease if some reserved for us
+    uint64_t min_contrib_total = service_nodes::get_min_node_contribution(snode_info.staking_requirement, snode_info.total_reserved);
+
+    bool is_preexisting_contributor = false;
+    for (const auto& contributor : snode_info.contributors)
+    {
+      address_parse_info info;
+      if (!cryptonote::get_account_address_from_str(info, m_wallet->nettype(), contributor.address))
+        continue;
+
+      if (info.address == addr_info.address)
+      {
+        /// reserved for us, so we can contribute some more
+        max_contrib_total += contributor.reserved - contributor.amount;
+        /// in this case we can contribute as little as we want
+        min_contrib_total = 0;
+        is_preexisting_contributor = true;
+      }
+    }
+
+    /// a. Check if there is room for us
+    if (full && !is_preexisting_contributor) {
+        LOG_ERROR("The service node is full.");
+        return nullptr;
+    }
+
+    /// b. Check if the amount is too small
+    if (amount < min_contrib_total) {
+        LOG_ERROR("You must contribute at least " << print_money(min_contrib_total) << " loki to become a contributor for this service node.");
+        return nullptr;
+    }
+
+    /// c. Check if the amount is too big
+    if (amount > max_contrib_total)
+    {
+      LOG_ERROR("You may only contribute up to ") << print_money(max_contrib_total) << tr(" more loki to this service node") << std::endl;
+      LOG_ERROR("Reducing your stake from ") << print_money(amount) << tr(" to ") << print_money(max_contrib_total) << std::endl;
+      amount = max_contrib_total;
+    }
+
+  }
+
+  /// TODO: who is cleaning this up?
+  PendingTransactionImpl * transaction = new PendingTransactionImpl(*this);
+
+  transaction->m_pending_tx = m_wallet->create_stake_tx(sn_key, addr_info.address, amount);
+
+  return transaction;
+}
+
+
 } // namespace
 
 namespace Bitmonero = Monero;

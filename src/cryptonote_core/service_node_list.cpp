@@ -41,6 +41,7 @@
 #include "common/exp2.h"
 
 #include "service_node_list.h"
+#include "service_node_rules.h"
 
 #undef LOKI_DEFAULT_LOG_CATEGORY
 #define LOKI_DEFAULT_LOG_CATEGORY "service_nodes"
@@ -1271,19 +1272,6 @@ namespace service_nodes
 
     cmd = stream.str();
     return true;
-  }
-
-  uint64_t get_staking_requirement_lock_blocks(cryptonote::network_type nettype)
-  {
-    constexpr static uint32_t STAKING_REQUIREMENT_LOCK_BLOCKS         = 30*24*30;
-    constexpr static uint32_t STAKING_REQUIREMENT_LOCK_BLOCKS_TESTNET = 30*24*2;
-    constexpr static uint32_t STAKING_REQUIREMENT_LOCK_BLOCKS_FAKENET = 30;
-
-    switch(nettype) {
-      case cryptonote::TESTNET: return STAKING_REQUIREMENT_LOCK_BLOCKS_TESTNET;
-      case cryptonote::FAKECHAIN: return STAKING_REQUIREMENT_LOCK_BLOCKS_FAKENET;
-      default: return STAKING_REQUIREMENT_LOCK_BLOCKS;
-    }
   }
 
   uint64_t get_staking_requirement(cryptonote::network_type m_nettype, uint64_t height)
