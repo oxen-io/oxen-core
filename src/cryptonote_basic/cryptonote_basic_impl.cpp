@@ -33,7 +33,6 @@
 using namespace epee;
 
 #include "cryptonote_basic_impl.h"
-#include "cryptonote_core/blockchain.h"
 #include "string_tools.h"
 #include "serialization/binary_utils.h"
 #include "serialization/container.h"
@@ -44,8 +43,6 @@ using namespace epee;
 #include "crypto/hash.h"
 #include "common/int-util.h"
 #include "common/dns_utils.h"
-#include "cryptonote_core/service_node_list.h"
-#include "cryptonote_core/cryptonote_tx_utils.h"
 
 #undef LOKI_DEFAULT_LOG_CATEGORY
 #define LOKI_DEFAULT_LOG_CATEGORY "cn"

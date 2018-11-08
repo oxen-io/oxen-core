@@ -36,8 +36,6 @@
 
 namespace cryptonote
 {
-  class Blockchain;
-
   //---------------------------------------------------------------
   keypair  get_deterministic_keypair_from_height(uint64_t height);
   bool     get_deterministic_output_key         (const account_public_address& address, const keypair& tx_key, size_t output_index, crypto::public_key& output_key);
@@ -46,8 +44,6 @@ namespace cryptonote
   uint64_t governance_reward_formula            (uint64_t base_reward);
   bool     block_has_governance_output          (network_type nettype, cryptonote::block const &block);
   bool     height_has_governance_output         (network_type nettype, int hard_fork_version, uint64_t height);
-
-  bool     get_batched_governance_reward        (const Blockchain &blockchain, uint64_t height, uint64_t& reward);
   uint64_t derive_governance_from_block_reward  (network_type nettype, const cryptonote::block &block);
 
   uint64_t get_portion_of_reward                (uint64_t portions, uint64_t total_service_node_reward);
@@ -64,9 +60,7 @@ namespace cryptonote
     network_type                                                   nettype;
     crypto::public_key                                             snode_winner_key;
     std::vector<std::pair<account_public_address, stake_portions>> snode_winner_info;  // NOTE: If empty we use service_nodes::null_winner
-    uint64_t                                                       batched_governance; // NOTE: Optional until hardfork v10
-
-    bool calc_batched_governance(const Blockchain& blockchain, uint64_t height);
+    uint64_t                                                       batched_governance; // NOTE: 0 until hardfork v10, then use blockchain::calc_batched_governance_reward
   };
 
   bool construct_miner_tx(
@@ -114,7 +108,7 @@ namespace cryptonote
     using portions = uint64_t;
     uint64_t                                                 height;
     uint64_t                                                 fee;
-    uint64_t                                                 batched_governance; // Optional: Until hardfork v10, then must be calculated using get_batched_governance_reward
+    uint64_t                                                 batched_governance; // Optional: 0 hardfork v10, then must be calculated using blockchain::calc_batched_governance_reward
     std::vector<std::pair<account_public_address, portions>> snode_winner_info;  // Optional: Check contributor portions add up, else set empty to use service_nodes::null_winner
   };
 

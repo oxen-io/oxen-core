@@ -1132,7 +1132,7 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
   loki_block_reward_context block_reward_context = {};
   block_reward_context.fee                       = fee;
   block_reward_context.height                    = height;
-  if (!get_batched_governance_reward(*this, height, block_reward_context.batched_governance))
+  if (!calc_batched_governance_reward(height, block_reward_context.batched_governance))
   {
     MERROR_VER("Failed to calculate batched governance reward");
     return false;
@@ -1147,11 +1147,7 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
 
   for (ValidateMinerTxHook* hook : m_validate_miner_tx_hooks)
   {
-    // NOTE(loki): Always send the original reward, for now to preserve the
-    // emissions curve, reward distribution is calculated from the original
-    // amount, i.e. 50% of the block reward goes to service nodes not 50% of the
-    // reward after removing the governance component, for instance.
-    if (!hook->validate_miner_tx(b.prev_id, b.miner_tx, m_db->height(), version, reward_parts.original_base_reward))
+    if (!hook->validate_miner_tx(b.prev_id, b.miner_tx, m_db->height(), version, reward_parts))
       return false;
   }
 
@@ -1357,7 +1353,7 @@ bool Blockchain::create_block_template(block& b, const account_public_address& m
                                          m_service_node_list.select_winner(b.prev_id),
                                          m_service_node_list.get_winner_addresses_and_portions(b.prev_id));
 
-  if (!miner_tx_context.calc_batched_governance(*this, height))
+  if (!calc_batched_governance_reward(height, miner_tx_context.batched_governance))
   {
     LOG_ERROR("Failed to calculate batched governance reward");
     return false;
@@ -4019,6 +4015,53 @@ uint64_t Blockchain::prevalidate_block_hashes(uint64_t height, const std::vector
   MDEBUG("usable: " << usable << " / " << hashes.size());
   CHECK_AND_ASSERT_MES(usable < std::numeric_limits<uint64_t>::max() / 2, 0, "usable is negative");
   return usable;
+}
+
+bool Blockchain::calc_batched_governance_reward(uint64_t height, uint64_t &reward) const
+{
+  reward = 0;
+  int hard_fork_version = get_ideal_hard_fork_version(height);
+  if (hard_fork_version <= network_version_9_service_nodes)
+  {
+    return true;
+  }
+
+  if (!height_has_governance_output(nettype(), hard_fork_version, height))
+  {
+    return true;
+  }
+
+  // Ignore governance reward and payout instead the last
+  // GOVERNANCE_BLOCK_REWARD_INTERVAL number of blocks governance rewards.  We
+  // come back for this height's rewards in the next interval. The reward is
+  // 0 if it's not time to pay out the batched payments
+
+  const cryptonote::config_t &network = cryptonote::get_config(nettype(), hard_fork_version);
+  uint64_t num_blocks                 = network.GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS;
+  uint64_t start_height               = height - num_blocks;
+
+  if (height < num_blocks)
+  {
+    start_height = 0;
+    num_blocks   = height;
+  }
+
+  std::vector<std::pair<cryptonote::blobdata, cryptonote::block>> blocks;
+  blocks.reserve(num_blocks);
+  if (!get_blocks(start_height, num_blocks, blocks))
+  {
+    LOG_ERROR("Unable to get historical blocks to calculated batched governance payment");
+    return false;
+  }
+
+  for (const auto &it : blocks)
+  {
+    cryptonote::block const &block = it.second;
+    if (block.major_version >= network_version_10_bulletproofs)
+      reward += derive_governance_from_block_reward(nettype(), block);
+  }
+
+  return true;
 }
 
 //------------------------------------------------------------------

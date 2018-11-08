@@ -775,12 +775,17 @@ namespace service_nodes
 
   /// validates the miner TX for the next block
   //
-  bool service_node_list::validate_miner_tx(const crypto::hash& prev_id, const cryptonote::transaction& miner_tx, uint64_t height, int hard_fork_version, uint64_t base_reward) const
+  bool service_node_list::validate_miner_tx(const crypto::hash& prev_id, const cryptonote::transaction& miner_tx, uint64_t height, int hard_fork_version, cryptonote::block_reward_parts const &reward_parts) const
   {
     std::lock_guard<boost::recursive_mutex> lock(m_sn_mutex);
     if (hard_fork_version < 9)
       return true;
 
+    // NOTE(loki): Service node reward distribution is calculated from the
+    // original amount, i.e. 50% of the original base reward goes to service
+    // nodes not 50% of the reward after removing the governance component (the
+    // adjusted base reward post hardfork 10).
+    uint64_t base_reward = reward_parts.original_base_reward;
     uint64_t total_service_node_reward = cryptonote::service_node_reward_formula(base_reward, hard_fork_version);
 
     crypto::public_key winner = select_winner(prev_id);

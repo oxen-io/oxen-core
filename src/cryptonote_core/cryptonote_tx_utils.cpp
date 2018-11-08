@@ -162,55 +162,6 @@ namespace cryptonote
     return true;
   }
 
-  bool get_batched_governance_reward(const cryptonote::Blockchain &blockchain, uint64_t height, uint64_t &reward)
-  {
-    reward = 0;
-    int hard_fork_version = blockchain.get_ideal_hard_fork_version(height);
-    if (hard_fork_version <= network_version_9_service_nodes)
-    {
-      return true;
-    }
-
-    if (!height_has_governance_output(blockchain.nettype(), hard_fork_version, height))
-    {
-      return true;
-    }
-
-    // Ignore governance reward and payout instead the last
-    // GOVERNANCE_BLOCK_REWARD_INTERVAL number of blocks governance rewards.  We
-    // come back for this height's rewards in the next interval. The reward is
-    // 0 if it's not time to pay out the batched payments
-
-    const cryptonote::config_t &network = cryptonote::get_config(blockchain.nettype(), hard_fork_version);
-    uint64_t num_blocks                 = network.GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS;
-    uint64_t start_height               = height - num_blocks;
-
-    if (height < num_blocks)
-    {
-      start_height = 0;
-      num_blocks   = height;
-    }
-
-    // TODO(doyle): Revisit this calculation, and see if there is a smarter way we can do this
-    std::vector<std::pair<cryptonote::blobdata, cryptonote::block>> blocks;
-    blocks.reserve(num_blocks);
-
-    if (!blockchain.get_blocks(start_height, num_blocks, blocks))
-    {
-      LOG_ERROR("Unable to get historical blocks to calculated batched governance payment");
-      return false;
-    }
-
-    for (const auto &it : blocks)
-    {
-      cryptonote::block const &block = it.second;
-      if (block.major_version >= network_version_10_bulletproofs)
-        reward += derive_governance_from_block_reward(blockchain.nettype(), block);
-    }
-
-    return true;
-  }
-
   uint64_t derive_governance_from_block_reward(network_type nettype, const cryptonote::block &block)
   {
     uint64_t result       = 0;
@@ -278,12 +229,6 @@ namespace cryptonote
     , snode_winner_info(winner_info)
     , batched_governance(0)
   {
-  }
-
-  bool loki_miner_tx_context::calc_batched_governance(const Blockchain& blockchain, uint64_t height)
-  {
-    bool result = get_batched_governance_reward(blockchain, height, batched_governance);
-    return result;
   }
 
   bool construct_miner_tx(
