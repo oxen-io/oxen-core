@@ -23,7 +23,7 @@ namespace service_node {
                                                connection_context& m_conn_context)
   {
     bool handled = false;
-    // TODO: check if we're the recipient or if the request should be forwarded
+    // TODO: check if we actually belong to the recipient's swarm
     switch (query_info.m_http_method) {
       case epee::net_utils::http::http_method_get:
         if (query_info.m_URI == "/retrieve") {
@@ -33,7 +33,6 @@ namespace service_node {
 
       case epee::net_utils::http::http_method_post:
         if (query_info.m_URI == "/store") {
-          printf("handling store request\n");
           handled = on_store_message(query_info, response_info);
         }
         break;
@@ -109,13 +108,11 @@ namespace service_node {
 
     std::vector<uint8_t> bytes(std::begin(query_info.m_body), std::end(query_info.m_body));
 
-    printf("checking PoW");
     if (!checkPoW(powNonce, timestamp, ttl, recipient, bytes, messageHash)) {
       response.m_body = "Could not validate Proof of Work";
       response.m_response_code = 403;
       return true;
     }
-    printf("ok\nhash: %s\n", messageHash.c_str());
 
     int ttlInt;
     try {
