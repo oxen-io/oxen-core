@@ -154,7 +154,6 @@ namespace service_node {
 
     bool success;
     std::vector<storage::Item> items;
-    std::string body = "{\"messages\": [";
 
     try {
       success = m_storage->retrieve(recipient, items, lastHash);
