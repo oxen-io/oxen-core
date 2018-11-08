@@ -63,9 +63,9 @@ int main(int argc, char *argv[]) {
             end = n - DIFFICULTY_LAG;
             begin = end - DIFFICULTY_WINDOW_V2;
         }
-        uint64_t res = cryptonote::next_difficulty_v3_lwma2_hotfix(
+        uint64_t res = cryptonote::next_difficulty_v2(
             vector<uint64_t>(timestamps.begin() + begin, timestamps.begin() + end),
-            vector<uint64_t>(cumulative_difficulties.begin() + begin, cumulative_difficulties.begin() + end), DEFAULT_TEST_DIFFICULTY_TARGET);
+            vector<uint64_t>(cumulative_difficulties.begin() + begin, cumulative_difficulties.begin() + end), DEFAULT_TEST_DIFFICULTY_TARGET, false/*use_old_lwma2*/);
         if (res != difficulty) {
             cerr << "Wrong difficulty for block " << n << endl
                 << "Expected: " << difficulty << endl
