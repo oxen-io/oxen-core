@@ -122,7 +122,7 @@ namespace service_node {
       return true;
     }
 
-    bool success;
+    bool success = false;
     try {
       success = m_storage->store(messageHash, recipient, bytes, ttlInt);
     } catch(std::exception e) {
@@ -151,7 +151,7 @@ namespace service_node {
     if (!parseHeaders(query_info.m_header_info, required_fields, response))
       return true;
 
-    bool success;
+    bool success = false;
     std::vector<storage::Item> items;
 
     try {
