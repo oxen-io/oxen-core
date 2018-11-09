@@ -29,4 +29,4 @@ namespace service_node
    private:
     std::unique_ptr<Storage> m_storage;
   };
-} // namespace lokimessenger
+} // namespace service_node
