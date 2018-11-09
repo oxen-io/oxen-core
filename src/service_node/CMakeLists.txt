@@ -43,8 +43,8 @@ add_library(service_node
   ${servicenode_headers}
   ${servicenode_private_headers})
 
-add_subdirectory(storage/storage)
-add_subdirectory(storage/pow)
+add_subdirectory(${CMAKE_SOURCE_DIR}/external/loki-storage-server/storage storage)
+add_subdirectory(${CMAKE_SOURCE_DIR}/external/loki-storage-server//pow pow)
 
 target_link_libraries(service_node
   PRIVATE

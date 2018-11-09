@@ -3,7 +3,7 @@
 #include "pow.hpp"
 
 #include <numeric>
-#include <unordered_map>
+#include <map>
 #include <vector>
 #include <stdint.h>
 
@@ -58,7 +58,7 @@ namespace service_node {
   }
 
   bool parseHeaders(const http_header_info& header_info,
-                           std::unordered_map<std::string, std::string&> required_fields,
+                           std::map<std::string, std::string&> required_fields,
                            http_response_info& response)
   {
     for (const auto& pair : header_info.m_etc_fields) {
@@ -96,7 +96,7 @@ namespace service_node {
     std::string ttl;
     std::string messageHash;
 
-    const std::unordered_map<std::string, std::string&> required_fields {
+    const std::map<std::string, std::string&> required_fields {
       { "X-Loki-recipient", recipient },
       { "X-Loki-timestamp", timestamp },
       { "X-Loki-pow-nonce", powNonce },
@@ -144,7 +144,7 @@ namespace service_node {
     std::string recipient;
     std::string lastHash;
 
-    const std::unordered_map<std::string, std::string&> required_fields {
+    const std::map<std::string, std::string&> required_fields {
       { "X-Loki-recipient", recipient },
       { "X-Loki-last-hash", lastHash },
     };
