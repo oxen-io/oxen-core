@@ -61,22 +61,21 @@ namespace service_node {
                            std::map<std::string, std::string&> required_fields,
                            http_response_info& response)
   {
-    for (const auto& pair : header_info.m_etc_fields) {
-    const auto it = required_fields.find(pair.first);
-      if (it != required_fields.end()) {
-        it->second.assign(pair.second);
+    std::string missingFields;
+
+    for (auto& required_field : required_fields) {
+      const auto it = std::find_if(
+          std::begin(header_info.m_etc_fields),
+          std::end(header_info.m_etc_fields),
+          [&required_field] (const std::pair<std::string, std::string>& field) {
+            return field.first == required_field.first;
+        });
+      if (it != std::end(header_info.m_etc_fields)) {
+        required_field.second.assign(it->second);
+      } else {
+        missingFields += required_field.first + ",";
       }
     }
-
-    std::string missingFields = std::accumulate(
-      std::begin(required_fields),
-      std::end(required_fields),
-      std::string(""),
-      [](std::string result, const std::pair<std::string, std::string>& pair) {
-        if (pair.second.empty())
-          return result += pair.first + ",";
-        return result;
-      });
 
     if (!missingFields.empty()) {
       missingFields.pop_back(); // trailing comma
