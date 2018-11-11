@@ -142,7 +142,7 @@ namespace tools
       case pay_type::miner:        return "miner";
       case pay_type::service_node: return "snode";
       case pay_type::governance:   return "gov";
-      default: assert(true);       return "xxxxx";
+      default: assert(false);      return "xxxxx";
     }
   }
 
