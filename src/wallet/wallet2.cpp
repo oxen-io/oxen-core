@@ -1346,7 +1346,7 @@ void wallet2::scan_output(const cryptonote::transaction &tx, const crypto::publi
   {
     // TODO(doyle): When batched governance comes in, this needs to check that the TX has a governance output, can't assume last one is governance
     if      (vout_index == 0)                  entry.type = pay_type::miner;
-    else if (vout_index == tx.vout.size() - 1) entry.type = pay_type::governance;
+    // else if (vout_index == tx.vout.size() - 1) entry.type = pay_type::governance;
     else                                       entry.type = pay_type::service_node;
   }
 
