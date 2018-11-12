@@ -1,6 +1,7 @@
 #include "http_server.h"
 #include "Storage.hpp"
 #include "pow.hpp"
+#include "utils.hpp"
 
 #include <numeric>
 #include <map>
@@ -105,18 +106,14 @@ namespace service_node {
     if (!parseHeaders(query_info.m_header_info, required_fields, response))
       return true;
 
-    std::vector<uint8_t> bytes(std::begin(query_info.m_body), std::end(query_info.m_body));
-
-    if (!checkPoW(powNonce, timestamp, ttl, recipient, bytes, messageHash)) {
+    if (!checkPoW(powNonce, timestamp, ttl, recipient, query_info.m_body, messageHash)) {
       response.m_body = "Could not validate Proof of Work";
       response.m_response_code = 403;
       return true;
     }
 
-    int ttlInt;
-    try {
-      ttlInt = std::stoi(ttl);
-    } catch(...) {
+    uint64_t ttlInt;
+    if (!util::parseTTL(ttl, ttlInt)) {
       response.m_body = "Invalid ttl";
       response.m_response_code = 400;
       return true;
@@ -124,7 +121,7 @@ namespace service_node {
 
     bool success = false;
     try {
-      success = m_storage->store(messageHash, recipient, bytes, ttlInt);
+      success = m_storage->store(messageHash, recipient, query_info.m_body, ttlInt);
     } catch(std::exception e) {
       printf("Caught exception : %s\n", e.what());
     }
@@ -170,9 +167,7 @@ namespace service_node {
         response.m_body += "{";
         response.m_body += "\"hash\":\"" + item.hash + "\",";
         response.m_body += "\"timestamp\":\"" + std::to_string(item.timestamp) + "\",";
-        response.m_body += "\"data\":\"";
-        response.m_body.append(std::begin(item.bytes), std::end(item.bytes));
-        response.m_body += "\"";
+        response.m_body += "\"data\":\"" + item.bytes + "\"";
         response.m_body += "},";
       }
       if (items.size() > 0)
