@@ -1,5 +1,4 @@
 #include "http_server.h"
-#include "Storage.hpp"
 #include "pow.hpp"
 #include "utils.hpp"
 
@@ -11,12 +10,8 @@
 namespace service_node {
 
   using http_header_info = epee::net_utils::http::http_header_info;
-
-  storage_server::~storage_server() {
-  }
-
   storage_server::storage_server(const std::string& db_path)
-    : m_storage(new Storage(db_path))
+    : m_storage(db_path)
   {}
 
   bool storage_server::handle_http_request_map(const http_request_info& query_info,
@@ -121,7 +116,7 @@ namespace service_node {
 
     bool success = false;
     try {
-      success = m_storage->store(messageHash, recipient, query_info.m_body, ttlInt);
+      success = m_storage.store(messageHash, recipient, query_info.m_body, ttlInt);
     } catch(std::exception e) {
       printf("Caught exception : %s\n", e.what());
     }
@@ -152,7 +147,7 @@ namespace service_node {
     std::vector<storage::Item> items;
 
     try {
-      success = m_storage->retrieve(recipient, items, lastHash);
+      success = m_storage.retrieve(recipient, items, lastHash);
     } catch (std::exception e) {
       printf("Caught exception: %s\n", e.what());
     }

@@ -1,13 +1,12 @@
 #pragma once
 
 #include "net/http_server_impl_base.h"
+#include "loki-storage-server/storage/include/Storage.hpp"
 
 #include <cstdio>
 
 namespace service_node
 {
-  class Storage;
-
   using connection_context = epee::net_utils::connection_context_base;
   using http_request_info = epee::net_utils::http::http_request_info;
   using http_response_info = epee::net_utils::http::http_response_info;
@@ -16,7 +15,6 @@ namespace service_node
   {
    public:
     storage_server(const std::string& db_path);
-    ~storage_server();
     bool handle_http_request(const http_request_info &query_info,
                              http_response_info &response,
                              connection_context &m_conn_context) override;
@@ -27,6 +25,6 @@ namespace service_node
     bool on_retrieve_message(const http_request_info& query_info, http_response_info& response);
 
    private:
-    std::unique_ptr<Storage> m_storage;
+    Storage m_storage;
   };
 } // namespace service_node
