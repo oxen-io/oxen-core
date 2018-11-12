@@ -4047,7 +4047,6 @@ bool Blockchain::calc_batched_governance_reward(uint64_t height, uint64_t &rewar
   }
 
   std::vector<std::pair<cryptonote::blobdata, cryptonote::block>> blocks;
-  blocks.reserve(num_blocks);
   if (!get_blocks(start_height, num_blocks, blocks))
   {
     LOG_ERROR("Unable to get historical blocks to calculated batched governance payment");
