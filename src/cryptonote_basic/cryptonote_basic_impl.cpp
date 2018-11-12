@@ -89,7 +89,7 @@ namespace cryptonote {
     return CRYPTONOTE_MAX_TX_SIZE;
   }
   //-----------------------------------------------------------------------------------------------
-  bool get_block_reward(size_t median_weight, size_t current_block_weight, uint64_t already_generated_coins, uint64_t &reward, uint8_t version, uint64_t height) {
+  bool get_base_block_reward(size_t median_weight, size_t current_block_weight, uint64_t already_generated_coins, uint64_t &reward, uint8_t version, uint64_t height) {
 
     //premine reward
     if (already_generated_coins == 0)
@@ -341,7 +341,7 @@ bool parse_hash256(const std::string str_hash, crypto::hash& hash)
   bool res = epee::string_tools::parse_hexstr_to_binbuff(str_hash, buf);
   if (!res || buf.size() != sizeof(crypto::hash))
   {
-    std::cout << "invalid hash format: <" << str_hash << '>' << std::endl;
+    MERROR("invalid hash format: " << str_hash);
     return false;
   }
   else

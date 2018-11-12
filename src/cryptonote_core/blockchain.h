@@ -38,9 +38,11 @@
 #include <boost/multi_index/hashed_index.hpp>
 #include <boost/multi_index/member.hpp>
 #include <atomic>
+#include <functional>
 #include <unordered_map>
 #include <unordered_set>
 
+#include "span.h"
 #include "syncobj.h"
 #include "string_tools.h"
 #include "cryptonote_basic/cryptonote_basic.h"
@@ -75,20 +77,21 @@ namespace cryptonote
     db_nosync //!< Leave syncing up to the backing db (safest, but slowest because of disk I/O)
   };
 
+  /** 
+   * @brief Callback routine that returns checkpoints data for specific network type
+   * 
+   * @param network network type
+   * 
+   * @return checkpoints data, empty span if there ain't any checkpoints for specific network type
+   */
+  typedef std::function<const epee::span<const unsigned char>(cryptonote::network_type network)> GetCheckpointsCallback;
+
   /************************************************************************/
   /*                                                                      */
   /************************************************************************/
   class Blockchain
   {
   public:
-    enum version
-    {
-      version_7 = 7,
-      version_8,
-      version_9,
-      version_10_swarms,
-    };
-
     /**
      * @brief Now-defunct (TODO: remove) struct from in-memory blockchain
      */
@@ -133,7 +136,7 @@ namespace cryptonote
     class ValidateMinerTxHook
     {
     public:
-      virtual bool validate_miner_tx(const crypto::hash& prev_id, const cryptonote::transaction& miner_tx, uint64_t height, int hard_fork_version, uint64_t base_reward) const = 0;
+      virtual bool validate_miner_tx(const crypto::hash& prev_id, const cryptonote::transaction& miner_tx, uint64_t height, int hard_fork_version, block_reward_parts const &reward_parts) const = 0;
     };
 
     /**
@@ -151,10 +154,11 @@ namespace cryptonote
      * @param offline true if running offline, else false
      * @param test_options test parameters
      * @param fixed_difficulty fixed difficulty for testing purposes; 0 means disabled
+     * @param get_checkpoints if set, will be called to get checkpoints data
      *
      * @return true on success, false if any initialization steps fail
      */
-    bool init(BlockchainDB* db, const network_type nettype = MAINNET, bool offline = false, const cryptonote::test_options *test_options = NULL, difficulty_type fixed_difficulty = 0);
+    bool init(BlockchainDB* db, const network_type nettype = MAINNET, bool offline = false, const cryptonote::test_options *test_options = NULL, difficulty_type fixed_difficulty = 0, const GetCheckpointsCallback& get_checkpoints = nullptr);
 
     /**
      * @brief Initialize the Blockchain state
@@ -980,6 +984,8 @@ namespace cryptonote
     bool is_within_compiled_block_hash_area() const { return is_within_compiled_block_hash_area(m_db->height()); }
     uint64_t prevalidate_block_hashes(uint64_t height, const std::vector<crypto::hash> &hashes);
 
+    bool calc_batched_governance_reward(uint64_t height, uint64_t &reward) const;
+
     void lock();
     void unlock();
 
@@ -991,6 +997,8 @@ namespace cryptonote
      * Used for handling txes from historical blocks in a fast way
      */
     void on_new_tx_from_block(const cryptonote::transaction &tx);
+
+    std::vector<time_t> get_last_block_timestamps(unsigned int blocks) const;
 
     /**
      * @brief add a hook for processing new blocks and rollbacks for reorgs
@@ -1424,8 +1432,10 @@ namespace cryptonote
      * A (possibly empty) set of block hashes can be compiled into the
      * monero daemon binary.  This function loads those hashes into
      * a useful state.
+     * 
+     * @param get_checkpoints if set, will be called to get checkpoints data
      */
-    void load_compiled_in_block_hashes();
+    void load_compiled_in_block_hashes(const GetCheckpointsCallback& get_checkpoints);
 
     /**
      * @brief expands v2 transaction data from blockchain

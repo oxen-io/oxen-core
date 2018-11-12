@@ -470,7 +470,7 @@ bool t_rpc_command_executor::show_status() {
     % get_sync_percentage(ires)
     % (ires.testnet ? "testnet" : ires.stagenet ? "stagenet" : "mainnet")
     % bootstrap_msg
-    % (!has_mining_info ? "mining info unavailable" : mining_busy ? "syncing" : mres.active ? ( ( mres.is_background_mining_enabled ? "smart " : "" ) + std::string("mining at ") + get_mining_speed(mres.speed) ) : "not mining")
+    % (!has_mining_info ? "mining info unavailable" : mining_busy ? "syncing" : mres.active ? ( ( mres.is_background_mining_enabled ? "smart " : "" ) + std::string("mining at ") + get_mining_speed(mres.speed) + std::string(" to ") + mres.address ) : "not mining")
     % get_mining_speed(ires.difficulty / ires.target)
     % (unsigned)hfres.version
     % get_fork_extra_info(hfres.earliest_height, net_height, ires.target)
@@ -1782,11 +1782,14 @@ bool t_rpc_command_executor::print_blockchain_dynamic_stats(uint64_t nblocks)
   cryptonote::COMMAND_RPC_GET_BLOCK_HEADERS_RANGE::response bhres;
   cryptonote::COMMAND_RPC_GET_BASE_FEE_ESTIMATE::request fereq;
   cryptonote::COMMAND_RPC_GET_BASE_FEE_ESTIMATE::response feres;
+  cryptonote::COMMAND_RPC_HARD_FORK_INFO::request hfreq;
+  cryptonote::COMMAND_RPC_HARD_FORK_INFO::response hfres;
   epee::json_rpc::error error_resp;
 
   std::string fail_message = "Problem fetching info";
 
   fereq.grace_blocks = 0;
+  hfreq.version = HF_VERSION_PER_BYTE_FEE;
   if (m_is_rpc)
   {
     if (!m_rpc_client->rpc_request(ireq, ires, "/getinfo", fail_message.c_str()))
@@ -1794,6 +1797,10 @@ bool t_rpc_command_executor::print_blockchain_dynamic_stats(uint64_t nblocks)
       return true;
     }
     if (!m_rpc_client->json_rpc_request(fereq, feres, "get_fee_estimate", fail_message.c_str()))
+    {
+      return true;
+    }
+    if (!m_rpc_client->json_rpc_request(hfreq, hfres, "hard_fork_info", fail_message.c_str()))
     {
       return true;
     }
@@ -1810,10 +1817,15 @@ bool t_rpc_command_executor::print_blockchain_dynamic_stats(uint64_t nblocks)
       tools::fail_msg_writer() << make_error(fail_message, feres.status);
       return true;
     }
+    if (!m_rpc_server->on_hard_fork_info(hfreq, hfres, error_resp) || hfres.status != CORE_RPC_STATUS_OK)
+    {
+      tools::fail_msg_writer() << make_error(fail_message, hfres.status);
+      return true;
+    }
   }
 
   tools::msg_writer() << "Height: " << ires.height << ", diff " << ires.difficulty << ", cum. diff " << ires.cumulative_difficulty
-      << ", target " << ires.target << " sec" << ", dyn fee " << cryptonote::print_money(feres.fee) << "/kB";
+      << ", target " << ires.target << " sec" << ", dyn fee " << cryptonote::print_money(feres.fee) << "/" << (hfres.enabled ? "byte" : "kB");
 
   if (nblocks > 0)
   {
@@ -2074,7 +2086,7 @@ static void print_service_node_list_state(cryptonote::network_type nettype, int 
     // Print Expiry Info
     {
       uint64_t expiry_height = entry.registration_height + service_nodes::get_staking_requirement_lock_blocks(nettype);
-      if (hard_fork_version >= cryptonote::Blockchain::version_10_swarms)
+      if (hard_fork_version >= cryptonote::network_version_10_bulletproofs)
         expiry_height += STAKING_REQUIREMENT_LOCK_BLOCKS_EXCESS;
 
       if (curr_height)
@@ -2493,7 +2505,15 @@ bool t_rpc_command_executor::prepare_registration()
       return true;
     }
 
-    operating_cost_portions = (operating_cost_percent / 100.0) * STAKING_PORTIONS;
+        // Fix for truncation issue when operator cut = 100 for a pool Service Node.
+    if (operating_cost_percent == 100.0)
+    {
+      operating_cost_portions = STAKING_PORTIONS;
+    }
+    else
+    {
+      operating_cost_portions = (operating_cost_percent / 100.0) * STAKING_PORTIONS;
+    }
 
     const uint64_t min_contribution_portions = std::min(portions_remaining, MIN_PORTIONS);
 

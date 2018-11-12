@@ -13,3 +13,6 @@
 	path = external/loki-storage-server
 	url = https://github.com/loki-project/loki-storage-server
 	branch = master
+[submodule "external/trezor-common"]
+	path = external/trezor-common
+	url = https://github.com/trezor/trezor-common.git
