@@ -28,12 +28,12 @@
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 set(servicenode_sources
-  http_server.cpp)
+  storage_server.cpp)
 
 set(servicenode_headers)
 
 set(servicenode_private_headers
-  http_server.h)
+  storage_server.h)
 
 loki_private_headers(service_node
   ${servicenode_private_headers})

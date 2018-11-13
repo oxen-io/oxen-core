@@ -60,7 +60,7 @@ using namespace epee;
 #include "version.h"
 #include "wipeable_string.h"
 #include "common/i18n.h"
-#include "service_node/http_server.h"
+#include "service_node/storage_server.h"
 
 #undef LOKI_DEFAULT_LOG_CATEGORY
 #define LOKI_DEFAULT_LOG_CATEGORY "cn"
