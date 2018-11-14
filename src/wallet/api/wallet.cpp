@@ -2341,8 +2341,6 @@ PendingTransaction* WalletImpl::stakePending(const std::string& sn_key_str, cons
   if (!cryptonote::get_account_address_from_str_or_url(addr_info, m_wallet->nettype(), address_str)) {
     LOG_ERROR("failed to parse address");
     return nullptr;
-  } else {
-    std::cerr << "address parsed: OK\n";
   }
 
   uint64_t amount;
@@ -2420,7 +2418,7 @@ PendingTransaction* WalletImpl::stakePending(const std::string& sn_key_str, cons
 
   }
 
-  /// TODO: who is cleaning this up?
+  /// Note(maxim): need to be careful to call `WalletImpl::disposeTransaction` when it is no longer needed
   PendingTransactionImpl * transaction = new PendingTransactionImpl(*this);
 
   transaction->m_pending_tx = m_wallet->create_stake_tx(sn_key, addr_info.address, amount);

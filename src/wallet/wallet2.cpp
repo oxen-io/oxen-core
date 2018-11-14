@@ -6621,12 +6621,9 @@ std::vector<wallet2::pending_tx> wallet2::create_stake_tx(const crypto::public_k
   const uint32_t m_current_subaddress_account = 0;
   std::set<uint32_t> subaddr_indices;
 
-  constexpr size_t NMIX = 9;
-
   try {
-    auto ptx_vector = create_transactions_2(dsts, NMIX, unlock_at_block, priority, extra, m_current_subaddress_account, subaddr_indices, true);
-    assert(ptx_vector.size() == 1);
-    return ptx_vector;
+    auto ptx_vector = create_transactions_2(dsts, CRYPTONOTE_TX_DEFAULT_MIX, unlock_at_block, priority, extra, m_current_subaddress_account, subaddr_indices, true);
+    if (ptx_vector.size() == 1) { return ptx_vector; }
   } catch (const std::exception& e) {
     LOG_ERROR("Exception raised on creating tx: " << e.what());
   }

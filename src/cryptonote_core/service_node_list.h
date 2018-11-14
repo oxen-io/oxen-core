@@ -289,13 +289,6 @@ namespace service_nodes
   bool make_registration_cmd(cryptonote::network_type nettype, const std::vector<std::string> args, const crypto::public_key& service_node_pubkey,
                              const crypto::secret_key service_node_key, std::string &cmd, bool make_friendly);
 
-  /// Check if portions are sufficiently large (except for the last) and add up to the required amount
-  bool check_service_node_portions(const std::vector<uint64_t>& portions);
-
-  uint64_t get_staking_requirement(cryptonote::network_type nettype, uint64_t height);
-
-  uint64_t portions_to_amount(uint64_t portions, uint64_t staking_requirement);
-
   const static cryptonote::account_public_address null_address{ crypto::null_pkey, crypto::null_pkey };
   const static std::vector<std::pair<cryptonote::account_public_address, uint64_t>> null_winner =
     {std::pair<cryptonote::account_public_address, uint64_t>({null_address, STAKING_PORTIONS})};

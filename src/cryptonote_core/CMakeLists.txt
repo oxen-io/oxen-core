@@ -30,6 +30,7 @@
 set(cryptonote_core_sources
   blockchain.cpp
   cryptonote_core.cpp
+  service_node_rules.cpp
   service_node_list.cpp
   service_node_deregister.cpp
   quorum_cop.cpp
