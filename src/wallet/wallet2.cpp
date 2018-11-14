@@ -6587,6 +6587,82 @@ bool wallet2::is_output_blackballed(const std::pair<uint64_t, uint64_t> &output)
   catch (const std::exception &e) { return false; }
 }
 
+bool wallet2::check_stake_allowed(const std::string& sn_key_str, const cryptonote::address_parse_info& addr_info, uint64_t& amount) {
+
+  if (addr_info.has_payment_id) {
+    LOG_ERROR("Do not use payment ids for staking.");
+    return false;
+  }
+
+  if (!this->contains_address(addr_info.address)) {
+    LOG_ERROR("The specified address is not owned by this wallet.");
+    return false;
+  }
+
+  if (addr_info.is_subaddress)
+  {
+    LOG_ERROR("Service nodes do not support subaddresses.");
+    return false;
+  }
+
+  /// check that the service node is registered
+  const auto& response = this->get_service_nodes({ sn_key_str }); /// this needs a string
+  if (response.service_node_states.size() != 1)
+  {
+    LOG_ERROR("Could not find service node in service node list, please make sure it is registered first.");
+    return false;
+  }
+
+  const auto& snode_info = response.service_node_states.front();
+
+  const bool full = snode_info.contributors.size() >= MAX_NUMBER_OF_CONTRIBUTORS;
+
+  /// maximum to contribute (unless we have some amount reserved for us)
+  uint64_t max_contrib_total = snode_info.staking_requirement - snode_info.total_reserved;
+
+  /// decrease if some reserved for us
+  uint64_t min_contrib_total = service_nodes::get_min_node_contribution(snode_info.staking_requirement, snode_info.total_reserved);
+
+  bool is_preexisting_contributor = false;
+  for (const auto& contributor : snode_info.contributors)
+  {
+    address_parse_info info;
+    if (!cryptonote::get_account_address_from_str(info, m_nettype, contributor.address))
+      continue;
+
+    if (info.address == addr_info.address)
+    {
+      /// reserved for us, so we can contribute some more
+      max_contrib_total += contributor.reserved - contributor.amount;
+      /// in this case we can contribute as little as we want
+      min_contrib_total = 0;
+      is_preexisting_contributor = true;
+    }
+  }
+
+  /// a. Check if there is room for us
+  if (full && !is_preexisting_contributor) {
+      LOG_ERROR("The service node is full.");
+      return false;
+  }
+
+  /// b. Check if the amount is too small
+  if (amount < min_contrib_total) {
+      LOG_ERROR("You must contribute at least " << print_money(min_contrib_total) << " loki to become a contributor for this service node.");
+      return false;
+  }
+
+  /// c. Check if the amount is too big
+  if (amount > max_contrib_total)
+  {
+    LOG_ERROR("You may only contribute up to ") << print_money(max_contrib_total) << tr(" more loki to this service node") << std::endl;
+    LOG_ERROR("Reducing your stake from ") << print_money(amount) << tr(" to ") << print_money(max_contrib_total) << std::endl;
+    amount = max_contrib_total;
+  }
+
+  return true;
+}
+
 std::vector<wallet2::pending_tx> wallet2::create_stake_tx(const crypto::public_key& service_node_key, const cryptonote::account_public_address& address, uint64_t amount)
 {
   std::vector<uint8_t> extra;

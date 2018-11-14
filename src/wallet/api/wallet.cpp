@@ -2330,7 +2330,6 @@ bool WalletImpl::isKeysFileLocked()
 
 PendingTransaction* WalletImpl::stakePending(const std::string& sn_key_str, const std::string& address_str, const std::string& amount_str)
 {
-
   crypto::public_key sn_key;
   if (!epee::string_tools::hex_to_pod(sn_key_str, sn_key)) {
     LOG_ERROR("failed to parse service node pubkey");
@@ -2350,72 +2349,9 @@ PendingTransaction* WalletImpl::stakePending(const std::string& sn_key_str, cons
     return nullptr;
   }
 
-  if (addr_info.has_payment_id) {
-    LOG_ERROR("Do not use payment ids for staking.");
-    return nullptr;
-  }
-
-  if (!m_wallet->contains_address(addr_info.address)) {
-    LOG_ERROR("The specified address is not owned by this wallet.");
-    return nullptr;
-  }
-
-  {
-    /// check that the service node is registered
-    const auto& response = m_wallet->get_service_nodes({ sn_key_str });
-    if (response.service_node_states.size() != 1)
-    {
-      LOG_ERROR("Could not find service node in service node list, please make sure it is registered first.");
+  if (!m_wallet->check_stake_tx(sn_key_str, addr_info, amount)) {
+      LOG_ERROR("Refusing to create a stake transaction");
       return nullptr;
-    }
-
-    const auto& snode_info = response.service_node_states.front();
-
-    const bool full = snode_info.contributors.size() >= MAX_NUMBER_OF_CONTRIBUTORS;
-
-    /// maximum to contribute (unless we have some amount reserved for us)
-    uint64_t max_contrib_total = snode_info.staking_requirement - snode_info.total_reserved;
-
-    /// decrease if some reserved for us
-    uint64_t min_contrib_total = service_nodes::get_min_node_contribution(snode_info.staking_requirement, snode_info.total_reserved);
-
-    bool is_preexisting_contributor = false;
-    for (const auto& contributor : snode_info.contributors)
-    {
-      address_parse_info info;
-      if (!cryptonote::get_account_address_from_str(info, m_wallet->nettype(), contributor.address))
-        continue;
-
-      if (info.address == addr_info.address)
-      {
-        /// reserved for us, so we can contribute some more
-        max_contrib_total += contributor.reserved - contributor.amount;
-        /// in this case we can contribute as little as we want
-        min_contrib_total = 0;
-        is_preexisting_contributor = true;
-      }
-    }
-
-    /// a. Check if there is room for us
-    if (full && !is_preexisting_contributor) {
-        LOG_ERROR("The service node is full.");
-        return nullptr;
-    }
-
-    /// b. Check if the amount is too small
-    if (amount < min_contrib_total) {
-        LOG_ERROR("You must contribute at least " << print_money(min_contrib_total) << " loki to become a contributor for this service node.");
-        return nullptr;
-    }
-
-    /// c. Check if the amount is too big
-    if (amount > max_contrib_total)
-    {
-      LOG_ERROR("You may only contribute up to ") << print_money(max_contrib_total) << tr(" more loki to this service node") << std::endl;
-      LOG_ERROR("Reducing your stake from ") << print_money(amount) << tr(" to ") << print_money(max_contrib_total) << std::endl;
-      amount = max_contrib_total;
-    }
-
   }
 
   /// Note(maxim): need to be careful to call `WalletImpl::disposeTransaction` when it is no longer needed
