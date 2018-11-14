@@ -6587,7 +6587,7 @@ bool wallet2::is_output_blackballed(const std::pair<uint64_t, uint64_t> &output)
   catch (const std::exception &e) { return false; }
 }
 
-bool wallet2::check_stake_allowed(const std::string& sn_key_str, const cryptonote::address_parse_info& addr_info, uint64_t& amount) {
+bool wallet2::check_stake_allowed(const crypto::public_key& sn_key, const cryptonote::address_parse_info& addr_info, uint64_t& amount) {
 
   if (addr_info.has_payment_id) {
     LOG_ERROR("Do not use payment ids for staking.");
@@ -6606,7 +6606,7 @@ bool wallet2::check_stake_allowed(const std::string& sn_key_str, const cryptonot
   }
 
   /// check that the service node is registered
-  const auto& response = this->get_service_nodes({ sn_key_str }); /// this needs a string
+  const auto& response = this->get_service_nodes({ epee::string_tools::pod_to_hex(sn_key) });
   if (response.service_node_states.size() != 1)
   {
     LOG_ERROR("Could not find service node in service node list, please make sure it is registered first.");
@@ -6663,8 +6663,16 @@ bool wallet2::check_stake_allowed(const std::string& sn_key_str, const cryptonot
   return true;
 }
 
-std::vector<wallet2::pending_tx> wallet2::create_stake_tx(const crypto::public_key& service_node_key, const cryptonote::account_public_address& address, uint64_t amount)
+std::vector<wallet2::pending_tx> wallet2::create_stake_tx(const crypto::public_key& service_node_key, const cryptonote::address_parse_info& addr_info, uint64_t amount)
 {
+  /// check stake parameters (this might adjust the amount)
+  if (!check_stake_allowed(service_node_key, addr_info, amount)) {
+    LOG_ERROR("Invalid stake parameters");
+    return {};
+  }
+
+  const cryptonote::account_public_address& address = addr_info.address;
+
   std::vector<uint8_t> extra;
   add_service_node_pubkey_to_tx_extra(extra, service_node_key);
   add_service_node_contributor_to_tx_extra(extra, address);

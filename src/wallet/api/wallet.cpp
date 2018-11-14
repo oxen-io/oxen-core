@@ -2349,15 +2349,10 @@ PendingTransaction* WalletImpl::stakePending(const std::string& sn_key_str, cons
     return nullptr;
   }
 
-  if (!m_wallet->check_stake_tx(sn_key_str, addr_info, amount)) {
-      LOG_ERROR("Refusing to create a stake transaction");
-      return nullptr;
-  }
-
   /// Note(maxim): need to be careful to call `WalletImpl::disposeTransaction` when it is no longer needed
   PendingTransactionImpl * transaction = new PendingTransactionImpl(*this);
 
-  transaction->m_pending_tx = m_wallet->create_stake_tx(sn_key, addr_info.address, amount);
+  transaction->m_pending_tx = m_wallet->create_stake_tx(sn_key, addr_info, amount);
 
   return transaction;
 }
