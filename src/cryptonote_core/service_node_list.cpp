@@ -337,9 +337,9 @@ namespace service_nodes
 
   static uint64_t get_new_swarm_id(std::mt19937_64& mt, const std::vector<swarm_id_t>& ids)
   {
-    uint64_t id_new = 0;
+    uint64_t id_new = QUEUE_SWARM_ID;
 
-    while (id_new == 0 && ( std::find(ids.begin(), ids.end(), id_new) != ids.end() )) {
+    while (id_new == QUEUE_SWARM_ID || ( std::find(ids.begin(), ids.end(), id_new) != ids.end() )) {
       id_new = uniform_distribution_portable(mt, UINT64_MAX);
     }
 
@@ -379,7 +379,6 @@ namespace service_nodes
       /// shuffle to remove all biases
     loki_shuffle(all_swarms, seed);
 
-    /// prepare a lambda to be used with algorithms
     const auto cmp_swarm_sizes =
       [&swarm_to_snodes](swarm_id_t lhs, swarm_id_t rhs) {
         return swarm_to_snodes.at(lhs).size() < swarm_to_snodes.at(rhs).size();
@@ -425,7 +424,7 @@ namespace service_nodes
               break;
             }
 
-            /// get a random service node
+            /// get a random service node from that swarm
             const crypto::public_key sn_pk = pop_random_snode(mersenne_twister, swarm_to_snodes.at(large_swarm));
             /// assign it to the starving swarm
             swarm_to_snodes.at(swarm_id).push_back(sn_pk);
