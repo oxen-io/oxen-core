@@ -612,7 +612,7 @@ namespace service_nodes
 
     const auto hf_version = m_blockchain.get_hard_fork_version(block_height);
 
-    if (hf_version >= cryptonote::Blockchain::version_10_swarms) {
+    if (hf_version >= cryptonote::network_version_10_bulletproofs) {
       info.version = service_node_info::version_1_swarms;
       info.swarm_id = QUEUE_SWARM_ID; /// new nodes go into a "queue swarm"
     }
