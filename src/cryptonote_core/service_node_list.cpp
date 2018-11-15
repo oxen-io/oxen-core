@@ -376,7 +376,7 @@ namespace service_nodes
 
     auto all_swarms = get_all_swarms(swarm_to_snodes);
     std::sort(all_swarms.begin(), all_swarms.end());
-      /// shuffle to remove all biases
+
     loki_shuffle(all_swarms, seed);
 
     const auto cmp_swarm_sizes =
@@ -415,7 +415,7 @@ namespace service_nodes
         const auto needed = MIN_SWARM_SIZE - swarm_to_snodes.at(swarm_id).size();
 
           for (auto i = 0u; i < needed; ++i) {
-            /// get the largest swarm
+
             const auto large_swarm =
               *std::max_element(all_swarms.begin(), all_swarms.end(), cmp_swarm_sizes);
 
@@ -424,9 +424,7 @@ namespace service_nodes
               break;
             }
 
-            /// get a random service node from that swarm
             const crypto::public_key sn_pk = pop_random_snode(mersenne_twister, swarm_to_snodes.at(large_swarm));
-            /// assign it to the starving swarm
             swarm_to_snodes.at(swarm_id).push_back(sn_pk);
         }
 
@@ -435,10 +433,10 @@ namespace service_nodes
 
     }
 
-    /// 3. Proceed to any "unsaturated" swarms (with fewer than max nodes)
+    /// 3. Fill in "unsaturated" swarms (with fewer than max nodes) starting from smallest
     {
       while (!swarm_buffer.empty() && !all_swarms.empty()) {
-        // find the smallest -> fill it in first
+
         const swarm_id_t smallest_swarm = *std::min_element(all_swarms.begin(), all_swarms.end(), cmp_swarm_sizes);
 
         std::vector<crypto::public_key>& swarm = swarm_to_snodes.at(smallest_swarm);
@@ -503,7 +501,6 @@ namespace service_nodes
 
   void service_node_list::update_swarms(uint64_t height) {
 
-    /// Generate seed
     crypto::hash hash = m_blockchain.get_block_id_by_height(height);
     uint64_t seed = 0;
     std::memcpy(&seed, hash.data, sizeof(seed));
@@ -527,7 +524,7 @@ namespace service_nodes
       for (const auto snode : snodes) {
 
         auto& sn_info = m_service_nodes_infos.at(snode);
-        if (sn_info.swarm_id == swarm_id) continue; /// nothing chaged for this snode
+        if (sn_info.swarm_id == swarm_id) continue; /// nothing changed for this snode
 
         /// modify info and record the change
         m_rollback_events.push_back(std::unique_ptr<rollback_event>(new rollback_change(height, snode, sn_info)));
