@@ -161,10 +161,13 @@ int main(int argc, char* argv[])
       GENERATE_AND_PLAY(gen_block_is_too_big);
 
       // Transaction verification tests
-      GENERATE_AND_PLAY(gen_tx_no_inputs_no_outputs);
       GENERATE_AND_PLAY(gen_tx_big_version);
       GENERATE_AND_PLAY(gen_tx_unlock_time);
       GENERATE_AND_PLAY(gen_tx_input_is_not_txin_to_key);
+      GENERATE_AND_PLAY(gen_tx_no_inputs_no_outputs);
+      GENERATE_AND_PLAY(gen_tx_no_inputs_has_outputs);
+      GENERATE_AND_PLAY(gen_tx_has_inputs_no_outputs);
+      GENERATE_AND_PLAY(gen_tx_invalid_input_amount);
 
       GENERATE_AND_PLAY(gen_multisig_tx_invalid_23_1__no_threshold);
       GENERATE_AND_PLAY(gen_multisig_tx_invalid_45_5_23_no_threshold);
@@ -201,9 +204,6 @@ int main(int argc, char* argv[])
       //GENERATE_AND_PLAY(gen_block_invalid_binary_format); // Takes up to 3 hours, if CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW == 500, up to 30 minutes, if CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW == 10
 
       // Transaction verification tests
-       GENERATE_AND_PLAY(gen_tx_no_inputs_has_outputs);
-       GENERATE_AND_PLAY(gen_tx_has_inputs_no_outputs);
-       GENERATE_AND_PLAY(gen_tx_invalid_input_amount);
        GENERATE_AND_PLAY(gen_tx_input_wo_key_offsets);
        GENERATE_AND_PLAY(gen_tx_sender_key_offest_not_exist);
        GENERATE_AND_PLAY(gen_tx_key_offest_points_to_foreign_key);
