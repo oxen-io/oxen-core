@@ -370,29 +370,22 @@ bool gen_tx_input_wo_key_offsets::generate(std::vector<test_event_entry>& events
   uint64_t ts_start = 1338224400;
 
   GENERATE_ACCOUNT(miner_account);
-  MAKE_GENESIS_BLOCK(events, blk_0, miner_account, ts_start);
-  REWIND_BLOCKS(events, blk_0r, blk_0, miner_account);
+  MAKE_GENESIS_BLOCK(events, blk_tail, miner_account, ts_start);
+  REWIND_BLOCKS_N   (events, blk_money_unlocked, blk_tail,           miner_account, 40);
+  REWIND_BLOCKS     (events, blk_head,           blk_money_unlocked, miner_account);
 
   std::vector<tx_source_entry> sources;
   std::vector<tx_destination_entry> destinations;
-  fill_tx_sources_and_destinations(events, blk_0, miner_account, miner_account, MK_COINS(1), TESTS_DEFAULT_FEE, 0, sources, destinations);
+  fill_tx_sources_and_destinations(events, blk_money_unlocked, miner_account, miner_account, MK_COINS(1), TESTS_DEFAULT_FEE, CRYPTONOTE_TX_DEFAULT_MIX, sources, destinations);
 
-  tx_builder builder;
-  builder.step1_init();
-  builder.step2_fill_inputs(miner_account.get_keys(), sources);
-  builder.step3_fill_outputs(destinations);
-  txin_to_key& in_to_key = boost::get<txin_to_key>(builder.m_tx.vin.front());
-  uint64_t key_offset = in_to_key.key_offsets.front();
+  transaction tx = {};
+  TxBuilder(events, tx, blk_money_unlocked, miner_account, miner_account, MK_COINS(1), cryptonote::network_version_7).build();
+  txin_to_key& in_to_key = boost::get<txin_to_key>(tx.vin.front());
   in_to_key.key_offsets.pop_back();
   CHECK_AND_ASSERT_MES(in_to_key.key_offsets.empty(), false, "txin contained more than one key_offset");
-  builder.step4_calc_hash();
-  in_to_key.key_offsets.push_back(key_offset);
-  builder.step5_sign(sources);
-  in_to_key.key_offsets.pop_back();
 
   DO_CALLBACK(events, "mark_invalid_tx");
-  events.push_back(builder.m_tx);
-
+  events.push_back(tx);
   return true;
 }
 
