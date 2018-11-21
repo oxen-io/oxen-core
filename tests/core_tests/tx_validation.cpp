@@ -186,16 +186,16 @@ bool gen_tx_big_version::generate(std::vector<test_event_entry>& events) const
   uint64_t ts_start = 1338224400;
 
   GENERATE_ACCOUNT(miner_account);
-  MAKE_GENESIS_BLOCK(events, blk_0, miner_account, ts_start);
-  REWIND_BLOCKS_N(events, blk_0r, blk_0, miner_account, 30);
-  REWIND_BLOCKS(events, blk_1r, blk_0r, miner_account);
+  MAKE_GENESIS_BLOCK(events, blk_tail, miner_account, ts_start);
+  REWIND_BLOCKS_N(events, blk_money_unlocked, blk_tail, miner_account, 30);
+  REWIND_BLOCKS(events, blk_head, blk_money_unlocked, miner_account);
 
   std::vector<tx_source_entry> sources;
   std::vector<tx_destination_entry> destinations;
-  fill_tx_sources_and_destinations(events, blk_0r, miner_account, miner_account, MK_COINS(1), TESTS_DEFAULT_FEE, 0, sources, destinations);
+  fill_tx_sources_and_destinations(events, blk_money_unlocked, miner_account, miner_account, MK_COINS(1), TESTS_DEFAULT_FEE, 0, sources, destinations);
 
   transaction tx = {};
-  TxBuilder(events, tx, blk_0r, miner_account, miner_account, MK_COINS(1), -1).build();
+  TxBuilder(events, tx, blk_money_unlocked, miner_account, miner_account, MK_COINS(1), -1).build();
   DO_CALLBACK(events, "mark_invalid_tx");
   events.push_back(tx);
 
@@ -206,56 +206,56 @@ bool gen_tx_unlock_time::generate(std::vector<test_event_entry>& events) const
 {
   uint64_t ts_start = 1338224400;
 
-  GENERATE_ACCOUNT(miner_account);
-  MAKE_GENESIS_BLOCK(events, blk_0, miner_account, ts_start);
-  REWIND_BLOCKS_N(events, blk_1r, blk_0, miner_account, 50);
-  REWIND_BLOCKS(events, blk_2r, blk_1r, miner_account);
+  GENERATE_ACCOUNT  (miner_account);
+  MAKE_GENESIS_BLOCK(events, blk_tail, miner_account, ts_start);
+  REWIND_BLOCKS_N   (events, blk_money_unlocked, blk_tail,           miner_account, 40);
+  REWIND_BLOCKS     (events, blk_head,           blk_money_unlocked, miner_account);
 
   std::list<transaction> txs_0;
 
   transaction tx       = {};
   uint64_t unlock_time = 0;
-  TxBuilder(events, tx, blk_1r, miner_account, miner_account, MK_COINS(1), cryptonote::network_version_7).with_unlock_time(unlock_time).build();
+  TxBuilder(events, tx, blk_money_unlocked, miner_account, miner_account, MK_COINS(1), cryptonote::network_version_7).with_unlock_time(unlock_time).build();
   events.push_back(tx);
   txs_0.push_back(tx);
 
   tx          = {};
-  unlock_time = get_block_height(blk_2r) - 1;
-  TxBuilder(events, tx, blk_1r, miner_account, miner_account, MK_COINS(1), cryptonote::network_version_7).with_unlock_time(unlock_time).build();
+  unlock_time = get_block_height(blk_money_unlocked) - 1;
+  TxBuilder(events, tx, blk_money_unlocked, miner_account, miner_account, MK_COINS(1), cryptonote::network_version_7).with_unlock_time(unlock_time).build();
   events.push_back(tx);
   txs_0.push_back(tx);
 
   tx          = {};
-  unlock_time = get_block_height(blk_2r);
-  TxBuilder(events, tx, blk_1r, miner_account, miner_account, MK_COINS(1), cryptonote::network_version_7).with_unlock_time(unlock_time).build();
+  unlock_time = get_block_height(blk_money_unlocked);
+  TxBuilder(events, tx, blk_money_unlocked, miner_account, miner_account, MK_COINS(1), cryptonote::network_version_7).with_unlock_time(unlock_time).build();
   events.push_back(tx);
   txs_0.push_back(tx);
 
   tx          = {};
-  unlock_time = get_block_height(blk_2r) + 1;
-  TxBuilder(events, tx, blk_1r, miner_account, miner_account, MK_COINS(1), cryptonote::network_version_7).with_unlock_time(unlock_time).build();
+  unlock_time = get_block_height(blk_money_unlocked) + 1;
+  TxBuilder(events, tx, blk_money_unlocked, miner_account, miner_account, MK_COINS(1), cryptonote::network_version_7).with_unlock_time(unlock_time).build();
   events.push_back(tx);
   txs_0.push_back(tx);
 
   tx          = {};
-  unlock_time = get_block_height(blk_2r) + 2;
-  TxBuilder(events, tx, blk_1r, miner_account, miner_account, MK_COINS(1), cryptonote::network_version_7).with_unlock_time(unlock_time).build();
+  unlock_time = get_block_height(blk_money_unlocked) + 2;
+  TxBuilder(events, tx, blk_money_unlocked, miner_account, miner_account, MK_COINS(1), cryptonote::network_version_7).with_unlock_time(unlock_time).build();
   events.push_back(tx);
   txs_0.push_back(tx);
 
   tx          = {};
   unlock_time = ts_start - 1;
-  TxBuilder(events, tx, blk_1r, miner_account, miner_account, MK_COINS(1), cryptonote::network_version_7).with_unlock_time(unlock_time).build();
+  TxBuilder(events, tx, blk_money_unlocked, miner_account, miner_account, MK_COINS(1), cryptonote::network_version_7).with_unlock_time(unlock_time).build();
   events.push_back(tx);
   txs_0.push_back(tx);
 
   tx          = {};
   unlock_time = time(0) + 60 * 60;
-  TxBuilder(events, tx, blk_1r, miner_account, miner_account, MK_COINS(1), cryptonote::network_version_7).with_unlock_time(unlock_time).build();
+  TxBuilder(events, tx, blk_money_unlocked, miner_account, miner_account, MK_COINS(1), cryptonote::network_version_7).with_unlock_time(unlock_time).build();
   events.push_back(tx);
   txs_0.push_back(tx);
 
-  MAKE_NEXT_BLOCK_TX_LIST(events, blk_3, blk_2r, miner_account, txs_0);
+  MAKE_NEXT_BLOCK_TX_LIST(events, blk_tmp, blk_money_unlocked, miner_account, txs_0);
   return true;
 }
 
@@ -265,7 +265,7 @@ bool gen_tx_input_is_not_txin_to_key::generate(std::vector<test_event_entry>& ev
 
   GENERATE_ACCOUNT(miner_account);
   MAKE_GENESIS_BLOCK(events, blk_tail, miner_account, ts_start);
-  REWIND_BLOCKS_N   (events, blk_money_unlocked, blk_tail,           miner_account, 50);
+  REWIND_BLOCKS_N   (events, blk_money_unlocked, blk_tail,           miner_account, 40);
   REWIND_BLOCKS     (events, blk_head,           blk_money_unlocked, miner_account);
 
   MAKE_NEXT_BLOCK(events, blk_tmp, blk_head, miner_account);
