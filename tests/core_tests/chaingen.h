@@ -430,7 +430,7 @@ class TxBuilder {
 
   /// required fields
   const std::vector<test_event_entry>& m_events;
-  const uint8_t m_hf_version;
+  const size_t m_hf_version;
   cryptonote::transaction& m_tx;
   const cryptonote::block& m_head;
   const cryptonote::account_base& m_from;
