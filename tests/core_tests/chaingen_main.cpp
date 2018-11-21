@@ -112,7 +112,6 @@ int main(int argc, char* argv[])
 
     if (run_all || command_line::get_arg(vm, arg_service_nodes))
     {
-#if 0
       GENERATE_AND_PLAY(gen_service_nodes);
       GENERATE_AND_PLAY(test_prefer_deregisters);
       GENERATE_AND_PLAY(test_zero_fee_deregister);
@@ -121,12 +120,10 @@ int main(int argc, char* argv[])
       GENERATE_AND_PLAY(deregister_too_old);
       GENERATE_AND_PLAY(sn_test_rollback);
       GENERATE_AND_PLAY(test_swarms_basic);
-#endif
     }
 
     if (run_all)
     {
-#if 0
       GENERATE_AND_PLAY(gen_batched_governance_reward); // Loki Governance
 
       GENERATE_AND_PLAY(gen_simple_chain_001);
@@ -199,15 +196,14 @@ int main(int argc, char* argv[])
       GENERATE_AND_PLAY(gen_bp_tx_invalid_too_many_proofs);
       GENERATE_AND_PLAY(gen_bp_tx_invalid_wrong_amount);
       GENERATE_AND_PLAY(gen_bp_tx_invalid_borromean_type);
-#endif
 
       // TODO(loki): Tests we need to fix
-       GENERATE_AND_PLAY(gen_tx_mixed_key_offset_not_exist);
 #if 0
       //GENERATE_AND_PLAY(gen_ring_signature_big); // Takes up to XXX hours (if CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW == 10)
       //GENERATE_AND_PLAY(gen_block_invalid_binary_format); // Takes up to 3 hours, if CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW == 500, up to 30 minutes, if CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW == 10
 
       // Transaction verification tests
+       GENERATE_AND_PLAY(gen_tx_mixed_key_offset_not_exist); // TODO(loki): See comment in the test function
        GENERATE_AND_PLAY(gen_tx_key_image_not_derive_from_tx_key);
        GENERATE_AND_PLAY(gen_tx_key_image_is_invalid);
        GENERATE_AND_PLAY(gen_tx_check_input_unlock_time);
