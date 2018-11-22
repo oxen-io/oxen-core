@@ -172,6 +172,7 @@ int main(int argc, char* argv[])
       GENERATE_AND_PLAY(gen_tx_key_offset_points_to_foreign_key);
       GENERATE_AND_PLAY(gen_tx_sender_key_offset_not_exist); // TODO(loki): Revisit this test
       GENERATE_AND_PLAY(gen_tx_key_image_not_derive_from_tx_key);
+      GENERATE_AND_PLAY(gen_tx_key_image_is_invalid);
 
       GENERATE_AND_PLAY(gen_multisig_tx_invalid_23_1__no_threshold);
       GENERATE_AND_PLAY(gen_multisig_tx_invalid_45_5_23_no_threshold);
@@ -210,8 +211,6 @@ int main(int argc, char* argv[])
 
       // Transaction verification tests
        GENERATE_AND_PLAY(gen_tx_mixed_key_offset_not_exist); // TODO(loki): See comment in the test function
-       GENERATE_AND_PLAY(gen_tx_key_image_is_invalid);
-       GENERATE_AND_PLAY(gen_tx_check_input_unlock_time);
        GENERATE_AND_PLAY(gen_tx_txout_to_key_has_invalid_key);
        GENERATE_AND_PLAY(gen_tx_output_with_zero_amount);
        GENERATE_AND_PLAY(gen_tx_output_is_not_txout_to_key);

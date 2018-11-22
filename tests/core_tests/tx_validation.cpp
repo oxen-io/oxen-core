@@ -549,33 +549,23 @@ bool gen_tx_key_image_not_derive_from_tx_key::generate(std::vector<test_event_en
 bool gen_tx_key_image_is_invalid::generate(std::vector<test_event_entry>& events) const
 {
   uint64_t ts_start = 1338224400;
+  GENERATE_ACCOUNT  (miner_account);
+  MAKE_GENESIS_BLOCK(events, blk_tail, miner_account, ts_start);
+  REWIND_BLOCKS_N   (events, blk_money_unlocked, blk_tail,           miner_account, 40);
+  REWIND_BLOCKS     (events, blk_head,           blk_money_unlocked, miner_account);
 
-  GENERATE_ACCOUNT(miner_account);
-  MAKE_GENESIS_BLOCK(events, blk_0, miner_account, ts_start);
-  REWIND_BLOCKS(events, blk_0r, blk_0, miner_account);
-
-  std::vector<tx_source_entry> sources;
-  std::vector<tx_destination_entry> destinations;
-  fill_tx_sources_and_destinations(events, blk_0, miner_account, miner_account, MK_COINS(1), TESTS_DEFAULT_FEE, 0, sources, destinations);
-
-  tx_builder builder;
-  builder.step1_init();
-  builder.step2_fill_inputs(miner_account.get_keys(), sources);
-
-  txin_to_key& in_to_key = boost::get<txin_to_key>(builder.m_tx.vin.front());
-  in_to_key.k_image = generate_invalid_key_image();
-
-  builder.step3_fill_outputs(destinations);
-  builder.step4_calc_hash();
+  transaction tx = {};
+  TxBuilder(events, tx, blk_money_unlocked, miner_account, miner_account, MK_COINS(1), cryptonote::network_version_7).build();
+  txin_to_key& in_to_key = boost::get<txin_to_key>(tx.vin.front());
+  in_to_key.k_image      = generate_invalid_key_image();
 
   // Tx with invalid key image can't be subscribed, so create empty signature
-  builder.m_tx.signatures.resize(1);
-  builder.m_tx.signatures[0].resize(1);
-  builder.m_tx.signatures[0][0] = boost::value_initialized<crypto::signature>();
+  tx.signatures.resize(1);
+  tx.signatures[0].resize(1);
+  tx.signatures[0][0] = boost::value_initialized<crypto::signature>();
 
   DO_CALLBACK(events, "mark_invalid_tx");
-  events.push_back(builder.m_tx);
-
+  events.push_back(tx);
   return true;
 }
 
@@ -585,10 +575,10 @@ bool gen_tx_check_input_unlock_time::generate(std::vector<test_event_entry>& eve
 
   uint64_t ts_start = 1338224400;
 
-  GENERATE_ACCOUNT(miner_account);
+  GENERATE_ACCOUNT  (miner_account);
   MAKE_GENESIS_BLOCK(events, blk_0, miner_account, ts_start);
-  REWIND_BLOCKS_N(events, blk_1, blk_0, miner_account, tests_count - 1);
-  REWIND_BLOCKS(events, blk_1r, blk_1, miner_account);
+  REWIND_BLOCKS_N   (events, blk_1, blk_0, miner_account, tests_count - 1);
+  REWIND_BLOCKS     (events, blk_1r, blk_1, miner_account);
 
   std::array<account_base, tests_count> accounts;
   for (size_t i = 0; i < tests_count; ++i)
