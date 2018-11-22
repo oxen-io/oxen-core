@@ -542,7 +542,6 @@ bool gen_tx_key_image_not_derive_from_tx_key::generate(std::vector<test_event_en
 
   DO_CALLBACK(events, "mark_invalid_tx");
   events.push_back(tx);
-
   return true;
 }
 
@@ -633,29 +632,18 @@ bool gen_tx_check_input_unlock_time::generate(std::vector<test_event_entry>& eve
 bool gen_tx_txout_to_key_has_invalid_key::generate(std::vector<test_event_entry>& events) const
 {
   uint64_t ts_start = 1338224400;
+  GENERATE_ACCOUNT  (miner_account);
+  MAKE_GENESIS_BLOCK(events, blk_tail, miner_account, ts_start);
+  REWIND_BLOCKS_N   (events, blk_money_unlocked, blk_tail,           miner_account, 40);
+  REWIND_BLOCKS     (events, blk_head,           blk_money_unlocked, miner_account);
 
-  GENERATE_ACCOUNT(miner_account);
-  MAKE_GENESIS_BLOCK(events, blk_0, miner_account, ts_start);
-  REWIND_BLOCKS(events, blk_0r, blk_0, miner_account);
-
-  std::vector<tx_source_entry> sources;
-  std::vector<tx_destination_entry> destinations;
-  fill_tx_sources_and_destinations(events, blk_0, miner_account, miner_account, MK_COINS(1), TESTS_DEFAULT_FEE, 0, sources, destinations);
-
-  tx_builder builder;
-  builder.step1_init();
-  builder.step2_fill_inputs(miner_account.get_keys(), sources);
-  builder.step3_fill_outputs(destinations);
-
-  txout_to_key& out_to_key =  boost::get<txout_to_key>(builder.m_tx.vout.front().target);
-  out_to_key.key = generate_invalid_pub_key();
-
-  builder.step4_calc_hash();
-  builder.step5_sign(sources);
+  transaction tx           = {};
+  TxBuilder(events, tx, blk_money_unlocked, miner_account, miner_account, MK_COINS(1), cryptonote::network_version_7).build();
+  txout_to_key& out_to_key = boost::get<txout_to_key>(tx.vout.front().target);
+  out_to_key.key           = generate_invalid_pub_key();
 
   DO_CALLBACK(events, "mark_invalid_tx");
-  events.push_back(builder.m_tx);
-
+  events.push_back(tx);
   return true;
 }
 

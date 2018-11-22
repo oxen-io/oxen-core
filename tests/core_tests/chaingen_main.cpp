@@ -173,6 +173,7 @@ int main(int argc, char* argv[])
       GENERATE_AND_PLAY(gen_tx_sender_key_offset_not_exist); // TODO(loki): Revisit this test
       GENERATE_AND_PLAY(gen_tx_key_image_not_derive_from_tx_key);
       GENERATE_AND_PLAY(gen_tx_key_image_is_invalid);
+      GENERATE_AND_PLAY(gen_tx_txout_to_key_has_invalid_key);
 
       GENERATE_AND_PLAY(gen_multisig_tx_invalid_23_1__no_threshold);
       GENERATE_AND_PLAY(gen_multisig_tx_invalid_45_5_23_no_threshold);
@@ -210,11 +211,10 @@ int main(int argc, char* argv[])
       //GENERATE_AND_PLAY(gen_block_invalid_binary_format); // Takes up to 3 hours, if CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW == 500, up to 30 minutes, if CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW == 10
 
       // Transaction verification tests
-       GENERATE_AND_PLAY(gen_tx_mixed_key_offset_not_exist); // TODO(loki): See comment in the test function
-       GENERATE_AND_PLAY(gen_tx_txout_to_key_has_invalid_key);
-       GENERATE_AND_PLAY(gen_tx_output_with_zero_amount);
-       GENERATE_AND_PLAY(gen_tx_output_is_not_txout_to_key);
-       GENERATE_AND_PLAY(gen_tx_signatures_are_invalid);
+      GENERATE_AND_PLAY(gen_tx_mixed_key_offset_not_exist); // TODO(loki): See comment in the test function
+      GENERATE_AND_PLAY(gen_tx_output_with_zero_amount);
+      GENERATE_AND_PLAY(gen_tx_output_is_not_txout_to_key);
+      GENERATE_AND_PLAY(gen_tx_signatures_are_invalid);
 
       // Double spend
       GENERATE_AND_PLAY(gen_double_spend_in_tx<false>);
