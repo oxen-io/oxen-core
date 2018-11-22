@@ -56,12 +56,6 @@ namespace service_nodes
     return  x / (secureMax / n);
   }
 
-  uint64_t service_node_info::get_min_contribution() const
-  {
-    uint64_t result = get_min_node_contribution(staking_requirement, total_reserved);
-    return result;
-  }
-
   service_node_list::service_node_list(cryptonote::Blockchain& blockchain)
     : m_blockchain(blockchain), m_hooks_registered(false), m_height(0), m_db(nullptr), m_service_node_pubkey(nullptr)
   {
@@ -551,8 +545,10 @@ namespace service_nodes
     if (service_node_portions.size() != service_node_addresses.size() || service_node_portions.empty())
       return false;
 
+    const auto hf_version = m_blockchain.get_hard_fork_version(block_height);
+
     // check the portions
-    if (!check_service_node_portions(service_node_portions)) return false;
+    if (!check_service_node_portions(hf_version, service_node_portions)) return false;
 
     if (portions_for_operator > STAKING_PORTIONS)
       return false;
@@ -594,8 +590,6 @@ namespace service_nodes
     info.last_reward_transaction_index = index;
     info.total_contributed = 0;
     info.total_reserved = 0;
-
-    const auto hf_version = m_blockchain.get_hard_fork_version(block_height);
 
     if (hf_version >= cryptonote::network_version_10_bulletproofs) {
       info.version = service_node_info::version_1_swarms;
@@ -708,6 +702,7 @@ namespace service_nodes
     if (!get_contribution(tx, block_height, address, transferred))
       return;
 
+    /// Service node must be registered
     auto iter = m_service_nodes_infos.find(pubkey);
     if (iter == m_service_nodes_infos.end())
       return;
@@ -723,11 +718,16 @@ namespace service_nodes
     // and if we don't already have the maximum
     auto contrib_iter = std::find_if(contributors.begin(), contributors.end(),
         [&address](const service_node_info::contribution& contributor) { return contributor.address == address; });
-    if (contrib_iter == contributors.end())
-    {
-      if (contributors.size() >= MAX_NUMBER_OF_CONTRIBUTORS || transferred < info.get_min_contribution())
-        return;
-    }
+
+    const bool contributer_found = (contrib_iter != contributors.end());
+
+    /// Only create a new contributor if we don't exceed the contributor limit
+    if (!contributer_found && contributors.size() >= MAX_NUMBER_OF_CONTRIBUTORS) return;
+
+    /// Check that the contribution is large enough
+    const uint8_t hf_version = m_blockchain.get_hard_fork_version(block_height);
+    const uint64_t min_contribution = get_min_node_contribution(hf_version, info.staking_requirement, info.total_reserved, contributors.size());
+    if (!contributer_found && transferred < min_contribution) return;
 
     m_rollback_events.push_back(std::unique_ptr<rollback_event>(new rollback_change(block_height, pubkey, info)));
 
