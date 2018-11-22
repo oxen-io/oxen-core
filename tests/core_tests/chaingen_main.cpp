@@ -112,7 +112,6 @@ int main(int argc, char* argv[])
 
     if (run_all || command_line::get_arg(vm, arg_service_nodes))
     {
-#if 0
       GENERATE_AND_PLAY(gen_service_nodes);
       GENERATE_AND_PLAY(test_prefer_deregisters);
       GENERATE_AND_PLAY(test_zero_fee_deregister);
@@ -121,12 +120,10 @@ int main(int argc, char* argv[])
       GENERATE_AND_PLAY(deregister_too_old);
       GENERATE_AND_PLAY(sn_test_rollback);
       GENERATE_AND_PLAY(test_swarms_basic);
-#endif
     }
 
     if (run_all)
     {
-#if 0
       GENERATE_AND_PLAY(gen_batched_governance_reward); // Loki Governance
 
       GENERATE_AND_PLAY(gen_simple_chain_001);
@@ -160,6 +157,9 @@ int main(int argc, char* argv[])
       GENERATE_AND_PLAY(gen_block_has_invalid_tx);
       GENERATE_AND_PLAY(gen_block_is_too_big);
 
+      // TODO(loki): We also want to run these tx tests on deregistration tx's
+      // as well because they special case and run under very different code
+      // paths from the regular tx path
       // Transaction verification tests
       GENERATE_AND_PLAY(gen_tx_big_version);
       GENERATE_AND_PLAY(gen_tx_unlock_time);
@@ -174,6 +174,8 @@ int main(int argc, char* argv[])
       GENERATE_AND_PLAY(gen_tx_key_image_not_derive_from_tx_key);
       GENERATE_AND_PLAY(gen_tx_key_image_is_invalid);
       GENERATE_AND_PLAY(gen_tx_txout_to_key_has_invalid_key);
+      GENERATE_AND_PLAY(gen_tx_output_is_not_txout_to_key);
+      GENERATE_AND_PLAY(gen_tx_signatures_are_invalid);
 
       GENERATE_AND_PLAY(gen_multisig_tx_invalid_23_1__no_threshold);
       GENERATE_AND_PLAY(gen_multisig_tx_invalid_45_5_23_no_threshold);
@@ -202,7 +204,6 @@ int main(int argc, char* argv[])
       GENERATE_AND_PLAY(gen_bp_tx_invalid_too_many_proofs);
       GENERATE_AND_PLAY(gen_bp_tx_invalid_wrong_amount);
       GENERATE_AND_PLAY(gen_bp_tx_invalid_borromean_type);
-#endif
     }
 
       // TODO(loki): Tests we need to fix
@@ -212,9 +213,7 @@ int main(int argc, char* argv[])
 
       // Transaction verification tests
       GENERATE_AND_PLAY(gen_tx_mixed_key_offset_not_exist); // TODO(loki): See comment in the function
-      GENERATE_AND_PLAY(gen_tx_output_with_zero_amount); // TODO(loki): See comment in the funct
-      GENERATE_AND_PLAY(gen_tx_output_is_not_txout_to_key);
-      GENERATE_AND_PLAY(gen_tx_signatures_are_invalid);
+      GENERATE_AND_PLAY(gen_tx_output_with_zero_amount); // TODO(loki): See comment in the function
 
       // Double spend
       GENERATE_AND_PLAY(gen_double_spend_in_tx<false>);

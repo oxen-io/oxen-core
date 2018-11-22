@@ -392,7 +392,6 @@ bool gen_tx_input_wo_key_offsets::generate(std::vector<test_event_entry>& events
 bool gen_tx_key_offset_points_to_foreign_key::generate(std::vector<test_event_entry>& events) const
 {
   uint64_t ts_start = 1338224400;
-
   GENERATE_ACCOUNT  (miner_account);
   MAKE_GENESIS_BLOCK(events, blk_tail, miner_account, ts_start);
   REWIND_BLOCKS_N   (events, blk_1, blk_tail, miner_account, 40);
@@ -687,98 +686,81 @@ bool gen_tx_output_with_zero_amount::generate(std::vector<test_event_entry>& eve
 bool gen_tx_output_is_not_txout_to_key::generate(std::vector<test_event_entry>& events) const
 {
   uint64_t ts_start = 1338224400;
+  GENERATE_ACCOUNT  (miner_account);
+  MAKE_GENESIS_BLOCK(events, blk_tail, miner_account, ts_start);
+  REWIND_BLOCKS_N   (events, blk_money_unlocked, blk_tail,           miner_account, 40);
+  REWIND_BLOCKS     (events, blk_head,           blk_money_unlocked, miner_account);
 
-  GENERATE_ACCOUNT(miner_account);
-  MAKE_GENESIS_BLOCK(events, blk_0, miner_account, ts_start);
-  REWIND_BLOCKS(events, blk_0r, blk_0, miner_account);
-
-  std::vector<tx_source_entry> sources;
-  std::vector<tx_destination_entry> destinations;
-  fill_tx_sources_and_destinations(events, blk_0, miner_account, miner_account, MK_COINS(1), TESTS_DEFAULT_FEE, 0, sources, destinations);
-
-  tx_builder builder;
-  builder.step1_init();
-  builder.step2_fill_inputs(miner_account.get_keys(), sources);
-
-  builder.m_tx.vout.push_back(tx_out());
-  builder.m_tx.vout.back().amount = 1;
-  builder.m_tx.vout.back().target = txout_to_script();
-
-  builder.step4_calc_hash();
-  builder.step5_sign(sources);
+  transaction tx = {};
+  TxBuilder(events, tx, blk_money_unlocked, miner_account, miner_account, MK_COINS(1), cryptonote::network_version_7).build();
+  tx.vout.back().target = txout_to_script();
 
   DO_CALLBACK(events, "mark_invalid_tx");
-  events.push_back(builder.m_tx);
+  events.push_back(tx);
 
-  builder.step1_init();
-  builder.step2_fill_inputs(miner_account.get_keys(), sources);
-
-  builder.m_tx.vout.push_back(tx_out());
-  builder.m_tx.vout.back().amount = 1;
-  builder.m_tx.vout.back().target = txout_to_scripthash();
-
-  builder.step4_calc_hash();
-  builder.step5_sign(sources);
+  tx = {};
+  TxBuilder(events, tx, blk_money_unlocked, miner_account, miner_account, MK_COINS(1), cryptonote::network_version_7).build();
+  tx.vout.back().target = txout_to_scripthash();
 
   DO_CALLBACK(events, "mark_invalid_tx");
-  events.push_back(builder.m_tx);
-
+  events.push_back(tx);
   return true;
 }
 
 bool gen_tx_signatures_are_invalid::generate(std::vector<test_event_entry>& events) const
 {
   uint64_t ts_start = 1338224400;
+  GENERATE_ACCOUNT  (miner_account);
+  MAKE_GENESIS_BLOCK(events, blk_tail, miner_account, ts_start);
+  REWIND_BLOCKS_N   (events, blk_1, blk_tail, miner_account, 40);
+  REWIND_BLOCKS     (events, blk_2, blk_1,    miner_account);
 
-  GENERATE_ACCOUNT(miner_account);
-  MAKE_GENESIS_BLOCK(events, blk_0, miner_account, ts_start);
-  MAKE_NEXT_BLOCK(events, blk_1, blk_0, miner_account);
-  REWIND_BLOCKS(events, blk_1r, blk_1, miner_account);
-  MAKE_ACCOUNT(events, alice_account);
-  MAKE_ACCOUNT(events, bob_account);
-  MAKE_TX_LIST_START(events, txs_0, miner_account, bob_account, MK_COINS(1) + TESTS_DEFAULT_FEE, blk_1);
-  MAKE_TX_LIST(events, txs_0, miner_account, alice_account, MK_COINS(1) + TESTS_DEFAULT_FEE, blk_1);
-  MAKE_NEXT_BLOCK_TX_LIST(events, blk_2, blk_1r, miner_account, txs_0);
+  MAKE_ACCOUNT      (events, alice_account);
+  MAKE_ACCOUNT      (events, bob_account);
 
-  MAKE_TX(events, tx_0, miner_account, miner_account, MK_COINS(60), blk_2);
-  events.pop_back();
+  MAKE_TX_LIST_START     (events, txs_0, miner_account, bob_account,   MK_COINS(1) + TESTS_DEFAULT_FEE, blk_2);
+  MAKE_TX_LIST           (events, txs_0, miner_account, alice_account, MK_COINS(1) + TESTS_DEFAULT_FEE, blk_2);
+  MAKE_NEXT_BLOCK_TX_LIST(events, blk_money_unlocked, blk_2,              miner_account, txs_0);
+  REWIND_BLOCKS          (events, blk_head,           blk_money_unlocked, miner_account);
 
-  MAKE_TX_MIX(events, tx_1, bob_account, miner_account, MK_COINS(1), 1, blk_2);
-  events.pop_back();
+  transaction miner_tx = {};
+  TxBuilder(events, miner_tx, blk_money_unlocked, miner_account, miner_account, MK_COINS(60), cryptonote::network_version_7).with_fee(TESTS_DEFAULT_FEE).build();
 
-  // Tx with nmix = 0 without signatures
+  // TX without signatures
   DO_CALLBACK(events, "mark_invalid_tx");
-  blobdata sr_tx = t_serializable_object_to_blob(static_cast<transaction_prefix>(tx_0));
+  blobdata sr_tx = t_serializable_object_to_blob(static_cast<transaction_prefix>(miner_tx));
   events.push_back(serialized_transaction(sr_tx));
 
-  // Tx with nmix = 0 have a few inputs, and not enough signatures
+  // TX have a few inputs, and not enough signatures
   DO_CALLBACK(events, "mark_invalid_tx");
-  sr_tx = t_serializable_object_to_blob(tx_0);
+  sr_tx = t_serializable_object_to_blob(miner_tx);
   sr_tx.resize(sr_tx.size() - sizeof(crypto::signature));
   events.push_back(serialized_transaction(sr_tx));
 
-  // Tx with nmix = 0 have a few inputs, and too many signatures
+  // TX have a few inputs, and too many signatures
   DO_CALLBACK(events, "mark_invalid_tx");
-  sr_tx = t_serializable_object_to_blob(tx_0);
+  sr_tx = t_serializable_object_to_blob(miner_tx);
   sr_tx.insert(sr_tx.end(), sr_tx.end() - sizeof(crypto::signature), sr_tx.end());
   events.push_back(serialized_transaction(sr_tx));
 
-  // Tx with nmix = 1 without signatures
+  transaction bob_tx = {};
+  TxBuilder(events, bob_tx, blk_money_unlocked, bob_account, miner_account, MK_COINS(1), cryptonote::network_version_7).with_fee(TESTS_DEFAULT_FEE).build();
+
+  // TX without signatures
   DO_CALLBACK(events, "mark_invalid_tx");
-  sr_tx = t_serializable_object_to_blob(static_cast<transaction_prefix>(tx_1));
+  sr_tx = t_serializable_object_to_blob(static_cast<transaction_prefix>(bob_tx));
   events.push_back(serialized_transaction(sr_tx));
 
-  // Tx with nmix = 1 have not enough signatures
+  // TX have not enough signatures
   DO_CALLBACK(events, "mark_invalid_tx");
-  sr_tx = t_serializable_object_to_blob(tx_1);
+  sr_tx = t_serializable_object_to_blob(bob_tx);
   sr_tx.resize(sr_tx.size() - sizeof(crypto::signature));
   events.push_back(serialized_transaction(sr_tx));
 
-  // Tx with nmix = 1 have too many signatures
+  // TX have too many signatures
   DO_CALLBACK(events, "mark_invalid_tx");
-  sr_tx = t_serializable_object_to_blob(tx_1);
+  sr_tx = t_serializable_object_to_blob(bob_tx);
   sr_tx.insert(sr_tx.end(), sr_tx.end() - sizeof(crypto::signature), sr_tx.end());
   events.push_back(serialized_transaction(sr_tx));
-
   return true;
 }
