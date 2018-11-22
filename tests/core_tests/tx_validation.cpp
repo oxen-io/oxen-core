@@ -650,28 +650,37 @@ bool gen_tx_txout_to_key_has_invalid_key::generate(std::vector<test_event_entry>
 bool gen_tx_output_with_zero_amount::generate(std::vector<test_event_entry>& events) const
 {
   uint64_t ts_start = 1338224400;
+  GENERATE_ACCOUNT  (miner_account);
+  MAKE_GENESIS_BLOCK(events, blk_tail, miner_account, ts_start);
+  REWIND_BLOCKS_N   (events, blk_money_unlocked, blk_tail,           miner_account, 40);
+  REWIND_BLOCKS     (events, blk_head,           blk_money_unlocked, miner_account);
 
-  GENERATE_ACCOUNT(miner_account);
-  MAKE_GENESIS_BLOCK(events, blk_0, miner_account, ts_start);
-  REWIND_BLOCKS(events, blk_0r, blk_0, miner_account);
-
-  std::vector<tx_source_entry> sources;
+  // TODO(loki): Hmm. Can't use TxBuilder approach because RCT masks amounts
+  // after it's constructed, so vout amounts is already zero. It seems to be
+  // valid to be able to send a transaction whos output is zero, so this test
+  // might not be valid anymore post RCT.
+#if 1
+  std::vector<tx_source_entry>      sources;
   std::vector<tx_destination_entry> destinations;
-  fill_tx_sources_and_destinations(events, blk_0, miner_account, miner_account, MK_COINS(1), TESTS_DEFAULT_FEE, 0, sources, destinations);
+  uint64_t                          change_amount;
+  fill_tx_sources_and_destinations(events, blk_money_unlocked, miner_account, miner_account, MK_COINS(1), TESTS_DEFAULT_FEE, CRYPTONOTE_TX_DEFAULT_MIX, sources, destinations, &change_amount);
 
-  tx_builder builder;
-  builder.step1_init();
-  builder.step2_fill_inputs(miner_account.get_keys(), sources);
-  builder.step3_fill_outputs(destinations);
+  for (tx_destination_entry &entry : destinations)
+    entry.amount = 0;
 
-  builder.m_tx.vout.front().amount = 0;
+  transaction tx = {};
+  cryptonote::tx_destination_entry change_addr{ change_amount, miner_account.get_keys().m_account_address, false /*is_subaddress*/ };
+  assert(cryptonote::construct_tx(miner_account.get_keys(), sources, destinations, change_addr, {} /*tx_extra*/, tx, 0 /*unlock_time*/, cryptonote::network_version_7, false /*is_staking*/));
 
-  builder.step4_calc_hash();
-  builder.step5_sign(sources);
+#else
+  transaction tx           = {};
+  TxBuilder(events, tx, blk_money_unlocked, miner_account, miner_account, MK_COINS(1), cryptonote::network_version_7).build();
+  tx.vout.front().amount = 0;
+
+#endif
 
   DO_CALLBACK(events, "mark_invalid_tx");
-  events.push_back(builder.m_tx);
-
+  events.push_back(tx);
   return true;
 }
 
