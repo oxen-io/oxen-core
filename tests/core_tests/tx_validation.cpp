@@ -381,8 +381,8 @@ bool gen_tx_input_wo_key_offsets::generate(std::vector<test_event_entry>& events
   transaction tx = {};
   TxBuilder(events, tx, blk_money_unlocked, miner_account, miner_account, MK_COINS(1), cryptonote::network_version_7).build();
   txin_to_key& in_to_key = boost::get<txin_to_key>(tx.vin.front());
-  in_to_key.key_offsets.pop_back();
-  CHECK_AND_ASSERT_MES(in_to_key.key_offsets.empty(), false, "txin contained more than one key_offset");
+  while (!in_to_key.key_offsets.empty())
+    in_to_key.key_offsets.pop_back();
 
   DO_CALLBACK(events, "mark_invalid_tx");
   events.push_back(tx);
@@ -416,9 +416,11 @@ bool gen_tx_key_offset_points_to_foreign_key::generate(std::vector<test_event_en
   txin_to_key& bob_in_to_key        = boost::get<txin_to_key>(bob_tx.vin.front());
   bob_in_to_key.key_offsets.front() = sources_alice.front().outputs.back().first;
 
-  // TODO(loki): This used to be first(), but in the debugger bob's front() is 0 and alice's front() is 0 .. sooo ??
-  // Now this test returns the same error as gen_tx_sender_key_offset_not_exist so I don't think
-  // this test is correct.
+  // TODO(loki): This used to be first(), but in the debugger bob's front() is
+  // 0 and alice's front() is 0 .. sooo ??  Reassigning the first offset
+  // wouldn't change the test.  Now this test returns the same error as
+  // gen_tx_sender_key_offset_not_exist so I don't think this test is correct
+  // using back().
   // bob_in_to_key.key_offsets.front() = sources_alice.front().outputs.first().first;
 
   DO_CALLBACK(events, "mark_invalid_tx");

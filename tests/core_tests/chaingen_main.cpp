@@ -112,6 +112,7 @@ int main(int argc, char* argv[])
 
     if (run_all || command_line::get_arg(vm, arg_service_nodes))
     {
+#if 1
       GENERATE_AND_PLAY(gen_service_nodes);
       GENERATE_AND_PLAY(test_prefer_deregisters);
       GENERATE_AND_PLAY(test_zero_fee_deregister);
@@ -120,10 +121,12 @@ int main(int argc, char* argv[])
       GENERATE_AND_PLAY(deregister_too_old);
       GENERATE_AND_PLAY(sn_test_rollback);
       GENERATE_AND_PLAY(test_swarms_basic);
+#endif
     }
 
     if (run_all)
     {
+#if 1
       GENERATE_AND_PLAY(gen_batched_governance_reward); // Loki Governance
 
       GENERATE_AND_PLAY(gen_simple_chain_001);
@@ -196,6 +199,8 @@ int main(int argc, char* argv[])
       GENERATE_AND_PLAY(gen_bp_tx_invalid_too_many_proofs);
       GENERATE_AND_PLAY(gen_bp_tx_invalid_wrong_amount);
       GENERATE_AND_PLAY(gen_bp_tx_invalid_borromean_type);
+#endif
+    }
 
       // TODO(loki): Tests we need to fix
 #if 0
@@ -285,7 +290,6 @@ int main(int argc, char* argv[])
       GENERATE_AND_PLAY(gen_multisig_tx_valid_48_1_234);
       GENERATE_AND_PLAY(gen_multisig_tx_valid_48_1_234_many_inputs);
 #endif
-    }
 
     el::Level level = (failed_tests.empty() ? el::Level::Info : el::Level::Error);
     MLOG(level, "\nREPORT:");

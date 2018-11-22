@@ -951,7 +951,7 @@ cryptonote::transaction make_deregistration_tx(const std::vector<test_event_entr
 // NOTE(loki): These macros assume hardfork version 7 and are from the old Monero testing code
 #define MAKE_TX_MIX(VEC_EVENTS, TX_NAME, FROM, TO, AMOUNT, NMIX, HEAD)                       \
   cryptonote::transaction TX_NAME;                                                           \
-  TxBuilder(VEC_EVENTS, TX_NAME, HEAD, FROM, TO, AMOUNT, cryptonote::network_version_7).build();                            \
+  TxBuilder(VEC_EVENTS, TX_NAME, HEAD, FROM, TO, AMOUNT, cryptonote::network_version_7).build(); \
   VEC_EVENTS.push_back(TX_NAME);
 
 #define MAKE_TX(VEC_EVENTS, TX_NAME, FROM, TO, AMOUNT, HEAD) MAKE_TX_MIX(VEC_EVENTS, TX_NAME, FROM, TO, AMOUNT, 9, HEAD)
