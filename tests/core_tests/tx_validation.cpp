@@ -432,7 +432,7 @@ bool gen_tx_sender_key_offset_not_exist::generate(std::vector<test_event_entry>&
 {
   uint64_t ts_start = 1338224400;
 
-  GENERATE_ACCOUNT(miner_account);
+  GENERATE_ACCOUNT  (miner_account);
   MAKE_GENESIS_BLOCK(events, blk_tail, miner_account, ts_start);
   REWIND_BLOCKS_N   (events, blk_money_unlocked, blk_tail,           miner_account, 40);
   REWIND_BLOCKS     (events, blk_head,           blk_money_unlocked, miner_account);
@@ -520,35 +520,28 @@ bool gen_tx_mixed_key_offset_not_exist::generate(std::vector<test_event_entry>& 
 bool gen_tx_key_image_not_derive_from_tx_key::generate(std::vector<test_event_entry>& events) const
 {
   uint64_t ts_start = 1338224400;
+  GENERATE_ACCOUNT  (miner_account);
+  MAKE_GENESIS_BLOCK(events, blk_tail, miner_account, ts_start);
+  REWIND_BLOCKS_N   (events, blk_money_unlocked, blk_tail,           miner_account, 40);
+  REWIND_BLOCKS     (events, blk_head,           blk_money_unlocked, miner_account);
 
-  GENERATE_ACCOUNT(miner_account);
-  MAKE_GENESIS_BLOCK(events, blk_0, miner_account, ts_start);
-  REWIND_BLOCKS(events, blk_0r, blk_0, miner_account);
+  transaction tx = {};
+  TxBuilder(events, tx, blk_money_unlocked, miner_account, miner_account, MK_COINS(1), cryptonote::network_version_7).build();
+  txin_to_key& in_to_key        = boost::get<txin_to_key>(tx.vin.front());
 
-  std::vector<tx_source_entry> sources;
-  std::vector<tx_destination_entry> destinations;
-  fill_tx_sources_and_destinations(events, blk_0, miner_account, miner_account, MK_COINS(1), TESTS_DEFAULT_FEE, 0, sources, destinations);
-
-  tx_builder builder;
-  builder.step1_init();
-  builder.step2_fill_inputs(miner_account.get_keys(), sources);
-
-  txin_to_key& in_to_key = boost::get<txin_to_key>(builder.m_tx.vin.front());
-  keypair kp = keypair::generate(hw::get_device("default"));
-  key_image another_ki;
-  crypto::generate_key_image(kp.pub, kp.sec, another_ki);
-  in_to_key.k_image = another_ki;
-
-  builder.step3_fill_outputs(destinations);
-  builder.step4_calc_hash();
+  // Use fake key image
+  keypair keys = keypair::generate(hw::get_device("default"));
+  key_image fake_key_image;
+  crypto::generate_key_image(keys.pub, keys.sec, fake_key_image);
+  in_to_key.k_image = fake_key_image;
 
   // Tx with invalid key image can't be subscribed, so create empty signature
-  builder.m_tx.signatures.resize(1);
-  builder.m_tx.signatures[0].resize(1);
-  builder.m_tx.signatures[0][0] = boost::value_initialized<crypto::signature>();
+  tx.signatures.resize(1);
+  tx.signatures[0].resize(1);
+  tx.signatures[0][0] = boost::value_initialized<crypto::signature>();
 
   DO_CALLBACK(events, "mark_invalid_tx");
-  events.push_back(builder.m_tx);
+  events.push_back(tx);
 
   return true;
 }
