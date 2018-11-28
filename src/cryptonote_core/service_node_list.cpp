@@ -717,7 +717,7 @@ namespace service_nodes
     auto contrib_iter = std::find_if(contributors.begin(), contributors.end(),
         [&address](const service_node_info::contribution& contributor) { return contributor.address == address; });
 
-    const bool new_contributor = (contrib_iter != contributors.end());
+    const bool new_contributor = (contrib_iter == contributors.end());
 
     if (new_contributor) {
 

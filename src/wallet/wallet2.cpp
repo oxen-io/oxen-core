@@ -63,7 +63,6 @@ using namespace epee;
 #include "common/i18n.h"
 #include "common/util.h"
 #include "common/apply_permutation.h"
-#include "common/scoped_message_writer.h"
 #include "rapidjson/document.h"
 #include "rapidjson/writer.h"
 #include "rapidjson/stringbuffer.h"
@@ -6592,19 +6591,19 @@ stake_check_result wallet2::check_stake_allowed(const crypto::public_key& sn_key
 
   if (addr_info.has_payment_id)
   {
-    fail_msg_writer() << tr("Do not use payment ids for staking.");
+    MERROR(tr("Do not use payment ids for staking."));
     return stake_check_result::not_allowed;
   }
 
   if (!this->contains_address(addr_info.address))
   {
-    fail_msg_writer() << tr("The specified address is not owned by this wallet.");
+    MERROR(tr("The specified address is not owned by this wallet."));
     return stake_check_result::not_allowed;
   }
 
   if (addr_info.is_subaddress)
   {
-    fail_msg_writer() << tr("Service nodes do not support subaddresses.");
+    MERROR(tr("Service nodes do not support subaddresses."));
     return stake_check_result::not_allowed;
   }
 
@@ -6612,7 +6611,7 @@ stake_check_result wallet2::check_stake_allowed(const crypto::public_key& sn_key
   const auto& response = this->get_service_nodes({ epee::string_tools::pod_to_hex(sn_key) });
   if (response.service_node_states.size() != 1)
   {
-    fail_msg_writer() << tr("Could not find service node in service node list, please make sure it is registered first.");
+    MERROR(tr("Could not find service node in service node list, please make sure it is registered first."));
     return stake_check_result::try_later;
   }
 
@@ -6635,7 +6634,7 @@ stake_check_result wallet2::check_stake_allowed(const crypto::public_key& sn_key
   if (res) {
     hf_version = *res;
   } else {
-    fail_msg_writer() << tr("Could not obtain the current network version, defaulting to v9");
+    MERROR(tr("Could not obtain the current network version, defaulting to v9"));
   }
 
   uint64_t min_contrib_total = service_nodes::get_min_node_contribution(hf_version, snode_info.staking_requirement, snode_info.total_reserved, snode_info.contributors.size());
@@ -6660,14 +6659,14 @@ stake_check_result wallet2::check_stake_allowed(const crypto::public_key& sn_key
 
   if (max_contrib_total == 0)
   {
-    fail_msg_writer() << tr("You may not contribute any more loki to this service node");
+    MERROR(tr("You may not contribute any more loki to this service node"));
     return stake_check_result::not_allowed;
   }
 
   /// a. Check if there is room for us
   if (full && !is_preexisting_contributor)
   {
-      fail_msg_writer() << tr("This service node already has the maximum number of participants, and the specified address is not one of them.");
+      MERROR(tr("This service node already has the maximum number of participants, and the specified address is not one of them."));
       return stake_check_result::not_allowed;
   }
 
@@ -6677,9 +6676,9 @@ stake_check_result wallet2::check_stake_allowed(const crypto::public_key& sn_key
       const uint64_t DUST = MAX_NUMBER_OF_CONTRIBUTORS;
       if (min_contrib_total - amount <= DUST) {
           amount = min_contrib_total;
-          success_msg_writer() << tr("Seeing as this is insufficient by dust amounts, amount was increased automatically to ") << print_money(min_contrib_total);
+          MINFO(tr("Seeing as this is insufficient by dust amounts, amount was increased automatically to ") << print_money(min_contrib_total));
       } else {
-          fail_msg_writer() << tr("You must contribute at least ") << print_money(min_contrib_total) << tr(" loki to become a contributor for this service node.");
+          MERROR(tr("You must contribute at least ") << print_money(min_contrib_total) << tr(" loki to become a contributor for this service node."));
           return stake_check_result::try_later;
       }
 
@@ -6688,16 +6687,16 @@ stake_check_result wallet2::check_stake_allowed(const crypto::public_key& sn_key
   /// c. Check if the amount is too big
   if (amount > max_contrib_total)
   {
-    success_msg_writer() << tr("You may only contribute up to ") << print_money(max_contrib_total) << tr(" more loki to this service node.") << std::endl;
-    success_msg_writer() << tr("Reducing your stake from ") << print_money(amount) << tr(" to ") << print_money(max_contrib_total) << std::endl;
+    MINFO(tr("You may only contribute up to ") << print_money(max_contrib_total) << tr(" more loki to this service node."));
+    MINFO(tr("Reducing your stake from ") << print_money(amount) << tr(" to ") << print_money(max_contrib_total));
     amount = max_contrib_total;
   }
 
   /// Issue a warning if there is more loki reserved from this contributor
   if (amount < expected_to_contrib)
   {
-    success_msg_writer() << tr("Warning: You must contribute ") << print_money(expected_to_contrib)
-                         << tr(" loki to meet your registration requirements for this service node");
+    MWARNING(tr("Warning: You must contribute ") << print_money(expected_to_contrib)
+                         << tr(" loki to meet your registration requirements for this service node"));
   }
 
   return stake_check_result::allowed;
@@ -6716,7 +6715,7 @@ std::vector<wallet2::pending_tx> wallet2::create_stake_tx(const crypto::public_k
   }
   catch (const std::exception& e)
   {
-    fail_msg_writer() << e.what();
+    MERROR(e.what());
     return {};
   }
 

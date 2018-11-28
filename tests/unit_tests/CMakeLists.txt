@@ -102,7 +102,6 @@ target_link_libraries(unit_tests
     wallet
     p2p
     version
-    ${EPEE_READLINE}
     ${Boost_CHRONO_LIBRARY}
     ${Boost_THREAD_LIBRARY}
     ${GTEST_LIBRARIES}
