@@ -12,6 +12,7 @@ build_type=release # or debug
 archs=(arm arm64 x86 x86_64)
 #archs=(x86)
 
+orig_cxx_flags=$CXXFLAGS
 for arch in ${archs[@]}; do
 	ldflags=""
     case ${arch} in
@@ -45,10 +46,13 @@ for arch in ${archs[@]}; do
 	mkdir -p $OUTPUT_DIR
 	cd $OUTPUT_DIR
 
+  # TODO(loki): Hack. Idk why doing -D CMAKE_INCLUDE_PATH doesn't work and I have to resort to this.
+  export CXXFLAGS="-isystem /opt/android/build/libsodium/$arch/include" ${orig_cxx_flags}
+
 	PATH=/opt/android/tool/$arch/$target_host/bin:/opt/android/tool/$arch/bin:$PATH \
     CC=clang CXX=clang++ \
-    CMAKE_LIBRARY_PATH=/opt/android/build/$arch/lib \
     cmake \
+    -D CMAKE_LIBRARY_PATH=/opt/android/build/libsodium/$arch/lib \
     -D BUILD_GUI_DEPS=1 \
     -D BUILD_TESTS=OFF \
     -D ARCH="$xarch" \
@@ -64,11 +68,10 @@ for arch in ${archs[@]}; do
     -D OPENSSL_CRYPTO_LIBRARY=/opt/android/build/openssl/$arch/lib/libcrypto.so \
     -D OPENSSL_SSL_LIBRARY=/opt/android/build/openssl/$arch/lib/libssl.so \
     -D CMAKE_POSITION_INDEPENDENT_CODE:BOOL=true \
-    -D LIBSODIUM_INCLUDE_DIR=/opt/android/build/libsodium/$arch/include \
     ../..
 
-	make -j4 wallet_api
-	find . -path ./lib -prune -o -name '*.a' -exec cp '{}' lib \;
+    make -j4 wallet_api
+    find . -path ./lib -prune -o -name '*.a' -exec cp '{}' lib \;
 
     TARGET_LIB_DIR=/opt/android/build/monero/$arch/lib
     rm -rf $TARGET_LIB_DIR
