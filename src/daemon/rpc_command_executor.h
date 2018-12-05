@@ -158,7 +158,7 @@ public:
 
   bool pop_blocks(uint64_t num_blocks);
 
-  bool get_service_node_registration_cmd(const std::vector<std::string> &args);
+  bool get_service_node_registration_cmd(const std::vector<std::string> &args, cryptonote::network_type nettype);
 
   bool print_sn_key();
 
