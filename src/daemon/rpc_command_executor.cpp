@@ -2032,7 +2032,7 @@ bool t_rpc_command_executor::sync_info()
     return true;
 }
 
-bool t_rpc_command_executor::get_service_node_registration_cmd(const std::vector<std::string> &args)
+bool t_rpc_command_executor::get_service_node_registration_cmd(const std::vector<std::string> &args, const cryptonote::network_type nettype)
 {
     cryptonote::COMMAND_RPC_GET_SERVICE_NODE_REGISTRATION_CMD::request req;
     cryptonote::COMMAND_RPC_GET_SERVICE_NODE_REGISTRATION_CMD::response res;
@@ -2040,14 +2040,25 @@ bool t_rpc_command_executor::get_service_node_registration_cmd(const std::vector
     epee::json_rpc::error error_resp;
 
     req.args = args;
-    req.make_friendly = !m_is_rpc;
+    req.make_friendly = true;
     if (m_is_rpc)
     {
-      if (!m_rpc_client->json_rpc_request(req, res, "get_service_node_registration_cmd", fail_message.c_str()))
+      // via RPC we won't get the error message printed from within the json request, so first make
+      // sure the arguments are convertible without error:
       {
-          tools::fail_msg_writer() << make_error(fail_message, res.status);
+        std::vector<cryptonote::account_public_address> addresses;
+        std::vector<uint64_t> portions;
+        uint64_t portions_for_operator;
+        bool autostake;
+
+        if (!service_nodes::convert_registration_args(nettype, args, addresses, portions, portions_for_operator, autostake)) {
+          tools::fail_msg_writer() << "Failed to validate registration arguments; check the addresses and registration parameters";
           return true;
+        }
       }
+
+      if (!m_rpc_client->json_rpc_request(req, res, "get_service_node_registration_cmd", fail_message.c_str()))
+          return true;
     }
     else
     {
@@ -2396,34 +2407,46 @@ static uint64_t get_actual_amount(uint64_t amount, uint64_t portions)
 
 bool t_rpc_command_executor::prepare_registration()
 {
-  std::string categories = mlog_get_categories();
-  mlog_set_categories("");
+  // RAII-style class to temporarily clear categories and restore upon destruction (i.e. upon
+  // returning).
+  struct clear_log_categories {
+    std::string categories;
+    clear_log_categories() { categories = mlog_get_categories(); mlog_set_categories(""); }
+    ~clear_log_categories() { mlog_set_categories(categories.c_str()); }
+  };
+  auto scoped_log_cats = std::unique_ptr<clear_log_categories>(new clear_log_categories());
 
   cryptonote::COMMAND_RPC_GET_INFO::request req;
   cryptonote::COMMAND_RPC_GET_INFO::response res;
-
-  if (m_is_rpc)
-  {
-    std::cout << "Cannot prepare registration over RPC" << std::endl;
-    mlog_set_categories(categories.c_str());
-    return true;
-  }
-
+  cryptonote::network_type nettype = cryptonote::UNDEFINED;
   cryptonote::COMMAND_RPC_GET_SERVICE_NODE_KEY::request keyreq = {};
   cryptonote::COMMAND_RPC_GET_SERVICE_NODE_KEY::response keyres = {};
-  epee::json_rpc::error error_resp;
-  if (!m_rpc_server->on_get_service_node_key(keyreq, keyres, error_resp) || keyres.status != CORE_RPC_STATUS_OK)
+  std::string key_fail_message = "Cannot get service node key. Make sure you are running daemon with --service-node flag",
+    info_fail_message = "Could not get current blockchain info";
+  if (m_is_rpc)
   {
-    tools::fail_msg_writer() << "Cannot get service node key. Make sure you are running daemon with --service-node flag";
-    mlog_set_categories(categories.c_str());
-    return true;
-  }
+    if (!m_rpc_client->json_rpc_request(keyreq, keyres, "get_service_node_key", key_fail_message.c_str()) ||
+        !m_rpc_client->rpc_request(req, res, "/getinfo", info_fail_message.c_str()))
+      return true;
 
-  if (!m_rpc_server->on_get_info(req, res) || res.status != CORE_RPC_STATUS_OK)
+    if (res.mainnet) nettype       = cryptonote::MAINNET;
+    else if (res.stagenet) nettype = cryptonote::STAGENET;
+    else if (res.testnet) nettype  = cryptonote::TESTNET;
+  }
+  else
   {
-    std::cout << "Could not get current blockchain info" << std::endl;
-    mlog_set_categories(categories.c_str());
-    return true;
+    epee::json_rpc::error error_resp;
+    if (!m_rpc_server->on_get_service_node_key(keyreq, keyres, error_resp) || keyres.status != CORE_RPC_STATUS_OK)
+    {
+      tools::fail_msg_writer() << make_error(key_fail_message, error_resp.message);
+      return true;
+    }
+    if (!m_rpc_server->on_get_info(req, res) || res.status != CORE_RPC_STATUS_OK)
+    {
+      tools::fail_msg_writer() << make_error(info_fail_message, res.status);
+      return true;
+    }
+    nettype = m_rpc_server->nettype();
   }
 
 #ifdef HAVE_READLINE
@@ -2433,7 +2456,6 @@ bool t_rpc_command_executor::prepare_registration()
   size_t number_participants = 1;
   uint64_t operating_cost_portions = STAKING_PORTIONS;
   bool is_solo_stake = false;
-  const auto nettype = m_rpc_server->nettype();
 
   std::vector<std::string> addresses;
   std::vector<uint64_t> contributions;
@@ -2464,7 +2486,6 @@ bool t_rpc_command_executor::prepare_registration()
   else
   {
     std::cout << "Invalid answer. Aborted." << std::endl;
-    mlog_set_categories(categories.c_str());
     return true;
   }
 
@@ -2494,14 +2515,12 @@ bool t_rpc_command_executor::prepare_registration()
     catch(...)
     {
       std::cout << "Invalid value." << std::endl;
-      mlog_set_categories(categories.c_str());
       return true;
     }
     
     if(operating_cost_percent < 0.0 || operating_cost_percent > 100.0)
     {
       std::cout << "Invalid value. Should be between [0-100]" << std::endl;
-      mlog_set_categories(categories.c_str());
       return true;
     }
 
@@ -2528,14 +2547,12 @@ bool t_rpc_command_executor::prepare_registration()
     if(!cryptonote::parse_amount(operator_cut, contribution_string))
     {
       std::cout << "Invalid amount. Aborted." << std::endl;
-      mlog_set_categories(categories.c_str());
       return true;
     }
     uint64_t portions = get_portions_to_make_amount(staking_requirement, operator_cut);
     if(portions < min_contribution_portions)
     {
       std::cout << "The operator needs to contribute at least 25% of the stake requirement (" << cryptonote::print_money(min_contribution) << " " << cryptonote::get_unit() << "). Aborted." << std::endl;
-      mlog_set_categories(categories.c_str());
       return true;
     }
     else if(portions > portions_remaining)
@@ -2560,7 +2577,6 @@ bool t_rpc_command_executor::prepare_registration()
       if(!(std::cin >> additional_contributors) || additional_contributors < 1 || additional_contributors > (MAX_NUMBER_OF_CONTRIBUTORS - 1))
       {
         std::cout << "Invalid value. Should be between [1-" << (MAX_NUMBER_OF_CONTRIBUTORS - 1) << "]" << std::endl;
-        mlog_set_categories(categories.c_str());
         return true;
       }
       number_participants += static_cast<size_t>(additional_contributors);
@@ -2586,14 +2602,12 @@ bool t_rpc_command_executor::prepare_registration()
       if (!cryptonote::parse_amount(contribution_amount, contribution_string))
       {
         std::cout << "Invalid amount. Aborted." << std::endl;
-        mlog_set_categories(categories.c_str());
         return true;
       }
       uint64_t portions = get_portions_to_make_amount(staking_requirement, contribution_amount);
       if (portions < min_contribution_portions)
       {
         std::cout << "Invalid amount. Aborted." << std::endl;
-        mlog_set_categories(categories.c_str());
         return true;
       }
       if (portions > portions_remaining)
@@ -2609,7 +2623,6 @@ bool t_rpc_command_executor::prepare_registration()
     if(!(std::cin >> address_string))
     {
       std::cout << "Invalid address. Aborted." << std::endl;
-      mlog_set_categories(categories.c_str());
       return true;
     }
     addresses.push_back(address_string);
@@ -2636,13 +2649,11 @@ bool t_rpc_command_executor::prepare_registration()
       else if(command_line::is_no(accept_pool_staking))
       {
         std::cout << "Staking requirements not met. Aborted." << std::endl;
-        mlog_set_categories(categories.c_str());
         return true;
       }
       else
       {
         std::cout << "Invalid answer. Aborted." << std::endl;
-        mlog_set_categories(categories.c_str());
         return true;
       }
     }
@@ -2663,7 +2674,6 @@ bool t_rpc_command_executor::prepare_registration()
   else
   {
     std::cout << "Invalid answer. Aborted." << std::endl;
-    mlog_set_categories(categories.c_str());
     return true;
   }
 
@@ -2705,13 +2715,11 @@ bool t_rpc_command_executor::prepare_registration()
   else if(command_line::is_no(confirm_string))
   {
     std::cout << "Aborted by user." << std::endl;
-    mlog_set_categories(categories.c_str());
     return true;
   }
   else
   {
     std::cout << "Invalid answer. Aborted." << std::endl;
-    mlog_set_categories(categories.c_str());
     return true;
   }
 
@@ -2736,15 +2744,14 @@ bool t_rpc_command_executor::prepare_registration()
       if (addresses[i] == addresses[j])
       {
         std::cout << "Must not provide the same address twice" << std::endl;
-        mlog_set_categories(categories.c_str());
         return true;
       }
     }
   }
 
-  mlog_set_categories(categories.c_str());
+  scoped_log_cats.reset();
 
-  bool result = get_service_node_registration_cmd(args);
+  bool result = get_service_node_registration_cmd(args, nettype);
 
   return true;
 }
