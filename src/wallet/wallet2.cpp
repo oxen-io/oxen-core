@@ -7537,7 +7537,8 @@ crypto::chacha_key wallet2::get_ringdb_key()
 }
 
 void wallet2::register_devices(){
-  hw::trezor::register_all();
+  // TODO(loki): HW support on Android
+  // hw::trezor::register_all();
 }
 
 hw::device& wallet2::lookup_device(const std::string & device_descriptor){
