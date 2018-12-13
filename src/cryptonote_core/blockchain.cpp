@@ -2555,14 +2555,12 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
 
   // Min/Max Version Check
   {
-    const size_t expected_tx_version = (hf_version < network_version_9_service_nodes) ? transaction::version_2 : transaction::version_3_per_output_unlock_times;
-    if (tx.version != expected_tx_version)
-    {
-      MERROR_VER("transaction version " << (size_t)tx.version << " does not match expected version " << expected_tx_version);
-      tvc.m_invalid_version     = true;
-      tvc.m_verifivation_failed = true;
+    if      (hf_version >= network_version_10_bulletproofs) tvc.m_invalid_version = (tx.version <  transaction::version_3_per_output_unlock_times);
+    else if (hf_version >= network_version_9_service_nodes) tvc.m_invalid_version = (tx.version <  transaction::version_2);
+    else                                                    tvc.m_invalid_version = (tx.version != transaction::version_2);
+
+    if (tvc.m_invalid_version)
       return false;
-    }
   }
 
   if (tx.is_deregister_tx())
