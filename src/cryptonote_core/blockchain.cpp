@@ -2409,7 +2409,7 @@ bool Blockchain::check_tx_outputs(const transaction& tx, tx_verification_context
       return false;
     }
 
-    // from v4, forbid invalid pubkeys
+    // from hardfork v4, forbid invalid pubkeys NOTE(loki): We started from hf7 so always execute branch
     if (o.target.type() == typeid(txout_to_key)) {
       const txout_to_key& out_to_key = boost::get<txout_to_key>(o.target);
       if (!crypto::check_key(out_to_key.key)) {
@@ -2677,26 +2677,6 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
   {
     crypto::hash tx_prefix_hash = get_transaction_prefix_hash(tx);
 
-    // from v7, sorted ins
-    {
-      const crypto::key_image *last_key_image = NULL;
-      for (size_t n = 0; n < tx.vin.size(); ++n)
-      {
-        const txin_v &txin = tx.vin[n];
-        if (txin.type() == typeid(txin_to_key))
-        {
-          const txin_to_key& in_to_key = boost::get<txin_to_key>(txin);
-          if (last_key_image && memcmp(&in_to_key.k_image, last_key_image, sizeof(*last_key_image)) >= 0)
-          {
-            MERROR_VER("transaction has unsorted inputs");
-            tvc.m_verifivation_failed = true;
-            return false;
-          }
-          last_key_image = &in_to_key.k_image;
-        }
-      }
-    }
-
     auto it = m_check_txin_table.find(tx_prefix_hash);
     if(it == m_check_txin_table.end())
     {
@@ -2710,23 +2690,9 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
     results.resize(tx.vin.size(), 0);
 
     size_t sig_index = 0;
+    const crypto::key_image *last_key_image = NULL;
     for (const auto& txin : tx.vin)
     {
-      // Mixin Check, from hard fork 7, we require mixin at least 9, always.
-      {
-        // non txin_to_key inputs will be rejected below
-        if (txin.type() != typeid(txin_to_key))
-          continue;
-
-        const txin_to_key& in_to_key = boost::get<txin_to_key>(txin);
-        if (in_to_key.key_offsets.size() - 1 != CRYPTONOTE_DEFAULT_TX_MIXIN)
-        {
-          MERROR_VER("Tx " << get_transaction_hash(tx) << " has incorrect ring size (" << in_to_key.key_offsets.size() - 1 << ", expected (" << CRYPTONOTE_DEFAULT_TX_MIXIN << ")");
-          tvc.m_low_mixin = true;
-          return false;
-        }
-      }
-
       // make sure output being spent is of type txin_to_key, rather than e.g.
       // txin_gen, which is only used for miner transactions
       CHECK_AND_ASSERT_MES(txin.type() == typeid(txin_to_key), false, "wrong type id in tx input at Blockchain::check_tx_inputs");
@@ -2734,6 +2700,25 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
 
       // make sure tx output has key offset(s) (is signed to be used)
       CHECK_AND_ASSERT_MES(in_to_key.key_offsets.size(), false, "empty in_to_key.key_offsets in transaction with id " << get_transaction_hash(tx));
+
+      // Mixin Check, from hard fork 7, we require mixin at least 9, always.
+      if (in_to_key.key_offsets.size() - 1 != CRYPTONOTE_DEFAULT_TX_MIXIN)
+      {
+        MERROR_VER("Tx " << get_transaction_hash(tx) << " has incorrect ring size (" << in_to_key.key_offsets.size() - 1 << ", expected (" << CRYPTONOTE_DEFAULT_TX_MIXIN << ")");
+        tvc.m_low_mixin = true;
+        return false;
+      }
+
+      // from v7, sorted ins
+      {
+        if (last_key_image && memcmp(&in_to_key.k_image, last_key_image, sizeof(*last_key_image)) >= 0)
+        {
+          MERROR_VER("transaction has unsorted inputs");
+          tvc.m_verifivation_failed = true;
+          return false;
+        }
+        last_key_image = &in_to_key.k_image;
+      }
 
       if(have_tx_keyimg_as_spent(in_to_key.k_image))
       {
