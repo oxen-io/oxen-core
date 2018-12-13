@@ -69,7 +69,8 @@ namespace service_nodes
     enum version
     {
       version_0,
-      version_1_swarms
+      version_1_swarms,
+      version_2_infinite_staking,
     };
 
     struct contribution
@@ -103,6 +104,12 @@ namespace service_nodes
     swarm_id_t swarm_id;
     cryptonote::account_public_address operator_address;
 
+    // INF_STAKING(doyle): Now that we have locked key images, we should enforce
+    // a minimum staking amount. Currently contributors can contribute piece
+    // meal to a service node, they can trivially attack the network by staking
+    // 1 loki each time to bloat up the key images
+    std::vector<crypto::key_image> locked_key_images;
+
     bool is_fully_funded() const { return total_contributed >= staking_requirement; }
     // the minimum contribution to start a new contributor
     uint64_t get_min_contribution() const;
@@ -119,10 +126,18 @@ namespace service_nodes
       VARINT_FIELD(total_reserved)
       VARINT_FIELD(staking_requirement)
       VARINT_FIELD(portions_for_operator)
-      if (version >= service_node_info::version_1_swarms) {
+      FIELD(operator_address)
+
+      if (version >= service_node_info::version_1_swarms)
+      {
         VARINT_FIELD(swarm_id)
       }
-      FIELD(operator_address)
+
+      if (version >= service_node_info::version_2_infinite_staking)
+      {
+        FIELD(locked_key_images)
+      }
+
     END_SERIALIZE()
   };
 
@@ -269,7 +284,6 @@ namespace service_nodes
   private:
 
     // Note(maxim): private methods don't have to be protected the mutex
-    bool get_contribution(const cryptonote::transaction& tx, uint64_t block_height, cryptonote::account_public_address& address, uint64_t& transferred) const;
 
     bool process_registration_tx(const cryptonote::transaction& tx, uint64_t block_timestamp, uint64_t block_height, uint32_t index);
     void process_contribution_tx(const cryptonote::transaction& tx, uint64_t block_height, uint32_t index);
@@ -285,7 +299,7 @@ namespace service_nodes
     void store_quorum_state_from_rewards_list(uint64_t height);
 
     bool is_registration_tx(const cryptonote::transaction& tx, uint64_t block_timestamp, uint64_t block_height, uint32_t index, crypto::public_key& key, service_node_info& info) const;
-    std::vector<crypto::public_key> get_expired_nodes(uint64_t block_height) const;
+    std::vector<crypto::public_key> get_expired_nodes(const std::vector<cryptonote::transaction> &txs, uint64_t block_height) const;
 
     void clear(bool delete_db_entry = false);
     bool load();
