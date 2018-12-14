@@ -1337,7 +1337,12 @@ namespace service_nodes
     m_height = hardfork_9_from_height;
   }
 
-  bool convert_registration_args(cryptonote::network_type nettype, std::vector<std::string> args, std::vector<cryptonote::account_public_address>& addresses, std::vector<uint64_t>& portions, uint64_t& portions_for_operator, bool& autostake)
+  bool convert_registration_args(cryptonote::network_type nettype,
+                                 std::vector<std::string> args,
+                                 std::vector<cryptonote::account_public_address>& addresses,
+                                 std::vector<uint64_t>& portions,
+                                 uint64_t& portions_for_operator,
+                                 bool& autostake)
   {
     autostake = false;
     if (!args.empty() && args[0] == "auto")
@@ -1378,7 +1383,7 @@ namespace service_nodes
       cryptonote::address_parse_info info;
       if (!cryptonote::get_account_address_from_str(info, nettype, args[i]))
       {
-        MERROR(tr("failed to parse address"));
+        MERROR(tr("failed to parse address: ") << args[i]);
         return false;
       }
 

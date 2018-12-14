@@ -36,6 +36,7 @@
 #include "int-util.h"
 #include "rpc/core_rpc_server_commands_defs.h"
 #include "cryptonote_core/cryptonote_core.h"
+#include "cryptonote_core/service_node_rules.h"
 #include "cryptonote_basic/hardfork.h"
 #include <boost/format.hpp>
 
@@ -2029,8 +2030,8 @@ bool t_rpc_command_executor::sync_info()
 
 bool t_rpc_command_executor::get_service_node_registration_cmd(const std::vector<std::string> &args, const cryptonote::network_type nettype)
 {
-    cryptonote::COMMAND_RPC_GET_SERVICE_NODE_REGISTRATION_CMD::request req;
-    cryptonote::COMMAND_RPC_GET_SERVICE_NODE_REGISTRATION_CMD::response res;
+    cryptonote::COMMAND_RPC_GET_SERVICE_NODE_REGISTRATION_CMD_RAW::request req;
+    cryptonote::COMMAND_RPC_GET_SERVICE_NODE_REGISTRATION_CMD_RAW::response res;
     std::string fail_message = "Unsuccessful";
     epee::json_rpc::error error_resp;
 
@@ -2052,12 +2053,12 @@ bool t_rpc_command_executor::get_service_node_registration_cmd(const std::vector
         }
       }
 
-      if (!m_rpc_client->json_rpc_request(req, res, "get_service_node_registration_cmd", fail_message.c_str()))
+      if (!m_rpc_client->json_rpc_request(req, res, "get_service_node_registration_cmd_raw", fail_message.c_str()))
           return true;
     }
     else
     {
-      if (!m_rpc_server->on_get_service_node_registration_cmd(req, res, error_resp) || res.status != CORE_RPC_STATUS_OK)
+      if (!m_rpc_server->on_get_service_node_registration_cmd_raw(req, res, error_resp) || res.status != CORE_RPC_STATUS_OK)
       {
           tools::fail_msg_writer() << make_error(fail_message, error_resp.message);
           return true;
@@ -2408,17 +2409,7 @@ static uint64_t get_amount_to_make_portions(uint64_t amount, uint64_t portions)
   div128_64(hi, lo, STAKING_PORTIONS, &resulthi, &resultlo);
   return resultlo;
 }
-// Returns lowest x such that (staking_requirement * x/STAKING_PORTIONS) >= amount
-static uint64_t get_portions_to_make_amount(uint64_t staking_requirement, uint64_t amount)
-{
-  uint64_t lo, hi, resulthi, resultlo;
-  lo = mul128(amount, STAKING_PORTIONS, &hi);
-  if (lo > UINT64_MAX - (staking_requirement - 1))
-    hi++;
-  lo += staking_requirement-1;
-  div128_64(hi, lo, staking_requirement, &resulthi, &resultlo);
-  return resultlo;
-}
+
 static uint64_t get_actual_amount(uint64_t amount, uint64_t portions)
 {
   uint64_t lo, hi, resulthi, resultlo;
@@ -2443,8 +2434,9 @@ bool t_rpc_command_executor::prepare_registration()
   cryptonote::network_type nettype = cryptonote::UNDEFINED;
   cryptonote::COMMAND_RPC_GET_SERVICE_NODE_KEY::request keyreq = {};
   cryptonote::COMMAND_RPC_GET_SERVICE_NODE_KEY::response keyres = {};
-  std::string key_fail_message = "Cannot get service node key. Make sure you are running daemon with --service-node flag",
-    info_fail_message = "Could not get current blockchain info";
+  std::string key_fail_message = "Cannot get service node key. Make sure you are running daemon with --service-node flag";
+  std::string info_fail_message = "Could not get current blockchain info";
+
   if (m_is_rpc)
   {
     if (!m_rpc_client->json_rpc_request(keyreq, keyres, "get_service_node_key", key_fail_message.c_str()) ||
@@ -2522,38 +2514,12 @@ bool t_rpc_command_executor::prepare_registration()
     std::string operating_cost_string;
     std::cout << "What percentage of the total staking reward would the operator like to reserve as an operator fee [0-100]%: ";
     std::cin >> operating_cost_string;
-    
-    // remove any trailing '%'
-    if(!operating_cost_string.empty() && operating_cost_string.back() == '%')
-    {
-      operating_cost_string.pop_back();
-    }
 
-    double operating_cost_percent;
-    try
-    {
-      operating_cost_percent = boost::lexical_cast<double>(operating_cost_string);
-    }
-    catch(...)
-    {
-      std::cout << "Invalid value." << std::endl;
-      return true;
-    }
-    
-    if(operating_cost_percent < 0.0 || operating_cost_percent > 100.0)
-    {
-      std::cout << "Invalid value. Should be between [0-100]" << std::endl;
-      return true;
-    }
+    bool res = service_nodes::get_portions_from_percent_str(operating_cost_string, operating_cost_portions);
 
-        // Fix for truncation issue when operator cut = 100 for a pool Service Node.
-    if (operating_cost_percent == 100.0)
-    {
-      operating_cost_portions = STAKING_PORTIONS;
-    }
-    else
-    {
-      operating_cost_portions = (operating_cost_percent / 100.0) * STAKING_PORTIONS;
+    if (!res) {
+      std::cout << "Invalid value: " << operating_cost_string << ". Should be between [0-100]" << std::endl;
+      return true;
     }
 
     const uint64_t min_contribution_portions = std::min(portions_remaining, MIN_PORTIONS);
@@ -2571,7 +2537,7 @@ bool t_rpc_command_executor::prepare_registration()
       std::cout << "Invalid amount. Aborted." << std::endl;
       return true;
     }
-    uint64_t portions = get_portions_to_make_amount(staking_requirement, operator_cut);
+    uint64_t portions = service_nodes::get_portions_to_make_amount(staking_requirement, operator_cut);
     if(portions < min_contribution_portions)
     {
       std::cout << "The operator needs to contribute at least 25% of the stake requirement (" << cryptonote::print_money(min_contribution) << " " << cryptonote::get_unit() << "). Aborted." << std::endl;
@@ -2626,7 +2592,7 @@ bool t_rpc_command_executor::prepare_registration()
         std::cout << "Invalid amount. Aborted." << std::endl;
         return true;
       }
-      uint64_t portions = get_portions_to_make_amount(staking_requirement, contribution_amount);
+      uint64_t portions = service_nodes::get_portions_to_make_amount(staking_requirement, contribution_amount);
       if (portions < min_contribution_portions)
       {
         std::cout << "Invalid amount. Aborted." << std::endl;
