@@ -104,10 +104,11 @@ static const struct {
   time_t time;
 } testnet_hard_forks[] = {
   // version 7 from the start of the blockchain, inhereted from Monero testnet
-  { network_version_7,               1,     0, 1533631121 },
-  { network_version_8,               2,     0, 1533631122 },
-  { network_version_9_service_nodes, 3,     0, 1533631123 },
-  { network_version_10_bulletproofs, 47096, 0, 1542681077 }, // 2018-11-20 13:30 AEDT
+  { network_version_7,               1, 0, 1533631121 },
+  { network_version_8,               2, 0, 1533631122 },
+  { network_version_9_service_nodes, 3, 0, 1533631123 },
+  { network_version_10_bulletproofs, 4, 0, 1542681077 },
+  { network_version_11_swarms,       5, 0, 1542681078 },
 };
 
 static const struct {

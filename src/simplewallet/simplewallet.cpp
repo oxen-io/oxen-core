@@ -6125,12 +6125,6 @@ bool simple_wallet::stake(const std::vector<std::string> &args_)
     return true;
   }
 
-  if (!m_wallet->contains_address(info.address))
-  {
-    fail_msg_writer() << tr("The specified address is not owned by this wallet.");
-    return true;
-  }
-
   if (autostake)
   {
     {
