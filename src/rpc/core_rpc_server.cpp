@@ -709,6 +709,8 @@ namespace cryptonote
       res.overspend = tvc.m_overspend;
       res.fee_too_low = tvc.m_fee_too_low;
       res.not_rct = tvc.m_not_rct;
+      res.key_image_locked_by_snode = tvc.m_key_image_locked_by_snode;
+      res.not_enough_votes = vvc.m_not_enough_votes;
       res.invalid_block_height = vvc.m_invalid_block_height;
       res.duplicate_voters = vvc.m_duplicate_voters;
       res.voters_quorum_index_out_of_bounds = vvc.m_voters_quorum_index_out_of_bounds;

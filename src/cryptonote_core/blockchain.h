@@ -138,6 +138,12 @@ namespace cryptonote
       virtual bool validate_miner_tx(const crypto::hash& prev_id, const cryptonote::transaction& miner_tx, uint64_t height, int hard_fork_version, block_reward_parts const &reward_parts) const = 0;
     };
 
+    class ValidateTxHook
+    {
+    public:
+      virtual bool validate_tx(const cryptonote::transaction& tx, cryptonote::tx_verification_context &tvc, int hard_fork_version) const = 0;
+    };
+
     /**
      * @brief Blockchain constructor
      *
@@ -1000,10 +1006,11 @@ namespace cryptonote
     /**
      * @brief add a hook for processing new blocks and rollbacks for reorgs
      */
-    void hook_block_added(BlockAddedHook& block_added_hook);
-    void hook_blockchain_detached(BlockchainDetachedHook& blockchain_detached_hook);
-    void hook_init(InitHook& init_hook);
-    void hook_validate_miner_tx(ValidateMinerTxHook& validate_miner_tx_hook);
+    void hook_block_added        (BlockAddedHook& hook)         { m_block_added_hooks.push_back(&hook); }
+    void hook_blockchain_detached(BlockchainDetachedHook& hook) { m_blockchain_detached_hooks.push_back(&hook); }
+    void hook_init               (InitHook& hook)               { m_init_hooks.push_back(&hook); }
+    void hook_validate_miner_tx  (ValidateMinerTxHook& hook)    { m_validate_miner_tx_hooks.push_back(&hook); }
+    void hook_validate_tx        (ValidateTxHook& hook)         { m_validate_tx_hooks.push_back(&hook); }
 
     /**
      * @brief removes blocks from the top of the blockchain
@@ -1087,6 +1094,7 @@ namespace cryptonote
     std::vector<BlockchainDetachedHook*> m_blockchain_detached_hooks;
     std::vector<InitHook*> m_init_hooks;
     std::vector<ValidateMinerTxHook*> m_validate_miner_tx_hooks;
+    std::vector<ValidateTxHook*> m_validate_tx_hooks;
 
     checkpoints m_checkpoints;
     bool m_enforce_dns_checkpoints;

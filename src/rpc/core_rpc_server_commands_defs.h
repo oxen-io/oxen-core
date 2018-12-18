@@ -842,6 +842,7 @@ namespace cryptonote
       bool overspend;
       bool fee_too_low;
       bool not_rct;
+      bool key_image_locked_by_snode;
       bool untrusted;
 
       bool invalid_block_height;

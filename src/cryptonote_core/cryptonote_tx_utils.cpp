@@ -659,8 +659,7 @@ namespace cryptonote
 
       bool r;
       crypto::key_derivation derivation;
-      bool dst_entry_is_change_addr = (change_addr && *change_addr == dst_entr && !found_change);
-      if (dst_entry_is_change_addr)
+      if (change_addr && *change_addr == dst_entr && !found_change)
       {
         found_change = true;
         // sending change to yourself; derivation = a*R
@@ -701,26 +700,27 @@ r = hwdev.generate_key_derivation(dst_entr.addr.m_view_public_key, dst_entr.is_s
       CHECK_AND_ASSERT_MES(r, false, "at creation outs: failed to derive_public_key(" << derivation << ", " << output_index << ", "<< dst_entr.addr.m_spend_public_key << ")");
       hwdev.add_output_key_mapping(dst_entr.addr.m_view_public_key, dst_entr.addr.m_spend_public_key, dst_entr.is_subaddress, output_index, amount_keys.back(), out_eph_public_key);
 
-      if (tx_params.is_staking_tx && !dst_entry_is_change_addr)
+      if (tx_params.is_staking_tx)
       {
         CHECK_AND_ASSERT_MES(dst_entr.addr == sender_account_keys.m_account_address, false, "A staking contribution must return back to the original sendee otherwise the pre-calculated key image is incorrect");
         CHECK_AND_ASSERT_MES(dst_entr.is_subaddress == false, false, "Staking back to a subaddress is not allowed"); // TODO(loki): Maybe one day, revisit this
         CHECK_AND_ASSERT_MES(need_additional_txkeys == false, false, "Staking TX's can not required additional TX Keys"); // TODO(loki): Maybe one day, revisit this
 
-        tx_extra_tx_key_image_proofs::proof proof = {};
-
-        keypair                ephemeral_keys = {};
-        const subaddress_index zeroth_address = {};
-        // if(!generate_key_image_helper_precomp(sender_account_keys, out_eph_public_key, derivation, output_index, zeroth_address, ephemeral_keys, proof.key_image, hwdev))
-        if(!generate_key_image_helper(sender_account_keys, subaddresses, out_eph_public_key, txkey_pub, additional_tx_public_keys, output_index, ephemeral_keys, proof.key_image, hwdev))
+        if (!(change_addr && *change_addr == dst_entr))
         {
-          LOG_ERROR("Key image generation failed for staking TX!");
-          return false;
-        }
+          tx_extra_tx_key_image_proofs::proof proof = {};
+          keypair                ephemeral_keys = {};
+          const subaddress_index zeroth_address = {};
+          if(!generate_key_image_helper(sender_account_keys, subaddresses, out_eph_public_key, txkey_pub, additional_tx_public_keys, output_index, ephemeral_keys, proof.key_image, hwdev))
+          {
+            LOG_ERROR("Key image generation failed for staking TX!");
+            return false;
+          }
 
-        crypto::public_key const *out_eph_public_key_ptr = &out_eph_public_key;
-        crypto::generate_ring_signature((const crypto::hash&)proof.key_image, proof.key_image, &out_eph_public_key_ptr, 1, ephemeral_keys.sec, 0, &proof.signature);
-        key_image_proofs.proofs.push_back(proof);
+          crypto::public_key const *out_eph_public_key_ptr = &out_eph_public_key;
+          crypto::generate_ring_signature((const crypto::hash&)proof.key_image, proof.key_image, &out_eph_public_key_ptr, 1, ephemeral_keys.sec, 0, &proof.signature);
+          key_image_proofs.proofs.push_back(proof);
+        }
       }
 
       tx_out out;
@@ -736,7 +736,7 @@ r = hwdev.generate_key_derivation(dst_entr.addr.m_view_public_key, dst_entr.is_s
 
     if (tx_params.is_staking_tx)
     {
-      CHECK_AND_ASSERT_MES(key_image_proofs.proofs.size() > 1, false, "No key image proofs were generated for staking tx");
+      CHECK_AND_ASSERT_MES(key_image_proofs.proofs.size() >= 1, false, "No key image proofs were generated for staking tx");
       add_tx_key_image_proofs_to_tx_extra(tx.extra, key_image_proofs);
     }
 

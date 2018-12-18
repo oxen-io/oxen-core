@@ -156,7 +156,8 @@ namespace service_nodes
     : public cryptonote::Blockchain::BlockAddedHook,
       public cryptonote::Blockchain::BlockchainDetachedHook,
       public cryptonote::Blockchain::InitHook,
-      public cryptonote::Blockchain::ValidateMinerTxHook
+      public cryptonote::Blockchain::ValidateMinerTxHook,
+      public cryptonote::Blockchain::ValidateTxHook
   {
   public:
     service_node_list(cryptonote::Blockchain& blockchain);
@@ -165,8 +166,9 @@ namespace service_nodes
     void register_hooks(service_nodes::quorum_cop &quorum_cop);
     void init() override;
     bool validate_miner_tx(const crypto::hash& prev_id, const cryptonote::transaction& miner_tx, uint64_t height, int hard_fork_version, cryptonote::block_reward_parts const &base_reward) const override;
-    std::vector<std::pair<cryptonote::account_public_address, uint64_t>> get_winner_addresses_and_portions(const crypto::hash& prev_id) const;
-    crypto::public_key select_winner(const crypto::hash& prev_id) const;
+    bool validate_tx(const cryptonote::transaction& tx, cryptonote::tx_verification_context &tvc, int hard_fork_version) const override;
+    std::vector<std::pair<cryptonote::account_public_address, uint64_t>> get_winner_addresses_and_portions() const;
+    crypto::public_key select_winner() const;
 
     bool is_service_node(const crypto::public_key& pubkey) const;
 

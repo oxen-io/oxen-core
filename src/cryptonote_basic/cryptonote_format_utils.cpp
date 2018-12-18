@@ -1100,33 +1100,39 @@ namespace cryptonote
   //---------------------------------------------------------------
   char const *print_tx_verification_context(tx_verification_context const &tvc, transaction const *tx)
   {
-    static char buf[1024];
+    static char buf[2048];
     buf[0] = 0;
     char *bufPtr = buf;
     char *bufEnd = buf + sizeof(buf);
 
-    if (tvc.m_verifivation_failed)     bufPtr += snprintf(bufPtr, bufEnd - bufPtr, "Verification failed, connection should be dropped, "); //bad tx, should drop connection
-    if (tvc.m_verifivation_impossible) bufPtr += snprintf(bufPtr, bufEnd - bufPtr, "Verification impossible, related to alt chain, "); //the transaction is related with an alternative blockchain
-    if (tvc.m_should_be_relayed)       bufPtr += snprintf(bufPtr, bufEnd - bufPtr, "TX should be relayed, ");
-    if (tvc.m_added_to_pool)           bufPtr += snprintf(bufPtr, bufEnd - bufPtr, "TX added to pool, ");
-    if (tvc.m_low_mixin)               bufPtr += snprintf(bufPtr, bufEnd - bufPtr, "Insufficient mixin, ");
-    if (tvc.m_double_spend)            bufPtr += snprintf(bufPtr, bufEnd - bufPtr, "Double spend TX, ");
-    if (tvc.m_invalid_input)           bufPtr += snprintf(bufPtr, bufEnd - bufPtr, "Invalid inputs, ");
-    if (tvc.m_invalid_output)          bufPtr += snprintf(bufPtr, bufEnd - bufPtr, "Invalid outputs, ");
-    if (tvc.m_too_big)                 bufPtr += snprintf(bufPtr, bufEnd - bufPtr, "TX too big, ");
-    if (tvc.m_overspend)               bufPtr += snprintf(bufPtr, bufEnd - bufPtr, "Overspend, ");
-    if (tvc.m_fee_too_low)             bufPtr += snprintf(bufPtr, bufEnd - bufPtr, "Fee too low, ");
-    if (tvc.m_not_rct)                 bufPtr += snprintf(bufPtr, bufEnd - bufPtr, "TX is not a valid RCT TX., ");
-    if (tvc.m_invalid_version)         bufPtr += snprintf(bufPtr, bufEnd - bufPtr, "TX has invalid version, ");
-
+    if (tvc.m_verifivation_failed)       bufPtr += snprintf(bufPtr, bufEnd - bufPtr, "Verification failed, connection should be dropped, "); //bad tx, should drop connection
+    if (tvc.m_verifivation_impossible)   bufPtr += snprintf(bufPtr, bufEnd - bufPtr, "Verification impossible, related to alt chain, "); //the transaction is related with an alternative blockchain
+    if (tvc.m_should_be_relayed)         bufPtr += snprintf(bufPtr, bufEnd - bufPtr, "TX should be relayed, ");
+    if (tvc.m_added_to_pool)             bufPtr += snprintf(bufPtr, bufEnd - bufPtr, "TX added to pool, ");
+    if (tvc.m_low_mixin)                 bufPtr += snprintf(bufPtr, bufEnd - bufPtr, "Insufficient mixin, ");
+    if (tvc.m_double_spend)              bufPtr += snprintf(bufPtr, bufEnd - bufPtr, "Double spend TX, ");
+    if (tvc.m_invalid_input)             bufPtr += snprintf(bufPtr, bufEnd - bufPtr, "Invalid inputs, ");
+    if (tvc.m_invalid_output)            bufPtr += snprintf(bufPtr, bufEnd - bufPtr, "Invalid outputs, ");
+    if (tvc.m_too_big)                   bufPtr += snprintf(bufPtr, bufEnd - bufPtr, "TX too big, ");
+    if (tvc.m_overspend)                 bufPtr += snprintf(bufPtr, bufEnd - bufPtr, "Overspend, ");
+    if (tvc.m_fee_too_low)               bufPtr += snprintf(bufPtr, bufEnd - bufPtr, "Fee too low, ");
+    if (tvc.m_not_rct)                   bufPtr += snprintf(bufPtr, bufEnd - bufPtr, "TX is not a valid RCT TX., ");
+    if (tvc.m_invalid_version)           bufPtr += snprintf(bufPtr, bufEnd - bufPtr, "TX has invalid version, ");
+    if (tvc.m_key_image_locked_by_snode) bufPtr += snprintf(bufPtr, bufEnd - bufPtr, "Key image is locked by service node, ");
     if (tx) bufPtr += snprintf(bufPtr, bufEnd - bufPtr, "TX Version: %d", (int)tx->version);
+
+    if (bufPtr != buf)
+    {
+      char *last_comma = bufPtr - 2;
+      if (last_comma[0] == ',') last_comma[0] = 0;
+    }
 
     return buf;
   }
   //---------------------------------------------------------------
   char const *print_vote_verification_context(vote_verification_context const &vvc, service_nodes::deregister_vote const *vote)
   {
-    static char buf[1024];
+    static char buf[2048];
     buf[0] = 0;
 
     char *bufPtr = buf;
@@ -1139,6 +1145,12 @@ namespace cryptonote
     if (vvc.m_added_to_pool)                     bufPtr += snprintf(bufPtr, bufEnd - bufPtr, "Added to pool, ");
     if (vvc.m_full_tx_deregister_made)           bufPtr += snprintf(bufPtr, bufEnd - bufPtr, "Full TX deregister made, ");
     if (vvc.m_not_enough_votes)                  bufPtr += snprintf(bufPtr, bufEnd - bufPtr, "Not enough votes, ");
+
+    if (bufPtr != buf)
+    {
+      char *last_comma = bufPtr - 2;
+      if (last_comma[0] == ',') last_comma[0] = 0;
+    }
 
     return buf;
   }

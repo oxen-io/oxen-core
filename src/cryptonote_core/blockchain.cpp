@@ -1401,8 +1401,8 @@ bool Blockchain::create_block_template(block& b, const account_public_address& m
   uint8_t hf_version = m_hardfork->get_current_version();
 
   loki_miner_tx_context miner_tx_context(m_nettype,
-                                         m_service_node_list.select_winner(b.prev_id),
-                                         m_service_node_list.get_winner_addresses_and_portions(b.prev_id));
+                                         m_service_node_list.select_winner(),
+                                         m_service_node_list.get_winner_addresses_and_portions());
 
   if (!calc_batched_governance_reward(height, miner_tx_context.batched_governance))
   {
@@ -2552,8 +2552,7 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
   if(pmax_used_block_height)
     *pmax_used_block_height = 0;
 
-  const uint8_t hf_version = m_hardfork->get_current_version();
-
+  const int hf_version = m_hardfork->get_current_version();
   // Min/Max Version Check
   {
     if      (hf_version >= network_version_10_bulletproofs) tvc.m_invalid_version = (tx.version <  transaction::version_3_per_output_unlock_times);
@@ -2895,6 +2894,17 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
       }
     }
   }
+
+  for (ValidateTxHook const *hook : m_validate_tx_hooks)
+  {
+    if (!hook->validate_tx(tx, tvc, hf_version))
+    {
+      MERROR_VER("ValidateTx hook failed TX");
+      tvc.m_verifivation_failed = true;
+      return false;
+    }
+  }
+
   return true;
 }
 
@@ -4653,26 +4663,6 @@ bool Blockchain::for_all_outputs(std::function<bool(uint64_t amount, const crypt
 bool Blockchain::for_all_outputs(uint64_t amount, std::function<bool(uint64_t height)> f) const
 {
   return m_db->for_all_outputs(amount, f);;
-}
-
-void Blockchain::hook_init(Blockchain::InitHook& init_hook)
-{
-  m_init_hooks.push_back(&init_hook);
-}
-
-void Blockchain::hook_block_added(Blockchain::BlockAddedHook& block_added_hook)
-{
-  m_block_added_hooks.push_back(&block_added_hook);
-}
-
-void Blockchain::hook_blockchain_detached(Blockchain::BlockchainDetachedHook& blockchain_detached_hook)
-{
-  m_blockchain_detached_hooks.push_back(&blockchain_detached_hook);
-}
-
-void Blockchain::hook_validate_miner_tx(Blockchain::ValidateMinerTxHook& validate_miner_tx_hook)
-{
-  m_validate_miner_tx_hooks.push_back(&validate_miner_tx_hook);
 }
 
 void Blockchain::invalidate_block_template_cache()

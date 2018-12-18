@@ -77,6 +77,7 @@ namespace service_nodes
       m_blockchain.hook_blockchain_detached(*this);
       m_blockchain.hook_init(*this);
       m_blockchain.hook_validate_miner_tx(*this);
+      m_blockchain.hook_validate_tx(*this);
 
       // NOTE: There is an implicit dependency on service node lists hooks
       m_blockchain.hook_init(quorum_cop);
@@ -110,7 +111,7 @@ namespace service_nodes
       blocks.clear();
       if (!m_blockchain.get_blocks(m_height, 1000, blocks))
       {
-        LOG_ERROR("Unable to initialize service nodes list");
+        MERROR("Unable to initialize service nodes list");
         return;
       }
 
@@ -126,7 +127,7 @@ namespace service_nodes
         std::vector<crypto::hash> missed_txs;
         if (!m_blockchain.get_transactions(block.tx_hashes, txs, missed_txs))
         {
-          LOG_ERROR("Unable to get transactions for block " << block.hash);
+          MERROR("Unable to get transactions for block " << block.hash);
           return;
         }
 
@@ -243,7 +244,7 @@ namespace service_nodes
     std::vector<crypto::key_image> key_images_to_lock;
   };
 
-  static uint64_t get_reg_tx_staking_output_contribution(const cryptonote::transaction& tx, int i, crypto::key_derivation const &derivation, hw::device& hwdev, snode_contribution &contribution)
+  static uint64_t get_reg_tx_staking_output_contribution(const cryptonote::transaction& tx, int i, crypto::key_derivation const &derivation, hw::device& hwdev)
   {
     if (tx.vout[i].target.type() != typeid(cryptonote::txout_to_key))
     {
@@ -277,10 +278,6 @@ namespace service_nodes
       return 0;
     }
 
-    if (money_transferred)
-    {
-    }
-
     return money_transferred;
   }
 
@@ -292,7 +289,7 @@ namespace service_nodes
     cryptonote::tx_extra_service_node_deregister deregister;
     if (!cryptonote::get_service_node_deregister_from_tx_extra(tx.extra, deregister))
     {
-      LOG_ERROR("Transaction deregister did not have deregister data in tx extra, possibly corrupt tx in blockchain");
+      MERROR("Transaction deregister did not have deregister data in tx extra, possibly corrupt tx in blockchain");
       return false;
     }
 
@@ -301,13 +298,13 @@ namespace service_nodes
     if (!state)
     {
       // TODO(loki): Not being able to find a quorum is fatal! We want better caching abilities.
-      LOG_ERROR("Quorum state for height: " << deregister.block_height << ", was not stored by the daemon");
+      MERROR("Quorum state for height: " << deregister.block_height << ", was not stored by the daemon");
       return false;
     }
 
     if (deregister.service_node_index >= state->nodes_to_test.size())
     {
-      LOG_ERROR("Service node index to vote off has become invalid, quorum rules have changed without a hardfork.");
+      MERROR("Service node index to vote off has become invalid, quorum rules have changed without a hardfork.");
       return false;
     }
 
@@ -545,12 +542,19 @@ namespace service_nodes
   {
     if (!cryptonote::get_service_node_contributor_from_tx_extra(tx.extra, contribution.address))
       return false;
+
     if (!cryptonote::get_tx_secret_key_from_tx_extra(tx.extra, contribution.tx_key))
+    {
+      MERROR("Contribution TX: There was a service node contributor but no secret key in the tx extra on height: " << block_height << " for tx: " << get_transaction_hash(tx));
       return false;
+    }
 
     crypto::key_derivation derivation;
     if (!crypto::generate_key_derivation(contribution.address.m_view_public_key, contribution.tx_key, derivation))
+    {
+      MERROR("Contribution TX: Failed to generate key derivation on height: " << block_height << " for tx: " << get_transaction_hash(tx));
       return false;
+    }
 
     hw::device& hwdev        = hw::get_device("default");
     contribution.transferred = 0;
@@ -561,29 +565,27 @@ namespace service_nodes
       // someone submits an old style staking TX, it will fail and lock up
       // funds. Make sure to put in rules to prevent this.
 
-      // TODO(doyle): INF_STAKING(doyle): Don't generate key image for change
-      // dest entry. I added a check but they are still being generated?
-
       // TODO(doyle): INF_STAKING(doyle): Add error messages for failure
       struct key_image_proof_state
       {
-        bool                     checked;
-        crypto::key_image const *key_image;
-        crypto::signature const *signature;
+        cryptonote::tx_extra_tx_key_image_proofs::proof const *proof;
+        bool                                                   checked;
       };
 
-      std::vector<key_image_proof_state> key_image_states;
+      cryptonote::tx_extra_tx_key_image_proofs key_image_proofs;
+      std::vector<key_image_proof_state>       key_image_states;
       {
-        cryptonote::tx_extra_tx_key_image_proofs key_image_proofs;
         if (!get_tx_key_image_proofs_from_tx_extra(tx.extra, key_image_proofs))
+        {
+          MERROR("Contribution TX: Didn't have key image proofs in the tx_extra, rejected on height: " << block_height << " for tx: " << get_transaction_hash(tx));
           return false;
+        }
 
         key_image_states.reserve(key_image_proofs.proofs.size());
         for (cryptonote::tx_extra_tx_key_image_proofs::proof const &proof : key_image_proofs.proofs)
         {
           key_image_proof_state state = {};
-          state.key_image             = &proof.key_image;
-          state.signature             = &proof.signature;
+          state.proof                 = &proof;
           key_image_states.push_back(state);
         }
       }
@@ -593,7 +595,7 @@ namespace service_nodes
         if (!contribution_tx_output_has_correct_unlock_time(nettype, tx, output_index, block_height))
           continue;
 
-        uint64_t transferred = get_reg_tx_staking_output_contribution(tx, output_index, derivation, hwdev, contribution);
+        uint64_t transferred = get_reg_tx_staking_output_contribution(tx, output_index, derivation, hwdev);
         if (transferred == 0)
           continue;
 
@@ -610,18 +612,11 @@ namespace service_nodes
           if (state.checked)
             continue;
 
-#if 0
-          if (!(rct::scalarmultKey(rct::ki2rct(*state.key_image), rct::curveOrder()) == rct::identity()))
-          {
-            // TODO(doyle): INF_STAKING(doyle): "Key image out of validity domain";
-            continue;
-          }
-#endif
-
-          if (!crypto::check_ring_signature((const crypto::hash &)(*state.key_image), *state.key_image, &ephemeral_pub_key_ptr, 1, state.signature))
+          cryptonote::tx_extra_tx_key_image_proofs::proof const *proof = state.proof;
+          if (!crypto::check_ring_signature((const crypto::hash &)(proof->key_image), proof->key_image, &ephemeral_pub_key_ptr, 1, &proof->signature))
             continue;
 
-          contribution.key_images_to_lock.push_back(*state.key_image);
+          contribution.key_images_to_lock.push_back(proof->key_image);
           contribution.transferred += transferred;
           state.checked = true;
           break;
@@ -633,7 +628,7 @@ namespace service_nodes
       for (size_t i = 0; i < tx.vout.size(); i++)
       {
         if (contribution_tx_output_has_correct_unlock_time(nettype, tx, i, block_height))
-          contribution.transferred += get_reg_tx_staking_output_contribution(tx, i, derivation, hwdev, contribution);
+          contribution.transferred += get_reg_tx_staking_output_contribution(tx, i, derivation, hwdev);
       }
     }
 
@@ -707,7 +702,7 @@ namespace service_nodes
     snode_contribution contribution = {};
     if (!get_contribution(m_blockchain.nettype(), hf_version, tx, block_height, contribution))
     {
-      MERROR("Register TX: Had service node registration fields, but could not decode contribution on height: " << block_height << " for tx: " << cryptonote::get_transaction_hash(tx));
+      MERROR("Registefr TX: Had service node registration fields, but could not decode contribution on height: " << block_height << " for tx: " << cryptonote::get_transaction_hash(tx));
       return false;
     }
 
@@ -1137,7 +1132,7 @@ namespace service_nodes
       std::vector<std::pair<cryptonote::blobdata, cryptonote::block>> blocks;
       if (!m_blockchain.get_blocks(expired_nodes_block_height, 1, blocks))
       {
-        LOG_ERROR("Unable to get historical blocks");
+        MERROR("Unable to get historical blocks");
         return expired_nodes;
       }
 
@@ -1146,7 +1141,7 @@ namespace service_nodes
       std::vector<crypto::hash> missed_txs;
       if (!m_blockchain.get_transactions(block.tx_hashes, txs, missed_txs))
       {
-        LOG_ERROR("Unable to get transactions for block " << block.hash);
+        MERROR("Unable to get transactions for block " << block.hash);
         return expired_nodes;
       }
 
@@ -1166,10 +1161,10 @@ namespace service_nodes
     return expired_nodes;
   }
 
-  std::vector<std::pair<cryptonote::account_public_address, uint64_t>> service_node_list::get_winner_addresses_and_portions(const crypto::hash& prev_id) const
+  std::vector<std::pair<cryptonote::account_public_address, uint64_t>> service_node_list::get_winner_addresses_and_portions() const
   {
     std::lock_guard<boost::recursive_mutex> lock(m_sn_mutex);
-    crypto::public_key key = select_winner(prev_id);
+    crypto::public_key key = select_winner();
     if (key == crypto::null_pkey)
       return { std::make_pair(null_address, STAKING_PORTIONS) };
 
@@ -1194,7 +1189,7 @@ namespace service_nodes
     return winners;
   }
 
-  crypto::public_key service_node_list::select_winner(const crypto::hash& prev_id) const
+  crypto::public_key service_node_list::select_winner() const
   {
     std::lock_guard<boost::recursive_mutex> lock(m_sn_mutex);
     auto oldest_waiting = std::pair<uint64_t, uint32_t>(std::numeric_limits<uint64_t>::max(), std::numeric_limits<uint32_t>::max());
@@ -1212,8 +1207,6 @@ namespace service_nodes
     return key;
   }
 
-  /// validates the miner TX for the next block
-  //
   bool service_node_list::validate_miner_tx(const crypto::hash& prev_id, const cryptonote::transaction& miner_tx, uint64_t height, int hard_fork_version, cryptonote::block_reward_parts const &reward_parts) const
   {
     std::lock_guard<boost::recursive_mutex> lock(m_sn_mutex);
@@ -1227,13 +1220,13 @@ namespace service_nodes
     uint64_t base_reward = reward_parts.original_base_reward;
     uint64_t total_service_node_reward = cryptonote::service_node_reward_formula(base_reward, hard_fork_version);
 
-    crypto::public_key winner = select_winner(prev_id);
+    crypto::public_key winner = select_winner();
 
     crypto::public_key check_winner_pubkey = cryptonote::get_service_node_winner_from_tx_extra(miner_tx.extra);
     if (check_winner_pubkey != winner)
       return false;
 
-    const std::vector<std::pair<cryptonote::account_public_address, uint64_t>> addresses_and_portions = get_winner_addresses_and_portions(prev_id);
+    const std::vector<std::pair<cryptonote::account_public_address, uint64_t>> addresses_and_portions = get_winner_addresses_and_portions();
     
     if (miner_tx.vout.size() - 1 < addresses_and_portions.size())
       return false;
@@ -1268,6 +1261,34 @@ namespace service_nodes
       {
         MERROR("Invalid service node reward output");
         return false;
+      }
+    }
+
+    return true;
+  }
+
+  bool service_node_list::validate_tx(const cryptonote::transaction& tx, cryptonote::tx_verification_context &tvc, int hard_fork_version) const
+  {
+    if (hard_fork_version <= cryptonote::network_version_10_bulletproofs)
+      return true;
+
+    for (const auto& pubkey_info : m_service_nodes_infos)
+    {
+      const service_node_info &info = pubkey_info.second;
+      for (const crypto::key_image& locked_key_image : info.locked_key_images)
+      {
+        for (const cryptonote::txin_v &tx_input : tx.vin)
+        {
+          if (tx_input.type() != typeid(cryptonote::txin_to_key))
+            continue;
+
+          const auto &in_to_key = boost::get<cryptonote::txin_to_key>(tx_input);
+          if (in_to_key.k_image == locked_key_image)
+          {
+            tvc.m_key_image_locked_by_snode = true;
+            return false;
+          }
+        }
       }
     }
 
