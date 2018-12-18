@@ -2507,17 +2507,18 @@ namespace cryptonote
 
       struct entry
       {
-        std::string                        service_node_pubkey;
-        uint64_t                           registration_height;
-        uint64_t                           last_reward_block_height;
-        uint32_t                           last_reward_transaction_index;
-        uint64_t                           last_uptime_proof;
-        std::vector<contribution>          contributors;
-        uint64_t                           total_contributed;
-        uint64_t                           total_reserved;
-        uint64_t                           staking_requirement;
-        uint64_t                           portions_for_operator;
-        std::string                        operator_address;
+        std::string               service_node_pubkey;
+        uint64_t                  registration_height;
+        uint64_t                  last_reward_block_height;
+        uint32_t                  last_reward_transaction_index;
+        uint64_t                  last_uptime_proof;
+        std::vector<contribution> contributors;
+        std::vector<std::string>  key_images;
+        uint64_t                  total_contributed;
+        uint64_t                  total_reserved;
+        uint64_t                  staking_requirement;
+        uint64_t                  portions_for_operator;
+        std::string               operator_address;
 
         BEGIN_KV_SERIALIZE_MAP()
             KV_SERIALIZE(service_node_pubkey)

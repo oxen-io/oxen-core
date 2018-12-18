@@ -2365,6 +2365,10 @@ simple_wallet::simple_wallet()
                            boost::bind(&simple_wallet::stake, this, _1),
                            tr("stake [index=<N1>[,<N2>,...]] [priority] <service node pubkey> <address> <amount>"),
                            tr("Send all unlocked balance to an address. If the parameter \"index<N1>[,<N2>,...]\" is specified, the wallet sweeps outputs received by those address indices. If omitted, the wallet randomly chooses an address index to be used. If the parameter \"outputs=<N>\" is specified and  N > 0, wallet splits the transaction into N even outputs."));
+  m_cmd_binder.set_handler("request_stake_unlock",
+                           boost::bind(&simple_wallet::request_stake_unlock, this, _1),
+                           tr("request_stake_unlock <service node pubkey>"),
+                           tr(""));
   m_cmd_binder.set_handler("sweep_unmixable",
                            boost::bind(&simple_wallet::sweep_unmixable, this, _1),
                            tr("Deprecated"));
@@ -6202,6 +6206,33 @@ bool simple_wallet::stake(const std::vector<std::string> &args_)
     stake_main(service_node_key, info, priority, subaddr_indices, amount, amount_fraction, autostake);
   }
 
+  return true;
+}
+//----------------------------------------------------------------------------------------------------
+bool simple_wallet::request_stake_unlock(const std::vector<std::string> &args_)
+{
+  if (!try_connect_to_daemon())
+    return true;
+
+  if (args_.size() != 1)
+  {
+    fail_msg_writer() << tr("Usage: request_stake_unlock <service node pubkey>");
+    return true;
+  }
+
+  crypto::public_key snode_key;
+  if (!epee::string_tools::hex_to_pod(args_[0], snode_key))
+  {
+    fail_msg_writer() << tr("failed to parse service node pubkey: ") << args_[0];
+    return true;
+  }
+
+  SCOPED_WALLET_UNLOCK();
+
+  // TODO(doyle): INF_STAKING(doyle): We need to check the SNode List and only
+  // allow the request transaction to go through if there's a matching SNode and
+  // the SNode's has key images belonging to this wallet.
+  cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response const &response = m_wallet->get_service_nodes({args_[0]});
   return true;
 }
 //----------------------------------------------------------------------------------------------------

@@ -2375,6 +2375,10 @@ namespace cryptonote
       entry.last_reward_transaction_index = pubkey_info.info.last_reward_transaction_index;
       entry.last_uptime_proof             = m_core.get_uptime_proof(pubkey_info.pubkey);
 
+      entry.key_images.reserve(pubkey_info.info.locked_key_images.size());
+      for (crypto::key_image const &key_image : pubkey_info.info.locked_key_images)
+        entry.key_images.push_back(string_tools::pod_to_hex(key_image));
+
       entry.contributors.reserve(pubkey_info.info.contributors.size());
       for (service_nodes::service_node_info::contribution const &contributor : pubkey_info.info.contributors)
       {
