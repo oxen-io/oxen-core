@@ -7989,10 +7989,12 @@ bool simple_wallet::export_transfers(const std::vector<std::string>& args_)
           break;
         case tools::pay_type::stake:
           running_balance -= transfer.fee;
+          break;
         case tools::pay_type::out:
           running_balance -= transfer.amount + transfer.fee;
+          break;
         default:
-          // do nothing
+          assert(false); // NOTE(loki): Developer error, unhandled type
           break;
       }
     }
