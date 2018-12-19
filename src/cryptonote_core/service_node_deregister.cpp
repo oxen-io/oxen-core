@@ -288,7 +288,7 @@ namespace service_nodes
       cryptonote::tx_extra_service_node_deregister deregister;
       if (!get_service_node_deregister_from_tx_extra(tx.extra, deregister))
       {
-        LOG_ERROR("Could not get deregister from tx version 3, possibly corrupt tx");
+        LOG_ERROR("Could not get deregister from tx, possibly corrupt tx");
         continue;
       }
 

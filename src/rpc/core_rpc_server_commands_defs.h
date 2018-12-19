@@ -842,6 +842,8 @@ namespace cryptonote
       bool overspend;
       bool fee_too_low;
       bool not_rct;
+      bool invalid_version;
+      bool invalid_type;
       bool key_image_locked_by_snode;
       bool untrusted;
 
@@ -864,6 +866,9 @@ namespace cryptonote
         KV_SERIALIZE(overspend)
         KV_SERIALIZE(fee_too_low)
         KV_SERIALIZE(not_rct)
+        KV_SERIALIZE(invalid_version)
+        KV_SERIALIZE(invalid_type)
+        KV_SERIALIZE(key_image_locked_by_snode)
         KV_SERIALIZE(untrusted)
 
         KV_SERIALIZE(invalid_block_height)

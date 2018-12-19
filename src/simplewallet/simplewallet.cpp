@@ -6233,6 +6233,51 @@ bool simple_wallet::request_stake_unlock(const std::vector<std::string> &args_)
   // allow the request transaction to go through if there's a matching SNode and
   // the SNode's has key images belonging to this wallet.
   cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response const &response = m_wallet->get_service_nodes({args_[0]});
+
+  std::vector<tools::wallet2::pending_tx> ptx_vector;
+  {
+    tools::wallet2::pending_tx ptx = {};
+    ptx.tx.version = cryptonote::transaction::version_4_tx_types;
+    if (!ptx.tx.set_type(cryptonote::transaction::type_key_image_unlock))
+    {
+      fail_msg_writer() << tr("Failed to construct a key image unlock transaction");
+      return true;
+    }
+    add_service_node_pubkey_to_tx_extra(ptx.tx.extra, snode_key);
+    ptx_vector.push_back(ptx);
+  }
+
+  // TODO(doyle): INF_STAKING(doyle): Do we support staking in these modes?
+  if (m_wallet->multisig())
+  {
+    fail_msg_writer() << tr("Multi sig request stake unlock is unsupported");
+    return true;
+  }
+
+  if (m_wallet->watch_only())
+  {
+    if (m_wallet->save_tx(ptx_vector, "unsigned_loki_tx"))
+      success_msg_writer(true) << tr("Unsigned transaction(s) successfully written to file: ") << "unsigned_loki_tx";
+    else
+      fail_msg_writer() << tr("Failed to write transaction(s) to file");
+
+    return true;
+  }
+
+  try
+  {
+    commit_or_save(ptx_vector, m_do_not_relay);
+  }
+  catch (const std::exception &e)
+  {
+    handle_transfer_exception(std::current_exception(), m_wallet->is_trusted_daemon());
+  }
+  catch (...)
+  {
+    LOG_ERROR("unknown error");
+    fail_msg_writer() << tr("unknown error");
+  }
+
   return true;
 }
 //----------------------------------------------------------------------------------------------------

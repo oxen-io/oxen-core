@@ -2553,125 +2553,28 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
     *pmax_used_block_height = 0;
 
   const int hf_version = m_hardfork->get_current_version();
-  // Min/Max Version Check
+
+  // Min/Max Type/Version Check
   {
-    if      (hf_version >= network_version_10_bulletproofs) tvc.m_invalid_version = (tx.version <  transaction::version_3_per_output_unlock_times);
-    else if (hf_version >= network_version_9_service_nodes) tvc.m_invalid_version = (tx.version <  transaction::version_2);
-    else                                                    tvc.m_invalid_version = (tx.version != transaction::version_2);
+    if (hf_version >= network_version_11_swarms)
+    {
+      tvc.m_invalid_version |= (tx.version <= transaction::version_3_per_output_unlock_times);
+      tvc.m_invalid_type    |= (tx.type > transaction::type_key_image_unlock);
+    }
+    else if (hf_version >= network_version_10_bulletproofs)
+    {
+      tvc.m_invalid_version |= (tx.version <= transaction::version_2); // NOTE(loki): There is exactly 1 v2 transaction in bulletproofs on fork height
+    }
+    else
+    {
+      tvc.m_invalid_version |= (tx.version != transaction::version_2);
+    }
 
     if (tvc.m_invalid_version)
       return false;
   }
 
-  if (tx.is_type(transaction::type_deregister))
-  {
-    CHECK_AND_ASSERT_MES(tx.vin.size() == 0, false, "Deregister TX should have 0 inputs. This should have been rejected in check_tx_semantic!");
-
-    if (tx.rct_signatures.txnFee != 0)
-    {
-      tvc.m_invalid_input = true;
-      tvc.m_verifivation_failed = true;
-      MERROR_VER("TX version deregister should have 0 fee!");
-      return false;
-    }
-
-    // Check the inputs (votes) of the transaction have not already been
-    // submitted to the blockchain under another transaction using a different
-    // combination of votes.
-    tx_extra_service_node_deregister deregister;
-    if (!get_service_node_deregister_from_tx_extra(tx.extra, deregister))
-    {
-      MERROR_VER("TX version deregister did not have the deregister metadata in the tx_extra");
-      return false;
-    }
-
-    const std::shared_ptr<const service_nodes::quorum_state> quorum_state = m_service_node_list.get_quorum_state(deregister.block_height);
-    if (!quorum_state)
-    {
-      MERROR_VER("TX version 3 deregister_tx could not get quorum for height: " << deregister.block_height);
-      return false;
-    }
-
-    if (!loki::service_node_deregister::verify_deregister(nettype(), deregister, tvc.m_vote_ctx, *quorum_state))
-    {
-      tvc.m_verifivation_failed = true;
-      MERROR_VER("tx " << get_transaction_hash(tx) << ": version 3 deregister_tx could not be completely verified reason: " << print_vote_verification_context(tvc.m_vote_ctx));
-      return false;
-    }
-
-    // Check if deregister is too old or too new to hold onto
-    {
-      const uint64_t curr_height = get_current_blockchain_height();
-      if (deregister.block_height >= curr_height)
-      {
-        LOG_PRINT_L1("Received deregister tx for height: " << deregister.block_height
-                     << " and service node: "              << deregister.service_node_index
-                     << ", is newer than current height: " << curr_height
-                     << " blocks and has been rejected.");
-        tvc.m_vote_ctx.m_invalid_block_height = true;
-        tvc.m_verifivation_failed             = true;
-        return false;
-      }
-
-      uint64_t delta_height = curr_height - deregister.block_height;
-      if (delta_height >= loki::service_node_deregister::DEREGISTER_LIFETIME_BY_HEIGHT)
-      {
-        LOG_PRINT_L1("Received deregister tx for height: " << deregister.block_height
-                     << " and service node: "     << deregister.service_node_index
-                     << ", is older than: "       << loki::service_node_deregister::DEREGISTER_LIFETIME_BY_HEIGHT
-                     << " blocks and has been rejected. The current height is: " << curr_height);
-        tvc.m_vote_ctx.m_invalid_block_height = true;
-        tvc.m_verifivation_failed             = true;
-        return false;
-      }
-    }
-
-    const uint64_t height            = deregister.block_height;
-    const size_t num_blocks_to_check = loki::service_node_deregister::DEREGISTER_LIFETIME_BY_HEIGHT;
-
-    std::vector<std::pair<cryptonote::blobdata,block>> blocks;
-    std::vector<cryptonote::blobdata> txs;
-    if (!get_blocks(height, num_blocks_to_check, blocks, txs))
-    {
-      return false;
-    }
-
-    for (blobdata const &blob : txs)
-    {
-      transaction existing_tx;
-      if (!parse_and_validate_tx_from_blob(blob, existing_tx))
-      {
-        MERROR_VER("tx could not be validated from blob, possibly corrupt blockchain");
-        continue;
-      }
-
-      if (!existing_tx.is_type(transaction::type_deregister))
-        continue;
-
-      tx_extra_service_node_deregister existing_deregister;
-      if (!get_service_node_deregister_from_tx_extra(existing_tx.extra, existing_deregister))
-      {
-        MERROR_VER("could not get service node deregister from tx extra, possibly corrupt tx");
-        continue;
-      }
-
-      const std::shared_ptr<const service_nodes::quorum_state> existing_deregister_quorum_state = m_service_node_list.get_quorum_state(existing_deregister.block_height);
-      if (!existing_deregister_quorum_state)
-      {
-        MERROR_VER("could not get quorum state for recent deregister tx");
-        continue;
-      }
-
-      if (existing_deregister_quorum_state->nodes_to_test[existing_deregister.service_node_index] ==
-          quorum_state->nodes_to_test[deregister.service_node_index])
-      {
-        MERROR_VER("Already seen this deregister tx (aka double spend)");
-        tvc.m_double_spend = true;
-        return false;
-      }
-    }
-  }
-  else
+  if (tx.is_type(transaction::type_standard))
   {
     crypto::hash tx_prefix_hash = get_transaction_prefix_hash(tx);
 
@@ -2892,6 +2795,127 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
           return false;
         }
       }
+    }
+  }
+  else
+  {
+    CHECK_AND_ASSERT_MES(tx.vin.size() == 0, false, "TX type: " << transaction::type_to_string(tx.type) << " should have 0 inputs. This should have been rejected in check_tx_semantic!");
+
+    if (tx.rct_signatures.txnFee != 0)
+    {
+      tvc.m_invalid_input = true;
+      tvc.m_verifivation_failed = true;
+      MERROR_VER("TX type: " << transaction::type_to_string(tx.type) << " should have 0 fee!");
+      return false;
+    }
+
+    if (tx.is_type(transaction::type_deregister))
+    {
+      // Check the inputs (votes) of the transaction have not already been
+      // submitted to the blockchain under another transaction using a different
+      // combination of votes.
+      tx_extra_service_node_deregister deregister;
+      if (!get_service_node_deregister_from_tx_extra(tx.extra, deregister))
+      {
+        MERROR_VER("TX version deregister did not have the deregister metadata in the tx_extra");
+        return false;
+      }
+
+      const std::shared_ptr<const service_nodes::quorum_state> quorum_state = m_service_node_list.get_quorum_state(deregister.block_height);
+      if (!quorum_state)
+      {
+        MERROR_VER("TX version 3 deregister_tx could not get quorum for height: " << deregister.block_height);
+        return false;
+      }
+
+      if (!loki::service_node_deregister::verify_deregister(nettype(), deregister, tvc.m_vote_ctx, *quorum_state))
+      {
+        tvc.m_verifivation_failed = true;
+        MERROR_VER("tx " << get_transaction_hash(tx) << ": version 3 deregister_tx could not be completely verified reason: " << print_vote_verification_context(tvc.m_vote_ctx));
+        return false;
+      }
+
+      // Check if deregister is too old or too new to hold onto
+      {
+        const uint64_t curr_height = get_current_blockchain_height();
+        if (deregister.block_height >= curr_height)
+        {
+          LOG_PRINT_L1("Received deregister tx for height: " << deregister.block_height
+                       << " and service node: "              << deregister.service_node_index
+                       << ", is newer than current height: " << curr_height
+                       << " blocks and has been rejected.");
+          tvc.m_vote_ctx.m_invalid_block_height = true;
+          tvc.m_verifivation_failed             = true;
+          return false;
+        }
+
+        uint64_t delta_height = curr_height - deregister.block_height;
+        if (delta_height >= loki::service_node_deregister::DEREGISTER_LIFETIME_BY_HEIGHT)
+        {
+          LOG_PRINT_L1("Received deregister tx for height: " << deregister.block_height
+                       << " and service node: "     << deregister.service_node_index
+                       << ", is older than: "       << loki::service_node_deregister::DEREGISTER_LIFETIME_BY_HEIGHT
+                       << " blocks and has been rejected. The current height is: " << curr_height);
+          tvc.m_vote_ctx.m_invalid_block_height = true;
+          tvc.m_verifivation_failed             = true;
+          return false;
+        }
+      }
+
+      const uint64_t height            = deregister.block_height;
+      const size_t num_blocks_to_check = loki::service_node_deregister::DEREGISTER_LIFETIME_BY_HEIGHT;
+
+      std::vector<std::pair<cryptonote::blobdata,block>> blocks;
+      std::vector<cryptonote::blobdata> txs;
+      if (!get_blocks(height, num_blocks_to_check, blocks, txs))
+      {
+        return false;
+      }
+
+      for (blobdata const &blob : txs)
+      {
+        transaction existing_tx;
+        if (!parse_and_validate_tx_from_blob(blob, existing_tx))
+        {
+          MERROR_VER("tx could not be validated from blob, possibly corrupt blockchain");
+          continue;
+        }
+
+        if (!existing_tx.is_type(transaction::type_deregister))
+          continue;
+
+        tx_extra_service_node_deregister existing_deregister;
+        if (!get_service_node_deregister_from_tx_extra(existing_tx.extra, existing_deregister))
+        {
+          MERROR_VER("could not get service node deregister from tx extra, possibly corrupt tx");
+          continue;
+        }
+
+        const std::shared_ptr<const service_nodes::quorum_state> existing_deregister_quorum_state = m_service_node_list.get_quorum_state(existing_deregister.block_height);
+        if (!existing_deregister_quorum_state)
+        {
+          MERROR_VER("could not get quorum state for recent deregister tx");
+          continue;
+        }
+
+        if (existing_deregister_quorum_state->nodes_to_test[existing_deregister.service_node_index] ==
+            quorum_state->nodes_to_test[deregister.service_node_index])
+        {
+          MERROR_VER("Already seen this deregister tx (aka double spend)");
+          tvc.m_double_spend = true;
+          return false;
+        }
+      }
+    }
+    else if (tx.is_type(transaction::type_key_image_unlock))
+    {
+      // TODO(doyle): INF_STAKING(doyle): Not sure what checks here are necessary. Revisit later
+    }
+    else
+    {
+      MERROR_VER("Unhandled tx type: " << tx.type << " rejecting tx: " << get_transaction_hash(tx));
+      tvc.m_invalid_type = true;;
+      return false;
     }
   }
 

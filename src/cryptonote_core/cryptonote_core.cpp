@@ -750,18 +750,6 @@ namespace cryptonote
       }
     }
     bad_semantics_txes_lock.unlock();
-
-    int version = m_blockchain_storage.get_current_hard_fork_version();
-    unsigned int max_tx_version = (version == 1) ? 1 : (version < 9)
-      ? transaction::version_2
-      : transaction::version_3_per_output_unlock_times;
-
-    if (tx.version == 0 || tx.version > max_tx_version)
-    {
-      tvc.m_verifivation_failed = true;
-      return false;
-    }
-
     return true;
   }
   //-----------------------------------------------------------------------------------------------
@@ -1016,11 +1004,11 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
   bool core::check_tx_semantic(const transaction& tx, bool keeped_by_block) const
   {
-    if (tx.is_type(transaction::type_deregister))
+    if (!tx.is_type(transaction::type_standard))
     {
       if (tx.vin.size() != 0)
       {
-        MERROR_VER("tx version deregister must have 0 inputs, received: " << tx.vin.size() << ", rejected for tx id = " << get_transaction_hash(tx));
+        MERROR_VER("tx type: " << transaction::type_to_string(tx.type) << " must have 0 inputs, received: " << tx.vin.size() << ", rejected for tx id = " << get_transaction_hash(tx));
         return false;
       }
     }

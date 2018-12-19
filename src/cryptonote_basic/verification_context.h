@@ -62,6 +62,7 @@ namespace cryptonote
     bool m_fee_too_low;
     bool m_not_rct;
     bool m_invalid_version;
+    bool m_invalid_type;
     bool m_key_image_locked_by_snode;
 
     vote_verification_context m_vote_ctx;
