@@ -241,7 +241,7 @@ namespace service_nodes
     cryptonote::account_public_address address;
     uint64_t transferred;
     crypto::secret_key tx_key;
-    std::vector<crypto::key_image> key_images_to_lock;
+    std::vector<service_node_info::key_image_proof> key_images_to_lock;
   };
 
   static uint64_t get_reg_tx_staking_output_contribution(const cryptonote::transaction& tx, int i, crypto::key_derivation const &derivation, hw::device& hwdev)
@@ -600,11 +600,16 @@ namespace service_nodes
           continue;
 
         crypto::public_key ephemeral_pub_key;
-        if (!hwdev.derive_public_key(derivation, output_index, contribution.address.m_spend_public_key, ephemeral_pub_key))
-          continue;
+        {
+          if (!hwdev.derive_public_key(derivation, output_index, contribution.address.m_spend_public_key, ephemeral_pub_key))
+            continue;
 
-        const auto& out_to_key = boost::get<cryptonote::txout_to_key>(tx.vout[output_index].target);
-        cryptonote::txout_to_key const * volatile out_to_key_ptr = &out_to_key;
+          const auto& out_to_key = boost::get<cryptonote::txout_to_key>(tx.vout[output_index].target);
+          if (out_to_key.key != ephemeral_pub_key)
+          {
+            continue;
+          }
+        }
 
         crypto::public_key const *ephemeral_pub_key_ptr = &ephemeral_pub_key;
         for (key_image_proof_state &state : key_image_states)
@@ -616,7 +621,11 @@ namespace service_nodes
           if (!crypto::check_ring_signature((const crypto::hash &)(proof->key_image), proof->key_image, &ephemeral_pub_key_ptr, 1, &proof->signature))
             continue;
 
-          contribution.key_images_to_lock.push_back(proof->key_image);
+          service_node_info::key_image_proof locked_key_image = {};
+          locked_key_image.image_pub_key                         = ephemeral_pub_key;
+          locked_key_image.image                                 = proof->key_image;
+
+          contribution.key_images_to_lock.push_back(locked_key_image);
           contribution.transferred += transferred;
           state.checked = true;
           break;
@@ -932,7 +941,11 @@ namespace service_nodes
     info.last_reward_transaction_index = index;
 
     if (hf_version >= cryptonote::network_version_11_swarms)
-      info.locked_key_images = std::move(contribution.key_images_to_lock);
+    {
+      contributor.locked_key_images.reserve(contribution.key_images_to_lock.size());
+      for (const service_node_info::key_image_proof &locked_image : contribution.key_images_to_lock)
+        contributor.locked_key_images.push_back(locked_image);
+    }
 
     LOG_PRINT_L1("Contribution of " << contribution.transferred << " received for snode " << pubkey);
   }
@@ -1008,15 +1021,60 @@ namespace service_nodes
     for (uint32_t index = 0; index < txs.size(); ++index)
     {
       const cryptonote::transaction& tx = txs[index];
-      crypto::public_key key;
-      service_node_info info;
-      cryptonote::account_public_address address;
-      if (process_registration_tx(tx, block.timestamp, block_height, index)) {
-        registrations++;
+      if (tx.is_type(cryptonote::transaction::type_standard))
+      {
+        if (process_registration_tx(tx, block.timestamp, block_height, index)) 
+          registrations++;
+
+        process_contribution_tx(tx, block_height, index);
       }
-      process_contribution_tx(tx, block_height, index);
-      if (process_deregistration_tx(tx, block_height)) {
-        deregistrations++;
+      else if (tx.is_type(cryptonote::transaction::type_deregister))
+      {
+        if (process_deregistration_tx(tx, block_height))
+          deregistrations++;
+      }
+      else if (tx.is_type(cryptonote::transaction::type_key_image_unlock))
+      {
+        crypto::public_key snode_key;
+        if (!cryptonote::get_service_node_pubkey_from_tx_extra(tx.extra, snode_key))
+          continue;
+
+        auto it = m_service_nodes_infos.find(snode_key);
+        if (it == m_service_nodes_infos.end())
+          continue;
+
+        cryptonote::tx_extra_tx_key_image_proofs key_image_proofs;
+        if (!get_tx_key_image_proofs_from_tx_extra(tx.extra, key_image_proofs))
+        {
+          MERROR("Contribution TX: Didn't have key image proofs in the tx_extra, rejected on height: " << block_height << " for tx: " << get_transaction_hash(tx));
+          continue;
+        }
+
+        // TODO(doyle): Duplicated key image proof checks
+        service_node_info &node_info = (*it).second;
+        for (cryptonote::tx_extra_tx_key_image_proofs::proof const &proof : key_image_proofs.proofs)
+        {
+          for (service_node_info::contribution &contributor : node_info.contributors)
+          {
+            for (auto locked_image = contributor.locked_key_images.begin(); locked_image != contributor.locked_key_images.end(); locked_image++)
+            {
+              if (proof.key_image == locked_image->image)
+              {
+                crypto::hash some_hash_derived_from_user_data; // TODO(doyle): INF_STAKING(doyle): Implement and add error warnings
+                if (!crypto::check_signature(some_hash_derived_from_user_data, locked_image->image_pub_key, proof.signature))
+                  continue;
+
+                // TODO(doyle): INF_STAKING(doyle): Remove the key image from the service node, and update the contributor status
+                // So here we need a mapping between key images and the contributions.
+                contributor.amount -= locked_image->amount;
+                contributor.locked_key_images.erase(locked_image);
+              }
+            }
+          }
+        }
+
+        int remaining_blocks              = block_height % get_staking_requirement_lock_blocks(m_blockchain.nettype());
+        node_info.requested_expiry_height = node_info.registration_height + remaining_blocks;
       }
     }
 
@@ -1065,6 +1123,17 @@ namespace service_nodes
 
     if (hard_fork_version >= cryptonote::network_version_11_swarms)
     {
+#if 0
+      for (auto &it : m_service_nodes_infos)
+      {
+        service_node_info const &info = it.second;
+        if (block_height > info.requested_expiry_height)
+        {
+          crypto::public_key const &pubkey = it.first;
+          expired_nodes.push_back(pubkey);
+        }
+      }
+
       // NOTE(loki): Infinite staking, Nodes only expire when the funds are moved.
       for (const cryptonote::transaction &tx : txs)
       {
@@ -1098,6 +1167,7 @@ namespace service_nodes
           }
         }
       }
+#endif
 
       return expired_nodes;
     }
@@ -1275,18 +1345,21 @@ namespace service_nodes
     for (const auto& pubkey_info : m_service_nodes_infos)
     {
       const service_node_info &info = pubkey_info.second;
-      for (const crypto::key_image& locked_key_image : info.locked_key_images)
+      for (const service_node_info::contribution &contributor : info.contributors)
       {
-        for (const cryptonote::txin_v &tx_input : tx.vin)
+        for (const service_node_info::key_image_proof &locked_key_image : contributor.locked_key_images)
         {
-          if (tx_input.type() != typeid(cryptonote::txin_to_key))
-            continue;
-
-          const auto &in_to_key = boost::get<cryptonote::txin_to_key>(tx_input);
-          if (in_to_key.k_image == locked_key_image)
+          for (const cryptonote::txin_v &tx_input : tx.vin)
           {
-            tvc.m_key_image_locked_by_snode = true;
-            return false;
+            if (tx_input.type() != typeid(cryptonote::txin_to_key))
+              continue;
+
+            const auto &in_to_key = boost::get<cryptonote::txin_to_key>(tx_input);
+            if (in_to_key.k_image == locked_key_image.image)
+            {
+              tvc.m_key_image_locked_by_snode = true;
+              return false;
+            }
           }
         }
       }

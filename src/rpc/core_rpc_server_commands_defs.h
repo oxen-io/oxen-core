@@ -2497,11 +2497,23 @@ namespace cryptonote
 
     struct response
     {
+      struct key_image_amount
+      {
+        std::string key_image;
+        uint64_t    amount;
+
+        BEGIN_KV_SERIALIZE_MAP()
+          KV_SERIALIZE(key_image)
+          KV_SERIALIZE(amount)
+        END_KV_SERIALIZE_MAP()
+      };
+
       struct contribution
       {
         uint64_t amount;
         uint64_t reserved;
         std::string address;
+        std::vector<key_image_amount> key_image_amounts;
 
         BEGIN_KV_SERIALIZE_MAP()
           KV_SERIALIZE(amount)
@@ -2518,7 +2530,6 @@ namespace cryptonote
         uint32_t                  last_reward_transaction_index;
         uint64_t                  last_uptime_proof;
         std::vector<contribution> contributors;
-        std::vector<std::string>  key_images;
         uint64_t                  total_contributed;
         uint64_t                  total_reserved;
         uint64_t                  staking_requirement;

@@ -66,6 +66,17 @@ namespace service_nodes
 
   struct service_node_info // registration information
   {
+    // INF_STAKING(doyle): Now that we have locked key images, we should enforce
+    // a minimum staking amount. Currently contributors can contribute piece
+    // meal to a service node, they can trivially attack the network by staking
+    // 1 loki each time to bloat up the key images
+    struct key_image_proof
+    {
+      crypto::public_key image_pub_key;
+      crypto::key_image  image;
+      uint64_t           amount;
+    };
+
     enum version
     {
       version_0,
@@ -78,6 +89,8 @@ namespace service_nodes
       uint64_t amount;
       uint64_t reserved;
       cryptonote::account_public_address address;
+      std::vector<key_image_proof> locked_key_images; // TODO(doyle): INF_STAKING(doyle): Serialize
+
       contribution() {}
       contribution(uint64_t _reserved, const cryptonote::account_public_address& _address)
         : amount(0), reserved(_reserved), address(_address) { }
@@ -89,30 +102,22 @@ namespace service_nodes
       END_SERIALIZE()
     };
 
-    uint8_t  version = service_node_info::version_0;
-    uint64_t registration_height;
-
+    uint8_t                            version = service_node_info::version_0;
+    uint64_t                           registration_height;
+    uint64_t                           requested_expiry_height;
     // block_height and transaction_index are to record when the service node last received a reward.
-    uint64_t last_reward_block_height;
-    uint32_t last_reward_transaction_index;
-
-    std::vector<contribution> contributors;
-    uint64_t total_contributed;
-    uint64_t total_reserved;
-    uint64_t staking_requirement;
-    uint64_t portions_for_operator;
-    swarm_id_t swarm_id;
+    uint64_t                           last_reward_block_height;
+    uint32_t                           last_reward_transaction_index;
+    std::vector<contribution>          contributors;
+    uint64_t                           total_contributed;
+    uint64_t                           total_reserved;
+    uint64_t                           staking_requirement;
+    uint64_t                           portions_for_operator;
+    swarm_id_t                         swarm_id;
     cryptonote::account_public_address operator_address;
 
-    // INF_STAKING(doyle): Now that we have locked key images, we should enforce
-    // a minimum staking amount. Currently contributors can contribute piece
-    // meal to a service node, they can trivially attack the network by staking
-    // 1 loki each time to bloat up the key images
-    std::vector<crypto::key_image> locked_key_images;
-
     bool is_fully_funded() const { return total_contributed >= staking_requirement; }
-    // the minimum contribution to start a new contributor
-    uint64_t get_min_contribution() const;
+    uint64_t get_min_contribution() const; // the minimum contribution to start a new contributor
 
     service_node_info() = default;
 
@@ -132,12 +137,6 @@ namespace service_nodes
       {
         VARINT_FIELD(swarm_id)
       }
-
-      if (version >= service_node_info::version_2_infinite_staking)
-      {
-        FIELD(locked_key_images)
-      }
-
     END_SERIALIZE()
   };
 

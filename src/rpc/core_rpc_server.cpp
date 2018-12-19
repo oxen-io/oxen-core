@@ -2377,10 +2377,6 @@ namespace cryptonote
       entry.last_reward_transaction_index = pubkey_info.info.last_reward_transaction_index;
       entry.last_uptime_proof             = m_core.get_uptime_proof(pubkey_info.pubkey);
 
-      entry.key_images.reserve(pubkey_info.info.locked_key_images.size());
-      for (crypto::key_image const &key_image : pubkey_info.info.locked_key_images)
-        entry.key_images.push_back(string_tools::pod_to_hex(key_image));
-
       entry.contributors.reserve(pubkey_info.info.contributors.size());
       for (service_nodes::service_node_info::contribution const &contributor : pubkey_info.info.contributors)
       {
@@ -2388,6 +2384,16 @@ namespace cryptonote
         new_contributor.amount   = contributor.amount;
         new_contributor.reserved = contributor.reserved;
         new_contributor.address  = cryptonote::get_account_address_as_str(m_core.get_nettype(), false/*is_subaddress*/, contributor.address);
+
+        new_contributor.key_image_amounts.reserve(contributor.locked_key_images.size());
+        for (service_nodes::service_node_info::key_image_proof const &locked_key_image : contributor.locked_key_images)
+        {
+          COMMAND_RPC_GET_SERVICE_NODES::response::key_image_amount key_image_entry = {};
+          key_image_entry.amount                                                    = locked_key_image.amount;
+          key_image_entry.key_image                                                 = string_tools::pod_to_hex(locked_key_image.image);
+          new_contributor.key_image_amounts.push_back(key_image_entry);
+        }
+
         entry.contributors.push_back(new_contributor);
       }
 
