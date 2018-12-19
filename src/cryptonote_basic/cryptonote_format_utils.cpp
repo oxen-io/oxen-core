@@ -896,7 +896,7 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
   bool check_outs_valid(const transaction& tx)
   {
-    if (tx.is_deregister_tx())
+    if (tx.is_type(transaction::type_deregister))
     {
       CHECK_AND_NO_ASSERT_MES(tx.vout.size() == 0, false, "tx version deregister must have 0 outputs, received: " << tx.vout.size() << ", id=" << get_transaction_hash(tx));
     }

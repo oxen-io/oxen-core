@@ -162,6 +162,7 @@ namespace cryptonote
       version_1,
       version_2,
       version_3_per_output_unlock_times,
+      version_4_tx_types,
     };
 
     // tx information
@@ -176,15 +177,38 @@ namespace cryptonote
     std::vector<uint8_t> extra;
 
     std::vector<uint64_t> output_unlock_times;
-    bool is_deregister; //service node deregister tx
+
+    enum type_t
+    {
+      type_standard,
+      type_deregister,
+      type_key_image_unlock,
+      type_count,
+    };
+
+    union
+    {
+      bool is_deregister; // not used after version >= version_4_tx_types
+      uint16_t type;
+    };
 
     BEGIN_SERIALIZE()
       VARINT_FIELD(version)
+
       if (version > 2)
       {
         FIELD(output_unlock_times)
-        FIELD(is_deregister)
+        if (version >= version_4_tx_types)
+        {
+          if (static_cast<int>(type) >= type_count) return false;
+          FIELD(type)
+        }
+        else
+        {
+          FIELD(is_deregister)
+        }
       }
+
       if(version == 0 || CURRENT_TRANSACTION_VERSION < version) return false;
       VARINT_FIELD(unlock_time)
       FIELD(vin)
@@ -203,9 +227,12 @@ namespace cryptonote
       vout.clear();
       extra.clear();
       output_unlock_times.clear();
-      is_deregister = false;
+      type = type_standard;
     }
-    bool is_deregister_tx() const { return (version >= version_3_per_output_unlock_times) && is_deregister; }
+    bool   is_type    (type_t check_type) const;
+    type_t get_type   ()                  const;
+    bool   set_type   (type_t new_type);
+
     uint64_t get_unlock_time(size_t out_index) const
     {
       if (version >= version_3_per_output_unlock_times)

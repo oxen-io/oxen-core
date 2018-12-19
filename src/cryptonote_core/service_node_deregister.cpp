@@ -282,7 +282,7 @@ namespace service_nodes
     CRITICAL_REGION_LOCAL(m_lock);
     for (const cryptonote::transaction &tx : txs)
     {
-      if (!tx.is_deregister_tx())
+      if (!tx.is_type(cryptonote::transaction::type_deregister))
         continue;
 
       cryptonote::tx_extra_service_node_deregister deregister;

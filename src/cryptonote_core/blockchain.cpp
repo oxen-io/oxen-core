@@ -2563,7 +2563,7 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
       return false;
   }
 
-  if (tx.is_deregister_tx())
+  if (tx.is_type(transaction::type_deregister))
   {
     CHECK_AND_ASSERT_MES(tx.vin.size() == 0, false, "Deregister TX should have 0 inputs. This should have been rejected in check_tx_semantic!");
 
@@ -2645,7 +2645,7 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
         continue;
       }
 
-      if (!existing_tx.is_deregister_tx())
+      if (!existing_tx.is_type(transaction::type_deregister))
         continue;
 
       tx_extra_service_node_deregister existing_deregister;

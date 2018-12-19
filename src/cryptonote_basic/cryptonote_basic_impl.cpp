@@ -66,6 +66,75 @@ namespace cryptonote {
     END_KV_SERIALIZE_MAP()
   };
 
+  bool transaction_prefix::is_type(transaction_prefix::type_t check_type) const
+  {
+    assert(static_cast<uint16_t>(type) < static_cast<uint16_t>(type_count));
+    if (version >= version_4_tx_types)
+      return check_type == type;
+
+    switch(check_type)
+    {
+      case type_standard:
+      {
+        if (version <= version_2) return true;
+        if (version == version_3_per_output_unlock_times) return !is_deregister;
+      }
+      break;
+
+      case type_deregister:
+      {
+        if (version <= version_2) return false;
+        if (version == version_3_per_output_unlock_times) return is_deregister;
+      }
+      break;
+
+      default: break;
+    }
+
+    return false;
+  }
+
+  transaction_prefix::type_t transaction_prefix::get_type() const
+  {
+    if (version <= version_2)
+      return type_standard;
+
+    if (version == version_3_per_output_unlock_times)
+    {
+      if (is_deregister) return type_deregister;
+      return type_standard;
+    }
+
+    // NOTE(loki): Type is range checked on deserialisation, so hitting this is a developer error
+    assert(static_cast<uint16_t>(type) < static_cast<uint16_t>(type_count));
+    return static_cast<transaction::type_t>(type);
+  }
+
+  bool transaction_prefix::set_type(transaction_prefix::type_t new_type)
+  {
+    bool result = false;
+    if (version <= version_2)
+      result = (new_type == type_standard);
+
+    if (version == version_3_per_output_unlock_times)
+    {
+      if (new_type == type_standard || new_type == type_deregister)
+        result = true;
+    }
+    else
+    {
+      result = true;
+    }
+
+    if (result)
+    {
+      assert(static_cast<uint16_t>(new_type) <= static_cast<uint16_t>(type_count)); // NOTE(loki): Developer error
+      type = static_cast<uint16_t>(new_type);
+    }
+
+    return result;
+  }
+
   /************************************************************************/
   /* Cryptonote helper functions                                          */
   /************************************************************************/

@@ -117,7 +117,7 @@ namespace cryptonote
   //---------------------------------------------------------------------------------
   bool tx_memory_pool::have_deregister_tx_already(transaction const &tx) const
   {
-    if (!tx.is_deregister_tx())
+    if (!tx.is_type(transaction::type_deregister))
       return false;
 
     tx_extra_service_node_deregister deregister;
@@ -131,7 +131,7 @@ namespace cryptonote
     get_transactions(pool_txs);
     for (const transaction& pool_tx : pool_txs)
     {
-      if (!pool_tx.is_deregister_tx())
+      if (!pool_tx.is_type(transaction::type_deregister))
         continue;
 
       tx_extra_service_node_deregister pool_tx_deregister;
@@ -217,7 +217,7 @@ namespace cryptonote
       fee = tx.rct_signatures.txnFee;
     }
 
-    if (!kept_by_block && !tx.is_deregister_tx() && !m_blockchain.check_fee(tx_weight, fee))
+    if (!kept_by_block && !tx.is_type(transaction::type_deregister) && !m_blockchain.check_fee(tx_weight, fee))
     {
       tvc.m_verifivation_failed = true;
       tvc.m_fee_too_low = true;
@@ -302,7 +302,7 @@ namespace cryptonote
           m_blockchain.add_txpool_tx(id, blob, meta);
           if (!insert_key_images(tx, id, kept_by_block))
             return false;
-          m_txs_by_fee_and_receive_time.emplace(std::tuple<bool, double, std::time_t>(tx.is_deregister_tx(), fee / (double)tx_weight, receive_time), id);
+          m_txs_by_fee_and_receive_time.emplace(std::tuple<bool, double, std::time_t>(tx.is_type(transaction::type_deregister), fee / (double)tx_weight, receive_time), id);
         }
         catch (const std::exception &e)
         {
@@ -346,7 +346,7 @@ namespace cryptonote
         m_blockchain.add_txpool_tx(id, blob, meta);
         if (!insert_key_images(tx, id, kept_by_block))
           return false;
-        m_txs_by_fee_and_receive_time.emplace(std::tuple<bool, double, std::time_t>(tx.is_deregister_tx(), fee / (double)tx_weight, receive_time), id);
+        m_txs_by_fee_and_receive_time.emplace(std::tuple<bool, double, std::time_t>(tx.is_type(transaction::type_deregister), fee / (double)tx_weight, receive_time), id);
       }
       catch (const std::exception &e)
       {
@@ -355,7 +355,7 @@ namespace cryptonote
       }
       tvc.m_added_to_pool = true;
 
-      if((meta.fee > 0 || tx.is_deregister_tx()) && !do_not_relay)
+      if((meta.fee > 0 || tx.is_type(transaction::type_deregister)) && !do_not_relay)
         tvc.m_should_be_relayed = true;
     }
 
@@ -705,7 +705,7 @@ namespace cryptonote
                 return true;
               }
 
-              if (!tx.is_deregister_tx())
+              if (!tx.is_type(transaction::type_deregister))
                 return true;
 
               tx_verification_context tvc;
@@ -1493,7 +1493,7 @@ namespace cryptonote
           MFATAL("Failed to insert key images from txpool tx");
           return false;
         }
-        m_txs_by_fee_and_receive_time.emplace(std::tuple<bool, double, time_t>(tx.is_deregister_tx(), meta.fee / (double)meta.weight, meta.receive_time), txid);
+        m_txs_by_fee_and_receive_time.emplace(std::tuple<bool, double, time_t>(tx.is_type(transaction::type_deregister), meta.fee / (double)meta.weight, meta.receive_time), txid);
         m_txpool_weight += meta.weight;
         return true;
       }, true);
