@@ -2047,7 +2047,7 @@ bool t_rpc_command_executor::get_service_node_registration_cmd(const std::vector
         uint64_t portions_for_operator;
         bool autostake;
 
-        if (!service_nodes::convert_registration_args(nettype, args, addresses, portions, portions_for_operator, autostake)) {
+        if (!service_nodes::convert_registration_args(nettype, args, addresses, portions, portions_for_operator, autostake, boost::none)) {
           tools::fail_msg_writer() << "Failed to validate registration arguments; check the addresses and registration parameters";
           return true;
         }

@@ -2331,10 +2331,13 @@ namespace cryptonote
       return false;
     }
 
-    if (!service_nodes::make_registration_cmd(m_core.get_nettype(), req.args, service_node_pubkey, service_node_key, res.registration_cmd, req.make_friendly))
+    std::string err_msg;
+    if (!service_nodes::make_registration_cmd(m_core.get_nettype(), req.args, service_node_pubkey, service_node_key, res.registration_cmd, req.make_friendly, err_msg))
     {
       error_resp.code    = CORE_RPC_ERROR_CODE_WRONG_PARAM;
       error_resp.message = "Failed to make registration command";
+      if (err_msg != "")
+        error_resp.message += ": " + err_msg;
       return false;
     }
 
