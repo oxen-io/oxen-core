@@ -277,6 +277,22 @@ namespace cryptonote
     END_SERIALIZE()
   };
 
+  struct tx_extra_tx_key_image_unlock
+  {
+    struct unlock
+    {
+      crypto::key_image key_image;
+      crypto::signature signature;
+      uint32_t          nonce;
+    };
+
+    std::vector<unlock> unlocks;
+
+    BEGIN_SERIALIZE()
+      FIELD(proofs)
+    END_SERIALIZE()
+  };
+
   // tx_extra_field format, except tx_extra_padding and tx_extra_pub_key:
   //   varint tag;
   //   varint size;

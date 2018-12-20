@@ -70,10 +70,10 @@ namespace service_nodes
     // a minimum staking amount. Currently contributors can contribute piece
     // meal to a service node, they can trivially attack the network by staking
     // 1 loki each time to bloat up the key images
-    struct key_image_proof
+    struct contribution_t
     {
-      crypto::public_key image_pub_key;
-      crypto::key_image  image;
+      crypto::public_key key_image_pub_key;
+      crypto::key_image  key_image;
       uint64_t           amount;
     };
 
@@ -84,15 +84,15 @@ namespace service_nodes
       version_2_infinite_staking,
     };
 
-    struct contribution
+    struct contributor_t
     {
       uint64_t amount;
       uint64_t reserved;
       cryptonote::account_public_address address;
-      std::vector<key_image_proof> locked_key_images; // TODO(doyle): INF_STAKING(doyle): Serialize
+      std::vector<contribution_t> locked_contributions; // TODO(doyle): INF_STAKING(doyle): Serialize
 
-      contribution() {}
-      contribution(uint64_t _reserved, const cryptonote::account_public_address& _address)
+      contributor_t() {}
+      contributor_t(uint64_t _reserved, const cryptonote::account_public_address& _address)
         : amount(0), reserved(_reserved), address(_address) { }
 
       BEGIN_SERIALIZE()
@@ -108,7 +108,7 @@ namespace service_nodes
     // block_height and transaction_index are to record when the service node last received a reward.
     uint64_t                           last_reward_block_height;
     uint32_t                           last_reward_transaction_index;
-    std::vector<contribution>          contributors;
+    std::vector<contributor_t>         contributors;
     uint64_t                           total_contributed;
     uint64_t                           total_reserved;
     uint64_t                           staking_requirement;

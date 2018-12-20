@@ -2124,7 +2124,7 @@ static void print_service_node_list_state(cryptonote::network_type nettype, int 
       tools::msg_writer() << "";
       for (size_t j = 0; j < entry.contributors.size(); ++j)
       {
-        const cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::contribution &contributor = entry.contributors[j];
+        const cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::contributor &contributor = entry.contributors[j];
         tools::msg_writer() << indent2 << "[" << j << "] Contributor: " << contributor.address;
         tools::msg_writer() << indent3 << "Amount / Reserved: "         << cryptonote::print_money(contributor.amount) << " / " << cryptonote::print_money(contributor.reserved);
       }

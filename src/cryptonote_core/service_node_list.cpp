@@ -236,12 +236,12 @@ namespace service_nodes
     return true;
   }
 
-  struct snode_contribution
+  struct parsed_tx_contribution
   {
     cryptonote::account_public_address address;
     uint64_t transferred;
     crypto::secret_key tx_key;
-    std::vector<service_node_info::key_image_proof> key_images_to_lock;
+    std::vector<service_node_info::contribution_t> locked_contributions;
   };
 
   static uint64_t get_reg_tx_staking_output_contribution(const cryptonote::transaction& tx, int i, crypto::key_derivation const &derivation, hw::device& hwdev)
@@ -538,26 +538,26 @@ namespace service_nodes
     return unlock_time < CRYPTONOTE_MAX_BLOCK_NUMBER && unlock_time >= block_height + get_staking_requirement_lock_blocks(nettype);
   }
 
-  static bool get_contribution(cryptonote::network_type nettype, int hard_fork_version, const cryptonote::transaction& tx, uint64_t block_height, snode_contribution &contribution)
+  static bool get_contribution(cryptonote::network_type nettype, int hard_fork_version, const cryptonote::transaction& tx, uint64_t block_height, parsed_tx_contribution &parsed_contribution)
   {
-    if (!cryptonote::get_service_node_contributor_from_tx_extra(tx.extra, contribution.address))
+    if (!cryptonote::get_service_node_contributor_from_tx_extra(tx.extra, parsed_contribution.address))
       return false;
 
-    if (!cryptonote::get_tx_secret_key_from_tx_extra(tx.extra, contribution.tx_key))
+    if (!cryptonote::get_tx_secret_key_from_tx_extra(tx.extra, parsed_contribution.tx_key))
     {
       MERROR("Contribution TX: There was a service node contributor but no secret key in the tx extra on height: " << block_height << " for tx: " << get_transaction_hash(tx));
       return false;
     }
 
     crypto::key_derivation derivation;
-    if (!crypto::generate_key_derivation(contribution.address.m_view_public_key, contribution.tx_key, derivation))
+    if (!crypto::generate_key_derivation(parsed_contribution.address.m_view_public_key, parsed_contribution.tx_key, derivation))
     {
       MERROR("Contribution TX: Failed to generate key derivation on height: " << block_height << " for tx: " << get_transaction_hash(tx));
       return false;
     }
 
-    hw::device& hwdev        = hw::get_device("default");
-    contribution.transferred = 0;
+    hw::device& hwdev               = hw::get_device("default");
+    parsed_contribution.transferred = 0;
 
     if (hard_fork_version >= cryptonote::network_version_11_swarms)
     {
@@ -601,7 +601,7 @@ namespace service_nodes
 
         crypto::public_key ephemeral_pub_key;
         {
-          if (!hwdev.derive_public_key(derivation, output_index, contribution.address.m_spend_public_key, ephemeral_pub_key))
+          if (!hwdev.derive_public_key(derivation, output_index, parsed_contribution.address.m_spend_public_key, ephemeral_pub_key))
             continue;
 
           const auto& out_to_key = boost::get<cryptonote::txout_to_key>(tx.vout[output_index].target);
@@ -621,12 +621,13 @@ namespace service_nodes
           if (!crypto::check_ring_signature((const crypto::hash &)(proof->key_image), proof->key_image, &ephemeral_pub_key_ptr, 1, &proof->signature))
             continue;
 
-          service_node_info::key_image_proof locked_key_image = {};
-          locked_key_image.image_pub_key                         = ephemeral_pub_key;
-          locked_key_image.image                                 = proof->key_image;
+          service_node_info::contribution_t entry = {};
+          entry.key_image_pub_key                 = ephemeral_pub_key;
+          entry.key_image                         = proof->key_image;
+          entry.amount                            = transferred;
 
-          contribution.key_images_to_lock.push_back(locked_key_image);
-          contribution.transferred += transferred;
+          parsed_contribution.locked_contributions.push_back(entry);
+          parsed_contribution.transferred += transferred;
           state.checked = true;
           break;
         }
@@ -637,7 +638,7 @@ namespace service_nodes
       for (size_t i = 0; i < tx.vout.size(); i++)
       {
         if (contribution_tx_output_has_correct_unlock_time(nettype, tx, i, block_height))
-          contribution.transferred += get_reg_tx_staking_output_contribution(tx, i, derivation, hwdev);
+          parsed_contribution.transferred += get_reg_tx_staking_output_contribution(tx, i, derivation, hwdev);
       }
     }
 
@@ -708,22 +709,22 @@ namespace service_nodes
     cryptonote::account_public_address address;
 
     int hf_version = m_blockchain.get_hard_fork_version(block_height);
-    snode_contribution contribution = {};
-    if (!get_contribution(m_blockchain.nettype(), hf_version, tx, block_height, contribution))
+    parsed_tx_contribution parsed_contribution = {};
+    if (!get_contribution(m_blockchain.nettype(), hf_version, tx, block_height, parsed_contribution))
     {
       MERROR("Registefr TX: Had service node registration fields, but could not decode contribution on height: " << block_height << " for tx: " << cryptonote::get_transaction_hash(tx));
       return false;
     }
 
     const uint64_t min_transfer = info.staking_requirement / MAX_NUMBER_OF_CONTRIBUTORS;
-    if (contribution.transferred < min_transfer)
+    if (parsed_contribution.transferred < min_transfer)
     {
       MERROR("Register TX: Contribution didn't meet the minimum transfer requirement: " << min_transfer << " on height: " << block_height << " for tx: " << cryptonote::get_transaction_hash(tx));
       return false;
     }
 
     size_t total_num_of_addr = service_node_addresses.size();
-    if (std::find(service_node_addresses.begin(), service_node_addresses.end(), contribution.address) == service_node_addresses.end())
+    if (std::find(service_node_addresses.begin(), service_node_addresses.end(), parsed_contribution.address) == service_node_addresses.end())
       total_num_of_addr++;
 
     if (total_num_of_addr > MAX_NUMBER_OF_CONTRIBUTORS)
@@ -768,7 +769,11 @@ namespace service_nodes
       uint64_t hi, lo, resulthi, resultlo;
       lo = mul128(info.staking_requirement, service_node_portions[i], &hi);
       div128_64(hi, lo, STAKING_PORTIONS, &resulthi, &resultlo);
-      info.contributors.push_back(service_node_info::contribution(resultlo, service_node_addresses[i]));
+
+      service_node_info::contributor_t contributor = {};
+      contributor.reserved                        = resultlo;
+      contributor.address                         = service_node_addresses[i];
+      info.contributors.push_back(contributor);
       info.total_reserved += resultlo;
     }
 
@@ -848,9 +853,9 @@ namespace service_nodes
     if (!cryptonote::get_service_node_pubkey_from_tx_extra(tx.extra, pubkey))
       return; // Is not a contribution TX don't need to check it.
 
-    snode_contribution contribution = {};
+    parsed_tx_contribution parsed_contribution = {};
     const int hf_version = m_blockchain.get_hard_fork_version(block_height);
-    if (!get_contribution(m_blockchain.nettype(), hf_version, tx, block_height, contribution))
+    if (!get_contribution(m_blockchain.nettype(), hf_version, tx, block_height, parsed_contribution))
     {
       MERROR("Contribution TX: Could not decode contribution for snode: " << pubkey << " on height: " << block_height << " for tx: " << cryptonote::get_transaction_hash(tx));
       return;
@@ -875,7 +880,7 @@ namespace service_nodes
       return;
     }
 
-    if (!cryptonote::get_tx_secret_key_from_tx_extra(tx.extra, contribution.tx_key))
+    if (!cryptonote::get_tx_secret_key_from_tx_extra(tx.extra, parsed_contribution.tx_key))
     {
       MERROR("Contribution TX: Failed to get tx secret key from contribution received on height: "  << block_height << " for tx: " << cryptonote::get_transaction_hash(tx));
       return;
@@ -886,7 +891,7 @@ namespace service_nodes
     // Only create a new contributor if they stake at least a quarter
     // and if we don't already have the maximum
     auto contrib_iter = std::find_if(contributors.begin(), contributors.end(),
-        [&contribution](const service_node_info::contribution& contributor) { return contributor.address == contribution.address; });
+        [&parsed_contribution](const service_node_info::contributor_t& contributor) { return contributor.address == parsed_contribution.address; });
     if (contrib_iter == contributors.end())
     {
       if (contributors.size() >= MAX_NUMBER_OF_CONTRIBUTORS)
@@ -898,9 +903,9 @@ namespace service_nodes
         return;
       }
 
-      if (contribution.transferred < info.get_min_contribution())
+      if (parsed_contribution.transferred < info.get_min_contribution())
       {
-        LOG_PRINT_L1("Contribution TX: Amount " << contribution.transferred <<
+        LOG_PRINT_L1("Contribution TX: Amount " << parsed_contribution.transferred <<
                      " did not meet min " << info.get_min_contribution() <<
                      " for snode: " << pubkey <<
                      " on height: "  << block_height <<
@@ -916,20 +921,21 @@ namespace service_nodes
     m_rollback_events.push_back(std::unique_ptr<rollback_event>(new rollback_change(block_height, pubkey, info)));
     if (contrib_iter == contributors.end())
     {
-      contributors.push_back(service_node_info::contribution(0, contribution.address));
+      service_node_info::contributor_t new_contributor = {};
+      new_contributor.address                          = parsed_contribution.address;
       contrib_iter = --contributors.end();
     }
 
-    service_node_info::contribution& contributor = *contrib_iter;
+    service_node_info::contributor_t& contributor = *contrib_iter;
 
     // In this action, we cannot
     // increase total_reserved so much that it is >= staking_requirement
     uint64_t can_increase_reserved_by = info.staking_requirement - info.total_reserved;
-    uint64_t max_amount = contributor.reserved + can_increase_reserved_by;
-    contribution.transferred = std::min(max_amount - contributor.amount, contribution.transferred);
+    uint64_t max_amount               = contributor.reserved + can_increase_reserved_by;
+    parsed_contribution.transferred = std::min(max_amount - contributor.amount, parsed_contribution.transferred);
 
-    contributor.amount += contribution.transferred;
-    info.total_contributed += contribution.transferred;
+    contributor.amount     += parsed_contribution.transferred;
+    info.total_contributed += parsed_contribution.transferred;
 
     if (contributor.amount > contributor.reserved)
     {
@@ -942,12 +948,15 @@ namespace service_nodes
 
     if (hf_version >= cryptonote::network_version_11_swarms)
     {
-      contributor.locked_key_images.reserve(contribution.key_images_to_lock.size());
-      for (const service_node_info::key_image_proof &locked_image : contribution.key_images_to_lock)
-        contributor.locked_key_images.push_back(locked_image);
+      // TODO(doyle): INF_STAKING(doyle): Set a limit on the number of key images allowed
+      std::vector<service_node_info::contribution_t> &locked_contributions = contributor.locked_contributions;
+      locked_contributions.reserve(locked_contributions.size() + parsed_contribution.locked_contributions.size());
+
+      for (const service_node_info::contribution_t &contribution : parsed_contribution.locked_contributions)
+        contributor.locked_contributions.push_back(contribution);
     }
 
-    LOG_PRINT_L1("Contribution of " << contribution.transferred << " received for snode " << pubkey);
+    LOG_PRINT_L1("Contribution of " << parsed_contribution.transferred << " received for snode " << pubkey);
   }
 
   void service_node_list::block_added(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs)
@@ -1054,20 +1063,20 @@ namespace service_nodes
         service_node_info &node_info = (*it).second;
         for (cryptonote::tx_extra_tx_key_image_proofs::proof const &proof : key_image_proofs.proofs)
         {
-          for (service_node_info::contribution &contributor : node_info.contributors)
+          for (service_node_info::contributor_t &contributor : node_info.contributors)
           {
-            for (auto locked_image = contributor.locked_key_images.begin(); locked_image != contributor.locked_key_images.end(); locked_image++)
+            for (auto locked_contribution = contributor.locked_contributions.begin(); locked_contribution != contributor.locked_contributions.end(); locked_contribution++)
             {
-              if (proof.key_image == locked_image->image)
+              if (proof.key_image == locked_contribution->key_image)
               {
                 crypto::hash some_hash_derived_from_user_data; // TODO(doyle): INF_STAKING(doyle): Implement and add error warnings
-                if (!crypto::check_signature(some_hash_derived_from_user_data, locked_image->image_pub_key, proof.signature))
+                if (!crypto::check_signature(some_hash_derived_from_user_data, locked_contribution->key_image_pub_key, proof.signature))
                   continue;
 
                 // TODO(doyle): INF_STAKING(doyle): Remove the key image from the service node, and update the contributor status
                 // So here we need a mapping between key images and the contributions.
-                contributor.amount -= locked_image->amount;
-                contributor.locked_key_images.erase(locked_image);
+                contributor.amount -= locked_contribution->amount;
+                contributor.locked_contributions.erase(locked_contribution);
               }
             }
           }
@@ -1345,9 +1354,9 @@ namespace service_nodes
     for (const auto& pubkey_info : m_service_nodes_infos)
     {
       const service_node_info &info = pubkey_info.second;
-      for (const service_node_info::contribution &contributor : info.contributors)
+      for (const service_node_info::contributor_t &contributor : info.contributors)
       {
-        for (const service_node_info::key_image_proof &locked_key_image : contributor.locked_key_images)
+        for (const service_node_info::contribution_t &contribution : contributor.locked_contributions)
         {
           for (const cryptonote::txin_v &tx_input : tx.vin)
           {
@@ -1355,7 +1364,7 @@ namespace service_nodes
               continue;
 
             const auto &in_to_key = boost::get<cryptonote::txin_to_key>(tx_input);
-            if (in_to_key.k_image == locked_key_image.image)
+            if (in_to_key.k_image == contribution.key_image)
             {
               tvc.m_key_image_locked_by_snode = true;
               return false;

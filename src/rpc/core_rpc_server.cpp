@@ -2378,20 +2378,23 @@ namespace cryptonote
       entry.last_uptime_proof             = m_core.get_uptime_proof(pubkey_info.pubkey);
 
       entry.contributors.reserve(pubkey_info.info.contributors.size());
-      for (service_nodes::service_node_info::contribution const &contributor : pubkey_info.info.contributors)
+
+      using namespace service_nodes;
+      for (service_node_info::contributor_t const &contributor : pubkey_info.info.contributors)
       {
-        COMMAND_RPC_GET_SERVICE_NODES::response::contribution new_contributor = {};
+        COMMAND_RPC_GET_SERVICE_NODES::response::contributor new_contributor = {};
         new_contributor.amount   = contributor.amount;
         new_contributor.reserved = contributor.reserved;
         new_contributor.address  = cryptonote::get_account_address_as_str(m_core.get_nettype(), false/*is_subaddress*/, contributor.address);
 
-        new_contributor.key_image_amounts.reserve(contributor.locked_key_images.size());
-        for (service_nodes::service_node_info::key_image_proof const &locked_key_image : contributor.locked_key_images)
+        new_contributor.locked_contributions.reserve(contributor.locked_contributions.size());
+        for (service_node_info::contribution_t const &src : contributor.locked_contributions)
         {
-          COMMAND_RPC_GET_SERVICE_NODES::response::key_image_amount key_image_entry = {};
-          key_image_entry.amount                                                    = locked_key_image.amount;
-          key_image_entry.key_image                                                 = string_tools::pod_to_hex(locked_key_image.image);
-          new_contributor.key_image_amounts.push_back(key_image_entry);
+          COMMAND_RPC_GET_SERVICE_NODES::response::contribution dest = {};
+          dest.amount                                                = src.amount;
+          dest.key_image                                             = string_tools::pod_to_hex(src.key_image);
+          dest.key_image_pub_key                                     = string_tools::pod_to_hex(src.key_image_pub_key);
+          new_contributor.locked_contributions.push_back(dest);
         }
 
         entry.contributors.push_back(new_contributor);

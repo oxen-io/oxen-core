@@ -6237,12 +6237,13 @@ bool simple_wallet::request_stake_unlock(const std::vector<std::string> &args_)
   std::vector<tools::wallet2::pending_tx> ptx_vector;
   {
     tools::wallet2::pending_tx ptx = {};
-    ptx.tx.version = cryptonote::transaction::version_4_tx_types;
+    ptx.tx.version                 = cryptonote::transaction::version_4_tx_types;
     if (!ptx.tx.set_type(cryptonote::transaction::type_key_image_unlock))
     {
       fail_msg_writer() << tr("Failed to construct a key image unlock transaction");
       return true;
     }
+
     add_service_node_pubkey_to_tx_extra(ptx.tx.extra, snode_key);
     ptx_vector.push_back(ptx);
   }
