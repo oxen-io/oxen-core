@@ -12214,6 +12214,42 @@ bool wallet2::contains_address(const cryptonote::account_public_address& address
   return false;
 }
 //----------------------------------------------------------------------------------------------------
+bool wallet2::generate_signature_for_request_stake_unlock(crypto::key_image const &key_image, crypto::signature &signature, uint32_t &nonce) const
+{
+  const auto &key_image_it = m_key_images.find(key_image);
+  if (key_image_it == m_key_images.end())
+    return false;
+
+  size_t transfer_details_index = key_image_it->second;
+  transfer_details const &td    = m_transfers[transfer_details_index];
+  cryptonote::keypair in_ephemeral;
+  {
+    // get ephemeral public key
+    const cryptonote::tx_out &out = td.m_tx.vout[td.m_internal_output_index];
+    THROW_WALLET_EXCEPTION_IF(out.target.type() != typeid(txout_to_key), error::wallet_internal_error, "Output is not txout_to_key");
+    const cryptonote::txout_to_key &o = boost::get<const cryptonote::txout_to_key>(out.target);
+    const crypto::public_key pkey = o.key;
+
+    std::vector<tx_extra_field> tx_extra_fields;
+    parse_tx_extra(td.m_tx.extra, tx_extra_fields);
+
+    crypto::public_key tx_pub_key = get_tx_pub_key_from_received_outs(td);
+    const std::vector<crypto::public_key> additional_tx_pub_keys = get_additional_tx_pub_keys_from_extra(td.m_tx);
+
+    // generate ephemeral secret key
+    crypto::key_image ki;
+    bool r = cryptonote::generate_key_image_helper(m_account.get_keys(), m_subaddresses, pkey, tx_pub_key, additional_tx_pub_keys, td.m_internal_output_index, in_ephemeral, ki, m_account.get_device());
+    THROW_WALLET_EXCEPTION_IF(!r, error::wallet_internal_error, "Failed to generate key image");
+    THROW_WALLET_EXCEPTION_IF(td.m_key_image_known && !td.m_key_image_partial && ki != td.m_key_image, error::wallet_internal_error, "key_image generated not matched with cached key image");
+    THROW_WALLET_EXCEPTION_IF(in_ephemeral.pub != pkey, error::wallet_internal_error, "key_image generated ephemeral public key not matched with output_key");
+  }
+
+  nonce = static_cast<uint32_t>(time(nullptr));
+  crypto::hash hash = service_nodes::generate_request_stake_unlock_hash(nonce);
+  crypto::generate_signature(hash, in_ephemeral.pub, in_ephemeral.sec, signature);
+  return true;
+}
+//----------------------------------------------------------------------------------------------------
 cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response wallet2::get_service_nodes(std::vector<std::string> const &pubkeys)
 {
   cryptonote::COMMAND_RPC_GET_SERVICE_NODES::request req = {};

@@ -976,9 +976,12 @@ namespace service_nodes
     if (hard_fork_version < 9)
       return;
 
-    assert(m_height == block_height);
-    m_height++;
+    //
+    // Remove old rollback events
+    //
     {
+      assert(m_height == block_height);
+      m_height++;
       const size_t ROLLBACK_EVENT_EXPIRATION_BLOCKS = 30;
       uint64_t cull_height = (block_height < ROLLBACK_EVENT_EXPIRATION_BLOCKS) ? block_height : block_height - ROLLBACK_EVENT_EXPIRATION_BLOCKS;
 
@@ -989,8 +992,11 @@ namespace service_nodes
       m_rollback_events.push_front(std::unique_ptr<rollback_event>(new prevent_rollback(cull_height)));
     }
 
+    // TODO(doyle): INF_STAKING(doyle): Almost irrelevant now?
+    //
+    // Expire Nodes
+    //
     size_t expired_count = 0;
-
     for (const crypto::public_key& pubkey : get_expired_nodes(txs, block_height))
     {
       auto i = m_service_nodes_infos.find(pubkey);
@@ -1012,19 +1018,77 @@ namespace service_nodes
       }
     }
 
-    crypto::public_key winner_pubkey = cryptonote::get_service_node_winner_from_tx_extra(block.miner_tx.extra);
-    if (m_service_nodes_infos.count(winner_pubkey) == 1)
+    //
+    // Unlock requested key images, delete contributor if all contributions gone, delete node if all contributors gone
+    //
     {
-      m_rollback_events.push_back(
-        std::unique_ptr<rollback_event>(
-          new rollback_change(block_height, winner_pubkey, m_service_nodes_infos[winner_pubkey])
-        )
-      );
-      // set the winner as though it was re-registering at transaction index=UINT32_MAX for this block
-      m_service_nodes_infos[winner_pubkey].last_reward_block_height = block_height;
-      m_service_nodes_infos[winner_pubkey].last_reward_transaction_index = UINT32_MAX;
+      for (auto it = m_service_nodes_infos.begin(); it != m_service_nodes_infos.end();)
+      {
+        crypto::public_key const &snode_key = it->first;
+        service_node_info &info             = it->second;
+
+        // TODO(doyle): INF_STAKING(doyle): Hmmmmmm. This is not nice.
+        bool changed                = false;
+        service_node_info info_copy = info;
+
+        for (auto contributor = info.contributors.begin(); contributor != info.contributors.end();)
+        {
+          for (auto contribution = contributor->locked_contributions.begin(); contribution != contributor->locked_contributions.end();)
+          {
+            if (contribution->unlock_height != 0 && block_height >= contribution->unlock_height)
+            {
+              // TODO(doyle): INF_STAKING(doyle): Discuss this behaviour. If they reserved a spot and then unlock, they lose the position I guess?
+              contributor->amount     -= contribution->amount;
+              contributor->reserved   -= contribution->amount;
+              info.total_contributed -= contribution->amount;
+              info.total_reserved    -= contribution->amount;
+
+              changed = true;
+              contribution = contributor->locked_contributions.erase(contribution);
+            }
+            else
+            {
+              contribution++;
+            }
+          }
+
+          if (contributor->locked_contributions.empty())
+            contributor = info.contributors.erase(contributor);
+          else
+            contributor++;
+        }
+
+        if (info.contributors.empty())
+          it = m_service_nodes_infos.erase(it);
+        else
+          it++;
+
+        if (changed)
+          m_rollback_events.push_back(std::unique_ptr<rollback_event>(new rollback_change(block_height, snode_key, info_copy)));
+      }
     }
 
+    //
+    // Advance the list to the next candidate for a reward
+    //
+    {
+      crypto::public_key winner_pubkey = cryptonote::get_service_node_winner_from_tx_extra(block.miner_tx.extra);
+      if (m_service_nodes_infos.count(winner_pubkey) == 1)
+      {
+        m_rollback_events.push_back(
+          std::unique_ptr<rollback_event>(
+            new rollback_change(block_height, winner_pubkey, m_service_nodes_infos[winner_pubkey])
+          )
+        );
+        // set the winner as though it was re-registering at transaction index=UINT32_MAX for this block
+        m_service_nodes_infos[winner_pubkey].last_reward_block_height = block_height;
+        m_service_nodes_infos[winner_pubkey].last_reward_transaction_index = UINT32_MAX;
+      }
+    }
+
+    //
+    // Process TXs in the Block
+    //
     size_t registrations = 0;
     size_t deregistrations = 0;
     for (uint32_t index = 0; index < txs.size(); ++index)
@@ -1052,38 +1116,39 @@ namespace service_nodes
         if (it == m_service_nodes_infos.end())
           continue;
 
-        cryptonote::tx_extra_tx_key_image_proofs key_image_proofs;
-        if (!get_tx_key_image_proofs_from_tx_extra(tx.extra, key_image_proofs))
+        cryptonote::tx_extra_tx_key_image_unlocks key_image_unlocks;
+        if (!cryptonote::get_tx_key_image_unlocks_from_tx_extra(tx.extra, key_image_unlocks))
         {
-          MERROR("Contribution TX: Didn't have key image proofs in the tx_extra, rejected on height: " << block_height << " for tx: " << get_transaction_hash(tx));
+          MERROR("Unlock TX: Didn't have key image unlocks in the tx_extra, rejected on height: " << block_height << " for tx: " << get_transaction_hash(tx));
           continue;
         }
 
-        // TODO(doyle): Duplicated key image proof checks
+        // TODO(doyle): INF_STAKING(doyle): Duplicated key image proof checks
         service_node_info &node_info = (*it).second;
-        for (cryptonote::tx_extra_tx_key_image_proofs::proof const &proof : key_image_proofs.proofs)
+        uint64_t remaining_blocks    = block_height % get_staking_requirement_lock_blocks(m_blockchain.nettype());
+        uint64_t unlock_height       = node_info.registration_height + remaining_blocks;
+
+        for (service_node_info::contributor_t &contributor : node_info.contributors)
         {
-          for (service_node_info::contributor_t &contributor : node_info.contributors)
+          for (cryptonote::tx_extra_tx_key_image_unlocks::unlock const &unlock : key_image_unlocks.unlocks)
           {
             for (auto locked_contribution = contributor.locked_contributions.begin(); locked_contribution != contributor.locked_contributions.end(); locked_contribution++)
             {
-              if (proof.key_image == locked_contribution->key_image)
-              {
-                crypto::hash some_hash_derived_from_user_data; // TODO(doyle): INF_STAKING(doyle): Implement and add error warnings
-                if (!crypto::check_signature(some_hash_derived_from_user_data, locked_contribution->key_image_pub_key, proof.signature))
-                  continue;
+              if (unlock.key_image != locked_contribution->key_image)
+                continue;
 
-                // TODO(doyle): INF_STAKING(doyle): Remove the key image from the service node, and update the contributor status
-                // So here we need a mapping between key images and the contributions.
-                contributor.amount -= locked_contribution->amount;
-                contributor.locked_contributions.erase(locked_contribution);
+              crypto::hash hash = service_nodes::generate_request_stake_unlock_hash(unlock.nonce);
+              if (!crypto::check_signature(hash, locked_contribution->key_image_pub_key, unlock.signature))
+              {
+                MERROR("Unlock TX: Could not verify unlock transaction signature on height: " << block_height << " for tx: " << get_transaction_hash(tx));
+                continue;
               }
+
+              if (locked_contribution->unlock_height == 0)
+                locked_contribution->unlock_height = unlock_height;
             }
           }
         }
-
-        int remaining_blocks              = block_height % get_staking_requirement_lock_blocks(m_blockchain.nettype());
-        node_info.requested_expiry_height = node_info.registration_height + remaining_blocks;
       }
     }
 
@@ -1091,11 +1156,12 @@ namespace service_nodes
       update_swarms(block_height);
     }
 
-    // save six times the quorum lifetime, to be sure. also to help with debugging.
+    //
+    // Update Quorum
+    //
+    const size_t QUORUM_LIFETIME = loki::service_node_deregister::QUORUM_LIFETIME; // save six times the quorum lifetime, to be sure. also to help with debugging.
     const size_t cache_state_from_height = (block_height < QUORUM_LIFETIME) ? 0 : block_height - QUORUM_LIFETIME;
-
     store_quorum_state_from_rewards_list(block_height);
-
     while (!m_quorum_states.empty() && m_quorum_states.begin()->first < cache_state_from_height)
     {
       m_quorum_states.erase(m_quorum_states.begin());

@@ -6232,21 +6232,105 @@ bool simple_wallet::request_stake_unlock(const std::vector<std::string> &args_)
   // TODO(doyle): INF_STAKING(doyle): We need to check the SNode List and only
   // allow the request transaction to go through if there's a matching SNode and
   // the SNode's has key images belonging to this wallet.
-  cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response const &response = m_wallet->get_service_nodes({args_[0]});
-
   std::vector<tools::wallet2::pending_tx> ptx_vector;
   {
-    tools::wallet2::pending_tx ptx = {};
-    ptx.tx.version                 = cryptonote::transaction::version_4_tx_types;
+    ptx_vector.push_back({});
+
+    tools::wallet2::pending_tx &ptx = ptx_vector.back();
+    ptx.tx.version                  = cryptonote::transaction::version_4_tx_types;
     if (!ptx.tx.set_type(cryptonote::transaction::type_key_image_unlock))
     {
       fail_msg_writer() << tr("Failed to construct a key image unlock transaction");
       return true;
     }
 
+    using namespace cryptonote;
+    COMMAND_RPC_GET_SERVICE_NODES::response const &resp  = m_wallet->get_service_nodes({args_[0]});
+    std::vector<COMMAND_RPC_GET_SERVICE_NODES::response::entry> const &service_node_states = resp.service_node_states;
+
+    if (service_node_states.empty())
+    {
+      fail_msg_writer() << tr("No service node known is known for: ") << args_[0];
+      return true;
+    }
+
+    std::vector<COMMAND_RPC_GET_SERVICE_NODES::response::contribution> const *contributions = nullptr;
+    COMMAND_RPC_GET_SERVICE_NODES::response::entry const &node_info                         = service_node_states[0];
+    for (COMMAND_RPC_GET_SERVICE_NODES::response::contributor const &contributor : node_info.contributors)
+    {
+      address_parse_info address_info = {};
+
+      // TODO(doyle): INF_STAKING(doyle): We don't allow staking not from the owner address yet
+      // When we allow staking on behalf of another address, this won't cut it
+      cryptonote::get_account_address_from_str(address_info, m_wallet->nettype(), contributor.address);
+      if (!m_wallet->contains_address(address_info.address))
+        continue;
+
+      contributions = &contributor.locked_contributions;
+      break;
+    }
+
+    if (!contributions)
+    {
+      fail_msg_writer() << tr("No contributions recognised by this wallet in service node: ") << args_[0];
+      return true;
+    }
+
+    cryptonote::tx_extra_tx_key_image_unlocks key_image_unlocks = {};
+    if (contributions->size() > 1)
+    {
+      // TODO(doyle): INF_STAKING(doyle): Multiple key images to unlock
+    }
+    else
+    {
+      if (contributions->size() != 1) // be safe, but should always be the case
+      {
+        fail_msg_writer() << tr("Unexepected 0 contributions registered for this wallet");
+        return true;
+      }
+
+      COMMAND_RPC_GET_SERVICE_NODES::response::contribution const &contribution = (*contributions)[0];
+
+      std::string msg_buf;
+      msg_buf.append("You are requesting to unlock a stake of: ");
+      msg_buf.append(cryptonote::print_money(contribution.amount));
+      msg_buf.append(" Loki from the service node network. This will put the service node: ");
+      msg_buf.append(node_info.service_node_pubkey);
+      msg_buf.append(" into the unregistered state after the stake is unlocked.\n\n");
+
+      uint64_t blocks_to_lock = service_nodes::get_staking_requirement_lock_blocks(m_wallet->nettype());
+      uint64_t curr_height = 0;
+      {
+        std::string err_msg;
+        curr_height = m_wallet->get_daemon_blockchain_height(err_msg);
+        if (!err_msg.empty())
+        {
+          fail_msg_writer() << tr("unable to get network blockchain height from daemon: ") << err_msg;
+          return true;
+        }
+      }
+
+      // TODO(doyle): INF_STAKING(doyle): We should estimate the days/hours for users
+      uint64_t blocks_remaining_till_unlock = curr_height % blocks_to_lock;
+      uint64_t unlock_height = curr_height + blocks_remaining_till_unlock;
+      msg_buf.append("You will continue receiving rewards until the key image is unlocked at height: ");
+      msg_buf.append(std::to_string(unlock_height));
+
+      tx_extra_tx_key_image_unlocks::unlock unlock = {};
+      if (epee::string_tools::hex_to_pod(contribution.key_image, unlock.key_image))
+      {
+        fail_msg_writer() << tr("Failed to parse key image from: ") << contribution.key_image;
+        return true;
+      }
+
+      m_wallet->generate_signature_for_request_stake_unlock(unlock.key_image, unlock.signature, unlock.nonce);
+      key_image_unlocks.unlocks.push_back(unlock);
+    }
+
+    add_tx_key_image_unlocks_to_tx_extra(ptx.tx.extra, key_image_unlocks);
     add_service_node_pubkey_to_tx_extra(ptx.tx.extra, snode_key);
-    ptx_vector.push_back(ptx);
   }
+
 
   // TODO(doyle): INF_STAKING(doyle): Do we support staking in these modes?
   if (m_wallet->multisig())

@@ -45,6 +45,7 @@
 #define TX_EXTRA_TAG_SERVICE_NODE_PUBKEY      0x74
 #define TX_EXTRA_TAG_TX_SECRET_KEY            0x75
 #define TX_EXTRA_TAG_TX_KEY_IMAGE_PROOFS      0x76
+#define TX_EXTRA_TAG_TX_KEY_IMAGE_UNLOCKS     0x76
 #define TX_EXTRA_MYSTERIOUS_MINERGATE_TAG     0xDE
 
 #define TX_EXTRA_NONCE_PAYMENT_ID             0x00
@@ -277,7 +278,7 @@ namespace cryptonote
     END_SERIALIZE()
   };
 
-  struct tx_extra_tx_key_image_unlock
+  struct tx_extra_tx_key_image_unlocks
   {
     struct unlock
     {
@@ -289,7 +290,7 @@ namespace cryptonote
     std::vector<unlock> unlocks;
 
     BEGIN_SERIALIZE()
-      FIELD(proofs)
+      FIELD(unlocks)
     END_SERIALIZE()
   };
 
@@ -309,12 +310,14 @@ namespace cryptonote
                          tx_extra_service_node_winner,
                          tx_extra_service_node_deregister,
                          tx_extra_tx_secret_key,
-                         tx_extra_tx_key_image_proofs
+                         tx_extra_tx_key_image_proofs,
+                         tx_extra_tx_key_image_unlocks
                         > tx_extra_field;
 }
 
 BLOB_SERIALIZER(cryptonote::tx_extra_service_node_deregister::vote);
 BLOB_SERIALIZER(cryptonote::tx_extra_tx_key_image_proofs::proof);
+BLOB_SERIALIZER(cryptonote::tx_extra_tx_key_image_unlocks::unlock);
 
 VARIANT_TAG(binary_archive, cryptonote::tx_extra_padding,                  TX_EXTRA_TAG_PADDING);
 VARIANT_TAG(binary_archive, cryptonote::tx_extra_pub_key,                  TX_EXTRA_TAG_PUBKEY);
@@ -329,3 +332,4 @@ VARIANT_TAG(binary_archive, cryptonote::tx_extra_service_node_winner,      TX_EX
 VARIANT_TAG(binary_archive, cryptonote::tx_extra_service_node_pubkey,      TX_EXTRA_TAG_SERVICE_NODE_PUBKEY);
 VARIANT_TAG(binary_archive, cryptonote::tx_extra_tx_secret_key,            TX_EXTRA_TAG_TX_SECRET_KEY);
 VARIANT_TAG(binary_archive, cryptonote::tx_extra_tx_key_image_proofs,      TX_EXTRA_TAG_TX_KEY_IMAGE_PROOFS);
+VARIANT_TAG(binary_archive, cryptonote::tx_extra_tx_key_image_unlocks,     TX_EXTRA_TAG_TX_KEY_IMAGE_UNLOCKS);

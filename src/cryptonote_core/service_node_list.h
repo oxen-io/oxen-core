@@ -72,9 +72,17 @@ namespace service_nodes
     // 1 loki each time to bloat up the key images
     struct contribution_t
     {
+      uint64_t           unlock_height; // TODO(doyle): INF_STAKING(doyle): This needs to be exposed in RPC so wallets can exclude this from the request dialog
       crypto::public_key key_image_pub_key;
       crypto::key_image  key_image;
       uint64_t           amount;
+
+      BEGIN_SERIALIZE()
+        FIELD(unlock_height)
+        FIELD(key_image_pub_key)
+        FIELD(key_image)
+        VARINT_FIELD(amount)
+      END_SERIALIZE()
     };
 
     enum version
@@ -91,7 +99,7 @@ namespace service_nodes
       cryptonote::account_public_address address;
       std::vector<contribution_t> locked_contributions; // TODO(doyle): INF_STAKING(doyle): Serialize
 
-      contributor_t() {}
+      contributor_t() = default;
       contributor_t(uint64_t _reserved, const cryptonote::account_public_address& _address)
         : amount(0), reserved(_reserved), address(_address) { }
 
@@ -104,7 +112,6 @@ namespace service_nodes
 
     uint8_t                            version = service_node_info::version_0;
     uint64_t                           registration_height;
-    uint64_t                           requested_expiry_height;
     // block_height and transaction_index are to record when the service node last received a reward.
     uint64_t                           last_reward_block_height;
     uint32_t                           last_reward_transaction_index;

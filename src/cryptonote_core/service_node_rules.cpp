@@ -45,4 +45,22 @@ bool check_service_node_portions(const std::vector<uint64_t>& portions)
     return true;
 }
 
+crypto::hash generate_request_stake_unlock_hash(uint32_t nonce)
+{
+  crypto::hash result = {};
+
+  char *nonce_ptr = (char *)&nonce;
+  char *hash_ptr  = result.data;
+  for (size_t i = 0; i < sizeof(result) / sizeof(nonce); ++i)
+  {
+    memcpy(hash_ptr, nonce_ptr, sizeof(nonce));
+    hash_ptr += nonce;
+  }
+
+  size_t remaining_bytes = sizeof(result) % sizeof(nonce);
+  memcpy(hash_ptr, nonce_ptr, remaining_bytes);
+  assert(hash_ptr == (char *)result.data + sizeof(result));
+
+  return result;
+}
 }
