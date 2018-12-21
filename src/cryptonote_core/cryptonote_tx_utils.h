@@ -174,12 +174,24 @@ namespace cryptonote
 
   struct loki_construct_tx_params
   {
-    bool is_staking_tx;
-    bool per_output_unlock;
+    bool                v4_allow_tx_types;
+    bool                v3_per_output_unlock;
+    bool                v3_is_staking_tx;     // NOTE: Set to true manually if you need a staking transaction
+    bool                v2_rct;
+    rct::RangeProofType type;
+
+    loki_construct_tx_params() = default;
+    loki_construct_tx_params(int hf_version)
+    {
+      v4_allow_tx_types    = (hf_version >= cryptonote::network_version_11_swarms);
+      v3_per_output_unlock = (hf_version >= cryptonote::network_version_9_service_nodes);
+      v2_rct               = (hf_version >= cryptonote::network_version_7);
+      type                 = (hf_version <  cryptonote::network_version_10_bulletproofs) ? rct::RangeProofBorromean : rct::RangeProofPaddedBulletproof;
+    }
   };
 
-  bool construct_tx_with_tx_key(const account_keys& sender_account_keys, const std::unordered_map<crypto::public_key, subaddress_index>& subaddresses, std::vector<tx_source_entry>& sources, std::vector<tx_destination_entry>& destinations, const boost::optional<cryptonote::tx_destination_entry>& change_addr, std::vector<uint8_t> extra, transaction& tx, uint64_t unlock_time, const crypto::secret_key &tx_key, const std::vector<crypto::secret_key> &additional_tx_keys, bool rct = false, rct::RangeProofType range_proof_type = rct::RangeProofBorromean, rct::multisig_out *msout = NULL, bool shuffle_outs = true, loki_construct_tx_params const tx_params = {});
-  bool construct_tx_and_get_tx_key(const account_keys& sender_account_keys, const std::unordered_map<crypto::public_key, subaddress_index>& subaddresses, std::vector<tx_source_entry>& sources, std::vector<tx_destination_entry>& destinations, const boost::optional<cryptonote::tx_destination_entry>& change_addr, std::vector<uint8_t> extra, transaction& tx, uint64_t unlock_time, crypto::secret_key &tx_key, std::vector<crypto::secret_key> &additional_tx_keys, bool rct = false, rct::RangeProofType range_proof_type = rct::RangeProofBorromean, rct::multisig_out *msout = NULL, loki_construct_tx_params const tx_params = {});
+  bool construct_tx_with_tx_key(const account_keys& sender_account_keys, const std::unordered_map<crypto::public_key, subaddress_index>& subaddresses, std::vector<tx_source_entry>& sources, std::vector<tx_destination_entry>& destinations, const boost::optional<cryptonote::tx_destination_entry>& change_addr, std::vector<uint8_t> extra, transaction& tx, uint64_t unlock_time, const crypto::secret_key &tx_key, const std::vector<crypto::secret_key> &additional_tx_keys, rct::multisig_out *msout = NULL, bool shuffle_outs = true, loki_construct_tx_params const tx_params = {});
+  bool construct_tx_and_get_tx_key(const account_keys& sender_account_keys, const std::unordered_map<crypto::public_key, subaddress_index>& subaddresses, std::vector<tx_source_entry>& sources, std::vector<tx_destination_entry>& destinations, const boost::optional<cryptonote::tx_destination_entry>& change_addr, std::vector<uint8_t> extra, transaction& tx, uint64_t unlock_time, crypto::secret_key &tx_key, std::vector<crypto::secret_key> &additional_tx_keys, rct::multisig_out *msout = NULL, loki_construct_tx_params const tx_params = {});
 
   bool generate_genesis_block(
       block& bl

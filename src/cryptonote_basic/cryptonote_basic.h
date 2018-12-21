@@ -164,6 +164,7 @@ namespace cryptonote
       version_3_per_output_unlock_times,
       version_4_tx_types,
     };
+    static version get_min_version_for_hf(int hf_version);
 
     // tx information
     size_t   version;
@@ -501,6 +502,25 @@ namespace cryptonote
     }
   };
   //---------------------------------------------------------------
+  inline enum transaction_prefix::version transaction_prefix::get_min_version_for_hf(int hf_version)
+  {
+    switch (hf_version)
+    {
+      case network_version_7: /* FALLTHRU */
+      case network_version_8: /* FALLTHRU */
+      case network_version_9_service_nodes: /* FALLTHRU */
+        // NOTE(loki): This was unfortunate. There was exactly 1 v2 TX on the fork height, this should be prevented in future hfs
+        return transaction::version_2;
+
+      case network_version_10_bulletproofs:
+        return transaction::version_3_per_output_unlock_times;
+
+      default: /* FALLTHRU */
+          LOG_ERROR("Unhandled hardfork version, can't figure out the minimum tx version");
+      case network_version_11_swarms:
+          return transaction::version_4_tx_types;
+    }
+  }
 
   inline bool transaction_prefix::is_type(transaction_prefix::type_t check_type) const
   {

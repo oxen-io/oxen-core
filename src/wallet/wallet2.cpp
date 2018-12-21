@@ -5742,18 +5742,16 @@ bool wallet2::sign_tx(unsigned_tx_set &exported_txs, std::vector<wallet2::pendin
     LOG_PRINT_L1(" " << (n+1) << ": " << sd.sources.size() << " inputs, ring size " << sd.sources[0].outputs.size());
     signed_txes.ptx.push_back(pending_tx());
     tools::wallet2::pending_tx &ptx = signed_txes.ptx.back();
-    rct::RangeProofType range_proof_type = rct::RangeProofBorromean;
-    if (sd.use_bulletproofs)
-    {
-      range_proof_type = rct::RangeProofPaddedBulletproof;
-    }
     crypto::secret_key tx_key;
     std::vector<crypto::secret_key> additional_tx_keys;
     rct::multisig_out msout;
 
     loki_construct_tx_params tx_params = {};
-    tx_params.per_output_unlock        = sd.per_output_unlock;
-    bool r = cryptonote::construct_tx_and_get_tx_key(m_account.get_keys(), m_subaddresses, sd.sources, sd.splitted_dsts, sd.change_dts, sd.extra, ptx.tx, sd.unlock_time, tx_key, additional_tx_keys, sd.use_rct, range_proof_type, m_multisig ? &msout : NULL, tx_params);
+    tx_params.v4_allow_tx_types        = sd.v4_allow_tx_types;
+    tx_params.v3_per_output_unlock     = sd.v3_per_output_unlock;
+    tx_params.v2_rct                   = sd.v2_use_rct;
+    tx_params.type                     = sd.v3_use_bulletproofs ? rct::RangeProofPaddedBulletproof : rct::RangeProofBorromean;
+    bool r = cryptonote::construct_tx_and_get_tx_key(m_account.get_keys(), m_subaddresses, sd.sources, sd.splitted_dsts, sd.change_dts, sd.extra, ptx.tx, sd.unlock_time, tx_key, additional_tx_keys, m_multisig ? &msout : NULL, tx_params);
     THROW_WALLET_EXCEPTION_IF(!r, error::tx_not_constructed, sd.sources, sd.splitted_dsts, sd.unlock_time, m_nettype);
     // we don't test tx size, because we don't know the current limit, due to not having a blockchain,
     // and it's a bit pointless to fail there anyway, since it'd be a (good) guess only. We sign anyway,
@@ -6156,15 +6154,14 @@ bool wallet2::sign_multisig_tx(multisig_tx_set &exported_txs, std::vector<crypto
     cryptonote::transaction tx;
     rct::multisig_out msout = ptx.multisig_sigs.front().msout;
     auto sources = sd.sources;
-    rct::RangeProofType range_proof_type = rct::RangeProofBorromean;
-    if (sd.use_bulletproofs)
-    {
-      range_proof_type = rct::RangeProofPaddedBulletproof;
-    }
 
     loki_construct_tx_params tx_params = {};
-    tx_params.per_output_unlock        = sd.per_output_unlock;
-    bool r = cryptonote::construct_tx_with_tx_key(m_account.get_keys(), m_subaddresses, sources, sd.splitted_dsts, ptx.change_dts, sd.extra, tx, sd.unlock_time, ptx.tx_key, ptx.additional_tx_keys, sd.use_rct, range_proof_type, &msout, true /*shuffle_outs*/, tx_params);
+    tx_params.v4_allow_tx_types        = sd.v4_allow_tx_types;
+    tx_params.v3_per_output_unlock     = sd.v3_per_output_unlock;
+    tx_params.v2_rct                   = sd.v2_use_rct;
+    tx_params.type                     = sd.v3_use_bulletproofs ? rct::RangeProofPaddedBulletproof : rct::RangeProofBorromean;
+
+    bool r = cryptonote::construct_tx_with_tx_key(m_account.get_keys(), m_subaddresses, sources, sd.splitted_dsts, ptx.change_dts, sd.extra, tx, sd.unlock_time, ptx.tx_key, ptx.additional_tx_keys, &msout, true /*shuffle_outs*/, tx_params);
     THROW_WALLET_EXCEPTION_IF(!r, error::tx_not_constructed, sd.sources, sd.splitted_dsts, sd.unlock_time, m_nettype);
 
     THROW_WALLET_EXCEPTION_IF(get_transaction_prefix_hash (tx) != get_transaction_prefix_hash(ptx.tx),
@@ -7666,10 +7663,17 @@ void wallet2::transfer_selected(const std::vector<cryptonote::tx_destination_ent
   rct::multisig_out msout;
   LOG_PRINT_L2("constructing tx");
 
+  // TODO(loki): We don't really need this function anymore, only the rct
+  // version. Do core tests rely on this? And if so do we even care?
+  // TODO(loki): This should be replaced with a NodeRPCProxy function to get the
+  // current hardfork version
   loki_construct_tx_params tx_params = {};
-  tx_params.per_output_unlock        = use_fork_rules(9, 10);
+  tx_params.v4_allow_tx_types    = use_fork_rules(network_version_11_swarms, 5);
+  tx_params.v3_per_output_unlock = use_fork_rules(network_version_9_service_nodes, 5);
+  tx_params.v2_rct               = false;
+  tx_params.type                 = use_fork_rules(network_version_10_bulletproofs) ? rct::RangeProofBorromean : rct::RangeProofPaddedBulletproof;
 
-  bool r = cryptonote::construct_tx_and_get_tx_key(m_account.get_keys(), m_subaddresses, sources, splitted_dsts, change_dts, extra, tx, unlock_time, tx_key, additional_tx_keys, false, rct::RangeProofBorromean, m_multisig ? &msout : NULL, tx_params);
+  bool r = cryptonote::construct_tx_and_get_tx_key(m_account.get_keys(), m_subaddresses, sources, splitted_dsts, change_dts, extra, tx, unlock_time, tx_key, additional_tx_keys, m_multisig ? &msout : NULL, tx_params);
   LOG_PRINT_L2("constructed tx, r="<<r);
   THROW_WALLET_EXCEPTION_IF(!r, error::tx_not_constructed, sources, splitted_dsts, unlock_time, m_nettype);
   THROW_WALLET_EXCEPTION_IF(upper_transaction_weight_limit <= get_transaction_weight(tx), error::tx_too_big, tx, upper_transaction_weight_limit);
@@ -7705,9 +7709,9 @@ void wallet2::transfer_selected(const std::vector<cryptonote::tx_destination_ent
   ptx.construction_data.selected_transfers = selected_transfers;
   ptx.construction_data.extra = tx.extra;
   ptx.construction_data.unlock_time = unlock_time;
-  ptx.construction_data.use_rct = false;
-  ptx.construction_data.per_output_unlock = tx_params.per_output_unlock;
-  ptx.construction_data.use_bulletproofs = false;
+  ptx.construction_data.v2_use_rct = false;
+  ptx.construction_data.v3_per_output_unlock = tx_params.v3_per_output_unlock;
+  ptx.construction_data.v3_use_bulletproofs = false;
   ptx.construction_data.dests = dsts;
   // record which subaddress indices are being used as inputs
   ptx.construction_data.subaddr_account = subaddr_account;
@@ -7901,10 +7905,16 @@ void wallet2::transfer_selected_rct(std::vector<cryptonote::tx_destination_entry
   rct::multisig_out msout;
   LOG_PRINT_L2("constructing tx");
   auto sources_copy = sources;
+
+  // TODO(loki): This should be replaced with a NodeRPCProxy function to get the
+  // current hardfork version. Then use the constructor to get the rules?
   loki_construct_tx_params tx_params = {};
-  tx_params.per_output_unlock        = use_fork_rules(9, 10);
-  tx_params.is_staking_tx            = is_staking_tx;
-  bool r = cryptonote::construct_tx_and_get_tx_key(m_account.get_keys(), m_subaddresses, sources, splitted_dsts, change_dts, extra, tx, unlock_time, tx_key, additional_tx_keys, true, range_proof_type, m_multisig ? &msout : NULL, tx_params);
+  tx_params.v4_allow_tx_types    = use_fork_rules(network_version_11_swarms, 5);
+  tx_params.v3_per_output_unlock = use_fork_rules(network_version_9_service_nodes, 5);
+  tx_params.v2_rct               = true;
+  tx_params.type                 = use_fork_rules(network_version_10_bulletproofs) ? rct::RangeProofBorromean : rct::RangeProofPaddedBulletproof;
+
+  bool r = cryptonote::construct_tx_and_get_tx_key(m_account.get_keys(), m_subaddresses, sources, splitted_dsts, change_dts, extra, tx, unlock_time, tx_key, additional_tx_keys, m_multisig ? &msout : NULL, tx_params);
 
   LOG_PRINT_L2("constructed tx, r="<<r);
   THROW_WALLET_EXCEPTION_IF(!r, error::tx_not_constructed, sources, dsts, unlock_time, m_nettype);
@@ -7952,8 +7962,8 @@ void wallet2::transfer_selected_rct(std::vector<cryptonote::tx_destination_entry
         auto sources_copy_copy = sources_copy;
 
         loki_construct_tx_params tx_params = {};
-        tx_params.per_output_unlock        = use_fork_rules(9, 10);
-        bool r = cryptonote::construct_tx_with_tx_key(m_account.get_keys(), m_subaddresses, sources_copy_copy, splitted_dsts, change_dts, extra, ms_tx, unlock_time,tx_key, additional_tx_keys, true, range_proof_type, &msout, /*shuffle_outs*/ true, tx_params);
+        tx_params.v3_per_output_unlock        = use_fork_rules(9, 10);
+        bool r = cryptonote::construct_tx_with_tx_key(m_account.get_keys(), m_subaddresses, sources_copy_copy, splitted_dsts, change_dts, extra, ms_tx, unlock_time,tx_key, additional_tx_keys, &msout, /*shuffle_outs*/ true, tx_params);
         LOG_PRINT_L2("constructed tx, r="<<r);
         THROW_WALLET_EXCEPTION_IF(!r, error::tx_not_constructed, sources, splitted_dsts, unlock_time, m_nettype);
         THROW_WALLET_EXCEPTION_IF(upper_transaction_weight_limit <= get_transaction_weight(tx), error::tx_too_big, tx, upper_transaction_weight_limit);
@@ -7995,9 +8005,9 @@ void wallet2::transfer_selected_rct(std::vector<cryptonote::tx_destination_entry
   ptx.construction_data.selected_transfers = ptx.selected_transfers;
   ptx.construction_data.extra = tx.extra;
   ptx.construction_data.unlock_time = unlock_time;
-  ptx.construction_data.use_rct = true;
-  ptx.construction_data.use_bulletproofs = !tx.rct_signatures.p.bulletproofs.empty();
-  ptx.construction_data.per_output_unlock = tx_params.per_output_unlock;
+  ptx.construction_data.v2_use_rct = true;
+  ptx.construction_data.v3_use_bulletproofs = !tx.rct_signatures.p.bulletproofs.empty();
+  ptx.construction_data.v3_per_output_unlock = tx_params.v3_per_output_unlock;
   ptx.construction_data.dests = dsts;
   // record which subaddress indices are being used as inputs
   ptx.construction_data.subaddr_account = subaddr_account;

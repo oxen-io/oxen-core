@@ -6235,7 +6235,6 @@ bool simple_wallet::request_stake_unlock(const std::vector<std::string> &args_)
   std::vector<tools::wallet2::pending_tx> ptx_vector;
   {
     ptx_vector.push_back({});
-
     tools::wallet2::pending_tx &ptx = ptx_vector.back();
     ptx.tx.version                  = cryptonote::transaction::version_4_tx_types;
     if (!ptx.tx.set_type(cryptonote::transaction::type_key_image_unlock))

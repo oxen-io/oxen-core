@@ -408,9 +408,10 @@ namespace tools
       std::vector<size_t> selected_transfers;
       std::vector<uint8_t> extra;
       uint64_t unlock_time;
-      bool use_rct;
-      bool use_bulletproofs;
-      bool per_output_unlock;
+      bool v2_use_rct;
+      bool v3_use_bulletproofs;
+      bool v3_per_output_unlock;
+      bool v4_allow_tx_types;
       std::vector<cryptonote::tx_destination_entry> dests; // original setup, does not include change
       uint32_t subaddr_account;   // subaddress account of your wallet to be used in this transfer
       std::set<uint32_t> subaddr_indices;  // set of address indices used as inputs in this transfer
@@ -422,9 +423,10 @@ namespace tools
         FIELD(selected_transfers)
         FIELD(extra)
         FIELD(unlock_time)
-        FIELD(use_rct)
-        FIELD(use_bulletproofs)
-        FIELD(per_output_unlock)
+        FIELD(v2_use_rct)
+        FIELD(v3_use_bulletproofs)
+        FIELD(v3_per_output_unlock)
+        FIELD(v4_allow_tx_types)
         FIELD(dests)
         FIELD(subaddr_account)
         FIELD(subaddr_indices)
@@ -1497,7 +1499,7 @@ BOOST_CLASS_VERSION(tools::wallet2::address_book_row, 17)
 BOOST_CLASS_VERSION(tools::wallet2::reserve_proof_entry, 0)
 BOOST_CLASS_VERSION(tools::wallet2::unsigned_tx_set, 0)
 BOOST_CLASS_VERSION(tools::wallet2::signed_tx_set, 0)
-BOOST_CLASS_VERSION(tools::wallet2::tx_construction_data, 4)
+BOOST_CLASS_VERSION(tools::wallet2::tx_construction_data, 5)
 BOOST_CLASS_VERSION(tools::wallet2::pending_tx, 3)
 BOOST_CLASS_VERSION(tools::wallet2::multisig_sig, 0)
 
@@ -1854,7 +1856,7 @@ namespace boost
       }
       a & x.extra;
       a & x.unlock_time;
-      a & x.use_rct;
+      a & x.v2_use_rct;
       a & x.dests;
       if (ver < 1)
       {
@@ -1868,10 +1870,13 @@ namespace boost
       a & x.selected_transfers;
       if (ver < 3)
         return;
-      a & x.use_bulletproofs;
+      a & x.v3_use_bulletproofs;
       if (ver < 4)
         return;
-      a & x.per_output_unlock;
+      a & x.v3_per_output_unlock;
+      if (ver < 5)
+        return;
+      a & x.v4_allow_tx_types;
     }
 
     template <class Archive>
