@@ -2028,48 +2028,6 @@ bool t_rpc_command_executor::sync_info()
     return true;
 }
 
-bool t_rpc_command_executor::get_service_node_registration_cmd(const std::vector<std::string> &args, const cryptonote::network_type nettype)
-{
-    cryptonote::COMMAND_RPC_GET_SERVICE_NODE_REGISTRATION_CMD_RAW::request req;
-    cryptonote::COMMAND_RPC_GET_SERVICE_NODE_REGISTRATION_CMD_RAW::response res;
-    std::string fail_message = "Unsuccessful";
-    epee::json_rpc::error error_resp;
-
-    req.args = args;
-    req.make_friendly = true;
-    if (m_is_rpc)
-    {
-      // via RPC we won't get the error message printed from within the json request, so first make
-      // sure the arguments are convertible without error:
-      {
-        std::vector<cryptonote::account_public_address> addresses;
-        std::vector<uint64_t> portions;
-        uint64_t portions_for_operator;
-        bool autostake;
-
-        if (!service_nodes::convert_registration_args(nettype, args, addresses, portions, portions_for_operator, autostake, boost::none)) {
-          tools::fail_msg_writer() << "Failed to validate registration arguments; check the addresses and registration parameters";
-          return true;
-        }
-      }
-
-      if (!m_rpc_client->json_rpc_request(req, res, "get_service_node_registration_cmd_raw", fail_message.c_str()))
-          return true;
-    }
-    else
-    {
-      if (!m_rpc_server->on_get_service_node_registration_cmd_raw(req, res, error_resp) || res.status != CORE_RPC_STATUS_OK)
-      {
-          tools::fail_msg_writer() << make_error(fail_message, error_resp.message);
-          return true;
-      }
-    }
-
-    tools::success_msg_writer() << res.registration_cmd;
-
-    return true;
-}
-
 static void print_service_node_list_state(cryptonote::network_type nettype, int hard_fork_version, uint64_t *curr_height, std::vector<cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::entry *> list)
 {
   const char indent1[] = "    ";
@@ -2739,7 +2697,33 @@ bool t_rpc_command_executor::prepare_registration()
 
   scoped_log_cats.reset();
 
-  bool result = get_service_node_registration_cmd(args, nettype);
+  {
+    cryptonote::COMMAND_RPC_GET_SERVICE_NODE_REGISTRATION_CMD_RAW::request req;
+    cryptonote::COMMAND_RPC_GET_SERVICE_NODE_REGISTRATION_CMD_RAW::response res;
+    std::string fail_message = "Unsuccessful";
+
+    req.args = args;
+    req.make_friendly = true;
+    if (m_is_rpc)
+    {
+      if (!m_rpc_client->json_rpc_request(req, res, "get_service_node_registration_cmd_raw", fail_message))
+      {
+        tools::fail_msg_writer() << "Failed to validate registration arguments; check the addresses and registration parameters and that the Daemon is running with the '--service-node' flag";
+        return true;
+      }
+    }
+    else
+    {
+      epee::json_rpc::error error_resp;
+      if (!m_rpc_server->on_get_service_node_registration_cmd_raw(req, res, error_resp) || res.status != CORE_RPC_STATUS_OK)
+      {
+        tools::fail_msg_writer() << make_error(fail_message, error_resp.message);
+        return true;
+      }
+    }
+
+    tools::success_msg_writer() << res.registration_cmd;
+  }
 
   return true;
 }
