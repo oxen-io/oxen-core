@@ -7671,7 +7671,7 @@ void wallet2::transfer_selected(const std::vector<cryptonote::tx_destination_ent
   tx_params.v4_allow_tx_types    = use_fork_rules(network_version_11_swarms, 5);
   tx_params.v3_per_output_unlock = use_fork_rules(network_version_9_service_nodes, 5);
   tx_params.v2_rct               = false;
-  tx_params.type                 = use_fork_rules(network_version_10_bulletproofs) ? rct::RangeProofBorromean : rct::RangeProofPaddedBulletproof;
+  tx_params.type                 = rct::RangeProofBorromean;
 
   bool r = cryptonote::construct_tx_and_get_tx_key(m_account.get_keys(), m_subaddresses, sources, splitted_dsts, change_dts, extra, tx, unlock_time, tx_key, additional_tx_keys, m_multisig ? &msout : NULL, tx_params);
   LOG_PRINT_L2("constructed tx, r="<<r);
@@ -7911,8 +7911,9 @@ void wallet2::transfer_selected_rct(std::vector<cryptonote::tx_destination_entry
   loki_construct_tx_params tx_params = {};
   tx_params.v4_allow_tx_types    = use_fork_rules(network_version_11_swarms, 5);
   tx_params.v3_per_output_unlock = use_fork_rules(network_version_9_service_nodes, 5);
+  tx_params.v3_is_staking_tx     = is_staking_tx;
   tx_params.v2_rct               = true;
-  tx_params.type                 = use_fork_rules(network_version_10_bulletproofs) ? rct::RangeProofBorromean : rct::RangeProofPaddedBulletproof;
+  tx_params.type                 = use_fork_rules(network_version_10_bulletproofs) ? rct::RangeProofPaddedBulletproof : rct::RangeProofBorromean;
 
   bool r = cryptonote::construct_tx_and_get_tx_key(m_account.get_keys(), m_subaddresses, sources, splitted_dsts, change_dts, extra, tx, unlock_time, tx_key, additional_tx_keys, m_multisig ? &msout : NULL, tx_params);
 
@@ -7961,8 +7962,6 @@ void wallet2::transfer_selected_rct(std::vector<cryptonote::tx_destination_entry
         cryptonote::transaction ms_tx;
         auto sources_copy_copy = sources_copy;
 
-        loki_construct_tx_params tx_params = {};
-        tx_params.v3_per_output_unlock        = use_fork_rules(9, 10);
         bool r = cryptonote::construct_tx_with_tx_key(m_account.get_keys(), m_subaddresses, sources_copy_copy, splitted_dsts, change_dts, extra, ms_tx, unlock_time,tx_key, additional_tx_keys, &msout, /*shuffle_outs*/ true, tx_params);
         LOG_PRINT_L2("constructed tx, r="<<r);
         THROW_WALLET_EXCEPTION_IF(!r, error::tx_not_constructed, sources, splitted_dsts, unlock_time, m_nettype);

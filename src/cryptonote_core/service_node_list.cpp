@@ -712,7 +712,7 @@ namespace service_nodes
     parsed_tx_contribution parsed_contribution = {};
     if (!get_contribution(m_blockchain.nettype(), hf_version, tx, block_height, parsed_contribution))
     {
-      MERROR("Registefr TX: Had service node registration fields, but could not decode contribution on height: " << block_height << " for tx: " << cryptonote::get_transaction_hash(tx));
+      MERROR("Register TX: Had service node registration fields, but could not decode contribution on height: " << block_height << " for tx: " << cryptonote::get_transaction_hash(tx));
       return false;
     }
 
@@ -771,8 +771,11 @@ namespace service_nodes
       div128_64(hi, lo, STAKING_PORTIONS, &resulthi, &resultlo);
 
       service_node_info::contributor_t contributor = {};
-      contributor.reserved                        = resultlo;
-      contributor.address                         = service_node_addresses[i];
+      if (hf_version >= cryptonote::network_version_11_swarms)
+        contributor.version = service_node_info::version_2_infinite_staking;
+
+      contributor.reserved                         = resultlo;
+      contributor.address                          = service_node_addresses[i];
       info.contributors.push_back(contributor);
       info.total_reserved += resultlo;
     }
@@ -1125,7 +1128,8 @@ namespace service_nodes
 
         // TODO(doyle): INF_STAKING(doyle): Duplicated key image proof checks
         service_node_info &node_info = (*it).second;
-        uint64_t remaining_blocks    = block_height % get_staking_requirement_lock_blocks(m_blockchain.nettype());
+        uint64_t blocks_to_lock      = block_height % get_staking_requirement_lock_blocks(m_blockchain.nettype());
+        uint64_t remaining_blocks    = (block_height < blocks_to_lock) ? blocks_to_lock - block_height : block_height % blocks_to_lock;
         uint64_t unlock_height       = node_info.registration_height + remaining_blocks;
 
         for (service_node_info::contributor_t &contributor : node_info.contributors)

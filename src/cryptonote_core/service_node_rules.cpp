@@ -51,10 +51,11 @@ crypto::hash generate_request_stake_unlock_hash(uint32_t nonce)
 
   char *nonce_ptr = (char *)&nonce;
   char *hash_ptr  = result.data;
+  static_assert(sizeof(result) % sizeof(nonce) == 0, "The nonce should be evenly divisible into the hash");
   for (size_t i = 0; i < sizeof(result) / sizeof(nonce); ++i)
   {
     memcpy(hash_ptr, nonce_ptr, sizeof(nonce));
-    hash_ptr += nonce;
+    hash_ptr += sizeof(nonce);
   }
 
   size_t remaining_bytes = sizeof(result) % sizeof(nonce);

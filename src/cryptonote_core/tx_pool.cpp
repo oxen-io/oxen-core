@@ -87,7 +87,7 @@ namespace cryptonote
     uint64_t get_transaction_weight_limit(uint8_t version)
     {
       // from v10, bulletproofs, limit a tx to 50% of the minimum block weight
-      if (version >= 10)
+      if (version >= network_version_10_bulletproofs)
         return get_min_block_weight(version) / 2 - CRYPTONOTE_COINBASE_BLOB_RESERVED_SIZE;
       else
         return get_min_block_weight(version) - CRYPTONOTE_COINBASE_BLOB_RESERVED_SIZE;

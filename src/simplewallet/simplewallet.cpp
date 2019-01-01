@@ -6310,24 +6310,37 @@ bool simple_wallet::request_stake_unlock(const std::vector<std::string> &args_)
       }
 
       // TODO(doyle): INF_STAKING(doyle): We should estimate the days/hours for users
-      uint64_t blocks_remaining_till_unlock = curr_height % blocks_to_lock;
+      uint64_t blocks_remaining_till_unlock = (curr_height < blocks_to_lock) ? blocks_to_lock - curr_height : curr_height % blocks_to_lock;
       uint64_t unlock_height = curr_height + blocks_remaining_till_unlock;
-      msg_buf.append("You will continue receiving rewards until the key image is unlocked at height: ");
+      msg_buf.append("You will continue receiving rewards until the key image is unlocked at the estimated height: ");
       msg_buf.append(std::to_string(unlock_height));
 
       tx_extra_tx_key_image_unlocks::unlock unlock = {};
-      if (epee::string_tools::hex_to_pod(contribution.key_image, unlock.key_image))
+      cryptonote::blobdata binary_buf;
+      if(!string_tools::parse_hexstr_to_binbuff(contribution.key_image, binary_buf) || binary_buf.size() != sizeof(crypto::key_image))
       {
-        fail_msg_writer() << tr("Failed to parse key image from: ") << contribution.key_image;
+        fail_msg_writer() << tr("Failed to parse hex representation of key image");
         return true;
       }
 
-      m_wallet->generate_signature_for_request_stake_unlock(unlock.key_image, unlock.signature, unlock.nonce);
+      unlock.key_image = *reinterpret_cast<const crypto::key_image*>(binary_buf.data());
+      if (!m_wallet->generate_signature_for_request_stake_unlock(unlock.key_image, unlock.signature, unlock.nonce))
+      {
+        fail_msg_writer() << tr("Failed to generate signature to sign request. The key image: ") << contribution.key_image << (" doesn't belong to this wallet");
+        return true;
+      }
+
       key_image_unlocks.unlocks.push_back(unlock);
+      success_msg_writer() << msg_buf;
     }
 
-    add_tx_key_image_unlocks_to_tx_extra(ptx.tx.extra, key_image_unlocks);
+    // TODO(doyle): INF_STAKING(doyle): Adding it to tx extra works, but, we
+    // fail to decode it on the service node side. This is because when
+    // add_tx_key_image_unlocks_to_tx_extra, it stores it the type "which_" as
+    // 12, which corresponds to tx_extra_tx_key_image_proofs, whereas we need it
+    // to be 13, which is tx_extra_tx_key_image_unlocks
     add_service_node_pubkey_to_tx_extra(ptx.tx.extra, snode_key);
+    add_tx_key_image_unlocks_to_tx_extra(ptx.tx.extra, key_image_unlocks);
   }
 
 

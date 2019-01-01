@@ -78,7 +78,7 @@ namespace service_nodes
       uint64_t           amount;
 
       BEGIN_SERIALIZE()
-        FIELD(unlock_height)
+        VARINT_FIELD(unlock_height)
         FIELD(key_image_pub_key)
         FIELD(key_image)
         VARINT_FIELD(amount)
@@ -97,6 +97,13 @@ namespace service_nodes
       uint64_t amount;
       uint64_t reserved;
       cryptonote::account_public_address address;
+
+      // TODO(doyle): INF_STAKING(doyle): We probably want to serialize this in
+      // just the info struct, so we don't have to duplicate the version to
+      // optionally filter out the locked contributions
+
+      // More verbose yes, _but_ then all control flow for serialising deserialising is in one place.
+      uint8_t version;
       std::vector<contribution_t> locked_contributions; // TODO(doyle): INF_STAKING(doyle): Serialize
 
       contributor_t() = default;
@@ -107,6 +114,12 @@ namespace service_nodes
         VARINT_FIELD(amount)
         VARINT_FIELD(reserved)
         FIELD(address)
+        FIELD(version)
+        VARINT_FIELD(version)
+
+        if (version >= version_2_infinite_staking)
+          FIELD(locked_contributions)
+
       END_SERIALIZE()
     };
 
