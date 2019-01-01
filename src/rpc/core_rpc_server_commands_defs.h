@@ -2505,6 +2505,7 @@ namespace cryptonote
 
         BEGIN_KV_SERIALIZE_MAP()
           KV_SERIALIZE(key_image)
+          KV_SERIALIZE(key_image_pub_key)
           KV_SERIALIZE(amount)
         END_KV_SERIALIZE_MAP()
       };
@@ -2520,6 +2521,7 @@ namespace cryptonote
           KV_SERIALIZE(amount)
           KV_SERIALIZE(reserved)
           KV_SERIALIZE(address)
+          KV_SERIALIZE(locked_contributions)
         END_KV_SERIALIZE_MAP()
       };
 
