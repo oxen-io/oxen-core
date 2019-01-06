@@ -6275,6 +6275,13 @@ bool simple_wallet::request_stake_unlock(const std::vector<std::string> &args_)
       return true;
     }
 
+    // TODO(doyle): INF_STAKING(doyle): Is it going to be problem if we keep
+    // unregistered nodes around indefinitely? This list could bloat up
+
+    // TODO(doyle): INF_STAKING(doyle): We should indicate that the node gets
+    // into unregistered and perhaps the other contributors/and currently still
+    // locked contributions in the node.
+
     cryptonote::tx_extra_tx_key_image_unlocks key_image_unlocks = {};
     if (contributions->size() > 1)
     {
@@ -6334,11 +6341,6 @@ bool simple_wallet::request_stake_unlock(const std::vector<std::string> &args_)
       success_msg_writer() << msg_buf;
     }
 
-    // TODO(doyle): INF_STAKING(doyle): Adding it to tx extra works, but, we
-    // fail to decode it on the service node side. This is because when
-    // add_tx_key_image_unlocks_to_tx_extra, it stores it the type "which_" as
-    // 12, which corresponds to tx_extra_tx_key_image_proofs, whereas we need it
-    // to be 13, which is tx_extra_tx_key_image_unlocks
     add_service_node_pubkey_to_tx_extra(ptx.tx.extra, snode_key);
     add_tx_key_image_unlocks_to_tx_extra(ptx.tx.extra, key_image_unlocks);
   }

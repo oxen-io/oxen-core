@@ -1119,6 +1119,9 @@ namespace service_nodes
         if (it == m_service_nodes_infos.end())
           continue;
 
+        // TODO(doyle): INF_STAKING(doyle): LOOOK WHEN YOU COME BACK TO
+        // WORK!!!!!!!! This step fails so far, unable to decode a key image
+        // unlock from the tx extra!!!
         cryptonote::tx_extra_tx_key_image_unlocks key_image_unlocks;
         if (!cryptonote::get_tx_key_image_unlocks_from_tx_extra(tx.extra, key_image_unlocks))
         {
