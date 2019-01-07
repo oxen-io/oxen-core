@@ -6291,7 +6291,7 @@ bool simple_wallet::request_stake_unlock(const std::vector<std::string> &args_)
     {
       if (contributions->size() != 1) // be safe, but should always be the case
       {
-        fail_msg_writer() << tr("Unexepected 0 contributions registered for this wallet");
+       fail_msg_writer() << tr("Unexepected 0 contributions registered for this wallet");
         return true;
       }
 
@@ -6300,7 +6300,7 @@ bool simple_wallet::request_stake_unlock(const std::vector<std::string> &args_)
       std::string msg_buf;
       msg_buf.append("You are requesting to unlock a stake of: ");
       msg_buf.append(cryptonote::print_money(contribution.amount));
-      msg_buf.append(" Loki from the service node network. This will put the service node: ");
+      msg_buf.append(" Loki from the service node network.\nThis will put the service node: ");
       msg_buf.append(node_info.service_node_pubkey);
       msg_buf.append(" into the unregistered state after the stake is unlocked.\n\n");
 
@@ -6317,8 +6317,7 @@ bool simple_wallet::request_stake_unlock(const std::vector<std::string> &args_)
       }
 
       // TODO(doyle): INF_STAKING(doyle): We should estimate the days/hours for users
-      uint64_t blocks_remaining_till_unlock = (curr_height < blocks_to_lock) ? blocks_to_lock - curr_height : curr_height % blocks_to_lock;
-      uint64_t unlock_height = curr_height + blocks_remaining_till_unlock;
+      uint64_t unlock_height = service_nodes::get_locked_key_image_unlock_height(m_wallet->nettype(), node_info.registration_height, curr_height);
       msg_buf.append("You will continue receiving rewards until the key image is unlocked at the estimated height: ");
       msg_buf.append(std::to_string(unlock_height));
 

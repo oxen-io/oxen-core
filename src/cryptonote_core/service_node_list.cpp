@@ -528,16 +528,6 @@ namespace service_nodes
     }
   }
 
-  static bool contribution_tx_output_has_correct_unlock_time(cryptonote::network_type nettype, const cryptonote::transaction& tx, size_t i, uint64_t block_height)
-  {
-    uint64_t unlock_time = tx.unlock_time;
-
-    if (tx.version >= cryptonote::transaction::version_3_per_output_unlock_times)
-      unlock_time = tx.output_unlock_times[i];
-
-    return unlock_time < CRYPTONOTE_MAX_BLOCK_NUMBER && unlock_time >= block_height + get_staking_requirement_lock_blocks(nettype);
-  }
-
   static bool get_contribution(cryptonote::network_type nettype, int hard_fork_version, const cryptonote::transaction& tx, uint64_t block_height, parsed_tx_contribution &parsed_contribution)
   {
     if (!cryptonote::get_service_node_contributor_from_tx_extra(tx.extra, parsed_contribution.address))
@@ -575,9 +565,6 @@ namespace service_nodes
 
       for (size_t output_index = 0; output_index < tx.vout.size(); ++output_index)
       {
-        if (!contribution_tx_output_has_correct_unlock_time(nettype, tx, output_index, block_height))
-          continue;
-
         uint64_t transferred = get_reg_tx_staking_output_contribution(tx, output_index, derivation, hwdev);
         if (transferred == 0)
           continue;
@@ -625,7 +612,17 @@ namespace service_nodes
     {
       for (size_t i = 0; i < tx.vout.size(); i++)
       {
-        if (contribution_tx_output_has_correct_unlock_time(nettype, tx, i, block_height))
+        bool has_correct_unlock_time = false;
+        {
+          uint64_t unlock_time = tx.unlock_time;
+          if (tx.version >= cryptonote::transaction::version_3_per_output_unlock_times)
+            unlock_time = tx.output_unlock_times[i];
+
+          has_correct_unlock_time = unlock_time < CRYPTONOTE_MAX_BLOCK_NUMBER &&
+                                    unlock_time >= block_height + get_staking_requirement_lock_blocks(nettype);
+        }
+
+        if (has_correct_unlock_time)
           parsed_contribution.transferred += get_reg_tx_staking_output_contribution(tx, i, derivation, hwdev);
       }
     }
@@ -1057,9 +1054,6 @@ namespace service_nodes
         if (it == m_service_nodes_infos.end())
           continue;
 
-        // TODO(doyle): INF_STAKING(doyle): LOOOK WHEN YOU COME BACK TO
-        // WORK!!!!!!!! This step fails so far, unable to decode a key image
-        // unlock from the tx extra!!!
         cryptonote::tx_extra_tx_key_image_unlocks key_image_unlocks;
         if (!cryptonote::get_tx_key_image_unlocks_from_tx_extra(tx.extra, key_image_unlocks))
         {
@@ -1069,9 +1063,7 @@ namespace service_nodes
 
         // TODO(doyle): INF_STAKING(doyle): Duplicated key image proof checks
         service_node_info &node_info = (*it).second;
-        uint64_t blocks_to_lock      = get_staking_requirement_lock_blocks(m_blockchain.nettype());
-        uint64_t remaining_blocks    = (block_height < blocks_to_lock) ? blocks_to_lock - block_height : block_height % blocks_to_lock;
-        uint64_t unlock_height       = node_info.registration_height + remaining_blocks;
+        uint64_t unlock_height       = get_locked_key_image_unlock_height(m_blockchain.nettype(), node_info.registration_height, block_height);
 
         bool early_exit = false;
         for (auto contributor = node_info.contributors.begin();

@@ -1,20 +1,18 @@
 #pragma once
 
 #include "crypto/crypto.h"
+#include "cryptonote_config.h"
 
 namespace service_nodes {
 
 inline uint64_t get_staking_requirement_lock_blocks(cryptonote::network_type nettype)
 {
-constexpr static uint32_t STAKING_REQUIREMENT_LOCK_BLOCKS         = 30*24*30;
-constexpr static uint32_t STAKING_REQUIREMENT_LOCK_BLOCKS_TESTNET = 30*24*2;
-constexpr static uint32_t STAKING_REQUIREMENT_LOCK_BLOCKS_FAKENET = 30;
-
-switch(nettype) {
-    case cryptonote::TESTNET: return STAKING_REQUIREMENT_LOCK_BLOCKS_TESTNET;
-    case cryptonote::FAKECHAIN: return STAKING_REQUIREMENT_LOCK_BLOCKS_FAKENET;
-    default: return STAKING_REQUIREMENT_LOCK_BLOCKS;
-}
+  switch(nettype)
+  {
+      case cryptonote::FAKECHAIN: return 30;
+      case cryptonote::TESTNET:   return BLOCKS_EXPECTED_IN_DAYS(2);
+      default:                    return BLOCKS_EXPECTED_IN_DAYS(30);
+  }
 }
 
 inline uint64_t get_min_node_contribution(uint64_t staking_requirement, uint64_t total_reserved)
@@ -30,5 +28,6 @@ uint64_t portions_to_amount(uint64_t portions, uint64_t staking_requirement);
 bool check_service_node_portions(const std::vector<uint64_t>& portions);
 
 crypto::hash generate_request_stake_unlock_hash(uint32_t nonce);
+uint64_t     get_locked_key_image_unlock_height(cryptonote::network_type nettype, uint64_t node_register_height, uint64_t curr_height);
 
 }
