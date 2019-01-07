@@ -566,28 +566,11 @@ namespace service_nodes
       // funds. Make sure to put in rules to prevent this.
 
       // TODO(doyle): INF_STAKING(doyle): Add error messages for failure
-      struct key_image_proof_state
-      {
-        cryptonote::tx_extra_tx_key_image_proofs::proof const *proof;
-        bool                                                   checked;
-      };
-
       cryptonote::tx_extra_tx_key_image_proofs key_image_proofs;
-      std::vector<key_image_proof_state>       key_image_states;
+      if (!get_tx_key_image_proofs_from_tx_extra(tx.extra, key_image_proofs))
       {
-        if (!get_tx_key_image_proofs_from_tx_extra(tx.extra, key_image_proofs))
-        {
-          MERROR("Contribution TX: Didn't have key image proofs in the tx_extra, rejected on height: " << block_height << " for tx: " << get_transaction_hash(tx));
-          return false;
-        }
-
-        key_image_states.reserve(key_image_proofs.proofs.size());
-        for (cryptonote::tx_extra_tx_key_image_proofs::proof const &proof : key_image_proofs.proofs)
-        {
-          key_image_proof_state state = {};
-          state.proof                 = &proof;
-          key_image_states.push_back(state);
-        }
+        MERROR("Contribution TX: Didn't have key image proofs in the tx_extra, rejected on height: " << block_height << " for tx: " << get_transaction_hash(tx));
+        return false;
       }
 
       for (size_t output_index = 0; output_index < tx.vout.size(); ++output_index)
@@ -602,22 +585,23 @@ namespace service_nodes
         crypto::public_key ephemeral_pub_key;
         {
           if (!hwdev.derive_public_key(derivation, output_index, parsed_contribution.address.m_spend_public_key, ephemeral_pub_key))
+          {
+            MERROR("Contribution TX: Could not derive TX ephemeral key on height: " << block_height << " for tx: " << get_transaction_hash(tx) << " for output: " << output_index);
             continue;
+          }
 
           const auto& out_to_key = boost::get<cryptonote::txout_to_key>(tx.vout[output_index].target);
           if (out_to_key.key != ephemeral_pub_key)
           {
+            MERROR("Contribution TX: Derived TX ephemeral key did not match tx stored key on height: " << block_height << " for tx: " << get_transaction_hash(tx) << " for output: " << output_index);
             continue;
           }
         }
 
         crypto::public_key const *ephemeral_pub_key_ptr = &ephemeral_pub_key;
-        for (key_image_proof_state &state : key_image_states)
+        bool matched = false;
+        for (auto proof = key_image_proofs.proofs.begin(); proof != key_image_proofs.proofs.end(); proof++)
         {
-          if (state.checked)
-            continue;
-
-          cryptonote::tx_extra_tx_key_image_proofs::proof const *proof = state.proof;
           if (!crypto::check_ring_signature((const crypto::hash &)(proof->key_image), proof->key_image, &ephemeral_pub_key_ptr, 1, &proof->signature))
             continue;
 
@@ -628,9 +612,13 @@ namespace service_nodes
 
           parsed_contribution.locked_contributions.push_back(entry);
           parsed_contribution.transferred += transferred;
-          state.checked = true;
+          key_image_proofs.proofs.erase(proof);
+          matched = true;
           break;
         }
+
+        if (!matched)
+          MERROR("Contribution TX: Staking amount transferred but no key image proof provided on height: " << block_height << " for tx: " << get_transaction_hash(tx) << " for output: " << output_index);
       }
     }
     else
