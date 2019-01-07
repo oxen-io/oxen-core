@@ -320,7 +320,7 @@ namespace service_nodes
     void store_quorum_state_from_rewards_list(uint64_t height);
 
     bool is_registration_tx(const cryptonote::transaction& tx, uint64_t block_timestamp, uint64_t block_height, uint32_t index, crypto::public_key& key, service_node_info& info) const;
-    std::vector<crypto::public_key> get_expired_nodes(const std::vector<cryptonote::transaction> &txs, uint64_t block_height) const;
+    std::vector<crypto::public_key> update_and_get_expired_nodes(const std::vector<cryptonote::transaction> &txs, uint64_t block_height);
 
     void clear(bool delete_db_entry = false);
     bool load();

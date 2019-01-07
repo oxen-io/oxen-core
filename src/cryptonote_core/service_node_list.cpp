@@ -994,13 +994,12 @@ namespace service_nodes
       }
       m_rollback_events.push_front(std::unique_ptr<rollback_event>(new prevent_rollback(cull_height)));
     }
-
-    // TODO(doyle): INF_STAKING(doyle): Almost irrelevant now?
+    
     //
     // Expire Nodes
     //
     size_t expired_count = 0;
-    for (const crypto::public_key& pubkey : get_expired_nodes(txs, block_height))
+    for (const crypto::public_key& pubkey : update_and_get_expired_nodes(txs, block_height))
     {
       auto i = m_service_nodes_infos.find(pubkey);
       if (i != m_service_nodes_infos.end())
@@ -1021,55 +1020,6 @@ namespace service_nodes
       }
     }
 
-    //
-    // Unlock requested key images, delete contributor if all contributions gone, delete node if all contributors gone
-    //
-    {
-      for (auto it = m_service_nodes_infos.begin(); it != m_service_nodes_infos.end();)
-      {
-        crypto::public_key const &snode_key = it->first;
-        service_node_info &info             = it->second;
-
-        // TODO(doyle): INF_STAKING(doyle): Hmmmmmm. This is not nice.
-        bool changed                = false;
-        service_node_info info_copy = info;
-
-        for (auto contributor = info.contributors.begin(); contributor != info.contributors.end();)
-        {
-          for (auto contribution = contributor->locked_contributions.begin(); contribution != contributor->locked_contributions.end();)
-          {
-            if (contribution->unlock_height != 0 && block_height >= contribution->unlock_height)
-            {
-              // TODO(doyle): INF_STAKING(doyle): Discuss this behaviour. If they reserved a spot and then unlock, they lose the position I guess?
-              contributor->amount     -= contribution->amount;
-              contributor->reserved   -= contribution->amount;
-              info.total_contributed -= contribution->amount;
-              info.total_reserved    -= contribution->amount;
-
-              changed = true;
-              contribution = contributor->locked_contributions.erase(contribution);
-            }
-            else
-            {
-              contribution++;
-            }
-          }
-
-          if (contributor->locked_contributions.empty())
-            contributor = info.contributors.erase(contributor);
-          else
-            contributor++;
-        }
-
-        if (info.contributors.empty())
-          it = m_service_nodes_infos.erase(it);
-        else
-          it++;
-
-        if (changed)
-          m_rollback_events.push_back(std::unique_ptr<rollback_event>(new rollback_change(block_height, snode_key, info_copy)));
-      }
-    }
 
     //
     // Advance the list to the next candidate for a reward
@@ -1131,16 +1081,24 @@ namespace service_nodes
 
         // TODO(doyle): INF_STAKING(doyle): Duplicated key image proof checks
         service_node_info &node_info = (*it).second;
-        uint64_t blocks_to_lock      = block_height % get_staking_requirement_lock_blocks(m_blockchain.nettype());
+        uint64_t blocks_to_lock      = get_staking_requirement_lock_blocks(m_blockchain.nettype());
         uint64_t remaining_blocks    = (block_height < blocks_to_lock) ? blocks_to_lock - block_height : block_height % blocks_to_lock;
         uint64_t unlock_height       = node_info.registration_height + remaining_blocks;
 
-        for (service_node_info::contributor_t &contributor : node_info.contributors)
+        bool early_exit = false;
+        for (auto contributor = node_info.contributors.begin();
+             contributor     != node_info.contributors.end() && !early_exit;
+             contributor++)
         {
-          for (cryptonote::tx_extra_tx_key_image_unlocks::unlock const &unlock : key_image_unlocks.unlocks)
+          for (auto locked_contribution = contributor->locked_contributions.begin();
+               locked_contribution     != contributor->locked_contributions.end() && !early_exit;
+               locked_contribution++)
           {
-            for (auto locked_contribution = contributor.locked_contributions.begin(); locked_contribution != contributor.locked_contributions.end(); locked_contribution++)
+            for (auto unlock_it = key_image_unlocks.unlocks.begin();
+                 unlock_it     != key_image_unlocks.unlocks.end();
+                 unlock_it++)
             {
+              cryptonote::tx_extra_tx_key_image_unlocks::unlock const &unlock = (*unlock_it);
               if (unlock.key_image != locked_contribution->key_image)
                 continue;
 
@@ -1153,7 +1111,12 @@ namespace service_nodes
 
               if (locked_contribution->unlock_height == 0)
                 locked_contribution->unlock_height = unlock_height;
+
+              unlock_it = key_image_unlocks.unlocks.erase(unlock_it);
+              break;
             }
+
+            if (key_image_unlocks.unlocks.empty()) early_exit = true;
           }
         }
       }
@@ -1195,61 +1158,51 @@ namespace service_nodes
 
     m_height = height;
 
+
     store();
   }
 
-  std::vector<crypto::public_key> service_node_list::get_expired_nodes(const std::vector<cryptonote::transaction> &txs, uint64_t block_height) const
+  std::vector<crypto::public_key> service_node_list::update_and_get_expired_nodes(const std::vector<cryptonote::transaction> &txs, uint64_t block_height)
   {
     std::vector<crypto::public_key> expired_nodes;
     int hard_fork_version = m_blockchain.get_hard_fork_version(block_height);
 
     if (hard_fork_version >= cryptonote::network_version_11_swarms)
     {
-#if 0
-      for (auto &it : m_service_nodes_infos)
+      // Find and unlock requested key images, delete contributor if all contributions gone, expire node if all contributors gone
+      for (auto it = m_service_nodes_infos.begin(); it != m_service_nodes_infos.end();)
       {
-        service_node_info const &info = it.second;
-        if (block_height > info.requested_expiry_height)
+        crypto::public_key const &snode_key = it->first;
+        service_node_info &info             = it->second;
+
+        for (auto contributor = info.contributors.begin(); contributor != info.contributors.end();)
         {
-          crypto::public_key const &pubkey = it.first;
-          expired_nodes.push_back(pubkey);
-        }
-      }
-
-      // NOTE(loki): Infinite staking, Nodes only expire when the funds are moved.
-      for (const cryptonote::transaction &tx : txs)
-      {
-        for (const cryptonote::txin_v &tx_input : tx.vin)
-        {
-          if (tx_input.type() != typeid(cryptonote::txin_to_key))
+          for (auto contribution = contributor->locked_contributions.begin(); contribution != contributor->locked_contributions.end();)
           {
-            MERROR("Unexpected tx input type, expected txin_to_key on height: " << block_height << " for tx: " << cryptonote::get_transaction_hash(tx));
-            continue;
-          }
-
-          const auto& in_to_key = boost::get<cryptonote::txin_to_key>(tx_input);
-          bool key_image_found  = false;
-
-          for (const auto &entry : m_service_nodes_infos)
-          {
-            const std::vector<crypto::key_image> &locked_key_images = entry.second.locked_key_images;
-            for (const crypto::key_image &locked_image : locked_key_images)
+            if (contribution->unlock_height != 0 && block_height >= contribution->unlock_height)
             {
-              if (in_to_key.k_image != locked_image)
-                continue;
-
-              const crypto::public_key &snode_pub_key = entry.first;
-              expired_nodes.push_back(snode_pub_key);
-              key_image_found = true;
-              break;
+              // TODO(doyle): INF_STAKING(doyle): Discuss this behaviour. If they reserved a spot and then unlock, they lose the position I guess?
+              contributor->amount     -= contribution->amount;
+              contributor->reserved   -= contribution->amount;
+              info.total_contributed -= contribution->amount;
+              info.total_reserved    -= contribution->amount;
+              contribution = contributor->locked_contributions.erase(contribution);
             }
-
-            if (key_image_found)
-              break;
+            else
+            {
+              contribution++;
+            }
           }
+
+          if (contributor->locked_contributions.empty())
+            contributor = info.contributors.erase(contributor);
+          else
+            contributor++;
         }
+
+        if (info.contributors.empty()) expired_nodes.push_back(snode_key);
+        else                           it++;
       }
-#endif
 
       return expired_nodes;
     }
