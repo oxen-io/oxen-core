@@ -72,7 +72,7 @@ namespace service_nodes
     // 1 loki each time to bloat up the key images
     struct contribution_t
     {
-      uint64_t           unlock_height; // TODO(doyle): INF_STAKING(doyle): This needs to be exposed in RPC so wallets can exclude this from the request dialog
+      uint64_t           unlock_height;
       crypto::public_key key_image_pub_key;
       crypto::key_image  key_image;
       uint64_t           amount;
@@ -113,7 +113,6 @@ namespace service_nodes
         VARINT_FIELD(amount)
         VARINT_FIELD(reserved)
         FIELD(address)
-        FIELD(version)
         VARINT_FIELD(version)
 
         if (version >= version_2_infinite_staking)
@@ -170,6 +169,17 @@ namespace service_nodes
     END_SERIALIZE()
   };
 
+  struct key_image_blacklist_entry
+  {
+    crypto::key_image key_image;
+    uint64_t          unlock_height;
+
+    BEGIN_SERIALIZE()
+      FIELD(key_image)
+      VARINT_FIELD(unlock_height)
+    END_SERIALIZE()
+  };
+
   template<typename T>
   void loki_shuffle(std::vector<T>& a, uint64_t seed);
 
@@ -200,6 +210,7 @@ namespace service_nodes
     /// Note(maxim): this should not affect thread-safety as the returned object is const
     const std::shared_ptr<const quorum_state> get_quorum_state(uint64_t height) const;
     std::vector<service_node_pubkey_info> get_service_node_list_state(const std::vector<crypto::public_key> &service_node_pubkeys) const;
+    const std::vector<key_image_blacklist_entry> &get_blacklisted_key_images() const { return m_key_image_blacklist; }
 
     void set_db_pointer(cryptonote::BlockchainDB* db);
     void set_my_service_node_keys(crypto::public_key const *pub_key);
@@ -208,7 +219,6 @@ namespace service_nodes
   private:
 
     // Note(maxim): private methods don't have to be protected the mutex
-
     bool process_registration_tx(const cryptonote::transaction& tx, uint64_t block_timestamp, uint64_t block_height, uint32_t index);
     void process_contribution_tx(const cryptonote::transaction& tx, uint64_t block_height, uint32_t index);
     bool process_deregistration_tx(const cryptonote::transaction& tx, uint64_t block_height);
@@ -227,17 +237,6 @@ namespace service_nodes
 
     void clear(bool delete_db_entry = false);
     bool load();
-
-    struct key_image_blacklist_entry
-    {
-      crypto::key_image key_image;
-      uint64_t          unlock_height;
-
-      BEGIN_SERIALIZE()
-        FIELD(key_image)
-        VARINT_FIELD(unlock_height)
-      END_SERIALIZE()
-    };
 
     struct rollback_event
     {

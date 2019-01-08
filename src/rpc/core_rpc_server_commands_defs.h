@@ -2501,11 +2501,13 @@ namespace cryptonote
     {
       struct contribution
       {
+        uint64_t    unlock_height;
         std::string key_image;
         std::string key_image_pub_key;
         uint64_t    amount;
 
         BEGIN_KV_SERIALIZE_MAP()
+          KV_SERIALIZE(unlock_height)
           KV_SERIALIZE(key_image)
           KV_SERIALIZE(key_image_pub_key)
           KV_SERIALIZE(amount)
@@ -2586,4 +2588,34 @@ namespace cryptonote
       END_KV_SERIALIZE_MAP()
     };
   };
+
+  struct COMMAND_RPC_GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES
+  {
+    struct request
+    {
+      BEGIN_KV_SERIALIZE_MAP()
+      END_KV_SERIALIZE_MAP()
+    };
+
+    struct entry
+    {
+      std::string key_image;
+      uint64_t unlock_height;
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(key_image)
+        KV_SERIALIZE(unlock_height)
+      END_KV_SERIALIZE_MAP()
+    };
+
+    struct response
+    {
+      std::vector<entry> blacklist;
+      std::string status;
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(blacklist)
+        KV_SERIALIZE(status)
+      END_KV_SERIALIZE_MAP()
+    };
+  };
+
 }

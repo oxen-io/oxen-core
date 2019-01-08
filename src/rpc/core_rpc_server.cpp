@@ -2392,6 +2392,7 @@ namespace cryptonote
         for (service_node_info::contribution_t const &src : contributor.locked_contributions)
         {
           COMMAND_RPC_GET_SERVICE_NODES::response::contribution dest = {};
+          dest.unlock_height                                         = src.unlock_height;
           dest.amount                                                = src.amount;
           dest.key_image                                             = string_tools::pod_to_hex(src.key_image);
           dest.key_image_pub_key                                     = string_tools::pod_to_hex(src.key_image_pub_key);
@@ -2425,6 +2426,24 @@ namespace cryptonote
     PERF_TIMER(on_get_staking_requirement);
     res.staking_requirement = service_nodes::get_staking_requirement(m_core.get_nettype(), req.height);
     res.status = CORE_RPC_STATUS_OK;
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_get_service_node_blacklisted_key_images(const COMMAND_RPC_GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES::request& req, COMMAND_RPC_GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES::response& res, epee::json_rpc::error &error_resp)
+  {
+    PERF_TIMER(on_get_service_node_blacklisted_key_images);
+    const std::vector<service_nodes::key_image_blacklist_entry> &blacklist = m_core.get_service_node_blacklisted_key_images();
+
+    res.status = CORE_RPC_STATUS_OK;
+    res.blacklist.reserve(blacklist.size());
+    for (const service_nodes::key_image_blacklist_entry &entry : blacklist)
+    {
+      COMMAND_RPC_GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES::entry new_entry = {};
+      new_entry.key_image     = epee::string_tools::pod_to_hex(entry.key_image);
+      new_entry.unlock_height = entry.unlock_height;
+      res.blacklist.push_back(std::move(new_entry));
+    }
+
     return true;
   }
 

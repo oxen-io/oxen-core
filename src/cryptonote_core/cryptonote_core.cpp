@@ -1900,6 +1900,12 @@ namespace cryptonote
     return m_service_node_list.is_service_node(pubkey);
   }
   //-----------------------------------------------------------------------------------------------
+  const std::vector<service_nodes::key_image_blacklist_entry> &core::get_service_node_blacklisted_key_images() const
+  {
+    const auto &result = m_service_node_list.get_blacklisted_key_images();
+    return result;
+  }
+  //-----------------------------------------------------------------------------------------------
   std::vector<service_nodes::service_node_pubkey_info> core::get_service_node_list_state(const std::vector<crypto::public_key> &service_node_pubkeys) const
   {
     std::vector<service_nodes::service_node_pubkey_info> result = m_service_node_list.get_service_node_list_state(service_node_pubkeys);

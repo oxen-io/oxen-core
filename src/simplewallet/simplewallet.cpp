@@ -6289,15 +6289,25 @@ bool simple_wallet::request_stake_unlock(const std::vector<std::string> &args_)
     }
     else
     {
+      std::string msg_buf;
+      msg_buf.reserve(512);
+
       if (contributions->size() != 1) // be safe, but should always be the case
       {
-       fail_msg_writer() << tr("Unexepected 0 contributions registered for this wallet");
+        fail_msg_writer() << tr("Unexepected 0 contributions registered for this wallet");
         return true;
       }
 
       COMMAND_RPC_GET_SERVICE_NODES::response::contribution const &contribution = (*contributions)[0];
+      if (contribution.unlock_height != 0)
+      {
+        msg_buf.append("Key image: ");
+        msg_buf.append(contribution.key_image);
+        msg_buf.append(" has already been requested to be unlocked, unlocking at height: ");
+        msg_buf.append(std::to_string(contribution.unlock_height));
+        return true;
+      }
 
-      std::string msg_buf;
       msg_buf.append("You are requesting to unlock a stake of: ");
       msg_buf.append(cryptonote::print_money(contribution.amount));
       msg_buf.append(" Loki from the service node network.\nThis will put the service node: ");
