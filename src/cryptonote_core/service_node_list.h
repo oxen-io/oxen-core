@@ -107,8 +107,7 @@ namespace service_nodes
       std::vector<contribution_t> locked_contributions; // TODO(doyle): INF_STAKING(doyle): Serialize
 
       contributor_t() = default;
-      contributor_t(uint64_t _reserved, const cryptonote::account_public_address& _address)
-        : amount(0), reserved(_reserved), address(_address) { }
+      contributor_t(uint64_t reserved_, const cryptonote::account_public_address& address_) : amount(0), reserved(reserved_), address(address_) { }
 
       BEGIN_SERIALIZE()
         VARINT_FIELD(amount)
@@ -339,6 +338,13 @@ namespace service_nodes
 
     cryptonote::BlockchainDB* m_db;
 
+    struct key_image_blacklist_entry
+    {
+      crypto::key_image key_image;
+      uint64_t          unlock_height;
+    };
+
+    std::vector<key_image_blacklist_entry> m_key_image_blacklist;
     std::map<block_height, std::shared_ptr<const quorum_state>> m_quorum_states;
   };
 

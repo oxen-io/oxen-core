@@ -324,6 +324,23 @@ namespace service_nodes
     }
 
     m_rollback_events.push_back(std::unique_ptr<rollback_event>(new rollback_change(block_height, key, iter->second)));
+
+    // TODO(doyle): Rollback
+    int hard_fork_version = m_blockchain.get_hard_fork_version(block_height);
+    if (hard_fork_version >= cryptonote::network_version_11_swarms)
+    {
+      for (const auto &contributor : iter->second.contributors)
+      {
+        for (const auto &contribution : contributor.locked_contributions)
+        {
+          key_image_blacklist_entry entry = {};
+          entry.key_image                 = contribution.key_image;
+          entry.unlock_height             = block_height + get_staking_requirement_lock_blocks(m_blockchain.nettype());
+          m_key_image_blacklist.push_back(entry);
+        }
+      }
+    }
+
     m_service_nodes_infos.erase(iter);
 
     return true;
@@ -979,7 +996,18 @@ namespace service_nodes
       }
       m_rollback_events.push_front(std::unique_ptr<rollback_event>(new prevent_rollback(cull_height)));
     }
-    
+
+    //
+    // Remove expired blacklisted key images
+    //
+    for (auto entry = m_key_image_blacklist.begin(); entry != m_key_image_blacklist.end();)
+    {
+      if (entry->unlock_height >= block_height)
+        entry = m_key_image_blacklist.erase(entry);
+      else
+        entry++;
+    }
+
     //
     // Expire Nodes
     //
@@ -1004,7 +1032,6 @@ namespace service_nodes
         m_service_nodes_infos.erase(i);
       }
     }
-
 
     //
     // Advance the list to the next candidate for a reward
@@ -1356,19 +1383,27 @@ namespace service_nodes
     if (hard_fork_version <= cryptonote::network_version_10_bulletproofs)
       return true;
 
-    for (const auto& pubkey_info : m_service_nodes_infos)
+    for (const cryptonote::txin_v &tx_input : tx.vin)
     {
-      const service_node_info &info = pubkey_info.second;
-      for (const service_node_info::contributor_t &contributor : info.contributors)
-      {
-        for (const service_node_info::contribution_t &contribution : contributor.locked_contributions)
-        {
-          for (const cryptonote::txin_v &tx_input : tx.vin)
-          {
-            if (tx_input.type() != typeid(cryptonote::txin_to_key))
-              continue;
+      if (tx_input.type() != typeid(cryptonote::txin_to_key)) continue;
+      const auto &in_to_key = boost::get<cryptonote::txin_to_key>(tx_input);
 
-            const auto &in_to_key = boost::get<cryptonote::txin_to_key>(tx_input);
+      for (const auto& entry : m_key_image_blacklist) // Check if key image is on the blacklist
+      {
+        if (in_to_key.k_image == entry.key_image)
+        {
+          tvc.m_key_image_blacklisted = true;
+          return false;
+        }
+      }
+
+      for (const auto& pubkey_info : m_service_nodes_infos) // Check if key image is locked in a stake
+      {
+        const service_node_info &info = pubkey_info.second;
+        for (const service_node_info::contributor_t &contributor : info.contributors)
+        {
+          for (const service_node_info::contribution_t &contribution : contributor.locked_contributions)
+          {
             if (in_to_key.k_image == contribution.key_image)
             {
               tvc.m_key_image_locked_by_snode = true;

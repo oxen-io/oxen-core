@@ -712,6 +712,7 @@ namespace cryptonote
       res.invalid_version = tvc.m_invalid_version;
       res.invalid_type = tvc.m_invalid_type;
       res.key_image_locked_by_snode = tvc.m_key_image_locked_by_snode;
+      res.key_image_blacklisted = tvc.m_key_image_blacklisted;
       res.not_enough_votes = vvc.m_not_enough_votes;
       res.invalid_block_height = vvc.m_invalid_block_height;
       res.duplicate_voters = vvc.m_duplicate_voters;

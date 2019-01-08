@@ -845,6 +845,7 @@ namespace cryptonote
       bool invalid_version;
       bool invalid_type;
       bool key_image_locked_by_snode;
+      bool key_image_blacklisted;
       bool untrusted;
 
       bool invalid_block_height;
@@ -869,6 +870,7 @@ namespace cryptonote
         KV_SERIALIZE(invalid_version)
         KV_SERIALIZE(invalid_type)
         KV_SERIALIZE(key_image_locked_by_snode)
+        KV_SERIALIZE(key_image_blacklisted)
         KV_SERIALIZE(untrusted)
 
         KV_SERIALIZE(invalid_block_height)

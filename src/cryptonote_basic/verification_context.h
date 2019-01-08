@@ -64,6 +64,7 @@ namespace cryptonote
     bool m_invalid_version;
     bool m_invalid_type;
     bool m_key_image_locked_by_snode;
+    bool m_key_image_blacklisted;
 
     vote_verification_context m_vote_ctx;
   };
