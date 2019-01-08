@@ -337,6 +337,9 @@ namespace service_nodes
           entry.key_image                 = contribution.key_image;
           entry.unlock_height             = block_height + get_staking_requirement_lock_blocks(m_blockchain.nettype());
           m_key_image_blacklist.push_back(entry);
+
+          const bool adding_to_blacklist = true;
+          m_rollback_events.push_back(std::unique_ptr<rollback_event>(new rollback_key_image_blacklist(block_height, entry, adding_to_blacklist)));
         }
       }
     }
@@ -1003,7 +1006,11 @@ namespace service_nodes
     for (auto entry = m_key_image_blacklist.begin(); entry != m_key_image_blacklist.end();)
     {
       if (entry->unlock_height >= block_height)
+      {
+        const bool adding_to_blacklist = false;
+        m_rollback_events.push_back(std::unique_ptr<rollback_event>(new rollback_key_image_blacklist(block_height, (*entry), adding_to_blacklist)));
         entry = m_key_image_blacklist.erase(entry);
+      }
       else
         entry++;
     }
@@ -1149,22 +1156,82 @@ namespace service_nodes
     std::lock_guard<boost::recursive_mutex> lock(m_sn_mutex);
     while (!m_rollback_events.empty() && m_rollback_events.back()->m_block_height >= height)
     {
-      if (!m_rollback_events.back()->apply(m_service_nodes_infos))
+      rollback_event *event = &(*m_rollback_events.back());
+      bool rollback_applied = true;
+      switch(event->type)
+      {
+        case rollback_event::change_type:
+        {
+          auto *rollback = reinterpret_cast<rollback_change *>(event);
+          m_service_nodes_infos[rollback->m_key] = rollback->m_info;
+        }
+        break;
+
+        case rollback_event::new_type:
+        {
+          auto *rollback = reinterpret_cast<rollback_new *>(event);
+
+          auto iter = m_service_nodes_infos.find(rollback->m_key);
+          if (iter == m_service_nodes_infos.end())
+          {
+            MERROR("Could not find service node pubkey in rollback new");
+            rollback_applied = false;
+            break;
+          }
+
+          m_service_nodes_infos.erase(iter);
+        }
+        break;
+
+        case rollback_event::prevent_type: { rollback_applied = false; } break;
+
+        case rollback_event::key_image_blacklist_type:
+        {
+          auto *rollback = reinterpret_cast<rollback_key_image_blacklist *>(event);
+          if (rollback->m_was_adding_to_blacklist)
+          {
+            auto it = std::find_if(m_key_image_blacklist.begin(), m_key_image_blacklist.end(),
+            [rollback] (key_image_blacklist_entry const &a) {
+                return (rollback->m_entry.unlock_height == a.unlock_height && rollback->m_entry.key_image == a.key_image);
+            });
+
+            if (it == m_key_image_blacklist.end())
+            {
+              MERROR("Could not find blacklisted key image to remove");
+              rollback_applied = false;
+              break;
+            }
+
+            m_key_image_blacklist.erase(it);
+          }
+          else
+          {
+            m_key_image_blacklist.push_back(rollback->m_entry);
+          }
+        }
+        break;
+
+        default:
+        {
+          MERROR("Unhandled rollback type");
+          rollback_applied = false;
+        }
+        break;
+      }
+
+      if (!rollback_applied)
       {
         init();
         break;
       }
+
       m_rollback_events.pop_back();
     }
 
     while (!m_quorum_states.empty() && (--m_quorum_states.end())->first >= height)
-    {
       m_quorum_states.erase(--m_quorum_states.end());
-    }
 
     m_height = height;
-
-
     store();
   }
 
@@ -1500,37 +1567,16 @@ namespace service_nodes
   {
   }
 
-  bool service_node_list::rollback_change::apply(std::unordered_map<crypto::public_key, service_node_info>& service_nodes_infos) const
-  {
-    service_nodes_infos[m_key] = m_info;
-    return true;
-  }
-
   service_node_list::rollback_new::rollback_new(uint64_t block_height, const crypto::public_key& key)
     : service_node_list::rollback_event(block_height, new_type), m_key(key)
   {
   }
 
-  bool service_node_list::rollback_new::apply(std::unordered_map<crypto::public_key, service_node_info>& service_nodes_infos) const
-  {
-    auto iter = service_nodes_infos.find(m_key);
-    if (iter == service_nodes_infos.end())
-    {
-      MERROR("Could not find service node pubkey in rollback new");
-      return false;
-    }
-    service_nodes_infos.erase(iter);
-    return true;
-  }
+  service_node_list::prevent_rollback::prevent_rollback(uint64_t block_height) : service_node_list::rollback_event(block_height, prevent_type) { }
 
-  service_node_list::prevent_rollback::prevent_rollback(uint64_t block_height) : service_node_list::rollback_event(block_height, prevent_type)
+  service_node_list::rollback_key_image_blacklist::rollback_key_image_blacklist(uint64_t block_height, key_image_blacklist_entry const &entry, bool is_adding_to_blacklist)
+    : service_node_list::rollback_event(block_height, key_image_blacklist_type), m_entry(entry), m_was_adding_to_blacklist(is_adding_to_blacklist)
   {
-  }
-
-  bool service_node_list::prevent_rollback::apply(std::unordered_map<crypto::public_key, service_node_info>& service_nodes_infos) const
-  {
-    MERROR("Unable to rollback any further!");
-    return false;
   }
 
   bool service_node_list::store()
@@ -1557,29 +1603,19 @@ namespace service_nodes
         data_to_store.infos.push_back(info);
       }
 
-      rollback_event_variant event;
       for (const auto& event_ptr : m_rollback_events)
       {
         switch (event_ptr->type)
         {
-          case rollback_event::change_type:
-            event = *reinterpret_cast<rollback_change *>(event_ptr.get());
-            data_to_store.events.push_back(*reinterpret_cast<rollback_change *>(event_ptr.get()));
-            break;
-          case rollback_event::new_type:
-            event = *reinterpret_cast<rollback_new *>(event_ptr.get());
-            data_to_store.events.push_back(*reinterpret_cast<rollback_new *>(event_ptr.get()));
-            break;
-          case rollback_event::prevent_type:
-            event = *reinterpret_cast<prevent_rollback *>(event_ptr.get());
-            data_to_store.events.push_back(*reinterpret_cast<prevent_rollback *>(event_ptr.get()));
-            break;
+          case rollback_event::change_type:              data_to_store.events.push_back(*reinterpret_cast<rollback_change *>(event_ptr.get())); break;
+          case rollback_event::new_type:                 data_to_store.events.push_back(*reinterpret_cast<rollback_new *>(event_ptr.get())); break;
+          case rollback_event::prevent_type:             data_to_store.events.push_back(*reinterpret_cast<prevent_rollback *>(event_ptr.get())); break;
+          case rollback_event::key_image_blacklist_type: data_to_store.events.push_back(*reinterpret_cast<rollback_key_image_blacklist *>(event_ptr.get())); break;
           default:
             MERROR("On storing service node data, unknown rollback event type encountered");
             return false;
         }
       }
-
     }
 
     data_to_store.height              = m_height;
@@ -1626,6 +1662,7 @@ namespace service_nodes
     CHECK_AND_ASSERT_MES(r, false, "Failed to parse service node data from blob");
 
     m_height = data_in.height;
+    m_key_image_blacklist = data_in.key_image_blacklist;
 
     for (const auto& quorum : data_in.quorum_states)
     {
@@ -1641,29 +1678,30 @@ namespace service_nodes
     {
       if (event.type() == typeid(rollback_change))
       {
-        rollback_change *i = new rollback_change();
-        const rollback_change& from = boost::get<rollback_change>(event);
-        i->m_block_height = from.m_block_height;
-        i->m_key = from.m_key;
-        i->m_info = from.m_info;
-        i->type = rollback_event::change_type;
+        const auto& from = boost::get<rollback_change>(event);
+        auto *i = new rollback_change();
+        *i = from;
         m_rollback_events.push_back(std::unique_ptr<rollback_event>(i));
       }
       else if (event.type() == typeid(rollback_new))
       {
-        rollback_new *i = new rollback_new();
-        const rollback_new& from = boost::get<rollback_new>(event);
-        i->m_block_height = from.m_block_height;
-        i->m_key = from.m_key;
-        i->type = rollback_event::new_type;
+        const auto& from = boost::get<rollback_new>(event);
+        auto *i = new rollback_new();
+        *i = from;
         m_rollback_events.push_back(std::unique_ptr<rollback_event>(i));
       }
       else if (event.type() == typeid(prevent_rollback))
       {
-        prevent_rollback *i = new prevent_rollback();
-        const prevent_rollback& from = boost::get<prevent_rollback>(event);
-        i->m_block_height = from.m_block_height;
-        i->type = rollback_event::prevent_type;
+        const auto& from = boost::get<prevent_rollback>(event);
+        auto *i = new prevent_rollback();
+        *i = from;
+        m_rollback_events.push_back(std::unique_ptr<rollback_event>(i));
+      }
+      else if (event.type() == typeid(rollback_key_image_blacklist))
+      {
+        const auto& from = boost::get<rollback_key_image_blacklist>(event);
+        auto *i = new rollback_key_image_blacklist();
+        *i = from;
         m_rollback_events.push_back(std::unique_ptr<rollback_event>(i));
       }
       else

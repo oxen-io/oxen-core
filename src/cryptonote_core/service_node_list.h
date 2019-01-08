@@ -228,19 +228,30 @@ namespace service_nodes
     void clear(bool delete_db_entry = false);
     bool load();
 
+    struct key_image_blacklist_entry
+    {
+      crypto::key_image key_image;
+      uint64_t          unlock_height;
+
+      BEGIN_SERIALIZE()
+        FIELD(key_image)
+        FIELD(unlock_height)
+      END_SERIALIZE()
+    };
+
     struct rollback_event
     {
       enum rollback_type
       {
         change_type,
         new_type,
-        prevent_type
+        prevent_type,
+        key_image_blacklist_type,
       };
 
       rollback_event() = default;
       rollback_event(uint64_t block_height, rollback_type type);
       virtual ~rollback_event() { }
-      virtual bool apply(std::unordered_map<crypto::public_key, service_node_info>& service_nodes_infos) const = 0;
 
       rollback_type type;
 
@@ -255,7 +266,6 @@ namespace service_nodes
     {
       rollback_change() { type = change_type; }
       rollback_change(uint64_t block_height, const crypto::public_key& key, const service_node_info& info);
-      bool apply(std::unordered_map<crypto::public_key, service_node_info>& service_nodes_infos) const;
       crypto::public_key m_key;
       service_node_info m_info;
 
@@ -270,7 +280,6 @@ namespace service_nodes
     {
       rollback_new() { type = new_type; }
       rollback_new(uint64_t block_height, const crypto::public_key& key);
-      bool apply(std::unordered_map<crypto::public_key, service_node_info>& service_nodes_infos) const;
       crypto::public_key m_key;
 
       BEGIN_SERIALIZE()
@@ -283,13 +292,27 @@ namespace service_nodes
     {
       prevent_rollback() { type = prevent_type; }
       prevent_rollback(uint64_t block_height);
-      bool apply(std::unordered_map<crypto::public_key, service_node_info>& service_nodes_infos) const;
 
       BEGIN_SERIALIZE()
         FIELDS(*static_cast<rollback_event *>(this))
       END_SERIALIZE()
     };
-    typedef boost::variant<rollback_change, rollback_new, prevent_rollback> rollback_event_variant;
+
+    struct rollback_key_image_blacklist : public rollback_event
+    {
+      rollback_key_image_blacklist() { type = key_image_blacklist_type; }
+      rollback_key_image_blacklist(uint64_t block_height, key_image_blacklist_entry const &entry, bool is_adding_to_blacklist);
+
+      key_image_blacklist_entry m_entry;
+      bool m_was_adding_to_blacklist;
+
+      BEGIN_SERIALIZE()
+        FIELDS(*static_cast<rollback_event *>(this))
+        FIELDS(m_entry)
+        FIELDS(m_was_adding_to_blacklist)
+      END_SERIALIZE()
+    };
+    typedef boost::variant<rollback_change, rollback_new, prevent_rollback, rollback_key_image_blacklist> rollback_event_variant;
 
     mutable boost::recursive_mutex m_sn_mutex;
     std::unordered_map<crypto::public_key, service_node_info> m_service_nodes_infos;
@@ -302,17 +325,6 @@ namespace service_nodes
 
     crypto::public_key const *m_service_node_pubkey;
     cryptonote::BlockchainDB* m_db;
-
-    struct key_image_blacklist_entry
-    {
-      crypto::key_image key_image;
-      uint64_t          unlock_height;
-
-      BEGIN_SERIALIZE()
-        FIELD(key_image)
-        FIELD(unlock_height)
-      END_SERIALIZE()
-    };
 
     std::vector<key_image_blacklist_entry> m_key_image_blacklist;
     std::map<block_height, std::shared_ptr<const quorum_state>> m_quorum_states;
@@ -361,3 +373,4 @@ VARIANT_TAG(binary_archive, service_nodes::service_node_list::data_members_for_s
 VARIANT_TAG(binary_archive, service_nodes::service_node_list::rollback_change, 0xa1);
 VARIANT_TAG(binary_archive, service_nodes::service_node_list::rollback_new, 0xa2);
 VARIANT_TAG(binary_archive, service_nodes::service_node_list::prevent_rollback, 0xa3);
+VARIANT_TAG(binary_archive, service_nodes::service_node_list::rollback_key_image_blacklist, 0xa4);
