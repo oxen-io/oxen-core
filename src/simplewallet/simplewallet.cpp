@@ -6305,6 +6305,7 @@ bool simple_wallet::request_stake_unlock(const std::vector<std::string> &args_)
         msg_buf.append(contribution.key_image);
         msg_buf.append(" has already been requested to be unlocked, unlocking at height: ");
         msg_buf.append(std::to_string(contribution.unlock_height));
+        fail_msg_writer() << msg_buf;
         return true;
       }
 

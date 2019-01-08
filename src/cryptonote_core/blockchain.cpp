@@ -2598,55 +2598,82 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
     const crypto::key_image *last_key_image = NULL;
     for (const auto& txin : tx.vin)
     {
-      // make sure output being spent is of type txin_to_key, rather than e.g.
-      // txin_gen, which is only used for miner transactions
+      //
+      // Monero Checks
+      //
+      // make sure output being spent is of type txin_to_key, rather than e.g.  txin_gen, which is only used for miner transactions
       CHECK_AND_ASSERT_MES(txin.type() == typeid(txin_to_key), false, "wrong type id in tx input at Blockchain::check_tx_inputs");
       const txin_to_key& in_to_key = boost::get<txin_to_key>(txin);
-
-      // make sure tx output has key offset(s) (is signed to be used)
-      CHECK_AND_ASSERT_MES(in_to_key.key_offsets.size(), false, "empty in_to_key.key_offsets in transaction with id " << get_transaction_hash(tx));
-
-      // Mixin Check, from hard fork 7, we require mixin at least 9, always.
-      if (in_to_key.key_offsets.size() - 1 != CRYPTONOTE_DEFAULT_TX_MIXIN)
       {
-        MERROR_VER("Tx " << get_transaction_hash(tx) << " has incorrect ring size (" << in_to_key.key_offsets.size() - 1 << ", expected (" << CRYPTONOTE_DEFAULT_TX_MIXIN << ")");
-        tvc.m_low_mixin = true;
-        return false;
-      }
+        // make sure tx output has key offset(s) (is signed to be used)
+        CHECK_AND_ASSERT_MES(in_to_key.key_offsets.size(), false, "empty in_to_key.key_offsets in transaction with id " << get_transaction_hash(tx));
 
-      // from v7, sorted ins
-      {
-        if (last_key_image && memcmp(&in_to_key.k_image, last_key_image, sizeof(*last_key_image)) >= 0)
+        // Mixin Check, from hard fork 7, we require mixin at least 9, always.
+        if (in_to_key.key_offsets.size() - 1 != CRYPTONOTE_DEFAULT_TX_MIXIN)
         {
-          MERROR_VER("transaction has unsorted inputs");
-          tvc.m_verifivation_failed = true;
+          MERROR_VER("Tx " << get_transaction_hash(tx) << " has incorrect ring size (" << in_to_key.key_offsets.size() - 1 << ", expected (" << CRYPTONOTE_DEFAULT_TX_MIXIN << ")");
+          tvc.m_low_mixin = true;
           return false;
         }
-        last_key_image = &in_to_key.k_image;
-      }
 
-      if(have_tx_keyimg_as_spent(in_to_key.k_image))
-      {
-        MERROR_VER("Key image already spent in blockchain: " << epee::string_tools::pod_to_hex(in_to_key.k_image));
-        tvc.m_double_spend = true;
-        return false;
-      }
-
-      // make sure that output being spent matches up correctly with the
-      // signature spending it.
-      if (!check_tx_input(tx.version, in_to_key, tx_prefix_hash, std::vector<crypto::signature>(), tx.rct_signatures, pubkeys[sig_index], pmax_used_block_height))
-      {
-        it->second[in_to_key.k_image] = false;
-        MERROR_VER("Failed to check ring signature for tx " << get_transaction_hash(tx) << "  vin key with k_image: " << in_to_key.k_image << "  sig_index: " << sig_index);
-        if (pmax_used_block_height) // a default value of NULL is used when called from Blockchain::handle_block_to_main_chain()
+        // from v7, sorted ins
         {
-          MERROR_VER("  *pmax_used_block_height: " << *pmax_used_block_height);
+          if (last_key_image && memcmp(&in_to_key.k_image, last_key_image, sizeof(*last_key_image)) >= 0)
+          {
+            MERROR_VER("transaction has unsorted inputs");
+            tvc.m_verifivation_failed = true;
+            return false;
+          }
+          last_key_image = &in_to_key.k_image;
         }
 
-        return false;
+        if(have_tx_keyimg_as_spent(in_to_key.k_image))
+        {
+          MERROR_VER("Key image already spent in blockchain: " << epee::string_tools::pod_to_hex(in_to_key.k_image));
+          tvc.m_double_spend = true;
+          return false;
+        }
+
+        // make sure that output being spent matches up correctly with the
+        // signature spending it.
+        if (!check_tx_input(tx.version, in_to_key, tx_prefix_hash, std::vector<crypto::signature>(), tx.rct_signatures, pubkeys[sig_index], pmax_used_block_height))
+        {
+          it->second[in_to_key.k_image] = false;
+          MERROR_VER("Failed to check ring signature for tx " << get_transaction_hash(tx) << "  vin key with k_image: " << in_to_key.k_image << "  sig_index: " << sig_index);
+          if (pmax_used_block_height) // a default value of NULL is used when called from Blockchain::handle_block_to_main_chain()
+          {
+            MERROR_VER("  *pmax_used_block_height: " << *pmax_used_block_height);
+          }
+
+          return false;
+        }
+        sig_index++;
       }
 
-      sig_index++;
+      //
+      // Service Node Checks
+      //
+      if (hf_version >= cryptonote::network_version_11_swarms)
+      {
+        const std::vector<service_nodes::key_image_blacklist_entry> &blacklist = m_service_node_list.get_blacklisted_key_images();
+        for (const auto &entry : blacklist)
+        {
+          if (in_to_key.k_image == entry.key_image) // Check if key image is on the blacklist
+          {
+            MERROR_VER("Key image: " << epee::string_tools::pod_to_hex(entry.key_image) << " is blacklisted by the service node network");
+            tvc.m_key_image_blacklisted = true;
+            return false;
+          }
+        }
+
+        service_nodes::service_node_info::contribution_t contribution = {};
+        if (m_service_node_list.is_key_image_locked(in_to_key.k_image, &contribution))
+        {
+          MERROR_VER("Key image: " << epee::string_tools::pod_to_hex(in_to_key.k_image) << " is locked in a stake until height: " << contribution.unlock_height);
+          tvc.m_key_image_locked_by_snode = true;
+          return false;
+        }
+      }
     }
 
     if (!expand_transaction_2(tx, tx_prefix_hash, pubkeys))
@@ -2913,22 +2940,42 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
     }
     else if (tx.is_type(transaction::type_key_image_unlock))
     {
-      // TODO(doyle): INF_STAKING(doyle): Not sure what checks here are necessary. Revisit later
+      cryptonote::tx_extra_tx_key_image_unlocks key_image_unlocks;
+      if (!cryptonote::get_tx_key_image_unlocks_from_tx_extra(tx.extra, key_image_unlocks))
+      {
+        MERROR("TX extra didn't have key image unlocks in the tx_extra");
+        return false;
+      }
+
+      for (tx_extra_tx_key_image_unlocks::unlock const &unlock : key_image_unlocks.unlocks)
+      {
+        service_nodes::service_node_info::contribution_t contribution = {};
+        if (!m_service_node_list.is_key_image_locked(unlock.key_image, &contribution))
+        {
+          MERROR_VER("Requested key image: " << epee::string_tools::pod_to_hex(unlock.key_image) << " to unlock is not locked");
+          tvc.m_invalid_input = true;
+          return false;
+        }
+
+        crypto::hash const hash = service_nodes::generate_request_stake_unlock_hash(unlock.nonce);
+        if (!crypto::check_signature(hash, contribution.key_image_pub_key, unlock.signature))
+        {
+          MERROR("Could not verify key image unlock transaction signature for tx: " << get_transaction_hash(tx));
+          return false;
+        }
+
+        // Otherwise is a locked key image, if the unlock_height is set, it has been previously requested to unlock
+        if (contribution.unlock_height != 0)
+        {
+          tvc.m_double_spend = true;
+          return false;
+        }
+      }
     }
     else
     {
       MERROR_VER("Unhandled tx type: " << tx.type << " rejecting tx: " << get_transaction_hash(tx));
       tvc.m_invalid_type = true;;
-      return false;
-    }
-  }
-
-  for (ValidateTxHook const *hook : m_validate_tx_hooks)
-  {
-    if (!hook->validate_tx(tx, tvc, hf_version))
-    {
-      MERROR_VER("ValidateTx hook failed TX");
-      tvc.m_verifivation_failed = true;
       return false;
     }
   }

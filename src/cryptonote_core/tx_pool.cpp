@@ -152,8 +152,40 @@ namespace cryptonote
     }
     else if (tx.is_type(transaction::type_key_image_unlock))
     {
-      // TODO(doyle): INF_STAKING(doyle): Add duplicates check. But I don't know
-      // what the tx extra is going to be yet, so gonna figure this out later.
+      tx_extra_tx_key_image_unlocks key_image_unlocks;
+      if (!cryptonote::get_tx_key_image_unlocks_from_tx_extra(tx.extra, key_image_unlocks))
+      {
+        MERROR("Could not get key image unlock from tx, possibly corrupt tx in your blockchain, rejecting malformed tx");
+        return false;
+      }
+
+      std::vector<transaction> pool_txs;
+      get_transactions(pool_txs);
+      for (const transaction& pool_tx : pool_txs)
+      {
+        if (!pool_tx.is_type(tx.get_type()))
+          continue;
+
+        tx_extra_tx_key_image_unlocks pool_key_image_unlocks;
+        if (!cryptonote::get_tx_key_image_unlocks_from_tx_extra(pool_tx.extra, pool_key_image_unlocks))
+        {
+          MERROR("Could not get key image unlock from tx, possibly corrupt tx in your blockchain, rejecting malformed tx");
+          return false;
+        }
+
+        for (tx_extra_tx_key_image_unlocks::unlock const &unlock : key_image_unlocks.unlocks)
+        {
+          for (tx_extra_tx_key_image_unlocks::unlock const &pool_unlock : pool_key_image_unlocks.unlocks)
+          {
+            if (unlock.key_image == pool_unlock.key_image)
+            {
+              MERROR("There was atleast one TX in the pool that is requesting to unlock the same key image already.");
+              return false;
+            }
+          }
+        }
+      }
+
     }
     else
     {

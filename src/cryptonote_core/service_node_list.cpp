@@ -77,7 +77,6 @@ namespace service_nodes
       m_blockchain.hook_blockchain_detached(*this);
       m_blockchain.hook_init(*this);
       m_blockchain.hook_validate_miner_tx(*this);
-      m_blockchain.hook_validate_tx(*this);
 
       // NOTE: There is an implicit dependency on service node lists hooks
       m_blockchain.hook_init(quorum_cop);
@@ -214,6 +213,26 @@ namespace service_nodes
   {
     std::lock_guard<boost::recursive_mutex> lock(m_sn_mutex);
     return m_service_nodes_infos.find(pubkey) != m_service_nodes_infos.end();
+  }
+
+  bool service_node_list::is_key_image_locked(crypto::key_image const &check_image, service_node_info::contribution_t *the_locked_contribution) const
+  {
+    for (const auto& pubkey_info : m_service_nodes_infos)
+    {
+      const service_node_info &info = pubkey_info.second;
+      for (const service_node_info::contributor_t &contributor : info.contributors)
+      {
+        for (const service_node_info::contribution_t &contribution : contributor.locked_contributions)
+        {
+          if (check_image == contribution.key_image)
+          {
+            if (the_locked_contribution) *the_locked_contribution = contribution;
+            return true;
+          }
+        }
+      }
+    }
+    return false;
   }
 
   bool reg_tx_extract_fields(const cryptonote::transaction& tx, std::vector<cryptonote::account_public_address>& addresses, uint64_t& portions_for_operator, std::vector<uint64_t>& portions, uint64_t& expiration_timestamp, crypto::public_key& service_node_key, crypto::signature& signature)
@@ -1094,22 +1113,6 @@ namespace service_nodes
         }
 
         service_node_info &node_info = (*it).second;
-#if 1
-        for (const auto &contributor : node_info.contributors)
-        {
-          for (const auto &contribution : contributor.locked_contributions)
-          {
-            key_image_blacklist_entry entry = {};
-            entry.key_image                 = contribution.key_image;
-            entry.unlock_height             = block_height + get_staking_requirement_lock_blocks(m_blockchain.nettype());
-            m_key_image_blacklist.push_back(entry);
-
-            const bool adding_to_blacklist = true;
-            m_rollback_events.push_back(std::unique_ptr<rollback_event>(new rollback_key_image_blacklist(block_height, entry, adding_to_blacklist)));
-          }
-        }
-        m_service_nodes_infos.erase(it);
-#else
         uint64_t unlock_height       = get_locked_key_image_unlock_height(m_blockchain.nettype(), node_info.registration_height, block_height);
 
         bool early_exit = false;
@@ -1129,12 +1132,9 @@ namespace service_nodes
               if (unlock.key_image != locked_contribution->key_image)
                 continue;
 
-              crypto::hash hash = service_nodes::generate_request_stake_unlock_hash(unlock.nonce);
-              if (!crypto::check_signature(hash, locked_contribution->key_image_pub_key, unlock.signature))
-              {
-                MERROR("Unlock TX: Could not verify unlock transaction signature on height: " << block_height << " for tx: " << get_transaction_hash(tx));
-                continue;
-              }
+              // NOTE(loki): This should be checked in blockchain check_tx_inputs already
+              crypto::hash const hash = service_nodes::generate_request_stake_unlock_hash(unlock.nonce);
+              assert(crypto::check_signature(hash, locked_contribution->key_image_pub_key, unlock.signature));
 
               if (locked_contribution->unlock_height == 0)
                 locked_contribution->unlock_height = unlock_height;
@@ -1146,7 +1146,6 @@ namespace service_nodes
             if (key_image_unlocks.unlocks.empty()) early_exit = true;
           }
         }
-#endif
       }
     }
 
@@ -1453,45 +1452,6 @@ namespace service_nodes
       {
         MERROR("Invalid service node reward output");
         return false;
-      }
-    }
-
-    return true;
-  }
-
-  bool service_node_list::validate_tx(const cryptonote::transaction& tx, cryptonote::tx_verification_context &tvc, int hard_fork_version) const
-  {
-    if (hard_fork_version <= cryptonote::network_version_10_bulletproofs)
-      return true;
-
-    for (const cryptonote::txin_v &tx_input : tx.vin)
-    {
-      if (tx_input.type() != typeid(cryptonote::txin_to_key)) continue;
-      const auto &in_to_key = boost::get<cryptonote::txin_to_key>(tx_input);
-
-      for (const auto& entry : m_key_image_blacklist) // Check if key image is on the blacklist
-      {
-        if (in_to_key.k_image == entry.key_image)
-        {
-          tvc.m_key_image_blacklisted = true;
-          return false;
-        }
-      }
-
-      for (const auto& pubkey_info : m_service_nodes_infos) // Check if key image is locked in a stake
-      {
-        const service_node_info &info = pubkey_info.second;
-        for (const service_node_info::contributor_t &contributor : info.contributors)
-        {
-          for (const service_node_info::contribution_t &contribution : contributor.locked_contributions)
-          {
-            if (in_to_key.k_image == contribution.key_image)
-            {
-              tvc.m_key_image_locked_by_snode = true;
-              return false;
-            }
-          }
-        }
       }
     }
 
