@@ -1549,11 +1549,11 @@ namespace service_nodes
         data_to_store.quorum_states.push_back(quorum);
       }
 
-      node_info_for_serialization info;
+      service_node_pubkey_info info;
       for (const auto& kv_pair : m_service_nodes_infos)
       {
-        info.key = kv_pair.first;
-        info.info = kv_pair.second;
+        info.pubkey = kv_pair.first;
+        info.info   = kv_pair.second;
         data_to_store.infos.push_back(info);
       }
 
@@ -1582,7 +1582,8 @@ namespace service_nodes
 
     }
 
-    data_to_store.height = m_height;
+    data_to_store.height              = m_height;
+    data_to_store.key_image_blacklist = m_key_image_blacklist;
 
     std::stringstream ss;
     binary_archive<true> ba(ss);
@@ -1633,7 +1634,7 @@ namespace service_nodes
 
     for (const auto& info : data_in.infos)
     {
-      m_service_nodes_infos[info.key] = info.info;
+      m_service_nodes_infos[info.pubkey] = info.info;
     }
 
     for (const auto& event : data_in.events)
