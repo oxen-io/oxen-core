@@ -4043,18 +4043,17 @@ static bool update_output_map(std::map<uint64_t, std::vector<output_data_t>> &ex
     const txout_to_key &out_to_key = boost::get<txout_to_key>(out.target);
     rct::key commitment;
     uint64_t amount = out.amount;
-    if (miner && tx.version == 2)
+    if (miner && tx.version >= 2)
     {
       commitment = rct::zeroCommit(amount);
       amount = 0;
     }
-    else if (tx.version > 1)
+    else
     {
       CHECK_AND_ASSERT_MES(i < tx.rct_signatures.outPk.size(), false, "Invalid outPk size");
       commitment = tx.rct_signatures.outPk[i].mask;
     }
-    else
-      commitment = rct::zero();
+
     extra_tx_map[amount].push_back(output_data_t{out_to_key.key, tx.unlock_time, height, commitment});
   }
   return true;

@@ -235,7 +235,7 @@ namespace service_nodes
 
       BEGIN_SERIALIZE()
         FIELD(key_image)
-        FIELD(unlock_height)
+        VARINT_FIELD(unlock_height)
       END_SERIALIZE()
     };
 
@@ -308,8 +308,8 @@ namespace service_nodes
 
       BEGIN_SERIALIZE()
         FIELDS(*static_cast<rollback_event *>(this))
-        FIELDS(m_entry)
-        FIELDS(m_was_adding_to_blacklist)
+        FIELD(m_entry)
+        FIELD(m_was_adding_to_blacklist)
       END_SERIALIZE()
     };
     typedef boost::variant<rollback_change, rollback_new, prevent_rollback, rollback_key_image_blacklist> rollback_event_variant;

@@ -71,8 +71,8 @@ uint64_t get_locked_key_image_unlock_height(cryptonote::network_type nettype, ui
   uint64_t result         = node_register_height + blocks_to_lock;
   if (curr_height >= result)
   {
-    uint64_t remaining_blocks = curr_height % blocks_to_lock;
-    result = curr_height + remaining_blocks;
+    uint64_t remainder = curr_height % blocks_to_lock;
+    result = curr_height + (blocks_to_lock - remainder);
   }
   return result;
 }

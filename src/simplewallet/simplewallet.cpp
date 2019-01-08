@@ -6304,7 +6304,6 @@ bool simple_wallet::request_stake_unlock(const std::vector<std::string> &args_)
       msg_buf.append(node_info.service_node_pubkey);
       msg_buf.append(" into the unregistered state after the stake is unlocked.\n\n");
 
-      uint64_t blocks_to_lock = service_nodes::get_staking_requirement_lock_blocks(m_wallet->nettype());
       uint64_t curr_height = 0;
       {
         std::string err_msg;

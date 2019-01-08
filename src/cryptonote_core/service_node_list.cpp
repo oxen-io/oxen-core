@@ -325,7 +325,6 @@ namespace service_nodes
 
     m_rollback_events.push_back(std::unique_ptr<rollback_event>(new rollback_change(block_height, key, iter->second)));
 
-    // TODO(doyle): Rollback
     int hard_fork_version = m_blockchain.get_hard_fork_version(block_height);
     if (hard_fork_version >= cryptonote::network_version_11_swarms)
     {
@@ -345,7 +344,6 @@ namespace service_nodes
     }
 
     m_service_nodes_infos.erase(iter);
-
     return true;
   }
 
@@ -1005,7 +1003,7 @@ namespace service_nodes
     //
     for (auto entry = m_key_image_blacklist.begin(); entry != m_key_image_blacklist.end();)
     {
-      if (entry->unlock_height >= block_height)
+      if (block_height >= entry->unlock_height)
       {
         const bool adding_to_blacklist = false;
         m_rollback_events.push_back(std::unique_ptr<rollback_event>(new rollback_key_image_blacklist(block_height, (*entry), adding_to_blacklist)));
@@ -1095,8 +1093,23 @@ namespace service_nodes
           continue;
         }
 
-        // TODO(doyle): INF_STAKING(doyle): Duplicated key image proof checks
         service_node_info &node_info = (*it).second;
+#if 1
+        for (const auto &contributor : node_info.contributors)
+        {
+          for (const auto &contribution : contributor.locked_contributions)
+          {
+            key_image_blacklist_entry entry = {};
+            entry.key_image                 = contribution.key_image;
+            entry.unlock_height             = block_height + get_staking_requirement_lock_blocks(m_blockchain.nettype());
+            m_key_image_blacklist.push_back(entry);
+
+            const bool adding_to_blacklist = true;
+            m_rollback_events.push_back(std::unique_ptr<rollback_event>(new rollback_key_image_blacklist(block_height, entry, adding_to_blacklist)));
+          }
+        }
+        m_service_nodes_infos.erase(it);
+#else
         uint64_t unlock_height       = get_locked_key_image_unlock_height(m_blockchain.nettype(), node_info.registration_height, block_height);
 
         bool early_exit = false;
@@ -1133,6 +1146,7 @@ namespace service_nodes
             if (key_image_unlocks.unlocks.empty()) early_exit = true;
           }
         }
+#endif
       }
     }
 
@@ -1242,8 +1256,8 @@ namespace service_nodes
 
     if (hard_fork_version >= cryptonote::network_version_11_swarms)
     {
-      // Find and unlock requested key images, delete contributor if all contributions gone, expire node if all contributors gone
-      for (auto it = m_service_nodes_infos.begin(); it != m_service_nodes_infos.end();)
+      // Find and unlock requested key images, delete contributor if all contributions gone, add to expired nodes if all contributors gone
+      for (auto it = m_service_nodes_infos.begin(); it != m_service_nodes_infos.end(); it++)
       {
         crypto::public_key const &snode_key = it->first;
         service_node_info &info             = it->second;
@@ -1273,8 +1287,8 @@ namespace service_nodes
             contributor++;
         }
 
-        if (info.contributors.empty()) expired_nodes.push_back(snode_key);
-        else                           it++;
+        if (info.contributors.empty())
+          expired_nodes.push_back(snode_key);
       }
 
       return expired_nodes;
@@ -1616,10 +1630,11 @@ namespace service_nodes
             return false;
         }
       }
+
+      data_to_store.key_image_blacklist = m_key_image_blacklist;
     }
 
-    data_to_store.height              = m_height;
-    data_to_store.key_image_blacklist = m_key_image_blacklist;
+    data_to_store.height = m_height;
 
     std::stringstream ss;
     binary_archive<true> ba(ss);

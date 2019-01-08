@@ -102,9 +102,7 @@ static_assert(STAKING_PORTIONS % 3 == 0, "Use a multiple of three, so that it di
 #define DIFFICULTY_CUT                                  60  // timestamps to cut after sorting
 #define DIFFICULTY_BLOCKS_COUNT_V2                      (DIFFICULTY_WINDOW_V2 + 1) // added +1 to make N=N
 
-static_assert(DIFFICULTY_TARGET_V2 >= 60, "Must be true otherwise these block estimation macros fail, i.e. 59/60 == 0");
-#define BLOCKS_EXPECTED_IN_MINUTES(val)                 ((DIFFICULTY_TARGET_V2 / 60) * (val))
-#define BLOCKS_EXPECTED_IN_HOURS(val)                   (BLOCKS_EXPECTED_IN_MINUTES(60) * (val))
+#define BLOCKS_EXPECTED_IN_HOURS(val)                   (((60 * 60) / DIFFICULTY_TARGET_V2) * (val))
 #define BLOCKS_EXPECTED_IN_DAYS(val)                    (BLOCKS_EXPECTED_IN_HOURS(24) * (val))
 #define BLOCKS_EXPECTED_IN_YEARS(val)                   (BLOCKS_EXPECTED_IN_DAYS(365) * (val))
 
