@@ -2684,13 +2684,11 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
     }
 
     std::vector<std::vector<rct::ctkey>> pubkeys(tx.vin.size());
-    std::vector < uint64_t > results;
-    results.resize(tx.vin.size(), 0);
-
-    size_t sig_index = 0;
     const crypto::key_image *last_key_image = NULL;
-    for (const auto& txin : tx.vin)
+    for (size_t sig_index = 0; sig_index < tx.vin.size(); ++sig_index)
     {
+      const auto& txin = tx.vin[sig_index];
+
       // make sure output being spent is of type txin_to_key, rather than e.g.
       // txin_gen, which is only used for miner transactions
       CHECK_AND_ASSERT_MES(txin.type() == typeid(txin_to_key), false, "wrong type id in tx input at Blockchain::check_tx_inputs");
@@ -2738,8 +2736,6 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
 
         return false;
       }
-
-      sig_index++;
     }
 
     if (!expand_transaction_2(tx, tx_prefix_hash, pubkeys))
