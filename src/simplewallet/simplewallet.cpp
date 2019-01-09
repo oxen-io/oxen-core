@@ -5315,7 +5315,7 @@ bool simple_wallet::register_service_node_main(
     return false;
   }
 
-  uint64_t staking_requirement_lock_blocks = service_nodes::get_staking_requirement_lock_blocks(m_wallet->nettype());
+  uint64_t staking_requirement_lock_blocks = service_nodes::staking_initial_num_lock_blocks(m_wallet->nettype());
   uint64_t locked_blocks = staking_requirement_lock_blocks + STAKING_REQUIREMENT_LOCK_BLOCKS_EXCESS;
 
   std::string err, err2;
@@ -5741,7 +5741,7 @@ bool simple_wallet::stake_main(
   }
 
   m_wallet->refresh(false);
-  uint64_t staking_requirement_lock_blocks = service_nodes::get_staking_requirement_lock_blocks(m_wallet->nettype());
+  uint64_t staking_requirement_lock_blocks = service_nodes::staking_initial_num_lock_blocks(m_wallet->nettype());
   uint64_t locked_blocks = staking_requirement_lock_blocks + STAKING_REQUIREMENT_LOCK_BLOCKS_EXCESS;
 
   time_t begin_construct_time = time(nullptr);
@@ -7898,7 +7898,7 @@ bool simple_wallet::get_transfers(std::vector<std::string>& local_args, std::vec
       // NOTE(loki): Technically we don't allow custom unlock times per output
       // yet. So if we detect _any_ output that has the staking lock time, then
       // we can assume it's a staking transfer
-      const uint64_t staking_duration = service_nodes::get_staking_requirement_lock_blocks(m_wallet->nettype());
+      const uint64_t staking_duration = service_nodes::staking_initial_num_lock_blocks(m_wallet->nettype());
       bool locked = false;
 
       tools::pay_type type = tools::pay_type::out;

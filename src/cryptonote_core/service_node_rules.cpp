@@ -67,7 +67,7 @@ crypto::hash generate_request_stake_unlock_hash(uint32_t nonce)
 
 uint64_t get_locked_key_image_unlock_height(cryptonote::network_type nettype, uint64_t node_register_height, uint64_t curr_height)
 {
-  uint64_t blocks_to_lock = get_staking_requirement_lock_blocks(nettype);
+  uint64_t blocks_to_lock = staking_initial_num_lock_blocks(nettype);
   uint64_t result         = node_register_height + blocks_to_lock;
   if (curr_height >= result)
   {

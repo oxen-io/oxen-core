@@ -353,7 +353,7 @@ namespace service_nodes
         {
           key_image_blacklist_entry entry = {};
           entry.key_image                 = contribution.key_image;
-          entry.unlock_height             = block_height + get_staking_requirement_lock_blocks(m_blockchain.nettype());
+          entry.unlock_height             = block_height + staking_initial_num_lock_blocks(m_blockchain.nettype());
           m_key_image_blacklist.push_back(entry);
 
           const bool adding_to_blacklist = true;
@@ -656,7 +656,7 @@ namespace service_nodes
             unlock_time = tx.output_unlock_times[i];
 
           has_correct_unlock_time = unlock_time < CRYPTONOTE_MAX_BLOCK_NUMBER &&
-                                    unlock_time >= block_height + get_staking_requirement_lock_blocks(nettype);
+                                    unlock_time >= block_height + staking_initial_num_lock_blocks(nettype);
         }
 
         if (has_correct_unlock_time)
@@ -834,7 +834,7 @@ namespace service_nodes
         if (hard_fork_version >= cryptonote::network_version_10_bulletproofs)
         {
           service_node_info const &old_info = iter->second;
-          uint64_t expiry_height = old_info.registration_height + get_staking_requirement_lock_blocks(m_blockchain.nettype());
+          uint64_t expiry_height = old_info.registration_height + staking_initial_num_lock_blocks(m_blockchain.nettype());
           if (block_height < expiry_height)
             return false;
 
@@ -1293,7 +1293,7 @@ namespace service_nodes
       return expired_nodes;
     }
 
-    uint64_t lock_blocks = get_staking_requirement_lock_blocks(m_blockchain.nettype());
+    uint64_t lock_blocks = staking_initial_num_lock_blocks(m_blockchain.nettype());
     if (hard_fork_version >= cryptonote::network_version_10_bulletproofs)
       lock_blocks += STAKING_REQUIREMENT_LOCK_BLOCKS_EXCESS;
 

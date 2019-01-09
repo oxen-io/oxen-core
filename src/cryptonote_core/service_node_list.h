@@ -66,6 +66,9 @@ namespace service_nodes
 
   struct service_node_info // registration information
   {
+    // TODO(doyle): INF_STAKING(doyle): Fix up serialisation/deserialisation on
+    // the structs that didn't have versioning information and now need it.
+
     // INF_STAKING(doyle): Now that we have locked key images, we should enforce
     // a minimum staking amount. Currently contributors can contribute piece
     // meal to a service node, they can trivially attack the network by staking
@@ -104,7 +107,7 @@ namespace service_nodes
 
       // More verbose yes, _but_ then all control flow for serialising deserialising is in one place.
       uint8_t version;
-      std::vector<contribution_t> locked_contributions; // TODO(doyle): INF_STAKING(doyle): Serialize
+      std::vector<contribution_t> locked_contributions;
 
       contributor_t() = default;
       contributor_t(uint64_t reserved_, const cryptonote::account_public_address& address_) : amount(0), reserved(reserved_), address(address_) { }
@@ -121,7 +124,7 @@ namespace service_nodes
       END_SERIALIZE()
     };
 
-    uint8_t                            version = service_node_info::version_0;
+    uint8_t                            version;
     uint64_t                           registration_height;
     // block_height and transaction_index are to record when the service node last received a reward.
     uint64_t                           last_reward_block_height;

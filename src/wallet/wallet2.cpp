@@ -6749,7 +6749,7 @@ std::vector<wallet2::pending_tx> wallet2::create_stake_tx(const crypto::public_k
   de.amount = amount;
   dsts.push_back(de);
 
-  const uint64_t staking_requirement_lock_blocks = service_nodes::get_staking_requirement_lock_blocks(m_nettype);
+  const uint64_t staking_requirement_lock_blocks = service_nodes::staking_initial_num_lock_blocks(m_nettype);
 
   const uint64_t locked_blocks = staking_requirement_lock_blocks + STAKING_REQUIREMENT_LOCK_BLOCKS_EXCESS;
 
