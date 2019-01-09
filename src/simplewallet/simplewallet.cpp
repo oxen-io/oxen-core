@@ -5315,9 +5315,6 @@ bool simple_wallet::register_service_node_main(
     return false;
   }
 
-  uint64_t staking_requirement_lock_blocks = service_nodes::staking_initial_num_lock_blocks(m_wallet->nettype());
-  uint64_t locked_blocks = staking_requirement_lock_blocks + STAKING_REQUIREMENT_LOCK_BLOCKS_EXCESS;
-
   std::string err, err2;
   uint64_t bc_height = std::max(m_wallet->get_daemon_blockchain_height(err),
                                 m_wallet->get_daemon_blockchain_target_height(err2));
@@ -5356,13 +5353,18 @@ bool simple_wallet::register_service_node_main(
     }
   }
 
+  uint64_t staking_requirement_lock_blocks = service_nodes::staking_initial_num_lock_blocks(m_wallet->nettype());
+  uint64_t locked_blocks                   = staking_requirement_lock_blocks + STAKING_REQUIREMENT_LOCK_BLOCKS_EXCESS;
+  uint64_t unlock_block                    = bc_height + locked_blocks;
   try
   {
     const auto& response = m_wallet->get_service_nodes(service_node_key_as_str);
     if (response.service_node_states.size() >= 1)
     {
       bool can_reregister = false;
-      if (m_wallet->use_fork_rules(cryptonote::network_version_10_bulletproofs, 0))
+      if (m_wallet->use_fork_rules(cryptonote::network_version_11_swarms, 1))
+        unlock_block = 0; // Infinite staking, no time lock
+      else if (m_wallet->use_fork_rules(cryptonote::network_version_10_bulletproofs, 0))
       {
         cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::entry const &node_info = response.service_node_states[0];
         uint64_t expiry_height = node_info.registration_height + staking_requirement_lock_blocks;
@@ -5383,8 +5385,6 @@ bool simple_wallet::register_service_node_main(
     fail_msg_writer() << e.what();
     return true;
   }
-
-  uint64_t unlock_block = bc_height + locked_blocks;
 
   uint64_t expected_staking_requirement = std::max(
       service_nodes::get_staking_requirement(m_wallet->nettype(), bc_height),
@@ -5783,8 +5783,6 @@ bool simple_wallet::stake_main(
     }
   }
 
-  uint64_t unlock_block = bc_height + locked_blocks;
-
   // Check if client can stake into this service node, if so, how much.
   try
   {
@@ -5890,6 +5888,10 @@ bool simple_wallet::stake_main(
   de.is_subaddress = false;
   de.amount = amount;
   dsts.push_back(de);
+
+  uint64_t unlock_block = bc_height + locked_blocks;
+  if (m_wallet->use_fork_rules(cryptonote::network_version_11_swarms, 1))
+    unlock_block = 0; // Infinite staking, no time lock
 
   try
   {
@@ -7895,6 +7897,7 @@ bool simple_wallet::get_transfers(std::vector<std::string>& local_args, std::vec
         output.unlock_time                 = (dest_index < pd.m_unlock_times.size()) ? pd.m_unlock_times[dest_index] : 0;
       }
 
+      // TODO(doyle): Broken lock time isnt used anymore.
       // NOTE(loki): Technically we don't allow custom unlock times per output
       // yet. So if we detect _any_ output that has the staking lock time, then
       // we can assume it's a staking transfer

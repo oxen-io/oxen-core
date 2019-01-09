@@ -64,6 +64,8 @@ namespace service_nodes
 
   using swarm_id_t = uint64_t;
 
+  // TODO(doyle): INF_STAKING(doyle): Review behaviour of existing nodes on the old system when we switch over.
+
   struct service_node_info // registration information
   {
     // TODO(doyle): INF_STAKING(doyle): Fix up serialisation/deserialisation on

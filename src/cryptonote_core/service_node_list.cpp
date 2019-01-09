@@ -592,7 +592,6 @@ namespace service_nodes
       // someone submits an old style staking TX, it will fail and lock up
       // funds. Make sure to put in rules to prevent this.
 
-      // TODO(doyle): INF_STAKING(doyle): Add error messages for failure
       cryptonote::tx_extra_tx_key_image_proofs key_image_proofs;
       if (!get_tx_key_image_proofs_from_tx_extra(tx.extra, key_image_proofs))
       {
@@ -623,7 +622,6 @@ namespace service_nodes
         }
 
         crypto::public_key const *ephemeral_pub_key_ptr = &ephemeral_pub_key;
-        bool matched = false;
         for (auto proof = key_image_proofs.proofs.begin(); proof != key_image_proofs.proofs.end(); proof++)
         {
           if (!crypto::check_ring_signature((const crypto::hash &)(proof->key_image), proof->key_image, &ephemeral_pub_key_ptr, 1, &proof->signature))
@@ -637,12 +635,8 @@ namespace service_nodes
           parsed_contribution.locked_contributions.push_back(entry);
           parsed_contribution.transferred += transferred;
           key_image_proofs.proofs.erase(proof);
-          matched = true;
           break;
         }
-
-        if (!matched)
-          MERROR("Contribution TX: Staking amount transferred but no key image proof provided on height: " << block_height << " for tx: " << get_transaction_hash(tx) << " for output: " << output_index);
       }
     }
     else

@@ -33,6 +33,9 @@
 #include "include_base_utils.h"
 #include "net/http_client.h"
 
+// TODO(doyle): Temporary?
+#include "rpc/core_rpc_server_commands_defs.h"
+
 namespace tools
 {
 
@@ -51,6 +54,9 @@ public:
   boost::optional<std::string> get_earliest_height(uint8_t version, uint64_t &earliest_height) const;
   boost::optional<std::string> get_dynamic_base_fee_estimate(uint64_t grace_blocks, uint64_t &fee) const;
   boost::optional<std::string> get_fee_quantization_mask(uint64_t &fee_quantization_mask) const;
+
+  cryptonote::COMMAND_RPC_GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES::response get_service_node_blacklisted_key_images() const;
+  cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response                       get_service_nodes(std::vector<std::string> const &pubkeys) const;
 
 private:
   boost::optional<std::string> get_info() const;

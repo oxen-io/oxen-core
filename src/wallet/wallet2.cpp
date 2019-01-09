@@ -1466,6 +1466,9 @@ void wallet2::cache_tx_data(const cryptonote::transaction& tx, const crypto::has
 //----------------------------------------------------------------------------------------------------
 void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote::transaction& tx, const std::vector<uint64_t> &o_indices, uint64_t height, uint64_t ts, bool miner_tx, bool pool, bool double_spend_seen, const tx_cache_data &tx_cache_data)
 {
+  if (!tx.is_type(transaction::type_standard))
+    return;
+
   // In this function, tx (probably) only contains the base information
   // (that is, the prunable stuff may or may not be included)
   if (!miner_tx && !pool)
@@ -5283,16 +5286,66 @@ void wallet2::rescan_blockchain(bool hard, bool refresh)
 //----------------------------------------------------------------------------------------------------
 bool wallet2::is_transfer_unlocked(const transfer_details& td) const
 {
-  return is_transfer_unlocked(td.m_tx.get_unlock_time(td.m_internal_output_index), td.m_block_height);
+  return is_transfer_unlocked(td.m_tx.get_unlock_time(td.m_internal_output_index), td.m_block_height, &td.m_key_image);
 }
 //----------------------------------------------------------------------------------------------------
-bool wallet2::is_transfer_unlocked(uint64_t unlock_time, uint64_t block_height) const
+bool wallet2::is_transfer_unlocked(uint64_t unlock_time, uint64_t block_height, crypto::key_image const *key_image) const
 {
   if(!is_tx_spendtime_unlocked(unlock_time, block_height))
     return false;
 
   if(block_height + CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE > get_blockchain_current_height())
     return false;
+
+  // TODO(doyle): RPC proxy, we need to cache this or it's going to be very expensive
+  if (!key_image)
+    return true;
+
+  blobdata binary_buf;
+  binary_buf.reserve(sizeof(crypto::key_image));
+
+  using transfer_index = size_t;
+  std::vector<transfer_index> locked_indexes;
+  cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response const &get_snodes_response = m_node_rpc_proxy.get_service_nodes({});
+  for (cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::entry const &entry : get_snodes_response.service_node_states)
+  {
+    for (cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::contributor const &contributor : entry.contributors)
+    {
+      address_parse_info address_info = {};
+      cryptonote::get_account_address_from_str(address_info, nettype(), contributor.address);
+      if (!contains_address(address_info.address))
+        break;
+
+      for (cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::contribution const &contribution : contributor.locked_contributions)
+      {
+        binary_buf.clear();
+        if(!string_tools::parse_hexstr_to_binbuff(contribution.key_image, binary_buf) || binary_buf.size() != sizeof(crypto::key_image))
+        {
+          MERROR("Failed to parse hex representation of key image: ") << contribution.key_image;
+          break;
+        }
+
+        crypto::key_image const *check_image = reinterpret_cast<crypto::key_image const *>(binary_buf.data());
+        if (*key_image == *check_image)
+          return false;
+      }
+    }
+  }
+
+  cryptonote::COMMAND_RPC_GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES::response blacklist_response = m_node_rpc_proxy.get_service_node_blacklisted_key_images();
+  for (cryptonote::COMMAND_RPC_GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES::entry const &entry : blacklist_response.blacklist)
+  {
+    binary_buf.clear();
+    if(!string_tools::parse_hexstr_to_binbuff(entry.key_image, binary_buf) || binary_buf.size() != sizeof(crypto::key_image))
+    {
+      MERROR("Failed to parse hex representation of key image: ") << entry.key_image;
+      break;
+    }
+
+    crypto::key_image const *check_image = reinterpret_cast<crypto::key_image const *>(binary_buf.data());
+    if (*key_image == *check_image)
+      return false;
+  }
 
   return true;
 }
@@ -8027,6 +8080,7 @@ std::vector<size_t> wallet2::pick_preferred_rct_inputs(uint64_t needed_money, ui
   for (size_t i = 0; i < m_transfers.size(); ++i)
   {
     const transfer_details& td = m_transfers[i];
+
     if (!td.m_spent && td.is_rct() && td.amount() >= needed_money && is_transfer_unlocked(td) && td.m_subaddr_index.major == subaddr_account && subaddr_indices.count(td.m_subaddr_index.minor) == 1)
     {
       LOG_PRINT_L2("We can use " << i << " alone: " << print_money(td.amount()));
@@ -12257,21 +12311,6 @@ bool wallet2::generate_signature_for_request_stake_unlock(crypto::key_image cons
   crypto::hash hash = service_nodes::generate_request_stake_unlock_hash(nonce);
   crypto::generate_signature(hash, in_ephemeral.pub, in_ephemeral.sec, signature);
   return true;
-}
-//----------------------------------------------------------------------------------------------------
-cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response wallet2::get_service_nodes(std::vector<std::string> const &pubkeys)
-{
-  cryptonote::COMMAND_RPC_GET_SERVICE_NODES::request req = {};
-  cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response res = {};
-  req.service_node_pubkeys = pubkeys;
-
-  m_daemon_rpc_mutex.lock();
-  bool r = epee::net_utils::invoke_http_json_rpc("/json_rpc", "get_service_nodes", req, res, m_http_client, rpc_timeout);
-  m_daemon_rpc_mutex.unlock();
-  THROW_WALLET_EXCEPTION_IF(!r, error::no_connection_to_daemon, "get_service_nodes");
-  THROW_WALLET_EXCEPTION_IF(res.status == CORE_RPC_STATUS_BUSY, error::daemon_busy, "get_service_nodes");
-  THROW_WALLET_EXCEPTION_IF(res.status != CORE_RPC_STATUS_OK, error::get_service_nodes_error, res.status);
-  return res;
 }
 //----------------------------------------------------------------------------------------------------
 wallet_device_callback * wallet2::get_device_callback()

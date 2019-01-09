@@ -27,7 +27,6 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "node_rpc_proxy.h"
-#include "rpc/core_rpc_server_commands_defs.h"
 #include "storages/http_abstract_invoke.h"
 
 using namespace epee;
@@ -215,6 +214,35 @@ boost::optional<std::string> NodeRPCProxy::get_fee_quantization_mask(uint64_t &f
     fee_quantization_mask = 1;
   }
   return boost::optional<std::string>();
+}
+
+cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response NodeRPCProxy::get_service_nodes(std::vector<std::string> const &pubkeys) const
+{
+  cryptonote::COMMAND_RPC_GET_SERVICE_NODES::request req = {};
+  cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response res = {};
+  req.service_node_pubkeys = pubkeys;
+
+  m_daemon_rpc_mutex.lock();
+  bool r = epee::net_utils::invoke_http_json_rpc("/json_rpc", "get_service_nodes", req, res, m_http_client, rpc_timeout);
+  m_daemon_rpc_mutex.unlock();
+  CHECK_AND_ASSERT_MES(r, {}, "Failed to connect to daemon");
+  CHECK_AND_ASSERT_MES(res.status != CORE_RPC_STATUS_BUSY, {}, "Failed to connect to daemon");
+  CHECK_AND_ASSERT_MES(res.status == CORE_RPC_STATUS_OK, {}, "Failed to get service node");
+  return res;
+}
+
+cryptonote::COMMAND_RPC_GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES::response NodeRPCProxy::get_service_node_blacklisted_key_images() const
+{
+  cryptonote::COMMAND_RPC_GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES::request req = {};
+  cryptonote::COMMAND_RPC_GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES::response res = {};
+
+  m_daemon_rpc_mutex.lock();
+  bool r = epee::net_utils::invoke_http_json_rpc("/json_rpc", "get_service_node_blacklisted_key_images", req, res, m_http_client, rpc_timeout);
+  m_daemon_rpc_mutex.unlock();
+  CHECK_AND_ASSERT_MES(r, {}, "Failed to connect to daemon");
+  CHECK_AND_ASSERT_MES(res.status != CORE_RPC_STATUS_BUSY, {}, "Failed to connect to daemon");
+  CHECK_AND_ASSERT_MES(res.status == CORE_RPC_STATUS_OK, {}, "Failed to get blacklisted key images");
+  return res;
 }
 
 }

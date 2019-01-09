@@ -156,7 +156,7 @@ namespace cryptonote
       if (!cryptonote::get_tx_key_image_unlocks_from_tx_extra(tx.extra, key_image_unlocks))
       {
         MERROR("Could not get key image unlock from tx, possibly corrupt tx in your blockchain, rejecting malformed tx");
-        return false;
+        return true;
       }
 
       std::vector<transaction> pool_txs;
@@ -170,7 +170,7 @@ namespace cryptonote
         if (!cryptonote::get_tx_key_image_unlocks_from_tx_extra(pool_tx.extra, pool_key_image_unlocks))
         {
           MERROR("Could not get key image unlock from tx, possibly corrupt tx in your blockchain, rejecting malformed tx");
-          return false;
+          return true;
         }
 
         for (tx_extra_tx_key_image_unlocks::unlock const &unlock : key_image_unlocks.unlocks)
@@ -180,7 +180,7 @@ namespace cryptonote
             if (unlock.key_image == pool_unlock.key_image)
             {
               MERROR("There was atleast one TX in the pool that is requesting to unlock the same key image already.");
-              return false;
+              return true;
             }
           }
         }
