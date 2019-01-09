@@ -2592,7 +2592,7 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
       return false;
     }
 
-    if (!loki::service_node_deregister::verify_deregister(nettype(), deregister, tvc.m_vote_ctx, *quorum_state))
+    if (!service_nodes::deregister_vote::verify_deregister(nettype(), deregister, tvc.m_vote_ctx, *quorum_state))
     {
       tvc.m_verifivation_failed = true;
       MERROR_VER("tx " << get_transaction_hash(tx) << ": version 3 deregister_tx could not be completely verified reason: " << print_vote_verification_context(tvc.m_vote_ctx));
@@ -2614,11 +2614,11 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
       }
 
       uint64_t delta_height = curr_height - deregister.block_height;
-      if (delta_height >= loki::service_node_deregister::DEREGISTER_LIFETIME_BY_HEIGHT)
+      if (delta_height >= service_nodes::deregister_vote::DEREGISTER_LIFETIME_BY_HEIGHT)
       {
         LOG_PRINT_L1("Received deregister tx for height: " << deregister.block_height
                      << " and service node: "     << deregister.service_node_index
-                     << ", is older than: "       << loki::service_node_deregister::DEREGISTER_LIFETIME_BY_HEIGHT
+                     << ", is older than: "       << service_nodes::deregister_vote::DEREGISTER_LIFETIME_BY_HEIGHT
                      << " blocks and has been rejected. The current height is: " << curr_height);
         tvc.m_vote_ctx.m_invalid_block_height = true;
         tvc.m_verifivation_failed             = true;
@@ -2627,7 +2627,7 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
     }
 
     const uint64_t height            = deregister.block_height;
-    const size_t num_blocks_to_check = loki::service_node_deregister::DEREGISTER_LIFETIME_BY_HEIGHT;
+    const size_t num_blocks_to_check = service_nodes::deregister_vote::DEREGISTER_LIFETIME_BY_HEIGHT;
 
     std::vector<std::pair<cryptonote::blobdata,block>> blocks;
     std::vector<cryptonote::blobdata> txs;
@@ -4004,18 +4004,16 @@ static bool update_output_map(std::map<uint64_t, std::vector<output_data_t>> &ex
     const txout_to_key &out_to_key = boost::get<txout_to_key>(out.target);
     rct::key commitment;
     uint64_t amount = out.amount;
-    if (miner && tx.version == 2)
+    if (miner && tx.version >= 2)
     {
       commitment = rct::zeroCommit(amount);
       amount = 0;
     }
-    else if (tx.version > 1)
+    else // if (tx.version > 1) NOTE(loki): Our transactions start from atleast version 2
     {
       CHECK_AND_ASSERT_MES(i < tx.rct_signatures.outPk.size(), false, "Invalid outPk size");
       commitment = tx.rct_signatures.outPk[i].mask;
     }
-    else
-      commitment = rct::zero();
     extra_tx_map[amount].push_back(output_data_t{out_to_key.key, tx.unlock_time, height, commitment});
   }
   return true;
