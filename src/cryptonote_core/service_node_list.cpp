@@ -1252,28 +1252,60 @@ namespace service_nodes
     std::vector<crypto::public_key> expired_nodes;
     uint64_t const lock_blocks = staking_initial_num_lock_blocks(m_blockchain.nettype());
 
-    for (auto it = m_service_nodes_infos.begin(); it != m_service_nodes_infos.end(); it++)
+    // TODO(loki): This should really use the registration height instead of getting the block and expiring nodes.
+    // But there's something subtly off when using registration height causing syncing problems.
+    if (m_blockchain.get_hard_fork_version(block_height) == cryptonote::network_version_9_service_nodes)
     {
-      crypto::public_key const &snode_key = it->first;
-      service_node_info &info             = it->second;
-      int const hf_version                = m_blockchain.get_hard_fork_version(info.registration_height);
+      const uint64_t expired_nodes_block_height = block_height - lock_blocks;
+      std::vector<std::pair<cryptonote::blobdata, cryptonote::block>> blocks;
+      if (!m_blockchain.get_blocks(expired_nodes_block_height, 1, blocks))
+      {
+          LOG_ERROR("Unable to get historical blocks");
+        return expired_nodes;
+      }
 
-      if (hf_version >= cryptonote::network_version_11_swarms)
+
+      const cryptonote::block& block = blocks.begin()->second;
+      std::vector<cryptonote::transaction> txs;
+      std::vector<crypto::hash> missed_txs;
+      if (!m_blockchain.get_transactions(block.tx_hashes, txs, missed_txs))
       {
-        if (block_height > info.requested_unlock_height)
-          expired_nodes.push_back(snode_key);
+        LOG_ERROR("Unable to get transactions for block " << block.hash);
+        return expired_nodes;
       }
-      else if (hf_version >= cryptonote::network_version_10_bulletproofs)
+
+
+      uint32_t index = 0;
+      for (const cryptonote::transaction& tx : txs)
       {
-        uint64_t node_expiry_height = info.registration_height + lock_blocks + STAKING_REQUIREMENT_LOCK_BLOCKS_EXCESS;
-        if (block_height > node_expiry_height)
-          expired_nodes.push_back(snode_key);
+        crypto::public_key key;
+        service_node_info info = {};
+        if (is_registration_tx(tx, block.timestamp, expired_nodes_block_height, index, key, info))
+        {
+          expired_nodes.push_back(key);
+        }
+        index++;
       }
-      else // Network Version [7..9]
+    }
+    else
+    {
+      for (auto it = m_service_nodes_infos.begin(); it != m_service_nodes_infos.end(); it++)
       {
-        uint64_t node_expiry_height = info.registration_height + lock_blocks;
-        if (block_height > (node_expiry_height - 1))
-          expired_nodes.push_back(snode_key);
+        crypto::public_key const &snode_key = it->first;
+        service_node_info &info             = it->second;
+        int const hf_version                = m_blockchain.get_hard_fork_version(info.registration_height);
+
+        if (hf_version >= cryptonote::network_version_11_swarms)
+        {
+          if (block_height > info.requested_unlock_height)
+            expired_nodes.push_back(snode_key);
+        }
+        else // Version 10 Bulletproofs
+        {
+          uint64_t node_expiry_height = info.registration_height + lock_blocks + STAKING_REQUIREMENT_LOCK_BLOCKS_EXCESS;
+          if (block_height > node_expiry_height)
+            expired_nodes.push_back(snode_key);
+        }
       }
     }
 
