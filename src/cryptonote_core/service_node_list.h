@@ -68,21 +68,20 @@ namespace service_nodes
 
   struct service_node_info // registration information
   {
-    // TODO(doyle): INF_STAKING(doyle): Fix up serialisation/deserialisation on
-    // the structs that didn't have versioning information and now need it.
-
     // INF_STAKING(doyle): Now that we have locked key images, we should enforce
     // a minimum staking amount. Currently contributors can contribute piece
     // meal to a service node, they can trivially attack the network by staking
     // 1 loki each time to bloat up the key images
     struct contribution_t
     {
+      uint8_t            version = version_2_infinite_staking;
       uint64_t           unlock_height;
       crypto::public_key key_image_pub_key;
       crypto::key_image  key_image;
       uint64_t           amount;
 
       BEGIN_SERIALIZE()
+        VARINT_FIELD(version)
         VARINT_FIELD(unlock_height)
         FIELD(key_image_pub_key)
         FIELD(key_image)
@@ -99,30 +98,22 @@ namespace service_nodes
 
     struct contributor_t
     {
+      uint8_t  version;
       uint64_t amount;
       uint64_t reserved;
       cryptonote::account_public_address address;
-
-      // TODO(doyle): INF_STAKING(doyle): We probably want to serialize this in
-      // just the info struct, so we don't have to duplicate the version to
-      // optionally filter out the locked contributions
-
-      // More verbose yes, _but_ then all control flow for serialising deserialising is in one place.
-      uint8_t version;
       std::vector<contribution_t> locked_contributions;
 
       contributor_t() = default;
       contributor_t(uint64_t reserved_, const cryptonote::account_public_address& address_) : amount(0), reserved(reserved_), address(address_) { }
 
       BEGIN_SERIALIZE()
+        VARINT_FIELD(version)
         VARINT_FIELD(amount)
         VARINT_FIELD(reserved)
         FIELD(address)
-        VARINT_FIELD(version)
-
         if (version >= version_2_infinite_staking)
           FIELD(locked_contributions)
-
       END_SERIALIZE()
     };
 
@@ -176,10 +167,12 @@ namespace service_nodes
 
   struct key_image_blacklist_entry
   {
+    uint8_t           version = service_node_info::version_2_infinite_staking;
     crypto::key_image key_image;
     uint64_t          unlock_height;
 
     BEGIN_SERIALIZE()
+      VARINT_FIELD(version)
       FIELD(key_image)
       VARINT_FIELD(unlock_height)
     END_SERIALIZE()
@@ -334,10 +327,12 @@ namespace service_nodes
 
     struct quorum_state_for_serialization
     {
+      uint8_t version;
       uint64_t height;
       quorum_state state;
 
       BEGIN_SERIALIZE()
+        FIELD(version)
         FIELD(height)
         FIELD(state)
       END_SERIALIZE()
@@ -345,18 +340,21 @@ namespace service_nodes
 
     struct data_members_for_serialization
     {
+      uint8_t version;
+      uint64_t height;
       std::vector<quorum_state_for_serialization> quorum_states;
       std::vector<service_node_pubkey_info> infos;
       std::vector<rollback_event_variant> events;
-      uint64_t height;
       std::vector<key_image_blacklist_entry> key_image_blacklist;
 
       BEGIN_SERIALIZE()
+        VARINT_FIELD(version)
         FIELD(quorum_states)
         FIELD(infos)
         FIELD(events)
         FIELD(height)
-        FIELD(key_image_blacklist)
+        if (version >= service_node_info::version_2_infinite_staking)
+          FIELD(key_image_blacklist)
       END_SERIALIZE()
     };
 

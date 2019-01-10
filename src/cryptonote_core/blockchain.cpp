@@ -2556,20 +2556,13 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
 
   // Min/Max Type/Version Check
   {
-    if (hf_version >= network_version_11_swarms)
-    {
-      tvc.m_invalid_version |= (tx.version <= transaction::version_3_per_output_unlock_times);
-      tvc.m_invalid_type    |= (tx.type > transaction::type_key_image_unlock);
-    }
-    else if (hf_version >= network_version_10_bulletproofs)
-    {
-      tvc.m_invalid_version |= (tx.version <= transaction::version_2); // NOTE(loki): There is exactly 1 v2 transaction in bulletproofs on fork height
-    }
-    else
-    {
-      tvc.m_invalid_version |= (tx.version != transaction::version_2);
-    }
+    size_t min_version = transaction::get_min_version_for_hf(hf_version);
+    size_t max_version = transaction::get_max_version_for_hf(hf_version);
 
+    if (hf_version >= network_version_11_swarms)
+      tvc.m_invalid_type    |= (tx.type > transaction::type_key_image_unlock);
+
+    tvc.m_invalid_version = tx.version < min_version || tx.version > max_version;
     if (tvc.m_invalid_version || tvc.m_invalid_type)
     {
       if (tvc.m_invalid_version) MERROR_VER("TX Invalid version: " << tx.version << " for hardfork: " << hf_version);

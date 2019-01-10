@@ -48,6 +48,17 @@
 
 namespace service_nodes
 {
+  static int get_min_service_node_info_version_for_hf(int hf_version)
+  {
+    if (hf_version >= cryptonote::network_version_7 && hf_version <= cryptonote::network_version_9_service_nodes)
+      return service_node_info::version_0;
+
+    if (hf_version == cryptonote::network_version_10_bulletproofs)
+      return service_node_info::version_1_swarms;
+
+    return service_node_info::version_2_infinite_staking;
+  }
+
   static uint64_t uniform_distribution_portable(std::mt19937_64& mersenne_twister, uint64_t n)
   {
     uint64_t secureMax = mersenne_twister.max() - mersenne_twister.max() % n;
@@ -763,12 +774,10 @@ namespace service_nodes
     info.last_reward_transaction_index = index;
     info.total_contributed = 0;
     info.total_reserved = 0;
+    info.version = get_min_service_node_info_version_for_hf(hf_version);
 
-    if (hf_version >= cryptonote::network_version_10_bulletproofs)
-    {
-      info.version = service_node_info::version_1_swarms;
+    if (info.version >= service_node_info::version_1_swarms)
       info.swarm_id = QUEUE_SWARM_ID;
-    }
 
     info.contributors.clear();
 
@@ -787,9 +796,7 @@ namespace service_nodes
       div128_64(hi, lo, STAKING_PORTIONS, &resulthi, &resultlo);
 
       service_node_info::contributor_t contributor = {};
-      if (hf_version >= cryptonote::network_version_11_swarms)
-        contributor.version = service_node_info::version_2_infinite_staking;
-
+      contributor.version                          = get_min_service_node_info_version_for_hf(hf_version);
       contributor.reserved                         = resultlo;
       contributor.address                          = service_node_addresses[i];
       info.contributors.push_back(contributor);
@@ -941,7 +948,9 @@ namespace service_nodes
     if (contrib_iter == contributors.end())
     {
       service_node_info::contributor_t new_contributor = {};
+      new_contributor.version                          = get_min_service_node_info_version_for_hf(hf_version);
       new_contributor.address                          = parsed_contribution.address;
+      info.contributors.push_back(new_contributor);
       contrib_iter = --contributors.end();
     }
 
@@ -1079,7 +1088,7 @@ namespace service_nodes
       const cryptonote::transaction& tx = txs[index];
       if (tx.is_type(cryptonote::transaction::type_standard))
       {
-        if (process_registration_tx(tx, block.timestamp, block_height, index)) 
+        if (process_registration_tx(tx, block.timestamp, block_height, index))
           registrations++;
 
         process_contribution_tx(tx, block_height, index);
@@ -1549,6 +1558,8 @@ namespace service_nodes
 
   bool service_node_list::store()
   {
+    if (m_blockchain.get_current_hard_fork_version() < cryptonote::network_version_9_service_nodes)
+      return true;
 
     CHECK_AND_ASSERT_MES(m_db != nullptr, false, "Failed to store service node info, m_db == nullptr");
     data_members_for_serialization data_to_store;
@@ -1588,7 +1599,9 @@ namespace service_nodes
       data_to_store.key_image_blacklist = m_key_image_blacklist;
     }
 
-    data_to_store.height = m_height;
+    data_to_store.height  = m_height;
+    int hf_version        = m_blockchain.get_hard_fork_version(m_height - 1);
+    data_to_store.version = get_min_service_node_info_version_for_hf(hf_version);
 
     std::stringstream ss;
     binary_archive<true> ba(ss);

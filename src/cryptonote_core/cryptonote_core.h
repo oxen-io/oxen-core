@@ -808,11 +808,7 @@ namespace cryptonote
      const std::shared_ptr<const service_nodes::quorum_state> get_quorum_state(uint64_t height) const;
 
      /**
-      * @brief get a snapshot of the service node list state at the time of the call.
-      *
-      * @param service_node_pubkeys pubkeys to search, if empty this indicates get all the pubkeys
-      *
-      * @return all the service nodes that can be matched from pubkeys in param
+      * @brief Get a non owning reference to the list of blacklisted key images
       */
      const std::vector<service_nodes::key_image_blacklist_entry> &get_service_node_blacklisted_key_images() const;
 
