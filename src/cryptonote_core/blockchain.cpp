@@ -2591,13 +2591,12 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
     }
 
     std::vector<std::vector<rct::ctkey>> pubkeys(tx.vin.size());
-    std::vector < uint64_t > results;
-    results.resize(tx.vin.size(), 0);
-
     size_t sig_index = 0;
     const crypto::key_image *last_key_image = NULL;
-    for (const auto& txin : tx.vin)
+    for (size_t sig_index = 0; sig_index < tx.vin.size(); sig_index++)
     {
+      const auto& txin = tx.vin[sig_index];
+
       //
       // Monero Checks
       //
@@ -2647,7 +2646,6 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
 
           return false;
         }
-        sig_index++;
       }
 
       //
@@ -4095,12 +4093,11 @@ static bool update_output_map(std::map<uint64_t, std::vector<output_data_t>> &ex
       commitment = rct::zeroCommit(amount);
       amount = 0;
     }
-    else
+    else // if (tx.version > 1) NOTE(loki): Our transactions start from atleast version 2
     {
       CHECK_AND_ASSERT_MES(i < tx.rct_signatures.outPk.size(), false, "Invalid outPk size");
       commitment = tx.rct_signatures.outPk[i].mask;
     }
-
     extra_tx_map[amount].push_back(output_data_t{out_to_key.key, tx.unlock_time, height, commitment});
   }
   return true;
