@@ -1260,10 +1260,9 @@ namespace service_nodes
       std::vector<std::pair<cryptonote::blobdata, cryptonote::block>> blocks;
       if (!m_blockchain.get_blocks(expired_nodes_block_height, 1, blocks))
       {
-          LOG_ERROR("Unable to get historical blocks");
+        LOG_ERROR("Unable to get historical blocks");
         return expired_nodes;
       }
-
 
       const cryptonote::block& block = blocks.begin()->second;
       std::vector<cryptonote::transaction> txs;
@@ -1273,7 +1272,6 @@ namespace service_nodes
         LOG_ERROR("Unable to get transactions for block " << block.hash);
         return expired_nodes;
       }
-
 
       uint32_t index = 0;
       for (const cryptonote::transaction& tx : txs)
@@ -1297,7 +1295,7 @@ namespace service_nodes
 
         if (hf_version >= cryptonote::network_version_11_swarms)
         {
-          if (block_height > info.requested_unlock_height)
+          if (info.requested_unlock_height != 0 && block_height > info.requested_unlock_height)
             expired_nodes.push_back(snode_key);
         }
         else // Version 10 Bulletproofs
