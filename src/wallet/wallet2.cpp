@@ -5303,48 +5303,65 @@ bool wallet2::is_transfer_unlocked(uint64_t unlock_time, uint64_t block_height, 
 
   blobdata binary_buf;
   binary_buf.reserve(sizeof(crypto::key_image));
-
-  using transfer_index = size_t;
-  std::vector<transfer_index> locked_indexes;
-  cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response const &get_snodes_response = m_node_rpc_proxy.get_service_nodes({});
-  for (cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::entry const &entry : get_snodes_response.service_node_states)
   {
-    for (cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::contributor const &contributor : entry.contributors)
+    boost::optional<std::string> failed;
+    std::vector<cryptonote::COMMAND_RPC_GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES::entry> const *blacklist =
+      m_node_rpc_proxy.get_service_node_blacklisted_key_images(failed);
+    if (failed)
     {
-      address_parse_info address_info = {};
-      cryptonote::get_account_address_from_str(address_info, nettype(), contributor.address);
-      if (!contains_address(address_info.address))
-        break;
+      LOG_PRINT_L1("Failed to query service node for blacklisted transfers, assuming transfer not blacklisted, reason: " << *failed);
+      return true;
+    }
 
-      for (cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::contribution const &contribution : contributor.locked_contributions)
+    for (cryptonote::COMMAND_RPC_GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES::entry const &entry : (*blacklist))
+    {
+      binary_buf.clear();
+      if(!string_tools::parse_hexstr_to_binbuff(entry.key_image, binary_buf) || binary_buf.size() != sizeof(crypto::key_image))
       {
-        binary_buf.clear();
-        if(!string_tools::parse_hexstr_to_binbuff(contribution.key_image, binary_buf) || binary_buf.size() != sizeof(crypto::key_image))
-        {
-          MERROR("Failed to parse hex representation of key image: ") << contribution.key_image;
-          break;
-        }
-
-        crypto::key_image const *check_image = reinterpret_cast<crypto::key_image const *>(binary_buf.data());
-        if (*key_image == *check_image)
-          return false;
+        MERROR("Failed to parse hex representation of key image: ") << entry.key_image;
+        break;
       }
+
+      crypto::key_image const *check_image = reinterpret_cast<crypto::key_image const *>(binary_buf.data());
+      if (*key_image == *check_image)
+        return false;
     }
   }
 
-  cryptonote::COMMAND_RPC_GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES::response blacklist_response = m_node_rpc_proxy.get_service_node_blacklisted_key_images();
-  for (cryptonote::COMMAND_RPC_GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES::entry const &entry : blacklist_response.blacklist)
   {
-    binary_buf.clear();
-    if(!string_tools::parse_hexstr_to_binbuff(entry.key_image, binary_buf) || binary_buf.size() != sizeof(crypto::key_image))
+    boost::optional<std::string> failed;
+    const std::vector<cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::entry> *service_nodes_states =
+      m_node_rpc_proxy.get_service_nodes({}, failed);
+    if (failed)
     {
-      MERROR("Failed to parse hex representation of key image: ") << entry.key_image;
-      break;
+      LOG_PRINT_L1("Failed to query service node for locked transfers, assuming transfer not locked, reason: " << *failed);
+      return true;
     }
 
-    crypto::key_image const *check_image = reinterpret_cast<crypto::key_image const *>(binary_buf.data());
-    if (*key_image == *check_image)
-      return false;
+    for (cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::entry const &entry : (*service_nodes_states))
+    {
+      for (cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::contributor const &contributor : entry.contributors)
+      {
+        address_parse_info address_info = {};
+        cryptonote::get_account_address_from_str(address_info, nettype(), contributor.address);
+        if (!contains_address(address_info.address))
+          break;
+
+        for (cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::contribution const &contribution : contributor.locked_contributions)
+        {
+          binary_buf.clear();
+          if(!string_tools::parse_hexstr_to_binbuff(contribution.key_image, binary_buf) || binary_buf.size() != sizeof(crypto::key_image))
+          {
+            MERROR("Failed to parse hex representation of key image: ") << contribution.key_image;
+            break;
+          }
+
+          crypto::key_image const *check_image = reinterpret_cast<crypto::key_image const *>(binary_buf.data());
+          if (*key_image == *check_image)
+            return false;
+        }
+      }
+    }
   }
 
   return true;
@@ -6724,14 +6741,21 @@ bool wallet2::check_stake_allowed(const crypto::public_key& sn_key, const crypto
   }
 
   /// check that the service node is registered
-  const auto& response = this->get_service_nodes({ epee::string_tools::pod_to_hex(sn_key) });
-  if (response.service_node_states.size() != 1)
+  boost::optional<std::string> failed;
+  const auto& response = this->get_service_nodes({ epee::string_tools::pod_to_hex(sn_key) }, failed);
+  if (failed)
+  {
+    LOG_ERROR(*failed);
+    return false;
+  }
+
+  if (response->size() != 1)
   {
     LOG_ERROR("Could not find service node in service node list, please make sure it is registered first.");
     return false;
   }
 
-  const auto& snode_info = response.service_node_states.front();
+  const auto& snode_info = response->front();
 
   const bool full = snode_info.contributors.size() >= MAX_NUMBER_OF_CONTRIBUTORS;
 

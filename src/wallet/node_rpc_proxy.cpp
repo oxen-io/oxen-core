@@ -45,6 +45,11 @@ NodeRPCProxy::NodeRPCProxy(epee::net_utils::http::http_simple_client &http_clien
 
 void NodeRPCProxy::invalidate()
 {
+  m_service_nodes_cached_height = 0;
+  m_service_node_blacklisted_key_images_cached_height = 0;
+  m_service_node_blacklisted_key_images.clear();
+  m_service_nodes.clear();
+
   m_height = 0;
   for (size_t n = 0; n < 256; ++n)
     m_earliest_height[n] = 0;
@@ -216,33 +221,90 @@ boost::optional<std::string> NodeRPCProxy::get_fee_quantization_mask(uint64_t &f
   return boost::optional<std::string>();
 }
 
-cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response NodeRPCProxy::get_service_nodes(std::vector<std::string> const &pubkeys) const
+const std::vector<cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::entry> *NodeRPCProxy::get_service_nodes(std::vector<std::string> const &pubkeys, boost::optional<std::string> &failed) const
 {
-  cryptonote::COMMAND_RPC_GET_SERVICE_NODES::request req = {};
-  cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response res = {};
-  req.service_node_pubkeys = pubkeys;
+  const std::vector<cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::entry> *result =  &m_service_nodes;
 
-  m_daemon_rpc_mutex.lock();
-  bool r = epee::net_utils::invoke_http_json_rpc("/json_rpc", "get_service_nodes", req, res, m_http_client, rpc_timeout);
-  m_daemon_rpc_mutex.unlock();
-  CHECK_AND_ASSERT_MES(r, {}, "Failed to connect to daemon");
-  CHECK_AND_ASSERT_MES(res.status != CORE_RPC_STATUS_BUSY, {}, "Failed to connect to daemon");
-  CHECK_AND_ASSERT_MES(res.status == CORE_RPC_STATUS_OK, {}, "Failed to get service node");
-  return res;
+  uint64_t height;
+  failed = get_height(height);
+  if (failed)
+    return result;
+
+  if (m_service_nodes_cached_height != height)
+  {
+    cryptonote::COMMAND_RPC_GET_SERVICE_NODES::request req = {};
+    cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response res = {};
+    req.service_node_pubkeys = pubkeys;
+
+    m_daemon_rpc_mutex.lock();
+    bool r = epee::net_utils::invoke_http_json_rpc("/json_rpc", "get_service_nodes", req, res, m_http_client, rpc_timeout);
+    m_daemon_rpc_mutex.unlock();
+    if (!r)
+    {
+      failed = std::string("Failed to connect to daemon");
+      return result;
+    }
+
+    if (res.status == CORE_RPC_STATUS_BUSY) 
+    {
+      failed = res.status;
+      return result;
+    }
+
+    if (res.status != CORE_RPC_STATUS_OK)
+    {
+      failed = res.status;
+      return result;
+    }
+
+    m_service_nodes_cached_height = height;
+    m_service_nodes = std::move(res.service_node_states);
+  }
+
+  return result;
 }
 
-cryptonote::COMMAND_RPC_GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES::response NodeRPCProxy::get_service_node_blacklisted_key_images() const
+const std::vector<cryptonote::COMMAND_RPC_GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES::entry> *NodeRPCProxy::get_service_node_blacklisted_key_images(boost::optional<std::string> &failed) const
 {
-  cryptonote::COMMAND_RPC_GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES::request req = {};
-  cryptonote::COMMAND_RPC_GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES::response res = {};
+  const std::vector<cryptonote::COMMAND_RPC_GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES::entry> *result = &m_service_node_blacklisted_key_images;
 
-  m_daemon_rpc_mutex.lock();
-  bool r = epee::net_utils::invoke_http_json_rpc("/json_rpc", "get_service_node_blacklisted_key_images", req, res, m_http_client, rpc_timeout);
-  m_daemon_rpc_mutex.unlock();
-  CHECK_AND_ASSERT_MES(r, {}, "Failed to connect to daemon");
-  CHECK_AND_ASSERT_MES(res.status != CORE_RPC_STATUS_BUSY, {}, "Failed to connect to daemon");
-  CHECK_AND_ASSERT_MES(res.status == CORE_RPC_STATUS_OK, {}, "Failed to get blacklisted key images");
-  return res;
+  uint64_t height;
+  failed = get_height(height);
+  if (failed)
+    return result;
+
+  if (m_service_node_blacklisted_key_images_cached_height != height)
+  {
+    cryptonote::COMMAND_RPC_GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES::request req = {};
+    cryptonote::COMMAND_RPC_GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES::response res = {};
+
+    m_daemon_rpc_mutex.lock();
+    bool r = epee::net_utils::invoke_http_json_rpc("/json_rpc", "get_service_node_blacklisted_key_images", req, res, m_http_client, rpc_timeout);
+    m_daemon_rpc_mutex.unlock();
+
+    if (!r)
+    {
+      failed = std::string("Failed to connect to daemon");
+      return result;
+    }
+
+    if (res.status == CORE_RPC_STATUS_BUSY) 
+    {
+      failed = res.status;
+      return result;
+    }
+
+    if (res.status != CORE_RPC_STATUS_OK)
+    {
+      failed = res.status;
+      return result;
+    }
+
+    m_service_node_blacklisted_key_images_cached_height = height;
+    m_service_node_blacklisted_key_images = std::move(res.blacklist);
+  }
+
+  return result;
 }
 
 }

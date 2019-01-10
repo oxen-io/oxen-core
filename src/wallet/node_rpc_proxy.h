@@ -55,14 +55,19 @@ public:
   boost::optional<std::string> get_dynamic_base_fee_estimate(uint64_t grace_blocks, uint64_t &fee) const;
   boost::optional<std::string> get_fee_quantization_mask(uint64_t &fee_quantization_mask) const;
 
-  cryptonote::COMMAND_RPC_GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES::response get_service_node_blacklisted_key_images() const;
-  cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response                       get_service_nodes(std::vector<std::string> const &pubkeys) const;
+  const std::vector<cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::entry> *get_service_nodes(std::vector<std::string> const &pubkeys, boost::optional<std::string> &failed) const;
+  const std::vector<cryptonote::COMMAND_RPC_GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES::entry> *get_service_node_blacklisted_key_images(boost::optional<std::string> &failed) const;
 
 private:
   boost::optional<std::string> get_info() const;
 
   epee::net_utils::http::http_simple_client &m_http_client;
   boost::mutex &m_daemon_rpc_mutex;
+
+  mutable uint64_t m_service_nodes_cached_height;
+  mutable uint64_t m_service_node_blacklisted_key_images_cached_height;
+  mutable std::vector<cryptonote::COMMAND_RPC_GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES::entry> m_service_node_blacklisted_key_images;
+  mutable std::vector<cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::entry>             m_service_nodes;
 
   mutable uint64_t m_height;
   mutable uint64_t m_earliest_height[256];
