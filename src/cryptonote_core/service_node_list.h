@@ -182,7 +182,7 @@ namespace service_nodes
   void loki_shuffle(std::vector<T>& a, uint64_t seed);
 
   static constexpr uint64_t QUEUE_SWARM_ID = 0;
-  static constexpr uint64_t KEY_IMAGE_NOT_UNLOCKED_HEIGHT = 0;
+  static constexpr uint64_t KEY_IMAGE_AWAITING_UNLOCK_HEIGHT = 0;
 
   class service_node_list
     : public cryptonote::Blockchain::BlockAddedHook,

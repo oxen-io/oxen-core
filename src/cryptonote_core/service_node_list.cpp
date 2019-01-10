@@ -1110,7 +1110,7 @@ namespace service_nodes
           continue;
 
         service_node_info &node_info = (*it).second;
-        if (node_info.requested_unlock_height != 0)
+        if (node_info.requested_unlock_height != KEY_IMAGE_AWAITING_UNLOCK_HEIGHT)
         {
           MERROR("Unlock TX: Node already requested an unlock at height: " << node_info.requested_unlock_height << " rejected on height: " << block_height << " for tx: " << get_transaction_hash(tx));
           continue;
@@ -1295,7 +1295,7 @@ namespace service_nodes
 
         if (hf_version >= cryptonote::network_version_11_swarms)
         {
-          if (info.requested_unlock_height != 0 && block_height > info.requested_unlock_height)
+          if (info.requested_unlock_height != KEY_IMAGE_AWAITING_UNLOCK_HEIGHT && block_height > info.requested_unlock_height)
             expired_nodes.push_back(snode_key);
         }
         else // Version 10 Bulletproofs
