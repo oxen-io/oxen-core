@@ -152,8 +152,8 @@ namespace cryptonote
     }
     else if (tx.is_type(transaction::type_key_image_unlock))
     {
-      tx_extra_tx_key_image_unlocks key_image_unlocks;
-      if (!cryptonote::get_tx_key_image_unlocks_from_tx_extra(tx.extra, key_image_unlocks))
+      tx_extra_tx_key_image_unlock unlock;
+      if (!cryptonote::get_tx_key_image_unlock_from_tx_extra(tx.extra, unlock))
       {
         MERROR("Could not get key image unlock from tx, possibly corrupt tx in your blockchain, rejecting malformed tx");
         return true;
@@ -166,23 +166,17 @@ namespace cryptonote
         if (!pool_tx.is_type(tx.get_type()))
           continue;
 
-        tx_extra_tx_key_image_unlocks pool_key_image_unlocks;
-        if (!cryptonote::get_tx_key_image_unlocks_from_tx_extra(pool_tx.extra, pool_key_image_unlocks))
+        tx_extra_tx_key_image_unlock pool_unlock;
+        if (!cryptonote::get_tx_key_image_unlock_from_tx_extra(pool_tx.extra, pool_unlock))
         {
           MERROR("Could not get key image unlock from tx, possibly corrupt tx in your blockchain, rejecting malformed tx");
           return true;
         }
 
-        for (tx_extra_tx_key_image_unlocks::unlock const &unlock : key_image_unlocks.unlocks)
+        if (unlock.key_image == pool_unlock.key_image)
         {
-          for (tx_extra_tx_key_image_unlocks::unlock const &pool_unlock : pool_key_image_unlocks.unlocks)
-          {
-            if (unlock.key_image == pool_unlock.key_image)
-            {
-              MERROR("There was atleast one TX in the pool that is requesting to unlock the same key image already.");
-              return true;
-            }
-          }
+          MERROR("There was atleast one TX in the pool that is requesting to unlock the same key image already.");
+          return true;
         }
       }
 

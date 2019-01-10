@@ -75,14 +75,12 @@ namespace service_nodes
     struct contribution_t
     {
       uint8_t            version = version_2_infinite_staking;
-      uint64_t           unlock_height;
       crypto::public_key key_image_pub_key;
       crypto::key_image  key_image;
       uint64_t           amount;
 
       BEGIN_SERIALIZE()
         VARINT_FIELD(version)
-        VARINT_FIELD(unlock_height)
         FIELD(key_image_pub_key)
         FIELD(key_image)
         VARINT_FIELD(amount)
@@ -119,6 +117,7 @@ namespace service_nodes
 
     uint8_t                            version;
     uint64_t                           registration_height;
+    uint64_t                           requested_unlock_height;
     // block_height and transaction_index are to record when the service node last received a reward.
     uint64_t                           last_reward_block_height;
     uint32_t                           last_reward_transaction_index;
@@ -138,6 +137,7 @@ namespace service_nodes
     BEGIN_SERIALIZE()
       VARINT_FIELD(version)
       VARINT_FIELD(registration_height)
+      VARINT_FIELD(requested_unlock_height)
       VARINT_FIELD(last_reward_block_height)
       VARINT_FIELD(last_reward_transaction_index)
       FIELD(contributors)
@@ -182,6 +182,7 @@ namespace service_nodes
   void loki_shuffle(std::vector<T>& a, uint64_t seed);
 
   static constexpr uint64_t QUEUE_SWARM_ID = 0;
+  static constexpr uint64_t KEY_IMAGE_NOT_UNLOCKED_HEIGHT = 0;
 
   class service_node_list
     : public cryptonote::Blockchain::BlockAddedHook,
@@ -200,7 +201,7 @@ namespace service_nodes
     crypto::public_key select_winner() const;
 
     bool is_service_node(const crypto::public_key& pubkey) const;
-    bool is_key_image_locked(crypto::key_image const &check_image, service_node_info::contribution_t *contribution = nullptr) const;
+    bool is_key_image_locked(crypto::key_image const &check_image, uint64_t *unlock_height = nullptr, service_node_info::contribution_t *the_locked_contribution = nullptr) const;
 
     void update_swarms(uint64_t height);
 

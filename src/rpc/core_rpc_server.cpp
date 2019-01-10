@@ -2374,6 +2374,7 @@ namespace cryptonote
       COMMAND_RPC_GET_SERVICE_NODES::response::entry entry = {};
       entry.service_node_pubkey           = string_tools::pod_to_hex(pubkey_info.pubkey);
       entry.registration_height           = pubkey_info.info.registration_height;
+      entry.requested_unlock_height       = pubkey_info.info.registration_height;
       entry.last_reward_block_height      = pubkey_info.info.last_reward_block_height;
       entry.last_reward_transaction_index = pubkey_info.info.last_reward_transaction_index;
       entry.last_uptime_proof             = m_core.get_uptime_proof(pubkey_info.pubkey);
@@ -2392,7 +2393,6 @@ namespace cryptonote
         for (service_node_info::contribution_t const &src : contributor.locked_contributions)
         {
           COMMAND_RPC_GET_SERVICE_NODES::response::contribution dest = {};
-          dest.unlock_height                                         = src.unlock_height;
           dest.amount                                                = src.amount;
           dest.key_image                                             = string_tools::pod_to_hex(src.key_image);
           dest.key_image_pub_key                                     = string_tools::pod_to_hex(src.key_image_pub_key);

@@ -226,7 +226,7 @@ namespace service_nodes
     return m_service_nodes_infos.find(pubkey) != m_service_nodes_infos.end();
   }
 
-  bool service_node_list::is_key_image_locked(crypto::key_image const &check_image, service_node_info::contribution_t *the_locked_contribution) const
+  bool service_node_list::is_key_image_locked(crypto::key_image const &check_image, uint64_t *unlock_height, service_node_info::contribution_t *the_locked_contribution) const
   {
     for (const auto& pubkey_info : m_service_nodes_infos)
     {
@@ -238,6 +238,7 @@ namespace service_nodes
           if (check_image == contribution.key_image)
           {
             if (the_locked_contribution) *the_locked_contribution = contribution;
+            if (unlock_height) *unlock_height = info.requested_unlock_height;
             return true;
           }
         }
@@ -1108,17 +1109,23 @@ namespace service_nodes
         if (it == m_service_nodes_infos.end())
           continue;
 
-        cryptonote::tx_extra_tx_key_image_unlocks key_image_unlocks;
-        if (!cryptonote::get_tx_key_image_unlocks_from_tx_extra(tx.extra, key_image_unlocks))
+        service_node_info &node_info = (*it).second;
+        if (node_info.requested_unlock_height != 0)
         {
-          MERROR("Unlock TX: Didn't have key image unlocks in the tx_extra, rejected on height: " << block_height << " for tx: " << get_transaction_hash(tx));
+          MERROR("Unlock TX: Node already requested an unlock at height: " << node_info.requested_unlock_height << " rejected on height: " << block_height << " for tx: " << get_transaction_hash(tx));
           continue;
         }
 
-        service_node_info &node_info = (*it).second;
-        uint64_t unlock_height       = get_locked_key_image_unlock_height(m_blockchain.nettype(), node_info.registration_height, block_height);
+        cryptonote::tx_extra_tx_key_image_unlock unlock;
+        if (!cryptonote::get_tx_key_image_unlock_from_tx_extra(tx.extra, unlock))
+        {
+          MERROR("Unlock TX: Didn't have key image unlock in the tx_extra, rejected on height: " << block_height << " for tx: " << get_transaction_hash(tx));
+          continue;
+        }
 
-        bool early_exit = false;
+        uint64_t unlock_height = get_locked_key_image_unlock_height(m_blockchain.nettype(), node_info.registration_height, block_height);
+        bool early_exit        = false;
+
         for (auto contributor = node_info.contributors.begin();
              contributor     != node_info.contributors.end() && !early_exit;
              contributor++)
@@ -1127,26 +1134,15 @@ namespace service_nodes
                locked_contribution     != contributor->locked_contributions.end() && !early_exit;
                locked_contribution++)
           {
-            for (auto unlock_it = key_image_unlocks.unlocks.begin();
-                 unlock_it     != key_image_unlocks.unlocks.end();
-                 unlock_it++)
-            {
-              cryptonote::tx_extra_tx_key_image_unlocks::unlock const &unlock = (*unlock_it);
-              if (unlock.key_image != locked_contribution->key_image)
-                continue;
+            if (unlock.key_image != locked_contribution->key_image)
+              continue;
 
-              // NOTE(loki): This should be checked in blockchain check_tx_inputs already
-              crypto::hash const hash = service_nodes::generate_request_stake_unlock_hash(unlock.nonce);
-              assert(crypto::check_signature(hash, locked_contribution->key_image_pub_key, unlock.signature));
+            // NOTE(loki): This should be checked in blockchain check_tx_inputs already
+            crypto::hash const hash = service_nodes::generate_request_stake_unlock_hash(unlock.nonce);
+            assert(crypto::check_signature(hash, locked_contribution->key_image_pub_key, unlock.signature));
 
-              if (locked_contribution->unlock_height == 0)
-                locked_contribution->unlock_height = unlock_height;
-
-              unlock_it = key_image_unlocks.unlocks.erase(unlock_it);
-              break;
-            }
-
-            if (key_image_unlocks.unlocks.empty()) early_exit = true;
+            node_info.requested_unlock_height = unlock_height;
+            early_exit = true;
           }
         }
       }
@@ -1264,32 +1260,7 @@ namespace service_nodes
 
       if (hf_version >= cryptonote::network_version_11_swarms)
       {
-        for (auto contributor = info.contributors.begin(); contributor != info.contributors.end();)
-        {
-          for (auto contribution = contributor->locked_contributions.begin(); contribution != contributor->locked_contributions.end();)
-          {
-            if (contribution->unlock_height != 0 && block_height >= contribution->unlock_height)
-            {
-              // TODO(doyle): INF_STAKING(doyle): Discuss this behaviour. If they reserved a spot and then unlock, they lose the position I guess?
-              contributor->amount     -= contribution->amount;
-              contributor->reserved   -= contribution->amount;
-              info.total_contributed -= contribution->amount;
-              info.total_reserved    -= contribution->amount;
-              contribution = contributor->locked_contributions.erase(contribution);
-            }
-            else
-            {
-              contribution++;
-            }
-          }
-
-          if (contributor->locked_contributions.empty())
-            contributor = info.contributors.erase(contributor);
-          else
-            contributor++;
-        }
-
-        if (info.contributors.empty())
+        if (block_height > info.requested_unlock_height)
           expired_nodes.push_back(snode_key);
       }
       else if (hf_version >= cryptonote::network_version_10_bulletproofs)

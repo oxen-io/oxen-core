@@ -6293,45 +6293,36 @@ bool simple_wallet::request_stake_unlock(const std::vector<std::string> &args_)
       return true;
     }
 
-    // TODO(doyle): INF_STAKING(doyle): Is it going to be problem if we keep
-    // unregistered nodes around indefinitely? This list could bloat up
+    if (contributions->empty())
+    {
+      fail_msg_writer() << tr("Unexpected 0 contributions in service node for this wallet ") << args_[0];
+      return true;
+    }
 
     // TODO(doyle): INF_STAKING(doyle): We should indicate that the node gets
     // into unregistered and perhaps the other contributors/and currently still
     // locked contributions in the node.
-
-    cryptonote::tx_extra_tx_key_image_unlocks key_image_unlocks = {};
-    if (contributions->size() > 1)
-    {
-      // TODO(doyle): INF_STAKING(doyle): Multiple key images to unlock
-    }
-    else
+    cryptonote::tx_extra_tx_key_image_unlock unlock = {};
     {
       std::string msg_buf;
       msg_buf.reserve(512);
 
-      if (contributions->size() != 1) // be safe, but should always be the case
-      {
-        fail_msg_writer() << tr("Unexepected 0 contributions registered for this wallet");
-        return true;
-      }
-
       COMMAND_RPC_GET_SERVICE_NODES::response::contribution const &contribution = (*contributions)[0];
-      if (contribution.unlock_height != 0)
+      if (node_info.requested_unlock_height != 0)
       {
         msg_buf.append("Key image: ");
         msg_buf.append(contribution.key_image);
         msg_buf.append(" has already been requested to be unlocked, unlocking at height: ");
-        msg_buf.append(std::to_string(contribution.unlock_height));
+        msg_buf.append(std::to_string(node_info.requested_unlock_height));
         fail_msg_writer() << msg_buf;
         return true;
       }
 
       msg_buf.append("You are requesting to unlock a stake of: ");
       msg_buf.append(cryptonote::print_money(contribution.amount));
-      msg_buf.append(" Loki from the service node network.\nThis will put the service node: ");
+      msg_buf.append(" Loki from the service node network.\nThis will deactivate the service node: ");
       msg_buf.append(node_info.service_node_pubkey);
-      msg_buf.append(" into the unregistered state after the stake is unlocked.\n\n");
+      msg_buf.append(" and schedule the service node for expiration.\n\n");
 
       uint64_t curr_height = 0;
       {
@@ -6346,10 +6337,9 @@ bool simple_wallet::request_stake_unlock(const std::vector<std::string> &args_)
 
       // TODO(doyle): INF_STAKING(doyle): We should estimate the days/hours for users
       uint64_t unlock_height = service_nodes::get_locked_key_image_unlock_height(m_wallet->nettype(), node_info.registration_height, curr_height);
-      msg_buf.append("You will continue receiving rewards until the key image is unlocked at the estimated height: ");
+      msg_buf.append("You will continue receiving rewards until the service node expires at the estimated height: ");
       msg_buf.append(std::to_string(unlock_height));
 
-      tx_extra_tx_key_image_unlocks::unlock unlock = {};
       cryptonote::blobdata binary_buf;
       if(!string_tools::parse_hexstr_to_binbuff(contribution.key_image, binary_buf) || binary_buf.size() != sizeof(crypto::key_image))
       {
@@ -6364,12 +6354,11 @@ bool simple_wallet::request_stake_unlock(const std::vector<std::string> &args_)
         return true;
       }
 
-      key_image_unlocks.unlocks.push_back(unlock);
       success_msg_writer() << msg_buf;
     }
 
     add_service_node_pubkey_to_tx_extra(ptx.tx.extra, snode_key);
-    add_tx_key_image_unlocks_to_tx_extra(ptx.tx.extra, key_image_unlocks);
+    add_tx_key_image_unlock_to_tx_extra(ptx.tx.extra, unlock);
   }
 
 

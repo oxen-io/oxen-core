@@ -2657,10 +2657,10 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
           }
         }
 
-        service_nodes::service_node_info::contribution_t contribution = {};
-        if (m_service_node_list.is_key_image_locked(in_to_key.k_image, &contribution))
+        uint64_t unlock_height = 0;
+        if (m_service_node_list.is_key_image_locked(in_to_key.k_image, &unlock_height))
         {
-          MERROR_VER("Key image: " << epee::string_tools::pod_to_hex(in_to_key.k_image) << " is locked in a stake until height: " << contribution.unlock_height);
+          MERROR_VER("Key image: " << epee::string_tools::pod_to_hex(in_to_key.k_image) << " is locked in a stake until height: " << unlock_height);
           tvc.m_key_image_locked_by_snode = true;
           return false;
         }
@@ -2931,36 +2931,34 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
     }
     else if (tx.is_type(transaction::type_key_image_unlock))
     {
-      cryptonote::tx_extra_tx_key_image_unlocks key_image_unlocks;
-      if (!cryptonote::get_tx_key_image_unlocks_from_tx_extra(tx.extra, key_image_unlocks))
+      cryptonote::tx_extra_tx_key_image_unlock unlock;
+      if (!cryptonote::get_tx_key_image_unlock_from_tx_extra(tx.extra, unlock))
       {
-        MERROR("TX extra didn't have key image unlocks in the tx_extra");
+        MERROR("TX extra didn't have key image unlock in the tx_extra");
         return false;
       }
 
-      for (tx_extra_tx_key_image_unlocks::unlock const &unlock : key_image_unlocks.unlocks)
+      service_nodes::service_node_info::contribution_t contribution = {};
+      uint64_t unlock_height = 0;
+      if (!m_service_node_list.is_key_image_locked(unlock.key_image, &unlock_height, &contribution))
       {
-        service_nodes::service_node_info::contribution_t contribution = {};
-        if (!m_service_node_list.is_key_image_locked(unlock.key_image, &contribution))
-        {
-          MERROR_VER("Requested key image: " << epee::string_tools::pod_to_hex(unlock.key_image) << " to unlock is not locked");
-          tvc.m_invalid_input = true;
-          return false;
-        }
+        MERROR_VER("Requested key image: " << epee::string_tools::pod_to_hex(unlock.key_image) << " to unlock is not locked");
+        tvc.m_invalid_input = true;
+        return false;
+      }
 
-        crypto::hash const hash = service_nodes::generate_request_stake_unlock_hash(unlock.nonce);
-        if (!crypto::check_signature(hash, contribution.key_image_pub_key, unlock.signature))
-        {
-          MERROR("Could not verify key image unlock transaction signature for tx: " << get_transaction_hash(tx));
-          return false;
-        }
+      crypto::hash const hash = service_nodes::generate_request_stake_unlock_hash(unlock.nonce);
+      if (!crypto::check_signature(hash, contribution.key_image_pub_key, unlock.signature))
+      {
+        MERROR("Could not verify key image unlock transaction signature for tx: " << get_transaction_hash(tx));
+        return false;
+      }
 
-        // Otherwise is a locked key image, if the unlock_height is set, it has been previously requested to unlock
-        if (contribution.unlock_height != 0)
-        {
-          tvc.m_double_spend = true;
-          return false;
-        }
+      // Otherwise is a locked key image, if the unlock_height is set, it has been previously requested to unlock
+      if (unlock_height != service_nodes::KEY_IMAGE_NOT_UNLOCKED_HEIGHT)
+      {
+        tvc.m_double_spend = true;
+        return false;
       }
     }
     else

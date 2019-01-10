@@ -520,7 +520,7 @@ namespace cryptonote
     if (!pick<tx_extra_service_node_pubkey>     (nar, tx_extra_fields, TX_EXTRA_TAG_SERVICE_NODE_PUBKEY)) return false;
     if (!pick<tx_extra_tx_secret_key>           (nar, tx_extra_fields, TX_EXTRA_TAG_TX_SECRET_KEY)) return false;
     if (!pick<tx_extra_tx_key_image_proofs>     (nar, tx_extra_fields, TX_EXTRA_TAG_TX_KEY_IMAGE_PROOFS)) return false;
-    if (!pick<tx_extra_tx_key_image_unlocks>    (nar, tx_extra_fields, TX_EXTRA_TAG_TX_KEY_IMAGE_UNLOCKS)) return false;
+    if (!pick<tx_extra_tx_key_image_unlock>     (nar, tx_extra_fields, TX_EXTRA_TAG_TX_KEY_IMAGE_UNLOCK)) return false;
 
     if (!pick<tx_extra_merge_mining_tag>(nar, tx_extra_fields, TX_EXTRA_MERGE_MINING_TAG)) return false;
     if (!pick<tx_extra_mysterious_minergate>(nar, tx_extra_fields, TX_EXTRA_MYSTERIOUS_MINERGATE_TAG)) return false;
@@ -716,20 +716,20 @@ namespace cryptonote
     return result;
   }
   //---------------------------------------------------------------
-  bool get_tx_key_image_unlocks_from_tx_extra(const std::vector<uint8_t>& tx_extra, tx_extra_tx_key_image_unlocks &unlocks)
+  bool get_tx_key_image_unlock_from_tx_extra(const std::vector<uint8_t>& tx_extra, tx_extra_tx_key_image_unlock &unlock)
   {
     std::vector<tx_extra_field> tx_extra_fields;
     parse_tx_extra(tx_extra, tx_extra_fields);
 
-    bool result = find_tx_extra_field_by_type(tx_extra_fields, unlocks);
+    bool result = find_tx_extra_field_by_type(tx_extra_fields, unlock);
     return result;
   }
   //---------------------------------------------------------------
-  bool add_tx_key_image_unlocks_to_tx_extra(std::vector<uint8_t>& tx_extra, const tx_extra_tx_key_image_unlocks& unlocks)
+  bool add_tx_key_image_unlock_to_tx_extra(std::vector<uint8_t>& tx_extra, const tx_extra_tx_key_image_unlock& unlock)
   {
-    tx_extra_field field = unlocks;
+    tx_extra_field field = unlock;
     bool result = add_tx_extra_field_to_tx_extra(tx_extra, field);
-    CHECK_AND_NO_ASSERT_MES_L1(result, false, "failed to serialize tx extra tx key image unlocks");
+    CHECK_AND_NO_ASSERT_MES_L1(result, false, "failed to serialize tx extra tx key image unlock");
     return result;
   }
   //---------------------------------------------------------------

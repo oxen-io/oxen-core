@@ -2501,13 +2501,11 @@ namespace cryptonote
     {
       struct contribution
       {
-        uint64_t    unlock_height;
         std::string key_image;
         std::string key_image_pub_key;
         uint64_t    amount;
 
         BEGIN_KV_SERIALIZE_MAP()
-          KV_SERIALIZE(unlock_height)
           KV_SERIALIZE(key_image)
           KV_SERIALIZE(key_image_pub_key)
           KV_SERIALIZE(amount)
@@ -2533,6 +2531,7 @@ namespace cryptonote
       {
         std::string               service_node_pubkey;
         uint64_t                  registration_height;
+        uint64_t                  requested_unlock_height;
         uint64_t                  last_reward_block_height;
         uint32_t                  last_reward_transaction_index;
         uint64_t                  last_uptime_proof;
@@ -2546,6 +2545,7 @@ namespace cryptonote
         BEGIN_KV_SERIALIZE_MAP()
             KV_SERIALIZE(service_node_pubkey)
             KV_SERIALIZE(registration_height)
+            KV_SERIALIZE(requested_unlock_height)
             KV_SERIALIZE(last_reward_block_height)
             KV_SERIALIZE(last_reward_transaction_index)
             KV_SERIALIZE(last_uptime_proof)

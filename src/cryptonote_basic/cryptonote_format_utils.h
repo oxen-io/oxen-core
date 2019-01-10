@@ -89,8 +89,8 @@ namespace cryptonote
   void add_tx_secret_key_to_tx_extra(std::vector<uint8_t>& tx_extra, const crypto::secret_key& key);
   bool get_tx_key_image_proofs_from_tx_extra(const std::vector<uint8_t>& tx_extra, tx_extra_tx_key_image_proofs &proofs);
   bool add_tx_key_image_proofs_to_tx_extra  (std::vector<uint8_t>& tx_extra, const tx_extra_tx_key_image_proofs& proofs);
-  bool get_tx_key_image_unlocks_from_tx_extra(const std::vector<uint8_t>& tx_extra, tx_extra_tx_key_image_unlocks &unlocks);
-  bool add_tx_key_image_unlocks_to_tx_extra(std::vector<uint8_t>& tx_extra, const tx_extra_tx_key_image_unlocks& unlocks);
+  bool get_tx_key_image_unlock_from_tx_extra(const std::vector<uint8_t>& tx_extra, tx_extra_tx_key_image_unlock &unlock);
+  bool add_tx_key_image_unlock_to_tx_extra(std::vector<uint8_t>& tx_extra, const tx_extra_tx_key_image_unlock& unlock);
 
   void add_service_node_winner_to_tx_extra(std::vector<uint8_t>& tx_extra, const crypto::public_key& winner);
   void add_service_node_pubkey_to_tx_extra(std::vector<uint8_t>& tx_extra, const crypto::public_key& pubkey);
