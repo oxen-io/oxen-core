@@ -1272,7 +1272,7 @@ namespace service_nodes
       else // Network Version [7..9]
       {
         uint64_t node_expiry_height = info.registration_height + lock_blocks;
-        if (block_height > node_expiry_height)
+        if (block_height > (node_expiry_height - 1))
           expired_nodes.push_back(snode_key);
       }
     }
