@@ -1359,7 +1359,7 @@ namespace service_nodes
     }
     if ((args.size()-1)/ 2 > MAX_NUMBER_OF_CONTRIBUTORS)
     {
-      std::string msg = tr("Exceeds the maximum number of contributors, which is ") + MAX_NUMBER_OF_CONTRIBUTORS;
+      std::string msg = tr("Exceeds the maximum number of contributors, which is ") + std::to_string(MAX_NUMBER_OF_CONTRIBUTORS);
       if (err_msg) *err_msg = msg;
       MERROR(tr("Exceeds the maximum number of contributors, which is ") << MAX_NUMBER_OF_CONTRIBUTORS);
       return false;
