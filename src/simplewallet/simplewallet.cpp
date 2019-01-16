@@ -6267,7 +6267,7 @@ bool simple_wallet::request_stake_unlock(const std::vector<std::string> &args_)
 
     if (response->empty())
     {
-      fail_msg_writer() << tr("No service node known is known for: ") << args_[0];
+      fail_msg_writer() << tr("No service node is known for: ") << args_[0];
       return true;
     }
 
