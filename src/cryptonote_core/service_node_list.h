@@ -214,28 +214,6 @@ namespace service_nodes
     void set_my_service_node_keys(crypto::public_key const *pub_key);
     bool store();
 
-  private:
-
-    // Note(maxim): private methods don't have to be protected the mutex
-    bool process_registration_tx(const cryptonote::transaction& tx, uint64_t block_timestamp, uint64_t block_height, uint32_t index);
-    void process_contribution_tx(const cryptonote::transaction& tx, uint64_t block_height, uint32_t index);
-    bool process_deregistration_tx(const cryptonote::transaction& tx, uint64_t block_height);
-
-    std::vector<crypto::public_key> get_service_nodes_pubkeys() const;
-
-    template<typename T>
-    void block_added_generic(const cryptonote::block& block, const T& txs);
-
-    bool contribution_tx_output_has_correct_unlock_time(const cryptonote::transaction& tx, size_t i, uint64_t block_height) const;
-
-    void store_quorum_state_from_rewards_list(uint64_t height);
-
-    bool is_registration_tx(const cryptonote::transaction& tx, uint64_t block_timestamp, uint64_t block_height, uint32_t index, crypto::public_key& key, service_node_info& info) const;
-    std::vector<crypto::public_key> update_and_get_expired_nodes(const std::vector<cryptonote::transaction> &txs, uint64_t block_height);
-
-    void clear(bool delete_db_entry = false);
-    bool load();
-
     struct rollback_event
     {
       enum rollback_type
@@ -311,21 +289,6 @@ namespace service_nodes
     };
     typedef boost::variant<rollback_change, rollback_new, prevent_rollback, rollback_key_image_blacklist> rollback_event_variant;
 
-    mutable boost::recursive_mutex m_sn_mutex;
-    std::unordered_map<crypto::public_key, service_node_info> m_service_nodes_infos;
-    std::list<std::unique_ptr<rollback_event>> m_rollback_events;
-    cryptonote::Blockchain& m_blockchain;
-    bool m_hooks_registered;
-
-    using block_height = uint64_t;
-    block_height m_height;
-
-    crypto::public_key const *m_service_node_pubkey;
-    cryptonote::BlockchainDB* m_db;
-
-    std::vector<key_image_blacklist_entry> m_key_image_blacklist;
-    std::map<block_height, std::shared_ptr<const quorum_state>> m_quorum_states;
-
     struct quorum_state_for_serialization
     {
       uint8_t version;
@@ -358,6 +321,43 @@ namespace service_nodes
           FIELD(key_image_blacklist)
       END_SERIALIZE()
     };
+
+  private:
+
+    // Note(maxim): private methods don't have to be protected the mutex
+    bool process_registration_tx(const cryptonote::transaction& tx, uint64_t block_timestamp, uint64_t block_height, uint32_t index);
+    void process_contribution_tx(const cryptonote::transaction& tx, uint64_t block_height, uint32_t index);
+    bool process_deregistration_tx(const cryptonote::transaction& tx, uint64_t block_height);
+
+    std::vector<crypto::public_key> get_service_nodes_pubkeys() const;
+
+    template<typename T>
+    void block_added_generic(const cryptonote::block& block, const T& txs);
+
+    bool contribution_tx_output_has_correct_unlock_time(const cryptonote::transaction& tx, size_t i, uint64_t block_height) const;
+
+    void store_quorum_state_from_rewards_list(uint64_t height);
+
+    bool is_registration_tx(const cryptonote::transaction& tx, uint64_t block_timestamp, uint64_t block_height, uint32_t index, crypto::public_key& key, service_node_info& info) const;
+    std::vector<crypto::public_key> update_and_get_expired_nodes(const std::vector<cryptonote::transaction> &txs, uint64_t block_height);
+
+    void clear(bool delete_db_entry = false);
+    bool load();
+
+    mutable boost::recursive_mutex m_sn_mutex;
+    std::unordered_map<crypto::public_key, service_node_info> m_service_nodes_infos;
+    std::list<std::unique_ptr<rollback_event>> m_rollback_events;
+    cryptonote::Blockchain& m_blockchain;
+    bool m_hooks_registered;
+
+    using block_height = uint64_t;
+    block_height m_height;
+
+    crypto::public_key const *m_service_node_pubkey;
+    cryptonote::BlockchainDB* m_db;
+
+    std::vector<key_image_blacklist_entry> m_key_image_blacklist;
+    std::map<block_height, std::shared_ptr<const quorum_state>> m_quorum_states;
 
   };
 
