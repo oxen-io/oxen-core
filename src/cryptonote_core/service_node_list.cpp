@@ -314,7 +314,7 @@ namespace service_nodes
 
   bool service_node_list::process_deregistration_tx(const cryptonote::transaction& tx, uint64_t block_height)
   {
-    if (!tx.is_type(cryptonote::transaction::type_deregister))
+    if (tx.get_type() != cryptonote::transaction::type_deregister)
       return false;
 
     cryptonote::tx_extra_service_node_deregister deregister;
@@ -1086,20 +1086,21 @@ namespace service_nodes
     size_t deregistrations = 0;
     for (uint32_t index = 0; index < txs.size(); ++index)
     {
-      const cryptonote::transaction& tx = txs[index];
-      if (tx.is_type(cryptonote::transaction::type_standard))
+      const cryptonote::transaction& tx             = txs[index];
+      const cryptonote::transaction::type_t tx_type = tx.get_type();
+      if (tx_type == cryptonote::transaction::type_standard)
       {
         if (process_registration_tx(tx, block.timestamp, block_height, index))
           registrations++;
 
         process_contribution_tx(tx, block_height, index);
       }
-      else if (tx.is_type(cryptonote::transaction::type_deregister))
+      else if (tx_type == cryptonote::transaction::type_deregister)
       {
         if (process_deregistration_tx(tx, block_height))
           deregistrations++;
       }
-      else if (tx.is_type(cryptonote::transaction::type_key_image_unlock))
+      else if (tx_type == cryptonote::transaction::type_key_image_unlock)
       {
         crypto::public_key snode_key;
         if (!cryptonote::get_service_node_pubkey_from_tx_extra(tx.extra, snode_key))

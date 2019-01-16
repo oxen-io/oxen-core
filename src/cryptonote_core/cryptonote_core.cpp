@@ -808,7 +808,7 @@ namespace cryptonote
         continue;
       }
 
-      if (!tx_info[n].tx->is_type(transaction::type_standard))
+      if (tx_info[n].tx->get_type() != transaction::type_standard)
         continue;
       const rct::rctSig &rv = tx_info[n].tx->rct_signatures;
       switch (rv.type) {
@@ -1004,7 +1004,7 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
   bool core::check_tx_semantic(const transaction& tx, bool keeped_by_block) const
   {
-    if (!tx.is_type(transaction::type_standard))
+    if (tx.get_type() != transaction::type_standard)
     {
       if (tx.vin.size() != 0)
       {

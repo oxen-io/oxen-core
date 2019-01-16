@@ -230,7 +230,6 @@ namespace cryptonote
       output_unlock_times.clear();
       type = type_standard;
     }
-    bool   is_type    (type_t check_type) const;
     type_t get_type   ()                  const;
     bool   set_type   (type_t new_type);
 
@@ -523,34 +522,6 @@ namespace cryptonote
       return transaction::version_3_per_output_unlock_times;
 
     return transaction::version_4_tx_types;
-  }
-
-  inline bool transaction_prefix::is_type(transaction_prefix::type_t check_type) const
-  {
-    assert(static_cast<uint16_t>(type) < static_cast<uint16_t>(type_count));
-    if (version >= version_4_tx_types)
-      return check_type == type;
-
-    switch(check_type)
-    {
-      case type_standard:
-      {
-        if (version <= version_2) return true;
-        if (version == version_3_per_output_unlock_times) return !is_deregister;
-      }
-      break;
-
-      case type_deregister:
-      {
-        if (version <= version_2) return false;
-        if (version == version_3_per_output_unlock_times) return is_deregister;
-      }
-      break;
-
-      default: break;
-    }
-
-    return false;
   }
 
   inline transaction_prefix::type_t transaction_prefix::get_type() const

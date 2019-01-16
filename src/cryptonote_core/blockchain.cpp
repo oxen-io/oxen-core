@@ -2570,7 +2570,8 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
     }
   }
 
-  if (tx.is_type(transaction::type_standard))
+  transaction::type_t tx_type = tx.get_type();
+  if (tx_type == transaction::type_standard)
   {
     crypto::hash tx_prefix_hash = get_transaction_prefix_hash(tx);
 
@@ -2830,7 +2831,7 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
       return false;
     }
 
-    if (tx.is_type(transaction::type_deregister))
+    if (tx_type == transaction::type_deregister)
     {
       // Check the inputs (votes) of the transaction have not already been
       // submitted to the blockchain under another transaction using a different
@@ -2902,7 +2903,7 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
           continue;
         }
 
-        if (!existing_tx.is_type(transaction::type_deregister))
+        if (existing_tx.get_type() != transaction::type_deregister)
           continue;
 
         tx_extra_service_node_deregister existing_deregister;
@@ -2928,7 +2929,7 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
         }
       }
     }
-    else if (tx.is_type(transaction::type_key_image_unlock))
+    else if (tx.get_type() == transaction::type_key_image_unlock)
     {
       cryptonote::tx_extra_tx_key_image_unlock unlock;
       if (!cryptonote::get_tx_key_image_unlock_from_tx_extra(tx.extra, unlock))
@@ -2954,7 +2955,7 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
       }
 
       // Otherwise is a locked key image, if the unlock_height is set, it has been previously requested to unlock
-      if (unlock_height != service_nodes::KEY_IMAGE_NOT_UNLOCKED_HEIGHT)
+      if (unlock_height != service_nodes::KEY_IMAGE_AWAITING_UNLOCK_HEIGHT)
       {
         tvc.m_double_spend = true;
         return false;
