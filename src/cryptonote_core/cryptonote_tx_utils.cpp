@@ -248,7 +248,7 @@ namespace cryptonote
     tx.vout.clear();
     tx.extra.clear();
     tx.output_unlock_times.clear();
-    tx.is_deregister = false;
+    tx.type = transaction::type_standard;
     tx.version = (hard_fork_version >= network_version_9_service_nodes) ? transaction::version_3_per_output_unlock_times : transaction::version_2;
 
     const network_type                                              nettype           = miner_tx_context.nettype;

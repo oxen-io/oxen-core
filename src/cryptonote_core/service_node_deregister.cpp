@@ -264,8 +264,8 @@ namespace service_nodes
         vvc.m_full_tx_deregister_made = cryptonote::add_service_node_deregister_to_tx_extra(tx.extra, deregister);
         if (vvc.m_full_tx_deregister_made)
         {
-          tx.version       = cryptonote::transaction::version_3_per_output_unlock_times;
-          tx.is_deregister = true;
+          tx.version = cryptonote::transaction::version_3_per_output_unlock_times;
+          tx.type    = cryptonote::transaction::type_deregister;
         }
         else
         {

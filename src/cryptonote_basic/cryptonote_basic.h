@@ -202,7 +202,7 @@ namespace cryptonote
       if (version > 2)
       {
         FIELD(output_unlock_times)
-        if (version <= version_3_per_output_unlock_times)
+        if (version == version_3_per_output_unlock_times)
           FIELD(is_deregister)
       }
       if(version == 0 || version > version_4_tx_types) return false;
