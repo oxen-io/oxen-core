@@ -48,19 +48,15 @@ bool check_service_node_portions(const std::vector<uint64_t>& portions)
 
 crypto::hash generate_request_stake_unlock_hash(uint32_t nonce)
 {
-  crypto::hash result = {};
-
-  char *nonce_ptr = (char *)&nonce;
-  char *hash_ptr  = result.data;
+  crypto::hash result   = {};
+  char const *nonce_ptr = (char *)&nonce;
+  char *hash_ptr        = result.data;
+  static_assert(sizeof(result) % sizeof(nonce) == 0, "The nonce should be evenly divisible into the hash");
   for (size_t i = 0; i < sizeof(result) / sizeof(nonce); ++i)
   {
     memcpy(hash_ptr, nonce_ptr, sizeof(nonce));
     hash_ptr += sizeof(nonce);
   }
-
-  size_t remaining_bytes = sizeof(result) % sizeof(nonce);
-  memcpy(hash_ptr, nonce_ptr, remaining_bytes);
-  hash_ptr += remaining_bytes;
 
   assert(hash_ptr == (char *)result.data + sizeof(result));
   return result;
@@ -69,12 +65,10 @@ crypto::hash generate_request_stake_unlock_hash(uint32_t nonce)
 uint64_t get_locked_key_image_unlock_height(cryptonote::network_type nettype, uint64_t node_register_height, uint64_t curr_height)
 {
   uint64_t blocks_to_lock = staking_initial_num_lock_blocks(nettype);
-  uint64_t result         = node_register_height + blocks_to_lock;
-  if (curr_height >= result)
-  {
-    uint64_t remainder = curr_height % blocks_to_lock;
-    result = curr_height + (blocks_to_lock - remainder);
-  }
+  uint64_t delta_height   = curr_height - node_register_height;
+  uint64_t intervals      = delta_height / blocks_to_lock;
+  if ((delta_height % blocks_to_lock) > 0 || intervals == 0) intervals++;
+  uint64_t result = node_register_height + (intervals * blocks_to_lock);
   return result;
 }
 

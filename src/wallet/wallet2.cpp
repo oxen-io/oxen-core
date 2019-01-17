@@ -5307,15 +5307,14 @@ bool wallet2::is_transfer_unlocked(uint64_t unlock_time, uint64_t block_height, 
   binary_buf.reserve(sizeof(crypto::key_image));
   {
     boost::optional<std::string> failed;
-    std::shared_ptr<const std::vector<cryptonote::COMMAND_RPC_GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES::entry>> blacklist =
-      m_node_rpc_proxy.get_service_node_blacklisted_key_images(failed);
+    std::vector<cryptonote::COMMAND_RPC_GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES::entry> blacklist = m_node_rpc_proxy.get_service_node_blacklisted_key_images(failed);
     if (failed)
     {
       LOG_PRINT_L1("Failed to query service node for blacklisted transfers, assuming transfer not blacklisted, reason: " << *failed);
       return true;
     }
 
-    for (cryptonote::COMMAND_RPC_GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES::entry const &entry : (*blacklist))
+    for (cryptonote::COMMAND_RPC_GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES::entry const &entry : blacklist)
     {
       binary_buf.clear();
       if(!string_tools::parse_hexstr_to_binbuff(entry.key_image, binary_buf) || binary_buf.size() != sizeof(crypto::key_image))
@@ -5332,15 +5331,14 @@ bool wallet2::is_transfer_unlocked(uint64_t unlock_time, uint64_t block_height, 
 
   {
     boost::optional<std::string> failed;
-    std::shared_ptr<const std::vector<cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::entry>> service_nodes_states =
-      m_node_rpc_proxy.get_all_service_nodes(failed);
+    std::vector<cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::entry> service_nodes_states = m_node_rpc_proxy.get_all_service_nodes(failed);
     if (failed)
     {
       LOG_PRINT_L1("Failed to query service node for locked transfers, assuming transfer not locked, reason: " << *failed);
       return true;
     }
 
-    for (cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::entry const &entry : (*service_nodes_states))
+    for (cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::entry const &entry : service_nodes_states)
     {
       for (cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::contributor const &contributor : entry.contributors)
       {

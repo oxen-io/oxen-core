@@ -53,9 +53,9 @@ public:
   boost::optional<std::string> get_dynamic_base_fee_estimate(uint64_t grace_blocks, uint64_t &fee) const;
   boost::optional<std::string> get_fee_quantization_mask(uint64_t &fee_quantization_mask) const;
 
-  std::vector<cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::entry>                                    get_service_nodes    (std::vector<std::string> const &pubkeys, boost::optional<std::string> &failed) const;
-  std::shared_ptr<const std::vector<cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::entry>>             get_all_service_nodes(boost::optional<std::string> &failed) const;
-  std::shared_ptr<const std::vector<cryptonote::COMMAND_RPC_GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES::entry>> get_service_node_blacklisted_key_images(boost::optional<std::string> &failed) const;
+  std::vector<cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::entry>             get_service_nodes(std::vector<std::string> const &pubkeys, boost::optional<std::string> &failed) const;
+  std::vector<cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::entry>             get_all_service_nodes(boost::optional<std::string> &failed) const;
+  std::vector<cryptonote::COMMAND_RPC_GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES::entry> get_service_node_blacklisted_key_images(boost::optional<std::string> &failed) const;
 
 private:
   boost::optional<std::string> get_info() const;
