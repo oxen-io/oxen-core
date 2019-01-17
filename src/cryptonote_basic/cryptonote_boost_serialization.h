@@ -162,7 +162,7 @@ namespace boost
     a & x.vin;
     a & x.vout;
     a & x.extra;
-    if (x.version == cryptonote::transaction::version_4_tx_types)
+    if (x.version >= cryptonote::transaction::version_4_tx_types)
       a & x.type;
   }
 
@@ -180,7 +180,7 @@ namespace boost
     a & x.vin;
     a & x.vout;
     a & x.extra;
-    if (x.version == cryptonote::transaction::version_4_tx_types)
+    if (x.version >= cryptonote::transaction::version_4_tx_types)
       a & x.type;
     if (x.version == 1)
     {
