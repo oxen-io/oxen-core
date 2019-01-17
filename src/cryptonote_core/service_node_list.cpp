@@ -347,11 +347,11 @@ namespace service_nodes
 
     if (m_service_node_pubkey && *m_service_node_pubkey == key)
     {
-      MGINFO_RED("Deregistration for snode (yours): " << key);
+      MGINFO_RED("Deregistration for service node (yours): " << key);
     }
     else
     {
-      LOG_PRINT_L1("Deregistration for snode: " << key);
+      LOG_PRINT_L1("Deregistration for service node: " << key);
     }
 
     m_rollback_events.push_back(std::unique_ptr<rollback_event>(new rollback_change(block_height, key, iter->second)));
@@ -788,7 +788,7 @@ namespace service_nodes
       auto iter = std::find(service_node_addresses.begin(), service_node_addresses.begin() + i, service_node_addresses[i]);
       if (iter != service_node_addresses.begin() + i)
       {
-        MERROR("Register TX: There was a duplicate participant for snode on height: " << block_height << " for tx: " << cryptonote::get_transaction_hash(tx));
+        MERROR("Register TX: There was a duplicate participant for service node on height: " << block_height << " for tx: " << cryptonote::get_transaction_hash(tx));
         return false;
       }
 
@@ -884,14 +884,14 @@ namespace service_nodes
     const int hf_version = m_blockchain.get_hard_fork_version(block_height);
     if (!get_contribution(m_blockchain.nettype(), hf_version, tx, block_height, parsed_contribution))
     {
-      MERROR("Contribution TX: Could not decode contribution for snode: " << pubkey << " on height: " << block_height << " for tx: " << cryptonote::get_transaction_hash(tx));
+      MERROR("Contribution TX: Could not decode contribution for service node: " << pubkey << " on height: " << block_height << " for tx: " << cryptonote::get_transaction_hash(tx));
       return;
     }
 
     auto iter = m_service_nodes_infos.find(pubkey);
     if (iter == m_service_nodes_infos.end())
     {
-      LOG_PRINT_L1("Contribution TX: Contribution received for snode: " << pubkey <<
+      LOG_PRINT_L1("Contribution TX: Contribution received for service node: " << pubkey <<
                    ", but could not be found in the service node list on height: " << block_height <<
                    " for tx: " << cryptonote::get_transaction_hash(tx )<< "\n"
                    "This could mean that the service node was deregistered before the contribution was processed.");
@@ -924,7 +924,7 @@ namespace service_nodes
       if (contributors.size() >= MAX_NUMBER_OF_CONTRIBUTORS)
       {
         LOG_PRINT_L1("Contribution TX: Node is full with max contributors: " << MAX_NUMBER_OF_CONTRIBUTORS <<
-                     " for snode: " << pubkey <<
+                     " for service node: " << pubkey <<
                      " on height: "  << block_height <<
                      " for tx: " << cryptonote::get_transaction_hash(tx));
         return;
@@ -934,7 +934,7 @@ namespace service_nodes
       {
         LOG_PRINT_L1("Contribution TX: Amount " << parsed_contribution.transferred <<
                      " did not meet min " << info.get_min_contribution() <<
-                     " for snode: " << pubkey <<
+                     " for service node: " << pubkey <<
                      " on height: "  << block_height <<
                      " for tx: " << cryptonote::get_transaction_hash(tx));
         return;
@@ -985,7 +985,7 @@ namespace service_nodes
         contributor.locked_contributions.push_back(contribution);
     }
 
-    LOG_PRINT_L1("Contribution of " << parsed_contribution.transferred << " received for snode " << pubkey);
+    LOG_PRINT_L1("Contribution of " << parsed_contribution.transferred << " received for service node " << pubkey);
   }
 
   void service_node_list::block_added(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs)

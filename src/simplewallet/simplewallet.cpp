@@ -5358,21 +5358,21 @@ bool simple_wallet::register_service_node_main(
   uint64_t unlock_block                    = bc_height + locked_blocks;
   {
     boost::optional<std::string> failed;
-    const std::vector<cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::entry> *response = m_wallet->get_service_nodes(service_node_key_as_str, failed);
+    const std::vector<cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::entry> response = m_wallet->get_service_nodes({service_node_key_as_str}, failed);
     if (failed)
     {
       fail_msg_writer() << *failed;
       return true;
     }
 
-    if (response->size() >= 1)
+    if (response.size() >= 1)
     {
       bool can_reregister = false;
       if (m_wallet->use_fork_rules(cryptonote::network_version_11_swarms, 1))
         unlock_block = 0; // Infinite staking, no time lock
       else if (m_wallet->use_fork_rules(cryptonote::network_version_10_bulletproofs, 0))
       {
-        cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::entry const &node_info = (*response)[0];
+        cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::entry const &node_info = response[0];
         uint64_t expiry_height = node_info.registration_height + staking_requirement_lock_blocks;
         if (bc_height >= expiry_height)
           can_reregister = true;
@@ -5787,20 +5787,20 @@ bool simple_wallet::stake_main(
   // Check if client can stake into this service node, if so, how much.
   {
     boost::optional<std::string> failed;
-    const std::vector<cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::entry> *response = m_wallet->get_service_nodes({epee::string_tools::pod_to_hex(service_node_key)}, failed);
+    const std::vector<cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::entry> response = m_wallet->get_service_nodes({epee::string_tools::pod_to_hex(service_node_key)}, failed);
     if (failed)
     {
       fail_msg_writer() << *failed;
       return true;
     }
 
-    if (response->size() != 1)
+    if (response.size() != 1)
     {
       fail_msg_writer() << tr("Could not find service node in service node list, please make sure it is registered first.");
       return true;
     }
 
-    const auto& snode_info = response->front();
+    const auto& snode_info = response.front();
     const uint64_t DUST = MAX_NUMBER_OF_CONTRIBUTORS;
 
     if (amount == 0)
@@ -6133,11 +6133,17 @@ bool simple_wallet::stake(const std::vector<std::string> &args_)
     return true;
   }
 
+  if (!m_wallet->contains_address(info.address))
+  {
+    fail_msg_writer() << tr("The specified address must be owned by this wallet.");
+    return true;
+  }
+
   if (autostake)
   {
     {
       boost::optional<std::string> failed;
-      const std::vector<cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::entry> *response =
+      const std::vector<cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::entry> response =
         m_wallet->get_service_nodes({epee::string_tools::pod_to_hex(service_node_key)}, failed);
 
       if (failed)
@@ -6146,13 +6152,13 @@ bool simple_wallet::stake(const std::vector<std::string> &args_)
         return true;
       }
 
-      if (response->size() != 1)
+      if (response.size() != 1)
       {
         fail_msg_writer() << tr("Could not find service node in service node list, please make sure it is registered first.");
         return false;
       }
 
-      const auto& snode_info = response->front();
+      const auto& snode_info = response.front();
       bool preexisting_contributor = false;
       for (const auto& contributor : snode_info.contributors)
       {
@@ -6258,21 +6264,21 @@ bool simple_wallet::request_stake_unlock(const std::vector<std::string> &args_)
 
     using namespace cryptonote;
     boost::optional<std::string> failed;
-    const std::vector<COMMAND_RPC_GET_SERVICE_NODES::response::entry> *response = m_wallet->get_service_nodes({args_[0]}, failed);
+    const std::vector<COMMAND_RPC_GET_SERVICE_NODES::response::entry> response = m_wallet->get_service_nodes({args_[0]}, failed);
     if (failed)
     {
       fail_msg_writer() << *failed;
       return true;
     }
 
-    if (response->empty())
+    if (response.empty())
     {
       fail_msg_writer() << tr("No service node is known for: ") << args_[0];
       return true;
     }
 
     std::vector<COMMAND_RPC_GET_SERVICE_NODES::response::contribution> const *contributions = nullptr;
-    COMMAND_RPC_GET_SERVICE_NODES::response::entry const &node_info                         = (*response)[0];
+    COMMAND_RPC_GET_SERVICE_NODES::response::entry const &node_info                         = response[0];
     for (COMMAND_RPC_GET_SERVICE_NODES::response::contributor const &contributor : node_info.contributors)
     {
       address_parse_info address_info = {};

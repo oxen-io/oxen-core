@@ -5146,26 +5146,26 @@ void wallet2::get_payments(const crypto::hash& payment_id, std::list<wallet2::pa
 {
   auto range = m_payments.equal_range(payment_id);
   std::for_each(range.first, range.second, [&payments, &min_height, &subaddr_account, &subaddr_indices](const payment_container::value_type& x) {
-    if (min_height < x.second.m_block_height &&
-      (!subaddr_account || *subaddr_account == x.second.m_subaddr_index.major) &&
-      (subaddr_indices.empty() || subaddr_indices.count(x.second.m_subaddr_index.minor) == 1))
-    {
+      if (min_height < x.second.m_block_height &&
+          (!subaddr_account || *subaddr_account == x.second.m_subaddr_index.major) &&
+          (subaddr_indices.empty() || subaddr_indices.count(x.second.m_subaddr_index.minor) == 1))
+      {
       payments.push_back(x.second);
-    }
-  });
+      }
+      });
 }
 //----------------------------------------------------------------------------------------------------
 void wallet2::get_payments(std::list<std::pair<crypto::hash,wallet2::payment_details>>& payments, uint64_t min_height, uint64_t max_height, const boost::optional<uint32_t>& subaddr_account, const std::set<uint32_t>& subaddr_indices) const
 {
   auto range = std::make_pair(m_payments.begin(), m_payments.end());
   std::for_each(range.first, range.second, [&payments, &min_height, &max_height, &subaddr_account, &subaddr_indices](const payment_container::value_type& x) {
-    if (min_height < x.second.m_block_height && max_height >= x.second.m_block_height &&
-      (!subaddr_account || *subaddr_account == x.second.m_subaddr_index.major) &&
-      (subaddr_indices.empty() || subaddr_indices.count(x.second.m_subaddr_index.minor) == 1))
-    {
+      if (min_height < x.second.m_block_height && max_height >= x.second.m_block_height &&
+          (!subaddr_account || *subaddr_account == x.second.m_subaddr_index.major) &&
+          (subaddr_indices.empty() || subaddr_indices.count(x.second.m_subaddr_index.minor) == 1))
+      {
       payments.push_back(x);
-    }
-  });
+      }
+      });
 }
 //----------------------------------------------------------------------------------------------------
 void wallet2::get_payments_out(std::list<std::pair<crypto::hash,wallet2::confirmed_transfer_details>>& confirmed_payments,
@@ -5197,8 +5197,8 @@ void wallet2::get_unconfirmed_payments(std::list<std::pair<crypto::hash,wallet2:
 {
   for (auto i = m_unconfirmed_payments.begin(); i != m_unconfirmed_payments.end(); ++i) {
     if ((!subaddr_account || *subaddr_account == i->second.m_pd.m_subaddr_index.major) &&
-      (subaddr_indices.empty() || subaddr_indices.count(i->second.m_pd.m_subaddr_index.minor) == 1))
-    unconfirmed_payments.push_back(*i);
+        (subaddr_indices.empty() || subaddr_indices.count(i->second.m_pd.m_subaddr_index.minor) == 1))
+      unconfirmed_payments.push_back(*i);
   }
 }
 //----------------------------------------------------------------------------------------------------
@@ -5224,8 +5224,8 @@ void wallet2::rescan_spent()
     THROW_WALLET_EXCEPTION_IF(daemon_resp.status == CORE_RPC_STATUS_BUSY, error::daemon_busy, "is_key_image_spent");
     THROW_WALLET_EXCEPTION_IF(daemon_resp.status != CORE_RPC_STATUS_OK, error::is_key_image_spent_error, daemon_resp.status);
     THROW_WALLET_EXCEPTION_IF(daemon_resp.spent_status.size() != n_outputs, error::wallet_internal_error,
-      "daemon returned wrong response for is_key_image_spent, wrong amounts count = " +
-      std::to_string(daemon_resp.spent_status.size()) + ", expected " +  std::to_string(n_outputs));
+        "daemon returned wrong response for is_key_image_spent, wrong amounts count = " +
+        std::to_string(daemon_resp.spent_status.size()) + ", expected " +  std::to_string(n_outputs));
     std::copy(daemon_resp.spent_status.begin(), daemon_resp.spent_status.end(), std::back_inserter(spent_status));
   }
 
@@ -5297,15 +5297,17 @@ bool wallet2::is_transfer_unlocked(uint64_t unlock_time, uint64_t block_height, 
   if(block_height + CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE > get_blockchain_current_height())
     return false;
 
-  // TODO(doyle): RPC proxy, we need to cache this or it's going to be very expensive
-  if (!key_image)
+  if (!use_fork_rules(cryptonote::network_version_11_swarms))
+    return true;
+
+  if (!key_image) // TODO(loki): Try make all callees always pass in a key image for accuracy
     return true;
 
   blobdata binary_buf;
   binary_buf.reserve(sizeof(crypto::key_image));
   {
     boost::optional<std::string> failed;
-    std::vector<cryptonote::COMMAND_RPC_GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES::entry> const *blacklist =
+    std::shared_ptr<const std::vector<cryptonote::COMMAND_RPC_GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES::entry>> blacklist =
       m_node_rpc_proxy.get_service_node_blacklisted_key_images(failed);
     if (failed)
     {
@@ -5330,8 +5332,8 @@ bool wallet2::is_transfer_unlocked(uint64_t unlock_time, uint64_t block_height, 
 
   {
     boost::optional<std::string> failed;
-    const std::vector<cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::entry> *service_nodes_states =
-      m_node_rpc_proxy.get_service_nodes({}, failed);
+    std::shared_ptr<const std::vector<cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::entry>> service_nodes_states =
+      m_node_rpc_proxy.get_all_service_nodes(failed);
     if (failed)
     {
       LOG_PRINT_L1("Failed to query service node for locked transfers, assuming transfer not locked, reason: " << *failed);
@@ -6749,13 +6751,13 @@ bool wallet2::check_stake_allowed(const crypto::public_key& sn_key, const crypto
     return false;
   }
 
-  if (response->size() != 1)
+  if (response.size() != 1)
   {
     LOG_ERROR("Could not find service node in service node list, please make sure it is registered first.");
     return false;
   }
 
-  const auto& snode_info = response->front();
+  const auto& snode_info = response.front();
 
   const bool full = snode_info.contributors.size() >= MAX_NUMBER_OF_CONTRIBUTORS;
 
