@@ -162,6 +162,7 @@ namespace cryptonote
     bool stake(const std::vector<std::string> &args_);
     bool register_service_node(const std::vector<std::string> &args_);
     bool request_stake_unlock(const std::vector<std::string> &args_);
+    bool print_locked_stakes(const std::vector<std::string> &args_);
     bool locked_sweep_all(const std::vector<std::string> &args);
     bool sweep_main(uint64_t below, bool locked, const std::vector<std::string> &args);
     bool sweep_all(const std::vector<std::string> &args);

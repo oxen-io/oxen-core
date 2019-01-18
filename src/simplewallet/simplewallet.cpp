@@ -2369,6 +2369,10 @@ simple_wallet::simple_wallet()
                            boost::bind(&simple_wallet::request_stake_unlock, this, _1),
                            tr("request_stake_unlock <service node pubkey>"),
                            tr(""));
+  m_cmd_binder.set_handler("print_locked_stakes",
+                           boost::bind(&simple_wallet::print_locked_stakes, this, _1),
+                           tr("print_locked_stakes"),
+                           tr(""));
   m_cmd_binder.set_handler("sweep_unmixable",
                            boost::bind(&simple_wallet::sweep_unmixable, this, _1),
                            tr("Deprecated"));
@@ -6399,6 +6403,62 @@ bool simple_wallet::request_stake_unlock(const std::vector<std::string> &args_)
   {
     LOG_ERROR("unknown error");
     fail_msg_writer() << tr("unknown error");
+  }
+
+  return true;
+}
+//----------------------------------------------------------------------------------------------------
+bool simple_wallet::print_locked_stakes(const std::vector<std::string> &args_)
+{
+  if (!try_connect_to_daemon())
+    return true;
+
+  SCOPED_WALLET_UNLOCK();
+  {
+    using namespace cryptonote;
+    boost::optional<std::string> failed;
+    const std::vector<COMMAND_RPC_GET_SERVICE_NODES::response::entry> response = m_wallet->get_all_service_nodes(failed);
+    if (failed)
+    {
+      fail_msg_writer() << *failed;
+      return true;
+    }
+
+    std::string msg_buf;
+    for (COMMAND_RPC_GET_SERVICE_NODES::response::entry const &node_info : response)
+    {
+      for (COMMAND_RPC_GET_SERVICE_NODES::response::contributor const &contributor : node_info.contributors)
+      {
+        address_parse_info address_info = {};
+        cryptonote::get_account_address_from_str(address_info, m_wallet->nettype(), contributor.address);
+        if (!m_wallet->contains_address(address_info.address))
+          continue;
+
+        msg_buf.reserve(512);
+        for (size_t i = 0; i < contributor.locked_contributions.size(); ++i)
+        {
+          COMMAND_RPC_GET_SERVICE_NODES::response::contribution const &contribution = contributor.locked_contributions[i];
+
+          msg_buf.append("Service Node: ");
+          msg_buf.append(node_info.service_node_pubkey);
+          msg_buf.append("\n");
+          msg_buf.append("Total Locked: ");
+          msg_buf.append(std::to_string(contributor.amount));
+          msg_buf.append("\n");
+          msg_buf.append("    Image/Amount: ");
+          msg_buf.append(contribution.key_image);
+          msg_buf.append("/");
+          msg_buf.append(std::to_string(contribution.amount));
+          msg_buf.append("\n");
+
+          if (i < (contributor.locked_contributions.size() - 1))
+            msg_buf.append("\n");
+        }
+      }
+    }
+
+    if (msg_buf.size() > 0)
+      tools::success_msg_writer() << msg_buf;
   }
 
   return true;
