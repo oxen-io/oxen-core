@@ -163,6 +163,7 @@ namespace cryptonote
     bool register_service_node(const std::vector<std::string> &args_);
     bool request_stake_unlock(const std::vector<std::string> &args_);
     bool print_locked_stakes(const std::vector<std::string> &args_);
+    bool print_locked_stakes_main(const std::vector<std::string> &args_, bool print_result);
     bool locked_sweep_all(const std::vector<std::string> &args);
     bool sweep_main(uint64_t below, bool locked, const std::vector<std::string> &args);
     bool sweep_all(const std::vector<std::string> &args);
@@ -386,6 +387,7 @@ namespace cryptonote
     uint64_t m_restore_height;  // optional
     bool m_do_not_relay;
     bool m_use_english_language_names;
+    bool m_has_locked_key_images;
 
     epee::console_handlers_binder m_cmd_binder;
 

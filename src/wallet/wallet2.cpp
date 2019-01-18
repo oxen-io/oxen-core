@@ -12301,6 +12301,12 @@ bool wallet2::contains_address(const cryptonote::account_public_address& address
   return false;
 }
 //----------------------------------------------------------------------------------------------------
+bool wallet2::contains_key_image(const crypto::key_image& key_image) const {
+  const auto &key_image_it = m_key_images.find(key_image);
+  bool result = (key_image_it != m_key_images.end());
+  return result;
+}
+//----------------------------------------------------------------------------------------------------
 bool wallet2::generate_signature_for_request_stake_unlock(crypto::key_image const &key_image, crypto::signature &signature, uint32_t &nonce) const
 {
   const auto &key_image_it = m_key_images.find(key_image);
