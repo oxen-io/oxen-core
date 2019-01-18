@@ -1257,6 +1257,9 @@ namespace service_nodes
     // But there's something subtly off when using registration height causing syncing problems.
     if (m_blockchain.get_hard_fork_version(block_height) == cryptonote::network_version_9_service_nodes)
     {
+      if (block_height < lock_blocks)
+        return expired_nodes;
+
       const uint64_t expired_nodes_block_height = block_height - lock_blocks;
       std::vector<std::pair<cryptonote::blobdata, cryptonote::block>> blocks;
       if (!m_blockchain.get_blocks(expired_nodes_block_height, 1, blocks))
