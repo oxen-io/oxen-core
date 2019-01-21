@@ -5344,7 +5344,7 @@ bool wallet2::is_transfer_unlocked(uint64_t unlock_time, uint64_t block_height, 
       {
         address_parse_info address_info = {};
         cryptonote::get_account_address_from_str(address_info, nettype(), contributor.address);
-        if (!contains_address(address_info.address))
+        if (!contains_primary_address(address_info.address))
           break;
 
         for (cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::contribution const &contribution : contributor.locked_contributions)
@@ -12297,6 +12297,16 @@ bool wallet2::contains_address(const cryptonote::account_public_address& address
     for (uint32_t j = 0; j < subaddresses; j++)
       if (get_subaddress({i, j}) == address)
         return true;
+  }
+  return false;
+}
+//----------------------------------------------------------------------------------------------------
+bool wallet2::contains_primary_address(const cryptonote::account_public_address& address) const {
+  size_t accounts = get_num_subaddress_accounts() + m_subaddress_lookahead_major;
+  for (uint32_t i = 0; i < accounts; i++)
+  {
+    if (get_subaddress({i, 0}) == address)
+      return true;
   }
   return false;
 }

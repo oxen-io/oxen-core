@@ -6294,7 +6294,7 @@ bool simple_wallet::request_stake_unlock(const std::vector<std::string> &args_)
       // TODO(doyle): INF_STAKING(doyle): We don't allow staking not from the owner address yet
       // When we allow staking on behalf of another address, this won't cut it
       cryptonote::get_account_address_from_str(address_info, m_wallet->nettype(), contributor.address);
-      if (!m_wallet->contains_address(address_info.address))
+      if (!m_wallet->contains_primary_address(address_info.address))
         continue;
 
       contributions = &contributor.locked_contributions;
@@ -6416,8 +6416,6 @@ bool simple_wallet::print_locked_stakes_main(const std::vector<std::string> &arg
     return false;
 
   bool has_locked_stakes = false;
-  SCOPED_WALLET_UNLOCK();
-
   std::string msg_buf;
   {
     using namespace cryptonote;
@@ -6431,11 +6429,12 @@ bool simple_wallet::print_locked_stakes_main(const std::vector<std::string> &arg
 
     for (COMMAND_RPC_GET_SERVICE_NODES::response::entry const &node_info : response)
     {
+      bool only_once = true;
       for (COMMAND_RPC_GET_SERVICE_NODES::response::contributor const &contributor : node_info.contributors)
       {
         address_parse_info address_info = {};
         cryptonote::get_account_address_from_str(address_info, m_wallet->nettype(), contributor.address);
-        if (!m_wallet->contains_address(address_info.address))
+        if (!m_wallet->contains_primary_address(address_info.address))
           continue;
 
         for (size_t i = 0; i < contributor.locked_contributions.size(); ++i)
@@ -6447,21 +6446,33 @@ bool simple_wallet::print_locked_stakes_main(const std::vector<std::string> &arg
             continue;
 
           msg_buf.reserve(512);
+          if (only_once)
+          {
+            only_once = false;
+            msg_buf.append("Service Node: ");
+            msg_buf.append(node_info.service_node_pubkey);
+            msg_buf.append("\n");
 
-          msg_buf.append("Service Node: ");
-          msg_buf.append(node_info.service_node_pubkey);
-          msg_buf.append("\n");
-          msg_buf.append("Total Locked: ");
-          msg_buf.append(cryptonote::print_money(contributor.amount));
-          msg_buf.append("\n");
-          msg_buf.append("    Image/Amount: ");
-          msg_buf.append(contribution.key_image);
-          msg_buf.append("/");
+            msg_buf.append("Total Locked: ");
+            msg_buf.append(cryptonote::print_money(contributor.amount));
+            msg_buf.append("\n");
+
+            msg_buf.append("Amount/Key Image: ");
+          }
+
           msg_buf.append(cryptonote::print_money(contribution.amount));
+          msg_buf.append("/");
+          msg_buf.append(contribution.key_image);
           msg_buf.append("\n");
 
           if (i < (contributor.locked_contributions.size() - 1))
+          {
+            msg_buf.append("                  ");
+          }
+          else
+          {
             msg_buf.append("\n");
+          }
         }
       }
     }
@@ -6478,7 +6489,6 @@ bool simple_wallet::print_locked_stakes_main(const std::vector<std::string> &arg
     }
 
     bool once_only = true;
-
     cryptonote::blobdata binary_buf;
     binary_buf.reserve(sizeof(crypto::key_image));
     for (size_t i = 0; i < response.size(); ++i)
@@ -6505,12 +6515,10 @@ bool simple_wallet::print_locked_stakes_main(const std::vector<std::string> &arg
         once_only = false;
       }
 
-      msg_buf.append("  Key Image: ");
-      msg_buf.append(entry.key_image);
-      msg_buf.append("\n");
-
-      msg_buf.append("    Unlock Height: ");
+      msg_buf.append("  Unlock Height/Key Image: ");
       msg_buf.append(std::to_string(entry.unlock_height));
+      msg_buf.append("/");
+      msg_buf.append(entry.key_image);
       msg_buf.append("\n");
 
       if (i < (response.size() - 1))
@@ -6526,8 +6534,12 @@ bool simple_wallet::print_locked_stakes_main(const std::vector<std::string> &arg
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::print_locked_stakes(const std::vector<std::string> &args_)
 {
-  bool result = print_locked_stakes_main(args_, true/*print_result*/);
-  return result;
+  if (!try_connect_to_daemon())
+    return false;
+  SCOPED_WALLET_UNLOCK();
+
+  print_locked_stakes_main(args_, true/*print_result*/);
+  return true;
 }
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::sweep_unmixable(const std::vector<std::string> &args_)
