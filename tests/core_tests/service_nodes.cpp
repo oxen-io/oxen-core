@@ -335,7 +335,7 @@ bool test_zero_fee_deregister::generate(std::vector<test_event_entry> &events)
 
 // Test if a person registers onto the network and they get included in the nodes to test (i.e. heights 0, 5, 10). If
 // they get dereigstered in the nodes to test, height 5, and rejoin the network before height 10 (and are in the nodes
-// to test), they don't get deregistered. This scenario will most likely happen with an autostaker.
+// to test), they don't get deregistered.
 test_deregister_safety_buffer::test_deregister_safety_buffer() {
   REGISTER_CALLBACK_METHOD(test_deregister_safety_buffer, mark_invalid_tx);
 }

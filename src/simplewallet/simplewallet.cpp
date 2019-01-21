@@ -74,16 +74,6 @@
 #include "version.h"
 #include <stdexcept>
 #include "int-util.h"
-#include "common/threadpool.h"
-#include "daemonizer/posix_fork.h"
-#ifndef WIN32
-#include <cstdlib>
-#include <fcntl.h>
-#include <unistd.h>
-#include <stdexcept>
-#include <string>
-#include <sys/stat.h>
-#endif
 
 #ifdef WIN32
 #include <boost/locale.hpp>
@@ -188,17 +178,6 @@ namespace
 
     buf.trim();
     return buf;
-  }
-
-  bool input_line_and_parse_yes_no_result(char const *prompt)
-  {
-    std::string prompt_yes_no = std::string(prompt) + " (Y/Yes/N/No): ";
-    std::string result        = input_line(prompt_yes_no);
-
-    if (std::cin.eof())
-      return false;
-
-    return command_line::is_yes(result);
   }
 
   boost::optional<tools::password_container> password_prompter(const char *prompt, bool verify)
@@ -2282,14 +2261,6 @@ bool simple_wallet::set_device_name(const std::vector<std::string> &args/* = std
   return true;
 }
 
-bool simple_wallet::set_fork_on_autostake(const std::vector<std::string> &args/* = std::vector<std::string>()*/)
-{
-  parse_bool_and_use(args[1], [&](bool r) {
-    m_wallet->fork_on_autostake(r);
-  });
-  return true;
-}
-
 bool simple_wallet::help(const std::vector<std::string> &args/* = std::vector<std::string>()*/)
 {
   if(args.empty())
@@ -2310,65 +2281,65 @@ simple_wallet::simple_wallet()
   , m_auto_refresh_enabled(false)
   , m_auto_refresh_refreshing(false)
   , m_in_manual_refresh(false)
-  , m_current_subaddress_account(0)
+    , m_current_subaddress_account(0)
 {
   m_cmd_binder.set_handler("start_mining",
-                           boost::bind(&simple_wallet::start_mining, this, _1),
-                           tr("start_mining [<number_of_threads>] [bg_mining] [ignore_battery]"),
-                           tr("Start mining in the daemon (bg_mining and ignore_battery are optional booleans)."));
+      boost::bind(&simple_wallet::start_mining, this, _1),
+      tr("start_mining [<number_of_threads>] [bg_mining] [ignore_battery]"),
+      tr("Start mining in the daemon (bg_mining and ignore_battery are optional booleans)."));
   m_cmd_binder.set_handler("stop_mining",
-                           boost::bind(&simple_wallet::stop_mining, this, _1),
-                           tr("Stop mining in the daemon."));
+      boost::bind(&simple_wallet::stop_mining, this, _1),
+      tr("Stop mining in the daemon."));
   m_cmd_binder.set_handler("set_daemon",
-                           boost::bind(&simple_wallet::set_daemon, this, _1),
-                           tr("set_daemon <host>[:<port>] [trusted|untrusted]"),
-                           tr("Set another daemon to connect to."));
+      boost::bind(&simple_wallet::set_daemon, this, _1),
+      tr("set_daemon <host>[:<port>] [trusted|untrusted]"),
+      tr("Set another daemon to connect to."));
   m_cmd_binder.set_handler("save_bc",
-                           boost::bind(&simple_wallet::save_bc, this, _1),
-                           tr("Save the current blockchain data."));
+      boost::bind(&simple_wallet::save_bc, this, _1),
+      tr("Save the current blockchain data."));
   m_cmd_binder.set_handler("refresh",
-                           boost::bind(&simple_wallet::refresh, this, _1),
-                           tr("Synchronize the transactions and balance."));
+      boost::bind(&simple_wallet::refresh, this, _1),
+      tr("Synchronize the transactions and balance."));
   m_cmd_binder.set_handler("balance",
-                           boost::bind(&simple_wallet::show_balance, this, _1),
-                           tr("balance [detail]"),
-                           tr("Show the wallet's balance of the currently selected account."));
+      boost::bind(&simple_wallet::show_balance, this, _1),
+      tr("balance [detail]"),
+      tr("Show the wallet's balance of the currently selected account."));
   m_cmd_binder.set_handler("incoming_transfers",
-                           boost::bind(&simple_wallet::show_incoming_transfers, this, _1),
-                           tr("incoming_transfers [available|unavailable] [verbose] [index=<N1>[,<N2>[,...]]]"),
-                           tr("Show the incoming transfers, all or filtered by availability and address index.\n\n"
-                              "Output format:\n"
-                              "Amount, Spent(\"T\"|\"F\"), \"locked\"|\"unlocked\", RingCT, Global Index, Transaction Hash, Address Index, [Public Key, Key Image] "));
+      boost::bind(&simple_wallet::show_incoming_transfers, this, _1),
+      tr("incoming_transfers [available|unavailable] [verbose] [index=<N1>[,<N2>[,...]]]"),
+      tr("Show the incoming transfers, all or filtered by availability and address index.\n\n"
+        "Output format:\n"
+        "Amount, Spent(\"T\"|\"F\"), \"locked\"|\"unlocked\", RingCT, Global Index, Transaction Hash, Address Index, [Public Key, Key Image] "));
   m_cmd_binder.set_handler("payments",
-                           boost::bind(&simple_wallet::show_payments, this, _1),
-                           tr("payments <PID_1> [<PID_2> ... <PID_N>]"),
-                           tr("Show the payments for the given payment IDs."));
+      boost::bind(&simple_wallet::show_payments, this, _1),
+      tr("payments <PID_1> [<PID_2> ... <PID_N>]"),
+      tr("Show the payments for the given payment IDs."));
   m_cmd_binder.set_handler("bc_height",
-                           boost::bind(&simple_wallet::show_blockchain_height, this, _1),
-                           tr("Show the blockchain height."));
+      boost::bind(&simple_wallet::show_blockchain_height, this, _1),
+      tr("Show the blockchain height."));
   m_cmd_binder.set_handler("transfer", boost::bind(&simple_wallet::transfer, this, _1),
-                           tr("transfer [index=<N1>[,<N2>,...]] [<priority>] (<URI> | <address> <amount>) [<payment_id>]"),
-                           tr("Transfer <amount> to <address>. If the parameter \"index=<N1>[,<N2>,...]\" is specified, the wallet uses outputs received by addresses of those indices. If omitted, the wallet randomly chooses address indices to be used. In any case, it tries its best not to combine outputs across multiple addresses. <priority> is the priority of the transaction. The higher the priority, the higher the transaction fee. Valid values in priority order (from lowest to highest) are: unimportant, normal, elevated, priority. If omitted, the default value (see the command \"set priority\") is used. Multiple payments can be made at once by adding <address_2> <amount_2> etcetera (before the payment ID, if it's included)"));
+      tr("transfer [index=<N1>[,<N2>,...]] [<priority>] (<URI> | <address> <amount>) [<payment_id>]"),
+      tr("Transfer <amount> to <address>. If the parameter \"index=<N1>[,<N2>,...]\" is specified, the wallet uses outputs received by addresses of those indices. If omitted, the wallet randomly chooses address indices to be used. In any case, it tries its best not to combine outputs across multiple addresses. <priority> is the priority of the transaction. The higher the priority, the higher the transaction fee. Valid values in priority order (from lowest to highest) are: unimportant, normal, elevated, priority. If omitted, the default value (see the command \"set priority\") is used. Multiple payments can be made at once by adding <address_2> <amount_2> etcetera (before the payment ID, if it's included)"));
   m_cmd_binder.set_handler("locked_transfer",
-                           boost::bind(&simple_wallet::locked_transfer, this, _1),
-                           tr("locked_transfer [index=<N1>[,<N2>,...]] [<priority>] (<URI> | <addr> <amount>) <lockblocks> [<payment_id>]"),
-                           tr("Transfer <amount> to <address> and lock it for <lockblocks> (max. 1000000). If the parameter \"index=<N1>[,<N2>,...]\" is specified, the wallet uses outputs received by addresses of those indices. If omitted, the wallet randomly chooses address indices to be used. In any case, it tries its best not to combine outputs across multiple addresses. <priority> is the priority of the transaction. The higher the priority, the higher the transaction fee. Valid values in priority order (from lowest to highest) are: unimportant, normal, elevated, priority. If omitted, the default value (see the command \"set priority\") is used. Multiple payments can be made at once by adding URI_2 or <address_2> <amount_2> etcetera (before the payment ID, if it's included)"));
+      boost::bind(&simple_wallet::locked_transfer, this, _1),
+      tr("locked_transfer [index=<N1>[,<N2>,...]] [<priority>] (<URI> | <addr> <amount>) <lockblocks> [<payment_id>]"),
+      tr("Transfer <amount> to <address> and lock it for <lockblocks> (max. 1000000). If the parameter \"index=<N1>[,<N2>,...]\" is specified, the wallet uses outputs received by addresses of those indices. If omitted, the wallet randomly chooses address indices to be used. In any case, it tries its best not to combine outputs across multiple addresses. <priority> is the priority of the transaction. The higher the priority, the higher the transaction fee. Valid values in priority order (from lowest to highest) are: unimportant, normal, elevated, priority. If omitted, the default value (see the command \"set priority\") is used. Multiple payments can be made at once by adding URI_2 or <address_2> <amount_2> etcetera (before the payment ID, if it's included)"));
   m_cmd_binder.set_handler("locked_sweep_all",
-                           boost::bind(&simple_wallet::locked_sweep_all, this, _1),
-                           tr("locked_sweep_all [index=<N1>[,<N2>,...]] [<priority>] <address> <lockblocks> [<payment_id>]"),
-                           tr("Send all unlocked balance to an address and lock it for <lockblocks> (max. 1000000). If the parameter \"index<N1>[,<N2>,...]\" is specified, the wallet sweeps outputs received by those address indices. If omitted, the wallet randomly chooses an address index to be used. In any case, it tries its best not to combine outputs across multiple addresses. <priority> is the priority of the sweep. The higher the priority, the higher the transaction fee. Valid values in priority order (from lowest to highest) are: unimportant, normal, elevated, priority. If omitted, the default value (see the command \"set priority\") is used."));
+      boost::bind(&simple_wallet::locked_sweep_all, this, _1),
+      tr("locked_sweep_all [index=<N1>[,<N2>,...]] [<priority>] <address> <lockblocks> [<payment_id>]"),
+      tr("Send all unlocked balance to an address and lock it for <lockblocks> (max. 1000000). If the parameter \"index<N1>[,<N2>,...]\" is specified, the wallet sweeps outputs received by those address indices. If omitted, the wallet randomly chooses an address index to be used. In any case, it tries its best not to combine outputs across multiple addresses. <priority> is the priority of the sweep. The higher the priority, the higher the transaction fee. Valid values in priority order (from lowest to highest) are: unimportant, normal, elevated, priority. If omitted, the default value (see the command \"set priority\") is used."));
   m_cmd_binder.set_handler("register_service_node",
-                           boost::bind(&simple_wallet::register_service_node, this, _1),
-                           tr("register_service_node [index=<N1>[,<N2>,...]] [priority] [auto] <operator cut> <address1> <fraction1> [<address2> <fraction2> [...]] <expiration timestamp> <pubkey> <signature>"),
-                           tr("Send <amount> to this wallet's main account, locked for the required staking time plus a small buffer. If the parameter \"index<N1>[,<N2>,...]\" is specified, the wallet stakes outputs received by those address indices. <priority> is the priority of the stake. The higher the priority, the higher the transaction fee. Valid values in priority order (from lowest to highest) are: unimportant, normal, elevated, priority. If omitted, the default value (see the command \"set priority\") is used."));
+      boost::bind(&simple_wallet::register_service_node, this, _1),
+      tr("register_service_node [index=<N1>[,<N2>,...]] [priority] [auto] <operator cut> <address1> <fraction1> [<address2> <fraction2> [...]] <expiration timestamp> <pubkey> <signature>"),
+      tr("Send <amount> to this wallet's main account, locked for the required staking time plus a small buffer. If the parameter \"index<N1>[,<N2>,...]\" is specified, the wallet stakes outputs received by those address indices. <priority> is the priority of the stake. The higher the priority, the higher the transaction fee. Valid values in priority order (from lowest to highest) are: unimportant, normal, elevated, priority. If omitted, the default value (see the command \"set priority\") is used."));
   m_cmd_binder.set_handler("stake",
-                           boost::bind(&simple_wallet::stake, this, _1),
-                           tr("stake [index=<N1>[,<N2>,...]] [priority] <service node pubkey> <address> <amount>"),
-                           tr("Send all unlocked balance to an address. If the parameter \"index<N1>[,<N2>,...]\" is specified, the wallet sweeps outputs received by those address indices. If omitted, the wallet randomly chooses an address index to be used. If the parameter \"outputs=<N>\" is specified and  N > 0, wallet splits the transaction into N even outputs."));
+      boost::bind(&simple_wallet::stake, this, _1),
+      tr("stake [index=<N1>[,<N2>,...]] [priority] <service node pubkey> <address> <amount>"),
+      tr("Send all unlocked balance to an address. If the parameter \"index<N1>[,<N2>,...]\" is specified, the wallet sweeps outputs received by those address indices. If omitted, the wallet randomly chooses an address index to be used. If the parameter \"outputs=<N>\" is specified and  N > 0, wallet splits the transaction into N even outputs."));
   m_cmd_binder.set_handler("request_stake_unlock",
-                           boost::bind(&simple_wallet::request_stake_unlock, this, _1),
-                           tr("request_stake_unlock <service node pubkey>"),
-                           tr(""));
+      boost::bind(&simple_wallet::request_stake_unlock, this, _1),
+      tr("request_stake_unlock <service node pubkey>"),
+      tr(""));
   m_cmd_binder.set_handler("print_locked_stakes",
                            boost::bind(&simple_wallet::print_locked_stakes, this, _1),
                            tr("print_locked_stakes"),
@@ -2732,7 +2703,6 @@ bool simple_wallet::set_variable(const std::vector<std::string> &args)
     success_msg_writer() << "segregation-height = " << m_wallet->segregation_height();
     success_msg_writer() << "ignore-fractional-outputs = " << m_wallet->ignore_fractional_outputs();
     success_msg_writer() << "device_name = " << m_wallet->device_name();
-    success_msg_writer() << "fork-on-autostake = " << m_wallet->fork_on_autostake();
     return true;
   }
   else
@@ -2788,7 +2758,6 @@ bool simple_wallet::set_variable(const std::vector<std::string> &args)
     CHECK_SIMPLE_VARIABLE("segregation-height", set_segregation_height, tr("unsigned integer"));
     CHECK_SIMPLE_VARIABLE("ignore-fractional-outputs", set_ignore_fractional_outputs, tr("0 or 1"));
     CHECK_SIMPLE_VARIABLE("device-name", set_device_name, tr("<device_name[:device_spec]>"));
-    CHECK_SIMPLE_VARIABLE("fork-on-autostake", set_fork_on_autostake, tr("0 or 1"));
   }
   fail_msg_writer() << tr("set: unrecognized argument(s)");
   return true;
@@ -5305,15 +5274,8 @@ bool simple_wallet::register_service_node_main(
     uint32_t priority,
     const std::vector<uint64_t>& portions,
     const std::vector<uint8_t>& extra,
-    std::set<uint32_t>& subaddr_indices,
-    bool autostake)
+    std::set<uint32_t>& subaddr_indices)
 {
-  if (autostake)
-  {
-    if (!try_connect_to_daemon(true))
-      return true;
-  }
-
   m_wallet->refresh(false);
   if (expiration_timestamp <= (uint64_t)time(nullptr) + 600 /* 10 minutes */)
   {
@@ -5333,11 +5295,6 @@ bool simple_wallet::register_service_node_main(
 
   if (!m_wallet->is_synced() || bc_height < 10)
   {
-    if (autostake)
-    {
-      fail_msg_writer() << tr("Wallet is not synced");
-      return true;
-    }
     fail_msg_writer() << tr("Wallet not synced. Best guess for the height is ") << bc_height;
     std::string accepted = input_line("Is this correct [y/yes/n/no]? ");
     if (std::cin.eof())
@@ -5386,8 +5343,6 @@ bool simple_wallet::register_service_node_main(
 
       if (!can_reregister)
       {
-        if (!autostake)
-          fail_msg_writer() << tr("This service node is already registered");
         return true;
       }
     }
@@ -5489,21 +5444,15 @@ bool simple_wallet::register_service_node_main(
         locked_blocks %
         print_money(total_fee);
     }
-    if (autostake)
-    {
-      success_msg_writer() << prompt.str();
-    }
-    else
-    {
-      std::string accepted = input_line(prompt.str());
-      if (std::cin.eof())
-        return true;
-      if (!command_line::is_yes(accepted))
-      {
-        fail_msg_writer() << tr("transaction cancelled.");
 
-        return true;
-      }
+    std::string accepted = input_line(prompt.str());
+    if (std::cin.eof())
+      return true;
+    if (!command_line::is_yes(accepted))
+    {
+      fail_msg_writer() << tr("transaction cancelled.");
+
+      return true;
     }
 
     // actually commit the transactions
@@ -5561,7 +5510,7 @@ bool simple_wallet::register_service_node_main(
     fail_msg_writer() << tr("unknown error");
   }
 
-  if (submitted_to_network && !autostake)
+  if (submitted_to_network)
   {
     success_msg_writer() << tr("Wait for transaction to be included in a block before registration is complete.\n")
                          << tr("Use the print_sn command in the daemon to check the status.");
@@ -5569,19 +5518,6 @@ bool simple_wallet::register_service_node_main(
 
   return true;
 }
-
-static const char ASK_PASSWORD_MUST_BE_OFF_MSG[] = "Cannot autostake with ask-password set to true, passwords are scrubbed from memory after use. You must enter \"set ask-password 0\" to allow autostaking to work and disable scrubbing.";
-static bool prompt_autostaking_non_trusted_contributors_warning()
-{
-  success_msg_writer(false/*color*/)
-      << tr("Auto staking to a reserved service node with non-trusted contributors may lock up your loki for the staking duration "
-            "if they do not restake after service node expiration.")
-      << tr("\n\nIf this behaviour is not desirable, please reuse the staking command without the auto command");
-  bool result = input_line_and_parse_yes_no_result("Accept auto staking towards a reserved service node");
-  return result;
-}
-
-const int AUTOSTAKE_INTERVAL = 60 * 40; // once every 40 minutes.
 
 bool simple_wallet::register_service_node(const std::vector<std::string> &args_)
 {
@@ -5618,19 +5554,12 @@ bool simple_wallet::register_service_node(const std::vector<std::string> &args_)
   std::vector<cryptonote::account_public_address> addresses;
   std::vector<uint64_t> portions;
   uint64_t portions_for_operator;
-  bool autostake;
   std::string err_msg;
-  if (!service_nodes::convert_registration_args(m_wallet->nettype(), address_portions_args, addresses, portions, portions_for_operator, autostake, err_msg))
+  if (!service_nodes::convert_registration_args(m_wallet->nettype(), address_portions_args, addresses, portions, portions_for_operator, err_msg))
   {
     fail_msg_writer() << tr("Could not convert registration args");
     if (err_msg != "") fail_msg_writer() << err_msg;
     fail_msg_writer() << tr("Usage: register_service_node [index=<N1>[,<N2>,...]] [priority] [auto] <operator cut> <address1> <fraction1> [<address2> <fraction2> [...]] <expiration timestamp> <service node pubkey> <signature>");
-    return true;
-  }
-
-  if (m_wallet->ask_password() && autostake)
-  {
-    fail_msg_writer() << tr(ASK_PASSWORD_MUST_BE_OFF_MSG);
     return true;
   }
 
@@ -5686,43 +5615,7 @@ bool simple_wallet::register_service_node(const std::vector<std::string> &args_)
   }
 
   add_service_node_contributor_to_tx_extra(extra, address);
-
-  if (autostake)
-  {
-    bool is_open_service_node = portions_for_operator != STAKING_PORTIONS;
-    if (is_open_service_node || portions.size() > 1)
-    {
-      if (!prompt_autostaking_non_trusted_contributors_warning())
-        return true;
-    }
-
-    stop();
-
-#ifndef WIN32 // NOTE: Fork not supported on Windows
-    if (m_wallet->fork_on_autostake())
-    {
-      success_msg_writer(true /*color*/) << tr("Successfully entered autostaking mode, this wallet is moving into the background to automatically renew your service node every period.");
-      tools::threadpool::getInstance().stop();
-      posix::fork("");
-      tools::threadpool::getInstance().start();
-    }
-    else
-#endif
-    {
-      success_msg_writer(true /*color*/) << tr("Successfully entered autostaking mode, please leave this wallet running to automatically renew your service node every period.");
-    }
-
-    while (true)
-    {
-      if (!register_service_node_main(service_node_key_as_str, expiration_timestamp, address, priority, portions, extra, subaddr_indices, autostake))
-        break;
-      m_idle_cond.wait_for(lock, boost::chrono::seconds(AUTOSTAKE_INTERVAL)); // lock implicitly defined in SCOPED_WALLET_UNLOCK()
-    }
-  }
-  else
-  {
-    register_service_node_main(service_node_key_as_str, expiration_timestamp, address, priority, portions, extra, subaddr_indices, autostake);
-  }
+  register_service_node_main(service_node_key_as_str, expiration_timestamp, address, priority, portions, extra, subaddr_indices);
 
   return true;
 }
@@ -5733,15 +5626,8 @@ bool simple_wallet::stake_main(
     uint32_t priority,
     std::set<uint32_t>& subaddr_indices,
     uint64_t amount,
-    double amount_fraction,
-    bool autostake)
+    double amount_fraction)
 {
-  if (autostake)
-  {
-    if (!try_connect_to_daemon(true))
-      return true;
-  }
-
   // sanity check address is not subaddress incase this gets called somewhere else that assumes it can be
   if (parse_info.is_subaddress)
   {
@@ -5766,11 +5652,6 @@ bool simple_wallet::stake_main(
 
   if (!m_wallet->is_synced() || bc_height < 10)
   {
-    if (autostake)
-    {
-      fail_msg_writer() << tr("Wallet is not synced");
-      return true;
-    }
     fail_msg_writer() << tr("Wallet not synced. Best guess for the height is ") << bc_height;
     std::string accepted = input_line("Is this correct [y/yes/n/no]? ");
     if (std::cin.eof())
@@ -5848,8 +5729,6 @@ bool simple_wallet::stake_main(
 
     if (can_contrib_total == 0)
     {
-      if (!autostake)
-        fail_msg_writer() << tr("You may not contribute any more to this service node");
       return true;
     }
     if (amount > can_contrib_total)
@@ -5875,7 +5754,7 @@ bool simple_wallet::stake_main(
           amount = must_contrib_total;
           success_msg_writer() << tr("Seeing as this is insufficient by dust amounts, amount was increased automatically to ") << print_money(must_contrib_total);
         }
-        else if (!is_preexisting_contributor || autostake)
+        else if (!is_preexisting_contributor)
         {
           if (!is_preexisting_contributor)
             fail_msg_writer() << tr("You must contribute atleast ") << print_money(must_contrib_total) << tr(" loki to become a contributor for this service node");
@@ -5961,27 +5840,21 @@ bool simple_wallet::stake_main(
         locked_blocks %
         print_money(total_fee);
     }
-    if (autostake)
-    {
-      success_msg_writer() << prompt.str();
-    }
-    else
-    {
-      std::string accepted = input_line(prompt.str());
-      if (std::cin.eof())
-        return true;
-      if (!command_line::is_yes(accepted))
-      {
-        fail_msg_writer() << tr("transaction cancelled.");
 
-        return true;
-      }
+    std::string accepted = input_line(prompt.str());
+    if (std::cin.eof())
+      return true;
+    if (!command_line::is_yes(accepted))
+    {
+      fail_msg_writer() << tr("transaction cancelled.");
+
+      return true;
     }
 
     time_t end_construct_time = time(nullptr);
     time_t construct_time     = end_construct_time - begin_construct_time;
 
-    if (!autostake && construct_time > (60 * 10))
+    if (construct_time > (60 * 10))
     {
       fail_msg_writer() << tr("Staking command has timed out due to waiting longer than 10 mins. This prevents the staking transaction from becoming invalid due to blocks mined interim. Please try again");
       return true;
@@ -6054,22 +5927,9 @@ bool simple_wallet::stake(const std::vector<std::string> &args_)
 
   priority = m_wallet->adjust_priority(priority);
 
-  bool autostake = false;
-  if (!local_args.empty() && local_args[0] == "auto")
-  {
-    autostake = true;
-    local_args.erase(local_args.begin());
-  }
-
   if (local_args.size() < 2)
   {
     fail_msg_writer() << tr("Usage: stake [index=<N1>[,<N2>,...]] [priority] [auto] <service node pubkey> <address> [<amount|percent%>]");
-    return true;
-  }
-
-  if (m_wallet->ask_password() && autostake)
-  {
-    fail_msg_writer() << tr(ASK_PASSWORD_MUST_BE_OFF_MSG);
     return true;
   }
 
@@ -6141,98 +6001,13 @@ bool simple_wallet::stake(const std::vector<std::string> &args_)
     return true;
   }
 
-  if (!m_wallet->contains_address(info.address))
+  if (!m_wallet->contains_primary_address(info.address))
   {
-    fail_msg_writer() << tr("The specified address must be owned by this wallet.");
+    fail_msg_writer() << tr("The specified address must be owned by this wallet and be the primary address of the account.");
     return true;
   }
 
-  if (autostake)
-  {
-    {
-      boost::optional<std::string> failed;
-      const std::vector<cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::entry> response =
-        m_wallet->get_service_nodes({epee::string_tools::pod_to_hex(service_node_key)}, failed);
-
-      if (failed)
-      {
-        fail_msg_writer() << *failed;
-        return true;
-      }
-
-      if (response.size() != 1)
-      {
-        fail_msg_writer() << tr("Could not find service node in service node list, please make sure it is registered first.");
-        return false;
-      }
-
-      const auto& snode_info = response.front();
-      bool preexisting_contributor = false;
-      for (const auto& contributor : snode_info.contributors)
-      {
-        preexisting_contributor = (contributor.address == address_str);
-        if (preexisting_contributor) break;
-      }
-
-      if (!preexisting_contributor)
-      {
-        // NOTE: Disallowed since there isn't a sensible way to recalculate the portions of the staker reliably
-        fail_msg_writer() << tr("Autostaking is disallowed for contributors who did not reserve a spot in a service node");
-        return false;
-      }
-
-      // Autostaking in reserved pools warning
-      if (snode_info.contributors.size() > 1 && !prompt_autostaking_non_trusted_contributors_warning())
-      {
-        return true;
-      }
-    }
-
-    if (amount_fraction == 0) // Fixed amount loki warning
-    {
-      success_msg_writer(false/*color*/) << tr("You're autostaking to a service node using a fixed amount of loki: ")
-          << print_money(amount)
-          << tr(".\nThe staking requirement will be different after the service node expires. Staking a fixed amount "
-                "may change your percentage of stake towards the service node and consequently your block reward allocation.")
-         << tr("\n\nIf this behaviour is not desirable, please reuse the staking command with a percentage sign.");
-
-      if (!input_line_and_parse_yes_no_result("Accept staking with a fixed amount of loki"))
-      {
-        fail_msg_writer() << tr("Staking transaction with fixed loki specified cancelled.");
-        return true;
-      }
-
-      success_msg_writer(false/*color*/) << "\n";
-    }
-
-    stop();
-#ifndef WIN32 // NOTE: Fork not supported on Windows
-    if (m_wallet->fork_on_autostake())
-    {
-      success_msg_writer(true /*color*/) << tr("Successfully entered autostaking mode, this wallet is moving into the background to automatically renew your service node every period.");
-      tools::threadpool::getInstance().stop();
-      posix::fork("");
-      tools::threadpool::getInstance().start();
-    }
-    else
-#endif
-    {
-      success_msg_writer(true /*color*/) << tr("Successfully entered autostaking mode, please leave this wallet running to automatically renew your service node every period.");
-    }
-
-
-    while (true)
-    {
-      if (!stake_main(service_node_key, info, priority, subaddr_indices, amount, amount_fraction, autostake))
-        break;
-      m_idle_cond.wait_for(lock, boost::chrono::seconds(AUTOSTAKE_INTERVAL)); // lock implicitly defined in SCOPED_WALLET_UNLOCK()
-    }
-  }
-  else
-  {
-    stake_main(service_node_key, info, priority, subaddr_indices, amount, amount_fraction, autostake);
-  }
-
+  stake_main(service_node_key, info, priority, subaddr_indices, amount, amount_fraction);
   return true;
 }
 //----------------------------------------------------------------------------------------------------

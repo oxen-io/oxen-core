@@ -1687,19 +1687,11 @@ namespace service_nodes
                                  std::vector<cryptonote::account_public_address>& addresses,
                                  std::vector<uint64_t>& portions,
                                  uint64_t& portions_for_operator,
-                                 bool& autostake,
                                  boost::optional<std::string&> err_msg)
   {
-    autostake = false;
-    if (!args.empty() && args[0] == "auto")
-    {
-      autostake = true;
-      args.erase(args.begin());
-    }
-
     if (args.size() % 2 == 0 || args.size() < 3)
     {
-      MERROR(tr("Usage: [auto] <operator cut> <address> <fraction> [<address> <fraction> [...]]]"));
+      MERROR(tr("Usage: <operator cut> <address> <fraction> [<address> <fraction> [...]]]"));
       return false;
     }
     if ((args.size()-1)/ 2 > MAX_NUMBER_OF_CONTRIBUTORS)
@@ -1783,14 +1775,13 @@ namespace service_nodes
     std::vector<cryptonote::account_public_address> addresses;
     std::vector<uint64_t> portions;
     uint64_t operator_portions;
-    bool autostake;
-    if (!convert_registration_args(nettype, args, addresses, portions, operator_portions, autostake, err_msg))
+    if (!convert_registration_args(nettype, args, addresses, portions, operator_portions, err_msg))
     {
       MERROR(tr("Could not convert registration args"));
       return false;
     }
 
-    uint64_t exp_timestamp = time(nullptr) + (autostake ? STAKING_AUTHORIZATION_EXPIRATION_AUTOSTAKE : STAKING_AUTHORIZATION_EXPIRATION_WINDOW);
+    uint64_t exp_timestamp = time(nullptr) + STAKING_AUTHORIZATION_EXPIRATION_WINDOW;
 
     crypto::hash hash;
     bool hashed = cryptonote::get_registration_hash(addresses, operator_portions, portions, exp_timestamp, hash);
