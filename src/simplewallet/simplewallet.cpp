@@ -6021,6 +6021,13 @@ bool simple_wallet::print_locked_stakes_main(const std::vector<std::string> &arg
             msg_buf.append(node_info.service_node_pubkey);
             msg_buf.append("\n");
 
+            msg_buf.append("Unlock Height: ");
+            if (node_info.requested_unlock_height == service_nodes::KEY_IMAGE_AWAITING_UNLOCK_HEIGHT)
+                msg_buf.append("Unlock not requested yet");
+            else
+                msg_buf.append(std::to_string(node_info.requested_unlock_height));
+            msg_buf.append("\n");
+
             msg_buf.append("Total Locked: ");
             msg_buf.append(cryptonote::print_money(contributor.amount));
             msg_buf.append("\n");
@@ -6094,8 +6101,17 @@ bool simple_wallet::print_locked_stakes_main(const std::vector<std::string> &arg
     }
   }
 
-  if (print_result && msg_buf.size() > 0)
-    tools::success_msg_writer() << msg_buf;
+  if (print_result)
+  {
+    if (has_locked_stakes)
+    {
+      tools::msg_writer() << msg_buf;
+    }
+    else
+    {
+      tools::msg_writer() << "No locked stakes known for this wallet on the network";
+    }
+  }
 
   return has_locked_stakes;
 }
