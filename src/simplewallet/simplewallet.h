@@ -164,6 +164,9 @@ namespace cryptonote
     bool print_locked_stakes(const std::vector<std::string> &args_);
     bool print_locked_stakes_main(const std::vector<std::string> &args_, bool print_result);
     bool locked_sweep_all(const std::vector<std::string> &args);
+
+    enum class sweep_type_t { stake, register_stake, all_or_below, single };
+    bool sweep_main_internal(sweep_type_t sweep_type, std::vector<tools::wallet2::pending_tx> &ptx_vector, cryptonote::address_parse_info const &dest);
     bool sweep_main(uint64_t below, bool locked, const std::vector<std::string> &args);
     bool sweep_all(const std::vector<std::string> &args);
     bool sweep_below(const std::vector<std::string> &args);

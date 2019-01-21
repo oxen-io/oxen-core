@@ -5388,119 +5388,14 @@ bool simple_wallet::register_service_node_main(
   bool submitted_to_network = false;
   try
   {
-    // figure out what tx will be necessary
+    // NOTE(loki): We know the address should always be a primary address and has no payment id, so we can ignore the subaddress/payment id field here
+    cryptonote::address_parse_info dest = {};
+    dest.address                        = address;
+
     auto ptx_vector = m_wallet->create_transactions_2(dsts, CRYPTONOTE_DEFAULT_TX_MIXIN, unlock_block /* unlock_time */, priority, extra, m_current_subaddress_account, subaddr_indices, true);
-
-    if (ptx_vector.empty())
-    {
-      fail_msg_writer() << tr("No outputs found, or daemon is not ready");
-      return true;
-    }
-
-    if (ptx_vector.size() > 1)
-    {
-      fail_msg_writer() << tr("Too many outputs. Please sweep_all first");
-      return true;
-    }
-
-    // give user total and fee, and prompt to confirm, and always set to atleast v3 to safeguard users against fork
-    uint64_t total_fee = 0, total_sent = 0;
-    for (size_t n = 0; n < ptx_vector.size(); ++n)
-    {
-      ptx_vector[n].tx.version = std::max((size_t)transaction::version_3_per_output_unlock_times, ptx_vector[n].tx.version);
-      total_fee += ptx_vector[n].fee;
-      for (auto i: ptx_vector[n].selected_transfers)
-        total_sent += m_wallet->get_transfer_details(i).amount();
-      total_sent -= ptx_vector[n].change_dts.amount + ptx_vector[n].fee;
-    }
-
-    std::ostringstream prompt;
-    for (size_t n = 0; n < ptx_vector.size(); ++n)
-    {
-      prompt << tr("\nTransaction ") << (n + 1) << "/" << ptx_vector.size() << ":\n";
-      subaddr_indices.clear();
-      for (uint32_t i : ptx_vector[n].construction_data.subaddr_indices)
-        subaddr_indices.insert(i);
-      for (uint32_t i : subaddr_indices)
-        prompt << boost::format(tr("Spending from address index %d\n")) % i;
-      if (subaddr_indices.size() > 1)
-        prompt << tr("WARNING: Outputs of multiple addresses are being used together, which might potentially compromise your privacy.\n");
-    }
-    if (m_wallet->print_ring_members() && !print_ring_members(ptx_vector, prompt))
-    {
-      fail_msg_writer() << tr("Error printing ring members");
-      return true;
-    }
-    if (ptx_vector.size() > 1) {
-      prompt << boost::format(tr("Staking %s for %u blocks in %llu transactions for a total fee of %s.  Is this okay?  (Y/Yes/N/No): ")) %
-        print_money(total_sent) %
-        locked_blocks %
-        ((unsigned long long)ptx_vector.size()) %
-        print_money(total_fee);
-    }
-    else {
-      prompt << boost::format(tr("Staking %s for %u blocks a total fee of %s.  Is this okay?  (Y/Yes/N/No): ")) %
-        print_money(total_sent) %
-        locked_blocks %
-        print_money(total_fee);
-    }
-
-    std::string accepted = input_line(prompt.str());
-    if (std::cin.eof())
-      return true;
-    if (!command_line::is_yes(accepted))
-    {
-      fail_msg_writer() << tr("transaction cancelled.");
-
-      return true;
-    }
-
-    // actually commit the transactions
-    if (m_wallet->multisig())
-    {
-      bool r = m_wallet->save_multisig_tx(ptx_vector, "multisig_loki_tx");
-      if (!r)
-      {
-        fail_msg_writer() << tr("Failed to write transaction(s) to file");
-      }
-      else
-      {
-        success_msg_writer(true) << tr("Unsigned transaction(s) successfully written to file: ") << "multisig_loki_tx";
-      }
-    }
-    else if (m_wallet->watch_only())
-    {
-      bool r = m_wallet->save_tx(ptx_vector, "unsigned_loki_tx");
-      if (!r)
-      {
-        fail_msg_writer() << tr("Failed to write transaction(s) to file");
-      }
-      else
-      {
-        success_msg_writer(true) << tr("Unsigned transaction(s) successfully written to file: ") << "unsigned_loki_tx";
-      }
-    }
-    else
-    {
-      commit_or_save(ptx_vector, m_do_not_relay);
-      submitted_to_network = true;
-    }
+    sweep_main_internal(sweep_type_t::register_stake, ptx_vector, dest);
   }
-  catch (const tools::error::not_enough_unlocked_money& e)
-  {
-    fail_msg_writer() << tr("Not enough money in unlocked balance");
-    std::string accepted = input_line((boost::format(tr("Discarding %s of unmixable outputs that cannot be spent, which can be undone by \"rescan_spent\".  Is this okay?  (Y/Yes/N/No): ")) % print_money(e.available())).str());
-    if (std::cin.eof())
-      return true;
-    if (command_line::is_yes(accepted))
-    {
-      try
-      {
-        m_wallet->discard_unmixable_outputs();
-      } catch (...) {}
-    }
-  }
-  catch (const std::exception &e)
+  catch (const std::exception& e)
   {
     handle_transfer_exception(std::current_exception(), m_wallet->is_trusted_daemon());
   }
@@ -5510,11 +5405,6 @@ bool simple_wallet::register_service_node_main(
     fail_msg_writer() << tr("unknown error");
   }
 
-  if (submitted_to_network)
-  {
-    success_msg_writer() << tr("Wait for transaction to be included in a block before registration is complete.\n")
-                         << tr("Use the print_sn command in the daemon to check the status.");
-  }
 
   return true;
 }
@@ -5766,9 +5656,7 @@ bool simple_wallet::stake_main(
   }
 
   std::vector<uint8_t> extra;
-
   add_service_node_pubkey_to_tx_extra(extra, service_node_key);
-
   add_service_node_contributor_to_tx_extra(extra, parse_info.address);
 
   vector<cryptonote::tx_destination_entry> dsts;
@@ -5784,110 +5672,16 @@ bool simple_wallet::stake_main(
 
   try
   {
-    // figure out what tx will be necessary
     auto ptx_vector = m_wallet->create_transactions_2(dsts, CRYPTONOTE_DEFAULT_TX_MIXIN, unlock_block /* unlock_time */, priority, extra, m_current_subaddress_account, subaddr_indices, true);
-
-    if (ptx_vector.empty())
-    {
-      fail_msg_writer() << tr("No outputs found, or daemon is not ready");
+    if (!sweep_main_internal(sweep_type_t::stake, ptx_vector, parse_info))
       return true;
-    }
-
-    if (ptx_vector.size() > 1)
-    {
-      fail_msg_writer() << tr("Too many outputs. Please sweep_all first");
-      return true;
-    }
-
-    // give user total and fee, and prompt to confirm, and always set to atleast v3 to safeguard users against fork
-    uint64_t total_fee = 0, total_sent = 0;
-    for (size_t n = 0; n < ptx_vector.size(); ++n)
-    {
-      ptx_vector[n].tx.version = std::max((size_t)transaction::version_3_per_output_unlock_times, ptx_vector[n].tx.version);
-      total_fee += ptx_vector[n].fee;
-      for (auto i: ptx_vector[n].selected_transfers)
-        total_sent += m_wallet->get_transfer_details(i).amount();
-      total_sent -= ptx_vector[n].change_dts.amount + ptx_vector[n].fee;
-    }
-
-    std::ostringstream prompt;
-    for (size_t n = 0; n < ptx_vector.size(); ++n)
-    {
-      prompt << tr("\nTransaction ") << (n + 1) << "/" << ptx_vector.size() << ":\n";
-      subaddr_indices.clear();
-      for (uint32_t i : ptx_vector[n].construction_data.subaddr_indices)
-        subaddr_indices.insert(i);
-      for (uint32_t i : subaddr_indices)
-        prompt << boost::format(tr("Spending from address index %d\n")) % i;
-      if (subaddr_indices.size() > 1)
-        prompt << tr("WARNING: Outputs of multiple addresses are being used together, which might potentially compromise your privacy.\n");
-    }
-    if (m_wallet->print_ring_members() && !print_ring_members(ptx_vector, prompt))
-    {
-      fail_msg_writer() << tr("Error printing ring members");
-      return true;
-    }
-    if (ptx_vector.size() > 1) {
-      prompt << boost::format(tr("Staking %s for %u blocks in %llu transactions for a total fee of %s.  Is this okay?  (Y/Yes/N/No): ")) %
-        print_money(total_sent) %
-        locked_blocks %
-        ((unsigned long long)ptx_vector.size()) %
-        print_money(total_fee);
-    }
-    else {
-      prompt << boost::format(tr("Staking %s for %u blocks a total fee of %s.  Is this okay?  (Y/Yes/N/No): ")) %
-        print_money(total_sent) %
-        locked_blocks %
-        print_money(total_fee);
-    }
-
-    std::string accepted = input_line(prompt.str());
-    if (std::cin.eof())
-      return true;
-    if (!command_line::is_yes(accepted))
-    {
-      fail_msg_writer() << tr("transaction cancelled.");
-
-      return true;
-    }
 
     time_t end_construct_time = time(nullptr);
     time_t construct_time     = end_construct_time - begin_construct_time;
-
     if (construct_time > (60 * 10))
     {
       fail_msg_writer() << tr("Staking command has timed out due to waiting longer than 10 mins. This prevents the staking transaction from becoming invalid due to blocks mined interim. Please try again");
       return true;
-    }
-
-    // actually commit the transactions
-    if (m_wallet->multisig())
-    {
-      bool r = m_wallet->save_multisig_tx(ptx_vector, "multisig_loki_tx");
-      if (!r)
-      {
-        fail_msg_writer() << tr("Failed to write transaction(s) to file");
-      }
-      else
-      {
-        success_msg_writer(true) << tr("Unsigned transaction(s) successfully written to file: ") << "multisig_loki_tx";
-      }
-    }
-    else if (m_wallet->watch_only())
-    {
-      bool r = m_wallet->save_tx(ptx_vector, "unsigned_loki_tx");
-      if (!r)
-      {
-        fail_msg_writer() << tr("Failed to write transaction(s) to file");
-      }
-      else
-      {
-        success_msg_writer(true) << tr("Unsigned transaction(s) successfully written to file: ") << "unsigned_loki_tx";
-      }
-    }
-    else
-    {
-      commit_or_save(ptx_vector, m_do_not_relay);
     }
   }
   catch (const std::exception& e)
@@ -5907,7 +5701,6 @@ bool simple_wallet::stake_main(
 bool simple_wallet::stake(const std::vector<std::string> &args_)
 {
   // stake [index=<N1>[,<N2>,...]] [priority] <service node pubkey> <contributor address> <amount|percent%>
-
   if (!try_connect_to_daemon())
     return true;
 
@@ -6409,6 +6202,158 @@ bool simple_wallet::sweep_unmixable(const std::vector<std::string> &args_)
   return true;
 }
 //----------------------------------------------------------------------------------------------------
+bool simple_wallet::sweep_main_internal(sweep_type_t sweep_type, std::vector<tools::wallet2::pending_tx> &ptx_vector, cryptonote::address_parse_info const &dest)
+{
+  if ((sweep_type == sweep_type_t::stake || sweep_type == sweep_type_t::register_stake) && ptx_vector.size() > 1)
+  {
+    fail_msg_writer() << tr("Too many outputs. Please sweep_all first");
+    return true;
+  }
+
+  if (sweep_type == sweep_type_t::single)
+  {
+    if (ptx_vector.size() > 1)
+    {
+      fail_msg_writer() << tr("Multiple transactions are created, which is not supposed to happen");
+      return true;
+    }
+
+    if (ptx_vector[0].selected_transfers.size() != 1)
+    {
+      fail_msg_writer() << tr("The transaction uses multiple or no inputs, which is not supposed to happen");
+      return true;
+    }
+  }
+
+  if (ptx_vector.empty())
+  {
+    fail_msg_writer() << tr("No outputs found, or daemon is not ready");
+    return false;
+  }
+
+  // give user total and fee, and prompt to confirm
+  uint64_t total_fee = 0, total_sent = 0;
+  for (size_t n = 0; n < ptx_vector.size(); ++n)
+  {
+    total_fee += ptx_vector[n].fee;
+    for (auto i: ptx_vector[n].selected_transfers)
+      total_sent += m_wallet->get_transfer_details(i).amount();
+
+    if (sweep_type == sweep_type_t::stake || sweep_type == sweep_type_t::register_stake)
+    {
+      ptx_vector[n].tx.version = std::max((size_t)transaction::version_3_per_output_unlock_times, ptx_vector[n].tx.version);
+      total_sent -= ptx_vector[n].change_dts.amount + ptx_vector[n].fee;
+    }
+  }
+
+  std::ostringstream prompt;
+  std::set<uint32_t> subaddr_indices;
+  for (size_t n = 0; n < ptx_vector.size(); ++n)
+  {
+    prompt << tr("\nTransaction ") << (n + 1) << "/" << ptx_vector.size() << ":\n";
+    subaddr_indices.clear();
+    for (uint32_t i : ptx_vector[n].construction_data.subaddr_indices)
+      subaddr_indices.insert(i);
+    for (uint32_t i : subaddr_indices)
+      prompt << boost::format(tr("Spending from address index %d\n")) % i;
+    if (subaddr_indices.size() > 1)
+      prompt << tr("WARNING: Outputs of multiple addresses are being used together, which might potentially compromise your privacy.\n");
+  }
+  if (m_wallet->print_ring_members() && !print_ring_members(ptx_vector, prompt))
+  {
+    fail_msg_writer() << tr("Error printing ring members");
+    return false;
+  }
+
+  const char *label = (sweep_type == sweep_type_t::stake || sweep_type == sweep_type_t::register_stake) ? "Staking" : "Sweeping";
+  if (ptx_vector.size() > 1) {
+    prompt << boost::format(tr("%s %s in %llu transactions for a total fee of %s.  Is this okay?  (Y/Yes/N/No): ")) %
+      label %
+      print_money(total_sent) %
+      ((unsigned long long)ptx_vector.size()) %
+      print_money(total_fee);
+  }
+  else {
+    prompt << boost::format(tr("%s %s for a total fee of %s.  Is this okay?  (Y/Yes/N/No): ")) %
+      label %
+      print_money(total_sent) %
+      print_money(total_fee);
+  }
+  std::string accepted = input_line(prompt.str());
+  if (std::cin.eof())
+    return false;
+  if (!command_line::is_yes(accepted))
+  {
+    fail_msg_writer() << tr("transaction cancelled.");
+    return false;
+  }
+
+  // actually commit the transactions
+  bool submitted_to_network = false;
+  if (m_wallet->multisig())
+  {
+    bool r = m_wallet->save_multisig_tx(ptx_vector, "multisig_loki_tx");
+    if (!r)
+    {
+      fail_msg_writer() << tr("Failed to write transaction(s) to file");
+    }
+    else
+    {
+      success_msg_writer(true) << tr("Unsigned transaction(s) successfully written to file: ") << "multisig_loki_tx";
+    }
+  }
+  else if (m_wallet->get_account().get_device().has_tx_cold_sign())
+  {
+    try
+    {
+      tools::wallet2::signed_tx_set signed_tx;
+      std::vector<cryptonote::address_parse_info> dsts_info;
+      dsts_info.push_back(dest);
+
+      if (!cold_sign_tx(ptx_vector, signed_tx, dsts_info, [&](const tools::wallet2::signed_tx_set &tx){ return accept_loaded_tx(tx); })){
+        fail_msg_writer() << tr("Failed to cold sign transaction with HW wallet");
+        return true;
+      }
+
+      commit_or_save(signed_tx.ptx, m_do_not_relay);
+    }
+    catch (const std::exception& e)
+    {
+      handle_transfer_exception(std::current_exception(), m_wallet->is_trusted_daemon());
+    }
+    catch (...)
+    {
+      LOG_ERROR("Unknown error");
+      fail_msg_writer() << tr("unknown error");
+    }
+  }
+  else if (m_wallet->watch_only())
+  {
+    bool r = m_wallet->save_tx(ptx_vector, "unsigned_loki_tx");
+    if (!r)
+    {
+      fail_msg_writer() << tr("Failed to write transaction(s) to file");
+    }
+    else
+    {
+      success_msg_writer(true) << tr("Unsigned transaction(s) successfully written to file: ") << "unsigned_loki_tx";
+    }
+  }
+  else
+  {
+    commit_or_save(ptx_vector, m_do_not_relay);
+    submitted_to_network = true;
+  }
+
+  if (sweep_type == sweep_type_t::register_stake && submitted_to_network)
+  {
+    success_msg_writer() << tr("Wait for transaction to be included in a block before registration is complete.\n")
+                         << tr("Use the print_sn command in the daemon to check the status.");
+  }
+
+  return true;
+}
+
 bool simple_wallet::sweep_main(uint64_t below, bool locked, const std::vector<std::string> &args_)
 {
   auto print_usage = [below]()
@@ -6578,118 +6523,12 @@ bool simple_wallet::sweep_main(uint64_t below, bool locked, const std::vector<st
   }
 
   SCOPED_WALLET_UNLOCK();
-
   try
   {
-    // figure out what tx will be necessary
     auto ptx_vector = m_wallet->create_transactions_all(below, info.address, info.is_subaddress, outputs, CRYPTONOTE_DEFAULT_TX_MIXIN, unlock_block /* unlock_time */, priority, extra, m_current_subaddress_account, subaddr_indices);
-
-    if (ptx_vector.empty())
-    {
-      fail_msg_writer() << tr("No outputs found, or daemon is not ready");
-      return true;
-    }
-
-    // give user total and fee, and prompt to confirm
-    uint64_t total_fee = 0, total_sent = 0;
-    for (size_t n = 0; n < ptx_vector.size(); ++n)
-    {
-      total_fee += ptx_vector[n].fee;
-      for (auto i: ptx_vector[n].selected_transfers)
-        total_sent += m_wallet->get_transfer_details(i).amount();
-    }
-
-    std::ostringstream prompt;
-    for (size_t n = 0; n < ptx_vector.size(); ++n)
-    {
-      prompt << tr("\nTransaction ") << (n + 1) << "/" << ptx_vector.size() << ":\n";
-      subaddr_indices.clear();
-      for (uint32_t i : ptx_vector[n].construction_data.subaddr_indices)
-        subaddr_indices.insert(i);
-      for (uint32_t i : subaddr_indices)
-        prompt << boost::format(tr("Spending from address index %d\n")) % i;
-      if (subaddr_indices.size() > 1)
-        prompt << tr("WARNING: Outputs of multiple addresses are being used together, which might potentially compromise your privacy.\n");
-    }
-    if (m_wallet->print_ring_members() && !print_ring_members(ptx_vector, prompt))
-      return true;
-    if (ptx_vector.size() > 1) {
-      prompt << boost::format(tr("Sweeping %s in %llu transactions for a total fee of %s.  Is this okay?  (Y/Yes/N/No): ")) %
-        print_money(total_sent) %
-        ((unsigned long long)ptx_vector.size()) %
-        print_money(total_fee);
-    }
-    else {
-      prompt << boost::format(tr("Sweeping %s for a total fee of %s.  Is this okay?  (Y/Yes/N/No): ")) %
-        print_money(total_sent) %
-        print_money(total_fee);
-    }
-    std::string accepted = input_line(prompt.str());
-    if (std::cin.eof())
-      return true;
-    if (!command_line::is_yes(accepted))
-    {
-      fail_msg_writer() << tr("transaction cancelled.");
-
-      return true;
-    }
-
-    // actually commit the transactions
-    if (m_wallet->multisig())
-    {
-      bool r = m_wallet->save_multisig_tx(ptx_vector, "multisig_loki_tx");
-      if (!r)
-      {
-        fail_msg_writer() << tr("Failed to write transaction(s) to file");
-      }
-      else
-      {
-        success_msg_writer(true) << tr("Unsigned transaction(s) successfully written to file: ") << "multisig_loki_tx";
-      }
-    }
-    else if (m_wallet->get_account().get_device().has_tx_cold_sign())
-    {
-      try
-      {
-        tools::wallet2::signed_tx_set signed_tx;
-        std::vector<cryptonote::address_parse_info> dsts_info;
-        dsts_info.push_back(info);
-
-        if (!cold_sign_tx(ptx_vector, signed_tx, dsts_info, [&](const tools::wallet2::signed_tx_set &tx){ return accept_loaded_tx(tx); })){
-          fail_msg_writer() << tr("Failed to cold sign transaction with HW wallet");
-          return true;
-        }
-
-        commit_or_save(signed_tx.ptx, m_do_not_relay);
-      }
-      catch (const std::exception& e)
-      {
-        handle_transfer_exception(std::current_exception(), m_wallet->is_trusted_daemon());
-      }
-      catch (...)
-      {
-        LOG_ERROR("Unknown error");
-        fail_msg_writer() << tr("unknown error");
-      }
-    }
-    else if (m_wallet->watch_only())
-    {
-      bool r = m_wallet->save_tx(ptx_vector, "unsigned_loki_tx");
-      if (!r)
-      {
-        fail_msg_writer() << tr("Failed to write transaction(s) to file");
-      }
-      else
-      {
-        success_msg_writer(true) << tr("Unsigned transaction(s) successfully written to file: ") << "unsigned_loki_tx";
-      }
-    }
-    else
-    {
-      commit_or_save(ptx_vector, m_do_not_relay);
-    }
+    sweep_main_internal(sweep_type_t::all_or_below, ptx_vector, info);
   }
-  catch (const std::exception& e)
+  catch (const std::exception &e)
   {
     handle_transfer_exception(std::current_exception(), m_wallet->is_trusted_daemon());
   }
@@ -6825,72 +6664,7 @@ bool simple_wallet::sweep_single(const std::vector<std::string> &args_)
   {
     // figure out what tx will be necessary
     auto ptx_vector = m_wallet->create_transactions_single(ki, info.address, info.is_subaddress, outputs, CRYPTONOTE_DEFAULT_TX_MIXIN, 0 /* unlock_time */, priority, extra);
-
-    if (ptx_vector.empty())
-    {
-      fail_msg_writer() << tr("No outputs found");
-      return true;
-    }
-    if (ptx_vector.size() > 1)
-    {
-      fail_msg_writer() << tr("Multiple transactions are created, which is not supposed to happen");
-      return true;
-    }
-    if (ptx_vector[0].selected_transfers.size() != 1)
-    {
-      fail_msg_writer() << tr("The transaction uses multiple or no inputs, which is not supposed to happen");
-      return true;
-    }
-
-    // give user total and fee, and prompt to confirm
-    uint64_t total_fee = ptx_vector[0].fee;
-    uint64_t total_sent = m_wallet->get_transfer_details(ptx_vector[0].selected_transfers.front()).amount();
-    std::ostringstream prompt;
-    if (!print_ring_members(ptx_vector, prompt))
-      return true;
-    prompt << boost::format(tr("Sweeping %s for a total fee of %s.  Is this okay?  (Y/Yes/N/No): ")) %
-      print_money(total_sent) %
-      print_money(total_fee);
-    std::string accepted = input_line(prompt.str());
-    if (std::cin.eof())
-      return true;
-    if (!command_line::is_yes(accepted))
-    {
-      fail_msg_writer() << tr("transaction cancelled.");
-      return true;
-    }
-
-    // actually commit the transactions
-    if (m_wallet->multisig())
-    {
-      bool r = m_wallet->save_multisig_tx(ptx_vector, "multisig_loki_tx");
-      if (!r)
-      {
-        fail_msg_writer() << tr("Failed to write transaction(s) to file");
-      }
-      else
-      {
-        success_msg_writer(true) << tr("Unsigned transaction(s) successfully written to file: ") << "multisig_loki_tx";
-      }
-    }
-    else if (m_wallet->watch_only())
-    {
-      bool r = m_wallet->save_tx(ptx_vector, "unsigned_loki_tx");
-      if (!r)
-      {
-        fail_msg_writer() << tr("Failed to write transaction(s) to file");
-      }
-      else
-      {
-        success_msg_writer(true) << tr("Unsigned transaction(s) successfully written to file: ") << "unsigned_loki_tx";
-      }
-    }
-    else
-    {
-      m_wallet->commit_tx(ptx_vector[0]);
-      success_msg_writer(true) << tr("Money successfully sent, transaction: ") << get_transaction_hash(ptx_vector[0].tx);
-    }
-
+    sweep_main_internal(sweep_type_t::single, ptx_vector, info);
   }
   catch (const std::exception& e)
   {
