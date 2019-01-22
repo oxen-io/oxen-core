@@ -69,7 +69,7 @@ uint64_t get_locked_key_image_unlock_height(cryptonote::network_type nettype, ui
   if (curr_height < node_register_height)
   {
     // Unexpected current_height less than node_register_height, developer error?
-    assert(curr_height < node_register_height);
+    assert(curr_height >= node_register_height);
     curr_height = node_register_height;
   }
 

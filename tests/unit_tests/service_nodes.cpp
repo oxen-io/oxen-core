@@ -526,4 +526,12 @@ TEST(service_nodes, service_node_get_locked_key_image_unlock_height)
     uint64_t unlock_height = service_nodes::get_locked_key_image_unlock_height(cryptonote::MAINNET, lock_duration, lock_duration);
     ASSERT_EQ(unlock_height, expected);
   }
+
+  {
+    uint64_t register_height = lock_duration + 1;
+    uint64_t curr_height     = register_height + 2;
+    uint64_t expected        = register_height + lock_duration;
+    uint64_t unlock_height   = service_nodes::get_locked_key_image_unlock_height(cryptonote::MAINNET, register_height, curr_height);
+    ASSERT_EQ(unlock_height, expected);
+  }
 }
