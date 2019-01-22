@@ -67,12 +67,6 @@ namespace service_nodes
     return  x / (secureMax / n);
   }
 
-  uint64_t service_node_info::get_min_contribution() const
-  {
-    uint64_t result = get_min_node_contribution(staking_requirement, total_reserved);
-    return result;
-  }
-
   service_node_list::service_node_list(cryptonote::Blockchain& blockchain)
     : m_blockchain(blockchain), m_hooks_registered(false), m_height(0), m_db(nullptr), m_service_node_pubkey(nullptr)
   {
@@ -694,8 +688,8 @@ namespace service_nodes
       return false;
     }
 
-    // check the portions
-    if (!check_service_node_portions(service_node_portions)) return false;
+    int hf_version = m_blockchain.get_hard_fork_version(block_height);
+    if (!check_service_node_portions(hf_version, service_node_portions)) return false;
 
     if (portions_for_operator > STAKING_PORTIONS)
     {
@@ -736,7 +730,6 @@ namespace service_nodes
 
     cryptonote::account_public_address address;
 
-    int hf_version = m_blockchain.get_hard_fork_version(block_height);
     parsed_tx_contribution parsed_contribution = {};
     if (!get_contribution(m_blockchain.nettype(), hf_version, tx, block_height, parsed_contribution))
     {
@@ -888,6 +881,7 @@ namespace service_nodes
       return;
     }
 
+    /// Service node must be registered
     auto iter = m_service_nodes_infos.find(pubkey);
     if (iter == m_service_nodes_infos.end())
     {
@@ -915,11 +909,11 @@ namespace service_nodes
 
     auto& contributors = info.contributors;
 
-    // Only create a new contributor if they stake at least a quarter
-    // and if we don't already have the maximum
     auto contrib_iter = std::find_if(contributors.begin(), contributors.end(),
         [&parsed_contribution](const service_node_info::contributor_t& contributor) { return contributor.address == parsed_contribution.address; });
-    if (contrib_iter == contributors.end())
+    const bool new_contributor = (contrib_iter == contributors.end());
+
+    if (new_contributor)
     {
       if (contributors.size() >= MAX_NUMBER_OF_CONTRIBUTORS)
       {
@@ -930,10 +924,13 @@ namespace service_nodes
         return;
       }
 
-      if (parsed_contribution.transferred < info.get_min_contribution())
+      /// Check that the contribution is large enough
+      const uint8_t hf_version = m_blockchain.get_hard_fork_version(block_height);
+      const uint64_t min_contribution = get_min_node_contribution(hf_version, info.staking_requirement, info.total_reserved, contributors.size());
+      if (parsed_contribution.transferred < min_contribution)
       {
         LOG_PRINT_L1("Contribution TX: Amount " << parsed_contribution.transferred <<
-                     " did not meet min " << info.get_min_contribution() <<
+                     " did not meet min " << min_contribution <<
                      " for service node: " << pubkey <<
                      " on height: "  << block_height <<
                      " for tx: " << cryptonote::get_transaction_hash(tx));
@@ -946,7 +943,7 @@ namespace service_nodes
     //
 
     m_rollback_events.push_back(std::unique_ptr<rollback_event>(new rollback_change(block_height, pubkey, info)));
-    if (contrib_iter == contributors.end())
+    if (new_contributor)
     {
       service_node_info::contributor_t new_contributor = {};
       new_contributor.version                          = get_min_service_node_info_version_for_hf(hf_version);
