@@ -53,7 +53,7 @@ using epee::string_tools::pod_to_hex;
 using namespace crypto;
 
 // Increase when the DB structure changes
-#define VERSION 3
+#define VERSION 4
 
 namespace
 {
@@ -1498,46 +1498,6 @@ void BlockchainLMDB::open(const std::string& filename, const int db_flags)
   m_open = true;
   // from here, init should be finished
 
-  for_all_transactions([this](const crypto::hash& hash, const cryptonote::transaction& tx) {
-    crypto::secret_key secret_tx_key;
-    if (cryptonote::get_tx_secret_key_from_tx_extra(tx.extra, secret_tx_key))
-    {
-      std::vector<uint64_t> global_output_indexes;
-      {
-        TXN_PREFIX_RDONLY();
-        RCURSOR(tx_indices);
-
-        MDB_val_set(key, hash);
-        if (int get_result = mdb_cursor_get(m_cur_tx_indices, (MDB_val *)&zerokval, &key, MDB_GET_BOTH) == MDB_NOTFOUND)
-        {
-          throw0(DB_ERROR(lmdb_error(std::string("DB error attempting to fetch transaction index from hash ") + epee::string_tools::pod_to_hex(hash) + ": ", get_result).c_str()));
-          return true;
-        }
-
-        txindex const *tx_index = (txindex const *)key.mv_data;
-        global_output_indexes = get_tx_amount_output_indices(tx_index->data.tx_id);
-        TXN_POSTFIX_RDONLY();
-      }
-
-      mdb_txn_cursors *m_cursors = &m_wcursors;
-      CURSOR(output_blacklist);
-
-      for (uint64_t output_index : global_output_indexes)
-      {
-        MDB_val key = {sizeof(output_index), (void *)&output_index};
-        if (int result = mdb_cursor_put(m_cur_output_blacklist, (MDB_val *)&zerokval, &key, 0))
-        {
-          if (result != MDB_KEYEXIST)
-          {
-            throw1(DB_ERROR(lmdb_error("Error adding blacklisted output to db: ", result).c_str()));
-          }
-        }
-      }
-      block_txn_stop();
-    }
-
-    return true;
-  }, false);
 }
 
 void BlockchainLMDB::close()
@@ -4492,6 +4452,116 @@ void BlockchainLMDB::migrate_2_3()
   txn.commit();
 }
 
+void BlockchainLMDB::migrate_3_4()
+{
+  LOG_PRINT_L3("BlockchainLMDB::" << __func__);
+  MGINFO_YELLOW("Migrating blockchain from DB version 3 to 4 - this may take a while:");
+
+  mdb_txn_safe txn(false);
+  {
+    int result = mdb_txn_begin(m_env, NULL, 0, txn);
+    if (result)
+      throw0(DB_ERROR(lmdb_error("Failed to create a transaction for the db: ", result).c_str()));
+  }
+
+  {
+    lmdb_db_open(txn, LMDB_OUTPUT_BLACKLIST, MDB_INTEGERKEY | MDB_CREATE, m_output_blacklist, "Failed to open db handle for m_output_blacklist");
+    MDB_cursor_op op = MDB_FIRST;
+    MDB_val key, val;
+    blobdata bd;
+
+    uint64_t tx_count = 0;
+    std::vector<uint64_t> global_output_indexes;
+    {
+      uint64_t total_tx_count = get_tx_count();
+      TXN_PREFIX_RDONLY();
+      RCURSOR(txs_pruned);
+      RCURSOR(txs_prunable);
+      RCURSOR(tx_indices);
+
+      for(;; op = MDB_NEXT, bd.clear())
+      {
+        transaction tx;
+        txindex const *tx_index = (txindex const *)val.mv_data;
+        {
+          int ret = mdb_cursor_get(m_cur_tx_indices, &key, &val, op);
+          if (ret == MDB_NOTFOUND) break;
+          if (ret) throw0(DB_ERROR(lmdb_error("Failed to enumerate transactions: ", ret).c_str()));
+
+          const crypto::hash &hash = tx_index->key;
+          tx_index                 = (txindex const *)val.mv_data;
+          key.mv_data              = (void *)&tx_index->data.tx_id;
+          key.mv_size              = sizeof(tx_index->data.tx_id);
+          {
+            ret = mdb_cursor_get(m_cur_txs_pruned, &key, &val, MDB_SET);
+            if (ret == MDB_NOTFOUND) break;
+            if (ret) throw0(DB_ERROR(lmdb_error("Failed to enumerate transactions: ", ret).c_str()));
+
+            bd.append(reinterpret_cast<char*>(val.mv_data), val.mv_size);
+
+            ret = mdb_cursor_get(m_cur_txs_prunable, &key, &val, MDB_SET);
+            if (ret) throw0(DB_ERROR(lmdb_error("Failed to get prunable tx data the db: ", ret).c_str()));
+
+            bd.append(reinterpret_cast<char*>(val.mv_data), val.mv_size);
+            if (!parse_and_validate_tx_from_blob(bd, tx)) throw0(DB_ERROR("Failed to parse tx from blob retrieved from the db"));
+          }
+        }
+
+        if (++tx_count % 1000 == 0)
+        {
+          LOGIF(el::Level::Info) {
+            std::cout << tx_count << " / " << total_tx_count << "  \r" << std::flush;
+          }
+        }
+
+        if (tx.get_type() != transaction::type_standard || tx.vout.size() == 0)
+          continue;
+
+        crypto::secret_key secret_tx_key;
+        if (!cryptonote::get_tx_secret_key_from_tx_extra(tx.extra, secret_tx_key))
+          continue;
+
+        std::vector<uint64_t> outputs = get_tx_amount_output_indices(tx_index->data.tx_id);
+        for (uint64_t output_index : outputs)
+          global_output_indexes.push_back(output_index);
+      }
+      TXN_POSTFIX_RDONLY();
+    }
+
+    mdb_txn_cursors *m_cursors = &m_wcursors;
+    if (int result = mdb_cursor_open(txn, m_output_blacklist, &m_cur_output_blacklist))
+      throw0(DB_ERROR(lmdb_error("Failed to open cursor: ", result).c_str()));
+
+    for (size_t index = 0; index < global_output_indexes.size(); index++)
+    {
+      uint64_t output_index = global_output_indexes[index];
+      MDB_val_set(output_index_key, output_index);
+      if (int result = mdb_cursor_put(m_cur_output_blacklist, (MDB_val *)&zerokval, &output_index_key, 0))
+      {
+        if (result != MDB_KEYEXIST)
+        {
+          throw1(DB_ERROR(lmdb_error("Error adding blacklisted output to db: ", result).c_str()));
+        }
+      }
+    }
+  }
+
+  txn.commit();
+  if (int result = mdb_txn_begin(m_env, NULL, 0, txn))
+    throw0(DB_ERROR(lmdb_error("Failed to create a transaction for the db: ", result).c_str()));
+
+  uint32_t version = 4;
+  MDB_val val = {};
+  val.mv_data = (void *)&version;
+  val.mv_size = sizeof(version);
+
+  MDB_val_str(key, "version");
+  if (int result = mdb_put(txn, m_properties, &key, &val, 0))
+    throw0(DB_ERROR(lmdb_error("Failed to update version for the db: ", result).c_str()));
+
+  txn.commit();
+}
+
 void BlockchainLMDB::migrate(const uint32_t oldversion)
 {
   if (oldversion < 1)
@@ -4500,6 +4570,8 @@ void BlockchainLMDB::migrate(const uint32_t oldversion)
     migrate_1_2();
   if (oldversion < 3)
     migrate_2_3();
+  if (oldversion < 4)
+    migrate_3_4();
 }
 
 

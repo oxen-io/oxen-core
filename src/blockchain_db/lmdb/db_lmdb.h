@@ -93,6 +93,7 @@ typedef struct mdb_rflags
   bool m_rf_block_info;
   bool m_rf_output_txs;
   bool m_rf_output_amounts;
+  bool m_rf_output_blacklist;
   bool m_rf_txs;
   bool m_rf_txs_pruned;
   bool m_rf_txs_prunable;
@@ -404,6 +405,7 @@ private:
 
   // migrate from DB version 2 to 3
   void migrate_2_3();
+  void migrate_3_4();
 
   void cleanup_batch();
 
