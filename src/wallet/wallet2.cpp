@@ -7118,12 +7118,14 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
         max_rct_index = std::max(max_rct_index, m_transfers[idx].m_global_output_index);
       }
 
+    // TODO(doyle): Write the error message
     std::vector<uint64_t> output_blacklist;
     if (!get_output_blacklist(output_blacklist))
     {
       return;
     }
 
+    std::sort(output_blacklist.begin(), output_blacklist.end());
     const bool has_rct_distribution = has_rct && get_rct_distribution(rct_start_height, rct_offsets);
     if (has_rct_distribution)
     {
@@ -7264,7 +7266,19 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
       if (n_rct == 0)
         return rct_offsets[block_offset] ? rct_offsets[block_offset] - 1 : 0;
       MDEBUG("Picking 1/" << n_rct << " in " << (last_block_offset - first_block_offset + 1) << " blocks centered around " << block_offset + rct_start_height);
-      return first_rct + crypto::rand<uint64_t>() % n_rct;
+      
+      uint64_t pick = first_rct + crypto::rand<uint64_t>() % n_rct;
+      for (;;)
+      {
+        if (std::binary_search(output_blacklist.begin(), output_blacklist.end(), pick))
+        {
+          pick = first_rct + crypto::rand<uint64_t>() % n_rct;
+        }
+        else
+        {
+          return pick;
+        }
+      }
     };
 
     size_t num_selected_transfers = 0;
