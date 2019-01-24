@@ -3515,7 +3515,22 @@ bool BlockchainLMDB::get_output_blacklist(std::vector<uint64_t> &blacklist) cons
   check_open();
 
   TXN_PREFIX_RDONLY();
-  // RCURSOR(output_amounts);
+  RCURSOR(output_blacklist);
+
+  MDB_stat db_stat;
+  if (int result = mdb_stat(m_txn, m_output_blacklist, &db_stat))
+    throw0(DB_ERROR(lmdb_error("Failed to query output blacklist: ", result).c_str()));
+
+  MDB_val val;
+  blacklist.reserve(db_stat.ms_entries);
+  for(MDB_cursor_op op = MDB_FIRST;; op = MDB_NEXT)
+  {
+    int ret = mdb_cursor_get(m_cur_output_blacklist, (MDB_val *)&zerokval, &val, op);
+    if (ret == MDB_NOTFOUND) break;
+    if (ret) throw0(DB_ERROR(lmdb_error("Failed to enumerate output blacklist: ", ret).c_str()));
+    blacklist.push_back(*(uint64_t *)val.mv_data);
+  }
+
   TXN_POSTFIX_RDONLY();
   return true;
 }
@@ -4466,11 +4481,7 @@ void BlockchainLMDB::migrate_3_4()
 
   {
     lmdb_db_open(txn, LMDB_OUTPUT_BLACKLIST, MDB_INTEGERKEY | MDB_CREATE, m_output_blacklist, "Failed to open db handle for m_output_blacklist");
-    MDB_cursor_op op = MDB_FIRST;
-    MDB_val key, val;
-    blobdata bd;
 
-    uint64_t tx_count = 0;
     std::vector<uint64_t> global_output_indexes;
     {
       uint64_t total_tx_count = get_tx_count();
@@ -4479,7 +4490,10 @@ void BlockchainLMDB::migrate_3_4()
       RCURSOR(txs_prunable);
       RCURSOR(tx_indices);
 
-      for(;; op = MDB_NEXT, bd.clear())
+      MDB_val key, val;
+      uint64_t tx_count = 0;
+      blobdata bd;
+      for(MDB_cursor_op op = MDB_FIRST;; op = MDB_NEXT, bd.clear())
       {
         transaction tx;
         txindex const *tx_index = (txindex const *)val.mv_data;
