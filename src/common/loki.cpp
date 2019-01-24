@@ -544,7 +544,10 @@ const char* base32z_encode(const v& value, stack_t &stack)
 
 std::string loki::hex64_to_base32z(const std::string &src)
 {
-  char buf[128]      = {};
-  std::string result = base32z_encode(src, buf);
+  char buf[128] = {};
+  std::string result;
+  if (char const *dest = base32z_encode(src, buf))
+    result = dest;
+
   return result;
 }
