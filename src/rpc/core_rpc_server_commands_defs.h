@@ -987,7 +987,7 @@ namespace cryptonote
 
 
   //-----------------------------------------------
-  struct COMMAND_RPC_GET_ALL_SERVICE_NODE_KEYS
+  struct COMMAND_RPC_GET_ALL_SERVICE_NODES_KEYS
   {
     struct request
     {
@@ -997,8 +997,7 @@ namespace cryptonote
 
     struct response
     {
-      std::vector<std::string> keys;
-
+      std::vector<std::string> keys; // NOTE: Returns as base32z of the hex key, for Lokinet internal usage
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(keys)
       END_KV_SERIALIZE_MAP()

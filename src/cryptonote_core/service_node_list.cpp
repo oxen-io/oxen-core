@@ -38,7 +38,6 @@
 #include "common/scoped_message_writer.h"
 #include "common/i18n.h"
 #include "service_node_quorum_cop.h"
-#include "common/exp2.h"
 
 #include "service_node_list.h"
 #include "service_node_rules.h"
@@ -1234,7 +1233,7 @@ namespace service_nodes
     return true;
   }
 
-  void service_node_list::get_all_node_public_keys(std::vector<crypto::public_key>& keys) const
+  void service_node_list::get_all_service_nodes_public_keys(std::vector<crypto::public_key>& keys) const
   {
     keys.clear();
     keys.resize(m_service_nodes_infos.size());

@@ -163,7 +163,7 @@ namespace service_nodes
     void set_my_service_node_keys(crypto::public_key const *pub_key);
     bool store();
 
-    void get_all_node_public_keys(std::vector<crypto::public_key>& keys) const;
+    void get_all_service_nodes_public_keys(std::vector<crypto::public_key>& keys) const;
 
     struct rollback_event
     {

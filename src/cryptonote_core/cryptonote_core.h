@@ -849,7 +849,7 @@ namespace cryptonote
       *
       * @param keys The container in which to return the keys
       */
-     void get_all_service_node_public_keys(std::vector<crypto::public_key>& keys) const;
+     void get_all_service_nodes_public_keys(std::vector<crypto::public_key>& keys) const;
 
      /**
       * @brief attempts to submit an uptime proof to the network, if this is running in service node mode
