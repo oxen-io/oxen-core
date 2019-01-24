@@ -215,7 +215,7 @@ namespace cryptonote
   bool core_rpc_server::on_get_all_service_nodes_keys(const COMMAND_RPC_GET_ALL_SERVICE_NODES_KEYS::request& req, COMMAND_RPC_GET_ALL_SERVICE_NODES_KEYS::response& res, epee::json_rpc::error& error_resp)
   {
     std::vector<crypto::public_key> keys;
-    m_core.get_all_service_nodes_public_keys(keys);
+    m_core.get_all_service_nodes_public_keys(keys, req.fully_funded_nodes_only);
 
     res.keys.clear();
     res.keys.resize(keys.size());

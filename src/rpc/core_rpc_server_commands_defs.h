@@ -991,7 +991,9 @@ namespace cryptonote
   {
     struct request
     {
+      bool fully_funded_nodes_only; // Return keys for service nodes if they are funded and working on the network
       BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE_OPT(fully_funded_nodes_only, (bool)true)
       END_KV_SERIALIZE_MAP()
     };
 
