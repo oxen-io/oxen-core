@@ -2653,4 +2653,20 @@ namespace cryptonote
     };
   };
 
+  struct COMMAND_RPC_GET_OUTPUT_BLACKLIST
+  {
+    struct request { BEGIN_KV_SERIALIZE_MAP() END_KV_SERIALIZE_MAP() };
+    struct response
+    {
+      std::vector<uint64_t> blacklist;
+      std::string status;
+      bool untrusted;
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(blacklist)
+        KV_SERIALIZE(status)
+        KV_SERIALIZE(untrusted)
+      END_KV_SERIALIZE_MAP()
+    };
+  };
+
 }

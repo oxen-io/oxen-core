@@ -1320,6 +1320,11 @@ namespace cryptonote
     return m_blockchain_storage.get_output_distribution(amount, from_height, to_height, start_height, distribution, base);
   }
   //-----------------------------------------------------------------------------------------------
+  bool core::get_output_blacklist(std::vector<uint64_t> &blacklist) const
+  {
+    return m_blockchain_storage.get_output_blacklist(blacklist);
+  }
+  //-----------------------------------------------------------------------------------------------
   bool core::get_tx_outputs_gindexs(const crypto::hash& tx_id, std::vector<uint64_t>& indexs) const
   {
     return m_blockchain_storage.get_tx_outputs_gindexs(tx_id, indexs);

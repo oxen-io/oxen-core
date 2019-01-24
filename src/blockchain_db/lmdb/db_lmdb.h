@@ -64,6 +64,7 @@ typedef struct mdb_txn_cursors
   MDB_cursor *m_txc_hf_versions;
 
   MDB_cursor *m_txc_service_node_data;
+  MDB_cursor *m_txc_output_blacklist;
 } mdb_txn_cursors;
 
 #define m_cur_blocks	m_cursors->m_txc_blocks
@@ -71,6 +72,7 @@ typedef struct mdb_txn_cursors
 #define m_cur_block_info	m_cursors->m_txc_block_info
 #define m_cur_output_txs	m_cursors->m_txc_output_txs
 #define m_cur_output_amounts	m_cursors->m_txc_output_amounts
+#define m_cur_output_blacklist	m_cursors->m_txc_output_blacklist
 #define m_cur_txs	m_cursors->m_txc_txs
 #define m_cur_txs_pruned	m_cursors->m_txc_txs_pruned
 #define m_cur_txs_prunable	m_cursors->m_txc_txs_prunable
@@ -312,6 +314,7 @@ public:
   std::map<uint64_t, std::tuple<uint64_t, uint64_t, uint64_t>> get_output_histogram(const std::vector<uint64_t> &amounts, bool unlocked, uint64_t recent_cutoff, uint64_t min_count) const;
 
   bool get_output_distribution(uint64_t amount, uint64_t from_height, uint64_t to_height, std::vector<uint64_t> &distribution, uint64_t &base) const;
+  bool get_output_blacklist(std::vector<uint64_t> &blacklist) const;
 
 private:
   void do_resize(uint64_t size_increase=0);
@@ -425,6 +428,7 @@ private:
 
   MDB_dbi m_output_txs;
   MDB_dbi m_output_amounts;
+  MDB_dbi m_output_blacklist;
 
   MDB_dbi m_spent_keys;
 

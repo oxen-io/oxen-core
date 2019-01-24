@@ -3023,6 +3023,51 @@ bool wallet2::get_rct_distribution(uint64_t &start_height, std::vector<uint64_t>
   return true;
 }
 //----------------------------------------------------------------------------------------------------
+bool wallet2::get_output_blacklist(std::vector<uint64_t> &blacklist)
+{
+  uint32_t rpc_version;
+  boost::optional<std::string> result = m_node_rpc_proxy.get_rpc_version(rpc_version);
+  // no error
+  if (!!result)
+  {
+    // empty string -> not connection
+    THROW_WALLET_EXCEPTION_IF(result->empty(), tools::error::no_connection_to_daemon, "getversion");
+    THROW_WALLET_EXCEPTION_IF(*result == CORE_RPC_STATUS_BUSY, tools::error::daemon_busy, "getversion");
+    if (*result != CORE_RPC_STATUS_OK)
+    {
+      MDEBUG("Cannot determine daemon RPC version, not requesting rct distribution");
+      return false;
+    }
+  }
+  else
+  {
+    if (rpc_version >= MAKE_CORE_RPC_VERSION(1, 19))
+    {
+      MDEBUG("Daemon is recent enough, requesting rct distribution");
+    }
+    else
+    {
+      MDEBUG("Daemon is too old, not requesting rct distribution");
+      return false;
+    }
+  }
+
+  cryptonote::COMMAND_RPC_GET_OUTPUT_BLACKLIST::request req  = {};
+  cryptonote::COMMAND_RPC_GET_OUTPUT_BLACKLIST::response res = {};
+  m_daemon_rpc_mutex.lock();
+  bool r = net_utils::invoke_http_bin("/get_output_blacklist.bin", req, res, m_http_client, rpc_timeout);
+  m_daemon_rpc_mutex.unlock();
+
+  if (!r)
+  {
+    MWARNING("Failed to request output blacklist: no connection to daemon");
+    return false;
+  }
+
+  blacklist = std::move(res.blacklist);
+  return true;
+}
+//----------------------------------------------------------------------------------------------------
 void wallet2::detach_blockchain(uint64_t height)
 {
   LOG_PRINT_L0("Detaching blockchain on height " << height);
@@ -7072,6 +7117,13 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
         has_rct = true;
         max_rct_index = std::max(max_rct_index, m_transfers[idx].m_global_output_index);
       }
+
+    std::vector<uint64_t> output_blacklist;
+    if (!get_output_blacklist(output_blacklist))
+    {
+      return;
+    }
+
     const bool has_rct_distribution = has_rct && get_rct_distribution(rct_start_height, rct_offsets);
     if (has_rct_distribution)
     {

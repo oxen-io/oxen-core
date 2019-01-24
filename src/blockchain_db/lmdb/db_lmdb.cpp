@@ -202,6 +202,7 @@ const char* const LMDB_TX_OUTPUTS = "tx_outputs";
 
 const char* const LMDB_OUTPUT_TXS = "output_txs";
 const char* const LMDB_OUTPUT_AMOUNTS = "output_amounts";
+const char* const LMDB_OUTPUT_BLACKLIST = "output_blacklist";
 const char* const LMDB_SPENT_KEYS = "spent_keys";
 
 const char* const LMDB_TXPOOL_META = "txpool_meta";
@@ -212,6 +213,7 @@ const char* const LMDB_HF_VERSIONS = "hf_versions";
 const char* const LMDB_SERVICE_NODE_DATA = "service_node_data";
 
 const char* const LMDB_PROPERTIES = "properties";
+
 
 const char zerokey[8] = {0};
 const MDB_val zerokval = { sizeof(zerokey), (void *)zerokey };
@@ -1231,6 +1233,32 @@ BlockchainLMDB::BlockchainLMDB(bool batch_transactions): BlockchainDB()
   m_hardfork = nullptr;
 }
 
+#define TXN_PREFIX(flags); \
+  mdb_txn_safe auto_txn; \
+  mdb_txn_safe* txn_ptr = &auto_txn; \
+  if (m_batch_active) \
+    txn_ptr = m_write_txn; \
+  else \
+  { \
+    if (auto mdb_res = lmdb_txn_begin(m_env, NULL, flags, auto_txn)) \
+      throw0(DB_ERROR(lmdb_error(std::string("Failed to create a transaction for the db in ")+__FUNCTION__+": ", mdb_res).c_str())); \
+  } \
+
+#define TXN_PREFIX_RDONLY() \
+  MDB_txn *m_txn; \
+  mdb_txn_cursors *m_cursors; \
+  mdb_txn_safe auto_txn; \
+  bool my_rtxn = block_rtxn_start(&m_txn, &m_cursors); \
+  if (my_rtxn) auto_txn.m_tinfo = m_tinfo.get(); \
+  else auto_txn.uncheck()
+#define TXN_POSTFIX_RDONLY()
+
+#define TXN_POSTFIX_SUCCESS() \
+  do { \
+    if (! m_batch_active) \
+      auto_txn.commit(); \
+  } while(0)
+
 void BlockchainLMDB::open(const std::string& filename, const int db_flags)
 {
   int result;
@@ -1347,6 +1375,7 @@ void BlockchainLMDB::open(const std::string& filename, const int db_flags)
 
   lmdb_db_open(txn, LMDB_OUTPUT_TXS, MDB_INTEGERKEY | MDB_CREATE | MDB_DUPSORT | MDB_DUPFIXED, m_output_txs, "Failed to open db handle for m_output_txs");
   lmdb_db_open(txn, LMDB_OUTPUT_AMOUNTS, MDB_INTEGERKEY | MDB_DUPSORT | MDB_DUPFIXED | MDB_CREATE, m_output_amounts, "Failed to open db handle for m_output_amounts");
+  lmdb_db_open(txn, LMDB_OUTPUT_BLACKLIST, MDB_INTEGERKEY | MDB_CREATE, m_output_blacklist, "Failed to open db handle for m_output_blacklist");
 
   lmdb_db_open(txn, LMDB_SPENT_KEYS, MDB_INTEGERKEY | MDB_CREATE | MDB_DUPSORT | MDB_DUPFIXED, m_spent_keys, "Failed to open db handle for m_spent_keys");
 
@@ -1412,7 +1441,7 @@ void BlockchainLMDB::open(const std::string& filename, const int db_flags)
         mdb_env_close(m_env);
         m_open = false;
         MFATAL("Existing lmdb database needs to be converted, which cannot be done on a read-only database.");
-        MFATAL("Please run monerod once to convert the database.");
+        MFATAL("Please run lokid once to convert the database.");
         return;
       }
       // Note that there was a schema change within version 0 as well.
@@ -1468,6 +1497,47 @@ void BlockchainLMDB::open(const std::string& filename, const int db_flags)
 
   m_open = true;
   // from here, init should be finished
+
+  for_all_transactions([this](const crypto::hash& hash, const cryptonote::transaction& tx) {
+    crypto::secret_key secret_tx_key;
+    if (cryptonote::get_tx_secret_key_from_tx_extra(tx.extra, secret_tx_key))
+    {
+      std::vector<uint64_t> global_output_indexes;
+      {
+        TXN_PREFIX_RDONLY();
+        RCURSOR(tx_indices);
+
+        MDB_val_set(key, hash);
+        if (int get_result = mdb_cursor_get(m_cur_tx_indices, (MDB_val *)&zerokval, &key, MDB_GET_BOTH) == MDB_NOTFOUND)
+        {
+          throw0(DB_ERROR(lmdb_error(std::string("DB error attempting to fetch transaction index from hash ") + epee::string_tools::pod_to_hex(hash) + ": ", get_result).c_str()));
+          return true;
+        }
+
+        txindex const *tx_index = (txindex const *)key.mv_data;
+        global_output_indexes = get_tx_amount_output_indices(tx_index->data.tx_id);
+        TXN_POSTFIX_RDONLY();
+      }
+
+      mdb_txn_cursors *m_cursors = &m_wcursors;
+      CURSOR(output_blacklist);
+
+      for (uint64_t output_index : global_output_indexes)
+      {
+        MDB_val key = {sizeof(output_index), (void *)&output_index};
+        if (int result = mdb_cursor_put(m_cur_output_blacklist, (MDB_val *)&zerokval, &key, 0))
+        {
+          if (result != MDB_KEYEXIST)
+          {
+            throw1(DB_ERROR(lmdb_error("Error adding blacklisted output to db: ", result).c_str()));
+          }
+        }
+      }
+      block_txn_stop();
+    }
+
+    return true;
+  }, false);
 }
 
 void BlockchainLMDB::close()
@@ -1537,6 +1607,8 @@ void BlockchainLMDB::reset()
     throw0(DB_ERROR(lmdb_error("Failed to drop m_output_txs: ", result).c_str()));
   if (auto result = mdb_drop(txn, m_output_amounts, 0))
     throw0(DB_ERROR(lmdb_error("Failed to drop m_output_amounts: ", result).c_str()));
+  if (auto result = mdb_drop(txn, m_output_blacklist, 0))
+    throw0(DB_ERROR(lmdb_error("Failed to drop m_output_blacklist: ", result).c_str()));
   if (auto result = mdb_drop(txn, m_spent_keys, 0))
     throw0(DB_ERROR(lmdb_error("Failed to drop m_spent_keys: ", result).c_str()));
   (void)mdb_drop(txn, m_hf_starting_heights, 0); // this one is dropped in new code
@@ -1610,33 +1682,6 @@ void BlockchainLMDB::unlock()
   LOG_PRINT_L3("BlockchainLMDB::" << __func__);
   check_open();
 }
-
-#define TXN_PREFIX(flags); \
-  mdb_txn_safe auto_txn; \
-  mdb_txn_safe* txn_ptr = &auto_txn; \
-  if (m_batch_active) \
-    txn_ptr = m_write_txn; \
-  else \
-  { \
-    if (auto mdb_res = lmdb_txn_begin(m_env, NULL, flags, auto_txn)) \
-      throw0(DB_ERROR(lmdb_error(std::string("Failed to create a transaction for the db in ")+__FUNCTION__+": ", mdb_res).c_str())); \
-  } \
-
-#define TXN_PREFIX_RDONLY() \
-  MDB_txn *m_txn; \
-  mdb_txn_cursors *m_cursors; \
-  mdb_txn_safe auto_txn; \
-  bool my_rtxn = block_rtxn_start(&m_txn, &m_cursors); \
-  if (my_rtxn) auto_txn.m_tinfo = m_tinfo.get(); \
-  else auto_txn.uncheck()
-#define TXN_POSTFIX_RDONLY()
-
-#define TXN_POSTFIX_SUCCESS() \
-  do { \
-    if (! m_batch_active) \
-      auto_txn.commit(); \
-  } while(0)
-
 
 // The below two macros are for DB access within block add/remove, whether
 // regular batch txn is in use or not. m_write_txn is used as a batch txn, even
@@ -3485,6 +3530,7 @@ bool BlockchainLMDB::get_output_distribution(uint64_t amount, uint64_t from_heig
       throw0(DB_ERROR("Failed to enumerate outputs"));
     const outkey *ok = (const outkey *)v.mv_data;
     const uint64_t height = ok->data.height;
+
     if (height >= from_height)
       distribution[height - from_height]++;
     else
@@ -3500,6 +3546,17 @@ bool BlockchainLMDB::get_output_distribution(uint64_t amount, uint64_t from_heig
 
   TXN_POSTFIX_RDONLY();
 
+  return true;
+}
+
+bool BlockchainLMDB::get_output_blacklist(std::vector<uint64_t> &blacklist) const
+{
+  LOG_PRINT_L3("BlockchainLMDB::" << __func__);
+  check_open();
+
+  TXN_PREFIX_RDONLY();
+  // RCURSOR(output_amounts);
+  TXN_POSTFIX_RDONLY();
   return true;
 }
 

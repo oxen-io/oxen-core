@@ -1357,6 +1357,7 @@ namespace tools
     hw::device& lookup_device(const std::string & device_descriptor);
 
     bool get_rct_distribution(uint64_t &start_height, std::vector<uint64_t> &distribution);
+    bool get_output_blacklist(std::vector<uint64_t> &blacklist);
 
     uint64_t get_segregation_fork_height() const;
     void unpack_multisig_info(const std::vector<std::string>& info,

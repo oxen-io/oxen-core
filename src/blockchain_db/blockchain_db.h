@@ -1563,6 +1563,8 @@ public:
 
   virtual bool get_output_distribution(uint64_t amount, uint64_t from_height, uint64_t to_height, std::vector<uint64_t> &distribution, uint64_t &base) const = 0;
 
+  virtual bool get_output_blacklist(std::vector<uint64_t> &blacklist) const = 0;
+
   /**
    * @brief is BlockchainDB in read-only mode?
    *

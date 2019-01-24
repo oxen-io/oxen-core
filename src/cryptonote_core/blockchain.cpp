@@ -107,8 +107,8 @@ static const struct {
   { network_version_7,               1, 0, 1533631121 },
   { network_version_8,               2, 0, 1533631122 },
   { network_version_9_service_nodes, 3, 0, 1533631123 },
-  { network_version_10_bulletproofs, 4, 0, 1542681077 }, // 2018-11-20 13:30 AEDT
-  { network_version_11_swarms,       5, 0, 1542681078 }, // 2018-11-20 13:30 AEDT
+  { network_version_10_bulletproofs, 47096, 0, 1542681077 }, // 2018-11-20 13:30 AEDT
+  // { network_version_11_swarms,       5, 0, 1542681078 }, // 2018-11-20 13:30 AEDT
 };
 
 static const struct {
@@ -1898,7 +1898,13 @@ bool Blockchain::get_output_distribution(uint64_t amount, uint64_t from_height, 
     return false;
   if (start_height >= db_height || to_height >= db_height)
     return false;
-  if (amount == 0)
+
+  // NOTE(loki): Is this function ever used for getting actual statistics on output distribution?
+  // Otherwise we are going to run our modified version of output selection that
+  // excludes all transactions that embed a tx_secret_key, i.e. the amounts are
+  // revealed along with address.
+
+  if (amount == 0 && 0)
   {
     std::vector<uint64_t> heights;
     heights.reserve(to_height + 1 - start_height);
@@ -1917,6 +1923,11 @@ bool Blockchain::get_output_distribution(uint64_t amount, uint64_t from_height, 
   {
     return m_db->get_output_distribution(amount, start_height, to_height, distribution, base);
   }
+}
+//------------------------------------------------------------------
+bool Blockchain::get_output_blacklist(std::vector<uint64_t> &blacklist) const
+{
+  return m_db->get_output_blacklist(blacklist);
 }
 //------------------------------------------------------------------
 // This function takes a list of block hashes from another node

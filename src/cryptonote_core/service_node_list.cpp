@@ -737,10 +737,10 @@ namespace service_nodes
       return false;
     }
 
-    const uint64_t min_transfer = info.staking_requirement / MAX_NUMBER_OF_CONTRIBUTORS;
+    const uint64_t min_transfer = get_min_node_contribution(hf_version, info.staking_requirement, info.total_reserved, info.contributors.size());
     if (parsed_contribution.transferred < min_transfer)
     {
-      MERROR("Register TX: Contribution didn't meet the minimum transfer requirement: " << min_transfer << " on height: " << block_height << " for tx: " << cryptonote::get_transaction_hash(tx));
+      MERROR("Register TX: Contribution transferred: " << parsed_contribution.transferred << " didn't meet the minimum transfer requirement: " << min_transfer << " on height: " << block_height << " for tx: " << cryptonote::get_transaction_hash(tx));
       return false;
     }
 
