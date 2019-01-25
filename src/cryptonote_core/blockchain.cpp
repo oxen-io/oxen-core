@@ -1904,7 +1904,7 @@ bool Blockchain::get_output_distribution(uint64_t amount, uint64_t from_height, 
   // excludes all transactions that embed a tx_secret_key, i.e. the amounts are
   // revealed along with address.
 
-  if (amount == 0 && 0)
+  if (amount == 0)
   {
     std::vector<uint64_t> heights;
     heights.reserve(to_height + 1 - start_height);
