@@ -501,7 +501,7 @@ TEST(service_nodes, service_node_rewards_proportional_to_portions)
 
 TEST(service_nodes, service_node_get_locked_key_image_unlock_height)
 {
-  uint64_t lock_duration = service_nodes::staking_initial_num_lock_blocks(cryptonote::MAINNET) / 2;
+  uint64_t lock_duration = service_nodes::staking_num_lock_blocks(cryptonote::MAINNET) / 2;
 
   {
     uint64_t expected      = lock_duration;

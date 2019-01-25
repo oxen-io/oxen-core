@@ -6919,7 +6919,7 @@ std::vector<wallet2::pending_tx> wallet2::create_stake_tx(const crypto::public_k
     return {};
   }
 
-  const uint64_t staking_requirement_lock_blocks = service_nodes::staking_initial_num_lock_blocks(m_nettype);
+  const uint64_t staking_requirement_lock_blocks = service_nodes::staking_num_lock_blocks(m_nettype);
   const uint64_t locked_blocks = staking_requirement_lock_blocks + STAKING_REQUIREMENT_LOCK_BLOCKS_EXCESS;
   uint64_t unlock_at_block = bc_height + locked_blocks;
   if (use_fork_rules(cryptonote::network_version_11_swarms, 1))

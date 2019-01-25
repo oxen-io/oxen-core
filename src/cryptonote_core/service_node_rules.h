@@ -5,7 +5,7 @@
 
 namespace service_nodes {
 
-inline uint64_t staking_initial_num_lock_blocks(cryptonote::network_type nettype)
+inline uint64_t staking_num_lock_blocks(cryptonote::network_type nettype)
 {
   switch(nettype)
   {
