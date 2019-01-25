@@ -7268,6 +7268,13 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
       MDEBUG("Picking 1/" << n_rct << " in " << (last_block_offset - first_block_offset + 1) << " blocks centered around " << block_offset + rct_start_height);
       
       uint64_t pick = first_rct + crypto::rand<uint64_t>() % n_rct;
+
+      {
+        double percent_of_outputs_blacklisted = output_blacklist.size() / (double)n_rct;
+        if (static_cast<int>(percent_of_outputs_blacklisted + 1) > 5)
+          MWARNING("More than 5 percent of available outputs are blacklisted, please notify the Loki developers");
+      }
+
       for (;;)
       {
         if (std::binary_search(output_blacklist.begin(), output_blacklist.end(), pick))

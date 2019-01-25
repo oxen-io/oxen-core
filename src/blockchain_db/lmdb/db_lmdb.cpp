@@ -1375,7 +1375,7 @@ void BlockchainLMDB::open(const std::string& filename, const int db_flags)
 
   lmdb_db_open(txn, LMDB_OUTPUT_TXS, MDB_INTEGERKEY | MDB_CREATE | MDB_DUPSORT | MDB_DUPFIXED, m_output_txs, "Failed to open db handle for m_output_txs");
   lmdb_db_open(txn, LMDB_OUTPUT_AMOUNTS, MDB_INTEGERKEY | MDB_DUPSORT | MDB_DUPFIXED | MDB_CREATE, m_output_amounts, "Failed to open db handle for m_output_amounts");
-  lmdb_db_open(txn, LMDB_OUTPUT_BLACKLIST, MDB_INTEGERKEY | MDB_CREATE, m_output_blacklist, "Failed to open db handle for m_output_blacklist");
+  lmdb_db_open(txn, LMDB_OUTPUT_BLACKLIST, MDB_INTEGERKEY | MDB_CREATE | MDB_DUPSORT | MDB_DUPFIXED, m_output_blacklist, "Failed to open db handle for m_output_blacklist");
 
   lmdb_db_open(txn, LMDB_SPENT_KEYS, MDB_INTEGERKEY | MDB_CREATE | MDB_DUPSORT | MDB_DUPFIXED, m_spent_keys, "Failed to open db handle for m_spent_keys");
 
@@ -1399,6 +1399,7 @@ void BlockchainLMDB::open(const std::string& filename, const int db_flags)
   mdb_set_dupsort(txn, m_tx_indices, compare_hash32);
   mdb_set_dupsort(txn, m_output_amounts, compare_uint64);
   mdb_set_dupsort(txn, m_output_txs, compare_uint64);
+  mdb_set_dupsort(txn, m_output_blacklist, compare_uint64);
   mdb_set_dupsort(txn, m_block_info, compare_uint64);
 
   mdb_set_compare(txn, m_txpool_meta, compare_hash32);
@@ -3523,7 +3524,7 @@ bool BlockchainLMDB::get_output_blacklist(std::vector<uint64_t> &blacklist) cons
 
   MDB_val val;
   blacklist.reserve(db_stat.ms_entries);
-  for(MDB_cursor_op op = MDB_FIRST;; op = MDB_NEXT)
+  for(MDB_cursor_op op = MDB_SET;; op = MDB_NEXT_DUP)
   {
     int ret = mdb_cursor_get(m_cur_output_blacklist, (MDB_val *)&zerokval, &val, op);
     if (ret == MDB_NOTFOUND) break;
@@ -3533,6 +3534,21 @@ bool BlockchainLMDB::get_output_blacklist(std::vector<uint64_t> &blacklist) cons
 
   TXN_POSTFIX_RDONLY();
   return true;
+}
+
+void BlockchainLMDB::add_output_blacklist(std::vector<uint64_t> const &blacklist)
+{
+  LOG_PRINT_L3("BlockchainLMDB::" << __func__);
+  check_open();
+
+  mdb_txn_cursors *m_cursors = &m_wcursors;
+  CURSOR(output_blacklist);
+
+  MDB_val val;
+  val.mv_data = (void *)blacklist.data();
+  val.mv_size = sizeof(uint64_t) * blacklist.size();
+  if (int ret = mdb_cursor_put(m_cur_output_blacklist, (MDB_val *)&zerokval, &val, MDB_APPENDDUP))
+    throw0(DB_ERROR(lmdb_error("Failed to add blacklisted output to db transaction: ", ret).c_str()));
 }
 
 void BlockchainLMDB::check_hard_fork_info()
@@ -4546,18 +4562,11 @@ void BlockchainLMDB::migrate_3_4()
     if (int result = mdb_cursor_open(txn, m_output_blacklist, &m_cur_output_blacklist))
       throw0(DB_ERROR(lmdb_error("Failed to open cursor: ", result).c_str()));
 
-    for (size_t index = 0; index < global_output_indexes.size(); index++)
-    {
-      uint64_t output_index = global_output_indexes[index];
-      MDB_val_set(output_index_key, output_index);
-      if (int result = mdb_cursor_put(m_cur_output_blacklist, (MDB_val *)&zerokval, &output_index_key, 0))
-      {
-        if (result != MDB_KEYEXIST)
-        {
-          throw1(DB_ERROR(lmdb_error("Error adding blacklisted output to db: ", result).c_str()));
-        }
-      }
-    }
+    MDB_val val;
+    val.mv_data = (void *)global_output_indexes.data();
+    val.mv_size = sizeof(uint64_t) * global_output_indexes.size();
+    if (int ret = mdb_cursor_put(m_cur_output_blacklist, (MDB_val *)&zerokval, &val, MDB_APPEND))
+      throw0(DB_ERROR(lmdb_error("Failed to add blacklisted output to db transaction: ", ret).c_str()));
   }
 
   txn.commit();
