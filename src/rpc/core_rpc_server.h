@@ -157,21 +157,13 @@ namespace cryptonote
         MAP_JON_RPC_WE("get_quorum_state",                      on_get_quorum_state, COMMAND_RPC_GET_QUORUM_STATE)
         MAP_JON_RPC_WE("get_quorum_state_batched",              on_get_quorum_state_batched, COMMAND_RPC_GET_QUORUM_STATE_BATCHED)
         MAP_JON_RPC_WE("get_service_node_registration_cmd_raw", on_get_service_node_registration_cmd_raw, COMMAND_RPC_GET_SERVICE_NODE_REGISTRATION_CMD_RAW)
-<<<<<<< HEAD
-        MAP_JON_RPC_WE("get_service_node_registration_cmd", on_get_service_node_registration_cmd, COMMAND_RPC_GET_SERVICE_NODE_REGISTRATION_CMD)
-        MAP_JON_RPC_WE("get_service_node_key",   on_get_service_node_key, COMMAND_RPC_GET_SERVICE_NODE_KEY)
-        MAP_JON_RPC_WE("get_service_nodes", on_get_service_nodes, COMMAND_RPC_GET_SERVICE_NODES)
-        MAP_JON_RPC_WE("get_all_service_nodes", on_get_all_service_nodes, COMMAND_RPC_GET_SERVICE_NODES)
-        MAP_JON_RPC_WE("get_staking_requirement", on_get_staking_requirement, COMMAND_RPC_GET_STAKING_REQUIREMENT)
         MAP_JON_RPC_WE("get_service_node_blacklisted_key_images", on_get_service_node_blacklisted_key_images, COMMAND_RPC_GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES)
-=======
         MAP_JON_RPC_WE("get_service_node_registration_cmd",     on_get_service_node_registration_cmd, COMMAND_RPC_GET_SERVICE_NODE_REGISTRATION_CMD)
         MAP_JON_RPC_WE("get_service_node_key",                  on_get_service_node_key, COMMAND_RPC_GET_SERVICE_NODE_KEY)
         MAP_JON_RPC_WE("get_service_nodes",                     on_get_service_nodes, COMMAND_RPC_GET_SERVICE_NODES)
         MAP_JON_RPC_WE("get_all_service_nodes",                 on_get_all_service_nodes, COMMAND_RPC_GET_SERVICE_NODES)
         MAP_JON_RPC_WE("get_all_service_nodes_keys",            on_get_all_service_nodes_keys, COMMAND_RPC_GET_ALL_SERVICE_NODES_KEYS)
         MAP_JON_RPC_WE("get_staking_requirement",               on_get_staking_requirement, COMMAND_RPC_GET_STAKING_REQUIREMENT)
->>>>>>> dev
       END_JSON_RPC_MAP()
     END_URI_MAP2()
 
