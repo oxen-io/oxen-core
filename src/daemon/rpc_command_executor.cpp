@@ -60,15 +60,9 @@ namespace {
     std::cout << msg << " (Y)es/(N)o/(B)ack/(C)ancel: ";
     std::cin >> input;
 
-    if(command_line::is_yes(input))
-      return input_line_result::yes;
-
-    if(command_line::is_no(input))
-      return input_line_result::no;
-
-    if(command_line::is_back(input))
-      return input_line_result::back;
-
+    if (command_line::is_yes(input))  return input_line_result::yes;
+    if (command_line::is_no(input))   return input_line_result::no;
+    if (command_line::is_back(input)) return input_line_result::back;
     return input_line_result::cancel;
   }
 
@@ -78,12 +72,8 @@ namespace {
     std::cout << msg << " (Y)es/(N)o/(C)ancel: ";
     std::cin >> input;
 
-    if(command_line::is_yes(input))
-      return input_line_result::yes;
-
-    if(command_line::is_no(input))
-      return input_line_result::no;
-
+    if (command_line::is_yes(input)) return input_line_result::yes;
+    if (command_line::is_no(input))  return input_line_result::no;
     return input_line_result::cancel;
   }
 
@@ -93,12 +83,8 @@ namespace {
     std::cout << msg << " (B)ack/(C)ancel: ";
     std::cin >> input;
 
-    if(command_line::is_back(input))
-      return input_line_result::back;
-
-    if(command_line::is_cancel(input))
-      return input_line_result::cancel;
-
+    if (command_line::is_back(input))   return input_line_result::back;
+    if (command_line::is_cancel(input)) return input_line_result::cancel;
     return input_line_result::yes;
   }
 
@@ -2716,10 +2702,7 @@ bool t_rpc_command_executor::prepare_registration()
         last_input_result = input_line_back_cancel_get_input(prompt.c_str(), input);
 
         if (last_input_result == input_line_result::back)
-        {
-          step = register_step_is_open_stake__do_you_want_to_reserve_other_contributors;
           continue;
-        }
 
         if (last_input_result == input_line_result::cancel)
         {
