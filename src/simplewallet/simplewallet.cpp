@@ -5649,9 +5649,6 @@ bool simple_wallet::request_stake_unlock(const std::vector<std::string> &args_)
 
   SCOPED_WALLET_UNLOCK();
 
-  // TODO(doyle): INF_STAKING(doyle): We need to check the SNode List and only
-  // allow the request transaction to go through if there's a matching SNode and
-  // the SNode's has key images belonging to this wallet.
   std::vector<tools::wallet2::pending_tx> ptx_vector;
   {
     ptx_vector.push_back({});
@@ -5684,8 +5681,6 @@ bool simple_wallet::request_stake_unlock(const std::vector<std::string> &args_)
     {
       address_parse_info address_info = {};
 
-      // TODO(doyle): INF_STAKING(doyle): We don't allow staking not from the owner address yet
-      // When we allow staking on behalf of another address, this won't cut it
       cryptonote::get_account_address_from_str(address_info, m_wallet->nettype(), contributor.address);
       if (!m_wallet->contains_primary_address(address_info.address))
         continue;
@@ -5706,9 +5701,6 @@ bool simple_wallet::request_stake_unlock(const std::vector<std::string> &args_)
       return true;
     }
 
-    // TODO(doyle): INF_STAKING(doyle): We should indicate that the node gets
-    // into unregistered and perhaps the other contributors/and currently still
-    // locked contributions in the node.
     cryptonote::tx_extra_tx_key_image_unlock unlock = {};
     {
       std::string msg_buf;
@@ -5729,7 +5721,7 @@ bool simple_wallet::request_stake_unlock(const std::vector<std::string> &args_)
       msg_buf.append(cryptonote::print_money(contribution.amount));
       msg_buf.append(" Loki from the service node network.\nThis will deactivate the service node: ");
       msg_buf.append(node_info.service_node_pubkey);
-      msg_buf.append(" and schedule the service node for expiration.\n\n");
+      msg_buf.append(" and schedule the service node for expiration and unlock all other contributions as well.\n\n");
 
       uint64_t curr_height = 0;
       {

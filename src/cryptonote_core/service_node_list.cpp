@@ -65,8 +65,7 @@ namespace service_nodes
     do x = mersenne_twister(); while (x >= secureMax);
     return  x / (secureMax / n);
   }
-
-  service_node_list::service_node_list(cryptonote::Blockchain& blockchain)
+service_node_list::service_node_list(cryptonote::Blockchain& blockchain)
     : m_blockchain(blockchain), m_hooks_registered(false), m_height(0), m_db(nullptr), m_service_node_pubkey(nullptr)
   {
   }
@@ -737,7 +736,7 @@ namespace service_nodes
       return false;
     }
 
-    const uint64_t min_transfer = get_min_node_contribution(hf_version, info.staking_requirement, info.total_reserved, info.contributors.size());
+    const uint64_t min_transfer = get_min_node_contribution(hf_version, info.staking_requirement, info.total_reserved, info.total_num_locked_contributions());
     if (parsed_contribution.transferred < min_transfer)
     {
       MERROR("Register TX: Contribution transferred: " << parsed_contribution.transferred << " didn't meet the minimum transfer requirement: " << min_transfer << " on height: " << block_height << " for tx: " << cryptonote::get_transaction_hash(tx));
@@ -926,7 +925,7 @@ namespace service_nodes
 
       /// Check that the contribution is large enough
       const uint8_t hf_version = m_blockchain.get_hard_fork_version(block_height);
-      const uint64_t min_contribution = get_min_node_contribution(hf_version, info.staking_requirement, info.total_reserved, contributors.size());
+      const uint64_t min_contribution = get_min_node_contribution(hf_version, info.staking_requirement, info.total_reserved, info.total_num_locked_contributions());
       if (parsed_contribution.transferred < min_contribution)
       {
         LOG_PRINT_L1("Contribution TX: Amount " << parsed_contribution.transferred <<
@@ -976,10 +975,21 @@ namespace service_nodes
     {
       // TODO(doyle): INF_STAKING(doyle): Set a limit on the number of key images allowed
       std::vector<service_node_info::contribution_t> &locked_contributions = contributor.locked_contributions;
-      locked_contributions.reserve(locked_contributions.size() + parsed_contribution.locked_contributions.size());
+      locked_contributions.reserve(std::max(locked_contributions.size() + parsed_contribution.locked_contributions.size(), (size_t)MAX_KEY_IMAGES_PER_CONTRIBUTOR));
 
       for (const service_node_info::contribution_t &contribution : parsed_contribution.locked_contributions)
-        contributor.locked_contributions.push_back(contribution);
+      {
+        if (locked_contributions.size() < service_nodes::MAX_KEY_IMAGES_PER_CONTRIBUTOR)
+          contributor.locked_contributions.push_back(contribution);
+        else
+        {
+          LOG_PRINT_L1("Contribution TX: Already hit the max number of contributions: " << service_nodes::MAX_KEY_IMAGES_PER_CONTRIBUTOR <<
+                       " for contributor: " << cryptonote::get_account_address_as_str(m_blockchain.nettype(), false, contributor.address) <<
+                       " on height: "  << block_height <<
+                       " for tx: " << cryptonote::get_transaction_hash(tx));
+          break;
+        }
+      }
     }
 
     LOG_PRINT_L1("Contribution of " << parsed_contribution.transferred << " received for service node " << pubkey);
@@ -1700,6 +1710,14 @@ namespace service_nodes
       m_blockchain.get_hard_fork_voting_info(9, window, votes, threshold, hardfork_9_from_height, voting);
     }
     m_height = hardfork_9_from_height;
+  }
+
+  size_t service_node_info::total_num_locked_contributions() const
+  {
+    size_t result = 0;
+    for (service_node_info::contributor_t const &contributor : this->contributors)
+      result += contributor.locked_contributions.size();
+    return result;
   }
 
   bool convert_registration_args(cryptonote::network_type nettype,

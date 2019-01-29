@@ -76,20 +76,18 @@ static uint64_t get_min_node_contribution_pre_v11(uint64_t staking_requirement, 
   return std::min(staking_requirement - total_reserved, staking_requirement / MAX_NUMBER_OF_CONTRIBUTORS);
 }
 
-uint64_t get_min_node_contribution(uint8_t version, uint64_t staking_requirement, uint64_t total_reserved, size_t contrib_count)
+uint64_t get_min_node_contribution(uint8_t version, uint64_t staking_requirement, uint64_t total_reserved, size_t num_contributions)
 {
   if (version < cryptonote::network_version_11_swarms)
     return get_min_node_contribution_pre_v11(staking_requirement, total_reserved);
 
-  const uint64_t needed = staking_requirement - total_reserved;
-  const size_t vacant = MAX_NUMBER_OF_CONTRIBUTORS - contrib_count;
+  const uint64_t needed                 = staking_requirement - total_reserved;
+  const size_t max_num_of_contributions = MAX_NUMBER_OF_CONTRIBUTORS * MAX_KEY_IMAGES_PER_CONTRIBUTOR;
+  assert(max_num_of_contributions > num_contributions);
+  if (max_num_of_contributions <= num_contributions) return 0;
 
-  assert(contrib_count < MAX_NUMBER_OF_CONTRIBUTORS);
-  /// This function is not called when the node is full, but if
-  /// it does in the future, at least we don't cause undefined behaviour
-  if (vacant == 0) return 0;
-
-  return needed / vacant;
+  const size_t num_contributions_remaining_avail = max_num_of_contributions - num_contributions;
+  return needed / num_contributions_remaining_avail;
 }
 
 uint64_t get_portions_to_make_amount(uint64_t staking_requirement, uint64_t amount)

@@ -6816,9 +6816,13 @@ bool wallet2::check_stake_allowed(const crypto::public_key& sn_key, const crypto
   const auto& snode_info  = response.front();
   if (amount == 0) amount = snode_info.staking_requirement * fraction;
 
+  size_t total_num_locked_contributions = 0;
+  for (COMMAND_RPC_GET_SERVICE_NODES::response::contributor const &contributor : snode_info.contributors)
+    total_num_locked_contributions += contributor.locked_contributions.size();
+
   uint8_t const hf_version     = *res;
   uint64_t max_contrib_total   = snode_info.staking_requirement - snode_info.total_reserved;
-  uint64_t min_contrib_total   = service_nodes::get_min_node_contribution(hf_version, snode_info.staking_requirement, snode_info.total_reserved, snode_info.contributors.size());
+  uint64_t min_contrib_total   = service_nodes::get_min_node_contribution(hf_version, snode_info.staking_requirement, snode_info.total_reserved, total_num_locked_contributions);
   uint64_t expected_to_contrib = 0;
 
   bool is_preexisting_contributor = false;
@@ -6834,10 +6838,8 @@ bool wallet2::check_stake_allowed(const crypto::public_key& sn_key, const crypto
       max_contrib_total  += reserved_amount_not_contributed_yet;
       expected_to_contrib = reserved_amount_not_contributed_yet;
       is_preexisting_contributor = true;
-
       if (hf_version <= cryptonote::network_version_10_bulletproofs)
         min_contrib_total = 0; // Allowed to contribute incremental amounts, post v10, we lock key images so each user has a limit on number of contributions
-
       break;
     }
   }

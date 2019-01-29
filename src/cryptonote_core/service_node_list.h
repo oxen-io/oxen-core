@@ -36,19 +36,6 @@
 
 namespace service_nodes
 {
-  constexpr size_t QUORUM_SIZE                    = 10;
-  constexpr size_t QUORUM_LIFETIME                = (6 * deregister_vote::DEREGISTER_LIFETIME_BY_HEIGHT);
-  constexpr size_t MIN_VOTES_TO_KICK_SERVICE_NODE = 7;
-  constexpr size_t NTH_OF_THE_NETWORK_TO_TEST     = 100;
-  constexpr size_t MIN_NODES_TO_TEST              = 50;
-  constexpr size_t MAX_SWARM_SIZE                 = 10;
-  // We never create a new swarm unless there are SWARM_BUFFER extra nodes
-  // available in the queue.
-  constexpr size_t SWARM_BUFFER                   = 5;
-  // if a swarm has strictly less nodes than this, it is considered unhealthy
-  // and nearby swarms will mirror it's data. It will disappear, and is already considered gone.
-  constexpr size_t MIN_SWARM_SIZE                 = 5;
-
   class quorum_cop;
 
   struct quorum_state
@@ -129,9 +116,9 @@ namespace service_nodes
     swarm_id_t                         swarm_id;
     cryptonote::account_public_address operator_address;
 
-    bool is_fully_funded() const { return total_contributed >= staking_requirement; }
-
     service_node_info() = default;
+    bool is_fully_funded() const { return total_contributed >= staking_requirement; }
+    size_t total_num_locked_contributions() const;
 
     BEGIN_SERIALIZE()
       VARINT_FIELD(version)
@@ -179,9 +166,6 @@ namespace service_nodes
 
   template<typename T>
   void loki_shuffle(std::vector<T>& a, uint64_t seed);
-
-  static constexpr uint64_t QUEUE_SWARM_ID = 0;
-  static constexpr uint64_t KEY_IMAGE_AWAITING_UNLOCK_HEIGHT = 0;
 
   class service_node_list
     : public cryptonote::Blockchain::BlockAddedHook,
