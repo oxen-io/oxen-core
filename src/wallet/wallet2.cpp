@@ -1389,10 +1389,6 @@ void wallet2::scan_output(const cryptonote::transaction &tx, const crypto::publi
   }
   else
   {
-    crypto::secret_key tx_key = {};
-    get_tx_secret_key_from_tx_extra(tx.extra, tx_key);
-    volatile auto *tx_key_ptr = &tx_key;
-
     bool r = cryptonote::generate_key_image_helper_precomp(m_account.get_keys(), boost::get<cryptonote::txout_to_key>(tx.vout[vout_index].target).key, tx_scan_info.received->derivation, vout_index, tx_scan_info.received->index, tx_scan_info.in_ephemeral, tx_scan_info.ki, m_account.get_device());
     THROW_WALLET_EXCEPTION_IF(!r, error::wallet_internal_error, "Failed to generate key image");
     THROW_WALLET_EXCEPTION_IF(tx_scan_info.in_ephemeral.pub != boost::get<cryptonote::txout_to_key>(tx.vout[vout_index].target).key,
