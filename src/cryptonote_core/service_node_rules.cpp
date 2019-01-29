@@ -90,6 +90,13 @@ uint64_t get_min_node_contribution(uint8_t version, uint64_t staking_requirement
   return needed / num_contributions_remaining_avail;
 }
 
+uint64_t get_min_node_contribution_in_portions(uint8_t version, uint64_t staking_requirement, uint64_t total_reserved, size_t num_contributions)
+{
+  uint64_t atomic_amount = get_min_node_contribution(version, staking_requirement, total_reserved, num_contributions);
+  uint64_t result        = get_portions_to_make_amount(staking_requirement, atomic_amount);
+  return result;
+}
+
 uint64_t get_portions_to_make_amount(uint64_t staking_requirement, uint64_t amount)
 {
   uint64_t lo, hi, resulthi, resultlo;
