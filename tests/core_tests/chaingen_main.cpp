@@ -112,7 +112,7 @@ int main(int argc, char* argv[])
 
     if (run_all || command_line::get_arg(vm, arg_service_nodes))
     {
-#if 0
+#if 1
       GENERATE_AND_PLAY(gen_service_nodes);
       GENERATE_AND_PLAY(test_prefer_deregisters);
       GENERATE_AND_PLAY(test_zero_fee_deregister);
@@ -124,7 +124,7 @@ int main(int argc, char* argv[])
 #endif
     }
 
-#if 0
+#if 1
     if (run_all)
     {
       GENERATE_AND_PLAY(gen_batched_governance_reward); // Loki Governance
@@ -209,21 +209,6 @@ int main(int argc, char* argv[])
       GENERATE_AND_PLAY(gen_bp_tx_invalid_borromean_type);
     }
 #endif
-      GENERATE_AND_PLAY(gen_bp_tx_valid_1);
-      GENERATE_AND_PLAY(gen_bp_tx_invalid_1_1);
-      GENERATE_AND_PLAY(gen_bp_tx_valid_2);
-      GENERATE_AND_PLAY(gen_bp_tx_valid_3);
-      GENERATE_AND_PLAY(gen_bp_tx_valid_16);
-      GENERATE_AND_PLAY(gen_bp_tx_invalid_4_2_1);
-      GENERATE_AND_PLAY(gen_bp_tx_invalid_16_16);
-      GENERATE_AND_PLAY(gen_bp_txs_valid_2_and_2);
-      GENERATE_AND_PLAY(gen_bp_txs_invalid_2_and_8_2_and_16_16_1);
-      GENERATE_AND_PLAY(gen_bp_txs_valid_2_and_3_and_2_and_4);
-      GENERATE_AND_PLAY(gen_bp_tx_invalid_not_enough_proofs);
-      GENERATE_AND_PLAY(gen_bp_tx_invalid_empty_proofs);
-      GENERATE_AND_PLAY(gen_bp_tx_invalid_too_many_proofs);
-      GENERATE_AND_PLAY(gen_bp_tx_invalid_wrong_amount);
-      GENERATE_AND_PLAY(gen_bp_tx_invalid_borromean_type);
 
       // TODO(loki): Tests we need to fix
 #if 0

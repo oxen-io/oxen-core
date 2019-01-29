@@ -65,7 +65,8 @@ namespace service_nodes
     do x = mersenne_twister(); while (x >= secureMax);
     return  x / (secureMax / n);
   }
-service_node_list::service_node_list(cryptonote::Blockchain& blockchain)
+
+  service_node_list::service_node_list(cryptonote::Blockchain& blockchain)
     : m_blockchain(blockchain), m_hooks_registered(false), m_height(0), m_db(nullptr), m_service_node_pubkey(nullptr)
   {
   }
@@ -975,7 +976,7 @@ service_node_list::service_node_list(cryptonote::Blockchain& blockchain)
     {
       // TODO(doyle): INF_STAKING(doyle): Set a limit on the number of key images allowed
       std::vector<service_node_info::contribution_t> &locked_contributions = contributor.locked_contributions;
-      locked_contributions.reserve(std::max(locked_contributions.size() + parsed_contribution.locked_contributions.size(), (size_t)MAX_KEY_IMAGES_PER_CONTRIBUTOR));
+      locked_contributions.reserve(MAX_KEY_IMAGES_PER_CONTRIBUTOR);
 
       for (const service_node_info::contribution_t &contribution : parsed_contribution.locked_contributions)
       {
