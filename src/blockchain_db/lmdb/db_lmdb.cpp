@@ -4834,7 +4834,7 @@ void BlockchainLMDB::migrate_3_4()
   }
 
   {
-    lmdb_db_open(txn, LMDB_OUTPUT_BLACKLIST, MDB_INTEGERKEY | MDB_CREATE, m_output_blacklist, "Failed to open db handle for m_output_blacklist");
+    lmdb_db_open(txn, LMDB_OUTPUT_BLACKLIST, MDB_INTEGERKEY | MDB_CREATE | MDB_DUPSORT | MDB_DUPFIXED, m_output_blacklist, "Failed to open db handle for m_output_blacklist");
 
     std::vector<uint64_t> global_output_indexes;
     {
@@ -4900,11 +4900,12 @@ void BlockchainLMDB::migrate_3_4()
     if (int result = mdb_cursor_open(txn, m_output_blacklist, &m_cur_output_blacklist))
       throw0(DB_ERROR(lmdb_error("Failed to open cursor: ", result).c_str()));
 
-    MDB_val val;
-    val.mv_data = (void *)global_output_indexes.data();
-    val.mv_size = sizeof(uint64_t) * global_output_indexes.size();
-    if (int ret = mdb_cursor_put(m_cur_output_blacklist, (MDB_val *)&zerokval, &val, MDB_APPEND))
-      throw0(DB_ERROR(lmdb_error("Failed to add blacklisted output to db transaction: ", ret).c_str()));
+    for (uint64_t output_index : global_output_indexes)
+    {
+      MDB_val_set(val, output_index);
+      if (int ret = mdb_cursor_put(m_cur_output_blacklist, (MDB_val *)&zerokval, &val, MDB_NODUPDATA))
+        throw0(DB_ERROR(lmdb_error("Failed to migrate blacklisted output to db transaction: ", ret).c_str()));
+    }
   }
 
   txn.commit();
