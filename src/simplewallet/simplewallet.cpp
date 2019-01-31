@@ -6108,14 +6108,15 @@ bool simple_wallet::request_stake_unlock(const std::vector<std::string> &args_)
       return true;
     }
 
+    cryptonote::account_public_address const primary_address = m_wallet->get_address();
     std::vector<COMMAND_RPC_GET_SERVICE_NODES::response::contribution> const *contributions = nullptr;
     COMMAND_RPC_GET_SERVICE_NODES::response::entry const &node_info                         = response[0];
     for (COMMAND_RPC_GET_SERVICE_NODES::response::contributor const &contributor : node_info.contributors)
     {
       address_parse_info address_info = {};
-
       cryptonote::get_account_address_from_str(address_info, m_wallet->nettype(), contributor.address);
-      if (!m_wallet->contains_primary_address(address_info.address))
+
+      if (address_info.address != primary_address)
         continue;
 
       contributions = &contributor.locked_contributions;
@@ -6245,14 +6246,20 @@ bool simple_wallet::print_locked_stakes_main(const std::vector<std::string> &arg
       return has_locked_stakes;
     }
 
+    cryptonote::account_public_address const primary_address = m_wallet->get_address();
     for (COMMAND_RPC_GET_SERVICE_NODES::response::entry const &node_info : response)
     {
       bool only_once = true;
       for (COMMAND_RPC_GET_SERVICE_NODES::response::contributor const &contributor : node_info.contributors)
       {
         address_parse_info address_info = {};
-        cryptonote::get_account_address_from_str(address_info, m_wallet->nettype(), contributor.address);
-        if (!m_wallet->contains_primary_address(address_info.address))
+        if (!cryptonote::get_account_address_from_str(address_info, m_wallet->nettype(), contributor.address))
+        {
+          fail_msg_writer() << tr("Failed to parse string representation of address: ") << contributor.address;
+          continue;
+        }
+
+        if (primary_address != address_info.address)
           continue;
 
         for (size_t i = 0; i < contributor.locked_contributions.size(); ++i)

@@ -5600,14 +5600,20 @@ bool wallet2::is_transfer_unlocked(uint64_t unlock_time, uint64_t block_height, 
       return true;
     }
 
+    cryptonote::account_public_address const primary_address = get_address();
     for (cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::entry const &entry : service_nodes_states)
     {
       for (cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::contributor const &contributor : entry.contributors)
       {
         address_parse_info address_info = {};
-        cryptonote::get_account_address_from_str(address_info, nettype(), contributor.address);
-        if (!contains_primary_address(address_info.address))
-          break;
+        if (!cryptonote::get_account_address_from_str(address_info, nettype(), contributor.address))
+        {
+          MERROR("Failed to parse string representation of address: " << contributor.address);
+          continue;
+        }
+
+        if (primary_address != address_info.address)
+          continue;
 
         for (cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::contribution const &contribution : contributor.locked_contributions)
         {
@@ -7071,7 +7077,8 @@ bool wallet2::check_stake_allowed(const crypto::public_key& sn_key, const crypto
     return false;
   }
 
-  if (!contains_primary_address(addr_info.address))
+  cryptonote::account_public_address const primary_address = get_address();
+  if (primary_address != addr_info.address)
   {
     MERROR(tr("The specified address must be owned by this wallet and be the primary address of the account."));
     return false;
@@ -12715,16 +12722,6 @@ bool wallet2::contains_address(const cryptonote::account_public_address& address
     for (uint32_t j = 0; j < subaddresses; j++)
       if (get_subaddress({i, j}) == address)
         return true;
-  }
-  return false;
-}
-//----------------------------------------------------------------------------------------------------
-bool wallet2::contains_primary_address(const cryptonote::account_public_address& address) const {
-  size_t accounts = get_num_subaddress_accounts() + m_subaddress_lookahead_major;
-  for (uint32_t i = 0; i < accounts; i++)
-  {
-    if (get_subaddress({i, 0}) == address)
-      return true;
   }
   return false;
 }
