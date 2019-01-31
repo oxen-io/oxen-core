@@ -1362,7 +1362,7 @@ void BlockchainLMDB::open(const std::string& filename, const int db_flags)
 
   lmdb_db_open(txn, LMDB_OUTPUT_TXS, MDB_INTEGERKEY | MDB_CREATE | MDB_DUPSORT | MDB_DUPFIXED, m_output_txs, "Failed to open db handle for m_output_txs");
   lmdb_db_open(txn, LMDB_OUTPUT_AMOUNTS, MDB_INTEGERKEY | MDB_DUPSORT | MDB_DUPFIXED | MDB_CREATE, m_output_amounts, "Failed to open db handle for m_output_amounts");
-  lmdb_db_open(txn, LMDB_OUTPUT_BLACKLIST, MDB_INTEGERKEY | MDB_CREATE | MDB_DUPSORT | MDB_DUPFIXED, m_output_blacklist, "Failed to open db handle for m_output_blacklist");
+  lmdb_db_open(txn, LMDB_OUTPUT_BLACKLIST, MDB_INTEGERKEY | MDB_CREATE | MDB_DUPSORT | MDB_DUPFIXED | MDB_INTEGERDUP, m_output_blacklist, "Failed to open db handle for m_output_blacklist");
 
   lmdb_db_open(txn, LMDB_SPENT_KEYS, MDB_INTEGERKEY | MDB_CREATE | MDB_DUPSORT | MDB_DUPFIXED, m_spent_keys, "Failed to open db handle for m_spent_keys");
 
@@ -3858,16 +3858,28 @@ bool BlockchainLMDB::get_output_blacklist(std::vector<uint64_t> &blacklist) cons
 
   MDB_stat db_stat;
   if (int result = mdb_stat(m_txn, m_output_blacklist, &db_stat))
-    throw0(DB_ERROR(lmdb_error("Failed to query output blacklist: ", result).c_str()));
+    throw0(DB_ERROR(lmdb_error("Failed to query output blacklist stats: ", result).c_str()));
 
+  MDB_val key = zerokval;
   MDB_val val;
   blacklist.reserve(db_stat.ms_entries);
-  for(MDB_cursor_op op = MDB_SET;; op = MDB_NEXT_DUP)
+
   {
-    int ret = mdb_cursor_get(m_cur_output_blacklist, (MDB_val *)&zerokval, &val, op);
+    int ret = mdb_cursor_get(m_cur_output_blacklist, &key, &val, MDB_FIRST);
+    if (ret) throw0(DB_ERROR(lmdb_error("Failed to enumerate output blacklist: ", ret).c_str()));
+  }
+
+  for(MDB_cursor_op op = MDB_GET_MULTIPLE;; op = MDB_NEXT_MULTIPLE)
+  {
+    int ret = mdb_cursor_get(m_cur_output_blacklist, &key, &val, op);
     if (ret == MDB_NOTFOUND) break;
     if (ret) throw0(DB_ERROR(lmdb_error("Failed to enumerate output blacklist: ", ret).c_str()));
-    blacklist.push_back(*(uint64_t *)val.mv_data);
+
+    uint64_t const *outputs = (uint64_t const *)val.mv_data;
+    int num_outputs         = val.mv_size / sizeof(*outputs);
+
+    for (int i = 0; i < num_outputs; i++)
+      blacklist.push_back(outputs[i]);
   }
 
   TXN_POSTFIX_RDONLY();
@@ -3882,10 +3894,12 @@ void BlockchainLMDB::add_output_blacklist(std::vector<uint64_t> const &blacklist
   mdb_txn_cursors *m_cursors = &m_wcursors;
   CURSOR(output_blacklist);
 
-  MDB_val val;
-  val.mv_data = (void *)blacklist.data();
-  val.mv_size = sizeof(uint64_t) * blacklist.size();
-  if (int ret = mdb_cursor_put(m_cur_output_blacklist, (MDB_val *)&zerokval, &val, MDB_APPENDDUP))
+  MDB_val put_entries[2] = {};
+  put_entries[0].mv_size = sizeof(uint64_t);
+  put_entries[0].mv_data = (uint64_t *)blacklist.data();
+  put_entries[1].mv_size = blacklist.size();
+
+  if (int ret = mdb_cursor_put(m_cur_output_blacklist, (MDB_val *)&zerokval, (MDB_val *)put_entries, MDB_MULTIPLE))
     throw0(DB_ERROR(lmdb_error("Failed to add blacklisted output to db transaction: ", ret).c_str()));
 }
 
@@ -4834,8 +4848,6 @@ void BlockchainLMDB::migrate_3_4()
   }
 
   {
-    lmdb_db_open(txn, LMDB_OUTPUT_BLACKLIST, MDB_INTEGERKEY | MDB_CREATE | MDB_DUPSORT | MDB_DUPFIXED, m_output_blacklist, "Failed to open db handle for m_output_blacklist");
-
     std::vector<uint64_t> global_output_indexes;
     {
       uint64_t total_tx_count = get_tx_count();
@@ -4900,12 +4912,8 @@ void BlockchainLMDB::migrate_3_4()
     if (int result = mdb_cursor_open(txn, m_output_blacklist, &m_cur_output_blacklist))
       throw0(DB_ERROR(lmdb_error("Failed to open cursor: ", result).c_str()));
 
-    for (uint64_t output_index : global_output_indexes)
-    {
-      MDB_val_set(val, output_index);
-      if (int ret = mdb_cursor_put(m_cur_output_blacklist, (MDB_val *)&zerokval, &val, MDB_NODUPDATA))
-        throw0(DB_ERROR(lmdb_error("Failed to migrate blacklisted output to db transaction: ", ret).c_str()));
-    }
+    std::sort(global_output_indexes.begin(), global_output_indexes.end());
+    add_output_blacklist(global_output_indexes);
   }
 
   txn.commit();
