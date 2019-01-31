@@ -1912,11 +1912,6 @@ bool Blockchain::get_output_distribution(uint64_t amount, uint64_t from_height, 
   if (start_height >= db_height || to_height >= db_height)
     return false;
 
-  // NOTE(loki): Is this function ever used for getting actual statistics on output distribution?
-  // Otherwise we are going to run our modified version of output selection that
-  // excludes all transactions that embed a tx_secret_key, i.e. the amounts are
-  // revealed along with address.
-
   if (amount == 0)
   {
     std::vector<uint64_t> heights;
