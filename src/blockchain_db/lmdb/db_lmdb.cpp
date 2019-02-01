@@ -3864,22 +3864,27 @@ bool BlockchainLMDB::get_output_blacklist(std::vector<uint64_t> &blacklist) cons
   MDB_val val;
   blacklist.reserve(db_stat.ms_entries);
 
+  if (int ret = mdb_cursor_get(m_cur_output_blacklist, &key, &val, MDB_FIRST))
   {
-    int ret = mdb_cursor_get(m_cur_output_blacklist, &key, &val, MDB_FIRST);
-    if (ret) throw0(DB_ERROR(lmdb_error("Failed to enumerate output blacklist: ", ret).c_str()));
+    if (ret != MDB_NOTFOUND)
+    {
+      throw0(DB_ERROR(lmdb_error("Failed to enumerate output blacklist: ", ret).c_str()));
+    }
   }
-
-  for(MDB_cursor_op op = MDB_GET_MULTIPLE;; op = MDB_NEXT_MULTIPLE)
+  else
   {
-    int ret = mdb_cursor_get(m_cur_output_blacklist, &key, &val, op);
-    if (ret == MDB_NOTFOUND) break;
-    if (ret) throw0(DB_ERROR(lmdb_error("Failed to enumerate output blacklist: ", ret).c_str()));
+    for(MDB_cursor_op op = MDB_GET_MULTIPLE;; op = MDB_NEXT_MULTIPLE)
+    {
+      int ret = mdb_cursor_get(m_cur_output_blacklist, &key, &val, op);
+      if (ret == MDB_NOTFOUND) break;
+      if (ret) throw0(DB_ERROR(lmdb_error("Failed to enumerate output blacklist: ", ret).c_str()));
 
-    uint64_t const *outputs = (uint64_t const *)val.mv_data;
-    int num_outputs         = val.mv_size / sizeof(*outputs);
+      uint64_t const *outputs = (uint64_t const *)val.mv_data;
+      int num_outputs         = val.mv_size / sizeof(*outputs);
 
-    for (int i = 0; i < num_outputs; i++)
-      blacklist.push_back(outputs[i]);
+      for (int i = 0; i < num_outputs; i++)
+        blacklist.push_back(outputs[i]);
+    }
   }
 
   TXN_POSTFIX_RDONLY();
