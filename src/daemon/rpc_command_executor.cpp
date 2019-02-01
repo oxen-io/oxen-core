@@ -57,7 +57,7 @@ namespace {
 
   std::string input_line(std::string const &prompt)
   {
-    std::cout << prompt;
+    std::cout << prompt << std::flush;
     std::string result;
 
   #ifdef HAVE_READLINE
