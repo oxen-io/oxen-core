@@ -6085,7 +6085,7 @@ bool wallet2::sign_tx(unsigned_tx_set &exported_txs, std::vector<wallet2::pendin
     if (sd.v3_use_bulletproofs)
     {
       rct_config.range_proof_type = rct::RangeProofPaddedBulletproof;
-      rct_config.bp_version = use_fork_rules(HF_VERSION_SMALLER_BP, -10) ? 2 : 1;
+      rct_config.bp_version = use_fork_rules(HF_VERSION_SMALLER_BP, 2) ? 2 : 1;
     }
     crypto::secret_key tx_key;
     std::vector<crypto::secret_key> additional_tx_keys;
@@ -6562,7 +6562,7 @@ bool wallet2::sign_multisig_tx(multisig_tx_set &exported_txs, std::vector<crypto
     if (sd.v3_use_bulletproofs)
     {
       rct_config.range_proof_type = rct::RangeProofPaddedBulletproof;
-      rct_config.bp_version = use_fork_rules(HF_VERSION_SMALLER_BP, -10) ? 2 : 1;
+      rct_config.bp_version = use_fork_rules(HF_VERSION_SMALLER_BP, 2) ? 2 : 1;
     }
 
     loki_construct_tx_params tx_params = {};
@@ -7187,7 +7187,7 @@ wallet2::stake_result wallet2::check_stake_allowed(const crypto::public_key& sn_
   {
     result.msg += tr("You may only contribute up to ");
     result.msg += print_money(max_contrib_total);
-    result.msg += tr(" more loki to this service node.");
+    result.msg += tr(" more loki to this service node. ");
     result.msg += tr("Reducing your stake from ");
     result.msg += print_money(amount);
     result.msg += tr(" to ");
@@ -9207,7 +9207,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryp
   const bool bulletproof = use_fork_rules(get_bulletproof_fork(), 0);
   const rct::RCTConfig rct_config {
     bulletproof ? rct::RangeProofPaddedBulletproof : rct::RangeProofBorromean,
-    bulletproof ? (use_fork_rules(HF_VERSION_SMALLER_BP, -10) ? 2 : 1) : 0
+    bulletproof ? (use_fork_rules(HF_VERSION_SMALLER_BP, 2) ? 2 : 1) : 0
   };
 
   const uint64_t base_fee  = get_base_fee();
@@ -9782,7 +9782,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(const crypton
   const bool bulletproof = use_fork_rules(get_bulletproof_fork(), 0);
   const rct::RCTConfig rct_config {
     bulletproof ? rct::RangeProofPaddedBulletproof : rct::RangeProofBorromean,
-    bulletproof ? (use_fork_rules(HF_VERSION_SMALLER_BP, -10) ? 2 : 1) : 0,
+    bulletproof ? (use_fork_rules(HF_VERSION_SMALLER_BP, 2) ? 2 : 1) : 0,
   };
   const uint64_t base_fee  = get_base_fee();
   const uint64_t fee_multiplier = get_fee_multiplier(priority, get_fee_algorithm());
