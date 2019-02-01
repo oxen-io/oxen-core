@@ -250,8 +250,8 @@ namespace
   //
   // Loki
   //
-  const char* USAGE_REGISTER_SERVICE_NODE("register_service_node [index=<N1>[,<N2>,...]] [priority] [auto] <operator cut> <address1> <fraction1> [<address2> <fraction2> [...]] <expiration timestamp> <pubkey> <signature>");
-  const char* USAGE_STAKE("stake [index=<N1>[,<N2>,...]] [priority] <service node pubkey> <address> <amount>");
+  const char* USAGE_REGISTER_SERVICE_NODE("register_service_node [index=<N1>[,<N2>,...]] [priority] <operator cut> <address1> <fraction1> [<address2> <fraction2> [...]] <expiration timestamp> <pubkey> <signature>");
+  const char* USAGE_STAKE("stake [index=<N1>[,<N2>,...]] [priority] <service node pubkey> <amount>");
   const char* USAGE_REQUEST_STAKE_UNLOCK("request_stake_unlock <service_node_pubkey>");
 
   std::string input_line(const std::string& prompt, bool yesno = false)
@@ -3195,7 +3195,7 @@ bool simple_wallet::ask_wallet_create_if_needed()
           bool ok = true;
           if (!m_restoring)
           {
-            message_writer() << tr("No wallet found with that name. Confirm creation of new wallet named: ") << wallet_path;
+            message_writer() << tr("No wallet found with that name. Confirm creation of new wallet named") << wallet_path;
             confirm_creation = input_line("", true);
             if(std::cin.eof())
             {
@@ -5729,7 +5729,7 @@ bool simple_wallet::register_service_node_main(
   if (!m_wallet->is_synced() || bc_height < 10)
   {
     fail_msg_writer() << tr("Wallet not synced. Best guess for the height is ") << bc_height;
-    std::string accepted = input_line("Is this correct [y/yes/n/no]? ");
+    std::string accepted = input_line("Is this correct [y/yes/n/no]? ", true);
     if (std::cin.eof())
       return true;
     if (!command_line::is_yes(accepted))
@@ -5776,6 +5776,7 @@ bool simple_wallet::register_service_node_main(
 
       if (!can_reregister)
       {
+        fail_msg_writer() << tr("This service node is already registered");
         return true;
       }
     }
@@ -5865,7 +5866,7 @@ bool simple_wallet::register_service_node(const std::vector<std::string> &args_)
 
   if (local_args.size() < 6)
   {
-    fail_msg_writer() << tr("Usage: register_service_node [index=<N1>[,<N2>,...]] [priority] [auto] <operator cut> <address1> <fraction1> [<address2> <fraction2> [...]] <expiration timestamp> <service node pubkey> <signature>");
+    fail_msg_writer() << tr(USAGE_REGISTER_SERVICE_NODE);
     fail_msg_writer() << tr("");
     fail_msg_writer() << tr("Prepare this command in the daemon with the prepare_registration command");
     fail_msg_writer() << tr("");
@@ -5882,7 +5883,7 @@ bool simple_wallet::register_service_node(const std::vector<std::string> &args_)
   {
     fail_msg_writer() << tr("Could not convert registration args");
     if (err_msg != "") fail_msg_writer() << err_msg;
-    fail_msg_writer() << tr("Usage: register_service_node [index=<N1>[,<N2>,...]] [priority] [auto] <operator cut> <address1> <fraction1> [<address2> <fraction2> [...]] <expiration timestamp> <service node pubkey> <signature>");
+    fail_msg_writer() << tr(USAGE_REGISTER_SERVICE_NODE);
     return true;
   }
 
@@ -5945,7 +5946,6 @@ bool simple_wallet::register_service_node(const std::vector<std::string> &args_)
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::stake(const std::vector<std::string> &args_)
 {
-  // stake [index=<N1>[,<N2>,...]] [priority] <service node pubkey> <contributor address> <amount|percent%>
   if (!try_connect_to_daemon())
     return true;
 
@@ -5953,7 +5953,6 @@ bool simple_wallet::stake(const std::vector<std::string> &args_)
   // Parse Arguments from Args
   //
   crypto::public_key service_node_key = {};
-  cryptonote::address_parse_info info = {};
   uint32_t priority = 0;
   std::set<uint32_t> subaddr_indices = {};
   uint64_t amount = 0;
@@ -5973,7 +5972,7 @@ bool simple_wallet::stake(const std::vector<std::string> &args_)
 
     if (local_args.size() < 2)
     {
-      fail_msg_writer() << tr("Usage: stake [index=<N1>[,<N2>,...]] [priority] [auto] <service node pubkey> <address> [<amount|percent%>]");
+      fail_msg_writer() << tr(USAGE_STAKE);
       return true;
     }
 
@@ -6017,13 +6016,6 @@ bool simple_wallet::stake(const std::vector<std::string> &args_)
         return true;
       }
     }
-
-    std::string const &address_str = local_args[1];
-    if (!cryptonote::get_account_address_from_str_or_url(info, m_wallet->nettype(), local_args[1], oa_prompter))
-    {
-      fail_msg_writer() << tr("failed to parse address");
-      return true;
-    }
   }
 
   //
@@ -6034,6 +6026,9 @@ bool simple_wallet::stake(const std::vector<std::string> &args_)
     m_wallet->refresh(false);
     try
     {
+      address_parse_info info = {};
+      info.address            = m_wallet->get_address();
+
       time_t begin_construct_time = time(nullptr);
       std::vector<tools::wallet2::pending_tx> ptx_vector = m_wallet->create_stake_tx(service_node_key, info, amount, amount_fraction, priority, m_current_subaddress_account, subaddr_indices);
 
@@ -6069,7 +6064,7 @@ bool simple_wallet::request_stake_unlock(const std::vector<std::string> &args_)
 
   if (args_.size() != 1)
   {
-    fail_msg_writer() << tr("Usage: request_stake_unlock <service node pubkey>");
+    fail_msg_writer() << tr(USAGE_REQUEST_STAKE_UNLOCK);
     return true;
   }
 
@@ -6540,19 +6535,19 @@ bool simple_wallet::sweep_main_internal(sweep_type_t sweep_type, std::vector<too
 
   const char *label = (sweep_type == sweep_type_t::stake || sweep_type == sweep_type_t::register_stake) ? "Staking" : "Sweeping";
   if (ptx_vector.size() > 1) {
-    prompt << boost::format(tr("%s %s in %llu transactions for a total fee of %s.  Is this okay?  (Y/Yes/N/No): ")) %
+    prompt << boost::format(tr("%s %s in %llu transactions for a total fee of %s. Is this okay?")) %
       label %
       print_money(total_sent) %
       ((unsigned long long)ptx_vector.size()) %
       print_money(total_fee);
   }
   else {
-    prompt << boost::format(tr("%s %s for a total fee of %s.  Is this okay?  (Y/Yes/N/No): ")) %
+    prompt << boost::format(tr("%s %s for a total fee of %s. Is this okay?")) %
       label %
       print_money(total_sent) %
       print_money(total_fee);
   }
-  std::string accepted = input_line(prompt.str());
+  std::string accepted = input_line(prompt.str(), true);
   if (std::cin.eof())
     return false;
   if (!command_line::is_yes(accepted))

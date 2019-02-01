@@ -55,11 +55,23 @@ namespace {
 
   enum class input_line_result { yes, no, cancel, back, };
 
+  std::string input_line(std::string const &prompt)
+  {
+    std::cout << prompt;
+    std::string result;
+
+  #ifdef HAVE_READLINE
+    rdln::suspend_readline pause_readline;
+  #endif
+    std::cin >> result;
+    return result;
+  }
+
   input_line_result input_line_yes_no_back_cancel(char const *msg)
   {
-    std::string input;
-    std::cout << msg << " (Y)es/(N)o/(B)ack/(C)ancel: ";
-    std::cin >> input;
+    std::string prompt = std::string(msg);
+    prompt += " (Y)es/(N)o/(B)ack/(C)ancel: ";
+    std::string input  = input_line(prompt);
 
     if (command_line::is_yes(input))  return input_line_result::yes;
     if (command_line::is_no(input))   return input_line_result::no;
@@ -69,9 +81,9 @@ namespace {
 
   input_line_result input_line_yes_no_cancel(char const *msg)
   {
-    std::string input;
-    std::cout << msg << " (Y)es/(N)o/(C)ancel: ";
-    std::cin >> input;
+    std::string prompt = msg;
+    prompt += " (Y)es/(N)o/(C)ancel: ";
+    std::string input  = input_line(prompt);
 
     if (command_line::is_yes(input)) return input_line_result::yes;
     if (command_line::is_no(input))  return input_line_result::no;
@@ -81,8 +93,9 @@ namespace {
 
   input_line_result input_line_back_cancel_get_input(char const *msg, std::string &input)
   {
-    std::cout << msg << " (B)ack/(C)ancel: ";
-    std::cin >> input;
+    std::string prompt = msg;
+    prompt += " (B)ack/(C)ancel: ";
+    input              = input_line(prompt);
 
     if (command_line::is_back(input))   return input_line_result::back;
     if (command_line::is_cancel(input)) return input_line_result::cancel;
@@ -2582,10 +2595,6 @@ bool t_rpc_command_executor::prepare_registration()
       }
     }
   }
-
-#ifdef HAVE_READLINE
-  rdln::suspend_readline pause_readline;
-#endif
 
   const uint64_t staking_requirement =
     std::max(service_nodes::get_staking_requirement(nettype, block_height),
