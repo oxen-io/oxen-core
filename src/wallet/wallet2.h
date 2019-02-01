@@ -1281,7 +1281,7 @@ namespace tools
     bool unblackball_output(const std::pair<uint64_t, uint64_t> &output);
     bool is_output_blackballed(const std::pair<uint64_t, uint64_t> &output) const;
 
-    enum struct stake_result
+    enum struct stake_result_status
     {
       success,
       exception_thrown,
@@ -1298,28 +1298,11 @@ namespace tools
       too_many_transactions_constructed,
     };
 
-    static char const *stake_result_to_string(stake_result result)
+    struct stake_result
     {
-      switch(result)
-      {
-        case stake_result::success:                                return tr("Success");
-        case stake_result::exception_thrown:                       return tr("Exception thrown, staking process could not be completed");
-        case stake_result::payment_id_disallowed:                  return tr("Payment IDs cannot be used in a staking transaction");
-        case stake_result::subaddress_disallowed:                  return tr("Subaddresses cannot be used in a staking transaction");
-        case stake_result::address_must_be_primary:                return tr("The specified address must be owned by this wallet and be the primary address of the wallet");
-        case stake_result::service_node_list_query_failed:         return tr("Failed to query daemon for service node list");
-        case stake_result::service_node_not_registered:            return tr("Could not find service node in service node list, please make sure it is registered first.");
-        case stake_result::network_version_query_failed:           return tr("Could not query the current network version, try later");
-        case stake_result::network_height_query_failed:            return tr("Could not query the current network block height, try later");
-        case stake_result::service_node_contribution_maxed:        return tr("The service node cannot receive any more Loki from this wallet");
-        case stake_result::service_node_contributors_maxed:        return tr("The service node already has the maximum number of participants and this wallet is not one of them");
-        case stake_result::service_node_insufficient_contribution: return tr("Insufficient contribution amount for the service node");
-        case stake_result::too_many_transactions_constructed:      return tr("Constructed too many transations, please sweep_all first");
-      }
-
-      assert(false);
-      return "ERROR: Unhandled check stake result, this is a developer error, please notify Loki developers.";
-    }
+      stake_result_status status;
+      std::string         msg;
+    };
 
     /// Modifies the `amount` to maximum possible if too large, but rejects if insufficient.
     /// `fraction` is only used to determine the amount if specified zero.

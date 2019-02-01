@@ -251,7 +251,7 @@ namespace
   // Loki
   //
   const char* USAGE_REGISTER_SERVICE_NODE("register_service_node [index=<N1>[,<N2>,...]] [priority] <operator cut> <address1> <fraction1> [<address2> <fraction2> [...]] <expiration timestamp> <pubkey> <signature>");
-  const char* USAGE_STAKE("stake [index=<N1>[,<N2>,...]] [priority] <service node pubkey> <amount>");
+  const char* USAGE_STAKE("stake [index=<N1>[,<N2>,...]] [priority] <service node pubkey> <amount|percent%>");
   const char* USAGE_REQUEST_STAKE_UNLOCK("request_stake_unlock <service_node_pubkey>");
 
   std::string input_line(const std::string& prompt, bool yesno = false)
@@ -2997,6 +2997,10 @@ simple_wallet::simple_wallet()
                            boost::bind(&simple_wallet::request_stake_unlock, this, _1),
                            tr(USAGE_REQUEST_STAKE_UNLOCK),
                            tr("Request a stake currently locked in a Service Node to be unlocked on the network"));
+  m_cmd_binder.set_handler("print_locked_stakes",
+                           boost::bind(&simple_wallet::print_locked_stakes, this, _1),
+                           tr(""),
+                           tr("Print stakes currently locked on the Service Node network"));
 }
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::set_variable(const std::vector<std::string> &args)
@@ -5982,14 +5986,9 @@ bool simple_wallet::stake(const std::vector<std::string> &args_)
       return true;
     }
 
-    if (local_args.size() < 3)
+    if (local_args[1].back() == '%')
     {
-      amount = 0;
-      amount_fraction = 0;
-    }
-    else if (local_args[2].back() == '%')
-    {
-      local_args[2].pop_back();
+      local_args[1].pop_back();
       amount = 0;
       try
       {
@@ -6008,8 +6007,7 @@ bool simple_wallet::stake(const std::vector<std::string> &args_)
     }
     else
     {
-      amount_fraction = 0;
-      if (!cryptonote::parse_amount(amount, local_args[2]) || amount == 0)
+      if (!cryptonote::parse_amount(amount, local_args[1]) || amount == 0)
       {
         fail_msg_writer() << tr("amount is wrong: ") << local_args[2] <<
           ", " << tr("expected number from ") << print_money(1) << " to " << print_money(std::numeric_limits<uint64_t>::max());
@@ -6033,11 +6031,14 @@ bool simple_wallet::stake(const std::vector<std::string> &args_)
       std::vector<tools::wallet2::pending_tx> ptx_vector;
 
       tools::wallet2::stake_result stake_result = m_wallet->create_stake_tx(ptx_vector, service_node_key, info, amount, amount_fraction, priority, m_current_subaddress_account, subaddr_indices);
-      if (stake_result != tools::wallet2::stake_result::success)
+      if (stake_result.status != tools::wallet2::stake_result_status::success)
       {
-        fail_msg_writer() << tools::wallet2::stake_result_to_string(stake_result);
+        fail_msg_writer() << stake_result.msg;
         return true;
       }
+
+      if (!stake_result.msg.empty()) // i.e. warnings
+        tools::msg_writer() << stake_result.msg;
 
       if (!sweep_main_internal(sweep_type_t::stake, ptx_vector, info))
       {

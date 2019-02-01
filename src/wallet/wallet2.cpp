@@ -7065,33 +7065,56 @@ bool wallet2::is_output_blackballed(const std::pair<uint64_t, uint64_t> &output)
 
 wallet2::stake_result wallet2::check_stake_allowed(const crypto::public_key& sn_key, const cryptonote::address_parse_info& addr_info, uint64_t& amount, double fraction)
 {
+  wallet2::stake_result result = {};
+  result.msg.reserve(128);
+
   if (addr_info.has_payment_id)
-    return stake_result::payment_id_disallowed;
+  {
+    result.status = stake_result_status::payment_id_disallowed;
+    result.msg    = tr("Payment IDs cannot be used in a staking transaction");
+    return result;
+  }
 
   if (addr_info.is_subaddress)
-    return stake_result::subaddress_disallowed;
+  {
+    result.status = stake_result_status::subaddress_disallowed;
+    result.msg    = tr("Subaddresses cannot be used in a staking transaction");
+    return result;
+  }
 
   cryptonote::account_public_address const primary_address = get_address();
   if (primary_address != addr_info.address)
-    return stake_result::address_must_be_primary;
+  {
+    result.status = stake_result_status::address_must_be_primary;
+    result.msg    = tr("The specified address must be owned by this wallet and be the primary address of the wallet");
+    return result;
+  }
 
   /// check that the service node is registered
   boost::optional<std::string> failed;
   const auto& response = this->get_service_nodes({ epee::string_tools::pod_to_hex(sn_key) }, failed);
   if (failed)
   {
-    LOG_ERROR(*failed);
-    return stake_result::service_node_list_query_failed;
+    result.status = stake_result_status::service_node_list_query_failed;
+    result.msg.reserve(failed->size() + 128);
+    result.msg    = tr("Failed to query daemon for service node list");
+    result.msg    += *failed;
   }
 
   if (response.size() != 1)
   {
-    return stake_result::service_node_not_registered;
+    result.status = stake_result_status::service_node_not_registered;
+    result.msg = tr("Could not find service node in service node list, please make sure it is registered first.");
+    return result;
   }
 
   const boost::optional<uint8_t> res = m_node_rpc_proxy.get_network_version();
   if (!res)
-    return stake_result::network_version_query_failed;
+  {
+    result.status = stake_result_status::network_version_query_failed;
+    result.msg    = tr("Could not query the current network version, try later");
+    return result;
+  }
 
   const auto& snode_info  = response.front();
   if (amount == 0) amount = snode_info.staking_requirement * fraction;
@@ -7126,12 +7149,18 @@ wallet2::stake_result wallet2::check_stake_allowed(const crypto::public_key& sn_
 
   if (max_contrib_total == 0)
   {
-    return stake_result::service_node_contribution_maxed;
+    result.status = stake_result_status::service_node_contribution_maxed;
+    result.msg = tr("The service node cannot receive any more Loki from this wallet");
+    return result;
   }
 
   const bool full = snode_info.contributors.size() >= MAX_NUMBER_OF_CONTRIBUTORS;
   if (full && !is_preexisting_contributor)
-    return stake_result::service_node_contribution_maxed;
+  {
+    result.status = stake_result_status::service_node_contributors_maxed;
+    result.msg = tr("The service node already has the maximum number of participants and this wallet is not one of them");
+    return result;
+  }
 
   if (amount < min_contrib_total)
   {
@@ -7139,42 +7168,62 @@ wallet2::stake_result wallet2::check_stake_allowed(const crypto::public_key& sn_
     if (min_contrib_total - amount <= DUST)
     {
       amount = min_contrib_total;
-      MINFO(tr("Seeing as this is insufficient by dust amounts, amount was increased automatically to ") << print_money(min_contrib_total));
+      result.msg += tr("Seeing as this is insufficient by dust amounts, amount was increased automatically to ");
+      result.msg += print_money(min_contrib_total);
+      result.msg += "\n";
     }
     else
     {
-      MERROR(tr("You must contribute at least ") << print_money(min_contrib_total) << tr(" loki to become a contributor for this service node."));
-      return stake_result::service_node_insufficient_contribution;
+      result.status = stake_result_status::service_node_insufficient_contribution;
+      result.msg.reserve(128);
+      result.msg =  tr("You must contribute at least ");
+      result.msg += print_money(min_contrib_total);
+      result.msg += tr(" loki to become a contributor for this service node.");
+      return result;
     }
   }
 
   if (amount > max_contrib_total)
   {
-    MINFO(tr("You may only contribute up to ") << print_money(max_contrib_total) << tr(" more loki to this service node."));
-    MINFO(tr("Reducing your stake from ") << print_money(amount) << tr(" to ") << print_money(max_contrib_total));
+    result.msg += tr("You may only contribute up to ");
+    result.msg += print_money(max_contrib_total);
+    result.msg += tr(" more loki to this service node.");
+    result.msg += tr("Reducing your stake from ");
+    result.msg += print_money(amount);
+    result.msg += tr(" to ");
+    result.msg += print_money(max_contrib_total);
+    result.msg += tr("\n");
     amount = max_contrib_total;
   }
 
   if (amount < expected_to_contrib)
-    MWARNING(tr("Warning: You must contribute ") << print_money(expected_to_contrib) << tr(" loki to meet your registration requirements for this service node"));
+  {
+    result.msg += ("Warning: You must contribute ");
+    result.msg += print_money(expected_to_contrib);
+    result.msg += tr(" loki to meet your registration requirements for this service node");
+    result.msg += tr("\n");
+  }
 
-  return stake_result::success;
+  result.status = stake_result_status::success;
+  return result;
 }
 
 wallet2::stake_result wallet2::create_stake_tx(std::vector<pending_tx> &ptx, const crypto::public_key& service_node_key, const cryptonote::address_parse_info& addr_info, uint64_t amount, double amount_fraction, uint32_t priority, uint32_t subaddr_account, std::set<uint32_t> subaddr_indices)
 {
-  wallet2::stake_result result = stake_result::exception_thrown;
+  wallet2::stake_result result = {};
   ptx.clear();
 
   try
   {
     result = check_stake_allowed(service_node_key, addr_info, amount, amount_fraction);
-    if (result != stake_result::success)
+    if (result.status != stake_result_status::success)
       return result;
   }
   catch (const std::exception& e)
   {
-    MERROR(e.what());
+    result.status = stake_result_status::exception_thrown;
+    result.msg = tr("Exception thrown, staking process could not be completed");
+    result.msg += e.what();
     return result;
   }
 
@@ -7197,8 +7246,10 @@ wallet2::stake_result wallet2::create_stake_tx(std::vector<pending_tx> &ptx, con
 
   if (!err.empty() || !err2.empty())
   {
-    LOG_ERROR("unable to get network blockchain height from daemon: " << (err.empty() ? err2 : err));
-    return stake_result::network_height_query_failed;
+    result.msg = tr("Could not query the current network block height, try later: ");
+    result.msg += (err.empty() ? err2 : err);
+    result.status = stake_result_status::network_height_query_failed;
+    return result;
   }
 
   const uint64_t staking_requirement_lock_blocks = service_nodes::staking_num_lock_blocks(m_nettype);
@@ -7214,14 +7265,17 @@ wallet2::stake_result wallet2::create_stake_tx(std::vector<pending_tx> &ptx, con
   }
   catch (const std::exception& e)
   {
-    LOG_ERROR("Exception raised on creating tx: " << e.what());
-    return stake_result::network_height_query_failed;
+    result.msg = tr("Exception thrown on create tx: ");
+    result.msg += e.what();
+    result.status = stake_result_status::network_height_query_failed;
+    return result;
   }
 
-  if (ptx.size() == 1) result = stake_result::success;
+  if (ptx.size() == 1) result.status = stake_result_status::success;
   else
   {
-    result = stake_result::too_many_transactions_constructed;
+    result.status = stake_result_status::too_many_transactions_constructed;
+    result.msg    = tr("Constructed too many transations, please sweep_all first");
     ptx.clear();
   }
 
