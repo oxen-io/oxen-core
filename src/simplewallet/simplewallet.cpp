@@ -6030,10 +6030,20 @@ bool simple_wallet::stake(const std::vector<std::string> &args_)
       info.address            = m_wallet->get_address();
 
       time_t begin_construct_time = time(nullptr);
-      std::vector<tools::wallet2::pending_tx> ptx_vector = m_wallet->create_stake_tx(service_node_key, info, amount, amount_fraction, priority, m_current_subaddress_account, subaddr_indices);
+      std::vector<tools::wallet2::pending_tx> ptx_vector;
+
+      tools::wallet2::stake_result stake_result = m_wallet->create_stake_tx(ptx_vector, service_node_key, info, amount, amount_fraction, priority, m_current_subaddress_account, subaddr_indices);
+      if (stake_result != tools::wallet2::stake_result::success)
+      {
+        fail_msg_writer() << tools::wallet2::stake_result_to_string(stake_result);
+        return true;
+      }
 
       if (!sweep_main_internal(sweep_type_t::stake, ptx_vector, info))
+      {
+        fail_msg_writer() << tr("Sending stake transaction failed");
         return true;
+      }
 
       time_t end_construct_time = time(nullptr);
       time_t construct_time     = end_construct_time - begin_construct_time;

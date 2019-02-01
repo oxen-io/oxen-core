@@ -7063,26 +7063,17 @@ bool wallet2::is_output_blackballed(const std::pair<uint64_t, uint64_t> &output)
   catch (const std::exception &e) { return false; }
 }
 
-bool wallet2::check_stake_allowed(const crypto::public_key& sn_key, const cryptonote::address_parse_info& addr_info, uint64_t& amount, double fraction)
+wallet2::stake_result wallet2::check_stake_allowed(const crypto::public_key& sn_key, const cryptonote::address_parse_info& addr_info, uint64_t& amount, double fraction)
 {
   if (addr_info.has_payment_id)
-  {
-    MERROR(tr("Do not use payment ids for staking."));
-    return false;
-  }
+    return stake_result::payment_id_disallowed;
 
   if (addr_info.is_subaddress)
-  {
-    MERROR(tr("Service nodes do not support subaddresses."));
-    return false;
-  }
+    return stake_result::subaddress_disallowed;
 
   cryptonote::account_public_address const primary_address = get_address();
   if (primary_address != addr_info.address)
-  {
-    MERROR(tr("The specified address must be owned by this wallet and be the primary address of the account."));
-    return false;
-  }
+    return stake_result::address_must_be_primary;
 
   /// check that the service node is registered
   boost::optional<std::string> failed;
@@ -7090,21 +7081,17 @@ bool wallet2::check_stake_allowed(const crypto::public_key& sn_key, const crypto
   if (failed)
   {
     LOG_ERROR(*failed);
-    return false;
+    return stake_result::service_node_list_query_failed;
   }
 
   if (response.size() != 1)
   {
-    MERROR(tr("Could not find service node in service node list, please make sure it is registered first."));
-    return false;
+    return stake_result::service_node_not_registered;
   }
 
   const boost::optional<uint8_t> res = m_node_rpc_proxy.get_network_version();
   if (!res)
-  {
-    MERROR(tr("Could not obtain the current network version, try later"));
-    return false;
-  }
+    return stake_result::network_version_query_failed;
 
   const auto& snode_info  = response.front();
   if (amount == 0) amount = snode_info.staking_requirement * fraction;
@@ -7139,16 +7126,12 @@ bool wallet2::check_stake_allowed(const crypto::public_key& sn_key, const crypto
 
   if (max_contrib_total == 0)
   {
-    MERROR(tr("You may not contribute any more loki to this service node"));
-    return false;
+    return stake_result::service_node_contribution_maxed;
   }
 
   const bool full = snode_info.contributors.size() >= MAX_NUMBER_OF_CONTRIBUTORS;
   if (full && !is_preexisting_contributor)
-  {
-    MERROR(tr("This service node already has the maximum number of participants, and the specified address is not one of them."));
-    return false;
-  }
+    return stake_result::service_node_contribution_maxed;
 
   if (amount < min_contrib_total)
   {
@@ -7161,7 +7144,7 @@ bool wallet2::check_stake_allowed(const crypto::public_key& sn_key, const crypto
     else
     {
       MERROR(tr("You must contribute at least ") << print_money(min_contrib_total) << tr(" loki to become a contributor for this service node."));
-      return false;
+      return stake_result::service_node_insufficient_contribution;
     }
   }
 
@@ -7175,20 +7158,24 @@ bool wallet2::check_stake_allowed(const crypto::public_key& sn_key, const crypto
   if (amount < expected_to_contrib)
     MWARNING(tr("Warning: You must contribute ") << print_money(expected_to_contrib) << tr(" loki to meet your registration requirements for this service node"));
 
-  return true;
+  return stake_result::success;
 }
 
-std::vector<wallet2::pending_tx> wallet2::create_stake_tx(const crypto::public_key& service_node_key, const cryptonote::address_parse_info& addr_info, uint64_t amount, double amount_fraction, uint32_t priority, uint32_t subaddr_account, std::set<uint32_t> subaddr_indices)
+wallet2::stake_result wallet2::create_stake_tx(std::vector<pending_tx> &ptx, const crypto::public_key& service_node_key, const cryptonote::address_parse_info& addr_info, uint64_t amount, double amount_fraction, uint32_t priority, uint32_t subaddr_account, std::set<uint32_t> subaddr_indices)
 {
+  wallet2::stake_result result = stake_result::exception_thrown;
+  ptx.clear();
+
   try
   {
-    if (!check_stake_allowed(service_node_key, addr_info, amount, amount_fraction))
-      return {};
+    result = check_stake_allowed(service_node_key, addr_info, amount, amount_fraction);
+    if (result != stake_result::success)
+      return result;
   }
   catch (const std::exception& e)
   {
     MERROR(e.what());
-    return {};
+    return result;
   }
 
   const cryptonote::account_public_address& address = addr_info.address;
@@ -7211,7 +7198,7 @@ std::vector<wallet2::pending_tx> wallet2::create_stake_tx(const crypto::public_k
   if (!err.empty() || !err2.empty())
   {
     LOG_ERROR("unable to get network blockchain height from daemon: " << (err.empty() ? err2 : err));
-    return {};
+    return stake_result::network_height_query_failed;
   }
 
   const uint64_t staking_requirement_lock_blocks = service_nodes::staking_num_lock_blocks(m_nettype);
@@ -7223,15 +7210,22 @@ std::vector<wallet2::pending_tx> wallet2::create_stake_tx(const crypto::public_k
   try
   {
     priority = adjust_priority(priority);
-    auto ptx_vector = create_transactions_2(dsts, CRYPTONOTE_DEFAULT_TX_MIXIN, unlock_at_block, priority, extra, subaddr_account, subaddr_indices, true);
-    if (ptx_vector.size() == 1) return ptx_vector;
+    ptx = create_transactions_2(dsts, CRYPTONOTE_DEFAULT_TX_MIXIN, unlock_at_block, priority, extra, subaddr_account, subaddr_indices, true);
   }
   catch (const std::exception& e)
   {
     LOG_ERROR("Exception raised on creating tx: " << e.what());
+    return stake_result::network_height_query_failed;
   }
 
-  return {};
+  if (ptx.size() == 1) result = stake_result::success;
+  else
+  {
+    result = stake_result::too_many_transactions_constructed;
+    ptx.clear();
+  }
+
+  return result;
 }
 
 bool wallet2::lock_keys_file()
