@@ -7126,7 +7126,6 @@ wallet2::stake_result wallet2::check_stake_allowed(const crypto::public_key& sn_
   uint8_t const hf_version     = *res;
   uint64_t max_contrib_total   = snode_info.staking_requirement - snode_info.total_reserved;
   uint64_t min_contrib_total   = service_nodes::get_min_node_contribution(hf_version, snode_info.staking_requirement, snode_info.total_reserved, total_num_locked_contributions);
-  uint64_t expected_to_contrib = 0;
 
   bool is_preexisting_contributor = false;
   for (const auto& contributor : snode_info.contributors)
@@ -7139,8 +7138,9 @@ wallet2::stake_result wallet2::check_stake_allowed(const crypto::public_key& sn_
     {
       uint64_t const reserved_amount_not_contributed_yet = contributor.reserved - contributor.amount;
       max_contrib_total  += reserved_amount_not_contributed_yet;
-      expected_to_contrib = reserved_amount_not_contributed_yet;
       is_preexisting_contributor = true;
+
+      min_contrib_total = std::max(min_contrib_total, reserved_amount_not_contributed_yet);
       if (hf_version <= cryptonote::network_version_10_bulletproofs)
         min_contrib_total = 0; // Allowed to contribute incremental amounts, post v10, we lock key images so each user has a limit on number of contributions
       break;
@@ -7194,14 +7194,6 @@ wallet2::stake_result wallet2::check_stake_allowed(const crypto::public_key& sn_
     result.msg += print_money(max_contrib_total);
     result.msg += tr("\n");
     amount = max_contrib_total;
-  }
-
-  if (amount < expected_to_contrib)
-  {
-    result.msg += ("Warning: You must contribute ");
-    result.msg += print_money(expected_to_contrib);
-    result.msg += tr(" loki to meet your registration requirements for this service node");
-    result.msg += tr("\n");
   }
 
   result.status = stake_result_status::success;
