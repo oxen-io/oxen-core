@@ -166,7 +166,7 @@ public:
 
   bool prepare_registration();
 
-  bool print_sn(const std::vector<std::string> &args);
+  bool print_sn(const std::vector<std::string> &args, bool include_json);
 
   bool prune_blockchain();
 

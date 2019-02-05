@@ -203,7 +203,21 @@ bool t_command_parser_executor::prepare_registration()
 
 bool t_command_parser_executor::print_sn(const std::vector<std::string>& args)
 {
-  bool result = m_executor.print_sn(args);
+  bool include_json = false;
+
+  // Assumes that optional flags come after mandatory argument <transaction_hash>
+  for (unsigned int i = 0; i < args.size(); ++i) {
+    if (args[i] == "+json") {
+      include_json = true;
+    }
+    else
+    {
+      std::cout << "unexpected argument: " << args[i] << std::endl;
+      return true;
+    }
+  }
+
+  bool result = m_executor.print_sn(args, include_json);
   return result;
 }
 

@@ -2151,13 +2151,23 @@ static void print_service_node_list_state(cryptonote::network_type nettype, int 
   }
 }
 
-bool t_rpc_command_executor::print_sn(const std::vector<std::string> &args)
+bool t_rpc_command_executor::print_sn(const std::vector<std::string> &args, bool include_json)
 {
     cryptonote::COMMAND_RPC_GET_SERVICE_NODES::request req = {};
     cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response res = {};
     std::string fail_message = "Unsuccessful";
     epee::json_rpc::error error_resp;
-    req.service_node_pubkeys = args;
+
+    if (include_json)
+    {
+      for (unsigned int i = 1; i < args.size()-1; i++)
+      {
+        req.service_node_pubkeys.push_back(args[i]);
+      }
+    }
+    else {
+        req.service_node_pubkeys = args;
+    }
 
     cryptonote::COMMAND_RPC_GET_INFO::request get_info_req;
     cryptonote::COMMAND_RPC_GET_INFO::response get_info_res;
@@ -2284,6 +2294,15 @@ bool t_rpc_command_executor::print_sn(const std::vector<std::string> &args)
       }
     }
 
+    if (include_json)
+    {
+      tools::success_msg_writer() << cryptonote::obj_to_json_str(res) << std::endl;
+    }
+    else
+    {
+      tools::fail_msg_writer() << "Service Node Not Found!" << std::endl;
+    }
+
     return true;
 }
 
@@ -2314,7 +2333,7 @@ bool t_rpc_command_executor::print_sn_status()
   }
 
   std::string const &sn_key_str = res.service_node_pubkey;
-  bool result = print_sn({sn_key_str});
+  bool result = print_sn({sn_key_str}, false);
   return result;
 }
 
