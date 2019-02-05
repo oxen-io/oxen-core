@@ -2554,8 +2554,11 @@ namespace cryptonote
     struct request
     {
       std::vector<std::string> service_node_pubkeys; // pass empty vector to get all the service nodes
+      bool include_json;
+      
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(service_node_pubkeys);
+        KV_SERIALIZE(include_json);
       END_KV_SERIALIZE_MAP()
     };
 
@@ -2622,10 +2625,12 @@ namespace cryptonote
 
       std::vector<entry> service_node_states;
       std::string        status;
+      std::string        as_json;
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(service_node_states)
         KV_SERIALIZE(status)
+        KV_SERIALIZE(as_json);
       END_KV_SERIALIZE_MAP()
     };
   };
