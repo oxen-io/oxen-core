@@ -70,8 +70,8 @@ namespace {
   input_line_result input_line_yes_no_back_cancel(char const *msg)
   {
     std::string prompt = std::string(msg);
-    prompt += " (Y)es/(N)o/(B)ack/(C)ancel: ";
-    std::string input  = input_line(prompt);
+    prompt += " (Y/Yes/N/No/B/Back/C/Cancel): ";
+    std::string input = input_line(prompt);
 
     if (command_line::is_yes(input))  return input_line_result::yes;
     if (command_line::is_no(input))   return input_line_result::no;
@@ -82,8 +82,8 @@ namespace {
   input_line_result input_line_yes_no_cancel(char const *msg)
   {
     std::string prompt = msg;
-    prompt += " (Y)es/(N)o/(C)ancel: ";
-    std::string input  = input_line(prompt);
+    prompt += " (Y/Yes/N/No/C/Cancel): ";
+    std::string input = input_line(prompt);
 
     if (command_line::is_yes(input)) return input_line_result::yes;
     if (command_line::is_no(input))  return input_line_result::no;
@@ -94,8 +94,8 @@ namespace {
   input_line_result input_line_back_cancel_get_input(char const *msg, std::string &input)
   {
     std::string prompt = msg;
-    prompt += " (B)ack/(C)ancel: ";
-    input              = input_line(prompt);
+    prompt += " (B/Back/C/Cancel): ";
+    input   = input_line(prompt);
 
     if (command_line::is_back(input))   return input_line_result::back;
     if (command_line::is_cancel(input)) return input_line_result::cancel;
