@@ -2144,28 +2144,46 @@ static void print_service_node_list_state(cryptonote::network_type nettype, int 
       tools::msg_writer()      << indent2 << "Total Reserved: "                        << cryptonote::print_money(entry.total_reserved);
     }
 
-    // TODO(doyle): Fix up for infinite staking changes
-    // Print Expiry Info
+    // Print expiry information
     {
-      uint64_t expiry_height = entry.registration_height + service_nodes::staking_num_lock_blocks(nettype);
-      if (hard_fork_version >= cryptonote::network_version_10_bulletproofs)
-        expiry_height += STAKING_REQUIREMENT_LOCK_BLOCKS_EXCESS;
-
-      if (curr_height)
+      uint64_t const now = time(nullptr);
+      uint64_t expiry_height = 0;
+      if (hard_fork_version >= cryptonote::network_version_11_swarms)
       {
-        uint64_t now = time(nullptr);
-        uint64_t delta_height = expiry_height - *curr_height;
-        uint64_t expiry_epoch_time = now + (delta_height * DIFFICULTY_TARGET_V2);
-
-        tools::msg_writer() << indent2 << "Registration Height/Expiry Height: " << entry.registration_height << "/" << expiry_height << " (in " << delta_height << " blocks)";
-        tools::msg_writer() << indent2 << "Expiry Date (Estimated UTC): " << get_date_time(expiry_epoch_time) << " (" << get_human_time_ago(expiry_epoch_time, now) << ")";
+        expiry_height = entry.requested_unlock_height;
+      }
+      else if (hard_fork_version >= cryptonote::network_version_10_bulletproofs)
+      {
+          expiry_height = entry.registration_height + service_nodes::staking_num_lock_blocks(nettype);
+          expiry_height += STAKING_REQUIREMENT_LOCK_BLOCKS_EXCESS;
       }
       else
       {
-        tools::msg_writer() << indent2 << "Registration Height/Expiry Height: " << entry.registration_height << " / " << expiry_height << " (in ?? blocks) ";
-        tools::msg_writer() << indent2 << "Expiry Date (Estimated UTC): ?? (Could not get current blockchain height)";
+          expiry_height = entry.registration_height + service_nodes::staking_num_lock_blocks(nettype);
+      }
+
+      if (expiry_height == 0)
+      {
+          tools::msg_writer() << indent2 << "Registration Height/Expiry Height: Staking Infinitely (stake unlock not requested yet)";
+      }
+      else
+      {
+        if (curr_height)
+        {
+          uint64_t delta_height      = expiry_height - *curr_height;
+          uint64_t expiry_epoch_time = now + (delta_height * DIFFICULTY_TARGET_V2);
+
+          tools::msg_writer() << indent2 << "Registration Height/Expiry Height: " << entry.registration_height << "/" << expiry_height << " (in " << delta_height << " blocks)";
+          tools::msg_writer() << indent2 << "Expiry Date (Estimated UTC): " << get_date_time(expiry_epoch_time) << " (" << get_human_time_ago(expiry_epoch_time, now) << ")";
+        }
+        else
+        {
+          tools::msg_writer() << indent2 << "Registration Height/Expiry Height: " << entry.registration_height << " / " << expiry_height << " (in ?? blocks) ";
+          tools::msg_writer() << indent2 << "Expiry Date (Estimated UTC): ?? (Could not get current blockchain height)";
+        }
       }
     }
+
 
     // Print reward status
     if (is_registered)
