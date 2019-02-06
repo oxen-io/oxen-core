@@ -51,14 +51,8 @@ namespace service_nodes
 
   using swarm_id_t = uint64_t;
 
-  // TODO(doyle): INF_STAKING(doyle): Review behaviour of existing nodes on the old system when we switch over.
-
   struct service_node_info // registration information
   {
-    // INF_STAKING(doyle): Now that we have locked key images, we should enforce
-    // a minimum staking amount. Currently contributors can contribute piece
-    // meal to a service node, they can trivially attack the network by staking
-    // 1 loki each time to bloat up the key images
     struct contribution_t
     {
       uint8_t            version = version_2_infinite_staking;

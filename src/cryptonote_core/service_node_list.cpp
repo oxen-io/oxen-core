@@ -594,10 +594,6 @@ namespace service_nodes
 
     if (hard_fork_version >= cryptonote::network_version_11_swarms)
     {
-      // TODO(doyle): INF_STAKING(doyle): On the boundary of the hardfork, if
-      // someone submits an old style staking TX, it will fail and lock up
-      // funds. Make sure to put in rules to prevent this.
-
       cryptonote::tx_extra_tx_key_image_proofs key_image_proofs;
       if (!get_tx_key_image_proofs_from_tx_extra(tx.extra, key_image_proofs))
       {
