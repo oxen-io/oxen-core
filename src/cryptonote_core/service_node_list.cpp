@@ -976,7 +976,6 @@ namespace service_nodes
     const size_t max_contributions_per_node = service_nodes::MAX_KEY_IMAGES_PER_CONTRIBUTOR * MAX_NUMBER_OF_CONTRIBUTORS;
     if (hf_version >= cryptonote::network_version_11_swarms)
     {
-      // TODO(doyle): INF_STAKING(doyle): Set a limit on the number of key images allowed
       std::vector<service_node_info::contribution_t> &locked_contributions = contributor.locked_contributions;
 
       for (const service_node_info::contribution_t &contribution : parsed_contribution.locked_contributions)
