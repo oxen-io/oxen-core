@@ -973,19 +973,19 @@ namespace service_nodes
     info.last_reward_block_height = block_height;
     info.last_reward_transaction_index = index;
 
+    const size_t max_contributions_per_node = service_nodes::MAX_KEY_IMAGES_PER_CONTRIBUTOR * MAX_NUMBER_OF_CONTRIBUTORS;
     if (hf_version >= cryptonote::network_version_11_swarms)
     {
       // TODO(doyle): INF_STAKING(doyle): Set a limit on the number of key images allowed
       std::vector<service_node_info::contribution_t> &locked_contributions = contributor.locked_contributions;
-      locked_contributions.reserve(MAX_KEY_IMAGES_PER_CONTRIBUTOR);
 
       for (const service_node_info::contribution_t &contribution : parsed_contribution.locked_contributions)
       {
-        if (locked_contributions.size() < service_nodes::MAX_KEY_IMAGES_PER_CONTRIBUTOR)
+        if (info.total_num_locked_contributions() < max_contributions_per_node)
           contributor.locked_contributions.push_back(contribution);
         else
         {
-          LOG_PRINT_L1("Contribution TX: Already hit the max number of contributions: " << service_nodes::MAX_KEY_IMAGES_PER_CONTRIBUTOR <<
+          LOG_PRINT_L1("Contribution TX: Already hit the max number of contributions: " << max_contributions_per_node <<
                        " for contributor: " << cryptonote::get_account_address_as_str(m_blockchain.nettype(), false, contributor.address) <<
                        " on height: "  << block_height <<
                        " for tx: " << cryptonote::get_transaction_hash(tx));
