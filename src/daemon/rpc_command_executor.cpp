@@ -96,11 +96,11 @@ namespace {
     if (dt < 90)
       s = boost::lexical_cast<std::string>(dt) + " seconds";
     else if (dt < 90 * 60)
-      s = boost::lexical_cast<std::string>(dt/60) + " minutes";
+      s = (boost::format("%.1f minutes") % ((float)dt/60)).str();
     else if (dt < 36 * 3600)
-      s = boost::lexical_cast<std::string>(dt/3600) + " hours";
+      s = (boost::format("%.1f hours") % ((float)dt/3600)).str();
     else
-      s = boost::lexical_cast<std::string>(dt/(3600*24)) + " days";
+      s = (boost::format("%.1f days") % ((float)dt/(3600*24))).str();
     return s + " " + (t > now ? "in the future" : "ago");
   }
 
