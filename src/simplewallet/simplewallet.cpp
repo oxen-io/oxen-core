@@ -261,7 +261,7 @@ namespace
 #endif
     std::cout << prompt;
     if (yesno)
-      std::cout << "  (Y/Yes/N/No)";
+      std::cout << " (Y/Yes/N/No)";
     std::cout << ": " << std::flush;
 
     std::string buf;
@@ -3199,8 +3199,9 @@ bool simple_wallet::ask_wallet_create_if_needed()
           bool ok = true;
           if (!m_restoring)
           {
-            message_writer() << tr("No wallet found with that name. Confirm creation of new wallet named") << wallet_path;
-            confirm_creation = input_line("", true);
+            std::string prompt = tr("No wallet found with that name. Confirm creation of new wallet named: ");
+            prompt += "\"" + wallet_path + "\"";
+            confirm_creation = input_line(prompt, true);
             if(std::cin.eof())
             {
               LOG_ERROR("Unexpected std::cin.eof() - Exited simple_wallet::ask_wallet_create_if_needed()");
