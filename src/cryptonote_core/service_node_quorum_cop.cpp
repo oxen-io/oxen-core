@@ -108,7 +108,7 @@ namespace service_nodes
       if (!state)
       {
         // TODO(loki): Fatal error
-        LOG_ERROR("Quorum state for height: " << m_last_height << "was not cached in daemon!");
+        LOG_ERROR("Quorum state for height: " << m_last_height << " was not cached in daemon!");
         continue;
       }
 
@@ -116,27 +116,46 @@ namespace service_nodes
       if (it == state->quorum_nodes.end())
         continue;
 
+      //
+      // I am in the quorum
+      //
       size_t my_index_in_quorum = it - state->quorum_nodes.begin();
       for (size_t node_index = 0; node_index < state->nodes_to_test.size(); ++node_index)
       {
         const crypto::public_key &node_key = state->nodes_to_test[node_index];
 
-        CRITICAL_REGION_LOCAL(m_lock);
-        bool vote_off_node = (m_uptime_proof_seen.find(node_key) == m_uptime_proof_seen.end());
-
-        if (!vote_off_node)
-          continue;
-
-        service_nodes::deregister_vote vote = {};
-        vote.block_height        = m_last_height;
-        vote.service_node_index  = node_index;
-        vote.voters_quorum_index = my_index_in_quorum;
-        vote.signature           = service_nodes::deregister_vote::sign_vote(vote.block_height, vote.service_node_index, my_pubkey, my_seckey);
-
-        cryptonote::vote_verification_context vvc = {};
-        if (!m_core.add_deregister_vote(vote, vvc))
+        //
+        // Handle deregister votes
+        //
         {
-          LOG_ERROR("Failed to add deregister vote reason: " << print_vote_verification_context(vvc, &vote));
+          CRITICAL_REGION_LOCAL(m_lock);
+
+          bool vote_off_node = (m_uptime_proof_seen.find(node_key) == m_uptime_proof_seen.end());
+
+          if (vote_off_node)
+          {
+            service_nodes::deregister_vote vote = {};
+            vote.block_height        = m_last_height;
+            vote.service_node_index  = node_index;
+            vote.voters_quorum_index = my_index_in_quorum;
+            vote.signature           = service_nodes::deregister_vote::sign_vote(vote.block_height, vote.service_node_index, my_pubkey, my_seckey);
+
+            cryptonote::vote_verification_context vvc = {};
+            if (!m_core.add_deregister_vote(vote, vvc))
+            {
+              LOG_ERROR("Failed to add deregister vote reason: " << print_vote_verification_context(vvc, &vote));
+            }
+          }
+        }
+
+        //
+        // Handle Checkpointing
+        //
+        {
+          service_nodes::checkpoint_vote vote = {};
+          vote.block_height                   = m_last_height;
+          vote.voters_quorum_index            = my_index_in_quorum;
+          m_core.update_service_node_checkpoint(vote);
         }
       }
     }

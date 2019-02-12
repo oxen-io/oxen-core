@@ -48,6 +48,13 @@ namespace service_nodes
 {
   struct quorum_uptime_proof;
 
+  struct checkpoint_vote
+  {
+    uint64_t          block_height;
+    uint32_t          voters_quorum_index;
+    crypto::signature signature;
+  };
+
   struct deregister_vote
   {
     static const uint64_t VOTE_LIFETIME_BY_HEIGHT       = BLOCKS_EXPECTED_IN_HOURS(2);
@@ -68,6 +75,19 @@ namespace service_nodes
 
     static bool verify_vote(cryptonote::network_type nettype, const deregister_vote& v, cryptonote::vote_verification_context &vvc,
                             const service_nodes::quorum_uptime_proof &quorum);
+  };
+
+  struct voter_to_signature
+  {
+    uint16_t          quorum_index;
+    crypto::signature signature;
+  };
+
+  struct checkpoint
+  {
+    uint64_t                        block_height;
+    crypto::hash                    block_hash;
+    std::vector<voter_to_signature> signatures;
   };
 
   class deregister_vote_pool

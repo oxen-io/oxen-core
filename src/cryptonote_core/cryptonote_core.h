@@ -827,14 +827,15 @@ namespace cryptonote
       */
      std::vector<service_nodes::service_node_pubkey_info> get_service_node_list_state(const std::vector<crypto::public_key>& service_node_pubkeys) const;
 
-    /**
-      * @brief get whether `pubkey` is known as a service node
-      *
-      * @param pubkey the public key to test
-      *
-      * @return whether `pubkey` is known as a service node
-      */
-    bool is_service_node(const crypto::public_key& pubkey) const;
+     /**
+       * @brief get whether `pubkey` is known as a service node
+       *
+       * @param pubkey the public key to test
+       *
+       * @return whether `pubkey` is known as a service node
+       */
+     bool is_service_node(const crypto::public_key& pubkey) const;
+
      /**
       * @brief Add a vote to deregister a service node from network
       *
@@ -843,6 +844,16 @@ namespace cryptonote
       * @return Whether the vote was added to the partial deregister pool
       */
      bool add_deregister_vote(const service_nodes::deregister_vote& vote, vote_verification_context &vvc);
+
+     /**
+      * @brief TODO(doyle): CHECKPOINTING(doyle):
+      *
+      * @param TODO(doyle): CHECKPOINTING(doyle):
+
+      * @return
+      */
+     bool update_service_node_checkpoint(const service_nodes::checkpoint_vote& vote);
+
 
      /**
       * @brief Get the keypair for this service node.
@@ -1112,9 +1123,10 @@ namespace cryptonote
      tx_memory_pool m_mempool; //!< transaction pool instance
      Blockchain m_blockchain_storage; //!< Blockchain instance
 
-     service_nodes::deregister_vote_pool m_deregister_vote_pool;
-     service_nodes::service_node_list    m_service_node_list;
-     service_nodes::quorum_cop           m_quorum_cop;
+     service_nodes::deregister_vote_pool    m_deregister_vote_pool;
+     service_nodes::service_node_list       m_service_node_list;
+     service_nodes::quorum_cop              m_quorum_cop;
+     std::vector<service_nodes::checkpoint> m_checkpoint_pool;
 
      i_cryptonote_protocol* m_pprotocol; //!< cryptonote protocol instance
 

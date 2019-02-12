@@ -2119,6 +2119,81 @@ namespace cryptonote
     return result;
   }
   //-----------------------------------------------------------------------------------------------
+  bool core::update_service_node_checkpoint(const service_nodes::checkpoint_vote& vote)
+  {
+    // TODO(doyle): This is repeated logic for deregister votes and
+    // checkpointing votes, it is worth considering merging the two into
+    // a generic voting structure
+
+    // Check Vote Age
+    {
+      uint64_t const latest_height = std::max(get_current_blockchain_height(), get_target_blockchain_height());
+      if (vote.block_height >= latest_height)
+        return false;
+
+      uint64_t delta_height = latest_height - vote.block_height;
+      if (delta_height > service_nodes::quorum_cop::REORG_SAFETY_BUFFER_IN_BLOCKS)
+        return false;
+    }
+
+    // Get Checkpoint
+    auto it = std::find_if(m_checkpoint_pool.begin(), m_checkpoint_pool.end(), [&vote](service_nodes::checkpoint const &checkpoint) {
+        return (checkpoint.block_height == vote.block_height);
+    });
+
+    if (it == m_checkpoint_pool.end())
+    {
+      service_nodes::checkpoint checkpoint = {};
+      checkpoint.block_height              = vote.block_height;
+      checkpoint.block_hash                = get_block_id_by_height(checkpoint.block_height);
+      m_checkpoint_pool.push_back(checkpoint);
+      it = (m_checkpoint_pool.end() - 1);
+    }
+
+    // Validate Vote
+    {
+      const std::shared_ptr<const service_nodes::quorum_state> state = get_quorum_state(vote.block_height);
+      if (!state)
+      {
+        // TODO(loki): Fatal error
+        LOG_ERROR("Quorum state for height: " << vote.block_height << " was not cached in daemon!");
+        return false;
+      }
+
+      if (vote.voters_quorum_index >= state->quorum_nodes.size())
+      {
+        LOG_PRINT_L1("TODO(doyle): CHECKPOINTING(doyle): Writeme");
+        return false;
+      }
+
+      crypto::public_key const &voters_pub_key = state->quorum_nodes[vote.voters_quorum_index];
+      crypto::hash const check_hash            = get_block_id_by_height(vote.block_height);
+      if (!crypto::check_signature(check_hash, voters_pub_key, vote.signature))
+      {
+        LOG_PRINT_L1("TODO(doyle): CHECKPOINTING(doyle): Writeme");
+        return false;
+      }
+    }
+
+    // Add Vote if Unique to Checkpoint
+    {
+      service_nodes::checkpoint &checkpoint = (*it);
+      auto signature_it = std::find_if(checkpoint.signatures.begin(), checkpoint.signatures.end(), [&vote](service_nodes::voter_to_signature const &voter) {
+          return (voter.quorum_index == vote.voters_quorum_index);
+      });
+
+      if (signature_it == checkpoint.signatures.end())
+      {
+        checkpoint.signatures.push_back(*signature_it);
+        if (checkpoint.signatures.size() > service_nodes::MIN_VOTES_TO_CHECKPOINT)
+        {
+        }
+      }
+    }
+
+    return true;
+  }
+  //-----------------------------------------------------------------------------------------------
   bool core::get_service_node_keys(crypto::public_key &pub_key, crypto::secret_key &sec_key) const
   {
     if (m_service_node)
