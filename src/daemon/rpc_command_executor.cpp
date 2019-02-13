@@ -2622,26 +2622,26 @@ bool t_rpc_command_executor::prepare_registration()
   const uint64_t DUST = MAX_NUMBER_OF_CONTRIBUTORS;
   std::cout << "Current staking requirement: " << cryptonote::print_money(staking_requirement) << " " << cryptonote::get_unit() << std::endl;
 
-  enum register_step
+  enum struct register_step
   {
-    register_step_ask_is_solo_stake = 0,
-    register_step_is_solo_stake__operator_address_to_reserve,
+    ask_is_solo_stake = 0,
+    is_solo_stake__operator_address_to_reserve,
 
-    register_step_is_open_stake__get_operator_fee,
-    register_step_is_open_stake__do_you_want_to_reserve_other_contributors,
-    register_step_is_open_stake__how_many_more_contributors,
-    register_step_is_open_stake__operator_amount_to_reserve,
-    register_step_is_open_stake__operator_address_to_reserve,
-    register_step_is_open_stake__contributor_address_to_reserve,
-    register_step_is_open_stake__contributor_amount_to_reserve,
-    register_step_is_open_stake__summary_info,
-    register_step_final_summary,
-    register_step_cancelled_by_user,
+    is_open_stake__get_operator_fee,
+    is_open_stake__do_you_want_to_reserve_other_contributors,
+    is_open_stake__how_many_more_contributors,
+    is_open_stake__operator_amount_to_reserve,
+    is_open_stake__operator_address_to_reserve,
+    is_open_stake__contributor_address_to_reserve,
+    is_open_stake__contributor_amount_to_reserve,
+    is_open_stake__summary_info,
+    final_summary,
+    cancelled_by_user,
   };
 
   struct prepare_registration_state
   {
-    register_step            prev_step                    = register_step_ask_is_solo_stake;
+    register_step            prev_step                    = register_step::ask_is_solo_stake;
     bool                     is_solo_stake;
     size_t                   num_participants             = 1;
     uint64_t                 operator_fee_portions        = STAKING_PORTIONS;
@@ -2651,12 +2651,12 @@ bool t_rpc_command_executor::prepare_registration()
     std::vector<uint64_t>    contributions;
   };
 
-  prepare_registration_state state;
+  prepare_registration_state state = {};
   std::stack<prepare_registration_state> state_stack;
   state_stack.push(state);
 
   bool finished = false;
-  register_step step = register_step_ask_is_solo_stake;
+  register_step step = register_step::ask_is_solo_stake;
   for (input_line_result last_input_result = input_line_result::yes; !finished;)
   {
     if (last_input_result == input_line_result::back)
@@ -2669,12 +2669,12 @@ bool t_rpc_command_executor::prepare_registration()
 
     switch(step)
     {
-      case register_step_ask_is_solo_stake:
+      case register_step::ask_is_solo_stake:
       {
         last_input_result = input_line_yes_no_cancel("Will the operator contribute the entire stake?");
         if(last_input_result == input_line_result::cancel)
         {
-          step = register_step_cancelled_by_user;
+          step = register_step::cancelled_by_user;
           continue;
         }
 
@@ -2682,18 +2682,18 @@ bool t_rpc_command_executor::prepare_registration()
         if (state.is_solo_stake)
         {
           std::cout << std::endl;
-          step = register_step_is_solo_stake__operator_address_to_reserve;
+          step = register_step::is_solo_stake__operator_address_to_reserve;
         }
         else
         {
-          step = register_step_is_open_stake__get_operator_fee;
+          step = register_step::is_open_stake__get_operator_fee;
         }
 
         state_stack.push(state);
         continue;
       }
 
-      case register_step_is_solo_stake__operator_address_to_reserve:
+      case register_step::is_solo_stake__operator_address_to_reserve:
       {
         std::string address_str;
         last_input_result = input_line_back_cancel_get_input("Enter the loki address for the solo staker", address_str);
@@ -2702,7 +2702,7 @@ bool t_rpc_command_executor::prepare_registration()
 
         if (last_input_result == input_line_result::cancel)
         {
-          step = register_step_cancelled_by_user;
+          step = register_step::cancelled_by_user;
           continue;
         }
 
@@ -2711,12 +2711,12 @@ bool t_rpc_command_executor::prepare_registration()
         state.portions_remaining = 0;
         state.total_reserved_contributions += get_actual_amount(staking_requirement, STAKING_PORTIONS);
         state.prev_step = step;
-        step            = register_step_final_summary;
+        step            = register_step::final_summary;
         state_stack.push(state);
         continue;
       }
 
-      case register_step_is_open_stake__get_operator_fee:
+      case register_step::is_open_stake__get_operator_fee:
       {
         std::string operator_fee_str;
         last_input_result = input_line_back_cancel_get_input("What percentage of the total staking reward would the operator like to reserve as an operator fee [0-100]%", operator_fee_str);
@@ -2726,7 +2726,7 @@ bool t_rpc_command_executor::prepare_registration()
 
         if (last_input_result == input_line_result::cancel)
         {
-          step = register_step_cancelled_by_user;
+          step = register_step::cancelled_by_user;
           continue;
         }
 
@@ -2736,12 +2736,12 @@ bool t_rpc_command_executor::prepare_registration()
           continue;
         }
 
-        step = register_step_is_open_stake__do_you_want_to_reserve_other_contributors;
+        step = register_step::is_open_stake__do_you_want_to_reserve_other_contributors;
         state_stack.push(state);
         continue;
       }
 
-      case register_step_is_open_stake__do_you_want_to_reserve_other_contributors:
+      case register_step::is_open_stake__do_you_want_to_reserve_other_contributors:
       {
         last_input_result = input_line_yes_no_back_cancel("Do you want to reserve portions of the stake for other specific contributors?");
         if (last_input_result == input_line_result::back)
@@ -2749,26 +2749,26 @@ bool t_rpc_command_executor::prepare_registration()
 
         if (last_input_result == input_line_result::cancel)
         {
-          step = register_step_cancelled_by_user;
+          step = register_step::cancelled_by_user;
           continue;
         }
 
         state.prev_step = step;
         if(last_input_result == input_line_result::yes)
         {
-          step = register_step_is_open_stake__how_many_more_contributors;
+          step = register_step::is_open_stake__how_many_more_contributors;
         }
         else
         {
           std::cout << std::endl;
-          step = register_step_is_open_stake__operator_address_to_reserve;
+          step = register_step::is_open_stake__operator_address_to_reserve;
         }
 
         state_stack.push(state);
         continue;
       }
 
-      case register_step_is_open_stake__how_many_more_contributors:
+      case register_step::is_open_stake__how_many_more_contributors:
       {
         std::string prompt = "Number of additional contributors [1-" + std::to_string(MAX_NUMBER_OF_CONTRIBUTORS - 1) + "]";
         std::string input;
@@ -2779,11 +2779,11 @@ bool t_rpc_command_executor::prepare_registration()
 
         if (last_input_result == input_line_result::cancel)
         {
-          step = register_step_cancelled_by_user;
+          step = register_step::cancelled_by_user;
           continue;
         }
 
-        int additional_contributors = atoi(input.c_str());
+        long additional_contributors = strtol(input.c_str(), NULL, 10 /*base 10*/);
         if(additional_contributors < 1 || additional_contributors > (MAX_NUMBER_OF_CONTRIBUTORS - 1))
         {
           std::cout << "Invalid value. Should be between [1-" << (MAX_NUMBER_OF_CONTRIBUTORS - 1) << "]" << std::endl;
@@ -2793,12 +2793,12 @@ bool t_rpc_command_executor::prepare_registration()
         std::cout << std::endl;
         state.num_participants += static_cast<size_t>(additional_contributors);
         state.prev_step = step;
-        step            = register_step_is_open_stake__operator_address_to_reserve;
+        step            = register_step::is_open_stake__operator_address_to_reserve;
         state_stack.push(state);
         continue;
       }
 
-      case register_step_is_open_stake__operator_address_to_reserve:
+      case register_step::is_open_stake__operator_address_to_reserve:
       {
         std::string address_str;
         last_input_result = input_line_back_cancel_get_input("Enter the loki address for the operator", address_str);
@@ -2807,18 +2807,18 @@ bool t_rpc_command_executor::prepare_registration()
 
         if (last_input_result == input_line_result::cancel)
         {
-          step = register_step_cancelled_by_user;
+          step = register_step::cancelled_by_user;
           continue;
         }
 
         state.addresses.push_back(address_str); // the addresses will be validated later down the line
         state.prev_step = step;
-        step            = register_step_is_open_stake__operator_amount_to_reserve;
+        step            = register_step::is_open_stake__operator_amount_to_reserve;
         state_stack.push(state);
         continue;
       }
 
-      case register_step_is_open_stake__operator_amount_to_reserve:
+      case register_step::is_open_stake__operator_amount_to_reserve:
       {
         uint64_t min_contribution_portions = service_nodes::get_min_node_contribution_in_portions(hf_version, staking_requirement, 0, 0);
         const uint64_t min_contribution    = get_amount_to_make_portions(staking_requirement, min_contribution_portions);
@@ -2831,7 +2831,7 @@ bool t_rpc_command_executor::prepare_registration()
 
         if (last_input_result == input_line_result::cancel)
         {
-          step = register_step_cancelled_by_user;
+          step = register_step::cancelled_by_user;
           continue;
         }
 
@@ -2862,11 +2862,11 @@ bool t_rpc_command_executor::prepare_registration()
 
         if (state.num_participants > 1)
         {
-          step = register_step_is_open_stake__contributor_address_to_reserve;
+          step = register_step::is_open_stake__contributor_address_to_reserve;
         }
         else
         {
-          step = register_step_is_open_stake__summary_info;
+          step = register_step::is_open_stake__summary_info;
         }
 
         std::cout << std::endl;
@@ -2874,7 +2874,7 @@ bool t_rpc_command_executor::prepare_registration()
         continue;
       }
 
-      case register_step_is_open_stake__contributor_address_to_reserve:
+      case register_step::is_open_stake__contributor_address_to_reserve:
       {
         std::string const prompt = "Enter the loki address for contributor " + std::to_string(state.contributions.size() + 1);
         std::string address_str;
@@ -2884,19 +2884,19 @@ bool t_rpc_command_executor::prepare_registration()
 
         if (last_input_result == input_line_result::cancel)
         {
-          step = register_step_cancelled_by_user;
+          step = register_step::cancelled_by_user;
           continue;
         }
 
         // the addresses will be validated later down the line
         state.addresses.push_back(address_str);
         state.prev_step = step;
-        step            = register_step_is_open_stake__contributor_amount_to_reserve;
+        step            = register_step::is_open_stake__contributor_amount_to_reserve;
         state_stack.push(state);
         continue;
       }
 
-      case register_step_is_open_stake__contributor_amount_to_reserve:
+      case register_step::is_open_stake__contributor_amount_to_reserve:
       {
         const uint64_t amount_left         = staking_requirement - state.total_reserved_contributions;
         uint64_t min_contribution_portions = service_nodes::get_min_node_contribution_in_portions(hf_version, staking_requirement, state.total_reserved_contributions, state.contributions.size());
@@ -2913,7 +2913,7 @@ bool t_rpc_command_executor::prepare_registration()
 
         if (last_input_result == input_line_result::cancel)
         {
-          step = register_step_cancelled_by_user;
+          step = register_step::cancelled_by_user;
           continue;
         }
 
@@ -2927,7 +2927,7 @@ bool t_rpc_command_executor::prepare_registration()
         uint64_t portions = service_nodes::get_portions_to_make_amount(staking_requirement, contribution);
         if (portions < min_contribution_portions)
         {
-          std::cout << "Invalid amount." << std::endl;
+          std::cout << "The amount is too small." << std::endl;
           continue;
         }
 
@@ -2940,16 +2940,16 @@ bool t_rpc_command_executor::prepare_registration()
         state.prev_step = step;
 
         if (state.contributions.size() == state.num_participants)
-          step = register_step_is_open_stake__summary_info;
+          step = register_step::is_open_stake__summary_info;
         else
-          step = register_step_is_open_stake__contributor_address_to_reserve;
+          step = register_step::is_open_stake__contributor_address_to_reserve;
 
         std::cout << std::endl;
         state_stack.push(state);
         continue;
       }
 
-      case register_step_is_open_stake__summary_info:
+      case register_step::is_open_stake__summary_info:
       {
         const uint64_t amount_left = staking_requirement - state.total_reserved_contributions;
         std::cout << "Total staking contributions reserved: " << cryptonote::print_money(state.total_reserved_contributions) << " " << cryptonote::get_unit() << std::endl;
@@ -2961,7 +2961,7 @@ bool t_rpc_command_executor::prepare_registration()
           last_input_result = input_line_yes_no_back_cancel("Is this ok?\n");
           if(last_input_result == input_line_result::no || last_input_result == input_line_result::cancel)
           {
-            step = register_step_cancelled_by_user;
+            step = register_step::cancelled_by_user;
             continue;
           }
 
@@ -2972,11 +2972,11 @@ bool t_rpc_command_executor::prepare_registration()
           state.prev_step = step;
         }
 
-        step = register_step_final_summary;
+        step = register_step::final_summary;
         continue;
       }
 
-      case register_step_final_summary:
+      case register_step::final_summary:
       {
         assert(state.addresses.size() == state.contributions.size());
         const uint64_t amount_left = staking_requirement - state.total_reserved_contributions;
@@ -3012,7 +3012,7 @@ bool t_rpc_command_executor::prepare_registration()
         last_input_result = input_line_yes_no_back_cancel("Do you confirm the information above is correct?");
         if(last_input_result == input_line_result::no || last_input_result == input_line_result::cancel)
         {
-          step = register_step_cancelled_by_user;
+          step = register_step::cancelled_by_user;
           continue;
         }
 
@@ -3023,7 +3023,7 @@ bool t_rpc_command_executor::prepare_registration()
         continue;
       }
 
-      case register_step_cancelled_by_user:
+      case register_step::cancelled_by_user:
       {
         std::cout << "Cancel requested in prepare registration. Aborting." << std::endl;
         return true;

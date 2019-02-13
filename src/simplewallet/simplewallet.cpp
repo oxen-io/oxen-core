@@ -5824,7 +5824,6 @@ bool simple_wallet::register_service_node_main(
   de.amount = amount_payable_by_operator;
   dsts.push_back(de);
 
-  bool submitted_to_network = false;
   try
   {
     // NOTE(loki): We know the address should always be a primary address and has no payment id, so we can ignore the subaddress/payment id field here
