@@ -2569,8 +2569,6 @@ namespace cryptonote
     {
       COMMAND_RPC_GET_SERVICE_NODES::response::entry entry = {};
 
-      entry.as_json = cryptonote::obj_to_json_str(pubkey_info);
-
       entry.service_node_pubkey           = string_tools::pod_to_hex(pubkey_info.pubkey);
       entry.registration_height           = pubkey_info.info.registration_height;
       entry.requested_unlock_height       = pubkey_info.info.requested_unlock_height;

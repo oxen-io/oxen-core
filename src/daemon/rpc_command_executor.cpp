@@ -2151,29 +2151,25 @@ static void print_service_node_list_state(cryptonote::network_type nettype, int 
   }
 }
 
-bool t_rpc_command_executor::print_sn(const std::vector<std::string> &args, bool include_json)
+bool t_rpc_command_executor::print_sn(const std::vector<std::string> &args)
 {
     cryptonote::COMMAND_RPC_GET_SERVICE_NODES::request req = {};
     cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response res = {};
     std::string fail_message = "Unsuccessful";
     epee::json_rpc::error error_resp;
     
-    if (include_json && args.size() > 1) 
-    {
-      for (unsigned int i=0; i<args.size()-1; ++i) 
-      {
-        req.service_node_pubkeys.push_back(args[i]);
-      }
-    }
-    else if (!include_json && args.size() > 0) 
-    {
-      for (unsigned int i=0; i<args.size(); ++i) 
-      {
-        req.service_node_pubkeys.push_back(args[i]);
-      }
-    }
+    req.include_json = false;
     
-    req.include_json = include_json;
+    for (unsigned int i=0; i<args.size(); ++i) 
+    {
+      if (!(args[i] == "+json")) 
+      {
+        req.service_node_pubkeys.push_back(args[i]);
+      }
+      else {
+        req.include_json = true;
+      }
+    }
 
     cryptonote::COMMAND_RPC_GET_INFO::request get_info_req;
     cryptonote::COMMAND_RPC_GET_INFO::response get_info_res;
@@ -2274,7 +2270,7 @@ bool t_rpc_command_executor::print_sn(const std::vector<std::string> &args, bool
     
     if (unregistered.size() == 0 && registered.size() == 0)
     {
-      if ((!include_json && args.size() > 0) || (include_json && args.size() > 1))
+      if ((!req.include_json && args.size() > 0) || (req.include_json && args.size() > 1))
       {
         tools::msg_writer() << "No service node is currently known on the network for: ";
         for (const std::string &arg : args)
@@ -2292,31 +2288,26 @@ bool t_rpc_command_executor::print_sn(const std::vector<std::string> &args, bool
       }
     }
     
-    if (include_json)
+    if (req.include_json)
     {
       std::cout << res.as_json << std::endl;
       return true;
     }
-    else if (unregistered.size() > 0)
+    if (unregistered.size() > 0)
     {
       tools::msg_writer() << "Service Node Unregistered State[" << unregistered.size()<< "]";
       print_service_node_list_state(nettype, hard_fork_version, curr_height, unregistered);
     }
-    else
+    if (registered.size() > 0)
     {
       tools::msg_writer() << "Service Node Registration State[" << registered.size()<< "]";
       print_service_node_list_state(nettype, hard_fork_version, curr_height, registered);
     }
 
-    if (include_json)
-    {
-      std::cout << res.as_json << std::endl;
-    }
-
     return true;
 }
 
-bool t_rpc_command_executor::print_sn_status(bool include_json)
+bool t_rpc_command_executor::print_sn_status(const std::vector<std::string>& args)
 {
   cryptonote::COMMAND_RPC_GET_SERVICE_NODE_KEY::response res = {};
   {
@@ -2342,8 +2333,22 @@ bool t_rpc_command_executor::print_sn_status(bool include_json)
     }
   }
 
-  std::string const &sn_key_str = res.service_node_pubkey;
-  bool result = print_sn({sn_key_str}, include_json);
+  if (!args.empty()) 
+  {
+    if (args[0] == "+json") 
+    {
+      std::vector<std::string> const &new_args = {res.service_node_pubkey, args[0]};
+      bool result = print_sn(new_args);
+      return result;
+    }
+    else 
+    {
+      return false;
+    }
+  }
+  std::string const &sn_key = res.service_node_pubkey;
+  bool result = print_sn({sn_key});
+  
   return result;
 }
 
