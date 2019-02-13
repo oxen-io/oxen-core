@@ -2310,7 +2310,7 @@ bool t_rpc_command_executor::print_sn(const std::vector<std::string> &args, bool
 
     if (include_json)
     {
-      std::cout << res.sns_as_json << std::endl;
+      std::cout << res.as_json << std::endl;
     }
 
     return true;

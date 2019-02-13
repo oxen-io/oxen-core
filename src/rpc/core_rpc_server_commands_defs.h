@@ -2632,8 +2632,7 @@ namespace cryptonote
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(service_node_states)
         KV_SERIALIZE(status)
-        KV_SERIALIZE(as_json);
-
+        KV_SERIALIZE(as_json)
       END_KV_SERIALIZE_MAP()
     };
   };

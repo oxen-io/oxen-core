@@ -2565,7 +2565,7 @@ namespace cryptonote
       res.as_json = cryptonote::obj_to_json_str(pubkey_info_list);
     }
     
-    for (const auto &pubkey_info : pubkey_info_list)
+    for (auto &pubkey_info : pubkey_info_list)
     {
       COMMAND_RPC_GET_SERVICE_NODES::response::entry entry = {};
 
