@@ -36,9 +36,10 @@
 
 namespace loki
 {
-double      round           (double);
-double      exp2            (double);
-std::string hex64_to_base32z(std::string const& src);
+double      round                    (double);
+double      exp2                     (double);
+std::string hex64_to_base32z         (std::string const& src);
+bool        u64_subtract_no_underflow(uint64_t a, uint64_t b, uint64_t *output);
 }; // namespace Loki
 
 #endif // LOKI_H

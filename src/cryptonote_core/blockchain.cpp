@@ -4909,6 +4909,15 @@ void Blockchain::cache_block_template(const block &b, const cryptonote::account_
   m_btc_valid = true;
 }
 
+void Blockchain::update_service_node_checkpoint(service_nodes::checkpoint const &new_checkpoint)
+{
+  crypto::hash const block_hash             = get_block_id_by_height(new_checkpoint.block_height);
+  service_nodes::checkpoint &old_checkpoint = m_service_node_checkpoints[block_hash];
+
+  if (new_checkpoint.signatures.size() > old_checkpoint.signatures.size())
+    old_checkpoint.signatures = std::move(new_checkpoint.signatures);
+}
+
 namespace cryptonote {
 template bool Blockchain::get_transactions(const std::vector<crypto::hash>&, std::vector<transaction>&, std::vector<crypto::hash>&) const;
 template bool Blockchain::get_transactions_blobs(const std::vector<crypto::hash>&, std::vector<cryptonote::blobdata>&, std::vector<crypto::hash>&, bool) const;

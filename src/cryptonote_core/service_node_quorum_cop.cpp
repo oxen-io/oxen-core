@@ -32,6 +32,7 @@
 #include "cryptonote_config.h"
 #include "cryptonote_core.h"
 #include "version.h"
+#include "common/loki.h"
 
 #include "common/loki_integration_test_hooks.h"
 
@@ -151,11 +152,23 @@ namespace service_nodes
         //
         // Handle Checkpointing
         //
+        const uint64_t CHECKPOINT_INTERVAL = 4;
+        if (m_last_height % CHECKPOINT_INTERVAL == 0)
         {
-          service_nodes::checkpoint_vote vote = {};
-          vote.block_height                   = m_last_height;
-          vote.voters_quorum_index            = my_index_in_quorum;
-          m_core.update_service_node_checkpoint(vote);
+          uint64_t block_height_to_checkpoint = 0;
+          if (loki::u64_subtract_no_underflow(m_last_height, CHECKPOINT_INTERVAL, &block_height_to_checkpoint))
+          {
+            service_nodes::checkpoint_vote vote = {};
+            vote.block_height                   = m_last_height;
+            // vote.block_hash                     = m_core.get_block_id_by_height(block_height_to_checkpoint);
+            vote.voters_quorum_index            = my_index_in_quorum;
+
+            cryptonote::vote_verification_context vvc = {};
+            if (!m_core.add_checkpoint_vote(vote, vvc))
+            {
+              // TODO(doyle): CHECKPOINTING(doyle):
+            }
+          }
         }
       }
     }

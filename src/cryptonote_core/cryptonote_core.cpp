@@ -1405,6 +1405,46 @@ namespace cryptonote
     return true;
   }
   //-----------------------------------------------------------------------------------------------
+  bool core::relay_checkpoint_votes()
+  {
+    const time_t now = time(nullptr);
+
+    // Get relayable votes
+    NOTIFY_NEW_CHECKPOINT_VOTE::request req = {};
+    std::vector<service_nodes::voter_to_signature *> relayed_vote_signatures;
+    for (service_nodes::checkpoint &checkpoint: m_checkpoint_pool)
+    {
+      for (service_nodes::voter_to_signature &voter_to_signature : checkpoint.signatures)
+      {
+        const time_t last_sent       = now - voter_to_signature.time_last_sent_p2p;
+        const time_t RELAY_THRESHOLD = 60 * 2;
+        if (last_sent > RELAY_THRESHOLD)
+        {
+          relayed_vote_signatures.push_back(&voter_to_signature);
+
+          service_nodes::checkpoint_vote vote = {};
+          vote.block_height                   = checkpoint.block_height;
+          vote.voters_quorum_index            = voter_to_signature.quorum_index;
+          vote.signature                      = voter_to_signature.signature;
+          req.votes.push_back(vote);
+        }
+      }
+    }
+
+    // Relay and update timestamp of when we last sent the vote
+    if (!req.votes.empty())
+    {
+      cryptonote_connection_context fake_context = AUTO_VAL_INIT(fake_context);
+      if (get_protocol()->relay_checkpoint_votes(req, fake_context))
+      {
+        for (service_nodes::voter_to_signature *voter_to_signature : relayed_vote_signatures)
+          voter_to_signature->time_last_sent_p2p = now;
+      }
+    }
+
+    return true;
+  }
+  //-----------------------------------------------------------------------------------------------
   bool core::get_block_template(block& b, const account_public_address& adr, difficulty_type& diffic, uint64_t& height, uint64_t& expected_reward, const blobdata& ex_nonce)
   {
     return m_blockchain_storage.create_block_template(b, adr, diffic, height, expected_reward, ex_nonce);
@@ -1741,6 +1781,7 @@ namespace cryptonote
     m_fork_moaner.do_call(boost::bind(&core::check_fork_time, this));
     m_txpool_auto_relayer.do_call(boost::bind(&core::relay_txpool_transactions, this));
     m_deregisters_auto_relayer.do_call(boost::bind(&core::relay_deregister_votes, this));
+    m_checkpoint_auto_relayer.do_call(boost::bind(&core::relay_checkpoint_votes, this));
     // m_check_updates_interval.do_call(boost::bind(&core::check_updates, this));
     m_check_disk_space_interval.do_call(boost::bind(&core::check_disk_space, this));
     m_block_rate_interval.do_call(boost::bind(&core::check_block_rate, this));
@@ -2119,8 +2160,11 @@ namespace cryptonote
     return result;
   }
   //-----------------------------------------------------------------------------------------------
-  bool core::update_service_node_checkpoint(const service_nodes::checkpoint_vote& vote)
+  bool core::add_checkpoint_vote(const service_nodes::checkpoint_vote& vote, vote_verification_context &vvc)
   {
+    // TODO(doyle): Not in this function but, need to add code for culling old
+    // checkpoints from the "staging" checkpoint pool.
+
     // TODO(doyle): This is repeated logic for deregister votes and
     // checkpointing votes, it is worth considering merging the two into
     // a generic voting structure
@@ -2185,8 +2229,9 @@ namespace cryptonote
       if (signature_it == checkpoint.signatures.end())
       {
         checkpoint.signatures.push_back(*signature_it);
-        if (checkpoint.signatures.size() > service_nodes::MIN_VOTES_TO_CHECKPOINT)
+        if (checkpoint.signatures.size() >= service_nodes::MIN_VOTES_TO_CHECKPOINT)
         {
+          m_blockchain_storage.update_service_node_checkpoint(checkpoint);
         }
       }
     }

@@ -10,6 +10,7 @@ namespace service_nodes {
   constexpr size_t   QUORUM_SIZE                      = 10;
   constexpr size_t   QUORUM_LIFETIME                  = (6 * deregister_vote::DEREGISTER_LIFETIME_BY_HEIGHT);
   constexpr size_t   MIN_VOTES_TO_KICK_SERVICE_NODE   = 7;
+  constexpr size_t   MIN_VOTES_TO_CHECKPOINT          = MIN_VOTES_TO_KICK_SERVICE_NODE;
   constexpr size_t   NTH_OF_THE_NETWORK_TO_TEST       = 100;
   constexpr size_t   MIN_NODES_TO_TEST                = 50;
   constexpr size_t   MAX_SWARM_SIZE                   = 10;
