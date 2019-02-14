@@ -2562,7 +2562,10 @@ namespace cryptonote
     
     if (req.include_json)
     {
-      res.as_json = cryptonote::obj_to_json_str(pubkey_info_list);
+      res.as_json = "{\n}";
+      if (pubkey_info_list.size() > 0) {
+        res.as_json = cryptonote::obj_to_json_str(pubkey_info_list);
+      }
     }
     
     for (auto &pubkey_info : pubkey_info_list)

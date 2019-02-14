@@ -2266,8 +2266,16 @@ bool t_rpc_command_executor::print_sn(const std::vector<std::string> &args)
         return a->last_reward_block_height < b->last_reward_block_height;
     });
     
+    if (req.include_json)
+    {
+      std::cout << res.as_json << std::endl;
+      return true;
+    }
+    
     if (unregistered.size() == 0 && registered.size() == 0)
     {
+      if (req.service_node_pubkeys.size() > 0) 
+      {
         tools::msg_writer() << "No service node is currently known on the network for: ";
         for (const std::string &pubkey : req.service_node_pubkeys)
         { 
@@ -2282,11 +2290,6 @@ bool t_rpc_command_executor::print_sn(const std::vector<std::string> &args)
       }
     }
     
-    if (req.include_json)
-    {
-      std::cout << res.as_json << std::endl;
-      return true;
-    }
     if (unregistered.size() > 0)
     {
       tools::msg_writer() << "Service Node Unregistered State[" << unregistered.size()<< "]";
@@ -2330,7 +2333,7 @@ bool t_rpc_command_executor::print_sn_status(const std::vector<std::string>& arg
   if (args.size() > 1)
   {
     // Print unexpected num args error message
-    return true;
+    return false;
   }
 
   bool result = false;
@@ -2343,7 +2346,7 @@ bool t_rpc_command_executor::print_sn_status(const std::vector<std::string>& arg
     result = print_sn({res.service_node_pubkey});
   }
 
-return result;
+  return result;
 }
 
 bool t_rpc_command_executor::print_sr(uint64_t height)
