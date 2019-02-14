@@ -2400,7 +2400,7 @@ bool t_rpc_command_executor::print_sn_status(const std::vector<std::string>& arg
 
   if (args.size() > 1)
   {
-    // Print unexpected num args error message
+    tools::fail_msg_writer() << "Unexpected arguments";
     return false;
   }
 
