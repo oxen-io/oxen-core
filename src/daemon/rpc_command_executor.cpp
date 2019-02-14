@@ -2158,8 +2158,6 @@ bool t_rpc_command_executor::print_sn(const std::vector<std::string> &args)
     std::string fail_message = "Unsuccessful";
     epee::json_rpc::error error_resp;
     
-    req.include_json = false;
-    
     for (unsigned int i=0; i<args.size(); ++i) 
     {
       if (!(args[i] == "+json")) 
@@ -2270,14 +2268,10 @@ bool t_rpc_command_executor::print_sn(const std::vector<std::string> &args)
     
     if (unregistered.size() == 0 && registered.size() == 0)
     {
-      if ((!req.include_json && args.size() > 0) || (req.include_json && args.size() > 1))
-      {
         tools::msg_writer() << "No service node is currently known on the network for: ";
-        for (const std::string &arg : args)
+        for (const std::string &pubkey : req.service_node_pubkeys)
         { 
-          if (!(arg == "+json")) {
-            tools::msg_writer() << arg;
-          }
+          tools::msg_writer() << pubkey;
         }
         return true;
       }
@@ -2333,23 +2327,23 @@ bool t_rpc_command_executor::print_sn_status(const std::vector<std::string>& arg
     }
   }
 
-  if (!args.empty()) 
+  if (args.size() > 1)
   {
-    if (args[0] == "+json") 
-    {
-      std::vector<std::string> const &new_args = {res.service_node_pubkey, args[0]};
-      bool result = print_sn(new_args);
-      return result;
-    }
-    else 
-    {
-      return false;
-    }
+    // Print unexpected num args error message
+    return true;
   }
-  std::string const &sn_key = res.service_node_pubkey;
-  bool result = print_sn({sn_key});
-  
-  return result;
+
+  bool result = false;
+  if (args.size() == 1) 
+  {
+    result = print_sn({res.service_node_pubkey, args[0]});
+  }
+  else
+  {
+    result = print_sn({res.service_node_pubkey});
+  }
+
+return result;
 }
 
 bool t_rpc_command_executor::print_sr(uint64_t height)
