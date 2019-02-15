@@ -409,27 +409,6 @@ namespace cryptonote
      void set_cryptonote_protocol(i_cryptonote_protocol* pprotocol);
 
      /**
-      * @copydoc Blockchain::set_checkpoints
-      *
-      * @note see Blockchain::set_checkpoints()
-      */
-     void set_checkpoints(checkpoints&& chk_pts);
-
-     /**
-      * @brief set the file path to read from when loading checkpoints
-      *
-      * @param path the path to set ours as
-      */
-     void set_checkpoints_file_path(const std::string& path);
-
-     /**
-      * @brief set whether or not we enforce DNS checkpoints
-      *
-      * @param enforce_dns enforce DNS checkpoints or not
-      */
-     void set_enforce_dns_checkpoints(bool enforce_dns);
-
-     /**
       * @brief set whether or not to enable or disable DNS checkpoints
       *
       * @param disble whether to disable DNS checkpoints
@@ -1140,7 +1119,6 @@ namespace cryptonote
      service_nodes::deregister_vote_pool    m_deregister_vote_pool;
      service_nodes::service_node_list       m_service_node_list;
      service_nodes::quorum_cop              m_quorum_cop;
-     std::vector<service_nodes::checkpoint> m_checkpoint_pool;
 
      i_cryptonote_protocol* m_pprotocol; //!< cryptonote protocol instance
 

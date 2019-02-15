@@ -33,13 +33,26 @@
 #include "misc_log_ex.h"
 #include "crypto/hash.h"
 #include "cryptonote_config.h"
+#include "cryptonote_core/service_node_deregister.h"
 
 #define ADD_CHECKPOINT(h, hash)  CHECK_AND_ASSERT(add_checkpoint(h,  hash), false);
 #define JSON_HASH_FILE_NAME "checkpoints.json"
 
-
 namespace cryptonote
 {
+  enum struct checkpoint_type
+  {
+    predefined_or_dns,
+    service_node,
+  };
+
+  struct checkpoint_t
+  {
+    checkpoint_type                                type;
+    crypto::hash                                   block_hash;
+    std::vector<service_nodes::voter_to_signature> signatures; // Only service node checkpoints use signatures
+  };
+
   /**
    * @brief A container for blockchain checkpoints
    *
@@ -67,6 +80,8 @@ namespace cryptonote
      *         otherwise returns true
      */
     bool add_checkpoint(uint64_t height, const std::string& hash_str);
+
+    bool add_or_update_checkpoint(uint64_t height, checkpoint_t const &checkpoint);
 
     /**
      * @brief checks if there is a checkpoint in the future
@@ -106,7 +121,7 @@ namespace cryptonote
     /**
      * @brief checks if alternate chain blocks should be kept for a given height
      *
-     * this basically says if the blockchain is smaller than the first
+     *m this basically says if the blockchain is smaller than the first
      * checkpoint then alternate blocks are allowed.  Alternatively, if the
      * last checkpoint *before* the end of the current chain is also before
      * the block to be added, then this is fine.
@@ -131,7 +146,7 @@ namespace cryptonote
      *
      * @return a const reference to the checkpoints container
      */
-    const std::map<uint64_t, crypto::hash>& get_points() const;
+    const std::map<uint64_t, checkpoint_t>& get_points() const { return m_points; };
 
     /**
      * @brief checks if our checkpoints container conflicts with another
@@ -152,6 +167,8 @@ namespace cryptonote
      * @return true unless adding a checkpoint fails
      */
     bool init_default_checkpoints(network_type nettype);
+
+    // TODO(doyle): CHECKPOINTING(doyle): bool init_service_node_checkpoints(Blockchain const &blockchain);
 
     /**
      * @brief load new checkpoints
@@ -186,7 +203,7 @@ namespace cryptonote
     bool load_checkpoints_from_dns(network_type nettype = MAINNET);
 
   private:
-    std::map<uint64_t, crypto::hash> m_points; //!< the checkpoints container
+    std::map<uint64_t, checkpoint_t> m_points; //!< the checkpoints container
   };
 
 }

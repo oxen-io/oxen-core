@@ -1050,6 +1050,14 @@ namespace cryptonote
      */
     void pop_blocks(uint64_t nblocks);
 
+    struct service_node_checkpoint_pool_entry
+    {
+      uint64_t     height;
+      checkpoint_t checkpoint;
+    };
+
+    std::vector<service_node_checkpoint_pool_entry> m_checkpoint_pool;
+
 #ifndef IN_UNIT_TESTS
   private:
 #endif
@@ -1075,7 +1083,6 @@ namespace cryptonote
     tx_memory_pool& m_tx_pool;
 
     service_nodes::service_node_list&                           m_service_node_list;
-    std::unordered_map<crypto::hash, service_nodes::checkpoint> m_service_node_checkpoints;
     service_nodes::deregister_vote_pool&                        m_deregister_vote_pool;
 
     mutable epee::critical_section m_blockchain_lock; // TODO: add here reader/writer lock
@@ -1507,12 +1514,5 @@ namespace cryptonote
      * At some point, may be used to push an update to miners
      */
     void cache_block_template(const block &b, const cryptonote::account_public_address &address, const blobdata &nonce, const difficulty_type &diff, uint64_t expected_reward, uint64_t pool_cookie);
-
-     /*
-      * @brief CHECKPOINTING(doyle):
-      *
-      * @return CHECKPOINTING(doyle):
-      */
-     void update_service_node_checkpoint(service_nodes::checkpoint const &new_checkpoint);
   };
 }  // namespace cryptonote

@@ -245,21 +245,6 @@ namespace cryptonote
     else
       m_pprotocol = &m_protocol_stub;
   }
-  //-----------------------------------------------------------------------------------
-  void core::set_checkpoints(checkpoints&& chk_pts)
-  {
-    m_blockchain_storage.set_checkpoints(std::move(chk_pts));
-  }
-  //-----------------------------------------------------------------------------------
-  void core::set_checkpoints_file_path(const std::string& path)
-  {
-    m_checkpoints_path = path;
-  }
-  //-----------------------------------------------------------------------------------
-  void core::set_enforce_dns_checkpoints(bool enforce_dns)
-  {
-    m_blockchain_storage.set_enforce_dns_checkpoints(enforce_dns);
-  }
   //-----------------------------------------------------------------------------------------------
   bool core::update_checkpoints()
   {
@@ -359,23 +344,22 @@ namespace cryptonote
 
     auto data_dir = boost::filesystem::path(m_config_folder);
 
-    if (m_nettype == MAINNET)
+    // Init Checkpoints
     {
       cryptonote::checkpoints checkpoints;
       if (!checkpoints.init_default_checkpoints(m_nettype))
       {
         throw std::runtime_error("Failed to initialize checkpoints");
       }
-      set_checkpoints(std::move(checkpoints));
+      m_blockchain_storage.set_checkpoints(std::move(checkpoints));
 
       boost::filesystem::path json(JSON_HASH_FILE_NAME);
       boost::filesystem::path checkpoint_json_hashfile_fullpath = data_dir / json;
 
-      set_checkpoints_file_path(checkpoint_json_hashfile_fullpath.string());
+      m_checkpoints_path = checkpoint_json_hashfile_fullpath.string();
     }
 
-
-    set_enforce_dns_checkpoints(command_line::get_arg(vm, arg_dns_checkpoints));
+    m_blockchain_storage.set_enforce_dns_checkpoints(command_line::get_arg(vm, arg_dns_checkpoints));
     test_drop_download_height(command_line::get_arg(vm, arg_test_drop_download_height));
     m_fluffy_blocks_enabled = !get_arg(vm, arg_no_fluffy_blocks);
     m_pad_transactions = get_arg(vm, arg_pad_transactions);
@@ -1411,10 +1395,11 @@ namespace cryptonote
 
     // Get relayable votes
     NOTIFY_NEW_CHECKPOINT_VOTE::request req = {};
+
     std::vector<service_nodes::voter_to_signature *> relayed_vote_signatures;
-    for (service_nodes::checkpoint &checkpoint: m_checkpoint_pool)
+    for (Blockchain::service_node_checkpoint_pool_entry &pool_entry: m_blockchain_storage.m_checkpoint_pool)
     {
-      for (service_nodes::voter_to_signature &voter_to_signature : checkpoint.signatures)
+      for (service_nodes::voter_to_signature &voter_to_signature : pool_entry.checkpoint.signatures)
       {
         const time_t last_sent       = now - voter_to_signature.time_last_sent_p2p;
         const time_t RELAY_THRESHOLD = 60 * 2;
@@ -1423,7 +1408,7 @@ namespace cryptonote
           relayed_vote_signatures.push_back(&voter_to_signature);
 
           service_nodes::checkpoint_vote vote = {};
-          vote.block_height                   = checkpoint.block_height;
+          vote.block_height                   = pool_entry.height;
           vote.voters_quorum_index            = voter_to_signature.quorum_index;
           vote.signature                      = voter_to_signature.signature;
           req.votes.push_back(vote);
@@ -2180,20 +2165,6 @@ namespace cryptonote
         return false;
     }
 
-    // Get Checkpoint
-    auto it = std::find_if(m_checkpoint_pool.begin(), m_checkpoint_pool.end(), [&vote](service_nodes::checkpoint const &checkpoint) {
-        return (checkpoint.block_height == vote.block_height);
-    });
-
-    if (it == m_checkpoint_pool.end())
-    {
-      service_nodes::checkpoint checkpoint = {};
-      checkpoint.block_height              = vote.block_height;
-      checkpoint.block_hash                = get_block_id_by_height(checkpoint.block_height);
-      m_checkpoint_pool.push_back(checkpoint);
-      it = (m_checkpoint_pool.end() - 1);
-    }
-
     // Validate Vote
     {
       const std::shared_ptr<const service_nodes::quorum_state> state = get_quorum_state(vote.block_height);
@@ -2219,19 +2190,39 @@ namespace cryptonote
       }
     }
 
+    // Get Matching Checkpoint
+    std::vector<Blockchain::service_node_checkpoint_pool_entry> &checkpoint_pool = m_blockchain_storage.m_checkpoint_pool;
+    auto it = std::find_if(checkpoint_pool.begin(), checkpoint_pool.end(), [&vote](Blockchain::service_node_checkpoint_pool_entry const &checkpoint) {
+        return (checkpoint.height == vote.block_height);
+    });
+
+    if (it == checkpoint_pool.end())
+    {
+      Blockchain::service_node_checkpoint_pool_entry pool_entry = {};
+      pool_entry.height                                         = vote.block_height;
+      pool_entry.checkpoint.block_hash                          = get_block_id_by_height(pool_entry.height);
+      pool_entry.checkpoint.type                                = checkpoint_type::service_node;
+      checkpoint_pool.push_back(pool_entry);
+      it = (checkpoint_pool.end() - 1);
+    }
+
     // Add Vote if Unique to Checkpoint
     {
-      service_nodes::checkpoint &checkpoint = (*it);
-      auto signature_it = std::find_if(checkpoint.signatures.begin(), checkpoint.signatures.end(), [&vote](service_nodes::voter_to_signature const &voter) {
+      Blockchain::service_node_checkpoint_pool_entry &pool_entry = (*it);
+      auto signature_it = std::find_if(pool_entry.checkpoint.signatures.begin(), pool_entry.checkpoint.signatures.end(), [&vote](service_nodes::voter_to_signature const &voter) {
           return (voter.quorum_index == vote.voters_quorum_index);
       });
 
-      if (signature_it == checkpoint.signatures.end())
+      if (signature_it == pool_entry.checkpoint.signatures.end())
       {
-        checkpoint.signatures.push_back(*signature_it);
-        if (checkpoint.signatures.size() >= service_nodes::MIN_VOTES_TO_CHECKPOINT)
+        pool_entry.checkpoint.signatures.push_back(*signature_it);
+        if (pool_entry.checkpoint.signatures.size() >= service_nodes::MIN_VOTES_TO_CHECKPOINT)
         {
-          m_blockchain_storage.update_service_node_checkpoint(checkpoint);
+          // TODO(doyle): CHECKPOINTING(doyle): Implement me
+          // if (!m_checkpoints.add_or_update_checkpoint(pool_entry.height, pool_entry.checkpoint))
+          // {
+          //   // TODO(doyle): Panic
+          // }
         }
       }
     }

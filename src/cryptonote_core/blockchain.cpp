@@ -135,6 +135,7 @@ Blockchain::Blockchain(tx_memory_pool& tx_pool, service_nodes::service_node_list
   m_deregister_vote_pool(deregister_vote_pool),
   m_btc_valid(false)
 {
+  m_checkpoint_pool.reserve(service_nodes::QUORUM_SIZE * 4 /*blocks*/);
   LOG_PRINT_L3("Blockchain::" << __func__);
 }
 //------------------------------------------------------------------
@@ -3935,11 +3936,10 @@ bool Blockchain::add_new_block(const block& bl_, block_verification_context& bvc
 //      caller decide course of action.
 void Blockchain::check_against_checkpoints(const checkpoints& points, bool enforce)
 {
-  const auto& pts = points.get_points();
-  bool stop_batch;
-
   CRITICAL_REGION_LOCAL(m_blockchain_lock);
-  stop_batch = m_db->batch_start();
+  bool stop_batch = m_db->batch_start();
+
+  const auto& pts = points.get_points();
   for (const auto& pt : pts)
   {
     // if the checkpoint is for a block we don't have yet, move on
@@ -3963,6 +3963,7 @@ void Blockchain::check_against_checkpoints(const checkpoints& points, bool enfor
       }
     }
   }
+
   if (stop_batch)
     m_db->batch_stop();
 }
@@ -4001,7 +4002,6 @@ bool Blockchain::update_checkpoints(const std::string& file_path, bool check_dns
   }
 
   check_against_checkpoints(m_checkpoints, true);
-
   return true;
 }
 //------------------------------------------------------------------
@@ -4907,15 +4907,6 @@ void Blockchain::cache_block_template(const block &b, const cryptonote::account_
   m_btc_expected_reward = expected_reward;
   m_btc_pool_cookie = pool_cookie;
   m_btc_valid = true;
-}
-
-void Blockchain::update_service_node_checkpoint(service_nodes::checkpoint const &new_checkpoint)
-{
-  crypto::hash const block_hash             = get_block_id_by_height(new_checkpoint.block_height);
-  service_nodes::checkpoint &old_checkpoint = m_service_node_checkpoints[block_hash];
-
-  if (new_checkpoint.signatures.size() > old_checkpoint.signatures.size())
-    old_checkpoint.signatures = std::move(new_checkpoint.signatures);
 }
 
 namespace cryptonote {

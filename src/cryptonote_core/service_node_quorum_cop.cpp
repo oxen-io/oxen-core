@@ -160,7 +160,6 @@ namespace service_nodes
           {
             service_nodes::checkpoint_vote vote = {};
             vote.block_height                   = m_last_height;
-            // vote.block_hash                     = m_core.get_block_id_by_height(block_height_to_checkpoint);
             vote.voters_quorum_index            = my_index_in_quorum;
 
             cryptonote::vote_verification_context vvc = {};

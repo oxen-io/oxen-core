@@ -53,6 +53,7 @@ namespace service_nodes
     uint64_t          block_height;
     uint32_t          voters_quorum_index;
     crypto::signature signature;
+    uint64_t          time_last_sent_p2p;
   };
 
   struct voter_to_signature
@@ -60,13 +61,6 @@ namespace service_nodes
     uint16_t          quorum_index;
     crypto::signature signature;
     uint64_t          time_last_sent_p2p;
-  };
-
-  struct checkpoint
-  {
-    uint64_t                        block_height;
-    crypto::hash                    prev_block_with_checkpoint;
-    std::vector<voter_to_signature> signatures;
   };
 
   struct deregister_vote
