@@ -152,7 +152,6 @@ namespace service_nodes
         //
         // Handle Checkpointing
         //
-        const uint64_t CHECKPOINT_INTERVAL = 4;
         if (m_last_height % CHECKPOINT_INTERVAL == 0)
         {
           uint64_t block_height_to_checkpoint = 0;

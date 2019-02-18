@@ -1601,6 +1601,7 @@ namespace cryptonote
       bvc.m_verifivation_failed = true;
       return false;
     }
+
     add_new_block(b, bvc);
     if(update_miner_blocktemplate && bvc.m_added_to_main_chain)
        update_miner_block_template();
@@ -2219,10 +2220,10 @@ namespace cryptonote
         if (pool_entry.checkpoint.signatures.size() >= service_nodes::MIN_VOTES_TO_CHECKPOINT)
         {
           // TODO(doyle): CHECKPOINTING(doyle): Implement me
-          // if (!m_checkpoints.add_or_update_checkpoint(pool_entry.height, pool_entry.checkpoint))
-          // {
-          //   // TODO(doyle): Panic
-          // }
+          if (!m_blockchain_storage.add_or_update_service_node_checkpoint(pool_entry.height, pool_entry.checkpoint))
+          {
+            // TODO(doyle): Panic, mismatching hash with pre-existing checkpoint
+          }
         }
       }
     }

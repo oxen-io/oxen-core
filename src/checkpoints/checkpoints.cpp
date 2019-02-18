@@ -35,6 +35,7 @@
 #include "string_tools.h"
 #include "storages/portable_storage_template_helper.h" // epee json include
 #include "serialization/keyvalue_serialization.h"
+#include "cryptonote_core/blockchain.h"
 #include <vector>
 
 using namespace epee;
@@ -97,8 +98,11 @@ namespace cryptonote
         crypto::hash const &curr_hash = checkpoint_it.block_hash;
         CHECK_AND_ASSERT_MES(checkpoint.block_hash == curr_hash, false, "Checkpoint at given height already exists, and hash for new checkpoint was different!");
       }
+      else
+      {
+        m_points[height] = checkpoint;
+      }
 
-      m_points[height] = checkpoint;
       return true;
     }
 
@@ -143,28 +147,68 @@ namespace cryptonote
     return !m_points.empty() && (height <= (--m_points.end())->first);
   }
   //---------------------------------------------------------------------------
-  bool checkpoints::check_block(uint64_t height, const crypto::hash& h, bool& is_a_checkpoint) const
+  bool checkpoints::check_block(uint64_t height, const crypto::hash& h, cryptonote::Blockchain const &blockchain, bool* is_a_checkpoint) const
   {
     auto it = m_points.find(height);
-    is_a_checkpoint = it != m_points.end();
-    if(!is_a_checkpoint)
+
+    bool checkpointed_height = it != m_points.end();
+    if (is_a_checkpoint) *is_a_checkpoint = checkpointed_height;
+
+    if(!checkpointed_height)
       return true;
 
-    if(it->second.block_hash == h)
-    {
-      MINFO("CHECKPOINT PASSED FOR HEIGHT " << height << " " << h);
-      return true;
-    }else
+    if(it->second.block_hash != h)
     {
       MWARNING("CHECKPOINT FAILED FOR HEIGHT " << height << ". EXPECTED HASH: " << it->second.block_hash << ", FETCHED HASH: " << h);
       return false;
     }
-  }
-  //---------------------------------------------------------------------------
-  bool checkpoints::check_block(uint64_t height, const crypto::hash& h) const
-  {
-    bool ignored;
-    return check_block(height, h, ignored);
+
+    //
+    // Verify new block belongs to the chain where the last 2 service node checkpoints are for
+    //
+    struct checkpoint_to_height
+    {
+      uint64_t            height;
+      checkpoint_t const *checkpoint;
+    };
+
+    // Get up to the last 2 service node checkpoints
+    std::array<checkpoint_to_height, 2> last_snode_checkpoints;
+    size_t last_snode_checkpoints_num = 0;
+    {
+      for (auto checkpoint_it = it;
+           checkpoint_it != m_points.begin() && last_snode_checkpoints_num < last_snode_checkpoints.size();
+           --checkpoint_it)
+      {
+        uint64_t block_height          = checkpoint_it->first;
+        checkpoint_t const &checkpoint = checkpoint_it->second;
+
+        if (checkpoint.type == checkpoint_type::service_node)
+          last_snode_checkpoints[last_snode_checkpoints_num++] = {block_height, &checkpoint};
+      }
+    }
+
+    bool result = true; // NOTE: 0 service node checkpoints if we're checking block(s) before service node checkpoints were introduced
+    if (last_snode_checkpoints_num > 0)
+    {
+      result = false;
+      for (size_t checkpoint_index = 0; !result && checkpoint_index < last_snode_checkpoints_num; ++checkpoint_index)
+      {
+        checkpoint_to_height const &checkpoint_and_height = last_snode_checkpoints[checkpoint_index];
+        crypto::hash const &hash_in_my_db                 = blockchain.get_block_id_by_height(checkpoint_and_height.height);
+        result                                            = (hash_in_my_db == checkpoint_and_height.checkpoint->block_hash);
+      }
+
+      if (!result)
+        MWARNING("CHECKPOINT FAILED FOR HEIGHT " << height << ". BLOCK ANCESTOR DID NOT MATCH CHECKPOINT FROM SERVICE NODE");
+    }
+
+    if (result)
+    {
+      MINFO("CHECKPOINT PASSED FOR HEIGHT " << height << " " << h);
+    }
+
+    return true;
   }
   //---------------------------------------------------------------------------
   //FIXME: is this the desired behavior?

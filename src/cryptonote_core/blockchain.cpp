@@ -1618,8 +1618,8 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
     bei.bl = b;
     bei.height = alt_chain.size() ? it_prev->second.height + 1 : m_db->get_block_height(b.prev_id) + 1;
 
-    bool is_a_checkpoint;
-    if(!m_checkpoints.check_block(bei.height, id, is_a_checkpoint))
+    bool is_a_checkpoint = false;
+    if(!m_checkpoints.check_block(bei.height, id, *this, &is_a_checkpoint))
     {
       LOG_ERROR("CHECKPOINT VALIDATION FAILED");
       bvc.m_verifivation_failed = true;
@@ -3524,7 +3524,7 @@ leave:
   // is correct.
   if(m_checkpoints.is_in_checkpoint_zone(get_current_blockchain_height()))
   {
-    if(!m_checkpoints.check_block(get_current_blockchain_height(), id))
+    if(!m_checkpoints.check_block(get_current_blockchain_height(), id, *this))
     {
       LOG_ERROR("CHECKPOINT VALIDATION FAILED");
       bvc.m_verifivation_failed = true;
@@ -3900,6 +3900,7 @@ bool Blockchain::update_next_cumulative_weight_limit(uint64_t *long_term_effecti
 //------------------------------------------------------------------
 bool Blockchain::add_new_block(const block& bl_, block_verification_context& bvc)
 {
+
   LOG_PRINT_L3("Blockchain::" << __func__);
   //copy block here to let modify block.target
   block bl = bl_;
@@ -3936,26 +3937,30 @@ bool Blockchain::add_new_block(const block& bl_, block_verification_context& bvc
 //      caller decide course of action.
 void Blockchain::check_against_checkpoints(const checkpoints& points, bool enforce)
 {
+  // 1. The proposed chain must be built from one of the last two checkpoints C1 or C2;
+  // 2. Nodes shall not accept more than (N*3) - 1 blocks since the last checkpoint (Where N is the reorg limit);
+  // 3. If two chains of proof of work are produced with the same cumulative difficulty, Service Nodes should choose the chain based on the lowest hamming distance of the chain tip’s blockhash to 0, and;
+  // 4. The latest checkpoint C3 can invalidate two checkpoints back to C1.
+
   CRITICAL_REGION_LOCAL(m_blockchain_lock);
   bool stop_batch = m_db->batch_start();
 
-  const auto& pts = points.get_points();
-  for (const auto& pt : pts)
+  for (const auto& checkpoint_it : points.get_points())
   {
-    // if the checkpoint is for a block we don't have yet, move on
-    if (pt.first >= m_db->height())
-    {
-      continue;
-    }
+    uint64_t block_height          = checkpoint_it.first;
+    checkpoint_t const &checkpoint = checkpoint_it.second;
 
-    if (!points.check_block(pt.first, m_db->get_block_hash_from_height(pt.first)))
+    if (block_height >= m_db->height()) // if the checkpoint is for a block we don't have yet, move on
+      break;
+
+    if (!points.check_block(block_height, m_db->get_block_hash_from_height(block_height), *this))
     {
       // if asked to enforce checkpoints, roll back to a couple of blocks before the checkpoint
       if (enforce)
       {
         LOG_ERROR("Local blockchain failed to pass a checkpoint, rolling back!");
         std::list<block> empty;
-        rollback_blockchain_switching(empty, pt.first - 2);
+        rollback_blockchain_switching(empty, block_height- 2);
       }
       else
       {
@@ -4003,6 +4008,14 @@ bool Blockchain::update_checkpoints(const std::string& file_path, bool check_dns
 
   check_against_checkpoints(m_checkpoints, true);
   return true;
+}
+//------------------------------------------------------------------
+bool Blockchain::add_or_update_service_node_checkpoint(uint64_t height, checkpoint_t const &new_checkpoint)
+{
+  bool result = false;
+  if (new_checkpoint.type == checkpoint_type::service_node)
+    result = m_checkpoints.add_or_update_checkpoint(height, new_checkpoint);
+  return result;
 }
 //------------------------------------------------------------------
 void Blockchain::set_enforce_dns_checkpoints(bool enforce_checkpoints)

@@ -40,6 +40,7 @@
 
 namespace cryptonote
 {
+  struct Blockchain;
   enum struct checkpoint_type
   {
     predefined_or_dns,
@@ -105,18 +106,14 @@ namespace cryptonote
      *
      * @param height the height to be checked
      * @param h the hash to be checked
-     * @param is_a_checkpoint return-by-reference if there is a checkpoint at the given height
+     * @param blockchain the blockchain to query ancestor blocks from the current height
+     * @param is_a_checkpoint optional return-by-pointer if there is a checkpoint at the given height
      *
      * @return true if there is no checkpoint at the given height,
      *         true if the passed parameters match the stored checkpoint,
      *         false otherwise
      */
-    bool check_block(uint64_t height, const crypto::hash& h, bool& is_a_checkpoint) const;
-
-    /**
-     * @overload
-     */
-    bool check_block(uint64_t height, const crypto::hash& h) const;
+    bool check_block(uint64_t height, const crypto::hash& h, cryptonote::Blockchain const &blockchain, bool *is_a_checkpoint = nullptr) const;
 
     /**
      * @brief checks if alternate chain blocks should be kept for a given height

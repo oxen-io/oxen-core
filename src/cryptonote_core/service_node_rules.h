@@ -33,6 +33,7 @@ namespace service_nodes {
   constexpr int      MAX_KEY_IMAGES_PER_CONTRIBUTOR   = 1;
   constexpr uint64_t QUEUE_SWARM_ID                   = 0;
   constexpr uint64_t KEY_IMAGE_AWAITING_UNLOCK_HEIGHT = 0;
+  constexpr uint64_t CHECKPOINT_INTERVAL              = 4;
 
   using swarm_id_t = uint64_t;
   constexpr swarm_id_t   UNASSIGNED_SWARM_ID          = UINT64_MAX;
