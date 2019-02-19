@@ -60,7 +60,6 @@ namespace service_nodes
   {
     uint16_t          quorum_index;
     crypto::signature signature;
-    uint64_t          time_last_sent_p2p;
   };
 
   struct deregister_vote

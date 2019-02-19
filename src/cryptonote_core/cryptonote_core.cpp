@@ -1396,21 +1396,16 @@ namespace cryptonote
     // Get relayable votes
     NOTIFY_NEW_CHECKPOINT_VOTE::request req = {};
 
-    std::vector<service_nodes::voter_to_signature *> relayed_vote_signatures;
+    std::vector<service_nodes::checkpoint_vote *> relayed_votes;
     for (Blockchain::service_node_checkpoint_pool_entry &pool_entry: m_blockchain_storage.m_checkpoint_pool)
     {
-      for (service_nodes::voter_to_signature &voter_to_signature : pool_entry.checkpoint.signatures)
+      for (service_nodes::checkpoint_vote &vote : pool_entry.votes)
       {
-        const time_t last_sent       = now - voter_to_signature.time_last_sent_p2p;
+        const time_t last_sent       = now - vote.time_last_sent_p2p;
         const time_t RELAY_THRESHOLD = 60 * 2;
         if (last_sent > RELAY_THRESHOLD)
         {
-          relayed_vote_signatures.push_back(&voter_to_signature);
-
-          service_nodes::checkpoint_vote vote = {};
-          vote.block_height                   = pool_entry.height;
-          vote.voters_quorum_index            = voter_to_signature.quorum_index;
-          vote.signature                      = voter_to_signature.signature;
+          relayed_votes.push_back(&vote);
           req.votes.push_back(vote);
         }
       }
@@ -1422,8 +1417,8 @@ namespace cryptonote
       cryptonote_connection_context fake_context = AUTO_VAL_INIT(fake_context);
       if (get_protocol()->relay_checkpoint_votes(req, fake_context))
       {
-        for (service_nodes::voter_to_signature *voter_to_signature : relayed_vote_signatures)
-          voter_to_signature->time_last_sent_p2p = now;
+        for (service_nodes::checkpoint_vote *vote : relayed_votes)
+          vote->time_last_sent_p2p = now;
       }
     }
 
@@ -2162,7 +2157,7 @@ namespace cryptonote
         return false;
 
       uint64_t delta_height = latest_height - vote.block_height;
-      if (delta_height > service_nodes::quorum_cop::REORG_SAFETY_BUFFER_IN_BLOCKS)
+      if (delta_height > 10000)
         return false;
     }
 
@@ -2191,6 +2186,7 @@ namespace cryptonote
       }
     }
 
+    // TODO(doyle): CHECKPOINTING(doyle): We need to check the hash they're voting on matches across votes
     // Get Matching Checkpoint
     std::vector<Blockchain::service_node_checkpoint_pool_entry> &checkpoint_pool = m_blockchain_storage.m_checkpoint_pool;
     auto it = std::find_if(checkpoint_pool.begin(), checkpoint_pool.end(), [&vote](Blockchain::service_node_checkpoint_pool_entry const &checkpoint) {
@@ -2201,28 +2197,39 @@ namespace cryptonote
     {
       Blockchain::service_node_checkpoint_pool_entry pool_entry = {};
       pool_entry.height                                         = vote.block_height;
-      pool_entry.checkpoint.block_hash                          = get_block_id_by_height(pool_entry.height);
-      pool_entry.checkpoint.type                                = checkpoint_type::service_node;
       checkpoint_pool.push_back(pool_entry);
       it = (checkpoint_pool.end() - 1);
     }
 
+    // 1. The proposed chain must be built from one of the last two checkpoints C1 or C2;
+    // 2. Nodes shall not accept more than (N*3) - 1 blocks since the last checkpoint (Where N is the reorg limit);
+    // 3. If two chains of proof of work are produced with the same cumulative difficulty, Service Nodes should choose the chain based on the lowest hamming distance of the chain tip’s blockhash to 0, and;
+    // 4. The latest checkpoint C3 can invalidate two checkpoints back to C1.
+
     // Add Vote if Unique to Checkpoint
     {
       Blockchain::service_node_checkpoint_pool_entry &pool_entry = (*it);
-      auto signature_it = std::find_if(pool_entry.checkpoint.signatures.begin(), pool_entry.checkpoint.signatures.end(), [&vote](service_nodes::voter_to_signature const &voter) {
-          return (voter.quorum_index == vote.voters_quorum_index);
+      auto vote_it = std::find_if(pool_entry.votes.begin(), pool_entry.votes.end(), [&vote](service_nodes::checkpoint_vote const &preexisting_vote) {
+          return (preexisting_vote.voters_quorum_index == vote.voters_quorum_index);
       });
 
-      if (signature_it == pool_entry.checkpoint.signatures.end())
+      if (vote_it == pool_entry.votes.end())
       {
-        pool_entry.checkpoint.signatures.push_back(*signature_it);
-        if (pool_entry.checkpoint.signatures.size() >= service_nodes::MIN_VOTES_TO_CHECKPOINT)
+        pool_entry.votes.push_back(vote);
+        if (pool_entry.votes.size() >= service_nodes::MIN_VOTES_TO_CHECKPOINT)
         {
-          // TODO(doyle): CHECKPOINTING(doyle): Implement me
-          if (!m_blockchain_storage.add_or_update_service_node_checkpoint(pool_entry.height, pool_entry.checkpoint))
+          if (pool_entry.votes.size() == service_nodes::MIN_VOTES_TO_CHECKPOINT)
           {
-            // TODO(doyle): Panic, mismatching hash with pre-existing checkpoint
+            // NOTE: We just hit the threshold for collecting votes, we can form a checkpoint with the votes we have
+            for (service_nodes::checkpoint_vote const &stored_vote : pool_entry.votes)
+            {
+              m_blockchain_storage.create_or_update_service_node_checkpoint(stored_vote);
+            }
+          }
+          else
+          {
+            // Enough votes to form a checkpoint, we're receiving extra votes within an acceptable time frame, just append it to the checkpoint
+            m_blockchain_storage.create_or_update_service_node_checkpoint(vote);
           }
         }
       }

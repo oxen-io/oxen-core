@@ -81,61 +81,56 @@ namespace cryptonote
     bool r         = epee::string_tools::hex_to_pod(hash_str, h);
     CHECK_AND_ASSERT_MES(r, false, "Failed to parse checkpoint hash string into binary representation!");
 
-    checkpoint_t checkpoint = {};
-    checkpoint.type         = checkpoint_type::predefined_or_dns;
-    checkpoint.block_hash   = h;
-    bool result             = add_or_update_checkpoint(height, checkpoint);
+    if (m_points.count(height)) // return false if adding at a height we already have AND the hash is different
+    {
+      auto checkpoint_it            = m_points[height];
+      crypto::hash const &curr_hash = checkpoint_it.block_hash;
+      CHECK_AND_ASSERT_MES(h == curr_hash, false, "Checkpoint at given height already exists, and hash for new checkpoint was different!");
+    }
+    else
+    {
+      checkpoint_t checkpoint = {};
+      checkpoint.type         = checkpoint_type::predefined_or_dns;
+      checkpoint.block_hash   = h;
+      m_points[height]        = checkpoint;
+    }
+
     return true;
   }
   //---------------------------------------------------------------------------
-  bool checkpoints::add_or_update_checkpoint(uint64_t height, checkpoint_t const &checkpoint)
+  bool checkpoints::add_or_update_service_node_checkpoint(crypto::hash const &block_hash, service_nodes::checkpoint_vote const &vote)
   {
-    if (checkpoint.type == checkpoint_type::predefined_or_dns)
-    {
-      if (m_points.count(height)) // return false if adding at a height we already have AND the hash is different
-      {
-        auto checkpoint_it            = m_points[height];
-        crypto::hash const &curr_hash = checkpoint_it.block_hash;
-        CHECK_AND_ASSERT_MES(checkpoint.block_hash == curr_hash, false, "Checkpoint at given height already exists, and hash for new checkpoint was different!");
-      }
-      else
-      {
-        m_points[height] = checkpoint;
-      }
-
-      return true;
-    }
-
     // Handle Service Node Checkpoint
-    CHECK_AND_ASSERT_MES(checkpoint.type == checkpoint_type::service_node, false, "Expected service node checkpoint type");
     {
       checkpoint_t *curr_checkpoint = nullptr;
       {
-        auto it = m_points.find(height);
+        auto it = m_points.find(vote.block_height);
         if (it == m_points.end())
         {
-          curr_checkpoint = &m_points[height];
+          curr_checkpoint             = &m_points[vote.block_height];
+          curr_checkpoint->type       = checkpoint_type::service_node;
+          curr_checkpoint->block_hash = block_hash;
         }
         else
         {
           curr_checkpoint = &(it->second);
-          CHECK_AND_ASSERT_MES(curr_checkpoint->block_hash == checkpoint.block_hash, false, "Checkpoint at given height already exists, and hash for new checkpoint was different!");
+          CHECK_AND_ASSERT_MES(curr_checkpoint->block_hash == block_hash, false, "Checkpoint at given height already exists, and hash for new checkpoint was different!");
         }
+
+        CHECK_AND_ASSERT_MES(curr_checkpoint->type == checkpoint_type::service_node, false, "Expected service node checkpoint type");
       }
 
-      const auto voter_to_signature_less_than_lambda = [](service_nodes::voter_to_signature const &a, service_nodes::voter_to_signature const &b) {
-        return a.quorum_index < b.quorum_index;
+      const auto compare_vote_and_voter_to_signature = [](service_nodes::checkpoint_vote const &a, service_nodes::voter_to_signature const &b) {
+        return a.voters_quorum_index < b.quorum_index;
       };
 
-      // Add new signatures collected
-      std::sort(curr_checkpoint->signatures.begin(), curr_checkpoint->signatures.end(), voter_to_signature_less_than_lambda);
-      for (service_nodes::voter_to_signature const &check_voter_to_signature : checkpoint.signatures)
+      auto signature_it = std::upper_bound(curr_checkpoint->signatures.begin(), curr_checkpoint->signatures.end(), vote, compare_vote_and_voter_to_signature);
+      if (signature_it == curr_checkpoint->signatures.end() || signature_it->quorum_index != vote.voters_quorum_index)
       {
-        auto signature_it = std::upper_bound(curr_checkpoint->signatures.begin(), curr_checkpoint->signatures.end(), check_voter_to_signature, voter_to_signature_less_than_lambda);
-        if (signature_it == checkpoint.signatures.end() || signature_it->quorum_index != check_voter_to_signature.quorum_index)
-        {
-          curr_checkpoint->signatures.insert(signature_it, check_voter_to_signature);
-        }
+        service_nodes::voter_to_signature new_voter_to_signature = {};
+        new_voter_to_signature.quorum_index                      = vote.voters_quorum_index;
+        new_voter_to_signature.signature                         = vote.signature;
+        curr_checkpoint->signatures.insert(signature_it, new_voter_to_signature);
       }
     }
 

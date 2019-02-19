@@ -1145,7 +1145,7 @@ namespace cryptonote
      epee::math_helper::once_a_time_seconds<60*60*5, true> m_blockchain_pruning_interval; //!< interval for incremental blockchain pruning
 
      epee::math_helper::once_a_time_seconds<60*2, false> m_deregisters_auto_relayer;
-     epee::math_helper::once_a_time_seconds<60*2, false> m_checkpoint_auto_relayer;
+     epee::math_helper::once_a_time_seconds<10, false> m_checkpoint_auto_relayer;
 
      std::atomic<bool> m_starter_message_showed; //!< has the "daemon will sync now" message been shown?
 

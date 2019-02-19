@@ -95,12 +95,17 @@ namespace cryptonote
     void debug__print_checkpoints()
     {
       const std::map<uint64_t, checkpoint_t> &checkpoint_map = m_checkpoints.get_points();
-      for (auto &it : checkpoint_map)
+      if (checkpoint_map.empty())
       {
-        checkpoint_t const &checkpoint = it.second;
-        printf("Checkpoint [%zu] ", it.first);
-        printf("(%s)", (checkpoint.type == checkpoint_type::service_node) ? "Service Node" : "Predefined");
-        printf("\n");
+          std::cout << "Checkpoint: None available";
+      }
+      else
+      {
+        for (auto &it : checkpoint_map)
+        {
+          checkpoint_t const &checkpoint = it.second;
+          std::cout << "Checkpoint [" << it.first << "]" << ((checkpoint.type == checkpoint_type::service_node) ? "Service Node" : "Predefined") << "\n";
+        }
       }
     }
 
@@ -765,8 +770,14 @@ namespace cryptonote
      */
     bool update_checkpoints(const std::string& file_path, bool check_dns);
 
+    struct service_node_checkpoint_pool_entry
+    {
+      uint64_t                                    height;
+      std::vector<service_nodes::checkpoint_vote> votes;
+    };
+
     // TODO(doyle): CHECKPOINTING(doyle):
-    bool add_or_update_service_node_checkpoint(uint64_t height, checkpoint_t const &new_checkpoint);
+    bool create_or_update_service_node_checkpoint(service_nodes::checkpoint_vote const &vote);
 
     // user options, must be called before calling init()
 
@@ -1063,12 +1074,6 @@ namespace cryptonote
      * @param nblocks number of blocks to be removed
      */
     void pop_blocks(uint64_t nblocks);
-
-    struct service_node_checkpoint_pool_entry
-    {
-      uint64_t     height;
-      checkpoint_t checkpoint;
-    };
 
     std::vector<service_node_checkpoint_pool_entry> m_checkpoint_pool;
 

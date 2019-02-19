@@ -9,7 +9,7 @@
 namespace service_nodes {
   constexpr size_t   QUORUM_SIZE                      = 10;
   constexpr size_t   QUORUM_LIFETIME                  = (6 * deregister_vote::DEREGISTER_LIFETIME_BY_HEIGHT);
-  constexpr size_t   MIN_VOTES_TO_KICK_SERVICE_NODE   = 7;
+  constexpr size_t   MIN_VOTES_TO_KICK_SERVICE_NODE   = 2;
   constexpr size_t   MIN_VOTES_TO_CHECKPOINT          = MIN_VOTES_TO_KICK_SERVICE_NODE;
   constexpr size_t   NTH_OF_THE_NETWORK_TO_TEST       = 100;
   constexpr size_t   MIN_NODES_TO_TEST                = 50;
@@ -37,6 +37,8 @@ namespace service_nodes {
 
   using swarm_id_t = uint64_t;
   constexpr swarm_id_t   UNASSIGNED_SWARM_ID          = UINT64_MAX;
+  static_assert(MIN_VOTES_TO_KICK_SERVICE_NODE <= QUORUM_SIZE, "The number of votes required to kick can't exceed the actual quorum size, otherwise we never kick.");
+  static_assert(MIN_VOTES_TO_CHECKPOINT        <= QUORUM_SIZE, "The number of votes required to kick can't exceed the actual quorum size, otherwise we never kick.");
 
 inline uint64_t staking_num_lock_blocks(cryptonote::network_type nettype)
 {

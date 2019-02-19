@@ -3937,11 +3937,6 @@ bool Blockchain::add_new_block(const block& bl_, block_verification_context& bvc
 //      caller decide course of action.
 void Blockchain::check_against_checkpoints(const checkpoints& points, bool enforce)
 {
-  // 1. The proposed chain must be built from one of the last two checkpoints C1 or C2;
-  // 2. Nodes shall not accept more than (N*3) - 1 blocks since the last checkpoint (Where N is the reorg limit);
-  // 3. If two chains of proof of work are produced with the same cumulative difficulty, Service Nodes should choose the chain based on the lowest hamming distance of the chain tip’s blockhash to 0, and;
-  // 4. The latest checkpoint C3 can invalidate two checkpoints back to C1.
-
   CRITICAL_REGION_LOCAL(m_blockchain_lock);
   bool stop_batch = m_db->batch_start();
 
@@ -4010,12 +4005,12 @@ bool Blockchain::update_checkpoints(const std::string& file_path, bool check_dns
   return true;
 }
 //------------------------------------------------------------------
-bool Blockchain::add_or_update_service_node_checkpoint(uint64_t height, checkpoint_t const &new_checkpoint)
+bool Blockchain::create_or_update_service_node_checkpoint(service_nodes::checkpoint_vote const &vote)
 {
-  bool result = false;
-  if (new_checkpoint.type == checkpoint_type::service_node)
-    result = m_checkpoints.add_or_update_checkpoint(height, new_checkpoint);
-  return result;
+  // TODO(doyle): Need to validate hash?
+  crypto::hash const block_hash = get_block_id_by_height(vote.block_height);
+  m_checkpoints.add_or_update_service_node_checkpoint(block_hash, vote);
+  return true;
 }
 //------------------------------------------------------------------
 void Blockchain::set_enforce_dns_checkpoints(bool enforce_checkpoints)

@@ -79,7 +79,7 @@ namespace service_nodes
 #if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
     time_t const min_lifetime = 0;
 #else
-    time_t const min_lifetime = 60 * 60 * 2;
+    time_t const min_lifetime = 0; // 60 * 60 * 2;
 #endif
     bool alive_for_min_time   = (now - m_core.get_start_time()) >= min_lifetime;
     if (!alive_for_min_time)
@@ -148,24 +148,26 @@ namespace service_nodes
             }
           }
         }
+      }
 
-        //
-        // Handle Checkpointing
-        //
-        if (m_last_height % CHECKPOINT_INTERVAL == 0)
+      //
+      // Handle Checkpointing
+      //
+      if (m_last_height % CHECKPOINT_INTERVAL == 0)
+      {
+        uint64_t block_height_to_checkpoint = 0;
+        if (loki::u64_subtract_no_underflow(m_last_height, CHECKPOINT_INTERVAL, &block_height_to_checkpoint))
         {
-          uint64_t block_height_to_checkpoint = 0;
-          if (loki::u64_subtract_no_underflow(m_last_height, CHECKPOINT_INTERVAL, &block_height_to_checkpoint))
-          {
-            service_nodes::checkpoint_vote vote = {};
-            vote.block_height                   = m_last_height;
-            vote.voters_quorum_index            = my_index_in_quorum;
+          service_nodes::checkpoint_vote vote = {};
+          vote.block_height                   = block_height_to_checkpoint;
+          vote.voters_quorum_index            = my_index_in_quorum;
+          crypto::hash block_hash             = m_core.get_block_id_by_height(block_height_to_checkpoint);
+          crypto::generate_signature(block_hash, my_pubkey, my_seckey, vote.signature);
 
-            cryptonote::vote_verification_context vvc = {};
-            if (!m_core.add_checkpoint_vote(vote, vvc))
-            {
-              // TODO(doyle): CHECKPOINTING(doyle):
-            }
+          cryptonote::vote_verification_context vvc = {};
+          if (!m_core.add_checkpoint_vote(vote, vvc))
+          {
+            // TODO(doyle): CHECKPOINTING(doyle):
           }
         }
       }
