@@ -756,6 +756,10 @@ namespace tools
      * \brief Sets the seed language
      */
     void set_seed_language(const std::string &language);
+    
+    const std::time_t &get_creation_time() const;
+    
+    void set_creation_time(const std::time_t &time);
 
     // Subaddress scheme
     cryptonote::account_public_address get_subaddress(const cryptonote::subaddress_index& index) const;
@@ -1451,6 +1455,8 @@ namespace tools
     std::atomic<bool> m_run;
 
     boost::mutex m_daemon_rpc_mutex;
+    
+    std::time_t creation_time;
 
     bool m_trusted_daemon;
     i_wallet2_callback* m_callback;

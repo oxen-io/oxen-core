@@ -1125,7 +1125,7 @@ By using &apos;sync&apos; processing of waiting messages with multisig sync info
     </message>
     <message>
         <location filename="../src/simplewallet/simplewallet.cpp" line="3232"/>
-        <source>NOTE: the following %s can be used to recover access to your wallet. Write them down and store them somewhere safe and secure. Please do not store them in your email or on file storage services outside of your immediate control.
+        <source>NOTE: the following %s and date can be used to recover access to your wallet. Write them down and store them somewhere safe and secure. Please do not store them in your email or on file storage services outside of your immediate control.
 </source>
         <translation type="unfinished"></translation>
     </message>

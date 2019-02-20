@@ -1194,6 +1194,16 @@ void wallet2::set_seed_language(const std::string &language)
   seed_language = language;
 }
 //----------------------------------------------------------------------------------------------------
+const std::time_t &wallet2::get_creation_time() const 
+{
+  return creation_time;
+}
+
+void wallet2::set_creation_time(const std::time_t &time) 
+{
+  creation_time = time;  
+}
+//----------------------------------------------------------------------------------------------------
 cryptonote::account_public_address wallet2::get_subaddress(const cryptonote::subaddress_index& index) const
 {
   hw::device &hwdev = m_account.get_device();
@@ -12549,11 +12559,13 @@ uint64_t wallet2::get_blockchain_height_by_date(uint16_t year, uint8_t month, ui
   {
     throw std::runtime_error("this function requires RPC version 1.6 or higher");
   }
+  
+  // Set back by a day
   std::tm date = { 0, 0, 0, 0, 0, 0, 0, 0 };
   date.tm_year = year - 1900;
   date.tm_mon  = month - 1;
-  date.tm_mday = day;
-  if (date.tm_mon < 0 || 11 < date.tm_mon || date.tm_mday < 1 || 31 < date.tm_mday)
+  date.tm_mday = day - 1;
+  if (date.tm_mon < 0 || 11 < date.tm_mon || date.tm_mday < 0 || 31 < date.tm_mday)
   {
     throw std::runtime_error("month or day out of range");
   }
@@ -12608,7 +12620,7 @@ uint64_t wallet2::get_blockchain_height_by_date(uint16_t year, uint8_t month, ui
     }
     if (timestamp_target > timestamp_max)
     {
-      throw std::runtime_error("specified date is in the future");
+      timestamp_max = timestamp_target;
     }
     if (timestamp_target <= timestamp_min + 2 * 24 * 60 * 60)   // two days of "buffer" period
     {

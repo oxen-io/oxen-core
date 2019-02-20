@@ -3229,7 +3229,7 @@ bool simple_wallet::ask_wallet_create_if_needed()
  */
 void simple_wallet::print_seed(const epee::wipeable_string &seed)
 {
-  success_msg_writer(true) << "\n" << boost::format(tr("NOTE: the following %s can be used to recover access to your wallet. "
+  success_msg_writer(true) << "\n" << boost::format(tr("NOTE: the following %s and date can be used to recover access to your wallet. "
     "Write them down and store them somewhere safe and secure. Please do not store them in "
     "your email or on file storage services outside of your immediate control.\n")) % (m_wallet->multisig() ? tr("string") : tr("25 words"));
   // don't log
@@ -3248,6 +3248,17 @@ void simple_wallet::print_seed(const epee::wipeable_string &seed)
     else
       putchar(*ptr);
   }
+  putchar('\n');
+  fflush(stdout);
+}
+//----------------------------------------------------------------------------------------------------
+void simple_wallet::print_date(const std::tm* date) 
+{
+  printf("%s", std::to_string(date->tm_year+1900).c_str());
+  putchar('-');
+  printf("%s", std::to_string(date->tm_mon+1).c_str());
+  putchar('-');
+  printf("%s", std::to_string(date->tm_mday).c_str());
   putchar('\n');
   fflush(stdout);
 }
@@ -3366,6 +3377,20 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
             m_electrum_seed += electrum_seed;
             m_electrum_seed += ' ';
           } while (might_be_partial_seed(m_electrum_seed));
+        }
+      }
+      
+      if (m_restore_date.empty()) {
+        const char *prompt = "Specify date (YYYY-MM-DD)";
+        m_restore_date = input_line(prompt);
+        if (std::cin.eof()) 
+        {
+          return false;
+        }
+        if (m_restore_date.empty())
+        {
+          fail_msg_writer() << tr("specify a date parameter with the --restore-date=\"date here\"");
+          return false;
         }
       }
 
@@ -4074,6 +4099,8 @@ boost::optional<epee::wipeable_string> simple_wallet::new_wallet(const boost::pr
   epee::wipeable_string electrum_words;
 
   crypto::ElectrumWords::bytes_to_words(recovery_val, electrum_words, mnemonic_language);
+  
+  m_wallet->set_creation_time(time(NULL));
 
   success_msg_writer() <<
     "**********************************************************************\n" <<
@@ -4089,6 +4116,7 @@ boost::optional<epee::wipeable_string> simple_wallet::new_wallet(const boost::pr
   if (!two_random)
   {
     print_seed(electrum_words);
+    print_date(std::localtime(&m_wallet->get_creation_time()));
   }
   success_msg_writer() << "**********************************************************************";
 
@@ -4137,6 +4165,8 @@ boost::optional<epee::wipeable_string> simple_wallet::new_wallet(const boost::pr
     fail_msg_writer() << tr("failed to generate new wallet: ") << e.what();
     return {};
   }
+  
+  m_wallet->set_creation_time(time(NULL));
 
 
   return std::move(password);
@@ -4232,6 +4262,8 @@ boost::optional<epee::wipeable_string> simple_wallet::new_wallet(const boost::pr
     fail_msg_writer() << tr("failed to generate new wallet: ") << e.what();
     return {};
   }
+  
+  m_wallet->set_creation_time(time(NULL));
 
   return std::move(password);
 }

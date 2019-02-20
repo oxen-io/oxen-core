@@ -53,7 +53,7 @@
 #undef LOKI_DEFAULT_LOG_CATEGORY
 #define LOKI_DEFAULT_LOG_CATEGORY "wallet.simplewallet"
 // Hardcode Monero's donation address (see #1447)
-constexpr const char MONERO_DONATION_ADDR[] = "44AFFq5kSiGBoZ4NMDwYtN18obc8AemS33DBLWs3H7otXft3XjrpDtQGv7SqSsaBYBb98uNbr2VBBEt7f2wfn3RVGQBEP3A";
+constexpr const char LOKI_DONATION_ADDR[] = "44AFFq5kSiGBoZ4NMDwYtN18obc8AemS33DBLWs3H7otXft3XjrpDtQGv7SqSsaBYBb98uNbr2VBBEt7f2wfn3RVGQBEP3A";
 
 /*!
  * \namespace cryptonote
@@ -293,6 +293,8 @@ namespace cryptonote
      * \param seed seed to print
      */
     void print_seed(const epee::wipeable_string &seed);
+    
+    void print_date(const std::tm* date);
 
     /*!
      * \brief Gets the word seed language from the user.
