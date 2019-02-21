@@ -3319,7 +3319,7 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
     std::string old_language;
     // check for recover flag.  if present, require electrum word list (only recovery option for now).
     if (m_restore_deterministic_wallet || m_restore_multisig_wallet)
-    {  
+    {
       if (m_non_deterministic)
       {
         fail_msg_writer() << tr("can't specify both --restore-deterministic-wallet or --restore-multisig-wallet and --non-deterministic");
