@@ -46,6 +46,7 @@
 #include "int-util.h"
 #include "mnemonics/electrum-words.h"
 #include <boost/crc.hpp>
+#include <boost/format.hpp>
 
 #include "chinese_simplified.h"
 #include "english.h"
@@ -65,7 +66,7 @@
 
 #undef LOKI_DEFAULT_LOG_CATEGORY
 #define LOKI_DEFAULT_LOG_CATEGORY "mnemonic"
-#define DATE_SIZE 10
+#define DATE_LEN 12
 
 namespace crypto
 {
@@ -428,14 +429,15 @@ namespace crypto
 
         memwipe(w, sizeof(w));
       }
-      
+
       words += words_store[create_checksum_index(words_store, language)];
       std::time_t t = std::time(0);
       std::tm* date = std::localtime(&t);
-      std::unique_ptr<char[]> buf(new char[DATE_SIZE]); 
-      snprintf(buf.get(), DATE_SIZE, " %4d-%02d-%02d", date->tm_year+1900, date->tm_mon+1, date->tm_mday);
-      words += std::string(buf.get(), buf.get()+DATE_SIZE-1);
-      
+      boost::format date_formatter(" %1$04d-%2$02d-%3$02d");
+      date_formatter % (date->tm_year + 1900);
+      date_formatter % (date->tm_mon + 1);
+      date_formatter % (date->tm_mday);
+      words += date_formatter.str();
       return true;
     }
 
