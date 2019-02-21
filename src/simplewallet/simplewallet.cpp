@@ -3351,7 +3351,7 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
         else
         {
           m_electrum_seed = "";
-          success_msg_writer() << "\nPlease enter the first 24 words of your electrum seed, and the seed date";
+          success_msg_writer() << "\nPlease enter the first 24 words of your electrum seed, and the seed date.\nIf using an old-style seed and don't remember the date you generated your wallet, write 2000-01-01.\n";
           do
           {
             const char *prompt = m_electrum_seed.empty() ? "Specify Electrum seed" : "Electrum seed continued";
@@ -3763,21 +3763,32 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
         uint8_t day;
         
         std::string electrum_data = std::string(m_electrum_seed.data());
-        std::string seed_date = electrum_data.substr(electrum_data.find_first_of("1234567890"));
-        puts(seed_date.c_str());
+        std::string seed_date;
+        if (electrum_data.find_first_of("1234567890") != std::string::npos) 
+        {
+          seed_date = electrum_data.substr(electrum_data.find_first_of("1234567890"));
+          seed_date = seed_date.substr(0, seed_date.length());
+        }
         
-        if (!datestr_to_int(seed_date, year, month, day)) 
+        if (!seed_date.empty() && !datestr_to_int(seed_date, year, month, day)) 
         {
           return false;
         }  
-        try
+        else if (!seed_date.empty())
         {
-          m_restore_height = m_wallet->get_blockchain_height_by_date(year, month, day);
+          try
+          {
+            m_restore_height = m_wallet->get_blockchain_height_by_date(year, month, day);
+          }
+          catch (const std::runtime_error& e)
+          {
+            fail_msg_writer() << e.what();
+            return false;
+          }
         }
-        catch (const std::runtime_error& e)
+        else 
         {
-          fail_msg_writer() << e.what();
-          return false;
+          m_restore_height = 0;
         }
       }
     }
