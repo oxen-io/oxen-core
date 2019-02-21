@@ -151,7 +151,6 @@ namespace
   const command_line::arg_descriptor<bool> arg_non_deterministic = {"non-deterministic", sw::tr("Generate non-deterministic view and spend keys"), false};
   const command_line::arg_descriptor<bool> arg_allow_mismatched_daemon_version = {"allow-mismatched-daemon-version", sw::tr("Allow communicating with a daemon that uses a different RPC version"), false};
   const command_line::arg_descriptor<uint64_t> arg_restore_height = {"restore-height", sw::tr("Restore from specific blockchain height"), 0};
-  const command_line::arg_descriptor<std::string> arg_restore_date = {"restore-date", sw::tr("Restore from estimated blockchain height on specified date"), ""};
   const command_line::arg_descriptor<bool> arg_do_not_relay = {"do-not-relay", sw::tr("The newly created transaction will not be relayed to the loki network"), false};
   const command_line::arg_descriptor<bool> arg_create_address_file = {"create-address-file", sw::tr("Create an address file for new wallets"), false};
   const command_line::arg_descriptor<std::string> arg_subaddress_lookahead = {"subaddress-lookahead", tools::wallet2::tr("Set subaddress lookahead sizes to <major>:<minor>"), ""};
@@ -788,7 +787,7 @@ bool simple_wallet::print_seed(bool encrypted)
 
   if (success) 
   {
-    print_seed(seed, NULL);
+    print_seed(seed);
   }
   else
   {
@@ -3227,7 +3226,7 @@ bool simple_wallet::ask_wallet_create_if_needed()
  * \brief Prints the seed with a nice message
  * \param seed seed to print
  */
-void simple_wallet::print_seed(const epee::wipeable_string &seed, const std::tm* date)
+void simple_wallet::print_seed(const epee::wipeable_string &seed)
 {
   success_msg_writer(true) << "\n" << boost::format(tr("NOTE: the following %s and date form your seed, and can be used to recover access to your wallet. "
     "Write them down and store them somewhere safe and secure. Please do not store them in "
@@ -3248,14 +3247,7 @@ void simple_wallet::print_seed(const epee::wipeable_string &seed, const std::tm*
     else
       putchar(*ptr);
   }
-  if (date) 
-  {
-    printf(" %04d-%02d-%02d\n", date->tm_year+1900, date->tm_mon+1, date->tm_mday);
-  }
-  else {
-    putchar('\n');
-  }
-  
+  putchar('\n');
   fflush(stdout);
 }
 //----------------------------------------------------------------------------------------------------
@@ -3264,7 +3256,7 @@ static bool might_be_partial_seed(const epee::wipeable_string &words)
   std::vector<epee::wipeable_string> seed;
 
   words.split(seed);
-  return seed.size() < 24;
+  return seed.size() < 25;
 }
 //----------------------------------------------------------------------------------------------------
 static bool datestr_to_int(const std::string &heightstr, uint16_t &year, uint8_t &month, uint8_t &day)
@@ -3327,7 +3319,7 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
     std::string old_language;
     // check for recover flag.  if present, require electrum word list (only recovery option for now).
     if (m_restore_deterministic_wallet || m_restore_multisig_wallet)
-    {
+    {  
       if (m_non_deterministic)
       {
         fail_msg_writer() << tr("can't specify both --restore-deterministic-wallet or --restore-multisig-wallet and --non-deterministic");
@@ -3376,31 +3368,9 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
         }
       }
       
-      if (m_restore_date.empty() && command_line::is_arg_defaulted(vm, arg_restore_height)) 
-      {
-        if (!command_line::is_arg_defaulted(vm, arg_restore_date)) 
-        {
-          if (m_restore_date.empty())
-          {
-            fail_msg_writer() << tr("invalid date specified in command line");
-            return false;
-          }
-        }
-        else 
-        {
-          const char *prompt = "Specify date (YYYY-MM-DD)";
-          m_restore_date = input_line(prompt);
-          if (std::cin.eof()) 
-          {
-            return false;
-          }
-          if (m_restore_date.empty())
-          {
-            fail_msg_writer() << tr("specify a date parameter with the --restore-date=\"date here\"");
-            return false;
-          }
-        }
-      }
+      std::string electrum_data = std::string(m_electrum_seed.data());
+      std::string electrum_seed = electrum_data.substr(0, electrum_data.find_first_of("1234567890")-1);
+      puts(electrum_seed.c_str());
 
       if (m_restore_multisig_wallet)
       {
@@ -3414,7 +3384,7 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
       }
       else
       {
-        if (!crypto::ElectrumWords::words_to_bytes(m_electrum_seed, m_recovery_key, old_language))
+        if (!crypto::ElectrumWords::words_to_bytes(electrum_seed, m_recovery_key, old_language))
         {
           fail_msg_writer() << tr("Electrum-style word list failed verification");
           return false;
@@ -3790,7 +3760,12 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
         uint16_t year;
         uint8_t month;
         uint8_t day;
-        if (!datestr_to_int(m_restore_date, year, month, day)) 
+        
+        std::string electrum_data = std::string(m_electrum_seed.data());
+        std::string seed_date = electrum_data.substr(electrum_data.find_first_of("1234567890"));
+        puts(seed_date.c_str());
+        
+        if (!datestr_to_int(seed_date, year, month, day)) 
         {
           return false;
         }  
@@ -3865,7 +3840,6 @@ bool simple_wallet::handle_command_line(const boost::program_options::variables_
   m_non_deterministic             = command_line::get_arg(vm, arg_non_deterministic);
   m_allow_mismatched_daemon_version = command_line::get_arg(vm, arg_allow_mismatched_daemon_version);
   m_restore_height                = command_line::get_arg(vm, arg_restore_height);
-  m_restore_date                  = command_line::get_arg(vm, arg_restore_date);
   m_do_not_relay                  = command_line::get_arg(vm, arg_do_not_relay);
   m_subaddress_lookahead          = command_line::get_arg(vm, arg_subaddress_lookahead);
   m_use_english_language_names    = command_line::get_arg(vm, arg_use_english_language_names);
@@ -3878,14 +3852,6 @@ bool simple_wallet::handle_command_line(const boost::program_options::variables_
                                     !m_generate_from_device.empty() ||
                                     m_restore_deterministic_wallet ||
                                     m_restore_multisig_wallet;
-
-  if (!command_line::is_arg_defaulted(vm, arg_restore_date))
-  {
-    uint16_t year;
-    uint8_t month, day;
-    if (!datestr_to_int(m_restore_date, year, month, day))
-      return false;
-  }
 
   return true;
 }
@@ -4060,7 +4026,7 @@ boost::optional<epee::wipeable_string> simple_wallet::new_wallet(const boost::pr
 
   if (!two_random)
   {
-    print_seed(electrum_words, std::localtime(&m_wallet->get_creation_time()));
+    print_seed(electrum_words);
   }
   success_msg_writer() << "**********************************************************************";
 
@@ -4280,7 +4246,7 @@ bool simple_wallet::open_wallet(const boost::program_options::variables_map& vm)
         // Display the seed
         epee::wipeable_string seed;
         m_wallet->get_seed(seed);
-        print_seed(seed, NULL);
+        print_seed(seed);
       }
       else
       {
@@ -9557,7 +9523,6 @@ int main(int argc, char* argv[])
   command_line::add_arg(desc_params, arg_electrum_seed );
   command_line::add_arg(desc_params, arg_allow_mismatched_daemon_version);
   command_line::add_arg(desc_params, arg_restore_height);
-  command_line::add_arg(desc_params, arg_restore_date);
   command_line::add_arg(desc_params, arg_do_not_relay);
   command_line::add_arg(desc_params, arg_create_address_file);
   command_line::add_arg(desc_params, arg_subaddress_lookahead);

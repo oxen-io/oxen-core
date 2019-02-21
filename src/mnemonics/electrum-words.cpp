@@ -38,6 +38,7 @@
 
 #include <string>
 #include <cstdint>
+#include <ctime>
 #include <vector>
 #include <unordered_map>
 #include "wipeable_string.h"
@@ -428,6 +429,12 @@ namespace crypto
       }
 
       words += words_store[create_checksum_index(words_store, language)];
+      std::time_t t = std::time(0);
+      std::tm* date = std::localtime(&t);
+      size_t size = snprintf(nullptr, 0, " %4d-%02d-%02d", date->tm_year+1900, date->tm_mon+1, date->tm_mday) + 1; 
+      std::unique_ptr<char[]> buf(new char[size]); 
+      snprintf(buf.get(), size, " %4d-%02d-%02d", date->tm_year+1900, date->tm_mon+1, date->tm_mday);
+      words += std::string(buf.get(), buf.get()+size-1);
       return true;
     }
 
