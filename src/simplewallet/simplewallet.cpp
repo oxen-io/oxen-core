@@ -3351,6 +3351,7 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
         else
         {
           m_electrum_seed = "";
+          success_msg_writer() << "\nPlease enter the first 24 words of your electrum seed, and the seed date";
           do
           {
             const char *prompt = m_electrum_seed.empty() ? "Specify Electrum seed" : "Electrum seed continued";
