@@ -756,6 +756,10 @@ namespace tools
      * \brief Sets the seed language
      */
     void set_seed_language(const std::string &language);
+    
+    const std::time_t &get_creation_time() const;
+    
+    void set_creation_time(const std::time_t &time);
 
     // Subaddress scheme
     cryptonote::account_public_address get_subaddress(const cryptonote::subaddress_index& index) const;
@@ -864,7 +868,7 @@ namespace tools
     std::vector<cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::entry> get_all_service_nodes(boost::optional<std::string> &failed)                                          const { return m_node_rpc_proxy.get_all_service_nodes(failed); }
     std::vector<cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::entry> get_service_nodes    (std::vector<std::string> const &pubkeys, boost::optional<std::string> &failed) const { return m_node_rpc_proxy.get_service_nodes(pubkeys, failed); }
     std::vector<cryptonote::COMMAND_RPC_GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES::entry> get_service_node_blacklisted_key_images(boost::optional<std::string> &failed)            const { return m_node_rpc_proxy.get_service_node_blacklisted_key_images(failed); }
-
+    
     uint64_t get_blockchain_current_height() const { return m_light_wallet_blockchain_height ? m_light_wallet_blockchain_height : m_blockchain.size(); }
     void rescan_spent();
     void rescan_blockchain(bool hard, bool refresh = true);
@@ -1458,6 +1462,7 @@ namespace tools
     cryptonote::network_type m_nettype;
     uint64_t m_kdf_rounds;
     std::string seed_language; /*!< Language of the mnemonics (seed). */
+    std::time_t creation_time;
     bool is_old_file_format; /*!< Whether the wallet file is of an old file format */
     bool m_watch_only; /*!< no spend key */
     bool m_multisig; /*!< if > 1 spend secret key will not match spend public key */

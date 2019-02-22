@@ -3279,7 +3279,7 @@ namespace tools
 
     // // Convert the secret key back to seed
     epee::wipeable_string electrum_words;
-    if (!crypto::ElectrumWords::bytes_to_words(recovery_val, electrum_words, mnemonic_language))
+    if (!crypto::ElectrumWords::bytes_to_words(recovery_val, electrum_words, mnemonic_language, wal->get_creation_time()))
     {
       er.code = WALLET_RPC_ERROR_CODE_UNKNOWN_ERROR;
       er.message = "Failed to encode seed";

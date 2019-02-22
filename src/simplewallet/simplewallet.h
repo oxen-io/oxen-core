@@ -293,6 +293,8 @@ namespace cryptonote
      * \param seed seed to print
      */
     void print_seed(const epee::wipeable_string &seed);
+    
+    std::time_t get_timestamp_from_word(std::string old_language, std::string word);
 
     /*!
      * \brief Gets the word seed language from the user.

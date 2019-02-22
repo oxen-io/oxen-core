@@ -84,7 +84,7 @@ namespace
     {
       randkey.data[ii] = rand();
     }
-    crypto::ElectrumWords::bytes_to_words(randkey, w_seed, language.get_language_name());
+    crypto::ElectrumWords::bytes_to_words(randkey, w_seed, language.get_language_name(), time(NULL));
     seed = std::string(w_seed.data(), w_seed.size());
     // remove the checksum word
     const char *space = strrchr(seed.c_str(), ' ');
@@ -107,7 +107,7 @@ namespace
     ASSERT_STREQ(language.get_language_name().c_str(), language_name.c_str());
 
     // Convert the secret key back to seed
-    crypto::ElectrumWords::bytes_to_words(key, w_return_seed, language.get_language_name());
+    crypto::ElectrumWords::bytes_to_words(key, w_return_seed, language.get_language_name(), time(NULL));
     return_seed = std::string(w_return_seed.data(), w_return_seed.size());
     ASSERT_EQ(true, res);
     std::cout << "Returned seed:\n";
@@ -132,7 +132,7 @@ namespace
     ASSERT_STREQ(language.get_language_name().c_str(), language_name.c_str());
 
     w_return_seed = "";
-    crypto::ElectrumWords::bytes_to_words(key, w_return_seed, language.get_language_name());
+    crypto::ElectrumWords::bytes_to_words(key, w_return_seed, language.get_language_name(), time(NULL));
     return_seed = std::string(w_return_seed.data(), w_return_seed.size());
     ASSERT_EQ(true, res);
     std::cout << "Returned seed:\n";

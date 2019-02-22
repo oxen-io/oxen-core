@@ -92,7 +92,7 @@ namespace crypto
      * \return               true if successful false if not. Unsuccessful if wrong key size.
      */
     bool bytes_to_words(const char *src, size_t len, epee::wipeable_string& words,
-      const std::string &language_name);
+      const std::string &language_name, std::time_t seed_time);
 
     /*!
      * \brief Converts bytes (secret key) to seed words.
@@ -102,7 +102,7 @@ namespace crypto
      * \return               true if successful false if not. Unsuccessful if wrong key size.
      */
     bool bytes_to_words(const crypto::secret_key& src, epee::wipeable_string& words,
-      const std::string &language_name);
+      const std::string &language_name, std::time_t seed_time);
 
     /*!
      * \brief Gets a list of seed languages that are supported.

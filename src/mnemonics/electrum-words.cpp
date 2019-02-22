@@ -360,7 +360,8 @@ namespace crypto
       std::string &language_name)
     {
       epee::wipeable_string s;
-      if (!words_to_bytes(words, s, sizeof(dst), true, language_name))
+      std::string key_words = std::string(words.data());
+      if (!words_to_bytes(key_words.substr(0, key_words.length()-1), s, sizeof(dst), true, language_name))
       {
         MERROR("Invalid seed: failed to convert words to bytes");
         return false;
@@ -375,14 +376,15 @@ namespace crypto
     }
 
     /*!
-     * \brief Converts bytes (secret key) to seed words.
+     * \brief Converts bytes (secret key) and creation date to seed words.
      * \param  src           Secret key
      * \param  words         Space delimited concatenated words get written here.
      * \param  language_name Seed language name
+     * \param  seed_time     Seed time of creation since epoch (seconds)
      * \return               true if successful false if not. Unsuccessful if wrong key size.
      */
     bool bytes_to_words(const char *src, size_t len, epee::wipeable_string& words,
-      const std::string &language_name)
+      const std::string &language_name, std::time_t seed_time)
     {
 
       if (len % 4 != 0 || len == 0) return false;
@@ -428,13 +430,38 @@ namespace crypto
       }
 
       words += words_store[create_checksum_index(words_store, language)];
+      words += ' ';
+      
+      std::tm genesis = {};
+      genesis.tm_year = 118;
+      genesis.tm_mon = 4;
+      genesis.tm_mday = 2;
+      
+      std::time_t genesis_time = std::mktime(&genesis);
+
+      int diff = (int) (std::difftime(seed_time, genesis_time) / (60*60*24));
+      int extra = 0;
+      while (diff > 1680) // Number of words in english.h
+      {
+        extra++;
+        diff -= 1681;
+      }
+      if (extra > 0) 
+      {
+        words += (word_list[diff] + std::to_string(extra));
+      }
+      else
+      {
+        words += word_list[diff];
+      }
+      
       return true;
     }
 
     bool bytes_to_words(const crypto::secret_key& src, epee::wipeable_string& words,
-      const std::string &language_name)
+      const std::string &language_name, std::time_t seed_time)
     {
-      return bytes_to_words(src.data, sizeof(src), words, language_name);
+      return bytes_to_words(src.data, sizeof(src), words, language_name, seed_time);
     }
 
     std::vector<const Language::Base*> get_language_list()

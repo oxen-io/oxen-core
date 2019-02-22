@@ -3282,6 +3282,35 @@ static bool datestr_to_int(const std::string &heightstr, uint16_t &year, uint8_t
   return true;
 }
 //----------------------------------------------------------------------------------------------------
+/*std::time_t simple_wallet::get_timestamp_from_word(std::string old_language, std::string word)
+{
+  std::string mnemonic_language = old_language;
+
+  const Language::Base *language = NULL;
+  const std::vector<const Language::Base*> language_list = crypto::ElectrumWords::get_language_list();
+  for (const Language::Base *l: language_list)
+  {
+    if (mnemonic_language == l->get_language_name() || mnemonic_language == l->get_english_language_name())
+      language = l;
+  }
+  
+  const std::vector<std::string> &word_list = language->get_word_list();
+  
+  const std::vector<std::string>::const_iterator it = std::find(word_list.begin(), word_list.end(), word);
+  
+  const time_t ONE_DAY = 24*60*60;
+    
+  int ndays = distance(word_list.begin(), it);
+  std::tm genesis = {};
+  genesis.tm_year = 118;
+  genesis.tm_mon = 4;
+  genesis.tm_mday = 2;
+    
+  std::time_t creation_time = std::mktime(&genesis) + (ndays * ONE_DAY);
+  
+  return creation_time;
+}*/
+//----------------------------------------------------------------------------------------------------
 bool simple_wallet::init(const boost::program_options::variables_map& vm)
 {
   epee::misc_utils::auto_scope_leave_caller scope_exit_handler = epee::misc_utils::create_scope_leave_handler([&](){
@@ -4072,8 +4101,10 @@ boost::optional<epee::wipeable_string> simple_wallet::new_wallet(const boost::pr
 
   // convert rng value to electrum-style word list
   epee::wipeable_string electrum_words;
+  
+  m_wallet->set_creation_time(time(NULL));
 
-  crypto::ElectrumWords::bytes_to_words(recovery_val, electrum_words, mnemonic_language);
+  crypto::ElectrumWords::bytes_to_words(recovery_val, electrum_words, mnemonic_language, m_wallet->get_creation_time());
 
   success_msg_writer() <<
     "**********************************************************************\n" <<
@@ -4137,7 +4168,8 @@ boost::optional<epee::wipeable_string> simple_wallet::new_wallet(const boost::pr
     fail_msg_writer() << tr("failed to generate new wallet: ") << e.what();
     return {};
   }
-
+  
+  m_wallet->set_creation_time(time(NULL));
 
   return std::move(password);
 }
@@ -4179,6 +4211,8 @@ boost::optional<epee::wipeable_string> simple_wallet::new_wallet(const boost::pr
     fail_msg_writer() << tr("failed to generate new wallet: ") << e.what();
     return {};
   }
+
+  m_wallet->set_creation_time(time(NULL));
 
   return std::move(password);
 }
@@ -4232,6 +4266,8 @@ boost::optional<epee::wipeable_string> simple_wallet::new_wallet(const boost::pr
     fail_msg_writer() << tr("failed to generate new wallet: ") << e.what();
     return {};
   }
+  
+  m_wallet->set_creation_time(time(NULL));
 
   return std::move(password);
 }

@@ -1082,7 +1082,7 @@ bool wallet2::get_seed(epee::wipeable_string& electrum_words, const epee::wipeab
   crypto::secret_key key = get_account().get_keys().m_spend_secret_key;
   if (!passphrase.empty())
     key = cryptonote::encrypt_key(key, passphrase);
-  if (!crypto::ElectrumWords::bytes_to_words(key, electrum_words, seed_language))
+  if (!crypto::ElectrumWords::bytes_to_words(key, electrum_words, seed_language, creation_time))
   {
     std::cout << "Failed to create seed from key for language: " << seed_language << std::endl;
     return false;
@@ -1144,7 +1144,7 @@ bool wallet2::get_multisig_seed(epee::wipeable_string& seed, const epee::wipeabl
   }
   else
   {
-    if (!crypto::ElectrumWords::bytes_to_words(data.data(), data.size(), seed, seed_language))
+    if (!crypto::ElectrumWords::bytes_to_words(data.data(), data.size(), seed, seed_language, creation_time))
     {
       std::cout << "Failed to encode seed";
       return false;
@@ -1192,6 +1192,16 @@ const std::string &wallet2::get_seed_language() const
 void wallet2::set_seed_language(const std::string &language)
 {
   seed_language = language;
+}
+//----------------------------------------------------------------------------------------------------
+const std::time_t &wallet2::get_creation_time() const
+{
+  return creation_time;
+}
+
+void wallet2::set_creation_time(const std::time_t &time)
+{
+  creation_time = time;
 }
 //----------------------------------------------------------------------------------------------------
 cryptonote::account_public_address wallet2::get_subaddress(const cryptonote::subaddress_index& index) const
