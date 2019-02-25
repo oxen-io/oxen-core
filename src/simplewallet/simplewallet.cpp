@@ -65,7 +65,7 @@
 #include "storages/http_abstract_invoke.h"
 #include "rpc/core_rpc_server_commands_defs.h"
 #include "crypto/crypto.h"  // for crypto::secret_key definition
-#include "mnemonics/electrum-words.h"
+#include "mnemonics/electrum-words.cpp"
 #include "rapidjson/document.h"
 #include "common/json_util.h"
 #include "ringct/rctSigs.h"
@@ -3282,7 +3282,7 @@ static bool datestr_to_int(const std::string &heightstr, uint16_t &year, uint8_t
   return true;
 }
 //----------------------------------------------------------------------------------------------------
-/*std::time_t simple_wallet::get_timestamp_from_word(std::string old_language, std::string word)
+std::time_t simple_wallet::get_timestamp_from_word(std::string old_language, std::string word)
 {
   std::string mnemonic_language = old_language;
 
@@ -3309,7 +3309,8 @@ static bool datestr_to_int(const std::string &heightstr, uint16_t &year, uint8_t
   std::time_t creation_time = std::mktime(&genesis) + (ndays * ONE_DAY);
   
   return creation_time;
-}*/
+}
+
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::init(const boost::program_options::variables_map& vm)
 {
@@ -3434,6 +3435,16 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
           m_recovery_key = cryptonote::decrypt_key(m_recovery_key, seed_pass);
       }
     }
+    
+    std::time_t old_wallet_ts = 0;
+    std::vector<epee::wipeable_string> seed;
+    m_electrum_seed.split(seed);
+    if (seed.size() == sizeof(crypto::secret_key&) * 26 / 32)
+    {
+      // The 25th value holds the date word
+      old_wallet_ts = get_timestamp_from_word(old_language, std::string(seed[24].data())); 
+    }
+    
     epee::wipeable_string password;
     if (!m_generate_from_view_key.empty())
     {
@@ -3486,7 +3497,7 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
         return false;
       }
 
-      auto r = new_wallet(vm, info.address, boost::none, viewkey);
+      auto r = new_wallet(vm, info.address, boost::none, viewkey, old_wallet_ts);
       CHECK_AND_ASSERT_MES(r, false, tr("account creation failed"));
       password = *r;
     }
@@ -3506,7 +3517,7 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
         fail_msg_writer() << tr("failed to parse spend key secret key");
         return false;
       }
-      auto r = new_wallet(vm, m_recovery_key, true, false, "");
+      auto r = new_wallet(vm, m_recovery_key, true, false, "", old_wallet_ts);
       CHECK_AND_ASSERT_MES(r, false, tr("account creation failed"));
       password = *r;
     }
@@ -3583,7 +3594,7 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
         fail_msg_writer() << tr("view key does not match standard address");
         return false;
       }
-      auto r = new_wallet(vm, info.address, spendkey, viewkey);
+      auto r = new_wallet(vm, info.address, spendkey, viewkey, old_wallet_ts);
       CHECK_AND_ASSERT_MES(r, false, tr("account creation failed"));
       password = *r;
     }
@@ -3716,7 +3727,7 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
       }
       
       // create wallet
-      auto r = new_wallet(vm, info.address, spendkey, viewkey);
+      auto r = new_wallet(vm, info.address, spendkey, viewkey, old_wallet_ts);
       CHECK_AND_ASSERT_MES(r, false, tr("account creation failed"));
       password = *r;
     }
@@ -3742,7 +3753,7 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
     {
       m_wallet_file = m_generate_from_device;
       // create wallet
-      auto r = new_wallet(vm);
+      auto r = new_wallet(vm, old_wallet_ts);
       CHECK_AND_ASSERT_MES(r, false, tr("account creation failed"));
       password = *r;
       // if no block_height is specified, assume its a new account and start it "now"
@@ -3771,101 +3782,120 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
       m_wallet_file = m_generate_new;
       boost::optional<epee::wipeable_string> r;
       if (m_restore_multisig_wallet)
-        r = new_wallet(vm, multisig_keys, old_language);
+        r = new_wallet(vm, multisig_keys, old_language, old_wallet_ts);
       else
-        r = new_wallet(vm, m_recovery_key, m_restore_deterministic_wallet, m_non_deterministic, old_language);
+        r = new_wallet(vm, m_recovery_key, m_restore_deterministic_wallet, m_non_deterministic, old_language, old_wallet_ts);
       CHECK_AND_ASSERT_MES(r, false, tr("account creation failed"));
       password = *r;
     }
 
     if (m_restoring && m_generate_from_json.empty() && m_generate_from_device.empty())
     {
-      m_wallet->explicit_refresh_from_block_height(!(command_line::is_arg_defaulted(vm, arg_restore_height) ||
-        command_line::is_arg_defaulted(vm, arg_restore_date)));
-      if (command_line::is_arg_defaulted(vm, arg_restore_height) && !command_line::is_arg_defaulted(vm, arg_restore_date))
+      // Old-style seed, follow same steps
+      if (old_wallet_ts == 0) 
       {
-        uint16_t year;
-        uint8_t month;
-        uint8_t day;
-        if (!datestr_to_int(m_restore_date, year, month, day))
-          return false;
-        try
+        m_wallet->explicit_refresh_from_block_height(!(command_line::is_arg_defaulted(vm, arg_restore_height) ||
+          command_line::is_arg_defaulted(vm, arg_restore_date)));
+        if (command_line::is_arg_defaulted(vm, arg_restore_height) && !command_line::is_arg_defaulted(vm, arg_restore_date))
         {
-          m_restore_height = m_wallet->get_blockchain_height_by_date(year, month, day);
-          success_msg_writer() << tr("Restore height is: ") << m_restore_height;
-        }
-        catch (const std::runtime_error& e)
-        {
-          fail_msg_writer() << e.what();
-          return false;
-        }
-      }
-    }
-    if (!m_wallet->explicit_refresh_from_block_height() && m_restoring)
-    {
-      uint32_t version;
-      bool connected = try_connect_to_daemon(false, &version);
-      while (true)
-      {
-        std::string heightstr;
-        if (!connected || version < MAKE_CORE_RPC_VERSION(1, 6))
-          heightstr = input_line("Restore from specific blockchain height (optional, default 0)");
-        else
-          heightstr = input_line("Restore from specific blockchain height (optional, default 0),\nor alternatively from specific date (YYYY-MM-DD)");
-        if (std::cin.eof())
-          return false;
-        if (heightstr.empty())
-        {
-          m_restore_height = 0;
-          break;
-        }
-        try
-        {
-          m_restore_height = boost::lexical_cast<uint64_t>(heightstr);
-          break;
-        }
-        catch (const boost::bad_lexical_cast &)
-        {
-          if (!connected || version < MAKE_CORE_RPC_VERSION(1, 6))
-          {
-            fail_msg_writer() << tr("bad m_restore_height parameter: ") << heightstr;
-            continue;
-          }
           uint16_t year;
-          uint8_t month;  // 1, 2, ..., 12
-          uint8_t day;    // 1, 2, ..., 31
+          uint8_t month;
+          uint8_t day;
+          if (!datestr_to_int(m_restore_date, year, month, day))
+            putchar('a');
+            return false;
           try
           {
-            if (!datestr_to_int(heightstr, year, month, day))
-              return false;
             m_restore_height = m_wallet->get_blockchain_height_by_date(year, month, day);
             success_msg_writer() << tr("Restore height is: ") << m_restore_height;
-            std::string confirm = input_line(tr("Is this okay?"), true);
-            if (std::cin.eof())
-              return false;
-            if(command_line::is_yes(confirm))
-              break;
-          }
-          catch (const boost::bad_lexical_cast &)
-          {
-            fail_msg_writer() << tr("bad m_restore_height parameter: ") << heightstr;
           }
           catch (const std::runtime_error& e)
           {
             fail_msg_writer() << e.what();
+            return false;
           }
         }
       }
     }
+    
+    if (!m_wallet->explicit_refresh_from_block_height() && m_restoring)
+    {
+      // Old-style seed, follow same steps
+      if (old_wallet_ts == 0) 
+      {
+        uint32_t version;
+        bool connected = try_connect_to_daemon(false, &version);
+        while (true)
+        {
+          std::string heightstr;
+          if (!connected || version < MAKE_CORE_RPC_VERSION(1, 6))
+            heightstr = input_line("Restore from specific blockchain height (optional, default 0)");
+          else
+            heightstr = input_line("Restore from specific blockchain height (optional, default 0),\nor alternatively from specific date (YYYY-MM-DD)");
+          if (std::cin.eof())
+            return false;
+          if (heightstr.empty())
+          {
+            m_restore_height = 0;
+            break;
+          }
+          try
+          {
+            m_restore_height = boost::lexical_cast<uint64_t>(heightstr);
+            break;
+          }
+          catch (const boost::bad_lexical_cast &)
+          {
+            if (!connected || version < MAKE_CORE_RPC_VERSION(1, 6))
+            {
+              fail_msg_writer() << tr("bad m_restore_height parameter: ") << heightstr;
+              continue;
+            }
+            uint16_t year;
+            uint8_t month;  // 1, 2, ..., 12
+            uint8_t day;    // 1, 2, ..., 31
+            try
+            {
+              if (!datestr_to_int(heightstr, year, month, day))
+                return false;
+              m_restore_height = m_wallet->get_blockchain_height_by_date(year, month, day);
+              success_msg_writer() << tr("Restore height is: ") << m_restore_height;
+              std::string confirm = input_line(tr("Is this okay?"), true);
+              if (std::cin.eof())
+                return false;
+              if(command_line::is_yes(confirm))
+                break;
+            }
+            catch (const boost::bad_lexical_cast &)
+            {
+              fail_msg_writer() << tr("bad m_restore_height parameter: ") << heightstr;
+            }
+            catch (const std::runtime_error& e)
+            {
+              fail_msg_writer() << e.what();
+            }
+          }
+        }
+      }
+    }
+    
     if (m_restoring)
     {
-      uint64_t estimate_height = m_wallet->estimate_blockchain_height();
-      if (m_restore_height >= estimate_height)
+      if (seed.size() == sizeof(crypto::secret_key&) * 26 / 32)
       {
-        success_msg_writer() << tr("Restore height ") << m_restore_height << (" is not yet reached. The current estimated height is ") << estimate_height;
-        std::string confirm = input_line(tr("Still apply restore height?"), true);
-        if (std::cin.eof() || command_line::is_no(confirm))
-          m_restore_height = 0;
+        std::tm* date = std::localtime(&old_wallet_ts);
+        m_restore_height = m_wallet->get_blockchain_height_by_date(date->tm_year+1900, date->tm_mon+1, date->tm_mday);
+      }
+      else
+      {
+        uint64_t estimate_height = m_wallet->estimate_blockchain_height();
+        if (m_restore_height >= estimate_height)
+        {
+          success_msg_writer() << tr("Restore height ") << m_restore_height << (" is not yet reached. The current estimated height is ") << estimate_height;
+          std::string confirm = input_line(tr("Still apply restore height?"), true);
+          if (std::cin.eof() || command_line::is_no(confirm))
+            m_restore_height = 0;
+        }
       }
       m_wallet->set_refresh_from_block_height(m_restore_height);
     }
@@ -4031,7 +4061,7 @@ boost::optional<tools::password_container> simple_wallet::get_and_verify_passwor
 }
 //----------------------------------------------------------------------------------------------------
 boost::optional<epee::wipeable_string> simple_wallet::new_wallet(const boost::program_options::variables_map& vm,
-  const crypto::secret_key& recovery_key, bool recover, bool two_random, const std::string &old_language)
+  const crypto::secret_key& recovery_key, bool recover, bool two_random, const std::string &old_language, std::time_t old_wallet_ts)
 {
   auto rc = tools::wallet2::make_new(vm, false, password_prompter);
   m_wallet = std::move(rc.first);
@@ -4102,7 +4132,13 @@ boost::optional<epee::wipeable_string> simple_wallet::new_wallet(const boost::pr
   // convert rng value to electrum-style word list
   epee::wipeable_string electrum_words;
   
-  m_wallet->set_creation_time(time(NULL));
+  if (old_wallet_ts != 0)
+  {
+    m_wallet->set_creation_time(old_wallet_ts);
+  }
+  else {
+    m_wallet->set_creation_time(time(NULL));
+  }
 
   crypto::ElectrumWords::bytes_to_words(recovery_val, electrum_words, mnemonic_language, m_wallet->get_creation_time());
 
@@ -4128,7 +4164,7 @@ boost::optional<epee::wipeable_string> simple_wallet::new_wallet(const boost::pr
 //----------------------------------------------------------------------------------------------------
 boost::optional<epee::wipeable_string> simple_wallet::new_wallet(const boost::program_options::variables_map& vm,
   const cryptonote::account_public_address& address, const boost::optional<crypto::secret_key>& spendkey,
-  const crypto::secret_key& viewkey)
+  const crypto::secret_key& viewkey, std::time_t old_wallet_ts)
 {
   auto rc = tools::wallet2::make_new(vm, false, password_prompter);
   m_wallet = std::move(rc.first);
@@ -4169,13 +4205,19 @@ boost::optional<epee::wipeable_string> simple_wallet::new_wallet(const boost::pr
     return {};
   }
   
-  m_wallet->set_creation_time(time(NULL));
+  if (old_wallet_ts != 0)
+  {
+    m_wallet->set_creation_time(old_wallet_ts);
+  }
+  else {
+    m_wallet->set_creation_time(time(NULL));
+  }
 
   return std::move(password);
 }
 
 //----------------------------------------------------------------------------------------------------
-boost::optional<epee::wipeable_string> simple_wallet::new_wallet(const boost::program_options::variables_map& vm)
+boost::optional<epee::wipeable_string> simple_wallet::new_wallet(const boost::program_options::variables_map& vm, std::time_t old_wallet_ts)
 {
   auto rc = tools::wallet2::make_new(vm, false, password_prompter);
   m_wallet = std::move(rc.first);
@@ -4211,14 +4253,20 @@ boost::optional<epee::wipeable_string> simple_wallet::new_wallet(const boost::pr
     fail_msg_writer() << tr("failed to generate new wallet: ") << e.what();
     return {};
   }
-
-  m_wallet->set_creation_time(time(NULL));
+  
+  if (old_wallet_ts != 0)
+  {
+    m_wallet->set_creation_time(old_wallet_ts);
+  }
+  else {
+    m_wallet->set_creation_time(time(NULL));
+  }
 
   return std::move(password);
 }
 //----------------------------------------------------------------------------------------------------
 boost::optional<epee::wipeable_string> simple_wallet::new_wallet(const boost::program_options::variables_map& vm,
-    const epee::wipeable_string &multisig_keys, const std::string &old_language)
+    const epee::wipeable_string &multisig_keys, const std::string &old_language, std::time_t old_wallet_ts)
 {
   auto rc = tools::wallet2::make_new(vm, false, password_prompter);
   m_wallet = std::move(rc.first);
@@ -4267,7 +4315,13 @@ boost::optional<epee::wipeable_string> simple_wallet::new_wallet(const boost::pr
     return {};
   }
   
-  m_wallet->set_creation_time(time(NULL));
+  if (old_wallet_ts != 0)
+  {
+    m_wallet->set_creation_time(old_wallet_ts);
+  }
+  else {
+    m_wallet->set_creation_time(time(NULL));
+  }
 
   return std::move(password);
 }
@@ -9611,10 +9665,10 @@ int main(int argc, char* argv[])
   command_line::add_arg(desc_params, arg_mnemonic_language);
   command_line::add_arg(desc_params, arg_command);
 
-  command_line::add_arg(desc_params, arg_restore_deterministic_wallet );
-  command_line::add_arg(desc_params, arg_restore_multisig_wallet );
-  command_line::add_arg(desc_params, arg_non_deterministic );
-  command_line::add_arg(desc_params, arg_electrum_seed );
+  command_line::add_arg(desc_params, arg_restore_deterministic_wallet);
+  command_line::add_arg(desc_params, arg_restore_multisig_wallet);
+  command_line::add_arg(desc_params, arg_non_deterministic);
+  command_line::add_arg(desc_params, arg_electrum_seed);
   command_line::add_arg(desc_params, arg_allow_mismatched_daemon_version);
   command_line::add_arg(desc_params, arg_restore_height);
   command_line::add_arg(desc_params, arg_restore_date);

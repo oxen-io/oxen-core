@@ -269,26 +269,22 @@ namespace crypto
 
       words.split(seed);
 
-      if (len % 4)
-      {
-        MERROR("Invalid seed: not a multiple of 4");
-        return false;
-      }
-
       bool has_checksum = true;
+      bool is_new_style_seed = true;
       if (len)
       {
         // error on non-compliant word list
         const size_t expected = len * 8 * 3 / 32;
         if (seed.size() != expected/2 && seed.size() != expected &&
-          seed.size() != expected + 1)
+          seed.size() != expected + 1 && seed.size() != expected+2)
         {
           MERROR("Invalid seed: unexpected number of words");
           return false;
         }
 
         // If it is seed with a checksum.
-        has_checksum = seed.size() == (expected + 1);
+        has_checksum = (seed.size() == (expected + 1) || seed.size() == (expected + 2));
+        is_new_style_seed = (seed.size() == (expected + 2));
       }
 
       std::vector<uint32_t> matched_indices;
@@ -360,8 +356,7 @@ namespace crypto
       std::string &language_name)
     {
       epee::wipeable_string s;
-      std::string key_words = std::string(words.data());
-      if (!words_to_bytes(key_words.substr(0, key_words.length()-1), s, sizeof(dst), true, language_name))
+      if (!words_to_bytes(words, s, sizeof(dst), true, language_name))
       {
         MERROR("Invalid seed: failed to convert words to bytes");
         return false;
@@ -428,9 +423,6 @@ namespace crypto
 
         memwipe(w, sizeof(w));
       }
-
-      words += words_store[create_checksum_index(words_store, language)];
-      words += ' ';
       
       std::tm genesis = {};
       genesis.tm_year = 118;
@@ -449,11 +441,17 @@ namespace crypto
       if (extra > 0) 
       {
         words += (word_list[diff] + std::to_string(extra));
+        words_store.push_back(word_list[diff] + std::to_string(extra));
       }
       else
       {
         words += word_list[diff];
+        words_store.push_back(word_list[diff]);
       }
+      
+      words += ' ';
+      
+      words += words_store[create_checksum_index(words_store, language)];
       
       return true;
     }

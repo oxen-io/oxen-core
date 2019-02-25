@@ -97,12 +97,12 @@ namespace cryptonote
     boost::optional<tools::password_container> get_and_verify_password() const;
 
     boost::optional<epee::wipeable_string> new_wallet(const boost::program_options::variables_map& vm, const crypto::secret_key& recovery_key,
-        bool recover, bool two_random, const std::string &old_language);
+        bool recover, bool two_random, const std::string &old_language, std::time_t old_wallet_ts);
     boost::optional<epee::wipeable_string> new_wallet(const boost::program_options::variables_map& vm, const cryptonote::account_public_address& address,
-        const boost::optional<crypto::secret_key>& spendkey, const crypto::secret_key& viewkey);
+        const boost::optional<crypto::secret_key>& spendkey, const crypto::secret_key& viewkey, std::time_t old_wallet_ts);
     boost::optional<epee::wipeable_string> new_wallet(const boost::program_options::variables_map& vm,
-        const epee::wipeable_string &multisig_keys, const std::string &old_language);
-    boost::optional<epee::wipeable_string> new_wallet(const boost::program_options::variables_map& vm);
+        const epee::wipeable_string &multisig_keys, const std::string &old_language, std::time_t old_wallet_ts);
+    boost::optional<epee::wipeable_string> new_wallet(const boost::program_options::variables_map& vm, std::time_t old_wallet_ts);
     bool open_wallet(const boost::program_options::variables_map& vm);
     bool close_wallet();
 
