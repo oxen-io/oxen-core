@@ -35,7 +35,6 @@
 #include "string_tools.h"
 #include "storages/portable_storage_template_helper.h" // epee json include
 #include "serialization/keyvalue_serialization.h"
-#include "cryptonote_core/blockchain.h"
 #include <vector>
 
 using namespace epee;
@@ -83,8 +82,10 @@ namespace cryptonote
 
     if (m_points.count(height)) // return false if adding at a height we already have AND the hash is different
     {
-      auto checkpoint_it            = m_points[height];
-      crypto::hash const &curr_hash = checkpoint_it.block_hash;
+      auto checkpoint_it = m_points[height];
+      CHECK_AND_ASSERT_MES(checkpoint_it.size() == 1, false, "Multiple checkpoints at given height already exists, we can't add predefined checkpoints ontop of service node checkpoints (i.e. the only situation where there can be multiple candidate checkpoints)");
+      checkpoint_t const &checkpoint = checkpoint_it.front();
+      crypto::hash const &curr_hash  = checkpoint.block_hash;
       CHECK_AND_ASSERT_MES(h == curr_hash, false, "Checkpoint at given height already exists, and hash for new checkpoint was different!");
     }
     else
@@ -92,7 +93,7 @@ namespace cryptonote
       checkpoint_t checkpoint = {};
       checkpoint.type         = checkpoint_type::predefined_or_dns;
       checkpoint.block_hash   = h;
-      m_points[height]        = checkpoint;
+      m_points[height].push_back(checkpoint);
     }
 
     return true;
@@ -101,37 +102,46 @@ namespace cryptonote
   bool checkpoints::add_or_update_service_node_checkpoint(crypto::hash const &block_hash, service_nodes::checkpoint_vote const &vote)
   {
     // Handle Service Node Checkpoint
+    checkpoint_t *curr_checkpoint = nullptr;
     {
-      checkpoint_t *curr_checkpoint = nullptr;
+      auto it = m_points.find(vote.block_height);
+      if (it != m_points.end())
       {
-        auto it = m_points.find(vote.block_height);
-        if (it == m_points.end())
+        std::list<checkpoint_t> &checkpoint_list = it->second;
+        for (checkpoint_t &checkpoint : checkpoint_list)
         {
-          curr_checkpoint             = &m_points[vote.block_height];
-          curr_checkpoint->type       = checkpoint_type::service_node;
-          curr_checkpoint->block_hash = block_hash;
+          CHECK_AND_ASSERT_MES(checkpoint.type == checkpoint_type::service_node, true, "Predefined checkpoint already exists at this voting height");
+          if (checkpoint.block_hash == block_hash)
+          {
+            curr_checkpoint = &checkpoint;
+            break;
+          }
         }
-        else
-        {
-          curr_checkpoint = &(it->second);
-          CHECK_AND_ASSERT_MES(curr_checkpoint->block_hash == block_hash, false, "Checkpoint at given height already exists, and hash for new checkpoint was different!");
-        }
-
-        CHECK_AND_ASSERT_MES(curr_checkpoint->type == checkpoint_type::service_node, false, "Expected service node checkpoint type");
       }
 
-      const auto compare_vote_and_voter_to_signature = [](service_nodes::checkpoint_vote const &a, service_nodes::voter_to_signature const &b) {
-        return a.voters_quorum_index < b.quorum_index;
-      };
-
-      auto signature_it = std::upper_bound(curr_checkpoint->signatures.begin(), curr_checkpoint->signatures.end(), vote, compare_vote_and_voter_to_signature);
-      if (signature_it == curr_checkpoint->signatures.end() || signature_it->quorum_index != vote.voters_quorum_index)
+      if (!curr_checkpoint)
       {
-        service_nodes::voter_to_signature new_voter_to_signature = {};
-        new_voter_to_signature.quorum_index                      = vote.voters_quorum_index;
-        new_voter_to_signature.signature                         = vote.signature;
-        curr_checkpoint->signatures.insert(signature_it, new_voter_to_signature);
+        checkpoint_t new_checkpoint = {};
+        new_checkpoint.type       = checkpoint_type::service_node;
+        new_checkpoint.block_hash = block_hash;
+
+        std::list<checkpoint_t> &checkpoint_list = m_points[vote.block_height];
+        checkpoint_list.push_back(new_checkpoint);
+        curr_checkpoint = &checkpoint_list.back();
       }
+    }
+
+    const auto compare_vote_and_voter_to_signature = [](service_nodes::checkpoint_vote const &a, service_nodes::voter_to_signature const &b) {
+      return a.voters_quorum_index < b.quorum_index;
+    };
+
+    auto signature_it = std::upper_bound(curr_checkpoint->signatures.begin(), curr_checkpoint->signatures.end(), vote, compare_vote_and_voter_to_signature);
+    if (signature_it == curr_checkpoint->signatures.end() || signature_it->quorum_index != vote.voters_quorum_index)
+    {
+      service_nodes::voter_to_signature new_voter_to_signature = {};
+      new_voter_to_signature.quorum_index                      = vote.voters_quorum_index;
+      new_voter_to_signature.signature                         = vote.signature;
+      curr_checkpoint->signatures.insert(signature_it, new_voter_to_signature);
     }
 
     return true;
@@ -142,84 +152,50 @@ namespace cryptonote
     return !m_points.empty() && (height <= (--m_points.end())->first);
   }
   //---------------------------------------------------------------------------
-  bool checkpoints::check_block(uint64_t height, const crypto::hash& h, cryptonote::Blockchain const &blockchain, bool* is_a_checkpoint) const
+  bool checkpoints::check_block(uint64_t height, const crypto::hash& h, bool* is_a_checkpoint) const
   {
     auto it = m_points.find(height);
+    bool found  = (it != m_points.end());
+    if (*is_a_checkpoint) *is_a_checkpoint = found;
 
-    bool checkpointed_height = it != m_points.end();
-    if (is_a_checkpoint) *is_a_checkpoint = checkpointed_height;
-
-    if(!checkpointed_height)
+    if(!found)
       return true;
 
-    if(it->second.block_hash != h)
-    {
-      MWARNING("CHECKPOINT FAILED FOR HEIGHT " << height << ". EXPECTED HASH: " << it->second.block_hash << ", FETCHED HASH: " << h);
-      return false;
-    }
-
-    //
-    // Verify new block belongs to the chain where the last 2 service node checkpoints are for
-    //
-    struct checkpoint_to_height
-    {
-      uint64_t            height;
-      checkpoint_t const *checkpoint;
-    };
-
-    // Get up to the last 2 service node checkpoints
-    std::array<checkpoint_to_height, 2> last_snode_checkpoints;
-    size_t last_snode_checkpoints_num = 0;
-    {
-      for (auto checkpoint_it = it;
-           checkpoint_it != m_points.begin() && last_snode_checkpoints_num < last_snode_checkpoints.size();
-           --checkpoint_it)
-      {
-        uint64_t block_height          = checkpoint_it->first;
-        checkpoint_t const &checkpoint = checkpoint_it->second;
-
-        if (checkpoint.type == checkpoint_type::service_node)
-          last_snode_checkpoints[last_snode_checkpoints_num++] = {block_height, &checkpoint};
-      }
-    }
-
-    bool result = true; // NOTE: 0 service node checkpoints if we're checking block(s) before service node checkpoints were introduced
-    if (last_snode_checkpoints_num > 0)
-    {
-      result = false;
-      for (size_t checkpoint_index = 0; !result && checkpoint_index < last_snode_checkpoints_num; ++checkpoint_index)
-      {
-        checkpoint_to_height const &checkpoint_and_height = last_snode_checkpoints[checkpoint_index];
-        crypto::hash const &hash_in_my_db                 = blockchain.get_block_id_by_height(checkpoint_and_height.height);
-        result                                            = (hash_in_my_db == checkpoint_and_height.checkpoint->block_hash);
-      }
-
-      if (!result)
-        MWARNING("CHECKPOINT FAILED FOR HEIGHT " << height << ". BLOCK ANCESTOR DID NOT MATCH CHECKPOINT FROM SERVICE NODE");
-    }
-
-    if (result)
-    {
-      MINFO("CHECKPOINT PASSED FOR HEIGHT " << height << " " << h);
-    }
-
-    return true;
+    std::list<checkpoint_t> const &checkpoint = it->second;
+    bool result = (checkpoint.block_hash == h);
+    if (result) MINFO   ("CHECKPOINT PASSED FOR HEIGHT " << height << " " << h);
+    else        MWARNING("CHECKPOINT FAILED FOR HEIGHT " << height << ". EXPECTED HASH: " << checkpoint.block_hash << ", FETCHED HASH: " << h);
+    return result;
   }
   //---------------------------------------------------------------------------
-  //FIXME: is this the desired behavior?
   bool checkpoints::is_alternative_block_allowed(uint64_t blockchain_height, uint64_t block_height) const
   {
     if (0 == block_height)
       return false;
 
     auto it = m_points.upper_bound(blockchain_height);
-    // Is blockchain_height before the first checkpoint?
-    if (it == m_points.begin())
+    if (it == m_points.begin()) // Is blockchain_height before the first checkpoint?
       return true;
 
-    --it;
-    uint64_t checkpoint_height = it->first;
-    return checkpoint_height < block_height;
+    //
+    // Verify alt block height forks off, at oldest, the 2nd closest service node checkpoint
+    //
+    uint64_t sentinel_height = 0;
+    int      num_checkpoints = 0;
+    for (auto it = m_points.rbegin(); it != m_points.rend() && num_checkpoints < 2; it++, num_checkpoints++)
+    {
+      const uint64_t checkpoint_height = it->first;
+      const checkpoint_t &checkpoint   = it->second;
+      sentinel_height                  = checkpoint_height;
+
+      // NOTE(loki): Don't allow blocks older than a checkpoint if it is not a service node checkpoint
+      // They are hardcoded in the code for a reason. Loki disables DNS checkpoints for now.
+      if (checkpoint.type == checkpoint_type::predefined_or_dns)
+        break;
+    }
+
+    bool result = sentinel_height < block_height;
+    return result;
   }
   //---------------------------------------------------------------------------
   uint64_t checkpoints::get_max_height() const

@@ -30,6 +30,7 @@
 
 #pragma once
 #include <map>
+#include <list>
 #include "misc_log_ex.h"
 #include "crypto/hash.h"
 #include "cryptonote_config.h"
@@ -113,7 +114,7 @@ namespace cryptonote
      *         true if the passed parameters match the stored checkpoint,
      *         false otherwise
      */
-    bool check_block(uint64_t height, const crypto::hash& h, cryptonote::Blockchain const &blockchain, bool *is_a_checkpoint = nullptr) const;
+    bool check_block(uint64_t height, const crypto::hash& h, bool *is_a_checkpoint = nullptr) const;
 
     /**
      * @brief checks if alternate chain blocks should be kept for a given height
@@ -200,7 +201,7 @@ namespace cryptonote
     bool load_checkpoints_from_dns(network_type nettype = MAINNET);
 
   private:
-    std::map<uint64_t, checkpoint_t> m_points; //!< the checkpoints container
+    std::map<uint64_t, std::list<checkpoint_t>> m_points; //!< the checkpoints container
   };
 
 }

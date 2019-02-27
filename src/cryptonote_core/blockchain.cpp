@@ -1619,7 +1619,7 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
     bei.height = alt_chain.size() ? it_prev->second.height + 1 : m_db->get_block_height(b.prev_id) + 1;
 
     bool is_a_checkpoint = false;
-    if(!m_checkpoints.check_block(bei.height, id, *this, &is_a_checkpoint))
+    if(!m_checkpoints.check_block(bei.height, id, &is_a_checkpoint))
     {
       LOG_ERROR("CHECKPOINT VALIDATION FAILED");
       bvc.m_verifivation_failed = true;
@@ -3524,7 +3524,7 @@ leave:
   // is correct.
   if(m_checkpoints.is_in_checkpoint_zone(get_current_blockchain_height()))
   {
-    if(!m_checkpoints.check_block(get_current_blockchain_height(), id, *this))
+    if(!m_checkpoints.check_block(get_current_blockchain_height(), id))
     {
       LOG_ERROR("CHECKPOINT VALIDATION FAILED");
       bvc.m_verifivation_failed = true;
@@ -4026,7 +4026,7 @@ void Blockchain::block_longhash_worker(uint64_t height, const epee::span<const b
   for (const auto & block : blocks)
   {
     if (m_cancel)
-       break;
+      break;
     crypto::hash id = get_block_hash(block);
     crypto::hash pow = get_block_longhash(block, height++);
     map.emplace(id, pow);
@@ -4401,7 +4401,7 @@ bool Blockchain::prepare_handle_incoming_blocks(const std::vector<block_complete
       waiter.wait(&tpool);
 
       if (m_cancel)
-         return false;
+        return false;
 
       for (const auto & map : maps)
       {
@@ -4442,11 +4442,11 @@ bool Blockchain::prepare_handle_incoming_blocks(const std::vector<block_complete
   std::vector<std::pair<cryptonote::transaction, crypto::hash>> txes(total_txs);
 
 #define SCAN_TABLE_QUIT(m) \
-        do { \
-            MERROR_VER(m) ;\
-            m_scan_table.clear(); \
-            return false; \
-        } while(0); \
+  do { \
+    MERROR_VER(m) ;\
+    m_scan_table.clear(); \
+    return false; \
+  } while(0); \
 
   // generate sorted tables for all amounts and absolute offsets
   size_t tx_index = 0, block_index = 0;
