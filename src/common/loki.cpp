@@ -23,6 +23,9 @@
 #include <cfloat>
 #include <cmath>
 
+#include <algorithm>
+#include <vector>
+
 // TODO(loki): This is temporary until we switch to integer math for calculating
 // block rewards. We provide the specific implementation to minimise the risk of
 // different results from math functions across different std libraries.
@@ -546,9 +549,22 @@ const char* base32z_encode(const v& value, stack_t &stack)
 std::string loki::hex64_to_base32z(const std::string &src)
 {
   assert(src.size() <= 64); // NOTE: Developer error, update function if you need more. This is intended for 64 char snode pubkeys
-  char buf[128] = {};
+  // decode to binary
+  std::vector<uint8_t> bin;
+  std::transform(src.begin(), src.end(), std::back_inserter(bin), [](const char & ch) -> uint8_t {
+    if(ch >= '0' && ch <= '9')
+      return ch - 48;
+    else if(ch >= 'A' && ch <= 'F' )
+      return ch - 55;
+    else if(ch >= 'a' && ch <= 'f' )
+      return ch - 87;
+    else
+      return 0;
+  });
+  // encode to base32z
+  char buf[64] = {0};
   std::string result;
-  if (char const *dest = base32z_encode(src, buf))
+  if (char const *dest = base32z_encode(bin, buf))
     result = dest;
 
   return result;
