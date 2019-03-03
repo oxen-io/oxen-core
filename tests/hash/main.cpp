@@ -54,11 +54,11 @@ extern "C" {
     tree_hash((const char (*)[crypto::HASH_SIZE]) data, length >> 5, hash);
   }
   static void cn_slow_hash_0(const void *data, size_t length, char *hash) {
-    cn_pow_hash_v1 ctx;
+    cn_heavy_hash_v1 ctx;
     return ctx.hash(data, length, hash);
   }
   static void cn_slow_hash_1(const void *data, size_t length, char *hash) {
-    cn_pow_hash_v2 ctx;
+    cn_heavy_hash_v2 ctx;
     return ctx.hash(data, length, hash);
   }
 }
