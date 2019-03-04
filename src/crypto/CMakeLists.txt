@@ -48,6 +48,7 @@ set(crypto_sources
   cn_heavy_hash_hard_arm.cpp
   cn_heavy_hash_hard_intel.cpp
   cn_heavy_hash_soft.cpp
+  cn_turtle_lite_hash.c
   tree-hash.c)
 
 set(crypto_headers)

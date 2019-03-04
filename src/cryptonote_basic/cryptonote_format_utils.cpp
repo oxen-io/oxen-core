@@ -1452,8 +1452,10 @@ namespace cryptonote
     const int hf_version              = b.major_version;
     crypto::cn_slow_hash_type cn_type = cn_slow_hash_type::heavy_v1;
 
-    if (hf_version >= network_version_7)
-        cn_type = crypto::cn_slow_hash_type::heavy_v2;
+    if (hf_version >= network_version_11_infinite_staking)
+      cn_type = cn_slow_hash_type::turtle_lite_v2;
+    else if (hf_version >= network_version_7)
+      cn_type = crypto::cn_slow_hash_type::heavy_v2;
 
     crypto::cn_slow_hash(bd.data(), bd.size(), res, cn_type);
     return true;
