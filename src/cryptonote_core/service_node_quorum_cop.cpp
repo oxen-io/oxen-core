@@ -33,6 +33,8 @@
 #include "cryptonote_core.h"
 #include "version.h"
 
+#include "common/loki_integration_test_hooks.h"
+
 #undef LOKI_DEFAULT_LOG_CATEGORY
 #define LOKI_DEFAULT_LOG_CATEGORY "quorum_cop"
 
@@ -73,7 +75,11 @@ namespace service_nodes
       return;
 
     time_t const now          = time(nullptr);
+#if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
+    time_t const min_lifetime = 0;
+#else
     time_t const min_lifetime = 60 * 60 * 2;
+#endif
     bool alive_for_min_time   = (now - m_core.get_start_time()) >= min_lifetime;
     if (!alive_for_min_time)
     {
@@ -165,7 +171,7 @@ namespace service_nodes
     int version     = m_core.get_hard_fork_version(height);
 
     // NOTE: Only care about major version for now
-    if (version == cryptonote::network_version_11_infinite_staking_bulletproofs && proof.snode_version_major < 3)
+    if (version == cryptonote::network_version_11_infinite_staking && proof.snode_version_major < 3)
       return false;
     else if (version == cryptonote::network_version_10_bulletproofs && proof.snode_version_major < 2)
       return false;
