@@ -287,7 +287,7 @@ extern int aesb_pseudo_round(const uint8_t *in, uint8_t *out, const uint8_t *exp
 #endif
 
 #pragma pack(push, 1)
-union cn_slow_hash_state
+union cn_turtle_hash_state
 {
   union hash_state hs;
   struct
@@ -677,7 +677,7 @@ void cn_turtle_hash(const void *data, size_t length, char *hash, int light, int 
   RDATA_ALIGN16 uint64_t a[2];
   RDATA_ALIGN16 uint64_t b[4];
   RDATA_ALIGN16 uint64_t c[2];
-  union cn_slow_hash_state state;
+  union cn_turtle_hash_state state;
   __m128i _a, _b, _b1, _c;
   uint64_t hi, lo;
 
@@ -835,7 +835,7 @@ STATIC INLINE void xor64(uint64_t *a, const uint64_t b)
 }
 
 #pragma pack(push, 1)
-union cn_slow_hash_state
+union cn_turtle_hash_state
 {
     union hash_state hs;
     struct
@@ -1035,7 +1035,7 @@ STATIC INLINE void aligned_free(void *ptr)
 }
 #endif /* FORCE_USE_HEAP */
 
-void cn_slow_hash(const void *data, size_t length, char *hash, int light, int variant, int prehashed, uint32_t page_size, uint32_t scratchpad, uint32_t iterations)
+void cn_turtle_hash(const void *data, size_t length, char *hash, int light, int variant, int prehashed, uint32_t page_size, uint32_t scratchpad, uint32_t iterations)
 {
   uint32_t TOTALBLOCKS = (page_size / AES_BLOCK_SIZE);
   uint32_t init_rounds = (scratchpad / INIT_SIZE_BYTE);
@@ -1055,7 +1055,7 @@ void cn_slow_hash(const void *data, size_t length, char *hash, int light, int va
   RDATA_ALIGN16 uint64_t a[2];
   RDATA_ALIGN16 uint64_t b[4];
   RDATA_ALIGN16 uint64_t c[2];
-  union cn_slow_hash_state state;
+  union cn_turtle_hash_state state;
   uint8x16_t _a, _b, _b1, _c, zero = {0};
   uint64_t hi, lo;
 
@@ -1256,7 +1256,7 @@ STATIC INLINE void xor_blocks(uint8_t* a, const uint8_t* b)
   U64(a)[1] ^= U64(b)[1];
 }
 
-void cn_slow_hash(const void *data, size_t length, char *hash, int light, int variant, int prehashed, uint32_t page_size, uint32_t scratchpad, uint32_t iterations)
+void cn_turtle_hash(const void *data, size_t length, char *hash, int light, int variant, int prehashed, uint32_t page_size, uint32_t scratchpad, uint32_t iterations)
 {
   uint32_t init_rounds = (scratchpad / INIT_SIZE_BYTE);
   uint32_t aes_rounds = (iterations / 2);
@@ -1271,7 +1271,7 @@ void cn_slow_hash(const void *data, size_t length, char *hash, int light, int va
   uint8_t aes_key[AES_KEY_SIZE];
   RDATA_ALIGN16 uint8_t expandedKey[256];
 
-  union cn_slow_hash_state state;
+  union cn_turtle_hash_state state;
 
   size_t i, j;
   uint8_t *p = NULL;
@@ -1453,7 +1453,7 @@ static void xor64(uint8_t* left, const uint8_t* right)
 }
 
 #pragma pack(push, 1)
-union cn_slow_hash_state {
+union cn_turtle_hash_state {
   union hash_state hs;
   struct {
     uint8_t k[64];
@@ -1462,7 +1462,7 @@ union cn_slow_hash_state {
 };
 #pragma pack(pop)
 
-void cn_slow_hash(const void *data, size_t length, char *hash, int light, int variant, int prehashed, uint32_t page_size, uint32_t scratchpad, uint32_t iterations)
+void cn_turtle_hash(const void *data, size_t length, char *hash, int light, int variant, int prehashed, uint32_t page_size, uint32_t scratchpad, uint32_t iterations)
 {
   uint32_t init_rounds = (scratchpad / INIT_SIZE_BYTE);
   uint32_t aes_rounds = (iterations / 2);
@@ -1475,7 +1475,7 @@ void cn_slow_hash(const void *data, size_t length, char *hash, int light, int va
   uint8_t *long_state = (uint8_t *)malloc(page_size);
 #endif
 
-  union cn_slow_hash_state state;
+  union cn_turtle_hash_state state;
   uint8_t text[INIT_SIZE_BYTE];
   uint8_t a[AES_BLOCK_SIZE];
   uint8_t b[AES_BLOCK_SIZE * 2];
