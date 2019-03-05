@@ -664,7 +664,7 @@ void slow_hash_free_state(uint32_t page_size)
  * @param length the length in bytes of the data
  * @param hash a pointer to a buffer in which the final 256 bit hash will be stored
  */
-void cn_turtle_lite_slow_hash_v2(const void *data, size_t length, char *hash, int light, int variant, int prehashed, uint32_t page_size, uint32_t scratchpad, uint32_t iterations)
+void cn_turtle_hash(const void *data, size_t length, char *hash, int light, int variant, int prehashed, uint32_t page_size, uint32_t scratchpad, uint32_t iterations)
 {
   uint32_t TOTALBLOCKS = (page_size / AES_BLOCK_SIZE);
   uint32_t init_rounds = (scratchpad / INIT_SIZE_BYTE);

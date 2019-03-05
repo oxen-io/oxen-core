@@ -98,7 +98,7 @@ namespace crypto {
          const uint32_t CN_TURTLE_PAGE_SIZE = 262144;
          const uint32_t CN_TURTLE_SCRATCHPAD = 262144;
          const uint32_t CN_TURTLE_ITERATIONS = 131072;
-         cn_turtle_lite_slow_hash_v2(data,
+         cn_turtle_hash(data,
              length,
              hash.data,
              1, // light
