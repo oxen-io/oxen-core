@@ -91,6 +91,7 @@ namespace cryptonote
 #define MAKE_CORE_RPC_VERSION(major,minor) (((major)<<16)|(minor))
 #define CORE_RPC_VERSION MAKE_CORE_RPC_VERSION(CORE_RPC_VERSION_MAJOR, CORE_RPC_VERSION_MINOR)
 
+#define GENERATE_LOKI_DOCS
   struct COMMAND_RPC_GET_HEIGHT
   {
     struct request
@@ -101,9 +102,9 @@ namespace cryptonote
 
     struct response
     {
-      uint64_t 	 height;
-      std::string status;
-      bool untrusted;
+      uint64_t height;    // The current blockchain height according to the queried daemon
+      std::string status; // Generic RPC error code. "OK" is the success value.
+      bool untrusted;     // If the result is obtained using bootstrap mode, and therefore not trusted `true`, or otherwise `false`.
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(height)
@@ -118,7 +119,7 @@ namespace cryptonote
 
     struct request
     {
-      std::list<crypto::hash> block_ids; //*first 10 blocks id goes sequential, next goes in pow(2,n) offset, like 2, 4, 8, 16, 32, 64 and so on, and the last one is always genesis block */
+      std::list<crypto::hash> block_ids; //@ //*first 10 blocks id goes sequential, next goes in pow(2,n) offset, like 2, 4, 8, 16, 32, 64 and so on, and the last one is always genesis block */
       uint64_t    start_height;
       bool        prune;
       bool        no_miner_tx;
@@ -2409,7 +2410,7 @@ namespace cryptonote
   {
     struct request
     {
-      uint64_t height;
+      uint64_t height; // The height to query the quorum state for.
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(height)
       END_KV_SERIALIZE_MAP()
@@ -2417,10 +2418,10 @@ namespace cryptonote
 
     struct response
     {
-      std::string status;
-      std::vector<std::string> quorum_nodes;
-      std::vector<std::string> nodes_to_test;
-      bool untrusted;
+      std::string status;                     // Generic RPC error code. "OK" is the success value.
+      std::vector<std::string> quorum_nodes;  // Array of public keys identifying service nodes which are being tested for the queried height.
+      std::vector<std::string> nodes_to_test; // Array of public keys identifying service nodes which are responsible for voting on the queried height.
+      bool untrusted;                         // If the result is obtained using bootstrap mode, and therefore not trusted `true`, or otherwise `false`.
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(status)
@@ -2435,9 +2436,8 @@ namespace cryptonote
   {
     struct request
     {
-      /// both inclusive
-      uint64_t height_begin;
-      uint64_t height_end;
+      uint64_t height_begin; // The starting height (inclusive) to query the quorum state for.
+      uint64_t height_end;   // The ending height (inclusive) to query the quorum state for.
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(height_begin)
         KV_SERIALIZE(height_end)
@@ -2446,9 +2446,9 @@ namespace cryptonote
 
     struct response_entry
     {
-      uint64_t height;
-      std::vector<std::string> quorum_nodes;
-      std::vector<std::string> nodes_to_test;
+      uint64_t height;                        // The height of this quorum state that was queried.
+      std::vector<std::string> quorum_nodes;  // Array of public keys identifying service nodes which are being tested for the queried height.
+      std::vector<std::string> nodes_to_test; // Array of public keys identifying service nodes which are responsible for voting on the queried height.
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(height)
@@ -2459,9 +2459,9 @@ namespace cryptonote
 
     struct response
     {
-      std::string status;
-      std::vector<response_entry> quorum_entries;
-      bool untrusted;
+      std::string status;                         // Generic RPC error code. "OK" is the success value.
+      std::vector<response_entry> quorum_entries; // Array of quorums that was requested.
+      bool untrusted;                             // If the result is obtained using bootstrap mode, and therefore not trusted `true`, or otherwise `false`.
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(status)
@@ -2475,9 +2475,9 @@ namespace cryptonote
   {
     struct request
     {
-      std::vector<std::string> args;
-      bool make_friendly; // Provide information about how to use the command in the result
-      uint64_t staking_requirement;
+      std::vector<std::string> args; // (Developer) The arguments used in raw registration, i.e. portions
+      bool make_friendly;            // Provide information about how to use the command in the result.
+      uint64_t staking_requirement;  // The staking requirement to become a Service Node the registration command will be generated upon
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(args)
         KV_SERIALIZE(make_friendly)
@@ -2487,8 +2487,8 @@ namespace cryptonote
 
     struct response
     {
-      std::string status;
-      std::string registration_cmd;
+      std::string status;           // Generic RPC error code. "OK" is the success value.
+      std::string registration_cmd; // The command to execute in the wallet CLI to register the queried daemon as a Service Node.
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(status)
@@ -2499,9 +2499,10 @@ namespace cryptonote
 
   struct COMMAND_RPC_GET_SERVICE_NODE_REGISTRATION_CMD
   {
-    struct contribution_t {
-      std::string address;
-      uint64_t amount;
+    struct contribution_t
+    {
+      std::string address; // The wallet address for the contributor
+      uint64_t amount;     // The amount that the contributor will reserve in Loki atomic units towards the staking requirement
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(address)
@@ -2511,9 +2512,9 @@ namespace cryptonote
 
     struct request
     {
-      std::string operator_cut;
-      std::vector<contribution_t> contributions;
-      uint64_t staking_requirement;
+      std::string operator_cut;                  // The percentage of cut per reward the operator receives expressed as a string, i.e. "1.1%"
+      std::vector<contribution_t> contributions; // Array of contributors for this Service Node
+      uint64_t staking_requirement;              // The staking requirement to become a Service Node the registration command will be generated upon
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(operator_cut)
@@ -2524,8 +2525,8 @@ namespace cryptonote
 
     struct response
     {
-      std::string status;
-      std::string registration_cmd;
+      std::string status;           // Generic RPC error code. "OK" is the success value.
+      std::string registration_cmd; // The command to execute in the wallet CLI to register the queried daemon as a Service Node.
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(status)
@@ -2544,8 +2545,8 @@ namespace cryptonote
 
     struct response
     {
-      std::string service_node_pubkey;
-      std::string status;
+      std::string service_node_pubkey; // The queried daemon's service node key.
+      std::string status;              // Generic RPC error code. "OK" is the success value.
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(service_node_pubkey)
         KV_SERIALIZE(status)
@@ -2557,9 +2558,9 @@ namespace cryptonote
   {
     struct request
     {
-      std::vector<std::string> service_node_pubkeys; // pass empty vector to get all the service nodes
-      bool include_json;
-      
+      std::vector<std::string> service_node_pubkeys; // Array of public keys of active Service Nodes to get information about. Pass the empty array to query all Service Nodes.
+      bool include_json;                             // When set, the response's as_json member is filled out.
+
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(service_node_pubkeys);
         KV_SERIALIZE(include_json);
@@ -2570,9 +2571,9 @@ namespace cryptonote
     {
       struct contribution
       {
-        std::string key_image;
-        std::string key_image_pub_key;
-        uint64_t    amount;
+        std::string key_image;         // The contribution's key image that is locked on the network.
+        std::string key_image_pub_key; // The contribution's key image, public key component
+        uint64_t    amount;            // The amount that is locked in this contribution.
 
         BEGIN_KV_SERIALIZE_MAP()
           KV_SERIALIZE(key_image)
@@ -2583,10 +2584,10 @@ namespace cryptonote
 
       struct contributor
       {
-        uint64_t amount;
-        uint64_t reserved;
-        std::string address;
-        std::vector<contribution> locked_contributions;
+        uint64_t amount;                                // The total amount of locked Loki in atomic units for this contributor.
+        uint64_t reserved;                              // The amount of Loki in atomic units reserved by this contributor for this Service Node.
+        std::string address;                            // The wallet address for this contributor rewards are sent to and contributions came from.
+        std::vector<contribution> locked_contributions; // Array of contributions from this contributor.
 
         BEGIN_KV_SERIALIZE_MAP()
           KV_SERIALIZE(amount)
@@ -2598,18 +2599,18 @@ namespace cryptonote
 
       struct entry
       {
-        std::string               service_node_pubkey;
-        uint64_t                  registration_height;
-        uint64_t                  requested_unlock_height;
-        uint64_t                  last_reward_block_height;
-        uint32_t                  last_reward_transaction_index;
-        uint64_t                  last_uptime_proof;
-        std::vector<contributor>  contributors;
-        uint64_t                  total_contributed;
-        uint64_t                  total_reserved;
-        uint64_t                  staking_requirement;
-        uint64_t                  portions_for_operator;
-        std::string               operator_address;
+        std::string               service_node_pubkey;           // The public key of the Service Node.
+        uint64_t                  registration_height;           // The height at which the registration for the Service Node arrived on the blockchain.
+        uint64_t                  requested_unlock_height;       // The height at which contributions will be released and the Service Node expires. 0 if not requested yet.
+        uint64_t                  last_reward_block_height;      // The last height at which this Service Node received a reward.
+        uint32_t                  last_reward_transaction_index; // When multiple Service Nodes register on the same height, the order the transaction arrive dictate the order you receive rewards.
+        uint64_t                  last_uptime_proof;             // The last time this Service Node's uptime proof was relayed by atleast 1 Service Node other than itself in unix epoch time.
+        std::vector<contributor>  contributors;                  // Array of contributors, contributing to this Service Node.
+        uint64_t                  total_contributed;             // The total amount of Loki in atomic units contributed to this Service Node.
+        uint64_t                  total_reserved;                // The total amount of Loki in atomic units reserved in this Service Node.
+        uint64_t                  staking_requirement;           // The staking requirement in atomic units that is required to be contributed to become a Service Node.
+        uint64_t                  portions_for_operator;         // The operator percentage cut to take from each reward expressed in portions, see cryptonote_config.h's STAKING_PORTIONS.
+        std::string               operator_address;              // The wallet address of the operator to which the operator cut of the staking reward is sent to.
 
         BEGIN_KV_SERIALIZE_MAP()
             KV_SERIALIZE(service_node_pubkey)
@@ -2627,9 +2628,9 @@ namespace cryptonote
         END_KV_SERIALIZE_MAP()
       };
 
-      std::vector<entry> service_node_states;
-      std::string        status;
-      std::string        as_json;
+      std::vector<entry> service_node_states; // Array of service node registration information
+      std::string status;                     // Generic RPC error code. "OK" is the success value.
+      std::string as_json;                    // If `include_json` is set in the request, this contains the json representation of the `entry` data structure
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(service_node_states)
@@ -2643,7 +2644,7 @@ namespace cryptonote
   {
     struct request
     {
-      uint64_t height;
+      uint64_t height; // The height to query the staking requirement for.
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(height)
       END_KV_SERIALIZE_MAP()
@@ -2651,8 +2652,8 @@ namespace cryptonote
 
     struct response
     {
-      uint64_t staking_requirement;
-      std::string status;
+      uint64_t staking_requirement; // The staking requirement in Loki, in atomic units.
+      std::string status;           // Generic RPC error code. "OK" is the success value.
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(staking_requirement)
         KV_SERIALIZE(status)
@@ -2670,8 +2671,8 @@ namespace cryptonote
 
     struct entry
     {
-      std::string key_image;
-      uint64_t unlock_height;
+      std::string key_image;  // The key image of the transaction that is blacklisted on the network.
+      uint64_t unlock_height; // The height at which the key image is removed from the blacklist and becomes spendable.
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(key_image)
         KV_SERIALIZE(unlock_height)
@@ -2680,8 +2681,8 @@ namespace cryptonote
 
     struct response
     {
-      std::vector<entry> blacklist;
-      std::string status;
+      std::vector<entry> blacklist; // Array of blacklisted key images, i.e. unspendable transactions
+      std::string status;           // Generic RPC error code. "OK" is the success value.
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(blacklist)
         KV_SERIALIZE(status)
@@ -2694,9 +2695,9 @@ namespace cryptonote
     struct request { BEGIN_KV_SERIALIZE_MAP() END_KV_SERIALIZE_MAP() };
     struct response
     {
-      std::vector<uint64_t> blacklist;
-      std::string status;
-      bool untrusted;
+      std::vector<uint64_t> blacklist; // (Developer): Array of indexes from the global output list, corresponding to blacklisted key images.
+      std::string status;              // Generic RPC error code. "OK" is the success value.
+      bool untrusted;                  // If the result is obtained using bootstrap mode, and therefore not trusted `true`, or otherwise `false`.
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(blacklist)
         KV_SERIALIZE(status)
@@ -2704,5 +2705,6 @@ namespace cryptonote
       END_KV_SERIALIZE_MAP()
     };
   };
+#define STOP_GEN_LOKI_DOCS
 
 }
