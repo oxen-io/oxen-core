@@ -93,6 +93,7 @@ namespace cryptonote
 #define MAKE_CORE_RPC_VERSION(major,minor) (((major)<<16)|(minor))
 #define CORE_RPC_VERSION MAKE_CORE_RPC_VERSION(CORE_RPC_VERSION_MAJOR, CORE_RPC_VERSION_MINOR)
 
+
   LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_HEIGHT
   {
@@ -2577,6 +2578,7 @@ namespace cryptonote
       std::vector<std::string> args; // (Developer) The arguments used in raw registration, i.e. portions
       bool make_friendly;            // Provide information about how to use the command in the result.
       uint64_t staking_requirement;  // The staking requirement to become a Service Node the registration command will be generated upon
+
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(args)
         KV_SERIALIZE(make_friendly)
