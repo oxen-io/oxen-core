@@ -349,9 +349,7 @@ namespace service_nodes
 
   struct converted_registration_args
   {
-    bool success;
-    operator bool() { return success; }
-
+    bool                                            success;
     std::vector<cryptonote::account_public_address> addresses;
     std::vector<uint64_t>                           portions;
     uint64_t                                        portions_for_operator;

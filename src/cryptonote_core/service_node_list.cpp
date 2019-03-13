@@ -1785,13 +1785,15 @@ namespace service_nodes
       {
         uint64_t num_portions = boost::lexical_cast<uint64_t>(args[i+1]);
         uint64_t min_portions = get_min_node_contribution_in_portions(hf_version, staking_requirement, total_reserved, num_contributions);
-        if (num_portions < min_portions || min_portions == UINT64_MAX)
+        if (num_portions < min_portions)
         {
-          if (min_portions == UINT64_MAX)
-            result.err_msg = tr("Too many contributors specified, you can only split a node with up to: ") + std::to_string(MAX_NUMBER_OF_CONTRIBUTORS) + tr(" people.");
-          else
-            result.err_msg = tr("Invalid amount for contributor: ") + args[i] + tr(", with portion amount: ") + args[i+1] + tr(". The contributors must each have at least 25%, except for the last contributor which may have the remaining amount");
+          result.err_msg = tr("Invalid amount for contributor: ") + args[i] + tr(", with portion amount: ") + args[i+1] + tr(". The contributors must each have at least 25%, except for the last contributor which may have the remaining amount");
+          return result;
+        }
 
+        if (min_portions == UINT64_MAX)
+        {
+          result.err_msg = tr("Too many contributors specified, you can only split a node with up to: ") + std::to_string(MAX_NUMBER_OF_CONTRIBUTORS) + tr(" people.");
           return result;
         }
 
@@ -1828,7 +1830,7 @@ namespace service_nodes
   {
 
     converted_registration_args converted_args = convert_registration_args(nettype, args, staking_requirement, hf_version);
-    if (!converted_args)
+    if (!converted_args.success)
     {
       MERROR(tr("Could not convert registration args, reason: ") << converted_args.err_msg);
       return false;

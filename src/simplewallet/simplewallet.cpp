@@ -5785,7 +5785,7 @@ bool simple_wallet::register_service_node_main(
 
   if (portions.size() < 1)
   {
-    fail_msg_writer() << tr("There must be atleast 1 service node portion to create a registration transaction");
+    fail_msg_writer() << tr("There must be at least 1 service node portion to create a registration transaction");
     return true;
   }
 
@@ -5873,7 +5873,7 @@ bool simple_wallet::register_service_node(const std::vector<std::string> &args_)
     boost::optional<uint8_t> hf_version = m_wallet->get_hard_fork_version();
     if (!hf_version)
     {
-      fail_msg_writer() << tr("Could not convert query current hardfork version");
+      fail_msg_writer() << tr("Could not query current hardfork version");
       return true;
     }
 
@@ -5881,7 +5881,7 @@ bool simple_wallet::register_service_node(const std::vector<std::string> &args_)
     converted_args = service_nodes::convert_registration_args(m_wallet->nettype(), registration_args, staking_requirement, *hf_version);
   }
 
-  if (!converted_args)
+  if (!converted_args.success)
   {
     fail_msg_writer() << tr("Could not convert registration args, reason: ") << converted_args.err_msg << "\n" << tr(USAGE_REGISTER_SERVICE_NODE);
     return true;
