@@ -3857,6 +3857,12 @@ namespace tools
     std::vector<std::string> args;
     boost::split(args, req.register_service_node_str, boost::is_any_of(" "));
 
+    if (args.size() > 0)
+    {
+      if (args[0] == "register_service_node")
+        args.erase(args.begin());
+    }
+
     // NOTE(loki): Pre-emptively set subaddr_account to 0. We don't support onwards from Infinite Staking which is when this call was implemented.
     tools::wallet2::register_service_node_result register_result = m_wallet->create_register_service_node_tx(args, 0 /*subaddr_account*/);
     if (register_result.status != tools::wallet2::register_service_node_result_status::success)
