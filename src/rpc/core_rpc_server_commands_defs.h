@@ -40,6 +40,8 @@
 #include "common/varint.h"
 #include "common/perf_timer.h"
 
+#include "common/loki.h"
+
 namespace
 {
   template<typename T>
@@ -91,7 +93,7 @@ namespace cryptonote
 #define MAKE_CORE_RPC_VERSION(major,minor) (((major)<<16)|(minor))
 #define CORE_RPC_VERSION MAKE_CORE_RPC_VERSION(CORE_RPC_VERSION_MAJOR, CORE_RPC_VERSION_MINOR)
 
-#define GENERATE_LOKI_DOCS
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_HEIGHT
   {
     struct request
@@ -114,6 +116,7 @@ namespace cryptonote
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_BLOCKS_FAST
   {
 
@@ -169,6 +172,7 @@ namespace cryptonote
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_BLOCKS_BY_HEIGHT
   {
     struct request
@@ -193,27 +197,30 @@ namespace cryptonote
     };
   };
 
-    struct COMMAND_RPC_GET_ALT_BLOCKS_HASHES
-    {
-        struct request
-        {
-            BEGIN_KV_SERIALIZE_MAP()
-            END_KV_SERIALIZE_MAP()
-        };
+  LOKI_RPC_DOC_INTROSPECT
+  struct COMMAND_RPC_GET_ALT_BLOCKS_HASHES
+  {
+      struct request
+      {
+          BEGIN_KV_SERIALIZE_MAP()
+          END_KV_SERIALIZE_MAP()
+      };
 
-        struct response
-        {
-            std::vector<std::string> blks_hashes;
-            std::string status;
-            bool untrusted;
+      struct response
+      {
+          std::vector<std::string> blks_hashes;
+          std::string status;
+          bool untrusted;
 
-            BEGIN_KV_SERIALIZE_MAP()
-                KV_SERIALIZE(blks_hashes)
-                KV_SERIALIZE(status)
-                KV_SERIALIZE(untrusted)
-            END_KV_SERIALIZE_MAP()
-        };
-    };
+          BEGIN_KV_SERIALIZE_MAP()
+              KV_SERIALIZE(blks_hashes)
+              KV_SERIALIZE(status)
+              KV_SERIALIZE(untrusted)
+          END_KV_SERIALIZE_MAP()
+      };
+  };
+
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_HASHES_FAST
   {
 
@@ -246,6 +253,7 @@ namespace cryptonote
   };
 
   //-----------------------------------------------
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_ADDRESS_TXS
   {
       struct request
@@ -331,6 +339,7 @@ namespace cryptonote
   };
 
   //-----------------------------------------------
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_ADDRESS_INFO
   {
       struct request
@@ -389,6 +398,7 @@ namespace cryptonote
   };
 
   //-----------------------------------------------
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_UNSPENT_OUTS
   {
       struct request
@@ -459,6 +469,7 @@ namespace cryptonote
   };
 
   //-----------------------------------------------
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_RANDOM_OUTS
   {
       struct request
@@ -506,6 +517,7 @@ namespace cryptonote
       };
   };
   //-----------------------------------------------
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_SUBMIT_RAW_TX
   {
       struct request
@@ -534,6 +546,7 @@ namespace cryptonote
       };
   };
   //-----------------------------------------------
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_LOGIN
   {
       struct request
@@ -564,6 +577,7 @@ namespace cryptonote
       };
   };
   //-----------------------------------------------
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_IMPORT_WALLET_REQUEST
   {
       struct request
@@ -598,6 +612,7 @@ namespace cryptonote
       };
   };
   //-----------------------------------------------
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_TRANSACTIONS
   {
     struct request
@@ -670,6 +685,7 @@ namespace cryptonote
   };
 
   //-----------------------------------------------
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_IS_KEY_IMAGE_SPENT
   {
     enum STATUS {
@@ -703,6 +719,7 @@ namespace cryptonote
   };
 
   //-----------------------------------------------
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_TX_GLOBAL_OUTPUTS_INDEXES
   {
     struct request
@@ -727,6 +744,8 @@ namespace cryptonote
     };
   };
   //-----------------------------------------------
+
+  LOKI_RPC_DOC_INTROSPECT
   struct get_outputs_out
   {
     uint64_t amount;
@@ -738,6 +757,7 @@ namespace cryptonote
     END_KV_SERIALIZE_MAP()
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_OUTPUTS_BIN
   {
     struct request
@@ -782,6 +802,7 @@ namespace cryptonote
     };
   };
   //-----------------------------------------------
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_OUTPUTS
   {
     struct request
@@ -824,6 +845,7 @@ namespace cryptonote
     };
   };
   //-----------------------------------------------
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_SEND_RAW_TX
   {
     struct request
@@ -856,6 +878,7 @@ namespace cryptonote
     };
   };
   //-----------------------------------------------
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_START_MINING
   {
     struct request
@@ -883,6 +906,7 @@ namespace cryptonote
     };
   };
   //-----------------------------------------------
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_INFO
   {
     struct request
@@ -968,6 +992,7 @@ namespace cryptonote
 
 
   //-----------------------------------------------
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_ALL_SERVICE_NODES_KEYS
   {
     struct request
@@ -989,6 +1014,7 @@ namespace cryptonote
 
 
   //-----------------------------------------------
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_STOP_MINING
   {
     struct request
@@ -1010,6 +1036,7 @@ namespace cryptonote
   };
 
   //-----------------------------------------------
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_MINING_STATUS
   {
     struct request
@@ -1041,6 +1068,7 @@ namespace cryptonote
   };
 
   //-----------------------------------------------
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_SAVE_BC
   {
     struct request
@@ -1062,6 +1090,7 @@ namespace cryptonote
   };
 
   //
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GETBLOCKCOUNT
   {
     typedef std::list<std::string> request;
@@ -1079,6 +1108,7 @@ namespace cryptonote
 
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GETBLOCKHASH
   {
     typedef std::vector<uint64_t> request;
@@ -1087,6 +1117,7 @@ namespace cryptonote
   };
 
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GETBLOCKTEMPLATE
   {
     struct request
@@ -1126,6 +1157,7 @@ namespace cryptonote
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_SUBMITBLOCK
   {
     typedef std::vector<std::string> request;
@@ -1140,6 +1172,7 @@ namespace cryptonote
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GENERATEBLOCKS
   {
     struct request
@@ -1165,6 +1198,7 @@ namespace cryptonote
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct block_header_response
   {
       uint8_t major_version;
@@ -1208,6 +1242,7 @@ namespace cryptonote
       END_KV_SERIALIZE_MAP()
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_LAST_BLOCK_HEADER
   {
     struct request
@@ -1234,6 +1269,7 @@ namespace cryptonote
 
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_BLOCK_HEADER_BY_HASH
   {
     struct request
@@ -1262,6 +1298,7 @@ namespace cryptonote
 
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_BLOCK_HEADER_BY_HEIGHT
   {
     struct request
@@ -1290,6 +1327,7 @@ namespace cryptonote
 
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_BLOCK
   {
     struct request
@@ -1328,6 +1366,7 @@ namespace cryptonote
 
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct peer {
     uint64_t id;
     std::string host;
@@ -1355,6 +1394,7 @@ namespace cryptonote
     END_KV_SERIALIZE_MAP()
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_PEER_LIST
   {
     struct request
@@ -1377,6 +1417,7 @@ namespace cryptonote
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_SET_LOG_HASH_RATE
   {
     struct request
@@ -1397,6 +1438,7 @@ namespace cryptonote
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_SET_LOG_LEVEL
   {
     struct request
@@ -1417,6 +1459,7 @@ namespace cryptonote
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_SET_LOG_CATEGORIES
   {
     struct request
@@ -1440,6 +1483,7 @@ namespace cryptonote
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct tx_info
   {
     std::string id_hash;
@@ -1479,6 +1523,7 @@ namespace cryptonote
     END_KV_SERIALIZE_MAP()
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct spent_key_image_info
   {
     std::string id_hash;
@@ -1490,6 +1535,7 @@ namespace cryptonote
     END_KV_SERIALIZE_MAP()
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_TRANSACTION_POOL
   {
     struct request
@@ -1514,6 +1560,7 @@ namespace cryptonote
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_TRANSACTION_POOL_HASHES_BIN
   {
     struct request
@@ -1536,6 +1583,7 @@ namespace cryptonote
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_TRANSACTION_POOL_HASHES
   {
     struct request
@@ -1558,6 +1606,7 @@ namespace cryptonote
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct tx_backlog_entry
   {
     uint64_t weight;
@@ -1565,6 +1614,7 @@ namespace cryptonote
     uint64_t time_in_pool;
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_TRANSACTION_POOL_BACKLOG
   {
     struct request
@@ -1587,6 +1637,7 @@ namespace cryptonote
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct txpool_histo
   {
     uint32_t txs;
@@ -1598,6 +1649,7 @@ namespace cryptonote
     END_KV_SERIALIZE_MAP()
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct txpool_stats
   {
     uint64_t bytes_total;
@@ -1633,6 +1685,7 @@ namespace cryptonote
     END_KV_SERIALIZE_MAP()
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_TRANSACTION_POOL_STATS
   {
     struct request
@@ -1655,6 +1708,7 @@ namespace cryptonote
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_CONNECTIONS
   {
     struct request
@@ -1676,6 +1730,7 @@ namespace cryptonote
 
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_BLOCK_HEADERS_RANGE
   {
     struct request
@@ -1705,6 +1760,7 @@ namespace cryptonote
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_STOP_DAEMON
   {
     struct request
@@ -1723,6 +1779,7 @@ namespace cryptonote
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_FAST_EXIT
   {
 	struct request
@@ -1741,6 +1798,7 @@ namespace cryptonote
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_LIMIT
   {
     struct request
@@ -1765,6 +1823,7 @@ namespace cryptonote
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_SET_LIMIT
   {
     struct request
@@ -1792,6 +1851,7 @@ namespace cryptonote
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_OUT_PEERS
   {
 	struct request
@@ -1812,6 +1872,7 @@ namespace cryptonote
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_IN_PEERS
   {
     struct request
@@ -1832,6 +1893,7 @@ namespace cryptonote
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_START_SAVE_GRAPH
   {
 	struct request
@@ -1850,6 +1912,7 @@ namespace cryptonote
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_STOP_SAVE_GRAPH
   {
 	struct request
@@ -1868,6 +1931,7 @@ namespace cryptonote
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_HARD_FORK_INFO
   {
     struct request
@@ -1907,6 +1971,7 @@ namespace cryptonote
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GETBANS
   {
     struct ban
@@ -1940,6 +2005,7 @@ namespace cryptonote
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_SETBANS
   {
     struct ban
@@ -1976,6 +2042,7 @@ namespace cryptonote
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_FLUSH_TRANSACTION_POOL
   {
     struct request
@@ -1997,6 +2064,7 @@ namespace cryptonote
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_OUTPUT_HISTOGRAM
   {
     struct request
@@ -2049,6 +2117,7 @@ namespace cryptonote
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_VERSION
   {
     struct request
@@ -2071,6 +2140,7 @@ namespace cryptonote
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_COINBASE_TX_SUM
   {
     struct request
@@ -2098,6 +2168,7 @@ namespace cryptonote
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_BASE_FEE_ESTIMATE
   {
     struct request
@@ -2125,6 +2196,7 @@ namespace cryptonote
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_ALTERNATE_CHAINS
   {
     struct request
@@ -2164,6 +2236,7 @@ namespace cryptonote
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_UPDATE
   {
     struct request
@@ -2199,6 +2272,7 @@ namespace cryptonote
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_RELAY_TX
   {
     struct request
@@ -2220,6 +2294,7 @@ namespace cryptonote
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_SYNC_INFO
   {
     struct request
@@ -2280,6 +2355,7 @@ namespace cryptonote
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_OUTPUT_DISTRIBUTION
   {
     struct request
@@ -2357,6 +2433,7 @@ namespace cryptonote
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_POP_BLOCKS
   {
     struct request
@@ -2380,6 +2457,7 @@ namespace cryptonote
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_PRUNE_BLOCKCHAIN
   {
     struct request
@@ -2406,6 +2484,7 @@ namespace cryptonote
   //
   // Loki
   //
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_QUORUM_STATE
   {
     struct request
@@ -2432,6 +2511,7 @@ namespace cryptonote
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_QUORUM_STATE_BATCHED
   {
     struct request
@@ -2471,6 +2551,7 @@ namespace cryptonote
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_SERVICE_NODE_REGISTRATION_CMD_RAW
   {
     struct request
@@ -2497,6 +2578,7 @@ namespace cryptonote
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_SERVICE_NODE_REGISTRATION_CMD
   {
     struct contribution_t
@@ -2535,6 +2617,7 @@ namespace cryptonote
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_SERVICE_NODE_KEY
   {
     struct request
@@ -2554,6 +2637,7 @@ namespace cryptonote
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_SERVICE_NODES
   {
     struct request
@@ -2640,6 +2724,7 @@ namespace cryptonote
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_STAKING_REQUIREMENT
   {
     struct request
@@ -2661,6 +2746,7 @@ namespace cryptonote
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES
   {
     struct request
@@ -2690,6 +2776,7 @@ namespace cryptonote
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_OUTPUT_BLACKLIST
   {
     struct request { BEGIN_KV_SERIALIZE_MAP() END_KV_SERIALIZE_MAP() };
@@ -2705,6 +2792,4 @@ namespace cryptonote
       END_KV_SERIALIZE_MAP()
     };
   };
-#define STOP_GEN_LOKI_DOCS
-
 }

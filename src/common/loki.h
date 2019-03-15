@@ -31,6 +31,8 @@
 
 #include <string>
 
+#define LOKI_RPC_DOC_INTROSPECT
+
 namespace loki
 {
 double      round           (double);
