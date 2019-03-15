@@ -2485,6 +2485,24 @@ namespace cryptonote
   // Loki
   //
   LOKI_RPC_DOC_INTROSPECT
+  // Example
+  // curl -X POST http://127.0.0.1:38157/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"get_quorum_state", "params": {"height": 200}}' -H 'Content-Type: application/json'
+  // {
+  //   "id": "0",
+  //   "jsonrpc": "2.0",
+  //   "result": {
+  //     "nodes_to_test":
+  //        ["578e5ee53150a3276dd3c411cb6313324a63b530cf3651f5c15e3d0ca58ceddd",
+  //         …
+  //         "c917034e9fcd0e9b0d423638664bbfc36eb8a2eeb68a1ff8bed8be5f699bc3c0"],
+  //     "quorum_nodes":
+  //        ["fc86a737756b6ed9f81233d22da3baee32537f3087901c3e94384be85ca1a9ee",
+  //         …
+  //         "ee597c5c7bbf1452e689a785f1133fc1355889b4111955d54cb5ed826cd35a32"],
+  //     "status": "OK",
+  //     "untrusted": false
+  //   }
+  // }
   struct COMMAND_RPC_GET_QUORUM_STATE
   {
     struct request
@@ -2618,6 +2636,16 @@ namespace cryptonote
   };
 
   LOKI_RPC_DOC_INTROSPECT
+  // Example
+  // curl -X POST http://127.0.0.1:38157/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"get_service_node_key"}' -H 'Content-Type: application/json'
+  // {
+  //   "id": "0",
+  //   "jsonrpc": "2.0",
+  //   "result": {
+  //     "service_node_pubkey": "8d56c1fa0304884e612ee2efe763b2c50991a66329418fd084a3f23c75399f34",
+  //     "status": "OK"
+  //   }
+  // }
   struct COMMAND_RPC_GET_SERVICE_NODE_KEY
   {
     struct request
@@ -2638,6 +2666,39 @@ namespace cryptonote
   };
 
   LOKI_RPC_DOC_INTROSPECT
+  // Example
+  // curl -X POST http://127.0.0.1:38157/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"get_service_nodes", “params”: {“service_node_pubkeys”: [], "include_json": false}}' -H 'Content-Type: application/json'
+  // {
+  //   "id": "0",
+  //   "jsonrpc": "2.0",
+  //   "result": {
+  //     "service_node_states": [{
+  //       "contributors": [{
+  //         "address":    "T6T6kZfTEf5JGw2SgLrGuxRNFxRTf51fvbbcCYW949RsKjX75JMA1B1d8CT4VbwfGR8uf3f3AJSTaBHGpN3QRG2N2LyiksWVg",
+  //         "amount": 100000000000,
+  //         "reserved": 100000000000
+  //         "locked_contributions": [{
+  //             "key_image": "8d1bd8181bf7d857bdb281e0153d84cd55a3fcaa57c3e570f4a49f935850b5e3",
+  //             "key_image_pub_key": "0731363c58dd4492f031fa20c82fe6ddcb9cc070d73938afe8a5f7f77897f8b4",
+  //             "amount": 100000000000
+  //         }]
+  //       }],
+  //       "last_reward_block_height": 2968,
+  //       "last_reward_transaction_index": 4294967295,
+  //       "last_uptime_proof": 0,
+  //       "operator_address": "T6T6kZfTEf5JGw2SgLrGuxRNFxRTf51fvbbcCYW949RsKjX75JMA1B1d8CT4VbwfGR8uf3f3AJSTaBHGpN3QRG2N2LyiksWVg",
+  //       "portions_for_operator": 18446744073709551612,
+  //       "registration_height": 1860,
+  //       "requested_unlock_height": 0,
+  //       "service_node_pubkey": "3afa36a4855a429f5eac1b2f8e7e77657a2e862999ab4d59e473826f9b15f2da",
+  //       "staking_requirement": 100000000000,
+  //       "total_contributed": 100000000000,
+  //       "total_reserved": 100000000000
+  //     }],
+  //     "status": "OK",
+  //     "as_json": ""
+  //   }
+  // }
   struct COMMAND_RPC_GET_SERVICE_NODES
   {
     struct request
@@ -2725,6 +2786,16 @@ namespace cryptonote
   };
 
   LOKI_RPC_DOC_INTROSPECT
+  // Example
+  // curl -X POST http://127.0.0.1:38157/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"get_staking_requirement", "params": {“height”: 111111}}' -H 'Content-Type: application/json'
+  // {
+  //   "id": "0",
+  //   "jsonrpc": "2.0",
+  //   "result": {
+  //     "staking_requirement": 100000000000,
+  //     "status": "OK"
+  //   }
+  // }
   struct COMMAND_RPC_GET_STAKING_REQUIREMENT
   {
     struct request
