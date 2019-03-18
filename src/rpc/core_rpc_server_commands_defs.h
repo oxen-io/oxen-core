@@ -262,14 +262,12 @@ namespace cryptonote
     };
   };
 
-
-  LOKI_RPC_DOC_INTROSPECT
+  // Can't call, Not in core_rpc_server.h.
   struct COMMAND_RPC_GET_ADDRESS_TXS
   {
- 
       struct request
       {
-        std::string address;      // Address of wallet to receive tx information.
+        std::string address;      // Address of wallet to receive tx information. 
         std::string view_key;     // View key of Address.
 
         BEGIN_KV_SERIALIZE_MAP()
@@ -298,16 +296,16 @@ namespace cryptonote
       struct transaction
       {
         uint64_t id;                            // The transaction identifier.
-        std::string hash; // 
-        uint64_t timestamp; 
-        uint64_t total_received; 
-        uint64_t total_sent; 
-        uint64_t unlock_time; 
-        uint64_t height; 
-        std::list<spent_output> spent_outputs;
-        std::string payment_id;
-        bool coinbase;
-        bool mempool; 
+        std::string hash;                       // The hash of this transaction.
+        uint64_t timestamp;                     // The unix time at which the block was recorded into the blockchain.
+        uint64_t total_received;                // Total Loki received in atomic units.
+        uint64_t total_sent;                    // Total loki sent in atomic units.
+        uint64_t unlock_time;                   // Unlock time in blocks.
+        uint64_t height;                        // Block height transaction was made.
+        std::list<spent_output> spent_outputs;  // List of spent outputs.
+        std::string payment_id;                 // The payment ID of the transaction.
+        bool coinbase;                          // States if the transaction is a coinbase transaction. `true` if the transaction is coinbase, `false` if not.
+        bool mempool;                           // States if the transaction is sitting in the mempool. `true if the transaction is, `false` if not.
         uint32_t mixin;                         // The number of other signatures (aside from yours) in the ring signature that authorises the transaction.
 
         BEGIN_KV_SERIALIZE_MAP()
@@ -329,9 +327,9 @@ namespace cryptonote
       struct response
       {
         //std::list<std::string> txs_as_json;
-        uint64_t total_received;
+        uint64_t total_received;                 // Total Loki received in atomic units.
         uint64_t total_received_unlocked = 0;    // OpenMonero only
-        uint64_t scanned_height;
+        uint64_t scanned_height;                 // 
         std::vector<transaction> transactions;
         uint64_t blockchain_height;
         uint64_t scanned_block_height;
@@ -350,7 +348,7 @@ namespace cryptonote
   };
 
 
-  LOKI_RPC_DOC_INTROSPECT
+  // Can't call, Not in core_rpc_server.h.
   struct COMMAND_RPC_GET_ADDRESS_INFO
   {
       struct request
@@ -408,7 +406,7 @@ namespace cryptonote
   };
 
 
-  LOKI_RPC_DOC_INTROSPECT
+  // Can't call, Not in core_rpc_server.h.
   struct COMMAND_RPC_GET_UNSPENT_OUTS
   {
       struct request
@@ -478,7 +476,7 @@ namespace cryptonote
       };
   };
 
-  LOKI_RPC_DOC_INTROSPECT
+  // Can't call, Not in core_rpc_server.h.
   struct COMMAND_RPC_GET_RANDOM_OUTS
   {
       struct request
@@ -528,7 +526,7 @@ namespace cryptonote
       };
   };
 
-  LOKI_RPC_DOC_INTROSPECT
+  // Can't call, Not in core_rpc_server.h.
   struct COMMAND_RPC_SUBMIT_RAW_TX
   {
       struct request
@@ -557,7 +555,7 @@ namespace cryptonote
       };
   };
 
-  LOKI_RPC_DOC_INTROSPECT
+  // Can't call, Not in core_rpc_server.h.
   struct COMMAND_RPC_LOGIN
   {
       struct request
@@ -587,7 +585,7 @@ namespace cryptonote
       };
   };
 
-  LOKI_RPC_DOC_INTROSPECT
+  // Can't call, Not in core_rpc_server.h.
   struct COMMAND_RPC_IMPORT_WALLET_REQUEST
   {
       struct request
@@ -623,6 +621,7 @@ namespace cryptonote
   };
 
   LOKI_RPC_DOC_INTROSPECT
+  // Look up one or more transactions by hash.
   struct COMMAND_RPC_GET_TRANSACTIONS
   {
     struct request
@@ -642,17 +641,17 @@ namespace cryptonote
 
     struct entry
     {
-      std::string tx_hash;
-      std::string as_hex;                 // Full transaction information as a hex string.
+      std::string tx_hash;                  // Transaction hash.
+      std::string as_hex;                   // Full transaction information as a hex string.
       std::string pruned_as_hex; 
       std::string prunable_as_hex;
       std::string prunable_hash;
-      std::string as_json;                // List of transaction info
-      bool in_pool;
-      bool double_spend_seen;
-      uint64_t block_height;
-      uint64_t block_timestamp;
-      std::vector<uint64_t> output_indices;
+      std::string as_json;                  // List of transaction info.
+      bool in_pool;                         // States if the transaction is in pool (`true`) or included in a block (`false`).
+      bool double_spend_seen;               // States if the transaction is a double-spend (`true`) or not (`false`).
+      uint64_t block_height;                // Block height including the transaction.
+      uint64_t block_timestamp;             // Unix time at chich the block has been added to the blockchain.
+      std::vector<uint64_t> output_indices; // List of transaction indexes.
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(tx_hash)
@@ -761,8 +760,8 @@ namespace cryptonote
   LOKI_RPC_DOC_INTROSPECT
   struct get_outputs_out
   {
-    uint64_t amount;
-    uint64_t index;
+    uint64_t amount; // Amount of Loki in TXID.
+    uint64_t index;  
 
     BEGIN_KV_SERIALIZE_MAP()
       KV_SERIALIZE(amount)
@@ -776,8 +775,8 @@ namespace cryptonote
   {
     struct request
     {
-      std::vector<get_outputs_out> outputs;
-      bool get_txid;
+      std::vector<get_outputs_out> outputs; // Array of structure `get_outputs_out`.
+      bool get_txid;                        // TXID
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(outputs)
@@ -787,11 +786,11 @@ namespace cryptonote
 
     struct outkey
     {
-      crypto::public_key key;
-      rct::key mask;
-      bool unlocked;
-      uint64_t height;
-      crypto::hash txid;
+      crypto::public_key key; // The public key of the output.
+      rct::key mask;        
+      bool unlocked;          // States if output is locked (`false`) or not (`true`).
+      uint64_t height;        // Block height of the output.
+      crypto::hash txid;      // Transaction id.
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE_VAL_POD_AS_BLOB(key)
@@ -804,9 +803,9 @@ namespace cryptonote
 
     struct response
     {
-      std::vector<outkey> outs;
-      std::string status;
-      bool untrusted; // States if the result is obtained using the bootstrap mode, and is therefore not trusted (`true`), or when the daemon is fully synced (`false`).
+      std::vector<outkey> outs; // List of outkey information.
+      std::string status;       // General RPC error code. "OK" means everything looks good.
+      bool untrusted;           // States if the result is obtained using the bootstrap mode, and is therefore not trusted (`true`), or when the daemon is fully synced (`false`).
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(outs)
@@ -821,7 +820,7 @@ namespace cryptonote
   {
     struct request
     {
-      std::vector<get_outputs_out> outputs;
+      std::vector<get_outputs_out> outputs; // Array of structure `get_outputs_out`.
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(outputs)
@@ -830,11 +829,11 @@ namespace cryptonote
 
     struct outkey
     {
-      std::string key;
-      std::string mask;
-      bool unlocked;
-      uint64_t height;
-      std::string txid;
+      std::string key;  // The public key of the output.
+      std::string mask; 
+      bool unlocked;    // States if output is locked (`false`) or not (`true`).
+      uint64_t height;  // Block height of the output.
+      std::string txid; // Transaction id.
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(key)
@@ -847,9 +846,9 @@ namespace cryptonote
 
     struct response
     {
-      std::vector<outkey> outs;
-      std::string status;
-      bool untrusted;
+      std::vector<outkey> outs; // List of outkey information.
+      std::string status;       // General RPC error code. "OK" means everything looks good.
+      bool untrusted;           // States if the result is obtained using the bootstrap mode, and is therefore not trusted (`true`), or when the daemon is fully synced (`false`).
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(outs)
@@ -1120,9 +1119,8 @@ namespace cryptonote
   // Look up a block's hash by its height.
   struct COMMAND_RPC_GETBLOCKHASH
   {
-    typedef std::vector<uint64_t> request; // Block height (int array of length 1)
-
-    typedef std::string response;          // Block hash (string)
+    typedef std::vector<uint64_t> request; // Block height (int array of length 1).
+    typedef std::string response;          // Block hash (string).
   };
 
   LOKI_RPC_DOC_INTROSPECT
@@ -1183,11 +1181,12 @@ namespace cryptonote
   };
 
   LOKI_RPC_DOC_INTROSPECT
+  // Developer only.
   struct COMMAND_RPC_GENERATEBLOCKS
   {
     struct request
     {
-      uint64_t amount_of_blocks;
+      uint64_t amount_of_blocks; 
       std::string wallet_address;
 
       BEGIN_KV_SERIALIZE_MAP()
@@ -1228,7 +1227,7 @@ namespace cryptonote
       uint64_t block_weight;                  // The block weight in bytes.
       uint64_t num_txes;                      // Number of transactions in the block, not counting the coinbase tx.
       std::string pow_hash;                   // The hash of the block's proof of work.
-      uint64_t long_term_weight;              // 
+      uint64_t long_term_weight;              // Long term weight of the block.
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(major_version)
@@ -1357,7 +1356,7 @@ namespace cryptonote
 
     struct response
     {
-      std::string status;
+      std::string status;                 // General RPC error code. "OK" means everything looks good.
       block_header_response block_header; // A structure containing block header information. See get_last_block_header.
       std::string miner_tx_hash;          // Miner transaction information
       std::vector<std::string> tx_hashes; // List of hashes of non-coinbase transactions in the block. If there are no other transactions, this will be an empty list.
@@ -1376,7 +1375,6 @@ namespace cryptonote
       END_KV_SERIALIZE_MAP()
     };
   };
-
 
   LOKI_RPC_DOC_INTROSPECT
   struct peer 
@@ -1561,6 +1559,8 @@ namespace cryptonote
   };
 
   LOKI_RPC_DOC_INTROSPECT
+  // Show information about valid transactions seen by the node but not yet mined into a block, 
+  // as well as spent key image information for the txpool in the node's memory.
   struct COMMAND_RPC_GET_TRANSACTION_POOL
   {
     struct request
@@ -1586,6 +1586,7 @@ namespace cryptonote
   };
 
   LOKI_RPC_DOC_INTROSPECT
+  // Get hashes from transaction pool. Binary request.
   struct COMMAND_RPC_GET_TRANSACTION_POOL_HASHES_BIN
   {
     struct request
@@ -1609,6 +1610,7 @@ namespace cryptonote
   };
 
   LOKI_RPC_DOC_INTROSPECT
+  // Get hashes from transaction pool.
   struct COMMAND_RPC_GET_TRANSACTION_POOL_HASHES
   {
     struct request
@@ -1634,12 +1636,13 @@ namespace cryptonote
   LOKI_RPC_DOC_INTROSPECT
   struct tx_backlog_entry
   {
-    uint64_t weight;
-    uint64_t fee;
+    uint64_t weight;       // 
+    uint64_t fee;          // Fee in Loki measured in atomic units.
     uint64_t time_in_pool;
   };
 
   LOKI_RPC_DOC_INTROSPECT
+  // Get all transaction pool backlog.
   struct COMMAND_RPC_GET_TRANSACTION_POOL_BACKLOG
   {
     struct request
@@ -1711,6 +1714,7 @@ namespace cryptonote
   };
 
   LOKI_RPC_DOC_INTROSPECT
+  // Get the transaction pool statistics.
   struct COMMAND_RPC_GET_TRANSACTION_POOL_STATS
   {
     struct request
@@ -1734,6 +1738,7 @@ namespace cryptonote
   };
 
   LOKI_RPC_DOC_INTROSPECT
+  // Retrieve information about incoming and outgoing connections to your node.
   struct COMMAND_RPC_GET_CONNECTIONS
   {
     struct request
@@ -1745,7 +1750,7 @@ namespace cryptonote
     struct response
     {
       std::string status; // General RPC error code. "OK" means everything looks good.
-      std::list<connection_info> connections;
+      std::list<connection_info> connections; // List of all connections and their info:
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(status)
@@ -1756,6 +1761,9 @@ namespace cryptonote
   };
 
   LOKI_RPC_DOC_INTROSPECT
+  // Similar to get_block_header_by_height above, but for a range of blocks. 
+  // This method includes a starting block height and an ending block height as 
+  // parameters to retrieve basic information about the range of blocks.
   struct COMMAND_RPC_GET_BLOCK_HEADERS_RANGE
   {
     struct request
@@ -1786,6 +1794,7 @@ namespace cryptonote
   };
 
   LOKI_RPC_DOC_INTROSPECT
+  // Send a command to the daemon to safely disconnect and shut down.
   struct COMMAND_RPC_STOP_DAEMON
   {
     struct request
@@ -1804,7 +1813,7 @@ namespace cryptonote
     };
   };
 
-  LOKI_RPC_DOC_INTROSPECT
+  // Not in core_rpc_server.h. Can't call.
   struct COMMAND_RPC_FAST_EXIT
   {
 	struct request
@@ -1824,6 +1833,7 @@ namespace cryptonote
   };
 
   LOKI_RPC_DOC_INTROSPECT
+  // Get daemon bandwidth limits.
   struct COMMAND_RPC_GET_LIMIT
   {
     struct request
@@ -1849,6 +1859,7 @@ namespace cryptonote
   };
 
   LOKI_RPC_DOC_INTROSPECT
+  // Set daemon bandwidth limits.
   struct COMMAND_RPC_SET_LIMIT
   {
     struct request
@@ -1877,6 +1888,7 @@ namespace cryptonote
   };
 
   LOKI_RPC_DOC_INTROSPECT
+  // Limit number of Outgoing peers.
   struct COMMAND_RPC_OUT_PEERS
   {
 	struct request
@@ -1898,6 +1910,7 @@ namespace cryptonote
   };
 
   LOKI_RPC_DOC_INTROSPECT
+  // Limit number of Incoming peers.
   struct COMMAND_RPC_IN_PEERS
   {
     struct request
@@ -1919,6 +1932,7 @@ namespace cryptonote
   };
 
   LOKI_RPC_DOC_INTROSPECT
+  // Obsolete. Conserved here for reference.
   struct COMMAND_RPC_START_SAVE_GRAPH
   {
 	struct request
@@ -1938,6 +1952,7 @@ namespace cryptonote
   };
 
   LOKI_RPC_DOC_INTROSPECT
+  // Obsolete. Conserved here for reference.
   struct COMMAND_RPC_STOP_SAVE_GRAPH
   {
 	struct request
@@ -1957,6 +1972,7 @@ namespace cryptonote
   };
 
   LOKI_RPC_DOC_INTROSPECT
+  // Look up information regarding hard fork voting and readiness.
   struct COMMAND_RPC_HARD_FORK_INFO
   {
     struct request
@@ -1997,6 +2013,7 @@ namespace cryptonote
   };
 
   LOKI_RPC_DOC_INTROSPECT
+  // Get list of banned IPs.
   struct COMMAND_RPC_GETBANS
   {
     struct ban
@@ -2031,6 +2048,7 @@ namespace cryptonote
   };
 
   LOKI_RPC_DOC_INTROSPECT
+  // Ban another node by IP.
   struct COMMAND_RPC_SETBANS
   {
     struct ban
@@ -2068,6 +2086,7 @@ namespace cryptonote
   };
 
   LOKI_RPC_DOC_INTROSPECT
+  // Flush tx ids from transaction pool..
   struct COMMAND_RPC_FLUSH_TRANSACTION_POOL
   {
     struct request
@@ -2090,6 +2109,8 @@ namespace cryptonote
   };
 
   LOKI_RPC_DOC_INTROSPECT
+  // Get a histogram of output amounts. For all amounts (possibly filtered by parameters), 
+  // gives the number of outputs on the chain for that amount. RingCT outputs counts as 0 amount.
   struct COMMAND_RPC_GET_OUTPUT_HISTOGRAM
   {
     struct request
@@ -2097,7 +2118,7 @@ namespace cryptonote
       std::vector<uint64_t> amounts; // list of amounts in Atomic Units.
       uint64_t min_count;            // The minimum amounts you are requesting.
       uint64_t max_count;            // The maximum amounts you are requesting.
-      bool unlocked;                 // 
+      bool unlocked;                 // Look for locked only.
       uint64_t recent_cutoff;
 
       BEGIN_KV_SERIALIZE_MAP()
@@ -2131,7 +2152,7 @@ namespace cryptonote
     struct response
     {
       std::string status;           // General RPC error code. "OK" means everything looks good.
-      std::vector<entry> histogram;
+      std::vector<entry> histogram; // List of histogram entries:
       bool untrusted;               // States if the result is obtained using the bootstrap mode, and is therefore not trusted (`true`), or when the daemon is fully synced (`false`).
 
       BEGIN_KV_SERIALIZE_MAP()
@@ -2143,6 +2164,7 @@ namespace cryptonote
   };
 
   LOKI_RPC_DOC_INTROSPECT
+  // Get node current version.
   struct COMMAND_RPC_GET_VERSION
   {
     struct request
@@ -2154,7 +2176,7 @@ namespace cryptonote
     struct response
     {
       std::string status; // General RPC error code. "OK" means everything looks good.
-      uint32_t version;
+      uint32_t version;   // Node current version.
       bool untrusted;     // States if the result is obtained using the bootstrap mode, and is therefore not trusted (`true`), or when the daemon is fully synced (`false`).
 
       BEGIN_KV_SERIALIZE_MAP()
@@ -2166,6 +2188,7 @@ namespace cryptonote
   };
 
   LOKI_RPC_DOC_INTROSPECT
+  // Get the coinbase ammount and the fees ammount for n last blocks starting at particular height.
   struct COMMAND_RPC_GET_COINBASE_TX_SUM
   {
     struct request
@@ -2194,6 +2217,7 @@ namespace cryptonote
   };
 
   LOKI_RPC_DOC_INTROSPECT
+  // Gives an estimation on fees per kB.
   struct COMMAND_RPC_GET_BASE_FEE_ESTIMATE
   {
     struct request
@@ -2222,6 +2246,7 @@ namespace cryptonote
   };
 
   LOKI_RPC_DOC_INTROSPECT
+  // Display alternative chains seen by the node.
   struct COMMAND_RPC_GET_ALTERNATE_CHAINS
   {
     struct request
@@ -2262,6 +2287,7 @@ namespace cryptonote
   };
 
   LOKI_RPC_DOC_INTROSPECT
+  // Update daemon.
   struct COMMAND_RPC_UPDATE
   {
     struct request
@@ -2298,6 +2324,7 @@ namespace cryptonote
   };
 
   LOKI_RPC_DOC_INTROSPECT
+  // Relay a list of transaction IDs.
   struct COMMAND_RPC_RELAY_TX
   {
     struct request
@@ -2320,6 +2347,7 @@ namespace cryptonote
   };
 
   LOKI_RPC_DOC_INTROSPECT
+  // Get synchronisation information.
   struct COMMAND_RPC_SYNC_INFO
   {
     struct request
@@ -2385,10 +2413,10 @@ namespace cryptonote
   {
     struct request
     {
-      std::vector<uint64_t> amounts; // // Amounts to look for in atomic units.
-      uint64_t from_height; // (optional, default is 0) starting height to check from.
-      uint64_t to_height; // (optional, default is 0) ending height to check up to.
-      bool cumulative; // (optional, default is false) States if the result should be cumulative (true) or not (false).
+      std::vector<uint64_t> amounts; // Amounts to look for in atomic units.
+      uint64_t from_height;          // (optional, default is 0) starting height to check from.
+      uint64_t to_height;            // (optional, default is 0) ending height to check up to.
+      bool cumulative;               // (optional, default is false) States if the result should be cumulative (true) or not (false).
       bool binary; 
       bool compress;
 
@@ -2446,9 +2474,9 @@ namespace cryptonote
 
     struct response
     {
-      std::string status; // General RPC error code. "OK" means everything looks good.
+      std::string status;                      // General RPC error code. "OK" means everything looks good.
       std::vector<distribution> distributions; // 
-      bool untrusted; // States if the result is obtained using the bootstrap mode, and is therefore not trusted (`true`), or when the daemon is fully synced (`false`).
+      bool untrusted;                          // States if the result is obtained using the bootstrap mode, and is therefore not trusted (`true`), or when the daemon is fully synced (`false`).
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(status)
@@ -2506,28 +2534,10 @@ namespace cryptonote
     };
   };
 
-  //
-  // Loki
-  //
+
   LOKI_RPC_DOC_INTROSPECT
-  // Example
-  // curl -X POST http://127.0.0.1:38157/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"get_quorum_state", "params": {"height": 200}}' -H 'Content-Type: application/json'
-  // {
-  //   "id": "0",
-  //   "jsonrpc": "2.0",
-  //   "result": {
-  //     "nodes_to_test":
-  //        ["578e5ee53150a3276dd3c411cb6313324a63b530cf3651f5c15e3d0ca58ceddd",
-  //         …
-  //         "c917034e9fcd0e9b0d423638664bbfc36eb8a2eeb68a1ff8bed8be5f699bc3c0"],
-  //     "quorum_nodes":
-  //        ["fc86a737756b6ed9f81233d22da3baee32537f3087901c3e94384be85ca1a9ee",
-  //         …
-  //         "ee597c5c7bbf1452e689a785f1133fc1355889b4111955d54cb5ed826cd35a32"],
-  //     "status": "OK",
-  //     "untrusted": false
-  //   }
-  // }
+  // Get the quorum state which is the list of public keys of the nodes 
+  // who are voting, and the list of public keys of the nodes who are being tested.
   struct COMMAND_RPC_GET_QUORUM_STATE
   {
     struct request
@@ -2555,6 +2565,8 @@ namespace cryptonote
   };
 
   LOKI_RPC_DOC_INTROSPECT
+  // Get the quorum state which is the list of public keys of the nodes 
+  // who are voting, and the list of public keys of the nodes who are being tested.
   struct COMMAND_RPC_GET_QUORUM_STATE_BATCHED
   {
     struct request
@@ -2663,16 +2675,8 @@ namespace cryptonote
   };
 
   LOKI_RPC_DOC_INTROSPECT
-  // Example
-  // curl -X POST http://127.0.0.1:38157/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"get_service_node_key"}' -H 'Content-Type: application/json'
-  // {
-  //   "id": "0",
-  //   "jsonrpc": "2.0",
-  //   "result": {
-  //     "service_node_pubkey": "8d56c1fa0304884e612ee2efe763b2c50991a66329418fd084a3f23c75399f34",
-  //     "status": "OK"
-  //   }
-  // }
+  // Get the service node public key of the queried daemon. 
+  // The daemon must be started in --service-node mode otherwise this RPC command will fail.
   struct COMMAND_RPC_GET_SERVICE_NODE_KEY
   {
     struct request
@@ -2694,39 +2698,7 @@ namespace cryptonote
   };
 
   LOKI_RPC_DOC_INTROSPECT
-  // Example
-  // curl -X POST http://127.0.0.1:38157/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"get_service_nodes", “params”: {“service_node_pubkeys”: [], "include_json": false}}' -H 'Content-Type: application/json'
-  // {
-  //   "id": "0",
-  //   "jsonrpc": "2.0",
-  //   "result": {
-  //     "service_node_states": [{
-  //       "contributors": [{
-  //         "address":    "T6T6kZfTEf5JGw2SgLrGuxRNFxRTf51fvbbcCYW949RsKjX75JMA1B1d8CT4VbwfGR8uf3f3AJSTaBHGpN3QRG2N2LyiksWVg",
-  //         "amount": 100000000000,
-  //         "reserved": 100000000000
-  //         "locked_contributions": [{
-  //             "key_image": "8d1bd8181bf7d857bdb281e0153d84cd55a3fcaa57c3e570f4a49f935850b5e3",
-  //             "key_image_pub_key": "0731363c58dd4492f031fa20c82fe6ddcb9cc070d73938afe8a5f7f77897f8b4",
-  //             "amount": 100000000000
-  //         }]
-  //       }],
-  //       "last_reward_block_height": 2968,
-  //       "last_reward_transaction_index": 4294967295,
-  //       "last_uptime_proof": 0,
-  //       "operator_address": "T6T6kZfTEf5JGw2SgLrGuxRNFxRTf51fvbbcCYW949RsKjX75JMA1B1d8CT4VbwfGR8uf3f3AJSTaBHGpN3QRG2N2LyiksWVg",
-  //       "portions_for_operator": 18446744073709551612,
-  //       "registration_height": 1860,
-  //       "requested_unlock_height": 0,
-  //       "service_node_pubkey": "3afa36a4855a429f5eac1b2f8e7e77657a2e862999ab4d59e473826f9b15f2da",
-  //       "staking_requirement": 100000000000,
-  //       "total_contributed": 100000000000,
-  //       "total_reserved": 100000000000
-  //     }],
-  //     "status": "OK",
-  //     "as_json": ""
-  //   }
-  // }
+  // Get information on Service Nodes.
   struct COMMAND_RPC_GET_SERVICE_NODES
   {
     struct request
@@ -2814,16 +2786,9 @@ namespace cryptonote
   };
 
   LOKI_RPC_DOC_INTROSPECT
-  // Example
-  // curl -X POST http://127.0.0.1:38157/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"get_staking_requirement", "params": {“height”: 111111}}' -H 'Content-Type: application/json'
-  // {
-  //   "id": "0",
-  //   "jsonrpc": "2.0",
-  //   "result": {
-  //     "staking_requirement": 100000000000,
-  //     "status": "OK"
-  //   }
-  // }
+  // Get the required amount of Loki to become a Service Node at the queried height. 
+  // For stagenet and testnet values, ensure the daemon is started with the 
+  // `--stagenet` or `--testnet` flags respectively.
   struct COMMAND_RPC_GET_STAKING_REQUIREMENT
   {
     struct request
@@ -2848,6 +2813,7 @@ namespace cryptonote
   };
 
   LOKI_RPC_DOC_INTROSPECT
+  // Get information on blacklisted Service Node key images.
   struct COMMAND_RPC_GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES
   {
     struct request
@@ -2880,6 +2846,7 @@ namespace cryptonote
   };
 
   LOKI_RPC_DOC_INTROSPECT
+  // Get information on output blacklist.
   struct COMMAND_RPC_GET_OUTPUT_BLACKLIST
   {
     struct request 
