@@ -2604,6 +2604,7 @@ namespace cryptonote
         uint64_t                  last_reward_block_height;
         uint32_t                  last_reward_transaction_index;
         uint64_t                  last_uptime_proof;
+        std::vector<uint16_t>     service_node_version;
         std::vector<contributor>  contributors;
         uint64_t                  total_contributed;
         uint64_t                  total_reserved;
@@ -2618,6 +2619,7 @@ namespace cryptonote
             KV_SERIALIZE(last_reward_block_height)
             KV_SERIALIZE(last_reward_transaction_index)
             KV_SERIALIZE(last_uptime_proof)
+            KV_SERIALIZE(service_node_version)
             KV_SERIALIZE(contributors)
             KV_SERIALIZE(total_contributed)
             KV_SERIALIZE(total_reserved)
