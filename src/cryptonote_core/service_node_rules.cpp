@@ -42,6 +42,20 @@ uint64_t portions_to_amount(uint64_t portions, uint64_t staking_requirement)
   return resultlo;
 }
 
+uint64_t portions_to_amount_incl_dust(uint64_t portions, uint64_t staking_requirement)
+{
+  const uint64_t DUST = STAKING_PORTIONS - 1;
+  uint64_t lo, hi, resulthi, resultlo;
+  lo = mul128(portions, staking_requirement, &hi);
+
+  if (lo > UINT64_MAX - DUST)
+    hi++;
+  lo += DUST;
+
+  div128_64(hi, lo, STAKING_PORTIONS, &resulthi, &resultlo);
+  return resultlo;
+}
+
 bool check_service_node_portions(uint8_t hf_version, const std::vector<uint64_t>& portions)
 {
   if (portions.size() > MAX_NUMBER_OF_CONTRIBUTORS) return false;
@@ -80,29 +94,33 @@ uint64_t get_locked_key_image_unlock_height(cryptonote::network_type nettype, ui
   return result;
 }
 
-static uint64_t get_min_node_contribution_pre_v11(uint64_t staking_requirement, uint64_t total_reserved)
+static uint64_t get_min_node_contribution_in_portions_pre_hf11(uint64_t total_portions_reserved)
 {
-  return std::min(staking_requirement - total_reserved, staking_requirement / MAX_NUMBER_OF_CONTRIBUTORS);
+  uint64_t portions_remaining = STAKING_PORTIONS - total_portions_reserved;
+  uint64_t result             = std::min(portions_remaining, MIN_PORTIONS);
+  return result;
 }
 
 uint64_t get_min_node_contribution(uint8_t version, uint64_t staking_requirement, uint64_t total_reserved, size_t num_contributions)
 {
-  if (version < cryptonote::network_version_11_infinite_staking)
-    return get_min_node_contribution_pre_v11(staking_requirement, total_reserved);
+  uint64_t result_in_portions = get_min_node_contribution_in_portions(version, portions_to_amount(total_reserved, staking_requirement), num_contributions);
+  uint64_t result             = portions_to_amount_incl_dust(result_in_portions, staking_requirement);
+  return result;
+}
 
-  const uint64_t needed                 = staking_requirement - total_reserved;
+uint64_t get_min_node_contribution_in_portions(uint8_t version, uint64_t total_portions_reserved, size_t num_contributions)
+{
+  if (version < cryptonote::network_version_11_infinite_staking)
+    return get_min_node_contribution_in_portions_pre_hf11(total_portions_reserved);
+
+  const uint64_t portions_remaining     = STAKING_PORTIONS - total_portions_reserved;
   const size_t max_num_of_contributions = MAX_NUMBER_OF_CONTRIBUTORS * MAX_KEY_IMAGES_PER_CONTRIBUTOR;
   assert(max_num_of_contributions > num_contributions);
   if (max_num_of_contributions <= num_contributions) return UINT64_MAX;
 
   const size_t num_contributions_remaining_avail = max_num_of_contributions - num_contributions;
-  return needed / num_contributions_remaining_avail;
-}
-
-uint64_t get_min_node_contribution_in_portions(uint8_t version, uint64_t staking_requirement, uint64_t total_reserved, size_t num_contributions)
-{
-  uint64_t atomic_amount = get_min_node_contribution(version, staking_requirement, total_reserved, num_contributions);
-  uint64_t result        = (atomic_amount == UINT64_MAX) ? UINT64_MAX : (get_portions_to_make_amount(staking_requirement, atomic_amount));
+  uint64_t result = portions_remaining / num_contributions_remaining_avail;
+  result         += portions_remaining % num_contributions_remaining_avail; // Always add dust
   return result;
 }
 

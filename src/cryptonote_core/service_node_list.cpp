@@ -1758,9 +1758,8 @@ namespace service_nodes
       return result;
     }
 
-    size_t const OPERATOR_ARG_INDEX     = 1;
-    uint64_t amount_payable_by_operator = 0;
-    uint64_t total_reserved             = 0;
+    size_t const OPERATOR_ARG_INDEX   = 1;
+    uint64_t total_portions_reserved  = 0;
     for (size_t i = OPERATOR_ARG_INDEX, num_contributions = 0;
          i < args.size();
          i += 2, ++num_contributions)
@@ -1787,7 +1786,7 @@ namespace service_nodes
       try
       {
         uint64_t num_portions = boost::lexical_cast<uint64_t>(args[i+1]);
-        uint64_t min_portions = get_min_node_contribution_in_portions(hf_version, staking_requirement, total_reserved, num_contributions);
+        uint64_t min_portions = get_min_node_contribution_in_portions(hf_version, total_portions_reserved, num_contributions);
         if (num_portions < min_portions)
         {
           result.err_msg = tr("Invalid amount for contributor: ") + args[i] + tr(", with portion amount: ") + args[i+1] + tr(". The contributors must each have at least 25%, except for the last contributor which may have the remaining amount");
@@ -1802,8 +1801,7 @@ namespace service_nodes
 
         result.addresses.push_back(info.address);
         result.portions.push_back(num_portions);
-        uint64_t loki_amount = service_nodes::portions_to_amount(num_portions, staking_requirement);
-        total_reserved      += loki_amount;
+        total_portions_reserved += num_portions;
       }
       catch (const std::exception &e)
       {
@@ -1812,10 +1810,18 @@ namespace service_nodes
       }
     }
 
-    uint64_t amount_left = staking_requirement - total_reserved;
-    const uint64_t DUST  = MAX_NUMBER_OF_CONTRIBUTORS;
-    if (amount_left <= DUST)
-      result.portions[0] += amount_left;
+    uint64_t const portions_left = STAKING_PORTIONS - total_portions_reserved;
+    uint64_t const DUST          = staking_requirement - 1;
+    if (portions_left <= DUST)
+    {
+      if (result.portions[0] > (STAKING_PORTIONS - portions_left)) // Sanity check
+      {
+        result.err_msg = "Developer: Unexpected overflow in portions: (" + std::to_string(result.portions[0]) + " + " + std::to_string(portions_left) + ") > STAKING_PORTIONS";
+        return result;
+      }
+
+      result.portions[0] += portions_left;
+    }
 
     result.success = true;
     return result;

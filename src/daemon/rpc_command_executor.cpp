@@ -2587,26 +2587,6 @@ bool t_rpc_command_executor::print_sn_key()
   return true;
 }
 
-// Returns lowest x such that (STAKING_PORTIONS * x/amount) >= portions
-static uint64_t get_amount_to_make_portions(uint64_t amount, uint64_t portions)
-{
-  uint64_t lo, hi, resulthi, resultlo;
-  lo = mul128(amount, portions, &hi);
-  if (lo > UINT64_MAX - (STAKING_PORTIONS - 1))
-    hi++;
-  lo += STAKING_PORTIONS-1;
-  div128_64(hi, lo, STAKING_PORTIONS, &resulthi, &resultlo);
-  return resultlo;
-}
-
-static uint64_t get_actual_amount(uint64_t amount, uint64_t portions)
-{
-  uint64_t lo, hi, resulthi, resultlo;
-  lo = mul128(amount, portions, &hi);
-  div128_64(hi, lo, STAKING_PORTIONS, &resulthi, &resultlo);
-  return resultlo;
-}
-
 bool t_rpc_command_executor::prepare_registration()
 {
   // RAII-style class to temporarily clear categories and restore upon destruction (i.e. upon returning).
@@ -2825,7 +2805,7 @@ bool t_rpc_command_executor::prepare_registration()
         state.addresses.push_back(address_str); // the addresses will be validated later down the line
         state.contributions.push_back(STAKING_PORTIONS);
         state.portions_remaining = 0;
-        state.total_reserved_contributions += get_actual_amount(staking_requirement, STAKING_PORTIONS);
+        state.total_reserved_contributions += service_nodes::portions_to_amount(staking_requirement, STAKING_PORTIONS);
         state.prev_step = step;
         step            = register_step::final_summary;
         state_stack.push(state);
@@ -2936,8 +2916,8 @@ bool t_rpc_command_executor::prepare_registration()
 
       case register_step::is_open_stake__operator_amount_to_reserve:
       {
-        uint64_t min_contribution_portions = service_nodes::get_min_node_contribution_in_portions(hf_version, staking_requirement, 0, 0);
-        const uint64_t min_contribution    = get_amount_to_make_portions(staking_requirement, min_contribution_portions);
+        uint64_t min_contribution_portions = service_nodes::get_min_node_contribution_in_portions(hf_version, 0, 0);
+        const uint64_t min_contribution    = service_nodes::portions_to_amount_incl_dust(staking_requirement, min_contribution_portions);
         std::cout << "Minimum amount that can be reserved: " << cryptonote::print_money(min_contribution) << " " << cryptonote::get_unit() << std::endl;
 
         std::string contribution_str;
@@ -2973,7 +2953,7 @@ bool t_rpc_command_executor::prepare_registration()
 
         state.contributions.push_back(portions);
         state.portions_remaining -= portions;
-        state.total_reserved_contributions += get_actual_amount(staking_requirement, portions);
+        state.total_reserved_contributions += service_nodes::portions_to_amount(staking_requirement, portions);
         state.prev_step = step;
 
         if (state.num_participants > 1)
@@ -3014,9 +2994,10 @@ bool t_rpc_command_executor::prepare_registration()
 
       case register_step::is_open_stake__contributor_amount_to_reserve:
       {
-        const uint64_t amount_left         = staking_requirement - state.total_reserved_contributions;
-        uint64_t min_contribution_portions = service_nodes::get_min_node_contribution_in_portions(hf_version, staking_requirement, state.total_reserved_contributions, state.contributions.size());
-        const uint64_t min_contribution    = get_amount_to_make_portions(staking_requirement, min_contribution_portions);
+        const uint64_t total_portions_reserved   = STAKING_PORTIONS - state.portions_remaining;
+        const uint64_t min_contribution_portions = service_nodes::get_min_node_contribution_in_portions(hf_version, total_portions_reserved, state.contributions.size());
+        const uint64_t min_contribution          = service_nodes::portions_to_amount(staking_requirement, min_contribution_portions);
+        const uint64_t amount_left               = staking_requirement - state.total_reserved_contributions;
 
         std::cout << "The minimum amount possible to contribute is " << cryptonote::print_money(min_contribution) << " " << cryptonote::get_unit() << std::endl;
         std::cout << "There is " << cryptonote::print_money(amount_left) << " " << cryptonote::get_unit() << " left to meet the staking requirement." << std::endl;
@@ -3052,7 +3033,7 @@ bool t_rpc_command_executor::prepare_registration()
 
         state.contributions.push_back(portions);
         state.portions_remaining -= portions;
-        state.total_reserved_contributions += get_actual_amount(staking_requirement, portions);
+        state.total_reserved_contributions += service_nodes::portions_to_amount(staking_requirement, portions);
         state.prev_step = step;
 
         if (state.contributions.size() == state.num_participants)
@@ -3105,7 +3086,7 @@ bool t_rpc_command_executor::prepare_registration()
         for (size_t i = 0; i < state.num_participants; ++i)
         {
           const std::string participant_name = (i==0) ? "Operator" : "Contributor " + std::to_string(i);
-          uint64_t amount = get_actual_amount(staking_requirement, state.contributions[i]);
+          uint64_t amount = service_nodes::portions_to_amount(staking_requirement, state.contributions[i]);
           if (amount_left <= DUST && i == 0)
             amount += amount_left; // add dust to the operator.
           printf("%-16s%-9s%-19s%-.9f\n", participant_name.c_str(), state.addresses[i].substr(0,6).c_str(), cryptonote::print_money(amount).c_str(), (double)state.contributions[i] * 100 / STAKING_PORTIONS);
