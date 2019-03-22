@@ -2177,9 +2177,10 @@ namespace cryptonote
         return false;
       }
 
+      // NOTE(loki): We don't validate that the hash belongs to a valid block
+      // just yet, just that the signature is valid.
       crypto::public_key const &voters_pub_key = state->quorum_nodes[vote.voters_quorum_index];
-      crypto::hash const check_hash            = get_block_id_by_height(vote.block_height);
-      if (!crypto::check_signature(check_hash, voters_pub_key, vote.signature))
+      if (!crypto::check_signature(vote.hash, voters_pub_key, vote.signature))
       {
         LOG_PRINT_L1("TODO(doyle): CHECKPOINTING(doyle): Writeme");
         return false;

@@ -144,7 +144,7 @@ namespace cryptonote
      *
      * @return a const reference to the checkpoints container
      */
-    const std::map<uint64_t, checkpoint_t>& get_points() const { return m_points; };
+    const std::map<uint64_t, std::list<checkpoint_t>>& get_points() const { return m_points; };
 
     /**
      * @brief checks if our checkpoints container conflicts with another

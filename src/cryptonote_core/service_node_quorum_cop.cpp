@@ -160,14 +160,15 @@ namespace service_nodes
         {
           service_nodes::checkpoint_vote vote = {};
           vote.block_height                   = block_height_to_checkpoint;
+          vote.block_hash                     = m_core.get_block_id_by_height(block_height_to_checkpoint);
           vote.voters_quorum_index            = my_index_in_quorum;
-          crypto::hash block_hash             = m_core.get_block_id_by_height(block_height_to_checkpoint);
-          crypto::generate_signature(block_hash, my_pubkey, my_seckey, vote.signature);
+          crypto::generate_signature(vote.block_hash, my_pubkey, my_seckey, vote.signature);
 
           cryptonote::vote_verification_context vvc = {};
           if (!m_core.add_checkpoint_vote(vote, vvc))
           {
             // TODO(doyle): CHECKPOINTING(doyle):
+            LOG_ERROR("Failed to add checkpoint vote reason: " << print_vote_verification_context(vvc, &vote));
           }
         }
       }
