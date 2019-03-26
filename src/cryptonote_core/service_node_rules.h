@@ -22,7 +22,6 @@ namespace service_nodes {
   constexpr uint64_t KEY_IMAGE_AWAITING_UNLOCK_HEIGHT = 0;
 
 
-
 inline uint64_t staking_num_lock_blocks(cryptonote::network_type nettype)
 {
   switch(nettype)
@@ -34,18 +33,17 @@ inline uint64_t staking_num_lock_blocks(cryptonote::network_type nettype)
 }
 
 static_assert(STAKING_PORTIONS != UINT64_MAX, "UINT64_MAX is used as the invalid value for failing to calculate the min_node_contribution");
-// return: UINT64_MAX if (num_contributions > the max number of contributions), otherwise the amount in loki atomic units
-uint64_t get_min_node_contribution            (uint8_t version, uint64_t staking_requirement, uint64_t total_reserved, size_t num_contributions);
-uint64_t get_min_node_contribution_in_portions(uint8_t version, uint64_t total_reserved, size_t num_contributions);
+// NOTE: The units of maximum and total_reserved must match, i.e. both expressed in Loki or both expressed in portions
+// return: UINT64_MAX if (num_contributions > the max number of contributions), otherwise the amount
+uint64_t get_min_node_contribution(uint8_t version, uint64_t maximum, uint64_t total_reserved, size_t num_contributions);
 
 uint64_t get_staking_requirement(cryptonote::network_type nettype, uint64_t height, int hf_version);
 
 // Convert portions to amount but round up to include dust, i.e.
 // Returns lowest x such that (STAKING_PORTIONS * x/amount) >= portions
 uint64_t portions_to_amount_incl_dust(uint64_t portions, uint64_t staking_requirement);
-
-// Convert portions to amount but don't include dust
 uint64_t portions_to_amount(uint64_t portions, uint64_t staking_requirement);
+uint64_t amount_to_portions_incl_dust(uint64_t amount, uint64_t portions);
 
 /// Check if portions are sufficiently large (provided the contributions
 /// are made in the specified order) and don't exceed the required amount
@@ -53,9 +51,6 @@ bool check_service_node_portions(uint8_t version, const std::vector<uint64_t>& p
 
 crypto::hash generate_request_stake_unlock_hash(uint32_t nonce);
 uint64_t     get_locked_key_image_unlock_height(cryptonote::network_type nettype, uint64_t node_register_height, uint64_t curr_height);
-
-// Returns lowest x such that (staking_requirement * x/STAKING_PORTIONS) >= amount
-uint64_t get_portions_to_make_amount(uint64_t staking_requirement, uint64_t amount);
 
 bool get_portions_from_percent_str(std::string cut_str, uint64_t& portions);
 

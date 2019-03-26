@@ -42,6 +42,20 @@ uint64_t portions_to_amount(uint64_t portions, uint64_t staking_requirement)
   return resultlo;
 }
 
+uint64_t amount_to_portions_incl_dust(uint64_t amount, uint64_t staking_requirement)
+{
+  const uint64_t DUST = staking_requirement - 1;
+  uint64_t hi, lo, resulthi, resultlo;
+  lo = mul128(amount, STAKING_PORTIONS, &hi);
+
+  if (lo > UINT64_MAX - DUST)
+    hi++;
+  lo += DUST;
+
+  div128_64(hi, lo, staking_requirement, &resulthi, &resultlo);
+  return resultlo;
+}
+
 uint64_t portions_to_amount_incl_dust(uint64_t portions, uint64_t staking_requirement)
 {
   const uint64_t DUST = STAKING_PORTIONS - 1;
@@ -94,45 +108,28 @@ uint64_t get_locked_key_image_unlock_height(cryptonote::network_type nettype, ui
   return result;
 }
 
-static uint64_t get_min_node_contribution_in_portions_pre_hf11(uint64_t total_portions_reserved)
+static uint64_t get_min_node_contribution_pre_hf11(uint64_t maximum, uint64_t total_reserved)
 {
-  uint64_t portions_remaining = STAKING_PORTIONS - total_portions_reserved;
-  uint64_t result             = std::min(portions_remaining, MIN_PORTIONS);
+  uint64_t remaining = maximum - total_reserved;
+  uint64_t minimum   = maximum / MAX_NUMBER_OF_CONTRIBUTORS;
+  uint64_t result    = std::min(remaining, minimum);
   return result;
 }
 
-uint64_t get_min_node_contribution(uint8_t version, uint64_t staking_requirement, uint64_t total_reserved, size_t num_contributions)
-{
-  uint64_t result_in_portions = get_min_node_contribution_in_portions(version, portions_to_amount(total_reserved, staking_requirement), num_contributions);
-  uint64_t result             = portions_to_amount_incl_dust(result_in_portions, staking_requirement);
-  return result;
-}
-
-uint64_t get_min_node_contribution_in_portions(uint8_t version, uint64_t total_portions_reserved, size_t num_contributions)
+uint64_t get_min_node_contribution(uint8_t version, uint64_t maximum, uint64_t total_reserved, size_t num_contributions)
 {
   if (version < cryptonote::network_version_11_infinite_staking)
-    return get_min_node_contribution_in_portions_pre_hf11(total_portions_reserved);
+    return get_min_node_contribution_pre_hf11(maximum, total_reserved);
 
-  const uint64_t portions_remaining     = STAKING_PORTIONS - total_portions_reserved;
+  const uint64_t needed = maximum - total_reserved;
   const size_t max_num_of_contributions = MAX_NUMBER_OF_CONTRIBUTORS * MAX_KEY_IMAGES_PER_CONTRIBUTOR;
   assert(max_num_of_contributions > num_contributions);
   if (max_num_of_contributions <= num_contributions) return UINT64_MAX;
 
-  const size_t num_contributions_remaining_avail = max_num_of_contributions - num_contributions;
-  uint64_t result = portions_remaining / num_contributions_remaining_avail;
-  result         += portions_remaining % num_contributions_remaining_avail; // Always add dust
+  const size_t num_contributions_avail = max_num_of_contributions - num_contributions;
+  uint64_t result = needed / num_contributions_avail;
+  result         += needed % num_contributions_avail; // Always add dust
   return result;
-}
-
-uint64_t get_portions_to_make_amount(uint64_t staking_requirement, uint64_t amount)
-{
-  uint64_t lo, hi, resulthi, resultlo;
-  lo = mul128(amount, STAKING_PORTIONS, &hi);
-  if (lo > UINT64_MAX - (staking_requirement - 1))
-    hi++;
-  lo += staking_requirement-1;
-  div128_64(hi, lo, staking_requirement, &resulthi, &resultlo);
-  return resultlo;
 }
 
 static bool get_portions_from_percent(double cur_percent, uint64_t& portions) {

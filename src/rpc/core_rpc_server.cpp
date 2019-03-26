@@ -2489,7 +2489,7 @@ namespace cryptonote
 
     for (const auto contrib : req.contributions)
     {
-        uint64_t num_portions = service_nodes::get_portions_to_make_amount(staking_requirement, contrib.amount);
+        uint64_t num_portions = service_nodes::portions_to_amount_incl_dust(staking_requirement, contrib.amount);
         args.push_back(contrib.address);
         args.push_back(std::to_string(num_portions));
     }
