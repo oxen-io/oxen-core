@@ -2185,7 +2185,7 @@ static void append_printable_service_node_list_entry(cryptonote::network_type ne
 
     buffer.append(indent2);
     buffer.append("Register/Expiry Height: ");
-    if (expiry_height == 0)
+    if (expiry_height == service_nodes::KEY_IMAGE_AWAITING_UNLOCK_HEIGHT)
     {
         buffer.append("Staking Infinitely (stake unlock not requested yet)\n");
     }
@@ -2396,10 +2396,9 @@ bool t_rpc_command_executor::print_sn(const std::vector<std::string> &args)
       return true;
     }
 
-    using hard_fork_height                                         = uint64_t;
-    hard_fork_height volatile hf_heights[cryptonote::network_version_count] = {};
-
-    for (size_t version = cryptonote::network_version_9_service_nodes; version < LOKI_ARRAY_COUNT(hf_heights); ++version)
+    using hard_fork_height = uint64_t;
+    std::array<hard_fork_height, cryptonote::network_version_count> hf_heights = {};
+    for (size_t version = cryptonote::network_version_9_service_nodes; version < hf_heights.size(); ++version)
     {
       cryptonote::COMMAND_RPC_HARD_FORK_INFO::request  request  = {};
       cryptonote::COMMAND_RPC_HARD_FORK_INFO::response response = {};
@@ -2425,7 +2424,7 @@ bool t_rpc_command_executor::print_sn(const std::vector<std::string> &args)
       hf_heights[request.version] = response.earliest_height;
     }
 
-    auto const find_closest_hardfork = [&hf_heights](uint64_t registration_height) -> size_t {
+    auto const find_closest_hardfork = [](std::array<hard_fork_height, cryptonote::network_version_count> const &hf_heights, uint64_t registration_height) -> size_t {
       uint64_t result = cryptonote::network_version_count - 1;
       for (int version = cryptonote::network_version_7; version < cryptonote::network_version_count; version++)
       {
@@ -2441,7 +2440,7 @@ bool t_rpc_command_executor::print_sn(const std::vector<std::string> &args)
     for (size_t i = 0; i < unregistered.size(); i++)
     {
       cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::entry const &entry = (*unregistered[i]);
-      size_t hf_version = find_closest_hardfork(entry.registration_height);
+      size_t hf_version = find_closest_hardfork(hf_heights, entry.registration_height);
       append_printable_service_node_list_entry(nettype, hf_version, curr_height, i, entry, unregistered_print_data);
       if (i < unregistered.size())
         unregistered_print_data.append("\n");
@@ -2450,7 +2449,7 @@ bool t_rpc_command_executor::print_sn(const std::vector<std::string> &args)
     for (size_t i = 0; i < registered.size(); i++)
     {
       cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::entry const &entry = (*registered[i]);
-      size_t hf_version = find_closest_hardfork(entry.registration_height);
+      size_t hf_version = find_closest_hardfork(hf_heights, entry.registration_height);
       append_printable_service_node_list_entry(nettype, hf_version, curr_height, i, entry, registered_print_data);
       if (i < registered.size())
         registered_print_data.append("\n");
