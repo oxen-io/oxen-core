@@ -1759,7 +1759,11 @@ namespace service_nodes
     }
 
     size_t const OPERATOR_ARG_INDEX = 1;
-    uint64_t portions_left          = STAKING_PORTIONS;
+    uint64_t maximum_contribution   = STAKING_PORTIONS;
+    if (hf_version <= cryptonote::network_version_11_infinite_staking)
+      maximum_contribution          = staking_requirement;
+
+    uint64_t contribution_remaining = maximum_contribution;
     for (size_t i = OPERATOR_ARG_INDEX, num_contributions = 0;
          i < args.size();
          i += 2, ++num_contributions)
@@ -1785,9 +1789,9 @@ namespace service_nodes
 
       try
       {
-        uint64_t total_portions_reserved = STAKING_PORTIONS - portions_left;
         uint64_t num_portions = boost::lexical_cast<uint64_t>(args[i+1]);
-        uint64_t min_portions = get_min_node_contribution(hf_version, STAKING_PORTIONS, total_portions_reserved, num_contributions);
+        uint64_t const total_reserved = maximum_contribution - portions_left;
+        uint64_t const min_portions   = get_min_node_contribution(hf_version, maximum_contribution, total_reserved, num_contributions);
         if (num_portions < min_portions || num_portions > portions_left)
         {
           result.err_msg = tr("Invalid amount for contributor: ") + args[i] + tr(", with portion amount: ") + args[i+1] + tr(". The contributors must each have at least 25%, except for the last contributor which may have the remaining amount");
