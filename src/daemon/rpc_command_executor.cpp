@@ -42,7 +42,6 @@
 #include <boost/format.hpp>
 
 #include "common/loki_integration_test_hooks.h"
-#include "common/loki.h"
 
 #include <fstream>
 #include <ctime>
