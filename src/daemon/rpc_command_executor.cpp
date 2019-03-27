@@ -2772,7 +2772,6 @@ bool t_rpc_command_executor::prepare_registration()
     uint64_t                 total_reserved_contributions = 0;
     std::vector<std::string> addresses;
     std::vector<uint64_t>    contributions;
-
   };
 
   prepare_registration_state state = {};
@@ -3115,9 +3114,7 @@ bool t_rpc_command_executor::prepare_registration()
           const std::string participant_name = (i==0) ? "Operator" : "Contributor " + std::to_string(i);
           uint64_t amount = get_actual_amount(staking_requirement, state.contributions[i]);
           if (amount_left <= DUST && i == 0)
-          {
             amount += amount_left; // add dust to the operator.
-          }
           printf("%-16s%-9s%-19s%-.9f\n", participant_name.c_str(), state.addresses[i].substr(0,6).c_str(), cryptonote::print_money(amount).c_str(), (double)state.contributions[i] * 100 / STAKING_PORTIONS);
         }
 

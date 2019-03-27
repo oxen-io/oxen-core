@@ -1803,10 +1803,13 @@ namespace service_nodes
 
     //
     // FIXME(doyle): FIXME(loki) !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    // This is temporary code to redistribute the insufficient portion dust
+    // amounts between contributors. It should be removed in HF12.
     //
     std::array<uint64_t, MAX_NUMBER_OF_CONTRIBUTORS * service_nodes::MAX_KEY_IMAGES_PER_CONTRIBUTOR> excess_portions;
     std::array<uint64_t, MAX_NUMBER_OF_CONTRIBUTORS * service_nodes::MAX_KEY_IMAGES_PER_CONTRIBUTOR> min_contributions;
     {
+      // NOTE: Calculate excess portions from each contributor
       uint64_t loki_reserved = 0;
       for (size_t index = 0; index < addr_to_portions.size(); ++index)
       {
@@ -1833,6 +1836,8 @@ namespace service_nodes
 
       if (addr_to_portion.portions < min_portions)
       {
+          // NOTE: Steal dust portions from other contributor if we fall below
+          // the minimum by a dust amount.
           uint64_t needed = min_portions - addr_to_portion.portions;
           const uint64_t DUST = MAX_NUMBER_OF_CONTRIBUTORS;
           if (needed > DUST)
@@ -1856,10 +1861,10 @@ namespace service_nodes
             }
           }
 
+          // NOTE: Operator is sending in the minimum amount and it falls below
+          // the minimum by dust, just increase the portions so it passes
           if (needed > 0 && addr_to_portions.size() < MAX_NUMBER_OF_CONTRIBUTORS * service_nodes::MAX_KEY_IMAGES_PER_CONTRIBUTOR)
-          {
             addr_to_portion.portions += needed;
-          }
       }
 
       if (addr_to_portion.portions < min_portions || addr_to_portion.portions > portions_left)
