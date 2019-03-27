@@ -1763,6 +1763,7 @@ namespace service_nodes
     if (hf_version <= cryptonote::network_version_11_infinite_staking)
       maximum_contribution          = staking_requirement;
 
+    uint64_t portions_left          = STAKING_PORTIONS;
     uint64_t contribution_remaining = maximum_contribution;
     for (size_t i = OPERATOR_ARG_INDEX, num_contributions = 0;
          i < args.size();
