@@ -1759,7 +1759,7 @@ namespace service_nodes
     }
 
     size_t const OPERATOR_ARG_INDEX     = 1;
-    uint64_t amount_payable_by_operator = 0;
+    uint64_t portions_left              = STAKING_PORTIONS;
     uint64_t total_reserved             = 0;
     for (size_t i = OPERATOR_ARG_INDEX, num_contributions = 0;
          i < args.size();
@@ -1788,7 +1788,7 @@ namespace service_nodes
       {
         uint64_t num_portions = boost::lexical_cast<uint64_t>(args[i+1]);
         uint64_t min_portions = get_min_node_contribution_in_portions(hf_version, staking_requirement, total_reserved, num_contributions);
-        if (num_portions < min_portions)
+        if (num_portions < min_portions || num_portions > portions_left)
         {
           result.err_msg = tr("Invalid amount for contributor: ") + args[i] + tr(", with portion amount: ") + args[i+1] + tr(". The contributors must each have at least 25%, except for the last contributor which may have the remaining amount");
           return result;
@@ -1800,6 +1800,7 @@ namespace service_nodes
           return result;
         }
 
+        portions_left -= num_portions;
         result.addresses.push_back(info.address);
         result.portions.push_back(num_portions);
         uint64_t loki_amount = service_nodes::portions_to_amount(num_portions, staking_requirement);
@@ -1811,11 +1812,6 @@ namespace service_nodes
         return result;
       }
     }
-
-    uint64_t amount_left = staking_requirement - total_reserved;
-    const uint64_t DUST  = MAX_NUMBER_OF_CONTRIBUTORS;
-    if (amount_left <= DUST)
-      result.portions[0] += amount_left;
 
     result.success = true;
     return result;

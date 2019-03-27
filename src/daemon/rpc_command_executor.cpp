@@ -2832,7 +2832,7 @@ bool t_rpc_command_executor::prepare_registration()
         state.addresses.push_back(address_str); // the addresses will be validated later down the line
         state.contributions.push_back(STAKING_PORTIONS);
         state.portions_remaining = 0;
-        state.total_reserved_contributions += get_actual_amount(staking_requirement, STAKING_PORTIONS);
+        state.total_reserved_contributions += STAKING_PORTIONS;
         state.prev_step = step;
         step            = register_step::final_summary;
         state_stack.push(state);
@@ -3023,6 +3023,28 @@ bool t_rpc_command_executor::prepare_registration()
       {
         const uint64_t amount_left         = staking_requirement - state.total_reserved_contributions;
         uint64_t min_contribution_portions = service_nodes::get_min_node_contribution_in_portions(hf_version, staking_requirement, state.total_reserved_contributions, state.contributions.size());
+
+        // TODO(loki): FIXME(loki): Remove this and make the dust code be
+        // accounted for in the calculation and not after the fact in client
+        // code. Changing this haphazardly will fork the network. Otherwise
+        // nodes who upgrade will not perceive the older nodes as having
+        // sufficient minimum contribution to be a service node, since this fix
+        // makes sure that the minimum contribution includes dust amounts.
+
+        // So this MUST be removed and amended in hardfork 12 so that the
+        // responsibility of adding dust is not on the client side but in the
+        // protocol.
+        {
+          const uint64_t needed                          = state.portions_remaining;
+          const size_t max_num_of_contributions          = MAX_NUMBER_OF_CONTRIBUTORS * service_nodes::MAX_KEY_IMAGES_PER_CONTRIBUTOR;
+          if (state.contributions.size() < max_num_of_contributions)
+          {
+            const size_t num_contributions_remaining_avail = max_num_of_contributions - state.contributions.size();
+            const size_t PORTIONS_DUST = needed % num_contributions_remaining_avail;
+            min_contribution_portions += PORTIONS_DUST;
+          }
+        }
+
         const uint64_t min_contribution    = get_amount_to_make_portions(staking_requirement, min_contribution_portions);
 
         std::cout << "The minimum amount possible to contribute is " << cryptonote::print_money(min_contribution) << " " << cryptonote::get_unit() << std::endl;
