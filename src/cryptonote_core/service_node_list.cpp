@@ -1834,6 +1834,7 @@ namespace service_nodes
       addr_to_portion_t &addr_to_portion = addr_to_portions[i];
       uint64_t min_portions = get_min_node_contribution_in_portions(hf_version, staking_requirement, total_reserved, i);
 
+      uint64_t portions_to_steal = 0;
       if (addr_to_portion.portions < min_portions)
       {
           // NOTE: Steal dust portions from other contributor if we fall below
@@ -1851,12 +1852,11 @@ namespace service_nodes
             uint64_t &contributor_excess = excess_portions[sub_index];
             if (contributor_excess > 0)
             {
-              uint64_t portions_to_steal = std::min(needed, contributor_excess);
+              portions_to_steal = std::min(needed, contributor_excess);
               addr_to_portion.portions += portions_to_steal;
               contributor_excess -= portions_to_steal;
               needed -= portions_to_steal;
               result.portions[sub_index] -= portions_to_steal;
-              portions_left += portions_to_steal;
 
               if (needed == 0)
                 break;
@@ -1882,6 +1882,7 @@ namespace service_nodes
       }
 
       portions_left -= addr_to_portion.portions;
+      portions_left += portions_to_steal;
       result.addresses.push_back(addr_to_portion.info.address);
       result.portions.push_back(addr_to_portion.portions);
       uint64_t loki_amount = service_nodes::portions_to_amount(addr_to_portion.portions, staking_requirement);
