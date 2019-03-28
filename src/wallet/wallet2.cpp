@@ -80,6 +80,7 @@ using namespace epee;
 
 #include "cryptonote_core/service_node_list.h"
 #include "cryptonote_core/service_node_rules.h"
+#include "common/loki.h"
 #include "common/loki_integration_test_hooks.h"
 
 extern "C"
@@ -6693,15 +6694,14 @@ bool wallet2::sign_multisig_tx_from_file(const std::string &filename, std::vecto
 //----------------------------------------------------------------------------------------------------
 uint64_t wallet2::get_fee_multiplier(uint32_t priority, int fee_algorithm) const
 {
-  static const struct
+  static const struct fee_multipliers_t
   {
-    size_t count;
-    uint64_t multipliers[4];
+    uint64_t values[4];
   }
   multipliers[] =
   {
-    { 4, {1, 4, 20, 166} },
-    { 4, {1, 5, 25, 1000} },
+    { {1, 4, 20, 166} },
+    { {1, 5, 25, 1000} },
   };
 
   if (fee_algorithm == -1)
@@ -6712,19 +6712,17 @@ uint64_t wallet2::get_fee_multiplier(uint32_t priority, int fee_algorithm) const
     priority = m_default_priority;
   if (priority == 0)
   {
-    if (fee_algorithm >= 2)
+    if (fee_algorithm >= 1)
       priority = 2;
     else
       priority = 1;
   }
 
-  THROW_WALLET_EXCEPTION_IF(fee_algorithm < 0 || fee_algorithm > 1, error::invalid_priority);
-
-  // 1 to 3/4 are allowed as priorities
-  const uint32_t max_priority = multipliers[fee_algorithm].count;
-  if (priority >= 1 && priority <= max_priority)
+  THROW_WALLET_EXCEPTION_IF(fee_algorithm < 0 || fee_algorithm >= (int)LOKI_ARRAY_COUNT(multipliers), error::invalid_priority);
+  fee_multipliers_t const *curr_multiplier = multipliers + fee_algorithm;
+  if (priority >= 1 && priority <= (uint32_t)LOKI_ARRAY_COUNT(curr_multiplier->values))
   {
-    return multipliers[fee_algorithm].multipliers[priority-1];
+    return curr_multiplier->values[priority-1];
   }
 
   THROW_WALLET_EXCEPTION_IF (false, error::invalid_priority);
@@ -7375,14 +7373,15 @@ wallet2::register_service_node_result wallet2::create_register_service_node_tx(c
       }
     }
 
-    staking_requirement = service_nodes::get_staking_requirement(nettype(), bc_height);
     boost::optional<uint8_t> hf_version = get_hard_fork_version();
     if (!hf_version)
     {
       result.status = register_service_node_result_status::network_version_query_failed;
       result.msg    = ERR_MSG_NETWORK_VERSION_QUERY_FAILED;
+      return result;
     }
 
+    staking_requirement = service_nodes::get_staking_requirement(nettype(), bc_height, *hf_version);
     std::vector<std::string> const registration_args(local_args.begin(), local_args.begin() + local_args.size() - 3);
     converted_args = service_nodes::convert_registration_args(nettype(), registration_args, staking_requirement, *hf_version);
 

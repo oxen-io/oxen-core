@@ -100,7 +100,6 @@ namespace service_nodes
 
     uint64_t current_height = m_blockchain.get_current_blockchain_height();
     bool loaded = load();
-
     if (loaded && m_height == current_height) return;
 
     if (!loaded || m_height > current_height) clear(true);
@@ -723,7 +722,7 @@ namespace service_nodes
 
     // check the initial contribution exists
 
-    info.staking_requirement = get_staking_requirement(m_blockchain.nettype(), block_height);
+    info.staking_requirement = get_staking_requirement(m_blockchain.nettype(), block_height, hf_version);
 
     cryptonote::account_public_address address;
 
@@ -1389,8 +1388,10 @@ namespace service_nodes
     crypto::public_key winner = select_winner();
 
     crypto::public_key check_winner_pubkey = cryptonote::get_service_node_winner_from_tx_extra(miner_tx.extra);
-    if (check_winner_pubkey != winner)
+    if (check_winner_pubkey != winner) {
+      MERROR("Service node reward winner is incorrect");
       return false;
+    }
 
     const std::vector<std::pair<cryptonote::account_public_address, uint64_t>> addresses_and_portions = get_winner_addresses_and_portions();
     
@@ -1880,8 +1881,7 @@ namespace service_nodes
       char buffer[128];
       strftime(buffer, sizeof(buffer), "%Y-%m-%d %I:%M:%S %p", &tm);
       stream << tr("This registration expires at ") << buffer << tr(".\n");
-      stream << tr("This should be in about 2 weeks, or two years for autostaking.\n");
-      stream << tr("If it isn't, check this computer's clock.\n");
+      stream << tr("This should be in about 2 weeks, if it isn't, check this computer's clock.\n");
       stream << tr("Please submit your registration into the blockchain before this time or it will be invalid.");
     }
 
