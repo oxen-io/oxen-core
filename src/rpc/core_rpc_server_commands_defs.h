@@ -2188,7 +2188,7 @@ namespace cryptonote
   };
 
   LOKI_RPC_DOC_INTROSPECT
-  // Get the coinbase ammount and the fees ammount for n last blocks starting at particular height.
+  // Get the coinbase amount and the fees amount for n last blocks starting at particular height.
   struct COMMAND_RPC_GET_COINBASE_TX_SUM
   {
     struct request
