@@ -1838,8 +1838,10 @@ namespace service_nodes
       {
           // NOTE: Steal dust portions from other contributor if we fall below
           // the minimum by a dust amount.
-          uint64_t needed = min_portions - addr_to_portion.portions;
-          const uint64_t DUST = MAX_NUMBER_OF_CONTRIBUTORS;
+          uint64_t needed             = min_portions - addr_to_portion.portions;
+          const uint64_t FUDGE_FACTOR = 10;
+          const uint64_t DUST_UNIT    = (STAKING_PORTIONS / staking_requirement);
+          const uint64_t DUST         = DUST_UNIT * FUDGE_FACTOR;
           if (needed > DUST)
             continue;
 
