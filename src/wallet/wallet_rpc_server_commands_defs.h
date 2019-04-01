@@ -37,6 +37,8 @@
 #include "crypto/hash.h"
 #include "wallet_rpc_server_error_codes.h"
 
+#include "common/loki.h"
+
 #undef LOKI_DEFAULT_LOG_CATEGORY
 #define LOKI_DEFAULT_LOG_CATEGORY "wallet.rpc"
 
@@ -58,6 +60,7 @@ namespace wallet_rpc
 #define WALLET_RPC_STATUS_OK      "OK"
 #define WALLET_RPC_STATUS_BUSY    "BUSY"
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_BALANCE
   {
     struct request
@@ -105,6 +108,7 @@ namespace wallet_rpc
     };
   };
 
+    LOKI_RPC_DOC_INTROSPECT
     struct COMMAND_RPC_GET_ADDRESS
   {
     struct request
@@ -144,6 +148,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_ADDRESS_INDEX
   {
     struct request
@@ -163,6 +168,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_CREATE_ADDRESS
   {
     struct request
@@ -188,6 +194,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_LABEL_ADDRESS
   {
     struct request
@@ -208,6 +215,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_ACCOUNTS
   {
     struct request
@@ -252,6 +260,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_CREATE_ACCOUNT
   {
     struct request
@@ -273,6 +282,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_LABEL_ACCOUNT
   {
     struct request
@@ -293,6 +303,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_ACCOUNT_TAGS
   {
     struct request
@@ -324,6 +335,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_TAG_ACCOUNTS
   {
     struct request
@@ -344,6 +356,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_UNTAG_ACCOUNTS
   {
     struct request
@@ -362,6 +375,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_SET_ACCOUNT_TAG_DESCRIPTION
   {
     struct request
@@ -382,6 +396,7 @@ namespace wallet_rpc
     };
   };
 
+    LOKI_RPC_DOC_INTROSPECT
     struct COMMAND_RPC_GET_HEIGHT
     {
       struct request
@@ -409,6 +424,7 @@ namespace wallet_rpc
     END_KV_SERIALIZE_MAP()
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_TRANSFER
   {
     struct request
@@ -466,6 +482,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_TRANSFER_SPLIT
   {
     struct request
@@ -532,6 +549,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_DESCRIBE_TRANSFER
   {
     struct recipient
@@ -593,6 +611,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_SIGN_TRANSFER
   {
     struct request
@@ -624,6 +643,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_SUBMIT_TRANSFER
   {
     struct request
@@ -645,6 +665,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_SWEEP_DUST
   {
     struct request
@@ -695,6 +716,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_SWEEP_ALL
   {
     struct request
@@ -765,6 +787,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_SWEEP_SINGLE
   {
     struct request
@@ -822,6 +845,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_RELAY_TX
   {
     struct request
@@ -843,6 +867,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_STORE
   {
     struct request
@@ -858,6 +883,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct payment_details
   {
     std::string payment_id;
@@ -879,6 +905,7 @@ namespace wallet_rpc
     END_KV_SERIALIZE_MAP()
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_PAYMENTS
   {
     struct request
@@ -900,6 +927,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_BULK_PAYMENTS
   {
     struct request
@@ -923,6 +951,7 @@ namespace wallet_rpc
     };
   };
   
+  LOKI_RPC_DOC_INTROSPECT
   struct transfer_details
   {
     uint64_t amount;
@@ -942,6 +971,7 @@ namespace wallet_rpc
     END_KV_SERIALIZE_MAP()
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_INCOMING_TRANSFERS
   {
     struct request
@@ -968,6 +998,7 @@ namespace wallet_rpc
   };
 
   //JSON RPC V2
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_QUERY_KEY
   {
     struct request
@@ -989,6 +1020,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_MAKE_INTEGRATED_ADDRESS
   {
     struct request
@@ -1014,6 +1046,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_SPLIT_INTEGRATED_ADDRESS
   {
     struct request
@@ -1039,6 +1072,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_STOP_WALLET
   {
     struct request
@@ -1054,6 +1088,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_RESCAN_BLOCKCHAIN
   {
     struct request
@@ -1072,6 +1107,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_SET_TX_NOTES
   {
     struct request
@@ -1092,6 +1128,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_TX_NOTES
   {
     struct request
@@ -1113,6 +1150,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_SET_ATTRIBUTE
   {
     struct request
@@ -1133,6 +1171,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_ATTRIBUTE
   {
     struct request
@@ -1155,6 +1194,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_TX_KEY
   {
     struct request
@@ -1176,6 +1216,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_CHECK_TX_KEY
   {
     struct request
@@ -1205,6 +1246,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_TX_PROOF
   {
     struct request
@@ -1230,6 +1272,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_CHECK_TX_PROOF
   {
     struct request
@@ -1263,6 +1306,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct transfer_entry
   {
     std::string txid;
@@ -1300,6 +1344,7 @@ namespace wallet_rpc
     END_KV_SERIALIZE_MAP()
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_SPEND_PROOF
   {
     struct request
@@ -1323,6 +1368,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_CHECK_SPEND_PROOF
   {
     struct request
@@ -1348,6 +1394,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_RESERVE_PROOF
   {
     struct request
@@ -1375,6 +1422,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_CHECK_RESERVE_PROOF
   {
     struct request
@@ -1404,6 +1452,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_TRANSFERS
   {
     struct request
@@ -1452,6 +1501,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_TRANSFER_BY_TXID
   {
     struct request
@@ -1477,6 +1527,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_SIGN
   {
     struct request
@@ -1498,6 +1549,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_VERIFY
   {
     struct request
@@ -1523,6 +1575,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_EXPORT_OUTPUTS
   {
     struct request
@@ -1541,6 +1594,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_IMPORT_OUTPUTS
   {
     struct request
@@ -1562,6 +1616,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_EXPORT_KEY_IMAGES
   {
     struct request
@@ -1596,6 +1651,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_IMPORT_KEY_IMAGES
   {
     struct signed_key_image
@@ -1634,6 +1690,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct uri_spec
   {
     std::string address;
@@ -1651,6 +1708,7 @@ namespace wallet_rpc
     END_KV_SERIALIZE_MAP()
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_MAKE_URI
   {
     struct request: public uri_spec
@@ -1667,6 +1725,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_PARSE_URI
   {
     struct request
@@ -1690,6 +1749,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_ADD_ADDRESS_BOOK_ENTRY
   {
     struct request
@@ -1715,6 +1775,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_ADDRESS_BOOK_ENTRY
   {
     struct request
@@ -1751,6 +1812,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_DELETE_ADDRESS_BOOK_ENTRY
   {
     struct request
@@ -1769,6 +1831,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_RESCAN_SPENT
   {
     struct request
@@ -1784,6 +1847,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_REFRESH
   {
     struct request
@@ -1807,6 +1871,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_START_MINING
   {
     struct request
@@ -1829,6 +1894,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_STOP_MINING
   {
     struct request
@@ -1844,6 +1910,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_LANGUAGES
   {
     struct request
@@ -1861,6 +1928,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_CREATE_WALLET
   {
     struct request
@@ -1882,6 +1950,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_OPEN_WALLET
   {
     struct request
@@ -1901,6 +1970,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_CLOSE_WALLET
   {
     struct request
@@ -1916,6 +1986,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_CHANGE_WALLET_PASSWORD
   {
     struct request
@@ -1935,6 +2006,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_RESTORE_DETERMINISTIC_WALLET
   {
     struct request
@@ -1972,6 +2044,7 @@ namespace wallet_rpc
     };
   };
   
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_IS_MULTISIG
   {
     struct request
@@ -1996,6 +2069,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_PREPARE_MULTISIG
   {
     struct request
@@ -2014,6 +2088,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_MAKE_MULTISIG
   {
     struct request
@@ -2041,6 +2116,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_EXPORT_MULTISIG
   {
     struct request
@@ -2059,6 +2135,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_IMPORT_MULTISIG
   {
     struct request
@@ -2080,6 +2157,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_FINALIZE_MULTISIG
   {
     struct request
@@ -2103,6 +2181,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_EXCHANGE_MULTISIG_KEYS
   {
     struct request
@@ -2128,6 +2207,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_SIGN_MULTISIG
   {
     struct request
@@ -2151,6 +2231,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_SUBMIT_MULTISIG
   {
     struct request
@@ -2172,6 +2253,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_GET_VERSION
   {
     struct request
@@ -2190,6 +2272,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_STAKE
   {
     struct request
@@ -2240,6 +2323,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_REGISTER_SERVICE_NODE
   {
     struct request
@@ -2282,6 +2366,7 @@ namespace wallet_rpc
     };
   };
 
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_REQUEST_STAKE_UNLOCK
   {
     struct request
@@ -2303,7 +2388,8 @@ namespace wallet_rpc
       END_KV_SERIALIZE_MAP()
     };
   };
-
+  
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_CAN_REQUEST_STAKE_UNLOCK
   {
     struct request
@@ -2325,7 +2411,8 @@ namespace wallet_rpc
       END_KV_SERIALIZE_MAP()
     };
   };
-
+  
+  LOKI_RPC_DOC_INTROSPECT
   struct COMMAND_RPC_VALIDATE_ADDRESS
   {
     struct request
