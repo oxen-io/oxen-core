@@ -371,13 +371,53 @@ namespace service_nodes
 
   static uint64_t get_new_swarm_id(std::mt19937_64& mt, const std::vector<swarm_id_t>& ids)
   {
-    uint64_t id_new = QUEUE_SWARM_ID;
 
-    while (id_new == QUEUE_SWARM_ID || ( std::find(ids.begin(), ids.end(), id_new) != ids.end() )) {
-      id_new = uniform_distribution_portable(mt, UINT64_MAX);
+    // UINT64_MAX is reserved for unassigned swarms
+    constexpr uint64_t MAX_ID = UINT64_MAX - 1;
+
+    auto all_ids = ids; // make a copy
+    if (all_ids.empty()) return 0;
+    if (all_ids.size() == 1) return MAX_ID / 2;
+
+    std::sort(all_ids.begin(), all_ids.end());
+
+    uint64_t max_dist = 0;
+    // The new swarm that is the fartherst from its right neighbour
+    uint64_t best_idx = 0;
+
+    for (auto idx = 0u; idx < all_ids.size() - 1; ++idx)
+    {
+      const uint64_t dist = all_ids[idx+1] - all_ids[idx];
+
+      if (dist > max_dist)
+      {
+        max_dist = dist;
+        best_idx = idx;
+      }
     }
 
-    return id_new;
+    // Handle the special case involving the gap between the
+    // rightmost and the leftmost swarm due to wrapping.
+    // Note that we are adding 1 as we treat 0 and MAX_ID as *one* apart
+    const uint64_t dist = MAX_ID - all_ids.back() + all_ids.front() + 1;
+    if (dist > max_dist)
+    {
+      max_dist = dist;
+      best_idx = all_idx.size() - 1;
+
+      const uint64_t diff = max_dist / 2; /// how much to add to an existing id
+
+      const uint64_t to_max = MAX_ID - all_ids[best_idx]; /// how much we can add not overflowing
+      if (to_max >= diff) {
+        return all_ids[best_idx] + diff;
+      } else {
+        return diff - to_max - 1; // again, assuming MAX_ID + 1 = 0
+      }
+
+    }
+
+    // Can't overflow here
+    return all_ids[best_idx] + max_dist / 2;
   }
 
   static std::vector<swarm_id_t> get_all_swarms(const std::map<swarm_id_t, std::vector<crypto::public_key>>& swarm_to_snodes)
