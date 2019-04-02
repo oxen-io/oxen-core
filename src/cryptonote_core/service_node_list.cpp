@@ -369,7 +369,7 @@ namespace service_nodes
     return true;
   }
 
-  static uint64_t get_new_swarm_id(std::mt19937_64& mt, const std::vector<swarm_id_t>& ids)
+  static uint64_t get_new_swarm_id(const std::vector<swarm_id_t>& ids)
   {
 
     // UINT64_MAX is reserved for unassigned swarms
@@ -403,7 +403,7 @@ namespace service_nodes
     if (dist > max_dist)
     {
       max_dist = dist;
-      best_idx = all_idx.size() - 1;
+      best_idx = all_ids.size() - 1;
 
       const uint64_t diff = max_dist / 2; /// how much to add to an existing id
 
@@ -526,7 +526,7 @@ namespace service_nodes
     while (swarm_buffer.size() >= MAX_SWARM_SIZE + SWARM_BUFFER) {
 
       /// shuffle the queue and select MAX_SWARM_SIZE last elements
-      const auto new_swarm_id = get_new_swarm_id(mersenne_twister, all_swarms);
+      const auto new_swarm_id = get_new_swarm_id(all_swarms);
 
       loki_shuffle(swarm_buffer, seed + new_swarm_id);
 
