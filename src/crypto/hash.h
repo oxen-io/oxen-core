@@ -70,6 +70,11 @@ namespace crypto {
 
   enum struct cn_slow_hash_type
   {
+    // NOTE: Monero's slow hash for Android only, we still use the old hashing algorithm for hashing the KeyStore containing private keys
+    cryptonight_v0,
+    cryptonight_v0_prehashed,
+    cryptonight_v1_prehashed,
+
     heavy_v1,
     heavy_v2,
     turtle_lite_v2,
@@ -86,6 +91,24 @@ namespace crypto {
 
         if (type == cn_slow_hash_type::heavy_v1) v1.hash(data, length, hash.data);
         else                                     v2.hash(data, length, hash.data);
+      }
+      break;
+
+      case cn_slow_hash_type::cryptonight_v0:
+      case cn_slow_hash_type::cryptonight_v1_prehashed:
+      {
+        int variant = 0, prehashed = 0;
+        if (type == cn_slow_hash_type::cryptonight_v1_prehashed)
+        {
+          prehashed = 1;
+          variant   = 1;
+        }
+        else if (type == cn_slow_hash_type::cryptonight_v0_prehashed)
+        {
+          prehashed = 1;
+        }
+
+        cn_monero_hash(data, length, hash.data, variant, prehashed);
       }
       break;
 

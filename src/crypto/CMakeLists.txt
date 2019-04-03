@@ -51,6 +51,7 @@ set(crypto_sources
   cn_heavy_hash_soft.cpp
   cn_turtle_hash.c
   rx-slow-hash.c
+  cn_monero_slow_hash.c
   tree-hash.c)
 
 include_directories(${RANDOMX_INCLUDE})
