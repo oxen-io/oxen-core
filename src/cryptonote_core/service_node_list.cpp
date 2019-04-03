@@ -382,7 +382,7 @@ namespace service_nodes
     std::sort(all_ids.begin(), all_ids.end());
 
     uint64_t max_dist = 0;
-    // The new swarm that is the fartherst from its right neighbour
+    // The new swarm that is the farthest from its right neighbour
     uint64_t best_idx = 0;
 
     for (auto idx = 0u; idx < all_ids.size() - 1; ++idx)
@@ -404,20 +404,17 @@ namespace service_nodes
     {
       max_dist = dist;
       best_idx = all_ids.size() - 1;
-
-      const uint64_t diff = max_dist / 2; /// how much to add to an existing id
-
-      const uint64_t to_max = MAX_ID - all_ids[best_idx]; /// how much we can add not overflowing
-      if (to_max >= diff) {
-        return all_ids[best_idx] + diff;
-      } else {
-        return diff - to_max - 1; // again, assuming MAX_ID + 1 = 0
-      }
-
     }
 
-    // Can't overflow here
-    return all_ids[best_idx] + max_dist / 2;
+    const uint64_t diff = max_dist / 2; /// how much to add to an existing id
+    const uint64_t to_max = MAX_ID - all_ids[best_idx]; /// how much we can add not overflow
+
+    if (diff > to_max)
+    {
+      return diff - to_max - 1; // again, assuming MAX_ID + 1 = 0
+    }
+
+    return all_ids[best_idx] + diff;
   }
 
   static std::vector<swarm_id_t> get_all_swarms(const std::map<swarm_id_t, std::vector<crypto::public_key>>& swarm_to_snodes)
