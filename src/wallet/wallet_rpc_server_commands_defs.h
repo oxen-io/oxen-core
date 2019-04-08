@@ -96,7 +96,7 @@ namespace wallet_rpc
 
     struct response
     {
-      uint64_t 	 balance;                              // The total balance of the current loki-wallet-rpc in session.
+      uint64_t 	 balance;                              // The total balance (atomic units) of the currently opened wallet.
       uint64_t 	 unlocked_balance;                     // Unlocked funds are those funds that are sufficiently deep enough in the loki blockchain to be considered safe to spend.
       bool       multisig_import_needed;               // True if importing multisig data is needed for returning a correct balance.
       std::vector<per_subaddress_info> per_subaddress; // Balance information for each subaddress in an account.
@@ -116,8 +116,8 @@ namespace wallet_rpc
   {
     struct request
     {
-      uint32_t account_index;              // Return subaddresses for this account.
-      std::vector<uint32_t> address_index; // (Optional) List of subaddresses to return from an account.
+      uint32_t account_index;              // Get the wallet addresses for the specified account.
+      std::vector<uint32_t> address_index; // (Optional) List of subaddresses to return from the aforementioned account.
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(account_index)
@@ -127,10 +127,10 @@ namespace wallet_rpc
 
     struct address_info
     {
-      std::string address;    // The 95-character hex (sub)address string.
+      std::string address;    // The (sub)address string.
       std::string label;      // Label of the (sub)address.
       uint32_t address_index; // Index of the subaddress
-      bool used;              // States if the (sub)address has already received funds.
+      bool used;              // True if the (sub)address has received funds before.
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(address)
@@ -142,7 +142,7 @@ namespace wallet_rpc
 
     struct response
     {
-      std::string address;                  // The 95-character hex address string of the loki-wallet-rpc in session. To remain compatible with older RPC format
+      std::string address;                  // (Deprecated) Remains to be compatible with older RPC format
       std::vector<address_info> addresses;  // Addresses informations.
 
       BEGIN_KV_SERIALIZE_MAP()
@@ -158,7 +158,7 @@ namespace wallet_rpc
   {
     struct request
     {
-      std::string address; // (sub)address to look for.
+      std::string address; // (Sub)address to look for.
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(address)
@@ -167,7 +167,7 @@ namespace wallet_rpc
 
     struct response
     {
-      cryptonote::subaddress_index index; // Account index.
+      cryptonote::subaddress_index index; // Account index followed by the subaddress index.
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(index)
@@ -181,8 +181,8 @@ namespace wallet_rpc
   {
     struct request
     {
-      uint32_t account_index; // Create a new address for this account.
-      std::string label;      // (Optional) Label for the new address.
+      uint32_t account_index; // Create a new subaddress for this account.
+      std::string label;      // (Optional) Label for the new subaddress.
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(account_index)
@@ -192,8 +192,8 @@ namespace wallet_rpc
 
     struct response
     {
-      std::string   address;       // Newly created address. Base58 representation of the public keys.
-      uint32_t      address_index; // Index of the new address under the input account.
+      std::string   address;       // The newly requested address.
+      uint32_t      address_index; // Index of the new address in the requested account index.
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(address)
@@ -208,7 +208,7 @@ namespace wallet_rpc
   {
     struct request
     {
-      cryptonote::subaddress_index index; // JSON Object containing the major & minor address index.
+      cryptonote::subaddress_index index; // Major & minor address index 
       std::string label;                  // Label for the address.
 
       BEGIN_KV_SERIALIZE_MAP()
@@ -240,7 +240,7 @@ namespace wallet_rpc
     struct subaddress_account_info
     {
       uint32_t account_index;    // Index of the account.
-      std::string base_address;  // Base64 representation of the first subaddress in the account.
+      std::string base_address;  // The first address of the account (i.e. the primary address).
       uint64_t balance;          // Balance of the account (locked or unlocked).
       uint64_t unlocked_balance; // Unlocked balance for the account.
       std::string label;         // (Optional) Label of the account.
@@ -286,7 +286,7 @@ namespace wallet_rpc
     struct response
     {
       uint32_t account_index;   // Index of the new account.
-      std::string address;      // Address for this account. Base58 representation of the public keys. The 0-th address for convenience
+      std::string address;      // The primary address of the new account.
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(account_index)
@@ -301,7 +301,7 @@ namespace wallet_rpc
   {
     struct request
     {
-      uint32_t account_index; // Apply label to account at this index.
+      uint32_t account_index; // Account index to set the label for.
       std::string label;      // Label for the account.
 
       BEGIN_KV_SERIALIZE_MAP()
@@ -426,7 +426,7 @@ namespace wallet_rpc
 
     struct response
     {
-      uint64_t  height; // The current loki-wallet-rpc's blockchain height. If the wallet has been offline for a long time, it may need to catch up with the daemon.
+      uint64_t  height; // The current wallet's blockchain height. If the wallet has been offline for a long time, it may need to catch up with the daemon.
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(height)
@@ -446,7 +446,8 @@ namespace wallet_rpc
   };
 
   LOKI_RPC_DOC_INTROSPECT
-  // Send loki to a number of recipients.
+  // Send loki to a number of recipients. To preview the transaction fee, set do_not_relay to true and get_tx_metadata to true. 
+  // Submit the response using the data in get_tx_metadata in the RPC call, relay_tx.
   struct COMMAND_RPC_TRANSFER
   {
     struct request
@@ -454,11 +455,11 @@ namespace wallet_rpc
       std::list<transfer_destination> destinations; // Array of destinations to receive LOKI.
       uint32_t account_index;                       // (Optional) Transfer from this account index. (Defaults to 0)
       std::set<uint32_t> subaddr_indices;           // (Optional) Transfer from this set of subaddresses. (Defaults to 0)
-      uint32_t priority;                            // Set a priority for the transaction. Accepted Values are: 0-3 for: default, unimportant, normal, elevated, priority.
-      uint64_t mixin;                               // (Ignored) Number of outputs from the blockchain to mix with. Loki mixin statically set to 9.
-      uint64_t ring_size;                           // (Ignored) Sets ringsize to n (mixin + 1). Loki ring_size is statically set to 10.
-      uint64_t unlock_time;                         // Number of blocks before the loki can be spent (0 to not add a lock).
-      std::string payment_id;                       // (Optional) Random 32-byte/64-character hex string to identify a transaction.
+      uint32_t priority;                            // Set a priority for the transaction. Accepted Values are: default (1), or 0-3 for: unimportant, normal, elevated, priority.
+      uint64_t mixin;                               // (Deprecated) Set to 9. Number of outputs from the blockchain to mix with. Loki mixin statically set to 9.
+      uint64_t ring_size;                           // (Deprecated) Set to 10. Sets ringsize to n (mixin + 1). Loki ring_size is statically set to 10.
+      uint64_t unlock_time;                         // Number of blocks before the loki can be spent (0 to use the default lock time).
+      std::string payment_id;                       // (Optional) Random 64-character hex string to identify a transaction.
       bool get_tx_key;                              // (Optional) Return the transaction key after sending.
       bool do_not_relay;                            // (Optional) If true, the newly created transaction will not be relayed to the loki network. (Defaults to false)
       bool get_tx_hex;                              // Return the transaction as hex string after sending. (Defaults to false)
@@ -592,14 +593,14 @@ namespace wallet_rpc
       uint64_t amount_in;              // Amount in, in atomic units.
       uint64_t amount_out;             // amount out, in atomic units.
       uint32_t ring_size;              // Ring size of transfer.
-      uint64_t unlock_time;            // Number of blocks before the loki can be spent (0 to not add a lock).
+      uint64_t unlock_time;            // Number of blocks before the loki can be spent (0 represents the default network lock time).
       std::list<recipient> recipients; // List of addresses and amounts.
       std::string payment_id;          // Payment ID matching the input parameter.
       uint64_t change_amount;          // Change received from transaction in atomic units.
       std::string change_address;      // Address the change was sent to.
       uint64_t fee;                    // Fee of the transaction in atomic units.
       uint32_t dummy_outputs;          // 
-      std::string extra;               // 
+      std::string extra;               // Data stored in the tx extra represented in hex.
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(amount_in)
@@ -753,11 +754,11 @@ namespace wallet_rpc
       uint32_t account_index;             // Sweep transactions from this account.
       std::set<uint32_t> subaddr_indices; // (Optional) Sweep from this set of subaddresses in the account.
       uint32_t priority;                  // (Optional) Priority for sending the sweep transfer, partially determines fee. 
-      uint64_t mixin;                     // (Ignored) Number of outputs from the blockchain to mix with. Loki mixin statically set to 9.
-      uint64_t ring_size;                 // (Ignored) Sets ringsize to n (mixin + 1). Loki ring_size is statically set to 10.
+      uint64_t mixin;                     // (Deprecated) Set to 9. Number of outputs from the blockchain to mix with. Loki mixin statically set to 9.
+      uint64_t ring_size;                 // (Deprecated) Set to 10. Sets ringsize to n (mixin + 1). Loki ring_size is statically set to 10.
       uint64_t outputs;                   // 
       uint64_t unlock_time;               // Number of blocks before the loki can be spent (0 to not add a lock). 
-      std::string payment_id;             // (Optional) Random 32-byte/64-character hex string to identify a transaction.
+      std::string payment_id;             // (Optional) 64-character hex string to identify a transaction.
       bool get_tx_keys;                   // (Optional) Return the transaction keys after sending.
       uint64_t below_amount;              // (Optional) Include outputs below this amount.
       bool do_not_relay;                  // (Optional) If true, do not relay this sweep transfer. (Defaults to false)
@@ -823,11 +824,11 @@ namespace wallet_rpc
     {
       std::string address;    // Destination public address.
       uint32_t priority;      // (Optional) Priority for sending the sweep transfer, partially determines fee.
-      uint64_t mixin;         // (Ignored) Number of outputs from the blockchain to mix with. Loki mixin statically set to 9.
-      uint64_t ring_size;     // (Ignored) Sets ringsize to n (mixin + 1). Loki ring_size is statically set to 10.
+      uint64_t mixin;         // (Deprecated) Set to 9. Number of outputs from the blockchain to mix with. Loki mixin statically set to 9.
+      uint64_t ring_size;     // (Deprecated) Set to 10. Sets ringsize to n (mixin + 1). Loki ring_size is statically set to 10.
       uint64_t outputs;       // 
       uint64_t unlock_time;   // Number of blocks before the loki can be spent (0 to not add a lock).
-      std::string payment_id; // (Optional) Random 32-byte/64-character hex string to identify a transaction.
+      std::string payment_id; // (Optional) 64-character hex string to identify a transaction.
       bool get_tx_key;        // (Optional) Return the transaction keys after sending.
       std::string key_image;  // Key image of specific output to sweep.
       bool do_not_relay;      // (Optional) If true, do not relay this sweep transfer. (Defaults to false)
@@ -875,7 +876,7 @@ namespace wallet_rpc
   };
 
   LOKI_RPC_DOC_INTROSPECT
-  // Relay a transaction previously created with `"do_not_relay":true`.
+  // Relay transaction metadata to the daemon 
   struct COMMAND_RPC_RELAY_TX
   {
     struct request
@@ -923,8 +924,8 @@ namespace wallet_rpc
     uint64_t amount;                            // Amount for this payment.
     uint64_t block_height;                      // Height of the block that first confirmed this payment.
     uint64_t unlock_time;                       // Time (in block height) until this payment is safe to spend.
-    cryptonote::subaddress_index subaddr_index; // JSON object containing the major & minor subaddress index:
-    std::string address;                        // Address receiving the payment; Base58 representation of the public keys.
+    cryptonote::subaddress_index subaddr_index; // Major & minor index, account and subaddress index respectively.
+    std::string address;                        // Address receiving the payment.
 
     BEGIN_KV_SERIALIZE_MAP()
       KV_SERIALIZE(payment_id)
@@ -964,7 +965,7 @@ namespace wallet_rpc
   // Get a list of incoming payments using a given payment id, 
   // or a list of payments ids, from a given height. 
   //
-  // This method is the preferred method over get_paymentsbecause it 
+  // This method is the preferred method over  get_paymentsbecause it 
   // has the same functionality but is more extendable. 
   // Either is fine for looking up transactions by a single payment ID.
   struct COMMAND_RPC_GET_BULK_PAYMENTS
@@ -996,9 +997,9 @@ namespace wallet_rpc
   {
     uint64_t amount;                            // Amount of this transfer.
     bool spent;                                 // Indicates if this transfer has been spent.
-    uint64_t global_index;                      // Mostly internal use, can be ignored by most users.
+    uint64_t global_index;                      // The index into the global list of transactions grouped by amount in the Loki network.
     std::string tx_hash;                        // Several incoming transfers may share the same hash if they were in the same transaction.
-    cryptonote::subaddress_index subaddr_index; // Subaddress index for incoming transfer.
+    cryptonote::subaddress_index subaddr_index; // Major & minor index, account and subaddress index respectively.
     std::string key_image;                      // Key image for the incoming transfer's unspent output (empty unless verbose is true).
 
     BEGIN_KV_SERIALIZE_MAP()
@@ -1136,8 +1137,9 @@ namespace wallet_rpc
   LOKI_RPC_DOC_INTROSPECT
   // Rescan the blockchain from scratch, losing any information 
   // which can not be recovered from the blockchain itself.
-  //
   // This includes destination addresses, tx secret keys, tx notes, etc.
+  
+  // Warning: This blocks the Wallet RPC executable until rescanning is complete.
   struct COMMAND_RPC_RESCAN_BLOCKCHAIN
   {
     struct request
@@ -1370,15 +1372,15 @@ namespace wallet_rpc
     std::string txid;                             // Transaction ID for this transfer.
     std::string payment_id;                       // Payment ID for this transfer.
     uint64_t height;                              // Height of the first block that confirmed this transfer (0 if not mined yet).
-    uint64_t timestamp;                           // POSIX timestamp for when this transfer was first confirmed in a block (or timestamp submission if not mined yet).
+    uint64_t timestamp;                           // UNIX timestamp for when this transfer was first confirmed in a block (or timestamp submission if not mined yet).
     uint64_t amount;                              // Amount transferred.
     uint64_t fee;                                 // Transaction fee for this transfer.
     std::string note;                             // Note about this transfer.
-    std::list<transfer_destination> destinations; // Array of JSON objects containing transfer destinations.
+    std::list<transfer_destination> destinations; // Array of transfer destinations.
     std::string type;                             // Type of transfer, one of the following: "in", "out", "pending", "failed", "pool".
     uint64_t unlock_time;                         // Number of blocks until transfer is safely spendable.
-    cryptonote::subaddress_index subaddr_index;   // JSON object containing the major & minor subaddress index:
-    std::string address;                          // Address that transferred the funds. Base58 representation of the public keys.
+    cryptonote::subaddress_index subaddr_index;   // Major & minor index, account and subaddress index respectively.
+    std::string address;                          // Address that transferred the funds.
     bool double_spend_seen;                       // True if the key image(s) for the transfer have been seen before.
     uint64_t confirmations;                       // Number of block mined since the block containing this transaction (or block height at which the transaction should be added to a block if not yet confirmed).
     uint64_t suggested_confirmations_threshold;   // Estimation of the confirmations needed for the transaction to be included in a block.
@@ -1864,7 +1866,7 @@ namespace wallet_rpc
     {
       uint64_t index;          // Index of entry.
       std::string address;     // Public address of the entry
-      std::string payment_id;  // (Optional) Random 32-byte/64-character hex string to identify a transaction.
+      std::string payment_id;  // (Optional) 64-character hex string to identify a transaction.
       std::string description; // Description of this address entry.
 
       BEGIN_KV_SERIALIZE_MAP()
@@ -2008,7 +2010,7 @@ namespace wallet_rpc
   };
 
   LOKI_RPC_DOC_INTROSPECT
-  // Create a new wallet. You need to have set the argument "–wallet-dir" when launching loki-wallet-rpc to make this work.
+  // Create a new wallet. You need to have set the argument "'–wallet-dir" when launching loki-wallet-rpc to make this work.
   struct COMMAND_RPC_CREATE_WALLET
   {
     struct request
@@ -2032,12 +2034,14 @@ namespace wallet_rpc
   };
 
   LOKI_RPC_DOC_INTROSPECT
-  // Open a wallet. You need to have set the argument "–wallet-dir" when launching loki-wallet-rpc to make this work.
+  // Open a wallet. You need to have set the argument "–-wallet-dir" when launching loki-wallet-rpc to make this work.
+  // The wallet rpc executable may only open wallet files within the same directory as wallet-dir, otherwise use the
+  // "--wallet-file" flag to open specific wallets.
   struct COMMAND_RPC_OPEN_WALLET
   {
     struct request
     {
-      std::string filename; // Wallet name stored in –wallet-dir.
+      std::string filename; // Wallet name stored in "–-wallet-dir".
       std::string password; // (Optional) only needed if the wallet has a password defined.
 
       BEGIN_KV_SERIALIZE_MAP()
@@ -2098,7 +2102,7 @@ namespace wallet_rpc
   {
     struct request
     {
-      uint64_t restore_height; // Height in which to start scanning the Blockchain for transactions into and out of this Wallet.
+      uint64_t restore_height; // Height in which to start scanning the blockchain for transactions into and out of this Wallet.
       std::string filename;    // Set the name of the Wallet.
       std::string seed;        // Mnemonic seed of wallet (25 words).
       std::string seed_offset; // 
