@@ -94,7 +94,7 @@ namespace cryptonote
   public:
     void debug__print_checkpoints()
     {
-      const std::map<uint64_t, std::list<checkpoint_t>> &checkpoint_map = m_checkpoints.get_points();
+      const std::map<uint64_t, checkpoint_t> &checkpoint_map = m_checkpoints.get_points();
       if (checkpoint_map.empty())
       {
           std::cout << "Checkpoint: None available" << std::endl;

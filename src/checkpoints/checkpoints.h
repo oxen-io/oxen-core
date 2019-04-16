@@ -30,7 +30,7 @@
 
 #pragma once
 #include <map>
-#include <list>
+#include <vector>
 #include "misc_log_ex.h"
 #include "crypto/hash.h"
 #include "cryptonote_config.h"
@@ -138,9 +138,7 @@ namespace cryptonote
      *
      * @return a const reference to the checkpoints container
      */
-    const std::map<uint64_t, std::list<checkpoint_t>>& get_points() const { return m_points; };
-
-    void handle_block_added(uint64_t height);
+    const std::map<uint64_t, checkpoint_t>& get_points() const { return m_points; };
 
     /**
      * @brief checks if our checkpoints container conflicts with another
@@ -197,8 +195,9 @@ namespace cryptonote
     bool load_checkpoints_from_dns(network_type nettype = MAINNET);
 
   private:
-    uint64_t                                    m_oldest_possible_reorg_limit = 0;
-    std::map<uint64_t, std::list<checkpoint_t>> m_points; //!< the checkpoints container
+    std::vector<checkpoint_t>        m_staging_points;
+    uint64_t                         m_oldest_possible_reorg_limit = 0;
+    std::map<uint64_t, checkpoint_t> m_points; //!< the checkpoints container
   };
 
 }

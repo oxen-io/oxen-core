@@ -112,6 +112,7 @@ static const hard_fork_record testnet_hard_forks[] =
   { network_version_9_service_nodes,     3, 0, 1533631123 },
   { network_version_10_bulletproofs,     4, 0, 1542681077 },
   { network_version_11_infinite_staking, 5, 0, 1551223964 },
+  { network_version_12_checkpointing,    6, 0, 1551223964 },
 };
 
 static const hard_fork_record stagenet_hard_forks[] =
@@ -3532,7 +3533,6 @@ leave:
     }
 
   }
-  m_checkpoints.handle_block_added(get_current_blockchain_height());
 
   TIME_MEASURE_FINISH(longhash_calculating_time);
   if (precomputed)
@@ -3950,7 +3950,7 @@ void Blockchain::check_against_checkpoints(const checkpoints& points, bool enfor
     if (block_height >= m_db->height()) // if the checkpoint is for a block we don't have yet, move on
       break;
 
-    if (!points.check_block(block_height, m_db->get_block_hash_from_height(block_height), *this))
+    if (!points.check_block(block_height, m_db->get_block_hash_from_height(block_height), nullptr))
     {
       // if asked to enforce checkpoints, roll back to a couple of blocks before the checkpoint
       if (enforce)

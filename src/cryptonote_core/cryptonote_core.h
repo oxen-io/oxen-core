@@ -901,13 +901,6 @@ namespace cryptonote
       */
      bool check_blockchain_pruning();
 
-     /**
-      * @brief attempt to relay the pooled deregister votes
-      *
-      * @return true, necessary for binding this function to a periodic invoker
-      */
-     bool relay_deregister_votes();
-
    private:
 
      /**

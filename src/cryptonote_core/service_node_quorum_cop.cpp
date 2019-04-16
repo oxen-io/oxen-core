@@ -42,31 +42,36 @@
 namespace service_nodes
 {
   quorum_cop::quorum_cop(cryptonote::core& core)
-    : m_core(core), m_last_height(0)
+    : m_core(core), m_uptime_proof_height(0)
   {
     init();
   }
 
   void quorum_cop::init()
   {
-    m_last_height = 0;
+    m_uptime_proof_height = 0;
     m_uptime_proof_seen.clear();
   }
 
   void quorum_cop::blockchain_detached(uint64_t height)
   {
-    if (m_last_height >= height)
+    if (m_uptime_proof_height >= height)
     {
-      LOG_ERROR("The blockchain was detached to height: " << height << ", but quorum cop has already processed votes up to " << m_last_height);
+      LOG_ERROR("The blockchain was detached to height: " << height << ", but quorum cop has already processed votes up to " << m_uptime_proof_height);
       LOG_ERROR("This implies a reorg occured that was over " << REORG_SAFETY_BUFFER_IN_BLOCKS << ". This should never happen! Please report this to the devs.");
-      m_last_height = height;
+      m_uptime_proof_height = height;
     }
   }
 
   void quorum_cop::block_added(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs)
   {
-    uint64_t const height        = cryptonote::get_block_height(block);
+    process_uptime_quorum(block);
+    process_checkpoint_quorum(block);
+  }
 
+  void quorum_cop::process_uptime_quorum(cryptonote::block const &block)
+  {
+    uint64_t const height = cryptonote::get_block_height(block);
     if (m_core.get_hard_fork_version(height) < 9)
       return;
 
@@ -88,7 +93,6 @@ namespace service_nodes
     }
 
     uint64_t const latest_height = std::max(m_core.get_current_blockchain_height(), m_core.get_target_blockchain_height());
-
     if (latest_height < service_nodes::deregister_vote::VOTE_LIFETIME_BY_HEIGHT)
       return;
 
@@ -96,20 +100,19 @@ namespace service_nodes
     if (height < execute_justice_from_height)
       return;
 
-    if (m_last_height < execute_justice_from_height)
-      m_last_height = execute_justice_from_height;
+    if (m_uptime_proof_height < execute_justice_from_height)
+      m_uptime_proof_height = execute_justice_from_height;
 
-
-    for (;m_last_height < (height - REORG_SAFETY_BUFFER_IN_BLOCKS); m_last_height++)
+    for (;m_uptime_proof_height < (height - REORG_SAFETY_BUFFER_IN_BLOCKS); m_uptime_proof_height++)
     {
-      if (m_core.get_hard_fork_version(m_last_height) < 9)
+      if (m_core.get_hard_fork_version(m_uptime_proof_height) < 9)
         continue;
 
       const std::shared_ptr<const quorum_uptime_proof> state = m_core.get_uptime_quorum(m_last_height);
       if (!state)
       {
         // TODO(loki): Fatal error
-        LOG_ERROR("Quorum state for height: " << m_last_height << " was not cached in daemon!");
+        LOG_ERROR("Quorum state for height: " << m_uptime_proof_height << " was not cached in daemon!");
         continue;
       }
 
@@ -118,7 +121,7 @@ namespace service_nodes
         continue;
 
       //
-      // I am in the quorum
+      // NOTE: I am in the quorum
       //
       size_t my_index_in_quorum = it - state->quorum_nodes.begin();
       for (size_t node_index = 0; node_index < state->nodes_to_test.size(); ++node_index)
@@ -126,7 +129,7 @@ namespace service_nodes
         const crypto::public_key &node_key = state->nodes_to_test[node_index];
 
         //
-        // Handle deregister votes
+        // NOTE: Handle deregister votes
         //
         {
           CRITICAL_REGION_LOCAL(m_lock);
@@ -136,7 +139,7 @@ namespace service_nodes
           if (vote_off_node)
           {
             service_nodes::deregister_vote vote = {};
-            vote.block_height        = m_last_height;
+            vote.block_height        = m_uptime_proof_height;
             vote.service_node_index  = node_index;
             vote.voters_quorum_index = my_index_in_quorum;
             vote.signature           = service_nodes::deregister_vote::sign_vote(vote.block_height, vote.service_node_index, my_pubkey, my_seckey);
@@ -149,31 +152,59 @@ namespace service_nodes
           }
         }
       }
-
-      //
-      // Handle Checkpointing
-      //
-      if (m_last_height % CHECKPOINT_INTERVAL == 0)
-      {
-        uint64_t block_height_to_checkpoint = 0;
-        if (loki::u64_subtract_no_underflow(m_last_height, CHECKPOINT_INTERVAL, &block_height_to_checkpoint))
-        {
-          service_nodes::checkpoint_vote vote = {};
-          vote.block_height                   = block_height_to_checkpoint;
-          vote.block_hash                     = m_core.get_block_id_by_height(block_height_to_checkpoint);
-          vote.voters_quorum_index            = my_index_in_quorum;
-          crypto::generate_signature(vote.block_hash, my_pubkey, my_seckey, vote.signature);
-
-          cryptonote::vote_verification_context vvc = {};
-          if (!m_core.add_checkpoint_vote(vote, vvc))
-          {
-            // TODO(doyle): CHECKPOINTING(doyle):
-            LOG_ERROR("Failed to add checkpoint vote reason: " << print_vote_verification_context(vvc, &vote));
-          }
-        }
-      }
     }
   }
+
+  void quorum_cop::process_checkpoint_quorum(cryptonote::block const &block)
+  {
+    uint64_t const height = cryptonote::get_block_height(block);
+    if (m_core.get_hard_fork_version(height) < cryptonote::network_version_11_infinite_staking)
+      return;
+
+    crypto::public_key my_pubkey;
+    crypto::secret_key my_seckey;
+    if (!m_core.get_service_node_keys(my_pubkey, my_seckey))
+      return;
+
+    if (height % CHECKPOINT_INTERVAL != 0)
+      return;
+
+    const std::shared_ptr<const quorum_state> state = m_core.get_quorum_state(height);
+    if (!state)
+    {
+      // TODO(loki): Fatal error
+      LOG_ERROR("Quorum state for height: " << height << " was not cached in daemon!");
+      return;
+    }
+
+    auto it = std::find(state->quorum_nodes.begin(), state->quorum_nodes.end(), my_pubkey);
+    if (it == state->quorum_nodes.end())
+      return;
+
+    //
+    // NOTE: I am in the quorum, handle checkpointing
+    //
+    size_t my_index_in_quorum           = it - state->quorum_nodes.begin();
+    service_nodes::checkpoint_vote vote = {};
+    if (!cryptonote::get_block_hash(block, vote.block_hash))
+    {
+      // TODO(loki): Fatal error
+      LOG_ERROR("Could not get block hash for block on height: " << height);
+      return;
+    }
+
+    vote.block_height        = height;
+    vote.voters_quorum_index = my_index_in_quorum;
+    crypto::generate_signature(vote.block_hash, my_pubkey, my_seckey, vote.signature);
+
+    cryptonote::vote_verification_context vvc = {};
+    if (!m_core.add_checkpoint_vote(vote, vvc))
+    {
+      // TODO(doyle): CHECKPOINTING(doyle):
+      LOG_ERROR("Failed to add checkpoint vote reason: " << print_vote_verification_context(vvc, nullptr));
+    }
+  }
+
 
   static crypto::hash make_hash(crypto::public_key const &pubkey, uint64_t timestamp)
   {

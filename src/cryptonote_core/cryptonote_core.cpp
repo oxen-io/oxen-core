@@ -2156,8 +2156,8 @@ namespace cryptonote
       if (vote.block_height >= latest_height)
         return false;
 
-      uint64_t delta_height = latest_height - vote.block_height;
-      if (delta_height > 10000)
+      uint64_t vote_age = latest_height - vote.block_height;
+      if (vote_age > ((service_nodes::CHECKPOINT_INTERVAL * 3) - 1))
         return false;
     }
 
@@ -2180,7 +2180,7 @@ namespace cryptonote
       // NOTE(loki): We don't validate that the hash belongs to a valid block
       // just yet, just that the signature is valid.
       crypto::public_key const &voters_pub_key = state->quorum_nodes[vote.voters_quorum_index];
-      if (!crypto::check_signature(vote.hash, voters_pub_key, vote.signature))
+      if (!crypto::check_signature(vote.block_hash, voters_pub_key, vote.signature))
       {
         LOG_PRINT_L1("TODO(doyle): CHECKPOINTING(doyle): Writeme");
         return false;

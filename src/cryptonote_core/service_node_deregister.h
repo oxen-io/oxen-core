@@ -51,7 +51,7 @@ namespace service_nodes
   struct checkpoint_vote
   {
     uint64_t          block_height;
-    crypto::hash      hash;
+    crypto::hash      block_hash;
     uint32_t          voters_quorum_index;
     crypto::signature signature;
     uint64_t          time_last_sent_p2p;
