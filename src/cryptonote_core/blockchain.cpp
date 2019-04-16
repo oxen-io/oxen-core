@@ -3530,7 +3530,9 @@ leave:
       bvc.m_verifivation_failed = true;
       goto leave;
     }
+
   }
+  m_checkpoints.handle_block_added(get_current_blockchain_height());
 
   TIME_MEASURE_FINISH(longhash_calculating_time);
   if (precomputed)

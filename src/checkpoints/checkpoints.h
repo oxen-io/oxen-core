@@ -65,12 +65,6 @@ namespace cryptonote
   class checkpoints
   {
   public:
-
-    /**
-     * @brief default constructor
-     */
-    checkpoints();
-
     /**
      * @brief adds a checkpoint to the container
      *
@@ -146,6 +140,8 @@ namespace cryptonote
      */
     const std::map<uint64_t, std::list<checkpoint_t>>& get_points() const { return m_points; };
 
+    void handle_block_added(uint64_t height);
+
     /**
      * @brief checks if our checkpoints container conflicts with another
      *
@@ -201,6 +197,7 @@ namespace cryptonote
     bool load_checkpoints_from_dns(network_type nettype = MAINNET);
 
   private:
+    uint64_t                                    m_oldest_possible_reorg_limit = 0;
     std::map<uint64_t, std::list<checkpoint_t>> m_points; //!< the checkpoints container
   };
 

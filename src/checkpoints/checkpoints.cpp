@@ -70,10 +70,6 @@ namespace cryptonote
   };
 
   //---------------------------------------------------------------------------
-  checkpoints::checkpoints()
-  {
-  }
-  //---------------------------------------------------------------------------
   bool checkpoints::add_checkpoint(uint64_t height, const std::string& hash_str)
   {
     crypto::hash h = crypto::null_hash;
@@ -110,9 +106,12 @@ namespace cryptonote
         std::list<checkpoint_t> &checkpoint_list = it->second;
         for (checkpoint_t &checkpoint : checkpoint_list)
         {
-          CHECK_AND_ASSERT_MES(checkpoint.type == checkpoint_type::service_node, true, "Predefined checkpoint already exists at this voting height");
           if (checkpoint.block_hash == block_hash)
           {
+            // NOTE: There is already a hardcoded checkpoint for this height. Don't need to checkpoint it.
+            if (checkpoint.type != checkpoint_type::service_node)
+              return true;
+
             curr_checkpoint = &checkpoint;
             break;
           }
@@ -170,6 +169,7 @@ namespace cryptonote
   //---------------------------------------------------------------------------
   bool checkpoints::is_alternative_block_allowed(uint64_t blockchain_height, uint64_t block_height) const
   {
+#if 0
     if (0 == block_height)
       return false;
 
@@ -178,7 +178,7 @@ namespace cryptonote
       return true;
 
     //
-    // Verify alt block height forks off, at oldest, the 2nd closest service node checkpoint
+    // NOTE: Verify alt block height forks off, at oldest, the 2nd closest service node checkpoint
     //
     uint64_t sentinel_height = 0;
     int      num_checkpoints = 0;
@@ -194,7 +194,13 @@ namespace cryptonote
         break;
     }
 
-    bool result = sentinel_height < block_height;
+    bool result = block_height > sentinel_height;
+#else
+    if (0 == block_height)
+      return false;
+
+    bool result = block_height > m_oldest_possible_reorg_limit;
+#endif
     return result;
   }
   //---------------------------------------------------------------------------
@@ -208,6 +214,61 @@ namespace cryptonote
     }
 
     return result;
+  }
+  //---------------------------------------------------------------------------
+  void checkpoints::handle_block_added(uint64_t height)
+  {
+    std::map<uint64_t, std::list<checkpoint_t>>::iterator *oldest_non_invalidatable_checkpoint = nullptr;
+    int  num_checkpoints = 0;
+
+    for (auto it = m_points.rbegin(); it != m_points.rend(); it++, num_checkpoints++)
+    {
+      uint64_t checkpoint_height               = it->first;
+      std::list<checkpoint_t> &checkpoint_list = it->second;
+
+      // NOTE(loki): Don't allow blocks older than a checkpoint if it is not a service node checkpoint
+      // They are hardcoded in the code for a reason. Loki disables DNS checkpoints for now.
+      if ((checkpoint.type == checkpoint_type::predefined_or_dns) ||
+           num_checkpoints >= 3)
+      {
+        oldest_non_invalidatable_checkpoint = it;
+      }
+    }
+
+    if (!oldest_non_invalidatable_checkpoint)
+      return;
+
+    for (auto it = oldest_non_invalidatable_checkpoint; it != m_points.rend(); it++)
+    {
+      uint64_t checkpoint_height               = it->first;
+      std::list<checkpoint_t> &checkpoint_list = it->second;
+
+      if (checkpoint_height <= m_oldest_possible_reorg_limit)
+        break;
+
+      checkpoint_t const *valid_checkpoint_with_most_votes = nullptr;
+      for (checkpoint_t const &checkpoint : checkpoint_list)
+      {
+        if (checkpoint.signatures.size() > 7 &&
+            checkpoint.signatures.size() > valid_checkpoint_with_most_votes.signatures.size())
+        {
+          valid_checkpoint_with_most_votes = &checkpoint;
+        }
+      }
+
+      if (valid_checkpoint_with_most_votes)
+      {
+        checkpoint_t copy_checkpoint = *valid_checkpoint_with_most_votes;
+        checkpoint_list.clear();
+        checkpoint_list.push_back(copy_checkpoint);
+      }
+      else
+      {
+        m_points.erase(it);
+      }
+    }
+
+    m_oldest_possible_reorg_limit = oldest_non_invalidatable_checkpoint->first;
   }
   //---------------------------------------------------------------------------
   bool checkpoints::check_for_conflicts(const checkpoints& other) const
