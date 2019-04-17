@@ -102,6 +102,11 @@ namespace cryptonote
                          false,
                          "Developer error: Add vote if unique should only be called when the vote hash and checkpoint hash match");
 
+    // TODO(doyle): Factor this out, a similar function exists in service node deregister
+    CHECK_AND_ASSERT_MES(vote.voters_quorum_index < service_nodes::QUORUM_SIZE,
+                         false,
+                         "Vote is indexing out of bounds");
+
     const auto compare_vote_and_voter_to_signature = [](service_nodes::checkpoint_vote const &a, service_nodes::voter_to_signature const &b) {
       return a.voters_quorum_index < b.quorum_index;
     };
@@ -121,10 +126,18 @@ namespace cryptonote
   //---------------------------------------------------------------------------
   bool checkpoints::add_checkpoint_vote(service_nodes::checkpoint_vote const &vote)
   {
+   // TODO(doyle): Always accept votes. Later on, we should only accept votes up
+   // to a certain point, so that eventually once a certain number of blocks
+   // have transpired, we can go through all our "seen" votes and deregister
+   // anyone who has not participated in voting by that point.
+
+#if 0
     uint64_t newest_checkpoint_height = get_max_height();
     if (vote.block_height < newest_checkpoint_height)
       return true;
+#endif
 
+    std::vector<int> unique_vote_set(service_nodes::QUORUM_SIZE);
     auto pre_existing_checkpoint_it = m_points.find(vote.block_height);
     if (pre_existing_checkpoint_it != m_points.end())
     {
@@ -134,49 +147,38 @@ namespace cryptonote
 
       if (checkpoint.block_hash == vote.block_hash)
       {
-        add_vote_if_unique(checkpoint, vote);
-        return true;
+        bool added = add_vote_if_unique(checkpoint, vote);
+        return added;
       }
+
+      for (service_nodes::voter_to_signature const &vote_to_sig : checkpoint.signatures)
+      {
+        if (vote_to_sig.quorum_index > unique_vote_set.size()) // TODO(doyle): Sanity check, remove once universal vote verifying function is written
+          return false;
+        ++unique_vote_set[vote_to_sig.quorum_index];
+      }
+
     }
 
-    // TODO(doyle): Double work. Factor into a generic vote chcker as we already have one in service node deregister
+    // TODO(doyle): Double work. Factor into a generic vote checker as we already have one in service node deregister
     CRITICAL_REGION_LOCAL(m_lock);
     std::vector<checkpoint_t> &candidate_checkpoints    = m_staging_points[vote.block_height];
     std::vector<checkpoint_t>::iterator curr_checkpoint = candidate_checkpoints.end();
+    for (auto it = candidate_checkpoints.begin(); it != candidate_checkpoints.end(); it++)
     {
-      std::vector<int> voter_seen(service_nodes::QUORUM_SIZE);
-      if (pre_existing_checkpoint_it != m_points.end())
+      checkpoint_t const &checkpoint = *it;
+      if (checkpoint.block_hash == vote.block_hash)
+        curr_checkpoint = it;
+
+      for (service_nodes::voter_to_signature const &vote_to_sig : checkpoint.signatures)
       {
-        checkpoint_t const &checkpoint = pre_existing_checkpoint_it->second;
-        for (service_nodes::voter_to_signature const &vote_to_sig : checkpoint.signatures)
+        if (vote_to_sig.quorum_index > unique_vote_set.size())
+          return false;
+
+        if (++unique_vote_set[vote_to_sig.quorum_index] > 1)
         {
-          if (vote_to_sig.quorum_index > voter_seen.size())
-            return false;
-
-          if (++voter_seen[vote_to_sig.quorum_index] > 1)
-          {
-            // NOTE: Voter is trying to vote twice
-            return false;
-          }
-        }
-      }
-
-      for (auto it = candidate_checkpoints.begin(); it != candidate_checkpoints.end(); it++)
-      {
-        checkpoint_t const &checkpoint = *it;
-        if (checkpoint.block_hash == vote.block_hash)
-          curr_checkpoint = it;
-
-        for (service_nodes::voter_to_signature const &vote_to_sig : checkpoint.signatures)
-        {
-          if (vote_to_sig.quorum_index > voter_seen.size())
-            return false;
-
-          if (++voter_seen[vote_to_sig.quorum_index] > 1)
-          {
-            // NOTE: Voter is trying to vote twice
-            return false;
-          }
+          // NOTE: Voter is trying to vote twice
+          return false;
         }
       }
     }
