@@ -137,6 +137,7 @@ namespace cryptonote
       return true;
 #endif
 
+    CRITICAL_REGION_LOCAL(m_lock);
     std::vector<int> unique_vote_set(service_nodes::QUORUM_SIZE);
     auto pre_existing_checkpoint_it = m_points.find(vote.block_height);
     if (pre_existing_checkpoint_it != m_points.end())
@@ -161,7 +162,6 @@ namespace cryptonote
     }
 
     // TODO(doyle): Double work. Factor into a generic vote checker as we already have one in service node deregister
-    CRITICAL_REGION_LOCAL(m_lock);
     std::vector<checkpoint_t> &candidate_checkpoints    = m_staging_points[vote.block_height];
     std::vector<checkpoint_t>::iterator curr_checkpoint = candidate_checkpoints.end();
     for (auto it = candidate_checkpoints.begin(); it != candidate_checkpoints.end(); it++)

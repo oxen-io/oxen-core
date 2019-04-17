@@ -128,28 +128,22 @@ namespace service_nodes
       {
         const crypto::public_key &node_key = state->nodes_to_test[node_index];
 
-        //
-        // NOTE: Handle deregister votes
-        //
+        CRITICAL_REGION_LOCAL(m_lock);
+        bool vote_off_node = (m_uptime_proof_seen.find(node_key) == m_uptime_proof_seen.end());
+
+        if (!vote_off_node)
+          continue;
+
+        service_nodes::deregister_vote vote = {};
+        vote.block_height        = m_uptime_proof_height;
+        vote.service_node_index  = node_index;
+        vote.voters_quorum_index = my_index_in_quorum;
+        vote.signature           = service_nodes::deregister_vote::sign_vote(vote.block_height, vote.service_node_index, my_pubkey, my_seckey);
+
+        cryptonote::vote_verification_context vvc = {};
+        if (!m_core.add_deregister_vote(vote, vvc))
         {
-          CRITICAL_REGION_LOCAL(m_lock);
-
-          bool vote_off_node = (m_uptime_proof_seen.find(node_key) == m_uptime_proof_seen.end());
-
-          if (vote_off_node)
-          {
-            service_nodes::deregister_vote vote = {};
-            vote.block_height        = m_uptime_proof_height;
-            vote.service_node_index  = node_index;
-            vote.voters_quorum_index = my_index_in_quorum;
-            vote.signature           = service_nodes::deregister_vote::sign_vote(vote.block_height, vote.service_node_index, my_pubkey, my_seckey);
-
-            cryptonote::vote_verification_context vvc = {};
-            if (!m_core.add_deregister_vote(vote, vvc))
-            {
-              LOG_ERROR("Failed to add deregister vote reason: " << print_vote_verification_context(vvc, &vote));
-            }
-          }
+          LOG_ERROR("Failed to add deregister vote reason: " << print_vote_verification_context(vvc, &vote));
         }
       }
     }

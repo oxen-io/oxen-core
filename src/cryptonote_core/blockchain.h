@@ -770,13 +770,14 @@ namespace cryptonote
      */
     bool update_checkpoints(const std::string& file_path, bool check_dns);
 
+    // TODO(doyle): CHECKPOINTING(doyle):
     struct service_node_checkpoint_pool_entry
     {
       uint64_t                                    height;
       std::vector<service_nodes::checkpoint_vote> votes;
     };
 
-    // TODO(doyle): CHECKPOINTING(doyle):
+    std::vector<service_node_checkpoint_pool_entry> m_checkpoint_pool;
     bool add_checkpoint_vote(service_nodes::checkpoint_vote const &vote);
 
     // user options, must be called before calling init()
@@ -1075,8 +1076,6 @@ namespace cryptonote
      */
     void pop_blocks(uint64_t nblocks);
 
-    std::vector<service_node_checkpoint_pool_entry> m_checkpoint_pool;
-
 #ifndef IN_UNIT_TESTS
   private:
 #endif
@@ -1101,8 +1100,8 @@ namespace cryptonote
 
     tx_memory_pool& m_tx_pool;
 
-    service_nodes::service_node_list&                           m_service_node_list;
-    service_nodes::deregister_vote_pool&                        m_deregister_vote_pool;
+    service_nodes::service_node_list&    m_service_node_list;
+    service_nodes::deregister_vote_pool& m_deregister_vote_pool;
 
     mutable epee::critical_section m_blockchain_lock; // TODO: add here reader/writer lock
 

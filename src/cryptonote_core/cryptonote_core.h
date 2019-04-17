@@ -1111,9 +1111,9 @@ namespace cryptonote
      tx_memory_pool m_mempool; //!< transaction pool instance
      Blockchain m_blockchain_storage; //!< Blockchain instance
 
-     service_nodes::deregister_vote_pool    m_deregister_vote_pool;
-     service_nodes::service_node_list       m_service_node_list;
-     service_nodes::quorum_cop              m_quorum_cop;
+     service_nodes::deregister_vote_pool m_deregister_vote_pool;
+     service_nodes::service_node_list    m_service_node_list;
+     service_nodes::quorum_cop           m_quorum_cop;
 
      i_cryptonote_protocol* m_pprotocol; //!< cryptonote protocol instance
 
