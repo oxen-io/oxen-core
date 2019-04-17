@@ -2188,54 +2188,7 @@ namespace cryptonote
     }
 
     // TODO(doyle): CHECKPOINTING(doyle): We need to check the hash they're voting on matches across votes
-    // Get Matching Checkpoint
-    std::vector<Blockchain::service_node_checkpoint_pool_entry> &checkpoint_pool = m_blockchain_storage.m_checkpoint_pool;
-    auto it = std::find_if(checkpoint_pool.begin(), checkpoint_pool.end(), [&vote](Blockchain::service_node_checkpoint_pool_entry const &checkpoint) {
-        return (checkpoint.height == vote.block_height);
-    });
-
-    if (it == checkpoint_pool.end())
-    {
-      Blockchain::service_node_checkpoint_pool_entry pool_entry = {};
-      pool_entry.height                                         = vote.block_height;
-      checkpoint_pool.push_back(pool_entry);
-      it = (checkpoint_pool.end() - 1);
-    }
-
-    // 1. The proposed chain must be built from one of the last two checkpoints C1 or C2;
-    // 2. Nodes shall not accept more than (N*3) - 1 blocks since the last checkpoint (Where N is the reorg limit);
-    // 3. If two chains of proof of work are produced with the same cumulative difficulty, Service Nodes should choose the chain based on the lowest hamming distance of the chain tip’s blockhash to 0, and;
-    // 4. The latest checkpoint C3 can invalidate two checkpoints back to C1.
-
-    // Add Vote if Unique to Checkpoint
-    {
-      Blockchain::service_node_checkpoint_pool_entry &pool_entry = (*it);
-      auto vote_it = std::find_if(pool_entry.votes.begin(), pool_entry.votes.end(), [&vote](service_nodes::checkpoint_vote const &preexisting_vote) {
-          return (preexisting_vote.voters_quorum_index == vote.voters_quorum_index);
-      });
-
-      if (vote_it == pool_entry.votes.end())
-      {
-        pool_entry.votes.push_back(vote);
-        if (pool_entry.votes.size() >= service_nodes::MIN_VOTES_TO_CHECKPOINT)
-        {
-          if (pool_entry.votes.size() == service_nodes::MIN_VOTES_TO_CHECKPOINT)
-          {
-            // NOTE: We just hit the threshold for collecting votes, we can form a checkpoint with the votes we have
-            for (service_nodes::checkpoint_vote const &stored_vote : pool_entry.votes)
-            {
-              m_blockchain_storage.create_or_update_service_node_checkpoint(stored_vote);
-            }
-          }
-          else
-          {
-            // Enough votes to form a checkpoint, we're receiving extra votes within an acceptable time frame, just append it to the checkpoint
-            m_blockchain_storage.create_or_update_service_node_checkpoint(vote);
-          }
-        }
-      }
-    }
-
+    m_blockchain_storage.add_checkpoint_vote(vote);
     return true;
   }
   //-----------------------------------------------------------------------------------------------

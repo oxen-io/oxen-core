@@ -35,6 +35,7 @@
 #include "string_tools.h"
 #include "storages/portable_storage_template_helper.h" // epee json include
 #include "serialization/keyvalue_serialization.h"
+#include "cryptonote_core/service_node_rules.h"
 #include <vector>
 #include "syncobj.h"
 
@@ -95,51 +96,111 @@ namespace cryptonote
     return true;
   }
   //---------------------------------------------------------------------------
-  bool checkpoints::add_or_update_service_node_checkpoint(crypto::hash const &block_hash, service_nodes::checkpoint_vote const &vote)
+  static bool add_vote_if_unique(checkpoint_t &checkpoint, service_nodes::checkpoint_vote const &vote)
   {
-    if (m_points.count(vote.block_height))
-      return true;
-
-    uint64_t newest_checkpoint_height = get_max_height();
-    if (vote.block_height < newest_checkpoint_height)
-      return true;
-
-    std::vector<checkpoint_t>::iterator curr_checkpoint = std::find_if(m_staging_points.begin(), m_staging_points.end(), [block_hash](checkpoint_t const &checkpoint) {
-      bool result = (checkpoint.block_hash == block_hash);
-      return result;
-    });
-
-    if (curr_checkpoint == m_staging_points.end())
-    {
-      checkpoint_t new_checkpoint = {};
-      new_checkpoint.type         = checkpoint_type::service_node;
-      new_checkpoint.block_hash   = block_hash;
-      m_staging_points.push_back(new_checkpoint);
-      curr_checkpoint = (m_staging_points.end() - 1);
-    }
+    CHECK_AND_ASSERT_MES(checkpoint.block_hash == vote.block_hash,
+                         false,
+                         "Developer error: Add vote if unique should only be called when the vote hash and checkpoint hash match");
 
     const auto compare_vote_and_voter_to_signature = [](service_nodes::checkpoint_vote const &a, service_nodes::voter_to_signature const &b) {
       return a.voters_quorum_index < b.quorum_index;
     };
 
-    auto signature_it = std::upper_bound(curr_checkpoint->signatures.begin(), curr_checkpoint->signatures.end(), vote, compare_vote_and_voter_to_signature);
-    if (signature_it == curr_checkpoint->signatures.end() || signature_it->quorum_index != vote.voters_quorum_index)
+    auto signature_it = std::upper_bound(checkpoint.signatures.begin(), checkpoint.signatures.end(), vote, compare_vote_and_voter_to_signature);
+    if (signature_it == checkpoint.signatures.end() || signature_it->quorum_index != vote.voters_quorum_index)
     {
       service_nodes::voter_to_signature new_voter_to_signature = {};
       new_voter_to_signature.quorum_index                      = vote.voters_quorum_index;
       new_voter_to_signature.signature                         = vote.signature;
-      curr_checkpoint->signatures.insert(signature_it, new_voter_to_signature);
+      checkpoint.signatures.insert(signature_it, new_voter_to_signature);
+      return true;
+    }
 
-      // TODO(doyle): Quorum SuperMajority variable
-      if (curr_checkpoint->signatures.size() > 7)
+    return false;
+  }
+  //---------------------------------------------------------------------------
+  bool checkpoints::add_checkpoint_vote(service_nodes::checkpoint_vote const &vote)
+  {
+    uint64_t newest_checkpoint_height = get_max_height();
+    if (vote.block_height < newest_checkpoint_height)
+      return true;
+
+    auto pre_existing_checkpoint_it = m_points.find(vote.block_height);
+    if (pre_existing_checkpoint_it != m_points.end())
+    {
+      checkpoint_t &checkpoint = pre_existing_checkpoint_it->second;
+      if (checkpoint.type == checkpoint_type::predefined_or_dns)
+        return true;
+
+      if (checkpoint.block_hash == vote.block_hash)
+      {
+        add_vote_if_unique(checkpoint, vote);
+        return true;
+      }
+    }
+
+    // TODO(doyle): Double work. Factor into a generic vote chcker as we already have one in service node deregister
+    CRITICAL_REGION_LOCAL(m_lock);
+    std::vector<checkpoint_t> &candidate_checkpoints    = m_staging_points[vote.block_height];
+    std::vector<checkpoint_t>::iterator curr_checkpoint = candidate_checkpoints.end();
+    {
+      std::vector<int> voter_seen(service_nodes::QUORUM_SIZE);
+      if (pre_existing_checkpoint_it != m_points.end())
+      {
+        checkpoint_t const &checkpoint = pre_existing_checkpoint_it->second;
+        for (service_nodes::voter_to_signature const &vote_to_sig : checkpoint.signatures)
+        {
+          if (vote_to_sig.quorum_index > voter_seen.size())
+            return false;
+
+          if (++voter_seen[vote_to_sig.quorum_index] > 1)
+          {
+            // NOTE: Voter is trying to vote twice
+            return false;
+          }
+        }
+      }
+
+      for (auto it = candidate_checkpoints.begin(); it != candidate_checkpoints.end(); it++)
+      {
+        checkpoint_t const &checkpoint = *it;
+        if (checkpoint.block_hash == vote.block_hash)
+          curr_checkpoint = it;
+
+        for (service_nodes::voter_to_signature const &vote_to_sig : checkpoint.signatures)
+        {
+          if (vote_to_sig.quorum_index > voter_seen.size())
+            return false;
+
+          if (++voter_seen[vote_to_sig.quorum_index] > 1)
+          {
+            // NOTE: Voter is trying to vote twice
+            return false;
+          }
+        }
+      }
+    }
+
+    if (curr_checkpoint == candidate_checkpoints.end())
+    {
+      checkpoint_t new_checkpoint = {};
+      new_checkpoint.type         = checkpoint_type::service_node;
+      new_checkpoint.block_hash   = vote.block_hash;
+      candidate_checkpoints.push_back(new_checkpoint);
+      curr_checkpoint = (candidate_checkpoints.end() - 1);
+    }
+
+    if (add_vote_if_unique(*curr_checkpoint, vote))
+    {
+      if (curr_checkpoint->signatures.size() > service_nodes::MIN_VOTES_TO_CHECKPOINT) // TODO(doyle): Quorum SuperMajority variable
       {
         // NOTE: Adding a new checkpoint, we can no longer reorg back past the
         // 2nd closest service node checkpoint OR the 1st non service node
         // checkpoint.
 
-        // Don't allow blocks older than a checkpoint if it is not a service
-        // node checkpoint. They are hardcoded in the code for a reason. NOTE:
-        // Loki disables DNS checkpoints for now.
+        // Push up the reorg limit, don't allow blocks older than a checkpoint
+        // if it is not a service node checkpoint. They are hardcoded in the
+        // code for a reason. NOTE: Loki disables DNS checkpoints for now.
         uint64_t reorg_sentinel_height = 0;
         int num_checkpoints = 0;
         for (auto it = m_points.rbegin(); it != m_points.rend() && num_checkpoints < 2; it++, num_checkpoints++)
@@ -149,10 +210,9 @@ namespace cryptonote
           if (reorg_sentinel_checkpoint.type == checkpoint_type::predefined_or_dns) break;
         }
 
-        CRITICAL_REGION_LOCAL(m_lock);
         m_oldest_possible_reorg_limit = reorg_sentinel_height + 1;
         m_points[vote.block_height]   = *curr_checkpoint;
-        m_staging_points.erase(curr_checkpoint);
+        candidate_checkpoints.erase(curr_checkpoint);
       }
     }
 

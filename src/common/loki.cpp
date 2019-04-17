@@ -584,10 +584,3 @@ std::string loki::hex64_to_base32z(const std::string &src)
 
   return result;
 }
-
-bool loki::u64_subtract_no_underflow(uint64_t a, uint64_t b, uint64_t *output)
-{
-  bool result = (a >= b);
-  if (output) *output = a - b;
-  return result;
-}

@@ -4007,11 +4007,18 @@ bool Blockchain::update_checkpoints(const std::string& file_path, bool check_dns
   return true;
 }
 //------------------------------------------------------------------
-bool Blockchain::create_or_update_service_node_checkpoint(service_nodes::checkpoint_vote const &vote)
+bool Blockchain::add_checkpoint_vote(service_nodes::checkpoint_vote const &vote)
 {
-  // TODO(doyle): Need to validate hash?
-  crypto::hash const block_hash = get_block_id_by_height(vote.block_height);
-  m_checkpoints.add_or_update_service_node_checkpoint(block_hash, vote);
+  crypto::hash const canonical_block_hash = get_block_id_by_height(vote.block_height);
+  if (vote.block_hash != canonical_block_hash)
+  {
+    // NOTE: Vote is not for a block on the canonical chain, check if it's part
+    // of an alternative chain
+    if (m_alternative_chains.find(vote.block_hash) == m_alternative_chains.end())
+      return false;
+  }
+
+  m_checkpoints.add_checkpoint_vote(vote);
   return true;
 }
 //------------------------------------------------------------------

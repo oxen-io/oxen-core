@@ -777,7 +777,7 @@ namespace cryptonote
     };
 
     // TODO(doyle): CHECKPOINTING(doyle):
-    bool create_or_update_service_node_checkpoint(service_nodes::checkpoint_vote const &vote);
+    bool add_checkpoint_vote(service_nodes::checkpoint_vote const &vote);
 
     // user options, must be called before calling init()
 

@@ -31,6 +31,8 @@
 #pragma once
 #include <map>
 #include <vector>
+#include <list>
+
 #include "misc_log_ex.h"
 #include "crypto/hash.h"
 #include "cryptonote_config.h"
@@ -77,7 +79,7 @@ namespace cryptonote
      */
     bool add_checkpoint(uint64_t height, const std::string& hash_str);
 
-    bool add_or_update_service_node_checkpoint(crypto::hash const &block_hash, service_nodes::checkpoint_vote const &vote);
+    bool add_checkpoint_vote(service_nodes::checkpoint_vote const &vote);
 
     /**
      * @brief checks if there is a checkpoint in the future
@@ -160,8 +162,6 @@ namespace cryptonote
      */
     bool init_default_checkpoints(network_type nettype);
 
-    // TODO(doyle): CHECKPOINTING(doyle): bool init_service_node_checkpoints(Blockchain const &blockchain);
-
     /**
      * @brief load new checkpoints
      *
@@ -195,10 +195,10 @@ namespace cryptonote
     bool load_checkpoints_from_dns(network_type nettype = MAINNET);
 
   private:
-    std::vector<checkpoint_t>        m_staging_points;
-    uint64_t                         m_oldest_possible_reorg_limit = 0;
-    std::map<uint64_t, checkpoint_t> m_points; //!< the checkpoints container
-    mutable epee::critical_section m_lock;
+    std::unordered_map<uint64_t, std::vector<checkpoint_t>> m_staging_points; // Incomplete service node checkpoints being voted on
+    uint64_t                                                m_oldest_possible_reorg_limit = 0;
+    std::map<uint64_t, checkpoint_t>                        m_points; //!< the checkpoints container
+    mutable epee::critical_section                          m_lock;
   };
 
 }
