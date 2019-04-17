@@ -131,7 +131,24 @@ namespace cryptonote
       // TODO(doyle): Quorum SuperMajority variable
       if (curr_checkpoint->signatures.size() > 7)
       {
-        m_points[vote.block_height] = *curr_checkpoint;
+        // NOTE: Adding a new checkpoint, we can no longer reorg back past the
+        // 2nd closest service node checkpoint OR the 1st non service node
+        // checkpoint.
+
+        // Don't allow blocks older than a checkpoint if it is not a service
+        // node checkpoint. They are hardcoded in the code for a reason. NOTE:
+        // Loki disables DNS checkpoints for now.
+        uint64_t reorg_sentinel_height = 0;
+        int num_checkpoints = 0;
+        for (auto it = m_points.rbegin(); it != m_points.rend() && num_checkpoints < 2; it++, num_checkpoints++)
+        {
+          reorg_sentinel_height                         = it->first;
+          checkpoint_t const &reorg_sentinel_checkpoint = &it->second;
+          if (reorg_sentinel_checkpoint->type == checkpoint_type::predefined_or_dns) break;
+        }
+
+        m_oldest_possible_reorg_limit = reorg_sentinel_height + 1;
+        m_points[vote.block_height]   = *curr_checkpoint;
         m_staging_points.erase(curr_checkpoint);
       }
     }
@@ -169,26 +186,7 @@ namespace cryptonote
     if (it == m_points.begin()) // Is blockchain_height before the first checkpoint?
       return true;
 
-    //
-    // NOTE: Verify alt block height is no older than the 2nd closest service
-    // node checkpoint OR the 1st non service node checkpoint.
-    //
-    // Don't allow blocks older than a checkpoint if it is not a service node checkpoint
-    // They are hardcoded in the code for a reason. NOTE: Loki disables DNS checkpoints for now.
-    //
-    uint64_t sentinel_height = 0;
-    int      num_checkpoints = 0;
-    for (auto it = m_points.rbegin(); it != m_points.rend() && num_checkpoints < 2; it++, num_checkpoints++)
-    {
-      const uint64_t checkpoint_height = it->first;
-      const checkpoint_t &checkpoint   = it->second;
-      sentinel_height                  = checkpoint_height;
-
-      if (checkpoint.type == checkpoint_type::predefined_or_dns)
-        break;
-    }
-
-    bool result = block_height > sentinel_height;
+    bool result = block_height >= m_oldest_possible_reorg_limit;
     return result;
   }
   //---------------------------------------------------------------------------
@@ -299,4 +297,4 @@ namespace cryptonote
 
     return result;
   }
-}
+
