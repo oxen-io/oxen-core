@@ -198,6 +198,7 @@ namespace cryptonote
     std::vector<checkpoint_t>        m_staging_points;
     uint64_t                         m_oldest_possible_reorg_limit = 0;
     std::map<uint64_t, checkpoint_t> m_points; //!< the checkpoints container
+    mutable epee::critical_section m_lock;
   };
 
 }

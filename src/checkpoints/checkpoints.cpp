@@ -36,6 +36,7 @@
 #include "storages/portable_storage_template_helper.h" // epee json include
 #include "serialization/keyvalue_serialization.h"
 #include <vector>
+#include "syncobj.h"
 
 using namespace epee;
 
@@ -76,6 +77,7 @@ namespace cryptonote
     bool r         = epee::string_tools::hex_to_pod(hash_str, h);
     CHECK_AND_ASSERT_MES(r, false, "Failed to parse checkpoint hash string into binary representation!");
 
+    CRITICAL_REGION_LOCAL(m_lock);
     if (m_points.count(height)) // return false if adding at a height we already have AND the hash is different
     {
       checkpoint_t const &checkpoint = m_points[height];
@@ -143,10 +145,11 @@ namespace cryptonote
         for (auto it = m_points.rbegin(); it != m_points.rend() && num_checkpoints < 2; it++, num_checkpoints++)
         {
           reorg_sentinel_height                         = it->first;
-          checkpoint_t const &reorg_sentinel_checkpoint = &it->second;
-          if (reorg_sentinel_checkpoint->type == checkpoint_type::predefined_or_dns) break;
+          checkpoint_t const &reorg_sentinel_checkpoint = it->second;
+          if (reorg_sentinel_checkpoint.type == checkpoint_type::predefined_or_dns) break;
         }
 
+        CRITICAL_REGION_LOCAL(m_lock);
         m_oldest_possible_reorg_limit = reorg_sentinel_height + 1;
         m_points[vote.block_height]   = *curr_checkpoint;
         m_staging_points.erase(curr_checkpoint);
@@ -297,4 +300,5 @@ namespace cryptonote
 
     return result;
   }
+}
 

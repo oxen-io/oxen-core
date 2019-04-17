@@ -101,7 +101,7 @@ namespace cryptonote
       }
       else
       {
-        for (auto &it : checkpoint_map)
+        for (auto const &it : checkpoint_map)
         {
           checkpoint_t const &checkpoint = it.second;
           std::cout << "Checkpoint [" << it.first << "]" << ((checkpoint.type == checkpoint_type::service_node) ? "Service Node" : "Predefined") << std::endl;
