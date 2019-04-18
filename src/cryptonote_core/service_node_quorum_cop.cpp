@@ -84,7 +84,7 @@ namespace service_nodes
 #if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
     time_t const min_lifetime = 0;
 #else
-    time_t const min_lifetime = 0; // 60 * 60 * 2;
+    time_t const min_lifetime = 60 * 60 * 2;
 #endif
     bool alive_for_min_time   = (now - m_core.get_start_time()) >= min_lifetime;
     if (!alive_for_min_time)
@@ -152,7 +152,7 @@ namespace service_nodes
   void quorum_cop::process_checkpoint_quorum(cryptonote::block const &block)
   {
     uint64_t const height = cryptonote::get_block_height(block);
-    if (m_core.get_hard_fork_version(height) < cryptonote::network_version_11_infinite_staking)
+    if (m_core.get_hard_fork_version(height) < cryptonote::network_version_12_checkpointing)
       return;
 
     crypto::public_key my_pubkey;

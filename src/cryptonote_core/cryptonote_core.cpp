@@ -1401,9 +1401,9 @@ namespace cryptonote
     {
       for (service_nodes::checkpoint_vote &vote : pool_entry.votes)
       {
-        const time_t last_sent       = now - vote.time_last_sent_p2p;
+        const time_t elapsed         = now - vote.time_last_sent_p2p;
         const time_t RELAY_THRESHOLD = 60 * 2;
-        if (last_sent > RELAY_THRESHOLD)
+        if (elapsed > RELAY_THRESHOLD)
         {
           relayed_votes.push_back(&vote);
           req.votes.push_back(vote);
