@@ -108,7 +108,7 @@ namespace cryptonote
                          "Vote is indexing out of bounds");
 
     const auto signature_it = std::find_if(checkpoint.signatures.begin(), checkpoint.signatures.end(), [&vote](service_nodes::voter_to_signature const &check) {
-      return vote.voters_quorum_index < check.quorum_index;
+      return vote.voters_quorum_index == check.quorum_index;
     });
 
     if (signature_it == checkpoint.signatures.end())
