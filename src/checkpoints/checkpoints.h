@@ -31,7 +31,6 @@
 #pragma once
 #include <map>
 #include <vector>
-#include <list>
 
 #include "misc_log_ex.h"
 #include "crypto/hash.h"
