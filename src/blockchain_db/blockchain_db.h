@@ -34,6 +34,7 @@
 #include <exception>
 #include <boost/program_options.hpp>
 #include "common/command_line.h"
+#include "checkpoints/checkpoints.h"
 #include "crypto/hash.h"
 #include "cryptonote_basic/blobdatatype.h"
 #include "cryptonote_basic/cryptonote_basic.h"
@@ -805,6 +806,9 @@ public:
                             , const uint64_t& coins_generated
                             , const std::vector<transaction>& txs
                             );
+
+  virtual void update_block_checkpoint(uint64_t height, checkpoint_t const &checkpoint) = 0;
+  virtual bool get_block_checkpoint   (uint64_t height, checkpoint_t &checkpoint) const = 0;
 
   /**
    * @brief checks if a block exists
