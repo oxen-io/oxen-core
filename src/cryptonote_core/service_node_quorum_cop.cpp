@@ -108,7 +108,7 @@ namespace service_nodes
       if (m_core.get_hard_fork_version(m_uptime_proof_height) < 9)
         continue;
 
-      const std::shared_ptr<const quorum_uptime_proof> state = m_core.get_uptime_quorum(m_last_height);
+      const std::shared_ptr<const quorum_uptime_proof> state = m_core.get_uptime_quorum(m_uptime_proof_height);
       if (!state)
       {
         // TODO(loki): Fatal error
@@ -163,7 +163,7 @@ namespace service_nodes
     if (height % CHECKPOINT_INTERVAL != 0)
       return;
 
-    const std::shared_ptr<const quorum_state> state = m_core.get_quorum_state(height);
+    const std::shared_ptr<const quorum_checkpointing> state = m_core.get_checkpointing_quorum(height);
     if (!state)
     {
       // TODO(loki): Fatal error

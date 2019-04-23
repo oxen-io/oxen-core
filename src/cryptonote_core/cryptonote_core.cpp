@@ -2066,6 +2066,11 @@ namespace cryptonote
     return m_service_node_list.get_uptime_quorum(height);
   }
   //-----------------------------------------------------------------------------------------------
+  const std::shared_ptr<const service_nodes::quorum_checkpointing> core::get_checkpointing_quorum(uint64_t height) const
+  {
+    return m_service_node_list.get_checkpointing_quorum(height);
+  }
+  //-----------------------------------------------------------------------------------------------
   bool core::is_service_node(const crypto::public_key& pubkey) const
   {
     return m_service_node_list.is_service_node(pubkey);
@@ -2163,7 +2168,7 @@ namespace cryptonote
 
     // Validate Vote
     {
-      const std::shared_ptr<const service_nodes::quorum_state> state = get_quorum_state(vote.block_height);
+      const std::shared_ptr<const service_nodes::quorum_uptime_proof> state = get_uptime_quorum(vote.block_height);
       if (!state)
       {
         // TODO(loki): Fatal error

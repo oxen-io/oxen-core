@@ -795,6 +795,15 @@ namespace cryptonote
      const std::shared_ptr<const service_nodes::quorum_uptime_proof> get_uptime_quorum(uint64_t height) const;
 
      /**
+      * @brief Get the deterministic list of service node's public keys for nodes responsible for checkpointing
+      *
+      * @param height Block height to deterministically recreate the quorum list from
+
+      * @return Null shared ptr if quorum has not been determined yet for height
+      */
+     const std::shared_ptr<const service_nodes::quorum_checkpointing> get_checkpointing_quorum(uint64_t height) const;
+
+     /**
       * @brief Get a non owning reference to the list of blacklisted key images
       */
      const std::vector<service_nodes::key_image_blacklist_entry> &get_service_node_blacklisted_key_images() const;
