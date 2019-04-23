@@ -195,23 +195,6 @@ namespace cryptonote
     {
       if (curr_checkpoint->signatures.size() > service_nodes::MIN_VOTES_TO_CHECKPOINT) // TODO(doyle): Quorum SuperMajority variable
       {
-        // NOTE: Adding a new checkpoint, we can no longer reorg back past the
-        // 2nd closest service node checkpoint OR the 1st non service node
-        // checkpoint.
-
-        // Push up the reorg limit, don't allow blocks older than a checkpoint
-        // if it is not a service node checkpoint. They are hardcoded in the
-        // code for a reason. NOTE: Loki disables DNS checkpoints for now.
-        uint64_t reorg_sentinel_height = 0;
-        int num_checkpoints = 0;
-        for (auto it = m_points.rbegin(); it != m_points.rend() && num_checkpoints < 2; it++, num_checkpoints++)
-        {
-          reorg_sentinel_height                         = it->first;
-          checkpoint_t const &reorg_sentinel_checkpoint = it->second;
-          if (reorg_sentinel_checkpoint.type == checkpoint_type::predefined_or_dns) break;
-        }
-
-        m_oldest_possible_reorg_limit = reorg_sentinel_height + 1;
         m_points[vote.block_height]   = *curr_checkpoint;
         candidate_checkpoints.erase(curr_checkpoint);
       }
@@ -246,11 +229,34 @@ namespace cryptonote
     if (0 == block_height)
       return false;
 
-    auto it = m_points.upper_bound(blockchain_height);
+    CRITICAL_REGION_LOCAL(m_lock);
+    std::map<uint64_t, checkpoint_t>::const_iterator it = m_points.upper_bound(blockchain_height);
     if (it == m_points.begin()) // Is blockchain_height before the first checkpoint?
       return true;
 
-    bool result = block_height >= m_oldest_possible_reorg_limit;
+    --it; // move the iterator to the first checkpoint that is <= my height
+    uint64_t sentinel_reorg_height = it->first;
+    if (it->second.type == checkpoint_type::service_node)
+    {
+      // NOTE: Find the first non service node checkpoint OR the 2nd oldest
+      // service node checkpoint. Whichever came first, that is the oldest block
+      // at which we can accept an alternative block at
+
+      size_t num_snode_checkpoints = 0;
+      for (; it != m_points.begin(); --it)
+      {
+        checkpoint_t const &check_checkpoint = it->second;
+        if (check_checkpoint.type == checkpoint_type::predefined_or_dns ||
+            ++num_snode_checkpoints == 2)
+        {
+          break;
+        }
+      }
+
+      sentinel_reorg_height = it->first;
+    }
+
+    bool result = sentinel_reorg_height < block_height;
     return result;
   }
   //---------------------------------------------------------------------------
