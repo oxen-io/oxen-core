@@ -238,22 +238,19 @@ namespace cryptonote
     uint64_t sentinel_reorg_height = it->first;
     if (it->second.type == checkpoint_type::service_node)
     {
-      // NOTE: Find the first non service node checkpoint OR the 2nd oldest
-      // service node checkpoint. Whichever came first, that is the oldest block
-      // at which we can accept an alternative block at
+      // NOTE: The current checkpoint is a service node checkpoint. Go back
+      // 1 checkpoint, which will either be another service node checkpoint or
+      // a predefined one.
 
-      size_t num_snode_checkpoints = 0;
-      for (; it != m_points.begin(); --it)
+      // If it's a service node checkpoint, this is the 2nd newest checkpoint,
+      // so we can't reorg past that height. If it's predefined, that's ok as
+      // well, we can't reorg past that height so irrespective, always accept
+      // the height of this next checkpoint.
+      if (it != m_points.begin())
       {
-        checkpoint_t const &check_checkpoint = it->second;
-        if (check_checkpoint.type == checkpoint_type::predefined_or_dns ||
-            ++num_snode_checkpoints == 2)
-        {
-          break;
-        }
+        --it;
+        sentinel_reorg_height = it->first;
       }
-
-      sentinel_reorg_height = it->first;
     }
 
     bool result = sentinel_reorg_height < block_height;
