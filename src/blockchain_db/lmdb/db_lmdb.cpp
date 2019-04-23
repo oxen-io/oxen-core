@@ -44,6 +44,8 @@
 #include "profile_tools.h"
 #include "ringct/rctOps.h"
 
+#include "cryptonote_core/service_node_rules.h"
+
 #undef LOKI_DEFAULT_LOG_CATEGORY
 #define LOKI_DEFAULT_LOG_CATEGORY "blockchain.db.lmdb"
 
@@ -3641,23 +3643,26 @@ void BlockchainLMDB::update_block_checkpoint(uint64_t height, checkpoint_t const
   header.block_hash            = checkpoint.block_hash;
   header.num_signatures        = checkpoint.signatures.size();
 
-  size_t array_size        = sizeof(*checkpoint.signatures.data()) * checkpoint.signatures.size();
-  size_t bytes_to_allocate = sizeof(header) + array_size;
-  auto *entry              = (uint8_t *)malloc(bytes_to_allocate);
+  size_t const MAX_BYTES_REQUIRED   = sizeof(header) + (sizeof(*checkpoint.signatures.data()) * service_nodes::QUORUM_SIZE);
+  uint8_t buffer[MAX_BYTES_REQUIRED];
 
-  uint8_t *entry_ptr = entry;
-  memcpy(entry_ptr, (void *)&header, sizeof(header));
-  entry_ptr += sizeof(entry);
-  memcpy(entry_ptr, (void *)checkpoint.signatures.data(), array_size);
-  entry_ptr += array_size;
+  size_t const bytes_for_signatures = sizeof(*checkpoint.signatures.data()) * header.num_signatures;
+  size_t const actual_bytes_used    = sizeof(header) + bytes_for_signatures;
+
+  uint8_t *buffer_ptr = buffer;
+  memcpy(buffer_ptr, (void *)&header, sizeof(header));
+  buffer_ptr += sizeof(header);
+
+  memcpy(buffer_ptr, (void *)checkpoint.signatures.data(), bytes_for_signatures);
+  buffer_ptr += bytes_for_signatures;
 
   // Bounds check memcpy
   {
-    uint8_t const *end = entry + bytes_to_allocate;
-    if (entry_ptr != end)
+    uint8_t const *end = buffer + MAX_BYTES_REQUIRED;
+    if (buffer_ptr <= end)
     {
       LOG_PRINT_L1("Unexpected memcpy bounds overflow on update_block_checkpoint");
-      assert(entry_ptr == end);
+      assert(buffer_ptr <= end);
       return;
     }
   }
@@ -3667,11 +3672,10 @@ void BlockchainLMDB::update_block_checkpoint(uint64_t height, checkpoint_t const
 
   MDB_val_set(key, height);
   MDB_val value = {};
-  value.mv_size = bytes_to_allocate;
-  value.mv_data = entry;
+  value.mv_size = actual_bytes_used;
+  value.mv_data = buffer;
 
   int ret = mdb_cursor_put(m_cur_block_checkpoints, &key, &value, MDB_CURRENT);
-  free(entry);
 
   if (ret)
     throw0(DB_ERROR(lmdb_error("Failed to update block checkpoint in db transaction: ", ret).c_str()));
@@ -3715,6 +3719,7 @@ bool BlockchainLMDB::get_block_checkpoint(uint64_t height, checkpoint_t &checkpo
   }
 
   TXN_POSTFIX_RDONLY();
+  return true;
 }
 
 void BlockchainLMDB::pop_block(block& blk, std::vector<transaction>& txs)
