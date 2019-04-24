@@ -316,6 +316,7 @@ typedef mdb_block_info_3 mdb_block_info;
 #pragma pack(push, 1)
 struct blk_checkpoint_header
 {
+  uint64_t     height;
   crypto::hash block_hash;
   size_t       num_signatures;
 };
@@ -346,6 +347,14 @@ typedef struct outtx {
 
 std::atomic<uint64_t> mdb_txn_safe::num_active_txns{0};
 std::atomic_flag mdb_txn_safe::creation_gate = ATOMIC_FLAG_INIT;
+
+static int compare_checkpoint(const MDB_val *a, const MDB_val *b)
+{
+  auto const *lhs = reinterpret_cast<cryptonote::blk_checkpoint_header const *>(a->mv_data);
+  auto const *rhs = reinterpret_cast<cryptonote::blk_checkpoint_header const *>(b->mv_data);
+  int result = (lhs->height < rhs->height) ? -1 : (lhs->height > rhs->height);
+  return result;
+}
 
 mdb_threadinfo::~mdb_threadinfo()
 {
@@ -1323,7 +1332,7 @@ void BlockchainLMDB::open(const std::string& filename, const int db_flags)
   // set up lmdb environment
   if ((result = mdb_env_create(&m_env)))
     throw0(DB_ERROR(lmdb_error("Failed to create lmdb environment: ", result).c_str()));
-  if ((result = mdb_env_set_maxdbs(m_env, 20)))
+  if ((result = mdb_env_set_maxdbs(m_env, 21)))
     throw0(DB_ERROR(lmdb_error("Failed to set max number of dbs: ", result).c_str()));
 
   int threads = tools::get_max_concurrency();
@@ -1380,7 +1389,7 @@ void BlockchainLMDB::open(const std::string& filename, const int db_flags)
 
   lmdb_db_open(txn, LMDB_BLOCK_INFO, MDB_INTEGERKEY | MDB_CREATE | MDB_DUPSORT | MDB_DUPFIXED, m_block_info, "Failed to open db handle for m_block_info");
   lmdb_db_open(txn, LMDB_BLOCK_HEIGHTS, MDB_INTEGERKEY | MDB_CREATE | MDB_DUPSORT | MDB_DUPFIXED, m_block_heights, "Failed to open db handle for m_block_heights");
-  lmdb_db_open(txn, LMDB_BLOCK_CHECKPOINTS, MDB_INTEGERKEY | MDB_CREATE, m_block_checkpoints, "Failed to open db handle for m_block_checkpoints");
+  lmdb_db_open(txn, LMDB_BLOCK_CHECKPOINTS, MDB_INTEGERKEY | MDB_CREATE | MDB_DUPSORT, m_block_checkpoints, "Failed to open db handle for m_block_checkpoints");
 
   lmdb_db_open(txn, LMDB_TXS, MDB_INTEGERKEY | MDB_CREATE, m_txs, "Failed to open db handle for m_txs");
   lmdb_db_open(txn, LMDB_TXS_PRUNED, MDB_INTEGERKEY | MDB_CREATE, m_txs_pruned, "Failed to open db handle for m_txs_pruned");
@@ -1414,6 +1423,7 @@ void BlockchainLMDB::open(const std::string& filename, const int db_flags)
 
   mdb_set_dupsort(txn, m_spent_keys, compare_hash32);
   mdb_set_dupsort(txn, m_block_heights, compare_hash32);
+  mdb_set_dupsort(txn, m_block_checkpoints, compare_checkpoint);
   mdb_set_dupsort(txn, m_tx_indices, compare_hash32);
   mdb_set_dupsort(txn, m_output_amounts, compare_uint64);
   mdb_set_dupsort(txn, m_output_txs, compare_uint64);
@@ -3631,16 +3641,16 @@ void BlockchainLMDB::update_block_checkpoint(uint64_t height, checkpoint_t const
   if (checkpoint.signatures.size() == 0)
     return;
 
+  LOG_PRINT_L3("BlockchainLMDB::" << __func__);
   if (checkpoint.type != checkpoint_type::service_node)
   {
     LOG_PRINT_L1("Unexpected non service-node checkpoint attempted to be added to the DB");
     return;
   }
 
-  LOG_PRINT_L3("BlockchainLMDB::" << __func__);
-  check_open();
 
   blk_checkpoint_header header = {};
+  header.height                = height;
   header.block_hash            = checkpoint.block_hash;
   header.num_signatures        = checkpoint.signatures.size();
 
@@ -3666,7 +3676,7 @@ void BlockchainLMDB::update_block_checkpoint(uint64_t height, checkpoint_t const
   // Bounds check memcpy
   {
     uint8_t const *end = buffer + MAX_BYTES_REQUIRED;
-    if (buffer_ptr <= end)
+    if (buffer_ptr > end)
     {
       LOG_PRINT_L1("Unexpected memcpy bounds overflow on update_block_checkpoint");
       assert(buffer_ptr <= end);
@@ -3674,6 +3684,7 @@ void BlockchainLMDB::update_block_checkpoint(uint64_t height, checkpoint_t const
     }
   }
 
+  check_open();
   mdb_txn_cursors *m_cursors = &m_wcursors;
   CURSOR(block_checkpoints);
 
@@ -3681,9 +3692,7 @@ void BlockchainLMDB::update_block_checkpoint(uint64_t height, checkpoint_t const
   MDB_val value = {};
   value.mv_size = actual_bytes_used;
   value.mv_data = buffer;
-
-  int ret = mdb_cursor_put(m_cur_block_checkpoints, &key, &value, MDB_CURRENT);
-
+  int ret = mdb_cursor_put(m_cur_block_checkpoints, (MDB_val *)&zerokval, &value, 0);
   if (ret)
     throw0(DB_ERROR(lmdb_error("Failed to update block checkpoint in db transaction: ", ret).c_str()));
 }
@@ -3696,9 +3705,11 @@ bool BlockchainLMDB::get_block_checkpoint(uint64_t height, checkpoint_t &checkpo
   TXN_PREFIX_RDONLY();
   RCURSOR(block_checkpoints);
 
-  MDB_val_set(key, height);
-  MDB_val value = {};
-  int ret = mdb_cursor_get(m_cur_block_checkpoints, &key, &value, MDB_SET);
+  blk_checkpoint_header desired_header = {};
+  desired_header.height                = height;
+
+  MDB_val_set(value, desired_header);
+  int ret = mdb_cursor_get(m_cur_block_checkpoints, (MDB_val *)&zerokval, &value, MDB_GET_BOTH);
   if (ret == MDB_SUCCESS)
   {
     auto const *header     = static_cast<blk_checkpoint_header const *>(value.mv_data);
@@ -3716,10 +3727,11 @@ bool BlockchainLMDB::get_block_checkpoint(uint64_t height, checkpoint_t &checkpo
   }
 
   TXN_POSTFIX_RDONLY();
-  if (ret != MDB_SUCCESS)
+  if (ret != MDB_SUCCESS && ret != MDB_NOTFOUND)
     throw0(DB_ERROR(lmdb_error("Failed to get block checkpoint: ", ret).c_str()));
 
-  return true;
+  bool found = (ret == MDB_SUCCESS);
+  return found;
 }
 
 void BlockchainLMDB::pop_block(block& blk, std::vector<transaction>& txs)
