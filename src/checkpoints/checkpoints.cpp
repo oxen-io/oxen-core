@@ -246,7 +246,11 @@ namespace cryptonote
       // so we can't reorg past that height. If it's predefined, that's ok as
       // well, we can't reorg past that height so irrespective, always accept
       // the height of this next checkpoint.
-      if (it != m_points.begin())
+      if (it == m_points.begin())
+      {
+        return true; // NOTE: Only one service node checkpoint recorded, we can override this checkpoint.
+      }
+      else
       {
         --it;
         sentinel_reorg_height = it->first;
