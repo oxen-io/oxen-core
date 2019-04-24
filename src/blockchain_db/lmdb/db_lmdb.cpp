@@ -3638,16 +3638,15 @@ uint64_t BlockchainLMDB::add_block(const block& blk, size_t block_weight, uint64
 
 void BlockchainLMDB::update_block_checkpoint(uint64_t height, checkpoint_t const &checkpoint)
 {
+  LOG_PRINT_L3("BlockchainLMDB::" << __func__);
   if (checkpoint.signatures.size() == 0)
     return;
 
-  LOG_PRINT_L3("BlockchainLMDB::" << __func__);
   if (checkpoint.type != checkpoint_type::service_node)
   {
     LOG_PRINT_L1("Unexpected non service-node checkpoint attempted to be added to the DB");
     return;
   }
-
 
   blk_checkpoint_header header = {};
   header.height                = height;
