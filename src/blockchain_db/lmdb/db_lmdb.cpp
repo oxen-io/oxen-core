@@ -39,6 +39,7 @@
 #include "file_io_utils.h"
 #include "common/util.h"
 #include "common/pruning.h"
+#include "checkpoints/checkpoints.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "crypto/crypto.h"
 #include "profile_tools.h"
@@ -3648,6 +3649,12 @@ void BlockchainLMDB::update_block_checkpoint(uint64_t height, checkpoint_t const
 
   size_t const bytes_for_signatures = sizeof(*checkpoint.signatures.data()) * header.num_signatures;
   size_t const actual_bytes_used    = sizeof(header) + bytes_for_signatures;
+  if (actual_bytes_used > MAX_BYTES_REQUIRED)
+  {
+    LOG_PRINT_L1("Unexpected pre-calculated maximum number of bytes: " << MAX_BYTES_REQUIRED << ", is insufficient to store signatures requiring: " << actual_bytes_used << " bytes");
+    assert(actual_bytes_used <= MAX_BYTES_REQUIRED);
+    return;
+  }
 
   uint8_t *buffer_ptr = buffer;
   memcpy(buffer_ptr, (void *)&header, sizeof(header));
@@ -3692,18 +3699,12 @@ bool BlockchainLMDB::get_block_checkpoint(uint64_t height, checkpoint_t &checkpo
   MDB_val_set(key, height);
   MDB_val value = {};
   int ret = mdb_cursor_get(m_cur_block_checkpoints, &key, &value, MDB_SET);
-  if (ret == MDB_NOTFOUND)
-  {
-    TXN_POSTFIX_RDONLY();
-    return false;
-  }
-
-  checkpoint = {};
   if (ret == MDB_SUCCESS)
   {
     auto const *header     = static_cast<blk_checkpoint_header const *>(value.mv_data);
     auto const *signatures = reinterpret_cast<service_nodes::voter_to_signature *>(static_cast<uint8_t *>(value.mv_data) + sizeof(*header));
 
+    checkpoint            = {};
     checkpoint.type       = checkpoint_type::service_node;
     checkpoint.block_hash = header->block_hash;
     checkpoint.signatures.reserve(header->num_signatures);
@@ -3713,12 +3714,11 @@ bool BlockchainLMDB::get_block_checkpoint(uint64_t height, checkpoint_t &checkpo
       checkpoint.signatures.push_back(*signature);
     }
   }
-  else
-  {
-    throw0(DB_ERROR(lmdb_error("Failed to get block checkpoint: ", ret).c_str()));
-  }
 
   TXN_POSTFIX_RDONLY();
+  if (ret != MDB_SUCCESS)
+    throw0(DB_ERROR(lmdb_error("Failed to get block checkpoint: ", ret).c_str()));
+
   return true;
 }
 

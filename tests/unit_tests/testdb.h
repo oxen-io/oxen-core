@@ -37,6 +37,7 @@
 
 #include "blockchain_db/blockchain_db.h"
 
+namespace cryptonote { struct checkpoint_t; };
 class BaseTestDB: public cryptonote::BlockchainDB {
 public:
   BaseTestDB() {}

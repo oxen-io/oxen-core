@@ -68,8 +68,8 @@ public:
   virtual void block_txn_stop() override {}
   virtual void block_txn_abort() override {}
   virtual bool block_exists(const crypto::hash& h, uint64_t *height) const override { return false; }
-  virtual void update_block_checkpoint(uint64_t height, checkpoint_t const &checkpoint) override {}
-  virtual bool get_block_checkpoint   (uint64_t height, checkpoint_t &checkpoint) const override { return false; }
+  virtual void update_block_checkpoint(uint64_t height, struct checkpoint_t const &checkpoint) override {}
+  virtual bool get_block_checkpoint   (uint64_t height, struct checkpoint_t &checkpoint) const override { return false; }
   virtual cryptonote::blobdata get_block_blob(const crypto::hash& h) const override { return cryptonote::blobdata(); }
   virtual uint64_t get_block_height(const crypto::hash& h) const override { return 0; }
   virtual cryptonote::block_header get_block_header(const crypto::hash& h) const override { return cryptonote::block_header(); }
