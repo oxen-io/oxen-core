@@ -677,7 +677,7 @@ namespace cryptonote
 
     MGINFO("Loading checkpoints");
 
-    // load json and verify them
+    // load json checkpoints and verify them
     // with respect to what blocks we already have
     CHECK_AND_ASSERT_MES(update_checkpoints(), false, "One or more checkpoints loaded from json conflicted with existing checkpoints.");
 
@@ -1554,7 +1554,7 @@ namespace cryptonote
   {
     TRY_ENTRY();
 
-    // load json & every 10min/hour respectively,
+    // load json checkpoints every 10min/hour respectively,
     // and verify them with respect to what blocks we already have
     CHECK_AND_ASSERT_MES(update_checkpoints(), false, "One or more checkpoints loaded from json conflicted with existing checkpoints.");
 
