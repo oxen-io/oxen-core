@@ -39,6 +39,9 @@ namespace loki
 double      round           (double);
 double      exp2            (double);
 std::string hex64_to_base32z(std::string const& src);
+
+template <typename T, size_t N>
+constexpr size_t loki_array_count(T (&)[N]) { return N; }
 }; // namespace Loki
 
 #endif // LOKI_H

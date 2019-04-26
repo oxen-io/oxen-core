@@ -38,7 +38,6 @@
 #include "cryptonote_core/service_node_deregister.h"
 
 #define ADD_CHECKPOINT(h, hash)  CHECK_AND_ASSERT(add_checkpoint(h,  hash), false);
-#define JSON_HASH_FILE_NAME "checkpoints.json"
 
 namespace cryptonote
 {
@@ -52,6 +51,7 @@ namespace cryptonote
   struct checkpoint_t
   {
     checkpoint_type                                type;
+    uint64_t                                       height;
     crypto::hash                                   block_hash;
     std::vector<service_nodes::voter_to_signature> signatures; // Only service node checkpoints use signatures
   };
@@ -159,7 +159,7 @@ namespace cryptonote
      *
      * @return true unless adding a checkpoint fails
      */
-    bool init_default_checkpoints(network_type nettype);
+    bool init(network_type nettype, BlockchainDB *db = nullptr);
 
     /**
      * @brief load new checkpoints from json
@@ -171,6 +171,7 @@ namespace cryptonote
     bool load_checkpoints_from_json(const std::string &json_hashfile_fullpath);
 
   private:
+    BlockchainDB                                           *m_db;
     std::unordered_map<uint64_t, std::vector<checkpoint_t>> m_staging_points; // Incomplete service node checkpoints being voted on
     std::map<uint64_t, checkpoint_t>                        m_points; //!< the checkpoints container
     mutable epee::critical_section                          m_lock;

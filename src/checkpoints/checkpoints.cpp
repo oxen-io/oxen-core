@@ -71,6 +71,19 @@ namespace cryptonote
         END_KV_SERIALIZE_MAP()
   };
 
+  checkpoint_t const HARDCODED_MAINNET_CHECKPOINTS[] =
+  {
+    {checkpoint_type::predefined_or_dns, 0,     "08ff156d993012b0bdf2816c4bee47c9bbc7930593b70ee02574edddf15ee933", {}};
+    {checkpoint_type::predefined_or_dns, 1,     "647997953a5ea9b5ab329c2291d4cbb08eed587c287e451eeeb2c79bab9b940f", {}};
+    {checkpoint_type::predefined_or_dns, 10,    "4a7cd8b9bff380d48d6f3533a5e0509f8589cc77d18218b3f7218846e77738fc", {}};
+    {checkpoint_type::predefined_or_dns, 100,   "01b8d33a50713ff837f8ad7146021b8e3060e0316b5e4afc407e46cdb50b6760", {}};
+    {checkpoint_type::predefined_or_dns, 1000,  "5e3b0a1f931885bc0ab1d6ecdc625816576feae29e2f9ac94c5ccdbedb1465ac", {}};
+    {checkpoint_type::predefined_or_dns, 86535, "52b7c5a60b97bf1efbf0d63a0aa1a313e8f0abe4627eb354b0c5a73cb1f4391e", {}};
+    {checkpoint_type::predefined_or_dns, 97407, "504af73abbaba85a14ddc16634658bf4dcc241dc288b1eaad09e216836b71023", {}};
+    {checkpoint_type::predefined_or_dns, 98552, "2058d5c675bd91284f4996435593499c9ab84a5a0f569f57a86cde2e815e57da", {}};
+    {checkpoint_type::predefined_or_dns, 144650,"a1ab207afc790675070ecd7aac874eb0691eb6349ea37c44f8f58697a5d6cbc4", {}};
+  }
+
   //---------------------------------------------------------------------------
   bool checkpoints::add_checkpoint(uint64_t height, const std::string& hash_str)
   {
@@ -91,6 +104,13 @@ namespace cryptonote
       checkpoint.type         = checkpoint_type::predefined_or_dns;
       checkpoint.block_hash   = h;
       m_points[height]        = checkpoint;
+    }
+
+    if (db)
+    {
+      if (!db->update_block_checkpoint())
+      {
+      }
     }
 
     return true;
@@ -287,31 +307,22 @@ namespace cryptonote
     return true;
   }
 
-  bool checkpoints::init_default_checkpoints(network_type nettype)
+  bool checkpoints::init(network_type nettype, BlockchainDB *db)
   {
-    switch (nettype) {
-      case STAGENET:
-        break;
-      case TESTNET:
-        break;
-      case FAKECHAIN:
-        break;
-      case UNDEFINED:
-        break;
-      case MAINNET:
 #if !defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
-        ADD_CHECKPOINT(0,     "08ff156d993012b0bdf2816c4bee47c9bbc7930593b70ee02574edddf15ee933");
-        ADD_CHECKPOINT(1,     "647997953a5ea9b5ab329c2291d4cbb08eed587c287e451eeeb2c79bab9b940f");
-        ADD_CHECKPOINT(10,    "4a7cd8b9bff380d48d6f3533a5e0509f8589cc77d18218b3f7218846e77738fc");
-        ADD_CHECKPOINT(100,   "01b8d33a50713ff837f8ad7146021b8e3060e0316b5e4afc407e46cdb50b6760");
-        ADD_CHECKPOINT(1000,  "5e3b0a1f931885bc0ab1d6ecdc625816576feae29e2f9ac94c5ccdbedb1465ac");
-        ADD_CHECKPOINT(86535, "52b7c5a60b97bf1efbf0d63a0aa1a313e8f0abe4627eb354b0c5a73cb1f4391e");
-        ADD_CHECKPOINT(97407, "504af73abbaba85a14ddc16634658bf4dcc241dc288b1eaad09e216836b71023");
-        ADD_CHECKPOINT(98552, "2058d5c675bd91284f4996435593499c9ab84a5a0f569f57a86cde2e815e57da");
-        ADD_CHECKPOINT(144650,"a1ab207afc790675070ecd7aac874eb0691eb6349ea37c44f8f58697a5d6cbc4");
-#endif
-        break;
+    if (nettype != MAINNET)
+      return true;
+
+    m_db = db;
+    for (size_t i = 0; i < loki::array_count(HARDCODED_MAINNET_CHECKPOINTS); ++i)
+    {
+      checkpoint_t const *checkpoint = HARDCODED_MAINNET_CHECKPOINTS + i;
+      if (db)
+        db->update_block_checkpoint(checkpoint->height, checkpoint);
+      else
+        m_points[checkpoint->height] = *checkpoint;
     }
+#endif
     return true;
   }
 
