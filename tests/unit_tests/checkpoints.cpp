@@ -30,17 +30,96 @@
 
 #include "gtest/gtest.h"
 
+#include <memory>
+
+#include "cryptonote_basic/cryptonote_format_utils.h"
 #include "checkpoints/checkpoints.cpp"
+#include "blockchain_db/testdb.h"
+
 
 using namespace cryptonote;
 
+struct TestDB: public BaseTestDB
+{
+  TestDB() { m_open = true; }
+
+#if 1
+  virtual void update_block_checkpoint(checkpoint_t const &checkpoint) override
+  {
+    auto it = std::find_if(checkpoints.begin(), checkpoints.end(), [&checkpoint](checkpoint_t const &entry) {
+        bool result = checkpoint.height == entry.height;
+        return result;
+    });
+
+    if (it == checkpoints.end()) checkpoints.push_back(checkpoint);
+    else                         *it = checkpoint;
+  }
+
+  virtual bool get_block_checkpoint(uint64_t height, checkpoint_t &checkpoint) const override
+  {
+    auto it = std::find_if(checkpoints.begin(), checkpoints.end(), [height](checkpoint_t const &entry) {
+        bool result = height == entry.height;
+        return result;
+    });
+
+    if (it == checkpoints.end())
+      return false;
+
+    checkpoint = *it;
+    return true;
+  }
+
+  virtual bool get_top_checkpoint(checkpoint_t &checkpoint) const override
+  {
+    if (checkpoints.empty())
+      return false;
+
+    checkpoint = checkpoints.back();
+    return true;
+  }
+
+  virtual std::vector<checkpoint_t> get_checkpoints_range(uint64_t start, uint64_t end, int num_desired_checkpoints = -1) const override
+  {
+    std::vector<checkpoint_t> result;
+
+    checkpoint_t top_checkpoint = {};
+    if (get_top_checkpoint(top_checkpoint))
+    {
+      if (top_checkpoint.height < std::min(start, end))
+        return result;
+    }
+
+    if (num_desired_checkpoints <= -1)
+      num_desired_checkpoints = (unsigned int)-1;
+    else
+      result.reserve(num_desired_checkpoints);
+
+    for (uint64_t height = start;
+         height != end && result.size() < num_desired_checkpoints;
+         )
+    {
+      checkpoint_t checkpoint;
+      if (get_block_checkpoint(height, checkpoint))
+        result.push_back(checkpoint);
+
+      if (end >= start) height++;
+      else height--;
+    }
+
+    return result;
+  }
+#endif
+
+private:
+  std::vector<checkpoint_t> checkpoints;
+};
 
 TEST(checkpoints_is_alternative_block_allowed, handles_empty_checkpoints)
 {
-  checkpoints cp;
+  std::unique_ptr<TestDB> test_db(new TestDB());
+  checkpoints cp = {}; cp.init(cryptonote::FAKECHAIN, test_db.get());
 
   ASSERT_FALSE(cp.is_alternative_block_allowed(0, 0));
-
   ASSERT_TRUE(cp.is_alternative_block_allowed(1, 1));
   ASSERT_TRUE(cp.is_alternative_block_allowed(1, 9));
   ASSERT_TRUE(cp.is_alternative_block_allowed(9, 1));
@@ -48,7 +127,9 @@ TEST(checkpoints_is_alternative_block_allowed, handles_empty_checkpoints)
 
 TEST(checkpoints_is_alternative_block_allowed, handles_one_checkpoint)
 {
-  checkpoints cp;
+  std::unique_ptr<TestDB> test_db(new TestDB());
+  checkpoints cp = {}; cp.init(cryptonote::FAKECHAIN, test_db.get());
+
   ASSERT_TRUE(cp.add_checkpoint(5, "0000000000000000000000000000000000000000000000000000000000000000"));
 
   ASSERT_FALSE(cp.is_alternative_block_allowed(0, 0));
@@ -86,7 +167,9 @@ TEST(checkpoints_is_alternative_block_allowed, handles_one_checkpoint)
 
 TEST(checkpoints_is_alternative_block_allowed, handles_two_and_more_checkpoints)
 {
-  checkpoints cp;
+  std::unique_ptr<TestDB> test_db(new TestDB());
+  checkpoints cp = {}; cp.init(cryptonote::FAKECHAIN, test_db.get());
+
   ASSERT_TRUE(cp.add_checkpoint(5, "0000000000000000000000000000000000000000000000000000000000000000"));
   ASSERT_TRUE(cp.add_checkpoint(9, "0000000000000000000000000000000000000000000000000000000000000000"));
 

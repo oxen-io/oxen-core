@@ -650,11 +650,6 @@ namespace cryptonote
 
     // Checkpoints
     {
-      cryptonote::checkpoints checkpoints;
-      if (!checkpoints.init(m_nettype, initialized_db))
-        throw std::runtime_error("Failed to initialize checkpoints");
-
-      m_blockchain_storage.set_checkpoints(std::move(checkpoints));
       auto data_dir = boost::filesystem::path(m_config_folder);
       boost::filesystem::path json(JSON_HASH_FILE_NAME);
       boost::filesystem::path checkpoint_json_hashfile_fullpath = data_dir / json;

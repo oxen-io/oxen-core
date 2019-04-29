@@ -206,13 +206,6 @@ namespace cryptonote
     bool deinit();
 
     /**
-     * @brief assign a set of blockchain checkpoint hashes
-     *
-     * @param chk_pts the set of checkpoints to assign
-     */
-    void set_checkpoints(checkpoints&& chk_pts) { m_checkpoints = chk_pts; }
-
-    /**
      * @brief get blocks and transactions from blocks based on start height and count
      *
      * @param start_offset the height on the blockchain to start at

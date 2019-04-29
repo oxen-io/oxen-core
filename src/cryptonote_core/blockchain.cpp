@@ -347,6 +347,9 @@ bool Blockchain::init(BlockchainDB* db, const network_type nettype, bool offline
   m_nettype = test_options != NULL ? FAKECHAIN : nettype;
 #endif
 
+  if (!m_checkpoints.init(m_nettype, m_db))
+    throw std::runtime_error("Failed to initialize checkpoints");
+
   m_offline = offline;
   m_fixed_difficulty = fixed_difficulty;
   if (m_hardfork == nullptr)
@@ -363,17 +366,17 @@ bool Blockchain::init(BlockchainDB* db, const network_type nettype, bool offline
   else
   {
     hard_fork_record const *hf_record = mainnet_hard_forks;
-    int hf_record_num_entries         = LOKI_ARRAY_COUNT(mainnet_hard_forks);
+    int hf_record_num_entries         = loki::array_count(mainnet_hard_forks);
 
     if (m_nettype == TESTNET)
     {
       hf_record             = testnet_hard_forks;
-      hf_record_num_entries = LOKI_ARRAY_COUNT(testnet_hard_forks);
+      hf_record_num_entries = loki::array_count(testnet_hard_forks);
     }
     else if (m_nettype == STAGENET)
     {
       hf_record             = stagenet_hard_forks;
-      hf_record_num_entries = LOKI_ARRAY_COUNT(stagenet_hard_forks);
+      hf_record_num_entries = loki::array_count(stagenet_hard_forks);
     }
 
     for (int n = 0; n < hf_record_num_entries; ++n)
@@ -4005,6 +4008,8 @@ bool Blockchain::update_checkpoints(const std::string& file_path)
 //------------------------------------------------------------------
 bool Blockchain::add_checkpoint_vote(service_nodes::checkpoint_vote const &vote)
 {
+  // TODO(doyle): Don't merge ability for SN to add checkpoints to dev branch for now until completely tested.
+#if 0
   crypto::hash const canonical_block_hash = get_block_id_by_height(vote.block_height);
   if (vote.block_hash != canonical_block_hash)
   {
@@ -4015,6 +4020,7 @@ bool Blockchain::add_checkpoint_vote(service_nodes::checkpoint_vote const &vote)
   }
 
   m_checkpoints.add_checkpoint_vote(vote);
+#endif
   return true;
 }
 //------------------------------------------------------------------

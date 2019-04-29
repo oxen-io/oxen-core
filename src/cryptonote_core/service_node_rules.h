@@ -50,12 +50,6 @@ inline uint64_t staking_num_lock_blocks(cryptonote::network_type nettype)
   }
 }
 
-inline bool can_checkpoint_height(uint64_t height)
-{
-  bool result = ((height % CHECKPOINT_INTERVAL) == 0);
-  return result;
-}
-
 static_assert(STAKING_PORTIONS != UINT64_MAX, "UINT64_MAX is used as the invalid value for failing to calculate the min_node_contribution");
 // return: UINT64_MAX if (num_contributions > the max number of contributions), otherwise the amount in loki atomic units
 uint64_t get_min_node_contribution            (uint8_t version, uint64_t staking_requirement, uint64_t total_reserved, size_t num_contributions);

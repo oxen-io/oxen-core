@@ -39,7 +39,6 @@
 #include "file_io_utils.h"
 #include "common/util.h"
 #include "common/pruning.h"
-#include "checkpoints/checkpoints.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "crypto/crypto.h"
 #include "profile_tools.h"
@@ -3756,14 +3755,16 @@ std::vector<checkpoint_t> BlockchainLMDB::get_checkpoints_range(uint64_t start, 
   else
     result.reserve(num_desired_checkpoints);
 
-  uint64_t offset = (end >= start) ? 1 : -1;
   for (uint64_t height = start;
        height != end && result.size() < num_desired_checkpoints;
-       height += offset)
+       )
   {
     checkpoint_t checkpoint;
     if (get_block_checkpoint(height, checkpoint))
       result.push_back(checkpoint);
+
+    if (end >= start) height++;
+    else height--;
   }
 
   return result;

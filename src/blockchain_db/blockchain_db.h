@@ -34,6 +34,7 @@
 #include <exception>
 #include <boost/program_options.hpp>
 #include "common/command_line.h"
+#include "checkpoints/checkpoints.h"
 #include "crypto/hash.h"
 #include "cryptonote_basic/blobdatatype.h"
 #include "cryptonote_basic/cryptonote_basic.h"
@@ -98,8 +99,6 @@
 
 namespace cryptonote
 {
-
-struct checkpoint_t;
 
 /** a pair of <transaction hash, output index>, typedef for convenience */
 typedef std::pair<crypto::hash, uint64_t> tx_out_index;

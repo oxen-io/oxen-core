@@ -70,7 +70,7 @@ namespace cryptonote
     if (nettype != MAINNET)
       return result;
 
-    uint64_t last_index     = loki::array_count(HARDCODED_MAINNET_CHECKPOINTS) - 1;
+    uint64_t last_index         = loki::array_count(HARDCODED_MAINNET_CHECKPOINTS) - 1;
     height_to_hash const &entry = HARDCODED_MAINNET_CHECKPOINTS[last_index];
 
     if (epee::string_tools::hex_to_pod(entry.hash, result))
@@ -268,7 +268,7 @@ namespace cryptonote
       return false;
 
     int num_desired_checkpoints = 2;
-    std::vector<checkpoint_t> checkpoints = m_db->get_checkpoints_range(blockchain_height - 1, 0, num_desired_checkpoints);
+    std::vector<checkpoint_t> checkpoints = m_db->get_checkpoints_range(blockchain_height, 0, num_desired_checkpoints);
 
     if (checkpoints.size() == 0) // No checkpoints recorded yet for blocks preceeding blockchain_height
       return true;

@@ -6716,9 +6716,9 @@ uint64_t wallet2::get_fee_multiplier(uint32_t priority, int fee_algorithm) const
       priority = 1;
   }
 
-  THROW_WALLET_EXCEPTION_IF(fee_algorithm < 0 || fee_algorithm >= (int)(LOKI_ARRAY_COUNT(multipliers)), error::invalid_priority);
+  THROW_WALLET_EXCEPTION_IF(fee_algorithm < 0 || fee_algorithm >= (int)(loki::array_count(multipliers)), error::invalid_priority);
   fee_multipliers_t const *curr_multiplier = multipliers + fee_algorithm;
-  if (priority >= 1 && priority <= (uint32_t)LOKI_ARRAY_COUNT(curr_multiplier->values))
+  if (priority >= 1 && priority <= (uint32_t)loki::array_count(curr_multiplier->values))
   {
     return curr_multiplier->values[priority-1];
   }
