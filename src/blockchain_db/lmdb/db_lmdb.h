@@ -308,8 +308,10 @@ public:
                             , const uint64_t& coins_generated
                             , const std::vector<transaction>& txs
                             ) override;
-  virtual void update_block_checkpoint(uint64_t height, checkpoint_t const &checkpoint) override;
+  virtual void update_block_checkpoint(checkpoint_t const &checkpoint) override;
   virtual bool get_block_checkpoint   (uint64_t height, checkpoint_t &checkpoint) const override;
+  virtual bool get_top_checkpoint     (checkpoint_t &checkpoint) const override;
+  virtual std::vector<checkpoint_t> get_checkpoints_range(uint64_t start, uint64_t end, int num_desired_checkpoints = -1) const override;
 
   virtual void set_batch_transactions(bool batch_transactions) override;
   virtual bool batch_start(uint64_t batch_num_blocks=0, uint64_t batch_bytes=0) override;
@@ -427,7 +429,7 @@ private:
 
   void cleanup_batch();
 
-
+  bool get_block_checkpoint_internal(uint64_t height, checkpoint_t &checkpoint, MDB_cursor_op op) const;
   virtual void set_service_node_data(const std::string& data) override;
   virtual bool get_service_node_data(std::string& data) override;
   virtual void clear_service_node_data() override;

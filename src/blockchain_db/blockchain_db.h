@@ -808,8 +808,10 @@ public:
                             , const std::vector<transaction>& txs
                             );
 
-  virtual void update_block_checkpoint(uint64_t height, checkpoint_t const &checkpoint) = 0;
+  virtual void update_block_checkpoint(checkpoint_t const &checkpoint) = 0;
   virtual bool get_block_checkpoint   (uint64_t height, checkpoint_t &checkpoint) const = 0;
+  virtual bool get_top_checkpoint     (checkpoint_t &checkpoint) const = 0;
+  virtual std::vector<checkpoint_t> get_checkpoints_range(uint64_t start, uint64_t end, int num_desired_checkpoints = -1) const = 0;
 
   /**
    * @brief checks if a block exists

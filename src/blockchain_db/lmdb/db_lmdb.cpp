@@ -3636,20 +3636,11 @@ uint64_t BlockchainLMDB::add_block(const block& blk, size_t block_weight, uint64
   return ++m_height;
 }
 
-void BlockchainLMDB::update_block_checkpoint(uint64_t height, checkpoint_t const &checkpoint)
+void BlockchainLMDB::update_block_checkpoint(checkpoint_t const &checkpoint)
 {
   LOG_PRINT_L3("BlockchainLMDB::" << __func__);
-  if (checkpoint.signatures.size() == 0)
-    return;
-
-  if (checkpoint.type != checkpoint_type::service_node)
-  {
-    LOG_PRINT_L1("Unexpected non service-node checkpoint attempted to be added to the DB");
-    return;
-  }
-
   blk_checkpoint_header header = {};
-  header.height                = height;
+  header.height                = checkpoint.height;
   header.block_hash            = checkpoint.block_hash;
   header.num_signatures        = checkpoint.signatures.size();
 
@@ -3660,7 +3651,7 @@ void BlockchainLMDB::update_block_checkpoint(uint64_t height, checkpoint_t const
   size_t const actual_bytes_used    = sizeof(header) + bytes_for_signatures;
   if (actual_bytes_used > MAX_BYTES_REQUIRED)
   {
-    LOG_PRINT_L1("Unexpected pre-calculated maximum number of bytes: " << MAX_BYTES_REQUIRED << ", is insufficient to store signatures requiring: " << actual_bytes_used << " bytes");
+    LOG_PRINT_L0("Unexpected pre-calculated maximum number of bytes: " << MAX_BYTES_REQUIRED << ", is insufficient to store signatures requiring: " << actual_bytes_used << " bytes");
     assert(actual_bytes_used <= MAX_BYTES_REQUIRED);
     return;
   }
@@ -3677,7 +3668,7 @@ void BlockchainLMDB::update_block_checkpoint(uint64_t height, checkpoint_t const
     uint8_t const *end = buffer + MAX_BYTES_REQUIRED;
     if (buffer_ptr > end)
     {
-      LOG_PRINT_L1("Unexpected memcpy bounds overflow on update_block_checkpoint");
+      LOG_PRINT_L0("Unexpected memcpy bounds overflow on update_block_checkpoint");
       assert(buffer_ptr <= end);
       return;
     }
@@ -3687,7 +3678,7 @@ void BlockchainLMDB::update_block_checkpoint(uint64_t height, checkpoint_t const
   mdb_txn_cursors *m_cursors = &m_wcursors;
   CURSOR(block_checkpoints);
 
-  MDB_val_set(key, height);
+  MDB_val_set(key, checkpoint.height);
   MDB_val value = {};
   value.mv_size = actual_bytes_used;
   value.mv_data = buffer;
@@ -3696,11 +3687,8 @@ void BlockchainLMDB::update_block_checkpoint(uint64_t height, checkpoint_t const
     throw0(DB_ERROR(lmdb_error("Failed to update block checkpoint in db transaction: ", ret).c_str()));
 }
 
-bool BlockchainLMDB::get_block_checkpoint(uint64_t height, checkpoint_t &checkpoint) const
+bool BlockchainLMDB::get_block_checkpoint_internal(uint64_t height, checkpoint_t &checkpoint, MDB_cursor_op op) const
 {
-  LOG_PRINT_L3("BlockchainLMDB::" << __func__);
-  check_open();
-
   TXN_PREFIX_RDONLY();
   RCURSOR(block_checkpoints);
 
@@ -3715,7 +3703,8 @@ bool BlockchainLMDB::get_block_checkpoint(uint64_t height, checkpoint_t &checkpo
     auto const *signatures = reinterpret_cast<service_nodes::voter_to_signature *>(static_cast<uint8_t *>(value.mv_data) + sizeof(*header));
 
     checkpoint            = {};
-    checkpoint.type       = checkpoint_type::service_node;
+    checkpoint.height     = height;
+    checkpoint.type       = (header->num_signatures > 0 ) ? checkpoint_type::service_node : checkpoint_type::hardcoded;
     checkpoint.block_hash = header->block_hash;
     checkpoint.signatures.reserve(header->num_signatures);
     for (size_t i = 0; i < header->num_signatures; ++i)
@@ -3729,9 +3718,57 @@ bool BlockchainLMDB::get_block_checkpoint(uint64_t height, checkpoint_t &checkpo
   if (ret != MDB_SUCCESS && ret != MDB_NOTFOUND)
     throw0(DB_ERROR(lmdb_error("Failed to get block checkpoint: ", ret).c_str()));
 
-  bool found = (ret == MDB_SUCCESS);
-  return found;
+  bool result = (ret == MDB_SUCCESS);
+  return result;
 }
+
+bool BlockchainLMDB::get_block_checkpoint(uint64_t height, checkpoint_t &checkpoint) const
+{
+  LOG_PRINT_L3("BlockchainLMDB::" << __func__);
+  check_open();
+  bool result = get_block_checkpoint_internal(height, checkpoint, MDB_GET_BOTH);
+  return result;
+}
+
+bool BlockchainLMDB::get_top_checkpoint(checkpoint_t &checkpoint) const
+{
+  LOG_PRINT_L3("BlockchainLMDB::" << __func__);
+  check_open();
+  bool result = get_block_checkpoint_internal(0, checkpoint, MDB_LAST_DUP);
+  return result;
+}
+
+std::vector<checkpoint_t> BlockchainLMDB::get_checkpoints_range(uint64_t start, uint64_t end, int num_desired_checkpoints) const
+{
+  LOG_PRINT_L3("BlockchainLMDB::" << __func__);
+  check_open();
+  std::vector<checkpoint_t> result;
+
+  checkpoint_t top_checkpoint = {};
+  if (get_top_checkpoint(top_checkpoint))
+  {
+    if (top_checkpoint.height < std::min(start, end))
+      return result;
+  }
+
+  if (num_desired_checkpoints <= -1)
+    num_desired_checkpoints = (unsigned int)-1;
+  else
+    result.reserve(num_desired_checkpoints);
+
+  uint64_t offset = (end >= start) ? 1 : -1;
+  for (uint64_t height = start;
+       height != end && result.size() < num_desired_checkpoints;
+       height += offset)
+  {
+    checkpoint_t checkpoint;
+    if (get_block_checkpoint(height, checkpoint))
+      result.push_back(checkpoint);
+  }
+
+  return result;
+}
+
 
 void BlockchainLMDB::pop_block(block& blk, std::vector<transaction>& txs)
 {

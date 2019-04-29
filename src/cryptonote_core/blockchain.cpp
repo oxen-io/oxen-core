@@ -3934,49 +3934,72 @@ bool Blockchain::add_new_block(const block& bl_, block_verification_context& bvc
   return handle_block_to_main_chain(bl, id, bvc);
 }
 //------------------------------------------------------------------
-//TODO: Refactor, consider returning a failure height and letting
-//      caller decide course of action.
-void Blockchain::check_against_checkpoints(const checkpoints& points, bool enforce)
-{
-  CRITICAL_REGION_LOCAL(m_blockchain_lock);
-  bool stop_batch = m_db->batch_start();
-
-  for (const auto& checkpoint_it : points.get_points())
-  {
-    uint64_t block_height          = checkpoint_it.first;
-    checkpoint_t const &checkpoint = checkpoint_it.second;
-
-    if (block_height >= m_db->height()) // if the checkpoint is for a block we don't have yet, move on
-      break;
-
-    if (!points.check_block(block_height, m_db->get_block_hash_from_height(block_height), nullptr))
-    {
-      // if asked to enforce checkpoints, roll back to a couple of blocks before the checkpoint
-      if (enforce)
-      {
-        LOG_ERROR("Local blockchain failed to pass a checkpoint, rolling back!");
-        std::list<block> empty;
-        rollback_blockchain_switching(empty, block_height- 2);
-      }
-      else
-      {
-        LOG_ERROR("WARNING: local blockchain failed to pass a MoneroPulse checkpoint, and you could be on a fork. You should either sync up from scratch, OR download a fresh blockchain bootstrap, OR enable checkpoint enforcing with the --enforce-dns-checkpointing command-line option");
-      }
-    }
-  }
-
-  if (stop_batch)
-    m_db->batch_stop();
-}
-//------------------------------------------------------------------
 // returns false if any of the checkpoints loading returns false.
 // That should happen only if a checkpoint is added that conflicts
 // with an existing checkpoint.
 bool Blockchain::update_checkpoints(const std::string& file_path)
 {
-  if (!m_checkpoints.load_checkpoints_from_json(file_path))
+  std::vector<height_to_hash> checkpoint_hashes;
+  if (!cryptonote::load_checkpoints_from_json(file_path, checkpoint_hashes))
     return false;
-  check_against_checkpoints(m_checkpoints, true);
+
+  std::vector<height_to_hash>::const_iterator first_to_check = checkpoint_hashes.end();
+  std::vector<height_to_hash>::const_iterator last_to_check  = checkpoint_hashes.end();
+
+  uint64_t prev_max_height = m_checkpoints.get_max_height();
+  LOG_PRINT_L1("Adding checkpoints from blockchain hashfile: " << file_path);
+  LOG_PRINT_L1("Hard-coded max checkpoint height is " << prev_max_height);
+  for (std::vector<height_to_hash>::const_iterator it = checkpoint_hashes.begin(); it != last_to_check; it++)
+  {
+    uint64_t height;
+    height = it->height;
+    if (height <= prev_max_height) {
+      LOG_PRINT_L1("ignoring checkpoint height " << height);
+    } else {
+      if (first_to_check == checkpoint_hashes.end())
+        first_to_check = it;
+
+      std::string blockhash = it->hash;
+      LOG_PRINT_L1("Adding checkpoint height " << height << ", hash=" << blockhash);
+
+      if (!m_checkpoints.add_checkpoint(height, blockhash))
+      {
+        last_to_check = it;
+        LOG_PRINT_L1("Failed to add checkpoint at height " << height << ", hash=" << blockhash);
+        break;
+      }
+    }
+  }
+
+  /*
+   * If a block fails a checkpoint the blockchain
+   * will be rolled back to two blocks prior to that block.
+   */
+  //TODO: Refactor, consider returning a failure height and letting
+  //      caller decide course of action.
+  {
+    CRITICAL_REGION_LOCAL(m_blockchain_lock);
+    bool stop_batch = m_db->batch_start();
+
+    for (std::vector<height_to_hash>::const_iterator it = first_to_check; it != last_to_check; it++)
+    {
+      uint64_t block_height = it->height;
+      if (block_height >= m_db->height()) // if the checkpoint is for a block we don't have yet, move on
+        break;
+
+      if (!m_checkpoints.check_block(block_height, m_db->get_block_hash_from_height(block_height), nullptr))
+      {
+        // roll back to a couple of blocks before the checkpoint
+        LOG_ERROR("Local blockchain failed to pass a checkpoint, rolling back!");
+        std::list<block> empty;
+        rollback_blockchain_switching(empty, block_height- 2);
+      }
+    }
+
+    if (stop_batch)
+      m_db->batch_stop();
+  }
+
   return true;
 }
 //------------------------------------------------------------------

@@ -94,6 +94,7 @@ namespace cryptonote
   public:
     void debug__print_checkpoints()
     {
+#if 0
       const std::map<uint64_t, checkpoint_t> &checkpoint_map = m_checkpoints.get_points();
       if (checkpoint_map.empty())
       {
@@ -107,6 +108,7 @@ namespace cryptonote
           std::cout << "Checkpoint [" << it.first << "]" << ((checkpoint.type == checkpoint_type::service_node) ? "Service Node" : "Predefined") << std::endl;
         }
       }
+#endif
     }
 
     /**
@@ -739,26 +741,6 @@ namespace cryptonote
     bool get_transactions(const t_ids_container& txs_ids, t_tx_container& txs, t_missed_container& missed_txs) const;
 
     //debug functions
-
-    /**
-     * @brief check the blockchain against a set of checkpoints
-     *
-     * If a block fails a checkpoint and enforce is enabled, the blockchain
-     * will be rolled back to two blocks prior to that block.  If enforce
-     * is disabled, as is currently the default case with DNS-based checkpoints,
-     * an error will be printed to the user but no other action will be taken.
-     *
-     * @param points the checkpoints to check against
-     * @param enforce whether or not to take action on failure
-     */
-    void check_against_checkpoints(const checkpoints& points, bool enforce);
-
-    /**
-     * @brief configure whether or not to enforce DNS-based checkpoints
-     *
-     * @param enforce the new enforcement setting
-     */
-    void set_enforce_dns_checkpoints(bool enforce);
 
     /**
      * @brief loads new checkpoints from a file
