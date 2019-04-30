@@ -347,14 +347,6 @@ typedef struct outtx {
 std::atomic<uint64_t> mdb_txn_safe::num_active_txns{0};
 std::atomic_flag mdb_txn_safe::creation_gate = ATOMIC_FLAG_INIT;
 
-static int compare_checkpoint(const MDB_val *a, const MDB_val *b)
-{
-  auto const *lhs = reinterpret_cast<cryptonote::blk_checkpoint_header const *>(a->mv_data);
-  auto const *rhs = reinterpret_cast<cryptonote::blk_checkpoint_header const *>(b->mv_data);
-  int result = (lhs->height < rhs->height) ? -1 : (lhs->height > rhs->height);
-  return result;
-}
-
 mdb_threadinfo::~mdb_threadinfo()
 {
   MDB_cursor **cur = &m_ti_rcursors.m_txc_blocks;
@@ -1388,7 +1380,7 @@ void BlockchainLMDB::open(const std::string& filename, const int db_flags)
 
   lmdb_db_open(txn, LMDB_BLOCK_INFO, MDB_INTEGERKEY | MDB_CREATE | MDB_DUPSORT | MDB_DUPFIXED, m_block_info, "Failed to open db handle for m_block_info");
   lmdb_db_open(txn, LMDB_BLOCK_HEIGHTS, MDB_INTEGERKEY | MDB_CREATE | MDB_DUPSORT | MDB_DUPFIXED, m_block_heights, "Failed to open db handle for m_block_heights");
-  lmdb_db_open(txn, LMDB_BLOCK_CHECKPOINTS, MDB_INTEGERKEY | MDB_CREATE | MDB_DUPSORT, m_block_checkpoints, "Failed to open db handle for m_block_checkpoints");
+  lmdb_db_open(txn, LMDB_BLOCK_CHECKPOINTS, MDB_INTEGERKEY | MDB_CREATE,  m_block_checkpoints, "Failed to open db handle for m_block_checkpoints");
 
   lmdb_db_open(txn, LMDB_TXS, MDB_INTEGERKEY | MDB_CREATE, m_txs, "Failed to open db handle for m_txs");
   lmdb_db_open(txn, LMDB_TXS_PRUNED, MDB_INTEGERKEY | MDB_CREATE, m_txs_pruned, "Failed to open db handle for m_txs_pruned");
@@ -1422,7 +1414,7 @@ void BlockchainLMDB::open(const std::string& filename, const int db_flags)
 
   mdb_set_dupsort(txn, m_spent_keys, compare_hash32);
   mdb_set_dupsort(txn, m_block_heights, compare_hash32);
-  mdb_set_dupsort(txn, m_block_checkpoints, compare_checkpoint);
+  mdb_set_compare(txn, m_block_checkpoints, compare_uint64);
   mdb_set_dupsort(txn, m_tx_indices, compare_hash32);
   mdb_set_dupsort(txn, m_output_amounts, compare_uint64);
   mdb_set_dupsort(txn, m_output_txs, compare_uint64);
@@ -3681,7 +3673,7 @@ void BlockchainLMDB::update_block_checkpoint(checkpoint_t const &checkpoint)
   MDB_val value = {};
   value.mv_size = actual_bytes_used;
   value.mv_data = buffer;
-  int ret = mdb_cursor_put(m_cur_block_checkpoints, (MDB_val *)&zerokval, &value, 0);
+  int ret = mdb_cursor_put(m_cur_block_checkpoints, &key, &value, 0);
   if (ret)
     throw0(DB_ERROR(lmdb_error("Failed to update block checkpoint in db transaction: ", ret).c_str()));
 }
@@ -3691,15 +3683,9 @@ bool BlockchainLMDB::get_block_checkpoint_internal(uint64_t height, checkpoint_t
   TXN_PREFIX_RDONLY();
   RCURSOR(block_checkpoints);
 
-  blk_checkpoint_header desired_header = {};
-  desired_header.height                = height;
-
-  if (op == MDB_GET_BOTH_RANGE)
-    desired_header.height = UINT64_MAX;
-
-  MDB_val_set(value, desired_header);
-
-  int ret = mdb_cursor_get(m_cur_block_checkpoints, (MDB_val *)&zerokval, &value, op);
+  MDB_val_set(key, height);
+  MDB_val value = {};
+  int ret = mdb_cursor_get(m_cur_block_checkpoints, &key, &value, op);
   if (ret == MDB_SUCCESS)
   {
     auto const *header     = static_cast<blk_checkpoint_header const *>(value.mv_data);
@@ -3729,7 +3715,7 @@ bool BlockchainLMDB::get_block_checkpoint(uint64_t height, checkpoint_t &checkpo
 {
   LOG_PRINT_L3("BlockchainLMDB::" << __func__);
   check_open();
-  bool result = get_block_checkpoint_internal(height, checkpoint, MDB_GET_BOTH);
+  bool result = get_block_checkpoint_internal(height, checkpoint, MDB_SET_KEY);
   return result;
 }
 
@@ -3737,7 +3723,7 @@ bool BlockchainLMDB::get_top_checkpoint(checkpoint_t &checkpoint) const
 {
   LOG_PRINT_L3("BlockchainLMDB::" << __func__);
   check_open();
-  bool result = get_block_checkpoint_internal(0, checkpoint, MDB_GET_BOTH_RANGE);
+  bool result = get_block_checkpoint_internal(0, checkpoint, MDB_LAST);
   return result;
 }
 
@@ -3759,6 +3745,8 @@ std::vector<checkpoint_t> BlockchainLMDB::get_checkpoints_range(uint64_t start, 
   else
     result.reserve(num_desired_checkpoints);
 
+  if (end >= start) end++;
+  else end--;
   for (uint64_t height = start;
        height != end && result.size() < num_desired_checkpoints;
        )
