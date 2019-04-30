@@ -4008,8 +4008,6 @@ bool Blockchain::update_checkpoints(const std::string& file_path)
 //------------------------------------------------------------------
 bool Blockchain::add_checkpoint_vote(service_nodes::checkpoint_vote const &vote)
 {
-  // TODO(doyle): Don't merge ability for SN to add checkpoints to dev branch for now until completely tested.
-#if 0
   crypto::hash const canonical_block_hash = get_block_id_by_height(vote.block_height);
   if (vote.block_hash != canonical_block_hash)
   {
@@ -4020,7 +4018,6 @@ bool Blockchain::add_checkpoint_vote(service_nodes::checkpoint_vote const &vote)
   }
 
   m_checkpoints.add_checkpoint_vote(vote);
-#endif
   return true;
 }
 //------------------------------------------------------------------
