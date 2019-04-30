@@ -3745,8 +3745,6 @@ std::vector<checkpoint_t> BlockchainLMDB::get_checkpoints_range(uint64_t start, 
   else
     result.reserve(num_desired_checkpoints);
 
-  if (end >= start) end++;
-  else end--;
   for (uint64_t height = start;
        height != end && result.size() < num_desired_checkpoints;
        )
@@ -3758,6 +3756,12 @@ std::vector<checkpoint_t> BlockchainLMDB::get_checkpoints_range(uint64_t start, 
     if (end >= start) height++;
     else height--;
   }
+
+  // NOTE: Inclusive of end height
+  checkpoint_t checkpoint;
+  if (get_block_checkpoint(end, checkpoint))
+    result.push_back(checkpoint);
+
 
   return result;
 }
