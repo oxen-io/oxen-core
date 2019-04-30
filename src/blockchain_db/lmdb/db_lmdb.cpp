@@ -182,7 +182,7 @@ namespace
  * blocks            block ID     block blob
  * block_heights     block hash   block height
  * block_info        block ID     {block metadata}
- * block_checkpoints block height [{block id, quorum index, signatures}, ...]
+ * block_checkpoints block height [{block height, block hash, num signatures, [signatures, ..]}, ...]
  *
  * txs_pruned        txn ID       pruned txn blob
  * txs_prunable      txn ID       prunable txn blob
