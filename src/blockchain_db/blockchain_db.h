@@ -810,7 +810,9 @@ public:
   virtual void update_block_checkpoint(checkpoint_t const &checkpoint) = 0;
   virtual bool get_block_checkpoint   (uint64_t height, checkpoint_t &checkpoint) const = 0;
   virtual bool get_top_checkpoint     (checkpoint_t &checkpoint) const = 0;
-  virtual std::vector<checkpoint_t> get_checkpoints_range(uint64_t start, uint64_t end, int num_desired_checkpoints = -1) const = 0;
+
+  // num_desired_checkpoints: set to 0 to collect as many checkpoints as possible
+  virtual std::vector<checkpoint_t> get_checkpoints_range(uint64_t start, uint64_t end, size_t num_desired_checkpoints = 0) const = 0;
 
   /**
    * @brief checks if a block exists

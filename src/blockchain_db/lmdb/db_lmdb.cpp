@@ -3694,15 +3694,19 @@ bool BlockchainLMDB::get_block_checkpoint_internal(uint64_t height, checkpoint_t
   blk_checkpoint_header desired_header = {};
   desired_header.height                = height;
 
+  if (op == MDB_GET_BOTH_RANGE)
+    desired_header.height = UINT64_MAX;
+
   MDB_val_set(value, desired_header);
-  int ret = mdb_cursor_get(m_cur_block_checkpoints, (MDB_val *)&zerokval, &value, MDB_GET_BOTH);
+
+  int ret = mdb_cursor_get(m_cur_block_checkpoints, (MDB_val *)&zerokval, &value, op);
   if (ret == MDB_SUCCESS)
   {
     auto const *header     = static_cast<blk_checkpoint_header const *>(value.mv_data);
     auto const *signatures = reinterpret_cast<service_nodes::voter_to_signature *>(static_cast<uint8_t *>(value.mv_data) + sizeof(*header));
 
     checkpoint            = {};
-    checkpoint.height     = height;
+    checkpoint.height     = header->height;
     checkpoint.type       = (header->num_signatures > 0 ) ? checkpoint_type::service_node : checkpoint_type::hardcoded;
     checkpoint.block_hash = header->block_hash;
     checkpoint.signatures.reserve(header->num_signatures);
@@ -3733,11 +3737,11 @@ bool BlockchainLMDB::get_top_checkpoint(checkpoint_t &checkpoint) const
 {
   LOG_PRINT_L3("BlockchainLMDB::" << __func__);
   check_open();
-  bool result = get_block_checkpoint_internal(0, checkpoint, MDB_LAST_DUP);
+  bool result = get_block_checkpoint_internal(0, checkpoint, MDB_GET_BOTH_RANGE);
   return result;
 }
 
-std::vector<checkpoint_t> BlockchainLMDB::get_checkpoints_range(uint64_t start, uint64_t end, int num_desired_checkpoints) const
+std::vector<checkpoint_t> BlockchainLMDB::get_checkpoints_range(uint64_t start, uint64_t end, size_t num_desired_checkpoints) const
 {
   LOG_PRINT_L3("BlockchainLMDB::" << __func__);
   check_open();
@@ -3750,8 +3754,8 @@ std::vector<checkpoint_t> BlockchainLMDB::get_checkpoints_range(uint64_t start, 
       return result;
   }
 
-  if (num_desired_checkpoints <= -1)
-    num_desired_checkpoints = (unsigned int)-1;
+  if (num_desired_checkpoints == 0)
+    num_desired_checkpoints = (size_t)-1;
   else
     result.reserve(num_desired_checkpoints);
 

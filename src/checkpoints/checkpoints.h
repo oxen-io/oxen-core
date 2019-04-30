@@ -169,7 +169,6 @@ namespace cryptonote
   private:
     BlockchainDB                                           *m_db;
     std::unordered_map<uint64_t, std::vector<checkpoint_t>> m_staging_points; // Incomplete service node checkpoints being voted on
-    mutable epee::critical_section                          m_lock;
   };
 
 }

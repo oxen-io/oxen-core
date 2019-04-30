@@ -134,7 +134,6 @@ namespace cryptonote
     bool r         = epee::string_tools::hex_to_pod(hash_str, h);
     CHECK_AND_ASSERT_MES(r, false, "Failed to parse checkpoint hash string into binary representation!");
 
-    CRITICAL_REGION_LOCAL(m_lock);
     checkpoint_t checkpoint = {};
     if (get_checkpoint_from_db_safe(m_db, height, checkpoint))
     {
@@ -193,7 +192,6 @@ namespace cryptonote
 #endif
 
     // TODO(doyle): Double work. Factor into a generic vote checker as we already have one in service node deregister
-    CRITICAL_REGION_LOCAL(m_lock);
     std::array<int, service_nodes::QUORUM_SIZE> unique_vote_set = {};
     std::vector<checkpoint_t> &candidate_checkpoints            = m_staging_points[vote.block_height];
     std::vector<checkpoint_t>::iterator curr_checkpoint         = candidate_checkpoints.end();
@@ -267,7 +265,7 @@ namespace cryptonote
     if (0 == block_height)
       return false;
 
-    int num_desired_checkpoints = 2;
+    size_t num_desired_checkpoints = 2;
     std::vector<checkpoint_t> checkpoints = m_db->get_checkpoints_range(blockchain_height, 0, num_desired_checkpoints);
 
     if (checkpoints.size() == 0) // No checkpoints recorded yet for blocks preceeding blockchain_height

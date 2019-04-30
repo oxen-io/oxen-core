@@ -43,7 +43,6 @@ struct TestDB: public BaseTestDB
 {
   TestDB() { m_open = true; }
 
-#if 1
   virtual void update_block_checkpoint(checkpoint_t const &checkpoint) override
   {
     auto it = std::find_if(checkpoints.begin(), checkpoints.end(), [&checkpoint](checkpoint_t const &entry) {
@@ -78,7 +77,7 @@ struct TestDB: public BaseTestDB
     return true;
   }
 
-  virtual std::vector<checkpoint_t> get_checkpoints_range(uint64_t start, uint64_t end, int num_desired_checkpoints = -1) const override
+  virtual std::vector<checkpoint_t> get_checkpoints_range(uint64_t start, uint64_t end, size_t num_desired_checkpoints) const override
   {
     std::vector<checkpoint_t> result;
 
@@ -89,8 +88,8 @@ struct TestDB: public BaseTestDB
         return result;
     }
 
-    if (num_desired_checkpoints <= -1)
-      num_desired_checkpoints = (unsigned int)-1;
+    if (num_desired_checkpoints == 0)
+      num_desired_checkpoints = (size_t)-1;
     else
       result.reserve(num_desired_checkpoints);
 
@@ -108,7 +107,6 @@ struct TestDB: public BaseTestDB
 
     return result;
   }
-#endif
 
 private:
   std::vector<checkpoint_t> checkpoints;

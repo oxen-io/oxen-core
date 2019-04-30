@@ -94,21 +94,24 @@ namespace cryptonote
   public:
     void debug__print_checkpoints()
     {
-#if 0
-      const std::map<uint64_t, checkpoint_t> &checkpoint_map = m_checkpoints.get_points();
-      if (checkpoint_map.empty())
+      uint64_t end = get_current_blockchain_height() - 1;
+
+      checkpoint_t top_checkpoint;
+      if (m_db->get_top_checkpoint(top_checkpoint))
+        end = std::max(top_checkpoint.height, end);
+
+      std::vector<checkpoint_t> checkpoints = m_db->get_checkpoints_range(0, end);
+      if (checkpoints.empty())
       {
           std::cout << "Checkpoint: None available" << std::endl;
       }
       else
       {
-        for (auto const &it : checkpoint_map)
+        for (auto const &it : checkpoints)
         {
-          checkpoint_t const &checkpoint = it.second;
-          std::cout << "Checkpoint [" << it.first << "]" << ((checkpoint.type == checkpoint_type::service_node) ? "Service Node" : "Predefined") << std::endl;
+          std::cout << "Checkpoint [" << it.height << "]" << ((it.type == checkpoint_type::service_node) ? "Service Node" : "Predefined") << std::endl;
         }
       }
-#endif
     }
 
     /**
