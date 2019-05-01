@@ -321,8 +321,8 @@ namespace cryptonote
     {
       for (size_t i = 0; i < loki::array_count(HARDCODED_MAINNET_CHECKPOINTS); ++i)
       {
-        height_to_hash const *checkpoint = HARDCODED_MAINNET_CHECKPOINTS + i;
-        ADD_CHECKPOINT(checkpoint->height, checkpoint->hash);
+        height_to_hash const &checkpoint = HARDCODED_MAINNET_CHECKPOINTS[i];
+        ADD_CHECKPOINT(checkpoint.height, checkpoint.hash);
       }
     }
 #endif

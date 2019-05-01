@@ -35,8 +35,9 @@
 #include <map>
 #include "gtest/gtest.h"
 
-#include "checkpoints/checkpoints.h"
 #include "blockchain_db/blockchain_db.h"
+
+namespace cryptonote { struct checkpoint_t; };
 
 class BaseTestDB: public cryptonote::BlockchainDB {
 public:

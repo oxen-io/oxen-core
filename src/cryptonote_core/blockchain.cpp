@@ -3947,12 +3947,12 @@ bool Blockchain::update_checkpoints(const std::string& file_path)
     return false;
 
   std::vector<height_to_hash>::const_iterator first_to_check = checkpoint_hashes.end();
-  std::vector<height_to_hash>::const_iterator last_to_check  = checkpoint_hashes.end();
+  std::vector<height_to_hash>::const_iterator one_past_last_to_check  = checkpoint_hashes.end();
 
   uint64_t prev_max_height = m_checkpoints.get_max_height();
   LOG_PRINT_L1("Adding checkpoints from blockchain hashfile: " << file_path);
   LOG_PRINT_L1("Hard-coded max checkpoint height is " << prev_max_height);
-  for (std::vector<height_to_hash>::const_iterator it = checkpoint_hashes.begin(); it != last_to_check; it++)
+  for (std::vector<height_to_hash>::const_iterator it = checkpoint_hashes.begin(); it != one_past_last_to_check; it++)
   {
     uint64_t height;
     height = it->height;
@@ -3967,7 +3967,7 @@ bool Blockchain::update_checkpoints(const std::string& file_path)
 
       if (!m_checkpoints.add_checkpoint(height, blockhash))
       {
-        last_to_check = it;
+        one_past_last_to_check = it;
         LOG_PRINT_L1("Failed to add checkpoint at height " << height << ", hash=" << blockhash);
         break;
       }
@@ -3980,11 +3980,12 @@ bool Blockchain::update_checkpoints(const std::string& file_path)
    */
   //TODO: Refactor, consider returning a failure height and letting
   //      caller decide course of action.
+  bool result = true;
   {
     CRITICAL_REGION_LOCAL(m_blockchain_lock);
     bool stop_batch = m_db->batch_start();
 
-    for (std::vector<height_to_hash>::const_iterator it = first_to_check; it != last_to_check; it++)
+    for (std::vector<height_to_hash>::const_iterator it = first_to_check; it != one_past_last_to_check; it++)
     {
       uint64_t block_height = it->height;
       if (block_height >= m_db->height()) // if the checkpoint is for a block we don't have yet, move on
@@ -3996,6 +3997,7 @@ bool Blockchain::update_checkpoints(const std::string& file_path)
         LOG_ERROR("Local blockchain failed to pass a checkpoint, rolling back!");
         std::list<block> empty;
         rollback_blockchain_switching(empty, block_height- 2);
+        result = false;
       }
     }
 
@@ -4003,7 +4005,7 @@ bool Blockchain::update_checkpoints(const std::string& file_path)
       m_db->batch_stop();
   }
 
-  return true;
+  return result;
 }
 //------------------------------------------------------------------
 bool Blockchain::add_checkpoint_vote(service_nodes::checkpoint_vote const &vote)

@@ -34,11 +34,11 @@
 #include <vector>
 #include <map>
 
-#include "checkpoints/checkpoints.h"
 #include "blockchain_db.h"
 
 namespace cryptonote
 {
+  struct checkpoint_t;
 
 class BaseTestDB: public cryptonote::BlockchainDB {
 public:

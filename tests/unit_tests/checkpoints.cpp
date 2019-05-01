@@ -105,10 +105,13 @@ struct TestDB: public BaseTestDB
       else height--;
     }
 
-    // NOTE: Inclusive of end height
-    checkpoint_t checkpoint;
-    if (get_block_checkpoint(end, checkpoint))
-      result.push_back(checkpoint);
+    if (result.size() < num_desired_checkpoints)
+    {
+      // NOTE: Inclusive of end height
+      checkpoint_t checkpoint;
+      if (get_block_checkpoint(end, checkpoint))
+        result.push_back(checkpoint);
+    }
 
     return result;
   }

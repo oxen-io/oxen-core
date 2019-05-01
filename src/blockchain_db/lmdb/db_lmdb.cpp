@@ -44,6 +44,7 @@
 #include "profile_tools.h"
 #include "ringct/rctOps.h"
 
+#include "checkpoints/checkpoints.h"
 #include "cryptonote_core/service_node_rules.h"
 
 #undef LOKI_DEFAULT_LOG_CATEGORY
@@ -3741,7 +3742,7 @@ std::vector<checkpoint_t> BlockchainLMDB::get_checkpoints_range(uint64_t start, 
   }
 
   if (num_desired_checkpoints == 0)
-    num_desired_checkpoints = (size_t)-1;
+    num_desired_checkpoints = std::numeric_limits<decltype(num_desired_checkpoints)>::max();
   else
     result.reserve(num_desired_checkpoints);
 
@@ -3757,10 +3758,13 @@ std::vector<checkpoint_t> BlockchainLMDB::get_checkpoints_range(uint64_t start, 
     else height--;
   }
 
-  // NOTE: Inclusive of end height
-  checkpoint_t checkpoint;
-  if (get_block_checkpoint(end, checkpoint))
-    result.push_back(checkpoint);
+  if (result.size() < num_desired_checkpoints)
+  {
+    // NOTE: Inclusive of end height
+    checkpoint_t checkpoint;
+    if (get_block_checkpoint(end, checkpoint))
+      result.push_back(checkpoint);
+  }
 
 
   return result;
