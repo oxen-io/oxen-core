@@ -28,12 +28,14 @@
 
 #pragma once
 
-#include "blockchain.h"
 #include <boost/variant.hpp>
 #include "serialization/serialization.h"
+#include "cryptonote_basic/cryptonote_basic_impl.h"
 #include "cryptonote_core/service_node_rules.h"
 #include "cryptonote_core/service_node_deregister.h"
 #include "cryptonote_core/service_node_quorum_cop.h"
+
+namespace cryptonote { struct Blockchain; struct BlockchainDB; }
 
 namespace service_nodes
 {
@@ -166,16 +168,15 @@ namespace service_nodes
   }
 
   class service_node_list
-    : public cryptonote::Blockchain::BlockAddedHook,
-      public cryptonote::Blockchain::BlockchainDetachedHook,
-      public cryptonote::Blockchain::InitHook,
-      public cryptonote::Blockchain::ValidateMinerTxHook
+    : public cryptonote::BlockAddedHook,
+      public cryptonote::BlockchainDetachedHook,
+      public cryptonote::InitHook,
+      public cryptonote::ValidateMinerTxHook
   {
   public:
     service_node_list(cryptonote::Blockchain& blockchain);
     void block_added(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs) override;
     void blockchain_detached(uint64_t height) override;
-    void register_hooks(service_nodes::quorum_cop &quorum_cop);
     void init() override;
     bool validate_miner_tx(const crypto::hash& prev_id, const cryptonote::transaction& miner_tx, uint64_t height, int hard_fork_version, cryptonote::block_reward_parts const &base_reward) const override;
     std::vector<std::pair<cryptonote::account_public_address, uint64_t>> get_winner_addresses_and_portions() const;
@@ -342,7 +343,6 @@ namespace service_nodes
 
     mutable boost::recursive_mutex m_sn_mutex;
     cryptonote::Blockchain&        m_blockchain;
-    bool                           m_hooks_registered;
     crypto::public_key const      *m_service_node_pubkey;
     cryptonote::BlockchainDB      *m_db;
 

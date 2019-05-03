@@ -28,8 +28,8 @@
 
 #pragma once
 
-#include "blockchain.h"
 #include "serialization/serialization.h"
+#include "cryptonote_basic/cryptonote_basic_impl.h"
 #include "cryptonote_protocol/cryptonote_protocol_handler_common.h"
 #include "cryptonote_basic/blobdatatype.h"
 
@@ -71,9 +71,9 @@ namespace service_nodes
   };
 
   class quorum_cop
-    : public cryptonote::Blockchain::BlockAddedHook,
-      public cryptonote::Blockchain::BlockchainDetachedHook,
-      public cryptonote::Blockchain::InitHook
+    : public cryptonote::BlockAddedHook,
+      public cryptonote::BlockchainDetachedHook,
+      public cryptonote::InitHook
   {
   public:
     explicit quorum_cop(cryptonote::core& core);

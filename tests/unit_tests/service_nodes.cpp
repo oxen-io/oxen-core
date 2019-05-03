@@ -31,7 +31,9 @@
 #include "gtest/gtest.h"
 #include "cryptonote_core/service_node_list.h"
 #include "cryptonote_core/service_node_deregister.h"
+#include "cryptonote_core/cryptonote_tx_utils.h"
 #include "cryptonote_basic/cryptonote_basic.h"
+#include "cryptonote_basic/verification_context.h"
 #include "cryptonote_config.h"
 
 TEST(service_nodes, staking_requirement)

@@ -39,6 +39,7 @@
 #include <vector>
 #include "syncobj.h"
 #include "blockchain_db/blockchain_db.h"
+#include "cryptonote_basic/cryptonote_format_utils.h"
 
 using namespace epee;
 
@@ -127,7 +128,56 @@ namespace cryptonote
 
     return true;
   }
+  //---------------------------------------------------------------------------
+  void checkpoints::block_added(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs)
+  {
+    uint64_t block_height = cryptonote::get_block_height(block);
+    int hard_fork_version = block.major_version;
 
+    if (hard_fork_version < network_version_12_checkpointing)
+      return;
+
+    if (block_height < service_nodes::CHECKPOINT_SENTINEL_VOTE_AGE)
+      return;
+
+    std::array<int, service_nodes::CHECKPOINT_QUORUM_SIZE> voting_set;
+    uint64_t cull_height = block_height - service_nodes::CHECKPOINT_SENTINEL_VOTE_AGE;
+    if (m_staging_points.empty())
+      return;
+
+    auto it = m_staging_points.begin();
+    if (it->first >= cull_height)
+      return;
+
+    std::vector<checkpoint_t> const &checkpoints = it->second;
+    for (checkpoint_t const &checkpoint : checkpoints)
+    {
+      for (service_nodes::voter_to_signature const &vote : checkpoint.signatures)
+      {
+        if (vote.quorum_index > voting_set.size())
+          continue;
+
+        ++voting_set[vote.quorum_index];
+      }
+    }
+
+    for (size_t quorum_index = 0; quorum_index < voting_set.size(); ++quorum_index)
+    {
+      int vote_count = voting_set[quorum_index];
+      if (vote_count != 1)
+      {
+        // TODO(doyle): deregister
+      }
+    }
+
+    m_staging_points.erase(it);
+  }
+  //---------------------------------------------------------------------------
+  void checkpoints::blockchain_detached(uint64_t height)
+  {
+    (void)height;
+    // TODO(doyle): Cull heights
+  }
   //---------------------------------------------------------------------------
   bool checkpoints::add_checkpoint(uint64_t height, const std::string& hash_str)
   {

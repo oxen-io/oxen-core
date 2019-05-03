@@ -650,11 +650,21 @@ namespace cryptonote
     const difficulty_type fixed_difficulty = command_line::get_arg(vm, arg_fixed_difficulty);
 
     BlockchainDB *initialized_db = db.release();
+
     // Service Nodes
     {
       m_service_node_list.set_db_pointer(initialized_db);
-      m_service_node_list.register_hooks(m_quorum_cop);
       m_deregister_vote_pool.m_nettype = m_nettype;
+
+      m_blockchain_storage.hook_block_added(m_service_node_list);
+      m_blockchain_storage.hook_blockchain_detached(m_service_node_list);
+      m_blockchain_storage.hook_init(m_service_node_list);
+      m_blockchain_storage.hook_validate_miner_tx(m_service_node_list);
+
+      // NOTE: There is an implicit dependency on service node lists being hooked first!
+      m_blockchain_storage.hook_init(m_quorum_cop);
+      m_blockchain_storage.hook_block_added(m_quorum_cop);
+      m_blockchain_storage.hook_blockchain_detached(m_quorum_cop);
     }
 
     // Checkpoints
