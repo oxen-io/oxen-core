@@ -46,29 +46,21 @@ namespace service_nodes
       uint16_t version_major, version_minor, version_patch;
   };
 
-  struct quorum_checkpointing
+  struct testing_quorum
   {
-    std::vector<crypto::public_key> quorum_nodes;
-    BEGIN_SERIALIZE()
-      FIELD(quorum_nodes)
-    END_SERIALIZE()
-  };
-
-  struct quorum_uptime_proof
-  {
-    std::vector<crypto::public_key> quorum_nodes;
-    std::vector<crypto::public_key> nodes_to_test;
+    std::vector<crypto::public_key> validators;
+    std::vector<crypto::public_key> workers;
 
     BEGIN_SERIALIZE()
-      FIELD(quorum_nodes)
-      FIELD(nodes_to_test)
+      FIELD(validators)
+      FIELD(workers)
     END_SERIALIZE()
   };
 
   struct quorum_manager
   {
-    std::shared_ptr<const quorum_uptime_proof>  uptime_proof;
-    std::shared_ptr<const quorum_checkpointing> checkpointing;
+    std::shared_ptr<const testing_quorum> uptime_proof;
+    std::shared_ptr<const testing_quorum> checkpointing;
   };
 
   enum struct quorum_type

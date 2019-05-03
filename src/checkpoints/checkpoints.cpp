@@ -159,7 +159,7 @@ namespace cryptonote
                          "Developer error: Add vote if unique should only be called when the vote hash and checkpoint hash match");
 
     // TODO(doyle): Factor this out, a similar function exists in service node deregister
-    CHECK_AND_ASSERT_MES(vote.voters_quorum_index < service_nodes::QUORUM_SIZE,
+    CHECK_AND_ASSERT_MES(vote.voters_quorum_index < service_nodes::CHECKPOINT_QUORUM_SIZE,
                          false,
                          "Vote is indexing out of bounds");
 
@@ -193,7 +193,7 @@ namespace cryptonote
 #endif
 
     // TODO(doyle): Double work. Factor into a generic vote checker as we already have one in service node deregister
-    std::array<int, service_nodes::QUORUM_SIZE> unique_vote_set = {};
+    std::array<int, service_nodes::CHECKPOINT_QUORUM_SIZE> unique_vote_set = {};
     std::vector<checkpoint_t> &candidate_checkpoints            = m_staging_points[vote.block_height];
     std::vector<checkpoint_t>::iterator curr_checkpoint         = candidate_checkpoints.end();
     for (auto it = candidate_checkpoints.begin(); it != candidate_checkpoints.end(); it++)
@@ -227,7 +227,7 @@ namespace cryptonote
 
     if (add_vote_if_unique(*curr_checkpoint, vote))
     {
-      if (curr_checkpoint->signatures.size() > service_nodes::MIN_VOTES_TO_CHECKPOINT)
+      if (curr_checkpoint->signatures.size() > service_nodes::CHECKPOINT_MIN_VOTES)
       {
         update_checkpoint_in_db_safe(m_db, *curr_checkpoint);
       }

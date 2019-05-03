@@ -369,7 +369,7 @@ bool test_deregister_safety_buffer::generate(std::vector<test_event_entry> &even
   /// register 21 random service nodes
   std::vector<cryptonote::transaction> reg_txs;
 
-  constexpr auto SERVICE_NODES_NEEDED = service_nodes::QUORUM_SIZE * 2 + 1;
+  constexpr auto SERVICE_NODES_NEEDED = service_nodes::UPTIME_QUORUM_SIZE * 2 + 1;
   static_assert(SN_KEYS_COUNT >= SERVICE_NODES_NEEDED, "not enough pre-computed service node keys");
 
   for (auto i = 0u; i < SERVICE_NODES_NEEDED; ++i)
@@ -691,9 +691,9 @@ bool sn_test_rollback::test_registrations(cryptonote::core& c, size_t ev_index, 
     tx_extra_service_node_deregister deregistration;
     get_service_node_deregister_from_tx_extra(dereg_tx.extra, deregistration);
 
-    const auto uptime_quorum = c.get_uptime_quorum(deregistration.block_height);
+    const auto uptime_quorum = c.get_testing_quorum(service_nodes::quorum_type::uptime_proof, deregistration.block_height);
     CHECK_TEST_CONDITION(uptime_quorum);
-    const auto pk_a = uptime_quorum->nodes_to_test.at(deregistration.service_node_index);
+    const auto pk_a = uptime_quorum->workers.at(deregistration.service_node_index);
 
     /// Check present
     const bool found_a = contains(sn_list, pk_a);

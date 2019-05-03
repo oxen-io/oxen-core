@@ -90,37 +90,37 @@ namespace service_nodes
 
   static bool verify_votes_helper(cryptonote::network_type nettype, const cryptonote::tx_extra_service_node_deregister& deregister,
                                   cryptonote::vote_verification_context &vvc,
-                                  const service_nodes::quorum_uptime_proof &uptime_quorum)
+                                  const service_nodes::testing_quorum &quorum)
   {
-    if (deregister.service_node_index >= uptime_quorum.nodes_to_test.size())
+    if (deregister.service_node_index >= quorum.workers.size())
     {
       vvc.m_service_node_index_out_of_bounds = true;
-      LOG_PRINT_L1("Service node index in deregister vote was out of bounds: " << deregister.service_node_index << ", expected to be in range of: [0, " << uptime_quorum.nodes_to_test.size() << ")");
+      LOG_PRINT_L1("Service node index in deregister vote was out of bounds: " << deregister.service_node_index << ", expected to be in range of: [0, " << quorum.workers.size() << ")");
       return false;
     }
 
-    const std::vector<crypto::public_key>& quorum = uptime_quorum.quorum_nodes;
-    std::vector<int8_t> quorum_set;
+    const std::vector<crypto::public_key>& validators = quorum.validators;
+    std::vector<int8_t> validator_set;
+    validator_set.resize(validators.size());
 
     std::vector<std::pair<crypto::public_key, crypto::signature>> keys_and_sigs;
     for (const cryptonote::tx_extra_service_node_deregister::vote& vote : deregister.votes)
     {
-      if (vote.voters_quorum_index >= quorum.size())
+      if (vote.voters_quorum_index >= validators.size())
       {
         vvc.m_voters_quorum_index_out_of_bounds = true;
-        LOG_PRINT_L1("Voter's index in deregister vote was out of bounds: " << vote.voters_quorum_index << ", expected to be in range of: [0, " << quorum.size() << ")");
+        LOG_PRINT_L1("Voter's index in deregister vote was out of bounds: " << vote.voters_quorum_index << ", expected to be in range of: [0, " << validators.size() << ")");
         return false;
       }
 
-      quorum_set.resize(quorum.size());
-      if (++quorum_set[vote.voters_quorum_index] > 1)
+      if (++validator_set[vote.voters_quorum_index] > 1)
       {
         vvc.m_duplicate_voters = true;
-        LOG_PRINT_L1("Voter quorum index is duplicated: " << vote.voters_quorum_index << ", expected to be in range of: [0, " << quorum.size() << ")");
+        LOG_PRINT_L1("Voter quorum index is duplicated: " << vote.voters_quorum_index << ", expected to be in range of: [0, " << validators.size() << ")");
         return false;
       }
 
-      keys_and_sigs.push_back(std::make_pair(quorum[vote.voters_quorum_index], vote.signature));
+      keys_and_sigs.push_back(std::make_pair(validators[vote.voters_quorum_index], vote.signature));
     }
 
     bool r = deregister_vote::verify_votes_signature(deregister.block_height, deregister.service_node_index, keys_and_sigs);
@@ -135,27 +135,27 @@ namespace service_nodes
 
   bool deregister_vote::verify_deregister(cryptonote::network_type nettype, const cryptonote::tx_extra_service_node_deregister& deregister,
                                           cryptonote::vote_verification_context &vvc,
-                                          const service_nodes::quorum_uptime_proof &uptime_quorum)
+                                          const service_nodes::testing_quorum &quorum)
   {
-    if (deregister.votes.size() < service_nodes::MIN_VOTES_TO_KICK_SERVICE_NODE)
+    if (deregister.votes.size() < service_nodes::UPTIME_MIN_VOTES_TO_KICK_SERVICE_NODE)
     {
       LOG_PRINT_L1("Not enough votes");
       vvc.m_not_enough_votes = true;
       return false;
     }
 
-    bool result = verify_votes_helper(nettype, deregister, vvc, uptime_quorum);
+    bool result = verify_votes_helper(nettype, deregister, vvc, quorum);
     return result;
   }
 
   bool deregister_vote::verify_vote(cryptonote::network_type nettype, const deregister_vote& v, cryptonote::vote_verification_context &vvc,
-                                    const service_nodes::quorum_uptime_proof &uptime_quorum)
+                                    const service_nodes::testing_quorum &quorum)
   {
     cryptonote::tx_extra_service_node_deregister deregister;
     deregister.block_height = v.block_height;
     deregister.service_node_index = v.service_node_index;
     deregister.votes.push_back(cryptonote::tx_extra_service_node_deregister::vote{ v.signature, v.voters_quorum_index });
-    return verify_votes_helper(nettype, deregister, vvc, uptime_quorum);
+    return verify_votes_helper(nettype, deregister, vvc, quorum);
   }
 
   void deregister_vote_pool::set_relayed(const std::vector<deregister_vote>& votes)
@@ -217,10 +217,10 @@ namespace service_nodes
   bool deregister_vote_pool::add_vote(const int hf_version,
                                       const deregister_vote& new_vote,
                                       cryptonote::vote_verification_context& vvc,
-                                      const service_nodes::quorum_uptime_proof &uptime_quorum,
+                                      const service_nodes::testing_quorum &quorum,
                                       cryptonote::transaction &tx)
   {
-    if (!deregister_vote::verify_vote(m_nettype, new_vote, vvc, uptime_quorum))
+    if (!deregister_vote::verify_vote(m_nettype, new_vote, vvc, quorum))
     {
       LOG_PRINT_L1("Signature verification failed for deregister vote");
       return false;
@@ -251,7 +251,7 @@ namespace service_nodes
       vvc.m_added_to_pool = true;
       deregister_votes->emplace_back(deregister_pool_entry(0 /*time_last_sent_p2p*/, new_vote));
 
-      if (deregister_votes->size() >= service_nodes::MIN_VOTES_TO_KICK_SERVICE_NODE)
+      if (deregister_votes->size() >= service_nodes::UPTIME_MIN_VOTES_TO_KICK_SERVICE_NODE)
       {
         cryptonote::tx_extra_service_node_deregister deregister;
         deregister.block_height       = new_vote.block_height;

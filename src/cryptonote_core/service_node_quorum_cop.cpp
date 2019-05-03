@@ -108,25 +108,25 @@ namespace service_nodes
       if (m_core.get_hard_fork_version(m_uptime_proof_height) < 9)
         continue;
 
-      const std::shared_ptr<const quorum_uptime_proof> state = m_core.get_uptime_quorum(m_uptime_proof_height);
-      if (!state)
+      const std::shared_ptr<const testing_quorum> quorum = m_core.get_testing_quorum(quorum_type::uptime_proof, m_uptime_proof_height);
+      if (!quorum)
       {
         // TODO(loki): Fatal error
         LOG_ERROR("Quorum state for height: " << m_uptime_proof_height << " was not cached in daemon!");
         continue;
       }
 
-      auto it = std::find(state->quorum_nodes.begin(), state->quorum_nodes.end(), my_pubkey);
-      if (it == state->quorum_nodes.end())
+      auto it = std::find(quorum->validators.begin(), quorum->validators.end(), my_pubkey);
+      if (it == quorum->validators.end())
         continue;
 
       //
       // NOTE: I am in the quorum
       //
-      size_t my_index_in_quorum = it - state->quorum_nodes.begin();
-      for (size_t node_index = 0; node_index < state->nodes_to_test.size(); ++node_index)
+      size_t my_index_in_quorum = it - quorum->validators.begin();
+      for (size_t node_index = 0; node_index < quorum->workers.size(); ++node_index)
       {
-        const crypto::public_key &node_key = state->nodes_to_test[node_index];
+        const crypto::public_key &node_key = quorum->workers[node_index];
 
         CRITICAL_REGION_LOCAL(m_lock);
         bool vote_off_node = (m_uptime_proof_seen.find(node_key) == m_uptime_proof_seen.end());
@@ -163,22 +163,22 @@ namespace service_nodes
     if (height % CHECKPOINT_INTERVAL != 0)
       return;
 
-    const std::shared_ptr<const quorum_checkpointing> state = m_core.get_checkpointing_quorum(height);
-    if (!state)
+    const std::shared_ptr<const testing_quorum> quorum = m_core.get_testing_quorum(quorum_type::checkpointing, height);
+    if (!quorum)
     {
       // TODO(loki): Fatal error
-      LOG_ERROR("Quorum state for height: " << height << " was not cached in daemon!");
+      LOG_ERROR("Quorum quorum for height: " << height << " was not cached in daemon!");
       return;
     }
 
-    auto it = std::find(state->quorum_nodes.begin(), state->quorum_nodes.end(), my_pubkey);
-    if (it == state->quorum_nodes.end())
+    auto it = std::find(quorum->validators.begin(), quorum->validators.end(), my_pubkey);
+    if (it == quorum->validators.end())
       return;
 
     //
     // NOTE: I am in the quorum, handle checkpointing
     //
-    size_t my_index_in_quorum           = it - state->quorum_nodes.begin();
+    size_t my_index_in_quorum           = it - quorum->validators.begin();
     service_nodes::checkpoint_vote vote = {};
     if (!cryptonote::get_block_hash(block, vote.block_hash))
     {

@@ -151,21 +151,23 @@ namespace service_nodes
     return result;
   }
 
-  const std::shared_ptr<const quorum_uptime_proof> service_node_list::get_uptime_quorum(uint64_t height) const
+  const std::shared_ptr<const testing_quorum> service_node_list::get_testing_quorum(quorum_type type, uint64_t height) const
   {
     std::lock_guard<boost::recursive_mutex> lock(m_sn_mutex);
     const auto &it = m_transient_state.quorum_states.find(height);
     if (it != m_transient_state.quorum_states.end())
-      return it->second.uptime_proof;
-    return nullptr;
-  }
+    {
+      if (type == quorum_type::uptime_proof)
+        return it->second.uptime_proof;
+      else if (type == quorum_type::checkpointing)
+        return it->second.checkpointing;
+      else
+      {
+        MERROR("Developer error: Unhandled quorum enum with value: " << (size_t)type);
+        assert(!"Developer error: Unhandled quorum enum");
+      }
+    }
 
-  const std::shared_ptr<const quorum_checkpointing> service_node_list::get_checkpointing_quorum(uint64_t height) const
-  {
-    std::lock_guard<boost::recursive_mutex> lock(m_sn_mutex);
-    const auto &it = m_transient_state.quorum_states.find(height);
-    if (it != m_transient_state.quorum_states.end())
-      return it->second.checkpointing;
     return nullptr;
   }
 
@@ -322,8 +324,7 @@ namespace service_nodes
       return false;
     }
 
-    const auto state = get_uptime_quorum(deregister.block_height);
-
+    const auto state = get_testing_quorum(quorum_type::uptime_proof, deregister.block_height);
     if (!state)
     {
       // TODO(loki): Not being able to find a quorum is fatal! We want better caching abilities.
@@ -331,13 +332,13 @@ namespace service_nodes
       return false;
     }
 
-    if (deregister.service_node_index >= state->nodes_to_test.size())
+    if (deregister.service_node_index >= state->workers.size())
     {
       MERROR("Service node index to vote off has become invalid, quorum rules have changed without a hardfork.");
       return false;
     }
 
-    const crypto::public_key& key = state->nodes_to_test[deregister.service_node_index];
+    const crypto::public_key& key = state->workers[deregister.service_node_index];
 
     auto iter = m_transient_state.service_nodes_infos.find(key);
     if (iter == m_transient_state.service_nodes_infos.end())
@@ -1314,72 +1315,58 @@ namespace service_nodes
     }
 
     std::vector<crypto::public_key> const snode_list = get_service_nodes_pubkeys();
-    for (int type_int = 0; type_int < static_cast<int>(quorum_type::count); type_int++)
+    quorum_manager &manager = m_transient_state.quorum_states[height];
+    for (int type_int = 0; type_int < (int)quorum_type::count; type_int++)
     {
-      auto type = static_cast<quorum_type>(type_int);
+      auto type              = static_cast<quorum_type>(type_int);
+      size_t num_validators  = 0, num_workers = 0;
+      std::shared_ptr<testing_quorum> quorum = std::make_shared<testing_quorum>();
       std::vector<size_t> const pub_keys_indexes = generate_shuffled_service_node_index_list(snode_list, block_hash, type);
 
-      switch(type)
+      if (type == quorum_type::uptime_proof)
       {
-        case quorum_type::uptime_proof:
-        {
-          // Assign indexes from shuffled list into quorum and list of nodes to test
-          auto new_state = std::make_shared<quorum_uptime_proof>();
-          std::vector<crypto::public_key>& quorum = new_state->quorum_nodes;
-          {
-            quorum.resize(std::min(snode_list.size(), QUORUM_SIZE));
-            for (size_t i = 0; i < quorum.size(); i++)
-            {
-              size_t node_index             = pub_keys_indexes[i];
-              const crypto::public_key &key = snode_list[node_index];
-              quorum[i] = key;
-            }
-          }
+        num_validators             = std::min(snode_list.size(), UPTIME_QUORUM_SIZE);
+        size_t num_remaining_nodes = pub_keys_indexes.size() - num_validators;
+        num_workers                = std::max(num_remaining_nodes/UPTIME_NTH_OF_THE_NETWORK_TO_TEST, std::min(UPTIME_MIN_NODES_TO_TEST, num_remaining_nodes));
+      }
+      else if (type == quorum_type::checkpointing)
+      {
+        if (snode_list.size() < (CHECKPOINT_QUORUM_SIZE * 2))
+          continue;
 
-          std::vector<crypto::public_key>& nodes_to_test = new_state->nodes_to_test;
-          {
-            size_t num_remaining_nodes = pub_keys_indexes.size() - quorum.size();
-            size_t num_nodes_to_test   = std::max(num_remaining_nodes/NTH_OF_THE_NETWORK_TO_TEST,
-                                                  std::min(MIN_NODES_TO_TEST, num_remaining_nodes));
-
-            nodes_to_test.resize(num_nodes_to_test);
-
-            const int pub_keys_offset = quorum.size();
-            for (size_t i = 0; i < nodes_to_test.size(); i++)
-            {
-              size_t node_index             = pub_keys_indexes[pub_keys_offset + i];
-              const crypto::public_key &key = snode_list[node_index];
-              nodes_to_test[i]              = key;
-            }
-          }
-
-          m_transient_state.quorum_states[height].uptime_proof = new_state;
-        }
-        break;
-
-        case quorum_type::checkpointing:
-        {
-          auto new_state = std::make_shared<quorum_checkpointing>();
-          std::vector<crypto::public_key>& quorum = new_state->quorum_nodes;
-          quorum.resize(std::min(snode_list.size(), QUORUM_SIZE));
-          for (size_t i = 0; i < quorum.size(); i++)
-          {
-            size_t node_index             = pub_keys_indexes[i];
-            const crypto::public_key &key = snode_list[node_index];
-            quorum[i] = key;
-          }
-
-          m_transient_state.quorum_states[height].checkpointing = new_state;
-        }
-        break;
-
-        default:
-        {
-          assert("Loki Developer Error: Unhandled enum" == 0);
-        }
-        break;
+        num_validators = CHECKPOINT_QUORUM_SIZE;
+        num_workers    = CHECKPOINT_QUORUM_SIZE;
+      }
+      else
+      {
+        MERROR("Unhandled quorum type enum with value: " << type_int);
+        continue;
       }
 
+      {
+        quorum->validators.resize(num_validators);
+        for (size_t i = 0; i < quorum->validators.size(); i++)
+        {
+          size_t node_index             = pub_keys_indexes[i];
+          const crypto::public_key &key = snode_list[node_index];
+          quorum->validators[i]         = key;
+        }
+      }
+
+      {
+        quorum->workers.resize(num_workers);
+        for (size_t i = 0; i < quorum->workers.size(); i++)
+        {
+          size_t node_index             = pub_keys_indexes[num_validators + i];
+          const crypto::public_key &key = snode_list[node_index];
+          quorum->workers[i]            = key;
+        }
+      }
+
+      if (type == quorum_type::uptime_proof)
+        manager.uptime_proof = quorum;
+      else
+        manager.checkpointing = quorum;
     }
   }
 
@@ -1430,12 +1417,12 @@ namespace service_nodes
         quorum_manager const &manager   = kv_pair.second;
 
         if (manager.uptime_proof)
-          quorum.uptime_quorum = *manager.uptime_proof;
+          quorum.quorums[(int)quorum_type::uptime_proof] = *manager.uptime_proof;
 
         if (quorum.version >= service_node_info::version_3_checkpointing)
         {
           if (manager.checkpointing)
-            quorum.checkpointing_quorum = *manager.checkpointing;
+            quorum.quorums[(int)quorum_type::checkpointing] = *manager.checkpointing;
         }
 
         data_to_store.quorum_states.push_back(quorum);
@@ -1535,13 +1522,17 @@ namespace service_nodes
 
     for (const auto& states : data_in.quorum_states)
     {
-      if (states.uptime_quorum.quorum_nodes.size() > 0)
-        m_transient_state.quorum_states[states.height].uptime_proof = std::make_shared<quorum_uptime_proof>(states.uptime_quorum);
+      {
+        testing_quorum const &uptime_proof = states.quorums[(int)quorum_type::uptime_proof];
+        if (uptime_proof.validators.size() > 0 || uptime_proof.workers.size() > 0)
+          m_transient_state.quorum_states[states.height].uptime_proof = std::make_shared<testing_quorum>(uptime_proof);
+      }
 
       if (states.version >= service_node_info::version_3_checkpointing)
       {
-        if (states.checkpointing_quorum.quorum_nodes.size() > 0)
-          m_transient_state.quorum_states[states.height].checkpointing = std::make_shared<quorum_checkpointing>(states.checkpointing_quorum);
+        testing_quorum const &checkpointing = states.quorums[(int)quorum_type::checkpointing];
+        if (checkpointing.validators.size() > 0 || checkpointing.workers.size() > 0)
+          m_transient_state.quorum_states[states.height].checkpointing = std::make_shared<testing_quorum>(checkpointing);
       }
     }
 

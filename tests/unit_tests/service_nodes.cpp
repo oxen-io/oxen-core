@@ -123,15 +123,15 @@ TEST(service_nodes, vote_validation)
   cryptonote::keypair service_node_voter = cryptonote::keypair::generate(hw::get_device("default"));
   int voter_index = 0;
 
-  service_nodes::quorum_uptime_proof state = {};
+  service_nodes::testing_quorum state = {};
   {
-    state.quorum_nodes.resize(10);
-    state.nodes_to_test.resize(state.quorum_nodes.size());
+    state.validators.resize(10);
+    state.workers.resize(state.validators.size());
 
-    for (size_t i = 0; i < state.quorum_nodes.size(); ++i)
+    for (size_t i = 0; i < state.validators.size(); ++i)
     {
-      state.quorum_nodes[i] = (i == voter_index) ? service_node_voter.pub : cryptonote::keypair::generate(hw::get_device("default")).pub;
-      state.nodes_to_test[i] = cryptonote::keypair::generate(hw::get_device("default")).pub;
+      state.validators[i] = (i == voter_index) ? service_node_voter.pub : cryptonote::keypair::generate(hw::get_device("default")).pub;
+      state.workers[i] = cryptonote::keypair::generate(hw::get_device("default")).pub;
     }
   }
 
@@ -154,7 +154,7 @@ TEST(service_nodes, vote_validation)
   // Voters quorum index out of bounds
   {
     auto vote                = valid_vote;
-    vote.voters_quorum_index = state.quorum_nodes.size() + 10;
+    vote.voters_quorum_index = state.validators.size() + 10;
     vote.signature           = service_nodes::deregister_vote::sign_vote(vote.block_height, vote.service_node_index, service_node_voter.pub, service_node_voter.sec);
 
     cryptonote::vote_verification_context vvc = {};
@@ -165,7 +165,7 @@ TEST(service_nodes, vote_validation)
   // Voters service node index out of bounds
   {
     auto vote               = valid_vote;
-    vote.service_node_index = state.nodes_to_test.size() + 10;
+    vote.service_node_index = state.workers.size() + 10;
     vote.signature          = service_nodes::deregister_vote::sign_vote(vote.block_height, vote.service_node_index, service_node_voter.pub, service_node_voter.sec);
 
     cryptonote::vote_verification_context vvc = {};
@@ -191,16 +191,16 @@ TEST(service_nodes, tx_extra_deregister_validation)
   const size_t num_voters = 10;
   cryptonote::keypair voters[num_voters] = {};
 
-  service_nodes::quorum_uptime_proof state = {};
+  service_nodes::testing_quorum state = {};
   {
-    state.quorum_nodes.resize(num_voters);
-    state.nodes_to_test.resize(num_voters);
+    state.validators.resize(num_voters);
+    state.workers.resize(num_voters);
 
-    for (size_t i = 0; i < state.quorum_nodes.size(); ++i)
+    for (size_t i = 0; i < state.validators.size(); ++i)
     {
-      voters[i]              = cryptonote::keypair::generate(hw::get_device("default"));
-      state.quorum_nodes[i]  = voters[i].pub;
-      state.nodes_to_test[i] = cryptonote::keypair::generate(hw::get_device("default")).pub;
+      voters[i]           = cryptonote::keypair::generate(hw::get_device("default"));
+      state.validators[i] = voters[i].pub;
+      state.workers[i]    = cryptonote::keypair::generate(hw::get_device("default")).pub;
     }
   }
 
@@ -230,7 +230,7 @@ TEST(service_nodes, tx_extra_deregister_validation)
   // Deregister has insufficient votes
   {
     auto deregister = valid_deregister;
-    while (deregister.votes.size() >= service_nodes::MIN_VOTES_TO_KICK_SERVICE_NODE)
+    while (deregister.votes.size() >= service_nodes::UPTIME_MIN_VOTES_TO_KICK_SERVICE_NODE)
       deregister.votes.pop_back();
 
     cryptonote::vote_verification_context vvc = {};
@@ -261,7 +261,7 @@ TEST(service_nodes, tx_extra_deregister_validation)
   // Deregister has one voter with index out of bounds
   {
     auto deregister                         = valid_deregister;
-    deregister.votes[0].voters_quorum_index = state.quorum_nodes.size() + 10;
+    deregister.votes[0].voters_quorum_index = state.validators.size() + 10;
 
     cryptonote::vote_verification_context vvc = {};
     bool result = service_nodes::deregister_vote::verify_deregister(cryptonote::MAINNET, deregister, vvc, state);
@@ -271,7 +271,7 @@ TEST(service_nodes, tx_extra_deregister_validation)
   // Deregister service node index is out of bounds
   {
     auto deregister               = valid_deregister;
-    deregister.service_node_index = state.nodes_to_test.size() + 10;
+    deregister.service_node_index = state.workers.size() + 10;
 
     cryptonote::vote_verification_context vvc = {};
     bool result = service_nodes::deregister_vote::verify_deregister(cryptonote::MAINNET, deregister, vvc, state);
