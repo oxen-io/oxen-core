@@ -15,7 +15,7 @@ namespace service_nodes {
   constexpr size_t   UPTIME_MIN_NODES_TO_TEST              = 50;
 
   constexpr uint64_t CHECKPOINT_INTERVAL                   = 4;
-  constexpr uint64_t CHECKPOINT_SENTINEL_VOTE_AGE          = ((CHECKPOINT_INTERVAL * 3) - 1);
+  constexpr uint64_t CHECKPOINT_VOTE_LIFETIME              = ((CHECKPOINT_INTERVAL * 3) - 1);
   constexpr size_t   CHECKPOINT_QUORUM_SIZE                = 20;
   constexpr size_t   CHECKPOINT_MIN_VOTES                  = 18;
 

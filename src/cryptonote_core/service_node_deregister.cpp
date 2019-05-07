@@ -158,7 +158,7 @@ namespace service_nodes
     return verify_votes_helper(nettype, deregister, vvc, quorum);
   }
 
-  void deregister_vote_pool::set_relayed(const std::vector<deregister_vote>& votes)
+  void voting_pool::set_relayed(const std::vector<deregister_vote>& votes)
   {
     CRITICAL_REGION_LOCAL(m_lock);
     const time_t now = time(NULL);
@@ -185,7 +185,7 @@ namespace service_nodes
     }
   }
 
-  std::vector<deregister_vote> deregister_vote_pool::get_relayable_votes() const
+  std::vector<deregister_vote> voting_pool::get_relayable_votes() const
   {
     CRITICAL_REGION_LOCAL(m_lock);
     const cryptonote::cryptonote_connection_context fake_context = AUTO_VAL_INIT(fake_context);
@@ -214,11 +214,11 @@ namespace service_nodes
     return result;
   }
 
-  bool deregister_vote_pool::add_vote(const int hf_version,
-                                      const deregister_vote& new_vote,
-                                      cryptonote::vote_verification_context& vvc,
-                                      const service_nodes::testing_quorum &quorum,
-                                      cryptonote::transaction &tx)
+  bool voting_pool::add_uptime_deregister_vote(const int hf_version,
+                                               const deregister_vote& new_vote,
+                                               cryptonote::vote_verification_context& vvc,
+                                               const service_nodes::testing_quorum &quorum,
+                                               cryptonote::transaction &tx)
   {
     if (!deregister_vote::verify_vote(m_nettype, new_vote, vvc, quorum))
     {
@@ -282,7 +282,7 @@ namespace service_nodes
     return true;
   }
 
-  void deregister_vote_pool::remove_used_votes(std::vector<cryptonote::transaction> const &txs)
+  void voting_pool::remove_used_votes(std::vector<cryptonote::transaction> const &txs)
   {
     CRITICAL_REGION_LOCAL(m_lock);
     for (const auto &tx : txs)
@@ -304,7 +304,7 @@ namespace service_nodes
     }
   }
 
-  void deregister_vote_pool::remove_expired_votes(uint64_t height)
+  void voting_pool::remove_expired_votes(uint64_t height)
   {
     if (height < deregister_vote::VOTE_LIFETIME_BY_HEIGHT)
     {
@@ -325,6 +325,50 @@ namespace service_nodes
         it++;
       }
     }
+  }
+
+  voting_pool::add_checkpoint_vote_result voting_pool::add_checkpointing_vote(const checkpoint_vote& vote,
+                                                                              cryptonote::vote_verification_context& vvc,
+                                                                              const service_nodes::testing_quorum &quorum)
+  {
+    add_checkpoint_vote_result result = {};
+    if (vote.voters_quorum_index >= quorum.validators.size())
+    {
+      vvc.m_voters_quorum_index_out_of_bounds = true;
+      LOG_PRINT_L1("Voter's index in deregister vote was out of bounds: " << vote.voters_quorum_index << ", expected to be in range of: [0, " << quorum.validators.size() << ")");
+      return result;
+    }
+
+    // Get Matching Checkpoint
+    auto it = std::find_if(m_checkpoint_pool.begin(), m_checkpoint_pool.end(), [&vote](checkpoint_pool_entry const &checkpoint) {
+        return (checkpoint.height == vote.block_height && checkpoint.hash == vote.block_hash);
+    });
+
+    if (it == m_checkpoint_pool.end())
+    {
+      checkpoint_pool_entry pool_entry = {};
+      pool_entry.height                = vote.block_height;
+      pool_entry.hash                  = vote.block_hash;
+      m_checkpoint_pool.push_back(pool_entry);
+      it = (m_checkpoint_pool.end() - 1);
+    }
+
+    // Add Vote if Unique to Checkpoint
+    checkpoint_pool_entry &pool_entry = (*it);
+    auto vote_it = std::find_if(pool_entry.votes.begin(), pool_entry.votes.end(), [&vote](checkpoint_vote const &preexisting_vote) {
+        return (preexisting_vote.voters_quorum_index == vote.voters_quorum_index);
+    });
+
+    if (vote_it == pool_entry.votes.end())
+    {
+      result.vote_unique = true;
+      pool_entry.votes.push_back(vote);
+    }
+
+    // TODO(doyle) Enough votes, send it over to the checkpoint daat structure
+    result.vote_valid = true;
+    result.votes      = &pool_entry.votes;
+    return result;
   }
 }; // namespace service_nodes
 

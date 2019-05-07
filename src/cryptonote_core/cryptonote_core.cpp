@@ -219,7 +219,7 @@ namespace cryptonote
   core::core(i_cryptonote_protocol* pprotocol):
               m_mempool(m_blockchain_storage),
               m_service_node_list(m_blockchain_storage),
-              m_blockchain_storage(m_mempool, m_service_node_list, m_deregister_vote_pool),
+              m_blockchain_storage(m_mempool, m_service_node_list),
               m_quorum_cop(*this),
               m_miner(this),
               m_miner_address(boost::value_initialized<account_public_address>()),
@@ -654,7 +654,6 @@ namespace cryptonote
     // Service Nodes
     {
       m_service_node_list.set_db_pointer(initialized_db);
-      m_deregister_vote_pool.m_nettype = m_nettype;
 
       m_blockchain_storage.hook_block_added(m_service_node_list);
       m_blockchain_storage.hook_blockchain_detached(m_service_node_list);
@@ -1376,13 +1375,16 @@ namespace cryptonote
   bool core::relay_deregister_votes()
   {
     NOTIFY_NEW_DEREGISTER_VOTE::request req;
-    req.votes = m_deregister_vote_pool.get_relayable_votes();
+    // GetRelayableVotes for deregisters in the vote pool
+#if 0
+    req.votes = m_vote_pool.get_relayable_votes();
     if (!req.votes.empty())
     {
       cryptonote_connection_context fake_context = AUTO_VAL_INIT(fake_context);
       if (get_protocol()->relay_deregister_votes(req, fake_context))
-        m_deregister_vote_pool.set_relayed(req.votes);
+        m_vote_pool.set_relayed(req.votes);
     }
+#endif
 
     return true;
   }
@@ -1394,6 +1396,8 @@ namespace cryptonote
     // Get relayable votes
     NOTIFY_NEW_CHECKPOINT_VOTE::request req = {};
 
+    // TODO(doyle): GetRelayableVotes for  checkpoints in the vote pool
+#if 0
     std::vector<service_nodes::checkpoint_vote *> relayed_votes;
     for (Blockchain::service_node_checkpoint_pool_entry &pool_entry: m_blockchain_storage.m_checkpoint_pool)
     {
@@ -1419,6 +1423,7 @@ namespace cryptonote
           vote->time_last_sent_p2p = now;
       }
     }
+#endif
 
     return true;
   }
@@ -2125,136 +2130,14 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
   bool core::add_deregister_vote(const service_nodes::deregister_vote& vote, vote_verification_context &vvc)
   {
-    uint64_t latest_block_height = std::max(get_current_blockchain_height(), get_target_blockchain_height());
-    uint64_t delta_height = latest_block_height - vote.block_height;
-
-    if (vote.block_height < latest_block_height && delta_height >= service_nodes::deregister_vote::VOTE_LIFETIME_BY_HEIGHT)
-    {
-      LOG_PRINT_L1("Received vote for height: " << vote.block_height
-                << " and service node: "     << vote.service_node_index
-                << ", is older than: "       << service_nodes::deregister_vote::VOTE_LIFETIME_BY_HEIGHT
-                << " blocks and has been rejected.");
-      vvc.m_invalid_block_height = true;
-    }
-    else if (vote.block_height > latest_block_height)
-    {
-      LOG_PRINT_L1("Received vote for height: " << vote.block_height
-                << " and service node: "     << vote.service_node_index
-                << ", is newer than: "       << latest_block_height
-                << " (latest block height) and has been rejected.");
-      vvc.m_invalid_block_height = true;
-    }
-
-    if (vvc.m_invalid_block_height)
-    {
-      vvc.m_verification_failed = true;
-      return false;
-    }
-
-    const auto quorum = m_service_node_list.get_testing_quorum(service_nodes::quorum_type::uptime_proof, vote.block_height);
-    if (!quorum)
-    {
-      vvc.m_verification_failed  = true;
-      vvc.m_invalid_block_height = true;
-      LOG_ERROR("Could not get quorum state for height: " << vote.block_height);
-      return false;
-    }
-
-    cryptonote::transaction deregister_tx;
-    int hf_version = m_blockchain_storage.get_current_hard_fork_version();
-    bool result    = m_deregister_vote_pool.add_vote(hf_version, vote, vvc, *quorum, deregister_tx);
-    if (result && vvc.m_full_tx_deregister_made)
-    {
-      tx_verification_context tvc = AUTO_VAL_INIT(tvc);
-      blobdata const tx_blob = tx_to_blob(deregister_tx);
-
-      result = handle_incoming_tx(tx_blob, tvc, false /*keeped_by_block*/, false /*relayed*/, false /*do_not_relay*/);
-      if (!result || tvc.m_verifivation_failed)
-      {
-        LOG_PRINT_L1("A full deregister tx for height: " << vote.block_height <<
-                     " and service node: " << vote.service_node_index <<
-                     " could not be verified and was not added to the memory pool, reason: " <<
-                     print_tx_verification_context(tvc, &deregister_tx));
-      }
-    }
-
+    bool result = m_quorum_cop.handle_deregister_vote(vote, vvc);
     return result;
   }
   //-----------------------------------------------------------------------------------------------
   bool core::add_checkpoint_vote(const service_nodes::checkpoint_vote& vote, vote_verification_context &vvc)
   {
-    // TODO(doyle): Not in this function but, need to add code for culling old
-    // checkpoints from the "staging" checkpoint pool.
-
-    // TODO(doyle): This is repeated logic for deregister votes and
-    // checkpointing votes, it is worth considering merging the two into
-    // a generic voting structure
-
-    // Check Vote Age
-    {
-      uint64_t const latest_height = std::max(get_current_blockchain_height(), get_target_blockchain_height());
-      if (vote.block_height >= latest_height)
-        return false;
-
-      uint64_t vote_age = latest_height - vote.block_height;
-      if (vote_age > ((service_nodes::CHECKPOINT_INTERVAL * 3) - 1))
-        return false;
-    }
-
-    // Validate Vote
-    {
-      std::shared_ptr<const service_nodes::testing_quorum> state = get_testing_quorum(service_nodes::quorum_type::checkpointing, vote.block_height);
-      if (!state)
-      {
-        // TODO(loki): Fatal error
-        LOG_ERROR("Quorum state for height: " << vote.block_height << " was not cached in daemon!");
-        return false;
-      }
-
-      if (vote.voters_quorum_index >= state->validators.size())
-      {
-        LOG_PRINT_L1("TODO(doyle): CHECKPOINTING(doyle): Writeme");
-        return false;
-      }
-
-      // NOTE(loki): We don't validate that the hash belongs to a valid block
-      // just yet, just that the signature is valid.
-      crypto::public_key const &voters_pub_key = state->validators[vote.voters_quorum_index];
-      if (!crypto::check_signature(vote.block_hash, voters_pub_key, vote.signature))
-      {
-        LOG_PRINT_L1("TODO(doyle): CHECKPOINTING(doyle): Writeme");
-        return false;
-      }
-    }
-
-    // TODO(doyle): CHECKPOINTING(doyle): We need to check the hash they're voting on matches across votes
-    // Get Matching Checkpoint
-    std::vector<Blockchain::service_node_checkpoint_pool_entry> &checkpoint_pool = m_blockchain_storage.m_checkpoint_pool;
-    auto it = std::find_if(checkpoint_pool.begin(), checkpoint_pool.end(), [&vote](Blockchain::service_node_checkpoint_pool_entry const &checkpoint) {
-        return (checkpoint.height == vote.block_height);
-    });
-
-    if (it == checkpoint_pool.end())
-    {
-      Blockchain::service_node_checkpoint_pool_entry pool_entry = {};
-      pool_entry.height                                         = vote.block_height;
-      checkpoint_pool.push_back(pool_entry);
-      it = (checkpoint_pool.end() - 1);
-    }
-
-    // Add Vote if Unique to Checkpoint
-    Blockchain::service_node_checkpoint_pool_entry &pool_entry = (*it);
-    auto vote_it = std::find_if(pool_entry.votes.begin(), pool_entry.votes.end(), [&vote](service_nodes::checkpoint_vote const &preexisting_vote) {
-        return (preexisting_vote.voters_quorum_index == vote.voters_quorum_index);
-    });
-
-    if (vote_it == pool_entry.votes.end())
-    {
-      m_blockchain_storage.add_checkpoint_vote(vote);
-      pool_entry.votes.push_back(vote);
-    }
-
-    return true;
+    bool result = m_quorum_cop.handle_checkpoint_vote(vote, vvc);
+    return result;
   }
   //-----------------------------------------------------------------------------------------------
   bool core::get_service_node_keys(crypto::public_key &pub_key, crypto::secret_key &sec_key) const

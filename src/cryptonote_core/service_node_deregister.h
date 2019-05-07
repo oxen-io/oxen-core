@@ -86,17 +86,18 @@ namespace service_nodes
                             const service_nodes::testing_quorum &quorum);
   };
 
-  class deregister_vote_pool
+  struct voting_pool
   {
-    public:
+      cryptonote::network_type m_nettype = cryptonote::UNDEFINED;
+
       /**
        *  @return True if vote was valid and in the pool already or just added (check vote verfication for specific case).
        */
-      bool add_vote(const int hf_version,
-                    const deregister_vote& new_vote,
-                    cryptonote::vote_verification_context& vvc,
-                    const service_nodes::testing_quorum &quorum,
-                    cryptonote::transaction &tx);
+      bool add_uptime_deregister_vote(const int hf_version,
+                                      const deregister_vote& new_vote,
+                                      cryptonote::vote_verification_context& vvc,
+                                      const service_nodes::testing_quorum &quorum,
+                                      cryptonote::transaction &tx);
 
       // TODO(loki): Review relay behaviour and all the cases when it should be triggered
       void                         set_relayed         (const std::vector<deregister_vote>& votes);
@@ -104,7 +105,18 @@ namespace service_nodes
       void                         remove_used_votes   (std::vector<cryptonote::transaction> const &txs);
       std::vector<deregister_vote> get_relayable_votes () const;
 
-      cryptonote::network_type m_nettype = cryptonote::UNDEFINED;
+      struct add_checkpoint_vote_result
+      {
+        std::vector<checkpoint_vote> const *votes; // The vector the vote was added to, nullptr if vote_valid is FALSE
+        bool vote_valid;
+        bool vote_unique;
+      };
+
+      // NOTE: Checkpointing
+      add_checkpoint_vote_result add_checkpointing_vote(const checkpoint_vote& vote,
+                                                        cryptonote::vote_verification_context& vvc,
+                                                        const service_nodes::testing_quorum &quorum);
+
 
     private:
       struct deregister_pool_entry
@@ -118,7 +130,6 @@ namespace service_nodes
       {
         uint64_t block_height;
         uint32_t service_node_index;
-        time_t   time_group_created;
 
         bool operator==(const deregister_group &other) const
         {
@@ -134,12 +145,19 @@ namespace service_nodes
           size_t res = 17;
           res = res * 31 + std::hash<uint64_t>()(deregister.block_height);
           res = res * 31 + std::hash<uint32_t>()(deregister.service_node_index);
-          res = res * 31 + std::hash<uint32_t>()(deregister.time_group_created);
           return res;
         }
       };
-
       std::unordered_map<deregister_group, std::vector<deregister_pool_entry>, deregister_group_hasher> m_deregisters;
+
+      struct checkpoint_pool_entry
+      {
+        uint64_t                     height;
+        crypto::hash                 hash;
+        std::vector<checkpoint_vote> votes;
+      };
+      std::vector<checkpoint_pool_entry> m_checkpoint_pool;
+
       mutable epee::critical_section m_lock;
   };
 }; // namespace service_nodes

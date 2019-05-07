@@ -124,7 +124,7 @@ static const hard_fork_record stagenet_hard_forks[] =
 };
 
 //------------------------------------------------------------------
-Blockchain::Blockchain(tx_memory_pool& tx_pool, service_nodes::service_node_list& service_node_list, service_nodes::deregister_vote_pool& deregister_vote_pool):
+Blockchain::Blockchain(tx_memory_pool& tx_pool, service_nodes::service_node_list& service_node_list):
   m_db(), m_tx_pool(tx_pool), m_hardfork(NULL), m_timestamps_and_difficulties_height(0), m_current_block_cumul_weight_limit(0), m_current_block_cumul_weight_median(0),
   m_max_prepare_blocks_threads(4), m_db_sync_on_blocks(true), m_db_sync_threshold(1), m_db_sync_mode(db_async), m_db_default_sync(false), m_fast_sync(true), m_show_time_stats(false), m_sync_counter(0), m_bytes_to_sync(0), m_cancel(false),
   m_long_term_block_weights_window(CRYPTONOTE_LONG_TERM_BLOCK_WEIGHT_WINDOW_SIZE),
@@ -133,10 +133,8 @@ Blockchain::Blockchain(tx_memory_pool& tx_pool, service_nodes::service_node_list
   m_difficulty_for_next_block_top_hash(crypto::null_hash),
   m_difficulty_for_next_block(1),
   m_service_node_list(service_node_list),
-  m_deregister_vote_pool(deregister_vote_pool),
   m_btc_valid(false)
 {
-  m_checkpoint_pool.reserve(service_nodes::CHECKPOINT_QUORUM_SIZE * 4 /*blocks*/);
   LOG_PRINT_L3("Blockchain::" << __func__);
 }
 //------------------------------------------------------------------
@@ -3925,15 +3923,6 @@ leave:
   get_difficulty_for_next_block(); // just to cache it
   invalidate_block_template_cache();
 
-  // New height is the height of the block we just mined. We want (new_height
-  // + 1) because our age checks for deregister votes is now (age >=
-  // DEREGISTER_VOTE_LIFETIME_BY_HEIGHT) where age is derived from
-  // get_current_blockchain_height() which gives you the height that you are
-  // currently mining for, i.e. (new_height + 1). Otherwise peers will silently
-  // drop connection from each other when they go around P2Ping votes.
-  m_deregister_vote_pool.remove_expired_votes(new_height + 1);
-  m_deregister_vote_pool.remove_used_votes(only_txs);
-
   std::shared_ptr<tools::Notify> block_notify = m_block_notify;
   if (block_notify)
     block_notify->notify("%s", epee::string_tools::pod_to_hex(id).c_str(), NULL);
@@ -4166,19 +4155,10 @@ bool Blockchain::update_checkpoints(const std::string& file_path)
   return result;
 }
 //------------------------------------------------------------------
-bool Blockchain::add_checkpoint_vote(service_nodes::checkpoint_vote const &vote)
+bool Blockchain::update_checkpoint(cryptonote::checkpoint_t const &checkpoint)
 {
-  crypto::hash const canonical_block_hash = get_block_id_by_height(vote.block_height);
-  if (vote.block_hash != canonical_block_hash)
-  {
-    // NOTE: Vote is not for a block on the canonical chain, check if it's part
-    // of an alternative chain
-    if (m_alternative_chains.find(vote.block_hash) == m_alternative_chains.end())
-      return false;
-  }
-
-  m_checkpoints.add_checkpoint_vote(vote);
-  return true;
+  bool result = m_checkpoints.add_checkpoint(checkpoint);
+  return result;
 }
 //------------------------------------------------------------------
 void Blockchain::block_longhash_worker(uint64_t height, const epee::span<const block> &blocks, std::unordered_map<crypto::hash, crypto::hash> &map) const

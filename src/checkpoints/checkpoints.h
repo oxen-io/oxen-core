@@ -108,7 +108,7 @@ namespace cryptonote
      */
     bool add_checkpoint(uint64_t height, const std::string& hash_str);
 
-    bool add_checkpoint_vote(service_nodes::checkpoint_vote const &vote);
+    bool add_checkpoint(checkpoint_t const &checkpoin);
 
     /**
      * @brief checks if there is a checkpoint in the future
