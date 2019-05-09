@@ -4033,11 +4033,73 @@ uint64_t BlockchainLMDB::get_database_size() const
   return size;
 }
 
-void BlockchainLMDB::fixup()
+void BlockchainLMDB::fixup(fixup_context context)
 {
   LOG_PRINT_L3("BlockchainLMDB::" << __func__);
   // Always call parent as well
-  BlockchainDB::fixup();
+  BlockchainDB::fixup(context);
+
+  if (is_read_only())
+    return;
+
+  if (context.type == fixup_type::calculate_difficulty)
+  {
+    mdb_txn_cursors *m_cursors = &m_wcursors;
+    uint64_t curr_height = context.calculate_difficulty.start_height;
+    if (curr_height != 0) curr_height--;
+
+    uint64_t end_height = (height() - 1);
+    uint64_t num_blocks = end_height - curr_height;
+
+    std::vector<uint64_t> timestamps;
+    std::vector<difficulty_type> difficulties;
+    {
+      uint64_t offset = curr_height - std::min<size_t>(curr_height, static_cast<size_t>(DIFFICULTY_BLOCKS_COUNT_V2));
+      if (offset == 0)
+        ++offset;
+
+      timestamps.clear();
+      difficulties.clear();
+      if (curr_height > offset)
+      {
+        timestamps.reserve  (curr_height - offset);
+        difficulties.reserve(curr_height - offset);
+      }
+
+      for (; offset < curr_height; offset++)
+      {
+        timestamps.push_back  (get_block_timestamp(offset));
+        difficulties.push_back(get_block_cumulative_difficulty(offset));
+      }
+    }
+
+    uint64_t prev_cumulative_diff = get_block_cumulative_difficulty(curr_height);
+    size_t const target           = DIFFICULTY_TARGET_V2;
+    for (size_t i = 0; i < num_blocks; i++)
+    {
+      curr_height          = (curr_height + i + 1);
+      uint8_t version      = get_hard_fork_version(curr_height);
+      difficulty_type diff = next_difficulty_v2(timestamps, difficulties, target, curr_height);
+
+      MDB_val_set(key, curr_height);
+      if (int result = mdb_cursor_get(m_cur_block_info, (MDB_val *)&zerokval, &key, MDB_GET_BOTH))
+          throw1(BLOCK_DNE(lmdb_error("Failed to get block info: ", result).c_str()));
+
+      mdb_block_info block_info = *(mdb_block_info *)key.mv_data;
+      block_info.bi_diff        = prev_cumulative_diff + diff;
+
+      MDB_val_set(val, block_info);
+      if (int result = mdb_cursor_put(m_cur_block_info, (MDB_val *)&zerokval, &val, MDB_CURRENT))
+          throw1(BLOCK_DNE(lmdb_error("Failed to get block info: ", result).c_str()));
+
+      timestamps.push_back(block_info.bi_timestamp);
+      difficulties.push_back(block_info.bi_diff);
+
+      while (timestamps.size() > DIFFICULTY_BLOCKS_COUNT_V2) timestamps.erase(timestamps.begin());
+      while (difficulties.size() > DIFFICULTY_BLOCKS_COUNT_V2) difficulties.erase(difficulties.begin());
+    }
+
+  }
 }
 
 #define RENAME_DB(name) do { \
