@@ -1372,58 +1372,43 @@ namespace cryptonote
     m_mempool.set_relayed(txs);
   }
   //-----------------------------------------------------------------------------------------------
-  bool core::relay_deregister_votes()
+  bool core::relay_service_node_votes()
   {
-    NOTIFY_NEW_DEREGISTER_VOTE::request req;
-    // GetRelayableVotes for deregisters in the vote pool
-#if 0
-    req.votes = m_vote_pool.get_relayable_votes();
-    if (!req.votes.empty())
+    std::vector<service_nodes::quorum_vote_t> relayable_votes = m_quorum_cop.get_relayable_votes();
+    int hf_version = get_blockchain_storage().get_current_hard_fork_version();
+    if (hf_version < cryptonote::network_version_11_infinite_staking)
     {
-      cryptonote_connection_context fake_context = AUTO_VAL_INIT(fake_context);
-      if (get_protocol()->relay_deregister_votes(req, fake_context))
-        m_vote_pool.set_relayed(req.votes);
-    }
-#endif
-
-    return true;
-  }
-  //-----------------------------------------------------------------------------------------------
-  bool core::relay_checkpoint_votes()
-  {
-    const time_t now = time(nullptr);
-
-    // Get relayable votes
-    NOTIFY_NEW_CHECKPOINT_VOTE::request req = {};
-
-    // TODO(doyle): GetRelayableVotes for  checkpoints in the vote pool
-#if 0
-    std::vector<service_nodes::checkpoint_vote *> relayed_votes;
-    for (Blockchain::service_node_checkpoint_pool_entry &pool_entry: m_blockchain_storage.m_checkpoint_pool)
-    {
-      for (service_nodes::checkpoint_vote &vote : pool_entry.votes)
+      NOTIFY_NEW_DEREGISTER_VOTE::request req = {};
+      for (service_nodes::quorum_vote_t const &vote : relayable_votes)
       {
-        const time_t elapsed         = now - vote.time_last_sent_p2p;
-        const time_t RELAY_THRESHOLD = 60 * 2;
-        if (elapsed > RELAY_THRESHOLD)
+        service_nodes::legacy_deregister_vote legacy_vote = {};
+        if (service_nodes::convert_deregister_vote_to_legacy(vote, legacy_vote))
+          req.votes.push_back(legacy_vote);
+      }
+
+      if (req.votes.size())
+      {
+        cryptonote_connection_context fake_context = AUTO_VAL_INIT(fake_context);
+        if (get_protocol()->relay_deregister_votes(req, fake_context))
         {
-          relayed_votes.push_back(&vote);
-          req.votes.push_back(vote);
+          m_quorum_cop.set_votes_relayed(relayable_votes);
         }
       }
     }
-
-    // Relay and update timestamp of when we last sent the vote
-    if (!req.votes.empty())
+    else
     {
-      cryptonote_connection_context fake_context = AUTO_VAL_INIT(fake_context);
-      if (get_protocol()->relay_checkpoint_votes(req, fake_context))
+      // Get relayable votes
+      NOTIFY_NEW_SERVICE_NODE_VOTE::request req = {};
+      req.votes                                 = std::move(relayable_votes);
+      if (req.votes.size())
       {
-        for (service_nodes::checkpoint_vote *vote : relayed_votes)
-          vote->time_last_sent_p2p = now;
+        cryptonote_connection_context fake_context = AUTO_VAL_INIT(fake_context);
+        if (get_protocol()->relay_service_node_votes(req, fake_context))
+        {
+          m_quorum_cop.set_votes_relayed(relayable_votes);
+        }
       }
     }
-#endif
 
     return true;
   }
@@ -1787,8 +1772,7 @@ namespace cryptonote
 
     m_fork_moaner.do_call(boost::bind(&core::check_fork_time, this));
     m_txpool_auto_relayer.do_call(boost::bind(&core::relay_txpool_transactions, this));
-    m_deregisters_auto_relayer.do_call(boost::bind(&core::relay_deregister_votes, this));
-    m_checkpoint_auto_relayer.do_call(boost::bind(&core::relay_checkpoint_votes, this));
+    m_checkpoint_auto_relayer.do_call(boost::bind(&core::relay_service_node_votes, this));
     // m_check_updates_interval.do_call(boost::bind(&core::check_updates, this));
     m_check_disk_space_interval.do_call(boost::bind(&core::check_disk_space, this));
     m_block_rate_interval.do_call(boost::bind(&core::check_block_rate, this));
@@ -2128,15 +2112,9 @@ namespace cryptonote
     return result;
   }
   //-----------------------------------------------------------------------------------------------
-  bool core::add_deregister_vote(const service_nodes::deregister_vote& vote, vote_verification_context &vvc)
+  bool core::add_service_node_vote(const service_nodes::quorum_vote_t& vote, vote_verification_context &vvc)
   {
-    bool result = m_quorum_cop.handle_deregister_vote(vote, vvc);
-    return result;
-  }
-  //-----------------------------------------------------------------------------------------------
-  bool core::add_checkpoint_vote(const service_nodes::checkpoint_vote& vote, vote_verification_context &vvc)
-  {
-    bool result = m_quorum_cop.handle_checkpoint_vote(vote, vvc);
+    bool result = m_quorum_cop.handle_vote(vote, vvc);
     return result;
   }
   //-----------------------------------------------------------------------------------------------

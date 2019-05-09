@@ -240,7 +240,7 @@ namespace cryptonote
     struct vote
     {
       crypto::signature signature;
-      uint32_t          voters_quorum_index;
+      uint32_t          validator_index;
     };
 
     uint64_t          block_height;

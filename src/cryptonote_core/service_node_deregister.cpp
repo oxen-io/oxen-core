@@ -47,7 +47,30 @@
 
 namespace service_nodes
 {
-  static crypto::hash make_hash_from(uint64_t block_height, uint32_t service_node_index)
+  bool convert_deregister_vote_to_legacy(quorum_vote_t const &vote, legacy_deregister_vote &legacy_vote)
+  {
+    if (vote.type != quorum_type::uptime_deregister)
+      return false;
+
+    legacy_vote.block_height           = vote.block_height;
+    legacy_vote.service_node_index     = vote.deregister.service_node_index;
+    legacy_vote.voters_quorum_index    = vote.validator_index;
+    legacy_vote.signature              = vote.signature;
+    return true;
+  }
+
+  quorum_vote_t convert_legacy_deregister_vote(legacy_deregister_vote const &vote)
+  {
+    quorum_vote_t result                 = {};
+    result.type                          = quorum_type::uptime_deregister;
+    result.block_height                  = vote.block_height;
+    result.signature                     = vote.signature;
+    result.validator_index               = vote.voters_quorum_index;
+    result.deregister.service_node_index = vote.service_node_index;
+    return result;
+  }
+
+  static crypto::hash make_deregister_vote_hash(uint64_t block_height, uint64_t service_node_index)
   {
     const int buf_size = sizeof(block_height) + sizeof(service_node_index);
     char buf[buf_size];
@@ -57,85 +80,63 @@ namespace service_nodes
 
     crypto::hash result;
     crypto::cn_fast_hash(buf, buf_size, result);
-
     return result;
   }
 
-  crypto::signature deregister_vote::sign_vote(uint64_t block_height, uint32_t service_node_index, const crypto::public_key& pub, const crypto::secret_key& sec)
+  crypto::signature sign_vote(quorum_vote_t const &vote, const crypto::public_key& pub, const crypto::secret_key& sec)
   {
-    crypto::signature result;
-    crypto::generate_signature(make_hash_from(block_height, service_node_index), pub, sec, result);
-    return result;
-  }
-
-  bool deregister_vote::verify_vote_signature(uint64_t block_height, uint32_t service_node_index, crypto::public_key const &p, crypto::signature const &s)
-  {
-    std::vector<std::pair<crypto::public_key, crypto::signature>> keys_and_sigs{ std::make_pair(p, s) };
-    return verify_votes_signature(block_height, service_node_index, keys_and_sigs);
-  }
-
-  bool deregister_vote::verify_votes_signature(uint64_t block_height, uint32_t service_node_index, const std::vector<std::pair<crypto::public_key, crypto::signature>>& keys_and_sigs)
-  {
-    crypto::hash hash = make_hash_from(block_height, service_node_index);
-    for (auto& key_and_sig : keys_and_sigs)
+    crypto::signature result = {};
+    switch(vote.type)
     {
-      if (!crypto::check_signature(hash, key_and_sig.first, key_and_sig.second))
+      default:
       {
-        return false;
-      }
-    }
+        LOG_PRINT_L1("Unhandled vote type with value: " << (int)vote.type);
+        assert("Unhandled vote type" == 0);
+        return result;
+      };
 
+      case quorum_type::uptime_deregister:
+      {
+        crypto::hash hash = make_deregister_vote_hash(vote.block_height, vote.deregister.service_node_index);
+        crypto::generate_signature(hash, pub, sec, result);
+      }
+      break;
+
+      case quorum_type::checkpointing:
+      {
+        // TODO(doyle): checkpointing
+      }
+      break;
+    }
+    
+    return result;
+  }
+
+  static bool bounds_check_worker_index(service_nodes::testing_quorum const &quorum, size_t worker_index, cryptonote::vote_verification_context &vvc)
+  {
+    if (worker_index >= quorum.workers.size())
+    {
+      vvc.m_service_node_index_out_of_bounds = true;
+      LOG_PRINT_L1("Quorum worker index in was out of bounds: " << worker_index << ", expected to be in range of: [0, " << quorum.workers.size() << ")");
+      return false;
+    }
     return true;
   }
 
-  static bool verify_votes_helper(cryptonote::network_type nettype, const cryptonote::tx_extra_service_node_deregister& deregister,
-                                  cryptonote::vote_verification_context &vvc,
-                                  const service_nodes::testing_quorum &quorum)
+  static bool bounds_check_validator_index(service_nodes::testing_quorum const &quorum, size_t validator_index, cryptonote::vote_verification_context &vvc)
   {
-    if (deregister.service_node_index >= quorum.workers.size())
+    if (validator_index >= quorum.validators.size())
     {
-      vvc.m_service_node_index_out_of_bounds = true;
-      LOG_PRINT_L1("Service node index in deregister vote was out of bounds: " << deregister.service_node_index << ", expected to be in range of: [0, " << quorum.workers.size() << ")");
+      vvc.m_validator_index_out_of_bounds = true;
+      LOG_PRINT_L1("Validator's index was out of bounds: " << validator_index << ", expected to be in range of: [0, " << quorum.validators.size() << ")");
       return false;
     }
-
-    const std::vector<crypto::public_key>& validators = quorum.validators;
-    std::vector<int8_t> validator_set;
-    validator_set.resize(validators.size());
-
-    std::vector<std::pair<crypto::public_key, crypto::signature>> keys_and_sigs;
-    for (const cryptonote::tx_extra_service_node_deregister::vote& vote : deregister.votes)
-    {
-      if (vote.voters_quorum_index >= validators.size())
-      {
-        vvc.m_voters_quorum_index_out_of_bounds = true;
-        LOG_PRINT_L1("Voter's index in deregister vote was out of bounds: " << vote.voters_quorum_index << ", expected to be in range of: [0, " << validators.size() << ")");
-        return false;
-      }
-
-      if (++validator_set[vote.voters_quorum_index] > 1)
-      {
-        vvc.m_duplicate_voters = true;
-        LOG_PRINT_L1("Voter quorum index is duplicated: " << vote.voters_quorum_index << ", expected to be in range of: [0, " << validators.size() << ")");
-        return false;
-      }
-
-      keys_and_sigs.push_back(std::make_pair(validators[vote.voters_quorum_index], vote.signature));
-    }
-
-    bool r = deregister_vote::verify_votes_signature(deregister.block_height, deregister.service_node_index, keys_and_sigs);
-    if (!r)
-    {
-      LOG_PRINT_L1("Invalid signatures for votes");
-      vvc.m_verification_failed = true;
-    }
-
-    return r;
+    return true;
   }
 
-  bool deregister_vote::verify_deregister(cryptonote::network_type nettype, const cryptonote::tx_extra_service_node_deregister& deregister,
-                                          cryptonote::vote_verification_context &vvc,
-                                          const service_nodes::testing_quorum &quorum)
+  bool deregister_vote::verify(cryptonote::network_type nettype, const cryptonote::tx_extra_service_node_deregister& deregister,
+                               cryptonote::vote_verification_context &vvc,
+                               const service_nodes::testing_quorum &quorum)
   {
     if (deregister.votes.size() < service_nodes::UPTIME_MIN_VOTES_TO_KICK_SERVICE_NODE)
     {
@@ -144,148 +145,320 @@ namespace service_nodes
       return false;
     }
 
-    bool result = verify_votes_helper(nettype, deregister, vvc, quorum);
-    return result;
-  }
-
-  bool deregister_vote::verify_vote(cryptonote::network_type nettype, const deregister_vote& v, cryptonote::vote_verification_context &vvc,
-                                    const service_nodes::testing_quorum &quorum)
-  {
-    cryptonote::tx_extra_service_node_deregister deregister;
-    deregister.block_height = v.block_height;
-    deregister.service_node_index = v.service_node_index;
-    deregister.votes.push_back(cryptonote::tx_extra_service_node_deregister::vote{ v.signature, v.voters_quorum_index });
-    return verify_votes_helper(nettype, deregister, vvc, quorum);
-  }
-
-  void voting_pool::set_relayed(const std::vector<deregister_vote>& votes)
-  {
-    CRITICAL_REGION_LOCAL(m_lock);
-    const time_t now = time(NULL);
-
-    for (const deregister_vote &find_vote : votes)
+    if (deregister.votes.size() > service_nodes::UPTIME_QUORUM_SIZE)
     {
-      deregister_group desired_group   = {};
-      desired_group.block_height       = find_vote.block_height;
-      desired_group.service_node_index = find_vote.service_node_index;
-
-      auto deregister_entry = m_deregisters.find(desired_group);
-      if (deregister_entry != m_deregisters.end())
-      {
-        std::vector<deregister_pool_entry> &deregister_vector = deregister_entry->second;
-        for (auto &deregister : deregister_vector)
-        {
-          if (deregister.m_vote.voters_quorum_index == find_vote.voters_quorum_index)
-          {
-            deregister.m_time_last_sent_p2p = now;
-            break;
-          }
-        }
-      }
-    }
-  }
-
-  std::vector<deregister_vote> voting_pool::get_relayable_votes() const
-  {
-    CRITICAL_REGION_LOCAL(m_lock);
-    const cryptonote::cryptonote_connection_context fake_context = AUTO_VAL_INIT(fake_context);
-
-    // TODO(doyle): Rate-limiting: A better threshold value that follows suite with transaction relay time back-off
-    const time_t now       = time(NULL);
-#if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
-    const time_t THRESHOLD = 60 * 2;
-#else
-    const time_t THRESHOLD = 0;
-#endif
-
-    std::vector<deregister_vote> result;
-    for (const auto &deregister_entry : m_deregisters)
-    {
-      const std::vector<deregister_pool_entry>& deregister_vector = deregister_entry.second;
-      for (const deregister_pool_entry &entry : deregister_vector)
-      {
-        const time_t last_sent = now - entry.m_time_last_sent_p2p;
-        if (last_sent > THRESHOLD)
-        {
-          result.push_back(entry.m_vote);
-        }
-      }
-    }
-    return result;
-  }
-
-  bool voting_pool::add_uptime_deregister_vote(const int hf_version,
-                                               const deregister_vote& new_vote,
-                                               cryptonote::vote_verification_context& vvc,
-                                               const service_nodes::testing_quorum &quorum,
-                                               cryptonote::transaction &tx)
-  {
-    if (!deregister_vote::verify_vote(m_nettype, new_vote, vvc, quorum))
-    {
-      LOG_PRINT_L1("Signature verification failed for deregister vote");
+      LOG_PRINT_L1("Too many votes");
       return false;
     }
 
-    CRITICAL_REGION_LOCAL(m_lock);
-    time_t const now = time(NULL);
-    std::vector<deregister_pool_entry> *deregister_votes;
-    {
-      deregister_group desired_group   = {};
-      desired_group.block_height       = new_vote.block_height;
-      desired_group.service_node_index = new_vote.service_node_index;
-      deregister_votes                 = &m_deregisters[desired_group];
-    }
+    if (!bounds_check_worker_index(quorum, deregister.service_node_index, vvc))
+      return false;
 
-    bool new_deregister_is_unique = true;
-    for (const auto &entry : *deregister_votes)
+    crypto::hash const hash = make_deregister_vote_hash(deregister.block_height, deregister.service_node_index);
+    std::array<int, service_nodes::UPTIME_QUORUM_SIZE> validator_set;
+    for (const cryptonote::tx_extra_service_node_deregister::vote& vote : deregister.votes)
     {
-      if (entry.m_vote.voters_quorum_index == new_vote.voters_quorum_index)
+      if (!bounds_check_validator_index(quorum, vote.validator_index, vvc))
+        return false;
+
+      if (++validator_set[vote.validator_index] > 1)
       {
-        new_deregister_is_unique = false;
-        break;
+        vvc.m_duplicate_voters = true;
+        LOG_PRINT_L1("Voter quorum index is duplicated: " << vote.validator_index);
+        return false;
       }
-    }
 
-    if (new_deregister_is_unique)
-    {
-      vvc.m_added_to_pool = true;
-      deregister_votes->emplace_back(deregister_pool_entry(0 /*time_last_sent_p2p*/, new_vote));
-
-      if (deregister_votes->size() >= service_nodes::UPTIME_MIN_VOTES_TO_KICK_SERVICE_NODE)
+      crypto::public_key const &key = quorum.validators[vote.validator_index];
+      if (!crypto::check_signature(hash, key, vote.signature))
       {
-        cryptonote::tx_extra_service_node_deregister deregister;
-        deregister.block_height       = new_vote.block_height;
-        deregister.service_node_index = new_vote.service_node_index;
-        deregister.votes.reserve(deregister_votes->size());
-
-        for (const auto& entry : *deregister_votes)
-        {
-          cryptonote::tx_extra_service_node_deregister::vote tx_vote = {};
-          tx_vote.signature           = entry.m_vote.signature;
-          tx_vote.voters_quorum_index = entry.m_vote.voters_quorum_index;
-          deregister.votes.push_back(tx_vote);
-        }
-
-        vvc.m_full_tx_deregister_made = cryptonote::add_service_node_deregister_to_tx_extra(tx.extra, deregister);
-        if (vvc.m_full_tx_deregister_made)
-        {
-          tx.version = cryptonote::transaction::get_max_version_for_hf(hf_version, m_nettype);
-          tx.type    = cryptonote::transaction::type_deregister;
-        }
-        else
-        {
-          LOG_PRINT_L1("Could not create deregistration transaction from votes");
-        }
+        LOG_PRINT_L1("Invalid signatures for votes");
+        vvc.m_verification_failed = true;
       }
     }
 
     return true;
   }
 
-  void voting_pool::remove_used_votes(std::vector<cryptonote::transaction> const &txs)
+  bool verify_vote(cryptonote::network_type nettype, const quorum_vote_t& vote, cryptonote::vote_verification_context &vvc, const service_nodes::testing_quorum &quorum)
+  {
+    bool result = false;
+    if (!bounds_check_validator_index(quorum, vote.validator_index, vvc))
+      return result;
+
+    crypto::public_key const &key = quorum.validators[vote.validator_index];
+    switch(vote.type)
+    {
+      default:
+      {
+        LOG_PRINT_L1("Unhandled vote type with value: " << (int)vote.type);
+        assert("Unhandled vote type" == 0);
+        return result;
+      };
+
+      case quorum_type::uptime_deregister:
+      {
+        crypto::hash hash = make_deregister_vote_hash(vote.block_height, vote.deregister.service_node_index);
+        result            = crypto::check_signature(hash, key, vote.signature);
+      }
+      break;
+
+      case quorum_type::checkpointing:
+      {
+        // TODO(doyle):
+        assert(false);
+      }
+      break;
+    }
+
+    return result;
+  }
+
+  void voting_pool::set_relayed(const std::vector<quorum_vote_t>& votes)
   {
     CRITICAL_REGION_LOCAL(m_lock);
-    for (const auto &tx : txs)
+    const time_t now = time(NULL);
+
+    for (const quorum_vote_t &find_vote : votes)
+    {
+      std::vector<pool_vote_entry> *vote_pool = nullptr;
+      switch(find_vote.type)
+      {
+        default:
+        {
+          LOG_PRINT_L1("Unhandled find_vote type with value: " << (int)find_vote.type);
+          assert("Unhandled find_vote type" == 0);
+          return;
+        };
+
+        case quorum_type::uptime_deregister:
+        {
+          auto it = std::find_if(m_deregister_pool.begin(), m_deregister_pool.end(), [find_vote](deregister_pool_entry const &entry) {
+              return (entry.block_height == find_vote.block_height &&
+                      entry.service_node_index == find_vote.deregister.service_node_index);
+          });
+
+          if (it == m_deregister_pool.end())
+            continue;
+
+          vote_pool = &it->votes;
+        }
+        break;
+
+        case quorum_type::checkpointing:
+        {
+          auto it = std::find_if(m_checkpoint_pool.begin(), m_checkpoint_pool.end(), [find_vote](checkpoint_pool_entry const &entry) {
+              return (entry.height == find_vote.block_height && entry.hash == find_vote.checkpoint.block_hash);
+          });
+
+          if (it == m_checkpoint_pool.end())
+            continue;
+
+          vote_pool = &it->votes;
+        }
+        break;
+      }
+
+      if (vote_pool) // We found the group that this vote belongs to
+      {
+        auto vote = std::find_if(vote_pool->begin(), vote_pool->end(), [find_vote](pool_vote_entry const &entry) {
+            return (find_vote.validator_index == entry.vote.validator_index);
+        });
+
+        if (vote != vote_pool->end())
+        {
+          vote->time_last_sent_p2p = now;
+        }
+      }
+    }
+  }
+
+  std::vector<quorum_vote_t> voting_pool::get_relayable_votes() const
+  {
+    CRITICAL_REGION_LOCAL(m_lock);
+
+    // TODO(doyle): Rate-limiting: A better threshold value that follows suite with transaction relay time back-off
+#if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
+    const time_t TIME_BETWEEN_RELAY = 60 * 2;
+#else
+    const time_t TIME_BETWEEN_RELAY = 0;
+#endif
+
+    time_t const now = time(nullptr);
+    std::vector<quorum_vote_t> result;
+    for (deregister_pool_entry const &pool_entry : m_deregister_pool)
+    {
+      for (pool_vote_entry const &vote_entry : pool_entry.votes)
+      {
+        const time_t last_sent = now - vote_entry.time_last_sent_p2p;
+        if (last_sent > TIME_BETWEEN_RELAY)
+          result.push_back(vote_entry.vote);
+      }
+    }
+
+    for (checkpoint_pool_entry const &pool_entry : m_checkpoint_pool)
+    {
+      for (pool_vote_entry const &vote_entry : pool_entry.votes)
+      {
+        const time_t last_sent = now - vote_entry.time_last_sent_p2p;
+        if (last_sent > TIME_BETWEEN_RELAY)
+          result.push_back(vote_entry.vote);
+      }
+    }
+
+    return result;
+  }
+
+  voting_pool::voting_result voting_pool::add_pool_vote(uint64_t latest_height,
+                                                        const quorum_vote_t& vote,
+                                                        cryptonote::vote_verification_context& vvc,
+                                                        const service_nodes::testing_quorum &quorum)
+  {
+    voting_result result = {};
+    switch(vote.type)
+    {
+      default:
+      {
+        LOG_PRINT_L1("Unhandled vote type with value: " << (int)vote.type);
+        assert("Unhandled vote type" == 0);
+        return result;
+      };
+
+      case quorum_type::uptime_deregister:
+      {
+        {
+          uint64_t delta_height = latest_height - vote.block_height;
+          if (vote.block_height < latest_height && delta_height >= service_nodes::deregister_vote::VOTE_LIFETIME_BY_HEIGHT)
+          {
+            LOG_PRINT_L1("Received vote for height: " << vote.block_height
+                      << " and service node: "     << vote.deregister.service_node_index
+                      << ", is older than: "       << service_nodes::deregister_vote::VOTE_LIFETIME_BY_HEIGHT
+                      << " blocks and has been rejected.");
+            vvc.m_invalid_block_height = true;
+          }
+          else if (vote.block_height > latest_height)
+          {
+            LOG_PRINT_L1("Received vote for height: " << vote.block_height
+                      << " and service node: "     << vote.deregister.service_node_index
+                      << ", is newer than: "       << latest_height
+                      << " (latest block height) and has been rejected.");
+            vvc.m_invalid_block_height = true;
+          }
+
+          if (vvc.m_invalid_block_height)
+          {
+            vvc.m_verification_failed = true;
+            return result;
+          }
+        }
+
+        if (!verify_vote(m_nettype, vote, vvc, quorum))
+        {
+          LOG_PRINT_L1("Signature verification failed for deregister vote");
+          return result;
+        }
+
+        CRITICAL_REGION_LOCAL(m_lock);
+        time_t const now = time(NULL);
+        auto it = std::find_if(m_deregister_pool.begin(), m_deregister_pool.end(), [&vote](deregister_pool_entry const &entry) {
+            return (entry.block_height == vote.block_height && entry.service_node_index == vote.deregister.service_node_index);
+        });
+
+        if (it == m_deregister_pool.end())
+        {
+          deregister_pool_entry pool_entry = {};
+          pool_entry.block_height          = vote.block_height;
+          pool_entry.service_node_index    = vote.deregister.service_node_index;
+          m_deregister_pool.push_back(pool_entry);
+          it = (m_deregister_pool.end() - 1);
+        }
+
+        deregister_pool_entry &pool_entry = (*it);
+        auto vote_it = std::find_if(pool_entry.votes.begin(), pool_entry.votes.end(), [&vote](pool_vote_entry const &pool_vote) {
+            return (pool_vote.vote.validator_index == vote.validator_index);
+        });
+
+        if (vote_it == pool_entry.votes.end())
+        {
+          vvc.m_added_to_pool   = true;
+          pool_vote_entry entry = {};
+          entry.vote            = vote;
+          pool_entry.votes.push_back(entry);
+        }
+
+        result.vote_unique = (vote_it == pool_entry.votes.end());
+        result.vote_valid  = true;
+        return result;
+      }
+      break;
+
+      case quorum_type::checkpointing:
+      {
+        // Check Vote Age
+        {
+          if (vote.block_height >= latest_height)
+            return result;
+
+          uint64_t vote_age = latest_height - vote.block_height;
+          if (vote_age > CHECKPOINT_VOTE_LIFETIME)
+            return result;
+        }
+
+        {
+          crypto::public_key const &voters_pub_key = quorum.validators[vote.validator_index];
+          if (!crypto::check_signature(vote.checkpoint.block_hash, voters_pub_key, vote.signature))
+          {
+            LOG_PRINT_L1("TODO(doyle): CHECKPOINTING(doyle): Writeme");
+            return result;
+          }
+        }
+
+        // Get Matching Checkpoint
+        auto it = std::find_if(m_checkpoint_pool.begin(), m_checkpoint_pool.end(), [&vote](checkpoint_pool_entry const &entry) {
+            return (entry.height == vote.block_height && entry.hash == vote.checkpoint.block_hash);
+        });
+
+        if (it == m_checkpoint_pool.end())
+        {
+          checkpoint_pool_entry pool_entry = {};
+          pool_entry.height                = vote.block_height;
+          pool_entry.hash                  = vote.checkpoint.block_hash;
+          m_checkpoint_pool.push_back(pool_entry);
+          it = (m_checkpoint_pool.end() - 1);
+        }
+
+        // Add Vote if Unique to Checkpoint
+        checkpoint_pool_entry &pool_entry = (*it);
+        auto vote_it = std::find_if(pool_entry.votes.begin(), pool_entry.votes.end(), [&vote](pool_vote_entry const &pool_vote) {
+            return (pool_vote.vote.validator_index == vote.validator_index);
+        });
+
+        // TODO(doyle): Refactor
+        if (vote_it == pool_entry.votes.end())
+        {
+          vvc.m_added_to_pool   = true;
+          pool_vote_entry entry = {};
+          entry.vote            = vote;
+          pool_entry.votes.push_back(entry);
+        }
+
+        result.vote_unique = (vote_it == pool_entry.votes.end());
+        result.vote_valid  = true;
+        result.votes       = &pool_entry.votes;
+        return result;
+      }
+      break;
+    }
+
+  }
+
+  void voting_pool::remove_used_votes(std::vector<cryptonote::transaction> const &txs)
+  {
+    // TODO(doyle): Cull checkpoint votes
+    CRITICAL_REGION_LOCAL(m_lock);
+    if (m_deregister_pool.empty())
+      return;
+
+    for (const cryptonote::transaction &tx : txs)
     {
       if (tx.get_type() != cryptonote::transaction::type_deregister)
         continue;
@@ -297,78 +470,31 @@ namespace service_nodes
         continue;
       }
 
-      deregister_group desired_group   = {};
-      desired_group.block_height       = deregister.block_height;
-      desired_group.service_node_index = deregister.service_node_index;
-      m_deregisters.erase(desired_group);
+      auto it = std::find_if(m_deregister_pool.begin(), m_deregister_pool.end(), [&deregister](deregister_pool_entry const &entry){
+          return (entry.block_height == deregister.block_height) && (entry.service_node_index == deregister.service_node_index);
+      });
+
+      if (it != m_deregister_pool.end())
+        m_deregister_pool.erase(it);
     }
   }
 
   void voting_pool::remove_expired_votes(uint64_t height)
   {
     if (height < deregister_vote::VOTE_LIFETIME_BY_HEIGHT)
-    {
       return;
-    }
 
     CRITICAL_REGION_LOCAL(m_lock);
     uint64_t minimum_height = height - deregister_vote::VOTE_LIFETIME_BY_HEIGHT;
-    for (auto it = m_deregisters.begin(); it != m_deregisters.end();)
+    for (auto it = m_deregister_pool.begin(); it != m_deregister_pool.end(); ++it)
     {
-      const deregister_group &deregister_for = it->first;
-      if (deregister_for.block_height < minimum_height)
+      const deregister_pool_entry &pool_entry = *it;
+      if (pool_entry.block_height < minimum_height)
       {
-        it = m_deregisters.erase(it);
-      }
-      else
-      {
-        it++;
+        it = m_deregister_pool.erase(it);
+        it--;
       }
     }
-  }
-
-  voting_pool::add_checkpoint_vote_result voting_pool::add_checkpointing_vote(const checkpoint_vote& vote,
-                                                                              cryptonote::vote_verification_context& vvc,
-                                                                              const service_nodes::testing_quorum &quorum)
-  {
-    add_checkpoint_vote_result result = {};
-    if (vote.voters_quorum_index >= quorum.validators.size())
-    {
-      vvc.m_voters_quorum_index_out_of_bounds = true;
-      LOG_PRINT_L1("Voter's index in deregister vote was out of bounds: " << vote.voters_quorum_index << ", expected to be in range of: [0, " << quorum.validators.size() << ")");
-      return result;
-    }
-
-    // Get Matching Checkpoint
-    auto it = std::find_if(m_checkpoint_pool.begin(), m_checkpoint_pool.end(), [&vote](checkpoint_pool_entry const &checkpoint) {
-        return (checkpoint.height == vote.block_height && checkpoint.hash == vote.block_hash);
-    });
-
-    if (it == m_checkpoint_pool.end())
-    {
-      checkpoint_pool_entry pool_entry = {};
-      pool_entry.height                = vote.block_height;
-      pool_entry.hash                  = vote.block_hash;
-      m_checkpoint_pool.push_back(pool_entry);
-      it = (m_checkpoint_pool.end() - 1);
-    }
-
-    // Add Vote if Unique to Checkpoint
-    checkpoint_pool_entry &pool_entry = (*it);
-    auto vote_it = std::find_if(pool_entry.votes.begin(), pool_entry.votes.end(), [&vote](checkpoint_vote const &preexisting_vote) {
-        return (preexisting_vote.voters_quorum_index == vote.voters_quorum_index);
-    });
-
-    if (vote_it == pool_entry.votes.end())
-    {
-      result.vote_unique = true;
-      pool_entry.votes.push_back(vote);
-    }
-
-    // TODO(doyle) Enough votes, send it over to the checkpoint daat structure
-    result.vote_valid = true;
-    result.votes      = &pool_entry.votes;
-    return result;
   }
 }; // namespace service_nodes
 

@@ -816,23 +816,13 @@ namespace cryptonote
      bool is_service_node(const crypto::public_key& pubkey) const;
 
      /**
-      * @brief Add a vote to deregister a service node from network
+      * @brief Add a service node vote
       *
       * @param vote The vote for deregistering a service node.
 
-      * @return Whether the vote was added to the partial deregister pool
-      */
-     bool add_deregister_vote(const service_nodes::deregister_vote& vote, vote_verification_context &vvc);
-
-     /**
-      * @brief TODO(doyle): CHECKPOINTING(doyle):
-      *
-      * @param TODO(doyle): CHECKPOINTING(doyle):
-
       * @return
       */
-     bool add_checkpoint_vote(const service_nodes::checkpoint_vote& vote, vote_verification_context &vvc);
-
+     bool add_service_node_vote(const service_nodes::quorum_vote_t& vote, vote_verification_context &vvc);
 
      /**
       * @brief Get the keypair for this service node.
@@ -1066,7 +1056,7 @@ namespace cryptonote
       *
       * @return true, necessary for binding this function to a periodic invoker
       */
-     bool relay_checkpoint_votes();
+     bool relay_service_node_votes();
 
      /**
       * @brief checks DNS versions

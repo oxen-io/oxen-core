@@ -33,6 +33,7 @@
 #include "cryptonote_core.h"
 #include "version.h"
 #include "common/loki.h"
+#include "common/loki.h"
 
 #include "common/loki_integration_test_hooks.h"
 
@@ -41,6 +42,9 @@
 
 namespace service_nodes
 {
+  static_assert(quorum_cop::REORG_SAFETY_BUFFER_IN_BLOCKS < deregister_vote::VOTE_LIFETIME_BY_HEIGHT,
+                "Safety buffer should always be less than the vote lifetime");
+
   quorum_cop::quorum_cop(cryptonote::core& core)
     : m_core(core), m_uptime_proof_height(0)
   {
@@ -64,9 +68,20 @@ namespace service_nodes
     }
   }
 
+  void quorum_cop::set_votes_relayed(std::vector<quorum_vote_t> const &relayed_votes)
+  {
+    m_vote_pool.set_relayed(relayed_votes);
+  }
+
+  std::vector<quorum_vote_t> quorum_cop::get_relayable_votes()
+  {
+    std::vector<quorum_vote_t> result = m_vote_pool.get_relayable_votes();
+    return result;
+  }
+
   void quorum_cop::block_added(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs)
   {
-    process_uptime_quorum(block);
+    process_uptime_quorum    (block);
     process_checkpoint_quorum(block);
 
     // Since our age checks for deregister votes is now (age >=
@@ -81,36 +96,33 @@ namespace service_nodes
     m_vote_pool.remove_used_votes(txs);
   }
 
-  bool quorum_cop::handle_deregister_vote(deregister_vote const &vote, cryptonote::vote_verification_context &vvc)
+  bool quorum_cop::handle_vote(quorum_vote_t const &vote, cryptonote::vote_verification_context &vvc)
   {
     vvc = {};
-    uint64_t latest_block_height = std::max(m_core.get_current_blockchain_height(), m_core.get_target_blockchain_height());
-    uint64_t delta_height        = latest_block_height - vote.block_height;
+    switch(vote.type)
+    {
+      default:
+      {
+        LOG_PRINT_L1("Unhandled vote type with value: " << (int)vote.type);
+        assert("Unhandled vote type" == 0);
+        return false;
+      };
 
-    if (vote.block_height < latest_block_height && delta_height >= service_nodes::deregister_vote::VOTE_LIFETIME_BY_HEIGHT)
-    {
-      LOG_PRINT_L1("Received vote for height: " << vote.block_height
-                << " and service node: "     << vote.service_node_index
-                << ", is older than: "       << service_nodes::deregister_vote::VOTE_LIFETIME_BY_HEIGHT
-                << " blocks and has been rejected.");
-      vvc.m_invalid_block_height = true;
-    }
-    else if (vote.block_height > latest_block_height)
-    {
-      LOG_PRINT_L1("Received vote for height: " << vote.block_height
-                << " and service node: "     << vote.service_node_index
-                << ", is newer than: "       << latest_block_height
-                << " (latest block height) and has been rejected.");
-      vvc.m_invalid_block_height = true;
-    }
-
-    if (vvc.m_invalid_block_height)
-    {
-      vvc.m_verification_failed = true;
-      return false;
+      case quorum_type::uptime_deregister: break;
+      case quorum_type::checkpointing:
+      {
+        cryptonote::block block;
+        if (!m_core.get_block_by_hash(vote.checkpoint.block_hash, block)) // Does vote reference a valid block hash?
+        {
+          LOG_PRINT_L1("TODO(doyle): CHECKPOINTING(doyle): Writeme");
+          return false;
+        }
+      }
+      break;
     }
 
-    const std::shared_ptr<const testing_quorum> quorum = m_core.get_testing_quorum(quorum_type::uptime_proof, vote.block_height);
+    // NOTE: Only do validation that relies on access cryptonote::core here in quorum cop, the rest goes in voting pool
+    std::shared_ptr<const testing_quorum> quorum = m_core.get_testing_quorum(vote.type, vote.block_height);
     if (!quorum)
     {
       // TODO(loki): Fatal error
@@ -118,105 +130,81 @@ namespace service_nodes
       return false;
     }
 
-    int hf_version = m_core.get_blockchain_storage().get_current_hard_fork_version();
-    cryptonote::transaction deregister_tx;
-    bool result = m_vote_pool.add_uptime_deregister_vote(hf_version, vote, vvc, *quorum, deregister_tx);
-    if (result && vvc.m_full_tx_deregister_made)
+    uint64_t latest_height                       = std::max(m_core.get_current_blockchain_height(), m_core.get_target_blockchain_height());
+    voting_pool::voting_result const vote_result = m_vote_pool.add_pool_vote(latest_height, vote, vvc, *quorum);
+    bool result = vote_result.vote_valid;
+
+    switch(vote.type)
     {
-      cryptonote::tx_verification_context tvc = {};
-      cryptonote::blobdata const tx_blob      = cryptonote::tx_to_blob(deregister_tx);
-
-      result = m_core.handle_incoming_tx(tx_blob, tvc, false /*keeped_by_block*/, false /*relayed*/, false /*do_not_relay*/);
-      if (!result || tvc.m_verifivation_failed)
+      case quorum_type::uptime_deregister:
       {
-        LOG_PRINT_L1("A full deregister tx for height: " << vote.block_height <<
-                     " and service node: " << vote.service_node_index <<
-                     " could not be verified and was not added to the memory pool, reason: " <<
-                     print_tx_verification_context(tvc, &deregister_tx));
-      }
-    }
-
-    return result;
-  }
-  
-  bool quorum_cop::handle_checkpoint_vote(checkpoint_vote const &vote, cryptonote::vote_verification_context &vvc)
-  {
-    vvc = {};
-    // TODO(doyle): Not in this function but, need to add code for culling old
-    // checkpoints from the "staging" checkpoint pool.
-
-    // TODO(doyle): This is repeated logic for deregister votes and
-    // checkpointing votes, it is worth considering merging the two into
-    // a generic voting structure
-
-    // Check Vote Age
-    {
-      uint64_t const latest_height = std::max(m_core.get_current_blockchain_height(), m_core.get_target_blockchain_height());
-      if (vote.block_height >= latest_height)
-        return false;
-
-      uint64_t vote_age = latest_height - vote.block_height;
-      if (vote_age > CHECKPOINT_VOTE_LIFETIME)
-        return false;
-    }
-
-    // Validate Vote
-    std::shared_ptr<const testing_quorum> quorum = m_core.get_testing_quorum(service_nodes::quorum_type::checkpointing, vote.block_height);
-    {
-      if (!quorum)
-      {
-        // TODO(loki): Fatal error
-        LOG_ERROR("Quorum state for height: " << vote.block_height << " was not cached in daemon!");
-        return false;
-      }
-
-      if (vote.voters_quorum_index >= quorum->validators.size())
-      {
-        LOG_PRINT_L1("TODO(doyle): CHECKPOINTING(doyle): Writeme");
-        return false;
-      }
-
-      // NOTE(loki): We don't validate that the hash belongs to a valid block
-      // just yet, just that the signature is valid.
-      crypto::public_key const &voters_pub_key = quorum->validators[vote.voters_quorum_index];
-      if (!crypto::check_signature(vote.block_hash, voters_pub_key, vote.signature))
-      {
-        LOG_PRINT_L1("TODO(doyle): CHECKPOINTING(doyle): Writeme");
-        return false;
-      }
-
-      // Does vote reference a valid block hash?
-      {
-        cryptonote::block block;
-        if (!m_core.get_block_by_hash(vote.block_hash, block))
+        if (vote_result.vote_unique && vote_result.votes->size() >= UPTIME_MIN_VOTES_TO_KICK_SERVICE_NODE)
         {
-          LOG_PRINT_L1("TODO(doyle): CHECKPOINTING(doyle): Writeme");
-          return false;
+          cryptonote::tx_extra_service_node_deregister deregister;
+          deregister.block_height       = vote.block_height;
+          deregister.service_node_index = vote.deregister.service_node_index;
+          deregister.votes.reserve(vote_result.votes->size());
+
+          for (pool_vote_entry const &pool_vote : (*vote_result.votes))
+          {
+            cryptonote::tx_extra_service_node_deregister::vote tx_vote = {};
+            tx_vote.validator_index                                    = pool_vote.vote.validator_index;
+            tx_vote.signature                                          = pool_vote.vote.signature;
+            deregister.votes.push_back(tx_vote);
+          }
+
+          cryptonote::transaction deregister_tx = {};
+          if (cryptonote::add_service_node_deregister_to_tx_extra(deregister_tx.extra, deregister))
+          {
+            int hf_version        = m_core.get_blockchain_storage().get_current_hard_fork_version();
+            deregister_tx.version = cryptonote::transaction::get_max_version_for_hf(hf_version, m_core.get_nettype());
+            deregister_tx.type    = cryptonote::transaction::type_deregister;
+
+            cryptonote::tx_verification_context tvc = {};
+            cryptonote::blobdata const tx_blob      = cryptonote::tx_to_blob(deregister_tx);
+
+            result &= m_core.handle_incoming_tx(tx_blob, tvc, false /*keeped_by_block*/, false /*relayed*/, false /*do_not_relay*/);
+            if (!result || tvc.m_verifivation_failed)
+            {
+              LOG_PRINT_L1("A full deregister tx for height: " << vote.block_height <<
+                           " and service node: " << vote.deregister.service_node_index <<
+                           " could not be verified and was not added to the memory pool, reason: " <<
+                           print_tx_verification_context(tvc, &deregister_tx));
+            }
+          }
+          else
+          {
+            // TODO(doyle): Logging
+          }
         }
       }
-    }
+      break;
 
-    voting_pool::add_checkpoint_vote_result const result = m_vote_pool.add_checkpointing_vote(vote, vvc, *quorum);
-    if (result.vote_unique && result.votes->size() >= CHECKPOINT_MIN_VOTES)
-    {
-      cryptonote::checkpoint_t checkpoint = {};
-      checkpoint.type                     = cryptonote::checkpoint_type::service_node;
-      checkpoint.height                   = vote.block_height;
-      checkpoint.block_hash               = vote.block_hash;
-      checkpoint.signatures.reserve(result.votes->size());
-
-      for (checkpoint_vote const &entry : (*result.votes))
+      // TODO(doyle): Not in this function but, need to add code for culling old checkpoints from the "staging" checkpoint pool.
+      case quorum_type::checkpointing:
       {
-        voter_to_signature vts = {};
-        vts.quorum_index       = entry.voters_quorum_index;
-        vts.signature          = vote.signature;
-        checkpoint.signatures.push_back(vts);
+        if (vote_result.vote_unique && vote_result.votes->size() >= CHECKPOINT_MIN_VOTES)
+        {
+          cryptonote::checkpoint_t checkpoint = {};
+          checkpoint.type                     = cryptonote::checkpoint_type::service_node;
+          checkpoint.height                   = vote.block_height;
+          checkpoint.block_hash               = vote.checkpoint.block_hash;
+          checkpoint.signatures.reserve(vote_result.votes->size());
+
+          for (pool_vote_entry const &pool_vote : (*vote_result.votes))
+          {
+            voter_to_signature vts = {};
+            vts.validator_index    = pool_vote.vote.validator_index;
+            vts.signature          = pool_vote.vote.signature;
+            checkpoint.signatures.push_back(vts);
+          }
+
+          m_core.get_blockchain_storage().update_checkpoint(checkpoint);
+        }
       }
-
-      m_core.get_blockchain_storage().update_checkpoint(checkpoint);
+      break;
     }
-
-    return result.vote_valid;
+    return result;
   }
 
   void quorum_cop::process_uptime_quorum(cryptonote::block const &block)
@@ -259,7 +247,7 @@ namespace service_nodes
       if (m_core.get_hard_fork_version(m_uptime_proof_height) < 9)
         continue;
 
-      const std::shared_ptr<const testing_quorum> quorum = m_core.get_testing_quorum(quorum_type::uptime_proof, m_uptime_proof_height);
+      const std::shared_ptr<const testing_quorum> quorum = m_core.get_testing_quorum(quorum_type::uptime_deregister, m_uptime_proof_height);
       if (!quorum)
       {
         // TODO(loki): Fatal error
@@ -285,15 +273,16 @@ namespace service_nodes
         if (!vote_off_node)
           continue;
 
-        service_nodes::deregister_vote vote = {};
-        vote.block_height                   = m_uptime_proof_height;
-        vote.service_node_index             = node_index;
-        vote.voters_quorum_index            = my_index_in_quorum;
-        vote.signature                      = service_nodes::deregister_vote::sign_vote(vote.block_height, vote.service_node_index, my_pubkey, my_seckey);
+        quorum_vote_t vote                 = {};
+        vote.deregister.service_node_index = node_index;
+        vote.block_height                  = m_uptime_proof_height;
+        vote.type                          = quorum_type::uptime_deregister;
+        vote.validator_index               = my_index_in_quorum;
+        vote.signature                     = service_nodes::sign_vote(vote, my_pubkey, my_seckey);
 
         cryptonote::vote_verification_context vvc;
         // TODO(doyle): Handle return bool?
-        handle_deregister_vote(vote, vvc);
+        handle_vote(vote, vvc);
       }
     }
   }
@@ -328,21 +317,22 @@ namespace service_nodes
     //
     // NOTE: I am in the quorum, handle checkpointing
     //
-    size_t my_index_in_quorum           = it - quorum->validators.begin();
-    service_nodes::checkpoint_vote vote = {};
-    if (!cryptonote::get_block_hash(block, vote.block_hash))
+    size_t my_index_in_quorum = it - quorum->validators.begin();
+    quorum_vote_t vote        = {};
+    vote.type                 = quorum_type::checkpointing;
+    if (!cryptonote::get_block_hash(block, vote.checkpoint.block_hash))
     {
       // TODO(loki): Fatal error
       LOG_ERROR("Could not get block hash for block on height: " << height);
       return;
     }
 
-    vote.block_height        = height;
-    vote.voters_quorum_index = my_index_in_quorum;
-    crypto::generate_signature(vote.block_hash, my_pubkey, my_seckey, vote.signature);
+    vote.block_height    = height;
+    vote.validator_index = my_index_in_quorum;
+    crypto::generate_signature(vote.checkpoint.block_hash, my_pubkey, my_seckey, vote.signature);
 
     cryptonote::vote_verification_context vvc = {};
-    if (!handle_checkpoint_vote(vote, vvc))
+    if (!handle_vote(vote, vvc))
     {
       // TODO(doyle): CHECKPOINTING(doyle):
       LOG_ERROR("Failed to add checkpoint vote reason: " << print_vote_verification_context(vvc, nullptr));

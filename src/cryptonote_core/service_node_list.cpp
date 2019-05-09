@@ -140,7 +140,7 @@ namespace service_nodes
     const auto &it = m_transient_state.quorum_states.find(height);
     if (it != m_transient_state.quorum_states.end())
     {
-      if (type == quorum_type::uptime_proof)
+      if (type == quorum_type::uptime_deregister)
         return it->second.uptime_proof;
       else if (type == quorum_type::checkpointing)
         return it->second.checkpointing;
@@ -307,7 +307,7 @@ namespace service_nodes
       return false;
     }
 
-    const auto state = get_testing_quorum(quorum_type::uptime_proof, deregister.block_height);
+    const auto state = get_testing_quorum(quorum_type::uptime_deregister, deregister.block_height);
     if (!state)
     {
       // TODO(loki): Not being able to find a quorum is fatal! We want better caching abilities.
@@ -1306,7 +1306,7 @@ namespace service_nodes
       std::shared_ptr<testing_quorum> quorum = std::make_shared<testing_quorum>();
       std::vector<size_t> const pub_keys_indexes = generate_shuffled_service_node_index_list(snode_list, block_hash, type);
 
-      if (type == quorum_type::uptime_proof)
+      if (type == quorum_type::uptime_deregister)
       {
         num_validators             = std::min(snode_list.size(), UPTIME_QUORUM_SIZE);
         size_t num_remaining_nodes = pub_keys_indexes.size() - num_validators;
@@ -1346,7 +1346,7 @@ namespace service_nodes
         }
       }
 
-      if (type == quorum_type::uptime_proof)
+      if (type == quorum_type::uptime_deregister)
         manager.uptime_proof = quorum;
       else
         manager.checkpointing = quorum;
@@ -1400,7 +1400,7 @@ namespace service_nodes
         quorum_manager const &manager   = kv_pair.second;
 
         if (manager.uptime_proof)
-          quorum.quorums[(int)quorum_type::uptime_proof] = *manager.uptime_proof;
+          quorum.quorums[(int)quorum_type::uptime_deregister] = *manager.uptime_proof;
 
         if (quorum.version >= service_node_info::version_3_checkpointing)
         {
@@ -1506,7 +1506,7 @@ namespace service_nodes
     for (const auto& states : data_in.quorum_states)
     {
       {
-        testing_quorum const &uptime_proof = states.quorums[(int)quorum_type::uptime_proof];
+        testing_quorum const &uptime_proof = states.quorums[(int)quorum_type::uptime_deregister];
         if (uptime_proof.validators.size() > 0 || uptime_proof.workers.size() > 0)
           m_transient_state.quorum_states[states.height].uptime_proof = std::make_shared<testing_quorum>(uptime_proof);
       }

@@ -142,7 +142,7 @@ TEST(service_nodes, vote_validation)
   {
     valid_vote.block_height         = 10;
     valid_vote.service_node_index   = 1;
-    valid_vote.voters_quorum_index  = voter_index;
+    valid_vote.validator_index  = voter_index;
     valid_vote.signature            = service_nodes::deregister_vote::sign_vote(valid_vote.block_height, valid_vote.service_node_index, service_node_voter.pub, service_node_voter.sec);
 
     cryptonote::vote_verification_context vvc = {};
@@ -156,7 +156,7 @@ TEST(service_nodes, vote_validation)
   // Voters quorum index out of bounds
   {
     auto vote                = valid_vote;
-    vote.voters_quorum_index = state.validators.size() + 10;
+    vote.validator_index = state.validators.size() + 10;
     vote.signature           = service_nodes::deregister_vote::sign_vote(vote.block_height, vote.service_node_index, service_node_voter.pub, service_node_voter.sec);
 
     cryptonote::vote_verification_context vvc = {};
@@ -217,7 +217,7 @@ TEST(service_nodes, tx_extra_deregister_validation)
       cryptonote::keypair const *voter                        = voters + i;
       cryptonote::tx_extra_service_node_deregister::vote vote = {};
 
-      vote.voters_quorum_index = i;
+      vote.validator_index = i;
       vote.signature           = service_nodes::deregister_vote::sign_vote(valid_deregister.block_height, valid_deregister.service_node_index, voter->pub, voter->sec);
       valid_deregister.votes.push_back(vote);
     }
@@ -263,7 +263,7 @@ TEST(service_nodes, tx_extra_deregister_validation)
   // Deregister has one voter with index out of bounds
   {
     auto deregister                         = valid_deregister;
-    deregister.votes[0].voters_quorum_index = state.validators.size() + 10;
+    deregister.votes[0].validator_index = state.validators.size() + 10;
 
     cryptonote::vote_verification_context vvc = {};
     bool result = service_nodes::deregister_vote::verify_deregister(cryptonote::MAINNET, deregister, vvc, state);

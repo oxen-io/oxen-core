@@ -31,11 +31,12 @@
 #include "serialization/serialization.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
 #include "cryptonote_protocol/cryptonote_protocol_handler_common.h"
-#include "cryptonote_basic/blobdatatype.h"
+#include "cryptonote_core/service_node_deregister.h"
 
 namespace cryptonote
 {
   class core;
+  struct vote_verification_context;
 };
 
 namespace service_nodes
@@ -63,13 +64,6 @@ namespace service_nodes
     std::shared_ptr<const testing_quorum> checkpointing;
   };
 
-  enum struct quorum_type
-  {
-    uptime_proof = 0,
-    checkpointing,
-    count,
-  };
-
   class quorum_cop
     : public cryptonote::BlockAddedHook,
       public cryptonote::BlockchainDetachedHook,
@@ -82,13 +76,12 @@ namespace service_nodes
     void block_added(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs) override;
     void blockchain_detached(uint64_t height) override;
 
-    bool handle_deregister_vote(deregister_vote const &vote, cryptonote::vote_verification_context &vvc);
-    bool handle_checkpoint_vote(checkpoint_vote const &vote, cryptonote::vote_verification_context &vvc);
-    bool handle_uptime_proof(const cryptonote::NOTIFY_UPTIME_PROOF::request &proof);
+    void                       set_votes_relayed  (std::vector<quorum_vote_t> const &relayed_votes);
+    std::vector<quorum_vote_t> get_relayable_votes();
+    bool                       handle_vote        (quorum_vote_t const &vote, cryptonote::vote_verification_context &vvc);
+    bool                       handle_uptime_proof(const cryptonote::NOTIFY_UPTIME_PROOF::request &proof);
 
     static const uint64_t REORG_SAFETY_BUFFER_IN_BLOCKS = 20;
-    static_assert(REORG_SAFETY_BUFFER_IN_BLOCKS < deregister_vote::VOTE_LIFETIME_BY_HEIGHT,
-                  "Safety buffer should always be less than the vote lifetime");
 
     bool       prune_uptime_proof();
     proof_info get_uptime_proof(const crypto::public_key &pubkey) const;

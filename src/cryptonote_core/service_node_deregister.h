@@ -49,116 +49,117 @@ namespace service_nodes
 {
   struct testing_quorum;
 
-  struct checkpoint_vote
-  {
-    uint64_t          block_height;
-    crypto::hash      block_hash;
-    uint32_t          voters_quorum_index;
-    crypto::signature signature;
-    uint64_t          time_last_sent_p2p;
-  };
-
   struct voter_to_signature
   {
-    uint16_t          quorum_index;
+    uint16_t          validator_index;
     crypto::signature signature;
+  };
+
+  struct checkpoint_vote
+  {
+    crypto::hash block_hash;
   };
 
   struct deregister_vote
   {
     static const uint64_t VOTE_LIFETIME_BY_HEIGHT       = BLOCKS_EXPECTED_IN_HOURS(2);
     static const uint64_t DEREGISTER_LIFETIME_BY_HEIGHT = VOTE_LIFETIME_BY_HEIGHT;
+    uint32_t service_node_index;
 
+    static bool verify(cryptonote::network_type nettype, const cryptonote::tx_extra_service_node_deregister& deregister,
+                       cryptonote::vote_verification_context& vvc,
+                       const service_nodes::testing_quorum &quorum);
+
+  };
+
+  enum struct quorum_type
+  {
+    uptime_deregister = 0,
+    checkpointing,
+    count,
+  };
+
+  struct quorum_vote_t
+  {
+    size_t            version = 0;
+    quorum_type       type;
+    uint64_t          block_height;
+    uint32_t          validator_index;
+    crypto::signature signature;
+
+    union
+    {
+      deregister_vote deregister;
+      checkpoint_vote checkpoint;
+    };
+  };
+
+  bool              verify_vote(cryptonote::network_type nettype, const quorum_vote_t& vote, cryptonote::vote_verification_context &vvc, const service_nodes::testing_quorum &quorum);
+  crypto::signature sign_vote  (quorum_vote_t const &vote, const crypto::public_key& pub, const crypto::secret_key& sec);
+
+  // NOTE: This preserves the deregister vote format pre-checkpointing so that
+  // up to the hardfork, we can still deserialize and serialize until we switch
+  // over to the new format
+  struct legacy_deregister_vote
+  {
     uint64_t          block_height;
     uint32_t          service_node_index;
     uint32_t          voters_quorum_index;
     crypto::signature signature;
+  };
 
-    static crypto::signature sign_vote(uint64_t block_height, uint32_t service_node_index, const crypto::public_key& pub, const crypto::secret_key& sec);
-    static bool verify_vote_signature (uint64_t block_height, uint32_t service_node_index, crypto::public_key const &p, crypto::signature const &s);
-    static bool verify_votes_signature(uint64_t block_height, uint32_t service_node_index, const std::vector<std::pair<crypto::public_key, crypto::signature>>& keys_and_sigs);
+  bool           convert_deregister_vote_to_legacy(quorum_vote_t const &vote, legacy_deregister_vote &legacy);
+  quorum_vote_t  convert_legacy_deregister_vote   (legacy_deregister_vote const &vote);
 
-    static bool verify_deregister(cryptonote::network_type nettype, const cryptonote::tx_extra_service_node_deregister& deregister,
-                                  cryptonote::vote_verification_context& vvc,
-                                  const service_nodes::testing_quorum &quorum);
-
-    static bool verify_vote(cryptonote::network_type nettype, const deregister_vote& v, cryptonote::vote_verification_context &vvc,
-                            const service_nodes::testing_quorum &quorum);
+  struct pool_vote_entry
+  {
+    quorum_vote_t vote;
+    uint64_t      time_last_sent_p2p;
   };
 
   struct voting_pool
   {
-      cryptonote::network_type m_nettype = cryptonote::UNDEFINED;
+    cryptonote::network_type m_nettype = cryptonote::UNDEFINED;
 
-      /**
-       *  @return True if vote was valid and in the pool already or just added (check vote verfication for specific case).
-       */
-      bool add_uptime_deregister_vote(const int hf_version,
-                                      const deregister_vote& new_vote,
-                                      cryptonote::vote_verification_context& vvc,
-                                      const service_nodes::testing_quorum &quorum,
-                                      cryptonote::transaction &tx);
+    struct voting_result
+    {
+      std::vector<pool_vote_entry> const *votes; // The vector the vote was added to, nullptr if vote_valid is FALSE
+      bool vote_valid;
+      bool vote_unique;
+    };
 
-      // TODO(loki): Review relay behaviour and all the cases when it should be triggered
-      void                         set_relayed         (const std::vector<deregister_vote>& votes);
-      void                         remove_expired_votes(uint64_t height);
-      void                         remove_used_votes   (std::vector<cryptonote::transaction> const &txs);
-      std::vector<deregister_vote> get_relayable_votes () const;
+    /**
+     *  @return True if vote was valid and in the pool already or just added (check vote verfication for specific case).
+     */
+    voting_result add_pool_vote(uint64_t latest_height,
+                                const quorum_vote_t& vote,
+                                cryptonote::vote_verification_context& vvc,
+                                const service_nodes::testing_quorum &quorum);
 
-      struct add_checkpoint_vote_result
-      {
-        std::vector<checkpoint_vote> const *votes; // The vector the vote was added to, nullptr if vote_valid is FALSE
-        bool vote_valid;
-        bool vote_unique;
-      };
+    // TODO(loki): Review relay behaviour and all the cases when it should be triggered
+    void                         set_relayed         (const std::vector<quorum_vote_t>& votes);
+    void                         remove_expired_votes(uint64_t height);
+    void                         remove_used_votes   (std::vector<cryptonote::transaction> const &txs);
+    std::vector<quorum_vote_t>   get_relayable_votes () const;
 
-      // NOTE: Checkpointing
-      add_checkpoint_vote_result add_checkpointing_vote(const checkpoint_vote& vote,
-                                                        cryptonote::vote_verification_context& vvc,
-                                                        const service_nodes::testing_quorum &quorum);
+  private:
+    struct deregister_pool_entry
+    {
+      uint64_t                     block_height;
+      uint32_t                     service_node_index;
+      std::vector<pool_vote_entry> votes;
+    };
+    std::vector<deregister_pool_entry> m_deregister_pool;
 
+    struct checkpoint_pool_entry
+    {
+      uint64_t                     height;
+      crypto::hash                 hash;
+      std::vector<pool_vote_entry> votes;
+    };
+    std::vector<checkpoint_pool_entry> m_checkpoint_pool;
 
-    private:
-      struct deregister_pool_entry
-      {
-        deregister_pool_entry(uint64_t time_last_sent_p2p, deregister_vote vote) : m_time_last_sent_p2p(time_last_sent_p2p), m_vote(vote) {}
-        uint64_t        m_time_last_sent_p2p;
-        deregister_vote m_vote;
-      };
-
-      struct deregister_group
-      {
-        uint64_t block_height;
-        uint32_t service_node_index;
-
-        bool operator==(const deregister_group &other) const
-        {
-          bool result = (block_height == other.block_height) && (service_node_index == other.service_node_index);
-          return result;
-        }
-      };
-
-      struct deregister_group_hasher
-      {
-        size_t operator()(const deregister_group& deregister) const
-        {
-          size_t res = 17;
-          res = res * 31 + std::hash<uint64_t>()(deregister.block_height);
-          res = res * 31 + std::hash<uint32_t>()(deregister.service_node_index);
-          return res;
-        }
-      };
-      std::unordered_map<deregister_group, std::vector<deregister_pool_entry>, deregister_group_hasher> m_deregisters;
-
-      struct checkpoint_pool_entry
-      {
-        uint64_t                     height;
-        crypto::hash                 hash;
-        std::vector<checkpoint_vote> votes;
-      };
-      std::vector<checkpoint_pool_entry> m_checkpoint_pool;
-
-      mutable epee::critical_section m_lock;
+    mutable epee::critical_section m_lock;
   };
 }; // namespace service_nodes
 

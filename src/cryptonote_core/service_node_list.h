@@ -296,7 +296,7 @@ namespace service_nodes
       BEGIN_SERIALIZE()
         FIELD(version)
         FIELD(height)
-        FIELD(quorums[(size_t)quorum_type::uptime_proof])
+        FIELD(quorums[(size_t)quorum_type::uptime_deregister])
         if (version >= service_node_info::version_3_checkpointing)
           FIELD(quorums[(size_t)quorum_type::checkpointing])
       END_SERIALIZE()

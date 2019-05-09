@@ -154,10 +154,10 @@ namespace cryptonote
     {
       for (service_nodes::voter_to_signature const &vote : checkpoint.signatures)
       {
-        if (vote.quorum_index > voting_set.size())
+        if (vote.validator_index > voting_set.size())
           continue;
 
-        ++voting_set[vote.quorum_index];
+        ++voting_set[vote.validator_index];
       }
     }
 
@@ -205,15 +205,15 @@ namespace cryptonote
   bool checkpoints::add_checkpoint(checkpoint_t const &checkpoint)
   {
     // TODO(doyle): Verify signatures and hash check out
-    std::array<int, service_nodes::CHECKPOINT_QUORUM_SIZE> unique_vote_set;
+    std::array<size_t, service_nodes::CHECKPOINT_QUORUM_SIZE> unique_vote_set;
     if (checkpoint.type == checkpoint_type::service_node)
     {
       CHECK_AND_ASSERT_MES(checkpoint.signatures.size() >= service_nodes::CHECKPOINT_MIN_VOTES, false, "Checkpoint has insufficient signatures to be considered");
       for (service_nodes::voter_to_signature const &vote_to_sig : checkpoint.signatures)
       {
-        ++unique_vote_set[vote_to_sig.quorum_index];
-        CHECK_AND_ASSERT_MES(vote_to_sig.quorum_index < service_nodes::CHECKPOINT_QUORUM_SIZE, false, "Vote is indexing out of bounds");
-        CHECK_AND_ASSERT_MES(unique_vote_set[vote_to_sig.quorum_index] < service_nodes::CHECKPOINT_QUORUM_SIZE, false, "Voter is trying to vote twice");
+        ++unique_vote_set[vote_to_sig.validator_index];
+        CHECK_AND_ASSERT_MES(vote_to_sig.validator_index < service_nodes::CHECKPOINT_QUORUM_SIZE, false, "Vote is indexing out of bounds");
+        CHECK_AND_ASSERT_MES(unique_vote_set[vote_to_sig.validator_index] < service_nodes::CHECKPOINT_QUORUM_SIZE, false, "Voter is trying to vote twice");
       }
     }
     else
