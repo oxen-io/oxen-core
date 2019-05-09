@@ -1240,7 +1240,7 @@ namespace service_nodes
           auto iter = m_transient_state.service_nodes_infos.find(rollback->m_key);
           if (iter == m_transient_state.service_nodes_infos.end())
           {
-            MERROR("Could not find service node pubkey in rollback new");
+            MERROR("Could not find service node pubkey in rollback key image unlock");
             rollback_applied = false;
             break;
           }
