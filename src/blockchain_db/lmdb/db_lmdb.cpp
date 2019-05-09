@@ -4044,53 +4044,59 @@ void BlockchainLMDB::fixup(fixup_context context)
 
   if (context.type == fixup_type::calculate_difficulty)
   {
-    mdb_txn_cursors *m_cursors = &m_wcursors;
-    uint64_t curr_height = context.calculate_difficulty.start_height;
-    if (curr_height != 0) curr_height--;
+    if (context.calculate_difficulty.start_height == 0)
+      context.calculate_difficulty.start_height++;
 
-    uint64_t end_height = (height() - 1);
-    uint64_t num_blocks = end_height - curr_height;
+    uint64_t const start_height = context.calculate_difficulty.start_height;
 
     std::vector<uint64_t> timestamps;
     std::vector<difficulty_type> difficulties;
     {
-      uint64_t offset = curr_height - std::min<size_t>(curr_height, static_cast<size_t>(DIFFICULTY_BLOCKS_COUNT_V2));
+      uint64_t offset = start_height - std::min<size_t>(start_height, static_cast<size_t>(DIFFICULTY_BLOCKS_COUNT_V2));
       if (offset == 0)
         ++offset;
 
-      timestamps.clear();
-      difficulties.clear();
-      if (curr_height > offset)
+      if (start_height > offset)
       {
-        timestamps.reserve  (curr_height - offset);
-        difficulties.reserve(curr_height - offset);
+        timestamps.reserve  (start_height - offset);
+        difficulties.reserve(start_height - offset);
       }
 
-      for (; offset < curr_height; offset++)
+      for (; offset < start_height; offset++)
       {
         timestamps.push_back  (get_block_timestamp(offset));
         difficulties.push_back(get_block_cumulative_difficulty(offset));
       }
     }
 
-    uint64_t prev_cumulative_diff = get_block_cumulative_difficulty(curr_height);
-    size_t const target           = DIFFICULTY_TARGET_V2;
+    uint64_t prev_cumulative_diff = get_block_cumulative_difficulty(start_height - 1);
+    block_txn_start(false);
+
+    mdb_txn_cursors *m_cursors = &m_wcursors; // Necessary for macro
+    CURSOR(block_info);
+
+    uint64_t end_height = (height() - 1);
+    uint64_t num_blocks = end_height - start_height;
     for (size_t i = 0; i < num_blocks; i++)
     {
-      curr_height          = (curr_height + i + 1);
-      uint8_t version      = get_hard_fork_version(curr_height);
-      difficulty_type diff = next_difficulty_v2(timestamps, difficulties, target, curr_height);
+      uint64_t const curr_height = (start_height + i);
+      uint8_t version            = get_hard_fork_version(curr_height);
+      difficulty_type diff       = next_difficulty_v2(timestamps, difficulties, DIFFICULTY_TARGET_V2, version <= cryptonote::network_version_9_service_nodes);
 
       MDB_val_set(key, curr_height);
       if (int result = mdb_cursor_get(m_cur_block_info, (MDB_val *)&zerokval, &key, MDB_GET_BOTH))
-          throw1(BLOCK_DNE(lmdb_error("Failed to get block info: ", result).c_str()));
+          throw1(BLOCK_DNE(lmdb_error("Failed to get block info in recalculate difficulty: ", result).c_str()));
 
-      mdb_block_info block_info = *(mdb_block_info *)key.mv_data;
-      block_info.bi_diff        = prev_cumulative_diff + diff;
+      mdb_block_info block_info    = *(mdb_block_info *)key.mv_data;
+      uint64_t old_cumulative_diff = block_info.bi_diff;
+      block_info.bi_diff           = prev_cumulative_diff + diff;
+      prev_cumulative_diff         = block_info.bi_diff;
+
+      LOG_PRINT_L0("Height: " << curr_height << " prev difficulty: " << old_cumulative_diff <<  ", new difficulty: " << block_info.bi_diff);
 
       MDB_val_set(val, block_info);
       if (int result = mdb_cursor_put(m_cur_block_info, (MDB_val *)&zerokval, &val, MDB_CURRENT))
-          throw1(BLOCK_DNE(lmdb_error("Failed to get block info: ", result).c_str()));
+          throw1(BLOCK_DNE(lmdb_error("Failed to put block info: ", result).c_str()));
 
       timestamps.push_back(block_info.bi_timestamp);
       difficulties.push_back(block_info.bi_diff);
@@ -4098,7 +4104,7 @@ void BlockchainLMDB::fixup(fixup_context context)
       while (timestamps.size() > DIFFICULTY_BLOCKS_COUNT_V2) timestamps.erase(timestamps.begin());
       while (difficulties.size() > DIFFICULTY_BLOCKS_COUNT_V2) difficulties.erase(difficulties.begin());
     }
-
+    block_txn_stop();
   }
 }
 

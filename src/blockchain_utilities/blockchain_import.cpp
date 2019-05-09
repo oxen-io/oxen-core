@@ -604,6 +604,9 @@ int main(int argc, char* argv[])
   const command_line::arg_descriptor<bool> arg_resume =  {"resume",
     "Resume from current height if output database already exists", true};
 
+  uint64_t recalc_diff_from_block = 0;
+  const command_line::arg_descriptor<uint64_t> arg_recalculate_difficulty =  {"recalculate-difficulty", "Calculate difficulty from height", recalc_diff_from_block};
+
   command_line::add_arg(desc_cmd_sett, arg_input_file);
   command_line::add_arg(desc_cmd_sett, arg_log_level);
   command_line::add_arg(desc_cmd_sett, arg_database);
@@ -614,6 +617,8 @@ int main(int argc, char* argv[])
   command_line::add_arg(desc_cmd_only, arg_pop_blocks);
   command_line::add_arg(desc_cmd_only, arg_drop_hf);
   command_line::add_arg(desc_cmd_only, command_line::arg_help);
+
+  command_line::add_arg(desc_cmd_only, arg_recalculate_difficulty);
 
   // call add_options() directly for these arguments since
   // command_line helpers support only boolean switch, not boolean argument
@@ -779,6 +784,17 @@ int main(int argc, char* argv[])
     MINFO("height: " << core.get_blockchain_storage().get_current_blockchain_height());
     pop_blocks(core, num_blocks);
     MINFO("height: " << core.get_blockchain_storage().get_current_blockchain_height());
+    return 0;
+  }
+
+  if (!command_line::is_arg_defaulted(vm, arg_recalculate_difficulty))
+  {
+    recalc_diff_from_block = command_line::get_arg(vm, arg_recalculate_difficulty);
+
+    cryptonote::BlockchainDB::fixup_context context = {};
+    context.type                                    = cryptonote::BlockchainDB::fixup_type::calculate_difficulty;
+    context.calculate_difficulty.start_height       = recalc_diff_from_block;
+    core.get_blockchain_storage().get_db().fixup(context);
     return 0;
   }
 
