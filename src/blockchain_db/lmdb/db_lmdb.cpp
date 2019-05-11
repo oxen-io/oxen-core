@@ -4077,33 +4077,44 @@ void BlockchainLMDB::fixup(fixup_context context)
 
     uint64_t end_height = (height() - 1);
     uint64_t num_blocks = end_height - start_height;
-    for (size_t i = 0; i < num_blocks; i++)
+
+    try
     {
-      uint64_t const curr_height = (start_height + i);
-      uint8_t version            = get_hard_fork_version(curr_height);
-      difficulty_type diff       = next_difficulty_v2(timestamps, difficulties, DIFFICULTY_TARGET_V2, version <= cryptonote::network_version_9_service_nodes);
+      for (size_t i = 0; i < num_blocks; i++)
+      {
+        uint64_t const curr_height = (start_height + i);
+        uint8_t version            = get_hard_fork_version(curr_height);
+        difficulty_type diff       = next_difficulty_v2(timestamps, difficulties, DIFFICULTY_TARGET_V2, version <= cryptonote::network_version_9_service_nodes);
 
-      MDB_val_set(key, curr_height);
-      if (int result = mdb_cursor_get(m_cur_block_info, (MDB_val *)&zerokval, &key, MDB_GET_BOTH))
-          throw1(BLOCK_DNE(lmdb_error("Failed to get block info in recalculate difficulty: ", result).c_str()));
+        MDB_val_set(key, curr_height);
+        if (int result = mdb_cursor_get(m_cur_block_info, (MDB_val *)&zerokval, &key, MDB_GET_BOTH))
+            throw1(BLOCK_DNE(lmdb_error("Failed to get block info in recalculate difficulty: ", result).c_str()));
 
-      mdb_block_info block_info    = *(mdb_block_info *)key.mv_data;
-      uint64_t old_cumulative_diff = block_info.bi_diff;
-      block_info.bi_diff           = prev_cumulative_diff + diff;
-      prev_cumulative_diff         = block_info.bi_diff;
+        mdb_block_info block_info    = *(mdb_block_info *)key.mv_data;
+        uint64_t old_cumulative_diff = block_info.bi_diff;
+        block_info.bi_diff           = prev_cumulative_diff + diff;
+        prev_cumulative_diff         = block_info.bi_diff;
 
-      LOG_PRINT_L0("Height: " << curr_height << " prev difficulty: " << old_cumulative_diff <<  ", new difficulty: " << block_info.bi_diff);
+        LOG_PRINT_L0("Height: " << curr_height << " prev difficulty: " << old_cumulative_diff <<  ", new difficulty: " << block_info.bi_diff);
 
-      MDB_val_set(val, block_info);
-      if (int result = mdb_cursor_put(m_cur_block_info, (MDB_val *)&zerokval, &val, MDB_CURRENT))
-          throw1(BLOCK_DNE(lmdb_error("Failed to put block info: ", result).c_str()));
+        MDB_val_set(val, block_info);
+        if (int result = mdb_cursor_put(m_cur_block_info, (MDB_val *)&zerokval, &val, MDB_CURRENT))
+            throw1(BLOCK_DNE(lmdb_error("Failed to put block info: ", result).c_str()));
 
-      timestamps.push_back(block_info.bi_timestamp);
-      difficulties.push_back(block_info.bi_diff);
+        timestamps.push_back(block_info.bi_timestamp);
+        difficulties.push_back(block_info.bi_diff);
 
-      while (timestamps.size() > DIFFICULTY_BLOCKS_COUNT_V2) timestamps.erase(timestamps.begin());
-      while (difficulties.size() > DIFFICULTY_BLOCKS_COUNT_V2) difficulties.erase(difficulties.begin());
+        while (timestamps.size() > DIFFICULTY_BLOCKS_COUNT_V2) timestamps.erase(timestamps.begin());
+        while (difficulties.size() > DIFFICULTY_BLOCKS_COUNT_V2) difficulties.erase(difficulties.begin());
+      }
     }
+    catch (DB_ERROR const &e)
+    {
+      LOG_PRINT_L0("Failed to recalculate difficulty: " << e.what());
+      block_txn_abort();
+      return;
+    }
+
     block_txn_stop();
   }
 }
