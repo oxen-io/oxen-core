@@ -4033,7 +4033,7 @@ uint64_t BlockchainLMDB::get_database_size() const
   return size;
 }
 
-void BlockchainLMDB::fixup(fixup_context context)
+void BlockchainLMDB::fixup(fixup_context const context)
 {
   LOG_PRINT_L3("BlockchainLMDB::" << __func__);
   // Always call parent as well
@@ -4044,17 +4044,15 @@ void BlockchainLMDB::fixup(fixup_context context)
 
   if (context.type == fixup_type::calculate_difficulty)
   {
-    if (context.calculate_difficulty.start_height == 0)
-      context.calculate_difficulty.start_height++;
-
-    uint64_t const start_height = context.calculate_difficulty.start_height;
+    uint64_t const start_height = (context.calculate_difficulty_params.start_height == 0) ?
+      1 : context.calculate_difficulty_params.start_height;
 
     std::vector<uint64_t> timestamps;
     std::vector<difficulty_type> difficulties;
     {
       uint64_t offset = start_height - std::min<size_t>(start_height, static_cast<size_t>(DIFFICULTY_BLOCKS_COUNT_V2));
       if (offset == 0)
-        ++offset;
+        offset = 1;
 
       if (start_height > offset)
       {
@@ -4110,7 +4108,7 @@ void BlockchainLMDB::fixup(fixup_context context)
     }
     catch (DB_ERROR const &e)
     {
-      LOG_PRINT_L0("Failed to recalculate difficulty: " << e.what());
+      LOG_PRINT_L0("Something went wrong calculating difficulty for block: " << e.what());
       block_txn_abort();
       return;
     }

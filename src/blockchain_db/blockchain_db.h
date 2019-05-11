@@ -1674,10 +1674,10 @@ public:
       struct
       {
         uint64_t start_height;
-      } calculate_difficulty;
+      } calculate_difficulty_params;
     };
   };
-  virtual void fixup(fixup_context context = {});
+  virtual void fixup(fixup_context const context = {});
 
   virtual bool get_output_blacklist(std::vector<uint64_t> &blacklist) const = 0;
   virtual void add_output_blacklist(std::vector<uint64_t> const &blacklist) = 0;

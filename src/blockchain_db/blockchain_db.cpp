@@ -417,7 +417,7 @@ void BlockchainDB::show_stats()
   );
 }
 
-void BlockchainDB::fixup(fixup_context context)
+void BlockchainDB::fixup(fixup_context const context)
 {
   (void)context;
   if (is_read_only()) {

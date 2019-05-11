@@ -787,9 +787,9 @@ int main(int argc, char* argv[])
   if (!command_line::is_arg_defaulted(vm, arg_recalculate_difficulty))
   {
     uint64_t recalc_diff_from_block = command_line::get_arg(vm, arg_recalculate_difficulty);
-    cryptonote::BlockchainDB::fixup_context context = {};
-    context.type                                    = cryptonote::BlockchainDB::fixup_type::calculate_difficulty;
-    context.calculate_difficulty.start_height       = recalc_diff_from_block;
+    cryptonote::BlockchainDB::fixup_context context  = {};
+    context.type                                     = cryptonote::BlockchainDB::fixup_type::calculate_difficulty;
+    context.calculate_difficulty_params.start_height = recalc_diff_from_block;
     core.get_blockchain_storage().get_db().fixup(context);
     return 0;
   }

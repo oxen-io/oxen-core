@@ -2316,7 +2316,7 @@ bool BlockchainBDB::is_read_only() const
   return false;
 }
 
-void BlockchainBDB::fixup(fixup_context context)
+void BlockchainBDB::fixup(fixup_context const context)
 {
   LOG_PRINT_L3("BlockchainBDB::" << __func__);
   // Always call parent as well
