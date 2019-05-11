@@ -605,7 +605,7 @@ int main(int argc, char* argv[])
     "Resume from current height if output database already exists", true};
 
   uint64_t recalc_diff_from_block = 0;
-  const command_line::arg_descriptor<uint64_t> arg_recalculate_difficulty =  {"recalculate-difficulty", "Calculate difficulty from height", recalc_diff_from_block};
+  const command_line::arg_descriptor<uint64_t> arg_recalculate_difficulty =  {"recalculate-difficulty", "Recalculate per-block difficulty starting from the height specified", recalc_diff_from_block};
 
   command_line::add_arg(desc_cmd_sett, arg_input_file);
   command_line::add_arg(desc_cmd_sett, arg_log_level);
@@ -790,7 +790,6 @@ int main(int argc, char* argv[])
   if (!command_line::is_arg_defaulted(vm, arg_recalculate_difficulty))
   {
     recalc_diff_from_block = command_line::get_arg(vm, arg_recalculate_difficulty);
-
     cryptonote::BlockchainDB::fixup_context context = {};
     context.type                                    = cryptonote::BlockchainDB::fixup_type::calculate_difficulty;
     context.calculate_difficulty.start_height       = recalc_diff_from_block;
