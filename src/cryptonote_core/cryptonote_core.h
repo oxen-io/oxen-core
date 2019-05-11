@@ -820,6 +820,13 @@ namespace cryptonote
      bool is_service_node(const crypto::public_key& pubkey) const;
 
      /**
+       * @brief get whether this node is a service node
+       *
+       * @return whether this node is a service node
+       */
+     bool is_service_node() const;
+
+     /**
       * @brief Add a vote to deregister a service node from network
       *
       * @param vote The vote for deregistering a service node.

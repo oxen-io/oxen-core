@@ -2043,6 +2043,11 @@ namespace cryptonote
     return m_service_node_list.is_service_node(pubkey);
   }
   //-----------------------------------------------------------------------------------------------
+  bool core::is_service_node() const
+  {
+    return m_service_node;
+  }
+  //-----------------------------------------------------------------------------------------------
   const std::vector<service_nodes::key_image_blacklist_entry> &core::get_service_node_blacklisted_key_images() const
   {
     const auto &result = m_service_node_list.get_blacklisted_key_images();

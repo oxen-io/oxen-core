@@ -65,6 +65,12 @@ public:
   t_p2p p2p;
   std::vector<std::unique_ptr<t_rpc>> rpcs;
 
+  bool m_arg_rpc_restricted;
+  std::string m_arg_main_rpc_port;
+  std::string m_arg_restricted_rpc_port;
+  bool m_use_separate_restricted_rpc;
+  boost::program_options::variables_map m_vm;
+
   t_internals(
       boost::program_options::variables_map const & vm
     )
@@ -72,20 +78,30 @@ public:
     , protocol{vm, core, command_line::get_arg(vm, cryptonote::arg_offline)}
     , p2p{vm, protocol}
   {
+    m_vm = vm; // copy for later construction of rpc instances
+
     // Handle circular dependencies
     protocol.set_p2p_endpoint(p2p.get());
     core.set_protocol(protocol.get());
 
-    const auto restricted = command_line::get_arg(vm, cryptonote::core_rpc_server::arg_restricted_rpc);
-    const auto main_rpc_port = command_line::get_arg(vm, cryptonote::core_rpc_server::arg_rpc_bind_port);
-    rpcs.emplace_back(new t_rpc{vm, core, p2p, restricted, main_rpc_port, "core"});
+    m_arg_rpc_restricted = command_line::get_arg(vm, cryptonote::core_rpc_server::arg_restricted_rpc);
+    m_arg_main_rpc_port = command_line::get_arg(vm, cryptonote::core_rpc_server::arg_rpc_bind_port);
+
 
     auto restricted_rpc_port_arg = cryptonote::core_rpc_server::arg_rpc_restricted_bind_port;
     if(!command_line::is_arg_defaulted(vm, restricted_rpc_port_arg))
     {
-      auto restricted_rpc_port = command_line::get_arg(vm, restricted_rpc_port_arg);
-      rpcs.emplace_back(new t_rpc{vm, core, p2p, true, restricted_rpc_port, "restricted"});
+      m_arg_restricted_rpc_port = command_line::get_arg(vm, restricted_rpc_port_arg);
+      m_use_separate_restricted_rpc = true;
     }
+  }
+
+  void setup_rpcs()
+  {
+    rpcs.emplace_back(new t_rpc{m_vm, core, p2p, m_arg_rpc_restricted, m_arg_main_rpc_port, "core"});
+
+    if (m_use_separate_restricted_rpc)
+      rpcs.emplace_back(new t_rpc{m_vm, core, p2p, true, m_arg_restricted_rpc_port, "restricted"});
   }
 };
 
@@ -152,6 +168,8 @@ bool t_daemon::run(bool interactive)
   {
     if (!mp_internals->core.run())
       return false;
+
+    mp_internals->setup_rpcs();
 
     for(auto& rpc: mp_internals->rpcs)
       rpc->run();

@@ -93,6 +93,20 @@ namespace cryptonote
     if (!rpc_config)
       return false;
 
+    if (m_core.is_service_node())
+    {
+      if (tools::is_local_address(rpc_config->bind_ip))
+      {
+        MWARNING("Running a service node sets RPC to bind externally.  RPC binding to 0.0.0.0 (IPv4)");
+        rpc_config->bind_ip = "0.0.0.0";
+      }
+      if (rpc_config->use_ipv6 && tools::is_local_address(rpc_config->bind_ipv6_address))
+      {
+        MWARNING("Running a service node sets RPC to bind externally.  RPC binding to [::] (IPv6)");
+        rpc_config->bind_ipv6_address = "::";
+      }
+    }
+
     m_bootstrap_daemon_address = command_line::get_arg(vm, arg_bootstrap_daemon_address);
     if (!m_bootstrap_daemon_address.empty())
     {
