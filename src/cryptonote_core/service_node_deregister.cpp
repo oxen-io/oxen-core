@@ -108,7 +108,7 @@ namespace service_nodes
       }
       break;
     }
-    
+
     return result;
   }
 
@@ -200,37 +200,83 @@ namespace service_nodes
     return result;
   }
 
-  bool verify_vote(cryptonote::network_type nettype, const quorum_vote_t& vote, cryptonote::vote_verification_context &vvc, const service_nodes::testing_quorum &quorum)
+  bool verify_vote(cryptonote::network_type nettype, const quorum_vote_t& vote, uint64_t latest_height, cryptonote::vote_verification_context &vvc, const service_nodes::testing_quorum &quorum)
   {
-    bool result = false;
-    if (!bounds_check_validator_index(quorum, vote.validator_index, vvc))
+    bool result = bounds_check_validator_index(quorum, vote.validator_index, vvc);
+    if (!result)
       return result;
 
-    crypto::public_key const &key = quorum.validators[vote.validator_index];
-    switch(vote.type)
+    uint64_t max_vote_age = 0;
     {
-      default:
+      crypto::public_key const &key = quorum.validators[vote.validator_index];
+      crypto::hash hash             = crypto::null_hash;
+
+      switch(vote.type)
       {
-        LOG_PRINT_L1("Unhandled vote type with value: " << (int)vote.type);
-        assert("Unhandled vote type" == 0);
+        default:
+        {
+          LOG_PRINT_L1("Unhandled vote type with value: " << (int)vote.type);
+          assert("Unhandled vote type" == 0);
+          return false;
+        };
+
+        case quorum_type::uptime_deregister:
+        {
+          max_vote_age = service_nodes::deregister_vote::VOTE_LIFETIME_BY_HEIGHT;
+          hash         = make_deregister_vote_hash(vote.block_height, vote.deregister.worker_index);
+
+          bool result = bounds_check_worker_index(quorum, vote.deregister.worker_index, vvc);
+          if (!result)
+            return result;
+        }
+        break;
+
+        case quorum_type::checkpointing:
+        {
+          max_vote_age = service_nodes::CHECKPOINT_VOTE_LIFETIME;
+          hash         = vote.checkpoint.block_hash;
+        }
+        break;
+      }
+
+      //
+      // NOTE: Validate vote signature
+      //
+      result = crypto::check_signature(hash, key, vote.signature);
+      if (!result)
+      {
+        vvc.m_signature_not_valid = true;
         return result;
-      };
-
-      case quorum_type::uptime_deregister:
-      {
-        crypto::hash hash = make_deregister_vote_hash(vote.block_height, vote.deregister.worker_index);
-        result            = crypto::check_signature(hash, key, vote.signature);
       }
-      break;
-
-      case quorum_type::checkpointing:
-      {
-        // TODO(doyle):
-        assert(false);
-      }
-      break;
     }
 
+    //
+    // NOTE: Validate vote age
+    //
+    {
+      uint64_t delta_height = latest_height - vote.block_height;
+      if (vote.block_height < latest_height && delta_height >= max_vote_age)
+      {
+        LOG_PRINT_L1("Received vote for height: " << vote.block_height << ", is older than: " << max_vote_age
+                                                  << " blocks and has been rejected.");
+        vvc.m_invalid_block_height = true;
+      }
+      else if (vote.block_height > latest_height)
+      {
+        LOG_PRINT_L1("Received vote for height: " << vote.block_height << ", is newer than: " << latest_height
+                                                  << " (latest block height) and has been rejected.");
+        vvc.m_invalid_block_height = true;
+      }
+
+      if (vvc.m_invalid_block_height)
+      {
+        result                    = false;
+        vvc.m_verification_failed = true;
+        return result;
+      }
+    }
+
+    result = true;
     return result;
   }
 
@@ -254,7 +300,7 @@ namespace service_nodes
         case quorum_type::uptime_deregister:
         {
           auto it = std::find_if(m_deregister_pool.begin(), m_deregister_pool.end(), [find_vote](deregister_pool_entry const &entry) {
-              return (entry.block_height == find_vote.block_height &&
+              return (entry.height == find_vote.block_height &&
                       entry.worker_index == find_vote.deregister.worker_index);
           });
 
@@ -329,12 +375,39 @@ namespace service_nodes
     return result;
   }
 
-  voting_pool::voting_result voting_pool::add_pool_vote(uint64_t latest_height,
-                                                        const quorum_vote_t& vote,
-                                                        cryptonote::vote_verification_context& vvc,
-                                                        const service_nodes::testing_quorum &quorum)
+  // return: True if the vote was unique
+  template <typename T>
+  static bool add_vote_to_pool_if_unique(T &vote_pool, quorum_vote_t const &vote)
   {
-    voting_result result = {};
+    auto vote_it = std::find_if(vote_pool.votes.begin(), vote_pool.votes.end(), [&vote](pool_vote_entry const &pool_entry) {
+        return (pool_entry.vote.validator_index == vote.validator_index);
+    });
+
+    bool result = false;
+    if (vote_it == vote_pool.votes.end())
+    {
+      pool_vote_entry entry = {};
+      entry.vote            = vote;
+      vote_pool.votes.push_back(entry);
+    }
+
+    return result;
+  }
+
+  std::vector<pool_vote_entry> const *voting_pool::add_pool_vote_if_unique(uint64_t latest_height,
+                                                                           const quorum_vote_t& vote,
+                                                                           cryptonote::vote_verification_context& vvc,
+                                                                           const service_nodes::testing_quorum &quorum)
+  {
+    std::vector<pool_vote_entry> const *result = nullptr;
+
+    if (!verify_vote(m_nettype, vote, latest_height, vvc, quorum))
+    {
+      LOG_PRINT_L1("Signature verification failed for deregister vote");
+      return result;
+    }
+
+    CRITICAL_REGION_LOCAL(m_lock);
     switch(vote.type)
     {
       default:
@@ -346,93 +419,28 @@ namespace service_nodes
 
       case quorum_type::uptime_deregister:
       {
-        {
-          uint64_t delta_height = latest_height - vote.block_height;
-          if (vote.block_height < latest_height && delta_height >= service_nodes::deregister_vote::VOTE_LIFETIME_BY_HEIGHT)
-          {
-            LOG_PRINT_L1("Received vote for height: " << vote.block_height
-                      << " and service node: "     << vote.deregister.worker_index
-                      << ", is older than: "       << service_nodes::deregister_vote::VOTE_LIFETIME_BY_HEIGHT
-                      << " blocks and has been rejected.");
-            vvc.m_invalid_block_height = true;
-          }
-          else if (vote.block_height > latest_height)
-          {
-            LOG_PRINT_L1("Received vote for height: " << vote.block_height
-                      << " and service node: "     << vote.deregister.worker_index
-                      << ", is newer than: "       << latest_height
-                      << " (latest block height) and has been rejected.");
-            vvc.m_invalid_block_height = true;
-          }
-
-          if (vvc.m_invalid_block_height)
-          {
-            vvc.m_verification_failed = true;
-            return result;
-          }
-        }
-
-        if (!verify_vote(m_nettype, vote, vvc, quorum))
-        {
-          LOG_PRINT_L1("Signature verification failed for deregister vote");
-          return result;
-        }
-
-        CRITICAL_REGION_LOCAL(m_lock);
         time_t const now = time(NULL);
         auto it = std::find_if(m_deregister_pool.begin(), m_deregister_pool.end(), [&vote](deregister_pool_entry const &entry) {
-            return (entry.block_height == vote.block_height && entry.worker_index == vote.deregister.worker_index);
+            return (entry.height == vote.block_height && entry.worker_index == vote.deregister.worker_index);
         });
 
         if (it == m_deregister_pool.end())
         {
           deregister_pool_entry pool_entry = {};
-          pool_entry.block_height          = vote.block_height;
+          pool_entry.height                = vote.block_height;
           pool_entry.worker_index          = vote.deregister.worker_index;
           m_deregister_pool.push_back(pool_entry);
           it = (m_deregister_pool.end() - 1);
         }
 
         deregister_pool_entry &pool_entry = (*it);
-        auto vote_it = std::find_if(pool_entry.votes.begin(), pool_entry.votes.end(), [&vote](pool_vote_entry const &pool_vote) {
-            return (pool_vote.vote.validator_index == vote.validator_index);
-        });
-
-        if (vote_it == pool_entry.votes.end())
-        {
-          vvc.m_added_to_pool   = true;
-          pool_vote_entry entry = {};
-          entry.vote            = vote;
-          pool_entry.votes.push_back(entry);
-        }
-
-        result.vote_unique = (vote_it == pool_entry.votes.end());
-        result.vote_valid  = true;
-        return result;
+        vvc.m_added_to_pool               = add_vote_to_pool_if_unique(pool_entry, vote);
+        result                            = &pool_entry.votes;
       }
       break;
 
       case quorum_type::checkpointing:
       {
-        // Check Vote Age
-        {
-          if (vote.block_height >= latest_height)
-            return result;
-
-          uint64_t vote_age = latest_height - vote.block_height;
-          if (vote_age > CHECKPOINT_VOTE_LIFETIME)
-            return result;
-        }
-
-        {
-          crypto::public_key const &voters_pub_key = quorum.validators[vote.validator_index];
-          if (!crypto::check_signature(vote.checkpoint.block_hash, voters_pub_key, vote.signature))
-          {
-            LOG_PRINT_L1("TODO(doyle): CHECKPOINTING(doyle): Writeme");
-            return result;
-          }
-        }
-
         // Get Matching Checkpoint
         auto it = std::find_if(m_checkpoint_pool.begin(), m_checkpoint_pool.end(), [&vote](checkpoint_pool_entry const &entry) {
             return (entry.height == vote.block_height && entry.hash == vote.checkpoint.block_hash);
@@ -447,29 +455,14 @@ namespace service_nodes
           it = (m_checkpoint_pool.end() - 1);
         }
 
-        // Add Vote if Unique to Checkpoint
         checkpoint_pool_entry &pool_entry = (*it);
-        auto vote_it = std::find_if(pool_entry.votes.begin(), pool_entry.votes.end(), [&vote](pool_vote_entry const &pool_vote) {
-            return (pool_vote.vote.validator_index == vote.validator_index);
-        });
-
-        // TODO(doyle): Refactor
-        if (vote_it == pool_entry.votes.end())
-        {
-          vvc.m_added_to_pool   = true;
-          pool_vote_entry entry = {};
-          entry.vote            = vote;
-          pool_entry.votes.push_back(entry);
-        }
-
-        result.vote_unique = (vote_it == pool_entry.votes.end());
-        result.vote_valid  = true;
-        result.votes       = &pool_entry.votes;
-        return result;
+        vvc.m_added_to_pool               = add_vote_to_pool_if_unique(pool_entry, vote);
+        result                            = &pool_entry.votes;
       }
       break;
     }
 
+    return result;
   }
 
   void voting_pool::remove_used_votes(std::vector<cryptonote::transaction> const &txs)
@@ -492,7 +485,7 @@ namespace service_nodes
       }
 
       auto it = std::find_if(m_deregister_pool.begin(), m_deregister_pool.end(), [&deregister](deregister_pool_entry const &entry){
-          return (entry.block_height == deregister.block_height) && (entry.worker_index == deregister.service_node_index);
+          return (entry.height == deregister.block_height) && (entry.worker_index == deregister.service_node_index);
       });
 
       if (it != m_deregister_pool.end())
@@ -500,22 +493,28 @@ namespace service_nodes
     }
   }
 
-  void voting_pool::remove_expired_votes(uint64_t height)
+  template <typename T>
+  static void cull_votes(std::vector<T> &vote_pool, uint64_t cull_height)
   {
-    if (height < deregister_vote::VOTE_LIFETIME_BY_HEIGHT)
-      return;
-
-    CRITICAL_REGION_LOCAL(m_lock);
-    uint64_t minimum_height = height - deregister_vote::VOTE_LIFETIME_BY_HEIGHT;
-    for (auto it = m_deregister_pool.begin(); it != m_deregister_pool.end(); ++it)
+    for (auto it = vote_pool.begin(); it != vote_pool.end(); ++it)
     {
-      const deregister_pool_entry &pool_entry = *it;
-      if (pool_entry.block_height < minimum_height)
+      const T &pool_entry = *it;
+      if (pool_entry.height < cull_height)
       {
-        it = m_deregister_pool.erase(it);
+        it = vote_pool.erase(it);
         it--;
       }
     }
+  }
+
+  void voting_pool::remove_expired_votes(uint64_t height)
+  {
+    CRITICAL_REGION_LOCAL(m_lock);
+    uint64_t deregister_cull_height = (height < deregister_vote::VOTE_LIFETIME_BY_HEIGHT) ? 0 : height - deregister_vote::VOTE_LIFETIME_BY_HEIGHT;
+    cull_votes(m_deregister_pool, deregister_cull_height);
+
+    uint64_t checkpoint_cull_height = (height < service_nodes::CHECKPOINT_VOTE_LIFETIME) ? 0 : height - service_nodes::CHECKPOINT_VOTE_LIFETIME;
+    cull_votes(m_checkpoint_pool, checkpoint_cull_height);
   }
 }; // namespace service_nodes
 

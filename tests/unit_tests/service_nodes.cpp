@@ -138,35 +138,36 @@ TEST(service_nodes, vote_validation)
   }
 
   // Valid vote
-  service_nodes::quorum_vote_t valid_vote = service_nodes::make_deregister_vote(10, voter_index, 1, service_node_voter.pub, service_node_voter.sec);
+  uint64_t block_height = 70;
+  service_nodes::quorum_vote_t valid_vote = service_nodes::make_deregister_vote(block_height, voter_index, 1 /*worker_index*/, service_node_voter.pub, service_node_voter.sec);
   {
     cryptonote::vote_verification_context vvc = {};
-    bool result = service_nodes::verify_vote(cryptonote::MAINNET, valid_vote, vvc, state);
+    bool result = service_nodes::verify_vote(cryptonote::MAINNET, valid_vote, block_height, vvc, state);
     if (!result)
       printf("%s\n", cryptonote::print_vote_verification_context(vvc, &valid_vote));
 
     ASSERT_TRUE(result);
   }
 
-  // Voters quorum index out of bounds
+  // Voters validator index out of bounds
   {
     auto vote            = valid_vote;
     vote.validator_index = state.validators.size() + 10;
     vote.signature       = service_nodes::make_signature_from_vote(vote, service_node_voter.pub, service_node_voter.sec);
 
     cryptonote::vote_verification_context vvc = {};
-    bool result                               = service_nodes::verify_vote(cryptonote::MAINNET, vote, vvc, state);
+    bool result                               = service_nodes::verify_vote(cryptonote::MAINNET, vote, block_height, vvc, state);
     ASSERT_FALSE(result);
   }
 
-  // Voters service node index out of bounds
+  // Voters worker index out of bounds
   {
     auto vote                    = valid_vote;
     vote.deregister.worker_index = state.workers.size() + 10;
     vote.signature               = service_nodes::make_signature_from_vote(vote, service_node_voter.pub, service_node_voter.sec);
 
     cryptonote::vote_verification_context vvc = {};
-    bool result = service_nodes::verify_vote(cryptonote::MAINNET, vote, vvc, state);
+    bool result = service_nodes::verify_vote(cryptonote::MAINNET, vote, block_height, vvc, state);
     ASSERT_FALSE(result);
   }
 
@@ -174,10 +175,24 @@ TEST(service_nodes, vote_validation)
   {
     auto vote                       = valid_vote;
     cryptonote::keypair other_voter = cryptonote::keypair::generate(hw::get_device("default"));
-    vote.signature                  = service_nodes::make_signature_from_vote(vote, service_node_voter.pub, service_node_voter.sec);
+    vote.signature                  = {};
 
     cryptonote::vote_verification_context vvc = {};
-    bool result                               = service_nodes::verify_vote(cryptonote::MAINNET, vote, vvc, state);
+    bool result                               = service_nodes::verify_vote(cryptonote::MAINNET, vote, block_height, vvc, state);
+    ASSERT_FALSE(result);
+  }
+
+  // Vote too old
+  {
+    cryptonote::vote_verification_context vvc = {};
+    bool result                               = service_nodes::verify_vote(cryptonote::MAINNET, valid_vote, 1 /*latest_height*/, vvc, state);
+    ASSERT_FALSE(result);
+  }
+
+  // Vote too far in the future
+  {
+    cryptonote::vote_verification_context vvc = {};
+    bool result                               = service_nodes::verify_vote(cryptonote::MAINNET, valid_vote, block_height + 10000, vvc, state);
     ASSERT_FALSE(result);
   }
 }

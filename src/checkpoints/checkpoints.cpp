@@ -129,56 +129,6 @@ namespace cryptonote
     return true;
   }
   //---------------------------------------------------------------------------
-  void checkpoints::block_added(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs)
-  {
-    uint64_t block_height = cryptonote::get_block_height(block);
-    int hard_fork_version = block.major_version;
-
-    if (hard_fork_version < network_version_12_checkpointing)
-      return;
-
-    if (block_height < service_nodes::CHECKPOINT_VOTE_LIFETIME)
-      return;
-
-    std::array<int, service_nodes::CHECKPOINT_QUORUM_SIZE> voting_set;
-    uint64_t cull_height = block_height - service_nodes::CHECKPOINT_VOTE_LIFETIME;
-    if (m_staging_points.empty())
-      return;
-
-    auto it = m_staging_points.begin();
-    if (it->first >= cull_height)
-      return;
-
-    std::vector<checkpoint_t> const &checkpoints = it->second;
-    for (checkpoint_t const &checkpoint : checkpoints)
-    {
-      for (service_nodes::voter_to_signature const &vote : checkpoint.signatures)
-      {
-        if (vote.validator_index > voting_set.size())
-          continue;
-
-        ++voting_set[vote.validator_index];
-      }
-    }
-
-    for (size_t quorum_index = 0; quorum_index < voting_set.size(); ++quorum_index)
-    {
-      int vote_count = voting_set[quorum_index];
-      if (vote_count != 1)
-      {
-        // TODO(doyle): deregister
-      }
-    }
-
-    m_staging_points.erase(it);
-  }
-  //---------------------------------------------------------------------------
-  void checkpoints::blockchain_detached(uint64_t height)
-  {
-    (void)height;
-    // TODO(doyle): Cull heights
-  }
-  //---------------------------------------------------------------------------
   bool checkpoints::add_checkpoint(uint64_t height, const std::string& hash_str)
   {
     crypto::hash h = crypto::null_hash;
@@ -193,16 +143,16 @@ namespace cryptonote
     }
     else
     {
-      checkpoint.type         = checkpoint_type::hardcoded;
-      checkpoint.height       = height;
-      checkpoint.block_hash   = h;
-      r = add_checkpoint(checkpoint);
+      checkpoint.type       = checkpoint_type::hardcoded;
+      checkpoint.height     = height;
+      checkpoint.block_hash = h;
+      r                     = update_checkpoint(checkpoint);
     }
 
     return r;
   }
   //---------------------------------------------------------------------------
-  bool checkpoints::add_checkpoint(checkpoint_t const &checkpoint)
+  bool checkpoints::update_checkpoint(checkpoint_t const &checkpoint)
   {
     // TODO(doyle): Verify signatures and hash check out
     std::array<size_t, service_nodes::CHECKPOINT_QUORUM_SIZE> unique_vote_set;

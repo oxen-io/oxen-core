@@ -129,22 +129,32 @@ namespace service_nodes
       return false;
     }
 
-    uint64_t latest_height                       = std::max(m_core.get_current_blockchain_height(), m_core.get_target_blockchain_height());
-    voting_pool::voting_result const vote_result = m_vote_pool.add_pool_vote(latest_height, vote, vvc, *quorum);
-    bool result = vote_result.vote_valid;
+    uint64_t latest_height                    = std::max(m_core.get_current_blockchain_height(), m_core.get_target_blockchain_height());
+    std::vector<pool_vote_entry> const *votes = m_vote_pool.add_pool_vote_if_unique(latest_height, vote, vvc, *quorum);
+    bool result                               = !vvc.m_verification_failed;
+
+    if (!vvc.m_added_to_pool) // NOTE: Not unique vote
+      return result;
 
     switch(vote.type)
     {
+      default:
+      {
+        LOG_PRINT_L1("Unhandled vote type with value: " << (int)vote.type);
+        assert("Unhandled vote type" == 0);
+        return false;
+      };
+
       case quorum_type::uptime_deregister:
       {
-        if (vote_result.vote_unique && vote_result.votes->size() >= UPTIME_MIN_VOTES_TO_KICK_SERVICE_NODE)
+        if (votes->size() >= UPTIME_MIN_VOTES_TO_KICK_SERVICE_NODE)
         {
           cryptonote::tx_extra_service_node_deregister deregister;
           deregister.block_height       = vote.block_height;
           deregister.service_node_index = vote.deregister.worker_index;
-          deregister.votes.reserve(vote_result.votes->size());
+          deregister.votes.reserve(votes->size());
 
-          for (pool_vote_entry const &pool_vote : (*vote_result.votes))
+          for (pool_vote_entry const &pool_vote : (*votes))
           {
             cryptonote::tx_extra_service_node_deregister::vote tx_vote = {};
             tx_vote.validator_index                                    = pool_vote.vote.validator_index;
@@ -182,15 +192,15 @@ namespace service_nodes
       // TODO(doyle): Not in this function but, need to add code for culling old checkpoints from the "staging" checkpoint pool.
       case quorum_type::checkpointing:
       {
-        if (vote_result.vote_unique && vote_result.votes->size() >= CHECKPOINT_MIN_VOTES)
+        if (votes->size() >= CHECKPOINT_MIN_VOTES)
         {
           cryptonote::checkpoint_t checkpoint = {};
           checkpoint.type                     = cryptonote::checkpoint_type::service_node;
           checkpoint.height                   = vote.block_height;
           checkpoint.block_hash               = vote.checkpoint.block_hash;
-          checkpoint.signatures.reserve(vote_result.votes->size());
+          checkpoint.signatures.reserve(votes->size());
 
-          for (pool_vote_entry const &pool_vote : (*vote_result.votes))
+          for (pool_vote_entry const &pool_vote : (*votes))
           {
             voter_to_signature vts = {};
             vts.validator_index    = pool_vote.vote.validator_index;

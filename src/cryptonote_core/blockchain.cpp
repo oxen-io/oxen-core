@@ -348,8 +348,6 @@ bool Blockchain::init(BlockchainDB* db, const network_type nettype, bool offline
 
   if (!m_checkpoints.init(m_nettype, m_db))
     throw std::runtime_error("Failed to initialize checkpoints");
-  hook_block_added(m_checkpoints);
-  hook_blockchain_detached(m_checkpoints);
 
   m_offline = offline;
   m_fixed_difficulty = fixed_difficulty;
@@ -4157,7 +4155,7 @@ bool Blockchain::update_checkpoints(const std::string& file_path)
 //------------------------------------------------------------------
 bool Blockchain::update_checkpoint(cryptonote::checkpoint_t const &checkpoint)
 {
-  bool result = m_checkpoints.add_checkpoint(checkpoint);
+  bool result = m_checkpoints.update_checkpoint(checkpoint);
   return result;
 }
 //------------------------------------------------------------------

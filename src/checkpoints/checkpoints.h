@@ -35,7 +35,6 @@
 #include "misc_log_ex.h"
 #include "crypto/hash.h"
 #include "cryptonote_config.h"
-#include "cryptonote_basic/cryptonote_basic_impl.h"
 #include "cryptonote_core/service_node_deregister.h"
 
 #define ADD_CHECKPOINT(h, hash)  CHECK_AND_ASSERT(add_checkpoint(h,  hash), false);
@@ -89,13 +88,8 @@ namespace cryptonote
    * either from a json file or via DNS from a checkpoint-hosting server.
    */
   class checkpoints
-    : public BlockAddedHook,
-      public BlockchainDetachedHook
   {
   public:
-    void block_added(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs) override;
-    void blockchain_detached(uint64_t height) override;
-
     /**
      * @brief adds a checkpoint to the container
      *
@@ -108,7 +102,7 @@ namespace cryptonote
      */
     bool add_checkpoint(uint64_t height, const std::string& hash_str);
 
-    bool add_checkpoint(checkpoint_t const &checkpoin);
+    bool update_checkpoint(checkpoint_t const &checkpoin);
 
     /**
      * @brief checks if there is a checkpoint in the future
@@ -173,8 +167,7 @@ namespace cryptonote
     bool init(network_type nettype, struct BlockchainDB *db);
 
   private:
-    BlockchainDB                                           *m_db;
-    std::unordered_map<uint64_t, std::vector<checkpoint_t>> m_staging_points; // Incomplete service node checkpoints being voted on
+    BlockchainDB *m_db;
   };
 
 }
