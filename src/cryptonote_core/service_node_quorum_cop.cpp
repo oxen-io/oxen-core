@@ -33,7 +33,6 @@
 #include "cryptonote_core.h"
 #include "version.h"
 #include "common/loki.h"
-#include "common/loki.h"
 
 #include "common/loki_integration_test_hooks.h"
 
@@ -142,7 +141,7 @@ namespace service_nodes
         {
           cryptonote::tx_extra_service_node_deregister deregister;
           deregister.block_height       = vote.block_height;
-          deregister.service_node_index = vote.deregister.service_node_index;
+          deregister.service_node_index = vote.deregister.worker_index;
           deregister.votes.reserve(vote_result.votes->size());
 
           for (pool_vote_entry const &pool_vote : (*vote_result.votes))
@@ -167,7 +166,7 @@ namespace service_nodes
             if (!result || tvc.m_verifivation_failed)
             {
               LOG_PRINT_L1("A full deregister tx for height: " << vote.block_height <<
-                           " and service node: " << vote.deregister.service_node_index <<
+                           " and service node: " << vote.deregister.worker_index <<
                            " could not be verified and was not added to the memory pool, reason: " <<
                            print_tx_verification_context(tvc, &deregister_tx));
             }
@@ -273,16 +272,9 @@ namespace service_nodes
         if (!vote_off_node)
           continue;
 
-        quorum_vote_t vote                 = {};
-        vote.deregister.service_node_index = node_index;
-        vote.block_height                  = m_uptime_proof_height;
-        vote.type                          = quorum_type::uptime_deregister;
-        vote.validator_index               = my_index_in_quorum;
-        vote.signature                     = service_nodes::sign_vote(vote, my_pubkey, my_seckey);
-
+        quorum_vote_t vote = service_nodes::make_deregister_vote(m_uptime_proof_height, my_index_in_quorum, node_index, my_pubkey, my_seckey);
         cryptonote::vote_verification_context vvc;
-        // TODO(doyle): Handle return bool?
-        handle_vote(vote, vvc);
+        handle_vote(vote, vvc); // TODO(doyle): Handle return bool?
       }
     }
   }

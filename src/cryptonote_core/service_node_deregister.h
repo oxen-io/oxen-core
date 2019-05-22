@@ -64,12 +64,7 @@ namespace service_nodes
   {
     static const uint64_t VOTE_LIFETIME_BY_HEIGHT       = BLOCKS_EXPECTED_IN_HOURS(2);
     static const uint64_t DEREGISTER_LIFETIME_BY_HEIGHT = VOTE_LIFETIME_BY_HEIGHT;
-    uint32_t service_node_index;
-
-    static bool verify(cryptonote::network_type nettype, const cryptonote::tx_extra_service_node_deregister& deregister,
-                       cryptonote::vote_verification_context& vvc,
-                       const service_nodes::testing_quorum &quorum);
-
+    uint32_t worker_index;
   };
 
   enum struct quorum_type
@@ -94,8 +89,12 @@ namespace service_nodes
     };
   };
 
-  bool              verify_vote(cryptonote::network_type nettype, const quorum_vote_t& vote, cryptonote::vote_verification_context &vvc, const service_nodes::testing_quorum &quorum);
-  crypto::signature sign_vote  (quorum_vote_t const &vote, const crypto::public_key& pub, const crypto::secret_key& sec);
+  quorum_vote_t     make_deregister_vote(uint64_t block_height, uint32_t validator_index, uint32_t worker_index, crypto::public_key const &pub_key, crypto::secret_key const &secret_key);
+
+  bool              verify_tx_deregister             (cryptonote::network_type nettype, const cryptonote::tx_extra_service_node_deregister& deregister, cryptonote::vote_verification_context& vvc, const service_nodes::testing_quorum &quorum);
+  bool              verify_vote                      (cryptonote::network_type nettype, const quorum_vote_t& vote, cryptonote::vote_verification_context &vvc, const service_nodes::testing_quorum &quorum);
+  crypto::signature make_signature_from_vote         (quorum_vote_t const &vote, const crypto::public_key& pub, const crypto::secret_key& sec);
+  crypto::signature make_signature_from_tx_deregister(cryptonote::tx_extra_service_node_deregister const &deregister, crypto::public_key const &pub, crypto::secret_key const &sec);
 
   // NOTE: This preserves the deregister vote format pre-checkpointing so that
   // up to the hardfork, we can still deserialize and serialize until we switch
@@ -146,7 +145,7 @@ namespace service_nodes
     struct deregister_pool_entry
     {
       uint64_t                     block_height;
-      uint32_t                     service_node_index;
+      uint32_t                     worker_index;
       std::vector<pool_vote_entry> votes;
     };
     std::vector<deregister_pool_entry> m_deregister_pool;

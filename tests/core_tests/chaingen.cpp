@@ -298,10 +298,9 @@ cryptonote::transaction linear_chain_generator::create_deregister_tx(const crypt
 
     const auto pk = reg->keys.pub;
     const auto sk = reg->keys.sec;
-    const auto signature =
-      service_nodes::deregister_vote::sign_vote(deregister.block_height, deregister.service_node_index, pk, sk);
 
-    deregister.votes.push_back({ signature, (uint32_t)voter.idx_in_quorum });
+    service_nodes::quorum_vote_t deregister_vote = service_nodes::make_deregister_vote(deregister.block_height, voter.idx_in_quorum, deregister.service_node_index, pk, sk);
+    deregister.votes.push_back({ deregister_vote.signature, (uint32_t)voter.idx_in_quorum });
   }
 
   if (commit) deregistration_buffer_.push_back(pk);

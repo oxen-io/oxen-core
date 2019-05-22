@@ -3090,7 +3090,7 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
         return false;
       }
 
-      if (!service_nodes::deregister_vote::verify(nettype(), deregister, tvc.m_vote_ctx, *quorum))
+      if (!service_nodes::verify_tx_deregister(nettype(), deregister, tvc.m_vote_ctx, *quorum))
       {
         tvc.m_verifivation_failed = true;
         MERROR_VER("tx " << get_transaction_hash(tx) << ": deregister tx could not be completely verified reason: " << print_vote_verification_context(tvc.m_vote_ctx));

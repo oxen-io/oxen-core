@@ -53,7 +53,7 @@ namespace service_nodes
       return false;
 
     legacy_vote.block_height           = vote.block_height;
-    legacy_vote.service_node_index     = vote.deregister.service_node_index;
+    legacy_vote.service_node_index     = vote.deregister.worker_index;
     legacy_vote.voters_quorum_index    = vote.validator_index;
     legacy_vote.signature              = vote.signature;
     return true;
@@ -61,12 +61,12 @@ namespace service_nodes
 
   quorum_vote_t convert_legacy_deregister_vote(legacy_deregister_vote const &vote)
   {
-    quorum_vote_t result                 = {};
-    result.type                          = quorum_type::uptime_deregister;
-    result.block_height                  = vote.block_height;
-    result.signature                     = vote.signature;
-    result.validator_index               = vote.voters_quorum_index;
-    result.deregister.service_node_index = vote.service_node_index;
+    quorum_vote_t result           = {};
+    result.type                    = quorum_type::uptime_deregister;
+    result.block_height            = vote.block_height;
+    result.signature               = vote.signature;
+    result.validator_index         = vote.voters_quorum_index;
+    result.deregister.worker_index = vote.service_node_index;
     return result;
   }
 
@@ -83,7 +83,7 @@ namespace service_nodes
     return result;
   }
 
-  crypto::signature sign_vote(quorum_vote_t const &vote, const crypto::public_key& pub, const crypto::secret_key& sec)
+  crypto::signature make_signature_from_vote(quorum_vote_t const &vote, const crypto::public_key& pub, const crypto::secret_key& sec)
   {
     crypto::signature result = {};
     switch(vote.type)
@@ -97,7 +97,7 @@ namespace service_nodes
 
       case quorum_type::uptime_deregister:
       {
-        crypto::hash hash = make_deregister_vote_hash(vote.block_height, vote.deregister.service_node_index);
+        crypto::hash hash = make_deregister_vote_hash(vote.block_height, vote.deregister.worker_index);
         crypto::generate_signature(hash, pub, sec, result);
       }
       break;
@@ -109,6 +109,14 @@ namespace service_nodes
       break;
     }
     
+    return result;
+  }
+
+  crypto::signature make_signature_from_tx_deregister(cryptonote::tx_extra_service_node_deregister const &deregister, crypto::public_key const &pub, crypto::secret_key const &sec)
+  {
+    crypto::signature result;
+    crypto::hash hash = make_deregister_vote_hash(deregister.block_height, deregister.service_node_index);
+    crypto::generate_signature(hash, pub, sec, result);
     return result;
   }
 
@@ -134,9 +142,10 @@ namespace service_nodes
     return true;
   }
 
-  bool deregister_vote::verify(cryptonote::network_type nettype, const cryptonote::tx_extra_service_node_deregister& deregister,
-                               cryptonote::vote_verification_context &vvc,
-                               const service_nodes::testing_quorum &quorum)
+  bool verify_tx_deregister(cryptonote::network_type nettype,
+                            const cryptonote::tx_extra_service_node_deregister &deregister,
+                            cryptonote::vote_verification_context &vvc,
+                            const service_nodes::testing_quorum &quorum)
   {
     if (deregister.votes.size() < service_nodes::UPTIME_MIN_VOTES_TO_KICK_SERVICE_NODE)
     {
@@ -155,7 +164,7 @@ namespace service_nodes
       return false;
 
     crypto::hash const hash = make_deregister_vote_hash(deregister.block_height, deregister.service_node_index);
-    std::array<int, service_nodes::UPTIME_QUORUM_SIZE> validator_set;
+    std::array<int, service_nodes::UPTIME_QUORUM_SIZE> validator_set = {};
     for (const cryptonote::tx_extra_service_node_deregister::vote& vote : deregister.votes)
     {
       if (!bounds_check_validator_index(quorum, vote.validator_index, vvc))
@@ -173,10 +182,22 @@ namespace service_nodes
       {
         LOG_PRINT_L1("Invalid signatures for votes");
         vvc.m_verification_failed = true;
+        return false;
       }
     }
 
     return true;
+  }
+
+  quorum_vote_t make_deregister_vote(uint64_t block_height, uint32_t validator_index, uint32_t worker_index, crypto::public_key const &pub_key, crypto::secret_key const &sec_key)
+  {
+    quorum_vote_t result           = {};
+    result.type                    = quorum_type::uptime_deregister;
+    result.block_height            = block_height;
+    result.validator_index         = validator_index;
+    result.deregister.worker_index = worker_index;
+    result.signature               = make_signature_from_vote(result, pub_key, sec_key);
+    return result;
   }
 
   bool verify_vote(cryptonote::network_type nettype, const quorum_vote_t& vote, cryptonote::vote_verification_context &vvc, const service_nodes::testing_quorum &quorum)
@@ -197,7 +218,7 @@ namespace service_nodes
 
       case quorum_type::uptime_deregister:
       {
-        crypto::hash hash = make_deregister_vote_hash(vote.block_height, vote.deregister.service_node_index);
+        crypto::hash hash = make_deregister_vote_hash(vote.block_height, vote.deregister.worker_index);
         result            = crypto::check_signature(hash, key, vote.signature);
       }
       break;
@@ -234,7 +255,7 @@ namespace service_nodes
         {
           auto it = std::find_if(m_deregister_pool.begin(), m_deregister_pool.end(), [find_vote](deregister_pool_entry const &entry) {
               return (entry.block_height == find_vote.block_height &&
-                      entry.service_node_index == find_vote.deregister.service_node_index);
+                      entry.worker_index == find_vote.deregister.worker_index);
           });
 
           if (it == m_deregister_pool.end())
@@ -330,7 +351,7 @@ namespace service_nodes
           if (vote.block_height < latest_height && delta_height >= service_nodes::deregister_vote::VOTE_LIFETIME_BY_HEIGHT)
           {
             LOG_PRINT_L1("Received vote for height: " << vote.block_height
-                      << " and service node: "     << vote.deregister.service_node_index
+                      << " and service node: "     << vote.deregister.worker_index
                       << ", is older than: "       << service_nodes::deregister_vote::VOTE_LIFETIME_BY_HEIGHT
                       << " blocks and has been rejected.");
             vvc.m_invalid_block_height = true;
@@ -338,7 +359,7 @@ namespace service_nodes
           else if (vote.block_height > latest_height)
           {
             LOG_PRINT_L1("Received vote for height: " << vote.block_height
-                      << " and service node: "     << vote.deregister.service_node_index
+                      << " and service node: "     << vote.deregister.worker_index
                       << ", is newer than: "       << latest_height
                       << " (latest block height) and has been rejected.");
             vvc.m_invalid_block_height = true;
@@ -360,14 +381,14 @@ namespace service_nodes
         CRITICAL_REGION_LOCAL(m_lock);
         time_t const now = time(NULL);
         auto it = std::find_if(m_deregister_pool.begin(), m_deregister_pool.end(), [&vote](deregister_pool_entry const &entry) {
-            return (entry.block_height == vote.block_height && entry.service_node_index == vote.deregister.service_node_index);
+            return (entry.block_height == vote.block_height && entry.worker_index == vote.deregister.worker_index);
         });
 
         if (it == m_deregister_pool.end())
         {
           deregister_pool_entry pool_entry = {};
           pool_entry.block_height          = vote.block_height;
-          pool_entry.service_node_index    = vote.deregister.service_node_index;
+          pool_entry.worker_index          = vote.deregister.worker_index;
           m_deregister_pool.push_back(pool_entry);
           it = (m_deregister_pool.end() - 1);
         }
@@ -471,7 +492,7 @@ namespace service_nodes
       }
 
       auto it = std::find_if(m_deregister_pool.begin(), m_deregister_pool.end(), [&deregister](deregister_pool_entry const &entry){
-          return (entry.block_height == deregister.block_height) && (entry.service_node_index == deregister.service_node_index);
+          return (entry.block_height == deregister.block_height) && (entry.worker_index == deregister.service_node_index);
       });
 
       if (it != m_deregister_pool.end())
