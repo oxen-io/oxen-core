@@ -54,6 +54,7 @@ using namespace epee;
 #include "core_rpc_server_error_codes.h"
 #include "p2p/net_node.h"
 #include "version.h"
+#include <sodium.h>
 
 #undef LOKI_DEFAULT_LOG_CATEGORY
 #define LOKI_DEFAULT_LOG_CATEGORY "daemon.rpc"
@@ -2779,6 +2780,142 @@ namespace cryptonote
     auto req_all = req;
     req_all.service_node_pubkeys.clear();
     return on_get_service_nodes(req_all, res, error_resp);
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+  /// Start with seed and perform a series of computation arriving at the answer
+  static uint64_t perform_blockchain_test_routine(const cryptonote::core& core,
+                                                  uint64_t max_height,
+                                                  uint64_t seed)
+  {
+    /// Should be sufficiently large to make it impractical
+    /// to query remote nodes
+    constexpr size_t NUM_ITERATIONS = 1000;
+
+    std::mt19937_64 mt(seed);
+
+    crypto::hash hash;
+
+    uint64_t height = 0;
+
+    for (auto i = 0u; i < NUM_ITERATIONS; ++i)
+    {
+      /// incorporate seed so that the results couldn't be cached;
+      /// increment seed to break cycles;
+      height = height ^ (seed++);
+      height = height % (max_height + 1);
+
+      hash = core.get_block_id_by_height(height);
+
+      using blob_t = cryptonote::blobdata;
+      using block_pair_t = std::pair<blob_t, block>;
+
+      /// pick a random byte from the block blob
+      std::vector<block_pair_t> blocks;
+      std::vector<blob_t> txs;
+      if (!core.get_blockchain_storage().get_blocks(height, 1, blocks, txs)) {
+        MERROR("Could not query block at requested height: " << height);
+        return 0;
+      }
+      const blob_t &blob = blocks.at(0).first;
+      const uint64_t byte_idx = service_nodes::uniform_distribution_portable(mt, blob.size());
+      uint8_t byte = blob[byte_idx];
+
+      /// pick a random byte from a random transaction blob if found
+      if (!txs.empty()) {
+        const uint64_t tx_idx = service_nodes::uniform_distribution_portable(mt, txs.size());
+        const blob_t &tx_blob = txs[tx_idx];
+
+        /// not sure if this can be empty, so check to be safe
+        if (!tx_blob.empty()) {
+          const uint64_t byte_idx = service_nodes::uniform_distribution_portable(mt, tx_blob.size());
+          const uint8_t tx_byte = tx_blob[byte_idx];
+          byte ^= tx_byte;
+        }
+
+      }
+
+      {
+        /// reduce hash down to 8 bytes
+        const uint64_t n1 = *reinterpret_cast<uint64_t*>(hash.data);
+        const uint64_t n2 = *reinterpret_cast<uint64_t*>(hash.data + 8);
+        const uint64_t n3 = *reinterpret_cast<uint64_t*>(hash.data + 16);
+        const uint64_t n4 = *reinterpret_cast<uint64_t*>(hash.data + 24);
+
+        /// Note that byte (obviously) only affects the lower byte
+        /// of height, but that should be sufficient in this case
+        height = n1 ^ n2 ^ n3 ^ n4 ^ byte;
+      }
+
+    }
+
+    return height;
+  }
+
+  //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_perform_blockchain_test(const COMMAND_RPC_PERFORM_BLOCKCHAIN_TEST::request& req,
+                                                   COMMAND_RPC_PERFORM_BLOCKCHAIN_TEST::response& res,
+                                                   epee::json_rpc::error& error_resp,
+                                                   const connection_context* ctx)
+  {
+    PERF_TIMER(on_perform_blockchain_test);
+
+    /// 1. Check signature
+    {
+      crypto::public_key my_pubkey;
+      crypto::secret_key my_seckey;
+      if (!m_core.get_service_node_keys(my_pubkey, my_seckey)) {
+        error_resp.code    = CORE_RPC_ERROR_CODE_WRONG_PARAM;
+        error_resp.message = "Daemon has not been started in service node mode, please relaunch with --service-node flag.";
+        return false;
+      }
+
+      crypto::signature sig;
+      if (!string_tools::hex_to_pod(req.signature, sig)) {
+        error_resp.code    = CORE_RPC_ERROR_CODE_WRONG_PARAM;
+        error_resp.message = "Could not parse signature.";
+        return false;
+      }
+
+      crypto::hash hash;
+      static_assert(crypto_generichash_BYTES == crypto::HASH_SIZE, "Wrong hash size!");
+      crypto_generichash(reinterpret_cast<unsigned char*>(hash.data),
+                         crypto_generichash_BYTES,
+                         reinterpret_cast<const unsigned char*>(req.signed_params.c_str()),
+                         req.signed_params.size(),
+                         nullptr,
+                         0);
+
+      if (!check_signature(hash, my_pubkey, sig)) {
+        error_resp.code    = CORE_RPC_ERROR_CODE_WRONG_PARAM;
+        error_resp.message = "Incorrect signature.";
+        return false;
+      }
+    }
+
+    /// 2. Compute the answer
+    COMMAND_RPC_PERFORM_BLOCKCHAIN_TEST::req_params params;
+
+    if (!epee::serialization::load_t_from_json(params, req.signed_params)) {
+      error_resp.code    = CORE_RPC_ERROR_CODE_WRONG_PARAM;
+      error_resp.message = "Could not parse test parameters.";
+      return true;
+    }
+
+    uint64_t max_height = params.max_height;
+    uint64_t seed = params.seed;
+
+    if (m_core.get_current_blockchain_height() <= max_height) {
+      error_resp.code = CORE_RPC_ERROR_CODE_TOO_BIG_HEIGHT;
+      res.status = "Requested block height too big.";
+      return true;
+    }
+
+    uint64_t res_height = perform_blockchain_test_routine(m_core, max_height, seed);
+
+    res.status = CORE_RPC_STATUS_OK;
+    res.res_height = res_height;
+
+    return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::on_get_staking_requirement(const COMMAND_RPC_GET_STAKING_REQUIREMENT::request& req, COMMAND_RPC_GET_STAKING_REQUIREMENT::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
