@@ -294,7 +294,7 @@ namespace service_nodes
         {
           LOG_PRINT_L1("Unhandled find_vote type with value: " << (int)find_vote.type);
           assert("Unhandled find_vote type" == 0);
-          return;
+          break;
         };
 
         case quorum_type::uptime_deregister:
@@ -305,7 +305,7 @@ namespace service_nodes
           });
 
           if (it == m_deregister_pool.end())
-            continue;
+            break;
 
           vote_pool = &it->votes;
         }
@@ -318,7 +318,7 @@ namespace service_nodes
           });
 
           if (it == m_checkpoint_pool.end())
-            continue;
+            break;
 
           vote_pool = &it->votes;
         }
@@ -345,9 +345,9 @@ namespace service_nodes
 
     // TODO(doyle): Rate-limiting: A better threshold value that follows suite with transaction relay time back-off
 #if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
-    const time_t TIME_BETWEEN_RELAY = 60 * 2;
-#else
     const time_t TIME_BETWEEN_RELAY = 0;
+#else
+    const time_t TIME_BETWEEN_RELAY = 60 * 2;
 #endif
 
     time_t const now = time(nullptr);
@@ -389,6 +389,7 @@ namespace service_nodes
       pool_vote_entry entry = {};
       entry.vote            = vote;
       vote_pool.votes.push_back(entry);
+      result                = true;
     }
 
     return result;

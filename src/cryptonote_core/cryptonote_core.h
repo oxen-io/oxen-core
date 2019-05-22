@@ -890,11 +890,11 @@ namespace cryptonote
      bool check_blockchain_pruning();
 
      /**
-      * @brief attempt to relay the pooled deregister votes
+      * @brief attempt to relay the pooled checkpoint votes
       *
       * @return true, necessary for binding this function to a periodic invoker
       */
-     bool relay_deregister_votes();
+     bool relay_service_node_votes();
 
    private:
 
@@ -1050,13 +1050,6 @@ namespace cryptonote
       * @return true
       */
      bool relay_txpool_transactions();
-
-     /**
-      * @brief attempt to relay the pooled checkpoint votes
-      *
-      * @return true, necessary for binding this function to a periodic invoker
-      */
-     bool relay_service_node_votes();
 
      /**
       * @brief checks DNS versions
