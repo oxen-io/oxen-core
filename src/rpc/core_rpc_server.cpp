@@ -30,6 +30,7 @@
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
 #include <boost/preprocessor/stringize.hpp>
+#include <boost/endian/conversion.hpp>
 #include "include_base_utils.h"
 #include "string_tools.h"
 using namespace epee;
@@ -2795,13 +2796,10 @@ namespace cryptonote
 
     crypto::hash hash;
 
-    uint64_t height = 0;
+    uint64_t height = seed;
 
     for (auto i = 0u; i < NUM_ITERATIONS; ++i)
     {
-      /// incorporate seed so that the results couldn't be cached;
-      /// increment seed to break cycles;
-      height = height ^ (seed++);
       height = height % (max_height + 1);
 
       hash = core.get_block_id_by_height(height);
@@ -2836,14 +2834,15 @@ namespace cryptonote
 
       {
         /// reduce hash down to 8 bytes
-        const uint64_t n1 = *reinterpret_cast<uint64_t*>(hash.data);
-        const uint64_t n2 = *reinterpret_cast<uint64_t*>(hash.data + 8);
-        const uint64_t n3 = *reinterpret_cast<uint64_t*>(hash.data + 16);
-        const uint64_t n4 = *reinterpret_cast<uint64_t*>(hash.data + 24);
+        uint64_t n[4];
+        std::memcpy(n, hash.data, sizeof(n));
+        for (auto &ni : n) {
+          boost::endian::little_to_native_inplace(ni);
+        }
 
         /// Note that byte (obviously) only affects the lower byte
         /// of height, but that should be sufficient in this case
-        height = n1 ^ n2 ^ n3 ^ n4 ^ byte;
+        height = n[0] ^ n[1] ^ n[2] ^ n[3] ^ byte;
       }
 
     }
