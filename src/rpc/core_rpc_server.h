@@ -185,7 +185,7 @@ namespace cryptonote
         MAP_JON_RPC_WE("get_all_service_nodes",                  on_get_all_service_nodes, COMMAND_RPC_GET_SERVICE_NODES)
         MAP_JON_RPC_WE("get_all_service_nodes_keys",             on_get_all_service_nodes_keys, COMMAND_RPC_GET_ALL_SERVICE_NODES_KEYS)
         MAP_JON_RPC_WE("get_staking_requirement",                on_get_staking_requirement, COMMAND_RPC_GET_STAKING_REQUIREMENT)
-        MAP_JON_RPC_WE("perform_blockchain_test",                on_perform_blockchain_test, COMMAND_RPC_PERFORM_BLOCKCHAIN_TEST)
+        MAP_JON_RPC_WE_IF("perform_blockchain_test",             on_perform_blockchain_test, COMMAND_RPC_PERFORM_BLOCKCHAIN_TEST, !m_restricted)
       END_JSON_RPC_MAP()
     END_URI_MAP2()
 

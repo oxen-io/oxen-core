@@ -55,7 +55,6 @@ using namespace epee;
 #include "core_rpc_server_error_codes.h"
 #include "p2p/net_node.h"
 #include "version.h"
-#include <sodium.h>
 
 #undef LOKI_DEFAULT_LOG_CATEGORY
 #define LOKI_DEFAULT_LOG_CATEGORY "daemon.rpc"
@@ -2858,50 +2857,9 @@ namespace cryptonote
   {
     PERF_TIMER(on_perform_blockchain_test);
 
-    /// 1. Check signature
-    {
-      crypto::public_key my_pubkey;
-      crypto::secret_key my_seckey;
-      if (!m_core.get_service_node_keys(my_pubkey, my_seckey)) {
-        error_resp.code    = CORE_RPC_ERROR_CODE_WRONG_PARAM;
-        error_resp.message = "Daemon has not been started in service node mode, please relaunch with --service-node flag.";
-        return false;
-      }
 
-      crypto::signature sig;
-      if (!string_tools::hex_to_pod(req.signature, sig)) {
-        error_resp.code    = CORE_RPC_ERROR_CODE_WRONG_PARAM;
-        error_resp.message = "Could not parse signature.";
-        return false;
-      }
-
-      crypto::hash hash;
-      static_assert(crypto_generichash_BYTES == crypto::HASH_SIZE, "Wrong hash size!");
-      crypto_generichash(reinterpret_cast<unsigned char*>(hash.data),
-                         crypto_generichash_BYTES,
-                         reinterpret_cast<const unsigned char*>(req.signed_params.c_str()),
-                         req.signed_params.size(),
-                         nullptr,
-                         0);
-
-      if (!check_signature(hash, my_pubkey, sig)) {
-        error_resp.code    = CORE_RPC_ERROR_CODE_WRONG_PARAM;
-        error_resp.message = "Incorrect signature.";
-        return false;
-      }
-    }
-
-    /// 2. Compute the answer
-    COMMAND_RPC_PERFORM_BLOCKCHAIN_TEST::req_params params;
-
-    if (!epee::serialization::load_t_from_json(params, req.signed_params)) {
-      error_resp.code    = CORE_RPC_ERROR_CODE_WRONG_PARAM;
-      error_resp.message = "Could not parse test parameters.";
-      return true;
-    }
-
-    uint64_t max_height = params.max_height;
-    uint64_t seed = params.seed;
+    uint64_t max_height = req.max_height;
+    uint64_t seed = req.seed;
 
     if (m_core.get_current_blockchain_height() <= max_height) {
       error_resp.code = CORE_RPC_ERROR_CODE_TOO_BIG_HEIGHT;

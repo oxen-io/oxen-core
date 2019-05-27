@@ -2702,25 +2702,13 @@ namespace cryptonote
   {
     struct request
     {
-      /// json encoded req_params; parsing delayed so
-      /// that we can verify the signature first
-      std::string signed_params;
-      std::string signature;
-
-      BEGIN_KV_SERIALIZE_MAP()
-      KV_SERIALIZE(signed_params)
-      KV_SERIALIZE(signature)
-      END_KV_SERIALIZE_MAP()
-    };
-
-    struct req_params {
       uint64_t max_height;
       uint64_t seed;
 
-        BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE(max_height)
-        KV_SERIALIZE(seed)
-        END_KV_SERIALIZE_MAP()
+      BEGIN_KV_SERIALIZE_MAP()
+      KV_SERIALIZE(max_height)
+      KV_SERIALIZE(seed)
+      END_KV_SERIALIZE_MAP()
     };
 
     struct response
