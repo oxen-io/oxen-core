@@ -51,7 +51,7 @@ namespace service_nodes
 
   struct voter_to_signature
   {
-    uint16_t          validator_index;
+    uint16_t          voter_index;
     crypto::signature signature;
   };
 
@@ -64,7 +64,7 @@ namespace service_nodes
   {
     static const uint64_t VOTE_LIFETIME_BY_HEIGHT       = BLOCKS_EXPECTED_IN_HOURS(2);
     static const uint64_t DEREGISTER_LIFETIME_BY_HEIGHT = VOTE_LIFETIME_BY_HEIGHT;
-    uint32_t worker_index;
+    uint16_t worker_index;
   };
 
   enum struct quorum_type
@@ -74,12 +74,14 @@ namespace service_nodes
     count,
   };
 
+  enum struct quorum_group { invalid, validator, worker };
   struct quorum_vote_t
   {
     size_t            version = 0;
     quorum_type       type;
     uint64_t          block_height;
-    uint32_t          validator_index;
+    quorum_group      group;
+    uint16_t          index_in_group;
     crypto::signature signature;
 
     union
@@ -89,7 +91,7 @@ namespace service_nodes
     };
   };
 
-  quorum_vote_t     make_deregister_vote(uint64_t block_height, uint32_t validator_index, uint32_t worker_index, crypto::public_key const &pub_key, crypto::secret_key const &secret_key);
+  quorum_vote_t     make_deregister_vote(uint64_t block_height, uint16_t index_in_group, uint16_t worker_index, crypto::public_key const &pub_key, crypto::secret_key const &secret_key);
 
   bool              verify_tx_deregister             (cryptonote::network_type nettype, const cryptonote::tx_extra_service_node_deregister& deregister, cryptonote::vote_verification_context& vvc, const service_nodes::testing_quorum &quorum);
   bool              verify_vote                      (cryptonote::network_type nettype, const quorum_vote_t& vote, uint64_t latest_height, cryptonote::vote_verification_context &vvc, const service_nodes::testing_quorum &quorum);
@@ -121,10 +123,10 @@ namespace service_nodes
     cryptonote::network_type m_nettype = cryptonote::UNDEFINED;
 
     // return: The vector of votes if the vote is valid (and even if it is not unique) otherwise nullptr
-    std::vector<pool_vote_entry> const *add_pool_vote_if_unique(uint64_t latest_height,
-                                                                const quorum_vote_t& vote,
-                                                                cryptonote::vote_verification_context& vvc,
-                                                                const service_nodes::testing_quorum &quorum);
+    std::vector<pool_vote_entry> add_pool_vote_if_unique(uint64_t latest_height,
+                                                         const quorum_vote_t& vote,
+                                                         cryptonote::vote_verification_context& vvc,
+                                                         const service_nodes::testing_quorum &quorum);
 
     // TODO(loki): Review relay behaviour and all the cases when it should be triggered
     void                         set_relayed         (const std::vector<quorum_vote_t>& votes);

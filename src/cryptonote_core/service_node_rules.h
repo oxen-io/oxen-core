@@ -13,11 +13,17 @@ namespace service_nodes {
   constexpr size_t   UPTIME_MIN_VOTES_TO_KICK_SERVICE_NODE = 7;
   constexpr size_t   UPTIME_NTH_OF_THE_NETWORK_TO_TEST     = 100;
   constexpr size_t   UPTIME_MIN_NODES_TO_TEST              = 50;
+  constexpr uint64_t UPTIME_VOTE_LIFETIME                  = BLOCKS_EXPECTED_IN_HOURS(2);
 
   constexpr uint64_t CHECKPOINT_INTERVAL                   = 4;
   constexpr uint64_t CHECKPOINT_VOTE_LIFETIME              = ((CHECKPOINT_INTERVAL * 3) - 1);
+#if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
+  constexpr size_t   CHECKPOINT_QUORUM_SIZE                = 2;
+  constexpr size_t   CHECKPOINT_MIN_VOTES                  = 2;
+#else
   constexpr size_t   CHECKPOINT_QUORUM_SIZE                = 20;
   constexpr size_t   CHECKPOINT_MIN_VOTES                  = 18;
+#endif
 
   static_assert(UPTIME_MIN_VOTES_TO_KICK_SERVICE_NODE <= UPTIME_QUORUM_SIZE, "The number of votes required to kick can't exceed the actual quorum size, otherwise we never kick.");
   static_assert(CHECKPOINT_MIN_VOTES <= CHECKPOINT_QUORUM_SIZE, "The number of votes required to kick can't exceed the actual quorum size, otherwise we never kick.");
@@ -42,18 +48,33 @@ namespace service_nodes {
   constexpr int      MAX_KEY_IMAGES_PER_CONTRIBUTOR   = 1;
   constexpr uint64_t KEY_IMAGE_AWAITING_UNLOCK_HEIGHT = 0;
 
-  using swarm_id_t = uint64_t;
-  constexpr swarm_id_t   UNASSIGNED_SWARM_ID          = UINT64_MAX;
+  using swarm_id_t                         = uint64_t;
+  constexpr swarm_id_t UNASSIGNED_SWARM_ID = UINT64_MAX;
 
-inline uint64_t staking_num_lock_blocks(cryptonote::network_type nettype)
-{
-  switch(nettype)
+  inline uint64_t staking_num_lock_blocks(cryptonote::network_type nettype)
   {
+    switch (nettype)
+    {
       case cryptonote::FAKECHAIN: return 30;
       case cryptonote::TESTNET:   return BLOCKS_EXPECTED_IN_DAYS(2);
       default:                    return BLOCKS_EXPECTED_IN_DAYS(30);
+    }
   }
-}
+
+  inline uint64_t quorum_vote_lifetime(quorum_type type)
+  {
+    switch (type)
+    {
+      case quorum_type::uptime_deregister: return UPTIME_VOTE_LIFETIME;
+      case quorum_type::checkpointing:     return CHECKPOINT_VOTE_LIFETIME;
+      default:
+      {
+        assert("Unhandled enum type" == 0);
+        return 0;
+      }
+      break;
+    }
+  }
 
 static_assert(STAKING_PORTIONS != UINT64_MAX, "UINT64_MAX is used as the invalid value for failing to calculate the min_node_contribution");
 // return: UINT64_MAX if (num_contributions > the max number of contributions), otherwise the amount in loki atomic units

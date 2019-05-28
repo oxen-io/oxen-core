@@ -88,12 +88,12 @@ namespace service_nodes
     void       generate_uptime_proof_request(cryptonote::NOTIFY_UPTIME_PROOF::request& req) const;
 
   private:
-    void process_uptime_quorum    (cryptonote::block const &block);
-    void process_checkpoint_quorum(cryptonote::block const &block);
+    void process_quorums(cryptonote::block const &block);
 
     cryptonote::core& m_core;
     voting_pool       m_vote_pool;
     uint64_t          m_uptime_proof_height;
+    uint64_t          m_last_checkpointed_height;
 
     std::unordered_map<crypto::public_key, proof_info> m_uptime_proof_seen;
     mutable epee::critical_section m_lock;

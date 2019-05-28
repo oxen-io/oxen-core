@@ -101,10 +101,11 @@ namespace cryptonote
     return true;
   }
 
-  static bool get_checkpoint_from_db_safe(BlockchainDB const *db, uint64_t height, checkpoint_t &checkpoint)
+  static bool get_checkpoint_from_db_safe(BlockchainDB *db, uint64_t height, checkpoint_t &checkpoint)
   {
     try
     {
+      auto guard = db_rtxn_guard(db);
       return db->get_block_checkpoint(height, checkpoint);
     }
     catch (const std::exception &e)
@@ -118,6 +119,7 @@ namespace cryptonote
   {
     try
     {
+      auto guard = db_wtxn_guard(db);
       db->update_block_checkpoint(checkpoint);
     }
     catch (const std::exception& e)
@@ -155,15 +157,14 @@ namespace cryptonote
   bool checkpoints::update_checkpoint(checkpoint_t const &checkpoint)
   {
     // TODO(doyle): Verify signatures and hash check out
-    std::array<size_t, service_nodes::CHECKPOINT_QUORUM_SIZE> unique_vote_set;
+    std::array<size_t, service_nodes::CHECKPOINT_QUORUM_SIZE> unique_vote_set = {};
     if (checkpoint.type == checkpoint_type::service_node)
     {
       CHECK_AND_ASSERT_MES(checkpoint.signatures.size() >= service_nodes::CHECKPOINT_MIN_VOTES, false, "Checkpoint has insufficient signatures to be considered");
       for (service_nodes::voter_to_signature const &vote_to_sig : checkpoint.signatures)
       {
-        ++unique_vote_set[vote_to_sig.validator_index];
-        CHECK_AND_ASSERT_MES(vote_to_sig.validator_index < service_nodes::CHECKPOINT_QUORUM_SIZE, false, "Vote is indexing out of bounds");
-        CHECK_AND_ASSERT_MES(unique_vote_set[vote_to_sig.validator_index] < service_nodes::CHECKPOINT_QUORUM_SIZE, false, "Voter is trying to vote twice");
+        CHECK_AND_ASSERT_MES(vote_to_sig.voter_index < service_nodes::CHECKPOINT_QUORUM_SIZE, false, "Vote is indexing out of bounds");
+        CHECK_AND_ASSERT_MES(++unique_vote_set[vote_to_sig.voter_index] >= 1, false, "Voter is trying to vote twice");
       }
     }
     else
@@ -254,7 +255,6 @@ namespace cryptonote
     *this = {};
     m_db = db;
 
-    db_wtxn_guard txn_guard(m_db);
 #if !defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
     if (nettype == MAINNET)
     {

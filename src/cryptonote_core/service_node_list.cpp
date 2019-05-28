@@ -1308,17 +1308,15 @@ namespace service_nodes
 
       if (type == quorum_type::uptime_deregister)
       {
-        num_validators             = std::min(snode_list.size(), UPTIME_QUORUM_SIZE);
+        num_validators             = std::min(pub_keys_indexes.size(), UPTIME_QUORUM_SIZE);
         size_t num_remaining_nodes = pub_keys_indexes.size() - num_validators;
         num_workers                = std::max(num_remaining_nodes/UPTIME_NTH_OF_THE_NETWORK_TO_TEST, std::min(UPTIME_MIN_NODES_TO_TEST, num_remaining_nodes));
       }
       else if (type == quorum_type::checkpointing)
       {
-        if (snode_list.size() < (CHECKPOINT_QUORUM_SIZE * 2))
-          continue;
-
-        num_validators = CHECKPOINT_QUORUM_SIZE;
-        num_workers    = CHECKPOINT_QUORUM_SIZE;
+        // num_validators             = std::min(pub_keys_indexes.size(), CHECKPOINT_QUORUM_SIZE);
+        size_t num_remaining_nodes = pub_keys_indexes.size() - num_validators;
+        num_workers                = std::min(num_remaining_nodes, CHECKPOINT_QUORUM_SIZE);
       }
       else
       {

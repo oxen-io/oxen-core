@@ -54,7 +54,7 @@ namespace service_nodes
 
     legacy_vote.block_height           = vote.block_height;
     legacy_vote.service_node_index     = vote.deregister.worker_index;
-    legacy_vote.voters_quorum_index    = vote.validator_index;
+    legacy_vote.voters_quorum_index    = vote.index_in_group;
     legacy_vote.signature              = vote.signature;
     return true;
   }
@@ -65,7 +65,8 @@ namespace service_nodes
     result.type                    = quorum_type::uptime_deregister;
     result.block_height            = vote.block_height;
     result.signature               = vote.signature;
-    result.validator_index         = vote.voters_quorum_index;
+    result.group                   = quorum_group::validator;
+    result.index_in_group          = vote.voters_quorum_index;
     result.deregister.worker_index = vote.service_node_index;
     return result;
   }
@@ -189,12 +190,13 @@ namespace service_nodes
     return true;
   }
 
-  quorum_vote_t make_deregister_vote(uint64_t block_height, uint32_t validator_index, uint32_t worker_index, crypto::public_key const &pub_key, crypto::secret_key const &sec_key)
+  quorum_vote_t make_deregister_vote(uint64_t block_height, uint16_t validator_index, uint16_t worker_index, crypto::public_key const &pub_key, crypto::secret_key const &sec_key)
   {
     quorum_vote_t result           = {};
     result.type                    = quorum_type::uptime_deregister;
     result.block_height            = block_height;
-    result.validator_index         = validator_index;
+    result.group                   = quorum_group::validator;
+    result.index_in_group          = validator_index;
     result.deregister.worker_index = worker_index;
     result.signature               = make_signature_from_vote(result, pub_key, sec_key);
     return result;
@@ -202,14 +204,21 @@ namespace service_nodes
 
   bool verify_vote(cryptonote::network_type nettype, const quorum_vote_t& vote, uint64_t latest_height, cryptonote::vote_verification_context &vvc, const service_nodes::testing_quorum &quorum)
   {
-    bool result = bounds_check_validator_index(quorum, vote.validator_index, vvc);
+    bool result = true;
+    if (vote.group == quorum_group::invalid)
+      result = false;
+    else if (vote.group == quorum_group::validator)
+      result = bounds_check_validator_index(quorum, vote.index_in_group, vvc);
+    else
+      result = bounds_check_worker_index(quorum, vote.index_in_group, vvc);
+
     if (!result)
       return result;
 
     uint64_t max_vote_age = 0;
     {
-      crypto::public_key const &key = quorum.validators[vote.validator_index];
-      crypto::hash hash             = crypto::null_hash;
+      crypto::public_key key = crypto::null_pkey;
+      crypto::hash hash      = crypto::null_hash;
 
       switch(vote.type)
       {
@@ -222,6 +231,13 @@ namespace service_nodes
 
         case quorum_type::uptime_deregister:
         {
+          if (vote.group != quorum_group::validator)
+          {
+            // TODO(doyle): CHECKPOINTING(doyle):
+            return false;
+          }
+
+          key          = quorum.validators[vote.index_in_group];
           max_vote_age = service_nodes::deregister_vote::VOTE_LIFETIME_BY_HEIGHT;
           hash         = make_deregister_vote_hash(vote.block_height, vote.deregister.worker_index);
 
@@ -233,6 +249,13 @@ namespace service_nodes
 
         case quorum_type::checkpointing:
         {
+          if (vote.group != quorum_group::worker)
+          {
+            // TODO(doyle): CHECKPOINTING(doyle):
+            return false;
+          }
+
+          key          = quorum.workers[vote.index_in_group];
           max_vote_age = service_nodes::CHECKPOINT_VOTE_LIFETIME;
           hash         = vote.checkpoint.block_hash;
         }
@@ -328,7 +351,7 @@ namespace service_nodes
       if (vote_pool) // We found the group that this vote belongs to
       {
         auto vote = std::find_if(vote_pool->begin(), vote_pool->end(), [find_vote](pool_vote_entry const &entry) {
-            return (find_vote.validator_index == entry.vote.validator_index);
+            return (find_vote.index_in_group == entry.vote.index_in_group);
         });
 
         if (vote != vote_pool->end())
@@ -380,7 +403,8 @@ namespace service_nodes
   static bool add_vote_to_pool_if_unique(T &vote_pool, quorum_vote_t const &vote)
   {
     auto vote_it = std::find_if(vote_pool.votes.begin(), vote_pool.votes.end(), [&vote](pool_vote_entry const &pool_entry) {
-        return (pool_entry.vote.validator_index == vote.validator_index);
+        assert(pool_entry.vote.group == vote.group);
+        return (pool_entry.vote.index_in_group == vote.index_in_group);
     });
 
     bool result = false;
@@ -395,12 +419,12 @@ namespace service_nodes
     return result;
   }
 
-  std::vector<pool_vote_entry> const *voting_pool::add_pool_vote_if_unique(uint64_t latest_height,
-                                                                           const quorum_vote_t& vote,
-                                                                           cryptonote::vote_verification_context& vvc,
-                                                                           const service_nodes::testing_quorum &quorum)
+  std::vector<pool_vote_entry> voting_pool::add_pool_vote_if_unique(uint64_t latest_height,
+                                                                    const quorum_vote_t& vote,
+                                                                    cryptonote::vote_verification_context& vvc,
+                                                                    const service_nodes::testing_quorum &quorum)
   {
-    std::vector<pool_vote_entry> const *result = nullptr;
+    std::vector<pool_vote_entry> result = {};
 
     if (!verify_vote(m_nettype, vote, latest_height, vvc, quorum))
     {
@@ -436,7 +460,7 @@ namespace service_nodes
 
         deregister_pool_entry &pool_entry = (*it);
         vvc.m_added_to_pool               = add_vote_to_pool_if_unique(pool_entry, vote);
-        result                            = &pool_entry.votes;
+        result                            = pool_entry.votes;
       }
       break;
 
@@ -458,7 +482,7 @@ namespace service_nodes
 
         checkpoint_pool_entry &pool_entry = (*it);
         vvc.m_added_to_pool               = add_vote_to_pool_if_unique(pool_entry, vote);
-        result                            = &pool_entry.votes;
+        result                            = pool_entry.votes;
       }
       break;
     }
@@ -495,12 +519,12 @@ namespace service_nodes
   }
 
   template <typename T>
-  static void cull_votes(std::vector<T> &vote_pool, uint64_t cull_height)
+  static void cull_votes(std::vector<T> &vote_pool, uint64_t min_height, uint64_t max_height)
   {
     for (auto it = vote_pool.begin(); it != vote_pool.end(); ++it)
     {
       const T &pool_entry = *it;
-      if (pool_entry.height < cull_height)
+      if (pool_entry.height < min_height || pool_entry.height > max_height)
       {
         it = vote_pool.erase(it);
         it--;
@@ -511,11 +535,11 @@ namespace service_nodes
   void voting_pool::remove_expired_votes(uint64_t height)
   {
     CRITICAL_REGION_LOCAL(m_lock);
-    uint64_t deregister_cull_height = (height < deregister_vote::VOTE_LIFETIME_BY_HEIGHT) ? 0 : height - deregister_vote::VOTE_LIFETIME_BY_HEIGHT;
-    cull_votes(m_deregister_pool, deregister_cull_height);
+    uint64_t deregister_min_height = (height < deregister_vote::VOTE_LIFETIME_BY_HEIGHT) ? 0 : height - deregister_vote::VOTE_LIFETIME_BY_HEIGHT;
+    cull_votes(m_deregister_pool, deregister_min_height, height);
 
-    uint64_t checkpoint_cull_height = (height < service_nodes::CHECKPOINT_VOTE_LIFETIME) ? 0 : height - service_nodes::CHECKPOINT_VOTE_LIFETIME;
-    cull_votes(m_checkpoint_pool, checkpoint_cull_height);
+    uint64_t checkpoint_min_height = (height < service_nodes::CHECKPOINT_VOTE_LIFETIME) ? 0 : height - service_nodes::CHECKPOINT_VOTE_LIFETIME;
+    cull_votes(m_checkpoint_pool, checkpoint_min_height, height);
   }
 }; // namespace service_nodes
 
