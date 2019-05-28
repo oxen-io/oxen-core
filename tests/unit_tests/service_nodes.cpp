@@ -151,9 +151,9 @@ TEST(service_nodes, vote_validation)
 
   // Voters validator index out of bounds
   {
-    auto vote            = valid_vote;
-    vote.validator_index = state.validators.size() + 10;
-    vote.signature       = service_nodes::make_signature_from_vote(vote, service_node_voter.pub, service_node_voter.sec);
+    auto vote           = valid_vote;
+    vote.index_in_group = state.validators.size() + 10;
+    vote.signature      = service_nodes::make_signature_from_vote(vote, service_node_voter.pub, service_node_voter.sec);
 
     cryptonote::vote_verification_context vvc = {};
     bool result                               = service_nodes::verify_vote(cryptonote::MAINNET, vote, block_height, vvc, state);
@@ -271,7 +271,7 @@ TEST(service_nodes, tx_extra_deregister_validation)
 
   // Deregister has one voter with index out of bounds
   {
-    auto deregister                         = valid_deregister;
+    auto deregister                     = valid_deregister;
     deregister.votes[0].validator_index = state.validators.size() + 10;
 
     cryptonote::vote_verification_context vvc = {};
