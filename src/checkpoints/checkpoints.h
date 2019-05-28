@@ -35,7 +35,7 @@
 #include "misc_log_ex.h"
 #include "crypto/hash.h"
 #include "cryptonote_config.h"
-#include "cryptonote_core/service_node_deregister.h"
+#include "cryptonote_core/service_node_voting.h"
 
 #define ADD_CHECKPOINT(h, hash)  CHECK_AND_ASSERT(add_checkpoint(h,  hash), false);
 #define JSON_HASH_FILE_NAME "checkpoints.json"

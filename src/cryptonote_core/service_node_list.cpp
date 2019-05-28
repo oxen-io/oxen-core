@@ -1276,7 +1276,6 @@ namespace service_nodes
   std::vector<size_t> generate_shuffled_service_node_index_list(std::vector<crypto::public_key> const &snode_list, crypto::hash const &block_hash, quorum_type type)
   {
     std::vector<size_t> result(snode_list.size());
-    size_t index = 0;
     for (size_t i = 0; i < snode_list.size(); i++) result[i] = i;
 
     uint64_t seed = 0;
@@ -1291,6 +1290,7 @@ namespace service_nodes
   {
     crypto::hash block_hash;
     uint64_t const height = cryptonote::get_block_height(block);
+    int const hf_version  = block.major_version;
     if (!cryptonote::get_block_hash(block, block_hash))
     {
       MERROR("Block height: " << height << " returned null hash");
@@ -1298,25 +1298,31 @@ namespace service_nodes
     }
 
     std::vector<crypto::public_key> const snode_list = get_service_nodes_pubkeys();
-    quorum_manager &manager = m_transient_state.quorum_states[height];
+    quorum_manager &manager                          = m_transient_state.quorum_states[height];
     for (int type_int = 0; type_int < (int)quorum_type::count; type_int++)
     {
-      auto type              = static_cast<quorum_type>(type_int);
-      size_t num_validators  = 0, num_workers = 0;
-      std::shared_ptr<testing_quorum> quorum = std::make_shared<testing_quorum>();
+      auto type             = static_cast<quorum_type>(type_int);
+      size_t num_validators = 0, num_workers = 0;
+      auto quorum                                = std::make_shared<testing_quorum>();
       std::vector<size_t> const pub_keys_indexes = generate_shuffled_service_node_index_list(snode_list, block_hash, type);
 
       if (type == quorum_type::uptime_deregister)
       {
-        num_validators             = std::min(pub_keys_indexes.size(), UPTIME_QUORUM_SIZE);
-        size_t num_remaining_nodes = pub_keys_indexes.size() - num_validators;
-        num_workers                = std::max(num_remaining_nodes/UPTIME_NTH_OF_THE_NETWORK_TO_TEST, std::min(UPTIME_MIN_NODES_TO_TEST, num_remaining_nodes));
+        if (hf_version >= cryptonote::network_version_9_service_nodes)
+        {
+          num_validators             = std::min(pub_keys_indexes.size(), UPTIME_QUORUM_SIZE);
+          size_t num_remaining_nodes = pub_keys_indexes.size() - num_validators;
+          num_workers                = std::max(num_remaining_nodes/UPTIME_NTH_OF_THE_NETWORK_TO_TEST, std::min(UPTIME_MIN_NODES_TO_TEST, num_remaining_nodes));
+        }
       }
       else if (type == quorum_type::checkpointing)
       {
-        // num_validators             = std::min(pub_keys_indexes.size(), CHECKPOINT_QUORUM_SIZE);
-        size_t num_remaining_nodes = pub_keys_indexes.size() - num_validators;
-        num_workers                = std::min(num_remaining_nodes, CHECKPOINT_QUORUM_SIZE);
+        if (hf_version >= cryptonote::network_version_12_checkpointing)
+        {
+          num_validators             = std::min(pub_keys_indexes.size(), CHECKPOINT_QUORUM_SIZE);
+          size_t num_remaining_nodes = pub_keys_indexes.size() - num_validators;
+          num_workers                = std::min(num_remaining_nodes, CHECKPOINT_QUORUM_SIZE);
+        }
       }
       else
       {
@@ -1338,7 +1344,7 @@ namespace service_nodes
         quorum->workers.resize(num_workers);
         for (size_t i = 0; i < quorum->workers.size(); i++)
         {
-          size_t node_index             = pub_keys_indexes[num_validators + i];
+          size_t node_index             = pub_keys_indexes[quorum->validators.size() + i];
           const crypto::public_key &key = snode_list[node_index];
           quorum->workers[i]            = key;
         }

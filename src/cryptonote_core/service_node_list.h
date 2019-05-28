@@ -32,7 +32,7 @@
 #include "serialization/serialization.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
 #include "cryptonote_core/service_node_rules.h"
-#include "cryptonote_core/service_node_deregister.h"
+#include "cryptonote_core/service_node_voting.h"
 #include "cryptonote_core/service_node_quorum_cop.h"
 
 namespace cryptonote { struct Blockchain; struct BlockchainDB; }

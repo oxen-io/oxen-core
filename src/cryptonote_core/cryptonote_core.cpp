@@ -650,7 +650,6 @@ namespace cryptonote
     const difficulty_type fixed_difficulty = command_line::get_arg(vm, arg_fixed_difficulty);
 
     BlockchainDB *initialized_db = db.release();
-
     // Service Nodes
     {
       m_service_node_list.set_db_pointer(initialized_db);

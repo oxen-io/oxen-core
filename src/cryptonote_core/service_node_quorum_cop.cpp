@@ -27,7 +27,7 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "service_node_quorum_cop.h"
-#include "service_node_deregister.h"
+#include "service_node_voting.h"
 #include "service_node_list.h"
 #include "cryptonote_config.h"
 #include "cryptonote_core.h"
@@ -185,7 +185,8 @@ namespace service_nodes
                 quorum_vote_t vote = service_nodes::make_deregister_vote(
                     m_uptime_proof_height, static_cast<uint16_t>(index_in_group), node_index, my_pubkey, my_seckey);
                 cryptonote::vote_verification_context vvc;
-                handle_vote(vote, vvc); // TODO(doyle): Handle return bool?
+                if (!handle_vote(vote, vvc))
+                  LOG_ERROR("Failed to add uptime deregister vote reason: " << print_vote_verification_context(vvc, nullptr));
               }
             }
           }
@@ -236,14 +237,11 @@ namespace service_nodes
               vote.block_height   = m_last_checkpointed_height;
               vote.group          = quorum_group::worker;
               vote.index_in_group = static_cast<uint16_t>(index_in_group);
-              crypto::generate_signature(vote.checkpoint.block_hash, my_pubkey, my_seckey, vote.signature);
+              vote.signature      = make_signature_from_vote(vote, my_pubkey, my_seckey);
 
               cryptonote::vote_verification_context vvc = {};
               if (!handle_vote(vote, vvc))
-              {
-                // TODO(doyle): CHECKPOINTING(doyle):
                 LOG_ERROR("Failed to add checkpoint vote reason: " << print_vote_verification_context(vvc, nullptr));
-              }
             }
           }
 
@@ -287,7 +285,7 @@ namespace service_nodes
         cryptonote::block block;
         if (!m_core.get_block_by_hash(vote.checkpoint.block_hash, block)) // Does vote reference a valid block hash?
         {
-          LOG_PRINT_L1("TODO(doyle): CHECKPOINTING(doyle): Writeme");
+          LOG_PRINT_L1("Vote does not reference valid block hash: " << vote.checkpoint.block_hash);
           return false;
         }
       }
@@ -357,13 +355,13 @@ namespace service_nodes
           }
           else
           {
-            // TODO(doyle): Logging
+            LOG_PRINT_L1("Failed to add deregister to tx extra for height: "
+                         << vote.block_height << " and service node: " << vote.deregister.worker_index);
           }
         }
       }
       break;
 
-      // TODO(doyle): Not in this function but, need to add code for culling old checkpoints from the "staging" checkpoint pool.
       case quorum_type::checkpointing:
       {
         if (votes.size() >= CHECKPOINT_MIN_VOTES)

@@ -2,7 +2,7 @@
 
 #include "crypto/crypto.h"
 #include "cryptonote_config.h"
-#include "service_node_deregister.h"
+#include "service_node_voting.h"
 
 #include <random>
 

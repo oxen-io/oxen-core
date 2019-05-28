@@ -41,7 +41,7 @@
 #include "common/command_line.h"
 #include "tx_pool.h"
 #include "blockchain.h"
-#include "service_node_deregister.h"
+#include "service_node_voting.h"
 #include "service_node_list.h"
 #include "service_node_quorum_cop.h"
 #include "cryptonote_basic/miner.h"

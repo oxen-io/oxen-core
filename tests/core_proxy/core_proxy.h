@@ -34,7 +34,7 @@
 
 #include "cryptonote_basic/cryptonote_basic_impl.h"
 #include "cryptonote_basic/verification_context.h"
-#include "cryptonote_core/service_node_deregister.h"
+#include "cryptonote_core/service_node_voting.h"
 #include <unordered_map>
 
 namespace tests

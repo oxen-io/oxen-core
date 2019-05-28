@@ -29,9 +29,9 @@
 #pragma once
 
 #include "serialization/serialization.h"
-#include "cryptonote_basic/cryptonote_basic_impl.h"
 #include "cryptonote_protocol/cryptonote_protocol_handler_common.h"
-#include "cryptonote_core/service_node_deregister.h"
+#include "cryptonote_basic/cryptonote_basic_impl.h"
+#include "cryptonote_core/service_node_voting.h"
 
 namespace cryptonote
 {

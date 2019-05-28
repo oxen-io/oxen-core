@@ -26,14 +26,13 @@
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#include "service_node_deregister.h"
+#include "service_node_voting.h"
 #include "service_node_list.h"
 #include "cryptonote_basic/tx_extra.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_basic/verification_context.h"
 #include "cryptonote_basic/connection_context.h"
 #include "cryptonote_protocol/cryptonote_protocol_defs.h"
-#include "cryptonote_core/blockchain.h"
 
 #include "misc_log_ex.h"
 #include "string_tools.h"
@@ -71,7 +70,7 @@ namespace service_nodes
     return result;
   }
 
-  static crypto::hash make_deregister_vote_hash(uint64_t block_height, uint64_t service_node_index)
+  static crypto::hash make_deregister_vote_hash(uint64_t block_height, uint32_t service_node_index)
   {
     const int buf_size = sizeof(block_height) + sizeof(service_node_index);
     char buf[buf_size];
@@ -105,7 +104,8 @@ namespace service_nodes
 
       case quorum_type::checkpointing:
       {
-        // TODO(doyle): checkpointing
+        crypto::hash hash = vote.checkpoint.block_hash;
+        crypto::generate_signature(hash, pub, sec, result);
       }
       break;
     }
@@ -125,7 +125,7 @@ namespace service_nodes
   {
     if (worker_index >= quorum.workers.size())
     {
-      vvc.m_service_node_index_out_of_bounds = true;
+      vvc.m_worker_index_out_of_bounds = true;
       LOG_PRINT_L1("Quorum worker index in was out of bounds: " << worker_index << ", expected to be in range of: [0, " << quorum.workers.size() << ")");
       return false;
     }
@@ -182,7 +182,7 @@ namespace service_nodes
       if (!crypto::check_signature(hash, key, vote.signature))
       {
         LOG_PRINT_L1("Invalid signatures for votes");
-        vvc.m_verification_failed = true;
+        vvc.m_signature_not_valid = true;
         return false;
       }
     }
@@ -233,7 +233,8 @@ namespace service_nodes
         {
           if (vote.group != quorum_group::validator)
           {
-            // TODO(doyle): CHECKPOINTING(doyle):
+            LOG_PRINT_L1("Vote received specifies incorrect voting group, expected vote from validator");
+            vvc.m_incorrect_voting_group = true;
             return false;
           }
 
@@ -251,7 +252,8 @@ namespace service_nodes
         {
           if (vote.group != quorum_group::worker)
           {
-            // TODO(doyle): CHECKPOINTING(doyle):
+            LOG_PRINT_L1("Vote received specifies incorrect voting group, expected vote from worker");
+            vvc.m_incorrect_voting_group = true;
             return false;
           }
 
