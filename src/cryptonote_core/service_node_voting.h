@@ -93,8 +93,8 @@ namespace service_nodes
 
   quorum_vote_t     make_deregister_vote(uint64_t block_height, uint16_t index_in_group, uint16_t worker_index, crypto::public_key const &pub_key, crypto::secret_key const &secret_key);
 
-  bool              verify_tx_deregister             (cryptonote::network_type nettype, const cryptonote::tx_extra_service_node_deregister& deregister, cryptonote::vote_verification_context& vvc, const service_nodes::testing_quorum &quorum);
-  bool              verify_vote                      (cryptonote::network_type nettype, const quorum_vote_t& vote, uint64_t latest_height, cryptonote::vote_verification_context &vvc, const service_nodes::testing_quorum &quorum);
+  bool              verify_tx_deregister             (const cryptonote::tx_extra_service_node_deregister& deregister, cryptonote::vote_verification_context& vvc, const service_nodes::testing_quorum &quorum);
+  bool              verify_vote                      (const quorum_vote_t& vote, uint64_t latest_height, cryptonote::vote_verification_context &vvc, const service_nodes::testing_quorum &quorum);
   crypto::signature make_signature_from_vote         (quorum_vote_t const &vote, const crypto::public_key& pub, const crypto::secret_key& sec);
   crypto::signature make_signature_from_tx_deregister(cryptonote::tx_extra_service_node_deregister const &deregister, crypto::public_key const &pub, crypto::secret_key const &sec);
 
@@ -120,8 +120,6 @@ namespace service_nodes
 
   struct voting_pool
   {
-    cryptonote::network_type m_nettype = cryptonote::UNDEFINED;
-
     // return: The vector of votes if the vote is valid (and even if it is not unique) otherwise nullptr
     std::vector<pool_vote_entry> add_pool_vote_if_unique(uint64_t latest_height,
                                                          const quorum_vote_t& vote,

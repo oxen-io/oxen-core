@@ -143,8 +143,7 @@ namespace service_nodes
     return true;
   }
 
-  bool verify_tx_deregister(cryptonote::network_type nettype,
-                            const cryptonote::tx_extra_service_node_deregister &deregister,
+  bool verify_tx_deregister(const cryptonote::tx_extra_service_node_deregister &deregister,
                             cryptonote::vote_verification_context &vvc,
                             const service_nodes::testing_quorum &quorum)
   {
@@ -202,7 +201,7 @@ namespace service_nodes
     return result;
   }
 
-  bool verify_vote(cryptonote::network_type nettype, const quorum_vote_t& vote, uint64_t latest_height, cryptonote::vote_verification_context &vvc, const service_nodes::testing_quorum &quorum)
+  bool verify_vote(const quorum_vote_t& vote, uint64_t latest_height, cryptonote::vote_verification_context &vvc, const service_nodes::testing_quorum &quorum)
   {
     bool result = true;
     if (vote.group == quorum_group::invalid)
@@ -428,7 +427,7 @@ namespace service_nodes
   {
     std::vector<pool_vote_entry> result = {};
 
-    if (!verify_vote(m_nettype, vote, latest_height, vvc, quorum))
+    if (!verify_vote(vote, latest_height, vvc, quorum))
     {
       LOG_PRINT_L1("Signature verification failed for deregister vote");
       return result;

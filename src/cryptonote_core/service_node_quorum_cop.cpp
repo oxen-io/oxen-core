@@ -47,7 +47,6 @@ namespace service_nodes
   quorum_cop::quorum_cop(cryptonote::core& core)
     : m_core(core), m_uptime_proof_height(0), m_last_checkpointed_height(0)
   {
-    m_vote_pool.m_nettype = m_core.get_nettype(); // TODO(doyle): This is iffy
   }
 
   void quorum_cop::init()
