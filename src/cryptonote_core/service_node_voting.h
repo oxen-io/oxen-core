@@ -55,17 +55,8 @@ namespace service_nodes
     crypto::signature signature;
   };
 
-  struct checkpoint_vote
-  {
-    crypto::hash block_hash;
-  };
-
-  struct deregister_vote
-  {
-    static const uint64_t VOTE_LIFETIME_BY_HEIGHT       = BLOCKS_EXPECTED_IN_HOURS(2);
-    static const uint64_t DEREGISTER_LIFETIME_BY_HEIGHT = VOTE_LIFETIME_BY_HEIGHT;
-    uint16_t worker_index;
-  };
+  struct checkpoint_vote { crypto::hash block_hash; };
+  struct deregister_vote { uint16_t worker_index; };
 
   enum struct quorum_type
   {
@@ -77,7 +68,7 @@ namespace service_nodes
   enum struct quorum_group { invalid, validator, worker };
   struct quorum_vote_t
   {
-    size_t            version = 0;
+    uint8_t           version = 0;
     quorum_type       type;
     uint64_t          block_height;
     quorum_group      group;
@@ -135,6 +126,7 @@ namespace service_nodes
   private:
     struct deregister_pool_entry
     {
+      deregister_pool_entry(uint64_t height, uint32_t worker_index): height(height), worker_index(worker_index) {}
       uint64_t                     height;
       uint32_t                     worker_index;
       std::vector<pool_vote_entry> votes;
@@ -143,6 +135,7 @@ namespace service_nodes
 
     struct checkpoint_pool_entry
     {
+      checkpoint_pool_entry(uint64_t height, crypto::hash const &hash): height(height), hash(hash) {}
       uint64_t                     height;
       crypto::hash                 hash;
       std::vector<pool_vote_entry> votes;

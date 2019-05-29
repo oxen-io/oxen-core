@@ -7,8 +7,6 @@
 #include <random>
 
 namespace service_nodes {
-  constexpr size_t   QUORUM_LIFETIME                       = (6 * deregister_vote::DEREGISTER_LIFETIME_BY_HEIGHT);
-
   constexpr size_t   UPTIME_QUORUM_SIZE                    = 10;
   constexpr size_t   UPTIME_MIN_VOTES_TO_KICK_SERVICE_NODE = 7;
   constexpr size_t   UPTIME_NTH_OF_THE_NETWORK_TO_TEST     = 100;
@@ -47,6 +45,10 @@ namespace service_nodes {
   constexpr size_t   STEALING_SWARM_UPPER_PERCENTILE  = 75;
   constexpr int      MAX_KEY_IMAGES_PER_CONTRIBUTOR   = 1;
   constexpr uint64_t KEY_IMAGE_AWAITING_UNLOCK_HEIGHT = 0;
+
+  constexpr uint64_t DEREGISTER_TX_LIFETIME_IN_BLOCKS  = UPTIME_VOTE_LIFETIME;
+  constexpr size_t   QUORUM_LIFETIME                   = (6 * DEREGISTER_TX_LIFETIME_IN_BLOCKS);
+
 
   using swarm_id_t                         = uint64_t;
   constexpr swarm_id_t UNASSIGNED_SWARM_ID = UINT64_MAX;

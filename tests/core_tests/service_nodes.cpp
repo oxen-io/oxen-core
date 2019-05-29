@@ -589,7 +589,7 @@ bool deregister_too_old::generate(std::vector<test_event_entry>& events)
   const auto dereg_tx = gen.build_deregister(pk, false).build();
 
   /// create enough blocks to make deregistrations invalid (60 blocks)
-  gen.rewind_blocks_n(service_nodes::deregister_vote::DEREGISTER_LIFETIME_BY_HEIGHT);
+  gen.rewind_blocks_n(service_nodes::DEREGISTER_TX_LIFETIME_IN_BLOCKS);
 
   /// In the real world, this transaction should not make it into a block, but in this case we do try to add it (as in
   /// tests we must add specify transactions manually), which should exercise the same validation code and reject the

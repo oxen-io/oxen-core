@@ -41,8 +41,7 @@
 
 namespace service_nodes
 {
-  static_assert(quorum_cop::REORG_SAFETY_BUFFER_IN_BLOCKS < deregister_vote::VOTE_LIFETIME_BY_HEIGHT,
-                "Safety buffer should always be less than the vote lifetime");
+  static_assert(quorum_cop::REORG_SAFETY_BUFFER_IN_BLOCKS < UPTIME_VOTE_LIFETIME, "Safety buffer should always be less than the vote lifetime");
 
   quorum_cop::quorum_cop(cryptonote::core& core)
     : m_core(core), m_uptime_proof_height(0), m_last_checkpointed_height(0)
@@ -98,9 +97,8 @@ namespace service_nodes
   {
     int result = -1;
     auto it = std::find(group.begin(), group.end(), my_pubkey);
-    if (it == group.end())
-      return result;
-    result = static_cast<int>(it - group.begin());
+    if (it == group.end()) return result;
+    result = std::distance(group.begin(), it);
     return result;
   }
 
@@ -255,7 +253,7 @@ namespace service_nodes
     process_quorums(block);
 
     // Since our age checks for deregister votes is now (age >=
-    // DEREGISTER_VOTE_LIFETIME_BY_HEIGHT) where age is
+    // DEREGISTER_VOTE_LIFETIME_IN_BLOCKS) where age is
     // get_current_blockchain_height() which gives you the height that you are
     // currently mining for, i.e. (height + 1).
 
@@ -325,13 +323,10 @@ namespace service_nodes
           deregister.service_node_index = vote.deregister.worker_index;
           deregister.votes.reserve(votes.size());
 
-          for (pool_vote_entry const &pool_vote : votes)
-          {
-            cryptonote::tx_extra_service_node_deregister::vote tx_vote = {};
-            tx_vote.validator_index                                    = pool_vote.vote.index_in_group;
-            tx_vote.signature                                          = pool_vote.vote.signature;
-            deregister.votes.push_back(tx_vote);
-          }
+          std::transform(votes.begin(), votes.end(), std::back_inserter(deregister.votes), [](pool_vote_entry const &pool_vote) {
+            auto result = cryptonote::tx_extra_service_node_deregister::vote(pool_vote.vote.signature, pool_vote.vote.index_in_group);
+            return result;
+          });
 
           cryptonote::transaction deregister_tx = {};
           if (cryptonote::add_service_node_deregister_to_tx_extra(deregister_tx.extra, deregister))

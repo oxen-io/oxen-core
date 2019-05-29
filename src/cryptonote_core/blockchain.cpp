@@ -3109,11 +3109,11 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
         }
 
         uint64_t delta_height = curr_height - deregister.block_height;
-        if (delta_height >= service_nodes::deregister_vote::DEREGISTER_LIFETIME_BY_HEIGHT)
+        if (delta_height >= service_nodes::DEREGISTER_TX_LIFETIME_IN_BLOCKS)
         {
           LOG_PRINT_L1("Received deregister tx for height: " << deregister.block_height
                        << " and service node: "     << deregister.service_node_index
-                       << ", is older than: "       << service_nodes::deregister_vote::DEREGISTER_LIFETIME_BY_HEIGHT
+                       << ", is older than: "       << service_nodes::DEREGISTER_TX_LIFETIME_IN_BLOCKS
                        << " blocks and has been rejected. The current height is: " << curr_height);
           tvc.m_vote_ctx.m_invalid_block_height = true;
           tvc.m_verifivation_failed             = true;
@@ -3122,7 +3122,7 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
       }
 
       const uint64_t height            = deregister.block_height;
-      const size_t num_blocks_to_check = service_nodes::deregister_vote::DEREGISTER_LIFETIME_BY_HEIGHT;
+      const size_t num_blocks_to_check = service_nodes::DEREGISTER_TX_LIFETIME_IN_BLOCKS;
 
       std::vector<std::pair<cryptonote::blobdata,block>> blocks;
       std::vector<cryptonote::blobdata> txs;

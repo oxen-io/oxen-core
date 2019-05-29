@@ -238,7 +238,7 @@ namespace service_nodes
           }
 
           key          = quorum.validators[vote.index_in_group];
-          max_vote_age = service_nodes::deregister_vote::VOTE_LIFETIME_BY_HEIGHT;
+          max_vote_age = service_nodes::UPTIME_VOTE_LIFETIME;
           hash         = make_deregister_vote_hash(vote.block_height, vote.deregister.worker_index);
 
           bool result = bounds_check_worker_index(quorum, vote.deregister.worker_index, vvc);
@@ -452,10 +452,7 @@ namespace service_nodes
 
         if (it == m_deregister_pool.end())
         {
-          deregister_pool_entry pool_entry = {};
-          pool_entry.height                = vote.block_height;
-          pool_entry.worker_index          = vote.deregister.worker_index;
-          m_deregister_pool.push_back(pool_entry);
+          m_deregister_pool.emplace_back(vote.block_height, vote.deregister.worker_index);
           it = (m_deregister_pool.end() - 1);
         }
 
@@ -474,10 +471,7 @@ namespace service_nodes
 
         if (it == m_checkpoint_pool.end())
         {
-          checkpoint_pool_entry pool_entry = {};
-          pool_entry.height                = vote.block_height;
-          pool_entry.hash                  = vote.checkpoint.block_hash;
-          m_checkpoint_pool.push_back(pool_entry);
+          m_checkpoint_pool.emplace_back(vote.block_height, vote.checkpoint.block_hash);
           it = (m_checkpoint_pool.end() - 1);
         }
 
@@ -536,10 +530,10 @@ namespace service_nodes
   void voting_pool::remove_expired_votes(uint64_t height)
   {
     CRITICAL_REGION_LOCAL(m_lock);
-    uint64_t deregister_min_height = (height < deregister_vote::VOTE_LIFETIME_BY_HEIGHT) ? 0 : height - deregister_vote::VOTE_LIFETIME_BY_HEIGHT;
+    uint64_t deregister_min_height = (height < UPTIME_VOTE_LIFETIME) ? 0 : height - UPTIME_VOTE_LIFETIME;
     cull_votes(m_deregister_pool, deregister_min_height, height);
 
-    uint64_t checkpoint_min_height = (height < service_nodes::CHECKPOINT_VOTE_LIFETIME) ? 0 : height - service_nodes::CHECKPOINT_VOTE_LIFETIME;
+    uint64_t checkpoint_min_height = (height < CHECKPOINT_VOTE_LIFETIME) ? 0 : height - CHECKPOINT_VOTE_LIFETIME;
     cull_votes(m_checkpoint_pool, checkpoint_min_height, height);
   }
 }; // namespace service_nodes
