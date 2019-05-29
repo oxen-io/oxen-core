@@ -87,7 +87,6 @@ public:
   void stop() {}
 
   // TODO(loki): Write tests
-  bool add_deregister_vote(const service_nodes::deregister_vote& vote, cryptonote::vote_verification_context &vvc) { return false; }
   bool add_service_node_vote(const service_nodes::quorum_vote_t& vote, cryptonote::vote_verification_context &vvc) { return false; }
 };
 

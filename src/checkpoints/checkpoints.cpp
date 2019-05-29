@@ -163,8 +163,9 @@ namespace cryptonote
       CHECK_AND_ASSERT_MES(checkpoint.signatures.size() >= service_nodes::CHECKPOINT_MIN_VOTES, false, "Checkpoint has insufficient signatures to be considered");
       for (service_nodes::voter_to_signature const &vote_to_sig : checkpoint.signatures)
       {
+        ++unique_vote_set[vote_to_sig.voter_index];
         CHECK_AND_ASSERT_MES(vote_to_sig.voter_index < service_nodes::CHECKPOINT_QUORUM_SIZE, false, "Vote is indexing out of bounds");
-        CHECK_AND_ASSERT_MES(++unique_vote_set[vote_to_sig.voter_index] >= 1, false, "Voter is trying to vote twice");
+        CHECK_AND_ASSERT_MES(unique_vote_set[vote_to_sig.voter_index] == 1, false, "Voter is trying to vote twice");
       }
     }
     else
