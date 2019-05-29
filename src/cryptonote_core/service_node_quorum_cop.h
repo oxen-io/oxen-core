@@ -60,7 +60,7 @@ namespace service_nodes
 
   struct quorum_manager
   {
-    std::shared_ptr<const testing_quorum> uptime_proof;
+    std::shared_ptr<const testing_quorum> deregister;
     std::shared_ptr<const testing_quorum> checkpointing;
   };
 

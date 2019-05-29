@@ -7,11 +7,11 @@
 #include <random>
 
 namespace service_nodes {
-  constexpr size_t   UPTIME_QUORUM_SIZE                    = 10;
-  constexpr size_t   UPTIME_MIN_VOTES_TO_KICK_SERVICE_NODE = 7;
-  constexpr size_t   UPTIME_NTH_OF_THE_NETWORK_TO_TEST     = 100;
-  constexpr size_t   UPTIME_MIN_NODES_TO_TEST              = 50;
-  constexpr uint64_t UPTIME_VOTE_LIFETIME                  = BLOCKS_EXPECTED_IN_HOURS(2);
+  constexpr size_t   DEREGISTER_QUORUM_SIZE                    = 10;
+  constexpr size_t   DEREGISTER_MIN_VOTES_TO_KICK_SERVICE_NODE = 7;
+  constexpr size_t   DEREGISTER_NTH_OF_THE_NETWORK_TO_TEST     = 100;
+  constexpr size_t   DEREGISTER_MIN_NODES_TO_TEST              = 50;
+  constexpr uint64_t DEREGISTER_VOTE_LIFETIME                  = BLOCKS_EXPECTED_IN_HOURS(2);
 
   constexpr uint64_t CHECKPOINT_INTERVAL                   = 4;
   constexpr uint64_t CHECKPOINT_VOTE_LIFETIME              = ((CHECKPOINT_INTERVAL * 3) - 1);
@@ -23,7 +23,7 @@ namespace service_nodes {
   constexpr size_t   CHECKPOINT_MIN_VOTES                  = 18;
 #endif
 
-  static_assert(UPTIME_MIN_VOTES_TO_KICK_SERVICE_NODE <= UPTIME_QUORUM_SIZE, "The number of votes required to kick can't exceed the actual quorum size, otherwise we never kick.");
+  static_assert(DEREGISTER_MIN_VOTES_TO_KICK_SERVICE_NODE <= DEREGISTER_QUORUM_SIZE, "The number of votes required to kick can't exceed the actual quorum size, otherwise we never kick.");
   static_assert(CHECKPOINT_MIN_VOTES <= CHECKPOINT_QUORUM_SIZE, "The number of votes required to kick can't exceed the actual quorum size, otherwise we never kick.");
 
   constexpr size_t   MAX_SWARM_SIZE                   = 10;
@@ -46,7 +46,7 @@ namespace service_nodes {
   constexpr int      MAX_KEY_IMAGES_PER_CONTRIBUTOR   = 1;
   constexpr uint64_t KEY_IMAGE_AWAITING_UNLOCK_HEIGHT = 0;
 
-  constexpr uint64_t DEREGISTER_TX_LIFETIME_IN_BLOCKS  = UPTIME_VOTE_LIFETIME;
+  constexpr uint64_t DEREGISTER_TX_LIFETIME_IN_BLOCKS  = DEREGISTER_VOTE_LIFETIME;
   constexpr size_t   QUORUM_LIFETIME                   = (6 * DEREGISTER_TX_LIFETIME_IN_BLOCKS);
 
 
@@ -67,8 +67,8 @@ namespace service_nodes {
   {
     switch (type)
     {
-      case quorum_type::uptime_deregister: return UPTIME_VOTE_LIFETIME;
-      case quorum_type::checkpointing:     return CHECKPOINT_VOTE_LIFETIME;
+      case quorum_type::deregister:    return DEREGISTER_VOTE_LIFETIME;
+      case quorum_type::checkpointing: return CHECKPOINT_VOTE_LIFETIME;
       default:
       {
         assert("Unhandled enum type" == 0);

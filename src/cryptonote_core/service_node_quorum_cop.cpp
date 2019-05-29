@@ -41,7 +41,7 @@
 
 namespace service_nodes
 {
-  static_assert(quorum_cop::REORG_SAFETY_BUFFER_IN_BLOCKS < UPTIME_VOTE_LIFETIME, "Safety buffer should always be less than the vote lifetime");
+  static_assert(quorum_cop::REORG_SAFETY_BUFFER_IN_BLOCKS < DEREGISTER_VOTE_LIFETIME, "Safety buffer should always be less than the vote lifetime");
 
   quorum_cop::quorum_cop(cryptonote::core& core)
     : m_core(core), m_uptime_proof_height(0), m_last_checkpointed_height(0)
@@ -132,7 +132,7 @@ namespace service_nodes
           LOG_ERROR("Unhandled quorum type with value: " << (int)type);
         } break;
 
-        case quorum_type::uptime_deregister:
+        case quorum_type::deregister:
         {
           if (hf_version >= cryptonote::network_version_9_service_nodes)
           {
@@ -157,7 +157,7 @@ namespace service_nodes
               if (m_core.get_hard_fork_version(m_uptime_proof_height) < 9) continue;
 
               const std::shared_ptr<const testing_quorum> quorum =
-                  m_core.get_testing_quorum(quorum_type::uptime_deregister, m_uptime_proof_height);
+                  m_core.get_testing_quorum(quorum_type::deregister, m_uptime_proof_height);
               if (!quorum)
               {
                 // TODO(loki): Fatal error
@@ -276,7 +276,7 @@ namespace service_nodes
         return false;
       };
 
-      case quorum_type::uptime_deregister: break;
+      case quorum_type::deregister: break;
       case quorum_type::checkpointing:
       {
         cryptonote::block block;
@@ -314,9 +314,9 @@ namespace service_nodes
         return false;
       };
 
-      case quorum_type::uptime_deregister:
+      case quorum_type::deregister:
       {
-        if (votes.size() >= UPTIME_MIN_VOTES_TO_KICK_SERVICE_NODE)
+        if (votes.size() >= DEREGISTER_MIN_VOTES_TO_KICK_SERVICE_NODE)
         {
           cryptonote::tx_extra_service_node_deregister deregister;
           deregister.block_height       = vote.block_height;

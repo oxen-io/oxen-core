@@ -197,7 +197,7 @@ cryptonote::block linear_chain_generator::create_block_on_fork(const cryptonote:
 
 QuorumState linear_chain_generator::get_quorum_idxs(const cryptonote::block& block) const
 {
-  if (sn_list_.size() <= service_nodes::UPTIME_QUORUM_SIZE) {
+  if (sn_list_.size() <= service_nodes::DEREGISTER_QUORUM_SIZE) {
     std::cerr << "Not enough service nodes\n";
     return {};
   }
@@ -218,11 +218,11 @@ QuorumState linear_chain_generator::get_quorum_idxs(const cryptonote::block& blo
 
   QuorumState quorum;
 
-  for (auto i = 0u; i < service_nodes::UPTIME_QUORUM_SIZE; ++i) {
+  for (auto i = 0u; i < service_nodes::DEREGISTER_QUORUM_SIZE; ++i) {
     quorum.voters.push_back({ sn_list_.at(pub_keys_indexes[i]).keys.pub, i });
   }
 
-  for (auto i = service_nodes::UPTIME_QUORUM_SIZE; i < pub_keys_indexes.size(); ++i) {
+  for (auto i = service_nodes::DEREGISTER_QUORUM_SIZE; i < pub_keys_indexes.size(); ++i) {
     quorum.to_test.push_back({ sn_list_.at(pub_keys_indexes[i]).keys.pub, i });
   }
 
@@ -289,7 +289,7 @@ cryptonote::transaction linear_chain_generator::create_deregister_tx(const crypt
 
   deregister.service_node_index = *idx; /// idx inside nodes to test
 
-  /// need to create UPTIME_MIN_VOTES_TO_KICK_SERVICE_NODE (7) votes
+  /// need to create DEREGISTER_MIN_VOTES_TO_KICK_SERVICE_NODE (7) votes
   for (const auto voter : voters) {
 
     const auto reg = sn_list_.find_registration(voter.sn_pk);
@@ -324,7 +324,7 @@ boost::optional<uint32_t> linear_chain_generator::get_idx_in_tested(const crypto
   const auto& to_test = get_quorum_idxs(height).to_test;
 
   for (const auto& sn : to_test) {
-    if (sn.sn_pk == pk) return sn.idx_in_quorum - service_nodes::UPTIME_QUORUM_SIZE;
+    if (sn.sn_pk == pk) return sn.idx_in_quorum - service_nodes::DEREGISTER_QUORUM_SIZE;
   }
 
   return boost::none;

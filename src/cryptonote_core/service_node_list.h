@@ -296,9 +296,9 @@ namespace service_nodes
       BEGIN_SERIALIZE()
         FIELD(version)
         FIELD(height)
-        FIELD(quorums[(size_t)quorum_type::uptime_deregister])
+        FIELD_N("deregister_quorum", quorums[(size_t)quorum_type::deregister])
         if (version >= service_node_info::version_3_checkpointing)
-          FIELD(quorums[(size_t)quorum_type::checkpointing])
+          FIELD_N("checkpointing_quorum", quorums[(size_t)quorum_type::checkpointing])
       END_SERIALIZE()
     };
 

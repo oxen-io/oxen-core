@@ -60,7 +60,7 @@ namespace service_nodes
 
   enum struct quorum_type
   {
-    uptime_deregister = 0,
+    deregister = 0,
     checkpointing,
     count,
   };

@@ -241,7 +241,7 @@ TEST(service_nodes, tx_extra_deregister_validation)
   // Deregister has insufficient votes
   {
     auto deregister = valid_deregister;
-    while (deregister.votes.size() >= service_nodes::UPTIME_MIN_VOTES_TO_KICK_SERVICE_NODE)
+    while (deregister.votes.size() >= service_nodes::DEREGISTER_MIN_VOTES_TO_KICK_SERVICE_NODE)
       deregister.votes.pop_back();
 
     cryptonote::vote_verification_context vvc = {};
