@@ -653,8 +653,12 @@ namespace cryptonote
 
         std::vector<block_complete_entry> blocks;
         blocks.push_back(b);
+
+
+        // TODO(doyle): Checkpointing
         std::vector<block> pblocks;
-        if (!m_core.prepare_handle_incoming_blocks(blocks, pblocks))
+        std::vector<checkpoint_t> checkpoints;
+        if (!m_core.prepare_handle_incoming_blocks(blocks, pblocks, checkpoints))
         {
           LOG_PRINT_CCONTEXT_L0("Failure in prepare_handle_incoming_blocks");
           m_core.resume_mine();
@@ -987,13 +991,17 @@ namespace cryptonote
 
     // calculate size of request
     size_t size = 0;
-    size_t blocks_size = 0;
+    for (const auto &element : arg.txs) size += element.size();
+
+    size_t blocks_size = 0, checkpoints_size = 0;
     for (const auto &element : arg.blocks) {
       blocks_size += element.block.size();
       for (const auto &tx : element.txs)
         blocks_size += tx.size();
+      checkpoints_size += element.checkpoint.size();
     }
     size += blocks_size;
+    size += checkpoints_size;
 
     for (const auto &element : arg.missed_ids)
       size += sizeof(element.data);
@@ -1079,6 +1087,9 @@ namespace cryptonote
 
       context.m_requested_objects.erase(req_it);
       block_hashes.push_back(block_hash);
+
+      {
+      }
     }
 
     if(!context.m_requested_objects.empty())
@@ -1242,8 +1253,9 @@ namespace cryptonote
             }
           }
 
+          std::vector<checkpoint_t> checkpoints;
           std::vector<block> pblocks;
-          if (!m_core.prepare_handle_incoming_blocks(blocks, pblocks))
+          if (!m_core.prepare_handle_incoming_blocks(blocks, pblocks, checkpoints))
           {
             LOG_ERROR_CCONTEXT("Failure in prepare_handle_incoming_blocks");
             return 1;
