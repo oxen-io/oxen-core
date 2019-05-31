@@ -1083,6 +1083,9 @@ namespace cryptonote
 
       context.m_requested_objects.erase(req_it);
       block_hashes.push_back(block_hash);
+
+      {
+      }
     }
 
     if(!context.m_requested_objects.empty())

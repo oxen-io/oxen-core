@@ -4586,36 +4586,6 @@ bool Blockchain::prepare_handle_incoming_blocks(const std::vector<block_complete
   if (m_cancel)
     return false;
 
-  // TODO(doyle): If PR to fix above gets the green-light no reason to not parse out checkpoints in the loop above that goes through all the block_entrys already
-  //
-  // NOTE: Parse checkpoints
-  //
-  for (size_t i = 0; i < blocks.size(); i++)
-  {
-    blobdata const &checkpoint_blob = blocks_entry[i].checkpoint;
-    block const &block              = blocks[i];
-    uint64_t block_height           = get_block_height(block);
-    bool maybe_has_checkpoint       = (block_height % service_nodes::CHECKPOINT_INTERVAL == 0);
-
-    if (checkpoint_blob.size() && !maybe_has_checkpoint)
-    {
-      MDEBUG("Checkpoint blob given but not expecting a checkpoint at this height");
-      return false;
-    }
-
-    if (checkpoint_blob.size())
-    {
-      checkpoint_t checkpoint;
-      if (!t_serializable_object_from_blob(checkpoint, checkpoint_blob))
-      {
-        MDEBUG("Checkpoint blob available but failed to parse");
-        return false;
-      }
-
-      checkpoints.push_back(checkpoint);
-    }
-  }
-
   if (blocks_exist)
   {
     MDEBUG("Skipping remainder of prepare blocks. Blocks exist.");
