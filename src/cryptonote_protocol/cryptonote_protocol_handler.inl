@@ -1364,6 +1364,13 @@ namespace cryptonote
 
           } // each download block
 
+          // TODO(doyle): Horribly incomplete
+          for (checkpoint_t const &checkpoint : checkpoints)
+          {
+            Blockchain &blockchain = m_core.get_blockchain_storage();
+            blockchain.update_checkpoint(checkpoint);
+          }
+
           MDEBUG(context << "Block process time (" << blocks.size() << " blocks, " << num_txs << " txs): " << block_process_time_full + transactions_process_time_full << " (" << transactions_process_time_full << "/" << block_process_time_full << ") ms");
 
           if (!m_core.cleanup_handle_incoming_blocks())
