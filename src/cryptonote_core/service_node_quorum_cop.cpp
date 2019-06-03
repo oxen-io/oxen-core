@@ -468,6 +468,9 @@ namespace service_nodes
     } else {
       hash = make_hash_v2(pubkey, timestamp, proof.storage_endpoint);
       signature_ok = crypto::check_signature(hash, pubkey, sig);
+
+      /// Sanity check; we do the same on lokid startup
+      if (proof.storage_endpoint.is_local() || proof.storage_endpoint.is_loopback()) return false;
     }
 
     if (!signature_ok) {
