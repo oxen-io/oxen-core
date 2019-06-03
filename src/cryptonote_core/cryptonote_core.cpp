@@ -185,7 +185,7 @@ namespace cryptonote
   , "Globally reachable IP address for incoming storage server requests (required for Service Nodes)"
   };
   static const command_line::arg_descriptor<uint16_t> arg_sn_bind_port = {
-    "sn-bind-port"
+    "storage-server-bind-port"
   , "Port a storage server instance is listening on. Note that it is a Service Node's responsibility to make sure it is properly configured (Loki Launcher does that automatically)."
   , 0};
   static const command_line::arg_descriptor<std::string> arg_block_notify = {

@@ -399,8 +399,8 @@ namespace service_nodes
   {
     constexpr size_t BUFFER_SIZE = sizeof(pubkey) + sizeof(timestamp) + sizeof(na.ip()) + sizeof(na.port());
 
-    const auto pub_ip = na.ip();
-    const auto storage_port = na.port();
+    auto pub_ip = na.ip();
+    auto storage_port = na.port();
 
     boost::endian::native_to_little_inplace(timestamp);
     boost::endian::native_to_little_inplace(pub_ip);

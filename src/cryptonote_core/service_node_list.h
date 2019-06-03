@@ -203,7 +203,7 @@ namespace service_nodes
 
     void get_all_service_nodes_public_keys(std::vector<crypto::public_key>& keys, bool fully_funded_nodes_only) const;
 
-    /// Search for public ip and storage port and add them to the service node list
+    /// Record public ip and storage port and add them to the service node list
     void handle_uptime_proof(const cryptonote::NOTIFY_UPTIME_PROOF::request &proof);
 
     struct rollback_event
