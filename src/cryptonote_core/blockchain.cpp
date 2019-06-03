@@ -1265,7 +1265,7 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
     }
   }
 
-  // Min/Max Type/Version Check
+  if (version >= cryptonote::network_version_12_checkpointing) // NOTE: Min/Max Type/Version Check
   {
     if (b.miner_tx.type != transaction::type_standard)
     {
