@@ -111,6 +111,7 @@ static const hard_fork_record testnet_hard_forks[] =
   { network_version_9_service_nodes,     3, 0, 1533631123 },
   { network_version_10_bulletproofs,     4, 0, 1542681077 },
   { network_version_11_infinite_staking, 5, 0, 1551223964 },
+  { network_version_12_checkpointing,    6, 0, 1551223965 },
 };
 
 static const hard_fork_record stagenet_hard_forks[] =
@@ -1923,6 +1924,9 @@ bool Blockchain::handle_get_objects(NOTIFY_REQUEST_GET_OBJECTS::request& arg, NO
 
     rsp.blocks.push_back(block_complete_entry());
     block_complete_entry& e = rsp.blocks.back();
+
+    static_assert((service_nodes::CHECKPOINT_STORE_PERSISTENTLY_INTERVAL % service_nodes::CHECKPOINT_INTERVAL == 0),
+                  "Use CHECKPOINT_INTERVAL as blanket catch-all to detect if the height can potentially have a checkpoint");
 
     uint64_t const block_height = get_block_height(bl.second);
     if ((block_height % service_nodes::CHECKPOINT_INTERVAL) == 0)
