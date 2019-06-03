@@ -33,6 +33,7 @@
 #include <list>
 #include "serialization/keyvalue_serialization.h"
 #include "cryptonote_basic/cryptonote_basic.h"
+#include "net/net_utils_base.h"
 #include "cryptonote_basic/blobdatatype.h"
 
 #include "common/loki.h"
@@ -344,12 +345,14 @@ namespace cryptonote
       uint64_t timestamp;
       crypto::public_key pubkey;
       crypto::signature sig;
+      epee::net_utils::ipv4_network_address storage_endpoint;
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(snode_version_major)
         KV_SERIALIZE(snode_version_minor)
         KV_SERIALIZE(snode_version_patch)
         KV_SERIALIZE(timestamp)
+        KV_SERIALIZE(storage_endpoint)
         KV_SERIALIZE_VAL_POD_AS_BLOB(pubkey)
         KV_SERIALIZE_VAL_POD_AS_BLOB(sig)
       END_KV_SERIALIZE_MAP()

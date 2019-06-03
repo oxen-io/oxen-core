@@ -180,6 +180,14 @@ namespace cryptonote
     "service-node"
   , "Run as a service node"
   };
+  static const command_line::arg_descriptor<std::string> arg_public_ip = {
+    "public-ip"
+  , "Globally reachable IP address for incoming storage server requests (required for Service Nodes)"
+  };
+  static const command_line::arg_descriptor<uint16_t> arg_sn_bind_port = {
+    "sn-bind-port"
+  , "Port a storage server instance is listening on. Note that it is a Service Node's responsibility to make sure it is properly configured (Loki Launcher does that automatically)."
+  };
   static const command_line::arg_descriptor<std::string> arg_block_notify = {
     "block-notify"
   , "Run a program for each new block, '%s' will be replaced by the block hash"
@@ -303,6 +311,8 @@ namespace cryptonote
     command_line::add_arg(desc, arg_block_download_max_size);
     command_line::add_arg(desc, arg_max_txpool_weight);
     command_line::add_arg(desc, arg_service_node);
+    command_line::add_arg(desc, arg_public_ip);
+    command_line::add_arg(desc, arg_sn_bind_port);
     command_line::add_arg(desc, arg_pad_transactions);
     command_line::add_arg(desc, arg_block_notify);
     command_line::add_arg(desc, arg_prune_blockchain);
@@ -341,6 +351,22 @@ namespace cryptonote
       test_drop_download();
 
     m_service_node = command_line::get_arg(vm, arg_service_node);
+
+    /// TODO: parse these options early, before we start p2p server etc?
+    const uint16_t sn_port = command_line::get_arg(vm, arg_sn_bind_port);
+    const std::string pub_ip = command_line::get_arg(vm, arg_public_ip);
+    uint32_t ip;
+    if (!epee::string_tools::get_ip_int32_from_string(ip, pub_ip)) {
+      MERROR("Unable to parse IPv4 public address");
+      return false;
+    }
+    m_service_node_endpoint = epee::net_utils::ipv4_network_address{ip, sn_port};
+    MGINFO("Storage server endpoint is set to: " << m_service_node_endpoint.str());
+
+    if (m_service_node_endpoint.is_local() || m_service_node_endpoint.is_loopback()) {
+      MERROR("Specified IP is not public.");
+      return false;
+    }
 
     epee::debug::g_test_dbg_lock_sleep() = command_line::get_arg(vm, arg_test_dbg_lock_sleep);
 
@@ -453,6 +479,7 @@ namespace cryptonote
     }
 
     bool r = handle_command_line(vm);
+    CHECK_AND_ASSERT_MES(r, false, "Failed to apply command line options");
 
     std::string db_type = command_line::get_arg(vm, cryptonote::arg_db_type);
     std::string db_sync_mode = command_line::get_arg(vm, cryptonote::arg_db_sync_mode);
@@ -1354,7 +1381,12 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
   bool core::handle_uptime_proof(const NOTIFY_UPTIME_PROOF::request &proof)
   {
-    return m_quorum_cop.handle_uptime_proof(proof);
+    bool res = m_quorum_cop.handle_uptime_proof(proof);
+    if (res) {
+      /// Validated the signature and snode pubkey at this point
+      m_service_node_list.handle_uptime_proof(proof);
+    }
+    return res;
   }
   //-----------------------------------------------------------------------------------------------
   void core::on_transaction_relayed(const cryptonote::blobdata& tx_blob)

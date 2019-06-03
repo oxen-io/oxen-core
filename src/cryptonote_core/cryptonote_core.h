@@ -815,6 +815,11 @@ namespace cryptonote
        */
      bool is_service_node(const crypto::public_key& pubkey) const;
 
+
+     epee::net_utils::ipv4_network_address get_service_node_endpoint() const {
+       return m_service_node_endpoint;
+     }
+
      /**
       * @brief Add a service node vote
       *
@@ -1133,6 +1138,9 @@ namespace cryptonote
      bool m_service_node;
      crypto::secret_key m_service_node_key;
      crypto::public_key m_service_node_pubkey;
+
+     /// Node's public IP and storage server port
+     epee::net_utils::ipv4_network_address m_service_node_endpoint;
 
      size_t block_sync_size;
 
