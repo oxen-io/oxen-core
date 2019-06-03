@@ -187,7 +187,7 @@ namespace cryptonote
   static const command_line::arg_descriptor<uint16_t> arg_sn_bind_port = {
     "sn-bind-port"
   , "Port a storage server instance is listening on. Note that it is a Service Node's responsibility to make sure it is properly configured (Loki Launcher does that automatically)."
-  };
+  , 0};
   static const command_line::arg_descriptor<std::string> arg_block_notify = {
     "block-notify"
   , "Run a program for each new block, '%s' will be replaced by the block hash"
@@ -352,20 +352,28 @@ namespace cryptonote
 
     m_service_node = command_line::get_arg(vm, arg_service_node);
 
-    /// TODO: parse these options early, before we start p2p server etc?
-    const uint16_t sn_port = command_line::get_arg(vm, arg_sn_bind_port);
-    const std::string pub_ip = command_line::get_arg(vm, arg_public_ip);
-    uint32_t ip;
-    if (!epee::string_tools::get_ip_int32_from_string(ip, pub_ip)) {
-      MERROR("Unable to parse IPv4 public address");
-      return false;
-    }
-    m_service_node_endpoint = epee::net_utils::ipv4_network_address{ip, sn_port};
-    MGINFO("Storage server endpoint is set to: " << m_service_node_endpoint.str());
+    if (m_service_node) {
+      /// TODO: parse these options early, before we start p2p server etc?
+      const uint16_t sn_port = command_line::get_arg(vm, arg_sn_bind_port);
 
-    if (m_service_node_endpoint.is_local() || m_service_node_endpoint.is_loopback()) {
-      MERROR("Specified IP is not public.");
-      return false;
+      if (sn_port == 0) {
+        MERROR("Please specify a which port the storage server is listenting on.");
+        return false;
+      }
+
+      const std::string pub_ip = command_line::get_arg(vm, arg_public_ip);
+      uint32_t ip;
+      if (!epee::string_tools::get_ip_int32_from_string(ip, pub_ip)) {
+        MERROR("Unable to parse IPv4 public address");
+        return false;
+      }
+      m_service_node_endpoint = epee::net_utils::ipv4_network_address{ip, sn_port};
+      MGINFO("Storage server endpoint is set to: " << m_service_node_endpoint.str());
+
+      if (m_service_node_endpoint.is_local() || m_service_node_endpoint.is_loopback()) {
+        MERROR("Specified IP is not public.");
+        return false;
+      }
     }
 
     epee::debug::g_test_dbg_lock_sleep() = command_line::get_arg(vm, arg_test_dbg_lock_sleep);
