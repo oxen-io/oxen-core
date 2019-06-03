@@ -157,7 +157,6 @@ namespace cryptonote
 
     return r;
   }
-  //---------------------------------------------------------------------------
   bool checkpoints::update_checkpoint(checkpoint_t const &checkpoint)
   {
     // TODO(doyle): Verify signatures and hash check out
@@ -179,6 +178,64 @@ namespace cryptonote
 
     bool result = update_checkpoint_in_db_safe(m_db, checkpoint);
     return result;
+  }
+  //---------------------------------------------------------------------------
+  void checkpoints::block_added(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs)
+  {
+    uint64_t const height = get_block_height(block);
+    if (height < service_nodes::CHECKPOINT_STORE_PERSISTENTLY_INTERVAL)
+      return;
+
+    uint64_t const end_cull_height = height - service_nodes::CHECKPOINT_STORE_PERSISTENTLY_INTERVAL;
+    uint64_t start_cull_height     = (end_cull_height < service_nodes::CHECKPOINT_STORE_PERSISTENTLY_INTERVAL)
+                                     ? 0
+                                     : end_cull_height - service_nodes::CHECKPOINT_STORE_PERSISTENTLY_INTERVAL;
+
+    start_cull_height += (start_cull_height % service_nodes::CHECKPOINT_INTERVAL);
+
+    auto guard = db_wtxn_guard(m_db);
+    for (size_t delete_height = start_cull_height;
+         delete_height < end_cull_height;
+         delete_height += service_nodes::CHECKPOINT_INTERVAL)
+    {
+      if (delete_height % service_nodes::CHECKPOINT_STORE_PERSISTENTLY_INTERVAL == 0)
+        continue;
+
+      try
+      {
+        m_db->remove_block_checkpoint(delete_height);
+      }
+      catch (const std::exception &e)
+      {
+        MERROR("Get block checkpoint from DB non-trivially at height: " << delete_height << ", what = " << e.what());
+      }
+    }
+  }
+  //---------------------------------------------------------------------------
+  void checkpoints::blockchain_detached(uint64_t height)
+  {
+    checkpoint_t top_checkpoint;
+    auto guard = db_wtxn_guard(m_db);
+    if (m_db->get_top_checkpoint(top_checkpoint))
+    {
+      uint64_t start_height = top_checkpoint.height;
+      for (size_t delete_height = start_height;
+           delete_height > height;
+           delete_height -= service_nodes::CHECKPOINT_INTERVAL)
+      {
+        if (delete_height % service_nodes::CHECKPOINT_STORE_PERSISTENTLY_INTERVAL == 0)
+          continue;
+
+        try
+        {
+          m_db->remove_block_checkpoint(delete_height);
+        }
+        catch (const std::exception &e)
+        {
+          MERROR("Get block checkpoint from DB non-trivially at height: " << delete_height << ", what = " << e.what());
+        }
+      }
+    }
   }
   //---------------------------------------------------------------------------
   bool checkpoints::is_in_checkpoint_zone(uint64_t height) const
