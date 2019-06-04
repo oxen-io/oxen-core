@@ -114,26 +114,6 @@ namespace cryptonote
       return false;
     }
   }
-
-  static bool update_checkpoint_in_db_safe(BlockchainDB *db, checkpoint_t const &checkpoint)
-  {
-    bool result        = true;
-    bool batch_started = false;
-    try
-    {
-      batch_started = db->batch_start();
-      db->update_block_checkpoint(checkpoint);
-    }
-    catch (const std::exception& e)
-    {
-      MERROR("Failed to add checkpoint with hash: " << checkpoint.block_hash << " at height: " << checkpoint.height << ", what = " << e.what());
-      result = false;
-    }
-
-    if (batch_started)
-      db->batch_stop();
-    return result;
-  }
   //---------------------------------------------------------------------------
   bool checkpoints::add_checkpoint(uint64_t height, const std::string& hash_str)
   {
@@ -176,14 +156,25 @@ namespace cryptonote
       CHECK_AND_ASSERT_MES(checkpoint.signatures.size() == 0, false, "Non service-node checkpoints should have no signatures");
     }
 
-    bool result = update_checkpoint_in_db_safe(m_db, checkpoint);
-    return result;
+    try
+    {
+      auto guard = db_wtxn_guard(m_db);
+      m_db->update_block_checkpoint(checkpoint);
+    }
+    catch (const std::exception& e)
+    {
+      MERROR("Failed to add checkpoint with hash: " << checkpoint.block_hash << " at height: " << checkpoint.height << ", what = " << e.what());
+      return false;
+    }
+
+    return true;
   }
   //---------------------------------------------------------------------------
   void checkpoints::block_added(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs)
   {
     uint64_t const height = get_block_height(block);
-    if (height < service_nodes::CHECKPOINT_STORE_PERSISTENTLY_INTERVAL)
+    if (height < service_nodes::CHECKPOINT_STORE_PERSISTENTLY_INTERVAL ||
+        block.major_version < network_version_12_checkpointing)
       return;
 
     uint64_t const end_cull_height = height - service_nodes::CHECKPOINT_STORE_PERSISTENTLY_INTERVAL;

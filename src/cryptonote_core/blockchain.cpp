@@ -502,6 +502,8 @@ bool Blockchain::init(BlockchainDB* db, const network_type nettype, bool offline
       return false;
   }
 
+  hook_block_added(m_checkpoints);
+  hook_blockchain_detached(m_checkpoints);
   for (InitHook* hook : m_init_hooks)
     hook->init();
 
@@ -1918,6 +1920,12 @@ bool Blockchain::handle_get_objects(NOTIFY_REQUEST_GET_OBJECTS::request& arg, NO
   std::vector<std::pair<cryptonote::blobdata,block>> blocks;
   get_blocks(arg.blocks, blocks, rsp.missed_ids);
 
+  uint64_t const top_height = (m_db->height() - 1);
+  uint64_t const earliest_height_to_sync_checkpoints_granularly =
+      (top_height < service_nodes::CHECKPOINT_STORE_PERSISTENTLY_INTERVAL)
+          ? 0
+          : top_height - service_nodes::CHECKPOINT_STORE_PERSISTENTLY_INTERVAL;
+
   for (auto& bl: blocks)
   {
     std::vector<crypto::hash> missed_tx_ids;
@@ -1925,11 +1933,12 @@ bool Blockchain::handle_get_objects(NOTIFY_REQUEST_GET_OBJECTS::request& arg, NO
     rsp.blocks.push_back(block_complete_entry());
     block_complete_entry& e = rsp.blocks.back();
 
-    static_assert((service_nodes::CHECKPOINT_STORE_PERSISTENTLY_INTERVAL % service_nodes::CHECKPOINT_INTERVAL == 0),
-                  "Use CHECKPOINT_INTERVAL as blanket catch-all to detect if the height can potentially have a checkpoint");
+    uint64_t const block_height  = get_block_height(bl.second);
+    uint64_t checkpoint_interval = service_nodes::CHECKPOINT_STORE_PERSISTENTLY_INTERVAL;
+    if (block_height >= earliest_height_to_sync_checkpoints_granularly)
+      checkpoint_interval = service_nodes::CHECKPOINT_INTERVAL;
 
-    uint64_t const block_height = get_block_height(bl.second);
-    if ((block_height % service_nodes::CHECKPOINT_INTERVAL) == 0)
+    if ((block_height % checkpoint_interval) == 0)
     {
       try
       {
