@@ -990,9 +990,6 @@ namespace cryptonote
     context.m_last_request_time = boost::date_time::not_a_date_time;
 
     // calculate size of request
-    size_t size = 0;
-    for (const auto &element : arg.txs) size += element.size();
-
     size_t blocks_size = 0, checkpoints_size = 0;
     for (const auto &element : arg.blocks) {
       blocks_size += element.block.size();
@@ -1000,9 +997,8 @@ namespace cryptonote
         blocks_size += tx.size();
       checkpoints_size += element.checkpoint.size();
     }
-    size += blocks_size;
-    size += checkpoints_size;
 
+    size_t size = blocks_size + checkpoints_size;
     for (const auto &element : arg.missed_ids)
       size += sizeof(element.data);
 
