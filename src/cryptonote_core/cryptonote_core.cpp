@@ -57,6 +57,7 @@ using namespace epee;
 #include "version.h"
 #include "wipeable_string.h"
 #include "common/i18n.h"
+#include "net/local_ip.h"
 
 #include "common/loki_integration_test_hooks.h"
 
@@ -181,12 +182,17 @@ namespace cryptonote
   , "Run as a service node"
   };
   static const command_line::arg_descriptor<std::string> arg_public_ip = {
-    "public-ip"
-  , "Globally reachable IP address for incoming storage server requests (required for Service Nodes)"
+    "sn-public-ip"
+  , "Public IP address on which this service node's services (such as the Loki "
+    "storage server) are accessible. This IP address will be advertised to the "
+    "network via the service node uptime proofs. Required if operating as a "
+    "service node."
   };
   static const command_line::arg_descriptor<uint16_t> arg_sn_bind_port = {
-    "storage-server-bind-port"
-  , "Port a storage server instance is listening on. Note that it is a Service Node's responsibility to make sure it is properly configured (Loki Launcher does that automatically)."
+    "storage-server-port"
+  , "The port on which this service node's storage server is accessible. A listening "
+    "storage server is required for service nodes. (This option is specified "
+    "automatically when using Loki Launcher.)"
   , 0};
   static const command_line::arg_descriptor<std::string> arg_block_notify = {
     "block-notify"
@@ -354,23 +360,31 @@ namespace cryptonote
 
     if (m_service_node) {
       /// TODO: parse these options early, before we start p2p server etc?
-      const uint16_t sn_port = command_line::get_arg(vm, arg_sn_bind_port);
+      m_storage_port = command_line::get_arg(vm, arg_sn_bind_port);
 
-      if (sn_port == 0) {
-        MERROR("Please specify a which port the storage server is listenting on.");
-        return false;
+      bool storage_ok = true;
+
+      if (m_storage_port == 0) {
+        MERROR("Please specify the port on which the storage server is listening.");
+        storage_ok = false;
       }
 
       const std::string pub_ip = command_line::get_arg(vm, arg_public_ip);
-      uint32_t ip;
-      if (!epee::string_tools::get_ip_int32_from_string(ip, pub_ip)) {
-        MERROR("Unable to parse IPv4 public address");
+      if (!epee::string_tools::get_ip_int32_from_string(m_sn_public_ip, pub_ip)) {
+        MERROR("Unable to parse IPv4 public address.");
+        storage_ok = false;
+      }
+
+      if (!storage_ok) {
+        MERROR("IMPORTANT: All service node operators are now required to run loki storage "
+               << "server and provide the public ip and port on which it can be accessed on the internet.");
         return false;
       }
-      m_service_node_endpoint = epee::net_utils::ipv4_network_address{ip, sn_port};
-      MGINFO("Storage server endpoint is set to: " << m_service_node_endpoint.str());
 
-      if (m_service_node_endpoint.is_local() || m_service_node_endpoint.is_loopback()) {
+      MGINFO("Storage server endpoint is set to: "
+             << (epee::net_utils::ipv4_network_address{ m_sn_public_ip, m_storage_port }).str());
+
+      if (epee::net_utils::is_ip_local(m_sn_public_ip) || epee::net_utils::is_ip_loopback(m_sn_public_ip)) {
         MERROR("Specified IP is not public.");
         return false;
       }
@@ -487,7 +501,9 @@ namespace cryptonote
     }
 
     bool r = handle_command_line(vm);
-    CHECK_AND_ASSERT_MES(r, false, "Failed to apply command line options");
+    /// Currently terminating before blockchain is initialized results in a crash
+    /// during deinitialization... TODO: fix that
+    CHECK_AND_ASSERT_MES(r, false, "Failed to apply command line options.");
 
     std::string db_type = command_line::get_arg(vm, cryptonote::arg_db_type);
     std::string db_sync_mode = command_line::get_arg(vm, cryptonote::arg_db_sync_mode);

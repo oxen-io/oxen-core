@@ -816,8 +816,12 @@ namespace cryptonote
      bool is_service_node(const crypto::public_key& pubkey) const;
 
 
-     epee::net_utils::ipv4_network_address get_service_node_endpoint() const {
-       return m_service_node_endpoint;
+     uint32_t get_service_node_public_ip() const {
+       return m_sn_public_ip;
+     }
+
+     uint16_t get_storage_port() const {
+       return m_storage_port;
      }
 
      /**
@@ -1139,8 +1143,9 @@ namespace cryptonote
      crypto::secret_key m_service_node_key;
      crypto::public_key m_service_node_pubkey;
 
-     /// Node's public IP and storage server port
-     epee::net_utils::ipv4_network_address m_service_node_endpoint;
+     /// Service Node's public IP and storage server port
+     uint32_t m_sn_public_ip;
+     uint16_t m_storage_port;
 
      size_t block_sync_size;
 

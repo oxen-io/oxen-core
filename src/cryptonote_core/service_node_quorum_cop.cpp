@@ -33,6 +33,7 @@
 #include "cryptonote_core.h"
 #include "version.h"
 #include "common/loki.h"
+#include "net/local_ip.h"
 #include <boost/endian/conversion.hpp>
 
 #include "common/loki_integration_test_hooks.h"
@@ -395,12 +396,12 @@ namespace service_nodes
     return result;
   }
 
-  static crypto::hash make_hash_v2(crypto::public_key const &pubkey, uint64_t timestamp, epee::net_utils::ipv4_network_address na)
+  static crypto::hash make_hash_v2(crypto::public_key const& pubkey,
+                                   uint64_t timestamp,
+                                   uint32_t pub_ip,
+                                   uint16_t storage_port)
   {
-    constexpr size_t BUFFER_SIZE = sizeof(pubkey) + sizeof(timestamp) + sizeof(na.ip()) + sizeof(na.port());
-
-    auto pub_ip = na.ip();
-    auto storage_port = na.port();
+    constexpr size_t BUFFER_SIZE = sizeof(pubkey) + sizeof(timestamp) + sizeof(pub_ip) + sizeof(storage_port);
 
     boost::endian::native_to_little_inplace(timestamp);
     boost::endian::native_to_little_inplace(pub_ip);
@@ -425,6 +426,8 @@ namespace service_nodes
     uint64_t timestamp               = proof.timestamp;
     const crypto::public_key& pubkey = proof.pubkey;
     const crypto::signature& sig     = proof.sig;
+    const uint32_t public_ip         = proof.public_ip;
+    const uint16_t storage_port      = proof.storage_port;
 
     if ((timestamp < now - UPTIME_PROOF_BUFFER_IN_SECONDS) || (timestamp > now + UPTIME_PROOF_BUFFER_IN_SECONDS))
       return false;
@@ -445,14 +448,13 @@ namespace service_nodes
     if (m_uptime_proof_seen[pubkey].timestamp >= now - (UPTIME_PROOF_FREQUENCY_IN_SECONDS / 2))
       return false; // already received one uptime proof for this node recently.
 
-    crypto::hash hash;
-
     const uint64_t hf12_height = m_core.get_earliest_ideal_height_for_version(cryptonote::network_version_12_checkpointing);
-
-    const bool enforce_v2 = (hf12_height != std::numeric_limits<uint64_t>::max() && height >= hf12_height + 2);
 
     /// Accept both old and new uptime proofs in a small window of 2 blocks
     /// after switching to hf 12; (for simplicity accept new signatures before hf 12 too)
+    const bool enforce_v2 = (hf12_height != std::numeric_limits<uint64_t>::max() && height >= hf12_height + 2);
+
+    crypto::hash hash;
     bool signature_ok = false;
     if (!enforce_v2) {
 
@@ -461,16 +463,16 @@ namespace service_nodes
       signature_ok = crypto::check_signature(hash, pubkey, sig);
 
       if (!signature_ok) {
-        hash = make_hash_v2(pubkey, timestamp, proof.storage_endpoint);
+        hash = make_hash_v2(pubkey, timestamp, public_ip, storage_port);
         signature_ok = crypto::check_signature(hash, pubkey, sig);
       }
 
     } else {
-      hash = make_hash_v2(pubkey, timestamp, proof.storage_endpoint);
+      hash = make_hash_v2(pubkey, timestamp, public_ip, storage_port);
       signature_ok = crypto::check_signature(hash, pubkey, sig);
 
       /// Sanity check; we do the same on lokid startup
-      if (proof.storage_endpoint.is_local() || proof.storage_endpoint.is_loopback()) return false;
+      if (epee::net_utils::is_ip_local(public_ip) || epee::net_utils::is_ip_loopback(public_ip)) return false;
     }
 
     if (!signature_ok) {
@@ -491,11 +493,10 @@ namespace service_nodes
     crypto::secret_key seckey;
     m_core.get_service_node_keys(pubkey, seckey);
 
-    epee::net_utils::ipv4_network_address sn_address = m_core.get_service_node_endpoint();
-
     req.timestamp           = time(nullptr);
     req.pubkey              = pubkey;
-    req.storage_endpoint    = sn_address;
+    req.public_ip           = m_core.get_service_node_public_ip();
+    req.storage_port        = m_core.get_storage_port();
 
     crypto::hash hash;
 
@@ -504,7 +505,7 @@ namespace service_nodes
     if (version < cryptonote::network_version_12_checkpointing) {
       hash = make_hash(req.pubkey, req.timestamp);
     } else {
-      hash = make_hash_v2(req.pubkey, req.timestamp, req.storage_endpoint);
+      hash = make_hash_v2(req.pubkey, req.timestamp, req.public_ip, req.storage_port);
     }
 
     crypto::generate_signature(hash, pubkey, seckey, req.sig);

@@ -1489,8 +1489,8 @@ namespace service_nodes
     CRITICAL_REGION_LOCAL(m_sn_mutex);
     auto &sn_info = m_transient_state.service_nodes_infos.at(proof.pubkey);
 
-    sn_info.public_ip = proof.storage_endpoint.ip();
-    sn_info.storage_port = proof.storage_endpoint.port();
+    sn_info.public_ip = proof.public_ip;
+    sn_info.storage_port = proof.storage_port;
   }
 
 
