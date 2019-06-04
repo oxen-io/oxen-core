@@ -589,7 +589,7 @@ namespace cryptonote
         if (m_debug_mine_singular_block)
         {
           m_debug_mine_singular_block = false;
-          stop();
+          break;
         }
 #endif
       }
@@ -599,6 +599,9 @@ namespace cryptonote
     }
     MGINFO("Miner thread stopped ["<< th_local_index << "]");
     --m_threads_active;
+#if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
+    stop();
+#endif
     return true;
   }
   //-----------------------------------------------------------------------------------------------------
