@@ -4506,6 +4506,39 @@ bool Blockchain::prepare_handle_incoming_blocks(const std::vector<block_complete
     m_blockchain_lock.lock();
   }
 
+  // TODO(loki): Always parse checkpoints, but block syncing have a caching
+  // layer that is pretty complicated but would be nice to have an equivalent
+  // for checkpoints.
+
+  // Place parsing before early returns since the caching layer seems to make
+  // this function early return in the common case, so always ensure checkpoints
+  // are parsed out.
+  for (size_t i = 0; i < blocks.size(); i++)
+  {
+    blobdata const &checkpoint_blob = blocks_entry[i].checkpoint;
+    block const &block              = blocks[i];
+    uint64_t block_height           = get_block_height(block);
+    bool maybe_has_checkpoint       = (block_height % service_nodes::CHECKPOINT_INTERVAL == 0);
+
+    if (checkpoint_blob.size() && !maybe_has_checkpoint)
+    {
+      MDEBUG("Checkpoint blob given but not expecting a checkpoint at this height");
+      return false;
+    }
+
+    if (checkpoint_blob.size())
+    {
+      checkpoint_t checkpoint;
+      if (!t_serializable_object_from_blob(checkpoint, checkpoint_blob))
+      {
+        MDEBUG("Checkpoint blob available but failed to parse");
+        return false;
+      }
+
+      checkpoints.push_back(checkpoint);
+    }
+  }
+
   const uint64_t height = m_db->height();
   if ((height + blocks_entry.size()) < m_blocks_hash_check.size())
     return true;
