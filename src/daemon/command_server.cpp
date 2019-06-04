@@ -367,6 +367,19 @@ t_command_server::t_command_server(
       }, p::_1)
     , ""
     );
+
+    m_command_lookup.set_handler(
+      "debug_mine_singular_block", std::bind([rpc_server](std::vector<std::string> const &args) {
+        if (args.size())
+          rpc_server->on_debug_mine_singular_block(args[0]);
+        else
+          std::cout << "Invalid args sent to debug_mine_singular_block";
+
+        loki::write_redirected_stdout_to_shared_mem();
+        return true;
+      }, p::_1)
+    , ""
+    );
 #endif
 }
 

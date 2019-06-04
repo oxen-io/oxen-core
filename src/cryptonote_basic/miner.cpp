@@ -81,7 +81,6 @@ using namespace epee;
 
 #include "miner.h"
 
-
 namespace cryptonote
 {
 
@@ -585,6 +584,14 @@ namespace cryptonote
           if (!m_config_folder_path.empty())
             epee::serialization::store_t_to_json_file(m_config, m_config_folder_path + "/" + MINER_CONFIG_FILE_NAME);
         }
+
+#if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
+        if (m_debug_mine_singular_block)
+        {
+          m_debug_mine_singular_block = false;
+          stop();
+        }
+#endif
       }
       nonce+=m_threads_total;
       ++m_hashes;
