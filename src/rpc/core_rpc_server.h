@@ -286,7 +286,7 @@ namespace cryptonote
       loki::write_redirected_stdout_to_shared_mem();
     }
 
-    void on_debug_mine_singular_block(std::string const &address)
+    void on_debug_mine_n_blocks(std::string const &address, uint64_t num_blocks)
     {
       cryptonote::miner &miner = m_core.get_miner();
       if (miner.is_mining())
@@ -302,10 +302,13 @@ namespace cryptonote
         return;
       }
 
-      if(!miner.debug_mine_singular_block(info.address))
+      for (uint64_t i = 0; i < num_blocks; i++)
       {
-        std::cout << "Failed, mining not started";
-        return;
+        if(!miner.debug_mine_singular_block(info.address))
+        {
+          std::cout << "Failed, mining not started";
+          return;
+        }
       }
 
       std::cout << "Mining stopped in daemon";
