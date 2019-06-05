@@ -156,18 +156,22 @@ namespace cryptonote
       CHECK_AND_ASSERT_MES(checkpoint.signatures.size() == 0, false, "Non service-node checkpoints should have no signatures");
     }
 
+    bool result        = true;
+    bool batch_started = false;
     try
     {
-      auto guard = db_wtxn_guard(m_db);
+      batch_started = m_db->batch_start();
       m_db->update_block_checkpoint(checkpoint);
     }
     catch (const std::exception& e)
     {
       MERROR("Failed to add checkpoint with hash: " << checkpoint.block_hash << " at height: " << checkpoint.height << ", what = " << e.what());
-      return false;
+      result = false;
     }
 
-    return true;
+    if (batch_started)
+      m_db->batch_stop();
+    return result;
   }
   //---------------------------------------------------------------------------
   void checkpoints::block_added(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs)
