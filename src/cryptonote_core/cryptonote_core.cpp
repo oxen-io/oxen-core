@@ -58,6 +58,8 @@ using namespace epee;
 #include "wipeable_string.h"
 #include "common/i18n.h"
 #include "net/local_ip.h"
+#include "net/http_client.h"
+#include "storages/http_abstract_invoke.h"
 
 #include "common/loki_integration_test_hooks.h"
 
@@ -1773,8 +1775,18 @@ namespace cryptonote
       // Code snippet from Github @Jagerman
       m_check_uptime_proof_interval.do_call([&states, this](){
         uint64_t last_uptime = m_quorum_cop.get_uptime_proof(states[0].pubkey).timestamp;
-        if (last_uptime <= static_cast<uint64_t>(time(nullptr) - UPTIME_PROOF_FREQUENCY_IN_SECONDS))
+        if (last_uptime <= static_cast<uint64_t>(time(nullptr) - UPTIME_PROOF_FREQUENCY_IN_SECONDS)) {
+
+          /// TODO: do this asyncronously?
+          if (!this->ping_storage_server()) {
+            MERROR("Failed to sumit uptime proof: no storage server detected! "
+                   << "Make sure that it is accessible at "
+                   << (epee::net_utils::ipv4_network_address{ m_sn_public_ip, m_storage_port }).str());
+            return true;
+          }
+
           this->submit_uptime_proof();
+        }
 
         return true;
       });
@@ -2017,6 +2029,25 @@ namespace cryptonote
       MCLOG_RED(level, "global", "Free space is below 1 GB on " << m_config_folder);
     }
     return true;
+  }
+  //-----------------------------------------------------------------------------------------------
+  bool core::ping_storage_server() const
+  {
+    constexpr auto PING_TIMEOUT = std::chrono::milliseconds(200);
+
+    using http_client_t = epee::net_utils::http::http_simple_client;
+
+    http_client_t http_client;
+
+    const auto ip = string_tools::get_ip_string_from_int32(m_sn_public_ip);
+    const auto port = std::to_string(m_storage_port);
+
+    http_client.set_server(ip, port, boost::none, epee::net_utils::ssl_support_t::e_ssl_support_disabled);
+
+    cryptonote::COMMAND_RPC_PING_STORAGE::request req = AUTO_VAL_INIT(req);
+    cryptonote::COMMAND_RPC_PING_STORAGE::response resp = AUTO_VAL_INIT(resp);
+
+    return net_utils::invoke_http_json_rpc("/json_rpc", "ping", req, resp, http_client, PING_TIMEOUT);
   }
   //-----------------------------------------------------------------------------------------------
   double factorial(unsigned int n)

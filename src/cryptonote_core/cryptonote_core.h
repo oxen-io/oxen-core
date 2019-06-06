@@ -1068,6 +1068,13 @@ namespace cryptonote
      bool check_disk_space();
 
      /**
+      * @brief check if storage server is running
+      * 
+      * @return true on it is running, false otherwise
+      */
+     bool ping_storage_server() const;
+
+     /**
       * @brief Initializes service node key by loading or creating.
       *
       * @return true on success, false otherwise
