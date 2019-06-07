@@ -1,34 +1,35 @@
-# Loki
+# Kegcoin 
 
 <p align="center">
-    <a href="https://github.com/loki-project/loki/commits/dev"><img alt="pipeline status" src="https://gitlab.com/lokiproject/loki/badges/dev/pipeline.svg" /></a>
+    <a href="https://github.com/kegcoin-project/kegcoin/commits/dev"><img alt="pipeline status" src="https://gitlab.com/kegcoinproject/kegcoin/badges/dev/pipeline.svg" /></a>
 </p>
 
+Copyright (c) 2019 The Kegcoin project.
 Copyright (c) 2018 The Loki Project.   
 Portions Copyright (c) 2014-2018 The Monero Project.   
 Portions Copyright (c) 2012-2013 The Cryptonote developers.
 
 ## Development resources
 
-- Web: [loki.network](https://loki.network)
-- Telegram: [t.me/LokiCommunity](https://t.me/LokiCommunity)
-- Mail: [team@loki.network](mailto:team@loki.network)
-- GitHub: [https://github.com/loki-project/loki](https://github.com/loki-project/loki)
-- Discord: [https://discord.gg/67GXfD6](https://discord.gg/67GXfD6)
+- Web: [kegcoin.network](https://kegcoin.network)
+- Telegram: [t.me/kegcoin](https://t.me/kegcoin)
+- Mail: [team@keg.network](mailto:team@keg.network)
+- GitHub: [https://github.com/kegcoin-project/kegcoin](https://github.com/kegcoin-project/kegcoin)
+- Discord: [https://discord.gg/WffDKjF](https://discord.gg//WffDKjF)
 
 ## Vulnerability disclosure
 
-- Check out our [Vulnerability Response Process](https://loki-project.github.io/loki-docs/Contributing/VULNERABILITY_RESPONSE_LOKI), encourages prompt disclosure of any Vulnerabilities
+- Check out our [Vulnerability Response Process](https://kegcoin-project.github.io/kegcoin-docs/Contributing/VULNERABILITY_RESPONSE_KEG), encourages prompt disclosure of any Vulnerabilities
 
 ## Information
 
-Loki is a private cryptocurrency based on Monero. Loki currently offers an incentivised full node layer, over the coming months we will be looking to support a secondary p2p network (Lokinet) and a messenger that offers private communications based on the Signal protocol (Loki Messenger).
+kegcoin is a private cryptocurrency based on Loki. Kegcoin currently offers an incentivised full node layer, over the coming months we will be looking to support a secondary p2p network (Kegnet) and a messenger that offers private communications based on the Signal protocol (Kegcoin Messenger).
 
 More information on the project can be found on the website and in the whitepaper.
 
-Loki is an open source project, and we encourage contributions from anyone with something to offer. For more information on contributing, please contact team@loki.network
+Kegcoin is an open source project, and we encourage contributions from anyone with something to offer. For more information on contributing, please contact team@kegcoin.network
 
-## Compiling Loki from source
+## Compiling Kegcoin from source
 
 ### Dependencies
 
