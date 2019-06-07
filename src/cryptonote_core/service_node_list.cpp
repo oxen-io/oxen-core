@@ -1320,15 +1320,9 @@ namespace service_nodes
       {
         if (hf_version >= cryptonote::network_version_12_checkpointing)
         {
-#if 1
-          num_workers                = std::min(pub_keys_indexes.size(), CHECKPOINT_QUORUM_SIZE);
-          size_t num_remaining_nodes = pub_keys_indexes.size() - num_workers;
-          num_validators             = std::min(num_remaining_nodes, CHECKPOINT_QUORUM_SIZE);
-#else
           num_validators             = std::min(pub_keys_indexes.size(), CHECKPOINT_QUORUM_SIZE);
           size_t num_remaining_nodes = pub_keys_indexes.size() - num_validators;
           num_workers                = std::min(num_remaining_nodes, CHECKPOINT_QUORUM_SIZE);
-#endif
         }
       }
       else

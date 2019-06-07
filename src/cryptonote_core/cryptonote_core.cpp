@@ -346,7 +346,7 @@ namespace cryptonote
 
     m_service_node = command_line::get_arg(vm, arg_service_node);
 
-    if (m_service_node && 0) {
+    if (m_service_node) {
       /// TODO: parse these options early, before we start p2p server etc?
       m_storage_port = command_line::get_arg(vm, arg_sn_bind_port);
 
@@ -1801,7 +1801,7 @@ namespace cryptonote
     std::vector<service_nodes::service_node_pubkey_info> const states = get_service_node_list_state({ m_service_node_pubkey });
     if (!states.empty() && states[0].info.registration_height + 1 < get_current_blockchain_height())
     {
-      //Code snippet from Github @Jagerman
+      // Code snippet from Github @Jagerman
       m_check_uptime_proof_interval.do_call([&states, this](){
         uint64_t last_uptime = m_quorum_cop.get_uptime_proof(states[0].pubkey).timestamp;
         if (last_uptime <= static_cast<uint64_t>(time(nullptr) - UPTIME_PROOF_FREQUENCY_IN_SECONDS)) {
