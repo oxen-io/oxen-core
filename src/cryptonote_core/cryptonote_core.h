@@ -1153,8 +1153,7 @@ namespace cryptonote
      uint16_t m_storage_port;
 
      /// Time point at which the storage server last pinged us
-     mutable epee::critical_section m_ping_lock;
-     std::chrono::system_clock::time_point m_last_storage_server_ping;
+     std::atomic<time_t> m_last_storage_server_ping;
 
      size_t block_sync_size;
 

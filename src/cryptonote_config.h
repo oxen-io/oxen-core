@@ -67,7 +67,7 @@ static_assert(STAKING_PORTIONS % 3 == 0, "Use a multiple of three, so that it di
 #define UPTIME_PROOF_FREQUENCY_IN_SECONDS               (60*60)
 #define UPTIME_PROOF_MAX_TIME_IN_SECONDS                (UPTIME_PROOF_FREQUENCY_IN_SECONDS * 2 + UPTIME_PROOF_BUFFER_IN_SECONDS)
 
-constexpr auto STORAGE_SERVER_PING_LIFETIME = std::chrono::seconds(UPTIME_PROOF_FREQUENCY_IN_SECONDS);
+#define STORAGE_SERVER_PING_LIFETIME                    UPTIME_PROOF_FREQUENCY_IN_SECONDS
 
 // MONEY_SUPPLY - total number coins to be generated
 #define MONEY_SUPPLY                                    ((uint64_t)(-1))

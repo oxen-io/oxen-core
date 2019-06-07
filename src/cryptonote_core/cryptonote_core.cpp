@@ -238,6 +238,10 @@ namespace cryptonote
   {
     m_checkpoints_updating.clear();
     set_cryptonote_protocol(pprotocol);
+
+    // Reset the storage server last ping to make
+    // sure the very first uptime proof works
+    this->update_storage_server_last_ping();
   }
   void core::set_cryptonote_protocol(i_cryptonote_protocol* pprotocol)
   {
@@ -1400,18 +1404,12 @@ namespace cryptonote
 
   bool core::check_storage_server_ping() const
   {
-    CRITICAL_REGION_LOCAL(m_ping_lock);
-
-    if (m_last_storage_server_ping.time_since_epoch().count() == 0) {
-      MWARNING("Never heard from the storage server!");
-      return false;
-    }
-
-    const auto elapsed = std::chrono::system_clock::now() - m_last_storage_server_ping;
+    time_t last_ping = m_last_storage_server_ping.load();
+    const auto elapsed = std::time(nullptr) - last_ping;
 
     if (elapsed > STORAGE_SERVER_PING_LIFETIME) {
-      MWARNING("Last heard from the storage server: "
-               << std::chrono::duration_cast<std::chrono::minutes>(elapsed).count() << " minutes ago!");
+      MWARNING("Have not heard from the storage server since at least: "
+      << epee::misc_utils::get_time_str(last_ping));
       return false;
     }
 
@@ -1420,8 +1418,7 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
   void core::update_storage_server_last_ping()
   {
-    CRITICAL_REGION_LOCAL(m_ping_lock);
-    m_last_storage_server_ping = std::chrono::system_clock::now();
+    m_last_storage_server_ping.store(std::time(nullptr));
   }
   //-----------------------------------------------------------------------------------------------
   void core::on_transaction_relayed(const cryptonote::blobdata& tx_blob)
