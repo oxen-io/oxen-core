@@ -185,30 +185,30 @@ namespace cryptonote
     uint64_t start_cull_height     = (end_cull_height < service_nodes::CHECKPOINT_STORE_PERSISTENTLY_INTERVAL)
                                      ? 0
                                      : end_cull_height - service_nodes::CHECKPOINT_STORE_PERSISTENTLY_INTERVAL;
-
     start_cull_height += (start_cull_height % service_nodes::CHECKPOINT_INTERVAL);
+    m_last_cull_height = std::max(m_last_cull_height, start_cull_height);
 
     auto guard = db_wtxn_guard(m_db);
-    for (size_t delete_height = start_cull_height;
-         delete_height < end_cull_height;
-         delete_height += service_nodes::CHECKPOINT_INTERVAL)
+    for (; m_last_cull_height < end_cull_height; m_last_cull_height += service_nodes::CHECKPOINT_INTERVAL)
     {
-      if (delete_height % service_nodes::CHECKPOINT_STORE_PERSISTENTLY_INTERVAL == 0)
+      if (m_last_cull_height % service_nodes::CHECKPOINT_STORE_PERSISTENTLY_INTERVAL == 0)
         continue;
 
       try
       {
-        m_db->remove_block_checkpoint(delete_height);
+        m_db->remove_block_checkpoint(m_last_cull_height);
       }
       catch (const std::exception &e)
       {
-        MERROR("Get block checkpoint from DB non-trivially at height: " << delete_height << ", what = " << e.what());
+        MERROR("Pruning block checkpoint on block added failed non-trivially at height: " << m_last_cull_height << ", what = " << e.what());
       }
     }
   }
   //---------------------------------------------------------------------------
   void checkpoints::blockchain_detached(uint64_t height)
   {
+    m_last_cull_height = std::min(m_last_cull_height, height);
+
     checkpoint_t top_checkpoint;
     auto guard = db_wtxn_guard(m_db);
     if (m_db->get_top_checkpoint(top_checkpoint))
@@ -227,7 +227,7 @@ namespace cryptonote
         }
         catch (const std::exception &e)
         {
-          MERROR("Get block checkpoint from DB non-trivially at height: " << delete_height << ", what = " << e.what());
+          MERROR("Remove block checkpoint on detach failed non-trivially at height: " << delete_height << ", what = " << e.what());
         }
       }
     }

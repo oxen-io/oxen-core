@@ -197,6 +197,7 @@ namespace cryptonote
     bool init(network_type nettype, struct BlockchainDB *db);
 
   private:
+    uint64_t m_last_cull_height = 0;
     BlockchainDB *m_db;
   };
 
