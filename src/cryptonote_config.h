@@ -37,17 +37,17 @@
 
 #define CRYPTONOTE_DNS_TIMEOUT_MS                       20000
 
-#define CRYPTONOTE_MAX_BLOCK_NUMBER                     500000000
-#define CRYPTONOTE_MAX_BLOCK_SIZE                       500000000  // block header blob limit, never used!
-#define CRYPTONOTE_GETBLOCKTEMPLATE_MAX_BLOCK_SIZE	196608 //size of block (bytes) that is the maximum that miners will produce
+#define CRYPTONOTE_MAX_BLOCK_NUMBER                     50000000000
+#define CRYPTONOTE_MAX_BLOCK_SIZE                       50000000000  // block header blob limit, never used!
+#define CRYPTONOTE_GETBLOCKTEMPLATE_MAX_BLOCK_SIZE	    250000 //size of block (bytes) that is the maximum that miners will produce
 #define CRYPTONOTE_MAX_TX_SIZE                          1000000000
 #define CRYPTONOTE_PUBLIC_ADDRESS_TEXTBLOB_VER          0
-#define CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW            30
+#define CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW            3
 #define CURRENT_BLOCK_MAJOR_VERSION                     7
 #define CURRENT_BLOCK_MINOR_VERSION                     7
 #define CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT_V2           60*10
-#define CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE             10
-#define CRYPTONOTE_DEFAULT_TX_MIXIN                     9
+#define CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE             5
+#define CRYPTONOTE_DEFAULT_TX_MIXIN                     5
 
 #define STAKING_REQUIREMENT_LOCK_BLOCKS_EXCESS          20
 #define STAKING_PORTIONS                                UINT64_C(0xfffffffffffffffc)
@@ -67,8 +67,8 @@ static_assert(STAKING_PORTIONS % 3 == 0, "Use a multiple of three, so that it di
 #define UPTIME_PROOF_MAX_TIME_IN_SECONDS                (UPTIME_PROOF_FREQUENCY_IN_SECONDS * 2 + UPTIME_PROOF_BUFFER_IN_SECONDS)
 
 // MONEY_SUPPLY - total number coins to be generated
-#define MONEY_SUPPLY                                    ((uint64_t)(-1))
-#define EMISSION_SPEED_FACTOR_PER_MINUTE                (20)
+#define MONEY_SUPPLY                                    (100000000000000)
+#define EMISSION_SPEED_FACTOR_PER_MINUTE                (22) // No Longer Used
 #define FINAL_SUBSIDY_PER_MINUTE                        ((uint64_t)300000000000) // 3 * pow(10, 11)
 #define EMISSION_LINEAR_BASE                            ((uint64_t)(1) << 58)
 #define YEARLY_INFLATION_INVERSE                        200 // 0.5% yearly inflation, inverted for integer division
@@ -83,23 +83,23 @@ static_assert(STAKING_PORTIONS % 3 == 0, "Use a multiple of three, so that it di
 #define CRYPTONOTE_LONG_TERM_BLOCK_WEIGHT_WINDOW_SIZE   100000 // size in blocks of the long term block weight median window
 #define CRYPTONOTE_SHORT_TERM_BLOCK_WEIGHT_SURGE_FACTOR 50
 #define CRYPTONOTE_COINBASE_BLOB_RESERVED_SIZE          600
-#define CRYPTONOTE_DISPLAY_DECIMAL_POINT                9
+#define CRYPTONOTE_DISPLAY_DECIMAL_POINT                5
 // COIN - number of smallest units in one coin
-#define COIN                                            ((uint64_t)1000000000) // pow(10, 9)
+#define COIN                                            ((uint64_t)10000) // pow(10, 5)
 
-#define FEE_PER_KB_OLD                                  ((uint64_t)10000000000) // pow(10, 10)
-#define FEE_PER_KB                                      ((uint64_t)2000000000) // 2 * pow(10, 9)
-#define FEE_PER_BYTE                                    ((uint64_t)300000)
-#define DYNAMIC_FEE_PER_KB_BASE_FEE                     ((uint64_t)2000000000) // 2 * pow(10,9)
+#define FEE_PER_KB_OLD                                  ((uint64_t)10000) // pow(10, 5)
+#define FEE_PER_KB                                      ((uint64_t)2000) // 2 * pow(10, 5)
+#define FEE_PER_BYTE                                    ((uint64_t)3000000)
+#define DYNAMIC_FEE_PER_KB_BASE_FEE                     ((uint64_t)200000) // 2 * pow(10,5)
 #define DYNAMIC_FEE_PER_KB_BASE_BLOCK_REWARD            ((uint64_t)10000000000000) // 10 * pow(10,12)
 #define DYNAMIC_FEE_PER_KB_BASE_FEE_V5                  ((uint64_t)2000000000 * (uint64_t)CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V2 / CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V5)
 #define DYNAMIC_FEE_REFERENCE_TRANSACTION_WEIGHT         ((uint64_t)3000)
 
 #define ORPHANED_BLOCKS_MAX_COUNT                       100
 
-#define DIFFICULTY_TARGET_V2                            120  // seconds
+#define DIFFICULTY_TARGET_V2                            300  // seconds
 #define DIFFICULTY_WINDOW_V2                            60
-#define DIFFICULTY_LAG                                  15  // !!!
+#define DIFFICULTY_LAG                                  0  // !!!
 #define DIFFICULTY_CUT                                  60  // timestamps to cut after sorting
 #define DIFFICULTY_BLOCKS_COUNT_V2                      (DIFFICULTY_WINDOW_V2 + 1) // added +1 to make N=N
 
@@ -151,7 +151,7 @@ static_assert(STAKING_PORTIONS % 3 == 0, "Use a multiple of three, so that it di
 
 #define ALLOW_DEBUG_COMMANDS
 
-#define CRYPTONOTE_NAME                         "loki"
+#define CRYPTONOTE_NAME                         "kegcoin"
 #define CRYPTONOTE_POOLDATA_FILENAME            "poolstate.bin"
 #define CRYPTONOTE_BLOCKCHAINDATA_FILENAME      "data.mdb"
 #define CRYPTONOTE_BLOCKCHAINDATA_LOCK_FILENAME "lock.mdb"
@@ -167,7 +167,7 @@ static_assert(STAKING_PORTIONS % 3 == 0, "Use a multiple of three, so that it di
 #define HF_VERSION_SMALLER_BP                   cryptonote::network_version_11_infinite_staking
 #define HF_VERSION_LONG_TERM_BLOCK_WEIGHT       cryptonote::network_version_11_infinite_staking
 
-#define PER_KB_FEE_QUANTIZATION_DECIMALS        8
+#define PER_KB_FEE_QUANTIZATION_DECIMALS        4
 
 #define HASH_OF_HASHES_STEP                     256
 
@@ -176,81 +176,72 @@ static_assert(STAKING_PORTIONS % 3 == 0, "Use a multiple of three, so that it di
 #define BULLETPROOF_MAX_OUTPUTS                 16
 
 #define CRYPTONOTE_PRUNING_STRIPE_SIZE          4096 // the smaller, the smoother the increase
-#define CRYPTONOTE_PRUNING_LOG_STRIPES          3 // the higher, the more space saved
-#define CRYPTONOTE_PRUNING_TIP_BLOCKS           5500 // the smaller, the more space saved
+#define CRYPTONOTE_PRUNING_LOG_STRIPES          4 // the higher, the more space saved
+#define CRYPTONOTE_PRUNING_TIP_BLOCKS           5000 // the smaller, the more space saved
 //#define CRYPTONOTE_PRUNING_DEBUG_SPOOF_SEED
 
 // New constants are intended to go here
 namespace config
 {
-  uint64_t const DEFAULT_FEE_ATOMIC_XMR_PER_KB = 500; // Just a placeholder!  Change me!
+  uint64_t const DEFAULT_FEE_ATOMIC_XMR_PER_KB = 1000; // 0.1 KEG
   uint8_t const FEE_CALCULATION_MAX_RETRIES = 10;
-  uint64_t const DEFAULT_DUST_THRESHOLD = ((uint64_t)2000000000); // 2 * pow(10, 9)
-  uint64_t const BASE_REWARD_CLAMP_THRESHOLD = ((uint64_t)100000000); // pow(10, 8)
+  uint64_t const DEFAULT_DUST_THRESHOLD = ((uint64_t)200000); // 2 * pow(10, 5)
+  uint64_t const BASE_REWARD_CLAMP_THRESHOLD = ((uint64_t)10000); // pow(10, 4)
   std::string const P2P_REMOTE_DEBUG_TRUSTED_PUB_KEY = "0000000000000000000000000000000000000000000000000000000000000000";
 
-  uint64_t const CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX = 114;
-  uint64_t const CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 115;
-  uint64_t const CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX = 116;
-  uint16_t const P2P_DEFAULT_PORT = 22022;
-  uint16_t const RPC_DEFAULT_PORT = 22023;
-  uint16_t const ZMQ_RPC_DEFAULT_PORT = 22024;
-  boost::uuids::uuid const NETWORK_ID = { {
-        0x46 ,0x61, 0x72, 0x62 ,0x61, 0x75, 0x74, 0x69, 0x2a, 0x4c, 0x61, 0x75, 0x66, 0x65, 0x79
-    } }; // Bender's nightmare
-  std::string const GENESIS_TX = "021e01ff000380808d93f5d771027c4fd4553bc9886f1f49e3f76d945bf71e8632a94e6c177b19cbc780e7e6bdb48080b4ccd4dfc60302c8b9f6461f58ef3f2107e577c7425d06af584a1c7482bf19060e84059c98b4c3808088fccdbcc32302732b53b0b0db706fcc3087074fb4b786da5ab72b2065699f9453448b0db27f892101ed71f2ce3fc70d7b2036f8a4e4b3fb75c66c12184b55a908e7d1a1d6995566cf00";
+  uint64_t const CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX = 111;
+  uint64_t const CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 112;
+  uint64_t const CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX = 113;
+  uint16_t const P2P_DEFAULT_PORT = 5050;
+  uint16_t const RPC_DEFAULT_PORT = 4040;
+  uint16_t const ZMQ_RPC_DEFAULT_PORT = 5555;
+  boost::uuids::uuid const NETWORK_ID = { 
+    { 0x56 ,0x62, 0x77, 0x62 ,0x31, 0x75, 0x78, 0x69, 0x4a, 0x4c, 0x61, 0x35, 0x62, 0x65, 0x55 }
+  }; // Bender's nightmare
+  std::string const GENESIS_TX = "0x";
   uint32_t const GENESIS_NONCE = 1022201;
 
   uint64_t const GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS = ((60 * 60 * 24 * 7) / DIFFICULTY_TARGET_V2);
   std::string const GOVERNANCE_WALLET_ADDRESS[] =
-  {
-    "LCFxT37LAogDn1jLQKf4y7aAqfi21DjovX9qyijaLYQSdrxY1U5VGcnMJMjWrD9RhjeK5Lym67wZ73uh9AujXLQ1RKmXEyL", // hardfork v7-10
-    "LDBEN6Ut4NkMwyaXWZ7kBEAx8X64o6YtDhLXUP26uLHyYT4nFmcaPU2Z2fauqrhTLh4Qfr61pUUZVLaTHqAdycETKM1STrz", // hardfork v11
-  };
+  {};
 
   namespace testnet
   {
-    uint64_t const CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX = 156;
-    uint64_t const CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 157;
-    uint64_t const CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX = 158;
-    uint16_t const P2P_DEFAULT_PORT = 38156;
-    uint16_t const RPC_DEFAULT_PORT = 38157;
-    uint16_t const ZMQ_RPC_DEFAULT_PORT = 38158;
+    uint64_t const CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX = 114;
+    uint64_t const CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 115;
+    uint64_t const CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX = 116;
+    uint16_t const P2P_DEFAULT_PORT = 5051;
+    uint16_t const RPC_DEFAULT_PORT = 4041;
+    uint16_t const ZMQ_RPC_DEFAULT_PORT = 5556;
     boost::uuids::uuid const NETWORK_ID = { {
-        0x5f, 0x3a, 0x78, 0x65, 0xe1, 0x6f, 0xca, 0xb8, 0x02, 0xa1, 0xdc, 0x17, 0x61, 0x64, 0x15, 0xbe,
+        0x5f, 0x3a, 0x78, 0x65, 0xe1, 0x6f, 0xcb, 0xb8, 0x02, 0xa1, 0xdc, 0x17, 0x61, 0x64, 0x15, 0xbe,
       } }; // Bender's daydream
     std::string const GENESIS_TX = "03011e001e01ff00018080c9db97f4fb270259b546996f69aa71abe4238995f41d780ab1abebcac9f00e808f147bdb9e3228420112573af8c309b69a1a646f41b5212ba7d9c4590bf86e04f36c486467cfef9d3d72000000000000000000000000000000000000000000000000000000000000000000";
     uint32_t const GENESIS_NONCE = 10001;
 
     uint64_t const GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS = 1000;
     std::string const GOVERNANCE_WALLET_ADDRESS[] =
-    {
-      "T6SUprTYE5rQpep9iQFxyPcKVd91DFR1fQ1Qsyqp5eYLiFc8XuYd3reRE71qDL8c3DXioUbDEpDFdaUpetnL37NS1R3rzoKxi", // hardfork v7-9
-      "T6TzkJb5EiASaCkcH7idBEi1HSrpSQJE1Zq3aL65ojBMPZvqHNYPTL56i3dncGVNEYCG5QG5zrBmRiVwcg6b1cRM1SRNqbp44", // hardfork v10
-    };
+    {};
 
   }
 
   namespace stagenet
   {
-    uint64_t const CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX = 24;
-    uint64_t const CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 25;
-    uint64_t const CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX = 36;
-    uint16_t const P2P_DEFAULT_PORT = 38153;
-    uint16_t const RPC_DEFAULT_PORT = 38154;
-    uint16_t const ZMQ_RPC_DEFAULT_PORT = 38155;
+    uint64_t const CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX = 117;
+    uint64_t const CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 118;
+    uint64_t const CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX = 119;
+    uint16_t const P2P_DEFAULT_PORT = 5053;
+    uint16_t const RPC_DEFAULT_PORT = 5053;
+    uint16_t const ZMQ_RPC_DEFAULT_PORT = 5557;
     boost::uuids::uuid const NETWORK_ID = { {
-        0xbb ,0x37, 0x9B, 0x22 , 0x0A, 0x66 , 0x69, 0x1E, 0x09, 0xB2, 0x97, 0x8A, 0xCC, 0xA1, 0xDF, 0x9C
+        0xbb ,0x37, 0x9B, 0x22 , 0x0b, 0x66 , 0x69, 0x1E, 0x09, 0xB2, 0x97, 0x8A, 0xCC, 0xA1, 0xDF, 0x9C
       } }; // Beep Boop
     std::string const GENESIS_TX = "021e01ff000380808d93f5d771027e4490431900c66a6532917ad9e6a1de634a209b708f653097e7b48efc1238c68080b4ccd4dfc60302ba19a224e6474371f9161b2e6271a36d060cbdc2e479ad78f1be64c56576fa07808088fccdbcc32302bccf9c13ba1b5bb02638de6e557acdd46bf48953e42cf98a12d2ad2900cc316121018fc6728d9e3c062d3afae3b2317998d2abee1e12f51271ba1c0d3cdd236b81d200";
     uint32_t const GENESIS_NONCE = 10002;
 
     uint64_t const GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS = ((60 * 60 * 24 * 7) / DIFFICULTY_TARGET_V2);
     std::string const GOVERNANCE_WALLET_ADDRESS[] =
-    {
-      "59f7FCwYMiwMnFr8HwsnfJ2hK3DYB1tryhjsfmXqEBJojKyqKeNWoaDaZaauoZPiZHUYp2wJuy5s9H96qy4q9xUVCXXHmTU", // hardfork v7-9
-      "59f7FCwYMiwMnFr8HwsnfJ2hK3DYB1tryhjsfmXqEBJojKyqKeNWoaDaZaauoZPiZHUYp2wJuy5s9H96qy4q9xUVCXXHmTU", // hardfork v10
-    };
+    {};
   }
 }
 
