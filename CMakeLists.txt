@@ -28,6 +28,14 @@
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 # Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
+
+# Add CCache
+find_program(CCACHE_PROGRAM ccache)
+if(CCACHE_PROGRAM)
+  message(STATUS "Found ccache package... Activating...")
+  set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CCACHE_PROGRAM}")
+endif()
+
 list(INSERT CMAKE_MODULE_PATH 0
   "${CMAKE_SOURCE_DIR}/cmake")
 include(CheckCCompilerFlag)
