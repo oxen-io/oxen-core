@@ -1,9 +1,9 @@
-Loki daemon internationalization
+Kegcoin daemon internationalization
 ==================================
 
-The Loki command line tools can be translated in various languages. If you wish to contribute and need help/support, contact the [Loki Localization Workgroup on Taiga](https://taiga.getloki.org/project/erciccione-loki-localization/) or come chat on `#loki-translations` (Freenode/IRC, riot/matrix, MatterMost)
+The Kegcoin command line tools can be translated in various languages. If you wish to contribute and need help/support, contact the [The Kegcoin Localization Workgroup via email](emailto:translate@kegcoin.network) or come chat on `#kegcoin-translations` (Discord)
 
-In order to use the same translation workflow as the [Loki GUI](https://github.com/loki-project/loki-gui), they use Qt Linguist translation files.  However, to avoid the dependencies on Qt this normally implies, they use a custom loader to read those files at runtime.
+In order to use the same translation workflow as the [Kegcoin GUI](https://github.com/Kegcoin-project/kegcoin-gui), they use Qt Linguist translation files.  However, to avoid the dependencies on Qt this normally implies, they use a custom loader to read those files at runtime.
 
 ### Tools for translators
 
@@ -19,11 +19,11 @@ To update ts files after changing source code:
 
 To add a new language, eg Spanish (ISO code es):
 
-    cp translations/loki.ts translations/loki_es.ts
+    cp translations/kegcoin.ts translations/kegcoin_es.ts
 
 To edit translations for Spanish:
 
-    linguist translations/loki_es.ts
+    linguist translations/kegcoin_es.ts
 
 To build translations after modifying them:
 
@@ -31,7 +31,7 @@ To build translations after modifying them:
 
 To test a translation:
 
-    LANG=es ./build/release/bin/loki-wallet-cli
+    LANG=es ./build/release/bin/kegcoin-wallet-cli
 
 To add new translatable strings in the source code:
 
