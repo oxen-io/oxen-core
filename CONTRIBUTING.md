@@ -1,4 +1,4 @@
-# Contributing to Monero
+# Contributing to Kegcoin
 
 A good way to help is to test, and report bugs. See
 [How to Report Bugs Effectively (by Simon Tatham)](https://www.chiark.greenend.org.uk/~sgtatham/bugs.html)
@@ -15,7 +15,7 @@ of software solid and usable.
 Patches are preferably to be sent via a Github pull request. If that
 can't be done, patches in "git format-patch" format can be sent
 (eg, posted to fpaste.org with a long enough timeout and a link
-posted to #monero-dev on irc.freenode.net).
+posted to #dev-general on discord).
 
 Patches should be self contained. A good rule of thumb is to have
 one patch per separate issue, feature, or logical change. Also, no
@@ -57,6 +57,7 @@ the previous paragraph is here.
 
 Copyright (c) 2009-2015 Pieter Hintjens.
 Copyright (c) 2017-2018 The Monero Project.
+Copyright (c) 2019 The Kegcoin Project
 
 This Specification is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation; either version 3 of the License, or (at your option) any later version.
 
@@ -68,10 +69,10 @@ You should have received a copy of the GNU General Public License along with thi
 
 The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in RFC 2119.
 
-The "Monero Maintainer Team" is defined in this document as the following users:
-- fluffypony
-- moneromooo
-- hyc
+The "Kegcoin Maintainer Team" is defined in this document as the following users:
+- LeoCornelius
+- Tobias (ThedevMinerTv)
+- Lacroy
 
 ## Goals
 
@@ -127,7 +128,7 @@ C4 is meant to provide a reusable optimal collaboration model for open source so
 - To request changes, a user SHOULD log an issue on the project Platform issue tracker.
 - The user or Contributor SHOULD write the issue by describing the problem they face or observe.
 - The user or Contributor SHOULD seek consensus on the accuracy of their observation, and the value of solving the problem.
-- Users SHALL NOT log feature requests, ideas, or suggestions unrelated to Monero code or Monero's dependency code or Monero's potential/future dependency code or research which successfully implements Monero.
+- Users SHALL NOT log feature requests, ideas, or suggestions unrelated to Kegcoin's code or Kegcoin's dependency code or Kegcoin's potential/future dependency code or research which successfully implements Kegcoin.
 - Users SHALL NOT log any solutions to problems (verifiable or hypothetical) of which are not explicitly documented and/or not provable and/or cannot be reasonably proven.
 - Thus, the release history of the project SHALL be a list of meaningful issues logged and solved.
 - To work on an issue, a Contributor SHALL fork the project repository and then work on their forked repository.
@@ -135,9 +136,9 @@ C4 is meant to provide a reusable optimal collaboration model for open source so
 - A Contributor SHALL NOT commit changes directly to the project.
 - To discuss a patch, people MAY comment on the Platform pull request, on the commit, or elsewhere.
 - To accept or reject a patch, a Maintainer SHALL use the Platform interface.
-- Maintainers SHOULD NOT merge their own patches except in exceptional cases, such as non-responsiveness from other Maintainers for an extended period (more than 30 days) or unless urgent as defined by the Monero Maintainers Team.
+- Maintainers SHOULD NOT merge their own patches except in exceptional cases, such as non-responsiveness from other Maintainers for an extended period (more than 30 days) or unless urgent as defined by the Kegcoin Maintainers Team.
 - Maintainers SHALL NOT make value judgments on correct patches unless the Maintainer (as may happen in rare circumstances) is a core code developer.
-- Maintainers MUST NOT merge pull requests in less than 168 hours (1 week) unless deemed urgent by at least 2 people from the Monero Maintainer Team.
+- Maintainers MUST NOT merge pull requests in less than 168 hours (1 week) unless deemed urgent by at least 2 people from the Kegcoin Maintainer Team.
 - The Contributor MAY tag an issue as "Ready" after making a pull request for the issue.
 - The user who created an issue SHOULD close the issue after checking the patch is successful.
 - Maintainers SHOULD ask for improvements to incorrect patches and SHOULD reject incorrect patches if the Contributor does not respond constructively.
