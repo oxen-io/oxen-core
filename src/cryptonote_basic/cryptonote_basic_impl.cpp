@@ -93,14 +93,14 @@ namespace cryptonote {
     //premine reward
     if (already_generated_coins == 0)
     {
-      reward = 22500000000000000;
+      reward = 7000000000000000;
       return true;
     }
 
     static_assert(DIFFICULTY_TARGET_V2%60==0,"difficulty targets must be a multiple of 60");
 
     uint64_t emission_supply_component = (already_generated_coins * EMISSION_SUPPLY_MULTIPLIER) / EMISSION_SUPPLY_DIVISOR;
-    uint64_t base_reward = (EMISSION_LINEAR_BASE - emission_supply_component) / EMISSION_DIVISOR;
+    uint64_t base_reward = 200;
 
     // Check if we just overflowed
     if (emission_supply_component > EMISSION_LINEAR_BASE) {
@@ -108,7 +108,7 @@ namespace cryptonote {
     }
 
     if (version >= 8)
-      base_reward = 28000000000.0 + 100000000000.0 / loki::exp2(height / (720.0 * 90.0)); // halve every 90 days.
+      base_reward = 200; // halve every 90 days.
 
     uint64_t full_reward_zone = get_min_block_weight(version);
 
@@ -118,7 +118,7 @@ namespace cryptonote {
     }
 
     if (current_block_weight <= median_weight) {
-      reward = base_reward;
+      reward = 200;
       return true;
     }
 
