@@ -135,6 +135,10 @@ Dependencies need to be built with -fPIC. Static libraries usually aren't, so yo
 
         HAVE_DOT=YES doxygen Doxyfile
 
+* **Optional**: compile for printing the genesis transaction use the following options for cmake
+
+        -DCMAKE_CXX_FLAGS="-D PRINT_GENESIS" -DCMAKE_C_FLAGS="-D PRINT_GENESIS"
+
 #### On the Raspberry Pi
 
 Tested on a Raspberry Pi Zero with a clean install of minimal Raspbian Stretch (2017-09-07 or later) from https://www.raspberrypi.org/downloads/raspbian/. If you are using Raspian Jessie, [please see note in the following section](#note-for-raspbian-jessie-users).
