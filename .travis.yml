@@ -35,6 +35,17 @@ env:
 
 before_install:
     - export PATH=$(echo $PATH | tr ':' "\n" | sed '/\/opt\/python/d' | tr "\n" ":" | sed "s|::|:|g")
+deploy:
+  provider: releases
+  api_key:
+    secure: "znp1ipapECdGruFNZj3JvjBfk50CuKwKH7ESqbouzRWavvZ8CxQ0xCJv6hRZoLGfaKMbFQ2a1jYY3JtielehamSWBuq+4dxanEU4QDGqM0Ac35Lwjw6ZuZ8cj/yXaIW25NLiPxIOKVvSGvx13FNYJ4DN/v1G8XgRMvkYN/Co50jnIZVZqpEJUbdQ+66uB4j9KR9Qhq7u2KE1pxCHrcFLJAlDAKGUViH1k5tqMn0uRFw6kWyPauX2UosQeqU+a0kHFBxDDObb6dVoNXNuMHMpRJ7EJjdfjypXyYY3mvqi9hXjqsyoI6MFNRcZsychFLLey/CCEX4e4iibGeFuCh7WI2cydMM9eoxy4Jf9fiIx9YwzHInEaQbbY2CpYLac+nRjsGoLklpgvCLajJ6RZipX1zv7OKK5fKdiTFAuzze5o2OkzGzd/NequZGAJm332XDedLIsfEuuSaaxGugfwsOXnbw5mKidnB4ygRgvmknDwPxkXjFHtwmBQjsNxJwLX45Yq7lyDRR6d7gMoxHJdRtiWJKFxjEFoN7W7P5DheyTfvriP/4BnraBP3j1WiE+tGuJSyadUmxYCdFffPRNtr9tzNgKtauMNv9TCKBlTCK/7Jbaze3CJ/vDPJZtXIqSuXVfcNf1q741YQCXO9XoiLzasI7u+iqnznh2LZwZQgDVsFk="
+  file:
+    - Kegcoin-${TRAVIS_TAG}-${LABEL}.tar.gz
+  skip_cleanup: true
+  on:
+    repo: kegcoin-project/kegcoin
+    tags: true
+    condition: "$_DEPLOYABLE = true"
 install:
     - env | grep -E '^(CCACHE_|DISPLAY|CONFIG_SHELL)' | tee /tmp/env
     - if [[ $HOST = *-mingw32 ]]; then DOCKER_ADMIN="--cap-add SYS_ADMIN"; fi
