@@ -97,11 +97,54 @@ namespace cryptonote {
       return true;
     }
     
-    switch (version) {
-      default:
-        reward = 200000000000; //200 KEG per block
+    static_assert(DIFFICULTY_TARGET_V2%60==0,"difficulty targets must be a multiple of 60");
+
+    uint64_t emission_supply_component = (already_generated_coins * EMISSION_SUPPLY_MULTIPLIER) / EMISSION_SUPPLY_DIVISOR;
+    uint64_t base_reward = (EMISSION_LINEAR_BASE - emission_supply_component) / EMISSION_DIVISOR;
+
+    // Check if we just overflowed
+    if (emission_supply_component > EMISSION_LINEAR_BASE) {
+      base_reward = 0;
     }
 
+    if (version >= 8)
+      base_reward = 28000000000.0 + 100000000000.0 / loki::exp2(height / (720.0 * 90.0)); // halve every 90 days.
+
+    uint64_t full_reward_zone = get_min_block_weight(version);
+
+    //make it soft
+    if (median_weight < full_reward_zone) {
+      median_weight = full_reward_zone;
+    }
+
+    if (current_block_weight <= median_weight) {
+      reward = base_reward;
+      return true;
+    }
+
+    if(current_block_weight > 2 * median_weight) {
+      MERROR("Block cumulative weight is too big: " << current_block_weight << ", expected less than " << 2 * median_weight);
+      return false;
+    }
+
+    assert(median_weight < std::numeric_limits<uint32_t>::max());
+    assert(current_block_weight < std::numeric_limits<uint32_t>::max());
+
+    uint64_t product_hi;
+    // BUGFIX: 32-bit saturation bug (e.g. ARM7), the result was being
+    // treated as 32-bit by default.
+    uint64_t multiplicand = 2 * median_weight - current_block_weight;
+    multiplicand *= current_block_weight;
+    uint64_t product_lo = mul128(base_reward, multiplicand, &product_hi);
+
+    uint64_t reward_hi;
+    uint64_t reward_lo;
+    div128_32(product_hi, product_lo, static_cast<uint32_t>(median_weight), &reward_hi, &reward_lo);
+    div128_32(reward_hi, reward_lo, static_cast<uint32_t>(median_weight), &reward_hi, &reward_lo);
+    assert(0 == reward_hi);
+    assert(reward_lo < base_reward);
+
+    reward = reward_lo;
     return true;
   }
   //------------------------------------------------------------------------------------
