@@ -43,8 +43,8 @@
 #define CRYPTONOTE_MAX_TX_SIZE                          1000000000
 #define CRYPTONOTE_PUBLIC_ADDRESS_TEXTBLOB_VER          0
 #define CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW            3
-#define CURRENT_BLOCK_MAJOR_VERSION                     7
-#define CURRENT_BLOCK_MINOR_VERSION                     7
+#define CURRENT_BLOCK_MAJOR_VERSION                     8
+#define CURRENT_BLOCK_MINOR_VERSION                     8
 #define CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT_V2           60*10
 #define CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE             5
 #define CRYPTONOTE_DEFAULT_TX_MIXIN                     5
@@ -83,7 +83,7 @@ static_assert(STAKING_PORTIONS % 3 == 0, "Use a multiple of three, so that it di
 #define CRYPTONOTE_LONG_TERM_BLOCK_WEIGHT_WINDOW_SIZE   100000 // size in blocks of the long term block weight median window
 #define CRYPTONOTE_SHORT_TERM_BLOCK_WEIGHT_SURGE_FACTOR 50
 #define CRYPTONOTE_COINBASE_BLOB_RESERVED_SIZE          600
-#define CRYPTONOTE_DISPLAY_DECIMAL_POINT                5
+#define CRYPTONOTE_DISPLAY_DECIMAL_POINT                9
 // COIN - number of smallest units in one coin
 #define COIN                                            ((uint64_t)10000) // pow(10, 5)
 
@@ -203,7 +203,7 @@ namespace config
 
   uint64_t const GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS = ((60 * 60 * 24 * 7) / DIFFICULTY_TARGET_V2);
   std::string const GOVERNANCE_WALLET_ADDRESS[] =
-  {};
+    {"Khh2bDX3mKChSnNQzGut6y6DUX6ZxBbxTKnvDHgFJp3P4s1hsMWxxNv64VKNNUUGRte4M14qt2kqNA7PhxTzb8ykSKeyAKi"};
 
   namespace testnet
   {
@@ -221,7 +221,7 @@ namespace config
 
     uint64_t const GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS = 1000;
     std::string const GOVERNANCE_WALLET_ADDRESS[] =
-    {Khh2bDX3mKChSnNQzGut6y6DUX6ZxBbxTKnvDHgFJp3P4s1hsMWxxNv64VKNNUUGRte4M14qt2kqNA7PhxTzb8ykSKeyAKi};
+    {"Khh2bDX3mKChSnNQzGut6y6DUX6ZxBbxTKnvDHgFJp3P4s1hsMWxxNv64VKNNUUGRte4M14qt2kqNA7PhxTzb8ykSKeyAKi"};
 
   }
 
@@ -241,7 +241,7 @@ namespace config
 
     uint64_t const GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS = ((60 * 60 * 24 * 7) / DIFFICULTY_TARGET_V2);
     std::string const GOVERNANCE_WALLET_ADDRESS[] =
-    {Khh2bDX3mKChSnNQzGut6y6DUX6ZxBbxTKnvDHgFJp3P4s1hsMWxxNv64VKNNUUGRte4M14qt2kqNA7PhxTzb8ykSKeyAKi};
+    {"Khh2bDX3mKChSnNQzGut6y6DUX6ZxBbxTKnvDHgFJp3P4s1hsMWxxNv64VKNNUUGRte4M14qt2kqNA7PhxTzb8ykSKeyAKi"};
   }
 }
 
