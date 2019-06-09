@@ -196,7 +196,7 @@ namespace config
   uint16_t const RPC_DEFAULT_PORT = 4040;
   uint16_t const ZMQ_RPC_DEFAULT_PORT = 5555;
   boost::uuids::uuid const NETWORK_ID = { 
-    { 0x56 ,0x62, 0x77, 0x62 ,0x31, 0x75, 0x78, 0x69, 0x4a, 0x4c, 0x61, 0x35, 0x62, 0x65, 0x55 }
+    { 0x96 ,0x62, 0x77, 0x62 ,0x31, 0x75, 0x78, 0x69, 0x4a, 0x4a, 0x61, 0x35, 0x62, 0x65, 0x69 }
   }; // Bender's nightmare
   std::string const GENESIS_TX = "020301ff00018080b68be8ceb70c028e31c62a787e9b9f48a482bb2e01b435e4fa1d811514b84470837de2fe689d484201332a7f611d1bcfd5b4e486e2d4a860727d2556bf9fae7e7173bb1be19768a98272000000000000000000000000000000000000000000000000000000000000000000";
   uint32_t const GENESIS_NONCE = 1022201;
@@ -221,7 +221,7 @@ namespace config
 
     uint64_t const GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS = 1000;
     std::string const GOVERNANCE_WALLET_ADDRESS[] =
-    {};
+    {Khh2bDX3mKChSnNQzGut6y6DUX6ZxBbxTKnvDHgFJp3P4s1hsMWxxNv64VKNNUUGRte4M14qt2kqNA7PhxTzb8ykSKeyAKi};
 
   }
 
@@ -241,7 +241,7 @@ namespace config
 
     uint64_t const GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS = ((60 * 60 * 24 * 7) / DIFFICULTY_TARGET_V2);
     std::string const GOVERNANCE_WALLET_ADDRESS[] =
-    {};
+    {Khh2bDX3mKChSnNQzGut6y6DUX6ZxBbxTKnvDHgFJp3P4s1hsMWxxNv64VKNNUUGRte4M14qt2kqNA7PhxTzb8ykSKeyAKi};
   }
 }
 
