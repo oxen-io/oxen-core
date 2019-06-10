@@ -71,8 +71,7 @@ namespace cryptonote
 
   //---------------------------------------------------------------------------
   checkpoints::checkpoints()
-  {
-  }
+  {}
   //---------------------------------------------------------------------------
   bool checkpoints::add_checkpoint(uint64_t height, const std::string& hash_str)
   {
