@@ -43,8 +43,8 @@
 #define CRYPTONOTE_MAX_TX_SIZE                          1000000000
 #define CRYPTONOTE_PUBLIC_ADDRESS_TEXTBLOB_VER          0
 #define CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW            3
-#define CURRENT_BLOCK_MAJOR_VERSION                     8
-#define CURRENT_BLOCK_MINOR_VERSION                     8
+#define CURRENT_BLOCK_MAJOR_VERSION                     9
+#define CURRENT_BLOCK_MINOR_VERSION                     9
 #define CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT_V2           60*10
 #define CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE             5
 #define CRYPTONOTE_DEFAULT_TX_MIXIN                     5
@@ -85,9 +85,9 @@ static_assert(STAKING_PORTIONS % 3 == 0, "Use a multiple of three, so that it di
 #define CRYPTONOTE_COINBASE_BLOB_RESERVED_SIZE          600
 #define CRYPTONOTE_DISPLAY_DECIMAL_POINT                9
 // COIN - number of smallest units in one coin
-#define COIN                                            ((uint64_t)10000) // pow(10, 5)
+#define COIN                                            ((uint64_t)100000000) // pow(10, 5)
 
-#define FEE_PER_KB_OLD                                  ((uint64_t)10000) // pow(10, 5)
+#define FEE_PER_KB_OLD                                  ((uint64_t)100000000) // pow(10, 5)
 #define FEE_PER_KB                                      ((uint64_t)2000) // 2 * pow(10, 5)
 #define FEE_PER_BYTE                                    ((uint64_t)3000000)
 #define DYNAMIC_FEE_PER_KB_BASE_FEE                     ((uint64_t)200000) // 2 * pow(10,5)
@@ -183,7 +183,7 @@ static_assert(STAKING_PORTIONS % 3 == 0, "Use a multiple of three, so that it di
 // New constants are intended to go here
 namespace config
 {
-  uint64_t const DEFAULT_FEE_ATOMIC_XMR_PER_KB = 1000; // 0.1 KEG
+  uint64_t const DEFAULT_FEE_ATOMIC_XMR_PER_KB = 10000000; // 0.1 KEG
   uint8_t const FEE_CALCULATION_MAX_RETRIES = 10;
   uint64_t const DEFAULT_DUST_THRESHOLD = ((uint64_t)200000); // 2 * pow(10, 5)
   uint64_t const BASE_REWARD_CLAMP_THRESHOLD = ((uint64_t)10000); // pow(10, 4)
@@ -280,7 +280,7 @@ namespace cryptonote
     uint64_t GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS;
     std::string const *GOVERNANCE_WALLET_ADDRESS;
   };
-  inline const config_t& get_config(network_type nettype, int hard_fork_version = 7)
+  inline const config_t& get_config(network_type nettype, int hard_fork_version = 9)
   {
     static config_t mainnet = {
       ::config::CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX,
