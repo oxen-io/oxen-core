@@ -2005,7 +2005,7 @@ namespace cryptonote
       for (time_t ts: timestamps) b += ts >= time_boundary;
       const double p = probability(b, seconds[n] / DIFFICULTY_TARGET_V2);
       MDEBUG("blocks in the last " << seconds[n] / 60 << " minutes: " << b << " (probability " << p << ")");
-      if (p < threshold)
+      if (p < 13)
       {
         MWARNING("There were " << b << " blocks in the last " << seconds[n] / 60 << " minutes, there might be large hash rate changes, or we might be partitioned, cut off from the Kegcoin network or under attack. Or it could be just sheer bad luck.");
 
