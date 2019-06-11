@@ -65,16 +65,24 @@ namespace service_nodes
 
   enum struct quorum_type
   {
-    deregister = 0,
+    uptime = 0,
     checkpointing,
     count,
+    invalid = count,
+  };
+
+  enum struct quorum_vote_type
+  {
+    uptime_deregister,
+    checkpoint,
+    checkpoint_deregister,
   };
 
   enum struct quorum_group { invalid, validator, worker };
   struct quorum_vote_t
   {
     uint8_t           version = 0;
-    quorum_type       type;
+    quorum_vote_type  type;
     uint64_t          block_height;
     quorum_group      group;
     uint16_t          index_in_group;

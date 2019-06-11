@@ -3124,7 +3124,7 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
         return false;
       }
 
-      const std::shared_ptr<const service_nodes::testing_quorum> quorum = m_service_node_list.get_testing_quorum(service_nodes::quorum_type::deregister, deregister.block_height);
+      const std::shared_ptr<const service_nodes::testing_quorum> quorum = m_service_node_list.get_testing_quorum(service_nodes::quorum_type::uptime, deregister.block_height);
       if (!quorum)
       {
         MERROR_VER("Deregister TX could not get quorum for height: " << deregister.block_height);
@@ -3194,7 +3194,7 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
           continue;
         }
 
-        const std::shared_ptr<const service_nodes::testing_quorum> existing_quorum = m_service_node_list.get_testing_quorum(service_nodes::quorum_type::deregister, existing_deregister.block_height);
+        const std::shared_ptr<const service_nodes::testing_quorum> existing_quorum = m_service_node_list.get_testing_quorum(service_nodes::quorum_type::uptime, existing_deregister.block_height);
         if (!existing_quorum)
         {
           MERROR_VER("could not get uptime quorum for recent deregister tx");

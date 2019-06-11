@@ -303,7 +303,7 @@ namespace service_nodes
       BEGIN_SERIALIZE()
         FIELD(version)
         FIELD(height)
-        FIELD_N("deregister_quorum", quorums[(size_t)quorum_type::deregister])
+        FIELD_N("uptime_quorum", quorums[(size_t)quorum_type::uptime])
         if (version >= service_node_info::version_3_checkpointing)
           FIELD_N("checkpointing_quorum", quorums[(size_t)quorum_type::checkpointing])
       END_SERIALIZE()

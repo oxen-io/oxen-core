@@ -691,7 +691,7 @@ bool sn_test_rollback::test_registrations(cryptonote::core& c, size_t ev_index, 
     tx_extra_service_node_deregister deregistration;
     get_service_node_deregister_from_tx_extra(dereg_tx.extra, deregistration);
 
-    const auto uptime_quorum = c.get_testing_quorum(service_nodes::quorum_type::deregister, deregistration.block_height);
+    const auto uptime_quorum = c.get_testing_quorum(service_nodes::quorum_type::uptime, deregistration.block_height);
     CHECK_TEST_CONDITION(uptime_quorum);
     const auto pk_a = uptime_quorum->workers.at(deregistration.service_node_index);
 

@@ -48,7 +48,7 @@ namespace service_nodes
 {
   bool convert_deregister_vote_to_legacy(quorum_vote_t const &vote, legacy_deregister_vote &legacy_vote)
   {
-    if (vote.type != quorum_type::deregister)
+    if (vote.type != quorum_vote_type::uptime_deregister)
       return false;
 
     legacy_vote.block_height           = vote.block_height;
@@ -61,7 +61,7 @@ namespace service_nodes
   quorum_vote_t convert_legacy_deregister_vote(legacy_deregister_vote const &vote)
   {
     quorum_vote_t result           = {};
-    result.type                    = quorum_type::deregister;
+    result.type                    = quorum_vote_type::uptime_deregister;
     result.block_height            = vote.block_height;
     result.signature               = vote.signature;
     result.group                   = quorum_group::validator;
@@ -95,14 +95,14 @@ namespace service_nodes
         return result;
       };
 
-      case quorum_type::deregister:
+      case quorum_vote_type::uptime_deregister:
       {
         crypto::hash hash = make_deregister_vote_hash(vote.block_height, vote.deregister.worker_index);
         crypto::generate_signature(hash, pub, sec, result);
       }
       break;
 
-      case quorum_type::checkpointing:
+      case quorum_vote_type::checkpoint:
       {
         crypto::hash hash = vote.checkpoint.block_hash;
         crypto::generate_signature(hash, pub, sec, result);
@@ -147,14 +147,14 @@ namespace service_nodes
                             cryptonote::vote_verification_context &vvc,
                             const service_nodes::testing_quorum &quorum)
   {
-    if (deregister.votes.size() < service_nodes::DEREGISTER_MIN_VOTES_TO_KICK_SERVICE_NODE)
+    if (deregister.votes.size() < service_nodes::UPTIME_MIN_VOTES_TO_KICK_SERVICE_NODE)
     {
       LOG_PRINT_L1("Not enough votes");
       vvc.m_not_enough_votes = true;
       return false;
     }
 
-    if (deregister.votes.size() > service_nodes::DEREGISTER_QUORUM_SIZE)
+    if (deregister.votes.size() > service_nodes::UPTIME_QUORUM_SIZE)
     {
       LOG_PRINT_L1("Too many votes");
       return false;
@@ -164,7 +164,7 @@ namespace service_nodes
       return false;
 
     crypto::hash const hash = make_deregister_vote_hash(deregister.block_height, deregister.service_node_index);
-    std::array<int, service_nodes::DEREGISTER_QUORUM_SIZE> validator_set = {};
+    std::array<int, service_nodes::UPTIME_QUORUM_SIZE> validator_set = {};
     for (const cryptonote::tx_extra_service_node_deregister::vote& vote : deregister.votes)
     {
       if (!bounds_check_validator_index(quorum, vote.validator_index, vvc))
@@ -192,7 +192,7 @@ namespace service_nodes
   quorum_vote_t make_deregister_vote(uint64_t block_height, uint16_t validator_index, uint16_t worker_index, crypto::public_key const &pub_key, crypto::secret_key const &sec_key)
   {
     quorum_vote_t result           = {};
-    result.type                    = quorum_type::deregister;
+    result.type                    = quorum_vote_type::uptime_deregister;
     result.block_height            = block_height;
     result.group                   = quorum_group::validator;
     result.index_in_group          = validator_index;
@@ -228,7 +228,7 @@ namespace service_nodes
           return false;
         };
 
-        case quorum_type::deregister:
+        case quorum_vote_type::uptime_deregister:
         {
           if (vote.group != quorum_group::validator)
           {
@@ -238,7 +238,7 @@ namespace service_nodes
           }
 
           key          = quorum.validators[vote.index_in_group];
-          max_vote_age = service_nodes::DEREGISTER_VOTE_LIFETIME;
+          max_vote_age = service_nodes::UPTIME_VOTE_LIFETIME;
           hash         = make_deregister_vote_hash(vote.block_height, vote.deregister.worker_index);
 
           bool result = bounds_check_worker_index(quorum, vote.deregister.worker_index, vvc);
@@ -247,7 +247,7 @@ namespace service_nodes
         }
         break;
 
-        case quorum_type::checkpointing:
+        case quorum_vote_type::checkpoint:
         {
           if (vote.group != quorum_group::worker)
           {
@@ -321,7 +321,7 @@ namespace service_nodes
           break;
         };
 
-        case quorum_type::deregister:
+        case quorum_vote_type::uptime_deregister:
         {
           auto it = std::find_if(m_deregister_pool.begin(), m_deregister_pool.end(), [find_vote](deregister_pool_entry const &entry) {
               return (entry.height == find_vote.block_height &&
@@ -335,7 +335,7 @@ namespace service_nodes
         }
         break;
 
-        case quorum_type::checkpointing:
+        case quorum_vote_type::checkpoint:
         {
           auto it = std::find_if(m_checkpoint_pool.begin(), m_checkpoint_pool.end(), [find_vote](checkpoint_pool_entry const &entry) {
               return (entry.height == find_vote.block_height && entry.hash == find_vote.checkpoint.block_hash);
@@ -443,7 +443,7 @@ namespace service_nodes
         return result;
       };
 
-      case quorum_type::deregister:
+      case quorum_vote_type::uptime_deregister:
       {
         time_t const now = time(NULL);
         auto it = std::find_if(m_deregister_pool.begin(), m_deregister_pool.end(), [&vote](deregister_pool_entry const &entry) {
@@ -462,7 +462,7 @@ namespace service_nodes
       }
       break;
 
-      case quorum_type::checkpointing:
+      case quorum_vote_type::checkpoint:
       {
         // Get Matching Checkpoint
         auto it = std::find_if(m_checkpoint_pool.begin(), m_checkpoint_pool.end(), [&vote](checkpoint_pool_entry const &entry) {
@@ -530,7 +530,7 @@ namespace service_nodes
   void voting_pool::remove_expired_votes(uint64_t height)
   {
     CRITICAL_REGION_LOCAL(m_lock);
-    uint64_t deregister_min_height = (height < DEREGISTER_VOTE_LIFETIME) ? 0 : height - DEREGISTER_VOTE_LIFETIME;
+    uint64_t deregister_min_height = (height < UPTIME_VOTE_LIFETIME) ? 0 : height - UPTIME_VOTE_LIFETIME;
     cull_votes(m_deregister_pool, deregister_min_height, height);
 
     uint64_t checkpoint_min_height = (height < CHECKPOINT_VOTE_LIFETIME) ? 0 : height - CHECKPOINT_VOTE_LIFETIME;
