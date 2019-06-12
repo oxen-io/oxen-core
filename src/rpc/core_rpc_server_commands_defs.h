@@ -2827,7 +2827,7 @@ namespace cryptonote
   };
 
   #define KV_SERIALIZE_ENTRY_FIELD_IF_REQUESTED(var) \
-  if (this_ref.requested_fields.var) KV_SERIALIZE(var)
+  if (this_ref.requested_fields.var || !this_ref.requested_fields.explicitly_set) KV_SERIALIZE(var)
 
   struct COMMAND_RPC_GET_N_SERVICE_NODES
   {
@@ -2835,6 +2835,9 @@ namespace cryptonote
     // Boolean values indicate whether corresponding
     // fields should be included in the response
     struct requested_fields_t {
+
+      bool explicitly_set = false;
+
       bool service_node_pubkey;
       bool registration_height;
       bool requested_unlock_height;
@@ -2857,24 +2860,24 @@ namespace cryptonote
       bool height;
 
       BEGIN_KV_SERIALIZE_MAP()
-      KV_SERIALIZE(service_node_pubkey)
-      KV_SERIALIZE(registration_height)
-      KV_SERIALIZE(requested_unlock_height)
-      KV_SERIALIZE(last_reward_block_height)
-      KV_SERIALIZE(last_reward_transaction_index)
-      KV_SERIALIZE(last_uptime_proof)
-      KV_SERIALIZE(service_node_version)
-      KV_SERIALIZE(contributors)
-      KV_SERIALIZE(total_contributed)
-      KV_SERIALIZE(total_reserved)
-      KV_SERIALIZE(staking_requirement)
-      KV_SERIALIZE(portions_for_operator)
-      KV_SERIALIZE(swarm_id)
-      KV_SERIALIZE(operator_address)
-      KV_SERIALIZE(public_ip)
-      KV_SERIALIZE(storage_port)
-      KV_SERIALIZE(block_hash)
-      KV_SERIALIZE(height)
+      KV_SERIALIZE_OPT2(service_node_pubkey, false)
+      KV_SERIALIZE_OPT2(registration_height, false)
+      KV_SERIALIZE_OPT2(requested_unlock_height, false)
+      KV_SERIALIZE_OPT2(last_reward_block_height, false)
+      KV_SERIALIZE_OPT2(last_reward_transaction_index, false)
+      KV_SERIALIZE_OPT2(last_uptime_proof, false)
+      KV_SERIALIZE_OPT2(service_node_version, false)
+      KV_SERIALIZE_OPT2(contributors, false)
+      KV_SERIALIZE_OPT2(total_contributed, false)
+      KV_SERIALIZE_OPT2(total_reserved, false)
+      KV_SERIALIZE_OPT2(staking_requirement, false)
+      KV_SERIALIZE_OPT2(portions_for_operator, false)
+      KV_SERIALIZE_OPT2(swarm_id, false)
+      KV_SERIALIZE_OPT2(operator_address, false)
+      KV_SERIALIZE_OPT2(public_ip, false)
+      KV_SERIALIZE_OPT2(storage_port, false)
+      KV_SERIALIZE_OPT2(block_hash, false)
+      KV_SERIALIZE_OPT2(height, false)
       END_KV_SERIALIZE_MAP()
     };
 

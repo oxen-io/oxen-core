@@ -2831,19 +2831,7 @@ namespace cryptonote
     res.height = m_core.get_current_blockchain_height();
     res.block_hash = string_tools::pod_to_hex(m_core.get_block_id_by_height(res.height - 1));
 
-    // check if any field is set
-    char unset_bytes[sizeof(req.fields)];
-    memset(unset_bytes, 0, sizeof(req.fields));
-
-    bool some_set = memcmp(unset_bytes, reinterpret_cast<const void*>(&req.fields), sizeof(req.fields));
-
-    if (!some_set) {
-      // set all to true
-      memset(reinterpret_cast<void*>(&res.fields), 0xFF, sizeof(res.fields));
-    } else {
-      res.fields = req.fields;
-    }
-
+    res.fields = req.fields;
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
