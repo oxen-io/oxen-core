@@ -2827,14 +2827,14 @@ namespace cryptonote
   };
 
   #define KV_SERIALIZE_ENTRY_FIELD_IF_REQUESTED(var) \
-  if (this_ref.parent_ref.fields.var) KV_SERIALIZE(var)
+  if (this_ref.requested_fields.var) KV_SERIALIZE(var)
 
   struct COMMAND_RPC_GET_N_SERVICE_NODES
   {
 
     // Boolean values indicate whether corresponding
     // fields should be included in the response
-    struct included_fields {
+    struct requested_fields_t {
       bool service_node_pubkey;
       bool registration_height;
       bool requested_unlock_height;
@@ -2881,11 +2881,11 @@ namespace cryptonote
     using contribution = COMMAND_RPC_GET_SERVICE_NODES::response_t::contribution;
     using contributor = COMMAND_RPC_GET_SERVICE_NODES::response_t::contributor;
 
-    struct request
+    struct request_t
     {
       uint32_t limit;
       bool fully_funded_only;
-      included_fields fields;
+      requested_fields_t fields;
 
       BEGIN_KV_SERIALIZE_MAP()
       KV_SERIALIZE(limit)
@@ -2893,15 +2893,16 @@ namespace cryptonote
       KV_SERIALIZE(fields)
       END_KV_SERIALIZE_MAP()
     };
+    typedef epee::misc_utils::struct_init<request_t> request;
 
-    struct response
+    struct response_t
     {
 
       struct entry {
-        const response &parent_ref;
+        const requested_fields_t& requested_fields;
 
-        entry(const response& res)
-          : parent_ref(res)
+        entry(const requested_fields_t& res)
+          : requested_fields(res)
         {}
 
         std::string               service_node_pubkey;           // The public key of the Service Node.
@@ -2941,7 +2942,7 @@ namespace cryptonote
         END_KV_SERIALIZE_MAP()
       };
 
-      included_fields fields;
+      requested_fields_t fields;
 
       std::vector<entry> service_node_states; // Array of service node registration information
       uint64_t    height;                     // Current block's height.
@@ -2959,6 +2960,7 @@ namespace cryptonote
         }
       END_KV_SERIALIZE_MAP()
     };
+    typedef epee::misc_utils::struct_init<response_t> response;
   };
 
   struct COMMAND_RPC_STORAGE_SERVER_PING

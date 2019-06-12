@@ -2820,7 +2820,7 @@ namespace cryptonote
     res.service_node_states.reserve(sn_infos.size());
 
     for (auto &pubkey_info : sn_infos) {
-      COMMAND_RPC_GET_N_SERVICE_NODES::response::entry entry = {res};
+      COMMAND_RPC_GET_N_SERVICE_NODES::response::entry entry = {res.fields};
 
       fill_sn_response_entry(entry, pubkey_info);
 
