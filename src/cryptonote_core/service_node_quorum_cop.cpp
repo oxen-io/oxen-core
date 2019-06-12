@@ -33,8 +33,8 @@
 #include "cryptonote_core.h"
 #include "version.h"
 #include "common/loki.h"
+#include "common/util.h"
 #include "net/local_ip.h"
-#include <boost/endian/conversion.hpp>
 
 #include "common/loki_integration_test_hooks.h"
 
@@ -390,11 +390,9 @@ namespace service_nodes
   /// NOTE(maxim): we can remove this after hardfork
   static crypto::hash make_hash(crypto::public_key const &pubkey, uint64_t timestamp)
   {
-    char buf[44] = "SUP"; // Meaningless magic bytes
+    auto buf = tools::memcpy_le("SUP" /*meaningless magic bytes*/, pubkey, timestamp);
     crypto::hash result;
-    memcpy(buf + 4, reinterpret_cast<const void *>(&pubkey), sizeof(pubkey));
-    memcpy(buf + 4 + sizeof(pubkey), reinterpret_cast<const void *>(&timestamp), sizeof(timestamp));
-    crypto::cn_fast_hash(buf, sizeof(buf), result);
+    crypto::cn_fast_hash(buf.data(), buf.size(), result);
 
     return result;
   }
@@ -404,21 +402,9 @@ namespace service_nodes
                                    uint32_t pub_ip,
                                    uint16_t storage_port)
   {
-    constexpr size_t BUFFER_SIZE = sizeof(pubkey) + sizeof(timestamp) + sizeof(pub_ip) + sizeof(storage_port);
-
-    boost::endian::native_to_little_inplace(timestamp);
-    boost::endian::native_to_little_inplace(pub_ip);
-    boost::endian::native_to_little_inplace(storage_port);
-
-    char buf[BUFFER_SIZE];
+    auto buf = tools::memcpy_le(pubkey, timestamp, pub_ip, storage_port);
     crypto::hash result;
-    memcpy(buf, reinterpret_cast<const void *>(&pubkey), sizeof(pubkey));
-    memcpy(buf + sizeof(pubkey), reinterpret_cast<const void *>(&timestamp), sizeof(timestamp));
-    memcpy(buf + sizeof(pubkey) + sizeof(timestamp), reinterpret_cast<const void *>(&pub_ip), sizeof(pub_ip));
-    memcpy(buf + sizeof(pubkey) + sizeof(timestamp) + sizeof(pub_ip), reinterpret_cast<const void *>(&storage_port), sizeof(storage_port));
-
-    crypto::cn_fast_hash(buf, sizeof(buf), result);
-
+    crypto::cn_fast_hash(buf.data(), buf.size(), result);
     return result;
   }
 

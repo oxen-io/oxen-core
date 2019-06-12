@@ -30,6 +30,8 @@
 #include <random>
 #include <algorithm>
 
+#include <boost/endian/conversion.hpp>
+
 #include "ringct/rctSigs.h"
 #include "wallet/wallet2.h"
 #include "cryptonote_tx_utils.h"
@@ -1280,6 +1282,7 @@ namespace service_nodes
 
     uint64_t seed = 0;
     std::memcpy(&seed, block_hash.data, std::min(sizeof(seed), sizeof(block_hash.data)));
+    boost::endian::little_to_native_inplace(seed);
 
     seed += static_cast<uint64_t>(type);
     loki_shuffle(result, seed);

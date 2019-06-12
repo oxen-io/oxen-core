@@ -3,6 +3,7 @@
 #include "int-util.h"
 #include <vector>
 #include <boost/lexical_cast.hpp>
+#include <boost/endian/conversion.hpp>
 
 #include "service_node_rules.h"
 
@@ -60,8 +61,9 @@ bool check_service_node_portions(uint8_t hf_version, const std::vector<uint64_t>
 crypto::hash generate_request_stake_unlock_hash(uint32_t nonce)
 {
   crypto::hash result   = {};
-  char const *nonce_ptr = (char *)&nonce;
+  char const *nonce_ptr = reinterpret_cast<char *>(&nonce);
   char *hash_ptr        = result.data;
+  boost::endian::native_to_little_inplace(nonce);
   static_assert(sizeof(result) % sizeof(nonce) == 0, "The nonce should be evenly divisible into the hash");
   for (size_t i = 0; i < sizeof(result) / sizeof(nonce); ++i)
   {

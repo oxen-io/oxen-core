@@ -33,6 +33,7 @@
 #include "cryptonote_basic/verification_context.h"
 #include "cryptonote_basic/connection_context.h"
 #include "cryptonote_protocol/cryptonote_protocol_defs.h"
+#include "common/util.h"
 
 #include "misc_log_ex.h"
 #include "string_tools.h"
@@ -72,14 +73,9 @@ namespace service_nodes
 
   static crypto::hash make_deregister_vote_hash(uint64_t block_height, uint32_t service_node_index)
   {
-    const int buf_size = sizeof(block_height) + sizeof(service_node_index);
-    char buf[buf_size];
-
-    memcpy(buf, reinterpret_cast<void *>(&block_height), sizeof(block_height));
-    memcpy(buf + sizeof(block_height), reinterpret_cast<void *>(&service_node_index), sizeof(service_node_index));
-
+    auto buf = tools::memcpy_le(block_height, service_node_index);
     crypto::hash result;
-    crypto::cn_fast_hash(buf, buf_size, result);
+    crypto::cn_fast_hash(buf.data(), buf.size(), result);
     return result;
   }
 
