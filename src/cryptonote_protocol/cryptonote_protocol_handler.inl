@@ -801,7 +801,7 @@ namespace cryptonote
 
       for (uint64_t requested_index : arg.missing_tx_indices)
       {
-        if (requested_index_set.find(requested_index) != requested_index_set.end())
+        if (!requested_index_set.insert(requested_index).second)
         {
           LOG_ERROR_CCONTEXT
           (
@@ -815,8 +815,6 @@ namespace cryptonote
           drop_connection(context, false, false);
           return 1;
         }
-
-        requested_index_set.insert(requested_index);
       }
     }
 
