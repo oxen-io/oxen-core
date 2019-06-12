@@ -108,9 +108,6 @@ public: \
 #define KV_SERIALIZE_CONTAINER_POD_AS_BLOB(varialble)     KV_SERIALIZE_CONTAINER_POD_AS_BLOB_N(varialble, #varialble)
 #define KV_SERIALIZE_OPT(variable,default_value)          KV_SERIALIZE_OPT_N(variable, #variable, default_value)
 
-#define KV_SERIALIZE_ENTRY_FIELD_IF_REQUESTED(var) \
-if (this_ref.parent_ref.fields.var) KV_SERIALIZE(var)
-
 }
 
 

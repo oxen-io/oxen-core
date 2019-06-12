@@ -2826,6 +2826,9 @@ namespace cryptonote
     typedef epee::misc_utils::struct_init<response_t> response;
   };
 
+  #define KV_SERIALIZE_ENTRY_FIELD_IF_REQUESTED(var) \
+  if (this_ref.parent_ref.fields.var) KV_SERIALIZE(var)
+
   struct COMMAND_RPC_GET_N_SERVICE_NODES
   {
 
@@ -2881,10 +2884,12 @@ namespace cryptonote
     struct request
     {
       uint32_t limit;
+      bool fully_funded_only;
       included_fields fields;
 
       BEGIN_KV_SERIALIZE_MAP()
       KV_SERIALIZE(limit)
+      KV_SERIALIZE(fully_funded_only)
       KV_SERIALIZE(fields)
       END_KV_SERIALIZE_MAP()
     };

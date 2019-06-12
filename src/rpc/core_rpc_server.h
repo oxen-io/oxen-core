@@ -323,8 +323,8 @@ private:
     bool check_core_busy();
     bool check_core_ready();
 
-    template<typename Response>
-    void fill_sn_response_entry(Response &entry, const service_nodes::service_node_pubkey_info &sn_info);
+    template<typename response>
+    void fill_sn_response_entry(response &entry, const service_nodes::service_node_pubkey_info &sn_info);
     
     //utils
     uint64_t get_block_reward(const block& blk);

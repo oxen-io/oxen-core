@@ -2700,8 +2700,8 @@ namespace cryptonote
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
-  template<typename Response>
-  void core_rpc_server::fill_sn_response_entry(Response &entry, const service_nodes::service_node_pubkey_info &sn_info) {
+  template<typename response>
+  void core_rpc_server::fill_sn_response_entry(response &entry, const service_nodes::service_node_pubkey_info &sn_info) {
 
     const auto proof = m_core.get_uptime_proof(sn_info.pubkey);
 
@@ -2796,6 +2796,15 @@ namespace cryptonote
                                                const connection_context*)
   {
     std::vector<service_nodes::service_node_pubkey_info> sn_infos = m_core.get_service_node_list_state({});
+
+    if (req.fully_funded_only) {
+      const auto end =
+        std::remove_if(sn_infos.begin(), sn_infos.end(), [](const service_nodes::service_node_pubkey_info& snpk_info) {
+          return !snpk_info.info.is_fully_funded();
+        });
+      
+      sn_infos.erase(end, sn_infos.end());
+    }
 
     if (req.limit != 0) {
 
