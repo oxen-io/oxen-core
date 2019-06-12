@@ -2810,8 +2810,7 @@ namespace cryptonote
 
       const auto limit = std::min(sn_infos.size(), static_cast<size_t>(req.limit));
 
-      std::random_device rd;
-      std::mt19937 mt(rd());
+      static thread_local std::mt19937 mt{std::random_device{}()};
 
       std::shuffle(sn_infos.begin(), sn_infos.end(), mt);
 
