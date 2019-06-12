@@ -98,11 +98,11 @@ struct hard_fork_record
 // version 7 from the start of the blockchain, inhereted from Monero mainnet
 static const hard_fork_record mainnet_hard_forks[] =
 {
-  { network_version_7,                   1,      0, 1503046577 },
-  { network_version_8,                   2,  0, 1533006000 },
-  { network_version_9_service_nodes,     3, 0, 1537444800 },
-  { network_version_10_bulletproofs,     0, 1544743800 }, // 2018-12-13 23:30UTC
-  { network_version_11_infinite_staking, 234767, 0, 1554170400 }, // 2019-03-26 13:00AEDT
+  { network_version_7,                   1, 0, 1533631121 },
+  { network_version_8,                   2, 0, 1533631122 },
+  { network_version_9_service_nodes,     3, 0, 1533631123 },
+  { network_version_10_bulletproofs,     4, 0, 1542681077 },
+  { network_version_11_infinite_staking, 100000, 0, 1554170400 }, // 2019-03-26 13:00AEDT
 };
 
 static const hard_fork_record testnet_hard_forks[] =
