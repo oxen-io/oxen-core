@@ -189,10 +189,10 @@ namespace service_nodes
     return true;
   }
 
-  quorum_vote_t make_deregister_vote(uint64_t block_height, uint16_t validator_index, uint16_t worker_index, crypto::public_key const &pub_key, crypto::secret_key const &sec_key)
+  quorum_vote_t make_deregister_vote(make_deregister_type type, uint64_t block_height, uint16_t validator_index, uint16_t worker_index, crypto::public_key const &pub_key, crypto::secret_key const &sec_key)
   {
     quorum_vote_t result           = {};
-    result.type                    = quorum_vote_type::uptime_deregister;
+    result.type                    = (type == make_deregister_type::uptime) ? quorum_vote_type::uptime_deregister : quorum_vote_type::checkpoint_deregister;
     result.block_height            = block_height;
     result.group                   = quorum_group::validator;
     result.index_in_group          = validator_index;
@@ -228,6 +228,7 @@ namespace service_nodes
           return false;
         };
 
+        case quorum_vote_type::checkpoint_deregister:
         case quorum_vote_type::uptime_deregister:
         {
           if (vote.group != quorum_group::validator)
@@ -238,7 +239,8 @@ namespace service_nodes
           }
 
           key          = quorum.validators[vote.index_in_group];
-          max_vote_age = service_nodes::UPTIME_VOTE_LIFETIME;
+          // TODO(doyle): We need to check where this is used and if the lifetime rules of checkpoint votes would cull a checkpoint deregister for example
+          max_vote_age = service_nodes::UPTIME_VOTE_LIFETIME; // TODO(doyle): CHECKPOINT_DEREGISTER(doyle): Hmmm, does this need to be updated for checkpoint deregister?
           hash         = make_deregister_vote_hash(vote.block_height, vote.deregister.worker_index);
 
           bool result = bounds_check_worker_index(quorum, vote.deregister.worker_index, vvc);
@@ -321,16 +323,18 @@ namespace service_nodes
           break;
         };
 
+        case quorum_vote_type::checkpoint_deregister:
         case quorum_vote_type::uptime_deregister:
         {
-          auto it = std::find_if(m_deregister_pool.begin(), m_deregister_pool.end(), [find_vote](deregister_pool_entry const &entry) {
+          std::vector<deregister_pool_entry> *pool_to_check = nullptr;
+          if (find_vote.type == quorum_vote_type::checkpoint_deregister) pool_to_check = &m_uptime_deregister_pool;
+          else                                                           pool_to_check = &m_checkpoint_deregister_pool;
+
+          auto it = std::find_if(pool_to_check->begin(), pool_to_check->end(), [find_vote](deregister_pool_entry const &entry) {
               return (entry.height == find_vote.block_height &&
                       entry.worker_index == find_vote.deregister.worker_index);
           });
-
-          if (it == m_deregister_pool.end())
-            break;
-
+          if (it == pool_to_check->end()) break;
           vote_pool = &it->votes;
         }
         break;
@@ -374,15 +378,25 @@ namespace service_nodes
     const time_t TIME_BETWEEN_RELAY = 60 * 2;
 #endif
 
+    std::vector<deregister_pool_entry> const *deregister_pools[] =
+    {
+      &m_uptime_deregister_pool,
+      &m_checkpoint_deregister_pool,
+    };
+
     time_t const now = time(nullptr);
     std::vector<quorum_vote_t> result;
-    for (deregister_pool_entry const &pool_entry : m_deregister_pool)
+
+    for (std::vector<deregister_pool_entry> const *pool : deregister_pools)
     {
-      for (pool_vote_entry const &vote_entry : pool_entry.votes)
+      for (deregister_pool_entry const &pool_entry : (*pool))
       {
-        const time_t last_sent = now - vote_entry.time_last_sent_p2p;
-        if (last_sent > TIME_BETWEEN_RELAY)
-          result.push_back(vote_entry.vote);
+        for (pool_vote_entry const &vote_entry : pool_entry.votes)
+        {
+          const time_t last_sent = now - vote_entry.time_last_sent_p2p;
+          if (last_sent > TIME_BETWEEN_RELAY)
+            result.push_back(vote_entry.vote);
+        }
       }
     }
 
@@ -443,17 +457,22 @@ namespace service_nodes
         return result;
       };
 
+      case quorum_vote_type::checkpoint_deregister:
       case quorum_vote_type::uptime_deregister:
       {
+        std::vector<deregister_pool_entry> *pool_to_check = nullptr;
+        if (find_vote.type == quorum_vote_type::checkpoint_deregister) pool_to_check = &m_uptime_deregister_pool;
+        else                                                           pool_to_check = &m_checkpoint_deregister_pool;
+
         time_t const now = time(NULL);
-        auto it = std::find_if(m_deregister_pool.begin(), m_deregister_pool.end(), [&vote](deregister_pool_entry const &entry) {
+        auto it = std::find_if(pool_to_check->begin(), pool_to_check->end(), [&vote](deregister_pool_entry const &entry) {
             return (entry.height == vote.block_height && entry.worker_index == vote.deregister.worker_index);
         });
 
-        if (it == m_deregister_pool.end())
+        if (it == pool_to_check->end())
         {
-          m_deregister_pool.emplace_back(vote.block_height, vote.deregister.worker_index);
-          it = (m_deregister_pool.end() - 1);
+          pool_to_check->emplace_back(vote.block_height, vote.deregister.worker_index);
+          it = (pool_to_check->end() - 1);
         }
 
         deregister_pool_entry &pool_entry = (*it);
@@ -489,7 +508,18 @@ namespace service_nodes
   {
     // TODO(doyle): Cull checkpoint votes
     CRITICAL_REGION_LOCAL(m_lock);
-    if (m_deregister_pool.empty())
+
+    std::vector<deregister_pool_entry> *pools[] =
+    {
+      &m_uptime_deregister_pool,
+      &m_checkpoint_deregister_pool,
+    };
+
+    size_t total_voting_entries = 0;
+    for (std::vector<deregister_pool_entry> *pool : pools)
+      total_voting_entries += pool->size();
+
+    if (total_voting_entries <= 0)
       return;
 
     for (const cryptonote::transaction &tx : txs)
@@ -504,12 +534,18 @@ namespace service_nodes
         continue;
       }
 
-      auto it = std::find_if(m_deregister_pool.begin(), m_deregister_pool.end(), [&deregister](deregister_pool_entry const &entry){
+      for (std::vector<deregister_pool_entry> *pool : pools)
+      {
+        auto it = std::find_if(pool->begin(), pool->end(), [&deregister](deregister_pool_entry const &entry) {
           return (entry.height == deregister.block_height) && (entry.worker_index == deregister.service_node_index);
-      });
+        });
 
-      if (it != m_deregister_pool.end())
-        m_deregister_pool.erase(it);
+        if (it != pool->end())
+        {
+          pool->erase(it);
+          break;
+        }
+      }
     }
   }
 
@@ -530,11 +566,62 @@ namespace service_nodes
   void voting_pool::remove_expired_votes(uint64_t height)
   {
     CRITICAL_REGION_LOCAL(m_lock);
-    uint64_t deregister_min_height = (height < UPTIME_VOTE_LIFETIME) ? 0 : height - UPTIME_VOTE_LIFETIME;
-    cull_votes(m_deregister_pool, deregister_min_height, height);
+    {
+      uint64_t min_height = (height < UPTIME_VOTE_LIFETIME) ? 0 : height - UPTIME_VOTE_LIFETIME;
+      cull_votes(m_uptime_deregister_pool, min_height, height);
+    }
 
-    uint64_t checkpoint_min_height = (height < CHECKPOINT_VOTE_LIFETIME) ? 0 : height - CHECKPOINT_VOTE_LIFETIME;
-    cull_votes(m_checkpoint_pool, checkpoint_min_height, height);
+    {
+      uint64_t min_height = (height < CHECKPOINT_VOTE_LIFETIME) ? 0 : height - CHECKPOINT_VOTE_LIFETIME;
+      cull_votes(m_checkpoint_pool, min_height, height);
+    }
+
+    {
+      // TODO(doyle): UPTIME_VOTE_LIFETIME?
+      uint64_t min_height = (height < UPTIME_VOTE_LIFETIME) ? 0 : height - UPTIME_VOTE_LIFETIME;
+      cull_votes(m_checkpoint_deregister_pool, min_height, height);
+    }
   }
+
+  template <typename T>
+  static bool find_key_in_pool(std::vector<T> const &pool, std::vector<crypto::public_key> const &quorum, uint64_t height, crypto::public_key const &find_key)
+  {
+    for (T const &pool_entry : pool)
+    {
+      if (pool_entry.height != height)
+        continue;
+
+      for (pool_vote_entry const &pool_vote : pool_entry.votes)
+      {
+        crypto::public_key const &check_key = quorum[pool_vote.vote.index_in_group];
+        if (check_key == find_key)
+          return true;
+      }
+    }
+
+    return false;
+  }
+
+  bool voting_pool::has_received_vote_from(quorum_vote_type type, std::vector<crypto::public_key> const &quorum, crypto::public_key const &key, uint64_t height) const
+  {
+    bool result = false;
+    CRITICAL_REGION_LOCAL(m_lock);
+    switch(type)
+    {
+      default:
+      {
+        LOG_PRINT_L1("Unhandled vote type with value: " << (int)type);
+        assert("Unhandled vote type" == 0);
+        return result;
+      };
+
+      case quorum_vote_type::uptime_deregister:     result = find_key_in_pool(m_uptime_deregister_pool, quorum, height, key); break;
+      case quorum_vote_type::checkpoint:            result = find_key_in_pool(m_checkpoint_pool, quorum, height, key); break;
+      case quorum_vote_type::checkpoint_deregister: result = find_key_in_pool(m_checkpoint_deregister_pool, quorum, height, key); break;
+    }
+
+    return result;
+  }
+
 }; // namespace service_nodes
 

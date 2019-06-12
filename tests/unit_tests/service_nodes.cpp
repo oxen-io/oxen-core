@@ -139,7 +139,13 @@ TEST(service_nodes, vote_validation)
 
   // Valid vote
   uint64_t block_height = 70;
-  service_nodes::quorum_vote_t valid_vote = service_nodes::make_deregister_vote(block_height, voter_index, 1 /*worker_index*/, service_node_voter.pub, service_node_voter.sec);
+  service_nodes::quorum_vote_t valid_vote =
+      service_nodes::make_deregister_vote(service_nodes::make_deregister_type::uptime,
+                                          block_height,
+                                          voter_index,
+                                          1 /*worker_index*/,
+                                          service_node_voter.pub,
+                                          service_node_voter.sec);
   {
     cryptonote::vote_verification_context vvc = {};
     bool result = service_nodes::verify_vote(valid_vote, block_height, vvc, state);

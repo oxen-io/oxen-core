@@ -174,9 +174,6 @@ namespace service_nodes
               int index_in_group = find_index_in_quorum_group(quorum->validators, my_pubkey);
               if (index_in_group <= -1) continue;
 
-              //
-              // NOTE: I am in the quorum
-              //
               for (size_t node_index = 0; node_index < quorum->workers.size(); ++node_index)
               {
                 const crypto::public_key &node_key = quorum->workers[node_index];
@@ -185,8 +182,12 @@ namespace service_nodes
                 bool vote_off_node = (m_uptime_proof_seen.find(node_key) == m_uptime_proof_seen.end());
                 if (!vote_off_node) continue;
 
-                quorum_vote_t vote = service_nodes::make_deregister_vote(
-                    m_uptime_proof_height, static_cast<uint16_t>(index_in_group), node_index, my_pubkey, my_seckey);
+                quorum_vote_t vote = service_nodes::make_deregister_vote(service_nodes::make_deregister_type::uptime,
+                                                                         m_uptime_proof_height,
+                                                                         static_cast<uint16_t>(index_in_group),
+                                                                         node_index,
+                                                                         my_pubkey,
+                                                                         my_seckey);
                 cryptonote::vote_verification_context vvc;
                 if (!handle_vote(vote, vvc))
                   LOG_ERROR("Failed to add uptime deregister vote reason: " << print_vote_verification_context(vvc, nullptr));
@@ -203,7 +204,51 @@ namespace service_nodes
 
           uint64_t const half_vote_lifetime                 = vote_lifetime / 2;
           uint64_t const start_checkpointing_height         = (start_voting_from_height + half_vote_lifetime);
+          uint64_t const start_validating_checkpoint_height = start_voting_from_height;
           uint64_t const end_checkpointing_height           = height;
+          uint64_t const end_validating_checkpoint_height   = (start_validating_checkpoint_height - 1);
+
+          m_last_height_checkpointers_validated = std::max(m_last_height_checkpointers_validated, start_validating_checkpoint_height);
+          for (m_last_height_checkpointers_validated += (m_last_height_checkpointers_validated % CHECKPOINT_INTERVAL);
+               m_last_height_checkpointers_validated <= end_validating_checkpoint_height;
+               m_last_height_checkpointers_validated += CHECKPOINT_INTERVAL)
+          {
+            if (m_core.get_hard_fork_version(m_last_height_checkpointers_validated) < cryptonote::network_version_12_checkpointing)
+              continue;
+
+            const std::shared_ptr<const testing_quorum> quorum =
+                m_core.get_testing_quorum(quorum_type::checkpointing, m_last_height_checkpointers_validated);
+            if (!quorum)
+            {
+              // TODO(loki): Fatal error
+              LOG_ERROR("Checkpoint quorum for height: " << m_last_height_checkpointed << " was not cached in daemon!");
+              continue;
+            }
+
+            int index_in_group = find_index_in_quorum_group(quorum->validators, my_pubkey);
+            if (index_in_group <= -1) continue;
+
+            for (size_t node_index = 0; node_index < quorum->workers.size(); ++node_index)
+            {
+              crypto::public_key const &worker_key = quorum->workers[node_index];
+              if (m_vote_pool.has_received_vote_from(quorum_vote_type::checkpoint_deregister,
+                                                     quorum->workers,
+                                                     worker_key,
+                                                     m_last_height_checkpointers_validated))
+                continue;
+
+              quorum_vote_t vote = make_deregister_vote(make_deregister_type::checkpoint,
+                                                        m_last_height_checkpointers_validated,
+                                                        static_cast<uint16_t>(index_in_group),
+                                                        node_index,
+                                                        my_pubkey,
+                                                        my_seckey);
+
+              cryptonote::vote_verification_context vvc;
+              if (!handle_vote(vote, vvc))
+                LOG_ERROR("Failed to add uptime deregister vote reason: " << print_vote_verification_context(vvc, nullptr));
+            }
+          }
 
           m_last_height_checkpointed = std::max(m_last_height_checkpointed, start_checkpointing_height);
           for (m_last_height_checkpointed += (m_last_height_checkpointed % CHECKPOINT_INTERVAL);
@@ -325,7 +370,9 @@ namespace service_nodes
       };
 
       case quorum_vote_type::uptime_deregister:
+      case quorum_vote_type::checkpoint_deregister:
       {
+        // CHECKPOINT_DEREGISTER(doyle):
         if (votes.size() >= UPTIME_MIN_VOTES_TO_KICK_SERVICE_NODE)
         {
           cryptonote::tx_extra_service_node_deregister deregister;

@@ -95,7 +95,8 @@ namespace service_nodes
     };
   };
 
-  quorum_vote_t     make_deregister_vote(uint64_t block_height, uint16_t index_in_group, uint16_t worker_index, crypto::public_key const &pub_key, crypto::secret_key const &secret_key);
+  enum struct make_deregister_type { uptime, checkpoint };
+  quorum_vote_t     make_deregister_vote             (make_deregister_type type, uint64_t block_height, uint16_t index_in_group, uint16_t worker_index, crypto::public_key const &pub_key, crypto::secret_key const &secret_key);
 
   bool              verify_tx_deregister             (const cryptonote::tx_extra_service_node_deregister& deregister, cryptonote::vote_verification_context& vvc, const service_nodes::testing_quorum &quorum);
   bool              verify_vote                      (const quorum_vote_t& vote, uint64_t latest_height, cryptonote::vote_verification_context &vvc, const service_nodes::testing_quorum &quorum);
@@ -131,20 +132,25 @@ namespace service_nodes
                                                          const service_nodes::testing_quorum &quorum);
 
     // TODO(loki): Review relay behaviour and all the cases when it should be triggered
-    void                         set_relayed         (const std::vector<quorum_vote_t>& votes);
-    void                         remove_expired_votes(uint64_t height);
-    void                         remove_used_votes   (std::vector<cryptonote::transaction> const &txs);
-    std::vector<quorum_vote_t>   get_relayable_votes () const;
+    void                       set_relayed           (const std::vector<quorum_vote_t>& votes);
+    void                       remove_expired_votes  (uint64_t height);
+    void                       remove_used_votes     (std::vector<cryptonote::transaction> const &txs);
+    std::vector<quorum_vote_t> get_relayable_votes   () const;
+
+    bool                       has_received_vote_from(quorum_vote_type type, std::vector<crypto::public_key> const &quorum, crypto::public_key const &key, uint64_t height) const;
 
   private:
-    struct deregister_pool_entry
+
+    typedef struct deregister_pool_entry
     {
       deregister_pool_entry(uint64_t height, uint32_t worker_index): height(height), worker_index(worker_index) {}
       uint64_t                     height;
       uint32_t                     worker_index;
       std::vector<pool_vote_entry> votes;
     };
-    std::vector<deregister_pool_entry> m_deregister_pool;
+
+    std::vector<deregister_pool_entry> m_uptime_deregister_pool;
+    std::vector<deregister_pool_entry> m_checkpoint_deregister_pool;
 
     struct checkpoint_pool_entry
     {
