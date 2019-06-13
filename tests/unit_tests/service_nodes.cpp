@@ -203,7 +203,7 @@ TEST(service_nodes, vote_validation)
   }
 }
 
-TEST(service_nodes, tx_extra_deregister_validation)
+TEST(service_nodes, tx_extra_deregister_legacy_validation)
 {
   // Generate a quorum and the voter
   const size_t num_voters = 10;

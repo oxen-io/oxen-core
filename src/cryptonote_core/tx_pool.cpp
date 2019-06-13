@@ -124,8 +124,9 @@ namespace cryptonote
 
     if (tx_type == transaction::type_deregister)
     {
-      tx_extra_service_node_deregister deregister;
-      if (!get_service_node_deregister_from_tx_extra(tx.extra, deregister))
+      int hf_version = m_blockchain.get_current_hard_fork_version();
+      tx_extra_service_node_deregister_ deregister;
+      if (!get_service_node_deregister_from_tx_extra(hf_version, tx.extra, deregister))
       {
         MERROR("Could not get service node deregister from tx, possibly corrupt tx in your blockchain, rejecting malformed deregister");
         return true;
@@ -138,8 +139,8 @@ namespace cryptonote
         if (pool_tx.get_type() != transaction::type_deregister)
           continue;
 
-        tx_extra_service_node_deregister pool_tx_deregister;
-        if (!get_service_node_deregister_from_tx_extra(pool_tx.extra, pool_tx_deregister))
+        tx_extra_service_node_deregister_ pool_tx_deregister;
+        if (!get_service_node_deregister_from_tx_extra(hf_version, pool_tx.extra, pool_tx_deregister))
         {
           MERROR("Could not get service node deregister from tx, possibly corrupt tx in your blockchain");
           continue;

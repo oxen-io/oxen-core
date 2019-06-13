@@ -115,8 +115,10 @@ namespace service_nodes
     if (!m_core.is_service_node(my_pubkey))
       return;
 
-    uint64_t const height = cryptonote::get_block_height(block);
-    for (int i = 0; i < (int)quorum_type::count; i++)
+    uint64_t const height                            = cryptonote::get_block_height(block);
+    int const hf_version                             = block.major_version;
+    service_nodes::quorum_type const max_quorum_type = service_nodes::max_quorum_type_for_hf(hf_version);
+    for (int i = 0; i <= (int)max_quorum_type; i++)
     {
       quorum_type const type       = static_cast<quorum_type>(i);
       uint64_t const vote_lifetime = service_nodes::quorum_vote_lifetime(type);
@@ -129,7 +131,6 @@ namespace service_nodes
       if (height < start_voting_from_height)
         continue;
 
-      int const hf_version = block.major_version;
       switch(type)
       {
         default:
@@ -318,8 +319,9 @@ namespace service_nodes
     // Otherwise peers will silently drop connection from each other when they
     // go around P2Ping votes due to passing around old votes
     uint64_t const height = cryptonote::get_block_height(block) + 1;
+    int hf_version        = block.major_version;
     m_vote_pool.remove_expired_votes(height);
-    m_vote_pool.remove_used_votes(txs);
+    m_vote_pool.remove_used_votes(hf_version, txs);
   }
 
   bool quorum_cop::handle_vote(quorum_vote_t const &vote, cryptonote::vote_verification_context &vvc)
@@ -386,33 +388,52 @@ namespace service_nodes
         // CHECKPOINT_DEREGISTER(doyle):
         if (votes.size() >= DEREGISTER_MIN_VOTES_TO_KICK_SERVICE_NODE)
         {
-          cryptonote::tx_extra_service_node_deregister deregister;
-          deregister.block_height       = vote.block_height;
-          deregister.service_node_index = vote.deregister.worker_index;
+          using namespace cryptonote;
+
+          tx_extra_service_node_deregister_ deregister = {};
+          deregister.block_height                      = vote.block_height;
+          deregister.service_node_index                = vote.deregister.worker_index;
           deregister.votes.reserve(votes.size());
 
-          std::transform(votes.begin(), votes.end(), std::back_inserter(deregister.votes), [](pool_vote_entry const &pool_vote) {
-            auto result = cryptonote::tx_extra_service_node_deregister::vote(pool_vote.vote.signature, pool_vote.vote.index_in_group);
-            return result;
-          });
+          std::transform(
+              votes.begin(), votes.end(), std::back_inserter(deregister.votes), [](pool_vote_entry const &pool_vote) {
+                auto result =
+                    tx_extra_service_node_deregister_::vote(pool_vote.vote.signature, pool_vote.vote.index_in_group);
+                return result;
+              });
 
-          cryptonote::transaction deregister_tx = {};
-          if (cryptonote::add_service_node_deregister_to_tx_extra(deregister_tx.extra, deregister))
+          int hf_version            = m_core.get_blockchain_storage().get_current_hard_fork_version();
+          transaction deregister_tx = {};
+          deregister_tx.version     = transaction::get_max_version_for_hf(hf_version, m_core.get_nettype());
+          deregister_tx.type        = transaction::type_deregister;
+
+          bool deregister_added_to_tx_extra = false;
+          if (hf_version <= network_version_11_infinite_staking)
           {
-            int hf_version        = m_core.get_blockchain_storage().get_current_hard_fork_version();
-            deregister_tx.version = cryptonote::transaction::get_max_version_for_hf(hf_version, m_core.get_nettype());
-            deregister_tx.type    = cryptonote::transaction::type_deregister;
+            tx_extra_service_node_deregister_legacy legacy_deregister;
+            if (convert_tx_extra_service_node_deregister_to_legacy(deregister, legacy_deregister))
+            {
+              deregister_added_to_tx_extra =
+                  add_service_node_deregister_legacy_to_tx_extra(deregister_tx.extra, legacy_deregister);
+            }
+          }
+          else
+          {
+            deregister_added_to_tx_extra = add_service_node_deregister_to_tx_extra(deregister_tx.extra, deregister);
+          }
 
-            cryptonote::tx_verification_context tvc = {};
-            cryptonote::blobdata const tx_blob      = cryptonote::tx_to_blob(deregister_tx);
+          if (deregister_added_to_tx_extra)
+          {
+            tx_verification_context tvc = {};
+            blobdata const tx_blob      = tx_to_blob(deregister_tx);
 
             result &= m_core.handle_incoming_tx(tx_blob, tvc, false /*keeped_by_block*/, false /*relayed*/, false /*do_not_relay*/);
             if (!result || tvc.m_verifivation_failed)
             {
-              LOG_PRINT_L1("A full deregister tx for height: " << vote.block_height <<
-                           " and service node: " << vote.deregister.worker_index <<
-                           " could not be verified and was not added to the memory pool, reason: " <<
-                           print_tx_verification_context(tvc, &deregister_tx));
+              LOG_PRINT_L1("A full deregister tx for height: "
+                           << vote.block_height << " and service node: " << vote.deregister.worker_index
+                           << " could not be verified and was not added to the memory pool, reason: "
+                           << print_tx_verification_context(tvc, &deregister_tx));
             }
           }
           else

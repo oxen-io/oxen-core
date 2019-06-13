@@ -548,18 +548,19 @@ namespace cryptonote
     binary_archive<true> nar(oss);
 
     // sort by:
-    if (!pick<tx_extra_pub_key>(nar, tx_extra_fields, TX_EXTRA_TAG_PUBKEY)) return false;
-    if (!pick<tx_extra_additional_pub_keys>(nar, tx_extra_fields, TX_EXTRA_TAG_ADDITIONAL_PUBKEYS)) return false;
-    if (!pick<tx_extra_nonce>(nar, tx_extra_fields, TX_EXTRA_NONCE)) return false;
+    if (!pick<tx_extra_pub_key>                        (nar, tx_extra_fields, TX_EXTRA_TAG_PUBKEY)) return false;
+    if (!pick<tx_extra_service_node_winner>            (nar, tx_extra_fields, TX_EXTRA_TAG_SERVICE_NODE_WINNER)) return false;
+    if (!pick<tx_extra_tx_secret_key>                  (nar, tx_extra_fields, TX_EXTRA_TAG_TX_SECRET_KEY)) return false;
+    if (!pick<tx_extra_additional_pub_keys>            (nar, tx_extra_fields, TX_EXTRA_TAG_ADDITIONAL_PUBKEYS)) return false;
+    if (!pick<tx_extra_nonce>                          (nar, tx_extra_fields, TX_EXTRA_NONCE)) return false;
 
-    if (!pick<tx_extra_service_node_register>   (nar, tx_extra_fields, TX_EXTRA_TAG_SERVICE_NODE_REGISTER)) return false;
-    if (!pick<tx_extra_service_node_deregister> (nar, tx_extra_fields, TX_EXTRA_TAG_SERVICE_NODE_DEREGISTER)) return false;
-    if (!pick<tx_extra_service_node_winner>     (nar, tx_extra_fields, TX_EXTRA_TAG_SERVICE_NODE_WINNER)) return false;
-    if (!pick<tx_extra_service_node_contributor>(nar, tx_extra_fields, TX_EXTRA_TAG_SERVICE_NODE_CONTRIBUTOR)) return false;
-    if (!pick<tx_extra_service_node_pubkey>     (nar, tx_extra_fields, TX_EXTRA_TAG_SERVICE_NODE_PUBKEY)) return false;
-    if (!pick<tx_extra_tx_secret_key>           (nar, tx_extra_fields, TX_EXTRA_TAG_TX_SECRET_KEY)) return false;
-    if (!pick<tx_extra_tx_key_image_proofs>     (nar, tx_extra_fields, TX_EXTRA_TAG_TX_KEY_IMAGE_PROOFS)) return false;
-    if (!pick<tx_extra_tx_key_image_unlock>     (nar, tx_extra_fields, TX_EXTRA_TAG_TX_KEY_IMAGE_UNLOCK)) return false;
+    if (!pick<tx_extra_service_node_register>          (nar, tx_extra_fields, TX_EXTRA_TAG_SERVICE_NODE_REGISTER)) return false;
+    if (!pick<tx_extra_service_node_deregister_>       (nar, tx_extra_fields, TX_EXTRA_TAG_SERVICE_NODE_DEREGISTER_)) return false;
+    if (!pick<tx_extra_service_node_deregister_legacy> (nar, tx_extra_fields, TX_EXTRA_TAG_SERVICE_NODE_DEREGISTER_LEGACY)) return false;
+    if (!pick<tx_extra_service_node_contributor>       (nar, tx_extra_fields, TX_EXTRA_TAG_SERVICE_NODE_CONTRIBUTOR)) return false;
+    if (!pick<tx_extra_service_node_pubkey>            (nar, tx_extra_fields, TX_EXTRA_TAG_SERVICE_NODE_PUBKEY)) return false;
+    if (!pick<tx_extra_tx_key_image_proofs>            (nar, tx_extra_fields, TX_EXTRA_TAG_TX_KEY_IMAGE_PROOFS)) return false;
+    if (!pick<tx_extra_tx_key_image_unlock>            (nar, tx_extra_fields, TX_EXTRA_TAG_TX_KEY_IMAGE_UNLOCK)) return false;
 
     if (!pick<tx_extra_merge_mining_tag>(nar, tx_extra_fields, TX_EXTRA_MERGE_MINING_TAG)) return false;
     if (!pick<tx_extra_mysterious_minergate>(nar, tx_extra_fields, TX_EXTRA_MYSTERIOUS_MINERGATE_TAG)) return false;
@@ -683,9 +684,28 @@ namespace cryptonote
     return true;
   }
   //---------------------------------------------------------------
-  bool add_service_node_deregister_to_tx_extra(std::vector<uint8_t>& tx_extra, const tx_extra_service_node_deregister& deregistration)
+  bool add_service_node_deregister_legacy_to_tx_extra(std::vector<uint8_t>& tx_extra, const tx_extra_service_node_deregister_legacy& deregistration)
   {
-    tx_extra_field field = tx_extra_service_node_deregister{deregistration.block_height, deregistration.service_node_index, deregistration.votes};
+    tx_extra_field field = deregistration;
+    std::ostringstream oss;
+    binary_archive<true> ar(oss);
+    bool r = ::do_serialize(ar, field);
+    CHECK_AND_ASSERT_MES(r, false, "failed to serialize tx extra service node deregister legacy");
+    std::string tx_extra_str = oss.str();
+    size_t pos = tx_extra.size();
+    tx_extra.resize(tx_extra.size() + tx_extra_str.size());
+    memcpy(&tx_extra[pos], tx_extra_str.data(), tx_extra_str.size());
+
+    return true;
+  }
+  //---------------------------------------------------------------
+  bool add_service_node_deregister_to_tx_extra(std::vector<uint8_t>& tx_extra, const tx_extra_service_node_deregister_& deregistration)
+  {
+    tx_extra_field field = tx_extra_service_node_deregister_{deregistration.version,
+                                                             deregistration.quorum,
+                                                             deregistration.block_height,
+                                                             deregistration.service_node_index,
+                                                             deregistration.votes};
 
     std::ostringstream oss;
     binary_archive<true> ar(oss);
@@ -695,6 +715,61 @@ namespace cryptonote
     size_t pos = tx_extra.size();
     tx_extra.resize(tx_extra.size() + tx_extra_str.size());
     memcpy(&tx_extra[pos], tx_extra_str.data(), tx_extra_str.size());
+
+    return true;
+  }
+
+  tx_extra_service_node_deregister_ convert_legacy_tx_extra_deregister(tx_extra_service_node_deregister_legacy const &legacy)
+  {
+    tx_extra_service_node_deregister_ result = {};
+    result.version                           = tx_extra_service_node_deregister_::version_0_checkpointing;
+    result.block_height                      = legacy.block_height;
+    result.quorum                            = tx_extra_service_node_deregister_::quorum_uptime;
+    result.service_node_index                = legacy.service_node_index;
+    result.votes.reserve(legacy.votes.size());
+
+    for (tx_extra_service_node_deregister_legacy::vote const &legacy_vote : legacy.votes)
+    {
+      tx_extra_service_node_deregister_::vote vote = {};
+      vote.signature                               = legacy_vote.signature;
+      vote.validator_index                         = legacy_vote.validator_index;
+      result.votes.push_back(vote);
+    }
+
+    return result;
+  }
+
+  bool convert_tx_extra_service_node_deregister_to_legacy(tx_extra_service_node_deregister_ const &deregister, tx_extra_service_node_deregister_legacy &legacy)
+  {
+    if (deregister.quorum != tx_extra_service_node_deregister_::quorum_uptime)
+      return false;
+
+    legacy.block_height       = deregister.block_height;
+    legacy.service_node_index = deregister.service_node_index;
+    legacy.votes.reserve(deregister.votes.size());
+
+    for (tx_extra_service_node_deregister_::vote const &vote : deregister.votes)
+    {
+      tx_extra_service_node_deregister_legacy::vote legacy_vote = {};
+      legacy_vote.signature                                     = vote.signature;
+      legacy_vote.validator_index                               = vote.validator_index;
+      legacy.votes.push_back(legacy_vote);
+    }
+    return true;
+  }
+
+  bool get_service_node_deregister_from_tx_extra(int hf_version, std::vector<uint8_t> const &tx_extra, tx_extra_service_node_deregister_ &deregister)
+  {
+    if (hf_version >= cryptonote::network_version_12_checkpointing)
+    {
+      if (!find_tx_extra_field_in_blob(tx_extra, deregister)) return false;
+    }
+    else
+    {
+      tx_extra_service_node_deregister_legacy legacy_deregister;
+      if (!find_tx_extra_field_in_blob(tx_extra, legacy_deregister)) return false;
+      deregister = convert_legacy_tx_extra_deregister(legacy_deregister);
+    }
 
     return true;
   }
@@ -832,14 +907,6 @@ namespace cryptonote
   void add_service_node_winner_to_tx_extra(std::vector<uint8_t>& tx_extra, const crypto::public_key& winner)
   {
     add_data_to_tx_extra(tx_extra, reinterpret_cast<const char *>(&winner), sizeof(winner), TX_EXTRA_TAG_SERVICE_NODE_WINNER);
-  }
-  //---------------------------------------------------------------
-  bool get_service_node_deregister_from_tx_extra(const std::vector<uint8_t>& tx_extra, tx_extra_service_node_deregister &deregistration)
-  {
-    std::vector<tx_extra_field> tx_extra_fields;
-    parse_tx_extra(tx_extra, tx_extra_fields);
-    bool result = find_tx_extra_field_by_type(tx_extra_fields, deregistration);
-    return result;
   }
   //---------------------------------------------------------------
   crypto::public_key get_service_node_winner_from_tx_extra(const std::vector<uint8_t>& tx_extra)

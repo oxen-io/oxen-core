@@ -689,7 +689,7 @@ bool sn_test_rollback::test_registrations(cryptonote::core& c, size_t ev_index, 
     CHECK_TEST_CONDITION(dereg_tx.get_type() == transaction::type_deregister);
 
     tx_extra_service_node_deregister deregistration;
-    get_service_node_deregister_from_tx_extra(dereg_tx.extra, deregistration);
+    find_tx_extra_field_by_type(dereg_tx.extra, deregistration);
 
     const auto uptime_quorum = c.get_testing_quorum(service_nodes::quorum_type::uptime, deregistration.block_height);
     CHECK_TEST_CONDITION(uptime_quorum);

@@ -61,6 +61,8 @@ namespace cryptonote
   bool is_v1_tx(const blobdata_ref& tx_blob);
   bool is_v1_tx(const blobdata& tx_blob);
 
+  bool parse_tx_extra(const std::vector<uint8_t>& tx_extra, std::vector<tx_extra_field>& tx_extra_fields);
+
   // skip_fields: How many fields of type <T> to skip
   template<typename T>
   bool find_tx_extra_field_by_type(const std::vector<tx_extra_field>& tx_extra_fields, T& field, size_t skip_fields = 0)
@@ -83,7 +85,15 @@ namespace cryptonote
     return false;
   }
 
-  bool parse_tx_extra(const std::vector<uint8_t>& tx_extra, std::vector<tx_extra_field>& tx_extra_fields);
+  template<typename T>
+  bool find_tx_extra_field_in_blob(const std::vector<uint8_t>& tx_extra, T& field, size_t skip_fields = 0)
+  {
+    std::vector<tx_extra_field> tx_extra_fields;
+    parse_tx_extra(tx_extra, tx_extra_fields);
+    bool result = find_tx_extra_field_by_type(tx_extra_fields, field, skip_fields);
+    return result;
+  }
+
   bool sort_tx_extra(const std::vector<uint8_t>& tx_extra, std::vector<uint8_t> &sorted_tx_extra, bool allow_partial = false);
   crypto::public_key get_tx_pub_key_from_extra(const std::vector<uint8_t>& tx_extra, size_t pk_index = 0);
   crypto::public_key get_tx_pub_key_from_extra(const transaction_prefix& tx, size_t pk_index = 0);
@@ -92,9 +102,14 @@ namespace cryptonote
   void add_tx_pub_key_to_extra(transaction_prefix& tx, const crypto::public_key& tx_pub_key);
   void add_tx_pub_key_to_extra(std::vector<uint8_t>& tx_extra, const crypto::public_key& tx_pub_key);
 
-  bool add_service_node_deregister_to_tx_extra(std::vector<uint8_t>& tx_extra, const tx_extra_service_node_deregister& deregistration);
+  bool add_service_node_deregister_legacy_to_tx_extra(std::vector<uint8_t>& tx_extra, const tx_extra_service_node_deregister_legacy& deregistration);
+  bool add_service_node_deregister_to_tx_extra       (std::vector<uint8_t>& tx_extra, const tx_extra_service_node_deregister_& deregistration);
+
+  tx_extra_service_node_deregister_ convert_legacy_tx_extra_deregister                (tx_extra_service_node_deregister_legacy const &legacy);
+  bool                              convert_tx_extra_service_node_deregister_to_legacy(tx_extra_service_node_deregister_ const &deregister, tx_extra_service_node_deregister_legacy &legacy);
+  bool                              get_service_node_deregister_from_tx_extra         (int hf_version, std::vector<uint8_t> const &tx_extra, tx_extra_service_node_deregister_ &deregister);
+
   bool get_service_node_register_from_tx_extra(const std::vector<uint8_t>& tx_extra, tx_extra_service_node_register& registration);
-  bool get_service_node_deregister_from_tx_extra(const std::vector<uint8_t>& tx_extra, tx_extra_service_node_deregister& deregistration);
   bool get_service_node_pubkey_from_tx_extra(const std::vector<uint8_t>& tx_extra, crypto::public_key& pubkey);
   bool get_service_node_contributor_from_tx_extra(const std::vector<uint8_t>& tx_extra, cryptonote::account_public_address& address);
   bool add_service_node_register_to_tx_extra(std::vector<uint8_t>& tx_extra, const std::vector<cryptonote::account_public_address>& addresses, uint64_t portions_for_operator, const std::vector<uint64_t>& portions, uint64_t expiration_timestamp, const crypto::signature& signature);

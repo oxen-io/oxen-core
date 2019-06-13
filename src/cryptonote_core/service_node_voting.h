@@ -42,7 +42,7 @@
 namespace cryptonote
 {
   struct vote_verification_context;
-  struct tx_extra_service_node_deregister;
+  struct tx_extra_service_node_deregister_;
 };
 
 namespace service_nodes
@@ -70,6 +70,14 @@ namespace service_nodes
     count,
     invalid = count,
   };
+
+  inline quorum_type max_quorum_type_for_hf(int hf_version)
+  {
+    quorum_type result = (hf_version <= cryptonote::network_version_11_infinite_staking) ? quorum_type::uptime
+                                                                                         : quorum_type::checkpointing;
+    assert((size_t)result < (size_t)quorum_type::count - 1);
+    return result;
+  }
 
   enum struct quorum_vote_type
   {
@@ -102,7 +110,7 @@ namespace service_nodes
                                                       uint16_t worker_index,
                                                       crypto::public_key const &pub_key,
                                                       crypto::secret_key const &secret_key);
-  bool              verify_tx_deregister             (const cryptonote::tx_extra_service_node_deregister& deregister,
+  bool              verify_tx_deregister             (const cryptonote::tx_extra_service_node_deregister_& deregister,
                                                       uint64_t latest_height,
                                                       cryptonote::vote_verification_context& vvc,
                                                       const service_nodes::testing_quorum &quorum);
@@ -112,7 +120,7 @@ namespace service_nodes
                                                       const service_nodes::testing_quorum &quorum);
 
   crypto::signature make_signature_from_vote         (quorum_vote_t const &vote, const crypto::public_key& pub, const crypto::secret_key& sec);
-  crypto::signature make_signature_from_tx_deregister(cryptonote::tx_extra_service_node_deregister const &deregister, crypto::public_key const &pub, crypto::secret_key const &sec);
+  crypto::signature make_signature_from_tx_deregister(cryptonote::tx_extra_service_node_deregister_ const &deregister, crypto::public_key const &pub, crypto::secret_key const &sec);
 
   // NOTE: This preserves the deregister vote format pre-checkpointing so that
   // up to the hardfork, we can still deserialize and serialize until we switch
@@ -145,7 +153,7 @@ namespace service_nodes
     // TODO(loki): Review relay behaviour and all the cases when it should be triggered
     void                       set_relayed           (const std::vector<quorum_vote_t>& votes);
     void                       remove_expired_votes  (uint64_t height);
-    void                       remove_used_votes     (std::vector<cryptonote::transaction> const &txs);
+    void                       remove_used_votes     (int hf_version, std::vector<cryptonote::transaction> const &txs);
     std::vector<quorum_vote_t> get_relayable_votes   () const;
 
     bool                       has_received_vote_from(quorum_vote_type type, std::vector<crypto::public_key> const &quorum, crypto::public_key const &key, uint64_t height) const;

@@ -30,26 +30,27 @@
 
 #pragma once
 
-#define TX_EXTRA_PADDING_MAX_COUNT            255
-#define TX_EXTRA_NONCE_MAX_COUNT              255
+#define TX_EXTRA_PADDING_MAX_COUNT                  255
+#define TX_EXTRA_NONCE_MAX_COUNT                    255
 
-#define TX_EXTRA_TAG_PADDING                  0x00
-#define TX_EXTRA_TAG_PUBKEY                   0x01
-#define TX_EXTRA_NONCE                        0x02
-#define TX_EXTRA_MERGE_MINING_TAG             0x03
-#define TX_EXTRA_TAG_ADDITIONAL_PUBKEYS       0x04
-#define TX_EXTRA_TAG_SERVICE_NODE_REGISTER    0x70
-#define TX_EXTRA_TAG_SERVICE_NODE_DEREGISTER  0x71
-#define TX_EXTRA_TAG_SERVICE_NODE_WINNER      0x72
-#define TX_EXTRA_TAG_SERVICE_NODE_CONTRIBUTOR 0x73
-#define TX_EXTRA_TAG_SERVICE_NODE_PUBKEY      0x74
-#define TX_EXTRA_TAG_TX_SECRET_KEY            0x75
-#define TX_EXTRA_TAG_TX_KEY_IMAGE_PROOFS      0x76
-#define TX_EXTRA_TAG_TX_KEY_IMAGE_UNLOCK      0x77
-#define TX_EXTRA_MYSTERIOUS_MINERGATE_TAG     0xDE
+#define TX_EXTRA_TAG_PADDING                        0x00
+#define TX_EXTRA_TAG_PUBKEY                         0x01
+#define TX_EXTRA_NONCE                              0x02
+#define TX_EXTRA_MERGE_MINING_TAG                   0x03
+#define TX_EXTRA_TAG_ADDITIONAL_PUBKEYS             0x04
+#define TX_EXTRA_TAG_SERVICE_NODE_REGISTER          0x70
+#define TX_EXTRA_TAG_SERVICE_NODE_DEREGISTER_LEGACY 0x71
+#define TX_EXTRA_TAG_SERVICE_NODE_WINNER            0x72
+#define TX_EXTRA_TAG_SERVICE_NODE_CONTRIBUTOR       0x73
+#define TX_EXTRA_TAG_SERVICE_NODE_PUBKEY            0x74
+#define TX_EXTRA_TAG_TX_SECRET_KEY                  0x75
+#define TX_EXTRA_TAG_TX_KEY_IMAGE_PROOFS            0x76
+#define TX_EXTRA_TAG_TX_KEY_IMAGE_UNLOCK            0x77
+#define TX_EXTRA_TAG_SERVICE_NODE_DEREGISTER_       0x78
+#define TX_EXTRA_MYSTERIOUS_MINERGATE_TAG           0xDE
 
-#define TX_EXTRA_NONCE_PAYMENT_ID             0x00
-#define TX_EXTRA_NONCE_ENCRYPTED_PAYMENT_ID   0x01
+#define TX_EXTRA_NONCE_PAYMENT_ID                   0x00
+#define TX_EXTRA_NONCE_ENCRYPTED_PAYMENT_ID         0x01
 
 namespace cryptonote
 {
@@ -235,7 +236,7 @@ namespace cryptonote
     END_SERIALIZE()
   };
 
-  struct tx_extra_service_node_deregister
+  struct tx_extra_service_node_deregister_legacy
   {
     struct vote
     {
@@ -252,6 +253,40 @@ namespace cryptonote
     BEGIN_SERIALIZE()
       FIELD(block_height)
       FIELD(service_node_index)
+      FIELD(votes)
+    END_SERIALIZE()
+  };
+
+  struct tx_extra_service_node_deregister_
+  {
+    enum version { version_0_checkpointing };
+    enum quorum
+    {
+      quorum_uptime,
+      quorum_checkpoint,
+      quorum_count,
+      quorum_invalid = quorum_count,
+    };
+
+    struct vote
+    {
+      vote() = default;
+      vote(crypto::signature const &signature, uint16_t validator_index): signature(signature), validator_index(validator_index) { }
+      crypto::signature signature;
+      uint16_t          validator_index;
+    };
+
+    uint8_t           version;
+    uint8_t           quorum;
+    uint64_t          block_height;
+    uint16_t          service_node_index;
+    std::vector<vote> votes;
+
+    BEGIN_SERIALIZE()
+      VARINT_FIELD(version)
+      VARINT_FIELD(quorum)
+      VARINT_FIELD(block_height)
+      VARINT_FIELD(service_node_index)
       FIELD(votes)
     END_SERIALIZE()
   };
@@ -307,27 +342,30 @@ namespace cryptonote
                          tx_extra_service_node_register,
                          tx_extra_service_node_contributor,
                          tx_extra_service_node_winner,
-                         tx_extra_service_node_deregister,
+                         tx_extra_service_node_deregister_legacy,
                          tx_extra_tx_secret_key,
                          tx_extra_tx_key_image_proofs,
-                         tx_extra_tx_key_image_unlock
+                         tx_extra_tx_key_image_unlock,
+                         tx_extra_service_node_deregister_
                         > tx_extra_field;
 }
 
-BLOB_SERIALIZER(cryptonote::tx_extra_service_node_deregister::vote);
+BLOB_SERIALIZER(cryptonote::tx_extra_service_node_deregister_legacy::vote);
+BLOB_SERIALIZER(cryptonote::tx_extra_service_node_deregister_::vote);
 BLOB_SERIALIZER(cryptonote::tx_extra_tx_key_image_proofs::proof);
 
-VARIANT_TAG(binary_archive, cryptonote::tx_extra_padding,                  TX_EXTRA_TAG_PADDING);
-VARIANT_TAG(binary_archive, cryptonote::tx_extra_pub_key,                  TX_EXTRA_TAG_PUBKEY);
-VARIANT_TAG(binary_archive, cryptonote::tx_extra_nonce,                    TX_EXTRA_NONCE);
-VARIANT_TAG(binary_archive, cryptonote::tx_extra_merge_mining_tag,         TX_EXTRA_MERGE_MINING_TAG);
-VARIANT_TAG(binary_archive, cryptonote::tx_extra_additional_pub_keys,      TX_EXTRA_TAG_ADDITIONAL_PUBKEYS);
-VARIANT_TAG(binary_archive, cryptonote::tx_extra_mysterious_minergate,     TX_EXTRA_MYSTERIOUS_MINERGATE_TAG);
-VARIANT_TAG(binary_archive, cryptonote::tx_extra_service_node_register,    TX_EXTRA_TAG_SERVICE_NODE_REGISTER);
-VARIANT_TAG(binary_archive, cryptonote::tx_extra_service_node_deregister,  TX_EXTRA_TAG_SERVICE_NODE_DEREGISTER);
-VARIANT_TAG(binary_archive, cryptonote::tx_extra_service_node_contributor, TX_EXTRA_TAG_SERVICE_NODE_CONTRIBUTOR);
-VARIANT_TAG(binary_archive, cryptonote::tx_extra_service_node_winner,      TX_EXTRA_TAG_SERVICE_NODE_WINNER);
-VARIANT_TAG(binary_archive, cryptonote::tx_extra_service_node_pubkey,      TX_EXTRA_TAG_SERVICE_NODE_PUBKEY);
-VARIANT_TAG(binary_archive, cryptonote::tx_extra_tx_secret_key,            TX_EXTRA_TAG_TX_SECRET_KEY);
-VARIANT_TAG(binary_archive, cryptonote::tx_extra_tx_key_image_proofs,      TX_EXTRA_TAG_TX_KEY_IMAGE_PROOFS);
-VARIANT_TAG(binary_archive, cryptonote::tx_extra_tx_key_image_unlock,      TX_EXTRA_TAG_TX_KEY_IMAGE_UNLOCK);
+VARIANT_TAG(binary_archive, cryptonote::tx_extra_padding,                        TX_EXTRA_TAG_PADDING);
+VARIANT_TAG(binary_archive, cryptonote::tx_extra_pub_key,                        TX_EXTRA_TAG_PUBKEY);
+VARIANT_TAG(binary_archive, cryptonote::tx_extra_nonce,                          TX_EXTRA_NONCE);
+VARIANT_TAG(binary_archive, cryptonote::tx_extra_merge_mining_tag,               TX_EXTRA_MERGE_MINING_TAG);
+VARIANT_TAG(binary_archive, cryptonote::tx_extra_additional_pub_keys,            TX_EXTRA_TAG_ADDITIONAL_PUBKEYS);
+VARIANT_TAG(binary_archive, cryptonote::tx_extra_mysterious_minergate,           TX_EXTRA_MYSTERIOUS_MINERGATE_TAG);
+VARIANT_TAG(binary_archive, cryptonote::tx_extra_service_node_register,          TX_EXTRA_TAG_SERVICE_NODE_REGISTER);
+VARIANT_TAG(binary_archive, cryptonote::tx_extra_service_node_deregister_legacy, TX_EXTRA_TAG_SERVICE_NODE_DEREGISTER_LEGACY);
+VARIANT_TAG(binary_archive, cryptonote::tx_extra_service_node_contributor,       TX_EXTRA_TAG_SERVICE_NODE_CONTRIBUTOR);
+VARIANT_TAG(binary_archive, cryptonote::tx_extra_service_node_winner,            TX_EXTRA_TAG_SERVICE_NODE_WINNER);
+VARIANT_TAG(binary_archive, cryptonote::tx_extra_service_node_pubkey,            TX_EXTRA_TAG_SERVICE_NODE_PUBKEY);
+VARIANT_TAG(binary_archive, cryptonote::tx_extra_tx_secret_key,                  TX_EXTRA_TAG_TX_SECRET_KEY);
+VARIANT_TAG(binary_archive, cryptonote::tx_extra_tx_key_image_proofs,            TX_EXTRA_TAG_TX_KEY_IMAGE_PROOFS);
+VARIANT_TAG(binary_archive, cryptonote::tx_extra_tx_key_image_unlock,            TX_EXTRA_TAG_TX_KEY_IMAGE_UNLOCK);
+VARIANT_TAG(binary_archive, cryptonote::tx_extra_service_node_deregister_,       TX_EXTRA_TAG_SERVICE_NODE_DEREGISTER_);

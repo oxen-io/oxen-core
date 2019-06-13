@@ -300,22 +300,27 @@ namespace service_nodes
     if (tx.get_type() != cryptonote::transaction::type_deregister)
       return false;
 
-    cryptonote::tx_extra_service_node_deregister deregister;
-    if (!cryptonote::get_service_node_deregister_from_tx_extra(tx.extra, deregister))
+    int hard_fork_version = m_blockchain.get_hard_fork_version(block_height);
+    cryptonote::tx_extra_service_node_deregister_ deregister;
+    if (!cryptonote::get_service_node_deregister_from_tx_extra(hard_fork_version, tx.extra, deregister))
     {
       MERROR("Transaction deregister did not have deregister data in tx extra, possibly corrupt tx in blockchain");
       return false;
     }
 
-    const auto state = get_testing_quorum(quorum_type::uptime, deregister.block_height);
+    quorum_type type = (deregister.quorum == cryptonote::tx_extra_service_node_deregister_::quorum_uptime)
+                           ? quorum_type::uptime
+                           : quorum_type::checkpointing;
+
+    const auto state = get_testing_quorum(type, deregister.block_height);
     if (!state)
     {
       // TODO(loki): Not being able to find a quorum is fatal! We want better caching abilities.
-      MERROR("Uptime quorum for height: " << deregister.block_height << ", was not stored by the daemon");
+      MERROR("Quorum for height: " << deregister.block_height << ", was not stored by the daemon");
       return false;
     }
 
-    if (deregister.service_node_index >= state->workers.size())
+    if (deregister.service_node_index >= state->workers.size()) // NOTE: Should be already checked in verify_tx_deregister, but lets be safe
     {
       MERROR("Service node index to vote off has become invalid, quorum rules have changed without a hardfork.");
       return false;
@@ -338,7 +343,6 @@ namespace service_nodes
 
     m_transient_state.rollback_events.push_back(std::unique_ptr<rollback_event>(new rollback_change(block_height, key, iter->second)));
 
-    int hard_fork_version = m_blockchain.get_hard_fork_version(block_height);
     if (hard_fork_version >= cryptonote::network_version_11_infinite_staking)
     {
       for (const auto &contributor : iter->second.contributors)
@@ -1298,9 +1302,10 @@ namespace service_nodes
       return;
     }
 
+    service_nodes::quorum_type const max_quorum_type = max_quorum_type_for_hf(hf_version);
     std::vector<crypto::public_key> const snode_list = get_service_nodes_pubkeys();
     quorum_manager &manager                          = m_transient_state.quorum_states[height];
-    for (int type_int = 0; type_int < (int)quorum_type::count; type_int++)
+    for (int type_int = 0; type_int <= (int)max_quorum_type; type_int++)
     {
       auto type             = static_cast<quorum_type>(type_int);
       size_t num_validators = 0, num_workers = 0;
@@ -1309,21 +1314,15 @@ namespace service_nodes
 
       if (type == quorum_type::uptime)
       {
-        if (hf_version >= cryptonote::network_version_9_service_nodes)
-        {
-          num_validators             = std::min(pub_keys_indexes.size(), UPTIME_QUORUM_SIZE);
-          size_t num_remaining_nodes = pub_keys_indexes.size() - num_validators;
-          num_workers                = std::max(num_remaining_nodes/UPTIME_NTH_OF_THE_NETWORK_TO_TEST, std::min(UPTIME_MIN_NODES_TO_TEST, num_remaining_nodes));
-        }
+        num_validators             = std::min(pub_keys_indexes.size(), UPTIME_QUORUM_SIZE);
+        size_t num_remaining_nodes = pub_keys_indexes.size() - num_validators;
+        num_workers                = std::max(num_remaining_nodes/UPTIME_NTH_OF_THE_NETWORK_TO_TEST, std::min(UPTIME_MIN_NODES_TO_TEST, num_remaining_nodes));
       }
       else if (type == quorum_type::checkpointing)
       {
-        if (hf_version >= cryptonote::network_version_12_checkpointing)
-        {
-          num_validators             = std::min(pub_keys_indexes.size(), CHECKPOINT_QUORUM_SIZE);
-          size_t num_remaining_nodes = pub_keys_indexes.size() - num_validators;
-          num_workers                = std::min(num_remaining_nodes, CHECKPOINT_QUORUM_SIZE);
-        }
+        num_validators             = std::min(pub_keys_indexes.size(), CHECKPOINT_QUORUM_SIZE);
+        size_t num_remaining_nodes = pub_keys_indexes.size() - num_validators;
+        num_workers                = std::min(num_remaining_nodes, CHECKPOINT_QUORUM_SIZE);
       }
       else
       {

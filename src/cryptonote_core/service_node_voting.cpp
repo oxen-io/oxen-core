@@ -58,6 +58,7 @@ namespace service_nodes
     return true;
   }
 
+  // TODO(loki): Post HF12 remove no more legacy votes should be propagated
   quorum_vote_t convert_legacy_deregister_vote(legacy_deregister_vote const &vote)
   {
     quorum_vote_t result           = {};
@@ -113,7 +114,7 @@ namespace service_nodes
     return result;
   }
 
-  crypto::signature make_signature_from_tx_deregister(cryptonote::tx_extra_service_node_deregister const &deregister, crypto::public_key const &pub, crypto::secret_key const &sec)
+  crypto::signature make_signature_from_tx_deregister(cryptonote::tx_extra_service_node_deregister_ const &deregister, crypto::public_key const &pub, crypto::secret_key const &sec)
   {
     crypto::signature result;
     crypto::hash hash = make_deregister_vote_hash(deregister.block_height, deregister.service_node_index);
@@ -143,7 +144,7 @@ namespace service_nodes
     return true;
   }
 
-  bool verify_tx_deregister(const cryptonote::tx_extra_service_node_deregister &deregister,
+  bool verify_tx_deregister(const cryptonote::tx_extra_service_node_deregister_ &deregister,
                             uint64_t latest_height,
                             cryptonote::vote_verification_context &vvc,
                             const service_nodes::testing_quorum &quorum)
@@ -190,7 +191,7 @@ namespace service_nodes
 
     crypto::hash const hash = make_deregister_vote_hash(deregister.block_height, deregister.service_node_index);
     std::array<int, service_nodes::UPTIME_QUORUM_SIZE> validator_set = {};
-    for (const cryptonote::tx_extra_service_node_deregister::vote& vote : deregister.votes)
+    for (const cryptonote::tx_extra_service_node_deregister_::vote& vote : deregister.votes)
     {
       if (!bounds_check_validator_index(quorum, vote.validator_index, vvc))
         return false;
@@ -523,7 +524,7 @@ namespace service_nodes
     return result;
   }
 
-  void voting_pool::remove_used_votes(std::vector<cryptonote::transaction> const &txs)
+  void voting_pool::remove_used_votes(int hf_version, std::vector<cryptonote::transaction> const &txs)
   {
     // TODO(doyle): Cull checkpoint votes
     CRITICAL_REGION_LOCAL(m_lock);
@@ -542,24 +543,25 @@ namespace service_nodes
       if (tx.get_type() != cryptonote::transaction::type_deregister)
         continue;
 
-      cryptonote::tx_extra_service_node_deregister deregister;
-      if (!get_service_node_deregister_from_tx_extra(tx.extra, deregister))
+      cryptonote::tx_extra_service_node_deregister_ deregister;
+      if (!get_service_node_deregister_from_tx_extra(hf_version, tx.extra, deregister))
       {
         LOG_ERROR("Could not get deregister from tx, possibly corrupt tx");
         continue;
       }
 
-      for (std::vector<deregister_pool_entry> *pool : deregister_pools)
-      {
-        auto it = std::find_if(pool->begin(), pool->end(), [&deregister](deregister_pool_entry const &entry) {
-          return (entry.height == deregister.block_height) && (entry.worker_index == deregister.service_node_index);
-        });
+      std::vector<deregister_pool_entry> *pool = &m_uptime_deregister_pool;
+      if (deregister.quorum == cryptonote::tx_extra_service_node_deregister_::quorum_checkpoint)
+        pool = &m_checkpoint_deregister_pool;
 
-        if (it != pool->end())
-        {
-          pool->erase(it);
-          break;
-        }
+      auto it = std::find_if(pool->begin(), pool->end(), [&deregister](deregister_pool_entry const &entry) {
+        return (entry.height == deregister.block_height) && (entry.worker_index == deregister.service_node_index);
+      });
+
+      if (it != pool->end())
+      {
+        pool->erase(it);
+        break;
       }
     }
   }
