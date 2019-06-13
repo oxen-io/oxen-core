@@ -3810,7 +3810,7 @@ void BlockchainLMDB::remove_block_checkpoint(uint64_t height)
   else
   {
     if (ret != MDB_NOTFOUND)
-      throw1(DB_ERROR(lmdb_error("Failed to locate block checkpoint for removal: ", ret).c_str()));
+      throw1(DB_ERROR(lmdb_error("Failed non-trivially to get cursor for checkpoint to delete: ", ret).c_str()));
   }
 }
 

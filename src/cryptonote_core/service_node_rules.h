@@ -13,7 +13,7 @@ namespace service_nodes {
   constexpr size_t   DEREGISTER_MIN_NODES_TO_TEST              = 50;
   constexpr uint64_t DEREGISTER_VOTE_LIFETIME                  = BLOCKS_EXPECTED_IN_HOURS(2);
 
-  constexpr uint64_t CHECKPOINT_INTERVAL                       = 4;  // Checkpoint every 4 blocks and prune when too old except if (height % CHECKPOINT_BREADCRUMB_INTERVAL == 0)
+  constexpr uint64_t CHECKPOINT_INTERVAL                       = 4;  // Checkpoint every 4 blocks and prune when too old except if (height % CHECKPOINT_STORE_PERSISTENTLY_INTERVAL == 0)
   constexpr uint64_t CHECKPOINT_STORE_PERSISTENTLY_INTERVAL    = 60; // Persistently store the checkpoints at these intervals
   constexpr uint64_t CHECKPOINT_VOTE_LIFETIME                  = CHECKPOINT_STORE_PERSISTENTLY_INTERVAL; // Keep the last 60 blocks worth of votes
 #if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
