@@ -151,7 +151,7 @@ static_assert(STAKING_PORTIONS % 3 == 0, "Use a multiple of three, so that it di
 
 #define ALLOW_DEBUG_COMMANDS
 
-#define CRYPTONOTE_NAME                         "kegCoin"
+#define CRYPTONOTE_NAME                         "kegcoin"
 #define CRYPTONOTE_POOLDATA_FILENAME            "poolstate.bin"
 #define CRYPTONOTE_BLOCKCHAINDATA_FILENAME      "data.mdb"
 #define CRYPTONOTE_BLOCKCHAINDATA_LOCK_FILENAME "lock.mdb"
@@ -196,7 +196,7 @@ namespace config
   uint16_t const RPC_DEFAULT_PORT = 4040;
   uint16_t const ZMQ_RPC_DEFAULT_PORT = 5555;
   boost::uuids::uuid const NETWORK_ID = { 
-    { 0x96 ,0x62, 0x77, 0x62 ,0x31, 0x75, 0x78, 0x69, 0x4a, 0x4a, 0x61, 0x35, 0x92, 0x65, 0x69 }
+    { 0x96 ,0x62, 0x77, 0x68 ,0x31, 0x75, 0x78, 0x69, 0x4a, 0x4a, 0x61, 0x35, 0x92, 0x85, 0x69 }
   }; // Bender's nightmare
   std::string const GENESIS_TX = "020301ff00018080b68be8ceb70c028e31c62a787e9b9f48a482bb2e01b435e4fa1d811514b84470837de2fe689d484201332a7f611d1bcfd5b4e486e2d4a860727d2556bf9fae7e7173bb1be19768a98272000000000000000000000000000000000000000000000000000000000000000000";
   uint32_t const GENESIS_NONCE = 1022201;
