@@ -60,18 +60,26 @@ namespace cryptonote
   bool is_v1_tx(const blobdata_ref& tx_blob);
   bool is_v1_tx(const blobdata& tx_blob);
 
+  // skip_fields: How many fields of type <T> to skip
   template<typename T>
-  bool find_tx_extra_field_by_type(const std::vector<tx_extra_field>& tx_extra_fields, T& field, size_t index = 0)
+  bool find_tx_extra_field_by_type(const std::vector<tx_extra_field>& tx_extra_fields, T& field, size_t skip_fields = 0)
   {
-    if (index >= tx_extra_fields.size())
+    if (skip_fields >= tx_extra_fields.size())
       return false;
 
-    tx_extra_field const &check_field = tx_extra_fields[index];
-    if (typeid(T) != check_field.type())
-      return false;
+    for (tx_extra_field const &check_field : tx_extra_fields)
+    {
+      if (typeid(T) != check_field.type()) continue;
 
-    field = boost::get<T>(check_field);
-    return true;
+      if (skip_fields == 0)
+      {
+        field = boost::get<T>(check_field);
+        return true;
+      }
+      skip_fields--;
+    }
+
+    return false;
   }
 
   bool parse_tx_extra(const std::vector<uint8_t>& tx_extra, std::vector<tx_extra_field>& tx_extra_fields);
