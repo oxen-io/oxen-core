@@ -224,8 +224,9 @@ TEST(service_nodes, tx_extra_deregister_validation)
 
   // Valid deregister
   cryptonote::tx_extra_service_node_deregister valid_deregister = {};
+  uint64_t const BLOCK_HEIGHT                                   = 100;
   {
-    valid_deregister.block_height       = 10;
+    valid_deregister.block_height       = BLOCK_HEIGHT;
     valid_deregister.service_node_index = 1;
     valid_deregister.votes.reserve(num_voters);
     for (size_t i = 0; i < num_voters; ++i)
@@ -238,7 +239,7 @@ TEST(service_nodes, tx_extra_deregister_validation)
     }
 
     cryptonote::vote_verification_context vvc = {};
-    bool result = service_nodes::verify_tx_deregister(valid_deregister, vvc, state);
+    bool result = service_nodes::verify_tx_deregister(valid_deregister, BLOCK_HEIGHT, vvc, state);
     if (!result)
       printf("%s\n", cryptonote::print_vote_verification_context(vvc));
     ASSERT_TRUE(result);
@@ -251,7 +252,7 @@ TEST(service_nodes, tx_extra_deregister_validation)
       deregister.votes.pop_back();
 
     cryptonote::vote_verification_context vvc = {};
-    bool result = service_nodes::verify_tx_deregister(deregister, vvc, state);
+    bool result = service_nodes::verify_tx_deregister(deregister, BLOCK_HEIGHT, vvc, state);
     ASSERT_FALSE(result);
   }
 
@@ -261,7 +262,7 @@ TEST(service_nodes, tx_extra_deregister_validation)
     deregister.votes[0] = deregister.votes[1];
 
     cryptonote::vote_verification_context vvc = {};
-    bool result = service_nodes::verify_tx_deregister(deregister, vvc, state);
+    bool result = service_nodes::verify_tx_deregister(deregister, BLOCK_HEIGHT, vvc, state);
     ASSERT_FALSE(result);
   }
 
@@ -271,7 +272,7 @@ TEST(service_nodes, tx_extra_deregister_validation)
     deregister.votes[0].signature = deregister.votes[1].signature;
 
     cryptonote::vote_verification_context vvc = {};
-    bool result = service_nodes::verify_tx_deregister(deregister, vvc, state);
+    bool result = service_nodes::verify_tx_deregister(deregister, BLOCK_HEIGHT, vvc, state);
     ASSERT_FALSE(result);
   }
 
@@ -281,7 +282,7 @@ TEST(service_nodes, tx_extra_deregister_validation)
     deregister.votes[0].validator_index = state.validators.size() + 10;
 
     cryptonote::vote_verification_context vvc = {};
-    bool result = service_nodes::verify_tx_deregister(deregister, vvc, state);
+    bool result = service_nodes::verify_tx_deregister(deregister, BLOCK_HEIGHT, vvc, state);
     ASSERT_FALSE(result);
   }
 
@@ -291,7 +292,23 @@ TEST(service_nodes, tx_extra_deregister_validation)
     deregister.service_node_index = state.workers.size() + 10;
 
     cryptonote::vote_verification_context vvc = {};
-    bool result = service_nodes::verify_tx_deregister(deregister, vvc, state);
+    bool result = service_nodes::verify_tx_deregister(deregister, BLOCK_HEIGHT, vvc, state);
+    ASSERT_FALSE(result);
+  }
+
+  // Deregister too old
+  {
+    auto deregister                           = valid_deregister;
+    cryptonote::vote_verification_context vvc = {};
+    bool result = service_nodes::verify_tx_deregister(deregister, 0, vvc, state);
+    ASSERT_FALSE(result);
+  }
+
+  // Deregister too new
+  {
+    auto deregister                           = valid_deregister;
+    cryptonote::vote_verification_context vvc = {};
+    bool result = service_nodes::verify_tx_deregister(deregister, BLOCK_HEIGHT + 1000, vvc, state);
     ASSERT_FALSE(result);
   }
 }

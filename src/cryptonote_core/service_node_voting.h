@@ -96,10 +96,21 @@ namespace service_nodes
   };
 
   enum struct make_deregister_type { uptime, checkpoint };
-  quorum_vote_t     make_deregister_vote             (make_deregister_type type, uint64_t block_height, uint16_t index_in_group, uint16_t worker_index, crypto::public_key const &pub_key, crypto::secret_key const &secret_key);
+  quorum_vote_t     make_deregister_vote             (make_deregister_type type,
+                                                      uint64_t block_height,
+                                                      uint16_t index_in_group,
+                                                      uint16_t worker_index,
+                                                      crypto::public_key const &pub_key,
+                                                      crypto::secret_key const &secret_key);
+  bool              verify_tx_deregister             (const cryptonote::tx_extra_service_node_deregister& deregister,
+                                                      uint64_t latest_height,
+                                                      cryptonote::vote_verification_context& vvc,
+                                                      const service_nodes::testing_quorum &quorum);
+  bool              verify_vote                      (const quorum_vote_t& vote,
+                                                      uint64_t latest_height,
+                                                      cryptonote::vote_verification_context &vvc,
+                                                      const service_nodes::testing_quorum &quorum);
 
-  bool              verify_tx_deregister             (const cryptonote::tx_extra_service_node_deregister& deregister, cryptonote::vote_verification_context& vvc, const service_nodes::testing_quorum &quorum);
-  bool              verify_vote                      (const quorum_vote_t& vote, uint64_t latest_height, cryptonote::vote_verification_context &vvc, const service_nodes::testing_quorum &quorum);
   crypto::signature make_signature_from_vote         (quorum_vote_t const &vote, const crypto::public_key& pub, const crypto::secret_key& sec);
   crypto::signature make_signature_from_tx_deregister(cryptonote::tx_extra_service_node_deregister const &deregister, crypto::public_key const &pub, crypto::secret_key const &sec);
 
@@ -140,8 +151,7 @@ namespace service_nodes
     bool                       has_received_vote_from(quorum_vote_type type, std::vector<crypto::public_key> const &quorum, crypto::public_key const &key, uint64_t height) const;
 
   private:
-
-    typedef struct deregister_pool_entry
+    struct deregister_pool_entry
     {
       deregister_pool_entry(uint64_t height, uint32_t worker_index): height(height), worker_index(worker_index) {}
       uint64_t                     height;
@@ -162,6 +172,11 @@ namespace service_nodes
     std::vector<checkpoint_pool_entry> m_checkpoint_pool;
 
     mutable epee::critical_section m_lock;
+
+    using deregister_pool_array       = std::array<std::vector<deregister_pool_entry>       *, 2>;
+    using deregister_pool_array_const = std::array<std::vector<deregister_pool_entry> const *, 2>;
+    deregister_pool_array       get_deregister_pools      ();
+    deregister_pool_array_const get_deregister_pools_const() const;
   };
 }; // namespace service_nodes
 

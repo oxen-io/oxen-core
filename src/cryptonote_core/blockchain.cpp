@@ -3114,9 +3114,6 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
 
     if (tx_type == transaction::type_deregister)
     {
-      // Check the inputs (votes) of the transaction have not already been
-      // submitted to the blockchain under another transaction using a different
-      // combination of votes.
       tx_extra_service_node_deregister deregister;
       if (!get_service_node_deregister_from_tx_extra(tx.extra, deregister))
       {
@@ -3131,40 +3128,16 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
         return false;
       }
 
-      if (!service_nodes::verify_tx_deregister(deregister, tvc.m_vote_ctx, *quorum))
+      if (!service_nodes::verify_tx_deregister(deregister, get_current_blockchain_height(), tvc.m_vote_ctx, *quorum))
       {
         tvc.m_verifivation_failed = true;
         MERROR_VER("tx " << get_transaction_hash(tx) << ": deregister tx could not be completely verified reason: " << print_vote_verification_context(tvc.m_vote_ctx));
         return false;
       }
 
-      // Check if deregister is too old or too new to hold onto
-      {
-        const uint64_t curr_height = get_current_blockchain_height();
-        if (deregister.block_height >= curr_height)
-        {
-          LOG_PRINT_L1("Received deregister tx for height: " << deregister.block_height
-                       << " and service node: "              << deregister.service_node_index
-                       << ", is newer than current height: " << curr_height
-                       << " blocks and has been rejected.");
-          tvc.m_vote_ctx.m_invalid_block_height = true;
-          tvc.m_verifivation_failed             = true;
-          return false;
-        }
-
-        uint64_t delta_height = curr_height - deregister.block_height;
-        if (delta_height >= service_nodes::DEREGISTER_TX_LIFETIME_IN_BLOCKS)
-        {
-          LOG_PRINT_L1("Received deregister tx for height: " << deregister.block_height
-                       << " and service node: "     << deregister.service_node_index
-                       << ", is older than: "       << service_nodes::DEREGISTER_TX_LIFETIME_IN_BLOCKS
-                       << " blocks and has been rejected. The current height is: " << curr_height);
-          tvc.m_vote_ctx.m_invalid_block_height = true;
-          tvc.m_verifivation_failed             = true;
-          return false;
-        }
-      }
-
+      // Check the inputs (votes) of the transaction have not already been
+      // submitted to the blockchain under another transaction using a different
+      // combination of votes.
       const uint64_t height            = deregister.block_height;
       const size_t num_blocks_to_check = service_nodes::DEREGISTER_TX_LIFETIME_IN_BLOCKS;
 
@@ -3172,6 +3145,7 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
       std::vector<cryptonote::blobdata> txs;
       if (!get_blocks(height, num_blocks_to_check, blocks, txs))
       {
+        MERROR_VER("Deregister TX failed to get_blocks in blockchain, requesting from height: " << height << ", " << num_blocks_to_check << " blocks");
         return false;
       }
 

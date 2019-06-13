@@ -144,10 +144,35 @@ namespace service_nodes
   }
 
   bool verify_tx_deregister(const cryptonote::tx_extra_service_node_deregister &deregister,
+                            uint64_t latest_height,
                             cryptonote::vote_verification_context &vvc,
                             const service_nodes::testing_quorum &quorum)
   {
-    if (deregister.votes.size() < service_nodes::UPTIME_MIN_VOTES_TO_KICK_SERVICE_NODE)
+    // Check if deregister is too old or too new to hold onto
+    {
+      if (deregister.block_height >= latest_height)
+      {
+        LOG_PRINT_L1("Received deregister tx for height: " << deregister.block_height
+                     << " and service node: "              << deregister.service_node_index
+                     << ", is newer than current height: " << latest_height
+                     << " blocks and has been rejected.");
+        vvc.m_invalid_block_height = true;
+        return false;
+      }
+
+      uint64_t delta_height = latest_height - deregister.block_height;
+      if (delta_height >= service_nodes::DEREGISTER_TX_LIFETIME_IN_BLOCKS)
+      {
+        LOG_PRINT_L1("Received deregister tx for height: " << deregister.block_height
+                     << " and service node: "     << deregister.service_node_index
+                     << ", is older than: "       << service_nodes::DEREGISTER_TX_LIFETIME_IN_BLOCKS
+                     << " blocks and has been rejected. The current height is: " << latest_height);
+        vvc.m_invalid_block_height = true;
+        return false;
+      }
+    }
+
+    if (deregister.votes.size() < service_nodes::DEREGISTER_MIN_VOTES_TO_KICK_SERVICE_NODE)
     {
       LOG_PRINT_L1("Not enough votes");
       vvc.m_not_enough_votes = true;
@@ -240,7 +265,7 @@ namespace service_nodes
 
           key          = quorum.validators[vote.index_in_group];
           // TODO(doyle): We need to check where this is used and if the lifetime rules of checkpoint votes would cull a checkpoint deregister for example
-          max_vote_age = service_nodes::UPTIME_VOTE_LIFETIME; // TODO(doyle): CHECKPOINT_DEREGISTER(doyle): Hmmm, does this need to be updated for checkpoint deregister?
+          max_vote_age = service_nodes::DEREGISTER_VOTE_LIFETIME; // TODO(doyle): CHECKPOINT_DEREGISTER(doyle): Hmmm, does this need to be updated for checkpoint deregister?
           hash         = make_deregister_vote_hash(vote.block_height, vote.deregister.worker_index);
 
           bool result = bounds_check_worker_index(quorum, vote.deregister.worker_index, vvc);
@@ -378,16 +403,10 @@ namespace service_nodes
     const time_t TIME_BETWEEN_RELAY = 60 * 2;
 #endif
 
-    std::vector<deregister_pool_entry> const *deregister_pools[] =
-    {
-      &m_uptime_deregister_pool,
-      &m_checkpoint_deregister_pool,
-    };
-
     time_t const now = time(nullptr);
     std::vector<quorum_vote_t> result;
 
-    for (std::vector<deregister_pool_entry> const *pool : deregister_pools)
+    for (std::vector<deregister_pool_entry> const *pool : get_deregister_pools_const())
     {
       for (deregister_pool_entry const &pool_entry : (*pool))
       {
@@ -461,8 +480,8 @@ namespace service_nodes
       case quorum_vote_type::uptime_deregister:
       {
         std::vector<deregister_pool_entry> *pool_to_check = nullptr;
-        if (find_vote.type == quorum_vote_type::checkpoint_deregister) pool_to_check = &m_uptime_deregister_pool;
-        else                                                           pool_to_check = &m_checkpoint_deregister_pool;
+        if (vote.type == quorum_vote_type::checkpoint_deregister) pool_to_check = &m_uptime_deregister_pool;
+        else                                                      pool_to_check = &m_checkpoint_deregister_pool;
 
         time_t const now = time(NULL);
         auto it = std::find_if(pool_to_check->begin(), pool_to_check->end(), [&vote](deregister_pool_entry const &entry) {
@@ -509,14 +528,10 @@ namespace service_nodes
     // TODO(doyle): Cull checkpoint votes
     CRITICAL_REGION_LOCAL(m_lock);
 
-    std::vector<deregister_pool_entry> *pools[] =
-    {
-      &m_uptime_deregister_pool,
-      &m_checkpoint_deregister_pool,
-    };
+    deregister_pool_array deregister_pools = get_deregister_pools();
+    size_t total_voting_entries            = 0;
 
-    size_t total_voting_entries = 0;
-    for (std::vector<deregister_pool_entry> *pool : pools)
+    for (std::vector<deregister_pool_entry> const *pool : deregister_pools)
       total_voting_entries += pool->size();
 
     if (total_voting_entries <= 0)
@@ -534,7 +549,7 @@ namespace service_nodes
         continue;
       }
 
-      for (std::vector<deregister_pool_entry> *pool : pools)
+      for (std::vector<deregister_pool_entry> *pool : deregister_pools)
       {
         auto it = std::find_if(pool->begin(), pool->end(), [&deregister](deregister_pool_entry const &entry) {
           return (entry.height == deregister.block_height) && (entry.worker_index == deregister.service_node_index);
@@ -567,19 +582,14 @@ namespace service_nodes
   {
     CRITICAL_REGION_LOCAL(m_lock);
     {
-      uint64_t min_height = (height < UPTIME_VOTE_LIFETIME) ? 0 : height - UPTIME_VOTE_LIFETIME;
-      cull_votes(m_uptime_deregister_pool, min_height, height);
+      uint64_t min_height = (height < DEREGISTER_VOTE_LIFETIME) ? 0 : height - DEREGISTER_VOTE_LIFETIME;
+      for (std::vector<deregister_pool_entry> *deregister_pool : get_deregister_pools())
+        cull_votes(*deregister_pool, min_height, height);
     }
 
     {
       uint64_t min_height = (height < CHECKPOINT_VOTE_LIFETIME) ? 0 : height - CHECKPOINT_VOTE_LIFETIME;
       cull_votes(m_checkpoint_pool, min_height, height);
-    }
-
-    {
-      // TODO(doyle): UPTIME_VOTE_LIFETIME?
-      uint64_t min_height = (height < UPTIME_VOTE_LIFETIME) ? 0 : height - UPTIME_VOTE_LIFETIME;
-      cull_votes(m_checkpoint_deregister_pool, min_height, height);
     }
   }
 
@@ -623,5 +633,21 @@ namespace service_nodes
     return result;
   }
 
+#define ASSIGN_DEREGISTER_ENTRIES(array)                                                                               \
+  array[0] = &m_uptime_deregister_pool;                                                                                \
+  array[1] = &m_checkpoint_deregister_pool
+  voting_pool::deregister_pool_array voting_pool::get_deregister_pools()
+  {
+    deregister_pool_array result = {};
+    ASSIGN_DEREGISTER_ENTRIES(result);
+    return result;
+  }
+
+  voting_pool::deregister_pool_array_const voting_pool::get_deregister_pools_const() const
+  {
+    deregister_pool_array_const result = {};
+    ASSIGN_DEREGISTER_ENTRIES(result);
+    return result;
+  }
 }; // namespace service_nodes
 
