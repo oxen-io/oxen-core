@@ -2829,6 +2829,8 @@ namespace cryptonote
   #define KV_SERIALIZE_ENTRY_FIELD_IF_REQUESTED(var) \
   if (this_ref.requested_fields.var || !this_ref.requested_fields.explicitly_set) KV_SERIALIZE(var)
 
+  LOKI_RPC_DOC_INTROSPECT
+  // Get information on a random subset of Service Nodes.
   struct COMMAND_RPC_GET_N_SERVICE_NODES
   {
 
@@ -2836,7 +2838,7 @@ namespace cryptonote
     // fields should be included in the response
     struct requested_fields_t {
 
-      bool explicitly_set = false;
+      bool explicitly_set = false;          // internal use only: incicates whether one of the other parameters has been explicitly set
 
       bool service_node_pubkey;
       bool registration_height;
