@@ -701,12 +701,7 @@ namespace cryptonote
   //---------------------------------------------------------------
   bool add_service_node_deregister_to_tx_extra(std::vector<uint8_t>& tx_extra, const tx_extra_service_node_deregister_& deregistration)
   {
-    tx_extra_field field = tx_extra_service_node_deregister_{deregistration.version,
-                                                             deregistration.quorum,
-                                                             deregistration.block_height,
-                                                             deregistration.service_node_index,
-                                                             deregistration.votes};
-
+    tx_extra_field field = deregistration;
     std::ostringstream oss;
     binary_archive<true> ar(oss);
     bool r = ::do_serialize(ar, field);

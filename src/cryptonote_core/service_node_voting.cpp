@@ -313,7 +313,7 @@ namespace service_nodes
                                                   << " blocks and has been rejected.");
         vvc.m_invalid_block_height = true;
       }
-      else if (vote.block_height > latest_height)
+      else if (vote.block_height >= latest_height)
       {
         LOG_PRINT_L1("Received vote for height: " << vote.block_height << ", is newer than: " << latest_height
                                                   << " (latest block height) and has been rejected.");

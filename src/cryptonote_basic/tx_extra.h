@@ -272,7 +272,7 @@ namespace cryptonote
     {
       vote() = default;
       vote(crypto::signature const &signature, uint16_t validator_index): signature(signature), validator_index(validator_index) { }
-      uint8_t           version;
+      uint8_t           version = version_0_checkpointing;
       uint16_t          validator_index;
       crypto::signature signature;
 

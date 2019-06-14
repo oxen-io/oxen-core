@@ -107,6 +107,10 @@ namespace service_nodes
 
   void quorum_cop::process_quorums(cryptonote::block const &block)
   {
+    int const hf_version = block.major_version;
+    if (hf_version < cryptonote::network_version_9_service_nodes)
+      return;
+
     crypto::public_key my_pubkey;
     crypto::secret_key my_seckey;
     if (!m_core.get_service_node_keys(my_pubkey, my_seckey))
@@ -116,7 +120,6 @@ namespace service_nodes
       return;
 
     uint64_t const height                            = cryptonote::get_block_height(block);
-    int const hf_version                             = block.major_version;
     service_nodes::quorum_type const max_quorum_type = service_nodes::max_quorum_type_for_hf(hf_version);
     for (int i = 0; i <= (int)max_quorum_type; i++)
     {
@@ -141,58 +144,51 @@ namespace service_nodes
 
         case quorum_type::uptime:
         {
-          if (hf_version >= cryptonote::network_version_9_service_nodes)
-          {
-            // NOTE: Wait atleast 2 hours before we're allowed to vote so that we collect uptimes from everyone on the network
-            time_t const now = time(nullptr);
+          // NOTE: Wait atleast 2 hours before we're allowed to vote so that we collect uptimes from everyone on the network
+          time_t const now = time(nullptr);
 #if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
-            time_t const min_lifetime = 0;
+          time_t const min_lifetime = 0;
 #else
-            time_t const min_lifetime = 60 * 60 * 2;
+          time_t const min_lifetime = 60 * 60 * 2;
 #endif
-            bool alive_for_min_time = (now - m_core.get_start_time()) >= min_lifetime;
-            if (!alive_for_min_time)
+          bool alive_for_min_time = (now - m_core.get_start_time()) >= min_lifetime;
+          if (!alive_for_min_time)
+            break;
+
+          m_uptime_proof_height = std::max(m_uptime_proof_height, start_voting_from_height);
+          for (; m_uptime_proof_height < (height - REORG_SAFETY_BUFFER_IN_BLOCKS); m_uptime_proof_height++)
+          {
+            if (m_core.get_hard_fork_version(m_uptime_proof_height) < 9) continue;
+
+            const std::shared_ptr<const testing_quorum> quorum =
+                m_core.get_testing_quorum(quorum_type::uptime, m_uptime_proof_height);
+            if (!quorum)
             {
+              // TODO(loki): Fatal error
+              LOG_ERROR("Uptime quorum for height: " << m_uptime_proof_height << " was not cached in daemon!");
               continue;
             }
 
-            if (m_uptime_proof_height < start_voting_from_height)
-              m_uptime_proof_height = start_voting_from_height;
+            int index_in_group = find_index_in_quorum_group(quorum->validators, my_pubkey);
+            if (index_in_group <= -1) continue;
 
-            for (; m_uptime_proof_height < (height - REORG_SAFETY_BUFFER_IN_BLOCKS); m_uptime_proof_height++)
+            for (size_t node_index = 0; node_index < quorum->workers.size(); ++node_index)
             {
-              if (m_core.get_hard_fork_version(m_uptime_proof_height) < 9) continue;
+              const crypto::public_key &node_key = quorum->workers[node_index];
 
-              const std::shared_ptr<const testing_quorum> quorum =
-                  m_core.get_testing_quorum(quorum_type::uptime, m_uptime_proof_height);
-              if (!quorum)
-              {
-                // TODO(loki): Fatal error
-                LOG_ERROR("Uptime quorum for height: " << m_uptime_proof_height << " was not cached in daemon!");
-                continue;
-              }
+              CRITICAL_REGION_LOCAL(m_lock);
+              bool vote_off_node = (m_uptime_proof_seen.find(node_key) == m_uptime_proof_seen.end());
+              if (!vote_off_node) continue;
 
-              int index_in_group = find_index_in_quorum_group(quorum->validators, my_pubkey);
-              if (index_in_group <= -1) continue;
-
-              for (size_t node_index = 0; node_index < quorum->workers.size(); ++node_index)
-              {
-                const crypto::public_key &node_key = quorum->workers[node_index];
-
-                CRITICAL_REGION_LOCAL(m_lock);
-                bool vote_off_node = (m_uptime_proof_seen.find(node_key) == m_uptime_proof_seen.end());
-                if (!vote_off_node) continue;
-
-                quorum_vote_t vote = service_nodes::make_deregister_vote(service_nodes::make_deregister_type::uptime,
-                                                                         m_uptime_proof_height,
-                                                                         static_cast<uint16_t>(index_in_group),
-                                                                         node_index,
-                                                                         my_pubkey,
-                                                                         my_seckey);
-                cryptonote::vote_verification_context vvc;
-                if (!handle_vote(vote, vvc))
-                  LOG_ERROR("Failed to add uptime deregister vote reason: " << print_vote_verification_context(vvc, nullptr));
-              }
+              quorum_vote_t vote = service_nodes::make_deregister_vote(service_nodes::make_deregister_type::uptime,
+                                                                       m_uptime_proof_height,
+                                                                       static_cast<uint16_t>(index_in_group),
+                                                                       node_index,
+                                                                       my_pubkey,
+                                                                       my_seckey);
+              cryptonote::vote_verification_context vvc = {};
+              if (!handle_vote(vote, vvc))
+                LOG_ERROR("Failed to add uptime deregister vote reason: " << print_vote_verification_context(vvc, &vote));
             }
           }
         }
@@ -203,11 +199,16 @@ namespace service_nodes
           if (hf_version < cryptonote::network_version_12_checkpointing)
             break;
 
-          uint64_t const half_vote_lifetime                 = vote_lifetime / 2;
-          uint64_t const start_checkpointing_height         = (start_voting_from_height + half_vote_lifetime);
+          uint64_t const half_vote_lifetime = vote_lifetime / 2;
+
+          uint64_t const start_checkpointing_height = (start_voting_from_height + half_vote_lifetime);
+          uint64_t const end_checkpointing_height   = height;
+
           uint64_t const start_validating_checkpoint_height = start_voting_from_height;
-          uint64_t const end_checkpointing_height           = height;
-          uint64_t const end_validating_checkpoint_height   = (start_validating_checkpoint_height - 1);
+          uint64_t const end_validating_checkpoint_height   = (start_checkpointing_height - 1);
+
+          assert(end_checkpointing_height > start_checkpointing_height);
+          assert(end_validating_checkpoint_height > start_validating_checkpoint_height);
 
           // NOTE: Cast deregister votes if service nodes have not participated
           {
@@ -246,9 +247,9 @@ namespace service_nodes
                                                           my_pubkey,
                                                           my_seckey);
 
-                cryptonote::vote_verification_context vvc;
+                cryptonote::vote_verification_context vvc = {};
                 if (!handle_vote(vote, vvc))
-                  LOG_ERROR("Failed to add uptime deregister vote reason: " << print_vote_verification_context(vvc, nullptr));
+                  LOG_ERROR("Failed to add checkpoint deregister vote reason: " << print_vote_verification_context(vvc, &vote));
               }
             }
           }
@@ -401,7 +402,7 @@ namespace service_nodes
             deregister.quorum = tx_extra_service_node_deregister_::quorum_checkpoint;
           else
           {
-            LOG_PRINT_L0("Unhandled vote type in conversion to tx extra service node quorum type with value: " << (int)vote.type);
+            LOG_PRINT_L1("Unhandled vote type in conversion to tx extra service node quorum type with value: " << (int)vote.type);
             return false;
           }
 
