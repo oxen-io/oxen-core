@@ -84,7 +84,7 @@ namespace service_nodes {
   {
     quorum_type result = (hf_version <= cryptonote::network_version_11_infinite_staking) ? quorum_type::uptime
                                                                                          : quorum_type::checkpointing;
-    assert((size_t)result < (size_t)quorum_type::count - 1);
+    assert((size_t)result < (size_t)quorum_type::count);
     return result;
   }
 
