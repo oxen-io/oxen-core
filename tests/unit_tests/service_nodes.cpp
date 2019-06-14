@@ -223,17 +223,20 @@ TEST(service_nodes, tx_extra_deregister_legacy_validation)
   }
 
   // Valid deregister
-  cryptonote::tx_extra_service_node_deregister valid_deregister = {};
-  uint64_t const BLOCK_HEIGHT                                   = 100;
+  cryptonote::tx_extra_service_node_deregister_ valid_deregister = {};
+  uint64_t const BLOCK_HEIGHT                                    = 100;
+  static_assert(BLOCK_HEIGHT > service_nodes::DEREGISTER_TX_LIFETIME_IN_BLOCKS,
+                "Require block height to be greater than the lifetime, otherwise we can't test that a too old "
+                "deregister is rejected");
   {
-    valid_deregister.block_height       = BLOCK_HEIGHT;
+    valid_deregister.block_height       = BLOCK_HEIGHT - 1;
     valid_deregister.service_node_index = 1;
     valid_deregister.votes.reserve(num_voters);
     for (size_t i = 0; i < num_voters; ++i)
     {
-      cryptonote::keypair const *voter                        = voters + i;
-      cryptonote::tx_extra_service_node_deregister::vote vote = {};
-      vote.validator_index                                    = i;
+      cryptonote::keypair const *voter                         = voters + i;
+      cryptonote::tx_extra_service_node_deregister_::vote vote = {};
+      vote.validator_index                                     = i;
       vote.signature = service_nodes::make_signature_from_tx_deregister(valid_deregister, voter->pub, voter->sec);
       valid_deregister.votes.push_back(vote);
     }

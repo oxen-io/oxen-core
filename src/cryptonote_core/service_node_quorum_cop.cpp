@@ -395,6 +395,16 @@ namespace service_nodes
           deregister.service_node_index                = vote.deregister.worker_index;
           deregister.votes.reserve(votes.size());
 
+          if (vote.type == quorum_vote_type::uptime_deregister)
+            deregister.quorum = tx_extra_service_node_deregister_::quorum_uptime;
+          else if (vote.type == quorum_vote_type::checkpoint_deregister)
+            deregister.quorum = tx_extra_service_node_deregister_::quorum_checkpoint;
+          else
+          {
+            LOG_PRINT_L0("Unhandled vote type in conversion to tx extra service node quorum type with value: " << (int)vote.type);
+            return false;
+          }
+
           std::transform(
               votes.begin(), votes.end(), std::back_inserter(deregister.votes), [](pool_vote_entry const &pool_vote) {
                 auto result =

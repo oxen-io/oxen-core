@@ -412,7 +412,7 @@ bool t_command_server::start_handling(std::function<void(void)> exit_handler)
   {
     // TODO(doyle): Hack, don't hook into input until the daemon has completely initialised, i.e. you can print the status
     while(!loki::core_is_idle) {}
-    mlog_set_categories(""); // TODO(doyle): We shouldn't have to do this.
+    // mlog_set_categories(""); // TODO(doyle): We shouldn't have to do this.
 
     for (;;)
     {

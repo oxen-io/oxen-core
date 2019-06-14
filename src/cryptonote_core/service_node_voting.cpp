@@ -162,7 +162,7 @@ namespace service_nodes
       }
 
       uint64_t delta_height = latest_height - deregister.block_height;
-      if (delta_height >= service_nodes::DEREGISTER_TX_LIFETIME_IN_BLOCKS)
+      if (latest_height >= deregister.block_height && delta_height >= service_nodes::DEREGISTER_TX_LIFETIME_IN_BLOCKS)
       {
         LOG_PRINT_L1("Received deregister tx for height: " << deregister.block_height
                      << " and service node: "     << deregister.service_node_index
@@ -353,8 +353,8 @@ namespace service_nodes
         case quorum_vote_type::uptime_deregister:
         {
           std::vector<deregister_pool_entry> *pool_to_check = nullptr;
-          if (find_vote.type == quorum_vote_type::checkpoint_deregister) pool_to_check = &m_uptime_deregister_pool;
-          else                                                           pool_to_check = &m_checkpoint_deregister_pool;
+          if (find_vote.type == quorum_vote_type::checkpoint_deregister) pool_to_check = &m_checkpoint_deregister_pool;
+          else                                                           pool_to_check = &m_uptime_deregister_pool;
 
           auto it = std::find_if(pool_to_check->begin(), pool_to_check->end(), [find_vote](deregister_pool_entry const &entry) {
               return (entry.height == find_vote.block_height &&
@@ -481,8 +481,8 @@ namespace service_nodes
       case quorum_vote_type::uptime_deregister:
       {
         std::vector<deregister_pool_entry> *pool_to_check = nullptr;
-        if (vote.type == quorum_vote_type::checkpoint_deregister) pool_to_check = &m_uptime_deregister_pool;
-        else                                                      pool_to_check = &m_checkpoint_deregister_pool;
+        if (vote.type == quorum_vote_type::checkpoint_deregister) pool_to_check = &m_checkpoint_deregister_pool;
+        else                                                      pool_to_check = &m_uptime_deregister_pool;
 
         time_t const now = time(NULL);
         auto it = std::find_if(pool_to_check->begin(), pool_to_check->end(), [&vote](deregister_pool_entry const &entry) {

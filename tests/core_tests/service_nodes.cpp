@@ -369,7 +369,7 @@ bool test_deregister_safety_buffer::generate(std::vector<test_event_entry> &even
   /// register 21 random service nodes
   std::vector<cryptonote::transaction> reg_txs;
 
-  constexpr auto SERVICE_NODES_NEEDED = service_nodes::DEREGISTER_QUORUM_SIZE * 2 + 1;
+  constexpr auto SERVICE_NODES_NEEDED = service_nodes::UPTIME_QUORUM_SIZE * 2 + 1;
   static_assert(SN_KEYS_COUNT >= SERVICE_NODES_NEEDED, "not enough pre-computed service node keys");
 
   for (auto i = 0u; i < SERVICE_NODES_NEEDED; ++i)
@@ -688,8 +688,9 @@ bool sn_test_rollback::test_registrations(cryptonote::core& c, size_t ev_index, 
     const auto dereg_tx = boost::get<cryptonote::transaction>(event_a);
     CHECK_TEST_CONDITION(dereg_tx.get_type() == transaction::type_deregister);
 
-    tx_extra_service_node_deregister deregistration;
-    find_tx_extra_field_by_type(dereg_tx.extra, deregistration);
+    int hf_version = c.get_blockchain_storage().get_current_hard_fork_version();
+    tx_extra_service_node_deregister_ deregistration;
+    get_service_node_deregister_from_tx_extra(hf_version, dereg_tx.extra, deregistration);
 
     const auto uptime_quorum = c.get_testing_quorum(service_nodes::quorum_type::uptime, deregistration.block_height);
     CHECK_TEST_CONDITION(uptime_quorum);

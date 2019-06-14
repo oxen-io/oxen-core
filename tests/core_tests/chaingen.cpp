@@ -197,7 +197,7 @@ cryptonote::block linear_chain_generator::create_block_on_fork(const cryptonote:
 
 QuorumState linear_chain_generator::get_quorum_idxs(const cryptonote::block& block) const
 {
-  if (sn_list_.size() <= service_nodes::DEREGISTER_QUORUM_SIZE) {
+  if (sn_list_.size() <= service_nodes::UPTIME_QUORUM_SIZE) {
     std::cerr << "Not enough service nodes\n";
     return {};
   }
@@ -218,11 +218,11 @@ QuorumState linear_chain_generator::get_quorum_idxs(const cryptonote::block& blo
 
   QuorumState quorum;
 
-  for (auto i = 0u; i < service_nodes::DEREGISTER_QUORUM_SIZE; ++i) {
+  for (auto i = 0u; i < service_nodes::UPTIME_QUORUM_SIZE; ++i) {
     quorum.voters.push_back({ sn_list_.at(pub_keys_indexes[i]).keys.pub, i });
   }
 
-  for (auto i = service_nodes::DEREGISTER_QUORUM_SIZE; i < pub_keys_indexes.size(); ++i) {
+  for (auto i = service_nodes::UPTIME_QUORUM_SIZE; i < pub_keys_indexes.size(); ++i) {
     quorum.to_test.push_back({ sn_list_.at(pub_keys_indexes[i]).keys.pub, i });
   }
 
@@ -280,7 +280,7 @@ cryptonote::transaction linear_chain_generator::create_deregister_tx(const crypt
                                                                      bool commit)
 {
 
-  cryptonote::tx_extra_service_node_deregister deregister;
+  cryptonote::tx_extra_service_node_deregister_legacy deregister;
   deregister.block_height = height;
 
   const auto idx = get_idx_in_tested(pk, height);
@@ -324,7 +324,7 @@ boost::optional<uint32_t> linear_chain_generator::get_idx_in_tested(const crypto
   const auto& to_test = get_quorum_idxs(height).to_test;
 
   for (const auto& sn : to_test) {
-    if (sn.sn_pk == pk) return sn.idx_in_quorum - service_nodes::DEREGISTER_QUORUM_SIZE;
+    if (sn.sn_pk == pk) return sn.idx_in_quorum - service_nodes::UPTIME_QUORUM_SIZE;
   }
 
   return boost::none;
@@ -716,14 +716,14 @@ cryptonote::transaction make_registration_tx(std::vector<test_event_entry>& even
 cryptonote::transaction make_deregistration_tx(const std::vector<test_event_entry>& events,
                                                const cryptonote::account_base& account,
                                                const cryptonote::block& head,
-                                               const cryptonote::tx_extra_service_node_deregister& deregister,
+                                               const cryptonote::tx_extra_service_node_deregister_legacy& deregister,
                                                uint8_t hf_version,
                                                uint64_t fee)
 {
   cryptonote::transaction tx;
 
   std::vector<uint8_t> extra;
-  const bool full_tx_deregister_made = cryptonote::add_service_node_deregister_to_tx_extra(tx.extra, deregister);
+  const bool full_tx_deregister_made = cryptonote::add_service_node_deregister_legacy_to_tx_extra(tx.extra, deregister);
 
   if (!full_tx_deregister_made) {
     MERROR("Could not add deregister to extra");

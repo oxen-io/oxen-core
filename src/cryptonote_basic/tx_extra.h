@@ -283,8 +283,8 @@ namespace cryptonote
       END_SERIALIZE()
     };
 
-    uint8_t           version;
-    uint8_t           quorum;
+    uint8_t           version = version_0_checkpointing;
+    uint8_t           quorum  = quorum_invalid;
     uint64_t          block_height;
     uint16_t          service_node_index;
     std::vector<vote> votes;
