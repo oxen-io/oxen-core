@@ -78,7 +78,7 @@ namespace service_nodes
 
     void                       set_votes_relayed  (std::vector<quorum_vote_t> const &relayed_votes);
     std::vector<quorum_vote_t> get_relayable_votes();
-    bool                       handle_vote        (quorum_vote_t const &vote, cryptonote::vote_verification_context &vvc);
+    bool                       handle_vote        (quorum_vote_t const &vote, cryptonote::vote_verification_context &vvc, crypto::public_key const *my_pubkey);
     bool                       handle_uptime_proof(const cryptonote::NOTIFY_UPTIME_PROOF::request &proof);
 
     static const uint64_t REORG_SAFETY_BUFFER_IN_BLOCKS = 20;

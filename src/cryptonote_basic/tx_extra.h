@@ -259,20 +259,11 @@ namespace cryptonote
 
   struct tx_extra_service_node_deregister_
   {
-    enum version { version_0_checkpointing };
-    enum quorum
-    {
-      quorum_uptime,
-      quorum_checkpoint,
-      quorum_count,
-      quorum_invalid = quorum_count,
-    };
-
     struct vote
     {
       vote() = default;
       vote(crypto::signature const &signature, uint16_t validator_index): signature(signature), validator_index(validator_index) { }
-      uint8_t           version = version_0_checkpointing;
+      uint8_t           version = 0;
       uint16_t          validator_index;
       crypto::signature signature;
 
@@ -283,15 +274,25 @@ namespace cryptonote
       END_SERIALIZE()
     };
 
-    uint8_t           version = version_0_checkpointing;
-    uint8_t           quorum  = quorum_invalid;
+    uint8_t           version = 0;
+    // TODO(loki): vote_version/vote_type maps to quorum_vote_t version and
+    // type, but getting that declaration into tx_extra is not nice without
+    // having to bend backwards since tx_extra is included in everything, so
+    // trying to get it to include another file is a herculean task
+
+    // We need the data so that we can rederive the signature for clients to
+    // check the validity
+    uint8_t           vote_version;
+    uint8_t           vote_type;
+
     uint64_t          block_height;
     uint16_t          service_node_index;
     std::vector<vote> votes;
 
     BEGIN_SERIALIZE()
       VARINT_FIELD(version)
-      VARINT_FIELD(quorum)
+      VARINT_FIELD(vote_version)
+      VARINT_FIELD(vote_type)
       VARINT_FIELD(block_height)
       VARINT_FIELD(service_node_index)
       FIELD(votes)
@@ -358,7 +359,6 @@ namespace cryptonote
 }
 
 BLOB_SERIALIZER(cryptonote::tx_extra_service_node_deregister_legacy::vote);
-BLOB_SERIALIZER(cryptonote::tx_extra_service_node_deregister_::vote);
 BLOB_SERIALIZER(cryptonote::tx_extra_tx_key_image_proofs::proof);
 
 VARIANT_TAG(binary_archive, cryptonote::tx_extra_padding,                        TX_EXTRA_TAG_PADDING);

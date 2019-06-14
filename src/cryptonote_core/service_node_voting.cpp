@@ -62,6 +62,7 @@ namespace service_nodes
   quorum_vote_t convert_legacy_deregister_vote(legacy_deregister_vote const &vote)
   {
     quorum_vote_t result           = {};
+    result.version                 = quorum_vote_t::version_0_infinite_staking;
     result.type                    = quorum_vote_type::uptime_deregister;
     result.block_height            = vote.block_height;
     result.signature               = vote.signature;
@@ -71,16 +72,31 @@ namespace service_nodes
     return result;
   }
 
-  static crypto::hash make_deregister_vote_hash(uint64_t block_height, uint32_t service_node_index)
+  static crypto::hash make_deregister_vote_hash(uint32_t version, uint64_t block_height, uint32_t service_node_index, uint32_t vote_type)
   {
-    const int buf_size = sizeof(block_height) + sizeof(service_node_index);
-    char buf[buf_size];
-
-    memcpy(buf, reinterpret_cast<void *>(&block_height), sizeof(block_height));
-    memcpy(buf + sizeof(block_height), reinterpret_cast<void *>(&service_node_index), sizeof(service_node_index));
-
     crypto::hash result;
-    crypto::cn_fast_hash(buf, buf_size, result);
+    if (version <= quorum_vote_t::version_0_infinite_staking)
+    {
+      const int buf_size = sizeof(block_height) + sizeof(service_node_index);
+      char buf[buf_size];
+
+      memcpy(buf, reinterpret_cast<void *>(&block_height), sizeof(block_height));
+      memcpy(buf + sizeof(block_height), reinterpret_cast<void *>(&service_node_index), sizeof(service_node_index));
+      crypto::cn_fast_hash(buf, buf_size, result);
+    }
+    else
+    {
+      const int buf_size = sizeof(block_height) + sizeof(service_node_index) + sizeof(vote_type) + sizeof(version);
+      char buf[buf_size];
+      char *buf_ptr = buf;
+
+      memcpy(buf_ptr, reinterpret_cast<void *>(&block_height),       sizeof(block_height));       buf_ptr += sizeof(block_height);
+      memcpy(buf_ptr, reinterpret_cast<void *>(&service_node_index), sizeof(service_node_index)); buf_ptr += sizeof(service_node_index);
+      memcpy(buf_ptr, reinterpret_cast<void *>(&vote_type),          sizeof(vote_type));          buf_ptr += sizeof(vote_type);
+      memcpy(buf_ptr, reinterpret_cast<void *>(&version),            sizeof(version));            buf_ptr += sizeof(version);
+      crypto::cn_fast_hash(buf, buf_size, result);
+    }
+
     return result;
   }
 
@@ -96,9 +112,10 @@ namespace service_nodes
         return result;
       };
 
+      case quorum_vote_type::checkpoint_deregister:
       case quorum_vote_type::uptime_deregister:
       {
-        crypto::hash hash = make_deregister_vote_hash(vote.block_height, vote.deregister.worker_index);
+        crypto::hash hash = make_deregister_vote_hash(vote.version, vote.block_height, vote.deregister.worker_index, static_cast<uint32_t>(vote.type));
         crypto::generate_signature(hash, pub, sec, result);
       }
       break;
@@ -117,7 +134,7 @@ namespace service_nodes
   crypto::signature make_signature_from_tx_deregister(cryptonote::tx_extra_service_node_deregister_ const &deregister, crypto::public_key const &pub, crypto::secret_key const &sec)
   {
     crypto::signature result;
-    crypto::hash hash = make_deregister_vote_hash(deregister.block_height, deregister.service_node_index);
+    crypto::hash hash = make_deregister_vote_hash(deregister.vote_version, deregister.block_height, deregister.service_node_index, deregister.vote_type);
     crypto::generate_signature(hash, pub, sec, result);
     return result;
   }
@@ -189,7 +206,7 @@ namespace service_nodes
     if (!bounds_check_worker_index(quorum, deregister.service_node_index, vvc))
       return false;
 
-    crypto::hash const hash = make_deregister_vote_hash(deregister.block_height, deregister.service_node_index);
+    crypto::hash const hash = make_deregister_vote_hash(deregister.vote_version, deregister.block_height, deregister.service_node_index, deregister.vote_type);
     std::array<int, service_nodes::UPTIME_QUORUM_SIZE> validator_set = {};
     for (const cryptonote::tx_extra_service_node_deregister_::vote& vote : deregister.votes)
     {
@@ -267,7 +284,7 @@ namespace service_nodes
           key          = quorum.validators[vote.index_in_group];
           // TODO(doyle): We need to check where this is used and if the lifetime rules of checkpoint votes would cull a checkpoint deregister for example
           max_vote_age = service_nodes::DEREGISTER_VOTE_LIFETIME; // TODO(doyle): CHECKPOINT_DEREGISTER(doyle): Hmmm, does this need to be updated for checkpoint deregister?
-          hash         = make_deregister_vote_hash(vote.block_height, vote.deregister.worker_index);
+          hash         = make_deregister_vote_hash(vote.version, vote.block_height, vote.deregister.worker_index, static_cast<uint32_t>(vote.type));
 
           bool result = bounds_check_worker_index(quorum, vote.deregister.worker_index, vvc);
           if (!result)
@@ -455,9 +472,10 @@ namespace service_nodes
   }
 
   std::vector<pool_vote_entry> voting_pool::add_pool_vote_if_unique(uint64_t latest_height,
-                                                                    const quorum_vote_t& vote,
-                                                                    cryptonote::vote_verification_context& vvc,
-                                                                    const service_nodes::testing_quorum &quorum)
+                                                                    const quorum_vote_t &vote,
+                                                                    cryptonote::vote_verification_context &vvc,
+                                                                    const service_nodes::testing_quorum &quorum,
+                                                                    const crypto::public_key *my_pubkey)
   {
     std::vector<pool_vote_entry> result = {};
 
@@ -465,6 +483,20 @@ namespace service_nodes
     {
       LOG_PRINT_L1("Signature verification failed for deregister vote");
       return result;
+    }
+
+    // TODO(loki): PERF(loki): For debug performance adding this preliminary early out check improves
+    // debug integration performance greatly. Seems like there's a lot of contention on the lock below.
+    if (my_pubkey) // NOTE: Early return if we're receiving our own vote
+    {
+      crypto::public_key voters_pubkey;
+      if (vote.group == quorum_group::validator)
+        voters_pubkey = quorum.validators[vote.index_in_group];
+      else
+        voters_pubkey = quorum.workers[vote.index_in_group];
+
+      if (*my_pubkey == voters_pubkey)
+        return result;
     }
 
     CRITICAL_REGION_LOCAL(m_lock);
@@ -551,8 +583,10 @@ namespace service_nodes
       }
 
       std::vector<deregister_pool_entry> *pool = &m_uptime_deregister_pool;
-      if (deregister.quorum == cryptonote::tx_extra_service_node_deregister_::quorum_checkpoint)
+      if (static_cast<service_nodes::quorum_vote_type>(deregister.vote_type) == quorum_vote_type::checkpoint_deregister)
+      {
         pool = &m_checkpoint_deregister_pool;
+      }
 
       auto it = std::find_if(pool->begin(), pool->end(), [&deregister](deregister_pool_entry const &entry) {
         return (entry.height == deregister.block_height) && (entry.worker_index == deregister.service_node_index);

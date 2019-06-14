@@ -2,9 +2,7 @@
 
 #include "crypto/crypto.h"
 #include "cryptonote_config.h"
-#include "service_node_voting.h"
-
-#include <random>
+#include "cryptonote_core/service_node_voting.h"
 
 namespace service_nodes {
   constexpr size_t   UPTIME_QUORUM_SIZE                    = 10;

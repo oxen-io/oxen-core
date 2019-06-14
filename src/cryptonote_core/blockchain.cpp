@@ -111,6 +111,7 @@ static const hard_fork_record testnet_hard_forks[] =
   { network_version_9_service_nodes,     3, 0, 1533631123 },
   { network_version_10_bulletproofs,     4, 0, 1542681077 },
   { network_version_11_infinite_staking, 5, 0, 1551223964 },
+  { network_version_12_checkpointing,    6, 0, 1551223965 },
 };
 
 static const hard_fork_record stagenet_hard_forks[] =

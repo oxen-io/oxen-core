@@ -64,7 +64,7 @@ namespace service_nodes
   struct checkpoint_vote { crypto::hash block_hash; };
   struct deregister_vote { uint16_t worker_index; };
 
-  enum struct quorum_type
+  enum struct quorum_type : uint8_t
   {
     uptime = 0,
     checkpointing,
@@ -72,9 +72,9 @@ namespace service_nodes
     invalid = count,
   };
 
-  enum struct quorum_vote_type
+  enum struct quorum_vote_type : uint8_t
   {
-    uptime_deregister,
+    uptime_deregister = 0,
     checkpoint,
     checkpoint_deregister,
   };
@@ -82,7 +82,8 @@ namespace service_nodes
   enum struct quorum_group { invalid, validator, worker };
   struct quorum_vote_t
   {
-    uint8_t           version = 0;
+    enum version { version_0_infinite_staking, version_1_checkpointing, version_count };
+    uint8_t           version = (version_count - 1);
     quorum_vote_type  type;
     uint64_t          block_height;
     quorum_group      group;
@@ -140,9 +141,10 @@ namespace service_nodes
   {
     // return: The vector of votes if the vote is valid (and even if it is not unique) otherwise nullptr
     std::vector<pool_vote_entry> add_pool_vote_if_unique(uint64_t latest_height,
-                                                         const quorum_vote_t& vote,
-                                                         cryptonote::vote_verification_context& vvc,
-                                                         const service_nodes::testing_quorum &quorum);
+                                                         const quorum_vote_t &vote,
+                                                         cryptonote::vote_verification_context &vvc,
+                                                         const service_nodes::testing_quorum &quorum,
+                                                         const crypto::public_key *my_pubkey);
 
     // TODO(loki): Review relay behaviour and all the cases when it should be triggered
     void                       set_relayed           (const std::vector<quorum_vote_t>& votes);

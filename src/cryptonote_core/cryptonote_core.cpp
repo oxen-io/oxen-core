@@ -1448,6 +1448,7 @@ namespace cryptonote
     int hf_version = get_blockchain_storage().get_current_hard_fork_version();
     if (hf_version < cryptonote::network_version_11_infinite_staking)
     {
+      // TODO(doyle): Remove post HF12
       NOTIFY_NEW_DEREGISTER_VOTE::request req = {};
       for (service_nodes::quorum_vote_t const &vote : relayable_votes)
       {
@@ -2191,7 +2192,7 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
   bool core::add_service_node_vote(const service_nodes::quorum_vote_t& vote, vote_verification_context &vvc)
   {
-    bool result = m_quorum_cop.handle_vote(vote, vvc);
+    bool result = m_quorum_cop.handle_vote(vote, vvc, m_service_node ? &m_service_node_pubkey : nullptr);
     return result;
   }
   //-----------------------------------------------------------------------------------------------

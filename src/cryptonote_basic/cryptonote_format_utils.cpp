@@ -717,9 +717,9 @@ namespace cryptonote
   tx_extra_service_node_deregister_ convert_legacy_tx_extra_deregister(tx_extra_service_node_deregister_legacy const &legacy)
   {
     tx_extra_service_node_deregister_ result = {};
-    result.version                           = tx_extra_service_node_deregister_::version_0_checkpointing;
+    result.vote_version                      = service_nodes::quorum_vote_t::version_0_infinite_staking;
+    result.vote_type                         = static_cast<uint8_t>(service_nodes::quorum_vote_type::uptime_deregister);
     result.block_height                      = legacy.block_height;
-    result.quorum                            = tx_extra_service_node_deregister_::quorum_uptime;
     result.service_node_index                = legacy.service_node_index;
     result.votes.reserve(legacy.votes.size());
 
@@ -736,7 +736,7 @@ namespace cryptonote
 
   bool convert_tx_extra_service_node_deregister_to_legacy(tx_extra_service_node_deregister_ const &deregister, tx_extra_service_node_deregister_legacy &legacy)
   {
-    if (deregister.quorum != tx_extra_service_node_deregister_::quorum_uptime)
+    if (static_cast<service_nodes::quorum_vote_type>(deregister.vote_type) != service_nodes::quorum_vote_type::uptime_deregister)
       return false;
 
     legacy.block_height       = deregister.block_height;

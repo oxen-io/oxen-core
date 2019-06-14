@@ -308,10 +308,9 @@ namespace service_nodes
       return false;
     }
 
-    quorum_type type = (deregister.quorum == cryptonote::tx_extra_service_node_deregister_::quorum_uptime)
+    quorum_type type = (static_cast<quorum_vote_type>(deregister.vote_type) == quorum_vote_type::uptime_deregister)
                            ? quorum_type::uptime
                            : quorum_type::checkpointing;
-
     const auto state = get_testing_quorum(type, deregister.block_height);
     if (!state)
     {

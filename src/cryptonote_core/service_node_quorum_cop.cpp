@@ -187,7 +187,7 @@ namespace service_nodes
                                                                        my_pubkey,
                                                                        my_seckey);
               cryptonote::vote_verification_context vvc = {};
-              if (!handle_vote(vote, vvc))
+              if (!handle_vote(vote, vvc, &my_pubkey))
                 LOG_ERROR("Failed to add uptime deregister vote reason: " << print_vote_verification_context(vvc, &vote));
             }
           }
@@ -248,7 +248,7 @@ namespace service_nodes
                                                           my_seckey);
 
                 cryptonote::vote_verification_context vvc = {};
-                if (!handle_vote(vote, vvc))
+                if (!handle_vote(vote, vvc, &my_pubkey))
                   LOG_ERROR("Failed to add checkpoint deregister vote reason: " << print_vote_verification_context(vvc, &vote));
               }
             }
@@ -296,7 +296,7 @@ namespace service_nodes
                   vote.signature      = make_signature_from_vote(vote, my_pubkey, my_seckey);
 
                   cryptonote::vote_verification_context vvc = {};
-                  if (!handle_vote(vote, vvc))
+                  if (!handle_vote(vote, vvc, &my_pubkey))
                     LOG_ERROR("Failed to add checkpoint vote reason: " << print_vote_verification_context(vvc, nullptr));
                 }
               }
@@ -325,7 +325,7 @@ namespace service_nodes
     m_vote_pool.remove_used_votes(hf_version, txs);
   }
 
-  bool quorum_cop::handle_vote(quorum_vote_t const &vote, cryptonote::vote_verification_context &vvc)
+  bool quorum_cop::handle_vote(quorum_vote_t const &vote, cryptonote::vote_verification_context &vvc, crypto::public_key const *my_pubkey)
   {
     vvc = {};
     quorum_type desired_quorum_type = quorum_type::invalid;
@@ -368,7 +368,7 @@ namespace service_nodes
     }
 
     uint64_t latest_height             = std::max(m_core.get_current_blockchain_height(), m_core.get_target_blockchain_height());
-    std::vector<pool_vote_entry> votes = m_vote_pool.add_pool_vote_if_unique(latest_height, vote, vvc, *quorum);
+    std::vector<pool_vote_entry> votes = m_vote_pool.add_pool_vote_if_unique(latest_height, vote, vvc, *quorum, my_pubkey);
     bool result                        = !vvc.m_verification_failed;
 
     if (!vvc.m_added_to_pool) // NOTE: Not unique vote
@@ -392,19 +392,11 @@ namespace service_nodes
           using namespace cryptonote;
 
           tx_extra_service_node_deregister_ deregister = {};
+          deregister.vote_version                      = vote.version;
+          deregister.vote_type                         = static_cast<uint8_t>(vote.type);
           deregister.block_height                      = vote.block_height;
           deregister.service_node_index                = vote.deregister.worker_index;
           deregister.votes.reserve(votes.size());
-
-          if (vote.type == quorum_vote_type::uptime_deregister)
-            deregister.quorum = tx_extra_service_node_deregister_::quorum_uptime;
-          else if (vote.type == quorum_vote_type::checkpoint_deregister)
-            deregister.quorum = tx_extra_service_node_deregister_::quorum_checkpoint;
-          else
-          {
-            LOG_PRINT_L1("Unhandled vote type in conversion to tx extra service node quorum type with value: " << (int)vote.type);
-            return false;
-          }
 
           std::transform(
               votes.begin(), votes.end(), std::back_inserter(deregister.votes), [](pool_vote_entry const &pool_vote) {
