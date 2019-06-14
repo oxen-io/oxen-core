@@ -51,11 +51,12 @@ namespace service_nodes
 
   struct voter_to_signature
   {
+    uint8_t           version = 0;
     uint16_t          voter_index;
     crypto::signature signature;
 
     BEGIN_SERIALIZE()
-      FIELD(voter_index)
+      VARINT_FIELD(voter_index)
       FIELD(signature)
     END_SERIALIZE()
   };
@@ -70,14 +71,6 @@ namespace service_nodes
     count,
     invalid = count,
   };
-
-  inline quorum_type max_quorum_type_for_hf(int hf_version)
-  {
-    quorum_type result = (hf_version <= cryptonote::network_version_11_infinite_staking) ? quorum_type::uptime
-                                                                                         : quorum_type::checkpointing;
-    assert((size_t)result < (size_t)quorum_type::count - 1);
-    return result;
-  }
 
   enum struct quorum_vote_type
   {
@@ -122,6 +115,7 @@ namespace service_nodes
   crypto::signature make_signature_from_vote         (quorum_vote_t const &vote, const crypto::public_key& pub, const crypto::secret_key& sec);
   crypto::signature make_signature_from_tx_deregister(cryptonote::tx_extra_service_node_deregister_ const &deregister, crypto::public_key const &pub, crypto::secret_key const &sec);
 
+  // TODO(doyle): Remove post HF12
   // NOTE: This preserves the deregister vote format pre-checkpointing so that
   // up to the hardfork, we can still deserialize and serialize until we switch
   // over to the new format
