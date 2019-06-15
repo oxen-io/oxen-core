@@ -13,54 +13,48 @@ namespace service_nodes
 {
   static uint64_t get_new_swarm_id(const swarm_snode_map_t &swarm_to_snodes)
   {
-    // UINT64_MAX is reserved for unassigned swarms
-    constexpr uint64_t MAX_ID = UINT64_MAX - 1;
+    // max uint64_t is reserved for unassigned swarms
+    constexpr uint64_t MAX_ID = std::numeric_limits<uint64_t>::max() - 1;
 
     if (swarm_to_snodes.empty()) return 0;
     if (swarm_to_snodes.size() == 1) return MAX_ID / 2;
 
-    std::vector<swarm_id_t> all_ids;
-    all_ids.reserve(swarm_to_snodes.size());
-    for (const auto& entry : swarm_to_snodes) {
-      all_ids.push_back(entry.first);
-    }
-
-    std::sort(all_ids.begin(), all_ids.end());
-
     uint64_t max_dist = 0;
     // The new swarm that is the farthest from its right neighbour
-    uint64_t best_idx = 0;
+    auto best_it = swarm_to_snodes.begin();
+    auto last_id = best_it->first;
 
-    for (auto idx = 0u; idx < all_ids.size() - 1; ++idx)
+    for (auto last_it = best_it, it = std::next(best_it); it != swarm_to_snodes.end(); last_it = it++)
     {
-      const uint64_t dist = all_ids[idx+1] - all_ids[idx];
+      const uint64_t dist = it->first - last_it->first;
 
       if (dist > max_dist)
       {
         max_dist = dist;
-        best_idx = idx;
+        best_it = last_it;
       }
     }
 
     // Handle the special case involving the gap between the
     // rightmost and the leftmost swarm due to wrapping.
     // Note that we are adding 1 as we treat 0 and MAX_ID as *one* apart
-    const uint64_t dist = MAX_ID - all_ids.back() + all_ids.front() + 1;
+    auto last_it = std::prev(swarm_to_snodes.end());
+    const uint64_t dist = MAX_ID - last_it->first + swarm_to_snodes.begin()->first + 1;
     if (dist > max_dist)
     {
       max_dist = dist;
-      best_idx = all_ids.size() - 1;
+      best_it = last_it;
     }
 
     const uint64_t diff = max_dist / 2; /// how much to add to an existing id
-    const uint64_t to_max = MAX_ID - all_ids[best_idx]; /// how much we can add not overflow
+    const uint64_t to_max = MAX_ID - best_it->first; /// how much we can add not overflow
 
     if (diff > to_max)
     {
       return diff - to_max - 1; // again, assuming MAX_ID + 1 = 0
     }
 
-    return all_ids[best_idx] + diff;
+    return best_it->first + diff;
   }
 
   /// The excess is calculated as the total number of snodes above MIN_SWARM_SIZE across all swarms
@@ -92,12 +86,12 @@ namespace service_nodes
   {
     /// Select random snode
     const auto idx = uniform_distribution_portable(mt, excess_pool.size());
-    return excess_pool.at(idx);
+    return excess_pool[idx];
   }
 
   prod_static void remove_excess_snode_from_swarm(const excess_pool_snode& excess_snode, swarm_snode_map_t &swarm_to_snodes)
   {
-    auto &swarm_sn_vec = swarm_to_snodes.at(excess_snode.swarm_id);
+    auto &swarm_sn_vec = swarm_to_snodes[excess_snode.swarm_id];
     swarm_sn_vec.erase(std::remove(swarm_sn_vec.begin(), swarm_sn_vec.end(), excess_snode.public_key), swarm_sn_vec.end());
   }
 
@@ -120,7 +114,7 @@ namespace service_nodes
         excess += entry.second.size() - MIN_SWARM_SIZE;
         for (const auto& sn_pk : entry.second)
         {
-          pool_snodes.push_back({sn_pk, entry.first});
+          pool_snodes.emplace_back(sn_pk, entry.first);
         }
       }
     }
@@ -129,10 +123,10 @@ namespace service_nodes
   prod_static void create_new_swarm_from_excess(swarm_snode_map_t &swarm_to_snodes, std::mt19937_64 &mt)
   {
     const bool has_starving_swarms = std::any_of(swarm_to_snodes.begin(),
-                                                swarm_to_snodes.end(),
-                                                [](const swarm_snode_map_t::value_type& pair) {
-                                                  return pair.second.size() < MIN_SWARM_SIZE;
-                                                });
+                                                 swarm_to_snodes.end(),
+                                                 [](const swarm_snode_map_t::value_type& pair) {
+                                                   return pair.second.size() < MIN_SWARM_SIZE;
+                                                 });
     if (has_starving_swarms)
       return;
 
@@ -157,7 +151,7 @@ namespace service_nodes
         remove_excess_snode_from_swarm(random_excess_snode, swarm_to_snodes);
       }
       const auto new_swarm_id = get_new_swarm_id(swarm_to_snodes);
-      swarm_to_snodes.insert({new_swarm_id, std::move(new_swarm_snodes)});
+      swarm_to_snodes.emplace(new_swarm_id, std::move(new_swarm_snodes));
       LOG_PRINT_L2("Created new swarm from excess: " << new_swarm_id);
     }
   }
@@ -168,7 +162,7 @@ namespace service_nodes
     sorted_swarm_sizes.reserve(swarm_to_snodes.size());
     for (const auto &entry : swarm_to_snodes)
     {
-      sorted_swarm_sizes.push_back({entry.first, entry.second.size()});
+      sorted_swarm_sizes.emplace_back(entry.first, entry.second.size());
     }
     std::sort(sorted_swarm_sizes.begin(),
               sorted_swarm_sizes.end(),
@@ -181,12 +175,13 @@ namespace service_nodes
   /// and run the excess/threshold logic after each assignment to ensure new swarms are generated when required.
   prod_static void assign_snodes(const std::vector<crypto::public_key> &snode_pubkeys, swarm_snode_map_t &swarm_to_snodes, std::mt19937_64 &mt, size_t percentile)
   {
+    assert(percentile <= 100);
     std::vector<swarm_size> sorted_swarm_sizes;
     for (const auto &sn_pk : snode_pubkeys)
     {
       calc_swarm_sizes(swarm_to_snodes, sorted_swarm_sizes);
       const size_t percentile_index = percentile * (sorted_swarm_sizes.size() - 1) / 100;
-      const size_t percentile_value = sorted_swarm_sizes.at(percentile_index).size;
+      const size_t percentile_value = sorted_swarm_sizes[percentile_index].size;
       /// Find last occurence of percentile_value
       size_t upper_index = sorted_swarm_sizes.size() - 1;
       for (size_t i = percentile_index; i < sorted_swarm_sizes.size(); ++i)
@@ -200,7 +195,7 @@ namespace service_nodes
       }
       const size_t random_idx = uniform_distribution_portable(mt, upper_index + 1);
       const swarm_id_t swarm_id = sorted_swarm_sizes[random_idx].swarm_id;
-      swarm_to_snodes.at(swarm_id).push_back(sn_pk);
+      swarm_to_snodes[swarm_id].push_back(sn_pk);
       /// run the excess/threshold round after each additional snode
       create_new_swarm_from_excess(swarm_to_snodes, mt);
     }
@@ -220,7 +215,7 @@ namespace service_nodes
     std::vector<crypto::public_key> unassigned_snodes;
     const auto it = swarm_to_snodes.find(UNASSIGNED_SWARM_ID);
     if (it != swarm_to_snodes.end()) {
-      unassigned_snodes = it->second;
+      unassigned_snodes = std::move(it->second);
       swarm_to_snodes.erase(it);
     }
 
@@ -229,8 +224,8 @@ namespace service_nodes
     /// 0. Ensure there is always 1 swarm
     if (swarm_to_snodes.size() == 0)
     {
-      const auto new_swarm_id = get_new_swarm_id({});
-      swarm_to_snodes.insert({new_swarm_id, {}});
+      const auto new_swarm_id = get_new_swarm_id(swarm_to_snodes);
+      swarm_to_snodes[new_swarm_id]; // In-place default value construction
       LOG_PRINT_L2("Created initial swarm " << new_swarm_id);
     }
 
@@ -253,12 +248,12 @@ namespace service_nodes
         if (swarm.size >= MIN_SWARM_SIZE)
           break;
 
-        auto& poor_swarm_snodes = swarm_to_snodes.at(swarm.swarm_id);
+        auto& poor_swarm_snodes = swarm_to_snodes[swarm.swarm_id];
         do
         {
           const size_t percentile_index = STEALING_SWARM_UPPER_PERCENTILE * (sorted_swarm_sizes.size() - 1) / 100;
           /// -1 since we will only consider swarm sizes strictly above percentile_value
-          size_t percentile_value = sorted_swarm_sizes.at(percentile_index).size - 1;
+          size_t percentile_value = sorted_swarm_sizes[percentile_index].size - 1;
           percentile_value = std::max(MIN_SWARM_SIZE, percentile_value);
           size_t excess;
           std::vector<excess_pool_snode> excess_pool;
@@ -299,9 +294,8 @@ namespace service_nodes
           break;
 
         MWARNING("swarm " << it->first << " is DECOMMISSIONED");
-        /// Good ol' switcheroo
-        std::vector<crypto::public_key> decommissioned_snodes;
-        std::swap(decommissioned_snodes, it->second);
+        /// Move out node list
+        std::vector<crypto::public_key> decommissioned_snodes{std::move(it->second)};
         /// Remove swarm from map
         swarm_to_snodes.erase(it);
         /// Assign snodes to the 0 percentile, i.e. the smallest swarms
