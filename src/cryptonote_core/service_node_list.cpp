@@ -131,7 +131,7 @@ namespace service_nodes
 
     std::sort(result.begin(), result.end(),
       [](const crypto::public_key &a, const crypto::public_key &b) {
-        return memcmp(reinterpret_cast<const void*>(&a), reinterpret_cast<const void*>(&b), sizeof(a)) < 0;
+        return memcmp(&a, &b, sizeof(a)) < 0;
       });
     return result;
   }
@@ -1010,14 +1010,14 @@ namespace service_nodes
       {
         case rollback_event::change_type:
         {
-          auto *rollback = reinterpret_cast<rollback_change *>(event);
+          auto *rollback = static_cast<rollback_change *>(event);
           m_transient_state.service_nodes_infos[rollback->m_key] = rollback->m_info;
         }
         break;
 
         case rollback_event::new_type:
         {
-          auto *rollback = reinterpret_cast<rollback_new *>(event);
+          auto *rollback = static_cast<rollback_new *>(event);
 
           auto iter = m_transient_state.service_nodes_infos.find(rollback->m_key);
           if (iter == m_transient_state.service_nodes_infos.end())
@@ -1035,7 +1035,7 @@ namespace service_nodes
 
         case rollback_event::key_image_blacklist_type:
         {
-          auto *rollback = reinterpret_cast<rollback_key_image_blacklist *>(event);
+          auto *rollback = static_cast<rollback_key_image_blacklist *>(event);
           if (rollback->m_was_adding_to_blacklist)
           {
             auto it = std::find_if(m_transient_state.key_image_blacklist.begin(), m_transient_state.key_image_blacklist.end(),
@@ -1061,7 +1061,7 @@ namespace service_nodes
 
         case rollback_event::key_image_unlock:
         {
-          auto *rollback = reinterpret_cast<rollback_key_image_unlock *>(event);
+          auto *rollback = static_cast<rollback_key_image_unlock *>(event);
           auto iter = m_transient_state.service_nodes_infos.find(rollback->m_key);
           if (iter == m_transient_state.service_nodes_infos.end())
           {
@@ -1430,11 +1430,11 @@ namespace service_nodes
       {
         switch (event_ptr->type)
         {
-          case rollback_event::change_type:              data_to_store.events.push_back(*reinterpret_cast<rollback_change *>(event_ptr.get())); break;
-          case rollback_event::new_type:                 data_to_store.events.push_back(*reinterpret_cast<rollback_new *>(event_ptr.get())); break;
-          case rollback_event::prevent_type:             data_to_store.events.push_back(*reinterpret_cast<prevent_rollback *>(event_ptr.get())); break;
-          case rollback_event::key_image_blacklist_type: data_to_store.events.push_back(*reinterpret_cast<rollback_key_image_blacklist *>(event_ptr.get())); break;
-          case rollback_event::key_image_unlock:         data_to_store.events.push_back(*reinterpret_cast<rollback_key_image_unlock *>(event_ptr.get())); break;
+          case rollback_event::change_type:              data_to_store.events.push_back(*static_cast<rollback_change *>(event_ptr.get())); break;
+          case rollback_event::new_type:                 data_to_store.events.push_back(*static_cast<rollback_new *>(event_ptr.get())); break;
+          case rollback_event::prevent_type:             data_to_store.events.push_back(*static_cast<prevent_rollback *>(event_ptr.get())); break;
+          case rollback_event::key_image_blacklist_type: data_to_store.events.push_back(*static_cast<rollback_key_image_blacklist *>(event_ptr.get())); break;
+          case rollback_event::key_image_unlock:         data_to_store.events.push_back(*static_cast<rollback_key_image_unlock *>(event_ptr.get())); break;
           default:
             MERROR("On storing service node data, unknown rollback event type encountered");
             return false;
