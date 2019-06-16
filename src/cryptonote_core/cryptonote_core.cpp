@@ -159,7 +159,7 @@ namespace cryptonote
   };
   static const command_line::arg_descriptor<std::string> arg_check_updates = {
     "check-updates"
-  , "Check for new versions of loki: [disabled|notify|download|update]"
+  , "Check for new versions of Kegcoin: [disabled|notify|download|update]"
   , "notify"
   };
   static const command_line::arg_descriptor<bool> arg_fluffy_blocks  = {
@@ -538,8 +538,8 @@ namespace cryptonote
       if (boost::filesystem::exists(old_files / "blockchain.bin"))
       {
         MWARNING("Found old-style blockchain.bin in " << old_files.string());
-        MWARNING("Loki now uses a new format. You can either remove blockchain.bin to start syncing");
-        MWARNING("the blockchain anew, or use loki-blockchain-export and loki-blockchain-import to");
+        MWARNING("kegcoin now uses a new format. You can either remove blockchain.bin to start syncing");
+        MWARNING("the blockchain anew, or use kegcoin-blockchain-export and kegcoin-blockchain-import to");
         MWARNING("convert your existing blockchain.bin to the new format. See README.md for instructions.");
         return false;
       }
@@ -1739,7 +1739,7 @@ namespace cryptonote
     {
       std::string main_message;
       if (m_offline)
-        main_message = "The daemon is running offline and will not attempt to sync to the Loki network.";
+        main_message = "The daemon is running offline and will not attempt to sync to the Kegcoin network.";
       else
         main_message = "The daemon will start synchronizing with the network. This may take a long time to complete.";
       MGINFO_YELLOW(ENDL << "**********************************************************************" << ENDL
@@ -1788,7 +1788,7 @@ namespace cryptonote
       case HardFork::LikelyForked:
         MCLOG_RED(level, "global", "**********************************************************************");
         MCLOG_RED(level, "global", "Last scheduled hard fork is too far in the past.");
-        MCLOG_RED(level, "global", "We are most likely forked from the network. Daemon update needed now.");
+        MCLOG_RED(level, "global", "We are most likely forked from the kegcoin network. Daemon update needed now.");
         MCLOG_RED(level, "global", "**********************************************************************");
         break;
       case HardFork::UpdateNeeded:
@@ -1824,7 +1824,7 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
   bool core::check_updates()
   {
-    static const char software[] = "loki";
+    static const char software[] = "kegcoin";
 #ifdef BUILD_TAG
     static const char buildtag[] = BOOST_PP_STRINGIZE(BUILD_TAG);
     static const char subdir[] = "cli"; // because it can never be simple
@@ -2005,19 +2005,7 @@ namespace cryptonote
       for (time_t ts: timestamps) b += ts >= time_boundary;
       const double p = probability(b, seconds[n] / DIFFICULTY_TARGET_V2);
       MDEBUG("blocks in the last " << seconds[n] / 60 << " minutes: " << b << " (probability " << p << ")");
-      if (p < threshold)
-      {
-        MWARNING("There were " << b << " blocks in the last " << seconds[n] / 60 << " minutes, there might be large hash rate changes, or we might be partitioned, cut off from the Loki network or under attack. Or it could be just sheer bad luck.");
-
-        std::shared_ptr<tools::Notify> block_rate_notify = m_block_rate_notify;
-        if (block_rate_notify)
-        {
-          auto expected = seconds[n] / DIFFICULTY_TARGET_V2;
-          block_rate_notify->notify("%t", std::to_string(seconds[n] / 60).c_str(), "%b", std::to_string(b).c_str(), "%e", std::to_string(expected).c_str(), NULL);
-        }
-
-        break; // no need to look further
-      }
+   
     }
 
     return true;

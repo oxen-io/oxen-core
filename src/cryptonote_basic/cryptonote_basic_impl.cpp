@@ -96,12 +96,14 @@ namespace cryptonote {
       reward = 7000000000000000;
       return true;
     }
-    
-    switch (version) {
-      default:
-        reward = 200000000000; //200 KEG per block
+    if (already_generated_coins == 7000000000000000)
+    {
+      reward = 7000000000000000;
+      return true;
     }
-
+    
+    
+    reward = 250000000000;
     return true;
   }
   //------------------------------------------------------------------------------------

@@ -424,22 +424,19 @@ namespace nodetool
     std::set<std::string> full_addrs;
     if (nettype == cryptonote::TESTNET)
     {
-      full_addrs.insert("52.63.146.137:38156");
+      full_addrs.insert("167.99.203.161:5051");
     }
     else if (nettype == cryptonote::STAGENET)
     {
-      full_addrs.insert("13.211.225.142:38153");
+      full_addrs.insert("167.99.203.161:5052");
     }
     else if (nettype == cryptonote::FAKECHAIN)
     {
     }
     else
     {
-      full_addrs.insert("13.55.199.36:22022");   // Sydney A Box
-      full_addrs.insert("162.243.164.223:22022"); //Jeff's i2p.rocks
-      full_addrs.insert("192.250.236.196:22022"); //Rangeproof Test VPSC Box
-      full_addrs.insert("144.217.243.15:22022");  // OVH(1)
-      full_addrs.insert("51.38.133.145:22022");  // OVH(2)
+      full_addrs.insert("167.99.203.161:5050");   // Leo Cornelius (kegcoin.tk)
+      full_addrs.insert("99.248.93.15:5050"); // Def (mine2.live
     }
     return full_addrs;
   }
