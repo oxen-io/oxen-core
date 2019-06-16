@@ -172,7 +172,11 @@ namespace cryptonote
         break;
       case MAINNET:
 #if !defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
-
+        ADD_CHECKPOINT(0,     "92511d82aa82eaf9b08c61715e647c1bb4c2ab6855d15480fe5c7c8ae7755b78");
+        ADD_CHECKPOINT(1,     "5e165c97f279227c65faf6283be385e9d65749c66f58871f60e1d1d98dd5ebd0");
+        ADD_CHECKPOINT(10,    "a208191d14df126c1cdfc4b5721a496040cfcdf7aa9bbd580958c136b01979a6");
+        ADD_CHECKPOINT(100,   "2cbde6a8ab271313c7f528bdb1d01abbf79341883df8081b6d85db9e256e71a3");
+        ADD_CHECKPOINT(1000,  "655963807a83664b6ee94e98b5120ba9ca6e57312d3b6c606edeff208e75c7e0");
 #endif
         break;
     }
