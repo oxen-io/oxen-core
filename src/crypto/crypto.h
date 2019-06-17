@@ -37,7 +37,6 @@
 #include <vector>
 #include <random>
 
-#include "common/pod-class.h"
 #include "memwipe.h"
 #include "mlocker.h"
 #include "generic-ops.h"
@@ -52,45 +51,45 @@ namespace crypto {
   }
 
 #pragma pack(push, 1)
-  POD_CLASS ec_point {
+  struct ec_point {
     char data[32];
   };
 
-  POD_CLASS ec_scalar {
+  struct ec_scalar {
     char data[32];
   };
 
-  POD_CLASS public_key: ec_point {
+  struct public_key: ec_point {
     friend class crypto_ops;
   };
 
   using secret_key = epee::mlocked<tools::scrubbed<ec_scalar>>;
 
-  POD_CLASS public_keyV {
+  struct public_keyV {
     std::vector<public_key> keys;
     int rows;
   };
 
-  POD_CLASS secret_keyV {
+  struct secret_keyV {
     std::vector<secret_key> keys;
     int rows;
   };
 
-  POD_CLASS public_keyM {
+  struct public_keyM {
     int cols;
     int rows;
     std::vector<secret_keyV> column_vectors;
   };
 
-  POD_CLASS key_derivation: ec_point {
+  struct key_derivation: ec_point {
     friend class crypto_ops;
   };
 
-  POD_CLASS key_image: ec_point {
+  struct key_image: ec_point {
     friend class crypto_ops;
   };
 
-  POD_CLASS signature {
+  struct signature {
     ec_scalar c, r;
     friend class crypto_ops;
   };
