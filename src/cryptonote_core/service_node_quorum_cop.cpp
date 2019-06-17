@@ -127,8 +127,7 @@ namespace service_nodes
       return;
 
     uint64_t const height                            = cryptonote::get_block_height(block);
-    // service_nodes::quorum_type const max_quorum_type = service_nodes::max_quorum_type_for_hf(hf_version);
-    service_nodes::quorum_type const max_quorum_type = quorum_type::uptime;
+    service_nodes::quorum_type const max_quorum_type = service_nodes::max_quorum_type_for_hf(hf_version);
 
     uint64_t const latest_height = std::max(m_core.get_current_blockchain_height(), m_core.get_target_blockchain_height());
     if (latest_height < VOTE_LIFETIME)
