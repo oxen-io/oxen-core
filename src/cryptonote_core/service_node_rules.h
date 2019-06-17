@@ -14,10 +14,13 @@ namespace service_nodes {
 
   constexpr uint64_t CHECKPOINT_INTERVAL                       = 4;  // Checkpoint every 4 blocks and prune when too old except if (height % CHECKPOINT_STORE_PERSISTENTLY_INTERVAL == 0)
   constexpr uint64_t CHECKPOINT_STORE_PERSISTENTLY_INTERVAL    = VOTE_LIFETIME; // Persistently store the checkpoints at these intervals
+
 #if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
+  constexpr size_t   UPTIME_MIN_TIME_IN_S_BEFORE_VOTING        = 1;
   constexpr size_t   CHECKPOINT_QUORUM_SIZE                    = 1;
   constexpr size_t   CHECKPOINT_MIN_VOTES                      = 1;
 #else
+  constexpr size_t   UPTIME_MIN_TIME_IN_S_BEFORE_VOTING        = 60 * 60 * 2;
   constexpr size_t   CHECKPOINT_QUORUM_SIZE                    = 20;
   constexpr size_t   CHECKPOINT_MIN_VOTES                      = 18;
 #endif

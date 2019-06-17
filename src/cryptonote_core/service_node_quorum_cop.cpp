@@ -140,6 +140,12 @@ namespace service_nodes
     for (int i = 0; i <= (int)max_quorum_type; i++)
     {
       quorum_type const type = static_cast<quorum_type>(i);
+
+#if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
+      if (loki::integration_test.disable_checkpoint_quorum && type == quorum_type::checkpointing) continue;
+      if (loki::integration_test.disable_uptime_quorum     && type == quorum_type::uptime) continue;
+#endif
+
       switch(type)
       {
         default:
@@ -152,12 +158,7 @@ namespace service_nodes
         {
           // NOTE: Wait atleast 2 hours before we're allowed to vote so that we collect uptimes from everyone on the network
           time_t const now = time(nullptr);
-#if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
-          time_t const min_lifetime = 0;
-#else
-          time_t const min_lifetime = 60 * 60 * 2;
-#endif
-          bool alive_for_min_time = (now - m_core.get_start_time()) >= min_lifetime;
+          bool alive_for_min_time = (now - m_core.get_start_time()) >= UPTIME_MIN_TIME_IN_S_BEFORE_VOTING;
           if (!alive_for_min_time)
             break;
 

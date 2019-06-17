@@ -1875,7 +1875,7 @@ namespace cryptonote
     m_mempool.on_idle();
 
 #if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
-    loki::core_is_idle = true;
+    loki::integration_test.core_is_idle = true;
 #endif
 
     return true;
