@@ -166,6 +166,12 @@ namespace service_nodes
                             cryptonote::vote_verification_context &vvc,
                             const service_nodes::testing_quorum &quorum)
   {
+    if (deregister.vote_version >= quorum_vote_t::version_count)
+    {
+      LOG_PRINT_L1("Deregister TX specified invalid vote_version: " << deregister.vote_version);
+      return false;
+    }
+
     // Check if deregister is too old or too new to hold onto
     {
       if (deregister.block_height >= latest_height)

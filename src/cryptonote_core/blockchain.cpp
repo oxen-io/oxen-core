@@ -3122,30 +3122,19 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
         return false;
       }
 
-      service_nodes::quorum_type const max_quorum_type            = service_nodes::max_quorum_type_for_hf(hf_version);
-      std::shared_ptr<const service_nodes::testing_quorum> quorum = nullptr;
+      auto const vote_type     = static_cast<service_nodes::quorum_vote_type>(deregister.vote_type);
+      auto desired_quorum_type = (vote_type == service_nodes::quorum_vote_type::uptime_deregister)
+                                     ? service_nodes::quorum_type::uptime
+                                     : service_nodes::quorum_type::checkpointing;
+
+      std::shared_ptr<const service_nodes::testing_quorum> quorum =
+          m_service_node_list.get_testing_quorum(desired_quorum_type, deregister.block_height);
+      if (service_nodes::verify_tx_deregister(deregister, get_current_blockchain_height(), tvc.m_vote_ctx, *quorum))
       {
-        bool verified_against_quorum = false;
-        for (size_t enum_index = 0; enum_index <= (size_t)max_quorum_type; ++enum_index)
-        {
-          service_nodes::quorum_type type = (service_nodes::quorum_type)enum_index;
-          quorum                          = m_service_node_list.get_testing_quorum(type, deregister.block_height);
-          if (!quorum)
-          {
-            MERROR_VER("Deregister TX could not get quorum for height: " << deregister.block_height);
-            return false;
-          }
-
-          if (service_nodes::verify_tx_deregister(deregister, get_current_blockchain_height(), tvc.m_vote_ctx, *quorum))
-            verified_against_quorum = true;
-        }
-
-        if (!verified_against_quorum)
-        {
-          tvc.m_verifivation_failed = true;
-          MERROR_VER("tx " << get_transaction_hash(tx) << ": deregister tx could not be completely verified reason: " << print_vote_verification_context(tvc.m_vote_ctx));
-          return false;
-        }
+        tvc.m_verifivation_failed = true;
+        MERROR_VER("tx " << get_transaction_hash(tx) << ": deregister tx could not be completely verified reason: "
+                         << print_vote_verification_context(tvc.m_vote_ctx));
+        return false;
       }
 
       // Check the inputs (votes) of the transaction have not already been
@@ -3182,9 +3171,11 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
         }
 
         bool deregistered_in_previous_quorum = false;
-        for (size_t enum_index = 0; enum_index <= (size_t)max_quorum_type; ++enum_index)
+        for (size_t enum_index = 0;
+             enum_index <= (size_t)service_nodes::max_quorum_type_for_hf(hf_version);
+             ++enum_index)
         {
-          service_nodes::quorum_type type = (service_nodes::quorum_type)enum_index;
+          auto type = static_cast<service_nodes::quorum_type>(enum_index);
           std::shared_ptr<const service_nodes::testing_quorum> existing_quorum = m_service_node_list.get_testing_quorum(type, existing_deregister.block_height);
 
           if (!existing_quorum)
@@ -3203,7 +3194,7 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
 
         if (deregistered_in_previous_quorum)
         {
-          MERROR_VER("Already seen this deregister tx (aka double spend)");
+          MERROR_VER("Already seen this deregister tx (aka double spend, we can safely ignore)");
           tvc.m_double_spend = true;
           return false;
         }
