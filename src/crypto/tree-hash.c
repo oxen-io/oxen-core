@@ -31,6 +31,7 @@
 #include <assert.h>
 #include <stddef.h>
 #include <string.h>
+#include <stdlib.h>
 
 #include "hash-ops.h"
 
@@ -82,23 +83,33 @@ void tree_hash(const char (*hashes)[HASH_SIZE], size_t count, char *root_hash) {
 
     size_t cnt = tree_hash_cnt( count );
 
-    char ints[cnt][HASH_SIZE];
-    memset(ints, 0 , sizeof(ints));  // zero out as extra protection for using uninitialized mem
+    // Avoid dynamic allocation with a 4KB buffer (HASH_SIZE=32), if we can.  This will be good for
+    // up to 256 transactions in a block; beyond that use a dynamic allocation instead.
+    char small[128*HASH_SIZE];
+    char *big = NULL, *ints = small;
+    if (cnt > sizeof(small) / HASH_SIZE) {
+      big = malloc(cnt*HASH_SIZE);
+      if (!big) abort();
+      ints = big;
+    }
+    memset(ints, 0 , cnt*HASH_SIZE);  // zero out as extra protection for using uninitialized mem
 
     memcpy(ints, hashes, (2 * cnt - count) * HASH_SIZE);
 
     for (i = 2 * cnt - count, j = 2 * cnt - count; j < cnt; i += 2, ++j) {
-      cn_fast_hash(hashes[i], 64, ints[j]);
+      cn_fast_hash(hashes[i], 64, ints + j*HASH_SIZE);
     }
     assert(i == count);
 
     while (cnt > 2) {
       cnt >>= 1;
       for (i = 0, j = 0; j < cnt; i += 2, ++j) {
-        cn_fast_hash(ints[i], 64, ints[j]);
+        cn_fast_hash(ints + i*HASH_SIZE, 64, ints + j*HASH_SIZE);
       }
     }
 
-    cn_fast_hash(ints[0], 64, root_hash);
+    cn_fast_hash(ints, 64, root_hash);
+    if (big)
+      free(big);
   }
 }
