@@ -142,6 +142,26 @@ namespace cryptonote {
     reward = reward_lo;
     return true;
   }
+
+#pragma pack(push, 1)
+  struct public_address_outer_blob
+  {
+    uint8_t m_ver;
+    account_public_address m_address;
+    uint8_t check_sum;
+  };
+  struct public_integrated_address_outer_blob
+  {
+    uint8_t m_ver;
+    account_public_address m_address;
+    crypto::hash8 payment_id;
+    uint8_t check_sum;
+  };
+#pragma pack (pop)
+
+  static_assert(sizeof(public_address_outer_blob)            == sizeof(account_public_address) + 2, "invalid blob struct size");
+  static_assert(sizeof(public_integrated_address_outer_blob) == sizeof(account_public_address) + 2 + sizeof(crypto::hash8), "invalid blob struct size");
+
   //------------------------------------------------------------------------------------
   uint8_t get_account_address_checksum(const public_address_outer_blob& bl)
   {

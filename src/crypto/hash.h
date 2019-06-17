@@ -44,14 +44,12 @@ namespace crypto {
 #include "hash-ops.h"
   }
 
-#pragma pack(push, 1)
-  struct hash {
+  struct alignas(std::size_t) hash {
     char data[HASH_SIZE];
   };
   struct hash8 {
     char data[8];
   };
-#pragma pack(pop)
 
   static_assert(sizeof(hash) == HASH_SIZE, "Invalid structure size");
   static_assert(sizeof(hash8) == 8, "Invalid structure size");
@@ -122,6 +120,12 @@ namespace crypto {
 
   const static crypto::hash null_hash = {};
   const static crypto::hash8 null_hash8 = {};
+}
+
+namespace epee {
+  template <typename T>
+  struct has_padding<T, typename std::enable_if<std::is_base_of<crypto::hash, T>::value && sizeof(T) == sizeof(crypto::hash) && sizeof(T) == sizeof(crypto::hash::data)>::type>
+    : std::false_type {};
 }
 
 CRYPTO_MAKE_HASHABLE(hash)

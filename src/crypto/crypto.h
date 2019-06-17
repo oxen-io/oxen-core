@@ -43,6 +43,7 @@
 #include "hex.h"
 #include "span.h"
 #include "hash.h"
+#include "padding.h"
 
 namespace crypto {
 
@@ -50,12 +51,11 @@ namespace crypto {
 #include "random.h"
   }
 
-#pragma pack(push, 1)
-  struct ec_point {
+  struct alignas(size_t) ec_point {
     char data[32];
   };
 
-  struct ec_scalar {
+  struct alignas(size_t) ec_scalar {
     char data[32];
   };
 
@@ -93,7 +93,6 @@ namespace crypto {
     ec_scalar c, r;
     friend class crypto_ops;
   };
-#pragma pack(pop)
 
   void hash_to_scalar(const void *data, size_t length, ec_scalar &res);
   void random32_unbiased(unsigned char *bytes);
@@ -285,16 +284,10 @@ namespace crypto {
     return check_ring_signature(prefix_hash, image, pubs.data(), pubs.size(), sig);
   }
 
-  inline std::ostream &operator <<(std::ostream &o, const crypto::public_key &v) {
+  inline std::ostream &operator <<(std::ostream &o, const crypto::ec_point &v) {
     epee::to_hex::formatted(o, epee::as_byte_span(v)); return o;
   }
-  inline std::ostream &operator <<(std::ostream &o, const crypto::secret_key &v) {
-    epee::to_hex::formatted(o, epee::as_byte_span(v)); return o;
-  }
-  inline std::ostream &operator <<(std::ostream &o, const crypto::key_derivation &v) {
-    epee::to_hex::formatted(o, epee::as_byte_span(v)); return o;
-  }
-  inline std::ostream &operator <<(std::ostream &o, const crypto::key_image &v) {
+  inline std::ostream &operator <<(std::ostream &o, const crypto::ec_scalar &v) {
     epee::to_hex::formatted(o, epee::as_byte_span(v)); return o;
   }
   inline std::ostream &operator <<(std::ostream &o, const crypto::signature &v) {
@@ -303,6 +296,18 @@ namespace crypto {
 
   const extern crypto::public_key null_pkey;
   const extern crypto::secret_key null_skey;
+}
+
+namespace epee {
+  template <typename T>
+  struct has_padding<T, typename std::enable_if<std::is_base_of<crypto::ec_point, T>::value && sizeof(T) == sizeof(crypto::ec_point)>::type>
+    : std::false_type {};
+  template <typename T>
+  struct has_padding<T, typename std::enable_if<std::is_base_of<crypto::ec_scalar, T>::value && sizeof(T) == sizeof(crypto::ec_scalar)>::type>
+    : std::false_type {};
+  template <typename T>
+  struct has_padding<T, typename std::enable_if<std::is_base_of<crypto::signature, T>::value && sizeof(T) == sizeof(crypto::signature)>::type>
+    : std::false_type {};
 }
 
 CRYPTO_MAKE_HASHABLE(public_key)

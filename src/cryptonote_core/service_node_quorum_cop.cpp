@@ -390,7 +390,7 @@ namespace service_nodes
   /// NOTE(maxim): we can remove this after hardfork
   static crypto::hash make_hash(crypto::public_key const &pubkey, uint64_t timestamp)
   {
-    auto buf = tools::memcpy_le("SUP" /*meaningless magic bytes*/, pubkey, timestamp);
+    auto buf = tools::memcpy_le("SUP" /*meaningless magic bytes*/, pubkey.data, timestamp);
     crypto::hash result;
     crypto::cn_fast_hash(buf.data(), buf.size(), result);
 
@@ -402,7 +402,7 @@ namespace service_nodes
                                    uint32_t pub_ip,
                                    uint16_t storage_port)
   {
-    auto buf = tools::memcpy_le(pubkey, timestamp, pub_ip, storage_port);
+    auto buf = tools::memcpy_le(pubkey.data, timestamp, pub_ip, storage_port);
     crypto::hash result;
     crypto::cn_fast_hash(buf.data(), buf.size(), result);
     return result;

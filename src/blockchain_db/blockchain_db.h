@@ -107,8 +107,6 @@ extern const command_line::arg_descriptor<std::string> arg_db_type;
 extern const command_line::arg_descriptor<std::string> arg_db_sync_mode;
 extern const command_line::arg_descriptor<bool, false> arg_db_salvage;
 
-#pragma pack(push, 1)
-
 /**
  * @brief a struct containing output metadata
  */
@@ -119,16 +117,15 @@ struct output_data_t
   uint64_t           height;       //!< the height of the block which created the output
   rct::key           commitment;   //!< the output's amount commitment (for spend verification)
 };
-#pragma pack(pop)
+static_assert(sizeof(output_data_t) == sizeof(crypto::public_key) + 2*sizeof(uint64_t) + sizeof(rct::key), "output_data_t must be packed");
 
-#pragma pack(push, 1)
 struct tx_data_t
 {
   uint64_t tx_id;
   uint64_t unlock_time;
   uint64_t block_id;
 };
-#pragma pack(pop)
+static_assert(sizeof(tx_data_t) == 3*sizeof(uint64_t), "tx_data_t must be packed");
 
 /**
  * @brief a struct containing txpool per transaction metadata

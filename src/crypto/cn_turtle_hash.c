@@ -286,7 +286,6 @@ extern int aesb_pseudo_round(const uint8_t *in, uint8_t *out, const uint8_t *exp
 #define THREADV __thread
 #endif
 
-#pragma pack(push, 1)
 union cn_turtle_hash_state
 {
   union hash_state hs;
@@ -296,7 +295,6 @@ union cn_turtle_hash_state
     uint8_t init[INIT_SIZE_BYTE];
   };
 };
-#pragma pack(pop)
 
 THREADV uint8_t *hp_state = NULL;
 THREADV int hp_allocated = 0;
@@ -834,7 +832,6 @@ STATIC INLINE void xor64(uint64_t *a, const uint64_t b)
     *a ^= b;
 }
 
-#pragma pack(push, 1)
 union cn_turtle_hash_state
 {
     union hash_state hs;
@@ -844,7 +841,6 @@ union cn_turtle_hash_state
         uint8_t init[INIT_SIZE_BYTE];
     };
 };
-#pragma pack(pop)
 
 #if defined(__aarch64__) && defined(__ARM_FEATURE_CRYPTO)
 
@@ -1452,7 +1448,6 @@ static void xor64(uint8_t* left, const uint8_t* right)
   }
 }
 
-#pragma pack(push, 1)
 union cn_turtle_hash_state {
   union hash_state hs;
   struct {
@@ -1460,7 +1455,6 @@ union cn_turtle_hash_state {
     uint8_t init[INIT_SIZE_BYTE];
   };
 };
-#pragma pack(pop)
 
 void cn_turtle_hash(const void *data, size_t length, char *hash, int light, int variant, int prehashed, uint32_t page_size, uint32_t scratchpad, uint32_t iterations)
 {
