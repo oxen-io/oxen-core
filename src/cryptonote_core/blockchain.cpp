@@ -3129,7 +3129,7 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
 
       std::shared_ptr<const service_nodes::testing_quorum> quorum =
           m_service_node_list.get_testing_quorum(desired_quorum_type, deregister.block_height);
-      if (service_nodes::verify_tx_deregister(deregister, get_current_blockchain_height(), tvc.m_vote_ctx, *quorum))
+      if (!service_nodes::verify_tx_deregister(deregister, get_current_blockchain_height(), tvc.m_vote_ctx, *quorum))
       {
         tvc.m_verifivation_failed = true;
         MERROR_VER("tx " << get_transaction_hash(tx) << ": deregister tx could not be completely verified reason: "
