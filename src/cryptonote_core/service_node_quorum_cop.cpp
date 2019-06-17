@@ -43,7 +43,7 @@
 
 namespace service_nodes
 {
-  static_assert(quorum_cop::REORG_SAFETY_BUFFER_IN_BLOCKS < DEREGISTER_VOTE_LIFETIME, "Safety buffer should always be less than the vote lifetime");
+  static_assert(quorum_cop::REORG_SAFETY_BUFFER_IN_BLOCKS < VOTE_LIFETIME, "Safety buffer should always be less than the vote lifetime");
 
   quorum_cop::quorum_cop(cryptonote::core& core)
     : m_core(core), m_uptime_proof_height(0), m_last_height_checkpointed(0), m_last_height_checkpointers_validated(0)
@@ -127,20 +127,20 @@ namespace service_nodes
       return;
 
     uint64_t const height                            = cryptonote::get_block_height(block);
-    service_nodes::quorum_type const max_quorum_type = service_nodes::max_quorum_type_for_hf(hf_version);
+    // service_nodes::quorum_type const max_quorum_type = service_nodes::max_quorum_type_for_hf(hf_version);
+    service_nodes::quorum_type const max_quorum_type = quorum_type::uptime;
+
+    uint64_t const latest_height = std::max(m_core.get_current_blockchain_height(), m_core.get_target_blockchain_height());
+    if (latest_height < VOTE_LIFETIME)
+      return;
+
+    uint64_t const start_voting_from_height = latest_height - VOTE_LIFETIME;
+    if (height < start_voting_from_height)
+      return;
+
     for (int i = 0; i <= (int)max_quorum_type; i++)
     {
-      quorum_type const type       = static_cast<quorum_type>(i);
-      uint64_t const vote_lifetime = service_nodes::quorum_vote_lifetime(type);
-
-      uint64_t const latest_height = std::max(m_core.get_current_blockchain_height(), m_core.get_target_blockchain_height());
-      if (latest_height < vote_lifetime)
-        continue;
-
-      uint64_t const start_voting_from_height = latest_height - vote_lifetime;
-      if (height < start_voting_from_height)
-        continue;
-
+      quorum_type const type = static_cast<quorum_type>(i);
       switch(type)
       {
         default:
@@ -187,7 +187,8 @@ namespace service_nodes
               bool vote_off_node = (m_uptime_proof_seen.find(node_key) == m_uptime_proof_seen.end());
               if (!vote_off_node) continue;
 
-              quorum_vote_t vote = service_nodes::make_deregister_vote(service_nodes::make_deregister_type::uptime,
+              quorum_vote_t vote = service_nodes::make_deregister_vote(hf_version,
+                                                                       service_nodes::make_deregister_type::uptime,
                                                                        m_uptime_proof_height,
                                                                        static_cast<uint16_t>(index_in_group),
                                                                        node_index,
@@ -206,21 +207,14 @@ namespace service_nodes
           if (hf_version < cryptonote::network_version_12_checkpointing)
             break;
 
-          uint64_t const half_vote_lifetime = vote_lifetime / 2;
-
-          uint64_t const start_checkpointing_height = (start_voting_from_height + half_vote_lifetime);
-          uint64_t const end_checkpointing_height   = height;
-
-          uint64_t const start_validating_checkpoint_height = start_voting_from_height;
-          uint64_t const end_validating_checkpoint_height   = (start_checkpointing_height - 1);
-
-          assert(end_checkpointing_height > start_checkpointing_height);
-          assert(end_validating_checkpoint_height > start_validating_checkpoint_height);
-
           // NOTE: Cast deregister votes if service nodes have not participated
+          uint64_t const half_vote_lifetime                 = VOTE_LIFETIME / 2;
+          uint64_t const start_validating_checkpoint_height = start_voting_from_height;
+          uint64_t const end_validating_checkpoint_height =
+              std::min(start_validating_checkpoint_height + half_vote_lifetime - 1, height);
           {
             uint64_t &vote_height = m_last_height_checkpointers_validated;
-            vote_height = std::max(vote_height, start_validating_checkpoint_height);
+            vote_height           = std::max(vote_height, start_validating_checkpoint_height);
 
             for (vote_height += (vote_height % CHECKPOINT_INTERVAL);
                  vote_height <= end_validating_checkpoint_height;
@@ -247,7 +241,8 @@ namespace service_nodes
                 if (m_vote_pool.has_received_vote_from(quorum_vote_type::checkpoint_deregister, quorum->workers, worker_key, vote_height))
                   continue;
 
-                quorum_vote_t vote = make_deregister_vote(make_deregister_type::checkpoint,
+                quorum_vote_t vote = make_deregister_vote(hf_version,
+                                                          make_deregister_type::checkpoint,
                                                           vote_height,
                                                           static_cast<uint16_t>(index_in_group),
                                                           node_index,
@@ -261,13 +256,18 @@ namespace service_nodes
             }
           }
 
+          if (end_validating_checkpoint_height == height)
+            break;
+
           // NOTE: Cast votes on which block to checkpoints
+          uint64_t const start_checkpointing_height = end_validating_checkpoint_height + 1;
+          uint64_t const end_checkpointing_height   = height;
           {
             uint64_t &vote_height = m_last_height_checkpointed;
             vote_height = std::max(vote_height, start_checkpointing_height);
 
             for (vote_height += (vote_height % CHECKPOINT_INTERVAL);
-                 vote_height <= height;
+                 vote_height <= end_checkpointing_height;
                  vote_height += CHECKPOINT_INTERVAL)
             {
               if (m_core.get_hard_fork_version(vote_height) < cryptonote::network_version_12_checkpointing)
@@ -309,6 +309,7 @@ namespace service_nodes
               }
             }
           }
+
         }
         break;
       }
@@ -320,7 +321,7 @@ namespace service_nodes
     process_quorums(block);
 
     // Since our age checks for deregister votes is now (age >=
-    // DEREGISTER_VOTE_LIFETIME_IN_BLOCKS) where age is
+    // VOTE_LIFETIME) where age is
     // get_current_blockchain_height() which gives you the height that you are
     // currently mining for, i.e. (height + 1).
 

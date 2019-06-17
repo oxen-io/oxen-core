@@ -1617,8 +1617,15 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
   bool core::add_new_block(const block& b, block_verification_context& bvc)
   {
-    relay_service_node_votes(); // NOTE: nop if synchronising due to not accepting votes whilst syncing
-    return m_blockchain_storage.add_new_block(b, bvc);
+    bool result = m_blockchain_storage.add_new_block(b, bvc);
+    if (result)
+    {
+      // TODO(loki): PERF(loki): This causes perf problems in integration mode, so in real-time operation it may not be
+      // noticeable but could bubble up and cause slowness if the runtime variables align up undesiredly.
+
+      relay_service_node_votes(); // NOTE: nop if synchronising due to not accepting votes whilst syncing
+    }
+    return result;
   }
   //-----------------------------------------------------------------------------------------------
   bool core::prepare_handle_incoming_blocks(const std::vector<block_complete_entry> &blocks_entry, std::vector<block> &blocks, std::vector<checkpoint_t> &checkpoints)

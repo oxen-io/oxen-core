@@ -140,7 +140,8 @@ TEST(service_nodes, vote_validation)
   // Valid vote
   uint64_t block_height = 70;
   service_nodes::quorum_vote_t valid_vote =
-      service_nodes::make_deregister_vote(service_nodes::make_deregister_type::uptime,
+      service_nodes::make_deregister_vote(cryptonote::network_version_12_checkpointing,
+                                          service_nodes::make_deregister_type::uptime,
                                           block_height,
                                           voter_index,
                                           1 /*worker_index*/,

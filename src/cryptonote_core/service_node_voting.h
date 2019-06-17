@@ -79,6 +79,17 @@ namespace service_nodes
     checkpoint_deregister,
   };
 
+  inline char const *quorum_vote_type_label(quorum_vote_type type)
+  {
+    switch(type)
+    {
+      default: return "Unknown";
+      case quorum_vote_type::uptime_deregister:     return "Uptime Deregister";
+      case quorum_vote_type::checkpoint:            return "Checkpoint";
+      case quorum_vote_type::checkpoint_deregister: return "Checkpoint Deregister";
+    }
+  }
+
   enum struct quorum_group { invalid, validator, worker };
   struct quorum_vote_t
   {
@@ -98,7 +109,8 @@ namespace service_nodes
   };
 
   enum struct make_deregister_type { uptime, checkpoint };
-  quorum_vote_t     make_deregister_vote             (make_deregister_type type,
+  quorum_vote_t     make_deregister_vote             (int hf_version,
+                                                      make_deregister_type type,
                                                       uint64_t block_height,
                                                       uint16_t index_in_group,
                                                       uint16_t worker_index,

@@ -23,7 +23,7 @@ namespace loki
 {
 struct fixed_buffer
 {
-  static const int SIZE = 32768;
+  static const int SIZE = 65536;
   char data[SIZE];
   int  len;
 };

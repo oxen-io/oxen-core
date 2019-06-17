@@ -10,11 +10,10 @@ namespace service_nodes {
   constexpr size_t   UPTIME_MIN_NODES_TO_TEST              = 50;
 
   constexpr size_t   DEREGISTER_MIN_VOTES_TO_KICK_SERVICE_NODE = 7;
-  constexpr uint64_t DEREGISTER_VOTE_LIFETIME                  = BLOCKS_EXPECTED_IN_HOURS(2);
+  constexpr uint64_t VOTE_LIFETIME                             = 60;
 
   constexpr uint64_t CHECKPOINT_INTERVAL                       = 4;  // Checkpoint every 4 blocks and prune when too old except if (height % CHECKPOINT_STORE_PERSISTENTLY_INTERVAL == 0)
-  constexpr uint64_t CHECKPOINT_STORE_PERSISTENTLY_INTERVAL    = 60; // Persistently store the checkpoints at these intervals
-  constexpr uint64_t CHECKPOINT_VOTE_LIFETIME                  = CHECKPOINT_STORE_PERSISTENTLY_INTERVAL; // Keep the last 60 blocks worth of votes
+  constexpr uint64_t CHECKPOINT_STORE_PERSISTENTLY_INTERVAL    = VOTE_LIFETIME; // Persistently store the checkpoints at these intervals
 #if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
   constexpr size_t   CHECKPOINT_QUORUM_SIZE                    = 1;
   constexpr size_t   CHECKPOINT_MIN_VOTES                      = 1;
@@ -46,7 +45,7 @@ namespace service_nodes {
   constexpr int      MAX_KEY_IMAGES_PER_CONTRIBUTOR   = 1;
   constexpr uint64_t KEY_IMAGE_AWAITING_UNLOCK_HEIGHT = 0;
 
-  constexpr uint64_t DEREGISTER_TX_LIFETIME_IN_BLOCKS  = DEREGISTER_VOTE_LIFETIME;
+  constexpr uint64_t DEREGISTER_TX_LIFETIME_IN_BLOCKS  = VOTE_LIFETIME;
   constexpr size_t   QUORUM_LIFETIME                   = (6 * DEREGISTER_TX_LIFETIME_IN_BLOCKS);
 
 
@@ -60,21 +59,6 @@ namespace service_nodes {
       case cryptonote::FAKECHAIN: return 30;
       case cryptonote::TESTNET:   return BLOCKS_EXPECTED_IN_DAYS(2);
       default:                    return BLOCKS_EXPECTED_IN_DAYS(30);
-    }
-  }
-
-  inline uint64_t quorum_vote_lifetime(quorum_type type)
-  {
-    switch (type)
-    {
-      case quorum_type::uptime:        return DEREGISTER_VOTE_LIFETIME;
-      case quorum_type::checkpointing: return CHECKPOINT_VOTE_LIFETIME;
-      default:
-      {
-        assert("Unhandled enum type" == 0);
-        return 0;
-      }
-      break;
     }
   }
 

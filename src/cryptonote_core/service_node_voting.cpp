@@ -144,7 +144,7 @@ namespace service_nodes
     if (worker_index >= quorum.workers.size())
     {
       vvc.m_worker_index_out_of_bounds = true;
-      LOG_PRINT_L1("Quorum worker index in was out of bounds: " << worker_index << ", expected to be in range of: [0, " << quorum.workers.size() << ")");
+      LOG_PRINT_L1("Quorum worker index was out of bounds: " << worker_index << ", expected to be in range of: [0, " << quorum.workers.size() << ")");
       return false;
     }
     return true;
@@ -181,10 +181,11 @@ namespace service_nodes
       uint64_t delta_height = latest_height - deregister.block_height;
       if (latest_height >= deregister.block_height && delta_height >= service_nodes::DEREGISTER_TX_LIFETIME_IN_BLOCKS)
       {
-        LOG_PRINT_L1("Received deregister tx for height: " << deregister.block_height
-                     << " and service node: "     << deregister.service_node_index
-                     << ", is older than: "       << service_nodes::DEREGISTER_TX_LIFETIME_IN_BLOCKS
-                     << " blocks and has been rejected. The current height is: " << latest_height);
+        LOG_PRINT_L1("Received deregister tx for height: "
+                     << deregister.block_height << " and service node: " << deregister.service_node_index
+                     << ", is older than: " << service_nodes::DEREGISTER_TX_LIFETIME_IN_BLOCKS
+                     << " (current height: " << latest_height << ") "
+                     << "blocks and has been rejected. The current height is: " << latest_height);
         vvc.m_invalid_block_height = true;
         return false;
       }
@@ -232,9 +233,13 @@ namespace service_nodes
     return true;
   }
 
-  quorum_vote_t make_deregister_vote(make_deregister_type type, uint64_t block_height, uint16_t validator_index, uint16_t worker_index, crypto::public_key const &pub_key, crypto::secret_key const &sec_key)
+  quorum_vote_t make_deregister_vote(int hf_version, make_deregister_type type, uint64_t block_height, uint16_t validator_index, uint16_t worker_index, crypto::public_key const &pub_key, crypto::secret_key const &sec_key)
   {
-    quorum_vote_t result           = {};
+    quorum_vote_t result = {};
+
+    if (hf_version < cryptonote::network_version_11_infinite_staking)
+      result.version = quorum_vote_t::version_0_infinite_staking;
+
     result.type                    = (type == make_deregister_type::uptime) ? quorum_vote_type::uptime_deregister : quorum_vote_type::checkpoint_deregister;
     result.block_height            = block_height;
     result.group                   = quorum_group::validator;
@@ -257,7 +262,33 @@ namespace service_nodes
     if (!result)
       return result;
 
-    uint64_t max_vote_age = 0;
+    //
+    // NOTE: Validate vote age
+    //
+    {
+      uint64_t delta_height = latest_height - vote.block_height;
+      if (vote.block_height < latest_height && delta_height >= VOTE_LIFETIME)
+      {
+        LOG_PRINT_L1("Received vote for height: " << vote.block_height << ", is older than: " << VOTE_LIFETIME
+                                                  << " (current height: " << latest_height << ") "
+                                                  << " blocks and has been rejected.");
+        vvc.m_invalid_block_height = true;
+      }
+      else if (vote.block_height >= latest_height)
+      {
+        LOG_PRINT_L1("Received vote for height: " << vote.block_height << ", is newer than: " << latest_height
+                                                  << " (latest block height) and has been rejected.");
+        vvc.m_invalid_block_height = true;
+      }
+
+      if (vvc.m_invalid_block_height)
+      {
+        result                    = false;
+        vvc.m_verification_failed = true;
+        return result;
+      }
+    }
+
     {
       crypto::public_key key = crypto::null_pkey;
       crypto::hash hash      = crypto::null_hash;
@@ -281,10 +312,8 @@ namespace service_nodes
             return false;
           }
 
-          key          = quorum.validators[vote.index_in_group];
-          // TODO(doyle): We need to check where this is used and if the lifetime rules of checkpoint votes would cull a checkpoint deregister for example
-          max_vote_age = service_nodes::DEREGISTER_VOTE_LIFETIME; // TODO(doyle): CHECKPOINT_DEREGISTER(doyle): Hmmm, does this need to be updated for checkpoint deregister?
-          hash         = make_deregister_vote_hash(vote.version, vote.block_height, vote.deregister.worker_index, static_cast<uint32_t>(vote.type));
+          key  = quorum.validators[vote.index_in_group];
+          hash = make_deregister_vote_hash(vote.version, vote.block_height, vote.deregister.worker_index, static_cast<uint32_t>(vote.type));
 
           bool result = bounds_check_worker_index(quorum, vote.deregister.worker_index, vvc);
           if (!result)
@@ -301,9 +330,8 @@ namespace service_nodes
             return false;
           }
 
-          key          = quorum.workers[vote.index_in_group];
-          max_vote_age = service_nodes::CHECKPOINT_VOTE_LIFETIME;
-          hash         = vote.checkpoint.block_hash;
+          key  = quorum.workers[vote.index_in_group];
+          hash = vote.checkpoint.block_hash;
         }
         break;
       }
@@ -315,32 +343,6 @@ namespace service_nodes
       if (!result)
       {
         vvc.m_signature_not_valid = true;
-        return result;
-      }
-    }
-
-    //
-    // NOTE: Validate vote age
-    //
-    {
-      uint64_t delta_height = latest_height - vote.block_height;
-      if (vote.block_height < latest_height && delta_height >= max_vote_age)
-      {
-        LOG_PRINT_L1("Received vote for height: " << vote.block_height << ", is older than: " << max_vote_age
-                                                  << " blocks and has been rejected.");
-        vvc.m_invalid_block_height = true;
-      }
-      else if (vote.block_height >= latest_height)
-      {
-        LOG_PRINT_L1("Received vote for height: " << vote.block_height << ", is newer than: " << latest_height
-                                                  << " (latest block height) and has been rejected.");
-        vvc.m_invalid_block_height = true;
-      }
-
-      if (vvc.m_invalid_block_height)
-      {
-        result                    = false;
-        vvc.m_verification_failed = true;
         return result;
       }
     }
@@ -481,22 +483,8 @@ namespace service_nodes
 
     if (!verify_vote(vote, latest_height, vvc, quorum))
     {
-      LOG_PRINT_L1("Signature verification failed for deregister vote");
+      LOG_PRINT_L1("Verification failed for vote type: " << quorum_vote_type_label(vote.type));
       return result;
-    }
-
-    // TODO(loki): PERF(loki): For debug performance adding this preliminary early out check improves
-    // debug integration performance greatly. Seems like there's a lot of contention on the lock below.
-    if (my_pubkey) // NOTE: Early return if we're receiving our own vote
-    {
-      crypto::public_key voters_pubkey;
-      if (vote.group == quorum_group::validator)
-        voters_pubkey = quorum.validators[vote.index_in_group];
-      else
-        voters_pubkey = quorum.workers[vote.index_in_group];
-
-      if (*my_pubkey == voters_pubkey)
-        return result;
     }
 
     CRITICAL_REGION_LOCAL(m_lock);
@@ -617,16 +605,11 @@ namespace service_nodes
   void voting_pool::remove_expired_votes(uint64_t height)
   {
     CRITICAL_REGION_LOCAL(m_lock);
-    {
-      uint64_t min_height = (height < DEREGISTER_VOTE_LIFETIME) ? 0 : height - DEREGISTER_VOTE_LIFETIME;
-      for (std::vector<deregister_pool_entry> *deregister_pool : get_deregister_pools())
-        cull_votes(*deregister_pool, min_height, height);
-    }
+    uint64_t min_height = (height < VOTE_LIFETIME) ? 0 : height - VOTE_LIFETIME;
 
-    {
-      uint64_t min_height = (height < CHECKPOINT_VOTE_LIFETIME) ? 0 : height - CHECKPOINT_VOTE_LIFETIME;
-      cull_votes(m_checkpoint_pool, min_height, height);
-    }
+    cull_votes(m_checkpoint_pool, min_height, height);
+    for (std::vector<deregister_pool_entry> *deregister_pool : get_deregister_pools())
+      cull_votes(*deregister_pool, min_height, height);
   }
 
   template <typename T>

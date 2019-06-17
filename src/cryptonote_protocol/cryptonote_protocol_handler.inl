@@ -745,14 +745,14 @@ namespace cryptonote
       return 1;
     }
 
-    for(auto it = arg.votes.begin(); it != arg.votes.end();)
+    for(std::vector<service_nodes::quorum_vote_t>::iterator it = arg.votes.begin(); it != arg.votes.end();)
     {
       cryptonote::vote_verification_context vvc = {};
       m_core.add_service_node_vote(*it, vvc);
 
       if (vvc.m_verification_failed)
       {
-        LOG_PRINT_CCONTEXT_L1("Checkpoint vote verification failed, dropping connection");
+        LOG_PRINT_CCONTEXT_L1("Vote type: " << service_nodes::quorum_vote_type_label(it->type) << ", verification failed, dropping connection");
         drop_connection(context, false /*add_fail*/, false /*flush_all_spans i.e. delete cached block data from this peer*/);
         return 1;
       }
