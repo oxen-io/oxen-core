@@ -2488,7 +2488,7 @@ namespace cryptonote
     PERF_TIMER(on_get_quorum_state);
     bool r;
 
-    const auto uptime_quorum = m_core.get_testing_quorum(service_nodes::quorum_type::deregister, req.height);
+    const auto uptime_quorum = m_core.get_testing_quorum(service_nodes::quorum_type::state_change, req.height);
     r = (uptime_quorum != nullptr);
     if (r)
     {
@@ -2534,7 +2534,7 @@ namespace cryptonote
     res.quorum_entries.reserve(height_end - height_begin + 1);
     for (auto h = height_begin; h <= height_end; ++h)
     {
-      const auto uptime_quorum = m_core.get_testing_quorum(service_nodes::quorum_type::deregister, h);
+      const auto uptime_quorum = m_core.get_testing_quorum(service_nodes::quorum_type::state_change, h);
 
       if (!uptime_quorum) {
         failed_height = h;

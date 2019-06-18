@@ -94,6 +94,9 @@ namespace service_nodes
     // block_height and transaction_index are to record when the service node last received a reward.
     uint64_t                           last_reward_block_height;
     uint32_t                           last_reward_transaction_index;
+    int8_t                             decommission_count; // How many times this service node has been decommissioned
+    int64_t                            active_since_height; // if decommissioned: equal to the *negative* height at which you became active before the decommission
+    uint64_t                           last_decommission_height; // The height at which the last (or current!) decommissioning started, or 0 if never decommissioned
     std::vector<contributor_t>         contributors;
     uint64_t                           total_contributed;
     uint64_t                           total_reserved;
@@ -106,10 +109,10 @@ namespace service_nodes
 
     service_node_info() = default;
     bool is_fully_funded() const { return total_contributed >= staking_requirement; }
-    bool is_active() const { return is_fully_funded(); }
+    bool is_decommissioned() const { return active_since_height < 0; }
+    bool is_active() const { return is_fully_funded() && !is_decommissioned(); }
     size_t total_num_locked_contributions() const;
 
-    int                                dummy; // FIXME(doyle)
     BEGIN_SERIALIZE_OBJECT()
       VARINT_FIELD(version)
       VARINT_FIELD(registration_height)
@@ -129,6 +132,8 @@ namespace service_nodes
       {
         VARINT_FIELD(public_ip)
         VARINT_FIELD(storage_port)
+        VARINT_FIELD(active_since_height)
+        VARINT_FIELD(last_decommission_height)
       }
     END_SERIALIZE()
   };
@@ -164,16 +169,18 @@ namespace service_nodes
     END_SERIALIZE()
   };
 
-  template<typename T>
-  void loki_shuffle(std::vector<T>& a, uint64_t seed)
+
+  template<typename RandomIt>
+  void loki_shuffle(RandomIt begin, RandomIt end, uint64_t seed)
   {
-    if (a.size() <= 1) return;
+    const size_t size = std::distance(begin, end);
+    if (size <= 1) return;
     std::mt19937_64 mersenne_twister(seed);
-    for (size_t i = 1; i < a.size(); i++)
+    for (size_t i = 1; i < size; i++)
     {
       size_t j = (size_t)uniform_distribution_portable(mersenne_twister, i+1);
-      if (i != j)
-        std::swap(a[i], a[j]);
+      using std::swap;
+      swap(begin[i], begin[j]);
     }
   }
 
@@ -195,7 +202,7 @@ namespace service_nodes
     using winner_and_portions_t = std::pair<crypto::public_key, std::vector<std::pair<cryptonote::account_public_address, uint64_t>>>;
     winner_and_portions_t select_winner_and_portions() const;
 
-    bool is_service_node(const crypto::public_key& pubkey) const;
+    bool is_service_node(const crypto::public_key& pubkey, bool require_active = true) const;
     bool is_key_image_locked(crypto::key_image const &check_image, uint64_t *unlock_height = nullptr, service_node_info::contribution_t *the_locked_contribution = nullptr) const;
 
     void update_swarms(uint64_t height);
@@ -211,7 +218,7 @@ namespace service_nodes
     void set_my_service_node_keys(crypto::public_key const *pub_key);
     bool store();
 
-    void get_all_service_nodes_public_keys(std::vector<crypto::public_key>& keys, bool fully_funded_nodes_only) const;
+    void get_all_service_nodes_public_keys(std::vector<crypto::public_key>& keys, bool require_active) const;
 
     /// Record public ip and storage port and add them to the service node list
     void handle_uptime_proof(const cryptonote::NOTIFY_UPTIME_PROOF::request &proof);
@@ -308,14 +315,17 @@ namespace service_nodes
     {
       uint8_t        version;
       uint64_t       height;
-      testing_quorum quorums[static_cast<size_t>(quorum_type::count)];
+      testing_quorum quorums[static_cast<uint8_t>(quorum_type::count)];
 
       BEGIN_SERIALIZE()
         FIELD(version)
         FIELD(height)
-        FIELD_N("deregister_quorum", quorums[static_cast<size_t>(quorum_type::deregister)])
-        if (version >= service_node_info::version_3_checkpointing)
-          FIELD_N("checkpointing_quorum", quorums[static_cast<size_t>(quorum_type::checkpointing)])
+        if (version >= service_node_info::version_3_checkpointing) {
+          FIELD_N("state_change_quorum", quorums[static_cast<uint8_t>(quorum_type::state_change)])
+          FIELD_N("checkpointing_quorum", quorums[static_cast<uint8_t>(quorum_type::checkpointing)])
+        } else {
+          FIELD_N("deregister_quorum", quorums[static_cast<uint8_t>(quorum_type::state_change)])
+        }
       END_SERIALIZE()
     };
 
@@ -342,9 +352,12 @@ namespace service_nodes
   private:
 
     // Note(maxim): private methods don't have to be protected the mutex
+    // Returns true if there was a registration:
     bool process_registration_tx(const cryptonote::transaction& tx, uint64_t block_timestamp, uint64_t block_height, uint32_t index);
-    void process_contribution_tx(const cryptonote::transaction& tx, uint64_t block_height, uint32_t index);
-    bool process_deregistration_tx(const cryptonote::transaction& tx, uint64_t block_height);
+    // Returns true if there was a successful contribution that fully funded a service node:
+    bool process_contribution_tx(const cryptonote::transaction& tx, uint64_t block_height, uint32_t index);
+    // Returns true if a service node changed state (deregistered, decommissioned, or recommissioned)
+    bool process_state_change_tx(const cryptonote::transaction& tx, uint64_t block_height);
     void process_block(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs);
 
     bool contribution_tx_output_has_correct_unlock_time(const cryptonote::transaction& tx, size_t i, uint64_t block_height) const;
@@ -370,8 +383,11 @@ namespace service_nodes
       std::list<std::unique_ptr<rollback_event>>                  rollback_events;
       block_height                                                height;
 
-      // Returns a filtered, pubkey-sorted vector of service nodes that are fully funded.
+      // Returns a filtered, pubkey-sorted vector of service nodes that are active (fully funded and
+      // *not* decommissioned).
       std::vector<pubkey_and_sninfo> active_service_nodes_infos() const;
+      // Similar to the above, but returns all nodes that are fully funded *and* decommissioned.
+      std::vector<pubkey_and_sninfo> decommissioned_service_nodes_infos() const;
     };
     transient_state m_transient_state;
 

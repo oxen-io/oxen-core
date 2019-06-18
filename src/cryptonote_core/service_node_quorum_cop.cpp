@@ -43,7 +43,7 @@
 
 namespace service_nodes
 {
-  static_assert(quorum_cop::REORG_SAFETY_BUFFER_IN_BLOCKS < DEREGISTER_VOTE_LIFETIME, "Safety buffer should always be less than the vote lifetime");
+  static_assert(quorum_cop::REORG_SAFETY_BUFFER_IN_BLOCKS < STATE_CHANGE_VOTE_LIFETIME, "Safety buffer should always be less than the vote lifetime");
 
   quorum_cop::quorum_cop(cryptonote::core& core)
     : m_core(core), m_uptime_proof_height(0), m_last_checkpointed_height(0)
@@ -137,16 +137,16 @@ namespace service_nodes
           LOG_ERROR("Unhandled quorum type with value: " << (int)type);
         } break;
 
-        case quorum_type::deregister:
+        case quorum_type::state_change:
         {
           if (hf_version >= cryptonote::network_version_9_service_nodes)
           {
             // NOTE: Wait atleast 2 hours before we're allowed to vote so that we collect uptimes from everyone on the network
             time_t const now = time(nullptr);
 #if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
-            time_t const min_lifetime = 0;
+            constexpr time_t min_lifetime = 0;
 #else
-            time_t const min_lifetime = 60 * 60 * 2;
+            constexpr time_t min_lifetime = UPTIME_PROOF_MAX_TIME_IN_SECONDS;
 #endif
             bool alive_for_min_time = (now - m_core.get_start_time()) >= min_lifetime;
             if (!alive_for_min_time)
@@ -162,7 +162,7 @@ namespace service_nodes
               if (m_core.get_hard_fork_version(m_uptime_proof_height) < cryptonote::network_version_9_service_nodes) continue;
 
               const std::shared_ptr<const testing_quorum> quorum =
-                  m_core.get_testing_quorum(quorum_type::deregister, m_uptime_proof_height);
+                  m_core.get_testing_quorum(quorum_type::state_change, m_uptime_proof_height);
               if (!quorum)
               {
                 // TODO(loki): Fatal error
@@ -176,19 +176,71 @@ namespace service_nodes
               //
               // NOTE: I am in the quorum
               //
-              for (size_t node_index = 0; node_index < quorum->workers.size(); ++node_index)
+              auto worker_states = m_core.get_service_node_list_state(quorum->workers);
+              auto worker_it = worker_states.begin();
+              CRITICAL_REGION_LOCAL(m_lock);
+              for (size_t node_index = 0; node_index < quorum->workers.size(); ++worker_it, ++node_index)
               {
-                const crypto::public_key &node_key = quorum->workers[node_index];
+                // If the SN no longer exists then it'll be omitted from the worker_states vector,
+                // so if the elements don't line up skip ahead.
+                while (worker_it->pubkey != quorum->workers[node_index] && node_index < quorum->workers.size())
+                  node_index++;
+                if (node_index == quorum->workers.size())
+                  break;
 
-                CRITICAL_REGION_LOCAL(m_lock);
-                bool vote_off_node = (m_uptime_proof_seen.find(node_key) == m_uptime_proof_seen.end());
-                if (!vote_off_node) continue;
+                const auto &node_key = worker_it->pubkey;
+                const auto &info  = worker_it->info;
 
-                quorum_vote_t vote = service_nodes::make_deregister_vote(
-                    m_uptime_proof_height, static_cast<uint16_t>(index_in_group), node_index, my_pubkey, my_seckey);
+                bool online_now = m_uptime_proof_seen.count(node_key);
+
+                new_state vote_for_state;
+                if (online_now) {
+                  if (!info.is_decommissioned())
+                    continue;
+
+                  // Currently decommissioned but came back online: recommission
+                  vote_for_state = new_state::recommission;
+                }
+                else {
+                  // Not online; we need to calculate the credit.  If currently decommissioned, we
+                  // need the credit currently being burned (i.e. from the period up to
+                  // decommissioning block).  Otherwise (i.e. currently active) we calculate the
+                  // credit earned from the activation (or last recommission) until the current
+                  // height.
+                  int64_t credit_blocks;
+                  if (info.is_decommissioned()) // decommissioned; the negative of active_since_height tells us when the period leading up to the current decommission started
+                    credit_blocks = int64_t(info.last_decommission_height) - (-info.active_since_height);
+                  else
+                    credit_blocks = int64_t(latest_height) - int64_t(info.active_since_height);
+
+                  int64_t credit = 0;
+                  if (credit_blocks >= 0) {
+                    credit = credit_blocks * DECOMMISSION_CREDIT_PER_DAY / BLOCKS_EXPECTED_IN_HOURS(24);
+
+                    if (info.decommission_count <= info.is_decommissioned()) // Has never been decommissioned (or is currently in the first decommission), so add initial starting credit
+                      credit += DECOMMISSION_INITIAL_CREDIT;
+                    if (credit > DECOMMISSION_MAX_CREDIT)
+                      credit = DECOMMISSION_MAX_CREDIT; // Cap the available decommission credit blocks if above the max
+                  }
+
+                  if (info.is_decommissioned()) {
+                    int64_t blocks_offline = int64_t(latest_height) - int64_t(info.last_decommission_height);
+                    if (credit >= blocks_offline)
+                      continue; // Still in decommissioning credit period: leave decommissioned
+
+                    vote_for_state = new_state::deregister; // Credit ran out!
+                  } else {
+                    // Not currently decommissioned: if the snode has enough credit, decommission;
+                    // otherwise deregister.
+                    vote_for_state = credit >= DECOMMISSION_MINIMUM ? new_state::decommission : new_state::deregister;
+                  }
+                }
+
+                quorum_vote_t vote = service_nodes::make_state_change_vote(
+                    m_uptime_proof_height, static_cast<uint16_t>(index_in_group), node_index, vote_for_state, my_pubkey, my_seckey);
                 cryptonote::vote_verification_context vvc;
                 if (!handle_vote(vote, vvc))
-                  LOG_ERROR("Failed to add uptime deregister vote reason: " << print_vote_verification_context(vvc, nullptr));
+                  LOG_ERROR("Failed to add uptime check_state vote; reason: " << print_vote_verification_context(vvc, nullptr));
               }
             }
           }
@@ -257,8 +309,8 @@ namespace service_nodes
   {
     process_quorums(block);
 
-    // Since our age checks for deregister votes is now (age >=
-    // DEREGISTER_VOTE_LIFETIME_IN_BLOCKS) where age is
+    // Since our age checks for state change votes is now (age >=
+    // STATE_CHANGE_VOTE_LIFETIME_IN_BLOCKS) where age is
     // get_current_blockchain_height() which gives you the height that you are
     // currently mining for, i.e. (height + 1).
 
@@ -266,7 +318,7 @@ namespace service_nodes
     // go around P2Ping votes due to passing around old votes
     uint64_t const height = cryptonote::get_block_height(block) + 1;
     m_vote_pool.remove_expired_votes(height);
-    m_vote_pool.remove_used_votes(txs);
+    m_vote_pool.remove_used_votes(txs, block.major_version);
   }
 
   bool quorum_cop::handle_vote(quorum_vote_t const &vote, cryptonote::vote_verification_context &vvc)
@@ -281,7 +333,7 @@ namespace service_nodes
         return false;
       };
 
-      case quorum_type::deregister: break;
+      case quorum_type::state_change: break;
       case quorum_type::checkpointing:
       {
         cryptonote::block block;
@@ -319,43 +371,43 @@ namespace service_nodes
         return false;
       };
 
-      case quorum_type::deregister:
+      case quorum_type::state_change:
       {
-        if (votes.size() >= DEREGISTER_MIN_VOTES_TO_KICK_SERVICE_NODE)
+        if (votes.size() >= STATE_CHANGE_MIN_VOTES_TO_CHANGE_STATE)
         {
-          cryptonote::tx_extra_service_node_deregister deregister;
-          deregister.block_height       = vote.block_height;
-          deregister.service_node_index = vote.deregister.worker_index;
-          deregister.votes.reserve(votes.size());
+          cryptonote::tx_extra_service_node_state_change state_change;
+          state_change.block_height       = vote.block_height;
+          state_change.service_node_index = vote.state_change.worker_index;
+          state_change.votes.reserve(votes.size());
 
-          std::transform(votes.begin(), votes.end(), std::back_inserter(deregister.votes), [](pool_vote_entry const &pool_vote) {
-            auto result = cryptonote::tx_extra_service_node_deregister::vote(pool_vote.vote.signature, pool_vote.vote.index_in_group);
+          std::transform(votes.begin(), votes.end(), std::back_inserter(state_change.votes), [](pool_vote_entry const &pool_vote) {
+            auto result = cryptonote::tx_extra_service_node_state_change::vote(pool_vote.vote.signature, pool_vote.vote.index_in_group);
             return result;
           });
 
-          cryptonote::transaction deregister_tx = {};
-          if (cryptonote::add_service_node_deregister_to_tx_extra(deregister_tx.extra, deregister))
+          cryptonote::transaction state_change_tx = {};
+          int hf_version = m_core.get_blockchain_storage().get_current_hard_fork_version();
+          if (cryptonote::add_service_node_state_change_to_tx_extra(state_change_tx.extra, state_change, hf_version))
           {
-            int hf_version        = m_core.get_blockchain_storage().get_current_hard_fork_version();
-            deregister_tx.version = cryptonote::transaction::get_max_version_for_hf(hf_version, m_core.get_nettype());
-            deregister_tx.type    = cryptonote::txtype::deregister;
+            state_change_tx.version = cryptonote::transaction::get_max_version_for_hf(hf_version, m_core.get_nettype());
+            state_change_tx.type    = cryptonote::txtype::state_change;
 
             cryptonote::tx_verification_context tvc = {};
-            cryptonote::blobdata const tx_blob      = cryptonote::tx_to_blob(deregister_tx);
+            cryptonote::blobdata const tx_blob      = cryptonote::tx_to_blob(state_change_tx);
 
             result &= m_core.handle_incoming_tx(tx_blob, tvc, false /*keeped_by_block*/, false /*relayed*/, false /*do_not_relay*/);
             if (!result || tvc.m_verifivation_failed)
             {
-              LOG_PRINT_L1("A full deregister tx for height: " << vote.block_height <<
-                           " and service node: " << vote.deregister.worker_index <<
+              LOG_PRINT_L1("A full state change tx for height: " << vote.block_height <<
+                           " and service node: " << vote.state_change.worker_index <<
                            " could not be verified and was not added to the memory pool, reason: " <<
-                           print_tx_verification_context(tvc, &deregister_tx));
+                           print_tx_verification_context(tvc, &state_change_tx));
             }
           }
           else
           {
-            LOG_PRINT_L1("Failed to add deregister to tx extra for height: "
-                         << vote.block_height << " and service node: " << vote.deregister.worker_index);
+            LOG_PRINT_L1("Failed to add state change to tx extra for height: "
+                         << vote.block_height << " and service node: " << vote.state_change.worker_index);
           }
         }
       }
