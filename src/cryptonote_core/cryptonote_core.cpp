@@ -2199,7 +2199,7 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
   bool core::add_service_node_vote(const service_nodes::quorum_vote_t& vote, vote_verification_context &vvc)
   {
-    bool result = m_quorum_cop.handle_vote(vote, vvc, m_service_node ? &m_service_node_pubkey : nullptr);
+    bool result = m_quorum_cop.handle_vote(vote, vvc);
     return result;
   }
   //-----------------------------------------------------------------------------------------------

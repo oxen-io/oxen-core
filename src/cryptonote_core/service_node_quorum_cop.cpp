@@ -195,7 +195,7 @@ namespace service_nodes
                                                                        my_pubkey,
                                                                        my_seckey);
               cryptonote::vote_verification_context vvc = {};
-              if (!handle_vote(vote, vvc, &my_pubkey))
+              if (!handle_vote(vote, vvc))
                 LOG_ERROR("Failed to add uptime deregister vote reason: " << print_vote_verification_context(vvc, &vote));
             }
           }
@@ -250,7 +250,7 @@ namespace service_nodes
                                                           my_seckey);
 
                 cryptonote::vote_verification_context vvc = {};
-                if (!handle_vote(vote, vvc, &my_pubkey))
+                if (!handle_vote(vote, vvc))
                   LOG_ERROR("Failed to add checkpoint deregister vote reason: " << print_vote_verification_context(vvc, &vote));
               }
             }
@@ -303,7 +303,7 @@ namespace service_nodes
                   vote.signature      = make_signature_from_vote(vote, my_pubkey, my_seckey);
 
                   cryptonote::vote_verification_context vvc = {};
-                  if (!handle_vote(vote, vvc, &my_pubkey))
+                  if (!handle_vote(vote, vvc))
                     LOG_ERROR("Failed to add checkpoint vote reason: " << print_vote_verification_context(vvc, nullptr));
                 }
               }
@@ -333,7 +333,7 @@ namespace service_nodes
     m_vote_pool.remove_used_votes(hf_version, txs);
   }
 
-  bool quorum_cop::handle_vote(quorum_vote_t const &vote, cryptonote::vote_verification_context &vvc, crypto::public_key const *my_pubkey)
+  bool quorum_cop::handle_vote(quorum_vote_t const &vote, cryptonote::vote_verification_context &vvc)
   {
     vvc = {};
     quorum_type desired_quorum_type = quorum_type::invalid;
@@ -376,7 +376,7 @@ namespace service_nodes
     }
 
     uint64_t latest_height             = std::max(m_core.get_current_blockchain_height(), m_core.get_target_blockchain_height());
-    std::vector<pool_vote_entry> votes = m_vote_pool.add_pool_vote_if_unique(latest_height, vote, vvc, *quorum, my_pubkey);
+    std::vector<pool_vote_entry> votes = m_vote_pool.add_pool_vote_if_unique(latest_height, vote, vvc, *quorum);
     bool result                        = !vvc.m_verification_failed;
 
     if (!vvc.m_added_to_pool) // NOTE: Not unique vote
