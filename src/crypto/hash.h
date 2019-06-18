@@ -30,7 +30,7 @@
 
 #pragma once
 
-#include <stddef.h>
+#include <cstddef>
 #include <iostream>
 
 #include "generic-ops.h"

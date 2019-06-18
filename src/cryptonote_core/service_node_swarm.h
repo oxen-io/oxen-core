@@ -19,16 +19,20 @@ namespace service_nodes {
         excess_pool_snode(crypto::public_key public_key, swarm_id_t swarm_id) : public_key{public_key}, swarm_id{swarm_id} {}
     };
 
-    void calc_swarm_changes(swarm_snode_map_t& swarm_to_snodes, uint64_t seed);
+    using changed_t = std::unordered_map<crypto::public_key, swarm_id_t>;
+
+    // Calculates any needed swarm changes and returns the pubkeys/new swarm of any snodes that were
+    // reassigned
+    changed_t calc_swarm_changes(swarm_snode_map_t& swarm_to_snodes, uint64_t seed);
 
 #ifdef UNIT_TEST
     size_t calc_excess(const swarm_snode_map_t &swarm_to_snodes);
     size_t calc_threshold(const swarm_snode_map_t &swarm_to_snodes);
-    void create_new_swarm_from_excess(swarm_snode_map_t &swarm_to_snodes, std::mt19937_64 &mt);
+    void create_new_swarm_from_excess(swarm_snode_map_t &swarm_to_snodes, std::mt19937_64 &mt, changed_t &changed);
     void calc_swarm_sizes(const swarm_snode_map_t &swarm_to_snodes, std::vector<swarm_size> &sorted_swarm_sizes);
-    void assign_snodes(const std::vector<crypto::public_key> &snode_pubkeys, swarm_snode_map_t &swarm_to_snodes, std::mt19937_64 &mt, size_t percentile);
+    void assign_snodes(const std::vector<crypto::public_key> &snode_pubkeys, swarm_snode_map_t &swarm_to_snodes, std::mt19937_64 &mt, size_t percentile, changed_t &changed);
     void get_excess_pool(size_t threshold, const swarm_snode_map_t& swarm_to_snodes, std::vector<excess_pool_snode>& pool_snodes, size_t& excess);
     const excess_pool_snode& pick_from_excess_pool(const std::vector<excess_pool_snode>& excess_pool, std::mt19937_64 &mt);
-    void remove_excess_snode_from_swarm(const excess_pool_snode& excess_snode, swarm_snode_map_t &swarm_to_snodes);
+    void remove_excess_snode_from_swarm(const excess_pool_snode& excess_snode, swarm_snode_map_t &swarm_to_snodes, changed_t &changed);
 #endif
 }

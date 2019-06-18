@@ -51,16 +51,14 @@ namespace cryptonote
 
   struct loki_miner_tx_context // NOTE(loki): All the custom fields required by Loki to use construct_miner_tx
   {
-    using stake_portions = uint64_t;
+    using stake_portions        = uint64_t;
+    using winner_and_portions_t = std::pair<crypto::public_key, std::vector<std::pair<cryptonote::account_public_address, stake_portions>>>;
 
-    loki_miner_tx_context(network_type type                = MAINNET,
-                          crypto::public_key const &winner = crypto::null_pkey,
-                          std::vector<std::pair<account_public_address, stake_portions>> const &winner_info = {});
+    loki_miner_tx_context(network_type type = MAINNET, winner_and_portions_t winner_and_portions = {crypto::null_pkey, {}});
 
-    network_type                                                   nettype;
-    crypto::public_key                                             snode_winner_key;
-    std::vector<std::pair<account_public_address, stake_portions>> snode_winner_info;  // NOTE: If empty we use service_nodes::null_winner
-    uint64_t                                                       batched_governance; // NOTE: 0 until hardfork v10, then use blockchain::calc_batched_governance_reward
+    network_type          nettype;
+    winner_and_portions_t winner_and_portions;
+    uint64_t              batched_governance; // NOTE: 0 until hardfork v10, then use blockchain::calc_batched_governance_reward
   };
 
   bool construct_miner_tx(
@@ -73,7 +71,7 @@ namespace cryptonote
       transaction& tx,
       const blobdata& extra_nonce = blobdata(),
       uint8_t hard_fork_version = 1,
-      const loki_miner_tx_context &miner_context = {});
+      loki_miner_tx_context miner_context = {});
 
   struct block_reward_parts
   {

@@ -89,7 +89,7 @@ namespace service_nodes
     return excess_pool[idx];
   }
 
-  prod_static void remove_excess_snode_from_swarm(const excess_pool_snode& excess_snode, swarm_snode_map_t &swarm_to_snodes)
+  prod_static void remove_excess_snode_from_swarm(const excess_pool_snode& excess_snode, swarm_snode_map_t &swarm_to_snodes, changed_t &changed)
   {
     auto &swarm_sn_vec = swarm_to_snodes[excess_snode.swarm_id];
     swarm_sn_vec.erase(std::remove(swarm_sn_vec.begin(), swarm_sn_vec.end(), excess_snode.public_key), swarm_sn_vec.end());
@@ -120,7 +120,7 @@ namespace service_nodes
     }
   }
 
-  prod_static void create_new_swarm_from_excess(swarm_snode_map_t &swarm_to_snodes, std::mt19937_64 &mt)
+  prod_static void create_new_swarm_from_excess(swarm_snode_map_t &swarm_to_snodes, std::mt19937_64 &mt, changed_t &changed)
   {
     const bool has_starving_swarms = std::any_of(swarm_to_snodes.begin(),
                                                  swarm_to_snodes.end(),
@@ -148,9 +148,11 @@ namespace service_nodes
         }
         const auto& random_excess_snode = pick_from_excess_pool(pool_snodes, mt);
         new_swarm_snodes.push_back(random_excess_snode.public_key);
-        remove_excess_snode_from_swarm(random_excess_snode, swarm_to_snodes);
+        remove_excess_snode_from_swarm(random_excess_snode, swarm_to_snodes, changed);
       }
       const auto new_swarm_id = get_new_swarm_id(swarm_to_snodes);
+      for (auto &pk : new_swarm_snodes)
+        changed[pk] = new_swarm_id;
       swarm_to_snodes.emplace(new_swarm_id, std::move(new_swarm_snodes));
       LOG_PRINT_L2("Created new swarm from excess: " << new_swarm_id);
     }
@@ -173,7 +175,7 @@ namespace service_nodes
 
   /// Assign each snode from snode_pubkeys into the FILL_SWARM_LOWER_PERCENTILE percentile of swarms
   /// and run the excess/threshold logic after each assignment to ensure new swarms are generated when required.
-  prod_static void assign_snodes(const std::vector<crypto::public_key> &snode_pubkeys, swarm_snode_map_t &swarm_to_snodes, std::mt19937_64 &mt, size_t percentile)
+  prod_static void assign_snodes(const std::vector<crypto::public_key> &snode_pubkeys, swarm_snode_map_t &swarm_to_snodes, std::mt19937_64 &mt, size_t percentile, changed_t &changed)
   {
     assert(percentile <= 100);
     std::vector<swarm_size> sorted_swarm_sizes;
@@ -196,18 +198,19 @@ namespace service_nodes
       const size_t random_idx = uniform_distribution_portable(mt, upper_index + 1);
       const swarm_id_t swarm_id = sorted_swarm_sizes[random_idx].swarm_id;
       swarm_to_snodes[swarm_id].push_back(sn_pk);
+      changed[sn_pk] = swarm_id;
       /// run the excess/threshold round after each additional snode
-      create_new_swarm_from_excess(swarm_to_snodes, mt);
+      create_new_swarm_from_excess(swarm_to_snodes, mt, changed);
     }
   }
 
-  void calc_swarm_changes(swarm_snode_map_t &swarm_to_snodes, uint64_t seed)
+  changed_t calc_swarm_changes(swarm_snode_map_t &swarm_to_snodes, uint64_t seed)
   {
 
     if (swarm_to_snodes.size() == 0)
     {
       // nothing to do
-      return;
+      return {};
     }
 
     std::mt19937_64 mersenne_twister(seed);
@@ -229,8 +232,10 @@ namespace service_nodes
       LOG_PRINT_L2("Created initial swarm " << new_swarm_id);
     }
 
+    changed_t changed;
+
     /// 1. Assign new registered snodes
-    assign_snodes(unassigned_snodes, swarm_to_snodes, mersenne_twister, FILL_SWARM_LOWER_PERCENTILE);
+    assign_snodes(unassigned_snodes, swarm_to_snodes, mersenne_twister, FILL_SWARM_LOWER_PERCENTILE, changed);
     LOG_PRINT_L2("After assignment:");
     for (const auto &entry : swarm_to_snodes)
     {
@@ -264,10 +269,11 @@ namespace service_nodes
           if (insufficient_excess)
             break;
           const auto& excess_snode = pick_from_excess_pool(excess_pool, mersenne_twister);
-          remove_excess_snode_from_swarm(excess_snode, swarm_to_snodes);
+          remove_excess_snode_from_swarm(excess_snode, swarm_to_snodes, changed);
           /// Add public key to poor swarm
           poor_swarm_snodes.push_back(excess_snode.public_key);
-          LOG_PRINT_L2("Stolen 1 snode from " << excess_snode.public_key << " and donated to " << swarm.swarm_id);
+          changed[excess_snode.public_key] = swarm.swarm_id;
+          LOG_PRINT_L2("Stolen 1 snode " << excess_snode.public_key << " and donated to " << swarm.swarm_id);
         } while (poor_swarm_snodes.size() < MIN_SWARM_SIZE);
 
         /// If there is not enough excess for the current swarm,
@@ -278,7 +284,7 @@ namespace service_nodes
     }
 
     /// 3. New swarm creation
-    create_new_swarm_from_excess(swarm_to_snodes, mersenne_twister);
+    create_new_swarm_from_excess(swarm_to_snodes, mersenne_twister, changed);
 
     /// 4. If there is a swarm with less than MIN_SWARM_SIZE, decommission that swarm.
     if (swarm_to_snodes.size() > 1)
@@ -299,7 +305,7 @@ namespace service_nodes
         /// Remove swarm from map
         swarm_to_snodes.erase(it);
         /// Assign snodes to the 0 percentile, i.e. the smallest swarms
-        assign_snodes(decommissioned_snodes, swarm_to_snodes, mersenne_twister, DECOMMISSIONED_REDISTRIBUTION_LOWER_PERCENTILE);
+        assign_snodes(decommissioned_snodes, swarm_to_snodes, mersenne_twister, DECOMMISSIONED_REDISTRIBUTION_LOWER_PERCENTILE, changed);
       }
     }
 
@@ -309,5 +315,7 @@ namespace service_nodes
     {
       LOG_PRINT_L2(entry.first << ": " << entry.second.size());
     }
+
+    return changed;
   }
 }

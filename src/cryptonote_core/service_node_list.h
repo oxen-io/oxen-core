@@ -54,7 +54,10 @@ namespace service_nodes
       uint8_t            version;
       crypto::public_key key_image_pub_key;
       crypto::key_image  key_image;
-      uint64_t           amount;
+      uint64_t           amount = 0;
+
+      contribution_t() = default;
+      contribution_t(crypto::public_key pub_key, crypto::key_image key_image, uint64_t amount) : key_image_pub_key{pub_key}, key_image{key_image}, amount{amount} {}
 
       BEGIN_SERIALIZE_OBJECT()
         VARINT_FIELD(version)
@@ -66,19 +69,14 @@ namespace service_nodes
 
     struct contributor_t
     {
-      uint8_t  version;
-      uint64_t amount;
-      uint64_t reserved;
+      uint8_t  version = 0;
+      uint64_t amount = 0;
+      uint64_t reserved = 0;
       cryptonote::account_public_address address;
       std::vector<contribution_t> locked_contributions;
 
       contributor_t() = default;
-      contributor_t(uint64_t reserved_, const cryptonote::account_public_address& address_) : reserved(reserved_), address(address_)
-      {
-        *this    = {};
-        reserved = reserved_;
-        address  = address_;
-      }
+      contributor_t(uint8_t version, const cryptonote::account_public_address& address, uint64_t reserved = 0) : version{version}, reserved{reserved}, address{address} {}
 
       BEGIN_SERIALIZE_OBJECT()
         VARINT_FIELD(version)
@@ -108,6 +106,7 @@ namespace service_nodes
 
     service_node_info() = default;
     bool is_fully_funded() const { return total_contributed >= staking_requirement; }
+    bool is_active() const { return is_fully_funded(); }
     size_t total_num_locked_contributions() const;
 
     int                                dummy; // FIXME(doyle)
@@ -139,6 +138,10 @@ namespace service_nodes
     crypto::public_key pubkey;
     service_node_info  info;
 
+    service_node_pubkey_info() = default;
+    service_node_pubkey_info(const crypto::public_key &pubkey, const service_node_info &info)
+      : pubkey{pubkey}, info{info} {}
+
     BEGIN_SERIALIZE_OBJECT()
       FIELD(pubkey)
       FIELD(info)
@@ -150,6 +153,9 @@ namespace service_nodes
     uint8_t           version;
     crypto::key_image key_image;
     uint64_t          unlock_height;
+
+    key_image_blacklist_entry() = default;
+    key_image_blacklist_entry(uint8_t version, const crypto::key_image key_image, uint64_t unlock_height) : version{version}, key_image{key_image}, unlock_height{unlock_height} {}
 
     BEGIN_SERIALIZE()
       VARINT_FIELD(version)
@@ -171,6 +177,9 @@ namespace service_nodes
     }
   }
 
+  using pubkey_and_sninfo     =          std::pair<crypto::public_key, std::shared_ptr<service_node_info>>;
+  using service_nodes_infos_t = std::unordered_map<crypto::public_key, std::shared_ptr<service_node_info>>;
+
   class service_node_list
     : public cryptonote::BlockAddedHook,
       public cryptonote::BlockchainDetachedHook,
@@ -183,8 +192,8 @@ namespace service_nodes
     void blockchain_detached(uint64_t height) override;
     void init() override;
     bool validate_miner_tx(const crypto::hash& prev_id, const cryptonote::transaction& miner_tx, uint64_t height, int hard_fork_version, cryptonote::block_reward_parts const &base_reward) const override;
-    std::vector<std::pair<cryptonote::account_public_address, uint64_t>> get_winner_addresses_and_portions() const;
-    crypto::public_key select_winner() const;
+    using winner_and_portions_t = std::pair<crypto::public_key, std::vector<std::pair<cryptonote::account_public_address, uint64_t>>>;
+    winner_and_portions_t select_winner_and_portions() const;
 
     bool is_service_node(const crypto::public_key& pubkey) const;
     bool is_key_image_locked(crypto::key_image const &check_image, uint64_t *unlock_height = nullptr, service_node_info::contribution_t *the_locked_contribution = nullptr) const;
@@ -195,7 +204,8 @@ namespace service_nodes
     std::shared_ptr<const testing_quorum> get_testing_quorum(quorum_type type, uint64_t height) const;
 
     std::vector<service_node_pubkey_info> get_service_node_list_state(const std::vector<crypto::public_key> &service_node_pubkeys) const;
-    const std::vector<key_image_blacklist_entry> &get_blacklisted_key_images() const { return m_transient_state.key_image_blacklist; }
+    bool is_key_image_blacklisted (const crypto::key_image &ki) const;
+    std::vector<key_image_blacklist_entry> get_blacklisted_key_images() const;
 
     void set_db_pointer(cryptonote::BlockchainDB* db);
     void set_my_service_node_keys(crypto::public_key const *pub_key);
@@ -298,14 +308,14 @@ namespace service_nodes
     {
       uint8_t        version;
       uint64_t       height;
-      testing_quorum quorums[(size_t)quorum_type::count];
+      testing_quorum quorums[static_cast<size_t>(quorum_type::count)];
 
       BEGIN_SERIALIZE()
         FIELD(version)
         FIELD(height)
-        FIELD_N("deregister_quorum", quorums[(size_t)quorum_type::deregister])
+        FIELD_N("deregister_quorum", quorums[static_cast<size_t>(quorum_type::deregister)])
         if (version >= service_node_info::version_3_checkpointing)
-          FIELD_N("checkpointing_quorum", quorums[(size_t)quorum_type::checkpointing])
+          FIELD_N("checkpointing_quorum", quorums[static_cast<size_t>(quorum_type::checkpointing)])
       END_SERIALIZE()
     };
 
@@ -337,8 +347,6 @@ namespace service_nodes
     bool process_deregistration_tx(const cryptonote::transaction& tx, uint64_t block_height);
     void process_block(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs);
 
-    std::vector<crypto::public_key> get_service_nodes_pubkeys() const;
-
     bool contribution_tx_output_has_correct_unlock_time(const cryptonote::transaction& tx, size_t i, uint64_t block_height) const;
     void generate_quorums(cryptonote::block const &block);
 
@@ -354,14 +362,24 @@ namespace service_nodes
     cryptonote::BlockchainDB      *m_db;
 
     using block_height = uint64_t;
-    struct
+    struct transient_state
     {
-      std::unordered_map<crypto::public_key, service_node_info>   service_nodes_infos;
-      std::vector<key_image_blacklist_entry>                      key_image_blacklist;
+      service_nodes_infos_t                                       service_nodes_infos;
+      std::unordered_map<crypto::key_image, uint64_t>             key_image_blacklist;
       std::map<block_height, quorum_manager>                      quorum_states;
       std::list<std::unique_ptr<rollback_event>>                  rollback_events;
       block_height                                                height;
-    } m_transient_state;
+
+      // Returns a filtered, pubkey-sorted vector of service nodes that are fully funded.
+      std::vector<pubkey_and_sninfo> active_service_nodes_infos() const;
+    };
+    transient_state m_transient_state;
+
+    template <typename T>
+    void load_transient(const rollback_event_variant &event)
+    {
+      m_transient_state.rollback_events.emplace_back(new T(boost::get<T>(event)));
+    }
   };
 
   bool reg_tx_extract_fields(const cryptonote::transaction& tx, std::vector<cryptonote::account_public_address>& addresses, uint64_t& portions_for_operator, std::vector<uint64_t>& portions, uint64_t& expiration_timestamp, crypto::public_key& service_node_key, crypto::signature& signature, crypto::public_key& tx_pub_key);

@@ -1558,9 +1558,7 @@ bool Blockchain::create_block_template(block& b, const crypto::hash *from_block,
    */
   //make blocks coin-base tx looks close to real coinbase tx to get truthful blob weight
   uint8_t hf_version = b.major_version;
-  loki_miner_tx_context miner_tx_context(m_nettype,
-                                         m_service_node_list.select_winner(),
-                                         m_service_node_list.get_winner_addresses_and_portions());
+  loki_miner_tx_context miner_tx_context(m_nettype, m_service_node_list.select_winner_and_portions());
 
   if (!calc_batched_governance_reward(height, miner_tx_context.batched_governance))
   {
@@ -2925,15 +2923,11 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
       //
       if (hf_version >= cryptonote::network_version_11_infinite_staking)
       {
-        const std::vector<service_nodes::key_image_blacklist_entry> &blacklist = m_service_node_list.get_blacklisted_key_images();
-        for (const auto &entry : blacklist)
+        if (m_service_node_list.is_key_image_blacklisted(in_to_key.k_image))
         {
-          if (in_to_key.k_image == entry.key_image) // Check if key image is on the blacklist
-          {
-            MERROR_VER("Key image: " << epee::string_tools::pod_to_hex(entry.key_image) << " is blacklisted by the service node network");
-            tvc.m_key_image_blacklisted = true;
-            return false;
-          }
+          MERROR_VER("Key image: " << epee::string_tools::pod_to_hex(in_to_key.k_image) << " is blacklisted by the service node network");
+          tvc.m_key_image_blacklisted = true;
+          return false;
         }
 
         uint64_t unlock_height = 0;

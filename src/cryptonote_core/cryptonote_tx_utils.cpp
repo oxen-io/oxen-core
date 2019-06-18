@@ -223,13 +223,9 @@ namespace cryptonote
     return reward;
   }
 
-  loki_miner_tx_context::loki_miner_tx_context(network_type type, crypto::public_key const &winner, std::vector<std::pair<account_public_address, stake_portions>> const &winner_info)
-    : nettype(type)
-    , snode_winner_key(winner)
-    , snode_winner_info(winner_info)
-    , batched_governance(0)
-  {
-  }
+  loki_miner_tx_context::loki_miner_tx_context(network_type type, service_nodes::service_node_list::winner_and_portions_t winner_and_portions)
+    : nettype{type}, winner_and_portions{std::move(winner_and_portions)}
+  {}
 
   bool construct_miner_tx(
       size_t height,
@@ -241,7 +237,7 @@ namespace cryptonote
       transaction& tx,
       const blobdata& extra_nonce,
       uint8_t hard_fork_version,
-      const loki_miner_tx_context &miner_tx_context)
+      loki_miner_tx_context miner_tx_context)
   {
     const network_type nettype = miner_tx_context.nettype;
 
@@ -252,10 +248,10 @@ namespace cryptonote
     tx.type    = txtype::standard;
     tx.version = transaction::get_min_version_for_hf(hard_fork_version, nettype);
 
-    const crypto::public_key                                       &service_node_key  = miner_tx_context.snode_winner_key;
-    const std::vector<std::pair<account_public_address, uint64_t>> &service_node_info =
-      miner_tx_context.snode_winner_info.empty() ?
-      service_nodes::null_winner : miner_tx_context.snode_winner_info;
+    const auto &service_node_key = miner_tx_context.winner_and_portions.first;
+    const auto &service_node_info =
+      miner_tx_context.winner_and_portions.second.empty() ?
+      service_nodes::null_winner : miner_tx_context.winner_and_portions.second;
 
     keypair txkey = keypair::generate(hw::get_device("default"));
     add_tx_pub_key_to_extra(tx, txkey.pub);
@@ -279,7 +275,7 @@ namespace cryptonote
     loki_block_reward_context block_reward_context = {};
     block_reward_context.fee                       = fee;
     block_reward_context.height                    = height;
-    block_reward_context.snode_winner_info         = miner_tx_context.snode_winner_info;
+    block_reward_context.snode_winner_info         = miner_tx_context.winner_and_portions.second;
     block_reward_context.batched_governance        = miner_tx_context.batched_governance;
 
     block_reward_parts reward_parts;

@@ -786,9 +786,9 @@ namespace cryptonote
      std::shared_ptr<const service_nodes::testing_quorum> get_testing_quorum(service_nodes::quorum_type type, uint64_t height) const;
 
      /**
-      * @brief Get a non owning reference to the list of blacklisted key images
+      * @brief Get a copy of the list of all blacklisted key images
       */
-     const std::vector<service_nodes::key_image_blacklist_entry> &get_service_node_blacklisted_key_images() const;
+     std::vector<service_nodes::key_image_blacklist_entry> get_service_node_blacklisted_key_images() const;
 
      /**
       * @brief get a snapshot of the service node list state at the time of the call.
