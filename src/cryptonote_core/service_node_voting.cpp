@@ -482,8 +482,7 @@ namespace service_nodes
   std::vector<pool_vote_entry> voting_pool::add_pool_vote_if_unique(uint64_t latest_height,
                                                                     const quorum_vote_t &vote,
                                                                     cryptonote::vote_verification_context &vvc,
-                                                                    const service_nodes::testing_quorum &quorum,
-                                                                    const crypto::public_key *my_pubkey)
+                                                                    const service_nodes::testing_quorum &quorum)
   {
     std::vector<pool_vote_entry> result = {};
 

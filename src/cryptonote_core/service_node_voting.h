@@ -155,8 +155,7 @@ namespace service_nodes
     std::vector<pool_vote_entry> add_pool_vote_if_unique(uint64_t latest_height,
                                                          const quorum_vote_t &vote,
                                                          cryptonote::vote_verification_context &vvc,
-                                                         const service_nodes::testing_quorum &quorum,
-                                                         const crypto::public_key *my_pubkey);
+                                                         const service_nodes::testing_quorum &quorum);
 
     // TODO(loki): Review relay behaviour and all the cases when it should be triggered
     void                       set_relayed           (const std::vector<quorum_vote_t>& votes);
