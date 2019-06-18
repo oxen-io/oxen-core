@@ -147,7 +147,10 @@ namespace service_nodes
     };
     std::vector<obligations_pool_entry> m_obligations_pool;
 
-    struct checkpoint_pool_entry
+  private:
+    std::unordered_map<state_change_pool_key, std::vector<pool_vote_entry>, state_change_pool_key::hash> m_state_change_pool;
+
+    struct checkpoint_pool_key
     {
       explicit checkpoint_pool_entry(const quorum_vote_t &vote) : height{vote.block_height}, hash{vote.checkpoint.block_hash} {}
       checkpoint_pool_entry(uint64_t height, crypto::hash const &hash): height(height), hash(hash) {}
@@ -157,7 +160,7 @@ namespace service_nodes
 
       bool operator==(const checkpoint_pool_entry &e) const { return height == e.height && hash == e.hash; }
     };
-    std::vector<checkpoint_pool_entry> m_checkpoint_pool;
+    std::unordered_map<checkpoint_pool_key, std::vector<pool_vote_entry>, checkpoint_pool_key::hash_t> m_checkpoint_pool;
 
     mutable epee::critical_section m_lock;
   };

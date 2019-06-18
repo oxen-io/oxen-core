@@ -259,7 +259,7 @@ namespace cryptonote
     struct vote
     {
       vote() = default;
-      vote(crypto::signature const &signature, uint32_t validator_index): signature(signature), validator_index(validator_index) { }
+      vote(crypto::signature signature, uint32_t validator_index) : signature{std::move(signature)}, validator_index(validator_index) { }
       crypto::signature signature;
       uint32_t          validator_index;
 
@@ -323,8 +323,8 @@ namespace cryptonote
     }
 
     BEGIN_SERIALIZE()
-      FIELD(block_height)
-      FIELD(service_node_index)
+      VARINT_FIELD(block_height)
+      VARINT_FIELD(service_node_index)
       FIELD(votes)
     END_SERIALIZE()
   };
