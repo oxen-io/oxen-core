@@ -2701,7 +2701,7 @@ namespace cryptonote
   }
   //------------------------------------------------------------------------------------------------------------------------------
   template<typename response>
-  void core_rpc_server::fill_sn_response_entry(response &entry, const service_nodes::service_node_pubkey_info &sn_info) {
+  void core_rpc_server::fill_sn_response_entry(response &entry, const service_nodes::service_node_pubkey_info &sn_info, uint64_t current_height) {
 
     const auto proof = m_core.get_uptime_proof(sn_info.pubkey);
 
@@ -2711,6 +2711,9 @@ namespace cryptonote
     entry.last_reward_block_height      = sn_info.info.last_reward_block_height;
     entry.last_reward_transaction_index = sn_info.info.last_reward_transaction_index;
     entry.last_uptime_proof             = proof.timestamp;
+    entry.active                        = sn_info.info.is_active();
+    entry.downtime_credit_blocks        = service_nodes::quorum_cop::calculate_decommission_credit(sn_info.info, current_height);
+    entry.decommission_count            = sn_info.info.decommission_count;
     entry.service_node_version          = {proof.version_major, proof.version_minor, proof.version_patch};
     entry.public_ip                     = string_tools::get_ip_string_from_int32(sn_info.info.public_ip);
     entry.storage_port                  = sn_info.info.storage_port;
@@ -2763,11 +2766,11 @@ namespace cryptonote
       }
     }
 
-    std::vector<service_nodes::service_node_pubkey_info> pubkey_info_list = m_core.get_service_node_list_state(pubkeys);
+    auto pubkey_info_list = m_core.get_service_node_list_state(pubkeys);
 
     res.status = CORE_RPC_STATUS_OK;
     res.service_node_states.reserve(pubkey_info_list.size());
-    
+
     if (req.include_json)
     {
       res.as_json = "{\n}";
@@ -2782,7 +2785,7 @@ namespace cryptonote
     for (auto &pubkey_info : pubkey_info_list)
     {
       COMMAND_RPC_GET_SERVICE_NODES::response::entry entry = {};
-      fill_sn_response_entry(entry, pubkey_info);
+      fill_sn_response_entry(entry, pubkey_info, res.height);
 
       res.service_node_states.push_back(entry);
     }
@@ -2819,10 +2822,12 @@ namespace cryptonote
 
     res.service_node_states.reserve(sn_infos.size());
 
+    uint64_t height = m_core.get_current_blockchain_height();
+
     for (auto &pubkey_info : sn_infos) {
       COMMAND_RPC_GET_N_SERVICE_NODES::response::entry entry = {res.fields};
 
-      fill_sn_response_entry(entry, pubkey_info);
+      fill_sn_response_entry(entry, pubkey_info, height);
 
       res.service_node_states.push_back(entry);
     }

@@ -94,7 +94,7 @@ namespace service_nodes
     // block_height and transaction_index are to record when the service node last received a reward.
     uint64_t                           last_reward_block_height;
     uint32_t                           last_reward_transaction_index;
-    int8_t                             decommission_count; // How many times this service node has been decommissioned
+    uint32_t                           decommission_count; // How many times this service node has been decommissioned
     int64_t                            active_since_height; // if decommissioned: equal to the *negative* height at which you became active before the decommission
     uint64_t                           last_decommission_height; // The height at which the last (or current!) decommissioning started, or 0 if never decommissioned
     std::vector<contributor_t>         contributors;

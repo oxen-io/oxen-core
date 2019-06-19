@@ -202,36 +202,16 @@ namespace service_nodes
                   vote_for_state = new_state::recommission;
                 }
                 else {
-                  // Not online; we need to calculate the credit.  If currently decommissioned, we
-                  // need the credit currently being burned (i.e. from the period up to
-                  // decommissioning block).  Otherwise (i.e. currently active) we calculate the
-                  // credit earned from the activation (or last recommission) until the current
-                  // height.
-                  int64_t credit_blocks;
-                  if (info.is_decommissioned()) // decommissioned; the negative of active_since_height tells us when the period leading up to the current decommission started
-                    credit_blocks = int64_t(info.last_decommission_height) - (-info.active_since_height);
-                  else
-                    credit_blocks = int64_t(latest_height) - int64_t(info.active_since_height);
-
-                  int64_t credit = 0;
-                  if (credit_blocks >= 0) {
-                    credit = credit_blocks * DECOMMISSION_CREDIT_PER_DAY / BLOCKS_EXPECTED_IN_HOURS(24);
-
-                    if (info.decommission_count <= info.is_decommissioned()) // Has never been decommissioned (or is currently in the first decommission), so add initial starting credit
-                      credit += DECOMMISSION_INITIAL_CREDIT;
-                    if (credit > DECOMMISSION_MAX_CREDIT)
-                      credit = DECOMMISSION_MAX_CREDIT; // Cap the available decommission credit blocks if above the max
-                  }
+                  int64_t credit = calculate_decommission_credit(info, latest_height);
 
                   if (info.is_decommissioned()) {
-                    int64_t blocks_offline = int64_t(latest_height) - int64_t(info.last_decommission_height);
-                    if (credit >= blocks_offline)
-                      continue; // Still in decommissioning credit period: leave decommissioned
+                    if (credit >= 0)
+                      continue; // Still have some decommission credit left: leave decommissioned
 
                     vote_for_state = new_state::deregister; // Credit ran out!
                   } else {
-                    // Not currently decommissioned: if the snode has enough credit, decommission;
-                    // otherwise deregister.
+                    // Not currently decommissioned: if the snode meets the minimum credit
+                    // requirement, decommission; otherwise deregister.
                     vote_for_state = credit >= DECOMMISSION_MINIMUM ? new_state::decommission : new_state::deregister;
                   }
                 }
@@ -579,5 +559,36 @@ namespace service_nodes
       return {};
 
     return it->second;
+  }
+
+  // Calculate the decommission credit for a service node.  If the SN is current decommissioned this
+  // returns the number of blocks remaining in the credit; otherwise this is the number of currently
+  // accumulated blocks.
+  int64_t quorum_cop::calculate_decommission_credit(const service_node_info &info, uint64_t current_height)
+  {
+    // If currently decommissioned, we need to know how long it was up before being decommissioned;
+    // otherwise we need to know how long since it last become active until now.
+    int64_t blocks_up;
+    if (info.is_decommissioned()) // decommissioned; the negative of active_since_height tells us when the period leading up to the current decommission started
+      blocks_up = int64_t(info.last_decommission_height) - (-info.active_since_height);
+    else
+      blocks_up = int64_t(current_height) - int64_t(info.active_since_height);
+
+    // Now we calculate the credit earned from being up for `blocks_up` blocks
+    int64_t credit = 0;
+    if (blocks_up >= 0) {
+      credit = blocks_up * DECOMMISSION_CREDIT_PER_DAY / BLOCKS_EXPECTED_IN_HOURS(24);
+
+      if (info.decommission_count <= info.is_decommissioned()) // Has never been decommissioned (or is currently in the first decommission), so add initial starting credit
+        credit += DECOMMISSION_INITIAL_CREDIT;
+      if (credit > DECOMMISSION_MAX_CREDIT)
+        credit = DECOMMISSION_MAX_CREDIT; // Cap the available decommission credit blocks if above the max
+    }
+
+    // If currently decommissioned, remove any used credits used for the current downtime
+    if (info.is_decommissioned())
+      credit -= int64_t(current_height) - int64_t(info.last_decommission_height);
+
+    return credit;
   }
 }

@@ -41,6 +41,8 @@ namespace cryptonote
 
 namespace service_nodes
 {
+  struct service_node_info;
+
   struct proof_info
   {
       uint64_t timestamp;
@@ -86,6 +88,8 @@ namespace service_nodes
     bool       prune_uptime_proof();
     proof_info get_uptime_proof(const crypto::public_key &pubkey) const;
     void       generate_uptime_proof_request(cryptonote::NOTIFY_UPTIME_PROOF::request& req) const;
+
+    static int64_t calculate_decommission_credit(const service_node_info &info, uint64_t current_height);
 
   private:
     void process_quorums(cryptonote::block const &block);

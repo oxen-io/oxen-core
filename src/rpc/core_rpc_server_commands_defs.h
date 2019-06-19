@@ -2777,6 +2777,9 @@ namespace cryptonote
         uint64_t                  last_reward_block_height;      // The last height at which this Service Node received a reward.
         uint32_t                  last_reward_transaction_index; // When multiple Service Nodes register on the same height, the order the transaction arrive dictate the order you receive rewards.
         uint64_t                  last_uptime_proof;             // The last time this Service Node's uptime proof was relayed by atleast 1 Service Node other than itself in unix epoch time.
+        bool                      active;                        // True if fully funded and not currently decommissioned
+        uint32_t                  decommission_count;            // The number of times the Service Node has been decommissioned since registration
+        int64_t                   downtime_credit_blocks;        // The number of blocks earned towards decommissioning, or the number of blocks remaining until deregistration if currently decommissioned
         std::vector<uint16_t>     service_node_version;          // The major, minor, patch version of the Service Node respectively.
         std::vector<contributor>  contributors;                  // Array of contributors, contributing to this Service Node.
         uint64_t                  total_contributed;             // The total amount of Loki in atomic units contributed to this Service Node.
