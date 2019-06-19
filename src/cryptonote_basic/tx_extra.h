@@ -323,8 +323,8 @@ namespace cryptonote
     }
 
     BEGIN_SERIALIZE()
-      VARINT_FIELD(block_height)
-      VARINT_FIELD(service_node_index)
+      FIELD(block_height)
+      FIELD(service_node_index)
       FIELD(votes)
     END_SERIALIZE()
   };
