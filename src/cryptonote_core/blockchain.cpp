@@ -2831,7 +2831,7 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
   if(pmax_used_block_height)
     *pmax_used_block_height = 0;
 
-  const int hf_version = m_hardfork->get_current_version();
+  const uint8_t hf_version = m_hardfork->get_current_version();
 
   // Min/Max Type/Version Check
   {

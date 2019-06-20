@@ -753,7 +753,7 @@ namespace cryptonote
     return true;
   }
 
-  bool get_service_node_deregister_from_tx_extra(int hf_version, std::vector<uint8_t> const &tx_extra, tx_extra_service_node_deregister_ &deregister)
+  bool get_service_node_deregister_from_tx_extra(uint8_t hf_version, std::vector<uint8_t> const &tx_extra, tx_extra_service_node_deregister_ &deregister)
   {
     if (hf_version >= cryptonote::network_version_12_checkpointing)
     {
@@ -1579,7 +1579,7 @@ namespace cryptonote
   bool get_block_longhash(const block& b, crypto::hash& res, uint64_t height)
   {
     const blobdata bd                 = get_block_hashing_blob(b);
-    const int hf_version              = b.major_version;
+    const uint8_t hf_version              = b.major_version;
     crypto::cn_slow_hash_type cn_type = cn_slow_hash_type::heavy_v1;
 
     if (hf_version >= network_version_11_infinite_staking)

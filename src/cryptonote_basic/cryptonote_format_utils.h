@@ -107,7 +107,7 @@ namespace cryptonote
 
   tx_extra_service_node_deregister_ convert_legacy_tx_extra_deregister                (tx_extra_service_node_deregister_legacy const &legacy);
   bool                              convert_tx_extra_service_node_deregister_to_legacy(tx_extra_service_node_deregister_ const &deregister, tx_extra_service_node_deregister_legacy &legacy);
-  bool                              get_service_node_deregister_from_tx_extra         (int hf_version, std::vector<uint8_t> const &tx_extra, tx_extra_service_node_deregister_ &deregister);
+  bool                              get_service_node_deregister_from_tx_extra         (uint8_t hf_version, std::vector<uint8_t> const &tx_extra, tx_extra_service_node_deregister_ &deregister);
 
   bool get_service_node_register_from_tx_extra(const std::vector<uint8_t>& tx_extra, tx_extra_service_node_register& registration);
   bool get_service_node_pubkey_from_tx_extra(const std::vector<uint8_t>& tx_extra, crypto::public_key& pubkey);

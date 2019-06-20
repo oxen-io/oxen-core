@@ -65,7 +65,7 @@ namespace service_nodes {
     }
   }
 
-  inline quorum_type max_quorum_type_for_hf(int hf_version)
+  inline quorum_type max_quorum_type_for_hf(uint8_t hf_version)
   {
     quorum_type result = (hf_version <= cryptonote::network_version_11_infinite_staking) ? quorum_type::uptime
                                                                                          : quorum_type::checkpointing;
@@ -78,7 +78,7 @@ namespace service_nodes {
   uint64_t get_min_node_contribution            (uint8_t version, uint64_t staking_requirement, uint64_t total_reserved, size_t num_contributions);
   uint64_t get_min_node_contribution_in_portions(uint8_t version, uint64_t staking_requirement, uint64_t total_reserved, size_t num_contributions);
 
-  uint64_t get_staking_requirement(cryptonote::network_type nettype, uint64_t height, int hf_version);
+  uint64_t get_staking_requirement(cryptonote::network_type nettype, uint64_t height, uint8_t hf_version);
 
   uint64_t portions_to_amount(uint64_t portions, uint64_t staking_requirement);
 

@@ -49,7 +49,7 @@
 
 namespace service_nodes
 {
-  static int get_min_service_node_info_version_for_hf(int hf_version)
+  static int get_min_service_node_info_version_for_hf(uint8_t hf_version)
   {
     if (hf_version >= cryptonote::network_version_7 && hf_version <= cryptonote::network_version_9_service_nodes)
       return service_node_info::version_0;
@@ -514,7 +514,7 @@ namespace service_nodes
       return false;
     }
 
-    int hf_version = m_blockchain.get_hard_fork_version(block_height);
+    uint8_t hf_version = m_blockchain.get_hard_fork_version(block_height);
 
     if (!check_service_node_portions(hf_version, service_node_portions)) return false;
 
@@ -701,7 +701,7 @@ namespace service_nodes
       return; // Is not a contribution TX don't need to check it.
 
     parsed_tx_contribution parsed_contribution = {};
-    const int hf_version = m_blockchain.get_hard_fork_version(block_height);
+    const uint8_t hf_version = m_blockchain.get_hard_fork_version(block_height);
     if (!get_contribution(m_blockchain.nettype(), hf_version, tx, block_height, parsed_contribution))
     {
       LOG_PRINT_L1("Contribution TX: Could not decode contribution for service node: " << pubkey << " on height: " << block_height << " for tx: " << cryptonote::get_transaction_hash(tx));
@@ -1386,7 +1386,7 @@ namespace service_nodes
 
   bool service_node_list::store()
   {
-    int hf_version = m_blockchain.get_current_hard_fork_version();
+    uint8_t hf_version = m_blockchain.get_current_hard_fork_version();
     if (hf_version < cryptonote::network_version_9_service_nodes)
       return true;
 
@@ -1619,7 +1619,7 @@ namespace service_nodes
   converted_registration_args convert_registration_args(cryptonote::network_type nettype,
                                                         const std::vector<std::string>& args,
                                                         uint64_t staking_requirement,
-                                                        int hf_version)
+                                                        uint8_t hf_version)
   {
     converted_registration_args result = {};
     if (args.size() % 2 == 0 || args.size() < 3)
@@ -1785,7 +1785,7 @@ namespace service_nodes
   }
 
   bool make_registration_cmd(cryptonote::network_type nettype,
-      int hf_version,
+      uint8_t hf_version,
       uint64_t staking_requirement,
       const std::vector<std::string>& args,
       const crypto::public_key& service_node_pubkey,

@@ -168,8 +168,8 @@ namespace cryptonote
       version_3_per_output_unlock_times,
       version_4_tx_types,
     };
-    static version get_min_version_for_hf(int hf_version, cryptonote::network_type nettype = MAINNET);
-    static version get_max_version_for_hf(int hf_version, cryptonote::network_type nettype = MAINNET);
+    static version get_min_version_for_hf(uint8_t hf_version, cryptonote::network_type nettype = MAINNET);
+    static version get_max_version_for_hf(uint8_t hf_version, cryptonote::network_type nettype = MAINNET);
 
     // tx information
     size_t   version;
@@ -546,7 +546,7 @@ namespace cryptonote
     return result;
   }
 
-  inline enum transaction_prefix::version transaction_prefix::get_max_version_for_hf(int hf_version, cryptonote::network_type nettype)
+  inline enum transaction_prefix::version transaction_prefix::get_max_version_for_hf(uint8_t hf_version, cryptonote::network_type nettype)
   {
     nettype = validate_nettype(nettype);
     if (hf_version >= cryptonote::network_version_7 && hf_version <= cryptonote::network_version_8)
@@ -558,7 +558,7 @@ namespace cryptonote
     return transaction::version_4_tx_types;
   }
 
-  inline enum transaction_prefix::version transaction_prefix::get_min_version_for_hf(int hf_version, cryptonote::network_type nettype)
+  inline enum transaction_prefix::version transaction_prefix::get_min_version_for_hf(uint8_t hf_version, cryptonote::network_type nettype)
   {
     nettype = validate_nettype(nettype);
     if (nettype == MAINNET) // NOTE(loki): Add an exception for mainnet as there are v2's on mainnet.

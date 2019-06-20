@@ -109,7 +109,7 @@ namespace service_nodes
   };
 
   enum struct make_deregister_type { uptime, checkpoint };
-  quorum_vote_t     make_deregister_vote             (int hf_version,
+  quorum_vote_t     make_deregister_vote             (uint8_t hf_version,
                                                       make_deregister_type type,
                                                       uint64_t block_height,
                                                       uint16_t index_in_group,
@@ -160,7 +160,7 @@ namespace service_nodes
     // TODO(loki): Review relay behaviour and all the cases when it should be triggered
     void                       set_relayed           (const std::vector<quorum_vote_t>& votes);
     void                       remove_expired_votes  (uint64_t height);
-    void                       remove_used_votes     (int hf_version, std::vector<cryptonote::transaction> const &txs);
+    void                       remove_used_votes     (uint8_t hf_version, std::vector<cryptonote::transaction> const &txs);
     std::vector<quorum_vote_t> get_relayable_votes   () const;
 
     bool                       has_received_vote_from(quorum_vote_type type, std::vector<crypto::public_key> const &quorum, crypto::public_key const &key, uint64_t height) const;

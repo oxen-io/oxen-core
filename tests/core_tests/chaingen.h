@@ -240,7 +240,7 @@ public:
     bf_hf_version= 1 << 8
   };
 
-  explicit test_generator(int hf_version = 7) : m_hf_version(hf_version) {}
+  explicit test_generator(uint8_t hf_version = 7) : m_hf_version(hf_version) {}
   void get_block_chain(std::vector<block_info>& blockchain,        const crypto::hash& head, size_t n) const;
   void get_block_chain(std::vector<cryptonote::block>& blockchain, const crypto::hash& head, size_t n) const;
   void get_last_n_block_weights(std::vector<uint64_t>& block_weights, const crypto::hash& head, size_t n) const;
@@ -266,7 +266,7 @@ public:
     const cryptonote::account_base& miner_acc, const std::vector<crypto::hash>& tx_hashes, size_t txs_size);
 
 
-  int m_hf_version;
+  uint8_t m_hf_version;
 
 private:
   std::unordered_map<crypto::hash, block_info> m_blocks_info;

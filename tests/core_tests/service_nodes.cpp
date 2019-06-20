@@ -688,7 +688,7 @@ bool sn_test_rollback::test_registrations(cryptonote::core& c, size_t ev_index, 
     const auto dereg_tx = boost::get<cryptonote::transaction>(event_a);
     CHECK_TEST_CONDITION(dereg_tx.get_type() == transaction::type_deregister);
 
-    int hf_version = c.get_blockchain_storage().get_current_hard_fork_version();
+    uint8_t hf_version = c.get_blockchain_storage().get_current_hard_fork_version();
     tx_extra_service_node_deregister_ deregistration;
     get_service_node_deregister_from_tx_extra(hf_version, dereg_tx.extra, deregistration);
 

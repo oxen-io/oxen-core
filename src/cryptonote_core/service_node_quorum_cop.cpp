@@ -328,7 +328,7 @@ namespace service_nodes
     // Otherwise peers will silently drop connection from each other when they
     // go around P2Ping votes due to passing around old votes
     uint64_t const height = cryptonote::get_block_height(block) + 1;
-    int hf_version        = block.major_version;
+    uint8_t hf_version    = block.major_version;
     m_vote_pool.remove_expired_votes(height);
     m_vote_pool.remove_used_votes(hf_version, txs);
   }
@@ -413,7 +413,7 @@ namespace service_nodes
                 return result;
               });
 
-          int hf_version            = m_core.get_blockchain_storage().get_current_hard_fork_version();
+          uint8_t hf_version        = m_core.get_blockchain_storage().get_current_hard_fork_version();
           transaction deregister_tx = {};
           deregister_tx.version     = transaction::get_max_version_for_hf(hf_version, m_core.get_nettype());
           deregister_tx.type        = transaction::type_deregister;

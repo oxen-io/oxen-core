@@ -124,7 +124,7 @@ namespace cryptonote
 
     if (tx_type == transaction::type_deregister)
     {
-      int hf_version = m_blockchain.get_current_hard_fork_version();
+      uint8_t hf_version = m_blockchain.get_current_hard_fork_version();
       tx_extra_service_node_deregister_ deregister;
       if (!get_service_node_deregister_from_tx_extra(hf_version, tx.extra, deregister))
       {

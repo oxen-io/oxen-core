@@ -239,7 +239,7 @@ namespace service_nodes
     return true;
   }
 
-  quorum_vote_t make_deregister_vote(int hf_version, make_deregister_type type, uint64_t block_height, uint16_t validator_index, uint16_t worker_index, crypto::public_key const &pub_key, crypto::secret_key const &sec_key)
+  quorum_vote_t make_deregister_vote(uint8_t hf_version, make_deregister_type type, uint64_t block_height, uint16_t validator_index, uint16_t worker_index, crypto::public_key const &pub_key, crypto::secret_key const &sec_key)
   {
     quorum_vote_t result = {};
 
@@ -549,7 +549,7 @@ namespace service_nodes
     return result;
   }
 
-  void voting_pool::remove_used_votes(int hf_version, std::vector<cryptonote::transaction> const &txs)
+  void voting_pool::remove_used_votes(uint8_t hf_version, std::vector<cryptonote::transaction> const &txs)
   {
     // TODO(doyle): Cull checkpoint votes
     CRITICAL_REGION_LOCAL(m_lock);

@@ -1445,7 +1445,7 @@ namespace cryptonote
   bool core::relay_service_node_votes()
   {
     std::vector<service_nodes::quorum_vote_t> relayable_votes = m_quorum_cop.get_relayable_votes();
-    int hf_version = get_blockchain_storage().get_current_hard_fork_version();
+    uint8_t hf_version = get_blockchain_storage().get_current_hard_fork_version();
     if (hf_version < cryptonote::network_version_11_infinite_staking)
     {
       // TODO(doyle): Remove post HF12
