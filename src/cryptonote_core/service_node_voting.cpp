@@ -668,7 +668,7 @@ namespace service_nodes
     return result;
   }
 
-  voting_pool::deregister_pool_array_const voting_pool::get_deregister_pools_const() const
+  voting_pool::deregister_pool_array_const voting_pool::get_deregister_pools() const
   {
     deregister_pool_array_const result = {};
     ASSIGN_DEREGISTER_ENTRIES(result);
