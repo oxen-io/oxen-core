@@ -432,7 +432,7 @@ namespace service_nodes
     time_t const now = time(nullptr);
     std::vector<quorum_vote_t> result;
 
-    for (std::vector<deregister_pool_entry> const *pool : get_deregister_pools_const())
+    for (std::vector<deregister_pool_entry> const *pool : get_deregister_pools())
     {
       for (deregister_pool_entry const &pool_entry : (*pool))
       {

@@ -178,8 +178,8 @@ namespace service_nodes
 
     using deregister_pool_array       = std::array<std::vector<deregister_pool_entry>       *, 2>;
     using deregister_pool_array_const = std::array<std::vector<deregister_pool_entry> const *, 2>;
-    deregister_pool_array       get_deregister_pools      ();
-    deregister_pool_array_const get_deregister_pools_const() const;
+    deregister_pool_array       get_deregister_pools();
+    deregister_pool_array_const get_deregister_pools() const;
   };
 }; // namespace service_nodes
 
