@@ -16,13 +16,13 @@ namespace service_nodes {
   constexpr uint64_t CHECKPOINT_STORE_PERSISTENTLY_INTERVAL    = VOTE_LIFETIME; // Persistently store the checkpoints at these intervals
 
 #if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
-  constexpr ptrdiff_t UPTIME_MIN_TIME_IN_S_BEFORE_VOTING        = 1;
-  constexpr size_t    CHECKPOINT_QUORUM_SIZE                    = 1;
-  constexpr size_t    CHECKPOINT_MIN_VOTES                      = 1;
+  constexpr ptrdiff_t MIN_TIME_IN_S_BEFORE_VOTING = 1;
+  constexpr size_t    CHECKPOINT_QUORUM_SIZE      = 1;
+  constexpr size_t    CHECKPOINT_MIN_VOTES        = 1;
 #else
-  constexpr ptrdiff_t UPTIME_MIN_TIME_IN_S_BEFORE_VOTING        = 60 * 60 * 2;
-  constexpr size_t    CHECKPOINT_QUORUM_SIZE                    = 20;
-  constexpr size_t    CHECKPOINT_MIN_VOTES                      = 18;
+  constexpr ptrdiff_t MIN_TIME_IN_S_BEFORE_VOTING = 60 * 60 * 2;
+  constexpr size_t    CHECKPOINT_QUORUM_SIZE      = 20;
+  constexpr size_t    CHECKPOINT_MIN_VOTES        = 18;
 #endif
 
   static_assert(DEREGISTER_MIN_VOTES_TO_KICK_SERVICE_NODE <= UPTIME_QUORUM_SIZE, "The number of votes required to kick can't exceed the actual quorum size, otherwise we never kick.");

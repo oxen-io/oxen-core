@@ -116,7 +116,7 @@ namespace service_nodes
   {
     // NOTE: Wait atleast 2 hours before we're allowed to vote so that we collect necessary voting information from people on the network
     time_t const now = time(nullptr);
-    bool alive_for_min_time = (now - m_core.get_start_time()) >= UPTIME_MIN_TIME_IN_S_BEFORE_VOTING;
+    bool alive_for_min_time = (now - m_core.get_start_time()) >= MIN_TIME_IN_S_BEFORE_VOTING;
     if (!alive_for_min_time)
       break;
 
