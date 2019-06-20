@@ -114,6 +114,12 @@ namespace service_nodes
 
   void quorum_cop::process_quorums(cryptonote::block const &block)
   {
+    // NOTE: Wait atleast 2 hours before we're allowed to vote so that we collect necessary voting information from people on the network
+    time_t const now = time(nullptr);
+    bool alive_for_min_time = (now - m_core.get_start_time()) >= UPTIME_MIN_TIME_IN_S_BEFORE_VOTING;
+    if (!alive_for_min_time)
+      break;
+
     int const hf_version = block.major_version;
     if (hf_version < cryptonote::network_version_9_service_nodes)
       return;
@@ -156,12 +162,6 @@ namespace service_nodes
 
         case quorum_type::uptime:
         {
-          // NOTE: Wait atleast 2 hours before we're allowed to vote so that we collect uptimes from everyone on the network
-          time_t const now = time(nullptr);
-          bool alive_for_min_time = (now - m_core.get_start_time()) >= UPTIME_MIN_TIME_IN_S_BEFORE_VOTING;
-          if (!alive_for_min_time)
-            break;
-
           m_uptime_proof_height = std::max(m_uptime_proof_height, start_voting_from_height);
           for (; m_uptime_proof_height < (height - REORG_SAFETY_BUFFER_IN_BLOCKS); m_uptime_proof_height++)
           {
@@ -207,11 +207,13 @@ namespace service_nodes
           if (hf_version < cryptonote::network_version_12_checkpointing)
             break;
 
+          if (height < (start_voting_from_height + VOTE_LIFETIME))
+            continue;
+
           // NOTE: Cast deregister votes if service nodes have not participated
-          uint64_t const half_vote_lifetime                 = VOTE_LIFETIME / 2;
+          uint64_t constexpr half_vote_lifetime             = VOTE_LIFETIME / 2;
           uint64_t const start_validating_checkpoint_height = start_voting_from_height;
-          uint64_t const end_validating_checkpoint_height =
-              std::min(start_validating_checkpoint_height + half_vote_lifetime - 1, height);
+          uint64_t const end_validating_checkpoint_height   = start_validating_checkpoint_height + half_vote_lifetime - 1;
           {
             uint64_t &vote_height = m_last_height_checkpointers_validated;
             vote_height           = std::max(vote_height, start_validating_checkpoint_height);
@@ -255,9 +257,6 @@ namespace service_nodes
               }
             }
           }
-
-          if (end_validating_checkpoint_height == height)
-            break;
 
           // NOTE: Cast votes on which block to checkpoints
           uint64_t const start_checkpointing_height = end_validating_checkpoint_height + 1;

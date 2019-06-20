@@ -1315,7 +1315,7 @@ namespace service_nodes
       {
         num_validators             = std::min(pub_keys_indexes.size(), UPTIME_QUORUM_SIZE);
         size_t num_remaining_nodes = pub_keys_indexes.size() - num_validators;
-        num_workers                = std::max(num_remaining_nodes/UPTIME_NTH_OF_THE_NETWORK_TO_TEST, std::min(UPTIME_MIN_NODES_TO_TEST, num_remaining_nodes));
+        num_workers                = std::max(num_remaining_nodes/UPTIME_FRACTION_OF_THE_NETWORK_TO_TEST, std::min(UPTIME_MIN_NODES_TO_TEST, num_remaining_nodes));
       }
       else if (type == quorum_type::checkpointing)
       {

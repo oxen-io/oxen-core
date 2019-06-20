@@ -77,7 +77,7 @@ namespace service_nodes
     crypto::hash result;
     if (version <= quorum_vote_t::version_0_infinite_staking)
     {
-      const int buf_size = sizeof(block_height) + sizeof(service_node_index);
+      constexpr int buf_size = sizeof(block_height) + sizeof(service_node_index);
       char buf[buf_size];
 
       memcpy(buf, reinterpret_cast<void *>(&block_height), sizeof(block_height));
@@ -86,7 +86,7 @@ namespace service_nodes
     }
     else
     {
-      const int buf_size = sizeof(block_height) + sizeof(service_node_index) + sizeof(vote_type) + sizeof(version);
+      constexpr int buf_size = sizeof(block_height) + sizeof(service_node_index) + sizeof(vote_type) + sizeof(version);
       char buf[buf_size];
       char *buf_ptr = buf;
 
@@ -660,6 +660,7 @@ namespace service_nodes
 #define ASSIGN_DEREGISTER_ENTRIES(array)                                                                               \
   array[0] = &m_uptime_deregister_pool;                                                                                \
   array[1] = &m_checkpoint_deregister_pool
+
   voting_pool::deregister_pool_array voting_pool::get_deregister_pools()
   {
     deregister_pool_array result = {};

@@ -5,9 +5,9 @@
 #include "cryptonote_core/service_node_voting.h"
 
 namespace service_nodes {
-  constexpr size_t   UPTIME_QUORUM_SIZE                    = 10;
-  constexpr size_t   UPTIME_NTH_OF_THE_NETWORK_TO_TEST     = 100;
-  constexpr size_t   UPTIME_MIN_NODES_TO_TEST              = 50;
+  constexpr size_t   UPTIME_QUORUM_SIZE                     = 10;
+  constexpr size_t   UPTIME_FRACTION_OF_THE_NETWORK_TO_TEST = 100;
+  constexpr size_t   UPTIME_MIN_NODES_TO_TEST               = 50;
 
   constexpr size_t   DEREGISTER_MIN_VOTES_TO_KICK_SERVICE_NODE = 7;
   constexpr uint64_t VOTE_LIFETIME                             = 60;
