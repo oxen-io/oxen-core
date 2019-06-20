@@ -142,7 +142,7 @@ TEST(service_nodes, vote_validation)
   service_nodes::quorum_vote_t valid_vote =
       service_nodes::make_deregister_vote(cryptonote::network_version_12_checkpointing,
                                           service_nodes::make_deregister_type::uptime,
-                                          block_height,
+                                          block_height - 1, // NOTE: Can't vote for the current height we're mining for
                                           voter_index,
                                           1 /*worker_index*/,
                                           service_node_voter.pub,
