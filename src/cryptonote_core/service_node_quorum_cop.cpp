@@ -118,7 +118,7 @@ namespace service_nodes
     time_t const now = time(nullptr);
     bool alive_for_min_time = (now - m_core.get_start_time()) >= MIN_TIME_IN_S_BEFORE_VOTING;
     if (!alive_for_min_time)
-      break;
+      return;
 
     int const hf_version = block.major_version;
     if (hf_version < cryptonote::network_version_9_service_nodes)
@@ -208,7 +208,7 @@ namespace service_nodes
             break;
 
           if (height < (start_voting_from_height + VOTE_LIFETIME))
-            continue;
+            break;
 
           // NOTE: Cast deregister votes if service nodes have not participated
           uint64_t constexpr half_vote_lifetime             = VOTE_LIFETIME / 2;
