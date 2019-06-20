@@ -1579,7 +1579,7 @@ namespace cryptonote
   bool get_block_longhash(const block& b, crypto::hash& res, uint64_t height)
   {
     const blobdata bd                 = get_block_hashing_blob(b);
-    const uint8_t hf_version              = b.major_version;
+    const uint8_t hf_version          = b.major_version;
     crypto::cn_slow_hash_type cn_type = cn_slow_hash_type::heavy_v1;
 
     if (hf_version >= network_version_11_infinite_staking)
