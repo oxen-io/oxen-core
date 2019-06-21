@@ -471,7 +471,7 @@ namespace service_nodes
   }
 
   template <typename T>
-  static void cull_votes(T &vote_pool, uint64_t min_height, uint64_t max_height)
+  static void cull_votes(std::vector<T> &vote_pool, uint64_t min_height, uint64_t max_height)
   {
     for (auto it = vote_pool.begin(); it != vote_pool.end(); )
     {
