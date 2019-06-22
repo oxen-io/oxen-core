@@ -38,20 +38,20 @@
 #define CRYPTONOTE_DNS_TIMEOUT_MS                       20000
 
 #define CRYPTONOTE_MAX_BLOCK_NUMBER                     50000000000
-#define CRYPTONOTE_MAX_BLOCK_SIZE                       50000000000  // block header blob limit, never used!
-#define CRYPTONOTE_GETBLOCKTEMPLATE_MAX_BLOCK_SIZE	    250000 //size of block (bytes) that is the maximum that miners will produce
+#define CRYPTONOTE_MAX_BLOCK_SIZE                       500000000  // block header blob limit, never used!
+#define CRYPTONOTE_GETBLOCKTEMPLATE_MAX_BLOCK_SIZE	    2500000 //size of block (bytes) that is the maximum that miners will produce
 #define CRYPTONOTE_MAX_TX_SIZE                          1000000000
 #define CRYPTONOTE_PUBLIC_ADDRESS_TEXTBLOB_VER          0
-#define CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW            3
+#define CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW            10
 #define CURRENT_BLOCK_MAJOR_VERSION                     7
 #define CURRENT_BLOCK_MINOR_VERSION                     7
 #define CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT_V2           60*10
-#define CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE             5
+#define CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE             15
 #define CRYPTONOTE_DEFAULT_TX_MIXIN                     5
 
 #define STAKING_REQUIREMENT_LOCK_BLOCKS_EXCESS          20
 #define STAKING_PORTIONS                                UINT64_C(0xfffffffffffffffc)
-#define MAX_NUMBER_OF_CONTRIBUTORS                      4
+#define MAX_NUMBER_OF_CONTRIBUTORS                      8
 #define MIN_PORTIONS                                    (STAKING_PORTIONS / MAX_NUMBER_OF_CONTRIBUTORS)
 
 static_assert(STAKING_PORTIONS % MAX_NUMBER_OF_CONTRIBUTORS == 0, "Use a multiple of four, so that it divides easily by max number of contributors.");
@@ -85,11 +85,11 @@ static_assert(STAKING_PORTIONS % 3 == 0, "Use a multiple of three, so that it di
 #define CRYPTONOTE_COINBASE_BLOB_RESERVED_SIZE          600
 #define CRYPTONOTE_DISPLAY_DECIMAL_POINT                9
 // COIN - number of smallest units in one coin
-#define COIN                                            ((uint64_t)100000000) // pow(10, 5)
+#define COIN                                            ((uint64_t)1) // pow(1, 9)
 
-#define FEE_PER_KB_OLD                                  ((uint64_t)100000000) // pow(10, 5)
-#define FEE_PER_KB                                      ((uint64_t)2000) // 2 * pow(10, 5)
-#define FEE_PER_BYTE                                    ((uint64_t)3000000)
+#define FEE_PER_KB_OLD                                  ((uint64_t)500000000) // pow(10, 5)
+#define FEE_PER_KB                                      ((uint64_t)500000000) // 2 * pow(10, 5)
+#define FEE_PER_BYTE                                    ((uint64_t)500000)
 #define DYNAMIC_FEE_PER_KB_BASE_FEE                     ((uint64_t)200000) // 2 * pow(10,5)
 #define DYNAMIC_FEE_PER_KB_BASE_BLOCK_REWARD            ((uint64_t)10000000000000) // 10 * pow(10,12)
 #define DYNAMIC_FEE_PER_KB_BASE_FEE_V5                  ((uint64_t)2000000000 * (uint64_t)CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V2 / CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V5)
@@ -97,9 +97,9 @@ static_assert(STAKING_PORTIONS % 3 == 0, "Use a multiple of three, so that it di
 
 #define ORPHANED_BLOCKS_MAX_COUNT                       100
 
-#define DIFFICULTY_TARGET_V2                            300  // seconds
+#define DIFFICULTY_TARGET_V2                            60  // seconds
 #define DIFFICULTY_WINDOW_V2                            60
-#define DIFFICULTY_LAG                                  0  // !!!
+#define DIFFICULTY_LAG                                  15  // 15 to prevent 51 attack chains having a a heigher cumulative difficulty
 #define DIFFICULTY_CUT                                  60  // timestamps to cut after sorting
 #define DIFFICULTY_BLOCKS_COUNT_V2                      (DIFFICULTY_WINDOW_V2 + 1) // added +1 to make N=N
 
@@ -183,7 +183,7 @@ static_assert(STAKING_PORTIONS % 3 == 0, "Use a multiple of three, so that it di
 // New constants are intended to go here
 namespace config
 {
-  uint64_t const DEFAULT_FEE_ATOMIC_XMR_PER_KB = 10000000; // 0.1 KEG
+  uint64_t const DEFAULT_FEE_ATOMIC_XMR_PER_KB = 500000000; // 0.5 KEG
   uint8_t const FEE_CALCULATION_MAX_RETRIES = 10;
   uint64_t const DEFAULT_DUST_THRESHOLD = ((uint64_t)200000); // 2 * pow(10, 5)
   uint64_t const BASE_REWARD_CLAMP_THRESHOLD = ((uint64_t)10000); // pow(10, 4)
@@ -196,14 +196,14 @@ namespace config
   uint16_t const RPC_DEFAULT_PORT = 4040;
   uint16_t const ZMQ_RPC_DEFAULT_PORT = 5555;
   boost::uuids::uuid const NETWORK_ID = { 
-    { 0x96 ,0x62, 0x77, 0x68 ,0x31, 0x75, 0x78, 0x69, 0x4a, 0x4a, 0x61, 0x35, 0x92, 0x85, 0x69 }
-  }; // Bender's nightmare
-  std::string const GENESIS_TX = "020301ff00018080b68be8ceb70c028e31c62a787e9b9f48a482bb2e01b435e4fa1d811514b84470837de2fe689d484201332a7f611d1bcfd5b4e486e2d4a860727d2556bf9fae7e7173bb1be19768a98272000000000000000000000000000000000000000000000000000000000000000000";
+    { 0x69 ,0x96, 0x77, 0x68 ,0x86, 0x75, 0x78, 0x69, 0x4b, 0x4b, 0x71, 0x35, 0x92, 0x15, 0x69 }
+  };
+  std::string const GENESIS_TX = "020a01ff0001e80702089ec827e469877c33f3be8b20f0cd7464d7e908518659d7bb2cd5dce544bcb942019e94a7dea15069b79ed71b310f4860bbf743e71abfb41d3a1b03aa093aa5bf7f72000000000000000000000000000000000000000000000000000000000000000000";
   uint32_t const GENESIS_NONCE = 1022201;
 
   uint64_t const GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS = ((60 * 60 * 24 * 7) / DIFFICULTY_TARGET_V2);
   std::string const GOVERNANCE_WALLET_ADDRESS[] =
-    {"Khh2bDX3mKChSnNQzGut6y6DUX6ZxBbxTKnvDHgFJp3P4s1hsMWxxNv64VKNNUUGRte4M14qt2kqNA7PhxTzb8ykSKeyAKi"};
+    {"Kc4f9ySwe9yfejCWMtee5RKoxLmpVWB5kFRuXafRtyTrdjSBFNVPPKigHsYYfPBokagWqk7VcL1jV8EmbPeNeAGMMdDJ3xv"};
 
   namespace testnet
   {
@@ -216,12 +216,12 @@ namespace config
     boost::uuids::uuid const NETWORK_ID = { {
         0x5f, 0x3a, 0x78, 0x65, 0xe1, 0x6f, 0xcb, 0xb8, 0x02, 0xa1, 0xdc, 0x17, 0x61, 0x64, 0x15, 0xbe,
       } }; // Bender's daydream
-    std::string const GENESIS_TX = "03011e001e01ff00018080c9db97f4fb270259b546996f69aa71abe4238995f41d780ab1abebcac9f00e808f147bdb9e3228420112573af8c309b69a1a646f41b5212ba7d9c4590bf86e04f36c486467cfef9d3d72000000000000000000000000000000000000000000000000000000000000000000";
+    std::string const GENESIS_TX = "020301ff00018080b68be8ceb70c02997efe698baffcd5b181befa70498f3bb354f64718903cc7045d6141fb57c3844201ba36c339cd71dd68a8e65b594799718236a4e82e49a82a2914a57a0f4504a64c72000000000000000000000000000000000000000000000000000000000000000000";
     uint32_t const GENESIS_NONCE = 10001;
 
     uint64_t const GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS = 1000;
     std::string const GOVERNANCE_WALLET_ADDRESS[] =
-    {"Khh2bDX3mKChSnNQzGut6y6DUX6ZxBbxTKnvDHgFJp3P4s1hsMWxxNv64VKNNUUGRte4M14qt2kqNA7PhxTzb8ykSKeyAKi"};
+    {"Kc4f9ySwe9yfejCWMtee5RKoxLmpVWB5kFRuXafRtyTrdjSBFNVPPKigHsYYfPBokagWqk7VcL1jV8EmbPeNeAGMMdDJ3xv"};
 
   }
 
