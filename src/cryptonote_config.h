@@ -51,7 +51,7 @@
 
 #define STAKING_REQUIREMENT_LOCK_BLOCKS_EXCESS          20
 #define STAKING_PORTIONS                                UINT64_C(0xfffffffffffffffc)
-#define MAX_NUMBER_OF_CONTRIBUTORS                      8
+#define MAX_NUMBER_OF_CONTRIBUTORS                      4
 #define MIN_PORTIONS                                    (STAKING_PORTIONS / MAX_NUMBER_OF_CONTRIBUTORS)
 
 static_assert(STAKING_PORTIONS % MAX_NUMBER_OF_CONTRIBUTORS == 0, "Use a multiple of four, so that it divides easily by max number of contributors.");
