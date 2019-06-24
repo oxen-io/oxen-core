@@ -7080,7 +7080,10 @@ uint64_t wallet2::get_dynamic_base_fee_estimate() const
   boost::optional<std::string> result = m_node_rpc_proxy.get_dynamic_base_fee_estimate(FEE_ESTIMATE_GRACE_BLOCKS, fee);
   if (!result)
     return fee;
-  const uint64_t base_fee = use_fork_rules(HF_VERSION_PER_BYTE_FEE) ? FEE_PER_BYTE : FEE_PER_KB;
+  const uint64_t base_fee =
+      use_fork_rules(HF_VERSION_INCREASE_FEE) ? FEE_PER_BYTE_V12 :
+      use_fork_rules(HF_VERSION_PER_BYTE_FEE) ? FEE_PER_BYTE :
+      FEE_PER_KB;
   LOG_PRINT_L1("Failed to query base fee, using " << print_money(base_fee));
   return base_fee;
 }
