@@ -655,7 +655,6 @@ namespace cryptonote
         blocks.push_back(b);
 
 
-        // TODO(doyle): Checkpointing
         std::vector<block> pblocks;
         if (!m_core.prepare_handle_incoming_blocks(blocks, pblocks))
         {
