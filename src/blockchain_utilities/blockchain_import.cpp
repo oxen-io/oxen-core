@@ -184,9 +184,8 @@ int check_flush(cryptonote::core &core, std::vector<block_complete_entry> &block
   core.prevalidate_block_hashes(core.get_blockchain_storage().get_db().height(), hashes);
 
   // TODO(doyle): Checkpointing
-  std::vector<checkpoint_t> checkpoints;
   std::vector<block> pblocks;
-  if (!core.prepare_handle_incoming_blocks(blocks, pblocks, checkpoints))
+  if (!core.prepare_handle_incoming_blocks(blocks, pblocks))
   {
     MERROR("Failed to prepare to add blocks");
     return 1;
@@ -219,7 +218,7 @@ int check_flush(cryptonote::core &core, std::vector<block_complete_entry> &block
 
     block_verification_context bvc = boost::value_initialized<block_verification_context>();
 
-    core.handle_incoming_block(block_entry.block, pblocks.empty() ? NULL : &pblocks[blockidx++], bvc, false); // <--- process block
+    core.handle_incoming_block(block_entry.block, pblocks.empty() ? NULL : &pblocks[blockidx++], bvc, nullptr /*checkpoint*/, false); // <--- process block
 
     if(bvc.m_verifivation_failed)
     {
