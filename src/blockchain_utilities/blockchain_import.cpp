@@ -136,32 +136,21 @@ int pop_blocks(cryptonote::core& core, int num_blocks)
 {
   bool use_batch = opt_batch;
 
-  if (use_batch)
-    core.get_blockchain_storage().get_db().batch_start();
+  if (use_batch) core.get_blockchain_storage().get_db().batch_start();
 
-  int quit = 0;
-  block popped_block;
-  std::vector<transaction> popped_txs;
-  for (int i=0; i < num_blocks; ++i)
+  try
   {
-    // simple_core.m_storage.pop_block_from_blockchain() is private, so call directly through db
-    core.get_blockchain_storage().get_db().pop_block(popped_block, popped_txs);
-    quit = 1;
-  }
-
-
-  if (use_batch)
-  {
-    if (quit > 1)
-    {
-      // There was an error, so don't commit pending data.
-      // Destructor will abort write txn.
-    }
-    else
+    core.get_blockchain_storage().pop_blocks(num_blocks);
+    if (use_batch)
     {
       core.get_blockchain_storage().get_db().batch_stop();
+      core.get_blockchain_storage().get_db().show_stats();
     }
-    core.get_blockchain_storage().get_db().show_stats();
+  }
+  catch(const std::exception &e)
+  {
+    // There was an error, so don't commit pending data.
+    // Destructor will abort write txn.
   }
 
   return num_blocks;

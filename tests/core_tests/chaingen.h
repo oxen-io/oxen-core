@@ -1215,7 +1215,7 @@ cryptonote::transaction make_default_registration_tx(std::vector<test_event_entr
 cryptonote::transaction make_deregistration_tx(const std::vector<test_event_entry>& events,
                                                const cryptonote::account_base& account,
                                                const cryptonote::block& head,
-                                               const cryptonote::tx_extra_service_node_deregister& deregister, uint8_t hf_version, uint64_t fee);
+                                               const cryptonote::tx_extra_service_node_deregister_old& deregister, uint8_t hf_version, uint64_t fee);
 
 // NOTE(loki): These macros assume hardfork version 7 and are from the old Monero testing code
 #define MAKE_TX_MIX(VEC_EVENTS, TX_NAME, FROM, TO, AMOUNT, NMIX, HEAD)                       \
