@@ -118,12 +118,6 @@ namespace service_nodes
 
   void quorum_cop::process_quorums(cryptonote::block const &block)
   {
-    // NOTE: Wait atleast 2 hours before we're allowed to vote so that we collect necessary voting information from people on the network
-    time_t const now = time(nullptr);
-    bool alive_for_min_time = (now - m_core.get_start_time()) >= MIN_TIME_IN_S_BEFORE_VOTING;
-    if (!alive_for_min_time)
-      return;
-
     int const hf_version = block.major_version;
     if (hf_version < cryptonote::network_version_9_service_nodes)
       return;
@@ -136,9 +130,7 @@ namespace service_nodes
     if (!m_core.is_service_node(my_pubkey, /*require_active=*/ true))
       return;
 
-    uint64_t const height                            = cryptonote::get_block_height(block);
-    service_nodes::quorum_type const max_quorum_type = service_nodes::max_quorum_type_for_hf(hf_version);
-
+    uint64_t const height        = cryptonote::get_block_height(block);
     uint64_t const latest_height = std::max(m_core.get_current_blockchain_height(), m_core.get_target_blockchain_height());
     if (latest_height < VOTE_LIFETIME)
       return;
@@ -147,7 +139,8 @@ namespace service_nodes
     if (height < start_voting_from_height)
       return;
 
-    for (int i = 0; i < (int)quorum_type::count; i++)
+    service_nodes::quorum_type const max_quorum_type = service_nodes::max_quorum_type_for_hf(hf_version);
+    for (int i = 0; i <= (int)max_quorum_type; i++)
     {
       quorum_type const type = static_cast<quorum_type>(i);
 
@@ -166,13 +159,18 @@ namespace service_nodes
 
         case quorum_type::obligations:
         {
+          // NOTE: Wait atleast 2 hours before we're allowed to vote so that we collect necessary voting information from people on the network
+          time_t const now = time(nullptr);
+          bool alive_for_min_time = (now - m_core.get_start_time()) >= MIN_TIME_IN_S_BEFORE_VOTING;
+          if (!alive_for_min_time)
+            break;
+
           m_obligations_height = std::max(m_obligations_height, start_voting_from_height);
           for (; m_obligations_height < (height - REORG_SAFETY_BUFFER_IN_BLOCKS); m_obligations_height++)
           {
             if (m_core.get_hard_fork_version(m_obligations_height) < cryptonote::network_version_9_service_nodes) continue;
 
-            const std::shared_ptr<const testing_quorum> quorum =
-                m_core.get_testing_quorum(quorum_type::obligations, m_obligations_height);
+            std::shared_ptr<const testing_quorum> quorum = m_core.get_testing_quorum(quorum_type::obligations, m_obligations_height);
             if (!quorum)
             {
               // TODO(loki): Fatal error
@@ -256,18 +254,12 @@ namespace service_nodes
 
         case quorum_type::checkpointing:
         {
-          if (height < (start_voting_from_height + VOTE_LIFETIME))
-            break;
-
-          uint64_t constexpr HALF_VOTE_LIFETIME = VOTE_LIFETIME / 2;
-          m_last_checkpointed_height            = std::max(start_voting_from_height, m_last_checkpointed_height);
-          uint64_t const end_checkpoint_height  = start_voting_from_height + HALF_VOTE_LIFETIME - 1;
-
+          m_last_checkpointed_height = std::max(start_voting_from_height, m_last_checkpointed_height);
           for (m_last_checkpointed_height += (m_last_checkpointed_height % CHECKPOINT_INTERVAL);
-               m_last_checkpointed_height <= end_checkpoint_height;
+               m_last_checkpointed_height <= height;
                m_last_checkpointed_height += CHECKPOINT_INTERVAL)
           {
-            if (m_core.get_hard_fork_version(m_last_checkpointed_height) < cryptonote::network_version_12_checkpointing)
+            if (m_core.get_hard_fork_version(m_last_checkpointed_height) <= cryptonote::network_version_11_infinite_staking)
               continue;
 
             const std::shared_ptr<const testing_quorum> quorum =

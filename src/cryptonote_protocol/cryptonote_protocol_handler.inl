@@ -1347,7 +1347,7 @@ namespace cryptonote
                 return false;
               }
 
-              checkpoint = &checkpoint_allocated_on_stack_;
+              checkpoint                = &checkpoint_allocated_on_stack_;
               bool maybe_has_checkpoint = (checkpoint->height % service_nodes::CHECKPOINT_INTERVAL == 0);
 
               if (!maybe_has_checkpoint)

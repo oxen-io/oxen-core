@@ -1374,35 +1374,29 @@ namespace service_nodes
     if (hf_version >= cryptonote::network_version_12_checkpointing)
       decomm_snode_list = m_transient_state.decommissioned_service_nodes_infos();
 
-    quorum_manager &manager = m_transient_state.quorum_states[height];
-    for (int type_int = 0; type_int < static_cast<int>(quorum_type::count); type_int++)
+    quorum_type const max_quorum_type = max_quorum_type_for_hf(hf_version);
+    quorum_manager &manager           = m_transient_state.quorum_states[height];
+    for (int type_int = 0; type_int <= (int)max_quorum_type; type_int++)
     {
       auto type             = static_cast<quorum_type>(type_int);
       size_t num_validators = 0, num_workers = 0;
       auto quorum           = std::make_shared<testing_quorum>();
       std::vector<size_t> pub_keys_indexes;
 
+      size_t total_nodes = active_snode_list.size() + decomm_snode_list.size();
       if (type == quorum_type::obligations)
       {
-        if (hf_version >= cryptonote::network_version_9_service_nodes)
-        {
-          size_t total_nodes         = active_snode_list.size() + decomm_snode_list.size();
-          num_validators             = std::min(active_snode_list.size(), STATE_CHANGE_QUORUM_SIZE);
-          pub_keys_indexes           = generate_shuffled_service_node_index_list(total_nodes, block_hash, type, num_validators, active_snode_list.size());
-          manager.obligations        = quorum;
-          size_t num_remaining_nodes = total_nodes - num_validators;
-          num_workers                = std::min(num_remaining_nodes, std::max(STATE_CHANGE_MIN_NODES_TO_TEST, num_remaining_nodes/STATE_CHANGE_NTH_OF_THE_NETWORK_TO_TEST));
-        }
+        num_validators             = std::min(active_snode_list.size(), STATE_CHANGE_QUORUM_SIZE);
+        pub_keys_indexes           = generate_shuffled_service_node_index_list(total_nodes, block_hash, type, num_validators, active_snode_list.size());
+        manager.obligations        = quorum;
+        size_t num_remaining_nodes = total_nodes - num_validators;
+        num_workers                = std::min(num_remaining_nodes, std::max(STATE_CHANGE_MIN_NODES_TO_TEST, num_remaining_nodes/STATE_CHANGE_NTH_OF_THE_NETWORK_TO_TEST));
       }
       else if (type == quorum_type::checkpointing)
       {
-        if (hf_version >= cryptonote::network_version_12_checkpointing)
-        {
-          manager.checkpointing      = quorum;
-          num_validators             = std::min(pub_keys_indexes.size(), CHECKPOINT_QUORUM_SIZE);
-          size_t num_remaining_nodes = pub_keys_indexes.size() - num_validators;
-          num_workers                = std::min(num_remaining_nodes, CHECKPOINT_QUORUM_SIZE);
-        }
+        pub_keys_indexes      = generate_shuffled_service_node_index_list(total_nodes, block_hash, type);
+        manager.checkpointing = quorum;
+        num_workers           = std::min(pub_keys_indexes.size(), CHECKPOINT_QUORUM_SIZE);
       }
       else
       {

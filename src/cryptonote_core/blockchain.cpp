@@ -111,6 +111,7 @@ static const hard_fork_record testnet_hard_forks[] =
   { network_version_9_service_nodes,     3, 0, 1533631123 },
   { network_version_10_bulletproofs,     4, 0, 1542681077 },
   { network_version_11_infinite_staking, 5, 0, 1551223964 },
+  { network_version_12_checkpointing,    6, 0, 1551223966 },
 };
 
 static const hard_fork_record stagenet_hard_forks[] =
@@ -4079,6 +4080,24 @@ bool Blockchain::add_new_block(const block& bl, block_verification_context& bvc,
     bvc.m_already_exists = true;
     m_blocks_txs_check.clear();
     return false;
+  }
+
+  if (checkpoint)
+  {
+    checkpoint_t existing_checkpoint;
+    uint64_t block_height = get_block_height(bl);
+    try
+    {
+      if (m_db->get_block_checkpoint(block_height, existing_checkpoint))
+      {
+        if (checkpoint->signatures.size() < existing_checkpoint.signatures.size())
+          checkpoint = nullptr;
+      }
+    }
+    catch (const std::exception &e)
+    {
+      MERROR("Get block checkpoint from DB failed at height: " << block_height << ", what = " << e.what());
+    }
   }
 
   bool result = false;

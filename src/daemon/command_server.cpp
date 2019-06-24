@@ -373,7 +373,7 @@ t_command_server::t_command_server(
         bool valid_cmd = false;
         if (args.size() == 1)
         {
-          valid_cmd = false;
+          valid_cmd = true;
           if (args[0] == "toggle_checkpoint_quorum")
           {
             loki::integration_test.disable_checkpoint_quorum = !loki::integration_test.disable_checkpoint_quorum;
@@ -384,7 +384,7 @@ t_command_server::t_command_server(
           }
           else
           {
-            valid_cmd = true;
+            valid_cmd = false;
           }
 
           if (valid_cmd) std::cout << args[0] << " toggled";
@@ -400,7 +400,7 @@ t_command_server::t_command_server(
         }
 
         if (!valid_cmd)
-          std::cout << " integration_test invalid command";
+          std::cout << "integration_test invalid command";
 
         loki::write_redirected_stdout_to_shared_mem();
         return true;
