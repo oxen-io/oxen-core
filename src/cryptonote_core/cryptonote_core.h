@@ -1147,6 +1147,7 @@ namespace cryptonote
      std::atomic_flag m_checkpoints_updating; //!< set if checkpoints are currently updating to avoid multiple threads attempting to update at once
 
      bool m_service_node;
+     bool m_backup_service_node;
      crypto::secret_key m_service_node_key;
      crypto::public_key m_service_node_pubkey;
 
