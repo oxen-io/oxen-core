@@ -215,6 +215,8 @@ namespace service_nodes
     /// Record public ip and storage port and add them to the service node list
     cryptonote::NOTIFY_UPTIME_PROOF::request generate_uptime_proof(crypto::public_key const &pubkey, crypto::secret_key const &key, uint32_t public_ip, uint32_t storage_port) const;
     bool handle_uptime_proof        (cryptonote::NOTIFY_UPTIME_PROOF::request const &proof);
+
+    // TODO(doyle): This is a really awkward API
     void handle_checkpoint_vote     (quorum_vote_t const &vote);
     void expect_checkpoint_vote_from(crypto::public_key const &pubkey);
 

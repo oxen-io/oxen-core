@@ -1046,6 +1046,26 @@ namespace service_nodes
     const size_t cache_state_from_height = (block_height < QUORUM_LIFETIME) ? 0 : block_height - QUORUM_LIFETIME;
     while (!m_transient_state.quorum_states.empty() && m_transient_state.quorum_states.begin()->first < cache_state_from_height)
       m_transient_state.quorum_states.erase(m_transient_state.quorum_states.begin());
+
+    //
+    // Reset checkpoint vote count
+    //   i.e. Nodes are allowed to miss a certain number of checkpoint votes every N blocks.
+    //
+    for (auto it : m_transient_state.service_nodes_infos)
+    {
+      proof_info &proof = it.second.proof;
+      if (proof.num_checkpoint_votes_expected > CHECKPOINT_MIN_QUORUMS_NODE_MUST_VOTE_IN_BEFORE_DEREGISTER_CHECK)
+      {
+        // NOTE: We can receive more votes than expected because you may receive votes from the latest quorums but don't
+        // check yet, because we deregister based on quorums on a sliding window that is offset from the latest block on
+        // the blockchain, i.e. check obligation quorums up to (latest height - N).
+
+        // So don't naiively set the num votes received to 0.
+
+        proof.num_checkpoint_votes_received = std::max(proof.num_checkpoint_votes_received - CHECKPOINT_MIN_QUORUMS_NODE_MUST_VOTE_IN_BEFORE_DEREGISTER_CHECK, 0);
+        proof.num_checkpoint_votes_expected = std::max(proof.num_checkpoint_votes_expected - CHECKPOINT_MIN_QUORUMS_NODE_MUST_VOTE_IN_BEFORE_DEREGISTER_CHECK, 0);
+      }
+    }
   }
 
   void service_node_list::blockchain_detached(uint64_t height)
@@ -1725,14 +1745,6 @@ namespace service_nodes
 
     service_node_info &info = it->second;
     info.proof.num_checkpoint_votes_received++;
-    if (info.proof.num_checkpoint_votes_expected < info.proof.num_checkpoint_votes_received)
-    {
-      MERROR("Unexpected number of votes expected: " << info.proof.num_checkpoint_votes_expected
-                                                     << " and received: " << info.proof.num_checkpoint_votes_received
-                                                     << " mismatch from service node: " << pubkey);
-
-      info.proof.num_checkpoint_votes_expected = info.proof.num_checkpoint_votes_received;
-    }
   }
 
   void service_node_list::expect_checkpoint_vote_from(crypto::public_key const &pubkey)

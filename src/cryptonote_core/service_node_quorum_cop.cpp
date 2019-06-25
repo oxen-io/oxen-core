@@ -44,7 +44,6 @@
 
 namespace service_nodes
 {
-  static_assert(quorum_cop::REORG_SAFETY_BUFFER_IN_BLOCKS < VOTE_LIFETIME, "Safety buffer should always be less than the vote lifetime");
 
   quorum_cop::quorum_cop(cryptonote::core& core)
     : m_core(core), m_obligations_height(0), m_last_checkpointed_height(0)
@@ -55,14 +54,6 @@ namespace service_nodes
   {
     m_obligations_height       = 0;
     m_last_checkpointed_height = 0;
-
-    uint64_t top_height;
-    crypto::hash top_hash;
-    m_core.get_blockchain_top(top_height, top_hash);
-
-    cryptonote::block blk;
-    if (m_core.get_block_by_hash(top_hash, blk))
-      process_quorums(blk);
   }
 
   // Perform service node tests -- this returns true is the server node is in a good state, that is,
@@ -71,7 +62,16 @@ namespace service_nodes
   {
     uint64_t now                          = time(nullptr);
     uint64_t time_since_last_uptime_proof = now - info.proof.timestamp;
-    if (time_since_last_uptime_proof > UPTIME_PROOF_MAX_TIME_IN_SECONDS)
+
+    bool check_uptime_obligation     = true;
+    bool check_checkpoint_obligation = true;
+
+#if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
+    if (loki::integration_test.disable_obligation_uptime_proof) check_uptime_obligation = false;
+    if (loki::integration_test.disable_obligation_checkpointing) check_checkpoint_obligation = false;
+#endif
+
+    if (check_uptime_obligation && time_since_last_uptime_proof > UPTIME_PROOF_MAX_TIME_IN_SECONDS)
     {
       LOG_PRINT_L1("Submitting deregister vote for: "
                    << pubkey << ", due to uptime proof being older than: " << UPTIME_PROOF_MAX_TIME_IN_SECONDS
@@ -80,12 +80,20 @@ namespace service_nodes
       return false;
     }
 
-    ptrdiff_t missing_votes = info.proof.num_checkpoint_votes_expected - info.proof.num_checkpoint_votes_received;
-    ptrdiff_t constexpr MAX_MISSABLE_CHECKPOINT_VOTES = 4;
-    if (missing_votes > MAX_MISSABLE_CHECKPOINT_VOTES)
+    if (check_checkpoint_obligation && info.proof.num_checkpoint_votes_expected >= CHECKPOINT_MIN_QUORUMS_NODE_MUST_VOTE_IN_BEFORE_DEREGISTER_CHECK)
     {
-      LOG_PRINT_L1("Submitting deregister vote for: " << pubkey << ", due to missing more than: " << MAX_MISSABLE_CHECKPOINT_VOTES << " checkpoint votes");
-      return false;
+      proof_info const &proof = info.proof;
+
+      // NOTE: We can receive more votes than expected, say, the nodes are in the quorums newer than the obligation check height
+      if (proof.num_checkpoint_votes_received < proof.num_checkpoint_votes_expected)
+      {
+        int16_t missing_votes = info.proof.num_checkpoint_votes_expected - info.proof.num_checkpoint_votes_received;
+        if (missing_votes > CHECKPOINT_MAX_MISSABLE_VOTES)
+        {
+          LOG_PRINT_L1("Submitting deregister vote for: " << pubkey << ", due to missing more than: " << CHECKPOINT_MAX_MISSABLE_VOTES << " checkpoint votes");
+          return false;
+        }
+      }
     }
 
     return true;
@@ -173,7 +181,8 @@ namespace service_nodes
 
         case quorum_type::obligations:
         {
-          // NOTE: Wait atleast 2 hours before we're allowed to vote so that we collect necessary voting information from people on the network
+          // NOTE: Wait atleast 2 hours before we're allowed to vote so that we collect necessary voting information
+          // from people on the network
           time_t const now = time(nullptr);
           bool alive_for_min_time = (now - m_core.get_start_time()) >= MIN_TIME_IN_S_BEFORE_VOTING;
           if (!alive_for_min_time)
@@ -186,6 +195,7 @@ namespace service_nodes
 
             // NOTE: Update the number of expected checkpoint votes at the (obligation) height so we can check that
             // service nodes have fulfilled their checkpointing work
+            if (m_core.get_hard_fork_version(m_obligations_height) >= cryptonote::network_version_12_checkpointing)
             {
               std::shared_ptr<const testing_quorum> quorum =
                   m_core.get_testing_quorum(quorum_type::checkpointing, m_obligations_height);

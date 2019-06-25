@@ -78,7 +78,6 @@ namespace service_nodes
     std::vector<quorum_vote_t> get_relayable_votes();
     bool                       handle_vote        (quorum_vote_t const &vote, cryptonote::vote_verification_context &vvc);
 
-    static const uint64_t REORG_SAFETY_BUFFER_IN_BLOCKS = 20;
     static int64_t calculate_decommission_credit(const service_node_info &info, uint64_t current_height);
 
   private:
