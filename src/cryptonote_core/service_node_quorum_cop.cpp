@@ -33,6 +33,7 @@
 #include "cryptonote_core.h"
 #include "version.h"
 #include "common/loki.h"
+#include "common/util.h"
 #include "net/local_ip.h"
 #include <boost/endian/conversion.hpp>
 
@@ -54,7 +55,6 @@ namespace service_nodes
   {
     m_obligations_height       = 0;
     m_last_checkpointed_height = 0;
-    m_uptime_proof_seen.clear();
 
     uint64_t top_height;
     crypto::hash top_hash;
@@ -69,12 +69,26 @@ namespace service_nodes
   // has submitted uptime proofs, participated in required quorums, etc.
   bool quorum_cop::check_service_node(const crypto::public_key &pubkey, const service_node_info &info) const
   {
-      if (!m_uptime_proof_seen.count(pubkey))
-        return false;
+    uint64_t now                          = time(nullptr);
+    uint64_t time_since_last_uptime_proof = now - info.proof.timestamp;
+    if (time_since_last_uptime_proof > UPTIME_PROOF_MAX_TIME_IN_SECONDS)
+    {
+      LOG_PRINT_L1("Submitting deregister vote for: "
+                   << pubkey << ", due to uptime proof being older than: " << UPTIME_PROOF_MAX_TIME_IN_SECONDS
+                   << ", time since last uptime proof: "
+                   << tools::get_human_readable_timespan(std::chrono::seconds(time_since_last_uptime_proof)));
+      return false;
+    }
 
-      // TODO: check for missing checkpoint quorum votes
+    ptrdiff_t missing_votes = info.proof.num_checkpoint_votes_expected - info.proof.num_checkpoint_votes_received;
+    ptrdiff_t constexpr MAX_MISSABLE_CHECKPOINT_VOTES = 4;
+    if (missing_votes > MAX_MISSABLE_CHECKPOINT_VOTES)
+    {
+      LOG_PRINT_L1("Submitting deregister vote for: " << pubkey << ", due to missing more than: " << MAX_MISSABLE_CHECKPOINT_VOTES << " checkpoint votes");
+      return false;
+    }
 
-      return true;
+    return true;
   }
 
   void quorum_cop::blockchain_detached(uint64_t height)
@@ -169,6 +183,18 @@ namespace service_nodes
           for (; m_obligations_height < (height - REORG_SAFETY_BUFFER_IN_BLOCKS); m_obligations_height++)
           {
             if (m_core.get_hard_fork_version(m_obligations_height) < cryptonote::network_version_9_service_nodes) continue;
+
+            // NOTE: Update the number of expected checkpoint votes at the (obligation) height so we can check that
+            // service nodes have fulfilled their checkpointing work
+            {
+              std::shared_ptr<const testing_quorum> quorum =
+                  m_core.get_testing_quorum(quorum_type::checkpointing, m_obligations_height);
+              if (quorum)
+              {
+                for (crypto::public_key const &key : quorum->workers)
+                  m_core.expect_checkpoint_vote_from(key);
+              }
+            }
 
             std::shared_ptr<const testing_quorum> quorum = m_core.get_testing_quorum(quorum_type::obligations, m_obligations_height);
             if (!quorum)
@@ -442,180 +468,6 @@ namespace service_nodes
       break;
     }
     return result;
-  }
-
-  /// NOTE(maxim): we can remove this after hardfork
-  static crypto::hash make_hash(crypto::public_key const &pubkey, uint64_t timestamp)
-  {
-    boost::endian::native_to_little(timestamp);
-    char buf[44] = "SUP"; // Meaningless magic bytes
-    crypto::hash result;
-    memcpy(buf + 4, reinterpret_cast<const void *>(&pubkey), sizeof(pubkey));
-    memcpy(buf + 4 + sizeof(pubkey), reinterpret_cast<const void *>(&timestamp), sizeof(timestamp));
-    crypto::cn_fast_hash(buf, sizeof(buf), result);
-
-    return result;
-  }
-
-  static crypto::hash make_hash_v2(crypto::public_key const& pubkey,
-                                   uint64_t timestamp,
-                                   uint32_t pub_ip,
-                                   uint16_t storage_port)
-  {
-    constexpr size_t BUFFER_SIZE = sizeof(pubkey) + sizeof(timestamp) + sizeof(pub_ip) + sizeof(storage_port);
-
-    boost::endian::native_to_little_inplace(timestamp);
-    boost::endian::native_to_little_inplace(pub_ip);
-    boost::endian::native_to_little_inplace(storage_port);
-
-    char buf[BUFFER_SIZE];
-    crypto::hash result;
-    memcpy(buf, reinterpret_cast<const void *>(&pubkey), sizeof(pubkey));
-    memcpy(buf + sizeof(pubkey), reinterpret_cast<const void *>(&timestamp), sizeof(timestamp));
-    memcpy(buf + sizeof(pubkey) + sizeof(timestamp), reinterpret_cast<const void *>(&pub_ip), sizeof(pub_ip));
-    memcpy(buf + sizeof(pubkey) + sizeof(timestamp) + sizeof(pub_ip), reinterpret_cast<const void *>(&storage_port), sizeof(storage_port));
-
-    crypto::cn_fast_hash(buf, sizeof(buf), result);
-
-    return result;
-  }
-
-  bool quorum_cop::handle_uptime_proof(const cryptonote::NOTIFY_UPTIME_PROOF::request &proof)
-  {
-    uint64_t now = time(nullptr);
-
-    uint64_t timestamp               = proof.timestamp;
-    const crypto::public_key& pubkey = proof.pubkey;
-    const crypto::signature& sig     = proof.sig;
-    const uint32_t public_ip         = proof.public_ip;
-    const uint16_t storage_port      = proof.storage_port;
-
-    if ((timestamp < now - UPTIME_PROOF_BUFFER_IN_SECONDS) || (timestamp > now + UPTIME_PROOF_BUFFER_IN_SECONDS)) {
-      LOG_PRINT_L2("Rejecting uptime proof from " << pubkey << ": timestamp is too far from now");
-      return false;
-    }
-
-    if (!m_core.is_service_node(pubkey, /*require_active=*/ false)) {
-      LOG_PRINT_L2("Rejecting uptime proof from " << pubkey << ": no such service node is currently registered");
-      return false;
-    }
-
-    uint64_t height = m_core.get_current_blockchain_height();
-    int version     = m_core.get_hard_fork_version(height);
-
-    // NOTE: Only care about major version for now
-    // FIXME(Jason): remove this `false` before release!
-    if (false && version >= cryptonote::network_version_12_checkpointing && proof.snode_version_major < 4) {
-      LOG_PRINT_L2("Rejecting uptime proof from " << pubkey << ": v4+ loki version is required for v12+ network proofs");
-      return false;
-    }
-    else if (version >= cryptonote::network_version_11_infinite_staking && proof.snode_version_major < 3) {
-      LOG_PRINT_L2("Rejecting uptime proof from " << pubkey << ": v3+ loki version is required for v11+ network proofs");
-      return false;
-    }
-    else if (version >= cryptonote::network_version_10_bulletproofs && proof.snode_version_major < 2) {
-      LOG_PRINT_L2("Rejecting uptime proof from " << pubkey << ": v2+ loki version is required for v10+ network proofs");
-      return false;
-    }
-
-    CRITICAL_REGION_LOCAL(m_lock);
-    if (m_uptime_proof_seen[pubkey].timestamp >= now - (UPTIME_PROOF_FREQUENCY_IN_SECONDS / 2)) {
-      LOG_PRINT_L2("Rejecting uptime proof from " << pubkey << ": already received one uptime proof for this node recently");
-      return false;
-    }
-
-    const uint64_t hf12_height = m_core.get_earliest_ideal_height_for_version(cryptonote::network_version_12_checkpointing);
-
-    /// Accept both old and new uptime proofs in a small window of 2 blocks
-    /// after switching to hf 12; (for simplicity accept new signatures before hf 12 too)
-    const bool enforce_v2 = (hf12_height != std::numeric_limits<uint64_t>::max() && height >= hf12_height + 2);
-
-    crypto::hash hash;
-    bool signature_ok = false;
-    if (!enforce_v2) {
-
-      hash = make_hash(pubkey, timestamp);
-
-      signature_ok = crypto::check_signature(hash, pubkey, sig);
-
-      if (!signature_ok) {
-        hash = make_hash_v2(pubkey, timestamp, public_ip, storage_port);
-        signature_ok = crypto::check_signature(hash, pubkey, sig);
-      }
-
-    } else {
-      hash = make_hash_v2(pubkey, timestamp, public_ip, storage_port);
-      signature_ok = crypto::check_signature(hash, pubkey, sig);
-
-      /// Sanity check; we do the same on lokid startup
-      if (epee::net_utils::is_ip_local(public_ip) || epee::net_utils::is_ip_loopback(public_ip)) return false;
-    }
-
-    if (!signature_ok) {
-      LOG_PRINT_L2("Rejecting uptime proof from " << pubkey << ": signature validation failed");
-      return false;
-    }
-
-    m_uptime_proof_seen[pubkey] = {now, proof.snode_version_major, proof.snode_version_minor, proof.snode_version_patch};
-    LOG_PRINT_L2("Accepted uptime proof from " << pubkey);
-    return true;
-  }
-
-  void quorum_cop::generate_uptime_proof_request(cryptonote::NOTIFY_UPTIME_PROOF::request& req) const
-  {
-    req.snode_version_major = static_cast<uint16_t>(LOKI_VERSION_MAJOR);
-    req.snode_version_minor = static_cast<uint16_t>(LOKI_VERSION_MINOR);
-    req.snode_version_patch = static_cast<uint16_t>(LOKI_VERSION_PATCH);
-
-    crypto::public_key pubkey;
-    crypto::secret_key seckey;
-    m_core.get_service_node_keys(pubkey, seckey);
-
-    req.timestamp           = time(nullptr);
-    req.pubkey              = pubkey;
-    req.public_ip           = m_core.get_service_node_public_ip();
-    req.storage_port        = m_core.get_storage_port();
-
-    crypto::hash hash;
-
-    const uint8_t version = m_core.get_blockchain_storage().get_current_hard_fork_version();
-
-    if (version < cryptonote::network_version_12_checkpointing) {
-      hash = make_hash(req.pubkey, req.timestamp);
-    } else {
-      hash = make_hash_v2(req.pubkey, req.timestamp, req.public_ip, req.storage_port);
-    }
-
-    crypto::generate_signature(hash, pubkey, seckey, req.sig);
-  }
-
-  bool quorum_cop::prune_uptime_proof()
-  {
-    uint64_t now = time(nullptr);
-    const uint64_t prune_from_timestamp = now - UPTIME_PROOF_MAX_TIME_IN_SECONDS;
-    CRITICAL_REGION_LOCAL(m_lock);
-
-    std::vector<crypto::public_key> to_remove;
-    for (const auto &proof : m_uptime_proof_seen)
-    {
-      if (proof.second.timestamp < prune_from_timestamp)
-        to_remove.push_back(proof.first);
-    }
-    for (const auto &pk : to_remove)
-      m_uptime_proof_seen.erase(pk);
-
-    return true;
-  }
-
-  proof_info quorum_cop::get_uptime_proof(const crypto::public_key &pubkey) const
-  {
-
-    CRITICAL_REGION_LOCAL(m_lock);
-    const auto it = m_uptime_proof_seen.find(pubkey);
-    if (it == m_uptime_proof_seen.end())
-      return {};
-
-    return it->second;
   }
 
   // Calculate the decommission credit for a service node.  If the SN is current decommissioned this
