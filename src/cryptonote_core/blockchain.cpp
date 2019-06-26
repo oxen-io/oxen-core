@@ -1278,7 +1278,7 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
       return false;
     }
 
-    const auto min_version = transaction::get_min_version_for_hf(version, nettype());
+    const auto min_version = transaction::get_min_version_for_hf(version, nettype(), true /*miner_tx*/);
     const auto max_version = transaction::get_max_version_for_hf(version, nettype());
     if (b.miner_tx.version < min_version || b.miner_tx.version > max_version)
     {
@@ -3260,7 +3260,19 @@ uint64_t Blockchain::get_dynamic_base_fee(uint64_t block_reward, size_t median_b
 
   if (version >= HF_VERSION_PER_BYTE_FEE)
   {
-    lo = mul128(block_reward, DYNAMIC_FEE_REFERENCE_TRANSACTION_WEIGHT, &hi);
+    // fee = block_reward * DYNAMIC_FEE_REFERENCE_TRANSACTION_WEIGHT / min_block_weight / median_block_weight / 5
+    // (but done in 128-bit math).  Note that the wallet uses FEE_PER_BYTE as a fallback if it can't
+    // get the dynamic fee from the daemon, so it needs to satisfy
+    // FEE_PER_BYTE >= BLOCK_REWARD * DYNAMIC_FEE_REFERENCE_TRANSACTION_WEIGHT / (min_block_weight)^2 / 5
+    // (The square because median_block_weight >= min_block_weight).
+    // As of writing we are past block 300000 with base block reward of ~32.04; and so the fee is below 214
+    // (hence the use of 215 in cryptonote_config.h).
+    //
+    // Starting in v12 we increase the reference transaction fee by 80 (to 240000), and so the
+    // FEE_PER_BYTE fallback also goes up (to a conservative estimate of 17200).
+    //
+    const uint64_t reference_fee = version >= HF_VERSION_INCREASE_FEE ? DYNAMIC_FEE_REFERENCE_TRANSACTION_WEIGHT_V12 : DYNAMIC_FEE_REFERENCE_TRANSACTION_WEIGHT;
+    lo = mul128(block_reward, reference_fee, &hi);
     div128_32(hi, lo, min_block_weight, &hi, &lo);
     div128_32(hi, lo, median_block_weight, &hi, &lo);
     assert(hi == 0);
@@ -3268,7 +3280,7 @@ uint64_t Blockchain::get_dynamic_base_fee(uint64_t block_reward, size_t median_b
     return lo;
   }
 
-  const uint64_t fee_base = version >= 5 ? DYNAMIC_FEE_PER_KB_BASE_FEE_V5 : DYNAMIC_FEE_PER_KB_BASE_FEE;
+  constexpr uint64_t fee_base = DYNAMIC_FEE_PER_KB_BASE_FEE_V5;
 
   uint64_t unscaled_fee_base = (fee_base * min_block_weight / median_block_weight);
   lo = mul128(unscaled_fee_base, block_reward, &hi);
