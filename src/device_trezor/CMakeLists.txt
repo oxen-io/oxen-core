@@ -64,34 +64,9 @@ set(trezor_private_headers)
 
 
 # Protobuf and LibUSB processed by CheckTrezor
-if(DEVICE_TREZOR_READY)
-    message(STATUS "Trezor support enabled")
 
-    loki_private_headers(device_trezor
-            ${device_private_headers})
+message(STATUS "Trezor support disabled")
+loki_private_headers(device_trezor)
+loki_add_library(device_trezor device_trezor.cpp)
+target_link_libraries(device_trezor PUBLIC cncrypto)
 
-    loki_add_library(device_trezor
-            ${trezor_sources}
-            ${trezor_headers}
-            ${trezor_private_headers})
-
-    target_link_libraries(device_trezor
-            PUBLIC
-            device
-            cncrypto
-            ringct_basic
-            cryptonote_core
-            common
-            ${SODIUM_LIBRARY}
-            ${Boost_CHRONO_LIBRARY}
-            ${Protobuf_LIBRARY}
-            ${TREZOR_LIBUSB_LIBRARIES}
-            PRIVATE
-            ${EXTRA_LIBRARIES})
-
-else()
-    message(STATUS "Trezor support disabled")
-    loki_private_headers(device_trezor)
-    loki_add_library(device_trezor device_trezor.cpp)
-    target_link_libraries(device_trezor PUBLIC cncrypto)
-endif()
