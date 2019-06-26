@@ -263,7 +263,7 @@ namespace service_nodes
       {
         if (!bounds_check_worker_index(quorum, voter_to_signature.voter_index, nullptr)) return false;
 
-        if (++unique_vote_set[voter_to_signature.voter_index])
+        if (unique_vote_set[voter_to_signature.voter_index]++)
         {
           LOG_PRINT_L1("Voter quorum index is duplicated: " << voter_to_signature.voter_index);
           return false;

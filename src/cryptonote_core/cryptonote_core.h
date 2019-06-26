@@ -780,7 +780,6 @@ namespace cryptonote
       *
       * @param type The quorum type to retrieve
       * @param height Block height to deterministically recreate the quorum list from
-const 
       * @return Null shared ptr if quorum has not been determined yet for height
       */
      std::shared_ptr<const service_nodes::testing_quorum> get_testing_quorum(service_nodes::quorum_type type, uint64_t height) const;

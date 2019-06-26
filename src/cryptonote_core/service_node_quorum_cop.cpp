@@ -118,7 +118,7 @@ namespace service_nodes
 
   void quorum_cop::process_quorums(cryptonote::block const &block)
   {
-    int const hf_version = block.major_version;
+    uint8_t const hf_version = block.major_version;
     if (hf_version < cryptonote::network_version_9_service_nodes)
       return;
 
