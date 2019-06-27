@@ -67,7 +67,9 @@ static_assert(STAKING_PORTIONS % 3 == 0, "Use a multiple of three, so that it di
 #define UPTIME_PROOF_MAX_TIME_IN_SECONDS                (UPTIME_PROOF_FREQUENCY_IN_SECONDS * 2 + UPTIME_PROOF_BUFFER_IN_SECONDS)
 
 // MONEY_SUPPLY - total number coins to be generated
-#define MONEY_SUPPLY                                    (1000000000000000000) 
+#define MONEY_SUPPLY                                    (1000000000000000000) // NOT USED
+#define PREMINE_AMMOUNT                                 (7000000000000000) // 7 MILL for the network swap
+#define BLOCK_REWARD                                    (20000000000) // 20 KEG
 #define EMISSION_SPEED_FACTOR_PER_MINUTE                (22) // No Longer Used
 #define FINAL_SUBSIDY_PER_MINUTE                        ((uint64_t)300000000000) // 3 * pow(10, 11)
 #define EMISSION_LINEAR_BASE                            ((uint64_t)(1) << 58)
