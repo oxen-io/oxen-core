@@ -167,16 +167,12 @@ namespace cryptonote
   , "Set maximum txpool weight in bytes."
   , DEFAULT_TXPOOL_MAX_WEIGHT
   };
-  static const command_line::arg_descriptor<bool> arg_service_node  = {
+  static const command_line::arg_descriptor<std::string> arg_service_node = {
     "service-node"
-  , "Run as a service node, options 'sn-public-ip' and 'storage-server-port' must be set"
-  };
-  static const command_line::arg_descriptor<std::string> arg_public_ip = {
-    "sn-public-ip"
-  , "Public IP address on which this service node's services (such as the Loki "
+  , "Run as a service node, option 'storage-server-port' must also be set. "
+    "Specify the public IP address on which this service node's services (such as the Loki "
     "storage server) are accessible. This IP address will be advertised to the "
-    "network via the service node uptime proofs. Required if operating as a "
-    "service node."
+    "network via the service node uptime proofs. "
   };
   static const command_line::arg_descriptor<uint16_t> arg_sn_bind_port = {
     "storage-server-port"
@@ -309,7 +305,6 @@ namespace cryptonote
     command_line::add_arg(desc, arg_block_download_max_size);
     command_line::add_arg(desc, arg_max_txpool_weight);
     command_line::add_arg(desc, arg_service_node);
-    command_line::add_arg(desc, arg_public_ip);
     command_line::add_arg(desc, arg_sn_bind_port);
     command_line::add_arg(desc, arg_pad_transactions);
     command_line::add_arg(desc, arg_block_notify);
@@ -344,8 +339,7 @@ namespace cryptonote
     if (command_line::get_arg(vm, arg_test_drop_download) == true)
       test_drop_download();
 
-    m_service_node = command_line::get_arg(vm, arg_service_node);
-
+    m_service_node = command_line::has_arg(vm, arg_service_node);
     if (m_service_node) {
       /// TODO: parse these options early, before we start p2p server etc?
       m_storage_port = command_line::get_arg(vm, arg_sn_bind_port);
@@ -356,7 +350,7 @@ namespace cryptonote
         storage_ok = false;
       }
 
-      const std::string pub_ip = command_line::get_arg(vm, arg_public_ip);
+      const std::string pub_ip = command_line::get_arg(vm, arg_service_node);
       if (pub_ip.size())
       {
         if (!epee::string_tools::get_ip_int32_from_string(m_sn_public_ip, pub_ip)) {
@@ -371,7 +365,7 @@ namespace cryptonote
       }
       else
       {
-        MERROR("Please specify an IPv4 public address which the service node & storage server is accessible from with: '--" << arg_public_ip.name << " <ip address>'");
+        MERROR("Please specify an IPv4 public address which the service node & storage server is accessible from with: '--" << arg_service_node.name << " <ip address>'");
         storage_ok = false;
       }
 
