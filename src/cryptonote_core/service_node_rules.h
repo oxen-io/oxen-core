@@ -65,6 +65,9 @@ namespace service_nodes {
   constexpr uint64_t  REORG_SAFETY_BUFFER_IN_BLOCKS = 20;
   static_assert(REORG_SAFETY_BUFFER_IN_BLOCKS < VOTE_LIFETIME, "Safety buffer should always be less than the vote lifetime");
 
+  constexpr uint64_t  IP_CHANGE_WINDOW_IN_SECONDS     = 24*60*60; // How far back an obligations quorum looks for multiple IPs (unless the following buffer is more recent)
+  constexpr uint64_t  IP_CHANGE_BUFFER_IN_SECONDS     = 2*60*60; // After we bump a SN for an IP change we don't bump again for changes within this time period
+
   constexpr size_t   MAX_SWARM_SIZE                   = 10;
   // We never create a new swarm unless there are SWARM_BUFFER extra nodes
   // available in the queue.

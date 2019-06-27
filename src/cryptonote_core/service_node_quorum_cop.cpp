@@ -58,8 +58,9 @@ namespace service_nodes
 
   // Perform service node tests -- this returns true is the server node is in a good state, that is,
   // has submitted uptime proofs, participated in required quorums, etc.
-  bool quorum_cop::check_service_node(const crypto::public_key &pubkey, const service_node_info &info) const
+  service_node_test_results quorum_cop::check_service_node(const crypto::public_key &pubkey, const service_node_info &info) const
   {
+    service_node_test_results result; // Defaults to true for individual tests
     uint64_t now                          = time(nullptr);
     uint64_t time_since_last_uptime_proof = now - info.proof.timestamp;
 
@@ -77,13 +78,27 @@ namespace service_nodes
                    << pubkey << ", due to uptime proof being older than: " << UPTIME_PROOF_MAX_TIME_IN_SECONDS
                    << ", time since last uptime proof: "
                    << tools::get_human_readable_timespan(std::chrono::seconds(time_since_last_uptime_proof)));
-      return false;
+      result.uptime_proved = false;
+    }
+
+    // IP change checks
+    const auto &ips = info.proof.public_ips;
+    if (ips[0].first && ips[1].first) {
+      // Figure out when we last had a blockchain-level IP change penalty (or when we registered);
+      // we only consider IP changes starting two hours after the last IP penalty.
+      std::vector<cryptonote::block> blocks;
+      if (m_core.get_blocks(info.last_ip_change_height, 1, blocks)) {
+        uint64_t find_ips_used_since = std::max(
+            uint64_t(std::time(nullptr)) - IP_CHANGE_WINDOW_IN_SECONDS,
+            uint64_t(blocks[0].timestamp) + IP_CHANGE_BUFFER_IN_SECONDS);
+        if (ips[0].second > find_ips_used_since && ips[1].second > find_ips_used_since)
+          result.single_ip = false;
+      }
     }
 
     if (check_checkpoint_obligation && info.proof.num_checkpoint_votes_expected >= CHECKPOINT_MIN_QUORUMS_NODE_MUST_VOTE_IN_BEFORE_DEREGISTER_CHECK)
     {
       proof_info const &proof = info.proof;
-
       // NOTE: We can receive more votes than expected, say, the nodes are in the quorums newer than the obligation check height
       if (proof.num_checkpoint_votes_received < proof.num_checkpoint_votes_expected)
       {
@@ -91,12 +106,12 @@ namespace service_nodes
         if (missing_votes > CHECKPOINT_MAX_MISSABLE_VOTES)
         {
           LOG_PRINT_L1("Submitting deregister vote for: " << pubkey << ", due to missing more than: " << CHECKPOINT_MAX_MISSABLE_VOTES << " checkpoint votes");
-          return false;
+          result.voted_in_checkpoints = false;
         }
       }
     }
 
-    return true;
+    return result;
   }
 
   void quorum_cop::blockchain_detached(uint64_t height)
@@ -239,25 +254,33 @@ namespace service_nodes
               const auto &node_key = worker_it->pubkey;
               const auto &info  = worker_it->info;
 
-              bool checks_passed = check_service_node(node_key, info);
+              auto test_results = check_service_node(node_key, info);
 
               new_state vote_for_state;
-              if (checks_passed) {
-                if (!info.is_decommissioned()) {
-                  good++;
-                  continue;
+              if (test_results.uptime_proved) {
+                if (info.is_decommissioned()) {
+                  vote_for_state = new_state::recommission;
+                  LOG_PRINT_L2("Decommissioned service node " << quorum->workers[node_index] << " is now passing required checks; voting to recommission");
+                } else if (!test_results.single_ip) {
+                    // Don't worry about this if the SN is getting recommissioned (above) -- it'll
+                    // already reenter at the bottom.
+                    vote_for_state = new_state::ip_change_penalty;
+                    LOG_PRINT_L2("Service node " << quorum->workers[node_index] << " was observed with multiple IPs recently; voting to reset reward position");
+                } else {
+                    good++;
+                    continue;
                 }
 
-                vote_for_state = new_state::recommission;
-                LOG_PRINT_L2("Decommissioned service node " << quorum->workers[node_index] << " is now passing required checks; voting to recommission");
               }
               else {
                 int64_t credit = calculate_decommission_credit(info, latest_height);
 
                 if (info.is_decommissioned()) {
                   if (credit >= 0) {
-                    LOG_PRINT_L2("Decommissioned service node " << quorum->workers[node_index] << " is still not passing required checks, but has remaining credit (" <<
-                        credit << " blocks); abstaining (to leave decommissioned)");
+                    LOG_PRINT_L2("Decommissioned service node "
+                                 << quorum->workers[node_index]
+                                 << " is still not passing required checks, but has remaining credit (" << credit
+                                 << " blocks); abstaining (to leave decommissioned)");
                     continue;
                   }
 
@@ -266,12 +289,16 @@ namespace service_nodes
                 } else {
                   if (credit >= DECOMMISSION_MINIMUM) {
                     vote_for_state = new_state::decommission;
-                    LOG_PRINT_L2("Service node " << quorum->workers[node_index] << " has stopped passing required checks, but has sufficient earned credit (" <<
-                        credit << " blocks) to avoid deregistration; voting to decommission");
+                    LOG_PRINT_L2("Service node "
+                                 << quorum->workers[node_index]
+                                 << " has stopped passing required checks, but has sufficient earned credit (" << credit << " blocks) to avoid deregistration; voting to decommission");
                   } else {
                     vote_for_state = new_state::deregister;
-                    LOG_PRINT_L2("Service node " << quorum->workers[node_index] << " has stopped passing required checks, but does not have sufficient earned credit (" <<
-                        credit << " blocks, " << DECOMMISSION_MINIMUM << " required) to decommission; voting to deregister");
+                    LOG_PRINT_L2("Service node "
+                                 << quorum->workers[node_index]
+                                 << " has stopped passing required checks, but does not have sufficient earned credit ("
+                                 << credit << " blocks, " << DECOMMISSION_MINIMUM
+                                 << " required) to decommission; voting to deregister");
                   }
                 }
               }

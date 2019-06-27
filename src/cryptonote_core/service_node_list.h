@@ -43,8 +43,9 @@ namespace service_nodes
   {
     uint64_t timestamp     = 0;
     uint16_t version_major = 0, version_minor = 0, version_patch = 0;
-    int16_t num_checkpoint_votes_expected = 0;
-    int16_t num_checkpoint_votes_received = 0;
+    int16_t num_checkpoint_votes_expected                         = 0;
+    int16_t num_checkpoint_votes_received                         = 0;
+    std::array<std::pair<uint32_t, uint64_t>, 2> public_ips = {}; // (not serialized)
   };
 
   struct service_node_info // registration information
@@ -113,6 +114,7 @@ namespace service_nodes
     uint32_t                           public_ip;
     uint16_t                           storage_port;
     proof_info                         proof; // NOTE: Not serialised
+    uint64_t                           last_ip_change_height; // The height of the last quorum penalty for changing IPs
 
     service_node_info() = default;
     bool is_fully_funded() const { return total_contributed >= staking_requirement; }
@@ -126,6 +128,9 @@ namespace service_nodes
       VARINT_FIELD(requested_unlock_height)
       VARINT_FIELD(last_reward_block_height)
       VARINT_FIELD(last_reward_transaction_index)
+      VARINT_FIELD(decommission_count)
+      VARINT_FIELD(active_since_height)
+      VARINT_FIELD(last_decommission_height)
       FIELD(contributors)
       VARINT_FIELD(total_contributed)
       VARINT_FIELD(total_reserved)
@@ -135,8 +140,7 @@ namespace service_nodes
       VARINT_FIELD(swarm_id)
       VARINT_FIELD(public_ip)
       VARINT_FIELD(storage_port)
-      VARINT_FIELD(active_since_height)
-      VARINT_FIELD(last_decommission_height)
+      VARINT_FIELD(last_ip_change_height)
     END_SERIALIZE()
   };
 

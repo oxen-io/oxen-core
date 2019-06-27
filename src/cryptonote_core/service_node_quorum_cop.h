@@ -62,6 +62,12 @@ namespace service_nodes
     std::shared_ptr<const testing_quorum> checkpointing;
   };
 
+  struct service_node_test_results {
+    bool uptime_proved        = true;
+    bool single_ip            = true;
+    bool voted_in_checkpoints = true;
+  };
+
   class quorum_cop
     : public cryptonote::BlockAddedHook,
       public cryptonote::BlockchainDetachedHook,
@@ -82,7 +88,7 @@ namespace service_nodes
 
   private:
     void process_quorums(cryptonote::block const &block);
-    bool check_service_node(const crypto::public_key &pubkey, const service_node_info &info) const;
+    service_node_test_results check_service_node(const crypto::public_key &pubkey, const service_node_info &info) const;
 
     cryptonote::core& m_core;
     voting_pool       m_vote_pool;
