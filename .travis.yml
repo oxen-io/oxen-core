@@ -45,7 +45,6 @@ deploy:
   on:
     repo: kegcoin-project/kegcoin
     tags: true
-    condition: "$_DEPLOYABLE = true"
 install:
     - env | grep -E '^(CCACHE_|DISPLAY|CONFIG_SHELL)' | tee /tmp/env
     - if [[ $HOST = *-mingw32 ]]; then DOCKER_ADMIN="--cap-add SYS_ADMIN"; fi
