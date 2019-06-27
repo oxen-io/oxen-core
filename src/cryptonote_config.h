@@ -46,7 +46,7 @@
 #define CURRENT_BLOCK_MAJOR_VERSION                     7
 #define CURRENT_BLOCK_MINOR_VERSION                     7
 #define CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT_V2           60*10
-#define CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE             15
+#define CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE             10
 #define CRYPTONOTE_DEFAULT_TX_MIXIN                     5
 
 #define STAKING_REQUIREMENT_LOCK_BLOCKS_EXCESS          20
@@ -97,7 +97,7 @@ static_assert(STAKING_PORTIONS % 3 == 0, "Use a multiple of three, so that it di
 
 #define ORPHANED_BLOCKS_MAX_COUNT                       100
 
-#define DIFFICULTY_TARGET_V2                            60  // seconds
+#define DIFFICULTY_TARGET_V2                            20  // seconds
 #define DIFFICULTY_WINDOW_V2                            60
 #define DIFFICULTY_LAG                                  15  // 15 to prevent 51 attack chains having a a heigher cumulative difficulty
 #define DIFFICULTY_CUT                                  60  // timestamps to cut after sorting
@@ -196,7 +196,7 @@ namespace config
   uint16_t const RPC_DEFAULT_PORT = 4040;
   uint16_t const ZMQ_RPC_DEFAULT_PORT = 5555;
   boost::uuids::uuid const NETWORK_ID = { 
-    { 0x69 ,0x96, 0x77, 0x68 ,0x86, 0x75, 0x78, 0x69, 0x4b, 0x4b, 0x71, 0x35, 0x92, 0x15, 0x69 }
+    { 0x69 ,0x96, 0x77, 0x68 ,0x86, 0x75, 0x78, 0x69, 0x4a, 0x4b, 0x71, 0x35, 0x90, 0x15, 0x69 }
   };
   std::string const GENESIS_TX = "020a01ff0001e80702089ec827e469877c33f3be8b20f0cd7464d7e908518659d7bb2cd5dce544bcb942019e94a7dea15069b79ed71b310f4860bbf743e71abfb41d3a1b03aa093aa5bf7f72000000000000000000000000000000000000000000000000000000000000000000";
   uint32_t const GENESIS_NONCE = 1022201;
