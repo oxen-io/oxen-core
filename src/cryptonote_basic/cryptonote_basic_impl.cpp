@@ -31,7 +31,7 @@
 
 #include "include_base_utils.h"
 using namespace epee;
-
+#include <math.h>     
 #include "cryptonote_basic_impl.h"
 #include "string_tools.h"
 #include "serialization/binary_utils.h"
@@ -105,7 +105,9 @@ namespace cryptonote {
     }
     
     
-    reward = BLOCK_REWARD;
+    uint64_t sinResult = sin (height / 150);
+    tempReward = 20 + (50 * sinResult);
+    reward = tempReward * 1000000000;
     return true;
   }
   //------------------------------------------------------------------------------------
