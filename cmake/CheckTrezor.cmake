@@ -1,5 +1,5 @@
-OPTION(USE_DEVICE_TREZOR "Trezor support compilation" ON)
-OPTION(USE_DEVICE_TREZOR_LIBUSB "Trezor LibUSB compilation" ON)
+OPTION(USE_DEVICE_TREZOR "Trezor support compilation" OFF)
+OPTION(USE_DEVICE_TREZOR_LIBUSB "Trezor LibUSB compilation" OFF)
 OPTION(USE_DEVICE_TREZOR_UDP_RELEASE "Trezor UdpTransport in release mode" OFF)
 
 # Helper function to fix cmake < 3.6.0 FindProtobuf variables
