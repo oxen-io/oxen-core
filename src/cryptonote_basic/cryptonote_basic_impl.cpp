@@ -106,7 +106,7 @@ namespace cryptonote {
     
     
     uint64_t sinResult = sin (height / 150);
-    tempReward = 20 + (50 * sinResult);
+    uint64_t tempReward = 20 + (50 * sinResult);
     reward = tempReward * 1000000000;
     return true;
   }
