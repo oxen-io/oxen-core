@@ -98,11 +98,11 @@ struct hard_fork_record
 // version 7 from the start of the blockchain, inhereted from Monero mainnet
 static const hard_fork_record mainnet_hard_forks[] =
 {
-  { network_version_7,                   1, 0, 1533631121 },
-  { network_version_8,                   2, 0, 1533631122 },
-  { network_version_9_service_nodes,     3, 0, 1533631123 },
-  { network_version_10_bulletproofs,     4, 0, 1542681077 },
-  { network_version_11_infinite_staking, 5, 0, 1542681078 }, 
+  { network_version_7,                   1, 0, 1561680000 },
+  { network_version_8,                   2, 0, 1561680001 },
+  { network_version_9_service_nodes,     3, 0, 1561680002 },
+  { network_version_10_bulletproofs,     4, 0, 1561680003 },
+  { network_version_11_infinite_staking, 5, 0, 1561680004 }, 
 };
 
 static const hard_fork_record testnet_hard_forks[] =
@@ -2044,7 +2044,8 @@ bool Blockchain::get_blocks(const t_ids_container& block_ids, t_blocks_container
     {
       uint64_t height = 0;
       if (m_db->block_exists(block_hash, &height))
-      {
+  
+     {
         blocks.push_back(std::make_pair(m_db->get_block_blob_from_height(height), block()));
         if (!parse_and_validate_block_from_blob(blocks.back().first, blocks.back().second))
         {
@@ -2198,8 +2199,7 @@ bool Blockchain::find_blockchain_supplement(const std::list<crypto::hash>& qbloc
 
   m_db->block_txn_stop();
   return true;
-}
-
+  }
 bool Blockchain::find_blockchain_supplement(const std::list<crypto::hash>& qblock_ids, NOTIFY_RESPONSE_CHAIN_ENTRY::request& resp) const
 {
   LOG_PRINT_L3("Blockchain::" << __func__);
