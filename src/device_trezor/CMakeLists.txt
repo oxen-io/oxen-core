@@ -65,11 +65,12 @@ set(trezor_private_headers)
 
 # Protobuf and LibUSB processed by CheckTrezor
 if(DEVICE_TREZOR_READY)
-  loki_private_headers(device_trezor
+    message(STATUS "Trezor support enabled")
+
+    loki_private_headers(device_trezor
             ${device_private_headers})
 
-  loki_add_library(device_trezor
-  loki_add_library(device_trezor
+    loki_add_library(device_trezor
             ${trezor_sources}
             ${trezor_headers}
             ${trezor_private_headers})
@@ -94,5 +95,4 @@ else()
     loki_add_library(device_trezor device_trezor.cpp)
     target_link_libraries(device_trezor PUBLIC cncrypto)
 endif()
-
 
