@@ -274,8 +274,8 @@ namespace net_utils
 			reciev_machine_state m_state;
 			chunked_state m_chunked_state;
 			std::string m_chunked_cache;
-			bool m_auto_connect;
 			critical_section m_lock;
+			bool m_ssl;
 
 		public:
 			explicit http_simple_client_template()
@@ -292,48 +292,36 @@ namespace net_utils
 				, m_state()
 				, m_chunked_state()
 				, m_chunked_cache()
-				, m_auto_connect(true)
 				, m_lock()
+				, m_ssl(false)
 			{}
 
 			const std::string &get_host() const { return m_host_buff; };
 			const std::string &get_port() const { return m_port; };
 
-			bool set_server(const std::string& address, boost::optional<login> user, ssl_options_t ssl_options = ssl_support_t::e_ssl_support_autodetect)
+			bool set_server(const std::string& address, boost::optional<login> user, bool ssl = false)
 			{
 				http::url_content parsed{};
 				const bool r = parse_url(address, parsed);
 				CHECK_AND_ASSERT_MES(r, false, "failed to parse url: " << address);
-				set_server(std::move(parsed.host), std::to_string(parsed.port), std::move(user), std::move(ssl_options));
+				set_server(std::move(parsed.host), std::to_string(parsed.port), std::move(user), ssl);
 				return true;
 			}
 
-			void set_server(std::string host, std::string port, boost::optional<login> user, ssl_options_t ssl_options = ssl_support_t::e_ssl_support_autodetect)
+			void set_server(std::string host, std::string port, boost::optional<login> user, bool ssl = false)
 			{
 				CRITICAL_REGION_LOCAL(m_lock);
 				disconnect();
 				m_host_buff = std::move(host);
 				m_port = std::move(port);
                                 m_auth = user ? http_client_auth{std::move(*user)} : http_client_auth{};
-				m_net_client.set_ssl(std::move(ssl_options));
-			}
-
-			void set_auto_connect(bool auto_connect)
-			{
-				m_auto_connect = auto_connect;
-			}
-
-			template<typename F>
-			void set_connector(F connector)
-			{
-				CRITICAL_REGION_LOCAL(m_lock);
-				m_net_client.set_connector(std::move(connector));
+				m_ssl = ssl;
 			}
 
       bool connect(std::chrono::milliseconds timeout)
       {
         CRITICAL_REGION_LOCAL(m_lock);
-        return m_net_client.connect(m_host_buff, m_port, timeout);
+        return m_net_client.connect(m_host_buff, m_port, timeout, m_ssl);
       }
 			//---------------------------------------------------------------------------
 			bool disconnect()
@@ -342,10 +330,10 @@ namespace net_utils
 				return m_net_client.disconnect();
 			}
 			//---------------------------------------------------------------------------
-			bool is_connected(bool *ssl = NULL)
+			bool is_connected()
 			{
 				CRITICAL_REGION_LOCAL(m_lock);
-				return m_net_client.is_connected(ssl);
+				return m_net_client.is_connected();
 			}
 			//---------------------------------------------------------------------------
 			virtual bool handle_target_data(std::string& piece_of_transfer)
@@ -374,11 +362,6 @@ namespace net_utils
 				CRITICAL_REGION_LOCAL(m_lock);
 				if(!is_connected())
 				{
-					if (!m_auto_connect)
-					{
-						MWARNING("Auto connect attempt to " << m_host_buff << ":" << m_port << " disabled");
-						return false;
-					}
 					MDEBUG("Reconnecting...");
 					if(!connect(timeout))
 					{
@@ -454,16 +437,6 @@ namespace net_utils
 				m_net_client.set_test_data(s);
 				m_state = reciev_machine_state_header;
 				return handle_reciev(timeout);
-			}
-			//---------------------------------------------------------------------------
-			uint64_t get_bytes_sent() const
-			{
-				return m_net_client.get_bytes_sent();
-			}
-			//---------------------------------------------------------------------------
-			uint64_t get_bytes_received() const
-			{
-				return m_net_client.get_bytes_received();
 			}
 			//---------------------------------------------------------------------------
 		private: 
@@ -852,21 +825,21 @@ namespace net_utils
 				const char *ptr = m_header_cache.c_str();
 				CHECK_AND_ASSERT_MES(!memcmp(ptr, "HTTP/", 5), false, "Invalid first response line: " + m_header_cache);
 				ptr += 5;
-				CHECK_AND_ASSERT_MES(epee::misc_utils::parse::isdigit(*ptr), false, "Invalid first response line: " + m_header_cache);
+				CHECK_AND_ASSERT_MES(isdigit(*ptr), false, "Invalid first response line: " + m_header_cache);
 				unsigned long ul;
 				char *end;
 				ul = strtoul(ptr, &end, 10);
 				CHECK_AND_ASSERT_MES(ul <= INT_MAX && *end =='.', false, "Invalid first response line: " + m_header_cache);
 				m_response_info.m_http_ver_hi = ul;
 				ptr = end + 1;
-				CHECK_AND_ASSERT_MES(epee::misc_utils::parse::isdigit(*ptr), false, "Invalid first response line: " + m_header_cache + ", ptr: " << ptr);
+				CHECK_AND_ASSERT_MES(isdigit(*ptr), false, "Invalid first response line: " + m_header_cache + ", ptr: " << ptr);
 				ul = strtoul(ptr, &end, 10);
 				CHECK_AND_ASSERT_MES(ul <= INT_MAX && isblank(*end), false, "Invalid first response line: " + m_header_cache + ", ptr: " << ptr);
 				m_response_info.m_http_ver_lo = ul;
 				ptr = end + 1;
 				while (isblank(*ptr))
 					++ptr;
-				CHECK_AND_ASSERT_MES(epee::misc_utils::parse::isdigit(*ptr), false, "Invalid first response line: " + m_header_cache);
+				CHECK_AND_ASSERT_MES(isdigit(*ptr), false, "Invalid first response line: " + m_header_cache);
 				ul = strtoul(ptr, &end, 10);
 				CHECK_AND_ASSERT_MES(ul >= 100 && ul <= 999 && isspace(*end), false, "Invalid first response line: " + m_header_cache);
 				m_response_info.m_response_code = ul;

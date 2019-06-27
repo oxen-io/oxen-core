@@ -64,8 +64,7 @@ void buffer::append(const void *data, size_t sz)
       size_t reserve = (((size() + sz) * 3 / 2) + 4095) & ~4095;
       new_storage.reserve(reserve);
       new_storage.resize(size());
-      if (size() > 0)
-        memcpy(new_storage.data(), storage.data() + offset, storage.size() - offset);
+      memcpy(new_storage.data(), storage.data() + offset, storage.size() - offset);
       offset = 0;
       std::swap(storage, new_storage);
     }

@@ -159,10 +159,5 @@ namespace misc_utils
     return slc;
   }
 
-  template<typename T> struct struct_init: T
-  {
-    struct_init(): T{} {}
-  };
-
 }
 }

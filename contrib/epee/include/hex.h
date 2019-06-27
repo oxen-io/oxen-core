@@ -32,7 +32,6 @@
 #include <cstdint>
 #include <iosfwd>
 #include <string>
-#include <boost/utility/string_ref.hpp>
 
 #include "wipeable_string.h"
 #include "span.h"
@@ -68,11 +67,5 @@ namespace epee
 
     //! Write `src` bytes as hex to `out`. `out` must be twice the length
     static void buffer_unchecked(char* out, const span<const std::uint8_t> src) noexcept;
-  };
-
-  struct from_hex
-  {
-      //! \return An std::vector of unsigned integers from the `src`
-      static std::vector<uint8_t> vector(boost::string_ref src);
   };
 }
