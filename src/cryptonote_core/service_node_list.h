@@ -213,7 +213,7 @@ namespace service_nodes
     void get_all_service_nodes_public_keys(std::vector<crypto::public_key>& keys, bool require_active) const;
 
     /// Record public ip and storage port and add them to the service node list
-    cryptonote::NOTIFY_UPTIME_PROOF::request generate_uptime_proof(crypto::public_key const &pubkey, crypto::secret_key const &key, uint32_t public_ip, uint32_t storage_port) const;
+    cryptonote::NOTIFY_UPTIME_PROOF::request generate_uptime_proof(crypto::public_key const &pubkey, crypto::secret_key const &key, uint32_t public_ip, uint16_t storage_port) const;
     bool handle_uptime_proof        (cryptonote::NOTIFY_UPTIME_PROOF::request const &proof);
 
     // TODO(doyle): This is a really awkward API

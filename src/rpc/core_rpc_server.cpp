@@ -2831,7 +2831,7 @@ namespace cryptonote
     }
 
     res.status = CORE_RPC_STATUS_OK;
-    res.height = m_core.get_current_blockchain_height();
+    res.height = m_core.get_current_blockchain_height() - 1;
     res.block_hash = string_tools::pod_to_hex(m_core.get_block_id_by_height(res.height - 1));
 
     res.fields = req.fields;

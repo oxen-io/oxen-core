@@ -1593,7 +1593,7 @@ namespace service_nodes
   cryptonote::NOTIFY_UPTIME_PROOF::request service_node_list::generate_uptime_proof(crypto::public_key const &pubkey,
                                                                                     crypto::secret_key const &key,
                                                                                     uint32_t public_ip,
-                                                                                    uint32_t storage_port) const
+                                                                                    uint16_t storage_port) const
   {
     cryptonote::NOTIFY_UPTIME_PROOF::request result = {};
     result.snode_version_major                      = static_cast<uint16_t>(LOKI_VERSION_MAJOR);
@@ -1629,8 +1629,7 @@ namespace service_nodes
       }
 
       // NOTE: Only care about major version for now
-      // FIXME(Jason): remove this `false` before release!
-      if (false && hf_version >= cryptonote::network_version_12_checkpointing && proof.snode_version_major < 4)
+      if (hf_version >= cryptonote::network_version_12_checkpointing && proof.snode_version_major < 4)
       {
         LOG_PRINT_L2("Rejecting uptime proof from " << proof.pubkey
                                                     << ": v4+ loki version is required for v12+ network proofs");
