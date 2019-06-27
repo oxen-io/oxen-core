@@ -2779,10 +2779,10 @@ namespace cryptonote
       }
     }
 
-    const uint64_t height = m_core.get_current_blockchain_height() - 1;
+    const uint64_t height = m_core.get_current_blockchain_height();
 
-    res.height = height;
-    res.block_hash = string_tools::pod_to_hex(m_core.get_block_id_by_height(height));
+    res.height = height - 1;
+    res.block_hash = string_tools::pod_to_hex(m_core.get_block_id_by_height(res.height));
     
     for (auto &pubkey_info : pubkey_info_list)
     {
@@ -2824,7 +2824,7 @@ namespace cryptonote
 
     res.service_node_states.reserve(sn_infos.size());
 
-    const uint64_t height = m_core.get_current_blockchain_height() - 1;
+    const uint64_t height = m_core.get_current_blockchain_height();
 
     for (auto &pubkey_info : sn_infos) {
       COMMAND_RPC_GET_N_SERVICE_NODES::response::entry entry = {res.fields};
@@ -2835,9 +2835,9 @@ namespace cryptonote
     }
 
     res.status = CORE_RPC_STATUS_OK;
-    res.height = height;
-    res.block_hash = string_tools::pod_to_hex(m_core.get_block_id_by_height(height));
-    res.hardfork = m_core.get_hard_fork_version(height);
+    res.height = height - 1;
+    res.block_hash = string_tools::pod_to_hex(m_core.get_block_id_by_height(res.height));
+    res.hardfork = m_core.get_hard_fork_version(res.height);
 
     res.fields = req.fields;
     return true;
