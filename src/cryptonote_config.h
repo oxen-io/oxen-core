@@ -241,7 +241,7 @@ namespace config
 
     uint64_t const GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS = ((60 * 60 * 24 * 7) / DIFFICULTY_TARGET_V2);
     std::string const GOVERNANCE_WALLET_ADDRESS[] =
-    {"Khh2bDX3mKChSnNQzGut6y6DUX6ZxBbxTKnvDHgFJp3P4s1hsMWxxNv64VKNNUUGRte4M14qt2kqNA7PhxTzb8ykSKeyAKi"};
+    {"Kc4f9ySwe9yfejCWMtee5RKoxLmpVWB5kFRuXafRtyTrdjSBFNVPPKigHsYYfPBokagWqk7VcL1jV8EmbPeNeAGMMdDJ3xv"};
   }
 }
 
