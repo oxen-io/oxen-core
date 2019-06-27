@@ -91,7 +91,7 @@ namespace cryptonote {
   bool get_base_block_reward(size_t median_weight, size_t current_block_weight, uint64_t already_generated_coins, uint64_t &reward, uint8_t version, uint64_t height) {
 
     //premine reward
-    if (premineAmmount != 0) {
+    if (PREMINE_AMMOUNT != 0) {
       if (already_generated_coins == 0)
       {
         reward = 1;
@@ -99,13 +99,13 @@ namespace cryptonote {
       }
       if (already_generated_coins == 1)
       {
-        reward = premineAmmount;
+        reward = PREMINE_AMMOUNT;
         return true;
       }
     }
     
     
-    reward = blockReward;
+    reward = BLOCK_REWARD;
     return true;
   }
   //------------------------------------------------------------------------------------
