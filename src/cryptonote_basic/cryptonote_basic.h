@@ -562,7 +562,7 @@ namespace cryptonote
     if (hf_version >= cryptonote::network_version_7 && hf_version <= cryptonote::network_version_9_service_nodes)
       return txversion::v2_ringct;
 
-    if (hf_version >= cryptonote::network_version_10_bulletproofs && hf_version <= cryptonote::network_version_11_infinite_staking)
+    if (hf_version == cryptonote::network_version_10_bulletproofs)
       return txversion::v3_per_output_unlock_times;
 
     return txversion::v4_tx_types;
