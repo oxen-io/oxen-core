@@ -550,7 +550,7 @@ namespace cryptonote
     return txversion::v4_tx_types;
   }
 
-  inline enum txversion transaction_prefix::get_min_version_for_hf(uint8_t hf_version, cryptonote::network_type nettype, bool miner_tx)
+  inline enum txversion transaction_prefix::get_min_version_for_hf(uint8_t hf_version, cryptonote::network_type nettype)
   {
     nettype = validate_nettype(nettype);
     if (nettype == MAINNET) // NOTE(loki): Add an exception for mainnet as there are v2's on mainnet.
@@ -562,7 +562,7 @@ namespace cryptonote
     if (hf_version >= cryptonote::network_version_7 && hf_version <= cryptonote::network_version_9_service_nodes)
       return txversion::v2_ringct;
 
-    if (hf_version == cryptonote::network_version_10_bulletproofs)
+    if (hf_version >= cryptonote::network_version_10_bulletproofs && hf_version <= cryptonote::network_version_11_infinite_staking)
       return txversion::v3_per_output_unlock_times;
 
     return txversion::v4_tx_types;
