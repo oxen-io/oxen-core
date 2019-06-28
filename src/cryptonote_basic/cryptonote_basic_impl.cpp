@@ -95,15 +95,13 @@ namespace cryptonote {
       {
         reward = 1000;
         return true;
-      }
-      if (already_generated_coins == 1000)
+      }else if (already_generated_coins == 1000)
       {
         reward = 7000000000000000;
         return true;
-      }
-    
-    
-    reward = BLOCK_REWARD;
+      } else {
+        reward = 20000000000;
+       }
     return true;
   }
   //------------------------------------------------------------------------------------
