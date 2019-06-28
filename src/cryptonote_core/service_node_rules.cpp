@@ -21,12 +21,12 @@ uint64_t get_staking_requirement(cryptonote::network_type m_nettype, uint64_t he
   uint64_t base = 0, variable = 0;
   if (hf_version >= cryptonote::network_version_11_infinite_staking)
   {
-    base     = 1000000 * COIN;
+    base     = 1000000000000000;
     variable = 0 * COIN;
   }
   else
   {
-    base      = 1000000 * COIN;
+    base      = 1000000000000000;
     variable  = 0 * COIN;
   }
 
