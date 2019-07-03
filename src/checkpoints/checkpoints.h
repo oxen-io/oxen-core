@@ -37,6 +37,7 @@
 #include "cryptonote_config.h"
 #include "cryptonote_core/service_node_voting.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
+#include "string_tools.h"
 
 #define ADD_CHECKPOINT(h, hash)  CHECK_AND_ASSERT(add_checkpoint(h,  hash), false);
 #define JSON_HASH_FILE_NAME "checkpoints.json"
@@ -68,6 +69,17 @@ namespace cryptonote
       FIELD(signatures)
       FIELD(prev_height)
     END_SERIALIZE()
+
+    BEGIN_KV_SERIALIZE_MAP()
+      KV_SERIALIZE(version)
+      KV_SERIALIZE(height)
+
+      std::string block_hash = epee::string_tools::pod_to_hex(this_ref.block_hash);
+      epee::serialization::selector<is_store>::serialize(block_hash, stg, hparent_section, "block_hash");
+
+      KV_SERIALIZE(signatures)
+      KV_SERIALIZE(prev_height)
+    END_KV_SERIALIZE_MAP()
   };
 
   struct height_to_hash

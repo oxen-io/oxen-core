@@ -39,6 +39,7 @@
 #include "rpc/rpc_handler.h"
 #include "common/varint.h"
 #include "common/perf_timer.h"
+#include "checkpoints/checkpoints.h"
 
 #include "common/loki.h"
 
@@ -3114,6 +3115,38 @@ namespace cryptonote
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(blacklist)
+        KV_SERIALIZE(status)
+        KV_SERIALIZE(untrusted)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+
+  LOKI_RPC_DOC_INTROSPECT
+  // Query hardcoded/service node checkpoints stored for the blockchain
+  struct COMMAND_RPC_GET_CHECKPOINTS
+  {
+    static size_t constexpr NUM_CHECKPOINTS_TO_QUERY_BY_DEFAULT = 60;
+    static size_t constexpr MAX_CHECKPOINTS_PER_QUERY           = 256;
+    struct request_t
+    {
+      std::vector<uint64_t> heights;   // The heights you wish to request checkpoints for, omit to retrieve the latest 60 checkpoints
+      size_t num_checkpoints_to_query; // If heights array is omitted, return up this many checkpoints specified (max 256), otherwise ignored
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(heights)
+        KV_SERIALIZE_OPT(num_checkpoints_to_query, NUM_CHECKPOINTS_TO_QUERY_BY_DEFAULT)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+
+    struct response_t
+    {
+      std::vector<checkpoint_t> checkpoints; // Array of requested checkpoints
+      std::string status;                    // Generic RPC error code. "OK" is the success value.
+      bool untrusted;                        // If the result is obtained using bootstrap mode, and therefore not trusted `true`, or otherwise `false`.
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(checkpoints)
         KV_SERIALIZE(status)
         KV_SERIALIZE(untrusted)
       END_KV_SERIALIZE_MAP()

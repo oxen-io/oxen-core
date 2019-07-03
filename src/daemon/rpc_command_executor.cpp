@@ -39,6 +39,7 @@
 #include "cryptonote_core/cryptonote_core.h"
 #include "cryptonote_core/service_node_rules.h"
 #include "cryptonote_basic/hardfork.h"
+#include "checkpoints/checkpoints.h"
 #include <boost/format.hpp>
 
 #include "common/loki_integration_test_hooks.h"
@@ -234,6 +235,52 @@ t_rpc_command_executor::~t_rpc_command_executor()
   {
     delete m_rpc_client;
   }
+}
+
+bool t_rpc_command_executor::print_checkpoints(uint64_t height, int num_checkpoints)
+{
+  cryptonote::COMMAND_RPC_GET_CHECKPOINTS::request  req;
+  cryptonote::COMMAND_RPC_GET_CHECKPOINTS::response res;
+  epee::json_rpc::error error_resp;
+
+  if (height != (UINT64_MAX - 1))
+  {
+    req.heights.resize(num_checkpoints);
+    for (int i = 0; i < num_checkpoints; i++) req.heights[i] = height + i;
+  }
+
+  if (m_is_rpc)
+  {
+    if (!m_rpc_client->rpc_request(req, res, "get_checkpoints", "Failed to query blockchain checkpoints"))
+      return false;
+  }
+  else
+  {
+    if (!m_rpc_server->on_get_checkpoints(req, res, error_resp) || res.status != CORE_RPC_STATUS_OK)
+    {
+      tools::fail_msg_writer() << "Failed to query checkpoints";
+      return false;
+    }
+  }
+
+  std::string entry;
+  for (size_t i = 0; i < res.checkpoints.size(); i++)
+  {
+    cryptonote::checkpoint_t const &checkpoint = res.checkpoints[i];
+    entry.clear();
+    entry.append("[");
+    entry.append(std::to_string(i));
+    entry.append("] ");
+
+    entry.append("Height: ");
+    entry.append(std::to_string(checkpoint.height));
+
+    entry.append(" Hash: ");
+    entry.append(epee::string_tools::pod_to_hex(checkpoint.block_hash));
+    std::cout << entry << std::endl;
+  }
+
+  return true;
 }
 
 bool t_rpc_command_executor::print_peer_list(bool white, bool gray, size_t limit) {

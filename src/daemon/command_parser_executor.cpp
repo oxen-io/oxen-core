@@ -31,6 +31,7 @@
 #include "common/command_line.h"
 #include "version.h"
 #include "daemon/command_parser_executor.h"
+#include "rpc/core_rpc_server_commands_defs.h"
 
 #undef LOKI_DEFAULT_LOG_CATEGORY
 #define LOKI_DEFAULT_LOG_CATEGORY "daemon"
@@ -47,6 +48,50 @@ t_command_parser_executor::t_command_parser_executor(
   )
   : m_executor(ip, port, login, ssl_options, is_rpc, rpc_server)
 {}
+
+bool t_command_parser_executor::print_checkpoints(const std::vector<std::string> &args)
+{
+  int num_checkpoints   = cryptonote::COMMAND_RPC_GET_CHECKPOINTS::NUM_CHECKPOINTS_TO_QUERY_BY_DEFAULT;
+  uint64_t start_height = UINT64_MAX - 1;
+  uint64_t end_height   = 0;
+
+  if (args.size() > 2)
+  {
+    std::cout << "use: print_checkpoints [start height] [end height]\n"
+              << "(omit arguments to print the last " << num_checkpoints << " checkpoints) " << std::endl;
+    return true;
+  }
+
+  {
+    int arg_index = 0;
+    if (args.size() >= 1 && !epee::string_tools::get_xtype_from_string(start_height, args[arg_index++]))
+    {
+      std::cout << "unexpected start height argument: " << args[arg_index - 1] << std::endl;
+      return true;
+    }
+
+    if (args.size() == 2)
+    {
+      if (!epee::string_tools::get_xtype_from_string(end_height, args[arg_index++]))
+      {
+        std::cout << "unexpected end height argument: " << args[arg_index - 1] << std::endl;
+        return true;
+      }
+    }
+  }
+
+
+  if (args.size() == 1)
+    num_checkpoints = 1;
+  else if (args.size() == 2)
+  {
+    end_height      = std::max(start_height + 1, end_height);
+    num_checkpoints = end_height - start_height + 1;
+  }
+
+  m_executor.print_checkpoints(start_height, num_checkpoints);
+  return true;
+}
 
 bool t_command_parser_executor::print_peer_list(const std::vector<std::string>& args)
 {

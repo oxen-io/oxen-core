@@ -2907,5 +2907,44 @@ namespace cryptonote
     res.status = CORE_RPC_STATUS_OK;
     return true;
   }
+  //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_get_checkpoints(const COMMAND_RPC_GET_CHECKPOINTS::request& req, COMMAND_RPC_GET_CHECKPOINTS::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
+  {
+    bool unused_ = false;
+    if (use_bootstrap_daemon_if_necessary<COMMAND_RPC_GET_CHECKPOINTS>(invoke_http_mode::JON_RPC, "get_checkpoints", req, res, unused_))
+      return true;
+
+    size_t num_checkpoints = req.num_checkpoints_to_query;
+    if (ctx)
+      num_checkpoints = std::min(COMMAND_RPC_GET_CHECKPOINTS::MAX_CHECKPOINTS_PER_QUERY, num_checkpoints);
+
+    Blockchain const &blockchain = m_core.get_blockchain_storage();
+    BlockchainDB const &db       = blockchain.get_db();
+
+    if (req.heights.size())
+    {
+      checkpoint_t checkpoint;
+      for (size_t i = 0; i < num_checkpoints; i++)
+      {
+        uint64_t height = req.heights[i];
+        if (db.get_block_checkpoint(height, checkpoint))
+          res.checkpoints.push_back(checkpoint);
+      }
+    }
+    else
+    {
+      checkpoint_t top_checkpoint;
+      if (db.get_top_checkpoint(top_checkpoint))
+      {
+        uint64_t start = top_checkpoint.height < num_checkpoints
+                             ? 0
+                             : top_checkpoint.height - num_checkpoints;
+        res.checkpoints = db.get_checkpoints_range(start, top_checkpoint.height, num_checkpoints);
+      }
+    }
+
+    res.status = CORE_RPC_STATUS_OK;
+    return true;
+  }
 
 }  // namespace cryptonote
