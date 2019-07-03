@@ -2448,8 +2448,10 @@ namespace cryptonote
       if (height > latest_height)
         continue;
 
-      uint8_t hf_version                         = m_core.get_hard_fork_version(height);
-      service_nodes::quorum_type max_quorum_type = service_nodes::max_quorum_type_for_hf(hf_version);
+      uint8_t hf_version                                     = m_core.get_hard_fork_version(height);
+      service_nodes::quorum_type max_quorum_type             = service_nodes::max_quorum_type_for_hf(hf_version);
+      COMMAND_RPC_GET_QUORUM_STATE::quorums_for_height entry = {};
+      entry.height                                           = height;
 
       for (int type_int = 0; type_int <= (int)max_quorum_type; type_int++)
       {
@@ -2459,8 +2461,6 @@ namespace cryptonote
         if (!quorum)
           continue;
 
-        COMMAND_RPC_GET_QUORUM_STATE::quorums_for_height entry                          = {};
-        entry.height                                                                    = height;
         if (type == service_nodes::quorum_type::obligations)        entry.obligation    = *quorum;
         else if (type == service_nodes::quorum_type::checkpointing) entry.checkpointing = *quorum;
         else
@@ -2470,9 +2470,9 @@ namespace cryptonote
           continue;
         }
 
-        res.quorums.push_back(entry);
         at_least_one_succeeded = true;
       }
+      res.quorums.push_back(entry);
     }
 
     if (at_least_one_succeeded)
