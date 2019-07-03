@@ -2447,7 +2447,7 @@ namespace cryptonote
       uint64_t height    = heights[i];
       uint8_t hf_version = m_core.get_hard_fork_version(height);
 
-      for (int type_int = 0; type_int < (int)service_nodes::max_quorum_type_for_hf(hf_version); type_int++)
+      for (int type_int = 0; type_int <= (int)service_nodes::max_quorum_type_for_hf(hf_version); type_int++)
       {
         auto type                                                   = static_cast<service_nodes::quorum_type>(type_int);
         std::shared_ptr<const service_nodes::testing_quorum> quorum = m_core.get_testing_quorum(type, height);
