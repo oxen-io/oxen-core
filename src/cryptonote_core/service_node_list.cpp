@@ -178,7 +178,7 @@ namespace service_nodes
 
     if (quorum_index >= array->size())
     {
-      MERROR("Unexpected pre-existing vote in tx pool is indexing out of bounds, this TX should have failed validation");
+      MERROR("Quorum indexing out of bounds: " << quorum_index << ", quorum_size: " << array->size());
       return false;
     }
 
