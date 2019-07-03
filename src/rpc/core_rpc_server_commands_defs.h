@@ -2539,7 +2539,7 @@ namespace cryptonote
   {
     struct request_t
     {
-      std::vector<uint64_t> heights; // Array of heights to query the quorums for.
+      std::vector<uint64_t> heights; // Array of heights to query the quorums for, omit the height to request the latest quorum
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(heights)
       END_KV_SERIALIZE_MAP()
@@ -2548,7 +2548,7 @@ namespace cryptonote
 
     struct quorums_for_height
     {
-      uint64_t height;
+      uint64_t height;                             // The height the quorums are relevant for
       service_nodes::testing_quorum obligation;    // Quorum for checking Service Nodes have performed their duties and should not be voted off
       service_nodes::testing_quorum checkpointing; // Quorum for Service Nodes responsible for participating in making checkpoints
       BEGIN_KV_SERIALIZE_MAP()
