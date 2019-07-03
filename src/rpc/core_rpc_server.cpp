@@ -2916,7 +2916,7 @@ namespace cryptonote
 
     size_t num_checkpoints = req.num_checkpoints_to_query;
     if (ctx)
-      num_checkpoints = std::min(COMMAND_RPC_GET_CHECKPOINTS::MAX_CHECKPOINTS_PER_QUERY, num_checkpoints);
+      num_checkpoints = std::min((size_t)256, num_checkpoints);
 
     Blockchain const &blockchain = m_core.get_blockchain_storage();
     BlockchainDB const &db       = blockchain.get_db();
@@ -2939,7 +2939,7 @@ namespace cryptonote
         uint64_t start = top_checkpoint.height < num_checkpoints
                              ? 0
                              : top_checkpoint.height - num_checkpoints;
-        res.checkpoints = db.get_checkpoints_range(start, top_checkpoint.height, num_checkpoints);
+        res.checkpoints = db.get_checkpoints_range(top_checkpoint.height, 0, num_checkpoints);
       }
     }
 

@@ -237,12 +237,13 @@ t_rpc_command_executor::~t_rpc_command_executor()
   }
 }
 
-bool t_rpc_command_executor::print_checkpoints(uint64_t height, int num_checkpoints)
+bool t_rpc_command_executor::print_checkpoints(uint64_t height, int num_checkpoints, bool print_json)
 {
   cryptonote::COMMAND_RPC_GET_CHECKPOINTS::request  req;
   cryptonote::COMMAND_RPC_GET_CHECKPOINTS::response res;
   epee::json_rpc::error error_resp;
 
+  req.num_checkpoints_to_query = num_checkpoints;
   if (height != (UINT64_MAX - 1))
   {
     req.heights.resize(num_checkpoints);
@@ -266,18 +267,28 @@ bool t_rpc_command_executor::print_checkpoints(uint64_t height, int num_checkpoi
   std::string entry;
   for (size_t i = 0; i < res.checkpoints.size(); i++)
   {
-    cryptonote::checkpoint_t const &checkpoint = res.checkpoints[i];
+    cryptonote::checkpoint_t &checkpoint = res.checkpoints[i];
     entry.clear();
-    entry.append("[");
-    entry.append(std::to_string(i));
-    entry.append("] ");
+    if (print_json)
+    {
+      tools::success_msg_writer() << "{\n" << obj_to_json_str(checkpoint) << "\n}\n";
+    }
+    else
+    {
+      entry.append("[");
+      entry.append(std::to_string(i));
+      entry.append("]");
 
-    entry.append("Height: ");
-    entry.append(std::to_string(checkpoint.height));
+      entry.append(" Type: ");
+      entry.append(cryptonote::checkpoint_t::type_to_string(checkpoint.type));
 
-    entry.append(" Hash: ");
-    entry.append(epee::string_tools::pod_to_hex(checkpoint.block_hash));
-    std::cout << entry << std::endl;
+      entry.append(" Height: ");
+      entry.append(std::to_string(checkpoint.height));
+
+      entry.append(" Hash: ");
+      entry.append(epee::string_tools::pod_to_hex(checkpoint.block_hash));
+      tools::success_msg_writer() << entry;
+    }
   }
 
   return true;

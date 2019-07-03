@@ -55,22 +55,30 @@ bool t_command_parser_executor::print_checkpoints(const std::vector<std::string>
   uint64_t start_height = UINT64_MAX - 1;
   uint64_t end_height   = 0;
 
-  if (args.size() > 2)
+  if (args.size() > 3)
   {
-    std::cout << "use: print_checkpoints [start height] [end height]\n"
+    std::cout << "use: print_checkpoints [+json] [start height] [end height]\n"
               << "(omit arguments to print the last " << num_checkpoints << " checkpoints) " << std::endl;
     return true;
   }
 
+  bool print_json  = false;
+  int arg_index    = 0;
+  size_t args_size = args.size();
+  if (args_size >= 1 && args[arg_index] == "+json")
   {
-    int arg_index = 0;
-    if (args.size() >= 1 && !epee::string_tools::get_xtype_from_string(start_height, args[arg_index++]))
+    print_json = true;
+    args_size--;
+  }
+
+  {
+    if (args_size >= 1 && !epee::string_tools::get_xtype_from_string(start_height, args[arg_index++]))
     {
       std::cout << "unexpected start height argument: " << args[arg_index - 1] << std::endl;
       return true;
     }
 
-    if (args.size() == 2)
+    if (args_size == 2)
     {
       if (!epee::string_tools::get_xtype_from_string(end_height, args[arg_index++]))
       {
@@ -81,15 +89,15 @@ bool t_command_parser_executor::print_checkpoints(const std::vector<std::string>
   }
 
 
-  if (args.size() == 1)
+  if (args_size == 1)
     num_checkpoints = 1;
-  else if (args.size() == 2)
+  else if (args_size == 2)
   {
     end_height      = std::max(start_height + 1, end_height);
     num_checkpoints = end_height - start_height + 1;
   }
 
-  m_executor.print_checkpoints(start_height, num_checkpoints);
+  m_executor.print_checkpoints(start_height, num_checkpoints, print_json);
   return true;
 }
 

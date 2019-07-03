@@ -61,6 +61,16 @@ namespace cryptonote
     std::vector<service_nodes::voter_to_signature> signatures; // Only service node checkpoints use signatures
     uint64_t                                       prev_height;
 
+    static char const *type_to_string(checkpoint_type type)
+    {
+      switch(type)
+      {
+        case checkpoint_type::hardcoded:    return "Hardcoded";
+        case checkpoint_type::service_node: return "ServiceNode";
+        default: assert(false);             return "XXUnhandledVersion";
+      }
+    }
+
     BEGIN_SERIALIZE()
       FIELD(version)
       ENUM_FIELD(type, type < checkpoint_type::count);
@@ -73,6 +83,9 @@ namespace cryptonote
     BEGIN_KV_SERIALIZE_MAP()
       KV_SERIALIZE(version)
       KV_SERIALIZE(height)
+
+      std::string type = checkpoint_t::type_to_string(this_ref.type);
+      epee::serialization::selector<is_store>::serialize(type, stg, hparent_section, "type");
 
       std::string block_hash = epee::string_tools::pod_to_hex(this_ref.block_hash);
       epee::serialization::selector<is_store>::serialize(block_hash, stg, hparent_section, "block_hash");

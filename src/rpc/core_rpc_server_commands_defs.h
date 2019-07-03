@@ -3127,7 +3127,6 @@ namespace cryptonote
   struct COMMAND_RPC_GET_CHECKPOINTS
   {
     static size_t constexpr NUM_CHECKPOINTS_TO_QUERY_BY_DEFAULT = 60;
-    static size_t constexpr MAX_CHECKPOINTS_PER_QUERY           = 256;
     struct request_t
     {
       std::vector<uint64_t> heights;   // The heights you wish to request checkpoints for, omit to retrieve the latest 60 checkpoints
