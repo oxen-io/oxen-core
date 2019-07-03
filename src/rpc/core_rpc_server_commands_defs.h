@@ -41,6 +41,7 @@
 #include "common/perf_timer.h"
 #include "checkpoints/checkpoints.h"
 
+#include "cryptonote_core/service_node_quorum_cop.h"
 #include "common/loki.h"
 
 namespace
@@ -2538,69 +2539,40 @@ namespace cryptonote
   {
     struct request_t
     {
-      uint64_t height; // The height to query the quorum state for.
+      std::vector<uint64_t> heights; // Array of heights to query the quorums for.
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE(height)
+        KV_SERIALIZE(heights)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;
 
-    struct response_t
+    struct quorums_for_height
     {
-      std::string status;                     // Generic RPC error code. "OK" is the success value.
-      std::vector<std::string> quorum_nodes;  // Array of public keys identifying service nodes which are being tested for the queried height.
-      std::vector<std::string> nodes_to_test; // Array of public keys identifying service nodes which are responsible for voting on the queried height.
-      bool untrusted;                         // If the result is obtained using bootstrap mode, and therefore not trusted `true`, or otherwise `false`.
-
-      BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE(status)
-        KV_SERIALIZE(quorum_nodes)
-        KV_SERIALIZE(nodes_to_test)
-        KV_SERIALIZE(untrusted)
-      END_KV_SERIALIZE_MAP()
-    };
-    typedef epee::misc_utils::struct_init<response_t> response;
-  };
-
-  LOKI_RPC_DOC_INTROSPECT
-  // Get the quorum state which is the list of public keys of the nodes 
-  // who are voting, and the list of public keys of the nodes who are being tested.
-  struct COMMAND_RPC_GET_QUORUM_STATE_BATCHED
-  {
-    struct request_t
-    {
-      uint64_t height_begin; // The starting height (inclusive) to query the quorum state for.
-      uint64_t height_end;   // The ending height (inclusive) to query the quorum state for.
-
-      BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE(height_begin)
-        KV_SERIALIZE(height_end)
-      END_KV_SERIALIZE_MAP()
-    };
-    typedef epee::misc_utils::struct_init<request_t> request;
-
-    struct response_entry
-    {
-      uint64_t height;                        // The height of this quorum state that was queried.
-      std::vector<std::string> quorum_nodes;  // Array of public keys identifying service nodes which are being tested for the queried height.
-      std::vector<std::string> nodes_to_test; // Array of public keys identifying service nodes which are responsible for voting on the queried height.
-
+      uint64_t height;
+      service_nodes::testing_quorum obligation;    // Quorum for checking Service Nodes have performed their duties and should not be voted off
+      service_nodes::testing_quorum checkpointing; // Quorum for Service Nodes responsible for participating in making checkpoints
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(height)
-        KV_SERIALIZE(quorum_nodes)
-        KV_SERIALIZE(nodes_to_test)
+        KV_SERIALIZE(obligation)
+        KV_SERIALIZE(checkpointing)
       END_KV_SERIALIZE_MAP()
+
+      BEGIN_SERIALIZE()
+        FIELD(height)
+        FIELD(obligation)
+        FIELD(checkpointing)
+      END_SERIALIZE()
     };
 
     struct response_t
     {
-      std::string status;                         // Generic RPC error code. "OK" is the success value.
-      std::vector<response_entry> quorum_entries; // Array of quorums that was requested.
-      bool untrusted;                             // If the result is obtained using bootstrap mode, and therefore not trusted `true`, or otherwise `false`.
+      std::string status;                      // Generic RPC error code. "OK" is the success value.
+      std::vector<quorums_for_height> quorums; // An array of quorums associated with the requested height
+      bool untrusted;                          // If the result is obtained using bootstrap mode, and therefore not trusted `true`, or otherwise `false`.
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(status)
-        KV_SERIALIZE(quorum_entries)
+        KV_SERIALIZE(quorums)
         KV_SERIALIZE(untrusted)
       END_KV_SERIALIZE_MAP()
     };
