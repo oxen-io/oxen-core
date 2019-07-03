@@ -2444,10 +2444,14 @@ namespace cryptonote
     res.quorums.reserve(std::max((size_t)16, req.heights.size()));
     for (size_t i = 0; i < num_heights; i++)
     {
-      uint64_t height    = heights[i];
-      uint8_t hf_version = m_core.get_hard_fork_version(height);
+      uint64_t height = heights[i];
+      if (height > latest_height)
+        continue;
 
-      for (int type_int = 0; type_int <= (int)service_nodes::max_quorum_type_for_hf(hf_version); type_int++)
+      uint8_t hf_version                         = m_core.get_hard_fork_version(height);
+      service_nodes::quorum_type max_quorum_type = service_nodes::max_quorum_type_for_hf(hf_version);
+
+      for (int type_int = 0; type_int <= (int)max_quorum_type; type_int++)
       {
         auto type                                                   = static_cast<service_nodes::quorum_type>(type_int);
         std::shared_ptr<const service_nodes::testing_quorum> quorum = m_core.get_testing_quorum(type, height);
@@ -2457,7 +2461,7 @@ namespace cryptonote
 
         COMMAND_RPC_GET_QUORUM_STATE::quorums_for_height entry                          = {};
         entry.height                                                                    = height;
-        if (type == service_nodes::quorum_type::obligations)         entry.obligation   = *quorum;
+        if (type == service_nodes::quorum_type::obligations)        entry.obligation    = *quorum;
         else if (type == service_nodes::quorum_type::checkpointing) entry.checkpointing = *quorum;
         else
         {
