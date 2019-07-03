@@ -131,16 +131,16 @@ namespace cryptonote
       if (!get_service_node_state_change_from_tx_extra(tx.extra, state_change, hard_fork_version))
       {
         MERROR("Could not get service node state change from tx, possibly corrupt tx in your blockchain, rejecting malformed state change");
-        return true;
+        return false;
       }
 
       auto const quorum_type = service_nodes::quorum_type::obligations;
       auto const quorum_group = service_nodes::quorum_group::worker;
       crypto::public_key service_node_to_change;
-      if (!service_node_list.try_resolve_pubkey_in_quorum(quorum_type, quorum_group, state_change.block_height, state_change.service_node_index, service_node_to_change))
+      if (!service_node_list.get_quorum_pubkey(quorum_type, quorum_group, state_change.block_height, state_change.service_node_index, service_node_to_change))
       {
-        MERROR("Could not resolve the service node public key from the information in the state change, possibly corrupt tx in your blockchain, rejecting malformed state change");
-        return true;
+        MERROR("Could not resolve the service node public key from the information in the state change, possibly corrupt tx in your blockchain");
+        return false;
       }
 
       std::vector<transaction> pool_txs;
@@ -158,14 +158,14 @@ namespace cryptonote
         }
 
         crypto::public_key service_node_to_change_in_the_pool;
-        if (service_node_list.try_resolve_pubkey_in_quorum(quorum_type, quorum_group, pool_tx_state_change.block_height, pool_tx_state_change.service_node_index, service_node_to_change_in_the_pool))
+        if (service_node_list.get_quorum_pubkey(quorum_type, quorum_group, pool_tx_state_change.block_height, pool_tx_state_change.service_node_index, service_node_to_change_in_the_pool))
         {
           if (service_node_to_change == service_node_to_change_in_the_pool)
             return true;
         }
         else
         {
-          MERROR("Could not resolve the service node public key from the information in a pooled tx state change, possibly corrupt tx in your blockchain, falling back to primitive checking method");
+          MWARNING("Could not resolve the service node public key from the information in a pooled tx state change, possibly corrupt tx in your blockchain, falling back to primitive checking method");
           if (state_change == pool_tx_state_change)
             return true;
         }
@@ -213,7 +213,7 @@ namespace cryptonote
     return false;
   }
   //---------------------------------------------------------------------------------
-  bool tx_memory_pool::add_tx(transaction &tx, /*const crypto::hash& tx_prefix_hash,*/ const crypto::hash &id, const cryptonote::blobdata &blob, size_t tx_weight, tx_verification_context& tvc, bool kept_by_block, bool relayed, bool do_not_relay, uint8_t version, service_nodes::service_node_list const &service_node_list)
+  bool tx_memory_pool::add_tx(transaction &tx, /*const crypto::hash& tx_prefix_hash,*/ const crypto::hash &id, const cryptonote::blobdata &blob, size_t tx_weight, tx_verification_context& tvc, bool kept_by_block, bool relayed, bool do_not_relay, uint8_t version, const service_nodes::service_node_list &service_node_list)
   {
     // this should already be called with that lock, but let's make it explicit for clarity
     CRITICAL_REGION_LOCAL(m_transactions_lock);

@@ -157,7 +157,7 @@ namespace service_nodes
     return nullptr;
   }
 
-  bool service_node_list::try_resolve_pubkey_in_quorum(quorum_type type, quorum_group group, uint64_t height, size_t quorum_index, crypto::public_key &key) const
+  bool service_node_list::get_quorum_pubkey(quorum_type type, quorum_group group, uint64_t height, size_t quorum_index, crypto::public_key &key) const
   {
     std::shared_ptr<const testing_quorum> quorum = get_testing_quorum(type, height);
     if (!quorum)
@@ -343,7 +343,7 @@ namespace service_nodes
     }
 
     crypto::public_key key;
-    if (!try_resolve_pubkey_in_quorum(quorum_type::obligations, quorum_group::worker, state_change.block_height, state_change.service_node_index, key))
+    if (!get_quorum_pubkey(quorum_type::obligations, quorum_group::worker, state_change.block_height, state_change.service_node_index, key))
       return false;
 
     auto iter = m_transient_state.service_nodes_infos.find(key);
@@ -1791,7 +1791,7 @@ namespace service_nodes
       return;
 
     crypto::public_key pubkey;
-    if (!try_resolve_pubkey_in_quorum(quorum_type::checkpointing, quorum_group::worker, vote.block_height, vote.index_in_group, pubkey))
+    if (!get_quorum_pubkey(quorum_type::checkpointing, quorum_group::worker, vote.block_height, vote.index_in_group, pubkey))
     {
       MERROR("Unexpected missing quorum for checkpointing vote at height: " << vote.block_height << ", current height: " << m_transient_state.height);
       return;

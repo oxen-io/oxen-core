@@ -3259,11 +3259,11 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
         }
 
         crypto::public_key existing_state_change_service_node_pubkey;
-        if (!m_service_node_list.try_resolve_pubkey_in_quorum(quorum_type,
-                                                              service_nodes::quorum_group::worker,
-                                                              existing_state_change.block_height,
-                                                              existing_state_change.service_node_index,
-                                                              existing_state_change_service_node_pubkey))
+        if (!m_service_node_list.get_quorum_pubkey(quorum_type,
+                                                   service_nodes::quorum_group::worker,
+                                                   existing_state_change.block_height,
+                                                   existing_state_change.service_node_index,
+                                                   existing_state_change_service_node_pubkey))
           continue;
 
         if (existing_state_change_service_node_pubkey == state_change_service_node_pubkey)
