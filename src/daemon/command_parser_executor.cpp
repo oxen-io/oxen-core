@@ -77,10 +77,10 @@ bool t_command_parser_executor::print_checkpoints(const std::vector<std::string>
   if (print_json)
     args_list.pop_front();
 
-  if (!parse_if_present<decltype(start_height)>(args_list, start_height, "start height"))
+  if (!parse_if_present(args_list, start_height, "start height"))
     return false;
 
-  if (!parse_if_present<decltype(end_height)>(args_list, end_height, "end height"))
+  if (!parse_if_present(args_list, end_height, "end height"))
     return false;
 
   if (!args_list.empty())

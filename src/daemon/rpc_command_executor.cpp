@@ -263,7 +263,7 @@ bool t_rpc_command_executor::print_checkpoints(uint64_t start_height, uint64_t e
 
   if (m_is_rpc)
   {
-    if (!m_rpc_client->rpc_request(req, res, "get_checkpoints", "Failed to query blockchain checkpoints"))
+    if (!m_rpc_client->json_rpc_request(req, res, "get_checkpoints", "Failed to query blockchain checkpoints"))
       return false;
   }
   else
