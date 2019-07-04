@@ -65,7 +65,7 @@ namespace service_nodes
     BEGIN_KV_SERIALIZE_MAP()
       KV_SERIALIZE(voter_index)
       std::string signature = epee::string_tools::pod_to_hex(this_ref.signature);
-      epee::serialization::selector<is_store>::serialize(signature, stg, hparent_section, "signature");
+      KV_SERIALIZE_VALUE(signature)
     END_KV_SERIALIZE_MAP()
   };
 

@@ -2910,40 +2910,48 @@ namespace cryptonote
   //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::on_get_checkpoints(const COMMAND_RPC_GET_CHECKPOINTS::request& req, COMMAND_RPC_GET_CHECKPOINTS::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
   {
-    bool unused_ = false;
-    if (use_bootstrap_daemon_if_necessary<COMMAND_RPC_GET_CHECKPOINTS>(invoke_http_mode::JON_RPC, "get_checkpoints", req, res, unused_))
-      return true;
+    bool bootstrap_daemon_connection_failure = false;
+    if (use_bootstrap_daemon_if_necessary<COMMAND_RPC_GET_CHECKPOINTS>(invoke_http_mode::JON_RPC, "get_checkpoints", req, res, bootstrap_daemon_connection_failure))
+      return bootstrap_daemon_connection_failure;
 
-    size_t num_checkpoints = req.num_checkpoints_to_query;
-    if (ctx)
-      num_checkpoints = std::min((size_t)256, num_checkpoints);
-
-    Blockchain const &blockchain = m_core.get_blockchain_storage();
-    BlockchainDB const &db       = blockchain.get_db();
-
-    if (req.heights.size())
+    if (ctx && m_restricted)
     {
-      checkpoint_t checkpoint;
-      for (size_t i = 0; i < num_checkpoints; i++)
+      if (req.count > COMMAND_RPC_GET_CHECKPOINTS_MAX_COUNT)
       {
-        uint64_t height = req.heights[i];
-        if (db.get_block_checkpoint(height, checkpoint))
-          res.checkpoints.push_back(checkpoint);
+        error_resp.code     = CORE_RPC_ERROR_CODE_WRONG_PARAM;
+        error_resp.message  = "Number of requested checkpoints greater than the allowed limit: ";
+        error_resp.message += std::to_string(COMMAND_RPC_GET_CHECKPOINTS_MAX_COUNT);
+        error_resp.message += ", requested: ";
+        error_resp.message += std::to_string(req.count);
+        return false;
       }
     }
-    else
+
+    res.status             = CORE_RPC_STATUS_OK;
+    BlockchainDB const &db = m_core.get_blockchain_storage().get_db();
+
+    if (req.start_height == COMMAND_RPC_GET_CHECKPOINTS::HEIGHT_SENTINEL_VALUE &&
+        req.end_height   == COMMAND_RPC_GET_CHECKPOINTS::HEIGHT_SENTINEL_VALUE)
     {
       checkpoint_t top_checkpoint;
       if (db.get_top_checkpoint(top_checkpoint))
-      {
-        uint64_t start = top_checkpoint.height < num_checkpoints
-                             ? 0
-                             : top_checkpoint.height - num_checkpoints;
-        res.checkpoints = db.get_checkpoints_range(top_checkpoint.height, 0, num_checkpoints);
-      }
+        res.checkpoints = db.get_checkpoints_range(top_checkpoint.height, 0, req.count);
+      return true;
     }
 
-    res.status = CORE_RPC_STATUS_OK;
+    if (req.start_height == COMMAND_RPC_GET_CHECKPOINTS::HEIGHT_SENTINEL_VALUE)
+    {
+      res.checkpoints = db.get_checkpoints_range(req.end_height, 0, req.count);
+      return true;
+    }
+
+    if (req.end_height == COMMAND_RPC_GET_CHECKPOINTS::HEIGHT_SENTINEL_VALUE)
+    {
+      res.checkpoints = db.get_checkpoints_range(req.start_height, UINT64_MAX, req.count);
+      return true;
+    }
+
+    res.checkpoints = db.get_checkpoints_range(req.start_height, req.end_height);
     return true;
   }
 

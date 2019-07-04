@@ -237,17 +237,28 @@ t_rpc_command_executor::~t_rpc_command_executor()
   }
 }
 
-bool t_rpc_command_executor::print_checkpoints(uint64_t height, int num_checkpoints, bool print_json)
+bool t_rpc_command_executor::print_checkpoints(uint64_t start_height, uint64_t end_height, bool print_json)
 {
   cryptonote::COMMAND_RPC_GET_CHECKPOINTS::request  req;
   cryptonote::COMMAND_RPC_GET_CHECKPOINTS::response res;
   epee::json_rpc::error error_resp;
 
-  req.num_checkpoints_to_query = num_checkpoints;
-  if (height != (UINT64_MAX - 1))
+  req.start_height = start_height;
+  req.end_height   = end_height;
+
+  if (req.start_height == cryptonote::COMMAND_RPC_GET_CHECKPOINTS::HEIGHT_SENTINEL_VALUE &&
+      req.end_height   == cryptonote::COMMAND_RPC_GET_CHECKPOINTS::HEIGHT_SENTINEL_VALUE)
   {
-    req.heights.resize(num_checkpoints);
-    for (int i = 0; i < num_checkpoints; i++) req.heights[i] = height + i;
+    req.count = cryptonote::COMMAND_RPC_GET_CHECKPOINTS::NUM_CHECKPOINTS_TO_QUERY_BY_DEFAULT;
+  }
+  else if (req.start_height == cryptonote::COMMAND_RPC_GET_CHECKPOINTS::HEIGHT_SENTINEL_VALUE ||
+           req.end_height   == cryptonote::COMMAND_RPC_GET_CHECKPOINTS::HEIGHT_SENTINEL_VALUE)
+  {
+    req.count = 1;
+  }
+  else
+  {
+    // NOTE: Otherwise, neither heights are set to HEIGHT_SENTINEL_VALUE, so get all the checkpoints between start and end
   }
 
   if (m_is_rpc)

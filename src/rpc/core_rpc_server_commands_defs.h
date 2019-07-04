@@ -3123,17 +3123,21 @@ namespace cryptonote
   };
 
   LOKI_RPC_DOC_INTROSPECT
-  // Query hardcoded/service node checkpoints stored for the blockchain
+  // Query hardcoded/service node checkpoints stored for the blockchain. Omit all arguments to retrieve the latest "count" checkpoints.
   struct COMMAND_RPC_GET_CHECKPOINTS
   {
-    static size_t constexpr NUM_CHECKPOINTS_TO_QUERY_BY_DEFAULT = 60;
+    constexpr static size_t   NUM_CHECKPOINTS_TO_QUERY_BY_DEFAULT = 60;
+    constexpr static uint64_t HEIGHT_SENTINEL_VALUE               = (UINT64_MAX - 1);
     struct request_t
     {
-      std::vector<uint64_t> heights;   // The heights you wish to request checkpoints for, omit to retrieve the latest 60 checkpoints
-      size_t num_checkpoints_to_query; // If heights array is omitted, return up this many checkpoints specified (max 256), otherwise ignored
+      uint64_t start_height; // Optional: Get the first count checkpoints starting from this height. Specify both start and end to get the checkpoints inbetween.
+      uint64_t end_height;   // Optional: Get the first count checkpoints before end height. Specify both start and end to get the checkpoints inbetween.
+      size_t count;          // Optional: Number of checkpoints to query.
+
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE(heights)
-        KV_SERIALIZE_OPT(num_checkpoints_to_query, NUM_CHECKPOINTS_TO_QUERY_BY_DEFAULT)
+      KV_SERIALIZE_OPT(start_height, HEIGHT_SENTINEL_VALUE)
+      KV_SERIALIZE_OPT(end_height, HEIGHT_SENTINEL_VALUE)
+      KV_SERIALIZE_OPT(count, NUM_CHECKPOINTS_TO_QUERY_BY_DEFAULT)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;

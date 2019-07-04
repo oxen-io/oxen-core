@@ -85,10 +85,10 @@ namespace cryptonote
       KV_SERIALIZE(height)
 
       std::string type = checkpoint_t::type_to_string(this_ref.type);
-      epee::serialization::selector<is_store>::serialize(type, stg, hparent_section, "type");
+      KV_SERIALIZE_VALUE(type);
 
       std::string block_hash = epee::string_tools::pod_to_hex(this_ref.block_hash);
-      epee::serialization::selector<is_store>::serialize(block_hash, stg, hparent_section, "block_hash");
+      KV_SERIALIZE_VALUE(block_hash);
 
       KV_SERIALIZE(signatures)
       KV_SERIALIZE(prev_height)
