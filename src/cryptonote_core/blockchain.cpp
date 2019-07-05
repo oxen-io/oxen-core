@@ -3280,15 +3280,14 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
             continue;
           }
 
-          crypto::public_key existing_state_change_service_node_pubkey;
-          if (!m_service_node_list.get_quorum_pubkey(quorum_type,
-                                                     service_nodes::quorum_group::worker,
-                                                     existing_state_change.block_height,
-                                                     existing_state_change.service_node_index,
-                                                     existing_state_change_service_node_pubkey))
+          const auto existing_quorum = m_service_node_list.get_testing_quorum(quorum_type, existing_state_change.block_height);
+          if (!existing_quorum)
+          {
+            MERROR_VER("Could not get obligations quorum for recent state change tx");
             continue;
+          }
 
-          if (existing_state_change_service_node_pubkey == state_change_service_node_pubkey)
+          if (existing_quorum->workers[existing_state_change.service_node_index] == state_change_service_node_pubkey)
           {
             MERROR_VER("Already seen this state change tx (aka double spend)");
             tvc.m_double_spend = true;
