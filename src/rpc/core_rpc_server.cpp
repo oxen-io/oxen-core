@@ -2431,48 +2431,86 @@ namespace cryptonote
   bool core_rpc_server::on_get_quorum_state(const COMMAND_RPC_GET_QUORUM_STATE::request& req, COMMAND_RPC_GET_QUORUM_STATE::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
   {
     PERF_TIMER(on_get_quorum_state);
-    uint64_t latest_height  = m_core.get_blockchain_storage().get_current_blockchain_height() - 1;
-    uint64_t const *heights = &latest_height;
-    size_t num_heights      = 1;
-    if (req.heights.size())
+
+    if (req.quorum_type >= (decltype(req.quorum_type))service_nodes::quorum_type::count &&
+        req.quorum_type != (decltype(req.quorum_type))service_nodes::quorum_type::rpc_request_all_quorums_sentinel_value)
     {
-      heights     = req.heights.data();
-      num_heights = req.heights.size();
+      error_resp.code    = CORE_RPC_ERROR_CODE_WRONG_PARAM;
+      error_resp.message = "Quorum type specifies an invalid value: ";
+      error_resp.message += std::to_string(req.quorum_type);
+      res.status         = error_resp.message;
+      return false;
+    }
+
+    uint64_t start = req.start_height, end = req.end_height;
+    if (req.start_height == COMMAND_RPC_GET_QUORUM_STATE::HEIGHT_SENTINEL_VALUE &&
+        req.end_height == COMMAND_RPC_GET_QUORUM_STATE::HEIGHT_SENTINEL_VALUE)
+    {
+      start = m_core.get_blockchain_storage().get_current_blockchain_height() - 1;
+    }
+    else if (req.start_height == COMMAND_RPC_GET_QUORUM_STATE::HEIGHT_SENTINEL_VALUE)
+    {
+      // NOTE: In this case, the end height is set, but not the start height, so just treat it as printing the end height
+      start = end;
+    }
+
+    if (start >= end)
+    {
+      if (end != 0)
+        end = end - 1;
+    }
+    else
+    {
+      end = end + 1;
+    }
+
+    if (ctx && m_restricted)
+    {
+      uint64_t count = (start < end) ? end - start : start - end;
+      if (count > COMMAND_RPC_GET_QUORUM_STATE_MAX_COUNT)
+      {
+        error_resp.code     = CORE_RPC_ERROR_CODE_WRONG_PARAM;
+        error_resp.message  = "Number of requested quorums greater than the allowed limit: ";
+        error_resp.message += std::to_string(COMMAND_RPC_GET_QUORUM_STATE_MAX_COUNT);
+        error_resp.message += ", requested: ";
+        error_resp.message += std::to_string(count);
+        return false;
+      }
     }
 
     bool at_least_one_succeeded = false;
-    res.quorums.reserve(std::max((size_t)16, req.heights.size()));
-    for (size_t i = 0; i < num_heights; i++)
+    res.quorums.reserve(std::min((uint64_t)16, end - start));
+    for (size_t height = start; height != end;)
     {
-      uint64_t height = heights[i];
-      if (height > latest_height)
-        continue;
-
-      uint8_t hf_version                                     = m_core.get_hard_fork_version(height);
-      service_nodes::quorum_type max_quorum_type             = service_nodes::max_quorum_type_for_hf(hf_version);
-      COMMAND_RPC_GET_QUORUM_STATE::quorums_for_height entry = {};
-      entry.height                                           = height;
-
-      for (int type_int = 0; type_int <= (int)max_quorum_type; type_int++)
+      uint8_t hf_version = m_core.get_hard_fork_version(height);
+      if (hf_version != HardFork::INVALID_HF_VERSION_FOR_HEIGHT)
       {
-        auto type                                                   = static_cast<service_nodes::quorum_type>(type_int);
-        std::shared_ptr<const service_nodes::testing_quorum> quorum = m_core.get_testing_quorum(type, height);
+        auto start_quorum_iterator = static_cast<service_nodes::quorum_type>(0);
+        auto end_quorum_iterator   = service_nodes::max_quorum_type_for_hf(hf_version);
 
-        if (!quorum)
-          continue;
-
-        if (type == service_nodes::quorum_type::obligations)        entry.obligation    = *quorum;
-        else if (type == service_nodes::quorum_type::checkpointing) entry.checkpointing = *quorum;
-        else
+        if (req.quorum_type != (decltype(req.quorum_type))service_nodes::quorum_type::rpc_request_all_quorums_sentinel_value)
         {
-          assert("Developer Error: Unhandled quorum type" == 0);
-          MERROR("Unhandled quorum type");
-          continue;
+          start_quorum_iterator = static_cast<service_nodes::quorum_type>(req.quorum_type);
+          end_quorum_iterator   = start_quorum_iterator;
         }
 
-        at_least_one_succeeded = true;
+        for (int quorum_int = (int)start_quorum_iterator; quorum_int <= (int)end_quorum_iterator; quorum_int++)
+        {
+          auto type = static_cast<service_nodes::quorum_type>(quorum_int);
+          if (std::shared_ptr<const service_nodes::testing_quorum> quorum = m_core.get_testing_quorum(type, height))
+          {
+            COMMAND_RPC_GET_QUORUM_STATE::quorum_for_height entry = {};
+            entry.height                                          = height;
+            entry.quorum_type                                     = static_cast<uint8_t>(quorum_int);
+            entry.quorum                                          = *quorum;
+            at_least_one_succeeded                                = true;
+            res.quorums.push_back(entry);
+          }
+        }
       }
-      res.quorums.push_back(entry);
+
+      if (end >= start) height++;
+      else height--;
     }
 
     if (at_least_one_succeeded)

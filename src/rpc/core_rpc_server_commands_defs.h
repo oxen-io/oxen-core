@@ -2533,42 +2533,46 @@ namespace cryptonote
 
 
   LOKI_RPC_DOC_INTROSPECT
-  // Get the quorum state which is the list of public keys of the nodes 
-  // who are voting, and the list of public keys of the nodes who are being tested.
+  // Get the quorum state which is the list of public keys of the nodes who are voting, and the list of public keys of the nodes who are being tested.
   struct COMMAND_RPC_GET_QUORUM_STATE
   {
+    static constexpr uint64_t HEIGHT_SENTINEL_VALUE = UINT64_MAX;
     struct request_t
     {
-      std::vector<uint64_t> heights; // Array of heights to query the quorums for, omit the height to request the latest quorum
+      uint64_t start_height; // (Optional): Start height, omit both start and end height to request the latest quorum
+      uint64_t end_height;   // (Optional): End height, omit both start and end height to request the latest quorum
+      uint8_t  quorum_type;  // (Optional): Set value to request a specific quorum, 0 = Obligation, 1 = Checkpointing, 255 = all quorums, default is all quorums;
+
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE(heights)
+        KV_SERIALIZE_OPT(start_height, HEIGHT_SENTINEL_VALUE)
+        KV_SERIALIZE_OPT(end_height, HEIGHT_SENTINEL_VALUE)
+        KV_SERIALIZE_OPT(quorum_type, (uint8_t)service_nodes::quorum_type::rpc_request_all_quorums_sentinel_value)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;
 
-    struct quorums_for_height
+    struct quorum_for_height
     {
-      uint64_t height;                             // The height the quorums are relevant for
-      service_nodes::testing_quorum obligation;    // Quorum for checking Service Nodes have performed their duties and should not be voted off
-      service_nodes::testing_quorum checkpointing; // Quorum for Service Nodes responsible for participating in making checkpoints
+      uint64_t height;                      // The height the quorums are relevant for
+      uint8_t  quorum_type;                 // The quorum type
+      service_nodes::testing_quorum quorum; // Quorum of Service Nodes
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(height)
-        KV_SERIALIZE(obligation)
-        KV_SERIALIZE(checkpointing)
+        KV_SERIALIZE(quorum)
       END_KV_SERIALIZE_MAP()
 
       BEGIN_SERIALIZE()
         FIELD(height)
-        FIELD(obligation)
-        FIELD(checkpointing)
+        FIELD(quorum_type)
+        FIELD(quorum)
       END_SERIALIZE()
     };
 
     struct response_t
     {
-      std::string status;                      // Generic RPC error code. "OK" is the success value.
-      std::vector<quorums_for_height> quorums; // An array of quorums associated with the requested height
-      bool untrusted;                          // If the result is obtained using bootstrap mode, and therefore not trusted `true`, or otherwise `false`.
+      std::string status;                     // Generic RPC error code. "OK" is the success value.
+      std::vector<quorum_for_height> quorums; // An array of quorums associated with the requested height
+      bool untrusted;                         // If the result is obtained using bootstrap mode, and therefore not trusted `true`, or otherwise `false`.
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(status)
