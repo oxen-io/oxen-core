@@ -67,7 +67,8 @@ namespace service_nodes {
     decommission,
     recommission,
     ip_change_penalty,
-    _count
+    _count,
+    null_state,
   };
 };
 

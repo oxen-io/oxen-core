@@ -2168,5 +2168,18 @@ namespace service_nodes
     cmd = stream.str();
     return true;
   }
+
+  bool service_node_info::can_transition_to_state(new_state proposed_state) const
+  {
+    new_state last_state = last_state_transition();
+    if (last_state == proposed_state)
+    {
+      // NOTE: But allow multiple ip_change_penalties
+      return (last_state == service_nodes::new_state::ip_change_penalty);
+    }
+
+    return true;
+  }
+
 }
 
