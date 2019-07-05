@@ -3239,8 +3239,10 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
         return false;
       }
 
-      for (blobdata const &blob : txs)
+      // NOTE: Go in reverse and find the latest state change relevant to the Service Node
+      for (auto it = txs.crbegin(); it != txs.crend(); it++)
       {
+        blobdata const &blob = *it;
         transaction existing_tx;
         if (!parse_and_validate_tx_from_blob(blob, existing_tx))
         {
@@ -3268,9 +3270,12 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
 
         if (existing_state_change_service_node_pubkey == state_change_service_node_pubkey)
         {
-          MERROR_VER("Already seen this state change tx (aka double spend)");
-          tvc.m_double_spend = true;
-          return false;
+          if (existing_state_change.state == state_change.state)
+          {
+            MERROR_VER("Already seen this state change tx (aka double spend)");
+            tvc.m_double_spend = true;
+            return false;
+          }
         }
       }
     }
