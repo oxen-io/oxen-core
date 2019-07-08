@@ -174,6 +174,29 @@ namespace cryptonote
         block.major_version < network_version_12_checkpointing)
       return;
 
+    if (m_nettype == MAINNET && height == HF_VERSION_12_CHECKPOINTING_SOFT_FORK_HEIGHT)
+    {
+      uint64_t start_height = 0;
+      get_newest_hardcoded_checkpoint(m_nettype, &start_height);
+      start_height += 1; // Don't start deleting from the hardcoded height
+
+      for (uint64_t delete_height = start_height + (start_height % service_nodes::CHECKPOINT_INTERVAL);
+           delete_height <= height;
+           delete_height += service_nodes::CHECKPOINT_INTERVAL)
+      {
+        try
+        {
+          m_db->remove_block_checkpoint(delete_height);
+        }
+        catch (const std::exception &e)
+        {
+          MERROR(
+              "Deleting historical checkpoints on mainnet soft-fork to checkpointing failed non-trivially at height: "
+              << delete_height << ", what = " << e.what());
+        }
+      }
+    }
+
     uint64_t const end_cull_height = height - service_nodes::CHECKPOINT_STORE_PERSISTENTLY_INTERVAL;
     uint64_t start_cull_height     = (end_cull_height < service_nodes::CHECKPOINT_STORE_PERSISTENTLY_INTERVAL)
                                      ? 0
@@ -311,8 +334,9 @@ namespace cryptonote
   //---------------------------------------------------------------------------
   bool checkpoints::init(network_type nettype, struct BlockchainDB *db)
   {
-    *this = {};
-    m_db = db;
+    *this     = {};
+    m_db      = db;
+    m_nettype = nettype;
 
 #if !defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
     if (nettype == MAINNET)

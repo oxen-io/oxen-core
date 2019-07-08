@@ -402,12 +402,28 @@ namespace service_nodes
     process_quorums(block);
 
     uint64_t const height = cryptonote::get_block_height(block) + 1; // chain height = new top block height + 1
+
+    // TODO(loki): Implicit knowledge of how remove_expired_votes subtracts VOTE_LIFETIME, but this is temporary code
+    // that will be removed post soft-fork.
+    if (m_core.get_nettype() == cryptonote::MAINNET && (height - 1) == HF_VERSION_12_CHECKPOINTING_SOFT_FORK_HEIGHT)
+      m_vote_pool.remove_expired_votes(height + VOTE_LIFETIME - 1);
+
     m_vote_pool.remove_expired_votes(height);
     m_vote_pool.remove_used_votes(txs, block.major_version);
   }
 
   bool quorum_cop::handle_vote(quorum_vote_t const &vote, cryptonote::vote_verification_context &vvc)
   {
+    uint64_t curr_height = m_core.get_blockchain_storage().get_current_blockchain_height();
+    if (m_core.get_nettype() == cryptonote::MAINNET &&
+        curr_height >= HF_VERSION_12_CHECKPOINTING_SOFT_FORK_HEIGHT &&
+        vote.block_height < HF_VERSION_12_CHECKPOINTING_SOFT_FORK_HEIGHT)
+    {
+      // NOTE: After the soft fork, ignore all votes from before the fork so we
+      // only create and enforce checkpoints from after the soft-fork.
+      return true;
+    }
+
     vvc = {};
     std::shared_ptr<const testing_quorum> quorum = m_core.get_testing_quorum(vote.type, vote.block_height);
     if (!quorum)

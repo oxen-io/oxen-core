@@ -219,6 +219,7 @@ namespace cryptonote
     bool init(network_type nettype, class BlockchainDB *db);
 
   private:
+    network_type m_nettype = UNDEFINED;
     uint64_t m_last_cull_height = 0;
     uint64_t m_oldest_allowable_alternative_block = 0;
     BlockchainDB *m_db;
