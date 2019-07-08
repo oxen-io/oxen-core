@@ -235,7 +235,7 @@ namespace cryptonote
     return height <= top_checkpoint_height;
   }
   //---------------------------------------------------------------------------
-  bool checkpoints::check_block(uint64_t height, const crypto::hash& h, bool* is_a_checkpoint) const
+  bool checkpoints::check_block(uint64_t height, const crypto::hash& h, bool* is_a_checkpoint, bool *rejected_by_service_node) const
   {
     checkpoint_t checkpoint;
     bool found = get_checkpoint_from_db_safe(m_db, height, checkpoint);
@@ -245,10 +245,13 @@ namespace cryptonote
       return true;
 
     bool result = checkpoint.check(h);
+    if (rejected_by_service_node)
+      *rejected_by_service_node = checkpoint.type == checkpoint_type::service_node && result;
+
     return result;
   }
   //---------------------------------------------------------------------------
-  bool checkpoints::is_alternative_block_allowed(uint64_t blockchain_height, uint64_t block_height)
+  bool checkpoints::is_alternative_block_allowed(uint64_t blockchain_height, uint64_t block_height, bool *rejected_by_service_node)
   {
     if (0 == block_height)
       return false;
@@ -285,6 +288,14 @@ namespace cryptonote
 
     m_oldest_allowable_alternative_block = std::max(sentinel_reorg_height, m_oldest_allowable_alternative_block);
     bool result                          = block_height > m_oldest_allowable_alternative_block;
+
+    if (rejected_by_service_node)
+    {
+      *rejected_by_service_node = !result &&
+                                  (checkpoints[0].type == checkpoint_type::service_node) &&
+                                  (checkpoints.size() == num_desired_checkpoints);
+    }
+
     return result;
   }
   //---------------------------------------------------------------------------

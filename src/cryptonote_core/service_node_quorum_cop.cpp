@@ -265,8 +265,23 @@ namespace service_nodes
 
               auto test_results = check_service_node(node_key, info);
 
+              bool passed = test_results.passed();
+
+              if (test_results.uptime_proved &&
+                  !test_results.voted_in_checkpoints &&
+                  m_core.get_nettype() == cryptonote::MAINNET &&
+                  m_obligations_height < HF_VERSION_12_CHECKPOINTING_SOFT_FORK_HEIGHT)
+              {
+                LOG_PRINT_L1("HF12 Checkpointing Pre-Soft Fork: Service node: "
+                             << node_key
+                             << " failed to participate in checkpointing quorum at height: " << m_obligations_height
+                             << ", it would have entered the "
+                                "decommission phase");
+                passed = true;
+              }
+
               new_state vote_for_state;
-              if (test_results.passed()) {
+              if (passed) {
                 if (info.is_decommissioned()) {
                   vote_for_state = new_state::recommission;
                   LOG_PRINT_L2("Decommissioned service node " << quorum->workers[node_index] << " is now passing required checks; voting to recommission");

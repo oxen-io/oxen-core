@@ -92,6 +92,8 @@ namespace service_nodes {
   constexpr uint64_t STATE_CHANGE_TX_LIFETIME_IN_BLOCKS = VOTE_LIFETIME;
   constexpr size_t   QUORUM_LIFETIME                    = (6 * STATE_CHANGE_TX_LIFETIME_IN_BLOCKS);
 
+  constexpr size_t   HF_12_CHECKPOINTING_SOFT_FORK_HEIGHT = 357332;
+
 
   using swarm_id_t                         = uint64_t;
   constexpr swarm_id_t UNASSIGNED_SWARM_ID = UINT64_MAX;
