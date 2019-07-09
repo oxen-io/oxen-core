@@ -146,9 +146,9 @@ namespace service_nodes
     if (hf_version < cryptonote::network_version_9_service_nodes)
       return;
 
-    uint64_t const MAX_REORG_BLOCKS = (hf_version >= cryptonote::network_version_12_checkpointing)
-                                          ? MAX_REORG_BLOCKS_POST_HF12
-                                          : MAX_REORG_BLOCKS_PRE_HF12;
+    uint64_t const REORG_SAFETY_BUFFER_BLOCKS = (hf_version >= cryptonote::network_version_12_checkpointing)
+                                                    ? REORG_SAFETY_BUFFER_BLOCKS_POST_HF12
+                                                    : REORG_SAFETY_BUFFER_BLOCKS_PRE_HF12;
     crypto::public_key my_pubkey;
     crypto::secret_key my_seckey;
     if (!m_core.get_service_node_keys(my_pubkey, my_seckey))
@@ -194,7 +194,7 @@ namespace service_nodes
             break;
 
           m_obligations_height = std::max(m_obligations_height, start_voting_from_height);
-          for (; m_obligations_height < (height - MAX_REORG_BLOCKS); m_obligations_height++)
+          for (; m_obligations_height < (height - REORG_SAFETY_BUFFER_BLOCKS); m_obligations_height++)
           {
             if (m_core.get_hard_fork_version(m_obligations_height) < cryptonote::network_version_9_service_nodes) continue;
 
@@ -309,18 +309,18 @@ namespace service_nodes
         {
           m_last_checkpointed_height = std::max(start_voting_from_height, m_last_checkpointed_height);
 
-          for (m_last_checkpointed_height += (m_last_checkpointed_height % CHECKPOINT_INTERVAL);
+          for (m_last_checkpointed_height += (CHECKPOINT_INTERVAL - (m_last_checkpointed_height % CHECKPOINT_INTERVAL));
                m_last_checkpointed_height <= height;
                m_last_checkpointed_height += CHECKPOINT_INTERVAL)
           {
             if (m_core.get_hard_fork_version(m_last_checkpointed_height) <= cryptonote::network_version_11_infinite_staking)
               continue;
 
-            if (m_last_checkpointed_height < MAX_REORG_BLOCKS)
+            if (m_last_checkpointed_height < REORG_SAFETY_BUFFER_BLOCKS)
               continue;
 
             const std::shared_ptr<const testing_quorum> quorum =
-                m_core.get_testing_quorum(quorum_type::checkpointing, m_last_checkpointed_height - MAX_REORG_BLOCKS);
+                m_core.get_testing_quorum(quorum_type::checkpointing, m_last_checkpointed_height - REORG_SAFETY_BUFFER_BLOCKS);
             if (!quorum)
             {
               // TODO(loki): Fatal error
