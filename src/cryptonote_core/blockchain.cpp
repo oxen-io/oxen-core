@@ -3233,14 +3233,14 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
         std::vector<service_nodes::service_node_pubkey_info> service_node_array = m_service_node_list.get_service_node_list_state({state_change_service_node_pubkey});
         if (service_node_array.empty())
         {
-          MERROR_VER("Service Node no longer exists on the network, state change can be ignored");
+          LOG_PRINT_L2("Service Node no longer exists on the network, state change can be ignored");
           return false;
         }
 
         service_nodes::service_node_info const &service_node_info = service_node_array[0].info;
         if (!service_node_info.can_transition_to_state(state_change.state))
         {
-          MERROR_VER("State change trying to vote Service Node into the same state it already is in, (aka double spend)");
+          LOG_PRINT_L2("State change trying to vote Service Node into the same state it already is in, (aka double spend)");
           tvc.m_double_spend = true;
           return false;
         }

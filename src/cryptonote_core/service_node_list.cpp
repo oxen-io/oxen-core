@@ -2171,11 +2171,14 @@ namespace service_nodes
 
   bool service_node_info::can_transition_to_state(new_state proposed_state) const
   {
-    new_state last_state = last_state_transition();
-    if (last_state == proposed_state)
+    if (is_decommissioned())
     {
-      // NOTE: But allow multiple ip_change_penalties
-      return (last_state == service_nodes::new_state::ip_change_penalty);
+      return proposed_state != new_state::decommission &&
+             proposed_state != new_state::ip_change_penalty;
+    }
+    else
+    {
+      return proposed_state != new_state::recommission;
     }
 
     return true;

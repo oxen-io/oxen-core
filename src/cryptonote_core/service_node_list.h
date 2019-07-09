@@ -122,18 +122,6 @@ namespace service_nodes
     bool is_active() const { return is_fully_funded() && !is_decommissioned(); }
 
     bool can_transition_to_state(new_state proposed_state) const;
-
-    new_state last_state_transition() const
-    {
-      if (is_decommissioned()) return new_state::decommission;
-      if (last_ip_change_height > static_cast<uint64_t>(active_since_height))
-        return new_state::ip_change_penalty;
-
-      if (decommission_count == 0)
-        return new_state::null_state;
-      return new_state::recommission;
-    }
-
     size_t total_num_locked_contributions() const;
 
     BEGIN_SERIALIZE_OBJECT()
