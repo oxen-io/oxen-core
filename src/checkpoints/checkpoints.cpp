@@ -180,7 +180,10 @@ namespace cryptonote
       get_newest_hardcoded_checkpoint(m_nettype, &start_height);
       start_height += 1; // Don't start deleting from the hardcoded height
 
-      for (uint64_t delete_height = start_height + (service_nodes::CHECKPOINT_INTERVAL - (start_height % service_nodes::CHECKPOINT_INTERVAL));
+      if ((start_height % service_nodes::CHECKPOINT_INTERVAL) > 0)
+        start_height += (service_nodes::CHECKPOINT_INTERVAL - (start_height % service_nodes::CHECKPOINT_INTERVAL));
+
+      for (uint64_t delete_height = start_height;
            delete_height <= height;
            delete_height += service_nodes::CHECKPOINT_INTERVAL)
       {
