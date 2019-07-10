@@ -307,8 +307,11 @@ namespace service_nodes
 
         case quorum_type::checkpointing:
         {
-          m_last_checkpointed_height = std::max(start_voting_from_height, m_last_checkpointed_height);
+          uint64_t start_checkpointing_height = start_voting_from_height;
+          if ((start_checkpointing_height % CHECKPOINT_INTERVAL) > 0)
+            start_checkpointing_height += (CHECKPOINT_INTERVAL - (start_checkpointing_height % CHECKPOINT_INTERVAL));
 
+          m_last_checkpointed_height = std::max(start_checkpointing_height, m_last_checkpointed_height);
           for (m_last_checkpointed_height += (CHECKPOINT_INTERVAL - (m_last_checkpointed_height % CHECKPOINT_INTERVAL));
                m_last_checkpointed_height <= height;
                m_last_checkpointed_height += CHECKPOINT_INTERVAL)
