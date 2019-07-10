@@ -312,7 +312,7 @@ namespace service_nodes
             start_checkpointing_height += (CHECKPOINT_INTERVAL - (start_checkpointing_height % CHECKPOINT_INTERVAL));
 
           m_last_checkpointed_height = std::max(start_checkpointing_height, m_last_checkpointed_height);
-          for (m_last_checkpointed_height += (CHECKPOINT_INTERVAL - (m_last_checkpointed_height % CHECKPOINT_INTERVAL));
+          for (;
                m_last_checkpointed_height <= height;
                m_last_checkpointed_height += CHECKPOINT_INTERVAL)
           {
