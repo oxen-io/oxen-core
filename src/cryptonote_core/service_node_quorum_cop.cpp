@@ -116,8 +116,24 @@ namespace service_nodes
 
   void quorum_cop::blockchain_detached(uint64_t height)
   {
-    m_obligations_height       = std::min(m_obligations_height, height);
-    m_last_checkpointed_height = std::min(m_last_checkpointed_height, height);
+    uint8_t hf_version                        = m_core.get_hard_fork_version(height);
+    uint64_t const REORG_SAFETY_BUFFER_BLOCKS = (hf_version >= cryptonote::network_version_12_checkpointing)
+                                                    ? REORG_SAFETY_BUFFER_BLOCKS_POST_HF12
+                                                    : REORG_SAFETY_BUFFER_BLOCKS_PRE_HF12;
+    if (m_obligations_height >= height)
+    {
+      LOG_ERROR("The blockchain was detached to height: " << height << ", but quorum cop has already processed votes for obligations up to " << m_obligations_height);
+      LOG_ERROR("This implies a reorg occured that was over " << REORG_SAFETY_BUFFER_BLOCKS << ". This should rarely happen! Please report this to the devs.");
+      m_obligations_height = height;
+    }
+
+    if (m_last_checkpointed_height >= height)
+    {
+      LOG_ERROR("The blockchain was detached to height: " << height << ", but quorum cop has already processed votes for checkpointing up to " << m_last_checkpointed_height);
+      LOG_ERROR("This implies a reorg occured that was over " << REORG_SAFETY_BUFFER_BLOCKS << ". This should rarely happen! Please report this to the devs.");
+      m_last_checkpointed_height = height;
+    }
+
     m_vote_pool.remove_expired_votes(height);
   }
 
