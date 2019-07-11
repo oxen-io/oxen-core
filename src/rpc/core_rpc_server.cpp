@@ -2966,5 +2966,89 @@ namespace cryptonote
     res.checkpoints = db.get_checkpoints_range(req.start_height, req.end_height);
     return true;
   }
+  //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_get_service_nodes_state_changes(const COMMAND_RPC_GET_SN_STATE_CHANGES::request& req, COMMAND_RPC_GET_SN_STATE_CHANGES::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
+  {
+    using blob_t = cryptonote::blobdata;
+    using block_pair_t = std::pair<blob_t, block>;
+    std::vector<block_pair_t> blocks;
+    std::vector<blob_t> txs;
+
+    const auto& db = m_core.get_blockchain_storage();
+    const uint64_t current_height = db.get_current_blockchain_height();
+
+    uint64_t end_height;
+    if (req.end_height == COMMAND_RPC_GET_SN_STATE_CHANGES::HEIGHT_SENTINEL_VALUE) {
+      end_height = current_height;
+    } else {
+      end_height = req.end_height;
+    }
+
+    if (!db.get_blocks(req.start_height, end_height - req.start_height, blocks, txs)) {
+      MERROR("Could not query block at requested height: " << req.start_height);
+      return false;
+    }
+
+    res.start_height = req.start_height;
+    res.end_height = end_height;
+    res.total_deregister = 0;
+    res.total_decommission = 0;
+    res.total_ip_change_penalty = 0;
+    res.total_recommission = 0;
+    res.total_unlock = 0;
+
+    for (size_t i = 0; i < txs.size(); ++i)
+    {
+      const auto& blob = txs[i];
+      cryptonote::transaction tx;
+      if (!cryptonote::parse_and_validate_tx_from_blob(blob, tx))
+      {
+        MERROR("tx could not be validated from blob, possibly corrupt blockchain");
+        continue;
+      }
+      if (tx.type == cryptonote::txtype::state_change)
+      {
+        const uint8_t hard_fork_version = blocks[i].second.major_version;
+        cryptonote::tx_extra_service_node_state_change state_change;
+        if (!cryptonote::get_service_node_state_change_from_tx_extra(tx.extra, state_change, hard_fork_version))
+        {
+          // TODO: This seem to be triggered quite often with hf 11 blocks
+          // LOG_ERROR("Could not get state change from tx, possibly corrupt tx, hf_version "<< std::to_string(hard_fork_version));
+          continue;
+        }
+
+        switch(state_change.state) {
+          case service_nodes::new_state::deregister:
+            res.total_deregister++;
+            break;
+
+          case service_nodes::new_state::decommission:
+            res.total_decommission++;
+            break;
+
+          case service_nodes::new_state::recommission:
+            res.total_recommission++;
+            break;
+
+          case service_nodes::new_state::ip_change_penalty:
+            res.total_ip_change_penalty++;
+            break;
+
+          default:
+            MERROR("Unhandled state in on_get_service_nodes_state_changes");
+            break;
+        }
+      }
+
+      if (tx.type == cryptonote::txtype::key_image_unlock)
+      {
+        res.total_unlock++;
+      }
+    }
+
+    res.status = CORE_RPC_STATUS_OK;
+    return true;
+  }
+
 
 }  // namespace cryptonote
