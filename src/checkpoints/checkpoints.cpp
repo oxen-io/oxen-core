@@ -355,5 +355,24 @@ namespace cryptonote
     return true;
   }
 
+  void transform_out(const crypto::hash &h, std::string &out) {
+    out = epee::string_tools::pod_to_hex(h);
+  }
+  void transform_in(crypto::hash &h, const std::string &in) {
+    epee::string_tools::hex_to_pod(in, h);
+  }
+  void transform_out(const checkpoint_type &t, std::string &out) {
+    out = checkpoint_t::type_to_string(t);
+  }
+  void transform_in(checkpoint_type &t, const std::string &in) {
+    for (auto i = static_cast<checkpoint_type>(0); i != checkpoint_type::count; i = static_cast<checkpoint_type>(static_cast<int>(i) + 1)) {
+      if (in == checkpoint_t::type_to_string(i)) {
+        t = i;
+        return;
+      }
+    }
+    t = checkpoint_type::count;
+  }
+
 }
 

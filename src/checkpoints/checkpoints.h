@@ -52,6 +52,16 @@ namespace cryptonote
     count,
   };
 
+  // Overloads for copying values -> strings or vice versa when serializing out or in, respectively.
+  void transform_out(const crypto::hash &h, std::string &out);
+  void transform_in(crypto::hash &h, const std::string &in);
+  inline void transform_out(crypto::hash &, std::string &) {}
+  inline void transform_in(const crypto::hash &, const std::string &) {}
+  void transform_out(const checkpoint_type &t, std::string &out);
+  void transform_in(checkpoint_type &t, const std::string &in);
+  inline void transform_out(checkpoint_type &, std::string &) {}
+  inline void transform_in(const checkpoint_type &, const std::string &) {}
+
   struct checkpoint_t
   {
     uint8_t                                        version = 0;
@@ -85,11 +95,13 @@ namespace cryptonote
       KV_SERIALIZE(version)
       KV_SERIALIZE(height)
 
-      std::string type = checkpoint_t::type_to_string(this_ref.type);
+      std::string type, block_hash;
+      transform_out(this_ref.type, type);
+      transform_out(this_ref.block_hash, block_hash);
       KV_SERIALIZE_VALUE(type);
-
-      std::string block_hash = epee::string_tools::pod_to_hex(this_ref.block_hash);
       KV_SERIALIZE_VALUE(block_hash);
+      transform_in(this_ref.type, type);
+      transform_in(this_ref.block_hash, block_hash);
 
       KV_SERIALIZE(signatures)
       KV_SERIALIZE(prev_height)

@@ -52,6 +52,12 @@ namespace service_nodes
 {
   struct testing_quorum;
 
+  // Overloads for copying signature -> strings or vice versa when serializing out or in, respectively.
+  inline void transform_out(const crypto::signature &h, std::string &out) { out = epee::string_tools::pod_to_hex(h); }
+  inline void transform_in(crypto::signature &h, const std::string &in) { epee::string_tools::hex_to_pod(in, h); }
+  inline void transform_out(crypto::signature &, std::string &) {}
+  inline void transform_in(const crypto::signature &, const std::string &) {}
+
   struct voter_to_signature
   {
     uint16_t          voter_index;
@@ -64,8 +70,10 @@ namespace service_nodes
 
     BEGIN_KV_SERIALIZE_MAP()
       KV_SERIALIZE(voter_index)
-      std::string signature = epee::string_tools::pod_to_hex(this_ref.signature);
+      std::string signature;
+      transform_out(this_ref.signature, signature);
       KV_SERIALIZE_VALUE(signature)
+      transform_in(this_ref.signature, signature);
     END_KV_SERIALIZE_MAP()
   };
 
