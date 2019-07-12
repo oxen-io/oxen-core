@@ -553,4 +553,16 @@ namespace service_nodes
 
     return credit;
   }
+
+  void transform_out(const std::vector<crypto::public_key> &pks, std::vector<std::string> &out) {
+    out.reserve(pks.size());
+    for (auto &pk : pks)
+      out.push_back(epee::string_tools::pod_to_hex(pk));
+  }
+
+  void transform_in(std::vector<crypto::public_key> &pks, const std::vector<std::string> &in) {
+    pks.resize(in.size());
+    for (size_t i = 0; i < in.size(); i++)
+      epee::string_tools::hex_to_pod(in[i], pks[i]);
+  }
 }

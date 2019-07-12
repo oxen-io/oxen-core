@@ -45,6 +45,12 @@ namespace service_nodes
 {
   struct service_node_info;
 
+  // Overloads for copying public keys -> hex strings or vice versa when serializing out or in, respectively.
+  void transform_out(const std::vector<crypto::public_key> &pks, std::vector<std::string> &out);
+  void transform_in(std::vector<crypto::public_key> &, const std::vector<std::string> &);
+  inline void transform_out(std::vector<crypto::public_key> &, std::vector<std::string> &out) {}
+  inline void transform_in(const std::vector<crypto::public_key> &pks, const std::vector<std::string> &in) {}
+
   LOKI_RPC_DOC_INTROSPECT
   struct testing_quorum
   {
@@ -57,13 +63,17 @@ namespace service_nodes
     END_SERIALIZE()
 
     BEGIN_KV_SERIALIZE_MAP()
-      std::vector<std::string> validators(this_ref.validators.size());
-      for (size_t i = 0; i < this_ref.validators.size(); i++) validators[i] = epee::string_tools::pod_to_hex(this_ref.validators[i]);
-      KV_SERIALIZE_VALUE(validators);
+      std::vector<std::string> validators, workers;
 
-      std::vector<std::string> workers(this_ref.workers.size());
-      for (size_t i = 0; i < this_ref.workers.size(); i++) workers[i] = epee::string_tools::pod_to_hex(this_ref.workers[i]);
+      transform_out(this_ref.validators, validators);
+      transform_out(this_ref.workers, workers);
+
+      KV_SERIALIZE_VALUE(validators);
       KV_SERIALIZE_VALUE(workers);
+
+      transform_in(this_ref.validators, validators);
+      transform_in(this_ref.workers, workers);
+
     END_KV_SERIALIZE_MAP()
   };
 
