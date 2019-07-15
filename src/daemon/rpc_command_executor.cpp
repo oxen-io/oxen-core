@@ -323,7 +323,7 @@ bool t_rpc_command_executor::print_sn_state_changes(uint64_t start_height, uint6
 
   if (m_is_rpc)
   {
-    if (!m_rpc_client->json_rpc_request(req, res, "get_sn_state_changes", "Failed to query blockchain checkpoints"))
+    if (!m_rpc_client->json_rpc_request(req, res, "get_service_nodes_state_changes", "Failed to query service nodes state changes"))
       return false;
   }
   else

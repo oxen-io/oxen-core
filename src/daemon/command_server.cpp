@@ -365,7 +365,7 @@ t_command_server::t_command_server(
     m_command_lookup.set_handler(
       "print_sn_state_changes"
     , std::bind(&t_command_parser_executor::print_sn_state_changes, &m_parser, p::_1)
-    , "print_sn_state_changes start height [end height]"
+    , "print_sn_state_changes <start_height> [end height]"
     , "Query the state changes between the range, omit the last argument to scan until the current block"
     );
 #if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)

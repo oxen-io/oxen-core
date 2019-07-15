@@ -2984,18 +2984,20 @@ namespace cryptonote
       end_height = req.end_height;
     }
 
-    if (!db.get_blocks(req.start_height, end_height - req.start_height, blocks, txs)) {
-      MERROR("Could not query block at requested height: " << req.start_height);
+    if (end_height < req.start_height){
+      res.error_resp.code = CORE_RPC_ERROR_CODE_WRONG_PARAM;
+      res.error_resp.message = "The provided end_height needs to be higher than start_height";
+      return false;
+    }
+
+    if (!db.get_blocks(req.start_height, end_height - req.start_height + 1, blocks, txs)) {
+      res.error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
+      res.error_resp.message = "Could not query block at requested height: " << req.start_height;
       return false;
     }
 
     res.start_height = req.start_height;
     res.end_height = end_height;
-    res.total_deregister = 0;
-    res.total_decommission = 0;
-    res.total_ip_change_penalty = 0;
-    res.total_recommission = 0;
-    res.total_unlock = 0;
 
     for (size_t i = 0; i < txs.size(); ++i)
     {

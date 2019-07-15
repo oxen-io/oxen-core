@@ -119,7 +119,7 @@ bool t_command_parser_executor::print_sn_state_changes(const std::vector<std::st
 
   if (!args_list.empty())
   {
-    std::cout << "use: print_sn_state_changes start height [end height]"
+    std::cout << "use: print_sn_state_changes <start_height> [end height]"
               << "(omit arguments to scan until the current block)"
               << std::endl;
     return false;
