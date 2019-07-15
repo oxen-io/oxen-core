@@ -200,8 +200,20 @@ namespace cryptonote
       }
     }
 
-    uint64_t const end_cull_height = height - service_nodes::CHECKPOINT_STORE_PERSISTENTLY_INTERVAL;
-    uint64_t start_cull_height     = (end_cull_height < service_nodes::CHECKPOINT_STORE_PERSISTENTLY_INTERVAL)
+    uint64_t end_cull_height = height - service_nodes::CHECKPOINT_STORE_PERSISTENTLY_INTERVAL;
+    {
+      uint64_t constexpr num_desired_checkpoints = service_nodes::CHECKPOINT_NUM_CHECKPOINTS_FOR_CHAIN_FINALITY + 1;
+      std::vector<checkpoint_t> checkpoints = m_db->get_checkpoints_range(height, 0, num_desired_checkpoints);
+
+      if (checkpoints.size() != num_desired_checkpoints)
+        return; // NOTE: No checkpoints to cull, can't cull the last N as they are for securing the chain
+
+      checkpoint_t const &oldest_checkpoint = checkpoints[num_desired_checkpoints - 1];
+      assert(oldest_checkpoint.height < checkpoints[0].height && "API for retrieving range of checkpoints has changed and is returning the checkpoints sorted in an order we did not expect" != nullptr);
+      end_cull_height = std::min(oldest_checkpoint.height, end_cull_height);
+    }
+
+    uint64_t start_cull_height = (end_cull_height < service_nodes::CHECKPOINT_STORE_PERSISTENTLY_INTERVAL)
                                      ? 0
                                      : end_cull_height - service_nodes::CHECKPOINT_STORE_PERSISTENTLY_INTERVAL;
 
@@ -210,7 +222,7 @@ namespace cryptonote
 
     m_last_cull_height = std::max(m_last_cull_height, start_cull_height);
     auto guard         = db_wtxn_guard(m_db);
-    for (; m_last_cull_height < end_cull_height; m_last_cull_height += service_nodes::CHECKPOINT_INTERVAL)
+    for (; m_last_cull_height <= end_cull_height; m_last_cull_height += service_nodes::CHECKPOINT_INTERVAL)
     {
       if (m_last_cull_height % service_nodes::CHECKPOINT_STORE_PERSISTENTLY_INTERVAL == 0)
         continue;
