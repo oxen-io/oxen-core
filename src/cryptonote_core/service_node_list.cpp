@@ -967,9 +967,20 @@ namespace service_nodes
     {
       assert(m_transient_state.height == block_height);
       ++m_transient_state.height;
-      const size_t ROLLBACK_EVENT_EXPIRATION_BLOCKS = 30;
-      uint64_t cull_height = (block_height < ROLLBACK_EVENT_EXPIRATION_BLOCKS) ? block_height : block_height - ROLLBACK_EVENT_EXPIRATION_BLOCKS;
 
+      uint64_t cull_height = block_height;
+      std::vector<cryptonote::checkpoint_t> const &checkpoints = m_db->get_checkpoints_range(block_height, 0, CHECKPOINT_NUM_CHECKPOINTS_FOR_CHAIN_FINALITY);
+      if (checkpoints.size() == CHECKPOINT_NUM_CHECKPOINTS_FOR_CHAIN_FINALITY)
+      {
+        cryptonote::checkpoint_t const &oldest_checkpoint = checkpoints[CHECKPOINT_NUM_CHECKPOINTS_FOR_CHAIN_FINALITY - 1];
+        cull_height = oldest_checkpoint.height;
+      }
+
+      uint64_t constexpr ROLLBACK_EVENT_EXPIRATION_BLOCKS = BLOCKS_EXPECTED_IN_DAYS(2);
+      uint64_t conservative_height =
+          block_height < ROLLBACK_EVENT_EXPIRATION_BLOCKS ? 0 : block_height - ROLLBACK_EVENT_EXPIRATION_BLOCKS;
+
+      cull_height = std::min(conservative_height, cull_height);
       while (!m_transient_state.rollback_events.empty() && m_transient_state.rollback_events.front()->m_block_height < cull_height)
       {
         m_transient_state.rollback_events.pop_front();
