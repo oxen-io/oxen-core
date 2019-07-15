@@ -2972,7 +2972,6 @@ namespace cryptonote
     using blob_t = cryptonote::blobdata;
     using block_pair_t = std::pair<blob_t, block>;
     std::vector<block_pair_t> blocks;
-    std::vector<blob_t> txs;
 
     const auto& db = m_core.get_blockchain_storage();
     const uint64_t current_height = db.get_current_blockchain_height();
@@ -2985,66 +2984,76 @@ namespace cryptonote
     }
 
     if (end_height < req.start_height){
-      res.error_resp.code = CORE_RPC_ERROR_CODE_WRONG_PARAM;
-      res.error_resp.message = "The provided end_height needs to be higher than start_height";
+      error_resp.code = CORE_RPC_ERROR_CODE_WRONG_PARAM;
+      error_resp.message = "The provided end_height needs to be higher than start_height";
       return false;
     }
 
-    if (!db.get_blocks(req.start_height, end_height - req.start_height + 1, blocks, txs)) {
-      res.error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
-      res.error_resp.message = "Could not query block at requested height: " << req.start_height;
+    if (!db.get_blocks(req.start_height, end_height - req.start_height + 1, blocks)) {
+      error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
+      error_resp.message = "Could not query block at requested height: " + std::to_string(req.start_height);
       return false;
     }
 
     res.start_height = req.start_height;
     res.end_height = end_height;
 
-    for (size_t i = 0; i < txs.size(); ++i)
+    std::vector<blob_t> blobs;
+    std::vector<crypto::hash> missed_ids;
+    for (const auto& block : blocks)
     {
-      const auto& blob = txs[i];
-      cryptonote::transaction tx;
-      if (!cryptonote::parse_and_validate_tx_from_blob(blob, tx))
+      blobs.clear();
+      if (!db.get_transactions_blobs(block.second.tx_hashes, blobs, missed_ids))
       {
-        MERROR("tx could not be validated from blob, possibly corrupt blockchain");
+        MERROR("Could not query block at requested height: " << cryptonote::get_block_height(block.second));
         continue;
       }
-      if (tx.type == cryptonote::txtype::state_change)
+      const uint8_t hard_fork_version = block.second.major_version;
+      for (const auto& blob : blobs)
       {
-        const uint8_t hard_fork_version = blocks[i].second.major_version;
-        cryptonote::tx_extra_service_node_state_change state_change;
-        if (!cryptonote::get_service_node_state_change_from_tx_extra(tx.extra, state_change, hard_fork_version))
+        cryptonote::transaction tx;
+        if (!cryptonote::parse_and_validate_tx_from_blob(blob, tx))
         {
-          // TODO: This seem to be triggered quite often with hf 11 blocks
-          // LOG_ERROR("Could not get state change from tx, possibly corrupt tx, hf_version "<< std::to_string(hard_fork_version));
+          MERROR("tx could not be validated from blob, possibly corrupt blockchain");
           continue;
         }
+        if (tx.type == cryptonote::txtype::state_change)
+        {
+          cryptonote::tx_extra_service_node_state_change state_change;
+          if (!cryptonote::get_service_node_state_change_from_tx_extra(tx.extra, state_change, hard_fork_version))
+          {
+            // TODO: This seem to be triggered quite often with hf 11 blocks
+            // LOG_ERROR("Could not get state change from tx, possibly corrupt tx, hf_version "<< std::to_string(hard_fork_version));
+            continue;
+          }
 
-        switch(state_change.state) {
-          case service_nodes::new_state::deregister:
-            res.total_deregister++;
-            break;
+          switch(state_change.state) {
+            case service_nodes::new_state::deregister:
+              res.total_deregister++;
+              break;
 
-          case service_nodes::new_state::decommission:
-            res.total_decommission++;
-            break;
+            case service_nodes::new_state::decommission:
+              res.total_decommission++;
+              break;
 
-          case service_nodes::new_state::recommission:
-            res.total_recommission++;
-            break;
+            case service_nodes::new_state::recommission:
+              res.total_recommission++;
+              break;
 
-          case service_nodes::new_state::ip_change_penalty:
-            res.total_ip_change_penalty++;
-            break;
+            case service_nodes::new_state::ip_change_penalty:
+              res.total_ip_change_penalty++;
+              break;
 
-          default:
-            MERROR("Unhandled state in on_get_service_nodes_state_changes");
-            break;
+            default:
+              MERROR("Unhandled state in on_get_service_nodes_state_changes");
+              break;
+          }
         }
-      }
 
-      if (tx.type == cryptonote::txtype::key_image_unlock)
-      {
-        res.total_unlock++;
+        if (tx.type == cryptonote::txtype::key_image_unlock)
+        {
+          res.total_unlock++;
+        }
       }
     }
 
