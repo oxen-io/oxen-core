@@ -2978,7 +2978,8 @@ namespace cryptonote
 
     uint64_t end_height;
     if (req.end_height == COMMAND_RPC_GET_SN_STATE_CHANGES::HEIGHT_SENTINEL_VALUE) {
-      end_height = current_height;
+      // current height is the block being mined, so exclude it from the results
+      end_height = current_height - 1;
     } else {
       end_height = req.end_height;
     }
@@ -3022,8 +3023,7 @@ namespace cryptonote
           cryptonote::tx_extra_service_node_state_change state_change;
           if (!cryptonote::get_service_node_state_change_from_tx_extra(tx.extra, state_change, hard_fork_version))
           {
-            // TODO: This seem to be triggered quite often with hf 11 blocks
-            // LOG_ERROR("Could not get state change from tx, possibly corrupt tx, hf_version "<< std::to_string(hard_fork_version));
+            LOG_ERROR("Could not get state change from tx, possibly corrupt tx, hf_version "<< std::to_string(hard_fork_version));
             continue;
           }
 

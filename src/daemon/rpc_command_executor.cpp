@@ -337,7 +337,7 @@ bool t_rpc_command_executor::print_sn_state_changes(uint64_t start_height, uint6
 
   std::stringstream output;
 
-  output << "Service Node state Changes (blocks " << res.start_height << "-" << res.end_height << ")" << std::endl;
+  output << "Service Node State Changes (blocks " << res.start_height << "-" << res.end_height << ")" << std::endl;
   output << " Recommissions:\t\t" << res.total_recommission << std::endl;
   output << " Unlocks:\t\t" << res.total_unlock << std::endl;
   output << " Decommissions:\t\t" << res.total_decommission << std::endl;
