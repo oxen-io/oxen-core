@@ -3966,6 +3966,14 @@ std::vector<checkpoint_t> BlockchainLMDB::get_checkpoints_range(uint64_t start, 
   return result;
 }
 
+uint64_t BlockchainLMDB::get_checkpoint_immutable_height() const
+{
+  size_t constexpr NUM_CHECKPOINTS = service_nodes::CHECKPOINT_NUM_CHECKPOINTS_FOR_CHAIN_FINALITY + 1;
+  std::vector<checkpoint_t> const checkpoints = get_checkpoints_range(height(), 0, NUM_CHECKPOINTS);
+  if (checkpoints.size() == NUM_CHECKPOINTS)
+    checkpoints.back().height;
+  return 0;
+}
 
 void BlockchainLMDB::pop_block(block& blk, std::vector<transaction>& txs)
 {

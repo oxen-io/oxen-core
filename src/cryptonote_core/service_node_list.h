@@ -217,7 +217,7 @@ namespace service_nodes
     bool                                  get_quorum_pubkey(quorum_type type, quorum_group group, uint64_t height, size_t quorum_index, crypto::public_key &key) const;
 
     std::vector<service_node_pubkey_info> get_service_node_list_state(const std::vector<crypto::public_key> &service_node_pubkeys) const;
-    const std::vector<key_image_blacklist_entry> &get_blacklisted_key_images() const { return m_state->key_image_blacklist; }
+    const std::vector<key_image_blacklist_entry> &get_blacklisted_key_images() const { return m_state.key_image_blacklist; }
 
     void set_db_pointer(cryptonote::BlockchainDB* db);
     void set_my_service_node_keys(crypto::public_key const *pub_key);
@@ -378,6 +378,20 @@ namespace service_nodes
       END_SERIALIZE()
     };
 
+    using block_height = uint64_t;
+    struct state_t
+    {
+      service_nodes_infos_t                  service_nodes_infos;
+      std::vector<key_image_blacklist_entry> key_image_blacklist;
+      block_height                           height;
+
+      // Returns a filtered, pubkey-sorted vector of service nodes that are active (fully funded and
+      // *not* decommissioned).
+      std::vector<pubkey_and_sninfo> active_service_nodes_infos() const;
+      // Similar to the above, but returns all nodes that are fully funded *and* decommissioned.
+      std::vector<pubkey_and_sninfo> decommissioned_service_nodes_infos() const;
+    };
+
   private:
 
     // Note(maxim): private methods don't have to be protected the mutex
@@ -396,13 +410,8 @@ namespace service_nodes
     bool is_registration_tx(const cryptonote::transaction& tx, uint64_t block_timestamp, uint64_t block_height, uint32_t index, crypto::public_key& key, service_node_info& info) const;
     std::vector<crypto::public_key> update_and_get_expired_nodes(const std::vector<cryptonote::transaction> &txs, uint64_t block_height);
 
-<<<<<<< HEAD
-    void clear(bool delete_db_entry = false);
-    bool load(uint64_t current_height);
-=======
     void reset(bool delete_db_entry = false);
-    bool load();
->>>>>>> Start storing service node list state for past blocks
+    bool load(uint64_t current_height);
 
     mutable boost::recursive_mutex m_sn_mutex;
     cryptonote::Blockchain&        m_blockchain;
@@ -418,7 +427,6 @@ namespace service_nodes
       block_height                           height;
 
       // Store all old quorum history only if run with --store-full-quorum-history
-      decltype(quorum_states) old_quorum_states;
 
       // Returns a filtered, pubkey-sorted vector of service nodes that are active (fully funded and
       // *not* decommissioned).
@@ -428,8 +436,9 @@ namespace service_nodes
     };
 
     std::map<block_height, quorum_manager> m_quorum_states;
+    decltype(m_quorum_states)              m_old_quorum_states;
     std::deque<state_t>                    m_state_history;
-    state_t                               *m_state;
+    state_t                                m_state;
   };
 
   bool reg_tx_extract_fields(const cryptonote::transaction& tx, std::vector<cryptonote::account_public_address>& addresses, uint64_t& portions_for_operator, std::vector<uint64_t>& portions, uint64_t& expiration_timestamp, crypto::public_key& service_node_key, crypto::signature& signature, crypto::public_key& tx_pub_key);

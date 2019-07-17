@@ -71,31 +71,25 @@ namespace service_nodes
     }
 
     uint64_t current_height = m_blockchain.get_current_blockchain_height();
-<<<<<<< HEAD
     bool loaded = load(current_height);
-    if (loaded && m_transient_state.old_quorum_states.size() < std::min(m_store_quorum_history, uint64_t{10})) {
-      LOG_PRINT_L0("Full history storage requested, but " << m_transient_state.old_quorum_states.size() << " old quorum states found");
+    if (loaded && m_old_quorum_states.size() < std::min(m_store_quorum_history, uint64_t{10})) {
+      LOG_PRINT_L0("Full history storage requested, but " << m_old_quorum_states.size() << " old quorum states found");
       loaded = false; // Either we don't have stored history or the history is very short, so recalculation is necessary or cheap.
     }
-    if (loaded && m_transient_state.height == current_height) return;
-=======
-    bool loaded = load();
-    if (loaded && m_state->height == current_height) return;
->>>>>>> Separate quorums and reduce storage to 1 days worth
+    if (loaded && m_state.height == current_height) return;
+    if (!loaded || m_state.height > current_height) reset(true);
 
-    if (!loaded || m_state->height > current_height) reset(true);
-
-    LOG_PRINT_L0("Recalculating service nodes list, scanning blockchain from height " << m_state->height);
+    LOG_PRINT_L0("Recalculating service nodes list, scanning blockchain from height " << m_state.height);
     LOG_PRINT_L0("This may take some time...");
 
     std::vector<std::pair<cryptonote::blobdata, cryptonote::block>> blocks;
-    for (uint64_t i = 0; m_state->height < current_height; i++)
+    for (uint64_t i = 0; m_state.height < current_height; i++)
     {
       if (i > 0 && i % 10 == 0)
-          LOG_PRINT_L0("... scanning height " << m_state->height);
+          LOG_PRINT_L0("... scanning height " << m_state.height);
 
       blocks.clear();
-      if (!m_blockchain.get_blocks(m_state->height, 1000, blocks))
+      if (!m_blockchain.get_blocks(m_state.height, 1000, blocks))
       {
         MERROR("Unable to initialize service nodes list");
         return;
@@ -153,7 +147,6 @@ namespace service_nodes
     }
 
     std::lock_guard<boost::recursive_mutex> lock(m_sn_mutex);
-<<<<<<< HEAD
     auto it = m_transient_state.quorum_states.find(height);
     if (it == m_transient_state.quorum_states.end()) {
       if (!m_store_quorum_history || !include_old)
@@ -168,22 +161,6 @@ namespace service_nodes
       return it->second.checkpointing;
     MERROR("Developer error: Unhandled quorum enum with value: " << (size_t)type);
     assert(!"Developer error: Unhandled quorum enum");
-=======
-    const auto &it = m_quorum_states.find(height);
-    if (it != m_quorum_states.end())
-    {
-      if (type == quorum_type::obligations)
-        return it->second.obligations;
-      else if (type == quorum_type::checkpointing)
-        return it->second.checkpointing;
-      else
-      {
-        MERROR("Developer error: Unhandled quorum enum with value: " << (size_t)type);
-        assert(!"Developer error: Unhandled quorum enum");
-      }
-    }
-
->>>>>>> Separate quorums and reduce storage to 1 days worth
     return nullptr;
   }
 
@@ -223,9 +200,9 @@ namespace service_nodes
 
     if (service_node_pubkeys.empty())
     {
-      result.reserve(m_state->service_nodes_infos.size());
+      result.reserve(m_state.service_nodes_infos.size());
 
-      for (const auto &it : m_state->service_nodes_infos)
+      for (const auto &it : m_state.service_nodes_infos)
       {
         service_node_pubkey_info entry = {};
         entry.pubkey                   = it.first;
@@ -238,8 +215,8 @@ namespace service_nodes
       result.reserve(service_node_pubkeys.size());
       for (const auto &it : service_node_pubkeys)
       {
-        const auto &find_it = m_state->service_nodes_infos.find(it);
-        if (find_it == m_state->service_nodes_infos.end())
+        const auto &find_it = m_state.service_nodes_infos.find(it);
+        if (find_it == m_state.service_nodes_infos.end())
           continue;
 
         service_node_pubkey_info entry = {};
@@ -273,13 +250,13 @@ namespace service_nodes
   bool service_node_list::is_service_node(const crypto::public_key& pubkey, bool require_active) const
   {
     std::lock_guard<boost::recursive_mutex> lock(m_sn_mutex);
-    auto it = m_state->service_nodes_infos.find(pubkey);
-    return it != m_state->service_nodes_infos.end() && (!require_active || it->second.is_active());
+    auto it = m_state.service_nodes_infos.find(pubkey);
+    return it != m_state.service_nodes_infos.end() && (!require_active || it->second.is_active());
   }
 
   bool service_node_list::is_key_image_locked(crypto::key_image const &check_image, uint64_t *unlock_height, service_node_info::contribution_t *the_locked_contribution) const
   {
-    for (const auto& pubkey_info : m_state->service_nodes_infos)
+    for (const auto& pubkey_info : m_state.service_nodes_infos)
     {
       const service_node_info &info = pubkey_info.second;
       for (const service_node_info::contributor_t &contributor : info.contributors)
@@ -382,8 +359,8 @@ namespace service_nodes
     if (!get_quorum_pubkey(quorum_type::obligations, quorum_group::worker, state_change.block_height, state_change.service_node_index, key))
       return false;
 
-    auto iter = m_state->service_nodes_infos.find(key);
-    if (iter == m_state->service_nodes_infos.end()) {
+    auto iter = m_state.service_nodes_infos.find(key);
+    if (iter == m_state.service_nodes_infos.end()) {
       LOG_PRINT_L2("Received state change tx for non-registered service node " << key << " (perhaps a delayed tx?)");
       return false;
     }
@@ -408,13 +385,13 @@ namespace service_nodes
               entry.version                   = get_min_service_node_info_version_for_hf(hard_fork_version);
               entry.key_image                 = contribution.key_image;
               entry.unlock_height             = block_height + staking_num_lock_blocks(m_blockchain.nettype());
-              m_state->key_image_blacklist.push_back(entry);
+              m_state.key_image_blacklist.push_back(entry);
               const bool adding_to_blacklist = true;
             }
           }
         }
 
-        m_state->service_nodes_infos.erase(iter);
+        m_state.service_nodes_infos.erase(iter);
         return true;
 
       case new_state::decommission:
@@ -504,7 +481,7 @@ namespace service_nodes
     /// Gather existing swarms from infos
     swarm_snode_map_t existing_swarms;
 
-    for (const auto &key_info : m_state->active_service_nodes_infos())
+    for (const auto &key_info : m_state.active_service_nodes_infos())
       existing_swarms[key_info.second.swarm_id].push_back(key_info.first);
 
     calc_swarm_changes(existing_swarms, seed);
@@ -517,7 +494,7 @@ namespace service_nodes
 
       for (const auto snode : snodes) {
 
-        auto& sn_info = m_state->service_nodes_infos.at(snode);
+        auto& sn_info = m_state.service_nodes_infos.at(snode);
         if (sn_info.swarm_id == swarm_id) continue; /// nothing changed for this snode
         sn_info.swarm_id = swarm_id;
       }
@@ -765,8 +742,8 @@ namespace service_nodes
     if (hard_fork_version >= cryptonote::network_version_11_infinite_staking)
     {
       // NOTE(loki): Grace period is not used anymore with infinite staking. So, if someone somehow reregisters, we just ignore it
-      const auto iter = m_state->service_nodes_infos.find(key);
-      if (iter != m_state->service_nodes_infos.end())
+      const auto iter = m_state.service_nodes_infos.find(key);
+      if (iter != m_state.service_nodes_infos.end())
         return false;
 
       if (m_service_node_pubkey && *m_service_node_pubkey == key) MGINFO_GREEN("Service node registered (yours): " << key << " on height: " << block_height);
@@ -777,8 +754,8 @@ namespace service_nodes
       // NOTE: A node doesn't expire until registration_height + lock blocks excess now which acts as the grace period
       // So it is possible to find the node still in our list.
       bool registered_during_grace_period = false;
-      const auto iter = m_state->service_nodes_infos.find(key);
-      if (iter != m_state->service_nodes_infos.end())
+      const auto iter = m_state.service_nodes_infos.find(key);
+      if (iter != m_state.service_nodes_infos.end())
       {
         if (hard_fork_version >= cryptonote::network_version_10_bulletproofs)
         {
@@ -815,7 +792,7 @@ namespace service_nodes
       }
     }
 
-    m_state->service_nodes_infos[key] = info;
+    m_state.service_nodes_infos[key] = info;
     return true;
   }
 
@@ -835,8 +812,8 @@ namespace service_nodes
     }
 
     /// Service node must be registered
-    auto iter = m_state->service_nodes_infos.find(pubkey);
-    if (iter == m_state->service_nodes_infos.end())
+    auto iter = m_state.service_nodes_infos.find(pubkey);
+    if (iter == m_state.service_nodes_infos.end())
     {
       LOG_PRINT_L1("Contribution TX: Contribution received for service node: " << pubkey <<
                    ", but could not be found in the service node list on height: " << block_height <<
@@ -966,29 +943,21 @@ namespace service_nodes
     if (hard_fork_version < 9)
       return;
 
+    assert(m_state.height == block_height);
     bool need_swarm_update = false;
-    m_state_history.push_back(*m_state);
-    m_state = &m_state_history.back();
+    m_state_history.push_back(m_state);
+    ++m_state.height;
 
     //
     // Cull old history
     //
     {
-      assert(m_state->height == block_height);
-      ++m_state->height;
-
-      uint64_t cull_height = block_height;
-      std::vector<cryptonote::checkpoint_t> const &checkpoints = m_db->get_checkpoints_range(block_height, 0, CHECKPOINT_NUM_CHECKPOINTS_FOR_CHAIN_FINALITY);
-      if (checkpoints.size() == CHECKPOINT_NUM_CHECKPOINTS_FOR_CHAIN_FINALITY)
-      {
-        cryptonote::checkpoint_t const &oldest_checkpoint = checkpoints[CHECKPOINT_NUM_CHECKPOINTS_FOR_CHAIN_FINALITY - 1];
-        cull_height = oldest_checkpoint.height;
-      }
-
+      uint64_t cull_height                                = block_height;
+      uint64_t checkpoint_immutable_height                = m_db->get_checkpoint_immutable_height();
       uint64_t constexpr ROLLBACK_EVENT_EXPIRATION_BLOCKS = BLOCKS_EXPECTED_IN_DAYS(1);
       uint64_t conservative_height = block_height < ROLLBACK_EVENT_EXPIRATION_BLOCKS ? 0 : block_height - ROLLBACK_EVENT_EXPIRATION_BLOCKS;
 
-      cull_height = std::min(conservative_height, cull_height);
+      cull_height = std::min(checkpoint_immutable_height, std::min(conservative_height, cull_height));
       while (!m_state_history.empty() && m_state_history.front().height < cull_height)
         m_state_history.pop_front();
     }
@@ -996,12 +965,12 @@ namespace service_nodes
     //
     // Remove expired blacklisted key images
     //
-    for (auto entry = m_state->key_image_blacklist.begin(); entry != m_state->key_image_blacklist.end();)
+    for (auto entry = m_state.key_image_blacklist.begin(); entry != m_state.key_image_blacklist.end();)
     {
       if (block_height >= entry->unlock_height)
       {
         const bool adding_to_blacklist = false;
-        entry = m_state->key_image_blacklist.erase(entry);
+        entry = m_state.key_image_blacklist.erase(entry);
       }
       else
         entry++;
@@ -1012,8 +981,8 @@ namespace service_nodes
     //
     for (const crypto::public_key& pubkey : update_and_get_expired_nodes(txs, block_height))
     {
-      auto i = m_state->service_nodes_infos.find(pubkey);
-      if (i != m_state->service_nodes_infos.end())
+      auto i = m_state.service_nodes_infos.find(pubkey);
+      if (i != m_state.service_nodes_infos.end())
       {
         if (m_service_node_pubkey && *m_service_node_pubkey == pubkey)
         {
@@ -1025,7 +994,7 @@ namespace service_nodes
         }
 
         need_swarm_update += i->second.is_active();
-        m_state->service_nodes_infos.erase(i);
+        m_state.service_nodes_infos.erase(i);
       }
     }
 
@@ -1034,11 +1003,11 @@ namespace service_nodes
     //
     {
       crypto::public_key winner_pubkey = cryptonote::get_service_node_winner_from_tx_extra(block.miner_tx.extra);
-      if (m_state->service_nodes_infos.count(winner_pubkey) == 1)
+      if (m_state.service_nodes_infos.count(winner_pubkey) == 1)
       {
         // set the winner as though it was re-registering at transaction index=UINT32_MAX for this block
-        m_state->service_nodes_infos[winner_pubkey].last_reward_block_height = block_height;
-        m_state->service_nodes_infos[winner_pubkey].last_reward_transaction_index = UINT32_MAX;
+        m_state.service_nodes_infos[winner_pubkey].last_reward_block_height = block_height;
+        m_state.service_nodes_infos[winner_pubkey].last_reward_transaction_index = UINT32_MAX;
       }
     }
 
@@ -1063,8 +1032,8 @@ namespace service_nodes
         if (!cryptonote::get_service_node_pubkey_from_tx_extra(tx.extra, snode_key))
           continue;
 
-        auto it = m_state->service_nodes_infos.find(snode_key);
-        if (it == m_state->service_nodes_infos.end())
+        auto it = m_state.service_nodes_infos.find(snode_key);
+        if (it == m_state.service_nodes_infos.end())
           continue;
 
         service_node_info &node_info = (*it).second;
@@ -1120,39 +1089,38 @@ namespace service_nodes
     //
     generate_quorums(block);
     const size_t cache_state_from_height = (block_height < QUORUM_LIFETIME) ? 0 : block_height - QUORUM_LIFETIME;
-<<<<<<< HEAD
-    while (!m_transient_state->quorum_states.empty() && m_transient_state->quorum_states.begin()->first < cache_state_from_height)
-    {
-      m_transient_state->quorum_states.erase(m_transient_state->quorum_states.begin());
-      auto rem = m_transient_state.quorum_states.begin();
-      if (m_store_quorum_history)
-        m_transient_state.old_quorum_states.emplace_hint(m_transient_state.old_quorum_states.end(), std::move(*rem));
-
-      m_transient_state.quorum_states.erase(rem);
-    }
-    while (m_transient_state.old_quorum_states.size() > m_store_quorum_history)
-      m_transient_state.old_quorum_states.erase(m_transient_state.old_quorum_states.begin());
-
-=======
     while (!m_quorum_states.empty() && m_quorum_states.begin()->first < cache_state_from_height)
+    {
       m_quorum_states.erase(m_quorum_states.begin());
->>>>>>> Separate quorums and reduce storage to 1 days worth
+      auto rem = m_quorum_states.begin();
+      if (m_store_quorum_history)
+        m_old_quorum_states.emplace_hint(m_old_quorum_states.end(), std::move(*rem));
+
+      m_quorum_states.erase(rem);
+    }
+    while (m_old_quorum_states.size() > m_store_quorum_history)
+      m_old_quorum_states.erase(m_old_quorum_states.begin());
+
   }
 
   void service_node_list::blockchain_detached(uint64_t height)
   {
     std::lock_guard<boost::recursive_mutex> lock(m_sn_mutex);
 
-    while (!m_state_history.empty() && m_state_history.back().height != height)
-      m_state_history.pop_back();
-
-    if (m_state_history.empty())
+    if (m_state.height != height)
     {
-      init();
-      return;
+      while (!m_state_history.empty() && m_state_history.back().height != height)
+        m_state_history.pop_back();
+
+      if (m_state_history.empty())
+      {
+        init();
+        return;
+      }
     }
 
-    m_state = &m_state_history.back();
+    m_state = m_state_history.back();
+    m_state_history.pop_back();
     store();
   }
 
@@ -1199,7 +1167,7 @@ namespace service_nodes
     }
     else
     {
-      for (auto it = m_state->service_nodes_infos.begin(); it != m_state->service_nodes_infos.end(); it++)
+      for (auto it = m_state.service_nodes_infos.begin(); it != m_state.service_nodes_infos.end(); it++)
       {
         crypto::public_key const &snode_key = it->first;
         service_node_info &info             = it->second;
@@ -1235,7 +1203,7 @@ namespace service_nodes
 
     std::vector<std::pair<cryptonote::account_public_address, uint64_t>> winners;
 
-    const service_node_info& info = m_state->service_nodes_infos.at(key);
+    const service_node_info& info = m_state.service_nodes_infos.at(key);
 
     const uint64_t remaining_portions = STAKING_PORTIONS - info.portions_for_operator;
 
@@ -1258,7 +1226,7 @@ namespace service_nodes
   {
     std::lock_guard<boost::recursive_mutex> lock(m_sn_mutex);
     auto oldest_waiting = std::make_tuple(std::numeric_limits<uint64_t>::max(), std::numeric_limits<uint32_t>::max(), crypto::null_pkey);
-    for (const auto& info : m_state->service_nodes_infos)
+    for (const auto& info : m_state.service_nodes_infos)
       if (info.second.is_active())
       {
         auto waiting_since = std::make_tuple(info.second.last_reward_block_height, info.second.last_reward_transaction_index, info.first);
@@ -1389,10 +1357,10 @@ namespace service_nodes
     // state change *validators* want only active service nodes, but the state change *workers*
     // (i.e. the nodes to be tested) also include decommissioned service nodes.  (Prior to v12 there
     // are no decommissioned nodes, so this distinction is irrelevant for network concensus).
-    auto active_snode_list = m_state->active_service_nodes_infos();
+    auto active_snode_list = m_state.active_service_nodes_infos();
     decltype(active_snode_list) decomm_snode_list;
     if (hf_version >= cryptonote::network_version_12_checkpointing)
-      decomm_snode_list = m_state->decommissioned_service_nodes_infos();
+      decomm_snode_list = m_state.decommissioned_service_nodes_infos();
 
     quorum_type const max_quorum_type = max_quorum_type_for_hf(hf_version);
     quorum_manager &manager           = m_quorum_states[height];
@@ -1486,6 +1454,22 @@ namespace service_nodes
   {
   }
 
+  static service_node_list::state_serialized serialize_service_node_state_object(service_node_list::state_t const &state)
+  {
+    service_node_list::state_serialized result = {};
+    service_node_pubkey_info info;
+    for (const auto &kv_pair : state.service_nodes_infos)
+    {
+      info.pubkey = kv_pair.first;
+      info.info   = kv_pair.second;
+      result.infos.push_back(info);
+    }
+
+    result.key_image_blacklist = state.key_image_blacklist;
+    result.height              = state.height;
+    return result;
+  }
+
   bool service_node_list::store()
   {
     if (!m_db)
@@ -1499,6 +1483,7 @@ namespace service_nodes
     data.version                = get_min_service_node_info_version_for_hf(hf_version);
     {
       std::lock_guard<boost::recursive_mutex> lock(m_sn_mutex);
+      data.quorum_states.reserve(m_quorum_states.size());
       for(const auto& kv_pair : m_quorum_states)
       {
         quorum_for_serialization quorum = {};
@@ -1506,10 +1491,9 @@ namespace service_nodes
         quorum.height                   = kv_pair.first;
         quorum_manager const &manager   = kv_pair.second;
 
-<<<<<<< HEAD
-        for (const auto *qs : {&m_transient_state.old_quorum_states, &m_transient_state.quorum_states})
+        for (const auto *qs : {&m_old_quorum_states, &m_quorum_states})
         {
-          for(const auto& kv_pair : state.quorum_states)
+          for(const auto& kv_pair : *qs)
           {
             quorum_for_serialization quorum = {};
             quorum.version                  = get_min_service_node_info_version_for_hf(hf_version);
@@ -1525,32 +1509,17 @@ namespace service_nodes
             state_serialized.quorum_states.push_back(quorum);
           }
         }
-=======
-        if (manager.obligations)
-          quorum.quorums[static_cast<uint8_t>(quorum_type::obligations)] = *manager.obligations;
-
-        if (manager.checkpointing)
-          quorum.quorums[static_cast<uint8_t>(quorum_type::checkpointing)] = *manager.checkpointing;
-
-        data.quorum_states.push_back(quorum);
       }
 
       for (state_t const &state : m_state_history)
       {
         state_serialized state_serialized = {};
         LOKI_DEFER { data.states.push_back(state_serialized); };
->>>>>>> Separate quorums and reduce storage to 1 days worth
 
-        service_node_pubkey_info info;
-        for (const auto& kv_pair : state.service_nodes_infos)
-        {
-          info.pubkey = kv_pair.first;
-          info.info   = kv_pair.second;
-          state_serialized.infos.push_back(info);
-        }
-
-        state_serialized.key_image_blacklist = state.key_image_blacklist;
-        state_serialized.height              = state.height;
+        data.states.reserve(m_state_history.size() + 1);
+        for (state_t const &source : m_state_history)
+          data.states.emplace_back(serialize_service_node_state_object(source));
+        data.states.emplace_back(serialize_service_node_state_object(m_state));
       }
     }
 
@@ -1569,15 +1538,15 @@ namespace service_nodes
   void service_node_list::get_all_service_nodes_public_keys(std::vector<crypto::public_key>& keys, bool require_active) const
   {
     keys.clear();
-    keys.reserve(m_state->service_nodes_infos.size());
+    keys.reserve(m_state.service_nodes_infos.size());
 
     if (require_active) {
-      for (const auto &key_info : m_state->service_nodes_infos)
+      for (const auto &key_info : m_state.service_nodes_infos)
         if (key_info.second.is_active())
           keys.push_back(key_info.first);
     }
     else {
-      for (const auto &key_info : m_state->service_nodes_infos)
+      for (const auto &key_info : m_state.service_nodes_infos)
         keys.push_back(key_info.first);
     }
   }
@@ -1713,8 +1682,8 @@ namespace service_nodes
     }
 
     std::lock_guard<boost::recursive_mutex> lock(m_sn_mutex);
-    auto it = m_state->service_nodes_infos.find(proof.pubkey);
-    if (it == m_state->service_nodes_infos.end())
+    auto it = m_state.service_nodes_infos.find(proof.pubkey);
+    if (it == m_state.service_nodes_infos.end())
     {
       LOG_PRINT_L2("Rejecting uptime proof from " << proof.pubkey << ": no such service node is currently registered");
       return false;
@@ -1762,8 +1731,8 @@ namespace service_nodes
   void service_node_list::record_checkpoint_vote(crypto::public_key const &pubkey, bool voted)
   {
     std::lock_guard<boost::recursive_mutex> lock(m_sn_mutex);
-    auto it = m_state->service_nodes_infos.find(pubkey);
-    if (it == m_state->service_nodes_infos.end())
+    auto it = m_state.service_nodes_infos.find(pubkey);
+    if (it == m_state.service_nodes_infos.end())
       return;
 
     proof_info &info            = it->second.proof;
@@ -1807,7 +1776,7 @@ namespace service_nodes
       CHECK_AND_ASSERT_MES(old_data || new_data, false, "Failed to parse service node data from blob");
       if (old_data)
       {
-        new_data_in.states.push_back({});
+        new_data_in.states.emplace_back();
         new_data_in.quorum_states   = std::move(old_data_in.quorum_states);
         state_serialized &new_state = new_data_in.states.back();
 
@@ -1824,39 +1793,43 @@ namespace service_nodes
     const uint64_t cache_state_from_height = current_height < QUORUM_LIFETIME ? 0 : current_height - QUORUM_LIFETIME;
     const uint64_t hist_state_from_height  = m_store_quorum_history >= cache_state_from_height ? 0 : cache_state_from_height - m_store_quorum_history;
 
-    bool first_time = true;
-    for (state_serialized &state_serialized : new_data_in.states)
+    for (size_t i = 0; i < new_data_in.states.size(); i++)
     {
-      if (!first_time) m_state_history.push_back({});
-      state_t &state = m_state_history.back();
-      first_time = false;
-
-      state.height              = state_serialized.height;
-      state.key_image_blacklist = std::move(state_serialized.key_image_blacklist);
-
-      for (auto& quorum_serialized : state_serialized.quorum_states)
+      state_serialized &source = new_data_in.states[i];
+      state_t *dest            = &m_state;
+      if (i != (new_data_in.states.size() - 1))
       {
-        if (states.height < hist_state_from_height)
+        m_state_history.emplace_back();
+        dest = &m_state_history.back();
+      }
+
+      dest->height              = source.height;
+      dest->key_image_blacklist = std::move(source.key_image_blacklist);
+      for (auto &pubkey_info : source.infos)
+        dest->service_nodes_infos[pubkey_info.pubkey] = std::move(pubkey_info.info);
+
+      for (auto& quorum_serialized : source.quorum_states)
+      {
+        if (quorum_serialized.height < hist_state_from_height)
           continue;
-        auto obligations   = std::make_shared<testing_quorum>(states.quorums[static_cast<uint8_t>(quorum_type::obligations)]);
+        auto obligations   = std::make_shared<testing_quorum>(quorum_serialized.quorums[static_cast<uint8_t>(quorum_type::obligations)]);
         std::shared_ptr<testing_quorum> checkpointing;
         // Don't load any checkpoints that shouldn't exist (see the comment in generate_quorums as to
         // why the `+BUFFER` term is here).
         if ((states.height + REORG_SAFETY_BUFFER_BLOCKS_POST_HF12) % CHECKPOINT_INTERVAL == 0)
-            checkpointing = std::make_shared<testing_quorum>(states.quorums[static_cast<uint8_t>(quorum_type::checkpointing)]);
-        auto &quorum_states = states.height >= cache_state_from_height ? m_transient_state.quorum_states : m_transient_state.old_quorum_states;
-        auto &qs = quorum_states.emplace_hint(quorum_states.end(), states.height, quorum_manager{})->second;
-        qs.obligations   = std::move(obligations);
-        qs.checkpointing = std::move(checkpointing);
+            checkpointing = std::make_shared<testing_quorum>(quorum_serialized.quorums[static_cast<uint8_t>(quorum_type::checkpointing)]);
+        auto &quorum_states = quorum_serialized.height >= cache_state_from_height ? m_quorum_states : m_old_quorum_states;
+        auto &qs            = quorum_states.emplace_hint(quorum_states.end(), states.height, quorum_manager{})->second;
+        qs.obligations      = std::move(obligations);
+        qs.checkpointing    = std::move(checkpointing);
       }
 
-      for (auto &pubkey_info : state_serialized.infos)
-        state.service_nodes_infos[pubkey_info.pubkey] = std::move(pubkey_info.info);
+      for (auto &pubkey_info : source.infos)
+        dest->service_nodes_infos[pubkey_info.pubkey] = std::move(pubkey_info.info);
     }
 
-    m_state       = &m_state_history.back();
-    MGINFO("Service node data loaded successfully, height: " << m_state->height);
-    MGINFO(m_state->service_nodes_infos.size()
+    MGINFO("Service node data loaded successfully, height: " << m_state.height);
+    MGINFO(m_state.service_nodes_infos.size()
            << " nodes and " << m_state_history.size() << " historical states loaded ("
            << tools::get_human_readable_bytes(blob.size()) << ")");
 
@@ -1868,9 +1841,7 @@ namespace service_nodes
   {
     m_state_history.clear();
     m_quorum_states.clear();
-
-    m_state_history.push_back({});
-    m_state = &m_state_history.back();
+    m_state = {};
 
     if (m_db && delete_db_entry)
     {
@@ -1884,7 +1855,7 @@ namespace service_nodes
       uint8_t voting;
       m_blockchain.get_hard_fork_voting_info(9, window, votes, threshold, hardfork_9_from_height, voting);
     }
-    m_state->height = hardfork_9_from_height;
+    m_state.height = hardfork_9_from_height;
   }
 
   size_t service_node_info::total_num_locked_contributions() const
