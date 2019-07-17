@@ -1566,8 +1566,8 @@ namespace service_nodes
     {
       std::lock_guard<boost::recursive_mutex> lock(m_sn_mutex);
 
-      for (const auto &qs : {m_transient_state.old_quorum_states, m_transient_state.quorum_states})
-        for(const auto &kv_pair : qs)
+      for (const auto *qs : {&m_transient_state.old_quorum_states, &m_transient_state.quorum_states})
+        for(const auto &kv_pair : *qs)
         {
           quorum_for_serialization quorum = {};
           quorum.version                  = get_min_service_node_info_version_for_hf(hf_version);
