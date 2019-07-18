@@ -147,12 +147,12 @@ namespace service_nodes
     }
 
     std::lock_guard<boost::recursive_mutex> lock(m_sn_mutex);
-    auto it = m_transient_state.quorum_states.find(height);
-    if (it == m_transient_state.quorum_states.end()) {
+    auto it = m_quorum_states.find(height);
+    if (it == m_quorum_states.end()) {
       if (!m_store_quorum_history || !include_old)
         return nullptr;
-      it = m_transient_state.old_quorum_states.find(height);
-      if (it == m_transient_state.old_quorum_states.end())
+      it = m_old_quorum_states.find(height);
+      if (it == m_old_quorum_states.end())
         return nullptr;
     }
     if (type == quorum_type::obligations)
@@ -952,12 +952,11 @@ namespace service_nodes
     // Cull old history
     //
     {
-      uint64_t cull_height                                = block_height;
-      uint64_t checkpoint_immutable_height                = m_db->get_checkpoint_immutable_height();
+      uint64_t checkpoint_immutable_height = m_db->get_checkpoint_immutable_height();
       uint64_t constexpr ROLLBACK_EVENT_EXPIRATION_BLOCKS = BLOCKS_EXPECTED_IN_DAYS(1);
       uint64_t conservative_height = block_height < ROLLBACK_EVENT_EXPIRATION_BLOCKS ? 0 : block_height - ROLLBACK_EVENT_EXPIRATION_BLOCKS;
 
-      cull_height = std::min(checkpoint_immutable_height, std::min(conservative_height, cull_height));
+      uint64_t const cull_height = std::max(checkpoint_immutable_height, conservative_height);
       while (!m_state_history.empty() && m_state_history.front().height < cull_height)
         m_state_history.pop_front();
     }
@@ -1483,39 +1482,28 @@ namespace service_nodes
     data.version                = get_min_service_node_info_version_for_hf(hf_version);
     {
       std::lock_guard<boost::recursive_mutex> lock(m_sn_mutex);
-      data.quorum_states.reserve(m_quorum_states.size());
-      for(const auto& kv_pair : m_quorum_states)
+      data.quorum_states.reserve(m_quorum_states.size() + m_old_quorum_states.size());
+      for (const auto *qs : {&m_old_quorum_states, &m_quorum_states})
       {
-        quorum_for_serialization quorum = {};
-        quorum.version                  = get_min_service_node_info_version_for_hf(hf_version);
-        quorum.height                   = kv_pair.first;
-        quorum_manager const &manager   = kv_pair.second;
-
-        for (const auto *qs : {&m_old_quorum_states, &m_quorum_states})
+        for(const auto& kv_pair : *qs)
         {
-          for(const auto& kv_pair : *qs)
-          {
-            quorum_for_serialization quorum = {};
-            quorum.version                  = get_min_service_node_info_version_for_hf(hf_version);
-            quorum.height                   = kv_pair.first;
-            quorum_manager const &manager   = kv_pair.second;
+          quorum_for_serialization quorum = {};
+          quorum.version                  = get_min_service_node_info_version_for_hf(hf_version);
+          quorum.height                   = kv_pair.first;
+          quorum_manager const &manager   = kv_pair.second;
 
-            if (manager.obligations)
-              quorum.quorums[static_cast<uint8_t>(quorum_type::obligations)] = *manager.obligations;
+          if (manager.obligations)
+            quorum.quorums[static_cast<uint8_t>(quorum_type::obligations)] = *manager.obligations;
 
-            if (manager.checkpointing)
-              quorum.quorums[static_cast<uint8_t>(quorum_type::checkpointing)] = *manager.checkpointing;
+          if (manager.checkpointing)
+            quorum.quorums[static_cast<uint8_t>(quorum_type::checkpointing)] = *manager.checkpointing;
 
-            state_serialized.quorum_states.push_back(quorum);
-          }
+          data.quorum_states.push_back(quorum);
         }
       }
 
       for (state_t const &state : m_state_history)
       {
-        state_serialized state_serialized = {};
-        LOKI_DEFER { data.states.push_back(state_serialized); };
-
         data.states.reserve(m_state_history.size() + 1);
         for (state_t const &source : m_state_history)
           data.states.emplace_back(serialize_service_node_state_object(source));
@@ -1792,6 +1780,21 @@ namespace service_nodes
 
     const uint64_t cache_state_from_height = current_height < QUORUM_LIFETIME ? 0 : current_height - QUORUM_LIFETIME;
     const uint64_t hist_state_from_height  = m_store_quorum_history >= cache_state_from_height ? 0 : cache_state_from_height - m_store_quorum_history;
+    for (auto &states : new_data_in.quorum_states)
+    {
+      if (states.height < hist_state_from_height)
+        continue;
+      auto obligations   = std::make_shared<testing_quorum>(states.quorums[static_cast<uint8_t>(quorum_type::obligations)]);
+      std::shared_ptr<testing_quorum> checkpointing;
+      // Don't load any checkpoints that shouldn't exist (see the comment in generate_quorums as to
+      // why the `+BUFFER` term is here).
+      if ((states.height + REORG_SAFETY_BUFFER_BLOCKS_POST_HF12) % CHECKPOINT_INTERVAL == 0)
+          checkpointing = std::make_shared<testing_quorum>(states.quorums[static_cast<uint8_t>(quorum_type::checkpointing)]);
+      auto &quorum_states = states.height >= cache_state_from_height ? m_quorum_states : m_old_quorum_states;
+      auto &qs            = quorum_states.emplace_hint(quorum_states.end(), states.height, quorum_manager{})->second;
+      qs.obligations      = std::move(obligations);
+      qs.checkpointing    = std::move(checkpointing);
+    }
 
     for (size_t i = 0; i < new_data_in.states.size(); i++)
     {
@@ -1805,25 +1808,6 @@ namespace service_nodes
 
       dest->height              = source.height;
       dest->key_image_blacklist = std::move(source.key_image_blacklist);
-      for (auto &pubkey_info : source.infos)
-        dest->service_nodes_infos[pubkey_info.pubkey] = std::move(pubkey_info.info);
-
-      for (auto& quorum_serialized : source.quorum_states)
-      {
-        if (quorum_serialized.height < hist_state_from_height)
-          continue;
-        auto obligations   = std::make_shared<testing_quorum>(quorum_serialized.quorums[static_cast<uint8_t>(quorum_type::obligations)]);
-        std::shared_ptr<testing_quorum> checkpointing;
-        // Don't load any checkpoints that shouldn't exist (see the comment in generate_quorums as to
-        // why the `+BUFFER` term is here).
-        if ((states.height + REORG_SAFETY_BUFFER_BLOCKS_POST_HF12) % CHECKPOINT_INTERVAL == 0)
-            checkpointing = std::make_shared<testing_quorum>(quorum_serialized.quorums[static_cast<uint8_t>(quorum_type::checkpointing)]);
-        auto &quorum_states = quorum_serialized.height >= cache_state_from_height ? m_quorum_states : m_old_quorum_states;
-        auto &qs            = quorum_states.emplace_hint(quorum_states.end(), states.height, quorum_manager{})->second;
-        qs.obligations      = std::move(obligations);
-        qs.checkpointing    = std::move(checkpointing);
-      }
-
       for (auto &pubkey_info : source.infos)
         dest->service_nodes_infos[pubkey_info.pubkey] = std::move(pubkey_info.info);
     }

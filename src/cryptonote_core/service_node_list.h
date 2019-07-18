@@ -419,24 +419,8 @@ namespace service_nodes
     cryptonote::BlockchainDB      *m_db;
     uint64_t                       m_store_quorum_history;
 
-    using block_height = uint64_t;
-    struct state_t
-    {
-      service_nodes_infos_t                  service_nodes_infos;
-      std::vector<key_image_blacklist_entry> key_image_blacklist;
-      block_height                           height;
-
-      // Store all old quorum history only if run with --store-full-quorum-history
-
-      // Returns a filtered, pubkey-sorted vector of service nodes that are active (fully funded and
-      // *not* decommissioned).
-      std::vector<pubkey_and_sninfo> active_service_nodes_infos() const;
-      // Similar to the above, but returns all nodes that are fully funded *and* decommissioned.
-      std::vector<pubkey_and_sninfo> decommissioned_service_nodes_infos() const;
-    };
-
     std::map<block_height, quorum_manager> m_quorum_states;
-    decltype(m_quorum_states)              m_old_quorum_states;
+    decltype(m_quorum_states)              m_old_quorum_states; // Store all old quorum history only if run with --store-full-quorum-history
     std::deque<state_t>                    m_state_history;
     state_t                                m_state;
   };
