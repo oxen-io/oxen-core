@@ -202,7 +202,7 @@ namespace cryptonote
 
     uint64_t end_cull_height = height - service_nodes::CHECKPOINT_STORE_PERSISTENTLY_INTERVAL;
     {
-      uint64_t constexpr NUM_CHECKPOINTS = service_nodes::CHECKPOINT_NUM_CHECKPOINTS_FOR_CHAIN_FINALITY + 1;
+      uint64_t constexpr NUM_CHECKPOINTS = service_nodes::CHECKPOINT_NUM_CHECKPOINTS_FOR_CHAIN_FINALITY;
       std::vector<checkpoint_t> checkpoints = m_db->get_checkpoints_range(height, 0, NUM_CHECKPOINTS);
 
       if (checkpoints.size() != NUM_CHECKPOINTS)
