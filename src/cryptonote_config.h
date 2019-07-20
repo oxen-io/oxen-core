@@ -39,7 +39,7 @@
 
 #define CRYPTONOTE_MAX_BLOCK_NUMBER                     50000000000
 #define CRYPTONOTE_MAX_BLOCK_SIZE                       500000000  // block header blob limit, never used!
-#define CRYPTONOTE_GETBLOCKTEMPLATE_MAX_BLOCK_SIZE	    2500000 //size of block (bytes) that is the maximum that miners will produce
+#define CRYPTONOTE_GETBLOCKTEMPLATE_MAX_BLOCK_SIZE	    3000000 //size of block (bytes) that is the maximum that miners will produce
 #define CRYPTONOTE_MAX_TX_SIZE                          1000000000
 #define CRYPTONOTE_PUBLIC_ADDRESS_TEXTBLOB_VER          0
 #define CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW            10
@@ -47,7 +47,7 @@
 #define CURRENT_BLOCK_MINOR_VERSION                     7
 #define CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT_V2           60*10
 #define CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE             10
-#define CRYPTONOTE_DEFAULT_TX_MIXIN                     5
+#define CRYPTONOTE_DEFAULT_TX_MIXIN                     9
 
 #define STAKING_REQUIREMENT_LOCK_BLOCKS_EXCESS          15
 #define STAKING_PORTIONS                                UINT64_C(0xfffffffffffffffc)
@@ -68,7 +68,7 @@ static_assert(STAKING_PORTIONS % 3 == 0, "Use a multiple of three, so that it di
 
 // MONEY_SUPPLY - total number coins to be generated
 #define MONEY_SUPPLY                                    (1000000000000000000) // NOT USED
-#define PREMINE_AMMOUNT                                 (7000000000000000) // 7 MILL for the network swap
+#define PREMINE_AMMOUNT                                 (8000000000000000) // 8 MILL for the network swap
 #define BLOCK_REWARD                                    (20000000000) // 20 KEG
 #define EMISSION_SPEED_FACTOR_PER_MINUTE                (22) // No Longer Used
 #define FINAL_SUBSIDY_PER_MINUTE                        ((uint64_t)300000000000) // 3 * pow(10, 11)
@@ -101,7 +101,7 @@ static_assert(STAKING_PORTIONS % 3 == 0, "Use a multiple of three, so that it di
 
 #define DIFFICULTY_TARGET_V2                            20  // seconds
 #define DIFFICULTY_WINDOW_V2                            60
-#define DIFFICULTY_LAG                                  15  // 15 to prevent 51 attack chains having a a heigher cumulative difficulty
+#define DIFFICULTY_LAG                                  25  // 25 to prevent 51 attack chains having a a heigher cumulative difficulty
 #define DIFFICULTY_CUT                                  60  // timestamps to cut after sorting
 #define DIFFICULTY_BLOCKS_COUNT_V2                      (DIFFICULTY_WINDOW_V2 + 1) // added +1 to make N=N
 
@@ -153,12 +153,12 @@ static_assert(STAKING_PORTIONS % 3 == 0, "Use a multiple of three, so that it di
 
 #define ALLOW_DEBUG_COMMANDS
 
-#define CRYPTONOTE_NAME                         "Kegcoin"
-#define CRYPTONOTE_POOLDATA_FILENAME            "poolstate.bin"
-#define CRYPTONOTE_BLOCKCHAINDATA_FILENAME      "blockdata.mdb"
-#define CRYPTONOTE_BLOCKCHAINDATA_LOCK_FILENAME "block_lock.mdb"
-#define P2P_NET_DATA_FILENAME                   "p2pstate.bin"
-#define MINER_CONFIG_FILE_NAME                  "miner_conf.json"
+#define CRYPTONOTE_NAME                         "KegCoin"
+#define CRYPTONOTE_POOLDATA_FILENAME            "kegpoolstate.bin"
+#define CRYPTONOTE_BLOCKCHAINDATA_FILENAME      "kegblockdata.mdb"
+#define CRYPTONOTE_BLOCKCHAINDATA_LOCK_FILENAME "kegblock_lock.mdb"
+#define P2P_NET_DATA_FILENAME                   "kegp2pstate.bin"
+#define MINER_CONFIG_FILE_NAME                  "kegminer_conf.json"
 
 #define THREAD_STACK_SIZE                       5 * 1024 * 1024
 
@@ -178,8 +178,8 @@ static_assert(STAKING_PORTIONS % 3 == 0, "Use a multiple of three, so that it di
 #define BULLETPROOF_MAX_OUTPUTS                 16
 
 #define CRYPTONOTE_PRUNING_STRIPE_SIZE          4096 // the smaller, the smoother the increase
-#define CRYPTONOTE_PRUNING_LOG_STRIPES          3 // the higher, the more space saved
-#define CRYPTONOTE_PRUNING_TIP_BLOCKS 5500 // the smaller, the more space saved
+#define CRYPTONOTE_PRUNING_LOG_STRIPES          4 // the higher, the more space saved
+#define CRYPTONOTE_PRUNING_TIP_BLOCKS 5000 // the smaller, the more space saved
 //#define CRYPTONOTE_PRUNING_DEBUG_SPOOF_SEED
 
 // New constants are intended to go here
@@ -192,13 +192,13 @@ namespace config
   std::string const P2P_REMOTE_DEBUG_TRUSTED_PUB_KEY = "0000000000000000000000000000000000000000000000000000000000000000";
 
   uint64_t const CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX = 111;
-  uint64_t const CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 112;
-  uint64_t const CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX = 113;
+  uint64_t const CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 111;
+  uint64_t const CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX = 111;
   uint16_t const P2P_DEFAULT_PORT = 5050;
   uint16_t const RPC_DEFAULT_PORT = 4040;
   uint16_t const ZMQ_RPC_DEFAULT_PORT = 5555;
   boost::uuids::uuid const NETWORK_ID = { 
-    { 0x69 ,0x96, 0x77, 0x68 ,0x86, 0x75, 0x78, 0x69, 0x4a, 0x4b, 0x71, 0x35, 0x90, 0x85, 0x69 }
+    { 0x96 ,0x69, 0x77, 0x68 ,0x77, 0x75, 0x78, 0x69, 0x5a, 0x4b, 0x71, 0x35, 0x90, 0x69, 0x96 }
   };
   std::string const GENESIS_TX = "020a01ff0001e807029b780cd0199f417c26ccdcf5ebf7dd58437376df6b9933181e65dd9733912da44201e91352fe5e37ff3bf8c68ba9c28b034bc6c9a60f5ee7529894cfda47d00786ab72000000000000000000000000000000000000000000000000000000000000000000";
   uint32_t const GENESIS_NONCE = 1022201;
@@ -335,7 +335,7 @@ namespace cryptonote
         if (hard_fork_version <= network_version_10_bulletproofs)
           mainnet.GOVERNANCE_WALLET_ADDRESS = &::config::GOVERNANCE_WALLET_ADDRESS[0];
         else
-          mainnet.GOVERNANCE_WALLET_ADDRESS = &::config::GOVERNANCE_WALLET_ADDRESS[1];
+          mainnet.GOVERNANCE_WALLET_ADDRESS = &::config::GOVERNANCE_WALLET_ADDRESS[0];
 
         return mainnet;
       }
@@ -345,7 +345,7 @@ namespace cryptonote
         if (hard_fork_version <= network_version_9_service_nodes)
           testnet.GOVERNANCE_WALLET_ADDRESS = &::config::testnet::GOVERNANCE_WALLET_ADDRESS[0];
         else
-          testnet.GOVERNANCE_WALLET_ADDRESS = &::config::testnet::GOVERNANCE_WALLET_ADDRESS[1];
+          testnet.GOVERNANCE_WALLET_ADDRESS = &::config::testnet::GOVERNANCE_WALLET_ADDRESS[0];
 
         return testnet;
       }
