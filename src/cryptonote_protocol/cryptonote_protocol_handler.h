@@ -53,6 +53,7 @@ PUSH_WARNINGS
 DISABLE_VS_WARNINGS(4355)
 
 #define LOCALHOST_INT 2130706433
+#define CURRENCY_PROTOCOL_MAX_OBJECT_REQUEST_COUNT 500
 
 namespace cryptonote
 {
@@ -140,7 +141,7 @@ namespace cryptonote
       epee::serialization::store_t_to_binary(arg, arg_buff);
 
       std::vector<std::pair<epee::net_utils::zone, boost::uuids::uuid>> connections;
-      m_p2p->for_each_connection([this, &exclude_context, &connections](connection_context& context, nodetool::peerid_type peer_id, uint32_t support_flags)
+      m_p2p->for_each_connection([&exclude_context, &connections](connection_context& context, nodetool::peerid_type peer_id, uint32_t support_flags)
       {
         epee::net_utils::zone zone = context.m_remote_address.get_zone();
         if (peer_id && exclude_context.m_connection_id != context.m_connection_id && zone == epee::net_utils::zone::public_)

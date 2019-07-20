@@ -203,9 +203,9 @@ namespace
     return false;
   }
 
-  std::string get_text_reason(const cryptonote::COMMAND_RPC_SEND_RAW_TX::response &res)
+  std::string get_text_reason(const cryptonote::COMMAND_RPC_SEND_RAW_TX::response &res, cryptonote::transaction const *tx)
   {
-      std::string reason  = print_tx_verification_context  (res.tvc);
+      std::string reason  = print_tx_verification_context  (res.tvc, tx);
       reason             += print_vote_verification_context(res.tvc.m_vote_ctx);
       return reason;
   }
@@ -390,8 +390,11 @@ std::unique_ptr<tools::wallet2> make_basic(const boost::program_options::variabl
   {
     const boost::string_ref real_daemon = boost::string_ref{daemon_address}.substr(0, daemon_address.rfind(':'));
 
+    /* If SSL or proxy is enabled, then a specific cert, CA or fingerprint must
+       be specified. This is specific to the wallet. */
     const bool verification_required =
-      ssl_options.support == epee::net_utils::ssl_support_t::e_ssl_support_enabled || use_proxy;
+      ssl_options.verification != epee::net_utils::ssl_verification_t::none &&
+      (ssl_options.support == epee::net_utils::ssl_support_t::e_ssl_support_enabled || use_proxy);
 
     THROW_WALLET_EXCEPTION_IF(
       verification_required && !ssl_options.has_strong_verification(real_daemon),
@@ -1681,7 +1684,6 @@ void wallet2::scan_output(const cryptonote::transaction &tx, bool miner_tx, cons
   }
 
   THROW_WALLET_EXCEPTION_IF(std::find(outs.begin(), outs.end(), vout_index) != outs.end(), error::wallet_internal_error, "Same output cannot be added twice");
-  outs.push_back(vout_index);
   if (tx_scan_info.money_transfered == 0 && !miner_tx)
   {
     tx_scan_info.money_transfered = tools::decodeRct(tx.rct_signatures, tx_scan_info.received->derivation, vout_index, tx_scan_info.mask, m_account.get_device());
@@ -1694,6 +1696,7 @@ void wallet2::scan_output(const cryptonote::transaction &tx, bool miner_tx, cons
     return;
   }
 
+  outs.push_back(vout_index);
   uint64_t unlock_time = tx.get_unlock_time(vout_index);
 
   tx_money_got_in_out entry = {};
@@ -1753,7 +1756,7 @@ void wallet2::cache_tx_data(const cryptonote::transaction& tx, const crypto::has
 //----------------------------------------------------------------------------------------------------
 void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote::transaction& tx, const std::vector<uint64_t> &o_indices, uint64_t height, uint64_t ts, bool miner_tx, bool pool, bool double_spend_seen, const tx_cache_data &tx_cache_data, std::map<std::pair<uint64_t, uint64_t>, size_t> *output_tracker_cache)
 {
-  if (tx.get_type() != transaction::type_standard)
+  if (tx.type != txtype::standard)
     return;
 
   PERF_TIMER(process_new_transaction);
@@ -1997,7 +2000,7 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
               td.m_mask = tx_scan_info[o].mask;
               td.m_rct = true;
             }
-            else if (miner_tx && tx.version >= 2)
+            else if (miner_tx && tx.version >= txversion::v2_ringct)
             {
               td.m_mask = rct::identity();
               td.m_rct = true;
@@ -2023,7 +2026,7 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
             }
             LOG_PRINT_L0("Received money: " << print_money(td.amount()) << ", with tx: " << txid);
             if (0 != m_callback)
-              m_callback->on_money_received(height, txid, tx, td.m_amount, td.m_subaddr_index);
+              m_callback->on_money_received(height, txid, tx, td.m_amount, td.m_subaddr_index, td.m_tx.unlock_time);
           }
           total_received_1 += amount;
           notify = true;
@@ -2125,7 +2128,7 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
               td.m_mask = tx_scan_info[o].mask;
               td.m_rct = true;
             }
-            else if (miner_tx && tx.version >= 2)
+            else if (miner_tx && tx.version >= txversion::v2_ringct)
             {
               td.m_mask = rct::identity();
               td.m_rct = true;
@@ -2149,7 +2152,7 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
 
             LOG_PRINT_L0("Received money: " << print_money(td.amount()) << ", with tx: " << txid);
             if (0 != m_callback)
-              m_callback->on_money_received(height, txid, tx, td.m_amount, td.m_subaddr_index);
+              m_callback->on_money_received(height, txid, tx, td.m_amount, td.m_subaddr_index, td.m_tx.unlock_time);
           }
           total_received_1 += extra_amount;
           notify = true;
@@ -2234,7 +2237,7 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
     }
   }
 
-  uint64_t fee = miner_tx ? 0 : tx.version == 1 ? tx_money_spent_in_ins - get_outs_money_amount(tx) : tx.rct_signatures.txnFee;
+  uint64_t fee = miner_tx ? 0 : tx.version == txversion::v1 ? tx_money_spent_in_ins - get_outs_money_amount(tx) : tx.rct_signatures.txnFee;
 
   if (tx_money_spent_in_ins > 0 && !pool)
   {
@@ -2388,7 +2391,7 @@ void wallet2::process_outgoing(const crypto::hash &txid, const cryptonote::trans
     // wallet (eg, we're a cold wallet and the hot wallet sent it). For RCT transactions,
     // we only see 0 input amounts, so have to deduce amount out from other parameters.
     entry.first->second.m_amount_in = spent;
-    if (tx.version == 1)
+    if (tx.version == txversion::v1)
       entry.first->second.m_amount_out = get_outs_money_amount(tx);
     else
       entry.first->second.m_amount_out = spent - tx.rct_signatures.txnFee;
@@ -5945,6 +5948,7 @@ bool wallet2::is_transfer_unlocked(uint64_t unlock_time, uint64_t block_height, 
   binary_buf.reserve(sizeof(crypto::key_image));
   {
     boost::optional<std::string> failed;
+    // FIXME: can just check one here by adding a is_key_image_blacklisted
     std::vector<cryptonote::COMMAND_RPC_GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES::entry> blacklist = m_node_rpc_proxy.get_service_node_blacklisted_key_images(failed);
     if (failed)
     {
@@ -6253,7 +6257,7 @@ void wallet2::commit_tx(pending_tx& ptx)
     m_daemon_rpc_mutex.unlock();
     THROW_WALLET_EXCEPTION_IF(!r, error::no_connection_to_daemon, "sendrawtransaction");
     THROW_WALLET_EXCEPTION_IF(daemon_send_resp.status == CORE_RPC_STATUS_BUSY, error::daemon_busy, "sendrawtransaction");
-    THROW_WALLET_EXCEPTION_IF(daemon_send_resp.status != CORE_RPC_STATUS_OK, error::tx_rejected, ptx.tx, get_rpc_status(daemon_send_resp.status), get_text_reason(daemon_send_resp));
+    THROW_WALLET_EXCEPTION_IF(daemon_send_resp.status != CORE_RPC_STATUS_OK, error::tx_rejected, ptx.tx, get_rpc_status(daemon_send_resp.status), get_text_reason(daemon_send_resp, &ptx.tx));
     // sanity checks
     for (size_t idx: ptx.selected_transfers)
     {
@@ -7079,7 +7083,10 @@ uint64_t wallet2::get_dynamic_base_fee_estimate() const
   boost::optional<std::string> result = m_node_rpc_proxy.get_dynamic_base_fee_estimate(FEE_ESTIMATE_GRACE_BLOCKS, fee);
   if (!result)
     return fee;
-  const uint64_t base_fee = use_fork_rules(HF_VERSION_PER_BYTE_FEE) ? FEE_PER_BYTE : FEE_PER_KB;
+  const uint64_t base_fee =
+      use_fork_rules(HF_VERSION_INCREASE_FEE) ? FEE_PER_BYTE_V12 :
+      use_fork_rules(HF_VERSION_PER_BYTE_FEE) ? FEE_PER_BYTE :
+      FEE_PER_KB;
   LOG_PRINT_L1("Failed to query base fee, using " << print_money(base_fee));
   return base_fee;
 }
@@ -7949,12 +7956,8 @@ wallet2::register_service_node_result wallet2::create_register_service_node_tx(c
 wallet2::request_stake_unlock_result wallet2::can_request_stake_unlock(const crypto::public_key &sn_key)
 {
   request_stake_unlock_result result = {};
-  result.ptx.tx.version              = cryptonote::transaction::version_4_tx_types;
-  if (!result.ptx.tx.set_type(cryptonote::transaction::type_key_image_unlock))
-  {
-    result.msg = tr("Failed to construct a key image unlock transaction");
-    return result;
-  }
+  result.ptx.tx.version = cryptonote::txversion::v4_tx_types;
+  result.ptx.tx.type    = cryptonote::txtype::key_image_unlock;
 
   std::string const sn_key_as_str = epee::string_tools::pod_to_hex(sn_key);
   {
@@ -8497,7 +8500,6 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
       uint64_t num_found = 0;
 
       // if we have a known ring, use it
-      bool existing_ring_found = false;
       if (td.m_key_image_known && !td.m_key_image_partial)
       {
         std::vector<uint64_t> ring;
@@ -8509,7 +8511,6 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
               std::to_string(ring.size()) + ", it cannot be spent now with ring size " +
               std::to_string(fake_outputs_count + 1) + " as it is smaller: use a higher ring size");
           bool own_found = false;
-          existing_ring_found = true;
           for (const auto &out: ring)
           {
             MINFO("Ring has output " << out);
@@ -8762,7 +8763,6 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
       outs.back().push_back(std::make_tuple(td.m_global_output_index, boost::get<txout_to_key>(td.m_tx.vout[td.m_internal_output_index].target).key, mask));
 
       // then pick outs from an existing ring, if any
-      bool existing_ring_found = false;
       if (td.m_key_image_known && !td.m_key_image_partial)
       {
         std::vector<uint64_t> ring;
@@ -8946,6 +8946,7 @@ void wallet2::transfer_selected(const std::vector<cryptonote::tx_destination_ent
   if (needed_money < found_money)
   {
     change_dts.addr = get_subaddress({subaddr_account, 0});
+    change_dts.is_subaddress = subaddr_account != 0;
     change_dts.amount = found_money - needed_money;
   }
 
@@ -10556,7 +10557,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_all(uint64_t below
       fund_found = true;
       if (below == 0 || td.amount() < below)
       {
-        if (td.m_tx.version <= transaction::version_1 && sweep_style != sweep_style_t::use_v1_tx)
+        if (td.m_tx.version <= txversion::v1 && sweep_style != sweep_style_t::use_v1_tx)
           continue;
 
         if ((td.is_rct()) || is_valid_decomposed_amount(td.amount()))
@@ -10927,7 +10928,7 @@ uint64_t wallet2::get_upper_transaction_weight_limit() const
 {
   if (m_upper_transaction_weight_limit > 0)
     return m_upper_transaction_weight_limit;
-  uint64_t full_reward_zone = use_fork_rules(5, 10) ? CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V5 : use_fork_rules(2, 10) ? CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V2 : CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V1;
+  uint64_t full_reward_zone = CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V5;
   if (use_fork_rules(8, 10))
     return full_reward_zone / 2 - CRYPTONOTE_COINBASE_BLOB_RESERVED_SIZE;
   else
@@ -11497,7 +11498,7 @@ void wallet2::check_tx_key_helper(const cryptonote::transaction &tx, const crypt
     if (found)
     {
       uint64_t amount;
-      if (tx.version == 1 || tx.rct_signatures.type == rct::RCTTypeNull)
+      if (tx.version == txversion::v1 || tx.rct_signatures.type == rct::RCTTypeNull)
       {
         amount = tx.vout[n].amount;
       }
@@ -12009,7 +12010,10 @@ bool wallet2::check_reserve_proof(const cryptonote::account_public_address &addr
     "The given address isn't found in the proof");
 
   // compute signature prefix hash
-  std::string prefix_data = message;
+  std::string prefix_data;
+  prefix_data.reserve(message.size() + sizeof(cryptonote::account_public_address) + proofs.size() * sizeof(crypto::key_image));
+  prefix_data.append(message);
+
   prefix_data.append((const char*)&address, sizeof(cryptonote::account_public_address));
   for (size_t i = 0; i < proofs.size(); ++i)
   {
@@ -12060,15 +12064,47 @@ bool wallet2::check_reserve_proof(const cryptonote::account_public_address &addr
     const cryptonote::txout_to_key* const out_key = boost::get<cryptonote::txout_to_key>(std::addressof(tx.vout[proof.index_in_tx].target));
     THROW_WALLET_EXCEPTION_IF(!out_key, error::wallet_internal_error, "Output key wasn't found")
 
-    // get tx pub key
-    const crypto::public_key tx_pub_key = get_tx_pub_key_from_extra(tx);
-    THROW_WALLET_EXCEPTION_IF(tx_pub_key == crypto::null_pkey, error::wallet_internal_error, "The tx public key isn't found");
-    const std::vector<crypto::public_key> additional_tx_pub_keys = get_additional_tx_pub_keys_from_extra(tx);
+    // TODO(loki): We should make a catch-all function that gets all the public
+    // keys out into an array and iterate through all insteaad of multiple code
+    // paths for additional keys and the main public key storage which can then
+    // have multiple keys ..
+
+    // But for now, the minimal fix to avoid re-architecting everything prematurely.
 
     // check singature for shared secret
-    ok = crypto::check_tx_proof(prefix_hash, address.m_view_public_key, tx_pub_key, boost::none, proof.shared_secret, proof.shared_secret_sig);
-    if (!ok && additional_tx_pub_keys.size() == tx.vout.size())
-      ok = crypto::check_tx_proof(prefix_hash, address.m_view_public_key, additional_tx_pub_keys[proof.index_in_tx], boost::none, proof.shared_secret, proof.shared_secret_sig);
+    const bool is_miner = tx.vin.size() == 1 && tx.vin[0].type() == typeid(cryptonote::txin_gen);
+    if (is_miner)
+    {
+      // NOTE(loki): The service node reward is added as a duplicate TX public
+      // key instead of into the additional public key, so we need to check upto
+      // 2 public keys when we're checking miner transactions.
+
+      // TODO(loki): This might still be broken for governance rewards since it uses a deterministic key iirc.
+      crypto::public_key main_keys[2] = {
+          get_tx_pub_key_from_extra(tx, 0),
+          get_tx_pub_key_from_extra(tx, 1),
+      };
+
+      for (crypto::public_key const &tx_pub_key : main_keys)
+      {
+        ok = crypto::check_tx_proof(prefix_hash, address.m_view_public_key, tx_pub_key, boost::none, proof.shared_secret, proof.shared_secret_sig);
+        if (ok) break;
+      }
+    }
+    else
+    {
+      const crypto::public_key tx_pub_key = get_tx_pub_key_from_extra(tx);
+      THROW_WALLET_EXCEPTION_IF(tx_pub_key == crypto::null_pkey, error::wallet_internal_error, "The tx public key isn't found");
+      ok = crypto::check_tx_proof(prefix_hash, address.m_view_public_key, tx_pub_key, boost::none, proof.shared_secret, proof.shared_secret_sig);
+    }
+
+    if (!ok)
+    {
+      const std::vector<crypto::public_key> additional_tx_pub_keys = get_additional_tx_pub_keys_from_extra(tx);
+      if (additional_tx_pub_keys.size() == tx.vout.size())
+        ok = crypto::check_tx_proof(prefix_hash, address.m_view_public_key, additional_tx_pub_keys[proof.index_in_tx], boost::none, proof.shared_secret, proof.shared_secret_sig);
+    }
+
     if (!ok)
       return false;
 
@@ -12326,6 +12362,27 @@ bool wallet2::verify_with_public_key(const std::string &data, const crypto::publ
   return crypto::check_signature(hash, public_key, s);
 }
 //----------------------------------------------------------------------------------------------------
+static bool try_get_tx_pub_key_using_td(const tools::wallet2::transfer_details &td, crypto::public_key &pub_key)
+{
+  std::vector<tx_extra_field> tx_extra_fields;
+  if(!parse_tx_extra(td.m_tx.extra, tx_extra_fields))
+  {
+    // Extra may only be partially parsed, it's OK if tx_extra_fields contains public key
+  }
+
+  if (td.m_pk_index >= tx_extra_fields.size())
+    return false;
+
+  tx_extra_pub_key pub_key_field;
+  if (find_tx_extra_field_by_type(tx_extra_fields, pub_key_field, td.m_pk_index))
+  {
+    pub_key = pub_key_field.pub_key;
+    return true;
+  }
+
+  return false;
+}
+
 crypto::public_key wallet2::get_tx_pub_key_from_received_outs(const tools::wallet2::transfer_details &td) const
 {
   std::vector<tx_extra_field> tx_extra_fields;
@@ -12429,20 +12486,22 @@ std::pair<size_t, std::vector<std::pair<crypto::key_image, crypto::signature>>> 
     const cryptonote::txout_to_key &o = boost::get<const cryptonote::txout_to_key>(out.target);
     const crypto::public_key pkey = o.key;
 
-    // get tx pub key
-    std::vector<tx_extra_field> tx_extra_fields;
-    if(!parse_tx_extra(td.m_tx.extra, tx_extra_fields))
+    crypto::public_key tx_pub_key;
+    if (!try_get_tx_pub_key_using_td(td, tx_pub_key))
     {
-      // Extra may only be partially parsed, it's OK if tx_extra_fields contains public key
+      // TODO(doyle): TODO(loki): Fallback to old get tx pub key method for
+      // incase for now. But we need to go find out why we can't just use
+      // td.m_pk_index for everything? If we were able to decode the output
+      // using that, why not use it for everthing?
+      tx_pub_key = get_tx_pub_key_from_received_outs(td);
     }
-
-    crypto::public_key tx_pub_key = get_tx_pub_key_from_received_outs(td);
     const std::vector<crypto::public_key> additional_tx_pub_keys = get_additional_tx_pub_keys_from_extra(td.m_tx);
 
     // generate ephemeral secret key
     crypto::key_image ki;
     cryptonote::keypair in_ephemeral;
     bool r = cryptonote::generate_key_image_helper(m_account.get_keys(), m_subaddresses, pkey, tx_pub_key, additional_tx_pub_keys, td.m_internal_output_index, in_ephemeral, ki, m_account.get_device());
+
     THROW_WALLET_EXCEPTION_IF(!r, error::wallet_internal_error, "Failed to generate key image");
 
     THROW_WALLET_EXCEPTION_IF(td.m_key_image_known && !td.m_key_image_partial && ki != td.m_key_image,
@@ -12978,7 +13037,15 @@ process:
     cryptonote::keypair in_ephemeral;
 
     THROW_WALLET_EXCEPTION_IF(td.m_tx.vout.empty(), error::wallet_internal_error, "tx with no outputs at index " + boost::lexical_cast<std::string>(i + offset));
-    crypto::public_key tx_pub_key = get_tx_pub_key_from_received_outs(td);
+    crypto::public_key tx_pub_key;
+    if (!try_get_tx_pub_key_using_td(td, tx_pub_key))
+    {
+      // TODO(doyle): TODO(loki): Fallback to old get tx pub key method for
+      // incase for now. But we need to go find out why we can't just use
+      // td.m_pk_index for everything? If we were able to decode the output
+      // using that, why not use it for everthing?
+      tx_pub_key = get_tx_pub_key_from_received_outs(td);
+    }
     const std::vector<crypto::public_key> additional_tx_pub_keys = get_additional_tx_pub_keys_from_extra(td.m_tx);
 
     THROW_WALLET_EXCEPTION_IF(td.m_tx.vout[td.m_internal_output_index].target.type() != typeid(cryptonote::txout_to_key),
@@ -13155,7 +13222,15 @@ crypto::key_image wallet2::get_multisig_composite_key_image(size_t n) const
   CHECK_AND_ASSERT_THROW_MES(n < m_transfers.size(), "Bad output index");
 
   const transfer_details &td = m_transfers[n];
-  const crypto::public_key tx_key = get_tx_pub_key_from_received_outs(td);
+  crypto::public_key tx_key;
+  if (!try_get_tx_pub_key_using_td(td, tx_key))
+  {
+    // TODO(doyle): TODO(loki): Fallback to old get tx pub key method for
+    // incase for now. But we need to go find out why we can't just use
+    // td.m_pk_index for everything? If we were able to decode the output
+    // using that, why not use it for everthing?
+    tx_key = get_tx_pub_key_from_received_outs(td);
+  }
   const std::vector<crypto::public_key> additional_tx_keys = cryptonote::get_additional_tx_pub_keys_from_extra(td.m_tx);
   crypto::key_image ki;
   std::vector<crypto::key_image> pkis;
@@ -13786,10 +13861,15 @@ bool wallet2::generate_signature_for_request_stake_unlock(crypto::key_image cons
     const cryptonote::txout_to_key &o = boost::get<const cryptonote::txout_to_key>(out.target);
     const crypto::public_key pkey = o.key;
 
-    std::vector<tx_extra_field> tx_extra_fields;
-    parse_tx_extra(td.m_tx.extra, tx_extra_fields);
-
-    crypto::public_key tx_pub_key = get_tx_pub_key_from_received_outs(td);
+    crypto::public_key tx_pub_key;
+    if (!try_get_tx_pub_key_using_td(td, tx_pub_key))
+    {
+      // TODO(doyle): TODO(loki): Fallback to old get tx pub key method for
+      // incase for now. But we need to go find out why we can't just use
+      // td.m_pk_index for everything? If we were able to decode the output
+      // using that, why not use it for everthing?
+      tx_pub_key = get_tx_pub_key_from_received_outs(td);
+    }
     const std::vector<crypto::public_key> additional_tx_pub_keys = get_additional_tx_pub_keys_from_extra(td.m_tx);
 
     // generate ephemeral secret key

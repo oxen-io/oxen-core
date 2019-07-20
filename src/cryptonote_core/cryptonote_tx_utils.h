@@ -185,7 +185,7 @@ namespace cryptonote
     bool                v2_rct;
 
     loki_construct_tx_params() = default;
-    loki_construct_tx_params(int hf_version)
+    loki_construct_tx_params(uint8_t hf_version)
     {
       *this = {};
       v4_allow_tx_types    = (hf_version >= cryptonote::network_version_11_infinite_staking);
@@ -216,6 +216,12 @@ namespace cryptonote
     , std::string const & genesis_tx
     , uint32_t nonce
     );
+
+  bool get_block_longhash(const class Blockchain *pb, const block& b, crypto::hash& res, const uint64_t height, const int miners);
+  void get_altblock_longhash(const block& b, crypto::hash& res, const uint64_t main_height, const uint64_t height,
+    const uint64_t seed_height, const crypto::hash& seed_hash);
+  crypto::hash get_block_longhash(const Blockchain *pb, const block& b, const uint64_t height, const int miners);
+  void get_block_longhash_reorg(const uint64_t split_height);
 
 }
 

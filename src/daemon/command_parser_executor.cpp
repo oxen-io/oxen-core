@@ -27,10 +27,13 @@
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#include <forward_list>
+
 #include "common/dns_utils.h"
 #include "common/command_line.h"
 #include "version.h"
 #include "daemon/command_parser_executor.h"
+#include "rpc/core_rpc_server_commands_defs.h"
 
 #undef LOKI_DEFAULT_LOG_CATEGORY
 #define LOKI_DEFAULT_LOG_CATEGORY "daemon"
@@ -41,11 +44,89 @@ t_command_parser_executor::t_command_parser_executor(
     uint32_t ip
   , uint16_t port
   , const boost::optional<tools::login>& login
+  , const epee::net_utils::ssl_options_t& ssl_options
   , bool is_rpc
   , cryptonote::core_rpc_server* rpc_server
   )
-  : m_executor(ip, port, login, is_rpc, rpc_server)
+  : m_executor(ip, port, login, ssl_options, is_rpc, rpc_server)
 {}
+
+// Consumes an argument from the given list, if present, parsing it into `var`.
+// Returns false upon parse failure, true otherwise.
+template <typename T>
+static bool parse_if_present(std::forward_list<std::string> &list, T &var, const char *name)
+{
+  if (list.empty()) return true;
+  if (epee::string_tools::get_xtype_from_string(var, list.front()))
+  {
+    list.pop_front();
+    return true;
+  }
+
+  std::cout << "unexpected " << name << " argument: " << list.front() << std::endl;
+  return false;
+}
+
+bool t_command_parser_executor::print_checkpoints(const std::vector<std::string> &args)
+{
+  uint64_t start_height = cryptonote::COMMAND_RPC_GET_CHECKPOINTS::HEIGHT_SENTINEL_VALUE;
+  uint64_t end_height   = cryptonote::COMMAND_RPC_GET_CHECKPOINTS::HEIGHT_SENTINEL_VALUE;
+
+  std::forward_list<std::string> args_list(args.begin(), args.end());
+  bool print_json = !args_list.empty() && args_list.front() == "+json";
+  if (print_json)
+    args_list.pop_front();
+
+  if (!parse_if_present(args_list, start_height, "start height"))
+    return false;
+
+  if (!parse_if_present(args_list, end_height, "end height"))
+    return false;
+
+  if (!args_list.empty())
+  {
+    std::cout << "use: print_checkpoints [+json] [start height] [end height]\n"
+              << "(omit arguments to print the last "
+              << cryptonote::COMMAND_RPC_GET_CHECKPOINTS::NUM_CHECKPOINTS_TO_QUERY_BY_DEFAULT << " checkpoints) "
+              << std::endl;
+    return false;
+  }
+
+  return m_executor.print_checkpoints(start_height, end_height, print_json);
+}
+
+bool t_command_parser_executor::print_sn_state_changes(const std::vector<std::string> &args)
+{
+  uint64_t start_height;
+  uint64_t end_height = cryptonote::COMMAND_RPC_GET_SN_STATE_CHANGES::HEIGHT_SENTINEL_VALUE;
+
+  if (args.empty()) {
+    std::cout << "Missing first argument start_height" << std::endl;
+    return false;
+  }
+
+  std::forward_list<std::string> args_list(args.begin(), args.end());
+  if (!epee::string_tools::get_xtype_from_string(start_height, args_list.front()))
+  {
+    std::cout << "start_height should be a number" << std::endl;
+    return false;
+  }
+
+  args_list.pop_front();
+
+  if (!parse_if_present(args_list, end_height, "end height"))
+    return false;
+
+  if (!args_list.empty())
+  {
+    std::cout << "use: print_sn_state_changes <start_height> [end height]"
+              << "(omit arguments to scan until the current block)"
+              << std::endl;
+    return false;
+  }
+
+  return m_executor.print_sn_state_changes(start_height, end_height);
+}
 
 bool t_command_parser_executor::print_peer_list(const std::vector<std::string>& args)
 {
@@ -160,20 +241,24 @@ bool t_command_parser_executor::print_blockchain_info(const std::vector<std::str
 
 bool t_command_parser_executor::print_quorum_state(const std::vector<std::string>& args)
 {
-  if(args.size() != 1)
+  uint64_t start_height = cryptonote::COMMAND_RPC_GET_QUORUM_STATE::HEIGHT_SENTINEL_VALUE;
+  uint64_t end_height   = cryptonote::COMMAND_RPC_GET_QUORUM_STATE::HEIGHT_SENTINEL_VALUE;
+
+  std::forward_list<std::string> args_list(args.begin(), args.end());
+  if (!parse_if_present(args_list, start_height, "start height"))
+    return false;
+
+  if (!parse_if_present(args_list, end_height, "end height"))
+    return false;
+
+  if (!args_list.empty())
   {
-    std::cout << "need block height parameter" << std::endl;
+    std::cout << "use: print_quorum_state [start height] [end height]\n"
+              << "(omit arguments to print the latest quorums" << std::endl;
     return false;
   }
 
-  uint64_t height = 0;
-  if(!epee::string_tools::get_xtype_from_string(height, args[0]))
-  {
-    std::cout << "wrong block height parameter" << std::endl;
-    return false;
-  }
-
-  return m_executor.print_quorum_state(height);
+  return m_executor.print_quorum_state(start_height, end_height);
 }
 
 bool t_command_parser_executor::print_sn_key(const std::vector<std::string>& args)
@@ -249,7 +334,7 @@ bool t_command_parser_executor::set_log_level(const std::vector<std::string>& ar
   }
 }
 
-bool t_command_parser_executor::print_height(const std::vector<std::string>& args) 
+bool t_command_parser_executor::print_height(const std::vector<std::string>& args)
 {
   if (!args.empty()) return false;
 

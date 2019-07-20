@@ -647,18 +647,16 @@ namespace cryptonote
       {
         MDEBUG("We have all needed txes for this fluffy block");
 
-        block_complete_entry b;
-        b.block = arg.b.block;
-        b.txs = have_tx;
+        block_complete_entry b = {};
+        b.block                = arg.b.block;
+        b.txs                  = have_tx;
 
         std::vector<block_complete_entry> blocks;
         blocks.push_back(b);
 
 
-        // TODO(doyle): Checkpointing
         std::vector<block> pblocks;
-        std::vector<checkpoint_t> checkpoints;
-        if (!m_core.prepare_handle_incoming_blocks(blocks, pblocks, checkpoints))
+        if (!m_core.prepare_handle_incoming_blocks(blocks, pblocks))
         {
           LOG_PRINT_CCONTEXT_L0("Failure in prepare_handle_incoming_blocks");
           m_core.resume_mine();
@@ -666,7 +664,7 @@ namespace cryptonote
         }
           
         block_verification_context bvc = boost::value_initialized<block_verification_context>();
-        m_core.handle_incoming_block(arg.b.block, pblocks.empty() ? NULL : &pblocks[0], bvc); // got block from handle_notify_new_block
+        m_core.handle_incoming_block(arg.b.block, pblocks.empty() ? NULL : &pblocks[0], bvc, nullptr /*checkpoint*/); // got block from handle_notify_new_block
         if (!m_core.cleanup_handle_incoming_blocks(true))
         {
           LOG_PRINT_CCONTEXT_L0("Failure in cleanup_handle_incoming_blocks");
@@ -752,7 +750,7 @@ namespace cryptonote
 
       if (vvc.m_verification_failed)
       {
-        LOG_PRINT_CCONTEXT_L1("Checkpoint vote verification failed, dropping connection");
+        LOG_PRINT_CCONTEXT_L1("Vote type: " << service_nodes::quorum_type_to_string(it->type) << ", verification failed, dropping connection");
         drop_connection(context, false /*add_fail*/, false /*flush_all_spans i.e. delete cached block data from this peer*/);
         return 1;
       }
@@ -793,6 +791,31 @@ namespace cryptonote
     NOTIFY_NEW_FLUFFY_BLOCK::request fluffy_response;
     fluffy_response.b.block = t_serializable_object_to_blob(b);
     fluffy_response.current_blockchain_height = arg.current_blockchain_height;
+
+    // NOTE: Dupe index check
+    {
+      std::unordered_set<uint64_t> requested_index_set;
+      requested_index_set.reserve(16); // typical maximum number of txs per block
+
+      for (uint64_t requested_index : arg.missing_tx_indices)
+      {
+        if (!requested_index_set.insert(requested_index).second)
+        {
+          LOG_ERROR_CCONTEXT
+          (
+            "Failed to handle request NOTIFY_REQUEST_FLUFFY_MISSING_TX"
+            << ", request is asking for the same tx index more than once "
+            << ", tx index = " << requested_index << ", block tx count " << b.tx_hashes.size()
+            << ", block_height = " << arg.current_blockchain_height
+            << ", dropping connection"
+          );
+
+          drop_connection(context, false, false);
+          return 1;
+        }
+      }
+    }
+
     for(auto& tx_idx: arg.missing_tx_indices)
     {
       if(tx_idx < b.tx_hashes.size())
@@ -814,7 +837,7 @@ namespace cryptonote
         drop_connection(context, false, false);
         return 1;
       }
-    }    
+    }
 
     std::vector<cryptonote::transaction> txs;
     std::vector<crypto::hash> missed;
@@ -948,7 +971,18 @@ namespace cryptonote
   template<class t_core>
   int t_cryptonote_protocol_handler<t_core>::handle_request_get_objects(int command, NOTIFY_REQUEST_GET_OBJECTS::request& arg, cryptonote_connection_context& context)
   {
-    MLOG_P2P_MESSAGE("Received NOTIFY_REQUEST_GET_OBJECTS (" << arg.blocks.size() << " blocks)");
+    MLOG_P2P_MESSAGE("Received NOTIFY_REQUEST_GET_OBJECTS (" << arg.blocks.size() << " blocks, " << arg.txs.size() << " txes)");
+
+    if (arg.blocks.size() + arg.txs.size() > CURRENCY_PROTOCOL_MAX_OBJECT_REQUEST_COUNT)
+      {
+        LOG_ERROR_CCONTEXT(
+            "Requested objects count is too big ("
+            << arg.blocks.size() + arg.txs.size() << ") expected not more then "
+            << CURRENCY_PROTOCOL_MAX_OBJECT_REQUEST_COUNT);
+        drop_connection(context, false, false);
+        return 1;
+      }
+
     NOTIFY_RESPONSE_GET_OBJECTS::request rsp;
     if(!m_core.handle_get_objects(arg, rsp, context))
     {
@@ -956,9 +990,8 @@ namespace cryptonote
       drop_connection(context, false, false);
       return 1;
     }
-    MLOG_P2P_MESSAGE("-->>NOTIFY_RESPONSE_GET_OBJECTS: blocks.size()="
-                     << rsp.blocks.size() << ", rsp.m_current_blockchain_height=" << rsp.current_blockchain_height
-                     << ", missed_ids.size()=" << rsp.missed_ids.size());
+    MLOG_P2P_MESSAGE("-->>NOTIFY_RESPONSE_GET_OBJECTS: blocks.size()=" << rsp.blocks.size() << ", txs.size()=" << rsp.txs.size()
+                            << ", rsp.m_current_blockchain_height=" << rsp.current_blockchain_height << ", missed_ids.size()=" << rsp.missed_ids.size());
     post_notify<NOTIFY_RESPONSE_GET_OBJECTS>(rsp, context);
     //handler_response_blocks_now(sizeof(rsp)); // XXX
     //handler_response_blocks_now(200);
@@ -983,14 +1016,15 @@ namespace cryptonote
   template<class t_core>
   int t_cryptonote_protocol_handler<t_core>::handle_response_get_objects(int command, NOTIFY_RESPONSE_GET_OBJECTS::request& arg, cryptonote_connection_context& context)
   {
-    MLOG_P2P_MESSAGE("Received NOTIFY_RESPONSE_GET_OBJECTS (" << arg.blocks.size() << " blocks)");
+    MLOG_P2P_MESSAGE("Received NOTIFY_RESPONSE_GET_OBJECTS (" << arg.blocks.size() << " blocks, " << arg.txs.size() << " txes)");
     MLOG_PEER_STATE("received objects");
 
     boost::posix_time::ptime request_time = context.m_last_request_time;
     context.m_last_request_time = boost::date_time::not_a_date_time;
 
     // calculate size of request
-    size_t blocks_size = 0, checkpoints_size = 0;
+    size_t blocks_size = 0, checkpoints_size = 0, txs_size = 0;
+    for (const auto &element : arg.txs) txs_size += element.size();
     for (const auto &element : arg.blocks) {
       blocks_size += element.block.size();
       for (const auto &tx : element.txs)
@@ -998,7 +1032,7 @@ namespace cryptonote
       checkpoints_size += element.checkpoint.size();
     }
 
-    size_t size = blocks_size + checkpoints_size;
+    size_t size = blocks_size + checkpoints_size + txs_size;
     for (const auto &element : arg.missed_ids)
       size += sizeof(element.data);
 
@@ -1246,9 +1280,8 @@ namespace cryptonote
             }
           }
 
-          std::vector<checkpoint_t> checkpoints;
           std::vector<block> pblocks;
-          if (!m_core.prepare_handle_incoming_blocks(blocks, pblocks, checkpoints))
+          if (!m_core.prepare_handle_incoming_blocks(blocks, pblocks))
           {
             LOG_ERROR_CCONTEXT("Failure in prepare_handle_incoming_blocks");
             return 1;
@@ -1308,12 +1341,63 @@ namespace cryptonote
             TIME_MEASURE_FINISH(transactions_process_time);
             transactions_process_time_full += transactions_process_time;
 
+            //
+            // NOTE: Checkpoint parsing
+            //
+            checkpoint_t checkpoint_allocated_on_stack_;
+            checkpoint_t *checkpoint = nullptr;
+            if (block_entry.checkpoint.size())
+            {
+              // TODO(doyle): It's wasteful to have to parse the checkpoint to
+              // figure out the height when at some point during the syncing
+              // step we know exactly what height the block entries are for
+
+              if (!t_serializable_object_from_blob(checkpoint_allocated_on_stack_, block_entry.checkpoint))
+              {
+                MERROR("Checkpoint blob available but failed to parse");
+                return false;
+              }
+
+              checkpoint                = &checkpoint_allocated_on_stack_;
+              bool maybe_has_checkpoint = (checkpoint->height % service_nodes::CHECKPOINT_INTERVAL == 0);
+
+              if (!maybe_has_checkpoint)
+              {
+                MERROR("Checkpoint blob given but not expecting a checkpoint at this height");
+                return false;
+              }
+
+              // TODO(doyle): If we are receiving alternative blocks, we won't
+              // have the quorum for the alternative chain meaning we will not
+              // be able to verify the checkpoint. For now always accept
+              // whatever checkpoint we receive
+#if 0
+              std::shared_ptr<const service_nodes::testing_quorum> quorum =
+                  get_testing_quorum(service_nodes::quorum_type::checkpointing, checkpoint.height);
+              if (!quorum)
+              {
+                MERROR(
+                    "Failed to get service node quorum for height: "
+                    << checkpoint.height
+                    << ", quorum should be available as we are syncing the chain and deriving the current relevant quorum");
+                return false;
+              }
+
+              // TODO(doyle): add reasoning, important for sync failures
+              if (!service_nodes::verify_checkpoint(checkpoint, *quorum))
+              {
+                MERROR("Failed to verify checkpoint at height: " << checkpoint.height);
+                return false;
+              }
+#endif
+            }
+
             // process block
 
             TIME_MEASURE_START(block_process_time);
             block_verification_context bvc = boost::value_initialized<block_verification_context>();
 
-            m_core.handle_incoming_block(block_entry.block, pblocks.empty() ? NULL : &pblocks[blockidx], bvc, false); // <--- process block
+            m_core.handle_incoming_block(block_entry.block, pblocks.empty() ? NULL : &pblocks[blockidx], bvc, checkpoint, false); // <--- process block
 
             if(bvc.m_verifivation_failed)
             {
@@ -1359,13 +1443,6 @@ namespace cryptonote
             ++blockidx;
 
           } // each download block
-
-          // TODO(doyle): Horribly incomplete
-          for (checkpoint_t const &checkpoint : checkpoints)
-          {
-            Blockchain &blockchain = m_core.get_blockchain_storage();
-            blockchain.update_checkpoint(checkpoint);
-          }
 
           MDEBUG(context << "Block process time (" << blocks.size() << " blocks, " << num_txs << " txs): " << block_process_time_full + transactions_process_time_full << " (" << transactions_process_time_full << "/" << block_process_time_full << ") ms");
 
@@ -1958,7 +2035,8 @@ skip:
         }
 
         context.m_last_request_time = boost::posix_time::microsec_clock::universal_time();
-        MLOG_P2P_MESSAGE("-->>NOTIFY_REQUEST_GET_OBJECTS: blocks.size()=" << req.blocks.size() << "requested blocks count=" << count << " / " << count_limit << " from " << span.first << ", first hash " << req.blocks.front());
+        MLOG_P2P_MESSAGE("-->>NOTIFY_REQUEST_GET_OBJECTS: blocks.size()=" << req.blocks.size() << ", txs.size()=" << req.txs.size()
+            << "requested blocks count=" << count << " / " << count_limit << " from " << span.first << ", first hash " << req.blocks.front());
         //epee::net_utils::network_throttle_manager::get_global_throttle_inreq().logger_handle_net("log/dr-loki/net/req-all.data", sec, get_avg_block_size());
 
         post_notify<NOTIFY_REQUEST_GET_OBJECTS>(req, context);
@@ -2421,7 +2499,7 @@ skip:
       MINFO("Target height decreasing from " << previous_target << " to " << target);
       m_core.set_target_blockchain_height(target);
       if (target == 0 && context.m_state > cryptonote_connection_context::state_before_handshake && !m_stopping)
-        MCWARNING("global", "monerod is now disconnected from the network");
+        MCWARNING("global", "lokid is now disconnected from the network");
     }
 
     m_block_queue.flush_spans(context.m_connection_id, false);

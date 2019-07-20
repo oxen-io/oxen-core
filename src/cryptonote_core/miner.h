@@ -33,9 +33,9 @@
 #include <boost/program_options.hpp>
 #include <boost/logic/tribool_fwd.hpp>
 #include <atomic>
-#include "cryptonote_basic.h"
-#include "verification_context.h"
-#include "difficulty.h"
+#include "cryptonote_basic/cryptonote_basic.h"
+#include "cryptonote_basic/verification_context.h"
+#include "cryptonote_basic/difficulty.h"
 #include "math_helper.h"
 #ifdef _WIN32
 #include <windows.h>
@@ -52,19 +52,21 @@ namespace cryptonote
     ~i_miner_handler(){};
   };
 
+  class Blockchain;
+
   /************************************************************************/
   /*                                                                      */
   /************************************************************************/
   class miner
   {
   public: 
-    miner(i_miner_handler* phandler);
+    miner(i_miner_handler* phandler, Blockchain* pbc);
     ~miner();
     bool init(const boost::program_options::variables_map& vm, network_type nettype);
     static void init_options(boost::program_options::options_description& desc);
     bool set_block_template(const block& bl, const difficulty_type& diffic, uint64_t height, uint64_t block_reward);
     bool on_block_chain_update();
-    bool start(const account_public_address& adr, size_t threads_count, const boost::thread::attributes& attrs, bool do_background = false, bool ignore_battery = false);
+    bool start(const account_public_address& adr, size_t threads_count, bool do_background = false, bool ignore_battery = false);
     uint64_t get_speed() const;
     uint32_t get_threads_count() const;
     void send_stop_signal();
@@ -74,7 +76,7 @@ namespace cryptonote
     bool on_idle();
     void on_synchronized();
     //synchronous analog (for fast calls)
-    static bool find_nonce_for_given_block(block& bl, const difficulty_type& diffic, uint64_t height);
+    static bool find_nonce_for_given_block(const Blockchain *pbc, block& bl, const difficulty_type& diffic, uint64_t height);
     void pause();
     void resume();
     void do_print_hashrate(bool do_hr);
@@ -92,11 +94,8 @@ namespace cryptonote
     std::atomic<bool> m_debug_mine_singular_block;
     bool debug_mine_singular_block(const account_public_address& adr)
     {
-      boost::thread::attributes attrs;
-      attrs.set_stack_size(THREAD_STACK_SIZE);
-
       m_debug_mine_singular_block = true;
-      bool result = start(adr, 1 /*thread_counts*/, attrs, false /*do_background*/, false /*ignore_battery*/);
+      bool result = start(adr, 1 /*thread_counts*/, false /*do_background*/, false /*ignore_battery*/);
       while(is_mining()) { }
       return result;
     }
@@ -148,6 +147,7 @@ namespace cryptonote
     std::list<boost::thread> m_threads;
     epee::critical_section m_threads_lock;
     i_miner_handler* m_phandler;
+    Blockchain* m_pbc;
     account_public_address m_mine_address;
     epee::math_helper::once_a_time_seconds<5> m_update_block_template_interval;
     epee::math_helper::once_a_time_seconds<2> m_update_merge_hr_interval;

@@ -30,6 +30,7 @@
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
 #include <boost/algorithm/string.hpp>
+#include <boost/endian/conversion.hpp>
 
 #include "string_tools.h"
 using namespace epee;
@@ -169,10 +170,10 @@ namespace cryptonote
   };
   static const command_line::arg_descriptor<bool> arg_service_node  = {
     "service-node"
-  , "Run as a service node, options 'sn-public-ip' and 'storage-server-port' must be set"
+  , "Run as a service node, options 'service-node-public-ip' and 'storage-server-port' must be set"
   };
   static const command_line::arg_descriptor<std::string> arg_public_ip = {
-    "sn-public-ip"
+    "service-node-public-ip"
   , "Public IP address on which this service node's services (such as the Loki "
     "storage server) are accessible. This IP address will be advertised to the "
     "network via the service node uptime proofs. Required if operating as a "
@@ -213,11 +214,24 @@ namespace cryptonote
     "is acted upon."
   , ""
   };
+  static const command_line::arg_descriptor<bool> arg_keep_alt_blocks  = {
+    "keep-alt-blocks"
+  , "Keep alternative blocks on restart"
+  , false
+  };
 
   const command_line::arg_descriptor<uint64_t> arg_recalculate_difficulty = {
     "recalculate-difficulty",
     "Recalculate per-block difficulty starting from the height specified",
     0};
+
+  static const command_line::arg_descriptor<uint64_t> arg_store_quorum_history = {
+    "store-quorum-history",
+    "Store the service node quorum history for the last N blocks to allow historic quorum lookups "
+    "(e.g. by a block explorer).  Specify the number of blocks of history to store, or 1 to store "
+    "the entire history.  Requires considerably more memory and block chain storage.",
+    0};
+
 
   //-----------------------------------------------------------------------------------------------
   core::core(i_cryptonote_protocol* pprotocol):
@@ -225,7 +239,7 @@ namespace cryptonote
               m_service_node_list(m_blockchain_storage),
               m_blockchain_storage(m_mempool, m_service_node_list),
               m_quorum_cop(*this),
-              m_miner(this),
+              m_miner(this, &m_blockchain_storage),
               m_miner_address(boost::value_initialized<account_public_address>()),
               m_starter_message_showed(false),
               m_target_blockchain_height(0),
@@ -234,14 +248,11 @@ namespace cryptonote
               m_update_download(0),
               m_nettype(UNDEFINED),
               m_update_available(false),
+              m_last_storage_server_ping(time(nullptr)), // Reset the storage server last ping to make sure the very first uptime proof works
               m_pad_transactions(false)
   {
     m_checkpoints_updating.clear();
     set_cryptonote_protocol(pprotocol);
-
-    // Reset the storage server last ping to make
-    // sure the very first uptime proof works
-    this->update_storage_server_last_ping();
   }
   void core::set_cryptonote_protocol(i_cryptonote_protocol* pprotocol)
   {
@@ -251,7 +262,7 @@ namespace cryptonote
       m_pprotocol = &m_protocol_stub;
   }
   //-----------------------------------------------------------------------------------------------
-  bool core::update_checkpoints()
+  bool core::update_checkpoints_from_json_file()
   {
     if (m_nettype != MAINNET) return true;
     if (m_checkpoints_updating.test_and_set()) return true;
@@ -260,7 +271,7 @@ namespace cryptonote
     bool res = true;
     if (time(NULL) - m_last_json_checkpoints_update >= 600)
     {
-      res = m_blockchain_storage.update_checkpoints(m_checkpoints_path);
+      res = m_blockchain_storage.update_checkpoints_from_json_file(m_checkpoints_path);
       m_last_json_checkpoints_update = time(NULL);
     }
     m_checkpoints_updating.clear();
@@ -316,8 +327,10 @@ namespace cryptonote
     command_line::add_arg(desc, arg_prune_blockchain);
     command_line::add_arg(desc, arg_reorg_notify);
     command_line::add_arg(desc, arg_block_rate_notify);
+    command_line::add_arg(desc, arg_keep_alt_blocks);
 
     command_line::add_arg(desc, arg_recalculate_difficulty);
+    command_line::add_arg(desc, arg_store_quorum_history);
 #if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
     command_line::add_arg(desc, loki::arg_integration_test_hardforks_override);
     command_line::add_arg(desc, loki::arg_integration_test_shared_mem_name);
@@ -364,8 +377,8 @@ namespace cryptonote
           storage_ok = false;
         }
 
-        if (epee::net_utils::is_ip_local(m_sn_public_ip) || epee::net_utils::is_ip_loopback(m_sn_public_ip)) {
-          MERROR("Address given for public-ip is not public: " << m_sn_public_ip);
+        if (!epee::net_utils::is_ip_public(m_sn_public_ip)) {
+          MERROR("Address given for public-ip is not public: " << epee::string_tools::get_ip_string_from_int32(m_sn_public_ip));
           storage_ok = false;
         }
       }
@@ -508,6 +521,7 @@ namespace cryptonote
     std::string check_updates_string = command_line::get_arg(vm, arg_check_updates);
     size_t max_txpool_weight = command_line::get_arg(vm, arg_max_txpool_weight);
     bool prune_blockchain = command_line::get_arg(vm, arg_prune_blockchain);
+    bool keep_alt_blocks = command_line::get_arg(vm, arg_keep_alt_blocks);
 
     if (m_service_node)
     {
@@ -700,6 +714,8 @@ namespace cryptonote
     {
       m_service_node_list.set_db_pointer(initialized_db);
 
+      m_service_node_list.set_quorum_history_storage(command_line::get_arg(vm, arg_store_quorum_history));
+
       m_blockchain_storage.hook_block_added(m_service_node_list);
       m_blockchain_storage.hook_blockchain_detached(m_service_node_list);
       m_blockchain_storage.hook_init(m_service_node_list);
@@ -742,9 +758,11 @@ namespace cryptonote
     CHECK_AND_ASSERT_MES(r, false, "Failed to initialize blockchain storage");
 
     block_sync_size = command_line::get_arg(vm, arg_block_sync_size);
+    if (block_sync_size > BLOCKS_SYNCHRONIZING_MAX_COUNT)
+      MERROR("Error --dblock-sync-size cannot be greater than " << BLOCKS_SYNCHRONIZING_MAX_COUNT);
 
     MGINFO("Loading checkpoints");
-    CHECK_AND_ASSERT_MES(update_checkpoints(), false, "One or more checkpoints loaded from json conflicted with existing checkpoints.");
+    CHECK_AND_ASSERT_MES(update_checkpoints_from_json_file(), false, "One or more checkpoints loaded from json conflicted with existing checkpoints.");
 
    // DNS versions checking
     if (check_updates_string == "disabled")
@@ -763,12 +781,21 @@ namespace cryptonote
     r = m_miner.init(vm, m_nettype);
     CHECK_AND_ASSERT_MES(r, false, "Failed to initialize miner instance");
 
+    if (!keep_alt_blocks && !m_blockchain_storage.get_db().is_read_only())
+      m_blockchain_storage.get_db().drop_alt_blocks();
+
     if (prune_blockchain)
     {
       // display a message if the blockchain is not pruned yet
       if (m_blockchain_storage.get_current_blockchain_height() > 1 && !m_blockchain_storage.get_blockchain_pruning_seed())
+      {
         MGINFO("Pruning blockchain...");
-      CHECK_AND_ASSERT_MES(m_blockchain_storage.prune_blockchain(), false, "Failed to prune blockchain");
+        CHECK_AND_ASSERT_MES(m_blockchain_storage.prune_blockchain(), false, "Failed to prune blockchain");
+      }
+      else
+      {
+        CHECK_AND_ASSERT_MES(m_blockchain_storage.update_blockchain_pruning(), false, "Failed to update blockchain pruning");
+      }
     }
 
     return load_state_data();
@@ -947,7 +974,7 @@ namespace cryptonote
         continue;
       }
 
-      if (tx_info[n].tx->get_type() != transaction::type_standard)
+      if (tx_info[n].tx->type != txtype::standard)
         continue;
       const rct::rctSig &rv = tx_info[n].tx->rct_signatures;
       switch (rv.type) {
@@ -1146,11 +1173,11 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
   bool core::check_tx_semantic(const transaction& tx, bool keeped_by_block) const
   {
-    if (tx.get_type() != transaction::type_standard)
+    if (tx.type != txtype::standard)
     {
       if (tx.vin.size() != 0)
       {
-        MERROR_VER("tx type: " << transaction::type_to_string(tx.type) << " must have 0 inputs, received: " << tx.vin.size() << ", rejected for tx id = " << get_transaction_hash(tx));
+        MERROR_VER("tx type: " << tx.type << " must have 0 inputs, received: " << tx.vin.size() << ", rejected for tx id = " << get_transaction_hash(tx));
         return false;
       }
     }
@@ -1172,7 +1199,7 @@ namespace cryptonote
       return false;
     }
 
-    if (tx.version >= transaction::version_2)
+    if (tx.version >= txversion::v2_ringct)
     {
       if (tx.rct_signatures.outPk.size() != tx.vout.size())
       {
@@ -1187,7 +1214,7 @@ namespace cryptonote
       return false;
     }
 
-    if (tx.version == transaction::version_1)
+    if (tx.version == txversion::v1)
     {
       uint64_t amount_in = 0;
       get_inputs_money_amount(tx, amount_in);
@@ -1356,7 +1383,7 @@ namespace cryptonote
     }
 
     uint8_t version = m_blockchain_storage.get_current_hard_fork_version();
-    return m_mempool.add_tx(tx, tx_hash, blob, tx_weight, tvc, keeped_by_block, relayed, do_not_relay, version);
+    return m_mempool.add_tx(tx, tx_hash, blob, tx_weight, tvc, keeped_by_block, relayed, do_not_relay, version, m_service_node_list);
   }
   //-----------------------------------------------------------------------------------------------
   bool core::relay_txpool_transactions()
@@ -1380,52 +1407,22 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
   bool core::submit_uptime_proof()
   {
-    if (m_service_node)
-    {
-      cryptonote_connection_context fake_context = AUTO_VAL_INIT(fake_context);
-      NOTIFY_UPTIME_PROOF::request r;
-      m_quorum_cop.generate_uptime_proof_request(r);
-      bool relayed = get_protocol()->relay_uptime_proof(r, fake_context);
+    if (!m_service_node)
+      return true;
 
-      if (relayed)
-        MGINFO("Submitted uptime-proof for service node (yours): " << m_service_node_pubkey);
-    }
+    NOTIFY_UPTIME_PROOF::request req = m_service_node_list.generate_uptime_proof(m_service_node_pubkey, m_service_node_key, m_sn_public_ip, m_storage_port);
+
+    cryptonote_connection_context fake_context = AUTO_VAL_INIT(fake_context);
+    bool relayed = get_protocol()->relay_uptime_proof(req, fake_context);
+    if (relayed)
+      MGINFO("Submitted uptime-proof for service node (yours): " << m_service_node_pubkey);
+
     return true;
-  }
-  //-----------------------------------------------------------------------------------------------
-  service_nodes::proof_info core::get_uptime_proof(const crypto::public_key &key) const
-  {
-    return m_quorum_cop.get_uptime_proof(key);
   }
   //-----------------------------------------------------------------------------------------------
   bool core::handle_uptime_proof(const NOTIFY_UPTIME_PROOF::request &proof)
   {
-    bool res = m_quorum_cop.handle_uptime_proof(proof);
-    if (res) {
-      /// Validated the signature and snode pubkey at this point
-      m_service_node_list.handle_uptime_proof(proof);
-    }
-    return res;
-  }
-  //-----------------------------------------------------------------------------------------------
-
-  bool core::check_storage_server_ping() const
-  {
-    time_t last_ping = m_last_storage_server_ping.load();
-    const auto elapsed = std::time(nullptr) - last_ping;
-
-    if (elapsed > STORAGE_SERVER_PING_LIFETIME) {
-      MWARNING("Have not heard from the storage server since at least: "
-      << epee::misc_utils::get_time_str(last_ping));
-      return false;
-    }
-
-    return true;
-  }
-  //-----------------------------------------------------------------------------------------------
-  void core::update_storage_server_last_ping()
-  {
-    m_last_storage_server_ping.store(std::time(nullptr));
+    return m_service_node_list.handle_uptime_proof(proof);
   }
   //-----------------------------------------------------------------------------------------------
   void core::on_transaction_relayed(const cryptonote::blobdata& tx_blob)
@@ -1444,9 +1441,9 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
   bool core::relay_service_node_votes()
   {
-    std::vector<service_nodes::quorum_vote_t> relayable_votes = m_quorum_cop.get_relayable_votes();
-    int hf_version = get_blockchain_storage().get_current_hard_fork_version();
-    if (hf_version < cryptonote::network_version_11_infinite_staking)
+    std::vector<service_nodes::quorum_vote_t> relayable_votes = m_quorum_cop.get_relayable_votes(get_current_blockchain_height());
+    uint8_t hf_version = get_blockchain_storage().get_current_hard_fork_version();
+    if (hf_version < cryptonote::network_version_12_checkpointing)
     {
       NOTIFY_NEW_DEREGISTER_VOTE::request req = {};
       for (service_nodes::quorum_vote_t const &vote : relayable_votes)
@@ -1475,7 +1472,7 @@ namespace cryptonote
         cryptonote_connection_context fake_context = AUTO_VAL_INIT(fake_context);
         if (get_protocol()->relay_service_node_votes(req, fake_context))
         {
-          m_quorum_cop.set_votes_relayed(relayable_votes);
+          m_quorum_cop.set_votes_relayed(req.votes);
         }
       }
     }
@@ -1566,14 +1563,13 @@ namespace cryptonote
       return false;
     }
     std::vector<block> pblocks;
-    std::vector<checkpoint_t> checkpoints;
-    if (!prepare_handle_incoming_blocks(blocks, pblocks, checkpoints))
+    if (!prepare_handle_incoming_blocks(blocks, pblocks))
     {
       MERROR("Block found, but failed to prepare to add");
       m_miner.resume();
       return false;
     }
-    m_blockchain_storage.add_new_block(b, bvc);
+    add_new_block(b, bvc, nullptr /*checkpoint*/);
     cleanup_handle_incoming_blocks(true);
     //anyway - update miner template
     update_miner_block_template();
@@ -1614,16 +1610,33 @@ namespace cryptonote
     m_blockchain_storage.safesyncmode(onoff);
   }
   //-----------------------------------------------------------------------------------------------
-  bool core::add_new_block(const block& b, block_verification_context& bvc)
+  bool core::add_new_block(const block& b, block_verification_context& bvc, checkpoint_t const *checkpoint)
   {
-    return m_blockchain_storage.add_new_block(b, bvc);
-  }
+    // TODO(loki): Temporary soft-fork code can be removed
+    uint64_t latest_height = std::max(get_current_blockchain_height(), get_target_blockchain_height());
+    if (get_nettype() == cryptonote::MAINNET &&
+        latest_height >= HF_VERSION_12_CHECKPOINTING_SOFT_FORK_HEIGHT &&
+        get_block_height(b) < HF_VERSION_12_CHECKPOINTING_SOFT_FORK_HEIGHT)
+    {
+      // NOTE: After the soft fork, ignore all checkpoints from before the fork so we
+      // only create and enforce checkpoints from after the soft-fork.
+      checkpoint = nullptr;
+    }
 
+    bool result = m_blockchain_storage.add_new_block(b, bvc, checkpoint);
+    if (result)
+    {
+      // TODO(loki): PERF(loki): This causes perf problems in integration mode, so in real-time operation it may not be
+      // noticeable but could bubble up and cause slowness if the runtime variables align up undesiredly.
+      relay_service_node_votes(); // NOTE: nop if synchronising due to not accepting votes whilst syncing
+    }
+    return result;
+  }
   //-----------------------------------------------------------------------------------------------
-  bool core::prepare_handle_incoming_blocks(const std::vector<block_complete_entry> &blocks_entry, std::vector<block> &blocks, std::vector<checkpoint_t> &checkpoints)
+  bool core::prepare_handle_incoming_blocks(const std::vector<block_complete_entry> &blocks_entry, std::vector<block> &blocks)
   {
     m_incoming_tx_lock.lock();
-    if (!m_blockchain_storage.prepare_handle_incoming_blocks(blocks_entry, blocks, checkpoints))
+    if (!m_blockchain_storage.prepare_handle_incoming_blocks(blocks_entry, blocks))
     {
       cleanup_handle_incoming_blocks(false);
       return false;
@@ -1644,7 +1657,7 @@ namespace cryptonote
   }
 
   //-----------------------------------------------------------------------------------------------
-  bool core::handle_incoming_block(const blobdata& block_blob, const block *b, block_verification_context& bvc, bool update_miner_blocktemplate)
+  bool core::handle_incoming_block(const blobdata& block_blob, const block *b, block_verification_context& bvc, checkpoint_t const *checkpoint, bool update_miner_blocktemplate)
   {
     TRY_ENTRY();
     bvc = boost::value_initialized<block_verification_context>();
@@ -1658,7 +1671,7 @@ namespace cryptonote
     if (((size_t)-1) <= 0xffffffff && block_blob.size() >= 0x3fffffff)
       MWARNING("This block's size is " << block_blob.size() << ", closing on the 32 bit limit");
 
-    CHECK_AND_ASSERT_MES(update_checkpoints(), false, "One or more checkpoints loaded from json conflicted with existing checkpoints.");
+    CHECK_AND_ASSERT_MES(update_checkpoints_from_json_file(), false, "One or more checkpoints loaded from json conflicted with existing checkpoints.");
 
     block lb;
     if (!b)
@@ -1672,7 +1685,7 @@ namespace cryptonote
       }
       b = &lb;
     }
-    add_new_block(*b, bvc);
+    add_new_block(*b, bvc, checkpoint);
     if(update_miner_blocktemplate && bvc.m_added_to_main_chain)
        update_miner_block_template();
     return true;
@@ -1795,22 +1808,48 @@ namespace cryptonote
     return true;
   }
   //-----------------------------------------------------------------------------------------------
+  static bool check_storage_server_ping(time_t last_time_storage_server_pinged)
+  {
+    const auto elapsed = std::time(nullptr) - last_time_storage_server_pinged;
+    if (elapsed > STORAGE_SERVER_PING_LIFETIME)
+    {
+      MWARNING("Have not heard from the storage server since at least: "
+               << tools::get_human_readable_timespan(std::chrono::seconds(last_time_storage_server_pinged)));
+      return false;
+    }
+    return true;
+  }
+  //-----------------------------------------------------------------------------------------------
   void core::do_uptime_proof_call()
   {
     // wait one block before starting uptime proofs.
     std::vector<service_nodes::service_node_pubkey_info> const states = get_service_node_list_state({ m_service_node_pubkey });
-    if (!states.empty() && states[0].info.registration_height + 1 < get_current_blockchain_height())
+
+    if (!states.empty() && (states[0].info.registration_height + 1) < get_current_blockchain_height())
     {
       // Code snippet from Github @Jagerman
-      m_check_uptime_proof_interval.do_call([&states, this](){
-        uint64_t last_uptime = m_quorum_cop.get_uptime_proof(states[0].pubkey).timestamp;
-        if (last_uptime <= static_cast<uint64_t>(time(nullptr) - UPTIME_PROOF_FREQUENCY_IN_SECONDS)) {
+      service_nodes::service_node_info const &info = states[0].info;
+      m_check_uptime_proof_interval.do_call([&info, this]() {
+        if (info.proof.timestamp <= static_cast<uint64_t>(time(nullptr) - UPTIME_PROOF_FREQUENCY_IN_SECONDS))
+        {
+          uint8_t hf_version = get_blockchain_storage().get_current_hard_fork_version();
 
-          if (!this->check_storage_server_ping()) {
-            MERROR("Failed to submit uptime proof: have not heard from"
-                   << " the storage server recently. "
-                   << "Make sure that it is running!");
-            return true;
+          if (!check_storage_server_ping(m_last_storage_server_ping))
+          {
+            if (hf_version >= cryptonote::network_version_12_checkpointing)
+            {
+              MGINFO_RED(
+                  "Failed to submit uptime proof: have not heard from the storage server recently. Make sure that it "
+                  "is running! It is required to run alongside the Loki daemon after hard-fork 12");
+              return true;
+            }
+            else
+            {
+              MGINFO_RED(
+                  "We have not heard from the storage server recently. Make sure that it is running! After hard fork "
+                  "12, this Service Node will stop submitting uptime proofs if it does not hear from the Loki Storage "
+                  "Server.");
+            }
           }
 
           this->submit_uptime_proof();
@@ -1860,14 +1899,12 @@ namespace cryptonote
       do_uptime_proof_call();
     }
 
-    m_uptime_proof_pruner.do_call(boost::bind(&service_nodes::quorum_cop::prune_uptime_proof, &m_quorum_cop));
-
     m_blockchain_pruning_interval.do_call(boost::bind(&core::update_blockchain_pruning, this));
     m_miner.on_idle();
     m_mempool.on_idle();
 
 #if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
-    loki::core_is_idle = true;
+    loki::integration_test.core_is_idle = true;
 #endif
 
     return true;
@@ -2167,14 +2204,14 @@ namespace cryptonote
     return si.available;
   }
   //-----------------------------------------------------------------------------------------------
-  std::shared_ptr<const service_nodes::testing_quorum> core::get_testing_quorum(service_nodes::quorum_type type, uint64_t height) const
+  std::shared_ptr<const service_nodes::testing_quorum> core::get_testing_quorum(service_nodes::quorum_type type, uint64_t height, bool include_old) const
   {
-    return m_service_node_list.get_testing_quorum(type, height);
+    return m_service_node_list.get_testing_quorum(type, height, include_old);
   }
   //-----------------------------------------------------------------------------------------------
-  bool core::is_service_node(const crypto::public_key& pubkey) const
+  bool core::is_service_node(const crypto::public_key& pubkey, bool require_active) const
   {
-    return m_service_node_list.is_service_node(pubkey);
+    return m_service_node_list.is_service_node(pubkey, require_active);
   }
   //-----------------------------------------------------------------------------------------------
   const std::vector<service_nodes::key_image_blacklist_entry> &core::get_service_node_blacklisted_key_images() const
@@ -2214,9 +2251,9 @@ namespace cryptonote
     return get_blockchain_storage().prune_blockchain(pruning_seed);
   }
   //-----------------------------------------------------------------------------------------------
-  void core::get_all_service_nodes_public_keys(std::vector<crypto::public_key>& keys, bool fully_funded_nodes_only) const
+  void core::get_all_service_nodes_public_keys(std::vector<crypto::public_key>& keys, bool active_nodes_only) const
   {
-    m_service_node_list.get_all_service_nodes_public_keys(keys, fully_funded_nodes_only);
+    m_service_node_list.get_all_service_nodes_public_keys(keys, active_nodes_only);
   }
   //-----------------------------------------------------------------------------------------------
   std::time_t core::get_start_time() const

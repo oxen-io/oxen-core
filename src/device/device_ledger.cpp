@@ -91,6 +91,20 @@ namespace hw {
       AKout = keys.AKout;
     }
 
+    ABPkeys &ABPkeys::operator=(const ABPkeys& keys) {
+      if (&keys == this)
+        return *this;
+      Aout = keys.Aout;
+      Bout = keys.Bout;
+      is_subaddress = keys.is_subaddress;
+      is_change_address = keys.is_change_address;
+      additional_key = keys.additional_key;
+      index = keys.index;
+      Pout = keys.Pout;
+      AKout = keys.AKout;
+      return *this;
+    }
+
     bool Keymap::find(const rct::key& P, ABPkeys& keys) const {
       size_t sz = ABP.size();
       for (size_t i=0; i<sz; i++) {
@@ -1342,23 +1356,10 @@ namespace hw {
           additional_txkey.sec = additional_tx_keys[output_index];
       }
 
-      const crypto::secret_key *sec;
       bool &is_change = found_change; // NOTE(loki): Alias our param into theirs so we don't have to change much code.
 
       if (change_addr && dst_entr == *change_addr && !is_change)
-      {
-        // sending change to yourself; derivation = a*R
-        is_change = true;
-        sec = &sender_account_keys.m_view_secret_key;
-      }
-      else
-      {
-        if (dst_entr.is_subaddress && need_additional_txkeys) {
-          sec = &additional_txkey.sec;
-        } else {
-          sec = &tx_key;
-        }
-      }
+        is_change = true; // sending change to yourself; derivation = a*R
 
       int offset = set_command_header_noopt(INS_GEN_TXOUT_KEYS);
       //tx_version

@@ -44,7 +44,7 @@
 #include "service_node_voting.h"
 #include "service_node_list.h"
 #include "service_node_quorum_cop.h"
-#include "cryptonote_basic/miner.h"
+#include "cryptonote_core/miner.h"
 #include "cryptonote_basic/connection_context.h"
 #include "cryptonote_basic/cryptonote_stat_info.h"
 #include "warnings.h"
@@ -52,6 +52,7 @@
 PUSH_WARNINGS
 DISABLE_VS_WARNINGS(4355)
 
+#include "common/loki_integration_test_hooks.h"
 namespace cryptonote
 {
    struct test_options {
@@ -82,8 +83,6 @@ namespace cryptonote
    class core: public i_miner_handler
    {
    public:
-
-     void debug__print_checkpoints() { m_blockchain_storage.debug__print_checkpoints(); }
 
       /**
        * @brief constructor
@@ -167,14 +166,14 @@ namespace cryptonote
       * @return false if loading new checkpoints fails, or the block is not
       * added, otherwise true
       */
-     bool handle_incoming_block(const blobdata& block_blob, const block *b, block_verification_context& bvc, bool update_miner_blocktemplate = true);
+     bool handle_incoming_block(const blobdata& block_blob, const block *b, block_verification_context& bvc, checkpoint_t const *checkpoint, bool update_miner_blocktemplate = true);
 
      /**
       * @copydoc Blockchain::prepare_handle_incoming_blocks
       *
       * @note see Blockchain::prepare_handle_incoming_blocks
       */
-     bool prepare_handle_incoming_blocks(const std::vector<block_complete_entry> &blocks_entry, std::vector<block> &blocks, std::vector<checkpoint_t> &checkpoints);
+     bool prepare_handle_incoming_blocks(const std::vector<block_complete_entry> &blocks_entry, std::vector<block> &blocks);
 
      /**
       * @copydoc Blockchain::cleanup_handle_incoming_blocks
@@ -668,9 +667,9 @@ namespace cryptonote
       * its checkpoints if it is time.  If updating checkpoints fails,
       * the daemon is told to shut down.
       *
-      * @note see Blockchain::update_checkpoints()
+      * @note see Blockchain::update_checkpoints_from_json_file()
       */
-     bool update_checkpoints();
+     bool update_checkpoints_from_json_file();
 
      /**
       * @brief tells the daemon to wind down operations and stop running
@@ -779,11 +778,12 @@ namespace cryptonote
       * @brief Get the deterministic quorum of service node's public keys responsible for the specified quorum type
       *
       * @param type The quorum type to retrieve
-      * @param height Block height to deterministically recreate the quorum list from
-
-      * @return Null shared ptr if quorum has not been determined yet for height
+      * @param height Block height to deterministically recreate the quorum list from (note that for
+      * a checkpointing quorum this value is automatically reduced by the correct buffer size).
+      * @param include_old whether to look in the old quorum states (does nothing unless running with --store-full-quorum-history)
+      * @return Null shared ptr if quorum has not been determined yet or is not defined for height
       */
-     std::shared_ptr<const service_nodes::testing_quorum> get_testing_quorum(service_nodes::quorum_type type, uint64_t height) const;
+     std::shared_ptr<const service_nodes::testing_quorum> get_testing_quorum(service_nodes::quorum_type type, uint64_t height, bool include_old = false) const;
 
      /**
       * @brief Get a non owning reference to the list of blacklisted key images
@@ -800,22 +800,15 @@ namespace cryptonote
      std::vector<service_nodes::service_node_pubkey_info> get_service_node_list_state(const std::vector<crypto::public_key>& service_node_pubkeys) const;
 
      /**
-       * @brief get whether `pubkey` is known as a service node
+       * @brief get whether `pubkey` is known as a service node.
        *
        * @param pubkey the public key to test
+       * @param require_active if true also require that the service node is active (fully funded
+       * and not decommissioned).
        *
-       * @return whether `pubkey` is known as a service node
+       * @return whether `pubkey` is known as a (optionally active) service node
        */
-     bool is_service_node(const crypto::public_key& pubkey) const;
-
-
-     uint32_t get_service_node_public_ip() const {
-       return m_sn_public_ip;
-     }
-
-     uint16_t get_storage_port() const {
-       return m_storage_port;
-     }
+     bool is_service_node(const crypto::public_key& pubkey, bool require_active) const;
 
      /**
       * @brief Add a service node vote
@@ -841,9 +834,9 @@ namespace cryptonote
       * @brief Get the public key of every service node.
       *
       * @param keys The container in which to return the keys
-      * @param fully_funded_nodes_only Only return nodes that are funded and hence working on the network
+      * @param active_nodes_only Only return nodes that are funded and actively working (i.e. not decommissioned) on the network
       */
-     void get_all_service_nodes_public_keys(std::vector<crypto::public_key>& keys, bool fully_funded_nodes_only) const;
+     void get_all_service_nodes_public_keys(std::vector<crypto::public_key>& keys, bool active_nodes_only) const;
 
      /**
       * @brief attempts to submit an uptime proof to the network, if this is running in service node mode
@@ -851,27 +844,6 @@ namespace cryptonote
       * @return true
       */
      bool submit_uptime_proof();
-
-     /**
-      * @brief Try find the uptime proof from the service node.
-      *
-      * @param key The public key of the service node
-      *
-      * @return proof_info struct containing the uptime proof epoch timestamp and version if proof found, otherwise all 0s.
-      */
-     service_nodes::proof_info get_uptime_proof(const crypto::public_key &key) const;
-
-     /**
-      * @brief Check if the ping last recieved from the storage server has expired
-      * 
-      * @return true if it has not expired
-      */
-     bool check_storage_server_ping() const;
-
-     /**
-      * @brief Update the storage server ping time
-      */
-     void update_storage_server_last_ping();
 
      /*
       * @brief get the blockchain pruning seed
@@ -910,6 +882,13 @@ namespace cryptonote
       */
      bool relay_service_node_votes();
 
+     /**
+      * @brief Record if the service node has checkpointed at this point in time
+      */
+     void record_checkpoint_vote(crypto::public_key const &pubkey, bool voted) { m_service_node_list.record_checkpoint_vote(pubkey, voted); }
+
+     /// Time point at which the storage server last pinged us
+     std::atomic<time_t> m_last_storage_server_ping;
    private:
 
      /**
@@ -946,7 +925,7 @@ namespace cryptonote
       *
       * @note see Blockchain::add_new_block
       */
-     bool add_new_block(const block& b, block_verification_context& bvc);
+     bool add_new_block(const block& b, block_verification_context& bvc, checkpoint_t const *checkpoint);
 
      /**
       * @brief load any core state stored on disk
@@ -1126,7 +1105,6 @@ namespace cryptonote
      epee::math_helper::once_a_time_seconds<60*60*12, true> m_check_updates_interval; //!< interval for checking for new versions
      epee::math_helper::once_a_time_seconds<60*10, true> m_check_disk_space_interval; //!< interval for checking for disk space
      epee::math_helper::once_a_time_seconds<UPTIME_PROOF_BUFFER_IN_SECONDS, true> m_check_uptime_proof_interval; //!< interval for checking our own uptime proof
-     epee::math_helper::once_a_time_seconds<30, true> m_uptime_proof_pruner;
      epee::math_helper::once_a_time_seconds<90, false> m_block_rate_interval; //!< interval for checking block rate
      epee::math_helper::once_a_time_seconds<60*60*5, true> m_blockchain_pruning_interval; //!< interval for incremental blockchain pruning
      epee::math_helper::once_a_time_seconds<60*2, false> m_service_node_vote_relayer;
@@ -1151,9 +1129,6 @@ namespace cryptonote
      /// Service Node's public IP and storage server port
      uint32_t m_sn_public_ip;
      uint16_t m_storage_port;
-
-     /// Time point at which the storage server last pinged us
-     std::atomic<time_t> m_last_storage_server_ping;
 
      size_t block_sync_size;
 

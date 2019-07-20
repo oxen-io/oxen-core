@@ -36,10 +36,12 @@
 #include <boost/algorithm/string.hpp>
 #include "misc_language.h"
 #include "syncobj.h"
-#include "cryptonote_basic_impl.h"
-#include "cryptonote_format_utils.h"
+#include "cryptonote_basic/cryptonote_basic_impl.h"
+#include "cryptonote_basic/cryptonote_format_utils.h"
+#include "cryptonote_core/cryptonote_tx_utils.h"
 #include "file_io_utils.h"
 #include "common/command_line.h"
+#include "common/util.h"
 #include "string_coding.h"
 #include "string_tools.h"
 #include "storages/portable_storage_template_helper.h"
@@ -97,12 +99,13 @@ namespace cryptonote
   }
 
 
-  miner::miner(i_miner_handler* phandler):m_stop(1),
+  miner::miner(i_miner_handler* phandler, Blockchain* pbc):m_stop(1),
     m_template(boost::value_initialized<block>()),
     m_template_no(0),
     m_diffic(0),
     m_thread_index(0),
     m_phandler(phandler),
+    m_pbc(pbc),
     m_height(0),
     m_threads_active(0),
     m_pausers_count(0),
@@ -121,7 +124,7 @@ namespace cryptonote
     m_miner_extra_sleep(BACKGROUND_MINING_DEFAULT_MINER_EXTRA_SLEEP_MILLIS),
     m_block_reward(0)
   {
-
+    m_attrs.set_stack_size(THREAD_STACK_SIZE);
   }
   //-----------------------------------------------------------------------------------------------------
   miner::~miner()
@@ -358,7 +361,7 @@ namespace cryptonote
     return m_threads_total;
   }
   //-----------------------------------------------------------------------------------------------------
-  bool miner::start(const account_public_address& adr, size_t threads_count, const boost::thread::attributes& attrs, bool do_background, bool ignore_battery)
+  bool miner::start(const account_public_address& adr, size_t threads_count, bool do_background, bool ignore_battery)
   {
     m_block_reward = 0;
     m_mine_address = adr;
@@ -369,7 +372,6 @@ namespace cryptonote
       m_threads_autodetect.push_back({epee::misc_utils::get_ns_count(), m_total_hashes});
       m_threads_total = 1;
     }
-    m_attrs = attrs;
     m_starter_nonce = crypto::rand<uint32_t>();
     CRITICAL_REGION_LOCAL(m_threads_lock);
     if(is_mining())
@@ -393,7 +395,7 @@ namespace cryptonote
     
     for(size_t i = 0; i != m_threads_total; i++)
     {
-      m_threads.push_back(boost::thread(attrs, boost::bind(&miner::worker_thread, this)));
+      m_threads.push_back(boost::thread(m_attrs, boost::bind(&miner::worker_thread, this)));
     }
 
     if (threads_count == 0)
@@ -403,7 +405,7 @@ namespace cryptonote
 
     if( get_is_background_mining_enabled() )
     {
-      m_background_mining_thread = boost::thread(attrs, boost::bind(&miner::background_worker_thread, this));
+      m_background_mining_thread = boost::thread(m_attrs, boost::bind(&miner::background_worker_thread, this));
       LOG_PRINT_L0("Background mining controller thread started" );
     }
 
@@ -429,6 +431,7 @@ namespace cryptonote
   {
     boost::interprocess::ipcdetail::atomic_write32(&m_stop, 1);
   }
+  extern "C" void rx_stop_mining(void);
   //-----------------------------------------------------------------------------------------------------
   bool miner::stop()
   {
@@ -461,15 +464,16 @@ namespace cryptonote
     MINFO("Mining has been stopped, " << m_threads.size() << " finished" );
     m_threads.clear();
     m_threads_autodetect.clear();
+    rx_stop_mining();
     return true;
   }
   //-----------------------------------------------------------------------------------------------------
-  bool miner::find_nonce_for_given_block(block& bl, const difficulty_type& diffic, uint64_t height)
+  bool miner::find_nonce_for_given_block(const Blockchain *pbc, block& bl, const difficulty_type& diffic, uint64_t height)
   {
     for(; bl.nonce != std::numeric_limits<uint32_t>::max(); bl.nonce++)
     {
       crypto::hash h;
-      get_block_longhash(bl, h, height);
+      get_block_longhash(pbc, bl, h, height, tools::get_max_concurrency());
 
       if(check_hash(h, diffic))
       {
@@ -485,10 +489,7 @@ namespace cryptonote
   {
     if(m_do_mining)
     {
-      boost::thread::attributes attrs;
-      attrs.set_stack_size(THREAD_STACK_SIZE);
-
-      start(m_mine_address, m_threads_total, attrs, get_is_background_mining_enabled(), get_ignore_battery());
+      start(m_mine_address, m_threads_total, get_is_background_mining_enabled(), get_ignore_battery());
     }
   }
   //-----------------------------------------------------------------------------------------------------
@@ -567,7 +568,7 @@ namespace cryptonote
 
       b.nonce = nonce;
       crypto::hash h;
-      get_block_longhash(b, h, height);
+      get_block_longhash(m_pbc, b, h, height, tools::get_max_concurrency());
 
       if(check_hash(h, local_diff))
       {

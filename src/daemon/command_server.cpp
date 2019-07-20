@@ -35,7 +35,6 @@
 
 #include "common/loki_integration_test_hooks.h"
 
-
 #undef LOKI_DEFAULT_LOG_CATEGORY
 #define LOKI_DEFAULT_LOG_CATEGORY "daemon"
 
@@ -47,10 +46,11 @@ t_command_server::t_command_server(
     uint32_t ip
   , uint16_t port
   , const boost::optional<tools::login>& login
+  , const epee::net_utils::ssl_options_t& ssl_options
   , bool is_rpc
   , cryptonote::core_rpc_server* rpc_server
   )
-  : m_parser(ip, port, login, is_rpc, rpc_server)
+  : m_parser(ip, port, login, ssl_options, is_rpc, rpc_server)
   , m_command_lookup()
   , m_is_rpc(is_rpc)
 {
@@ -107,8 +107,8 @@ t_command_server::t_command_server(
   m_command_lookup.set_handler(
       "print_quorum_state"
     , std::bind(&t_command_parser_executor::print_quorum_state, &m_parser, p::_1)
-    , "print_quorum_state <height>"
-    , "Print the quorum state for the block height."
+    , "print_quorum_state [start height] [end height]"
+    , "Print the quorum state for the range of block heights, omit the height to print the latest quorum"
     );
   m_command_lookup.set_handler(
       "print_sn_key"
@@ -315,12 +315,15 @@ t_command_server::t_command_server(
     , "bc_dyn_stats <last_block_count>"
     , "Print the information about current blockchain dynamic state."
     );
+    // TODO(loki): Implement
+#if 0
     m_command_lookup.set_handler(
       "update"
     , std::bind(&t_command_parser_executor::update, &m_parser, p::_1)
     , "update (check|download)"
     , "Check if an update is available, optionally downloads it if there is. Updating is not yet implemented."
     );
+#endif
     m_command_lookup.set_handler(
       "relay_tx"
     , std::bind(&t_command_parser_executor::relay_tx, &m_parser, p::_1)
@@ -356,9 +359,15 @@ t_command_server::t_command_server(
     m_command_lookup.set_handler(
       "print_checkpoints"
     , std::bind(&t_command_parser_executor::print_checkpoints, &m_parser, p::_1)
-    , ""
+    , "print_checkpoints [+json] [start height] [end height]"
+    , "Query the available checkpoints between the range, omit arguments to print the last 60 checkpoints"
     );
-
+    m_command_lookup.set_handler(
+      "print_sn_state_changes"
+    , std::bind(&t_command_parser_executor::print_sn_state_changes, &m_parser, p::_1)
+    , "print_sn_state_changes <start_height> [end height]"
+    , "Query the state changes between the range, omit the last argument to scan until the current block"
+    );
 #if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
     m_command_lookup.set_handler(
       "relay_votes_and_uptime", std::bind([rpc_server](std::vector<std::string> const &args) {
@@ -369,12 +378,46 @@ t_command_server::t_command_server(
     );
 
     m_command_lookup.set_handler(
-      "debug_mine_n_blocks", std::bind([rpc_server](std::vector<std::string> const &args) {
-        uint64_t num_blocks = 0;
-        if (args.size() == 2 && epee::string_tools::get_xtype_from_string(num_blocks, args[1]))
-          rpc_server->on_debug_mine_n_blocks(args[0], num_blocks);
-        else
-          std::cout << "Invalid args, expected debug_mine_n_blocks <address> <num_blocks>";
+      "integration_test", std::bind([rpc_server](std::vector<std::string> const &args) {
+        bool valid_cmd = false;
+        if (args.size() == 1)
+        {
+          valid_cmd = true;
+          if (args[0] == "toggle_checkpoint_quorum")
+          {
+            loki::integration_test.disable_checkpoint_quorum = !loki::integration_test.disable_checkpoint_quorum;
+          }
+          else if (args[0] == "toggle_obligation_quorum")
+          {
+            loki::integration_test.disable_obligation_quorum = !loki::integration_test.disable_obligation_quorum;
+          }
+          else if (args[0] == "toggle_obligation_uptime_proof")
+          {
+            loki::integration_test.disable_obligation_uptime_proof = !loki::integration_test.disable_obligation_uptime_proof;
+          }
+          else if (args[0] == "toggle_obligation_checkpointing")
+          {
+            loki::integration_test.disable_obligation_checkpointing = !loki::integration_test.disable_obligation_checkpointing;
+          }
+          else
+          {
+            valid_cmd = false;
+          }
+
+          if (valid_cmd) std::cout << args[0] << " toggled";
+        }
+        else if (args.size() == 3)
+        {
+          uint64_t num_blocks = 0;
+          if (args[0] == "debug_mine_n_blocks" && epee::string_tools::get_xtype_from_string(num_blocks, args[2]))
+          {
+            rpc_server->on_debug_mine_n_blocks(args[1], num_blocks);
+            valid_cmd = true;
+          }
+        }
+
+        if (!valid_cmd)
+          std::cout << "integration_test invalid command";
 
         loki::write_redirected_stdout_to_shared_mem();
         return true;
@@ -411,7 +454,7 @@ bool t_command_server::start_handling(std::function<void(void)> exit_handler)
   auto handle_shared_mem_ins_and_outs = [&]()
   {
     // TODO(doyle): Hack, don't hook into input until the daemon has completely initialised, i.e. you can print the status
-    while(!loki::core_is_idle) {}
+    while(!loki::integration_test.core_is_idle) {}
     mlog_set_categories(""); // TODO(doyle): We shouldn't have to do this.
 
     for (;;)

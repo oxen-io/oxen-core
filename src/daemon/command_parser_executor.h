@@ -40,6 +40,7 @@
 
 #include "daemon/rpc_command_executor.h"
 #include "common/common_fwd.h"
+#include "net/net_fwd.h"
 #include "rpc/core_rpc_server.h"
 
 namespace daemonize {
@@ -53,11 +54,12 @@ public:
       uint32_t ip
     , uint16_t port
     , const boost::optional<tools::login>& login
+    , const epee::net_utils::ssl_options_t& ssl_options
     , bool is_rpc
     , cryptonote::core_rpc_server* rpc_server = NULL
     );
 
-  bool print_checkpoints(const std::vector<std::string>& args) { m_executor.print_checkpoints(); return true; }
+  bool print_checkpoints(const std::vector<std::string>& args);
 
   bool print_peer_list(const std::vector<std::string>& args);
 
@@ -164,6 +166,8 @@ public:
   bool check_blockchain_pruning(const std::vector<std::string>& args);
 
   bool print_net_stats(const std::vector<std::string>& args);
+
+  bool print_sn_state_changes(const std::vector<std::string> &args);
 };
 
 } // namespace daemonize

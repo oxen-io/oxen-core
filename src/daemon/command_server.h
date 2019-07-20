@@ -43,6 +43,7 @@ Passing RPC commands:
 #include "common/common_fwd.h"
 #include "console_handler.h"
 #include "daemon/command_parser_executor.h"
+#include "net/net_fwd.h"
 
 namespace daemonize {
 
@@ -57,6 +58,7 @@ public:
       uint32_t ip
     , uint16_t port
     , const boost::optional<tools::login>& login
+    , const epee::net_utils::ssl_options_t& ssl_options
     , bool is_rpc = true
     , cryptonote::core_rpc_server* rpc_server = NULL
     );

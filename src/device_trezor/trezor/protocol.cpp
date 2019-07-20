@@ -147,6 +147,7 @@ namespace ki {
                       std::vector<MoneroTransferDetails> & res)
   {
     for(auto & td : transfers){
+      // TODO(doyle): TODO(loki): We should use td.m_pk_index!!
       ::crypto::public_key tx_pub_key = wallet->get_tx_pub_key_from_received_outs(td);
       const std::vector<::crypto::public_key> additional_tx_pub_keys = cryptonote::get_additional_tx_pub_keys_from_extra(td.m_tx);
 
@@ -492,7 +493,7 @@ namespace tx {
     auto & tsx_data = m_ct.tsx_data;
     auto & tx = cur_tx();
 
-    m_ct.tx.version = 2;
+    m_ct.tx.version = cryptonote::txversion::v2_ringct;
     m_ct.tx.unlock_time = tx.unlock_time;
     m_client_version = (m_aux_data->client_version ? m_aux_data->client_version.get() : 1);
 

@@ -55,6 +55,7 @@ public:
   virtual void unlock() override { }
   virtual bool batch_start(uint64_t batch_num_blocks=0, uint64_t batch_bytes=0) override { return true; }
   virtual void batch_stop() override {}
+  virtual void batch_abort() override {}
   virtual void set_batch_transactions(bool) override {}
   virtual void block_wtxn_start() override {}
   virtual void block_wtxn_stop() override {}
@@ -160,6 +161,7 @@ public:
   virtual void update_block_checkpoint(struct checkpoint_t const &checkpoint) override {}
   virtual bool get_block_checkpoint   (uint64_t height, struct checkpoint_t &checkpoint) const override { return false; }
   virtual bool get_top_checkpoint     (struct checkpoint_t &checkpoint) const override { return false; }
+  virtual void remove_block_checkpoint(uint64_t height) override { }
   virtual std::vector<cryptonote::checkpoint_t> get_checkpoints_range(uint64_t start, uint64_t end, size_t num_desired_checkpoints) const override { return {}; }
 
   virtual bool get_output_blacklist   (std::vector<uint64_t> &blacklist)       const override { return false; }
@@ -168,6 +170,12 @@ public:
   virtual bool get_service_node_data  (std::string& data)                            override { return false; }
   virtual void clear_service_node_data()                                             override { }
 
+  virtual void add_alt_block(const crypto::hash &blkid, const cryptonote::alt_block_data_t &data, const cryptonote::blobdata &blob) override {}
+  virtual bool get_alt_block(const crypto::hash &blkid, alt_block_data_t *data, cryptonote::blobdata *blob) override { return false; }
+  virtual void remove_alt_block(const crypto::hash &blkid) override {}
+  virtual uint64_t get_alt_block_count() override { return 0; }
+  virtual void drop_alt_blocks() override {}
+  virtual bool for_all_alt_blocks(std::function<bool(const crypto::hash &blkid, const alt_block_data_t &data, const cryptonote::blobdata *blob)> f, bool include_blob = false) const override { return true; }
 };
 
 }

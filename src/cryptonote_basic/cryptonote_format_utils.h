@@ -61,15 +61,26 @@ namespace cryptonote
   bool is_v1_tx(const blobdata_ref& tx_blob);
   bool is_v1_tx(const blobdata& tx_blob);
 
+  // skip_fields: How many fields of type <T> to skip
   template<typename T>
-  bool find_tx_extra_field_by_type(const std::vector<tx_extra_field>& tx_extra_fields, T& field, size_t index = 0)
+  bool find_tx_extra_field_by_type(const std::vector<tx_extra_field>& tx_extra_fields, T& field, size_t skip_fields = 0)
   {
-    auto it = std::find_if(tx_extra_fields.begin(), tx_extra_fields.end(), [&index](const tx_extra_field& f) { return typeid(T) == f.type() && !index--; });
-    if(tx_extra_fields.end() == it)
+    if (skip_fields >= tx_extra_fields.size())
       return false;
 
-    field = boost::get<T>(*it);
-    return true;
+    for (tx_extra_field const &check_field : tx_extra_fields)
+    {
+      if (typeid(T) != check_field.type()) continue;
+
+      if (skip_fields == 0)
+      {
+        field = boost::get<T>(check_field);
+        return true;
+      }
+      skip_fields--;
+    }
+
+    return false;
   }
 
   bool parse_tx_extra(const std::vector<uint8_t>& tx_extra, std::vector<tx_extra_field>& tx_extra_fields);
@@ -81,9 +92,10 @@ namespace cryptonote
   void add_tx_pub_key_to_extra(transaction_prefix& tx, const crypto::public_key& tx_pub_key);
   void add_tx_pub_key_to_extra(std::vector<uint8_t>& tx_extra, const crypto::public_key& tx_pub_key);
 
-  bool add_service_node_deregister_to_tx_extra(std::vector<uint8_t>& tx_extra, const tx_extra_service_node_deregister& deregistration);
+  bool add_service_node_state_change_to_tx_extra(std::vector<uint8_t>& tx_extra, const tx_extra_service_node_state_change& state_change, uint8_t hf_version);
+  bool get_service_node_state_change_from_tx_extra(const std::vector<uint8_t>& tx_extra, tx_extra_service_node_state_change& state_change, uint8_t hf_version);
   bool get_service_node_register_from_tx_extra(const std::vector<uint8_t>& tx_extra, tx_extra_service_node_register& registration);
-  bool get_service_node_deregister_from_tx_extra(const std::vector<uint8_t>& tx_extra, tx_extra_service_node_deregister& deregistration);
+
   bool get_service_node_pubkey_from_tx_extra(const std::vector<uint8_t>& tx_extra, crypto::public_key& pubkey);
   bool get_service_node_contributor_from_tx_extra(const std::vector<uint8_t>& tx_extra, cryptonote::account_public_address& address);
   bool add_service_node_register_to_tx_extra(std::vector<uint8_t>& tx_extra, const std::vector<cryptonote::account_public_address>& addresses, uint64_t portions_for_operator, const std::vector<uint64_t>& portions, uint64_t expiration_timestamp, const crypto::signature& signature);
@@ -145,8 +157,6 @@ namespace cryptonote
   bool calculate_block_hash(const block& b, crypto::hash& res, const blobdata *blob = NULL);
   bool get_block_hash(const block& b, crypto::hash& res);
   crypto::hash get_block_hash(const block& b);
-  bool get_block_longhash(const block& b, crypto::hash& res, uint64_t height);
-  crypto::hash get_block_longhash(const block& b, uint64_t height);
   bool parse_and_validate_block_from_blob(const blobdata& b_blob, block& b, crypto::hash *block_hash);
   bool parse_and_validate_block_from_blob(const blobdata& b_blob, block& b);
   bool parse_and_validate_block_from_blob(const blobdata& b_blob, block& b, crypto::hash &block_hash);

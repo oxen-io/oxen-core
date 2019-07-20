@@ -39,6 +39,7 @@
 #include "cryptonote_core/cryptonote_core.h"
 #include "cryptonote_core/service_node_rules.h"
 #include "cryptonote_basic/hardfork.h"
+#include "checkpoints/checkpoints.h"
 #include <boost/format.hpp>
 
 #include "common/loki_integration_test_hooks.h"
@@ -204,6 +205,7 @@ t_rpc_command_executor::t_rpc_command_executor(
     uint32_t ip
   , uint16_t port
   , const boost::optional<tools::login>& login
+  , const epee::net_utils::ssl_options_t& ssl_options
   , bool is_rpc
   , cryptonote::core_rpc_server* rpc_server
   )
@@ -214,7 +216,7 @@ t_rpc_command_executor::t_rpc_command_executor(
     boost::optional<epee::net_utils::http::login> http_login{};
     if (login)
       http_login.emplace(login->username, login->password.password());
-    m_rpc_client = new tools::t_rpc_client(ip, port, std::move(http_login));
+    m_rpc_client = new tools::t_rpc_client(ip, port, std::move(http_login), ssl_options);
   }
   else
   {
@@ -233,6 +235,123 @@ t_rpc_command_executor::~t_rpc_command_executor()
   {
     delete m_rpc_client;
   }
+}
+
+bool t_rpc_command_executor::print_checkpoints(uint64_t start_height, uint64_t end_height, bool print_json)
+{
+  cryptonote::COMMAND_RPC_GET_CHECKPOINTS::request  req;
+  cryptonote::COMMAND_RPC_GET_CHECKPOINTS::response res;
+  epee::json_rpc::error error_resp;
+
+  req.start_height = start_height;
+  req.end_height   = end_height;
+
+  if (req.start_height == cryptonote::COMMAND_RPC_GET_CHECKPOINTS::HEIGHT_SENTINEL_VALUE &&
+      req.end_height   == cryptonote::COMMAND_RPC_GET_CHECKPOINTS::HEIGHT_SENTINEL_VALUE)
+  {
+    req.count = cryptonote::COMMAND_RPC_GET_CHECKPOINTS::NUM_CHECKPOINTS_TO_QUERY_BY_DEFAULT;
+  }
+  else if (req.start_height == cryptonote::COMMAND_RPC_GET_CHECKPOINTS::HEIGHT_SENTINEL_VALUE ||
+           req.end_height   == cryptonote::COMMAND_RPC_GET_CHECKPOINTS::HEIGHT_SENTINEL_VALUE)
+  {
+    req.count = 1;
+  }
+  else
+  {
+    // NOTE: Otherwise, neither heights are set to HEIGHT_SENTINEL_VALUE, so get all the checkpoints between start and end
+  }
+
+  if (m_is_rpc)
+  {
+    if (!m_rpc_client->json_rpc_request(req, res, "get_checkpoints", "Failed to query blockchain checkpoints"))
+      return false;
+  }
+  else
+  {
+    if (!m_rpc_server->on_get_checkpoints(req, res, error_resp) || res.status != CORE_RPC_STATUS_OK)
+    {
+      tools::fail_msg_writer() << "Failed to query checkpoints";
+      return false;
+    }
+  }
+
+  std::string entry;
+  if (print_json) entry.append("{\n\"checkpoints\": [");
+  for (size_t i = 0; i < res.checkpoints.size(); i++)
+  {
+    cryptonote::COMMAND_RPC_GET_CHECKPOINTS::checkpoint_serialized &checkpoint = res.checkpoints[i];
+    if (print_json)
+    {
+      entry.append("\n");
+      entry.append(epee::serialization::store_t_to_json(checkpoint));
+      entry.append(",\n");
+    }
+    else
+    {
+      entry.append("[");
+      entry.append(std::to_string(i));
+      entry.append("]");
+
+      entry.append(" Type: ");
+      entry.append(checkpoint.type);
+
+      entry.append(" Height: ");
+      entry.append(std::to_string(checkpoint.height));
+
+      entry.append(" Hash: ");
+      entry.append(checkpoint.block_hash);
+      entry.append("\n");
+    }
+  }
+
+  if (print_json)
+  {
+    entry.append("]\n}");
+  }
+  else
+  {
+    if (entry.empty())
+      entry.append("No Checkpoints");
+  }
+
+  tools::success_msg_writer() << entry;
+  return true;
+}
+
+bool t_rpc_command_executor::print_sn_state_changes(uint64_t start_height, uint64_t end_height)
+{
+  cryptonote::COMMAND_RPC_GET_SN_STATE_CHANGES::request  req;
+  cryptonote::COMMAND_RPC_GET_SN_STATE_CHANGES::response res;
+  epee::json_rpc::error error_resp;
+
+  req.start_height = start_height;
+  req.end_height   = end_height;
+
+  if (m_is_rpc)
+  {
+    if (!m_rpc_client->json_rpc_request(req, res, "get_service_nodes_state_changes", "Failed to query service nodes state changes"))
+      return false;
+  }
+  else
+  {
+    if (!m_rpc_server->on_get_service_nodes_state_changes(req, res, error_resp) || res.status != CORE_RPC_STATUS_OK)
+    {
+      tools::fail_msg_writer() << "Failed to query sn state changes";
+      return false;
+    }
+  }
+
+  std::stringstream output;
+
+  output << "Service Node State Changes (blocks " << res.start_height << "-" << res.end_height << ")" << std::endl;
+  output << " Recommissions:\t\t" << res.total_recommission << std::endl;
+  output << " Unlocks:\t\t" << res.total_unlock << std::endl;
+  output << " Decommissions:\t\t" << res.total_decommission << std::endl;
+  output << " Deregistrations:\t" << res.total_deregister << std::endl;
+  output << " IP change penalties:\t" << res.total_ip_change_penalty << std::endl;
+
+  tools::success_msg_writer() << output.str();
+  return true;
 }
 
 bool t_rpc_command_executor::print_peer_list(bool white, bool gray, size_t limit) {
@@ -633,8 +752,8 @@ bool t_rpc_command_executor::mining_status() {
     uint64_t daily = 86400ull / mres.block_target * mres.block_reward * ratio;
     uint64_t monthly = 86400ull / mres.block_target * 30.5 * mres.block_reward * ratio;
     uint64_t yearly = 86400ull / mres.block_target * 356 * mres.block_reward * ratio;
-    tools::msg_writer() << "Expected: " << cryptonote::print_money(daily) << " monero daily, "
-        << cryptonote::print_money(monthly) << " monero monthly, " << cryptonote::print_money(yearly) << " yearly";
+    tools::msg_writer() << "Expected: " << cryptonote::print_money(daily) << " LOKI daily, "
+        << cryptonote::print_money(monthly) << " monthly, " << cryptonote::print_money(yearly) << " yearly";
   }
 
   return true;
@@ -808,13 +927,16 @@ bool t_rpc_command_executor::print_blockchain_info(uint64_t start_block_index, u
   return true;
 }
 
-bool t_rpc_command_executor::print_quorum_state(uint64_t height)
+bool t_rpc_command_executor::print_quorum_state(uint64_t start_height, uint64_t end_height)
 {
   cryptonote::COMMAND_RPC_GET_QUORUM_STATE::request req;
   cryptonote::COMMAND_RPC_GET_QUORUM_STATE::response res;
   epee::json_rpc::error error_resp;
 
-  req.height = height;
+  req.start_height = start_height;
+  req.end_height   = end_height;
+  req.quorum_type  = (decltype(req.quorum_type))service_nodes::quorum_type::rpc_request_all_quorums_sentinel_value;
+
   std::string fail_message = "Unsuccessful";
 
   if (m_is_rpc)
@@ -833,21 +955,16 @@ bool t_rpc_command_executor::print_quorum_state(uint64_t height)
     }
   }
 
-  tools::msg_writer() << "Quorum Service Nodes [" << res.quorum_nodes.size() << "]";
-  for (size_t i = 0; i < res.quorum_nodes.size(); i++)
+  std::string output;
+  output.append("{\n\"quorums\": [");
+  for (cryptonote::COMMAND_RPC_GET_QUORUM_STATE::quorum_for_height const &quorum : res.quorums)
   {
-    const std::string &entry = res.quorum_nodes[i];
-    tools::msg_writer() << "[" << i << "] " << entry;
+    output.append("\n");
+    output.append(epee::serialization::store_t_to_json(quorum));
+    output.append(",\n");
   }
-
-  tools::msg_writer() << "Service Nodes To Test [" << res.nodes_to_test.size() << "]";
-  for (size_t i = 0; i < res.nodes_to_test.size(); i++)
-  {
-    const std::string &entry = res.nodes_to_test[i];
-    tools::msg_writer() << "[" << i << "] " << entry;
-  }
-
-
+  output.append("]\n}");
+  tools::success_msg_writer() << output;
   return true;
 }
 
@@ -2283,12 +2400,20 @@ bool t_rpc_command_executor::sync_info()
     return true;
 }
 
+static std::string to_string_rounded(double d, int precision) {
+  std::ostringstream ss;
+  ss << std::fixed << std::setprecision(precision) << d;
+  return ss.str();
+}
+
 static void append_printable_service_node_list_entry(cryptonote::network_type nettype, int hard_fork_version, uint64_t curr_height, uint64_t entry_index, cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::entry const &entry, std::string &buffer)
 {
   const char indent1[] = "    ";
   const char indent2[] = "        ";
   const char indent3[] = "            ";
   bool is_registered = entry.total_contributed >= entry.staking_requirement;
+
+  buffer.reserve(buffer.size() + 2048);
 
   // Print Funding Status
   {
@@ -2371,7 +2496,7 @@ static void append_printable_service_node_list_entry(cryptonote::network_type ne
   {
     buffer.append(indent2);
     buffer.append("Operator Cut (\% Of Reward): ");
-    buffer.append(std::to_string((entry.portions_for_operator / (double)STAKING_PORTIONS) * 100.0));
+    buffer.append(to_string_rounded((entry.portions_for_operator / (double)STAKING_PORTIONS) * 100.0, 2));
     buffer.append("%\n");
 
     buffer.append(indent2);
@@ -2403,6 +2528,18 @@ static void append_printable_service_node_list_entry(cryptonote::network_type ne
       buffer.append(indent2);
       buffer.append("Storage Server Port: ");
       buffer.append(std::to_string(entry.storage_port));
+    }
+    buffer.append("\n");
+    buffer.append(indent2);
+    if (entry.active) {
+      buffer.append("Downtime Credits: " + std::to_string(entry.earned_downtime_blocks) + " blocks");
+      buffer.append(" (about " + to_string_rounded(entry.earned_downtime_blocks / (double) BLOCKS_EXPECTED_IN_HOURS(1), 2) + " hours)");
+      if (entry.earned_downtime_blocks < service_nodes::DECOMMISSION_MINIMUM)
+        buffer.append(" (Note: " + std::to_string(service_nodes::DECOMMISSION_MINIMUM) + " blocks required to enable deregistration delay)");
+    } else {
+      buffer.append("Current Status: DECOMMISSIONED\n");
+      buffer.append(indent2);
+      buffer.append("Remaining Decommission Time Until DEREGISTRATION: " + std::to_string(entry.earned_downtime_blocks) + " blocks");
     }
     buffer.append("\n");
   }
@@ -2806,7 +2943,7 @@ bool t_rpc_command_executor::prepare_registration()
 
   // Query the latest known block height and nettype
   uint64_t block_height            = 0;
-  int hf_version                   = cryptonote::network_version_9_service_nodes;
+  uint8_t hf_version               = cryptonote::network_version_9_service_nodes;
   cryptonote::network_type nettype = cryptonote::UNDEFINED;
   {
     cryptonote::COMMAND_RPC_GET_INFO::request req;

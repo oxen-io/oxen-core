@@ -36,6 +36,8 @@
 #include "crypto/hash.h"
 #include "cryptonote_config.h"
 #include "cryptonote_core/service_node_voting.h"
+#include "cryptonote_basic/cryptonote_basic_impl.h"
+#include "string_tools.h"
 
 #define ADD_CHECKPOINT(h, hash)  CHECK_AND_ASSERT(add_checkpoint(h,  hash), false);
 #define JSON_HASH_FILE_NAME "checkpoints.json"
@@ -47,6 +49,7 @@ namespace cryptonote
   {
     hardcoded,
     service_node,
+    count,
   };
 
   struct checkpoint_t
@@ -56,19 +59,26 @@ namespace cryptonote
     uint64_t                                       height;
     crypto::hash                                   block_hash;
     std::vector<service_nodes::voter_to_signature> signatures; // Only service node checkpoints use signatures
+    uint64_t                                       prev_height; // TODO(doyle): Unused
+
+    bool               check         (crypto::hash const &block_hash) const;
+    static char const *type_to_string(checkpoint_type type)
+    {
+      switch(type)
+      {
+        case checkpoint_type::hardcoded:    return "Hardcoded";
+        case checkpoint_type::service_node: return "ServiceNode";
+        default: assert(false);             return "XXUnhandledVersion";
+      }
+    }
 
     BEGIN_SERIALIZE()
       FIELD(version)
-      // TODO(doyle): Hmm too lazy to change enum decls around the codebase for now
-      {
-        uint8_t serialized_type = 0;
-        if (W) serialized_type = static_cast<uint8_t>(type);
-        FIELD_N("type", serialized_type);
-        if (!W) type = static_cast<checkpoint_type>(serialized_type);
-      }
+      ENUM_FIELD(type, type < checkpoint_type::count);
       FIELD(height)
       FIELD(block_hash)
       FIELD(signatures)
+      FIELD(prev_height)
     END_SERIALIZE()
   };
 
@@ -103,8 +113,13 @@ namespace cryptonote
    * either from a json file or via DNS from a checkpoint-hosting server.
    */
   class checkpoints
+    : public cryptonote::BlockAddedHook,
+      public cryptonote::BlockchainDetachedHook
   {
   public:
+    void block_added(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs) override;
+    void blockchain_detached(uint64_t height) override;
+
     /**
      * @brief adds a checkpoint to the container
      *
@@ -117,7 +132,14 @@ namespace cryptonote
      */
     bool add_checkpoint(uint64_t height, const std::string& hash_str);
 
-    bool update_checkpoint(checkpoint_t const &checkpoin);
+    bool update_checkpoint(checkpoint_t const &checkpoint);
+
+    /*
+       @brief Remove checkpoints that should not be stored persistently, i.e.
+       any checkpoint whose height is not divisible by
+       service_nodes::CHECKPOINT_STORE_PERSISTENTLY_INTERVAL
+     */
+    void prune_checkpoints(uint64_t height) const;
 
     /**
      * @brief checks if there is a checkpoint in the future
@@ -148,12 +170,13 @@ namespace cryptonote
      *         true if the passed parameters match the stored checkpoint,
      *         false otherwise
      */
-    bool check_block(uint64_t height, const crypto::hash& h, bool *is_a_checkpoint = nullptr) const;
+    bool check_block(uint64_t height, const crypto::hash& h, bool *is_a_checkpoint = nullptr, bool *rejected_by_service_node = nullptr) const;
 
     /**
-     * @brief checks if alternate chain blocks should be kept for a given height
+     * @brief checks if alternate chain blocks should be kept for a given height and updates
+     * m_oldest_allowable_alternative_block based on the available checkpoints
      *
-     *m this basically says if the blockchain is smaller than the first
+     * this basically says if the blockchain is smaller than the first
      * checkpoint then alternate blocks are allowed.  Alternatively, if the
      * last checkpoint *before* the end of the current chain is also before
      * the block to be added, then this is fine.
@@ -164,7 +187,7 @@ namespace cryptonote
      * @return true if alternate blocks are allowed given the parameters,
      *         otherwise false
      */
-    bool is_alternative_block_allowed(uint64_t blockchain_height, uint64_t block_height) const;
+    bool is_alternative_block_allowed(uint64_t blockchain_height, uint64_t block_height, bool *rejected_by_service_node = nullptr);
 
     /**
      * @brief gets the highest checkpoint height
@@ -179,9 +202,12 @@ namespace cryptonote
      *
      * @return true unless adding a checkpoint fails
      */
-    bool init(network_type nettype, struct BlockchainDB *db);
+    bool init(network_type nettype, class BlockchainDB *db);
 
   private:
+    network_type m_nettype = UNDEFINED;
+    uint64_t m_last_cull_height = 0;
+    uint64_t m_oldest_allowable_alternative_block = 0;
     BlockchainDB *m_db;
   };
 

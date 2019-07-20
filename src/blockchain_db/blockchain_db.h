@@ -130,6 +130,14 @@ struct tx_data_t
 };
 #pragma pack(pop)
 
+struct alt_block_data_t
+{
+  uint64_t height;
+  uint64_t cumulative_weight;
+  uint64_t cumulative_difficulty;
+  uint64_t already_generated_coins;
+};
+
 /**
  * @brief a struct containing txpool per transaction metadata
  */
@@ -755,6 +763,21 @@ public:
   virtual void batch_stop() = 0;
 
   /**
+   * @brief aborts a batch transaction
+   *
+   * If the subclass implements batching, this function should abort the
+   * batch it is currently on.
+   *
+   * If no batch is in-progress, this function should throw a DB_ERROR.
+   * This exception may change in the future if it is deemed necessary to
+   * have a more granular exception type for this scenario.
+   *
+   * If any of this cannot be done, the subclass should throw the corresponding
+   * subclass of DB_EXCEPTION
+   */
+  virtual void batch_abort() = 0;
+
+  /**
    * @brief sets whether or not to batch transactions
    *
    * If the subclass implements batching, this function tells it to begin
@@ -811,11 +834,13 @@ public:
                             );
 
   virtual void update_block_checkpoint(checkpoint_t const &checkpoint) = 0;
+  virtual void remove_block_checkpoint(uint64_t height) = 0;
   virtual bool get_block_checkpoint   (uint64_t height, checkpoint_t &checkpoint) const = 0;
   virtual bool get_top_checkpoint     (checkpoint_t &checkpoint) const = 0;
 
-  // num_desired_checkpoints: set to 0 to collect as many checkpoints as possible
-  virtual std::vector<checkpoint_t> get_checkpoints_range(uint64_t start, uint64_t end, size_t num_desired_checkpoints = 0) const = 0;
+  // num_desired_checkpoints: set to GET_ALL_CHECKPOINTS to collect as many checkpoints as possible
+  static constexpr size_t GET_ALL_CHECKPOINTS = 0;
+  virtual std::vector<checkpoint_t> get_checkpoints_range(uint64_t start, uint64_t end, size_t num_desired_checkpoints = GET_ALL_CHECKPOINTS) const = 0;
 
   /**
    * @brief checks if a block exists
@@ -1552,8 +1577,45 @@ public:
    *
    * @param: sz the block size
    */
-
   virtual void add_max_block_size(uint64_t sz) = 0;
+
+  /**
+   * @brief add a new alternative block
+   *
+   * @param: blkid the block hash
+   * @param: data: the metadata for the block
+   * @param: blob: the block's blob
+   */
+  virtual void add_alt_block(const crypto::hash &blkid, const cryptonote::alt_block_data_t &data, const cryptonote::blobdata &blob) = 0;
+
+  /**
+   * @brief get an alternative block by hash
+   *
+   * @param: blkid the block hash
+   * @param: data: the metadata for the block
+   * @param: blob: the block's blob
+   *
+   * @return true if the block was found in the alternative blocks list, false otherwise
+   */
+  virtual bool get_alt_block(const crypto::hash &blkid, alt_block_data_t *data, cryptonote::blobdata *blob) = 0;
+
+  /**
+   * @brief remove an alternative block
+   *
+   * @param: blkid the block hash
+   */
+  virtual void remove_alt_block(const crypto::hash &blkid) = 0;
+
+  /**
+   * @brief get the number of alternative blocks stored
+   */
+  virtual uint64_t get_alt_block_count() = 0;
+
+  /**
+   * @brief drop all alternative blocks
+   */
+  virtual void drop_alt_blocks() = 0;
+
   /**
    * @brief runs a function over all txpool transactions
    *
@@ -1643,6 +1705,23 @@ public:
   virtual bool for_all_outputs(std::function<bool(uint64_t amount, const crypto::hash &tx_hash, uint64_t height, size_t tx_idx)> f) const = 0;
   virtual bool for_all_outputs(uint64_t amount, const std::function<bool(uint64_t height)> &f) const = 0;
 
+  /**
+   * @brief runs a function over all alternative blocks stored
+   *
+   * The subclass should run the passed function for each alt block it has
+   * stored, passing (blkid, data, blob) as its parameters.
+   *
+   * If any call to the function returns false, the subclass should return
+   * false.  Otherwise, the subclass returns true.
+   *
+   * The subclass should throw DB_ERROR if any of the expected values are
+   * not found.  Current implementations simply return false.
+   *
+   * @param std::function f the function to run
+   *
+   * @return false if the function returns false for any output, otherwise true
+   */
+  virtual bool for_all_alt_blocks(std::function<bool(const crypto::hash &blkid, const alt_block_data_t &data, const cryptonote::blobdata *blob)> f, bool include_blob = false) const = 0;
 
 
   //
