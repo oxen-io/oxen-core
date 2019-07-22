@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2018, The Monero Project
+// Copyright (c) 2014-2019, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -34,6 +34,7 @@
 #include <string>
 #include <boost/uuid/uuid.hpp>
 #include <stdexcept>
+#include <chrono>
 
 #define CRYPTONOTE_DNS_TIMEOUT_MS                       20000
 
@@ -66,6 +67,8 @@ static_assert(STAKING_PORTIONS % 3 == 0, "Use a multiple of three, so that it di
 #define UPTIME_PROOF_FREQUENCY_IN_SECONDS               (60*60)
 #define UPTIME_PROOF_MAX_TIME_IN_SECONDS                (UPTIME_PROOF_FREQUENCY_IN_SECONDS * 2 + UPTIME_PROOF_BUFFER_IN_SECONDS)
 
+#define STORAGE_SERVER_PING_LIFETIME                    UPTIME_PROOF_FREQUENCY_IN_SECONDS
+
 // MONEY_SUPPLY - total number coins to be generated
 #define MONEY_SUPPLY                                    (1000000000000000000) // NOT USED
 #define PREMINE_AMMOUNT                                 (8000000000000000) // 8 MILL for the network swap
@@ -79,8 +82,8 @@ static_assert(STAKING_PORTIONS % 3 == 0, "Use a multiple of three, so that it di
 #define EMISSION_DIVISOR                                2000000
 
 #define CRYPTONOTE_REWARD_BLOCKS_WINDOW                 100
+#define CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V1    20000 // NOTE(loki): For testing suite, //size of block (bytes) after which reward for block calculated using block size - before first fork
 #define CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V2    60000 //size of block (bytes) after which reward for block calculated using block size
-#define CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V1    20000 //size of block (bytes) after which reward for block calculated using block size - before first fork
 #define CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V5    300000 //size of block (bytes) after which reward for block calculated using block size - second change, from v5
 #define CRYPTONOTE_LONG_TERM_BLOCK_WEIGHT_WINDOW_SIZE   100000 // size in blocks of the long term block weight median window
 #define CRYPTONOTE_SHORT_TERM_BLOCK_WEIGHT_SURGE_FACTOR 50
@@ -95,7 +98,8 @@ static_assert(STAKING_PORTIONS % 3 == 0, "Use a multiple of three, so that it di
 #define DYNAMIC_FEE_PER_KB_BASE_FEE                     ((uint64_t)200000) // 2 * pow(10,5)
 #define DYNAMIC_FEE_PER_KB_BASE_BLOCK_REWARD            ((uint64_t)10000000000000) // 10 * pow(10,12)
 #define DYNAMIC_FEE_PER_KB_BASE_FEE_V5                  ((uint64_t)2000000000 * (uint64_t)CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V2 / CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V5)
-#define DYNAMIC_FEE_REFERENCE_TRANSACTION_WEIGHT         ((uint64_t)3000)
+#define DYNAMIC_FEE_REFERENCE_TRANSACTION_WEIGHT        ((uint64_t)3000)
+#define DYNAMIC_FEE_REFERENCE_TRANSACTION_WEIGHT_V12    ((uint64_t)240000)
 
 #define ORPHANED_BLOCKS_MAX_COUNT                       100
 
@@ -119,6 +123,7 @@ static_assert(STAKING_PORTIONS % 3 == 0, "Use a multiple of three, so that it di
 #define BLOCKS_IDS_SYNCHRONIZING_DEFAULT_COUNT          10000  //by default, blocks ids count in synchronizing
 #define BLOCKS_SYNCHRONIZING_DEFAULT_COUNT_PRE_V4       100    //by default, blocks count in blocks downloading
 #define BLOCKS_SYNCHRONIZING_DEFAULT_COUNT              20     //by default, blocks count in blocks downloading
+#define BLOCKS_SYNCHRONIZING_MAX_COUNT                  2048   //must be a power of 2, greater than 128, equal to SEEDHASH_EPOCH_BLOCKS
 
 #define CRYPTONOTE_MEMPOOL_TX_LIVETIME                    (86400*3) //seconds, three days
 #define CRYPTONOTE_MEMPOOL_TX_FROM_ALT_BLOCK_LIVETIME     604800 //seconds, one week
@@ -126,6 +131,8 @@ static_assert(STAKING_PORTIONS % 3 == 0, "Use a multiple of three, so that it di
 #define MEMPOOL_PRUNE_NON_STANDARD_TX_LIFETIME          (2 * 60 * 60) // seconds, 2 hours
 
 #define COMMAND_RPC_GET_BLOCKS_FAST_MAX_COUNT           1000
+#define COMMAND_RPC_GET_CHECKPOINTS_MAX_COUNT           256
+#define COMMAND_RPC_GET_QUORUM_STATE_MAX_COUNT          256
 
 #define P2P_LOCAL_WHITE_PEERLIST_LIMIT                  1000
 #define P2P_LOCAL_GRAY_PEERLIST_LIMIT                   5000
@@ -135,11 +142,13 @@ static_assert(STAKING_PORTIONS % 3 == 0, "Use a multiple of three, so that it di
 #define P2P_DEFAULT_PACKET_MAX_SIZE                     50000000     //50000000 bytes maximum packet size
 #define P2P_DEFAULT_PEERS_IN_HANDSHAKE                  250
 #define P2P_DEFAULT_CONNECTION_TIMEOUT                  5000       //5 seconds
+#define P2P_DEFAULT_SOCKS_CONNECT_TIMEOUT               45         // seconds
 #define P2P_DEFAULT_PING_CONNECTION_TIMEOUT             2000       //2 seconds
 #define P2P_DEFAULT_INVOKE_TIMEOUT                      60*2*1000  //2 minutes
 #define P2P_DEFAULT_HANDSHAKE_INVOKE_TIMEOUT            5000       //5 seconds
 #define P2P_DEFAULT_WHITELIST_CONNECTIONS_PERCENT       70
 #define P2P_DEFAULT_ANCHOR_CONNECTIONS_COUNT            2
+#define P2P_DEFAULT_SYNC_SEARCH_CONNECTIONS_COUNT       2
 #define P2P_DEFAULT_LIMIT_RATE_UP                       2048       // kB/s
 #define P2P_DEFAULT_LIMIT_RATE_DOWN                     8192       // kB/s
 
@@ -148,6 +157,9 @@ static_assert(STAKING_PORTIONS % 3 == 0, "Use a multiple of three, so that it di
 #define P2P_IP_FAILS_BEFORE_BLOCK                       10
 #define P2P_IDLE_CONNECTION_KILL_INTERVAL               (5*60) //5 minutes
 
+// TODO(doyle): Deprecate after checkpointing hardfork, remove notion of being
+// able to sync non-fluffy blocks, keep here so we can still accept blocks
+// pre-hardfork
 #define P2P_SUPPORT_FLAG_FLUFFY_BLOCKS                  0x01
 #define P2P_SUPPORT_FLAGS                               P2P_SUPPORT_FLAG_FLUFFY_BLOCKS
 
@@ -168,6 +180,8 @@ static_assert(STAKING_PORTIONS % 3 == 0, "Use a multiple of three, so that it di
 #define HF_VERSION_PER_BYTE_FEE                 cryptonote::network_version_10_bulletproofs
 #define HF_VERSION_SMALLER_BP                   cryptonote::network_version_11_infinite_staking
 #define HF_VERSION_LONG_TERM_BLOCK_WEIGHT       cryptonote::network_version_11_infinite_staking
+#define HF_VERSION_INCREASE_FEE                 cryptonote::network_version_12_checkpointing
+#define HF_VERSION_12_CHECKPOINTING_SOFT_FORK_HEIGHT ((uint64_t)(-1))
 
 #define PER_KB_FEE_QUANTIZATION_DECIMALS        4
 
@@ -254,7 +268,8 @@ namespace cryptonote
     network_version_8,
     network_version_9_service_nodes, // Proof Of Stake w/ Service Nodes
     network_version_10_bulletproofs, // Bulletproofs, Service Node Grace Registration Period, Batched Governance
-    network_version_11_infinite_staking,
+    network_version_11_infinite_staking, // Infinite Staking, CN-Turtle
+    network_version_12_checkpointing, // Checkpointing, Relaxed Deregistration, RandomXL, Loki Storage Server
 
     network_version_count,
   };

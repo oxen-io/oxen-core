@@ -28,20 +28,54 @@
 
 #pragma once
 
-#include "blockchain.h"
+#include "serialization/serialization.h"
 #include "cryptonote_protocol/cryptonote_protocol_handler_common.h"
+#include "cryptonote_basic/cryptonote_basic_impl.h"
+#include "cryptonote_core/service_node_voting.h"
+
+#include "common/loki.h"
 
 namespace cryptonote
 {
   class core;
+  struct vote_verification_context;
 };
 
 namespace service_nodes
 {
+  struct service_node_info;
+
+  struct testing_quorum
+  {
+    std::vector<crypto::public_key> validators; // Array of public keys identifying service nodes which are being tested for the queried height.
+    std::vector<crypto::public_key> workers;    // Array of public keys identifying service nodes which are responsible for voting on the queried height.
+
+    BEGIN_SERIALIZE()
+      FIELD(validators)
+      FIELD(workers)
+    END_SERIALIZE()
+  };
+
+  struct quorum_manager
+  {
+    std::shared_ptr<const testing_quorum> obligations;
+    // TODO(doyle): Validators aren't used, but I kept this as a testing_quorum
+    // to avoid drastic changes for now to a lot of the service node API
+    std::shared_ptr<const testing_quorum> checkpointing;
+  };
+
+  struct service_node_test_results {
+    bool uptime_proved        = true;
+    bool single_ip            = true;
+    bool voted_in_checkpoints = true;
+
+    bool passed() const { return uptime_proved && voted_in_checkpoints; }
+  };
+
   class quorum_cop
-    : public cryptonote::Blockchain::BlockAddedHook,
-      public cryptonote::Blockchain::BlockchainDetachedHook,
-      public cryptonote::Blockchain::InitHook
+    : public cryptonote::BlockAddedHook,
+      public cryptonote::BlockchainDetachedHook,
+      public cryptonote::InitHook
   {
   public:
     explicit quorum_cop(cryptonote::core& core);
@@ -50,24 +84,20 @@ namespace service_nodes
     void block_added(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs) override;
     void blockchain_detached(uint64_t height) override;
 
-    bool handle_uptime_proof(const cryptonote::NOTIFY_UPTIME_PROOF::request &proof);
+    void                       set_votes_relayed  (std::vector<quorum_vote_t> const &relayed_votes);
+    std::vector<quorum_vote_t> get_relayable_votes(uint64_t current_height);
+    bool                       handle_vote        (quorum_vote_t const &vote, cryptonote::vote_verification_context &vvc);
 
-    static const uint64_t REORG_SAFETY_BUFFER_IN_BLOCKS = 20;
-    static_assert(REORG_SAFETY_BUFFER_IN_BLOCKS < deregister_vote::VOTE_LIFETIME_BY_HEIGHT,
-                  "Safety buffer should always be less than the vote lifetime");
-    bool prune_uptime_proof();
-
-    uint64_t get_uptime_proof(const crypto::public_key &pubkey) const;
-
-    void generate_uptime_proof_request(cryptonote::NOTIFY_UPTIME_PROOF::request& req) const;
+    static int64_t calculate_decommission_credit(const service_node_info &info, uint64_t current_height);
 
   private:
+    void process_quorums(cryptonote::block const &block);
+    service_node_test_results check_service_node(const crypto::public_key &pubkey, const service_node_info &info) const;
 
     cryptonote::core& m_core;
-    uint64_t m_last_height;
-
-    using timestamp = uint64_t;
-    std::unordered_map<crypto::public_key, timestamp> m_uptime_proof_seen;
+    voting_pool       m_vote_pool;
+    uint64_t          m_obligations_height;
+    uint64_t          m_last_checkpointed_height;
     mutable epee::critical_section m_lock;
   };
 }

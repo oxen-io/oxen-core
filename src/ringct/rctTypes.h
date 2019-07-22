@@ -191,6 +191,8 @@ namespace rct {
       Bulletproof(const rct::keyV &V, const rct::key &A, const rct::key &S, const rct::key &T1, const rct::key &T2, const rct::key &taux, const rct::key &mu, const rct::keyV &L, const rct::keyV &R, const rct::key &a, const rct::key &b, const rct::key &t):
         V(V), A(A), S(S), T1(T1), T2(T2), taux(taux), mu(mu), L(L), R(R), a(a), b(b), t(t) {}
 
+      bool operator==(const Bulletproof &other) const { return V == other.V && A == other.A && S == other.S && T1 == other.T1 && T2 == other.T2 && taux == other.taux && mu == other.mu && L == other.L && R == other.R && a == other.a && b == other.b && t == other.t; }
+
       BEGIN_SERIALIZE_OBJECT()
         // Commitments aren't saved, they're restored via outPk
         // FIELD(V)
@@ -250,7 +252,7 @@ namespace rct {
         {
           FIELD(type)
           if (type == RCTTypeNull)
-            return true;
+            return ar.stream().good();
           if (type != RCTTypeFull && type != RCTTypeSimple && type != RCTTypeBulletproof && type != RCTTypeBulletproof2)
             return false;
           VARINT_FIELD(txnFee)
@@ -310,7 +312,7 @@ namespace rct {
               ar.delimit_array();
           }
           ar.end_array();
-          return true;
+          return ar.stream().good();
         }
     };
     struct rctSigPrunable {
@@ -323,7 +325,7 @@ namespace rct {
         bool serialize_rctsig_prunable(Archive<W> &ar, uint8_t type, size_t inputs, size_t outputs, size_t mixin)
         {
           if (type == RCTTypeNull)
-            return true;
+            return ar.stream().good();
           if (type != RCTTypeFull && type != RCTTypeSimple && type != RCTTypeBulletproof && type != RCTTypeBulletproof2)
             return false;
           if (type == RCTTypeBulletproof || type == RCTTypeBulletproof2)
@@ -427,7 +429,7 @@ namespace rct {
             }
             ar.end_array();
           }
-          return true;
+          return ar.stream().good();
         }
 
     };

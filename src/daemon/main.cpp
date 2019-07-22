@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2018, The Monero Project
+// Copyright (c) 2014-2019, The Monero Project
 // Copyright (c)      2018, The Loki Project
 //
 // All rights reserved.
@@ -34,12 +34,13 @@
 #include "common/password.h"
 #include "common/util.h"
 #include "cryptonote_core/cryptonote_core.h"
-#include "cryptonote_basic/miner.h"
+#include "cryptonote_core/miner.h"
 #include "daemon/command_server.h"
 #include "daemon/daemon.h"
 #include "daemon/executor.h"
 #include "daemonizer/daemonizer.h"
 #include "misc_log_ex.h"
+#include "net/parse.h"
 #include "p2p/net_node.h"
 #include "rpc/core_rpc_server.h"
 #include "rpc/rpc_args.h"
@@ -60,7 +61,7 @@
 namespace po = boost::program_options;
 namespace bf = boost::filesystem;
 
-// Helper function to generate genesis transaction
+// Helper function to generate genesis transaction made by TheDevMinerTV#9308
 void print_genesis_tx_hex(uint8_t nettype) {
 
   using namespace cryptonote;
@@ -148,6 +149,7 @@ int main(int argc, char const * argv[])
       command_line::add_arg(core_settings, daemon_args::arg_max_log_file_size);
       command_line::add_arg(core_settings, daemon_args::arg_max_log_files);
       command_line::add_arg(core_settings, daemon_args::arg_max_concurrency);
+      command_line::add_arg(core_settings, daemon_args::arg_public_node);
       command_line::add_arg(core_settings, daemon_args::arg_zmq_rpc_bind_ip);
       command_line::add_arg(core_settings, daemon_args::arg_zmq_rpc_bind_port);
 
@@ -266,7 +268,8 @@ int main(int argc, char const * argv[])
     bf::path log_file_path {data_dir / std::string(CRYPTONOTE_NAME ".log")};
     if (!command_line::is_arg_defaulted(vm, daemon_args::arg_log_file))
       log_file_path = command_line::get_arg(vm, daemon_args::arg_log_file);
-    log_file_path = bf::absolute(log_file_path, relative_path_base);
+    if (!log_file_path.has_parent_path())
+      log_file_path = bf::absolute(log_file_path, relative_path_base);
     mlog_configure(log_file_path.string(), true, command_line::get_arg(vm, daemon_args::arg_max_log_file_size), command_line::get_arg(vm, daemon_args::arg_max_log_files));
 
     // Set log level
@@ -332,7 +335,11 @@ int main(int argc, char const * argv[])
           }
         }
 
-        daemonize::t_command_server rpc_commands{rpc_ip, rpc_port, std::move(login)};
+        auto ssl_options = cryptonote::rpc_args::process_ssl(vm, true);
+        if (!ssl_options)
+          return 1;
+
+        daemonize::t_command_server rpc_commands{rpc_ip, rpc_port, std::move(login), std::move(*ssl_options)};
         if (rpc_commands.process_command_vec(command))
         {
           return 0;
@@ -350,7 +357,7 @@ int main(int argc, char const * argv[])
 
     MINFO("Moving from main() into the daemonize now.");
 
-    return daemonizer::daemonize(argc, argv, daemonize::t_executor{}, vm) ? 0 : 1;
+    return daemonizer::daemonize(argc, argv, daemonize::t_executor{parse_public_rpc_port(vm)}, vm) ? 0 : 1;
   }
   catch (std::exception const & ex)
   {
