@@ -158,18 +158,41 @@ namespace service_nodes
     }
 
     std::lock_guard<boost::recursive_mutex> lock(m_sn_mutex);
-    auto it = m_quorum_states.find(height);
-    if (it == m_quorum_states.end()) {
-      if (!m_store_quorum_history || !include_old)
-        return nullptr;
-      it = m_old_quorum_states.find(height);
-      if (it == m_old_quorum_states.end())
-        return nullptr;
+    quorum_manager const *quorums = nullptr;
+    if (height == m_state.height)
+      quorums = &m_state.quorums;
+
+    if (!quorums) // NOTE: Search m_state_history
+    {
+      auto it = std::lower_bound(m_state_history.begin(),
+                                 m_state_history.end(),
+                                 height,
+                                 [](state_t const &state, uint64_t height) { return state.height < height; });
+
+      if (it != m_state_history.end())
+        quorums = &it->quorums;
     }
+
+    if (!quorums && include_old) // NOTE: Search m_old_quorum_states
+    {
+      auto it =
+          std::lower_bound(m_old_quorum_states.begin(),
+                           m_old_quorum_states.end(),
+                           height,
+                           [](quorums_by_height const &entry, uint64_t height) { return entry.height < height; });
+
+      if (it != m_old_quorum_states.end())
+        quorums = &it->quorums;
+    }
+
+    if (!quorums)
+      return nullptr;
+
     if (type == quorum_type::obligations)
-      return it->second.obligations;
+      return quorums->obligations;
     else if (type == quorum_type::checkpointing)
-      return it->second.checkpointing;
+      return quorums->checkpointing;
+
     MERROR("Developer error: Unhandled quorum enum with value: " << (size_t)type);
     assert(!"Developer error: Unhandled quorum enum");
     return nullptr;
@@ -946,6 +969,134 @@ namespace service_nodes
     store();
   }
 
+  static std::vector<size_t> generate_shuffled_service_node_index_list(
+      size_t list_size,
+      crypto::hash const &block_hash,
+      quorum_type type,
+      size_t sublist_size = 0,
+      size_t sublist_up_to = 0)
+  {
+    std::vector<size_t> result(list_size);
+    std::iota(result.begin(), result.end(), 0);
+
+    uint64_t seed = 0;
+    std::memcpy(&seed, block_hash.data, std::min(sizeof(seed), sizeof(block_hash.data)));
+    boost::endian::little_to_native_inplace(seed);
+
+    seed += static_cast<uint64_t>(type);
+
+    //       Shuffle 2
+    //       |=================================|
+    //       |                                 |
+    // Shuffle 1                               |
+    // |==============|                        |
+    // |     |        |                        |
+    // |sublist_size  |                        |
+    // |     |    sublist_up_to                |
+    // 0     N        Y                        Z
+    // [.......................................]
+
+    // If we have a list [0,Z) but we need a shuffled sublist of the first N values that only
+    // includes values from [0,Y) then we do this using two shuffles: first of the [0,Y) sublist,
+    // then of the [N,Z) sublist (which is already partially shuffled, but that doesn't matter).  We
+    // reuse the same seed for both partial shuffles, but again, that isn't an issue.
+    if ((0 < sublist_size && sublist_size < list_size) && (0 < sublist_up_to && sublist_up_to < list_size)) {
+      assert(sublist_size <= sublist_up_to); // Can't select N random items from M items when M < N
+      loki_shuffle(result.begin(), result.begin() + sublist_up_to, seed);
+      loki_shuffle(result.begin() + sublist_size, result.end(), seed);
+    }
+    else {
+      loki_shuffle(result.begin(), result.end(), seed);
+    }
+    return result;
+  }
+
+  static quorum_manager generate_quorums(cryptonote::network_type nettype, service_node_list::state_t const &state, cryptonote::block const &block)
+  {
+    quorum_manager result = {};
+    crypto::hash block_hash;
+    uint64_t const height = cryptonote::get_block_height(block);
+    int const hf_version  = block.major_version;
+    if (!cryptonote::get_block_hash(block, block_hash))
+    {
+      MERROR("Block height: " << height << " returned null hash");
+      return result;
+    }
+
+    // The two quorums here have different selection criteria: the entire checkpoint quorum and the
+    // state change *validators* want only active service nodes, but the state change *workers*
+    // (i.e. the nodes to be tested) also include decommissioned service nodes.  (Prior to v12 there
+    // are no decommissioned nodes, so this distinction is irrelevant for network concensus).
+    auto active_snode_list = state.active_service_nodes_infos();
+    decltype(active_snode_list) decomm_snode_list;
+    if (hf_version >= cryptonote::network_version_12_checkpointing)
+      decomm_snode_list = state.decommissioned_service_nodes_infos();
+
+    quorum_type const max_quorum_type = max_quorum_type_for_hf(hf_version);
+    for (int type_int = 0; type_int <= (int)max_quorum_type; type_int++)
+    {
+      auto type             = static_cast<quorum_type>(type_int);
+      size_t num_validators = 0, num_workers = 0;
+      auto quorum           = std::make_shared<testing_quorum>();
+      std::vector<size_t> pub_keys_indexes;
+
+      if (type == quorum_type::obligations)
+      {
+        size_t total_nodes         = active_snode_list.size() + decomm_snode_list.size();
+        num_validators             = std::min(active_snode_list.size(), STATE_CHANGE_QUORUM_SIZE);
+        pub_keys_indexes           = generate_shuffled_service_node_index_list(total_nodes, block_hash, type, num_validators, active_snode_list.size());
+        result.obligations         = quorum;
+        size_t num_remaining_nodes = total_nodes - num_validators;
+        num_workers                = std::min(num_remaining_nodes, std::max(STATE_CHANGE_MIN_NODES_TO_TEST, num_remaining_nodes/STATE_CHANGE_NTH_OF_THE_NETWORK_TO_TEST));
+      }
+      else if (type == quorum_type::checkpointing)
+      {
+        // Checkpoint quorums only exist every CHECKPOINT_INTERVAL blocks, but the height that gets
+        // used to generate the quorum (i.e. the `height` variable here) is actually `H -
+        // REORG_SAFETY_BUFFER_BLOCKS_POST_HF12`, where H is divisible by CHECKPOINT_INTERVAL, but
+        // REORG_SAFETY_BUFFER_BLOCKS_POST_HF12 is not (it equals 11).  Hence the addition here to
+        // "undo" the lag before checking to see if we're on an interval multiple:
+        if ((height + REORG_SAFETY_BUFFER_BLOCKS_POST_HF12) % CHECKPOINT_INTERVAL != 0)
+          continue; // Not on an interval multiple: no checkpointing quorum is defined.
+
+        size_t total_nodes = active_snode_list.size();
+
+        // TODO(loki): Soft fork, remove when testnet gets reset
+        if (nettype == cryptonote::TESTNET && height < 85357)
+          total_nodes = active_snode_list.size() + decomm_snode_list.size();
+
+        pub_keys_indexes     = generate_shuffled_service_node_index_list(total_nodes, block_hash, type);
+        result.checkpointing = quorum;
+        num_workers          = std::min(pub_keys_indexes.size(), CHECKPOINT_QUORUM_SIZE);
+      }
+      else
+      {
+        MERROR("Unhandled quorum type enum with value: " << type_int);
+        continue;
+      }
+
+      quorum->validators.reserve(num_validators);
+      quorum->workers.reserve(num_workers);
+
+      size_t i = 0;
+      for (; i < num_validators; i++)
+      {
+        quorum->validators.push_back(active_snode_list[pub_keys_indexes[i]].first);
+      }
+
+      for (; i < num_validators + num_workers; i++)
+      {
+        size_t j = pub_keys_indexes[i];
+        if (j < active_snode_list.size())
+          quorum->workers.push_back(active_snode_list[j].first);
+        else
+          quorum->workers.push_back(decomm_snode_list[j - active_snode_list.size()].first);
+      }
+    }
+
+    return result;
+  }
+
   void service_node_list::process_block(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs)
   {
     uint64_t block_height = cryptonote::get_block_height(block);
@@ -975,8 +1126,20 @@ namespace service_nodes
         if (it->height % 10000 == 0)
           it++;
         else
+        {
+          if (m_store_quorum_history)
+          {
+            quorums_by_height entry = {};
+            entry.height            = it->height;
+            entry.quorums           = it->quorums;
+            m_old_quorum_states.push_back(entry);
+          }
           it = m_state_history.erase(it);
+        }
       }
+
+      while (m_old_quorum_states.size() > m_store_quorum_history)
+        m_old_quorum_states.pop_front();
     }
 
     //
@@ -1097,27 +1260,9 @@ namespace service_nodes
       }
     }
 
-    if (need_swarm_update) {
+    if (need_swarm_update)
       update_swarms(block_height);
-    }
-
-    //
-    // Update Quorum
-    //
-    generate_quorums(block);
-    const size_t cache_state_from_height = (block_height < QUORUM_LIFETIME) ? 0 : block_height - QUORUM_LIFETIME;
-    while (!m_quorum_states.empty() && m_quorum_states.begin()->first < cache_state_from_height)
-    {
-      m_quorum_states.erase(m_quorum_states.begin());
-      auto rem = m_quorum_states.begin();
-      if (m_store_quorum_history)
-        m_old_quorum_states.emplace_hint(m_old_quorum_states.end(), std::move(*rem));
-
-      m_quorum_states.erase(rem);
-    }
-    while (m_old_quorum_states.size() > m_store_quorum_history)
-      m_old_quorum_states.erase(m_old_quorum_states.begin());
-
+    m_state.quorums = generate_quorums(m_blockchain.nettype(), m_state, block);
   }
 
   void service_node_list::blockchain_detached(uint64_t height)
@@ -1334,132 +1479,6 @@ namespace service_nodes
     return true;
   }
 
-  std::vector<size_t> generate_shuffled_service_node_index_list(
-      size_t list_size,
-      crypto::hash const &block_hash,
-      quorum_type type,
-      size_t sublist_size = 0,
-      size_t sublist_up_to = 0)
-  {
-    std::vector<size_t> result(list_size);
-    std::iota(result.begin(), result.end(), 0);
-
-    uint64_t seed = 0;
-    std::memcpy(&seed, block_hash.data, std::min(sizeof(seed), sizeof(block_hash.data)));
-    boost::endian::little_to_native_inplace(seed);
-
-    seed += static_cast<uint64_t>(type);
-
-    //       Shuffle 2
-    //       |=================================|
-    //       |                                 |
-    // Shuffle 1                               |
-    // |==============|                        |
-    // |     |        |                        |
-    // |sublist_size  |                        |
-    // |     |    sublist_up_to                |
-    // 0     N        Y                        Z
-    // [.......................................]
-
-    // If we have a list [0,Z) but we need a shuffled sublist of the first N values that only
-    // includes values from [0,Y) then we do this using two shuffles: first of the [0,Y) sublist,
-    // then of the [N,Z) sublist (which is already partially shuffled, but that doesn't matter).  We
-    // reuse the same seed for both partial shuffles, but again, that isn't an issue.
-    if ((0 < sublist_size && sublist_size < list_size) && (0 < sublist_up_to && sublist_up_to < list_size)) {
-      assert(sublist_size <= sublist_up_to); // Can't select N random items from M items when M < N
-      loki_shuffle(result.begin(), result.begin() + sublist_up_to, seed);
-      loki_shuffle(result.begin() + sublist_size, result.end(), seed);
-    }
-    else {
-      loki_shuffle(result.begin(), result.end(), seed);
-    }
-    return result;
-  }
-
-  void service_node_list::generate_quorums(cryptonote::block const &block)
-  {
-    crypto::hash block_hash;
-    uint64_t const height = cryptonote::get_block_height(block);
-    int const hf_version  = block.major_version;
-    if (!cryptonote::get_block_hash(block, block_hash))
-    {
-      MERROR("Block height: " << height << " returned null hash");
-      return;
-    }
-
-    // The two quorums here have different selection criteria: the entire checkpoint quorum and the
-    // state change *validators* want only active service nodes, but the state change *workers*
-    // (i.e. the nodes to be tested) also include decommissioned service nodes.  (Prior to v12 there
-    // are no decommissioned nodes, so this distinction is irrelevant for network concensus).
-    auto active_snode_list = m_state.active_service_nodes_infos();
-    decltype(active_snode_list) decomm_snode_list;
-    if (hf_version >= cryptonote::network_version_12_checkpointing)
-      decomm_snode_list = m_state.decommissioned_service_nodes_infos();
-
-    quorum_type const max_quorum_type = max_quorum_type_for_hf(hf_version);
-    quorum_manager &manager           = m_quorum_states[height];
-    for (int type_int = 0; type_int <= (int)max_quorum_type; type_int++)
-    {
-      auto type             = static_cast<quorum_type>(type_int);
-      size_t num_validators = 0, num_workers = 0;
-      auto quorum           = std::make_shared<testing_quorum>();
-      std::vector<size_t> pub_keys_indexes;
-
-      if (type == quorum_type::obligations)
-      {
-        size_t total_nodes         = active_snode_list.size() + decomm_snode_list.size();
-        num_validators             = std::min(active_snode_list.size(), STATE_CHANGE_QUORUM_SIZE);
-        pub_keys_indexes           = generate_shuffled_service_node_index_list(total_nodes, block_hash, type, num_validators, active_snode_list.size());
-        manager.obligations        = quorum;
-        size_t num_remaining_nodes = total_nodes - num_validators;
-        num_workers                = std::min(num_remaining_nodes, std::max(STATE_CHANGE_MIN_NODES_TO_TEST, num_remaining_nodes/STATE_CHANGE_NTH_OF_THE_NETWORK_TO_TEST));
-      }
-      else if (type == quorum_type::checkpointing)
-      {
-        // Checkpoint quorums only exist every CHECKPOINT_INTERVAL blocks, but the height that gets
-        // used to generate the quorum (i.e. the `height` variable here) is actually `H -
-        // REORG_SAFETY_BUFFER_BLOCKS_POST_HF12`, where H is divisible by CHECKPOINT_INTERVAL, but
-        // REORG_SAFETY_BUFFER_BLOCKS_POST_HF12 is not (it equals 11).  Hence the addition here to
-        // "undo" the lag before checking to see if we're on an interval multiple:
-        if ((height + REORG_SAFETY_BUFFER_BLOCKS_POST_HF12) % CHECKPOINT_INTERVAL != 0)
-          continue; // Not on an interval multiple: no checkpointing quorum is defined.
-
-        size_t total_nodes = active_snode_list.size();
-
-        // TODO(loki): Soft fork, remove when testnet gets reset
-        if (m_blockchain.nettype() == cryptonote::TESTNET && height < 85357)
-          total_nodes = active_snode_list.size() + decomm_snode_list.size();
-
-        pub_keys_indexes      = generate_shuffled_service_node_index_list(total_nodes, block_hash, type);
-        manager.checkpointing = quorum;
-        num_workers           = std::min(pub_keys_indexes.size(), CHECKPOINT_QUORUM_SIZE);
-      }
-      else
-      {
-        MERROR("Unhandled quorum type enum with value: " << type_int);
-        continue;
-      }
-
-      quorum->validators.reserve(num_validators);
-      quorum->workers.reserve(num_workers);
-
-      size_t i = 0;
-      for (; i < num_validators; i++)
-      {
-        quorum->validators.push_back(active_snode_list[pub_keys_indexes[i]].first);
-      }
-
-      for (; i < num_validators + num_workers; i++)
-      {
-        size_t j = pub_keys_indexes[i];
-        if (j < active_snode_list.size())
-          quorum->workers.push_back(active_snode_list[j].first);
-        else
-          quorum->workers.push_back(decomm_snode_list[j - active_snode_list.size()].first);
-      }
-    }
-  }
-
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
   service_node_list::rollback_event::rollback_event(uint64_t block_height, rollback_type type) : m_block_height(block_height), type(type)
@@ -1488,9 +1507,21 @@ namespace service_nodes
   {
   }
 
-  static service_node_list::state_serialized serialize_service_node_state_object(service_node_list::state_t const &state)
+  static service_node_list::quorum_for_serialization serialize_quorum_state(uint8_t hf_version, uint64_t height, quorum_manager const &quorums)
+  {
+    service_node_list::quorum_for_serialization result = {};
+    result.version                                     = get_min_service_node_info_version_for_hf(hf_version);
+    result.height                                      = height;
+    if (quorums.obligations)   result.quorums[static_cast<uint8_t>(quorum_type::obligations)] = *quorums.obligations;
+    if (quorums.checkpointing) result.quorums[static_cast<uint8_t>(quorum_type::checkpointing)] = *quorums.checkpointing;
+    return result;
+  }
+
+  static service_node_list::state_serialized serialize_service_node_state_object(uint8_t hf_version, service_node_list::state_t const &state)
   {
     service_node_list::state_serialized result = {};
+    result.version                             = get_min_service_node_info_version_for_hf(hf_version);
+
     service_node_pubkey_info info;
     result.infos.reserve(state.service_nodes_infos.size());
     for (const auto &kv_pair : state.service_nodes_infos)
@@ -1502,6 +1533,7 @@ namespace service_nodes
 
     result.key_image_blacklist = state.key_image_blacklist;
     result.height              = state.height;
+    result.quorums             = serialize_quorum_state(hf_version, state.height, state.quorums);
     return result;
   }
 
@@ -1519,24 +1551,10 @@ namespace service_nodes
     data.version = get_min_service_node_info_version_for_hf(hf_version);
     {
       std::lock_guard<boost::recursive_mutex> lock(m_sn_mutex);
-      data.quorum_states.reserve(m_quorum_states.size() + m_old_quorum_states.size());
-      for (const auto *qs : {&m_old_quorum_states, &m_quorum_states})
+      for (const quorums_by_height &entry : m_old_quorum_states)
       {
-        for(const auto& kv_pair : *qs)
-        {
-          quorum_for_serialization quorum = {};
-          quorum.version                  = get_min_service_node_info_version_for_hf(hf_version);
-          quorum.height                   = kv_pair.first;
-          quorum_manager const &manager   = kv_pair.second;
-
-          if (manager.obligations)
-            quorum.quorums[static_cast<uint8_t>(quorum_type::obligations)] = *manager.obligations;
-
-          if (manager.checkpointing)
-            quorum.quorums[static_cast<uint8_t>(quorum_type::checkpointing)] = *manager.checkpointing;
-
-          data.quorum_states.push_back(std::move(quorum));
-        }
+        quorum_for_serialization quorum = serialize_quorum_state(hf_version, entry.height, entry.quorums);
+        data.quorum_states.push_back(std::move(quorum));
       }
 
       uint64_t const block_height = m_blockchain.get_current_blockchain_height();
@@ -1549,10 +1567,10 @@ namespace service_nodes
                            [](state_t const &state, uint64_t start_height) { return state.height < start_height; });
 
       for (auto it = m_state_history.begin(); it != first_recent_state; it++)
-        data.states.emplace_back(serialize_service_node_state_object(*it));
+        data.states.emplace_back(serialize_service_node_state_object(hf_version, *it));
 
       if (first_recent_state != m_state_history.end())
-        data.states.emplace_back(serialize_service_node_state_object(*first_recent_state));
+        data.states.emplace_back(serialize_service_node_state_object(hf_version, *first_recent_state));
     }
 
     static std::string blob;
@@ -1826,44 +1844,61 @@ namespace service_nodes
     if (new_data_in.states.empty() || new_data_in.quorum_states.empty())
       return false;
 
-    const uint64_t cache_state_from_height = current_height < QUORUM_LIFETIME ? 0 : current_height - QUORUM_LIFETIME;
-    const uint64_t hist_state_from_height  = m_store_quorum_history >= cache_state_from_height ? 0 : cache_state_from_height - m_store_quorum_history;
-    for (auto &states : new_data_in.quorum_states)
     {
-      if (states.height < hist_state_from_height)
-        continue;
-      auto obligations   = std::make_shared<testing_quorum>(states.quorums[static_cast<uint8_t>(quorum_type::obligations)]);
-      std::shared_ptr<testing_quorum> checkpointing;
-      // Don't load any checkpoints that shouldn't exist (see the comment in generate_quorums as to
-      // why the `+BUFFER` term is here).
-      if ((states.height + REORG_SAFETY_BUFFER_BLOCKS_POST_HF12) % CHECKPOINT_INTERVAL == 0)
-          checkpointing = std::make_shared<testing_quorum>(states.quorums[static_cast<uint8_t>(quorum_type::checkpointing)]);
-      auto &quorum_states = states.height >= cache_state_from_height ? m_quorum_states : m_old_quorum_states;
-      auto &qs            = quorum_states.emplace_hint(quorum_states.end(), states.height, quorum_manager{})->second;
-      qs.obligations      = std::move(obligations);
-      qs.checkpointing    = std::move(checkpointing);
+      const uint64_t hist_state_from_height = current_height - m_store_quorum_history;
+      uint64_t last_loaded_height = 0;
+      for (auto &states : new_data_in.quorum_states)
+      {
+        if (states.height < hist_state_from_height)
+          continue;
+
+        quorums_by_height entry   = {};
+        entry.height              = states.height;
+        {
+          auto quorum               = std::make_shared<testing_quorum>(states.quorums[static_cast<uint8_t>(quorum_type::obligations)]);
+          entry.quorums.obligations = quorum;
+        }
+
+        // Don't load any checkpoints that shouldn't exist (see the comment in generate_quorums as to
+        // why the `+BUFFER` term is here).
+        if ((states.height + REORG_SAFETY_BUFFER_BLOCKS_POST_HF12) % CHECKPOINT_INTERVAL == 0)
+        {
+          auto quorum = std::make_shared<testing_quorum>(states.quorums[static_cast<uint8_t>(quorum_type::checkpointing)]);
+          entry.quorums.checkpointing = quorum;
+        }
+
+        if (states.height <= last_loaded_height)
+        {
+          LOG_PRINT_L0("Serialised quorums is not stored in ascending order by height in DB, failed to load from DB");
+          return false;
+        }
+        last_loaded_height = states.height;
+        m_old_quorum_states.push_back(entry);
+      }
     }
 
-    assert(new_data_in.states.size() > 0);
-    size_t const last_index = new_data_in.states.size() - 1;
-    m_state_history.resize(last_index);
-    uint64_t last_loaded_height = 0;
-    for (size_t i = 0; i <= last_index; i++)
     {
-      state_serialized &source = new_data_in.states[i];
-      state_t &dest            = (i == last_index) ? m_state : m_state_history[i];
-      dest.height              = source.height;
-      dest.key_image_blacklist = std::move(source.key_image_blacklist);
-
-      for (auto &pubkey_info : source.infos)
-        dest.service_nodes_infos[pubkey_info.pubkey] = std::move(pubkey_info.info);
-
-      if (source.height <= last_loaded_height)
+      assert(new_data_in.states.size() > 0);
+      size_t const last_index = new_data_in.states.size() - 1;
+      m_state_history.resize(last_index);
+      uint64_t last_loaded_height = 0;
+      for (size_t i = 0; i <= last_index; i++)
       {
-        LOG_PRINT_L0("Serialised state is not stored in ascending order by height in DB, failed to load from DB");
-        return false;
+        state_serialized &source = new_data_in.states[i];
+        state_t &dest            = (i == last_index) ? m_state : m_state_history[i];
+        dest.height              = source.height;
+        dest.key_image_blacklist = std::move(source.key_image_blacklist);
+
+        for (auto &pubkey_info : source.infos)
+          dest.service_nodes_infos[pubkey_info.pubkey] = std::move(pubkey_info.info);
+
+        if (source.height <= last_loaded_height)
+        {
+          LOG_PRINT_L0("Serialised state is not stored in ascending order by height in DB, failed to load from DB");
+          return false;
+        }
+        last_loaded_height = source.height;
       }
-      last_loaded_height = source.height;
     }
 
     MGINFO("Service node data loaded successfully, height: " << m_state.height);
@@ -1878,7 +1913,7 @@ namespace service_nodes
   void service_node_list::reset(bool delete_db_entry)
   {
     m_state_history.clear();
-    m_quorum_states.clear();
+    m_old_quorum_states.clear();
     m_state = {};
 
     if (m_db && delete_db_entry)
