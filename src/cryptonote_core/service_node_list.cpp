@@ -48,7 +48,7 @@
 #include "service_node_swarm.h"
 #include "version.h"
 
-size_t constexpr MAX_SHORT_TERM_STATE_HISTORY = BLOCKS_EXPECTED_IN_HOURS(1);
+size_t constexpr MAX_SHORT_TERM_STATE_HISTORY = BLOCKS_EXPECTED_IN_HOURS(2);
 
 #undef LOKI_DEFAULT_LOG_CATEGORY
 #define LOKI_DEFAULT_LOG_CATEGORY "service_nodes"
@@ -1539,10 +1539,20 @@ namespace service_nodes
         }
       }
 
-      data.states.reserve(m_state_history.size() + 1);
-      for (state_t const &source : m_state_history)
-        data.states.emplace_back(serialize_service_node_state_object(source));
-      data.states.emplace_back(serialize_service_node_state_object(m_state));
+      uint64_t const block_height = m_blockchain.get_current_blockchain_height();
+      uint64_t const start_height =
+          (block_height < MAX_SHORT_TERM_STATE_HISTORY) ? 0 : block_height - MAX_SHORT_TERM_STATE_HISTORY;
+      auto first_recent_state =
+          std::lower_bound(m_state_history.begin(),
+                           m_state_history.end(),
+                           start_height,
+                           [](state_t const &state, uint64_t start_height) { return state.height < start_height; });
+
+      for (auto it = m_state_history.begin(); it != first_recent_state; it++)
+        data.states.emplace_back(serialize_service_node_state_object(*it));
+
+      if (first_recent_state != m_state_history.end())
+        data.states.emplace_back(serialize_service_node_state_object(*first_recent_state));
     }
 
     static std::string blob;
