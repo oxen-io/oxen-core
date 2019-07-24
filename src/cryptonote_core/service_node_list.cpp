@@ -81,6 +81,7 @@ namespace service_nodes
       static auto work_start = std::chrono::high_resolution_clock::now();
       if (i > 0 && i % 10 == 0)
       {
+        store();
         auto work_end = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(work_end - work_start);
         MGINFO("... scanning height " << m_state.height << " (" << duration.count() / 1000.f << "s)");
@@ -1863,7 +1864,7 @@ namespace service_nodes
       }
     }
 
-    if (new_data_in.states.empty() || new_data_in.quorum_states.empty())
+    if (new_data_in.states.empty())
       return false;
 
     {
