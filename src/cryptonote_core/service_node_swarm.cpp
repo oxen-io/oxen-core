@@ -209,7 +209,7 @@ namespace service_nodes
   void calc_swarm_changes(swarm_snode_map_t &swarm_to_snodes, uint64_t seed)
   {
 
-    if (swarm_to_snodes.size() == 0)
+    if (swarm_to_snodes.empty())
     {
       // nothing to do
       return;

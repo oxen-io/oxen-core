@@ -2297,7 +2297,21 @@ void BlockchainBDB::set_service_node_data(const std::string& data)
 {
 }
 
-bool BlockchainBDB::get_service_node_data(std::string& data)
+void BlockchainBDB::set_swarm_state(uint64_t height, const std::string& data)
+{
+}
+
+bool BlockchainBDB::get_service_node_data(std::string& data) const
+{
+  return false;
+}
+
+bool BlockchainBDB::get_latest_swarm_state(uint64_t &height, std::string& data) const
+{
+  return false;
+}
+
+bool BlockchainBDB::clear_swarm_state_after(uint64_t height)
 {
   return false;
 }

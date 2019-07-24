@@ -799,6 +799,8 @@ namespace cryptonote
       */
      std::vector<service_nodes::service_node_pubkey_info> get_service_node_list_state(const std::vector<crypto::public_key>& service_node_pubkeys) const;
 
+     std::vector<service_nodes::swarm_id_entry_t> get_swarm_state(uint64_t &height) const;
+
      /**
        * @brief get whether `pubkey` is known as a service node.
        *

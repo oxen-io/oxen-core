@@ -168,7 +168,10 @@ public:
   virtual bool get_output_blacklist   (std::vector<uint64_t> &blacklist)       const override { return false; }
   virtual void add_output_blacklist   (std::vector<uint64_t> const &blacklist)       override { }
   virtual void set_service_node_data  (const std::string& data)                      override { }
-  virtual bool get_service_node_data  (std::string& data)                            override { return false; }
+  virtual bool get_service_node_data  (std::string& data)                      const override { return false; }
+  virtual void set_swarm_state        (uint64_t height, const std::string& data)     override { }
+  virtual bool get_latest_swarm_state (uint64_t &height, std::string& data)    const override { return false; }
+  virtual bool clear_swarm_state_after(uint64_t height)                              override { return false; }
   virtual void clear_service_node_data()                                             override { }
 
   virtual void add_alt_block(const crypto::hash &blkid, const cryptonote::alt_block_data_t &data, const cryptonote::blobdata &blob) override {}

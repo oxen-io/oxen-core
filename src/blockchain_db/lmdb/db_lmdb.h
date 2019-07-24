@@ -73,6 +73,7 @@ typedef struct mdb_txn_cursors
   MDB_cursor *m_txc_hf_versions;
 
   MDB_cursor *m_txc_service_node_data;
+  MDB_cursor *m_txc_swarm_assignment_history;
   MDB_cursor *m_txc_output_blacklist;
   MDB_cursor *m_txc_properties;
 } mdb_txn_cursors;
@@ -97,6 +98,7 @@ typedef struct mdb_txn_cursors
 #define m_cur_alt_blocks	m_cursors->m_txc_alt_blocks
 #define m_cur_hf_versions	m_cursors->m_txc_hf_versions
 #define m_cur_service_node_data	m_cursors->m_txc_service_node_data
+#define m_cur_swarm_assignment_history m_cursors->m_txc_swarm_assignment_history
 #define m_cur_properties	m_cursors->m_txc_properties
 
 typedef struct mdb_rflags
@@ -122,6 +124,7 @@ typedef struct mdb_rflags
   bool m_rf_alt_blocks;
   bool m_rf_hf_versions;
   bool m_rf_service_node_data;
+  bool m_rf_swarm_assignment_history;
   bool m_rf_properties;
 } mdb_rflags;
 
@@ -456,7 +459,13 @@ private:
 
   bool get_block_checkpoint_internal(uint64_t height, checkpoint_t &checkpoint, MDB_cursor_op op) const;
   void set_service_node_data(const std::string& data) override;
-  bool get_service_node_data(std::string& data) override;
+  bool get_service_node_data(std::string& data) const override;
+  // Set swarm state (swarm id assignments) to `data` at `height`
+  void set_swarm_state(uint64_t height, const std::string& data) override;
+  // Return the latest available swarm state not more recent than `height`
+  bool get_latest_swarm_state(uint64_t &height, std::string& data) const override;
+  // Remove all entries after `height`
+  bool clear_swarm_state_after(uint64_t height) override;
   void clear_service_node_data() override;
 
 private:
@@ -490,6 +499,8 @@ private:
   MDB_dbi m_hf_versions;
 
   MDB_dbi m_service_node_data;
+
+  MDB_dbi m_swarm_assignment_history;
 
   MDB_dbi m_properties;
 

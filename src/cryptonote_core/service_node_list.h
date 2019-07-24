@@ -171,6 +171,16 @@ namespace service_nodes
     END_SERIALIZE()
   };
 
+  struct swarm_id_entry_t
+  {
+    crypto::public_key pubkey;
+    uint64_t swarm_id;
+
+    BEGIN_SERIALIZE_OBJECT()
+      FIELD(pubkey)
+      FIELD(swarm_id)
+    END_SERIALIZE()
+  };
 
   template<typename RandomIt>
   void loki_shuffle(RandomIt begin, RandomIt end, uint64_t seed)
@@ -222,7 +232,21 @@ namespace service_nodes
     void set_db_pointer(cryptonote::BlockchainDB* db);
     void set_my_service_node_keys(crypto::public_key const *pub_key);
     void set_quorum_history_storage(uint64_t hist_size); // 0 = none (default), 1 = unlimited, N = # of blocks
+
+    /// Whether or not to store swarm assignment history
+    void set_store_swarm_history(bool do_store);
+
     bool store();
+
+    /// Remove any swarm state entry more recent than `height`
+    bool clear_swarm_state_after(uint64_t height);
+
+    /// Save swarm assignments for the current height
+    bool store_swarm_state();
+
+    /// Get swarm assignments for `height` which is set to earliest height
+    /// for which the state is valid (return UINT64_MAX if no earlier entry exists)
+    std::vector<swarm_id_entry_t> get_swarm_state(uint64_t &height) const;
 
     void get_all_service_nodes_public_keys(std::vector<crypto::public_key>& keys, bool require_active) const;
 
@@ -421,6 +445,9 @@ namespace service_nodes
     crypto::public_key const      *m_service_node_pubkey;
     cryptonote::BlockchainDB      *m_db;
     uint64_t                       m_store_quorum_history;
+
+    // Whether or not to store swarm assignment history
+    bool m_store_swarm_history = false;
 
     std::map<block_height, quorum_manager> m_quorum_states;
     decltype(m_quorum_states)              m_old_quorum_states; // Store all old quorum history only if run with --store-full-quorum-history

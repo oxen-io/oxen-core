@@ -236,6 +236,7 @@ const char* const LMDB_ALT_BLOCKS = "alt_blocks";
 const char* const LMDB_HF_STARTING_HEIGHTS = "hf_starting_heights";
 const char* const LMDB_HF_VERSIONS = "hf_versions";
 const char* const LMDB_SERVICE_NODE_DATA = "service_node_data";
+const char* const LMDB_SWARM_ASSIGNMENT_HISTORY = "swarm_assignment_history";
 
 const char* const LMDB_PROPERTIES = "properties";
 
@@ -1334,7 +1335,7 @@ void BlockchainLMDB::open(const std::string& filename, const int db_flags)
   // set up lmdb environment
   if ((result = mdb_env_create(&m_env)))
     throw0(DB_ERROR(lmdb_error("Failed to create lmdb environment: ", result).c_str()));
-  if ((result = mdb_env_set_maxdbs(m_env, 22)))
+  if ((result = mdb_env_set_maxdbs(m_env, 23)))
     throw0(DB_ERROR(lmdb_error("Failed to set max number of dbs: ", result).c_str()));
 
   int threads = tools::get_max_concurrency();
@@ -1422,6 +1423,8 @@ void BlockchainLMDB::open(const std::string& filename, const int db_flags)
   lmdb_db_open(txn, LMDB_HF_VERSIONS, MDB_INTEGERKEY | MDB_CREATE, m_hf_versions, "Failed to open db handle for m_hf_versions");
 
   lmdb_db_open(txn, LMDB_SERVICE_NODE_DATA, MDB_INTEGERKEY | MDB_CREATE, m_service_node_data, "Failed to open db handle for m_service_node_data");
+
+  lmdb_db_open(txn, LMDB_SWARM_ASSIGNMENT_HISTORY, MDB_INTEGERKEY | MDB_CREATE, m_swarm_assignment_history, "Failed to open db handle for m_swarm_assignment_history");
 
   lmdb_db_open(txn, LMDB_PROPERTIES, MDB_CREATE, m_properties, "Failed to open db handle for m_properties");
 
@@ -1702,6 +1705,7 @@ void BlockchainLMDB::unlock()
   bool my_rtxn = block_rtxn_start(&m_txn, &m_cursors); \
   if (my_rtxn) auto_txn.m_tinfo = m_tinfo.get(); \
   else auto_txn.uncheck()
+
 #define TXN_POSTFIX_RDONLY()
 
 #define TXN_POSTFIX_SUCCESS() \
@@ -5717,6 +5721,22 @@ void BlockchainLMDB::migrate(const uint32_t oldversion)
 }
 
 
+void BlockchainLMDB::set_swarm_state(uint64_t height, const std::string& data)
+{
+  LOG_PRINT_L3("BlockchainLMDB::" << __func__);
+  check_open();
+
+  mdb_txn_cursors *m_cursors = &m_wcursors;
+  CURSOR(swarm_assignment_history);
+
+  MDB_val_set(key, height);
+  MDB_val_copy<blobdata> blob(data);
+
+  int result = mdb_cursor_put(m_cur_swarm_assignment_history, &key, &blob, 0);
+  if (result)
+    throw0(DB_ERROR(lmdb_error("Failed to add swarm assignment history to db transaction: ", result).c_str()));
+}
+
 void BlockchainLMDB::set_service_node_data(const std::string& data)
 {
   LOG_PRINT_L3("BlockchainLMDB::" << __func__);
@@ -5734,7 +5754,101 @@ void BlockchainLMDB::set_service_node_data(const std::string& data)
     throw0(DB_ERROR(lmdb_error("Failed to add service node data to db transaction: ", result).c_str()));
 }
 
-bool BlockchainLMDB::get_service_node_data(std::string& data)
+bool BlockchainLMDB::clear_swarm_state_after(uint64_t height)
+{
+  LOG_PRINT_L3("BlockchainLMDB::" << __func__);
+  check_open();
+
+  mdb_txn_cursors *m_cursors = &m_wcursors;
+  CURSOR(swarm_assignment_history);
+
+  MDB_val key, val;
+
+  while (true) {
+
+    int result = mdb_cursor_get(m_cur_swarm_assignment_history, &key, &val, MDB_LAST);
+    if (result == MDB_NOTFOUND) return true;
+    if (result) { throw0(DB_ERROR(lmdb_error("DB error attempting to clear assignment history", result).c_str())); }
+
+    const uint64_t latest_height = *(const uint64_t*)key.mv_data;
+
+    if (latest_height > height) {
+
+      int result = mdb_cursor_del(m_cur_swarm_assignment_history, 0);
+      if (result) { throw0(DB_ERROR(lmdb_error("DB error attempting to clear assignment history", result).c_str())); }
+
+    } else {
+      break;
+    }
+  }
+
+  return true;
+}
+
+static bool mdb_cursor_get_checked(MDB_cursor* mc, MDB_val* key, MDB_val* data, MDB_cursor_op op)
+{
+  int result = mdb_cursor_get(mc, key, data, op);
+  if (result == MDB_NOTFOUND) {
+    return false;
+  }
+  if (result) {
+    throw0(DB_ERROR(lmdb_error("DB error attempting to get swarm assignment history", result).c_str()));
+  }
+  return true;
+}
+
+bool BlockchainLMDB::get_latest_swarm_state(uint64_t &height, std::string &data) const
+{
+  LOG_PRINT_L3("BlockchainLMDB::" << __func__);
+  check_open();
+
+  TXN_PREFIX_RDONLY();
+
+  RCURSOR(swarm_assignment_history);
+
+  {
+    MDB_val key, val;
+
+    // Get the latest entry
+    if (!mdb_cursor_get_checked(m_cur_swarm_assignment_history, &key, &val, MDB_LAST)) return false;
+
+    const uint64_t latest_height = *(const uint64_t*)key.mv_data;
+
+    // If the latest is higher than requested, discard this result and query the entry
+    // just after the one requested. Otherwise the result is what we want.
+
+    if (latest_height <= height) {
+      height = latest_height;
+      data.assign(reinterpret_cast<const char*>(val.mv_data), val.mv_size);
+      return true;
+    }
+  }
+
+  MDB_val val;
+  MDB_val_copy<uint64_t> key(height);
+
+  // Get the one at or after the current height
+  if (!mdb_cursor_get_checked(m_cur_swarm_assignment_history, &key, &val, MDB_SET_RANGE)) return false;
+
+  const uint64_t got_height = *(const uint64_t*)key.mv_data;
+
+  // Got the current height
+  if (got_height == height) {
+    data.assign(reinterpret_cast<const char*>(val.mv_data), val.mv_size);
+    return true;
+  }
+
+  assert(got_height > height);
+
+  // Got the one after, previous value is what we actually want:
+  if (!mdb_cursor_get_checked(m_cur_swarm_assignment_history, &key, &val, MDB_PREV)) return false;
+
+  height = *(const uint64_t*)key.mv_data;
+  data.assign(reinterpret_cast<const char*>(val.mv_data), val.mv_size);
+  return true;
+}
+
+bool BlockchainLMDB::get_service_node_data(std::string& data) const
 {
   LOG_PRINT_L3("BlockchainLMDB::" << __func__);
   check_open();

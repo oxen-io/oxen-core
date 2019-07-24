@@ -410,7 +410,10 @@ private:
   virtual void fixup(fixup_context const context);
 
   virtual void set_service_node_data(const std::string& data);
-  virtual bool get_service_node_data(std::string& data);
+  virtual bool get_service_node_data(std::string& data) const;
+  virtual void set_swarm_state(uint64_t height, const std::string& data);
+  virtual bool get_latest_swarm_state(uint64_t &height, std::string& data) const;
+  virtual bool clear_swarm_state_after(uint64_t height);
   virtual void clear_service_node_data();
 
   bool m_run_checkpoint;

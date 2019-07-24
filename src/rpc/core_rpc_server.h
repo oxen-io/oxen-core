@@ -184,8 +184,9 @@ namespace cryptonote
         MAP_JON_RPC_WE("get_all_service_nodes",                     on_get_all_service_nodes, COMMAND_RPC_GET_SERVICE_NODES)
         MAP_JON_RPC_WE("get_all_service_nodes_keys",                on_get_all_service_nodes_keys, COMMAND_RPC_GET_ALL_SERVICE_NODES_KEYS)
         MAP_JON_RPC_WE("get_n_service_nodes",                       on_get_n_service_nodes, COMMAND_RPC_GET_N_SERVICE_NODES)
+        MAP_JON_RPC_WE("get_swarm_state",                           on_get_swarm_state, COMMAND_RPC_GET_SWARM_STATE)
         MAP_JON_RPC_WE("get_staking_requirement",                   on_get_staking_requirement, COMMAND_RPC_GET_STAKING_REQUIREMENT)
-        MAP_JON_RPC_WE("get_checkpoints",                          on_get_checkpoints, COMMAND_RPC_GET_CHECKPOINTS)
+        MAP_JON_RPC_WE("get_checkpoints",                           on_get_checkpoints, COMMAND_RPC_GET_CHECKPOINTS)
         MAP_JON_RPC_WE_IF("perform_blockchain_test",                on_perform_blockchain_test, COMMAND_RPC_PERFORM_BLOCKCHAIN_TEST, !m_restricted)
         MAP_JON_RPC_WE_IF("storage_server_ping",                    on_storage_server_ping, COMMAND_RPC_STORAGE_SERVER_PING, !m_restricted)
         MAP_JON_RPC_WE("get_service_nodes_state_changes",           on_get_service_nodes_state_changes, COMMAND_RPC_GET_SN_STATE_CHANGES)
@@ -271,6 +272,7 @@ namespace cryptonote
     bool on_get_service_node_key(const COMMAND_RPC_GET_SERVICE_NODE_KEY::request& req, COMMAND_RPC_GET_SERVICE_NODE_KEY::response& res, epee::json_rpc::error &error_resp, const connection_context *ctx = NULL);
     bool on_get_service_nodes(const COMMAND_RPC_GET_SERVICE_NODES::request& req, COMMAND_RPC_GET_SERVICE_NODES::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
     bool on_get_n_service_nodes(const COMMAND_RPC_GET_N_SERVICE_NODES::request& req, COMMAND_RPC_GET_N_SERVICE_NODES::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
+    bool on_get_swarm_state(const COMMAND_RPC_GET_SWARM_STATE::request& req, COMMAND_RPC_GET_SWARM_STATE::response& res, epee::json_rpc::error& error_resp, const connection_context* ctx) const;
     bool on_get_all_service_nodes_keys(const COMMAND_RPC_GET_ALL_SERVICE_NODES_KEYS::request& req, COMMAND_RPC_GET_ALL_SERVICE_NODES_KEYS::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx);
     bool on_get_all_service_nodes(const COMMAND_RPC_GET_SERVICE_NODES::request& req, COMMAND_RPC_GET_SERVICE_NODES::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
     bool on_get_staking_requirement(const COMMAND_RPC_GET_STAKING_REQUIREMENT::request& req, COMMAND_RPC_GET_STAKING_REQUIREMENT::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);

@@ -232,6 +232,12 @@ namespace cryptonote
     "the entire history.  Requires considerably more memory and block chain storage.",
     0};
 
+  static const command_line::arg_descriptor<bool> arg_store_swarm_history = {
+    "store-swarm-history",
+    "Store the history of swarm assignments to service nodes. Requires considerably more blockchain storage. The data "
+    "is only stored for blocks that represent change in swarm assignments",
+    false
+  };
 
   //-----------------------------------------------------------------------------------------------
   core::core(i_cryptonote_protocol* pprotocol):
@@ -331,6 +337,7 @@ namespace cryptonote
 
     command_line::add_arg(desc, arg_recalculate_difficulty);
     command_line::add_arg(desc, arg_store_quorum_history);
+    command_line::add_arg(desc, arg_store_swarm_history);
 #if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
     command_line::add_arg(desc, loki::arg_integration_test_hardforks_override);
     command_line::add_arg(desc, loki::arg_integration_test_shared_mem_name);
@@ -715,6 +722,7 @@ namespace cryptonote
       m_service_node_list.set_db_pointer(initialized_db);
 
       m_service_node_list.set_quorum_history_storage(command_line::get_arg(vm, arg_store_quorum_history));
+      m_service_node_list.set_store_swarm_history(command_line::get_arg(vm, arg_store_swarm_history));
 
       m_blockchain_storage.hook_block_added(m_service_node_list);
       m_blockchain_storage.hook_blockchain_detached(m_service_node_list);
@@ -2224,6 +2232,11 @@ namespace cryptonote
   {
     std::vector<service_nodes::service_node_pubkey_info> result = m_service_node_list.get_service_node_list_state(service_node_pubkeys);
     return result;
+  }
+  //-----------------------------------------------------------------------------------------------
+  std::vector<service_nodes::swarm_id_entry_t> core::get_swarm_state(uint64_t &height) const
+  {
+    return m_service_node_list.get_swarm_state(height);
   }
   //-----------------------------------------------------------------------------------------------
   bool core::add_service_node_vote(const service_nodes::quorum_vote_t& vote, vote_verification_context &vvc)

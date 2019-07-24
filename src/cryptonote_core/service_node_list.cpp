@@ -100,6 +100,11 @@ namespace service_nodes
         }
 
         process_block(block, txs);
+
+        if (m_store_swarm_history)
+        {
+          store_swarm_state();
+        }
       }
     }
     LOG_PRINT_L0("Done recalculating service nodes list");
@@ -255,6 +260,10 @@ namespace service_nodes
     if (hist_size == 1)
       hist_size = std::numeric_limits<uint64_t>::max();
     m_store_quorum_history = hist_size;
+  }
+
+  void service_node_list::set_store_swarm_history(bool do_store) {
+    m_store_swarm_history = do_store;
   }
 
   bool service_node_list::is_service_node(const crypto::public_key& pubkey, bool require_active) const
@@ -502,7 +511,7 @@ namespace service_nodes
       const swarm_id_t swarm_id = entry.first;
       const std::vector<crypto::public_key>& snodes = entry.second;
 
-      for (const auto snode : snodes) {
+      for (const auto &snode : snodes) {
 
         auto& sn_info = m_state.service_nodes_infos.at(snode);
         if (sn_info.swarm_id == swarm_id) continue; /// nothing changed for this snode
@@ -943,6 +952,11 @@ namespace service_nodes
     std::lock_guard<boost::recursive_mutex> lock(m_sn_mutex);
     process_block(block, txs);
     store();
+
+    if (m_store_swarm_history)
+    {
+      store_swarm_state();
+    }
   }
 
   void service_node_list::process_block(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs)
@@ -1150,8 +1164,15 @@ namespace service_nodes
     m_state = m_state_history.back();
     m_state_history.pop_back();
 
+    // As we have holes in swarm assignment history, we need to
+    // remove all entires after `height` since they might not be
+    // overwritten after a reorg
+
+    clear_swarm_state_after(height);
+
     if (m_state.height != (height - 1))
       rescan_starting_from_curr_state();
+
     store();
   }
 
@@ -1558,6 +1579,65 @@ namespace service_nodes
     return true;
   }
 
+  struct swarm_state_t {
+    std::vector<swarm_id_entry_t> swarm_id_list;
+
+    BEGIN_SERIALIZE()
+      FIELD(swarm_id_list)
+    END_SERIALIZE()
+  };
+
+  bool service_node_list::clear_swarm_state_after(uint64_t height)
+  {
+    if (!m_db) return false;
+
+    cryptonote::db_wtxn_guard txn_guard(m_db);
+    m_db->clear_swarm_state_after(height);
+  }
+
+  bool service_node_list::store_swarm_state()
+  {
+    if (!m_db)
+        return false;
+
+    const uint8_t hf_version = m_blockchain.get_current_hard_fork_version();
+    if (hf_version < cryptonote::network_version_9_service_nodes)
+      return true;
+
+    swarm_state_t data;
+
+    {
+      std::lock_guard<boost::recursive_mutex> lock(m_sn_mutex);
+
+      const auto &infos = m_state.active_service_nodes_infos();
+
+      data.swarm_id_list.reserve(infos.size());
+
+      for (const auto& kv_pair : infos)
+      {
+        data.swarm_id_list.push_back({kv_pair.first, kv_pair.second.swarm_id});
+      }
+    }
+
+    std::stringstream ss;
+    binary_archive<true> ba(ss);
+
+    bool r = ::serialization::serialize(ba, data);
+    CHECK_AND_ASSERT_MES(r, false, "Failed to store swarm data: failed to serialize data");
+
+    cryptonote::db_wtxn_guard txn_guard(m_db);
+
+    // Only store if the state changed
+    uint64_t latest_height = m_state.height;
+    std::string blob;
+    bool res = m_db->get_latest_swarm_state(latest_height, blob);
+
+    if (!res || blob != ss.str()) {
+      m_db->set_swarm_state(m_state.height, ss.str());
+    }
+
+  }
+
   void service_node_list::get_all_service_nodes_public_keys(std::vector<crypto::public_key>& keys, bool require_active) const
   {
     keys.clear();
@@ -1761,6 +1841,40 @@ namespace service_nodes
     proof_info &info            = it->second.proof;
     info.votes[info.vote_index] = voted;
     info.vote_index             = (info.vote_index + 1) % info.votes.size();
+  }
+
+  std::vector<swarm_id_entry_t> service_node_list::get_swarm_state(uint64_t &height) const
+  {
+    LOG_PRINT_L1("service_node_list::" << __func__);
+    swarm_state_t data;
+    std::lock_guard<boost::recursive_mutex> lock(m_sn_mutex);
+    if (!m_db)
+    {
+      return data.swarm_id_list; // return default ({} would prevent RVO?)
+    }
+
+    std::string blob;
+
+    {
+      cryptonote::db_rtxn_guard txn_guard(m_db);
+      uint64_t height_out = height;
+      if (!m_db->get_latest_swarm_state(height_out, blob))
+      {
+        height = UINT64_MAX;
+        return data.swarm_id_list;  // return default
+      }
+
+      height = height_out;
+    }
+
+    std::stringstream ss;
+    ss << blob;
+
+    binary_archive<false> ba(ss);
+    bool r = ::serialization::serialize(ba, data);
+    CHECK_AND_ASSERT_MES(r, {}, "Failed to parse swarm data from blob");
+
+    return data.swarm_id_list;
   }
 
   bool service_node_list::load(const uint64_t current_height)

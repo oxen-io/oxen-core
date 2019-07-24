@@ -2806,6 +2806,28 @@ namespace cryptonote
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_get_swarm_state(const COMMAND_RPC_GET_SWARM_STATE::request& req,
+                                           COMMAND_RPC_GET_SWARM_STATE::response& res,
+                                           epee::json_rpc::error& error_resp,
+                                           const connection_context* ctx) const
+  {
+    uint64_t height_in_out = req.height;
+    const auto swarm_state = m_core.get_swarm_state(height_in_out);
+
+    res.entries.reserve(swarm_state.size());
+    res.height = height_in_out;
+
+    for (const auto &entry : swarm_state)
+    {
+      res.entries.emplace_back();
+      auto &res_entry = res.entries.back();
+      res_entry.service_node_pubkey = string_tools::pod_to_hex(entry.pubkey);
+      res_entry.swarm_id = entry.swarm_id;
+    }
+
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::on_get_all_service_nodes(const COMMAND_RPC_GET_SERVICE_NODES::request& req, COMMAND_RPC_GET_SERVICE_NODES::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
   {
     auto req_all = req;

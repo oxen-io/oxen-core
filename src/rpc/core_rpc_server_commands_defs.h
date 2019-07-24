@@ -3008,6 +3008,42 @@ namespace cryptonote
     typedef epee::misc_utils::struct_init<response_t> response;
   };
 
+  LOKI_RPC_DOC_INTROSPECT
+  // Get swarm id assignments at a particular blockchain height,
+  // (--store_swarm_histoly option is required)
+  struct COMMAND_RPC_GET_SWARM_STATE
+  {
+    struct request
+    {
+      uint64_t height; // The blockchain height
+      BEGIN_KV_SERIALIZE_MAP()
+      KV_SERIALIZE(height);
+      END_KV_SERIALIZE_MAP()
+    };
+
+    // Swarm id assignment
+    struct entry_t
+    {
+      std::string service_node_pubkey;
+      uint64_t swarm_id;
+
+      BEGIN_KV_SERIALIZE_MAP()
+      KV_SERIALIZE(service_node_pubkey)
+      KV_SERIALIZE(swarm_id)
+      END_KV_SERIALIZE_MAP()
+    };
+
+    struct response
+    {
+      uint64_t height; // The earliest height for which this very response is accurate
+      std::vector<entry_t> entries; // Swarm id assignments
+      BEGIN_KV_SERIALIZE_MAP()
+      KV_SERIALIZE(height);
+      KV_SERIALIZE(entries);
+      END_KV_SERIALIZE_MAP()
+    };
+  };
+
   struct COMMAND_RPC_STORAGE_SERVER_PING
   {
     struct request
