@@ -29,6 +29,7 @@
 #include <functional>
 #include <random>
 #include <algorithm>
+#include <chrono>
 
 #include <boost/endian/conversion.hpp>
 
@@ -68,6 +69,7 @@ namespace service_nodes
     if (m_blockchain.get_current_hard_fork_version() < 9)
       return;
 
+    auto scan_start         = std::chrono::high_resolution_clock::now();
     uint64_t current_height = m_blockchain.get_current_blockchain_height();
     if (m_state.height == current_height)
       return;
@@ -76,8 +78,14 @@ namespace service_nodes
     std::vector<std::pair<cryptonote::blobdata, cryptonote::block>> blocks;
     for (uint64_t i = 0; m_state.height < current_height; i++)
     {
+      static auto work_start = std::chrono::high_resolution_clock::now();
       if (i > 0 && i % 10 == 0)
-          MGINFO("... scanning height " << m_state.height);
+      {
+        auto work_end = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(work_end - work_start);
+        MGINFO("... scanning height " << m_state.height << " (" << duration.count() / 1000.f << "s)");
+        work_start = std::chrono::high_resolution_clock::now();
+      }
 
       blocks.clear();
       if (!m_blockchain.get_blocks(m_state.height, 1000, blocks))
@@ -103,7 +111,11 @@ namespace service_nodes
         process_block(block, txs);
       }
     }
-    MGINFO("Done recalculating service nodes list");
+
+    auto scan_end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(scan_end - scan_start);
+    MGINFO("Done recalculating service nodes list (" << duration.count() / 1000.f << "s)");
+    store();
   }
 
   void service_node_list::init()
@@ -1015,7 +1027,15 @@ namespace service_nodes
   {
     quorum_manager result = {};
     crypto::hash block_hash;
+
+    // NOTE: The quorum for a particular height is derived from the service node
+    // list state that's been updated from the next block. This is an
+    // unfortunate design decision, that we locked ourselves into from the start.
+
+    // The alternative is to subtract a 1 from the height in get_testing_quorum.
     uint64_t const height = cryptonote::get_block_height(block);
+    assert(state.height == height + 1);
+
     int const hf_version  = block.major_version;
     if (!cryptonote::get_block_hash(block, block_hash))
     {
@@ -1108,6 +1128,7 @@ namespace service_nodes
     assert(m_state.height == block_height);
     bool need_swarm_update = false;
     m_state_history.push_back(m_state);
+    m_state.quorums = {};
     ++m_state.height;
 
     //
@@ -1260,9 +1281,9 @@ namespace service_nodes
       }
     }
 
+    m_state_history.back().quorums = generate_quorums(m_blockchain.nettype(), m_state, block);
     if (need_swarm_update)
       update_swarms(block_height);
-    m_state.quorums = generate_quorums(m_blockchain.nettype(), m_state, block);
   }
 
   void service_node_list::blockchain_detached(uint64_t height)
@@ -1301,7 +1322,8 @@ namespace service_nodes
 
     if (m_state.height != height)
       rescan_starting_from_curr_state();
-    store();
+    else
+      store();
   }
 
   std::vector<crypto::public_key> service_node_list::update_and_get_expired_nodes(const std::vector<cryptonote::transaction> &txs, uint64_t block_height)
