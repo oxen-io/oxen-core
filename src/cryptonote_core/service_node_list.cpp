@@ -49,13 +49,14 @@
 #include "service_node_swarm.h"
 #include "version.h"
 
-size_t constexpr MAX_SHORT_TERM_STATE_HISTORY = BLOCKS_EXPECTED_IN_HOURS(2);
-
 #undef LOKI_DEFAULT_LOG_CATEGORY
 #define LOKI_DEFAULT_LOG_CATEGORY "service_nodes"
 
 namespace service_nodes
 {
+  size_t constexpr MAX_SHORT_TERM_STATE_HISTORY   = 6 * STATE_CHANGE_TX_LIFETIME_IN_BLOCKS;
+  size_t constexpr STORE_LONG_TERM_STATE_INTERVAL = 10000;
+
   static int get_min_service_node_info_version_for_hf(uint8_t hf_version)
   {
     return service_node_info::version_0_checkpointing; // Versioning reset with the full SN rescan in 4.0.0
