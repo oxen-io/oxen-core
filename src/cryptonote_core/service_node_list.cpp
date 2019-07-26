@@ -190,7 +190,10 @@ namespace service_nodes
                                  [](state_t const &state, uint64_t height) { return state.height < height; });
 
       if (it != m_state_history.end())
-        quorums = &it->quorums;
+      {
+        if (it->height == height)
+          quorums = &it->quorums;
+      }
     }
 
     if (!quorums && include_old) // NOTE: Search m_old_quorum_states
@@ -202,7 +205,10 @@ namespace service_nodes
                            [](quorums_by_height const &entry, uint64_t height) { return entry.height < height; });
 
       if (it != m_old_quorum_states.end())
-        quorums = &it->quorums;
+      {
+        if (it->height == height)
+          quorums = &it->quorums;
+      }
     }
 
     if (!quorums)
