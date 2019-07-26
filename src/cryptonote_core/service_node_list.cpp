@@ -65,7 +65,7 @@ namespace service_nodes
   service_node_list::service_node_list(cryptonote::Blockchain& blockchain)
     : m_blockchain(blockchain), m_db(nullptr), m_service_node_pubkey(nullptr), m_store_quorum_history(0) { }
 
-  void service_node_list::rescan_starting_from_curr_state()
+  void service_node_list::rescan_starting_from_curr_state(bool store_to_disk)
   {
     if (m_blockchain.get_current_hard_fork_version() < 9)
       return;
@@ -82,7 +82,7 @@ namespace service_nodes
       static auto work_start = std::chrono::high_resolution_clock::now();
       if (i > 0 && i % 10 == 0)
       {
-        store();
+        if (store_to_disk) store();
         auto work_end = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(work_end - work_start);
         MGINFO("... scanning height " << m_state.height << " (" << duration.count() / 1000.f << "s)");
@@ -117,7 +117,7 @@ namespace service_nodes
     auto scan_end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(scan_end - scan_start);
     MGINFO("Done recalculating service nodes list (" << duration.count() / 1000.f << "s)");
-    store();
+    if (store_to_disk) store();
   }
 
   void service_node_list::init()
@@ -136,8 +136,14 @@ namespace service_nodes
       loaded = false; // Either we don't have stored history or the history is very short, so recalculation is necessary or cheap.
     }
 
-    if (!loaded || m_state.height > current_height) reset(true);
-    rescan_starting_from_curr_state();
+    bool store_to_disk = false;
+    if (!loaded || m_state.height > current_height)
+    {
+      reset(true);
+      store_to_disk = true;
+    }
+
+    rescan_starting_from_curr_state(store_to_disk);
   }
 
   template <typename UnaryPredicate>
@@ -1146,7 +1152,7 @@ namespace service_nodes
 
       for (; it != m_state_history.end() && it->height <= start_height;)
       {
-        if (it->height % 10000 == 0)
+        if (it->height % STORE_LONG_TERM_STATE_INTERVAL == 0)
           it++;
         else
         {
@@ -1323,9 +1329,8 @@ namespace service_nodes
     m_state_history.pop_back();
 
     if (m_state.height != height)
-      rescan_starting_from_curr_state();
-    else
-      store();
+      rescan_starting_from_curr_state(false /*store_to_disk*/);
+    store();
   }
 
   std::vector<crypto::public_key> service_node_list::update_and_get_expired_nodes(const std::vector<cryptonote::transaction> &txs, uint64_t block_height)
@@ -1581,20 +1586,32 @@ namespace service_nodes
         data.quorum_states.push_back(std::move(quorum));
       }
 
-      uint64_t const block_height = m_blockchain.get_current_blockchain_height();
-      uint64_t const start_height =
-          (block_height < MAX_SHORT_TERM_STATE_HISTORY) ? 0 : block_height - MAX_SHORT_TERM_STATE_HISTORY;
-      auto first_recent_state =
-          std::lower_bound(m_state_history.begin(),
-                           m_state_history.end(),
-                           start_height,
-                           [](state_t const &state, uint64_t start_height) { return state.height < start_height; });
+      if (m_state_history.size() == 1)
+      {
+        data.states.emplace_back(serialize_service_node_state_object(hf_version, m_state_history[0]));
+      }
+      else if (m_state_history.size() >= 2)
+      {
+        for (size_t i = 0; i < (m_state_history.size() - 1); i++)
+        {
+          state_t const &curr = m_state_history[i];
+          state_t const &next = m_state_history[i + 1];
 
-      for (auto it = m_state_history.begin(); it != first_recent_state; it++)
-        data.states.emplace_back(serialize_service_node_state_object(hf_version, *it));
+          if (next.height <= curr.height)
+          {
+            LOG_PRINT_L0("States to serialise are not stored in ascending order by height in DB, failed to store to DB");
+            return false;
+          }
 
-      if (first_recent_state != m_state_history.end())
-        data.states.emplace_back(serialize_service_node_state_object(hf_version, *first_recent_state));
+          data.states.emplace_back(serialize_service_node_state_object(hf_version, curr));
+          uint64_t height_delta = next.height - curr.height;
+          if (height_delta != STORE_LONG_TERM_STATE_INTERVAL)
+          {
+            data.states.emplace_back(serialize_service_node_state_object(hf_version, next));
+            break;
+          }
+        }
+      }
     }
 
     static std::string blob;
