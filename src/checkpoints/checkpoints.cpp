@@ -200,19 +200,7 @@ namespace cryptonote
       }
     }
 
-    uint64_t end_cull_height = height - service_nodes::CHECKPOINT_STORE_PERSISTENTLY_INTERVAL;
-    {
-      uint64_t constexpr NUM_CHECKPOINTS = service_nodes::CHECKPOINT_NUM_CHECKPOINTS_FOR_CHAIN_FINALITY;
-      std::vector<checkpoint_t> checkpoints = m_db->get_checkpoints_range(height, 0, NUM_CHECKPOINTS);
-
-      if (checkpoints.size() != NUM_CHECKPOINTS)
-        return; // NOTE: No checkpoints to cull, can't cull the last N as they are for securing the chain
-
-      checkpoint_t const &oldest_checkpoint = checkpoints.back();
-      assert(oldest_checkpoint.height < checkpoints[0].height && "API for retrieving range of checkpoints has changed and is returning the checkpoints sorted in an order we did not expect" != nullptr);
-      end_cull_height = std::min(oldest_checkpoint.height, end_cull_height);
-    }
-
+    uint64_t end_cull_height = m_db->get_checkpoint_immutable_height();
     uint64_t start_cull_height = (end_cull_height < service_nodes::CHECKPOINT_STORE_PERSISTENTLY_INTERVAL)
                                      ? 0
                                      : end_cull_height - service_nodes::CHECKPOINT_STORE_PERSISTENTLY_INTERVAL;
