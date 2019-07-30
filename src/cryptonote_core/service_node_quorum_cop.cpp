@@ -425,6 +425,16 @@ namespace service_nodes
       return true;
     }
 
+    if (vote.block_height > curr_height)
+    {
+      // NOTE: If the daemon is not completely synced, at startup we can connect
+      // to peers that P2P votes from the tip of the chain before the daemon
+      // realises it has blocks to sync causing the missing quorum state error
+      // to print erroneously.
+      LOG_PRINT_L1("Received vote age greater than the current synced height: " << curr_height << ", quorum for height: " << vote.block_height << " has not been generated yet.");
+      return false;
+    }
+
     std::shared_ptr<const testing_quorum> quorum = m_core.get_testing_quorum(vote.type, vote.block_height);
     if (!quorum)
     {
