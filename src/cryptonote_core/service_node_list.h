@@ -428,6 +428,8 @@ namespace service_nodes
 
     struct quorums_by_height
     {
+      quorums_by_height() = default;
+      quorums_by_height(uint64_t height, quorum_manager quorums) : height(height), quorums(quorums) {}
       uint64_t       height;
       quorum_manager quorums;
     };

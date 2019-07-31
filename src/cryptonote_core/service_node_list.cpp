@@ -189,11 +189,8 @@ namespace service_nodes
                                  height,
                                  [](state_t const &state, uint64_t height) { return state.height < height; });
 
-      if (it != m_state_history.end())
-      {
-        if (it->height == height)
-          quorums = &it->quorums;
-      }
+      if (it != m_state_history.end() && it->height == height)
+        quorums = &it->quorums;
     }
 
     if (!quorums && include_old) // NOTE: Search m_old_quorum_states
@@ -204,11 +201,8 @@ namespace service_nodes
                            height,
                            [](quorums_by_height const &entry, uint64_t height) { return entry.height < height; });
 
-      if (it != m_old_quorum_states.end())
-      {
-        if (it->height == height)
-          quorums = &it->quorums;
-      }
+      if (it != m_old_quorum_states.end() && it->height == height)
+        quorums = &it->quorums;
     }
 
     if (!quorums)
@@ -1156,25 +1150,20 @@ namespace service_nodes
                            start_height,
                            [](state_t const &state, uint64_t start_height) { return state.height < start_height; });
 
-      for (; it != m_state_history.end() && it->height <= start_height;)
+      while (it != m_state_history.end() && it->height <= start_height)
       {
         if (it->height % STORE_LONG_TERM_STATE_INTERVAL == 0)
           it++;
         else
         {
           if (m_store_quorum_history)
-          {
-            quorums_by_height entry = {};
-            entry.height            = it->height;
-            entry.quorums           = it->quorums;
-            m_old_quorum_states.push_back(entry);
-          }
+            m_old_quorum_states.emplace_back(it->height, it->quorums);
           it = m_state_history.erase(it);
         }
       }
 
-      while (m_old_quorum_states.size() > m_store_quorum_history)
-        m_old_quorum_states.pop_front();
+      if (m_old_quorum_states.size() > m_store_quorum_history)
+        m_old_quorum_states.erase(m_old_quorum_states.begin(), m_old_quorum_states.begin() + (m_old_quorum_states.size() -  m_store_quorum_history));
     }
 
     //
