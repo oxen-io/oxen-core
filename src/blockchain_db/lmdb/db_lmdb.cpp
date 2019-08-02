@@ -3971,8 +3971,10 @@ bool BlockchainLMDB::get_immutable_checkpoint(checkpoint_t *immutable_checkpoint
   size_t constexpr NUM_CHECKPOINTS = service_nodes::CHECKPOINT_NUM_CHECKPOINTS_FOR_CHAIN_FINALITY;
   std::vector<checkpoint_t> const checkpoints = get_checkpoints_range(height(), 0, NUM_CHECKPOINTS);
 
+  if (checkpoints.empty())
+    return false;
+
   checkpoint_t const *immutable_checkpoint_ptr = nullptr;
-  uint64_t result = 0;
   if (checkpoints[0].type == checkpoint_type::service_node) // checkpoint[0] is the first closest checkpoint that is <= my height
   {
     // NOTE: The current checkpoint is a service node checkpoint. Go back
@@ -3989,18 +3991,16 @@ bool BlockchainLMDB::get_immutable_checkpoint(checkpoint_t *immutable_checkpoint
       // so we can't reorg past that height. If it's predefined, that's ok as
       // well, we can't reorg past that height so irrespective, always accept
       // the height of this next checkpoint.
-      result                   = checkpoints[1].height;
       immutable_checkpoint_ptr = &checkpoints[1];
     }
   }
   else
   {
-    result                   = checkpoints[0].height;
     immutable_checkpoint_ptr = &checkpoints[0];
   }
 
-    if (immutable_checkpoint)
-      *immutable_checkpoint = *immutable_checkpoint_ptr;
+  if (immutable_checkpoint)
+    *immutable_checkpoint = *immutable_checkpoint_ptr;
 
   return true;
 }
