@@ -1245,7 +1245,7 @@ namespace cryptonote
       }
       bufPtr += snprintf(bufPtr, bufEnd - bufPtr, ", ");
     }
-    if (vvc.m_invalid_vote_type)             bufPtr += snprintf(bufPtr, bufEnd - bufPtr, "Vote type has invalid value: %s, ", vote ? std::to_string((uint8_t)vote->type) : "??");
+    if (vvc.m_invalid_vote_type)             bufPtr += snprintf(bufPtr, bufEnd - bufPtr, "Vote type has invalid value: %s, ", vote ? std::to_string((uint8_t)vote->type).c_str() : "??");
 
     if (bufPtr != buf)
     {
