@@ -3268,7 +3268,7 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
       }
 
       crypto::public_key const &state_change_service_node_pubkey = quorum->workers[state_change.service_node_index];
-      if (hf_version >= cryptonote::network_version_12_checkpointing)
+      if (1)
       {
         //
         // NOTE: Query the Service Node List for the in question Service Node the state change is for and disallow if conflicting
@@ -3281,9 +3281,9 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
         }
 
         service_nodes::service_node_info const &service_node_info = service_node_array[0].info;
-        if (!service_node_info.can_transition_to_state(state_change.state))
+        if (!service_node_info.can_transition_to_state(hf_version, state_change.block_height, state_change.state))
         {
-          LOG_PRINT_L2("State change trying to vote Service Node into the same state it already is in, (aka double spend)");
+          MERROR_VER("State change trying to vote Service Node into the same state it already is in, (aka double spend)");
           tvc.m_double_spend = true;
           return false;
         }
