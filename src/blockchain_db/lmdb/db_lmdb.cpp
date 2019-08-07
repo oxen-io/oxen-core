@@ -3969,38 +3969,34 @@ std::vector<checkpoint_t> BlockchainLMDB::get_checkpoints_range(uint64_t start, 
 bool BlockchainLMDB::get_immutable_checkpoint(checkpoint_t *immutable_checkpoint) const
 {
   size_t constexpr NUM_CHECKPOINTS = service_nodes::CHECKPOINT_NUM_CHECKPOINTS_FOR_CHAIN_FINALITY;
-  std::vector<checkpoint_t> const checkpoints = get_checkpoints_range(height(), 0, NUM_CHECKPOINTS);
+  static_assert(NUM_CHECKPOINTS == 2,
+                "Expect checkpoint finality to be 2, otherwise the immutable logic needs to check for any hardcoded "
+                "checkpoints inbetween");
+
+  std::vector<checkpoint_t> checkpoints = get_checkpoints_range(height(), 0, NUM_CHECKPOINTS);
 
   if (checkpoints.empty())
     return false;
 
-  checkpoint_t const *immutable_checkpoint_ptr = nullptr;
-  if (checkpoints[0].type == checkpoint_type::service_node) // checkpoint[0] is the first closest checkpoint that is <= my height
+  checkpoint_t checkpoint;
+  if (checkpoints[0].type != checkpoint_type::service_node) // checkpoint[0] is the first closest checkpoint that is <= my height
   {
-    // NOTE: The current checkpoint is a service node checkpoint. Go back
+    checkpoint = std::move(checkpoints[0]); // Must be hard-coded then, always immutable
+  }
+  else if (checkpoints.size() == 1)
+  {
+    // NOTE: The first checkpoint is a service node checkpoint. Go back
     // 1 checkpoint, which will either be another service node checkpoint or
     // a predefined one.
-    if (checkpoints.size() == 1)
-    {
-      // NOTE: Only one service node checkpoint recorded, we can override this checkpoint.
-      return false;
-    }
-    else
-    {
-      // If it's a service node checkpoint, this is the 2nd newest checkpoint,
-      // so we can't reorg past that height. If it's predefined, that's ok as
-      // well, we can't reorg past that height so irrespective, always accept
-      // the height of this next checkpoint.
-      immutable_checkpoint_ptr = &checkpoints[1];
-    }
+    checkpoint = std::move(checkpoints[1]);
   }
   else
   {
-    immutable_checkpoint_ptr = &checkpoints[0];
+    return false; // NOTE: Only one service node checkpoint recorded, we can override this checkpoint.
   }
 
   if (immutable_checkpoint)
-    *immutable_checkpoint = *immutable_checkpoint_ptr;
+    *immutable_checkpoint = std::move(checkpoint);
 
   return true;
 }
