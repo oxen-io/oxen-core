@@ -3978,17 +3978,17 @@ bool BlockchainLMDB::get_immutable_checkpoint(checkpoint_t *immutable_checkpoint
   if (checkpoints.empty())
     return false;
 
-  checkpoint_t checkpoint;
+  checkpoint_t *checkpoint_ptr = nullptr;
   if (checkpoints[0].type != checkpoint_type::service_node) // checkpoint[0] is the first closest checkpoint that is <= my height
   {
-    checkpoint = std::move(checkpoints[0]); // Must be hard-coded then, always immutable
+    checkpoint_ptr = &checkpoints[0]; // Must be hard-coded then, always immutable
   }
   else if (checkpoints.size() == 1)
   {
     // NOTE: The first checkpoint is a service node checkpoint. Go back
     // 1 checkpoint, which will either be another service node checkpoint or
     // a predefined one.
-    checkpoint = std::move(checkpoints[1]);
+    checkpoint_ptr = &checkpoints[1];
   }
   else
   {
@@ -3996,7 +3996,7 @@ bool BlockchainLMDB::get_immutable_checkpoint(checkpoint_t *immutable_checkpoint
   }
 
   if (immutable_checkpoint)
-    *immutable_checkpoint = std::move(checkpoint);
+    *immutable_checkpoint = std::move(*checkpoint_ptr);
 
   return true;
 }
