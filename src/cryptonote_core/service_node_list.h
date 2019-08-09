@@ -123,6 +123,7 @@ namespace service_nodes
     bool is_active() const { return is_fully_funded() && !is_decommissioned(); }
 
     bool can_transition_to_state(uint8_t hf_version, uint64_t block_height, new_state proposed_state) const;
+    bool can_be_voted_on        (uint64_t block_height) const;
     size_t total_num_locked_contributions() const;
 
     BEGIN_SERIALIZE_OBJECT()

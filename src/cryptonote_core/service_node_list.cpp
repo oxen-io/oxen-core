@@ -2214,37 +2214,23 @@ namespace service_nodes
     return true;
   }
 
+  bool service_node_info::can_be_voted_on(uint64_t height) const
+  {
+    // If the SN expired and was reregistered since the height we'll be voting on it prematurely
+    if (!this->is_fully_funded() || this->registration_height >= height) return false;
+    if (this->is_decommissioned() && this->last_decommission_height >= height) return false;
+
+    // NOTE: This cast is safe. The definition of is_active() is that active_since_height >= 0
+    assert(this->active_since_height >= 0);
+    if (this->is_active() && static_cast<uint64_t>(this->active_since_height) >= height) return false;
+    return true;
+  }
+
   bool service_node_info::can_transition_to_state(uint8_t hf_version, uint64_t height, new_state proposed_state) const
   {
-    if (hf_version >= cryptonote::network_version_13)
-    {
-      if (this->is_decommissioned())
-      {
-        if (proposed_state == new_state::recommission)
-          return (height > this->last_decommission_height);
-
-        return proposed_state != new_state::decommission &&
-               proposed_state != new_state::ip_change_penalty;
-      }
-
-      if (this->is_active())
-      {
-        if (proposed_state == new_state::recommission)
-          return false;
-
-        // NOTE: This cast is safe. The definition of is_active() is that active_since_height >= 0
-        assert(this->active_since_height >= 0);
-        if (height <= static_cast<uint64_t>(this->active_since_height))
-          return false;
-
-        return true;
-      }
-
-      // Otherwise not fully funded, can never transition
+    if (hf_version >= cryptonote::network_version_13 && !can_be_voted_on(height))
       return false;
-    }
 
-    // NOTE: Pre HF13
     if (this->is_decommissioned())
     {
       return proposed_state != new_state::decommission &&
