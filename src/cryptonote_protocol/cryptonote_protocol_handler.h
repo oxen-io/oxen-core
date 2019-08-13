@@ -141,7 +141,7 @@ namespace cryptonote
         if (context.m_state > cryptonote_connection_context::state_synchronizing)
         {
           epee::net_utils::zone zone = context.m_remote_address.get_zone();
-          if (peer_id && exclude_context.m_connection_id != context.m_connection_id && zone == epee::net_utils::zone::public_)
+          if (peer_id && exclude_context.m_connection_id != context.m_connection_id)
             connections.push_back({zone, context.m_connection_id});
         }
         return true;
