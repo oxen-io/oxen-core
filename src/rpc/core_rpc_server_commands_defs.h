@@ -2981,7 +2981,9 @@ namespace cryptonote
   {
     struct request
     {
+      std::string version; // Storage Server version
       BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(version);
       END_KV_SERIALIZE_MAP()
     };
 

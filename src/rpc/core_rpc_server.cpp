@@ -2965,13 +2965,58 @@ namespace cryptonote
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
-  bool core_rpc_server::on_storage_server_ping(const COMMAND_RPC_STORAGE_SERVER_PING::request&,
+  // Parse version, return `true` on success.
+  static bool parse_version(int result[3], const std::string& str)
+  {
+    std::vector<std::string> strs;
+    strs.reserve(3);
+    boost::split(strs, str, boost::is_any_of("."));
+    if (strs.size() != 3) {
+      return false;
+    }
+
+    try {
+      result[0] = std::stoi(strs[0]);
+      result[1] = std::stoi(strs[1]);
+      result[2] = std::stoi(strs[2]);
+    } catch (const std::exception& e) {
+      return false;
+    }
+
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+  // Return `true` if the current version is out of date (or in case of error)
+  static bool update_required(const std::string cur_version, const int min_version[3])
+  {
+    int ss_version[3] = { 0 };
+    if (!parse_version(ss_version, cur_version)) {
+      return true;
+    }
+
+    return std::lexicographical_compare(ss_version, ss_version + 3, min_version, min_version + 3);
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_storage_server_ping(const COMMAND_RPC_STORAGE_SERVER_PING::request& req,
                                                COMMAND_RPC_STORAGE_SERVER_PING::response& res,
                                                epee::json_rpc::error&,
                                                const connection_context*)
   {
-    m_core.m_last_storage_server_ping = time(nullptr);
-    res.status = "OK";
+
+    const uint8_t hf_version = m_core.get_hard_fork_version(m_core.get_current_blockchain_height());
+
+    if (hf_version >= network_version_13 &&
+        update_required(req.version, service_nodes::MIN_STORAGE_SERVER_VERSION)) {
+      std::stringstream status;
+      status << "Outdated Storage Server. Required: " << service_nodes::MIN_STORAGE_SERVER_VERSION[0] << "."
+             << service_nodes::MIN_STORAGE_SERVER_VERSION[1] << "." << service_nodes::MIN_STORAGE_SERVER_VERSION[2];
+      res.status = status.str();
+      MERROR(status.str());
+    } else {
+      m_core.m_last_storage_server_ping = time(nullptr);
+      res.status = "OK";
+    }
+
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
