@@ -2965,22 +2965,6 @@ namespace cryptonote
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
-  // Return `true` if the current version is out of date (or in case of error)
-  static bool update_required(const std::string cur_version_str[3], const int min_version[3])
-  {
-    int cur_version[3];
-
-    try {
-      cur_version[0] = std::stoi(cur_version_str[0]);
-      cur_version[1] = std::stoi(cur_version_str[1]);
-      cur_version[2] = std::stoi(cur_version_str[2]);
-    } catch (const std::exception& e) {
-      return true;
-    }
-
-    return std::lexicographical_compare(cur_version, cur_version + 3, min_version, min_version + 3);
-  }
-  //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::on_storage_server_ping(const COMMAND_RPC_STORAGE_SERVER_PING::request& req,
                                                COMMAND_RPC_STORAGE_SERVER_PING::response& res,
                                                epee::json_rpc::error&,
@@ -2989,10 +2973,14 @@ namespace cryptonote
 
     const uint8_t hf_version = m_core.get_hard_fork_version(m_core.get_current_blockchain_height());
 
-    std::string cur_version_str[] = { req.version_major, req.version_minor, req.version_patch };
+    const int cur_version[] = { req.version_major, req.version_minor, req.version_patch };
 
-    if (hf_version >= network_version_13 &&
-        update_required(cur_version_str, service_nodes::MIN_STORAGE_SERVER_VERSION)) {
+    const bool update_needed = std::lexicographical_compare(cur_version,
+                                                            cur_version + 3,
+                                                            service_nodes::MIN_STORAGE_SERVER_VERSION,
+                                                            service_nodes::MIN_STORAGE_SERVER_VERSION + 3);
+
+    if (hf_version >= network_version_13 && update_needed) {
       std::stringstream status;
       status << "Outdated Storage Server. ";
       status << "Current: " << req.version_major << "." << req.version_minor << "." << req.version_patch << ". ";

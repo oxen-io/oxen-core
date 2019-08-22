@@ -2981,9 +2981,9 @@ namespace cryptonote
   {
     struct request
     {
-      std::string version_major; // Storage Server Major version
-      std::string version_minor; // Storage Server Minor version
-      std::string version_patch; // Storage Server Patch version
+      int version_major; // Storage Server Major version
+      int version_minor; // Storage Server Minor version
+      int version_patch; // Storage Server Patch version
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(version_major);
         KV_SERIALIZE(version_minor);
