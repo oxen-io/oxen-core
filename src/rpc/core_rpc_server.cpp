@@ -2971,16 +2971,9 @@ namespace cryptonote
                                                const connection_context*)
   {
 
-    const uint8_t hf_version = m_core.get_hard_fork_version(m_core.get_current_blockchain_height());
+    const std::array<int, 3> cur_version = { req.version_major, req.version_minor, req.version_patch };
 
-    const int cur_version[] = { req.version_major, req.version_minor, req.version_patch };
-
-    const bool update_needed = std::lexicographical_compare(cur_version,
-                                                            cur_version + 3,
-                                                            service_nodes::MIN_STORAGE_SERVER_VERSION,
-                                                            service_nodes::MIN_STORAGE_SERVER_VERSION + 3);
-
-    if (hf_version >= network_version_13 && update_needed) {
+    if (cur_version < service_nodes::MIN_STORAGE_SERVER_VERSION) {
       std::stringstream status;
       status << "Outdated Storage Server. ";
       status << "Current: " << req.version_major << "." << req.version_minor << "." << req.version_patch << ". ";
