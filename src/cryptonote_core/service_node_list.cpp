@@ -464,6 +464,14 @@ namespace service_nodes
         info.last_decommission_height = block_height;
         info.decommission_count++;
 
+        if (hard_fork_version >= cryptonote::network_version_13) {
+          // Assigning invalid swarm id effectively kicks the node off
+          // its current swarm; it will be assigned a new swarm id when it
+          // gets recommissioned. Prior to HF13 this step was incorrectly
+          // skipped.
+          info.swarm_id = UNASSIGNED_SWARM_ID;
+        }
+
         info.proof->update_timestamp(0);
         return true;
 
