@@ -373,10 +373,11 @@ namespace service_nodes
     };
 
     std::deque<quorums_by_height>          m_old_quorum_states; // Store all old quorum history only if run with --store-full-quorum-history
-    std::set<state_t, state_t_less>        m_state_history;
+    std::set<state_t, state_t_less>        m_state_history; // Store state_t's from MIN(2nd oldest checkpoint | height - DEFAULT_SHORT_TERM_STATE_HISTORY) up to the block height
+    std::set<state_t, state_t_less>        m_state_archive; // Store state_t's where ((height < m_state_history.first()) && (height % STORE_LONG_TERM_STATE_INTERVAL))
     state_t                                m_state;
 
-    bool                                   m_long_term_states_added_to;
+    bool                                   m_state_added_to_archive;
     data_for_serialization                 m_cache_long_term_data;
     data_for_serialization                 m_cache_short_term_data;
     std::string                            m_cache_data_blob;
