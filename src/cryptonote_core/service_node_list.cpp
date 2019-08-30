@@ -56,7 +56,7 @@ namespace service_nodes
 {
   size_t constexpr STORE_LONG_TERM_STATE_INTERVAL = 10000;
 
-  static uint64_t short_term_state_cull_height(cryptonote::BlockchainDB const *db, uint64_t block_height)
+  static uint64_t short_term_state_cull_height(uint8_t hf_version, cryptonote::BlockchainDB const *db, uint64_t block_height)
   {
     size_t constexpr DEFAULT_SHORT_TERM_STATE_HISTORY = 6 * STATE_CHANGE_TX_LIFETIME_IN_BLOCKS;
     uint64_t result =
@@ -423,10 +423,10 @@ namespace service_nodes
       return false;
 
     uint64_t block_height = cryptonote::get_block_height(block);
-    uint8_t hard_fork_version = m_blockchain.get_hard_fork_version(block_height);
+    uint8_t hf_version = m_blockchain.get_hard_fork_version(block_height);
 
     cryptonote::tx_extra_service_node_state_change state_change;
-    if (!cryptonote::get_service_node_state_change_from_tx_extra(tx.extra, state_change, hard_fork_version))
+    if (!cryptonote::get_service_node_state_change_from_tx_extra(tx.extra, state_change, hf_version))
     {
       MERROR("Transaction did not have valid state change data in tx extra, possibly corrupt tx in blockchain");
       return false;
@@ -452,14 +452,14 @@ namespace service_nodes
         else
           LOG_PRINT_L1("Deregistration for service node: " << key);
 
-        if (hard_fork_version >= cryptonote::network_version_11_infinite_staking)
+        if (hf_version >= cryptonote::network_version_11_infinite_staking)
         {
           for (const auto &contributor : info.contributors)
           {
             for (const auto &contribution : contributor.locked_contributions)
             {
               m_state.key_image_blacklist.emplace_back(
-                  get_min_service_node_info_version_for_hf(hard_fork_version),
+                  get_min_service_node_info_version_for_hf(hf_version),
                   contribution.key_image,
                   block_height + staking_num_lock_blocks(m_blockchain.nettype()));
             }
@@ -470,7 +470,7 @@ namespace service_nodes
         return true;
 
       case new_state::decommission:
-        if (hard_fork_version < cryptonote::network_version_12_checkpointing) {
+        if (hf_version < cryptonote::network_version_12_checkpointing) {
           MERROR("Invalid decommission transaction seen before network v12");
           return false;
         }
@@ -489,7 +489,7 @@ namespace service_nodes
         info.last_decommission_height = block_height;
         info.decommission_count++;
 
-        if (hard_fork_version >= cryptonote::network_version_13) {
+        if (hf_version >= cryptonote::network_version_13) {
           // Assigning invalid swarm id effectively kicks the node off
           // its current swarm; it will be assigned a new swarm id when it
           // gets recommissioned. Prior to HF13 this step was incorrectly
@@ -501,7 +501,7 @@ namespace service_nodes
         return true;
 
       case new_state::recommission:
-        if (hard_fork_version < cryptonote::network_version_12_checkpointing) {
+        if (hf_version < cryptonote::network_version_12_checkpointing) {
           MERROR("Invalid recommission transaction seen before network v12");
           return false;
         }
@@ -534,7 +534,7 @@ namespace service_nodes
         return true;
 
       case new_state::ip_change_penalty:
-        if (hard_fork_version < cryptonote::network_version_12_checkpointing) {
+        if (hf_version < cryptonote::network_version_12_checkpointing) {
           MERROR("Invalid ip_change_penalty transaction seen before network v12");
           return false;
         }
@@ -592,7 +592,7 @@ namespace service_nodes
     }
   }
 
-  static bool get_contribution(cryptonote::network_type nettype, int hard_fork_version, const cryptonote::transaction& tx, uint64_t block_height, parsed_tx_contribution &parsed_contribution)
+  static bool get_contribution(cryptonote::network_type nettype, int hf_version, const cryptonote::transaction& tx, uint64_t block_height, parsed_tx_contribution &parsed_contribution)
   {
     if (!cryptonote::get_service_node_contributor_from_tx_extra(tx.extra, parsed_contribution.address))
       return false;
@@ -613,7 +613,7 @@ namespace service_nodes
     hw::device& hwdev               = hw::get_device("default");
     parsed_contribution.transferred = 0;
 
-    if (hard_fork_version >= cryptonote::network_version_11_infinite_staking)
+    if (hf_version >= cryptonote::network_version_11_infinite_staking)
     {
       cryptonote::tx_extra_tx_key_image_proofs key_image_proofs;
       if (!get_tx_key_image_proofs_from_tx_extra(tx.extra, key_image_proofs))
@@ -831,8 +831,8 @@ namespace service_nodes
     if (!is_registration_tx(tx, block_timestamp, block_height, index, key, info))
       return false;
 
-    int hard_fork_version = m_blockchain.get_hard_fork_version(block_height);
-    if (hard_fork_version >= cryptonote::network_version_11_infinite_staking)
+    int hf_version = m_blockchain.get_hard_fork_version(block_height);
+    if (hf_version >= cryptonote::network_version_11_infinite_staking)
     {
       // NOTE(loki): Grace period is not used anymore with infinite staking. So, if someone somehow reregisters, we just ignore it
       const auto iter = m_state.service_nodes_infos.find(key);
@@ -850,7 +850,7 @@ namespace service_nodes
       const auto iter = m_state.service_nodes_infos.find(key);
       if (iter != m_state.service_nodes_infos.end())
       {
-        if (hard_fork_version >= cryptonote::network_version_10_bulletproofs)
+        if (hf_version >= cryptonote::network_version_10_bulletproofs)
         {
           service_node_info const &old_info = *iter->second;
           uint64_t expiry_height = old_info.registration_height + staking_num_lock_blocks(m_blockchain.nettype());
@@ -1161,9 +1161,9 @@ namespace service_nodes
   void service_node_list::process_block(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs)
   {
     uint64_t block_height = cryptonote::get_block_height(block);
-    int hard_fork_version = m_blockchain.get_hard_fork_version(block_height);
+    int hf_version = m_blockchain.get_hard_fork_version(block_height);
 
-    if (hard_fork_version < 9)
+    if (hf_version < 9)
       return;
 
     assert(m_state.height == block_height);
@@ -1176,7 +1176,7 @@ namespace service_nodes
     // Cull old history
     //
     {
-      uint64_t cull_height = short_term_state_cull_height(m_db, block_height);
+      uint64_t cull_height = short_term_state_cull_height(hf_version, m_db, block_height);
       auto end_it          = m_state_history.upper_bound(cull_height);
       for (auto it = m_state_history.begin(); it != end_it; it++)
       {
@@ -1487,10 +1487,10 @@ namespace service_nodes
     return std::get<2>(oldest_waiting);
   }
 
-  bool service_node_list::validate_miner_tx(const crypto::hash& prev_id, const cryptonote::transaction& miner_tx, uint64_t height, int hard_fork_version, cryptonote::block_reward_parts const &reward_parts) const
+  bool service_node_list::validate_miner_tx(const crypto::hash& prev_id, const cryptonote::transaction& miner_tx, uint64_t height, int hf_version, cryptonote::block_reward_parts const &reward_parts) const
   {
     std::lock_guard<boost::recursive_mutex> lock(m_sn_mutex);
-    if (hard_fork_version < 9)
+    if (hf_version < 9)
       return true;
 
     // NOTE(loki): Service node reward distribution is calculated from the
@@ -1498,7 +1498,7 @@ namespace service_nodes
     // nodes not 50% of the reward after removing the governance component (the
     // adjusted base reward post hardfork 10).
     uint64_t base_reward = reward_parts.original_base_reward;
-    uint64_t total_service_node_reward = cryptonote::service_node_reward_formula(base_reward, hard_fork_version);
+    uint64_t total_service_node_reward = cryptonote::service_node_reward_formula(base_reward, hf_version);
 
     crypto::public_key winner = select_winner();
 
@@ -1617,7 +1617,7 @@ namespace service_nodes
     // store their quorums, such that the following states have quorum
     // information preceeding it.
 
-    uint64_t const max_short_term_height = short_term_state_cull_height(m_db, (m_state.height - 1)) + VOTE_LIFETIME + VOTE_OR_TX_VERIFY_HEIGHT_BUFFER;
+    uint64_t const max_short_term_height = short_term_state_cull_height(hf_version, m_db, (m_state.height - 1)) + VOTE_LIFETIME + VOTE_OR_TX_VERIFY_HEIGHT_BUFFER;
     for (auto it = m_state_history.begin();
          it != m_state_history.end() && it->height <= max_short_term_height;
          it++)

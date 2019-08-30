@@ -77,6 +77,7 @@ public:
   virtual bool get_block_checkpoint   (uint64_t height, cryptonote::checkpoint_t &checkpoint) const override { return false; }
   virtual bool get_top_checkpoint     (cryptonote::checkpoint_t &checkpoint) const override { return false; }
   virtual void remove_block_checkpoint(uint64_t height) override { }
+  std::vector<checkpoint_t> get_checkpoints_range(uint64_t start, uint64_t end, size_t num_desired_checkpoints = GET_ALL_CHECKPOINTS) const override { return {}; }
   virtual cryptonote::blobdata get_block_blob(const crypto::hash& h) const override { return cryptonote::blobdata(); }
   virtual uint64_t get_block_height(const crypto::hash& h) const override { return 0; }
   virtual cryptonote::block_header get_block_header(const crypto::hash& h) const override { return cryptonote::block_header(); }

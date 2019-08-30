@@ -83,6 +83,48 @@ struct TestDB: public BaseTestDB
     return 1;
   }
 
+  std::vector<checkpoint_t> get_checkpoints_range(uint64_t start, uint64_t end, size_t num_desired_checkpoints) const override
+  {
+    std::vector<checkpoint_t> result;
+    checkpoint_t top_checkpoint    = {};
+    if (!get_top_checkpoint(top_checkpoint)) return result;
+    checkpoint_t bottom_checkpoint = checkpoints.front();
+
+    start = loki::clamp_u64(bottom_checkpoint.height, start, top_checkpoint.height);
+    end   = loki::clamp_u64(bottom_checkpoint.height, end, top_checkpoint.height);
+    if (start > end)
+    {
+      if (start < bottom_checkpoint.height) return result;
+    }
+    else
+    {
+      if (start > top_checkpoint.height) return result;
+    }
+
+    if (num_desired_checkpoints == BlockchainDB::GET_ALL_CHECKPOINTS)
+      num_desired_checkpoints = std::numeric_limits<decltype(num_desired_checkpoints)>::max();
+    else
+      result.reserve(num_desired_checkpoints);
+
+    // NOTE: Get the first checkpoint and then use LMDB's cursor as an iterator to
+    // find subsequent checkpoints so we don't waste time querying every-single-height
+    for (uint64_t height = start; height != end && result.size() < num_desired_checkpoints;)
+    {
+      checkpoint_t checkpoint;
+      if (get_block_checkpoint(height, checkpoint))
+        result.push_back(checkpoint);
+
+      if (end >= start) height++;
+      else height--;
+    }
+
+    // Get inclusive of end if we couldn't find a checkpoint in all the other heights leading up to the end height
+    checkpoint_t end_checkpoint;
+    if (result.size() < num_desired_checkpoints && get_block_checkpoint(end, end_checkpoint))
+      result.push_back(end_checkpoint);
+    return result;
+  }
+
   virtual void remove_block_checkpoint(uint64_t block_height)
   {
     auto it = std::find_if(checkpoints.begin(), checkpoints.end(), [block_height](checkpoint_t const &entry) {
