@@ -585,7 +585,7 @@ std::string loki::hex64_to_base32z(const std::string &src)
   return result;
 }
 
-uint64_t loki::clamp_u64(uint64_t min, uint64_t val, uint64_t max)
+uint64_t loki::clamp_u64(uint64_t val, uint64_t min, uint64_t max)
 {
   assert(min <= max);
   if (val < min) val = min;

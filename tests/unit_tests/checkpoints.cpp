@@ -90,8 +90,8 @@ struct TestDB: public BaseTestDB
     if (!get_top_checkpoint(top_checkpoint)) return result;
     checkpoint_t bottom_checkpoint = checkpoints.front();
 
-    start = loki::clamp_u64(bottom_checkpoint.height, start, top_checkpoint.height);
-    end   = loki::clamp_u64(bottom_checkpoint.height, end, top_checkpoint.height);
+    start = loki::clamp_u64(start, bottom_checkpoint.height, top_checkpoint.height);
+    end   = loki::clamp_u64(end, bottom_checkpoint.height, top_checkpoint.height);
     if (start > end)
     {
       if (start < bottom_checkpoint.height) return result;
