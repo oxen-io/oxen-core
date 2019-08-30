@@ -65,11 +65,12 @@ namespace service_nodes
   };
 
   struct service_node_test_results {
-    bool uptime_proved        = true;
-    bool single_ip            = true;
-    bool voted_in_checkpoints = true;
+    bool uptime_proved            = true;
+    bool single_ip                = true;
+    bool voted_in_checkpoints     = true;
+    bool storage_server_reachable = true;
 
-    bool passed() const { return uptime_proved && voted_in_checkpoints; }
+    bool passed() const { return uptime_proved && voted_in_checkpoints && storage_server_reachable; }
   };
 
   class quorum_cop

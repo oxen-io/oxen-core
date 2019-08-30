@@ -1814,6 +1814,26 @@ namespace service_nodes
     info.vote_index             = (info.vote_index + 1) % info.votes.size();
   }
 
+  bool service_node_list::set_peer_reachable(crypto::public_key const &pubkey, bool value)
+  {
+    std::lock_guard<boost::recursive_mutex> lock(m_sn_mutex);
+
+    auto it = m_state.service_nodes_infos.find(pubkey);
+    if (it == m_state.service_nodes_infos.end()) {
+      LOG_PRINT_L2("No Service Node is known by this pubkey: " << pubkey);
+      return false;
+    } else {
+
+      if (it->second->proof->storage_server_reachable != value) {
+        auto &info = duplicate_info(it->second);
+        info.proof->storage_server_reachable = value;
+        LOG_PRINT_L2("Setting reachability status for node " << pubkey << " as: " << (value ? "true" : "false"));
+      }
+
+      return true;
+    }
+  }
+
   static quorum_manager quorum_for_serialization_to_quorum_manager(service_node_list::quorum_for_serialization const &source)
   {
     quorum_manager result = {};

@@ -2169,6 +2169,11 @@ namespace cryptonote
     return true;
   }
   //-----------------------------------------------------------------------------------------------
+  bool core::set_peer_reachable(crypto::public_key const &pubkey, bool value)
+  {
+    return m_service_node_list.set_peer_reachable(pubkey, value);
+  }
+  //-----------------------------------------------------------------------------------------------
   bool core::update_blockchain_pruning()
   {
     return m_blockchain_storage.update_blockchain_pruning();

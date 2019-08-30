@@ -82,6 +82,11 @@ namespace service_nodes
       result.uptime_proved = false;
     }
 
+    if (!info.proof->storage_server_reachable) {
+      LOG_PRINT_L1("Service Node is not reachable for node: " << pubkey);
+      result.storage_server_reachable = false;
+    }
+
     // IP change checks
     const auto &ips = proof.public_ips;
     if (ips[0].first && ips[1].first) {
@@ -278,6 +283,18 @@ namespace service_nodes
                              << node_key
                              << " failed to participate in checkpointing quorum at height: " << m_obligations_height
                              << ", it would have entered the "
+                                "decommission phase");
+                passed = true;
+              }
+
+
+              if (test_results.uptime_proved && !test_results.storage_server_reachable &&
+                  m_core.get_nettype() == cryptonote::MAINNET &&
+                  m_obligations_height < HF_VERSION_12_CHECKPOINTING_SOFT_FORK_HEIGHT)
+              {
+                LOG_PRINT_L1("HF12 Checkpointing Pre-Soft Fork: Service node: "
+                             << node_key
+                             << " has unreachable storage server, it would have entered the "
                                 "decommission phase");
                 passed = true;
               }

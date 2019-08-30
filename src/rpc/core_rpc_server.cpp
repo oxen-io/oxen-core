@@ -2740,6 +2740,7 @@ namespace cryptonote
     entry.service_node_version          = {info.proof->version_major, info.proof->version_minor, info.proof->version_patch};
     entry.public_ip                     = string_tools::get_ip_string_from_int32(info.proof->public_ip);
     entry.storage_port                  = info.proof->storage_port;
+    entry.storage_server_reachable      = info.proof->storage_server_reachable;
 
     entry.contributors.reserve(info.contributors.size());
 
@@ -3142,6 +3143,24 @@ namespace cryptonote
     res.status = CORE_RPC_STATUS_OK;
     return true;
   }
+  //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_report_peer_storage_server_status(const COMMAND_RPC_REPORT_PEER_SS_STATUS::request& req,
+                                                             COMMAND_RPC_REPORT_PEER_SS_STATUS::response& res,
+                                                             epee::json_rpc::error& error_resp,
+                                                             const connection_context* ctx)
+  {
+    crypto::public_key pubkey;
+    if (!string_tools::hex_to_pod(req.pubkey, pubkey)) {
+      MERROR("Could not parse public key: " << req.pubkey);
+      return false;
+    }
 
+    if (!m_core.set_peer_reachable(pubkey, req.value)) {
+      return false;
+    }
+
+    res.status = CORE_RPC_STATUS_OK;
+    return true;
+  }
 
 }  // namespace cryptonote

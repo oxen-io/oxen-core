@@ -47,6 +47,7 @@ namespace service_nodes
     std::array<bool, CHECKPOINT_MIN_QUORUMS_NODE_MUST_VOTE_IN_BEFORE_DEREGISTER_CHECK> votes;
     uint8_t vote_index = 0;
     std::array<std::pair<uint32_t, uint64_t>, 2> public_ips = {}; // (not serialized)
+    bool storage_server_reachable = true;
     proof_info() { votes.fill(true); }
 
     // Called to update both actual and effective timestamp, i.e. when a proof is received
@@ -259,6 +260,8 @@ namespace service_nodes
     cryptonote::NOTIFY_UPTIME_PROOF::request generate_uptime_proof(crypto::public_key const &pubkey, crypto::secret_key const &key, uint32_t public_ip, uint16_t storage_port) const;
     bool handle_uptime_proof        (cryptonote::NOTIFY_UPTIME_PROOF::request const &proof);
     void record_checkpoint_vote     (crypto::public_key const &pubkey, bool voted);
+
+    bool set_peer_reachable(crypto::public_key const &pubkey, bool value);
 
     struct quorum_for_serialization
     {

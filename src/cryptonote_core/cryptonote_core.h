@@ -887,6 +887,11 @@ namespace cryptonote
       */
      void record_checkpoint_vote(crypto::public_key const &pubkey, bool voted) { m_service_node_list.record_checkpoint_vote(pubkey, voted); }
 
+     /**
+      * @brief Record the reachability status of node's storage server
+      */
+     bool set_peer_reachable(crypto::public_key const &pubkey, bool value);
+
      /// Time point at which the storage server last pinged us
      std::atomic<time_t> m_last_storage_server_ping;
    private:
