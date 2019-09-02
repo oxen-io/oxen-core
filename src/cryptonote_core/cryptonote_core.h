@@ -890,7 +890,7 @@ namespace cryptonote
      /**
       * @brief Record the reachability status of node's storage server
       */
-     bool set_peer_reachable(crypto::public_key const &pubkey, bool value);
+     bool set_storage_server_peer_reachable(crypto::public_key const &pubkey, bool value);
 
      /// Time point at which the storage server last pinged us
      std::atomic<time_t> m_last_storage_server_ping;

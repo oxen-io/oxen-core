@@ -3155,7 +3155,7 @@ namespace cryptonote
       return false;
     }
 
-    if (!m_core.set_peer_reachable(pubkey, req.value)) {
+    if (!m_core.set_storage_server_peer_reachable(pubkey, req.value)) {
       return false;
     }
 

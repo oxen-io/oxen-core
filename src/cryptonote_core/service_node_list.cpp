@@ -1814,7 +1814,7 @@ namespace service_nodes
     info.vote_index             = (info.vote_index + 1) % info.votes.size();
   }
 
-  bool service_node_list::set_peer_reachable(crypto::public_key const &pubkey, bool value)
+  bool service_node_list::set_storage_server_peer_reachable(crypto::public_key const &pubkey, bool value)
   {
     std::lock_guard<boost::recursive_mutex> lock(m_sn_mutex);
 

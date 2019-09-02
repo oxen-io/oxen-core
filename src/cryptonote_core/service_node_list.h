@@ -261,7 +261,7 @@ namespace service_nodes
     bool handle_uptime_proof        (cryptonote::NOTIFY_UPTIME_PROOF::request const &proof);
     void record_checkpoint_vote     (crypto::public_key const &pubkey, bool voted);
 
-    bool set_peer_reachable(crypto::public_key const &pubkey, bool value);
+    bool set_storage_server_peer_reachable(crypto::public_key const &pubkey, bool value);
 
     struct quorum_for_serialization
     {
