@@ -3152,10 +3152,21 @@ namespace cryptonote
     crypto::public_key pubkey;
     if (!string_tools::hex_to_pod(req.pubkey, pubkey)) {
       MERROR("Could not parse public key: " << req.pubkey);
+      error_resp.code = CORE_RPC_ERROR_CODE_WRONG_PARAM;
+      error_resp.message = "Could not parse public key";
       return false;
     }
 
-    if (!m_core.set_storage_server_peer_reachable(pubkey, req.value)) {
+    if (req.type == "reachability") {
+
+      if (!m_core.set_storage_server_peer_reachable(pubkey, req.passed)) {
+        error_resp.code = CORE_RPC_ERROR_CODE_WRONG_PARAM;
+        error_resp.message = "Pubkey not found";
+        return false;
+      }
+    } else {
+      error_resp.code = CORE_RPC_ERROR_CODE_WRONG_PARAM;
+      error_resp.message = "Unknown status type";
       return false;
     }
 

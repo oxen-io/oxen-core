@@ -1824,9 +1824,9 @@ namespace service_nodes
       return false;
     } else {
 
-      if (it->second->proof->storage_server_reachable != value) {
-        auto &info = duplicate_info(it->second);
-        info.proof->storage_server_reachable = value;
+      proof_info &info = *it->second->proof;
+      if (info.storage_server_reachable != value) {
+        info.storage_server_reachable = value;
         LOG_PRINT_L2("Setting reachability status for node " << pubkey << " as: " << (value ? "true" : "false"));
       }
 

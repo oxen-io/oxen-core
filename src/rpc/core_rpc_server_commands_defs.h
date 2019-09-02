@@ -3248,11 +3248,11 @@ namespace cryptonote
     {
       std::string type; // test type (currently used: ["reachability"])
       std::string pubkey; // service node pubkey
-      bool value; // whether the node is passing the test
+      bool passed; // whether the node is passing the test
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(type)
         KV_SERIALIZE(pubkey)
-        KV_SERIALIZE(value)
+        KV_SERIALIZE(passed)
       END_KV_SERIALIZE_MAP()
     };
 
