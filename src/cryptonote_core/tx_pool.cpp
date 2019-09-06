@@ -1189,7 +1189,7 @@ namespace cryptonote
 
           // Once we hard fork to v13 we can just use the blk major version
           // whole sale.
-          uint8_t enforce_hf_version = std::max((uint8_t)cryptonote::network_version_13, blk.major_version);
+          uint8_t enforce_hf_version = std::max((uint8_t)cryptonote::network_version_13_enforce_checkpoints, blk.major_version);
 
           if (service_node_array.empty() ||
               !service_node_array[0].info->can_transition_to_state(enforce_hf_version, state_change.block_height, state_change.state))

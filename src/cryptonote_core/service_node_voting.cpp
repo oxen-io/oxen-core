@@ -204,7 +204,7 @@ namespace service_nodes
     uint64_t validator_index_tracker                                       = -1;
     for (const auto &vote : state_change.votes)
     {
-      if (hf_version >= cryptonote::network_version_13) // NOTE: After HF13, votes must be stored in ascending order
+      if (hf_version >= cryptonote::network_version_13_enforce_checkpoints) // NOTE: After HF13, votes must be stored in ascending order
       {
         if (validator_index_tracker >= vote.validator_index)
         {

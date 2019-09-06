@@ -1787,20 +1787,14 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
     return false;
   }
 
+  bool service_node_checkpoint = false;
+  if (!m_checkpoints.is_alternative_block_allowed(get_current_blockchain_height(), block_height, &service_node_checkpoint))
   {
-    bool rejected_by_service_node = false;
-    if (!m_checkpoints.is_alternative_block_allowed(get_current_blockchain_height(), block_height, &rejected_by_service_node))
+    if (!service_node_checkpoint || b.major_version >= cryptonote::network_version_13_enforce_checkpoints)
     {
-      if (rejected_by_service_node && nettype() == MAINNET && block_height < HF_VERSION_12_CHECKPOINTING_SOFT_FORK_HEIGHT)
-      {
-        LOG_PRINT_L1("HF12 Checkpointing Pre-Soft Fork: Block with id: " << id << std::endl << " would NOT have been accepted for alternative chain, block height: " << block_height << std::endl << " blockchain height: " << get_current_blockchain_height());
-      }
-      else
-      {
-        MERROR_VER("Block with id: " << id << std::endl << " can't be accepted for alternative chain, block height: " << block_height << std::endl << " blockchain height: " << get_current_blockchain_height());
-        bvc.m_verifivation_failed = true;
-        return false;
-      }
+      MERROR_VER("Block with id: " << id << std::endl << " can't be accepted for alternative chain, block height: " << block_height << std::endl << " blockchain height: " << get_current_blockchain_height());
+      bvc.m_verifivation_failed = true;
+      return false;
     }
   }
 
@@ -1910,17 +1904,13 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
     m_db->add_alt_block(id, data, cryptonote::block_to_blob(bei.bl));
     alt_chain.push_back(bei);
 
-    bool rejected_by_service_node = false;
-    bool is_a_checkpoint          = false;
-    if(!has_checkpoint && !m_checkpoints.check_block(bei.height, id, &is_a_checkpoint, &rejected_by_service_node))
+    bool service_node_checkpoint = false;
+    bool is_a_checkpoint         = false;
+    if(!has_checkpoint && !m_checkpoints.check_block(bei.height, id, &is_a_checkpoint, &service_node_checkpoint))
     {
-      if (rejected_by_service_node && nettype() == MAINNET && block_height < HF_VERSION_12_CHECKPOINTING_SOFT_FORK_HEIGHT)
+      if (!service_node_checkpoint || b.major_version >= cryptonote::network_version_13_enforce_checkpoints)
       {
-        LOG_PRINT_L1("HF12 Checkpointing Pre-Soft Fork: CHECKPOINT VALIDATION would have FAILED");
-      }
-      else
-      {
-        LOG_ERROR("CHECKPOINT VALIDATION FAILED");
+        LOG_ERROR("CHECKPOINT VALIDATION FAILED FOR ALT BLOCK");
         bvc.m_verifivation_failed = true;
         return false;
       }
@@ -1930,19 +1920,7 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
     if (checkpointed || (main_chain_cumulative_difficulty < bei.cumulative_difficulty)) // check if difficulty bigger then in main chain
     {
       if (checkpointed)
-      {
-        bool activate_branch = nettype() != MAINNET;
-        if (nettype() == MAINNET && block_height > HF_VERSION_12_CHECKPOINTING_SOFT_FORK_HEIGHT)
-          activate_branch = true;
-
-        if (activate_branch)
-          MGINFO_GREEN("###### REORGANIZE on height: " << alt_chain.front().height << " of " << m_db->height() - 1 << ", checkpoint is found in alternative chain on height " << bei.height);
-        else
-        {
-          MGINFO_GREEN("HF12 Checkpointing Pre-Soft Fork: ###### Would have REORGANIZED on height: " << alt_chain.front().height << " of " << m_db->height() - 1 << ", checkpoint is found in alternative chain on height " << bei.height);
-          return true;
-        }
-      }
+        MGINFO_GREEN("###### REORGANIZE on height: " << alt_chain.front().height << " of " << m_db->height() - 1 << ", checkpoint is found in alternative chain on height " << bei.height);
       else
         MGINFO_GREEN("###### REORGANIZE on height: " << alt_chain.front().height << " of " << m_db->height() - 1 << " with cum_difficulty " << m_db->get_block_cumulative_difficulty(m_db->height() - 1) << std::endl << " alternative blockchain size: " << alt_chain.size() << " with cum_difficulty " << bei.cumulative_difficulty);
 
@@ -3791,11 +3769,15 @@ leave:
   // is correct.
   if(m_checkpoints.is_in_checkpoint_zone(blockchain_height))
   {
-    if(!m_checkpoints.check_block(blockchain_height, id))
+    bool service_node_checkpoint = false;
+    if(!m_checkpoints.check_block(blockchain_height, id, nullptr, &service_node_checkpoint))
     {
-      LOG_ERROR("CHECKPOINT VALIDATION FAILED");
-      bvc.m_verifivation_failed = true;
-      goto leave;
+      if (!service_node_checkpoint || (service_node_checkpoint && bl.major_version >= cryptonote::network_version_13_enforce_checkpoints))
+      {
+        LOG_ERROR("CHECKPOINT VALIDATION FAILED");
+        bvc.m_verifivation_failed = true;
+        goto leave;
+      }
     }
 
   }
@@ -4016,6 +3998,18 @@ leave:
     hook->block_added(bl, only_txs);
 
   TIME_MEASURE_FINISH(addblock);
+
+  // TODO(loki): Temporary forking code. We have invalid checkpoints from the soft forking period we should cull
+  {
+    static uint64_t hf13_height = m_hardfork->get_earliest_ideal_height_for_version(network_version_13_enforce_checkpoints);
+    static uint64_t hf12_height = m_hardfork->get_earliest_ideal_height_for_version(network_version_12_checkpointing);
+    if (hf13_height == get_block_height(bl))
+    {
+      std::vector<checkpoint_t> checkpoints = m_db->get_checkpoints_range(hf13_height - 1, hf12_height);
+      for (cryptonote::checkpoint_t const &checkpoint : checkpoints)
+        m_db->remove_block_checkpoint(checkpoint.height);
+    }
+  }
 
   // do this after updating the hard fork state since the weight limit may change due to fork
   if (!update_next_cumulative_weight_limit())
@@ -4304,11 +4298,8 @@ bool Blockchain::update_checkpoint(cryptonote::checkpoint_t const &checkpoint)
   CRITICAL_REGION_LOCAL(m_blockchain_lock);
   if (checkpoint.height < m_db->height() && !checkpoint.check(m_db->get_block_hash_from_height(checkpoint.height)))
   {
-    if (nettype() == MAINNET && (m_db->height() - 1) < HF_VERSION_12_CHECKPOINTING_SOFT_FORK_HEIGHT)
-    {
-      LOG_PRINT_L1("HF12 Checkpointing Pre-Soft Fork: Local blockchain failed to pass a checkpoint in: " << __func__);
-    }
-    else
+    uint8_t hf_version = get_current_hard_fork_version();
+    if (hf_version >= cryptonote::network_version_13_enforce_checkpoints)
     {
       // roll back to a couple of blocks before the checkpoint
       LOG_ERROR("Local blockchain failed to pass a checkpoint in: " << __func__ << ", rolling back!");

@@ -93,7 +93,7 @@ namespace service_nodes
 
   private:
     void process_quorums(cryptonote::block const &block);
-    service_node_test_results check_service_node(const crypto::public_key &pubkey, const service_node_info &info) const;
+    service_node_test_results check_service_node(uint8_t hf_version, const crypto::public_key &pubkey, const service_node_info &info) const;
 
     cryptonote::core& m_core;
     voting_pool       m_vote_pool;
