@@ -1207,11 +1207,13 @@ namespace cryptonote
   {
     struct request_t
     {
-      std::string hash;   // The block's SHA256 hash.
-      bool fill_pow_hash; // Tell the daemon if it should fill out pow_hash field.
+      std::string hash;                // The block's SHA256 hash.
+      std::vector<std::string> hashes; // Other blocks to query SHA256 hash
+      bool fill_pow_hash;              // Tell the daemon if it should fill out pow_hash field.
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(hash)
+        KV_SERIALIZE(hashes)
         KV_SERIALIZE_OPT(fill_pow_hash, false);
       END_KV_SERIALIZE_MAP()
     };
@@ -1219,12 +1221,14 @@ namespace cryptonote
 
     struct response_t
     {
-      std::string status;                 // General RPC error code. "OK" means everything looks good.
-      block_header_response block_header; // A structure containing block header information.
-      bool untrusted;                     // States if the result is obtained using the bootstrap mode, and is therefore not trusted (`true`), or when the daemon is fully synced (`false`).
+      std::string status;                               // General RPC error code. "OK" means everything looks good.
+      block_header_response block_header;               // A structure containing block header information.
+      std::vector<block_header_response> block_headers; // Array of block headers initially queried in hashes
+      bool untrusted;                                   // States if the result is obtained using the bootstrap mode, and is therefore not trusted (`true`), or when the daemon is fully synced (`false`).
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(block_header)
+        KV_SERIALIZE(block_headers)
         KV_SERIALIZE(status)
         KV_SERIALIZE(untrusted)
       END_KV_SERIALIZE_MAP()
@@ -1360,6 +1364,57 @@ namespace cryptonote
         KV_SERIALIZE(status)
         KV_SERIALIZE(white_list)
         KV_SERIALIZE(gray_list)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+
+  LOKI_RPC_DOC_INTROSPECT
+  struct public_node
+  {
+    std::string host;
+    uint64_t last_seen;
+    uint16_t rpc_port;
+
+    public_node() = delete;
+
+    public_node(const peer &peer)
+      : host(peer.host), last_seen(peer.last_seen), rpc_port(peer.rpc_port)
+    {}
+
+    BEGIN_KV_SERIALIZE_MAP()
+      KV_SERIALIZE(host)
+      KV_SERIALIZE(last_seen)
+      KV_SERIALIZE(rpc_port)
+    END_KV_SERIALIZE_MAP()
+  };
+
+  LOKI_RPC_DOC_INTROSPECT
+  // Get all connected nodes with an open RPC port
+  struct COMMAND_RPC_GET_PUBLIC_NODES
+  {
+    struct request_t
+    {
+      bool gray;
+      bool white;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE_OPT(gray, false)
+        KV_SERIALIZE_OPT(white, true)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+
+    struct response_t
+    {
+      std::string status;
+      std::vector<public_node> gray;
+      std::vector<public_node> white;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(status)
+        KV_SERIALIZE(gray)
+        KV_SERIALIZE(white)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<response_t> response;
@@ -2268,7 +2323,7 @@ namespace cryptonote
     struct response_t
     {
       std::string status;           // General RPC error code. "OK" means everything looks good.
-      std::list<chain_info> chains; // Array of Chains.
+      std::vector<chain_info> chains; // Array of chains
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(status)

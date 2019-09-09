@@ -1070,20 +1070,27 @@ std::string get_nix_version_display_string()
     return std::string(buffer);
   }
 
+  std::string get_human_readable_timespan(uint64_t seconds)
+  {
+    if (seconds < 60)
+      return std::to_string(seconds) + " seconds";
+    if (seconds < 3600)
+      return std::to_string((uint64_t)(seconds / 60)) + " minutes";
+    if (seconds < 3600 * 24)
+      return std::to_string((uint64_t)(seconds / 3600)) + " hours";
+    if (seconds < 3600 * 24 * 30.5)
+      return std::to_string((uint64_t)(seconds / (3600 * 24))) + " days";
+    if (seconds < 3600 * 24 * 365.25)
+      return std::to_string((uint64_t)(seconds / (3600 * 24 * 30.5))) + " months";
+    if (seconds < 3600 * 24 * 365.25 * 100)
+      return std::to_string((uint64_t)(seconds / (3600 * 24 * 30.5 * 365.25))) + " years";
+    return "a long time";
+  }
+
   std::string get_human_readable_timespan(std::chrono::seconds seconds)
   {
-    uint64_t ts = seconds.count();
-    if (ts < 60)
-      return std::to_string(ts) + tr(" seconds");
-    if (ts < 3600)
-      return std::to_string((uint64_t)(ts / 60)) + tr(" minutes");
-    if (ts < 3600 * 24)
-      return std::to_string((uint64_t)(ts / 3600)) + tr(" hours");
-    if (ts < 3600 * 24 * 30.5)
-      return std::to_string((uint64_t)(ts / (3600 * 24))) + tr(" days");
-    if (ts < 3600 * 24 * 365.25)
-      return std::to_string((uint64_t)(ts / (3600 * 24 * 30.5))) + tr(" months");
-    return tr("a long time");
+    std::string result = get_human_readable_timespan(seconds.count());
+    return result;
   }
 
   std::string get_human_readable_bytes(uint64_t bytes)

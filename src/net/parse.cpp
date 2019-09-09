@@ -64,9 +64,8 @@ namespace net
         std::string port_str = "";
 
         bool ipv6 = false;
-
         get_network_address_host_and_port(std::string(address), host_str, port_str);
-
+        get_network_address_host_and_port(std::string(address), host_str, port_str);
         boost::string_ref host_str_ref(host_str);
         boost::string_ref port_str_ref(port_str);
 

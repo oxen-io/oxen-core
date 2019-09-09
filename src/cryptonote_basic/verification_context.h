@@ -83,6 +83,7 @@ namespace cryptonote
     bool m_invalid_type;
     bool m_key_image_locked_by_snode;
     bool m_key_image_blacklisted;
+    bool m_too_few_outputs;
 
     vote_verification_context m_vote_ctx;
 
@@ -103,6 +104,7 @@ namespace cryptonote
       KV_SERIALIZE(m_invalid_type);
       KV_SERIALIZE(m_key_image_locked_by_snode);
       KV_SERIALIZE(m_key_image_blacklisted);
+      KV_SERIALIZE(m_too_few_outputs);
 
       KV_SERIALIZE(m_vote_ctx)
     END_KV_SERIALIZE_MAP()

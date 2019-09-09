@@ -363,6 +363,11 @@ namespace rpc
         if (!res.error_details.empty()) res.error_details += " and ";
         res.error_details = "tx uses a key image that has been temporarily blacklisted by the service node network";
       }
+      if (tvc.m_too_few_outputs)
+      {
+        if (!res.error_details.empty()) res.error_details += " and ";
+        res.error_details = "too few outputs";
+      }
       if (res.error_details.empty())
       {
         res.error_details = "an unknown issue was found with the transaction";

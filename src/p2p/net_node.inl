@@ -2694,7 +2694,6 @@ namespace nodetool
     if (ipv6) add_upnp_port_mapping_v6(port);
   }
 
-
   template<class t_payload_net_handler>
   void node_server<t_payload_net_handler>::delete_upnp_port_mapping_impl(uint32_t port, bool ipv6)
   {

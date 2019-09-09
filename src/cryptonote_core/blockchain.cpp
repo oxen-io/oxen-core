@@ -2959,6 +2959,7 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
   const auto hf_version = m_hardfork->get_current_version();
 
   // Min/Max Type/Version Check
+  if (hf_version >= 2)
   {
     const auto min_version = transaction::get_min_version_for_hf(hf_version, nettype());
     const auto max_version = transaction::get_max_version_for_hf(hf_version, nettype());
@@ -2971,6 +2972,18 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
     {
       if (tvc.m_invalid_version) MERROR_VER("TX Invalid version: " << tx.version << " for hardfork: " << hf_version << " min/max version:  " << min_version << "/" << max_version);
       if (tvc.m_invalid_type)    MERROR_VER("TX Invalid type for hardfork: " << hf_version);
+      return false;
+    }
+  }
+
+  // from hard fork 2, we require mixin at least 2 unless one output cannot mix with 2 others
+  // if one output cannot mix with 2 others, we accept at most 1 output that can mix
+  if (hf_version >= HF_VERSION_MIN_2_OUTPUTS)
+  {
+    if (tx.vout.size() < 2)
+    {
+      MERROR_VER("Tx " << get_transaction_hash(tx) << " has fewer than two outputs");
+      tvc.m_too_few_outputs = true;
       return false;
     }
   }
@@ -5048,9 +5061,9 @@ std::map<uint64_t, std::tuple<uint64_t, uint64_t, uint64_t>> Blockchain:: get_ou
   return m_db->get_output_histogram(amounts, unlocked, recent_cutoff, min_count);
 }
 
-std::list<std::pair<Blockchain::block_extended_info,std::vector<crypto::hash>>> Blockchain::get_alternative_chains() const
+std::vector<std::pair<Blockchain::block_extended_info,std::vector<crypto::hash>>> Blockchain::get_alternative_chains() const
 {
-  std::list<std::pair<Blockchain::block_extended_info,std::vector<crypto::hash>>> chains;
+  std::vector<std::pair<Blockchain::block_extended_info,std::vector<crypto::hash>>> chains;
 
   blocks_ext_by_hash alt_blocks;
   alt_blocks.reserve(m_db->get_alt_block_count());

@@ -594,7 +594,8 @@ namespace cryptonote
               return true;
             }
             const cryptonote::blobdata pruned = ss.str();
-            sorted_txs.push_back(std::make_tuple(h, pruned, get_transaction_prunable_hash(tx), std::string(i->tx_blob, pruned.size())));
+            const crypto::hash prunable_hash = tx.version == txversion::v1 ? crypto::null_hash : get_transaction_prunable_hash(tx);
+            sorted_txs.push_back(std::make_tuple(h, pruned, prunable_hash, std::string(i->tx_blob, pruned.size())));
             missed_txs.erase(std::find(missed_txs.begin(), missed_txs.end(), h));
             pool_tx_hashes.insert(h);
             const std::string hash_string = epee::string_tools::pod_to_hex(h);
@@ -1024,6 +1025,45 @@ namespace cryptonote
     }
 
     res.status = CORE_RPC_STATUS_OK;
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_get_public_nodes(const COMMAND_RPC_GET_PUBLIC_NODES::request& req, COMMAND_RPC_GET_PUBLIC_NODES::response& res, const connection_context *ctx)
+  {
+    PERF_TIMER(on_get_public_nodes);
+
+    COMMAND_RPC_GET_PEER_LIST::response peer_list_res;
+    const bool success = on_get_peer_list(COMMAND_RPC_GET_PEER_LIST::request(), peer_list_res, ctx);
+    res.status = peer_list_res.status;
+    if (!success)
+    {      
+      return false;
+    }
+    if (res.status != CORE_RPC_STATUS_OK)
+    {
+      return true;
+    }
+
+    const auto collect = [](const std::vector<peer> &peer_list, std::vector<public_node> &public_nodes)
+    {
+      for (const auto &entry : peer_list)
+      {
+        if (entry.rpc_port != 0)
+        {
+          public_nodes.emplace_back(entry);
+        }
+      }
+    };
+
+    if (req.white)
+    {
+      collect(peer_list_res.white_list, res.white);
+    }
+    if (req.gray)
+    {
+      collect(peer_list_res.gray_list, res.gray);
+    }
+
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
@@ -1623,38 +1663,55 @@ namespace cryptonote
     if (use_bootstrap_daemon_if_necessary<COMMAND_RPC_GET_BLOCK_HEADER_BY_HASH>(invoke_http_mode::JON_RPC, "getblockheaderbyhash", req, res, r))
       return r;
 
-    crypto::hash block_hash;
-    bool hash_parsed = parse_hash256(req.hash, block_hash);
-    if(!hash_parsed)
-    {
-      error_resp.code = CORE_RPC_ERROR_CODE_WRONG_PARAM;
-      error_resp.message = "Failed to parse hex representation of block hash. Hex = " + req.hash + '.';
-      return false;
-    }
-    block blk;
-    bool orphan = false;
-    bool have_block = m_core.get_block_by_hash(block_hash, blk, &orphan);
-    if (!have_block)
-    {
-      error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
-      error_resp.message = "Internal error: can't get block by hash. Hash = " + req.hash + '.';
-      return false;
-    }
-    if (blk.miner_tx.vin.size() != 1 || blk.miner_tx.vin.front().type() != typeid(txin_gen))
-    {
-      error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
-      error_resp.message = "Internal error: coinbase transaction in the block has the wrong type";
-      return false;
-    }
-    uint64_t block_height = boost::get<txin_gen>(blk.miner_tx.vin.front()).height;
+    auto get = [this](const std::string &hash, bool fill_pow_hash, block_header_response &block_header, bool restricted, epee::json_rpc::error& error_resp) -> bool {
+      crypto::hash block_hash;
+      bool hash_parsed = parse_hash256(hash, block_hash);
+      if(!hash_parsed)
+      {
+        error_resp.code = CORE_RPC_ERROR_CODE_WRONG_PARAM;
+        error_resp.message = "Failed to parse hex representation of block hash. Hex = " + hash + '.';
+        return false;
+      }
+      block blk;
+      bool orphan = false;
+      bool have_block = m_core.get_block_by_hash(block_hash, blk, &orphan);
+      if (!have_block)
+      {
+        error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
+        error_resp.message = "Internal error: can't get block by hash. Hash = " + hash + '.';
+        return false;
+      }
+      if (blk.miner_tx.vin.size() != 1 || blk.miner_tx.vin.front().type() != typeid(txin_gen))
+      {
+        error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
+        error_resp.message = "Internal error: coinbase transaction in the block has the wrong type";
+        return false;
+      }
+      uint64_t block_height = boost::get<txin_gen>(blk.miner_tx.vin.front()).height;
+      bool response_filled = fill_block_header_response(blk, orphan, block_height, block_hash, block_header, fill_pow_hash && !restricted);
+      if (!response_filled)
+      {
+        error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
+        error_resp.message = "Internal error: can't produce valid response.";
+        return false;
+      }
+      return true;
+    };
+
     const bool restricted = m_restricted && ctx;
-    bool response_filled = fill_block_header_response(blk, orphan, block_height, block_hash, res.block_header, req.fill_pow_hash && !restricted);
-    if (!response_filled)
+    if (!req.hash.empty())
     {
-      error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
-      error_resp.message = "Internal error: can't produce valid response.";
-      return false;
+      if (!get(req.hash, req.fill_pow_hash, res.block_header, restricted, error_resp))
+        return false;
     }
+    res.block_headers.reserve(req.hashes.size());
+    for (const std::string &hash: req.hashes)
+    {
+      res.block_headers.push_back({});
+      if (!get(hash, req.fill_pow_hash, res.block_headers.back(), restricted, error_resp))
+        return false;
+    }
+
     res.status = CORE_RPC_STATUS_OK;
     return true;
   }
@@ -2086,7 +2143,7 @@ namespace cryptonote
     PERF_TIMER(on_get_alternate_chains);
     try
     {
-      std::list<std::pair<Blockchain::block_extended_info, std::vector<crypto::hash>>> chains = m_core.get_blockchain_storage().get_alternative_chains();
+      std::vector<std::pair<Blockchain::block_extended_info, std::vector<crypto::hash>>> chains = m_core.get_blockchain_storage().get_alternative_chains();
       for (const auto &i: chains)
       {
         res.chains.push_back(COMMAND_RPC_GET_ALTERNATE_CHAINS::chain_info{epee::string_tools::pod_to_hex(get_block_hash(i.first.bl)), i.first.height, i.second.size(), i.first.cumulative_difficulty, {}, std::string()});
