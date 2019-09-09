@@ -34,10 +34,13 @@
 #include "p2p/net_node.inl"
 #include "cryptonote_protocol/cryptonote_protocol_handler.h"
 #include "cryptonote_protocol/cryptonote_protocol_handler.inl"
-#include "cryptonote_core/blockchain.h"
 
 #define MAKE_IPV4_ADDRESS(a,b,c,d) epee::net_utils::ipv4_network_address{MAKE_IP(a,b,c,d),0}
 #define MAKE_IPV4_SUBNET(a,b,c,d,e) epee::net_utils::ipv4_network_subnet{MAKE_IP(a,b,c,d),e}
+
+namespace cryptonote {
+  class blockchain_storage;
+}
 
 class test_core
 {

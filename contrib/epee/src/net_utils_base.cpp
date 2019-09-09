@@ -52,7 +52,6 @@ namespace epee { namespace net_utils
 		return (address.ip() & ~(0xffffffffull << m_mask)) == subnet();
 	}
 
-
 	bool network_address::equal(const network_address& other) const
 	{
 		// clang typeid workaround

@@ -131,7 +131,7 @@ if(NOT IOS)
   add_subdirectory(simplewallet)
 endif()
 
-if(CMAKE_BUILD_TYPE STREQUAL Debug)
+if(BUILD_DEBUG_UTILITIES)
   if (NOT LOKI_DAEMON_AND_WALLET_ONLY AND NOT BUILD_INTEGRATION)
     add_subdirectory(debug_utilities)
   endif()
