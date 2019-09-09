@@ -2213,7 +2213,6 @@ bool Blockchain::get_output_distribution(uint64_t amount, uint64_t from_height, 
   if (to_height > 0 && to_height < from_height)
     return false;
 
-  const uint64_t real_start_height = start_height;
   if (from_height > start_height)
     start_height = from_height;
 
@@ -2228,7 +2227,7 @@ bool Blockchain::get_output_distribution(uint64_t amount, uint64_t from_height, 
   {
     std::vector<uint64_t> heights;
     heights.reserve(to_height + 1 - start_height);
-    uint64_t real_start_height = start_height > 0 ? start_height-1 : start_height;
+    const uint64_t real_start_height = start_height > 0 ? start_height-1 : start_height;
     for (uint64_t h = real_start_height; h <= to_height; ++h)
       heights.push_back(h);
     distribution = m_db->get_block_cumulative_rct_outputs(heights);
@@ -3418,7 +3417,7 @@ byte_and_output_fees Blockchain::get_dynamic_base_fee(uint64_t block_reward, siz
 //------------------------------------------------------------------
 bool Blockchain::check_fee(size_t tx_weight, size_t tx_outs, uint64_t fee) const
 {
-  const uint8_t version = get_current_hard_fork_version();
+  const uint8_t version            = get_current_hard_fork_version();
   const uint64_t blockchain_height = m_db->height();
 
   uint64_t median = m_current_block_cumul_weight_limit / 2;
@@ -4111,14 +4110,12 @@ bool Blockchain::update_next_cumulative_weight_limit(uint64_t *long_term_effecti
   const uint64_t db_height = m_db->height();
   const uint8_t hf_version = get_current_hard_fork_version();
   uint64_t full_reward_zone = get_min_block_weight(hf_version);
-  uint64_t long_term_block_weight;
 
   if (hf_version < HF_VERSION_LONG_TERM_BLOCK_WEIGHT)
   {
     std::vector<uint64_t> weights;
     get_last_n_blocks_weights(weights, CRYPTONOTE_REWARD_BLOCKS_WINDOW);
     m_current_block_cumul_weight_median = epee::misc_utils::median(weights);
-    long_term_block_weight = weights.back();
   }
   else
   {
@@ -4140,7 +4137,7 @@ bool Blockchain::update_next_cumulative_weight_limit(uint64_t *long_term_effecti
     m_long_term_effective_median_block_weight = std::max<uint64_t>(CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V5, long_term_median);
 
     uint64_t short_term_constraint = m_long_term_effective_median_block_weight + m_long_term_effective_median_block_weight * 2 / 5;
-    long_term_block_weight = std::min<uint64_t>(block_weight, short_term_constraint);
+    uint64_t long_term_block_weight = std::min<uint64_t>(block_weight, short_term_constraint);
 
     if (db_height == 1)
     {

@@ -509,9 +509,7 @@ namespace cryptonote
     }
 
     bool r = handle_command_line(vm);
-    /// Currently terminating before blockchain is initialized results in a crash
-    /// during deinitialization... TODO: fix that
-    CHECK_AND_ASSERT_MES(r, false, "Failed to apply command line options.");
+    CHECK_AND_ASSERT_MES(r, false, "Failed to handle command line");
 
     std::string db_type = command_line::get_arg(vm, cryptonote::arg_db_type);
     std::string db_sync_mode = command_line::get_arg(vm, cryptonote::arg_db_sync_mode);
@@ -736,6 +734,7 @@ namespace cryptonote
     }
 
     r = m_blockchain_storage.init(initialized_db, m_nettype, m_offline, regtest ? &regtest_test_options : test_options, fixed_difficulty, get_checkpoints);
+    CHECK_AND_ASSERT_MES(r, false, "Failed to initialize blockchain storage");
 
     if (!command_line::is_arg_defaulted(vm, arg_recalculate_difficulty))
     {

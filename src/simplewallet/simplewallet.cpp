@@ -104,6 +104,8 @@ typedef cryptonote::simple_wallet sw;
 
 #define OUTPUT_EXPORT_FILE_MAGIC "Loki output export\003"
 
+#define OLD_AGE_WARN_THRESHOLD (30 * 86400 / DIFFICULTY_TARGET_V2) // 30 days
+
 #define LOCK_IDLE_SCOPE() \
   bool auto_refresh_enabled = m_auto_refresh_enabled.load(std::memory_order_relaxed); \
   m_auto_refresh_enabled.store(false, std::memory_order_relaxed); \
@@ -5612,6 +5614,43 @@ static bool locked_blocks_arg_valid(const std::string& arg, uint64_t& duration)
 }
 
 //----------------------------------------------------------------------------------------------------
+bool simple_wallet::prompt_if_old(const std::vector<tools::wallet2::pending_tx> &ptx_vector)
+{
+  // count the number of old outputs
+  std::string err;
+  uint64_t bc_height = get_daemon_blockchain_height(err);
+  if (!err.empty())
+    return true;
+
+  int max_n_old = 0;
+  for (const auto &ptx: ptx_vector)
+  {
+    int n_old = 0;
+    for (const auto i: ptx.selected_transfers)
+    {
+      const tools::wallet2::transfer_details &td = m_wallet->get_transfer_details(i);
+      uint64_t age = bc_height - td.m_block_height;
+      if (age > OLD_AGE_WARN_THRESHOLD)
+        ++n_old;
+    }
+    max_n_old = std::max(max_n_old, n_old);
+  }
+  if (max_n_old > 1)
+  {
+    std::stringstream prompt;
+    prompt << tr("Transaction spends more than one very old output. Privacy would be better if they were sent separately.");
+    prompt << ENDL << tr("Spend them now anyway?");
+    std::string accepted = input_line(prompt.str(), true);
+    if (std::cin.eof())
+      return false;
+    if (!command_line::is_yes(accepted))
+    {
+      return false;
+    }
+  }
+  return true;
+}
+//----------------------------------------------------------------------------------------------------
 bool simple_wallet::transfer_main(int transfer_type, const std::vector<std::string> &args_, bool called_by_mms)
 {
 //  "transfer [index=<N1>[,<N2>,...]] [<priority>] <address> <amount> [<payment_id>]"
@@ -5875,6 +5914,12 @@ bool simple_wallet::transfer_main(int transfer_type, const std::vector<std::stri
       }
     }
 
+    if (!prompt_if_old(ptx_vector))
+    {
+      fail_msg_writer() << tr("transaction cancelled.");
+      return false;
+    }
+
     // if more than one tx necessary, prompt user to confirm
     if (m_wallet->always_confirm_transfers() || ptx_vector.size() > 1)
     {
@@ -6058,7 +6103,8 @@ bool simple_wallet::locked_transfer(const std::vector<std::string> &args_)
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::locked_sweep_all(const std::vector<std::string> &args_)
 {
-  return sweep_main(0, true, args_);
+  sweep_main(0, true, args_);
+  return true;
 }
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::register_service_node(const std::vector<std::string> &args_)
@@ -6570,6 +6616,12 @@ bool simple_wallet::sweep_main_internal(sweep_type_t sweep_type, std::vector<too
     return false;
   }
 
+  if (!prompt_if_old(ptx_vector))
+  {
+    fail_msg_writer() << tr("transaction cancelled.");
+    return false;
+  }
+
   // give user total and fee, and prompt to confirm
   uint64_t total_fee = 0, total_sent = 0;
   for (size_t n = 0; n < ptx_vector.size(); ++n)
@@ -7014,7 +7066,6 @@ bool simple_wallet::sweep_single(const std::vector<std::string> &args_)
 bool simple_wallet::sweep_all(const std::vector<std::string> &args_)
 {
   std::vector<std::string> copied_args = args_;
-
   tools::wallet2::sweep_style_t sweep_style = tools::wallet2::sweep_style_t::normal;
   if (args_.size() > 0)
   {
@@ -7026,7 +7077,8 @@ bool simple_wallet::sweep_all(const std::vector<std::string> &args_)
     }
   }
 
-  return sweep_main(0, false, copied_args, sweep_style);
+  sweep_main(0, false, copied_args, sweep_style);
+  return true;
 }
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::sweep_below(const std::vector<std::string> &args_)
@@ -7042,7 +7094,8 @@ bool simple_wallet::sweep_below(const std::vector<std::string> &args_)
     fail_msg_writer() << tr("invalid amount threshold");
     return true;
   }
-  return sweep_main(below, false, std::vector<std::string>(++args_.begin(), args_.end()));
+  sweep_main(below, false, std::vector<std::string>(++args_.begin(), args_.end()));
+  return true;
 }
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::accept_loaded_tx(const std::function<size_t()> get_num_txes, const std::function<const tools::wallet2::tx_construction_data&(size_t)> &get_tx, const std::string &extra_message)
