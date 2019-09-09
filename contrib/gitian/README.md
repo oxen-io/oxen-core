@@ -26,12 +26,16 @@ Preparing the Gitian builder host
 
 The first step is to prepare the host environment that will be used to perform the Gitian builds.
 This guide explains how to set up the environment, and how to start the builds.
-Gitian offers to build with either `kvm`, `docker` or `lxc`. The default build
-path chosen is `lxc`, but its setup is more complicated. You need to be logged in as the `gitianuser`. 
-If this user does not exist yet on your system, create it. Gitian can use
-either kvm, lxc or docker as a host environment. This documentation will show
-how to build with lxc and docker. While the docker setup is easy, the lxc setup
-is more involved.
+
+* Gitian host OS should be Ubuntu 18.04 "Bionic Beaver".  If you are on a mac or windows for example, you can run it in a VM but will be slower.
+
+* Gitian gives you the option of using any of 3 different virtualization tools: `kvm`, `docker` or `lxc`. This documentation will only show how to build with `lxc` and `docker` (documentation for `kvm` is welcome). Building with `lxc` is the default, but is more complicated, so we recommend docker your first time.
+
+
+## Create the gitianuser account
+
+You need to create a new user called `gitianuser` and be logged in as that user.  The user needs `sudo` access.
+
 
 LXC
 ---
@@ -76,10 +80,17 @@ This setup is required to enable networking in the container.
 Docker
 ------
 
-Building in docker does not require much setup. Install docker on your host, then type the following:
+Prepare for building with docker:
 
 ```bash
-sudo apt-get install git make curl
+sudo apt-get install git make curl docker.io
+```
+
+Consider adding `gitianuser` to the `docker` group after reading about [the security implications](https://docs.docker.com/v17.09/engine/installation/linux/linux-postinstall/):
+
+```bash
+sudo groupadd docker
+sudo usermod -aG docker gitianuser
 ```
 
 Optionally add yourself to the docker group. Note that this will give docker root access to your system.
@@ -88,7 +99,7 @@ Optionally add yourself to the docker group. Note that this will give docker roo
 sudo usermod -aG docker gitianuser
 ```
 
-Manual and Building
+Manual Building
 -------------------
 
 The instructions below use the automated script [gitian-build.py](gitian-build.py) which only works in Ubuntu. 
@@ -109,66 +120,91 @@ The `gitian-build.py` script will checkout different release tags, so it's best 
 cp loki/contrib/gitian/gitian-build.py .
 ```
 
-Setup the required environment, you only need to do this once:
+### Setup the required environment
+
+Setup for LXC:
 
 ```bash
-./gitian-build.py --setup loki-user x.x.x
+GH_USER=loki-user
+VERSION=v4.0.5
+
+./gitian-build.py --setup $GH_USER $VERSION
 ```
 
-Where `loki-user` is your Github name and `x.x.x` is the version tag you want to build.
-If you are using docker, run it with:
+Where `GH_USER` is your Github user name and `VERSION` is the version tag you want to build. 
+
+Setup for docker:
 
 ```bash
-./gitian-build.py --setup --docker loki-user v3.0.4
+./gitian-build.py --setup --docker $GH_USER $VERSION
 ```
 
-While gitian and this build script does provide a way for you to sign the build directly, it is recommended to sign in a seperate step. 
-This script is only there for convenience. Seperate steps for building can still be taken.
+While gitian and this build script does provide a way for you to sign the build directly, it is recommended to sign in a separate step. This script is only there for convenience. Separate steps for building can still be taken.
 In order to sign gitian builds on your host machine, which has your PGP key, 
-fork the gitian.sigs repository and clone it on your host machine, 
+fork the [gitian.sigs repository](https://github.com/monero-project/gitian.sigs) and clone it on your host machine, 
 or pass the signed assert file back to your build machine.
 
 ```bash
 git clone git@github.com:loki-project/gitian.sigs.git
-git remote add loki-user git@github.com:loki-user/gitian.sigs.git
+git remote add $GH_USER git@github.com:$GH_USER/gitian.sigs.git
 ```
 
-Build Binaries
------------------------------
-To build the most recent tag (pass in `--docker` after setting up with docker):
+Build the binaries
+------------------
+
+**Note:** if you intend to build MacOS binaries, please follow [these instructions](https://github.com/bitcoin-core/docs/blob/master/gitian-building/gitian-building-mac-os-sdk.md) to get the required SDK.
+
+To build the most recent tag (pass in `--docker` if using docker):
 
 ```bash
-./gitian-build.py --detach-sign --no-commit -b loki-user v3.0.4
+./gitian-build.py --detach-sign --no-commit --build $GH_USER $VERSION
 ```
 
-To speed up the build, use `-j 5 -m 5000` as the first arguments, where `5` is the number of CPU's you allocated to the VM plus one, and 5000 is a little bit less than then the MB's of RAM you allocated. If there is memory corruption on your machine, try to tweak these values.
+To speed up the build, use `-j 5 --memory 5000` as the first arguments, where `5` is the number of CPU's you allocated to the VM plus one, and 5000 is a little bit less than then the MB's of RAM you allocated. If there is memory corruption on your machine, try to tweak these values.
 
-If all went well, this produces a number of (uncommited) `.assert` files in the gitian.sigs repository.
+If all went well, this produces a number of (uncommitted) `.assert` files in the gitian.sigs directory.
 
-If you do detached, offline signing, you need to copy these uncommited changes to your host machine, where you can sign them. For example:
+Checking your work
+------------------
+
+Take a look in the assert files and note the SHA256 checksums listed there.
+
+You should verify that this is really the checksum you get on that file you built. Loki is currently planning to switch over to Gitian and certified SHA256 hashes will be available for verification soon.
+
+
+Signing assert files
+--------------------
+
+If you chose to do detached signing using `--detach-sign` above (recommended), you need to copy these uncommitted changes to your host machine, then sign them using your gpg key like so:
 
 ```bash
-export NAME=loki-user
-export VERSION=v3.0.4
-gpg --output $VERSION-linux/$NAME/loki-linux-$VERSION-build.assert.sig --detach-sign $VERSION-linux/$NAME/loki-linux-$VERSION-build.assert
-gpg --output $VERSION-osx-unsigned/$NAME/loki-osx-$VERSION-build.assert.sig --detach-sign $VERSION-osx-unsigned/$NAME/loki-osx-$VERSION-build.assert
-gpg --output $VERSION-win-unsigned/$NAME/loki-win-$VERSION-build.assert.sig --detach-sign $VERSION-win-unsigned/$NAME/loki-win-$VERSION-build.assert
-```
+GH_USER=loki-user
+VERSION=v4.0.5
 
-Make a pull request (both the `.assert` and `.assert.sig` files) to the
-[loki-project/gitian.sigs](https://github.com/loki-project/gitian.sigs/) repository:
+gpg --detach-sign ${VERSION}-linux/${GH_USER}/loki-linux-*-build.assert
+gpg --detach-sign ${VERSION}-win/${GH_USER}/loki-win-*-build.assert
+gpg --detach-sign ${VERSION}-osx/${GH_USER}/loki-osx-*-build.assert
+```
+<!-- TODO: Replace * above with ${VERSION} once gitian builds correct file name -->
+
+This will create a `.sig` file for each `.assert` file above (2 files for each platform).
+
+
+Submitting your signed assert files
+-----------------------------------
+
+NOTE: Loki are planning to setup a gitian repository soon.
+Make a pull request (both the `.assert` and `.assert.sig` files) to the TBD repository:
 
 ```bash
-git checkout -b v3.0.4
-git commit -S -a -m "Add $NAME v3.0.4"
-git push --set-upstream $NAME v3.0.4
+git checkout -b $VERSION
+# add your assert and sig files...
+git commit -S -a -m "Add $GH_USER $VERSION"
+git push --set-upstream $GH_USER $VERSION
 ```
 
-```bash
-gpg --detach-sign ${VERSION}-linux/${SIGNER}/loki-linux-*-build.assert
-gpg --detach-sign ${VERSION}-win-unsigned/${SIGNER}/loki-win-*-build.assert
-gpg --detach-sign ${VERSION}-osx-unsigned/${SIGNER}/loki-osx-*-build.assert
-```
+**Note:** Please ensure your gpg public key is available to check signatures by adding it to the TBD signature directory in a pull request.
+
 
 More Build Options
 ------------------
