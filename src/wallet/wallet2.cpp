@@ -10595,6 +10595,17 @@ uint64_t wallet2::cold_key_image_sync(uint64_t &spent, uint64_t &unspent) {
   return import_res;
 }
 //----------------------------------------------------------------------------------------------------
+void wallet2::device_show_address(uint32_t account_index, uint32_t address_index, const boost::optional<crypto::hash8> &payment_id)
+{
+  if (!key_on_device())
+  {
+    return;
+  }
+
+  auto & hwdev = get_account().get_device();
+  hwdev.display_address(subaddress_index{account_index, address_index}, payment_id);
+}
+//----------------------------------------------------------------------------------------------------
 void wallet2::get_hard_fork_info(uint8_t version, uint64_t &earliest_height) const
 {
   boost::optional<std::string> result = m_node_rpc_proxy.get_earliest_height(version, earliest_height);
