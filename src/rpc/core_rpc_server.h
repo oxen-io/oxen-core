@@ -326,9 +326,9 @@ namespace cryptonote
 private:
     bool check_core_busy();
     bool check_core_ready();
-
     template<typename response>
     void fill_sn_response_entry(response &entry, const service_nodes::service_node_pubkey_info &sn_info, uint64_t current_height);
+    bool add_host_fail(const connection_context *ctx);
     
     //utils
     uint64_t get_block_reward(const block& blk);
@@ -349,6 +349,8 @@ private:
     bool m_was_bootstrap_ever_used;
     network_type m_nettype;
     bool m_restricted;
+    epee::critical_section m_host_fails_score_lock;
+    std::map<std::string, uint64_t> m_host_fails_score;
   };
 }
 
