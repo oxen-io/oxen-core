@@ -533,6 +533,7 @@ bool t_rpc_command_executor::show_difficulty() {
   tools::success_msg_writer() <<   "BH: " << res.height
                               << ", TH: " << res.top_block_hash
                               << ", DIFF: " << res.difficulty
+                              << ", CUM_DIFF: " << res.cumulative_difficulty
                               << ", HR: " << res.difficulty / res.target << " H/s";
 
   return true;
@@ -1705,13 +1706,14 @@ bool t_rpc_command_executor::get_limit_down()
   return true;
 }
 
-bool t_rpc_command_executor::out_peers(uint64_t limit)
+bool t_rpc_command_executor::out_peers(bool set, uint32_t limit)
 {
 	cryptonote::COMMAND_RPC_OUT_PEERS::request req;
 	cryptonote::COMMAND_RPC_OUT_PEERS::response res;
 
 	epee::json_rpc::error error_resp;
 
+	req.set = set;
 	req.out_peers = limit;
 
 	std::string fail_message = "Unsuccessful";
@@ -1732,18 +1734,20 @@ bool t_rpc_command_executor::out_peers(uint64_t limit)
 		}
 	}
 
-	tools::msg_writer() << "Max number of out peers set to " << limit << std::endl;
+	const std::string s = res.out_peers == (uint32_t)-1 ? "unlimited" : std::to_string(res.out_peers);
+	tools::msg_writer() << "Max number of out peers set to " << s << std::endl;
 
 	return true;
 }
 
-bool t_rpc_command_executor::in_peers(uint64_t limit)
+bool t_rpc_command_executor::in_peers(bool set, uint32_t limit)
 {
 	cryptonote::COMMAND_RPC_IN_PEERS::request req;
 	cryptonote::COMMAND_RPC_IN_PEERS::response res;
 
 	epee::json_rpc::error error_resp;
 
+	req.set = set;
 	req.in_peers = limit;
 
 	std::string fail_message = "Unsuccessful";
@@ -1764,7 +1768,8 @@ bool t_rpc_command_executor::in_peers(uint64_t limit)
 		}
 	}
 
-	tools::msg_writer() << "Max number of in peers set to " << limit << std::endl;
+	const std::string s = res.in_peers == (uint32_t)-1 ? "unlimited" : std::to_string(res.in_peers);
+	tools::msg_writer() << "Max number of in peers set to " << s << std::endl;
 
 	return true;
 }
