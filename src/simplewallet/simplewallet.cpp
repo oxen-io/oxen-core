@@ -210,11 +210,11 @@ namespace
   const char* USAGE_SET_DESCRIPTION("set_description [free text note]");
   const char* USAGE_SIGN("sign <filename>");
   const char* USAGE_VERIFY("verify <filename> <address> <signature>");
-  const char* USAGE_EXPORT_KEY_IMAGES("export_key_images <filename> [requested-only]");
+  const char* USAGE_EXPORT_KEY_IMAGES("export_key_images [requested-only] <filename>");
   const char* USAGE_IMPORT_KEY_IMAGES("import_key_images <filename>");
   const char* USAGE_HW_KEY_IMAGES_SYNC("hw_key_images_sync");
   const char* USAGE_HW_RECONNECT("hw_reconnect");
-  const char* USAGE_EXPORT_OUTPUTS("export_outputs [all] <filename>");
+  const char* USAGE_EXPORT_OUTPUTS("export_outputs [requested-only] <filename>");
   const char* USAGE_IMPORT_OUTPUTS("import_outputs <filename>");
   const char* USAGE_SHOW_TRANSFER("show_transfer <txid>");
   const char* USAGE_MAKE_MULTISIG("make_multisig <threshold> <string1> [<string>...]");
@@ -9254,34 +9254,28 @@ bool simple_wallet::verify(const std::vector<std::string> &args)
   }
   return true;
 }
-//----------------------------------------------------------------------------------------------------
-bool simple_wallet::export_key_images(const std::vector<std::string> &args_)
+//---------------------------------------------------------------------------------------------------
+bool simple_wallet::export_key_images(const std::vector<std::string> &args)
 {
   if (m_wallet->key_on_device())
   {
     fail_msg_writer() << tr("command not supported by HW wallet");
     return true;
   }
-  if (args.size() != 1 && args.size() != 2)
+
+  if (m_wallet->watch_only())
   {
     fail_msg_writer() << tr("wallet is watch-only and cannot export key images");
     return true;
   }
 
-  bool all = false;
-  if (args.size() >= 2 && args[0] == "all")
-  {
-    all = true;
-    args.erase(args.begin());
-  }
-
-  if (args.size() != 1)
+  if (args.size() != 1 && args.size() != 2)
   {
     PRINT_USAGE(USAGE_EXPORT_KEY_IMAGES);
     return true;
   }
 
-  std::string filename = args[0];
+  std::string filename = args[1];
   if (m_wallet->confirm_export_overwrite() && !check_file_overwrite(filename))
     return true;
 
@@ -9290,7 +9284,7 @@ bool simple_wallet::export_key_images(const std::vector<std::string> &args_)
   try
   {
     /// whether to export requested key images only
-    bool requested_only = (args.size() == 2 && args[1] == "requested-only");
+    bool requested_only = (args.size() == 2 && args[0] == "requested-only");
     if (!m_wallet->export_key_images(filename, requested_only))
     {
       fail_msg_writer() << tr("failed to save file ") << filename;
@@ -9416,29 +9410,21 @@ bool simple_wallet::hw_reconnect(const std::vector<std::string> &args)
   return true;
 }
 //----------------------------------------------------------------------------------------------------
-bool simple_wallet::export_outputs(const std::vector<std::string> &args_)
+bool simple_wallet::export_outputs(const std::vector<std::string> &args)
 {
   if (m_wallet->key_on_device())
   {
     fail_msg_writer() << tr("command not supported by HW wallet");
     return true;
   }
-  auto args = args_;
 
-  bool all = false;
-  if (args.size() >= 2 && args[0] == "all")
-  {
-    all = true;
-    args.erase(args.begin());
-  }
-
-  if (args.size() != 1)
+  if (args.size() != 1 && args.size() != 2)
   {
     PRINT_USAGE(USAGE_EXPORT_OUTPUTS);
     return true;
   }
 
-  std::string filename = args[0];
+  std::string filename = args[1];
   if (m_wallet->confirm_export_overwrite() && !check_file_overwrite(filename))
     return true;
 
@@ -9446,7 +9432,8 @@ bool simple_wallet::export_outputs(const std::vector<std::string> &args_)
 
   try
   {
-    std::string data = m_wallet->export_outputs_to_str(all);
+    bool requested_only = (args.size() == 2 && args[0] == "requested-only");
+    std::string data = m_wallet->export_outputs_to_str(requested_only);
     bool r = epee::file_io_utils::save_string_to_file(filename, data);
     if (!r)
     {
