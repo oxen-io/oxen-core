@@ -7047,7 +7047,7 @@ byte_and_output_fees wallet2::get_dynamic_base_fee_estimate() const
   if (!failure)
     return fees;
 
-  if (use_fork_rules(HF_VERSION_PER_OUTPUT_FEE))
+  if (use_fork_rules(HF_VERSION_PER_OUTPUT_FEE, 10))
     fees = {FEE_PER_BYTE, FEE_PER_OUTPUT}; // v13 switches back from v12 per-byte fees, add per-output
   else
     fees = {FEE_PER_BYTE_V12, 0};
@@ -7060,7 +7060,6 @@ byte_and_output_fees wallet2::get_base_fees() const
 {
   if(m_light_wallet)
     return {m_light_wallet_per_kb_fee / 1024, FEE_PER_OUTPUT};
-
   return get_dynamic_base_fee_estimate();
 }
 //----------------------------------------------------------------------------------------------------
@@ -7081,7 +7080,7 @@ uint64_t wallet2::get_fee_quantization_mask() const
 int wallet2::get_fee_algorithm() const
 {
   // changes at v13
-  if (use_fork_rules(HF_VERSION_PER_OUTPUT_FEE, 0))
+  if (use_fork_rules(HF_VERSION_PER_OUTPUT_FEE, 10))
     return 2;
   return 1; // last changed at v10
 }
