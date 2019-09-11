@@ -146,17 +146,18 @@ loki_blockchain_entry loki_chain_generator::add_block(const std::vector<cryptono
                                  txs,
                                  winner);
 
-    loki_block_with_checkpoint data = {};
-    data.has_checkpoint             = checkpoint != nullptr;
-    data.block                      = result.block;
-    if (data.has_checkpoint)
+    if (checkpoint)
     {
-      result.checkpointed = true;
-      result.checkpoint   = *checkpoint;
-      data.checkpoint     = *checkpoint;
+      loki_block_with_checkpoint data = {};
+      data.has_checkpoint             = true;
+      data.block                      = result.block;
+      data.checkpoint                 = *checkpoint;
+      events_.push_back(loki_blockchain_addable<loki_block_with_checkpoint>(data, can_be_added_to_blockchain, fail_msg));
     }
-
-    events_.push_back(loki_blockchain_addable<loki_block_with_checkpoint>(data, can_be_added_to_blockchain, fail_msg));
+    else
+    {
+      events_.push_back(loki_blockchain_addable<cryptonote::block>(result.block, can_be_added_to_blockchain, fail_msg));
+    }
   }
 
   hf_version_ = result.block.major_version;
@@ -208,34 +209,36 @@ void loki_chain_generator::add_mined_money_unlock_blocks()
   add_n_blocks(CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW);
 }
 
-void loki_chain_generator::add_tx(cryptonote::transaction const &tx, bool can_be_added_to_blockchain, std::string const &fail_msg)
+void loki_chain_generator::add_tx(cryptonote::transaction const &tx, bool can_be_added_to_blockchain, std::string const &fail_msg, bool kept_by_block)
 {
-  loki_blockchain_addable<cryptonote::transaction> entry = {tx, can_be_added_to_blockchain, fail_msg};
+  loki_transaction tx_entry                       = {tx, kept_by_block};
+  loki_blockchain_addable<loki_transaction> entry = {std::move(tx_entry), can_be_added_to_blockchain, fail_msg};
   events_.push_back(entry);
 }
 
 cryptonote::transaction loki_chain_generator::create_and_add_tx(const cryptonote::account_base &miner,
                                                                 const cryptonote::account_base &acc,
                                                                 uint64_t amount,
-                                                                uint64_t fee)
+                                                                uint64_t fee,
+                                                                bool kept_by_block)
 {
   cryptonote::transaction t;
   loki_tx_builder(events_, t, blocks_.back().block, miner, acc, amount, hf_version_).with_fee(fee).build();
-  add_tx(t, true /*can_be_added_to_blockchain*/);
+  add_tx(t, true /*can_be_added_to_blockchain*/, ""/*fail_msg*/, kept_by_block);
   return t;
 }
 
-cryptonote::transaction loki_chain_generator::create_and_add_deregister_tx(const crypto::public_key &pub_key, uint64_t height, const std::vector<uint64_t> &voters, uint64_t fee)
+cryptonote::transaction loki_chain_generator::create_and_add_deregister_tx(const crypto::public_key &pub_key, uint64_t height, const std::vector<uint64_t> &voters, uint64_t fee, bool kept_by_block)
 {
   cryptonote::transaction result = create_deregister_tx(pub_key, height, voters, fee);
-  add_tx(result, true /*can_be_added_to_blockchain*/);
+  add_tx(result, true /*can_be_added_to_blockchain*/, "" /*fail_msg*/, kept_by_block);
   return result;
 }
 
-cryptonote::transaction loki_chain_generator::create_and_add_registration_tx(const cryptonote::account_base &src, const cryptonote::keypair &sn_keys)
+cryptonote::transaction loki_chain_generator::create_and_add_registration_tx(const cryptonote::account_base &src, const cryptonote::keypair &sn_keys, bool kept_by_block)
 {
   cryptonote::transaction result = create_registration_tx(src, sn_keys);
-  add_tx(result, true /*can_be_added_to_blockchain*/);
+  add_tx(result, true /*can_be_added_to_blockchain*/, "" /*fail_msg*/, kept_by_block);
   return result;
 }
 
@@ -1823,7 +1826,9 @@ bool find_block_chain(const std::vector<test_event_entry> &events, std::vector<c
   std::unordered_map<crypto::hash, const cryptonote::block *> block_index;
   for (const test_event_entry &ev : events)
   {
-    if (typeid(cryptonote::block) == ev.type() || typeid(loki_blockchain_addable<loki_block_with_checkpoint>) == ev.type())
+    if (typeid(cryptonote::block) == ev.type() ||
+        typeid(loki_blockchain_addable<loki_block_with_checkpoint>) == ev.type() ||
+        typeid(loki_blockchain_addable<cryptonote::block>) == ev.type())
     {
       if (typeid(cryptonote::block) == ev.type())
       {
@@ -1835,19 +1840,24 @@ bool find_block_chain(const std::vector<test_event_entry> &events, std::vector<c
         const auto *blk                        = &boost::get<loki_blockchain_addable<loki_block_with_checkpoint>>(ev);
         block_index[get_block_hash(blk->data.block)] = &blk->data.block;
       }
+      else if (typeid(loki_blockchain_addable<cryptonote::block>) == ev.type())
+      {
+        const auto *blk = &boost::get<loki_blockchain_addable<cryptonote::block>>(ev);
+        block_index[get_block_hash(blk->data)] = &blk->data;
+      }
     }
     else if (typeid(cryptonote::transaction) == ev.type() ||
-             typeid(loki_blockchain_addable<cryptonote::transaction>) == ev.type())
+             typeid(loki_blockchain_addable<loki_transaction>) == ev.type())
     {
       if (typeid(cryptonote::transaction) == ev.type())
       {
         const auto &tx                = boost::get<cryptonote::transaction>(ev);
         mtx[get_transaction_hash(tx)] = &tx;
       }
-      else if (typeid(loki_blockchain_addable<cryptonote::transaction>) == ev.type())
+      else if (typeid(loki_blockchain_addable<loki_transaction>) == ev.type())
       {
-        const auto &tx                     = boost::get<loki_blockchain_addable<cryptonote::transaction>>(ev);
-        mtx[get_transaction_hash(tx.data)] = &tx.data;
+        const auto &entry                        = boost::get<loki_blockchain_addable<loki_transaction>>(ev);
+        mtx[get_transaction_hash(entry.data.tx)] = &entry.data.tx;
       }
     }
   }
@@ -1874,7 +1884,9 @@ bool find_block_chain(const std::vector<test_event_entry> &events, std::vector<c
   std::unordered_map<crypto::hash, const cryptonote::block *> block_index;
   for (const test_event_entry &ev : events)
   {
-    if (typeid(cryptonote::block) == ev.type() || typeid(loki_blockchain_addable<loki_block_with_checkpoint>) == ev.type())
+    if (typeid(cryptonote::block) == ev.type() ||
+        typeid(loki_blockchain_addable<loki_block_with_checkpoint>) == ev.type() ||
+        typeid(loki_blockchain_addable<cryptonote::block>) == ev.type())
     {
       if (typeid(cryptonote::block) == ev.type())
       {
@@ -1883,22 +1895,27 @@ bool find_block_chain(const std::vector<test_event_entry> &events, std::vector<c
       }
       else if (typeid(loki_blockchain_addable<loki_block_with_checkpoint>) == ev.type())
       {
-        const auto *blk                        = &boost::get<loki_blockchain_addable<loki_block_with_checkpoint>>(ev);
+        const auto *blk = &boost::get<loki_blockchain_addable<loki_block_with_checkpoint>>(ev);
         block_index[get_block_hash(blk->data.block)] = &blk->data.block;
+      }
+      else if (typeid(loki_blockchain_addable<cryptonote::block>) == ev.type())
+      {
+        const auto *blk = &boost::get<loki_blockchain_addable<cryptonote::block>>(ev);
+        block_index[get_block_hash(blk->data)] = &blk->data;
       }
     }
     else if (typeid(cryptonote::transaction) == ev.type() ||
-             typeid(loki_blockchain_addable<cryptonote::transaction>) == ev.type())
+             typeid(loki_blockchain_addable<loki_transaction>) == ev.type())
     {
       if (typeid(cryptonote::transaction) == ev.type())
       {
         const auto &tx                = boost::get<cryptonote::transaction>(ev);
         mtx[get_transaction_hash(tx)] = &tx;
       }
-      else if (typeid(loki_blockchain_addable<cryptonote::transaction>) == ev.type())
+      else if (typeid(loki_blockchain_addable<loki_transaction>) == ev.type())
       {
-        const auto &tx                     = boost::get<loki_blockchain_addable<cryptonote::transaction>>(ev);
-        mtx[get_transaction_hash(tx.data)] = &tx.data;
+        const auto &entry                        = boost::get<loki_blockchain_addable<loki_transaction>>(ev);
+        mtx[get_transaction_hash(entry.data.tx)] = &entry.data.tx;
       }
     }
   }

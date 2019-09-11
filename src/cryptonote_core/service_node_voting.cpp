@@ -201,12 +201,12 @@ namespace service_nodes
 
     crypto::hash const hash = make_state_change_vote_hash(state_change.block_height, state_change.service_node_index, state_change.state);
     std::array<int, service_nodes::STATE_CHANGE_QUORUM_SIZE> validator_set = {};
-    uint64_t validator_index_tracker                                       = -1;
+    int validator_index_tracker                                            = -1;
     for (const auto &vote : state_change.votes)
     {
       if (hf_version >= cryptonote::network_version_13_enforce_checkpoints) // NOTE: After HF13, votes must be stored in ascending order
       {
-        if (validator_index_tracker >= vote.validator_index)
+        if (validator_index_tracker >= static_cast<int>(vote.validator_index))
         {
           vvc.m_votes_not_sorted = true;
           LOG_PRINT_L1("Vote validator index is not stored in ascending order, prev validator index: "

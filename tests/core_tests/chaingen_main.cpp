@@ -42,7 +42,6 @@ namespace
   const command_line::arg_descriptor<bool>        arg_generate_test_data          = {"generate_test_data", ""};
   const command_line::arg_descriptor<bool>        arg_play_test_data              = {"play_test_data", ""};
   const command_line::arg_descriptor<bool>        arg_generate_and_play_test_data = {"generate_and_play_test_data", ""};
-  const command_line::arg_descriptor<bool>        arg_service_nodes               = {"service_nodes", ""};
   const command_line::arg_descriptor<bool>        arg_test_transactions           = {"test_transactions", ""};
   const command_line::arg_descriptor<std::string> arg_filter                      = { "filter", "Regular expression filter for which tests to run" };
   const command_line::arg_descriptor<bool>        arg_list_tests                  = {"list_tests", ""};
@@ -64,7 +63,6 @@ int main(int argc, char* argv[])
   command_line::add_arg(desc_options, arg_generate_test_data);
   command_line::add_arg(desc_options, arg_play_test_data);
   command_line::add_arg(desc_options, arg_generate_and_play_test_data);
-  command_line::add_arg(desc_options, arg_service_nodes);
   command_line::add_arg(desc_options, arg_test_transactions);
   command_line::add_arg(desc_options, arg_filter);
   command_line::add_arg(desc_options, arg_list_tests);
@@ -107,120 +105,105 @@ int main(int argc, char* argv[])
   else
   {
     list_tests = command_line::get_arg(vm, arg_list_tests);
-    const bool run_all = !command_line::get_arg(vm, arg_service_nodes);
 
-    if (run_all) {
-      MLOG(el::Level::Info, "Running all tests\n");
-    }
+    // NOTE: Loki Tests
+    GENERATE_AND_PLAY(loki_checkpointing_alt_chain_more_service_node_checkpoints_less_pow_overtakes);
+    GENERATE_AND_PLAY(loki_checkpointing_alt_chain_receive_checkpoint_votes_should_reorg_back);
+    GENERATE_AND_PLAY(loki_checkpointing_alt_chain_with_increasing_service_node_checkpoints);
+    GENERATE_AND_PLAY(loki_checkpointing_service_node_checkpoint_from_votes);
+    GENERATE_AND_PLAY(loki_checkpointing_service_node_checkpoints_check_reorg_windows);
+    GENERATE_AND_PLAY(loki_core_governance_batched_reward);
+    GENERATE_AND_PLAY(loki_core_test_deregister_preferred);
+    GENERATE_AND_PLAY(loki_core_test_deregister_safety_buffer);
+    GENERATE_AND_PLAY(loki_core_test_deregister_too_old);
+    GENERATE_AND_PLAY(loki_core_test_deregister_zero_fee);
+    GENERATE_AND_PLAY(loki_core_test_deregister_on_split);
+    GENERATE_AND_PLAY(loki_service_nodes_alt_quorums);
+    GENERATE_AND_PLAY(loki_service_nodes_gen_nodes);
+    GENERATE_AND_PLAY(loki_service_nodes_test_rollback);
+    GENERATE_AND_PLAY(loki_service_nodes_test_swarms_basic);
 
-    if (run_all || command_line::get_arg(vm, arg_service_nodes))
-    {
-#if 1
-      GENERATE_AND_PLAY(gen_service_nodes);
-      GENERATE_AND_PLAY(test_prefer_deregisters);
-      GENERATE_AND_PLAY(test_zero_fee_deregister);
-      GENERATE_AND_PLAY(test_deregister_safety_buffer);
-      GENERATE_AND_PLAY(deregister_too_old);
-      GENERATE_AND_PLAY(sn_test_rollback);
-      GENERATE_AND_PLAY(test_swarms_basic);
-      GENERATE_AND_PLAY(gen_service_node_alt_quorum);
-      GENERATE_AND_PLAY(gen_service_node_checkpoint_from_votes);
-      GENERATE_AND_PLAY(gen_service_node_checkpoints_check_reorg_windows);
-      GENERATE_AND_PLAY(gen_alt_chain_more_service_node_checkpoints_less_pow_overtakes);
-      GENERATE_AND_PLAY(gen_alt_chain_with_increasing_service_node_checkpoints);
-      GENERATE_AND_PLAY(gen_alt_chain_receive_checkpoint_votes_should_reorg_back);
-#else
-      GENERATE_AND_PLAY(gen_alt_chain_receive_checkpoint_votes_should_reorg_back);
-#endif
-    }
+    // NOTE: Monero Tests
+    GENERATE_AND_PLAY(gen_simple_chain_001);
+    GENERATE_AND_PLAY(gen_simple_chain_split_1);
+    GENERATE_AND_PLAY(gen_chain_switch_1);
+    GENERATE_AND_PLAY(gen_ring_signature_1);
+    GENERATE_AND_PLAY(gen_ring_signature_2);
+    GENERATE_AND_PLAY(one_block);
 
-    if (run_all)
-    {
-#if 1
-      GENERATE_AND_PLAY(gen_batched_governance_reward); // Loki Governance
+    // Block verification tests
+    GENERATE_AND_PLAY(gen_block_big_major_version);
+    GENERATE_AND_PLAY(gen_block_big_minor_version);
+    GENERATE_AND_PLAY(gen_block_ts_not_checked);
+    GENERATE_AND_PLAY(gen_block_ts_in_past);
+    GENERATE_AND_PLAY(gen_block_ts_in_future);
+    GENERATE_AND_PLAY(gen_block_invalid_prev_id);
+    GENERATE_AND_PLAY(gen_block_invalid_nonce);
+    GENERATE_AND_PLAY(gen_block_no_miner_tx);
+    GENERATE_AND_PLAY(gen_block_unlock_time_is_low);
+    GENERATE_AND_PLAY(gen_block_unlock_time_is_high);
+    GENERATE_AND_PLAY(gen_block_unlock_time_is_timestamp_in_past);
+    GENERATE_AND_PLAY(gen_block_unlock_time_is_timestamp_in_future);
+    GENERATE_AND_PLAY(gen_block_height_is_low);
+    GENERATE_AND_PLAY(gen_block_height_is_high);
+    GENERATE_AND_PLAY(gen_block_miner_tx_has_2_in);
+    GENERATE_AND_PLAY(gen_block_miner_tx_has_2_tx_gen_in);
+    GENERATE_AND_PLAY(gen_block_miner_tx_with_txin_to_key);
+    GENERATE_AND_PLAY(gen_block_miner_tx_out_is_big);
+    GENERATE_AND_PLAY(gen_block_miner_tx_has_no_out);
+    GENERATE_AND_PLAY(gen_block_miner_tx_has_out_to_alice);
+    GENERATE_AND_PLAY(gen_block_has_invalid_tx);
+    GENERATE_AND_PLAY(gen_block_is_too_big);
 
-      GENERATE_AND_PLAY(gen_simple_chain_001);
-      GENERATE_AND_PLAY(gen_simple_chain_split_1);
-      GENERATE_AND_PLAY(gen_chain_switch_1);
-      GENERATE_AND_PLAY(gen_ring_signature_1);
-      GENERATE_AND_PLAY(gen_ring_signature_2);
-      GENERATE_AND_PLAY(one_block);
+    // TODO(loki): We also want to run these tx tests on deregistration tx's
+    // as well because they special case and run under very different code
+    // paths from the regular tx path
+    // Transaction verification tests
+    GENERATE_AND_PLAY(gen_tx_big_version);
+    GENERATE_AND_PLAY(gen_tx_unlock_time);
+    GENERATE_AND_PLAY(gen_tx_input_is_not_txin_to_key);
+    GENERATE_AND_PLAY(gen_tx_no_inputs_no_outputs);
+    GENERATE_AND_PLAY(gen_tx_no_inputs_has_outputs);
+    GENERATE_AND_PLAY(gen_tx_has_inputs_no_outputs);
+    GENERATE_AND_PLAY(gen_tx_invalid_input_amount);
+    GENERATE_AND_PLAY(gen_tx_input_wo_key_offsets);
+    GENERATE_AND_PLAY(gen_tx_key_offset_points_to_foreign_key);
+    GENERATE_AND_PLAY(gen_tx_sender_key_offset_not_exist); // TODO(loki): Revisit this test
+    GENERATE_AND_PLAY(gen_tx_key_image_not_derive_from_tx_key);
+    GENERATE_AND_PLAY(gen_tx_key_image_is_invalid);
+    GENERATE_AND_PLAY(gen_tx_txout_to_key_has_invalid_key);
+    GENERATE_AND_PLAY(gen_tx_output_is_not_txout_to_key);
+    GENERATE_AND_PLAY(gen_tx_signatures_are_invalid);
 
-      // Block verification tests
-      GENERATE_AND_PLAY(gen_block_big_major_version);
-      GENERATE_AND_PLAY(gen_block_big_minor_version);
-      GENERATE_AND_PLAY(gen_block_ts_not_checked);
-      GENERATE_AND_PLAY(gen_block_ts_in_past);
-      GENERATE_AND_PLAY(gen_block_ts_in_future);
-      GENERATE_AND_PLAY(gen_block_invalid_prev_id);
-      GENERATE_AND_PLAY(gen_block_invalid_nonce);
-      GENERATE_AND_PLAY(gen_block_no_miner_tx);
-      GENERATE_AND_PLAY(gen_block_unlock_time_is_low);
-      GENERATE_AND_PLAY(gen_block_unlock_time_is_high);
-      GENERATE_AND_PLAY(gen_block_unlock_time_is_timestamp_in_past);
-      GENERATE_AND_PLAY(gen_block_unlock_time_is_timestamp_in_future);
-      GENERATE_AND_PLAY(gen_block_height_is_low);
-      GENERATE_AND_PLAY(gen_block_height_is_high);
-      GENERATE_AND_PLAY(gen_block_miner_tx_has_2_in);
-      GENERATE_AND_PLAY(gen_block_miner_tx_has_2_tx_gen_in);
-      GENERATE_AND_PLAY(gen_block_miner_tx_with_txin_to_key);
-      GENERATE_AND_PLAY(gen_block_miner_tx_out_is_big);
-      GENERATE_AND_PLAY(gen_block_miner_tx_has_no_out);
-      GENERATE_AND_PLAY(gen_block_miner_tx_has_out_to_alice);
-      GENERATE_AND_PLAY(gen_block_has_invalid_tx);
-      GENERATE_AND_PLAY(gen_block_is_too_big);
+    GENERATE_AND_PLAY(gen_multisig_tx_invalid_23_1__no_threshold);
+    GENERATE_AND_PLAY(gen_multisig_tx_invalid_45_5_23_no_threshold);
+    GENERATE_AND_PLAY(gen_multisig_tx_invalid_22_1__no_threshold);
+    GENERATE_AND_PLAY(gen_multisig_tx_invalid_33_1__no_threshold);
+    GENERATE_AND_PLAY(gen_multisig_tx_invalid_33_1_2_no_threshold);
+    GENERATE_AND_PLAY(gen_multisig_tx_invalid_33_1_3_no_threshold);
+    GENERATE_AND_PLAY(gen_multisig_tx_invalid_24_1_no_signers);
+    GENERATE_AND_PLAY(gen_multisig_tx_invalid_25_1_no_signers);
+    GENERATE_AND_PLAY(gen_multisig_tx_invalid_48_1_no_signers);
+    GENERATE_AND_PLAY(gen_multisig_tx_invalid_48_1_23_no_threshold);
 
-      // TODO(loki): We also want to run these tx tests on deregistration tx's
-      // as well because they special case and run under very different code
-      // paths from the regular tx path
-      // Transaction verification tests
-      GENERATE_AND_PLAY(gen_tx_big_version);
-      GENERATE_AND_PLAY(gen_tx_unlock_time);
-      GENERATE_AND_PLAY(gen_tx_input_is_not_txin_to_key);
-      GENERATE_AND_PLAY(gen_tx_no_inputs_no_outputs);
-      GENERATE_AND_PLAY(gen_tx_no_inputs_has_outputs);
-      GENERATE_AND_PLAY(gen_tx_has_inputs_no_outputs);
-      GENERATE_AND_PLAY(gen_tx_invalid_input_amount);
-      GENERATE_AND_PLAY(gen_tx_input_wo_key_offsets);
-      GENERATE_AND_PLAY(gen_tx_key_offset_points_to_foreign_key);
-      GENERATE_AND_PLAY(gen_tx_sender_key_offset_not_exist); // TODO(loki): Revisit this test
-      GENERATE_AND_PLAY(gen_tx_key_image_not_derive_from_tx_key);
-      GENERATE_AND_PLAY(gen_tx_key_image_is_invalid);
-      GENERATE_AND_PLAY(gen_tx_txout_to_key_has_invalid_key);
-      GENERATE_AND_PLAY(gen_tx_output_is_not_txout_to_key);
-      GENERATE_AND_PLAY(gen_tx_signatures_are_invalid);
+    // Bulletproof Tests
+    GENERATE_AND_PLAY(gen_bp_tx_valid_1);
+    GENERATE_AND_PLAY(gen_bp_tx_invalid_1_1);
+    GENERATE_AND_PLAY(gen_bp_tx_valid_2);
+    GENERATE_AND_PLAY(gen_bp_tx_valid_3);
+    GENERATE_AND_PLAY(gen_bp_tx_valid_16);
+    GENERATE_AND_PLAY(gen_bp_tx_invalid_4_2_1);
+    GENERATE_AND_PLAY(gen_bp_tx_invalid_16_16);
+    GENERATE_AND_PLAY(gen_bp_txs_valid_2_and_2);
+    GENERATE_AND_PLAY(gen_bp_txs_invalid_2_and_8_2_and_16_16_1);
+    GENERATE_AND_PLAY(gen_bp_txs_valid_2_and_3_and_2_and_4);
+    GENERATE_AND_PLAY(gen_bp_tx_invalid_not_enough_proofs);
+    GENERATE_AND_PLAY(gen_bp_tx_invalid_empty_proofs);
+    GENERATE_AND_PLAY(gen_bp_tx_invalid_too_many_proofs);
+    GENERATE_AND_PLAY(gen_bp_tx_invalid_wrong_amount);
+    GENERATE_AND_PLAY(gen_bp_tx_invalid_borromean_type);
 
-      GENERATE_AND_PLAY(gen_multisig_tx_invalid_23_1__no_threshold);
-      GENERATE_AND_PLAY(gen_multisig_tx_invalid_45_5_23_no_threshold);
-      GENERATE_AND_PLAY(gen_multisig_tx_invalid_22_1__no_threshold);
-      GENERATE_AND_PLAY(gen_multisig_tx_invalid_33_1__no_threshold);
-      GENERATE_AND_PLAY(gen_multisig_tx_invalid_33_1_2_no_threshold);
-      GENERATE_AND_PLAY(gen_multisig_tx_invalid_33_1_3_no_threshold);
-      GENERATE_AND_PLAY(gen_multisig_tx_invalid_24_1_no_signers);
-      GENERATE_AND_PLAY(gen_multisig_tx_invalid_25_1_no_signers);
-      GENERATE_AND_PLAY(gen_multisig_tx_invalid_48_1_no_signers);
-      GENERATE_AND_PLAY(gen_multisig_tx_invalid_48_1_23_no_threshold);
-
-      // Bulletproof Tests
-      GENERATE_AND_PLAY(gen_bp_tx_valid_1);
-      GENERATE_AND_PLAY(gen_bp_tx_invalid_1_1);
-      GENERATE_AND_PLAY(gen_bp_tx_valid_2);
-      GENERATE_AND_PLAY(gen_bp_tx_valid_3);
-      GENERATE_AND_PLAY(gen_bp_tx_valid_16);
-      GENERATE_AND_PLAY(gen_bp_tx_invalid_4_2_1);
-      GENERATE_AND_PLAY(gen_bp_tx_invalid_16_16);
-      GENERATE_AND_PLAY(gen_bp_txs_valid_2_and_2);
-      GENERATE_AND_PLAY(gen_bp_txs_invalid_2_and_8_2_and_16_16_1);
-      GENERATE_AND_PLAY(gen_bp_txs_valid_2_and_3_and_2_and_4);
-      GENERATE_AND_PLAY(gen_bp_tx_invalid_not_enough_proofs);
-      GENERATE_AND_PLAY(gen_bp_tx_invalid_empty_proofs);
-      GENERATE_AND_PLAY(gen_bp_tx_invalid_too_many_proofs);
-      GENERATE_AND_PLAY(gen_bp_tx_invalid_wrong_amount);
-      GENERATE_AND_PLAY(gen_bp_tx_invalid_borromean_type);
-#endif
-    }
-
-      // TODO(loki): Tests we need to fix
+    // TODO(loki): Tests we need to fix
 #if 0
       //GENERATE_AND_PLAY(gen_ring_signature_big); // Takes up to XXX hours (if CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW == 10)
       //GENERATE_AND_PLAY(gen_block_invalid_binary_format); // Takes up to 3 hours, if CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW == 500, up to 30 minutes, if CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW == 10

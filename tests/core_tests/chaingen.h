@@ -71,6 +71,12 @@ struct loki_block_with_checkpoint
   cryptonote::checkpoint_t checkpoint;
 };
 
+struct loki_transaction
+{
+  cryptonote::transaction tx;
+  bool                    kept_by_block;
+};
+
 // TODO(loki): Deperecate other methods of doing polymorphism for items to be
 // added to test_event_entry.  Right now, adding a block and checking for
 // failure requires you to add a member field to mark the event index that
@@ -169,20 +175,12 @@ struct event_visitor_settings
   enum settings
   {
     set_txs_keeped_by_block = 1 << 0,
-    set_service_node_key = 1 << 1
   };
 
   event_visitor_settings(int a_valid_mask = 0, bool a_txs_keeped_by_block = false)
     : valid_mask(a_valid_mask)
     , txs_keeped_by_block(a_txs_keeped_by_block)
   {
-  }
-
-  static event_visitor_settings make_set_service_node_key(const crypto::secret_key& a_service_node_key)
-  {
-    event_visitor_settings settings(set_service_node_key);
-    settings.service_node_key = a_service_node_key;
-    return settings;
   }
 
 private:
@@ -233,7 +231,8 @@ typedef boost::variant<cryptonote::block,
 
                        loki_callback_entry,
                        loki_blockchain_addable<loki_block_with_checkpoint>,
-                       loki_blockchain_addable<cryptonote::transaction>,
+                       loki_blockchain_addable<cryptonote::block>,
+                       loki_blockchain_addable<loki_transaction>,
                        loki_blockchain_addable<service_nodes::quorum_vote_t>,
                        loki_blockchain_addable<cryptonote::checkpoint_t>
                        > test_event_entry;
@@ -780,7 +779,28 @@ public:
     std::vector<cryptonote::block> pblocks;
     if (m_c.prepare_handle_incoming_blocks(std::vector<cryptonote::block_complete_entry>(1, {bd, {}, {}}), pblocks))
     {
-      m_c.handle_incoming_block(bd, &block, bvc, entry.data.has_checkpoint ? &checkpoint_copy : nullptr);
+      m_c.handle_incoming_block(bd, &block, bvc, &checkpoint_copy);
+      m_c.cleanup_handle_incoming_blocks();
+    }
+    else
+      bvc.m_verifivation_failed = true;
+
+    bool added = !bvc.m_verifivation_failed;
+    CHECK_AND_NO_ASSERT_MES(added == entry.can_be_added_to_blockchain, false, entry.fail_msg);
+    return true;
+  }
+  
+  bool operator()(const loki_blockchain_addable<cryptonote::block> &entry) const
+  {
+    log_event("loki_blockchain_addable<cryptonote::block>");
+    cryptonote::block const &block = entry.data;
+
+    cryptonote::block_verification_context bvc = {};
+    cryptonote::blobdata bd                    = t_serializable_object_to_blob(block);
+    std::vector<cryptonote::block> pblocks;
+    if (m_c.prepare_handle_incoming_blocks(std::vector<cryptonote::block_complete_entry>(1, {bd, {}, {}}), pblocks))
+    {
+      m_c.handle_incoming_block(bd, &block, bvc, nullptr);
       m_c.cleanup_handle_incoming_blocks();
     }
     else
@@ -791,12 +811,12 @@ public:
     return true;
   }
 
-  bool operator()(const loki_blockchain_addable<cryptonote::transaction> &entry) const
+  bool operator()(const loki_blockchain_addable<loki_transaction> &entry) const
   {
-    log_event("cryptonote::transaction");
+    log_event("loki_blockchain_addable<loki_transaction>");
     cryptonote::tx_verification_context tvc = {};
     size_t pool_size                        = m_c.get_pool_transactions_count();
-    m_c.handle_incoming_tx(t_serializable_object_to_blob(entry.data), tvc, m_txs_keeped_by_block, false, false);
+    m_c.handle_incoming_tx(t_serializable_object_to_blob(entry.data.tx), tvc, entry.data.kept_by_block, false, false);
 
     bool added = (pool_size + 1) == m_c.get_pool_transactions_count();
     CHECK_AND_NO_ASSERT_MES(added == entry.can_be_added_to_blockchain, false, entry.fail_msg);
@@ -1361,13 +1381,13 @@ struct loki_chain_generator
   void                                                 add_service_node_checkpoint(uint64_t block_height, size_t num_votes);
   void                                                 add_mined_money_unlock_blocks(); // NOTE: Unlock all Loki generated from mining prior to this call i.e. CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW
 
-  void                                                 add_tx(cryptonote::transaction const &tx, bool can_be_added_to_blockchain, std::string const &fail_msg = {});
+  void                                                 add_tx(cryptonote::transaction const &tx, bool can_be_added_to_blockchain, std::string const &fail_msg = {}, bool kept_by_block = false);
 
   // NOTE: Add constructed TX to events_ and assume that it is valid to add to the blockchain. If the TX is meant to be unaddable to the blockchain use the individual create + add functions to
   // be able to mark the add TX event as something that should trigger a failure.
-  cryptonote::transaction                              create_and_add_tx             (const cryptonote::account_base& miner, const cryptonote::account_base& acc, uint64_t amount, uint64_t fee = TESTS_DEFAULT_FEE);
-  cryptonote::transaction                              create_and_add_deregister_tx  (const crypto::public_key& pub_key, uint64_t height = -1, const std::vector<uint64_t>& voters = {}, uint64_t fee = 0);
-  cryptonote::transaction                              create_and_add_registration_tx(const cryptonote::account_base& src, const cryptonote::keypair& sn_keys = cryptonote::keypair::generate(hw::get_device("default")));
+  cryptonote::transaction                              create_and_add_tx             (const cryptonote::account_base& miner, const cryptonote::account_base& acc, uint64_t amount, uint64_t fee = TESTS_DEFAULT_FEE, bool kept_by_block = false);
+  cryptonote::transaction                              create_and_add_deregister_tx  (const crypto::public_key& pub_key, uint64_t height = -1, const std::vector<uint64_t>& voters = {}, uint64_t fee = 0, bool kept_by_block = false);
+  cryptonote::transaction                              create_and_add_registration_tx(const cryptonote::account_base& src, const cryptonote::keypair& sn_keys = cryptonote::keypair::generate(hw::get_device("default")), bool kept_by_block = false);
 
   // NOTE: Create transactions but don't add to events_
   cryptonote::transaction                              create_registration_tx(const cryptonote::account_base& src, const cryptonote::keypair& sn_keys = cryptonote::keypair::generate(hw::get_device("default"))) const;
