@@ -228,9 +228,9 @@ cryptonote::transaction loki_chain_generator::create_and_add_tx(const cryptonote
   return t;
 }
 
-cryptonote::transaction loki_chain_generator::create_and_add_deregister_tx(const crypto::public_key &pub_key, uint64_t height, const std::vector<uint64_t> &voters, uint64_t fee, bool kept_by_block)
+cryptonote::transaction loki_chain_generator::create_and_add_state_change_tx(service_nodes::new_state state, const crypto::public_key &pub_key, uint64_t height, const std::vector<uint64_t> &voters, uint64_t fee, bool kept_by_block)
 {
-  cryptonote::transaction result = create_deregister_tx(pub_key, height, voters, fee);
+  cryptonote::transaction result = create_state_change_tx(state, pub_key, height, voters, fee);
   add_tx(result, true /*can_be_added_to_blockchain*/, "" /*fail_msg*/, kept_by_block);
   return result;
 }
@@ -281,7 +281,7 @@ cryptonote::transaction loki_chain_generator::create_registration_tx(const crypt
   return result;
 }
 
-cryptonote::transaction loki_chain_generator::create_deregister_tx(const crypto::public_key &pub_key, uint64_t height, const std::vector<uint64_t>& voters, uint64_t fee) const
+cryptonote::transaction loki_chain_generator::create_state_change_tx(service_nodes::new_state state, const crypto::public_key &pub_key, uint64_t height, const std::vector<uint64_t>& voters, uint64_t fee) const
 {
   if (height == UINT64_MAX)
     height = this->height();
@@ -298,7 +298,7 @@ cryptonote::transaction loki_chain_generator::create_deregister_tx(const crypto:
   }
   assert(worker_index != UINT64_MAX);
 
-  cryptonote::tx_extra_service_node_state_change deregister(service_nodes::new_state::deregister, height, worker_index);
+  cryptonote::tx_extra_service_node_state_change state_change_extra(state, height, worker_index);
   if (voters.size())
   {
     for (const auto voter_index : voters)
@@ -307,8 +307,8 @@ cryptonote::transaction loki_chain_generator::create_deregister_tx(const crypto:
       assert(service_node_keys_.count(voter_pub_key) == 1);
       crypto::secret_key const &voter_sec_key = service_node_keys_[voter_pub_key];
 
-      service_nodes::quorum_vote_t deregister_vote = service_nodes::make_state_change_vote(deregister.block_height, voter_index, deregister.service_node_index, service_nodes::new_state::deregister, voter_pub_key, voter_sec_key);
-      deregister.votes.push_back({deregister_vote.signature, (uint32_t)voter_index});
+      service_nodes::quorum_vote_t vote = service_nodes::make_state_change_vote(state_change_extra.block_height, voter_index, state_change_extra.service_node_index, state, voter_pub_key, voter_sec_key);
+      state_change_extra.votes.push_back({vote.signature, (uint32_t)voter_index});
     }
   }
   else
@@ -319,16 +319,16 @@ cryptonote::transaction loki_chain_generator::create_deregister_tx(const crypto:
       assert(service_node_keys_.count(voter_pub_key) == 1);
       crypto::secret_key const &voter_sec_key = service_node_keys_[voter_pub_key];
 
-      service_nodes::quorum_vote_t deregister_vote = service_nodes::make_state_change_vote(deregister.block_height, i, deregister.service_node_index, service_nodes::new_state::deregister, voter_pub_key, voter_sec_key); deregister.votes.push_back({deregister_vote.signature, (uint32_t)i});
+      service_nodes::quorum_vote_t vote = service_nodes::make_state_change_vote(state_change_extra.block_height, i, state_change_extra.service_node_index, state, voter_pub_key, voter_sec_key);
+      state_change_extra.votes.push_back({vote.signature, (uint32_t)i});
     }
   }
 
-  // NOTE: Make deregistration tx
   cryptonote::transaction result;
   {
     std::vector<uint8_t> extra;
-    const bool full_tx_deregister_made = cryptonote::add_service_node_state_change_to_tx_extra(result.extra, deregister, get_hf_version_at(height + 1));
-    assert(full_tx_deregister_made);
+    const bool full_tx_made = cryptonote::add_service_node_state_change_to_tx_extra(result.extra, state_change_extra, get_hf_version_at(height + 1));
+    assert(full_tx_made);
     if (fee) loki_tx_builder(events_, result, top().block, first_miner_, first_miner_, 0 /*amount*/, get_hf_version_at(height + 1)).with_fee(fee).with_extra(extra).with_per_output_unlock(true).build();
     result.version = cryptonote::transaction::get_max_version_for_hf(get_hf_version_at(height + 1), cryptonote::FAKECHAIN);
     result.type    = cryptonote::txtype::state_change;

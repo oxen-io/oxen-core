@@ -118,6 +118,7 @@ int main(int argc, char* argv[])
     GENERATE_AND_PLAY(loki_core_test_deregister_too_old);
     GENERATE_AND_PLAY(loki_core_test_deregister_zero_fee);
     GENERATE_AND_PLAY(loki_core_test_deregister_on_split);
+    GENERATE_AND_PLAY(loki_core_test_state_change_ip_penalty_disallow_dupes);
     GENERATE_AND_PLAY(loki_service_nodes_alt_quorums);
     GENERATE_AND_PLAY(loki_service_nodes_gen_nodes);
     GENERATE_AND_PLAY(loki_service_nodes_test_rollback);

@@ -529,8 +529,8 @@ bool loki_core_test_deregister_preferred::generate(std::vector<test_event_entry>
   /// generate two deregisters
   const auto deregister_pub_key_1 = gen.top_quorum().obligations->workers[0];
   const auto deregister_pub_key_2 = gen.top_quorum().obligations->workers[1];
-  gen.create_and_add_deregister_tx(deregister_pub_key_1);
-  gen.create_and_add_deregister_tx(deregister_pub_key_2);
+  gen.create_and_add_state_change_tx(service_nodes::new_state::deregister, deregister_pub_key_1);
+  gen.create_and_add_state_change_tx(service_nodes::new_state::deregister, deregister_pub_key_2);
 
   loki_register_callback(events, "check_prefer_deregisters", [&events, miner](cryptonote::core &c, size_t ev_index)
   {
@@ -604,7 +604,7 @@ bool loki_core_test_deregister_safety_buffer::generate(std::vector<test_event_en
 
   const auto deregister_pub_key = quorum_intersection[0];
   {
-    const auto dereg_tx = gen.create_and_add_deregister_tx(deregister_pub_key, height_a);
+    const auto dereg_tx = gen.create_and_add_state_change_tx(service_nodes::new_state::deregister, deregister_pub_key, height_a);
     gen.add_block({dereg_tx});
   }
 
@@ -617,7 +617,7 @@ bool loki_core_test_deregister_safety_buffer::generate(std::vector<test_event_en
   }
 
   /// Try to deregister the node again for heightB (should fail)
-  const auto dereg_tx = gen.create_deregister_tx(deregister_pub_key, height_b);
+  const auto dereg_tx = gen.create_state_change_tx(service_nodes::new_state::deregister, deregister_pub_key, height_b);
   gen.add_tx(dereg_tx, false /*can_be_added_to_blockchain*/, "After a Service Node has deregistered, it can NOT be deregistered from the result of a quorum preceeding the height that the Service Node re-registered as.");
   return true;
 
@@ -644,7 +644,7 @@ bool loki_core_test_deregister_too_old::generate(std::vector<test_event_entry>& 
   gen.add_block(reg_txs);
 
   const auto pk       = gen.top_quorum().obligations->workers[0];
-  const auto dereg_tx = gen.create_and_add_deregister_tx(pk);
+  const auto dereg_tx = gen.create_and_add_state_change_tx(service_nodes::new_state::deregister, pk);
   gen.add_n_blocks(service_nodes::STATE_CHANGE_TX_LIFETIME_IN_BLOCKS); /// create enough blocks to make deregistrations invalid (60 blocks)
 
   /// In the real world, this transaction should not make it into a block, but in this case we do try to add it (as in
@@ -674,7 +674,7 @@ bool loki_core_test_deregister_zero_fee::generate(std::vector<test_event_entry> 
   gen.add_block(reg_txs);
   const auto deregister_pub_key = gen.top_quorum().obligations->workers[0];
   cryptonote::transaction const invalid_deregister =
-      gen.create_deregister_tx(deregister_pub_key, -1 /*height*/, {} /*voters*/, MK_COINS(1) /*fee*/);
+      gen.create_state_change_tx(service_nodes::new_state::deregister, deregister_pub_key, -1 /*height*/, {} /*voters*/, MK_COINS(1) /*fee*/);
   gen.add_tx(invalid_deregister, false /*can_be_added_to_blockchain*/, "Deregister transactions with non-zero fee can NOT be added to the blockchain");
   return true;
 }
@@ -709,11 +709,11 @@ bool loki_core_test_deregister_on_split::generate(std::vector<test_event_entry> 
 
   /// create deregistration A
   std::vector<uint64_t> const quorum_indexes = {1, 2, 3, 4, 5, 6, 7};
-  const auto dereg_a                         = gen.create_and_add_deregister_tx(pk, split_height, quorum_indexes);
+  const auto dereg_a                         = gen.create_and_add_state_change_tx(service_nodes::new_state::deregister, pk, split_height, quorum_indexes);
 
   /// create deregistration on alt chain (B)
   std::vector<uint64_t> const fork_quorum_indexes = {1, 3, 4, 5, 6, 7, 8};
-  const auto dereg_b            = fork.create_and_add_deregister_tx(pk, split_height, fork_quorum_indexes, 0 /*fee*/, true /*kept_by_block*/);
+  const auto dereg_b            = fork.create_and_add_state_change_tx(service_nodes::new_state::deregister, pk, split_height, fork_quorum_indexes, 0 /*fee*/, true /*kept_by_block*/);
   crypto::hash expected_tx_hash = cryptonote::get_transaction_hash(dereg_b);
   size_t dereg_index            = gen.event_index();
 
@@ -746,6 +746,48 @@ bool loki_core_test_deregister_on_split::generate(std::vector<test_event_entry> 
     CHECK_EQ(*found_tx_hash, expected_tx_hash); /// check that it is the expected one
     return true;
   });
+
+  return true;
+}
+
+bool loki_core_test_state_change_ip_penalty_disallow_dupes::generate(std::vector<test_event_entry> &events)
+{
+  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = generate_sequential_hard_fork_table();
+  loki_chain_generator gen(events, hard_forks);
+
+  gen.add_blocks_until_version(hard_forks.back().first);
+  gen.add_n_blocks(20); /// generate some outputs and unlock them
+  gen.add_mined_money_unlock_blocks();
+
+  std::vector<cryptonote::transaction> reg_txs;
+  for (auto i = 0u; i < service_nodes::STATE_CHANGE_QUORUM_SIZE + 1; ++i)
+  {
+    const auto tx = gen.create_and_add_registration_tx(gen.first_miner());
+    reg_txs.push_back(tx);
+  }
+
+  gen.add_block(reg_txs);
+  gen.add_block(); // Can't change service node state on the same height it was registered in
+
+  const auto pub_key                         = gen.top_quorum().obligations->workers[0];
+  std::vector<uint64_t> const quorum_indexes = {1, 2, 3, 4, 5, 6, 7};
+  const auto state_change_1                  = gen.create_and_add_state_change_tx(service_nodes::new_state::ip_change_penalty, pub_key, gen.height(), quorum_indexes);
+
+  // NOTE: Try duplicate state change with different quorum indexes
+  {
+    std::vector<uint64_t> const alt_quorum_indexes = {1, 3, 4, 5, 6, 7, 8};
+    const auto state_change_2 = gen.create_state_change_tx(service_nodes::new_state::ip_change_penalty, pub_key, gen.height(), alt_quorum_indexes);
+    gen.add_tx(state_change_2, false /*can_be_added_to_blockchain*/, "Can't add a state change with different permutation of votes than previously submitted");
+
+    // NOTE: Try same duplicate state change on a new height
+    {
+      gen.add_block({state_change_1});
+      gen.add_tx(state_change_2, false /*can_be_added_to_blockchain*/, "Can't add a state change with different permutation of votes than previously submitted, even if the blockchain height has changed");
+    }
+
+    // NOTE: Try same duplicate state change on a new height, but set kept_by_block, i.e. this is a TX from a block on another chain
+    gen.add_tx(state_change_2, true /*can_be_added_to_blockchain*/, "We should be able to accept dupe ip changes if TX is kept by block (i.e. from alt chain) otherwise we can never reorg to that chain", true /*kept_by_block*/);
+  }
 
   return true;
 }
@@ -907,7 +949,7 @@ bool loki_service_nodes_test_rollback::generate(std::vector<test_event_entry>& e
 
   // deregister some node (A) on main
   const auto pk           = gen.top_quorum().obligations->workers[0];
-  const auto dereg_tx     = gen.create_and_add_deregister_tx(pk);
+  const auto dereg_tx     = gen.create_and_add_state_change_tx(service_nodes::new_state::deregister, pk);
   size_t deregister_index = gen.event_index();
   gen.add_block({dereg_tx});
 
@@ -1059,7 +1101,7 @@ bool loki_service_nodes_test_swarms_basic::generate(std::vector<test_event_entry
   for (size_t i = 0; i < excess; ++i)
   {
     const auto pk = top_quorum.obligations->workers[i];
-    const auto tx = gen.create_and_add_deregister_tx(pk, cryptonote::get_block_height(gen.top().block));
+    const auto tx = gen.create_and_add_state_change_tx(service_nodes::new_state::deregister, pk, cryptonote::get_block_height(gen.top().block));
     dereg_txs.push_back(tx);
   }
 
@@ -1082,7 +1124,7 @@ bool loki_service_nodes_test_swarms_basic::generate(std::vector<test_event_entry
   dereg_txs.clear();
   {
     const auto pk = gen.top_quorum().obligations->workers[0];
-    const auto tx = gen.create_and_add_deregister_tx(pk);
+    const auto tx = gen.create_and_add_state_change_tx(service_nodes::new_state::deregister, pk);
     dereg_txs.push_back(tx);
   }
   gen.add_block(dereg_txs);

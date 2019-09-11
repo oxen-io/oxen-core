@@ -46,6 +46,7 @@ struct loki_core_test_deregister_safety_buffer                                  
 struct loki_core_test_deregister_too_old                                             : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
 struct loki_core_test_deregister_zero_fee                                            : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
 struct loki_core_test_deregister_on_split                                            : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
+struct loki_core_test_state_change_ip_penalty_disallow_dupes                         : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
 struct loki_service_nodes_alt_quorums                                                : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
 struct loki_service_nodes_gen_nodes                                                  : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
 struct loki_service_nodes_test_rollback                                              : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };

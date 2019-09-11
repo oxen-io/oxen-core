@@ -2502,23 +2502,44 @@ namespace service_nodes
 
   bool service_node_info::can_transition_to_state(uint8_t hf_version, uint64_t height, new_state proposed_state) const
   {
-    if (hf_version >= cryptonote::network_version_13_enforce_checkpoints && !can_be_voted_on(height))
-      return false;
-
-    if (proposed_state == new_state::deregister)
+    if (hf_version >= cryptonote::network_version_13_enforce_checkpoints)
     {
-      if (height < this->registration_height)
+      if (!can_be_voted_on(height))
         return false;
-    }
 
-    if (this->is_decommissioned())
-    {
-      return proposed_state != new_state::decommission &&
-             proposed_state != new_state::ip_change_penalty;
+      if (proposed_state == new_state::deregister)
+      {
+        if (height <= this->registration_height)
+          return false;
+      }
+      else if (proposed_state == new_state::ip_change_penalty)
+      {
+        if (height <= this->last_ip_change_height)
+          return false;
+      }
+
+      if (this->is_decommissioned())
+      {
+        return proposed_state != new_state::decommission && proposed_state != new_state::ip_change_penalty;
+      }
+
+      return (proposed_state != new_state::recommission);
     }
     else
     {
-      return (proposed_state != new_state::recommission);
+      if (proposed_state == new_state::deregister)
+      {
+        if (height < this->registration_height) return false;
+      }
+
+      if (this->is_decommissioned())
+      {
+        return proposed_state != new_state::decommission && proposed_state != new_state::ip_change_penalty;
+      }
+      else
+      {
+        return (proposed_state != new_state::recommission);
+      }
     }
   }
 
