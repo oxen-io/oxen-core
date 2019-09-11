@@ -62,7 +62,7 @@ namespace service_nodes
     uint64_t result =
         (block_height < DEFAULT_SHORT_TERM_STATE_HISTORY) ? 0 : block_height - DEFAULT_SHORT_TERM_STATE_HISTORY;
 
-    if (hf_version >= cryptonote::network_version_12_checkpointing)
+    if (hf_version >= cryptonote::network_version_13_enforce_checkpoints)
     {
       uint64_t latest_height = db->height() - 1;
       cryptonote::checkpoint_t checkpoint;
@@ -1106,7 +1106,7 @@ namespace service_nodes
     std::lock_guard<boost::recursive_mutex> lock(m_sn_mutex);
     process_block(block, txs);
 
-    if (checkpoint)
+    if (block.major_version >= cryptonote::network_version_13_enforce_checkpoints && checkpoint)
     {
       std::shared_ptr<const testing_quorum> quorum = get_testing_quorum(quorum_type::checkpointing, checkpoint->height);
       if (!quorum)
