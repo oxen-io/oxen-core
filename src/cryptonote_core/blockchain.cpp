@@ -1731,7 +1731,7 @@ bool Blockchain::build_alt_chain(const crypto::hash &prev_id, std::list<block_ex
     cryptonote::blobdata blob;
     timestamps.clear();
 
-    if (num_checkpoints) *num_checkpoints = 0;
+    int checkpoint_count = 0;
     crypto::hash prev_hash = crypto::null_hash;
     block_extended_info bei = {};
     blobdata checkpoint_blob;
@@ -1739,25 +1739,47 @@ bool Blockchain::build_alt_chain(const crypto::hash &prev_id, std::list<block_ex
         found;
         found = m_db->get_alt_block(prev_hash, &data, &blob, &checkpoint_blob))
     {
-      if (num_checkpoints && data.checkpointed) (*num_checkpoints)++;
       CHECK_AND_ASSERT_MES(cryptonote::parse_and_validate_block_from_blob(blob, bei.bl), false, "Failed to parse alt block");
+
+      if (data.checkpointed)
+      {
+        CHECK_AND_ASSERT_MES(t_serializable_object_from_blob(bei.checkpoint, checkpoint_blob), false, "Failed to parse alt checkpoint from blob");
+        checkpoint_count++;
+      }
+      else
+      {
+        // NOTE: If we receive or pre-define a checkpoint for a historical block
+        // that conflicts with current blocks on the blockchain, upon receipt of
+        // a new alt block, along this alt chain we should also count all blocks
+        // that are checkpointed along this chain in m_checkpoints if they were
+        // not specified at the time we received the alt block.
+
+        // This is particularly relevant for receiving checkpoints via P2P votes
+        // Which can form checkpoints retrospectively, that may conflict with
+        // your canonical chain.
+        bool alt_block_is_checkpointed_in_main_db = false;
+        if (m_checkpoints.check_block(data.height, get_block_hash(bei.bl), &alt_block_is_checkpointed_in_main_db, nullptr) &&
+            alt_block_is_checkpointed_in_main_db)
+        {
+          data.checkpointed = true;
+          CHECK_AND_ASSERT_MES(get_checkpoint(data.height, bei.checkpoint), false, "Unexpected failure to retrieve checkpoint after checking it existed");
+          checkpoint_count++;
+        }
+      }
+
       bei.height                  = data.height;
       bei.block_cumulative_weight = data.cumulative_weight;
       bei.cumulative_difficulty   = data.cumulative_difficulty;
       bei.already_generated_coins = data.already_generated_coins;
       bei.checkpointed            = data.checkpointed;
-      if (bei.checkpointed)
-      {
-        CHECK_AND_ASSERT_MES(t_serializable_object_from_blob(bei.checkpoint, checkpoint_blob),
-                             false,
-                             "Failed to parse alt checkpoint from blob");
-      }
 
       prev_hash = bei.bl.prev_id;
       timestamps.push_back(bei.bl.timestamp);
       alt_chain.push_front(std::move(bei));
       bei = {};
     }
+
+    if (num_checkpoints) *num_checkpoints = checkpoint_count;
 
     // if block to be added connects to known blocks that aren't part of the
     // main chain -- that is, if we're adding on to an alternate chain
