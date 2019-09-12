@@ -31,8 +31,8 @@
 #include <algorithm>
 #include <boost/utility/string_ref.hpp>
 
-#undef MONERO_DEFAULT_LOG_CATEGORY
-#define MONERO_DEFAULT_LOG_CATEGORY "serialization"
+#undef LOKI_DEFAULT_LOG_CATEGORY
+#define LOKI_DEFAULT_LOG_CATEGORY "serialization"
 
 namespace epee 
 {

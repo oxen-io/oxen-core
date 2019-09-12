@@ -37,8 +37,8 @@
 #include "common/dns_utils.h"
 #include "version.h"
 
-#undef MONERO_DEFAULT_LOG_CATEGORY
-#define MONERO_DEFAULT_LOG_CATEGORY "debugtools.dnschecks"
+#undef LOKI_DEFAULT_LOG_CATEGORY
+#define LOKI_DEFAULT_LOG_CATEGORY "debugtools.dnschecks"
 
 namespace po = boost::program_options;
 
@@ -127,7 +127,7 @@ int main(int argc, char* argv[])
   }
 
   mlog_configure("", true);
-  mlog_set_categories("+" MONERO_DEFAULT_LOG_CATEGORY ":INFO");
+  mlog_set_categories("+" LOKI_DEFAULT_LOG_CATEGORY ":INFO");
 
   lookup(LOOKUP_A, {"seeds.moneroseeds.se", "seeds.moneroseeds.ae.org", "seeds.moneroseeds.ch", "seeds.moneroseeds.li"});
 
