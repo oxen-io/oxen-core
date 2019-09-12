@@ -159,6 +159,21 @@ namespace cryptonote
       return amount == other.amount && addr == other.addr;
     }
 
+    std::string address(network_type nettype, const crypto::hash &payment_id) const
+    {
+      if (!original.empty())
+      {
+        return original;
+      }
+
+      if (is_integrated)
+      {
+        return get_account_integrated_address_as_str(nettype, addr, reinterpret_cast<const crypto::hash8 &>(payment_id));
+      }
+
+      return get_account_address_as_str(nettype, is_subaddress, addr);
+    }
+
     BEGIN_SERIALIZE_OBJECT()
       FIELD(original)
       VARINT_FIELD(amount)
