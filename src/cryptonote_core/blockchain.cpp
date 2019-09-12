@@ -1946,11 +1946,12 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
         num_checkpoints_on_alt_chain++;
       }
 
-      alt_data.height                   = block_height;
+      alt_data.height                     = block_height;
       // TODO(loki): Block cumulative weight wasn't being set in the fist place in bei?
       // alt_data.cumulative_weight       = bei.block_cumulative_weight;
-      alt_data.already_generated_coins  = get_outs_money_amount(b.miner_tx);
-      alt_data.already_generated_coins += (alt_chain.size() ? prev_data.already_generated_coins : m_db->get_block_already_generated_coins(block_height - 1));
+      const uint64_t block_reward         = get_outs_money_amount(b.miner_tx);
+      const uint64_t prev_generated_coins = alt_chain.size() ? prev_data.already_generated_coins : m_db->get_block_already_generated_coins(block_height - 1);
+      alt_data.already_generated_coins = (block_reward < (MONEY_SUPPLY - prev_generated_coins)) ? prev_generated_coins + block_reward : MONEY_SUPPLY;
       m_db->add_alt_block(id, alt_data, cryptonote::block_to_blob(b), checkpoint_blob.empty() ? nullptr : &checkpoint_blob);
     }
     alt_chain.push_back(block_extended_info(alt_data, b, checkpoint));
