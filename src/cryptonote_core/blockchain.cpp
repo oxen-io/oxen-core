@@ -3055,7 +3055,7 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
   // if one output cannot mix with 2 others, we accept at most 1 output that can mix
   if (hf_version >= HF_VERSION_MIN_2_OUTPUTS)
   {
-    if (tx.vout.size() < 2)
+    if (tx.type == txtype::standard && tx.vout.size() < 2)
     {
       MERROR_VER("Tx " << get_transaction_hash(tx) << " has fewer than two outputs");
       tvc.m_too_few_outputs = true;
@@ -3306,6 +3306,7 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
   else
   {
     CHECK_AND_ASSERT_MES(tx.vin.size() == 0, false, "TX type: " << tx.type << " should have 0 inputs. This should have been rejected in check_tx_semantic!");
+    CHECK_AND_ASSERT_MES(tx.vout.size() == 0, false, "TX type: " << tx.type << " should have 0 outputs.");
 
     if (tx.rct_signatures.txnFee != 0)
     {
