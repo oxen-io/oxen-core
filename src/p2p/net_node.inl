@@ -1442,7 +1442,7 @@ namespace nodetool
         if (skipped == 0 || !filtered.empty())
           break;
         if (skipped)
-          MGINFO("Skipping " << skipped << " possible peers as they share a class B with existing peers");
+          MINFO("Skipping " << skipped << " possible peers as they share a class B with existing peers");
       }
       if (filtered.empty())
       {
@@ -1837,21 +1837,32 @@ namespace nodetool
   }
   //-----------------------------------------------------------------------------------
   template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::fix_time_delta(std::vector<peerlist_entry>& local_peerlist, time_t local_time, int64_t& delta)
+  bool node_server<t_payload_net_handler>::sanitize_peerlist(std::vector<peerlist_entry>& local_peerlist)
   {
-    //fix time delta
-    time_t now = 0;
-    time(&now);
-    delta = now - local_time;
-
-    for(peerlist_entry& be: local_peerlist)
+    for (size_t i = 0; i < local_peerlist.size(); ++i)
     {
-      if(be.last_seen > local_time)
+      bool ignore = false;
+      peerlist_entry &be = local_peerlist[i];
+      epee::net_utils::network_address &na = be.adr;
+      if (na.is_loopback() || na.is_local())
       {
-        MWARNING("FOUND FUTURE peerlist for entry " << be.adr.str() << " last_seen: " << be.last_seen << ", local_time(on remote node):" << local_time);
-        return false;
+        ignore = true;
       }
-      be.last_seen += delta;
+      else if (be.adr.get_type_id() == epee::net_utils::ipv4_network_address::get_type_id())
+      {
+        const epee::net_utils::ipv4_network_address &ipv4 = na.as<const epee::net_utils::ipv4_network_address>();
+        if (ipv4.ip() == 0)
+          ignore = true;
+      }
+      if (ignore)
+      {
+        MDEBUG("Ignoring " << be.adr.str());
+        std::swap(local_peerlist[i], local_peerlist[local_peerlist.size() - 1]);
+        local_peerlist.resize(local_peerlist.size() - 1);
+        --i;
+        continue;
+      }
+
 #ifdef CRYPTONOTE_PRUNING_DEBUG_SPOOF_SEED
       be.pruning_seed = tools::make_pruning_seed(1 + (be.adr.as<epee::net_utils::ipv4_network_address>().ip()) % (1ul << CRYPTONOTE_PRUNING_LOG_STRIPES), CRYPTONOTE_PRUNING_LOG_STRIPES);
 #endif
@@ -1862,9 +1873,8 @@ namespace nodetool
   template<class t_payload_net_handler>
   bool node_server<t_payload_net_handler>::handle_remote_peerlist(const std::vector<peerlist_entry>& peerlist, time_t local_time, const epee::net_utils::connection_context_base& context)
   {
-    int64_t delta = 0;
     std::vector<peerlist_entry> peerlist_ = peerlist;
-    if(!fix_time_delta(peerlist_, local_time, delta))
+    if(!sanitize_peerlist(peerlist_))
       return false;
 
     const epee::net_utils::zone zone = context.m_remote_address.get_zone();
@@ -1877,8 +1887,8 @@ namespace nodetool
       }
     }
 
-    LOG_DEBUG_CC(context, "REMOTE PEERLIST: TIME_DELTA: " << delta << ", remote peerlist size=" << peerlist_.size());
-    LOG_DEBUG_CC(context, "REMOTE PEERLIST: " <<  print_peerlist_to_string(peerlist_));
+    LOG_DEBUG_CC(context, "REMOTE PEERLIST: remote peerlist size=" << peerlist_.size());
+    LOG_DEBUG_CC(context, "REMOTE PEERLIST: " << ENDL << print_peerlist_to_string(peerlist_));
     return m_network_zones.at(context.m_remote_address.get_zone()).m_peerlist.merge_peerlist(peerlist_);
   }
   //-----------------------------------------------------------------------------------
@@ -2302,6 +2312,15 @@ namespace nodetool
 
     network_zone& zone = m_network_zones.at(context.m_remote_address.get_zone());
 
+    // test only the remote end's zone, otherwise an attacker could connect to you on clearnet
+    // and pass in a tor connection's peer id, and deduce the two are the same if you reject it
+    if(arg.node_data.peer_id == zone.m_config.m_peer_id)
+    {
+      LOG_DEBUG_CC(context, "Connection to self detected, dropping connection");
+      drop_connection(context);
+      return 1;
+    }
+
     if (zone.m_current_number_of_in_peers >= zone.m_config.m_net_config.max_in_connection_count) // in peers limit
     {
       LOG_WARNING_CC(context, "COMMAND_HANDSHAKE came, but already have max incoming connections, so dropping this one.");
@@ -2330,7 +2349,7 @@ namespace nodetool
     context.m_in_timedsync = false;
     context.m_rpc_port = arg.node_data.rpc_port;
 
-    if(arg.node_data.peer_id != zone.m_config.m_peer_id && arg.node_data.my_port && zone.m_can_pingback)
+    if(arg.node_data.my_port && zone.m_can_pingback)
     {
       peerid_type peer_id_l = arg.node_data.peer_id;
       uint32_t port_l = arg.node_data.my_port;

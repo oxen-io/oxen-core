@@ -125,13 +125,18 @@ namespace {
     }
   }
 
-  void print_peer(std::string const & prefix, cryptonote::peer const & peer)
+  void print_peer(std::string const & prefix, cryptonote::peer const & peer, bool pruned_only, bool publicrpc_only)
   {
+    if (pruned_only && peer.pruning_seed == 0)
+      return;
+    if (publicrpc_only && peer.rpc_port == 0)
+      return;
+
     time_t now;
     time(&now);
     time_t last_seen = static_cast<time_t>(peer.last_seen);
 
-    std::string elapsed = epee::misc_utils::get_time_interval_string(now - last_seen);
+    std::string elapsed = peer.last_seen == 0 ? "never" : epee::misc_utils::get_time_interval_string(now - last_seen);
     std::string id_str = epee::string_tools::pad_string(epee::string_tools::to_string_hex(peer.id), 16, '0', true);
     std::string port_str;
     epee::string_tools::xtype_to_string(peer.port, port_str);
@@ -363,7 +368,7 @@ bool t_rpc_command_executor::print_sn_state_changes(uint64_t start_height, uint6
   return true;
 }
 
-bool t_rpc_command_executor::print_peer_list(bool white, bool gray, size_t limit) {
+bool t_rpc_command_executor::print_peer_list(bool white, bool gray, size_t limit, bool pruned_only, bool publicrpc_only) {
   cryptonote::COMMAND_RPC_GET_PEER_LIST::request req;
   cryptonote::COMMAND_RPC_GET_PEER_LIST::response res;
 
@@ -390,7 +395,7 @@ bool t_rpc_command_executor::print_peer_list(bool white, bool gray, size_t limit
     const auto end = limit ? peer + std::min(limit, res.white_list.size()) : res.white_list.cend();
     for (; peer != end; ++peer)
     {
-      print_peer("white", *peer);
+      print_peer("white", *peer, pruned_only, publicrpc_only);
     }
   }
 
@@ -400,7 +405,7 @@ bool t_rpc_command_executor::print_peer_list(bool white, bool gray, size_t limit
     const auto end = limit ? peer + std::min(limit, res.gray_list.size()) : res.gray_list.cend();
     for (; peer != end; ++peer)
     {
-      print_peer("gray", *peer);
+      print_peer("gray", *peer, pruned_only, publicrpc_only);
     }
   }
 
@@ -3621,6 +3626,42 @@ bool t_rpc_command_executor::check_blockchain_pruning()
     {
       tools::success_msg_writer() << "Blockchain is not pruned";
     }
+    return true;
+}
+
+bool t_rpc_command_executor::set_bootstrap_daemon(
+  const std::string &address,
+  const std::string &username,
+  const std::string &password)
+{
+    cryptonote::COMMAND_RPC_SET_BOOTSTRAP_DAEMON::request req;
+    cryptonote::COMMAND_RPC_SET_BOOTSTRAP_DAEMON::response res;
+    const std::string fail_message = "Unsuccessful";
+
+    req.address = address;
+    req.username = username;
+    req.password = password;
+
+    if (m_is_rpc)
+    {
+        if (!m_rpc_client->rpc_request(req, res, "/set_bootstrap_daemon", fail_message))
+        {
+            return true;
+        }
+    }
+    else
+    {
+        if (!m_rpc_server->on_set_bootstrap_daemon(req, res) || res.status != CORE_RPC_STATUS_OK)
+        {
+            tools::fail_msg_writer() << make_error(fail_message, res.status);
+            return true;
+        }
+    }
+
+    tools::success_msg_writer()
+      << "Successfully set bootstrap daemon address to "
+      << (!req.address.empty() ? req.address : "none");
+
     return true;
 }
 
