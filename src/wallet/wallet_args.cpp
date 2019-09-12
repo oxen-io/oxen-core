@@ -219,7 +219,10 @@ namespace wallet_args
     if (!command_line::is_arg_defaulted(vm, arg_log_level))
       MINFO("Setting log level = " << command_line::get_arg(vm, arg_log_level));
     else
-      MINFO("Setting log levels = " << getenv("LOKI_LOGS"));
+    {
+      const char *logs = getenv("LOKI_LOGS");
+      MINFO("Setting log levels = " << (logs ? logs : "<default>"));
+    }
     MINFO(wallet_args::tr("Logging to: ") << log_path);
 
     Print(print) << boost::format(wallet_args::tr("Logging to %s")) % log_path;
