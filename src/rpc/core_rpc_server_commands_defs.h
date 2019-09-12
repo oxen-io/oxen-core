@@ -1035,11 +1035,13 @@ namespace cryptonote
       uint64_t reserve_size;      // Max 255 bytes
       std::string wallet_address; // Address of wallet to receive coinbase transactions if block is successfully mined.
       std::string prev_block;
+      std::string extra_nonce;    // (Optional): Skip creating a blockhashing blob where you already know the data desired for the extra_nonce (so use this instead of reserve_size).
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(reserve_size)
         KV_SERIALIZE(wallet_address)
         KV_SERIALIZE(prev_block)
+        KV_SERIALIZE_OPT(extra_nonce, std::string(""))
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;
@@ -1349,7 +1351,10 @@ namespace cryptonote
   {
     struct request_t
     {
+      bool public_only;
+
       BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE_OPT(public_only, true)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;

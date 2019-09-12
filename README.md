@@ -337,6 +337,7 @@ We expect to add Loki into the ports tree in the near future, which will aid in 
 
 ### On OpenBSD:
 
+<<<<<<< HEAD
 #### OpenBSD < 6.2
 
 This has been tested on OpenBSD 5.8.
@@ -428,9 +429,12 @@ env DEVELOPER_LOCAL_TOOLS=1 BOOST_ROOT=/usr/local make release-static
 
 #### OpenBSD >= 6.4
 
+=======
+>>>>>>> c9df9d6
 You will need to add a few packages to your system. `pkg_add cmake gmake zeromq cppzmq libiconv boost`.
 
-The doxygen and graphviz packages are optional and require the xbase set.
+The `doxygen` and `graphviz` packages are optional and require the xbase set.
+Running the test suite also requires `py-requests` package.
 
 Build loki: `env DEVELOPER_LOCAL_TOOLS=1 BOOST_ROOT=/usr/local gmake release-static`
 
@@ -652,7 +656,17 @@ gdb /path/to/lokid /path/to/dumpfile`
 
 Print the stack trace with `bt`
 
+<<<<<<< HEAD
 #### To run Loki within gdb:
+=======
+ * If a program crashed and cores are managed by systemd, the following can also get a stack trace for that crash:
+
+```bash
+coredumpctl -1 gdb
+```
+
+#### To run monero within gdb:
+>>>>>>> c9df9d6
 
 Type `gdb /path/to/lokid`
 
