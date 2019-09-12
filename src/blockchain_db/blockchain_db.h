@@ -611,7 +611,7 @@ public:
    * @param filename a string referring to the BlockchainDB to open
    * @param db_flags flags relevant to how to open/use the BlockchainDB
    */
-  virtual void open(const std::string& filename, const int db_flags = 0) = 0;
+  virtual void open(const std::string& filename, cryptonote::network_type nettype, const int db_flags = 0) = 0;
 
   /**
    * @brief Gets the current open/ready state of the BlockchainDB

@@ -30,6 +30,7 @@
 #include <algorithm>
 #include <cstdio>
 
+#include "common/loki.h"
 #include "cryptonote_basic/cryptonote_basic.h"
 #include "blockchain_db/blockchain_db.h"
 #include "hardfork.h"
@@ -53,6 +54,64 @@ static uint8_t get_block_vote(const cryptonote::block &b)
 static uint8_t get_block_version(const cryptonote::block &b)
 {
   return b.major_version;
+}
+
+// TODO(loki): Re-evaluate Hardfork as a class. Originally designed to
+// handle voting, hardforks are now locked in, maybe we just need helper
+// functions on the hardcoded table instead of hiding everything behind
+// a class.
+
+// version 7 from the start of the blockchain, inhereted from Monero mainnet
+static constexpr HardFork::Params mainnet_hard_forks[] =
+{
+  { network_version_7,                   1,      0, 1503046577 },
+  { network_version_8,                   64324,  0, 1533006000 },
+  { network_version_9_service_nodes,     101250, 0, 1537444800 },
+  { network_version_10_bulletproofs,     161849, 0, 1544743800 }, // 2018-12-13 23:30UTC
+  { network_version_11_infinite_staking, 234767, 0, 1554170400 }, // 2019-03-26 13:00AEDT
+  { network_version_12_checkpointing,    321467, 0, 1563940800 }, // 2019-07-24 14:00AEDT
+};
+
+static constexpr HardFork::Params testnet_hard_forks[] =
+{
+  { network_version_7,                   1,     0, 1533631121 },
+  { network_version_8,                   2,     0, 1533631122 },
+  { network_version_9_service_nodes,     3,     0, 1533631123 },
+  { network_version_10_bulletproofs,     4,     0, 1542681077 },
+  { network_version_11_infinite_staking, 5,     0, 1551223964 },
+  { network_version_12_checkpointing,    75471, 0, 1561608000 }, // 2019-06-28 14:00AEDT
+};
+
+static constexpr HardFork::Params stagenet_hard_forks[] =
+{
+  { network_version_7,                   1,      0, 1341378000 },
+  { network_version_8,                   64324,  0, 1533006000 },
+  { network_version_9_service_nodes,     96210,  0, 1536840000 },
+  { network_version_10_bulletproofs,     96211,  0, 1536840120 },
+  { network_version_11_infinite_staking, 147029, 0, 1551223964 }, // 2019-02-27 12:30 AEDT
+  { network_version_12_checkpointing,    213125, 0, 1561608000 }, // 2019-06-28 14:00 AEDT
+};
+
+HardFork::Params const *HardFork::get_hardcoded_hard_forks(network_type nettype, int *num_entries)
+{
+  Params const *result = nullptr;
+  *num_entries         = 0;
+  if (nettype == MAINNET)
+  {
+    result       = mainnet_hard_forks;
+    *num_entries = loki::array_count(mainnet_hard_forks);
+  }
+  else if (nettype == TESTNET)
+  {
+    result       = testnet_hard_forks;
+    *num_entries = loki::array_count(testnet_hard_forks);
+  }
+  else if (nettype == STAGENET)
+  {
+    result       = stagenet_hard_forks;
+    *num_entries = loki::array_count(stagenet_hard_forks);
+  }
+  return result;
 }
 
 HardFork::HardFork(cryptonote::BlockchainDB &db, uint8_t original_version, time_t forked_time, time_t update_time, uint64_t window_size, uint8_t default_threshold_percent):
@@ -87,7 +146,7 @@ bool HardFork::add_fork(uint8_t version, uint64_t height, uint8_t threshold, tim
   }
   if (threshold > 100)
     return false;
-  heights.push_back(Params(version, height, threshold, time));
+  heights.push_back({version, height, threshold, time});
   return true;
 }
 
@@ -171,7 +230,7 @@ void HardFork::init()
 
   // add a placeholder for the default version, to avoid special cases
   if (heights.empty())
-    heights.push_back(Params(original_version, 0, 0, 0));
+    heights.push_back({original_version, 0, 0, 0});
 
   versions.clear();
   for (size_t n = 0; n < 256; ++n)

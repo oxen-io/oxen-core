@@ -41,7 +41,7 @@ namespace cryptonote
 class BaseTestDB: public cryptonote::BlockchainDB {
 public:
   BaseTestDB() {}
-  virtual void open(const std::string& filename, const int db_flags = 0) override { }
+  virtual void open(const std::string& filename, network_type nettype = FAKECHAIN, const int db_flags = 0) override { }
   virtual void close() override {}
   virtual void sync() override {}
   virtual void safesyncmode(const bool onoff) override {}

@@ -659,7 +659,7 @@ namespace cryptonote
       if (db_salvage)
         db_flags |= DBF_SALVAGE;
 
-      db->open(filename, db_flags);
+      db->open(filename, m_nettype, db_flags);
       if(!db->m_open)
         return false;
     }
@@ -702,7 +702,7 @@ namespace cryptonote
       MERROR("Failed to parse block rate notify spec");
     }
 
-    const std::vector<std::pair<uint8_t, uint64_t>> regtest_hard_forks = {std::make_pair(1, 0), std::make_pair(Blockchain::get_hard_fork_heights(MAINNET).back().version, 1), std::make_pair(0, 0)};
+    const std::vector<std::pair<uint8_t, uint64_t>> regtest_hard_forks = {std::make_pair(cryptonote::network_version_count - 1, 1)};
     const cryptonote::test_options regtest_test_options = {
       regtest_hard_forks,
       0

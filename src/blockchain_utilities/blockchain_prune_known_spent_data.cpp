@@ -195,7 +195,7 @@ int main(int argc, char* argv[])
 
   try
   {
-    db->open(filename, 0);
+    db->open(filename, core_storage->nettype(), 0);
   }
   catch (const std::exception& e)
   {

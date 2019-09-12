@@ -86,46 +86,6 @@ DISABLE_VS_WARNINGS(4267)
 // used to overestimate the block reward when estimating a per kB to use
 #define BLOCK_REWARD_OVERESTIMATE (10 * 1000000000000)
 
-struct hard_fork_record
-{
-  uint8_t version;
-  uint64_t height;
-  uint8_t threshold;
-  time_t time;
-};
-
-// TODO(doyle): Move this out into a globally accessible object
-// version 7 from the start of the blockchain, inhereted from Monero mainnet
-static const hard_fork_record mainnet_hard_forks[] =
-{
-  { network_version_7,                   1,      0, 1503046577 },
-  { network_version_8,                   64324,  0, 1533006000 },
-  { network_version_9_service_nodes,     101250, 0, 1537444800 },
-  { network_version_10_bulletproofs,     161849, 0, 1544743800 }, // 2018-12-13 23:30UTC
-  { network_version_11_infinite_staking, 234767, 0, 1554170400 }, // 2019-03-26 13:00AEDT
-  { network_version_12_checkpointing,    321467, 0, 1563940800 }, // 2019-07-24 14:00AEDT
-};
-
-static const hard_fork_record testnet_hard_forks[] =
-{
-  { network_version_7,                   1,     0, 1533631121 },
-  { network_version_8,                   2,     0, 1533631122 },
-  { network_version_9_service_nodes,     3,     0, 1533631123 },
-  { network_version_10_bulletproofs,     4,     0, 1542681077 },
-  { network_version_11_infinite_staking, 5,     0, 1551223964 },
-  { network_version_12_checkpointing,    75471, 0, 1561608000 }, // 2019-06-28 14:00AEDT
-};
-
-static const hard_fork_record stagenet_hard_forks[] =
-{
-  { network_version_7,                   1,      0, 1341378000 },
-  { network_version_8,                   64324,  0, 1533006000 },
-  { network_version_9_service_nodes,     96210,  0, 1536840000 },
-  { network_version_10_bulletproofs,     96211,  0, 1536840120 },
-  { network_version_11_infinite_staking, 147029, 0, 1551223964 }, // 2019-02-27 12:30 AEDT
-  { network_version_12_checkpointing,    213125, 0, 1561608000 }, // 2019-06-28 14:00 AEDT
-};
-
 Blockchain::block_extended_info::block_extended_info(const alt_block_data_t &src, block const &blk, checkpoint_t const *checkpoint)
 {
   assert((src.checkpointed) == (checkpoint != nullptr));
@@ -383,23 +343,11 @@ bool Blockchain::init(BlockchainDB* db, const network_type nettype, bool offline
   }
   else
   {
-    hard_fork_record const *hf_record = mainnet_hard_forks;
-    uint8_t hf_record_num_entries     = loki::array_count(mainnet_hard_forks);
-
-    if (m_nettype == TESTNET)
-    {
-      hf_record             = testnet_hard_forks;
-      hf_record_num_entries = loki::array_count(testnet_hard_forks);
-    }
-    else if (m_nettype == STAGENET)
-    {
-      hf_record             = stagenet_hard_forks;
-      hf_record_num_entries = loki::array_count(stagenet_hard_forks);
-    }
-
+    int hf_record_num_entries         = 0;
+    HardFork::Params const *hf_record = HardFork::get_hardcoded_hard_forks(m_nettype, &hf_record_num_entries);
     for (int n = 0; n < hf_record_num_entries; ++n)
     {
-      hard_fork_record const *record = hf_record + n;
+      HardFork::Params const *record = hf_record + n;
       m_hardfork->add_fork(record->version, record->height, record->threshold, record->time);
     }
   }
@@ -1078,18 +1026,6 @@ bool Blockchain::switch_to_alternative_blockchain(const std::list<block_extended
   }
 
   auto split_height = m_db->height();
-  LOKI_DEFER // TODO(loki): This is a work around for sometimes reorganising the blockchain causing inconsistent difficulty values
-  {
-    if (nettype() == MAINNET)
-    {
-      uint64_t const FUDGE                             = 60;
-      cryptonote::BlockchainDB::fixup_context context  = {};
-      context.type                                     = cryptonote::BlockchainDB::fixup_type::calculate_difficulty;
-      context.calculate_difficulty_params.start_height = split_height < FUDGE ? 0 : split_height - FUDGE;
-      m_db->fixup(context);
-    }
-  };
-
   for (BlockchainDetachedHook* hook : m_blockchain_detached_hooks)
     hook->blockchain_detached(split_height);
 
@@ -4104,15 +4040,28 @@ leave:
 
   TIME_MEASURE_FINISH(addblock);
 
-  // TODO(loki): Temporary forking code. We have invalid checkpoints from the soft forking period we should cull
+  // TODO(loki): Temporary forking code.
   {
-    static uint64_t hf13_height = m_hardfork->get_earliest_ideal_height_for_version(network_version_13_enforce_checkpoints);
-    static uint64_t hf12_height = m_hardfork->get_earliest_ideal_height_for_version(network_version_12_checkpointing);
-    if (hf13_height == get_block_height(bl))
+    uint64_t block_height = get_block_height(bl);
+    // We have invalid checkpoints from the soft forking period we should cull
     {
-      std::vector<checkpoint_t> checkpoints = m_db->get_checkpoints_range(hf13_height - 1, hf12_height);
-      for (cryptonote::checkpoint_t const &checkpoint : checkpoints)
-        m_db->remove_block_checkpoint(checkpoint.height);
+      uint64_t hf13_height = m_hardfork->get_earliest_ideal_height_for_version(network_version_13_enforce_checkpoints);
+      uint64_t hf12_height = m_hardfork->get_earliest_ideal_height_for_version(network_version_12_checkpointing);
+      if (hf13_height == get_block_height(bl))
+      {
+        std::vector<checkpoint_t> checkpoints = m_db->get_checkpoints_range(hf13_height - 1, hf12_height);
+        for (cryptonote::checkpoint_t const &checkpoint : checkpoints)
+          m_db->remove_block_checkpoint(checkpoint.height);
+      }
+    }
+
+    // Rescan difficulty every N block we have a reocurring difficulty bug that causes daemons to miscalculate difficulty
+    if (nettype() == MAINNET && (block_height % BLOCKS_EXPECTED_IN_DAYS(1) == 0))
+    {
+      cryptonote::BlockchainDB::fixup_context context  = {};
+      context.type                                     = cryptonote::BlockchainDB::fixup_type::calculate_difficulty;
+      context.calculate_difficulty_params.start_height = block_height - BLOCKS_EXPECTED_IN_DAYS(1);
+      m_db->fixup(context);
     }
   }
 
@@ -5092,39 +5041,6 @@ void Blockchain::safesyncmode(const bool onoff)
 HardFork::State Blockchain::get_hard_fork_state() const
 {
   return m_hardfork->get_state();
-}
-
-const std::vector<HardFork::Params>& Blockchain::get_hard_fork_heights(network_type nettype)
-{
-  static const std::vector<HardFork::Params> mainnet_heights = []()
-  {
-    std::vector<HardFork::Params> heights;
-    for (const auto& i : mainnet_hard_forks)
-      heights.emplace_back(i.version, i.height, i.threshold, i.time);
-    return heights;
-  }();
-  static const std::vector<HardFork::Params> testnet_heights = []()
-  {
-    std::vector<HardFork::Params> heights;
-    for (const auto& i : testnet_hard_forks)
-      heights.emplace_back(i.version, i.height, i.threshold, i.time);
-    return heights;
-  }();
-  static const std::vector<HardFork::Params> stagenet_heights = []()
-  {
-    std::vector<HardFork::Params> heights;
-    for (const auto& i : stagenet_hard_forks)
-      heights.emplace_back(i.version, i.height, i.threshold, i.time);
-    return heights;
-  }();
-  static const std::vector<HardFork::Params> dummy;
-  switch (nettype)
-  {
-    case MAINNET: return mainnet_heights;
-    case TESTNET: return testnet_heights;
-    case STAGENET: return stagenet_heights;
-    default: return dummy;
-  }
 }
 
 bool Blockchain::get_hard_fork_voting_info(uint8_t version, uint32_t &window, uint32_t &votes, uint32_t &threshold, uint64_t &earliest_height, uint8_t &voting) const

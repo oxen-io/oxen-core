@@ -38,6 +38,14 @@ namespace cryptonote
   class HardFork
   {
   public:
+    struct Params
+    {
+      uint8_t version;
+      uint64_t height;
+      uint8_t threshold;
+      time_t time;
+    };
+
     constexpr static uint8_t INVALID_HF_VERSION_FOR_HEIGHT = 255;
     typedef enum {
       LikelyForked,
@@ -50,6 +58,8 @@ namespace cryptonote
     static const time_t DEFAULT_UPDATE_TIME = 31557600 / 2;
     static const uint64_t DEFAULT_WINDOW_SIZE = 10080; // supermajority window check length - a week
     static const uint8_t DEFAULT_THRESHOLD_PERCENT = 80;
+
+    static Params const *get_hardcoded_hard_forks(network_type nettype, int *num_entries);
 
     /**
      * @brief creates a new HardFork object
@@ -230,14 +240,6 @@ namespace cryptonote
      * @brief returns the size of the voting window in blocks
      */
     uint64_t get_window_size() const { return window_size; }
-
-    struct Params {
-      uint8_t version;
-      uint8_t threshold;
-      uint64_t height;
-      time_t time;
-      Params(uint8_t version, uint64_t height, uint8_t threshold, time_t time): version(version), threshold(threshold), height(height), time(time) {}
-    };
 
   private:
 

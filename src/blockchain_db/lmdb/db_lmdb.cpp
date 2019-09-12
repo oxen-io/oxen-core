@@ -46,6 +46,7 @@
 
 #include "checkpoints/checkpoints.h"
 #include "cryptonote_core/service_node_rules.h"
+#include "cryptonote_basic/hardfork.h"
 
 #undef LOKI_DEFAULT_LOG_CATEGORY
 #define LOKI_DEFAULT_LOG_CATEGORY "blockchain.db.lmdb"
@@ -1289,7 +1290,7 @@ BlockchainLMDB::BlockchainLMDB(bool batch_transactions): BlockchainDB()
   m_hardfork = nullptr;
 }
 
-void BlockchainLMDB::open(const std::string& filename, const int db_flags)
+void BlockchainLMDB::open(const std::string& filename, cryptonote::network_type nettype, const int db_flags)
 {
   int result;
   int mdb_flags = MDB_NORDAHEAD;
@@ -1488,7 +1489,7 @@ void BlockchainLMDB::open(const std::string& filename, const int db_flags)
       {
         txn.commit();
         m_open = true;
-        migrate(db_version);
+        migrate(db_version, nettype);
         return;
       }
     }
@@ -4626,27 +4627,9 @@ void BlockchainLMDB::fixup(fixup_context const context)
     uint64_t start_height = (context.calculate_difficulty_params.start_height == 0) ?
       1 : context.calculate_difficulty_params.start_height;
 
-    std::vector<uint64_t> timestamps;
-    std::vector<difficulty_type> difficulties;
-    {
-      uint64_t offset = start_height - std::min<size_t>(start_height, static_cast<size_t>(DIFFICULTY_BLOCKS_COUNT_V2));
-      if (offset == 0)
-        offset = 1;
+    if (start_height >= height())
+     return;
 
-      if (start_height > offset)
-      {
-        timestamps.reserve  (start_height - offset);
-        difficulties.reserve(start_height - offset);
-      }
-
-      for (; offset < start_height; offset++)
-      {
-        timestamps.push_back  (get_block_timestamp(offset));
-        difficulties.push_back(get_block_cumulative_difficulty(offset));
-      }
-    }
-
-    uint64_t prev_cumulative_diff = get_block_cumulative_difficulty(start_height - 1);
     block_wtxn_start();
 
     mdb_txn_cursors *m_cursors = &m_wcursors; // Necessary for macro
@@ -4668,11 +4651,32 @@ void BlockchainLMDB::fixup(fixup_context const context)
       }
     }
 
-    uint64_t end_height = (height() - 1);
-    uint64_t num_blocks = end_height - start_height;
+    std::vector<uint64_t> timestamps;
+    std::vector<difficulty_type> difficulties;
+    {
+      uint64_t offset = start_height - std::min<size_t>(start_height, static_cast<size_t>(DIFFICULTY_BLOCKS_COUNT_V2));
+      if (offset == 0)
+        offset = 1;
+
+      if (start_height > offset)
+      {
+        timestamps.reserve  (start_height - offset);
+        difficulties.reserve(start_height - offset);
+      }
+
+      for (; offset < start_height; offset++)
+      {
+        timestamps.push_back  (get_block_timestamp(offset));
+        difficulties.push_back(get_block_cumulative_difficulty(offset));
+      }
+    }
 
     try
     {
+      uint64_t end_height           = (height() - 1);
+      uint64_t num_blocks           = end_height - start_height;
+      uint64_t prev_cumulative_diff = get_block_cumulative_difficulty(start_height - 1);
+
       for (size_t i = 0; i < num_blocks; i++)
       {
         uint64_t const curr_height = (start_height + i);
@@ -4744,6 +4748,21 @@ void BlockchainLMDB::fixup(fixup_context const context)
     ptr[sizeof(name)-2]++; } while(0)
 
 #define LOGIF(y)    if (ELPP->vRegistry()->allowed(y, "global"))
+
+static int write_db_version(MDB_env *env, MDB_dbi &dest, mdb_txn_safe &txn, uint32_t version)
+{
+  MDB_val v = {};
+  v.mv_data = (void *)&version;
+  v.mv_size = sizeof(version);
+  MDB_val_copy<const char *> vk("version");
+
+  int result = mdb_txn_begin(env, NULL, 0, txn);
+  if (result) return result;
+  result = mdb_put(txn, dest, &vk, &v, 0);
+  if (result) return result;
+  txn.commit();
+  return result;
+}
 
 void BlockchainLMDB::migrate_0_1()
 {
@@ -5275,16 +5294,8 @@ void BlockchainLMDB::migrate_0_1()
   } while(0);
 
   uint32_t version = 1;
-  v.mv_data = (void *)&version;
-  v.mv_size = sizeof(version);
-  MDB_val_str(vk, "version");
-  result = mdb_txn_begin(m_env, NULL, 0, txn);
-  if (result)
-    throw0(DB_ERROR(lmdb_error("Failed to create a transaction for the db: ", result).c_str()));
-  result = mdb_put(txn, m_properties, &vk, &v, 0);
-  if (result)
+  if (int result = write_db_version(m_env, m_properties, txn, version))
     throw0(DB_ERROR(lmdb_error("Failed to update version for the db: ", result).c_str()));
-  txn.commit();
 }
 
 void BlockchainLMDB::migrate_1_2()
@@ -5417,16 +5428,8 @@ void BlockchainLMDB::migrate_1_2()
   } while(0);
 
   uint32_t version = 2;
-  v.mv_data = (void *)&version;
-  v.mv_size = sizeof(version);
-  MDB_val_str(vk, "version");
-  result = mdb_txn_begin(m_env, NULL, 0, txn);
-  if (result)
-    throw0(DB_ERROR(lmdb_error("Failed to create a transaction for the db: ", result).c_str()));
-  result = mdb_put(txn, m_properties, &vk, &v, 0);
-  if (result)
+  if (int result = write_db_version(m_env, m_properties, txn, version))
     throw0(DB_ERROR(lmdb_error("Failed to update version for the db: ", result).c_str()));
-  txn.commit();
 }
 
 void BlockchainLMDB::migrate_2_3()
@@ -5553,16 +5556,8 @@ void BlockchainLMDB::migrate_2_3()
   } while(0);
 
   uint32_t version = 3;
-  v.mv_data = (void *)&version;
-  v.mv_size = sizeof(version);
-  MDB_val_str(vk, "version");
-  result = mdb_txn_begin(m_env, NULL, 0, txn);
-  if (result)
-    throw0(DB_ERROR(lmdb_error("Failed to create a transaction for the db: ", result).c_str()));
-  result = mdb_put(txn, m_properties, &vk, &v, 0);
-  if (result)
+  if (int result = write_db_version(m_env, m_properties, txn, version))
     throw0(DB_ERROR(lmdb_error("Failed to update version for the db: ", result).c_str()));
-  txn.commit();
 }
 
 void BlockchainLMDB::migrate_3_4()
@@ -5797,19 +5792,11 @@ void BlockchainLMDB::migrate_3_4()
   } while(0);
 
   uint32_t version = 4;
-  v.mv_data = (void *)&version;
-  v.mv_size = sizeof(version);
-  MDB_val_copy<const char *> vk("version");
-  result = mdb_txn_begin(m_env, NULL, 0, txn);
-  if (result)
-    throw0(DB_ERROR(lmdb_error("Failed to create a transaction for the db: ", result).c_str()));
-  result = mdb_put(txn, m_properties, &vk, &v, 0);
-  if (result)
+  if (int result = write_db_version(m_env, m_properties, txn, version))
     throw0(DB_ERROR(lmdb_error("Failed to update version for the db: ", result).c_str()));
-  txn.commit();
 }
 
-void BlockchainLMDB::migrate_4_5()
+void BlockchainLMDB::migrate_4_5(cryptonote::network_type nettype)
 {
   LOG_PRINT_L3("BlockchainLMDB::" << __func__);
   MGINFO_YELLOW("Migrating blockchain from DB version 4 to 5 - this may take a while:");
@@ -5877,9 +5864,36 @@ void BlockchainLMDB::migrate_4_5()
     if (ret) throw0(DB_ERROR(lmdb_error("Failed to re-update alt block data: ", ret).c_str()));
   }
   txn.commit();
+
+  // NOTE: Rescan chain difficulty to mitigate difficulty problem pre hardfork v12
+  uint64_t hf12_height                                  = 0;
+  int num_hard_fork_records                             = 0;
+  const cryptonote::HardFork::Params *hard_fork_records = cryptonote::HardFork::get_hardcoded_hard_forks(nettype, &num_hard_fork_records);
+  for (int i = 0; i < num_hard_fork_records; i++)
+  {
+    cryptonote::HardFork::Params const *record = hard_fork_records + i;
+    if (record->version == cryptonote::network_version_12_checkpointing)
+    {
+      hf12_height = record->height;
+      break;
+    }
+  }
+
+  fixup_context context                            = {};
+  context.type                                     = fixup_type::calculate_difficulty;
+  context.calculate_difficulty_params.start_height = hf12_height;
+
+  uint64_t constexpr FUDGE = BLOCKS_EXPECTED_IN_DAYS(1);
+  context.calculate_difficulty_params.start_height = (context.calculate_difficulty_params.start_height < FUDGE)
+                                                         ? 0
+                                                         : context.calculate_difficulty_params.start_height - FUDGE;
+  fixup(context);
+
+  if (int result = write_db_version(m_env, m_properties, txn, (uint32_t)lmdb_version::v5))
+    throw0(DB_ERROR(lmdb_error("Failed to update version for the db: ", result).c_str()));
 }
 
-void BlockchainLMDB::migrate(const uint32_t oldversion)
+void BlockchainLMDB::migrate(const uint32_t oldversion, cryptonote::network_type nettype)
 {
   switch(oldversion) {
   case 0:
@@ -5891,7 +5905,7 @@ void BlockchainLMDB::migrate(const uint32_t oldversion)
   case 3:
     migrate_3_4(); /* FALLTHRU */
   case 4:
-    migrate_4_5(); /* FALLTHRU */
+    migrate_4_5(nettype); /* FALLTHRU */
   default:
     break;
   }
