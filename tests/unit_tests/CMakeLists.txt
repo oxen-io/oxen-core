@@ -55,6 +55,7 @@ set(unit_tests_sources
   hmac_keccak.cpp
   http.cpp
   keccak.cpp
+  levin.cpp
   logging.cpp
   long_term_block_weight.cpp
   lmdb.cpp
