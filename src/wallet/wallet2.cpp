@@ -1722,7 +1722,7 @@ void wallet2::cache_tx_data(const cryptonote::transaction& tx, const crypto::has
 //----------------------------------------------------------------------------------------------------
 void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote::transaction& tx, const std::vector<uint64_t> &o_indices, uint64_t height, uint64_t ts, bool miner_tx, bool pool, bool double_spend_seen, const tx_cache_data &tx_cache_data, std::map<std::pair<uint64_t, uint64_t>, size_t> *output_tracker_cache)
 {
-  if (tx.type != txtype::standard)
+  if (tx.type != txtype::standard || tx.version <= txversion::v1)
     return;
 
   PERF_TIMER(process_new_transaction);

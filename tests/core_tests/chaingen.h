@@ -41,8 +41,6 @@
 #include <boost/serialization/vector.hpp>
 #include <boost/serialization/variant.hpp>
 #include <boost/serialization/optional.hpp>
-#include <boost/serialization/unordered_map.hpp>
-#include <boost/functional/hash.hpp>
 
 #include "include_base_utils.h"
 #include "common/boost_serialization_helper.h"
@@ -56,13 +54,73 @@
 #include "cryptonote_basic/cryptonote_boost_serialization.h"
 #include "misc_language.h"
 
+#include "blockchain_db/testdb.h"
+
 #undef LOKI_DEFAULT_LOG_CATEGORY
 #define LOKI_DEFAULT_LOG_CATEGORY "tests.core"
 
 #define TESTS_DEFAULT_FEE ((uint64_t)200000000) // 2 * pow(10, 8)
+#define TEST_DEFAULT_DIFFICULTY 1
 
 #define DIFFICULTY_BLOCKS_ESTIMATE_TIMESPAN  DIFFICULTY_TARGET_V2
 
+struct loki_block_with_checkpoint
+{
+  cryptonote::block        block;
+  bool                     has_checkpoint;
+  cryptonote::checkpoint_t checkpoint;
+};
+
+struct loki_transaction
+{
+  cryptonote::transaction tx;
+  bool                    kept_by_block;
+};
+
+// TODO(loki): Deperecate other methods of doing polymorphism for items to be
+// added to test_event_entry.  Right now, adding a block and checking for
+// failure requires you to add a member field to mark the event index that
+// should of failed, and you must add a member function that checks at run-time
+// if at the marked index the block failed or not.
+
+// Doing this way lets you write the failure case inline to when you create the
+// test_event_entry, which means less book-keeping and boilerplate code of
+// tracking event indexes and making member functions to detect the failure cases.
+template <typename T>
+struct loki_blockchain_addable
+{
+  loki_blockchain_addable() = default;
+  loki_blockchain_addable(T const &data, bool can_be_added_to_blockchain = true, std::string const &fail_msg = {})
+  : data(data)
+  , can_be_added_to_blockchain(can_be_added_to_blockchain)
+  , fail_msg(fail_msg)
+  {
+  }
+
+  T data;
+  bool can_be_added_to_blockchain;
+  std::string fail_msg;
+
+  private: // TODO(doyle): Not implemented properly. Just copy pasta. Do we even need serialization?
+  friend class boost::serialization::access;
+  template<class Archive> void serialize(Archive & /*ar*/, const unsigned int /*version*/) { }
+};
+
+typedef boost::function<bool (cryptonote::core& c, size_t ev_index)> loki_callback;
+struct loki_callback_entry
+{
+  std::string   name;
+  loki_callback callback;
+
+private: // TODO(doyle): Not implemented properly. Just copy pasta. Do we even need serialization?
+  friend class boost::serialization::access;
+  template<class Archive>
+  void serialize(Archive & ar, const unsigned int /*version*/) { ar & name; }
+};
+
+//
+// NOTE: Monero
+//
 struct callback_entry
 {
   std::string callback_name;
@@ -117,20 +175,12 @@ struct event_visitor_settings
   enum settings
   {
     set_txs_keeped_by_block = 1 << 0,
-    set_service_node_key = 1 << 1
   };
 
   event_visitor_settings(int a_valid_mask = 0, bool a_txs_keeped_by_block = false)
     : valid_mask(a_valid_mask)
     , txs_keeped_by_block(a_txs_keeped_by_block)
   {
-  }
-
-  static event_visitor_settings make_set_service_node_key(const crypto::secret_key& a_service_node_key)
-  {
-    event_visitor_settings settings(set_service_node_key);
-    settings.service_node_key = a_service_node_key;
-    return settings;
   }
 
 private:
@@ -148,9 +198,8 @@ private:
 typedef std::vector<std::pair<uint8_t, uint64_t>> v_hardforks_t;
 struct event_replay_settings
 {
-  boost::optional<v_hardforks_t> hard_forks;
-
   event_replay_settings() = default;
+  boost::optional<v_hardforks_t> hard_forks;
 
 private:
   friend class boost::serialization::access;
@@ -170,7 +219,23 @@ VARIANT_TAG(binary_archive, serialized_transaction, 0xce);
 VARIANT_TAG(binary_archive, event_visitor_settings, 0xcf);
 VARIANT_TAG(binary_archive, event_replay_settings, 0xda);
 
-typedef boost::variant<cryptonote::block, cryptonote::transaction, std::vector<cryptonote::transaction>, cryptonote::account_base, callback_entry, serialized_block, serialized_transaction, event_visitor_settings, event_replay_settings> test_event_entry;
+typedef boost::variant<cryptonote::block,
+                       cryptonote::transaction,
+                       std::vector<cryptonote::transaction>,
+                       cryptonote::account_base,
+                       callback_entry,
+                       serialized_block,
+                       serialized_transaction,
+                       event_visitor_settings,
+                       event_replay_settings,
+
+                       loki_callback_entry,
+                       loki_blockchain_addable<loki_block_with_checkpoint>,
+                       loki_blockchain_addable<cryptonote::block>,
+                       loki_blockchain_addable<loki_transaction>,
+                       loki_blockchain_addable<service_nodes::quorum_vote_t>,
+                       loki_blockchain_addable<cryptonote::checkpoint_t>
+                       > test_event_entry;
 typedef std::unordered_map<crypto::hash, const cryptonote::transaction*> map_hash2tx_t;
 
 class test_chain_unit_base
@@ -184,12 +249,11 @@ public:
   bool check_block_verification_context(const cryptonote::block_verification_context& bvc, size_t event_idx, const cryptonote::block& /*blk*/);
   bool check_tx_verification_context(const cryptonote::tx_verification_context& tvc, bool /*tx_added*/, size_t /*event_index*/, const cryptonote::transaction& /*tx*/);
   bool check_tx_verification_context_array(const std::vector<cryptonote::tx_verification_context>& tvcs, size_t /*tx_added*/, size_t /*event_index*/, const std::vector<cryptonote::transaction>& /*txs*/);
+  bool was_vote_meant_to_be_successfully_added(size_t event_index, bool vote_was_added) { (void)event_index; return vote_was_added; }
 
 private:
   callbacks_map m_callbacks;
 };
-
-using sn_contributor_t = std::pair<cryptonote::account_public_address, uint64_t>;
 
 class test_generator
 {
@@ -252,12 +316,10 @@ public:
   void add_block(const cryptonote::block& blk, size_t tsx_size, std::vector<uint64_t>& block_weights, uint64_t already_generated_coins);
   bool construct_block(cryptonote::block& blk, uint64_t height, const crypto::hash& prev_id,
     const cryptonote::account_base& miner_acc, uint64_t timestamp, uint64_t already_generated_coins,
-    std::vector<uint64_t>& block_weights, const std::list<cryptonote::transaction>& tx_list, const crypto::public_key& sn_pub_key = crypto::null_pkey,
-    const std::vector<sn_contributor_t>& = {{{crypto::null_pkey, crypto::null_pkey}, STAKING_PORTIONS}});
+    std::vector<uint64_t>& block_weights, const std::list<cryptonote::transaction>& tx_list, const service_nodes::block_winner &winner = {});
   bool construct_block(cryptonote::block& blk, const cryptonote::account_base& miner_acc, uint64_t timestamp);
   bool construct_block(cryptonote::block& blk, const cryptonote::block& blk_prev, const cryptonote::account_base& miner_acc,
-    const std::list<cryptonote::transaction>& tx_list = std::list<cryptonote::transaction>(), const crypto::public_key& sn_pub_key = crypto::null_pkey,
-    const std::vector<sn_contributor_t>& = {{{crypto::null_pkey, crypto::null_pkey}, STAKING_PORTIONS}});
+    const std::list<cryptonote::transaction>& tx_list = std::list<cryptonote::transaction>(), const service_nodes::block_winner &winner = {});
 
   bool construct_block_manually(cryptonote::block& blk, const cryptonote::block& prev_block,
     const cryptonote::account_base& miner_acc, int actual_params = bf_none, uint8_t major_ver = 0,
@@ -281,184 +343,6 @@ private:
     ar & m_blocks_info;
   }
 };
-
-/// ------------ Service Nodes -----------
-
-struct last_reward_point {
-  uint64_t height;
-  uint64_t priority;
-};
-
-struct sn_registration {
-  uint64_t valid_until; /// block height
-  cryptonote::keypair keys;
-  sn_contributor_t contribution;
-  last_reward_point last_reward;
-};
-
-class sn_list
-{
-  std::vector<sn_registration> sn_owners_;
-
-public:
-
-  const sn_registration& at(size_t idx) const { return sn_owners_.at(idx); }
-
-  const boost::optional<sn_registration> find_registration(const crypto::public_key& pk) const;
-
-  void expire_old(uint64_t height);
-
-  const boost::optional<crypto::public_key> get_winner_pk(uint64_t height);
-
-  size_t size() const { return sn_owners_.size(); }
-
-  void add_registrations(const std::vector<sn_registration>& regs);
-
-  void remove_node(const crypto::public_key& pk);
-
-  void handle_deregistrations(const std::vector<crypto::public_key>& dereg_buffer);
-
-};
-
-/// Service node and its index
-struct sn_idx {
-  crypto::public_key sn_pk;
-  /// index in the sorted list of service nodes for a particular block
-  size_t idx_in_quorum;
-};
-
-struct QuorumState {
-  std::vector<sn_idx> voters;
-  std::vector<sn_idx> to_test;
-};
-
-class dereg_tx_builder;
-class linear_chain_generator
-{
-
-  private:
-    test_generator gen_;
-    std::vector<test_event_entry>& events_;
-    const std::vector<std::pair<uint8_t, uint64_t>> hard_forks_;
-    std::vector<cryptonote::block> blocks_;
-
-    sn_list sn_list_;
-
-    /// keep new registrations and deregistrations here until the next block
-    std::vector<sn_registration> registration_buffer_;
-    std::vector<crypto::public_key> deregistration_buffer_;
-
-    cryptonote::account_base first_miner_;
-
-    /// Get hardfork version at specified height
-    uint8_t get_hf_version_at(uint64_t height) const;
-
-  public:
-    linear_chain_generator(std::vector<test_event_entry> &events, const std::vector<std::pair<uint8_t, uint64_t>> &hard_forks)
-      : gen_(), events_(events), hard_forks_(hard_forks)
-    { }
-
-    uint64_t                              height() const { return get_block_height(blocks_.back()); }
-    const std::vector<cryptonote::block>& blocks() const { return blocks_; }
-
-    cryptonote::account_base create_account();
-
-    void create_genesis_block();
-
-    void create_block(const std::vector<cryptonote::transaction>& txs = {});
-
-    cryptonote::block create_block_on_fork(const cryptonote::block& prev, const std::vector<cryptonote::transaction>& txs = {});
-
-    int get_hf_version() const;
-
-    void rewind_until_version(int hard_fork_version);
-    void rewind_blocks_n(int n);
-    void rewind_blocks();
-
-    cryptonote::transaction create_tx(const cryptonote::account_base& miner,
-                                      const cryptonote::account_base& acc,
-                                      uint64_t amount,
-                                      uint64_t fee = TESTS_DEFAULT_FEE);
-
-    cryptonote::transaction create_registration_tx(const cryptonote::account_base& acc, const cryptonote::keypair& sn_keys);
-
-    cryptonote::transaction create_registration_tx();
-
-    const cryptonote::account_base& first_miner() const { return first_miner_; }
-
-    /// Note: should be carefull with returing a reference to vector elements
-    const cryptonote::block& chain_head() const { return blocks_.back(); }
-
-    /// get a copy of the service node list
-    sn_list get_sn_list() const { return sn_list_; }
-
-    void set_sn_list(const sn_list& list) { sn_list_ = list; }
-
-    QuorumState get_quorum_idxs(const cryptonote::block& block) const;
-
-    QuorumState get_quorum_idxs(uint64_t height) const;
-
-    cryptonote::transaction create_deregister_tx(const crypto::public_key& pk, uint64_t height, const std::vector<sn_idx>& voters, uint64_t fee, bool commit);
-
-    dereg_tx_builder build_deregister(const crypto::public_key& pk, bool commit = true);
-
-    crypto::public_key get_test_pk(uint32_t idx) const;
-
-    boost::optional<uint32_t> get_idx_in_tested(const crypto::public_key& pk, uint64_t height) const;
-
-    void deregister(const crypto::public_key& pk);
-
-};
-
-class dereg_tx_builder {
-
-  linear_chain_generator& gen_;
-  const crypto::public_key& pk_;
-
-  /// the height at which `pk_` is to be found
-  boost::optional<uint64_t> height_ = boost::none;
-
-  boost::optional<uint64_t> fee_ = boost::none;
-
-  boost::optional<const std::vector<sn_idx>&> voters_ = boost::none;
-
-  /// whether to actually remove SN from the list
-  bool commit_;
-
-  public:
-    dereg_tx_builder(linear_chain_generator& gen, const crypto::public_key& pk, bool commit)
-      : gen_(gen), pk_(pk), commit_(commit)
-    {}
-
-    dereg_tx_builder&& with_height(uint64_t height) {
-      height_ = height;
-      return std::move(*this);
-    }
-
-    dereg_tx_builder&& with_fee(uint64_t fee) {
-      fee_ = fee;
-      return std::move(*this);
-    }
-
-    dereg_tx_builder&& with_voters(const std::vector<sn_idx>& voters)
-    {
-      voters_ = voters;
-      return std::move(*this);
-    }
-
-    cryptonote::transaction build()
-    {
-      const auto height = height_ ? *height_ : gen_.height();
-      const auto voters = voters_ ? *voters_ : gen_.get_quorum_idxs(height).voters;
-      return gen_.create_deregister_tx(pk_, height, voters, fee_.value_or(0), commit_);
-    }
-
-};
-
-inline cryptonote::difficulty_type get_test_difficulty() {return 1;}
-void fill_nonce(cryptonote::block& blk, const cryptonote::difficulty_type& diffic, uint64_t height);
-
-crypto::public_key get_output_key(const cryptonote::keypair& txkey, const cryptonote::account_public_address& addr, size_t output_index);
 
 template<typename T>
 std::string dump_keys(T * buff32)
@@ -564,6 +448,8 @@ typedef std::unordered_map<crypto::public_key, cryptonote::subaddress_index> sub
 typedef std::pair<uint64_t, size_t>  outloc_t;
 
 typedef boost::variant<cryptonote::account_public_address, cryptonote::account_keys, cryptonote::account_base, cryptonote::tx_destination_entry> var_addr_t;
+cryptonote::account_public_address get_address(const var_addr_t& inp);
+
 typedef struct {
   const var_addr_t addr;
   bool is_subaddr;
@@ -604,15 +490,6 @@ private:
 };
 
 std::string dump_data(const cryptonote::transaction &tx);
-cryptonote::account_public_address get_address(const var_addr_t& inp);
-cryptonote::account_public_address get_address(const cryptonote::account_public_address& inp);
-cryptonote::account_public_address get_address(const cryptonote::account_keys& inp);
-cryptonote::account_public_address get_address(const cryptonote::account_base& inp);
-cryptonote::account_public_address get_address(const cryptonote::tx_destination_entry& inp);
-
-inline cryptonote::difficulty_type get_test_difficulty(const boost::optional<uint8_t>& hf_ver=boost::none) {return !hf_ver || hf_ver.get() <= 1 ? 1 : 2;}
-inline uint64_t current_difficulty_window(const boost::optional<uint8_t>& hf_ver=boost::none){ (void)hf_ver; return DIFFICULTY_TARGET_V2; }
-void fill_nonce(cryptonote::block& blk, const cryptonote::difficulty_type& diffic, uint64_t height);
 
 cryptonote::tx_destination_entry build_dst(const var_addr_t& to, bool is_subaddr=false, uint64_t amount=0);
 std::vector<cryptonote::tx_destination_entry> build_dsts(const var_addr_t& to1, bool sub1=false, uint64_t am1=0);
@@ -695,100 +572,6 @@ void fill_tx_sources_and_destinations(const std::vector<test_event_entry>& event
                                       uint64_t amount, uint64_t fee, size_t nmix,
                                       std::vector<cryptonote::tx_source_entry>& sources,
                                       std::vector<cryptonote::tx_destination_entry>& destinations, uint64_t *change_amount = nullptr);
-
-class TxBuilder {
-
-  /// required fields
-  const std::vector<test_event_entry>& m_events;
-  const size_t m_hf_version;
-  cryptonote::transaction& m_tx;
-  const cryptonote::block& m_head;
-  const cryptonote::account_base& m_from;
-  const cryptonote::account_base& m_to;
-
-  uint64_t m_amount;
-  uint64_t m_fee;
-  uint64_t m_unlock_time;
-  std::vector<uint8_t> m_extra;
-
-  /// optional fields
-  bool m_per_output_unlock = false;
-  bool m_is_staking = false;
-
-  /// this makes sure we didn't forget to build it
-  bool m_finished = false;
-
-public:
-  TxBuilder(const std::vector<test_event_entry>& events,
-            cryptonote::transaction& tx,
-            const cryptonote::block& head,
-            const cryptonote::account_base& from,
-            const cryptonote::account_base& to,
-            uint64_t amount,
-            uint8_t hf_version)
-    : m_events(events)
-    , m_tx(tx)
-    , m_head(head)
-    , m_from(from)
-    , m_to(to)
-    , m_amount(amount)
-    , m_hf_version(hf_version)
-    , m_fee(TESTS_DEFAULT_FEE)
-    , m_unlock_time(0)
-  {}
-
-  TxBuilder&& with_fee(uint64_t fee) {
-    m_fee = fee;
-    return std::move(*this);
-  }
-
-  TxBuilder&& with_extra(const std::vector<uint8_t>& extra) {
-    m_extra = extra;
-    return std::move(*this);
-  }
-
-  TxBuilder&& is_staking(bool val) {
-    m_is_staking = val;
-    return std::move(*this);
-  }
-
-  TxBuilder&& with_unlock_time(uint64_t val) {
-    m_unlock_time = val;
-    return std::move(*this);
-  }
-
-  TxBuilder&& with_per_output_unlock(bool val) {
-    m_per_output_unlock = val;
-    return std::move(*this);
-  }
-
-  ~TxBuilder() {
-    if (!m_finished) {
-      std::cerr << "Tx building not finished\n";
-      abort();
-    }
-  }
-
-  bool build()
-  {
-    m_finished = true;
-
-    std::vector<cryptonote::tx_source_entry> sources;
-    std::vector<cryptonote::tx_destination_entry> destinations;
-    uint64_t change_amount;
-
-    const auto nmix = 9;
-    fill_tx_sources_and_destinations(
-      m_events, m_head, m_from, m_to.get_keys().m_account_address, m_amount, m_fee, nmix, sources, destinations, &change_amount);
-
-    const bool is_subaddr = false;
-
-    cryptonote::tx_destination_entry change_addr{ change_amount, m_from.get_keys().m_account_address, is_subaddr };
-
-    return cryptonote::construct_tx(
-      m_from.get_keys(), sources, destinations, change_addr, m_extra, m_tx, m_unlock_time, m_hf_version, m_is_staking);
-  }
-};
 
 /// Get the amount transferred to `account` in `tx` as output `i`
 uint64_t get_amount(const cryptonote::account_base& account, const cryptonote::transaction& tx, int i);
@@ -893,6 +676,10 @@ public:
     return r;
   }
 
+  // TODO(loki): Deprecate callback_entry for loki_callback_entry, why don't you
+  // just include the callback routine in the callback entry instead of going
+  // down into the validator and then have to do a string->callback (map) lookup
+  // for the callback?
   bool operator()(const callback_entry& cb) const
   {
     log_event(std::string("callback_entry ") + cb.callback_name);
@@ -957,6 +744,92 @@ public:
     return true;
   }
 
+  //
+  // NOTE: Loki
+  //
+  bool operator()(const loki_blockchain_addable<cryptonote::checkpoint_t> &entry) const
+  {
+    log_event("loki_blockchain_addable<cryptonote::checkpoint_t>");
+    cryptonote::Blockchain &blockchain = m_c.get_blockchain_storage();
+    bool added = blockchain.update_checkpoint(entry.data);
+    CHECK_AND_NO_ASSERT_MES(added == entry.can_be_added_to_blockchain, false, entry.fail_msg);
+    return true;
+  }
+
+  bool operator()(const loki_blockchain_addable<service_nodes::quorum_vote_t> &entry) const
+  {
+    log_event("loki_blockchain_addable<service_nodes::quorum_vote_t>");
+    cryptonote::vote_verification_context vvc = {};
+    bool added                                = m_c.add_service_node_vote(entry.data, vvc);
+    CHECK_AND_NO_ASSERT_MES(added == entry.can_be_added_to_blockchain, false, entry.fail_msg);
+    return true;
+  }
+
+  bool operator()(const loki_blockchain_addable<loki_block_with_checkpoint> &entry) const
+  {
+    log_event("loki_blockchain_addable<loki_block_with_checkpoint>");
+    cryptonote::block const &block = entry.data.block;
+
+    // TODO(loki): Need to make a copy because we still need modify checkpoints
+    // in handle_incoming_blocks but that is because of temporary forking code
+    cryptonote::checkpoint_t checkpoint_copy = entry.data.checkpoint;
+
+    cryptonote::block_verification_context bvc = {};
+    cryptonote::blobdata bd                    = t_serializable_object_to_blob(block);
+    std::vector<cryptonote::block> pblocks;
+    if (m_c.prepare_handle_incoming_blocks(std::vector<cryptonote::block_complete_entry>(1, {bd, {}, {}}), pblocks))
+    {
+      m_c.handle_incoming_block(bd, &block, bvc, &checkpoint_copy);
+      m_c.cleanup_handle_incoming_blocks();
+    }
+    else
+      bvc.m_verifivation_failed = true;
+
+    bool added = !bvc.m_verifivation_failed;
+    CHECK_AND_NO_ASSERT_MES(added == entry.can_be_added_to_blockchain, false, entry.fail_msg);
+    return true;
+  }
+  
+  bool operator()(const loki_blockchain_addable<cryptonote::block> &entry) const
+  {
+    log_event("loki_blockchain_addable<cryptonote::block>");
+    cryptonote::block const &block = entry.data;
+
+    cryptonote::block_verification_context bvc = {};
+    cryptonote::blobdata bd                    = t_serializable_object_to_blob(block);
+    std::vector<cryptonote::block> pblocks;
+    if (m_c.prepare_handle_incoming_blocks(std::vector<cryptonote::block_complete_entry>(1, {bd, {}, {}}), pblocks))
+    {
+      m_c.handle_incoming_block(bd, &block, bvc, nullptr);
+      m_c.cleanup_handle_incoming_blocks();
+    }
+    else
+      bvc.m_verifivation_failed = true;
+
+    bool added = !bvc.m_verifivation_failed;
+    CHECK_AND_NO_ASSERT_MES(added == entry.can_be_added_to_blockchain, false, entry.fail_msg);
+    return true;
+  }
+
+  bool operator()(const loki_blockchain_addable<loki_transaction> &entry) const
+  {
+    log_event("loki_blockchain_addable<loki_transaction>");
+    cryptonote::tx_verification_context tvc = {};
+    size_t pool_size                        = m_c.get_pool_transactions_count();
+    m_c.handle_incoming_tx(t_serializable_object_to_blob(entry.data.tx), tvc, entry.data.kept_by_block, false, false);
+
+    bool added = (pool_size + 1) == m_c.get_pool_transactions_count();
+    CHECK_AND_NO_ASSERT_MES(added == entry.can_be_added_to_blockchain, false, entry.fail_msg);
+    return true;
+  }
+
+  bool operator()(const loki_callback_entry& entry) const
+  {
+    log_event(std::string("loki_callback_entry ") + entry.name);
+    bool result = entry.callback(m_c, m_ev_index);
+    return result;
+  }
+
 private:
   void log_event(const std::string& event_type) const
   {
@@ -965,15 +838,17 @@ private:
 };
 //--------------------------------------------------------------------------
 template<class t_test_class>
-inline bool replay_events_through_core(cryptonote::core& cr, const std::vector<test_event_entry>& events, t_test_class& validator)
-{
-  return replay_events_through_core_plain(cr, events, validator, true);
-}
-//--------------------------------------------------------------------------
-template<class t_test_class>
 inline bool replay_events_through_core_plain(cryptonote::core& cr, const std::vector<test_event_entry>& events, t_test_class& validator, bool reinit=true)
 {
   TRY_ENTRY();
+  // start with a clean pool
+  std::vector<crypto::hash> pool_txs;
+  if (!cr.get_pool_transaction_hashes(pool_txs))
+  {
+    MERROR("Failed to flush txpool");
+    return false;
+  }
+  cr.get_blockchain_storage().flush_txes_from_pool(pool_txs);
 
   //init core here
   if (reinit) {
@@ -1004,7 +879,7 @@ struct get_test_options {
 };
 //--------------------------------------------------------------------------
 template<class t_test_class>
-inline bool do_replay_events_get_core(std::vector<test_event_entry>& events, cryptonote::core *core)
+inline bool do_replay_events_get_core(std::vector<test_event_entry>& events, cryptonote::core *core, t_test_class &validator)
 {
   boost::program_options::options_description desc("Allowed options");
   cryptonote::core::init_options(desc);
@@ -1020,10 +895,19 @@ inline bool do_replay_events_get_core(std::vector<test_event_entry>& events, cry
 
   auto & c = *core;
 
-  // FIXME: make sure that vm has arg_testnet_on set to true or false if
-  // this test needs for it to be so.
+  // TODO(loki): Deprecate having to specify hardforks in a templated struct. This
+  // puts an unecessary level of indirection that makes it hard to follow the
+  // code. Hardforks should just be declared next to the testing code in the
+  // generate function. Inlining code and localizing declarations so that we read
+  // as much as possible top-to-bottom in linear sequences makes things easier to
+  // follow
+
+  // But changing this now means that all the other tests would break.
   get_test_options<t_test_class> gto;
 
+  // TODO(loki): Hard forks should always be specified in events OR do replay
+  // events should be passed a testing context which should have this specific
+  // testing situation
   // Hardforks can be specified in events.
   v_hardforks_t derived_hardforks;
   bool use_derived_hardforks = extract_hard_forks(events, derived_hardforks);
@@ -1033,6 +917,8 @@ inline bool do_replay_events_get_core(std::vector<test_event_entry>& events, cry
     gto.test_options.long_term_block_weight_window,
   };
 
+  // FIXME: make sure that vm has arg_testnet_on set to true or false if
+  // this test needs for it to be so.
   cryptonote::test_options const *testing_options = (use_derived_hardforks) ? &derived_test_options : &gto.test_options;
   if (!c.init(vm, testing_options))
   {
@@ -1040,43 +926,7 @@ inline bool do_replay_events_get_core(std::vector<test_event_entry>& events, cry
     return false;
   }
   c.get_blockchain_storage().get_db().set_batch_transactions(true);
-
-  // start with a clean pool
-  std::vector<crypto::hash> pool_txs;
-  if (!c.get_pool_transaction_hashes(pool_txs))
-  {
-    MERROR("Failed to flush txpool");
-    return false;
-  }
-  c.get_blockchain_storage().flush_txes_from_pool(pool_txs);
-
-  t_test_class validator;
-  bool ret = replay_events_through_core<t_test_class>(c, events, validator);
-//  c.deinit();
-  return ret;
-}
-//--------------------------------------------------------------------------
-template<class t_test_class>
-inline bool replay_events_through_core_validate(std::vector<test_event_entry>& events, cryptonote::core & c)
-{
-  std::vector<crypto::hash> pool_txs;
-  if (!c.get_pool_transaction_hashes(pool_txs))
-  {
-    MERROR("Failed to flush txpool");
-    return false;
-  }
-  c.get_blockchain_storage().flush_txes_from_pool(pool_txs);
-
-  t_test_class validator;
-  return replay_events_through_core_plain<t_test_class>(c, events, validator, false);
-}
-//--------------------------------------------------------------------------
-template<class t_test_class>
-inline bool do_replay_events(std::vector<test_event_entry>& events)
-{
-  cryptonote::core core(nullptr);
-  bool ret = do_replay_events_get_core<t_test_class>(events, &core);
-  core.deinit();
+  bool ret = replay_events_through_core_plain<t_test_class>(c, events, validator, true);
   return ret;
 }
 //--------------------------------------------------------------------------
@@ -1089,7 +939,12 @@ inline bool do_replay_file(const std::string& filename)
     MERROR("Failed to deserialize data from file: ");
     return false;
   }
-  return do_replay_events<t_test_class>(events);
+
+  cryptonote::core core(nullptr);
+  t_test_class validator;
+  bool result = do_replay_events_get_core<t_test_class>(events, &core, validator);
+  core.deinit();
+  return result;
 }
 
 //--------------------------------------------------------------------------
@@ -1194,31 +1049,10 @@ inline bool do_replay_file(const std::string& filename)
 
 #define REWIND_BLOCKS(VEC_EVENTS, BLK_NAME, PREV_BLOCK, MINER_ACC) REWIND_BLOCKS_N(VEC_EVENTS, BLK_NAME, PREV_BLOCK, MINER_ACC, CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW)
 
-cryptonote::transaction make_registration_tx(std::vector<test_event_entry>& events,
-                                             const cryptonote::account_base& account,
-                                             const cryptonote::keypair& service_node_keys,
-                                             uint64_t operator_cut,
-                                             const std::vector<cryptonote::account_public_address>& addresses,
-                                             const std::vector<uint64_t>& portions,
-                                             const cryptonote::block& head,
-                                             uint8_t hf_version);
-
-cryptonote::transaction make_default_registration_tx(std::vector<test_event_entry>& events,
-                                                     const cryptonote::account_base& account,
-                                                     const cryptonote::keypair& service_node_keys,
-                                                     const cryptonote::block& head,
-                                                     uint8_t hf_version);
-
-
-cryptonote::transaction make_deregistration_tx(const std::vector<test_event_entry>& events,
-                                               const cryptonote::account_base& account,
-                                               const cryptonote::block& head,
-                                               const cryptonote::tx_extra_service_node_state_change& deregister_state_change, uint8_t hf_version, uint64_t fee);
-
 // NOTE(loki): These macros assume hardfork version 7 and are from the old Monero testing code
 #define MAKE_TX_MIX(VEC_EVENTS, TX_NAME, FROM, TO, AMOUNT, NMIX, HEAD)                       \
   cryptonote::transaction TX_NAME;                                                           \
-  TxBuilder(VEC_EVENTS, TX_NAME, HEAD, FROM, TO, AMOUNT, cryptonote::network_version_7).build(); \
+  loki_tx_builder(VEC_EVENTS, TX_NAME, HEAD, FROM, TO, AMOUNT, cryptonote::network_version_7).build(); \
   VEC_EVENTS.push_back(TX_NAME);
 
 #define MAKE_TX_MIX_RCT(VEC_EVENTS, TX_NAME, FROM, TO, AMOUNT, NMIX, HEAD)                       \
@@ -1231,7 +1065,7 @@ cryptonote::transaction make_deregistration_tx(const std::vector<test_event_entr
 #define MAKE_TX_MIX_LIST(VEC_EVENTS, SET_NAME, FROM, TO, AMOUNT, NMIX, HEAD)             \
   {                                                                                      \
     cryptonote::transaction t;                                                             \
-    TxBuilder(VEC_EVENTS, t, HEAD, FROM, TO, AMOUNT, cryptonote::network_version_7).build(); \
+    loki_tx_builder(VEC_EVENTS, t, HEAD, FROM, TO, AMOUNT, cryptonote::network_version_7).build(); \
     SET_NAME.push_back(t);                                                               \
     VEC_EVENTS.push_back(t);                                                             \
   }
@@ -1275,10 +1109,10 @@ cryptonote::transaction make_deregistration_tx(const std::vector<test_event_entr
 
 #define SET_EVENT_VISITOR_SETT(VEC_EVENTS, SETT, VAL) VEC_EVENTS.push_back(event_visitor_settings(SETT, VAL));
 
-#define GENERATE(filename, genclass) \
+#define GENERATE(filename, generator_class) \
     { \
         std::vector<test_event_entry> events; \
-        genclass g; \
+        generator_class g; \
         g.generate(events); \
         if (!tools::serialize_obj_to_file(events, filename)) \
         { \
@@ -1288,80 +1122,81 @@ cryptonote::transaction make_deregistration_tx(const std::vector<test_event_entr
     }
 
 
-#define PLAY(filename, genclass) \
-    if(!do_replay_file<genclass>(filename)) \
+#define PLAY(filename, generator_class) \
+    if(!do_replay_file<generator_class>(filename)) \
     { \
-      MERROR("Failed to pass test : " << #genclass); \
+      MERROR("Failed to pass test : " << #generator_class); \
       return 1; \
     }
 
-#define CATCH_REPLAY(genclass)                                                                             \
-    catch (const std::exception& ex)                                                                       \
-    {                                                                                                      \
-      MERROR(#genclass << " generation failed: what=" << ex.what());                                       \
-    }                                                                                                      \
-    catch (...)                                                                                            \
-    {                                                                                                      \
-      MERROR(#genclass << " generation failed: generic exception");                                        \
-    }
+#define CATCH_REPLAY(generator_class)                                                                                  \
+  catch (const std::exception &ex) { MERROR(#generator_class << " generation failed: what=" << ex.what()); }           \
+  catch (...) { MERROR(#generator_class << " generation failed: generic exception"); }
 
-#define REPLAY_CORE(genclass)                                                                              \
-    if (generated && do_replay_events< genclass >(events))                                                 \
-    {                                                                                                      \
-      MGINFO_GREEN("#TEST# Succeeded " << #genclass);                                                      \
-    }                                                                                                      \
-    else                                                                                                   \
-    {                                                                                                      \
-      MERROR("#TEST# Failed " << #genclass);                                                               \
-      failed_tests.push_back(#genclass);                                                                   \
-    }
-
-#define REPLAY_WITH_CORE(genclass, CORE)                                                                   \
-    if (generated && replay_events_through_core_validate< genclass >(events, CORE))                        \
-    {                                                                                                      \
-      MGINFO_GREEN("#TEST# Succeeded " << #genclass);                                                      \
-    }                                                                                                      \
-    else                                                                                                   \
-    {                                                                                                      \
-      MERROR("#TEST# Failed " << #genclass);                                                               \
-      failed_tests.push_back(#genclass);                                                                   \
-    }
-
-#define CATCH_GENERATE_REPLAY(genclass)                                                                    \
-    CATCH_REPLAY(genclass);                                                                                \
-    REPLAY_CORE(genclass);
-
-#define CATCH_GENERATE_REPLAY_CORE(genclass, CORE)                                                         \
-    CATCH_REPLAY(genclass);                                                                                \
-    REPLAY_WITH_CORE(genclass, CORE);
-
-#define GENERATE_AND_PLAY(genclass) \
-  if (list_tests)                                                                                          \
-    std::cout << #genclass << std::endl;                                                                   \
-  else if (filter.empty() || boost::regex_match(std::string(#genclass), match, boost::regex(filter)))      \
-  {                                                                                                        \
-    std::vector<test_event_entry> events;                                                                  \
-    ++tests_count;                                                                                         \
-    bool generated = false;                                                                                \
-    try                                                                                                    \
-    {                                                                                                      \
-      genclass g;                                                                                          \
-      generated = g.generate(events);                                                                      \
-    }                                                                                                      \
-    CATCH_GENERATE_REPLAY(genclass);                                                                       \
+#define REPLAY_CORE(generator_class, generator_class_instance)                                                         \
+  {                                                                                                                    \
+    cryptonote::core core(nullptr);                                                                                    \
+    if (generated && do_replay_events_get_core<generator_class>(events, &core, generator_class_instance))              \
+    {                                                                                                                  \
+      MGINFO_GREEN("#TEST# Succeeded " << #generator_class);                                                           \
+    }                                                                                                                  \
+    else                                                                                                               \
+    {                                                                                                                  \
+      MERROR("#TEST# Failed " << #generator_class);                                                                    \
+      failed_tests.push_back(#generator_class);                                                                        \
+    }                                                                                                                  \
+    core.deinit();                                                                                                     \
   }
 
-#define GENERATE_AND_PLAY_INSTANCE(genclass, ins, CORE)                                                    \
-  if (filter.empty() || boost::regex_match(std::string(#genclass), match, boost::regex(filter)))           \
-  {                                                                                                        \
-    std::vector<test_event_entry> events;                                                                  \
-    ++tests_count;                                                                                         \
-    bool generated = false;                                                                                \
-    try                                                                                                    \
-    {                                                                                                      \
-      generated = ins.generate(events);                                                                    \
-    }                                                                                                      \
-    CATCH_GENERATE_REPLAY_CORE(genclass, CORE);                                                            \
+#define REPLAY_WITH_CORE(generator_class, generator_class_instance, CORE)                                              \
+  {                                                                                                                    \
+    if (generated &&                                                                                                   \
+        replay_events_through_core_plain<generator_class>(events, CORE, generator_class_instance, false /*reinit*/))   \
+    {                                                                                                                  \
+      MGINFO_GREEN("#TEST# Succeeded " << #generator_class);                                                           \
+    }                                                                                                                  \
+    else                                                                                                               \
+    {                                                                                                                  \
+      MERROR("#TEST# Failed " << #generator_class);                                                                    \
+      failed_tests.push_back(#generator_class);                                                                        \
+    }                                                                                                                  \
+  }
+
+#define CATCH_GENERATE_REPLAY(generator_class, generator_class_instance)                                               \
+  CATCH_REPLAY(generator_class);                                                                                       \
+  REPLAY_CORE(generator_class, generator_class_instance);
+
+#define CATCH_GENERATE_REPLAY_CORE(generator_class, generator_class_instance, CORE)                                    \
+  CATCH_REPLAY(generator_class);                                                                                       \
+  REPLAY_WITH_CORE(generator_class, generator_class_instance, CORE);
+
+#define GENERATE_AND_PLAY(generator_class)                                                                             \
+  if (list_tests)                                                                                                      \
+    std::cout << #generator_class << std::endl;                                                                        \
+  else if (filter.empty() || boost::regex_match(std::string(#generator_class), match, boost::regex(filter)))           \
+  {                                                                                                                    \
+    std::vector<test_event_entry> events;                                                                              \
+    ++tests_count;                                                                                                     \
+    bool generated = false;                                                                                            \
+    generator_class generator_class_instance;                                                                          \
+    try                                                                                                                \
+    {                                                                                                                  \
+      generated = generator_class_instance.generate(events);                                                           \
+    }                                                                                                                  \
+    CATCH_GENERATE_REPLAY(generator_class, generator_class_instance);                                                  \
+  }
+
+#define GENERATE_AND_PLAY_INSTANCE(generator_class, generator_class_instance, CORE)                                    \
+  if (filter.empty() || boost::regex_match(std::string(#generator_class), match, boost::regex(filter)))                \
+  {                                                                                                                    \
+    std::vector<test_event_entry> events;                                                                              \
+    ++tests_count;                                                                                                     \
+    bool generated = false;                                                                                            \
+    try                                                                                                                \
+    {                                                                                                                  \
+      generated = ins.generate(events);                                                                                \
+    }                                                                                                                  \
+    CATCH_GENERATE_REPLAY_CORE(generator_class, generator_class_instance, CORE);                                       \
   }
 
 #define CALL_TEST(test_name, function)                                                                     \
@@ -1380,6 +1215,189 @@ cryptonote::transaction make_deregistration_tx(const std::vector<test_event_entr
 #define QUOTEME(x) #x
 #define DEFINE_TESTS_ERROR_CONTEXT(text) const char* perr_context = text;
 #define CHECK_TEST_CONDITION(cond) CHECK_AND_ASSERT_MES(cond, false, "[" << perr_context << "] failed: \"" << QUOTEME(cond) << "\"")
+#define CHECK_TEST_CONDITION_MSG(cond, msg) CHECK_AND_ASSERT_MES(cond, false, "[" << perr_context << "] failed: \"" << QUOTEME(cond) << "\", msg: " << msg)
 #define CHECK_EQ(v1, v2) CHECK_AND_ASSERT_MES(v1 == v2, false, "[" << perr_context << "] failed: \"" << QUOTEME(v1) << " == " << QUOTEME(v2) << "\", " << v1 << " != " << v2)
 #define CHECK_NOT_EQ(v1, v2) CHECK_AND_ASSERT_MES(!(v1 == v2), false, "[" << perr_context << "] failed: \"" << QUOTEME(v1) << " != " << QUOTEME(v2) << "\", " << v1 << " == " << v2)
 #define MK_COINS(amount) (UINT64_C(amount) * COIN)
+
+//
+// NOTE: Loki
+//
+class loki_tx_builder {
+
+  /// required fields
+  const std::vector<test_event_entry>& m_events;
+  const size_t m_hf_version;
+  cryptonote::transaction& m_tx;
+  const cryptonote::block& m_head;
+  const cryptonote::account_base& m_from;
+  const cryptonote::account_base& m_to;
+
+  uint64_t m_amount;
+  uint64_t m_fee;
+  uint64_t m_unlock_time;
+  std::vector<uint8_t> m_extra;
+
+  /// optional fields
+  bool m_per_output_unlock = false;
+  bool m_is_staking        = false;
+
+  /// this makes sure we didn't forget to build it
+  bool m_finished = false;
+
+public:
+  loki_tx_builder(const std::vector<test_event_entry>& events,
+            cryptonote::transaction& tx,
+            const cryptonote::block& head,
+            const cryptonote::account_base& from,
+            const cryptonote::account_base& to,
+            uint64_t amount,
+            uint8_t hf_version)
+    : m_events(events)
+    , m_tx(tx)
+    , m_head(head)
+    , m_from(from)
+    , m_to(to)
+    , m_amount(amount)
+    , m_hf_version(hf_version)
+    , m_fee(TESTS_DEFAULT_FEE)
+    , m_unlock_time(0)
+  {}
+
+  loki_tx_builder&& with_fee(uint64_t fee) {
+    m_fee = fee;
+    return std::move(*this);
+  }
+
+  loki_tx_builder&& with_extra(const std::vector<uint8_t>& extra) {
+    m_extra = extra;
+    return std::move(*this);
+  }
+
+  loki_tx_builder&& is_staking(bool val) {
+    m_is_staking = val;
+    return std::move(*this);
+  }
+
+  loki_tx_builder&& with_unlock_time(uint64_t val) {
+    m_unlock_time = val;
+    return std::move(*this);
+  }
+
+  loki_tx_builder&& with_per_output_unlock(bool val = true) {
+    m_per_output_unlock = val;
+    return std::move(*this);
+  }
+
+  ~loki_tx_builder() {
+    if (!m_finished) {
+      std::cerr << "Tx building not finished\n";
+      abort();
+    }
+  }
+
+  bool build()
+  {
+    m_finished = true;
+
+    std::vector<cryptonote::tx_source_entry> sources;
+    std::vector<cryptonote::tx_destination_entry> destinations;
+    uint64_t change_amount;
+
+    // TODO(loki): Eww we still depend on monero land test code
+    const auto nmix = 9;
+    fill_tx_sources_and_destinations(
+      m_events, m_head, m_from, m_to.get_keys().m_account_address, m_amount, m_fee, nmix, sources, destinations, &change_amount);
+
+    cryptonote::tx_destination_entry change_addr{ change_amount, m_from.get_keys().m_account_address, false /*is_subaddr*/ };
+    bool result = cryptonote::construct_tx(
+      m_from.get_keys(), sources, destinations, change_addr, m_extra, m_tx, m_unlock_time, m_hf_version, m_is_staking);
+    return result;
+  }
+};
+
+struct loki_blockchain_entry
+{
+  cryptonote::block                          block;
+  std::vector<cryptonote::transaction>       txs;
+  uint64_t                                   block_weight;
+  uint64_t                                   already_generated_coins;
+  service_nodes::service_node_list::state_t  service_node_state;
+  bool                                       checkpointed;
+  cryptonote::checkpoint_t                   checkpoint;
+};
+
+struct loki_chain_generator_db : public cryptonote::BaseTestDB
+{
+  std::vector<loki_blockchain_entry>                        &blockchain;
+  std::unordered_map<crypto::hash, cryptonote::transaction> &tx_table; // TODO(loki): I want to store pointers to transactions but I get some memory corruption somewhere. Pls fix.
+  std::unordered_map<crypto::hash, loki_blockchain_entry *> &block_table;
+
+  loki_chain_generator_db(std::vector<loki_blockchain_entry> &blockchain,
+                     std::unordered_map<crypto::hash, cryptonote::transaction> &tx_table,
+                     std::unordered_map<crypto::hash, loki_blockchain_entry *> &block_table)
+  : blockchain(blockchain)
+  , tx_table(tx_table)
+  , block_table(block_table)
+  {
+  }
+
+  cryptonote::block get_block_from_height(const uint64_t &height) const override;
+  bool              get_tx(const crypto::hash& h, cryptonote::transaction &tx) const override;
+};
+
+struct loki_chain_generator
+{
+  mutable std::unordered_map<crypto::public_key, crypto::secret_key>  service_node_keys_;
+  std::set<service_nodes::service_node_list::state_t>                 state_history_;
+
+  // TODO(loki): I want to store pointers to transactions but I get some memory corruption somewhere. Pls fix.
+  // We already store blockchain_entries in block_ vector which stores the actual backing transaction entries.
+  std::unordered_map<crypto::hash, cryptonote::transaction>   tx_table_;
+  std::unordered_map<crypto::hash, loki_blockchain_entry *>   block_table_;
+  std::vector<loki_blockchain_entry>                          blocks_;
+  loki_chain_generator_db                                     db_;
+  uint8_t                                                     hf_version_ = cryptonote::network_version_7;
+  std::vector<test_event_entry>&                              events_;
+  const std::vector<std::pair<uint8_t, uint64_t>>             hard_forks_;
+  cryptonote::account_base                                    first_miner_;
+
+  loki_chain_generator(std::vector<test_event_entry> &events, const std::vector<std::pair<uint8_t, uint64_t>> &hard_forks);
+
+  uint64_t                                             height()       const { return cryptonote::get_block_height(blocks_.back().block); }
+  const std::vector<loki_blockchain_entry>&            blocks()       const { return blocks_; }
+  size_t                                               event_index()  const { return events_.size() - 1; }
+
+  const loki_blockchain_entry&                         top() const { return blocks_.back(); }
+  service_nodes::quorum_manager                        top_quorum() const;
+  service_nodes::quorum_manager                        quorum(uint64_t height) const;
+  std::shared_ptr<const service_nodes::testing_quorum> get_testing_quorum(service_nodes::quorum_type type, uint64_t height) const;
+
+  cryptonote::account_base                             add_account();
+  loki_blockchain_entry                                add_block(const std::vector<cryptonote::transaction>& txs = {}, cryptonote::checkpoint_t const *checkpoint = nullptr, bool can_be_added_to_blockchain = true, std::string const &fail_msg = {});
+  void                                                 add_blocks_until_version(uint8_t hf_version);
+  void                                                 add_n_blocks(int n);
+  void                                                 add_blocks_until_next_checkpointable_height();
+  void                                                 add_service_node_checkpoint(uint64_t block_height, size_t num_votes);
+  void                                                 add_mined_money_unlock_blocks(); // NOTE: Unlock all Loki generated from mining prior to this call i.e. CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW
+
+  void                                                 add_tx(cryptonote::transaction const &tx, bool can_be_added_to_blockchain, std::string const &fail_msg = {}, bool kept_by_block = false);
+
+  // NOTE: Add constructed TX to events_ and assume that it is valid to add to the blockchain. If the TX is meant to be unaddable to the blockchain use the individual create + add functions to
+  // be able to mark the add TX event as something that should trigger a failure.
+  cryptonote::transaction                              create_and_add_tx             (const cryptonote::account_base& miner, const cryptonote::account_base& acc, uint64_t amount, uint64_t fee = TESTS_DEFAULT_FEE, bool kept_by_block = false);
+  cryptonote::transaction                              create_and_add_state_change_tx(service_nodes::new_state state, const crypto::public_key& pub_key, uint64_t height = -1, const std::vector<uint64_t>& voters = {}, uint64_t fee = 0, bool kept_by_block = false);
+  cryptonote::transaction                              create_and_add_registration_tx(const cryptonote::account_base& src, const cryptonote::keypair& sn_keys = cryptonote::keypair::generate(hw::get_device("default")), bool kept_by_block = false);
+
+  // NOTE: Create transactions but don't add to events_
+  cryptonote::transaction                              create_registration_tx(const cryptonote::account_base& src, const cryptonote::keypair& sn_keys = cryptonote::keypair::generate(hw::get_device("default"))) const;
+  cryptonote::transaction                              create_state_change_tx(service_nodes::new_state state, const crypto::public_key& pub_key, uint64_t height = -1, const std::vector<uint64_t>& voters = {}, uint64_t fee = 0) const;
+  cryptonote::checkpoint_t                             create_service_node_checkpoint(uint64_t block_height, size_t num_votes) const;
+
+  loki_blockchain_entry                                create_genesis_block(const cryptonote::account_base &miner, uint64_t timestamp);
+  bool                                                 create_loki_blockchain_entry(loki_blockchain_entry &entry, uint8_t hf_version, loki_blockchain_entry &prev, const cryptonote::account_base &miner_acc, uint64_t timestamp, std::vector<uint64_t> &block_weights, const std::vector<cryptonote::transaction> &tx_list, const service_nodes::block_winner &block_winner);
+
+  uint8_t                                              get_hf_version_at(uint64_t height) const;
+  std::vector<uint64_t>                                last_n_block_weights(uint64_t height, uint64_t num) const;
+  const cryptonote::account_base&                      first_miner() const { return first_miner_; }
+};

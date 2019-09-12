@@ -201,14 +201,14 @@ namespace service_nodes
 
     crypto::hash const hash = make_state_change_vote_hash(state_change.block_height, state_change.service_node_index, state_change.state);
     std::array<int, service_nodes::STATE_CHANGE_QUORUM_SIZE> validator_set = {};
-    uint64_t validator_index_tracker                                       = -1;
+    int validator_index_tracker                                            = -1;
     for (const auto &vote : state_change.votes)
     {
-      if (hf_version >= cryptonote::network_version_13) // NOTE: After HF13, votes must be stored in ascending order
+      if (hf_version >= cryptonote::network_version_13_enforce_checkpoints) // NOTE: After HF13, votes must be stored in ascending order
       {
-        if (validator_index_tracker >= vote.validator_index)
+        if (validator_index_tracker >= static_cast<int>(vote.validator_index))
         {
-            vvc.m_votes_not_sorted = true;
+          vvc.m_votes_not_sorted = true;
           LOG_PRINT_L1("Vote validator index is not stored in ascending order, prev validator index: "
                        << validator_index_tracker << ", curr index: " << vote.validator_index);
           return bad_tx(tvc);
@@ -238,37 +238,56 @@ namespace service_nodes
     return true;
   }
 
-  bool verify_checkpoint(cryptonote::checkpoint_t const &checkpoint, service_nodes::testing_quorum const &quorum)
+  bool verify_checkpoint(uint8_t hf_version, cryptonote::checkpoint_t const &checkpoint, service_nodes::testing_quorum const &quorum)
   {
     if (checkpoint.type == cryptonote::checkpoint_type::service_node)
     {
+      if ((checkpoint.height % service_nodes::CHECKPOINT_INTERVAL) != 0)
+      {
+        LOG_PRINT_L1("Checkpoint given but not expecting a checkpoint at height: " << checkpoint.height);
+        return false;
+      }
+
       if (checkpoint.signatures.size() < service_nodes::CHECKPOINT_MIN_VOTES)
       {
-        LOG_PRINT_L1("Checkpoint has insufficient signatures to be considered");
+        LOG_PRINT_L1("Checkpoint has insufficient signatures to be considered at height: " << checkpoint.height);
         return false;
       }
 
       if (checkpoint.signatures.size() > service_nodes::CHECKPOINT_QUORUM_SIZE)
       {
-        LOG_PRINT_L1("Checkpoint has too many signatures to be considered");
+        LOG_PRINT_L1("Checkpoint has too many signatures to be considered at height: " << checkpoint.height);
         return false;
       }
 
       std::array<size_t, service_nodes::CHECKPOINT_QUORUM_SIZE> unique_vote_set = {};
-      for (service_nodes::voter_to_signature const &voter_to_signature : checkpoint.signatures)
+      for (size_t i = 0; i < checkpoint.signatures.size(); i++)
       {
+        service_nodes::voter_to_signature const &voter_to_signature = checkpoint.signatures[i];
+        if (hf_version >= cryptonote::network_version_13_enforce_checkpoints && i < (checkpoint.signatures.size() - 1))
+        {
+          auto curr = checkpoint.signatures[i].voter_index;
+          auto next = checkpoint.signatures[i + 1].voter_index;
+
+          if (curr >= next)
+          {
+            LOG_PRINT_L1("Voters in checkpoints are not given in ascending order, checkpoint failed verification at height: " << checkpoint.height);
+            return false;
+          }
+        }
+
         if (!bounds_check_worker_index(quorum, voter_to_signature.voter_index, nullptr)) return false;
 
+        crypto::public_key const &key = quorum.workers[voter_to_signature.voter_index];
         if (unique_vote_set[voter_to_signature.voter_index]++)
         {
-          LOG_PRINT_L1("Voter quorum index is duplicated: " << voter_to_signature.voter_index);
+          LOG_PRINT_L1("Voter: " << epee::string_tools::pod_to_hex(key) << ", quorum index is duplicated: " << voter_to_signature.voter_index << ", checkpoint failed verification at height: " << checkpoint.height);
           return false;
         }
 
-        crypto::public_key const &key = quorum.workers[voter_to_signature.voter_index];
         if (!crypto::check_signature(checkpoint.block_hash, key, voter_to_signature.signature))
         {
-          LOG_PRINT_L1("Invalid signatures for votes");
+          LOG_PRINT_L1("Invalid signatures for votes, checkpoint failed verification at height: " << checkpoint.height << " for voter: " << epee::string_tools::pod_to_hex(key));
           return false;
         }
       }
@@ -277,7 +296,7 @@ namespace service_nodes
     {
       if (checkpoint.signatures.size() != 0)
       {
-        LOG_PRINT_L1("Non service-node checkpoints should have no signatures");
+        LOG_PRINT_L1("Non service-node checkpoints should have no signatures, checkpoint failed at height: " << checkpoint.height);
         return false;
       }
     }
@@ -295,6 +314,27 @@ namespace service_nodes
     result.state_change.worker_index = worker_index;
     result.state_change.state        = state;
     result.signature                 = make_signature_from_vote(result, pub_key, sec_key);
+    return result;
+  }
+
+  quorum_vote_t make_checkpointing_vote(crypto::hash const &block_hash, uint64_t block_height, uint16_t index_in_quorum, crypto::public_key const &pub_key, crypto::secret_key const &sec_key)
+  {
+    quorum_vote_t result         = {};
+    result.type                  = quorum_type::checkpointing;
+    result.checkpoint.block_hash = block_hash;
+    result.block_height          = block_height;
+    result.group                 = quorum_group::worker;
+    result.index_in_group        = index_in_quorum;
+    result.signature             = make_signature_from_vote(result, pub_key, sec_key);
+    return result;
+  }
+
+  cryptonote::checkpoint_t make_empty_service_node_checkpoint(crypto::hash const &block_hash, uint64_t height)
+  {
+    cryptonote::checkpoint_t result = {};
+    result.type                     = cryptonote::checkpoint_type::service_node;
+    result.height                   = height;
+    result.block_hash               = block_hash;
     return result;
   }
 
@@ -326,7 +366,7 @@ namespace service_nodes
     return result;
   }
 
-  bool verify_vote_against_quorum(const quorum_vote_t &vote, cryptonote::vote_verification_context &vvc, const service_nodes::testing_quorum &quorum)
+  bool verify_vote_signature(const quorum_vote_t &vote, cryptonote::vote_verification_context &vvc, const service_nodes::testing_quorum &quorum)
   {
     bool result = true;
     if (vote.type >= quorum_type::count)

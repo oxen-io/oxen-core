@@ -270,7 +270,7 @@ namespace
   const char* USAGE_PRINT_LOCKED_STAKES("print_locked_stakes");
 
 #if defined (LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
-  std::string input_line(const std::string& prompt, bool yesno = false)
+  std::string input_line(const std::string &prompt, bool yesno = false)
   {
     std::string buf;
     if (yesno) std::cout << prompt << " (Y/Yes/N/No): ";

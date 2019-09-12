@@ -125,7 +125,7 @@ static bool verify_vote(service_nodes::quorum_vote_t const &vote,
                         service_nodes::testing_quorum const &quorum)
 {
   bool result = service_nodes::verify_vote_age(vote, latest_height, vvc);
-  result &= service_nodes::verify_vote_against_quorum(vote, vvc, quorum);
+  result &= service_nodes::verify_vote_signature(vote, vvc, quorum);
   return result;
 }
 

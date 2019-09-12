@@ -244,7 +244,16 @@ namespace cryptonote
     res.stagenet = nettype == STAGENET;
     res.nettype = nettype == MAINNET ? "mainnet" : nettype == TESTNET ? "testnet" : nettype == STAGENET ? "stagenet" : "fakechain";
 
-    res.cumulative_difficulty = m_core.get_blockchain_storage().get_db().get_block_cumulative_difficulty(res.height - 1);
+    try
+    {
+      res.cumulative_difficulty = m_core.get_blockchain_storage().get_db().get_block_cumulative_difficulty(res.height - 1);
+    }
+    catch(std::exception const &e)
+    {
+      res.status = "Error retrieving cumulative difficulty at height " + std::to_string(res.height - 1);
+      return true;
+    }
+
     res.block_size_limit = res.block_weight_limit = m_core.get_blockchain_storage().get_current_cumulative_block_weight_limit();
     res.block_size_median = res.block_weight_median = m_core.get_blockchain_storage().get_current_cumulative_block_weight_median();
     res.start_time = restricted ? 0 : (uint64_t)m_core.get_start_time();

@@ -45,7 +45,6 @@ using namespace epee;
 #include "ringct/rctSigs.h"
 #include "multisig/multisig.h"
 #include "int-util.h"
-#include "cryptonote_core/service_node_list.h"
 
 using namespace crypto;
 
@@ -216,20 +215,12 @@ namespace cryptonote
     return rewardlo;
   }
 
-  static uint64_t calculate_sum_of_portions(const std::vector<std::pair<cryptonote::account_public_address, uint64_t>>& portions, uint64_t total_service_node_reward)
+  static uint64_t calculate_sum_of_portions(const std::vector<service_nodes::payout_entry>& payouts, uint64_t total_service_node_reward)
   {
     uint64_t reward = 0;
-    for (size_t i = 0; i < portions.size(); i++)
-      reward += get_portion_of_reward(portions[i].second, total_service_node_reward);
+    for (size_t i = 0; i < payouts.size(); i++)
+      reward += get_portion_of_reward(payouts[i].portions, total_service_node_reward);
     return reward;
-  }
-
-  loki_miner_tx_context::loki_miner_tx_context(network_type type, crypto::public_key const &winner, std::vector<std::pair<account_public_address, stake_portions>> const &winner_info)
-    : nettype(type)
-    , snode_winner_key(winner)
-    , snode_winner_info(winner_info)
-    , batched_governance(0)
-  {
   }
 
   bool construct_miner_tx(
@@ -253,10 +244,8 @@ namespace cryptonote
     tx.type    = txtype::standard;
     tx.version = transaction::get_min_version_for_hf(hard_fork_version, nettype);
 
-    const crypto::public_key                                       &service_node_key  = miner_tx_context.snode_winner_key;
-    const std::vector<std::pair<account_public_address, uint64_t>> &service_node_info =
-      miner_tx_context.snode_winner_info.empty() ?
-      service_nodes::null_winner : miner_tx_context.snode_winner_info;
+    const crypto::public_key &service_node_key                        = miner_tx_context.block_winner.key;
+    const std::vector<service_nodes::payout_entry> &service_node_info = miner_tx_context.block_winner.payouts;
 
     keypair txkey = keypair::generate(hw::get_device("default"));
     add_tx_pub_key_to_extra(tx, txkey.pub);
@@ -280,7 +269,7 @@ namespace cryptonote
     loki_block_reward_context block_reward_context = {};
     block_reward_context.fee                       = fee;
     block_reward_context.height                    = height;
-    block_reward_context.snode_winner_info         = miner_tx_context.snode_winner_info;
+    block_reward_context.service_node_payouts      = miner_tx_context.block_winner.payouts;
     block_reward_context.batched_governance        = miner_tx_context.batched_governance;
 
     block_reward_parts reward_parts;
@@ -320,18 +309,19 @@ namespace cryptonote
     {
       for (size_t i = 0; i < service_node_info.size(); i++)
       {
-        crypto::key_derivation derivation = AUTO_VAL_INIT(derivation);
-        crypto::public_key out_eph_public_key = AUTO_VAL_INIT(out_eph_public_key);
-        bool r = crypto::generate_key_derivation(service_node_info[i].first.m_view_public_key, gov_key.sec, derivation);
-        CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to generate_key_derivation(" << service_node_info[i].first.m_view_public_key << ", " << gov_key.sec << ")");
-        r = crypto::derive_public_key(derivation, 1+i, service_node_info[i].first.m_spend_public_key, out_eph_public_key);
-        CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to derive_public_key(" << derivation << ", " << (1+i) << ", "<< service_node_info[i].first.m_spend_public_key << ")");
+        service_nodes::payout_entry const &payout = service_node_info[i];
+        crypto::key_derivation derivation         = AUTO_VAL_INIT(derivation);
+        crypto::public_key out_eph_public_key     = AUTO_VAL_INIT(out_eph_public_key);
+        bool r = crypto::generate_key_derivation(payout.address.m_view_public_key, gov_key.sec, derivation);
+        CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to generate_key_derivation(" << payout.address.m_view_public_key << ", " << gov_key.sec << ")");
+        r = crypto::derive_public_key(derivation, 1+i, payout.address.m_spend_public_key, out_eph_public_key);
+        CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to derive_public_key(" << derivation << ", " << (1+i) << ", "<< payout.address.m_spend_public_key << ")");
 
         txout_to_key tk;
         tk.key = out_eph_public_key;
 
         tx_out out;
-        summary_amounts += out.amount = get_portion_of_reward(service_node_info[i].second, reward_parts.service_node_total);
+        summary_amounts += out.amount = get_portion_of_reward(payout.portions, reward_parts.service_node_total);
         out.target = tk;
         tx.vout.push_back(out);
         tx.output_unlock_times.push_back(height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW);
@@ -406,8 +396,7 @@ namespace cryptonote
     //TODO: declining governance reward schedule
     result.original_base_reward = base_reward;
     result.service_node_total   = service_node_reward_formula(base_reward, hard_fork_version);
-    if (loki_context.snode_winner_info.empty()) result.service_node_paid = calculate_sum_of_portions(service_nodes::null_winner,     result.service_node_total);
-    else                                        result.service_node_paid = calculate_sum_of_portions(loki_context.snode_winner_info, result.service_node_total);
+    result.service_node_paid = calculate_sum_of_portions(loki_context.service_node_payouts, result.service_node_total);
 
     result.adjusted_base_reward = result.original_base_reward;
     if (hard_fork_version >= network_version_10_bulletproofs)

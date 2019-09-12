@@ -33,6 +33,7 @@
 #include <boost/serialization/vector.hpp>
 #include <boost/serialization/utility.hpp>
 #include "ringct/rctOps.h"
+#include "cryptonote_core/service_node_list.h"
 
 namespace cryptonote
 {
@@ -51,16 +52,10 @@ namespace cryptonote
 
   struct loki_miner_tx_context // NOTE(loki): All the custom fields required by Loki to use construct_miner_tx
   {
-    using stake_portions = uint64_t;
-
-    loki_miner_tx_context(network_type type                = MAINNET,
-                          crypto::public_key const &winner = crypto::null_pkey,
-                          std::vector<std::pair<account_public_address, stake_portions>> const &winner_info = {});
-
-    network_type                                                   nettype;
-    crypto::public_key                                             snode_winner_key;
-    std::vector<std::pair<account_public_address, stake_portions>> snode_winner_info;  // NOTE: If empty we use service_nodes::null_winner
-    uint64_t                                                       batched_governance; // NOTE: 0 until hardfork v10, then use blockchain::calc_batched_governance_reward
+    loki_miner_tx_context(network_type type = MAINNET, service_nodes::block_winner const &block_winner = service_nodes::null_block_winner) : nettype(type), block_winner(std::move(block_winner)) { }
+    network_type                nettype;
+    service_nodes::block_winner block_winner;
+    uint64_t                    batched_governance = 0; // NOTE: 0 until hardfork v10, then use blockchain::calc_batched_governance_reward
   };
 
   bool construct_miner_tx(
@@ -102,10 +97,10 @@ namespace cryptonote
   struct loki_block_reward_context
   {
     using portions = uint64_t;
-    uint64_t                                                 height;
-    uint64_t                                                 fee;
-    uint64_t                                                 batched_governance; // Optional: 0 hardfork v10, then must be calculated using blockchain::calc_batched_governance_reward
-    std::vector<std::pair<account_public_address, portions>> snode_winner_info;  // Optional: Check contributor portions add up, else set empty to use service_nodes::null_winner
+    uint64_t                                 height;
+    uint64_t                                 fee;
+    uint64_t                                 batched_governance;   // Optional: 0 hardfork v10, then must be calculated using blockchain::calc_batched_governance_reward
+    std::vector<service_nodes::payout_entry> service_node_payouts = service_nodes::null_winner;
   };
 
   // NOTE(loki): I would combine this into get_base_block_reward, but

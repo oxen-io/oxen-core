@@ -39,7 +39,7 @@ namespace cryptonote {
   class BlockAddedHook
   {
   public:
-    virtual void block_added(const block& block, const std::vector<transaction>& txs) = 0;
+    virtual bool block_added(const block& block, const std::vector<transaction>& txs, struct checkpoint_t const *checkpoint) = 0;
   };
 
   class BlockchainDetachedHook
@@ -58,6 +58,12 @@ namespace cryptonote {
   {
   public:
     virtual bool validate_miner_tx(const crypto::hash& prev_id, const cryptonote::transaction& miner_tx, uint64_t height, int hard_fork_version, struct block_reward_parts const &reward_parts) const = 0;
+  };
+
+  class AltBlockAddedHook
+  {
+  public:
+    virtual bool alt_block_added(const block &block, const std::vector<transaction>& txs, struct checkpoint_t const *checkpoint) = 0;
   };
   /************************************************************************/
   /*                                                                      */

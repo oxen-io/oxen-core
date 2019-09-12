@@ -1317,38 +1317,7 @@ namespace cryptonote
                   return false;
                 }
 
-                checkpoint                = &checkpoint_allocated_on_stack_;
-                bool maybe_has_checkpoint = (checkpoint->height % service_nodes::CHECKPOINT_INTERVAL == 0);
-
-                if (!maybe_has_checkpoint)
-                {
-                  MERROR("Checkpoint blob given but not expecting a checkpoint at this height");
-                  return false;
-                }
-
-                // TODO(doyle): If we are receiving alternative blocks, we won't
-                // have the quorum for the alternative chain meaning we will not
-                // be able to verify the checkpoint. For now always accept
-                // whatever checkpoint we receive
-#if 0
-                std::shared_ptr<const service_nodes::testing_quorum> quorum =
-                    get_testing_quorum(service_nodes::quorum_type::checkpointing, checkpoint.height);
-                if (!quorum)
-                {
-                  MERROR(
-                      "Failed to get service node quorum for height: "
-                      << checkpoint.height
-                      << ", quorum should be available as we are syncing the chain and deriving the current relevant quorum");
-                  return false;
-                }
-
-                // TODO(doyle): add reasoning, important for sync failures
-                if (!service_nodes::verify_checkpoint(checkpoint, *quorum))
-                {
-                  MERROR("Failed to verify checkpoint at height: " << checkpoint.height);
-                  return false;
-                }
-#endif
+                checkpoint = &checkpoint_allocated_on_stack_;
               }
 
               // process block
