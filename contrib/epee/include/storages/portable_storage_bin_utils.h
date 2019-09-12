@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2019, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -25,33 +25,22 @@
 // INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-// 
-// Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
-#pragma once
+#pragma once 
 
-#include <cstdint>
-#include <vector>
-#include "crypto/hash.h"
+#include "int-util.h"
 
-namespace cryptonote
-{
-    typedef std::uint64_t difficulty_type;
+template<typename T> T convert_swapper(T t) { return t; }
+template<> inline uint16_t convert_swapper(uint16_t t) { return SWAP16LE(t); }
+template<> inline int16_t convert_swapper(int16_t t) { return SWAP16LE((uint16_t&)t); }
+template<> inline uint32_t convert_swapper(uint32_t t) { return SWAP32LE(t); }
+template<> inline int32_t convert_swapper(int32_t t) { return SWAP32LE((uint32_t&)t); }
+template<> inline uint64_t convert_swapper(uint64_t t) { return SWAP64LE(t); }
+template<> inline int64_t convert_swapper(int64_t t) { return SWAP64LE((uint64_t&)t); }
+template<> inline double convert_swapper(double t) { union { uint64_t u; double d; } u; u.d = t; u.u = SWAP64LE(u.u); return u.d; }
 
-    /**
-     * @brief checks if a hash fits the given difficulty
-     *
-     * The hash passes if (hash * difficulty) < 2^256.
-     * Phrased differently, if (hash * difficulty) fits without overflow into
-     * the least significant 256 bits of the 320 bit multiplication result.
-     *
-     * @param hash the hash to check
-     * @param difficulty the difficulty to check against
-     *
-     * @return true if valid, else false
-     */
-    bool check_hash(const crypto::hash &hash, difficulty_type difficulty);
-
-    difficulty_type next_difficulty_v2(std::vector<std::uint64_t> timestamps, std::vector<difficulty_type> cumulative_difficulties, size_t target_seconds,
-        bool use_old_lwma, bool v12_initial_override);
-}
+#if BYTE_ORDER == BIG_ENDIAN
+#define CONVERT_POD(x) convert_swapper(x)
+#else
+#define CONVERT_POD(x) (x)
+#endif

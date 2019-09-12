@@ -72,8 +72,8 @@ extern int aesb_pseudo_round(const uint8_t *in, uint8_t *out, const uint8_t *exp
   { \
     U64(b)[2] = state.hs.w[8] ^ state.hs.w[10]; \
     U64(b)[3] = state.hs.w[9] ^ state.hs.w[11]; \
-    division_result = state.hs.w[12]; \
-    sqrt_result = state.hs.w[13]; \
+    division_result = SWAP64LE(state.hs.w[12]); \
+    sqrt_result = SWAP64LE(state.hs.w[13]); \
   } while (0)
 
 #define VARIANT2_PORTABLE_INIT() \
@@ -120,17 +120,17 @@ extern int aesb_pseudo_round(const uint8_t *in, uint8_t *out, const uint8_t *exp
     const uint64_t chunk1_old[2] = { chunk1[0], chunk1[1] }; \
     \
     uint64_t b1[2]; \
-    memcpy(b1, b + 16, 16); \
+    memcpy_swap64le(b1, b + 16, 16); \
     chunk1[0] = chunk3[0] + b1[0]; \
     chunk1[1] = chunk3[1] + b1[1]; \
     \
     uint64_t a0[2]; \
-    memcpy(a0, a, 16); \
+    memcpy_swap64le(a0, a, 16); \
     chunk3[0] = chunk2[0] + a0[0]; \
     chunk3[1] = chunk2[1] + a0[1]; \
     \
     uint64_t b0[2]; \
-    memcpy(b0, b, 16); \
+    memcpy_swap64le(b0, b, 16); \
     chunk2[0] = chunk1_old[0] + b0[0]; \
     chunk2[1] = chunk1_old[1] + b0[1]; \
   } while (0)

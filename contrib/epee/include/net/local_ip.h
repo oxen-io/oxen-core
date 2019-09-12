@@ -31,6 +31,7 @@
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/asio/ip/address_v6.hpp>
 #include <boost/version.hpp>
+#include "int-util.h"
 
 namespace epee
 {
@@ -67,6 +68,7 @@ namespace epee
     inline
     bool is_ip_local(uint32_t ip)
     {
+      ip = SWAP32LE(ip);
       /*
       private network ranges:
       10.0.0.0/8
@@ -102,6 +104,7 @@ namespace epee
     inline
     bool is_ip_loopback(uint32_t ip)
     {
+      ip = SWAP32LE(ip);
       if ((ip & 0xff) == 0x7f) // 127.0.0.0/8
         return true;
 
