@@ -41,6 +41,10 @@ static inline void *padd(void *p, size_t i) {
   return (char *) p + i;
 }
 
+static inline const void *cpadd(const void *p, size_t i) {
+  return (const char *) p + i;
+}
+
 #pragma pack(push, 1)
 union hash_state {
   uint8_t b[200];

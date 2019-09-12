@@ -321,7 +321,9 @@ namespace hw {
     bool device_ledger::reset() {
       reset_buffer();
       int offset = set_command_header_noopt(INS_RESET);
-      memmove(this->buffer_send+offset, LOKI_VERSION, strlen(LOKI_VERSION));
+      const size_t verlen = strlen(LOKI_VERSION);
+      ASSERT_X(offset + verlen <= BUFFER_SEND_SIZE, "LOKI_VERSION is too long")
+      memmove(this->buffer_send+offset, LOKI_VERSION, verlen);
       offset += strlen(LOKI_VERSION);
       this->buffer_send[4] = offset-5;
       this->length_send = offset;

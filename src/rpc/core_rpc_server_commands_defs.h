@@ -2221,10 +2221,12 @@ namespace cryptonote
       std::string status; // General RPC error code. "OK" means everything looks good.
       uint32_t version;   // Node current version.
       bool untrusted;     // States if the result is obtained using the bootstrap mode, and is therefore not trusted (`true`), or when the daemon is fully synced (`false`).
+      bool release;       // True if the daemon is running a tagged release from Github.
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(status)
         KV_SERIALIZE(version)
+        KV_SERIALIZE(release)
         KV_SERIALIZE(untrusted)
       END_KV_SERIALIZE_MAP()
     };
