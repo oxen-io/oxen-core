@@ -1907,6 +1907,12 @@ namespace service_nodes
       }
 
       // NOTE: Only care about major version for now
+      if (hf_version >= cryptonote::network_version_13_enforce_checkpoints && proof.snode_version_major < 5)
+      {
+        LOG_PRINT_L2("Rejecting uptime proof from " << proof.pubkey
+                                                    << ": v5+ loki version is required for v13+ network proofs");
+        return false;
+      }
       if (hf_version >= cryptonote::network_version_12_checkpointing && proof.snode_version_major < 4)
       {
         LOG_PRINT_L2("Rejecting uptime proof from " << proof.pubkey
