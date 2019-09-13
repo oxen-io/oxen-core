@@ -357,7 +357,7 @@ namespace service_nodes
       state_t(block_height height) : height{height} {}
       state_t(cryptonote::Blockchain const &blockchain, state_serialized &&state);
 
-      constexpr bool operator<(const state_t &other) const { return this->height < other.height; }
+      bool operator<(const state_t &other) const { return this->height < other.height; }
       std::vector<pubkey_and_sninfo>  active_service_nodes_infos() const; // return: Filtered pubkey-sorted vector of service nodes that are active (fully funded and *not* decommissioned).
       std::vector<pubkey_and_sninfo>  decommissioned_service_nodes_infos() const; // return: All nodes that are fully funded *and* decommissioned.
       std::vector<crypto::public_key> get_expired_nodes(cryptonote::BlockchainDB const &db, cryptonote::network_type nettype, uint8_t hf_version, uint64_t block_height) const;
