@@ -29,6 +29,7 @@
 #pragma once
 
 #include <boost/variant.hpp>
+#include <mutex>
 #include "serialization/serialization.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
 #include "cryptonote_core/service_node_rules.h"

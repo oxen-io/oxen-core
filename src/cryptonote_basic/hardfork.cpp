@@ -92,26 +92,12 @@ static constexpr HardFork::Params stagenet_hard_forks[] =
   { network_version_12_checkpointing,    213125, 0, 1561608000 }, // 2019-06-28 14:00 AEDT
 };
 
-HardFork::Params const *HardFork::get_hardcoded_hard_forks(network_type nettype, int *num_entries)
+HardFork::ParamsIterator HardFork::get_hardcoded_hard_forks(network_type nettype)
 {
-  Params const *result = nullptr;
-  *num_entries         = 0;
-  if (nettype == MAINNET)
-  {
-    result       = mainnet_hard_forks;
-    *num_entries = loki::array_count(mainnet_hard_forks);
-  }
-  else if (nettype == TESTNET)
-  {
-    result       = testnet_hard_forks;
-    *num_entries = loki::array_count(testnet_hard_forks);
-  }
-  else if (nettype == STAGENET)
-  {
-    result       = stagenet_hard_forks;
-    *num_entries = loki::array_count(stagenet_hard_forks);
-  }
-  return result;
+  if (nettype == MAINNET)       return {mainnet_hard_forks, std::end(mainnet_hard_forks)};
+  else if (nettype == TESTNET)  return {testnet_hard_forks, std::end(testnet_hard_forks)};
+  else if (nettype == STAGENET) return {stagenet_hard_forks, std::end(stagenet_hard_forks)};
+  return {nullptr, nullptr};
 }
 
 HardFork::HardFork(cryptonote::BlockchainDB &db, uint8_t original_version, time_t forked_time, time_t update_time, uint64_t window_size, uint8_t default_threshold_percent):

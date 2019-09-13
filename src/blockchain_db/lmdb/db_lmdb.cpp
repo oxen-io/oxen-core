@@ -5866,15 +5866,12 @@ void BlockchainLMDB::migrate_4_5(cryptonote::network_type nettype)
   txn.commit();
 
   // NOTE: Rescan chain difficulty to mitigate difficulty problem pre hardfork v12
-  uint64_t hf12_height                                  = 0;
-  int num_hard_fork_records                             = 0;
-  const cryptonote::HardFork::Params *hard_fork_records = cryptonote::HardFork::get_hardcoded_hard_forks(nettype, &num_hard_fork_records);
-  for (int i = 0; i < num_hard_fork_records; i++)
+  uint64_t hf12_height = 0;
+  for (const auto &record : cryptonote::HardFork::get_hardcoded_hard_forks(nettype))
   {
-    cryptonote::HardFork::Params const *record = hard_fork_records + i;
-    if (record->version == cryptonote::network_version_12_checkpointing)
+    if (record.version == cryptonote::network_version_12_checkpointing)
     {
-      hf12_height = record->height;
+      hf12_height = record.height;
       break;
     }
   }

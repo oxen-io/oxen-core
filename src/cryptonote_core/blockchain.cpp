@@ -343,12 +343,9 @@ bool Blockchain::init(BlockchainDB* db, const network_type nettype, bool offline
   }
   else
   {
-    int hf_record_num_entries         = 0;
-    HardFork::Params const *hf_record = HardFork::get_hardcoded_hard_forks(m_nettype, &hf_record_num_entries);
-    for (int n = 0; n < hf_record_num_entries; ++n)
+    for (const auto &record : HardFork::get_hardcoded_hard_forks(m_nettype))
     {
-      HardFork::Params const *record = hf_record + n;
-      m_hardfork->add_fork(record->version, record->height, record->threshold, record->time);
+      m_hardfork->add_fork(record.version, record.height, record.threshold, record.time);
     }
   }
 

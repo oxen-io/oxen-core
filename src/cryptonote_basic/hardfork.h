@@ -59,7 +59,14 @@ namespace cryptonote
     static const uint64_t DEFAULT_WINDOW_SIZE = 10080; // supermajority window check length - a week
     static const uint8_t DEFAULT_THRESHOLD_PERCENT = 80;
 
-    static Params const *get_hardcoded_hard_forks(network_type nettype, int *num_entries);
+    struct ParamsIterator
+    {
+      const Params *begin_, *end_;
+      constexpr Params const *begin() { return begin_; };
+      constexpr Params const *end()   { return end_; };
+    };
+
+    static ParamsIterator get_hardcoded_hard_forks(network_type nettype);
 
     /**
      * @brief creates a new HardFork object
