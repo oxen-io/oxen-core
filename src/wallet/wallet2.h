@@ -918,6 +918,7 @@ private:
     bool sign_multisig_tx_to_file(multisig_tx_set &exported_txs, const std::string &filename, std::vector<crypto::hash> &txids);
     std::vector<pending_tx> create_unmixable_sweep_transactions();
     void discard_unmixable_outputs();
+    bool is_connected() const;
     bool check_connection(uint32_t *version = NULL, bool *ssl = NULL, uint32_t timeout = 200000);
     void fill_transfer_view(wallet2::transfer_view &entry, const crypto::hash &txid, const crypto::hash &payment_id, const wallet2::payment_details &pd) const;
     void fill_transfer_view(wallet2::transfer_view &entry, const crypto::hash &txid, const tools::wallet2::confirmed_transfer_details &pd) const;

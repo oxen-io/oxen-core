@@ -389,7 +389,7 @@ namespace net_utils
 			return true;
 		}
 
-		bool is_connected(bool *ssl = NULL)
+		bool is_connected(bool *ssl = NULL) const
 		{
 			if (!m_connected || !m_ssl_socket->next_layer().is_open())
 				return false;

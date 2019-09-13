@@ -5230,6 +5230,13 @@ bool wallet2::prepare_file_names(const std::string& file_path)
   return true;
 }
 //----------------------------------------------------------------------------------------------------
+bool wallet2::is_connected() const
+{
+  if (m_offline)      return false;
+  if (m_light_wallet) return m_light_wallet_connected;
+  return m_http_client.is_connected(nullptr);
+}
+//----------------------------------------------------------------------------------------------------
 bool wallet2::check_connection(uint32_t *version, bool *ssl, uint32_t timeout)
 {
   THROW_WALLET_EXCEPTION_IF(!m_is_initialized, error::wallet_not_initialized);
@@ -5934,7 +5941,8 @@ void wallet2::get_transfers(get_transfers_args_t args, std::vector<transfer_view
 
   if (args.pool)
   {
-    update_pool_state();
+    if (is_connected())
+      update_pool_state();
 
     std::list<std::pair<crypto::hash, tools::wallet2::pool_payment_details>> payments;
     get_unconfirmed_payments(payments, account_index, args.subaddr_indices);
@@ -6207,6 +6215,9 @@ bool wallet2::is_transfer_unlocked(uint64_t unlock_time, uint64_t block_height, 
 
   if(block_height + CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE > get_blockchain_current_height())
     return false;
+
+  if (!is_connected())
+    return true;
 
   if (!key_image) // TODO(loki): Try make all callees always pass in a key image for accuracy
     return true;
