@@ -76,7 +76,7 @@ public: \
   epee::serialization::selector<is_store>::serialize(this_ref.varialble, stg, hparent_section, val_name);
 
   template<typename T> inline void serialize_default(const T &t, T v) { }
-  template<typename T> inline void serialize_default(T &t, T v) { t = v; }
+  template<typename T> inline void serialize_default(T &t, T &&v) { t = std::forward<T>(v); }
 
 #define KV_SERIALIZE_OPT_N(variable, val_name, default_value) \
   do { \
