@@ -65,13 +65,12 @@ namespace service_nodes
     rpc_request_all_quorums_sentinel_value = 255, // Only valid for get_quorum_state RPC call
   };
 
-  inline char const *quorum_type_to_string(quorum_type v)
-  {
+  inline std::ostream &operator<<(std::ostream &os, quorum_type v) {
     switch(v)
     {
-      case quorum_type::obligations:   return "obligation";
-      case quorum_type::checkpointing: return "checkpointing";
-      default: assert(false);          return "xx_unhandled_type";
+      case quorum_type::obligations:   return os << "obligation";
+      case quorum_type::checkpointing: return os << "checkpointing";
+      default: assert(false);          return os << "xx_unhandled_type";
     }
   }
 
