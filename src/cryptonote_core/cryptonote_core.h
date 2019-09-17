@@ -934,15 +934,6 @@ namespace cryptonote
      bool add_new_block(const block& b, block_verification_context& bvc, checkpoint_t const *checkpoint);
 
      /**
-      * @brief load any core state stored on disk
-      *
-      * currently does nothing, but may have state to load in the future.
-      *
-      * @return true
-      */
-     bool load_state_data();
-
-     /**
       * @copydoc parse_tx_from_blob(transaction&, crypto::hash&, crypto::hash&, const blobdata&) const
       *
       * @note see parse_tx_from_blob(transaction&, crypto::hash&, crypto::hash&, const blobdata&) const

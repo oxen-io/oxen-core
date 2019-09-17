@@ -812,7 +812,7 @@ namespace cryptonote
       }
     }
 
-    return load_state_data();
+    return true;
   }
   //-----------------------------------------------------------------------------------------------
   bool core::init_service_node_key()
@@ -852,12 +852,6 @@ namespace cryptonote
   bool core::set_genesis_block(const block& b)
   {
     return m_blockchain_storage.reset_and_set_genesis_block(b);
-  }
-  //-----------------------------------------------------------------------------------------------
-  bool core::load_state_data()
-  {
-    // may be some code later
-    return true;
   }
   //-----------------------------------------------------------------------------------------------
   bool core::deinit()
