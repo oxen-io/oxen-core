@@ -30,13 +30,29 @@
 cmake_minimum_required (VERSION 2.6)
 project (loki CXX)
 
-file(GLOB P2P *)
-source_group(p2p FILES ${P2P})
+set(p2p_sources
+  net_node.cpp
+  net_node.inl
+  net_peerlist.cpp
+)
 
-#add_library(p2p ${P2P})
+set(p2p_headers)
+set(p2p_private_headers
+  net_node_common.h
+  net_node.h
+  net_peerlist_boost_serialization.h
+  net_peerlist.h
+  p2p_protocol_defs.h
+  stdafx.h
+)
 
-#loki_private_headers(p2p ${P2P})
-loki_add_library(p2p ${P2P})
+loki_private_headers(p2p
+  ${p2p_private_headers})
+loki_add_library(p2p
+  ${p2p_sources}
+  ${p2p_headers}
+  ${p2p_private_headers})
+
 target_link_libraries(p2p
   PUBLIC
     version

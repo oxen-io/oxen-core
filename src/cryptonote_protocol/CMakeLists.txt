@@ -29,10 +29,29 @@
 cmake_minimum_required (VERSION 2.6)
 project (loki CXX)
 
-file(GLOB CRYPTONOTE_PROTOCOL *)
-source_group(cryptonote_protocol FILES ${CRYPTONOTE_PROTOCOL})
+set(cryptonote_protocol_sources
+  block_queue.cpp
+  cryptonote_protocol_handler-base.cpp
+  cryptonote_protocol_handler.inl
+  quorumnet.cpp
+)
 
-loki_add_library(cryptonote_protocol ${CRYPTONOTE_PROTOCOL})
+set(cryptonote_protocol_headers)
+set(cryptonote_protocol_private_headers
+  block_queue.h
+  cryptonote_protocol_defs.h
+  cryptonote_protocol_handler_common.h
+  cryptonote_protocol_handler.h
+  quorumnet.h
+)
+
+loki_private_headers(cryptonote_protocol
+  ${cryptonote_protocol_private_headers})
+loki_add_library(cryptonote_protocol
+  ${cryptonote_protocol_sources}
+  ${cryptonote_protocol_headers}
+  ${cryptonote_protocol_private_headers})
+
 target_link_libraries(cryptonote_protocol
   PUBLIC
     p2p
