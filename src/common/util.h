@@ -33,6 +33,7 @@
 #include <boost/thread/locks.hpp>
 #include <boost/thread/mutex.hpp>
 #include <boost/optional.hpp>
+#include <boost/endian/conversion.hpp>
 #include <system_error>
 #include <csignal>
 #include <cstdio>
@@ -247,4 +248,63 @@ namespace tools
   std::string get_human_readable_timestamp(uint64_t ts);
   std::string get_human_readable_timespan(std::chrono::seconds seconds);
   std::string get_human_readable_bytes(uint64_t bytes);
+
+#ifdef __cpp_fold_expressions
+  template <typename... T> constexpr size_t constexpr_sum(Ts... ns) { return (0 + ... + size_t{ns}); }
+#else
+  constexpr size_t constexpr_sum() { return 0; }
+  template <typename T, typename... Tmore>
+  constexpr size_t constexpr_sum(T n, Tmore... more) { return size_t{n} + constexpr_sum(more...); }
+#endif
+
+  namespace detail {
+    // Copy an integer type, swapping to little-endian if needed
+    template <typename T, typename std::enable_if<std::is_integral<T>::value, int>::type = 0>
+    void memcpy_one(char *dest, T t) {
+      boost::endian::native_to_little_inplace(t);
+      std::memcpy(dest, &t, sizeof(T));
+    }
+
+    // Copy a class byte-for-byte (but only if it is standard layout and has byte alignment)
+    template <typename T, typename std::enable_if<std::is_class<T>::value, int>::type = 0>
+    void memcpy_one(char *dest, const T &t) {
+      static_assert(std::is_standard_layout<T>::value && alignof(T) == 1, "memcpy_le() may only be used on simple (1-byte alignment) struct types");
+      std::memcpy(dest, &t, sizeof(T));
+    }
+
+    // Copy a string literal
+    template <typename T, size_t N>
+    void memcpy_one(char *dest, const T (&arr)[N]) {
+      for (const T &t : arr) {
+        memcpy_one(dest, t);
+        dest += sizeof(T);
+      }
+    }
+
+    // Recursion terminator
+    inline void memcpy_le_impl(char *) {}
+
+    // Helper function for public memcpy_le
+    template <typename T, typename... Tmore>
+    void memcpy_le_impl(char *dest, const T &t, const Tmore &...more) {
+      memcpy_one(dest, t);
+      memcpy_le_impl(dest + sizeof(T), more...);
+    }
+  }
+
+  // Does a memcpy of one or more values into a char array; for any given values that are basic
+  // integer types the value is first converted from native to little-endian representation (if
+  // necessary).  Non-integer types with alignment of 1 (typically meaning structs containing only
+  // char, bools, and arrays of those) and fixed-size arrays of the above (including string
+  // literals) are also permitted; more complex types are not.
+  //
+  // The 1-byte alignment is here to protect you: if you have a larger alignment that usually means
+  // you have a contained type with a larger alignment, which is probably an integer.
+  template <typename... T, size_t N = constexpr_sum(sizeof(T)...)>
+  std::array<char, N> memcpy_le(const T &...t) {
+    std::array<char, N> r;
+    detail::memcpy_le_impl(r.data(), t...);
+    return r;
+  }
+
 }
