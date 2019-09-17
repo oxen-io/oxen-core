@@ -2739,7 +2739,6 @@ namespace cryptonote
     entry.requested_unlock_height       = info.requested_unlock_height;
     entry.last_reward_block_height      = info.last_reward_block_height;
     entry.last_reward_transaction_index = info.last_reward_transaction_index;
-    entry.last_uptime_proof             = info.proof->timestamp;
     entry.active                        = info.is_active();
     entry.funded                        = info.is_fully_funded();
     entry.state_height                  = info.is_fully_funded()
@@ -2779,6 +2778,16 @@ namespace cryptonote
     entry.portions_for_operator         = info.portions_for_operator;
     entry.operator_address              = cryptonote::get_account_address_as_str(m_core.get_nettype(), false/*is_subaddress*/, info.operator_address);
     entry.swarm_id                      = info.swarm_id;
+    entry.registration_hf_version       = info.registration_hf_version;
+
+    // NOTE: Service Node Testing
+    entry.last_uptime_proof                  = info.proof->timestamp;
+    entry.storage_server_reachable           = info.proof->storage_server_reachable;
+    entry.storage_server_reachable_timestamp = info.proof->storage_server_reachable_timestamp;
+    entry.version_major                      = info.proof->version_major;
+    entry.version_minor                      = info.proof->version_minor;
+    entry.version_patch                      = info.proof->version_patch;
+    entry.votes = std::vector<service_nodes::checkpoint_vote_record>(info.proof->votes.begin(), info.proof->votes.end());
   }
   //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::on_get_service_nodes(const COMMAND_RPC_GET_SERVICE_NODES::request& req, COMMAND_RPC_GET_SERVICE_NODES::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
@@ -2821,7 +2830,6 @@ namespace cryptonote
     {
       COMMAND_RPC_GET_SERVICE_NODES::response::entry entry = {};
       fill_sn_response_entry(entry, pubkey_info, height);
-
       res.service_node_states.push_back(entry);
     }
 

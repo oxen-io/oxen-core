@@ -885,7 +885,7 @@ namespace cryptonote
      /**
       * @brief Record if the service node has checkpointed at this point in time
       */
-     void record_checkpoint_vote(crypto::public_key const &pubkey, bool voted) { m_service_node_list.record_checkpoint_vote(pubkey, voted); }
+     void record_checkpoint_vote(crypto::public_key const &pubkey, uint64_t height, bool voted) { m_service_node_list.record_checkpoint_vote(pubkey, height, voted); }
 
      /**
       * @brief Record the reachability status of node's storage server

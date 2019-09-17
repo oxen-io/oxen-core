@@ -195,12 +195,7 @@ namespace service_nodes
 
   std::shared_ptr<const testing_quorum> service_node_list::get_testing_quorum(quorum_type type, uint64_t height, bool include_old, std::vector<std::shared_ptr<const testing_quorum>> *alt_quorums) const
   {
-    if (type == quorum_type::checkpointing) {
-        if (height < REORG_SAFETY_BUFFER_BLOCKS_POST_HF12)
-            return nullptr;
-        height -= REORG_SAFETY_BUFFER_BLOCKS_POST_HF12;
-    }
-
+    height = offset_testing_quorum_height(type, height);
     std::lock_guard<boost::recursive_mutex> lock(m_sn_mutex);
     quorum_manager const *quorums = nullptr;
     if (height == m_state.height)
@@ -377,6 +372,18 @@ namespace service_nodes
     expiration_timestamp = registration.m_expiration_timestamp;
     signature = registration.m_service_node_signature;
     return true;
+  }
+
+  uint64_t offset_testing_quorum_height(quorum_type type, uint64_t height)
+  {
+    uint64_t result = height;
+    if (type == quorum_type::checkpointing)
+    {
+        if (result < REORG_SAFETY_BUFFER_BLOCKS_POST_HF12)
+            return 0;
+        result -= REORG_SAFETY_BUFFER_BLOCKS_POST_HF12;
+    }
+    return result;
   }
 
   struct parsed_tx_contribution
@@ -586,7 +593,7 @@ namespace service_nodes
         // timestamp so that we delay obligations checks but don't prevent the
         // next actual proof from being sent/relayed.
         info.proof->effective_timestamp = block.timestamp;
-        info.proof->votes.fill(true);
+        info.proof->votes.fill({});
         return true;
 
       case new_state::ip_change_penalty:
@@ -1989,16 +1996,17 @@ namespace service_nodes
     return true;
   }
 
-  void service_node_list::record_checkpoint_vote(crypto::public_key const &pubkey, bool voted)
+  void service_node_list::record_checkpoint_vote(crypto::public_key const &pubkey, uint64_t height, bool voted)
   {
     std::lock_guard<boost::recursive_mutex> lock(m_sn_mutex);
     auto it = m_state.service_nodes_infos.find(pubkey);
     if (it == m_state.service_nodes_infos.end())
       return;
 
-    proof_info &info            = *it->second->proof;
-    info.votes[info.vote_index] = voted;
-    info.vote_index             = (info.vote_index + 1) % info.votes.size();
+    proof_info &info = *it->second->proof;
+    info.votes[info.vote_index].height = height;
+    info.votes[info.vote_index].voted  = voted;
+    info.vote_index                    = (info.vote_index + 1) % info.votes.size();
   }
 
   bool service_node_list::set_storage_server_peer_reachable(crypto::public_key const &pubkey, bool value)
@@ -2012,11 +2020,13 @@ namespace service_nodes
     } else {
 
       proof_info &info = *it->second->proof;
-      if (info.storage_server_reachable != value) {
-        info.storage_server_reachable = value;
+      if (info.storage_server_reachable != value)
+      {
+        info.storage_server_reachable           = value;
         LOG_PRINT_L2("Setting reachability status for node " << pubkey << " as: " << (value ? "true" : "false"));
       }
 
+      info.storage_server_reachable_timestamp = time(nullptr);
       return true;
     }
   }

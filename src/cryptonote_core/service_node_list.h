@@ -45,16 +45,31 @@ struct checkpoint_t;
 
 namespace service_nodes
 {
+  constexpr uint64_t INVALID_HEIGHT = static_cast<uint64_t>(-1);
+  LOKI_RPC_DOC_INTROSPECT
+  struct checkpoint_vote_record
+  {
+    uint64_t height = INVALID_HEIGHT;
+    bool voted      = true;
+
+    BEGIN_KV_SERIALIZE_MAP()
+      KV_SERIALIZE(height);
+      KV_SERIALIZE(voted);
+    END_KV_SERIALIZE_MAP()
+  };
+
   struct proof_info
   {
     uint64_t timestamp           = 0; // The actual time we last received an uptime proof
     uint64_t effective_timestamp = 0; // Typically the same, but on recommissions it is set to the recommission block time to fend off instant obligation checks
     uint16_t version_major = 0, version_minor = 0, version_patch = 0;
-    std::array<bool, CHECKPOINT_MIN_QUORUMS_NODE_MUST_VOTE_IN_BEFORE_DEREGISTER_CHECK> votes;
+    std::array<checkpoint_vote_record, CHECKPOINT_NUM_QUORUMS_TO_PARTICIPATE_IN> votes;
     uint8_t vote_index = 0;
     std::array<std::pair<uint32_t, uint64_t>, 2> public_ips = {}; // (not serialized)
-    bool storage_server_reachable = true;
-    proof_info() { votes.fill(true); }
+
+    bool storage_server_reachable               = true;
+    uint64_t storage_server_reachable_timestamp = 0;
+    proof_info() { votes.fill({}); }
 
     // Called to update both actual and effective timestamp, i.e. when a proof is received
     void update_timestamp(uint64_t ts) { timestamp = ts; effective_timestamp = ts; }
@@ -240,7 +255,6 @@ namespace service_nodes
     }
   }
 
-  using block_height = uint64_t;
   class service_node_list
     : public cryptonote::BlockAddedHook,
       public cryptonote::BlockchainDetachedHook,
@@ -282,7 +296,7 @@ namespace service_nodes
     /// Record public ip and storage port and add them to the service node list
     cryptonote::NOTIFY_UPTIME_PROOF::request generate_uptime_proof(crypto::public_key const &pubkey, crypto::secret_key const &key, uint32_t public_ip, uint16_t storage_port) const;
     bool handle_uptime_proof        (cryptonote::NOTIFY_UPTIME_PROOF::request const &proof);
-    void record_checkpoint_vote     (crypto::public_key const &pubkey, bool voted);
+    void record_checkpoint_vote     (crypto::public_key const &pubkey, uint64_t height, bool voted);
 
     bool set_storage_server_peer_reachable(crypto::public_key const &pubkey, bool value);
 
@@ -407,8 +421,9 @@ namespace service_nodes
     std::string                            m_cache_data_blob;
   };
 
-  bool is_registration_tx   (cryptonote::network_type nettype, uint8_t hf_version, const cryptonote::transaction& tx, uint64_t block_timestamp, uint64_t block_height, uint32_t index, crypto::public_key& key, service_node_info& info);
-  bool reg_tx_extract_fields(const cryptonote::transaction& tx, std::vector<cryptonote::account_public_address>& addresses, uint64_t& portions_for_operator, std::vector<uint64_t>& portions, uint64_t& expiration_timestamp, crypto::public_key& service_node_key, crypto::signature& signature, crypto::public_key& tx_pub_key);
+  bool     is_registration_tx   (cryptonote::network_type nettype, uint8_t hf_version, const cryptonote::transaction& tx, uint64_t block_timestamp, uint64_t block_height, uint32_t index, crypto::public_key& key, service_node_info& info);
+  bool     reg_tx_extract_fields(const cryptonote::transaction& tx, std::vector<cryptonote::account_public_address>& addresses, uint64_t& portions_for_operator, std::vector<uint64_t>& portions, uint64_t& expiration_timestamp, crypto::public_key& service_node_key, crypto::signature& signature, crypto::public_key& tx_pub_key);
+  uint64_t offset_testing_quorum_height(quorum_type type, uint64_t height);
 
   struct converted_registration_args
   {
