@@ -847,6 +847,58 @@ bool loki_service_nodes_alt_quorums::generate(std::vector<test_event_entry>& eve
   return true;
 }
 
+bool loki_service_nodes_checkpoint_quorum_size::generate(std::vector<test_event_entry>& events)
+{
+  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = generate_sequential_hard_fork_table();
+  loki_chain_generator gen(events, hard_forks);
+
+  gen.add_blocks_until_version(hard_forks.back().first);
+  gen.add_n_blocks(40);
+  gen.add_mined_money_unlock_blocks();
+
+  std::vector<cryptonote::transaction> registration_txs(service_nodes::CHECKPOINT_QUORUM_SIZE - 1);
+  for (auto i = 0u; i < service_nodes::CHECKPOINT_QUORUM_SIZE - 1; ++i)
+    registration_txs[i] = gen.create_and_add_registration_tx(gen.first_miner());
+  gen.add_block(registration_txs);
+
+  int const MAX_TRIES = 16;
+  int tries           = 0;
+  for (; tries < MAX_TRIES; tries++)
+    gen.add_blocks_until_next_checkpointable_height();
+
+  uint64_t check_height_1 = gen.height();
+  loki_register_callback(events, "check_checkpoint_quorum_should_be_empty", [&events, check_height_1](cryptonote::core &c, size_t ev_index)
+  {
+    DEFINE_TESTS_ERROR_CONTEXT("check_checkpoint_quorum_should_be_empty");
+    std::shared_ptr<const service_nodes::testing_quorum> quorum = c.get_testing_quorum(service_nodes::quorum_type::checkpointing, check_height_1);
+    CHECK_TEST_CONDITION(quorum == nullptr);
+    return true;
+  });
+
+  cryptonote::transaction new_registration_tx = gen.create_and_add_registration_tx(gen.first_miner());
+  gen.add_block({new_registration_tx});
+
+  for (tries = 0; tries < MAX_TRIES; tries++)
+  {
+    gen.add_blocks_until_next_checkpointable_height();
+    std::shared_ptr<const service_nodes::testing_quorum> quorum = gen.get_testing_quorum(service_nodes::quorum_type::checkpointing, gen.height());
+    if (quorum && quorum->workers.size()) break;
+  }
+  assert(tries != MAX_TRIES);
+
+  uint64_t check_height_2 = gen.height();
+  loki_register_callback(events, "check_checkpoint_quorum_should_be_populated", [&events, check_height_2](cryptonote::core &c, size_t ev_index)
+  {
+    DEFINE_TESTS_ERROR_CONTEXT("check_checkpoint_quorum_should_be_populated");
+    std::shared_ptr<const service_nodes::testing_quorum> quorum = c.get_testing_quorum(service_nodes::quorum_type::checkpointing, check_height_2);
+    CHECK_TEST_CONDITION(quorum != nullptr);
+    CHECK_TEST_CONDITION(quorum->workers.size() > 0);
+    return true;
+  });
+
+  return true;
+}
+
 bool loki_service_nodes_gen_nodes::generate(std::vector<test_event_entry> &events)
 {
   const std::vector<std::pair<uint8_t, uint64_t>> hard_forks = generate_sequential_hard_fork_table(cryptonote::network_version_9_service_nodes);
