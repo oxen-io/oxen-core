@@ -121,6 +121,7 @@ add_subdirectory(net)
 add_subdirectory(mnemonics)
 add_subdirectory(wallet)
 add_subdirectory(cryptonote_protocol)
+add_subdirectory(quorumnet)
 
 if(NOT IOS)
   if (NOT LOKI_DAEMON_AND_WALLET_ONLY AND NOT BUILD_INTEGRATION)
