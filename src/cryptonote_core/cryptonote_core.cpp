@@ -365,6 +365,9 @@ namespace cryptonote
 
     m_service_node = command_line::get_arg(vm, arg_service_node);
 
+    if (command_line::get_arg(vm, arg_dev_allow_local))
+      m_service_node_list.debug_allow_local_ips = true;
+
     if (m_service_node) {
       /// TODO: parse these options early, before we start p2p server etc?
       m_storage_port = command_line::get_arg(vm, arg_sn_bind_port);
@@ -744,9 +747,6 @@ namespace cryptonote
       boost::filesystem::path checkpoint_json_hashfile_fullpath = data_dir / json;
       m_checkpoints_path = checkpoint_json_hashfile_fullpath.string();
     }
-
-    if (command_line::get_arg(vm, arg_dev_allow_local))
-      m_service_node_list.debug_allow_local_ips = true;
 
     const difficulty_type fixed_difficulty = command_line::get_arg(vm, arg_fixed_difficulty);
     r = m_blockchain_storage.init(initialized_db, m_nettype, m_offline, regtest ? &regtest_test_options : test_options, fixed_difficulty, get_checkpoints);
