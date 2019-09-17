@@ -111,4 +111,6 @@ namespace service_nodes
     uint64_t          m_last_checkpointed_height;
     mutable epee::critical_section m_lock;
   };
+
+  int find_index_in_quorum_group(std::vector<crypto::public_key> const &group, const service_node_keys &my_keys);
 }

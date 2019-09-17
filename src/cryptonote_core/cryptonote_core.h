@@ -820,16 +820,15 @@ namespace cryptonote
       */
      bool add_service_node_vote(const service_nodes::quorum_vote_t& vote, vote_verification_context &vvc);
 
+     using service_node_keys = service_nodes::service_node_keys;
+
      /**
-      * @brief Get the keypair for this service node.
-
-      * @param pub_key The public key for the service node, unmodified if not a service node
-
-      * @param sec_key The secret key for the service node, unmodified if not a service node
-
-      * @return True if we are a service node
+      * @brief Get the keys for this service node.
+      *
+      * @return shared point to service node keys; the shared pointer will be empty if this node is
+      * not running as a service node.
       */
-     bool get_service_node_keys(crypto::public_key &pub_key, crypto::secret_key &sec_key) const;
+     std::shared_ptr<const service_node_keys> get_service_node_keys() const;
 
      /**
       * @brief Get the public key of every service node.
@@ -1051,7 +1050,7 @@ namespace cryptonote
       *
       * @return true on success, false otherwise
       */
-     bool init_service_node_key();
+     bool init_service_node_keys();
 
      /**
       * @brief do the uptime proof logic and calls for idle loop.
@@ -1110,9 +1109,7 @@ namespace cryptonote
 
      std::atomic_flag m_checkpoints_updating; //!< set if checkpoints are currently updating to avoid multiple threads attempting to update at once
 
-     bool m_service_node;
-     crypto::secret_key m_service_node_key;
-     crypto::public_key m_service_node_pubkey;
+     std::shared_ptr<service_node_keys> m_service_node_keys;
 
      /// Service Node's public IP and storage server port
      uint32_t m_sn_public_ip;

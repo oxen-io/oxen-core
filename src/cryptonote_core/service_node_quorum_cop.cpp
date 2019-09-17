@@ -157,10 +157,10 @@ namespace service_nodes
     return m_vote_pool.get_relayable_votes(current_height);
   }
 
-  static int find_index_in_quorum_group(std::vector<crypto::public_key> const &group, crypto::public_key const &my_pubkey)
+  int find_index_in_quorum_group(std::vector<crypto::public_key> const &group, const service_node_keys &my_keys)
   {
     int result = -1;
-    auto it = std::find(group.begin(), group.end(), my_pubkey);
+    auto it = std::find(group.begin(), group.end(), my_keys.pub);
     if (it == group.end()) return result;
     result = std::distance(group.begin(), it);
     return result;
@@ -175,12 +175,12 @@ namespace service_nodes
     uint64_t const REORG_SAFETY_BUFFER_BLOCKS = (hf_version >= cryptonote::network_version_12_checkpointing)
                                                     ? REORG_SAFETY_BUFFER_BLOCKS_POST_HF12
                                                     : REORG_SAFETY_BUFFER_BLOCKS_PRE_HF12;
-    crypto::public_key my_pubkey;
-    crypto::secret_key my_seckey;
-    if (!m_core.get_service_node_keys(my_pubkey, my_seckey))
+    auto my_keys_ptr = m_core.get_service_node_keys();
+    if (!my_keys_ptr)
       return;
 
-    if (!m_core.is_service_node(my_pubkey, /*require_active=*/ true))
+    const auto &my_keys = *my_keys_ptr;
+    if (!m_core.is_service_node(my_keys.pub, /*require_active=*/ true))
       return;
 
     uint64_t const height        = cryptonote::get_block_height(block);
@@ -249,7 +249,7 @@ namespace service_nodes
 
             if (quorum->workers.empty()) continue;
 
-            int index_in_group = find_index_in_quorum_group(quorum->validators, my_pubkey);
+            int index_in_group = find_index_in_quorum_group(quorum->validators, my_keys);
             if (index_in_group <= -1) continue;
 
             //
@@ -325,7 +325,7 @@ namespace service_nodes
                 }
               }
 
-              quorum_vote_t vote = service_nodes::make_state_change_vote(m_obligations_height, static_cast<uint16_t>(index_in_group), node_index, vote_for_state, my_pubkey, my_seckey);
+              quorum_vote_t vote = service_nodes::make_state_change_vote(m_obligations_height, static_cast<uint16_t>(index_in_group), node_index, vote_for_state, my_keys);
               cryptonote::vote_verification_context vvc;
               if (!handle_vote(vote, vvc))
                 LOG_ERROR("Failed to add state change vote; reason: " << print_vote_verification_context(vvc, &vote));
@@ -362,14 +362,14 @@ namespace service_nodes
               continue;
             }
 
-            int index_in_group = find_index_in_quorum_group(quorum->workers, my_pubkey);
+            int index_in_group = find_index_in_quorum_group(quorum->workers, my_keys);
             if (index_in_group <= -1) continue;
 
             //
             // NOTE: I am in the quorum, handle checkpointing
             //
             crypto::hash block_hash = m_core.get_block_id_by_height(m_last_checkpointed_height);
-            quorum_vote_t vote = make_checkpointing_vote(block_hash, m_last_checkpointed_height, static_cast<uint16_t>(index_in_group), my_pubkey, my_seckey);
+            quorum_vote_t vote = make_checkpointing_vote(block_hash, m_last_checkpointed_height, static_cast<uint16_t>(index_in_group), my_keys);
             cryptonote::vote_verification_context vvc = {};
             if (!handle_vote(vote, vvc))
               LOG_ERROR("Failed to add checkpoint vote; reason: " << print_vote_verification_context(vvc, &vote));

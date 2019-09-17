@@ -38,6 +38,10 @@ using namespace epee;
 #include <unordered_set>
 #include <iomanip>
 
+extern "C" {
+#include <sodium.h>
+}
+
 #include "cryptonote_core.h"
 #include "common/util.h"
 #include "common/updates.h"
@@ -56,7 +60,7 @@ using namespace epee;
 #include "ringct/rctSigs.h"
 #include "common/notify.h"
 #include "version.h"
-#include "wipeable_string.h"
+#include "memwipe.h"
 #include "common/i18n.h"
 #include "net/local_ip.h"
 
@@ -363,12 +367,15 @@ namespace cryptonote
     if (command_line::get_arg(vm, arg_test_drop_download) == true)
       test_drop_download();
 
-    m_service_node = command_line::get_arg(vm, arg_service_node);
 
     if (command_line::get_arg(vm, arg_dev_allow_local))
       m_service_node_list.debug_allow_local_ips = true;
 
-    if (m_service_node) {
+    bool service_node = command_line::get_arg(vm, arg_service_node);
+
+    if (service_node) {
+      m_service_node_keys = std::make_shared<service_node_keys>(); // Will be updated or generated later, in init()
+
       /// TODO: parse these options early, before we start p2p server etc?
       m_storage_port = command_line::get_arg(vm, arg_sn_bind_port);
 
@@ -536,11 +543,11 @@ namespace cryptonote
     bool prune_blockchain = command_line::get_arg(vm, arg_prune_blockchain);
     bool keep_alt_blocks = command_line::get_arg(vm, arg_keep_alt_blocks);
 
-    if (m_service_node)
+    if (m_service_node_keys)
     {
-      r = init_service_node_key();
+      r = init_service_node_keys();
       CHECK_AND_ASSERT_MES(r, false, "Failed to create or load service node key");
-      m_service_node_list.set_my_service_node_keys(&m_service_node_pubkey);
+      m_service_node_list.set_my_service_node_keys(m_service_node_keys);
     }
 
     boost::filesystem::path folder(m_config_folder);
@@ -812,39 +819,97 @@ namespace cryptonote
       }
     }
 
+    if (m_service_node_keys)
+    {
+      // quorumnet_new takes a zmq bind string, e.g. "tcp://1.2.3.4:5678"
+      std::string qnet_listen = "tcp://" + vm["p2p-bind-ip"].as<std::string>() + ":" + std::to_string(m_quorumnet_port);
+      m_quorumnet_obj = quorumnet_new(*this, m_service_node_list, qnet_listen);
+    }
+
     return true;
   }
-  //-----------------------------------------------------------------------------------------------
-  bool core::init_service_node_key()
-  {
-    std::string keypath = m_config_folder + "/key";
+
+  /// Loads a key pair from disk, if it exists, otherwise generates a new key pair and saves it to
+  /// disk.
+  ///
+  /// get_pubkey - a function taking (privkey &, pubkey &) that sets the pubkey from the privkey;
+  ///              returns true for success/false for failure
+  /// generate_pair - a void function taking (privkey &, pubkey &) that sets them to the generated values
+  template <typename Privkey, typename Pubkey, typename GetPubkey, typename GeneratePair>
+  bool init_key(const std::string &keypath, Privkey &privkey, Pubkey &pubkey, GetPubkey get_pubkey, GeneratePair generate_pair) {
     if (epee::file_io_utils::is_file_exist(keypath))
     {
       std::string keystr;
       bool r = epee::file_io_utils::load_file_to_string(keypath, keystr);
-      memcpy(&unwrap(unwrap(m_service_node_key)), keystr.data(), sizeof(m_service_node_key));
-      wipeable_string wipe(keystr);
-      CHECK_AND_ASSERT_MES(r, false, "failed to load service node key from file");
+      memcpy(&unwrap(unwrap(privkey)), keystr.data(), sizeof(privkey));
+      memwipe(&keystr[0], keystr.size());
+      CHECK_AND_ASSERT_MES(r, false, "failed to load service node key from " + keypath);
+      CHECK_AND_ASSERT_MES(keystr.size() == sizeof(privkey), false,
+          "service node key file " + keypath + " has an invalid size");
 
-      r = crypto::secret_key_to_public_key(m_service_node_key, m_service_node_pubkey);
+      r = get_pubkey(privkey, pubkey);
       CHECK_AND_ASSERT_MES(r, false, "failed to generate pubkey from secret key");
     }
     else
     {
-      cryptonote::keypair keypair = keypair::generate(hw::get_device("default"));
-      m_service_node_pubkey = keypair.pub;
-      m_service_node_key = keypair.sec;
+      generate_pair(privkey, pubkey);
 
-      std::string keystr(reinterpret_cast<const char *>(&m_service_node_key), sizeof(m_service_node_key));
+      std::string keystr(reinterpret_cast<const char *>(&privkey), sizeof(privkey));
       bool r = epee::file_io_utils::save_string_to_file(keypath, keystr);
-      wipeable_string wipe(keystr);
-      CHECK_AND_ASSERT_MES(r, false, "failed to save service node key to file");
+      memwipe(&keystr[0], keystr.size());
+      CHECK_AND_ASSERT_MES(r, false, "failed to save service node key to " + keypath);
 
       using namespace boost::filesystem;
       permissions(keypath, owner_read);
     }
+    return true;
+  }
 
-    MGINFO_YELLOW("Service node pubkey is " << epee::string_tools::pod_to_hex(m_service_node_pubkey));
+  //-----------------------------------------------------------------------------------------------
+  bool core::init_service_node_keys()
+  {
+    auto &keys = *m_service_node_keys;
+    // Primary SN pubkey (monero NIH curve25519 algo)
+    if (!init_key(m_config_folder + "/key", keys.key, keys.pub,
+          crypto::secret_key_to_public_key,
+          [](crypto::secret_key &key, crypto::public_key &pubkey) {
+            cryptonote::keypair keypair = keypair::generate(hw::get_device("default"));
+            key = keypair.sec;
+            pubkey = keypair.pub;
+          })
+        )
+      return false;
+
+    MGINFO_YELLOW("Service node primary pubkey is " << epee::string_tools::pod_to_hex(keys.pub));
+
+    static_assert(
+        sizeof(crypto::ed25519_public_key) == crypto_sign_ed25519_PUBLICKEYBYTES &&
+        sizeof(crypto::ed25519_secret_key) == crypto_sign_ed25519_SECRETKEYBYTES &&
+        sizeof(crypto::ed25519_signature) == crypto_sign_BYTES &&
+        sizeof(crypto::x25519_public_key) == crypto_scalarmult_curve25519_BYTES &&
+        sizeof(crypto::x25519_secret_key) == crypto_scalarmult_curve25519_BYTES,
+        "Invalid ed25519/x25519 sizes");
+
+    // Secondary standard ed25519 key, usable in tools wanting standard ed25519 keys
+    //
+    // TODO(loki) - eventually it would be nice to make this become the only key pair that gets used
+    // for new registrations instead of the above.  We'd still need to keep the above for
+    // compatibility with existing stakes registered before the relevant fork height, but we could
+    // then avoid needing to include this secondary key in uptime proofs for new SN registrations.
+    if (!init_key(m_config_folder + "/key_ed25519", keys.key_ed25519, keys.pub_ed25519,
+          [](crypto::ed25519_secret_key &sk, crypto::ed25519_public_key &pk) { crypto_sign_ed25519_sk_to_pk(pk.data, sk.data); return true; },
+          [](crypto::ed25519_secret_key &sk, crypto::ed25519_public_key &pk) { crypto_sign_ed25519_keypair(pk.data, sk.data); })
+       )
+      return false;
+
+    MGINFO_YELLOW("Service node ed25519 pubkey is " << epee::string_tools::pod_to_hex(keys.pub_ed25519));
+
+    // Standard x25519 keys generated from the ed25519 keypair, used for encrypted communication between SNs
+    int rc = crypto_sign_ed25519_pk_to_curve25519(keys.pub_x25519.data, keys.pub_ed25519.data);
+    CHECK_AND_ASSERT_MES(rc == 0, false, "failed to convert ed25519 pubkey to x25519");
+    crypto_sign_ed25519_sk_to_curve25519(keys.key_x25519.data, keys.key_ed25519.data);
+
+    MGINFO_YELLOW("Service node x25519 pubkey is " << epee::string_tools::pod_to_hex(keys.pub_x25519));
 
     return true;
   }
@@ -1412,15 +1477,15 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
   bool core::submit_uptime_proof()
   {
-    if (!m_service_node)
+    if (!m_service_node_keys)
       return true;
 
-    NOTIFY_UPTIME_PROOF::request req = m_service_node_list.generate_uptime_proof(m_service_node_pubkey, m_service_node_key, m_sn_public_ip, m_storage_port);
+    NOTIFY_UPTIME_PROOF::request req = m_service_node_list.generate_uptime_proof(*m_service_node_keys, m_sn_public_ip, m_storage_port, m_quorumnet_port);
 
     cryptonote_connection_context fake_context = AUTO_VAL_INIT(fake_context);
     bool relayed = get_protocol()->relay_uptime_proof(req, fake_context, true /*force_relay*/);
     if (relayed)
-      MGINFO("Submitted uptime-proof for service node (yours): " << m_service_node_pubkey);
+      MGINFO("Submitted uptime-proof for service node (yours): " << m_service_node_keys->pub);
 
     return true;
   }
@@ -1795,7 +1860,7 @@ namespace cryptonote
   void core::do_uptime_proof_call()
   {
     // wait one block before starting uptime proofs.
-    std::vector<service_nodes::service_node_pubkey_info> const states = get_service_node_list_state({ m_service_node_pubkey });
+    std::vector<service_nodes::service_node_pubkey_info> const states = get_service_node_list_state({ m_service_node_keys->pub });
 
     if (!states.empty() && (states[0].info->registration_height + 1) < get_current_blockchain_height())
     {
@@ -1865,7 +1930,7 @@ namespace cryptonote
     m_block_rate_interval.do_call(boost::bind(&core::check_block_rate, this));
 
     time_t const lifetime = time(nullptr) - get_start_time();
-    if (m_service_node && lifetime > DIFFICULTY_TARGET_V2) // Give us some time to connect to peers before sending uptimes
+    if (m_service_node_keys && lifetime > DIFFICULTY_TARGET_V2) // Give us some time to connect to peers before sending uptimes
     {
       do_uptime_proof_call();
     }
@@ -2205,14 +2270,9 @@ namespace cryptonote
     return m_quorum_cop.handle_vote(vote, vvc);
   }
   //-----------------------------------------------------------------------------------------------
-  bool core::get_service_node_keys(crypto::public_key &pub_key, crypto::secret_key &sec_key) const
+  std::shared_ptr<const core::service_node_keys> core::get_service_node_keys() const
   {
-    if (m_service_node)
-    {
-      pub_key = m_service_node_pubkey;
-      sec_key = m_service_node_key;
-    }
-    return m_service_node;
+    return m_service_node_keys;
   }
   uint32_t core::get_blockchain_pruning_seed() const
   {

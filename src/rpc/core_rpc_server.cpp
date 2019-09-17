@@ -2606,9 +2606,8 @@ namespace cryptonote
   {
     PERF_TIMER(on_get_service_node_registration_cmd_raw);
 
-    crypto::public_key service_node_pubkey;
-    crypto::secret_key service_node_key;
-    if (!m_core.get_service_node_keys(service_node_pubkey, service_node_key))
+    auto keys = m_core.get_service_node_keys();
+    if (!keys)
     {
       error_resp.code    = CORE_RPC_ERROR_CODE_WRONG_PARAM;
       error_resp.message = "Daemon has not been started in service node mode, please relaunch with --service-node flag.";
@@ -2617,7 +2616,7 @@ namespace cryptonote
 
     std::string err_msg;
     uint8_t hf_version = m_core.get_hard_fork_version(m_core.get_current_blockchain_height());
-    if (!service_nodes::make_registration_cmd(m_core.get_nettype(), hf_version, req.staking_requirement, req.args, service_node_pubkey, service_node_key, res.registration_cmd, req.make_friendly, err_msg))
+    if (!service_nodes::make_registration_cmd(m_core.get_nettype(), hf_version, req.staking_requirement, req.args, *keys, res.registration_cmd, req.make_friendly, err_msg))
     {
       error_resp.code    = CORE_RPC_ERROR_CODE_WRONG_PARAM;
       error_resp.message = "Failed to make registration command";
@@ -2696,22 +2695,16 @@ namespace cryptonote
   {
     PERF_TIMER(on_get_service_node_key);
 
-    crypto::public_key pubkey;
-    crypto::secret_key seckey;
-    bool result = m_core.get_service_node_keys(pubkey, seckey);
-    if (result)
+    if (auto keys = m_core.get_service_node_keys())
     {
-      res.service_node_pubkey = string_tools::pod_to_hex(pubkey);
-    }
-    else
-    {
-      error_resp.code    = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
-      error_resp.message = "Daemon queried is not a service node or did not launch with --service-node";
-      return false;
+      res.service_node_pubkey = string_tools::pod_to_hex(keys->pub);
+      res.status = CORE_RPC_STATUS_OK;
+      return true;
     }
 
-    res.status = CORE_RPC_STATUS_OK;
-    return result;
+    error_resp.code    = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
+    error_resp.message = "Daemon queried is not a service node or did not launch with --service-node";
+    return false;
   }
   //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::on_get_all_service_nodes_keys(const COMMAND_RPC_GET_ALL_SERVICE_NODES_KEYS::request& req, COMMAND_RPC_GET_ALL_SERVICE_NODES_KEYS::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)

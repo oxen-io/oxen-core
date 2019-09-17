@@ -52,6 +52,8 @@ namespace crypto {
 
   struct ec_point {
     char data[32];
+    // Returns true if non-null, i.e. not 0.
+    operator bool() const { static constexpr char null[32] = {0}; return memcmp(data, null, sizeof(data)); }
   };
 
   struct ec_scalar {
@@ -85,6 +87,38 @@ namespace crypto {
   struct signature {
     ec_scalar c, r;
   };
+
+  // The sizes below are all provided by sodium.h, but we don't want to depend on it here; we check
+  // that they agree with the actual constants from sodium.h when compiling cryptonote_core.cpp.
+  struct ed25519_public_key {
+    unsigned char data[32]; // 32 = crypto_sign_ed25519_PUBLICKEYBYTES
+    static constexpr ed25519_public_key null() { return {0}; }
+    /// Returns true if non-null
+    operator bool() const { return memcmp(data, null().data, sizeof(data)); }
+  };
+
+  struct ed25519_secret_key_ {
+    // 64 = crypto_sign_ed25519_SECRETKEYBYTES (but we don't depend on libsodium header here)
+    unsigned char data[64];
+  };
+  using ed25519_secret_key = epee::mlocked<tools::scrubbed<ed25519_secret_key_>>;
+
+  struct ed25519_signature {
+    unsigned char data[64]; // 64 = crypto_sign_BYTES
+    static constexpr ed25519_signature null() { return {0}; }
+  };
+
+  struct x25519_public_key {
+    unsigned char data[32]; // crypto_scalarmult_curve25519_BYTES
+    static constexpr x25519_public_key null() { return {0}; }
+    /// Returns true if non-null
+    operator bool() const { return memcmp(data, null().data, sizeof(data)); }
+  };
+
+  struct x25519_secret_key_ {
+    unsigned char data[32]; // crypto_scalarmult_curve25519_BYTES
+  };
+  using x25519_secret_key = epee::mlocked<tools::scrubbed<x25519_secret_key_>>;
 
   void hash_to_scalar(const void *data, size_t length, ec_scalar &res);
   void random32_unbiased(unsigned char *bytes);
@@ -217,6 +251,12 @@ namespace crypto {
   inline std::ostream &operator <<(std::ostream &o, const crypto::signature &v) {
     epee::to_hex::formatted(o, epee::as_byte_span(v)); return o;
   }
+  inline std::ostream &operator <<(std::ostream &o, const crypto::ed25519_public_key &v) {
+    epee::to_hex::formatted(o, epee::as_byte_span(v)); return o;
+  }
+  inline std::ostream &operator <<(std::ostream &o, const crypto::x25519_public_key &v) {
+    epee::to_hex::formatted(o, epee::as_byte_span(v)); return o;
+  }
 
   const extern crypto::public_key null_pkey;
   const extern crypto::secret_key null_skey;
@@ -226,3 +266,5 @@ CRYPTO_MAKE_HASHABLE(public_key)
 CRYPTO_MAKE_HASHABLE_CONSTANT_TIME(secret_key)
 CRYPTO_MAKE_HASHABLE(key_image)
 CRYPTO_MAKE_COMPARABLE(signature)
+CRYPTO_MAKE_HASHABLE(ed25519_public_key)
+CRYPTO_MAKE_HASHABLE(x25519_public_key)
