@@ -36,6 +36,7 @@
 #include "daemon/daemon.h"
 #include "rpc/daemon_handler.h"
 #include "rpc/zmq_server.h"
+#include "cryptonote_protocol/quorumnet.h"
 
 #include "common/password.h"
 #include "common/util.h"
@@ -76,6 +77,7 @@ public:
     // Handle circular dependencies
     protocol.set_p2p_endpoint(p2p.get());
     core.set_protocol(protocol.get());
+    quorumnet::init_core_callbacks();
 
     const auto restricted = command_line::get_arg(vm, cryptonote::core_rpc_server::arg_restricted_rpc);
     const auto main_rpc_port = command_line::get_arg(vm, cryptonote::core_rpc_server::arg_rpc_bind_port);

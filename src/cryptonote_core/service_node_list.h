@@ -59,32 +59,45 @@ namespace service_nodes
     // Called to update both actual and effective timestamp, i.e. when a proof is received
     void update_timestamp(uint64_t ts) { timestamp = ts; effective_timestamp = ts; }
 
-    // Unlike the above, these two *do* get serialized, but directly from state_t rather than as a subobject:
+    // Unlike the above, these four *do* get serialized, but directly from state_t rather than as a subobject:
     uint32_t public_ip;
     uint16_t storage_port;
+    uint16_t quorumnet_port;
+    crypto::ed25519_public_key pubkey_ed25519 = crypto::ed25519_public_key::null();
+
+    // Derived from pubkey_ed25519, not serialized
+    crypto::x25519_public_key pubkey_x25519 = crypto::x25519_public_key::null();
   };
 
   struct service_node_info // registration information
   {
-    enum version
+    enum class version_t : uint8_t
     {
-      version_0_checkpointing,               // versioning reset in 4.0.0 (data structure storage changed)
-      version_1_add_registration_hf_version,
+      v0_checkpointing,               // versioning reset in 4.0.0 (data structure storage changed)
+      v1_add_registration_hf_version,
+      v2_quorumnet,
+
+      count
     };
 
     struct contribution_t
     {
-      uint8_t            version{0};
+      enum class version_t : uint8_t {
+        v0,
+        count
+      };
+
+      version_t          version{version_t::v0};
       crypto::public_key key_image_pub_key;
       crypto::key_image  key_image;
       uint64_t           amount;
 
       contribution_t() = default;
-      contribution_t(uint8_t version, const crypto::public_key &pubkey, const crypto::key_image &key_image, uint64_t amount)
+      contribution_t(version_t version, const crypto::public_key &pubkey, const crypto::key_image &key_image, uint64_t amount)
         : version{version}, key_image_pub_key{pubkey}, key_image{key_image}, amount{amount} {}
 
       BEGIN_SERIALIZE_OBJECT()
-        VARINT_FIELD(version)
+        ENUM_FIELD(version, version < version_t::count)
         FIELD(key_image_pub_key)
         FIELD(key_image)
         VARINT_FIELD(amount)
@@ -132,14 +145,14 @@ namespace service_nodes
     swarm_id_t                         swarm_id;
     cryptonote::account_public_address operator_address;
     uint64_t                           last_ip_change_height; // The height of the last quorum penalty for changing IPs
-    uint8_t                            version = version_1_add_registration_hf_version;
+    version_t                          version = version_t::v2_quorumnet;
     uint8_t                            registration_hf_version;
 
     // The data in `proof_info` are shared across states because we don't want to roll them back in
     // the event of a reorg: we always want them to contain the latest received info.  They are also
     // deliberately mutable (via the dereferenced non-const type) so that they can be updated
-    // without needing to duplicate state.  Only public_ip and storage_port are serialized; the rest
-    // of proof info is transient.
+    // without needing to duplicate state.  Only public_ip/storage_port/pubkey_ed25519 are
+    // serialized; the rest of proof info is transient.
     std::shared_ptr<proof_info> proof = std::make_shared<proof_info>();
 
     service_node_info() = default;
@@ -154,7 +167,7 @@ namespace service_nodes
     void derive_x25519_pubkey_from_ed25519(); // Attempts to set x25519 from ed25519 pubkey.  Sets both to null if conversion fails.
 
     BEGIN_SERIALIZE_OBJECT()
-      VARINT_FIELD(version)
+      ENUM_FIELD(version, version < version_t::count)
       VARINT_FIELD(registration_height)
       VARINT_FIELD(requested_unlock_height)
       VARINT_FIELD(last_reward_block_height)
@@ -172,8 +185,14 @@ namespace service_nodes
       VARINT_FIELD_N("public_ip", proof->public_ip)
       VARINT_FIELD_N("storage_port", proof->storage_port)
       VARINT_FIELD(last_ip_change_height)
-      if (version >= version_1_add_registration_hf_version)
-       VARINT_FIELD(registration_hf_version);
+      if (version >= version_t::v1_add_registration_hf_version)
+        VARINT_FIELD(registration_hf_version);
+      if (version >= version_t::v2_quorumnet) {
+        VARINT_FIELD_N("quorumnet_port", proof->quorumnet_port)
+        FIELD_N("pubkey_ed25519", proof->pubkey_ed25519);
+        if (!W)
+          derive_x25519_pubkey_from_ed25519();
+      }
     END_SERIALIZE()
   };
 
@@ -294,6 +313,19 @@ namespace service_nodes
 
     std::vector<service_node_pubkey_info> get_service_node_list_state(const std::vector<crypto::public_key> &service_node_pubkeys) const;
     const std::vector<key_image_blacklist_entry> &get_blacklisted_key_images() const { return m_state.key_image_blacklist; }
+
+    /// Does something for each service node info in the range of pubkeys.  Note that the SN lock is
+    /// held while iterating, so the "something" should be quick.  Func should take arguments:
+    /// (const std::string &pubkey, const service_node_info &info)
+    template <typename It, typename Func>
+    void for_each_service_node_info(It begin, It end, Func f) const {
+      std::lock_guard<boost::recursive_mutex> lock(m_sn_mutex);
+      for (auto sni_end = m_state.service_nodes_infos.end(); begin != end; ++begin) {
+        auto it = m_state.service_nodes_infos.find(*begin);
+        if (it != sni_end)
+          f(it->first, *it->second);
+      }
+    }
 
     /// Returns a (monero curve) pubkey from a x25519 pubkey.  Returns a null public key if not
     /// found.

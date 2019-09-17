@@ -74,7 +74,7 @@ namespace service_nodes
     }
   }
 
-  enum struct quorum_group : uint8_t { invalid, validator, worker };
+  enum struct quorum_group : uint8_t { invalid, validator, worker, count };
   struct quorum_vote_t
   {
     uint8_t           version = 0;

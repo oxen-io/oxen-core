@@ -63,6 +63,7 @@ extern "C" {
 #include "memwipe.h"
 #include "common/i18n.h"
 #include "net/local_ip.h"
+#include "cryptonote_protocol/quorumnet.h"
 
 #include "common/loki_integration_test_hooks.h"
 
@@ -188,12 +189,26 @@ namespace cryptonote
     "network via the service node uptime proofs. Required if operating as a "
     "service node."
   };
-  static const command_line::arg_descriptor<uint16_t> arg_sn_bind_port = {
+  static const command_line::arg_descriptor<uint16_t> arg_storage_server_port = {
     "storage-server-port"
   , "The port on which this service node's storage server is accessible. A listening "
     "storage server is required for service nodes. (This option is specified "
     "automatically when using Loki Launcher.)"
   , 0};
+  static const command_line::arg_descriptor<uint16_t, false, true, 2> arg_quorumnet_port = {
+    "quorumnet-port"
+  , "The port on which this service node listen for direct connections from other "
+    "service nodes for quorum messages.  The port must be publicly reachable "
+    "on the `--service-node-public-ip' address and binds to the p2p IP address."
+    " Only applies when running as a service node."
+  , config::QNET_DEFAULT_PORT
+  , {{ &cryptonote::arg_testnet_on, &cryptonote::arg_stagenet_on }}
+  , [](std::array<bool, 2> testnet_stagenet, bool defaulted, uint16_t val) -> uint16_t {
+      return defaulted && testnet_stagenet[0] ? config::testnet::QNET_DEFAULT_PORT :
+             defaulted && testnet_stagenet[1] ? config::stagenet::QNET_DEFAULT_PORT :
+             val;
+    }
+  };
   static const command_line::arg_descriptor<std::string> arg_block_notify = {
     "block-notify"
   , "Run a program for each new block, '%s' will be replaced by the block hash"
@@ -241,6 +256,21 @@ namespace cryptonote
     "the entire history.  Requires considerably more memory and block chain storage.",
     0};
 
+  // Loads stubs that fail if invoked.  The stubs are replaced in the cryptonote_protocol/quorumnet.cpp glue code.
+  [[noreturn]] static void need_core_init() {
+      throw std::logic_error("Internal error: quorumnet::init_core_callbacks() should have been called");
+  }
+  void *(*quorumnet_new)(core &, service_nodes::service_node_list &, const std::string &bind);
+  void (*quorumnet_delete)(void *self);
+  void (*quorumnet_relay_votes)(void *self, const std::vector<service_nodes::quorum_vote_t> &);
+  static bool init_core_callback_stubs() {
+    if (init_core_callback_complete) return true;
+    quorumnet_new = [](core &, service_nodes::service_node_list &, const std::string &) -> void * { need_core_init(); };
+    quorumnet_delete = [](void *) { need_core_init(); };
+    quorumnet_relay_votes = [](void *, const std::vector<service_nodes::quorum_vote_t> &) { need_core_init(); };
+    return false;
+  }
+  bool init_core_callback_complete = init_core_callback_stubs();
 
   //-----------------------------------------------------------------------------------------------
   core::core(i_cryptonote_protocol* pprotocol):
@@ -331,7 +361,8 @@ namespace cryptonote
     command_line::add_arg(desc, arg_max_txpool_weight);
     command_line::add_arg(desc, arg_service_node);
     command_line::add_arg(desc, arg_public_ip);
-    command_line::add_arg(desc, arg_sn_bind_port);
+    command_line::add_arg(desc, arg_storage_server_port);
+    command_line::add_arg(desc, arg_quorumnet_port);
     command_line::add_arg(desc, arg_pad_transactions);
     command_line::add_arg(desc, arg_block_notify);
     command_line::add_arg(desc, arg_prune_blockchain);
@@ -377,11 +408,18 @@ namespace cryptonote
       m_service_node_keys = std::make_shared<service_node_keys>(); // Will be updated or generated later, in init()
 
       /// TODO: parse these options early, before we start p2p server etc?
-      m_storage_port = command_line::get_arg(vm, arg_sn_bind_port);
+      m_storage_port = command_line::get_arg(vm, arg_storage_server_port);
+
+      m_quorumnet_port = command_line::get_arg(vm, arg_quorumnet_port);
 
       bool storage_ok = true;
       if (m_storage_port == 0) {
-        MERROR("Please specify the port on which the storage server is listening with: '--" << arg_sn_bind_port.name << " <port>'");
+        MERROR("Please specify the port on which the storage server is listening with: '--" << arg_storage_server_port.name << " <port>'");
+        storage_ok = false;
+      }
+
+      if (m_quorumnet_port == 0) {
+        MERROR("Quorumnet port cannot be 0; please specify a valid port to listen on with: '--" << arg_quorumnet_port.name << " <port>'");
         storage_ok = false;
       }
 
@@ -410,7 +448,7 @@ namespace cryptonote
 
       if (!storage_ok) {
         MERROR("IMPORTANT: All service node operators are now required to run the loki storage "
-               << "server and provide the public ip and port on which it can be accessed on the internet.");
+               << "server and provide the public ip and ports on which it can be accessed on the internet.");
         return false;
       }
 
@@ -921,6 +959,10 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
   bool core::deinit()
   {
+    if (m_quorumnet_obj) {
+      quorumnet_delete(m_quorumnet_obj);
+      m_quorumnet_obj = nullptr;
+    }
     m_service_node_list.store();
     m_service_node_list.set_db_pointer(nullptr);
     m_miner.stop();
@@ -1511,16 +1553,26 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
   bool core::relay_service_node_votes()
   {
-    NOTIFY_NEW_SERVICE_NODE_VOTE::request req = {};
-    req.votes                                 = m_quorum_cop.get_relayable_votes(get_current_blockchain_height());
-    if (req.votes.size())
-    {
-      cryptonote_connection_context fake_context = AUTO_VAL_INIT(fake_context);
-      if (get_protocol()->relay_service_node_votes(req, fake_context))
-      {
-        m_quorum_cop.set_votes_relayed(req.votes);
-      }
+    auto height = get_current_blockchain_height();
+    auto qnet_begins = get_earliest_ideal_height_for_version(network_version_14) +
+      HF_QUORUMNET_ACTIVATION_DELAY_BLOCKS;
+
+    auto votes = m_quorum_cop.get_relayable_votes(height);
+    if (votes.empty())
+      return true;
+
+    if (height >= qnet_begins) {
+      quorumnet_relay_votes(m_quorumnet_obj, votes);
+      m_quorum_cop.set_votes_relayed(votes);
+      return true;
     }
+
+    // TODO: remove post-HF14
+    NOTIFY_NEW_SERVICE_NODE_VOTE::request req = {};
+    req.votes = std::move(votes);
+    cryptonote_connection_context fake_context = AUTO_VAL_INIT(fake_context);
+    if (get_protocol()->relay_service_node_votes(req, fake_context))
+      m_quorum_cop.set_votes_relayed(req.votes);
 
     return true;
   }
@@ -1897,7 +1949,7 @@ namespace cryptonote
     else
     {
       // reset the interval so that we're ready when we register, OR if we get deregistered this primes us up for re-registration in the same session
-      m_check_uptime_proof_interval = epee::math_helper::once_a_time_seconds<UPTIME_PROOF_BUFFER_IN_SECONDS, true /*start_immediately*/>();
+      m_check_uptime_proof_interval = {};
     }
   }
   //-----------------------------------------------------------------------------------------------

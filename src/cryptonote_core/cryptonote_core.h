@@ -70,6 +70,20 @@ namespace cryptonote
   extern const command_line::arg_descriptor<size_t> arg_block_download_max_size;
   extern const command_line::arg_descriptor<uint64_t> arg_recalculate_difficulty;
 
+  // Function pointers that are set to throwing stubs and get replaced by the actual functions in
+  // cryptonote_protocol/quorumnet.cpp's quorumnet::init_core_callbacks().  This indirection is here
+  // so that core doesn't need to link against cryptonote_protocol (plus everything it depends on).
+
+  // Starts the quorumnet listener.  Return an opaque object (i.e. "this") that gets passed into all
+  // the other callbacks below.
+  extern void *(*quorumnet_new)(core &core, service_nodes::service_node_list &sn_list, const std::string &bind);
+  // Stops the quorumnet listener; is expected to delete the object.
+  extern void (*quorumnet_delete)(void *self);
+  // Relays votes via quorumnet.
+  extern void (*quorumnet_relay_votes)(void *self, const std::vector<service_nodes::quorum_vote_t> &votes);
+  extern bool init_core_callback_complete;
+
+
   /************************************************************************/
   /*                                                                      */
   /************************************************************************/
@@ -1114,6 +1128,10 @@ namespace cryptonote
      /// Service Node's public IP and storage server port
      uint32_t m_sn_public_ip;
      uint16_t m_storage_port;
+     uint16_t m_quorumnet_port;
+
+     std::string m_quorumnet_bind_ip; // Currently just copied from p2p-bind-ip
+     void *m_quorumnet_obj = nullptr;
 
      size_t block_sync_size;
 

@@ -2764,6 +2764,9 @@ namespace cryptonote
         std::string                           public_ip;                     // The public ip address of the service node
         uint16_t                              storage_port;                  // The port number associated with the storage server
         bool                                  storage_server_reachable;      // Whether the node's storage server has been reported as unreachable for a long time
+        std::string                           pubkey_ed25519;                // The service node's ed25519 public key for auxiliary services
+        std::string                           pubkey_x25519;                 // The service node's x25519 public key for auxiliary services
+        uint16_t                              quorumnet_port;                // The port for direct SN-to-SN communication
 
         BEGIN_KV_SERIALIZE_MAP()
             KV_SERIALIZE(service_node_pubkey)
@@ -2788,6 +2791,9 @@ namespace cryptonote
             KV_SERIALIZE(public_ip)
             KV_SERIALIZE(storage_port)
             KV_SERIALIZE(storage_server_reachable)
+            KV_SERIALIZE(pubkey_ed25519);
+            KV_SERIALIZE(pubkey_x25519);
+            KV_SERIALIZE(quorumnet_port);
         END_KV_SERIALIZE_MAP()
       };
 
@@ -2846,6 +2852,9 @@ namespace cryptonote
       bool public_ip;
       bool storage_port;
       bool storage_server_reachable;
+      bool pubkey_ed25519;
+      bool pubkey_x25519;
+      bool quorumnet_port;
 
       bool block_hash;
       bool height;
@@ -2875,6 +2884,9 @@ namespace cryptonote
         KV_SERIALIZE_OPT2(public_ip, false)
         KV_SERIALIZE_OPT2(storage_port, false)
         KV_SERIALIZE_OPT2(storage_server_reachable, false)
+        KV_SERIALIZE_OPT2(pubkey_ed25519, false)
+        KV_SERIALIZE_OPT2(pubkey_x25519, false)
+        KV_SERIALIZE_OPT2(quorumnet_port, false)
         KV_SERIALIZE_OPT2(block_hash, false)
         KV_SERIALIZE_OPT2(height, false)
         KV_SERIALIZE_OPT2(target_height, false)
@@ -2928,6 +2940,9 @@ namespace cryptonote
         std::string                           public_ip;                     // The public ip address of the service node
         uint16_t                              storage_port;                  // The port number associated with the storage server
         bool                                  storage_server_reachable;      // Whether the node's storage server has been reported as unreachable for a long time
+        std::string                           pubkey_ed25519;                // The service node's ed25519 public key for auxiliary services
+        std::string                           pubkey_x25519;                 // The service node's x25519 public key for auxiliary services
+        uint16_t                              quorumnet_port;                // The port for direct SN-to-SN communication
 
         BEGIN_KV_SERIALIZE_MAP()
           KV_SERIALIZE_ENTRY_FIELD_IF_REQUESTED(service_node_pubkey);
@@ -2952,6 +2967,9 @@ namespace cryptonote
           KV_SERIALIZE_ENTRY_FIELD_IF_REQUESTED(public_ip);
           KV_SERIALIZE_ENTRY_FIELD_IF_REQUESTED(storage_port);
           KV_SERIALIZE_ENTRY_FIELD_IF_REQUESTED(storage_server_reachable);
+          KV_SERIALIZE_ENTRY_FIELD_IF_REQUESTED(pubkey_ed25519);
+          KV_SERIALIZE_ENTRY_FIELD_IF_REQUESTED(pubkey_x25519);
+          KV_SERIALIZE_ENTRY_FIELD_IF_REQUESTED(quorumnet_port);
         END_KV_SERIALIZE_MAP()
       };
 

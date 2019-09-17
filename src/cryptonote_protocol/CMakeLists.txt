@@ -36,5 +36,6 @@ loki_add_library(cryptonote_protocol ${CRYPTONOTE_PROTOCOL})
 target_link_libraries(cryptonote_protocol
   PUBLIC
     p2p
+    quorumnet
   PRIVATE
     ${EXTRA_LIBRARIES})

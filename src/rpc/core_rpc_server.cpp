@@ -2743,6 +2743,9 @@ namespace cryptonote
     entry.public_ip                     = string_tools::get_ip_string_from_int32(info.proof->public_ip);
     entry.storage_port                  = info.proof->storage_port;
     entry.storage_server_reachable      = info.proof->storage_server_reachable;
+    entry.pubkey_ed25519                = info.proof->pubkey_ed25519 ? string_tools::pod_to_hex(info.proof->pubkey_ed25519) : "";
+    entry.pubkey_x25519                 = info.proof->pubkey_x25519 ? string_tools::pod_to_hex(info.proof->pubkey_x25519) : "";
+    entry.quorumnet_port                = info.proof->quorumnet_port;
 
     entry.contributors.reserve(info.contributors.size());
 

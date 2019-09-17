@@ -81,6 +81,7 @@ static constexpr HardFork::Params testnet_hard_forks[] =
   { network_version_11_infinite_staking,    5,      0, 1551223964 },
   { network_version_12_checkpointing,       75471,  0, 1561608000 }, // 2019-06-28 14:00AEDT
   { network_version_13_enforce_checkpoints, 127028, 0, 1568440800 }, // 2019-09-13 16:00AEDT
+  { network_version_14,                     999999, 0, 1568440801 }, // TODO
 };
 
 static constexpr HardFork::Params stagenet_hard_forks[] =

@@ -102,6 +102,13 @@ namespace service_nodes {
   using swarm_id_t                         = uint64_t;
   constexpr swarm_id_t UNASSIGNED_SWARM_ID = UINT64_MAX;
 
+  constexpr size_t min_votes_for_quorum_type(quorum_type q) {
+    return
+      q == quorum_type::obligations     ? STATE_CHANGE_MIN_VOTES_TO_CHANGE_STATE :
+      q == quorum_type::checkpointing   ? CHECKPOINT_MIN_VOTES :
+      std::numeric_limits<size_t>::max();
+  };
+
   inline quorum_type max_quorum_type_for_hf(uint8_t hf_version)
   {
     quorum_type result = (hf_version <= cryptonote::network_version_11_infinite_staking) ? quorum_type::obligations
