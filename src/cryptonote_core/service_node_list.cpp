@@ -1937,7 +1937,7 @@ namespace service_nodes
     {
       crypto::hash hash = make_uptime_proof_hash(proof.pubkey, proof.timestamp, proof.public_ip, proof.storage_port);
       bool signature_ok = crypto::check_signature(hash, proof.pubkey, proof.sig);
-      if (epee::net_utils::is_ip_local(proof.public_ip) || epee::net_utils::is_ip_loopback(proof.public_ip)) return false; // Sanity check; we do the same on lokid startup
+      if (!debug_allow_local_ips && !epee::net_utils::is_ip_public(proof.public_ip)) return false; // Sanity check; we do the same on lokid startup
 
       if (!signature_ok)
       {

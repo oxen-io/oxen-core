@@ -373,6 +373,9 @@ namespace service_nodes
       block_winner get_block_winner() const;
     };
 
+    // Can be set to true (via --dev-allow-local-ips) for debugging a new testnet on a local private network.
+    bool debug_allow_local_ips = false;
+
   private:
     // Note(maxim): private methods don't have to be protected the mutex
     void rescan_starting_from_curr_state(bool store_to_disk);

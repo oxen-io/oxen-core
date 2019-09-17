@@ -96,6 +96,11 @@ namespace cryptonote
   , "Fixed difficulty used for testing."
   , 0
   };
+  const command_line::arg_descriptor<bool> arg_dev_allow_local  = {
+    "dev-allow-local-ips"
+  , "Allow a local IPs for local and received service node public IP (for local testing only)"
+  , false
+  };
   const command_line::arg_descriptor<std::string, false, true, 2> arg_data_dir = {
     "data-dir"
   , "Specify data directory"
@@ -310,6 +315,7 @@ namespace cryptonote
     command_line::add_arg(desc, arg_stagenet_on);
     command_line::add_arg(desc, arg_regtest_on);
     command_line::add_arg(desc, arg_fixed_difficulty);
+    command_line::add_arg(desc, arg_dev_allow_local);
     command_line::add_arg(desc, arg_prep_blocks_threads);
     command_line::add_arg(desc, arg_fast_block_sync);
     command_line::add_arg(desc, arg_show_time_stats);
@@ -378,8 +384,12 @@ namespace cryptonote
         }
 
         if (!epee::net_utils::is_ip_public(m_sn_public_ip)) {
-          MERROR("Address given for public-ip is not public: " << epee::string_tools::get_ip_string_from_int32(m_sn_public_ip));
-          storage_ok = false;
+          if (m_service_node_list.debug_allow_local_ips) {
+            MWARNING("Address given for public-ip is not public; allowing it because dev-allow-local-ips was specified. This service node WILL NOT WORK ON THE PUBLIC LOKI NETWORK!");
+          } else {
+            MERROR("Address given for public-ip is not public: " << epee::string_tools::get_ip_string_from_int32(m_sn_public_ip));
+            storage_ok = false;
+          }
         }
       }
       else
@@ -707,7 +717,6 @@ namespace cryptonote
       regtest_hard_forks,
       0
     };
-    const difficulty_type fixed_difficulty = command_line::get_arg(vm, arg_fixed_difficulty);
 
     BlockchainDB *initialized_db = db.release();
     // Service Nodes
@@ -736,6 +745,10 @@ namespace cryptonote
       m_checkpoints_path = checkpoint_json_hashfile_fullpath.string();
     }
 
+    if (command_line::get_arg(vm, arg_dev_allow_local))
+      m_service_node_list.debug_allow_local_ips = true;
+
+    const difficulty_type fixed_difficulty = command_line::get_arg(vm, arg_fixed_difficulty);
     r = m_blockchain_storage.init(initialized_db, m_nettype, m_offline, regtest ? &regtest_test_options : test_options, fixed_difficulty, get_checkpoints);
 
     if (!command_line::is_arg_defaulted(vm, arg_recalculate_difficulty))
