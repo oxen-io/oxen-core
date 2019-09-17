@@ -1215,6 +1215,11 @@ namespace service_nodes
         if (nettype == cryptonote::TESTNET && state.height < 85357)
           total_nodes = active_snode_list.size() + decomm_snode_list.size();
 
+
+        // TODO(loki): We can remove after switching to V13 since we delete all V12 and below checkpoints where we introduced this kind of quorum
+        if (hf_version >= cryptonote::network_version_13_enforce_checkpoints && total_nodes < CHECKPOINT_QUORUM_SIZE)
+          continue;
+
         pub_keys_indexes     = generate_shuffled_service_node_index_list(total_nodes, state.block_hash, type);
         result.checkpointing = quorum;
         num_workers          = std::min(pub_keys_indexes.size(), CHECKPOINT_QUORUM_SIZE);

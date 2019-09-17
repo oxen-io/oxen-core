@@ -104,6 +104,8 @@ namespace service_nodes {
 
   inline quorum_type max_quorum_type_for_hf(uint8_t hf_version)
   {
+    // TODO(loki): After switching to V13, we can change checkpointing quorums to activate on V13 since we delete all
+    // v12 checkpoints so we don't need quorum data for it and save some space
     quorum_type result = (hf_version <= cryptonote::network_version_11_infinite_staking) ? quorum_type::obligations
                                                                                          : quorum_type::checkpointing;
     assert(result != quorum_type::count);
