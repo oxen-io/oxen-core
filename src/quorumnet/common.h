@@ -41,13 +41,4 @@ template <typename... Ts> struct void_t_impl { using type = void; };
 template <typename... Ts> using void_t = typename void_t_impl<Ts...>::type;
 #endif
 
-#if __cplusplus >= 201402L
-using std::enable_if_t;
-using std::remove_cv_t;
-#else
-template <bool B, typename T = void> using enable_if_t = typename std::enable_if<B, T>::type;
-template <typename T> using remove_cv_t = typename std::remove_cv<T>::type;
-#endif
-
-
 };

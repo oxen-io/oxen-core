@@ -136,7 +136,7 @@ std::pair<maybe_signed_int64_t, bool> bt_deserialize_integer(std::istream &is);
 
 /// Integer specializations
 template <typename T>
-struct bt_serialize<T, enable_if_t<std::is_integral<T>::value>> {
+struct bt_serialize<T, std::enable_if_t<std::is_integral<T>::value>> {
     static_assert(sizeof(T) <= sizeof(uint64_t), "Serialization of integers larger than uint64_t is not supported");
     void operator()(std::ostream &os, const T &val) {
         // Cast 1-byte types to a larger type to avoid iostream interpreting them as single characters
@@ -147,7 +147,7 @@ struct bt_serialize<T, enable_if_t<std::is_integral<T>::value>> {
 };
 
 template <typename T>
-struct bt_deserialize<T, enable_if_t<std::is_integral<T>::value>> {
+struct bt_deserialize<T, std::enable_if_t<std::is_integral<T>::value>> {
     void operator()(std::istream &is, T &val) {
         constexpr uint64_t umax = static_cast<uint64_t>(std::numeric_limits<T>::max());
         constexpr int64_t smin = static_cast<int64_t>(std::numeric_limits<T>::min()),
@@ -199,8 +199,8 @@ struct bt_serialize<char[N]> {
 /// via the base case static_assert if invalid.
 template <typename T, typename = void> struct is_bt_input_dict_container : std::false_type {};
 template <typename T>
-struct is_bt_input_dict_container<T, enable_if_t<
-    std::is_same<std::string, remove_cv_t<typename T::value_type::first_type>>::value,
+struct is_bt_input_dict_container<T, std::enable_if_t<
+    std::is_same<std::string, std::remove_cv_t<typename T::value_type::first_type>>::value,
     void_t<typename T::const_iterator /* is const iterable */,
            typename T::value_type::second_type /* has a second type */>>>
 : std::true_type {};
@@ -213,8 +213,8 @@ struct is_bt_insertable<T,
 
 template <typename T, typename = void> struct is_bt_output_dict_container : std::false_type {};
 template <typename T>
-struct is_bt_output_dict_container<T, enable_if_t<
-    std::is_same<std::string, remove_cv_t<typename T::value_type::first_type>>::value &&
+struct is_bt_output_dict_container<T, std::enable_if_t<
+    std::is_same<std::string, std::remove_cv_t<typename T::value_type::first_type>>::value &&
     is_bt_insertable<T>::value,
     void_t<typename T::value_type::second_type /* has a second type */>>>
 : std::true_type {};
@@ -224,7 +224,7 @@ struct is_bt_output_dict_container<T, enable_if_t<
 /// dict that is const iterable over something that looks like a pair with std::string for first
 /// value type.  The value (i.e. second element of the paid) also must be serializable.
 template <typename T>
-struct bt_serialize<T, enable_if_t<is_bt_input_dict_container<T>::value>> {
+struct bt_serialize<T, std::enable_if_t<is_bt_input_dict_container<T>::value>> {
     using second_type = typename T::value_type::second_type;
     using ref_pair = std::reference_wrapper<const typename T::value_type>;
     void operator()(std::ostream &os, const T &dict) {
@@ -243,7 +243,7 @@ struct bt_serialize<T, enable_if_t<is_bt_input_dict_container<T>::value>> {
 };
 
 template <typename T>
-struct bt_deserialize<T, enable_if_t<is_bt_output_dict_container<T>::value>> {
+struct bt_deserialize<T, std::enable_if_t<is_bt_output_dict_container<T>::value>> {
     using second_type = typename T::value_type::second_type;
     void operator()(std::istream &is, T &dict) {
         bt_expect<bt_deserialize_invalid_type>(is, 'd');
@@ -272,7 +272,7 @@ struct bt_deserialize<T, enable_if_t<is_bt_output_dict_container<T>::value>> {
 /// via the base case static assert).
 template <typename T, typename = void> struct is_bt_input_list_container : std::false_type {};
 template <typename T>
-struct is_bt_input_list_container<T, enable_if_t<
+struct is_bt_input_list_container<T, std::enable_if_t<
     !std::is_same<T, std::string>::value &&
     !is_bt_input_dict_container<T>::value,
     void_t<typename T::const_iterator, typename T::value_type>>>
@@ -280,7 +280,7 @@ struct is_bt_input_list_container<T, enable_if_t<
 
 template <typename T, typename = void> struct is_bt_output_list_container : std::false_type {};
 template <typename T>
-struct is_bt_output_list_container<T, enable_if_t<
+struct is_bt_output_list_container<T, std::enable_if_t<
     !std::is_same<T, std::string>::value &&
     !is_bt_output_dict_container<T>::value &&
     is_bt_insertable<T>::value>>
@@ -289,16 +289,16 @@ struct is_bt_output_list_container<T, enable_if_t<
 
 /// List specialization
 template <typename T>
-struct bt_serialize<T, enable_if_t<is_bt_input_list_container<T>::value>> {
+struct bt_serialize<T, std::enable_if_t<is_bt_input_list_container<T>::value>> {
     void operator()(std::ostream &os, const T &list) {
         os << 'l';
         for (const auto &v : list)
-            bt_serialize<remove_cv_t<typename T::value_type>>{}(os, v);
+            bt_serialize<std::remove_cv_t<typename T::value_type>>{}(os, v);
         os << 'e';
     }
 };
 template <typename T>
-struct bt_deserialize<T, enable_if_t<is_bt_output_list_container<T>::value>> {
+struct bt_deserialize<T, std::enable_if_t<is_bt_output_list_container<T>::value>> {
     using value_type = typename T::value_type;
     void operator()(std::istream &is, T &list) {
         bt_expect<bt_deserialize_invalid_type>(is, 'l');
@@ -349,7 +349,7 @@ void bt_deserialize_try_variant(std::istream &is, Variant &variant) {
 
 
 template <typename Variant, typename T, typename... Ts>
-struct bt_deserialize_try_variant_impl<enable_if_t<is_bt_deserializable<T>::value>, Variant, T, Ts...> {
+struct bt_deserialize_try_variant_impl<std::enable_if_t<is_bt_deserializable<T>::value>, Variant, T, Ts...> {
     void operator()(std::istream &is, Variant &variant) {
         // Try to load the T variant.  If deserialization fails with a invalid_type error then we
         // can try to next one (that error leaves the istream in the same state).
@@ -365,7 +365,7 @@ struct bt_deserialize_try_variant_impl<enable_if_t<is_bt_deserializable<T>::valu
     }
 };
 template <typename Variant, typename T, typename... Ts>
-struct bt_deserialize_try_variant_impl<enable_if_t<!is_bt_deserializable<T>::value>, Variant, T, Ts...> {
+struct bt_deserialize_try_variant_impl<std::enable_if_t<!is_bt_deserializable<T>::value>, Variant, T, Ts...> {
     void operator()(std::istream &is, Variant &variant) {
         // Unsupported deserialization type, skip ahead
         bt_deserialize_try_variant<Ts...>(is, variant);
@@ -501,7 +501,7 @@ detail::bt_stream_deserializer<T> bt_deserializer(T &val) { return detail::bt_st
 ///     size_t n = 4;
 ///     int value;
 ///     bt_deserialize(encoded, n, value); // Sets value to 42
-template <typename T, enable_if_t<!std::is_const<T>::value, int> = 0>
+template <typename T, std::enable_if_t<!std::is_const<T>::value, int> = 0>
 void bt_deserialize(const char *data, size_t len, T &val) {
     detail::one_shot_read_buffer buf{data, len};
     std::istream is{&buf};
@@ -514,7 +514,7 @@ void bt_deserialize(const char *data, size_t len, T &val) {
 ///     int value;
 ///     bt_deserialize(encoded, value); // Sets value to 42
 ///
-template <typename T, enable_if_t<!std::is_const<T>::value, int> = 0>
+template <typename T, std::enable_if_t<!std::is_const<T>::value, int> = 0>
 void bt_deserialize(
 #ifdef __cpp_lib_string_view
         std::string_view s,
@@ -584,7 +584,7 @@ inline bt_value bt_get(
 ///     std::string encoded = "i123456789e";
 ///     auto val = bt_get(encoded);
 ///     auto v = get<uint32_t>(val); // throws if the decoded value doesn't fit in a uint32_t
-template <typename IntType, enable_if_t<std::is_integral<IntType>::value, int> = 0>
+template <typename IntType, std::enable_if_t<std::is_integral<IntType>::value, int> = 0>
 IntType get_int(const bt_value &v) {
     // It's highly unlikely that this code ever runs on a non-2s-complement architecture, but check
     // at compile time if converting to a uint64_t (because while int64_t -> uint64_t is
