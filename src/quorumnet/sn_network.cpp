@@ -7,6 +7,7 @@
 #include <sodium.h>
 #include <atomic>
 #include <queue>
+#include <map>
 
 namespace quorumnet {
 
