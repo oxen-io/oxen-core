@@ -4675,8 +4675,7 @@ void BlockchainLMDB::fixup(fixup_context const context)
 
     try
     {
-      uint64_t end_height           = (height() - 1);
-      uint64_t num_blocks           = end_height - start_height;
+      uint64_t num_blocks = height() - start_height;
       uint64_t prev_cumulative_diff = get_block_cumulative_difficulty(start_height - 1);
 
       for (size_t i = 0; i < num_blocks; i++)
