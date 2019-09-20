@@ -144,8 +144,14 @@ namespace service_nodes
     if (store_to_disk) store();
   }
 
+  // TODO(loki): Temporary HF13 code, remove when we hit HF13 because we delete all HF12 checkpoints and don't need conditionals for HF12/HF13 checkpointing code
+  static uint64_t hf13_height;
+
   void service_node_list::init()
   {
+    // TODO(loki): Temporary HF13 code, remove when we hit HF13 because we delete all HF12 checkpoints and don't need conditionals for HF12/HF13 checkpointing code
+    hf13_height = m_blockchain.get_earliest_ideal_height_for_version(cryptonote::network_version_13_enforce_checkpoints);
+
     std::lock_guard<boost::recursive_mutex> lock(m_sn_mutex);
     if (m_blockchain.get_current_hard_fork_version() < 9)
     {
@@ -1229,7 +1235,11 @@ namespace service_nodes
 
         pub_keys_indexes     = generate_shuffled_service_node_index_list(total_nodes, state.block_hash, type);
         result.checkpointing = quorum;
-        num_workers          = std::min(pub_keys_indexes.size(), CHECKPOINT_QUORUM_SIZE);
+
+        if ((state.height + REORG_SAFETY_BUFFER_BLOCKS_POST_HF12) >= hf13_height)
+          num_validators = std::min(pub_keys_indexes.size(), CHECKPOINT_QUORUM_SIZE);
+        else
+          num_workers = std::min(pub_keys_indexes.size(), CHECKPOINT_QUORUM_SIZE);
       }
       else
       {

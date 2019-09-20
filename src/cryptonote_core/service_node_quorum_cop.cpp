@@ -251,10 +251,16 @@ namespace service_nodes
               service_nodes::quorum_type checkpoint_type = quorum_type::checkpointing;
               if (std::shared_ptr<const testing_quorum> quorum = m_core.get_testing_quorum(checkpoint_type, m_obligations_height))
               {
+                // TODO(loki): Temporary HF13 code, remove when we hit HF13 because we delete all HF12 checkpoints and don't need conditionals for HF12/HF13 checkpointing code
+                std::vector<crypto::public_key> const &quorum_keys =
+                    (obligations_height_hf_version >= cryptonote::network_version_13_enforce_checkpoints)
+                        ? quorum->validators
+                        : quorum->workers;
+
                 uint64_t quorum_height = offset_testing_quorum_height(checkpoint_type, m_obligations_height);
-                for (size_t index_in_quorum = 0; index_in_quorum < quorum->workers.size(); index_in_quorum++)
+                for (size_t index_in_quorum = 0; index_in_quorum < quorum_keys.size(); index_in_quorum++)
                 {
-                  crypto::public_key const &key = quorum->workers[index_in_quorum];
+                  crypto::public_key const &key = quorum_keys[index_in_quorum];
                   m_core.record_checkpoint_vote(key, quorum_height, m_vote_pool.received_checkpoint_vote(m_obligations_height, index_in_quorum));
                 }
               }
@@ -409,8 +415,9 @@ namespace service_nodes
                  m_last_checkpointed_height <= height;
                  m_last_checkpointed_height += CHECKPOINT_INTERVAL)
             {
-              if (m_core.get_hard_fork_version(m_last_checkpointed_height) <= cryptonote::network_version_11_infinite_staking)
-                continue;
+              uint8_t checkpointed_height_hf_version = m_core.get_hard_fork_version(m_last_checkpointed_height);
+              if (checkpointed_height_hf_version <= cryptonote::network_version_11_infinite_staking)
+                  continue;
 
               if (m_last_checkpointed_height < REORG_SAFETY_BUFFER_BLOCKS)
                 continue;
@@ -423,14 +430,19 @@ namespace service_nodes
                 continue;
               }
 
-              int index_in_group = find_index_in_quorum_group(quorum->workers, my_pubkey);
+              // TODO(loki): Temporary HF13 code, remove when we hit HF13 because we delete all HF12 checkpoints and don't need conditionals for HF12/HF13 checkpointing code
+              std::vector<crypto::public_key> const &quorum_keys =
+                  (checkpointed_height_hf_version >= cryptonote::network_version_13_enforce_checkpoints)
+                      ? quorum->validators
+                      : quorum->workers;
+              int index_in_group = find_index_in_quorum_group(quorum_keys, my_pubkey);
               if (index_in_group <= -1) continue;
 
               //
               // NOTE: I am in the quorum, handle checkpointing
               //
               crypto::hash block_hash = m_core.get_block_id_by_height(m_last_checkpointed_height);
-              quorum_vote_t vote = make_checkpointing_vote(block_hash, m_last_checkpointed_height, static_cast<uint16_t>(index_in_group), my_pubkey, my_seckey);
+              quorum_vote_t vote = make_checkpointing_vote(checkpointed_height_hf_version, block_hash, m_last_checkpointed_height, static_cast<uint16_t>(index_in_group), my_pubkey, my_seckey);
               cryptonote::vote_verification_context vvc = {};
               if (!handle_vote(vote, vvc))
                 LOG_ERROR("Failed to add checkpoint vote; reason: " << print_vote_verification_context(vvc, &vote));
@@ -466,7 +478,7 @@ namespace service_nodes
       return false;
     }
 
-    if (!verify_vote_signature(vote, vvc, *quorum))
+    if (!verify_vote_signature(m_core.get_hard_fork_version(vote.block_height), vote, vvc, *quorum))
       return false;
 
     std::vector<pool_vote_entry> votes = m_vote_pool.add_pool_vote_if_unique(vote, vvc);

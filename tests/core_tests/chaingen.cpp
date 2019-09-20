@@ -341,7 +341,7 @@ cryptonote::checkpoint_t loki_chain_generator::create_service_node_checkpoint(ui
 {
   assert(block_height % service_nodes::CHECKPOINT_INTERVAL == 0);
   service_nodes::testing_quorum const &quorum = *get_testing_quorum(service_nodes::quorum_type::checkpointing, block_height);
-  assert(num_votes < quorum.workers.size());
+  assert(num_votes < quorum.validators.size());
 
   loki_blockchain_entry const &entry = blocks_[block_height];
   crypto::hash const block_hash      = cryptonote::get_block_hash(entry.block);
@@ -349,11 +349,11 @@ cryptonote::checkpoint_t loki_chain_generator::create_service_node_checkpoint(ui
   result.signatures.reserve(num_votes);
   for (size_t i = 0; i < num_votes; i++)
   {
-    crypto::public_key const &pub_key = quorum.workers[i];
+    crypto::public_key const &pub_key = quorum.validators[i];
     assert(service_node_keys_.count(pub_key) == 1);
     crypto::secret_key const &sec_key = service_node_keys_[pub_key];
 
-    service_nodes::quorum_vote_t vote = service_nodes::make_checkpointing_vote(result.block_hash, block_height, i, pub_key, sec_key);
+    service_nodes::quorum_vote_t vote = service_nodes::make_checkpointing_vote(entry.block.major_version, result.block_hash, block_height, i, pub_key, sec_key);
     result.signatures.push_back(service_nodes::voter_to_signature(vote));
   }
 

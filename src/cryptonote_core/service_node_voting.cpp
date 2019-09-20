@@ -276,9 +276,19 @@ namespace service_nodes
           }
         }
 
-        if (!bounds_check_worker_index(quorum, voter_to_signature.voter_index, nullptr)) return false;
+        // TODO(loki): Temporary HF13 code, remove when we hit HF13 because we delete all HF12 checkpoints and don't need conditionals for HF12/HF13 checkpointing code
+        std::vector<crypto::public_key> const &quorum_keys =
+            (hf_version >= cryptonote::network_version_13_enforce_checkpoints) ? quorum.validators : quorum.workers;
+        if (hf_version >= cryptonote::network_version_13_enforce_checkpoints)
+        {
+          if (!bounds_check_validator_index(quorum, voter_to_signature.voter_index, nullptr)) return false;
+        }
+        else
+        {
+          if (!bounds_check_worker_index(quorum, voter_to_signature.voter_index, nullptr)) return false;
+        }
 
-        crypto::public_key const &key = quorum.workers[voter_to_signature.voter_index];
+        crypto::public_key const &key = quorum_keys[voter_to_signature.voter_index];
         if (unique_vote_set[voter_to_signature.voter_index]++)
         {
           LOG_PRINT_L1("Voter: " << epee::string_tools::pod_to_hex(key) << ", quorum index is duplicated: " << voter_to_signature.voter_index << ", checkpoint failed verification at height: " << checkpoint.height);
@@ -317,13 +327,14 @@ namespace service_nodes
     return result;
   }
 
-  quorum_vote_t make_checkpointing_vote(crypto::hash const &block_hash, uint64_t block_height, uint16_t index_in_quorum, crypto::public_key const &pub_key, crypto::secret_key const &sec_key)
+  quorum_vote_t make_checkpointing_vote(uint8_t hf_version, crypto::hash const &block_hash, uint64_t block_height, uint16_t index_in_quorum, crypto::public_key const &pub_key, crypto::secret_key const &sec_key)
   {
     quorum_vote_t result         = {};
     result.type                  = quorum_type::checkpointing;
     result.checkpoint.block_hash = block_hash;
     result.block_height          = block_height;
-    result.group                 = quorum_group::worker;
+    // TODO(loki): Temporary HF13 code, remove when we hit HF13 because we delete all HF12 checkpoints and don't need conditionals for HF12/HF13 checkpointing code
+    result.group                 = (hf_version >= cryptonote::network_version_13_enforce_checkpoints) ? quorum_group::validator : quorum_group::worker;
     result.index_in_group        = index_in_quorum;
     result.signature             = make_signature_from_vote(result, pub_key, sec_key);
     return result;
@@ -366,7 +377,7 @@ namespace service_nodes
     return result;
   }
 
-  bool verify_vote_signature(const quorum_vote_t &vote, cryptonote::vote_verification_context &vvc, const service_nodes::testing_quorum &quorum)
+  bool verify_vote_signature(uint8_t hf_version, const quorum_vote_t &vote, cryptonote::vote_verification_context &vvc, const service_nodes::testing_quorum &quorum)
   {
     bool result = true;
     if (vote.type >= quorum_type::count)
@@ -423,15 +434,19 @@ namespace service_nodes
 
       case quorum_type::checkpointing:
       {
-        if (vote.group != quorum_group::worker)
+        // TODO(loki): Temporary HF13 code, remove when we hit HF13 because we delete all HF12 checkpoints and don't need conditionals for HF12/HF13 checkpointing code
+        quorum_group expected_group =
+            (hf_version >= cryptonote::network_version_13_enforce_checkpoints) ? quorum_group::validator : quorum_group::worker;
+        if (vote.group != expected_group)
         {
-          LOG_PRINT_L1("Vote received specifies incorrect voting group, expected vote from worker");
+          LOG_PRINT_L1("Vote received specifies incorrect voting group");
           vvc.m_incorrect_voting_group = true;
           result = false;
         }
         else
         {
-          key  = quorum.workers[vote.index_in_group];
+          std::vector<crypto::public_key> const &quorum_keys = (hf_version >= cryptonote::network_version_13_enforce_checkpoints) ? quorum.validators : quorum.workers;
+          key  = quorum_keys[vote.index_in_group];
           hash = vote.checkpoint.block_hash;
         }
       }

@@ -100,7 +100,7 @@ bool loki_checkpointing_alt_chain_more_service_node_checkpoints_less_pow_overtak
   {
     gen.add_blocks_until_next_checkpointable_height();
     std::shared_ptr<const service_nodes::testing_quorum> quorum = gen.get_testing_quorum(service_nodes::quorum_type::checkpointing, gen.height());
-    if (quorum && quorum->workers.size()) break;
+    if (quorum && quorum->validators.size()) break;
   }
   assert(tries != MAX_TRIES);
 
@@ -148,7 +148,7 @@ bool loki_checkpointing_alt_chain_receive_checkpoint_votes_should_reorg_back::ge
   {
     gen.add_blocks_until_next_checkpointable_height();
     std::shared_ptr<const service_nodes::testing_quorum> quorum = gen.get_testing_quorum(service_nodes::quorum_type::checkpointing, gen.height());
-    if (quorum && quorum->workers.size()) break;
+    if (quorum && quorum->validators.size()) break;
   }
   assert(tries != MAX_TRIES);
 
@@ -161,8 +161,9 @@ bool loki_checkpointing_alt_chain_receive_checkpoint_votes_should_reorg_back::ge
   }
 
   // NOTE: Fork generate two checkpoints worth of blocks.
-  uint64_t first_checkpointed_height   = fork.height();
-  crypto::hash first_checkpointed_hash = cryptonote::get_block_hash(fork.top().block);
+  uint64_t first_checkpointed_height    = fork.height();
+  uint64_t first_checkpointed_height_hf = fork.top().block.major_version;
+  crypto::hash first_checkpointed_hash  = cryptonote::get_block_hash(fork.top().block);
   std::shared_ptr<const service_nodes::testing_quorum> first_quorum = fork.get_testing_quorum(service_nodes::quorum_type::checkpointing, gen.height());
 
   for (size_t i = 0; i < service_nodes::CHECKPOINT_INTERVAL; i++)
@@ -171,8 +172,9 @@ bool loki_checkpointing_alt_chain_receive_checkpoint_votes_should_reorg_back::ge
     fork.add_block();
   }
 
-  uint64_t second_checkpointed_height   = fork.height();
-  crypto::hash second_checkpointed_hash = cryptonote::get_block_hash(fork.top().block);
+  uint64_t second_checkpointed_height    = fork.height();
+  uint64_t second_checkpointed_height_hf = fork.top().block.major_version;
+  crypto::hash second_checkpointed_hash  = cryptonote::get_block_hash(fork.top().block);
   std::shared_ptr<const service_nodes::testing_quorum> second_quorum = fork.get_testing_quorum(service_nodes::quorum_type::checkpointing, gen.height());
 
   // NOTE: Fork generates service node votes, upon sending them over and the
@@ -184,20 +186,20 @@ bool loki_checkpointing_alt_chain_receive_checkpoint_votes_should_reorg_back::ge
   // First send the votes for the newest checkpoint, we should reorg back halfway
   for (size_t i = 0; i < service_nodes::CHECKPOINT_MIN_VOTES; i++)
   {
-    crypto::public_key const &pub_key = second_quorum->workers[i];
+    crypto::public_key const &pub_key = second_quorum->validators[i];
     assert(gen.service_node_keys_.count(pub_key) == 1);
     crypto::secret_key const &sec_key = gen.service_node_keys_[pub_key];
-    service_nodes::quorum_vote_t fork_vote = service_nodes::make_checkpointing_vote(second_checkpointed_hash, second_checkpointed_height, i, pub_key, sec_key);
+    service_nodes::quorum_vote_t fork_vote = service_nodes::make_checkpointing_vote(second_checkpointed_height_hf, second_checkpointed_hash, second_checkpointed_height, i, pub_key, sec_key);
     events.push_back(loki_blockchain_addable<service_nodes::quorum_vote_t>(fork_vote, true/*can_be_added_to_blockchain*/, "A second_checkpoint vote from the forked chain should be accepted since we should be storing alternative service node states and quorums"));
   }
 
   // Then we send the votes for the next newest checkpoint, we should reorg back to our forking point
   for (size_t i = 0; i < service_nodes::CHECKPOINT_MIN_VOTES; i++)
   {
-    crypto::public_key const &pub_key = first_quorum->workers[i];
+    crypto::public_key const &pub_key = first_quorum->validators[i];
     assert(gen.service_node_keys_.count(pub_key) == 1);
     crypto::secret_key const &sec_key = gen.service_node_keys_[pub_key];
-    service_nodes::quorum_vote_t fork_vote = service_nodes::make_checkpointing_vote(first_checkpointed_hash, first_checkpointed_height, i, pub_key, sec_key);
+    service_nodes::quorum_vote_t fork_vote = service_nodes::make_checkpointing_vote(first_checkpointed_height_hf, first_checkpointed_hash, first_checkpointed_height, i, pub_key, sec_key);
     events.push_back(loki_blockchain_addable<service_nodes::quorum_vote_t>(fork_vote, true/*can_be_added_to_blockchain*/, "A first_checkpoint vote from the forked chain should be accepted since we should be storing alternative service node states and quorums"));
   }
 
@@ -241,7 +243,7 @@ bool loki_checkpointing_alt_chain_with_increasing_service_node_checkpoints::gene
   {
     gen.add_blocks_until_next_checkpointable_height();
     std::shared_ptr<const service_nodes::testing_quorum> quorum = gen.get_testing_quorum(service_nodes::quorum_type::checkpointing, gen.height());
-    if (quorum && quorum->workers.size()) break;
+    if (quorum && quorum->validators.size()) break;
   }
   assert(tries != MAX_TRIES);
 
@@ -323,7 +325,7 @@ bool loki_checkpointing_service_node_checkpoint_from_votes::generate(std::vector
   {
     gen.add_blocks_until_next_checkpointable_height();
     std::shared_ptr<const service_nodes::testing_quorum> quorum = gen.get_testing_quorum(service_nodes::quorum_type::checkpointing, gen.height());
-    if (quorum && quorum->workers.size()) break;
+    if (quorum && quorum->validators.size()) break;
   }
   assert(tries != MAX_TRIES);
 
@@ -334,16 +336,16 @@ bool loki_checkpointing_service_node_checkpoint_from_votes::generate(std::vector
   std::vector<service_nodes::quorum_vote_t> checkpoint_votes(service_nodes::CHECKPOINT_MIN_VOTES);
   for (size_t i = 0; i < service_nodes::CHECKPOINT_MIN_VOTES; i++)
   {
-    crypto::public_key const &pub_key = quorum->workers[i];
+    crypto::public_key const &pub_key = quorum->validators[i];
     assert(gen.service_node_keys_.count(pub_key) == 1);
     crypto::secret_key const &sec_key = gen.service_node_keys_[pub_key];
-    checkpoint_votes[i] = service_nodes::make_checkpointing_vote(checkpointed_hash, checkpointed_height, i, pub_key, sec_key);
+    checkpoint_votes[i] = service_nodes::make_checkpointing_vote(gen.top().block.major_version, checkpointed_hash, checkpointed_height, i, pub_key, sec_key);
   }
 
   // NOTE: Submit invalid vote using service node keys not in the quorum
   {
     const cryptonote::keypair &invalid_keys = cryptonote::keypair::generate(hw::get_device("default"));
-    service_nodes::quorum_vote_t invalid_vote = service_nodes::make_checkpointing_vote(checkpointed_hash, checkpointed_height, 0, invalid_keys.pub, invalid_keys.sec);
+    service_nodes::quorum_vote_t invalid_vote = service_nodes::make_checkpointing_vote(gen.top().block.major_version, checkpointed_hash, checkpointed_height, 0, invalid_keys.pub, invalid_keys.sec);
     gen.events_.push_back(loki_blockchain_addable<decltype(invalid_vote)>(
         invalid_vote,
         false /*can_be_added_to_blockchain*/,
@@ -401,7 +403,7 @@ bool loki_checkpointing_service_node_checkpoints_check_reorg_windows::generate(s
   {
     gen.add_blocks_until_next_checkpointable_height();
     std::shared_ptr<const service_nodes::testing_quorum> quorum = gen.get_testing_quorum(service_nodes::quorum_type::checkpointing, gen.height());
-    if (quorum && quorum->workers.size()) break;
+    if (quorum && quorum->validators.size()) break;
   }
   assert(tries != MAX_TRIES);
 
