@@ -74,18 +74,34 @@ namespace cryptonote
     {301187, "e23e4cf3a2fe3e9f0ffced5cc76426e5bdffd3aad822268f4ad63d82cb958559"},
   };
 
+  height_to_hash const HARDCODED_TESTNET_CHECKPOINTS[] =
+  {
+    {127028, "83f6ea8d62601733a257d2f075fd960edd80886dc090d8751478c0a738caa09e"},
+  };
+
   crypto::hash get_newest_hardcoded_checkpoint(cryptonote::network_type nettype, uint64_t *height)
   {
     crypto::hash result = crypto::null_hash;
     *height = 0;
-    if (nettype != MAINNET)
+    if (nettype != MAINNET && nettype != TESTNET)
       return result;
 
-    uint64_t last_index         = loki::array_count(HARDCODED_MAINNET_CHECKPOINTS) - 1;
-    height_to_hash const &entry = HARDCODED_MAINNET_CHECKPOINTS[last_index];
+    if (nettype == MAINNET)
+    {
+      uint64_t last_index         = loki::array_count(HARDCODED_MAINNET_CHECKPOINTS) - 1;
+      height_to_hash const &entry = HARDCODED_MAINNET_CHECKPOINTS[last_index];
 
-    if (epee::string_tools::hex_to_pod(entry.hash, result))
-      *height = entry.height;
+      if (epee::string_tools::hex_to_pod(entry.hash, result))
+        *height = entry.height;
+    }
+    else
+    {
+      uint64_t last_index         = loki::array_count(HARDCODED_TESTNET_CHECKPOINTS) - 1;
+      height_to_hash const &entry = HARDCODED_TESTNET_CHECKPOINTS[last_index];
+
+      if (epee::string_tools::hex_to_pod(entry.hash, result))
+        *height = entry.height;
+    }
 
     return result;
   }
@@ -311,6 +327,14 @@ namespace cryptonote
       for (size_t i = 0; i < loki::array_count(HARDCODED_MAINNET_CHECKPOINTS); ++i)
       {
         height_to_hash const &checkpoint = HARDCODED_MAINNET_CHECKPOINTS[i];
+        ADD_CHECKPOINT(checkpoint.height, checkpoint.hash);
+      }
+    }
+    else if (nettype == TESTNET)
+    {
+      for (size_t i = 0; i < loki::array_count(HARDCODED_TESTNET_CHECKPOINTS); ++i)
+      {
+        height_to_hash const &checkpoint = HARDCODED_TESTNET_CHECKPOINTS[i];
         ADD_CHECKPOINT(checkpoint.height, checkpoint.hash);
       }
     }

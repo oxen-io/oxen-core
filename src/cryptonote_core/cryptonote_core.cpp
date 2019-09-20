@@ -264,7 +264,6 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
   bool core::update_checkpoints_from_json_file()
   {
-    if (m_nettype != MAINNET) return true;
     if (m_checkpoints_updating.test_and_set()) return true;
 
     // load json checkpoints every 10min and verify them with respect to what blocks we already have
