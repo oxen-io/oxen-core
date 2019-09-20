@@ -924,7 +924,7 @@ bool loki_service_nodes_checkpoint_quorum_size::generate(std::vector<test_event_
   {
     gen.add_blocks_until_next_checkpointable_height();
     std::shared_ptr<const service_nodes::testing_quorum> quorum = gen.get_testing_quorum(service_nodes::quorum_type::checkpointing, gen.height());
-    if (quorum && quorum->workers.size()) break;
+    if (quorum && quorum->validators.size()) break;
   }
   assert(tries != MAX_TRIES);
 
@@ -934,7 +934,7 @@ bool loki_service_nodes_checkpoint_quorum_size::generate(std::vector<test_event_
     DEFINE_TESTS_ERROR_CONTEXT("check_checkpoint_quorum_should_be_populated");
     std::shared_ptr<const service_nodes::testing_quorum> quorum = c.get_testing_quorum(service_nodes::quorum_type::checkpointing, check_height_2);
     CHECK_TEST_CONDITION(quorum != nullptr);
-    CHECK_TEST_CONDITION(quorum->workers.size() > 0);
+    CHECK_TEST_CONDITION(quorum->validators.size() > 0);
     return true;
   });
 
