@@ -33,6 +33,7 @@
 #include "string_tools.h"
 #include "daemon/command_server.h"
 
+#include "common/loki.h"
 #include "common/loki_integration_test_hooks.h"
 
 #undef LOKI_DEFAULT_LOG_CATEGORY
@@ -364,61 +365,165 @@ t_command_server::t_command_server(
     , "print_sn_state_changes <start_height> [end height]"
     , "Query the state changes between the range, omit the last argument to scan until the current block"
     );
-#if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
-    m_command_lookup.set_handler(
-      "relay_votes_and_uptime", std::bind([rpc_server](std::vector<std::string> const &args) {
-        rpc_server->on_relay_uptime_and_votes();
-        return true;
-      }, p::_1)
-    , ""
-    );
 
+#if defined(LOKI_DEBUG)
+    char const debug_cmd_fmt[] = "debug [[[toggle|set] <setting>] | [mine_n_blocks <address> <n_blocks>] | [relay_votes_and_uptime]";
     m_command_lookup.set_handler(
-      "integration_test", std::bind([rpc_server](std::vector<std::string> const &args) {
-        bool valid_cmd = false;
+      "debug", std::bind([rpc_server, debug_cmd_fmt](std::vector<std::string> const &args) {
+
+        LOKI_DEFER
+        {
+          #if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
+            loki::write_redirected_stdout_to_shared_mem();
+          #else
+            std::cout << std::endl; // NOTE: Makes sure to flush the output stream because monero logging does something funky with buffering
+          #endif
+        };
+
+        enum struct decl_type
+        {
+          boolean,
+          isize,
+        };
+
+        struct debug_command_map
+        {
+          std::string setting;
+          decl_type type;
+          union
+          {
+            void      *value; // NOTE: Must be first member to allow brace initialisation {} to store the ptr to the value to modify at run-time
+            bool      *val_bool;
+            ptrdiff_t *val_isize;
+          };
+        };
+
+        static debug_command_map cmds[] = {
+            {"disable_checkpoint_quorum",              decl_type::boolean, &loki::debug_state.disable_checkpoint_quorum},
+            {"disable_obligation_quorum",              decl_type::boolean, &loki::debug_state.disable_obligation_quorum},
+            {"disable_checking_worker_uptime_proof",   decl_type::boolean, &loki::debug_state.disable_checking_worker_uptime_proof},
+            {"disable_checking_worker_checkpointing",  decl_type::boolean, &loki::debug_state.disable_checking_worker_checkpointing},
+            {"disable_checking_worker_storage_server", decl_type::boolean, &loki::debug_state.disable_checking_worker_storage_server},
+            {"min_time_in_s_before_voting",            decl_type::isize,   &service_nodes::MIN_TIME_IN_S_BEFORE_VOTING},
+        };
+
+        cryptonote::core &core    = rpc_server->get_core();
+        bool valid_cmd            = false;
+        std::string const &action = args[0];
         if (args.size() == 1)
         {
-          valid_cmd = true;
-          if (args[0] == "toggle_checkpoint_quorum")
+          if (action == "relay_votes_and_uptime")
           {
-            loki::integration_test.disable_checkpoint_quorum = !loki::integration_test.disable_checkpoint_quorum;
+            valid_cmd = true;
+            core.submit_uptime_proof();
+            core.relay_service_node_votes();
+            std::cout << "Votes and uptime relayed";
           }
-          else if (args[0] == "toggle_obligation_quorum")
+        }
+        else if (args.size() == 2)
+        {
+          std::string const &setting = args[1];
+          if (action == "toggle")
           {
-            loki::integration_test.disable_obligation_quorum = !loki::integration_test.disable_obligation_quorum;
+            for (debug_command_map &entry : cmds)
+            {
+              if (entry.setting == setting && entry.type == decl_type::boolean)
+              {
+                valid_cmd       = true;
+                *entry.val_bool = !(*entry.val_bool);
+                std::cout << "  Setting: " << entry.setting << " = " << *entry.val_bool << "\n";
+                break;
+              }
+            }
           }
-          else if (args[0] == "toggle_obligation_uptime_proof")
-          {
-            loki::integration_test.disable_obligation_uptime_proof = !loki::integration_test.disable_obligation_uptime_proof;
-          }
-          else if (args[0] == "toggle_obligation_checkpointing")
-          {
-            loki::integration_test.disable_obligation_checkpointing = !loki::integration_test.disable_obligation_checkpointing;
-          }
-          else
-          {
-            valid_cmd = false;
-          }
-
-          if (valid_cmd) std::cout << args[0] << " toggled";
         }
         else if (args.size() == 3)
         {
-          uint64_t num_blocks = 0;
-          if (args[0] == "debug_mine_n_blocks" && epee::string_tools::get_xtype_from_string(num_blocks, args[2]))
+          if (action == "mine_n_blocks")
           {
-            rpc_server->on_debug_mine_n_blocks(args[1], num_blocks);
-            valid_cmd = true;
+            uint64_t num_blocks = 0;
+            if (epee::string_tools::get_xtype_from_string(num_blocks, args[2]))
+            {
+              cryptonote::miner &miner = core.get_miner();
+              if (miner.is_mining())
+              {
+                std::cout << "Already mining";
+                return true;
+              }
+
+              cryptonote::address_parse_info info;
+              if(!get_account_address_from_str(info, core.get_nettype(), args[1]))
+              {
+                std::cout << "Failed, wrong address";
+                return true;
+              }
+
+              for (uint64_t i = 0; i < num_blocks; i++)
+              {
+                if(!miner.debug_mine_singular_block(info.address))
+                {
+                  std::cout << "Failed, mining not started";
+                  return true;
+                }
+              }
+
+              std::cout << "Mining stopped in daemon";
+              valid_cmd = true;
+            }
+          }
+          else if (action == "set")
+          {
+            uint64_t value = 0;
+            if (epee::string_tools::get_xtype_from_string(value, args[2]))
+            {
+              std::string const &setting = args[1];
+              for (debug_command_map &entry : cmds)
+              {
+                if (entry.setting == setting)
+                {
+                  valid_cmd = true;
+                  if (entry.type == decl_type::boolean)
+                  {
+                    value = (value == 0) ? 0 : 1;
+                    std::cout << "  Setting: " << entry.setting << " = " << value << ", previously (" << *entry.val_bool << ")\n";
+                    *entry.val_bool = static_cast<bool>(value);
+                  }
+                  else if (entry.type == decl_type::isize)
+                  {
+                    std::cout << "  Setting: " << entry.setting << " = " << value << ", previously (" << *entry.val_isize << ")\n";
+                    *entry.val_isize = value;
+                  }
+                  else
+                  {
+                      valid_cmd = false;
+                  }
+
+                  break;
+                }
+              }
+            }
+          }
+        }
+        else
+        {
+          valid_cmd = true;
+          std::cout << "Current debug <settings>\n";
+          for (debug_command_map const &entry : cmds)
+          {
+            if (entry.type == decl_type::boolean) std::cout << "  <toggle | set> " << entry.setting << " = " << *entry.val_bool << "\n";
+            if (entry.type == decl_type::isize)   std::cout << "  <         set> " << entry.setting << " = " << *entry.val_isize << "\n";
           }
         }
 
         if (!valid_cmd)
-          std::cout << "integration_test invalid command";
+        {
+          std::cout << "usage: " << debug_cmd_fmt << "\n" << "debug invalid command";
+        }
 
-        loki::write_redirected_stdout_to_shared_mem();
         return true;
       }, p::_1)
-    , ""
+    , debug_cmd_fmt
+    , "Debug menu to set run-time variables. Use \"debug\" on its own to print all the debug settings you can modify"
     );
 #endif
 }

@@ -39,10 +39,7 @@
 #include "cryptonote_core/cryptonote_core.h"
 #include "p2p/net_node.h"
 #include "cryptonote_protocol/cryptonote_protocol_handler.h"
-
-#if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
 #include "common/loki_integration_test_hooks.h"
-#endif
 
 #undef LOKI_DEFAULT_LOG_CATEGORY
 #define LOKI_DEFAULT_LOG_CATEGORY "daemon.rpc"
@@ -281,42 +278,8 @@ namespace cryptonote
     bool on_report_peer_storage_server_status(const COMMAND_RPC_REPORT_PEER_SS_STATUS::request& req, COMMAND_RPC_REPORT_PEER_SS_STATUS::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
     //-----------------------
 
-#if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
-    void on_relay_uptime_and_votes()
-    {
-      m_core.submit_uptime_proof();
-      m_core.relay_service_node_votes();
-      std::cout << "Votes and uptime relayed";
-      loki::write_redirected_stdout_to_shared_mem();
-    }
-
-    void on_debug_mine_n_blocks(std::string const &address, uint64_t num_blocks)
-    {
-      cryptonote::miner &miner = m_core.get_miner();
-      if (miner.is_mining())
-      {
-        std::cout << "Already mining";
-        return;
-      }
-
-      cryptonote::address_parse_info info;
-      if(!get_account_address_from_str(info, m_core.get_nettype(), address))
-      {
-        std::cout << "Failed, wrong address";
-        return;
-      }
-
-      for (uint64_t i = 0; i < num_blocks; i++)
-      {
-        if(!miner.debug_mine_singular_block(info.address))
-        {
-          std::cout << "Failed, mining not started";
-          return;
-        }
-      }
-
-      std::cout << "Mining stopped in daemon";
-    }
+#if defined(LOKI_DEBUG)
+    cryptonote::core &get_core() { return m_core; }
 #endif
 
 private:

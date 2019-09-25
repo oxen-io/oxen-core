@@ -586,7 +586,7 @@ namespace cryptonote
             epee::serialization::store_t_to_json_file(m_config, m_config_folder_path + "/" + MINER_CONFIG_FILE_NAME);
         }
 
-#if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
+#if defined(LOKI_DEBUG)
         if (m_debug_mine_singular_block)
         {
           m_debug_mine_singular_block = false;
@@ -600,7 +600,7 @@ namespace cryptonote
     }
     MGINFO("Miner thread stopped ["<< th_local_index << "]");
     --m_threads_active;
-#if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
+#if defined(LOKI_DEBUG)
     stop();
 #endif
     return true;

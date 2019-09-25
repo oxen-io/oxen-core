@@ -44,16 +44,15 @@ namespace service_nodes {
   constexpr size_t   STATE_CHANGE_MIN_NODES_TO_TEST          = 50;
   constexpr uint64_t VOTE_LIFETIME                           = BLOCKS_EXPECTED_IN_HOURS(2);
 
+  extern    ptrdiff_t MIN_TIME_IN_S_BEFORE_VOTING;
 #if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
   constexpr size_t    STATE_CHANGE_QUORUM_SIZE               = 5;
   constexpr size_t    STATE_CHANGE_MIN_VOTES_TO_CHANGE_STATE = 1;
-  constexpr ptrdiff_t MIN_TIME_IN_S_BEFORE_VOTING            = 0;
   constexpr size_t    CHECKPOINT_QUORUM_SIZE                 = 5;
   constexpr size_t    CHECKPOINT_MIN_VOTES                   = 1;
 #else
   constexpr size_t    STATE_CHANGE_MIN_VOTES_TO_CHANGE_STATE = 7;
   constexpr size_t    STATE_CHANGE_QUORUM_SIZE               = 10;
-  constexpr ptrdiff_t MIN_TIME_IN_S_BEFORE_VOTING            = UPTIME_PROOF_MAX_TIME_IN_SECONDS;
   constexpr size_t    CHECKPOINT_QUORUM_SIZE                 = 20;
   constexpr size_t    CHECKPOINT_MIN_VOTES                   = 13;
 #endif

@@ -1,6 +1,12 @@
 #include "loki.h"
 #include <assert.h>
 
+#if defined(LOKI_DEBUG)
+namespace loki
+{
+debug_state_t debug_state;
+};
+#endif
 
 /* Exponential base 2 function.
    Copyright (C) 2012-2019 Free Software Foundation, Inc.

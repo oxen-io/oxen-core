@@ -85,15 +85,16 @@ namespace service_nodes
     proof_info const &proof               = *info.proof;
     uint64_t time_since_last_uptime_proof = now - std::max(proof.timestamp, proof.effective_timestamp);
 
-    bool check_uptime_obligation     = true;
-    bool check_checkpoint_obligation = true;
-
-#if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
-    if (loki::integration_test.disable_obligation_uptime_proof) check_uptime_obligation = false;
-    if (loki::integration_test.disable_obligation_checkpointing) check_checkpoint_obligation = false;
+    bool check_uptime_proof             = true;
+    bool check_checkpointed             = true;
+    bool check_storage_server_reachable = true;
+#if defined(LOKI_DEBUG)
+    if (loki::debug_state.disable_checking_worker_uptime_proof) check_uptime_proof  = false;
+    if (loki::debug_state.disable_checking_worker_checkpointing) check_checkpointed = false;
+    if (loki::debug_state.disable_checking_worker_storage_server) check_storage_server_reachable = false;
 #endif
 
-    if (check_uptime_obligation && time_since_last_uptime_proof > UPTIME_PROOF_MAX_TIME_IN_SECONDS)
+    if (check_uptime_proof && time_since_last_uptime_proof > UPTIME_PROOF_MAX_TIME_IN_SECONDS)
     {
       LOG_PRINT_L1(
           "Service Node: " << pubkey << ", failed uptime proof obligation check: the last uptime proof was older than: "
@@ -102,7 +103,7 @@ namespace service_nodes
       result.uptime_proved = false;
     }
 
-    if (!info.proof->storage_server_reachable)
+    if (check_storage_server_reachable && !info.proof->storage_server_reachable)
     {
       LOG_PRINT_L1("Service Node storage server is not reachable for node: " << pubkey);
       if (hf_version >= cryptonote::network_version_13_enforce_checkpoints)
@@ -124,7 +125,7 @@ namespace service_nodes
       }
     }
 
-    if (check_checkpoint_obligation && !info.is_decommissioned())
+    if (check_checkpointed && !info.is_decommissioned())
     {
       int num_votes = 0;
       for (checkpoint_vote_record const &record : proof.votes)
@@ -212,15 +213,15 @@ namespace service_nodes
     service_nodes::quorum_type const max_quorum_type = service_nodes::max_quorum_type_for_hf(hf_version);
     bool tested_myself_once_per_block                = false;
 
-    time_t const now         = time(nullptr);
-    uint64_t const live_time = (now - m_core.get_start_time());
+    time_t const now          = time(nullptr);
+    ptrdiff_t const live_time = (now - m_core.get_start_time());
     for (int i = 0; i <= (int)max_quorum_type; i++)
     {
       quorum_type const type = static_cast<quorum_type>(i);
 
-#if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
-      if (loki::integration_test.disable_checkpoint_quorum && type == quorum_type::checkpointing) continue;
-      if (loki::integration_test.disable_obligation_quorum && type == quorum_type::obligations) continue;
+#if defined(LOKI_DEBUG)
+      if (loki::debug_state.disable_checkpoint_quorum && type == quorum_type::checkpointing) continue;
+      if (loki::debug_state.disable_obligation_quorum && type == quorum_type::obligations) continue;
 #endif
 
       switch(type)

@@ -37,6 +37,18 @@
 #define LOKI_RPC_DOC_INTROSPECT
 namespace loki
 {
+
+#if defined(LOKI_DEBUG)
+extern struct debug_state_t
+{
+  bool disable_checkpoint_quorum;
+  bool disable_obligation_quorum;
+  bool disable_checking_worker_uptime_proof;
+  bool disable_checking_worker_checkpointing;
+  bool disable_checking_worker_storage_server;
+} debug_state;
+#endif
+
 double      round           (double);
 double      exp2            (double);
 std::string hex64_to_base32z(std::string const& src);

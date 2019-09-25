@@ -8,6 +8,11 @@
 
 namespace service_nodes {
 
+#if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
+ptrdiff_t MIN_TIME_IN_S_BEFORE_VOTING = 0;
+#else
+ptrdiff_t MIN_TIME_IN_S_BEFORE_VOTING = UPTIME_PROOF_MAX_TIME_IN_SECONDS;
+#endif
 
 uint64_t get_staking_requirement(cryptonote::network_type m_nettype, uint64_t height, uint8_t hf_version)
 {

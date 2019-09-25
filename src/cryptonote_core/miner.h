@@ -90,7 +90,7 @@ namespace cryptonote
     bool set_mining_target(uint8_t mining_target);
     uint64_t get_block_reward() const { return m_block_reward; }
 
-#if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
+#if defined(LOKI_DEBUG)
     std::atomic<bool> m_debug_mine_singular_block;
     bool debug_mine_singular_block(const account_public_address& adr)
     {
