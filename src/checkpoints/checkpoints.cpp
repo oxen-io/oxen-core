@@ -277,7 +277,7 @@ namespace cryptonote
     return result;
   }
   //---------------------------------------------------------------------------
-  bool checkpoints::is_alternative_block_allowed(uint8_t hf_version, uint64_t blockchain_height, uint64_t block_height, bool *service_node_checkpoint)
+  bool checkpoints::is_alternative_block_allowed(uint64_t blockchain_height, uint64_t block_height, bool *service_node_checkpoint)
   {
     if (service_node_checkpoint)
       *service_node_checkpoint = false;
@@ -291,20 +291,13 @@ namespace cryptonote
         return true;
     }
 
+    checkpoint_t immutable_checkpoint;
     uint64_t immutable_height = 0;
-    if (hf_version <= cryptonote::network_version_12_checkpointing)
+    if (m_db->get_immutable_checkpoint(&immutable_checkpoint, blockchain_height))
     {
-      get_newest_hardcoded_checkpoint(m_nettype, &immutable_height);
-    }
-    else
-    {
-      checkpoint_t immutable_checkpoint;
-      if (m_db->get_immutable_checkpoint(&immutable_checkpoint, blockchain_height))
-      {
-        immutable_height = immutable_checkpoint.height;
-        if (service_node_checkpoint)
-          *service_node_checkpoint = (immutable_checkpoint.type == checkpoint_type::service_node);
-      }
+      immutable_height = immutable_checkpoint.height;
+      if (service_node_checkpoint)
+        *service_node_checkpoint = (immutable_checkpoint.type == checkpoint_type::service_node);
     }
 
     m_immutable_height = std::max(immutable_height, m_immutable_height);

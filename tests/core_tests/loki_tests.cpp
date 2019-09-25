@@ -416,8 +416,11 @@ bool loki_checkpointing_service_node_checkpoints_check_reorg_windows::generate(s
   loki_chain_generator fork_1_block_after_checkpoint = gen;
   gen.add_service_node_checkpoint(gen.height(), service_nodes::CHECKPOINT_MIN_VOTES);
 
-  // Add the next service node checkpoints on the main chain to lock in the chain
-  gen.add_blocks_until_next_checkpointable_height();
+  // Add the next service node checkpoints on the main chain to lock in the chain preceeding the first checkpoint
+  gen.add_n_blocks(service_nodes::CHECKPOINT_INTERVAL - 1);
+  loki_chain_generator fork_1_block_before_second_checkpoint = gen;
+
+  gen.add_block();
   gen.add_service_node_checkpoint(gen.height(), service_nodes::CHECKPOINT_MIN_VOTES);
 
   // Try add a block before first checkpoint, should fail because we are already 2 checkpoints deep.
@@ -425,6 +428,11 @@ bool loki_checkpointing_service_node_checkpoints_check_reorg_windows::generate(s
 
   // Try add a block after the first checkpoint. This should succeed because we can reorg the chain within the 2 checkpoint window
   fork_1_block_after_checkpoint.add_block({});
+
+  // Try add a block on the second checkpoint. This should also succeed because we can reorg the chain within the 2
+  // checkpoint window, and although the height is checkpointed and should fail checkpoints::check, it should still be
+  // allowed as an alt block
+  fork_1_block_before_second_checkpoint.add_block({});
   return true;
 }
 
