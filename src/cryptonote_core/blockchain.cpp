@@ -4335,9 +4335,9 @@ bool Blockchain::update_checkpoint(cryptonote::checkpoint_t const &checkpoint)
     uint8_t hf_version = get_current_hard_fork_version();
     if (hf_version >= cryptonote::network_version_13_enforce_checkpoints)
     {
-      uint64_t blocks_to_pop        = m_db->height() - checkpoint.height + 2;
-      crypto::hash const reorg_hash = m_db->get_block_hash_from_height(checkpoint.height - 2);
-      MGINFO_GREEN("###### CHECKPOINTING REORGANIZE from height: " << m_db->height() << " to before checkpoint height: " << (checkpoint.height - 2) << " id: " << reorg_hash);
+      uint64_t blocks_to_pop        = m_db->height() - checkpoint.height;
+      crypto::hash const reorg_hash = m_db->get_block_hash_from_height(checkpoint.height - 1);
+      MGINFO_GREEN("###### CHECKPOINTING REORGANIZE from height: " << m_db->height() << " to before checkpoint height: " << (checkpoint.height - 1) << " id: " << reorg_hash);
       pop_blocks(blocks_to_pop);
     }
   }
