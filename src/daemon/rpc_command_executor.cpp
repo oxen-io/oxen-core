@@ -2528,7 +2528,7 @@ static void append_printable_service_node_list_entry(cryptonote::network_type ne
     if (entry.storage_server_reachable_timestamp == 0)
       stream << "Awaiting first test";
     else
-      stream << get_human_time_ago(entry.storage_server_reachable_timestamp, now);
+      stream << "Last checked: " << get_human_time_ago(entry.storage_server_reachable_timestamp, now);
     stream << ")\n";
 
     stream << indent2 <<  "Checkpoint Participation [Height: Voted]: ";

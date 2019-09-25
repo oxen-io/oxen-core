@@ -53,7 +53,7 @@ namespace service_nodes
 
     if (passed())
     {
-      buf_ptr += snprintf(buf_ptr, buf_end - buf_ptr, "Service Node is passing all tests");
+      buf_ptr += snprintf(buf_ptr, buf_end - buf_ptr, "Service Node is passing all local tests");
     }
     else
     {
@@ -364,7 +364,6 @@ namespace service_nodes
             }
             else if (!tested_myself_once_per_block && find_index_in_quorum_group(quorum->workers, my_pubkey))
             {
-              tested_myself_once_per_block = true;
               // NOTE: Not in validating quorum , check if we're the ones
               // being tested. If so, check if we would be decommissioned
               // based on _our_ data and if so, report it to the user so they
@@ -373,27 +372,30 @@ namespace service_nodes
               const auto states_array = m_core.get_service_node_list_state({my_pubkey});
               if (states_array.size())
               {
-                const auto &info     = *states_array[0].info;
-                auto my_test_results = check_service_node(obligations_height_hf_version, my_pubkey, info);
-
-                if (info.is_active())
+                const auto &info = *states_array[0].info;
+                if (info.can_be_voted_on(m_obligations_height))
                 {
-                  if (!my_test_results.passed())
+                  tested_myself_once_per_block = true;
+                  auto my_test_results         = check_service_node(obligations_height_hf_version, my_pubkey, info);
+                  if (info.is_active())
                   {
-                    // NOTE: Don't warn uptime proofs if the daemon is just
-                    // recently started and is candidate for testing (i.e.
-                    // restarting the daemon)
-                    if (!my_test_results.uptime_proved && live_time < LOKI_HOUR(1))
-                        continue;
+                    if (!my_test_results.passed())
+                    {
+                      // NOTE: Don't warn uptime proofs if the daemon is just
+                      // recently started and is candidate for testing (i.e.
+                      // restarting the daemon)
+                      if (!my_test_results.uptime_proved && live_time < LOKI_HOUR(1))
+                          continue;
 
-                    LOG_PRINT_L0("Service Node (yours) is active but is not passing tests for quorum: " << m_obligations_height);
+                      LOG_PRINT_L0("Service Node (yours) is active but is not passing tests for quorum: " << m_obligations_height);
+                      LOG_PRINT_L0(my_test_results.why());
+                    }
+                  }
+                  else if (info.is_decommissioned())
+                  {
+                    LOG_PRINT_L0("Service Node (yours) is currently decommissioned and being tested in quorum: " << m_obligations_height);
                     LOG_PRINT_L0(my_test_results.why());
                   }
-                }
-                else if (info.is_decommissioned())
-                {
-                  LOG_PRINT_L0("Service Node (yours) is currently decommissioned and being tested in quorum: " << m_obligations_height);
-                  LOG_PRINT_L0(my_test_results.why());
                 }
               }
             }
