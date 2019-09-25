@@ -132,10 +132,10 @@ namespace service_nodes
         if (!record.voted) missed_votes++;
       }
 
-      if (missed_votes >= CHECKPOINT_MAX_MISSABLE_VOTES)
+      if (missed_votes > CHECKPOINT_MAX_MISSABLE_VOTES)
       {
         LOG_PRINT_L1("Service Node: " << pubkey << ", failed checkpoint obligation check: missed the last: "
-                                      << CHECKPOINT_MAX_MISSABLE_VOTES << " checkpoint votes from: "
+                                      << missed_votes << " checkpoint votes from: "
                                       << CHECKPOINT_NUM_QUORUMS_TO_PARTICIPATE_IN
                                       << " quorums that they were required to participate in.");
         if (hf_version >= cryptonote::network_version_13_enforce_checkpoints)
@@ -214,9 +214,9 @@ namespace service_nodes
     service_nodes::quorum_type const max_quorum_type = service_nodes::max_quorum_type_for_hf(hf_version);
     bool tested_myself_once_per_block                = false;
 
-    ptrdiff_t start_time      = m_core.get_start_time();
-    time_t const now          = time(nullptr);
-    ptrdiff_t const live_time = (now - start_time);
+    time_t start_time   = m_core.get_start_time();
+    time_t const now    = time(nullptr);
+    int const live_time = (now - start_time);
     for (int i = 0; i <= (int)max_quorum_type; i++)
     {
       quorum_type const type = static_cast<quorum_type>(i);
