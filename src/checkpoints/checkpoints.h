@@ -189,7 +189,7 @@ namespace cryptonote
      * @return true if alternate blocks are allowed given the parameters,
      *         otherwise false
      */
-    bool is_alternative_block_allowed(uint64_t blockchain_height, uint64_t block_height, bool *service_node_checkpoint = nullptr);
+    bool is_alternative_block_allowed(uint8_t hf_version, uint64_t blockchain_height, uint64_t block_height, bool *service_node_checkpoint = nullptr);
 
     /**
      * @brief gets the highest checkpoint height
