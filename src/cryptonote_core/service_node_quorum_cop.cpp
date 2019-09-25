@@ -126,11 +126,13 @@ namespace service_nodes
 
     if (check_checkpoint_obligation && !info.is_decommissioned())
     {
-      int num_votes = 0;
+      int missed_votes = 0;
       for (checkpoint_vote_record const &record : proof.votes)
-        num_votes += record.voted;
+      {
+        if (!record.voted) missed_votes++;
+      }
 
-      if (num_votes <= CHECKPOINT_MAX_MISSABLE_VOTES)
+      if (missed_votes >= CHECKPOINT_MAX_MISSABLE_VOTES)
       {
         LOG_PRINT_L1("Service Node: " << pubkey << ", failed checkpoint obligation check: missed the last: "
                                       << CHECKPOINT_MAX_MISSABLE_VOTES << " checkpoint votes from: "
@@ -212,8 +214,9 @@ namespace service_nodes
     service_nodes::quorum_type const max_quorum_type = service_nodes::max_quorum_type_for_hf(hf_version);
     bool tested_myself_once_per_block                = false;
 
-    time_t const now         = time(nullptr);
-    uint64_t const live_time = (now - m_core.get_start_time());
+    ptrdiff_t start_time      = m_core.get_start_time();
+    time_t const now          = time(nullptr);
+    ptrdiff_t const live_time = (now - start_time);
     for (int i = 0; i <= (int)max_quorum_type; i++)
     {
       quorum_type const type = static_cast<quorum_type>(i);
@@ -234,37 +237,50 @@ namespace service_nodes
         case quorum_type::obligations:
         {
 
-          // NOTE: Wait at least 2 hours before we're allowed to vote so that we collect necessary voting information from people on the network
-          bool alive_for_min_time = live_time >= MIN_TIME_IN_S_BEFORE_VOTING;
-          if (!alive_for_min_time)
-            break;
-
           m_obligations_height = std::max(m_obligations_height, start_voting_from_height);
           for (; m_obligations_height < (height - REORG_SAFETY_BUFFER_BLOCKS); m_obligations_height++)
           {
             uint8_t const obligations_height_hf_version = m_core.get_hard_fork_version(m_obligations_height);
             if (obligations_height_hf_version < cryptonote::network_version_9_service_nodes) continue;
 
-            // NOTE: Count checkpoints for other nodes, irrespective of being a service node or not for statistics
-            if (live_time >= MIN_TIME_IN_S_BEFORE_VOTING && obligations_height_hf_version >= cryptonote::network_version_12_checkpointing)
+            // NOTE: Count checkpoints for other nodes, irrespective of being
+            // a service node or not for statistics. Also count checkpoints
+            // before the minimum lifetime for same purposes, note, we still
+            // don't vote for the first 2 hours so this is purely cosmetic
+            if (obligations_height_hf_version >= cryptonote::network_version_12_checkpointing)
             {
-              service_nodes::quorum_type checkpoint_type = quorum_type::checkpointing;
-              if (std::shared_ptr<const testing_quorum> quorum = m_core.get_testing_quorum(checkpoint_type, m_obligations_height))
+              service_nodes::quorum_type checkpoint_type   = quorum_type::checkpointing;
+              std::shared_ptr<const testing_quorum> quorum = m_core.get_testing_quorum(checkpoint_type, m_obligations_height);
+              std::vector<cryptonote::block> blocks;
+              if (quorum && m_core.get_blocks(m_obligations_height, 1, blocks))
               {
-                // TODO(loki): Temporary HF13 code, remove when we hit HF13 because we delete all HF12 checkpoints and don't need conditionals for HF12/HF13 checkpointing code
-                std::vector<crypto::public_key> const &quorum_keys =
-                    (obligations_height_hf_version >= cryptonote::network_version_13_enforce_checkpoints)
-                        ? quorum->validators
-                        : quorum->workers;
-
-                uint64_t quorum_height = offset_testing_quorum_height(checkpoint_type, m_obligations_height);
-                for (size_t index_in_quorum = 0; index_in_quorum < quorum_keys.size(); index_in_quorum++)
+                cryptonote::block const &block = blocks[0];
+                if (start_time < static_cast<ptrdiff_t>(block.timestamp)) // NOTE: If we started up before receiving the block, we likely have the voting information, if not we probably don't.
                 {
-                  crypto::public_key const &key = quorum_keys[index_in_quorum];
-                  m_core.record_checkpoint_vote(key, quorum_height, m_vote_pool.received_checkpoint_vote(m_obligations_height, index_in_quorum));
+                  // TODO(loki): Temporary HF13 code, remove when we hit HF13 because we delete all HF12 checkpoints
+                  // and don't need conditionals for HF12/HF13 checkpointing code
+                  std::vector<crypto::public_key> const &quorum_keys =
+                      (obligations_height_hf_version >= cryptonote::network_version_13_enforce_checkpoints)
+                          ? quorum->validators
+                          : quorum->workers;
+
+                  uint64_t quorum_height = offset_testing_quorum_height(checkpoint_type, m_obligations_height);
+                  for (size_t index_in_quorum = 0; index_in_quorum < quorum_keys.size(); index_in_quorum++)
+                  {
+                    crypto::public_key const &key = quorum_keys[index_in_quorum];
+                    m_core.record_checkpoint_vote(
+                        key,
+                        quorum_height,
+                        m_vote_pool.received_checkpoint_vote(m_obligations_height, index_in_quorum));
+                  }
                 }
               }
             }
+
+            // NOTE: Wait at least 2 hours before we're allowed to vote so that we collect necessary voting information from people on the network
+            bool alive_for_min_time = live_time >= MIN_TIME_IN_S_BEFORE_VOTING;
+            if (!alive_for_min_time)
+              continue;
 
             if (!i_have_service_node_keys)
               continue;
