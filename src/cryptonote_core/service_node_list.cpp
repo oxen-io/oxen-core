@@ -1654,8 +1654,21 @@ namespace service_nodes
 
       if (miner_tx.vout[vout_index].amount != reward)
       {
-        MERROR("Service node reward amount incorrect. Should be " << cryptonote::print_money(reward) << ", is: " << cryptonote::print_money(miner_tx.vout[vout_index].amount));
-        return false;
+        bool failed = true;
+        if (m_blockchain.nettype() == cryptonote::TESTNET && height == 129600 && winner.payouts.size() == 1)
+        {
+          // TODO(loki): Make an exception for just this block, somehow the
+          // amount is off by exactly 1 atomic loki. Don't know why. Heisenbug.
+          // How did the chain accept it?  Mystery.
+          if (miner_tx.vout[vout_index].amount == 26499999999)
+            failed = false;
+        }
+
+        if (failed)
+        {
+          MERROR("Service node reward amount incorrect. Should be " << cryptonote::print_money(reward) << ", is: " << cryptonote::print_money(miner_tx.vout[vout_index].amount));
+          return false;
+        }
       }
 
       if (miner_tx.vout[vout_index].target.type() != typeid(cryptonote::txout_to_key))
