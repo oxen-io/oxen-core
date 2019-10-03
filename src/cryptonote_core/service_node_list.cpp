@@ -1619,6 +1619,11 @@ namespace service_nodes
     return result;
   }
 
+  template <typename T>
+  static constexpr bool within_one(T a, T b) {
+      return (a > b ? a - b : b - a) <= T{1};
+  }
+
   bool service_node_list::validate_miner_tx(const crypto::hash& prev_id, const cryptonote::transaction& miner_tx, uint64_t height, int hf_version, cryptonote::block_reward_parts const &reward_parts) const
   {
     std::lock_guard<boost::recursive_mutex> lock(m_sn_mutex);
@@ -1652,7 +1657,11 @@ namespace service_nodes
       payout_entry const &payout = winner.payouts[i];
       uint64_t reward            = cryptonote::get_portion_of_reward(payout.portions, total_service_node_reward);
 
-      if (miner_tx.vout[vout_index].amount != reward)
+      // Because FP math is involved in reward calculations (and compounded by CPUs, compilers,
+      // expression contraction, and RandomX fiddling with the rounding modes) we can end up with a
+      // 1 ULP difference in the reward calculations.
+      // TODO(loki): eliminate all FP math from reward calculations
+      if (!within_one(miner_tx.vout[vout_index].amount, reward))
       {
         MERROR("Service node reward amount incorrect. Should be " << cryptonote::print_money(reward) << ", is: " << cryptonote::print_money(miner_tx.vout[vout_index].amount));
         return false;
