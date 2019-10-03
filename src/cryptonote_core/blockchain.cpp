@@ -1282,7 +1282,8 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
   }
 
   base_reward = reward_parts.base_miner + reward_parts.governance_paid + reward_parts.service_node_paid;
-  if(base_reward + fee < money_in_use)
+  // Allow a 1 atomic unit error in the calculation (which can happen because of the rounding mode changes randomx does)
+  if(base_reward + 1 + fee < money_in_use)
   {
     MERROR_VER("coinbase transaction spend too much money (" << print_money(money_in_use) << "). Block reward is " << print_money(base_reward) << "(" << print_money(base_reward) << "+" << print_money(fee) << ")");
     return false;
@@ -1291,7 +1292,7 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
   // since a miner can claim less than the full block reward, we update the base_reward
   // to show the amount of coins that were actually generated, the remainder will be pushed back for later
   // emission. This modifies the emission curve very slightly.
-  CHECK_AND_ASSERT_MES(money_in_use - fee <= base_reward, false, "base reward calculation bug");
+  CHECK_AND_ASSERT_MES(money_in_use - fee <= base_reward + 1, false, "base reward calculation bug");
   if(base_reward != money_in_use)
     partial_block_reward = true;
   base_reward = money_in_use - fee;
