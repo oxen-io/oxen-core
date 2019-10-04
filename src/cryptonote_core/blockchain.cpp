@@ -1291,6 +1291,7 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
     return false;
   }
 
+  CHECK_AND_ASSERT_MES(money_in_use >= fee, false, "base reward calculation bug");
   base_reward = money_in_use - fee;
 
   return true;
