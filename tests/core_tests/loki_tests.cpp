@@ -59,15 +59,15 @@
 // the shared stack frame where before it didn't can be optimised to utilise the
 // frame instead of re-deriving where data should be in the
 // test_events_entry array
-static void loki_register_callback(std::vector<test_event_entry> &events,
-                                   std::string const &callback_name,
-                                   loki_callback callback)
+void loki_register_callback(std::vector<test_event_entry> &events,
+                            std::string const &callback_name,
+                            loki_callback callback)
 {
   events.push_back(loki_callback_entry{callback_name, callback});
 }
 
-static std::vector<std::pair<uint8_t, uint64_t>>
-generate_sequential_hard_fork_table(uint8_t max_hf_version = cryptonote::network_version_count - 1)
+std::vector<std::pair<uint8_t, uint64_t>>
+loki_generate_sequential_hard_fork_table(uint8_t max_hf_version)
 {
   assert(max_hf_version < cryptonote::network_version_count);
   std::vector<std::pair<uint8_t, uint64_t>> result = {};
@@ -80,7 +80,7 @@ generate_sequential_hard_fork_table(uint8_t max_hf_version = cryptonote::network
 // NOTE: - Checks that a chain with a checkpoint but less PoW is preferred over a chain that is longer with more PoW but no checkpoints
 bool loki_checkpointing_alt_chain_more_service_node_checkpoints_less_pow_overtakes::generate(std::vector<test_event_entry>& events)
 {
-  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = generate_sequential_hard_fork_table();
+  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = loki_generate_sequential_hard_fork_table();
   loki_chain_generator gen(events, hard_forks);
 
   gen.add_blocks_until_version(hard_forks.back().first);
@@ -91,7 +91,7 @@ bool loki_checkpointing_alt_chain_more_service_node_checkpoints_less_pow_overtak
   std::vector<cryptonote::transaction> registration_txs(NUM_SERVICE_NODES);
   for (auto i = 0u; i < NUM_SERVICE_NODES; ++i)
     registration_txs[i] = gen.create_and_add_registration_tx(gen.first_miner());
-  gen.add_block(registration_txs);
+  gen.create_and_add_next_block(registration_txs);
 
   // NOTE: Add blocks until we get to the first height that has a checkpointing quorum AND there are service nodes in the quorum.
   int const MAX_TRIES = 16;
@@ -108,7 +108,7 @@ bool loki_checkpointing_alt_chain_more_service_node_checkpoints_less_pow_overtak
   gen.add_n_blocks(60); // Add blocks so that this chain has more PoW
 
   cryptonote::checkpoint_t checkpoint = fork_with_more_checkpoints.create_service_node_checkpoint(fork_with_more_checkpoints.height(), service_nodes::CHECKPOINT_MIN_VOTES);
-  fork_with_more_checkpoints.add_block({}, &checkpoint);
+  fork_with_more_checkpoints.create_and_add_next_block({}, &checkpoint);
   uint64_t const fork_top_height   = cryptonote::get_block_height(fork_with_more_checkpoints.top().block);
   crypto::hash const fork_top_hash = cryptonote::get_block_hash(fork_with_more_checkpoints.top().block);
 
@@ -128,7 +128,7 @@ bool loki_checkpointing_alt_chain_more_service_node_checkpoints_less_pow_overtak
 // NOTE: - A chain that receives checkpointing votes sufficient to form a checkpoint should reorg back accordingly
 bool loki_checkpointing_alt_chain_receive_checkpoint_votes_should_reorg_back::generate(std::vector<test_event_entry>& events)
 {
-  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = generate_sequential_hard_fork_table();
+  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = loki_generate_sequential_hard_fork_table();
   loki_chain_generator gen(events, hard_forks);
 
   gen.add_blocks_until_version(hard_forks.back().first);
@@ -139,7 +139,7 @@ bool loki_checkpointing_alt_chain_receive_checkpoint_votes_should_reorg_back::ge
   std::vector<cryptonote::transaction> registration_txs(NUM_SERVICE_NODES);
   for (auto i = 0u; i < NUM_SERVICE_NODES; ++i)
     registration_txs[i] = gen.create_and_add_registration_tx(gen.first_miner());
-  gen.add_block(registration_txs);
+  gen.create_and_add_next_block(registration_txs);
 
   // NOTE: Add blocks until we get to the first height that has a checkpointing quorum AND there are service nodes in the quorum.
   int const MAX_TRIES = 16;
@@ -156,8 +156,8 @@ bool loki_checkpointing_alt_chain_receive_checkpoint_votes_should_reorg_back::ge
   loki_chain_generator fork = gen;
   for (size_t i = 0; i < service_nodes::CHECKPOINT_INTERVAL; i++)
   {
-    gen.add_block();
-    fork.add_block();
+    gen.create_and_add_next_block();
+    fork.create_and_add_next_block();
   }
 
   // NOTE: Fork generate two checkpoints worth of blocks.
@@ -168,8 +168,8 @@ bool loki_checkpointing_alt_chain_receive_checkpoint_votes_should_reorg_back::ge
 
   for (size_t i = 0; i < service_nodes::CHECKPOINT_INTERVAL; i++)
   {
-    gen.add_block();
-    fork.add_block();
+    gen.create_and_add_next_block();
+    fork.create_and_add_next_block();
   }
 
   uint64_t second_checkpointed_height    = fork.height();
@@ -204,7 +204,7 @@ bool loki_checkpointing_alt_chain_receive_checkpoint_votes_should_reorg_back::ge
   }
 
   // Upon adding the last block, we should now switch to our forked chain
-  fork.add_block({});
+  fork.create_and_add_next_block({});
   crypto::hash const fork_top_hash = cryptonote::get_block_hash(fork.top().block);
   loki_register_callback(events, "check_switched_to_alt_chain", [&events, fork_top_hash](cryptonote::core &c, size_t ev_index)
   {
@@ -223,7 +223,7 @@ bool loki_checkpointing_alt_chain_receive_checkpoint_votes_should_reorg_back::ge
 // available checkpoint heights whilst maintaining equal heights with the main chain
 bool loki_checkpointing_alt_chain_with_increasing_service_node_checkpoints::generate(std::vector<test_event_entry>& events)
 {
-  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = generate_sequential_hard_fork_table();
+  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = loki_generate_sequential_hard_fork_table();
   loki_chain_generator gen(events, hard_forks);
 
   gen.add_blocks_until_version(hard_forks.back().first);
@@ -234,7 +234,7 @@ bool loki_checkpointing_alt_chain_with_increasing_service_node_checkpoints::gene
   std::vector<cryptonote::transaction> registration_txs(NUM_SERVICE_NODES);
   for (auto i = 0u; i < NUM_SERVICE_NODES; ++i)
     registration_txs[i] = gen.create_and_add_registration_tx(gen.first_miner());
-  gen.add_block(registration_txs);
+  gen.create_and_add_next_block(registration_txs);
 
   // NOTE: Add blocks until we get to the first height that has a checkpointing quorum AND there are service nodes in the quorum.
   int const MAX_TRIES = 16;
@@ -254,15 +254,15 @@ bool loki_checkpointing_alt_chain_with_increasing_service_node_checkpoints::gene
   // Fork chain - B B B B C
   loki_chain_generator fork               = gen;
   cryptonote::checkpoint_t gen_checkpoint = gen.create_service_node_checkpoint(gen.height(), service_nodes::CHECKPOINT_MIN_VOTES);
-  gen.add_block({}, &gen_checkpoint);
-  fork.add_block();
+  gen.create_and_add_next_block({}, &gen_checkpoint);
+  fork.create_and_add_next_block();
 
   gen.add_blocks_until_next_checkpointable_height();
-  gen.add_block();
+  gen.create_and_add_next_block();
 
   fork.add_blocks_until_next_checkpointable_height();
   cryptonote::checkpoint_t fork_first_checkpoint = fork.create_service_node_checkpoint(fork.height(), service_nodes::CHECKPOINT_MIN_VOTES);
-  fork.add_block({}, &fork_first_checkpoint);
+  fork.create_and_add_next_block({}, &fork_first_checkpoint);
 
   crypto::hash const gen_top_hash = cryptonote::get_block_hash(gen.top().block);
   loki_register_callback(events, "check_still_on_main_chain", [&events, gen_top_hash](cryptonote::core &c, size_t ev_index)
@@ -279,11 +279,11 @@ bool loki_checkpointing_alt_chain_with_increasing_service_node_checkpoints::gene
   // Main chain - C B B B B | B B B B
   // Fork chain - B B B B C | B B B C
   gen.add_blocks_until_next_checkpointable_height();
-  gen.add_block();
+  gen.create_and_add_next_block();
 
   fork.add_blocks_until_next_checkpointable_height();
   cryptonote::checkpoint_t fork_second_checkpoint = fork.create_service_node_checkpoint(fork.height(), service_nodes::CHECKPOINT_MIN_VOTES);
-  fork.add_block({}, &fork_second_checkpoint);
+  fork.create_and_add_next_block({}, &fork_second_checkpoint);
 
   crypto::hash const fork_top_hash = cryptonote::get_block_hash(fork.top().block);
   loki_register_callback(events, "check_switched_to_alt_chain", [&events, fork_top_hash](cryptonote::core &c, size_t ev_index)
@@ -302,7 +302,7 @@ bool loki_checkpointing_alt_chain_with_increasing_service_node_checkpoints::gene
 //       - Checks invalid vote (signature or key) is not accepted due to not being part of the quorum
 bool loki_checkpointing_service_node_checkpoint_from_votes::generate(std::vector<test_event_entry>& events)
 {
-  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = generate_sequential_hard_fork_table();
+  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = loki_generate_sequential_hard_fork_table();
   loki_chain_generator gen(events, hard_forks);
 
   gen.add_blocks_until_version(hard_forks.back().first);
@@ -313,7 +313,7 @@ bool loki_checkpointing_service_node_checkpoint_from_votes::generate(std::vector
   std::vector<cryptonote::transaction> registration_txs(NUM_SERVICE_NODES);
   for (auto i = 0u; i < NUM_SERVICE_NODES; ++i)
     registration_txs[i] = gen.create_and_add_registration_tx(gen.first_miner());
-  gen.add_block(registration_txs);
+  gen.create_and_add_next_block(registration_txs);
 
   // NOTE: Regarding the 2nd condition in this loop, although the height could
   // be a checkpoint interval, since for checkpoints we offset the height,
@@ -383,7 +383,7 @@ bool loki_checkpointing_service_node_checkpoint_from_votes::generate(std::vector
 //       - Checks you can add a block after the 1st checkpoint out of 2 checkpoints.
 bool loki_checkpointing_service_node_checkpoints_check_reorg_windows::generate(std::vector<test_event_entry>& events)
 {
-  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = generate_sequential_hard_fork_table();
+  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = loki_generate_sequential_hard_fork_table();
   loki_chain_generator gen(events, hard_forks);
 
   gen.add_blocks_until_version(hard_forks.back().first);
@@ -394,7 +394,7 @@ bool loki_checkpointing_service_node_checkpoints_check_reorg_windows::generate(s
   std::vector<cryptonote::transaction> registration_txs(NUM_SERVICE_NODES);
   for (auto i = 0u; i < NUM_SERVICE_NODES; ++i)
     registration_txs[i] = gen.create_and_add_registration_tx(gen.first_miner());
-  gen.add_block(registration_txs);
+  gen.create_and_add_next_block(registration_txs);
 
   // NOTE: Add blocks until we get to the first height that has a checkpointing quorum AND there are service nodes in the quorum.
   int const MAX_TRIES = 16;
@@ -412,7 +412,7 @@ bool loki_checkpointing_service_node_checkpoints_check_reorg_windows::generate(s
   loki_chain_generator fork_1_block_before_checkpoint = gen;
 
   // Mine one block and fork the chain before we add the checkpoint.
-  gen.add_block();
+  gen.create_and_add_next_block();
   loki_chain_generator fork_1_block_after_checkpoint = gen;
   gen.add_service_node_checkpoint(gen.height(), service_nodes::CHECKPOINT_MIN_VOTES);
 
@@ -420,25 +420,25 @@ bool loki_checkpointing_service_node_checkpoints_check_reorg_windows::generate(s
   gen.add_n_blocks(service_nodes::CHECKPOINT_INTERVAL - 1);
   loki_chain_generator fork_1_block_before_second_checkpoint = gen;
 
-  gen.add_block();
+  gen.create_and_add_next_block();
   gen.add_service_node_checkpoint(gen.height(), service_nodes::CHECKPOINT_MIN_VOTES);
 
   // Try add a block before first checkpoint, should fail because we are already 2 checkpoints deep.
-  fork_1_block_before_checkpoint.add_block({}, nullptr /*checkpoint*/, false /*can_be_added_to_blockchain*/, "Can NOT add a block if the height would equal the immutable height");
+  fork_1_block_before_checkpoint.create_and_add_next_block({}, nullptr /*checkpoint*/, false /*can_be_added_to_blockchain*/, "Can NOT add a block if the height would equal the immutable height");
 
   // Try add a block after the first checkpoint. This should succeed because we can reorg the chain within the 2 checkpoint window
-  fork_1_block_after_checkpoint.add_block({});
+  fork_1_block_after_checkpoint.create_and_add_next_block({});
 
   // Try add a block on the second checkpoint. This should also succeed because we can reorg the chain within the 2
   // checkpoint window, and although the height is checkpointed and should fail checkpoints::check, it should still be
   // allowed as an alt block
-  fork_1_block_before_second_checkpoint.add_block({});
+  fork_1_block_before_second_checkpoint.create_and_add_next_block({});
   return true;
 }
 
 bool loki_core_block_reward_unpenalized::generate(std::vector<test_event_entry>& events)
 {
-  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = generate_sequential_hard_fork_table();
+  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = loki_generate_sequential_hard_fork_table();
   loki_chain_generator gen(events, hard_forks);
   gen.add_blocks_until_version(hard_forks.back().first);
 
@@ -454,7 +454,7 @@ bool loki_core_block_reward_unpenalized::generate(std::vector<test_event_entry>&
   for (int i = 0; i < NUM_TXS; i++)
     txs[i] = gen.create_and_add_tx(gen.first_miner_, dummy, MK_COINS(5));
 
-  gen.add_block(txs);
+  gen.create_and_add_next_block(txs);
   uint64_t unpenalized_block_reward     = cryptonote::block_reward_unpenalized_formula_v8(gen.height());
   uint64_t expected_service_node_reward = cryptonote::service_node_reward_formula(unpenalized_block_reward, newest_hf);
 
@@ -478,7 +478,7 @@ bool loki_core_block_reward_unpenalized::generate(std::vector<test_event_entry>&
 
 bool loki_core_governance_batched_reward::generate(std::vector<test_event_entry>& events)
 {
-  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = generate_sequential_hard_fork_table();
+  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = loki_generate_sequential_hard_fork_table();
   const cryptonote::config_t &network = cryptonote::get_config(cryptonote::FAKECHAIN, cryptonote::network_version_count - 1);
 
   uint64_t hf10_height = 0;
@@ -514,7 +514,7 @@ bool loki_core_governance_batched_reward::generate(std::vector<test_event_entry>
     no_batched_governance_generator.add_blocks_until_version(other_hard_forks.back().first);
 
     while(no_batched_governance_generator.height() < batched_governance_generator.height())
-      no_batched_governance_generator.add_block();
+      no_batched_governance_generator.create_and_add_next_block();
 
     // NOTE(loki): Skip the last block as that is the batched payout height, we
     // don't include the governance reward of that height, that gets picked up
@@ -553,7 +553,7 @@ bool loki_core_governance_batched_reward::generate(std::vector<test_event_entry>
 
 bool loki_core_test_deregister_preferred::generate(std::vector<test_event_entry> &events)
 {
-  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = generate_sequential_hard_fork_table(cryptonote::network_version_9_service_nodes);
+  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = loki_generate_sequential_hard_fork_table(cryptonote::network_version_9_service_nodes);
   loki_chain_generator gen(events, hard_forks);
   const auto miner                 = gen.first_miner();
   const auto alice                 = gen.add_account();
@@ -569,7 +569,7 @@ bool loki_core_test_deregister_preferred::generate(std::vector<test_event_entry>
     reg_txs.push_back(tx);
   }
 
-  gen.add_block(reg_txs);
+  gen.create_and_add_next_block(reg_txs);
 
   /// generate transactions to fill up txpool entirely
   for (auto i = 0u; i < 45; ++i) {
@@ -618,7 +618,7 @@ bool loki_core_test_deregister_preferred::generate(std::vector<test_event_entry>
 // to test), they don't get deregistered.
 bool loki_core_test_deregister_safety_buffer::generate(std::vector<test_event_entry> &events)
 {
-  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = generate_sequential_hard_fork_table(cryptonote::network_version_9_service_nodes);
+  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = loki_generate_sequential_hard_fork_table(cryptonote::network_version_9_service_nodes);
   loki_chain_generator gen(events, hard_forks);
   const auto miner = gen.first_miner();
 
@@ -635,7 +635,7 @@ bool loki_core_test_deregister_safety_buffer::generate(std::vector<test_event_en
     const auto tx = gen.create_and_add_registration_tx(miner);
     reg_txs.push_back(tx);
   }
-  gen.add_block({reg_txs});
+  gen.create_and_add_next_block({reg_txs});
 
   const auto height_a                      = gen.height();
   std::vector<crypto::public_key> quorum_a = gen.quorum(height_a).obligations->workers;
@@ -655,7 +655,7 @@ bool loki_core_test_deregister_safety_buffer::generate(std::vector<test_event_en
   const auto deregister_pub_key = quorum_intersection[0];
   {
     const auto dereg_tx = gen.create_and_add_state_change_tx(service_nodes::new_state::deregister, deregister_pub_key, height_a);
-    gen.add_block({dereg_tx});
+    gen.create_and_add_next_block({dereg_tx});
   }
 
   /// Register the node again
@@ -663,7 +663,7 @@ bool loki_core_test_deregister_safety_buffer::generate(std::vector<test_event_en
     assert(gen.service_node_keys_.count(deregister_pub_key) == 1);
     cryptonote::keypair pair = {deregister_pub_key, gen.service_node_keys_[deregister_pub_key]};
     const auto tx = gen.create_and_add_registration_tx(miner, pair);
-    gen.add_block({tx});
+    gen.create_and_add_next_block({tx});
   }
 
   /// Try to deregister the node again for heightB (should fail)
@@ -677,7 +677,7 @@ bool loki_core_test_deregister_safety_buffer::generate(std::vector<test_event_en
 // Daemon A accepts the block without X. Now X is too old and should not be added in future blocks.
 bool loki_core_test_deregister_too_old::generate(std::vector<test_event_entry>& events)
 {
-  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = generate_sequential_hard_fork_table(cryptonote::network_version_9_service_nodes);
+  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = loki_generate_sequential_hard_fork_table(cryptonote::network_version_9_service_nodes);
   loki_chain_generator gen(events, hard_forks);
   gen.add_blocks_until_version(hard_forks.back().first);
 
@@ -691,7 +691,7 @@ bool loki_core_test_deregister_too_old::generate(std::vector<test_event_entry>& 
     const auto tx = gen.create_and_add_registration_tx(gen.first_miner());
     reg_txs.push_back(tx);
   }
-  gen.add_block(reg_txs);
+  gen.create_and_add_next_block(reg_txs);
 
   const auto pk       = gen.top_quorum().obligations->workers[0];
   const auto dereg_tx = gen.create_and_add_state_change_tx(service_nodes::new_state::deregister, pk);
@@ -700,7 +700,7 @@ bool loki_core_test_deregister_too_old::generate(std::vector<test_event_entry>& 
   /// In the real world, this transaction should not make it into a block, but in this case we do try to add it (as in
   /// tests we must add specify transactions manually), which should exercise the same validation code and reject the
   /// block
-  gen.add_block({dereg_tx},
+  gen.create_and_add_next_block({dereg_tx},
                 nullptr /*checkpoint*/,
                 false /*can_be_added_to_blockchain*/,
                 "Trying to add a block with an old deregister sitting in the pool that was invalidated due to old age");
@@ -709,7 +709,7 @@ bool loki_core_test_deregister_too_old::generate(std::vector<test_event_entry>& 
 
 bool loki_core_test_deregister_zero_fee::generate(std::vector<test_event_entry> &events)
 {
-  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = generate_sequential_hard_fork_table();
+  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = loki_generate_sequential_hard_fork_table();
   loki_chain_generator gen(events, hard_forks);
 
   gen.add_blocks_until_version(hard_forks.back().first);
@@ -721,7 +721,7 @@ bool loki_core_test_deregister_zero_fee::generate(std::vector<test_event_entry> 
   for (auto i = 0u; i < NUM_SERVICE_NODES; ++i)
     reg_txs[i] = gen.create_and_add_registration_tx(gen.first_miner_);
 
-  gen.add_block(reg_txs);
+  gen.create_and_add_next_block(reg_txs);
   const auto deregister_pub_key = gen.top_quorum().obligations->workers[0];
   cryptonote::transaction const invalid_deregister =
       gen.create_state_change_tx(service_nodes::new_state::deregister, deregister_pub_key, -1 /*height*/, {} /*voters*/, MK_COINS(1) /*fee*/);
@@ -735,7 +735,7 @@ bool loki_core_test_deregister_zero_fee::generate(std::vector<test_event_entry> 
 // those sitting on Chain 1 should not have problems switching over.
 bool loki_core_test_deregister_on_split::generate(std::vector<test_event_entry> &events)
 {
-  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = generate_sequential_hard_fork_table();
+  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = loki_generate_sequential_hard_fork_table();
   loki_chain_generator gen(events, hard_forks);
 
   gen.add_blocks_until_version(hard_forks.back().first);
@@ -749,8 +749,8 @@ bool loki_core_test_deregister_on_split::generate(std::vector<test_event_entry> 
     reg_txs.push_back(tx);
   }
 
-  gen.add_block(reg_txs);
-  gen.add_block(); // Can't change service node state on the same height it was registered in
+  gen.create_and_add_next_block(reg_txs);
+  gen.create_and_add_next_block(); // Can't change service node state on the same height it was registered in
   auto fork = gen;
 
   /// public key of the node to deregister (valid at the height of the pivot block)
@@ -767,9 +767,9 @@ bool loki_core_test_deregister_on_split::generate(std::vector<test_event_entry> 
   crypto::hash expected_tx_hash = cryptonote::get_transaction_hash(dereg_b);
   size_t dereg_index            = gen.event_index();
 
-  gen.add_block({dereg_a});    /// continue main chain with deregister A
-  fork.add_block({dereg_b});   /// continue alt chain with deregister B
-  fork.add_block();            /// one more block on alt chain to switch
+  gen.create_and_add_next_block({dereg_a});    /// continue main chain with deregister A
+  fork.create_and_add_next_block({dereg_b});   /// continue alt chain with deregister B
+  fork.create_and_add_next_block();            /// one more block on alt chain to switch
 
   loki_register_callback(events, "test_on_split", [&events, expected_tx_hash](cryptonote::core &c, size_t ev_index)
   {
@@ -802,7 +802,7 @@ bool loki_core_test_deregister_on_split::generate(std::vector<test_event_entry> 
 
 bool loki_core_test_state_change_ip_penalty_disallow_dupes::generate(std::vector<test_event_entry> &events)
 {
-  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = generate_sequential_hard_fork_table();
+  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = loki_generate_sequential_hard_fork_table();
   loki_chain_generator gen(events, hard_forks);
 
   gen.add_blocks_until_version(hard_forks.back().first);
@@ -816,8 +816,8 @@ bool loki_core_test_state_change_ip_penalty_disallow_dupes::generate(std::vector
     reg_txs.push_back(tx);
   }
 
-  gen.add_block(reg_txs);
-  gen.add_block(); // Can't change service node state on the same height it was registered in
+  gen.create_and_add_next_block(reg_txs);
+  gen.create_and_add_next_block(); // Can't change service node state on the same height it was registered in
 
   const auto pub_key                         = gen.top_quorum().obligations->workers[0];
   std::vector<uint64_t> const quorum_indexes = {1, 2, 3, 4, 5, 6, 7};
@@ -831,7 +831,7 @@ bool loki_core_test_state_change_ip_penalty_disallow_dupes::generate(std::vector
 
     // NOTE: Try same duplicate state change on a new height
     {
-      gen.add_block({state_change_1});
+      gen.create_and_add_next_block({state_change_1});
       gen.add_tx(state_change_2, false /*can_be_added_to_blockchain*/, "Can't add a state change with different permutation of votes than previously submitted, even if the blockchain height has changed");
     }
 
@@ -845,7 +845,7 @@ bool loki_core_test_state_change_ip_penalty_disallow_dupes::generate(std::vector
 // NOTE: Generate forked block, check that alternative quorums are generated and accessible
 bool loki_service_nodes_alt_quorums::generate(std::vector<test_event_entry>& events)
 {
-  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = generate_sequential_hard_fork_table();
+  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = loki_generate_sequential_hard_fork_table();
   loki_chain_generator gen(events, hard_forks);
 
   gen.add_blocks_until_version(hard_forks.back().first);
@@ -856,11 +856,11 @@ bool loki_service_nodes_alt_quorums::generate(std::vector<test_event_entry>& eve
   std::vector<cryptonote::transaction> registration_txs(NUM_SERVICE_NODES);
   for (auto i = 0u; i < NUM_SERVICE_NODES; ++i)
     registration_txs[i] = gen.create_and_add_registration_tx(gen.first_miner());
-  gen.add_block(registration_txs);
+  gen.create_and_add_next_block(registration_txs);
 
   loki_chain_generator fork = gen;
-  gen.add_block();
-  fork.add_block();
+  gen.create_and_add_next_block();
+  fork.create_and_add_next_block();
   uint64_t height_with_fork = gen.height();
 
   service_nodes::quorum_manager fork_quorums = fork.top_quorum();
@@ -899,7 +899,7 @@ bool loki_service_nodes_alt_quorums::generate(std::vector<test_event_entry>& eve
 
 bool loki_service_nodes_checkpoint_quorum_size::generate(std::vector<test_event_entry>& events)
 {
-  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = generate_sequential_hard_fork_table();
+  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = loki_generate_sequential_hard_fork_table();
   loki_chain_generator gen(events, hard_forks);
 
   gen.add_blocks_until_version(hard_forks.back().first);
@@ -909,7 +909,7 @@ bool loki_service_nodes_checkpoint_quorum_size::generate(std::vector<test_event_
   std::vector<cryptonote::transaction> registration_txs(service_nodes::CHECKPOINT_QUORUM_SIZE - 1);
   for (auto i = 0u; i < service_nodes::CHECKPOINT_QUORUM_SIZE - 1; ++i)
     registration_txs[i] = gen.create_and_add_registration_tx(gen.first_miner());
-  gen.add_block(registration_txs);
+  gen.create_and_add_next_block(registration_txs);
 
   int const MAX_TRIES = 16;
   int tries           = 0;
@@ -927,7 +927,7 @@ bool loki_service_nodes_checkpoint_quorum_size::generate(std::vector<test_event_
   });
 
   cryptonote::transaction new_registration_tx = gen.create_and_add_registration_tx(gen.first_miner());
-  gen.add_block({new_registration_tx});
+  gen.create_and_add_next_block({new_registration_tx});
 
   for (tries = 0; tries < MAX_TRIES; tries++)
   {
@@ -952,7 +952,7 @@ bool loki_service_nodes_checkpoint_quorum_size::generate(std::vector<test_event_
 
 bool loki_service_nodes_gen_nodes::generate(std::vector<test_event_entry> &events)
 {
-  const std::vector<std::pair<uint8_t, uint64_t>> hard_forks = generate_sequential_hard_fork_table(cryptonote::network_version_9_service_nodes);
+  const std::vector<std::pair<uint8_t, uint64_t>> hard_forks = loki_generate_sequential_hard_fork_table(cryptonote::network_version_9_service_nodes);
   loki_chain_generator gen(events, hard_forks);
   const auto miner                      = gen.first_miner();
   const auto alice                      = gen.add_account();
@@ -963,11 +963,11 @@ bool loki_service_nodes_gen_nodes::generate(std::vector<test_event_entry> &event
   gen.add_mined_money_unlock_blocks();
 
   const auto tx0 = gen.create_and_add_tx(miner, alice, MK_COINS(101));
-  gen.add_block({tx0});
+  gen.create_and_add_next_block({tx0});
   gen.add_mined_money_unlock_blocks();
 
   const auto reg_tx = gen.create_and_add_registration_tx(alice);
-  gen.add_block({reg_tx});
+  gen.create_and_add_next_block({reg_tx});
 
   loki_register_callback(events, "check_registered", [&events, alice](cryptonote::core &c, size_t ev_index)
   {
@@ -995,7 +995,7 @@ bool loki_service_nodes_gen_nodes::generate(std::vector<test_event_entry> &event
   });
 
   for (auto i = 0u; i < service_nodes::staking_num_lock_blocks(cryptonote::FAKECHAIN); ++i)
-    gen.add_block();
+    gen.create_and_add_next_block();
 
   loki_register_callback(events, "check_expired", [&events, alice](cryptonote::core &c, size_t ev_index)
   {
@@ -1032,7 +1032,7 @@ static bool contains(const std::vector<sn_info_t>& infos, const crypto::public_k
 
 bool loki_service_nodes_test_rollback::generate(std::vector<test_event_entry>& events)
 {
-  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = generate_sequential_hard_fork_table(cryptonote::network_version_9_service_nodes);
+  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = loki_generate_sequential_hard_fork_table(cryptonote::network_version_9_service_nodes);
   loki_chain_generator gen(events, hard_forks);
   gen.add_blocks_until_version(hard_forks.back().first);
 
@@ -1045,7 +1045,7 @@ bool loki_service_nodes_test_rollback::generate(std::vector<test_event_entry>& e
     const auto tx = gen.create_and_add_registration_tx(gen.first_miner());
     reg_txs.push_back(tx);
   }
-  gen.add_block(reg_txs);
+  gen.create_and_add_next_block(reg_txs);
 
   gen.add_n_blocks(5);   /// create a few blocks with active service nodes
   auto fork = gen;       /// chain split here
@@ -1054,12 +1054,12 @@ bool loki_service_nodes_test_rollback::generate(std::vector<test_event_entry>& e
   const auto pk           = gen.top_quorum().obligations->workers[0];
   const auto dereg_tx     = gen.create_and_add_state_change_tx(service_nodes::new_state::deregister, pk);
   size_t deregister_index = gen.event_index();
-  gen.add_block({dereg_tx});
+  gen.create_and_add_next_block({dereg_tx});
 
   /// create a new service node (B) in the next block
   {
     const auto tx = gen.create_and_add_registration_tx(gen.first_miner());
-    gen.add_block({tx});
+    gen.create_and_add_next_block({tx});
   }
 
   fork.add_n_blocks(3); /// create blocks on the alt chain and trigger chain switch
@@ -1135,7 +1135,7 @@ bool loki_service_nodes_test_swarms_basic::generate(std::vector<test_event_entry
     reg_txs.push_back(tx);
   }
 
-  gen.add_block(reg_txs);
+  gen.create_and_add_next_block(reg_txs);
 
   /// create a few blocks with active service nodes
   gen.add_n_blocks(5);
@@ -1161,7 +1161,7 @@ bool loki_service_nodes_test_swarms_basic::generate(std::vector<test_event_entry
   /// rewind some blocks and register 1 more service node
   {
     const auto tx = gen.create_and_add_registration_tx(gen.first_miner());
-    gen.add_block({tx});
+    gen.create_and_add_next_block({tx});
   }
 
   loki_register_callback(events, "test_with_one_more_sn", [&events](cryptonote::core &c, size_t ev_index) /// test that another swarm has been created
@@ -1181,7 +1181,7 @@ bool loki_service_nodes_test_swarms_basic::generate(std::vector<test_event_entry
   for (auto i = INIT_SN_COUNT + 1; i < TOTAL_SN_COUNT; ++i)
   {
     const auto tx = gen.create_and_add_registration_tx(gen.first_miner());
-    gen.add_block({tx});
+    gen.create_and_add_next_block({tx});
   }
 
   loki_register_callback(events, "test_with_more_sn", [&events](cryptonote::core &c, size_t ev_index) /// test that another swarm has been created
@@ -1208,7 +1208,7 @@ bool loki_service_nodes_test_swarms_basic::generate(std::vector<test_event_entry
     dereg_txs.push_back(tx);
   }
 
-  gen.add_block(dereg_txs);
+  gen.create_and_add_next_block(dereg_txs);
   loki_register_callback(events, "test_after_first_deregisters", [&events](cryptonote::core &c, size_t ev_index)
   {
     DEFINE_TESTS_ERROR_CONTEXT("test_after_first_deregisters");
@@ -1230,7 +1230,7 @@ bool loki_service_nodes_test_swarms_basic::generate(std::vector<test_event_entry
     const auto tx = gen.create_and_add_state_change_tx(service_nodes::new_state::deregister, pk);
     dereg_txs.push_back(tx);
   }
-  gen.add_block(dereg_txs);
+  gen.create_and_add_next_block(dereg_txs);
 
   loki_register_callback(events, "test_after_final_deregisters", [&events](cryptonote::core &c, size_t ev_index)
   {

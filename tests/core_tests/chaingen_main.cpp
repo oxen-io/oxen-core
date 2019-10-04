@@ -158,6 +158,8 @@ int main(int argc, char* argv[])
     GENERATE_AND_PLAY(gen_block_has_invalid_tx);
     GENERATE_AND_PLAY(gen_block_is_too_big);
 
+    GENERATE_AND_PLAY(gen_uint_overflow_1);
+
     // TODO(loki): We also want to run these tx tests on deregistration tx's
     // as well because they special case and run under very different code
     // paths from the regular tx path
@@ -228,10 +230,8 @@ int main(int argc, char* argv[])
       GENERATE_AND_PLAY(gen_double_spend_in_alt_chain_in_different_blocks<false>);
       GENERATE_AND_PLAY(gen_double_spend_in_alt_chain_in_different_blocks<true>);
 
-      GENERATE_AND_PLAY(gen_uint_overflow_1);
-      GENERATE_AND_PLAY(gen_uint_overflow_2);
-
       GENERATE_AND_PLAY(gen_block_reward);
+      GENERATE_AND_PLAY(gen_uint_overflow_2);
 
       GENERATE_AND_PLAY(gen_v2_tx_mixable_0_mixin);
       GENERATE_AND_PLAY(gen_v2_tx_mixable_low_mixin);

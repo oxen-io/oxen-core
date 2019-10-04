@@ -44,10 +44,7 @@ private:
   size_t m_last_valid_block_event_idx;
 };
 
-struct gen_uint_overflow_1 : public gen_uint_overflow_base
-{
-  bool generate(std::vector<test_event_entry>& events) const;
-};
+struct gen_uint_overflow_1 : public gen_uint_overflow_base { bool generate(std::vector<test_event_entry>& events) const; };
 
 struct gen_uint_overflow_2 : public gen_uint_overflow_base
 {

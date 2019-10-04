@@ -83,14 +83,14 @@ bool gen_ring_signature_1::generate(std::vector<test_event_entry>& events) const
   txs.push_back( gen.create_and_add_tx(miner, some_account_1, MK_COINS(20) + rnd_20) );
   txs.push_back( gen.create_and_add_tx(miner, some_account_2, MK_COINS(20) + rnd_20) );
 
-  gen.add_block(txs);
+  gen.create_and_add_next_block(txs);
 
   gen.add_mined_money_unlock_blocks();
 
   DO_CALLBACK(events, "check_balances_1");
 
   auto tx = gen.create_and_add_tx(bob, alice, MK_COINS(129) + 2 * rnd_11 + rnd_20 + 3 * rnd_29 - TESTS_DEFAULT_FEE);
-  gen.add_block({tx});
+  gen.create_and_add_next_block({tx});
 
   DO_CALLBACK(events, "check_balances_2");
 
