@@ -135,20 +135,23 @@ namespace {
   void print_block_header(cryptonote::block_header_response const & header)
   {
     tools::success_msg_writer()
-      << "timestamp: " << boost::lexical_cast<std::string>(header.timestamp) << " (" << tools::get_human_readable_timestamp(header.timestamp) << ")" << std::endl
-      << "previous hash: " << header.prev_hash << std::endl
-      << "nonce: " << boost::lexical_cast<std::string>(header.nonce) << std::endl
-      << "is orphan: " << header.orphan_status << std::endl
-      << "height: " << boost::lexical_cast<std::string>(header.height) << std::endl
-      << "depth: " << boost::lexical_cast<std::string>(header.depth) << std::endl
-      << "hash: " << header.hash << std::endl
-      << "difficulty: " << boost::lexical_cast<std::string>(header.difficulty) << std::endl
-      << "POW hash: " << header.pow_hash << std::endl
-      << "block size: " << header.block_size << std::endl
-      << "block weight: " << header.block_weight << std::endl
-      << "long term weight: " << header.long_term_weight << std::endl
-      << "num txes: " << header.num_txes << std::endl
-      << "reward: " << cryptonote::print_money(header.reward);
+      << "timestamp: " << boost::lexical_cast<std::string>(header.timestamp) << " (" << tools::get_human_readable_timestamp(header.timestamp) << ")" << "\n"
+      << "previous hash: " << header.prev_hash << "\n"
+      << "nonce: " << boost::lexical_cast<std::string>(header.nonce) << "\n"
+      << "is orphan: " << header.orphan_status << "\n"
+      << "height: " << boost::lexical_cast<std::string>(header.height) << "\n"
+      << "depth: " << boost::lexical_cast<std::string>(header.depth) << "\n"
+      << "hash: " << header.hash << "\n"
+      << "difficulty: " << boost::lexical_cast<std::string>(header.difficulty) << "\n"
+      << "cumulative_difficulty: " << boost::lexical_cast<std::string>(header.cumulative_difficulty) << "\n"
+      << "POW hash: " << header.pow_hash << "\n"
+      << "block size: " << header.block_size << "\n"
+      << "block weight: " << header.block_weight << "\n"
+      << "long term weight: " << header.long_term_weight << "\n"
+      << "num txes: " << header.num_txes << "\n"
+      << "reward: " << cryptonote::print_money(header.reward) << "\n"
+      << "miner reward: " << cryptonote::print_money(header.miner_reward) << "\n"
+      << "service node winner: " << header.service_node_winner << std::endl;
   }
 
   std::string get_human_time_ago(time_t t, time_t now)
