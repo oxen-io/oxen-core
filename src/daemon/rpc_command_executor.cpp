@@ -3113,7 +3113,7 @@ bool t_rpc_command_executor::prepare_registration()
       case register_step::is_open_stake__get_operator_fee:
       {
         std::string operator_fee_str;
-        last_input_result = input_line_back_cancel_get_input("What percentage of the total staking reward would the operator like to reserve as an operator fee [0-100]%", operator_fee_str);
+        last_input_result = input_line_back_cancel_get_input("Enter operator fee as a percentage of the total staking reward [0-100]%", operator_fee_str);
 
         if (last_input_result == input_line_result::back)
           continue;
