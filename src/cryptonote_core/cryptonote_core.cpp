@@ -1777,8 +1777,9 @@ namespace cryptonote
     const auto elapsed = std::time(nullptr) - last_time_storage_server_pinged;
     if (elapsed > STORAGE_SERVER_PING_LIFETIME)
     {
-      MWARNING("Have not heard from the storage server since at least: "
-               << tools::get_human_readable_timespan(std::chrono::seconds(last_time_storage_server_pinged)));
+      MWARNING("Have not heard from the storage server " <<
+              (!last_time_storage_server_pinged ? "since starting" :
+               "for more than " + tools::get_human_readable_timespan(std::chrono::seconds(elapsed))));
       return false;
     }
     return true;
