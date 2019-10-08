@@ -797,6 +797,7 @@ namespace cryptonote
       uint64_t block_size_median;           // Median block size of latest 100 blocks.
       uint64_t block_weight_median;         // Median block weight of latest 100 blocks.
       uint64_t start_time;                  // Start time of the daemon, as UNIX time.
+      uint64_t last_storage_server_ping;    // Last ping time of the storage server (0 if never or not running as a service node)
       uint64_t free_space;                  // Available disk space on the node.
       bool offline;                         // States if the node is offline (`true`) or online (`false`).
       bool untrusted;                       // States if the result is obtained using the bootstrap mode, and is therefore not trusted (`true`), or when the daemon is fully synced (`false`).
@@ -833,6 +834,7 @@ namespace cryptonote
         KV_SERIALIZE(block_size_median)
         KV_SERIALIZE_OPT(block_weight_median, (uint64_t)0)
         KV_SERIALIZE(start_time)
+        KV_SERIALIZE(last_storage_server_ping)
         KV_SERIALIZE(free_space)
         KV_SERIALIZE(offline)
         KV_SERIALIZE(untrusted)

@@ -248,7 +248,7 @@ namespace cryptonote
               m_update_download(0),
               m_nettype(UNDEFINED),
               m_update_available(false),
-              m_last_storage_server_ping(time(nullptr)), // Reset the storage server last ping to make sure the very first uptime proof works
+              m_last_storage_server_ping(0),
               m_pad_transactions(false)
   {
     m_checkpoints_updating.clear();
