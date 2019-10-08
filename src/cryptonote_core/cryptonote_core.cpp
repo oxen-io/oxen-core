@@ -1796,24 +1796,12 @@ namespace cryptonote
       m_check_uptime_proof_interval.do_call([&info, this]() {
         if (info.proof->timestamp <= static_cast<uint64_t>(time(nullptr) - UPTIME_PROOF_FREQUENCY_IN_SECONDS))
         {
-          uint8_t hf_version = get_blockchain_storage().get_current_hard_fork_version();
-
           if (!check_storage_server_ping(m_last_storage_server_ping))
           {
-            if (hf_version >= cryptonote::network_version_12_checkpointing)
-            {
-              MGINFO_RED(
-                  "Failed to submit uptime proof: have not heard from the storage server recently. Make sure that it "
-                  "is running! It is required to run alongside the Loki daemon after hard-fork 12");
-              return true;
-            }
-            else
-            {
-              MGINFO_RED(
-                  "We have not heard from the storage server recently. Make sure that it is running! After hard fork "
-                  "12, this Service Node will stop submitting uptime proofs if it does not hear from the Loki Storage "
-                  "Server.");
-            }
+            MGINFO_RED(
+                "Failed to submit uptime proof: have not heard from the storage server recently. Make sure that it "
+                "is running! It is required to run alongside the Loki daemon");
+            return true;
           }
 
           this->submit_uptime_proof();
