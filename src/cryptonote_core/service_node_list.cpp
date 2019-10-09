@@ -1950,11 +1950,16 @@ namespace service_nodes
   }
 #endif
 
-  static constexpr std::pair<uint8_t, uint16_t> hf_min_loki_versions[] = {
-    {cryptonote::network_version_13_enforce_checkpoints,  5},
-    {cryptonote::network_version_12_checkpointing,        4},
-    {cryptonote::network_version_11_infinite_staking,     3},
-    {cryptonote::network_version_10_bulletproofs,         2},
+  struct proof_version
+  {
+    uint8_t hardfork;
+    uint8_t major;
+    uint8_t minor;
+  };
+
+  static constexpr proof_version hf_min_loki_versions[] = {
+    {cryptonote::network_version_13_enforce_checkpoints,  5 /*major*/, 1 /*minor*/},
+    {cryptonote::network_version_12_checkpointing,        4 /*major*/, 0 /*minor*/},
   };
 
   void service_node_info::derive_x25519_pubkey_from_ed25519() {
@@ -1976,9 +1981,17 @@ namespace service_nodes
     if ((proof.timestamp < now - UPTIME_PROOF_BUFFER_IN_SECONDS) || (proof.timestamp > now + UPTIME_PROOF_BUFFER_IN_SECONDS))
       REJECT_PROOF("timestamp is too far from now");
 
-    for (auto &hf_major : hf_min_loki_versions)
-      if (hf_version >= hf_major.first && proof.snode_version_major < hf_major.second)
-        REJECT_PROOF("v" << hf_major.second << "+ loki version is required for v" << hf_version << "+ network proofs");
+    for (auto &min : hf_min_loki_versions)
+    {
+      if (hf_version >= min.hardfork)
+      {
+        if (proof.snode_version_major < min.major ||
+            (proof.snode_version_major == min.major && proof.snode_version_minor < min.minor))
+        {
+          REJECT_PROOF("v" << min.major << "." << min.minor << "+ loki version is required for v" << hf_version << "+ network proofs");
+        }
+      }
+    }
 
     if (!debug_allow_local_ips && !epee::net_utils::is_ip_public(proof.public_ip))
       REJECT_PROOF("public_ip is not actually public");
