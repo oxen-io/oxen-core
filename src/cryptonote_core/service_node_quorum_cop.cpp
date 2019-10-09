@@ -341,9 +341,9 @@ namespace service_nodes
                   int64_t credit = calculate_decommission_credit(info, latest_height);
                    if (m_core.get_nettype() == cryptonote::MAINNET && credit < 0)
                    {
-                     static uint64_t hf13_height = m_core.get_earliest_ideal_height_for_version(cryptonote::network_version_13_enforce_checkpoints);
-                     uint64_t end_grace_height = hf13_height + BLOCKS_EXPECTED_IN_DAYS(14);
-                     if (latest_height > hf13_height && latest_height < end_grace_height)
+                     uint64_t start_grace = m_core.get_earliest_ideal_height_for_version(cryptonote::network_version_count - 1);
+                     uint64_t end_grace   = start_grace + BLOCKS_EXPECTED_IN_DAYS(14);
+                     if (latest_height > start_grace && latest_height < end_grace)
                          credit = DECOMMISSION_MAX_CREDIT;
                    }
 
