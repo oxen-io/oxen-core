@@ -56,6 +56,7 @@ struct loki_core_test_state_change_ip_penalty_disallow_dupes                    
 struct loki_service_nodes_alt_quorums                                                : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
 struct loki_service_nodes_checkpoint_quorum_size                                     : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
 struct loki_service_nodes_gen_nodes                                                  : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
+struct loki_service_nodes_insufficient_contribution                                  : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
 struct loki_service_nodes_test_rollback                                              : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
 struct loki_service_nodes_test_swarms_basic                                          : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
 

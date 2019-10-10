@@ -249,6 +249,13 @@ cryptonote::transaction loki_chain_generator::create_and_add_registration_tx(con
   return result;
 }
 
+cryptonote::transaction loki_chain_generator::create_and_add_staking_tx(const crypto::public_key &pub_key, const cryptonote::account_base &src, uint64_t amount, bool kept_by_block)
+{
+  cryptonote::transaction result = create_staking_tx(pub_key, src, amount);
+  add_tx(result, true /*can_be_added_to_blockchain*/, "" /*fail_msg*/, kept_by_block);
+  return result;
+}
+
 loki_blockchain_entry &loki_chain_generator::create_and_add_next_block(const std::vector<cryptonote::transaction>& txs, cryptonote::checkpoint_t const *checkpoint, bool can_be_added_to_blockchain, std::string const &fail_msg)
 {
   loki_blockchain_entry entry   = create_next_block(txs, checkpoint);
@@ -269,29 +276,46 @@ cryptonote::transaction loki_chain_generator::create_tx(const cryptonote::accoun
   return t;
 }
 
-cryptonote::transaction loki_chain_generator::create_registration_tx(const cryptonote::account_base &src, const cryptonote::keypair &service_node_keys) const
+cryptonote::transaction
+loki_chain_generator::create_registration_tx(const cryptonote::account_base &src,
+                                             const cryptonote::keypair &service_node_keys,
+                                             uint64_t src_portions,
+                                             uint64_t src_operator_cut,
+                                             std::array<loki_service_node_contribution, 3> const &contributions,
+                                             int num_contributors) const
 {
-  uint64_t new_height                                          = get_block_height(top().block) + 1;
-  uint8_t new_hf_version                                       = get_hf_version_at(new_height);
-  uint64_t operator_cut                                        = 0;
-  std::vector<cryptonote::account_public_address> contributors = {src.get_keys().m_account_address};
-  std::vector<uint64_t> portions                               = {STAKING_PORTIONS};
-  cryptonote::block const &head                                = top().block;
-  cryptonote::transaction result                               = {};
+  cryptonote::transaction result = {};
   {
-    const auto staking_requirement = service_nodes::get_staking_requirement(cryptonote::FAKECHAIN, new_height, get_hf_version_at(new_height));
+    std::vector<cryptonote::account_public_address> contributors;
+    std::vector<uint64_t> portions;
+
+    contributors.reserve(1 + num_contributors);
+    portions.reserve    (1 + num_contributors);
+
+    contributors.push_back(src.get_keys().m_account_address);
+    portions.push_back(src_portions);
+    for (int i = 0; i < num_contributors; i++)
+    {
+      loki_service_node_contribution const &entry = contributions[i];
+      contributors.push_back(entry.contributor);
+      portions.push_back    (entry.portions);
+    }
+
+    uint64_t new_height    = get_block_height(top().block) + 1;
+    uint8_t new_hf_version = get_hf_version_at(new_height);
+    const auto staking_requirement = service_nodes::get_staking_requirement(cryptonote::FAKECHAIN, new_height, new_hf_version);
     uint64_t amount                = service_nodes::portions_to_amount(portions[0], staking_requirement);
 
     uint64_t unlock_time = 0;
     if (new_hf_version < cryptonote::network_version_11_infinite_staking)
       unlock_time = new_height + service_nodes::staking_num_lock_blocks(cryptonote::FAKECHAIN);
-    
+
     std::vector<uint8_t> extra;
     cryptonote::add_service_node_pubkey_to_tx_extra(extra, service_node_keys.pub);
     const uint64_t exp_timestamp = time(nullptr) + STAKING_AUTHORIZATION_EXPIRATION_WINDOW;
 
     crypto::hash hash;
-    if (!cryptonote::get_registration_hash(contributors, operator_cut, portions, exp_timestamp, hash))
+    if (!cryptonote::get_registration_hash(contributors, src_operator_cut, portions, exp_timestamp, hash))
     {
       MERROR("Could not make registration hash from addresses and portions");
       return {};
@@ -299,12 +323,40 @@ cryptonote::transaction loki_chain_generator::create_registration_tx(const crypt
 
     crypto::signature signature;
     crypto::generate_signature(hash, service_node_keys.pub, service_node_keys.sec, signature);
-    add_service_node_register_to_tx_extra(extra, contributors, operator_cut, portions, exp_timestamp, signature);
+    add_service_node_register_to_tx_extra(extra, contributors, src_operator_cut, portions, exp_timestamp, signature);
     add_service_node_contributor_to_tx_extra(extra, contributors.at(0));
-    loki_tx_builder(events_, result, head, src /*from*/, src /*to*/, amount, new_hf_version).is_staking(true).with_unlock_time(unlock_time).with_extra(extra).with_per_output_unlock(true).build();
+    loki_tx_builder(events_, result, top().block, src /*from*/, src /*to*/, amount, new_hf_version)
+        .is_staking(true)
+        .with_unlock_time(unlock_time)
+        .with_extra(extra)
+        .with_per_output_unlock(true)
+        .build();
   }
 
   service_node_keys_[service_node_keys.pub] = service_node_keys.sec; // NOTE: Save generated key for reuse later if we need to interact with the node again
+  return result;
+}
+
+cryptonote::transaction loki_chain_generator::create_staking_tx(const crypto::public_key &pub_key, const cryptonote::account_base &src, uint64_t amount) const
+{
+  cryptonote::transaction result = {};
+  std::vector<uint8_t> extra;
+  cryptonote::add_service_node_pubkey_to_tx_extra(extra, pub_key);
+  cryptonote::add_service_node_contributor_to_tx_extra(extra, src.get_keys().m_account_address);
+
+  uint64_t new_height    = get_block_height(top().block) + 1;
+  uint8_t new_hf_version = get_hf_version_at(new_height);
+
+  uint64_t unlock_time = 0;
+  if (new_hf_version < cryptonote::network_version_11_infinite_staking)
+    unlock_time = new_height + service_nodes::staking_num_lock_blocks(cryptonote::FAKECHAIN);
+
+  loki_tx_builder(events_, result, top().block, src /*from*/, src /*to*/, amount, new_hf_version)
+      .is_staking(true)
+      .with_unlock_time(unlock_time)
+      .with_extra(extra)
+      .with_per_output_unlock(true)
+      .build();
   return result;
 }
 

@@ -1411,3 +1411,36 @@ bool loki_service_nodes_test_swarms_basic::generate(std::vector<test_event_entry
   gen.add_n_blocks(5); /// test (implicitly) that deregistered nodes do not receive rewards
   return true;
 }
+
+bool loki_service_nodes_insufficient_contribution::generate(std::vector<test_event_entry> &events)
+{
+  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = loki_generate_sequential_hard_fork_table();
+  loki_chain_generator gen(events, hard_forks);
+
+  gen.add_blocks_until_version(hard_forks.back().first);
+  gen.add_mined_money_unlock_blocks();
+
+  uint64_t operator_portions                = STAKING_PORTIONS / 2;
+  uint64_t remaining_portions               = STAKING_PORTIONS - operator_portions;
+  cryptonote::keypair sn_keys               = cryptonote::keypair::generate(hw::get_device("default"));
+  cryptonote::transaction register_tx       = gen.create_registration_tx(gen.first_miner_, sn_keys, operator_portions);
+  gen.add_tx(register_tx);
+  gen.create_and_add_next_block({register_tx});
+
+  cryptonote::transaction stake = gen.create_and_add_staking_tx(sn_keys.pub, gen.first_miner_, MK_COINS(1));
+  gen.create_and_add_next_block({stake});
+
+  loki_register_callback(events, "test_insufficient_stake_does_not_get_accepted", [&events, sn_keys](cryptonote::core &c, size_t ev_index)
+  {
+    DEFINE_TESTS_ERROR_CONTEXT("test_insufficient_stake_does_not_get_accepted");
+    const auto sn_list = c.get_service_node_list_state({sn_keys.pub});
+    CHECK_TEST_CONDITION(sn_list.size() == 1);
+
+    service_nodes::service_node_pubkey_info const &pubkey_info = sn_list[0];
+    CHECK_EQ(pubkey_info.info->total_contributed, MK_COINS(50));
+    return true;
+  });
+
+  return true;
+}
+

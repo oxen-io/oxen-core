@@ -125,6 +125,7 @@ int main(int argc, char* argv[])
     GENERATE_AND_PLAY(loki_service_nodes_alt_quorums);
     GENERATE_AND_PLAY(loki_service_nodes_checkpoint_quorum_size);
     GENERATE_AND_PLAY(loki_service_nodes_gen_nodes);
+    GENERATE_AND_PLAY(loki_service_nodes_insufficient_contribution);
     GENERATE_AND_PLAY(loki_service_nodes_test_rollback);
     GENERATE_AND_PLAY(loki_service_nodes_test_swarms_basic);
 
