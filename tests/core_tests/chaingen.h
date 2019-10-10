@@ -1352,6 +1352,12 @@ struct loki_chain_generator_db : public cryptonote::BaseTestDB
   bool              get_tx(const crypto::hash& h, cryptonote::transaction &tx) const override;
 };
 
+struct loki_service_node_contribution
+{
+    cryptonote::account_public_address contributor;
+    uint64_t                           portions;
+};
+
 struct loki_chain_generator
 {
   mutable std::unordered_map<crypto::public_key, crypto::secret_key>  service_node_keys_;
@@ -1396,11 +1402,18 @@ struct loki_chain_generator
   cryptonote::transaction                              create_and_add_tx             (const cryptonote::account_base& src, const cryptonote::account_base& dest, uint64_t amount, uint64_t fee = TESTS_DEFAULT_FEE, bool kept_by_block = false);
   cryptonote::transaction                              create_and_add_state_change_tx(service_nodes::new_state state, const crypto::public_key& pub_key, uint64_t height = -1, const std::vector<uint64_t>& voters = {}, uint64_t fee = 0, bool kept_by_block = false);
   cryptonote::transaction                              create_and_add_registration_tx(const cryptonote::account_base& src, const cryptonote::keypair& sn_keys = cryptonote::keypair::generate(hw::get_device("default")), bool kept_by_block = false);
-  loki_blockchain_entry                               &create_and_add_next_block(const std::vector<cryptonote::transaction>& txs = {}, cryptonote::checkpoint_t const *checkpoint = nullptr, bool can_be_added_to_blockchain = true, std::string const &fail_msg = {});
+  cryptonote::transaction                              create_and_add_staking_tx     (const crypto::public_key &pub_key, const cryptonote::account_base &src, uint64_t amount, bool kept_by_block = false);
+  loki_blockchain_entry                               &create_and_add_next_block     (const std::vector<cryptonote::transaction>& txs = {}, cryptonote::checkpoint_t const *checkpoint = nullptr, bool can_be_added_to_blockchain = true, std::string const &fail_msg = {});
 
   // NOTE: Create transactions but don't add to events_
   cryptonote::transaction                              create_tx             (const cryptonote::account_base &src, const cryptonote::account_base &dest, uint64_t amount, uint64_t fee, bool kept_by_block, bool can_be_added_to_blockchain = true, std::string const &fail_msg = {}) const;
-  cryptonote::transaction                              create_registration_tx(const cryptonote::account_base& src, const cryptonote::keypair& sn_keys = cryptonote::keypair::generate(hw::get_device("default"))) const;
+  cryptonote::transaction                              create_registration_tx(const cryptonote::account_base &src,
+                                                                              const cryptonote::keypair &service_node_keys = cryptonote::keypair::generate(hw::get_device("default")),
+                                                                              uint64_t src_portions = STAKING_PORTIONS,
+                                                                              uint64_t src_operator_cut = 0,
+                                                                              std::array<loki_service_node_contribution, 3> const &contributors = {},
+                                                                              int num_contributors = 0) const;
+  cryptonote::transaction                              create_staking_tx     (const crypto::public_key& pub_key, const cryptonote::account_base &src, uint64_t amount) const;
   cryptonote::transaction                              create_state_change_tx(service_nodes::new_state state, const crypto::public_key& pub_key, uint64_t height = -1, const std::vector<uint64_t>& voters = {}, uint64_t fee = 0) const;
   cryptonote::checkpoint_t                             create_service_node_checkpoint(uint64_t block_height, size_t num_votes) const;
 
