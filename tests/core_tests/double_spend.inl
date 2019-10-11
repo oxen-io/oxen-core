@@ -119,44 +119,6 @@ bool gen_double_spend_base<concrete_test>::check_double_spend(cryptonote::core& 
 //======================================================================================================================
 
 template<bool txs_keeped_by_block>
-bool gen_double_spend_in_tx<txs_keeped_by_block>::generate(std::vector<test_event_entry>& events) const
-{
-  INIT_DOUBLE_SPEND_TEST();
-  DO_CALLBACK(events, "mark_last_valid_block");
-
-  std::vector<cryptonote::tx_source_entry> sources;
-  cryptonote::tx_source_entry se;
-  se.amount = tx_0.vout[0].amount;
-  se.push_output(0, boost::get<cryptonote::txout_to_key>(tx_0.vout[0].target).key, se.amount);
-  se.real_output = 0;
-  se.rct = false;
-  se.real_out_tx_key = get_tx_pub_key_from_extra(tx_0);
-  se.real_output_in_tx_index = 0;
-  sources.push_back(se);
-  // Double spend!
-  sources.push_back(se);
-
-  cryptonote::tx_destination_entry de;
-  de.addr = alice_account.get_keys().m_account_address;
-  de.amount = 2 * se.amount - TESTS_DEFAULT_FEE;
-  std::vector<cryptonote::tx_destination_entry> destinations;
-  destinations.push_back(de);
-
-  cryptonote::transaction tx_1;
-  if (!construct_tx(bob_account.get_keys(), sources, destinations, boost::none, std::vector<uint8_t>(), tx_1, 0))
-    return false;
-
-  SET_EVENT_VISITOR_SETT(events, event_visitor_settings::set_txs_keeped_by_block, txs_keeped_by_block);
-  DO_CALLBACK(events, "mark_invalid_tx");
-  events.push_back(tx_1);
-  DO_CALLBACK(events, "mark_invalid_block");
-  MAKE_NEXT_BLOCK_TX1(events, blk_2, blk_1r, miner_account, tx_1);
-  DO_CALLBACK(events, "check_double_spend");
-
-  return true;
-}
-
-template<bool txs_keeped_by_block>
 bool gen_double_spend_in_the_same_block<txs_keeped_by_block>::generate(std::vector<test_event_entry>& events) const
 {
   INIT_DOUBLE_SPEND_TEST();

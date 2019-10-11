@@ -184,6 +184,8 @@ int main(int argc, char* argv[])
     GENERATE_AND_PLAY(gen_tx_output_is_not_txout_to_key);
     GENERATE_AND_PLAY(gen_tx_signatures_are_invalid);
 
+    GENERATE_AND_PLAY(gen_double_spend_in_tx);
+
     GENERATE_AND_PLAY(gen_multisig_tx_invalid_23_1__no_threshold);
     GENERATE_AND_PLAY(gen_multisig_tx_invalid_45_5_23_no_threshold);
     GENERATE_AND_PLAY(gen_multisig_tx_invalid_22_1__no_threshold);

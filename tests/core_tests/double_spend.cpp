@@ -95,3 +95,74 @@ bool gen_double_spend_in_different_chains::check_double_spend(cryptonote::core& 
 
   return true;
 }
+
+bool gen_double_spend_in_tx::generate(std::vector<test_event_entry>& events) const
+{
+  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = loki_generate_sequential_hard_fork_table();
+  loki_chain_generator gen(events, hard_forks);
+  gen.add_blocks_until_version(hard_forks.back().first);
+  gen.add_n_blocks(20);
+  gen.add_mined_money_unlock_blocks();
+
+  uint64_t amount              = MK_COINS(10);
+  cryptonote::account_base bob = gen.add_account();
+
+  std::vector<cryptonote::tx_source_entry> sources;
+  std::vector<cryptonote::tx_destination_entry> destinations;
+  fill_tx_sources_and_destinations(gen.events_,
+                                   gen.top().block,
+                                   gen.first_miner_,
+                                   bob.get_keys().m_account_address,
+                                   amount,
+                                   TESTS_DEFAULT_FEE,
+                                   9, // nmix
+                                   sources,
+                                   destinations);
+  sources.push_back(sources.back()); // Double spend!
+
+  {
+    cryptonote::transaction tx_1;
+    if (!construct_tx(gen.first_miner_.get_keys(), sources, destinations, boost::none, std::vector<uint8_t>(), tx_1, 0, gen.hf_version_))
+      return false;
+
+    uint64_t expected_height = gen.height();
+    loki_blockchain_entry entry = gen.create_next_block({tx_1}); // Double spending TX
+    gen.add_tx(tx_1, false /*can_be_added_to_blockchain*/, "Can't add TX with double spending output", false /*kept_by_block*/);
+    gen.add_block(entry, false /*can_be_added_to_blockchain*/, "Can't add block with double spending tx");
+
+    loki_register_callback(events, "check_block_and_txpool_unaffected", [&events, expected_height](cryptonote::core &c, size_t ev_index)
+    {
+      DEFINE_TESTS_ERROR_CONTEXT("check_block_and_txpool_unaffected");
+      uint64_t top_height;
+      crypto::hash top_hash;
+      c.get_blockchain_top(top_height, top_hash);
+      CHECK_TEST_CONDITION(top_height == expected_height);
+      CHECK_TEST_CONDITION_MSG(c.get_pool_transactions_count() == 0, "The double spend TX should not be added to the pool");
+      return true;
+    });
+  }
+
+  // NOTE: Do the same with a new transaction but this time kept by block, can't reused old transaction because we cache the bad TX hash
+  {
+    cryptonote::transaction tx_1;
+    if (!construct_tx(gen.first_miner_.get_keys(), sources, destinations, boost::none, std::vector<uint8_t>(), tx_1, 0, gen.hf_version_))
+      return false;
+
+    uint64_t expected_height    = gen.height();
+    loki_blockchain_entry entry = gen.create_next_block({tx_1}); // Double spending TX
+    gen.add_tx(tx_1, false /*can_be_added_to_blockchain*/, "Can't add TX with double spending output even if kept by block", true /*kept_by_block*/);
+    gen.add_block(entry, false /*can_be_added_to_blockchain*/, "Can't add block with double spending tx");
+
+    loki_register_callback(events, "check_block_and_txpool_unaffected_even_if_kept_by_block", [&events, expected_height](cryptonote::core &c, size_t ev_index)
+    {
+      DEFINE_TESTS_ERROR_CONTEXT("check_block_and_txpool_unaffected_even_if_kept_by_block");
+      uint64_t top_height;
+      crypto::hash top_hash;
+      c.get_blockchain_top(top_height, top_hash);
+      CHECK_TEST_CONDITION(top_height == expected_height);
+      CHECK_TEST_CONDITION_MSG(c.get_pool_transactions_count() == 0, "The double spend TX should not be added to the pool");
+      return true;
+    });
+  }
+  return true;
+}
