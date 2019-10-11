@@ -1432,7 +1432,7 @@ struct loki_chain_generator
   loki_blockchain_entry                               &create_and_add_next_block     (const std::vector<cryptonote::transaction>& txs = {}, cryptonote::checkpoint_t const *checkpoint = nullptr, bool can_be_added_to_blockchain = true, std::string const &fail_msg = {});
 
   // NOTE: Create transactions but don't add to events_
-  cryptonote::transaction                              create_tx             (const cryptonote::account_base &src, const cryptonote::account_base &dest, uint64_t amount, uint64_t fee, bool kept_by_block, bool can_be_added_to_blockchain = true, std::string const &fail_msg = {}) const;
+  cryptonote::transaction                              create_tx             (const cryptonote::account_base &src, const cryptonote::account_base &dest, uint64_t amount, uint64_t fee) const;
   cryptonote::transaction                              create_registration_tx(const cryptonote::account_base &src,
                                                                               const cryptonote::keypair &service_node_keys = cryptonote::keypair::generate(hw::get_device("default")),
                                                                               uint64_t src_portions = STAKING_PORTIONS,

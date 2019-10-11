@@ -166,3 +166,41 @@ bool gen_double_spend_in_tx::generate(std::vector<test_event_entry>& events) con
   }
   return true;
 }
+
+bool gen_double_spend_in_the_same_block::generate(std::vector<test_event_entry>& events) const
+{
+  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = loki_generate_sequential_hard_fork_table();
+  loki_chain_generator gen(events, hard_forks);
+  gen.add_blocks_until_version(hard_forks.back().first);
+  gen.add_n_blocks(10);
+  gen.add_mined_money_unlock_blocks();
+
+  for (int kept_by_block_int = 0; kept_by_block_int < 2; kept_by_block_int++)
+  {
+    bool kept_by_block                    = static_cast<bool>(kept_by_block_int);
+    uint64_t amount                       = MK_COINS(10);
+    cryptonote::account_base const &miner = gen.first_miner_;
+    cryptonote::account_base bob          = gen.add_account();
+    cryptonote::transaction tx_1 = gen.create_tx(miner, bob, amount, TESTS_DEFAULT_FEE);
+    cryptonote::transaction tx_2 = gen.create_and_add_tx(miner, bob, amount, TESTS_DEFAULT_FEE);
+
+    std::string const fail_msg =
+        (kept_by_block) ? "If kept_by_block is true, double spending transactions can be added (incase of reorgs)"
+                        : "Can not add a double spending transaction if kept_by_block is false";
+
+    gen.add_tx(tx_1, kept_by_block /*can_be_added_to_blockchain*/, fail_msg, kept_by_block/*kept_by_block*/);
+    gen.create_and_add_next_block({tx_1, tx_2}, nullptr /*checkpoint*/, false, "Can not add block using double spend txs, even if one of the double spends is kept by block.");
+    crypto::hash last_block_hash = cryptonote::get_block_hash(gen.top().block);
+
+    loki_register_callback(events, "check_balances", [&events, miner, bob, last_block_hash](cryptonote::core &c, size_t ev_index)
+    {
+      DEFINE_TESTS_ERROR_CONTEXT("check_balances");
+      std::vector<cryptonote::block> chain;
+      map_hash2tx_t mtx;
+      CHECK_TEST_CONDITION(find_block_chain(events, chain, mtx, last_block_hash));
+      CHECK_EQ(get_balance(bob, chain, mtx), 0);
+      return true;
+    });
+  }
+  return true;
+}
