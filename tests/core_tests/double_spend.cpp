@@ -37,65 +37,6 @@ using namespace cryptonote;
 
 //======================================================================================================================
 
-gen_double_spend_in_different_chains::gen_double_spend_in_different_chains()
-{
-  REGISTER_CALLBACK_METHOD(gen_double_spend_in_different_chains, check_double_spend);
-}
-
-bool gen_double_spend_in_different_chains::generate(std::vector<test_event_entry>& events) const
-{
-  INIT_DOUBLE_SPEND_TEST();
-
-  SET_EVENT_VISITOR_SETT(events, event_visitor_settings::set_txs_keeped_by_block, true);
-  MAKE_TX(events, tx_1, bob_account, alice_account, send_amount / 2 - TESTS_DEFAULT_FEE, blk_1);
-  events.pop_back();
-  MAKE_TX(events, tx_2, bob_account, alice_account, send_amount - TESTS_DEFAULT_FEE, blk_1);
-  events.pop_back();
-
-  // Main chain
-  events.push_back(tx_1);
-  MAKE_NEXT_BLOCK_TX1(events, blk_2, blk_1r, miner_account, tx_1);
-
-  // Alternative chain
-  events.push_back(tx_2);
-  MAKE_NEXT_BLOCK_TX1(events, blk_3, blk_1r, miner_account, tx_2);
-  // Switch to alternative chain
-  MAKE_NEXT_BLOCK(events, blk_4, blk_3, miner_account);
-  //CHECK_AND_NO_ASSERT_MES(expected_blockchain_height == get_block_height(blk_4) + 1, false, "expected_blockchain_height has invalid value");
-  if ((expected_blockchain_height != get_block_height(blk_4) + 1)) LOG_ERROR("oops");
-
-  DO_CALLBACK(events, "check_double_spend");
-
-  return true;
-}
-
-bool gen_double_spend_in_different_chains::check_double_spend(cryptonote::core& c, size_t /*ev_index*/, const std::vector<test_event_entry>& events)
-{
-  DEFINE_TESTS_ERROR_CONTEXT("gen_double_spend_in_different_chains::check_double_spend");
-
-  std::vector<block> blocks;
-  bool r = c.get_blocks(0, 100 + 2 * CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW, blocks);
-  CHECK_TEST_CONDITION(r);
-
-  //CHECK_EQ(expected_blockchain_height, blocks.size());
-  if (expected_blockchain_height != blocks.size()) LOG_ERROR ("oops");
-
-  CHECK_EQ(1, c.get_pool().get_transactions_count());
-  CHECK_EQ(1, c.get_alternative_blocks_count());
-
-  cryptonote::account_base bob_account = boost::get<cryptonote::account_base>(events[1]);
-  cryptonote::account_base alice_account = boost::get<cryptonote::account_base>(events[2]);
-
-  std::vector<cryptonote::block> chain;
-  map_hash2tx_t mtx;
-  r = find_block_chain(events, chain, mtx, get_block_hash(blocks.back()));
-  CHECK_TEST_CONDITION(r);
-  CHECK_EQ(0, get_balance(bob_account, blocks, mtx));
-  CHECK_EQ(send_amount - TESTS_DEFAULT_FEE, get_balance(alice_account, blocks, mtx));
-
-  return true;
-}
-
 bool gen_double_spend_in_tx::generate(std::vector<test_event_entry>& events) const
 {
   std::vector<std::pair<uint8_t, uint64_t>> hard_forks = loki_generate_sequential_hard_fork_table();
@@ -253,3 +194,41 @@ bool gen_double_spend_in_different_blocks::generate(std::vector<test_event_entry
   return true;
 }
 
+bool gen_double_spend_in_different_chains::generate(std::vector<test_event_entry>& events) const
+{
+  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = loki_generate_sequential_hard_fork_table();
+  loki_chain_generator gen(events, hard_forks);
+  gen.add_blocks_until_version(hard_forks.back().first);
+  gen.add_n_blocks(10);
+  gen.add_mined_money_unlock_blocks();
+
+  uint64_t amount = MK_COINS(10);
+  cryptonote::account_base const &miner = gen.first_miner_;
+  cryptonote::account_base bob          = gen.add_account();
+  cryptonote::transaction tx_1          = gen.create_tx(miner, bob, amount, TESTS_DEFAULT_FEE);
+  cryptonote::transaction tx_2          = gen.create_tx(miner, bob, amount, TESTS_DEFAULT_FEE);
+
+  auto fork = gen;
+  gen.add_tx(tx_1, true /*can_be_added_to_blockchain*/, "", true /*kept_by_block*/);
+  fork.add_tx(tx_2, true /*can_be_added_to_blockchain*/, "", true /*kept_by_block*/);
+  gen.create_and_add_next_block({tx_1});
+  fork.create_and_add_next_block({tx_2});
+  fork.add_event_msg("Add new block to fork to cause a reorg to the alt chain with a double spending transaction");
+  fork.create_and_add_next_block();
+  crypto::hash block_hash = cryptonote::get_block_hash(fork.top().block);
+
+  loki_register_callback(events, "check_top_block", [&events, block_hash](cryptonote::core &c, size_t ev_index)
+  {
+    DEFINE_TESTS_ERROR_CONTEXT("check_txpool");
+    uint64_t top_height;
+    crypto::hash top_hash;
+    c.get_blockchain_top(top_height, top_hash);
+    CHECK_EQ(top_hash, block_hash);
+
+    // TODO(loki): This is questionable behaviour, currently we keep alt chains even after switching over
+    CHECK_EQ(c.get_pool_transactions_count(), 1);
+    CHECK_EQ(c.get_alternative_blocks_count(), 1);
+    return true;
+  });
+  return true;
+}
