@@ -194,6 +194,91 @@ bool gen_double_spend_in_different_blocks::generate(std::vector<test_event_entry
   return true;
 }
 
+bool gen_double_spend_in_alt_chain_in_the_same_block::generate(std::vector<test_event_entry>& events) const
+{
+  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = loki_generate_sequential_hard_fork_table();
+  loki_chain_generator gen(events, hard_forks);
+  gen.add_blocks_until_version(hard_forks.back().first);
+  gen.add_n_blocks(10);
+  gen.add_mined_money_unlock_blocks();
+
+  auto fork = gen;
+  for (int kept_by_block_int = 0; kept_by_block_int < 2; kept_by_block_int++)
+  {
+    bool kept_by_block = static_cast<bool>(kept_by_block_int);
+    if (kept_by_block)
+      fork.add_event_msg("Double spending transaction kept by block should be allowed");
+    else
+      fork.add_event_msg("Double spending transaction kept by block false, disallowed");
+
+    uint64_t amount                       = MK_COINS(10);
+    cryptonote::account_base const &miner = fork.first_miner_;
+    cryptonote::account_base bob          = fork.add_account();
+    cryptonote::transaction tx_1 = fork.create_tx(miner, bob, amount, TESTS_DEFAULT_FEE);
+    cryptonote::transaction tx_2 = fork.create_and_add_tx(miner, bob, amount, TESTS_DEFAULT_FEE);
+
+    std::string const fail_msg =
+        (kept_by_block) ? "kept_by_block is true, double spending transactions can be added (incase of reorgs)"
+                        : "Can not add a double spending transaction, kept_by_block is false";
+
+    fork.add_tx(tx_1, kept_by_block /*can_be_added_to_blockchain*/, fail_msg, kept_by_block/*kept_by_block*/);
+    fork.create_and_add_next_block({tx_1, tx_2}, nullptr /*checkpoint*/, false, "Can not add block using double spend txs, even if one of the double spends is kept by block.");
+    crypto::hash last_block_hash = cryptonote::get_block_hash(fork.top().block);
+
+    loki_register_callback(events, "check_balances", [&events, miner, bob, last_block_hash](cryptonote::core &c, size_t ev_index)
+    {
+      DEFINE_TESTS_ERROR_CONTEXT("check_balances");
+      std::vector<cryptonote::block> chain;
+      map_hash2tx_t mtx;
+      CHECK_TEST_CONDITION(find_block_chain(events, chain, mtx, last_block_hash));
+      CHECK_EQ(get_balance(bob, chain, mtx), 0);
+      return true;
+    });
+  }
+  return true;
+}
+
+bool gen_double_spend_in_alt_chain_in_different_blocks::generate(std::vector<test_event_entry>& events) const
+{
+  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = loki_generate_sequential_hard_fork_table();
+  loki_chain_generator gen(events, hard_forks);
+  gen.add_blocks_until_version(hard_forks.back().first);
+  gen.add_n_blocks(10);
+  gen.add_mined_money_unlock_blocks();
+
+  auto fork                             = gen;
+  cryptonote::account_base const &miner = fork.first_miner_;
+  cryptonote::account_base bob          = fork.add_account();
+  for (int kept_by_block_int = 0; kept_by_block_int < 2; kept_by_block_int++)
+  {
+    bool kept_by_block = static_cast<bool>(kept_by_block_int);
+    if (kept_by_block) fork.add_event_msg("Double spending transaction kept by block should be allowed");
+    else               fork.add_event_msg("Double spending transaction kept by block false, disallowed");
+
+    uint64_t amount              = MK_COINS(10);
+    cryptonote::transaction tx_1 = fork.create_tx(miner, bob, amount, TESTS_DEFAULT_FEE);
+    cryptonote::transaction tx_2 = fork.create_tx(miner, bob, amount, TESTS_DEFAULT_FEE);
+
+    std::string const fail_msg =
+        (kept_by_block) ? "kept_by_block is true, double spending transactions can be added (incase of reorgs)"
+                        : "Can not add a double spending transaction, kept_by_block is false";
+
+    fork.add_tx(tx_1, true /*can_be_added_to_blockchain*/, fail_msg, kept_by_block);
+    fork.create_and_add_next_block({tx_1});
+
+    fork.add_tx(tx_2, kept_by_block /*can_be_added_to_blockchain*/, fail_msg, kept_by_block /*kept_by_block*/);
+    fork.create_and_add_next_block({tx_2}, nullptr, false /*can_be_added_to_blockchain*/, fail_msg);
+    loki_register_callback(events, "check_txpool", [&events, kept_by_block](cryptonote::core &c, size_t ev_index)
+    {
+      DEFINE_TESTS_ERROR_CONTEXT("check_txpool");
+      if (kept_by_block) CHECK_EQ(c.get_pool_transactions_count(), 1);
+      else               CHECK_EQ(c.get_pool_transactions_count(), 0);
+      return true;
+    });
+  }
+  return true;
+}
+
 bool gen_double_spend_in_different_chains::generate(std::vector<test_event_entry>& events) const
 {
   std::vector<std::pair<uint8_t, uint64_t>> hard_forks = loki_generate_sequential_hard_fork_table();

@@ -188,6 +188,8 @@ int main(int argc, char* argv[])
     GENERATE_AND_PLAY(gen_double_spend_in_the_same_block);
     GENERATE_AND_PLAY(gen_double_spend_in_different_blocks);
     GENERATE_AND_PLAY(gen_double_spend_in_different_chains);
+    GENERATE_AND_PLAY(gen_double_spend_in_alt_chain_in_the_same_block);
+    GENERATE_AND_PLAY(gen_double_spend_in_alt_chain_in_different_blocks);
 
     GENERATE_AND_PLAY(gen_multisig_tx_invalid_23_1__no_threshold);
     GENERATE_AND_PLAY(gen_multisig_tx_invalid_45_5_23_no_threshold);
@@ -226,10 +228,6 @@ int main(int argc, char* argv[])
       GENERATE_AND_PLAY(gen_tx_output_with_zero_amount); // TODO(loki): See comment in the function
 
       // Double spend
-      GENERATE_AND_PLAY(gen_double_spend_in_alt_chain_in_the_same_block<false>);
-      GENERATE_AND_PLAY(gen_double_spend_in_alt_chain_in_the_same_block<true>);
-      GENERATE_AND_PLAY(gen_double_spend_in_alt_chain_in_different_blocks<false>);
-      GENERATE_AND_PLAY(gen_double_spend_in_alt_chain_in_different_blocks<true>);
 
       GENERATE_AND_PLAY(gen_block_reward);
       GENERATE_AND_PLAY(gen_uint_overflow_2);

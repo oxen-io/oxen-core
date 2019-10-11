@@ -54,7 +54,6 @@ set(core_tests_headers
   chaingen.h
   chaingen_tests_list.h
   double_spend.h
-  double_spend.inl
   integer_overflow.h
   multisig.h
   ring_signature_1.h
