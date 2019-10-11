@@ -51,6 +51,15 @@ bool gen_bp_tx_validation_base::generate_with(std::vector<test_event_entry>& eve
   GENERATE_ACCOUNT(miner_account);
   MAKE_GENESIS_BLOCK(events, blk_0, miner_account, ts_start);
 
+  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = {
+      std::make_pair(7, 0),
+      std::make_pair(8, 1),
+      std::make_pair(cryptonote::network_version_count - 1, NUM_UNLOCKED_BLOCKS + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW + 1),
+  };
+  event_replay_settings settings = {};
+  settings.hard_forks            = hard_forks;
+  events.push_back(settings);
+
   // create 12 miner accounts, and have them mine the next 48 blocks
   int const NUM_MINERS = 12;
 
@@ -61,13 +70,25 @@ bool gen_bp_tx_validation_base::generate_with(std::vector<test_event_entry>& eve
   for (size_t i = 0; i < NUM_MINERS; ++i)
     miner_accounts[i].generate();
 
-  generator.m_hf_version = 8;
+  uint8_t const first_hf = hard_forks[1].first;
+  uint8_t const last_hf  = hard_forks.back().first;
+  generator.m_hf_version = first_hf;
   for (size_t n = 0; n < NUM_UNLOCKED_BLOCKS; ++n) {
-    CHECK_AND_ASSERT_MES(generator.construct_block_manually(blocks[n], *prev_block, miner_accounts[n % NUM_MINERS],
-        test_generator::bf_major_ver | test_generator::bf_minor_ver | test_generator::bf_timestamp | test_generator::bf_hf_version,
-        8, 8, prev_block->timestamp + DIFFICULTY_BLOCKS_ESTIMATE_TIMESPAN * 2, // v2 has blocks twice as long
-          crypto::hash(), 0, transaction(), std::vector<crypto::hash>(), 0),
-        false, "Failed to generate block");
+    CHECK_AND_ASSERT_MES(
+        generator.construct_block_manually(blocks[n],
+                                           *prev_block,
+                                           miner_accounts[n % NUM_MINERS],
+                                           test_generator::bf_major_ver | test_generator::bf_minor_ver | test_generator::bf_timestamp | test_generator::bf_hf_version,
+                                           first_hf,
+                                           first_hf,
+                                           prev_block->timestamp + DIFFICULTY_BLOCKS_ESTIMATE_TIMESPAN * 2, // v2 has blocks twice as long
+                                           crypto::hash(),
+                                           0,
+                                           transaction(),
+                                           std::vector<crypto::hash>(),
+                                           0),
+        false,
+        "Failed to generate block");
     events.push_back(blocks[n]);
     prev_block = blocks + n;
     LOG_PRINT_L0("Initial miner tx " << n << ": " << obj_to_json_str(blocks[n].miner_tx));
@@ -79,11 +100,21 @@ bool gen_bp_tx_validation_base::generate_with(std::vector<test_event_entry>& eve
     blk_last = blocks[NUM_UNLOCKED_BLOCKS - 1];
     for (size_t i = 0; i < CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW; ++i)
     {
-      CHECK_AND_ASSERT_MES(generator.construct_block_manually(blocks[NUM_UNLOCKED_BLOCKS + i], blk_last, miner_account,
-          test_generator::bf_major_ver | test_generator::bf_minor_ver | test_generator::bf_timestamp | test_generator::bf_hf_version,
-          8, 8, blk_last.timestamp + DIFFICULTY_BLOCKS_ESTIMATE_TIMESPAN * 2, // v2 has blocks twice as long
-          crypto::hash(), 0, transaction(), std::vector<crypto::hash>(), 0),
-          false, "Failed to generate block");
+      CHECK_AND_ASSERT_MES(
+          generator.construct_block_manually(blocks[NUM_UNLOCKED_BLOCKS + i],
+                                             blk_last,
+                                             miner_account,
+                                             test_generator::bf_major_ver | test_generator::bf_minor_ver | test_generator::bf_timestamp | test_generator::bf_hf_version,
+                                             first_hf,
+                                             first_hf,
+                                             blk_last.timestamp + DIFFICULTY_BLOCKS_ESTIMATE_TIMESPAN * 2, // v2 has blocks twice as long
+                                             crypto::hash(),
+                                             0,
+                                             transaction(),
+                                             std::vector<crypto::hash>(),
+                                             0),
+          false,
+          "Failed to generate block");
       events.push_back(blocks[NUM_UNLOCKED_BLOCKS+i]);
       blk_last = blocks[NUM_UNLOCKED_BLOCKS+i];
     }
@@ -95,14 +126,24 @@ bool gen_bp_tx_validation_base::generate_with(std::vector<test_event_entry>& eve
   // old style TX's on the fork height. So make sure we create one block so that
   // the block containing bulletproofs txes, which is 1 block after the fork
   // height, is tested with BP logic
-  generator.m_hf_version = cryptonote::network_version_11_infinite_staking;
+  generator.m_hf_version = last_hf;
   {
     block blk;
-    CHECK_AND_ASSERT_MES(generator.construct_block_manually(blk, blk_last, miner_account,
-        test_generator::bf_major_ver | test_generator::bf_minor_ver | test_generator::bf_timestamp | test_generator::bf_hf_version,
-        generator.m_hf_version, generator.m_hf_version, blk_last.timestamp + DIFFICULTY_BLOCKS_ESTIMATE_TIMESPAN * 2, // v2 has blocks twice as long
-        crypto::hash(), 0, transaction(), std::vector<crypto::hash>(), 0),
-        false, "Failed to generate block");
+    CHECK_AND_ASSERT_MES(
+        generator.construct_block_manually(blk,
+                                           blk_last,
+                                           miner_account,
+                                           test_generator::bf_major_ver | test_generator::bf_minor_ver | test_generator::bf_timestamp | test_generator::bf_hf_version,
+                                           generator.m_hf_version,
+                                           generator.m_hf_version,
+                                           blk_last.timestamp + DIFFICULTY_BLOCKS_ESTIMATE_TIMESPAN * 2, // v2 has blocks twice as long
+                                           crypto::hash(),
+                                           0,
+                                           transaction(),
+                                           std::vector<crypto::hash>(),
+                                           0),
+        false,
+        "Failed to generate block");
     events.push_back(blk);
     blk_last = blk;
   }
