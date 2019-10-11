@@ -235,6 +235,7 @@ typedef boost::variant<cryptonote::block,
                        event_visitor_settings,
                        event_replay_settings,
 
+                       std::string,
                        loki_callback_entry,
                        loki_blockchain_addable<loki_block_with_checkpoint>,
                        loki_blockchain_addable<cryptonote::block>,
@@ -863,6 +864,13 @@ public:
     return result;
   }
 
+  bool operator()(const std::string &msg) const
+  {
+    log_event("event_msgevent_marker");
+    MGINFO_MAGENTA(msg);
+    return true;
+  }
+
 private:
   void log_event(const std::string& event_type) const
   {
@@ -1421,6 +1429,8 @@ struct loki_chain_generator
   void                                                 add_service_node_checkpoint(uint64_t block_height, size_t num_votes);
   void                                                 add_mined_money_unlock_blocks(); // NOTE: Unlock all Loki generated from mining prior to this call i.e. CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW
 
+  // NOTE: Add an event that is just a user specified message to signify progress in the test
+  void                                                 add_event_msg(std::string const &msg) { events_.push_back(msg); }
   void                                                 add_tx(cryptonote::transaction const &tx, bool can_be_added_to_blockchain = true, std::string const &fail_msg = {}, bool kept_by_block = false);
 
   // NOTE: Add constructed TX to events_ and assume that it is valid to add to the blockchain. If the TX is meant to be unaddable to the blockchain use the individual create + add functions to

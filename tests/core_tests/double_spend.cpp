@@ -177,7 +177,12 @@ bool gen_double_spend_in_the_same_block::generate(std::vector<test_event_entry>&
 
   for (int kept_by_block_int = 0; kept_by_block_int < 2; kept_by_block_int++)
   {
-    bool kept_by_block                    = static_cast<bool>(kept_by_block_int);
+    bool kept_by_block = static_cast<bool>(kept_by_block_int);
+    if (kept_by_block)
+      gen.add_event_msg("Double spending transaction kept by block should be allowed");
+    else
+      gen.add_event_msg("Double spending transaction kept by block false, disallowed");
+
     uint64_t amount                       = MK_COINS(10);
     cryptonote::account_base const &miner = gen.first_miner_;
     cryptonote::account_base bob          = gen.add_account();
