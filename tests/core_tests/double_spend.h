@@ -67,15 +67,8 @@ struct gen_double_spend_in_the_same_block : public test_chain_unit_base
   bool generate(std::vector<test_event_entry>& events) const;
 };
 
-template<bool txs_keeped_by_block>
-struct gen_double_spend_in_different_blocks : public gen_double_spend_base< gen_double_spend_in_different_blocks<txs_keeped_by_block> >
+struct gen_double_spend_in_different_blocks : public test_chain_unit_base
 {
-  static const uint64_t send_amount = FIRST_BLOCK_REWARD - TESTS_DEFAULT_FEE;
-  static const bool has_invalid_tx = !txs_keeped_by_block;
-  static const size_t expected_pool_txs_count = has_invalid_tx ? 0 : 1;
-  static const uint64_t expected_bob_balance = 0;
-  static const uint64_t expected_alice_balance = send_amount - TESTS_DEFAULT_FEE;
-
   bool generate(std::vector<test_event_entry>& events) const;
 };
 

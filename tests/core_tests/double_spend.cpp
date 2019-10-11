@@ -190,8 +190,8 @@ bool gen_double_spend_in_the_same_block::generate(std::vector<test_event_entry>&
     cryptonote::transaction tx_2 = gen.create_and_add_tx(miner, bob, amount, TESTS_DEFAULT_FEE);
 
     std::string const fail_msg =
-        (kept_by_block) ? "If kept_by_block is true, double spending transactions can be added (incase of reorgs)"
-                        : "Can not add a double spending transaction if kept_by_block is false";
+        (kept_by_block) ? "kept_by_block is true, double spending transactions can be added (incase of reorgs)"
+                        : "Can not add a double spending transaction, kept_by_block is false";
 
     gen.add_tx(tx_1, kept_by_block /*can_be_added_to_blockchain*/, fail_msg, kept_by_block/*kept_by_block*/);
     gen.create_and_add_next_block({tx_1, tx_2}, nullptr /*checkpoint*/, false, "Can not add block using double spend txs, even if one of the double spends is kept by block.");
@@ -209,3 +209,47 @@ bool gen_double_spend_in_the_same_block::generate(std::vector<test_event_entry>&
   }
   return true;
 }
+
+bool gen_double_spend_in_different_blocks::generate(std::vector<test_event_entry>& events) const
+{
+  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = loki_generate_sequential_hard_fork_table();
+  loki_chain_generator gen(events, hard_forks);
+  gen.add_blocks_until_version(hard_forks.back().first);
+  gen.add_n_blocks(10);
+  gen.add_mined_money_unlock_blocks();
+
+  cryptonote::account_base const &miner = gen.first_miner_;
+  cryptonote::account_base bob          = gen.add_account();
+  for (int kept_by_block_int = 0; kept_by_block_int < 2; kept_by_block_int++)
+  {
+    bool kept_by_block = static_cast<bool>(kept_by_block_int);
+    if (kept_by_block) gen.add_event_msg("Double spending transaction kept by block should be allowed");
+    else               gen.add_event_msg("Double spending transaction kept by block false, disallowed");
+
+    uint64_t amount              = MK_COINS(10);
+    cryptonote::transaction tx_1 = gen.create_tx(miner, bob, amount, TESTS_DEFAULT_FEE);
+    cryptonote::transaction tx_2 = gen.create_tx(miner, bob, amount, TESTS_DEFAULT_FEE);
+
+    std::string const fail_msg =
+        (kept_by_block) ? "kept_by_block is true, double spending transactions can be added (incase of reorgs)"
+                        : "Can not add a double spending transaction, kept_by_block is false";
+
+    gen.add_tx(tx_1, true /*can_be_added_to_blockchain*/, fail_msg, kept_by_block);
+    gen.create_and_add_next_block({tx_1});
+
+    gen.add_tx(tx_2, kept_by_block /*can_be_added_to_blockchain*/, fail_msg, kept_by_block /*kept_by_block*/);
+    // NOTE: This should always fail regardless, because even if transaction is kept by block and accepted. Adding this block would enable a double spend.
+    // Similarly, if kept by block is false, adding the double spend tx should fail. Adding the new block should also fail because we don't have tx_2
+    // sitting in the tx pool.
+    gen.create_and_add_next_block({tx_2}, nullptr, false /*can_be_added_to_blockchain*/, fail_msg);
+    loki_register_callback(events, "check_txpool", [&events, kept_by_block](cryptonote::core &c, size_t ev_index)
+    {
+      DEFINE_TESTS_ERROR_CONTEXT("check_txpool");
+      if (kept_by_block) CHECK_EQ(c.get_pool_transactions_count(), 1);
+      else               CHECK_EQ(c.get_pool_transactions_count(), 0);
+      return true;
+    });
+  }
+  return true;
+}
+

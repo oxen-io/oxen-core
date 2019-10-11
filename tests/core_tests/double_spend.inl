@@ -119,37 +119,6 @@ bool gen_double_spend_base<concrete_test>::check_double_spend(cryptonote::core& 
 //======================================================================================================================
 
 template<bool txs_keeped_by_block>
-bool gen_double_spend_in_different_blocks<txs_keeped_by_block>::generate(std::vector<test_event_entry>& events) const
-{
-  INIT_DOUBLE_SPEND_TEST();
-
-  DO_CALLBACK(events, "mark_last_valid_block");
-  SET_EVENT_VISITOR_SETT(events, event_visitor_settings::set_txs_keeped_by_block, txs_keeped_by_block);
-
-  // Create two identical transactions, but don't push it to events list
-  MAKE_TX(events, tx_blk_2, bob_account, alice_account, send_amount - TESTS_DEFAULT_FEE, blk_1);
-  events.pop_back();
-  MAKE_TX(events, tx_blk_3, bob_account, alice_account, send_amount - TESTS_DEFAULT_FEE, blk_1);
-  events.pop_back();
-
-  events.push_back(tx_blk_2);
-  MAKE_NEXT_BLOCK_TX1(events, blk_2, blk_1r, miner_account, tx_blk_2);
-  DO_CALLBACK(events, "mark_last_valid_block");
-
-  if (has_invalid_tx)
-  {
-    DO_CALLBACK(events, "mark_invalid_tx");
-  }
-  events.push_back(tx_blk_3);
-  DO_CALLBACK(events, "mark_invalid_block");
-  MAKE_NEXT_BLOCK_TX1(events, blk_3, blk_2, miner_account, tx_blk_3);
-
-  DO_CALLBACK(events, "check_double_spend");
-
-  return true;
-}
-
-template<bool txs_keeped_by_block>
 bool gen_double_spend_in_alt_chain_in_the_same_block<txs_keeped_by_block>::generate(std::vector<test_event_entry>& events) const
 {
   INIT_DOUBLE_SPEND_TEST();
