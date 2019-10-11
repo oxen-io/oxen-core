@@ -1064,7 +1064,7 @@ bool loki_service_nodes_checkpoint_quorum_size::generate(std::vector<test_event_
   loki_chain_generator gen(events, hard_forks);
 
   gen.add_blocks_until_version(hard_forks.back().first);
-  gen.add_n_blocks(40);
+  gen.add_n_blocks(35);
   gen.add_mined_money_unlock_blocks();
 
   std::vector<cryptonote::transaction> registration_txs(service_nodes::CHECKPOINT_QUORUM_SIZE - 1);
@@ -1196,7 +1196,6 @@ bool loki_service_nodes_test_rollback::generate(std::vector<test_event_entry>& e
   std::vector<std::pair<uint8_t, uint64_t>> hard_forks = loki_generate_sequential_hard_fork_table(cryptonote::network_version_9_service_nodes);
   loki_chain_generator gen(events, hard_forks);
   gen.add_blocks_until_version(hard_forks.back().first);
-
   gen.add_n_blocks(20); /// generate some outputs and unlock them
   gen.add_mined_money_unlock_blocks();
 
@@ -1285,7 +1284,7 @@ bool loki_service_nodes_test_swarms_basic::generate(std::vector<test_event_entry
   /// Create some service nodes before hf version 10
   constexpr size_t INIT_SN_COUNT  = 13;
   constexpr size_t TOTAL_SN_COUNT = 25;
-  gen.add_n_blocks(100);
+  gen.add_n_blocks(90);
   gen.add_mined_money_unlock_blocks();
 
   /// register some service nodes
