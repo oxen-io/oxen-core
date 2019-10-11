@@ -240,6 +240,7 @@ typedef boost::variant<cryptonote::block,
                        loki_blockchain_addable<cryptonote::block>,
                        loki_blockchain_addable<loki_transaction>,
                        loki_blockchain_addable<service_nodes::quorum_vote_t>,
+                       loki_blockchain_addable<serialized_block>,
                        loki_blockchain_addable<cryptonote::checkpoint_t>
                        > test_event_entry;
 typedef std::unordered_map<crypto::hash, const cryptonote::transaction*> map_hash2tx_t;
@@ -822,6 +823,25 @@ public:
     return true;
   }
 
+  bool operator()(const loki_blockchain_addable<serialized_block> &entry) const
+  {
+    log_event("loki_blockchain_addable<serialized_block>");
+    serialized_block const &block              = entry.data;
+    cryptonote::block_verification_context bvc = {};
+    std::vector<cryptonote::block> pblocks;
+    if (m_c.prepare_handle_incoming_blocks(std::vector<cryptonote::block_complete_entry>(1, {block.data, {}, {}}), pblocks))
+    {
+      m_c.handle_incoming_block(block.data, nullptr, bvc, nullptr);
+      m_c.cleanup_handle_incoming_blocks();
+    }
+    else
+      bvc.m_verifivation_failed = true;
+
+    bool added = !bvc.m_verifivation_failed;
+    CHECK_AND_NO_ASSERT_MES(added == entry.can_be_added_to_blockchain, false, (entry.fail_msg.size() ? entry.fail_msg : "Failed to add block (no reason given)"));
+    return true;
+  }
+
   bool operator()(const loki_blockchain_addable<loki_transaction> &entry) const
   {
     log_event("loki_blockchain_addable<loki_transaction>");
@@ -1324,6 +1344,9 @@ public:
     return result;
   }
 };
+
+void                                      loki_register_callback                  (std::vector<test_event_entry> &events, std::string const &callback_name, loki_callback callback);
+std::vector<std::pair<uint8_t, uint64_t>> loki_generate_sequential_hard_fork_table(uint8_t max_hf_version = cryptonote::network_version_count - 1);
 
 struct loki_blockchain_entry
 {

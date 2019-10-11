@@ -34,49 +34,6 @@
 #undef LOKI_DEFAULT_LOG_CATEGORY
 #define LOKI_DEFAULT_LOG_CATEGORY "sn_core_tests"
 
-// TODO(loki): Improved register callback that all tests should start using.
-// Classes are not regenerated when replaying the test through the blockchain.
-// Before, state saved in this class like saving indexes where events ocurred
-// would not persist because when replaying tests we create a new instance of
-// the test class.
-
-  // i.e.
-#if 0
-    std::vector<events> events;
-    {
-        gen_service_nodes generator;
-        generator.generate(events);
-    }
-
-    gen_service_nodes generator;
-    replay_events_through_core(generator, ...)
-#endif
-
-// Which is stupid. Instead we preserve the original generator. This means
-// all the tests that use callbacks to preserve state can be removed.
-
-// TODO(loki): A lot of code using the new lambda callbacks now have access to
-// the shared stack frame where before it didn't can be optimised to utilise the
-// frame instead of re-deriving where data should be in the
-// test_events_entry array
-void loki_register_callback(std::vector<test_event_entry> &events,
-                            std::string const &callback_name,
-                            loki_callback callback)
-{
-  events.push_back(loki_callback_entry{callback_name, callback});
-}
-
-std::vector<std::pair<uint8_t, uint64_t>>
-loki_generate_sequential_hard_fork_table(uint8_t max_hf_version)
-{
-  assert(max_hf_version < cryptonote::network_version_count);
-  std::vector<std::pair<uint8_t, uint64_t>> result = {};
-  uint64_t version_height = 0;
-  for (uint8_t version = cryptonote::network_version_7; version <= max_hf_version; version++)
-    result.emplace_back(std::make_pair(version, version_height++));
-  return result;
-}
-
 // Suppose we have checkpoint and alt block at height 40 and the main chain is at height 40 with a differing block.
 // Main chain receives checkpoints for height 40 on the alt chain via votes and reorgs back to height 39.
 // Now main chain has an alt block sitting in its DB for height 40 which actually starts beyond the chain.
@@ -160,7 +117,6 @@ bool loki_checkpointing_alt_chain_handle_alt_blocks_at_tip::generate(std::vector
   });
   return true;
 }
-
 
 // NOTE: - Checks that a chain with a checkpoint but less PoW is preferred over a chain that is longer with more PoW but no checkpoints
 bool loki_checkpointing_alt_chain_more_service_node_checkpoints_less_pow_overtakes::generate(std::vector<test_event_entry>& events)

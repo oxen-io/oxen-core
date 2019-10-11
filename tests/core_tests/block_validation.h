@@ -192,12 +192,5 @@ struct gen_block_is_too_big : public gen_block_verification_base<1>
 
 struct gen_block_invalid_binary_format : public test_chain_unit_base
 {
-  gen_block_invalid_binary_format();
   bool generate(std::vector<test_event_entry>& events) const;
-  bool check_block_verification_context(const cryptonote::block_verification_context& bvc, size_t event_idx, const cryptonote::block& /*blk*/);
-  bool check_all_blocks_purged(cryptonote::core& c, size_t ev_index, const std::vector<test_event_entry>& events);
-  bool corrupt_blocks_boundary(cryptonote::core& c, size_t ev_index, const std::vector<test_event_entry>& events);
-
-private:
-  size_t m_corrupt_blocks_begin_idx;
 };

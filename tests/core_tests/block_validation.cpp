@@ -567,15 +567,56 @@ bool gen_block_is_too_big::generate(std::vector<test_event_entry>& events) const
   return true;
 }
 
-gen_block_invalid_binary_format::gen_block_invalid_binary_format()
-  : m_corrupt_blocks_begin_idx(0)
-{
-  REGISTER_CALLBACK("check_all_blocks_purged", gen_block_invalid_binary_format::check_all_blocks_purged);
-  REGISTER_CALLBACK("corrupt_blocks_boundary", gen_block_invalid_binary_format::corrupt_blocks_boundary);
-}
-
 bool gen_block_invalid_binary_format::generate(std::vector<test_event_entry>& events) const
 {
+#if 1
+  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = loki_generate_sequential_hard_fork_table();
+  loki_chain_generator gen(events, hard_forks);
+
+  gen.add_blocks_until_version(hard_forks.back().first);
+  gen.add_n_blocks(10);
+  gen.add_mined_money_unlock_blocks();
+
+  uint64_t last_valid_height = gen.height();
+  cryptonote::transaction tx  = gen.create_and_add_tx(gen.first_miner_, gen.first_miner_, MK_COINS(30));
+  loki_blockchain_entry entry = gen.create_next_block({tx});
+
+  serialized_block block(t_serializable_object_to_blob(entry.block));
+  // Generate some corrupt blocks
+  {
+    loki_blockchain_addable<serialized_block> entry(block, false /*can_be_added_to_blockchain*/, "Corrupt block can't be added to blockchaain");
+    serialized_block &corrupt_block = entry.data;
+    for (size_t i = 0; i < corrupt_block.data.size() - 1; ++i)
+      corrupt_block.data[i] ^= corrupt_block.data[i + 1];
+    events.push_back(entry);
+  }
+
+  {
+    loki_blockchain_addable<serialized_block> entry(block, false /*can_be_added_to_blockchain*/, "Corrupt block can't be added to blockchaain");
+    serialized_block &corrupt_block = entry.data;
+    for (size_t i = 0; i < corrupt_block.data.size() - 2; ++i)
+      corrupt_block.data[i] ^= corrupt_block.data[i + 2];
+    events.push_back(entry);
+  }
+
+  {
+    loki_blockchain_addable<serialized_block> entry(block, false /*can_be_added_to_blockchain*/, "Corrupt block can't be added to blockchaain");
+    serialized_block &corrupt_block = entry.data;
+    for (size_t i = 0; i < corrupt_block.data.size() - 3; ++i)
+      corrupt_block.data[i] ^= corrupt_block.data[i + 3];
+    events.push_back(entry);
+  }
+
+  loki_register_callback(events, "check_blocks_arent_accepted", [&events, last_valid_height](cryptonote::core &c, size_t ev_index)
+  {
+    DEFINE_TESTS_ERROR_CONTEXT("check_blocks_arent_accepted");
+    CHECK_EQ(c.get_pool_transactions_count(), 1);
+    CHECK_EQ(c.get_current_blockchain_height(), last_valid_height + 1);
+    return true;
+  });
+
+  // TODO(loki): I don't know why difficulty has to be high for this test? Just generate some blocks and randomize the bytes???
+#else
   BLOCK_VALIDATION_INIT_GENERATE();
 
   std::vector<uint64_t> timestamps;
@@ -633,36 +674,7 @@ bool gen_block_invalid_binary_format::generate(std::vector<test_event_entry>& ev
   }
 
   DO_CALLBACK(events, "check_all_blocks_purged");
-
-  return true;
-}
-
-bool gen_block_invalid_binary_format::check_block_verification_context(const cryptonote::block_verification_context& bvc,
-                                                                       size_t event_idx, const cryptonote::block& blk)
-{
-  if (0 == m_corrupt_blocks_begin_idx || event_idx < m_corrupt_blocks_begin_idx)
-  {
-    return bvc.m_added_to_main_chain;
-  }
-  else
-  {
-    return (!bvc.m_added_to_main_chain && (bvc.m_already_exists || bvc.m_marked_as_orphaned || bvc.m_verifivation_failed))
-      || bvc.m_added_to_main_chain;
-  }
-}
-
-bool gen_block_invalid_binary_format::corrupt_blocks_boundary(cryptonote::core& c, size_t ev_index, const std::vector<test_event_entry>& events)
-{
-  m_corrupt_blocks_begin_idx = ev_index + 1;
-  return true;
-}
-
-bool gen_block_invalid_binary_format::check_all_blocks_purged(cryptonote::core& c, size_t ev_index, const std::vector<test_event_entry>& events)
-{
-  DEFINE_TESTS_ERROR_CONTEXT("gen_block_invalid_binary_format::check_all_blocks_purged");
-
-  CHECK_EQ(1, c.get_pool().get_transactions_count());
-  CHECK_EQ(m_corrupt_blocks_begin_idx - 2, c.get_current_blockchain_height());
+#endif
 
   return true;
 }
