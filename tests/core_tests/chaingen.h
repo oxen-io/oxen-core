@@ -1226,9 +1226,15 @@ inline bool do_replay_file(const std::string& filename)
 #define CHECK_NOT_EQ(v1, v2) CHECK_AND_ASSERT_MES(!(v1 == v2), false, "[" << perr_context << "] failed: \"" << QUOTEME(v1) << " != " << QUOTEME(v2) << "\", " << v1 << " == " << v2)
 #define MK_COINS(amount) (UINT64_C(amount) * COIN)
 
+void fill_nonce(cryptonote::block& blk, const cryptonote::difficulty_type& diffic, uint64_t height);
+
 //
 // NOTE: Loki
 //
+
+void                                      loki_register_callback                  (std::vector<test_event_entry> &events, std::string const &callback_name, loki_callback callback);
+std::vector<std::pair<uint8_t, uint64_t>> loki_generate_sequential_hard_fork_table(uint8_t max_hf_version = cryptonote::network_version_count - 1);
+
 class loki_tx_builder {
 
   /// required fields
@@ -1358,6 +1364,18 @@ struct loki_service_node_contribution
     uint64_t                           portions;
 };
 
+struct loki_create_block_params
+{
+  uint8_t hf_version;
+  uint8_t miner_hf_version;
+  loki_blockchain_entry *prev;
+  cryptonote::account_base *miner_acc;
+  uint64_t timestamp;
+  std::vector<uint64_t> block_weights;
+  service_nodes::block_winner block_winner;
+};
+loki_create_block_params default_block_params(struct loki_chain_generator &gen);
+
 struct loki_chain_generator
 {
   mutable std::unordered_map<crypto::public_key, crypto::secret_key>  service_node_keys_;
@@ -1383,6 +1401,7 @@ struct loki_chain_generator
   size_t                                               event_index()  const { return events_.size() - 1; }
 
   const loki_blockchain_entry&                         top() const { return blocks_.back(); }
+        loki_blockchain_entry&                         top()       { return blocks_.back(); }
   service_nodes::quorum_manager                        top_quorum() const;
   service_nodes::quorum_manager                        quorum(uint64_t height) const;
   std::shared_ptr<const service_nodes::testing_quorum> get_testing_quorum(service_nodes::quorum_type type, uint64_t height) const;
@@ -1418,8 +1437,8 @@ struct loki_chain_generator
   cryptonote::checkpoint_t                             create_service_node_checkpoint(uint64_t block_height, size_t num_votes) const;
 
   loki_blockchain_entry                                create_genesis_block(const cryptonote::account_base &miner, uint64_t timestamp);
-  loki_blockchain_entry                                create_next_block(const std::vector<cryptonote::transaction>& txs = {}, cryptonote::checkpoint_t const *checkpoint = nullptr);
-  bool                                                 create_block(loki_blockchain_entry &entry, uint8_t hf_version, loki_blockchain_entry const &prev, const cryptonote::account_base &miner_acc, uint64_t timestamp, std::vector<uint64_t> &block_weights, const std::vector<cryptonote::transaction> &tx_list, const service_nodes::block_winner &block_winner) const;
+  loki_blockchain_entry                                create_next_block   (const std::vector<cryptonote::transaction>& txs = {}, cryptonote::checkpoint_t const *checkpoint = nullptr);
+  loki_blockchain_entry                                create_block        (loki_create_block_params &params, const std::vector<cryptonote::transaction> &tx_list = {}, const cryptonote::checkpoint_t *checkpoint = nullptr) const;
 
   uint8_t                                              get_hf_version_at(uint64_t height) const;
   std::vector<uint64_t>                                last_n_block_weights(uint64_t height, uint64_t num) const;

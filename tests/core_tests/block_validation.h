@@ -201,3 +201,8 @@ struct gen_block_invalid_binary_format : public test_chain_unit_base
 private:
   size_t m_corrupt_blocks_begin_idx;
 };
+
+struct gen_block_late_version_coinbase_tx : public test_chain_unit_base
+{
+  bool generate(std::vector<test_event_entry>& events) const;
+};

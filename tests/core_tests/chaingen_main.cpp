@@ -158,6 +158,7 @@ int main(int argc, char* argv[])
     GENERATE_AND_PLAY(gen_block_miner_tx_has_out_to_alice);
     GENERATE_AND_PLAY(gen_block_has_invalid_tx);
     GENERATE_AND_PLAY(gen_block_is_too_big);
+    GENERATE_AND_PLAY(gen_block_late_version_coinbase_tx);
 
     GENERATE_AND_PLAY(gen_uint_overflow_1);
 

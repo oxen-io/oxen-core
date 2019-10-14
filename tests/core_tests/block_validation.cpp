@@ -666,3 +666,34 @@ bool gen_block_invalid_binary_format::check_all_blocks_purged(cryptonote::core& 
 
   return true;
 }
+
+bool gen_block_late_version_coinbase_tx::generate(std::vector<test_event_entry>& events) const
+{
+  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = loki_generate_sequential_hard_fork_table(cryptonote::network_version_count - 1);
+  loki_chain_generator gen(events, hard_forks);
+
+  uint8_t last_hf = hard_forks.back().first;
+  gen.add_blocks_until_version(last_hf);
+
+  uint8_t first_hf_with_different_min_tx_version = 0;
+  for (uint8_t i = (uint8_t)cryptonote::network_version_count - 2;
+       i >= cryptonote::network_version_7;
+       i--)
+  {
+    txversion curr = cryptonote::transaction::get_min_version_for_hf(i);
+    txversion prev = cryptonote::transaction::get_min_version_for_hf(i + 1);
+    if (curr != prev)
+    {
+      first_hf_with_different_min_tx_version = i;
+      break;
+    }
+  }
+  assert(first_hf_with_different_min_tx_version != 0);
+
+
+  loki_create_block_params block_params   = default_block_params(gen);
+  block_params.miner_hf_version           = first_hf_with_different_min_tx_version;
+  loki_blockchain_entry invalid_block = gen.create_block(block_params);
+  gen.add_block(invalid_block, false /*can_be_added_to_blockchain*/, "Can not add block with tx version lower than the minimum");
+  return true;
+}
