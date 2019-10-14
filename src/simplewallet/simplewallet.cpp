@@ -8202,7 +8202,7 @@ bool simple_wallet::show_transfers(const std::vector<std::string> &args_)
     message_writer(color, false) << formatter
       % (transfer.type.size() ? transfer.type : std::to_string(transfer.height))
       % tools::pay_type_string(transfer.pay_type)
-      % transfer.lock_msg
+      % (transfer.locked ? "locked" : "unlocked")
       % (transfer.checkpointed ? "checkpointed" : "no")
       % tools::get_human_readable_timestamp(transfer.timestamp)
       % print_money(transfer.amount)

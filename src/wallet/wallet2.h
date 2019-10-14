@@ -251,6 +251,7 @@ private:
     std::list<transfer_destination> destinations;              // Array of transfer destinations.
     std::string type;                                          // Type of transfer, one of the following: "in", "out", "stake", "miner", "snode", "gov", "pending", "failed", "pool".
     uint64_t unlock_time;                                      // Number of blocks until transfer is safely spendable.
+    bool locked;                                               // Whether the transaction is spendable yet
     cryptonote::subaddress_index subaddr_index;                // Major & minor index, account and subaddress index respectively.
     std::vector<cryptonote::subaddress_index> subaddr_indices;
     std::string address;                                       // Address that transferred the funds.
@@ -263,7 +264,6 @@ private:
     tools::pay_type pay_type;                                  // Internal use only, not serialized
     bool            confirmed;                                 // Internal use only, not serialized
     crypto::hash    hash;                                      // Internal use only, not serialized
-    std::string     lock_msg;                                  // Internal use only, not serialized
 
     BEGIN_KV_SERIALIZE_MAP()
       KV_SERIALIZE(txid);
@@ -288,6 +288,7 @@ private:
       }
 
       KV_SERIALIZE(unlock_time)
+      KV_SERIALIZE(locked);
       KV_SERIALIZE(subaddr_index);
       KV_SERIALIZE(subaddr_indices);
       KV_SERIALIZE(address);
