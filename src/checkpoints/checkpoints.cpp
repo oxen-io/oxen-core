@@ -315,7 +315,7 @@ namespace cryptonote
     return result;
   }
   //---------------------------------------------------------------------------
-  bool checkpoints::init(network_type nettype, struct BlockchainDB *db)
+  bool checkpoints::init(network_type nettype, class BlockchainDB *db)
   {
     *this     = {};
     m_db      = db;
