@@ -75,20 +75,15 @@ namespace cryptonote
     uint64_t service_node_total;
     uint64_t service_node_paid;
 
-    uint64_t governance;
+    uint64_t governance_due;
+    uint64_t governance_paid;
+
     uint64_t base_miner;
     uint64_t base_miner_fee;
 
-    // NOTE: Post hardfork 10, adjusted base reward is the block reward with the
-    // governance amount removed. We still need the original base reward, so
-    // that we can calculate the 50% on the whole base amount, that should be
-    // allocated for the service node and fees.
-
-    // If this block contains the batched governance payment, this is
-    // included in the adjusted base reward.
-
-    // Before hardfork 10, this is the same value as original_base_reward
-    uint64_t adjusted_base_reward;
+    /// The base block reward from which non-miner amounts (i.e. SN rewards and governance fees) are
+    /// calculated.  Before HF 13 this was (mistakenly) reduced by the block size penalty for
+    /// exceeding the median block size; starting in HF 13 the miner pays the full penalty.
     uint64_t original_base_reward;
 
     uint64_t miner_reward() { return base_miner + base_miner_fee; }
@@ -227,7 +222,8 @@ namespace cryptonote
     , uint32_t nonce
     );
 
-  bool get_block_longhash(const class Blockchain *pb, const block& b, crypto::hash& res, const uint64_t height, const int miners);
+  class Blockchain;
+  bool get_block_longhash(const Blockchain *pb, const block& b, crypto::hash& res, const uint64_t height, const int miners);
   void get_altblock_longhash(const block& b, crypto::hash& res, const uint64_t main_height, const uint64_t height,
     const uint64_t seed_height, const crypto::hash& seed_hash);
   crypto::hash get_block_longhash(const Blockchain *pb, const block& b, const uint64_t height, const int miners);

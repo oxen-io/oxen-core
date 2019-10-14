@@ -49,6 +49,7 @@ public:
   boost::optional<std::string> get_height(uint64_t &height) const;
   void set_height(uint64_t h);
   boost::optional<std::string> get_target_height(uint64_t &height) const;
+  boost::optional<std::string> get_immutable_height(uint64_t &height) const;
   boost::optional<std::string> get_block_weight_limit(uint64_t &block_weight_limit) const;
   boost::optional<std::string> get_earliest_height(uint8_t version, uint64_t &earliest_height) const;
   boost::optional<std::string> get_dynamic_base_fee_estimate(uint64_t grace_blocks, cryptonote::byte_and_output_fees &fees) const;
@@ -80,6 +81,7 @@ private:
   mutable std::vector<cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::entry> m_contributed_service_nodes;
 
   mutable uint64_t m_height;
+  mutable uint64_t m_immutable_height;
   mutable uint64_t m_earliest_height[256];
   mutable cryptonote::byte_and_output_fees m_dynamic_base_fee_estimate;
   mutable uint64_t m_dynamic_base_fee_estimate_cached_height;

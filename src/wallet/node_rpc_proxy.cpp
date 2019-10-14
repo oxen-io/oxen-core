@@ -58,6 +58,7 @@ void NodeRPCProxy::invalidate()
   m_contributed_service_nodes.clear();
 
   m_height = 0;
+  m_immutable_height = 0;
   for (size_t n = 0; n < 256; ++n)
     m_earliest_height[n] = 0;
   m_dynamic_base_fee_estimate = {0, 0};
@@ -93,6 +94,8 @@ boost::optional<std::string> NodeRPCProxy::get_rpc_version(uint32_t &rpc_version
 void NodeRPCProxy::set_height(uint64_t h)
 {
   m_height = h;
+  if (h < m_immutable_height)
+      m_immutable_height = 0;
 }
 
 boost::optional<std::string> NodeRPCProxy::get_info() const
@@ -115,6 +118,7 @@ boost::optional<std::string> NodeRPCProxy::get_info() const
     m_height = resp_t.height;
     m_target_height = resp_t.target_height;
     m_block_weight_limit = resp_t.block_weight_limit ? resp_t.block_weight_limit : resp_t.block_size_limit;
+    m_immutable_height = resp_t.immutable_height;
     m_get_info_time = now;
   }
   return boost::optional<std::string>();
@@ -135,6 +139,15 @@ boost::optional<std::string> NodeRPCProxy::get_target_height(uint64_t &height) c
   if (res)
     return res;
   height = m_target_height;
+  return boost::optional<std::string>();
+}
+
+boost::optional<std::string> NodeRPCProxy::get_immutable_height(uint64_t &height) const
+{
+  auto res = get_info();
+  if (res)
+    return res;
+  height = m_immutable_height;
   return boost::optional<std::string>();
 }
 

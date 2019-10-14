@@ -3,6 +3,7 @@
 #include "int-util.h"
 #include <vector>
 #include <boost/lexical_cast.hpp>
+#include <cfenv>
 
 #include "service_node_rules.h"
 
@@ -14,11 +15,67 @@ uint64_t get_staking_requirement(cryptonote::network_type m_nettype, uint64_t he
   if (m_nettype == cryptonote::TESTNET || m_nettype == cryptonote::FAKECHAIN)
       return COIN * 100;
 
+  if (hf_version >= cryptonote::network_version_13_enforce_checkpoints)
+  {
+    constexpr int64_t heights[] = {
+        385824,
+        429024,
+        472224,
+        515424,
+        558624,
+        601824,
+        645024,
+        688224,
+        731424,
+        774624,
+        817824,
+        861024,
+        1000000,
+    };
+
+    constexpr int64_t lsr[] = {
+        20458380815527,
+        19332319724305,
+        18438564443912,
+        17729190407764,
+        17166159862153,
+        16719282221956,
+        16364595203882,
+        16083079931076,
+        15859641110978,
+        15682297601941,
+        15541539965538,
+        15429820555489,
+        15000000000000,
+    };
+
+    assert(height >= heights[0]);
+    constexpr uint64_t LAST_HEIGHT      = heights[loki::array_count(heights) - 1];
+    constexpr uint64_t LAST_REQUIREMENT = lsr    [loki::array_count(lsr) - 1];
+    if (height >= LAST_HEIGHT)
+        return LAST_REQUIREMENT;
+
+    size_t i = 0;
+    for (size_t index = 1; index < loki::array_count(heights); index++)
+    {
+      if (heights[index] > static_cast<int64_t>(height))
+      {
+        i = (index - 1);
+        break;
+      }
+    }
+
+    int64_t H      = height;
+    int64_t result = lsr[i] + (H - heights[i]) * ((lsr[i + 1] - lsr[i]) / (heights[i + 1] - heights[i]));
+    return static_cast<uint64_t>(result);
+  }
+
   uint64_t hardfork_height = m_nettype == cryptonote::MAINNET ? 101250 : 96210 /* stagenet */;
   if (height < hardfork_height) height = hardfork_height;
 
   uint64_t height_adjusted = height - hardfork_height;
   uint64_t base = 0, variable = 0;
+  std::fesetround(FE_TONEAREST);
   if (hf_version >= cryptonote::network_version_11_infinite_staking)
   {
     base     = 15000 * COIN;
@@ -90,12 +147,11 @@ uint64_t get_min_node_contribution(uint8_t version, uint64_t staking_requirement
   if (version < cryptonote::network_version_11_infinite_staking)
     return get_min_node_contribution_pre_v11(staking_requirement, total_reserved);
 
-  const uint64_t needed                 = staking_requirement - total_reserved;
-  const size_t max_num_of_contributions = MAX_NUMBER_OF_CONTRIBUTORS * MAX_KEY_IMAGES_PER_CONTRIBUTOR;
-  assert(max_num_of_contributions > num_contributions);
-  if (max_num_of_contributions <= num_contributions) return UINT64_MAX;
+  const uint64_t needed = staking_requirement - total_reserved;
+  assert(MAX_NUMBER_OF_CONTRIBUTORS > num_contributions);
+  if (MAX_NUMBER_OF_CONTRIBUTORS <= num_contributions) return UINT64_MAX;
 
-  const size_t num_contributions_remaining_avail = max_num_of_contributions - num_contributions;
+  const size_t num_contributions_remaining_avail = MAX_NUMBER_OF_CONTRIBUTORS - num_contributions;
   return needed / num_contributions_remaining_avail;
 }
 

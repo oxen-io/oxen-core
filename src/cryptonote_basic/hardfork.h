@@ -38,7 +38,16 @@ namespace cryptonote
   class HardFork
   {
   public:
+    struct Params
+    {
+      uint8_t version;
+      uint64_t height;
+      uint8_t threshold;
+      time_t time;
+    };
+
     constexpr static uint8_t INVALID_HF_VERSION_FOR_HEIGHT = 255;
+    constexpr static uint64_t INVALID_HF_VERSION_HEIGHT    = static_cast<uint64_t>(-1);
     typedef enum {
       LikelyForked,
       UpdateNeeded,
@@ -50,6 +59,17 @@ namespace cryptonote
     static const time_t DEFAULT_UPDATE_TIME = 31557600 / 2;
     static const uint64_t DEFAULT_WINDOW_SIZE = 10080; // supermajority window check length - a week
     static const uint8_t DEFAULT_THRESHOLD_PERCENT = 80;
+
+    struct ParamsIterator
+    {
+      const Params *begin_, *end_;
+      constexpr Params const *begin() { return begin_; };
+      constexpr Params const *end()   { return end_; };
+    };
+
+    // NOTE: Returns INVALID_HF_VERSION_HEIGHT if version not specified for nettype
+    static uint64_t get_hardcoded_hard_fork_height(network_type nettype, cryptonote::network_version version);
+    static ParamsIterator get_hardcoded_hard_forks(network_type nettype);
 
     /**
      * @brief creates a new HardFork object
@@ -230,14 +250,6 @@ namespace cryptonote
      * @brief returns the size of the voting window in blocks
      */
     uint64_t get_window_size() const { return window_size; }
-
-    struct Params {
-      uint8_t version;
-      uint8_t threshold;
-      uint64_t height;
-      time_t time;
-      Params(uint8_t version, uint64_t height, uint8_t threshold, time_t time): version(version), threshold(threshold), height(height), time(time) {}
-    };
 
   private:
 

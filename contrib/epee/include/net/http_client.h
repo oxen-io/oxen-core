@@ -275,7 +275,7 @@ namespace net_utils
 			chunked_state m_chunked_state;
 			std::string m_chunked_cache;
 			bool m_auto_connect;
-			critical_section m_lock;
+			mutable critical_section m_lock;
 
 		public:
 			explicit http_simple_client_template()
@@ -342,7 +342,7 @@ namespace net_utils
 				return m_net_client.disconnect();
 			}
 			//---------------------------------------------------------------------------
-			bool is_connected(bool *ssl = NULL)
+			bool is_connected(bool *ssl = NULL) const
 			{
 				CRITICAL_REGION_LOCAL(m_lock);
 				return m_net_client.is_connected(ssl);

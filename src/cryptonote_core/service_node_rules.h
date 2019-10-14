@@ -22,7 +22,7 @@ namespace service_nodes {
   // deregistration transaction to the network, starting a 30-day deregistration count down.
   constexpr int64_t DECOMMISSION_CREDIT_PER_DAY = BLOCKS_EXPECTED_IN_HOURS(24) / 30;
   constexpr int64_t DECOMMISSION_INITIAL_CREDIT = BLOCKS_EXPECTED_IN_HOURS(2);
-  constexpr int64_t DECOMMISSION_MAX_CREDIT     = BLOCKS_EXPECTED_IN_HOURS(24);
+  constexpr int64_t DECOMMISSION_MAX_CREDIT     = BLOCKS_EXPECTED_IN_HOURS(48);
   constexpr int64_t DECOMMISSION_MINIMUM        = BLOCKS_EXPECTED_IN_HOURS(2);
 
   static_assert(DECOMMISSION_INITIAL_CREDIT <= DECOMMISSION_MAX_CREDIT, "Initial registration decommission credit cannot be larger than the maximum decommission credit");
@@ -32,9 +32,9 @@ namespace service_nodes {
   constexpr uint64_t  CHECKPOINT_STORE_PERSISTENTLY_INTERVAL        = 60; // Persistently store the checkpoints at these intervals
   constexpr uint64_t  CHECKPOINT_VOTE_LIFETIME                      = CHECKPOINT_STORE_PERSISTENTLY_INTERVAL; // Keep the last 60 blocks worth of votes
 
-  constexpr int16_t CHECKPOINT_MIN_QUORUMS_NODE_MUST_VOTE_IN_BEFORE_DEREGISTER_CHECK = 8;
-  constexpr int16_t CHECKPOINT_MAX_MISSABLE_VOTES                                    = 4;
-  static_assert(CHECKPOINT_MAX_MISSABLE_VOTES < CHECKPOINT_MIN_QUORUMS_NODE_MUST_VOTE_IN_BEFORE_DEREGISTER_CHECK,
+  constexpr int16_t CHECKPOINT_NUM_QUORUMS_TO_PARTICIPATE_IN = 8;
+  constexpr int16_t CHECKPOINT_MAX_MISSABLE_VOTES            = 4;
+  static_assert(CHECKPOINT_MAX_MISSABLE_VOTES < CHECKPOINT_NUM_QUORUMS_TO_PARTICIPATE_IN,
                 "The maximum number of votes a service node can miss cannot be greater than the amount of checkpoint "
                 "quorums they must participate in before we check if they should be deregistered or not.");
 
@@ -45,17 +45,17 @@ namespace service_nodes {
   constexpr uint64_t VOTE_LIFETIME                           = BLOCKS_EXPECTED_IN_HOURS(2);
 
 #if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
-  constexpr size_t    STATE_CHANGE_QUORUM_SIZE               = 5;
-  constexpr size_t    STATE_CHANGE_MIN_VOTES_TO_CHANGE_STATE = 1;
-  constexpr ptrdiff_t MIN_TIME_IN_S_BEFORE_VOTING            = 0;
-  constexpr size_t    CHECKPOINT_QUORUM_SIZE                 = 5;
-  constexpr size_t    CHECKPOINT_MIN_VOTES                   = 1;
+  constexpr size_t STATE_CHANGE_QUORUM_SIZE               = 5;
+  constexpr size_t STATE_CHANGE_MIN_VOTES_TO_CHANGE_STATE = 1;
+  constexpr int    MIN_TIME_IN_S_BEFORE_VOTING            = 0;
+  constexpr size_t CHECKPOINT_QUORUM_SIZE                 = 5;
+  constexpr size_t CHECKPOINT_MIN_VOTES                   = 1;
 #else
-  constexpr size_t    STATE_CHANGE_MIN_VOTES_TO_CHANGE_STATE = 7;
-  constexpr size_t    STATE_CHANGE_QUORUM_SIZE               = 10;
-  constexpr ptrdiff_t MIN_TIME_IN_S_BEFORE_VOTING            = UPTIME_PROOF_MAX_TIME_IN_SECONDS;
-  constexpr size_t    CHECKPOINT_QUORUM_SIZE                 = 20;
-  constexpr size_t    CHECKPOINT_MIN_VOTES                   = 13;
+  constexpr size_t STATE_CHANGE_MIN_VOTES_TO_CHANGE_STATE = 7;
+  constexpr size_t STATE_CHANGE_QUORUM_SIZE               = 10;
+  constexpr int    MIN_TIME_IN_S_BEFORE_VOTING            = UPTIME_PROOF_MAX_TIME_IN_SECONDS;
+  constexpr size_t CHECKPOINT_QUORUM_SIZE                 = 20;
+  constexpr size_t CHECKPOINT_MIN_VOTES                   = 13;
 #endif
 
   static_assert(STATE_CHANGE_MIN_VOTES_TO_CHANGE_STATE <= STATE_CHANGE_QUORUM_SIZE, "The number of votes required to kick can't exceed the actual quorum size, otherwise we never kick.");
@@ -87,7 +87,6 @@ namespace service_nodes {
   constexpr size_t   DECOMMISSIONED_REDISTRIBUTION_LOWER_PERCENTILE = 0;
   // The upper swarm percentile that will be randomly selected during stealing
   constexpr size_t   STEALING_SWARM_UPPER_PERCENTILE  = 75;
-  constexpr int      MAX_KEY_IMAGES_PER_CONTRIBUTOR   = 1;
   constexpr uint64_t KEY_IMAGE_AWAITING_UNLOCK_HEIGHT = 0;
 
   constexpr uint64_t STATE_CHANGE_TX_LIFETIME_IN_BLOCKS = VOTE_LIFETIME;
@@ -97,13 +96,15 @@ namespace service_nodes {
   // blocks out of sync and sending something that it thinks is legit.
   constexpr uint64_t VOTE_OR_TX_VERIFY_HEIGHT_BUFFER    = 5;
 
-  constexpr std::array<int, 3> MIN_STORAGE_SERVER_VERSION = {1, 0, 6};
+  constexpr std::array<int, 3> MIN_STORAGE_SERVER_VERSION = {1, 0, 7};
 
   using swarm_id_t                         = uint64_t;
   constexpr swarm_id_t UNASSIGNED_SWARM_ID = UINT64_MAX;
 
   inline quorum_type max_quorum_type_for_hf(uint8_t hf_version)
   {
+    // TODO(loki): After switching to V13, we can change checkpointing quorums to activate on V13 since we delete all
+    // v12 checkpoints so we don't need quorum data for it and save some space
     quorum_type result = (hf_version <= cryptonote::network_version_11_infinite_staking) ? quorum_type::obligations
                                                                                          : quorum_type::checkpointing;
     assert(result != quorum_type::count);

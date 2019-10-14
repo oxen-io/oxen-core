@@ -34,6 +34,7 @@
 #include "cryptonote_basic/connection_context.h"
 #include "cryptonote_protocol/cryptonote_protocol_defs.h"
 #include "checkpoints/checkpoints.h"
+#include "common/util.h"
 
 #include "misc_log_ex.h"
 #include "string_tools.h"
@@ -53,25 +54,18 @@ namespace service_nodes
   {
     uint16_t state_int = static_cast<uint16_t>(state);
 
-    char buf[sizeof(block_height) + sizeof(service_node_index) + sizeof(state_int)];
+    auto buf = tools::memcpy_le(block_height, service_node_index, state_int);
 
-    boost::endian::native_to_little_inplace(block_height);
-    boost::endian::native_to_little_inplace(service_node_index);
-    boost::endian::native_to_little_inplace(state_int);
-    memcpy(buf,                                                     &block_height,       sizeof(block_height));
-    memcpy(buf + sizeof(block_height),                              &service_node_index, sizeof(service_node_index));
-    memcpy(buf + sizeof(block_height) + sizeof(service_node_index), &state_int,          sizeof(state_int));
-
-    auto size = sizeof(buf);
+    auto size = buf.size();
     if (state == new_state::deregister)
-        size -= sizeof(uint16_t); // Don't include state value for deregs (to be backwards compatible with pre-v12 dereg votes)
+        size -= sizeof(state_int); // Don't include state value for deregs (to be backwards compatible with pre-v12 dereg votes)
 
     crypto::hash result;
-    crypto::cn_fast_hash(buf, size, result);
+    crypto::cn_fast_hash(buf.data(), size, result);
     return result;
   }
 
-  crypto::signature make_signature_from_vote(quorum_vote_t const &vote, const crypto::public_key& pub, const crypto::secret_key& sec)
+  crypto::signature make_signature_from_vote(quorum_vote_t const &vote, const service_node_keys &keys)
   {
     crypto::signature result = {};
     switch(vote.type)
@@ -86,14 +80,14 @@ namespace service_nodes
       case quorum_type::obligations:
       {
         crypto::hash hash = make_state_change_vote_hash(vote.block_height, vote.state_change.worker_index, vote.state_change.state);
-        crypto::generate_signature(hash, pub, sec, result);
+        crypto::generate_signature(hash, keys.pub, keys.key, result);
       }
       break;
 
       case quorum_type::checkpointing:
       {
         crypto::hash hash = vote.checkpoint.block_hash;
-        crypto::generate_signature(hash, pub, sec, result);
+        crypto::generate_signature(hash, keys.pub, keys.key, result);
       }
       break;
     }
@@ -101,11 +95,11 @@ namespace service_nodes
     return result;
   }
 
-  crypto::signature make_signature_from_tx_state_change(cryptonote::tx_extra_service_node_state_change const &state_change, crypto::public_key const &pub, crypto::secret_key const &sec)
+  crypto::signature make_signature_from_tx_state_change(cryptonote::tx_extra_service_node_state_change const &state_change, const service_node_keys &keys)
   {
     crypto::signature result;
     crypto::hash hash = make_state_change_vote_hash(state_change.block_height, state_change.service_node_index, state_change.state);
-    crypto::generate_signature(hash, pub, sec, result);
+    crypto::generate_signature(hash, keys.pub, keys.key, result);
     return result;
   }
 
@@ -276,9 +270,19 @@ namespace service_nodes
           }
         }
 
-        if (!bounds_check_worker_index(quorum, voter_to_signature.voter_index, nullptr)) return false;
+        // TODO(loki): Temporary HF13 code, remove when we hit HF13 because we delete all HF12 checkpoints and don't need conditionals for HF12/HF13 checkpointing code
+        std::vector<crypto::public_key> const &quorum_keys =
+            (hf_version >= cryptonote::network_version_13_enforce_checkpoints) ? quorum.validators : quorum.workers;
+        if (hf_version >= cryptonote::network_version_13_enforce_checkpoints)
+        {
+          if (!bounds_check_validator_index(quorum, voter_to_signature.voter_index, nullptr)) return false;
+        }
+        else
+        {
+          if (!bounds_check_worker_index(quorum, voter_to_signature.voter_index, nullptr)) return false;
+        }
 
-        crypto::public_key const &key = quorum.workers[voter_to_signature.voter_index];
+        crypto::public_key const &key = quorum_keys[voter_to_signature.voter_index];
         if (unique_vote_set[voter_to_signature.voter_index]++)
         {
           LOG_PRINT_L1("Voter: " << epee::string_tools::pod_to_hex(key) << ", quorum index is duplicated: " << voter_to_signature.voter_index << ", checkpoint failed verification at height: " << checkpoint.height);
@@ -304,7 +308,7 @@ namespace service_nodes
     return true;
   }
 
-  quorum_vote_t make_state_change_vote(uint64_t block_height, uint16_t validator_index, uint16_t worker_index, new_state state, crypto::public_key const &pub_key, crypto::secret_key const &sec_key)
+  quorum_vote_t make_state_change_vote(uint64_t block_height, uint16_t validator_index, uint16_t worker_index, new_state state, const service_node_keys &keys)
   {
     quorum_vote_t result             = {};
     result.type                      = quorum_type::obligations;
@@ -313,19 +317,20 @@ namespace service_nodes
     result.index_in_group            = validator_index;
     result.state_change.worker_index = worker_index;
     result.state_change.state        = state;
-    result.signature                 = make_signature_from_vote(result, pub_key, sec_key);
+    result.signature                 = make_signature_from_vote(result, keys);
     return result;
   }
 
-  quorum_vote_t make_checkpointing_vote(crypto::hash const &block_hash, uint64_t block_height, uint16_t index_in_quorum, crypto::public_key const &pub_key, crypto::secret_key const &sec_key)
+  quorum_vote_t make_checkpointing_vote(uint8_t hf_version, crypto::hash const &block_hash, uint64_t block_height, uint16_t index_in_quorum, const service_node_keys &keys)
   {
     quorum_vote_t result         = {};
     result.type                  = quorum_type::checkpointing;
     result.checkpoint.block_hash = block_hash;
     result.block_height          = block_height;
-    result.group                 = quorum_group::worker;
+    // TODO(loki): Temporary HF13 code, remove when we hit HF13 because we delete all HF12 checkpoints and don't need conditionals for HF12/HF13 checkpointing code
+    result.group                 = (hf_version >= cryptonote::network_version_13_enforce_checkpoints) ? quorum_group::validator : quorum_group::worker;
     result.index_in_group        = index_in_quorum;
-    result.signature             = make_signature_from_vote(result, pub_key, sec_key);
+    result.signature             = make_signature_from_vote(result, keys);
     return result;
   }
 
@@ -366,7 +371,7 @@ namespace service_nodes
     return result;
   }
 
-  bool verify_vote_signature(const quorum_vote_t &vote, cryptonote::vote_verification_context &vvc, const service_nodes::testing_quorum &quorum)
+  bool verify_vote_signature(uint8_t hf_version, const quorum_vote_t &vote, cryptonote::vote_verification_context &vvc, const service_nodes::testing_quorum &quorum)
   {
     bool result = true;
     if (vote.type >= quorum_type::count)
@@ -423,15 +428,19 @@ namespace service_nodes
 
       case quorum_type::checkpointing:
       {
-        if (vote.group != quorum_group::worker)
+        // TODO(loki): Temporary HF13 code, remove when we hit HF13 because we delete all HF12 checkpoints and don't need conditionals for HF12/HF13 checkpointing code
+        quorum_group expected_group =
+            (hf_version >= cryptonote::network_version_13_enforce_checkpoints) ? quorum_group::validator : quorum_group::worker;
+        if (vote.group != expected_group)
         {
-          LOG_PRINT_L1("Vote received specifies incorrect voting group, expected vote from worker");
+          LOG_PRINT_L1("Vote received specifies incorrect voting group");
           vvc.m_incorrect_voting_group = true;
           result = false;
         }
         else
         {
-          key  = quorum.workers[vote.index_in_group];
+          std::vector<crypto::public_key> const &quorum_keys = (hf_version >= cryptonote::network_version_13_enforce_checkpoints) ? quorum.validators : quorum.workers;
+          key  = quorum_keys[vote.index_in_group];
           hash = vote.checkpoint.block_hash;
         }
       }

@@ -112,6 +112,7 @@ int main(int argc, char* argv[])
     GENERATE_AND_PLAY(loki_checkpointing_alt_chain_with_increasing_service_node_checkpoints);
     GENERATE_AND_PLAY(loki_checkpointing_service_node_checkpoint_from_votes);
     GENERATE_AND_PLAY(loki_checkpointing_service_node_checkpoints_check_reorg_windows);
+    GENERATE_AND_PLAY(loki_core_block_reward_unpenalized);
     GENERATE_AND_PLAY(loki_core_governance_batched_reward);
     GENERATE_AND_PLAY(loki_core_test_deregister_preferred);
     GENERATE_AND_PLAY(loki_core_test_deregister_safety_buffer);
@@ -120,7 +121,9 @@ int main(int argc, char* argv[])
     GENERATE_AND_PLAY(loki_core_test_deregister_on_split);
     GENERATE_AND_PLAY(loki_core_test_state_change_ip_penalty_disallow_dupes);
     GENERATE_AND_PLAY(loki_service_nodes_alt_quorums);
+    GENERATE_AND_PLAY(loki_service_nodes_checkpoint_quorum_size);
     GENERATE_AND_PLAY(loki_service_nodes_gen_nodes);
+    GENERATE_AND_PLAY(loki_service_nodes_insufficient_contribution);
     GENERATE_AND_PLAY(loki_service_nodes_test_rollback);
     GENERATE_AND_PLAY(loki_service_nodes_test_swarms_basic);
 
@@ -155,6 +158,8 @@ int main(int argc, char* argv[])
     GENERATE_AND_PLAY(gen_block_miner_tx_has_out_to_alice);
     GENERATE_AND_PLAY(gen_block_has_invalid_tx);
     GENERATE_AND_PLAY(gen_block_is_too_big);
+
+    GENERATE_AND_PLAY(gen_uint_overflow_1);
 
     // TODO(loki): We also want to run these tx tests on deregistration tx's
     // as well because they special case and run under very different code
@@ -226,10 +231,8 @@ int main(int argc, char* argv[])
       GENERATE_AND_PLAY(gen_double_spend_in_alt_chain_in_different_blocks<false>);
       GENERATE_AND_PLAY(gen_double_spend_in_alt_chain_in_different_blocks<true>);
 
-      GENERATE_AND_PLAY(gen_uint_overflow_1);
-      GENERATE_AND_PLAY(gen_uint_overflow_2);
-
       GENERATE_AND_PLAY(gen_block_reward);
+      GENERATE_AND_PLAY(gen_uint_overflow_2);
 
       GENERATE_AND_PLAY(gen_v2_tx_mixable_0_mixin);
       GENERATE_AND_PLAY(gen_v2_tx_mixable_low_mixin);

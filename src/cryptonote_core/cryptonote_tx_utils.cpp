@@ -331,7 +331,7 @@ namespace cryptonote
     // Governance Distribution
     if (already_generated_coins != 0)
     {
-      if (reward_parts.governance == 0)
+      if (reward_parts.governance_paid == 0)
       {
         CHECK_AND_ASSERT_MES(hard_fork_version >= network_version_10_bulletproofs, false, "Governance reward can NOT be 0 before hardfork 10, hard_fork_version: " << hard_fork_version);
       }
@@ -351,14 +351,14 @@ namespace cryptonote
         tk.key = out_eph_public_key;
 
         tx_out out;
-        summary_amounts += out.amount = reward_parts.governance;
+        summary_amounts += out.amount = reward_parts.governance_paid;
         out.target = tk;
         tx.vout.push_back(out);
         tx.output_unlock_times.push_back(height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW);
       }
     }
 
-    uint64_t expected_amount = reward_parts.miner_reward() + reward_parts.governance + reward_parts.service_node_paid;
+    uint64_t expected_amount = reward_parts.miner_reward() + reward_parts.governance_paid + reward_parts.service_node_paid;
     CHECK_AND_ASSERT_MES(summary_amounts == expected_amount, false, "Failed to construct miner tx, summary_amounts = " << summary_amounts << " not equal total block_reward = " << expected_amount);
 
     //lock
@@ -374,8 +374,8 @@ namespace cryptonote
   bool get_loki_block_reward(size_t median_weight, size_t current_block_weight, uint64_t already_generated_coins, int hard_fork_version, block_reward_parts &result, const loki_block_reward_context &loki_context)
   {
     result = {};
-    uint64_t base_reward;
-    if (!get_base_block_reward(median_weight, current_block_weight, already_generated_coins, base_reward, hard_fork_version, loki_context.height))
+    uint64_t base_reward, base_reward_unpenalized;
+    if (!get_base_block_reward(median_weight, current_block_weight, already_generated_coins, base_reward, base_reward_unpenalized, hard_fork_version, loki_context.height))
     {
       MERROR("Failed to calculate base block reward");
       return false;
@@ -389,35 +389,34 @@ namespace cryptonote
 
     if (already_generated_coins == 0)
     {
-      result.original_base_reward = result.adjusted_base_reward = result.base_miner = base_reward;
+      result.original_base_reward = result.base_miner = base_reward;
       return true;
     }
 
-    //TODO: declining governance reward schedule
-    result.original_base_reward = base_reward;
-    result.service_node_total   = service_node_reward_formula(base_reward, hard_fork_version);
-    result.service_node_paid = calculate_sum_of_portions(loki_context.service_node_payouts, result.service_node_total);
+    // We base governance fees and SN rewards based on the block reward formula.  (Prior to HF13,
+    // however, they were accidentally based on the block reward formula *after* subtracting a
+    // potential penalty if the miner includes txes beyond the median size limit).
+    result.original_base_reward =
+        hard_fork_version >= network_version_13_enforce_checkpoints ? base_reward_unpenalized : base_reward;
 
-    result.adjusted_base_reward = result.original_base_reward;
-    if (hard_fork_version >= network_version_10_bulletproofs)
-    {
-      // NOTE: After hardfork 10, remove the governance component in the base
-      // reward as they are not included and batched into a later block. If we
-      // calculated a (governance reward > 0), then this is the batched height,
-      // add it to the adjusted base reward afterwards
-      result.governance            = loki_context.batched_governance;
-      result.adjusted_base_reward -= governance_reward_formula(result.original_base_reward);
+    result.service_node_total = service_node_reward_formula(result.original_base_reward, hard_fork_version);
+    result.service_node_paid  = calculate_sum_of_portions(loki_context.service_node_payouts, result.service_node_total);
 
-      if (result.governance > 0)
-        result.adjusted_base_reward += result.governance;
-    }
-    else
-    {
-      result.governance = governance_reward_formula(result.original_base_reward);
-    }
+    // There is a goverance fee due every block.  Beginning in hardfork 10 this is still subtracted
+    // from the block reward as if it was paid, but the actual payments get batched into rare, large
+    // accumulated payments.  (Before hardfork 10 they are included in every block, unbatched).
+    result.governance_due  = governance_reward_formula(result.original_base_reward);
+    result.governance_paid = hard_fork_version >= network_version_10_bulletproofs
+        ? loki_context.batched_governance
+        : result.governance_due;
 
-    result.base_miner     = result.adjusted_base_reward - (result.governance + result.service_node_paid);
+    // The base_miner amount is everything left in the base reward after subtracting off the service
+    // node and governance fee amounts (the due amount in the latter case).  (Any penalty for
+    // exceeding the block limit is already removed from base_reward, and so is paid by the miner).
+    uint64_t non_miner_amounts = result.governance_due + result.service_node_paid;
+    result.base_miner = base_reward > non_miner_amounts ? base_reward - non_miner_amounts : 0;
     result.base_miner_fee = loki_context.fee;
+
     return true;
   }
 
@@ -981,10 +980,10 @@ namespace cryptonote
   void get_altblock_longhash(const block& b, crypto::hash& res, const uint64_t main_height, const uint64_t height, const uint64_t seed_height, const crypto::hash& seed_hash)
   {
     blobdata bd = get_block_hashing_blob(b);
-    rx_alt_slowhash(main_height, seed_height, seed_hash.data, bd.data(), bd.size(), res.data);
+    rx_slow_hash(main_height, seed_height, seed_hash.data, bd.data(), bd.size(), res.data, 0, 1);
   }
 
-  bool get_block_longhash(const Blockchain *pbc, const block &b, crypto::hash &res, const uint64_t height, const int miners)
+  bool get_block_longhash(const Blockchain *pbc, const block& b, crypto::hash& res, const uint64_t height, const int miners)
   {
     const blobdata bd                 = get_block_hashing_blob(b);
     const uint8_t hf_version          = b.major_version;
@@ -995,16 +994,20 @@ namespace cryptonote
 #endif
 
     if (hf_version >= network_version_12_checkpointing) {
-      uint64_t seed_height;
-      if (rx_needhash(height, &seed_height)) {
-        crypto::hash hash;
-        if (pbc != NULL)
-          hash = pbc->get_pending_block_id_by_height(seed_height);
-        else
-          memset(&hash, 0, sizeof(hash));  // only happens when generating genesis block
-        rx_seedhash(seed_height, hash.data, miners);
+      uint64_t seed_height, main_height;
+      crypto::hash hash;
+      if (pbc != NULL)
+      {
+        seed_height = rx_seedheight(height);
+        hash = pbc->get_pending_block_id_by_height(seed_height);
+        main_height = pbc->get_current_blockchain_height();
+      } else
+      {
+        memset(&hash, 0, sizeof(hash));  // only happens when generating genesis block
+        seed_height = 0;
+        main_height = 0;
       }
-      rx_slow_hash(bd.data(), bd.size(), res.data, miners);
+      rx_slow_hash(main_height, seed_height, hash.data, bd.data(), bd.size(), res.data, miners, 0);
       return true;
     }
 

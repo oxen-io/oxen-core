@@ -86,46 +86,6 @@ DISABLE_VS_WARNINGS(4267)
 // used to overestimate the block reward when estimating a per kB to use
 #define BLOCK_REWARD_OVERESTIMATE (10 * 1000000000000)
 
-struct hard_fork_record
-{
-  uint8_t version;
-  uint64_t height;
-  uint8_t threshold;
-  time_t time;
-};
-
-// TODO(doyle): Move this out into a globally accessible object
-// version 7 from the start of the blockchain, inhereted from Monero mainnet
-static const hard_fork_record mainnet_hard_forks[] =
-{
-  { network_version_7,                   1,      0, 1503046577 },
-  { network_version_8,                   64324,  0, 1533006000 },
-  { network_version_9_service_nodes,     101250, 0, 1537444800 },
-  { network_version_10_bulletproofs,     161849, 0, 1544743800 }, // 2018-12-13 23:30UTC
-  { network_version_11_infinite_staking, 234767, 0, 1554170400 }, // 2019-03-26 13:00AEDT
-  { network_version_12_checkpointing,    321467, 0, 1563940800 }, // 2019-07-24 14:00AEDT
-};
-
-static const hard_fork_record testnet_hard_forks[] =
-{
-  { network_version_7,                   1,     0, 1533631121 },
-  { network_version_8,                   2,     0, 1533631122 },
-  { network_version_9_service_nodes,     3,     0, 1533631123 },
-  { network_version_10_bulletproofs,     4,     0, 1542681077 },
-  { network_version_11_infinite_staking, 5,     0, 1551223964 },
-  { network_version_12_checkpointing,    75471, 0, 1561608000 }, // 2019-06-28 14:00AEDT
-};
-
-static const hard_fork_record stagenet_hard_forks[] =
-{
-  { network_version_7,                   1,      0, 1341378000 },
-  { network_version_8,                   64324,  0, 1533006000 },
-  { network_version_9_service_nodes,     96210,  0, 1536840000 },
-  { network_version_10_bulletproofs,     96211,  0, 1536840120 },
-  { network_version_11_infinite_staking, 147029, 0, 1551223964 }, // 2019-02-27 12:30 AEDT
-  { network_version_12_checkpointing,    213125, 0, 1561608000 }, // 2019-06-28 14:00 AEDT
-};
-
 Blockchain::block_extended_info::block_extended_info(const alt_block_data_t &src, block const &blk, checkpoint_t const *checkpoint)
 {
   assert((src.checkpointed) == (checkpoint != nullptr));
@@ -383,24 +343,9 @@ bool Blockchain::init(BlockchainDB* db, const network_type nettype, bool offline
   }
   else
   {
-    hard_fork_record const *hf_record = mainnet_hard_forks;
-    uint8_t hf_record_num_entries     = loki::array_count(mainnet_hard_forks);
-
-    if (m_nettype == TESTNET)
+    for (const auto &record : HardFork::get_hardcoded_hard_forks(m_nettype))
     {
-      hf_record             = testnet_hard_forks;
-      hf_record_num_entries = loki::array_count(testnet_hard_forks);
-    }
-    else if (m_nettype == STAGENET)
-    {
-      hf_record             = stagenet_hard_forks;
-      hf_record_num_entries = loki::array_count(stagenet_hard_forks);
-    }
-
-    for (int n = 0; n < hf_record_num_entries; ++n)
-    {
-      hard_fork_record const *record = hf_record + n;
-      m_hardfork->add_fork(record->version, record->height, record->threshold, record->time);
+      m_hardfork->add_fork(record.version, record.height, record.threshold, record.time);
     }
   }
 
@@ -1077,18 +1022,6 @@ bool Blockchain::switch_to_alternative_blockchain(const std::list<block_extended
   }
 
   auto split_height = m_db->height();
-  LOKI_DEFER // TODO(loki): This is a work around for sometimes reorganising the blockchain causing inconsistent difficulty values
-  {
-    if (nettype() == MAINNET)
-    {
-      uint64_t const FUDGE                             = 60;
-      cryptonote::BlockchainDB::fixup_context context  = {};
-      context.type                                     = cryptonote::BlockchainDB::fixup_type::calculate_difficulty;
-      context.calculate_difficulty_params.start_height = split_height < FUDGE ? 0 : split_height - FUDGE;
-      m_db->fixup(context);
-    }
-  };
-
   for (BlockchainDetachedHook* hook : m_blockchain_detached_hooks)
     hook->blockchain_detached(split_height);
 
@@ -1111,11 +1044,8 @@ bool Blockchain::switch_to_alternative_blockchain(const std::list<block_extended
       // just the latter (because the rollback was done above).
       rollback_blockchain_switching(disconnected_chain, split_height);
 
-      // FIXME: Why do we keep invalid blocks around?  Possibly in case we hear
-      // about them again so we can immediately dismiss them, but needs some
-      // looking into.
       const crypto::hash blkid = cryptonote::get_block_hash(bei.bl);
-      add_block_as_invalid(bei, blkid);
+      add_block_as_invalid(bei.bl);
       MERROR("The block was inserted as invalid while connecting new alternative chain, block_id: " << blkid);
       m_db->remove_alt_block(blkid);
       alt_ch_iter++;
@@ -1123,8 +1053,7 @@ bool Blockchain::switch_to_alternative_blockchain(const std::list<block_extended
       for(auto alt_ch_to_orph_iter = alt_ch_iter; alt_ch_to_orph_iter != alt_chain.end(); )
       {
         const auto &bei = *alt_ch_to_orph_iter++;
-        const crypto::hash blkid = cryptonote::get_block_hash(bei.bl);
-        add_block_as_invalid(bei, blkid);
+        add_block_as_invalid(bei.bl);
         m_db->remove_alt_block(blkid);
       }
       return false;
@@ -1273,14 +1202,13 @@ bool Blockchain::prevalidate_miner_transaction(const block& b, uint64_t height)
 }
 //------------------------------------------------------------------
 // This function validates the miner transaction reward
-bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_block_weight, uint64_t fee, uint64_t& base_reward, uint64_t already_generated_coins, bool &partial_block_reward, uint8_t version)
+bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_block_weight, uint64_t fee, uint64_t& base_reward, uint64_t already_generated_coins, uint8_t version)
 {
   LOG_PRINT_L3("Blockchain::" << __func__);
   //validate reward
   uint64_t money_in_use = 0;
   for (auto& o: b.miner_tx.vout)
     money_in_use += o.amount;
-  partial_block_reward = false;
 
   if (b.miner_tx.vout.size() == 0) {
     MERROR_VER("miner tx has no outputs");
@@ -1315,15 +1243,15 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
 
   if (already_generated_coins != 0 && block_has_governance_output(nettype(), b))
   {
-    if (version >= network_version_10_bulletproofs && reward_parts.governance == 0)
+    if (version >= network_version_10_bulletproofs && reward_parts.governance_paid == 0)
     {
       MERROR("Governance reward should not be 0 after hardfork v10 if this height has a governance output because it is the batched payout height");
       return false;
     }
 
-    if (b.miner_tx.vout.back().amount != reward_parts.governance)
+    if (b.miner_tx.vout.back().amount != reward_parts.governance_paid)
     {
-      MERROR("Governance reward amount incorrect.  Should be: " << print_money(reward_parts.governance) << ", is: " << print_money(b.miner_tx.vout.back().amount));
+      MERROR("Governance reward amount incorrect.  Should be: " << print_money(reward_parts.governance_paid) << ", is: " << print_money(b.miner_tx.vout.back().amount));
       return false;
     }
 
@@ -1351,19 +1279,18 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
     }
   }
 
-  base_reward = reward_parts.adjusted_base_reward;
-  if(base_reward + fee < money_in_use)
+  // +1 here to allow a 1 atomic unit error in the calculation (which can happen because of floating point errors or rounding)
+  // TODO(loki): eliminate all floating point math in reward calculations.
+  uint64_t max_base_reward = reward_parts.base_miner + reward_parts.governance_paid + reward_parts.service_node_paid + 1;
+  uint64_t max_money_in_use = max_base_reward + fee;
+  if (money_in_use > max_money_in_use)
   {
-    MERROR_VER("coinbase transaction spend too much money (" << print_money(money_in_use) << "). Block reward is " << print_money(base_reward) << "(" << print_money(base_reward) << "+" << print_money(fee) << ")");
+    MERROR_VER("coinbase transaction spends too much money (" << print_money(money_in_use) << "). Maximum block reward is "
+            << print_money(max_money_in_use) << " (= " << print_money(max_base_reward) << " base + " << print_money(fee) << " fees)");
     return false;
   }
 
-  // since a miner can claim less than the full block reward, we update the base_reward
-  // to show the amount of coins that were actually generated, the remainder will be pushed back for later
-  // emission. This modifies the emission curve very slightly.
-  CHECK_AND_ASSERT_MES(money_in_use - fee <= base_reward, false, "base reward calculation bug");
-  if(base_reward != money_in_use)
-    partial_block_reward = true;
+  CHECK_AND_ASSERT_MES(money_in_use >= fee, false, "base reward calculation bug");
   base_reward = money_in_use - fee;
 
   return true;
@@ -1836,7 +1763,9 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
   bool service_node_checkpoint = false;
   if (!m_checkpoints.is_alternative_block_allowed(get_current_blockchain_height(), block_height, &service_node_checkpoint))
   {
-    if (!service_node_checkpoint || b.major_version >= cryptonote::network_version_13_enforce_checkpoints)
+    // NOTE: The only case where we want to override this is_alternative_block_allowed failing is when you are in the soft forking period
+    bool soft_fork_checkpoint = (b.major_version <= cryptonote::network_version_12_checkpointing && service_node_checkpoint);
+    if (!soft_fork_checkpoint)
     {
       MERROR_VER("Block with id: " << id << std::endl << " can't be accepted for alternative chain, block height: " << block_height << std::endl << " blockchain height: " << get_current_blockchain_height());
       bvc.m_verifivation_failed = true;
@@ -1963,7 +1892,7 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
     bool service_node_checkpoint = false;
     if (!checkpoint && !m_checkpoints.check_block(block_height, id, nullptr, &service_node_checkpoint))
     {
-      if (!service_node_checkpoint || b.major_version >= cryptonote::network_version_13_enforce_checkpoints)
+      if (!service_node_checkpoint)
       {
         LOG_ERROR("CHECKPOINT VALIDATION FAILED FOR ALT BLOCK");
         bvc.m_verifivation_failed = true;
@@ -2643,21 +2572,13 @@ bool Blockchain::find_blockchain_supplement(const uint64_t req_start_block, cons
   return true;
 }
 //------------------------------------------------------------------
-bool Blockchain::add_block_as_invalid(const block& bl, const crypto::hash& h)
-{
-  LOG_PRINT_L3("Blockchain::" << __func__);
-  block_extended_info bei = AUTO_VAL_INIT(bei);
-  bei.bl = bl;
-  return add_block_as_invalid(bei, h);
-}
-//------------------------------------------------------------------
-bool Blockchain::add_block_as_invalid(const block_extended_info& bei, const crypto::hash& h)
+bool Blockchain::add_block_as_invalid(cryptonote::block const &block)
 {
   LOG_PRINT_L3("Blockchain::" << __func__);
   CRITICAL_REGION_LOCAL(m_blockchain_lock);
-  auto i_res = m_invalid_blocks.insert(std::map<crypto::hash, block_extended_info>::value_type(h, bei));
-  CHECK_AND_ASSERT_MES(i_res.second, false, "at insertion invalid by tx returned status existed");
-  MINFO("BLOCK ADDED AS INVALID: " << h << std::endl << ", prev_id=" << bei.bl.prev_id << ", m_invalid_blocks count=" << m_invalid_blocks.size());
+  auto i_res = m_invalid_blocks.insert(get_block_hash(block));
+  CHECK_AND_ASSERT_MES(i_res.second, false, "at insertion invalid block returned status failed");
+  MINFO("BLOCK ADDED AS INVALID: " << (*i_res.first) << std::endl << ", prev_id=" << block.prev_id << ", m_invalid_blocks count=" << m_invalid_blocks.size());
   return true;
 }
 //------------------------------------------------------------------
@@ -3501,8 +3422,8 @@ bool Blockchain::check_fee(size_t tx_weight, size_t tx_outs, uint64_t fee) const
 
   uint64_t median = m_current_block_cumul_weight_limit / 2;
   uint64_t already_generated_coins = blockchain_height ? m_db->get_block_already_generated_coins(blockchain_height - 1) : 0;;
-  uint64_t base_reward = 0;
-  if (!get_base_block_reward(median, 1, already_generated_coins, base_reward, version, blockchain_height))
+  uint64_t base_reward, base_reward_unpenalized;
+  if (!get_base_block_reward(median, 1, already_generated_coins, base_reward, base_reward_unpenalized, version, blockchain_height))
     return false;
 
   uint64_t needed_fee;
@@ -3556,8 +3477,8 @@ byte_and_output_fees Blockchain::get_dynamic_base_fee_estimate(uint64_t grace_bl
     median = min_block_weight;
 
   uint64_t already_generated_coins = db_height ? m_db->get_block_already_generated_coins(db_height - 1) : 0;
-  uint64_t base_reward;
-  if (!get_base_block_reward(median, 1, already_generated_coins, base_reward, version, m_db->height()))
+  uint64_t base_reward, base_reward_unpenalized;
+  if (!get_base_block_reward(median, 1, already_generated_coins, base_reward, base_reward_unpenalized, version, m_db->height()))
   {
     MERROR("Failed to determine block reward, using placeholder " << print_money(BLOCK_REWARD_OVERESTIMATE) << " as a high bound");
     base_reward = BLOCK_REWARD_OVERESTIMATE;
@@ -3987,8 +3908,7 @@ leave:
       {
         MERROR_VER("Block with id: " << id  << " has at least one transaction (id: " << tx_id << ") with wrong inputs.");
 
-        //TODO: why is this done?  make sure that keeping invalid blocks makes sense.
-        add_block_as_invalid(bl, id);
+        add_block_as_invalid(bl);
         MERROR_VER("Block with id " << id << " added as invalid because of wrong inputs in transactions");
         MERROR_VER("tx_index " << tx_index << ", m_blocks_txs_check " << m_blocks_txs_check.size() << ":");
         for (const auto &h: m_blocks_txs_check) MERROR_VER("  " << h);
@@ -4005,8 +3925,7 @@ leave:
       if (tx_index >= m_blocks_txs_check.size() || memcmp(&m_blocks_txs_check[tx_index++], &tx_id, sizeof(tx_id)) != 0)
       {
         MERROR_VER("Block with id: " << id << " has at least one transaction (id: " << tx_id << ") with wrong inputs.");
-        //TODO: why is this done?  make sure that keeping invalid blocks makes sense.
-        add_block_as_invalid(bl, id);
+        add_block_as_invalid(bl);
         MERROR_VER("Block with id " << id << " added as invalid because of wrong inputs in transactions");
         bvc.m_verifivation_failed = true;
         return_tx_to_pool(txs);
@@ -4025,7 +3944,7 @@ leave:
   TIME_MEASURE_START(vmt);
   uint64_t base_reward = 0;
   uint64_t already_generated_coins = blockchain_height ? m_db->get_block_already_generated_coins(blockchain_height - 1) : 0;
-  if(!validate_miner_transaction(bl, cumulative_block_weight, fee_summary, base_reward, already_generated_coins, bvc.m_partial_block_reward, m_hardfork->get_current_version()))
+  if(!validate_miner_transaction(bl, cumulative_block_weight, fee_summary, base_reward, already_generated_coins, m_hardfork->get_current_version()))
   {
     MERROR_VER("Block with id: " << id << " has incorrect miner transaction");
     bvc.m_verifivation_failed = true;
@@ -4110,15 +4029,28 @@ leave:
 
   TIME_MEASURE_FINISH(addblock);
 
-  // TODO(loki): Temporary forking code. We have invalid checkpoints from the soft forking period we should cull
+  // TODO(loki): Temporary forking code.
   {
-    static uint64_t hf13_height = m_hardfork->get_earliest_ideal_height_for_version(network_version_13_enforce_checkpoints);
-    static uint64_t hf12_height = m_hardfork->get_earliest_ideal_height_for_version(network_version_12_checkpointing);
-    if (hf13_height == get_block_height(bl))
+    uint64_t block_height = get_block_height(bl);
+    // We have invalid checkpoints from the soft forking period we should cull
     {
-      std::vector<checkpoint_t> checkpoints = m_db->get_checkpoints_range(hf13_height - 1, hf12_height);
-      for (cryptonote::checkpoint_t const &checkpoint : checkpoints)
-        m_db->remove_block_checkpoint(checkpoint.height);
+      uint64_t hf13_height = m_hardfork->get_earliest_ideal_height_for_version(network_version_13_enforce_checkpoints);
+      uint64_t hf12_height = m_hardfork->get_earliest_ideal_height_for_version(network_version_12_checkpointing);
+      if (hf13_height == get_block_height(bl))
+      {
+        std::vector<checkpoint_t> checkpoints = m_db->get_checkpoints_range(hf13_height - 1, hf12_height);
+        for (cryptonote::checkpoint_t const &checkpoint : checkpoints)
+          m_db->remove_block_checkpoint(checkpoint.height);
+      }
+    }
+
+    // Rescan difficulty every N block we have a reocurring difficulty bug that causes daemons to miscalculate difficulty
+    if (nettype() == MAINNET && (block_height % BLOCKS_EXPECTED_IN_DAYS(1) == 0))
+    {
+      cryptonote::BlockchainDB::fixup_context context  = {};
+      context.type                                     = cryptonote::BlockchainDB::fixup_type::calculate_difficulty;
+      context.calculate_difficulty_params.start_height = block_height - BLOCKS_EXPECTED_IN_DAYS(1);
+      m_db->fixup(context);
     }
   }
 
@@ -4407,9 +4339,9 @@ bool Blockchain::update_checkpoint(cryptonote::checkpoint_t const &checkpoint)
     uint8_t hf_version = get_current_hard_fork_version();
     if (hf_version >= cryptonote::network_version_13_enforce_checkpoints)
     {
-      uint64_t blocks_to_pop        = m_db->height() - checkpoint.height + 2;
-      crypto::hash const reorg_hash = m_db->get_block_hash_from_height(checkpoint.height - 2);
-      MGINFO_GREEN("###### CHECKPOINTING REORGANIZE from height: " << m_db->height() << " to before checkpoint height: " << (checkpoint.height - 2) << " id: " << reorg_hash);
+      uint64_t blocks_to_pop        = m_db->height() - checkpoint.height;
+      crypto::hash const reorg_hash = m_db->get_block_hash_from_height(checkpoint.height - 1);
+      MGINFO_GREEN("###### CHECKPOINTING REORGANIZE from height: " << m_db->height() << " to before checkpoint height: " << (checkpoint.height - 1) << " id: " << reorg_hash);
       pop_blocks(blocks_to_pop);
     }
   }
@@ -5096,39 +5028,6 @@ HardFork::State Blockchain::get_hard_fork_state() const
   return m_hardfork->get_state();
 }
 
-const std::vector<HardFork::Params>& Blockchain::get_hard_fork_heights(network_type nettype)
-{
-  static const std::vector<HardFork::Params> mainnet_heights = []()
-  {
-    std::vector<HardFork::Params> heights;
-    for (const auto& i : mainnet_hard_forks)
-      heights.emplace_back(i.version, i.height, i.threshold, i.time);
-    return heights;
-  }();
-  static const std::vector<HardFork::Params> testnet_heights = []()
-  {
-    std::vector<HardFork::Params> heights;
-    for (const auto& i : testnet_hard_forks)
-      heights.emplace_back(i.version, i.height, i.threshold, i.time);
-    return heights;
-  }();
-  static const std::vector<HardFork::Params> stagenet_heights = []()
-  {
-    std::vector<HardFork::Params> heights;
-    for (const auto& i : stagenet_hard_forks)
-      heights.emplace_back(i.version, i.height, i.threshold, i.time);
-    return heights;
-  }();
-  static const std::vector<HardFork::Params> dummy;
-  switch (nettype)
-  {
-    case MAINNET: return mainnet_heights;
-    case TESTNET: return testnet_heights;
-    case STAGENET: return stagenet_heights;
-    default: return dummy;
-  }
-}
-
 bool Blockchain::get_hard_fork_voting_info(uint8_t version, uint32_t &window, uint32_t &votes, uint32_t &threshold, uint64_t &earliest_height, uint8_t &voting) const
 {
   return m_hardfork->get_voting_info(version, window, votes, threshold, earliest_height, voting);
@@ -5158,7 +5057,7 @@ std::vector<std::pair<Blockchain::block_extended_info,std::vector<crypto::hash>>
     }
 
     checkpoint_t checkpoint = {};
-    if (checkpoint_blob)
+    if (data.checkpointed && checkpoint_blob)
     {
       if (!t_serializable_object_from_blob(checkpoint, *checkpoint_blob))
         MERROR("Failed to parse checkpoint from blob");
@@ -5167,7 +5066,7 @@ std::vector<std::pair<Blockchain::block_extended_info,std::vector<crypto::hash>>
     cryptonote::block block;
     if (cryptonote::parse_and_validate_block_from_blob(*block_blob, block))
     {
-      block_extended_info bei(data, std::move(block), &checkpoint);
+      block_extended_info bei(data, std::move(block), data.checkpointed ? &checkpoint : nullptr);
       alt_blocks.insert(std::make_pair(cryptonote::get_block_hash(bei.bl), std::move(bei)));
     }
     else

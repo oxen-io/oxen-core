@@ -58,13 +58,15 @@ void hash_process(union hash_state *state, const uint8_t *buf, size_t count);
 
 #endif
 
-enum {
-  HASH_SIZE = 32,
+enum
+{
+  HASH_SIZE      = 32,
   HASH_DATA_AREA = 136
 };
 
+#define CN_TURTLE_PAGE_SIZE 262144
 void cn_fast_hash(const void *data, size_t length, char *hash);
-void cn_turtle_hash(const void *data, size_t length, char *hash, int light, int variant, int prehashed, uint32_t page_size, uint32_t scratchpad, uint32_t iterations);
+void cn_turtle_hash(const void *data, size_t length, char *hash, int light, int variant, int prehashed, uint32_t scratchpad, uint32_t iterations);
 
 void hash_extra_blake(const void *data, size_t length, char *hash);
 void hash_extra_groestl(const void *data, size_t length, char *hash);
@@ -77,8 +79,5 @@ void rx_slow_hash_allocate_state(void);
 void rx_slow_hash_free_state(void);
 uint64_t rx_seedheight(const uint64_t height);
 void rx_seedheights(const uint64_t height, uint64_t *seed_height, uint64_t *next_height);
-bool rx_needhash(const uint64_t height, uint64_t *seedheight);
-void rx_seedhash(const uint64_t seedheight, const char *hash, const int miners);
-void rx_slow_hash(const void *data, size_t length, char *hash, const int miners);
-void rx_alt_slowhash(const uint64_t mainheight, const uint64_t seedheight, const char *seedhash, const void *data, size_t length, char *hash);
+void rx_slow_hash(const uint64_t mainheight, const uint64_t seedheight, const char *seedhash, const void *data, size_t length, char *hash, int miners, int is_alt);
 void rx_reorg(const uint64_t split_height);

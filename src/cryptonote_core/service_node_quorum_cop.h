@@ -80,6 +80,7 @@ namespace service_nodes
     bool voted_in_checkpoints     = true;
     bool storage_server_reachable = true;
 
+    char const *why() const;
     bool passed() const { return uptime_proved && voted_in_checkpoints && storage_server_reachable; }
   };
 

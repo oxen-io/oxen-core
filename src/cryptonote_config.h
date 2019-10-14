@@ -174,6 +174,7 @@ static_assert(STAKING_PORTIONS % 3 == 0, "Use a multiple of three, so that it di
 #define HF_VERSION_INCREASE_FEE                 cryptonote::network_version_12_checkpointing
 #define HF_VERSION_PER_OUTPUT_FEE               cryptonote::network_version_13_enforce_checkpoints
 #define HF_VERSION_MIN_2_OUTPUTS                cryptonote::network_version_13_enforce_checkpoints
+#define HF_VERSION_ED25519_KEY                  cryptonote::network_version_13_enforce_checkpoints
 
 #define PER_KB_FEE_QUANTIZATION_DECIMALS        8
 

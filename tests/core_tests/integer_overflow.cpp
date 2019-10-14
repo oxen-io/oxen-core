@@ -29,6 +29,7 @@
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
 #include "chaingen.h"
+#include "loki_tests.h"
 #include "integer_overflow.h"
 
 using namespace epee;
@@ -98,43 +99,48 @@ bool gen_uint_overflow_base::mark_last_valid_block(cryptonote::core& c, size_t e
 
 bool gen_uint_overflow_1::generate(std::vector<test_event_entry>& events) const
 {
-  uint64_t ts_start = 1338224400;
+  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = loki_generate_sequential_hard_fork_table();
+  loki_chain_generator gen(events, hard_forks);
 
-  GENERATE_ACCOUNT(miner_account);
-  MAKE_GENESIS_BLOCK(events, blk_0, miner_account, ts_start);
-  DO_CALLBACK(events, "mark_last_valid_block");
-  MAKE_ACCOUNT(events, bob_account);
-  MAKE_ACCOUNT(events, alice_account);
+  gen.add_blocks_until_version(hard_forks.back().first);
+  gen.add_n_blocks(40);
+  gen.add_mined_money_unlock_blocks();
 
-  // Problem 1. Miner tx output overflow
-  MAKE_MINER_TX_MANUALLY(miner_tx_0, blk_0);
-  split_miner_tx_outs(miner_tx_0, MONEY_SUPPLY);
-  block blk_1;
-  if (!generator.construct_block_manually(blk_1, blk_0, miner_account, test_generator::bf_miner_tx, 0, 0, 0, crypto::hash(), 0, miner_tx_0))
-    return false;
-  events.push_back(blk_1);
+  cryptonote::account_base bob   = gen.add_account();
+  cryptonote::account_base alice = gen.add_account();
 
   // Problem 1. Miner tx outputs overflow
-  MAKE_MINER_TX_MANUALLY(miner_tx_1, blk_1);
-  split_miner_tx_outs(miner_tx_1, MONEY_SUPPLY);
-  block blk_2;
-  if (!generator.construct_block_manually(blk_2, blk_1, miner_account, test_generator::bf_miner_tx, 0, 0, 0, crypto::hash(), 0, miner_tx_1))
-    return false;
-  events.push_back(blk_2);
+  {
+    loki_blockchain_entry entry       = gen.create_next_block();
+    cryptonote::transaction &miner_tx = entry.block.miner_tx;
+    split_miner_tx_outs(miner_tx, MONEY_SUPPLY);
+    gen.add_block(entry, false /*can_be_added_to_blockchain*/, "We purposely overflow miner tx by MONEY_SUPPLY in the miner tx");
+  }
 
-  REWIND_BLOCKS(events, blk_2r, blk_2, miner_account);
-  MAKE_TX_LIST_START(events, txs_0, miner_account, bob_account, MONEY_SUPPLY, blk_2);
-  MAKE_TX_LIST(events, txs_0, miner_account, bob_account, MONEY_SUPPLY, blk_2);
-  MAKE_NEXT_BLOCK_TX_LIST(events, blk_3, blk_2r, miner_account, txs_0);
-  REWIND_BLOCKS(events, blk_3r, blk_3, miner_account);
+  // Problem 2. block_reward overflow
+  {
+    {
+      // Create txs with fee greater than the block reward
+      std::vector<cryptonote::transaction> txs;
+      txs.push_back(gen.create_and_add_tx(gen.first_miner_, alice, MK_COINS(1), MK_COINS(100) /*fee*/, false /*kept_by_block*/));
 
-  // Problem 2. total_fee overflow, block_reward overflow
-  std::list<cryptonote::transaction> txs_1;
-  // Create txs with huge fee
-  txs_1.push_back(construct_tx_with_fee(events, blk_3, bob_account, alice_account, MK_COINS(1), MONEY_SUPPLY - MK_COINS(1)));
-  txs_1.push_back(construct_tx_with_fee(events, blk_3, bob_account, alice_account, MK_COINS(1), MONEY_SUPPLY - MK_COINS(1)));
-  MAKE_NEXT_BLOCK_TX_LIST(events, blk_4, blk_3r, miner_account, txs_1);
+      loki_blockchain_entry entry       = gen.create_next_block(txs);
+      cryptonote::transaction &miner_tx = entry.block.miner_tx;
+      miner_tx.vout[0].amount           = 0; // Take partial block reward, fee > block_reward so ordinarly it would overflow. This should be disallowed
+      gen.add_block(entry, false /*can_be_added_to_blockchain*/, "We should not be able to add TX because the fee is greater than the base miner reward");
+    }
 
+    {
+      // Set kept_by_block = true
+      std::vector<cryptonote::transaction> txs;
+      txs.push_back(gen.create_and_add_tx(gen.first_miner_, alice, MK_COINS(1), MK_COINS(100) /*fee*/, true /*kept_by_block*/));
+
+      loki_blockchain_entry entry       = gen.create_next_block(txs);
+      cryptonote::transaction &miner_tx = entry.block.miner_tx;
+      miner_tx.vout[0].amount           = 0; // Take partial block reward, fee > block_reward so ordinarly it would overflow. This should be disallowed
+      gen.add_block(entry, false /*can_be_added_to_blockchain*/, "We should not be able to add TX because the fee is greater than the base miner reward even if kept_by_block is true");
+    }
+  }
   return true;
 }
 

@@ -1,5 +1,5 @@
 // Copyright (c) 2014-2019, The Monero Project
-// Copyright (c)      2018, The Loki Project
+// Copyright (c)      2019, The Loki Project
 //
 // All rights reserved.
 //
@@ -82,6 +82,9 @@
 using namespace epee;
 
 #include "miner.h"
+
+extern "C" void rx_slow_hash_allocate_state();
+extern "C" void rx_slow_hash_free_state();
 
 namespace cryptonote
 {
@@ -526,6 +529,7 @@ namespace cryptonote
     difficulty_type local_diff = 0;
     uint32_t local_template_ver = 0;
     block b;
+    rx_slow_hash_allocate_state();
     ++m_threads_active;
     while(!m_stop)
     {
@@ -598,6 +602,7 @@ namespace cryptonote
       ++m_hashes;
       ++m_total_hashes;
     }
+    rx_slow_hash_free_state();
     MGINFO("Miner thread stopped ["<< th_local_index << "]");
     --m_threads_active;
 #if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)

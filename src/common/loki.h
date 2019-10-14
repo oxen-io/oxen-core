@@ -31,6 +31,9 @@
 
 #include <string>
 
+#define LOKI_HOUR(val) ((val) * LOKI_MINUTES(60))
+#define LOKI_MINUTES(val) val * 60
+
 #define LOKI_RPC_DOC_INTROSPECT
 namespace loki
 {

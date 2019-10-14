@@ -35,11 +35,15 @@
 /*                                                                      */
 /************************************************************************/
 
+void                                      loki_register_callback                  (std::vector<test_event_entry> &events, std::string const &callback_name, loki_callback callback);
+std::vector<std::pair<uint8_t, uint64_t>> loki_generate_sequential_hard_fork_table(uint8_t max_hf_version = cryptonote::network_version_count - 1);
+
 struct loki_checkpointing_alt_chain_more_service_node_checkpoints_less_pow_overtakes : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
 struct loki_checkpointing_alt_chain_receive_checkpoint_votes_should_reorg_back       : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
 struct loki_checkpointing_alt_chain_with_increasing_service_node_checkpoints         : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
 struct loki_checkpointing_service_node_checkpoint_from_votes                         : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
 struct loki_checkpointing_service_node_checkpoints_check_reorg_windows               : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
+struct loki_core_block_reward_unpenalized                                            : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
 struct loki_core_governance_batched_reward                                           : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
 struct loki_core_test_deregister_preferred                                           : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
 struct loki_core_test_deregister_safety_buffer                                       : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
@@ -48,7 +52,9 @@ struct loki_core_test_deregister_zero_fee                                       
 struct loki_core_test_deregister_on_split                                            : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
 struct loki_core_test_state_change_ip_penalty_disallow_dupes                         : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
 struct loki_service_nodes_alt_quorums                                                : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
+struct loki_service_nodes_checkpoint_quorum_size                                     : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
 struct loki_service_nodes_gen_nodes                                                  : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
+struct loki_service_nodes_insufficient_contribution                                  : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
 struct loki_service_nodes_test_rollback                                              : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
 struct loki_service_nodes_test_swarms_basic                                          : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
 

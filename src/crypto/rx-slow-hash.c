@@ -38,6 +38,9 @@
 #include "randomx.h"
 #include "c_threads.h"
 #include "hash-ops.h"
+#include "misc_log_ex.h"
+
+#define RX_LOGCAT	"randomx"
 
 #if defined(_MSC_VER)
 #define THREADV __declspec(thread)
@@ -45,18 +48,21 @@
 #define THREADV __thread
 #endif
 
-static CTHR_MUTEX_TYPE rx_mutex = CTHR_MUTEX_INIT;
-
 typedef struct rx_state {
-  volatile uint64_t  rs_height;
+  CTHR_MUTEX_TYPE rs_mutex;
+  char rs_hash[HASH_SIZE];
+  uint64_t  rs_height;
   randomx_cache *rs_cache;
 } rx_state;
 
-static rx_state rx_s[2];
+static CTHR_MUTEX_TYPE rx_mutex = CTHR_MUTEX_INIT;
+static CTHR_MUTEX_TYPE rx_dataset_mutex = CTHR_MUTEX_INIT;
+
+static rx_state rx_s[2] = {{CTHR_MUTEX_INIT,{0},0,0},{CTHR_MUTEX_INIT,{0},0,0}};
 
 static randomx_dataset *rx_dataset;
-THREADV int rx_s_toggle;
-THREADV randomx_vm *rx_vm = NULL;
+static uint64_t rx_dataset_height;
+static THREADV randomx_vm *rx_vm = NULL;
 
 static void local_abort(const char *msg)
 {
@@ -155,8 +161,11 @@ void rx_reorg(const uint64_t split_height) {
   int i;
   CTHR_MUTEX_LOCK(rx_mutex);
   for (i=0; i<2; i++) {
-    if (split_height < rx_s[i].rs_height)
+    if (split_height <= rx_s[i].rs_height) {
+      if (rx_s[i].rs_height == rx_dataset_height)
+        rx_dataset_height = 1;
       rx_s[i].rs_height = 1;	/* set to an invalid seed height */
+    }
   }
   CTHR_MUTEX_UNLOCK(rx_mutex);
 }
@@ -172,22 +181,6 @@ void rx_seedheights(const uint64_t height, uint64_t *seedheight, uint64_t *nexth
   *nextheight = rx_seedheight(height + SEEDHASH_EPOCH_LAG);
 }
 
-bool rx_needhash(const uint64_t height, uint64_t *seedheight) {
-  rx_state *rx_sp;
-  uint64_t s_height = rx_seedheight(height);
-  int toggle = (s_height & SEEDHASH_EPOCH_BLOCKS) != 0;
-  bool ret;
-  bool changed = (toggle != rx_s_toggle);
-  *seedheight = s_height;
-  rx_s_toggle = toggle;
-  rx_sp = &rx_s[rx_s_toggle];
-  ret = (rx_sp->rs_cache == NULL) || (rx_sp->rs_height != s_height);
-  /* if cache is ok but we've flipped caches, reset vm */
-  if (!ret && changed && rx_vm != NULL)
-    randomx_vm_set_cache(rx_vm, rx_sp->rs_cache);
-  return ret;
-}
-
 typedef struct seedinfo {
   randomx_cache *si_cache;
   unsigned long si_start;
@@ -200,7 +193,7 @@ static CTHR_THREAD_RTYPE rx_seedthread(void *arg) {
   CTHR_THREAD_RETURN;
 }
 
-static void rx_initdata(randomx_cache *rs_cache, const int miners) {
+static void rx_initdata(randomx_cache *rs_cache, const int miners, const uint64_t seedheight) {
   if (miners > 1) {
     unsigned long delta = randomx_dataset_item_count() / miners;
     unsigned long start = 0;
@@ -236,106 +229,113 @@ static void rx_initdata(randomx_cache *rs_cache, const int miners) {
   } else {
     randomx_init_dataset(rx_dataset, rs_cache, 0, randomx_dataset_item_count());
   }
+  rx_dataset_height = seedheight;
 }
 
-static void rx_seedhash_int(rx_state *rx_sp, const uint64_t height, const char *hash, const int miners) {
+void rx_slow_hash(const uint64_t mainheight, const uint64_t seedheight, const char *seedhash, const void *data, size_t length,
+  char *hash, int miners, int is_alt) {
+  uint64_t s_height = rx_seedheight(mainheight);
+  int toggle = (s_height & SEEDHASH_EPOCH_BLOCKS) != 0;
   randomx_flags flags = RANDOMX_FLAG_DEFAULT;
+  rx_state *rx_sp;
   randomx_cache *cache;
+
   CTHR_MUTEX_LOCK(rx_mutex);
+
+  /* if alt block but with same seed as mainchain, no need for alt cache */
+  if (is_alt) {
+    if (s_height == seedheight && !memcmp(rx_s[toggle].rs_hash, seedhash, HASH_SIZE))
+      is_alt = 0;
+  } else {
+  /* RPC could request an earlier block on mainchain */
+    if (s_height > seedheight)
+      is_alt = 1;
+    /* miner can be ahead of mainchain */
+    else if (s_height < seedheight)
+      toggle ^= 1;
+  }
+
+  toggle ^= (is_alt != 0);
+
+  rx_sp = &rx_s[toggle];
+  CTHR_MUTEX_LOCK(rx_sp->rs_mutex);
+  CTHR_MUTEX_UNLOCK(rx_mutex);
+
   cache = rx_sp->rs_cache;
-  if (rx_sp->rs_height != height || cache == NULL) {
+  if (cache == NULL) {
     if (use_rx_jit())
       flags |= RANDOMX_FLAG_JIT;
     if (cache == NULL) {
       cache = randomx_alloc_cache(flags | RANDOMX_FLAG_LARGE_PAGES);
-      if (cache == NULL)
+      if (cache == NULL) {
+        mdebug(RX_LOGCAT, "Couldn't use largePages for RandomX cache");
         cache = randomx_alloc_cache(flags);
+      }
       if (cache == NULL)
         local_abort("Couldn't allocate RandomX cache");
     }
-    randomx_init_cache(cache, hash, 32);
-    if (miners && rx_dataset != NULL)
-      rx_initdata(cache, miners);
-    rx_sp->rs_height = height;
-    if (rx_sp->rs_cache == NULL)
-      rx_sp->rs_cache = cache;
   }
-  CTHR_MUTEX_UNLOCK(rx_mutex);
-  if (rx_vm != NULL)
-    randomx_vm_set_cache(rx_vm, rx_sp->rs_cache);
-}
-
-void rx_seedhash(const uint64_t height, const char *hash, const int miners) {
-  rx_state *rx_sp = &rx_s[rx_s_toggle];
-  rx_seedhash_int(rx_sp, height, hash, miners);
-}
-
-static char rx_althash[32];	// seedhash for alternate blocks
-
-void rx_alt_slowhash(const uint64_t mainheight, const uint64_t seedheight, const char *seedhash, const void *data, size_t length, char *hash) {
-  uint64_t s_height = rx_seedheight(mainheight);
-  int alt_toggle = (s_height & SEEDHASH_EPOCH_BLOCKS) == 0;
-  rx_state *rx_sp = &rx_s[alt_toggle];
-  if (rx_sp->rs_height != seedheight || rx_sp->rs_cache == NULL || memcmp(seedhash, rx_althash, sizeof(rx_althash))) {
-    memcpy(rx_althash, seedhash, sizeof(rx_althash));
-    rx_sp->rs_height = 1;
-    rx_seedhash_int(rx_sp, seedheight, seedhash, 0);
+  if (rx_sp->rs_height != seedheight || rx_sp->rs_cache == NULL || memcmp(seedhash, rx_sp->rs_hash, HASH_SIZE)) {
+    randomx_init_cache(cache, seedhash, HASH_SIZE);
+    rx_sp->rs_cache = cache;
+    rx_sp->rs_height = seedheight;
+    memcpy(rx_sp->rs_hash, seedhash, HASH_SIZE);
   }
   if (rx_vm == NULL) {
     randomx_flags flags = RANDOMX_FLAG_DEFAULT;
-    if (use_rx_jit())
+    if (use_rx_jit()) {
       flags |= RANDOMX_FLAG_JIT;
-    if(!force_software_aes() && check_aes_hw())
-      flags |= RANDOMX_FLAG_HARD_AES;
-    rx_vm = randomx_create_vm(flags | RANDOMX_FLAG_LARGE_PAGES, rx_sp->rs_cache, NULL);
-    if(rx_vm == NULL) //large pages failed
-      rx_vm = randomx_create_vm(flags, rx_sp->rs_cache, NULL);
-    if(rx_vm == NULL) {//fallback if everything fails
-      flags = RANDOMX_FLAG_DEFAULT;
-      rx_vm = randomx_create_vm(flags, rx_sp->rs_cache, NULL);
+      if (!miners)
+          flags |= RANDOMX_FLAG_SECURE;
     }
-    if (rx_vm == NULL)
-      local_abort("Couldn't allocate RandomX VM");
-  }
-  randomx_calculate_hash(rx_vm, data, length, hash);
-}
-
-void rx_slow_hash(const void *data, size_t length, char *hash, int miners) {
-  if (rx_vm == NULL) {
-    rx_state *rx_sp = &rx_s[rx_s_toggle];
-    randomx_flags flags = RANDOMX_FLAG_DEFAULT;
-    if (use_rx_jit())
-      flags |= RANDOMX_FLAG_JIT;
     if(!force_software_aes() && check_aes_hw())
       flags |= RANDOMX_FLAG_HARD_AES;
     if (miners) {
+      CTHR_MUTEX_LOCK(rx_dataset_mutex);
       if (rx_dataset == NULL) {
-        CTHR_MUTEX_LOCK(rx_mutex);
+        rx_dataset = randomx_alloc_dataset(RANDOMX_FLAG_LARGE_PAGES);
         if (rx_dataset == NULL) {
-          rx_dataset = randomx_alloc_dataset(RANDOMX_FLAG_LARGE_PAGES);
-          if (rx_dataset == NULL)
-            rx_dataset = randomx_alloc_dataset(RANDOMX_FLAG_DEFAULT);
-          if (rx_dataset != NULL)
-            rx_initdata(rx_sp->rs_cache, miners);
+          mdebug(RX_LOGCAT, "Couldn't use largePages for RandomX dataset");
+          rx_dataset = randomx_alloc_dataset(RANDOMX_FLAG_DEFAULT);
         }
-        CTHR_MUTEX_UNLOCK(rx_mutex);
+        if (rx_dataset != NULL)
+          rx_initdata(rx_sp->rs_cache, miners, seedheight);
       }
       if (rx_dataset != NULL)
         flags |= RANDOMX_FLAG_FULL_MEM;
-      else
+      else {
         miners = 0;
+        mwarning(RX_LOGCAT, "Couldn't allocate RandomX dataset for miner");
+      }
+      CTHR_MUTEX_UNLOCK(rx_dataset_mutex);
     }
     rx_vm = randomx_create_vm(flags | RANDOMX_FLAG_LARGE_PAGES, rx_sp->rs_cache, rx_dataset);
-    if(rx_vm == NULL) //large pages failed
+    if(rx_vm == NULL) { //large pages failed
+      mdebug(RX_LOGCAT, "Couldn't use largePages for RandomX VM");
       rx_vm = randomx_create_vm(flags, rx_sp->rs_cache, rx_dataset);
+    }
     if(rx_vm == NULL) {//fallback if everything fails
       flags = RANDOMX_FLAG_DEFAULT | (miners ? RANDOMX_FLAG_FULL_MEM : 0);
       rx_vm = randomx_create_vm(flags, rx_sp->rs_cache, rx_dataset);
     }
     if (rx_vm == NULL)
       local_abort("Couldn't allocate RandomX VM");
+  } else if (miners) {
+    CTHR_MUTEX_LOCK(rx_dataset_mutex);
+    if (rx_dataset != NULL && rx_dataset_height != seedheight)
+      rx_initdata(cache, miners, seedheight);
+    CTHR_MUTEX_UNLOCK(rx_dataset_mutex);
+  } else {
+    /* this is a no-op if the cache hasn't changed */
+    randomx_vm_set_cache(rx_vm, rx_sp->rs_cache);
   }
+  /* mainchain users can run in parallel */
+  if (!is_alt)
+    CTHR_MUTEX_UNLOCK(rx_sp->rs_mutex);
   randomx_calculate_hash(rx_vm, data, length, hash);
+  /* altchain slot users always get fully serialized */
+  if (is_alt)
+    CTHR_MUTEX_UNLOCK(rx_sp->rs_mutex);
 }
 
 void rx_slow_hash_allocate_state(void) {
@@ -349,8 +349,11 @@ void rx_slow_hash_free_state(void) {
 }
 
 void rx_stop_mining(void) {
+  CTHR_MUTEX_LOCK(rx_dataset_mutex);
   if (rx_dataset != NULL) {
-    randomx_release_dataset(rx_dataset);
-	rx_dataset = NULL;
+    randomx_dataset *rd = rx_dataset;
+    rx_dataset = NULL;
+    randomx_release_dataset(rd);
   }
+  CTHR_MUTEX_UNLOCK(rx_dataset_mutex);
 }

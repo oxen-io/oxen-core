@@ -45,6 +45,7 @@
 #include "checkpoints/checkpoints.h"
 
 #include "cryptonote_core/service_node_quorum_cop.h"
+#include "cryptonote_core/service_node_list.h"
 #include "common/loki.h"
 
 namespace
@@ -94,7 +95,7 @@ namespace cryptonote
 // advance which version they will stop working with
 // Don't go over 32767 for any of these
 #define CORE_RPC_VERSION_MAJOR 3
-#define CORE_RPC_VERSION_MINOR 0
+#define CORE_RPC_VERSION_MINOR 1
 #define MAKE_CORE_RPC_VERSION(major,minor) (((major)<<16)|(minor))
 #define CORE_RPC_VERSION MAKE_CORE_RPC_VERSION(CORE_RPC_VERSION_MAJOR, CORE_RPC_VERSION_MINOR)
 
@@ -777,6 +778,7 @@ namespace cryptonote
       std::string status;                   // General RPC error code. "OK" means everything looks good.
       uint64_t height;                      // Current length of longest chain known to daemon.
       uint64_t target_height;               // The height of the next block in the chain.
+      uint64_t immutable_height;            // The latest height in the blockchain that can not be reorganized from (backed by atleast 2 Service Node, or 1 hardcoded checkpoint, 0 if N/A).
       uint64_t difficulty;                  // Network difficulty (analogous to the strength of the network).
       uint64_t target;                      // Current target for next proof of work.
       uint64_t tx_count;                    // Total number of non-coinbase transaction in the chain.
@@ -798,6 +800,7 @@ namespace cryptonote
       uint64_t block_size_median;           // Median block size of latest 100 blocks.
       uint64_t block_weight_median;         // Median block weight of latest 100 blocks.
       uint64_t start_time;                  // Start time of the daemon, as UNIX time.
+      uint64_t last_storage_server_ping;    // Last ping time of the storage server (0 if never or not running as a service node)
       uint64_t free_space;                  // Available disk space on the node.
       bool offline;                         // States if the node is offline (`true`) or online (`false`).
       bool untrusted;                       // States if the result is obtained using the bootstrap mode, and is therefore not trusted (`true`), or when the daemon is fully synced (`false`).
@@ -812,6 +815,7 @@ namespace cryptonote
         KV_SERIALIZE(status)
         KV_SERIALIZE(height)
         KV_SERIALIZE(target_height)
+        KV_SERIALIZE(immutable_height)
         KV_SERIALIZE(difficulty)
         KV_SERIALIZE(target)
         KV_SERIALIZE(tx_count)
@@ -833,6 +837,7 @@ namespace cryptonote
         KV_SERIALIZE(block_size_median)
         KV_SERIALIZE_OPT(block_weight_median, (uint64_t)0)
         KV_SERIALIZE(start_time)
+        KV_SERIALIZE(last_storage_server_ping)
         KV_SERIALIZE(free_space)
         KV_SERIALIZE(offline)
         KV_SERIALIZE(untrusted)
@@ -1149,7 +1154,8 @@ namespace cryptonote
       uint64_t num_txes;                      // Number of transactions in the block, not counting the coinbase tx.
       std::string pow_hash;                   // The hash of the block's proof of work.
       uint64_t long_term_weight;              // Long term weight of the block.
-      std::string miner_tx_hash;
+      std::string miner_tx_hash;              // The TX hash of the miner transaction
+      std::string service_node_winner;        // Service node that received a reward for this block
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(major_version)
@@ -1171,6 +1177,7 @@ namespace cryptonote
         KV_SERIALIZE(pow_hash)
         KV_SERIALIZE_OPT(long_term_weight, (uint64_t)0)
         KV_SERIALIZE(miner_tx_hash)
+        KV_SERIALIZE(service_node_winner)
       END_KV_SERIALIZE_MAP()
   };
 
@@ -2846,10 +2853,10 @@ namespace cryptonote
       {
         std::string                           service_node_pubkey;           // The public key of the Service Node.
         uint64_t                              registration_height;           // The height at which the registration for the Service Node arrived on the blockchain.
+        uint16_t                              registration_hf_version;       // The hard fork at which the registration for the Service Node arrived on the blockchain.
         uint64_t                              requested_unlock_height;       // The height at which contributions will be released and the Service Node expires. 0 if not requested yet.
         uint64_t                              last_reward_block_height;      // The last height at which this Service Node received a reward.
         uint32_t                              last_reward_transaction_index; // When multiple Service Nodes register on the same height, the order the transaction arrive dictate the order you receive rewards.
-        uint64_t                              last_uptime_proof;             // The last time this Service Node's uptime proof was relayed by at least 1 Service Node other than itself in unix epoch time.
         bool                                  active;                        // True if fully funded and not currently decommissioned (and so `active && !funded` implicitly defines decommissioned)
         bool                                  funded;                        // True if the required stakes have been submitted to activate this Service Node
         uint64_t                              state_height;                  // If active: the state at which registration was completed; if decommissioned: the decommissioning height; if awaiting: the last contribution (or registration) height
@@ -2865,15 +2872,26 @@ namespace cryptonote
         std::string                           operator_address;              // The wallet address of the operator to which the operator cut of the staking reward is sent to.
         std::string                           public_ip;                     // The public ip address of the service node
         uint16_t                              storage_port;                  // The port number associated with the storage server
-        bool                                  storage_server_reachable;      // Whether the node's storage server has been reported as unreachable for a long time
+        std::string                           pubkey_ed25519;                // The service node's ed25519 public key for auxiliary services
+        std::string                           pubkey_x25519;                 // The service node's x25519 public key for auxiliary services
+
+
+        // Service Node Testing
+        uint64_t                                           last_uptime_proof;                   // The last time this Service Node's uptime proof was relayed by at least 1 Service Node other than itself in unix epoch time.
+        bool                                               storage_server_reachable;            // Whether the node's storage server has been reported as unreachable for a long time
+        uint64_t                                           storage_server_reachable_timestamp;  // The last time this Service Node's storage server was contacted
+        uint16_t                                           version_major;                       // Major version the node is currently running
+        uint16_t                                           version_minor;                       // Minor version the node is currently running
+        uint16_t                                           version_patch;                       // Patch version the node is currently running
+        std::vector<service_nodes::checkpoint_vote_record> votes;                               // Of the last N checkpoints the Service Node is in a checkpointing quorum, record whether or not the Service Node voted to checkpoint a block
 
         BEGIN_KV_SERIALIZE_MAP()
             KV_SERIALIZE(service_node_pubkey)
             KV_SERIALIZE(registration_height)
+            KV_SERIALIZE(registration_hf_version)
             KV_SERIALIZE(requested_unlock_height)
             KV_SERIALIZE(last_reward_block_height)
             KV_SERIALIZE(last_reward_transaction_index)
-            KV_SERIALIZE(last_uptime_proof)
             KV_SERIALIZE(active)
             KV_SERIALIZE(funded)
             KV_SERIALIZE(state_height)
@@ -2889,7 +2907,16 @@ namespace cryptonote
             KV_SERIALIZE(operator_address)
             KV_SERIALIZE(public_ip)
             KV_SERIALIZE(storage_port)
+            KV_SERIALIZE(pubkey_ed25519)
+            KV_SERIALIZE(pubkey_x25519)
+
+            KV_SERIALIZE(last_uptime_proof)
             KV_SERIALIZE(storage_server_reachable)
+            KV_SERIALIZE(storage_server_reachable_timestamp)
+            KV_SERIALIZE(version_major)
+            KV_SERIALIZE(version_minor)
+            KV_SERIALIZE(version_patch)
+            KV_SERIALIZE(votes)
         END_KV_SERIALIZE_MAP()
       };
 
@@ -2927,10 +2954,10 @@ namespace cryptonote
 
       bool service_node_pubkey;
       bool registration_height;
+      bool registration_hf_version;
       bool requested_unlock_height;
       bool last_reward_block_height;
       bool last_reward_transaction_index;
-      bool last_uptime_proof;
       bool active;
       bool funded;
       bool state_height;
@@ -2947,7 +2974,16 @@ namespace cryptonote
       bool operator_address;
       bool public_ip;
       bool storage_port;
+      bool pubkey_ed25519;
+      bool pubkey_x25519;
+
+      bool last_uptime_proof;
       bool storage_server_reachable;
+      bool storage_server_reachable_timestamp;
+      bool version_major;
+      bool version_minor;
+      bool version_patch;
+      bool votes;
 
       bool block_hash;
       bool height;
@@ -2957,10 +2993,10 @@ namespace cryptonote
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE_OPT2(service_node_pubkey, false)
         KV_SERIALIZE_OPT2(registration_height, false)
+        KV_SERIALIZE_OPT2(registration_hf_version, false)
         KV_SERIALIZE_OPT2(requested_unlock_height, false)
         KV_SERIALIZE_OPT2(last_reward_block_height, false)
         KV_SERIALIZE_OPT2(last_reward_transaction_index, false)
-        KV_SERIALIZE_OPT2(last_uptime_proof, false)
         KV_SERIALIZE_OPT2(active, false)
         KV_SERIALIZE_OPT2(funded, false)
         KV_SERIALIZE_OPT2(state_height, false)
@@ -2976,11 +3012,20 @@ namespace cryptonote
         KV_SERIALIZE_OPT2(operator_address, false)
         KV_SERIALIZE_OPT2(public_ip, false)
         KV_SERIALIZE_OPT2(storage_port, false)
-        KV_SERIALIZE_OPT2(storage_server_reachable, false)
+        KV_SERIALIZE_OPT2(pubkey_ed25519, false)
+        KV_SERIALIZE_OPT2(pubkey_x25519, false)
         KV_SERIALIZE_OPT2(block_hash, false)
         KV_SERIALIZE_OPT2(height, false)
         KV_SERIALIZE_OPT2(target_height, false)
         KV_SERIALIZE_OPT2(hardfork, false)
+
+        KV_SERIALIZE_OPT2(last_uptime_proof, false)
+        KV_SERIALIZE_OPT2(storage_server_reachable, false)
+        KV_SERIALIZE_OPT2(storage_server_reachable_timestamp, false)
+        KV_SERIALIZE_OPT2(version_major, false)
+        KV_SERIALIZE_OPT2(version_minor, false)
+        KV_SERIALIZE_OPT2(version_patch, false)
+        KV_SERIALIZE_OPT2(votes, false)
       END_KV_SERIALIZE_MAP()
     };
 
@@ -3010,10 +3055,10 @@ namespace cryptonote
 
         std::string                           service_node_pubkey;           // The public key of the Service Node.
         uint64_t                              registration_height;           // The height at which the registration for the Service Node arrived on the blockchain.
+        uint16_t                              registration_hf_version;       // The hard fork at which the registration for the Service Node arrived on the blockchain.
         uint64_t                              requested_unlock_height;       // The height at which contributions will be released and the Service Node expires. 0 if not requested yet.
         uint64_t                              last_reward_block_height;      // The last height at which this Service Node received a reward.
         uint32_t                              last_reward_transaction_index; // When multiple Service Nodes register on the same height, the order the transaction arrive dictate the order you receive rewards.
-        uint64_t                              last_uptime_proof;             // The last time this Service Node's uptime proof was relayed by atleast 1 Service Node other than itself in unix epoch time.
         bool                                  active;                        // True if fully funded and not currently decommissioned (and so `active && !funded` implicitly defines decommissioned)
         bool                                  funded;                        // True if the required stakes have been submitted to activate this Service Node
         uint64_t                              state_height;                  // If active: the state at which registration was completed; if decommissioned: the decommissioning height; if awaiting: the last contribution (or registration) height
@@ -3029,15 +3074,25 @@ namespace cryptonote
         std::string                           operator_address;              // The wallet address of the operator to which the operator cut of the staking reward is sent to.
         std::string                           public_ip;                     // The public ip address of the service node
         uint16_t                              storage_port;                  // The port number associated with the storage server
-        bool                                  storage_server_reachable;      // Whether the node's storage server has been reported as unreachable for a long time
+        std::string                           pubkey_ed25519;                // The service node's ed25519 public key for auxiliary services
+        std::string                           pubkey_x25519;                 // The service node's x25519 public key for auxiliary services
+
+        // Service Node Testing
+        uint64_t                                           last_uptime_proof;                   // The last time this Service Node's uptime proof was relayed by at least 1 Service Node other than itself in unix epoch time.
+        bool                                               storage_server_reachable;            // Whether the node's storage server has been reported as unreachable for a long time
+        uint64_t                                           storage_server_reachable_timestamp;  // The last time this Service Node's storage server was contacted
+        uint16_t                                           version_major;                       // Major version the node is currently running
+        uint16_t                                           version_minor;                       // Minor version the node is currently running
+        uint16_t                                           version_patch;                       // Patch version the node is currently running
+        std::vector<service_nodes::checkpoint_vote_record> votes;                               // Of the last N checkpoints the Service Node is in a checkpointing quorum, record whether or not the Service Node voted to checkpoint a block
 
         BEGIN_KV_SERIALIZE_MAP()
           KV_SERIALIZE_ENTRY_FIELD_IF_REQUESTED(service_node_pubkey);
           KV_SERIALIZE_ENTRY_FIELD_IF_REQUESTED(registration_height);
+          KV_SERIALIZE_ENTRY_FIELD_IF_REQUESTED(registration_hf_version);
           KV_SERIALIZE_ENTRY_FIELD_IF_REQUESTED(requested_unlock_height);
           KV_SERIALIZE_ENTRY_FIELD_IF_REQUESTED(last_reward_block_height);
           KV_SERIALIZE_ENTRY_FIELD_IF_REQUESTED(last_reward_transaction_index);
-          KV_SERIALIZE_ENTRY_FIELD_IF_REQUESTED(last_uptime_proof);
           KV_SERIALIZE_ENTRY_FIELD_IF_REQUESTED(active);
           KV_SERIALIZE_ENTRY_FIELD_IF_REQUESTED(funded);
           KV_SERIALIZE_ENTRY_FIELD_IF_REQUESTED(state_height);
@@ -3053,7 +3108,16 @@ namespace cryptonote
           KV_SERIALIZE_ENTRY_FIELD_IF_REQUESTED(operator_address);
           KV_SERIALIZE_ENTRY_FIELD_IF_REQUESTED(public_ip);
           KV_SERIALIZE_ENTRY_FIELD_IF_REQUESTED(storage_port);
+          KV_SERIALIZE_ENTRY_FIELD_IF_REQUESTED(pubkey_ed25519);
+          KV_SERIALIZE_ENTRY_FIELD_IF_REQUESTED(pubkey_x25519);
+
+          KV_SERIALIZE_ENTRY_FIELD_IF_REQUESTED(last_uptime_proof);
           KV_SERIALIZE_ENTRY_FIELD_IF_REQUESTED(storage_server_reachable);
+          KV_SERIALIZE_ENTRY_FIELD_IF_REQUESTED(storage_server_reachable_timestamp);
+          KV_SERIALIZE_ENTRY_FIELD_IF_REQUESTED(version_major);
+          KV_SERIALIZE_ENTRY_FIELD_IF_REQUESTED(version_minor);
+          KV_SERIALIZE_ENTRY_FIELD_IF_REQUESTED(version_patch);
+          KV_SERIALIZE_ENTRY_FIELD_IF_REQUESTED(votes);
         END_KV_SERIALIZE_MAP()
       };
 

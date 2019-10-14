@@ -316,7 +316,7 @@ boost::asio::ssl::context ssl_options_t::create_context() const
 #ifdef SSL_OP_CIPHER_SERVER_PREFERENCE
   SSL_CTX_set_options(ctx, SSL_OP_CIPHER_SERVER_PREFERENCE);
 #endif
-  SSL_CTX_set_ecdh_auto(ctx, 1);
+  (void)SSL_CTX_set_ecdh_auto(ctx, 1);
 
   switch (verification)
   {

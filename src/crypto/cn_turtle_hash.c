@@ -664,9 +664,9 @@ void slow_hash_free_state(uint32_t page_size)
  * @param length the length in bytes of the data
  * @param hash a pointer to a buffer in which the final 256 bit hash will be stored
  */
-void cn_turtle_hash(const void *data, size_t length, char *hash, int light, int variant, int prehashed, uint32_t page_size, uint32_t scratchpad, uint32_t iterations)
+void cn_turtle_hash(const void *data, size_t length, char *hash, int light, int variant, int prehashed, uint32_t scratchpad, uint32_t iterations)
 {
-  uint32_t TOTALBLOCKS = (page_size / AES_BLOCK_SIZE);
+  uint32_t TOTALBLOCKS = (CN_TURTLE_PAGE_SIZE / AES_BLOCK_SIZE);
   uint32_t init_rounds = (scratchpad / INIT_SIZE_BYTE);
   uint32_t aes_rounds = (iterations / 2);
   size_t lightFlag = (light ? 2: 1);
@@ -691,7 +691,7 @@ void cn_turtle_hash(const void *data, size_t length, char *hash, int light, int 
       hash_extra_blake, hash_extra_groestl, hash_extra_jh, hash_extra_skein
   };
 
-  slow_hash_allocate_state(page_size);
+  slow_hash_allocate_state(CN_TURTLE_PAGE_SIZE);
 
   /* CryptoNight Step 1:  Use Keccak1600 to initialize the 'state' (and 'text') buffers from the data. */
   if (prehashed) {
@@ -801,7 +801,7 @@ void cn_turtle_hash(const void *data, size_t length, char *hash, int light, int 
   memcpy(state.init, text, INIT_SIZE_BYTE);
   hash_permutation(&state.hs);
   extra_hashes[state.hs.b[0] & 3](&state, 200, hash);
-  slow_hash_free_state(page_size);
+  slow_hash_free_state(CN_TURTLE_PAGE_SIZE);
 }
 
 #elif !defined NO_AES && (defined(__arm__) || defined(__aarch64__))
@@ -1035,9 +1035,9 @@ STATIC INLINE void aligned_free(void *ptr)
 }
 #endif /* FORCE_USE_HEAP */
 
-void cn_turtle_hash(const void *data, size_t length, char *hash, int light, int variant, int prehashed, uint32_t page_size, uint32_t scratchpad, uint32_t iterations)
+void cn_turtle_hash(const void *data, size_t length, char *hash, int light, int variant, int prehashed, uint32_t scratchpad, uint32_t iterations)
 {
-  uint32_t TOTALBLOCKS = (page_size / AES_BLOCK_SIZE);
+  uint32_t TOTALBLOCKS = (CN_TURTLE_PAGE_SIZE / AES_BLOCK_SIZE);
   uint32_t init_rounds = (scratchpad / INIT_SIZE_BYTE);
   uint32_t aes_rounds = (iterations / 2);
   size_t lightFlag = (light ? 2: 1);
@@ -1045,10 +1045,10 @@ void cn_turtle_hash(const void *data, size_t length, char *hash, int light, int 
   RDATA_ALIGN16 uint8_t expandedKey[240];
 
 #ifndef FORCE_USE_HEAP
-  RDATA_ALIGN16 uint8_t hp_state[page_size];
+  RDATA_ALIGN16 uint8_t hp_state[CN_TURTLE_PAGE_SIZE];
 #else
 #warning "ACTIVATING FORCE_USE_HEAP IN aarch64 + crypto in slow-hash.c"
-  uint8_t *hp_state = (uint8_t *)aligned_malloc(page_size,16);
+  uint8_t *hp_state = (uint8_t *)aligned_malloc(CN_TURTLE_PAGE_SIZE,16);
 #endif
 
   uint8_t text[INIT_SIZE_BYTE];
@@ -1256,7 +1256,7 @@ STATIC INLINE void xor_blocks(uint8_t* a, const uint8_t* b)
   U64(a)[1] ^= U64(b)[1];
 }
 
-void cn_turtle_hash(const void *data, size_t length, char *hash, int light, int variant, int prehashed, uint32_t page_size, uint32_t scratchpad, uint32_t iterations)
+void cn_turtle_hash(const void *data, size_t length, char *hash, int light, int variant, int prehashed, uint32_t scratchpad, uint32_t iterations)
 {
   uint32_t init_rounds = (scratchpad / INIT_SIZE_BYTE);
   uint32_t aes_rounds = (iterations / 2);
@@ -1282,10 +1282,10 @@ void cn_turtle_hash(const void *data, size_t length, char *hash, int light, int 
   };
 
 #ifndef FORCE_USE_HEAP
-  uint8_t long_state[page_size];
+  uint8_t long_state[CN_TURTLE_PAGE_SIZE];
 #else
 #warning "ACTIVATING FORCE_USE_HEAP IN aarch64 && !crypto in slow-hash.c"
-  uint8_t *long_state = (uint8_t *)malloc(page_size);
+  uint8_t *long_state = (uint8_t *)malloc(CN_TURTLE_PAGE_SIZE);
 #endif
 
   if (prehashed) {
@@ -1317,7 +1317,7 @@ void cn_turtle_hash(const void *data, size_t length, char *hash, int light, int 
 
   for(i = 0; i < aes_rounds; i++)
   {
-    #define MASK(div) ((uint32_t)(((page_size / AES_BLOCK_SIZE) / (div) - 1) << 4))
+    #define MASK(div) ((uint32_t)(((CN_TURTLE_PAGE_SIZE / AES_BLOCK_SIZE) / (div) - 1) << 4))
     #define state_index(x,div) ((*(uint32_t *) x) & MASK(div))
 
     // Iteration 1
@@ -1462,17 +1462,17 @@ union cn_turtle_hash_state {
 };
 #pragma pack(pop)
 
-void cn_turtle_hash(const void *data, size_t length, char *hash, int light, int variant, int prehashed, uint32_t page_size, uint32_t scratchpad, uint32_t iterations)
+void cn_turtle_hash(const void *data, size_t length, char *hash, int light, int variant, int prehashed, uint32_t scratchpad, uint32_t iterations)
 {
   uint32_t init_rounds = (scratchpad / INIT_SIZE_BYTE);
   uint32_t aes_rounds = (iterations / 2);
-  size_t aes_init = (page_size / AES_BLOCK_SIZE);
+  size_t aes_init = (CN_TURTLE_PAGE_SIZE / AES_BLOCK_SIZE);
 
 #ifndef FORCE_USE_HEAP
-  uint8_t long_state[page_size];
+  uint8_t long_state[CN_TURTLE_PAGE_SIZE];
 #else
 #warning "ACTIVATING FORCE_USE_HEAP IN portable slow-hash.c"
-  uint8_t *long_state = (uint8_t *)malloc(page_size);
+  uint8_t *long_state = (uint8_t *)malloc(CN_TURTLE_PAGE_SIZE);
 #endif
 
   union cn_turtle_hash_state state;

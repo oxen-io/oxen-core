@@ -194,7 +194,7 @@ public:
   BlockchainLMDB(bool batch_transactions=true);
   ~BlockchainLMDB();
 
-  void open(const std::string& filename, const int mdb_flags=0) override;
+  void open(const std::string& filename, cryptonote::network_type nettype, const int mdb_flags=0) override;
 
   void close() override;
 
@@ -437,13 +437,13 @@ private:
   void fixup(fixup_context const context) override;
 
   // migrate from older DB version to current
-  void migrate(const uint32_t oldversion);
+  void migrate(const uint32_t oldversion, cryptonote::network_type nettype);
 
   void migrate_0_1();
   void migrate_1_2();
   void migrate_2_3();
   void migrate_3_4();
-  void migrate_4_5();
+  void migrate_4_5(cryptonote::network_type nettype);
 
   void cleanup_batch();
 

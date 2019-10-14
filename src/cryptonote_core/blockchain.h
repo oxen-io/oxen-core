@@ -58,7 +58,7 @@
 #include "cryptonote_basic/hardfork.h"
 #include "blockchain_db/blockchain_db.h"
 
-namespace service_nodes { class service_node_list; struct voting_pool; };
+namespace service_nodes { class service_node_list; };
 namespace tools { class Notify; }
 
 namespace cryptonote
@@ -776,13 +776,6 @@ namespace cryptonote
     HardFork::State get_hard_fork_state() const;
 
     /**
-     * @brief gets the hardfork heights of given network
-     *
-     * @return the HardFork object
-     */
-    static const std::vector<HardFork::Params>& get_hard_fork_heights(network_type nettype);
-
-    /**
      * @brief gets the current hardfork version in use/voted for
      *
      * @return the version
@@ -1079,7 +1072,7 @@ namespace cryptonote
     std::unique_ptr<boost::asio::io_service::work> m_async_work_idle;
 
     // some invalid blocks
-    blocks_ext_by_hash m_invalid_blocks;     // crypto::hash -> block_extended_info
+    std::set<crypto::hash> m_invalid_blocks;
 
     std::vector<BlockAddedHook*> m_block_added_hooks;
     std::vector<BlockchainDetachedHook*> m_blockchain_detached_hooks;
@@ -1297,12 +1290,11 @@ namespace cryptonote
      * @param fee the total fees collected in the block
      * @param base_reward return-by-reference the new block's generated coins
      * @param already_generated_coins the amount of currency generated prior to this block
-     * @param partial_block_reward return-by-reference true if miner accepted only partial reward
      * @param version hard fork version for that transaction
      *
      * @return false if anything is found wrong with the miner transaction, otherwise true
      */
-    bool validate_miner_transaction(const block& b, size_t cumulative_block_weight, uint64_t fee, uint64_t& base_reward, uint64_t already_generated_coins, bool &partial_block_reward, uint8_t version);
+    bool validate_miner_transaction(const block& b, size_t cumulative_block_weight, uint64_t fee, uint64_t& base_reward, uint64_t already_generated_coins, uint8_t version);
 
     /**
      * @brief reverts the blockchain to its previous state following a failed switch
@@ -1363,20 +1355,7 @@ namespace cryptonote
      *
      * @return false if the block cannot be stored for some reason, otherwise true
      */
-    bool add_block_as_invalid(const block& bl, const crypto::hash& h);
-
-    /**
-     * @brief stores an invalid block in a separate container
-     *
-     * Storing invalid blocks allows quick dismissal of the same block
-     * if it is seen again.
-     *
-     * @param bei the invalid block (see ::block_extended_info)
-     * @param h the block's hash
-     *
-     * @return false if the block cannot be stored for some reason, otherwise true
-     */
-    bool add_block_as_invalid(const block_extended_info& bei, const crypto::hash& h);
+    bool add_block_as_invalid(const cryptonote::block &block);
 
     /**
      * @brief checks a block's timestamp

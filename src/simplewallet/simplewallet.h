@@ -291,29 +291,7 @@ namespace cryptonote
     bool on_cancelled_command();
     void check_for_inactivity_lock(bool user);
 
-    struct transfer_view
-    {
-      struct dest_output
-      {
-        std::string wallet_addr;
-        uint64_t    amount;
-        uint64_t    unlock_time;
-      };
-
-      boost::variant<uint64_t, std::string> block;
-      uint64_t timestamp;
-      tools::pay_type type;
-      bool confirmed;
-      uint64_t amount;
-      crypto::hash hash;
-      std::string payment_id;
-      uint64_t fee;
-      std::vector<dest_output> outputs;
-      std::set<uint32_t> index;
-      std::string note;
-      std::string lock_msg;
-    };
-    bool get_transfers(std::vector<std::string>& args_, std::vector<transfer_view>& transfers);
+    bool get_transfers(std::vector<std::string>& args_, std::vector<tools::transfer_view>& transfers);
 
     /*!
      * \brief Prints the seed with a nice message

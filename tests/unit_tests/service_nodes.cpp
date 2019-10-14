@@ -88,6 +88,7 @@ TEST(service_nodes, staking_requirement)
     ASSERT_LT(mainnet_delta, atomic_epsilon);
   }
 
+  // NOTE: Staking Requirement Algorithm Switch 2
   // Sliftly after the boundary when the scheme switches over to a smooth emissions curve to 15k
   {
     uint64_t height = 235987;
@@ -98,24 +99,40 @@ TEST(service_nodes, staking_requirement)
     ASSERT_LT(mainnet_delta, atomic_epsilon);
   }
 
-  // Check requirements are decreasing after switching over to new requirements curve
+  // Check staking requirement on height whose value is different with different floating point rounding modes, we expect FE_TONEAREST.
   {
-    uint64_t height = 706050;
+    uint64_t height = 373200;
     int64_t  mainnet_requirement  = (int64_t)service_nodes::get_staking_requirement(cryptonote::MAINNET, height, cryptonote::network_version_11_infinite_staking);
 
-    int64_t  mainnet_expected = (int64_t)((15984 * COIN) + 588930000);
-    int64_t  mainnet_delta    = std::abs(mainnet_requirement - mainnet_expected);
-    ASSERT_LT(mainnet_delta, atomic_epsilon);
+    int64_t  mainnet_expected = (int64_t)((20839 * COIN) + 644149350);
+    ASSERT_EQ(mainnet_requirement, mainnet_expected);
   }
 
-  // Check approaching 15k requirement
+  // NOTE: Staking Requirement Algorithm Switch: Integer Math Variant ^____^
   {
-    uint64_t height = 3643650;
-    int64_t  mainnet_requirement  = (int64_t)service_nodes::get_staking_requirement(cryptonote::MAINNET, height, cryptonote::network_version_11_infinite_staking);
+    uint64_t height = 450000;
+    uint64_t mainnet_requirement  = service_nodes::get_staking_requirement(cryptonote::MAINNET, height, cryptonote::network_version_13_enforce_checkpoints);
 
-    int64_t  mainnet_expected = (int64_t)((15000 * COIN) + 150000);
-    int64_t  mainnet_delta    = std::abs(mainnet_requirement - mainnet_expected);
-    ASSERT_LT(mainnet_delta, atomic_epsilon);
+    uint64_t  mainnet_expected = (18898 * COIN) + 351896001;
+    ASSERT_EQ(mainnet_requirement, mainnet_expected);
+  }
+
+  // Just before 15k boundary
+  {
+    uint64_t height = 999999;
+    uint64_t mainnet_requirement  = service_nodes::get_staking_requirement(cryptonote::MAINNET, height, cryptonote::network_version_13_enforce_checkpoints);
+
+    uint64_t mainnet_expected = (15000 * COIN) + 3122689;
+    ASSERT_EQ(mainnet_requirement, mainnet_expected);
+  }
+
+  // 15k requirement boundary
+  {
+    uint64_t height = 1000000;
+    uint64_t mainnet_requirement  = service_nodes::get_staking_requirement(cryptonote::MAINNET, height, cryptonote::network_version_13_enforce_checkpoints);
+
+    uint64_t mainnet_expected = 15000 * COIN;
+    ASSERT_EQ(mainnet_requirement, mainnet_expected);
   }
 }
 
@@ -125,7 +142,7 @@ static bool verify_vote(service_nodes::quorum_vote_t const &vote,
                         service_nodes::testing_quorum const &quorum)
 {
   bool result = service_nodes::verify_vote_age(vote, latest_height, vvc);
-  result &= service_nodes::verify_vote_signature(vote, vvc, quorum);
+  result &= service_nodes::verify_vote_signature(cryptonote::network_version_count - 1, vote, vvc, quorum);
   return result;
 }
 
@@ -134,6 +151,10 @@ TEST(service_nodes, vote_validation)
   // Generate a quorum and the voter
   cryptonote::keypair service_node_voter = cryptonote::keypair::generate(hw::get_device("default"));
   int voter_index = 0;
+
+  service_nodes::service_node_keys voter_keys;
+  voter_keys.pub = service_node_voter.pub;
+  voter_keys.key = service_node_voter.sec;
 
   service_nodes::testing_quorum state = {};
   {
@@ -149,7 +170,7 @@ TEST(service_nodes, vote_validation)
 
   // Valid vote
   uint64_t block_height = 70;
-  service_nodes::quorum_vote_t valid_vote = service_nodes::make_state_change_vote(block_height, voter_index, 1 /*worker_index*/, service_nodes::new_state::decommission, service_node_voter.pub, service_node_voter.sec);
+  service_nodes::quorum_vote_t valid_vote = service_nodes::make_state_change_vote(block_height, voter_index, 1 /*worker_index*/, service_nodes::new_state::decommission, voter_keys);
   {
     cryptonote::vote_verification_context vvc = {};
     bool result = verify_vote(valid_vote, block_height, vvc, state);
@@ -163,7 +184,7 @@ TEST(service_nodes, vote_validation)
   {
     auto vote           = valid_vote;
     vote.index_in_group = state.validators.size() + 10;
-    vote.signature      = service_nodes::make_signature_from_vote(vote, service_node_voter.pub, service_node_voter.sec);
+    vote.signature      = service_nodes::make_signature_from_vote(vote, voter_keys);
 
     cryptonote::vote_verification_context vvc = {};
     bool result                               = verify_vote(vote, block_height, vvc, state);
@@ -174,7 +195,7 @@ TEST(service_nodes, vote_validation)
   {
     auto vote                      = valid_vote;
     vote.state_change.worker_index = state.workers.size() + 10;
-    vote.signature = service_nodes::make_signature_from_vote(vote, service_node_voter.pub, service_node_voter.sec);
+    vote.signature = service_nodes::make_signature_from_vote(vote, voter_keys);
 
     cryptonote::vote_verification_context vvc = {};
     bool result = verify_vote(vote, block_height, vvc, state);
@@ -210,17 +231,18 @@ TEST(service_nodes, vote_validation)
 TEST(service_nodes, tx_extra_state_change_validation)
 {
   // Generate a quorum and the voter
-  const size_t num_voters = 10;
-  cryptonote::keypair voters[num_voters] = {};
+  std::array<service_nodes::service_node_keys, 10> voters = {};
 
   service_nodes::testing_quorum state = {};
   {
-    state.validators.resize(num_voters);
-    state.workers.resize(num_voters);
+    state.validators.resize(voters.size());
+    state.workers.resize(voters.size());
 
     for (size_t i = 0; i < state.validators.size(); ++i)
     {
-      voters[i]           = cryptonote::keypair::generate(hw::get_device("default"));
+      cryptonote::keypair voter = cryptonote::keypair::generate(hw::get_device("default"));
+      voters[i].pub = voter.pub;
+      voters[i].key = voter.sec;
       state.validators[i] = voters[i].pub;
       state.workers[i]    = cryptonote::keypair::generate(hw::get_device("default")).pub;
     }
@@ -233,13 +255,12 @@ TEST(service_nodes, tx_extra_state_change_validation)
   {
     valid_state_change.block_height       = HEIGHT - 1;
     valid_state_change.service_node_index = 1;
-    valid_state_change.votes.reserve(num_voters);
-    for (size_t i = 0; i < num_voters; ++i)
+    valid_state_change.votes.reserve(voters.size());
+    for (size_t i = 0; i < voters.size(); ++i)
     {
-      cryptonote::keypair const *voter                        = voters + i;
       cryptonote::tx_extra_service_node_state_change::vote vote = {};
       vote.validator_index                                    = i;
-      vote.signature = service_nodes::make_signature_from_tx_state_change(valid_state_change, voter->pub, voter->sec);
+      vote.signature = service_nodes::make_signature_from_tx_state_change(valid_state_change, voters[i]);
       valid_state_change.votes.push_back(vote);
     }
 
