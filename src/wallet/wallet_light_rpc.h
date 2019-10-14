@@ -31,6 +31,7 @@
 #pragma once
 #include "cryptonote_basic/cryptonote_basic.h"
 #include "crypto/hash.h"
+#include "common/loki.h"
 
 namespace tools
 {
@@ -262,6 +263,7 @@ namespace tools
   
   //-----------------------------------------------
   LOKI_RPC_DOC_INTROSPECT
+  // TODO: Undocumented light wallet RPC call
   struct COMMAND_RPC_LOGIN
   {
       struct request_t
@@ -272,8 +274,8 @@ namespace tools
 
         BEGIN_KV_SERIALIZE_MAP()
           KV_SERIALIZE(address)
-          KV_SERIALIZE(view_key) 
-          KV_SERIALIZE(create_account) 
+          KV_SERIALIZE(view_key)
+          KV_SERIALIZE(create_account)
         END_KV_SERIALIZE_MAP()
       };
       typedef epee::misc_utils::struct_init<request_t> request;
@@ -283,7 +285,7 @@ namespace tools
         std::string status;
         std::string reason;
         bool new_address;
-        
+
         BEGIN_KV_SERIALIZE_MAP()
           KV_SERIALIZE(status)
           KV_SERIALIZE(reason)
@@ -292,15 +294,16 @@ namespace tools
       };
       typedef epee::misc_utils::struct_init<response_t> response;
   };
-  //-----------------------------------------------
+
   LOKI_RPC_DOC_INTROSPECT
+  // TODO: Undocumented light wallet RPC call
   struct COMMAND_RPC_IMPORT_WALLET_REQUEST
   {
       struct request_t
       {
         std::string address;
         std::string view_key;
-        
+
         BEGIN_KV_SERIALIZE_MAP()
           KV_SERIALIZE(address)
           KV_SERIALIZE(view_key)
@@ -316,14 +319,67 @@ namespace tools
         bool request_fulfilled;
         std::string payment_address;
         std::string status;
-        
+
         BEGIN_KV_SERIALIZE_MAP()
           KV_SERIALIZE(payment_id)
           KV_SERIALIZE(import_fee)
           KV_SERIALIZE(new_request)
           KV_SERIALIZE(request_fulfilled)
           KV_SERIALIZE(payment_address)
-          KV_SERIALIZE(status)            
+          KV_SERIALIZE(status)
+        END_KV_SERIALIZE_MAP()
+      };
+      typedef epee::misc_utils::struct_init<response_t> response;
+  };
+
+  //-----------------------------------------------
+  LOKI_RPC_DOC_INTROSPECT
+  struct COMMAND_RPC_GET_RANDOM_OUTS
+  {
+      struct request_t
+      {
+        std::vector<std::string> amounts;
+        uint32_t count;
+
+        BEGIN_KV_SERIALIZE_MAP()
+          KV_SERIALIZE(amounts)
+          KV_SERIALIZE(count)
+        END_KV_SERIALIZE_MAP()
+      };
+      typedef epee::misc_utils::struct_init<request_t> request;
+    
+      
+      struct output {
+        std::string public_key;
+        uint64_t global_index;
+        std::string rct; // 64+64+64 characters long (<rct commit> + <encrypted mask> + <rct amount>)
+
+        BEGIN_KV_SERIALIZE_MAP()
+          KV_SERIALIZE(public_key)
+          KV_SERIALIZE(global_index)
+          KV_SERIALIZE(rct)
+        END_KV_SERIALIZE_MAP()
+      };
+
+      struct amount_out 
+      {
+        uint64_t amount;
+        std::vector<output> outputs;
+
+        BEGIN_KV_SERIALIZE_MAP()
+          KV_SERIALIZE(amount)
+          KV_SERIALIZE(outputs)
+        END_KV_SERIALIZE_MAP()
+      };
+      
+      struct response_t
+      {
+        std::vector<amount_out> amount_outs;
+        std::string Error;
+
+        BEGIN_KV_SERIALIZE_MAP()
+          KV_SERIALIZE(amount_outs)
+          KV_SERIALIZE(Error)
         END_KV_SERIALIZE_MAP()
       };
       typedef epee::misc_utils::struct_init<response_t> response;
