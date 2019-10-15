@@ -110,8 +110,9 @@ namespace service_nodes
     std::vector<std::pair<cryptonote::blobdata, cryptonote::block>> blocks;
     std::vector<cryptonote::transaction> txs;
     std::vector<crypto::hash> missed_txs;
-    auto work_start = std::chrono::high_resolution_clock::now();
-    for (uint64_t i = 0; m_state.height < current_height; i++)
+    auto work_start       = std::chrono::high_resolution_clock::now();
+    uint64_t start_height = m_state.height;
+    for (uint64_t i = 0; m_state.height < current_height; i++, start_height = m_state.height)
     {
       if (i > 0 && i % 10 == 0)
       {
@@ -144,6 +145,12 @@ namespace service_nodes
         }
 
         process_block(block, txs);
+      }
+
+      if (start_height == m_state.height)
+      {
+        MERROR("Unexpected state height did not change after processing blocks, height is: " << start_height);
+        return;
       }
     }
 
@@ -1448,7 +1455,7 @@ namespace service_nodes
     //
     // Cull alt state history
     //
-    if (hf_version >= cryptonote::network_version_12_checkpointing)
+    if (hf_version >= cryptonote::network_version_12_checkpointing && m_alt_state.size())
     {
       cryptonote::checkpoint_t immutable_checkpoint;
       if (m_db->get_immutable_checkpoint(&immutable_checkpoint, block_height))
