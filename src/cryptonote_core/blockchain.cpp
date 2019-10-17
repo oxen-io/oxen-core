@@ -590,7 +590,7 @@ void Blockchain::pop_blocks(uint64_t nblocks)
 
   auto split_height = m_db->height();
   for (BlockchainDetachedHook* hook : m_blockchain_detached_hooks)
-    hook->blockchain_detached(split_height);
+    hook->blockchain_detached(split_height, true /*by_pop_blocks*/);
 
   if (stop_batch)
     m_db->batch_stop();
@@ -970,7 +970,7 @@ bool Blockchain::rollback_blockchain_switching(const std::list<block_and_checkpo
 
   // Revert all changes from switching to the alt chain before adding the original chain back in
   for (BlockchainDetachedHook* hook : m_blockchain_detached_hooks)
-    hook->blockchain_detached(rollback_height);
+    hook->blockchain_detached(rollback_height, false /*by_pop_blocks*/);
 
   // make sure the hard fork object updates its current version
   m_hardfork->reorganize_from_chain_height(rollback_height);
@@ -1024,7 +1024,7 @@ bool Blockchain::switch_to_alternative_blockchain(const std::list<block_extended
 
   auto split_height = m_db->height();
   for (BlockchainDetachedHook* hook : m_blockchain_detached_hooks)
-    hook->blockchain_detached(split_height);
+    hook->blockchain_detached(split_height, false /*by_pop_blocks*/);
 
   //connecting new alternative chain
   for(auto alt_ch_iter = alt_chain.begin(); alt_ch_iter != alt_chain.end(); alt_ch_iter++)
@@ -1712,20 +1712,39 @@ bool Blockchain::build_alt_chain(const crypto::hash &prev_id, std::list<block_ex
     // main chain -- that is, if we're adding on to an alternate chain
     if(!alt_chain.empty())
     {
+      bool failed = false;
       // make sure alt chain doesn't somehow start past the end of the main chain
-      CHECK_AND_ASSERT_MES(m_db->height() > alt_chain.front().height, false, "main blockchain wrong height");
+      if (m_db->height() < alt_chain.front().height)
+      {
+        LOG_PRINT_L1("main blockchain wrong height: " << m_db->height() << ", alt_chain: " << alt_chain.front().height);
+        failed = true;
+      }
 
       // make sure that the blockchain contains the block that should connect
       // this alternate chain with it.
-      if (!m_db->block_exists(alt_chain.front().bl.prev_id))
+      if (!failed && !m_db->block_exists(alt_chain.front().bl.prev_id))
       {
-        MERROR("alternate chain does not appear to connect to main chain...");
-        return false;
+        LOG_PRINT_L1("alternate chain does not appear to connect to main chain...: " << alt_chain.front().bl.prev_id);
+        failed = true;
       }
 
       // make sure block connects correctly to the main chain
       auto h = m_db->get_block_hash_from_height(alt_chain.front().height - 1);
-      CHECK_AND_ASSERT_MES(h == alt_chain.front().bl.prev_id, false, "alternative chain has wrong connection to main chain");
+      if (!failed && h != alt_chain.front().bl.prev_id)
+      {
+        LOG_PRINT_L1("alternative chain has wrong connection to main chain: " << h << ", mismatched with: " << alt_chain.front().bl.prev_id);
+        failed = true;
+      }
+
+      if (failed)
+      {
+        // Cleanup alt chain, it's invalid
+        for (auto const &bei : alt_chain)
+          m_db->remove_alt_block(cryptonote::get_block_hash(bei.bl));
+
+        return false;
+      }
+
       complete_timestamps_vector(m_db->get_block_height(alt_chain.front().bl.prev_id), timestamps);
     }
     // if block not associated with known alternate chain
@@ -5107,7 +5126,7 @@ void Blockchain::cancel()
 }
 
 #if defined(PER_BLOCK_CHECKPOINT)
-static const char expected_block_hashes_hash[] = "63b6445540c13f74d73fd753906e80bb84328c57b5a5a90c73353ed8405e7043";
+static const char expected_block_hashes_hash[] = "8754309c4501f4b1c547c5c14d41dca30e0836a2942b09584ccc43b287040d07";
 void Blockchain::load_compiled_in_block_hashes(const GetCheckpointsCallback& get_checkpoints)
 {
   if (get_checkpoints == nullptr || !m_fast_sync)

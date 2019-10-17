@@ -45,7 +45,7 @@ namespace cryptonote {
   class BlockchainDetachedHook
   {
   public:
-    virtual void blockchain_detached(uint64_t height) = 0;
+    virtual void blockchain_detached(uint64_t height, bool by_pop_blocks) = 0;
   };
 
   class InitHook

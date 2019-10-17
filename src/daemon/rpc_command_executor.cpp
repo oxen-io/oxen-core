@@ -2446,7 +2446,7 @@ static std::string to_string_rounded(double d, int precision) {
   return ss.str();
 }
 
-static void append_printable_service_node_list_entry(cryptonote::network_type nettype, bool detailed_view, uint64_t curr_height, uint64_t entry_index, cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::entry const &entry, std::string &buffer)
+static void append_printable_service_node_list_entry(cryptonote::network_type nettype, bool detailed_view, uint64_t blockchain_height, uint64_t entry_index, cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response::entry const &entry, std::string &buffer)
 {
   const char indent1[] = "    ";
   const char indent2[] = "        ";
@@ -2493,9 +2493,8 @@ static void append_printable_service_node_list_entry(cryptonote::network_type ne
     }
     else
     {
-      uint64_t delta_height      = expiry_height - curr_height;
+      uint64_t delta_height      = (blockchain_height >= expiry_height) ? 0 : expiry_height - blockchain_height;
       uint64_t expiry_epoch_time = now + (delta_height * DIFFICULTY_TARGET_V2);
-
       stream << expiry_height << " (in " << delta_height << ") blocks\n";
       stream << indent2 << "Expiry Date (Est. UTC): " << get_date_time(expiry_epoch_time) << " (" << get_human_time_ago(expiry_epoch_time, now) << ")\n";
     }

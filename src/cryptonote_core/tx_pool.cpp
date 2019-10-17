@@ -155,7 +155,7 @@ namespace cryptonote
         tx_extra_service_node_state_change pool_tx_state_change;
         if (!get_service_node_state_change_from_tx_extra(pool_tx.extra, pool_tx_state_change, hard_fork_version))
         {
-          MERROR("Could not get service node state change from tx: " << get_transaction_hash(pool_tx) << ", possibly corrupt tx in the pool");
+          LOG_PRINT_L1("Could not get service node state change from tx: " << get_transaction_hash(pool_tx) << ", possibly corrupt tx in the pool");
           continue;
         }
 
@@ -201,7 +201,7 @@ namespace cryptonote
         tx_extra_tx_key_image_unlock pool_unlock;
         if (!cryptonote::get_tx_key_image_unlock_from_tx_extra(pool_tx.extra, pool_unlock))
         {
-          MERROR("Could not get key image unlock from tx: " << get_transaction_hash(tx) << ", possibly corrupt tx in the pool");
+          LOG_PRINT_L1("Could not get key image unlock from tx: " << get_transaction_hash(tx) << ", possibly corrupt tx in the pool");
           return true;
         }
 

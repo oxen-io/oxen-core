@@ -38,6 +38,7 @@
 void                                      loki_register_callback                  (std::vector<test_event_entry> &events, std::string const &callback_name, loki_callback callback);
 std::vector<std::pair<uint8_t, uint64_t>> loki_generate_sequential_hard_fork_table(uint8_t max_hf_version = cryptonote::network_version_count - 1);
 
+struct loki_checkpointing_alt_chain_handle_alt_blocks_at_tip                         : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
 struct loki_checkpointing_alt_chain_more_service_node_checkpoints_less_pow_overtakes : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
 struct loki_checkpointing_alt_chain_receive_checkpoint_votes_should_reorg_back       : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
 struct loki_checkpointing_alt_chain_with_increasing_service_node_checkpoints         : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };

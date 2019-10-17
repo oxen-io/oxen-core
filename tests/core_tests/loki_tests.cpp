@@ -77,6 +77,82 @@ loki_generate_sequential_hard_fork_table(uint8_t max_hf_version)
   return result;
 }
 
+// Suppose we have checkpoint and alt block at height 40 and the main chain is at height 40 with a differing block.
+// Main chain receives checkpoints for height 40 on the alt chain via votes and reorgs back to height 39.
+// Now main chain has an alt block sitting in its DB for height 40 which actually starts beyond the chain.
+
+// In Monero land this is NOT ok because of the check in build_alt_chain
+// CHECK_AND_ASSERT_MES(m_db->height() > alt_chain.front().height, false, "main blockchain wrong height");
+// Where (m_db->height() == 40 and alt_chain.front().height == 40)
+
+// So, we change the > to a >= because it appears the code handles it fine and
+// it saves us from having to delete our alt_blocks and have to re-receive the
+// block over P2P again "just so that it can go through the normal block added
+// code path" again
+bool loki_checkpointing_alt_chain_handle_alt_blocks_at_tip::generate(std::vector<test_event_entry>& events)
+{
+  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = loki_generate_sequential_hard_fork_table();
+  loki_chain_generator gen(events, hard_forks);
+
+  gen.add_blocks_until_version(hard_forks.back().first);
+  gen.add_n_blocks(40);
+  gen.add_mined_money_unlock_blocks();
+
+  int constexpr NUM_SERVICE_NODES = service_nodes::CHECKPOINT_QUORUM_SIZE;
+  std::vector<cryptonote::transaction> registration_txs(NUM_SERVICE_NODES);
+  for (auto i = 0u; i < NUM_SERVICE_NODES; ++i)
+    registration_txs[i] = gen.create_and_add_registration_tx(gen.first_miner());
+  gen.create_and_add_next_block(registration_txs);
+
+  // NOTE: Add blocks until we get to the first height that has a checkpointing quorum AND there are service nodes in the quorum.
+  int const MAX_TRIES = 16;
+  int tries           = 0;
+  for (; tries < MAX_TRIES; tries++)
+  {
+    gen.add_blocks_until_next_checkpointable_height();
+    std::shared_ptr<const service_nodes::testing_quorum> quorum = gen.get_testing_quorum(service_nodes::quorum_type::checkpointing, gen.height());
+    if (quorum && quorum->validators.size()) break;
+  }
+  assert(tries != MAX_TRIES);
+
+  for (size_t i = 0; i < service_nodes::CHECKPOINT_INTERVAL - 1; i++)
+    gen.create_and_add_next_block();
+
+  // NOTE: Create next block on checkpoint boundary and add checkpoiont
+  loki_chain_generator fork = gen;
+  gen.create_and_add_next_block();
+  fork.create_and_add_next_block();
+  fork.add_service_node_checkpoint(fork.height(), service_nodes::CHECKPOINT_MIN_VOTES);
+
+  // NOTE: Checkpoint should cause a reorg back to checkpoint height - 1. The
+  // alt block is still in the alt db because we don't trigger a chain switch
+  // until we receive a 2nd block that confirms the alt block.
+  loki_register_callback(events, "check_alt_block_count", [&events](cryptonote::core &c, size_t ev_index)
+  {
+    DEFINE_TESTS_ERROR_CONTEXT("check_alt_block_count");
+    CHECK_EQ(c.get_blockchain_storage().get_alternative_blocks_count(), 1);
+    return true;
+  });
+
+  // NOTE: We add a new block ontop that causes the alt block code path to run
+  // again, and calculate that this alt chain now has 2 blocks on it with
+  // a greater cumulative difficulty, causing a chain switch at this point.
+  fork.create_and_add_next_block();
+  crypto::hash expected_top_hash = cryptonote::get_block_hash(fork.top().block);
+  loki_register_callback(events, "check_chain_reorged", [&events, expected_top_hash](cryptonote::core &c, size_t ev_index)
+  {
+    DEFINE_TESTS_ERROR_CONTEXT("check_chain_reorged");
+    CHECK_EQ(c.get_blockchain_storage().get_alternative_blocks_count(), 0);
+    uint64_t top_height;
+    crypto::hash top_hash;
+    c.get_blockchain_top(top_height, top_hash);
+    CHECK_EQ(expected_top_hash, top_hash);
+    return true;
+  });
+  return true;
+}
+
+
 // NOTE: - Checks that a chain with a checkpoint but less PoW is preferred over a chain that is longer with more PoW but no checkpoints
 bool loki_checkpointing_alt_chain_more_service_node_checkpoints_less_pow_overtakes::generate(std::vector<test_event_entry>& events)
 {

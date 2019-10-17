@@ -110,8 +110,9 @@ namespace service_nodes
     std::vector<std::pair<cryptonote::blobdata, cryptonote::block>> blocks;
     std::vector<cryptonote::transaction> txs;
     std::vector<crypto::hash> missed_txs;
-    auto work_start = std::chrono::high_resolution_clock::now();
-    for (uint64_t i = 0; m_state.height < current_height; i++)
+    auto work_start       = std::chrono::high_resolution_clock::now();
+    uint64_t start_height = m_state.height;
+    for (uint64_t i = 0; m_state.height < current_height; i++, start_height = m_state.height)
     {
       if (i > 0 && i % 10 == 0)
       {
@@ -145,6 +146,12 @@ namespace service_nodes
 
         process_block(block, txs);
       }
+
+      if (start_height == m_state.height)
+      {
+        MERROR("Unexpected state height did not change after processing blocks, height is: " << start_height);
+        return;
+      }
     }
 
     auto scan_end = std::chrono::high_resolution_clock::now();
@@ -153,14 +160,8 @@ namespace service_nodes
     if (store_to_disk) store();
   }
 
-  // TODO(loki): Temporary HF13 code, remove when we hit HF13 because we delete all HF12 checkpoints and don't need conditionals for HF12/HF13 checkpointing code
-  static uint64_t hf13_height;
-
   void service_node_list::init()
   {
-    // TODO(loki): Temporary HF13 code, remove when we hit HF13 because we delete all HF12 checkpoints and don't need conditionals for HF12/HF13 checkpointing code
-    hf13_height = m_blockchain.get_earliest_ideal_height_for_version(cryptonote::network_version_13_enforce_checkpoints);
-
     std::lock_guard<boost::recursive_mutex> lock(m_sn_mutex);
     if (m_blockchain.get_current_hard_fork_version() < 9)
     {
@@ -1448,7 +1449,7 @@ namespace service_nodes
     //
     // Cull alt state history
     //
-    if (hf_version >= cryptonote::network_version_12_checkpointing)
+    if (hf_version >= cryptonote::network_version_12_checkpointing && m_alt_state.size())
     {
       cryptonote::checkpoint_t immutable_checkpoint;
       if (m_db->get_immutable_checkpoint(&immutable_checkpoint, block_height))
@@ -1467,7 +1468,7 @@ namespace service_nodes
     m_state.update_from_block(*m_db, nettype, m_state_history, m_alt_state, block, txs, m_service_node_keys);
   }
 
-  void service_node_list::blockchain_detached(uint64_t height)
+  void service_node_list::blockchain_detached(uint64_t height, bool /*by_pop_blocks*/)
   {
     std::lock_guard<boost::recursive_mutex> lock(m_sn_mutex);
 
