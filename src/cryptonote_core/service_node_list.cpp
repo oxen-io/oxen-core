@@ -709,6 +709,20 @@ namespace service_nodes
       return false;
     }
 
+    // A cryptonote transaction is constructed as follows
+    // P = Hs(aR)G + B
+
+    // P := Stealth Address
+    // a := Receiver's secret view key
+    // B := Receiver's public spend key
+    // R := TX Public Key
+    // G := Elliptic Curve
+
+    // In Loki we pack into the tx extra information to reveal information about the TX
+    // A := Public View Key (we pack contributor into tx extra, 'parsed_contribution.address')
+    // r := TX Secret Key   (we pack secret key into tx extra,  'parsed_contribution.tx_key`)
+
+    // Calulate 'Derivation := Hs(Ar)G'
     crypto::key_derivation derivation;
     if (!crypto::generate_key_derivation(parsed_contribution.address.m_view_public_key, parsed_contribution.tx_key, derivation))
     {
@@ -721,6 +735,17 @@ namespace service_nodes
 
     if (hf_version >= cryptonote::network_version_11_infinite_staking)
     {
+      // In Infinite Staking, we lock the key image that would be generated if
+      // you tried to send your stake and prevent it from being transacted on
+      // the network whilst you are a Service Node. To do this, we calculate
+      // the future key image that would be generated when they user tries to
+      // spend the staked funds. A key image is derived from the ephemeral, one
+      // time transaction private key, 'x' in the Cryptonote Whitepaper.
+
+      // This is only possible to generate if they are the staking to themselves
+      // as you need the recipients private keys to generate the key image that
+      // would be generated, when they want to spend it in the future.
+
       cryptonote::tx_extra_tx_key_image_proofs key_image_proofs;
       if (!get_tx_key_image_proofs_from_tx_extra(tx.extra, key_image_proofs))
       {
@@ -734,14 +759,30 @@ namespace service_nodes
         if (transferred == 0)
           continue;
 
+        // So prove that the destination stealth address can be decoded using the
+        // staker's packed address, which means that the recipient of the
+        // contribution is themselves (and hence they have the necessary secrets
+        // to generate the future key image).
+
+        // i.e Verify the packed information is valid by computing the stealth
+        // address P' (which should equal P if matching) using
+
+        // 'Derivation := Hs(Ar)G' (we calculated earlier) instead of 'Hs(aR)G'
+        // P' = Hs(Ar)G + B
+        //    = Hs(aR)G + B
+        //    = Derivation + B
+        //    = P
+
         crypto::public_key ephemeral_pub_key;
         {
+          // P' := Derivation + B
           if (!hwdev.derive_public_key(derivation, output_index, parsed_contribution.address.m_spend_public_key, ephemeral_pub_key))
           {
             LOG_PRINT_L1("Contribution TX: Could not derive TX ephemeral key on height: " << block_height << " for tx: " << get_transaction_hash(tx) << " for output: " << output_index);
             continue;
           }
 
+          // Stealth address public key should match the public key referenced in the TX only if valid information is given.
           const auto& out_to_key = boost::get<cryptonote::txout_to_key>(tx.vout[output_index].target);
           if (out_to_key.key != ephemeral_pub_key)
           {
@@ -750,6 +791,16 @@ namespace service_nodes
           }
         }
 
+        // To prevent the staker locking any arbitrary key image, the provided
+        // key image is included and verified in a ring signature which
+        // guarantees that 'the staker proves that he knows such 'x' (one time
+        // ephemeral secret key) and that (the future key image) P = xG'.
+        // Consequently the key image is not falsified and actually the future
+        // key image.
+
+        // The signer can try falsify the key image, but the equation used to
+        // construct the key image is re-derived by the verifier, false key
+        // images will not match the re-derived key image.
         crypto::public_key const *ephemeral_pub_key_ptr = &ephemeral_pub_key;
         for (auto proof = key_image_proofs.proofs.begin(); proof != key_image_proofs.proofs.end(); proof++)
         {
@@ -771,6 +822,9 @@ namespace service_nodes
     }
     else
     {
+      // Pre Infinite Staking, we only need to prove the amount sent is
+      // sufficient to become a contributor to the Service Node and that there
+      // is sufficient lock time on the staking output.
       for (size_t i = 0; i < tx.vout.size(); i++)
       {
         bool has_correct_unlock_time = false;
