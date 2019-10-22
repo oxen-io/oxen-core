@@ -301,7 +301,11 @@ cryptonote::transaction loki_chain_generator::create_registration_tx(const crypt
     crypto::generate_signature(hash, service_node_keys.pub, service_node_keys.sec, signature);
     add_service_node_register_to_tx_extra(extra, contributors, operator_cut, portions, exp_timestamp, signature);
     add_service_node_contributor_to_tx_extra(extra, contributors.at(0));
-    loki_tx_builder(events_, result, head, src /*from*/, src /*to*/, amount, new_hf_version).is_staking(true).with_unlock_time(unlock_time).with_extra(extra).with_per_output_unlock(true).build();
+    loki_tx_builder(events_, result, head, src /*from*/, src /*to*/, amount, new_hf_version)
+        .with_tx_type(cryptonote::txtype::stake)
+        .with_unlock_time(unlock_time)
+        .with_extra(extra)
+        .build();
   }
 
   service_node_keys_[service_node_keys.pub] = service_node_keys.sec; // NOTE: Save generated key for reuse later if we need to interact with the node again
@@ -351,9 +355,12 @@ cryptonote::transaction loki_chain_generator::create_state_change_tx(service_nod
     std::vector<uint8_t> extra;
     const bool full_tx_made = cryptonote::add_service_node_state_change_to_tx_extra(result.extra, state_change_extra, get_hf_version_at(height + 1));
     assert(full_tx_made);
-    if (fee) loki_tx_builder(events_, result, top().block, first_miner_, first_miner_, 0 /*amount*/, get_hf_version_at(height + 1)).with_fee(fee).with_extra(extra).with_per_output_unlock(true).build();
-    result.version = cryptonote::transaction::get_max_version_for_hf(get_hf_version_at(height + 1), cryptonote::FAKECHAIN);
-    result.type    = cryptonote::txtype::state_change;
+    if (fee) loki_tx_builder(events_, result, top().block, first_miner_, first_miner_, 0 /*amount*/, get_hf_version_at(height + 1)).with_tx_type(cryptonote::txtype::state_change).with_fee(fee).with_extra(extra).build();
+    else
+    {
+      result.type    = cryptonote::txtype::state_change;
+      result.version = cryptonote::transaction::get_max_version_for_hf(get_hf_version_at(height + 1));
+    }
   }
 
   return result;
@@ -950,7 +957,10 @@ cryptonote::transaction make_registration_tx(std::vector<test_event_entry>& even
   crypto::generate_signature(hash, service_node_keys.pub, service_node_keys.sec, signature);
   add_service_node_register_to_tx_extra(extra, contributors, operator_cut, portions, exp_timestamp, signature);
   add_service_node_contributor_to_tx_extra(extra, contributors.at(0));
-  loki_tx_builder(events, tx, head, account, account, amount, hf_version).is_staking(true).with_extra(extra).with_unlock_time(unlock_time).with_per_output_unlock(true).build();
+
+  cryptonote::txtype tx_type = cryptonote::txtype::standard;
+  if (hf_version >= cryptonote::network_version_14_lns) tx_type = cryptonote::txtype::stake;
+  loki_tx_builder(events, tx, head, account, account, amount, hf_version).with_tx_type(tx_type).with_extra(extra).with_unlock_time(unlock_time).build();
   events.push_back(tx);
   return tx;
 }

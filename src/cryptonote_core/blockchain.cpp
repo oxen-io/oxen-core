@@ -1271,8 +1271,8 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
       return false;
     }
 
-    const auto min_version = transaction::get_min_version_for_hf(version, nettype());
-    const auto max_version = transaction::get_max_version_for_hf(version, nettype());
+    txversion min_version = transaction::get_max_version_for_hf(version);
+    txversion max_version = transaction::get_min_version_for_hf(version);
     if (b.miner_tx.version < min_version || b.miner_tx.version > max_version)
     {
       MERROR_VER("Coinbase invalid version: " << b.miner_tx.version << " for hardfork: " << version << " min/max version:  " << min_version << "/" << max_version);
@@ -2864,7 +2864,8 @@ bool Blockchain::check_tx_outputs(const transaction& tx, tx_verification_context
   }
 
   if (hf_version > HF_VERSION_SMALLER_BP) {
-    if (tx.version >= txversion::v4_tx_types && tx.type == txtype::standard) {
+    if (tx.version >= txversion::v4_tx_types && tx.is_transfer())
+    {
       if (tx.rct_signatures.type == rct::RCTTypeBulletproof)
       {
         MERROR_VER("Ringct type " << (unsigned)rct::RCTTypeBulletproof << " is not allowed from v" << (HF_VERSION_SMALLER_BP + 1));
@@ -2975,22 +2976,20 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
 
   // Min/Max Type/Version Check
   {
-    const auto min_version = transaction::get_min_version_for_hf(hf_version, nettype());
-    const auto max_version = transaction::get_max_version_for_hf(hf_version, nettype());
-
-    if (hf_version >= network_version_11_infinite_staking)
-      tvc.m_invalid_type |= (tx.type > txtype::key_image_unlock);
-
+    txtype max_type       = transaction::get_max_type_for_hf(hf_version);
+    txversion min_version = transaction::get_min_version_for_hf(hf_version);
+    txversion max_version = transaction::get_max_version_for_hf(hf_version);
+    tvc.m_invalid_type    = (tx.type > max_type);
     tvc.m_invalid_version = tx.version < min_version || tx.version > max_version;
     if (tvc.m_invalid_version || tvc.m_invalid_type)
     {
-      if (tvc.m_invalid_version) MERROR_VER("TX Invalid version: " << tx.version << " for hardfork: " << hf_version << " min/max version:  " << min_version << "/" << max_version);
-      if (tvc.m_invalid_type)    MERROR_VER("TX Invalid type for hardfork: " << hf_version);
+      if (tvc.m_invalid_version) MERROR_VER("TX Invalid version: " << tx.version << " for hardfork: " << (int)hf_version << " min/max version:  " << min_version << "/" << max_version);
+      if (tvc.m_invalid_type)    MERROR_VER("TX Invalid type: " << tx.type << " for hardfork: " << (int)hf_version << " max type: " << max_type);
       return false;
     }
   }
 
-  if (tx.type == txtype::standard)
+  if (tx.is_transfer())
   {
     crypto::hash tx_prefix_hash = get_transaction_prefix_hash(tx);
 

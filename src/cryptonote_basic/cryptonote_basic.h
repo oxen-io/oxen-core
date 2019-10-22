@@ -168,9 +168,9 @@ namespace cryptonote
     standard,
     state_change,
     key_image_unlock,
+    stake,
     _count
   };
-
 
   class transaction_prefix
   {
@@ -179,21 +179,21 @@ namespace cryptonote
     static char const *version_to_string(txversion v);
     static char const *type_to_string(txtype type);
 
-    static txversion get_min_version_for_hf(uint8_t hf_version, cryptonote::network_type nettype = MAINNET);
-    static txversion get_max_version_for_hf(uint8_t hf_version, cryptonote::network_type nettype = MAINNET);
+    static txversion get_min_version_for_hf(uint8_t hf_version);
+    static txversion get_max_version_for_hf(uint8_t hf_version);
+    static txtype    get_max_type_for_hf   (uint8_t hf_version);
 
     // tx information
     txversion version;
     txtype type;
 
+    bool is_transfer() const { return type == txtype::standard || type == txtype::stake; }
+
     // not used after version 2, but remains for compatibility
     uint64_t unlock_time;  //number of block (or time), used as a limitation like: spend this tx not early then block/time
-
     std::vector<txin_v> vin;
     std::vector<tx_out> vout;
-    //extra
     std::vector<uint8_t> extra;
-
     std::vector<uint64_t> output_unlock_times;
 
     BEGIN_SERIALIZE()
@@ -529,21 +529,15 @@ namespace cryptonote
   using byte_and_output_fees = std::pair<uint64_t, uint64_t>;
 
   //---------------------------------------------------------------
-  inline static cryptonote::network_type validate_nettype(cryptonote::network_type nettype)
+  inline txversion transaction_prefix::get_min_version_for_hf(uint8_t hf_version)
   {
-    cryptonote::network_type result = nettype;
-    assert(result != UNDEFINED);
-    if (result == UNDEFINED)
-    {
-      LOG_ERROR("Min/Max version query network type unexpectedly set to UNDEFINED, defaulting to MAINNET");
-      result = MAINNET;
-    }
-    return result;
+    if (hf_version >= cryptonote::network_version_7 && hf_version <= cryptonote::network_version_10_bulletproofs)
+      return txversion::v2_ringct;
+    return txversion::v4_tx_types;
   }
 
-  inline enum txversion transaction_prefix::get_max_version_for_hf(uint8_t hf_version, cryptonote::network_type nettype)
+  inline txversion transaction_prefix::get_max_version_for_hf(uint8_t hf_version)
   {
-    nettype = validate_nettype(nettype);
     if (hf_version >= cryptonote::network_version_7 && hf_version <= cryptonote::network_version_8)
       return txversion::v2_ringct;
 
@@ -553,22 +547,13 @@ namespace cryptonote
     return txversion::v4_tx_types;
   }
 
-  inline enum txversion transaction_prefix::get_min_version_for_hf(uint8_t hf_version, cryptonote::network_type nettype)
+  inline txtype transaction_prefix::get_max_type_for_hf(uint8_t hf_version)
   {
-    nettype = validate_nettype(nettype);
-    if (nettype == MAINNET) // NOTE(loki): Add an exception for mainnet as there are v2's on mainnet.
-    {
-      if (hf_version == cryptonote::network_version_10_bulletproofs)
-        return txversion::v2_ringct;
-    }
-
-    if (hf_version >= cryptonote::network_version_7 && hf_version <= cryptonote::network_version_9_service_nodes)
-      return txversion::v2_ringct;
-
-    if (hf_version == cryptonote::network_version_10_bulletproofs)
-      return txversion::v3_per_output_unlock_times;
-
-    return txversion::v4_tx_types;
+    txtype result = txtype::standard;
+    if      (hf_version >= network_version_14_lns)              result = txtype::stake;
+    else if (hf_version >= network_version_11_infinite_staking) result = txtype::key_image_unlock;
+    else if (hf_version >= network_version_9_service_nodes)     result = txtype::state_change;
+    return result;
   }
 
   inline char const *transaction_prefix::version_to_string(txversion v)
@@ -590,6 +575,7 @@ namespace cryptonote
       case txtype::standard:         return "standard";
       case txtype::state_change:     return "state_change";
       case txtype::key_image_unlock: return "key_image_unlock";
+      case txtype::stake:            return "stake";
       default: assert(false);        return "xx_unhandled_type";
     }
   }

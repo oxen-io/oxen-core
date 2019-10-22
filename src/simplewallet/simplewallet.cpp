@@ -6860,7 +6860,7 @@ bool simple_wallet::sweep_main(uint64_t below, bool locked, const std::vector<st
   SCOPED_WALLET_UNLOCK();
   try
   {
-    auto ptx_vector = m_wallet->create_transactions_all(below, info.address, info.is_subaddress, outputs, CRYPTONOTE_DEFAULT_TX_MIXIN, unlock_block /* unlock_time */, priority, extra, m_current_subaddress_account, subaddr_indices, false, sweep_style);
+    auto ptx_vector = m_wallet->create_transactions_all(below, info.address, info.is_subaddress, outputs, CRYPTONOTE_DEFAULT_TX_MIXIN, unlock_block /* unlock_time */, priority, extra, m_current_subaddress_account, subaddr_indices, txtype::standard, sweep_style);
     sweep_main_internal(sweep_type_t::all_or_below, ptx_vector, info);
   }
   catch (const std::exception &e)

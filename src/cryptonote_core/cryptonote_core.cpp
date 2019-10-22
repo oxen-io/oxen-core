@@ -1039,7 +1039,7 @@ namespace cryptonote
         continue;
       }
 
-      if (tx_info[n].tx->type != txtype::standard)
+      if (!tx_info[n].tx->is_transfer())
         continue;
       const rct::rctSig &rv = tx_info[n].tx->rct_signatures;
       switch (rv.type) {
@@ -1238,18 +1238,21 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
   bool core::check_tx_semantic(const transaction& tx, bool keeped_by_block) const
   {
-    if (tx.type != txtype::standard)
+    if (tx.is_transfer())
+    {
+      if (tx.vin.empty())
+      {
+        MERROR_VER("tx with empty inputs, rejected for tx id= " << get_transaction_hash(tx));
+        return false;
+      }
+    }
+    else
     {
       if (tx.vin.size() != 0)
       {
         MERROR_VER("tx type: " << tx.type << " must have 0 inputs, received: " << tx.vin.size() << ", rejected for tx id = " << get_transaction_hash(tx));
         return false;
       }
-    }
-    else if (!tx.vin.size())
-    {
-      MERROR_VER("tx with empty inputs, rejected for tx id= " << get_transaction_hash(tx));
-      return false;
     }
 
     if(!check_inputs_types_supported(tx))

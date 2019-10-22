@@ -1245,8 +1245,7 @@ class loki_tx_builder {
   std::vector<uint8_t> m_extra;
 
   /// optional fields
-  bool m_per_output_unlock = false;
-  bool m_is_staking        = false;
+  cryptonote::txtype m_tx_type = cryptonote::txtype::standard;
 
   /// this makes sure we didn't forget to build it
   bool m_finished = false;
@@ -1268,7 +1267,8 @@ public:
     , m_hf_version(hf_version)
     , m_fee(TESTS_DEFAULT_FEE)
     , m_unlock_time(0)
-  {}
+  {
+  }
 
   loki_tx_builder&& with_fee(uint64_t fee) {
     m_fee = fee;
@@ -1280,18 +1280,13 @@ public:
     return std::move(*this);
   }
 
-  loki_tx_builder&& is_staking(bool val) {
-    m_is_staking = val;
-    return std::move(*this);
-  }
-
   loki_tx_builder&& with_unlock_time(uint64_t val) {
     m_unlock_time = val;
     return std::move(*this);
   }
 
-  loki_tx_builder&& with_per_output_unlock(bool val = true) {
-    m_per_output_unlock = val;
+  loki_tx_builder&& with_tx_type(cryptonote::txtype val) {
+    m_tx_type = val;
     return std::move(*this);
   }
 
@@ -1316,8 +1311,7 @@ public:
       m_events, m_head, m_from, m_to.get_keys().m_account_address, m_amount, m_fee, nmix, sources, destinations, &change_amount);
 
     cryptonote::tx_destination_entry change_addr{ change_amount, m_from.get_keys().m_account_address, false /*is_subaddr*/ };
-    bool result = cryptonote::construct_tx(
-      m_from.get_keys(), sources, destinations, change_addr, m_extra, m_tx, m_unlock_time, m_hf_version, m_is_staking);
+    bool result = cryptonote::construct_tx(m_from.get_keys(), sources, destinations, change_addr, m_extra, m_tx, m_unlock_time, m_hf_version, m_tx_type);
     return result;
   }
 };

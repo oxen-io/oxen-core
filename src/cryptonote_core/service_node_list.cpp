@@ -1413,7 +1413,8 @@ namespace service_nodes
     for (uint32_t index = 0; index < txs.size(); ++index)
     {
       const cryptonote::transaction& tx = txs[index];
-      if (tx.type == cryptonote::txtype::standard)
+      if ((hf_version >= cryptonote::network_version_14_lns && tx.type == cryptonote::txtype::stake) ||
+          (hf_version <= cryptonote::network_version_13_enforce_checkpoints && tx.type == cryptonote::txtype::standard))
       {
         process_registration_tx(nettype, block, tx, index, my_keys);
         need_swarm_update += process_contribution_tx(nettype, block, tx, index);

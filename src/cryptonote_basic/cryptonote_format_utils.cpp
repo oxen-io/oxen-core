@@ -971,14 +971,14 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
   bool check_outs_valid(const transaction& tx)
   {
-    if (tx.type != txtype::standard)
+    if (!tx.is_transfer())
     {
       CHECK_AND_NO_ASSERT_MES(tx.vout.size() == 0, false, "tx type: " << tx.type << " must have 0 outputs, received: " << tx.vout.size() << ", id=" << get_transaction_hash(tx));
     }
 
     if (tx.version >= txversion::v3_per_output_unlock_times)
     {
-      CHECK_AND_NO_ASSERT_MES(tx.vout.size() == tx.output_unlock_times.size(), false, "tx version 3 must have equal number of output unlock times and outputs");
+      CHECK_AND_NO_ASSERT_MES(tx.vout.size() == tx.output_unlock_times.size(), false, "tx version: " << tx.version << "must have equal number of output unlock times and outputs");
     }
 
     for(const tx_out& out: tx.vout)
@@ -1371,13 +1371,13 @@ namespace cryptonote
     // TODO(loki): Not sure if this is the right fix, we may just want to set
     // unprunable size to the size of the prefix because technically that is
     // what it is and then keep this code path.
-    if (t.type == txtype::standard)
+    if (t.is_transfer())
     {
       const unsigned int unprunable_size = t.unprunable_size;
       const unsigned int prefix_size = t.prefix_size;
 
       // base rct
-      CHECK_AND_ASSERT_MES(prefix_size <= unprunable_size && unprunable_size <= blob.size(), false, "Inconsistent transaction prefix, unprunable and blob sizes");
+      CHECK_AND_ASSERT_MES(prefix_size <= unprunable_size && unprunable_size <= blob.size(), false, "Inconsistent transaction prefix, unprunable and blob sizes in: " << __func__);
       cryptonote::get_blob_hash(epee::span<const char>(blob.data() + prefix_size, unprunable_size - prefix_size), hashes[1]);
     }
     else

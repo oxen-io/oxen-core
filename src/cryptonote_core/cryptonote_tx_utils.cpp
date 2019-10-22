@@ -242,7 +242,7 @@ namespace cryptonote
     tx.extra.clear();
     tx.output_unlock_times.clear();
     tx.type    = txtype::standard;
-    tx.version = transaction::get_min_version_for_hf(hard_fork_version, nettype);
+    tx.version = transaction::get_max_version_for_hf(hard_fork_version);
 
     const crypto::public_key &service_node_key                        = miner_tx_context.block_winner.key;
     const std::vector<service_nodes::payout_entry> &service_node_info = miner_tx_context.block_winner.payouts;
@@ -446,7 +446,21 @@ namespace cryptonote
     return addr.m_view_public_key;
   }
   //---------------------------------------------------------------
-  bool construct_tx_with_tx_key(const account_keys& sender_account_keys, const std::unordered_map<crypto::public_key, subaddress_index>& subaddresses, std::vector<tx_source_entry>& sources, std::vector<tx_destination_entry>& destinations, const boost::optional<tx_destination_entry>& change_addr, const std::vector<uint8_t> &extra, transaction& tx, uint64_t unlock_time, const crypto::secret_key &tx_key, const std::vector<crypto::secret_key> &additional_tx_keys, const rct::RCTConfig &rct_config, rct::multisig_out *msout, bool shuffle_outs, const loki_construct_tx_params tx_params)
+  bool construct_tx_with_tx_key(const account_keys &sender_account_keys,
+                                const std::unordered_map<crypto::public_key, subaddress_index> &subaddresses,
+                                std::vector<tx_source_entry> &sources,
+                                std::vector<tx_destination_entry> &destinations,
+                                const boost::optional<tx_destination_entry> &change_addr,
+                                const std::vector<uint8_t> &extra,
+                                transaction &tx,
+                                uint64_t unlock_time,
+                                const crypto::secret_key &tx_key,
+                                const std::vector<crypto::secret_key> &additional_tx_keys,
+                                const rct::RCTConfig &rct_config,
+                                rct::multisig_out *msout,
+                                bool shuffle_outs,
+                                uint8_t hf_version,
+                                txtype tx_type)
   {
     hw::device &hwdev = sender_account_keys.get_device();
 
@@ -464,21 +478,15 @@ namespace cryptonote
       msout->c.clear();
     }
 
-    if (tx_params.v4_allow_tx_types)
-      tx.version = txversion::v4_tx_types;
-    else if (tx_params.v3_per_output_unlock)
-      tx.version = txversion::v3_per_output_unlock_times;
-    else
-    {
-      tx.version     = tx_params.v2_rct ? txversion::v2_ringct : txversion::v1;
+    tx.version = transaction::get_max_version_for_hf(hf_version);
+    tx.type    = tx_type;
+    if (tx.version <= txversion::v2_ringct)
       tx.unlock_time = unlock_time;
-    }
-
 
     tx.extra = extra;
     crypto::public_key txkey_pub;
 
-    if (tx_params.v3_is_staking_tx)
+    if (tx.type == txtype::stake)
       add_tx_secret_key_to_tx_extra(tx.extra, tx_key);
 
     // if we have a stealth payment id, find it and encrypt it with the tx key now
@@ -689,7 +697,7 @@ namespace cryptonote
         }
       }
 
-      if (tx_params.v3_is_staking_tx)
+      if (tx.type == txtype::stake)
       {
         CHECK_AND_ASSERT_MES(dst_entr.addr == sender_account_keys.m_account_address, false, "A staking contribution must return back to the original sendee otherwise the pre-calculated key image is incorrect");
         CHECK_AND_ASSERT_MES(dst_entr.is_subaddress == false, false, "Staking back to a subaddress is not allowed"); // TODO(loki): Maybe one day, revisit this
@@ -723,10 +731,13 @@ namespace cryptonote
     }
     CHECK_AND_ASSERT_MES(additional_tx_public_keys.size() == additional_tx_keys.size(), false, "Internal error creating additional public keys");
 
-    if (tx_params.v3_is_staking_tx)
+    if (tx.type == txtype::stake)
     {
       CHECK_AND_ASSERT_MES(key_image_proofs.proofs.size() >= 1, false, "No key image proofs were generated for staking tx");
       add_tx_key_image_proofs_to_tx_extra(tx.extra, key_image_proofs);
+
+      if (hf_version <= cryptonote::network_version_13_enforce_checkpoints)
+        tx.type = txtype::standard;
     }
 
     remove_field_from_tx_extra(tx.extra, typeid(tx_extra_additional_pub_keys));
@@ -913,7 +924,20 @@ namespace cryptonote
     return true;
   }
   //---------------------------------------------------------------
-  bool construct_tx_and_get_tx_key(const account_keys& sender_account_keys, const std::unordered_map<crypto::public_key, subaddress_index>& subaddresses, std::vector<tx_source_entry>& sources, std::vector<tx_destination_entry>& destinations, const boost::optional<cryptonote::tx_destination_entry>& change_addr, const std::vector<uint8_t> &extra, transaction& tx, uint64_t unlock_time, crypto::secret_key &tx_key, std::vector<crypto::secret_key> &additional_tx_keys, const rct::RCTConfig &rct_config, rct::multisig_out *msout, loki_construct_tx_params const tx_params)
+  bool construct_tx_and_get_tx_key(const account_keys &sender_account_keys,
+                                   const std::unordered_map<crypto::public_key, subaddress_index> &subaddresses,
+                                   std::vector<tx_source_entry> &sources,
+                                   std::vector<tx_destination_entry> &destinations,
+                                   const boost::optional<cryptonote::tx_destination_entry> &change_addr,
+                                   const std::vector<uint8_t> &extra,
+                                   transaction &tx,
+                                   uint64_t unlock_time,
+                                   crypto::secret_key &tx_key,
+                                   std::vector<crypto::secret_key> &additional_tx_keys,
+                                   const rct::RCTConfig &rct_config,
+                                   rct::multisig_out *msout,
+                                   uint8_t hf_version,
+                                   txtype tx_type)
   {
     hw::device &hwdev = sender_account_keys.get_device();
     hwdev.open_tx(tx_key);
@@ -931,12 +955,20 @@ namespace cryptonote
         additional_tx_keys.push_back(keypair::generate(sender_account_keys.get_device()).sec);
     }
 
-    bool r = construct_tx_with_tx_key(sender_account_keys, subaddresses, sources, destinations, change_addr, extra, tx, unlock_time, tx_key, additional_tx_keys, rct_config, msout, true /*shuffle_outs*/, tx_params);
+    bool r = construct_tx_with_tx_key(sender_account_keys, subaddresses, sources, destinations, change_addr, extra, tx, unlock_time, tx_key, additional_tx_keys, rct_config, msout, true /*shuffle_outs*/, hf_version, tx_type);
     hwdev.close_tx();
     return r;
   }
   //---------------------------------------------------------------
-  bool construct_tx(const account_keys& sender_account_keys, std::vector<tx_source_entry> &sources, const std::vector<tx_destination_entry>& destinations, const boost::optional<cryptonote::tx_destination_entry>& change_addr, const std::vector<uint8_t> &extra, transaction& tx, uint64_t unlock_time, uint8_t hf_version, bool is_staking)
+  bool construct_tx(const account_keys &sender_account_keys,
+                    std::vector<tx_source_entry> &sources,
+                    const std::vector<tx_destination_entry> &destinations,
+                    const boost::optional<cryptonote::tx_destination_entry> &change_addr,
+                    const std::vector<uint8_t> &extra,
+                    transaction &tx,
+                    uint64_t unlock_time,
+                    uint8_t hf_version,
+                    txtype tx_type)
   {
      std::unordered_map<crypto::public_key, cryptonote::subaddress_index> subaddresses;
      subaddresses[sender_account_keys.m_account_address.m_spend_public_key] = {0,0};
@@ -948,10 +980,7 @@ namespace cryptonote
      rct_config.range_proof_type  = (hf_version < network_version_10_bulletproofs) ?  rct::RangeProofBorromean : rct::RangeProofPaddedBulletproof;
      rct_config.bp_version        = (hf_version < HF_VERSION_SMALLER_BP) ? 1 : 0;
 
-     loki_construct_tx_params tx_params(hf_version);
-     tx_params.v3_is_staking_tx = is_staking;
-
-     return construct_tx_and_get_tx_key(sender_account_keys, subaddresses, sources, destinations_copy, change_addr, extra, tx, unlock_time, tx_key, additional_tx_keys, rct_config, NULL, tx_params);
+     return construct_tx_and_get_tx_key(sender_account_keys, subaddresses, sources, destinations_copy, change_addr, extra, tx, unlock_time, tx_key, additional_tx_keys, rct_config, NULL, hf_version, tx_type);
   }
   //---------------------------------------------------------------
   bool generate_genesis_block(

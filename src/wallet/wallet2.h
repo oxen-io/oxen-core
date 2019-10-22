@@ -514,14 +514,13 @@ private:
       std::vector<size_t> selected_transfers;
       std::vector<uint8_t> extra;
       uint64_t unlock_time;
-      bool v2_use_rct;
-      bool v3_per_output_unlock;
-      bool v4_allow_tx_types;
       rct::RCTConfig rct_config;
       std::vector<cryptonote::tx_destination_entry> dests; // original setup, does not include change
       uint32_t subaddr_account;   // subaddress account of your wallet to be used in this transfer
       std::set<uint32_t> subaddr_indices;  // set of address indices used as inputs in this transfer
 
+      uint8_t            hf_version;
+      cryptonote::txtype tx_type;
       BEGIN_SERIALIZE_OBJECT()
         FIELD(sources)
         FIELD(change_dts)
@@ -529,13 +528,13 @@ private:
         FIELD(selected_transfers)
         FIELD(extra)
         FIELD(unlock_time)
-        FIELD(v2_use_rct)
-        FIELD(v3_per_output_unlock)
-        FIELD(v4_allow_tx_types)
         FIELD(rct_config)
         FIELD(dests)
         FIELD(subaddr_account)
         FIELD(subaddr_indices)
+
+        FIELD(hf_version)
+        ENUM_FIELD(tx_type, tx_type < cryptonote::txtype::_count)
       END_SERIALIZE()
     };
 
@@ -919,9 +918,17 @@ private:
     // all locked & unlocked balances of all subaddress accounts
     uint64_t balance_all() const;
     uint64_t unlocked_balance_all(uint64_t *blocks_to_unlock = NULL) const;
-    void transfer_selected_rct(std::vector<cryptonote::tx_destination_entry> dsts, const std::vector<size_t>& selected_transfers, size_t fake_outputs_count,
-      std::vector<std::vector<tools::wallet2::get_outs_entry>> &outs,
-      uint64_t unlock_time, uint64_t fee, const std::vector<uint8_t>& extra, cryptonote::transaction& tx, pending_tx &ptx, const rct::RCTConfig &rct_config, bool is_staking_tx = false);
+    void transfer_selected_rct(std::vector<cryptonote::tx_destination_entry> dsts,
+                               const std::vector<size_t> &selected_transfers,
+                               size_t fake_outputs_count,
+                               std::vector<std::vector<tools::wallet2::get_outs_entry>> &outs,
+                               uint64_t unlock_time,
+                               uint64_t fee,
+                               const std::vector<uint8_t> &extra,
+                               cryptonote::transaction &tx,
+                               pending_tx &ptx,
+                               const rct::RCTConfig &rct_config,
+                               cryptonote::txtype tx_type = cryptonote::txtype::standard);
 
     void commit_tx(pending_tx& ptx_vector);
     void commit_tx(std::vector<pending_tx>& ptx_vector);
@@ -943,12 +950,47 @@ private:
     bool parse_unsigned_tx_from_str(const std::string &unsigned_tx_st, unsigned_tx_set &exported_txs) const;
     bool load_tx(const std::string &signed_filename, std::vector<tools::wallet2::pending_tx> &ptx, std::function<bool(const signed_tx_set&)> accept_func = NULL);
     bool parse_tx_from_str(const std::string &signed_tx_st, std::vector<tools::wallet2::pending_tx> &ptx, std::function<bool(const signed_tx_set &)> accept_func);
-    std::vector<wallet2::pending_tx> create_transactions_2(std::vector<cryptonote::tx_destination_entry> dsts, const size_t fake_outs_count, const uint64_t unlock_time, uint32_t priority, const std::vector<uint8_t>& extra, uint32_t subaddr_account, std::set<uint32_t> subaddr_indices, bool is_staking_tx=false);     // pass subaddr_indices by value on purpose
+    std::vector<wallet2::pending_tx>
+    create_transactions_2(std::vector<cryptonote::tx_destination_entry> dsts,
+                          const size_t fake_outs_count,
+                          const uint64_t unlock_time,
+                          uint32_t priority,
+                          const std::vector<uint8_t> &extra,
+                          uint32_t subaddr_account,
+                          std::set<uint32_t> subaddr_indices, // pass subaddr_indices by value on purpose
+                          cryptonote::txtype tx_type = cryptonote::txtype::standard);
 
     enum struct sweep_style_t { normal, use_v1_tx };
-    std::vector<wallet2::pending_tx> create_transactions_all(uint64_t below, const cryptonote::account_public_address &address, bool is_subaddress, const size_t outputs, const size_t fake_outs_count, const uint64_t unlock_time, uint32_t priority, const std::vector<uint8_t>& extra, uint32_t subaddr_account, std::set<uint32_t> subaddr_indices, bool is_staking_tx=false, sweep_style_t sweep_style = sweep_style_t::normal);
-    std::vector<wallet2::pending_tx> create_transactions_single(const crypto::key_image &ki, const cryptonote::account_public_address &address, bool is_subaddress, const size_t outputs, const size_t fake_outs_count, const uint64_t unlock_time, uint32_t priority, const std::vector<uint8_t>& extra);
-    std::vector<wallet2::pending_tx> create_transactions_from(const cryptonote::account_public_address &address, bool is_subaddress, const size_t outputs, std::vector<size_t> unused_transfers_indices, std::vector<size_t> unused_dust_indices, const size_t fake_outs_count, const uint64_t unlock_time, uint32_t priority, const std::vector<uint8_t>& extra, bool is_staking_tx=false);
+    std::vector<wallet2::pending_tx> create_transactions_all(uint64_t below,
+                                                             const cryptonote::account_public_address &address,
+                                                             bool is_subaddress,
+                                                             const size_t outputs,
+                                                             const size_t fake_outs_count,
+                                                             const uint64_t unlock_time,
+                                                             uint32_t priority,
+                                                             const std::vector<uint8_t> &extra,
+                                                             uint32_t subaddr_account,
+                                                             std::set<uint32_t> subaddr_indices,
+                                                             cryptonote::txtype tx_type = cryptonote::txtype::standard,
+                                                             sweep_style_t sweep_style  = sweep_style_t::normal);
+    std::vector<wallet2::pending_tx> create_transactions_single(const crypto::key_image &ki,
+                                                                const cryptonote::account_public_address &address,
+                                                                bool is_subaddress,
+                                                                const size_t outputs,
+                                                                const size_t fake_outs_count,
+                                                                const uint64_t unlock_time,
+                                                                uint32_t priority,
+                                                                const std::vector<uint8_t> &extra);
+    std::vector<wallet2::pending_tx> create_transactions_from(const cryptonote::account_public_address &address,
+                                                              bool is_subaddress,
+                                                              const size_t outputs,
+                                                              std::vector<size_t> unused_transfers_indices,
+                                                              std::vector<size_t> unused_dust_indices,
+                                                              const size_t fake_outs_count,
+                                                              const uint64_t unlock_time,
+                                                              uint32_t priority,
+                                                              const std::vector<uint8_t> &extra,
+                                                              cryptonote::txtype tx_type = cryptonote::txtype::standard);
     bool sanity_check(const std::vector<wallet2::pending_tx> &ptx_vector, std::vector<cryptonote::tx_destination_entry> dsts) const;
     void cold_tx_aux_import(const std::vector<pending_tx>& ptx, const std::vector<std::string>& tx_device_aux);
     void cold_sign_tx(const std::vector<pending_tx>& ptx_vector, signed_tx_set &exported_txs, std::vector<cryptonote::address_parse_info> &dsts_info, std::vector<std::string> & tx_device_aux);
@@ -1462,7 +1504,6 @@ private:
     stake_result check_stake_allowed(const crypto::public_key& sn_key, const cryptonote::address_parse_info& addr_info, uint64_t& amount, double fraction = 0);
     stake_result create_stake_tx    (const crypto::public_key& service_node_key, const cryptonote::address_parse_info& addr_info, uint64_t amount,
                                      double amount_fraction = 0, uint32_t priority = 0, uint32_t subaddr_account = 0, std::set<uint32_t> subaddr_indices = {});
-
     enum struct register_service_node_result_status
     {
       invalid,
@@ -1782,7 +1823,7 @@ BOOST_CLASS_VERSION(tools::wallet2::address_book_row, 17)
 BOOST_CLASS_VERSION(tools::wallet2::reserve_proof_entry, 0)
 BOOST_CLASS_VERSION(tools::wallet2::unsigned_tx_set, 0)
 BOOST_CLASS_VERSION(tools::wallet2::signed_tx_set, 1)
-BOOST_CLASS_VERSION(tools::wallet2::tx_construction_data, 5)
+BOOST_CLASS_VERSION(tools::wallet2::tx_construction_data, 6)
 BOOST_CLASS_VERSION(tools::wallet2::pending_tx, 3)
 BOOST_CLASS_VERSION(tools::wallet2::multisig_sig, 0)
 
@@ -2158,7 +2199,6 @@ namespace boost
       }
       a & x.extra;
       a & x.unlock_time;
-      a & x.v2_use_rct;
       a & x.dests;
       if (ver < 1)
       {
@@ -2171,10 +2211,8 @@ namespace boost
         x.rct_config = { rct::RangeProofBorromean, 0 };
       if (ver < 2)
         return;
-      a & x.selected_transfers;
       if (ver < 3)
         return;
-      a & x.v3_per_output_unlock;
       if (ver < 5)
       {
         bool use_bulletproofs = x.rct_config.range_proof_type != rct::RangeProofBorromean;
@@ -2183,8 +2221,11 @@ namespace boost
           x.rct_config = { use_bulletproofs ? rct::RangeProofBulletproof : rct::RangeProofBorromean, 0 };
         return;
       }
-      a & x.v4_allow_tx_types;
       a & x.rct_config;
+
+      if (ver < 6) return;
+      a & x.tx_type;
+      a & x.hf_version;
     }
 
     template <class Archive>

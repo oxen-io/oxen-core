@@ -538,7 +538,7 @@ namespace service_nodes
           cryptonote::transaction state_change_tx = {};
           if (cryptonote::add_service_node_state_change_to_tx_extra(state_change_tx.extra, state_change, hf_version))
           {
-            state_change_tx.version = cryptonote::transaction::get_min_version_for_hf(hf_version, m_core.get_nettype());
+            state_change_tx.version = cryptonote::transaction::get_max_version_for_hf(hf_version);
             state_change_tx.type    = cryptonote::txtype::state_change;
 
             cryptonote::tx_verification_context tvc = {};

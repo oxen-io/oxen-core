@@ -261,6 +261,7 @@ namespace cryptonote
     network_version_11_infinite_staking, // Infinite Staking, CN-Turtle
     network_version_12_checkpointing, // Checkpointing, Relaxed Deregistration, RandomXL, Loki Storage Server
     network_version_13_enforce_checkpoints,
+    network_version_14_lns,
 
     network_version_count,
   };
