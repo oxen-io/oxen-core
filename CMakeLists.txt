@@ -557,6 +557,9 @@ else()
   elseif(IOS AND ARCH STREQUAL "arm64")
     message(STATUS "IOS: Changing arch from arm64 to armv8")
     set(ARCH_FLAG "-march=armv8")
+  elseif(IOS AND ARCH STREQUAL "x86_64")
+    message(STATUS "IOS: Changing arch from x86_64 to x86-64")
+    set(ARCH_FLAG "-march=x86-64")
   else()
     set(ARCH_FLAG "-march=${ARCH}")
     if(ARCH STREQUAL "native")
@@ -673,11 +676,17 @@ else()
   add_cxx_flag_if_supported(-Wformat-security CXX_SECURITY_FLAGS)
 
   # -fstack-protector
-  if (NOT WIN32)
+  if (NOT WIN32 AND NOT IOS)
     add_c_flag_if_supported(-fstack-protector C_SECURITY_FLAGS)
     add_cxx_flag_if_supported(-fstack-protector CXX_SECURITY_FLAGS)
     add_c_flag_if_supported(-fstack-protector-strong C_SECURITY_FLAGS)
     add_cxx_flag_if_supported(-fstack-protector-strong CXX_SECURITY_FLAGS)
+  endif()
+
+  # -fno-stack-check
+  if (IOS)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fno-stack-check")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-stack-check")
   endif()
 
   # New in GCC 8.2
