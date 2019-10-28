@@ -168,6 +168,15 @@ namespace cryptonote
     ++res.height; // block height to chain height
     res.hash = string_tools::pod_to_hex(hash);
     res.status = CORE_RPC_STATUS_OK;
+
+    res.immutable_height = 0;
+    cryptonote::checkpoint_t checkpoint;
+    if (m_core.get_blockchain_storage().get_db().get_immutable_checkpoint(&checkpoint, res.height - 1))
+    {
+      res.immutable_height = checkpoint.height;
+      res.immutable_hash   = string_tools::pod_to_hex(checkpoint.block_hash);
+    }
+
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
@@ -196,7 +205,10 @@ namespace cryptonote
     res.immutable_height = 0;
     cryptonote::checkpoint_t checkpoint;
     if (m_core.get_blockchain_storage().get_db().get_immutable_checkpoint(&checkpoint, res.height - 1))
-      res.immutable_height = checkpoint.height;
+    {
+      res.immutable_height     = checkpoint.height;
+      res.immutable_block_hash = string_tools::pod_to_hex(checkpoint.block_hash);
+    }
 
     res.difficulty = m_core.get_blockchain_storage().get_difficulty_for_next_block();
     res.target = m_core.get_blockchain_storage().get_difficulty_target();

@@ -598,7 +598,8 @@ namespace tools
     if (!m_wallet) return not_open(er);
     try
     {
-      res.height = m_wallet->get_blockchain_current_height();
+      res.height           = m_wallet->get_blockchain_current_height();
+      res.immutable_height = m_wallet->get_immutable_height();
     }
     catch (const std::exception& e)
     {

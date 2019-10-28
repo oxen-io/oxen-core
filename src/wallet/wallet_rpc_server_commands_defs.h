@@ -448,7 +448,7 @@ namespace wallet_rpc
   };
 
   LOKI_RPC_DOC_INTROSPECT
-  // Returns the wallet's current block height.
+  // Returns the wallet's current block height and blockchain immutable height
   struct COMMAND_RPC_GET_HEIGHT
   {
     struct request_t
@@ -460,9 +460,11 @@ namespace wallet_rpc
 
     struct response_t
     {
-      uint64_t  height; // The current wallet's blockchain height. If the wallet has been offline for a long time, it may need to catch up with the daemon.
+      uint64_t  height;           // The current wallet's blockchain height. If the wallet has been offline for a long time, it may need to catch up with the daemon.
+      uint64_t immutable_height;  // The latest height in the blockchain that can not be reorganized from (backed by atleast 2 Service Node, or 1 hardcoded checkpoint, 0 if N/A).
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(height)
+        KV_SERIALIZE(immutable_height)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<response_t> response;

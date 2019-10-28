@@ -109,16 +109,20 @@ namespace cryptonote
 
     struct response_t
     {
-      uint64_t height;    // The current blockchain height according to the queried daemon.
-      std::string status; // Generic RPC error code. "OK" is the success value.
-      bool untrusted;     // If the result is obtained using bootstrap mode, and therefore not trusted `true`, or otherwise `false`.
-      std::string hash;   // Hash of the block at the current height
+      uint64_t height;            // The current blockchain height according to the queried daemon.
+      std::string status;         // Generic RPC error code. "OK" is the success value.
+      bool untrusted;             // If the result is obtained using bootstrap mode, and therefore not trusted `true`, or otherwise `false`.
+      std::string hash;           // Hash of the block at the current height
+      uint64_t immutable_height;  // The latest height in the blockchain that can not be reorganized from (backed by atleast 2 Service Node, or 1 hardcoded checkpoint, 0 if N/A).
+      std::string immutable_hash; // Hash of the highest block in the chain that can not be reorganized.
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(height)
         KV_SERIALIZE(status)
         KV_SERIALIZE(untrusted)
         KV_SERIALIZE(hash)
+        KV_SERIALIZE(immutable_height)
+        KV_SERIALIZE(immutable_hash)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<response_t> response;
@@ -791,6 +795,7 @@ namespace cryptonote
       bool stagenet;                        // States if the node is on the stagenet (`true`) or not (`false`).
       std::string nettype;                  // Nettype value used.
       std::string top_block_hash;           // Hash of the highest block in the chain.
+      std::string immutable_block_hash;     // Hash of the highest block in the chain that can not be reorganized.
       uint64_t cumulative_difficulty;       // Cumulative difficulty of all blocks in the blockchain.
       uint64_t block_size_limit;            // Maximum allowed block size.
       uint64_t block_weight_limit;          // Maximum allowed block weight.
@@ -828,6 +833,7 @@ namespace cryptonote
         KV_SERIALIZE(stagenet)
         KV_SERIALIZE(nettype)
         KV_SERIALIZE(top_block_hash)
+        KV_SERIALIZE(immutable_block_hash)
         KV_SERIALIZE(cumulative_difficulty)
         KV_SERIALIZE(block_size_limit)
         KV_SERIALIZE_OPT(block_weight_limit, (uint64_t)0)
