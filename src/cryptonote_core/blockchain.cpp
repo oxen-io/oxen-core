@@ -4044,20 +4044,8 @@ leave:
 
   // TODO(loki): Temporary forking code.
   {
-    uint64_t block_height = get_block_height(bl);
-    // We have invalid checkpoints from the soft forking period we should cull
-    {
-      uint64_t hf13_height = m_hardfork->get_earliest_ideal_height_for_version(network_version_13_enforce_checkpoints);
-      uint64_t hf12_height = m_hardfork->get_earliest_ideal_height_for_version(network_version_12_checkpointing);
-      if (hf13_height == get_block_height(bl))
-      {
-        std::vector<checkpoint_t> checkpoints = m_db->get_checkpoints_range(hf13_height - 1, hf12_height);
-        for (cryptonote::checkpoint_t const &checkpoint : checkpoints)
-          m_db->remove_block_checkpoint(checkpoint.height);
-      }
-    }
-
     // Rescan difficulty every N block we have a reocurring difficulty bug that causes daemons to miscalculate difficulty
+    uint64_t block_height = get_block_height(bl);
     if (nettype() == MAINNET && (block_height % BLOCKS_EXPECTED_IN_DAYS(1) == 0))
     {
       cryptonote::BlockchainDB::fixup_context context  = {};

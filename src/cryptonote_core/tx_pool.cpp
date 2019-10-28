@@ -1180,19 +1180,8 @@ namespace cryptonote
             continue;
 
           std::vector<service_nodes::service_node_pubkey_info> service_node_array = service_node_list.get_service_node_list_state({service_node_pubkey});
-
-          // TODO(loki): Temporary HF12 code. We want to use HF13 code for
-          // detecting if a service node can change state for pruning from the
-          // pool, because changing the pool code here is not consensus, but we
-          // want this logic so as to improve the network behaviour regarding
-          // multiple queued up state changes without a hard fork.
-
-          // Once we hard fork to v13 we can just use the blk major version
-          // whole sale.
-          uint8_t enforce_hf_version = std::max((uint8_t)cryptonote::network_version_13_enforce_checkpoints, blk.major_version);
-
           if (service_node_array.empty() ||
-              !service_node_array[0].info->can_transition_to_state(enforce_hf_version, state_change.block_height, state_change.state))
+              !service_node_array[0].info->can_transition_to_state(blk.major_version, state_change.block_height, state_change.state))
           {
             transaction tx;
             cryptonote::blobdata blob;

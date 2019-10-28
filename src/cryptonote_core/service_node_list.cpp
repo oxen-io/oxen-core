@@ -1248,20 +1248,11 @@ namespace service_nodes
         if (nettype == cryptonote::TESTNET && state.height < 85357)
           total_nodes = active_snode_list.size() + decomm_snode_list.size();
 
-
-        // TODO(loki): We can remove after switching to V13 since we delete all V12 and below checkpoints where we introduced this kind of quorum
-        if (hf_version >= cryptonote::network_version_13_enforce_checkpoints && total_nodes < CHECKPOINT_QUORUM_SIZE)
-        {
-          // NOTE: Although insufficient nodes, generate the empty quorum so we can distinguish between a height with
-          // insufficient service nodes for a quorum VS a height that shouldn't generate a quorum so that we can report
-          // an error to the user if they're missing a quorum
-        }
-        else
+        if (total_nodes >= CHECKPOINT_QUORUM_SIZE)
         {
           pub_keys_indexes = generate_shuffled_service_node_index_list(total_nodes, state.block_hash, type);
           num_validators   = std::min(pub_keys_indexes.size(), CHECKPOINT_QUORUM_SIZE);
         }
-
         result.checkpointing = quorum;
       }
       else

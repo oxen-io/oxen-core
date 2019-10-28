@@ -1710,16 +1710,6 @@ namespace cryptonote
       b = &lb;
     }
 
-    // TODO(loki): Temporary to make hf12 checkpoints play nicely, but, hf12 checkpoints will be deleted on hf13
-    if (checkpoint && b->major_version < network_version_12_checkpointing)
-    {
-      std::sort(checkpoint->signatures.begin(),
-                checkpoint->signatures.end(),
-                [](service_nodes::voter_to_signature const &lhs, service_nodes::voter_to_signature const &rhs) {
-                  return lhs.voter_index < rhs.voter_index;
-                });
-    }
-
     add_new_block(*b, bvc, checkpoint);
     if(update_miner_blocktemplate && bvc.m_added_to_main_chain)
        m_miner.on_block_chain_update();
