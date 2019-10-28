@@ -1554,7 +1554,7 @@ bool Blockchain::build_alt_chain(const crypto::hash &prev_id,
                                  std::vector<uint64_t> &timestamps,
                                  block_verification_context &bvc,
                                  int *num_alt_checkpoints,
-                                 int *num_checkpoints) const
+                                 int *num_checkpoints)
 {
     //build alternative subchain, front -> mainchain, back -> alternative head
     cryptonote::alt_block_data_t data;
@@ -1623,8 +1623,9 @@ bool Blockchain::build_alt_chain(const crypto::hash &prev_id,
     if(!alt_chain.empty())
     {
       bool failed = false;
+      uint64_t blockchain_height = m_db->height();
       // make sure alt chain doesn't somehow start past the end of the main chain
-      if (m_db->height() < alt_chain.front().height)
+      if (blockchain_height < alt_chain.front().height)
       {
         LOG_PRINT_L1("main blockchain wrong height: " << m_db->height() << ", alt_chain: " << alt_chain.front().height);
         failed = true;
@@ -1646,9 +1647,16 @@ bool Blockchain::build_alt_chain(const crypto::hash &prev_id,
         failed = true;
       }
 
+      if (!failed && !m_checkpoints.is_alternative_block_allowed(blockchain_height, alt_chain.front().height, nullptr /*service_node_checkpoint*/))
+      {
+        LOG_PRINT_L2("alternative chain is too old to consider: " << h);
+        failed = true;
+      }
+
       if (failed)
       {
         // Cleanup alt chain, it's invalid
+        bvc.m_verifivation_failed = true;
         for (auto const &bei : alt_chain)
           m_db->remove_alt_block(cryptonote::get_block_hash(bei.bl));
 

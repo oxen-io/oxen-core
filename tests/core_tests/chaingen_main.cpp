@@ -110,6 +110,7 @@ int main(int argc, char* argv[])
     GENERATE_AND_PLAY(loki_checkpointing_alt_chain_handle_alt_blocks_at_tip);
     GENERATE_AND_PLAY(loki_checkpointing_alt_chain_more_service_node_checkpoints_less_pow_overtakes);
     GENERATE_AND_PLAY(loki_checkpointing_alt_chain_receive_checkpoint_votes_should_reorg_back);
+    GENERATE_AND_PLAY(loki_checkpointing_alt_chain_too_old_should_be_dropped);
     GENERATE_AND_PLAY(loki_checkpointing_alt_chain_with_increasing_service_node_checkpoints);
     GENERATE_AND_PLAY(loki_checkpointing_service_node_checkpoint_from_votes);
     GENERATE_AND_PLAY(loki_checkpointing_service_node_checkpoints_check_reorg_windows);
