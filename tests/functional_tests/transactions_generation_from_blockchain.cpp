@@ -77,7 +77,7 @@ bool make_tx(blockchain_storage& bch)
   sources[0].outputs.push_back(make_outptu_entr_for_gindex(34, txs, v));
   sources[0].real_out_tx_key =
 
-  BOOST_FOREACH(transfer_container::iterator it, selected_transfers)
+  for (auto& it : selected_transfers)
   {
     sources.resize(sources.size()+1);
     cryptonote::tx_source_entry& src = sources.back();
@@ -87,7 +87,7 @@ bool make_tx(blockchain_storage& bch)
     if(daemon_resp.outs.size())
     {
       daemon_resp.outs[i].outs.sort([](const out_entry& a, const out_entry& b){return a.global_amount_index < b.global_amount_index;});
-      BOOST_FOREACH(out_entry& daemon_oe, daemon_resp.outs[i].outs)
+      for (out_entry& daemon_oe : daemon_resp.outs[i].outs)
       {
         if(td.m_global_output_index == daemon_oe.global_amount_index)
           continue;
@@ -147,7 +147,7 @@ bool make_tx(blockchain_storage& bch)
   }
 
   std::cout << "transaction generated ok and sent to daemon" << std::endl;
-  BOOST_FOREACH(transfer_container::iterator it, selected_transfers)
+  for (auto &it : selected_transfers)
     it->m_spent = true;
 
   return true;

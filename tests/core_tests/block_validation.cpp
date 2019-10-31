@@ -469,7 +469,7 @@ static bool construct_miner_tx_with_extra_output(cryptonote::transaction& tx,
         cryptonote::address_parse_info governance_wallet_address;
         cryptonote::get_account_address_from_str(governance_wallet_address, nettype, *cryptonote::get_config(nettype, hard_fork_version).GOVERNANCE_WALLET_ADDRESS);
 
-        crypto::public_key out_eph_public_key = AUTO_VAL_INIT(out_eph_public_key);
+        crypto::public_key out_eph_public_key{};
 
         if (!get_deterministic_output_key(
               governance_wallet_address.address, gov_key, tx.vout.size(), out_eph_public_key)) {

@@ -38,7 +38,7 @@ static tools::wallet2::transfer_container make_transfers_container(size_t N)
   tools::wallet2::transfer_container transfers;
   for (size_t n = 0; n < N; ++n)
   {
-    transfers.push_back(AUTO_VAL_INIT(tools::wallet2::transfer_details()));
+    transfers.emplace_back();
     tools::wallet2::transfer_details &td = transfers.back();
     td.m_block_height = 1000;
     td.m_spent = false;

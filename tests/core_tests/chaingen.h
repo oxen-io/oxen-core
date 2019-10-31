@@ -636,7 +636,7 @@ public:
   bool operator()(const cryptonote::transaction& tx) const
   {
     log_event("cryptonote::transaction");
-    cryptonote::tx_verification_context tvc = AUTO_VAL_INIT(tvc);
+    cryptonote::tx_verification_context tvc{};
     size_t pool_size = m_c.get_pool_transactions_count();
     m_c.handle_incoming_tx(t_serializable_object_to_blob(tx), tvc, m_txs_keeped_by_block, false, false);
     bool tx_added = pool_size + 1 == m_c.get_pool_transactions_count();
@@ -650,7 +650,7 @@ public:
     log_event("cryptonote::transaction");
     std::vector<cryptonote::blobdata> tx_blobs;
     std::vector<cryptonote::tx_verification_context> tvcs;
-     cryptonote::tx_verification_context tvc0 = AUTO_VAL_INIT(tvc0);
+     cryptonote::tx_verification_context tvc0{};
     for (const auto &tx: txs)
     {
       tx_blobs.push_back(t_serializable_object_to_blob(tx));
@@ -667,7 +667,7 @@ public:
   bool operator()(const cryptonote::block& b) const
   {
     log_event("cryptonote::block");
-    cryptonote::block_verification_context bvc = AUTO_VAL_INIT(bvc);
+    cryptonote::block_verification_context bvc{};
     cryptonote::blobdata bd = t_serializable_object_to_blob(b);
     std::vector<cryptonote::block> pblocks;
     if (m_c.prepare_handle_incoming_blocks(std::vector<cryptonote::block_complete_entry>(1, {bd, {}, {}}), pblocks))
@@ -702,7 +702,7 @@ public:
   {
     log_event("serialized_block");
 
-    cryptonote::block_verification_context bvc = AUTO_VAL_INIT(bvc);
+    cryptonote::block_verification_context bvc{};
     std::vector<cryptonote::block> pblocks;
     if (m_c.prepare_handle_incoming_blocks(std::vector<cryptonote::block_complete_entry>(1, {sr_block.data, {}, {}}), pblocks))
     {
@@ -730,7 +730,7 @@ public:
   {
     log_event("serialized_transaction");
 
-    cryptonote::tx_verification_context tvc = AUTO_VAL_INIT(tvc);
+    cryptonote::tx_verification_context tvc{};
     size_t pool_size = m_c.get_pool_transactions_count();
     m_c.handle_incoming_tx(sr_tx.data, tvc, m_txs_keeped_by_block, false, false);
     bool tx_added = pool_size + 1 == m_c.get_pool_transactions_count();

@@ -829,8 +829,8 @@ namespace cryptonote
     }
     res.sanity_check_failed = false;
 
-    cryptonote_connection_context fake_context = AUTO_VAL_INIT(fake_context);
-    tx_verification_context tvc = AUTO_VAL_INIT(tvc);
+    cryptonote_connection_context fake_context{};
+    tx_verification_context tvc{};
     if(!m_core.handle_incoming_tx(tx_blob, tvc, false, false, req.do_not_relay) || tvc.m_verifivation_failed)
     {
       const vote_verification_context &vvc = tvc.m_vote_ctx;
@@ -1408,7 +1408,7 @@ namespace cryptonote
     template_req.reserve_size = 1;
     template_req.wallet_address = req.wallet_address;
     template_req.prev_block = req.prev_block;
-    submit_req.push_back(boost::value_initialized<std::string>());
+    submit_req.emplace_back();
     res.height = m_core.get_blockchain_storage().get_current_blockchain_height();
 
     for(size_t i = 0; i < req.amount_of_blocks; i++)
@@ -1532,8 +1532,8 @@ namespace cryptonote
     }
     else if (mode == invoke_http_mode::JON_RPC)
     {
-      epee::json_rpc::request<typename COMMAND_TYPE::request> json_req = AUTO_VAL_INIT(json_req);
-      epee::json_rpc::response<typename COMMAND_TYPE::response, std::string> json_resp = AUTO_VAL_INIT(json_resp);
+      epee::json_rpc::request<typename COMMAND_TYPE::request> json_req{};
+      epee::json_rpc::response<typename COMMAND_TYPE::response, std::string> json_resp{};
       json_req.jsonrpc = "2.0";
       json_req.id = epee::serialization::storage_entry(0);
       json_req.method = command_name;
@@ -2284,7 +2284,7 @@ namespace cryptonote
       bool r = m_core.get_pool_transaction(txid, txblob);
       if (r)
       {
-        cryptonote_connection_context fake_context = AUTO_VAL_INIT(fake_context);
+        cryptonote_connection_context fake_context{};
         NOTIFY_NEW_TRANSACTIONS::request r;
         r.txs.push_back(txblob);
         m_core.get_protocol()->relay_transactions(r, fake_context);

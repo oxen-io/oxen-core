@@ -1678,9 +1678,9 @@ namespace service_nodes
         return false;
       }
 
-      crypto::key_derivation derivation     = AUTO_VAL_INIT(derivation);
-      crypto::public_key out_eph_public_key = AUTO_VAL_INIT(out_eph_public_key);
-      cryptonote::keypair gov_key           = cryptonote::get_deterministic_keypair_from_height(height);
+      crypto::key_derivation derivation{};
+      crypto::public_key out_eph_public_key{};
+      cryptonote::keypair gov_key = cryptonote::get_deterministic_keypair_from_height(height);
 
       bool r = crypto::generate_key_derivation(payout.address.m_view_public_key, gov_key.sec, derivation);
       CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to generate_key_derivation(" << payout.address.m_view_public_key << ", " << gov_key.sec << ")");

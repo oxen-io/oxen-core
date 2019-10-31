@@ -53,7 +53,7 @@ int BulletproofFuzzer::run(const std::string &filename)
   std::stringstream ss;
   ss << s;
   binary_archive<false> ba(ss);
-  rct::Bulletproof proof = AUTO_VAL_INIT(proof);
+  rct::Bulletproof proof{};
   bool r = ::serialization::serialize(ba, proof);
   if(!r)
   {

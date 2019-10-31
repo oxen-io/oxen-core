@@ -113,7 +113,7 @@ namespace
   uint64_t get_tx_out_amount(const transaction& tx)
   {
     uint64_t amount = 0;
-    BOOST_FOREACH(auto& o, tx.vout)
+    for (auto& o : tx.vout)
       amount += o.amount;
     return amount;
   }

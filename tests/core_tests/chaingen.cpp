@@ -675,7 +675,7 @@ void test_generator::get_last_n_block_weights(std::vector<uint64_t>& block_weigh
 {
   std::vector<block_info> blockchain;
   get_block_chain(blockchain, head, n);
-  BOOST_FOREACH(auto& bi, blockchain)
+  for (auto& bi : blockchain)
   {
     block_weights.push_back(bi.block_weight);
   }
@@ -768,7 +768,7 @@ bool test_generator::construct_block(cryptonote::block &blk,
 
   uint64_t total_fee = 0;
   size_t txs_weight = 0;
-  BOOST_FOREACH(auto& tx, tx_list)
+  for (auto& tx : tx_list)
   {
     uint64_t fee = 0;
     bool r = get_tx_fee(tx, fee);
@@ -777,7 +777,7 @@ bool test_generator::construct_block(cryptonote::block &blk,
     txs_weight += get_transaction_weight(tx);
   }
 
-  blk.miner_tx = AUTO_VAL_INIT(blk.miner_tx);
+  blk.miner_tx = {};
   size_t target_block_weight = txs_weight + get_transaction_weight(blk.miner_tx);
   cryptonote::loki_miner_tx_context miner_tx_context(cryptonote::FAKECHAIN, winner);
   manual_calc_batched_governance(*this, prev_id, miner_tx_context, m_hf_version, height);
@@ -1769,15 +1769,15 @@ bool extract_hard_forks(const std::vector<test_event_entry>& events, v_hardforks
 void get_confirmed_txs(const std::vector<cryptonote::block>& blockchain, const map_hash2tx_t& mtx, map_hash2tx_t& confirmed_txs)
 {
   std::unordered_set<crypto::hash> confirmed_hashes;
-  BOOST_FOREACH(const cryptonote::block& blk, blockchain)
+  for (const auto& blk : blockchain)
   {
-    BOOST_FOREACH(const crypto::hash& tx_hash, blk.tx_hashes)
+    for (const auto& tx_hash : blk.tx_hashes)
     {
       confirmed_hashes.insert(tx_hash);
     }
   }
 
-  BOOST_FOREACH(const auto& tx_pair, mtx)
+  for (const auto& tx_pair : mtx)
   {
     if (0 != confirmed_hashes.count(tx_pair.first))
     {
@@ -1829,7 +1829,7 @@ bool trim_block_chain(std::vector<const cryptonote::block*>& blockchain, const c
 uint64_t num_blocks(const std::vector<test_event_entry>& events)
 {
   uint64_t res = 0;
-  BOOST_FOREACH(const test_event_entry& ev, events)
+  for (const test_event_entry& ev : events)
   {
     if (typeid(cryptonote::block) == ev.type())
     {
