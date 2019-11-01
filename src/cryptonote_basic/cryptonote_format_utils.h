@@ -112,6 +112,9 @@ namespace cryptonote
   void add_service_node_contributor_to_tx_extra(std::vector<uint8_t>& tx_extra, const cryptonote::account_public_address& address);
   crypto::public_key get_service_node_winner_from_tx_extra(const std::vector<uint8_t>& tx_extra);
 
+  bool get_loki_name_system_from_tx_extra(std::vector<uint8_t> const &tx_extra, tx_extra_loki_name_system &entry);
+  void add_loki_name_system_to_tx_extra  (std::vector<uint8_t>       &tx_extra, tx_extra_loki_name_system const &entry);
+
   std::vector<crypto::public_key> get_additional_tx_pub_keys_from_extra(const std::vector<uint8_t>& tx_extra);
   std::vector<crypto::public_key> get_additional_tx_pub_keys_from_extra(const transaction_prefix& tx);
   bool add_additional_tx_pub_keys_to_extra(std::vector<uint8_t>& tx_extra, const std::vector<crypto::public_key>& additional_pub_keys);

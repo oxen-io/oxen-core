@@ -65,6 +65,7 @@
 #include "node_rpc_proxy.h"
 #include "message_store.h"
 #include "wallet_light_rpc.h"
+#include "cryptonote_core/loki_name_system_db.h"
 
 #include "common/loki_integration_test_hooks.h"
 

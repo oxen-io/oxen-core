@@ -46,6 +46,10 @@ namespace cryptonote
     hw::device *m_device = &hw::get_device("default");
     crypto::chacha_iv m_encryption_iv;
 
+    // NOTE: Not serialized
+    crypto::ed25519_secret_key m_spend_ed25519_secret_key;
+    crypto::ed25519_public_key m_spend_ed25519_public_key;
+
     BEGIN_KV_SERIALIZE_MAP()
       KV_SERIALIZE(m_account_address)
       KV_SERIALIZE_VAL_POD_AS_BLOB_FORCE(m_spend_secret_key)

@@ -597,7 +597,7 @@ int main(int argc, char* argv[])
       MERROR("Error opening database: " << e.what());
       return 1;
     }
-    r = core_storage[n]->init(db, net_type);
+    r = core_storage[n]->init(db, nullptr /*lns_db*/, net_type);
 
     std::string source_dest = n == 0 ? "source" : "pruned";
     CHECK_AND_ASSERT_MES(r, 1, "Failed to initialize " << source_dest << " blockchain storage");

@@ -131,8 +131,8 @@ bool gen_double_spend_in_the_same_block::generate(std::vector<test_event_entry>&
     uint64_t amount                       = MK_COINS(10);
     cryptonote::account_base const &miner = gen.first_miner_;
     cryptonote::account_base bob          = gen.add_account();
-    cryptonote::transaction tx_1 = gen.create_tx(miner, bob, amount, TESTS_DEFAULT_FEE);
-    cryptonote::transaction tx_2 = gen.create_and_add_tx(miner, bob, amount, TESTS_DEFAULT_FEE);
+    cryptonote::transaction tx_1 = gen.create_tx(miner, bob.get_keys().m_account_address, amount, TESTS_DEFAULT_FEE);
+    cryptonote::transaction tx_2 = gen.create_and_add_tx(miner, bob.get_keys().m_account_address, amount, TESTS_DEFAULT_FEE);
 
     std::string const fail_msg =
         (kept_by_block) ? "kept_by_block is true, double spending transactions can be added (incase of reorgs)"
@@ -172,8 +172,8 @@ bool gen_double_spend_in_different_blocks::generate(std::vector<test_event_entry
     else               gen.add_event_msg("Double spending transaction kept by block false, disallowed");
 
     uint64_t amount              = MK_COINS(10);
-    cryptonote::transaction tx_1 = gen.create_tx(miner, bob, amount, TESTS_DEFAULT_FEE);
-    cryptonote::transaction tx_2 = gen.create_tx(miner, bob, amount, TESTS_DEFAULT_FEE);
+    cryptonote::transaction tx_1 = gen.create_tx(miner, bob.get_keys().m_account_address, amount, TESTS_DEFAULT_FEE);
+    cryptonote::transaction tx_2 = gen.create_tx(miner, bob.get_keys().m_account_address, amount, TESTS_DEFAULT_FEE);
 
     std::string const fail_msg =
         (kept_by_block) ? "kept_by_block is true, double spending transactions can be added (incase of reorgs)"
@@ -218,8 +218,8 @@ bool gen_double_spend_in_alt_chain_in_the_same_block::generate(std::vector<test_
     uint64_t amount                       = MK_COINS(10);
     cryptonote::account_base const &miner = fork.first_miner_;
     cryptonote::account_base bob          = fork.add_account();
-    cryptonote::transaction tx_1 = fork.create_tx(miner, bob, amount, TESTS_DEFAULT_FEE);
-    cryptonote::transaction tx_2 = fork.create_and_add_tx(miner, bob, amount, TESTS_DEFAULT_FEE);
+    cryptonote::transaction tx_1 = fork.create_tx(miner, bob.get_keys().m_account_address, amount, TESTS_DEFAULT_FEE);
+    cryptonote::transaction tx_2 = fork.create_and_add_tx(miner, bob.get_keys().m_account_address, amount, TESTS_DEFAULT_FEE);
 
     std::string const fail_msg =
         (kept_by_block) ? "kept_by_block is true, double spending transactions can be added (incase of reorgs)"
@@ -260,8 +260,8 @@ bool gen_double_spend_in_alt_chain_in_different_blocks::generate(std::vector<tes
     else               fork.add_event_msg("Double spending transaction kept by block false, disallowed");
 
     uint64_t amount              = MK_COINS(10);
-    cryptonote::transaction tx_1 = fork.create_tx(miner, bob, amount, TESTS_DEFAULT_FEE);
-    cryptonote::transaction tx_2 = fork.create_tx(miner, bob, amount, TESTS_DEFAULT_FEE);
+    cryptonote::transaction tx_1 = fork.create_tx(miner, bob.get_keys().m_account_address, amount, TESTS_DEFAULT_FEE);
+    cryptonote::transaction tx_2 = fork.create_tx(miner, bob.get_keys().m_account_address, amount, TESTS_DEFAULT_FEE);
 
     std::string const fail_msg =
         (kept_by_block) ? "kept_by_block is true, double spending transactions can be added (incase of reorgs)"
@@ -294,8 +294,8 @@ bool gen_double_spend_in_different_chains::generate(std::vector<test_event_entry
   uint64_t amount = MK_COINS(10);
   cryptonote::account_base const &miner = gen.first_miner_;
   cryptonote::account_base bob          = gen.add_account();
-  cryptonote::transaction tx_1          = gen.create_tx(miner, bob, amount, TESTS_DEFAULT_FEE);
-  cryptonote::transaction tx_2          = gen.create_tx(miner, bob, amount, TESTS_DEFAULT_FEE);
+  cryptonote::transaction tx_1          = gen.create_tx(miner, bob.get_keys().m_account_address, amount, TESTS_DEFAULT_FEE);
+  cryptonote::transaction tx_2          = gen.create_tx(miner, bob.get_keys().m_account_address, amount, TESTS_DEFAULT_FEE);
 
   auto fork = gen;
   gen.add_tx(tx_1, true /*can_be_added_to_blockchain*/, "", true /*kept_by_block*/);

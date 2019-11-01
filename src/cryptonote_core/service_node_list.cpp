@@ -408,7 +408,7 @@ namespace service_nodes
     std::vector<service_node_info::contribution_t> locked_contributions;
   };
 
-  static uint64_t get_reg_tx_staking_output_contribution(const cryptonote::transaction& tx, int i, crypto::key_derivation const &derivation, hw::device& hwdev)
+  static uint64_t get_tx_output_amount(const cryptonote::transaction& tx, int i, crypto::key_derivation const &derivation, hw::device& hwdev)
   {
     if (tx.vout[i].target.type() != typeid(cryptonote::txout_to_key))
     {
@@ -720,7 +720,7 @@ namespace service_nodes
 
     if (!cryptonote::get_tx_secret_key_from_tx_extra(tx.extra, parsed_contribution.tx_key))
     {
-      LOG_PRINT_L1("Contribution TX: There was a service node contributor but no secret key in the tx extra on height: " << block_height << " for tx: " << get_transaction_hash(tx));
+      LOG_PRINT_L1("TX: There was a service node contributor but no secret key in the tx extra on height: " << block_height << " for tx: " << get_transaction_hash(tx));
       return false;
     }
 
@@ -741,7 +741,7 @@ namespace service_nodes
     crypto::key_derivation derivation;
     if (!crypto::generate_key_derivation(parsed_contribution.address.m_view_public_key, parsed_contribution.tx_key, derivation))
     {
-      LOG_PRINT_L1("Contribution TX: Failed to generate key derivation on height: " << block_height << " for tx: " << get_transaction_hash(tx));
+      LOG_PRINT_L1("TX: Failed to generate key derivation on height: " << block_height << " for tx: " << get_transaction_hash(tx));
       return false;
     }
 
@@ -764,13 +764,13 @@ namespace service_nodes
       cryptonote::tx_extra_tx_key_image_proofs key_image_proofs;
       if (!get_tx_key_image_proofs_from_tx_extra(tx.extra, key_image_proofs))
       {
-        LOG_PRINT_L1("Contribution TX: Didn't have key image proofs in the tx_extra, rejected on height: " << block_height << " for tx: " << get_transaction_hash(tx));
+        LOG_PRINT_L1("TX: Didn't have key image proofs in the tx_extra, rejected on height: " << block_height << " for tx: " << get_transaction_hash(tx));
         return false;
       }
 
       for (size_t output_index = 0; output_index < tx.vout.size(); ++output_index)
       {
-        uint64_t transferred = get_reg_tx_staking_output_contribution(tx, output_index, derivation, hwdev);
+        uint64_t transferred = get_tx_output_amount(tx, output_index, derivation, hwdev);
         if (transferred == 0)
           continue;
 
@@ -793,7 +793,7 @@ namespace service_nodes
           // P' := Derivation + B
           if (!hwdev.derive_public_key(derivation, output_index, parsed_contribution.address.m_spend_public_key, ephemeral_pub_key))
           {
-            LOG_PRINT_L1("Contribution TX: Could not derive TX ephemeral key on height: " << block_height << " for tx: " << get_transaction_hash(tx) << " for output: " << output_index);
+            LOG_PRINT_L1("TX: Could not derive TX ephemeral key on height: " << block_height << " for tx: " << get_transaction_hash(tx) << " for output: " << output_index);
             continue;
           }
 
@@ -801,7 +801,7 @@ namespace service_nodes
           const auto& out_to_key = boost::get<cryptonote::txout_to_key>(tx.vout[output_index].target);
           if (out_to_key.key != ephemeral_pub_key)
           {
-            LOG_PRINT_L1("Contribution TX: Derived TX ephemeral key did not match tx stored key on height: " << block_height << " for tx: " << get_transaction_hash(tx) << " for output: " << output_index);
+            LOG_PRINT_L1("TX: Derived TX ephemeral key did not match tx stored key on height: " << block_height << " for tx: " << get_transaction_hash(tx) << " for output: " << output_index);
             continue;
           }
         }
@@ -853,7 +853,7 @@ namespace service_nodes
         }
 
         if (has_correct_unlock_time)
-          parsed_contribution.transferred += get_reg_tx_staking_output_contribution(tx, i, derivation, hwdev);
+          parsed_contribution.transferred += get_tx_output_amount(tx, i, derivation, hwdev);
       }
     }
 
@@ -1078,14 +1078,14 @@ namespace service_nodes
     parsed_tx_contribution parsed_contribution = {};
     if (!get_contribution(nettype, hf_version, tx, block_height, parsed_contribution))
     {
-      LOG_PRINT_L1("Contribution TX: Could not decode contribution for service node: " << pubkey << " on height: " << block_height << " for tx: " << cryptonote::get_transaction_hash(tx));
+      LOG_PRINT_L1("TX: Could not decode contribution for service node: " << pubkey << " on height: " << block_height << " for tx: " << cryptonote::get_transaction_hash(tx));
       return false;
     }
 
     auto iter = service_nodes_infos.find(pubkey);
     if (iter == service_nodes_infos.end())
     {
-      LOG_PRINT_L1("Contribution TX: Contribution received for service node: " << pubkey <<
+      LOG_PRINT_L1("TX: Contribution received for service node: " << pubkey <<
                    ", but could not be found in the service node list on height: " << block_height <<
                    " for tx: " << cryptonote::get_transaction_hash(tx )<< "\n"
                    "This could mean that the service node was deregistered before the contribution was processed.");
@@ -1095,7 +1095,7 @@ namespace service_nodes
     const service_node_info& curinfo = *iter->second;
     if (curinfo.is_fully_funded())
     {
-      LOG_PRINT_L1("Contribution TX: Service node: " << pubkey <<
+      LOG_PRINT_L1("TX: Service node: " << pubkey <<
                    " is already fully funded, but contribution received on height: "  << block_height <<
                    " for tx: " << cryptonote::get_transaction_hash(tx));
       return false;
@@ -1103,7 +1103,7 @@ namespace service_nodes
 
     if (!cryptonote::get_tx_secret_key_from_tx_extra(tx.extra, parsed_contribution.tx_key))
     {
-      LOG_PRINT_L1("Contribution TX: Failed to get tx secret key from contribution received on height: "  << block_height << " for tx: " << cryptonote::get_transaction_hash(tx));
+      LOG_PRINT_L1("TX: Failed to get tx secret key from contribution received on height: "  << block_height << " for tx: " << cryptonote::get_transaction_hash(tx));
       return false;
     }
 
@@ -1129,7 +1129,7 @@ namespace service_nodes
 
       if (too_many_contributions)
       {
-        LOG_PRINT_L1("Contribution TX: Already hit the max number of contributions: " << MAX_NUMBER_OF_CONTRIBUTORS <<
+        LOG_PRINT_L1("TX: Already hit the max number of contributions: " << MAX_NUMBER_OF_CONTRIBUTORS <<
                      " for contributor: " << cryptonote::get_account_address_as_str(nettype, false, parsed_contribution.address) <<
                      " on height: "  << block_height <<
                      " for tx: " << cryptonote::get_transaction_hash(tx));
@@ -1146,7 +1146,7 @@ namespace service_nodes
 
       if (parsed_contribution.transferred < min_contribution)
       {
-        LOG_PRINT_L1("Contribution TX: Amount " << parsed_contribution.transferred <<
+        LOG_PRINT_L1("TX: Amount " << parsed_contribution.transferred <<
                      " did not meet min " << min_contribution <<
                      " for service node: " << pubkey <<
                      " on height: "  << block_height <<
@@ -1494,17 +1494,15 @@ namespace service_nodes
   void service_node_list::process_block(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs)
   {
     uint64_t block_height = cryptonote::get_block_height(block);
-    uint8_t hf_version = m_blockchain.get_hard_fork_version(block_height);
+    uint8_t hf_version    = block.major_version;
 
     if (hf_version < 9)
       return;
 
-    //
     // Cull old history
-    //
+    uint64_t cull_height = short_term_state_cull_height(hf_version, block_height);
     {
-      uint64_t cull_height = short_term_state_cull_height(hf_version, block_height);
-      auto end_it          = m_transient.state_history.upper_bound(cull_height);
+      auto end_it = m_transient.state_history.upper_bound(cull_height);
       for (auto it = m_transient.state_history.begin(); it != end_it; it++)
       {
         if (m_store_quorum_history)
@@ -1525,6 +1523,7 @@ namespace service_nodes
           }
           m_transient.state_archive.emplace_hint(m_transient.state_archive.end(), std::move(*it));
         }
+
       }
       m_transient.state_history.erase(m_transient.state_history.begin(), end_it);
 
@@ -1532,21 +1531,12 @@ namespace service_nodes
         m_transient.old_quorum_states.erase(m_transient.old_quorum_states.begin(), m_transient.old_quorum_states.begin() + (m_transient.old_quorum_states.size() -  m_store_quorum_history));
     }
 
-    //
     // Cull alt state history
-    //
-    if (hf_version >= cryptonote::network_version_12_checkpointing && m_transient.alt_state.size())
+    for (auto it = m_transient.alt_state.begin(); it != m_transient.alt_state.end(); )
     {
-      cryptonote::checkpoint_t immutable_checkpoint;
-      if (m_blockchain.get_db().get_immutable_checkpoint(&immutable_checkpoint, block_height))
-      {
-        for (auto it = m_transient.alt_state.begin(); it != m_transient.alt_state.end(); )
-        {
-          state_t const &alt_state = it->second;
-          if (alt_state.height < immutable_checkpoint.height) it = m_transient.alt_state.erase(it);
-          else it++;
-        }
-      }
+      state_t const &alt_state = it->second;
+      if (alt_state.height < cull_height) it = m_transient.alt_state.erase(it);
+      else it++;
     }
 
     cryptonote::network_type nettype = m_blockchain.nettype();

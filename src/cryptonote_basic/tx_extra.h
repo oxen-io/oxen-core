@@ -35,8 +35,6 @@
 #include "serialization/variant.h"
 #include "crypto/crypto.h"
 #include <boost/variant.hpp>
-
-
 #define TX_EXTRA_PADDING_MAX_COUNT              255
 #define TX_EXTRA_NONCE_MAX_COUNT                255
 
@@ -55,6 +53,7 @@
 #define TX_EXTRA_TAG_TX_KEY_IMAGE_UNLOCK        0x77
 #define TX_EXTRA_TAG_SERVICE_NODE_STATE_CHANGE  0x78
 #define TX_EXTRA_TAG_BURN                       0x79
+#define TX_EXTRA_TAG_LOKI_NAME_SYSTEM           0x80
 
 #define TX_EXTRA_MYSTERIOUS_MINERGATE_TAG       0xDE
 
@@ -381,6 +380,23 @@ namespace cryptonote
     END_SERIALIZE()
   };
 
+  struct tx_extra_loki_name_system
+  {
+    crypto::ed25519_public_key owner;
+    uint16_t                   type;
+    std::string                name;
+    std::string                value;
+    crypto::ed25519_signature  signature;
+
+    crypto::hash make_signature_hash() const;
+    BEGIN_SERIALIZE()
+      FIELD(owner);
+      FIELD(type);
+      FIELD(name);
+      FIELD(value);
+      FIELD(signature);
+    END_SERIALIZE()
+  };
 
   // tx_extra_field format, except tx_extra_padding and tx_extra_pub_key:
   //   varint tag;
@@ -401,7 +417,8 @@ namespace cryptonote
                          tx_extra_tx_secret_key,
                          tx_extra_tx_key_image_proofs,
                          tx_extra_tx_key_image_unlock,
-                         tx_extra_burn
+                         tx_extra_burn,
+                         tx_extra_loki_name_system
                         > tx_extra_field;
 }
 
@@ -424,3 +441,4 @@ VARIANT_TAG(binary_archive, cryptonote::tx_extra_tx_secret_key,               TX
 VARIANT_TAG(binary_archive, cryptonote::tx_extra_tx_key_image_proofs,         TX_EXTRA_TAG_TX_KEY_IMAGE_PROOFS);
 VARIANT_TAG(binary_archive, cryptonote::tx_extra_tx_key_image_unlock,         TX_EXTRA_TAG_TX_KEY_IMAGE_UNLOCK);
 VARIANT_TAG(binary_archive, cryptonote::tx_extra_burn,                        TX_EXTRA_TAG_BURN);
+VARIANT_TAG(binary_archive, cryptonote::tx_extra_loki_name_system,            TX_EXTRA_TAG_LOKI_NAME_SYSTEM);

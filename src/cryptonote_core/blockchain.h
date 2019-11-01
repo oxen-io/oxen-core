@@ -57,7 +57,9 @@
 #include "checkpoints/checkpoints.h"
 #include "cryptonote_basic/hardfork.h"
 #include "blockchain_db/blockchain_db.h"
+#include "cryptonote_core/loki_name_system_db.h"
 
+struct sqlite3;
 namespace service_nodes { class service_node_list; };
 namespace tools { class Notify; }
 
@@ -140,7 +142,7 @@ namespace cryptonote
      *
      * @return true on success, false if any initialization steps fail
      */
-    bool init(BlockchainDB* db, const network_type nettype = MAINNET, bool offline = false, const cryptonote::test_options *test_options = NULL, difficulty_type fixed_difficulty = 0, const GetCheckpointsCallback& get_checkpoints = nullptr);
+    bool init(BlockchainDB* db, sqlite3 *lns_db, const network_type nettype = MAINNET, bool offline = false, const cryptonote::test_options *test_options = NULL, difficulty_type fixed_difficulty = 0, const GetCheckpointsCallback& get_checkpoints = nullptr);
 
     /**
      * @brief Initialize the Blockchain state
@@ -152,7 +154,7 @@ namespace cryptonote
      *
      * @return true on success, false if any initialization steps fail
      */
-    bool init(BlockchainDB* db, HardFork*& hf, const network_type nettype = MAINNET, bool offline = false);
+    bool init(BlockchainDB* db, HardFork*& hf, sqlite3 *lns_db, const network_type nettype = MAINNET, bool offline = false);
 
     /**
      * @brief Uninitializes the blockchain state
@@ -1051,6 +1053,8 @@ namespace cryptonote
      */
     bool blink_rollback(uint64_t rollback_height);
 
+    lns::name_system_db const &name_system_db() { return m_lns_db; }
+
 #ifndef IN_UNIT_TESTS
   private:
 #endif
@@ -1067,6 +1071,7 @@ namespace cryptonote
 
     tx_memory_pool& m_tx_pool;
     service_nodes::service_node_list& m_service_node_list;
+    lns::name_system_db m_lns_db;
 
     mutable boost::recursive_mutex m_blockchain_lock; // TODO: add here reader/writer lock
 

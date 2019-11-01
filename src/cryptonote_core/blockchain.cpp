@@ -291,7 +291,7 @@ uint64_t Blockchain::get_current_blockchain_height() const
 //------------------------------------------------------------------
 //FIXME: possibly move this into the constructor, to avoid accidentally
 //       dereferencing a null BlockchainDB pointer
-bool Blockchain::init(BlockchainDB* db, const network_type nettype, bool offline, const cryptonote::test_options *test_options, difficulty_type fixed_difficulty, const GetCheckpointsCallback& get_checkpoints/* = nullptr*/)
+bool Blockchain::init(BlockchainDB* db, sqlite3 *lns_db, const network_type nettype, bool offline, const cryptonote::test_options *test_options, difficulty_type fixed_difficulty, const GetCheckpointsCallback& get_checkpoints/* = nullptr*/)
 {
   LOG_PRINT_L3("Blockchain::" << __func__);
 
@@ -463,6 +463,14 @@ bool Blockchain::init(BlockchainDB* db, const network_type nettype, bool offline
       return false;
   }
 
+  uint64_t tail_height   = 0;
+  crypto::hash tail_hash = get_tail_id(tail_height);
+  if (!m_lns_db.init(lns_db, tail_height, tail_hash))
+  {
+    MERROR("LNS failed to initialise");
+    return false;
+  }
+
   hook_block_added(m_checkpoints);
   hook_blockchain_detached(m_checkpoints);
   for (InitHook* hook : m_init_hooks)
@@ -471,11 +479,11 @@ bool Blockchain::init(BlockchainDB* db, const network_type nettype, bool offline
   return true;
 }
 //------------------------------------------------------------------
-bool Blockchain::init(BlockchainDB* db, HardFork*& hf, const network_type nettype, bool offline)
+bool Blockchain::init(BlockchainDB* db, HardFork*& hf, sqlite3 *lns_db, const network_type nettype, bool offline)
 {
   if (hf != nullptr)
     m_hardfork = hf;
-  bool res = init(db, nettype, offline, NULL);
+  bool res = init(db, lns_db, nettype, offline, NULL);
   if (hf == nullptr)
     hf = m_hardfork;
   return res;
@@ -3225,6 +3233,22 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
         }
       }
     }
+
+    if (tx.type == txtype::loki_name_system)
+    {
+      cryptonote::tx_extra_loki_name_system data;
+      if (!cryptonote::get_loki_name_system_from_tx_extra(tx.extra, data))
+      {
+        MERROR_VER("TX: " << tx.type << " " << get_transaction_hash(tx) << ", didn't have loki name service in the tx_extra");
+        return false;
+      }
+
+      if (!lns::validate_lns_entry(tx, data))
+      {
+        MERROR_VER("TX: " << tx.type << " " << get_transaction_hash(tx) << ", owner = " << data.owner << ", type = " << (int)data.type << ", name = " << data.name);
+        return false;
+      }
+    }
   }
   else
   {
@@ -4042,6 +4066,48 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
     {
       MERROR("Block added hook signalled failure");
       return false;
+    }
+  }
+
+  checkpoint_t immutable_checkpoint = {};
+  if (bl.major_version >= cryptonote::network_version_14_blink_lns &&
+      m_db->get_immutable_checkpoint(&immutable_checkpoint, blockchain_height))
+  {
+    static uint64_t hf14_height = m_hardfork->get_earliest_ideal_height_for_version(network_version_14_blink_lns);
+    uint64_t start_height       = std::max(m_lns_db.height(), hf14_height);
+    int64_t total_blocks = static_cast<int64_t>(immutable_checkpoint.height) - static_cast<int64_t>(start_height);
+
+    while (total_blocks > 0)
+    {
+      int64_t constexpr BLOCK_COUNT = 1000;
+      int64_t num_blocks            = (total_blocks < BLOCK_COUNT) ? total_blocks : BLOCK_COUNT;
+      total_blocks -= num_blocks;
+
+      std::vector<std::pair<cryptonote::blobdata, cryptonote::block>> blocks;
+      if (!get_blocks(start_height, static_cast<uint64_t>(num_blocks), blocks))
+      {
+        LOG_ERROR("Unable to get checkpointed historical blocks for updating LNS DB");
+        pop_block_from_blockchain();
+        return false;
+      }
+
+      for (std::pair<cryptonote::blobdata, cryptonote::block> const &pair : blocks)
+      {
+        std::vector<cryptonote::transaction> old_txs;
+        std::vector<crypto::hash> old_missed_txs;
+        if (!get_transactions(pair.second.tx_hashes, old_txs, old_missed_txs))
+        {
+          MERROR("Unable to get transactions for block for updating LNS DB: " << cryptonote::get_block_hash(pair.second));
+          pop_block_from_blockchain();
+          return false;
+        }
+
+        if (!m_lns_db.add_block(nettype(), pair.second, old_txs))
+        {
+          MERROR("Unable to process block for updating LNS DB: " << cryptonote::get_block_hash(pair.second));
+          return false;
+        }
+      }
     }
   }
 

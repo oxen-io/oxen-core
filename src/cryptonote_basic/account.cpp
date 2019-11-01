@@ -38,6 +38,7 @@
 extern "C"
 {
 #include "crypto/keccak.h"
+#include "sodium.h"
 }
 #include "cryptonote_basic_impl.h"
 #include "cryptonote_format_utils.h"
@@ -54,7 +55,12 @@ DISABLE_VS_WARNINGS(4244 4345)
 
   namespace cryptonote
 {
-
+  static void generate_ed25519_keys(account_keys &keys)
+  {
+    crypto::secret_key const &spend_key          = keys.m_spend_secret_key;
+    crypto::ec_scalar const &spend_key_unwrapped = unwrap(unwrap(keys.m_spend_secret_key));
+    crypto_sign_ed25519_seed_keypair(keys.m_spend_ed25519_public_key.data, keys.m_spend_ed25519_secret_key.data, reinterpret_cast<unsigned char const *>(spend_key_unwrapped.data));
+  }
   //-----------------------------------------------------------------
   hw::device& account_keys::get_device() const  {
     return *m_device;
@@ -101,6 +107,8 @@ DISABLE_VS_WARNINGS(4244 4345)
       for (size_t i = 0; i < sizeof(crypto::secret_key); ++i)
         k.data[i] ^= *ptr++;
     }
+    for (size_t i = 0; i < sizeof(m_spend_ed25519_secret_key); ++i)
+      m_spend_ed25519_secret_key.data[i] ^= *ptr++;
   }
   //-----------------------------------------------------------------
   void account_keys::encrypt(const crypto::chacha_key &key)
@@ -151,6 +159,7 @@ DISABLE_VS_WARNINGS(4244 4345)
   //-----------------------------------------------------------------
   void account_base::forget_spend_key()
   {
+    sodium_memzero(m_keys.m_spend_ed25519_secret_key.data, sizeof(m_keys.m_spend_ed25519_secret_key));
     m_keys.m_spend_secret_key = crypto::secret_key();
     m_keys.m_multisig_keys.clear();
   }
@@ -183,6 +192,8 @@ DISABLE_VS_WARNINGS(4244 4345)
     {
       m_creation_timestamp = time(NULL);
     }
+
+    generate_ed25519_keys(m_keys);
     return first;
   }
   //-----------------------------------------------------------------
@@ -203,6 +214,8 @@ DISABLE_VS_WARNINGS(4244 4345)
     m_creation_timestamp = mktime(&timestamp);
     if (m_creation_timestamp == (uint64_t)-1) // failure
       m_creation_timestamp = 0; // lowest value
+
+    generate_ed25519_keys(m_keys);
   }
 
   //-----------------------------------------------------------------
@@ -237,6 +250,8 @@ DISABLE_VS_WARNINGS(4244 4345)
     m_creation_timestamp = mktime(&timestamp);
     if (m_creation_timestamp == (uint64_t)-1) // failure
       m_creation_timestamp = 0; // lowest value
+
+    generate_ed25519_keys(m_keys);
   }
 
   //-----------------------------------------------------------------
@@ -253,12 +268,15 @@ DISABLE_VS_WARNINGS(4244 4345)
     m_keys.m_view_secret_key = view_secret_key;
     m_keys.m_spend_secret_key = spend_secret_key;
     m_keys.m_multisig_keys = multisig_keys;
-    return crypto::secret_key_to_public_key(view_secret_key, m_keys.m_account_address.m_view_public_key);
+    bool result = crypto::secret_key_to_public_key(view_secret_key, m_keys.m_account_address.m_view_public_key);
+    generate_ed25519_keys(m_keys);
+    return result;
   }
   //-----------------------------------------------------------------
   void account_base::finalize_multisig(const crypto::public_key &spend_public_key)
   {
     m_keys.m_account_address.m_spend_public_key = spend_public_key;
+    generate_ed25519_keys(m_keys);
   }
   //-----------------------------------------------------------------
   const account_keys& account_base::get_keys() const

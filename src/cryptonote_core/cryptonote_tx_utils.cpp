@@ -479,7 +479,7 @@ namespace cryptonote
     tx.extra = extra;
     crypto::public_key txkey_pub;
 
-    if (tx.type == txtype::stake)
+    if (tx.type == txtype::stake || tx.type == txtype::loki_name_system)
       add_tx_secret_key_to_tx_extra(tx.extra, tx_key);
 
     // if we have a stealth payment id, find it and encrypt it with the tx key now

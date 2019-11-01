@@ -68,20 +68,20 @@ bool gen_ring_signature_1::generate(std::vector<test_event_entry>& events) const
   gen.add_mined_money_unlock_blocks();
 
   std::vector<cryptonote::transaction> txs;
-  txs.push_back( gen.create_and_add_tx(miner, bob, MK_COINS(1)) );
-  txs.push_back( gen.create_and_add_tx(miner, bob, MK_COINS(11) + rnd_11) );
+  txs.push_back( gen.create_and_add_tx(miner, bob.get_keys().m_account_address, MK_COINS(1)) );
+  txs.push_back( gen.create_and_add_tx(miner, bob.get_keys().m_account_address, MK_COINS(11) + rnd_11) );
 
-  txs.push_back( gen.create_and_add_tx(miner, bob, MK_COINS(11) + rnd_11) );
-  txs.push_back( gen.create_and_add_tx(miner, bob, MK_COINS(20) + rnd_20) );
-  txs.push_back( gen.create_and_add_tx(miner, bob, MK_COINS(29) + rnd_29) );
-  txs.push_back( gen.create_and_add_tx(miner, bob, MK_COINS(29) + rnd_29) );
-  txs.push_back( gen.create_and_add_tx(miner, bob, MK_COINS(29) + rnd_29) );
-  txs.push_back( gen.create_and_add_tx(miner, some_account_1, MK_COINS(11) + rnd_11) );
-  txs.push_back( gen.create_and_add_tx(miner, some_account_1, MK_COINS(11) + rnd_11) );
-  txs.push_back( gen.create_and_add_tx(miner, some_account_1, MK_COINS(11) + rnd_11) );
-  txs.push_back( gen.create_and_add_tx(miner, some_account_1, MK_COINS(11) + rnd_11) );
-  txs.push_back( gen.create_and_add_tx(miner, some_account_1, MK_COINS(20) + rnd_20) );
-  txs.push_back( gen.create_and_add_tx(miner, some_account_2, MK_COINS(20) + rnd_20) );
+  txs.push_back( gen.create_and_add_tx(miner, bob.get_keys().m_account_address, MK_COINS(11) + rnd_11) );
+  txs.push_back( gen.create_and_add_tx(miner, bob.get_keys().m_account_address, MK_COINS(20) + rnd_20) );
+  txs.push_back( gen.create_and_add_tx(miner, bob.get_keys().m_account_address, MK_COINS(29) + rnd_29) );
+  txs.push_back( gen.create_and_add_tx(miner, bob.get_keys().m_account_address, MK_COINS(29) + rnd_29) );
+  txs.push_back( gen.create_and_add_tx(miner, bob.get_keys().m_account_address, MK_COINS(29) + rnd_29) );
+  txs.push_back( gen.create_and_add_tx(miner, some_account_1.get_keys().m_account_address, MK_COINS(11) + rnd_11) );
+  txs.push_back( gen.create_and_add_tx(miner, some_account_1.get_keys().m_account_address, MK_COINS(11) + rnd_11) );
+  txs.push_back( gen.create_and_add_tx(miner, some_account_1.get_keys().m_account_address, MK_COINS(11) + rnd_11) );
+  txs.push_back( gen.create_and_add_tx(miner, some_account_1.get_keys().m_account_address, MK_COINS(11) + rnd_11) );
+  txs.push_back( gen.create_and_add_tx(miner, some_account_1.get_keys().m_account_address, MK_COINS(20) + rnd_20) );
+  txs.push_back( gen.create_and_add_tx(miner, some_account_2.get_keys().m_account_address, MK_COINS(20) + rnd_20) );
 
   gen.create_and_add_next_block(txs);
 
@@ -89,7 +89,7 @@ bool gen_ring_signature_1::generate(std::vector<test_event_entry>& events) const
 
   DO_CALLBACK(events, "check_balances_1");
 
-  auto tx = gen.create_and_add_tx(bob, alice, MK_COINS(129) + 2 * rnd_11 + rnd_20 + 3 * rnd_29 - TESTS_DEFAULT_FEE);
+  auto tx = gen.create_and_add_tx(bob, alice.get_keys().m_account_address, MK_COINS(129) + 2 * rnd_11 + rnd_20 + 3 * rnd_29 - TESTS_DEFAULT_FEE);
   gen.create_and_add_next_block({tx});
 
   DO_CALLBACK(events, "check_balances_2");

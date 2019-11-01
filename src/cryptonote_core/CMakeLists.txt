@@ -42,6 +42,7 @@ set(cryptonote_core_sources
   service_node_quorum_cop.cpp
   service_node_swarm.cpp
   tx_blink.cpp
+  loki_name_system_db.cpp
   tx_pool.cpp
   tx_sanity_check.cpp
   miner.cpp
@@ -55,6 +56,7 @@ set(cryptonote_core_private_headers
   service_node_list.h
   service_node_quorum_cop.h
   service_node_swarm.h
+  loki_name_system_db.h
   cryptonote_core.h
   service_node_voting.h
   tx_blink.h
@@ -71,6 +73,7 @@ loki_add_library(cryptonote_core
   ${cryptonote_core_private_headers})
 target_link_libraries(cryptonote_core
   PUBLIC
+    sqlite
     version
     common
     cncrypto

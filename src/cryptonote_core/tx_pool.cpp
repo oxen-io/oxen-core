@@ -218,6 +218,36 @@ namespace cryptonote
       }
 
     }
+    else if (tx.type == txtype::loki_name_system)
+    {
+      tx_extra_loki_name_system data;
+      if (!cryptonote::get_loki_name_system_from_tx_extra(tx.extra, data))
+      {
+        MERROR("Could not get acquire name service from tx: " << get_transaction_hash(tx) << ", tx to add is possibly invalid, rejecting");
+        return true;
+      }
+
+      std::vector<transaction> pool_txs;
+      get_transactions(pool_txs);
+      for (const transaction& pool_tx : pool_txs)
+      {
+        if (pool_tx.type != tx.type)
+          continue;
+
+        tx_extra_loki_name_system pool_data;
+        if (!cryptonote::get_loki_name_system_from_tx_extra(pool_tx.extra, data))
+        {
+          LOG_PRINT_L1("Could not get acquire name service from tx: " << get_transaction_hash(tx) << ", possibly corrupt tx in the pool");
+          return true;
+        }
+
+        if (data.name == pool_data.name)
+        {
+          LOG_PRINT_L1("New TX: " << get_transaction_hash(tx) << ", has TX: " << get_transaction_hash(pool_tx) << " from the pool that is requesting to unlock the same key image already.");
+          return true;
+        }
+      }
+    }
     else
     {
       // NOTE(loki): This is a developer error. If we come across this in production, be conservative and just reject

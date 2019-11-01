@@ -121,7 +121,7 @@ bool gen_uint_overflow_1::generate(std::vector<test_event_entry>& events) const
     {
       // Create txs with fee greater than the block reward
       std::vector<cryptonote::transaction> txs;
-      txs.push_back(gen.create_and_add_tx(gen.first_miner_, alice, MK_COINS(1), MK_COINS(100) /*fee*/, false /*kept_by_block*/));
+      txs.push_back(gen.create_and_add_tx(gen.first_miner_, alice.get_keys().m_account_address, MK_COINS(1), MK_COINS(100) /*fee*/, false /*kept_by_block*/));
 
       loki_blockchain_entry entry       = gen.create_next_block(txs);
       cryptonote::transaction &miner_tx = entry.block.miner_tx;
@@ -132,7 +132,7 @@ bool gen_uint_overflow_1::generate(std::vector<test_event_entry>& events) const
     {
       // Set kept_by_block = true
       std::vector<cryptonote::transaction> txs;
-      txs.push_back(gen.create_and_add_tx(gen.first_miner_, alice, MK_COINS(1), MK_COINS(100) /*fee*/, true /*kept_by_block*/));
+      txs.push_back(gen.create_and_add_tx(gen.first_miner_, alice.get_keys().m_account_address, MK_COINS(1), MK_COINS(100) /*fee*/, true /*kept_by_block*/));
 
       loki_blockchain_entry entry       = gen.create_next_block(txs);
       cryptonote::transaction &miner_tx = entry.block.miner_tx;

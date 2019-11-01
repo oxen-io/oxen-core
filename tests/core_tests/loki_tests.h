@@ -51,6 +51,9 @@ struct loki_core_test_deregister_too_old                                        
 struct loki_core_test_deregister_zero_fee                                            : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
 struct loki_core_test_deregister_on_split                                            : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
 struct loki_core_test_state_change_ip_penalty_disallow_dupes                         : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
+struct loki_name_system_handles_duplicates                                           : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
+struct loki_name_system_invalid_tx_extra_params                                      : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
+struct loki_name_system_name_value_max_lengths                                       : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
 struct loki_service_nodes_alt_quorums                                                : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
 struct loki_service_nodes_checkpoint_quorum_size                                     : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
 struct loki_service_nodes_gen_nodes                                                  : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };

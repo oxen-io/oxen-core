@@ -334,7 +334,7 @@ bool gen_block_miner_tx_has_2_in::generate(std::vector<test_event_entry>& events
 
   transaction tmp_tx;
 
-  if (!loki_tx_builder(events, tmp_tx, blk_0r, miner_account, miner_account, blk_0.miner_tx.vout[0].amount, cryptonote::network_version_7).build())
+  if (!loki_tx_builder(events, tmp_tx, blk_0r, miner_account, miner_account.get_keys().m_account_address, blk_0.miner_tx.vout[0].amount, cryptonote::network_version_7).build())
     return false;
 
   MAKE_MINER_TX_MANUALLY(miner_tx, blk_0r);
@@ -361,7 +361,7 @@ bool gen_block_miner_tx_with_txin_to_key::generate(std::vector<test_event_entry>
   REWIND_BLOCKS(events, blk_1r, blk_1, miner_account);
 
   transaction tmp_tx;
-  if (!loki_tx_builder(events, tmp_tx, blk_1r, miner_account, miner_account, blk_1.miner_tx.vout[0].amount, cryptonote::network_version_7).build())
+  if (!loki_tx_builder(events, tmp_tx, blk_1r, miner_account, miner_account.get_keys().m_account_address, blk_1.miner_tx.vout[0].amount, cryptonote::network_version_7).build())
     return false;
 
   MAKE_MINER_TX_MANUALLY(miner_tx, blk_1);
@@ -578,7 +578,7 @@ bool gen_block_invalid_binary_format::generate(std::vector<test_event_entry>& ev
   gen.add_mined_money_unlock_blocks();
 
   uint64_t last_valid_height = gen.height();
-  cryptonote::transaction tx  = gen.create_and_add_tx(gen.first_miner_, gen.first_miner_, MK_COINS(30));
+  cryptonote::transaction tx  = gen.create_and_add_tx(gen.first_miner_, gen.first_miner_.get_keys().m_account_address, MK_COINS(30));
   loki_blockchain_entry entry = gen.create_next_block({tx});
 
   serialized_block block(t_serializable_object_to_blob(entry.block));
