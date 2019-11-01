@@ -992,6 +992,101 @@ bool loki_core_test_state_change_ip_penalty_disallow_dupes::generate(std::vector
   return true;
 }
 
+bool loki_name_system_expiration::generate(std::vector<test_event_entry> &events)
+{
+  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = loki_generate_sequential_hard_fork_table();
+  loki_chain_generator gen(events, hard_forks);
+  cryptonote::account_base miner = gen.first_miner_;
+
+  {
+    gen.add_blocks_until_version(hard_forks.back().first);
+    gen.add_n_blocks(30); /// generate some outputs and unlock them
+    gen.add_mined_money_unlock_blocks();
+
+    int constexpr NUM_SERVICE_NODES = service_nodes::CHECKPOINT_QUORUM_SIZE;
+    std::vector<cryptonote::transaction> registration_txs(NUM_SERVICE_NODES);
+    for (auto i = 0u; i < NUM_SERVICE_NODES; ++i)
+      registration_txs[i] = gen.create_and_add_registration_tx(gen.first_miner());
+    gen.create_and_add_next_block(registration_txs);
+
+    // NOTE: Add blocks until we get to the first height that has a checkpointing quorum AND there are service nodes in the quorum.
+    int const MAX_TRIES = 16;
+    int tries           = 0;
+    for (; tries < MAX_TRIES; tries++)
+    {
+      gen.add_blocks_until_next_checkpointable_height();
+      std::shared_ptr<const service_nodes::testing_quorum> quorum = gen.get_testing_quorum(service_nodes::quorum_type::checkpointing, gen.height());
+      if (quorum && quorum->validators.size()) break;
+    }
+    assert(tries != MAX_TRIES);
+    gen.add_service_node_checkpoint(gen.height(), service_nodes::CHECKPOINT_MIN_VOTES);
+  }
+
+  crypto::ed25519_public_key const &miner_key = miner.get_keys().m_spend_ed25519_public_key;
+  char const name[] = "my_domain.loki";
+  cryptonote::transaction tx = gen.create_and_add_loki_name_system_tx(miner, static_cast<uint16_t>(lns::mapping_type::lokinet), miner_key.data, sizeof(miner_key), name);
+  gen.create_and_add_next_block({tx});
+
+  uint64_t height_of_lns_entry   = gen.height();
+  uint64_t expected_expiry_block = height_of_lns_entry + lns::lokinet_expiry_blocks(cryptonote::FAKECHAIN, nullptr);
+
+  gen.add_blocks_until_next_checkpointable_height();
+  gen.add_service_node_checkpoint(gen.height(), service_nodes::CHECKPOINT_MIN_VOTES);
+
+  gen.add_blocks_until_next_checkpointable_height();
+  gen.add_service_node_checkpoint(gen.height(), service_nodes::CHECKPOINT_MIN_VOTES);
+  gen.create_and_add_next_block();
+
+  loki_register_callback(events, "check_lns_entries", [&events, height_of_lns_entry, miner_key, name](cryptonote::core &c, size_t ev_index)
+  {
+    DEFINE_TESTS_ERROR_CONTEXT("check_lns_entries");
+    lns::name_system_db const &lns_db = c.get_blockchain_storage().name_system_db();
+
+    lns::user_record user = lns_db.get_user_by_key(miner_key);
+    CHECK_EQ(user.loaded, true);
+    CHECK_EQ(user.id, 1);
+    CHECK_EQ(miner_key, user.key);
+
+    lns::mapping_record mappings = lns_db.get_mapping(static_cast<uint16_t>(lns::mapping_type::lokinet), miner_key.data, sizeof(miner_key));
+    CHECK_EQ(mappings.loaded, true);
+    CHECK_EQ(mappings.type, static_cast<uint16_t>(lns::mapping_type::lokinet));
+    CHECK_EQ(mappings.name, std::string(name));
+    CHECK_EQ(mappings.value, std::string((char *)miner_key.data, sizeof(miner_key)));
+    CHECK_EQ(mappings.register_height, height_of_lns_entry);
+    CHECK_EQ(mappings.user_id, user.id);
+    return true;
+  });
+
+  while (gen.height() < expected_expiry_block)
+    gen.create_and_add_next_block();
+
+  // NOTE: Generate the next two checkpoints to commit the changes (expiry) of LNS entries into the DB.
+  gen.add_blocks_until_next_checkpointable_height();
+  gen.add_service_node_checkpoint(gen.height(), service_nodes::CHECKPOINT_MIN_VOTES);
+
+  gen.add_blocks_until_next_checkpointable_height();
+  gen.add_service_node_checkpoint(gen.height(), service_nodes::CHECKPOINT_MIN_VOTES);
+  gen.create_and_add_next_block();
+
+  loki_register_callback(events, "check_expired", [&events, height_of_lns_entry, miner_key, name](cryptonote::core &c, size_t ev_index)
+  {
+    DEFINE_TESTS_ERROR_CONTEXT("check_expired");
+    lns::name_system_db const &lns_db = c.get_blockchain_storage().name_system_db();
+
+    // TODO(loki): We should probably expire users that no longer have any mappings remaining
+    lns::user_record user = lns_db.get_user_by_key(miner_key);
+    CHECK_EQ(user.loaded, true);
+    CHECK_EQ(user.id, 1);
+    CHECK_EQ(miner_key, user.key);
+
+    lns::mapping_record mappings = lns_db.get_mapping(static_cast<uint16_t>(lns::mapping_type::lokinet), miner_key.data, sizeof(miner_key));
+    CHECK_EQ(mappings.loaded, false);
+    return true;
+  });
+
+  return true;
+}
+
 bool loki_name_system_handles_duplicates::generate(std::vector<test_event_entry> &events)
 {
   std::vector<std::pair<uint8_t, uint64_t>> hard_forks = loki_generate_sequential_hard_fork_table();
@@ -1076,9 +1171,7 @@ bool loki_name_system_handles_duplicates::generate(std::vector<test_event_entry>
 
   gen.add_blocks_until_next_checkpointable_height();
   gen.add_service_node_checkpoint(gen.height(), service_nodes::CHECKPOINT_MIN_VOTES);
-
-  gen.add_blocks_until_next_checkpointable_height();
-  gen.add_service_node_checkpoint(gen.height(), service_nodes::CHECKPOINT_MIN_VOTES);
+  gen.create_and_add_next_block();
 
   loki_register_callback(events, "check_lns_entries", [&events, height_of_lns_entry, miner_key, bob_key, messenger_key, messenger_name, custom_type](cryptonote::core &c, size_t ev_index)
   {
@@ -1317,6 +1410,112 @@ bool loki_name_system_invalid_tx_extra_params::generate(std::vector<test_event_e
       make_lns_tx_with_custom_extra(gen, events, miner, data, false, "(Generic) Value too long");
     }
   }
+  return true;
+}
+
+bool loki_name_system_name_renewal::generate(std::vector<test_event_entry> &events)
+{
+  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = loki_generate_sequential_hard_fork_table();
+  loki_chain_generator gen(events, hard_forks);
+  cryptonote::account_base miner = gen.first_miner_;
+
+  {
+    gen.add_blocks_until_version(hard_forks.back().first);
+    gen.add_n_blocks(30); /// generate some outputs and unlock them
+    gen.add_mined_money_unlock_blocks();
+
+    int constexpr NUM_SERVICE_NODES = service_nodes::CHECKPOINT_QUORUM_SIZE;
+    std::vector<cryptonote::transaction> registration_txs(NUM_SERVICE_NODES);
+    for (auto i = 0u; i < NUM_SERVICE_NODES; ++i)
+      registration_txs[i] = gen.create_and_add_registration_tx(gen.first_miner());
+    gen.create_and_add_next_block(registration_txs);
+
+    // NOTE: Add blocks until we get to the first height that has a checkpointing quorum AND there are service nodes in the quorum.
+    int const MAX_TRIES = 16;
+    int tries           = 0;
+    for (; tries < MAX_TRIES; tries++)
+    {
+      gen.add_blocks_until_next_checkpointable_height();
+      std::shared_ptr<const service_nodes::testing_quorum> quorum = gen.get_testing_quorum(service_nodes::quorum_type::checkpointing, gen.height());
+      if (quorum && quorum->validators.size()) break;
+    }
+    assert(tries != MAX_TRIES);
+    gen.add_service_node_checkpoint(gen.height(), service_nodes::CHECKPOINT_MIN_VOTES);
+  }
+
+  crypto::ed25519_public_key const &miner_key = miner.get_keys().m_spend_ed25519_public_key;
+  char const name[] = "my_domain.loki";
+  cryptonote::transaction tx = gen.create_and_add_loki_name_system_tx(miner, static_cast<uint16_t>(lns::mapping_type::lokinet), miner_key.data, sizeof(miner_key), name);
+  gen.create_and_add_next_block({tx});
+
+  uint64_t height_of_lns_entry = gen.height();
+  uint64_t renew_window        = 0;
+  uint64_t expiry_blocks       = lns::lokinet_expiry_blocks(cryptonote::FAKECHAIN, &renew_window);
+  uint64_t renew_window_block  = height_of_lns_entry + expiry_blocks - renew_window;
+
+  gen.add_blocks_until_next_checkpointable_height();
+  gen.add_service_node_checkpoint(gen.height(), service_nodes::CHECKPOINT_MIN_VOTES);
+
+  gen.add_blocks_until_next_checkpointable_height();
+  gen.add_service_node_checkpoint(gen.height(), service_nodes::CHECKPOINT_MIN_VOTES);
+  gen.create_and_add_next_block();
+
+  loki_register_callback(events, "check_lns_entries", [&events, height_of_lns_entry, miner_key, name](cryptonote::core &c, size_t ev_index)
+  {
+    DEFINE_TESTS_ERROR_CONTEXT("check_lns_entries");
+    lns::name_system_db const &lns_db = c.get_blockchain_storage().name_system_db();
+
+    lns::user_record user = lns_db.get_user_by_key(miner_key);
+    CHECK_EQ(user.loaded, true);
+    CHECK_EQ(user.id, 1);
+    CHECK_EQ(miner_key, user.key);
+
+    lns::mapping_record mappings = lns_db.get_mapping(static_cast<uint16_t>(lns::mapping_type::lokinet), miner_key.data, sizeof(miner_key));
+    CHECK_EQ(mappings.loaded, true);
+    CHECK_EQ(mappings.type, static_cast<uint16_t>(lns::mapping_type::lokinet));
+    CHECK_EQ(mappings.name, std::string(name));
+    CHECK_EQ(mappings.value, std::string((char *)miner_key.data, sizeof(miner_key)));
+    CHECK_EQ(mappings.register_height, height_of_lns_entry);
+    CHECK_EQ(mappings.user_id, user.id);
+    return true;
+  });
+
+  while (gen.height() < renew_window_block)
+    gen.create_and_add_next_block();
+
+  // In the renewal window, try and renew the lokinet entry
+  cryptonote::transaction renew_tx = gen.create_and_add_loki_name_system_tx(miner, static_cast<uint16_t>(lns::mapping_type::lokinet), miner_key.data, sizeof(miner_key), name);
+  gen.create_and_add_next_block({renew_tx});
+  uint64_t renewal_height = gen.height();
+
+  // NOTE: Generate the next two checkpoints to commit the changes (renewal) of LNS entries into the DB.
+  gen.add_blocks_until_next_checkpointable_height();
+  gen.add_service_node_checkpoint(gen.height(), service_nodes::CHECKPOINT_MIN_VOTES);
+
+  gen.add_blocks_until_next_checkpointable_height();
+  gen.add_service_node_checkpoint(gen.height(), service_nodes::CHECKPOINT_MIN_VOTES);
+  gen.create_and_add_next_block();
+
+  loki_register_callback(events, "check_renewed", [&events, renewal_height, miner_key, name](cryptonote::core &c, size_t ev_index)
+  {
+    DEFINE_TESTS_ERROR_CONTEXT("check_renewed");
+    lns::name_system_db const &lns_db = c.get_blockchain_storage().name_system_db();
+
+    lns::user_record user = lns_db.get_user_by_key(miner_key);
+    CHECK_EQ(user.loaded, true);
+    CHECK_EQ(user.id, 1);
+    CHECK_EQ(miner_key, user.key);
+
+    lns::mapping_record mappings = lns_db.get_mapping(static_cast<uint16_t>(lns::mapping_type::lokinet), miner_key.data, sizeof(miner_key));
+    CHECK_EQ(mappings.loaded, true);
+    CHECK_EQ(mappings.type, static_cast<uint16_t>(lns::mapping_type::lokinet));
+    CHECK_EQ(mappings.name, std::string(name));
+    CHECK_EQ(mappings.value, std::string((char *)miner_key.data, sizeof(miner_key)));
+    CHECK_EQ(mappings.register_height, renewal_height);
+    CHECK_EQ(mappings.user_id, user.id);
+    return true;
+  });
+
   return true;
 }
 

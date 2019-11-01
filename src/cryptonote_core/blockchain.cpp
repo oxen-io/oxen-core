@@ -465,7 +465,7 @@ bool Blockchain::init(BlockchainDB* db, sqlite3 *lns_db, const network_type nett
 
   uint64_t tail_height   = 0;
   crypto::hash tail_hash = get_tail_id(tail_height);
-  if (!m_lns_db.init(lns_db, tail_height, tail_hash))
+  if (!m_lns_db.init(nettype, lns_db, tail_height, tail_hash))
   {
     MERROR("LNS failed to initialise");
     return false;
@@ -4102,7 +4102,7 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
           return false;
         }
 
-        if (!m_lns_db.add_block(nettype(), pair.second, old_txs))
+        if (!m_lns_db.add_block(pair.second, old_txs))
         {
           MERROR("Unable to process block for updating LNS DB: " << cryptonote::get_block_hash(pair.second));
           return false;

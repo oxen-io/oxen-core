@@ -122,7 +122,7 @@ loki_chain_generator::loki_chain_generator(std::vector<test_event_entry> &events
 , events_(events)
 , hard_forks_(hard_forks)
 {
-  bool init = lns_db_.init(lns::init_loki_name_system(""), 0, crypto::null_hash);
+  bool init = lns_db_.init(cryptonote::FAKECHAIN, lns::init_loki_name_system(""), 0, crypto::null_hash);
   assert(init);
 
   first_miner_.generate();
@@ -208,7 +208,7 @@ loki_blockchain_entry &loki_chain_generator::add_block(loki_blockchain_entry con
     for (int64_t i = 0; i < num_blocks; i++)
     {
       loki_blockchain_entry const &other_entry = blocks_[start_height + i];
-      lns_db_.add_block(cryptonote::FAKECHAIN, other_entry.block, other_entry.txs);
+      lns_db_.add_block(other_entry.block, other_entry.txs);
     }
   }
 
@@ -511,10 +511,10 @@ cryptonote::checkpoint_t loki_chain_generator::create_service_node_checkpoint(ui
 }
 
 cryptonote::transaction loki_chain_generator::create_loki_name_system_tx(cryptonote::account_base const &src,
-                                                                          uint16_t type,
-                                                                          void const *value,
-                                                                          size_t value_len,
-                                                                          std::string const &name) const
+                                                                         uint16_t type,
+                                                                         void const *value,
+                                                                         size_t value_len,
+                                                                         std::string const &name) const
 {
   std::vector<uint8_t> extra;
   cryptonote::tx_extra_loki_name_system data = {};

@@ -16,11 +16,12 @@ extern "C"
 
 namespace lns
 {
-
-enum struct lns_sql_type {
+enum struct lns_sql_type
+{
   save_user,
   save_setting,
   save_mapping,
+  expire_mapping,
 
   get_sentinel_start,
   get_user,
@@ -28,36 +29,6 @@ enum struct lns_sql_type {
   get_mapping,
   get_sentinel_end,
 };
-
-constexpr char DROP_TABLE_SQL[] = R"FOO(
-DROP TABLE IF EXISTS "user";
-DROP TABLE IF EXISTS "settings";
-DROP TABLE IF EXISTS "mappings";
-)FOO";
-
-constexpr char BUILD_TABLE_SQL[] = R"FOO(
-CREATE TABLE IF NOT EXISTS "user"(
-    "id" INTEGER PRIMARY KEY AUTOINCREMENT,
-    "public_key" BLOB NOT NULL UNIQUE
-);
-
-CREATE TABLE IF NOT EXISTS "settings" (
-    "top_height" INTEGER NOT NULL,
-    "top_hash" VARCHAR NOT NULL,
-    "version" INTEGER NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS "mappings" (
-    "id" INTEGER PRIMARY KEY NOT NULL,
-    "type" INTEGER NOT NULL,
-    "name" VARCHAR NOT NULL,
-    "value" BLOB NOT NULL,
-    "register_height" INTEGER NOT NULL,
-    "user_id" INTEGER NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES user (id)
-);
-CREATE UNIQUE INDEX "name_type_id" ON mappings(name, type);
-)FOO";
 
 enum lns_db_setting_row
 {
@@ -67,30 +38,11 @@ enum lns_db_setting_row
   lns_db_setting_row_version,
 };
 
-char constexpr SAVE_SETTINGS_CMD[] =R"FOO(
-    INSERT OR REPLACE INTO settings
-    (rowid, top_height, top_hash, version)
-    VALUES (1,?,?,?);
-)FOO";
-
-char constexpr GET_SETTINGS_CMD[] = R"FOO(
-SELECT * FROM settings WHERE "id" = 0
-)FOO";
-
 enum user_record_row
 {
   user_record_row_id,
   user_record_row_public_key,
 };
-char constexpr SAVE_USER_CMD[] = "INSERT INTO user (public_key) VALUES (?);";
-
-char constexpr GET_USER_BY_KEY_CMD[] = R"FOO(
-SELECT * FROM user WHERE "public_key" = ?
-)FOO";
-
-char constexpr GET_USER_BY_ID_CMD[] = R"FOO(
-SELECT * FROM user WHERE "id" = ?
-)FOO";
 
 enum mapping_record_row
 {
@@ -101,15 +53,6 @@ enum mapping_record_row
   mapping_record_row_register_height,
   mapping_record_row_user_id,
 };
-
-char constexpr GET_MAPPING_CMD[] = R"FOO(
-SELECT * FROM mappings WHERE "type" = ? AND "value" = ?
-)FOO";
-
-char constexpr SAVE_MAPPING_CMD[] =
-    "INSERT INTO mappings "
-    "(type, name, value, register_height, user_id)"
-    "VALUES (?,?,?,?,?);";
 
 static void sql_copy_blob(sqlite3_stmt *statement, int row, void *dest, int dest_size)
 {
@@ -232,6 +175,25 @@ sqlite3 *init_loki_name_system(char const *file_path)
   return result;
 }
 
+uint64_t lokinet_expiry_blocks(cryptonote::network_type nettype, uint64_t *renew_window)
+{
+  uint64_t renew_window_ = BLOCKS_EXPECTED_IN_DAYS(31);
+  uint64_t result        = BLOCKS_EXPECTED_IN_YEARS(1) + renew_window_;
+  if (nettype == cryptonote::FAKECHAIN)
+  {
+    renew_window_ = 10;
+    result        = 10 + renew_window_;
+  }
+  else if (nettype == cryptonote::TESTNET)
+  {
+    renew_window_ = BLOCKS_EXPECTED_IN_DAYS(1);
+    result        = BLOCKS_EXPECTED_IN_DAYS(1) + renew_window_;
+  }
+
+  if (renew_window) *renew_window = renew_window_;
+  return result;
+}
+
 bool validate_lns_name_value_mapping_lengths(uint16_t type, int name_len, char const *value, int value_len)
 {
   int max_name_len             = lns::GENERIC_NAME_MAX;
@@ -301,6 +263,30 @@ bool validate_lns_entry(cryptonote::transaction const &tx, cryptonote::tx_extra_
   return true;
 }
 
+constexpr char BUILD_TABLE_SQL[] = R"FOO(
+CREATE TABLE IF NOT EXISTS "user"(
+    "id" INTEGER PRIMARY KEY AUTOINCREMENT,
+    "public_key" BLOB NOT NULL UNIQUE
+);
+
+CREATE TABLE IF NOT EXISTS "settings" (
+    "top_height" INTEGER NOT NULL,
+    "top_hash" VARCHAR NOT NULL,
+    "version" INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS "mappings" (
+    "id" INTEGER PRIMARY KEY NOT NULL,
+    "type" INTEGER NOT NULL,
+    "name" VARCHAR NOT NULL,
+    "value" BLOB NOT NULL,
+    "register_height" INTEGER NOT NULL,
+    "user_id" INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES user (id)
+);
+CREATE UNIQUE INDEX "name_type_id" ON mappings(name, type);
+)FOO";
+
 static bool build_default_tables(sqlite3 *db)
 {
   char *table_err_msg = nullptr;
@@ -317,21 +303,55 @@ static bool build_default_tables(sqlite3 *db)
 
 enum struct db_version : int { v1, };
 auto constexpr DB_VERSION = db_version::v1;
-bool name_system_db::init(sqlite3 *db, uint64_t top_height, crypto::hash const &top_hash)
+bool name_system_db::init(cryptonote::network_type nettype, sqlite3 *db, uint64_t top_height, crypto::hash const &top_hash)
 {
   if (!db) return false;
-  this->db = db;
+  this->db      = db;
+  this->nettype = nettype;
+
+  char constexpr EXPIRE_MAPPINGS_SQL[] = R"FOO(DELETE FROM "mappings" WHERE "type" = ? AND "register_height" < ?)FOO";
+
+  char constexpr DROP_TABLE_SQL[] = R"FOO(
+DROP TABLE IF EXISTS "user";
+DROP TABLE IF EXISTS "settings";
+DROP TABLE IF EXISTS "mappings";
+)FOO";
+
+  char constexpr SAVE_SETTINGS_SQL[] = R"FOO(
+    INSERT OR REPLACE INTO settings
+    (rowid, top_height, top_hash, version)
+    VALUES (1,?,?,?);
+)FOO";
+
+  char constexpr GET_MAPPING_SQL[] = R"FOO(SELECT * FROM mappings WHERE "type" = ? AND "value" = ?)FOO";
+
+  char constexpr SAVE_MAPPING_SQL[] =
+      "INSERT INTO mappings "
+      "(type, name, value, register_height, user_id)"
+      "VALUES (?,?,?,?,?);";
+
+  char constexpr FORCE_SAVE_MAPPING_SQL[] =
+      "INSERT OR REPLACE INTO mappings "
+      "(type, name, value, register_height, user_id)"
+      "VALUES (?,?,?,?,?);";
+
+  char constexpr GET_SETTINGS_SQL[]    = R"FOO(SELECT * FROM settings WHERE "id" = 0)FOO";
+  char constexpr SAVE_USER_SQL[]       = R"FOO(INSERT INTO user (public_key) VALUES (?);)FOO";
+  char constexpr GET_USER_BY_KEY_SQL[] = R"FOO(SELECT * FROM user WHERE "public_key" = ?)FOO";
+  char constexpr GET_USER_BY_ID_SQL[]  = R"FOO(SELECT * FROM user WHERE "id" = ?)FOO";
 
   if (!build_default_tables(db))
     return false;
 
-  if (!sql_compile_statement(db, SAVE_USER_CMD,       loki::array_count(SAVE_USER_CMD),       &save_user_cmd)    ||
-      !sql_compile_statement(db, SAVE_MAPPING_CMD,    loki::array_count(SAVE_MAPPING_CMD),    &save_mapping_cmd) ||
-      !sql_compile_statement(db, SAVE_SETTINGS_CMD,   loki::array_count(SAVE_SETTINGS_CMD),   &save_settings_cmd) ||
-      !sql_compile_statement(db, GET_USER_BY_KEY_CMD, loki::array_count(GET_USER_BY_KEY_CMD), &get_user_by_key_cmd) ||
-      !sql_compile_statement(db, GET_USER_BY_ID_CMD,  loki::array_count(GET_USER_BY_ID_CMD),  &get_user_by_id_cmd) ||
-      !sql_compile_statement(db, GET_MAPPING_CMD,     loki::array_count(GET_MAPPING_CMD),     &get_mapping_cmd) ||
-      !sql_compile_statement(db, GET_SETTINGS_CMD,    loki::array_count(GET_SETTINGS_CMD),    &get_settings_cmd)
+  if (!sql_compile_statement(db, SAVE_USER_SQL,          loki::array_count(SAVE_USER_SQL),       &save_user_sql)    ||
+      !sql_compile_statement(db, SAVE_MAPPING_SQL,       loki::array_count(SAVE_MAPPING_SQL),    &save_mapping_sql) ||
+      !sql_compile_statement(db, SAVE_SETTINGS_SQL,      loki::array_count(SAVE_SETTINGS_SQL),   &save_settings_sql) ||
+      !sql_compile_statement(db, FORCE_SAVE_MAPPING_SQL, loki::array_count(FORCE_SAVE_MAPPING_SQL), &force_save_mapping_sql) ||
+      !sql_compile_statement(db, GET_USER_BY_KEY_SQL,    loki::array_count(GET_USER_BY_KEY_SQL), &get_user_by_key_sql) ||
+      !sql_compile_statement(db, GET_USER_BY_ID_SQL,     loki::array_count(GET_USER_BY_ID_SQL),  &get_user_by_id_sql) ||
+      !sql_compile_statement(db, GET_MAPPING_SQL,        loki::array_count(GET_MAPPING_SQL),     &get_mapping_sql) ||
+      !sql_compile_statement(db, GET_SETTINGS_SQL,       loki::array_count(GET_SETTINGS_SQL),    &get_settings_sql) ||
+      !sql_compile_statement(db, EXPIRE_MAPPINGS_SQL,    loki::array_count(EXPIRE_MAPPINGS_SQL), &expire_mapping_sql)
       )
   {
     return false;
@@ -403,9 +423,7 @@ static bool sql_transaction(sqlite3 *db, sql_transaction_type type)
   return true;
 }
 
-bool name_system_db::add_block(cryptonote::network_type nettype,
-                               const cryptonote::block &block,
-                               const std::vector<cryptonote::transaction> &txs)
+bool name_system_db::add_block(const cryptonote::block &block, const std::vector<cryptonote::transaction> &txs)
 {
   uint64_t height = cryptonote::get_block_height(block);
   if (block.major_version >= cryptonote::network_version_14_blink_lns)
@@ -463,6 +481,12 @@ bool name_system_db::add_block(cryptonote::network_type nettype,
         }
       }
     }
+
+    if (!expire_mappings(height))
+    {
+      MERROR("Failed to expire mappings in LNS DB");
+      return false;
+    }
   }
 
   last_processed_height = height;
@@ -472,7 +496,7 @@ bool name_system_db::add_block(cryptonote::network_type nettype,
 
 bool name_system_db::save_user(crypto::ed25519_public_key const &key, int64_t *row_id)
 {
-  sqlite3_stmt *statement = save_user_cmd;
+  sqlite3_stmt *statement = save_user_sql;
   sqlite3_clear_bindings(statement);
   sqlite3_bind_blob(statement, 1 /*sql param index*/, &key, sizeof(key), nullptr /*destructor*/);
   bool result = sql_run_statement(lns_sql_type::save_user, statement, nullptr);
@@ -480,18 +504,33 @@ bool name_system_db::save_user(crypto::ed25519_public_key const &key, int64_t *r
   return result;
 }
 
-bool name_system_db::save_mapping(uint16_t type,
-                                        std::string const &name,
-                                        void const *value,
-                                        int value_len,
-                                        uint64_t register_height,
-                                        int64_t user_id)
+bool name_system_db::save_mapping(uint16_t type, std::string const &name, void const *value, int value_len, uint64_t height, int64_t user_id)
 {
-  sqlite3_stmt *statement = save_mapping_cmd;
+  sqlite3_stmt *statement = save_mapping_sql;
+  if (type == static_cast<uint16_t>(mapping_type::lokinet))
+  {
+    if (mapping_record record = get_mapping(type, value, value_len))
+    {
+      // NOTE: Early out here, instead of trying to save (and fail) since we already payed for the lookup
+      if (record.user_id != user_id)
+        return false;
+
+      uint64_t renew_window        = 0;
+      uint64_t expiry_blocks       = lokinet_expiry_blocks(nettype, &renew_window);
+      uint64_t renew_window_offset = expiry_blocks - renew_window;
+      uint64_t min_renew_height    = record.register_height + renew_window_offset;
+
+      if (min_renew_height > height)
+        return false; // Trying to renew too early
+
+      statement = force_save_mapping_sql;
+    }
+  }
+
   sqlite3_bind_int  (statement, mapping_record_row_type, type);
   sqlite3_bind_text (statement, mapping_record_row_name, name.c_str(), name.size(), nullptr /*destructor*/);
   sqlite3_bind_blob (statement, mapping_record_row_value, value, value_len, nullptr /*destructor*/);
-  sqlite3_bind_int64(statement, mapping_record_row_register_height, static_cast<int64_t>(register_height));
+  sqlite3_bind_int64(statement, mapping_record_row_register_height, static_cast<int64_t>(height));
   sqlite3_bind_int64(statement, mapping_record_row_user_id, user_id);
   bool result = sql_run_statement(lns_sql_type::save_mapping, statement, nullptr);
   return result;
@@ -499,7 +538,7 @@ bool name_system_db::save_mapping(uint16_t type,
 
 bool name_system_db::save_settings(uint64_t top_height, crypto::hash const &top_hash, int version)
 {
-  sqlite3_stmt *statement = save_settings_cmd;
+  sqlite3_stmt *statement = save_settings_sql;
   sqlite3_bind_blob (statement, lns_db_setting_row_top_hash,   top_hash.data, sizeof(top_hash), nullptr /*destructor*/);
   sqlite3_bind_int64(statement, lns_db_setting_row_top_height, top_height);
   sqlite3_bind_int  (statement, lns_db_setting_row_version,    version);
@@ -507,9 +546,25 @@ bool name_system_db::save_settings(uint64_t top_height, crypto::hash const &top_
   return result;
 }
 
+bool name_system_db::expire_mappings(uint64_t height)
+{
+  uint64_t lifetime = lokinet_expiry_blocks(nettype, nullptr);
+  if (height < lifetime)
+      return true;
+
+  uint64_t expire_height  = height - lifetime;
+  sqlite3_stmt *statement = expire_mapping_sql;
+  sqlite3_clear_bindings(statement);
+  sqlite3_bind_int      (statement, 1 /*sql param index*/, static_cast<int>(mapping_type::lokinet));
+  sqlite3_bind_int64    (statement, 2 /*sql param index*/, expire_height);
+
+  bool result = sql_run_statement(lns_sql_type::expire_mapping, statement, nullptr);
+  return result;
+}
+
 user_record name_system_db::get_user_by_key(crypto::ed25519_public_key const &key) const
 {
-  sqlite3_stmt *statement = get_user_by_key_cmd;
+  sqlite3_stmt *statement = get_user_by_key_sql;
   sqlite3_clear_bindings(statement);
   sqlite3_bind_blob(statement, 1 /*sql param index*/, &key, sizeof(key), nullptr /*destructor*/);
 
@@ -520,7 +575,7 @@ user_record name_system_db::get_user_by_key(crypto::ed25519_public_key const &ke
 
 user_record name_system_db::get_user_by_id(int user_id) const
 {
-  sqlite3_stmt *statement = get_user_by_id_cmd;
+  sqlite3_stmt *statement = get_user_by_id_sql;
   sqlite3_clear_bindings(statement);
   sqlite3_bind_int(statement, 1 /*sql param index*/, user_id);
 
@@ -531,7 +586,7 @@ user_record name_system_db::get_user_by_id(int user_id) const
 
 mapping_record name_system_db::get_mapping(uint16_t type, void const *value, size_t value_len) const
 {
-  sqlite3_stmt *statement = get_mapping_cmd;
+  sqlite3_stmt *statement = get_mapping_sql;
   sqlite3_clear_bindings(statement);
   sqlite3_bind_int(statement, 1 /*sql param index*/, type);
   sqlite3_bind_blob(statement, 2 /*sql param index*/, value, value_len, nullptr /*destructor*/);
@@ -549,7 +604,7 @@ mapping_record name_system_db::get_mapping(uint16_t type, std::string const &val
 
 settings_record name_system_db::get_settings() const
 {
-  sqlite3_stmt *statement = get_user_by_id_cmd;
+  sqlite3_stmt *statement = get_user_by_id_sql;
   settings_record result  = {};
   result.loaded           = sql_run_statement(lns_sql_type::get_setting, statement, &result);
   return result;
