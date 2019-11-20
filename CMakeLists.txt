@@ -611,7 +611,7 @@ else()
   set(WARNINGS "-Wall -Wextra -Wpointer-arith -Wundef -Wvla -Wwrite-strings -Wno-error=extra -Wno-error=deprecated-declarations -Wno-unused-parameter -Wno-unused-variable -Wno-error=unused-variable -Wno-error=undef -Wno-error=uninitialized")
 
   option(WARNINGS_AS_ERRORS "Enable warning as errors" OFF)
-  if(NOT MINGW AND WARNING_AS_ERRORS)
+  if(NOT MINGW AND WARNINGS_AS_ERRORS)
     set(WARNINGS_AS_ERRORS_FLAG "-Werror")
   endif()
 
