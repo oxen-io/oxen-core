@@ -181,6 +181,7 @@ int main(int argc, char* argv[])
     GENERATE_AND_PLAY(gen_tx_txout_to_key_has_invalid_key);
     GENERATE_AND_PLAY(gen_tx_output_is_not_txout_to_key);
     GENERATE_AND_PLAY(gen_tx_signatures_are_invalid);
+    GENERATE_AND_PLAY(gen_rct_tx_uses_output_too_early);
 
     GENERATE_AND_PLAY(gen_multisig_tx_invalid_23_1__no_threshold);
     GENERATE_AND_PLAY(gen_multisig_tx_invalid_45_5_23_no_threshold);

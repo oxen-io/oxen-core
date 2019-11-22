@@ -2958,8 +2958,12 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
 {
   PERF_TIMER(check_tx_inputs);
   LOG_PRINT_L3("Blockchain::" << __func__);
+
+  uint64_t max_used_block_height = 0;
   if(pmax_used_block_height)
     *pmax_used_block_height = 0;
+  else
+    pmax_used_block_height = &max_used_block_height;
 
   const auto hf_version = m_hardfork->get_current_version();
 
@@ -3052,6 +3056,14 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
 
           return false;
         }
+
+        // enforce min output age
+        if (hf_version >= HF_VERSION_ENFORCE_MIN_AGE)
+        {
+          CHECK_AND_ASSERT_MES(*pmax_used_block_height + CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE <= m_db->height(),
+              false, "Transaction spends at least one output which is too young");
+        }
+
       }
 
       //
