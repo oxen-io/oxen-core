@@ -537,7 +537,7 @@ bool gen_tx_key_image_not_derive_from_tx_key::generate(std::vector<test_event_en
   // Tx with invalid key image can't be subscribed, so create empty signature
   tx.signatures.resize(1);
   tx.signatures[0].resize(1);
-  tx.signatures[0][0] = boost::value_initialized<crypto::signature>();
+  tx.signatures[0][0] = crypto::signature{};
 
   DO_CALLBACK(events, "mark_invalid_tx");
   events.push_back(tx);
@@ -560,7 +560,7 @@ bool gen_tx_key_image_is_invalid::generate(std::vector<test_event_entry>& events
   // Tx with invalid key image can't be subscribed, so create empty signature
   tx.signatures.resize(1);
   tx.signatures[0].resize(1);
-  tx.signatures[0][0] = boost::value_initialized<crypto::signature>();
+  tx.signatures[0][0] = crypto::signature{};
 
   DO_CALLBACK(events, "mark_invalid_tx");
   events.push_back(tx);

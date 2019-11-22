@@ -33,7 +33,6 @@
 #include <tuple>
 #include <boost/format.hpp>
 #include <boost/optional/optional.hpp>
-#include <boost/utility/value_init.hpp>
 #include <boost/algorithm/string/classification.hpp>
 #include <boost/algorithm/string/trim.hpp>
 #include <boost/algorithm/string/split.hpp>
@@ -1969,7 +1968,7 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
           {
             pk_to_unlock_times[tx_scan_info[o].in_ephemeral.pub] = tx_scan_info[o].unlock_time;
 
-            m_transfers.push_back(boost::value_initialized<transfer_details>());
+            m_transfers.push_back(transfer_details{});
             transfer_details& td = m_transfers.back();
             td.m_block_height = height;
             td.m_internal_output_index = o;
@@ -3654,7 +3653,7 @@ bool wallet2::store_keys(const std::string& keys_file_name, const epee::wipeable
 
   bool r = epee::serialization::store_t_to_binary(account, account_data);
   CHECK_AND_ASSERT_MES(r, false, "failed to serialize wallet keys");
-  wallet2::keys_file_data keys_file_data = boost::value_initialized<wallet2::keys_file_data>();
+  wallet2::keys_file_data keys_file_data = {};
 
   // Create a JSON object with "key_data" and "seed_language" as keys.
   rapidjson::Document json;
@@ -5635,7 +5634,7 @@ void wallet2::store_to(const std::string &path, const epee::wipeable_string &pas
   boost::archive::portable_binary_oarchive ar(oss);
   ar << *this;
 
-  wallet2::cache_file_data cache_file_data = boost::value_initialized<wallet2::cache_file_data>();
+  wallet2::cache_file_data cache_file_data = {};
   cache_file_data.cache_data = oss.str();
   std::string cipher;
   cipher.resize(cache_file_data.cache_data.size());
@@ -9719,7 +9718,7 @@ void wallet2::light_wallet_get_unspent_outs()
     if(!add_transfer)
       continue;
     
-    m_transfers.push_back(boost::value_initialized<transfer_details>());
+    m_transfers.push_back(transfer_details{});
     transfer_details& td = m_transfers.back();
     
     td.m_block_height = o.height;

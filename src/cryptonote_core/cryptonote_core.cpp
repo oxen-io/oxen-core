@@ -947,7 +947,7 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
   bool core::handle_incoming_tx_pre(const blobdata& tx_blob, tx_verification_context& tvc, cryptonote::transaction &tx, crypto::hash &tx_hash, bool keeped_by_block, bool relayed, bool do_not_relay)
   {
-    tvc = boost::value_initialized<tx_verification_context>();
+    tvc = {};
 
     if(tx_blob.size() > get_max_tx_size())
     {
@@ -1585,9 +1585,9 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
   bool core::handle_block_found(block& b, block_verification_context &bvc)
   {
-    bvc = boost::value_initialized<block_verification_context>();
-    std::vector<block_complete_entry> blocks;
+    bvc = {};
     m_miner.pause();
+    std::vector<block_complete_entry> blocks;
     {
       LOKI_DEFER { m_miner.resume(); };
       try
@@ -1623,7 +1623,7 @@ namespace cryptonote
       CHECK_AND_ASSERT_MES(txs.size() == b.tx_hashes.size() && !missed_txs.size(), false, "can't find some transactions in found block:" << get_block_hash(b) << " txs.size()=" << txs.size()
         << ", b.tx_hashes.size()=" << b.tx_hashes.size() << ", missed_txs.size()" << missed_txs.size());
 
-      cryptonote_connection_context exclude_context = boost::value_initialized<cryptonote_connection_context>();
+      cryptonote_connection_context exclude_context = {};
       NOTIFY_NEW_FLUFFY_BLOCK::request arg          = AUTO_VAL_INIT(arg);
       arg.current_blockchain_height                 = m_blockchain_storage.get_current_blockchain_height();
       arg.b                                         = blocks[0];
@@ -1682,7 +1682,8 @@ namespace cryptonote
   bool core::handle_incoming_block(const blobdata& block_blob, const block *b, block_verification_context& bvc, checkpoint_t *checkpoint, bool update_miner_blocktemplate)
   {
     TRY_ENTRY();
-    bvc = boost::value_initialized<block_verification_context>();
+
+    bvc = {};
 
     if (!check_incoming_block_size(block_blob))
     {

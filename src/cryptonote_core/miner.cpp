@@ -31,7 +31,6 @@
 
 #include <sstream>
 #include <numeric>
-#include <boost/utility/value_init.hpp>
 #include <boost/interprocess/detail/atomic.hpp>
 #include <boost/algorithm/string.hpp>
 #include "misc_language.h"
@@ -103,7 +102,7 @@ namespace cryptonote
 
 
   miner::miner(i_miner_handler* phandler, Blockchain* pbc):m_stop(1),
-    m_template(boost::value_initialized<block>()),
+    m_template{},
     m_template_no(0),
     m_diffic(0),
     m_thread_index(0),
