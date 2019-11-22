@@ -178,7 +178,7 @@ namespace {
 
     struct tm tm;
     epee::misc_utils::get_gmt_time(t, tm);
-    strftime(buf, sizeof(buf), "%Y-%m-%d %I:%M:%S %p", &tm);
+    strftime(buf, sizeof(buf), "%Y-%m-%d %I:%M:%S %p UTC", &tm);
     return buf;
   }
 
@@ -2496,7 +2496,7 @@ static void append_printable_service_node_list_entry(cryptonote::network_type ne
       uint64_t delta_height      = (blockchain_height >= expiry_height) ? 0 : expiry_height - blockchain_height;
       uint64_t expiry_epoch_time = now + (delta_height * DIFFICULTY_TARGET_V2);
       stream << expiry_height << " (in " << delta_height << ") blocks\n";
-      stream << indent2 << "Expiry Date (Est. UTC): " << get_date_time(expiry_epoch_time) << " (" << get_human_time_ago(expiry_epoch_time, now) << ")\n";
+      stream << indent2 << "Expiry Date (estimated): " << get_date_time(expiry_epoch_time) << " (" << get_human_time_ago(expiry_epoch_time, now) << ")\n";
     }
   }
 

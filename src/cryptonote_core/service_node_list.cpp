@@ -2592,7 +2592,7 @@ namespace service_nodes
       epee::misc_utils::get_gmt_time(tt, tm);
 
       char buffer[128];
-      strftime(buffer, sizeof(buffer), "%Y-%m-%d %I:%M:%S %p", &tm);
+      strftime(buffer, sizeof(buffer), "%Y-%m-%d %I:%M:%S %p UTC", &tm);
       stream << tr("This registration expires at ") << buffer << tr(".\n");
       stream << tr("This should be in about 2 weeks, if it isn't, check this computer's clock.\n");
       stream << tr("Please submit your registration into the blockchain before this time or it will be invalid.");
