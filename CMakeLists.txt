@@ -28,6 +28,9 @@
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 # Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
+
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 list(INSERT CMAKE_MODULE_PATH 0
   "${CMAKE_SOURCE_DIR}/cmake")
 include(CheckCCompilerFlag)
@@ -923,7 +926,7 @@ if (BUILD_INTEGRATION)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D LOKI_ENABLE_INTEGRATION_TEST_HOOKS")
 else()
   option(USE_READLINE "Build with GNU readline support." ON)
-  if(USE_READLINE)
+  if(USE_READLINE AND NOT DEPENDS)
     find_package(Readline)
     if(READLINE_FOUND AND GNU_READLINE_FOUND)
       add_definitions(-DHAVE_READLINE)
@@ -933,6 +936,14 @@ else()
     else()
       message(STATUS "Could not find GNU readline library so building without readline support")
     endif()
+  elseif(USE_READLINE AND DEPENDS AND NOT MINGW)
+    find_path(Readline_INCLUDE_PATH readline/readline.h)
+    find_library(Readline_LIBRARY readline)
+    find_library(Terminfo_LIBRARY tinfo)
+    set(Readline_LIBRARY "${Readline_LIBRARY};${Terminfo_LIBRARY}")
+    set(GNU_READLINE_LIBRARY ${Readline_LIBRARY})
+    add_definitions(-DHAVE_READLINE)
+    set(EPEE_READLINE epee_readline)
   endif()
 endif()
 
@@ -951,6 +962,7 @@ find_path(ZMQ_INCLUDE_PATH zmq.hpp)
 find_library(ZMQ_LIB zmq)
 find_library(PGM_LIBRARY pgm)
 find_library(NORM_LIBRARY norm)
+find_library(PROTOLIB_LIBRARY protolib)
 find_library(SODIUM_LIBRARY sodium)
 
 if(NOT ZMQ_INCLUDE_PATH)
@@ -964,6 +976,9 @@ if(PGM_LIBRARY)
 endif()
 if(NORM_LIBRARY)
   set(ZMQ_LIB "${ZMQ_LIB};${NORM_LIBRARY}")
+endif()
+if(PROTOLIB_LIBRARY)
+  set(ZMQ_LIB "${ZMQ_LIB};${PROTOLIB_LIBRARY}")
 endif()
 if(SODIUM_LIBRARY)
   set(ZMQ_LIB "${ZMQ_LIB};${SODIUM_LIBRARY}")
@@ -1017,3 +1032,13 @@ option(INSTALL_VENDORED_LIBUNBOUND "Install libunbound binary built from source 
 
 
 CHECK_C_COMPILER_FLAG(-std=c11 HAVE_C11)
+
+find_package(PythonInterp)
+find_program(iwyu_tool_path NAMES iwyu_tool.py iwyu_tool)
+if (iwyu_tool_path AND PYTHONINTERP_FOUND)
+  add_custom_target(iwyu
+    COMMAND "${PYTHON_EXECUTABLE}" "${iwyu_tool_path}" -p "${CMAKE_BINARY_DIR}" -- --no_fwd_decls
+    COMMENT "Running include-what-you-use tool"
+    VERBATIM
+  )
+endif()
