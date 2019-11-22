@@ -113,7 +113,7 @@ namespace
   uint64_t get_tx_out_amount(const transaction& tx)
   {
     uint64_t amount = 0;
-    BOOST_FOREACH(auto& o, tx.vout)
+    for (auto& o : tx.vout)
       amount += o.amount;
     return amount;
   }
@@ -191,7 +191,7 @@ bool gen_block_reward::generate(std::vector<test_event_entry>& events) const
     transaction tx_1 = construct_tx_with_fee(events, blk_5, miner_account, bob_account, MK_COINS(1), 11 * TESTS_DEFAULT_FEE);
     transaction tx_2 = construct_tx_with_fee(events, blk_5, miner_account, bob_account, MK_COINS(1), 13 * TESTS_DEFAULT_FEE);
     size_t txs_1_weight = get_transaction_weight(tx_1) + get_transaction_weight(tx_2);
-    uint64_t txs_fee = get_tx_fee(tx_1) + get_tx_fee(tx_2);
+    uint64_t txs_fee = get_tx_miner_fee(tx_1, true) + get_tx_miner_fee(tx_2, true);
 
     std::vector<uint64_t> block_weights;
     generator.get_last_n_block_weights(block_weights, get_block_hash(blk_7), CRYPTONOTE_REWARD_BLOCKS_WINDOW);

@@ -2318,13 +2318,13 @@ struct blob_header
   blob_type type;
   uint32_t  size;
 };
+static_assert(sizeof(blob_type) == 1,   "Expect 1 byte, otherwise require endian swap");
 static_assert(sizeof(blob_header) == 8, "blob_header layout is unexpected, possible unaligned access on different architecture");
 
 static blob_header write_little_endian_blob_header(blob_type type, uint32_t size)
 {
   blob_header result = {type, size};
   boost::endian::native_to_little_inplace(result.size);
-  boost::endian::native_to_little_inplace(result.type);
   return result;
 }
 
@@ -2332,7 +2332,6 @@ static blob_header native_endian_blob_header(const blob_header *header)
 {
   blob_header result = {header->type, header->size};
   boost::endian::little_to_native_inplace(result.size);
-  boost::endian::little_to_native_inplace(result.type);
   return result;
 }
 

@@ -27,7 +27,6 @@
 #pragma once
 
 #include "portable_storage_template_helper.h"
-#include <boost/utility/value_init.hpp>
 #include "span.h"
 #include "net/levin_base.h"
 
@@ -117,7 +116,7 @@ namespace epee
       stg.store_to_binary(buff_to_send);
       int res = transport.invoke_async(command, epee::strspan<uint8_t>(buff_to_send), conn_id, [cb, command](int code, const epee::span<const uint8_t> buff, typename t_transport::connection_context& context)->bool 
       {
-        t_result result_struct = AUTO_VAL_INIT(result_struct);
+        t_result result_struct{};
         if( code <=0 )
         {
           LOG_PRINT_L1("Failed to invoke command " << command << " return code " << code);
@@ -176,17 +175,17 @@ namespace epee
         LOG_ERROR("Failed to load_from_binary in command " << command);
         return -1;
       }
-      boost::value_initialized<t_in_type> in_struct;
-      boost::value_initialized<t_out_type> out_struct;
+      t_in_type in_struct{};
+      t_out_type out_struct{};
 
-      if (!static_cast<t_in_type&>(in_struct).load(strg))
+      if (!in_struct.load(strg))
       {
         LOG_ERROR("Failed to load in_struct in command " << command);
         return -1;
       }
-      int res = cb(command, static_cast<t_in_type&>(in_struct), static_cast<t_out_type&>(out_struct), context);
+      int res = cb(command, in_struct, out_struct, context);
       serialization::portable_storage strg_out;
-      static_cast<t_out_type&>(out_struct).store(strg_out);
+      out_struct.store(strg_out);
 
       if(!strg_out.store_to_binary(buff_out))
       {
@@ -206,8 +205,8 @@ namespace epee
         LOG_ERROR("Failed to load_from_binary in notify " << command);
         return -1;
       }
-      boost::value_initialized<t_in_type> in_struct;
-      if (!static_cast<t_in_type&>(in_struct).load(strg))
+      t_in_type in_struct{};
+      if (!in_struct.load(strg))
       {
         LOG_ERROR("Failed to load in_struct in notify " << command);
         return -1;

@@ -239,6 +239,15 @@ namespace cryptonote
     ++res.height; // block height to chain height
     res.hash = string_tools::pod_to_hex(hash);
     res.status = CORE_RPC_STATUS_OK;
+
+    res.immutable_height = 0;
+    cryptonote::checkpoint_t checkpoint;
+    if (m_core.get_blockchain_storage().get_db().get_immutable_checkpoint(&checkpoint, res.height - 1))
+    {
+      res.immutable_height = checkpoint.height;
+      res.immutable_hash   = string_tools::pod_to_hex(checkpoint.block_hash);
+    }
+
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
@@ -273,7 +282,10 @@ namespace cryptonote
     res.immutable_height = 0;
     cryptonote::checkpoint_t checkpoint;
     if (m_core.get_blockchain_storage().get_db().get_immutable_checkpoint(&checkpoint, res.height - 1))
-      res.immutable_height = checkpoint.height;
+    {
+      res.immutable_height     = checkpoint.height;
+      res.immutable_block_hash = string_tools::pod_to_hex(checkpoint.block_hash);
+    }
 
     res.difficulty = m_core.get_blockchain_storage().get_difficulty_for_next_block();
     res.target = m_core.get_blockchain_storage().get_difficulty_target();
@@ -915,8 +927,8 @@ namespace cryptonote
     }
     res.sanity_check_failed = false;
 
-    cryptonote_connection_context fake_context = AUTO_VAL_INIT(fake_context);
-    tx_verification_context tvc = AUTO_VAL_INIT(tvc);
+    cryptonote_connection_context fake_context{};
+    tx_verification_context tvc{};
     if(!m_core.handle_incoming_tx(tx_blob, tvc, false, false, req.do_not_relay) || tvc.m_verifivation_failed)
     {
       const vote_verification_context &vvc = tvc.m_vote_ctx;
@@ -1584,7 +1596,7 @@ namespace cryptonote
     template_req.reserve_size = 1;
     template_req.wallet_address = req.wallet_address;
     template_req.prev_block = req.prev_block;
-    submit_req.push_back(std::string{});
+    submit_req.emplace_back();
     res.height = m_core.get_blockchain_storage().get_current_blockchain_height();
 
     for(size_t i = 0; i < req.amount_of_blocks; i++)
@@ -2490,7 +2502,7 @@ namespace cryptonote
       bool r = m_core.get_pool_transaction(txid, txblob);
       if (r)
       {
-        cryptonote_connection_context fake_context = AUTO_VAL_INIT(fake_context);
+        cryptonote_connection_context fake_context{};
         NOTIFY_NEW_TRANSACTIONS::request r;
         r.txs.push_back(txblob);
         m_core.get_protocol()->relay_transactions(r, fake_context);

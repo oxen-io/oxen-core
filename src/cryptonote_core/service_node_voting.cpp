@@ -270,19 +270,8 @@ namespace service_nodes
           }
         }
 
-        // TODO(loki): Temporary HF13 code, remove when we hit HF13 because we delete all HF12 checkpoints and don't need conditionals for HF12/HF13 checkpointing code
-        std::vector<crypto::public_key> const &quorum_keys =
-            (hf_version >= cryptonote::network_version_13_enforce_checkpoints) ? quorum.validators : quorum.workers;
-        if (hf_version >= cryptonote::network_version_13_enforce_checkpoints)
-        {
-          if (!bounds_check_validator_index(quorum, voter_to_signature.voter_index, nullptr)) return false;
-        }
-        else
-        {
-          if (!bounds_check_worker_index(quorum, voter_to_signature.voter_index, nullptr)) return false;
-        }
-
-        crypto::public_key const &key = quorum_keys[voter_to_signature.voter_index];
+        if (!bounds_check_validator_index(quorum, voter_to_signature.voter_index, nullptr)) return false;
+        crypto::public_key const &key = quorum.validators[voter_to_signature.voter_index];
         if (unique_vote_set[voter_to_signature.voter_index]++)
         {
           LOG_PRINT_L1("Voter: " << epee::string_tools::pod_to_hex(key) << ", quorum index is duplicated: " << voter_to_signature.voter_index << ", checkpoint failed verification at height: " << checkpoint.height);
@@ -327,8 +316,7 @@ namespace service_nodes
     result.type                  = quorum_type::checkpointing;
     result.checkpoint.block_hash = block_hash;
     result.block_height          = block_height;
-    // TODO(loki): Temporary HF13 code, remove when we hit HF13 because we delete all HF12 checkpoints and don't need conditionals for HF12/HF13 checkpointing code
-    result.group                 = (hf_version >= cryptonote::network_version_13_enforce_checkpoints) ? quorum_group::validator : quorum_group::worker;
+    result.group                 = quorum_group::validator;
     result.index_in_group        = index_in_quorum;
     result.signature             = make_signature_from_vote(result, keys);
     return result;
@@ -428,10 +416,7 @@ namespace service_nodes
 
       case quorum_type::checkpointing:
       {
-        // TODO(loki): Temporary HF13 code, remove when we hit HF13 because we delete all HF12 checkpoints and don't need conditionals for HF12/HF13 checkpointing code
-        quorum_group expected_group =
-            (hf_version >= cryptonote::network_version_13_enforce_checkpoints) ? quorum_group::validator : quorum_group::worker;
-        if (vote.group != expected_group)
+        if (vote.group != quorum_group::validator)
         {
           LOG_PRINT_L1("Vote received specifies incorrect voting group");
           vvc.m_incorrect_voting_group = true;
@@ -439,8 +424,7 @@ namespace service_nodes
         }
         else
         {
-          std::vector<crypto::public_key> const &quorum_keys = (hf_version >= cryptonote::network_version_13_enforce_checkpoints) ? quorum.validators : quorum.workers;
-          key  = quorum_keys[vote.index_in_group];
+          key  = quorum.validators[vote.index_in_group];
           hash = vote.checkpoint.block_hash;
         }
       }

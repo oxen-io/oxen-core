@@ -366,7 +366,7 @@ TEST(checkpoints_blockchain_detached, detach_to_checkpoint_height)
   test_db->update_block_checkpoint(checkpoint);
 
   // NOTE: Detaching to height. Our top checkpoint should be the 1st checkpoint, we should be deleting the checkpoint at checkpoint.height
-  cp.blockchain_detached(SECOND_HEIGHT);
+  cp.blockchain_detached(SECOND_HEIGHT, false /*by_pop_blocks*/);
   checkpoint_t top_checkpoint;
   ASSERT_TRUE(test_db->get_top_checkpoint(top_checkpoint));
   ASSERT_TRUE(top_checkpoint.height == FIRST_HEIGHT);
@@ -382,7 +382,7 @@ TEST(checkpoints_blockchain_detached, detach_to_1)
   checkpoint.height += service_nodes::CHECKPOINT_INTERVAL;
   test_db->update_block_checkpoint(checkpoint);
 
-  cp.blockchain_detached(1 /*height*/);
+  cp.blockchain_detached(1 /*height*/, false /*by_pop_blocks*/);
   checkpoint_t top_checkpoint;
   ASSERT_FALSE(test_db->get_top_checkpoint(top_checkpoint));
 }

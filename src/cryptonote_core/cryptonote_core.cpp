@@ -981,18 +981,6 @@ namespace cryptonote
     return true;
   }
   //-----------------------------------------------------------------------------------------------
-  bool core::handle_incoming_tx_post(const blobdata& tx_blob, tx_verification_context& tvc, cryptonote::transaction &tx, crypto::hash &tx_hash, bool keeped_by_block, bool relayed, bool do_not_relay)
-  {
-    if(!check_tx_syntax(tx))
-    {
-      LOG_PRINT_L1("WRONG TRANSACTION BLOB, Failed to check tx " << tx_hash << " syntax, rejected");
-      tvc.m_verifivation_failed = true;
-      return false;
-    }
-
-    return true;
-  }
-  //-----------------------------------------------------------------------------------------------
   void core::set_semantics_failed(const crypto::hash &tx_hash)
   {
     LOG_PRINT_L1("WRONG TRANSACTION BLOB, Failed to check tx " << tx_hash << " semantic, rejected");
@@ -1115,7 +1103,7 @@ namespace cryptonote
     TRY_ENTRY();
     CRITICAL_REGION_LOCAL(m_incoming_tx_lock);
 
-    struct result { bool res; cryptonote::transaction tx; crypto::hash hash; };
+    struct result { bool res; bool already_have; cryptonote::transaction tx; crypto::hash hash; };
     std::vector<result> results(tx_blobs.size());
 
     tvc.resize(tx_blobs.size());
@@ -1137,46 +1125,28 @@ namespace cryptonote
       });
     }
     waiter.wait(&tpool);
-    it = tx_blobs.begin();
-    std::vector<bool> already_have(tx_blobs.size(), false);
-    for (size_t i = 0; i < tx_blobs.size(); i++, ++it) {
-      if (!results[i].res)
-        continue;
-      if(m_mempool.have_tx(results[i].hash))
-      {
-        LOG_PRINT_L2("tx " << results[i].hash << "already have transaction in tx_pool");
-        already_have[i] = true;
-      }
-      else if(m_blockchain_storage.have_tx(results[i].hash))
-      {
-        LOG_PRINT_L2("tx " << results[i].hash << " already have transaction in blockchain");
-        already_have[i] = true;
-      }
-      else
-      {
-        tpool.submit(&waiter, [&, i, it] {
-          try
-          {
-            results[i].res = handle_incoming_tx_post(*it, tvc[i], results[i].tx, results[i].hash, keeped_by_block, relayed, do_not_relay);
-          }
-          catch (const std::exception &e)
-          {
-            MERROR_VER("Exception in handle_incoming_tx_post: " << e.what());
-            tvc[i].m_verifivation_failed = true;
-            results[i].res = false;
-          }
-        });
-      }
-    }
-    waiter.wait(&tpool);
 
     std::vector<tx_verification_batch_info> tx_info;
     tx_info.reserve(tx_blobs.size());
     for (size_t i = 0; i < tx_blobs.size(); i++) {
-      if (!results[i].res || already_have[i])
+      if (!results[i].res)
         continue;
+
+      if(m_mempool.have_tx(results[i].hash))
+      {
+        LOG_PRINT_L2("tx " << results[i].hash << "already have transaction in tx_pool");
+        results[i].already_have = true;
+      }
+      else if(m_blockchain_storage.have_tx(results[i].hash))
+      {
+        LOG_PRINT_L2("tx " << results[i].hash << " already have transaction in blockchain");
+        results[i].already_have = true;
+      }
+
+      if (results[i].already_have) continue;
       tx_info.push_back({&results[i].tx, results[i].hash, tvc[i], results[i].res});
     }
+
     if (!tx_info.empty())
       handle_incoming_tx_accumulated_batch(tx_info, keeped_by_block);
 
@@ -1190,7 +1160,7 @@ namespace cryptonote
       }
       if (keeped_by_block)
         get_blockchain_storage().on_new_tx_from_block(results[i].tx);
-      if (already_have[i])
+      if (results[i].already_have)
         continue;
 
       const size_t weight = get_transaction_weight(results[i].tx, it->size());
@@ -1361,7 +1331,7 @@ namespace cryptonote
       uint64_t tx_fee_amount = 0;
       for(const auto& tx: txs)
       {
-        tx_fee_amount += get_tx_fee(tx);
+        tx_fee_amount += get_tx_miner_fee(tx, b.major_version >= HF_VERSION_FEE_BURNING);
       }
       
       emission_amount += coinbase_amount - tx_fee_amount;
@@ -1451,8 +1421,8 @@ namespace cryptonote
     std::vector<std::pair<crypto::hash, cryptonote::blobdata>> txs;
     if (m_mempool.get_relayable_transactions(txs) && !txs.empty())
     {
-      cryptonote_connection_context fake_context = AUTO_VAL_INIT(fake_context);
-      tx_verification_context tvc = AUTO_VAL_INIT(tvc);
+      cryptonote_connection_context fake_context{};
+      tx_verification_context tvc{};
       NOTIFY_NEW_TRANSACTIONS::request r;
       for (auto it = txs.begin(); it != txs.end(); ++it)
       {
@@ -1471,7 +1441,7 @@ namespace cryptonote
 
     NOTIFY_UPTIME_PROOF::request req = m_service_node_list.generate_uptime_proof(*m_service_node_keys, m_sn_public_ip, m_storage_port);
 
-    cryptonote_connection_context fake_context = AUTO_VAL_INIT(fake_context);
+    cryptonote_connection_context fake_context{};
     bool relayed = get_protocol()->relay_uptime_proof(req, fake_context);
     if (relayed)
       MGINFO("Submitted uptime-proof for Service Node (yours): " << m_service_node_keys->pub);
@@ -1504,7 +1474,7 @@ namespace cryptonote
     req.votes                                 = m_quorum_cop.get_relayable_votes(get_current_blockchain_height());
     if (req.votes.size())
     {
-      cryptonote_connection_context fake_context = AUTO_VAL_INIT(fake_context);
+      cryptonote_connection_context fake_context{};
       if (get_protocol()->relay_service_node_votes(req, fake_context))
       {
         m_quorum_cop.set_votes_relayed(req.votes);
@@ -1622,8 +1592,8 @@ namespace cryptonote
       CHECK_AND_ASSERT_MES(txs.size() == b.tx_hashes.size() && !missed_txs.size(), false, "can't find some transactions in found block:" << get_block_hash(b) << " txs.size()=" << txs.size()
         << ", b.tx_hashes.size()=" << b.tx_hashes.size() << ", missed_txs.size()" << missed_txs.size());
 
-      cryptonote_connection_context exclude_context = {};
-      NOTIFY_NEW_FLUFFY_BLOCK::request arg          = AUTO_VAL_INIT(arg);
+      cryptonote_connection_context exclude_context{};
+      NOTIFY_NEW_FLUFFY_BLOCK::request arg{};
       arg.current_blockchain_height                 = m_blockchain_storage.get_current_blockchain_height();
       arg.b                                         = blocks[0];
 
@@ -1681,7 +1651,6 @@ namespace cryptonote
   bool core::handle_incoming_block(const blobdata& block_blob, const block *b, block_verification_context& bvc, checkpoint_t *checkpoint, bool update_miner_blocktemplate)
   {
     TRY_ENTRY();
-
     bvc = {};
 
     if (!check_incoming_block_size(block_blob))
@@ -1706,16 +1675,6 @@ namespace cryptonote
         return false;
       }
       b = &lb;
-    }
-
-    // TODO(loki): Temporary to make hf12 checkpoints play nicely, but, hf12 checkpoints will be deleted on hf13
-    if (checkpoint && b->major_version < network_version_12_checkpointing)
-    {
-      std::sort(checkpoint->signatures.begin(),
-                checkpoint->signatures.end(),
-                [](service_nodes::voter_to_signature const &lhs, service_nodes::voter_to_signature const &rhs) {
-                  return lhs.voter_index < rhs.voter_index;
-                });
     }
 
     add_new_block(*b, bvc, checkpoint);
@@ -1765,11 +1724,6 @@ namespace cryptonote
   bool core::parse_tx_from_blob(transaction& tx, crypto::hash& tx_hash, const blobdata& blob) const
   {
     return parse_and_validate_tx_from_blob(blob, tx, tx_hash);
-  }
-  //-----------------------------------------------------------------------------------------------
-  bool core::check_tx_syntax(const transaction& tx) const
-  {
-    return true;
   }
   //-----------------------------------------------------------------------------------------------
   bool core::get_pool_transactions(std::vector<transaction>& txs, bool include_sensitive_data) const

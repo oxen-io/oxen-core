@@ -50,7 +50,7 @@ int BlockFuzzer::run(const std::string &filename)
     std::cout << "Error: failed to load file " << filename << std::endl;
     return 1;
   }
-  cryptonote::block b = AUTO_VAL_INIT(b);
+  cryptonote::block b{};
   if(!parse_and_validate_block_from_blob(s, b))
   {
     std::cout << "Error: failed to parse block from file  " << filename << std::endl;

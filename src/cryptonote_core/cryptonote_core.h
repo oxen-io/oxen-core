@@ -940,18 +940,6 @@ namespace cryptonote
      bool parse_tx_from_blob(transaction& tx, crypto::hash& tx_hash, const blobdata& blob) const;
 
      /**
-      * @brief check a transaction's syntax
-      *
-      * For now this does nothing, but it may check something about the tx
-      * in the future.
-      *
-      * @param tx the transaction to check
-      *
-      * @return true
-      */
-     bool check_tx_syntax(const transaction& tx) const;
-
-     /**
       * @brief validates some simple properties of a transaction
       *
       * Currently checks: tx has inputs,
@@ -971,7 +959,6 @@ namespace cryptonote
      void set_semantics_failed(const crypto::hash &tx_hash);
 
      bool handle_incoming_tx_pre(const blobdata& tx_blob, tx_verification_context& tvc, cryptonote::transaction &tx, crypto::hash &tx_hash, bool keeped_by_block, bool relayed, bool do_not_relay);
-     bool handle_incoming_tx_post(const blobdata& tx_blob, tx_verification_context& tvc, cryptonote::transaction &tx, crypto::hash &tx_hash, bool keeped_by_block, bool relayed, bool do_not_relay);
      struct tx_verification_batch_info { const cryptonote::transaction *tx; crypto::hash tx_hash; tx_verification_context &tvc; bool &result; };
      bool handle_incoming_tx_accumulated_batch(std::vector<tx_verification_batch_info> &tx_info, bool keeped_by_block);
 

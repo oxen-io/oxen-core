@@ -36,7 +36,6 @@
 #include <unordered_set>
 #include <queue>
 #include <boost/serialization/version.hpp>
-#include <boost/utility.hpp>
 
 #include "string_tools.h"
 #include "syncobj.h"
@@ -70,9 +69,9 @@ namespace cryptonote
     {
       std::string ahash(a.second.data, sizeof(a.second.data));
       std::string bhash(b.second.data, sizeof(b.second.data));
-      //      prioritize      deregister             fee                   arrival time      hash
-      return std::make_tuple(!std::get<0>(a.first), -std::get<1>(a.first), std::get<2>(a.first), ahash)
-           < std::make_tuple(!std::get<0>(b.first), -std::get<1>(b.first), std::get<2>(b.first), bhash);
+      // Sort order:         non-standard txes,     fee (descending),      arrival time,         hash
+      return std::make_tuple(!std::get<0>(a.first), -std::get<1>(a.first), std::get<2>(a.first), std::move(ahash))
+           < std::make_tuple(!std::get<0>(b.first), -std::get<1>(b.first), std::get<2>(b.first), std::move(bhash));
     }
   };
 
@@ -547,13 +546,7 @@ namespace cryptonote
      */
     typedef std::unordered_map<crypto::key_image, std::unordered_set<crypto::hash> > key_images_container;
 
-#if defined(DEBUG_CREATE_BLOCK_TEMPLATE)
-public:
-#endif
     mutable epee::critical_section m_transactions_lock;  //!< lock for the pool
-#if defined(DEBUG_CREATE_BLOCK_TEMPLATE)
-private:
-#endif
 
     //! container for spent key images from the transactions in the pool
     key_images_container m_spent_key_images;  

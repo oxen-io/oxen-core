@@ -254,7 +254,7 @@ namespace cryptonote
   //---------------------------------------------------------------
   bool generate_key_image_helper(const account_keys& ack, const std::unordered_map<crypto::public_key, subaddress_index>& subaddresses, const crypto::public_key& out_key, const crypto::public_key& tx_public_key, const std::vector<crypto::public_key>& additional_tx_public_keys, size_t real_output_index, keypair& in_ephemeral, crypto::key_image& ki, hw::device &hwdev)
   {
-    crypto::key_derivation recv_derivation = AUTO_VAL_INIT(recv_derivation);
+    crypto::key_derivation recv_derivation{};
     bool r = hwdev.generate_key_derivation(tx_public_key, ack.m_view_secret_key, recv_derivation);
     if (!r)
     {
@@ -265,7 +265,7 @@ namespace cryptonote
     std::vector<crypto::key_derivation> additional_recv_derivations;
     for (size_t i = 0; i < additional_tx_public_keys.size(); ++i)
     {
-      crypto::key_derivation additional_recv_derivation = AUTO_VAL_INIT(additional_recv_derivation);
+      crypto::key_derivation additional_recv_derivation{};
       r = hwdev.generate_key_derivation(additional_tx_public_keys[i], ack.m_view_secret_key, additional_recv_derivation);
       if (!r)
       {
@@ -428,32 +428,28 @@ namespace cryptonote
     return get_transaction_weight(tx, blob_size);
   }
   //---------------------------------------------------------------
-  bool get_tx_fee(const transaction& tx, uint64_t & fee)
+  bool get_tx_miner_fee(const transaction& tx, uint64_t & fee, bool burning_enabled)
   {
     if (tx.version >= txversion::v2_ringct)
     {
       fee = tx.rct_signatures.txnFee;
+      if (burning_enabled)
+        fee -= std::min(fee, get_burned_amount_from_tx_extra(tx.extra));
       return true;
     }
-    uint64_t amount_in = 0;
-    uint64_t amount_out = 0;
-    for(auto& in: tx.vin)
-    {
-      CHECK_AND_ASSERT_MES(in.type() == typeid(txin_to_key), 0, "unexpected type id in transaction");
-      amount_in += boost::get<txin_to_key>(in).amount;
-    }
-    for(auto& o: tx.vout)
-      amount_out += o.amount;
+    uint64_t amount_in;
+    if (!get_inputs_money_amount(tx, amount_in)) return false;
+    uint64_t amount_out = get_outs_money_amount(tx);
 
     CHECK_AND_ASSERT_MES(amount_in >= amount_out, false, "transaction spend (" <<amount_in << ") more than it has (" << amount_out << ")");
     fee = amount_in - amount_out;
     return true;
   }
   //---------------------------------------------------------------
-  uint64_t get_tx_fee(const transaction& tx)
+  uint64_t get_tx_miner_fee(const transaction& tx, bool burning_enabled)
   {
     uint64_t r = 0;
-    if(!get_tx_fee(tx, r))
+    if(!get_tx_miner_fee(tx, r, burning_enabled))
       return 0;
     return r;
   }
@@ -560,6 +556,8 @@ namespace cryptonote
     if (!pick<tx_extra_tx_secret_key>               (nar, tx_extra_fields, TX_EXTRA_TAG_TX_SECRET_KEY)) return false;
     if (!pick<tx_extra_tx_key_image_proofs>         (nar, tx_extra_fields, TX_EXTRA_TAG_TX_KEY_IMAGE_PROOFS)) return false;
     if (!pick<tx_extra_tx_key_image_unlock>         (nar, tx_extra_fields, TX_EXTRA_TAG_TX_KEY_IMAGE_UNLOCK)) return false;
+
+    if (!pick<tx_extra_burn>                        (nar, tx_extra_fields, TX_EXTRA_TAG_BURN)) return false;
 
     if (!pick<tx_extra_merge_mining_tag>            (nar, tx_extra_fields, TX_EXTRA_MERGE_MINING_TAG)) return false;
     if (!pick<tx_extra_mysterious_minergate>        (nar, tx_extra_fields, TX_EXTRA_MYSTERIOUS_MINERGATE_TAG)) return false;
@@ -937,6 +935,25 @@ namespace cryptonote
       return false;
     payment_id = *reinterpret_cast<const crypto::hash8*>(extra_nonce.data() + 1);
     return true;
+  }
+  //---------------------------------------------------------------
+  uint64_t get_burned_amount_from_tx_extra(const std::vector<uint8_t>& tx_extra)
+  {
+    std::vector<tx_extra_field> tx_extra_fields;
+    parse_tx_extra(tx_extra, tx_extra_fields);
+
+    tx_extra_burn burn;
+    if (find_tx_extra_field_by_type(tx_extra_fields, burn))
+      return burn.amount;
+    return 0;
+  }
+  //---------------------------------------------------------------
+  bool add_burned_amount_to_tx_extra(std::vector<uint8_t>& tx_extra, uint64_t burn)
+  {
+    tx_extra_field field = tx_extra_burn{burn};
+    bool result = add_tx_extra_field_to_tx_extra(tx_extra, field);
+    CHECK_AND_NO_ASSERT_MES_L1(result, false, "failed to serialize tx extra burn amount");
+    return result;
   }
   //---------------------------------------------------------------
   bool get_inputs_money_amount(const transaction& tx, uint64_t& money)

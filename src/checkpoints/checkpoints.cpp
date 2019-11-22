@@ -225,7 +225,7 @@ namespace cryptonote
     return true;
   }
   //---------------------------------------------------------------------------
-  void checkpoints::blockchain_detached(uint64_t height)
+  void checkpoints::blockchain_detached(uint64_t height, bool /*by_pop_blocks*/)
   {
     m_last_cull_height = std::min(m_last_cull_height, height);
 

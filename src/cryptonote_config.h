@@ -177,6 +177,7 @@ static_assert(STAKING_PORTIONS % 3 == 0, "Use a multiple of three, so that it di
 #define HF_VERSION_ED25519_KEY                  cryptonote::network_version_13_enforce_checkpoints
 #define HF_VERSION_REJECT_SIGS_IN_COINBASE      cryptonote::network_version_14
 #define HF_VERSION_ENFORCE_MIN_AGE              cryptonote::network_version_14
+#define HF_VERSION_FEE_BURNING                  cryptonote::network_version_14
 
 #define PER_KB_FEE_QUANTIZATION_DECIMALS        8
 

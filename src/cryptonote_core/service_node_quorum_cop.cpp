@@ -146,7 +146,7 @@ namespace service_nodes
     return result;
   }
 
-  void quorum_cop::blockchain_detached(uint64_t height)
+  void quorum_cop::blockchain_detached(uint64_t height, bool by_pop_blocks)
   {
     uint8_t hf_version                        = m_core.get_hard_fork_version(height);
     uint64_t const REORG_SAFETY_BUFFER_BLOCKS = (hf_version >= cryptonote::network_version_12_checkpointing)
@@ -154,15 +154,21 @@ namespace service_nodes
                                                     : REORG_SAFETY_BUFFER_BLOCKS_PRE_HF12;
     if (m_obligations_height >= height)
     {
-      LOG_ERROR("The blockchain was detached to height: " << height << ", but quorum cop has already processed votes for obligations up to " << m_obligations_height);
-      LOG_ERROR("This implies a reorg occured that was over " << REORG_SAFETY_BUFFER_BLOCKS << ". This should rarely happen! Please report this to the devs.");
+      if (!by_pop_blocks)
+      {
+        LOG_ERROR("The blockchain was detached to height: " << height << ", but quorum cop has already processed votes for obligations up to " << m_obligations_height);
+        LOG_ERROR("This implies a reorg occured that was over " << REORG_SAFETY_BUFFER_BLOCKS << ". This should rarely happen! Please report this to the devs.");
+      }
       m_obligations_height = height;
     }
 
     if (m_last_checkpointed_height >= height + REORG_SAFETY_BUFFER_BLOCKS)
     {
-      LOG_ERROR("The blockchain was detached to height: " << height << ", but quorum cop has already processed votes for checkpointing up to " << m_last_checkpointed_height);
-      LOG_ERROR("This implies a reorg occured that was over " << REORG_SAFETY_BUFFER_BLOCKS << ". This should rarely happen! Please report this to the devs.");
+      if (!by_pop_blocks)
+      {
+        LOG_ERROR("The blockchain was detached to height: " << height << ", but quorum cop has already processed votes for checkpointing up to " << m_last_checkpointed_height);
+        LOG_ERROR("This implies a reorg occured that was over " << REORG_SAFETY_BUFFER_BLOCKS << ". This should rarely happen! Please report this to the devs.");
+      }
       m_last_checkpointed_height = height - (height % CHECKPOINT_INTERVAL);
     }
 
@@ -255,17 +261,10 @@ namespace service_nodes
                 cryptonote::block const &block = blocks[0];
                 if (start_time < static_cast<ptrdiff_t>(block.timestamp)) // NOTE: If we started up before receiving the block, we likely have the voting information, if not we probably don't.
                 {
-                  // TODO(loki): Temporary HF13 code, remove when we hit HF13 because we delete all HF12 checkpoints
-                  // and don't need conditionals for HF12/HF13 checkpointing code
-                  std::vector<crypto::public_key> const &quorum_keys =
-                      (obligations_height_hf_version >= cryptonote::network_version_13_enforce_checkpoints)
-                          ? quorum->validators
-                          : quorum->workers;
-
                   uint64_t quorum_height = offset_testing_quorum_height(checkpoint_type, m_obligations_height);
-                  for (size_t index_in_quorum = 0; index_in_quorum < quorum_keys.size(); index_in_quorum++)
+                  for (size_t index_in_quorum = 0; index_in_quorum < quorum->validators.size(); index_in_quorum++)
                   {
-                    crypto::public_key const &key = quorum_keys[index_in_quorum];
+                    crypto::public_key const &key = quorum->validators[index_in_quorum];
                     m_core.record_checkpoint_vote(
                         key,
                         quorum_height,
@@ -446,12 +445,7 @@ namespace service_nodes
                 continue;
               }
 
-              // TODO(loki): Temporary HF13 code, remove when we hit HF13 because we delete all HF12 checkpoints and don't need conditionals for HF12/HF13 checkpointing code
-              std::vector<crypto::public_key> const &quorum_keys =
-                  (checkpointed_height_hf_version >= cryptonote::network_version_13_enforce_checkpoints)
-                      ? quorum->validators
-                      : quorum->workers;
-              int index_in_group = find_index_in_quorum_group(quorum_keys, my_keys->pub);
+              int index_in_group = find_index_in_quorum_group(quorum->validators, my_keys->pub);
               if (index_in_group <= -1) continue;
 
               //

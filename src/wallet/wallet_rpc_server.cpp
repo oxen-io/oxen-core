@@ -600,7 +600,8 @@ namespace tools
     if (!m_wallet) return not_open(er);
     try
     {
-      res.height = m_wallet->get_blockchain_current_height();
+      res.height           = m_wallet->get_blockchain_current_height();
+      res.immutable_height = m_wallet->get_immutable_height();
     }
     catch (const std::exception& e)
     {
@@ -2923,7 +2924,7 @@ namespace tools
       return false;
     }
 
-    cryptonote::COMMAND_RPC_START_MINING::request daemon_req = AUTO_VAL_INIT(daemon_req); 
+    cryptonote::COMMAND_RPC_START_MINING::request daemon_req{}; 
     daemon_req.miner_address = m_wallet->get_account().get_public_address_str(m_wallet->nettype());
     daemon_req.threads_count        = req.threads_count;
     daemon_req.do_background_mining = req.do_background_mining;

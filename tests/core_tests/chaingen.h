@@ -636,7 +636,7 @@ public:
   bool operator()(const cryptonote::transaction& tx) const
   {
     log_event("cryptonote::transaction");
-    cryptonote::tx_verification_context tvc = AUTO_VAL_INIT(tvc);
+    cryptonote::tx_verification_context tvc{};
     size_t pool_size = m_c.get_pool_transactions_count();
     m_c.handle_incoming_tx(t_serializable_object_to_blob(tx), tvc, m_txs_keeped_by_block, false, false);
     bool tx_added = pool_size + 1 == m_c.get_pool_transactions_count();
@@ -650,7 +650,7 @@ public:
     log_event("cryptonote::transaction");
     std::vector<cryptonote::blobdata> tx_blobs;
     std::vector<cryptonote::tx_verification_context> tvcs;
-     cryptonote::tx_verification_context tvc0 = AUTO_VAL_INIT(tvc0);
+     cryptonote::tx_verification_context tvc0{};
     for (const auto &tx: txs)
     {
       tx_blobs.push_back(t_serializable_object_to_blob(tx));
@@ -667,7 +667,7 @@ public:
   bool operator()(const cryptonote::block& b) const
   {
     log_event("cryptonote::block");
-    cryptonote::block_verification_context bvc = AUTO_VAL_INIT(bvc);
+    cryptonote::block_verification_context bvc{};
     cryptonote::blobdata bd = t_serializable_object_to_blob(b);
     std::vector<cryptonote::block> pblocks;
     if (m_c.prepare_handle_incoming_blocks(std::vector<cryptonote::block_complete_entry>(1, {bd, {}, {}}), pblocks))
@@ -702,7 +702,7 @@ public:
   {
     log_event("serialized_block");
 
-    cryptonote::block_verification_context bvc = AUTO_VAL_INIT(bvc);
+    cryptonote::block_verification_context bvc{};
     std::vector<cryptonote::block> pblocks;
     if (m_c.prepare_handle_incoming_blocks(std::vector<cryptonote::block_complete_entry>(1, {sr_block.data, {}, {}}), pblocks))
     {
@@ -730,7 +730,7 @@ public:
   {
     log_event("serialized_transaction");
 
-    cryptonote::tx_verification_context tvc = AUTO_VAL_INIT(tvc);
+    cryptonote::tx_verification_context tvc{};
     size_t pool_size = m_c.get_pool_transactions_count();
     m_c.handle_incoming_tx(sr_tx.data, tvc, m_txs_keeped_by_block, false, false);
     bool tx_added = pool_size + 1 == m_c.get_pool_transactions_count();
@@ -1437,8 +1437,8 @@ struct loki_chain_generator
   cryptonote::checkpoint_t                             create_service_node_checkpoint(uint64_t block_height, size_t num_votes) const;
 
   loki_blockchain_entry                                create_genesis_block(const cryptonote::account_base &miner, uint64_t timestamp);
-  loki_blockchain_entry                                create_next_block   (const std::vector<cryptonote::transaction>& txs = {}, cryptonote::checkpoint_t const *checkpoint = nullptr);
-  loki_blockchain_entry                                create_block        (loki_create_block_params &params, const std::vector<cryptonote::transaction> &tx_list = {}, const cryptonote::checkpoint_t *checkpoint = nullptr) const;
+  loki_blockchain_entry                                create_next_block   (const std::vector<cryptonote::transaction>& txs = {}, cryptonote::checkpoint_t const *checkpoint = nullptr, uint64_t total_fee = 0);
+  loki_blockchain_entry                                create_block        (loki_create_block_params &params, const std::vector<cryptonote::transaction> &tx_list = {}, const cryptonote::checkpoint_t *checkpoint = nullptr, uint64_t total_fee = 0) const;
 
   uint8_t                                              get_hf_version_at(uint64_t height) const;
   std::vector<uint64_t>                                last_n_block_weights(uint64_t height, uint64_t num) const;

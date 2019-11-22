@@ -155,7 +155,7 @@ namespace cryptonote
         tx_extra_service_node_state_change pool_tx_state_change;
         if (!get_service_node_state_change_from_tx_extra(pool_tx.extra, pool_tx_state_change, hard_fork_version))
         {
-          MERROR("Could not get service node state change from tx: " << get_transaction_hash(pool_tx) << ", possibly corrupt tx in the pool");
+          LOG_PRINT_L1("Could not get service node state change from tx: " << get_transaction_hash(pool_tx) << ", possibly corrupt tx in the pool");
           continue;
         }
 
@@ -201,7 +201,7 @@ namespace cryptonote
         tx_extra_tx_key_image_unlock pool_unlock;
         if (!cryptonote::get_tx_key_image_unlock_from_tx_extra(pool_tx.extra, pool_unlock))
         {
-          MERROR("Could not get key image unlock from tx: " << get_transaction_hash(tx) << ", possibly corrupt tx in the pool");
+          LOG_PRINT_L1("Could not get key image unlock from tx: " << get_transaction_hash(tx) << ", possibly corrupt tx in the pool");
           return true;
         }
 
@@ -254,39 +254,12 @@ namespace cryptonote
       return false;
     }
 
-    // fee per kilobyte, size rounded up.
     uint64_t fee;
 
-    if (tx.version == txversion::v1)
+    if (!get_tx_miner_fee(tx, fee, version >= HF_VERSION_FEE_BURNING))
     {
-      uint64_t inputs_amount = 0;
-      if(!get_inputs_money_amount(tx, inputs_amount))
-      {
-        tvc.m_verifivation_failed = true;
-        return false;
-      }
-
-      uint64_t outputs_amount = get_outs_money_amount(tx);
-      if(outputs_amount > inputs_amount)
-      {
-        LOG_PRINT_L1("transaction use more money than it has: use " << print_money(outputs_amount) << ", have " << print_money(inputs_amount));
-        tvc.m_verifivation_failed = true;
-        tvc.m_overspend = true;
-        return false;
-      }
-      else if(outputs_amount == inputs_amount)
-      {
-        LOG_PRINT_L1("transaction fee is zero: outputs_amount == inputs_amount, rejecting.");
-        tvc.m_verifivation_failed = true;
-        tvc.m_fee_too_low = true;
-        return false;
-      }
-
-      fee = inputs_amount - outputs_amount;
-    }
-    else
-    {
-      fee = tx.rct_signatures.txnFee;
+      tvc.m_verifivation_failed = true;
+      tvc.m_fee_too_low = true;
     }
 
     if (!kept_by_block && tx.type == txtype::standard && !m_blockchain.check_fee(tx_weight, tx.vout.size(), fee))
@@ -1180,19 +1153,8 @@ namespace cryptonote
             continue;
 
           std::vector<service_nodes::service_node_pubkey_info> service_node_array = service_node_list.get_service_node_list_state({service_node_pubkey});
-
-          // TODO(loki): Temporary HF12 code. We want to use HF13 code for
-          // detecting if a service node can change state for pruning from the
-          // pool, because changing the pool code here is not consensus, but we
-          // want this logic so as to improve the network behaviour regarding
-          // multiple queued up state changes without a hard fork.
-
-          // Once we hard fork to v13 we can just use the blk major version
-          // whole sale.
-          uint8_t enforce_hf_version = std::max((uint8_t)cryptonote::network_version_13_enforce_checkpoints, blk.major_version);
-
           if (service_node_array.empty() ||
-              !service_node_array[0].info->can_transition_to_state(enforce_hf_version, state_change.block_height, state_change.state))
+              !service_node_array[0].info->can_transition_to_state(blk.major_version, state_change.block_height, state_change.state))
           {
             transaction tx;
             cryptonote::blobdata blob;
@@ -1483,8 +1445,7 @@ namespace cryptonote
         continue;
       }
 
-      // start using the optimal filling algorithm from v5
-      if (version >= 5)
+      if (true /* version >= 5 -- always true for Loki */)
       {
         // If we're getting lower coinbase tx, stop including more tx
         block_reward_parts reward_parts_other = {};
@@ -1500,16 +1461,6 @@ namespace cryptonote
         {
           LOG_PRINT_L2("  would decrease coinbase to " << print_money(coinbase));
           continue;
-        }
-      }
-      else
-      {
-        // If we've exceeded the penalty free weight,
-        // stop including more tx
-        if (total_weight > median_weight)
-        {
-          LOG_PRINT_L2("  would exceed median block weight");
-          break;
         }
       }
 

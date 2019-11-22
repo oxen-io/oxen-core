@@ -126,7 +126,7 @@ namespace cryptonote
   {
   public:
     bool block_added(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs, checkpoint_t const *checkpoint) override;
-    void blockchain_detached(uint64_t height) override;
+    void blockchain_detached(uint64_t height, bool by_pop_blocks) override;
 
     bool get_checkpoint(uint64_t height, checkpoint_t &checkpoint) const;
     /**

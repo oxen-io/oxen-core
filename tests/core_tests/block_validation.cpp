@@ -469,7 +469,7 @@ static bool construct_miner_tx_with_extra_output(cryptonote::transaction& tx,
         cryptonote::address_parse_info governance_wallet_address;
         cryptonote::get_account_address_from_str(governance_wallet_address, nettype, *cryptonote::get_config(nettype, hard_fork_version).GOVERNANCE_WALLET_ADDRESS);
 
-        crypto::public_key out_eph_public_key = AUTO_VAL_INIT(out_eph_public_key);
+        crypto::public_key out_eph_public_key{};
 
         if (!get_deterministic_output_key(
               governance_wallet_address.address, gov_key, tx.vout.size(), out_eph_public_key)) {
@@ -690,10 +690,9 @@ bool gen_block_late_version_coinbase_tx::generate(std::vector<test_event_entry>&
   }
   assert(first_hf_with_different_min_tx_version != 0);
 
-
-  loki_create_block_params block_params   = default_block_params(gen);
-  block_params.miner_hf_version           = first_hf_with_different_min_tx_version;
-  loki_blockchain_entry invalid_block = gen.create_block(block_params);
+  loki_create_block_params block_params = default_block_params(gen);
+  block_params.miner_hf_version         = first_hf_with_different_min_tx_version;
+  loki_blockchain_entry invalid_block   = gen.create_block(block_params);
   gen.add_block(invalid_block, false /*can_be_added_to_blockchain*/, "Can not add block with tx version lower than the minimum");
   return true;
 }

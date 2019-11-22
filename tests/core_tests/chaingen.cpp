@@ -570,7 +570,7 @@ loki_create_block_params default_block_params(loki_chain_generator &gen)
   return result;
 }
 
-loki_blockchain_entry loki_chain_generator::create_block(loki_create_block_params &params, const std::vector<cryptonote::transaction> &tx_list, const cryptonote::checkpoint_t *checkpoint) const
+loki_blockchain_entry loki_chain_generator::create_block(loki_create_block_params &params, const std::vector<cryptonote::transaction> &tx_list, const cryptonote::checkpoint_t *checkpoint, uint64_t total_fee) const
 {
   loki_blockchain_entry result = {};
   if (checkpoint)
@@ -586,17 +586,17 @@ loki_blockchain_entry loki_chain_generator::create_block(loki_create_block_param
   blk.timestamp          = params.timestamp;
   blk.prev_id            = get_block_hash(params.prev->block);
 
-  uint64_t total_fee = 0;
+  bool calc_total_fee = total_fee == 0;
   size_t txs_weight  = 0;
   blk.tx_hashes.reserve(tx_list.size());
   for(const cryptonote::transaction &tx : tx_list)
   {
     blk.tx_hashes.push_back(get_transaction_hash(tx));
     uint64_t fee = 0;
-    bool r       = get_tx_fee(tx, fee);
+    bool r       = get_tx_miner_fee(tx, fee, blk.major_version >= HF_VERSION_FEE_BURNING);
     assert(r);
-    total_fee   += fee;
     txs_weight  += get_transaction_weight(tx);
+    if (calc_total_fee) total_fee += fee;
   }
 
   // NOTE: Calculate governance
@@ -681,10 +681,10 @@ loki_blockchain_entry loki_chain_generator::create_block(loki_create_block_param
   return result;
 }
 
-loki_blockchain_entry loki_chain_generator::create_next_block(const std::vector<cryptonote::transaction> &tx_list, const cryptonote::checkpoint_t *checkpoint)
+loki_blockchain_entry loki_chain_generator::create_next_block(const std::vector<cryptonote::transaction> &tx_list, const cryptonote::checkpoint_t *checkpoint, uint64_t total_fee)
 {
   loki_create_block_params default_params = default_block_params(*this);
-  loki_blockchain_entry result            = create_block(default_params, tx_list, checkpoint);
+  loki_blockchain_entry result            = create_block(default_params, tx_list, checkpoint, total_fee);
   return result;
 }
 
@@ -761,7 +761,7 @@ void test_generator::get_last_n_block_weights(std::vector<uint64_t>& block_weigh
 {
   std::vector<block_info> blockchain;
   get_block_chain(blockchain, head, n);
-  BOOST_FOREACH(auto& bi, blockchain)
+  for (auto& bi : blockchain)
   {
     block_weights.push_back(bi.block_weight);
   }
@@ -854,16 +854,16 @@ bool test_generator::construct_block(cryptonote::block &blk,
 
   uint64_t total_fee = 0;
   size_t txs_weight = 0;
-  BOOST_FOREACH(auto& tx, tx_list)
+  for (auto& tx : tx_list)
   {
     uint64_t fee = 0;
-    bool r = get_tx_fee(tx, fee);
+    bool r = get_tx_miner_fee(tx, fee, blk.major_version >= HF_VERSION_FEE_BURNING);
     CHECK_AND_ASSERT_MES(r, false, "wrong transaction passed to construct_block");
     total_fee += fee;
     txs_weight += get_transaction_weight(tx);
   }
 
-  blk.miner_tx = AUTO_VAL_INIT(blk.miner_tx);
+  blk.miner_tx = {};
   size_t target_block_weight = txs_weight + get_transaction_weight(blk.miner_tx);
   cryptonote::loki_miner_tx_context miner_tx_context(cryptonote::FAKECHAIN, winner);
   manual_calc_batched_governance(*this, prev_id, miner_tx_context, m_hf_version, height);
@@ -1856,15 +1856,15 @@ bool extract_hard_forks(const std::vector<test_event_entry>& events, v_hardforks
 void get_confirmed_txs(const std::vector<cryptonote::block>& blockchain, const map_hash2tx_t& mtx, map_hash2tx_t& confirmed_txs)
 {
   std::unordered_set<crypto::hash> confirmed_hashes;
-  BOOST_FOREACH(const cryptonote::block& blk, blockchain)
+  for (const auto& blk : blockchain)
   {
-    BOOST_FOREACH(const crypto::hash& tx_hash, blk.tx_hashes)
+    for (const auto& tx_hash : blk.tx_hashes)
     {
       confirmed_hashes.insert(tx_hash);
     }
   }
 
-  BOOST_FOREACH(const auto& tx_pair, mtx)
+  for (const auto& tx_pair : mtx)
   {
     if (0 != confirmed_hashes.count(tx_pair.first))
     {
@@ -1916,7 +1916,7 @@ bool trim_block_chain(std::vector<const cryptonote::block*>& blockchain, const c
 uint64_t num_blocks(const std::vector<test_event_entry>& events)
 {
   uint64_t res = 0;
-  BOOST_FOREACH(const test_event_entry& ev, events)
+  for (const test_event_entry& ev : events)
   {
     if (typeid(cryptonote::block) == ev.type())
     {

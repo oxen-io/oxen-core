@@ -106,7 +106,7 @@ namespace cryptonote
   bool get_deterministic_output_key(const account_public_address& address, const keypair& tx_key, size_t output_index, crypto::public_key& output_key)
   {
 
-    crypto::key_derivation derivation = AUTO_VAL_INIT(derivation);
+    crypto::key_derivation derivation{};
     bool r = crypto::generate_key_derivation(address.m_view_public_key, tx_key.sec, derivation);
     CHECK_AND_ASSERT_MES(r, false, "failed to generate_key_derivation(" << address.m_view_public_key << ", " << tx_key.sec << ")");
 
@@ -279,16 +279,11 @@ namespace cryptonote
       return false;
     }
 
-#if defined(DEBUG_CREATE_BLOCK_TEMPLATE)
-    LOG_PRINT_L1("Creating block template: reward " << block_reward <<
-      ", fee " << fee);
-#endif
-
     uint64_t summary_amounts = 0;
     // Miner Reward
     {
-      crypto::key_derivation derivation = AUTO_VAL_INIT(derivation);
-      crypto::public_key out_eph_public_key = AUTO_VAL_INIT(out_eph_public_key);
+      crypto::key_derivation derivation{};
+      crypto::public_key out_eph_public_key{};
       bool r = crypto::generate_key_derivation(miner_address.m_view_public_key, txkey.sec, derivation);
       CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to generate_key_derivation(" << miner_address.m_view_public_key << ", " << txkey.sec << ")");
 
@@ -310,8 +305,8 @@ namespace cryptonote
       for (size_t i = 0; i < service_node_info.size(); i++)
       {
         service_nodes::payout_entry const &payout = service_node_info[i];
-        crypto::key_derivation derivation         = AUTO_VAL_INIT(derivation);
-        crypto::public_key out_eph_public_key     = AUTO_VAL_INIT(out_eph_public_key);
+        crypto::key_derivation derivation{};
+        crypto::public_key out_eph_public_key{};
         bool r = crypto::generate_key_derivation(payout.address.m_view_public_key, gov_key.sec, derivation);
         CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to generate_key_derivation(" << payout.address.m_view_public_key << ", " << gov_key.sec << ")");
         r = crypto::derive_public_key(derivation, 1+i, payout.address.m_spend_public_key, out_eph_public_key);
@@ -339,7 +334,7 @@ namespace cryptonote
       {
         cryptonote::address_parse_info governance_wallet_address;
         cryptonote::get_account_address_from_str(governance_wallet_address, nettype, *cryptonote::get_config(nettype, hard_fork_version).GOVERNANCE_WALLET_ADDRESS);
-        crypto::public_key out_eph_public_key = AUTO_VAL_INIT(out_eph_public_key);
+        crypto::public_key out_eph_public_key{};
 
         if (!get_deterministic_output_key(governance_wallet_address.address, gov_key, tx.vout.size(), out_eph_public_key))
         {

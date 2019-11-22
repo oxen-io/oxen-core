@@ -94,7 +94,7 @@ namespace service_nodes
 
     void init() override;
     bool block_added(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs, cryptonote::checkpoint_t const * /*checkpoint*/) override;
-    void blockchain_detached(uint64_t height) override;
+    void blockchain_detached(uint64_t height, bool by_pop_blocks) override;
 
     void                       set_votes_relayed  (std::vector<quorum_vote_t> const &relayed_votes);
     std::vector<quorum_vote_t> get_relayable_votes(uint64_t current_height);

@@ -107,12 +107,14 @@ int main(int argc, char* argv[])
     list_tests = command_line::get_arg(vm, arg_list_tests);
 
     // NOTE: Loki Tests
+    GENERATE_AND_PLAY(loki_checkpointing_alt_chain_handle_alt_blocks_at_tip);
     GENERATE_AND_PLAY(loki_checkpointing_alt_chain_more_service_node_checkpoints_less_pow_overtakes);
     GENERATE_AND_PLAY(loki_checkpointing_alt_chain_receive_checkpoint_votes_should_reorg_back);
     GENERATE_AND_PLAY(loki_checkpointing_alt_chain_with_increasing_service_node_checkpoints);
     GENERATE_AND_PLAY(loki_checkpointing_service_node_checkpoint_from_votes);
     GENERATE_AND_PLAY(loki_checkpointing_service_node_checkpoints_check_reorg_windows);
     GENERATE_AND_PLAY(loki_core_block_reward_unpenalized);
+    GENERATE_AND_PLAY(loki_core_fee_burning);
     GENERATE_AND_PLAY(loki_core_governance_batched_reward);
     GENERATE_AND_PLAY(loki_core_test_deregister_preferred);
     GENERATE_AND_PLAY(loki_core_test_deregister_safety_buffer);
@@ -302,7 +304,7 @@ int main(int argc, char* argv[])
     if (!failed_tests.empty())
     {
       MLOG(level, "FAILED TESTS:");
-      BOOST_FOREACH(auto test_name, failed_tests)
+      for (auto &test_name : failed_tests)
       {
         MLOG(level, "  " << test_name);
       }

@@ -306,7 +306,7 @@ namespace service_nodes
   public:
     service_node_list(cryptonote::Blockchain& blockchain);
     bool block_added(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs, cryptonote::checkpoint_t const *checkpoint) override;
-    void blockchain_detached(uint64_t height) override;
+    void blockchain_detached(uint64_t height, bool by_pop_blocks) override;
     void init() override;
     bool validate_miner_tx(const crypto::hash& prev_id, const cryptonote::transaction& miner_tx, uint64_t height, int hard_fork_version, cryptonote::block_reward_parts const &base_reward) const override;
     bool alt_block_added(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs, cryptonote::checkpoint_t const *checkpoint) override;

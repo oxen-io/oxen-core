@@ -27,7 +27,7 @@
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 set(core_tests_sources
-  block_reward.cpp
+#  block_reward.cpp
   block_validation.cpp
   chain_split_1.cpp
   chain_switch_1.cpp
@@ -47,7 +47,7 @@ set(core_tests_sources
   wallet_tools.cpp)
 
 set(core_tests_headers
-  block_reward.h
+#  block_reward.h
   block_validation.h
   chain_split_1.h
   chain_switch_1.h

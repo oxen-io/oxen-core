@@ -50,7 +50,7 @@ int TransactionFuzzer::run(const std::string &filename)
     std::cout << "Error: failed to load file " << filename << std::endl;
     return 1;
   }
-  cryptonote::transaction tx = AUTO_VAL_INIT(tx);
+  cryptonote::transaction tx{};
   if(!parse_and_validate_tx_from_blob(s, tx))
   {
     std::cout << "Error: failed to parse transaction from file  " << filename << std::endl;
