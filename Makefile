@@ -64,9 +64,9 @@ debug-test:
 	mkdir -p $(builddir)/debug
 	cd $(builddir)/debug && cmake -D BUILD_TESTS=ON -D CMAKE_BUILD_TYPE=Debug $(topdir) &&  $(MAKE) && $(MAKE) ARGS="-E libwallet_api_tests" test
 
-integration:
-	mkdir -p $(builddir)/integration
-	cd $(builddir)/integration && cmake -D CMAKE_BUILD_TYPE=Debug -D BUILD_INTEGRATION=ON $(topdir) &&  $(MAKE)
+debug-test-asan:
+	mkdir -p $(builddir)/debug
+	cd $(builddir)/debug && cmake -D BUILD_TESTS=ON -D SANITIZE=ON -D CMAKE_BUILD_TYPE=Debug $(topdir) &&  $(MAKE) && $(MAKE) ARGS="-E libwallet_api_tests" test
 
 debug-test-trezor:
 	mkdir -p $(builddir)/debug
@@ -177,6 +177,10 @@ clean-all:
 
 tags:
 	ctags -R --sort=1 --c++-kinds=+p --fields=+iaS --extra=+q --language-force=C++ src contrib tests/gtest tests
+
+integration:
+	mkdir -p $(builddir)/integration
+	cd $(builddir)/integration && cmake -D CMAKE_BUILD_TYPE=Debug -D BUILD_INTEGRATION=ON $(topdir) &&  $(MAKE)
 
 # Debug Target for Developers: Only build daemon and wallet
 developer-daemon-and-wallet:

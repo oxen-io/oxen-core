@@ -32,27 +32,12 @@ set(blockchain_db_sources
   lmdb/db_lmdb.cpp
   )
 
-if (BERKELEY_DB)
-  set(blockchain_db_sources
-  ${blockchain_db_sources}
-  berkeleydb/db_bdb.cpp
-  )
-endif()
-
-
 set(blockchain_db_headers)
 
 set(blockchain_db_private_headers
   blockchain_db.h
   lmdb/db_lmdb.h
   )
-
-if (BERKELEY_DB)
-  set(blockchain_db_private_headers
-  ${blockchain_db_private_headers}
-  berkeleydb/db_bdb.h
-  )
-endif()
 
 loki_private_headers(blockchain_db
   ${crypto_private_headers})
@@ -66,7 +51,6 @@ target_link_libraries(blockchain_db
     cncrypto
     ringct
     ${LMDB_LIBRARY}
-    ${BDB_LIBRARY}
     ${Boost_FILESYSTEM_LIBRARY}
     ${Boost_THREAD_LIBRARY}
   PRIVATE
