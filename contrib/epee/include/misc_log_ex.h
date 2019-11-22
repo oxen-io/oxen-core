@@ -234,12 +234,11 @@ extern "C"
 #define ATTRIBUTE_PRINTF
 #endif
 
-void mfatal(const char *category, const char *fmt, ...) ATTRIBUTE_PRINTF;
-void merror(const char *category, const char *fmt, ...) ATTRIBUTE_PRINTF;
-void mwarning(const char *category, const char *fmt, ...) ATTRIBUTE_PRINTF;
-void minfo(const char *category, const char *fmt, ...) ATTRIBUTE_PRINTF;
-void mdebug(const char *category, const char *fmt, ...) ATTRIBUTE_PRINTF;
-void mtrace(const char *category, const char *fmt, ...) ATTRIBUTE_PRINTF;
+bool merror(const char *category, const char *format, ...) ATTRIBUTE_PRINTF;
+bool mwarning(const char *category, const char *format, ...) ATTRIBUTE_PRINTF;
+bool minfo(const char *category, const char *format, ...) ATTRIBUTE_PRINTF;
+bool mdebug(const char *category, const char *format, ...) ATTRIBUTE_PRINTF;
+bool mtrace(const char *category, const char *format, ...) ATTRIBUTE_PRINTF;
 
 #ifdef __cplusplus
 

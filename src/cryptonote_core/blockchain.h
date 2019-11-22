@@ -1149,7 +1149,7 @@ namespace cryptonote
      *
      * @return false if any output is not yet unlocked, or is missing, otherwise true
      */
-    bool check_tx_input(const txin_to_key& txin, const crypto::hash& tx_prefix_hash, std::vector<rct::ctkey> &output_keys, uint64_t* pmax_related_block_height);
+    bool check_tx_input(const txin_to_key& txin, const crypto::hash& tx_prefix_hash, std::vector<rct::ctkey> &output_keys, uint64_t* pmax_related_block_height) const;
 
     /**
      * @brief validate a transaction's inputs and their keys
