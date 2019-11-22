@@ -409,5 +409,5 @@ VARIANT_TAG(binary_archive, cryptonote::tx_extra_service_node_contributor,    TX
 VARIANT_TAG(binary_archive, cryptonote::tx_extra_service_node_winner,         TX_EXTRA_TAG_SERVICE_NODE_WINNER);
 VARIANT_TAG(binary_archive, cryptonote::tx_extra_service_node_pubkey,         TX_EXTRA_TAG_SERVICE_NODE_PUBKEY);
 VARIANT_TAG(binary_archive, cryptonote::tx_extra_tx_secret_key,               TX_EXTRA_TAG_TX_SECRET_KEY);
-VARIANT_TAG(binary_archive, cryptonote::tx_extra_tx_key_image_proofs,         TX_EXTRA_TAG_TX_KEY_IMAGE_PROOFS);
+VARIANT_TAG(binary_archive, cryptonote::tx_extra_tx_key_image_proofs, TX_EXTRA_TAG_TX_KEY_IMAGE_PROOFS);
 VARIANT_TAG(binary_archive, cryptonote::tx_extra_tx_key_image_unlock,         TX_EXTRA_TAG_TX_KEY_IMAGE_UNLOCK);
