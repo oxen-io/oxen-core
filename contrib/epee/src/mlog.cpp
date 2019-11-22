@@ -109,7 +109,7 @@ static const char *get_default_categories(int level)
       categories = "*:DEBUG";
       break;
     case 3:
-      categories = "*:TRACE";
+      categories = "*:TRACE,*.dump:DEBUG";
       break;
     case 4:
       categories = "*:TRACE";
@@ -472,57 +472,40 @@ void reset_console_color() {
 
 }
 
-static bool mlog(el::Level level, const char *category, const char *format, va_list ap) noexcept
+static void mlog(el::Level level, const char *category, const char *format, va_list ap)
 {
   int size = 0;
   char *p = NULL;
   va_list apc;
-  bool ret = true;
 
   /* Determine required size */
   va_copy(apc, ap);
   size = vsnprintf(p, size, format, apc);
   va_end(apc);
   if (size < 0)
-    return false;
+    return;
 
   size++;             /* For '\0' */
   p = (char*)malloc(size);
   if (p == NULL)
-    return false;
+    return;
 
   size = vsnprintf(p, size, format, ap);
   if (size < 0)
   {
     free(p);
-    return false;
+    return;
   }
 
-  try
-  {
-    /* TODO(loki): when pulling upstream epee changes change this to:
-    MCLOG(level, category, el::Color::Default, p);
-    */
-    MCLOG(level, category, p);
-  }
-  catch(...)
-  {
-    ret = false;
-  }
+  MCLOG(level, category, el::Color::Default, p);
   free(p);
-
-  return ret;
 }
 
-#define DEFLOG(fun,lev) \
-  bool m##fun(const char *category, const char *fmt, ...) { va_list ap; va_start(ap, fmt); bool ret = mlog(el::Level::lev, category, fmt, ap); va_end(ap); return ret; }
-
-DEFLOG(error, Error)
-DEFLOG(warning, Warning)
-DEFLOG(info, Info)
-DEFLOG(debug, Debug)
-DEFLOG(trace, Trace)
-
-#undef DEFLOG
+void mfatal(const char *category, const char *fmt, ...) { va_list ap; va_start(ap, fmt); mlog(el::Level::Fatal, category, fmt, ap); va_end(ap); }
+void merror(const char *category, const char *fmt, ...) { va_list ap; va_start(ap, fmt); mlog(el::Level::Error, category, fmt, ap); va_end(ap); }
+void mwarning(const char *category, const char *fmt, ...) { va_list ap; va_start(ap, fmt); mlog(el::Level::Warning, category, fmt, ap); va_end(ap); }
+void minfo(const char *category, const char *fmt, ...) { va_list ap; va_start(ap, fmt); mlog(el::Level::Info, category, fmt, ap); va_end(ap); }
+void mdebug(const char *category, const char *fmt, ...) { va_list ap; va_start(ap, fmt); mlog(el::Level::Debug, category, fmt, ap); va_end(ap); }
+void mtrace(const char *category, const char *fmt, ...) { va_list ap; va_start(ap, fmt); mlog(el::Level::Trace, category, fmt, ap); va_end(ap); }
 
 #endif //_MLOG_H_
