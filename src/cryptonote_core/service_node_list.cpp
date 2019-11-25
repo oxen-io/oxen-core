@@ -849,8 +849,7 @@ namespace service_nodes
 
     // check the initial contribution exists
 
-    info.staking_requirement = get_staking_requirement(nettype, block_height, hf_version);
-
+    uint64_t staking_requirement = get_staking_requirement(nettype, block_height, hf_version);
     cryptonote::account_public_address address;
 
     parsed_tx_contribution parsed_contribution = {};
@@ -860,7 +859,7 @@ namespace service_nodes
       return false;
     }
 
-    const uint64_t min_transfer = get_min_node_contribution(hf_version, info.staking_requirement, info.total_reserved, info.total_num_locked_contributions());
+    const uint64_t min_transfer = get_min_node_contribution(hf_version, staking_requirement, info.total_reserved, info.total_num_locked_contributions());
     if (parsed_contribution.transferred < min_transfer)
     {
       LOG_PRINT_L1("Register TX: Contribution transferred: " << parsed_contribution.transferred << " didn't meet the minimum transfer requirement: " << min_transfer << " on height: " << block_height << " for tx: " << cryptonote::get_transaction_hash(tx));
@@ -884,26 +883,18 @@ namespace service_nodes
 
     key = service_node_key;
 
+    info.staking_requirement           = staking_requirement;
     info.operator_address              = service_node_addresses[0];
     info.portions_for_operator         = portions_for_operator;
     info.registration_height           = block_height;
     info.registration_hf_version       = hf_version;
     info.last_reward_block_height      = block_height;
     info.last_reward_transaction_index = index;
-    info.active_since_height           = 0;
-    info.last_decommission_height      = 0;
-    info.decommission_count            = 0;
-    info.total_contributed             = 0;
-    info.total_reserved                = 0;
     info.swarm_id                      = UNASSIGNED_SWARM_ID;
-    info.proof->public_ip              = 0;
-    info.proof->storage_port           = 0;
     info.proof->pubkey_ed25519         = crypto::ed25519_public_key::null();
     info.proof->pubkey_x25519          = crypto::x25519_public_key::null();
     info.last_ip_change_height         = block_height;
     info.version                       = get_min_service_node_info_version_for_hf(hf_version);
-
-    info.contributors.clear();
 
     for (size_t i = 0; i < service_node_addresses.size(); i++)
     {
@@ -936,8 +927,9 @@ namespace service_nodes
     uint64_t const block_height    = cryptonote::get_block_height(block);
 
     crypto::public_key key;
-    auto info_ptr = std::make_shared<service_node_info>();
+    auto info_ptr           = std::make_shared<service_node_info>();
     service_node_info &info = *info_ptr;
+    info                    = {};
     if (!is_registration_tx(nettype, hf_version, tx, block_timestamp, block_height, index, key, info))
       return false;
 
