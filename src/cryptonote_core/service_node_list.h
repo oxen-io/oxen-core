@@ -102,9 +102,9 @@ namespace service_nodes
       };
 
       version_t          version{version_t::v0};
-      crypto::public_key key_image_pub_key;
-      crypto::key_image  key_image;
-      uint64_t           amount;
+      crypto::public_key key_image_pub_key{};
+      crypto::key_image  key_image{};
+      uint64_t           amount = 0;
 
       contribution_t() = default;
       contribution_t(version_t version, const crypto::public_key &pubkey, const crypto::key_image &key_image, uint64_t amount)
@@ -120,10 +120,10 @@ namespace service_nodes
 
     struct contributor_t
     {
-      uint8_t  version;
-      uint64_t amount;
-      uint64_t reserved;
-      cryptonote::account_public_address address;
+      uint8_t  version = 0;
+      uint64_t amount = 0;
+      uint64_t reserved = 0;
+      cryptonote::account_public_address address{};
       std::vector<contribution_t> locked_contributions;
 
       contributor_t() = default;
@@ -143,24 +143,24 @@ namespace service_nodes
       END_SERIALIZE()
     };
 
-    uint64_t                           registration_height;
-    uint64_t                           requested_unlock_height;
+    uint64_t                           registration_height = 0;
+    uint64_t                           requested_unlock_height = 0;
     // block_height and transaction_index are to record when the service node last received a reward.
-    uint64_t                           last_reward_block_height;
-    uint32_t                           last_reward_transaction_index;
-    uint32_t                           decommission_count; // How many times this service node has been decommissioned
-    int64_t                            active_since_height; // if decommissioned: equal to the *negative* height at which you became active before the decommission
-    uint64_t                           last_decommission_height; // The height at which the last (or current!) decommissioning started, or 0 if never decommissioned
+    uint64_t                           last_reward_block_height = 0;
+    uint32_t                           last_reward_transaction_index = 0;
+    uint32_t                           decommission_count = 0; // How many times this service node has been decommissioned
+    int64_t                            active_since_height = 0; // if decommissioned: equal to the *negative* height at which you became active before the decommission
+    uint64_t                           last_decommission_height = 0; // The height at which the last (or current!) decommissioning started, or 0 if never decommissioned
     std::vector<contributor_t>         contributors;
-    uint64_t                           total_contributed;
-    uint64_t                           total_reserved;
-    uint64_t                           staking_requirement;
-    uint64_t                           portions_for_operator;
-    swarm_id_t                         swarm_id;
-    cryptonote::account_public_address operator_address;
-    uint64_t                           last_ip_change_height; // The height of the last quorum penalty for changing IPs
+    uint64_t                           total_contributed = 0;
+    uint64_t                           total_reserved = 0;
+    uint64_t                           staking_requirement = 0;
+    uint64_t                           portions_for_operator = 0;
+    swarm_id_t                         swarm_id = 0;
+    cryptonote::account_public_address operator_address{};
+    uint64_t                           last_ip_change_height = 0; // The height of the last quorum penalty for changing IPs
     version_t                          version = version_t::v2_ed25519;
-    uint8_t                            registration_hf_version;
+    uint8_t                            registration_hf_version = 0;
 
     // The data in `proof_info` are shared across states because we don't want to roll them back in
     // the event of a reorg: we always want them to contain the latest received info.  They are also

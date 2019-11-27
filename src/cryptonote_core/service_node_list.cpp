@@ -927,9 +927,8 @@ namespace service_nodes
     uint64_t const block_height    = cryptonote::get_block_height(block);
 
     crypto::public_key key;
-    auto info_ptr           = std::make_shared<service_node_info>();
+    auto info_ptr = std::make_shared<service_node_info>();
     service_node_info &info = *info_ptr;
-    info                    = {};
     if (!is_registration_tx(nettype, hf_version, tx, block_timestamp, block_height, index, key, info))
       return false;
 
