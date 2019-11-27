@@ -174,14 +174,8 @@ namespace service_nodes
       loaded = false; // Either we don't have stored history or the history is very short, so recalculation is necessary or cheap.
     }
 
-    bool store_to_disk = false;
     if (!loaded || m_state.height > current_height)
-    {
       reset(true);
-      store_to_disk = true;
-    }
-
-    rescan_starting_from_curr_state(store_to_disk);
   }
 
   template <typename UnaryPredicate>
@@ -1222,7 +1216,6 @@ namespace service_nodes
       }
     }
 
-    store();
     return true;
   }
 
@@ -1584,10 +1577,6 @@ namespace service_nodes
     auto it = std::prev(history.end());
     m_state = std::move(*it);
     history.erase(it);
-
-    if (m_state.height != revert_to_height)
-      rescan_starting_from_curr_state(false /*store_to_disk*/);
-    store();
   }
 
   std::vector<crypto::public_key> service_node_list::state_t::get_expired_nodes(cryptonote::BlockchainDB const &db,

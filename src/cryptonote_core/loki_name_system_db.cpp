@@ -429,6 +429,9 @@ static bool sql_transaction(sqlite3 *db, sql_transaction_type type)
 bool name_system_db::add_block(const cryptonote::block &block, const std::vector<cryptonote::transaction> &txs)
 {
   uint64_t height = cryptonote::get_block_height(block);
+  if (last_processed_height >= height)
+      return true;
+
   if (block.major_version >= cryptonote::network_version_14_blink_lns)
   {
     for (cryptonote::transaction const &tx : txs)

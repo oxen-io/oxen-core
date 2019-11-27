@@ -318,6 +318,7 @@ namespace service_nodes
     block_winner get_block_winner() const { std::lock_guard<boost::recursive_mutex> lock(m_sn_mutex); return m_state.get_block_winner(); }
     bool is_service_node(const crypto::public_key& pubkey, bool require_active = true) const;
     bool is_key_image_locked(crypto::key_image const &check_image, uint64_t *unlock_height = nullptr, service_node_info::contribution_t *the_locked_contribution = nullptr) const;
+    uint64_t height() const { return m_state.height; }
 
     /// Note(maxim): this should not affect thread-safety as the returned object is const
     ///

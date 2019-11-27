@@ -130,6 +130,14 @@ namespace cryptonote
      */
     ~Blockchain();
 
+    enum loki_subsystem
+    {
+      loki_subsystem_lns = 1 << 0,
+      loki_subsystem_snl = 1 << 1,
+      loki_subsystem_all = (loki_subsystem_lns | loki_subsystem_snl),
+    };
+    bool load_missing_blocks_into_loki_subsystems(loki_subsystem subsystems = loki_subsystem_all);
+
     /**
      * @brief Initialize the Blockchain state
      *
