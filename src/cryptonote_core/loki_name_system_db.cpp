@@ -14,6 +14,9 @@ extern "C"
 #include "sodium.h"
 }
 
+#undef LOKI_DEFAULT_LOG_CATEGORY
+#define LOKI_DEFAULT_LOG_CATEGORY "lns"
+
 namespace lns
 {
 enum struct lns_sql_type
@@ -284,7 +287,7 @@ CREATE TABLE IF NOT EXISTS "mappings" (
     "user_id" INTEGER NOT NULL,
     FOREIGN KEY (user_id) REFERENCES user (id)
 );
-CREATE UNIQUE INDEX "name_type_id" ON mappings(name, type);
+CREATE UNIQUE INDEX IF NOT EXISTS "name_type_id" ON mappings(name, type);
 )FOO";
 
 static bool build_default_tables(sqlite3 *db)
