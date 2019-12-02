@@ -388,13 +388,13 @@ static void fill_nonce(cryptonote::block& blk, const cryptonote::difficulty_type
 
 loki_blockchain_entry loki_chain_generator::create_genesis_block(const cryptonote::account_base &miner, uint64_t timestamp)
 {
-  uint64_t height         = 0;
+  uint64_t height              = 0;
   loki_blockchain_entry result = {};
-  cryptonote::block &blk  = result.block;
-  blk.major_version       = hf_version_;
-  blk.minor_version       = hf_version_;
-  blk.timestamp           = timestamp;
-  blk.prev_id             = crypto::null_hash;
+  cryptonote::block &blk       = result.block;
+  blk.major_version            = hf_version_;
+  blk.minor_version            = hf_version_;
+  blk.timestamp                = timestamp;
+  blk.prev_id                  = crypto::null_hash;
 
   // TODO(doyle): Does this evaluate to 0? If so we can simplify this a lot more
   size_t target_block_weight = get_transaction_weight(blk.miner_tx);
