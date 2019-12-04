@@ -91,7 +91,7 @@ namespace tools
 
 el::Level performance_timer_log_level = el::Level::Info;
 
-static __thread std::vector<LoggingPerformanceTimer*> *performance_timers = NULL;
+static thread_local std::vector<LoggingPerformanceTimer*> *performance_timers = NULL;
 
 void set_performance_timer_log_level(el::Level level)
 {
