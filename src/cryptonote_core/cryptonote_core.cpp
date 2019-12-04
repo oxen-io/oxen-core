@@ -575,7 +575,11 @@ namespace cryptonote
     uint64_t blocks_threads = command_line::get_arg(vm, arg_prep_blocks_threads);
     std::string check_updates_string = command_line::get_arg(vm, arg_check_updates);
     size_t max_txpool_weight = command_line::get_arg(vm, arg_max_txpool_weight);
+#if 0
     bool prune_blockchain = command_line::get_arg(vm, arg_prune_blockchain);
+#else
+    bool prune_blockchain = false;
+#endif
     bool keep_alt_blocks = command_line::get_arg(vm, arg_keep_alt_blocks);
 
     if (m_service_node_keys)
