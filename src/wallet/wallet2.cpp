@@ -430,17 +430,16 @@ std::unique_ptr<tools::wallet2> make_basic(const boost::program_options::variabl
   }
 
   boost::optional<bool> trusted_daemon;
+  THROW_WALLET_EXCEPTION_IF(!command_line::is_arg_defaulted(vm, opts.trusted_daemon) && !command_line::is_arg_defaulted(vm, opts.untrusted_daemon),
+    tools::error::wallet_internal_error, tools::wallet2::tr("--trusted-daemon and --untrusted-daemon cannot both be specified"));
   if (!command_line::is_arg_defaulted(vm, opts.trusted_daemon) || !command_line::is_arg_defaulted(vm, opts.untrusted_daemon))
     trusted_daemon = command_line::get_arg(vm, opts.trusted_daemon) && !command_line::get_arg(vm, opts.untrusted_daemon);
-  THROW_WALLET_EXCEPTION_IF(!command_line::is_arg_defaulted(vm, opts.trusted_daemon) && !command_line::is_arg_defaulted(vm, opts.untrusted_daemon),
-    tools::error::wallet_internal_error, tools::wallet2::tr("--trusted-daemon and --untrusted-daemon are both seen, assuming untrusted"));
-
-  // set --trusted-daemon if local and not overridden
-  if (!trusted_daemon)
+  else
   {
+    // set --trusted-daemon if local and not overridden
+    trusted_daemon = false;
     try
     {
-      trusted_daemon = false;
       if (tools::is_local_address(daemon_address))
       {
         MINFO(tools::wallet2::tr("Daemon is local, assuming trusted"));
