@@ -2281,18 +2281,10 @@ namespace service_nodes
   {
     if (!sn_list)
       throw std::logic_error("Cannot deserialize a state_t without a service_node_list");
-    if (state.version == state_serialized::version_t::version_0)
-      block_hash = sn_list->m_blockchain.get_block_id_by_height(height);
-
     for (auto &pubkey_info : state.infos)
     {
       using version_t = service_node_info::version_t;
       auto &info = const_cast<service_node_info &>(*pubkey_info.info);
-      if (info.version < version_t::v1_add_registration_hf_version)
-      {
-        info.version = version_t::v1_add_registration_hf_version;
-        info.registration_hf_version = sn_list->m_blockchain.get_hard_fork_version(pubkey_info.info->registration_height);
-      }
       if (info.version < version_t::v3_quorumnet)
       {
         // Nothing to do here (the missing data only comes in via uptime proof).
@@ -2330,62 +2322,8 @@ namespace service_nodes
       data_for_serialization data_in = {};
       if (::serialization::serialize(ba, data_in) && data_in.states.size())
       {
-        // NOTE: Previously the quorum for the next state is derived from the
-        // state that's been updated from the next block. This is fixed in
-        // version_1.
-
-        // So, copy the quorum from (state.height-1) to (state.height), all
-        // states need to have their (height-1) which means we're missing the
-        // 10k-th interval and need to generate it based on the last state.
-
-        if (data_in.states[0].version == state_serialized::version_t::version_0)
-        {
-          size_t const last_index = data_in.states.size() - 1;
-          if ((data_in.states.back().height % STORE_LONG_TERM_STATE_INTERVAL) != 0)
-          {
-            LOG_PRINT_L0("Last serialised quorum height: " << data_in.states.back().height
-                                                           << " in archive is unexpectedly not a multiple of: "
-                                                           << STORE_LONG_TERM_STATE_INTERVAL << ", regenerating state");
-            return false;
-          }
-
-          for (size_t i = data_in.states.size() - 1; i >= 1; i--)
-          {
-            state_serialized &serialized_entry      = data_in.states[i];
-            state_serialized &prev_serialized_entry = data_in.states[i - 1];
-
-            if ((prev_serialized_entry.height % STORE_LONG_TERM_STATE_INTERVAL) == 0)
-            {
-              // NOTE: drop this entry, we have insufficient data to derive
-              // sadly, do this as a one off and if we ever need this data we
-              // need to do a full rescan.
-              continue;
-            }
-
-            state_t entry{this, std::move(serialized_entry)};
-            entry.height--;
-            entry.quorums = quorum_for_serialization_to_quorum_manager(prev_serialized_entry.quorums);
-
-            if ((serialized_entry.height % STORE_LONG_TERM_STATE_INTERVAL) == 0)
-            {
-              state_t long_term_state                  = entry;
-              cryptonote::block const &block           = db.get_block_from_height(long_term_state.height + 1);
-              std::vector<cryptonote::transaction> txs = db.get_tx_list(block.tx_hashes);
-              long_term_state.update_from_block(db, m_blockchain.nettype(), {} /*state_history*/, {} /*state_archive*/, {} /*alt_states*/, block, txs, nullptr /*my_keys*/);
-
-              entry.service_nodes_infos                = {};
-              entry.key_image_blacklist                = {};
-              entry.only_loaded_quorums                = true;
-              m_state_archive.emplace_hint(m_state_archive.begin(), std::move(long_term_state));
-            }
-            m_state_archive.emplace_hint(m_state_archive.begin(), std::move(entry));
-          }
-        }
-        else
-        {
-          for (state_serialized &entry : data_in.states)
-            m_state_archive.emplace_hint(m_state_archive.end(), this, std::move(entry));
-        }
+        for (state_serialized &entry : data_in.states)
+          m_state_archive.emplace_hint(m_state_archive.end(), this, std::move(entry));
       }
     }
 
@@ -2436,36 +2374,19 @@ namespace service_nodes
         return false;
       }
 
-      if (data_in.states[0].version == state_serialized::version_t::version_0)
+      for (size_t i = 0; i < last_index; i++)
       {
-        for (size_t i = last_index; i >= 1; i--)
+        state_serialized &entry = data_in.states[i];
+        if (entry.block_hash == crypto::null_hash) entry.block_hash = m_blockchain.get_block_id_by_height(entry.height);
+        if (entry.block_hash == crypto::null_hash)
         {
-          state_serialized &serialized_entry      = data_in.states[i];
-          state_serialized &prev_serialized_entry = data_in.states[i - 1];
-          state_t entry{this, std::move(serialized_entry)};
-          entry.quorums = quorum_for_serialization_to_quorum_manager(prev_serialized_entry.quorums);
-          entry.height--;
-          if (i == last_index) m_state = std::move(entry);
-          else                 m_state_archive.emplace_hint(m_state_archive.end(), std::move(entry));
+          LOG_PRINT_L0("Service node list requested blocks missing in blockchain, reinitialising list");
+          return false;
         }
+        m_state_history.emplace_hint(m_state_history.end(), this, std::move(entry));
       }
-      else
-      {
-        size_t const last_index  = data_in.states.size() - 1;
-        for (size_t i = 0; i < last_index; i++)
-        {
-          state_serialized &entry = data_in.states[i];
-          if (entry.block_hash == crypto::null_hash) entry.block_hash = m_blockchain.get_block_id_by_height(entry.height);
-          if (entry.block_hash == crypto::null_hash)
-          {
-            LOG_PRINT_L0("Service node list requested blocks missing in blockchain, reinitialising list");
-            return false;
-          }
-          m_state_history.emplace_hint(m_state_history.end(), this, std::move(entry));
-        }
 
-        m_state = {this, std::move(data_in.states[last_index])};
-      }
+      m_state = {this, std::move(data_in.states[last_index])};
     }
 
     // NOTE: Load uptime proof data
