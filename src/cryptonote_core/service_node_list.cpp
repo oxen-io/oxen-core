@@ -2285,10 +2285,10 @@ namespace service_nodes
     {
       using version_t = service_node_info::version_t;
       auto &info = const_cast<service_node_info &>(*pubkey_info.info);
-      if (info.version < version_t::v3_quorumnet)
+      if (info.version < version_t::v4_noproofs)
       {
-        // Nothing to do here (the missing data only comes in via uptime proof).
-        info.version = version_t::v3_quorumnet;
+        // Nothing to do here (the missing data will be generated in the new proofs db via uptime proofs).
+        info.version = version_t::v4_noproofs;
       }
       // Make sure we handled any future state version upgrades:
       assert(info.version == tools::enum_top<decltype(info.version)>);
