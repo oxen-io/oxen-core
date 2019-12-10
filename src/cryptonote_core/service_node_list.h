@@ -340,8 +340,8 @@ namespace service_nodes
     template <typename Func>
     void access_proof(const crypto::public_key &pubkey, Func f) const {
       std::unique_lock<boost::recursive_mutex> lock;
-      auto it = m_proofs.find(pubkey);
-      if (it != m_proofs.end())
+      auto it = m_transient.proofs.find(pubkey);
+      if (it != m_transient.proofs.end())
         f(it->second);
     }
 
@@ -364,8 +364,8 @@ namespace service_nodes
       for (auto sni_end = m_state.service_nodes_infos.end(); begin != end; ++begin) {
         auto it = m_state.service_nodes_infos.find(*begin);
         if (it != sni_end) {
-          auto pit = m_proofs.find(it->first);
-          f(it->first, *it->second, (pit != m_proofs.end() ? pit->second : empty_proof));
+          auto pit = m_transient.proofs.find(it->first);
+          f(it->first, *it->second, (pit != m_transient.proofs.end() ? pit->second : empty_proof));
         }
       }
     }
@@ -503,15 +503,11 @@ namespace service_nodes
     void reset(bool delete_db_entry = false);
     bool load(uint64_t current_height);
 
-    mutable boost::recursive_mutex m_sn_mutex;
-    cryptonote::Blockchain&        m_blockchain;
-    const service_node_keys       *m_service_node_keys;
-    uint64_t                       m_store_quorum_history;
-
-    /// Maps x25519 pubkeys to registration pubkeys + last block seen value (used for expiry)
-    std::unordered_map<crypto::x25519_public_key, std::pair<crypto::public_key, time_t>> m_x25519_to_pub;
-    time_t m_x25519_map_last_pruned = 0;
-    mutable boost::shared_mutex m_x25519_map_mutex;
+    mutable boost::recursive_mutex  m_sn_mutex;
+    cryptonote::Blockchain&         m_blockchain;
+    const service_node_keys        *m_service_node_keys;
+    uint64_t                        m_store_quorum_history;
+    mutable boost::shared_mutex     m_x25519_map_mutex;
 
     struct quorums_by_height
     {
@@ -521,17 +517,23 @@ namespace service_nodes
       quorum_manager quorums;
     };
 
-    std::deque<quorums_by_height>             m_old_quorum_states; // Store all old quorum history only if run with --store-full-quorum-history
-    state_set                                 m_state_history; // Store state_t's from MIN(2nd oldest checkpoint | height - DEFAULT_SHORT_TERM_STATE_HISTORY) up to the block height
-    state_set                                 m_state_archive; // Store state_t's where ((height < m_state_history.first()) && (height % STORE_LONG_TERM_STATE_INTERVAL))
-    state_t                                   m_state;
-    std::unordered_map<crypto::hash, state_t> m_alt_state;
-    std::unordered_map<crypto::public_key, proof_info> m_proofs;
+    struct
+    {
+      /// Maps x25519 pubkeys to registration pubkeys + last block seen value (used for expiry)
+      std::unordered_map<crypto::x25519_public_key, std::pair<crypto::public_key, time_t>> x25519_to_pub;
+      time_t                                                                               x25519_map_last_pruned = 0;
+      std::deque<quorums_by_height>                                                        old_quorum_states; // Store all old quorum history only if run with --store-full-quorum-history
+      state_set                                                                            state_history; // Store state_t's from MIN(2nd oldest checkpoint | height - DEFAULT_SHORT_TERM_STATE_HISTORY) up to the block height
+      state_set                                                                            state_archive; // Store state_t's where ((height < m_state_history.first()) && (height % STORE_LONG_TERM_STATE_INTERVAL))
+      std::unordered_map<crypto::hash, state_t>                                            alt_state;
+      std::unordered_map<crypto::public_key, proof_info>                                   proofs;
+      bool                                                                                 state_added_to_archive;
+      data_for_serialization                                                               cache_long_term_data;
+      data_for_serialization                                                               cache_short_term_data;
+      std::string                                                                          cache_data_blob;
+    } m_transient = {};
 
-    bool                                   m_state_added_to_archive;
-    data_for_serialization                 m_cache_long_term_data;
-    data_for_serialization                 m_cache_short_term_data;
-    std::string                            m_cache_data_blob;
+    state_t m_state; // NOTE: Not in m_transient due to the non-trivial constructor. We can't blanket initialise using = {}; needs to be reset in ::reset(...) manually
   };
 
   bool     is_registration_tx   (cryptonote::network_type nettype, uint8_t hf_version, const cryptonote::transaction& tx, uint64_t block_timestamp, uint64_t block_height, uint32_t index, crypto::public_key& key, service_node_info& info);
