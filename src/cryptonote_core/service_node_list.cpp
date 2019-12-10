@@ -2456,6 +2456,11 @@ namespace service_nodes
         {
           state_serialized &entry = data_in.states[i];
           if (entry.block_hash == crypto::null_hash) entry.block_hash = m_blockchain.get_block_id_by_height(entry.height);
+          if (entry.block_hash == crypto::null_hash)
+          {
+            LOG_PRINT_L0("Service node list requested blocks missing in blockchain, reinitialising list");
+            return false;
+          }
           m_state_history.emplace_hint(m_state_history.end(), this, std::move(entry));
         }
 
