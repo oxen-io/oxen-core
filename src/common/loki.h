@@ -42,20 +42,27 @@ double      exp2            (double);
 uint64_t    clamp_u64       (uint64_t val, uint64_t min, uint64_t max);
 
 template <typename lambda_t>
-struct defer
+struct deferred
 {
+private:
   lambda_t lambda;
-  defer(lambda_t lambda) : lambda(lambda) {}
-  ~defer() { lambda(); }
+  bool cancelled = false;
+public:
+  deferred(lambda_t lambda) : lambda(lambda) {}
+  void cancel() { cancelled = true; }
+  ~deferred() { if (!cancelled) lambda(); }
 };
+
+template <typename lambda_t>
+#ifdef __GNUG__
+[[gnu::warn_unused_result]]
+#endif
+deferred<lambda_t> defer(lambda_t lambda) { return lambda; }
 
 struct defer_helper
 {
   template <typename lambda_t>
-  defer<lambda_t> operator+(lambda_t lambda)
-  {
-    return defer<lambda_t>(lambda);
-  }
+  deferred<lambda_t> operator+(lambda_t lambda) { return lambda; }
 };
 
 #define LOKI_TOKEN_COMBINE2(x, y) x ## y
