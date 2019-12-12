@@ -429,7 +429,7 @@ std::unique_ptr<tools::wallet2> make_basic(const boost::program_options::variabl
     THROW_WALLET_EXCEPTION_IF(bool(error), tools::error::wallet_internal_error, std::string{"Invalid IP address specified for --"} + opts.proxy.name);
   }
 
-  boost::optional<bool> trusted_daemon;
+  bool trusted_daemon;
   THROW_WALLET_EXCEPTION_IF(!command_line::is_arg_defaulted(vm, opts.trusted_daemon) && !command_line::is_arg_defaulted(vm, opts.untrusted_daemon),
     tools::error::wallet_internal_error, tools::wallet2::tr("--trusted-daemon and --untrusted-daemon cannot both be specified"));
   if (!command_line::is_arg_defaulted(vm, opts.trusted_daemon) || !command_line::is_arg_defaulted(vm, opts.untrusted_daemon))
@@ -450,7 +450,7 @@ std::unique_ptr<tools::wallet2> make_basic(const boost::program_options::variabl
   }
 
   std::unique_ptr<tools::wallet2> wallet(new tools::wallet2(nettype, kdf_rounds, unattended));
-  wallet->init(std::move(daemon_address), std::move(login), std::move(proxy), 0, *trusted_daemon, std::move(ssl_options));
+  wallet->init(std::move(daemon_address), std::move(login), std::move(proxy), 0, trusted_daemon, std::move(ssl_options));
   boost::filesystem::path ringdb_path = command_line::get_arg(vm, opts.shared_ringdb_dir);
   wallet->set_ring_database(ringdb_path.string());
   wallet->get_message_store().set_options(vm);
