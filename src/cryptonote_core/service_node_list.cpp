@@ -2047,7 +2047,6 @@ namespace service_nodes
   {
     std::unique_lock<cryptonote::Blockchain> lock{blockchain};
     auto &db = blockchain.get_db();
-    cryptonote::db_wtxn_guard guard{db};
     db.set_service_node_proof(pubkey, *this);
   }
 

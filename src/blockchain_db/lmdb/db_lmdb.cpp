@@ -6025,15 +6025,16 @@ void BlockchainLMDB::set_service_node_proof(const crypto::public_key &pubkey, co
   LOG_PRINT_L3("BlockchainLMDB::" << __func__);
   check_open();
 
-  mdb_txn_cursors *m_cursors = &m_wcursors;
-  CURSOR(service_node_proofs);
   service_node_proof_serialized data{proof};
 
+  TXN_BLOCK_PREFIX(0);
   MDB_val k{sizeof(pubkey), (void*) &pubkey},
           v{sizeof(data), &data};
-  int result = mdb_cursor_put(m_cursors->service_node_proofs, &k, &v, 0);
+  int result = mdb_put(*txn_ptr, m_service_node_proofs, &k, &v, 0);
   if (result)
     throw0(DB_ERROR(lmdb_error("Failed to add service node latest proof data to db transaction: ", result)));
+
+  TXN_BLOCK_POSTFIX_SUCCESS();
 }
 
 std::unordered_map<crypto::public_key, service_nodes::proof_info> BlockchainLMDB::get_all_service_node_proofs() const
