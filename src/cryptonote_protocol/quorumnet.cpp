@@ -477,10 +477,13 @@ quorum_vote_t deserialize_vote(const bt_value &v) {
 }
 
 void relay_obligation_votes(void *obj, const std::vector<service_nodes::quorum_vote_t> &votes) {
+    assert(obj);
+    if (!obj) return;
     auto &snw = *reinterpret_cast<SNNWrapper *>(obj);
 
     auto my_keys_ptr = snw.core.get_service_node_keys();
     assert(my_keys_ptr);
+    if (!my_keys_ptr) return;
     const auto &my_keys = *my_keys_ptr;
 
     MDEBUG("Starting relay of " << votes.size() << " votes");
@@ -521,6 +524,8 @@ void relay_obligation_votes(void *obj, const std::vector<service_nodes::quorum_v
 
 void handle_obligation_vote(SNNetwork::message &m, void *self) {
     auto &snw = *reinterpret_cast<SNNWrapper *>(self);
+    assert(self);
+    if (!self) return;
 
     MDEBUG("Received a relayed obligation vote from " << as_hex(m.pubkey));
 
@@ -812,6 +817,8 @@ void process_blink_signatures(SNNWrapper &snw, const std::shared_ptr<blink_tx> &
 ///
 void handle_blink(SNNetwork::message &m, void *self) {
     auto &snw = *reinterpret_cast<SNNWrapper *>(self);
+    assert(self);
+    if (!self) return;
 
     // TODO: if someone sends an invalid tx (i.e. one that doesn't get to the distribution stage)
     // then put a timeout on that IP during which new submissions from them are dropped for a short
@@ -824,7 +831,9 @@ void handle_blink(SNNetwork::message &m, void *self) {
 
     MDEBUG("Received a blink tx from " << (m.sn ? "SN " : "non-SN ") << as_hex(m.pubkey));
 
-    assert(snw.core.get_service_node_keys());
+    auto keys = snw.core.get_service_node_keys();
+    assert(keys);
+    if (!keys) return;
 
     if (m.data.size() != 1) {
         MINFO("Rejecting blink message: expected one data entry not " << m.data.size());
@@ -1047,9 +1056,8 @@ void handle_blink(SNNetwork::message &m, void *self) {
     }
 
     auto hash_to_sign = btx.hash(approved);
-    auto &keys = *snw.core.get_service_node_keys();
     crypto::signature sig;
-    generate_signature(hash_to_sign, keys.pub, keys.key, sig);
+    generate_signature(hash_to_sign, keys->pub, keys->key, sig);
 
     // Now that we have the blink tx stored we can add our signature *and* any other pending
     // signatures we are holding onto, then blast the entire thing to our peers.
@@ -1100,6 +1108,8 @@ void copy_signature_values(std::list<pending_signature> &signatures, const bt_va
 /// Signatures will be forwarded if new; known signatures will be ignored.
 void handle_blink_signature(SNNetwork::message &m, void *self) {
     auto &snw = *reinterpret_cast<SNNWrapper *>(self);
+    assert(self);
+    if (!self) return;
 
     MDEBUG("Received a blink tx signature from SN " << as_hex(m.pubkey));
 
@@ -1392,7 +1402,7 @@ void common_blink_response(uint64_t tag, cryptonote::blink_result res, std::stri
 ///
 /// It's possible for some nodes to accept and others to refuse, so we don't actually set the
 /// promise unless we get a nostart response from a majority of the remotes.
-void handle_blink_not_started(SNNetwork::message &m, void *self) {
+void handle_blink_not_started(SNNetwork::message &m, void *) {
     if (m.data.size() != 1) {
         MERROR("Bad blink not started response: expected one data entry not " << m.data.size());
         return;
@@ -1411,7 +1421,7 @@ void handle_blink_not_started(SNNetwork::message &m, void *self) {
 ///
 ///     ! - the tag as included in the submission
 ///
-void handle_blink_failure(SNNetwork::message &m, void *self) {
+void handle_blink_failure(SNNetwork::message &m, void *) {
     if (m.data.size() != 1) {
         MERROR("Blink failure message not understood: expected one data entry not " << m.data.size());
         return;
@@ -1435,7 +1445,7 @@ void handle_blink_failure(SNNetwork::message &m, void *self) {
 ///
 ///     ! - the tag as included in the submission
 ///
-void handle_blink_success(SNNetwork::message &m, void *self) {
+void handle_blink_success(SNNetwork::message &m, void *) {
     if (m.data.size() != 1) {
         MERROR("Blink success message not understood: expected one data entry not " << m.data.size());
         return;
