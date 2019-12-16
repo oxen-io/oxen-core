@@ -78,6 +78,11 @@ namespace service_nodes
   enum struct quorum_group : uint8_t { invalid, validator, worker, _count };
   struct quorum_vote_t
   {
+    // Note: This type has various padding and alignment and was mistakingly serialized as a blob
+    // (padding and all, and not portable).  To remain compatible, we have to reproduce the blob
+    // data byte-for-byte as expected in the loki 5.x struct memory layout on AMD64, via the
+    // vote_to_blob functions below.
+
     uint8_t           version = 0;
     quorum_type       type;
     uint64_t          block_height;
@@ -91,12 +96,33 @@ namespace service_nodes
       checkpoint_vote   checkpoint;
     };
 
+    BEGIN_KV_SERIALIZE_MAP()
+      KV_SERIALIZE(version)
+      KV_SERIALIZE_ENUM(type)
+      KV_SERIALIZE(block_height)
+      KV_SERIALIZE_ENUM(group)
+      KV_SERIALIZE(index_in_group)
+      KV_SERIALIZE_VAL_POD_AS_BLOB(signature)
+      if (this_ref.type == quorum_type::checkpointing)
+      {
+        KV_SERIALIZE_VAL_POD_AS_BLOB_N(checkpoint.block_hash, "checkpoint")
+      }
+      else
+      {
+        KV_SERIALIZE(state_change.worker_index)
+        KV_SERIALIZE_ENUM(state_change.state)
+      }
+    END_KV_SERIALIZE_MAP()
+
    // TODO(loki): idk exactly if I want to implement this, but need for core tests to compile. Not sure I care about serializing for core tests at all.
    private:
     friend class boost::serialization::access;
     template <class Archive>
     void serialize(Archive &ar, const unsigned int /*version*/) { }
   };
+
+  void vote_to_blob(const quorum_vote_t& vote, unsigned char blob[]);
+  void blob_to_vote(const unsigned char blob[], quorum_vote_t& vote);
 
   struct voter_to_signature
   {

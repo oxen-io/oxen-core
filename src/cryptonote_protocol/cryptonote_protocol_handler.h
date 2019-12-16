@@ -80,6 +80,7 @@ namespace cryptonote
       HANDLE_NOTIFY_T2(NOTIFY_REQUEST_FLUFFY_MISSING_TX, &cryptonote_protocol_handler::handle_request_fluffy_missing_tx)
       HANDLE_NOTIFY_T2(NOTIFY_UPTIME_PROOF, &cryptonote_protocol_handler::handle_uptime_proof)
       HANDLE_NOTIFY_T2(NOTIFY_NEW_SERVICE_NODE_VOTE, &cryptonote_protocol_handler::handle_notify_new_service_node_vote)
+      HANDLE_NOTIFY_T2(NOTIFY_NEW_SERVICE_NODE_VOTE_OLD, &cryptonote_protocol_handler::handle_notify_new_service_node_vote_old)
       HANDLE_NOTIFY_T2(NOTIFY_REQUEST_BLOCK_BLINKS, &cryptonote_protocol_handler::handle_request_block_blinks)
       HANDLE_NOTIFY_T2(NOTIFY_RESPONSE_BLOCK_BLINKS, &cryptonote_protocol_handler::handle_response_block_blinks)
     END_INVOKE_MAP2()
@@ -118,6 +119,7 @@ namespace cryptonote
     int handle_request_fluffy_missing_tx(int command, NOTIFY_REQUEST_FLUFFY_MISSING_TX::request& arg, cryptonote_connection_context& context);
     int handle_uptime_proof(int command, NOTIFY_UPTIME_PROOF::request& arg, cryptonote_connection_context& context);
     int handle_notify_new_service_node_vote(int command, NOTIFY_NEW_SERVICE_NODE_VOTE::request& arg, cryptonote_connection_context& context);
+    int handle_notify_new_service_node_vote_old(int command, NOTIFY_NEW_SERVICE_NODE_VOTE_OLD::request& arg, cryptonote_connection_context& context);
     int handle_request_block_blinks(int command, NOTIFY_REQUEST_BLOCK_BLINKS::request& arg, cryptonote_connection_context& context);
     int handle_response_block_blinks(int command, NOTIFY_RESPONSE_BLOCK_BLINKS::request& arg, cryptonote_connection_context& context);
 
@@ -152,6 +154,7 @@ namespace cryptonote
     virtual bool relay_transactions(NOTIFY_NEW_TRANSACTIONS::request& arg, cryptonote_connection_context& exclude_context);
     virtual bool relay_uptime_proof(NOTIFY_UPTIME_PROOF::request& arg, cryptonote_connection_context& exclude_context);
     virtual bool relay_service_node_votes(NOTIFY_NEW_SERVICE_NODE_VOTE::request& arg, cryptonote_connection_context& exclude_context);
+    virtual bool relay_service_node_votes(NOTIFY_NEW_SERVICE_NODE_VOTE_OLD::request& arg, cryptonote_connection_context& exclude_context);
     //----------------------------------------------------------------------------------
     //bool get_payload_sync_data(HANDSHAKE_DATA::request& hshd, cryptonote_connection_context& context);
     bool should_drop_connection(cryptonote_connection_context& context, uint32_t next_stripe);

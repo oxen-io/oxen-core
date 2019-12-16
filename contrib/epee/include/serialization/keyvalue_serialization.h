@@ -119,6 +119,14 @@ do { \
 #define KV_SERIALIZE_OPT(variable,default_value)          KV_SERIALIZE_OPT_N(variable, #variable, default_value)
 /// same as KV_SERIALIZE_OPT, but will set `explicitly_set` to true if non-default value found
 #define KV_SERIALIZE_OPT2(variable,default_value)          KV_SERIALIZE_OPT_N2(variable, #variable, default_value)
+#define KV_SERIALIZE_ENUM(enum_) do { \
+  using enum_t = std::remove_const_t<decltype(this_ref.enum_)>; \
+  using int_t = std::underlying_type_t<enum_t>; \
+  int_t int_value = is_store ? static_cast<int_t>(this_ref.enum_) : 0; \
+  epee::serialization::selector<is_store>::serialize(int_value, stg, hparent_section, #enum_); \
+  if (!is_store) \
+    const_cast<enum_t&>(this_ref.enum_) = static_cast<enum_t>(int_value); \
+} while(0);
 
 }
 

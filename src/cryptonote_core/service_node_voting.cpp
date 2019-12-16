@@ -623,5 +623,61 @@ namespace service_nodes
 
     return false;
   }
+
+  void vote_to_blob(const quorum_vote_t& vote, unsigned char blob[])
+  {
+    blob[0] = vote.version;
+    blob[1] = static_cast<uint8_t>(vote.type);
+    for (size_t i = 2; i < 8; i++)
+      blob[i] = 0; // padding
+    {
+      uint64_t height = boost::endian::native_to_little(vote.block_height);
+      std::memcpy(&blob[8], &height, 8);
+    }
+    blob[16] = static_cast<uint8_t>(vote.group);
+    blob[17] = 0; // padding
+    {
+      uint16_t iig = boost::endian::native_to_little(vote.index_in_group);
+      std::memcpy(&blob[18], &iig, 2);
+    }
+    std::memcpy(&blob[20], &vote.signature, 64);
+    for (size_t i = 84; i < 88; i++)
+      blob[i] = 0; // padding
+    if (vote.type == quorum_type::checkpointing)
+    {
+      std::memcpy(&blob[84], &vote.checkpoint, 32);
+      for (size_t i = 116; i < 120; i++)
+        blob[i] = 0; // padding
+    }
+    else
+    {
+      uint16_t wi = boost::endian::native_to_little(vote.state_change.worker_index);
+      uint16_t st = boost::endian::native_to_little(static_cast<uint16_t>(vote.state_change.state));
+      std::memcpy(&blob[84], &wi, 2);
+      std::memcpy(&blob[86], &st, 2);
+      for (size_t i = 88; i < 120; i++)
+        blob[i] = 0;
+    }
+  }
+
+  void blob_to_vote(const unsigned char blob[], quorum_vote_t& vote)
+  {
+    vote.version = blob[0];
+    vote.type = static_cast<quorum_type>(blob[1]);
+    std::memcpy(&vote.block_height, &blob[8], 8); boost::endian::little_to_native_inplace(vote.block_height);
+    vote.group = static_cast<quorum_group>(blob[16]);
+    std::memcpy(&vote.index_in_group, &blob[18], 2); boost::endian::little_to_native_inplace(vote.index_in_group);
+    std::memcpy(&vote.signature, &blob[20], 64);
+    if (vote.type == quorum_type::checkpointing)
+    {
+      std::memcpy(&vote.checkpoint, &blob[84], 32);
+    }
+    else
+    {
+      std::memcpy(&vote.state_change.worker_index, &blob[84], 2); boost::endian::little_to_native_inplace(vote.state_change.worker_index);
+      uint16_t st;
+      std::memcpy(&st, &blob[86], 2); vote.state_change.state = static_cast<new_state>(boost::endian::little_to_native(st));
+    }
+  }
 }; // namespace service_nodes
 
