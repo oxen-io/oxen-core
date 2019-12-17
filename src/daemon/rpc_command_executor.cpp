@@ -2544,9 +2544,12 @@ static void append_printable_service_node_list_entry(cryptonote::network_type ne
     stream << ")\n";
 
     stream << indent2 <<  "Checkpoint Participation [Height: Voted]: ";
+    // Checkpoints heights are a rotating queue, so find the smallest one and print starting from there
+    auto it = std::min_element(entry.votes.begin(), entry.votes.end(), [](const auto &a, const auto &b) { return a.height < b.height; });
+    size_t offset = std::distance(entry.votes.begin(), it);
     for (size_t i = 0; i < entry.votes.size(); i++)
     {
-      service_nodes::checkpoint_vote_record const &record = entry.votes[i];
+      service_nodes::checkpoint_vote_record const &record = entry.votes[(offset + i) % entry.votes.size()];
       if (record.height == service_nodes::INVALID_HEIGHT)
       {
         stream << "[N/A: N/A]";
