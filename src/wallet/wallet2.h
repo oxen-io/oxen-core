@@ -314,7 +314,6 @@ private:
   public:
     static constexpr uint32_t BLINK_PRIORITY = 0x626c6e6b; // "blnk"
     static constexpr const std::chrono::seconds rpc_timeout = std::chrono::minutes(3) + std::chrono::seconds(30);
-    static constexpr const auto rpc_long_poll_timeout       = std::chrono::seconds(15);
 
     enum RefreshType {
       RefreshFull,

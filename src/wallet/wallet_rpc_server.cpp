@@ -53,6 +53,7 @@ using namespace epee;
 #include "mnemonics/electrum-words.h"
 #include "rpc/rpc_args.h"
 #include "rpc/core_rpc_server_commands_defs.h"
+#include "rpc/core_rpc_server.h"
 #include "daemonizer/daemonizer.h"
 
 #undef LOKI_DEFAULT_LOG_CATEGORY
@@ -144,7 +145,7 @@ namespace tools
           // NOTE: Don't care about error, non fatal.
         }
         return true;
-    }, tools::wallet2::rpc_long_poll_timeout.count());
+    }, cryptonote::rpc_long_poll_timeout.count());
 
     //DO NOT START THIS SERVER IN MORE THEN 1 THREADS WITHOUT REFACTORING
     return epee::http_server_impl_base<wallet_rpc_server, connection_context>::run(1, true);

@@ -58,7 +58,6 @@ using namespace epee;
 #include "core_rpc_server_error_codes.h"
 #include "p2p/net_node.h"
 #include "version.h"
-#include "wallet/wallet2.h"
 
 #undef LOKI_DEFAULT_LOG_CATEGORY
 #define LOKI_DEFAULT_LOG_CATEGORY "daemon.rpc"
@@ -1151,7 +1150,7 @@ namespace cryptonote
         }
 
         m_long_poll_active_connections++;
-        bool condition_activated = m_core.m_long_poll_wake_up_clients.wait_for(lock, tools::wallet2::rpc_long_poll_timeout, [this, tx_count_before]() {
+        bool condition_activated = m_core.m_long_poll_wake_up_clients.wait_for(lock, rpc_long_poll_timeout, [this, tx_count_before]() {
               size_t tx_count_after = m_core.get_pool().get_transactions_count();
               return tx_count_before != tx_count_after;
             });
