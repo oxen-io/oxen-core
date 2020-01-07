@@ -48,6 +48,7 @@
 #include <ctime>
 #include <string>
 #include <numeric>
+#include <stack>
 
 #undef LOKI_DEFAULT_LOG_CATEGORY
 #define LOKI_DEFAULT_LOG_CATEGORY "daemon"
