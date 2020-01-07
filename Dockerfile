@@ -76,7 +76,7 @@ RUN set -ex \
     && cd libsodium \
     && test `git rev-parse HEAD` = ${SODIUM_HASH} || exit 1 \
     && ./autogen.sh \
-    && ./configure \
+    && ./configure --enable-static --disable-shared \
     && make \
     && make check \
     && make install
