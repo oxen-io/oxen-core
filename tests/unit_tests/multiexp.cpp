@@ -32,10 +32,19 @@
 #include "ringct/rctOps.h"
 #include "ringct/multiexp.h"
 
-static const rct::key TESTSCALAR = rct::skGen();
 static const rct::key TESTPOW2SCALAR = {{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}};
 static const rct::key TESTSMALLSCALAR = {{5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}};
-static const rct::key TESTPOINT = rct::scalarmultBase(rct::skGen());
+struct lazy_init
+{
+   rct::key TESTSCALAR = rct::skGen();
+   rct::key TESTPOINT = rct::scalarmultBase(rct::skGen());
+};
+
+static lazy_init &get_context()
+{
+  static lazy_init result;
+  return result;
+}
 
 static rct::key basic(const std::vector<rct::MultiexpData> &data)
 {
@@ -86,48 +95,48 @@ TEST(multiexp, pippenger_empty)
 TEST(multiexp, bos_coster_zero_and_non_zero)
 {
   std::vector<rct::MultiexpData> data;
-  data.push_back({rct::zero(), get_p3(TESTPOINT)});
-  data.push_back({TESTSCALAR, get_p3(TESTPOINT)});
+  data.push_back({rct::zero(), get_p3(get_context().TESTPOINT)});
+  data.push_back({get_context().TESTSCALAR, get_p3(get_context().TESTPOINT)});
   ASSERT_TRUE(basic(data) == bos_coster_heap_conv_robust(data));
 }
 
 TEST(multiexp, straus_zero_and_non_zero)
 {
   std::vector<rct::MultiexpData> data;
-  data.push_back({rct::zero(), get_p3(TESTPOINT)});
-  data.push_back({TESTSCALAR, get_p3(TESTPOINT)});
+  data.push_back({rct::zero(), get_p3(get_context().TESTPOINT)});
+  data.push_back({get_context().TESTSCALAR, get_p3(get_context().TESTPOINT)});
   ASSERT_TRUE(basic(data) == straus(data));
 }
 
 TEST(multiexp, pippenger_zero_and_non_zero)
 {
   std::vector<rct::MultiexpData> data;
-  data.push_back({rct::zero(), get_p3(TESTPOINT)});
-  data.push_back({TESTSCALAR, get_p3(TESTPOINT)});
+  data.push_back({rct::zero(), get_p3(get_context().TESTPOINT)});
+  data.push_back({get_context().TESTSCALAR, get_p3(get_context().TESTPOINT)});
   ASSERT_TRUE(basic(data) == pippenger(data));
 }
 
 TEST(multiexp, bos_coster_pow2_scalar)
 {
   std::vector<rct::MultiexpData> data;
-  data.push_back({TESTPOW2SCALAR, get_p3(TESTPOINT)});
-  data.push_back({TESTSMALLSCALAR, get_p3(TESTPOINT)});
+  data.push_back({TESTPOW2SCALAR, get_p3(get_context().TESTPOINT)});
+  data.push_back({TESTSMALLSCALAR, get_p3(get_context().TESTPOINT)});
   ASSERT_TRUE(basic(data) == bos_coster_heap_conv_robust(data));
 }
 
 TEST(multiexp, straus_pow2_scalar)
 {
   std::vector<rct::MultiexpData> data;
-  data.push_back({TESTPOW2SCALAR, get_p3(TESTPOINT)});
-  data.push_back({TESTSMALLSCALAR, get_p3(TESTPOINT)});
+  data.push_back({TESTPOW2SCALAR, get_p3(get_context().TESTPOINT)});
+  data.push_back({TESTSMALLSCALAR, get_p3(get_context().TESTPOINT)});
   ASSERT_TRUE(basic(data) == straus(data));
 }
 
 TEST(multiexp, pippenger_pow2_scalar)
 {
   std::vector<rct::MultiexpData> data;
-  data.push_back({TESTPOW2SCALAR, get_p3(TESTPOINT)});
-  data.push_back({TESTSMALLSCALAR, get_p3(TESTPOINT)});
+  data.push_back({TESTPOW2SCALAR, get_p3(get_context().TESTPOINT)});
+  data.push_back({TESTSMALLSCALAR, get_p3(get_context().TESTPOINT)});
   ASSERT_TRUE(basic(data) == pippenger(data));
 }
 
@@ -135,7 +144,7 @@ TEST(multiexp, bos_coster_only_zeroes)
 {
   std::vector<rct::MultiexpData> data;
   for (int n = 0; n < 16; ++n)
-    data.push_back({rct::zero(), get_p3(TESTPOINT)});
+    data.push_back({rct::zero(), get_p3(get_context().TESTPOINT)});
   ASSERT_TRUE(basic(data) == bos_coster_heap_conv_robust(data));
 }
 
@@ -143,7 +152,7 @@ TEST(multiexp, straus_only_zeroes)
 {
   std::vector<rct::MultiexpData> data;
   for (int n = 0; n < 16; ++n)
-    data.push_back({rct::zero(), get_p3(TESTPOINT)});
+    data.push_back({rct::zero(), get_p3(get_context().TESTPOINT)});
   ASSERT_TRUE(basic(data) == straus(data));
 }
 
@@ -151,7 +160,7 @@ TEST(multiexp, pippenger_only_zeroes)
 {
   std::vector<rct::MultiexpData> data;
   for (int n = 0; n < 16; ++n)
-    data.push_back({rct::zero(), get_p3(TESTPOINT)});
+    data.push_back({rct::zero(), get_p3(get_context().TESTPOINT)});
   ASSERT_TRUE(basic(data) == pippenger(data));
 }
 
@@ -159,7 +168,7 @@ TEST(multiexp, bos_coster_only_identities)
 {
   std::vector<rct::MultiexpData> data;
   for (int n = 0; n < 16; ++n)
-    data.push_back({TESTSCALAR, get_p3(rct::identity())});
+    data.push_back({get_context().TESTSCALAR, get_p3(rct::identity())});
   ASSERT_TRUE(basic(data) == bos_coster_heap_conv_robust(data));
 }
 
@@ -167,7 +176,7 @@ TEST(multiexp, straus_only_identities)
 {
   std::vector<rct::MultiexpData> data;
   for (int n = 0; n < 16; ++n)
-    data.push_back({TESTSCALAR, get_p3(rct::identity())});
+    data.push_back({get_context().TESTSCALAR, get_p3(rct::identity())});
   ASSERT_TRUE(basic(data) == straus(data));
 }
 
@@ -175,7 +184,7 @@ TEST(multiexp, pippenger_only_identities)
 {
   std::vector<rct::MultiexpData> data;
   for (int n = 0; n < 16; ++n)
-    data.push_back({TESTSCALAR, get_p3(rct::identity())});
+    data.push_back({get_context().TESTSCALAR, get_p3(rct::identity())});
   ASSERT_TRUE(basic(data) == pippenger(data));
 }
 

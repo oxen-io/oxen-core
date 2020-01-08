@@ -64,12 +64,20 @@ static std::pair<uint64_t, uint64_t> generate_output()
   return std::make_pair(rand(), rand());
 }
 
+struct lazy_init
+{
+  crypto::chacha_key KEY_1 = generate_chacha_key();
+  crypto::chacha_key KEY_2 = generate_chacha_key();
+  crypto::key_image KEY_IMAGE_1 = generate_key_image();
+  std::pair<uint64_t, uint64_t> OUTPUT_1 = generate_output();
+  std::pair<uint64_t, uint64_t> OUTPUT_2 = generate_output();
+};
 
-static const crypto::chacha_key KEY_1 = generate_chacha_key();
-static const crypto::chacha_key KEY_2 = generate_chacha_key();
-static const crypto::key_image KEY_IMAGE_1 = generate_key_image();
-static const std::pair<uint64_t, uint64_t> OUTPUT_1 = generate_output();
-static const std::pair<uint64_t, uint64_t> OUTPUT_2 = generate_output();
+static lazy_init &get_context()
+{
+  static lazy_init result;
+  return result;
+}
 
 class RingDB: public tools::ringdb
 {
@@ -101,7 +109,7 @@ TEST(ringdb, not_found)
 {
   RingDB ringdb;
   std::vector<uint64_t> outs;
-  ASSERT_FALSE(ringdb.get_ring(KEY_1, KEY_IMAGE_1, outs));
+  ASSERT_FALSE(ringdb.get_ring(get_context().KEY_1, get_context().KEY_IMAGE_1, outs));
 }
 
 TEST(ringdb, found)
@@ -109,8 +117,8 @@ TEST(ringdb, found)
   RingDB ringdb;
   std::vector<uint64_t> outs, outs2;
   outs.push_back(43); outs.push_back(7320); outs.push_back(8429);
-  ASSERT_TRUE(ringdb.set_ring(KEY_1, KEY_IMAGE_1, outs, false));
-  ASSERT_TRUE(ringdb.get_ring(KEY_1, KEY_IMAGE_1, outs2));
+  ASSERT_TRUE(ringdb.set_ring(get_context().KEY_1, get_context().KEY_IMAGE_1, outs, false));
+  ASSERT_TRUE(ringdb.get_ring(get_context().KEY_1, get_context().KEY_IMAGE_1, outs2));
   ASSERT_EQ(outs, outs2);
 }
 
@@ -119,8 +127,8 @@ TEST(ringdb, convert)
   RingDB ringdb;
   std::vector<uint64_t> outs, outs2;
   outs.push_back(43); outs.push_back(7320); outs.push_back(8429);
-  ASSERT_TRUE(ringdb.set_ring(KEY_1, KEY_IMAGE_1, outs, true));
-  ASSERT_TRUE(ringdb.get_ring(KEY_1, KEY_IMAGE_1, outs2));
+  ASSERT_TRUE(ringdb.set_ring(get_context().KEY_1, get_context().KEY_IMAGE_1, outs, true));
+  ASSERT_TRUE(ringdb.get_ring(get_context().KEY_1, get_context().KEY_IMAGE_1, outs2));
   ASSERT_EQ(outs2.size(), 3);
   ASSERT_EQ(outs2[0], 43);
   ASSERT_EQ(outs2[1], 43+7320);
@@ -132,22 +140,22 @@ TEST(ringdb, different_genesis)
   RingDB ringdb;
   std::vector<uint64_t> outs, outs2;
   outs.push_back(43); outs.push_back(7320); outs.push_back(8429);
-  ASSERT_TRUE(ringdb.set_ring(KEY_1, KEY_IMAGE_1, outs, false));
-  ASSERT_FALSE(ringdb.get_ring(KEY_2, KEY_IMAGE_1, outs2));
+  ASSERT_TRUE(ringdb.set_ring(get_context().KEY_1, get_context().KEY_IMAGE_1, outs, false));
+  ASSERT_FALSE(ringdb.get_ring(get_context().KEY_2, get_context().KEY_IMAGE_1, outs2));
 }
 
 TEST(spent_outputs, not_found)
 {
   RingDB ringdb;
-  ASSERT_TRUE(ringdb.blackball(OUTPUT_1));
-  ASSERT_FALSE(ringdb.blackballed(OUTPUT_2));
+  ASSERT_TRUE(ringdb.blackball(get_context().OUTPUT_1));
+  ASSERT_FALSE(ringdb.blackballed(get_context().OUTPUT_2));
 }
 
 TEST(spent_outputs, found)
 {
   RingDB ringdb;
-  ASSERT_TRUE(ringdb.blackball(OUTPUT_1));
-  ASSERT_TRUE(ringdb.blackballed(OUTPUT_1));
+  ASSERT_TRUE(ringdb.blackball(get_context().OUTPUT_1));
+  ASSERT_TRUE(ringdb.blackballed(get_context().OUTPUT_1));
 }
 
 TEST(spent_outputs, vector)
@@ -177,16 +185,16 @@ TEST(spent_outputs, vector)
 TEST(spent_outputs, mark_as_unspent)
 {
   RingDB ringdb;
-  ASSERT_TRUE(ringdb.blackball(OUTPUT_1));
-  ASSERT_TRUE(ringdb.unblackball(OUTPUT_1));
-  ASSERT_FALSE(ringdb.blackballed(OUTPUT_1));
+  ASSERT_TRUE(ringdb.blackball(get_context().OUTPUT_1));
+  ASSERT_TRUE(ringdb.unblackball(get_context().OUTPUT_1));
+  ASSERT_FALSE(ringdb.blackballed(get_context().OUTPUT_1));
 }
 
 TEST(spent_outputs, clear)
 {
   RingDB ringdb;
-  ASSERT_TRUE(ringdb.blackball(OUTPUT_1));
+  ASSERT_TRUE(ringdb.blackball(get_context().OUTPUT_1));
   ASSERT_TRUE(ringdb.clear_blackballs());
-  ASSERT_FALSE(ringdb.blackballed(OUTPUT_1));
+  ASSERT_FALSE(ringdb.blackballed(get_context().OUTPUT_1));
 }
 
