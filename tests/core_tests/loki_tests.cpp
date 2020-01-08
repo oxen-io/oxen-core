@@ -1015,7 +1015,7 @@ bool loki_name_system_expiration::generate(std::vector<test_event_entry> &events
     for (; tries < MAX_TRIES; tries++)
     {
       gen.add_blocks_until_next_checkpointable_height();
-      std::shared_ptr<const service_nodes::testing_quorum> quorum = gen.get_testing_quorum(service_nodes::quorum_type::checkpointing, gen.height());
+      std::shared_ptr<const service_nodes::quorum> quorum = gen.get_quorum(service_nodes::quorum_type::checkpointing, gen.height());
       if (quorum && quorum->validators.size()) break;
     }
     assert(tries != MAX_TRIES);
@@ -1436,7 +1436,7 @@ bool loki_name_system_name_renewal::generate(std::vector<test_event_entry> &even
     for (; tries < MAX_TRIES; tries++)
     {
       gen.add_blocks_until_next_checkpointable_height();
-      std::shared_ptr<const service_nodes::testing_quorum> quorum = gen.get_testing_quorum(service_nodes::quorum_type::checkpointing, gen.height());
+      std::shared_ptr<const service_nodes::quorum> quorum = gen.get_quorum(service_nodes::quorum_type::checkpointing, gen.height());
       if (quorum && quorum->validators.size()) break;
     }
     assert(tries != MAX_TRIES);
