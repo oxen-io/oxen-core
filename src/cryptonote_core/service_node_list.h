@@ -506,7 +506,7 @@ namespace service_nodes
     mutable boost::recursive_mutex  m_sn_mutex;
     cryptonote::Blockchain&         m_blockchain;
     const service_node_keys        *m_service_node_keys;
-    uint64_t                        m_store_quorum_history;
+    uint64_t                        m_store_quorum_history = 0;
     mutable boost::shared_mutex     m_x25519_map_mutex;
 
     /// Maps x25519 pubkeys to registration pubkeys + last block seen value (used for expiry)
