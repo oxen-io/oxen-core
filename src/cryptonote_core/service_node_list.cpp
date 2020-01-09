@@ -584,7 +584,7 @@ namespace service_nodes
 
         if (sn_list && !sn_list->m_rescanning)
         {
-          auto &proof = sn_list->m_transient.proofs[key];
+          auto &proof = sn_list->proofs[key];
           proof.timestamp = proof.effective_timestamp = 0;
           proof.store(key, sn_list->m_blockchain);
         }
@@ -621,7 +621,7 @@ namespace service_nodes
         // next actual proof from being sent/relayed.
         if (sn_list)
         {
-          auto &proof = sn_list->m_transient.proofs[key];
+          auto &proof = sn_list->proofs[key];
           proof.effective_timestamp = block.timestamp;
           proof.votes.fill({});
         }
@@ -1010,7 +1010,7 @@ namespace service_nodes
       // re-registration: we want to wipe out any data from the previous registration.
       if (sn_list && !sn_list->m_rescanning)
       {
-        auto &proof = sn_list->m_transient.proofs[key];
+        auto &proof = sn_list->proofs[key];
         proof = {};
         proof.store(key, sn_list->m_blockchain);
       }
@@ -2140,7 +2140,7 @@ namespace service_nodes
     if (it == m_state.service_nodes_infos.end())
       REJECT_PROOF("no such service node is currently registered");
 
-    auto &iproof = m_transient.proofs[proof.pubkey];
+    auto &iproof = proofs[proof.pubkey];
 
     if (iproof.timestamp >= now - (UPTIME_PROOF_FREQUENCY_IN_SECONDS / 2))
       REJECT_PROOF("already received one uptime proof for this node recently");
@@ -2160,19 +2160,19 @@ namespace service_nodes
     if (iproof.update(now, proof.public_ip, proof.storage_port, proof.qnet_port, proof.snode_version, proof.pubkey_ed25519, derived_x25519_pubkey))
       iproof.store(proof.pubkey, m_blockchain);
 
-    if ((uint64_t) m_transient.x25519_map_last_pruned + X25519_MAP_PRUNING_INTERVAL <= now)
+    if ((uint64_t) x25519_map_last_pruned + X25519_MAP_PRUNING_INTERVAL <= now)
     {
       time_t cutoff = now - X25519_MAP_PRUNING_LAG;
-      erase_if(m_transient.x25519_to_pub, [&cutoff](const decltype(m_transient.x25519_to_pub)::value_type &x) { return x.second.second < cutoff; });
-      m_transient.x25519_map_last_pruned = now;
+      erase_if(x25519_to_pub, [&cutoff](const decltype(x25519_to_pub)::value_type &x) { return x.second.second < cutoff; });
+      x25519_map_last_pruned = now;
     }
 
     if (old_x25519 != derived_x25519_pubkey)
     {
       if (old_x25519)
-        m_transient.x25519_to_pub.erase(old_x25519);
+        x25519_to_pub.erase(old_x25519);
       if (derived_x25519_pubkey)
-        m_transient.x25519_to_pub[derived_x25519_pubkey] = {proof.pubkey, now};
+        x25519_to_pub[derived_x25519_pubkey] = {proof.pubkey, now};
     }
 
     return true;
@@ -2185,7 +2185,7 @@ namespace service_nodes
     uint64_t now = std::time(nullptr);
     auto& db = m_blockchain.get_db();
     cryptonote::db_wtxn_guard guard{db};
-    for (auto it = m_transient.proofs.begin(); it != m_transient.proofs.end(); )
+    for (auto it = proofs.begin(); it != proofs.end(); )
     {
       auto& pubkey = it->first;
       auto& proof = it->second;
@@ -2195,7 +2195,7 @@ namespace service_nodes
       if (!m_state.service_nodes_infos.count(pubkey) && proof.timestamp + 6*60*60 < now)
       {
         db.remove_service_node_proof(pubkey);
-        it = m_transient.proofs.erase(it);
+        it = proofs.erase(it);
       }
       else
         ++it;
@@ -2204,8 +2204,8 @@ namespace service_nodes
 
   crypto::public_key service_node_list::get_pubkey_from_x25519(const crypto::x25519_public_key &x25519) const {
     auto lock = tools::shared_lock(m_x25519_map_mutex);
-    auto it = m_transient.x25519_to_pub.find(x25519);
-    if (it != m_transient.x25519_to_pub.end())
+    auto it = x25519_to_pub.find(x25519);
+    if (it != x25519_to_pub.end())
       return it->second.first;
     return crypto::null_pkey;
   }
@@ -2216,11 +2216,11 @@ namespace service_nodes
     auto now = std::time(nullptr);
     for (const auto &pk_info : m_state.service_nodes_infos)
     {
-      auto it = m_transient.proofs.find(pk_info.first);
-      if (it == m_transient.proofs.end())
+      auto it = proofs.find(pk_info.first);
+      if (it == proofs.end())
        continue;
       if (const auto &x2_pk = it->second.pubkey_x25519)
-        m_transient.x25519_to_pub.emplace(x2_pk, std::make_pair(pk_info.first, now));
+        x25519_to_pub.emplace(x2_pk, std::make_pair(pk_info.first, now));
     }
   }
 
@@ -2230,7 +2230,7 @@ namespace service_nodes
     if (!m_state.service_nodes_infos.count(pubkey))
       return;
 
-    auto &info = m_transient.proofs[pubkey];
+    auto &info = proofs[pubkey];
     info.votes[info.vote_index].height = height;
     info.votes[info.vote_index].voted  = voted;
     info.vote_index                    = (info.vote_index + 1) % info.votes.size();
@@ -2245,7 +2245,7 @@ namespace service_nodes
       return false;
     }
 
-    proof_info &info = m_transient.proofs[pubkey];
+    proof_info &info = proofs[pubkey];
     if (info.storage_server_reachable != value)
     {
       info.storage_server_reachable = value;
@@ -2460,13 +2460,13 @@ namespace service_nodes
     }
 
     // NOTE: Load uptime proof data
-    m_transient.proofs = db.get_all_service_node_proofs();
+    proofs = db.get_all_service_node_proofs();
     if (m_service_node_keys)
     {
       // Reset our own proof timestamp to zero so that we aggressively try to resend proofs on
       // startup (in case we are restarting because the last proof that we think went out didn't
       // actually make it to the network).
-      auto &mine = m_transient.proofs[m_service_node_keys->pub];
+      auto &mine = proofs[m_service_node_keys->pub];
       mine.timestamp = mine.effective_timestamp = 0;
     }
 
