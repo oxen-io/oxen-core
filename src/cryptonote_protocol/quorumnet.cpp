@@ -593,6 +593,8 @@ quorum_array get_blink_quorums(uint64_t blink_height, const service_node_list &s
         if (!height)
             throw std::runtime_error("too early in blockchain to create a quorum");
         result[qi] = snl.get_quorum(quorum_type::blink, height);
+        if (!result[qi])
+            throw std::runtime_error("failed to obtain a blink quorum");
         auto &v = result[qi]->validators;
         if (v.size() < BLINK_MIN_VOTES || v.size() > BLINK_SUBQUORUM_SIZE)
             throw std::runtime_error("not enough blink nodes to form a quorum");
