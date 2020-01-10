@@ -62,6 +62,7 @@ enum struct lmdb_version
     v4 = 4,
     v5,     // alt_block_data_1_t => alt_block_data_t: Alt block data has boolean for if the block was checkpointed
     v6,     // remigrate voter_to_signature struct due to alignment change
+    v7,     // rebuild the checkpoint table because v6 update in-place made MDB_LAST not give us the newest checkpoint
     _count
 };
 
@@ -4755,13 +4756,14 @@ void BlockchainLMDB::fixup(fixup_context const context)
 
 #define LOGIF(y)    if (ELPP->vRegistry()->allowed(y, "global"))
 
-static int write_db_version(MDB_env *env, MDB_dbi &dest, mdb_txn_safe &txn, uint32_t version)
+static int write_db_version(MDB_env *env, MDB_dbi &dest, uint32_t version)
 {
   MDB_val v = {};
   v.mv_data = (void *)&version;
   v.mv_size = sizeof(version);
   MDB_val_copy<const char *> vk("version");
 
+  mdb_txn_safe txn(false);
   int result = mdb_txn_begin(env, NULL, 0, txn);
   if (result) return result;
   result = mdb_put(txn, dest, &vk, &v, 0);
@@ -5300,7 +5302,7 @@ void BlockchainLMDB::migrate_0_1()
   } while(0);
 
   uint32_t version = 1;
-  if (int result = write_db_version(m_env, m_properties, txn, version))
+  if (int result = write_db_version(m_env, m_properties, version))
     throw0(DB_ERROR(lmdb_error("Failed to update version for the db: ", result).c_str()));
 }
 
@@ -5434,7 +5436,7 @@ void BlockchainLMDB::migrate_1_2()
   } while(0);
 
   uint32_t version = 2;
-  if (int result = write_db_version(m_env, m_properties, txn, version))
+  if (int result = write_db_version(m_env, m_properties, version))
     throw0(DB_ERROR(lmdb_error("Failed to update version for the db: ", result).c_str()));
 }
 
@@ -5556,7 +5558,7 @@ void BlockchainLMDB::migrate_2_3()
   } while(0);
 
   uint32_t version = 3;
-  if (int result = write_db_version(m_env, m_properties, txn, version))
+  if (int result = write_db_version(m_env, m_properties, version))
     throw0(DB_ERROR(lmdb_error("Failed to update version for the db: ", result).c_str()));
 }
 
@@ -5784,7 +5786,7 @@ void BlockchainLMDB::migrate_3_4()
   } while(0);
 
   uint32_t version = 4;
-  if (int result = write_db_version(m_env, m_properties, txn, version))
+  if (int result = write_db_version(m_env, m_properties, version))
     throw0(DB_ERROR(lmdb_error("Failed to update version for the db: ", result).c_str()));
 }
 
@@ -5878,7 +5880,7 @@ void BlockchainLMDB::migrate_4_5(cryptonote::network_type nettype)
                                                          : context.calculate_difficulty_params.start_height - FUDGE;
   fixup(context);
 
-  if (int result = write_db_version(m_env, m_properties, txn, (uint32_t)lmdb_version::v5))
+  if (int result = write_db_version(m_env, m_properties, (uint32_t)lmdb_version::v5))
     throw0(DB_ERROR(lmdb_error("Failed to update version for the db: ", result).c_str()));
 }
 
@@ -5987,7 +5989,74 @@ void BlockchainLMDB::migrate_5_6()
   }
   txn.commit();
 
-  if (int result = write_db_version(m_env, m_properties, txn, (uint32_t)lmdb_version::v6))
+  if (int result = write_db_version(m_env, m_properties, (uint32_t)lmdb_version::v6))
+    throw0(DB_ERROR(lmdb_error("Failed to update version for the db: ", result).c_str()));
+}
+
+void BlockchainLMDB::migrate_6_7()
+{
+  LOG_PRINT_L3("BlockchainLMDB::" << __func__);
+  MGINFO_YELLOW("Migrating blockchain from DB version 6 to 7 - this may take a while:");
+
+  std::vector<checkpoint_t> checkpoints;
+  checkpoints.reserve(1024);
+  {
+    mdb_txn_safe txn(false);
+    if (auto result = mdb_txn_begin(m_env, NULL, 0, txn))
+      throw0(DB_ERROR(lmdb_error("Failed to create a transaction for the db: ", result).c_str()));
+
+    // NOTE: Open DB
+    if (auto res = mdb_dbi_open(txn, LMDB_BLOCK_CHECKPOINTS, 0, &m_block_checkpoints)) return;
+    MDB_cursor *cursor;
+    if (auto ret = mdb_cursor_open(txn, m_block_checkpoints, &cursor))
+      throw0(DB_ERROR(lmdb_error("Failed to open a cursor for block checkpoints: ", ret).c_str()));
+
+    // NOTE: Copy DB contents into memory
+    for (MDB_cursor_op op = MDB_FIRST;; op = MDB_NEXT)
+    {
+      MDB_val key, val;
+      int ret = mdb_cursor_get(cursor, &key, &val, op);
+      if (ret == MDB_NOTFOUND) break;
+      if (ret) throw0(DB_ERROR(lmdb_error("Failed to enumerate block checkpoints: ", ret).c_str()));
+      checkpoint_t checkpoint = convert_mdb_val_to_checkpoint(val);
+      checkpoints.push_back(checkpoint);
+    }
+
+    // NOTE: Close the DB, then drop it.
+    if (auto ret = mdb_drop(txn, m_block_checkpoints, 1))
+      throw0(DB_ERROR(lmdb_error("Failed to delete old block checkpoints table: ", ret).c_str()));
+    mdb_dbi_close(m_env, m_block_checkpoints);
+    txn.commit();
+  }
+
+  // NOTE: Recreate the new DB
+  {
+    mdb_txn_safe txn(false);
+    if (auto result = mdb_txn_begin(m_env, NULL, 0, txn))
+      throw0(DB_ERROR(lmdb_error("Failed to create a transaction for the db: ", result).c_str()));
+
+    lmdb_db_open(txn, LMDB_BLOCK_CHECKPOINTS, MDB_INTEGERKEY | MDB_CREATE,  m_block_checkpoints, "Failed to open db handle for m_block_checkpoints");
+    mdb_set_compare(txn, m_block_checkpoints, compare_uint64);
+
+    MDB_cursor *cursor;
+    if (auto ret = mdb_cursor_open(txn, m_block_checkpoints, &cursor))
+      throw0(DB_ERROR(lmdb_error("Failed to open a cursor for block checkpoints: ", ret).c_str()));
+
+    for (checkpoint_t const &checkpoint : checkpoints)
+    {
+      checkpoint_mdb_buffer buffer = {};
+      convert_checkpoint_into_buffer(checkpoint, buffer);
+      MDB_val_set(key, checkpoint.height);
+      MDB_val value = {};
+      value.mv_size = buffer.len;
+      value.mv_data = buffer.data;
+      int ret       = mdb_cursor_put(cursor, &key, &value, 0);
+      if (ret) throw0(DB_ERROR(lmdb_error("Failed to update block checkpoint in db transaction: ", ret).c_str()));
+    }
+    txn.commit();
+  }
+
+  if (int result = write_db_version(m_env, m_properties, (uint32_t)lmdb_version::v7))
     throw0(DB_ERROR(lmdb_error("Failed to update version for the db: ", result).c_str()));
 }
 
@@ -6006,6 +6075,8 @@ void BlockchainLMDB::migrate(const uint32_t oldversion, cryptonote::network_type
     migrate_4_5(nettype); /* FALLTHRU */
   case 5:
     migrate_5_6(); /* FALLTHRU */
+  case 6:
+    migrate_6_7(); /* FALLTHRU */
   default:
     break;
   }
