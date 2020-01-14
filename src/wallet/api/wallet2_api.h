@@ -33,10 +33,8 @@
 
 #include <string>
 #include <vector>
-#include <list>
 #include <set>
 #include <ctime>
-#include <iostream>
 #include <stdexcept>
 
 //  Public interface for libwallet library
@@ -82,6 +80,7 @@ struct PendingTransaction
         Priority_Low = 1,
         Priority_Medium = 2,
         Priority_High = 3,
+        Priority_Blink = 0x626c6e6b,
         Priority_Last
     };
 

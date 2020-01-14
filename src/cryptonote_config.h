@@ -33,8 +33,6 @@
 #include <stdexcept>
 #include <string>
 #include <boost/uuid/uuid.hpp>
-#include <stdexcept>
-#include <chrono>
 
 #define CRYPTONOTE_DNS_TIMEOUT_MS                       20000
 
