@@ -180,43 +180,11 @@ namespace cryptonote
     return true;
   }
 
-  // NOTE: Compiling with a minimum Mac OSX API of 10.13 and generating
-  // a binary_archive with a one_shot_read_buffer, causes the following snippet
-  // to fail
-
-#if 0
-  explicit binary_archive(stream_type &s) : base_type(s) {
-    stream_type::pos_type pos = stream_.tellg();
-    stream_.seekg(0, std::ios_base::end);
-    eof_pos_ = stream_.tellg();
-    stream_.seekg(pos);
-  }
-#endif
-
-  // In particular
-  // stream_.seekg(0, std::ios_base::end);
-  // eof_pos_ = stream_.tellg();
-
-  // A seekg followed by a tellg returns 0, no state flags are set on the io
-  // stream. So use the old method that copies the blob into a stringstream
-  // instead for APPLE targets.
-  
-  // 2020-01-08, doyle
-
-#if defined __APPLE__
-  #define BINARY_ARCHIVE_STREAM(stream_name, blob) \
-    std::stringstream stream_name; \
-    stream_name.write(reinterpret_cast<const char *>(blob.data()), blob.size())
-#else
-  #define BINARY_ARCHIVE_STREAM(stream_name, blob) \
-    auto buf = tools::one_shot_read_buffer{reinterpret_cast<const char *>(blob.data()), blob.size()}; \
-    std::istream stream_name{&buf}
-#endif
-
   //---------------------------------------------------------------
   bool parse_and_validate_tx_from_blob(const blobdata& tx_blob, transaction& tx)
   {
-    BINARY_ARCHIVE_STREAM(is, tx_blob);
+    tools::one_shot_read_buffer buf{tx_blob};
+    std::istream is{&buf};
     binary_archive<false> ba(is);
     bool r = ::serialization::serialize(ba, tx);
     CHECK_AND_ASSERT_MES(r, false, "Failed to parse and validate transaction from blob");
@@ -228,7 +196,8 @@ namespace cryptonote
   //---------------------------------------------------------------
   bool parse_and_validate_tx_base_from_blob(const blobdata& tx_blob, transaction& tx)
   {
-    BINARY_ARCHIVE_STREAM(is, tx_blob);
+    tools::one_shot_read_buffer buf{tx_blob};
+    std::istream is{&buf};
     binary_archive<false> ba(is);
     bool r = tx.serialize_base(ba);
     CHECK_AND_ASSERT_MES(r, false, "Failed to parse transaction base from blob");
@@ -239,7 +208,8 @@ namespace cryptonote
   //---------------------------------------------------------------
   bool parse_and_validate_tx_prefix_from_blob(const blobdata& tx_blob, transaction_prefix& tx)
   {
-    BINARY_ARCHIVE_STREAM(is, tx_blob);
+    tools::one_shot_read_buffer buf{tx_blob};
+    std::istream is{&buf};
     binary_archive<false> ba(is);
     bool r = ::serialization::serialize_noeof(ba, tx);
     CHECK_AND_ASSERT_MES(r, false, "Failed to parse transaction prefix from blob");
@@ -248,7 +218,8 @@ namespace cryptonote
   //---------------------------------------------------------------
   bool parse_and_validate_tx_from_blob(const blobdata& tx_blob, transaction& tx, crypto::hash& tx_hash)
   {
-    BINARY_ARCHIVE_STREAM(is, tx_blob);
+    tools::one_shot_read_buffer buf{tx_blob};
+    std::istream is{&buf};
     binary_archive<false> ba(is);
     bool r = ::serialization::serialize(ba, tx);
     CHECK_AND_ASSERT_MES(r, false, "Failed to parse and validate transaction from blob + hash");
@@ -499,7 +470,8 @@ namespace cryptonote
     if(tx_extra.empty())
       return true;
 
-    BINARY_ARCHIVE_STREAM(iss, tx_extra);
+    tools::one_shot_read_buffer buf{reinterpret_cast<const char*>(tx_extra.data()), tx_extra.size()};
+    std::istream iss{&buf};
     binary_archive<false> ar(iss);
 
     bool eof = false;
@@ -544,7 +516,8 @@ namespace cryptonote
       return true;
     }
 
-    BINARY_ARCHIVE_STREAM(iss, tx_extra);
+    tools::one_shot_read_buffer buf{reinterpret_cast<const char*>(tx_extra.data()), tx_extra.size()};
+    std::istream iss{&buf};
     binary_archive<false> ar(iss);
 
     bool eof = false;
@@ -910,7 +883,8 @@ namespace cryptonote
   {
     if (tx_extra.empty())
       return true;
-    BINARY_ARCHIVE_STREAM(iss, tx_extra);
+    tools::one_shot_read_buffer buf{reinterpret_cast<const char*>(tx_extra.data()), tx_extra.size()};
+    std::istream iss{&buf};
     binary_archive<false> ar(iss);
     std::ostringstream oss;
     binary_archive<true> newar(oss);
