@@ -99,10 +99,6 @@ struct binary_archive<false> : public binary_archive_base<std::istream, false>
 {
 
   explicit binary_archive(stream_type &s) : base_type(s) {
-    stream_type::pos_type pos = stream_.tellg();
-    stream_.seekg(0, std::ios_base::end);
-    eof_pos_ = stream_.tellg();
-    stream_.seekg(pos);
   }
 
   template <class T>
@@ -165,16 +161,6 @@ struct binary_archive<false> : public binary_archive_base<std::istream, false>
   void read_variant_tag(variant_tag_type &t) {
     serialize_int(t);
   }
-
-  size_t remaining_bytes() {
-    if (!stream_.good())
-      return 0;
-    //std::cerr << "tell: " << stream_.tellg() << std::endl;
-    assert(stream_.tellg() <= eof_pos_);
-    return eof_pos_ - stream_.tellg();
-  }
-protected:
-  std::streamoff eof_pos_;
 };
 
 template <>

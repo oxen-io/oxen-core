@@ -70,12 +70,6 @@ bool do_serialize_container(Archive<false> &ar, C &v)
     return false;
   v.clear();
 
-  // very basic sanity check
-  if (ar.remaining_bytes() < cnt) {
-    ar.stream().setstate(std::ios::failbit);
-    return false;
-  }
-
   ::serialization::detail::do_reserve(v, cnt);
 
   for (size_t i = 0; i < cnt; i++) {
