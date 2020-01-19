@@ -1117,6 +1117,7 @@ namespace cryptonote
      epee::math_helper::periodic_task m_blockchain_pruning_interval{5h}; //!< interval for incremental blockchain pruning
      epee::math_helper::periodic_task m_service_node_vote_relayer{2min, false};
      epee::math_helper::periodic_task m_sn_proof_cleanup_interval{1h, false};
+     epee::math_helper::periodic_task m_systemd_notify_interval{10s};
 
      std::atomic<bool> m_starter_message_showed; //!< has the "daemon will sync now" message been shown?
 

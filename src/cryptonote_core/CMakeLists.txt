@@ -27,6 +27,12 @@
 # STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+pkg_check_modules(SYSTEMD libsystemd)
+
+if(SYSTEMD_FOUND)
+  add_definitions(-DENABLE_SYSTEMD)
+endif()
+
 set(cryptonote_core_sources
   blockchain.cpp
   cryptonote_core.cpp
@@ -79,4 +85,5 @@ target_link_libraries(cryptonote_core
     ${Boost_SYSTEM_LIBRARY}
     ${Boost_THREAD_LIBRARY}
   PRIVATE
+    ${SYSTEMD_LIBRARIES}
     ${EXTRA_LIBRARIES})
