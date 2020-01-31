@@ -381,7 +381,7 @@ namespace service_nodes
               if (good > 0)
                 LOG_PRINT_L2(good << " of " << total << " service nodes are active and passing checks; no state change votes required");
             }
-            else if (!tested_myself_once_per_block && find_index_in_quorum_group(quorum->workers, my_keys->pub))
+            else if (!tested_myself_once_per_block && (find_index_in_quorum_group(quorum->workers, my_keys->pub) >= 0))
             {
               // NOTE: Not in validating quorum , check if we're the ones
               // being tested. If so, check if we would be decommissioned
