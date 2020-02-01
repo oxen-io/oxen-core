@@ -6739,12 +6739,6 @@ bool simple_wallet::sweep_main(uint64_t below, Transfer transfer_type, const std
     }
   };
 
-  if (args_.size() == 0)
-  {
-    fail_msg_writer() << tr("No address given");
-    print_usage();
-    return true;
-  }
 
   if (!try_connect_to_daemon())
     return true;
@@ -6856,7 +6850,12 @@ bool simple_wallet::sweep_main(uint64_t below, Transfer transfer_type, const std
   }
 
   cryptonote::address_parse_info info;
-  if (!cryptonote::get_account_address_from_str_or_url(info, m_wallet->nettype(), local_args[0], oa_prompter))
+  std::string default_addr = m_wallet->get_subaddress_as_str({m_current_subaddress_account, 0});
+  if (args_.size() > 0)
+  {
+    default_addr = local_args[0];
+  }
+  if (!cryptonote::get_account_address_from_str_or_url(info, m_wallet->nettype(), default_addr, oa_prompter))
   {
     fail_msg_writer() << tr("failed to parse address");
     print_usage();
