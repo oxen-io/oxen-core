@@ -4455,7 +4455,7 @@ int main(int argc, char** argv) {
     tools::wallet_rpc_server::tr("This is the RPC loki wallet. It needs to connect to a loki\ndaemon to work correctly."),
     desc_params,
     po::positional_options_description(),
-    [](const std::string &s, bool emphasis){ epee::set_console_color(emphasis ? epee::console_color_white : epee::console_color_default, true); std::cout << s << std::endl; if (emphasis) epee::reset_console_color(); },
+    [](const std::string &s, bool emphasis){ epee::set_console_color(emphasis ? epee::console_color_white : epee::console_color_default, emphasis); std::cout << s << std::endl; if (emphasis) epee::reset_console_color(); },
     "loki-wallet-rpc.log",
     true
   );
