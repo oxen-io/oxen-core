@@ -6771,14 +6771,17 @@ bool simple_wallet::sweep_main(uint64_t below, Transfer transfer_type, const std
     }
     uint64_t locked_blocks = 0;
 
-    if (local_args.size() < 2) {
+    if (local_args.size() < 1) {
       fail_msg_writer() << tr("missing lockedblocks parameter");
       return true;
     }
 
     try
     {
-      locked_blocks = boost::lexical_cast<uint64_t>(local_args[1]);
+      if (local_args.size() == 1) 
+        locked_blocks = boost::lexical_cast<uint64_t>(local_args[0]);
+      else
+        locked_blocks = boost::lexical_cast<uint64_t>(local_args[1]);
     }
     catch (const std::exception &e)
     {
