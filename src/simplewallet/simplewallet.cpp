@@ -172,7 +172,7 @@ namespace
   const char* USAGE_LOCKED_SWEEP_ALL("locked_sweep_all [index=<N1>[,<N2>,...]] [<priority>] [<address>] <lockblocks> [<payment_id (obsolete)>]");
   const char* USAGE_SWEEP_ALL("sweep_all [index=<N1>[,<N2>,...]] [blink|<priority>] [outputs=<N>] [<address> [<payment_id (obsolete)>]] [use_v1_tx]");
   const char* USAGE_SWEEP_BELOW("sweep_below <amount_threshold> [index=<N1>[,<N2>,...]] [blink|<priority>] [<address> [<payment_id (obsolete)>]]");
-  const char* USAGE_SWEEP_SINGLE("sweep_single [blink|<priority>] [outputs=<N>] <key_image> [<address> [<payment_id (obsolete)>]]");
+  const char* USAGE_SWEEP_SINGLE("sweep_single [blink|<priority>] [outputs=<N>] <key_image> <address> [<payment_id (obsolete)>]");
   const char* USAGE_SIGN_TRANSFER("sign_transfer [export_raw]");
   const char* USAGE_SET_LOG("set_log <level>|{+,-,}<categories>");
   const char* USAGE_ACCOUNT("account\n"
