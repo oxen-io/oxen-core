@@ -3153,7 +3153,7 @@ constexpr char const CORE_RPC_STATUS_TX_LONG_POLL_MAX_CONNECTIONS[] = "Daemon ma
   {
     struct request_t
     {
-      uint64_t height; // The height to query the staking requirement for.
+      uint64_t height; // The height to query the staking requirement for.  0 (or omitting) means current height.
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(height)
@@ -3164,10 +3164,12 @@ constexpr char const CORE_RPC_STATUS_TX_LONG_POLL_MAX_CONNECTIONS[] = "Daemon ma
     struct response_t
     {
       uint64_t staking_requirement; // The staking requirement in Loki, in atomic units.
+      uint64_t height;              // The height requested (or current height if 0 was requested)
       std::string status;           // Generic RPC error code. "OK" is the success value.
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(staking_requirement)
+        KV_SERIALIZE(height)
         KV_SERIALIZE(status)
       END_KV_SERIALIZE_MAP()
     };
