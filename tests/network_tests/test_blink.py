@@ -60,11 +60,11 @@ def test_basic_blink(net, alice, bob, mike):
 
     b1 = bob.balances()
 
-    sent_blink = alice.transfer(bob, coins(10), blink=True)
+    sent_blink = alice.transfer(bob, coins(10), priority=5)
     assert sent_blink['amount_list'] == [coins(10)]
     assert len(sent_blink['tx_hash_list']) == 1
 
-    sent_normal = mike.transfer(bob, coins(3), blink=False)
+    sent_normal = mike.transfer(bob, coins(3), priority=1)
     assert sent_normal['amount_list'] == [coins(3)]
     assert len(sent_normal['tx_hash_list']) == 1
 
@@ -129,7 +129,7 @@ def test_blink_sweep(net, mike, alice, bob):
     assert alice.balances() == coins(150, 150)
     assert bob.balances() == coins(9, 9)
 
-    sweep_a = bob.transfer(alice, sweep=True, blink=True)
+    sweep_a = bob.transfer(alice, sweep=True, priority=5)
     assert len(sweep_a['amount_list']) == 1
     amount_a = sweep_a['amount_list'][0]
     assert amount_a == coins(9) - sweep_a['fee_list'][0]
@@ -139,7 +139,7 @@ def test_blink_sweep(net, mike, alice, bob):
     alice.refresh()
     assert alice.balances() == (coins(150) + amount_a, coins(150))
 
-    sweep_b = alice.transfer(bob, sweep=True, blink=True)
+    sweep_b = alice.transfer(bob, sweep=True, priority=5)
     assert len(sweep_b['amount_list']) > 1
     amount_b = sum(sweep_b['amount_list'])
     assert amount_b == coins(150) - sum(sweep_b['fee_list'])
@@ -177,7 +177,7 @@ def test_blink_fail_mempool(net, mike, alice, bob):
 
     from daemons import TransferFailed
     with pytest.raises(TransferFailed, match='rejected by quorum') as exc_info:
-        double_spend = alice.transfer(bob, coins(5), blink=True)  # Has to spend the same input, since we only have one input
+        double_spend = alice.transfer(bob, coins(5), priority=5)  # Has to spend the same input, since we only have one input
 
 
 def test_blink_replacement(net, mike, alice, chuck, chuck_double_spend):
