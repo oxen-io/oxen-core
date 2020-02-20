@@ -383,19 +383,19 @@ t_command_server::t_command_server(
           valid_cmd = true;
           if (args[0] == "toggle_checkpoint_quorum")
           {
-            loki::integration_test.disable_checkpoint_quorum = !loki::integration_test.disable_checkpoint_quorum;
+            integration_test::state.disable_checkpoint_quorum = !integration_test::state.disable_checkpoint_quorum;
           }
           else if (args[0] == "toggle_obligation_quorum")
           {
-            loki::integration_test.disable_obligation_quorum = !loki::integration_test.disable_obligation_quorum;
+            integration_test::state.disable_obligation_quorum = !integration_test::state.disable_obligation_quorum;
           }
           else if (args[0] == "toggle_obligation_uptime_proof")
           {
-            loki::integration_test.disable_obligation_uptime_proof = !loki::integration_test.disable_obligation_uptime_proof;
+            integration_test::state.disable_obligation_uptime_proof = !integration_test::state.disable_obligation_uptime_proof;
           }
           else if (args[0] == "toggle_obligation_checkpointing")
           {
-            loki::integration_test.disable_obligation_checkpointing = !loki::integration_test.disable_obligation_checkpointing;
+            integration_test::state.disable_obligation_checkpointing = !integration_test::state.disable_obligation_checkpointing;
           }
           else
           {
@@ -417,7 +417,7 @@ t_command_server::t_command_server(
         if (!valid_cmd)
           std::cout << "integration_test invalid command";
 
-        loki::write_redirected_stdout_to_shared_mem();
+        integration_test::write_buffered_stdout();
         return true;
       }, p::_1)
     , ""
@@ -449,34 +449,34 @@ bool t_command_server::start_handling(std::function<void(void)> exit_handler)
   if (m_is_rpc) return false;
 
 #if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
-  auto handle_shared_mem_ins_and_outs = [&]()
+  auto handle_pipe = [&]()
   {
     // TODO(doyle): Hack, don't hook into input until the daemon has completely initialised, i.e. you can print the status
-    while(!loki::integration_test.core_is_idle) {}
+    while(!integration_test::state.core_is_idle) {}
     mlog_set_categories(""); // TODO(doyle): We shouldn't have to do this.
 
     for (;;)
     {
-      loki::fixed_buffer const input = loki::read_from_stdin_shared_mem();
-      std::vector<std::string> args  = loki::separate_stdin_to_space_delim_args(&input);
+      integration_test::write_buffered_stdout();
+      std::string const input       = integration_test::read_from_pipe();
+      std::vector<std::string> args = integration_test::space_delimit_input(input);
       {
-        boost::unique_lock<boost::mutex> scoped_lock(loki::integration_test_mutex);
-        loki::use_standard_cout();
-        std::cout << input.data << std::endl;
-        loki::use_redirected_cout();
+        std::unique_lock<std::mutex> scoped_lock(integration_test::state.mutex);
+        integration_test::use_standard_cout();
+        std::cout << input << std::endl;
+        integration_test::use_redirected_cout();
       }
 
       process_command_vec(args);
       if (args.size() == 1 && args[0] == "exit")
       {
-        loki::deinit_integration_test_context();
+        integration_test::deinit();
         break;
       }
 
-      loki::write_redirected_stdout_to_shared_mem();
     }
   };
-  static std::thread handle_remote_stdin_out_thread(handle_shared_mem_ins_and_outs);
+  static std::thread handle_pipe_thread(handle_pipe);
 #endif
 
   m_command_lookup.start_handling("", get_commands_str(), exit_handler);

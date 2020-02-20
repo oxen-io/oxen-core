@@ -17,8 +17,7 @@ tools::scoped_message_writer::~scoped_message_writer()
     m_flush = false;
 
 #if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
-    std::cout << m_oss.str();
-    loki::write_redirected_stdout_to_shared_mem();
+    std::cout << m_oss.str() << "\n";
     return;
 #endif
 

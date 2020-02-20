@@ -276,13 +276,10 @@ namespace
 #if defined (LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
   std::string input_line(const std::string &prompt, bool yesno = false)
   {
-    std::string buf;
     if (yesno) std::cout << prompt << " (Y/Yes/N/No): ";
     else       std::cout << prompt << ": ";
-    loki::write_redirected_stdout_to_shared_mem();
-    loki::fixed_buffer buffer = loki::read_from_stdin_shared_mem();
-    buf.reserve(buffer.len);
-    buf = buffer.data;
+    integration_test::write_buffered_stdout();
+    std::string buf = integration_test::read_from_pipe();
     return epee::string_tools::trim(buf);
   }
 #else // LOKI_ENABLE_INTEGRATION_TEST_HOOKS
@@ -312,9 +309,8 @@ namespace
   {
 #if defined (LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
     std::cout << prompt;
-    loki::write_redirected_stdout_to_shared_mem();
-    loki::fixed_buffer buffer = loki::read_from_stdin_shared_mem();
-    epee::wipeable_string buf = buffer.data;
+    integration_test::write_buffered_stdout();
+    epee::wipeable_string buf = integration_test::read_from_pipe();
 #else
 
 #ifdef HAVE_READLINE
@@ -338,7 +334,7 @@ namespace
   {
 #if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
     std::cout << prompt << ": NOTE(loki): Passwords not supported, defaulting to empty password";
-    loki::write_redirected_stdout_to_shared_mem();
+    integration_test::write_buffered_stdout();
     tools::password_container pwd_container(std::string(""));
 #else
   #ifdef HAVE_READLINE
@@ -8483,6 +8479,9 @@ std::string simple_wallet::get_prompt() const
 
 bool simple_wallet::run()
 {
+#if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
+  integration_test::use_redirected_cout();
+#endif
   // check and display warning, but go on anyway
   try_connect_to_daemon();
 
@@ -8513,23 +8512,22 @@ bool simple_wallet::run()
 #if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
   for (;;)
   {
-    loki::fixed_buffer const input = loki::read_from_stdin_shared_mem();
-    std::vector<std::string> args  = loki::separate_stdin_to_space_delim_args(&input);
+    integration_test::write_buffered_stdout();
+    std::string const input       = integration_test::read_from_pipe();
+    std::vector<std::string> args = integration_test::space_delimit_input(input);
     {
-      boost::unique_lock<boost::mutex> scoped_lock(loki::integration_test_mutex);
-      loki::use_standard_cout();
-      std::cout << input.data << std::endl;
-      loki::use_redirected_cout();
+      std::unique_lock<std::mutex> scoped_lock(integration_test::state.mutex);
+      integration_test::use_standard_cout();
+      std::cout << input << std::endl;
+      integration_test::use_redirected_cout();
     }
 
     this->process_command(args);
     if (args.size() == 1 && args[0] == "exit")
     {
-      loki::deinit_integration_test_context();
+      integration_test::deinit();
       return true;
     }
-
-    loki::write_redirected_stdout_to_shared_mem();
   }
 #endif
 

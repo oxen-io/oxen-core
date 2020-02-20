@@ -298,7 +298,7 @@ namespace cryptonote
       m_core.submit_uptime_proof();
       m_core.relay_service_node_votes();
       std::cout << "Votes and uptime relayed";
-      loki::write_redirected_stdout_to_shared_mem();
+      integration_test::write_buffered_stdout();
     }
 
     void on_debug_mine_n_blocks(std::string const &address, uint64_t num_blocks)

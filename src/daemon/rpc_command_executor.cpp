@@ -64,10 +64,8 @@ namespace {
     std::cout << prompt << std::flush;
     std::string result;
 #if defined (LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
-    loki::write_redirected_stdout_to_shared_mem();
-    loki::fixed_buffer buffer = loki::read_from_stdin_shared_mem();
-    result.reserve(buffer.len);
-    result = buffer.data;
+    integration_test::write_buffered_stdout();
+    result = integration_test::read_from_pipe();
 #else
   #ifdef HAVE_READLINE
     rdln::suspend_readline pause_readline;

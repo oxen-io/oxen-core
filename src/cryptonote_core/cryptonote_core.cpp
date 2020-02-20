@@ -381,8 +381,8 @@ namespace cryptonote
     command_line::add_arg(desc, arg_recalculate_difficulty);
     command_line::add_arg(desc, arg_store_quorum_history);
 #if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
-    command_line::add_arg(desc, loki::arg_integration_test_hardforks_override);
-    command_line::add_arg(desc, loki::arg_integration_test_shared_mem_name);
+    command_line::add_arg(desc, integration_test::arg_hardforks_override);
+    command_line::add_arg(desc, integration_test::arg_pipe_name);
 #endif
 
     miner::init_options(desc);
@@ -585,14 +585,14 @@ namespace cryptonote
     start_time = std::time(nullptr);
 
 #if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
-    const std::string arg_integration_test_override_hardforks = command_line::get_arg(vm, loki::arg_integration_test_hardforks_override);
+    const std::string arg_hardforks_override = command_line::get_arg(vm, integration_test::arg_hardforks_override);
 
     std::vector<std::pair<uint8_t, uint64_t>> integration_test_hardforks;
-    if (!arg_integration_test_override_hardforks.empty())
+    if (!arg_hardforks_override.empty())
     {
       // Expected format: <fork_version>:<fork_height>, ...
       // Example: 7:0, 8:10, 9:20, 10:100
-      char const *ptr = arg_integration_test_override_hardforks.c_str();
+      char const *ptr = arg_hardforks_override.c_str();
       while (ptr[0])
       {
         int hf_version = atoi(ptr);
@@ -609,12 +609,12 @@ namespace cryptonote
     }
 
     cryptonote::test_options integration_hardfork_override = {integration_test_hardforks};
-    if (!arg_integration_test_override_hardforks.empty())
+    if (!arg_hardforks_override.empty())
       test_options = &integration_hardfork_override;
 
     {
-      const std::string arg_shared_mem_name = command_line::get_arg(vm, loki::arg_integration_test_shared_mem_name);
-      loki::init_integration_test_context(arg_shared_mem_name);
+      const std::string arg_pipe_name = command_line::get_arg(vm, integration_test::arg_pipe_name);
+      integration_test::init(arg_pipe_name);
     }
 #endif
 
@@ -2130,7 +2130,7 @@ namespace cryptonote
     m_mempool.on_idle();
 
 #if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
-    loki::integration_test.core_is_idle = true;
+    integration_test::state.core_is_idle = true;
 #endif
 
 #ifdef ENABLE_SYSTEMD

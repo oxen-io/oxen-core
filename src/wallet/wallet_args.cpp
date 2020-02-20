@@ -130,7 +130,7 @@ namespace wallet_args
     command_line::add_arg(desc_params, arg_config_file);
 
 #if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
-    command_line::add_arg(desc_params, loki::arg_integration_test_shared_mem_name);
+    command_line::add_arg(desc_params, integration_test::arg_pipe_name);
 #endif
 
     i18n_set_language("translations", "loki", lang);
@@ -146,8 +146,8 @@ namespace wallet_args
 
 #if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
       {
-        const std::string arg_shared_mem_name = command_line::get_arg(vm, loki::arg_integration_test_shared_mem_name);
-        loki::init_integration_test_context(arg_shared_mem_name);
+        const std::string arg_pipe_name = command_line::get_arg(vm, integration_test::arg_pipe_name);
+        integration_test::init(arg_pipe_name);
       }
 #endif
 

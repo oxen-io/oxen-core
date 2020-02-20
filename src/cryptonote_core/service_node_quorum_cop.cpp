@@ -97,8 +97,8 @@ namespace service_nodes
     bool check_checkpoint_obligation = true;
 
 #if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
-    if (loki::integration_test.disable_obligation_uptime_proof) check_uptime_obligation = false;
-    if (loki::integration_test.disable_obligation_checkpointing) check_checkpoint_obligation = false;
+    if (integration_test::state.disable_obligation_uptime_proof) check_uptime_obligation = false;
+    if (integration_test::state.disable_obligation_checkpointing) check_checkpoint_obligation = false;
 #endif
 
     if (check_uptime_obligation && time_since_last_uptime_proof > UPTIME_PROOF_MAX_TIME_IN_SECONDS)
@@ -233,8 +233,8 @@ namespace service_nodes
       quorum_type const type = static_cast<quorum_type>(i);
 
 #if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
-      if (loki::integration_test.disable_checkpoint_quorum && type == quorum_type::checkpointing) continue;
-      if (loki::integration_test.disable_obligation_quorum && type == quorum_type::obligations) continue;
+      if (integration_test::state.disable_checkpoint_quorum && type == quorum_type::checkpointing) continue;
+      if (integration_test::state.disable_obligation_quorum && type == quorum_type::obligations) continue;
 #endif
 
       switch(type)
