@@ -1248,6 +1248,9 @@ namespace cryptonote
   {
     std::ostringstream os;
 
+    if (tvc.m_verbose_error.size())
+        os << tvc.m_verbose_error << "\n";
+
     if (tvc.m_verifivation_failed)       os << "Verification failed, connection should be dropped, "; //bad tx, should drop connection
     if (tvc.m_verifivation_impossible)   os << "Verification impossible, related to alt chain, "; //the transaction is related with an alternative blockchain
     if (tvc.m_should_be_relayed)         os << "TX should be relayed, ";
