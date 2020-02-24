@@ -268,7 +268,7 @@ namespace
   const char* USAGE_STAKE("stake [index=<N1>[,<N2>,...]] [<priority>] <service node pubkey> <amount|percent%>");
   const char* USAGE_REQUEST_STAKE_UNLOCK("request_stake_unlock <service_node_pubkey>");
   const char* USAGE_PRINT_LOCKED_STAKES("print_locked_stakes");
-  const char* USAGE_BUY_LNS_MAPPING("buy_lns_mapping [index=<N1>[,<N2>,...]] [<priority>] [owner] \"<name>\" <value>");
+  const char* USAGE_BUY_LNS_MAPPING("buy_lns_mapping [index=<N1>[,<N2>,...]] [<priority>] \"<name>\" <value> [owner]");
   const char* USAGE_UPDATE_LNS_MAPPING("update_lns_mapping [index=<N1>[,<N2>,...]] [<priority>] \"<name>\" <value> [<signature>]");
   const char* USAGE_PRINT_LNS_OWNERS_TO_NAMES("print_lns_owners_to_names [<64 hex character ed25519 public key>]");
   const char* USAGE_PRINT_LNS_NAME_TO_OWNERS("print_lns_name_to_owners [type=<N1|all>[,<N2>...]] \"name\"");
@@ -6350,33 +6350,78 @@ bool simple_wallet::print_locked_stakes(const std::vector<std::string>& /*args*/
   return true;
 }
 //----------------------------------------------------------------------------------------------------
-static bool parse_lns_name_string(std::vector<std::string> const &args, size_t first_word_index, size_t last_word_index, std::string &name)
+// index_to_next_arg: If given, on success- return the index to the next arg after processing all the name arguments. Is set to args.size() if all of the array consisted of words for the LNS name.
+// return: Empty string if name is not valid, if successful, delete all the name words from the args vector
+static std::string parse_lns_name_string(std::vector<std::string> const &args,
+                                         std::vector<std::string>::const_iterator first_word_it,
+                                         std::vector<std::string>::const_iterator &last_word_it)
 {
   // NOTE: Potentially passed in a valid multi worded quoted string (i.e "String World") as the name to purchase.
   // Strip the first and last quote, keep everything inbetween, even quotes.
-  std::string const &first_word = args[first_word_index];
-  std::string const &last_word  = args[last_word_index];
 
-  if (first_word.front() != '"' || last_word.back() != '"')
-    return false;
-
-  for (size_t i = first_word_index; i <= last_word_index; i++)
+  // Expect first word in name in args[0], and read backwards to the closing quotation mark
+  std::string result;
   {
-    std::string const &word = args[i];
-    if (first_word_index == last_word_index)
-      name.append(word.begin() + 1, word.end() - 1);
-    else if (i == first_word_index)
-      name.append(word.begin() + 1, word.end());
-    else if (i == last_word_index)
-      name.append(word.begin(), word.end() - 1);
-    else
-      name.append(word);
+    if (first_word_it->front() != '"')
+    {
+      fail_msg_writer() << "Name needs to start with a quotation mark (\"). Given=" << *first_word_it;
+      return result;
+    }
 
-    if (i != last_word_index)
-      name.append(" ");
+    {
+      auto it = last_word_it;
+      do
+      {
+        it--;
+        if (it->back() == '"')
+        {
+          if (it->size() >= 2)
+          {
+            if (it->data()[it->size() - 2] == '\\')
+              continue;
+          }
+
+          last_word_it = it;
+          break;
+        }
+      } while (it != first_word_it);
+    }
+
+    if (last_word_it == args.end())
+    {
+      fail_msg_writer() << "Could not find closing quotation mark (\") for LNS name, the last word in the name needs to end with a closing quote, the first word=" << *first_word_it;
+      return result;
+    }
+    else if (first_word_it == last_word_it) // Name is just the singlular word
+    {
+      result.append(first_word_it->begin() + 1, first_word_it->end() - 1);
+    }
+    else if (first_word_it != last_word_it)
+    {
+      for (auto it = first_word_it; it != (last_word_it + 1); it++)
+      {
+        if (it == first_word_it)
+          result.append(it->begin() + 1, it->end());
+        else if (it == last_word_it)
+          result.append(it->begin(), it->end() - 1);
+        else
+          result.append(it->begin(), it->end());
+
+        if (it != last_word_it)
+        {
+          result.append(" ");
+        }
+      }
+    }
+
+    if (result.empty())
+    {
+      fail_msg_writer() << "Name too short to be considered. Must start and end with quotation marks (\") with the name inbetween. Given=" << *first_word_it;
+      return result;
+    }
   }
 
-  return true;
+  return result;
 }
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::buy_lns_mapping(const std::vector<std::string>& args)
@@ -6392,24 +6437,26 @@ bool simple_wallet::buy_lns_mapping(const std::vector<std::string>& args)
     return true;
   }
 
-  std::string owner;
-  if (bool has_owner = (local_args.size() == 3))
-  {
-    owner = local_args[0];
-    local_args.erase(local_args.begin());
-  }
-
-  std::string const &value = local_args[local_args.size() - 1];
-  std::string name;
-
-  size_t first_word_index = 0;
-  size_t last_word_index  = local_args.size() - 2;
-  if (!parse_lns_name_string(local_args, first_word_index, last_word_index, name))
+  auto last_word_it = local_args.cend();
+  std::string name = parse_lns_name_string(local_args, local_args.cbegin(), last_word_it);
+  if (name.empty())
   {
     PRINT_USAGE(USAGE_BUY_LNS_MAPPING);
-    fail_msg_writer() << "lns name didn't start or end with quotation marks (')";
     return false;
   }
+  local_args.erase(local_args.begin(), last_word_it + 1);
+
+  if (local_args.empty())
+  {
+    PRINT_USAGE(USAGE_BUY_LNS_MAPPING);
+    fail_msg_writer() << "Missing argument for value and optionally [owner]";
+    return true;
+  }
+
+  std::string const &value = local_args[0];
+  std::string owner;
+  if (local_args.size() >= 2)
+    owner = local_args[1];
 
   SCOPED_WALLET_UNLOCK();
   std::string reason;
@@ -6466,35 +6513,24 @@ bool simple_wallet::update_lns_mapping(const std::vector<std::string>& args)
     return true;
   }
 
-  std::string const *signature = nullptr;
-  std::string const *value     = nullptr;
-  std::string const &last_word = local_args[local_args.size() - 1];
-  if (last_word.size() == (sizeof(crypto::signature) * 2))
-  {
-    if (local_args.size() == 2)
-    {
-      PRINT_USAGE(USAGE_UPDATE_LNS_MAPPING);
-      fail_msg_writer() << "Detected signature=" << last_word << ", but only 2 arguments given- missing either <value> or \"<name>\".";
-      return true;
-    }
-
-    signature = &last_word;
-    value     = &local_args[local_args.size() - 2];
-  }
-  else
-  {
-    value = &last_word;
-  }
-
-  std::string name;
-  size_t first_word_index = 0;
-  size_t last_word_index  = local_args.size() - 2;
-  if (!parse_lns_name_string(local_args, first_word_index, last_word_index, name))
+  auto last_word_it = local_args.cend();
+  std::string const name = parse_lns_name_string(local_args, local_args.cbegin(), last_word_it);
+  if (name.empty())
   {
     PRINT_USAGE(USAGE_UPDATE_LNS_MAPPING);
-    fail_msg_writer() << "lns name didn't start or end with quotation marks (')";
-    return false;
+    return true;
   }
+
+  local_args.erase(local_args.begin(), last_word_it + 1);
+  if (!(local_args.size() >= 1 && local_args.size() <= 2))
+  {
+    PRINT_USAGE(USAGE_UPDATE_LNS_MAPPING);
+    fail_msg_writer() << "Too many arguments given";
+    return true;
+  }
+
+  std::string const &value     = local_args[0];
+  std::string const *signature = (local_args.size() == 2) ? &local_args[1] : nullptr;
 
   SCOPED_WALLET_UNLOCK();
   std::string reason;
@@ -6503,7 +6539,7 @@ bool simple_wallet::update_lns_mapping(const std::vector<std::string>& args)
   {
     ptx_vector = m_wallet->create_update_lns_mapping_tx(lns::mapping_type::session,
                                                         name,
-                                                        *value,
+                                                        value,
                                                         signature,
                                                         &reason,
                                                         priority,
@@ -6551,7 +6587,6 @@ bool simple_wallet::print_lns_name_to_owners(const std::vector<std::string>& arg
 
   std::vector<uint16_t> requested_types;
   size_t start_of_name = 0;
-  size_t end_of_name   = args.size() - 1;
 
   // Parse LNS Types
   {
@@ -6582,11 +6617,11 @@ bool simple_wallet::print_lns_name_to_owners(const std::vector<std::string>& arg
     }
   }
 
-  std::string lns_name;
-  if (!parse_lns_name_string(args, start_of_name, end_of_name, lns_name))
+  auto end_it = args.cend();
+  std::string lns_name = parse_lns_name_string(args, args.cbegin() + start_of_name, end_it);
+  if (lns_name.empty())
   {
     PRINT_USAGE(USAGE_PRINT_LNS_NAME_TO_OWNERS);
-    fail_msg_writer() << "lns name didn't start or end with quotation marks (\")";
     return false;
   }
 
