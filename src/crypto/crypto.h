@@ -125,6 +125,26 @@ namespace crypto {
   };
   using x25519_secret_key = epee::mlocked<tools::scrubbed<x25519_secret_key_>>;
 
+  union alignas(size_t) generic_public_key
+  {
+    ed25519_public_key ed25519;
+    public_key         monero;
+    unsigned char      data[sizeof(ed25519_public_key)];
+    static constexpr generic_public_key null() { return {0}; }
+    operator bool() const { return memcmp(data, null().data, sizeof(data)); }
+  };
+
+  union alignas(size_t) generic_signature
+  {
+    ed25519_signature ed25519;
+    signature         monero;
+    unsigned char     data[sizeof(ed25519_signature)];
+    static constexpr generic_signature null() { return {0}; }
+    operator bool() const { return memcmp(data, null().data, sizeof(data)); }
+  };
+  static_assert(sizeof(ed25519_signature) == sizeof(crypto::signature), "LNS allows storing either ed25519 or monero style signatures, we store all signatures into crypto::signature in LNS");
+  static_assert(sizeof(ed25519_public_key) == sizeof(crypto::public_key), "LNS allows storing either ed25519 or monero style keys interchangeably, we store all keys into ed25519_public_key in LNS");
+
   void hash_to_scalar(const void *data, size_t length, ec_scalar &res);
   void random32_unbiased(unsigned char *bytes);
 
@@ -274,7 +294,12 @@ namespace crypto {
   inline std::ostream &operator <<(std::ostream &o, const crypto::x25519_public_key &v) {
     epee::to_hex::formatted(o, epee::as_byte_span(v)); return o;
   }
-
+  inline std::ostream &operator <<(std::ostream &o, const crypto::generic_public_key &v) {
+    epee::to_hex::formatted(o, epee::as_byte_span(v)); return o;
+  }
+  inline std::ostream &operator <<(std::ostream &o, const crypto::generic_signature &v) {
+    epee::to_hex::formatted(o, epee::as_byte_span(v)); return o;
+  }
   const extern crypto::public_key null_pkey;
   const extern crypto::secret_key null_skey;
 }
@@ -287,6 +312,8 @@ EPEE_TYPE_IS_SPANNABLE(crypto::signature)
 EPEE_TYPE_IS_SPANNABLE(crypto::ed25519_signature)
 EPEE_TYPE_IS_SPANNABLE(crypto::ed25519_public_key)
 EPEE_TYPE_IS_SPANNABLE(crypto::x25519_public_key)
+EPEE_TYPE_IS_SPANNABLE(crypto::generic_public_key)
+EPEE_TYPE_IS_SPANNABLE(crypto::generic_signature)
 
 CRYPTO_MAKE_HASHABLE(public_key)
 CRYPTO_MAKE_HASHABLE_CONSTANT_TIME(secret_key)
