@@ -2857,35 +2857,37 @@ namespace wallet_rpc
   struct COMMAND_RPC_BUY_LNS_MAPPING
   {
     static constexpr char const description[] =
-R"(Buy a Loki Name System mapping. Loki Name System allows multiple owners that are authorised to update the underlying mapping. By default if no owner is specified, the purchasing wallet's public spend key is set as the loki_owner.
+R"(Buy a Loki Name System mapping. Loki Name System allows multiple owners that are authorised to update the underlying mapping. By default if no owner is specified, the purchasing wallet's public spend key is set as the owner.
   - For Session, the recommended owner is the ed25519 public key of the user's Session ID set to ed_owner
 
 In future, support for mappings on Blockchain wallets and Lokinet addresses will be available. Tentatively,
   - for Wallets, the recommended owner is the monero ed25519 public key of the user's wallet spend key set to loki_owner
   - for Lokinet, the recommended default owner is the ed25519 public key of the user's Lokinet key set to ed_owner
 
-When specifying multiple owners, 1 ed25519 public key and 1 monero public spend key is supported per mapping. Updating the value that a name maps to requires one of the owner keys to sign the update transaction.
+When specifying owners, either a Monero twist or standard ed25519 public key is supported per mapping. Updating the value that a name maps to requires one of the owner keys to sign the update transaction.
 
 For information on updating & signing, refer to COMMAND_RPC_UPDATE_LNS_MAPPING)";
 
     struct request_t
     {
-      std::string        type;             // The mapping type, either "blockchain", "lokinet", "session" or if custom, a value between [65-65536] (0-2 map to the predefined mappings listed earlier).
-      std::string        owner;            // (Optional): The owner of the mapping (wallet spend key as ed25519 public key in hex). For Lokinet, the owner has the ability to renew the Loki Name Service entry. By default/if field is empty, it is derived from the wallet purchasing the LNS mapping.
-      std::string        name;             // The name to purchase via Loki Name Service
-      std::string        value;            // The value that the name maps to via Loki Name Service, (i.e. For wallets: name -> wallet address. For session: display name -> session public key. For Lokinet: name -> domain name).
+      std::string        type;            // The mapping type, either "blockchain", "lokinet", "session" or if custom, a value between [65-65536] (0-2 map to the predefined mappings listed earlier).
+      std::string        owner;           // (Optional): The owner's public key that has authority to update the mapping. It must be a ed25519 public key and is used to verify update transaction signatures.
+      std::string        backup_owner;    // (Optional): The owner's wallet spend public key that has authority to update the mapping. It must be a monero style public key and is used to verify update transaction signatures.
+      std::string        name;            // The name to purchase via Loki Name Service
+      std::string        value;           // The value that the name maps to via Loki Name Service, (i.e. For wallets: name -> wallet address. For session: display name -> session public key. For Lokinet: name -> domain name).
 
-      uint32_t           account_index;    // (Optional) Transfer from this account index. (Defaults to 0)
-      std::set<uint32_t> subaddr_indices;  // (Optional) Transfer from this set of subaddresses. (Defaults to 0)
-      uint32_t           priority;         // Set a priority for the transaction. Accepted values are: or 0-4 for: default, unimportant, normal, elevated, priority.
-      bool               get_tx_key;       // (Optional) Return the transaction key after sending.
-      bool               do_not_relay;     // (Optional) If true, the newly created transaction will not be relayed to the loki network. (Defaults to false)
-      bool               get_tx_hex;       // Return the transaction as hex string after sending (Defaults to false)
-      bool               get_tx_metadata;  // Return the metadata needed to relay the transaction. (Defaults to false)
+      uint32_t           account_index;   // (Optional) Transfer from this account index. (Defaults to 0)
+      std::set<uint32_t> subaddr_indices; // (Optional) Transfer from this set of subaddresses. (Defaults to 0)
+      uint32_t           priority;        // Set a priority for the transaction. Accepted values are: or 0-4 for: default, unimportant, normal, elevated, priority.
+      bool               get_tx_key;      // (Optional) Return the transaction key after sending.
+      bool               do_not_relay;    // (Optional) If true, the newly created transaction will not be relayed to the loki network. (Defaults to false)
+      bool               get_tx_hex;      // Return the transaction as hex string after sending (Defaults to false)
+      bool               get_tx_metadata; // Return the metadata needed to relay the transaction. (Defaults to false)
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE    (type);
         KV_SERIALIZE_OPT(owner, std::string(""));
+        KV_SERIALIZE_OPT(backup_owner, std::string(""));
         KV_SERIALIZE    (name);
         KV_SERIALIZE    (value);
         KV_SERIALIZE_OPT(account_index,   (uint32_t)0);
@@ -2936,7 +2938,7 @@ Depending on the owner's public key(s) associated with the mapping the signature
   - a monero public key, the signature is generated by using Monero's crypto::generate_signature on the hash
   - a ed25519 public key, the signature is generated by using Libsodium's crypto_sign_detached on the hash
 
-Providing the signature is an optional field and if not provided, will default to attempting to sign using the wallet's Monero-style public spend keys.)";
+Providing the signature is an optional field and if not provided, will default to attempting to sign using the wallet's Monero-style spend keys.)";
 
     struct request_t
     {

@@ -3412,14 +3412,14 @@ namespace cryptonote
     if (exceeds_quantity_limit(ctx, error_resp, m_restricted, req.entries.size(), COMMAND_RPC_GET_LNS_OWNERS_TO_NAMES::MAX_REQUEST_ENTRIES))
       return false;
 
-    std::map<crypto::ed25519_public_key, size_t> key_to_request_index;
-    std::vector<crypto::ed25519_public_key> keys;
+    std::map<crypto::generic_public_key, size_t> key_to_request_index;
+    std::vector<crypto::generic_public_key> keys;
 
     keys.reserve(req.entries.size());
     for (size_t request_index = 0; request_index < req.entries.size(); request_index++)
     {
       std::string const &owner = req.entries[request_index];
-      crypto::ed25519_public_key pkey;
+      crypto::generic_public_key pkey;
       if (!epee::string_tools::hex_to_pod(owner, pkey))
       {
         error_resp.code    = CORE_RPC_ERROR_CODE_WRONG_PARAM;

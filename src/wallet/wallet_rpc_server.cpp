@@ -4291,7 +4291,15 @@ namespace tools
     }
 
     std::string reason;
-    std::vector<wallet2::pending_tx> ptx_vector = m_wallet->create_buy_lns_mapping_tx(req.type, req.owner, req.name, req.value, &reason, req.priority, req.account_index, req.subaddr_indices);
+    std::vector<wallet2::pending_tx> ptx_vector = m_wallet->create_buy_lns_mapping_tx(req.type,
+                                                                                      req.owner,
+                                                                                      req.backup_owner,
+                                                                                      req.name,
+                                                                                      req.value,
+                                                                                      &reason,
+                                                                                      req.priority,
+                                                                                      req.account_index,
+                                                                                      req.subaddr_indices);
     if (ptx_vector.empty())
     {
       er.code    = WALLET_RPC_ERROR_CODE_TX_NOT_POSSIBLE;

@@ -585,8 +585,11 @@ bool validate_encrypted_mapping_value(mapping_type type, std::string const &valu
 static std::ostream &operator<<(std::ostream &stream, cryptonote::tx_extra_loki_name_system const &data)
 {
   stream << "LNS Extra={";
-  if (data.command == lns::tx_command_t::buy)
+  if (data.is_buying())
+  {
     stream << "owner=" << data.owner;
+    if (data.backup_owner) stream << "backup_owner=" << data.backup_owner;
+  }
   else
     stream << "signature=" << epee::string_tools::pod_to_hex(data.signature);
 
@@ -600,13 +603,25 @@ static std::string hash_to_base64(crypto::hash const &hash)
   return result;
 }
 
+static bool verify_lns_signature(crypto::hash const &hash, crypto::generic_signature const &signature, crypto::generic_public_key const &key)
+{
+  if (!key) return false;
+  if (crypto_sign_verify_detached(signature.data, reinterpret_cast<unsigned char const *>(hash.data), sizeof(hash.data), key.data) != 0)
+  {
+    if (!crypto::check_signature(hash, key.monero, signature.monero))
+      return false;
+  }
+
+  return true;
+}
+
 static bool validate_against_previous_mapping(lns::name_system_db const &lns_db, uint64_t blockchain_height, cryptonote::transaction const &tx, cryptonote::tx_extra_loki_name_system &data, std::string *reason = nullptr)
 {
   std::stringstream err_stream;
   crypto::hash expected_prev_txid = crypto::null_hash;
   std::string name_hash           = hash_to_base64(data.name_hash);
   lns::mapping_record mapping     = lns_db.get_mapping(data.type, name_hash);
-  const bool updating = data.command == lns::tx_command_t::update;
+  const bool updating = data.command == lns::tx_command::update;
   if (updating && !mapping)
   {
     if (reason)
@@ -645,7 +660,7 @@ static bool validate_against_previous_mapping(lns::name_system_db const &lns_db,
       // Validate signature
       {
         crypto::hash hash = tx_extra_signature_hash(epee::span<const uint8_t>(reinterpret_cast<const uint8_t *>(data.encrypted_value.data()), data.encrypted_value.size()), expected_prev_txid);
-        if (crypto_sign_verify_detached(data.signature.data, reinterpret_cast<unsigned char *>(hash.data), sizeof(hash.data), mapping.owner.data) != 0)
+        if (!verify_lns_signature(hash, data.signature, mapping.owner) && !verify_lns_signature(hash, data.signature, mapping.backup_owner))
         {
           if (reason)
           {
@@ -656,7 +671,8 @@ static bool validate_against_previous_mapping(lns::name_system_db const &lns_db,
         }
       }
 
-      data.owner = mapping.owner;
+      data.owner        = mapping.owner;
+      data.backup_owner = mapping.backup_owner;
     }
     else
     {
@@ -799,16 +815,15 @@ bool name_system_db::validate_lns_tx(uint8_t hf_version, uint64_t blockchain_hei
     return false;
   }
 
-  const bool updating    = entry->command == lns::tx_command_t::update;
-  uint64_t burn          = cryptonote::get_burned_amount_from_tx_extra(tx.extra);
-  uint64_t burn_required = updating ? 0 : burn_needed(hf_version, entry->type);
+  uint64_t burn                = cryptonote::get_burned_amount_from_tx_extra(tx.extra);
+  uint64_t const burn_required = entry->is_buying() ? burn_needed(hf_version, entry->type) : 0;
   if (burn != burn_required)
   {
     if (reason)
     {
       char const *over_or_under = burn > burn_required ? "too much " : "insufficient ";
       err_stream << tx << ", " << *entry << ", burned " << over_or_under << "loki=" << burn << ", require=" << burn_required;
-      if (updating) err_stream << ", updating requires just the ordinary transaction fee";
+      if (!entry->is_buying()) err_stream << ", updating requires just the ordinary transaction fee";
       *reason = err_stream.str();
     }
     return false;
@@ -1074,7 +1089,7 @@ static bool add_lns_entry(lns::name_system_db &lns_db, uint64_t height, cryptono
   if (owner_record owner = lns_db.get_owner_by_key(entry.owner)) owner_id = owner.id;
   if (owner_id == 0)
   {
-    if (entry.command == lns::tx_command_t::update)
+    if (entry.command == lns::tx_command::update)
     {
       MERROR("Owner does not exist but TX received is trying to update an existing mapping (i.e. owner should already exist). TX=" << tx_hash << " should have failed validation prior.");
       return false;
@@ -1228,7 +1243,7 @@ void name_system_db::block_detach(cryptonote::Blockchain const &blockchain, uint
 
 }
 
-bool name_system_db::save_owner(crypto::ed25519_public_key const &key, int64_t *row_id)
+bool name_system_db::save_owner(crypto::generic_public_key const &key, int64_t *row_id)
 {
   sqlite3_stmt *statement = save_owner_sql;
   sqlite3_clear_bindings(statement);
@@ -1279,7 +1294,7 @@ bool name_system_db::prune_db(uint64_t height)
   return true;
 }
 
-owner_record name_system_db::get_owner_by_key(crypto::ed25519_public_key const &key) const
+owner_record name_system_db::get_owner_by_key(crypto::generic_public_key const &key) const
 {
   sqlite3_stmt *statement = get_owner_by_key_sql;
   sqlite3_clear_bindings(statement);
@@ -1356,7 +1371,7 @@ std::vector<mapping_record> name_system_db::get_mappings(std::vector<uint16_t> c
   return result;
 }
 
-std::vector<mapping_record> name_system_db::get_mappings_by_owners(std::vector<crypto::ed25519_public_key> const &keys) const
+std::vector<mapping_record> name_system_db::get_mappings_by_owners(std::vector<crypto::generic_public_key> const &keys) const
 {
   std::string sql_statement;
   // Generate string statement
@@ -1392,7 +1407,7 @@ std::vector<mapping_record> name_system_db::get_mappings_by_owners(std::vector<c
   return result;
 }
 
-std::vector<mapping_record> name_system_db::get_mappings_by_owner(crypto::ed25519_public_key const &key) const
+std::vector<mapping_record> name_system_db::get_mappings_by_owner(crypto::generic_public_key const &key) const
 {
   std::vector<mapping_record> result = {};
   sqlite3_stmt *statement = get_mappings_by_owner_sql;

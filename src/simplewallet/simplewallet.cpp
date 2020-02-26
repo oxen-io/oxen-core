@@ -269,7 +269,7 @@ namespace
   const char* USAGE_STAKE("stake [index=<N1>[,<N2>,...]] [<priority>] <service node pubkey> <amount|percent%>");
   const char* USAGE_REQUEST_STAKE_UNLOCK("request_stake_unlock <service_node_pubkey>");
   const char* USAGE_PRINT_LOCKED_STAKES("print_locked_stakes");
-  const char* USAGE_BUY_LNS_MAPPING("buy_lns_mapping [index=<N1>[,<N2>,...]] [<priority>] [owner] \"<name>\" <value>");
+  const char* USAGE_BUY_LNS_MAPPING("buy_lns_mapping [index=<N1>[,<N2>,...]] [<priority>] [owner=] [backup_owner=] \"<name>\" <value>");
   const char* USAGE_UPDATE_LNS_MAPPING("update_lns_mapping [index=<N1>[,<N2>,...]] [<priority>] \"<name>\" <value> [<signature>]");
   const char* USAGE_PRINT_LNS_OWNERS_TO_NAME_HASHES("print_lns_owners_to_name_hashes [<64 hex character ed25519 public key>]");
   const char* USAGE_PRINT_LNS_NAME_TO_OWNERS("print_lns_name_to_owners [type=<N1|all>[,<N2>...]] \"name\"");
@@ -6388,11 +6388,26 @@ bool simple_wallet::buy_lns_mapping(const std::vector<std::string>& args)
     return true;
   }
 
-  std::string owner;
-  if (bool has_owner = (local_args.size() == 3))
+  std::string owner        = {};
+  std::string backup_owner = {};
   {
-    owner = local_args[0];
-    local_args.erase(local_args.begin());
+    char const OWNER_PREFIX[]        = "owner=";
+    char const BACKUP_OWNER_PREFIX[] = "backup_owner=";
+    size_t const OWNER_LEN           = loki::char_count(OWNER_PREFIX)        + (sizeof(crypto::generic_public_key) * 2);
+    size_t const BACKUP_OWNER_LEN    = loki::char_count(BACKUP_OWNER_PREFIX) + (sizeof(crypto::generic_public_key) * 2);
+
+    for (auto it = args.begin(); it != args.end(); it++)
+    {
+      // Check prefix of argument is <owner>= and extract keys out
+      if (it->size() == OWNER_LEN && memcmp(it->data(), OWNER_PREFIX, loki::char_count(OWNER_PREFIX)) == 0)
+      {
+        owner = it->substr(loki::char_count(OWNER_PREFIX), it->size() - loki::char_count(OWNER_PREFIX));
+      }
+      else if (it->size() == BACKUP_OWNER_LEN && memcmp(it->data(), BACKUP_OWNER_PREFIX, loki::char_count(BACKUP_OWNER_PREFIX)) == 0)
+      {
+        backup_owner = it->substr(loki::char_count(BACKUP_OWNER_PREFIX), it->size() - loki::char_count(BACKUP_OWNER_PREFIX));
+      }
+    }
   }
 
   std::string const &value = local_args[local_args.size() - 1];
@@ -6414,6 +6429,7 @@ bool simple_wallet::buy_lns_mapping(const std::vector<std::string>& args)
   {
     ptx_vector = m_wallet->create_buy_lns_mapping_tx(lns::mapping_type::session,
                                                      owner,
+                                                     backup_owner,
                                                      name,
                                                      value,
                                                      &reason,

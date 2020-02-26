@@ -1538,8 +1538,8 @@ private:
       pending_tx  ptx;
     };
     request_stake_unlock_result can_request_stake_unlock(const crypto::public_key &sn_key);
-    std::vector<wallet2::pending_tx> create_buy_lns_mapping_tx(lns::mapping_type type, std::string const &owner, std::string const &name, std::string const &value, std::string *reason, uint32_t priority = 0, uint32_t account_index = 0, std::set<uint32_t> subaddr_indices = {});
-    std::vector<wallet2::pending_tx> create_buy_lns_mapping_tx(std::string const &type, std::string const &owner, std::string const &name, std::string const &value, std::string *reason, uint32_t priority = 0, uint32_t account_index = 0, std::set<uint32_t> subaddr_indices = {});
+    std::vector<wallet2::pending_tx> create_buy_lns_mapping_tx(lns::mapping_type type, std::string const &owner, std::string const &backup_owner, std::string const &name, std::string const &value, std::string *reason, uint32_t priority = 0, uint32_t account_index = 0, std::set<uint32_t> subaddr_indices = {});
+    std::vector<wallet2::pending_tx> create_buy_lns_mapping_tx(std::string const &type, std::string const &owner, std::string const &backup_owner, std::string const &name, std::string const &value, std::string *reason, uint32_t priority = 0, uint32_t account_index = 0, std::set<uint32_t> subaddr_indices = {});
 
     // signature: (Optional) If set, use the signature given, otherwise by default derive the signature from the wallet spend key as an ed25519 key.
     //            The signature is derived from the hash of the previous txid blob and previous value blob of the mapping. By default this is signed using the wallet's spend key as an ed25519 keypair.
