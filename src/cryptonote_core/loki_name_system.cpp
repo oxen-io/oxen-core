@@ -798,6 +798,29 @@ bool name_system_db::validate_lns_tx(uint8_t hf_version, uint64_t blockchain_hei
     return false;
   }
 
+  if (entry->is_buying())
+  {
+    if (entry->owner == entry->backup_owner)
+    {
+      if (reason)
+      {
+        err_stream << tx << ", " << *entry << ", specifying owner the same as the backup owner";
+        *reason = err_stream.str();
+      }
+      return false;
+    }
+
+    if (!entry->owner)
+    {
+      if (reason)
+      {
+        err_stream << tx << ", " << *entry << ", can't specify LNS extra without owner";
+        *reason = err_stream.str();
+      }
+      return false;
+    }
+  }
+
   if (!validate_encrypted_mapping_value(entry->type, entry->encrypted_value, reason))
       return false;
 
