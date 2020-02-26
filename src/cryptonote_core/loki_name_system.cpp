@@ -1431,7 +1431,7 @@ std::vector<mapping_record> name_system_db::get_mappings(std::vector<uint16_t> c
      char constexpr SQL3[]  = R"())";
 
      std::stringstream stream;
-     stream << sql1 << name;
+     stream << sql1 << name_base64_hash;
      stream.write(SQL2, loki::char_count(SQL2));
 
      for (size_t i = 0; i < types.size(); i++)
