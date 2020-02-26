@@ -1426,17 +1426,21 @@ std::vector<mapping_record> name_system_db::get_mappings(std::vector<uint16_t> c
 
   if (types.size())
   {
-     std::string const sql_prefix_str = sql_cmd_combine_mappings_and_owner_table(R"(WHERE "name" = ? AND "type" in ()");
-     char constexpr SQL_SUFFIX[]      = R"())";
+     std::string const sql1 = sql_cmd_combine_mappings_and_owner_table(R"(WHERE "name" = ')");
+     char constexpr SQL2[]  = R"(' AND "type" in ()";
+     char constexpr SQL3[]  = R"())";
 
      std::stringstream stream;
-     stream << sql_prefix_str;
+     stream << sql1 << name;
+     stream.write(SQL2, loki::char_count(SQL2));
+
      for (size_t i = 0; i < types.size(); i++)
      {
-       stream << "?";
+       stream << types[i];
        if (i < (types.size() - 1)) stream << ", ";
     }
-    stream << SQL_SUFFIX;
+
+    stream.write(SQL3, loki::char_count(SQL3));
     sql_statement = stream.str();
   }
   else
@@ -1449,13 +1453,6 @@ std::vector<mapping_record> name_system_db::get_mappings(std::vector<uint16_t> c
   sqlite3_stmt *statement = nullptr;
   if (!sql_compile_statement(db, sql_statement.c_str(), sql_statement.size(), &statement, false /*optimise_for_multiple_usage*/))
     return result;
-
-  // Bind parameters statements
-  int sql_param_index = 1;
-  sqlite3_bind_text(statement, sql_param_index++, name_base64_hash.data(), name_base64_hash.size(), nullptr /*destructor*/);
-  for (auto type : types)
-    sqlite3_bind_int(statement, sql_param_index++, type);
-  assert((sql_param_index - 1) == static_cast<int>(1 /*name*/ + types.size()));
 
   // Execute
   sql_run_statement(nettype, lns_sql_type::get_mappings, statement, &result);
