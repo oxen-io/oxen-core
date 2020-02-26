@@ -123,12 +123,12 @@ struct mapping_record
   std::string                name_hash; // name hashed and represented in base64 encoding
   mapping_value              encrypted_value;
   uint64_t                   register_height;
-  int64_t                    owner_id;
-  crypto::generic_public_key owner;
-  crypto::generic_public_key backup_owner;
-  int64_t                    backup_owner_id;
   crypto::hash               txid;
   crypto::hash               prev_txid;
+  int64_t                    owner_id;
+  int64_t                    backup_owner_id;
+  crypto::generic_public_key owner;
+  crypto::generic_public_key backup_owner;
 };
 
 struct name_system_db
@@ -142,7 +142,7 @@ struct name_system_db
   // Signifies the blockchain has reorganized commences the rollback and pruning procedures.
   void                        block_detach(cryptonote::Blockchain const &blockchain, uint64_t new_blockchain_height);
   bool                        save_owner     (crypto::generic_public_key const &key, int64_t *row_id);
-  bool                        save_mapping   (crypto::hash const &tx_hash, cryptonote::tx_extra_loki_name_system const &src, uint64_t height, int64_t owner_id);
+  bool                        save_mapping   (crypto::hash const &tx_hash, cryptonote::tx_extra_loki_name_system const &src, uint64_t height, int64_t owner_id, int64_t backup_owner_id = 0);
   bool                        save_settings  (uint64_t top_height, crypto::hash const &top_hash, int version);
 
   // Delete all mappings that are registered on height or newer followed by deleting all owners no longer referenced in the DB

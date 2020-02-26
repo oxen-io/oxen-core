@@ -136,6 +136,7 @@ int main(int argc, char* argv[])
     GENERATE_AND_PLAY(loki_name_system_name_value_max_lengths);
     GENERATE_AND_PLAY(loki_name_system_update_mapping_after_expiry_fails);
     GENERATE_AND_PLAY(loki_name_system_update_mapping);
+    GENERATE_AND_PLAY(loki_name_system_update_mapping_multiple_owners);
     GENERATE_AND_PLAY(loki_name_system_update_mapping_non_existent_name_fails);
     GENERATE_AND_PLAY(loki_name_system_update_mapping_invalid_signature);
     GENERATE_AND_PLAY(loki_name_system_update_mapping_replay);

@@ -69,6 +69,7 @@ enum struct mapping_record_row
   prev_txid,
   register_height,
   owner_id,
+  backup_owner_id,
   _count,
 };
 
@@ -139,9 +140,10 @@ static bool sql_run_statement(cryptonote::network_type nettype, lns_sql_type typ
             if (type_int >= tools::enum_count<mapping_type>)
               return false;
 
-            tmp_entry.type = static_cast<mapping_type>(type_int);
+            tmp_entry.type            = static_cast<mapping_type>(type_int);
             tmp_entry.register_height = static_cast<uint16_t>(sqlite3_column_int(statement, static_cast<int>(mapping_record_row::register_height)));
-            tmp_entry.owner_id = sqlite3_column_int(statement, static_cast<int>(mapping_record_row::owner_id));
+            tmp_entry.owner_id        = sqlite3_column_int(statement, static_cast<int>(mapping_record_row::owner_id));
+            tmp_entry.backup_owner_id = sqlite3_column_int(statement, static_cast<int>(mapping_record_row::backup_owner_id));
 
             // Copy encrypted_value
             {
@@ -169,9 +171,15 @@ static bool sql_run_statement(cryptonote::network_type nettype, lns_sql_type typ
             if (!sql_copy_blob(statement, static_cast<int>(mapping_record_row::prev_txid), tmp_entry.prev_txid.data, sizeof(tmp_entry.prev_txid)))
               return false;
 
-            int last_column = tools::enum_count<mapping_record_row> + 1;
-            if (!sql_copy_blob(statement, last_column, tmp_entry.owner.data, sizeof(tmp_entry.owner)))
+            int owner_column = tools::enum_count<mapping_record_row>;
+            if (!sql_copy_blob(statement, owner_column, tmp_entry.owner.data, sizeof(tmp_entry.owner)))
               return false;
+
+            if (tmp_entry.backup_owner_id > 0)
+            {
+              if (!sql_copy_blob(statement, owner_column + 1, tmp_entry.backup_owner.data, sizeof(tmp_entry.backup_owner)))
+                return false;
+            }
 
             data_loaded = true;
             if (type == lns_sql_type::get_mapping)
@@ -659,7 +667,7 @@ static bool validate_against_previous_mapping(lns::name_system_db const &lns_db,
 
       // Validate signature
       {
-        crypto::hash hash = tx_extra_signature_hash(epee::span<const uint8_t>(reinterpret_cast<const uint8_t *>(data.encrypted_value.data()), data.encrypted_value.size()), expected_prev_txid);
+        crypto::hash hash = tx_extra_signature_hash(epee::strspan<uint8_t>(data.encrypted_value), expected_prev_txid);
         if (!verify_lns_signature(hash, data.signature, mapping.owner) && !verify_lns_signature(hash, data.signature, mapping.backup_owner))
         {
           if (reason)
@@ -815,6 +823,18 @@ bool name_system_db::validate_lns_tx(uint8_t hf_version, uint64_t blockchain_hei
       if (reason)
       {
         err_stream << tx << ", " << *entry << ", can't specify LNS extra without owner";
+        *reason = err_stream.str();
+      }
+      return false;
+    }
+  }
+  else
+  {
+    if (!entry->signature)
+    {
+      if (reason)
+      {
+        err_stream << tx << ", " << *entry << ", signature to validate is the null-signature";
         *reason = err_stream.str();
       }
       return false;
@@ -978,7 +998,8 @@ CREATE TABLE IF NOT EXISTS "mappings" (
     "txid" BLOB NOT NULL,
     "prev_txid" BLOB NOT NULL,
     "register_height" INTEGER NOT NULL,
-    "owner_id" INTEGER NOT NULL REFERENCES "owner" ("id")
+    "owner_id" INTEGER NOT NULL REFERENCES "owner" ("id"),
+    "backup_owner_id" INTEGER REFERENCES "owner" ("id")
 );
 CREATE UNIQUE INDEX IF NOT EXISTS "name_hash_type_id" ON mappings("name_hash", "type");
 )";
@@ -1003,17 +1024,39 @@ bool name_system_db::init(cryptonote::network_type nettype, sqlite3 *db, uint64_
   this->db      = db;
   this->nettype = nettype;
 
-  char constexpr GET_MAPPINGS_BY_OWNER_SQL[]            = R"(SELECT * FROM "mappings" JOIN "owner" ON "mappings"."owner_id" = "owner"."id" WHERE "public_key" = ?)";
-  char constexpr GET_MAPPINGS_ON_HEIGHT_AND_NEWER_SQL[] = R"(SELECT * FROM "mappings" JOIN "owner" on "mappings"."owner_id" = "owner"."id" WHERE "register_height" >= ?)";
-  char constexpr GET_MAPPING_SQL[]                      = R"(SELECT * FROM "mappings" JOIN "owner" on "mappings"."owner_id" = "owner"."id" WHERE "type" = ? AND "name_hash" = ?)";
-  char constexpr GET_OWNER_BY_ID_SQL[]                  = R"(SELECT * FROM "owner" WHERE "id" = ?)";
-  char constexpr GET_OWNER_BY_KEY_SQL[]                 = R"(SELECT * FROM "owner" WHERE "public_key" = ?)";
-  char constexpr GET_SETTINGS_SQL[]                     = R"(SELECT * FROM "settings" WHERE "id" = 1)";
-  char constexpr PRUNE_MAPPINGS_SQL[]                   = R"(DELETE FROM "mappings" WHERE "register_height" >= ?)";
-  char constexpr PRUNE_OWNERS_SQL[]                     = R"(DELETE FROM "owner" WHERE "id" NOT IN (SELECT "owner_id" FROM "mappings"))";
-  char constexpr SAVE_MAPPING_SQL[]                     = R"(INSERT OR REPLACE INTO "mappings" ("type", "name_hash", "encrypted_value", "txid", "prev_txid", "register_height", "owner_id") VALUES (?,?,?,?,?,?,?))";
-  char constexpr SAVE_OWNER_SQL[]                       = R"(INSERT INTO "owner" ("public_key") VALUES (?);)";
-  char constexpr SAVE_SETTINGS_SQL[]                    = R"(INSERT OR REPLACE INTO "settings" ("id", "top_height", "top_hash", "version") VALUES (1,?,?,?))";
+  char constexpr GET_MAPPINGS_BY_OWNER_SQL[] =
+R"(SELECT "mappings".*, "o1"."public_key", "o2"."public_key" FROM "mappings"
+JOIN "owner" "o1" ON "mappings"."owner_id" = "o1"."id"
+LEFT JOIN "owner" "o2" ON "mappings"."backup_owner_id" = "o2"."id"
+WHERE "o1"."public_key" = ? OR "o2"."public_key" = ?)";
+
+  char constexpr GET_MAPPINGS_ON_HEIGHT_AND_NEWER_SQL[] =
+R"(SELECT "mappings".*, "o1"."public_key", "o2"."public_key" FROM "mappings"
+JOIN "owner" "o1" ON "mappings"."owner_id" = "o1"."id"
+LEFT JOIN "owner" "o2" ON "mappings"."backup_owner_id" = "o2"."id"
+WHERE "register_height" >= ?)";
+
+  char constexpr GET_MAPPING_SQL[] =
+R"(SELECT "mappings".*, "o1"."public_key", "o2"."public_key" FROM "mappings"
+JOIN "owner" "o1" ON "mappings"."owner_id" = "o1"."id"
+LEFT JOIN "owner" "o2" ON "mappings"."backup_owner_id" = "o2"."id"
+WHERE "type" = ? AND "name" = ?)";
+
+  char constexpr GET_OWNER_BY_ID_SQL[]  = R"(SELECT * FROM "owner" WHERE "id" = ?)";
+  char constexpr GET_OWNER_BY_KEY_SQL[] = R"(SELECT * FROM "owner" WHERE "public_key" = ?)";
+  char constexpr GET_SETTINGS_SQL[]     = R"(SELECT * FROM "settings" WHERE "id" = 1)";
+  char constexpr PRUNE_MAPPINGS_SQL[]   = R"(DELETE FROM "mappings" WHERE "register_height" >= ?)";
+
+  char constexpr PRUNE_OWNERS_SQL[] =
+R"(DELETE FROM "owner"
+WHERE NOT EXISTS
+  (SELECT * FROM "mappings"
+   WHERE "owner"."id" = "mappings"."owner_id"
+   OR "owner"."id" = "mappings"."backup_owner_id"))";
+
+  char constexpr SAVE_MAPPING_SQL[]     = R"(INSERT OR REPLACE INTO "mappings" ("type", "name", "value", "txid", "prev_txid", "register_height", "owner_id", "backup_owner_id") VALUES (?,?,?,?,?,?,?,?))";
+  char constexpr SAVE_OWNER_SQL[]       = R"(INSERT INTO "owner" ("public_key") VALUES (?);)";
+  char constexpr SAVE_SETTINGS_SQL[]    = R"(INSERT OR REPLACE INTO "settings" ("id", "top_height", "top_hash", "version") VALUES (1,?,?,?))";
 
   sqlite3_stmt *test;
 
@@ -1106,27 +1149,49 @@ scoped_db_transaction::~scoped_db_transaction()
   lns_db.transaction_begun = false;
 }
 
-static bool add_lns_entry(lns::name_system_db &lns_db, uint64_t height, cryptonote::tx_extra_loki_name_system const &entry, crypto::hash const &tx_hash)
+static int64_t add_or_get_owner_id(lns::name_system_db &lns_db, crypto::hash const &tx_hash, cryptonote::tx_extra_loki_name_system const &entry, crypto::generic_public_key const &key)
 {
-  int64_t owner_id = 0;
-  if (owner_record owner = lns_db.get_owner_by_key(entry.owner)) owner_id = owner.id;
-  if (owner_id == 0)
+  int64_t result = 0;
+  if (owner_record owner = lns_db.get_owner_by_key(key)) result = owner.id;
+  if (result == 0)
   {
     if (entry.command == lns::tx_command::update)
     {
       MERROR("Owner does not exist but TX received is trying to update an existing mapping (i.e. owner should already exist). TX=" << tx_hash << " should have failed validation prior.");
-      return false;
+      return result;
     }
 
-    if (!lns_db.save_owner(entry.owner, &owner_id))
+    if (!lns_db.save_owner(key, &result))
     {
       LOG_PRINT_L1("Failed to save LNS owner to DB tx: " << tx_hash << ", type: " << entry.type << ", name_hash: " << entry.name_hash << ", owner: " << entry.owner);
+      return result;
+    }
+  }
+  return result;
+}
+
+static bool add_lns_entry(lns::name_system_db &lns_db, uint64_t height, cryptonote::tx_extra_loki_name_system const &entry, crypto::hash const &tx_hash)
+{
+  int64_t owner_id = add_or_get_owner_id(lns_db, tx_hash, entry, entry.owner);
+  if (owner_id == 0)
+  {
+    assert(owner_id != 0);
+    return false;
+  }
+
+  int64_t backup_owner_id = 0;
+  if (entry.backup_owner)
+  {
+    backup_owner_id = add_or_get_owner_id(lns_db, tx_hash, entry, entry.backup_owner);
+    if (backup_owner_id == 0)
+    {
+      assert(backup_owner_id != 0);
+      LOG_PRINT_L1("Failed to save LNS backup owner to DB tx: " << tx_hash << ", type: " << entry.type << ", name_hash: " << entry.name_hash << ", owner: " << entry.owner);
       return false;
     }
   }
-  assert(owner_id != 0);
 
-  if (!lns_db.save_mapping(tx_hash, entry, height, owner_id))
+  if (!lns_db.save_mapping(tx_hash, entry, height, owner_id, backup_owner_id))
   {
     LOG_PRINT_L1("Failed to save LNS entry to DB tx: " << tx_hash << ", type: " << entry.type << ", name_hash: " << entry.name_hash << ", owner: " << entry.owner);
     return false;
@@ -1276,7 +1341,7 @@ bool name_system_db::save_owner(crypto::generic_public_key const &key, int64_t *
   return result;
 }
 
-bool name_system_db::save_mapping(crypto::hash const &tx_hash, cryptonote::tx_extra_loki_name_system const &src, uint64_t height, int64_t owner_id)
+bool name_system_db::save_mapping(crypto::hash const &tx_hash, cryptonote::tx_extra_loki_name_system const &src, uint64_t height, int64_t owner_id, int64_t backup_owner_id)
 {
   std::string name_hash   = hash_to_base64(src.name_hash);
   sqlite3_stmt *statement = save_mapping_sql;
@@ -1287,6 +1352,10 @@ bool name_system_db::save_mapping(crypto::hash const &tx_hash, cryptonote::tx_ex
   sqlite3_bind_blob (statement, static_cast<int>(mapping_record_row::prev_txid), src.prev_txid.data, sizeof(src.prev_txid), nullptr /*destructor*/);
   sqlite3_bind_int64(statement, static_cast<int>(mapping_record_row::register_height), static_cast<int64_t>(height));
   sqlite3_bind_int64(statement, static_cast<int>(mapping_record_row::owner_id), owner_id);
+  if (backup_owner_id != 0)
+  {
+    sqlite3_bind_int64(statement, static_cast<int>(mapping_record_row::backup_owner_id), backup_owner_id);
+  }
   bool result = sql_run_statement(nettype, lns_sql_type::save_mapping, statement, nullptr);
   return result;
 }
@@ -1358,7 +1427,11 @@ std::vector<mapping_record> name_system_db::get_mappings(std::vector<uint16_t> c
 
   if (types.size())
   {
-    char constexpr SQL_PREFIX[] = R"(SELECT * FROM "mappings" JOIN "owner" ON "mappings"."owner_id" = "owner"."id" WHERE "name_hash" = ? AND "type" in ()";
+    char constexpr SQL_PREFIX[] =
+R"(SELECT "mappings".*, "o1"."public_key", "o2"."public_key" FROM "mappings"
+JOIN "owner" "o1" ON "mappings"."owner_id" = "o1"."id"
+LEFT JOIN "owner" "o2" ON "mappings"."backup_owner_id" = "o2"."id"
+WHERE "name" = ? AND "type" in ()";
     char constexpr SQL_SUFFIX[] = R"())";
 
     std::stringstream stream;
@@ -1399,11 +1472,24 @@ std::vector<mapping_record> name_system_db::get_mappings_by_owners(std::vector<c
   std::string sql_statement;
   // Generate string statement
   {
-    char constexpr SQL_PREFIX[] = R"(SELECT * FROM "mappings" JOIN "owner" ON "mappings"."owner_id" = "owner"."id" WHERE "public_key" in ()";
+    char constexpr SQL_PREFIX[] =
+R"(SELECT "mappings".*, "o1"."public_key", "o2"."public_key" FROM "mappings"
+JOIN "owner" "o1" ON "mappings"."owner_id" = "o1"."id"
+LEFT JOIN "owner" "o2" ON "mappings"."backup_owner_id" = "o2"."id"
+WHERE "o1"."public_key" in ()";
+    char constexpr SQL_MIDDLE[] = R"(OR "o2"."public_key" in ()";
     char constexpr SQL_SUFFIX[] = R"())";
 
     std::stringstream stream;
     stream << SQL_PREFIX;
+    for (size_t i = 0; i < keys.size(); i++)
+    {
+      stream << "?";
+      if (i < (keys.size() - 1)) stream << ", ";
+    }
+    stream << SQL_SUFFIX;
+
+    stream << SQL_MIDDLE;
     for (size_t i = 0; i < keys.size(); i++)
     {
       stream << "?";
@@ -1421,9 +1507,14 @@ std::vector<mapping_record> name_system_db::get_mappings_by_owners(std::vector<c
 
   // Bind parameters statements
   int sql_param_index = 1;
-  for (auto const &key : keys)
-    sqlite3_bind_blob(statement, sql_param_index++, key.data, sizeof(key), nullptr /*destructor*/);
-  assert((sql_param_index - 1) == static_cast<int>(keys.size()));
+  for (size_t i = 0; i < keys.size(); i++)
+  {
+    for (auto const &key : keys)
+    {
+      sqlite3_bind_blob(statement, sql_param_index++, key.data, sizeof(key), nullptr /*destructor*/);
+    }
+  }
+  assert((sql_param_index - 1) == (static_cast<int>(keys.size() * 2)));
 
   // Execute
   sql_run_statement(nettype, lns_sql_type::get_mappings_by_owners, statement, &result);
@@ -1436,6 +1527,7 @@ std::vector<mapping_record> name_system_db::get_mappings_by_owner(crypto::generi
   sqlite3_stmt *statement = get_mappings_by_owner_sql;
   sqlite3_clear_bindings(statement);
   sqlite3_bind_blob(statement, 1 /*sql param index*/, key.data, sizeof(key), nullptr /*destructor*/);
+  sqlite3_bind_blob(statement, 2 /*sql param index*/, key.data, sizeof(key), nullptr /*destructor*/);
   sql_run_statement(nettype, lns_sql_type::get_mappings_by_owner, statement, &result);
   return result;
 }

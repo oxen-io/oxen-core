@@ -401,7 +401,7 @@ namespace cryptonote
     lns::tx_command            command;
     crypto::generic_public_key owner        = {}; // only serialized if command == tx_command::buy
     crypto::generic_public_key backup_owner = {}; // only serialized if command == tx_command::buy
-    crypto::generic_signature  signature;         // only serialized if command == tx_command::update
+    crypto::generic_signature  signature    = {}; // only serialized if command == tx_command::update
     crypto::hash               name_hash;
     std::string                encrypted_value; // encrypted binary format of the value in the name->value mapping
     crypto::hash               prev_txid = crypto::null_hash;  // previous txid that purchased the mapping

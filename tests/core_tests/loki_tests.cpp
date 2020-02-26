@@ -1176,9 +1176,9 @@ bool loki_name_system_get_mappings_by_owner::generate(std::vector<test_event_ent
   uint64_t wallet_height = gen.height();
 
   loki_register_callback(events, "check_lns_entries", [&events, bob_key,
-                                                       wallet_height,    wallet_name1,    wallet_name2,
-                                                       session_height, session_name1, session_name2,
-                                                       lokinet_height,   lokinet_name1,   lokinet_name2
+                                                       wallet_height,    wallet_name1,  wallet_name2,
+                                                       session_height,   session_name1, session_name2,
+                                                       lokinet_height,   lokinet_name1, lokinet_name2
                                                       ](cryptonote::core &c, size_t ev_index)
   {
     DEFINE_TESTS_ERROR_CONTEXT("check_lns_entries");
@@ -2147,6 +2147,191 @@ bool loki_name_system_update_mapping::generate(std::vector<test_event_entry> &ev
   return true;
 }
 
+bool loki_name_system_update_mapping_multiple_owners::generate(std::vector<test_event_entry>& events)
+{
+  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = loki_generate_sequential_hard_fork_table();
+  loki_chain_generator gen(events, hard_forks);
+  gen.add_blocks_until_version(hard_forks.back().first);
+  gen.add_n_blocks(10); /// generate some outputs and unlock them
+  gen.add_mined_money_unlock_blocks();
+
+  cryptonote::account_base miner = gen.first_miner_;
+  lns_keys_t miner_key           = make_lns_keys(miner);
+
+  // Test 2 ed keys as owner
+  {
+    crypto::hash prev_txid = crypto::null_hash;
+    crypto::generic_public_key owner1;
+    crypto::generic_public_key owner2;
+    crypto::ed25519_secret_key owner1_key;
+    crypto::ed25519_secret_key owner2_key;
+
+    crypto_sign_ed25519_keypair(owner1.data, owner1_key.data);
+    crypto_sign_ed25519_keypair(owner2.data, owner2_key.data);
+
+    std::string name = "Hello World";
+    cryptonote::transaction tx1 = gen.create_and_add_loki_name_system_tx(miner, lns::mapping_type::session, miner_key.session_value, name, &owner1, &owner2);
+    gen.create_and_add_next_block({tx1});
+    prev_txid = cryptonote::get_transaction_hash(tx1);
+
+    // Update with owner1
+    {
+      lns_keys_t temp_keys = make_lns_keys(gen.add_account());
+      crypto::generic_signature signature;
+
+      crypto::hash hash = lns::tx_extra_signature_hash(temp_keys.session_value.to_span(), prev_txid);
+      crypto_sign_detached(signature.data, NULL, reinterpret_cast<unsigned char *>(hash.data), sizeof(hash), owner1_key.data);
+
+      cryptonote::transaction tx2 = gen.create_and_add_loki_name_system_tx_update(miner, lns::mapping_type::session, temp_keys.session_value, name, &signature);
+      gen.create_and_add_next_block({tx2});
+      prev_txid = cryptonote::get_transaction_hash(tx2);
+    }
+
+    // Update with owner2
+    {
+      lns_keys_t temp_keys = make_lns_keys(gen.add_account());
+      crypto::generic_signature signature;
+
+      crypto::hash hash = lns::tx_extra_signature_hash(temp_keys.session_value.to_span(), prev_txid);
+      crypto_sign_detached(signature.data, NULL, reinterpret_cast<unsigned char *>(hash.data), sizeof(hash), owner2_key.data);
+
+      cryptonote::transaction tx2 = gen.create_and_add_loki_name_system_tx_update(miner, lns::mapping_type::session, temp_keys.session_value, name, &signature);
+      gen.create_and_add_next_block({tx2});
+      prev_txid = cryptonote::get_transaction_hash(tx2);
+    }
+  }
+
+  // Test 2 monero keys as owner
+  {
+    crypto::hash prev_txid = crypto::null_hash;
+    crypto::generic_public_key owner1;
+    crypto::generic_public_key owner2;
+    crypto::secret_key owner1_key;
+    crypto::secret_key owner2_key;
+
+    crypto::generate_keys(owner1.monero, owner1_key);
+    crypto::generate_keys(owner2.monero, owner2_key);
+
+    std::string name            = "Hello Sailor";
+    cryptonote::transaction tx1 = gen.create_and_add_loki_name_system_tx(miner, lns::mapping_type::session, miner_key.session_value, name, &owner1, &owner2);
+    gen.create_and_add_next_block({tx1});
+    prev_txid = cryptonote::get_transaction_hash(tx1);
+
+    // Update with owner1
+    {
+      lns_keys_t temp_keys = make_lns_keys(gen.add_account());
+      crypto::generic_signature signature;
+
+      crypto::hash hash = lns::tx_extra_signature_hash(temp_keys.session_value.to_span(), prev_txid);
+      crypto::generate_signature(hash, owner1.monero, owner1_key, signature.monero);
+
+      cryptonote::transaction tx2 = gen.create_and_add_loki_name_system_tx_update(miner, lns::mapping_type::session, temp_keys.session_value, name, &signature);
+      gen.create_and_add_next_block({tx2});
+      prev_txid = cryptonote::get_transaction_hash(tx2);
+    }
+
+    // Update with owner2
+    {
+      lns_keys_t temp_keys = make_lns_keys(gen.add_account());
+      crypto::generic_signature signature;
+
+      crypto::hash hash = lns::tx_extra_signature_hash(temp_keys.session_value.to_span(), prev_txid);
+      crypto::generate_signature(hash, owner2.monero, owner2_key, signature.monero);
+
+      cryptonote::transaction tx2 = gen.create_and_add_loki_name_system_tx_update(miner, lns::mapping_type::session, temp_keys.session_value, name, &signature);
+      gen.create_and_add_next_block({tx2});
+      prev_txid = cryptonote::get_transaction_hash(tx2);
+    }
+  }
+
+  // Test 1 ed/1 monero as owner
+  {
+    crypto::hash prev_txid = crypto::null_hash;
+    crypto::generic_public_key owner1;
+    crypto::generic_public_key owner2;
+    crypto::ed25519_secret_key owner1_key;
+    crypto::secret_key owner2_key;
+
+    crypto_sign_ed25519_keypair(owner1.data, owner1_key.data);
+    crypto::generate_keys(owner2.monero, owner2_key);
+
+    std::string name = "Hello Driver";
+    cryptonote::transaction tx1 = gen.create_and_add_loki_name_system_tx(miner, lns::mapping_type::session, miner_key.session_value, name, &owner1, &owner2);
+    gen.create_and_add_next_block({tx1});
+    prev_txid = cryptonote::get_transaction_hash(tx1);
+
+    // Update with owner1
+    {
+      lns_keys_t temp_keys = make_lns_keys(gen.add_account());
+      crypto::generic_signature signature;
+
+      crypto::hash hash = lns::tx_extra_signature_hash(temp_keys.session_value.to_span(), prev_txid);
+      crypto_sign_detached(signature.data, NULL, reinterpret_cast<unsigned char *>(hash.data), sizeof(hash), owner1_key.data);
+
+      cryptonote::transaction tx2 = gen.create_and_add_loki_name_system_tx_update(miner, lns::mapping_type::session, temp_keys.session_value, name, &signature);
+      gen.create_and_add_next_block({tx2});
+      prev_txid = cryptonote::get_transaction_hash(tx2);
+    }
+
+    // Update with owner2
+    {
+      lns_keys_t temp_keys = make_lns_keys(gen.add_account());
+      crypto::generic_signature signature;
+
+      crypto::hash hash = lns::tx_extra_signature_hash(temp_keys.session_value.to_span(), prev_txid);
+      crypto::generate_signature(hash, owner2.monero, owner2_key, signature.monero);
+
+      cryptonote::transaction tx2 = gen.create_and_add_loki_name_system_tx_update(miner, lns::mapping_type::session, temp_keys.session_value, name, &signature);
+      gen.create_and_add_next_block({tx2});
+      prev_txid = cryptonote::get_transaction_hash(tx2);
+    }
+  }
+
+  // Test 1 monero/1 ed as owner
+  {
+    crypto::hash prev_txid = crypto::null_hash;
+    crypto::generic_public_key owner1;
+    crypto::generic_public_key owner2;
+    crypto::secret_key owner1_key;
+    crypto::ed25519_secret_key owner2_key;
+
+    crypto::generate_keys(owner1.monero, owner1_key);
+    crypto_sign_ed25519_keypair(owner2.data, owner2_key.data);
+
+    std::string name = "Hello Passenger";
+    cryptonote::transaction tx1 = gen.create_and_add_loki_name_system_tx(miner, lns::mapping_type::session, miner_key.session_value, name, &owner1, &owner2);
+    gen.create_and_add_next_block({tx1});
+    prev_txid = cryptonote::get_transaction_hash(tx1);
+
+    // Update with owner1
+    {
+      lns_keys_t temp_keys = make_lns_keys(gen.add_account());
+      crypto::generic_signature signature;
+
+      crypto::hash hash = lns::tx_extra_signature_hash(temp_keys.session_value.to_span(), prev_txid);
+      crypto::generate_signature(hash, owner1.monero, owner1_key, signature.monero);
+
+      cryptonote::transaction tx2 = gen.create_and_add_loki_name_system_tx_update(miner, lns::mapping_type::session, temp_keys.session_value, name, &signature);
+      gen.create_and_add_next_block({tx2});
+      prev_txid = cryptonote::get_transaction_hash(tx2);
+    }
+
+    // Update with owner2
+    {
+      lns_keys_t temp_keys = make_lns_keys(gen.add_account());
+      crypto::generic_signature signature;
+
+      crypto::hash hash = lns::tx_extra_signature_hash(temp_keys.session_value.to_span(), prev_txid);
+      crypto_sign_detached(signature.data, NULL, reinterpret_cast<unsigned char *>(hash.data), sizeof(hash), owner2_key.data);
+
+      cryptonote::transaction tx2 = gen.create_and_add_loki_name_system_tx_update(miner, lns::mapping_type::session, temp_keys.session_value, name, &signature);
+      gen.create_and_add_next_block({tx2});
+      prev_txid = cryptonote::get_transaction_hash(tx2);
+    }
+  }
+  return true;
+}
+
 bool loki_name_system_update_mapping_non_existent_name_fails::generate(std::vector<test_event_entry> &events)
 {
   std::vector<std::pair<uint8_t, uint64_t>> hard_forks = loki_generate_sequential_hard_fork_table();
@@ -2282,7 +2467,7 @@ bool loki_name_system_wrong_burn::generate(std::vector<test_event_entry> &events
         if (under_burn) burn -= 1;
         else            burn += 1;
 
-        cryptonote::transaction tx = gen.create_loki_name_system_tx(miner, type, value, name, nullptr /*owner*/, burn);
+        cryptonote::transaction tx = gen.create_loki_name_system_tx(miner, type, value, name, nullptr /*owner*/, nullptr /*backup_owner*/, burn);
         gen.add_tx(tx, false /*can_be_added_to_blockchain*/, "Wrong burn for a LNS tx", false /*kept_by_block*/);
       }
     }
