@@ -1016,6 +1016,19 @@ CREATE UNIQUE INDEX IF NOT EXISTS "name_hash_type_id" ON mappings("name_hash", "
   return true;
 }
 
+static std::string sql_cmd_combine_mappings_and_owner_table(char const *suffix)
+{
+  std::stringstream stream;
+  stream <<
+R"(SELECT "mappings".*, "o1"."public_key", "o2"."public_key" FROM "mappings"
+JOIN "owner" "o1" ON "mappings"."owner_id" = "o1"."id"
+LEFT JOIN "owner" "o2" ON "mappings"."backup_owner_id" = "o2"."id")" << "\n";
+
+  if (suffix)
+    stream << suffix;
+  return stream.str();
+}
+
 enum struct db_version { v1, };
 auto constexpr DB_VERSION = db_version::v1;
 bool name_system_db::init(cryptonote::network_type nettype, sqlite3 *db, uint64_t top_height, crypto::hash const &top_hash)
@@ -1024,39 +1037,25 @@ bool name_system_db::init(cryptonote::network_type nettype, sqlite3 *db, uint64_
   this->db      = db;
   this->nettype = nettype;
 
-  char constexpr GET_MAPPINGS_BY_OWNER_SQL[] =
-R"(SELECT "mappings".*, "o1"."public_key", "o2"."public_key" FROM "mappings"
-JOIN "owner" "o1" ON "mappings"."owner_id" = "o1"."id"
-LEFT JOIN "owner" "o2" ON "mappings"."backup_owner_id" = "o2"."id"
-WHERE "o1"."public_key" = ? OR "o2"."public_key" = ?)";
+  std::string const get_mappings_by_owner_str            = sql_cmd_combine_mappings_and_owner_table(R"(WHERE "o1"."public_key" = ? OR "o2"."public_key" = ?)");
+  std::string const get_mappings_on_height_and_newer_str = sql_cmd_combine_mappings_and_owner_table(R"(WHERE "register_height" >= ?)");
+  std::string const get_mapping_str                      = sql_cmd_combine_mappings_and_owner_table(R"(WHERE "type" = ? AND "name" = ?)");
 
-  char constexpr GET_MAPPINGS_ON_HEIGHT_AND_NEWER_SQL[] =
-R"(SELECT "mappings".*, "o1"."public_key", "o2"."public_key" FROM "mappings"
-JOIN "owner" "o1" ON "mappings"."owner_id" = "o1"."id"
-LEFT JOIN "owner" "o2" ON "mappings"."backup_owner_id" = "o2"."id"
-WHERE "register_height" >= ?)";
+  char constexpr GET_OWNER_BY_ID_STR[]  = R"(SELECT * FROM "owner" WHERE "id" = ?)";
+  char constexpr GET_OWNER_BY_KEY_STR[] = R"(SELECT * FROM "owner" WHERE "public_key" = ?)";
+  char constexpr GET_SETTINGS_STR[]     = R"(SELECT * FROM "settings" WHERE "id" = 1)";
+  char constexpr PRUNE_MAPPINGS_STR[]   = R"(DELETE FROM "mappings" WHERE "register_height" >= ?)";
 
-  char constexpr GET_MAPPING_SQL[] =
-R"(SELECT "mappings".*, "o1"."public_key", "o2"."public_key" FROM "mappings"
-JOIN "owner" "o1" ON "mappings"."owner_id" = "o1"."id"
-LEFT JOIN "owner" "o2" ON "mappings"."backup_owner_id" = "o2"."id"
-WHERE "type" = ? AND "name" = ?)";
-
-  char constexpr GET_OWNER_BY_ID_SQL[]  = R"(SELECT * FROM "owner" WHERE "id" = ?)";
-  char constexpr GET_OWNER_BY_KEY_SQL[] = R"(SELECT * FROM "owner" WHERE "public_key" = ?)";
-  char constexpr GET_SETTINGS_SQL[]     = R"(SELECT * FROM "settings" WHERE "id" = 1)";
-  char constexpr PRUNE_MAPPINGS_SQL[]   = R"(DELETE FROM "mappings" WHERE "register_height" >= ?)";
-
-  char constexpr PRUNE_OWNERS_SQL[] =
+  char constexpr PRUNE_OWNERS_STR[] =
 R"(DELETE FROM "owner"
 WHERE NOT EXISTS
   (SELECT * FROM "mappings"
    WHERE "owner"."id" = "mappings"."owner_id"
    OR "owner"."id" = "mappings"."backup_owner_id"))";
 
-  char constexpr SAVE_MAPPING_SQL[]     = R"(INSERT OR REPLACE INTO "mappings" ("type", "name", "value", "txid", "prev_txid", "register_height", "owner_id", "backup_owner_id") VALUES (?,?,?,?,?,?,?,?))";
-  char constexpr SAVE_OWNER_SQL[]       = R"(INSERT INTO "owner" ("public_key") VALUES (?);)";
-  char constexpr SAVE_SETTINGS_SQL[]    = R"(INSERT OR REPLACE INTO "settings" ("id", "top_height", "top_hash", "version") VALUES (1,?,?,?))";
+  char constexpr SAVE_MAPPING_STR[]     = R"(INSERT OR REPLACE INTO "mappings" ("type", "name", "value", "txid", "prev_txid", "register_height", "owner_id", "backup_owner_id") VALUES (?,?,?,?,?,?,?,?))";
+  char constexpr SAVE_OWNER_STR[]       = R"(INSERT INTO "owner" ("public_key") VALUES (?);)";
+  char constexpr SAVE_SETTINGS_STR[]    = R"(INSERT OR REPLACE INTO "settings" ("id", "top_height", "top_hash", "version") VALUES (1,?,?,?))";
 
   sqlite3_stmt *test;
 
@@ -1064,17 +1063,17 @@ WHERE NOT EXISTS
     return false;
 
   if (
-      !sql_compile_statement(db, GET_MAPPINGS_BY_OWNER_SQL,            loki::array_count(GET_MAPPINGS_BY_OWNER_SQL),            &get_mappings_by_owner_sql) ||
-      !sql_compile_statement(db, GET_MAPPINGS_ON_HEIGHT_AND_NEWER_SQL, loki::array_count(GET_MAPPINGS_ON_HEIGHT_AND_NEWER_SQL), &get_mappings_on_height_and_newer_sql) ||
-      !sql_compile_statement(db, GET_MAPPING_SQL,                      loki::array_count(GET_MAPPING_SQL),                      &get_mapping_sql) ||
-      !sql_compile_statement(db, GET_SETTINGS_SQL,                     loki::array_count(GET_SETTINGS_SQL),                     &get_settings_sql) ||
-      !sql_compile_statement(db, GET_OWNER_BY_ID_SQL,                  loki::array_count(GET_OWNER_BY_ID_SQL),                  &get_owner_by_id_sql) ||
-      !sql_compile_statement(db, GET_OWNER_BY_KEY_SQL,                 loki::array_count(GET_OWNER_BY_KEY_SQL),                 &get_owner_by_key_sql) ||
-      !sql_compile_statement(db, PRUNE_MAPPINGS_SQL,                   loki::array_count(PRUNE_MAPPINGS_SQL),                   &prune_mappings_sql) ||
-      !sql_compile_statement(db, PRUNE_OWNERS_SQL,                     loki::array_count(PRUNE_OWNERS_SQL),                     &prune_owners_sql) ||
-      !sql_compile_statement(db, SAVE_MAPPING_SQL,                     loki::array_count(SAVE_MAPPING_SQL),                     &save_mapping_sql) ||
-      !sql_compile_statement(db, SAVE_SETTINGS_SQL,                    loki::array_count(SAVE_SETTINGS_SQL),                    &save_settings_sql) ||
-      !sql_compile_statement(db, SAVE_OWNER_SQL,                       loki::array_count(SAVE_OWNER_SQL),                       &save_owner_sql)
+      !sql_compile_statement(db, get_mappings_by_owner_str.c_str(),            get_mappings_by_owner_str.size(),            &get_mappings_by_owner_sql) ||
+      !sql_compile_statement(db, get_mappings_on_height_and_newer_str.c_str(), get_mappings_on_height_and_newer_str.size(), &get_mappings_on_height_and_newer_sql) ||
+      !sql_compile_statement(db, get_mapping_str.c_str(),                      get_mapping_str.size(),                      &get_mapping_sql) ||
+      !sql_compile_statement(db, GET_SETTINGS_STR,                             loki::array_count(GET_SETTINGS_STR),         &get_settings_sql) ||
+      !sql_compile_statement(db, GET_OWNER_BY_ID_STR,                          loki::array_count(GET_OWNER_BY_ID_STR),      &get_owner_by_id_sql) ||
+      !sql_compile_statement(db, GET_OWNER_BY_KEY_STR,                         loki::array_count(GET_OWNER_BY_KEY_STR),     &get_owner_by_key_sql) ||
+      !sql_compile_statement(db, PRUNE_MAPPINGS_STR,                           loki::array_count(PRUNE_MAPPINGS_STR),       &prune_mappings_sql) ||
+      !sql_compile_statement(db, PRUNE_OWNERS_STR,                             loki::array_count(PRUNE_OWNERS_STR),         &prune_owners_sql) ||
+      !sql_compile_statement(db, SAVE_MAPPING_STR,                             loki::array_count(SAVE_MAPPING_STR),         &save_mapping_sql) ||
+      !sql_compile_statement(db, SAVE_SETTINGS_STR,                            loki::array_count(SAVE_SETTINGS_STR),        &save_settings_sql) ||
+      !sql_compile_statement(db, SAVE_OWNER_STR,                               loki::array_count(SAVE_OWNER_STR),           &save_owner_sql)
     )
   {
     return false;
@@ -1427,19 +1426,15 @@ std::vector<mapping_record> name_system_db::get_mappings(std::vector<uint16_t> c
 
   if (types.size())
   {
-    char constexpr SQL_PREFIX[] =
-R"(SELECT "mappings".*, "o1"."public_key", "o2"."public_key" FROM "mappings"
-JOIN "owner" "o1" ON "mappings"."owner_id" = "o1"."id"
-LEFT JOIN "owner" "o2" ON "mappings"."backup_owner_id" = "o2"."id"
-WHERE "name" = ? AND "type" in ()";
-    char constexpr SQL_SUFFIX[] = R"())";
+     std::string const sql_prefix_str = sql_cmd_combine_mappings_and_owner_table(R"(WHERE "name" = ? AND "type" in ()");
+     char constexpr SQL_SUFFIX[]      = R"())";
 
-    std::stringstream stream;
-    stream << SQL_PREFIX;
-    for (size_t i = 0; i < types.size(); i++)
-    {
-      stream << "?";
-      if (i < (types.size() - 1)) stream << ", ";
+     std::stringstream stream;
+     stream << sql_prefix_str;
+     for (size_t i = 0; i < types.size(); i++)
+     {
+       stream << "?";
+       if (i < (types.size() - 1)) stream << ", ";
     }
     stream << SQL_SUFFIX;
     sql_statement = stream.str();
@@ -1472,16 +1467,12 @@ std::vector<mapping_record> name_system_db::get_mappings_by_owners(std::vector<c
   std::string sql_statement;
   // Generate string statement
   {
-    char constexpr SQL_PREFIX[] =
-R"(SELECT "mappings".*, "o1"."public_key", "o2"."public_key" FROM "mappings"
-JOIN "owner" "o1" ON "mappings"."owner_id" = "o1"."id"
-LEFT JOIN "owner" "o2" ON "mappings"."backup_owner_id" = "o2"."id"
-WHERE "o1"."public_key" in ()";
-    char constexpr SQL_MIDDLE[] = R"(OR "o2"."public_key" in ()";
-    char constexpr SQL_SUFFIX[] = R"())";
+    std::string const sql_prefix_str = sql_cmd_combine_mappings_and_owner_table(R"(WHERE "o1"."public_key" in ()");
+    char constexpr SQL_MIDDLE[]  = R"(OR "o2"."public_key" in ()";
+    char constexpr SQL_SUFFIX[]  = R"())";
 
     std::stringstream stream;
-    stream << SQL_PREFIX;
+    stream << sql_prefix_str;
     for (size_t i = 0; i < keys.size(); i++)
     {
       stream << "?";
