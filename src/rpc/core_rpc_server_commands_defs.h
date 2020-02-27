@@ -3481,7 +3481,8 @@ constexpr char const CORE_RPC_STATUS_TX_LONG_POLL_MAX_CONNECTIONS[] = "Daemon ma
     {
       uint64_t entry_index;     // The index in request_entry's `entries` array that was resolved via Loki Name Service.
       uint16_t type;            // The type of Loki Name Service entry that the owner owns.
-      std::string owner;        // The ed25519 public key that purchased the Loki Name Service entry.
+      std::string owner;        // The public key that purchased the Loki Name Service entry.
+      std::string backup_owner; // The backup public key that the owner specified when purchasing the Loki Name Service entry.
       std::string encrypted_value; // The encrypted value that the name maps to. This value is encrypted using the name (not the hash) as the secret.
       uint64_t register_height; // The height that this Loki Name Service entry was purchased on the Blockchain.
       std::string txid;         // The txid of who purchased the mapping, null hash if not applicable.
@@ -3490,6 +3491,7 @@ constexpr char const CORE_RPC_STATUS_TX_LONG_POLL_MAX_CONNECTIONS[] = "Daemon ma
         KV_SERIALIZE(entry_index)
         KV_SERIALIZE(type)
         KV_SERIALIZE(owner)
+        KV_SERIALIZE(backup_owner)
         KV_SERIALIZE(encrypted_value)
         KV_SERIALIZE(register_height)
         KV_SERIALIZE(txid)
@@ -3509,9 +3511,8 @@ constexpr char const CORE_RPC_STATUS_TX_LONG_POLL_MAX_CONNECTIONS[] = "Daemon ma
   };
 
   LOKI_RPC_DOC_INTROSPECT
-  // Get all the name mappings for the queried owner. The owner should be
-  // a ed25519 public key; by default this is the public key of an ed25519
-  // keypair derived using the wallet's secret spend key as the seed value.
+  // Get all the name mappings for the queried owner. The owner can be either a ed25519 public key or Monero style
+  // public key; by default purchases are owned by the spend public key of the purchasing wallet.
   struct COMMAND_RPC_GET_LNS_OWNERS_TO_NAMES
   {
     static size_t const MAX_REQUEST_ENTRIES = 256;
@@ -3528,14 +3529,16 @@ constexpr char const CORE_RPC_STATUS_TX_LONG_POLL_MAX_CONNECTIONS[] = "Daemon ma
       uint64_t    request_index;   // The index in request's `entries` array that was resolved via Loki Name Service.
       uint16_t    type;            // The category the Loki Name Service entry belongs to, currently only Session whose value is 0.
       std::string name_hash;       // The hash of the name that the owner purchased via Loki Name Service.
+      std::string backup_owner;    // The backup public key specified by the owner that purchased the Loki Name Service entry.
       std::string encrypted_value; // The encrypted value that the name maps to. This value is encrypted using the name (not the hash) as the secret.
       uint64_t    register_height; // The height that this Loki Name Service entry was purchased on the Blockchain.
-      std::string txid;            // The txid of who purchases the mapping, null hash if not applicable
+      std::string txid;            // The txid of who purchases the mapping.
       std::string prev_txid;       // The previous txid that purchased the mapping, null hash if not applicable.
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(request_index)
         KV_SERIALIZE(type)
         KV_SERIALIZE(name_hash)
+        KV_SERIALIZE(backup_owner)
         KV_SERIALIZE(encrypted_value)
         KV_SERIALIZE(register_height)
         KV_SERIALIZE(txid)

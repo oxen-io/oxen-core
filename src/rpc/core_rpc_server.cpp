@@ -3396,7 +3396,8 @@ namespace cryptonote
         entry.entry_index         = request_index;
         entry.type                = static_cast<uint16_t>(record.type);
         entry.owner               = epee::string_tools::pod_to_hex(record.owner);
-        entry.encrypted_value     = epee::to_hex::string(epee::span<const uint8_t>(record.encrypted_value.buffer.data(), record.encrypted_value.len));
+        entry.backup_owner        = epee::string_tools::pod_to_hex(record.backup_owner);
+        entry.encrypted_value     = epee::to_hex::string(record.encrypted_value.to_span());
         entry.register_height     = record.register_height;
         entry.txid                = epee::string_tools::pod_to_hex(record.txid);
         entry.prev_txid           = epee::string_tools::pod_to_hex(record.prev_txid);
@@ -3449,7 +3450,8 @@ namespace cryptonote
       entry.request_index   = it->second;
       entry.type            = static_cast<uint16_t>(record.type);
       entry.name_hash       = std::move(record.name_hash);
-      entry.encrypted_value = epee::to_hex::string(epee::span<const uint8_t>(record.encrypted_value.buffer.data(), record.encrypted_value.len));
+      entry.backup_owner    = epee::string_tools::pod_to_hex(record.backup_owner);
+      entry.encrypted_value = epee::to_hex::string(record.encrypted_value.to_span());
       entry.register_height = record.register_height;
       entry.txid            = epee::string_tools::pod_to_hex(record.txid);
       entry.prev_txid       = epee::string_tools::pod_to_hex(record.prev_txid);

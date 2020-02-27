@@ -1497,13 +1497,8 @@ std::vector<mapping_record> name_system_db::get_mappings_by_owners(std::vector<c
   // Bind parameters statements
   int sql_param_index = 1;
   for (size_t i = 0; i < keys.size(); i++)
-  {
     for (auto const &key : keys)
-    {
       sqlite3_bind_blob(statement, sql_param_index++, key.data, sizeof(key), nullptr /*destructor*/);
-    }
-  }
-  assert((sql_param_index - 1) == (static_cast<int>(keys.size() * 2)));
 
   // Execute
   sql_run_statement(nettype, lns_sql_type::get_mappings_by_owners, statement, &result);

@@ -2870,11 +2870,11 @@ For information on updating & signing, refer to COMMAND_RPC_UPDATE_LNS_MAPPING)"
 
     struct request_t
     {
-      std::string        type;            // The mapping type, either "blockchain", "lokinet", "session" or if custom, a value between [65-65536] (0-2 map to the predefined mappings listed earlier).
-      std::string        owner;           // (Optional): The owner's public key that has authority to update the mapping. It must be a ed25519 public key and is used to verify update transaction signatures.
-      std::string        backup_owner;    // (Optional): The owner's wallet spend public key that has authority to update the mapping. It must be a monero style public key and is used to verify update transaction signatures.
+      std::string        type;            // The mapping type, currently we only support "session". In future "lokinet" and "blockchain" mappings will be available.
+      std::string        owner;           // (Optional): The public key that has authority to update the mapping.
+      std::string        backup_owner;    // (Optional): The secondary, backup public key that has authority to update the mapping.
       std::string        name;            // The name to purchase via Loki Name Service
-      std::string        value;           // The value that the name maps to via Loki Name Service, (i.e. For wallets: name -> wallet address. For session: display name -> session public key. For Lokinet: name -> domain name).
+      std::string        value;           // The value that the name maps to via Loki Name Service, (i.e. For Session: [display name->session public key]. In future, for wallets: [name->wallet address], for Lokinet: [name->domain name]).
 
       uint32_t           account_index;   // (Optional) Transfer from this account index. (Defaults to 0)
       std::set<uint32_t> subaddr_indices; // (Optional) Transfer from this set of subaddresses. (Defaults to 0)
@@ -2942,10 +2942,10 @@ Providing the signature is an optional field and if not provided, will default t
 
     struct request_t
     {
-      std::string        type;      // The mapping type, currently only "session" is supported.
+      std::string        type;      // The mapping type, currently we only support "session". In future "lokinet" and "blockchain" mappings will be available.
       std::string        name;      // The name to update via Loki Name Service
-      std::string        value;     // The new value that the name maps to via Loki Name Service, (i.e. For session: display name -> session public key).
-      std::string        signature; // (Optional): Signature derived using libsodium generichash on {current txid blob, new value blob} of the mapping to update. By default the hash is signed using the wallet's spend key as an ed25519 keypair, if signature is specified.
+      std::string        value;     // The new value that the name maps to via Loki Name Service, (i.e. For Session: [display name->session public key]. In future, for wallets: [name->wallet address], for Lokinet: [name->domain name]).
+      std::string        signature; // (Optional): Signature derived using libsodium generichash on {current txid blob, new value blob} of the mapping to update. By default the hash is signed using the wallet's spend key if signature is not specified.
 
       uint32_t           account_index;    // (Optional) Transfer from this account index. (Defaults to 0)
       std::set<uint32_t> subaddr_indices;  // (Optional) Transfer from this set of subaddresses. (Defaults to 0)

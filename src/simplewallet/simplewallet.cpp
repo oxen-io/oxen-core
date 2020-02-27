@@ -6393,19 +6393,22 @@ bool simple_wallet::buy_lns_mapping(const std::vector<std::string>& args)
   {
     char const OWNER_PREFIX[]        = "owner=";
     char const BACKUP_OWNER_PREFIX[] = "backup_owner=";
-    size_t const OWNER_LEN           = loki::char_count(OWNER_PREFIX)        + (sizeof(crypto::generic_public_key) * 2);
-    size_t const BACKUP_OWNER_LEN    = loki::char_count(BACKUP_OWNER_PREFIX) + (sizeof(crypto::generic_public_key) * 2);
-
-    for (auto it = args.begin(); it != args.end(); it++)
+    for (auto it = local_args.begin(); it != local_args.end();)
     {
       // Check prefix of argument is <owner>= and extract keys out
-      if (it->size() == OWNER_LEN && memcmp(it->data(), OWNER_PREFIX, loki::char_count(OWNER_PREFIX)) == 0)
+      if (it->size() > loki::char_count(OWNER_PREFIX) && memcmp(it->data(), OWNER_PREFIX, loki::char_count(OWNER_PREFIX)) == 0)
       {
         owner = it->substr(loki::char_count(OWNER_PREFIX), it->size() - loki::char_count(OWNER_PREFIX));
+        it    = local_args.erase(it);
       }
-      else if (it->size() == BACKUP_OWNER_LEN && memcmp(it->data(), BACKUP_OWNER_PREFIX, loki::char_count(BACKUP_OWNER_PREFIX)) == 0)
+      else if (it->size() > loki::char_count(BACKUP_OWNER_PREFIX) && memcmp(it->data(), BACKUP_OWNER_PREFIX, loki::char_count(BACKUP_OWNER_PREFIX)) == 0)
       {
         backup_owner = it->substr(loki::char_count(BACKUP_OWNER_PREFIX), it->size() - loki::char_count(BACKUP_OWNER_PREFIX));
+        it = local_args.erase(it);
+      }
+      else
+      {
+        it++;
       }
     }
   }
@@ -6418,7 +6421,7 @@ bool simple_wallet::buy_lns_mapping(const std::vector<std::string>& args)
   if (!parse_lns_name_string(local_args, first_word_index, last_word_index, name))
   {
     PRINT_USAGE(USAGE_BUY_LNS_MAPPING);
-    fail_msg_writer() << "lns name didn't start or end with quotation marks (')";
+    fail_msg_writer() << "lns name didn't start or end with quotation marks (\"), first word in name is=\"" << local_args[first_word_index] << "\"";
     return false;
   }
 
@@ -6550,6 +6553,7 @@ bool simple_wallet::update_lns_mapping(const std::vector<std::string>& args)
   return true;
 }
 //----------------------------------------------------------------------------------------------------
+static char constexpr NULL_KEY_STR[] = "0000000000000000000000000000000000000000000000000000000000000000";
 bool simple_wallet::print_lns_name_to_owners(const std::vector<std::string>& args)
 {
   if (!try_connect_to_daemon())
@@ -6625,7 +6629,14 @@ bool simple_wallet::print_lns_name_to_owners(const std::vector<std::string>& arg
   }
 
   for (auto const &mapping : response)
-    tools::msg_writer() << "name=\"" << entry.name << "\", owner=" << mapping.owner << ", type=" << static_cast<lns::mapping_type>(mapping.type) << ", height=" << mapping.register_height;
+  {
+    tools::msg_writer() << ", type=" << static_cast<lns::mapping_type>(mapping.type)
+                        << ", owner=" << mapping.owner
+                        << ", backup_owner=" << (mapping.backup_owner.size() ? NULL_KEY_STR : mapping.backup_owner)
+                        << ", height=" << mapping.register_height
+                        << ", encrypted_value=" << mapping.encrypted_value
+                        << ", prev_txid=" << mapping.prev_txid;
+  }
 
   return true;
 }
@@ -6637,18 +6648,12 @@ bool simple_wallet::print_lns_owners_to_name_hashes(const std::vector<std::strin
 
   boost::optional<std::string> failed;
 
-  std::string my_own_ed25519_key;
+  std::string my_key;
   cryptonote::COMMAND_RPC_GET_LNS_OWNERS_TO_NAMES::request request = {};
   if (args.size() == 0)
   {
-    // TODO(doyle): I need to make this address visible easily for people, prior
-    // removed because of wallet encrypting/decrypting the secret keys
-    SCOPED_WALLET_UNLOCK();
-    crypto::ed25519_public_key pkey;
-    crypto::ed25519_secret_key skey;
-    crypto_sign_ed25519_seed_keypair(pkey.data, skey.data, reinterpret_cast<const unsigned char *>(m_wallet->get_account().get_keys().m_spend_secret_key.data));
-    my_own_ed25519_key = epee::string_tools::pod_to_hex(pkey);
-    request.entries.push_back(my_own_ed25519_key);
+    my_key = epee::string_tools::pod_to_hex(m_wallet->get_account().get_keys().m_account_address.m_spend_public_key);
+    request.entries.push_back(my_key);
   }
   else
   {
@@ -6677,7 +6682,7 @@ bool simple_wallet::print_lns_owners_to_name_hashes(const std::vector<std::strin
 
   for (cryptonote::COMMAND_RPC_GET_LNS_OWNERS_TO_NAMES::response_entry const &entry : entries)
   {
-    std::string const *owner = &my_own_ed25519_key;
+    std::string const *owner = &my_key;
     if (args.size()) // If specified owner to look up, retrieve it
     {
       try
@@ -6691,7 +6696,13 @@ bool simple_wallet::print_lns_owners_to_name_hashes(const std::vector<std::strin
       }
     }
 
-    tools::msg_writer() << "owner=" << *owner << ", type=" << entry.type << ", height=" << entry.register_height << ", name_hash=\"" << entry.name_hash << "\", encrypted_value=" << entry.encrypted_value << ", prev_txid=" << entry.prev_txid;
+    tools::msg_writer() << "owner=" << *owner
+                        << ", backup_owner=" << (entry.backup_owner.size() ? NULL_KEY_STR : entry.backup_owner)
+                        << ", type=" << static_cast<lns::mapping_type>(entry.type)
+                        << ", height=" << entry.register_height
+                        << ", name_hash=\"" << entry.name_hash << "\""
+                        << ", encrypted_value=" << entry.encrypted_value
+                        << ", prev_txid=" << entry.prev_txid;
   }
   return true;
 }
