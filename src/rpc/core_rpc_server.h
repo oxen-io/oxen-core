@@ -195,8 +195,8 @@ namespace cryptonote
         MAP_JON_RPC_WE("get_service_nodes_state_changes",           on_get_service_nodes_state_changes, COMMAND_RPC_GET_SN_STATE_CHANGES)
         MAP_JON_RPC_WE_IF("report_peer_storage_server_status",      on_report_peer_storage_server_status, COMMAND_RPC_REPORT_PEER_SS_STATUS, !m_restricted)
         MAP_JON_RPC_WE_IF("test_trigger_p2p_resync",                on_test_trigger_p2p_resync, COMMAND_RPC_TEST_TRIGGER_P2P_RESYNC, !m_restricted)
-        MAP_JON_RPC_WE("get_lns_names_to_owners",                   on_get_lns_names_to_owners, COMMAND_RPC_GET_LNS_NAMES_TO_OWNERS)
-        MAP_JON_RPC_WE("get_lns_owners_to_names",                   on_get_lns_owners_to_names, COMMAND_RPC_GET_LNS_OWNERS_TO_NAMES)
+        MAP_JON_RPC_WE("lns_names_to_owners",                       on_lns_names_to_owners, COMMAND_RPC_LNS_NAMES_TO_OWNERS)
+        MAP_JON_RPC_WE("lns_owners_to_names",                       on_lns_owners_to_names, COMMAND_RPC_LNS_OWNERS_TO_NAMES)
       END_JSON_RPC_MAP()
     END_URI_MAP2()
 
@@ -290,8 +290,8 @@ namespace cryptonote
     bool on_get_service_nodes_state_changes(const COMMAND_RPC_GET_SN_STATE_CHANGES::request& req, COMMAND_RPC_GET_SN_STATE_CHANGES::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
     bool on_report_peer_storage_server_status(const COMMAND_RPC_REPORT_PEER_SS_STATUS::request& req, COMMAND_RPC_REPORT_PEER_SS_STATUS::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
     bool on_test_trigger_p2p_resync(const COMMAND_RPC_TEST_TRIGGER_P2P_RESYNC::request& req, COMMAND_RPC_TEST_TRIGGER_P2P_RESYNC::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
-    bool on_get_lns_names_to_owners(const COMMAND_RPC_GET_LNS_NAMES_TO_OWNERS::request &req, COMMAND_RPC_GET_LNS_NAMES_TO_OWNERS::response &res, epee::json_rpc::error &error_resp, const connection_context *ctx = NULL);
-    bool on_get_lns_owners_to_names(const COMMAND_RPC_GET_LNS_OWNERS_TO_NAMES::request &req, COMMAND_RPC_GET_LNS_OWNERS_TO_NAMES::response &res, epee::json_rpc::error &error_resp, const connection_context *ctx = NULL);
+    bool on_lns_names_to_owners(const COMMAND_RPC_LNS_NAMES_TO_OWNERS::request &req, COMMAND_RPC_LNS_NAMES_TO_OWNERS::response &res, epee::json_rpc::error &error_resp, const connection_context *ctx = NULL);
+    bool on_lns_owners_to_names(const COMMAND_RPC_LNS_OWNERS_TO_NAMES::request &req, COMMAND_RPC_LNS_OWNERS_TO_NAMES::response &res, epee::json_rpc::error &error_resp, const connection_context *ctx = NULL);
     //-----------------------
 
 #if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)

@@ -8478,7 +8478,7 @@ static bool prepare_tx_extra_loki_name_system_values(cryptonote::network_type ne
 
   prev_txid = crypto::null_hash;
   {
-    cryptonote::COMMAND_RPC_GET_LNS_NAMES_TO_OWNERS::request request = {};
+    cryptonote::COMMAND_RPC_LNS_NAMES_TO_OWNERS::request request = {};
     {
       request.entries.emplace_back();
       auto &request_entry = request.entries.back();
@@ -8487,7 +8487,7 @@ static bool prepare_tx_extra_loki_name_system_values(cryptonote::network_type ne
     }
 
     boost::optional<std::string> failed;
-    std::vector<cryptonote::COMMAND_RPC_GET_LNS_NAMES_TO_OWNERS::response_entry> response = wallet.get_lns_names_to_owners(request, failed);
+    std::vector<cryptonote::COMMAND_RPC_LNS_NAMES_TO_OWNERS::response_entry> response = wallet.lns_names_to_owners(request, failed);
     if (failed)
     {
       if (reason) *reason = "Failed to query previous owner for LNS entry, reason=" + *failed;
@@ -8512,7 +8512,7 @@ static bool prepare_tx_extra_loki_name_system_values(cryptonote::network_type ne
   return true;
 }
 
-std::vector<wallet2::pending_tx> wallet2::create_buy_lns_mapping_tx(lns::mapping_type type,
+std::vector<wallet2::pending_tx> wallet2::lns_create_buy_mapping_tx(lns::mapping_type type,
                                                                     std::string const &owner,
                                                                     std::string const &backup_owner,
                                                                     std::string const &name,
@@ -8582,7 +8582,7 @@ std::vector<wallet2::pending_tx> wallet2::create_buy_lns_mapping_tx(lns::mapping
   return result;
 }
 
-std::vector<wallet2::pending_tx> wallet2::create_buy_lns_mapping_tx(std::string const &type,
+std::vector<wallet2::pending_tx> wallet2::lns_create_buy_mapping_tx(std::string const &type,
                                                                     std::string const &owner,
                                                                     std::string const &backup_owner,
                                                                     std::string const &name,
@@ -8596,11 +8596,11 @@ std::vector<wallet2::pending_tx> wallet2::create_buy_lns_mapping_tx(std::string 
   if (!lns::validate_mapping_type(type, &mapping_type, reason))
     return {};
 
-  std::vector<wallet2::pending_tx> result = create_buy_lns_mapping_tx(mapping_type, owner, backup_owner, name, value, reason, priority, account_index, subaddr_indices);
+  std::vector<wallet2::pending_tx> result = lns_create_buy_mapping_tx(mapping_type, owner, backup_owner, name, value, reason, priority, account_index, subaddr_indices);
   return result;
 }
 
-std::vector<wallet2::pending_tx> wallet2::create_update_lns_mapping_tx(lns::mapping_type type,
+std::vector<wallet2::pending_tx> wallet2::lns_create_update_mapping_tx(lns::mapping_type type,
                                                                        std::string const &name,
                                                                        std::string const &value,
                                                                        std::string const *signature,
@@ -8653,7 +8653,7 @@ std::vector<wallet2::pending_tx> wallet2::create_update_lns_mapping_tx(lns::mapp
   return result;
 }
 
-std::vector<wallet2::pending_tx> wallet2::create_update_lns_mapping_tx(std::string const &type,
+std::vector<wallet2::pending_tx> wallet2::lns_create_update_mapping_tx(std::string const &type,
                                                                        std::string const &name,
                                                                        std::string const &value,
                                                                        std::string const *signature,
@@ -8666,7 +8666,7 @@ std::vector<wallet2::pending_tx> wallet2::create_update_lns_mapping_tx(std::stri
   if (!lns::validate_mapping_type(type, &mapping_type, reason))
     return {};
 
-  std::vector<wallet2::pending_tx> result = create_update_lns_mapping_tx(mapping_type, name, value, signature, reason, priority, account_index, subaddr_indices);
+  std::vector<wallet2::pending_tx> result = lns_create_update_mapping_tx(mapping_type, name, value, signature, reason, priority, account_index, subaddr_indices);
   return result;
 }
 

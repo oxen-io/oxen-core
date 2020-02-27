@@ -174,10 +174,10 @@ namespace cryptonote
     bool request_stake_unlock(const std::vector<std::string> &args_);
     bool print_locked_stakes(const std::vector<std::string>& /*args*/);
     bool query_locked_stakes(bool print_result);
-    bool buy_lns_mapping(const std::vector<std::string> &args);
-    bool update_lns_mapping(const std::vector<std::string> &args);
-    bool print_lns_owners_to_name_hashes(const std::vector<std::string> &args);
-    bool print_lns_name_to_owners(const std::vector<std::string> &args);
+    bool lns_buy_mapping(const std::vector<std::string> &args);
+    bool lns_update_mapping(const std::vector<std::string> &args);
+    bool lns_print_owners_to_names(const std::vector<std::string> &args);
+    bool lns_print_name_to_owners(const std::vector<std::string> &args);
 
     enum class sweep_type_t { stake, register_stake, all_or_below, single };
     bool sweep_main_internal(sweep_type_t sweep_type, std::vector<tools::wallet2::pending_tx> &ptx_vector, cryptonote::address_parse_info const &dest, bool blink);

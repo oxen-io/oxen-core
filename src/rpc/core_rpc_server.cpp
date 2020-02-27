@@ -3374,16 +3374,16 @@ namespace cryptonote
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
-  bool core_rpc_server::on_get_lns_names_to_owners(const COMMAND_RPC_GET_LNS_NAMES_TO_OWNERS::request &req, COMMAND_RPC_GET_LNS_NAMES_TO_OWNERS::response &res, epee::json_rpc::error &error_resp, const connection_context *ctx)
+  bool core_rpc_server::on_lns_names_to_owners(const COMMAND_RPC_LNS_NAMES_TO_OWNERS::request &req, COMMAND_RPC_LNS_NAMES_TO_OWNERS::response &res, epee::json_rpc::error &error_resp, const connection_context *ctx)
   {
-    if (exceeds_quantity_limit(ctx, error_resp, m_restricted, req.entries.size(), COMMAND_RPC_GET_LNS_NAMES_TO_OWNERS::MAX_REQUEST_ENTRIES))
+    if (exceeds_quantity_limit(ctx, error_resp, m_restricted, req.entries.size(), COMMAND_RPC_LNS_NAMES_TO_OWNERS::MAX_REQUEST_ENTRIES))
       return false;
 
     lns::name_system_db const &db = m_core.get_blockchain_storage().name_system_db();
     for (size_t request_index = 0; request_index < req.entries.size(); request_index++)
     {
-      COMMAND_RPC_GET_LNS_NAMES_TO_OWNERS::request_entry const &request = req.entries[request_index];
-      if (exceeds_quantity_limit(ctx, error_resp, m_restricted, request.types.size(), COMMAND_RPC_GET_LNS_NAMES_TO_OWNERS::MAX_TYPE_REQUEST_ENTRIES, "types"))
+      COMMAND_RPC_LNS_NAMES_TO_OWNERS::request_entry const &request = req.entries[request_index];
+      if (exceeds_quantity_limit(ctx, error_resp, m_restricted, request.types.size(), COMMAND_RPC_LNS_NAMES_TO_OWNERS::MAX_TYPE_REQUEST_ENTRIES, "types"))
         return false;
 
       std::string name_hash = lns::name_to_base64_hash(request.name);
@@ -3392,15 +3392,15 @@ namespace cryptonote
       for (auto const &record : records)
       {
         res.entries.emplace_back();
-        COMMAND_RPC_GET_LNS_NAMES_TO_OWNERS::response_entry &entry = res.entries.back();
-        entry.entry_index         = request_index;
-        entry.type                = static_cast<uint16_t>(record.type);
-        entry.owner               = epee::string_tools::pod_to_hex(record.owner);
-        entry.backup_owner        = epee::string_tools::pod_to_hex(record.backup_owner);
-        entry.encrypted_value     = epee::to_hex::string(record.encrypted_value.to_span());
-        entry.register_height     = record.register_height;
-        entry.txid                = epee::string_tools::pod_to_hex(record.txid);
-        entry.prev_txid           = epee::string_tools::pod_to_hex(record.prev_txid);
+        COMMAND_RPC_LNS_NAMES_TO_OWNERS::response_entry &entry = res.entries.back();
+        entry.entry_index                                      = request_index;
+        entry.type                                             = static_cast<uint16_t>(record.type);
+        entry.owner                                            = epee::string_tools::pod_to_hex(record.owner);
+        entry.backup_owner                                     = epee::string_tools::pod_to_hex(record.backup_owner);
+        entry.encrypted_value                                  = epee::to_hex::string(record.encrypted_value.to_span());
+        entry.register_height                                  = record.register_height;
+        entry.txid                                             = epee::string_tools::pod_to_hex(record.txid);
+        entry.prev_txid                                        = epee::string_tools::pod_to_hex(record.prev_txid);
       }
     }
 
@@ -3408,9 +3408,9 @@ namespace cryptonote
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
-  bool core_rpc_server::on_get_lns_owners_to_names(const COMMAND_RPC_GET_LNS_OWNERS_TO_NAMES::request &req, COMMAND_RPC_GET_LNS_OWNERS_TO_NAMES::response &res, epee::json_rpc::error &error_resp, const connection_context *ctx)
+  bool core_rpc_server::on_lns_owners_to_names(const COMMAND_RPC_LNS_OWNERS_TO_NAMES::request &req, COMMAND_RPC_LNS_OWNERS_TO_NAMES::response &res, epee::json_rpc::error &error_resp, const connection_context *ctx)
   {
-    if (exceeds_quantity_limit(ctx, error_resp, m_restricted, req.entries.size(), COMMAND_RPC_GET_LNS_OWNERS_TO_NAMES::MAX_REQUEST_ENTRIES))
+    if (exceeds_quantity_limit(ctx, error_resp, m_restricted, req.entries.size(), COMMAND_RPC_LNS_OWNERS_TO_NAMES::MAX_REQUEST_ENTRIES))
       return false;
 
     std::map<crypto::generic_public_key, size_t> key_to_request_index;
@@ -3437,7 +3437,7 @@ namespace cryptonote
     for (auto &record : records)
     {
       res.entries.emplace_back();
-      COMMAND_RPC_GET_LNS_OWNERS_TO_NAMES::response_entry &entry = res.entries.back();
+      COMMAND_RPC_LNS_OWNERS_TO_NAMES::response_entry &entry = res.entries.back();
 
       auto it = key_to_request_index.find(record.owner);
       if (it == key_to_request_index.end())

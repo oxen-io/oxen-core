@@ -164,8 +164,8 @@ namespace tools
         MAP_JON_RPC_WE("register_service_node", on_register_service_node, wallet_rpc::COMMAND_RPC_REGISTER_SERVICE_NODE)
         MAP_JON_RPC_WE("can_request_stake_unlock", on_can_request_stake_unlock, wallet_rpc::COMMAND_RPC_CAN_REQUEST_STAKE_UNLOCK)
         MAP_JON_RPC_WE("request_stake_unlock", on_request_stake_unlock, wallet_rpc::COMMAND_RPC_REQUEST_STAKE_UNLOCK)
-        MAP_JON_RPC_WE("buy_lns_mapping", on_buy_lns_mapping, wallet_rpc::COMMAND_RPC_BUY_LNS_MAPPING)
-        MAP_JON_RPC_WE("update_lns_mapping", on_update_lns_mapping, wallet_rpc::COMMAND_RPC_UPDATE_LNS_MAPPING)
+        MAP_JON_RPC_WE("lns_buy_mapping", on_lns_buy_mapping, wallet_rpc::COMMAND_RPC_LNS_BUY_MAPPING)
+        MAP_JON_RPC_WE("lns_update_mapping", on_lns_update_mapping, wallet_rpc::COMMAND_RPC_LNS_UPDATE_MAPPING)
       END_JSON_RPC_MAP()
     END_URI_MAP2()
 
@@ -256,8 +256,8 @@ namespace tools
       bool on_register_service_node(const wallet_rpc::COMMAND_RPC_REGISTER_SERVICE_NODE::request& req, wallet_rpc::COMMAND_RPC_REGISTER_SERVICE_NODE::response& res, epee::json_rpc::error& er, const connection_context *ctx = NULL);
       bool on_can_request_stake_unlock(const wallet_rpc::COMMAND_RPC_CAN_REQUEST_STAKE_UNLOCK::request& req, wallet_rpc::COMMAND_RPC_CAN_REQUEST_STAKE_UNLOCK::response& res, epee::json_rpc::error& er, const connection_context *ctx = NULL);
       bool on_request_stake_unlock(const wallet_rpc::COMMAND_RPC_REQUEST_STAKE_UNLOCK::request& req, wallet_rpc::COMMAND_RPC_REQUEST_STAKE_UNLOCK::response& res, epee::json_rpc::error& er, const connection_context *ctx = NULL);
-      bool on_buy_lns_mapping(const wallet_rpc::COMMAND_RPC_BUY_LNS_MAPPING::request& req, wallet_rpc::COMMAND_RPC_BUY_LNS_MAPPING::response& res, epee::json_rpc::error& er, const connection_context *ctx = NULL);
-      bool on_update_lns_mapping(const wallet_rpc::COMMAND_RPC_UPDATE_LNS_MAPPING::request& req, wallet_rpc::COMMAND_RPC_UPDATE_LNS_MAPPING::response& res, epee::json_rpc::error& er, const connection_context *ctx = NULL);
+      bool on_lns_buy_mapping(const wallet_rpc::COMMAND_RPC_LNS_BUY_MAPPING::request& req, wallet_rpc::COMMAND_RPC_LNS_BUY_MAPPING::response& res, epee::json_rpc::error& er, const connection_context *ctx = NULL);
+      bool on_lns_update_mapping(const wallet_rpc::COMMAND_RPC_LNS_UPDATE_MAPPING::request& req, wallet_rpc::COMMAND_RPC_LNS_UPDATE_MAPPING::response& res, epee::json_rpc::error& er, const connection_context *ctx = NULL);
 
       //json rpc v2
       bool on_query_key(const wallet_rpc::COMMAND_RPC_QUERY_KEY::request& req, wallet_rpc::COMMAND_RPC_QUERY_KEY::response& res, epee::json_rpc::error& er, const connection_context *ctx = NULL);

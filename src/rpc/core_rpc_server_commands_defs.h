@@ -3455,7 +3455,7 @@ constexpr char const CORE_RPC_STATUS_TX_LONG_POLL_MAX_CONNECTIONS[] = "Daemon ma
   LOKI_RPC_DOC_INTROSPECT
   // Get the name mapping for a Loki Name Service entry. Loki currently supports mappings
   // for Session.
-  struct COMMAND_RPC_GET_LNS_NAMES_TO_OWNERS
+  struct COMMAND_RPC_LNS_NAMES_TO_OWNERS
   {
     static size_t const MAX_REQUEST_ENTRIES      = 256;
     static size_t const MAX_TYPE_REQUEST_ENTRIES = 16;
@@ -3513,7 +3513,7 @@ constexpr char const CORE_RPC_STATUS_TX_LONG_POLL_MAX_CONNECTIONS[] = "Daemon ma
   LOKI_RPC_DOC_INTROSPECT
   // Get all the name mappings for the queried owner. The owner can be either a ed25519 public key or Monero style
   // public key; by default purchases are owned by the spend public key of the purchasing wallet.
-  struct COMMAND_RPC_GET_LNS_OWNERS_TO_NAMES
+  struct COMMAND_RPC_LNS_OWNERS_TO_NAMES
   {
     static size_t const MAX_REQUEST_ENTRIES = 256;
     struct request

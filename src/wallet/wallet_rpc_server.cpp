@@ -46,7 +46,6 @@ using namespace epee;
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_basic/account.h"
 #include "multisig/multisig.h"
-#include "wallet_rpc_server_commands_defs.h"
 #include "misc_language.h"
 #include "string_coding.h"
 #include "string_tools.h"
@@ -4280,7 +4279,7 @@ namespace tools
     return res.unlocked;
   }
 
-  bool wallet_rpc_server::on_buy_lns_mapping(const wallet_rpc::COMMAND_RPC_BUY_LNS_MAPPING::request& req, wallet_rpc::COMMAND_RPC_BUY_LNS_MAPPING::response& res, epee::json_rpc::error& er, const connection_context *ctx)
+  bool wallet_rpc_server::on_lns_buy_mapping(const wallet_rpc::COMMAND_RPC_LNS_BUY_MAPPING::request& req, wallet_rpc::COMMAND_RPC_LNS_BUY_MAPPING::response& res, epee::json_rpc::error& er, const connection_context *ctx)
   {
     if (!m_wallet) return not_open(er);
     if (m_restricted)
@@ -4291,7 +4290,7 @@ namespace tools
     }
 
     std::string reason;
-    std::vector<wallet2::pending_tx> ptx_vector = m_wallet->create_buy_lns_mapping_tx(req.type,
+    std::vector<wallet2::pending_tx> ptx_vector = m_wallet->lns_create_buy_mapping_tx(req.type,
                                                                                       req.owner,
                                                                                       req.backup_owner,
                                                                                       req.name,
@@ -4324,7 +4323,7 @@ namespace tools
                          er);
   }
 
-  bool wallet_rpc_server::on_update_lns_mapping(const wallet_rpc::COMMAND_RPC_UPDATE_LNS_MAPPING::request &req, wallet_rpc::COMMAND_RPC_UPDATE_LNS_MAPPING::response &res, epee::json_rpc::error &er, const connection_context *ctx)
+  bool wallet_rpc_server::on_lns_update_mapping(const wallet_rpc::COMMAND_RPC_LNS_UPDATE_MAPPING::request &req, wallet_rpc::COMMAND_RPC_LNS_UPDATE_MAPPING::response &res, epee::json_rpc::error &er, const connection_context *ctx)
   {
     if (!m_wallet) return not_open(er);
     if (m_restricted)
@@ -4336,7 +4335,7 @@ namespace tools
 
     std::string reason;
     std::vector<wallet2::pending_tx> ptx_vector =
-        m_wallet->create_update_lns_mapping_tx(req.type,
+        m_wallet->lns_create_update_mapping_tx(req.type,
                                                req.name,
                                                req.value,
                                                req.signature.empty() ? nullptr : &req.signature,
