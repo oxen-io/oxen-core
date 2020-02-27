@@ -3037,39 +3037,5 @@ transaction, the open wallet is assumed the owner and it's spend key will automa
     };
     typedef epee::misc_utils::struct_init<response_t> response;
   };
-
-  LOKI_RPC_DOC_INTROSPECT
-  // Generate the signature necessary for updating the requested record using the wallet's spend key. The signature is
-  // only valid if the queried wallet is one of the owners of the LNS record.
-
-  // This command is only required if the open wallet is one of the owners of a LNS record but want the update
-  // transaction to occur via another non-owning wallet. By default, if no signature is specified to the update
-  // transaction, the open wallet is assumed the owner and it's spend key will automatically be used.
-  struct COMMAND_RPC_LNS_MAKE_UPDATE_SIGNATURE
-  {
-    struct request_t
-    {
-      std::string type;  // The mapping type, currently we only support "session". In future "lokinet" and "blockchain" mappings will be available.
-      std::string name;  // The desired name to update via Loki Name Service
-      std::string value; // The new value that the name will be updated to via Loki Name Service.
-
-      BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE(type);
-        KV_SERIALIZE(name);
-        KV_SERIALIZE(value);
-      END_KV_SERIALIZE_MAP()
-    };
-    typedef epee::misc_utils::struct_init<request_t> request;
-
-    struct response_t
-    {
-      std::string signature; // A signature valid for using in LNS to update an underlying mapping.
-      BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE(signature)
-      END_KV_SERIALIZE_MAP()
-    };
-    typedef epee::misc_utils::struct_init<response_t> response;
-  };
-
 }
 }

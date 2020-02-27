@@ -176,7 +176,7 @@ namespace cryptonote
     bool query_locked_stakes(bool print_result);
     bool lns_buy_mapping(const std::vector<std::string> &args);
     bool lns_update_mapping(const std::vector<std::string> &args);
-    bool lns_make_updating_mapping_signature(const std::vector<std::string> &args);
+    bool lns_make_update_mapping_signature(const std::vector<std::string> &args);
     bool lns_print_owners_to_names(const std::vector<std::string> &args);
     bool lns_print_name_to_owners(const std::vector<std::string> &args);
 

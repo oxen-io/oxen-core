@@ -3114,6 +3114,11 @@ Pending or Failed: "failed"|"pending",  "out", Time, Amount*, Transaction Hash, 
                            boost::bind(&simple_wallet::lns_print_name_to_owners, this, _1),
                            tr(USAGE_LNS_PRINT_NAME_TO_OWNERS),
                            tr("Query the ed25519 public keys that own the Loki Name System names."));
+
+  m_cmd_binder.set_handler("lns_make_update_mapping_signature",
+                           boost::bind(&simple_wallet::lns_make_update_mapping_signature, this, _1),
+                           tr(USAGE_LNS_MAKE_UPDATE_MAPPING_SIGNATURE),
+                           tr(tools::wallet_rpc::COMMAND_RPC_LNS_MAKE_UPDATE_SIGNATURE::description));
 }
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::set_variable(const std::vector<std::string> &args)
@@ -6545,12 +6550,12 @@ bool simple_wallet::lns_update_mapping(const std::vector<std::string>& args)
   return true;
 }
 //----------------------------------------------------------------------------------------------------
-bool simple_wallet::lns_make_updating_mapping_signature(const std::vector<std::string> &args)
+bool simple_wallet::lns_make_update_mapping_signature(const std::vector<std::string> &args)
 {
   if (!try_connect_to_daemon())
     return true;
 
-  if (args.size() < 3)
+  if (args.size() < 2)
   {
     PRINT_USAGE(USAGE_LNS_MAKE_UPDATE_MAPPING_SIGNATURE);
     return true;
