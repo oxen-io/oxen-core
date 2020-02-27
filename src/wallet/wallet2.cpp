@@ -8692,6 +8692,45 @@ bool wallet2::unlock_keys_file()
   return true;
 }
 
+bool wallet2::lns_make_update_mapping_signature(lns::mapping_type type, std::string const &name, std::string const &value, crypto::generic_signature &signature, std::string *reason)
+{
+  cryptonote::COMMAND_RPC_LNS_NAMES_TO_OWNERS::request request = {};
+  request.entries.push_back({name, {static_cast<uint16_t>(type)}});
+
+  if (!lns::validate_lns_name(type, name, reason))
+    return false;
+
+  lns::lns_value value_blob;
+  if (!lns::validate_lns_value(nettype(), type, value, &value_blob, reason))
+    return false;
+
+  boost::optional<std::string> failed;
+  std::vector<cryptonote::COMMAND_RPC_LNS_NAMES_TO_OWNERS::response_entry> response = lns_names_to_owners(request, failed);
+  if (failed)
+  {
+    if (reason) *reason = *failed;
+    return false;
+  }
+
+  if (response.empty())
+  {
+    if (reason) *reason = "name=\"" + name + std::string("\" does not have a corresponding LNS record, the mapping is available for purchase, update signature is not required.");
+    return false;
+  }
+
+  cryptonote::COMMAND_RPC_LNS_NAMES_TO_OWNERS::response_entry const &record = response[0];
+  crypto::hash prev_txid;
+  if (epee::string_tools::hex_to_pod(response[0].prev_txid, prev_txid))
+  {
+    if (reason) *reason = "Failed to convert=" + response[0].prev_txid + std::string(" to a transaction ID.");
+    return false;
+  }
+
+  crypto::hash hash = lns::tx_extra_signature_hash(epee::span<const uint8_t>(value_blob.buffer.data(), value_blob.len), prev_txid);
+  crypto::generate_signature(hash, get_account().get_keys().m_account_address.m_spend_public_key, get_account().get_keys().m_spend_secret_key, signature.monero);
+  return true;
+}
+
 bool wallet2::is_keys_file_locked() const
 {
   return m_keys_file_locker->locked();
@@ -8763,7 +8802,7 @@ void wallet2::light_wallet_get_outs(std::vector<std::vector<tools::wallet2::get_
     amount_ss << ask_amount;
     oreq.amounts.push_back(amount_ss.str());
   }
-  
+
   oreq.count = light_wallet_requested_outputs_count;
   m_daemon_rpc_mutex.lock();
   bool r = invoke_http_json("/get_random_outs", oreq, ores, rpc_timeout, "POST");

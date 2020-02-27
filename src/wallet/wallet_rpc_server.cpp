@@ -55,6 +55,7 @@ using namespace epee;
 #include "rpc/core_rpc_server_commands_defs.h"
 #include "rpc/core_rpc_server.h"
 #include "daemonizer/daemonizer.h"
+#include "cryptonote_core/loki_name_system.h"
 
 #undef LOKI_DEFAULT_LOG_CATEGORY
 #define LOKI_DEFAULT_LOG_CATEGORY "wallet.rpc"
@@ -4366,6 +4367,37 @@ namespace tools
                          req.get_tx_metadata,
                          res.tx_metadata,
                          er);
+  }
+
+  bool wallet_rpc_server::on_lns_make_update_mapping_signature(const wallet_rpc::COMMAND_RPC_LNS_MAKE_UPDATE_SIGNATURE::request& req, wallet_rpc::COMMAND_RPC_LNS_MAKE_UPDATE_SIGNATURE::response& res, epee::json_rpc::error& er, const connection_context *ctx)
+  {
+    if (!m_wallet) return not_open(er);
+    if (m_restricted)
+    {
+      er.code    = WALLET_RPC_ERROR_CODE_DENIED;
+      er.message = "Generating the lns update signature is unavailable in restricted mode.";
+      return false;
+    }
+
+    std::string reason;
+    lns::mapping_type type;
+    if (!lns::validate_mapping_type(req.type, &type, &reason))
+    {
+      er.code    = WALLET_RPC_ERROR_CODE_WRONG_LNS_TYPE;
+      er.message = "Wrong lns type given=" + reason;
+      return false;
+    }
+
+    crypto::generic_signature signature;
+    if (!m_wallet->lns_make_update_mapping_signature(type, req.name, req.value, signature, &reason))
+    {
+      er.code    = WALLET_RPC_ERROR_CODE_TX_NOT_POSSIBLE;
+      er.message = "Failed to create signature for LNS update transaction: " + reason;
+      return false;
+    }
+
+    res.signature = epee::string_tools::pod_to_hex(signature);
+    return true;
   }
 }
 

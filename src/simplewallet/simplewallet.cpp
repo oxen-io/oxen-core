@@ -273,6 +273,9 @@ namespace
 
   const char* USAGE_LNS_BUY_MAPPING("lns_buy_mapping [index=<N1>[,<N2>,...]] [<priority>] [owner=] [backup_owner=] \"<name>\" <value>");
   const char* USAGE_LNS_UPDATE_MAPPING("lns_update_mapping [index=<N1>[,<N2>,...]] [<priority>] \"<name>\" <value> [<signature>]");
+
+  // TODO(loki): Currently defaults to session, in future allow specifying Lokinet and Wallet when they are enabled
+  const char* USAGE_LNS_MAKE_UPDATE_MAPPING_SIGNATURE("lns_make_update_mapping_signature \"<name>\" <new_value>");
   const char* USAGE_LNS_PRINT_OWNERS_TO_NAMES("lns_print_owners_to_names [<64 hex character ed25519 public key>]");
   const char* USAGE_LNS_PRINT_NAME_TO_OWNERS("lns_print_name_to_owners [type=<N1|all>[,<N2>...]] \"name\"");
 
@@ -6538,6 +6541,37 @@ bool simple_wallet::lns_update_mapping(const std::vector<std::string>& args)
     fail_msg_writer() << tr("unknown error");
     return true;
   }
+
+  return true;
+}
+//----------------------------------------------------------------------------------------------------
+bool simple_wallet::lns_make_updating_mapping_signature(const std::vector<std::string> &args)
+{
+  if (!try_connect_to_daemon())
+    return true;
+
+  if (args.size() < 3)
+  {
+    PRINT_USAGE(USAGE_LNS_MAKE_UPDATE_MAPPING_SIGNATURE);
+    return true;
+  }
+
+  std::string const &new_value = args[args.size() - 1];
+  std::string name;
+  if (!parse_lns_name_string(args, 0, (args.size() - 2), name))
+  {
+    PRINT_USAGE(USAGE_LNS_MAKE_UPDATE_MAPPING_SIGNATURE);
+    fail_msg_writer() << "lns name didn't start or end with quotation marks (\")";
+    return true;
+  }
+
+  SCOPED_WALLET_UNLOCK();
+  crypto::generic_signature signature;
+  std::string reason;
+  if (m_wallet->lns_make_update_mapping_signature(lns::mapping_type::session, name, new_value, signature, &reason))
+    tools::success_msg_writer() << "signature=" << epee::string_tools::pod_to_hex(signature);
+  else
+    fail_msg_writer() << reason;
 
   return true;
 }
