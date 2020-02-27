@@ -181,7 +181,8 @@ static bool sql_run_statement(cryptonote::network_type nettype, lns_sql_type typ
                 return false;
             }
 
-            data_loaded = true;
+            tmp_entry.loaded = true;
+            data_loaded      = true;
             if (type == lns_sql_type::get_mapping)
             {
               auto *entry = reinterpret_cast<mapping_record *>(context);

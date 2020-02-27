@@ -1012,6 +1012,7 @@ static bool verify_lns_mapping_record(char const *perr_context,
                                       crypto::generic_public_key const &backup_owner)
 {
   lns::mapping_value encrypted_value = helper_encrypt_lns_value(name, value);
+  CHECK_EQ(record.loaded,          true);
   CHECK_EQ(record.type,            type);
   CHECK_EQ(record.name_hash,       lns::name_to_base64_hash(name));
   CHECK_EQ(record.encrypted_value, encrypted_value);
@@ -1937,10 +1938,18 @@ bool loki_name_system_name_value_max_lengths::generate(std::vector<test_event_en
 
   // Session
   {
+<<<<<<< HEAD
     std::string name(lns::SESSION_DISPLAY_NAME_MAX, 'A');
     data.type            = lns::mapping_type::session;
     data.name_hash       = lns::name_to_hash(name);
     data.encrypted_value = helper_encrypt_lns_value(name, miner_key.session_value).to_string();
+=======
+    data.type     = lns::mapping_type::session;
+    data.name     = std::string(lns::SESSION_DISPLAY_NAME_MAX, 'A');
+    data.value    = std::string(lns::SESSION_PUBLIC_KEY_BINARY_LENGTH, 'a');
+    data.value[0] = '0';
+    data.value[1] = '5';
+>>>>>>> Check LNS record is loaded
     make_lns_tx_with_custom_extra(gen, events, miner, data);
   }
 
@@ -2020,7 +2029,6 @@ bool loki_name_system_update_mapping::generate(std::vector<test_event_entry> &ev
 
   // Test update mapping with same name fails
   {
-    crypto::hash session_tx_hash2;
     cryptonote::transaction tx1 = gen.create_loki_name_system_tx_update(miner, lns::mapping_type::session, miner_key.session_value, session_name1);
     gen.add_tx(tx1, false /*can_be_added_to_blockchain*/, "Can not add a LNS TX that re-updates the underlying value to same value");
   }
