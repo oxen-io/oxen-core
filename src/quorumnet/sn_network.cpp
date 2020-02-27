@@ -2,9 +2,7 @@
 #include "bt_serialize.h"
 #include "common/hex.h"
 #include <ostream>
-#ifdef __cpp_lib_string_view
-#include <string_view>
-#endif
+#include "common/string_view.h"
 #include <sodium.h>
 #include <atomic>
 #include <queue>
@@ -42,38 +40,6 @@ constexpr int CLOSE_LINGER = 5000;
 
 // This is the domain used for listening service nodes.
 constexpr const char AUTH_DOMAIN_SN[] = "loki.sn";
-
-#ifdef __cpp_lib_string_view
-using msg_view_t = std::string_view;
-#else
-class simple_string_view {
-    const char *_data;
-    size_t _size;
-    using char_traits = std::char_traits<char>;
-public:
-    constexpr simple_string_view() noexcept : _data{nullptr}, _size{0} {}
-    constexpr simple_string_view(const simple_string_view &) noexcept = default;
-    simple_string_view(const std::string &str) : _data{str.data()}, _size{str.size()} {}
-    constexpr simple_string_view(const char *data, size_t size) noexcept : _data{data}, _size{size} {}
-    simple_string_view(const char *data) : _data{data}, _size{std::char_traits<char>::length(data)} {}
-    simple_string_view &operator=(const simple_string_view &) = default;
-    constexpr const char *data() const { return _data; }
-    constexpr size_t size() const { return _size; }
-    constexpr bool empty() { return _size == 0; }
-    operator std::string() const { return {_data, _size}; }
-    const char *begin() const { return _data; }
-    const char *end() const { return _data + _size; }
-};
-bool operator==(simple_string_view lhs, simple_string_view rhs) {
-    return lhs.size() == rhs.size() && 0 == std::char_traits<char>::compare(lhs.data(), rhs.data(), lhs.size());
-};
-bool operator!=(simple_string_view lhs, simple_string_view rhs) {
-    return !(lhs == rhs);
-}
-std::ostream &operator <<(std::ostream &os, const simple_string_view &s) { return os << (std::string) s; }
-
-using msg_view_t = simple_string_view;
-#endif
 
 void SNNetwork::add_pollitem(zmq::socket_t &sock) {
     pollitems.emplace_back();
@@ -201,7 +167,7 @@ std::vector<std::string> as_strings(const MessageContainer &msgs) {
 // Returns a string view of the given message data.  If real std::string_views are available,
 // returns one, otherwise returns a simple partial implementation of string_view.  It's the caller's
 // responsibility to keep the message alive.
-msg_view_t view(const zmq::message_t &m) {
+common::string_view view(const zmq::message_t &m) {
     return {m.data<char>(), m.size()};
 }
 
