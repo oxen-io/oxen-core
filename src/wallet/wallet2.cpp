@@ -8694,35 +8694,14 @@ bool wallet2::unlock_keys_file()
 
 bool wallet2::lns_make_update_mapping_signature(lns::mapping_type type, std::string const &name, std::string const &value, crypto::generic_signature &signature, std::string *reason)
 {
-  cryptonote::COMMAND_RPC_LNS_NAMES_TO_OWNERS::request request = {};
-  request.entries.push_back({name, {static_cast<uint16_t>(type)}});
-
-  if (!lns::validate_lns_name(type, name, reason))
-    return false;
-
+  crypto::hash prev_txid = crypto::null_hash;
   lns::mapping_value value_blob;
-  if (!lns::validate_mapping_value(nettype(), type, value, &value_blob, reason))
+  if (!prepare_tx_extra_loki_name_system_values(nettype(), type, tx_priority_unimportant, name, value, *this, prev_txid, value_blob, reason))
     return false;
 
-  boost::optional<std::string> failed;
-  std::vector<cryptonote::COMMAND_RPC_LNS_NAMES_TO_OWNERS::response_entry> response = lns_names_to_owners(request, failed);
-  if (failed)
-  {
-    if (reason) *reason = *failed;
-    return false;
-  }
-
-  if (response.empty())
+  if (prev_txid == crypto::null_hash)
   {
     if (reason) *reason = "name=\"" + name + std::string("\" does not have a corresponding LNS record, the mapping is available for purchase, update signature is not required.");
-    return false;
-  }
-
-  cryptonote::COMMAND_RPC_LNS_NAMES_TO_OWNERS::response_entry const &record = response[0];
-  crypto::hash prev_txid;
-  if (!epee::string_tools::hex_to_pod(response[0].prev_txid, prev_txid))
-  {
-    if (reason) *reason = "Failed to convert=" + response[0].prev_txid + std::string(" to a transaction ID.");
     return false;
   }
 
