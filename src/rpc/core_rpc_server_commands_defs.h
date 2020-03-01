@@ -2875,6 +2875,41 @@ constexpr char const CORE_RPC_STATUS_TX_LONG_POLL_MAX_CONNECTIONS[] = "Daemon ma
     typedef epee::misc_utils::struct_init<response_t> response;
   };
 
+  LOKI_RPC_DOC_INTROSPECT
+  // Get information on Service Node.
+  struct COMMAND_RPC_GET_SERVICE_NODE_STATUS
+  {
+    struct request_t
+    {
+      bool include_json;                             // When set, the response's as_json member is filled out.
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(include_json);
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+
+    struct response_t
+    {
+
+      struct cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response_t::entry service_node_state; // Service node registration information
+      uint64_t    height;                     // Current block's height.
+      std::string block_hash;                 // Current block's hash.
+      std::string status;                     // Generic RPC error code. "OK" is the success value.
+      std::string as_json;                    // If `include_json` is set in the request, this contains the json representation of the `entry` data structure
+
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(service_node_state)
+        KV_SERIALIZE(height)
+        KV_SERIALIZE(block_hash)
+        KV_SERIALIZE(status)
+        KV_SERIALIZE(as_json)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+
   #define KV_SERIALIZE_ENTRY_FIELD_IF_REQUESTED(var) \
   if (this_ref.requested_fields.var || !this_ref.requested_fields.explicitly_set) KV_SERIALIZE(var)
 

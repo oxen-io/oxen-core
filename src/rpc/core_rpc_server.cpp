@@ -2102,6 +2102,37 @@ namespace cryptonote
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_get_service_node_status(const COMMAND_RPC_GET_SERVICE_NODE_STATUS::request& req, COMMAND_RPC_GET_SERVICE_NODE_STATUS::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
+  {
+    PERF_TIMER(on_get_service_node_status);
+    cryptonote::COMMAND_RPC_GET_SERVICE_NODE_KEY::response get_service_node_key_res = {};
+    cryptonote::COMMAND_RPC_GET_SERVICE_NODE_KEY::request get_service_node_key_req = {};
+    std::string fail_message = "Unsuccessful";
+
+    if (!on_get_service_node_key(get_service_node_key_req, get_service_node_key_res, error_resp, ctx))
+    {
+      return false;
+    }
+
+    cryptonote::COMMAND_RPC_GET_SERVICE_NODES::request get_service_nodes_req;
+    cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response get_service_nodes_res;
+
+    get_service_nodes_req.service_node_pubkeys.push_back(get_service_node_key_res.service_node_pubkey);
+
+    if (!on_get_service_nodes(get_service_nodes_req, get_service_nodes_res, error_resp, ctx))
+    {
+      return false;
+    }
+
+    res.service_node_state = get_service_nodes_res.service_node_states[0];
+    res.height = get_service_nodes_res.height;
+    res.block_hash = get_service_nodes_res.block_hash;
+    res.status = get_service_nodes_res.status;
+    res.as_json = get_service_nodes_res.as_json;
+
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::on_get_coinbase_tx_sum(const COMMAND_RPC_GET_COINBASE_TX_SUM::request& req, COMMAND_RPC_GET_COINBASE_TX_SUM::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
   {
     PERF_TIMER(on_get_coinbase_tx_sum);

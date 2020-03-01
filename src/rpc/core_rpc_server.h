@@ -183,6 +183,7 @@ namespace cryptonote
         MAP_JON_RPC_WE_IF("get_service_node_registration_cmd",      on_get_service_node_registration_cmd, COMMAND_RPC_GET_SERVICE_NODE_REGISTRATION_CMD, !m_restricted)
         MAP_JON_RPC_WE_IF("get_service_node_key",                   on_get_service_node_key, COMMAND_RPC_GET_SERVICE_NODE_KEY, !m_restricted)
         MAP_JON_RPC_WE_IF("get_service_node_privkey",               on_get_service_node_privkey, COMMAND_RPC_GET_SERVICE_NODE_PRIVKEY, !m_restricted)
+        MAP_JON_RPC_WE("get_service_node_status",                         on_get_service_node_status, COMMAND_RPC_GET_SERVICE_NODE_STATUS)
         MAP_JON_RPC_WE("get_service_nodes",                         on_get_service_nodes, COMMAND_RPC_GET_SERVICE_NODES)
         MAP_JON_RPC_WE("get_all_service_nodes",                     on_get_all_service_nodes, COMMAND_RPC_GET_SERVICE_NODES)
         MAP_JON_RPC_WE("get_n_service_nodes",                       on_get_n_service_nodes, COMMAND_RPC_GET_N_SERVICE_NODES)
@@ -276,6 +277,7 @@ namespace cryptonote
     bool on_get_service_node_blacklisted_key_images(const COMMAND_RPC_GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES::request& req, COMMAND_RPC_GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES::response& res, epee::json_rpc::error &error_resp, const connection_context *ctx = NULL);
     bool on_get_service_node_key(const COMMAND_RPC_GET_SERVICE_NODE_KEY::request& req, COMMAND_RPC_GET_SERVICE_NODE_KEY::response& res, epee::json_rpc::error &error_resp, const connection_context *ctx = NULL);
     bool on_get_service_node_privkey(const COMMAND_RPC_GET_SERVICE_NODE_PRIVKEY::request& req, COMMAND_RPC_GET_SERVICE_NODE_PRIVKEY::response& res, epee::json_rpc::error &error_resp, const connection_context *ctx = NULL);
+    bool on_get_service_node_status(const COMMAND_RPC_GET_SERVICE_NODE_STATUS::request& req, COMMAND_RPC_GET_SERVICE_NODE_STATUS::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
     bool on_get_service_nodes(const COMMAND_RPC_GET_SERVICE_NODES::request& req, COMMAND_RPC_GET_SERVICE_NODES::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
     bool on_get_n_service_nodes(const COMMAND_RPC_GET_N_SERVICE_NODES::request& req, COMMAND_RPC_GET_N_SERVICE_NODES::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
     bool on_get_all_service_nodes(const COMMAND_RPC_GET_SERVICE_NODES::request& req, COMMAND_RPC_GET_SERVICE_NODES::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
