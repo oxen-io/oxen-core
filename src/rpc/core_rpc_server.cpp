@@ -2107,7 +2107,6 @@ namespace cryptonote
     PERF_TIMER(on_get_service_node_status);
     cryptonote::COMMAND_RPC_GET_SERVICE_NODE_KEY::response get_service_node_key_res = {};
     cryptonote::COMMAND_RPC_GET_SERVICE_NODE_KEY::request get_service_node_key_req = {};
-    std::string fail_message = "Unsuccessful";
 
     if (!on_get_service_node_key(get_service_node_key_req, get_service_node_key_res, error_resp, ctx))
     {
@@ -2117,6 +2116,7 @@ namespace cryptonote
     cryptonote::COMMAND_RPC_GET_SERVICE_NODES::request get_service_nodes_req;
     cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response get_service_nodes_res;
 
+    get_service_nodes_req.include_json = req.include_json;
     get_service_nodes_req.service_node_pubkeys.push_back(get_service_node_key_res.service_node_pubkey);
 
     if (!on_get_service_nodes(get_service_nodes_req, get_service_nodes_res, error_resp, ctx))

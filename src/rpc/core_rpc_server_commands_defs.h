@@ -2892,7 +2892,7 @@ constexpr char const CORE_RPC_STATUS_TX_LONG_POLL_MAX_CONNECTIONS[] = "Daemon ma
     struct response_t
     {
 
-      struct cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response_t::entry service_node_state; // Service node registration information
+      cryptonote::COMMAND_RPC_GET_SERVICE_NODES::response_t::entry service_node_state; // Service node registration information
       uint64_t    height;                     // Current block's height.
       std::string block_hash;                 // Current block's hash.
       std::string status;                     // Generic RPC error code. "OK" is the success value.
