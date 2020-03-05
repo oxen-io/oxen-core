@@ -1131,7 +1131,7 @@ bool loki_name_system_expiration::generate(std::vector<test_event_entry> &events
     else
     {
       cryptonote::transaction tx = gen.create_loki_name_system_tx(miner, mapping_type, miner_key.lokinet_value, name);
-      gen.add_tx(tx, false /*can_be_added_to_blockchain*/, "Can not add LNS TX that is disallowed type");
+      gen.add_tx(tx, false /*can_be_added_to_blockchain*/, "Can not add LNS TX that uses disallowed type");
     }
   }
   return true;

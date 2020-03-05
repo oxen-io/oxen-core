@@ -6561,7 +6561,7 @@ bool simple_wallet::lns_make_update_mapping_signature(const std::vector<std::str
     return true;
   }
 
-  std::string const &new_value = args[args.size() - 1];
+  std::string const &new_value = args.back();
   std::string name;
   if (!parse_lns_name_string(args, 0, (args.size() - 2), name))
   {
@@ -6581,7 +6581,7 @@ bool simple_wallet::lns_make_update_mapping_signature(const std::vector<std::str
   return true;
 }
 //----------------------------------------------------------------------------------------------------
-static char constexpr NULL_KEY_STR[] = "0000000000000000000000000000000000000000000000000000000000000000";
+static char constexpr NULL_KEY_STR[] = "(none)";
 bool simple_wallet::lns_print_name_to_owners(const std::vector<std::string>& args)
 {
   if (!try_connect_to_daemon())

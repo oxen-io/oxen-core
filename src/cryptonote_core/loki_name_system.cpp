@@ -703,8 +703,11 @@ static bool validate_against_previous_mapping(lns::name_system_db const &lns_db,
 
       if (min_renew_height >= blockchain_height)
       {
-        err_stream << tx << ", " << data << ", trying to renew too early, the earliest renew height=" << min_renew_height << ", urrent height=" << blockchain_height;
-        *reason = err_stream.str();
+        if (reason)
+        {
+          err_stream << tx << ", " << data << ", trying to renew too early, the earliest renew height=" << min_renew_height << ", urrent height=" << blockchain_height;
+          *reason = err_stream.str();
+        }
         return false; // Trying to renew too early
       }
 
@@ -1003,6 +1006,8 @@ CREATE TABLE IF NOT EXISTS "mappings" (
     "backup_owner_id" INTEGER REFERENCES "owner" ("id")
 );
 CREATE UNIQUE INDEX IF NOT EXISTS "name_hash_type_id" ON mappings("name_hash", "type");
+CREATE INDEX IF NOT EXISTS "owner_id_index" ON mappings("owner_id");
+CREATE INDEX IF NOT EXISTS "backup_owner_id_index" ON mappings("backup_owner_index");
 )";
 
   char *table_err_msg = nullptr;
@@ -1038,7 +1043,7 @@ bool name_system_db::init(cryptonote::network_type nettype, sqlite3 *db, uint64_
   this->db      = db;
   this->nettype = nettype;
 
-  std::string const get_mappings_by_owner_str            = sql_cmd_combine_mappings_and_owner_table(R"(WHERE "o1"."public_key" = ? OR "o2"."public_key" = ?)");
+  std::string const get_mappings_by_owner_str            = sql_cmd_combine_mappings_and_owner_table(R"(WHERE ? IN ("o1"."public_key", "o2"."public_key"))");
   std::string const get_mappings_on_height_and_newer_str = sql_cmd_combine_mappings_and_owner_table(R"(WHERE "register_height" >= ?)");
   std::string const get_mapping_str                      = sql_cmd_combine_mappings_and_owner_table(R"(WHERE "type" = ? AND "name" = ?)");
 
@@ -1049,13 +1054,11 @@ bool name_system_db::init(cryptonote::network_type nettype, sqlite3 *db, uint64_
 
   char constexpr PRUNE_OWNERS_STR[] =
 R"(DELETE FROM "owner"
-WHERE NOT EXISTS
-  (SELECT * FROM "mappings"
-   WHERE "owner"."id" = "mappings"."owner_id"
-   OR "owner"."id" = "mappings"."backup_owner_id"))";
+WHERE NOT EXISTS (SELECT * FROM "mappings" WHERE "owner"."id" = "mappings"."owner_id")
+AND NOT EXISTS   (SELECT * FROM "mappings" WHERE "owner"."id" = "mappings"."backup_owner_id"))";
 
   char constexpr SAVE_MAPPING_STR[]     = R"(INSERT OR REPLACE INTO "mappings" ("type", "name", "value", "txid", "prev_txid", "register_height", "owner_id", "backup_owner_id") VALUES (?,?,?,?,?,?,?,?))";
-  char constexpr SAVE_OWNER_STR[]       = R"(INSERT INTO "owner" ("public_key") VALUES (?);)";
+  char constexpr SAVE_OWNER_STR[]       = R"(INSERT INTO "owner" ("public_key") VALUES (?))";
   char constexpr SAVE_SETTINGS_STR[]    = R"(INSERT OR REPLACE INTO "settings" ("id", "top_height", "top_hash", "version") VALUES (1,?,?,?))";
 
   sqlite3_stmt *test;
@@ -1423,26 +1426,18 @@ mapping_record name_system_db::get_mapping(mapping_type type, std::string const 
 std::vector<mapping_record> name_system_db::get_mappings(std::vector<uint16_t> const &types, std::string const &name_base64_hash) const
 {
   std::string sql_statement;
+  sql_statement.reserve(120 + 7 * types.size());
   // Generate string statement
 
   if (types.size())
   {
-     std::string const sql1 = sql_cmd_combine_mappings_and_owner_table(R"(WHERE "name" = ')");
-     char constexpr SQL2[]  = R"(' AND "type" in ()";
-     char constexpr SQL3[]  = R"())";
-
-     std::stringstream stream;
-     stream << sql1 << name_base64_hash;
-     stream.write(SQL2, loki::char_count(SQL2));
-
-     for (size_t i = 0; i < types.size(); i++)
-     {
-       stream << types[i];
-       if (i < (types.size() - 1)) stream << ", ";
+    sql_statement += sql_cmd_combine_mappings_and_owner_table(R"(WHERE "name" = ? AND "type" in ()");
+    for (size_t i = 0; i < types.size(); i++)
+    {
+      sql_statement += std::to_string(types[i]);
+      if (i < (types.size() - 1)) sql_statement += ", ";
     }
-
-    stream.write(SQL3, loki::char_count(SQL3));
-    sql_statement = stream.str();
+    sql_statement += ")";
   }
   else
   {
@@ -1454,6 +1449,8 @@ std::vector<mapping_record> name_system_db::get_mappings(std::vector<uint16_t> c
   sqlite3_stmt *statement = nullptr;
   if (!sql_compile_statement(db, sql_statement.c_str(), sql_statement.size(), &statement, false /*optimise_for_multiple_usage*/))
     return result;
+
+  sqlite3_bind_text(statement, 1 /*sql param index*/, name.data(), name.size(), nullptr /*destructor*/);
 
   // Execute
   sql_run_statement(nettype, lns_sql_type::get_mappings, statement, &result);
@@ -1511,7 +1508,6 @@ std::vector<mapping_record> name_system_db::get_mappings_by_owner(crypto::generi
   sqlite3_stmt *statement = get_mappings_by_owner_sql;
   sqlite3_clear_bindings(statement);
   sqlite3_bind_blob(statement, 1 /*sql param index*/, key.data, sizeof(key), nullptr /*destructor*/);
-  sqlite3_bind_blob(statement, 2 /*sql param index*/, key.data, sizeof(key), nullptr /*destructor*/);
   sql_run_statement(nettype, lns_sql_type::get_mappings_by_owner, statement, &result);
   return result;
 }

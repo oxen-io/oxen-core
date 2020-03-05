@@ -3413,7 +3413,7 @@ namespace cryptonote
     if (exceeds_quantity_limit(ctx, error_resp, m_restricted, req.entries.size(), COMMAND_RPC_LNS_OWNERS_TO_NAMES::MAX_REQUEST_ENTRIES))
       return false;
 
-    std::map<crypto::generic_public_key, size_t> key_to_request_index;
+    std::unordered_map<crypto::generic_public_key, size_t> key_to_request_index;
     std::vector<crypto::generic_public_key> keys;
 
     keys.reserve(req.entries.size());
