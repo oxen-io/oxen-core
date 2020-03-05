@@ -6162,6 +6162,7 @@ struct service_node_proof_serialized
     : timestamp{native_to_little(info.timestamp)},
       ip{native_to_little(info.public_ip)},
       storage_port{native_to_little(info.storage_port)},
+      storage_lmq_port{native_to_little(info.storage_lmq_port)},
       quorumnet_port{native_to_little(info.quorumnet_port)},
       version{native_to_little(info.version[0]), native_to_little(info.version[1]), native_to_little(info.version[2])},
       pubkey_ed25519{info.pubkey_ed25519}
@@ -6173,6 +6174,7 @@ struct service_node_proof_serialized
       info.effective_timestamp = info.timestamp;
     info.public_ip = little_to_native(ip);
     info.storage_port = little_to_native(storage_port);
+    info.storage_lmq_port = little_to_native(storage_lmq_port);
     info.quorumnet_port = little_to_native(quorumnet_port);
     for (size_t i = 0; i < info.version.size(); i++)
       info.version[i] = little_to_native(version[i]);
@@ -6190,7 +6192,7 @@ struct service_node_proof_serialized
   uint16_t storage_port;
   uint16_t quorumnet_port;
   uint16_t version[3];
-  uint16_t _padding{0};
+  uint16_t storage_lmq_port; // used to be "padding"
   crypto::ed25519_public_key pubkey_ed25519;
 };
 static_assert(sizeof(service_node_proof_serialized) == 56, "service node serialization struct has unexpected size and/or padding");

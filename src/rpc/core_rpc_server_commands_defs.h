@@ -2807,6 +2807,7 @@ constexpr char const CORE_RPC_STATUS_TX_LONG_POLL_MAX_CONNECTIONS[] = "Daemon ma
         std::string                           operator_address;              // The wallet address of the operator to which the operator cut of the staking reward is sent to.
         std::string                           public_ip;                     // The public ip address of the service node
         uint16_t                              storage_port;                  // The port number associated with the storage server
+        uint16_t                              storage_lmq_port;              // The port number associated with the storage server (lokimq interface)
         uint16_t                              quorumnet_port;                // The port for direct SN-to-SN communication
         std::string                           pubkey_ed25519;                // The service node's ed25519 public key for auxiliary services
         std::string                           pubkey_x25519;                 // The service node's x25519 public key for auxiliary services
@@ -2843,6 +2844,7 @@ constexpr char const CORE_RPC_STATUS_TX_LONG_POLL_MAX_CONNECTIONS[] = "Daemon ma
             KV_SERIALIZE(operator_address)
             KV_SERIALIZE(public_ip)
             KV_SERIALIZE(storage_port)
+            KV_SERIALIZE(storage_lmq_port)
             KV_SERIALIZE(quorumnet_port)
             KV_SERIALIZE(pubkey_ed25519)
             KV_SERIALIZE(pubkey_x25519)
@@ -2946,6 +2948,7 @@ constexpr char const CORE_RPC_STATUS_TX_LONG_POLL_MAX_CONNECTIONS[] = "Daemon ma
       bool operator_address;
       bool public_ip;
       bool storage_port;
+      bool storage_lmq_port;
       bool quorumnet_port;
       bool pubkey_ed25519;
       bool pubkey_x25519;
@@ -2985,6 +2988,7 @@ constexpr char const CORE_RPC_STATUS_TX_LONG_POLL_MAX_CONNECTIONS[] = "Daemon ma
         KV_SERIALIZE_OPT2(operator_address, false)
         KV_SERIALIZE_OPT2(public_ip, false)
         KV_SERIALIZE_OPT2(storage_port, false)
+        KV_SERIALIZE_OPT2(storage_lmq_port, false)
         KV_SERIALIZE_OPT2(quorumnet_port, false)
         KV_SERIALIZE_OPT2(pubkey_ed25519, false)
         KV_SERIALIZE_OPT2(pubkey_x25519, false)
@@ -3051,6 +3055,7 @@ constexpr char const CORE_RPC_STATUS_TX_LONG_POLL_MAX_CONNECTIONS[] = "Daemon ma
         std::string                           operator_address;              // The wallet address of the operator to which the operator cut of the staking reward is sent to.
         std::string                           public_ip;                     // The public ip address of the service node
         uint16_t                              storage_port;                  // The port number associated with the storage server
+        uint16_t                              storage_lmq_port;              // The port number associated with the storage server (lokimq interface)
         uint16_t                              quorumnet_port;                // The port for direct SN-to-SN communication
         std::string                           pubkey_ed25519;                // The service node's ed25519 public key for auxiliary services
         std::string                           pubkey_x25519;                 // The service node's x25519 public key for auxiliary services
@@ -3086,6 +3091,7 @@ constexpr char const CORE_RPC_STATUS_TX_LONG_POLL_MAX_CONNECTIONS[] = "Daemon ma
           KV_SERIALIZE_ENTRY_FIELD_IF_REQUESTED(operator_address);
           KV_SERIALIZE_ENTRY_FIELD_IF_REQUESTED(public_ip);
           KV_SERIALIZE_ENTRY_FIELD_IF_REQUESTED(storage_port);
+          KV_SERIALIZE_ENTRY_FIELD_IF_REQUESTED(storage_lmq_port);
           KV_SERIALIZE_ENTRY_FIELD_IF_REQUESTED(quorumnet_port);
           KV_SERIALIZE_ENTRY_FIELD_IF_REQUESTED(pubkey_ed25519);
           KV_SERIALIZE_ENTRY_FIELD_IF_REQUESTED(pubkey_x25519);

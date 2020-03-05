@@ -74,9 +74,10 @@ namespace service_nodes
     proof_info() { votes.fill({}); }
 
     // Unlike all of the above (except for timestamp), these values *do* get serialized
-    uint32_t public_ip      = 0;
-    uint16_t storage_port   = 0;
-    uint16_t quorumnet_port = 0;
+    uint32_t public_ip        = 0;
+    uint16_t storage_port     = 0;
+    uint16_t storage_lmq_port = 0;
+    uint16_t quorumnet_port   = 0;
     std::array<uint16_t, 3> version{{0,0,0}};
     crypto::ed25519_public_key pubkey_ed25519 = crypto::ed25519_public_key::null();
 
@@ -92,7 +93,7 @@ namespace service_nodes
     // Returns true if serializable data is changed (in which case `store()` should be called).
     // Note that this does not update the m_x25519_to_pub map if the x25519 key changes (that's the
     // caller's responsibility).
-    bool update(uint64_t ts, uint32_t ip, uint16_t s_port, uint16_t q_port, std::array<uint16_t, 3> ver, const crypto::ed25519_public_key &pk_ed, const crypto::x25519_public_key &pk_x2);
+    bool update(uint64_t ts, uint32_t ip, uint16_t s_port, uint16_t s_lmq_port, uint16_t q_port, std::array<uint16_t, 3> ver, const crypto::ed25519_public_key &pk_ed, const crypto::x25519_public_key &pk_x2);
 
     // Stores this record in the database.
     void store(const crypto::public_key &pubkey, cryptonote::Blockchain &blockchain);
@@ -375,7 +376,11 @@ namespace service_nodes
     bool store();
 
     /// Record public ip and storage port and add them to the service node list
-    cryptonote::NOTIFY_UPTIME_PROOF::request generate_uptime_proof(const service_node_keys &keys, uint32_t public_ip, uint16_t storage_port, uint16_t quorumnet_port) const;
+    cryptonote::NOTIFY_UPTIME_PROOF::request generate_uptime_proof(const service_node_keys& keys,
+                                                                   uint32_t public_ip,
+                                                                   uint16_t storage_port,
+                                                                   uint16_t storage_lmq_port,
+                                                                   uint16_t quorumnet_port) const;
     bool handle_uptime_proof        (cryptonote::NOTIFY_UPTIME_PROOF::request const &proof, bool &my_uptime_proof_confirmation);
     void record_checkpoint_vote     (crypto::public_key const &pubkey, uint64_t height, bool voted);
 

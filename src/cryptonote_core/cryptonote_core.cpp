@@ -200,6 +200,12 @@ namespace cryptonote
     "storage server is required for service nodes. (This option is specified "
     "automatically when using Loki Launcher.)"
   , 0};
+  static const command_line::arg_descriptor<uint16_t> arg_storage_server_lmq_port = {
+    "storage-server-lmq-port"
+  , "The port on which this service node's storage server (the lokimq interface) is accessible. "
+    "A listening storage server is required for service nodes. (This option is specified "
+    "automatically when using Loki Launcher.)"
+  , 0};
   static const command_line::arg_descriptor<uint16_t, false, true, 2> arg_quorumnet_port = {
     "quorumnet-port"
   , "The port on which this service node listen for direct connections from other "
@@ -368,6 +374,7 @@ namespace cryptonote
     command_line::add_arg(desc, arg_service_node);
     command_line::add_arg(desc, arg_public_ip);
     command_line::add_arg(desc, arg_storage_server_port);
+    command_line::add_arg(desc, arg_storage_server_lmq_port);
     command_line::add_arg(desc, arg_quorumnet_port);
     command_line::add_arg(desc, arg_pad_transactions);
     command_line::add_arg(desc, arg_block_notify);
@@ -417,12 +424,19 @@ namespace cryptonote
 
       /// TODO: parse these options early, before we start p2p server etc?
       m_storage_port = command_line::get_arg(vm, arg_storage_server_port);
+      m_storage_lmq_port = command_line::get_arg(vm, arg_storage_server_lmq_port);
 
       m_quorumnet_port = command_line::get_arg(vm, arg_quorumnet_port);
 
       bool storage_ok = true;
       if (m_storage_port == 0) {
         MERROR("Please specify the port on which the storage server is listening with: '--" << arg_storage_server_port.name << " <port>'");
+        storage_ok = false;
+      }
+
+      if (m_storage_lmq_port == 0 || m_storage_lmq_port == m_storage_port) {
+        MERROR("Please specify the port on which the storage server is listening with: '--"
+               << arg_storage_server_lmq_port.name << " <port>' (distinct from " << arg_storage_server_port.name << ")");
         storage_ok = false;
       }
 
@@ -462,6 +476,9 @@ namespace cryptonote
 
       MGINFO("Storage server endpoint is set to: "
              << (epee::net_utils::ipv4_network_address{ m_sn_public_ip, m_storage_port }).str());
+
+      MGINFO("Storage server (LMQ) endpoint is set to: "
+             << (epee::net_utils::ipv4_network_address{ m_sn_public_ip, m_storage_lmq_port }).str());
     }
 
     epee::debug::g_test_dbg_lock_sleep() = command_line::get_arg(vm, arg_test_dbg_lock_sleep);
@@ -1717,7 +1734,7 @@ namespace cryptonote
     if (!m_service_node_keys)
       return true;
 
-    NOTIFY_UPTIME_PROOF::request req = m_service_node_list.generate_uptime_proof(*m_service_node_keys, m_sn_public_ip, m_storage_port, m_quorumnet_port);
+    NOTIFY_UPTIME_PROOF::request req = m_service_node_list.generate_uptime_proof(*m_service_node_keys, m_sn_public_ip, m_storage_port, m_storage_lmq_port, m_quorumnet_port);
 
     cryptonote_connection_context fake_context{};
     bool relayed = get_protocol()->relay_uptime_proof(req, fake_context);

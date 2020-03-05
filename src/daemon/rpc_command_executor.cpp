@@ -2527,7 +2527,8 @@ static void append_printable_service_node_list_entry(cryptonote::network_type ne
     if (entry.public_ip == "0.0.0.0")
       stream << "(Awaiting confirmation from network)";
     else
-      stream << entry.public_ip << " :" << entry.storage_port << " (storage), :" << entry.quorumnet_port << " (quorumnet)";
+      stream << entry.public_ip << " :" << entry.storage_port << " (storage), :" << entry.storage_lmq_port
+             << " (storage lmq), :" << entry.quorumnet_port << " (quorumnet)";
 
     stream << "\n";
     if (detailed_view)

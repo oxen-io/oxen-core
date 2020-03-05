@@ -1892,7 +1892,7 @@ namespace service_nodes
 
   static crypto::hash hash_uptime_proof(const cryptonote::NOTIFY_UPTIME_PROOF::request &proof, uint8_t hf_version)
   {
-    auto buf = tools::memcpy_le(proof.pubkey.data, proof.timestamp, proof.public_ip, proof.storage_port, proof.pubkey_ed25519.data, proof.qnet_port);
+    auto buf = tools::memcpy_le(proof.pubkey.data, proof.timestamp, proof.public_ip, proof.storage_port, proof.storage_lmq_port, proof.pubkey_ed25519.data, proof.qnet_port);
     size_t buf_size = buf.size();
 
     crypto::hash result;
@@ -1901,7 +1901,7 @@ namespace service_nodes
   }
 
   cryptonote::NOTIFY_UPTIME_PROOF::request service_node_list::generate_uptime_proof(
-      const service_node_keys &keys, uint32_t public_ip, uint16_t storage_port, uint16_t quorumnet_port) const
+      const service_node_keys &keys, uint32_t public_ip, uint16_t storage_port, uint16_t storage_lmq_port, uint16_t quorumnet_port) const
   {
     cryptonote::NOTIFY_UPTIME_PROOF::request result = {};
     result.snode_version                            = LOKI_VERSION;
@@ -1909,6 +1909,7 @@ namespace service_nodes
     result.pubkey                                   = keys.pub;
     result.public_ip                                = public_ip;
     result.storage_port                             = storage_port;
+    result.storage_lmq_port                         = storage_lmq_port;
     result.qnet_port                                = quorumnet_port;
     result.pubkey_ed25519                           = keys.pub_ed25519;
 
@@ -1960,12 +1961,20 @@ namespace service_nodes
     db.set_service_node_proof(pubkey, *this);
   }
 
-  bool proof_info::update(uint64_t ts, uint32_t ip, uint16_t s_port, uint16_t q_port, std::array<uint16_t, 3> ver, const crypto::ed25519_public_key &pk_ed, const crypto::x25519_public_key &pk_x2)
+  bool proof_info::update(uint64_t ts,
+                          uint32_t ip,
+                          uint16_t s_port,
+                          uint16_t s_lmq_port,
+                          uint16_t q_port,
+                          std::array<uint16_t, 3> ver,
+                          const crypto::ed25519_public_key& pk_ed,
+                          const crypto::x25519_public_key& pk_x2)
   {
     bool update_db = false;
     update_db |= update_val(timestamp, ts);
     update_db |= update_val(public_ip, ip);
     update_db |= update_val(storage_port, s_port);
+    update_db |= update_val(storage_lmq_port, s_lmq_port);
     update_db |= update_val(quorumnet_port, q_port);
     update_db |= update_val(version, ver);
     update_db |= update_val(pubkey_ed25519, pk_ed);
@@ -2069,7 +2078,7 @@ namespace service_nodes
     }
 
     auto old_x25519 = iproof.pubkey_x25519;
-    if (iproof.update(now, proof.public_ip, proof.storage_port, proof.qnet_port, proof.snode_version, proof.pubkey_ed25519, derived_x25519_pubkey))
+    if (iproof.update(now, proof.public_ip, proof.storage_port, proof.storage_lmq_port, proof.qnet_port, proof.snode_version, proof.pubkey_ed25519, derived_x25519_pubkey))
       iproof.store(proof.pubkey, m_blockchain);
 
     if ((uint64_t) x25519_map_last_pruned + X25519_MAP_PRUNING_INTERVAL <= now)
