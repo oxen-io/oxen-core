@@ -1892,8 +1892,11 @@ namespace service_nodes
 
   static crypto::hash hash_uptime_proof(const cryptonote::NOTIFY_UPTIME_PROOF::request &proof, uint8_t hf_version)
   {
-    auto buf = tools::memcpy_le(proof.pubkey.data, proof.timestamp, proof.public_ip, proof.storage_port, proof.storage_lmq_port, proof.pubkey_ed25519.data, proof.qnet_port);
+    auto buf = tools::memcpy_le(proof.pubkey.data, proof.timestamp, proof.public_ip, proof.storage_port, proof.pubkey_ed25519.data, proof.qnet_port, proof.storage_lmq_port);
     size_t buf_size = buf.size();
+
+    if (hf_version < cryptonote::network_version_15_lns) // TODO - can be removed post-HF15
+      buf_size -= sizeof(proof.storage_lmq_port);
 
     crypto::hash result;
     crypto::cn_fast_hash(buf.data(), buf_size, result);

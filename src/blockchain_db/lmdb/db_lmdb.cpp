@@ -6192,7 +6192,7 @@ struct service_node_proof_serialized
   uint16_t storage_port;
   uint16_t quorumnet_port;
   uint16_t version[3];
-  uint16_t storage_lmq_port; // used to be "padding"
+  uint16_t storage_lmq_port;
   crypto::ed25519_public_key pubkey_ed25519;
 };
 static_assert(sizeof(service_node_proof_serialized) == 56, "service node serialization struct has unexpected size and/or padding");
