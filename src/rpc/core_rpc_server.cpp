@@ -3151,9 +3151,11 @@ namespace cryptonote
   {
     if (handle_ping({req.version_major, req.version_minor, req.version_patch}, service_nodes::MIN_STORAGE_SERVER_VERSION,
           "Storage Server", m_core.m_last_storage_server_ping, STORAGE_SERVER_PING_LIFETIME, res))
+    {
       m_core.reset_proof_interval();
 
       m_core.m_storage_lmq_port = req.storage_lmq_port;
+    }
 
     return true;
   }
