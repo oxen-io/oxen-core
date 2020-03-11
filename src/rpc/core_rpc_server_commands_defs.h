@@ -3150,10 +3150,12 @@ constexpr char const CORE_RPC_STATUS_TX_LONG_POLL_MAX_CONNECTIONS[] = "Daemon ma
       int version_major; // Storage Server Major version
       int version_minor; // Storage Server Minor version
       int version_patch; // Storage Server Patch version
+      uint16_t storage_lmq_port; // Storage Server lmq port to include in uptime proofs
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(version_major);
         KV_SERIALIZE(version_minor);
         KV_SERIALIZE(version_patch);
+        KV_SERIALIZE(storage_lmq_port);
       END_KV_SERIALIZE_MAP()
     };
 

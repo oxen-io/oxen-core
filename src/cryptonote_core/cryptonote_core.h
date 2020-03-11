@@ -955,6 +955,7 @@ namespace cryptonote
 
      /// Time point at which the storage server and lokinet last pinged us
      std::atomic<time_t> m_last_storage_server_ping, m_last_lokinet_ping;
+     std::atomic<uint16_t> m_storage_lmq_port;
 
      /**
       * @brief attempts to relay any transactions in the mempool which need it
@@ -1137,7 +1138,6 @@ namespace cryptonote
      /// Service Node's public IP and storage server port (http and lokimq)
      uint32_t m_sn_public_ip;
      uint16_t m_storage_port;
-     uint16_t m_storage_lmq_port;
      uint16_t m_quorumnet_port;
 
      std::string m_quorumnet_bind_ip; // Currently just copied from p2p-bind-ip
