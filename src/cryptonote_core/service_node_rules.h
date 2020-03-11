@@ -110,7 +110,7 @@ namespace service_nodes {
   // blocks out of sync and sending something that it thinks is legit.
   constexpr uint64_t VOTE_OR_TX_VERIFY_HEIGHT_BUFFER    = 5;
 
-  constexpr std::array<int, 3> MIN_STORAGE_SERVER_VERSION{{1, 0, 9}};
+  constexpr std::array<int, 3> MIN_STORAGE_SERVER_VERSION{{2, 0, 0}};
   constexpr std::array<int, 3> MIN_LOKINET_VERSION{{0, 6, 1}};
 
   using swarm_id_t                         = uint64_t;
