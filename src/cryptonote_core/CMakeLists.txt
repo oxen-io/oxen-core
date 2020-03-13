@@ -50,6 +50,7 @@ target_link_libraries(cryptonote_core
     multisig
     ringct
     device
+    checkpoints
     sqlite3
   PRIVATE
     Boost::program_options
