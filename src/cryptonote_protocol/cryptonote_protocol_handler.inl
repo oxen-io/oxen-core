@@ -464,7 +464,9 @@ namespace cryptonote
     if (target == 0)
       target = curr_height;
 
-    if (hshd.current_height > target)
+    bool have_block = m_core.have_block(hshd.top_id);
+
+    if (!have_block && hshd.current_height > target)
     {
     /* As I don't know if accessing hshd from core could be a good practice,
     I prefer pushing target height to the core at the same time it is pushed to the user.
@@ -495,7 +497,6 @@ namespace cryptonote
       }
       m_core.set_target_blockchain_height((hshd.current_height));
     }
-    MINFO(context << "Remote blockchain height: " << hshd.current_height << ", id: " << hshd.top_id);
 
     if (m_no_sync)
     {
@@ -503,7 +504,7 @@ namespace cryptonote
       return true;
     }
 
-    if(m_core.have_block(hshd.top_id))
+    if(have_block)
     {
       context.m_state = cryptonote_connection_context::state_normal;
       if(is_inital && target == curr_height)
@@ -516,6 +517,7 @@ namespace cryptonote
 
     if (context.m_need_blink_sync || context.m_state == cryptonote_connection_context::state_synchronizing)
     {
+      MINFO(context << "Remote blockchain height: " << hshd.current_height << ", id: " << hshd.top_id);
       //let the socket to send response to handshake, but request callback, to let send request data after response
       LOG_PRINT_CCONTEXT_L2("requesting callback");
       ++context.m_callback_request_count;
