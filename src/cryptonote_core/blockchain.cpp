@@ -62,6 +62,12 @@
 #include "common/pruning.h"
 #include "common/lock.h"
 
+#ifdef ENABLE_SYSTEMD
+extern "C" {
+#  include <systemd/sd-daemon.h>
+}
+#endif
+
 #undef LOKI_DEFAULT_LOG_CATEGORY
 #define LOKI_DEFAULT_LOG_CATEGORY "blockchain"
 
@@ -322,6 +328,11 @@ bool Blockchain::load_missing_blocks_into_loki_subsystems()
       m_service_node_list.store();
       auto duration = work_time{clock::now() - work_start};
       MGINFO("... scanning height " << start_height + (index * BLOCK_COUNT) << " (" << duration.count() << "s) (snl: " << snl_iteration_duration.count() << "s; lns: " << lns_iteration_duration.count() << "s)");
+#ifdef ENABLE_SYSTEMD
+      // Tell systemd that we're doing something so that it should let us continue starting up
+      // (giving us 120s until we have to send the next notification):
+      sd_notify(0, ("EXTEND_TIMEOUT_USEC=120000000\nSTATUS=Recanning blockchain; height " + std::to_string(start_height + (index * BLOCK_COUNT))).c_str());
+#endif
       work_start = clock::now();
 
       lns_duration += lns_iteration_duration;
