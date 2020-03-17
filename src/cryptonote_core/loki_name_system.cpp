@@ -99,7 +99,7 @@ static std::string lns_extra_string(cryptonote::network_type nettype, cryptonote
   if (data.is_buying())
   {
     stream << "owner=" << data.owner.to_string(nettype);
-    stream << ", backup_owner=" << data.backup_owner ? data.backup_owner.to_string(nettype) : "(none)";
+    stream << ", backup_owner=" << (data.backup_owner ? data.backup_owner.to_string(nettype) : "(none)");
   }
   else
     stream << "signature=" << epee::string_tools::pod_to_hex(data.signature.data);

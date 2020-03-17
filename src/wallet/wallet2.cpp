@@ -7504,7 +7504,7 @@ uint64_t wallet2::get_fee_percent(uint32_t priority, txtype type) const
     if (!blinkable)
       THROW_WALLET_EXCEPTION(error::invalid_priority);
 
-    uint64_t burn_pct;
+    uint64_t burn_pct = 0;
     if (use_fork_rules(network_version_15_lns, 0))
       burn_pct = BLINK_BURN_TX_FEE_PERCENT;
     else if (use_fork_rules(network_version_14_blink, 0))
