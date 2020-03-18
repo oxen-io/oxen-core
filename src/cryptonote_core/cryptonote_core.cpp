@@ -543,7 +543,8 @@ namespace cryptonote
   {
     std::string s;
     s.reserve(128);
-    s += "Height: ";
+    s += 'v'; s += LOKI_VERSION_STR;
+    s += "; Height: ";
     s += std::to_string(c.get_blockchain_storage().get_current_blockchain_height());
     s += ", SN: ";
     auto keys = c.get_service_node_keys();
