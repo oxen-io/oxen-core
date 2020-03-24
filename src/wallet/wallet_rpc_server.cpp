@@ -4179,8 +4179,17 @@ namespace tools
     }
 
     std::vector<tools::wallet2::pending_tx> ptx_vector = {stake_result.ptx};
-    return fill_response(ptx_vector, req.get_tx_key, res.tx_key, res.amount, res.fee, res.multisig_txset, res.unsigned_txset, req.do_not_relay, false /*blink*/,
-        res.tx_hash, req.get_tx_hex, res.tx_blob, req.get_tx_metadata, res.tx_metadata, er);
+
+    try
+    {
+      return fill_response(ptx_vector, req.get_tx_key, res.tx_key, res.amount, res.fee, res.multisig_txset, res.unsigned_txset, req.do_not_relay, false /*blink*/,
+          res.tx_hash, req.get_tx_hex, res.tx_blob, req.get_tx_metadata, res.tx_metadata, er);
+    }
+    catch (const std::exception &e)
+    {
+      handle_rpc_exception(std::current_exception(), er, WALLET_RPC_ERROR_CODE_GENERIC_TRANSFER_ERROR);
+      return false;
+    }
   }
 
   bool wallet_rpc_server::on_register_service_node(const wallet_rpc::COMMAND_RPC_REGISTER_SERVICE_NODE::request& req, wallet_rpc::COMMAND_RPC_REGISTER_SERVICE_NODE::response& res, epee::json_rpc::error& er, const connection_context *ctx)
@@ -4212,8 +4221,16 @@ namespace tools
     }
 
     std::vector<tools::wallet2::pending_tx> ptx_vector = {register_result.ptx};
-    return fill_response(ptx_vector, req.get_tx_key, res.tx_key, res.amount, res.fee, res.multisig_txset, res.unsigned_txset, req.do_not_relay, false /*blink*/,
-        res.tx_hash, req.get_tx_hex, res.tx_blob, req.get_tx_metadata, res.tx_metadata, er);
+    try
+    {
+      return fill_response(ptx_vector, req.get_tx_key, res.tx_key, res.amount, res.fee, res.multisig_txset, res.unsigned_txset, req.do_not_relay, false /*blink*/,
+          res.tx_hash, req.get_tx_hex, res.tx_blob, req.get_tx_metadata, res.tx_metadata, er);
+    }
+    catch (const std::exception &e)
+    {
+      handle_rpc_exception(std::current_exception(), er, WALLET_RPC_ERROR_CODE_GENERIC_TRANSFER_ERROR);
+      return false;
+    }
   }
 
   bool wallet_rpc_server::on_can_request_stake_unlock(const wallet_rpc::COMMAND_RPC_CAN_REQUEST_STAKE_UNLOCK::request& req, wallet_rpc::COMMAND_RPC_CAN_REQUEST_STAKE_UNLOCK::response& res, epee::json_rpc::error& er, const connection_context *ctx)
@@ -4306,21 +4323,29 @@ namespace tools
       return false;
     }
 
-    return fill_response(ptx_vector,
-                         req.get_tx_key,
-                         res.tx_key,
-                         res.amount,
-                         res.fee,
-                         res.multisig_txset,
-                         res.unsigned_txset,
-                         req.do_not_relay,
-                         false /*blink*/,
-                         res.tx_hash,
-                         req.get_tx_hex,
-                         res.tx_blob,
-                         req.get_tx_metadata,
-                         res.tx_metadata,
-                         er);
+    try
+    {
+      return fill_response(ptx_vector,
+                           req.get_tx_key,
+                           res.tx_key,
+                           res.amount,
+                           res.fee,
+                           res.multisig_txset,
+                           res.unsigned_txset,
+                           req.do_not_relay,
+                           false /*blink*/,
+                           res.tx_hash,
+                           req.get_tx_hex,
+                           res.tx_blob,
+                           req.get_tx_metadata,
+                           res.tx_metadata,
+                           er);
+    }
+    catch (const std::exception &e)
+    {
+      handle_rpc_exception(std::current_exception(), er, WALLET_RPC_ERROR_CODE_GENERIC_TRANSFER_ERROR);
+      return false;
+    }
   }
 
   bool wallet_rpc_server::on_lns_update_mapping(const wallet_rpc::COMMAND_RPC_LNS_UPDATE_MAPPING::request &req, wallet_rpc::COMMAND_RPC_LNS_UPDATE_MAPPING::response &res, epee::json_rpc::error &er, const connection_context *ctx)
@@ -4353,21 +4378,29 @@ namespace tools
       return false;
     }
 
-    return fill_response(ptx_vector,
-                         req.get_tx_key,
-                         res.tx_key,
-                         res.amount,
-                         res.fee,
-                         res.multisig_txset,
-                         res.unsigned_txset,
-                         req.do_not_relay,
-                         false /*blink*/,
-                         res.tx_hash,
-                         req.get_tx_hex,
-                         res.tx_blob,
-                         req.get_tx_metadata,
-                         res.tx_metadata,
-                         er);
+    try
+    {
+      return fill_response(ptx_vector,
+                           req.get_tx_key,
+                           res.tx_key,
+                           res.amount,
+                           res.fee,
+                           res.multisig_txset,
+                           res.unsigned_txset,
+                           req.do_not_relay,
+                           false /*blink*/,
+                           res.tx_hash,
+                           req.get_tx_hex,
+                           res.tx_blob,
+                           req.get_tx_metadata,
+                           res.tx_metadata,
+                           er);
+    }
+    catch (const std::exception &e)
+    {
+      handle_rpc_exception(std::current_exception(), er, WALLET_RPC_ERROR_CODE_GENERIC_TRANSFER_ERROR);
+      return false;
+    }
   }
 
   bool wallet_rpc_server::on_lns_make_update_mapping_signature(const wallet_rpc::COMMAND_RPC_LNS_MAKE_UPDATE_SIGNATURE::request& req, wallet_rpc::COMMAND_RPC_LNS_MAKE_UPDATE_SIGNATURE::response& res, epee::json_rpc::error& er, const connection_context *ctx)
