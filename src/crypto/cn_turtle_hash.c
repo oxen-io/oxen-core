@@ -188,7 +188,7 @@ extern int aesb_pseudo_round(const uint8_t *in, uint8_t *out, const uint8_t *exp
     lo ^= *(U64(hp_state + (j ^ 0x20)) + 1); \
   } while (0)
 
-#if !defined NO_AES && (defined(__x86_64__) || (defined(_MSC_VER) && defined(_WIN64)))
+#if defined(__AES__) && (defined(__x86_64__) || (defined(_MSC_VER) && defined(_WIN64)))
 // Optimised code below, uses x86-specific intrinsics, SSE2, AES-NI
 // Fall back to more portable code is down at the bottom
 
@@ -804,7 +804,7 @@ void cn_turtle_hash(const void *data, size_t length, char *hash, int light, int 
   slow_hash_free_state(CN_TURTLE_PAGE_SIZE);
 }
 
-#elif !defined NO_AES && (defined(__arm__) || defined(__aarch64__))
+#elif defined(__arm__) || defined(__aarch64__)
 void slow_hash_allocate_state(void)
 {
   // Do nothing, this is just to maintain compatibility with the upgraded slow-hash.c
