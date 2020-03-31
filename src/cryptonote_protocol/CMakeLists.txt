@@ -33,11 +33,11 @@ add_library(cryptonote_protocol
   core_protocol_instantiation.cpp
   p2p_net_node_instantiation.cpp
 )
-
 target_link_libraries(cryptonote_protocol
   PUBLIC
     p2p
   PRIVATE
+    common
     miniupnpc
     easylogging
     extra)

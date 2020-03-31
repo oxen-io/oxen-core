@@ -52,40 +52,49 @@ target_link_libraries(wallet
     OpenSSL::SSL
     extra)
 
-loki_add_executable(wallet_rpc_server "loki-wallet-rpc"
-  wallet_rpc_server.cpp
-  )
+if (NOT (ANDROID OR IOS))
+  loki_add_executable(wallet_rpc_server "loki-wallet-rpc"
+    wallet_rpc_server.cpp
+    )
 
-target_link_libraries(wallet_rpc_server
-  PRIVATE
-    wallet
-    rpc_base
-    daemonizer
-    epee_readline
-    Boost::program_options
-    Boost::regex
-    extra)
+  target_link_libraries(wallet_rpc_server
+    PRIVATE
+      wallet
+      rpc_base
+      daemonizer
+      epee_readline
+      Boost::program_options
+      Boost::regex
+      extra)
+endif()
 
 
 function(combine_archives output_archive)
-    set(mri_file ${CMAKE_CURRENT_BINARY_DIR}/${output_archive}.mri)
-    set(FULL_OUTPUT_PATH ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}/lib${output_archive}.a)
-    set(mri_content "create ${FULL_OUTPUT_PATH}\n")
-    FOREACH(in_archive ${ARGN})
-        string(APPEND mri_content "addlib $<TARGET_FILE:${in_archive}>\n")
-    ENDFOREACH()
-    string(APPEND mri_content "save\nend\n")
-    file(GENERATE OUTPUT ${mri_file} CONTENT "${mri_content}")
+    if (APPLE)
+      foreach(lib ${ARGN})
+        list(APPEND libs $<TARGET_OBJECTS:${lib}>)
+      endforeach()
+      add_library(${output_archive} STATIC ${libs})
+    else()
+      set(mri_file ${CMAKE_CURRENT_BINARY_DIR}/${output_archive}.mri)
+      set(FULL_OUTPUT_PATH ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}/lib${output_archive}.a)
+      set(mri_content "create ${FULL_OUTPUT_PATH}\n")
+      FOREACH(in_archive ${ARGN})
+          string(APPEND mri_content "addlib $<TARGET_FILE:${in_archive}>\n")
+      ENDFOREACH()
+      string(APPEND mri_content "save\nend\n")
+      file(GENERATE OUTPUT ${mri_file} CONTENT "${mri_content}")
 
-    set(output_archive_dummy_file ${CMAKE_CURRENT_BINARY_DIR}/${output_archive}.dummy.cpp)
-    add_custom_command(OUTPUT ${output_archive_dummy_file}
-                       COMMAND touch ${output_archive_dummy_file}
-                       DEPENDS ${ARGN})
+      set(output_archive_dummy_file ${CMAKE_CURRENT_BINARY_DIR}/${output_archive}.dummy.cpp)
+      add_custom_command(OUTPUT ${output_archive_dummy_file}
+                         COMMAND touch ${output_archive_dummy_file}
+                         DEPENDS ${ARGN})
 
-    add_library(${output_archive} STATIC ${output_archive_dummy_file})
-    add_custom_command(TARGET ${output_archive}
-                       POST_BUILD
-                       COMMAND ar -M < ${mri_file})
+      add_library(${output_archive} STATIC ${output_archive_dummy_file})
+      add_custom_command(TARGET ${output_archive}
+                         POST_BUILD
+                         COMMAND ar -M < ${mri_file})
+    endif()
 endfunction(combine_archives)
 
 # build and install libwallet_merged only if we building for GUI

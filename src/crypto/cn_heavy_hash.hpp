@@ -44,29 +44,35 @@
 #define HAS_WIN_INTRIN_API
 #endif
 
-// Note HAS_INTEL_HW and HAS_ARM_HW only mean we can emit the AES instructions
-// check CPU support for the hardware AES encryption has to be done at runtime
-#if defined(__x86_64__) || defined(__i386__) || defined(_M_X86) || defined(_M_X64)
-#ifdef __GNUC__
-#include <x86intrin.h>
-#ifndef __clang__
-#pragma GCC target ("aes")
-#endif
-#if !defined(HAS_WIN_INTRIN_API)
-#include <cpuid.h>
-#endif // !defined(HAS_WIN_INTRIN_API)
-#endif // __GNUC__
-#define HAS_INTEL_HW
-#endif
+// NOTE: On IOS we build a universal binary- which means we can't tell if the
+// target device has hardware AES support. IOS doesn't provide a reliable way to
+// determine at run time if this is available (getauxval() doesn't exist), so
+// default to off.
+#if !defined(IOS)
+  // Note HAS_INTEL_HW and HAS_ARM_HW only mean we can emit the AES instructions
+  // check CPU support for the hardware AES encryption has to be done at runtime
+  #if defined(__x86_64__) || defined(__i386__) || defined(_M_X86) || defined(_M_X64)
+  #ifdef __GNUC__
+  #include <x86intrin.h>
+  #ifndef __clang__
+  #pragma GCC target ("aes")
+  #endif
+  #if !defined(HAS_WIN_INTRIN_API)
+  #include <cpuid.h>
+  #endif // !defined(HAS_WIN_INTRIN_API)
+  #endif // __GNUC__
+  #define HAS_INTEL_HW
+  #endif
 
-#if defined(__aarch64__)
-#ifndef __clang__
-#pragma GCC target ("+crypto")
-#endif
-#include <sys/auxv.h>
-#include <asm/hwcap.h>
-#include <arm_neon.h>
-#define HAS_ARM_HW
+  #if defined(__aarch64__) && !defined(IOS)
+  #ifndef __clang__
+  #pragma GCC target ("+crypto")
+  #endif
+  #include <sys/auxv.h>
+  #include <asm/hwcap.h>
+  #include <arm_neon.h>
+  #define HAS_ARM_HW
+  #endif
 #endif
 
 #ifdef HAS_INTEL_HW

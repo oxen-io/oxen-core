@@ -37,7 +37,7 @@ include(CheckLibraryExists)
 include(CheckFunctionExists)
 
 if (IOS)
-    INCLUDE(CmakeLists_IOS.txt)
+  include(CmakeLists_IOS.txt)
 endif()
 
 cmake_minimum_required(VERSION 3.7)
@@ -369,8 +369,20 @@ else()
   message(FATAL_ERROR "Invalid database type: ${DATABASE}")
 endif()
 
+# FindThreads fails for iOS CMAKE_SYSTEM_NAME
+# https://gitlab.kitware.com/cmake/cmake/issues/18993#note_631388
+if (IOS)
+  set(CMAKE_TRY_COMPILE_PLATFORM_VARIABLES "CMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED")
+  set(CMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED "NO")
+endif()
+
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads)
+
+if (IOS)
+  unset(CMAKE_TRY_COMPILE_PLATFORM_VARIABLES)
+  unset(CMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED)
+endif()
 
 if (APPLE AND NOT IOS)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=x86-64 -fvisibility=default -std=c++14")

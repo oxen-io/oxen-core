@@ -32,6 +32,7 @@ add_library(mnemonics
 
 target_link_libraries(mnemonics
   PRIVATE
+    sodium
     epee
     easylogging
     extra)
