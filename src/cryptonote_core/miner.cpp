@@ -47,12 +47,14 @@
 
 #ifdef __APPLE__
   #include <sys/times.h>
-  #include <IOKit/IOKitLib.h>
-  #include <IOKit/ps/IOPSKeys.h>
-  #include <IOKit/ps/IOPowerSources.h>
   #include <mach/mach_host.h>
   #include <AvailabilityMacros.h>
   #include <TargetConditionals.h>
+  #if !defined(IOS)
+    #include <IOKit/IOKitLib.h>
+    #include <IOKit/ps/IOPSKeys.h>
+    #include <IOKit/ps/IOPowerSources.h>
+  #endif
 #elif defined(__linux__)
   #include <unistd.h>
   #include <sys/resource.h>
