@@ -5658,7 +5658,7 @@ bool simple_wallet::confirm_and_send_tx(std::vector<cryptonote::address_parse_in
       {
         prompt << tr("WARNING: this is a non default ring size, which may harm your privacy. Default is recommended.");
       }
-      prompt << ENDL << tr("Is this okay?");
+      prompt << ENDL << ENDL << tr("Is this okay?");
       
       std::string accepted = input_line(prompt.str(), true);
       if (std::cin.eof())
@@ -6383,6 +6383,7 @@ bool simple_wallet::lns_buy_mapping(const std::vector<std::string>& args)
   std::string const &name  = local_args[0];
   std::string const &value = local_args[1];
 
+
   SCOPED_WALLET_UNLOCK();
   std::string reason;
   std::vector<tools::wallet2::pending_tx> ptx_vector;
@@ -6408,6 +6409,13 @@ bool simple_wallet::lns_buy_mapping(const std::vector<std::string>& args)
     info.address                        = m_wallet->get_subaddress({m_current_subaddress_account, 0});
     info.is_subaddress                  = m_current_subaddress_account != 0;
     dsts.push_back(info);
+
+    std::cout << std::endl << tr("Buying Loki Name Service Record") << std::endl << std::endl;
+    std::cout << boost::format(tr("Name:         %s")) % name << std::endl;
+    std::cout << boost::format(tr("Value:        %s")) % value << boost::format(tr(" for %s")) % "Session" << std::endl;
+    std::cout << boost::format(tr("Owner:        %s")) % (owner.size() ? owner : m_wallet->get_subaddress_as_str({m_current_subaddress_account, 0}) + " (this wallet) ") << std::endl;
+    std::cout << boost::format(tr("Backup Owner: %s")) % backup_owner << std::endl;
+
     if (!confirm_and_send_tx(dsts, ptx_vector, priority == tools::tx_priority_blink))
       return false;
   }
@@ -6472,6 +6480,27 @@ bool simple_wallet::lns_update_mapping(const std::vector<std::string>& args)
     info.address                        = m_wallet->get_subaddress({m_current_subaddress_account, 0});
     info.is_subaddress                  = m_current_subaddress_account != 0;
     dsts.push_back(info);
+
+    std::cout << std::endl << tr("Updating Loki Name Service Record") << std::endl << std::endl;
+    std::cout << boost::format(tr("Name:             %s")) % name << std::endl;
+    if(value.size()) {
+      std::cout << boost::format(tr("New Value:        %s")) % value << std::endl;
+    } else {
+      std::cout << tr("Value:            (unchanged)") << std::endl;
+    }
+
+    if(owner.size()) {
+      std::cout << boost::format(tr("New Owner:        %s")) % owner << std::endl;
+    } else {
+      std::cout << tr("Owner:            (unchanged)") << std::endl;
+    }
+
+    if(backup_owner.size()) {
+      std::cout << boost::format(tr("New Backup Owner: %s")) % backup_owner << std::endl;
+    } else {
+      std::cout << tr("Backup Owner:     (unchanged)") << std::endl;
+    }
+
     if (!confirm_and_send_tx(dsts, ptx_vector, false /*blink*/))
       return false;
   }
