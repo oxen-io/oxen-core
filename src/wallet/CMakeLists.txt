@@ -103,6 +103,8 @@ if (BUILD_GUI_DEPS AND STATIC)
             wallet_api
             wallet
             multisig
+            blockchain_db
+            randomx
             cryptonote_core
             cryptonote_basic
             mnemonics
