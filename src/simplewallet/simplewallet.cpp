@@ -6410,11 +6410,15 @@ bool simple_wallet::lns_buy_mapping(const std::vector<std::string>& args)
     info.is_subaddress                  = m_current_subaddress_account != 0;
     dsts.push_back(info);
 
-    std::cout << std::endl << tr("Buying Loki Name Service Record") << std::endl << std::endl;
+    std::cout << std::endl << tr("Buying Loki Name System Record") << std::endl << std::endl;
     std::cout << boost::format(tr("Name:         %s")) % name << std::endl;
     std::cout << boost::format(tr("Value:        %s")) % value << boost::format(tr(" for %s")) % "Session" << std::endl;
     std::cout << boost::format(tr("Owner:        %s")) % (owner.size() ? owner : m_wallet->get_subaddress_as_str({m_current_subaddress_account, 0}) + " (this wallet) ") << std::endl;
-    std::cout << boost::format(tr("Backup Owner: %s")) % backup_owner << std::endl;
+    if(backup_owner.size()) {
+      std::cout << boost::format(tr("Backup Owner: %s")) % backup_owner << std::endl;
+    } else {
+      std::cout << tr("Backup Owner: (none)") << std::endl;
+    }
 
     if (!confirm_and_send_tx(dsts, ptx_vector, priority == tools::tx_priority_blink))
       return false;
@@ -6457,8 +6461,11 @@ bool simple_wallet::lns_update_mapping(const std::vector<std::string>& args)
   SCOPED_WALLET_UNLOCK();
   std::string reason;
   std::vector<tools::wallet2::pending_tx> ptx_vector;
+  std::vector<cryptonote::COMMAND_RPC_LNS_NAMES_TO_OWNERS::response_entry> response;
   try
   {
+
+
     ptx_vector = m_wallet->lns_create_update_mapping_tx(lns::mapping_type::session,
                                                         name,
                                                         value.size() ? &value : nullptr,
@@ -6468,11 +6475,23 @@ bool simple_wallet::lns_update_mapping(const std::vector<std::string>& args)
                                                         &reason,
                                                         priority,
                                                         m_current_subaddress_account,
-                                                        subaddr_indices);
+                                                        subaddr_indices,
+                                                        &response);
     if (ptx_vector.empty())
     {
       tools::fail_msg_writer() << reason;
       return true;
+    }
+
+    lns::mapping_value encrypted_value = {};
+    encrypted_value.len                = response[0].encrypted_value.size() / 2;
+    lokimq::from_hex(response[0].encrypted_value.begin(), response[0].encrypted_value.end(), encrypted_value.buffer.begin());
+
+    lns::mapping_value oldValue = {};
+    if (!lns::decrypt_mapping_value(name, encrypted_value, oldValue))
+    {
+      fail_msg_writer() << "Failed to decrypt the mapping value=" << response[0].encrypted_value;
+      return false;
     }
 
     std::vector<cryptonote::address_parse_info> dsts;
@@ -6481,28 +6500,32 @@ bool simple_wallet::lns_update_mapping(const std::vector<std::string>& args)
     info.is_subaddress                  = m_current_subaddress_account != 0;
     dsts.push_back(info);
 
-    std::cout << std::endl << tr("Updating Loki Name Service Record") << std::endl << std::endl;
+    std::cout << std::endl << tr("Updating Loki Name System Record") << std::endl << std::endl;
     std::cout << boost::format(tr("Name:             %s")) % name << std::endl;
+
     if(value.size()) {
+      std::cout << boost::format(tr("Old Value:        %s")) % oldValue.to_readable_value(m_wallet->nettype(),static_cast<lns::mapping_type>(response[0].type)) << std::endl;
       std::cout << boost::format(tr("New Value:        %s")) % value << std::endl;
     } else {
-      std::cout << tr("Value:            (unchanged)") << std::endl;
+      std::cout << boost::format(tr("Value:            %s")) % oldValue.to_readable_value(m_wallet->nettype(),static_cast<lns::mapping_type>(response[0].type)) << std::endl;
     }
 
     if(owner.size()) {
+      std::cout << boost::format(tr("Old Owner:        %s")) % response[0].owner << std::endl;
       std::cout << boost::format(tr("New Owner:        %s")) % owner << std::endl;
     } else {
-      std::cout << tr("Owner:            (unchanged)") << std::endl;
+      std::cout << boost::format(tr("Owner:            %s (unchanged)")) % response[0].owner << std::endl;
     }
 
     if(backup_owner.size()) {
+      std::cout << boost::format(tr("Old Backup Owner: %s")) % (response[0].backup_owner.empty() ? "(none)" : response[0].backup_owner) << std::endl;
       std::cout << boost::format(tr("New Backup Owner: %s")) % backup_owner << std::endl;
     } else {
-      std::cout << tr("Backup Owner:     (unchanged)") << std::endl;
+      std::cout << boost::format(tr("Backup Owner:     %s (unchanged)")) % (response[0].backup_owner.empty() ? "(none)" : response[0].backup_owner) << std::endl;
     }
-
     if (!confirm_and_send_tx(dsts, ptx_vector, false /*blink*/))
       return false;
+
   }
   catch (const std::exception &e)
   {
