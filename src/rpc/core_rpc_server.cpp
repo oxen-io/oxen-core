@@ -3394,7 +3394,7 @@ namespace cryptonote
     if (exceeds_quantity_limit(ctx, error_resp, m_restricted, req.entries.size(), COMMAND_RPC_LNS_NAMES_TO_OWNERS::MAX_REQUEST_ENTRIES))
       return false;
 
-    lns::name_system_db const &db = m_core.get_blockchain_storage().name_system_db();
+    lns::name_system_db &db = m_core.get_blockchain_storage().name_system_db();
     for (size_t request_index = 0; request_index < req.entries.size(); request_index++)
     {
       COMMAND_RPC_LNS_NAMES_TO_OWNERS::request_entry const &request = req.entries[request_index];
@@ -3450,7 +3450,7 @@ namespace cryptonote
       owner_to_request_index[lns_owner] = request_index;
     }
 
-    lns::name_system_db const &db = m_core.get_blockchain_storage().name_system_db();
+    lns::name_system_db &db = m_core.get_blockchain_storage().name_system_db();
     std::vector<lns::mapping_record> records = db.get_mappings_by_owners(owners);
     for (auto &record : records)
     {

@@ -72,9 +72,9 @@ enum struct mapping_record_column
   txid,
   prev_txid,
   register_height,
-  update_height,
   owner_id,
   backup_owner_id,
+  update_height,
   _count,
 };
 
@@ -124,7 +124,9 @@ std::string lns::mapping_value::to_readable_value(cryptonote::network_type netty
   return result;
 }
 
-static std::string lns_extra_string(cryptonote::network_type nettype, cryptonote::tx_extra_loki_name_system const &data)
+namespace {
+
+std::string lns_extra_string(cryptonote::network_type nettype, cryptonote::tx_extra_loki_name_system const &data)
 {
   std::stringstream stream;
   stream << "LNS Extra={";
@@ -140,59 +142,260 @@ static std::string lns_extra_string(cryptonote::network_type nettype, cryptonote
   return stream.str();
 }
 
-static bool sql_copy_blob(sqlite3_stmt *statement, int column, void *dest, int dest_size)
-{
-  void const *blob = sqlite3_column_blob(statement, column);
-  int blob_len     = sqlite3_column_bytes(statement, column);
-  if (blob_len != dest_size)
-  {
-    LOG_PRINT_L0("Unexpected blob size=" << blob_len << ", in LNS DB does not match expected size=" << dest_size);
-    assert(blob_len == dest_size);
-    return false;
-  }
+/// Clears any existing bindings
+bool clear_bindings(sql_compiled_statement& s) {
+  return SQLITE_OK == sqlite3_clear_bindings(s.statement);
+}
 
-  memcpy(dest, blob, blob_len);
+/// Resets
+bool reset(sql_compiled_statement& s) {
+  return SQLITE_OK == sqlite3_reset(s.statement);
+}
+
+int step(sql_compiled_statement& s)
+{
+  return sqlite3_step(s.statement);
+}
+
+
+/// `bind()` binds a particular parameter to a statement by index.  The bind type is inferred from
+/// the argument.
+
+// Small (<=32 bits) integers
+template <typename T, std::enable_if_t<std::is_integral<T>::value && (sizeof(T) <= 32), int> = 0>
+bool bind(sql_compiled_statement& s, int index, const T& val) { return SQLITE_OK == sqlite3_bind_int(s.statement, index, val); }
+
+// Big (>32 bits) integers
+template <typename T, std::enable_if_t<std::is_integral<T>::value && (sizeof(T) > 32), int> = 0>
+bool bind(sql_compiled_statement& s, int index, const T& val) { return SQLITE_OK == sqlite3_bind_int64(s.statement, index, val); }
+
+// Floats/doubles
+template <typename T, std::enable_if_t<std::is_floating_point<T>::value, int> = 0>
+bool bind(sql_compiled_statement& s, int index, const T& val) { return SQLITE_OK == sqlite3_bind_double(s.statement, index, val); }
+
+// Binds null
+bool bind(sql_compiled_statement& s, int index, std::nullptr_t) { return SQLITE_OK == sqlite3_bind_null(s.statement, index); }
+
+// text, from a referenced string (which must be kept alive)
+bool bind(sql_compiled_statement& s, int index, lokimq::string_view text)
+{
+  return SQLITE_OK == sqlite3_bind_text(s.statement, index, text.data(), text.size(), nullptr /*dtor*/);
+}
+
+/* Currently unused; comment out until needed to avoid a compiler warning
+// text, from a temporary std::string; ownership of the string data is transferred to sqlite3
+bool bind(sql_compiled_statement& s, int index, std::string&& text)
+{
+  // Assume ownership and let sqlite3 destroy when finished
+  auto local_text = new std::string{std::move(text)};
+  if (SQLITE_OK == sqlite3_bind_text(s.statement, index, local_text->data(), local_text->size(),
+      [](void* local) { delete reinterpret_cast<std::string*>(local); }))
+    return true;
+  delete local_text;
+  return false;
+}
+*/
+
+template <typename T, typename SFINAE = void>
+struct is_int_enum : std::false_type {};
+template <typename T>
+struct is_int_enum<T, std::enable_if_t<std::is_enum<T>::value>>
+: std::integral_constant<bool, std::is_same<std::underlying_type_t<T>, int>::value> {};
+
+// Binds, but gives index as an enum class
+template <typename T, typename I, std::enable_if_t<is_int_enum<I>::value, int> = 0>
+bool bind(sql_compiled_statement& s, I index, T&& val)
+{
+  return lns::bind(s, static_cast<int>(index), std::forward<T>(val));
+}
+
+// Blob binding; these have a different name so as to not conflict with text binding.
+//
+// from a referenced pointer and length (NOTE THE _blob SUFFIX IN THE NAME)
+bool bind_blob(sql_compiled_statement& s, int index, const void* data, size_t len)
+{
+  return SQLITE_OK == sqlite3_bind_blob(s.statement, index, data, len, nullptr /*dtor*/);
+}
+
+// from a string_view
+bool bind_blob(sql_compiled_statement& s, int index, lokimq::string_view blob)
+{
+  return SQLITE_OK == sqlite3_bind_blob(s.statement, index, blob.data(), blob.size(), nullptr /*dtor*/);
+}
+
+/* Currently unused; comment out until needed to avoid a compiler warning
+// From a std::string rvalue; sqlite3 manages ownership
+bool bind_blob(sql_compiled_statement& s, int index, std::string&& blob)
+{
+  // Assume ownership and let sqlite3 destroy when finished
+  auto local_blob = new std::string{std::move(blob)};
+  if (SQLITE_OK == sqlite3_bind_blob(s.statement, index, local_blob->data(), local_blob->size(),
+      [](void* local) { delete reinterpret_cast<std::string*>(local); }))
+    return true;
+  delete local_blob;
+  return false;
+}
+*/
+
+// Wrapper for bind_blob with an enum index
+template <typename... T, typename I, std::enable_if_t<is_int_enum<I>::value, int> = 0>
+bool bind_blob(sql_compiled_statement& s, I index, T&&... args)
+{
+  return bind_blob(s, static_cast<int>(index), std::forward<T>(args)...);
+}
+
+// Simple wrapper around a string_view so that you can pass a blob into `bind_all` by wrapping it
+// with a `blob_view` such as:
+//
+// bind_all(s, 123, "text", blob_view{data, size});
+//
+struct blob_view {
+  lokimq::string_view data;
+  /// Constructor that simply forwards anything to the `data` member constructor
+  template <typename... T> explicit blob_view(T&&... args) : data{std::forward<T>(args)...} {}
+};
+template <typename I>
+bool bind(sql_compiled_statement& s, I index, blob_view blob) {
+  return bind_blob(s, index, blob.data);
+}
+
+template <int... I, typename... T>
+bool bind_all_impl(sql_compiled_statement& s, std::integer_sequence<int, I...>, T&&... args) {
+  clear_bindings(s);
+  for (bool r : {lns::bind(s, I+1, std::forward<T>(args))...})
+    if (!r)
+      return false;
   return true;
 }
 
-static mapping_record sql_get_mapping_from_statement(sqlite3_stmt *statement)
+// Full statement binding; this lets you do something like:
+//
+// bind_all(st, 1, "hi", 123);
+//
+// which is equivalent to:
+//
+// clear_bindings(st);
+// st.bind(st, 1, 1);
+// st.bind(st, 2, "hi");
+// st.bind(st, 3, 123);
+//
+// (Binding of blobs through this interface is not supported).
+template <typename... T>
+bool bind_all(sql_compiled_statement& s, T&&... args)
+{
+  return bind_all_impl(s, std::make_integer_sequence<int, sizeof...(T)>{}, std::forward<T>(args)...);
+}
+
+
+/// Retrieve a type from an executed statement.
+
+// Small (<=32 bits) integers
+template <typename T, std::enable_if_t<std::is_integral<T>::value && (sizeof(T) <= 32), int> = 0>
+T get(sql_compiled_statement& s, int index) { return static_cast<T>(sqlite3_column_int(s.statement, index)); }
+
+// Big (>32 bits) integers
+template <typename T, std::enable_if_t<std::is_integral<T>::value && (sizeof(T) > 32), int> = 0>
+T get(sql_compiled_statement& s, int index) { return static_cast<T>(sqlite3_column_int64(s.statement, index)); }
+
+// Floats/doubles
+template <typename T, std::enable_if_t<std::is_floating_point<T>::value, int> = 0>
+T get(sql_compiled_statement& s, int index) { return static_cast<T>(sqlite3_column_double(s.statement, index)); }
+
+// text, via a string_view pointing at the text data
+template <typename T, std::enable_if_t<std::is_same<T, lokimq::string_view>::value, int> = 0>
+lokimq::string_view get(sql_compiled_statement& s, int index)
+{
+  return {reinterpret_cast<const char*>(sqlite3_column_text(s.statement, index)),
+          static_cast<size_t>(sqlite3_column_bytes(s.statement, index))};
+}
+
+// text, copied into a std::string
+template <typename T, std::enable_if_t<std::is_same<T, std::string>::value, int> = 0>
+std::string get(sql_compiled_statement& s, int index)
+{
+  return {reinterpret_cast<const char*>(sqlite3_column_text(s.statement, index)),
+          static_cast<size_t>(sqlite3_column_bytes(s.statement, index))};
+}
+
+// Forwards to any of the above, but takes an enum class instead of an int
+template <typename T, typename I, std::enable_if_t<is_int_enum<I>::value, int> = 0>
+T get(sql_compiled_statement& s, I index)
+{
+  return get<T>(s, static_cast<int>(index));
+}
+
+// Wrapper around get that assigns to the given reference.
+//     get(st, 3, myvar);
+// is equivalent to:
+//     myvar = get<decltype(myvar)>(st, 3)
+template <typename T, typename I>
+void get(sql_compiled_statement& s, I index, T& val) { val = get<T>(s, index); }
+
+// blob, via a string_view
+lokimq::string_view get_blob(sql_compiled_statement& s, int index)
+{
+  return {reinterpret_cast<const char*>(sqlite3_column_blob(s.statement, index)),
+          static_cast<size_t>(sqlite3_column_bytes(s.statement, index))};
+}
+
+// blob, via a string_view
+template <typename I, std::enable_if_t<is_int_enum<I>::value, int> = 0>
+lokimq::string_view get_blob(sql_compiled_statement& s, I index)
+{
+  return get_blob(s, static_cast<int>(index));
+}
+
+template <typename I>
+bool sql_copy_blob(sql_compiled_statement& statement, I column, void *dest, size_t dest_size)
+{
+  auto blob = get_blob(statement, column);
+  if (blob.size() != dest_size)
+  {
+    LOG_PRINT_L0("Unexpected blob size=" << blob.size() << ", in LNS DB does not match expected size=" << dest_size);
+    assert(blob.size() == dest_size);
+    return false;
+  }
+
+  memcpy(dest, blob.data(), blob.size());
+  return true;
+}
+
+mapping_record sql_get_mapping_from_statement(sql_compiled_statement& statement)
 {
   mapping_record result = {};
-  int type_int = static_cast<uint16_t>(sqlite3_column_int(statement, static_cast<int>(mapping_record_column::type)));
+  auto type_int = get<uint16_t>(statement, mapping_record_column::type);
   if (type_int >= tools::enum_count<mapping_type>)
     return result;
 
-  result.type            = static_cast<mapping_type>(type_int);
-  result.id              = static_cast<int64_t>(sqlite3_column_int(statement, static_cast<int>(mapping_record_column::id)));
-  result.register_height = static_cast<uint64_t>(sqlite3_column_int(statement, static_cast<int>(mapping_record_column::register_height)));
-  result.update_height   = static_cast<uint64_t>(sqlite3_column_int(statement, static_cast<int>(mapping_record_column::update_height)));
-  result.owner_id        = sqlite3_column_int(statement, static_cast<int>(mapping_record_column::owner_id));
-  result.backup_owner_id = sqlite3_column_int(statement, static_cast<int>(mapping_record_column::backup_owner_id));
+  result.type = static_cast<mapping_type>(type_int);
+  get(statement, mapping_record_column::id, result.id);
+  get(statement, mapping_record_column::register_height, result.register_height);
+  get(statement, mapping_record_column::update_height, result.update_height);
+  get(statement, mapping_record_column::owner_id, result.owner_id);
+  get(statement, mapping_record_column::backup_owner_id, result.backup_owner_id);
 
   // Copy encrypted_value
   {
-    size_t value_len = static_cast<size_t>(sqlite3_column_bytes(statement, static_cast<int>(mapping_record_column::encrypted_value)));
-    auto *value      = reinterpret_cast<char const *>(sqlite3_column_text(statement, static_cast<int>(mapping_record_column::encrypted_value)));
-    if (value_len > result.encrypted_value.buffer.size())
+    auto value = get<lokimq::string_view>(statement, mapping_record_column::encrypted_value);
+    if (value.size() > result.encrypted_value.buffer.size())
     {
-      MERROR("Unexpected encrypted value blob with size=" << value_len << ", in LNS db larger than the available size=" << result.encrypted_value.buffer.size());
+      MERROR("Unexpected encrypted value blob with size=" << value.size() << ", in LNS db larger than the available size=" << result.encrypted_value.buffer.size());
       return result;
     }
-    result.encrypted_value.len = value_len;
-    memcpy(&result.encrypted_value.buffer[0], value, value_len);
+    result.encrypted_value.len = value.size();
+    memcpy(&result.encrypted_value.buffer[0], value.data(), value.size());
   }
 
   // Copy name hash
   {
-    size_t value_len = static_cast<size_t>(sqlite3_column_bytes(statement, static_cast<int>(mapping_record_column::name_hash)));
-    auto *value      = reinterpret_cast<char const *>(sqlite3_column_text(statement, static_cast<int>(mapping_record_column::name_hash)));
-    result.name_hash.append(value, value_len);
+    auto value = get<lokimq::string_view>(statement, mapping_record_column::name_hash);
+    result.name_hash.append(value.data(), value.size());
   }
 
-  if (!sql_copy_blob(statement, static_cast<int>(mapping_record_column::txid), result.txid.data, sizeof(result.txid)))
+  if (!sql_copy_blob(statement, mapping_record_column::txid, result.txid.data, sizeof(result.txid)))
     return result;
 
-  if (!sql_copy_blob(statement, static_cast<int>(mapping_record_column::prev_txid), result.prev_txid.data, sizeof(result.prev_txid)))
+  if (!sql_copy_blob(statement, mapping_record_column::prev_txid, result.prev_txid.data, sizeof(result.prev_txid)))
     return result;
 
   int owner_column = tools::enum_count<mapping_record_column>;
@@ -209,14 +412,15 @@ static mapping_record sql_get_mapping_from_statement(sqlite3_stmt *statement)
   return result;
 }
 
-static bool sql_run_statement(cryptonote::network_type nettype, lns_sql_type type, sqlite3_stmt *statement, void *context)
+bool sql_run_statement(lns_sql_type type, sql_compiled_statement& statement, void *context)
 {
+  assert(statement);
   bool data_loaded = false;
   bool result      = false;
 
   for (bool infinite_loop = true; infinite_loop;)
   {
-    int step_result = sqlite3_step(statement);
+    int step_result = step(statement);
     switch (step_result)
     {
       case SQLITE_ROW:
@@ -229,8 +433,8 @@ static bool sql_run_statement(cryptonote::network_type nettype, lns_sql_type typ
           case lns_sql_type::get_owner:
           {
             auto *entry = reinterpret_cast<owner_record *>(context);
-            entry->id   = sqlite3_column_int(statement, static_cast<int>(owner_record_column::id));
-            if (!sql_copy_blob(statement, static_cast<int>(owner_record_column::address), reinterpret_cast<void *>(&entry->address), sizeof(entry->address)))
+            get(statement, owner_record_column::id, entry->id);
+            if (!sql_copy_blob(statement, owner_record_column::address, reinterpret_cast<void *>(&entry->address), sizeof(entry->address)))
               return false;
             data_loaded = true;
           }
@@ -239,10 +443,10 @@ static bool sql_run_statement(cryptonote::network_type nettype, lns_sql_type typ
           case lns_sql_type::get_setting:
           {
             auto *entry       = reinterpret_cast<settings_record *>(context);
-            entry->top_height = static_cast<uint64_t>(sqlite3_column_int64(statement, static_cast<int>(lns_db_setting_column::top_height)));
-            if (!sql_copy_blob(statement, static_cast<int>(lns_db_setting_column::top_hash), entry->top_hash.data, sizeof(entry->top_hash.data)))
+            get(statement, lns_db_setting_column::top_height, entry->top_height);
+            if (!sql_copy_blob(statement, lns_db_setting_column::top_hash, entry->top_hash.data, sizeof(entry->top_hash.data)))
               return false;
-            entry->version = sqlite3_column_int(statement, static_cast<int>(lns_db_setting_column::version));
+            get(statement, lns_db_setting_column::version, entry->version);
             data_loaded = true;
           }
           break;
@@ -283,17 +487,31 @@ static bool sql_run_statement(cryptonote::network_type nettype, lns_sql_type typ
 
       default:
       {
-        LOG_PRINT_L1("Failed to execute statement: " << sqlite3_sql(statement) <<", reason: " << sqlite3_errstr(step_result));
+        LOG_PRINT_L1("Failed to execute statement: " << sqlite3_sql(statement.statement) <<", reason: " << sqlite3_errstr(step_result));
         infinite_loop = false;
         break;
       }
     }
   }
 
-  sqlite3_reset(statement);
-  sqlite3_clear_bindings(statement);
+  reset(statement);
+  clear_bindings(statement);
   return result;
 }
+
+/// Does a clear_bindings, bind_all, and then sql_run_statement.  First three arguments go to
+/// sql_run_statement, the rest go to bind_all(statement, ...) (which does the clear_bindings).
+template <typename... T>
+bool bind_and_run(lns_sql_type type, sql_compiled_statement& statement, void *context,
+    T&&... bind_args)
+{
+  bind_all(statement, std::forward<T>(bind_args)...);
+  return sql_run_statement(type, statement, context);
+}
+
+
+} // end anonymous namespace
+
 
 bool mapping_record::active(cryptonote::network_type nettype, uint64_t blockchain_height) const
 {
@@ -303,17 +521,35 @@ bool mapping_record::active(cryptonote::network_type nettype, uint64_t blockchai
   return last_active_height >= (blockchain_height - 1);
 }
 
-static bool sql_compile_statement(sqlite3 *db, char const *query, int query_len, sqlite3_stmt **statement, bool optimise_for_multiple_usage = true)
+bool sql_compiled_statement::compile(lokimq::string_view query, bool optimise_for_multiple_usage)
 {
+  sqlite3_stmt* st;
 #if SQLITE_VERSION_NUMBER >= 3020000
-  int prepare_result = sqlite3_prepare_v3(db, query, query_len, optimise_for_multiple_usage ? SQLITE_PREPARE_PERSISTENT : 0, statement, nullptr /*pzTail*/);
+  int prepare_result = sqlite3_prepare_v3(nsdb.db, query.data(), query.size(), optimise_for_multiple_usage ? SQLITE_PREPARE_PERSISTENT : 0, &st, nullptr /*pzTail*/);
 #else
-  int prepare_result = sqlite3_prepare_v2(db, query, query_len, statement, nullptr /*pzTail*/);
+  int prepare_result = sqlite3_prepare_v2(nsdb.db, query.data(), query.size(), &st, nullptr /*pzTail*/);
 #endif
 
-  bool result        = prepare_result == SQLITE_OK;
-  if (!result) MERROR("Can not compile SQL statement:\n" << query << "\nReason: " << sqlite3_errstr(prepare_result));
-  return result;
+  if (prepare_result != SQLITE_OK) {
+    MERROR("Can not compile SQL statement:\n" << query << "\nReason: " << sqlite3_errstr(prepare_result));
+    return false;
+  }
+  sqlite3_finalize(statement);
+  statement = st;
+  return true;
+}
+
+sql_compiled_statement& sql_compiled_statement::operator=(sql_compiled_statement&& from)
+{
+  sqlite3_finalize(statement);
+  statement = from.statement;
+  from.statement = nullptr;
+  return *this;
+}
+
+sql_compiled_statement::~sql_compiled_statement()
+{
+  sqlite3_finalize(statement);
 }
 
 sqlite3 *init_loki_name_system(char const *file_path)
@@ -752,7 +988,7 @@ static bool verify_lns_signature(crypto::hash const &hash, lns::generic_signatur
   }
 }
 
-static bool validate_against_previous_mapping(lns::name_system_db const &lns_db, uint64_t blockchain_height, cryptonote::transaction const &tx, cryptonote::tx_extra_loki_name_system const &lns_extra, std::string *reason = nullptr)
+static bool validate_against_previous_mapping(lns::name_system_db &lns_db, uint64_t blockchain_height, cryptonote::transaction const &tx, cryptonote::tx_extra_loki_name_system const &lns_extra, std::string *reason = nullptr)
 {
   std::stringstream err_stream;
   LOKI_DEFER { if (reason && reason->empty()) *reason = err_stream.str(); };
@@ -850,7 +1086,7 @@ static bool validate_against_previous_mapping(lns::name_system_db const &lns_db,
   return true;
 }
 
-bool name_system_db::validate_lns_tx(uint8_t hf_version, uint64_t blockchain_height, cryptonote::transaction const &tx, cryptonote::tx_extra_loki_name_system *lns_extra, std::string *reason) const
+bool name_system_db::validate_lns_tx(uint8_t hf_version, uint64_t blockchain_height, cryptonote::transaction const &tx, cryptonote::tx_extra_loki_name_system *lns_extra, std::string *reason)
 {
   // -----------------------------------------------------------------------------------------------
   // Pull out LNS Extra from TX
@@ -1056,9 +1292,9 @@ CREATE TABLE IF NOT EXISTS "mappings" (
     "txid" BLOB NOT NULL,
     "prev_txid" BLOB NOT NULL,
     "register_height" INTEGER NOT NULL,
-    "update_height" INTEGER NOT NULL,
     "owner_id" INTEGER NOT NULL REFERENCES "owner" ("id"),
-    "backup_owner_id" INTEGER REFERENCES "owner" ("id")
+    "backup_owner_id" INTEGER REFERENCES "owner" ("id"),
+    "update_height" INTEGER NOT NULL DEFAULT "register_height"
 );
 CREATE UNIQUE INDEX IF NOT EXISTS "name_hash_type_id" ON mappings("name_hash", "type");
 CREATE INDEX IF NOT EXISTS "owner_id_index" ON mappings("owner_id");
@@ -1077,7 +1313,7 @@ CREATE INDEX IF NOT EXISTS "backup_owner_id_index" ON mappings("backup_owner_ind
   return true;
 }
 
-static std::string sql_cmd_combine_mappings_and_owner_table(char const *suffix)
+static std::string sql_cmd_combine_mappings_and_owner_table(char const *suffix = nullptr)
 {
   std::stringstream stream;
   stream <<
@@ -1164,33 +1400,24 @@ R"(DELETE FROM "owner"
 WHERE NOT EXISTS (SELECT * FROM "mappings" WHERE "owner"."id" = "mappings"."owner_id")
 AND NOT EXISTS   (SELECT * FROM "mappings" WHERE "owner"."id" = "mappings"."backup_owner_id"))";
 
-  char constexpr SAVE_MAPPING_STR[]  = R"(INSERT OR REPLACE INTO "mappings" ("type", "name_hash", "encrypted_value", "txid", "prev_txid", "register_height", "owner_id", "backup_owner_id") VALUES (?,?,?,?,?,?,?,?))";
+  char constexpr SAVE_MAPPING_STR[]  = R"(INSERT OR REPLACE INTO "mappings" ("type", "name_hash", "encrypted_value", "txid", "prev_txid", "register_height", "owner_id", "backup_owner_id", "update_height") VALUES (?,?,?,?,?,?,?,?,?))";
   char constexpr SAVE_OWNER_STR[]    = R"(INSERT INTO "owner" ("address") VALUES (?))";
   char constexpr SAVE_SETTINGS_STR[] = R"(INSERT OR REPLACE INTO "settings" ("id", "top_height", "top_hash", "version") VALUES (1,?,?,?))";
 
   if (!build_default_tables(db))
     return false;
 
-  if (
-      !sql_compile_statement(db, get_mappings_by_owner_str.c_str(),            get_mappings_by_owner_str.size(),            &get_mappings_by_owner_sql) ||
-      !sql_compile_statement(db, get_mappings_on_height_and_newer_str.c_str(), get_mappings_on_height_and_newer_str.size(), &get_mappings_on_height_and_newer_sql) ||
-      !sql_compile_statement(db, get_mapping_str.c_str(),                      get_mapping_str.size(),                      &get_mapping_sql) ||
-      !sql_compile_statement(db, GET_SETTINGS_STR,                             loki::array_count(GET_SETTINGS_STR),         &get_settings_sql) ||
-      !sql_compile_statement(db, GET_OWNER_BY_ID_STR,                          loki::array_count(GET_OWNER_BY_ID_STR),      &get_owner_by_id_sql) ||
-      !sql_compile_statement(db, GET_OWNER_BY_KEY_STR,                         loki::array_count(GET_OWNER_BY_KEY_STR),     &get_owner_by_key_sql) ||
-      !sql_compile_statement(db, PRUNE_MAPPINGS_STR,                           loki::array_count(PRUNE_MAPPINGS_STR),       &prune_mappings_sql) ||
-      !sql_compile_statement(db, PRUNE_OWNERS_STR,                             loki::array_count(PRUNE_OWNERS_STR),         &prune_owners_sql) ||
-      !sql_compile_statement(db, SAVE_MAPPING_STR,                             loki::array_count(SAVE_MAPPING_STR),         &save_mapping_sql) ||
-      !sql_compile_statement(db, SAVE_SETTINGS_STR,                            loki::array_count(SAVE_SETTINGS_STR),        &save_settings_sql) ||
-      !sql_compile_statement(db, SAVE_OWNER_STR,                               loki::array_count(SAVE_OWNER_STR),           &save_owner_sql)
-    )
-  {
+  if (!get_settings_sql.compile(GET_SETTINGS_STR) ||
+      !save_settings_sql.compile(SAVE_SETTINGS_STR))
     return false;
-  }
 
   // ---------------------------------------------------------------------------
   //
   // Migrate DB
+  //
+  // No statements (aside from settings) have been prepared yet, since the prepared statements we
+  // need may require migration.  This code must thus take care to locally execute or prepare
+  // whatever statements it needs.
   //
   // ---------------------------------------------------------------------------
   if (settings_record settings = get_settings())
@@ -1209,21 +1436,21 @@ AND NOT EXISTS   (SELECT * FROM "mappings" WHERE "owner"."id" = "mappings"."back
         return false;
       }
 
-      scoped_db_transaction db_transaction(*this);
-      if (!db_transaction) return false;
-      db_transaction.commit = true;
-
       if (settings.version == static_cast<decltype(settings.version)>(db_version::v0))
       {
-        char constexpr ADD_UPDATE_HEIGHT_SQL[] = R"(ALTER TABLE "mappings" ADD "update_height" INTEGER NOT NULL)";
+        scoped_db_transaction db_transaction(*this);
+        if (!db_transaction) return false;
+
+        char constexpr ADD_UPDATE_HEIGHT_SQL[] = R"(ALTER TABLE "mappings" ADD "update_height" INTEGER NOT NULL DEFAULT "register_height")";
+        // Don't check return here -- this one might fail because the column already exists; if so that's okay.
         sqlite3_exec(db, ADD_UPDATE_HEIGHT_SQL, nullptr /*callback*/, nullptr /*callback context*/, nullptr);
 
         std::vector<mapping_record> all_mappings = {};
         {
-          sqlite3_stmt *statement = get_mappings_on_height_and_newer_sql;
-          sqlite3_clear_bindings(statement);
-          sqlite3_bind_int(statement, 1 /*sql param index*/, 0);
-          sql_run_statement(nettype, lns_sql_type::get_mappings_on_height_and_newer, statement, &all_mappings);
+          sql_compiled_statement st{*this};
+          if (!st.compile(sql_cmd_combine_mappings_and_owner_table()))
+            return false;
+          sql_run_statement(lns_sql_type::get_mappings, st, &all_mappings);
         }
 
         std::vector<crypto::hash> hashes;
@@ -1232,35 +1459,41 @@ AND NOT EXISTS   (SELECT * FROM "mappings" WHERE "owner"."id" = "mappings"."back
             hashes.push_back(record.txid);
 
         char constexpr UPDATE_MAPPING_HEIGHT[] = R"(UPDATE "mappings" SET "update_height" = ? WHERE "id" = ?)";
-        sqlite3_stmt *update_mapping_height    = nullptr;
-        if (!sql_compile_statement(db, UPDATE_MAPPING_HEIGHT, loki::array_count(UPDATE_MAPPING_HEIGHT), &update_mapping_height))
-            return false;
+        sql_compiled_statement update_mapping_height{*this};
+        if (!update_mapping_height.compile(UPDATE_MAPPING_HEIGHT))
+          return false;
 
         std::vector<uint64_t> heights = blockchain->get_transactions_heights(hashes);
         for (size_t i = 0; i < all_mappings.size(); i++)
         {
-          sqlite3_clear_bindings(update_mapping_height);
-          sqlite3_bind_int(update_mapping_height, 1, heights[i]); break;
-          sqlite3_bind_int(update_mapping_height, 2, all_mappings[i].id); break;
-          sql_run_statement(nettype, lns_sql_type::internal_cmd, update_mapping_height, nullptr);
+
+          bind_and_run(lns_sql_type::internal_cmd, update_mapping_height, nullptr,
+              heights[i], all_mappings[i].id);
         }
 
         save_settings(settings.top_height, settings.top_hash, static_cast<int>(db_version::v1_track_updates));
+        db_transaction.commit = true;
       }
     }
   }
 
   // ---------------------------------------------------------------------------
   //
-  // Reupdate sql commands
+  // Prepare commonly executed sql statements
   //
   // ---------------------------------------------------------------------------
-  // Old DB's can't pre-compile statements referencing new fields if they don't have it yet
-  if (DB_VERSION >= db_version::v1_track_updates)
+  if (!get_mappings_by_owner_sql.compile(get_mappings_by_owner_str) ||
+      !get_mappings_on_height_and_newer_sql.compile(get_mappings_on_height_and_newer_str) ||
+      !get_mapping_sql.compile(get_mapping_str) ||
+      !get_owner_by_id_sql.compile(GET_OWNER_BY_ID_STR) ||
+      !get_owner_by_key_sql.compile(GET_OWNER_BY_KEY_STR) ||
+      !prune_mappings_sql.compile(PRUNE_MAPPINGS_STR) ||
+      !prune_owners_sql.compile(PRUNE_OWNERS_STR) ||
+      !save_mapping_sql.compile(SAVE_MAPPING_STR) ||
+      !save_owner_sql.compile(SAVE_OWNER_STR)
+    )
   {
-    char constexpr SAVE_MAPPING_STR_V2[] = R"(INSERT OR REPLACE INTO "mappings" ("type", "name_hash", "encrypted_value", "txid", "prev_txid", "register_height", "update_height", "owner_id", "backup_owner_id") VALUES (?,?,?,?,?,?,?,?,?))";
-    if (!sql_compile_statement(db, SAVE_MAPPING_STR_V2, loki::array_count(SAVE_MAPPING_STR_V2), &save_mapping_sql))
-      return false;
+    return false;
   }
 
   // ---------------------------------------------------------------------------
@@ -1309,6 +1542,13 @@ AND NOT EXISTS   (SELECT * FROM "mappings" WHERE "owner"."id" = "mappings"."back
   }
 
   return true;
+}
+
+name_system_db::~name_system_db()
+{
+  // close_v2 starts shutting down; the actual shutdown occurs once the last prepared statement is
+  // finalized (which should happen when the ..._sql members get destructed, right after this).
+  sqlite3_close_v2(db);
 }
 
 static int64_t add_or_get_owner_id(lns::name_system_db &lns_db, crypto::hash const &tx_hash, cryptonote::tx_extra_loki_name_system const &entry, lns::generic_owner const &key)
@@ -1421,35 +1661,34 @@ static bool add_lns_entry(lns::name_system_db &lns_db, uint64_t height, cryptono
 
     // Compile sql statement && bind parameters to statement
     std::string const name_hash   = hash_to_base64(entry.name_hash);
-    sqlite3_stmt *statement = nullptr;
+    sql_compiled_statement statement{lns_db};
     {
-      if (!sql_compile_statement(lns_db.db, sql_statement.c_str(), sql_statement.size(), &statement, false /*optimise_for_multiple_usage*/))
+      if (!statement.compile(sql_statement, false /*optimise_for_multiple_usage*/))
       {
         MERROR("Failed to compile SQL statement for updating LNS record=" << sql_statement);
         return false;
       }
 
       // Bind step
-      int sql_param_index = 1;
       for (size_t i = 0; i < column_count; i++)
       {
         auto column_type = columns[i];
         switch (column_type)
         {
-          case mapping_record_column::type:            sqlite3_bind_int  (statement, sql_param_index++, static_cast<uint16_t>(entry.type)); break;
-          case mapping_record_column::name_hash:       sqlite3_bind_text (statement, sql_param_index++, name_hash.data(), name_hash.size(), nullptr /*destructor*/); break;
-          case mapping_record_column::encrypted_value: sqlite3_bind_blob (statement, sql_param_index++, entry.encrypted_value.data(), entry.encrypted_value.size(), nullptr /*destructor*/); break;
-          case mapping_record_column::txid:            sqlite3_bind_blob (statement, sql_param_index++, tx_hash.data, sizeof(tx_hash), nullptr /*destructor*/); break;
-          case mapping_record_column::prev_txid:       sqlite3_bind_blob (statement, sql_param_index++, entry.prev_txid.data, sizeof(entry.prev_txid), nullptr /*destructor*/); break;
-          case mapping_record_column::owner_id:        sqlite3_bind_int64(statement, sql_param_index++, owner_id); break;
-          case mapping_record_column::backup_owner_id: sqlite3_bind_int64(statement, sql_param_index++, backup_owner_id); break;
-          case mapping_record_column::update_height:   sqlite3_bind_int64(statement, sql_param_index++, height); break;
+          case mapping_record_column::type:            bind(statement, i+1, static_cast<uint16_t>(entry.type)); break;
+          case mapping_record_column::name_hash:       bind(statement, i+1, lokimq::string_view{name_hash}); break;
+          case mapping_record_column::encrypted_value: bind(statement, i+1, blob_view{entry.encrypted_value}); break;
+          case mapping_record_column::txid:            bind(statement, i+1, blob_view{tx_hash.data, sizeof(tx_hash)}); break;
+          case mapping_record_column::prev_txid:       bind(statement, i+1, blob_view{entry.prev_txid.data, sizeof(entry.prev_txid)}); break;
+          case mapping_record_column::owner_id:        bind(statement, i+1, owner_id); break;
+          case mapping_record_column::backup_owner_id: bind(statement, i+1, backup_owner_id); break;
+          case mapping_record_column::update_height:   bind(statement, i+1, height); break;
           default: assert(false); return false;
         }
       }
     }
 
-    if (!sql_run_statement(lns_db.network_type(), lns_sql_type::save_mapping, statement, nullptr))
+    if (!sql_run_statement(lns_sql_type::save_mapping, statement, nullptr))
       return false;
   }
 
@@ -1606,12 +1845,8 @@ static std::vector<replay_lns_tx> find_lns_txs_to_replay(cryptonote::Blockchain 
 void name_system_db::block_detach(cryptonote::Blockchain const &blockchain, uint64_t new_blockchain_height)
 {
   std::vector<mapping_record> new_mappings = {};
-  {
-    sqlite3_stmt *statement = get_mappings_on_height_and_newer_sql;
-    sqlite3_clear_bindings(statement);
-    sqlite3_bind_int(statement, 1 /*sql param index*/, new_blockchain_height);
-    sql_run_statement(nettype, lns_sql_type::get_mappings_on_height_and_newer, statement, &new_mappings);
-  }
+  bind_and_run(lns_sql_type::get_mappings_on_height_and_newer, get_mappings_on_height_and_newer_sql, &new_mappings,
+      new_blockchain_height);
 
   std::vector<replay_lns_tx> txs_to_replay;
   for (auto const &mapping : new_mappings)
@@ -1631,10 +1866,9 @@ void name_system_db::block_detach(cryptonote::Blockchain const &blockchain, uint
 
 bool name_system_db::save_owner(lns::generic_owner const &owner, int64_t *row_id)
 {
-  sqlite3_stmt *statement = save_owner_sql;
-  sqlite3_clear_bindings(statement);
-  sqlite3_bind_blob(statement, 1 /*sql param index*/, &owner, sizeof(owner), nullptr /*destructor*/);
-  bool result = sql_run_statement(nettype, lns_sql_type::save_owner, statement, nullptr);
+  bool result = bind_and_run(lns_sql_type::save_owner, save_owner_sql, nullptr,
+      blob_view{reinterpret_cast<const char*>(&owner), sizeof(owner)});
+
   if (row_id) *row_id = sqlite3_last_insert_rowid(db);
   return result;
 }
@@ -1645,85 +1879,69 @@ bool name_system_db::save_mapping(crypto::hash const &tx_hash, cryptonote::tx_ex
     return false;
 
   std::string name_hash = hash_to_base64(src.name_hash);
-  sqlite3_stmt *statement = save_mapping_sql;
-  sqlite3_bind_int  (statement, static_cast<int>(mapping_record_column::type), static_cast<uint16_t>(src.type));
-  sqlite3_bind_text (statement, static_cast<int>(mapping_record_column::name_hash), name_hash.data(), name_hash.size(), nullptr /*destructor*/);
-  sqlite3_bind_blob (statement, static_cast<int>(mapping_record_column::encrypted_value), src.encrypted_value.data(), src.encrypted_value.size(), nullptr /*destructor*/);
-  sqlite3_bind_blob (statement, static_cast<int>(mapping_record_column::txid), tx_hash.data, sizeof(tx_hash), nullptr /*destructor*/);
-  sqlite3_bind_blob (statement, static_cast<int>(mapping_record_column::prev_txid), src.prev_txid.data, sizeof(src.prev_txid), nullptr /*destructor*/);
-  sqlite3_bind_int64(statement, static_cast<int>(mapping_record_column::register_height), static_cast<int64_t>(height));
-  sqlite3_bind_int64(statement, static_cast<int>(mapping_record_column::update_height), static_cast<int64_t>(height));
-  sqlite3_bind_int64(statement, static_cast<int>(mapping_record_column::owner_id), owner_id);
+  auto& statement = save_mapping_sql;
+  clear_bindings(statement);
+  bind(statement, mapping_record_column::type, static_cast<uint16_t>(src.type));
+  bind(statement, mapping_record_column::name_hash, name_hash);
+  bind(statement, mapping_record_column::encrypted_value, blob_view{src.encrypted_value});
+  bind(statement, mapping_record_column::txid, blob_view{tx_hash.data, sizeof(tx_hash)});
+  bind(statement, mapping_record_column::prev_txid, blob_view{src.prev_txid.data, sizeof(src.prev_txid)});
+  bind(statement, mapping_record_column::register_height, height);
+  bind(statement, mapping_record_column::update_height, height);
+  bind(statement, mapping_record_column::owner_id, owner_id);
   if (backup_owner_id != 0)
-  {
-    sqlite3_bind_int64(statement, static_cast<int>(mapping_record_column::backup_owner_id), backup_owner_id);
-  }
-  bool result = sql_run_statement(nettype, lns_sql_type::save_mapping, statement, nullptr);
+    bind(statement, mapping_record_column::backup_owner_id, backup_owner_id);
+  else
+    bind(statement, mapping_record_column::backup_owner_id, nullptr);
+
+  bool result = sql_run_statement(lns_sql_type::save_mapping, statement, nullptr);
   return result;
 }
 
 bool name_system_db::save_settings(uint64_t top_height, crypto::hash const &top_hash, int version)
 {
-  sqlite3_stmt *statement = save_settings_sql;
-  sqlite3_bind_int64(statement, static_cast<int>(lns_db_setting_column::top_height), top_height);
-  sqlite3_bind_blob (statement, static_cast<int>(lns_db_setting_column::top_hash),   top_hash.data, sizeof(top_hash), nullptr /*destructor*/);
-  sqlite3_bind_int  (statement, static_cast<int>(lns_db_setting_column::version),    version);
-  bool result = sql_run_statement(nettype, lns_sql_type::save_setting, statement, nullptr);
+  auto& statement = save_settings_sql;
+  bind(statement, lns_db_setting_column::top_height, top_height);
+  bind(statement, lns_db_setting_column::top_hash, blob_view{top_hash.data, sizeof(top_hash)});
+  bind(statement, lns_db_setting_column::version, version);
+  bool result = sql_run_statement(lns_sql_type::save_setting, statement, nullptr);
   return result;
 }
 
 bool name_system_db::prune_db(uint64_t height)
 {
-  {
-    sqlite3_stmt *statement = prune_mappings_sql;
-    sqlite3_bind_int64(statement, 1 /*sql param index*/, height);
-    if (!sql_run_statement(nettype, lns_sql_type::pruning, statement, nullptr)) return false;
-  }
-
-  {
-    sqlite3_stmt *statement = prune_owners_sql;
-    if (!sql_run_statement(nettype, lns_sql_type::pruning, statement, nullptr)) return false;
-  }
+  if (!bind_and_run(lns_sql_type::pruning, prune_mappings_sql, nullptr, height)) return false;
+  if (!sql_run_statement(lns_sql_type::pruning, prune_owners_sql, nullptr)) return false;
 
   this->last_processed_height = (height - 1);
   return true;
 }
 
-owner_record name_system_db::get_owner_by_key(lns::generic_owner const &owner) const
+owner_record name_system_db::get_owner_by_key(lns::generic_owner const &owner)
 {
-  sqlite3_stmt *statement = get_owner_by_key_sql;
-  sqlite3_clear_bindings(statement);
-  sqlite3_bind_blob(statement, 1 /*sql param index*/, &owner, sizeof(owner), nullptr /*destructor*/);
-
   owner_record result = {};
-  result.loaded      = sql_run_statement(nettype, lns_sql_type::get_owner, statement, &result);
+  result.loaded       = bind_and_run(lns_sql_type::get_owner, get_owner_by_key_sql, &result,
+      blob_view{reinterpret_cast<const char*>(&owner), sizeof(owner)});
   return result;
 }
 
-owner_record name_system_db::get_owner_by_id(int64_t owner_id) const
+owner_record name_system_db::get_owner_by_id(int64_t owner_id)
 {
-  sqlite3_stmt *statement = get_owner_by_id_sql;
-  sqlite3_clear_bindings(statement);
-  sqlite3_bind_int(statement, 1 /*sql param index*/, owner_id);
-
   owner_record result = {};
-  result.loaded      = sql_run_statement(nettype, lns_sql_type::get_owner, statement, &result);
+  result.loaded       = bind_and_run(lns_sql_type::get_owner, get_owner_by_id_sql, &result,
+      owner_id);
   return result;
 }
 
-mapping_record name_system_db::get_mapping(mapping_type type, std::string const &name_base64_hash) const
+mapping_record name_system_db::get_mapping(mapping_type type, std::string const &name_base64_hash)
 {
-  sqlite3_stmt *statement = get_mapping_sql;
-  sqlite3_clear_bindings(statement);
-  sqlite3_bind_int(statement, 1 /*sql param index*/, static_cast<uint16_t>(type));
-  sqlite3_bind_text(statement, 2 /*sql param index*/, name_base64_hash.data(), name_base64_hash.size(), nullptr /*destructor*/);
-
   mapping_record result = {};
-  result.loaded         = sql_run_statement(nettype, lns_sql_type::get_mapping, statement, &result);
+  result.loaded         = bind_and_run(lns_sql_type::get_mapping, get_mapping_sql, &result,
+      static_cast<uint16_t>(type), name_base64_hash);
   return result;
 }
 
-std::vector<mapping_record> name_system_db::get_mappings(std::vector<uint16_t> const &types, std::string const &name_base64_hash) const
+std::vector<mapping_record> name_system_db::get_mappings(std::vector<uint16_t> const &types, std::string const &name_base64_hash)
 {
   std::vector<mapping_record> result;
   if (types.empty())
@@ -1748,87 +1966,68 @@ std::vector<mapping_record> name_system_db::get_mappings(std::vector<uint16_t> c
   }
 
   // Compile Statement
-  sqlite3_stmt *statement = nullptr;
-  if (!sql_compile_statement(db, sql_statement.c_str(), sql_statement.size(), &statement, false /*optimise_for_multiple_usage*/))
+  sql_compiled_statement statement{*this};
+  if (!statement.compile(sql_statement, false /*optimise_for_multiple_usage*/))
     return result;
 
-  sqlite3_bind_text(statement, 1 /*sql param index*/, name_base64_hash.data(), name_base64_hash.size(), nullptr /*destructor*/);
-
   // Execute
-  sql_run_statement(nettype, lns_sql_type::get_mappings, statement, &result);
+  bind_and_run(lns_sql_type::get_mappings, statement, &result,
+      name_base64_hash);
+
   return result;
 }
 
-std::vector<mapping_record> name_system_db::get_mappings_by_owners(std::vector<generic_owner> const &owners) const
-
+std::vector<mapping_record> name_system_db::get_mappings_by_owners(std::vector<generic_owner> const &owners)
 {
   std::string sql_statement;
   // Generate string statement
   {
     std::string const sql_prefix_str = sql_cmd_combine_mappings_and_owner_table(R"(WHERE "o1"."address" in ()");
-    char constexpr SQL_MIDDLE[]  = R"( OR "o2"."address" in ()";
+    char constexpr SQL_MIDDLE[]  = R"() OR "o2"."address" in ()";
     char constexpr SQL_SUFFIX[]  = R"())";
 
-    std::stringstream stream;
-    stream << sql_prefix_str;
+    std::string placeholders;
+    placeholders.reserve(3*owners.size());
     for (size_t i = 0; i < owners.size(); i++)
-    {
-      stream << "?";
-      if (i < (owners.size() - 1)) stream << ", ";
-    }
-    stream << SQL_SUFFIX;
+      placeholders += "?, ";
+    if (owners.size() > 0)
+      placeholders.resize(placeholders.size() - 2);
 
-    stream << SQL_MIDDLE;
-    for (size_t i = 0; i < owners.size(); i++)
-    {
-      stream << "?";
-      if (i < (owners.size() - 1)) stream << ", ";
-    }
-    stream << SQL_SUFFIX;
-
-    stream << SQL_MIDDLE;
-    for (size_t i = 0; i < owners.size(); i++)
-    {
-      stream << "?";
-      if (i < (owners.size() - 1)) stream << ", ";
-    }
-    stream << SQL_SUFFIX;
+    std::ostringstream stream;
+    stream << sql_prefix_str << placeholders << SQL_MIDDLE << placeholders << SQL_SUFFIX;
     sql_statement = stream.str();
   }
 
   // Compile Statement
   std::vector<mapping_record> result;
-  sqlite3_stmt *statement = nullptr;
-  if (!sql_compile_statement(db, sql_statement.c_str(), sql_statement.size(), &statement, false /*optimise_for_multiple_usage*/))
+  sql_compiled_statement statement{*this};
+  if (!statement.compile(sql_statement, false /*optimise_for_multiple_usage*/))
     return result;
 
   // Bind parameters statements
   int sql_param_index = 1;
   for (size_t i = 0; i < owners.size(); i++)
     for (auto const &owner : owners)
-      sqlite3_bind_blob(statement, sql_param_index++, &owner, sizeof(owner), nullptr /*destructor*/);
+      bind_blob(statement, sql_param_index++, &owner, sizeof(owner));
 
   // Execute
-  sql_run_statement(nettype, lns_sql_type::get_mappings_by_owners, statement, &result);
+  sql_run_statement(lns_sql_type::get_mappings_by_owners, statement, &result);
   return result;
 }
 
-std::vector<mapping_record> name_system_db::get_mappings_by_owner(generic_owner const &owner) const
+std::vector<mapping_record> name_system_db::get_mappings_by_owner(generic_owner const &owner)
 {
   std::vector<mapping_record> result = {};
-  sqlite3_stmt *statement = get_mappings_by_owner_sql;
-  sqlite3_clear_bindings(statement);
-  sqlite3_bind_blob(statement, 1 /*sql param index*/, &owner, sizeof(owner), nullptr /*destructor*/);
-  sqlite3_bind_blob(statement, 2 /*sql param index*/, &owner, sizeof(owner), nullptr /*destructor*/);
-  sql_run_statement(nettype, lns_sql_type::get_mappings_by_owner, statement, &result);
+  blob_view ownerblob{reinterpret_cast<const char*>(&owner), sizeof(owner)};
+  bind_and_run(lns_sql_type::get_mappings_by_owner, get_mappings_by_owner_sql, &result,
+      ownerblob, ownerblob);
   return result;
 }
 
-settings_record name_system_db::get_settings() const
+settings_record name_system_db::get_settings()
 {
-  sqlite3_stmt *statement = get_settings_sql;
   settings_record result  = {};
-  result.loaded           = sql_run_statement(nettype, lns_sql_type::get_setting, statement, &result);
+  result.loaded           = sql_run_statement(lns_sql_type::get_setting, get_settings_sql, &result);
   return result;
 }
 }; // namespace service_nodes

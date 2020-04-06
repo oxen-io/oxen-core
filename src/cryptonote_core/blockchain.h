@@ -1053,7 +1053,9 @@ namespace cryptonote
      */
     bool blink_rollback(uint64_t rollback_height);
 
-    lns::name_system_db const &name_system_db() { return m_lns_db; }
+    lns::name_system_db &name_system_db() { return m_lns_db; }
+
+    const lns::name_system_db &name_system_db() const { return m_lns_db; }
 
 #ifndef IN_UNIT_TESTS
   private:

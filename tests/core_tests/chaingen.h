@@ -1385,7 +1385,7 @@ struct loki_chain_generator
   mutable std::unordered_map<crypto::public_key, crypto::secret_key> service_node_keys_;
   service_nodes::service_node_list::state_set                        state_history_;
   uint64_t                                                           last_cull_height_ = 0;
-  lns::name_system_db                                                lns_db_;
+  std::shared_ptr<lns::name_system_db>                               lns_db_ = std::make_shared<lns::name_system_db>();
   loki_chain_generator_db                                            db_;
   uint8_t                                                            hf_version_ = cryptonote::network_version_7;
   std::vector<test_event_entry>&                                     events_;
@@ -1393,7 +1393,6 @@ struct loki_chain_generator
   cryptonote::account_base                                           first_miner_;
 
   loki_chain_generator(std::vector<test_event_entry> &events, const std::vector<std::pair<uint8_t, uint64_t>> &hard_forks);
-  ~loki_chain_generator();
 
   uint64_t                                             height()       const { return cryptonote::get_block_height(db_.blocks.back().block); }
   uint64_t                                             chain_height() const { return height() + 1; }
