@@ -20,12 +20,13 @@ namespace net_utils
                                     std::string& response_data,
                                     const epee::serialization::storage_entry& id = nullptr)
   {
-    epee::json_rpc::error_response rsp;
+    response_data.reserve(128 + message.size());
+    epee::json_rpc::error_response rsp = {};
     rsp.id = id;
     rsp.jsonrpc = "2.0";
     rsp.error.code = code;
     rsp.error.message = message;
-    epee::serialization::store_t_to_json(static_cast<epee::json_rpc::error_response&>(rsp), response_data, 0, false);
+    epee::serialization::store_t_to_json(rsp, response_data, 0 /*indent*/, false /*insert_newlines*/);
     response_data += "\n";
     return response_data;
   }

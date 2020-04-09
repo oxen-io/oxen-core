@@ -196,7 +196,7 @@ namespace net_utils
 				response.m_response_code = 200;
 				response.m_response_comment = "OK";
 				response.m_body.clear();
-				MINFO("HTTP [" << m_conn_context.m_remote_address.host_str() << "] " << query_info.m_http_method_str << " " << query_info.m_URI);
+				MINFO("HTTP [" << this->m_conn_context.m_remote_address.host_str() << "] " << query_info.m_http_method_str << " " << query_info.m_URI);
 				bool handled = m_config.m_phandler->handle_http_request(query_info, response, this->m_conn_context);
 				if (!handled)
 				{

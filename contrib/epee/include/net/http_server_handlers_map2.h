@@ -28,6 +28,7 @@
 #pragma once 
 #include "http_base.h"
 #include "jsonrpc_structs.h"
+#include "jsonrpc_protocol_handler.h"
 #include "storages/portable_storage.h"
 #include "storages/portable_storage_template_helper.h"
 
@@ -106,11 +107,7 @@
     epee::serialization::portable_storage ps; \
     if(!ps.load_from_json(query_info.m_body)) \
     { \
-       epee::json_rpc::error_response rsp{}; \
-       rsp.jsonrpc = "2.0"; \
-       rsp.error.code = -32700; \
-       rsp.error.message = "Parse error"; \
-       epee::serialization::store_t_to_json(rsp, response_info.m_body); \
+       epee::net_utils::jsonrpc2::make_error_resp_json(-32700, "Parse error", response_info.m_body, 0 /*id*/); \
        return true; \
     } \
     epee::serialization::storage_entry id_; \
@@ -119,11 +116,7 @@
     std::string callback_name; \
     if(!ps.get_value("method", callback_name, nullptr)) \
     { \
-      epee::json_rpc::error_response rsp; \
-      rsp.jsonrpc = "2.0"; \
-      rsp.error.code = -32600; \
-      rsp.error.message = "Invalid Request"; \
-      epee::serialization::store_t_to_json(rsp, response_info.m_body); \
+      epee::net_utils::jsonrpc2::make_error_resp_json(-32600, "Invalid request", response_info.m_body, 0 /*id*/); \
       return true; \
     } \
     if(false) return true; //just a stub to have "else if"
@@ -134,12 +127,7 @@
   epee::json_rpc::request<command_type::request> req{}; \
   if(!req.load(ps)) \
   { \
-    epee::json_rpc::error_response fail_resp{}; \
-    fail_resp.jsonrpc = "2.0"; \
-    fail_resp.id = req.id; \
-    fail_resp.error.code = -32602; \
-    fail_resp.error.message = "Invalid params"; \
-    epee::serialization::store_t_to_json(fail_resp, response_info.m_body); \
+    epee::net_utils::jsonrpc2::make_error_resp_json(-32602, "Invalid params", response_info.m_body, req.id); \
     return true; \
   } \
   uint64_t ticks1 = epee::misc_utils::get_tick_count(); \
@@ -198,12 +186,7 @@
   MINFO(m_conn_context << "calling RPC method " << method_name); \
   if(!callback_f(req.params, resp.result, &m_conn_context)) \
   { \
-    epee::json_rpc::error_response fail_resp{}; \
-    fail_resp.jsonrpc = "2.0"; \
-    fail_resp.id = req.id; \
-    fail_resp.error.code = -32603; \
-    fail_resp.error.message = "Internal error"; \
-    epee::serialization::store_t_to_json(fail_resp, response_info.m_body); \
+    epee::net_utils::jsonrpc2::make_error_resp_json(-32603, "Internal error", response_info.m_body, req.id); \
     return true; \
   } \
   FINALIZE_OBJECTS_TO_JSON(method_name) \
@@ -211,12 +194,7 @@
 }
 
 #define END_JSON_RPC_MAP() \
-  epee::json_rpc::error_response rsp{}; \
-  rsp.id = id_; \
-  rsp.jsonrpc = "2.0"; \
-  rsp.error.code = -32601; \
-  rsp.error.message = "Method not found"; \
-  epee::serialization::store_t_to_json(rsp, response_info.m_body); \
+  epee::net_utils::jsonrpc2::make_error_resp_json(-32601, "Method not found", response_info.m_body, id_); \
   return true; \
 }
 
