@@ -73,19 +73,16 @@ public: \
 #define KV_SERIALIZE_N(varialble, val_name) \
   epee::serialization::selector<is_store>::serialize(this_ref.varialble, stg, hparent_section, val_name);
 
-  template<typename T> inline void serialize_default(const T &t, T v) { }
-  template<typename T> inline void serialize_default(T &t, T &&v) { t = std::forward<T>(v); }
-
 #define KV_SERIALIZE_OPT_N(variable, val_name, default_value) \
   do { \
-    if (!epee::serialization::selector<is_store>::serialize(this_ref.variable, stg, hparent_section, val_name)) \
-      epee::serialize_default(this_ref.variable, default_value); \
+    if (!epee::serialization::selector<is_store>::serialize(this_ref.variable, stg, hparent_section, val_name) && !is_store) \
+      const_cast<typename std::remove_const<this_type>::type&>(this_ref).variable = default_value; \
   } while (0);
 
 #define KV_SERIALIZE_OPT_N2(variable, val_name, default_value) \
 do { \
   if (!epee::serialization::selector<is_store>::serialize(this_ref.variable, stg, hparent_section, val_name)) { \
-    epee::serialize_default(this_ref.variable, default_value); \
+    if (!is_store) const_cast<typename std::remove_const<this_type>::type&>(this_ref).variable = default_value; \
   } else { \
     this_ref.explicitly_set = true; \
   } \
@@ -102,8 +99,8 @@ do { \
   do { \
     static_assert(std::is_pod<decltype(this_ref.varialble)>::value, "t_type must be a POD type."); \
     bool ret = KV_SERIALIZE_VAL_POD_AS_BLOB_FORCE_N(varialble, val_name); \
-    if (!ret) \
-      epee::serialize_default(this_ref.varialble, default_value); \
+    if (!ret && !is_store) \
+      const_cast<typename std::remove_const<this_type>::type&>(this_ref).varialble = default_value; \
   } while(0);
 
 #define KV_SERIALIZE_CONTAINER_POD_AS_BLOB_N(varialble, val_name) \
