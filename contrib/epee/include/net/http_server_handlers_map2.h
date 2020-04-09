@@ -35,28 +35,11 @@
 #define LOKI_DEFAULT_LOG_CATEGORY "net.http"
 
 
-#define CHAIN_HTTP_TO_MAP2(context_type) bool handle_http_request(const epee::net_utils::http::http_request_info& query_info, \
-              epee::net_utils::http::http_response_info& response, \
-              context_type& m_conn_context) \
-{\
-  MINFO("HTTP [" << m_conn_context.m_remote_address.host_str() << "] " << query_info.m_http_method_str << " " << query_info.m_URI); \
-  response.m_response_code = 200; \
-  response.m_response_comment = "Ok"; \
-  if(!handle_http_request_map(query_info, response, m_conn_context)) \
-  {response.m_response_code = 404;response.m_response_comment = "Not found";} \
-  return true; \
-}
-
-
-#define BEGIN_URI_MAP2()   template<class t_context> bool handle_http_request_map(const epee::net_utils::http::http_request_info& query_info, \
-  epee::net_utils::http::http_response_info& response_info, \
-  t_context& m_conn_context) { \
+#define BEGIN_URI_MAP2() \
   bool handled = false; \
   if(false) return true; //just a stub to have "else if"
 
 #define MAP_URI2(pattern, callback)  else if(std::string::npos != query_info.m_URI.find(pattern)) return callback(query_info, response_info, &m_conn_context);
-
-#define MAP_URI_AUTO_XML2(s_pattern, callback_f, command_type) //TODO: don't think i ever again will use xml - ambiguous and "overtagged" format
 
 #define MAP_URI_AUTO_JON2_IF(s_pattern, callback_f, command_type, cond) \
     else if((query_info.m_URI == s_pattern) && (cond)) \
@@ -114,7 +97,7 @@
 
 #define CHAIN_URI_MAP2(callback) else {callback(query_info, response_info, m_conn_context);handled = true;}
 
-#define END_URI_MAP2() return handled;}
+#define END_URI_MAP2() return handled;
 
 
 #define BEGIN_JSON_RPC_MAP(uri)    else if(query_info.m_URI == uri) \
