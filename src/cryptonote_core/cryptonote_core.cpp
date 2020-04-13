@@ -2060,6 +2060,15 @@ namespace cryptonote
         if ((uint64_t) std::time(nullptr) < next_proof_time)
           return;
 
+        auto pubkey = m_service_node_list.get_pubkey_from_x25519(m_service_node_keys->pub_x25519);
+        if (pubkey != crypto::null_pkey && pubkey != m_service_node_keys->pub)
+        {
+          MGINFO_RED(
+              "Failed to submit uptime proof: another service node on the network is using the same ed/x25519 keys as "
+              "this service node. This typically means both have the same 'key_ed25519' private key file.");
+          return;
+        }
+
         if (!check_external_ping(m_last_storage_server_ping, STORAGE_SERVER_PING_LIFETIME, "the storage server"))
         {
           MGINFO_RED(

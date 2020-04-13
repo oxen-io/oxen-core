@@ -2066,6 +2066,10 @@ namespace service_nodes
     {
       my_uptime_proof_confirmation = false;
       LOG_PRINT_L2("Accepted uptime proof from " << proof.pubkey);
+
+      if (m_service_node_keys && proof.pubkey_ed25519 == m_service_node_keys->pub_ed25519)
+        MGINFO_RED("Uptime proof from SN " << proof.pubkey << " is not us, but is using our ed/x25519 keys; "
+            "this is likely to lead to deregistration of one or both service nodes.");
     }
 
     auto old_x25519 = iproof.pubkey_x25519;
