@@ -8522,7 +8522,12 @@ static lns_prepared_args prepare_tx_extra_loki_name_system_values(wallet2 const 
     }
 
     boost::optional<std::string> failed;
-    *response = wallet.lns_names_to_owners(request, failed);
+    if (response) {
+      std::vector<cryptonote::COMMAND_RPC_LNS_NAMES_TO_OWNERS::response_entry> response_vec = wallet.lns_names_to_owners(request, failed);
+      response = &response_vec;
+    } else {
+      *response = wallet.lns_names_to_owners(request, failed);
+    }
     if (failed)
     {
       if (reason) *reason = "Failed to query previous owner for LNS entry, reason=" + *failed;

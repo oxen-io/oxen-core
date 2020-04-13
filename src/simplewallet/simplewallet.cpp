@@ -6487,8 +6487,8 @@ bool simple_wallet::lns_update_mapping(const std::vector<std::string>& args)
     encrypted_value.len                = response[0].encrypted_value.size() / 2;
     lokimq::from_hex(response[0].encrypted_value.begin(), response[0].encrypted_value.end(), encrypted_value.buffer.begin());
 
-    lns::mapping_value oldValue = {};
-    if (!lns::decrypt_mapping_value(name, encrypted_value, oldValue))
+    lns::mapping_value old_value = {};
+    if (!lns::decrypt_mapping_value(name, encrypted_value, old_value))
     {
       fail_msg_writer() << "Failed to decrypt the mapping value=" << response[0].encrypted_value;
       return false;
@@ -6504,10 +6504,10 @@ bool simple_wallet::lns_update_mapping(const std::vector<std::string>& args)
     std::cout << boost::format(tr("Name:             %s")) % name << std::endl;
 
     if(value.size()) {
-      std::cout << boost::format(tr("Old Value:        %s")) % oldValue.to_readable_value(m_wallet->nettype(),static_cast<lns::mapping_type>(response[0].type)) << std::endl;
+      std::cout << boost::format(tr("Old Value:        %s")) % old_value.to_readable_value(m_wallet->nettype(),static_cast<lns::mapping_type>(response[0].type)) << std::endl;
       std::cout << boost::format(tr("New Value:        %s")) % value << std::endl;
     } else {
-      std::cout << boost::format(tr("Value:            %s")) % oldValue.to_readable_value(m_wallet->nettype(),static_cast<lns::mapping_type>(response[0].type)) << std::endl;
+      std::cout << boost::format(tr("Value:            %s")) % old_value.to_readable_value(m_wallet->nettype(),static_cast<lns::mapping_type>(response[0].type)) << std::endl;
     }
 
     if(owner.size()) {
