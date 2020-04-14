@@ -40,6 +40,7 @@
 #include <lokimq/lokimq.h>
 #include <lokimq/hex.h>
 #include <shared_mutex>
+#include <iterator>
 
 #undef LOKI_DEFAULT_LOG_CATEGORY
 #define LOKI_DEFAULT_LOG_CATEGORY "qnet"
@@ -92,7 +93,6 @@ struct SNNWrapper {
     template <typename... Args>
     SNNWrapper(cryptonote::core &core, Args &&...args) :
             lmq{std::forward<Args>(args)...}, core{core} {
-        lmq.log_level(LogLevel::trace);
     }
 
     static SNNWrapper &from(void* obj) {
@@ -161,29 +161,18 @@ void snn_write_log(LogLevel level, const char *file, int line, std::string msg) 
 
 void setup_endpoints(SNNWrapper& snw);
 
+// Called when we add a block to refresh LokiMQ's x25519 pubkeys
+void refresh_sns(void* obj) {
+    auto& snw = SNNWrapper::from(obj);
+    lokimq::pubkey_set active_sns;
+    snw.core.get_service_node_list().copy_active_x25519_pubkeys(std::inserter(active_sns, active_sns.end()));
+    snw.lmq.set_active_sns(std::move(active_sns));
+}
+
 void *new_snnwrapper(cryptonote::core &core, const std::string &bind) {
     auto keys = core.get_service_node_keys();
     auto peer_lookup = [&sn_list = core.get_service_node_list()](string_view x25519_pub) {
         return get_connect_string(sn_list, x25519_from_string(x25519_pub));
-    };
-    auto allow = [&sn_list = core.get_service_node_list()](string_view ip, string_view x25519_pubkey_str) -> Allow {
-        auto x25519_pubkey = x25519_from_string(x25519_pubkey_str);
-        auto pubkey = sn_list.get_pubkey_from_x25519(x25519_pubkey);
-        MINFO("Accepting incoming " << (pubkey ? "SN" : "non-SN") << " connection authentication from ip/x25519/pubkey: " << ip << "/" << x25519_pubkey << "/" << pubkey);
-        if (pubkey) {
-            return {AuthLevel::none, true};
-        }
-
-        // Public connection:
-        //
-        // TODO: we really only want to accept public connections here if we are in (or soon
-        // to be or recently were in) a blink quorum; at other times we want to refuse a
-        // non-SN connection.  We could also IP limit throttle.
-        //
-        // (In theory we could extend this to also only allow SN
-        // connections when in or near a blink/checkpoint/obligations/pulse quorum, but that
-        // would get messy fast and probably have little practical benefit).
-        return {AuthLevel::none, false};
     };
     SNNWrapper *obj;
     std::string pubkey, seckey;
@@ -198,12 +187,14 @@ void *new_snnwrapper(cryptonote::core &core, const std::string &bind) {
         sn = false;
     }
 
-    obj = new SNNWrapper(core, pubkey, seckey, sn, std::move(peer_lookup), snn_write_log);
+    obj = new SNNWrapper(core, pubkey, seckey, sn, std::move(peer_lookup), snn_write_log, LogLevel::trace);
 
     setup_endpoints(*obj);
 
+    refresh_sns(obj);
+
     if (sn)
-        obj->lmq.listen_curve(bind, allow);
+        obj->lmq.listen_curve(bind);
 
     obj->lmq.start();
 
@@ -1485,6 +1476,7 @@ void handle_pong(Message& m) {
 void init_core_callbacks() {
     cryptonote::quorumnet_new = new_snnwrapper;
     cryptonote::quorumnet_delete = delete_snnwrapper;
+    cryptonote::quorumnet_refresh_sns = refresh_sns;
     cryptonote::quorumnet_relay_obligation_votes = relay_obligation_votes;
     cryptonote::quorumnet_send_blink = send_blink;
 }

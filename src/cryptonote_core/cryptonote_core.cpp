@@ -267,11 +267,13 @@ namespace cryptonote
   }
   void *(*quorumnet_new)(core &, const std::string &bind);
   void (*quorumnet_delete)(void *&self);
+  void (*quorumnet_refresh_sns)(void *self);
   void (*quorumnet_relay_obligation_votes)(void *self, const std::vector<service_nodes::quorum_vote_t> &);
   std::future<std::pair<blink_result, std::string>> (*quorumnet_send_blink)(void *self, const std::string &tx_blob);
   static bool init_core_callback_stubs() {
     quorumnet_new = [](core &, const std::string &) -> void * { need_core_init(); };
     quorumnet_delete = [](void *&) { need_core_init(); };
+    quorumnet_refresh_sns = [](void *) { need_core_init(); };
     quorumnet_relay_obligation_votes = [](void *, const std::vector<service_nodes::quorum_vote_t> &) { need_core_init(); };
     quorumnet_send_blink = [](void *, const std::string &) -> std::future<std::pair<blink_result, std::string>> { need_core_init(); };
     return false;
@@ -1993,6 +1995,12 @@ namespace cryptonote
       return false;
     }
     return true;
+  }
+
+  void core::update_lmq_sns()
+  {
+    if (m_quorumnet_obj)
+      quorumnet_refresh_sns(m_quorumnet_obj);
   }
   //-----------------------------------------------------------------------------------------------
   crypto::hash core::get_tail_id() const

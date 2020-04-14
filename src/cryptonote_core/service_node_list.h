@@ -371,6 +371,21 @@ namespace service_nodes
       }
     }
 
+    /// Copies x25519 pubkeys (as strings) of all currently active SNs into the given output iterator
+    template <typename OutputIt>
+    void copy_active_x25519_pubkeys(OutputIt out) const {
+      std::lock_guard<boost::recursive_mutex> lock(m_sn_mutex);
+      for (const auto& pk_info : m_state.service_nodes_infos) {
+        if (!pk_info.second->is_active())
+          continue;
+        auto it = proofs.find(pk_info.first);
+        if (it == proofs.end())
+          continue;
+        if (const auto& x2_pk = it->second.pubkey_x25519)
+          *out++ = std::string{reinterpret_cast<const char*>(&x2_pk), sizeof(x2_pk)};
+      }
+    }
+
     void set_my_service_node_keys(const service_node_keys *keys);
     void set_quorum_history_storage(uint64_t hist_size); // 0 = none (default), 1 = unlimited, N = # of blocks
     bool store();

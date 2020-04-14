@@ -479,6 +479,11 @@ namespace service_nodes
     uint64_t const height = cryptonote::get_block_height(block) + 1; // chain height = new top block height + 1
     m_vote_pool.remove_expired_votes(height);
     m_vote_pool.remove_used_votes(txs, block.major_version);
+
+    // These feels out of place here because the hook system sucks: TODO replace it with
+    // std::function hooks instead.
+    m_core.update_lmq_sns();
+
     return true;
   }
 
