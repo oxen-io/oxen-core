@@ -2135,7 +2135,25 @@ namespace cryptonote
       return false;
     }
 
-    res.service_node_state = get_service_nodes_res.service_node_states[0];
+    if (get_service_nodes_res.service_node_states.empty()) // Started in service node but not staked, no information on the blockchain yet
+    {
+      res.service_node_state.service_node_pubkey  = std::move(get_service_node_key_res.service_node_pubkey);
+      res.service_node_state.version_major        = LOKI_VERSION[0];
+      res.service_node_state.version_minor        = LOKI_VERSION[1];
+      res.service_node_state.version_patch        = LOKI_VERSION[2];
+      res.service_node_state.public_ip            = epee::string_tools::get_ip_string_from_int32(m_core.sn_public_ip());
+      res.service_node_state.storage_port         = m_core.storage_port();
+      res.service_node_state.storage_lmq_port     = m_core.m_storage_lmq_port;
+      res.service_node_state.quorumnet_port       = m_core.quorumnet_port();
+      res.service_node_state.pubkey_ed25519       = std::move(get_service_node_key_res.service_node_ed25519_pubkey);
+      res.service_node_state.pubkey_x25519        = std::move(get_service_node_key_res.service_node_x25519_pubkey);
+      res.service_node_state.service_node_version = LOKI_VERSION;
+    }
+    else
+    {
+      res.service_node_state = std::move(get_service_nodes_res.service_node_states[0]);
+    }
+
     res.height = get_service_nodes_res.height;
     res.block_hash = get_service_nodes_res.block_hash;
     res.status = get_service_nodes_res.status;

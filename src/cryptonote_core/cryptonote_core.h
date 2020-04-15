@@ -957,6 +957,10 @@ namespace cryptonote
      std::atomic<time_t> m_last_storage_server_ping, m_last_lokinet_ping;
      std::atomic<uint16_t> m_storage_lmq_port;
 
+     uint32_t sn_public_ip() const { return m_sn_public_ip; }
+     uint16_t storage_port() const { return m_storage_port; }
+     uint16_t quorumnet_port() const { return m_quorumnet_port; }
+
      /**
       * @brief attempts to relay any transactions in the mempool which need it
       *
