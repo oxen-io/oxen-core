@@ -337,6 +337,40 @@ namespace cryptonote
     virtual boost::optional<epee::wipeable_string> on_device_passphrase_request(bool on_device);
     //----------------------------------------------------------
 
+    class long_poll_thread_t
+    {
+      cryptonote::simple_wallet& m_simple_wallet;
+      boost::atomic<bool> m_polling_done;
+      boost::thread m_long_poll_thread;
+    public:
+      long_poll_thread_t(cryptonote::simple_wallet& simple_wallet)
+        : m_simple_wallet(simple_wallet), m_polling_done(true) {}
+      ~long_poll_thread_t()
+      {
+        if (m_polling_done || !m_long_poll_thread.joinable()) return;
+        m_polling_done = true;
+        m_long_poll_thread.join();
+      }
+
+      void start()
+      {
+        m_polling_done = false;
+        m_long_poll_thread = boost::thread([&] {
+            while (!m_polling_done)
+            {
+              try
+                {
+                  if (m_simple_wallet.m_auto_refresh_enabled && m_simple_wallet.m_wallet->long_poll_pool_state())
+                    m_simple_wallet.m_idle_cond.notify_one();
+                }
+              catch (...)
+              {
+              }
+            }
+          });
+      }
+    };
+
     friend class refresh_progress_reporter_t;
 
     class refresh_progress_reporter_t
@@ -424,7 +458,6 @@ namespace cryptonote
 
     std::atomic<bool> m_idle_run;
     boost::thread m_idle_thread;
-    boost::thread m_long_poll_thread;
     boost::mutex m_idle_mutex;
     boost::condition_variable m_idle_cond;
 
