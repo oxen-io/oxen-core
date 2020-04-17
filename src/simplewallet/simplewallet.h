@@ -339,9 +339,6 @@ namespace cryptonote
 
     class long_poll_thread_t
     {
-      cryptonote::simple_wallet& m_simple_wallet;
-      boost::atomic<bool> m_polling_done;
-      boost::thread m_long_poll_thread;
     public:
       long_poll_thread_t(cryptonote::simple_wallet& simple_wallet)
         : m_simple_wallet(simple_wallet), m_polling_done(true) { }
@@ -367,6 +364,11 @@ namespace cryptonote
             }
           });
       }
+
+    private:
+      cryptonote::simple_wallet& m_simple_wallet;
+      boost::atomic<bool> m_polling_done;
+      boost::thread m_long_poll_thread;
     };
 
     friend class refresh_progress_reporter_t;
