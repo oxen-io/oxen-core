@@ -344,7 +344,7 @@ namespace cryptonote
       boost::thread m_long_poll_thread;
     public:
       long_poll_thread_t(cryptonote::simple_wallet& simple_wallet)
-        : m_simple_wallet(simple_wallet), m_polling_done(true) {}
+        : m_simple_wallet(simple_wallet), m_polling_done(true) { }
       ~long_poll_thread_t()
       {
         if (m_polling_done || !m_long_poll_thread.joinable()) return;
@@ -359,13 +359,11 @@ namespace cryptonote
             while (!m_polling_done)
             {
               try
-                {
-                  if (m_simple_wallet.m_auto_refresh_enabled && m_simple_wallet.m_wallet->long_poll_pool_state())
-                    m_simple_wallet.m_idle_cond.notify_one();
-                }
-              catch (...)
               {
+                if (m_simple_wallet.m_auto_refresh_enabled && m_simple_wallet.m_wallet->long_poll_pool_state())
+                  m_simple_wallet.m_idle_cond.notify_one();
               }
+              catch (...) { }
             }
           });
       }
