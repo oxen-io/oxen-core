@@ -367,7 +367,7 @@ namespace cryptonote
 
     private:
       cryptonote::simple_wallet& m_simple_wallet;
-      boost::atomic<bool> m_polling_done;
+      std::atomic<bool> m_polling_done;
       boost::thread m_long_poll_thread;
     };
 
