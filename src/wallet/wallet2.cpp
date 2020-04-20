@@ -2862,6 +2862,8 @@ bool wallet2::long_poll_pool_state()
 {
   // Update daemon address for long polling here instead of in set_daemon which
   // could block on the long polling connection thread.
+  static bool local_address               = true;
+  std::chrono::milliseconds local_timeout = 500ms;
   {
     std::string new_host;
     boost::optional<epee::net_utils::http::login> login;
@@ -2877,6 +2879,7 @@ bool wallet2::long_poll_pool_state()
       if(m_long_poll_client.is_connected())
         m_long_poll_client.disconnect();
       m_long_poll_client.set_server(new_host, login, m_long_poll_ssl_options);
+      local_address = tools::is_local_address(new_host);
     }
   }
 
@@ -2887,14 +2890,19 @@ bool wallet2::long_poll_pool_state()
   bool r               = false;
   {
     std::lock_guard<decltype(m_long_poll_mutex)> lock(m_long_poll_mutex);
-    r = epee::net_utils::invoke_http_json("/get_transaction_pool_hashes.bin", req, res, m_long_poll_client, cryptonote::rpc_long_poll_timeout, "GET");
+    r = epee::net_utils::invoke_http_json("/get_transaction_pool_hashes.bin",
+                                          req,
+                                          res,
+                                          m_long_poll_client,
+                                          local_address ? local_timeout : cryptonote::rpc_long_poll_timeout,
+                                          "GET");
   }
 
   bool maxed_out_connections = res.status == CORE_RPC_STATUS_TX_LONG_POLL_MAX_CONNECTIONS;
   bool timed_out             = res.status == CORE_RPC_STATUS_TX_LONG_POLL_TIMED_OUT;
   if (maxed_out_connections || timed_out)
   {
-    if (maxed_out_connections) std::this_thread::sleep_for(30s);
+    if (maxed_out_connections) std::this_thread::sleep_for(local_address ? local_timeout : cryptonote::rpc_long_poll_timeout);
     return false;
   }
 
