@@ -1395,8 +1395,6 @@ static void (*const extra_hashes[4])(const void *, size_t, char *) = {
 extern int aesb_single_round(const uint8_t *in, uint8_t*out, const uint8_t *expandedKey);
 extern int aesb_pseudo_round(const uint8_t *in, uint8_t *out, const uint8_t *expandedKey);
 
-static size_t e2i(const uint8_t* a, size_t count) { return (*((uint64_t*)a) / AES_BLOCK_SIZE) & (count - 1); }
-
 static void mul(const uint8_t* a, const uint8_t* b, uint8_t* res) {
   uint64_t a0, b0;
   uint64_t hi, lo;
@@ -1466,7 +1464,8 @@ void cn_turtle_hash(const void *data, size_t length, char *hash, int light, int 
 {
   uint32_t init_rounds = (scratchpad / INIT_SIZE_BYTE);
   uint32_t aes_rounds = (iterations / 2);
-  size_t aes_init = (CN_TURTLE_PAGE_SIZE / AES_BLOCK_SIZE);
+  size_t TOTALBLOCKS = (CN_TURTLE_PAGE_SIZE / AES_BLOCK_SIZE);
+  size_t lightFlag = (light ? 2: 1);
 
 #ifndef FORCE_USE_HEAP
   uint8_t long_state[CN_TURTLE_PAGE_SIZE];
@@ -1517,16 +1516,18 @@ void cn_turtle_hash(const void *data, size_t length, char *hash, int light, int 
      * next address  <-+
      */
     /* Iteration 1 */
-    j = e2i(a, aes_init);
+    #define state_index(x,div) (((*((uint64_t *)x) >> 4) & (TOTALBLOCKS /(div) - 1)) << 4)
+    j = state_index(a, lightFlag);
     copy_block(c1, &long_state[j]);
     aesb_single_round(c1, c1, a);
+
     VARIANT2_PORTABLE_SHUFFLE_ADD(long_state, j);
     copy_block(&long_state[j], c1);
     xor_blocks(&long_state[j], b);
-    assert(j == e2i(a, aes_init));
     VARIANT1_1(&long_state[j]);
+
     /* Iteration 2 */
-    j = e2i(c1, aes_init);
+    j = state_index(c1, lightFlag);
     copy_block(c2, &long_state[j]);
     VARIANT2_PORTABLE_INTEGER_MATH(c2, c1);
     mul(c1, c2, d);
@@ -1538,7 +1539,7 @@ void cn_turtle_hash(const void *data, size_t length, char *hash, int light, int 
     xor_blocks(c1, c2);
     VARIANT1_2(c2 + 8);
     copy_block(&long_state[j], c2);
-    assert(j == e2i(a, aes_init));
+
     if (variant == 2) {
       copy_block(b + AES_BLOCK_SIZE, b);
     }
