@@ -1106,6 +1106,11 @@ bool wallet2::has_testnet_option(const boost::program_options::variables_map& vm
   return command_line::get_arg(vm, options().testnet);
 }
 
+bool wallet2::has_disable_rpc_long_poll(const boost::program_options::variables_map& vm)
+{
+  return command_line::get_arg(vm, options().disable_rpc_long_poll);
+}
+
 bool wallet2::has_stagenet_option(const boost::program_options::variables_map& vm)
 {
   return command_line::get_arg(vm, options().stagenet);
@@ -2874,11 +2879,15 @@ bool wallet2::long_poll_pool_state()
     }
 
     std::lock_guard<std::recursive_mutex> long_poll_mutex(m_long_poll_mutex);
-    if (new_host != m_long_poll_client.get_host())
+    epee::net_utils::http::url_content parsed{};
+    if (!epee::net_utils::parse_url(new_host, parsed))
+      return false;
+
+    if (parsed.host != m_long_poll_client.get_host())
     {
       if(m_long_poll_client.is_connected())
         m_long_poll_client.disconnect();
-      m_long_poll_client.set_server(new_host, login, m_long_poll_ssl_options);
+      m_long_poll_client.set_server(parsed.host, std::to_string(parsed.port), login, m_long_poll_ssl_options);
       local_address = tools::is_local_address(new_host);
     }
   }

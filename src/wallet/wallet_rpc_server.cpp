@@ -91,14 +91,13 @@ namespace tools
   }
 
   //------------------------------------------------------------------------------------------------------------------------------
-  wallet_rpc_server::wallet_rpc_server():m_wallet(NULL), rpc_login_file(), m_stop(false), m_restricted(false), m_vm(NULL)
+  wallet_rpc_server::wallet_rpc_server():m_wallet(NULL), rpc_login_file(), m_stop(false), m_restricted(false), m_vm(NULL), m_long_poll_disabled(true)
   {
   }
   //------------------------------------------------------------------------------------------------------------------------------
   wallet_rpc_server::~wallet_rpc_server()
   {
-    if (m_wallet)
-      delete m_wallet;
+    stop();
   }
   //------------------------------------------------------------------------------------------------------------------------------
   void wallet_rpc_server::set_wallet(wallet2 *cr)
@@ -141,18 +140,16 @@ namespace tools
     m_long_poll_thread = boost::thread([&] {
       for (;;)
       {
-        if (m_auto_refresh_period == 0 || !m_wallet)
+        if (m_long_poll_disabled) return true;
+        if (m_auto_refresh_period == 0)
         {
-          std::this_thread::sleep_for(std::chrono::seconds(10));
+          std::this_thread::sleep_for(std::chrono::seconds(1));
           continue;
         }
 
-        if (m_wallet->m_long_poll_disabled)
-          return true;
-
         try
         {
-          if (m_wallet->long_poll_pool_state())
+          if (m_wallet && m_wallet->long_poll_pool_state())
             m_long_poll_new_changes = true;
         }
         catch (...)
@@ -168,6 +165,10 @@ namespace tools
   //------------------------------------------------------------------------------------------------------------------------------
   void wallet_rpc_server::stop()
   {
+    m_long_poll_disabled = true;
+    if (m_long_poll_thread.joinable())
+        m_long_poll_thread.join();
+
     if (m_wallet)
     {
       m_wallet->store();
@@ -4637,6 +4638,7 @@ public:
       return false;
     }
   just_dir:
+    wrpc->m_long_poll_disabled = tools::wallet2::has_disable_rpc_long_poll(vm);
     if (wal) wrpc->set_wallet(wal.release());
     bool r = wrpc->init(&vm);
     CHECK_AND_ASSERT_MES(r, false, tools::wallet_rpc_server::tr("Failed to initialize wallet RPC server"));

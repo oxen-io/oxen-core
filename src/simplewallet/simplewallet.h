@@ -76,6 +76,7 @@ namespace cryptonote
     typedef std::vector<std::string> command_type;
 
     simple_wallet();
+    ~simple_wallet();
     bool init(const boost::program_options::variables_map& vm);
     bool deinit();
     bool run();
@@ -337,40 +338,6 @@ namespace cryptonote
     virtual boost::optional<epee::wipeable_string> on_device_passphrase_request(bool on_device);
     //----------------------------------------------------------
 
-    class long_poll_thread_t
-    {
-    public:
-      long_poll_thread_t(cryptonote::simple_wallet& simple_wallet)
-        : m_simple_wallet(simple_wallet), m_polling_done(true) { }
-      ~long_poll_thread_t()
-      {
-        if (m_polling_done || !m_long_poll_thread.joinable()) return;
-        m_polling_done = true;
-        m_long_poll_thread.join();
-      }
-
-      void start()
-      {
-        m_polling_done = false;
-        m_long_poll_thread = boost::thread([&] {
-            while (!m_polling_done)
-            {
-              try
-              {
-                if (m_simple_wallet.m_auto_refresh_enabled && m_simple_wallet.m_wallet->long_poll_pool_state())
-                  m_simple_wallet.m_idle_cond.notify_one();
-              }
-              catch (...) { }
-            }
-          });
-      }
-
-    private:
-      cryptonote::simple_wallet& m_simple_wallet;
-      std::atomic<bool> m_polling_done;
-      boost::thread m_long_poll_thread;
-    };
-
     friend class refresh_progress_reporter_t;
 
     class refresh_progress_reporter_t
@@ -469,6 +436,7 @@ namespace cryptonote
     bool m_long_payment_id_support;
     std::atomic<uint64_t> m_password_asked_on_height;
     crypto::hash          m_password_asked_on_checksum;
+    boost::thread         m_long_poll_thread;
     
     // MMS
     mms::message_store& get_message_store() const { return m_wallet->get_message_store(); };
