@@ -62,6 +62,7 @@ namespace tools
     bool run();
     void stop();
     void set_wallet(wallet2 *cr);
+    std::atomic<bool> m_long_poll_disabled;
 
   private:
 

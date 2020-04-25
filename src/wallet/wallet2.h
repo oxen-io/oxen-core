@@ -353,6 +353,7 @@ private:
 
     static bool has_testnet_option(const boost::program_options::variables_map& vm);
     static bool has_stagenet_option(const boost::program_options::variables_map& vm);
+    static bool has_disable_rpc_long_poll(const boost::program_options::variables_map& vm);
     static std::string device_name_option(const boost::program_options::variables_map& vm);
     static std::string device_derivation_path_option(const boost::program_options::variables_map &vm);
     static void init_options(boost::program_options::options_description& desc_params);
@@ -1580,7 +1581,7 @@ private:
     void set_offline(bool offline = true);
 
 
-    bool m_long_poll_disabled = false;
+    std::atomic<bool> m_long_poll_disabled;
   private:
     /*!
      * \brief  Stores wallet information to wallet file.
