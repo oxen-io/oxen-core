@@ -6324,6 +6324,9 @@ bool simple_wallet::query_locked_stakes(bool print_result)
       msg_buf.append("/");
       msg_buf.append(entry.key_image);
       msg_buf.append("\n");
+      msg_buf.append("  Total Locked: ");
+      msg_buf.append(cryptonote::print_money(entry.amount));
+      msg_buf.append("\n");
 
       if (i < (response.size() - 1))
         msg_buf.append("\n");

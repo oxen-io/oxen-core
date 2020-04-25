@@ -250,10 +250,11 @@ namespace service_nodes
     uint8_t           version{0};
     crypto::key_image key_image;
     uint64_t          unlock_height;
+    uint64_t          amount;
 
     key_image_blacklist_entry() = default;
-    key_image_blacklist_entry(uint8_t version, const crypto::key_image &key_image, uint64_t unlock_height)
-        : version{version}, key_image{key_image}, unlock_height{unlock_height} {}
+    key_image_blacklist_entry(uint8_t version, const crypto::key_image &key_image, uint64_t unlock_height, uint64_t amount)
+  : version{version}, key_image{key_image}, unlock_height{unlock_height}, amount(amount) {}
 
     bool operator==(const key_image_blacklist_entry &other) const { return key_image == other.key_image; }
     bool operator==(const crypto::key_image &image) const { return key_image == image; }
@@ -262,6 +263,7 @@ namespace service_nodes
       VARINT_FIELD(version)
       FIELD(key_image)
       VARINT_FIELD(unlock_height)
+      VARINT_FIELD(amount)
     END_SERIALIZE()
   };
 

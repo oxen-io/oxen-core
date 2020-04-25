@@ -473,6 +473,7 @@ namespace service_nodes
               key_image_blacklist_entry &entry = key_image_blacklist.back();
               entry.key_image                  = contribution.key_image;
               entry.unlock_height              = block_height + staking_num_lock_blocks(nettype);
+              entry.amount                     = contribution.amount;
             }
           }
         }
