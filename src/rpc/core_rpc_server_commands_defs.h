@@ -3236,7 +3236,7 @@ constexpr char const CORE_RPC_STATUS_TX_LONG_POLL_MAX_CONNECTIONS[] = "Daemon ma
     {
       std::string key_image;  // The key image of the transaction that is blacklisted on the network.
       uint64_t unlock_height; // The height at which the key image is removed from the blacklist and becomes spendable.
-	  uint64_t amount;        // The total amount of locked Loki in atomic units in this blacklisted stake.
+      uint64_t amount;        // The total amount of locked Loki in atomic units in this blacklisted stake.
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(key_image)
