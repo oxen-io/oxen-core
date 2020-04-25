@@ -250,8 +250,8 @@ namespace service_nodes
     enum struct version_t : uint8_t { version_0, version_1_serialize_amount, count, };
     version_t           version{version_t::version_1_serialize_amount};
     crypto::key_image key_image;
-    uint64_t          unlock_height;
-    uint64_t          amount;
+    uint64_t          unlock_height = 0;
+    uint64_t          amount        = 0;
 
     key_image_blacklist_entry() = default;
     key_image_blacklist_entry(version_t version, const crypto::key_image &key_image, uint64_t unlock_height, uint64_t amount)
