@@ -1301,7 +1301,7 @@ std::future<std::pair<cryptonote::blink_result, std::string>> send_blink(void *o
 
         MDEBUG("Have " << candidates.size() << " blink SN candidates");
 
-        std::vector<std::pair<std::string, std::string>> remotes; // x25519 pubkey -> connect string
+        std::vector<std::tuple<std::string, std::string, decltype(proof_info{}.version)>> remotes; // {x25519 pubkey, connect string, version}
         remotes.reserve(candidates.size());
         snw.core.get_service_node_list().for_each_service_node_info_and_proof(candidates.begin(), candidates.end(),
             [&remotes](const auto &pubkey, const auto &info, const auto &proof) {
@@ -1315,15 +1315,23 @@ std::future<std::pair<cryptonote::blink_result, std::string>> send_blink(void *o
                     return;
                 }
                 remotes.emplace_back(get_data_as_string(proof.pubkey_x25519),
-                        "tcp://" + epee::string_tools::get_ip_string_from_int32(proof.public_ip) + ":" + std::to_string(proof.quorumnet_port));
+                        "tcp://" + epee::string_tools::get_ip_string_from_int32(proof.public_ip) + ":" + std::to_string(proof.quorumnet_port),
+                        proof.version);
             });
 
         MDEBUG("Have " << remotes.size() << " blink SN candidates after checking active status and connection details");
 
-        // Select 4 random (active) blink quorum SNs to send the blink to.
+        // Select 4 random (active) blink quorum SNs to send the blink to, but prefer SNs with newer
+        // versions because they may have blink-related fixes.
         std::vector<size_t> indices(remotes.size());
         std::iota(indices.begin(), indices.end(), 0);
         std::shuffle(indices.begin(), indices.end(), tools::rng);
+
+        // Stable sort by version so that we keep the shuffled order within a version
+        using std::get;
+        std::stable_sort(indices.begin(), indices.end(), [&remotes](size_t a, size_t b) {
+            return get<2>(remotes[a]) > get<2>(remotes[b]); });
+
         if (indices.size() > 4)
             indices.resize(4);
         brd->remote_count = indices.size();
@@ -1337,8 +1345,8 @@ std::future<std::pair<cryptonote::blink_result, std::string>> send_blink(void *o
         });
 
         for (size_t i : indices) {
-            MINFO("Relaying blink tx to " << to_hex(remotes[i].first) << " @ " << remotes[i].second);
-            snw.lmq.send(remotes[i].first, "blink", data, send_option::hint{remotes[i].second});
+            MINFO("Relaying blink tx to " << to_hex(get<0>(remotes[i])) << " @ " << get<1>(remotes[i]));
+            snw.lmq.send(get<0>(remotes[i]), "blink", data, send_option::hint{get<1>(remotes[i])});
         }
     } catch (...) {
         auto lock = tools::unique_lock(pending_blink_result_mutex);
