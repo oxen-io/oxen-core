@@ -548,6 +548,7 @@ cryptonote::transaction loki_chain_generator::create_loki_name_system_tx(crypton
 
   crypto::hash name_hash       = lns::name_to_hash(name);
   std::string name_base64_hash = lns::name_to_base64_hash(name);
+  std::string name_cipher      = lns::name_to_cipher(generic_owner, name);
   crypto::hash prev_txid = crypto::null_hash;
   if (lns::mapping_record mapping = lns_db_->get_mapping(type, name_base64_hash))
     prev_txid = mapping.txid;
@@ -557,7 +558,7 @@ cryptonote::transaction loki_chain_generator::create_loki_name_system_tx(crypton
   assert(encrypted);
 
   std::vector<uint8_t> extra;
-  cryptonote::tx_extra_loki_name_system data = cryptonote::tx_extra_loki_name_system::make_buy(generic_owner, backup_owner, type, name_hash, encrypted_value.to_string(), prev_txid);
+  cryptonote::tx_extra_loki_name_system data = cryptonote::tx_extra_loki_name_system::make_buy(new_hf_version, generic_owner, backup_owner, type, name_hash, name_cipher, encrypted_value.to_string(), prev_txid);
   cryptonote::add_loki_name_system_to_tx_extra(extra, data);
   cryptonote::add_burned_amount_to_tx_extra(extra, burn);
   cryptonote::transaction result = {};
@@ -595,6 +596,9 @@ cryptonote::transaction loki_chain_generator::create_loki_name_system_tx_update(
     if (use_asserts) assert(encrypted);
   }
 
+  std::string name_cipher;
+  if (owner) name_cipher = lns::name_to_cipher(*owner, name);
+
   lns::generic_signature signature_ = {};
   if (!signature)
   {
@@ -603,13 +607,13 @@ cryptonote::transaction loki_chain_generator::create_loki_name_system_tx_update(
     *signature = lns::make_monero_signature(hash, src.get_keys().m_account_address.m_spend_public_key, src.get_keys().m_spend_secret_key);
   }
 
-  std::vector<uint8_t> extra;
-  cryptonote::tx_extra_loki_name_system data = cryptonote::tx_extra_loki_name_system::make_update(*signature, type, name_hash, encrypted_value.to_span(), owner, backup_owner, prev_txid);
-  cryptonote::add_loki_name_system_to_tx_extra(extra, data);
-
   cryptonote::block const &head = top().block;
   uint64_t new_height           = get_block_height(top().block) + 1;
   uint8_t new_hf_version        = get_hf_version_at(new_height);
+
+  std::vector<uint8_t> extra;
+  cryptonote::tx_extra_loki_name_system data = cryptonote::tx_extra_loki_name_system::make_update(new_hf_version, *signature, type, name_hash, encrypted_value.to_span(), owner, owner ? &name_cipher : nullptr, backup_owner, prev_txid);
+  cryptonote::add_loki_name_system_to_tx_extra(extra, data);
 
   cryptonote::transaction result = {};
   loki_tx_builder(events_, result, head, src /*from*/, src.get_keys().m_account_address, 0 /*amount*/, new_hf_version)

@@ -73,12 +73,16 @@ enum struct extra_field : uint8_t
   backup_owner    = 1 << 1,
   signature       = 1 << 2,
   encrypted_value = 1 << 3,
+  name_cipher     = 1 << 4,
 
   // Bit Masks
-  updatable_fields = (extra_field::owner | extra_field::backup_owner | extra_field::encrypted_value),
-  buy_no_backup    = (extra_field::owner | extra_field::encrypted_value),
-  buy              = (extra_field::buy_no_backup | extra_field::backup_owner),
-  all              = (extra_field::updatable_fields | extra_field::signature),
+  updatable_fields = (extra_field::owner | extra_field::backup_owner | extra_field::encrypted_value | extra_field::name_cipher),
+  buy_no_backup_v0 = (extra_field::owner | extra_field::encrypted_value),
+  buy_no_backup_v1 = (extra_field::buy_no_backup_v0 | extra_field::name_cipher),
+
+  buy_v0 = (extra_field::buy_no_backup_v0 | extra_field::backup_owner),
+  buy_v1 = (extra_field::buy_no_backup_v1 | extra_field::backup_owner),
+  all    = (owner | backup_owner | signature | encrypted_value | name_cipher),
 };
 
 constexpr inline extra_field operator|(extra_field a, extra_field b) { return static_cast<extra_field>(static_cast<uint8_t>(a) | static_cast<uint8_t>(b)); }
@@ -473,7 +477,8 @@ namespace cryptonote
 
   struct tx_extra_loki_name_system
   {
-    uint8_t                 version = 0;
+    enum struct version_t : uint8_t { v0, v1_name_cipher, _count };
+    version_t               version;
     lns::mapping_type       type;
     crypto::hash            name_hash;
     crypto::hash            prev_txid = crypto::null_hash;  // previous txid that purchased the mapping
@@ -482,40 +487,83 @@ namespace cryptonote
     lns::generic_owner      backup_owner = {};
     lns::generic_signature  signature    = {};
     std::string             encrypted_value; // binary format of the name->value mapping
+    std::string             name_cipher; // name encrypted by owner's public key
 
     bool field_is_set (lns::extra_field bit) const { return (fields & bit) == bit; }
     bool field_any_set(lns::extra_field bit) const { return (fields & bit) != lns::extra_field::none; }
 
-    bool is_updating() const { return field_is_set(lns::extra_field::signature) && field_any_set(lns::extra_field::updatable_fields); }
-    bool is_buying()   const { return (fields == lns::extra_field::buy || fields == lns::extra_field::buy_no_backup); }
+    bool is_updating() const
+    {
+      return field_is_set(lns::extra_field::signature) && field_any_set(lns::extra_field::updatable_fields);
+    }
 
-    static tx_extra_loki_name_system make_buy(lns::generic_owner const &owner, lns::generic_owner const *backup_owner, lns::mapping_type type, crypto::hash const &name_hash, std::string const &encrypted_value, crypto::hash const &prev_txid)
+    bool is_buying() const
+    {
+      if (version >= version_t::v1_name_cipher)
+        return (fields == lns::extra_field::buy_v1 || fields == lns::extra_field::buy_no_backup_v1);
+      else
+        return (fields == lns::extra_field::buy_v0 || fields == lns::extra_field::buy_no_backup_v0);
+    }
+
+    static version_t version_for_hf(uint8_t hf_version)
+    {
+      if (hf_version >= cryptonote::network_version_16)
+        return version_t::v1_name_cipher;
+      else
+        return version_t::v0;
+    }
+
+    static tx_extra_loki_name_system make_buy(uint8_t hf_version,
+                                              lns::generic_owner const &owner,
+                                              lns::generic_owner const *backup_owner,
+                                              lns::mapping_type type,
+                                              crypto::hash const &name_hash,
+                                              std::string const &name_cipher,
+                                              std::string const &encrypted_value,
+                                              crypto::hash const &prev_txid)
     {
       tx_extra_loki_name_system result = {};
-      result.fields                    = lns::extra_field::buy;
       result.owner                     = owner;
+      result.version                   = version_for_hf(hf_version);
 
       if (backup_owner)
+      {
         result.backup_owner = *backup_owner;
+        if (result.version >= version_t::v1_name_cipher)
+            result.fields = lns::extra_field::buy_v1;
+        else
+            result.fields = lns::extra_field::buy_v0;
+      }
       else
-        result.fields = lns::extra_field::buy_no_backup;
+      {
+        if (result.version >= version_t::v1_name_cipher)
+            result.fields = lns::extra_field::buy_no_backup_v1;
+        else
+            result.fields = lns::extra_field::buy_no_backup_v0;
+      }
 
       result.type            = type;
       result.name_hash       = name_hash;
       result.encrypted_value = encrypted_value;
       result.prev_txid       = prev_txid;
+
+      if (result.version >= version_t::v1_name_cipher)
+          result.name_cipher = name_cipher;
       return result;
     }
 
-    static tx_extra_loki_name_system make_update(lns::generic_signature const &signature,
+    static tx_extra_loki_name_system make_update(uint8_t hf_version,
+                                                 lns::generic_signature const &signature,
                                                  lns::mapping_type type,
                                                  crypto::hash const &name_hash,
                                                  epee::span<const uint8_t> encrypted_value,
                                                  lns::generic_owner const *owner,
+                                                 std::string const *name_cipher,
                                                  lns::generic_owner const *backup_owner,
                                                  crypto::hash const &prev_txid)
     {
       tx_extra_loki_name_system result = {};
+      result.version                   = version_for_hf(hf_version);
       result.signature                 = signature;
       result.type                      = type;
       result.name_hash                 = name_hash;
@@ -533,6 +581,12 @@ namespace cryptonote
         result.owner = *owner;
       }
 
+      if (name_cipher)
+      {
+        result.fields |= lns::extra_field::name_cipher;
+        result.name_cipher = *name_cipher;
+      }
+
       if (backup_owner)
       {
         result.fields |= lns::extra_field::backup_owner;
@@ -544,7 +598,7 @@ namespace cryptonote
     }
 
     BEGIN_SERIALIZE()
-      FIELD(version)
+      ENUM_FIELD(version, version < version_t::_count)
       ENUM_FIELD(type, type < lns::mapping_type::_count)
       FIELD(name_hash)
       FIELD(prev_txid)
@@ -553,6 +607,8 @@ namespace cryptonote
       if (field_is_set(lns::extra_field::backup_owner)) FIELD(backup_owner);
       if (field_is_set(lns::extra_field::signature)) FIELD(signature);
       if (field_is_set(lns::extra_field::encrypted_value)) FIELD(encrypted_value);
+      if (version >= version_t::v1_name_cipher)
+          if (field_is_set(lns::extra_field::name_cipher)) FIELD(name_cipher);
     END_SERIALIZE()
   };
 

@@ -75,6 +75,7 @@ enum struct mapping_record_column
   owner_id,
   backup_owner_id,
   update_height,
+  name_cipher,
   _count,
 };
 
@@ -89,9 +90,10 @@ static char const *mapping_record_column_string(mapping_record_column col)
     case mapping_record_column::txid: return "txid";
     case mapping_record_column::prev_txid: return "prev_txid";
     case mapping_record_column::register_height: return "register_height";
-    case mapping_record_column::update_height: return "update_height";
     case mapping_record_column::owner_id: return "owner_id";
     case mapping_record_column::backup_owner_id: return "backup_owner_id";
+    case mapping_record_column::update_height: return "update_height";
+    case mapping_record_column::name_cipher: return "name_cipher";
     default: return "xx_invalid";
   }
 }
@@ -391,6 +393,9 @@ mapping_record sql_get_mapping_from_statement(sql_compiled_statement& statement)
     auto value = get<lokimq::string_view>(statement, mapping_record_column::name_hash);
     result.name_hash.append(value.data(), value.size());
   }
+
+  // Copy name_cipher
+  result.name_cipher = get<std::string>(statement, mapping_record_column::name_cipher);
 
   if (!sql_copy_blob(statement, mapping_record_column::txid, result.txid.data, sizeof(result.txid)))
     return result;
@@ -1017,6 +1022,24 @@ static bool validate_against_previous_mapping(lns::name_system_db &lns_db, uint6
       if (check_condition(lns_extra.field_is_set(lns::extra_field::owner) && lns_extra.owner == mapping.owner, reason, tx, ", ", lns_extra_string(lns_db.network_type(), lns_extra), SPECIFYING_SAME_VALUE_ERR, "owner"))
         return false;
 
+      if (lns_extra.version >= cryptonote::tx_extra_loki_name_system::version_t::v1_name_cipher)
+      {
+        if (lns_extra.field_is_set(lns::extra_field::owner))
+        {
+          if (check_condition(!lns_extra.field_is_set(lns::extra_field::name_cipher), reason, tx, ", ", lns_extra_string(lns_db.network_type(), lns_extra), " TX is updating owner but does not set the updated name_cipher encrypted with the owner's public key"))
+            return false;
+        }
+        else
+        {
+          if (check_condition(lns_extra.field_is_set(lns::extra_field::name_cipher), reason, tx, ", ", lns_extra_string(lns_db.network_type(), lns_extra), " TX is not updating owner but specified name_cipher that is not needed"))
+            return false;
+        }
+      }
+      else
+      {
+          assert(!lns_extra.field_is_set(lns::extra_field::name_cipher) && !"We check this invariant earlier in the LNS validation process");
+      }
+
       if (check_condition(lns_extra.field_is_set(lns::extra_field::backup_owner) && lns_extra.backup_owner == mapping.backup_owner, reason, tx, ", ", lns_extra_string(lns_db.network_type(), lns_extra), SPECIFYING_SAME_VALUE_ERR, "backup_owner"))
         return false;
 
@@ -1038,7 +1061,7 @@ static bool validate_against_previous_mapping(lns::name_system_db &lns_db, uint6
         }
       }
     }
-    else
+    else // is_buying()
     {
       if (!is_lokinet_type(lns_extra.type))
       {
@@ -1046,11 +1069,8 @@ static bool validate_against_previous_mapping(lns::name_system_db &lns_db, uint6
           return false;
       }
 
-      if (check_condition(!(lns_extra.field_is_set(lns::extra_field::buy) || lns_extra.field_is_set(lns::extra_field::buy_no_backup)), reason,
-                          " TX is buying mapping but serialized unexpected fields not relevant for buying"))
-      {
+      if (check_condition(!lns_extra.is_buying(), reason, " TX is buying mapping but serialized unexpected fields not relevant for buying"))
         return false;
-      }
 
       uint64_t renew_window              = 0;
       uint64_t expiry_blocks             = lns::expiry_blocks(lns_db.network_type(), lns_extra.type, &renew_window);
@@ -1118,13 +1138,17 @@ bool name_system_db::validate_lns_tx(uint8_t hf_version, uint64_t blockchain_hei
 
     if (check_condition(!lns_extra->field_is_set(lns::extra_field::signature) && lns_extra->signature, reason, tx, ", ", lns_extra_string(nettype, *lns_extra), VALUE_SPECIFIED_BUT_NOT_REQUESTED, "signature"))
       return false;
+
+    if (check_condition(!lns_extra->field_is_set(lns::extra_field::name_cipher) && lns_extra->name_cipher.size(), reason, tx, ", ", lns_extra_string(nettype, *lns_extra), VALUE_SPECIFIED_BUT_NOT_REQUESTED, "name_cipher"))
+      return false;
   }
 
   // -----------------------------------------------------------------------------------------------
   // Simple LNS Extra Validation
   // -----------------------------------------------------------------------------------------------
   {
-    if (check_condition(lns_extra->version != 0, reason, tx, ", ", lns_extra_string(nettype, *lns_extra), " unexpected version=", std::to_string(lns_extra->version), ", expected=0"))
+    cryptonote::tx_extra_loki_name_system::version_t expected_version = cryptonote::tx_extra_loki_name_system::version_for_hf(hf_version);
+    if (check_condition(lns_extra->version != expected_version, reason, tx, ", ", lns_extra_string(nettype, *lns_extra), " unexpected version=", std::to_string(static_cast<uint8_t>(lns_extra->version)), ", expected=", std::to_string(static_cast<uint8_t>(expected_version))))
       return false;
 
     if (check_condition(!lns::mapping_type_allowed(hf_version, lns_extra->type), reason, tx, ", ", lns_extra_string(nettype, *lns_extra), " specifying type=", lns_extra->type, " that is disallowed"))
@@ -1143,7 +1167,13 @@ bool name_system_db::validate_lns_tx(uint8_t hf_version, uint64_t blockchain_hei
     {
       return false;
     }
-   }
+
+    if (lns_extra->version < cryptonote::tx_extra_loki_name_system::version_t::v1_name_cipher)
+    {
+      if (check_condition(lns_extra->field_is_set(lns::extra_field::name_cipher), reason, tx, ", ", lns_extra_string(nettype, *lns_extra), " name_cipher given but not enabled yet on the Blockchain"))
+        return false;
+    }
+  }
 
   // -----------------------------------------------------------------------------------------------
   // LNS Field(s) Validation
@@ -1212,6 +1242,29 @@ std::string name_to_base64_hash(std::string const &name)
 {
   crypto::hash hash  = name_to_hash(name);
   std::string result = hash_to_base64(hash);
+  return result;
+}
+
+std::string name_to_cipher(lns::generic_owner const &owner, std::string const &name)
+{
+  size_t bytes_required = name.size() + crypto_box_SEALBYTES;
+  std::string result(bytes_required, 0);
+
+  if (owner.type == lns::generic_owner_sig_type::ed25519)
+  {
+    crypto_box_seal(reinterpret_cast<unsigned char *>(&result[0]),
+                    reinterpret_cast<unsigned char const *>(name.data()),
+                    name.size(),
+                    owner.ed25519.data);
+  }
+  else
+  {
+    crypto_box_seal(reinterpret_cast<unsigned char *>(&result[0]),
+                    reinterpret_cast<unsigned char const *>(name.data()),
+                    name.size(),
+                    reinterpret_cast<unsigned char const *>(owner.wallet.address.m_spend_public_key.data));
+  }
+
   return result;
 }
 
@@ -1294,7 +1347,8 @@ CREATE TABLE IF NOT EXISTS "mappings" (
     "register_height" INTEGER NOT NULL,
     "owner_id" INTEGER NOT NULL REFERENCES "owner" ("id"),
     "backup_owner_id" INTEGER REFERENCES "owner" ("id"),
-    "update_height" INTEGER NOT NULL DEFAULT "register_height"
+    "update_height" INTEGER NOT NULL DEFAULT "register_height",
+    "name_cipher" BLOB
 );
 CREATE UNIQUE INDEX IF NOT EXISTS "name_hash_type_id" ON mappings("name_hash", "type");
 CREATE INDEX IF NOT EXISTS "owner_id_index" ON mappings("owner_id");
@@ -1377,8 +1431,13 @@ scoped_db_transaction::~scoped_db_transaction()
   lns_db.transaction_begun = false;
 }
 
+enum struct db_version
+{
+  v0,
+  v1_track_updates, // store when records have been updated
+  v2_name_cipher, // store the name encrypted by the owner public key
+};
 
-enum struct db_version { v0, v1_track_updates };
 auto constexpr DB_VERSION = db_version::v1_track_updates;
 bool name_system_db::init(cryptonote::Blockchain const *blockchain, cryptonote::network_type nettype, sqlite3 *db)
 {
@@ -1400,7 +1459,7 @@ R"(DELETE FROM "owner"
 WHERE NOT EXISTS (SELECT * FROM "mappings" WHERE "owner"."id" = "mappings"."owner_id")
 AND NOT EXISTS   (SELECT * FROM "mappings" WHERE "owner"."id" = "mappings"."backup_owner_id"))";
 
-  char constexpr SAVE_MAPPING_STR[]  = R"(INSERT OR REPLACE INTO "mappings" ("type", "name_hash", "encrypted_value", "txid", "prev_txid", "register_height", "owner_id", "backup_owner_id", "update_height") VALUES (?,?,?,?,?,?,?,?,?))";
+  char constexpr SAVE_MAPPING_STR[]  = R"(INSERT OR REPLACE INTO "mappings" ("type", "name_hash", "encrypted_value", "txid", "prev_txid", "register_height", "owner_id", "backup_owner_id", "update_height", "name_cipher") VALUES (?,?,?,?,?,?,?,?,?,?))";
   char constexpr SAVE_OWNER_STR[]    = R"(INSERT INTO "owner" ("address") VALUES (?))";
   char constexpr SAVE_SETTINGS_STR[] = R"(INSERT OR REPLACE INTO "settings" ("id", "top_height", "top_hash", "version") VALUES (1,?,?,?))";
 
@@ -1472,6 +1531,17 @@ AND NOT EXISTS   (SELECT * FROM "mappings" WHERE "owner"."id" = "mappings"."back
         }
 
         save_settings(settings.top_height, settings.top_hash, static_cast<int>(db_version::v1_track_updates));
+        db_transaction.commit = true;
+      }
+
+      if (settings.version == static_cast<decltype(settings.version)>(db_version::v1_track_updates))
+      {
+        scoped_db_transaction db_transaction(*this);
+        if (!db_transaction) return false;
+
+        char constexpr NEW_FIELD_SQL[] = R"(ALTER TABLE "mappings" ADD "name_cipher" BLOB")";
+        sqlite3_exec(db, NEW_FIELD_SQL, nullptr /*callback*/, nullptr /*callback context*/, nullptr);
+        save_settings(settings.top_height, settings.top_hash, static_cast<int>(db_version::v2_name_cipher));
         db_transaction.commit = true;
       }
     }
@@ -1643,6 +1713,9 @@ static bool add_lns_entry(lns::name_system_db &lns_db, uint64_t height, cryptono
       if (entry.field_is_set(lns::extra_field::encrypted_value))
         columns[column_count++] = mapping_record_column::encrypted_value;
 
+      if (entry.field_is_set(lns::extra_field::name_cipher))
+        columns[column_count++] = mapping_record_column::name_cipher;
+
       // Build the SQL statement
       std::stringstream stream;
       stream << R"(UPDATE "mappings" SET )";
@@ -1683,6 +1756,7 @@ static bool add_lns_entry(lns::name_system_db &lns_db, uint64_t height, cryptono
           case mapping_record_column::owner_id:        bind(statement, i+1, owner_id); break;
           case mapping_record_column::backup_owner_id: bind(statement, i+1, backup_owner_id); break;
           case mapping_record_column::update_height:   bind(statement, i+1, height); break;
+          case mapping_record_column::name_cipher:     bind(statement, i+1, blob_view{entry.name_cipher}); break;
           default: assert(false); return false;
         }
       }
@@ -1888,6 +1962,7 @@ bool name_system_db::save_mapping(crypto::hash const &tx_hash, cryptonote::tx_ex
   bind(statement, mapping_record_column::prev_txid, blob_view{src.prev_txid.data, sizeof(src.prev_txid)});
   bind(statement, mapping_record_column::register_height, height);
   bind(statement, mapping_record_column::update_height, height);
+  bind(statement, mapping_record_column::name_cipher, blob_view{src.name_cipher});
   bind(statement, mapping_record_column::owner_id, owner_id);
   if (backup_owner_id != 0)
     bind(statement, mapping_record_column::backup_owner_id, backup_owner_id);

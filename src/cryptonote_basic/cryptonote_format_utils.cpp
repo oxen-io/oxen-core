@@ -1690,7 +1690,6 @@ namespace cryptonote
     sc_sub((unsigned char*)key.data, (const unsigned char*)key.data, (const unsigned char*)hash.data);
     return key;
   }
-
 }
 
 std::string lns::generic_owner::to_string(cryptonote::network_type nettype) const

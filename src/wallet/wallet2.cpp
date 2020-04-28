@@ -8491,6 +8491,7 @@ struct lns_prepared_args
   lns::generic_owner      backup_owner;
   lns::generic_signature  signature;
   crypto::hash            prev_txid;
+  std::string             name_cipher;
 };
 
 static bool try_generate_lns_signature(wallet2 const &wallet, std::string const &curr_owner, std::string const *new_owner, std::string const *new_backup_owner, lns_prepared_args &result)
@@ -8566,6 +8567,9 @@ static lns_prepared_args prepare_tx_extra_loki_name_system_values(wallet2 const 
   if (backup_owner && !lns::parse_owner_to_generic_owner(wallet.nettype(), *backup_owner, result.backup_owner, reason))
       return {};
 
+  if (owner)
+      result.name_cipher = lns::name_to_cipher(result.owner, name);
+
   {
     cryptonote::rpc::LNS_NAMES_TO_OWNERS::request request = {};
     {
@@ -8640,20 +8644,13 @@ std::vector<wallet2::pending_tx> wallet2::lns_create_buy_mapping_tx(lns::mapping
   std::vector<cryptonote::rpc::LNS_NAMES_TO_OWNERS::response_entry> response;
   lns_prepared_args prepared_args = prepare_tx_extra_loki_name_system_values(*this, type, priority, name, &value, owner, backup_owner, false /*make_signature*/, account_index, reason, &response);
   if (!owner)
+  {
     prepared_args.owner = lns::make_monero_owner(get_subaddress({account_index, 0}), account_index != 0);
+    prepared_args.name_cipher = lns::name_to_cipher(prepared_args.owner, name);
+  }
 
   if (!prepared_args)
     return {};
-
-  std::vector<uint8_t> extra;
-  auto entry = cryptonote::tx_extra_loki_name_system::make_buy(
-      prepared_args.owner,
-      backup_owner ? &prepared_args.backup_owner : nullptr,
-      type,
-      prepared_args.name_hash,
-      prepared_args.encrypted_value.to_string(),
-      prepared_args.prev_txid);
-  add_loki_name_system_to_tx_extra(extra, entry);
 
   boost::optional<uint8_t> hf_version = get_hard_fork_version();
   if (!hf_version)
@@ -8661,6 +8658,17 @@ std::vector<wallet2::pending_tx> wallet2::lns_create_buy_mapping_tx(lns::mapping
     if (reason) *reason = ERR_MSG_NETWORK_VERSION_QUERY_FAILED;
     return {};
   }
+
+  std::vector<uint8_t> extra;
+  auto entry = cryptonote::tx_extra_loki_name_system::make_buy(*hf_version,
+                                                               prepared_args.owner,
+                                                               backup_owner ? &prepared_args.backup_owner : nullptr,
+                                                               type,
+                                                               prepared_args.name_hash,
+                                                               prepared_args.name_cipher,
+                                                               prepared_args.encrypted_value.to_string(),
+                                                               prepared_args.prev_txid);
+  add_loki_name_system_to_tx_extra(extra, entry);
 
   loki_construct_tx_params tx_params = wallet2::construct_params(*hf_version, txtype::loki_name_system, priority, type);
   auto result = create_transactions_2({} /*dests*/,
@@ -8723,21 +8731,24 @@ std::vector<wallet2::pending_tx> wallet2::lns_create_update_mapping_tx(lns::mapp
     }
   }
 
-  std::vector<uint8_t> extra;
-  auto entry = cryptonote::tx_extra_loki_name_system::make_update(prepared_args.signature,
-                                                                  type,
-                                                                  prepared_args.name_hash,
-                                                                  prepared_args.encrypted_value.to_span(),
-                                                                  owner ? &prepared_args.owner : nullptr,
-                                                                  backup_owner ? &prepared_args.backup_owner : nullptr,
-                                                                  prepared_args.prev_txid);
-  add_loki_name_system_to_tx_extra(extra, entry);
   boost::optional<uint8_t> hf_version = get_hard_fork_version();
   if (!hf_version)
   {
     if (reason) *reason = ERR_MSG_NETWORK_VERSION_QUERY_FAILED;
     return {};
   }
+
+  std::vector<uint8_t> extra;
+  auto entry = cryptonote::tx_extra_loki_name_system::make_update(*hf_version,
+                                                                  prepared_args.signature,
+                                                                  type,
+                                                                  prepared_args.name_hash,
+                                                                  prepared_args.encrypted_value.to_span(),
+                                                                  owner ? &prepared_args.owner : nullptr,
+                                                                  owner ? &prepared_args.name_cipher : nullptr,
+                                                                  backup_owner ? &prepared_args.backup_owner : nullptr,
+                                                                  prepared_args.prev_txid);
+  add_loki_name_system_to_tx_extra(extra, entry);
   loki_construct_tx_params tx_params = wallet2::construct_params(*hf_version, txtype::loki_name_system, priority, lns::mapping_type::update_record_internal);
 
   auto result = create_transactions_2({} /*dests*/,

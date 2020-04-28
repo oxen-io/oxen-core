@@ -90,6 +90,7 @@ bool         validate_mapping_type(std::string const &type, mapping_type *mappin
 
 crypto::hash name_to_hash(std::string const &name);        // Takes a human readable name and hashes it.
 std::string  name_to_base64_hash(std::string const &name); // Takes a human readable name, hashes it and returns a base64 representation of the hash, suitable for storage into the LNS DB.
+std::string  name_to_cipher(lns::generic_owner const &owner, std::string const &name);      // Takes a human readable name and encrypts it with the owner key
 
 // Takes a binary value and encrypts it using 'name' as a secret key or vice versa, suitable for storing into the LNS DB.
 // Only basic overflow validation is attempted, values should be pre-validated in the validate* functions.
@@ -129,6 +130,7 @@ struct mapping_record
   int64_t       id;
   mapping_type  type;
   std::string   name_hash; // name hashed and represented in base64 encoding
+  std::string   name_cipher; // name encrypted using the owner's public key
   mapping_value encrypted_value;
   uint64_t      register_height;
   uint64_t      update_height;

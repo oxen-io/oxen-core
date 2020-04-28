@@ -1552,7 +1552,8 @@ bool loki_name_system_invalid_tx_extra_params::generate(std::vector<test_event_e
 
     std::string name = "my_lns_name";
     cryptonote::tx_extra_loki_name_system valid_data = {};
-    valid_data.fields |= lns::extra_field::buy_no_backup;
+    valid_data.fields |= lns::extra_field::buy_no_backup_v1;
+    valid_data.version = cryptonote::tx_extra_loki_name_system::version_for_hf(gen.hardfork());
     valid_data.owner = miner_key.owner;
     valid_data.type  = lns::mapping_type::wallet;
     valid_data.encrypted_value = helper_encrypt_lns_value(name, miner_key.wallet_value).to_string();
@@ -1972,7 +1973,8 @@ bool loki_name_system_name_value_max_lengths::generate(std::vector<test_event_en
 
   lns_keys_t miner_key = make_lns_keys(miner);
   cryptonote::tx_extra_loki_name_system data = {};
-  data.fields |= lns::extra_field::buy_no_backup;
+  data.version = cryptonote::tx_extra_loki_name_system::version_for_hf(gen.hardfork());
+  data.fields |= lns::extra_field::buy_no_backup_v1;
   data.owner = miner_key.owner;
 
   // Wallet
@@ -2559,7 +2561,7 @@ bool loki_name_system_wrong_version::generate(std::vector<test_event_entry> &eve
   std::string name = "lns_name";
   lns_keys_t miner_key                       = make_lns_keys(miner);
   cryptonote::tx_extra_loki_name_system data = {};
-  data.version                               = 0xFF;
+  data.version                               = static_cast<cryptonote::tx_extra_loki_name_system::version_t>(0xFF);
   data.owner                                 = miner_key.owner;
   data.type                                  = lns::mapping_type::session;
   data.name_hash                             = lns::name_to_hash(name);
