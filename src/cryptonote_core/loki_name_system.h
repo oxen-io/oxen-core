@@ -90,7 +90,37 @@ bool         validate_mapping_type(std::string const &type, mapping_type *mappin
 
 crypto::hash name_to_hash(std::string const &name);        // Takes a human readable name and hashes it.
 std::string  name_to_base64_hash(std::string const &name); // Takes a human readable name, hashes it and returns a base64 representation of the hash, suitable for storage into the LNS DB.
-std::string  name_to_cipher(lns::generic_owner const &owner, std::string const &name);      // Takes a human readable name and encrypts it with the owner key
+
+// Encrypt the name using the ed25519 as an x25519 public key using Sodium's crypto_box_seal
+std::string  name_to_cipher_using_ed25519(crypto::ed25519_public_key const &name_encryption_key, std::string const &name, std::string *reason);
+
+// Encrypt the name using a similar scheme as Monero transactions (diffie-helman w/ shared secret).
+// To encrypt a name for wallets, you must have the recipients wallet address (publically available).
+// To decrypt a name for wallets, you must have the recipients wallet secret keys (only available to the owner).
+/*
+   Generate a per transaction unique LNS key.
+   Generate a ephemeral secret key by combining the Wallet's view public key and the per transaction unique LNS key.
+   Encrypt the name using chacha with the newly generated ephemeral secret key.
+
+   r  Private LNS Key
+   Hs Hash to Scalar
+   G  ECC Key Generator
+   A  View Public Key
+   x  Ephemeral Encryption Key
+   aR Shared Secret (equivalent to rA)
+
+   LNS Purchaser    LNS Owner
+   x := Hs(Ar)G  == Hs(aR)G
+
+   Purchaser encrypts with 'x' and stores 'R', the public LNS key in the LNS extra ciphertext. The ciphertext's layout is
+   [(32 bytes for the Public LNS Key) (Encrypted Name)]
+
+   Owner can rederive 'x' with x:= Hs(aR)G.
+*/
+std::string  name_to_cipher_using_wallet(crypto::secret_key const &lns_skey, cryptonote::account_public_address const &address, std::string const &name, std::string *reason);
+
+bool         cipher_to_name_ed25519(crypto::ed25519_secret_key const &skey, std::string const &cipher, std::string &name, std::string *reason);
+bool         cipher_to_name_wallet(cryptonote::account_keys const &keys, std::string const &cipher, std::string &name, std::string *reason);
 
 // Takes a binary value and encrypts it using 'name' as a secret key or vice versa, suitable for storing into the LNS DB.
 // Only basic overflow validation is attempted, values should be pre-validated in the validate* functions.

@@ -395,7 +395,10 @@ mapping_record sql_get_mapping_from_statement(sql_compiled_statement& statement)
   }
 
   // Copy name_cipher
-  result.name_cipher = get<std::string>(statement, mapping_record_column::name_cipher);
+  {
+    auto value = get<lokimq::string_view>(statement, mapping_record_column::name_cipher);
+    result.name_cipher.append(value.data(), value.size());
+  }
 
   if (!sql_copy_blob(statement, mapping_record_column::txid, result.txid.data, sizeof(result.txid)))
     return result;
@@ -1245,26 +1248,123 @@ std::string name_to_base64_hash(std::string const &name)
   return result;
 }
 
-std::string name_to_cipher(lns::generic_owner const &owner, std::string const &name)
+std::string name_to_cipher_using_ed25519(crypto::ed25519_public_key const &ed25519_pkey, std::string const &name, std::string *reason)
 {
   size_t bytes_required = name.size() + crypto_box_SEALBYTES;
   std::string result(bytes_required, 0);
 
-  if (owner.type == lns::generic_owner_sig_type::ed25519)
+  crypto::x25519_public_key x25519_pkey;
+  if (crypto_sign_ed25519_pk_to_curve25519(x25519_pkey.data, ed25519_pkey.data) != 0)
   {
-    crypto_box_seal(reinterpret_cast<unsigned char *>(&result[0]),
-                    reinterpret_cast<unsigned char const *>(name.data()),
-                    name.size(),
-                    owner.ed25519.data);
-  }
-  else
-  {
-    crypto_box_seal(reinterpret_cast<unsigned char *>(&result[0]),
-                    reinterpret_cast<unsigned char const *>(name.data()),
-                    name.size(),
-                    reinterpret_cast<unsigned char const *>(owner.wallet.address.m_spend_public_key.data));
+    if (reason) *reason = "Failed to derive x25519 key from ed25519 public key=" + epee::string_tools::pod_to_hex(ed25519_pkey);
+    return {};
   }
 
+  static_assert(sizeof(ed25519_pkey)               == crypto_box_PUBLICKEYBYTES, "Required size for crypto_box_seal to work");
+  static_assert(sizeof(x25519_pkey)                == crypto_box_PUBLICKEYBYTES, "Required size for crypto_box_seal to work");
+  static_assert(sizeof(crypto::ed25519_secret_key) == (2 * crypto_box_SECRETKEYBYTES), "Sanity check required size for crypto_box_seal to work");
+  if (crypto_box_seal(reinterpret_cast<unsigned char *>(&result[0]),
+                      reinterpret_cast<unsigned char const *>(name.data()),
+                      name.size(),
+                      x25519_pkey.data) != 0)
+  {
+    if (reason)
+    {
+      *reason = "Sodium failed to encrypt name using crypto_box_seal with x25519_pkey=" + epee::string_tools::pod_to_hex(x25519_pkey) + ", name=" + name;
+    }
+  }
+
+  return result;
+}
+
+std::string name_to_cipher_using_wallet(crypto::secret_key const &lns_skey, cryptonote::account_public_address const &address, std::string const &name, std::string *reason)
+{
+  crypto::public_key lns_pkey;
+  crypto::secret_key_to_public_key(lns_skey, lns_pkey);
+
+  // Derivation (aka. Shared Secret) := (Ar)
+  crypto::key_derivation derivation;
+  if (!crypto::generate_key_derivation(address.m_view_public_key, lns_skey, derivation))
+  {
+    if (reason) *reason = "View public key not a valid key=" + epee::string_tools::pod_to_hex(address.m_view_public_key);
+    return {};
+  }
+
+  // NOTE: Generate real encryption key 'x'
+  // x := Hs(Derivation)G
+  // x := Hs(Ar)G
+  crypto::secret_key encryption_skey;
+  crypto::derive_secret_key(derivation, 0, crypto::null_skey, encryption_skey);
+
+  std::string encryption = crypto::encrypt(name.data(), name.size(), encryption_skey, false /*authenticated*/, 1 /*kdf_rounds*/);
+  std::string result(sizeof(lns_pkey) + encryption.size(), 0);
+  std::memcpy(&result[0], lns_pkey.data, sizeof(lns_pkey));
+  std::memcpy(&result[sizeof(lns_pkey)], encryption.data(), encryption.size());
+  return result;
+}
+
+bool cipher_to_name_ed25519(crypto::ed25519_secret_key const &skey, std::string const &cipher, std::string &name, std::string *reason)
+{
+  if (cipher.size() <= crypto_box_SEALBYTES)
+      return false;
+
+  crypto::x25519_secret_key x25519_skey;
+  crypto::x25519_public_key x25519_pkey;
+  if (crypto_sign_ed25519_sk_to_curve25519(x25519_skey.data, skey.data) != 0)
+  {
+    if (reason) *reason = "Failed to derive x25519 key from ed25519 secret key";
+    return false;
+  }
+
+  if (crypto_sign_ed25519_pk_to_curve25519(x25519_pkey.data, skey.data + 32) != 0)
+  {
+    if (reason) *reason = "Failed to derive x25519 key from ed25519 public key";
+    return false;
+  }
+
+  size_t expected_len = cipher.size() - crypto_box_SEALBYTES;
+  name.resize(expected_len);
+  bool result = crypto_box_seal_open(reinterpret_cast<unsigned char *>(&name[0]),
+                                     reinterpret_cast<unsigned char const *>(&cipher[0]),
+                                     cipher.size(),
+                                     x25519_pkey.data,
+                                     x25519_skey.data) == 0;
+
+  if (!result)
+  {
+    if (reason) *reason = "Failed to decrypt name using x25519 key with public key=" + epee::string_tools::pod_to_hex(x25519_pkey);
+    return false;
+  }
+
+  return result;
+}
+
+bool cipher_to_name_wallet(cryptonote::account_keys const &keys, std::string const &cipher, std::string &name, std::string *reason)
+{
+  crypto::public_key pkey;
+  if (cipher.size() < sizeof(pkey))
+  {
+    if (reason) *reason = "Cipher is missing data and can not be decrypted";
+    return false;
+  }
+  std::memcpy(pkey.data, cipher.data(), sizeof(pkey));
+
+  // Derivation (aka. Shared Secret) := (aR)
+  crypto::key_derivation derivation;
+  if (!crypto::generate_key_derivation(pkey, keys.m_view_secret_key, derivation))
+  {
+    if (reason) *reason = "LNS Public key not a valid key=" + epee::string_tools::pod_to_hex(pkey);
+    return {};
+  }
+
+  // NOTE: Generate real encryption key
+  // x := Hs(Derivation)G
+  // x := Hs(aR)G
+  crypto::secret_key skey;
+  crypto::derive_secret_key(derivation, 0, crypto::null_skey, skey);
+
+  lokimq::string_view ciphertext(cipher.data() + sizeof(derivation), cipher.size() - sizeof(derivation));
+  bool result = crypto::decrypt(ciphertext.data(), ciphertext.size(), skey, false /*authenticated*/, 1, name);
   return result;
 }
 

@@ -42,6 +42,7 @@
 #include "warnings.h"
 #include "crypto.h"
 #include "hash.h"
+#include "chacha.h"
 
 namespace {
   static void local_abort(const char *msg)
@@ -606,5 +607,51 @@ POP_WARNINGS
     hash_to_scalar(buf.get(), rs_comm_size(pubs_count), h);
     sc_sub(&h, &h, &sum);
     return sc_isnonzero(&h) == 0;
+  }
+
+  std::string encrypt(const char *plaintext, size_t len, const crypto::secret_key &skey, bool authenticated, uint64_t kdf_rounds)
+  {
+    crypto::chacha_key key;
+    crypto::generate_chacha_key(&skey, sizeof(skey), key, kdf_rounds);
+    std::string ciphertext;
+    crypto::chacha_iv iv = crypto::rand<crypto::chacha_iv>();
+    ciphertext.resize(len + sizeof(iv) + (authenticated ? sizeof(crypto::signature) : 0));
+    crypto::chacha20(plaintext, len, key, iv, &ciphertext[sizeof(iv)]);
+    std::memcpy(&ciphertext[0], &iv, sizeof(iv));
+    if (authenticated)
+    {
+      crypto::hash hash;
+      crypto::cn_fast_hash(ciphertext.data(), ciphertext.size() - sizeof(signature), hash);
+      crypto::public_key pkey;
+      crypto::secret_key_to_public_key(skey, pkey);
+      crypto::signature &signature = *(crypto::signature*)&ciphertext[ciphertext.size() - sizeof(crypto::signature)];
+      crypto::generate_signature(hash, pkey, skey, signature);
+    }
+    return ciphertext;
+  }
+
+  bool decrypt(const char *ciphertext, size_t len, const secret_key &skey, bool authenticated, uint64_t kdf_rounds, std::string &decrypted)
+  {
+    const size_t prefix_size = sizeof(chacha_iv) + (authenticated ? sizeof(crypto::signature) : 0);
+    if (len < prefix_size) return false; // "Unexpected ciphertext size"
+
+    crypto::chacha_key key;
+    crypto::generate_chacha_key(&skey, sizeof(skey), key, kdf_rounds);
+    const crypto::chacha_iv &iv = *(const crypto::chacha_iv*)&ciphertext[0];
+    if (authenticated)
+    {
+      crypto::hash hash;
+      crypto::cn_fast_hash(ciphertext, len - sizeof(signature), hash);
+      crypto::public_key pkey;
+      crypto::secret_key_to_public_key(skey, pkey);
+      const crypto::signature &signature = *(const crypto::signature*)&ciphertext[len - sizeof(crypto::signature)];
+      if (!crypto::check_signature(hash, pkey, signature))
+        return false; // "Failed to authenticate ciphertext";
+    }
+    std::unique_ptr<char[]> buffer{new char[len - prefix_size]};
+    crypto::chacha20(ciphertext + sizeof(iv), len - prefix_size, key, iv, buffer.get());
+    decrypted = std::string(buffer.get(), len - prefix_size);
+    memwipe(buffer.get(), len - prefix_size);
+    return true;
   }
 }

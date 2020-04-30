@@ -109,3 +109,44 @@ TEST(loki_name_system, value_encrypt_and_decrypt)
     ASSERT_FALSE(lns::decrypt_mapping_value(name_copy, encrypted_value, decrypted_value));
   }
 }
+
+TEST(loki_name_system, name_cipher_encrypt_decrypt)
+{
+    // Name encrypt/decrypt using wallet
+    {
+      cryptonote::account_base account;
+      account.generate();
+
+      std::string const name            = "hello world";
+      cryptonote::keypair const keypair = cryptonote::keypair::generate(hw::get_device("default"));
+      std::string const cipher          = lns::name_to_cipher_using_wallet(keypair.sec, account.get_keys().m_account_address, name, nullptr);
+      ASSERT_TRUE(cipher.size());
+
+      std::string decoded_name;
+      ASSERT_TRUE(lns::cipher_to_name_wallet(account.get_keys(), cipher, decoded_name, &reason));
+      ASSERT_EQ(decoded_name, name);
+    }
+
+    // Name encrypt using ed25519/x25519
+    {
+      crypto::ed25519_secret_key skey;
+      crypto::ed25519_public_key pkey;
+      crypto_sign_ed25519_keypair(pkey.data, skey.data);
+
+      crypto::x25519_secret_key xskey;
+      crypto::x25519_public_key xpkey;
+      bool converted1 = crypto_sign_ed25519_pk_to_curve25519(xpkey.data, pkey.data) == 0;
+      bool converted2 = crypto_sign_ed25519_sk_to_curve25519(xskey.data, skey.data) == 0;
+      ASSERT_TRUE(converted1);
+      ASSERT_TRUE(converted2);
+
+      std::string name   = "hello world";
+      std::string cipher = lns::name_to_cipher_using_ed25519(xpkey, name, nullptr);
+      ASSERT_TRUE(cipher.size());
+
+      std::string reason;
+      std::string decoded_name;
+      ASSERT_TRUE(lns::cipher_to_name_ed25519(xpkey, xskey, cipher, decoded_name));
+      ASSERT_EQ(decoded_name, name);
+    }
+}

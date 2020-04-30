@@ -239,6 +239,9 @@ namespace crypto {
     const public_key *const *pubs, std::size_t pubs_count,
     const signature *sig);
 
+  std::string encrypt(const char *plaintext, size_t len, const secret_key &skey, bool authenticated, uint64_t kdf_rounds);
+  bool decrypt(const char *ciphertext, size_t len, const secret_key &skey, bool authenticated, uint64_t kdf_rounds, std::string &decrypted);
+
   /* Variants with vector<const public_key *> parameters.
    */
   inline void generate_ring_signature(const hash &prefix_hash, const key_image &image,

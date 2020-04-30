@@ -548,7 +548,18 @@ cryptonote::transaction loki_chain_generator::create_loki_name_system_tx(crypton
 
   crypto::hash name_hash       = lns::name_to_hash(name);
   std::string name_base64_hash = lns::name_to_base64_hash(name);
-  std::string name_cipher      = lns::name_to_cipher(generic_owner, name);
+
+  std::string name_cipher;
+  if (generic_owner.type == lns::generic_owner_sig_type::monero)
+  {
+    crypto::secret_key skey;
+    crypto::public_key pkey;
+    crypto::generate_keys(pkey, skey);
+    name_cipher = lns::name_to_cipher_using_wallet(skey, generic_owner.wallet.address, name, nullptr);
+  }
+  else
+    name_cipher = lns::name_to_cipher_using_ed25519(generic_owner.ed25519, name, nullptr);
+
   crypto::hash prev_txid = crypto::null_hash;
   if (lns::mapping_record mapping = lns_db_->get_mapping(type, name_base64_hash))
     prev_txid = mapping.txid;
@@ -558,7 +569,15 @@ cryptonote::transaction loki_chain_generator::create_loki_name_system_tx(crypton
   assert(encrypted);
 
   std::vector<uint8_t> extra;
-  cryptonote::tx_extra_loki_name_system data = cryptonote::tx_extra_loki_name_system::make_buy(new_hf_version, generic_owner, backup_owner, type, name_hash, name_cipher, encrypted_value.to_string(), prev_txid);
+  cryptonote::tx_extra_loki_name_system data =
+      cryptonote::tx_extra_loki_name_system::make_buy(new_hf_version,
+                                                      generic_owner,
+                                                      backup_owner,
+                                                      type,
+                                                      name_hash,
+                                                      name_cipher,
+                                                      encrypted_value.to_string(),
+                                                      prev_txid);
   cryptonote::add_loki_name_system_to_tx_extra(extra, data);
   cryptonote::add_burned_amount_to_tx_extra(extra, burn);
   cryptonote::transaction result = {};
@@ -597,7 +616,15 @@ cryptonote::transaction loki_chain_generator::create_loki_name_system_tx_update(
   }
 
   std::string name_cipher;
-  if (owner) name_cipher = lns::name_to_cipher(*owner, name);
+  if (owner) 
+  {
+    crypto::secret_key skey;
+    crypto::public_key pkey;
+    crypto::generate_keys(pkey, skey);
+    name_cipher = lns::name_to_cipher_using_wallet(skey, owner->wallet.address, name, nullptr);
+  }
+  else
+    name_cipher = lns::name_to_cipher_using_ed25519(owner->ed25519, name, nullptr);
 
   lns::generic_signature signature_ = {};
   if (!signature)
