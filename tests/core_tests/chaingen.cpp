@@ -616,15 +616,20 @@ cryptonote::transaction loki_chain_generator::create_loki_name_system_tx_update(
   }
 
   std::string name_cipher;
-  if (owner) 
+  if (owner)
   {
-    crypto::secret_key skey;
-    crypto::public_key pkey;
-    crypto::generate_keys(pkey, skey);
-    name_cipher = lns::name_to_cipher_using_wallet(skey, owner->wallet.address, name, nullptr);
+    if (owner->type == lns::generic_owner_sig_type::monero)
+    {
+      crypto::secret_key lns_skey;
+      crypto::public_key lns_pkey;
+      crypto::generate_keys(lns_pkey, lns_skey);
+      name_cipher = lns::name_to_cipher_using_wallet(lns_skey, owner->wallet.address, name, nullptr);
+    }
+    else
+    {
+      name_cipher = lns::name_to_cipher_using_ed25519(owner->ed25519, name, nullptr);
+    }
   }
-  else
-    name_cipher = lns::name_to_cipher_using_ed25519(owner->ed25519, name, nullptr);
 
   lns::generic_signature signature_ = {};
   if (!signature)

@@ -1097,10 +1097,7 @@ static bool verify_lns_mapping_record(char const *perr_context,
   }
   else
   {
-    crypto::x25519_public_key x25519_pkey;
-    bool succeeded = (crypto_sign_ed25519_pk_to_curve25519(x25519_pkey.data, owner_key.ed25519.data) == 0);
-    assert(succeeded);
-    decoded = lns::cipher_to_name_ed25519(owner_key.ed25519, record.name_cipher, decrypted_name);
+    decoded = lns::cipher_to_name_ed25519(owner_key.ed25519, record.name_cipher, decrypted_name, &fail_reason);
   }
   CHECK_TEST_CONDITION_MSG(decoded, fail_reason);
   CHECK_EQ(name, decrypted_name);
@@ -2394,7 +2391,7 @@ bool loki_name_system_update_mapping_multiple_owners::generate(std::vector<test_
         const char* perr_context = "check_update5";
         lns::name_system_db &lns_db = c.get_blockchain_storage().name_system_db();
         lns::mapping_record const record = lns_db.get_mapping(lns::mapping_type::session, name_hash);
-        CHECK_TEST_CONDITION(verify_lns_mapping_record(perr_context, record, lns::mapping_type::session, name, temp_keys.session_value, height, blockchain_height, txid, prev_txid, owner1, owner2 /*backup_owner*/, helper_generic_keys(account2.get_keys())));
+        CHECK_TEST_CONDITION(verify_lns_mapping_record(perr_context, record, lns::mapping_type::session, name, temp_keys.session_value, height, blockchain_height, txid, prev_txid, owner1, owner2 /*backup_owner*/, helper_generic_keys(owner1_key)));
         return true;
       });
     }

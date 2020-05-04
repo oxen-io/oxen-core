@@ -2,6 +2,13 @@
 
 #include "common/loki.h"
 #include "cryptonote_core/loki_name_system.h"
+#include "cryptonote_basic/account.h"
+#include "crypto/crypto.h"
+
+extern "C"
+{
+#include <sodium.h>
+};
 
 TEST(loki_name_system, name_tests)
 {
@@ -123,7 +130,7 @@ TEST(loki_name_system, name_cipher_encrypt_decrypt)
       ASSERT_TRUE(cipher.size());
 
       std::string decoded_name;
-      ASSERT_TRUE(lns::cipher_to_name_wallet(account.get_keys(), cipher, decoded_name, &reason));
+      ASSERT_TRUE(lns::cipher_to_name_wallet(account.get_keys(), cipher, decoded_name, nullptr));
       ASSERT_EQ(decoded_name, name);
     }
 
@@ -133,20 +140,12 @@ TEST(loki_name_system, name_cipher_encrypt_decrypt)
       crypto::ed25519_public_key pkey;
       crypto_sign_ed25519_keypair(pkey.data, skey.data);
 
-      crypto::x25519_secret_key xskey;
-      crypto::x25519_public_key xpkey;
-      bool converted1 = crypto_sign_ed25519_pk_to_curve25519(xpkey.data, pkey.data) == 0;
-      bool converted2 = crypto_sign_ed25519_sk_to_curve25519(xskey.data, skey.data) == 0;
-      ASSERT_TRUE(converted1);
-      ASSERT_TRUE(converted2);
-
       std::string name   = "hello world";
-      std::string cipher = lns::name_to_cipher_using_ed25519(xpkey, name, nullptr);
+      std::string cipher = lns::name_to_cipher_using_ed25519(pkey, name, nullptr);
       ASSERT_TRUE(cipher.size());
 
-      std::string reason;
       std::string decoded_name;
-      ASSERT_TRUE(lns::cipher_to_name_ed25519(xpkey, xskey, cipher, decoded_name));
+      ASSERT_TRUE(lns::cipher_to_name_ed25519(skey, cipher, decoded_name, nullptr));
       ASSERT_EQ(decoded_name, name);
     }
 }
