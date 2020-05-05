@@ -1297,7 +1297,7 @@ std::string name_to_cipher_using_wallet(crypto::secret_key const &lns_skey, cryp
   crypto::secret_key encryption_skey;
   crypto::derive_secret_key(derivation, 0, crypto::null_skey, encryption_skey);
 
-  std::string encryption = crypto::encrypt(name.data(), name.size(), encryption_skey, false /*authenticated*/, 1 /*kdf_rounds*/);
+  std::string encryption = crypto::encrypt(name.data(), name.size(), encryption_skey, true /*authenticated*/, 1 /*kdf_rounds*/);
   std::string result(sizeof(lns_pkey) + encryption.size(), 0);
   std::memcpy(&result[0], lns_pkey.data, sizeof(lns_pkey));
   std::memcpy(&result[sizeof(lns_pkey)], encryption.data(), encryption.size());
@@ -1354,7 +1354,7 @@ bool cipher_to_name_wallet(cryptonote::account_keys const &keys, lokimq::string_
   crypto::key_derivation derivation;
   if (!crypto::generate_key_derivation(pkey, keys.m_view_secret_key, derivation))
   {
-    if (reason) *reason = "LNS Public key not a valid key=" + epee::string_tools::pod_to_hex(pkey);
+    if (reason) *reason = "Cipher invalid, embedded LNS public key not a valid key=" + epee::string_tools::pod_to_hex(pkey);
     return {};
   }
 
@@ -1365,8 +1365,13 @@ bool cipher_to_name_wallet(cryptonote::account_keys const &keys, lokimq::string_
   crypto::derive_secret_key(derivation, 0, crypto::null_skey, skey);
 
   lokimq::string_view ciphertext(cipher.data() + sizeof(derivation), cipher.size() - sizeof(derivation));
-  bool result = crypto::decrypt(ciphertext.data(), ciphertext.size(), skey, false /*authenticated*/, 1, name);
-  return result;
+  if (!crypto::decrypt(ciphertext.data(), ciphertext.size(), skey, true /*authenticated*/, 1, name))
+  {
+    if (reason) *reason = "Cipher invalid, failed to be validated by embedded signature";
+    return false;
+  }
+
+  return true;
 }
 
 struct alignas(size_t) secretbox_secret_key_ { unsigned char data[crypto_secretbox_KEYBYTES]; };
