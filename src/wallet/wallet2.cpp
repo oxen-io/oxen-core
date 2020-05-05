@@ -1299,7 +1299,7 @@ bool wallet2::get_multisig_seed(epee::wipeable_string& seed, const epee::wipeabl
     crypto::secret_key key;
     crypto::cn_slow_hash(passphrase.data(), passphrase.size(), (crypto::hash&)key, crypto::cn_slow_hash_type::heavy_v1);
     sc_reduce32((unsigned char*)key.data);
-    data = encrypt(data, key, true);
+    data = encrypt(lokimq::string_view(data.data(), data.size()), key, true);
   }
 
   if (raw)
@@ -14084,49 +14084,18 @@ size_t wallet2::import_multisig(std::vector<cryptonote::blobdata> blobs)
   return n_outputs;
 }
 //----------------------------------------------------------------------------------------------------
-std::string wallet2::encrypt(const char *plaintext, size_t len, const crypto::secret_key &skey, bool authenticated) const
+std::string wallet2::encrypt(lokimq::string_view plaintext, const crypto::secret_key &skey, bool authenticated) const
 {
-  crypto::chacha_key key;
-  crypto::generate_chacha_key(&skey, sizeof(skey), key, m_kdf_rounds);
-  std::string ciphertext;
-  crypto::chacha_iv iv = crypto::rand<crypto::chacha_iv>();
-  ciphertext.resize(len + sizeof(iv) + (authenticated ? sizeof(crypto::signature) : 0));
-  crypto::chacha20(plaintext, len, key, iv, &ciphertext[sizeof(iv)]);
-  memcpy(&ciphertext[0], &iv, sizeof(iv));
-  if (authenticated)
-  {
-    crypto::hash hash;
-    crypto::cn_fast_hash(ciphertext.data(), ciphertext.size() - sizeof(signature), hash);
-    crypto::public_key pkey;
-    crypto::secret_key_to_public_key(skey, pkey);
-    crypto::signature &signature = *(crypto::signature*)&ciphertext[ciphertext.size() - sizeof(crypto::signature)];
-    crypto::generate_signature(hash, pkey, skey, signature);
-  }
-  return ciphertext;
+  return crypto::encrypt(plaintext.data(), plaintext.size(), skey, authenticated, m_kdf_rounds);
 }
 //----------------------------------------------------------------------------------------------------
-std::string wallet2::encrypt(const epee::span<char> &plaintext, const crypto::secret_key &skey, bool authenticated) const
+std::string wallet2::encrypt_with_view_secret_key(lokimq::string_view plaintext, bool authenticated) const
 {
-  return encrypt(plaintext.data(), plaintext.size(), skey, authenticated);
-}
-//----------------------------------------------------------------------------------------------------
-std::string wallet2::encrypt(const std::string &plaintext, const crypto::secret_key &skey, bool authenticated) const
-{
-  return encrypt(plaintext.data(), plaintext.size(), skey, authenticated);
-}
-//----------------------------------------------------------------------------------------------------
-std::string wallet2::encrypt(const epee::wipeable_string &plaintext, const crypto::secret_key &skey, bool authenticated) const
-{
-  return encrypt(plaintext.data(), plaintext.size(), skey, authenticated);
-}
-//----------------------------------------------------------------------------------------------------
-std::string wallet2::encrypt_with_view_secret_key(const std::string &plaintext, bool authenticated) const
-{
-  return encrypt(plaintext, get_account().get_keys().m_view_secret_key, authenticated);
+  return crypto::encrypt(plaintext.data(), plaintext.size(), get_account().get_keys().m_view_secret_key, authenticated, m_kdf_rounds);
 }
 //----------------------------------------------------------------------------------------------------
 template<typename T>
-T wallet2::decrypt(const std::string &ciphertext, const crypto::secret_key &skey, bool authenticated) const
+T wallet2::decrypt(lokimq::string_view ciphertext, const crypto::secret_key &skey, bool authenticated) const
 {
   const size_t prefix_size = sizeof(chacha_iv) + (authenticated ? sizeof(crypto::signature) : 0);
   THROW_WALLET_EXCEPTION_IF(ciphertext.size() < prefix_size,
@@ -14151,9 +14120,9 @@ T wallet2::decrypt(const std::string &ciphertext, const crypto::secret_key &skey
   return T(buffer.get(), ciphertext.size() - prefix_size);
 }
 //----------------------------------------------------------------------------------------------------
-template epee::wipeable_string wallet2::decrypt(const std::string &ciphertext, const crypto::secret_key &skey, bool authenticated) const;
+template epee::wipeable_string wallet2::decrypt(lokimq::string_view ciphertext, const crypto::secret_key &skey, bool authenticated) const;
 //----------------------------------------------------------------------------------------------------
-std::string wallet2::decrypt_with_view_secret_key(const std::string &ciphertext, bool authenticated) const
+std::string wallet2::decrypt_with_view_secret_key(lokimq::string_view ciphertext, bool authenticated) const
 {
   return decrypt(ciphertext, get_account().get_keys().m_view_secret_key, authenticated);
 }

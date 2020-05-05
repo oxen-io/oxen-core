@@ -1248,7 +1248,7 @@ std::string name_to_base64_hash(std::string const &name)
   return result;
 }
 
-std::string name_to_cipher_using_ed25519(crypto::ed25519_public_key const &ed25519_pkey, std::string const &name, std::string *reason)
+std::string name_to_cipher_using_ed25519(crypto::ed25519_public_key const &ed25519_pkey, lokimq::string_view name, std::string *reason)
 {
   size_t bytes_required = name.size() + crypto_box_SEALBYTES;
   std::string result(bytes_required, 0);
@@ -1260,7 +1260,6 @@ std::string name_to_cipher_using_ed25519(crypto::ed25519_public_key const &ed255
     return {};
   }
 
-  static_assert(sizeof(ed25519_pkey)               == crypto_box_PUBLICKEYBYTES, "Required size for crypto_box_seal to work");
   static_assert(sizeof(x25519_pkey)                == crypto_box_PUBLICKEYBYTES, "Required size for crypto_box_seal to work");
   static_assert(sizeof(crypto::ed25519_secret_key) == (2 * crypto_box_SECRETKEYBYTES), "Sanity check required size for crypto_box_seal to work");
   if (crypto_box_seal(reinterpret_cast<unsigned char *>(&result[0]),
@@ -1270,14 +1269,16 @@ std::string name_to_cipher_using_ed25519(crypto::ed25519_public_key const &ed255
   {
     if (reason)
     {
-      *reason = "Sodium failed to encrypt name using crypto_box_seal with x25519_pkey=" + epee::string_tools::pod_to_hex(x25519_pkey) + ", name=" + name;
+      *reason = "Sodium failed to encrypt name using crypto_box_seal with x25519_pkey=" + epee::string_tools::pod_to_hex(x25519_pkey) + ", name=";
+      reason->append(name.data(), name.size());
     }
+    return {};
   }
 
   return result;
 }
 
-std::string name_to_cipher_using_wallet(crypto::secret_key const &lns_skey, cryptonote::account_public_address const &address, std::string const &name, std::string *reason)
+std::string name_to_cipher_using_wallet(crypto::secret_key const &lns_skey, cryptonote::account_public_address const &address, lokimq::string_view name, std::string *reason)
 {
   crypto::public_key lns_pkey;
   crypto::secret_key_to_public_key(lns_skey, lns_pkey);
@@ -1303,7 +1304,7 @@ std::string name_to_cipher_using_wallet(crypto::secret_key const &lns_skey, cryp
   return result;
 }
 
-bool cipher_to_name_ed25519(crypto::ed25519_secret_key const &skey, std::string const &cipher, std::string &name, std::string *reason)
+bool cipher_to_name_ed25519(crypto::ed25519_secret_key const &skey, lokimq::string_view cipher, std::string &name, std::string *reason)
 {
   if (cipher.size() <= crypto_box_SEALBYTES)
       return false;
@@ -1339,7 +1340,7 @@ bool cipher_to_name_ed25519(crypto::ed25519_secret_key const &skey, std::string 
   return result;
 }
 
-bool cipher_to_name_wallet(cryptonote::account_keys const &keys, std::string const &cipher, std::string &name, std::string *reason)
+bool cipher_to_name_wallet(cryptonote::account_keys const &keys, lokimq::string_view cipher, std::string &name, std::string *reason)
 {
   crypto::public_key pkey;
   if (cipher.size() < sizeof(pkey))

@@ -51,7 +51,6 @@
 #include <boost/regex.hpp>
 #include <boost/range/adaptor/transformed.hpp>
 #include <lokimq/hex.h>
-#include <lokimq/string_view.h>
 #include "include_base_utils.h"
 #include "common/i18n.h"
 #include "common/command_line.h"

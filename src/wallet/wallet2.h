@@ -68,6 +68,7 @@
 #include "wallet_light_rpc.h"
 
 #include "common/loki_integration_test_hooks.h"
+#include <lokimq/string_view.h>
 
 #undef LOKI_DEFAULT_LOG_CATEGORY
 #define LOKI_DEFAULT_LOG_CATEGORY "wallet.wallet2"
@@ -1374,13 +1375,10 @@ private:
     void update_pool_state(bool refreshed = false);
     void remove_obsolete_pool_txs(const std::vector<crypto::hash> &tx_hashes);
 
-    std::string encrypt(const char *plaintext, size_t len, const crypto::secret_key &skey, bool authenticated = true) const;
-    std::string encrypt(const epee::span<char> &span, const crypto::secret_key &skey, bool authenticated = true) const;
-    std::string encrypt(const std::string &plaintext, const crypto::secret_key &skey, bool authenticated = true) const;
-    std::string encrypt(const epee::wipeable_string &plaintext, const crypto::secret_key &skey, bool authenticated = true) const;
-    std::string encrypt_with_view_secret_key(const std::string &plaintext, bool authenticated = true) const;
-    template<typename T=std::string> T decrypt(const std::string &ciphertext, const crypto::secret_key &skey, bool authenticated = true) const;
-    std::string decrypt_with_view_secret_key(const std::string &ciphertext, bool authenticated = true) const;
+    std::string encrypt(lokimq::string_view plaintext, const crypto::secret_key &skey, bool authenticated = true) const;
+    std::string encrypt_with_view_secret_key(lokimq::string_view plaintext, bool authenticated = true) const;
+    template<typename T=std::string> T decrypt(lokimq::string_view ciphertext, const crypto::secret_key &skey, bool authenticated = true) const;
+    std::string decrypt_with_view_secret_key(lokimq::string_view ciphertext, bool authenticated = true) const;
 
     std::string make_uri(const std::string &address, const std::string &payment_id, uint64_t amount, const std::string &tx_description, const std::string &recipient_name, std::string &error) const;
     bool parse_uri(const std::string &uri, std::string &address, std::string &payment_id, uint64_t &amount, std::string &tx_description, std::string &recipient_name, std::vector<std::string> &unknown_parameters, std::string &error);

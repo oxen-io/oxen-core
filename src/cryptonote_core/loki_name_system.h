@@ -92,7 +92,7 @@ crypto::hash name_to_hash(std::string const &name);        // Takes a human read
 std::string  name_to_base64_hash(std::string const &name); // Takes a human readable name, hashes it and returns a base64 representation of the hash, suitable for storage into the LNS DB.
 
 // Encrypt the name using the ed25519 as an x25519 public key using Sodium's crypto_box_seal
-std::string  name_to_cipher_using_ed25519(crypto::ed25519_public_key const &name_encryption_key, std::string const &name, std::string *reason);
+std::string  name_to_cipher_using_ed25519(crypto::ed25519_public_key const &name_encryption_key, lokimq::string_view name, std::string *reason);
 
 // Encrypt the name using a similar scheme as Monero transactions (diffie-helman w/ shared secret).
 // To encrypt a name for wallets, you must have the recipients wallet address (publically available).
@@ -117,10 +117,10 @@ std::string  name_to_cipher_using_ed25519(crypto::ed25519_public_key const &name
 
    Owner can rederive 'x' with x:= Hs(aR)G.
 */
-std::string  name_to_cipher_using_wallet(crypto::secret_key const &lns_skey, cryptonote::account_public_address const &address, std::string const &name, std::string *reason);
+std::string  name_to_cipher_using_wallet(crypto::secret_key const &lns_skey, cryptonote::account_public_address const &address, lokimq::string_view name, std::string *reason);
 
-bool         cipher_to_name_ed25519(crypto::ed25519_secret_key const &skey, std::string const &cipher, std::string &name, std::string *reason);
-bool         cipher_to_name_wallet(cryptonote::account_keys const &keys, std::string const &cipher, std::string &name, std::string *reason);
+bool         cipher_to_name_ed25519(crypto::ed25519_secret_key const &skey, lokimq::string_view cipher, std::string &name, std::string *reason);
+bool         cipher_to_name_wallet(cryptonote::account_keys const &keys, lokimq::string_view cipher, std::string &name, std::string *reason);
 
 // Takes a binary value and encrypts it using 'name' as a secret key or vice versa, suitable for storing into the LNS DB.
 // Only basic overflow validation is attempted, values should be pre-validated in the validate* functions.
