@@ -157,6 +157,7 @@ static_assert(STAKING_PORTIONS % 12 == 0, "Use a multiple of twelve, so that it 
 #define HF_VERSION_ED25519_KEY                  cryptonote::network_version_13_enforce_checkpoints
 #define HF_VERSION_FEE_BURNING                  cryptonote::network_version_14_blink
 #define HF_VERSION_BLINK                        cryptonote::network_version_14_blink
+#define HF_VERSION_LNS_NAME_CIPHER              cryptonote::network_version_16
 
 #define PER_KB_FEE_QUANTIZATION_DECIMALS        8
 

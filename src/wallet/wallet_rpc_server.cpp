@@ -4418,7 +4418,7 @@ namespace tools
     if (req.encrypted_value.size() % 2 != 0)
     {
       er.code    = WALLET_RPC_ERROR_CODE_LNS_VALUE_LENGTH_NOT_EVEN;
-      er.message = "Value length not divisible by 2, length=" + std::to_string(req.encrypted_value.size());
+      er.message = "Value length not divisible by 2 (should be base16 hex), length=" + std::to_string(req.encrypted_value.size());
       return false;
     }
 
@@ -4471,12 +4471,50 @@ namespace tools
     lns::mapping_value value = {};
     if (!lns::decrypt_mapping_value(req.name, encrypted_value, value))
     {
-      er.code    = WALLET_RPC_ERROR_CODE_LNS_VALUE_NOT_HEX;
+      er.code    = WALLET_RPC_ERROR_CODE_LNS_VALUE_DECRYPT_FAILED;
       er.message = "Value decryption failure";
       return false;
     }
 
     res.value = value.to_readable_value(m_wallet->nettype(), type);
+    return true;
+  }
+
+  bool wallet_rpc_server::on_lns_decrypt_name(const wallet_rpc::COMMAND_RPC_LNS_DECRYPT_NAME::request& req, wallet_rpc::COMMAND_RPC_LNS_DECRYPT_NAME::response& res, epee::json_rpc::error& er, const connection_context *ctx)
+  {
+    if (!m_wallet) return not_open(er);
+
+    // ---------------------------------------------------------------------------------------------
+    //
+    // Validate name cipher
+    //
+    // ---------------------------------------------------------------------------------------------
+    if (req.name_cipher.size() % 2 != 0)
+    {
+      er.code    = WALLET_RPC_ERROR_CODE_LNS_VALUE_LENGTH_NOT_EVEN;
+      er.message = "Name cipher length is not divisible by 2 (should be base16 hex), length=" + std::to_string(req.name_cipher.size());
+      return false;
+    }
+
+    if (!lokimq::is_hex(req.name_cipher))
+    {
+      er.code    = WALLET_RPC_ERROR_CODE_LNS_VALUE_NOT_HEX;
+      er.message = "Name is not hex=" + req.name_cipher;
+      return false;
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    //
+    // Decrypt name cipher
+    //
+    // ---------------------------------------------------------------------------------------------
+    std::string name_cipher_binary = lokimq::from_hex(req.name_cipher);
+    if (!lns::cipher_to_name_wallet(m_wallet->get_account().get_keys(), name_cipher_binary, res.name, &er.message))
+    {
+      er.code = WALLET_RPC_ERROR_CODE_LNS_VALUE_DECRYPT_FAILED;
+      return false;
+    }
+
     return true;
   }
 

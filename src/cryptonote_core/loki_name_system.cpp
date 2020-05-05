@@ -1040,7 +1040,7 @@ static bool validate_against_previous_mapping(lns::name_system_db &lns_db, uint6
       }
       else
       {
-          assert(!lns_extra.field_is_set(lns::extra_field::name_cipher) && !"We check this invariant earlier in the LNS validation process");
+          assert(!lns_extra.field_is_set(lns::extra_field::name_cipher) && "We check this invariant earlier in the LNS validation process");
       }
 
       if (check_condition(lns_extra.field_is_set(lns::extra_field::backup_owner) && lns_extra.backup_owner == mapping.backup_owner, reason, tx, ", ", lns_extra_string(lns_db.network_type(), lns_extra), SPECIFYING_SAME_VALUE_ERR, "backup_owner"))

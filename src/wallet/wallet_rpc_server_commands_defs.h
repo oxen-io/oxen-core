@@ -48,7 +48,7 @@
 // advance which version they will stop working with
 // Don't go over 32767 for any of these
 #define WALLET_RPC_VERSION_MAJOR 1
-#define WALLET_RPC_VERSION_MINOR 13
+#define WALLET_RPC_VERSION_MINOR 14
 #define MAKE_WALLET_RPC_VERSION(major,minor) (((major)<<16)|(minor))
 #define WALLET_RPC_VERSION MAKE_WALLET_RPC_VERSION(WALLET_RPC_VERSION_MAJOR, WALLET_RPC_VERSION_MINOR)
 namespace tools
@@ -2899,6 +2899,27 @@ This command is only required if the open wallet is one of the owners of a LNS r
       std::string value; // The value decrypted
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(value)
+      END_KV_SERIALIZE_MAP()
+    };
+  };
+
+  LOKI_RPC_DOC_INTROSPECT
+  // Takes a LNS encrypted name (cipher) and decrypts the name if the wallet is the owner of the name.
+  struct COMMAND_RPC_LNS_DECRYPT_NAME
+  {
+    struct request
+    {
+      std::string name_cipher; // The desired name cipher to decrypt
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(name_cipher);
+      END_KV_SERIALIZE_MAP()
+    };
+
+    struct response
+    {
+      std::string name; // The name decrypted
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(name)
       END_KV_SERIALIZE_MAP()
     };
   };

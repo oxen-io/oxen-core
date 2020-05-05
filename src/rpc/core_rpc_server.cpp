@@ -3172,13 +3172,14 @@ namespace cryptonote { namespace rpc {
         check_quantity_limit(request.types.size(), LNS_NAMES_TO_OWNERS::MAX_TYPE_REQUEST_ENTRIES, "types");
 
       std::vector<lns::mapping_record> records = db.get_mappings(request.types, request.name_hash);
-      for (auto const &record : records)
+      for (auto &record : records)
       {
         res.entries.emplace_back();
         LNS_NAMES_TO_OWNERS::response_entry &entry = res.entries.back();
         entry.entry_index                                      = request_index;
         entry.type                                             = static_cast<uint16_t>(record.type);
-        entry.name_hash                                        = record.name_hash;
+        entry.name_hash                                        = std::move(record.name_hash);
+        entry.name_cipher                                      = lokimq::to_hex(record.name_cipher);
         entry.owner                                            = record.owner.to_string(nettype());
         if (record.backup_owner) entry.backup_owner            = record.backup_owner.to_string(nettype());
         entry.encrypted_value                                  = epee::to_hex::string(record.encrypted_value.to_span());
@@ -3235,6 +3236,7 @@ namespace cryptonote { namespace rpc {
       entry.request_index   = it->second;
       entry.type            = static_cast<uint16_t>(record.type);
       entry.name_hash       = std::move(record.name_hash);
+      entry.name_cipher     = lokimq::to_hex(record.name_cipher);
       if (record.owner) entry.owner = record.owner.to_string(nettype());
       if (record.backup_owner) entry.backup_owner = record.backup_owner.to_string(nettype());
       entry.encrypted_value = epee::to_hex::string(record.encrypted_value.to_span());

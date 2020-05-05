@@ -61,7 +61,7 @@ namespace rpc {
 // has its own version, and that clients can just test major to see
 // whether they can talk to a given daemon without having to know in
 // advance which version they will stop working with
-  constexpr version_t VERSION = {3, 5};
+  constexpr version_t VERSION = {3, 6};
 
   /// Makes a version array from a packed 32-bit integer version
   constexpr version_t make_version(uint32_t version)
@@ -2431,6 +2431,7 @@ namespace rpc {
       uint64_t entry_index;     // The index in request_entry's `entries` array that was resolved via Loki Name Service.
       uint16_t type;            // The type of Loki Name Service entry that the owner owns.
       std::string name_hash;    // The hash of the name that was queried in base64
+      std::string name_cipher;  // The name encrypted with the primary owner's public key represented in base16.
       std::string owner;        // The public key that purchased the Loki Name Service entry.
       std::string backup_owner; // The backup public key that the owner specified when purchasing the Loki Name Service entry.
       std::string encrypted_value; // The encrypted value that the name maps to. This value is encrypted using the name (not the hash) as the secret.
@@ -2470,7 +2471,8 @@ namespace rpc {
     {
       uint64_t    request_index;   // (Deprecated) The index in request's `entries` array that was resolved via Loki Name Service.
       uint16_t    type;            // The category the Loki Name Service entry belongs to, currently only Session whose value is 0.
-      std::string name_hash;       // The hash of the name that the owner purchased via Loki Name Service in base64
+      std::string name_hash;       // The hash of the name that the owner purchased via Loki Name Service in base64.
+      std::string name_cipher;     // The name encrypted with the primary owner's public key represented in base16.
       std::string owner;           // The backup public key specified by the owner that purchased the Loki Name Service entry.
       std::string backup_owner;    // The backup public key specified by the owner that purchased the Loki Name Service entry.
       std::string encrypted_value; // The encrypted value that the name maps to. This value is encrypted using the name (not the hash) as the secret.

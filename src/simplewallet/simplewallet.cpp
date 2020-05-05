@@ -81,6 +81,7 @@
 #include "wallet/message_store.h"
 #include "wallet/wallet_rpc_server_commands_defs.h"
 #include "string_coding.h"
+#include "cryptonote_basic/hardfork.h"
 
 #ifdef WIN32
 #include <boost/locale.hpp>
@@ -6470,6 +6471,7 @@ bool simple_wallet::lns_print_name_to_owners(const std::vector<std::string>& arg
     }
 
     tools::msg_writer() << "name_hash=" << request.entries[0].name_hash // NOTE: We only query one name at a time
+                        << ", name_cipher=" << (mapping.name_cipher.empty() ? NULL_STR : mapping.name_cipher)
                         << ", type=" << static_cast<lns::mapping_type>(mapping.type)
                         << ", owner=" << mapping.owner
                         << ", backup_owner=" << (mapping.backup_owner.empty() ? NULL_STR : mapping.backup_owner)
@@ -6535,6 +6537,7 @@ bool simple_wallet::lns_print_owners_to_names(const std::vector<std::string>& ar
     rpc_results.emplace_back(std::move(result));
   }
 
+  uint64_t const NAME_CIPHER_HF_HEIGHT = cryptonote::HardFork::get_hardcoded_hard_fork_height(m_wallet->nettype(), HF_VERSION_LNS_NAME_CIPHER);
   for (size_t i = 0; i < rpc_results.size(); i++)
   {
     auto const &rpc = rpc_results[i];
@@ -6551,12 +6554,35 @@ bool simple_wallet::lns_print_owners_to_names(const std::vector<std::string>& ar
         continue;
       }
 
+      std::string decrypted_name;
+      if (entry.update_height > NAME_CIPHER_HF_HEIGHT)
+      {
+        if (entry.name_cipher.size() && entry.name_cipher.size() % 2 == 0)
+        {
+          cryptonote::address_parse_info curr_owner = {};
+          if (!cryptonote::get_account_address_from_str(curr_owner, m_wallet->nettype(), *owner))
+            continue;
+          boost::optional<cryptonote::subaddress_index> mapping_from_wallet = m_wallet->get_subaddress_index(curr_owner.address);
+
+          std::string reason;
+          if (mapping_from_wallet && !lns::cipher_to_name_wallet(m_wallet->get_account().get_keys(), lokimq::from_hex(entry.name_cipher), decrypted_name, &reason))
+          {
+            fail_msg_writer() << "Daemon returned a name cipher that couldn't be decrypted= " << entry.name_cipher << ", reason=" << reason;
+          }
+        }
+        else
+            fail_msg_writer() << "Daemon returned an invalid name cipher of length=" << entry.name_cipher.size();
+      }
+
+
       tools::msg_writer() << "owner=" << *owner
+                          << ", name=" << (decrypted_name.empty() ? "(unknown)" : decrypted_name)
                           << ", backup_owner=" << (entry.backup_owner.empty() ? NULL_STR : entry.backup_owner)
                           << ", type=" << static_cast<lns::mapping_type>(entry.type)
                           << ", height=" << entry.register_height
                           << ", update_height=" << entry.update_height
                           << ", name_hash=" << entry.name_hash
+                          << ", name_cipher=" << (entry.name_cipher.empty() ? NULL_STR : entry.name_cipher)
                           << ", encrypted_value=" << entry.encrypted_value
                           << ", prev_txid=" << (entry.prev_txid.empty() ? NULL_STR : entry.prev_txid);
     }
