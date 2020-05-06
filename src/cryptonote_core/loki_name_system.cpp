@@ -9,8 +9,9 @@
 #include "cryptonote_basic/cryptonote_basic.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
-#include "cryptonote_core/cryptonote_tx_utils.h"
+#include "cryptonote_basic/hardfork.h"
 #include "cryptonote_basic/tx_extra.h"
+#include "cryptonote_core/cryptonote_tx_utils.h"
 #include "cryptonote_core/blockchain.h"
 #include "loki_economy.h"
 #include "string_coding.h"
@@ -996,7 +997,7 @@ static bool verify_lns_signature(crypto::hash const &hash, lns::generic_signatur
   }
 }
 
-static bool validate_against_previous_mapping(lns::name_system_db &lns_db, uint64_t blockchain_height, cryptonote::transaction const &tx, cryptonote::tx_extra_loki_name_system const &lns_extra, std::string *reason = nullptr)
+static bool validate_against_previous_mapping(uint8_t hf_version, lns::name_system_db &lns_db, uint64_t blockchain_height, cryptonote::transaction const &tx, cryptonote::tx_extra_loki_name_system const &lns_extra, std::string *reason = nullptr)
 {
   std::stringstream err_stream;
   LOKI_DEFER { if (reason && reason->empty()) *reason = err_stream.str(); };
@@ -1016,15 +1017,9 @@ static bool validate_against_previous_mapping(lns::name_system_db &lns_db, uint6
       if (check_condition(is_lokinet_type(lns_extra.type) && !mapping.active(lns_db.network_type(), blockchain_height), reason, tx, ", ", lns_extra_string(lns_db.network_type(), lns_extra), " TX requested to update mapping that has already expired"))
         return false;
 
-      auto span_a = epee::strspan<uint8_t>(lns_extra.encrypted_value);
-      auto span_b = mapping.encrypted_value.to_span();
-      char const SPECIFYING_SAME_VALUE_ERR[] = " field to update is specifying the same mapping ";
-      if (check_condition(lns_extra.field_is_set(lns::extra_field::encrypted_value) && (span_a.size() == span_b.size() && memcmp(span_a.data(), span_b.data(), span_a.size()) == 0), reason, tx, ", ", lns_extra_string(lns_db.network_type(), lns_extra), SPECIFYING_SAME_VALUE_ERR, "value"))
-        return false;
-
-      if (check_condition(lns_extra.field_is_set(lns::extra_field::owner) && lns_extra.owner == mapping.owner, reason, tx, ", ", lns_extra_string(lns_db.network_type(), lns_extra), SPECIFYING_SAME_VALUE_ERR, "owner"))
-        return false;
-
+      // -------------------------------------------------------------------------------------------
+      // Invariants
+      // -------------------------------------------------------------------------------------------
       if (lns_extra.version >= cryptonote::tx_extra_loki_name_system::version_t::v1_name_cipher)
       {
         if (lns_extra.field_is_set(lns::extra_field::owner))
@@ -1043,10 +1038,36 @@ static bool validate_against_previous_mapping(lns::name_system_db &lns_db, uint6
           assert(!lns_extra.field_is_set(lns::extra_field::name_cipher) && "We check this invariant earlier in the LNS validation process");
       }
 
+      // -------------------------------------------------------------------------------------------
+      // Duplicate Field Checks
+      // -------------------------------------------------------------------------------------------
+      auto span_a = epee::strspan<uint8_t>(lns_extra.encrypted_value);
+      auto span_b = mapping.encrypted_value.to_span();
+      char const SPECIFYING_SAME_VALUE_ERR[] = " field to update is specifying the same mapping ";
+      if (check_condition(lns_extra.field_is_set(lns::extra_field::encrypted_value) && (span_a.size() == span_b.size() && memcmp(span_a.data(), span_b.data(), span_a.size()) == 0), reason, tx, ", ", lns_extra_string(lns_db.network_type(), lns_extra), SPECIFYING_SAME_VALUE_ERR, "value"))
+        return false;
+
+      uint64_t const NAME_CIPHER_HF_HEIGHT = cryptonote::HardFork::get_hardcoded_hard_fork_height(lns_db.network_type(), HF_VERSION_LNS_NAME_CIPHER);
+      if (hf_version >= HF_VERSION_LNS_NAME_CIPHER && mapping.update_height <= NAME_CIPHER_HF_HEIGHT)
+      {
+        // NOTE: Allow updating to the same owner ONCE and only ONCE for entries
+        // prior to HF16 which don't have the name encrypted by the owner's
+        // public key. So allow users to update their name easily without having
+        // to send the name to a dummy owner and then back.
+        MTRACE("LNS TX migrating record to version_1_name_cipher in TX " << tx << ", height=" << blockchain_height);
+      }
+      else
+      {
+        if (check_condition(lns_extra.field_is_set(lns::extra_field::owner) && lns_extra.owner == mapping.owner, reason, tx, ", ", lns_extra_string(lns_db.network_type(), lns_extra), SPECIFYING_SAME_VALUE_ERR, "owner"))
+          return false;
+      }
+
       if (check_condition(lns_extra.field_is_set(lns::extra_field::backup_owner) && lns_extra.backup_owner == mapping.backup_owner, reason, tx, ", ", lns_extra_string(lns_db.network_type(), lns_extra), SPECIFYING_SAME_VALUE_ERR, "backup_owner"))
         return false;
 
+      // -------------------------------------------------------------------------------------------
       // Validate signature
+      // -------------------------------------------------------------------------------------------
       {
         auto value = epee::strspan<uint8_t>(lns_extra.encrypted_value);
         crypto::hash hash = tx_extra_signature_hash(value,
@@ -1192,7 +1213,7 @@ bool name_system_db::validate_lns_tx(uint8_t hf_version, uint64_t blockchain_hei
         return false;
     }
 
-    if (!validate_against_previous_mapping(*this, blockchain_height, tx, *lns_extra, reason))
+    if (!validate_against_previous_mapping(hf_version, *this, blockchain_height, tx, *lns_extra, reason))
       return false;
   }
 
