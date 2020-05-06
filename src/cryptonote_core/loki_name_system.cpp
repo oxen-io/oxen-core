@@ -1248,11 +1248,35 @@ std::string name_to_base64_hash(std::string const &name)
   return result;
 }
 
+// ISO 10126-2 Padding
+// Pad a string to a 16 byte boundary storing the number of padded bytes in the
+// last byte. This function ALWAYS appends padding bytes even if the string is
+// already on a 16 byte boundary.
+static std::string pad16_string(lokimq::string_view string)
+{
+  size_t const PAD_SIZE   = 16;
+  size_t remainder        = string.size() % PAD_SIZE;
+  size_t bytes_to_pad     = PAD_SIZE - remainder;
+
+  std::string result(string.size() + bytes_to_pad, 0);
+  std::memcpy(&result[0], string.data(), string.size());
+  result.back() = bytes_to_pad;
+  return result;
+}
+
+// ISO 10126-2 Padding
+// Reads last byte of padded string to determine the number of pad bytes to truncate.
+static bool unpad16_string(lokimq::string_view string, lokimq::string_view &unpadded)
+{
+  char pad_bytes = string.back();
+  if (static_cast<size_t>(pad_bytes) > string.size())
+      return false;
+  unpadded = lokimq::string_view(string.data(), string.size() - pad_bytes);
+  return true;
+}
+
 std::string name_to_cipher_using_ed25519(crypto::ed25519_public_key const &ed25519_pkey, lokimq::string_view name, std::string *reason)
 {
-  size_t bytes_required = name.size() + crypto_box_SEALBYTES;
-  std::string result(bytes_required, 0);
-
   crypto::x25519_public_key x25519_pkey;
   if (crypto_sign_ed25519_pk_to_curve25519(x25519_pkey.data, ed25519_pkey.data) != 0)
   {
@@ -1262,9 +1286,12 @@ std::string name_to_cipher_using_ed25519(crypto::ed25519_public_key const &ed255
 
   static_assert(sizeof(x25519_pkey)                == crypto_box_PUBLICKEYBYTES, "Required size for crypto_box_seal to work");
   static_assert(sizeof(crypto::ed25519_secret_key) == (2 * crypto_box_SECRETKEYBYTES), "Sanity check required size for crypto_box_seal to work");
+
+  std::string padded_name = pad16_string(name);
+  std::string result(padded_name.size() + crypto_box_SEALBYTES, 0);
   if (crypto_box_seal(reinterpret_cast<unsigned char *>(&result[0]),
-                      reinterpret_cast<unsigned char const *>(name.data()),
-                      name.size(),
+                      reinterpret_cast<unsigned char const *>(padded_name.data()),
+                      padded_name.size(),
                       x25519_pkey.data) != 0)
   {
     if (reason)
@@ -1297,7 +1324,8 @@ std::string name_to_cipher_using_wallet(crypto::secret_key const &lns_skey, cryp
   crypto::secret_key encryption_skey;
   crypto::derive_secret_key(derivation, 0, crypto::null_skey, encryption_skey);
 
-  std::string encryption = crypto::encrypt(name.data(), name.size(), encryption_skey, true /*authenticated*/, 1 /*kdf_rounds*/);
+  std::string padded_name = pad16_string(name);
+  std::string encryption  = crypto::encrypt(padded_name.data(), padded_name.size(), encryption_skey, true /*authenticated*/, 1 /*kdf_rounds*/);
   std::string result(sizeof(lns_pkey) + encryption.size(), 0);
   std::memcpy(&result[0], lns_pkey.data, sizeof(lns_pkey));
   std::memcpy(&result[sizeof(lns_pkey)], encryption.data(), encryption.size());
@@ -1323,9 +1351,8 @@ bool cipher_to_name_ed25519(crypto::ed25519_secret_key const &skey, lokimq::stri
     return false;
   }
 
-  size_t expected_len = cipher.size() - crypto_box_SEALBYTES;
-  name.resize(expected_len);
-  bool result = crypto_box_seal_open(reinterpret_cast<unsigned char *>(&name[0]),
+  std::string padded_name(cipher.size() - crypto_box_SEALBYTES, 0);
+  bool result = crypto_box_seal_open(reinterpret_cast<unsigned char *>(&padded_name[0]),
                                      reinterpret_cast<unsigned char const *>(&cipher[0]),
                                      cipher.size(),
                                      x25519_pkey.data,
@@ -1337,6 +1364,14 @@ bool cipher_to_name_ed25519(crypto::ed25519_secret_key const &skey, lokimq::stri
     return false;
   }
 
+  lokimq::string_view unpadded_name;
+  if (!unpad16_string(padded_name, unpadded_name))
+  {
+    if (reason) *reason = "Decrypted ciphertext was invalidly padded, source was=" + lokimq::to_hex(padded_name);
+    return false;
+  }
+
+  name = std::string(unpadded_name.data(), unpadded_name.size());
   return result;
 }
 
@@ -1365,12 +1400,21 @@ bool cipher_to_name_wallet(cryptonote::account_keys const &keys, lokimq::string_
   crypto::derive_secret_key(derivation, 0, crypto::null_skey, skey);
 
   lokimq::string_view ciphertext(cipher.data() + sizeof(derivation), cipher.size() - sizeof(derivation));
-  if (!crypto::decrypt(ciphertext.data(), ciphertext.size(), skey, true /*authenticated*/, 1, name))
+  std::string padded_name;
+  if (!crypto::decrypt(ciphertext.data(), ciphertext.size(), skey, true /*authenticated*/, 1, padded_name))
   {
     if (reason) *reason = "Cipher invalid, failed to be validated by embedded signature";
     return false;
   }
 
+  lokimq::string_view unpadded_name;
+  if (!unpad16_string(padded_name, unpadded_name))
+  {
+    if (reason) *reason = "Decrypted ciphertext was invalidly padded, source was=" + lokimq::to_hex(padded_name);
+    return false;
+  }
+
+  name = std::string(unpadded_name.data(), unpadded_name.size());
   return true;
 }
 
