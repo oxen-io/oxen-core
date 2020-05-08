@@ -4678,9 +4678,9 @@ void BlockchainLMDB::fixup(fixup_context const context)
     {
       uint64_t const num_blocks                = height() - start_height;
       uint64_t prev_cumulative_diff            = get_block_cumulative_difficulty(start_height - 1);
-      uint64_t const BLOCKS_PER_BATCH          = 50000;
+      uint64_t const BLOCKS_PER_BATCH          = 10000;
       uint64_t const blocks_in_left_over_batch = num_blocks % BLOCKS_PER_BATCH;
-      uint64_t const num_batches               = (num_blocks / BLOCKS_PER_BATCH) + 1; // +1 for leftover blocks
+      uint64_t const num_batches               = (num_blocks + (BLOCKS_PER_BATCH - 1)) / BLOCKS_PER_BATCH;
       size_t const left_over_batch_index       = num_batches - 1;
       for (size_t batch_index = 0; batch_index < num_batches; batch_index++)
       {
