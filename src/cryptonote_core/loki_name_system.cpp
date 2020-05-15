@@ -1580,6 +1580,7 @@ name_system_db::~name_system_db()
   {
     scoped_db_transaction db_transaction(*this);
     save_settings(last_processed_height, last_processed_hash, static_cast<int>(DB_VERSION));
+    db_transaction.commit = true;
   }
 
   // close_v2 starts shutting down; the actual shutdown occurs once the last prepared statement is
