@@ -293,6 +293,8 @@ namespace cryptonote
               m_service_node_list(m_blockchain_storage),
               m_blockchain_storage(m_mempool, m_service_node_list),
               m_quorum_cop(*this),
+              m_miner(this, &m_blockchain_storage),
+              m_miner_address{},
               m_starter_message_showed(false),
               m_target_blockchain_height(0),
               m_checkpoints_path(""),
