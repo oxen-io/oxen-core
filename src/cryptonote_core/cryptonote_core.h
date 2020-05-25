@@ -285,18 +285,16 @@ namespace cryptonote
       * @brief handles an incoming block
       *
       * periodic update to checkpoints is triggered here
-      * Attempts to add the block to the Blockchain and, on success,
-      * optionally updates the miner's block template.
+      * Attempts to add the block to the Blockchain
       *
       * @param block_blob the block to be added
       * @param block the block to be added, or NULL
       * @param bvc return-by-reference metadata context about the block's validity
-      * @param update_miner_blocktemplate whether or not to update the miner's block template
       *
       * @return false if loading new checkpoints fails, or the block is not
       * added, otherwise true
       */
-     bool handle_incoming_block(const blobdata& block_blob, const block *b, block_verification_context& bvc, checkpoint_t *checkpoint, bool update_miner_blocktemplate = true);
+     bool handle_incoming_block(const blobdata& block_blob, const block *b, block_verification_context& bvc, checkpoint_t *checkpoint);
 
      /**
       * @copydoc Blockchain::prepare_handle_incoming_blocks
