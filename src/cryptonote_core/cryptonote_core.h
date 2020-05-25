@@ -46,6 +46,7 @@
 #include "service_node_voting.h"
 #include "service_node_list.h"
 #include "service_node_quorum_cop.h"
+#include "cryptonote_core/miner.h"
 #include "cryptonote_basic/connection_context.h"
 #include "cryptonote_basic/cryptonote_stat_info.h"
 #include "warnings.h"
@@ -1088,6 +1089,7 @@ namespace cryptonote
 
      boost::recursive_mutex m_incoming_tx_lock; //!< incoming transaction lock
 
+     miner m_miner; //!< miner instance
      account_public_address m_miner_address; //!< address to mine to (for miner instance)
 
      std::string m_config_folder; //!< folder to look in for configs and other files
