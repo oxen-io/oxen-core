@@ -624,20 +624,6 @@ namespace cryptonote
      bool get_output_blacklist(std::vector<uint64_t> &blacklist) const;
 
      /**
-      * @copydoc miner::pause
-      *
-      * @note see miner::pause
-      */
-     void pause_mine();
-
-     /**
-      * @copydoc miner::resume
-      *
-      * @note see miner::resume
-      */
-     void resume_mine();
-
-     /**
       * @brief gets the Blockchain instance
       *
       * @return a reference to the Blockchain instance
@@ -660,13 +646,6 @@ namespace cryptonote
      const tx_memory_pool &get_pool() const { return m_mempool; }
      /// @brief return a reference to the service node list
      tx_memory_pool &get_pool() { return m_mempool; }
-
-     /**
-      * @copydoc miner::on_synchronized
-      *
-      * @note see miner::on_synchronized
-      */
-     void on_synchronized();
 
      /**
       * @copydoc Blockchain::safesyncmode
@@ -1108,6 +1087,8 @@ namespace cryptonote
      i_cryptonote_protocol* m_pprotocol; //!< cryptonote protocol instance
 
      boost::recursive_mutex m_incoming_tx_lock; //!< incoming transaction lock
+
+     account_public_address m_miner_address; //!< address to mine to (for miner instance)
 
      std::string m_config_folder; //!< folder to look in for configs and other files
 

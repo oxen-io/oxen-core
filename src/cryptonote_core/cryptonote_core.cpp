@@ -293,8 +293,6 @@ namespace cryptonote
               m_service_node_list(m_blockchain_storage),
               m_blockchain_storage(m_mempool, m_service_node_list),
               m_quorum_cop(*this),
-              m_miner(this, &m_blockchain_storage),
-              m_miner_address{},
               m_starter_message_showed(false),
               m_target_blockchain_height(0),
               m_checkpoints_path(""),
@@ -340,7 +338,6 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------
   void core::stop()
   {
-    m_miner.stop();
     m_blockchain_storage.cancel();
 
     tools::download_async_handle handle;
@@ -910,9 +907,6 @@ namespace cryptonote
       return false;
     }
 
-    r = m_miner.init(vm, m_nettype);
-    CHECK_AND_ASSERT_MES(r, false, "Failed to initialize miner instance");
-
     if (!keep_alt_blocks && !m_blockchain_storage.get_db().is_read_only())
       m_blockchain_storage.get_db().drop_alt_blocks();
 
@@ -1049,7 +1043,6 @@ namespace cryptonote
       quorumnet_delete(m_quorumnet_obj);
     m_long_poll_wake_up_clients.notify_all();
     m_service_node_list.store();
-    m_miner.stop();
     m_mempool.deinit();
     m_blockchain_storage.deinit();
     return true;
@@ -1506,7 +1499,6 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
   bool core::get_stat_info(core_stat_info& st_inf) const
   {
-    st_inf.mining_speed = m_miner.get_speed();
     st_inf.alternative_blocks = m_blockchain_storage.get_alternative_blocks_count();
     st_inf.blockchain_height = m_blockchain_storage.get_current_blockchain_height();
     st_inf.tx_pool_size = m_mempool.get_transactions_count();
@@ -1832,16 +1824,6 @@ namespace cryptonote
     return m_blockchain_storage.get_tx_outputs_gindexs(tx_id, n_txes, indexs);
   }
   //-----------------------------------------------------------------------------------------------
-  void core::pause_mine()
-  {
-    m_miner.pause();
-  }
-  //-----------------------------------------------------------------------------------------------
-  void core::resume_mine()
-  {
-    m_miner.resume();
-  }
-  //-----------------------------------------------------------------------------------------------
   block_complete_entry get_block_complete_entry(block& b, tx_memory_pool &pool)
   {
     block_complete_entry bce;
@@ -1859,9 +1841,7 @@ namespace cryptonote
   {
     bvc = {};
     std::vector<block_complete_entry> blocks;
-    m_miner.pause();
     {
-      LOKI_DEFER { m_miner.resume(); };
       try
       {
         blocks.push_back(get_block_complete_entry(b, m_mempool));
@@ -1878,7 +1858,6 @@ namespace cryptonote
       }
       add_new_block(b, bvc, nullptr /*checkpoint*/);
       cleanup_handle_incoming_blocks(true);
-      m_miner.on_block_chain_update();
     }
 
     CHECK_AND_ASSERT_MES(!bvc.m_verifivation_failed, false, "mined block failed verification");
@@ -1903,11 +1882,6 @@ namespace cryptonote
       m_pprotocol->relay_block(arg, exclude_context);
     }
     return true;
-  }
-  //-----------------------------------------------------------------------------------------------
-  void core::on_synchronized()
-  {
-    m_miner.on_synchronized();
   }
   //-----------------------------------------------------------------------------------------------
   void core::safesyncmode(const bool onoff)
@@ -1951,7 +1925,7 @@ namespace cryptonote
   }
 
   //-----------------------------------------------------------------------------------------------
-  bool core::handle_incoming_block(const blobdata& block_blob, const block *b, block_verification_context& bvc, checkpoint_t *checkpoint, bool update_miner_blocktemplate)
+  bool core::handle_incoming_block(const blobdata& block_blob, const block *b, block_verification_context& bvc, checkpoint_t *checkpoint)
   {
     TRY_ENTRY();
     bvc = {};
@@ -1981,8 +1955,6 @@ namespace cryptonote
     }
 
     add_new_block(*b, bvc, checkpoint);
-    if(update_miner_blocktemplate && bvc.m_added_to_main_chain)
-       m_miner.on_block_chain_update();
     return true;
 
     CATCH_ENTRY_L0("core::handle_incoming_block()", false);
@@ -2156,7 +2128,6 @@ namespace cryptonote
     }
 
     m_blockchain_pruning_interval.do_call(boost::bind(&core::update_blockchain_pruning, this));
-    m_miner.on_idle();
     m_mempool.on_idle();
 
 #if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)

@@ -566,9 +566,7 @@ namespace cryptonote
       LOG_DEBUG_CC(context, "Received new block while syncing, ignored");
       return 1;
     }
-    
-    m_core.pause_mine();
-      
+
     block new_block;
     transaction miner_tx;
     if(parse_and_validate_block_from_blob(arg.b.block, new_block))
@@ -589,7 +587,6 @@ namespace cryptonote
           );
           
           drop_connection(context, false, false);
-          m_core.resume_mine();
           return 1;
         }
       }      
@@ -622,7 +619,6 @@ namespace cryptonote
               );
               
               drop_connection(context, false, false);
-              m_core.resume_mine();
               return 1;
             }
           }
@@ -636,7 +632,6 @@ namespace cryptonote
             );
                         
             drop_connection(context, false, false);
-            m_core.resume_mine();
             return 1;
           }
           
@@ -660,7 +655,6 @@ namespace cryptonote
               );
               
               drop_connection(context, false, false);
-              m_core.resume_mine();
               return 1;
             }
             
@@ -677,7 +671,6 @@ namespace cryptonote
             {
               LOG_PRINT_CCONTEXT_L1("Block verification failed: transaction verification failed, dropping connection");
               drop_connection(context, false, false);
-              m_core.resume_mine();
               return 1;
             }
             
@@ -699,7 +692,6 @@ namespace cryptonote
           );
             
           drop_connection(context, false, false);
-          m_core.resume_mine();
           return 1;
         }
       }
@@ -719,7 +711,6 @@ namespace cryptonote
         );
         
         drop_connection(context, false, false);
-        m_core.resume_mine();
         return 1;
       }      
       
@@ -746,7 +737,6 @@ namespace cryptonote
             else
             {
               MERROR("1 tx requested, none not found, but " << txes.size() << " returned");
-              m_core.resume_mine();
               return 1;
             }
           }
@@ -771,7 +761,6 @@ namespace cryptonote
         missing_tx_req.current_blockchain_height = arg.current_blockchain_height;
         missing_tx_req.missing_tx_indices = std::move(need_tx_indices);
         
-        m_core.resume_mine();
         MLOG_P2P_MESSAGE("-->>NOTIFY_REQUEST_FLUFFY_MISSING_TX: missing_tx_indices.size()=" << missing_tx_req.missing_tx_indices.size() );
         post_notify<NOTIFY_REQUEST_FLUFFY_MISSING_TX>(missing_tx_req, context);
       }
@@ -791,7 +780,6 @@ namespace cryptonote
         if (!m_core.prepare_handle_incoming_blocks(blocks, pblocks))
         {
           LOG_PRINT_CCONTEXT_L0("Failure in prepare_handle_incoming_blocks");
-          m_core.resume_mine();
           return 1;
         }
 
@@ -800,10 +788,8 @@ namespace cryptonote
         if (!m_core.cleanup_handle_incoming_blocks(true))
         {
           LOG_PRINT_CCONTEXT_L0("Failure in cleanup_handle_incoming_blocks");
-          m_core.resume_mine();
           return 1;
         }
-        m_core.resume_mine();
 
         if( bvc.m_verifivation_failed )
         {
@@ -840,7 +826,6 @@ namespace cryptonote
         << ", dropping connection"
       );
         
-      m_core.resume_mine();
       drop_connection(context, false, false);
         
       return 1;     
@@ -1314,13 +1299,11 @@ namespace cryptonote
       MLOG_PEER_STATE("adding blocks");
 
       {
-        m_core.pause_mine();
         m_add_timer.resume();
         bool starting = true;
         LOKI_DEFER
         {
           m_add_timer.pause();
-          m_core.resume_mine();
           if (!starting) m_last_add_end_time = epee::misc_utils::get_ns_count();
         };
 
@@ -1507,7 +1490,7 @@ namespace cryptonote
               TIME_MEASURE_START(block_process_time);
               block_verification_context bvc{};
 
-              m_core.handle_incoming_block(block_entry.block, pblocks.empty() ? NULL : &pblocks[blockidx], bvc, checkpoint, false); // <--- process block
+              m_core.handle_incoming_block(block_entry.block, pblocks.empty() ? NULL : &pblocks[blockidx], bvc, checkpoint); // <--- process block
 
               if (bvc.m_verifivation_failed || bvc.m_marked_as_orphaned)
               {
@@ -2277,7 +2260,6 @@ skip:
               100.0f * m_sync_bad_spans_downloaded / m_sync_spans_downloaded << "% bad spans");
         }
       }
-      m_core.on_synchronized();
     }
     m_core.safesyncmode(true);
     m_p2p->clear_used_stripe_peers();
