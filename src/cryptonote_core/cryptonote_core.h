@@ -1089,6 +1089,7 @@ namespace cryptonote
 
      boost::recursive_mutex m_incoming_tx_lock; //!< incoming transaction lock
 
+     // @TODO Remove m_miner and m_miner_address references
      miner m_miner; //!< miner instance
      account_public_address m_miner_address; //!< address to mine to (for miner instance)
 
