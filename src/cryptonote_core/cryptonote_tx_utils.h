@@ -206,6 +206,13 @@ namespace cryptonote
     , uint32_t nonce
     );
 
+  bool find_nonce_for_given_block(
+  		const Blockchain *pbc,
+  		block& bl,
+  		const difficulty_type& diffic,
+  		uint64_t height
+				);
+
   class Blockchain;
   bool get_block_longhash(const Blockchain *pb, const block& b, crypto::hash& res, const uint64_t height, const int miners);
   void get_altblock_longhash(const block& b, crypto::hash& res, const uint64_t main_height, const uint64_t height,
