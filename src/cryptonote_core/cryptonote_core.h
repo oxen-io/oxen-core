@@ -46,7 +46,6 @@
 #include "service_node_voting.h"
 #include "service_node_list.h"
 #include "service_node_quorum_cop.h"
-#include "cryptonote_core/miner.h"
 #include "cryptonote_basic/connection_context.h"
 #include "cryptonote_basic/cryptonote_stat_info.h"
 #include "warnings.h"
@@ -126,7 +125,7 @@ namespace cryptonote
      /**
       * @brief calls various idle routines
       *
-      * @note see miner::on_idle and tx_memory_pool::on_idle
+      * @note see tx_memory_pool::on_idle
       *
       * @return true
       */
@@ -389,8 +388,8 @@ namespace cryptonote
      /**
       * @brief initializes the core as needed
       *
-      * This function initializes the transaction pool, the Blockchain, and
-      * a miner instance with parameters given on the command line (or defaults)
+      * This function initializes the transaction pool and Blockchain
+      * with parameters given on the command line (or defaults)
       *
       * @param vm command line parameters
       * @param test_options configuration options for testing
@@ -410,7 +409,7 @@ namespace cryptonote
      /**
       * @brief performs safe shutdown steps for core and core components
       *
-      * Uninitializes the miner instance, transaction pool, and Blockchain
+      * Uninitializes the transaction pool and Blockchain
       *
       * @return true
       */
@@ -1109,10 +1108,6 @@ namespace cryptonote
      i_cryptonote_protocol* m_pprotocol; //!< cryptonote protocol instance
 
      boost::recursive_mutex m_incoming_tx_lock; //!< incoming transaction lock
-
-     //m_miner and m_miner_addres are probably temporary here
-     miner m_miner; //!< miner instance
-     account_public_address m_miner_address; //!< address to mine to (for miner instance)
 
      std::string m_config_folder; //!< folder to look in for configs and other files
 

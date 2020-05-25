@@ -987,7 +987,7 @@ namespace cryptonote
     bl.minor_version = 7;
     bl.timestamp = 0;
     bl.nonce = nonce;
-    miner::find_nonce_for_given_block(NULL, bl, 1, 0);
+    find_nonce_for_given_block(NULL, bl, 1, 0);
     bl.invalidate_hashes();
     return true;
   }
@@ -1045,5 +1045,19 @@ namespace cryptonote
   void get_block_longhash_reorg(const uint64_t split_height)
   {
     rx_reorg(split_height);
+  }
+
+  bool find_nonce_for_given_block(const Blockchain *pbc, block &bl, const difficulty_type &diffic, uint64_t height)
+  {
+    for (; bl.nonce != std::numeric_limits<uint32_t>::max(); bl.nonce++) {
+      crypto::hash h;
+      get_block_longhash(pbc, bl, h, height, tools::get_max_concurrency());
+      if (check_hash(h, diffic)) {
+        bl.invalidate_hashes();
+        return true;
+      }
+    }
+    bl.invalidate_hashes();
+    return false;
   }
 }

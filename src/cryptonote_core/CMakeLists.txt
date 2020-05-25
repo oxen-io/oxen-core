@@ -39,7 +39,6 @@ add_library(cryptonote_core
   loki_name_system.cpp
   tx_pool.cpp
   tx_sanity_check.cpp
-  miner.cpp
   cryptonote_tx_utils.cpp)
 
 target_link_libraries(cryptonote_core

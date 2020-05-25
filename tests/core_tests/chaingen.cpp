@@ -643,7 +643,7 @@ loki_chain_generator::create_loki_name_system_tx_update_w_extra(cryptonote::acco
 static void fill_nonce(cryptonote::block& blk, const cryptonote::difficulty_type& diffic, uint64_t height)
 {
   blk.nonce = 0;
-  while (!cryptonote::miner::find_nonce_for_given_block(NULL, blk, diffic, height))
+  while (!find_nonce_for_given_block(NULL, blk, diffic, height))
     blk.timestamp++;
 }
 
