@@ -71,7 +71,6 @@ namespace cryptonote
     bool start(const account_public_address& adr, size_t threads_count, uint64_t stop_after = 0, bool slow_mining = false);
     uint64_t get_speed() const;
     uint32_t get_threads_count() const;
-    void send_stop_signal();
     bool stop();
     bool is_mining() const;
     const account_public_address& get_mining_address() const;
