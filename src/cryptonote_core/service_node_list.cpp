@@ -1266,6 +1266,15 @@ namespace service_nodes
     return true;
   }
 
+  static uint64_t service_node_index_list_shuffle_seed(crypto::hash const &hash, quorum_type type)
+  {
+    uint64_t result = 0;
+    std::memcpy(&result, hash.data, sizeof(result));
+    boost::endian::little_to_native_inplace(result);
+    result += static_cast<uint64_t>(type);
+    return result;
+  }
+
   static std::vector<size_t> generate_shuffled_service_node_index_list(
       size_t list_size,
       crypto::hash const &block_hash,
@@ -1276,12 +1285,7 @@ namespace service_nodes
     std::vector<size_t> result(list_size);
     std::iota(result.begin(), result.end(), 0);
 
-    uint64_t seed = 0;
-    std::memcpy(&seed, block_hash.data, std::min(sizeof(seed), sizeof(block_hash.data)));
-    boost::endian::little_to_native_inplace(seed);
-
-    seed += static_cast<uint64_t>(type);
-
+    uint64_t seed = service_node_index_list_shuffle_seed(block_hash, type);
     //       Shuffle 2
     //       |=================================|
     //       |                                 |
@@ -1317,10 +1321,10 @@ namespace service_nodes
     // state change *validators* want only active service nodes, but the state change *workers*
     // (i.e. the nodes to be tested) also include decommissioned service nodes.  (Prior to v12 there
     // are no decommissioned nodes, so this distinction is irrelevant for network concensus).
-    auto active_snode_list = state.active_service_nodes_infos();
-    decltype(active_snode_list) decomm_snode_list;
+    std::vector<pubkey_and_sninfo> const active_snode_list = state.active_service_nodes_infos();
+    std::vector<pubkey_and_sninfo> decomm_snode_list;
     if (hf_version >= cryptonote::network_version_12_checkpointing)
-      decomm_snode_list = state.decommissioned_service_nodes_infos();
+        decomm_snode_list = state.decommissioned_service_nodes_infos();
 
     quorum_type const max_quorum_type = max_quorum_type_for_hf(hf_version);
     for (int type_int = 0; type_int <= (int)max_quorum_type; type_int++)
@@ -1370,18 +1374,19 @@ namespace service_nodes
         // Further filter the active SN list for the blink quorum to only include SNs that are not
         // scheduled to finish unlocking between the quorum height and a few blocks after the
         // associated blink height.
-        active_snode_list.erase(std::remove_if(active_snode_list.begin(), active_snode_list.end(),
-            [active_until = state.height + BLINK_EXPIRY_BUFFER](auto &info) {
-              auto ruh = info.second->requested_unlock_height;
-              return ruh != KEY_IMAGE_AWAITING_UNLOCK_HEIGHT && ruh <= active_until;
-            }),
-            active_snode_list.end()
-        );
-        size_t total_nodes = active_snode_list.size();
-
-        if (total_nodes >= BLINK_MIN_VOTES)
+        pub_keys_indexes.reserve(active_snode_list.size());
+        uint64_t const active_until = state.height + BLINK_EXPIRY_BUFFER;
+        for (size_t index = 0; index < active_snode_list.size(); index++)
         {
-          pub_keys_indexes = generate_shuffled_service_node_index_list(total_nodes, state.block_hash, type);
+          pubkey_and_sninfo const &entry = active_snode_list[index];
+          uint64_t requested_unlock_height = entry.second->requested_unlock_height;
+          if (requested_unlock_height == KEY_IMAGE_AWAITING_UNLOCK_HEIGHT || requested_unlock_height > active_until)
+            pub_keys_indexes.push_back(index);
+        }
+
+        if (pub_keys_indexes.size() >= BLINK_MIN_VOTES)
+        {
+          tools::shuffle_portable(pub_keys_indexes.begin(), pub_keys_indexes.end(), service_node_index_list_shuffle_seed(state.block_hash, type));
           num_validators = std::min<size_t>(pub_keys_indexes.size(), BLINK_SUBQUORUM_SIZE);
         }
         // Otherwise leave empty to signal that there aren't enough SNs to form a usable quorum (to
