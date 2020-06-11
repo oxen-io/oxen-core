@@ -1334,69 +1334,79 @@ namespace service_nodes
       auto quorum           = std::make_shared<service_nodes::quorum>();
       std::vector<size_t> pub_keys_indexes;
 
-      if (type == quorum_type::obligations)
+      switch(type)
       {
-        size_t total_nodes         = active_snode_list.size() + decomm_snode_list.size();
-        num_validators             = std::min(active_snode_list.size(), STATE_CHANGE_QUORUM_SIZE);
-        pub_keys_indexes           = generate_shuffled_service_node_index_list(total_nodes, state.block_hash, type, num_validators, active_snode_list.size());
-        result.obligations         = quorum;
-        size_t num_remaining_nodes = total_nodes - num_validators;
-        num_workers                = std::min(num_remaining_nodes, std::max(STATE_CHANGE_MIN_NODES_TO_TEST, num_remaining_nodes/STATE_CHANGE_NTH_OF_THE_NETWORK_TO_TEST));
-      }
-      else if (type == quorum_type::checkpointing)
-      {
-        // Checkpoint quorums only exist every CHECKPOINT_INTERVAL blocks, but the height that gets
-        // used to generate the quorum (i.e. the `height` variable here) is actually `H -
-        // REORG_SAFETY_BUFFER_BLOCKS_POST_HF12`, where H is divisible by CHECKPOINT_INTERVAL, but
-        // REORG_SAFETY_BUFFER_BLOCKS_POST_HF12 is not (it equals 11).  Hence the addition here to
-        // "undo" the lag before checking to see if we're on an interval multiple:
-        if ((state.height + REORG_SAFETY_BUFFER_BLOCKS_POST_HF12) % CHECKPOINT_INTERVAL != 0)
-          continue; // Not on an interval multiple: no checkpointing quorum is defined.
-
-        size_t total_nodes = active_snode_list.size();
-
-        // TODO(loki): Soft fork, remove when testnet gets reset
-        if (nettype == cryptonote::TESTNET && state.height < 85357)
-          total_nodes = active_snode_list.size() + decomm_snode_list.size();
-
-        if (total_nodes >= CHECKPOINT_QUORUM_SIZE)
+        case quorum_type::obligations:
         {
-          pub_keys_indexes = generate_shuffled_service_node_index_list(total_nodes, state.block_hash, type);
-          num_validators   = std::min(pub_keys_indexes.size(), CHECKPOINT_QUORUM_SIZE);
+          size_t total_nodes         = active_snode_list.size() + decomm_snode_list.size();
+          num_validators             = std::min(active_snode_list.size(), STATE_CHANGE_QUORUM_SIZE);
+          pub_keys_indexes           = generate_shuffled_service_node_index_list(total_nodes, state.block_hash, type, num_validators, active_snode_list.size());
+          result.obligations         = quorum;
+          size_t num_remaining_nodes = total_nodes - num_validators;
+          num_workers                = std::min(num_remaining_nodes, std::max(STATE_CHANGE_MIN_NODES_TO_TEST, num_remaining_nodes/STATE_CHANGE_NTH_OF_THE_NETWORK_TO_TEST));
         }
-        result.checkpointing = quorum;
-      }
-      else if (type == quorum_type::blink)
-      {
-        if (state.height % BLINK_QUORUM_INTERVAL != 0)
+        break;
+
+        case quorum_type::checkpointing:
+        {
+          // Checkpoint quorums only exist every CHECKPOINT_INTERVAL blocks, but the height that gets
+          // used to generate the quorum (i.e. the `height` variable here) is actually `H -
+          // REORG_SAFETY_BUFFER_BLOCKS_POST_HF12`, where H is divisible by CHECKPOINT_INTERVAL, but
+          // REORG_SAFETY_BUFFER_BLOCKS_POST_HF12 is not (it equals 11).  Hence the addition here to
+          // "undo" the lag before checking to see if we're on an interval multiple:
+          if ((state.height + REORG_SAFETY_BUFFER_BLOCKS_POST_HF12) % CHECKPOINT_INTERVAL != 0)
+            continue; // Not on an interval multiple: no checkpointing quorum is defined.
+
+          size_t total_nodes = active_snode_list.size();
+
+          // TODO(loki): Soft fork, remove when testnet gets reset
+          if (nettype == cryptonote::TESTNET && state.height < 85357)
+            total_nodes = active_snode_list.size() + decomm_snode_list.size();
+
+          if (total_nodes >= CHECKPOINT_QUORUM_SIZE)
+          {
+            pub_keys_indexes = generate_shuffled_service_node_index_list(total_nodes, state.block_hash, type);
+            num_validators   = std::min(pub_keys_indexes.size(), CHECKPOINT_QUORUM_SIZE);
+          }
+          result.checkpointing = quorum;
+        }
+        break;
+
+        case quorum_type::blink:
+        {
+          if (state.height % BLINK_QUORUM_INTERVAL != 0)
+            continue;
+
+          // Further filter the active SN list for the blink quorum to only include SNs that are not
+          // scheduled to finish unlocking between the quorum height and a few blocks after the
+          // associated blink height.
+          pub_keys_indexes.reserve(active_snode_list.size());
+          uint64_t const active_until = state.height + BLINK_EXPIRY_BUFFER;
+          for (size_t index = 0; index < active_snode_list.size(); index++)
+          {
+            pubkey_and_sninfo const &entry = active_snode_list[index];
+            uint64_t requested_unlock_height = entry.second->requested_unlock_height;
+            if (requested_unlock_height == KEY_IMAGE_AWAITING_UNLOCK_HEIGHT || requested_unlock_height > active_until)
+              pub_keys_indexes.push_back(index);
+          }
+
+          if (pub_keys_indexes.size() >= BLINK_MIN_VOTES)
+          {
+            tools::shuffle_portable(pub_keys_indexes.begin(), pub_keys_indexes.end(), service_node_index_list_shuffle_seed(state.block_hash, type));
+            num_validators = std::min<size_t>(pub_keys_indexes.size(), BLINK_SUBQUORUM_SIZE);
+          }
+          // Otherwise leave empty to signal that there aren't enough SNs to form a usable quorum (to
+          // distinguish it from an invalid height, which gets left as a nullptr)
+          result.blink = quorum;
+        }
+        break;
+
+        default:
+        {
+          MERROR("Unhandled quorum type enum with value: " << type_int);
           continue;
-
-        // Further filter the active SN list for the blink quorum to only include SNs that are not
-        // scheduled to finish unlocking between the quorum height and a few blocks after the
-        // associated blink height.
-        pub_keys_indexes.reserve(active_snode_list.size());
-        uint64_t const active_until = state.height + BLINK_EXPIRY_BUFFER;
-        for (size_t index = 0; index < active_snode_list.size(); index++)
-        {
-          pubkey_and_sninfo const &entry = active_snode_list[index];
-          uint64_t requested_unlock_height = entry.second->requested_unlock_height;
-          if (requested_unlock_height == KEY_IMAGE_AWAITING_UNLOCK_HEIGHT || requested_unlock_height > active_until)
-            pub_keys_indexes.push_back(index);
         }
-
-        if (pub_keys_indexes.size() >= BLINK_MIN_VOTES)
-        {
-          tools::shuffle_portable(pub_keys_indexes.begin(), pub_keys_indexes.end(), service_node_index_list_shuffle_seed(state.block_hash, type));
-          num_validators = std::min<size_t>(pub_keys_indexes.size(), BLINK_SUBQUORUM_SIZE);
-        }
-        // Otherwise leave empty to signal that there aren't enough SNs to form a usable quorum (to
-        // distinguish it from an invalid height, which gets left as a nullptr)
-        result.blink = quorum;
-      }
-      else
-      {
-        MERROR("Unhandled quorum type enum with value: " << type_int);
-        continue;
+        break;
       }
 
       quorum->validators.reserve(num_validators);
