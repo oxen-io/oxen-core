@@ -467,6 +467,7 @@ namespace service_nodes
         }
         break;
 
+        case quorum_type::pulse:
         case quorum_type::blink:
         break;
       }

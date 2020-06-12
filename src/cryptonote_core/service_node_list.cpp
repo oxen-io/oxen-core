@@ -1308,14 +1308,20 @@ namespace service_nodes
     return result;
   }
 
-  static bool get_pulse_entropy_from_blockchain(cryptonote::BlockchainDB const &db, std::vector<crypto::hash> &entropy)
+  static bool get_pulse_entropy_from_blockchain(cryptonote::BlockchainDB const &db, std::vector<crypto::hash> &entropy, uint8_t pulse_round)
   {
     uint64_t current_height = db.height();
-    if (current_height < PULSE_QUORUM_ENTROPY_LAG)
+    uint64_t start_height   = current_height - PULSE_QUORUM_ENTROPY_LAG;
+    uint64_t end_height     = start_height + PULSE_QUORUM_SIZE;
+    std::vector<cryptonote::block> blocks;
+
+    try
     {
-      const bool DEVELOPMENT = true; // TODO(doyle): Cleanup
-      if (DEVELOPMENT)
+      const bool DEVELOPER_MODE = true;
+      if (current_height < PULSE_QUORUM_ENTROPY_LAG)
       {
+        if (DEVELOPER_MODE)
+        {
           entropy.resize(PULSE_QUORUM_SIZE);
           entropy[0]  = crypto::hash{"\x87\x28\x89\xe2\xe3\x63\xc7\x7d\xb6\x38\xbd\xa3\xa2\x00\x57\x2f\x3a\x01\x2d\x8a\xd1\x2c\xb6\xab\x00\x55\x6b\x60\xda\x25\xca"};
           entropy[1]  = crypto::hash{"\x27\xca\xab\x1e\xcf\x33\xa7\x49\x88\xba\x17\xb0\x28\xa4\x19\x76\x84\x7f\x71\xa7\xeb\x38\xb1\x16\x10\xa0\xe3\x89\xa3\xd7\xa6"};
@@ -1328,18 +1334,16 @@ namespace service_nodes
           entropy[8]  = crypto::hash{"\x8c\x81\x6c\x77\xf0\x62\x55\xff\x38\xec\x57\x22\x62\x2e\x49\xd4\x44\x5a\xe3\x02\x27\xb6\xb3\xe4\x3c\xc7\x9f\xb8\xc5\x90\xa1"};
           entropy[9]  = crypto::hash{"\x18\x8e\x4f\xb5\x99\x74\xec\x78\xf9\x7b\x36\x87\x14\x82\x05\x32\x07\xf3\x21\x21\x6d\x8e\xfd\x35\xe6\x70\xa3\x89\x17\x22\x4b"};
           entropy[10] = crypto::hash{"\xb7\xbe\x54\xe3\x21\xe3\xeb\x88\xda\xab\xf1\xf7\x50\xb9\xef\x98\xa5\xcf\x9f\x75\x81\x74\x16\xbc\x85\x78\x6e\x0c\xaa\x14\x99"};
-          return true;
+        }
+        else
+        {
+          return false;
+        }
       }
-
-      return false;
-    }
-
-    uint64_t start_height = current_height - PULSE_QUORUM_ENTROPY_LAG;
-    uint64_t end_height   = start_height + PULSE_QUORUM_SIZE;
-    std::vector<cryptonote::block> blocks;
-    try
-    {
-      blocks = db.get_blocks_range(start_height, end_height - 1 /*it is inclusive*/);
+      else
+      {
+        blocks = db.get_blocks_range(start_height, end_height - 1 /*it is inclusive*/);
+      }
     }
     catch(std::exception const &e)
     {
@@ -1351,13 +1355,39 @@ namespace service_nodes
     for (cryptonote::block const &block : blocks)
     {
       crypto::hash hash = {};
+      uint64_t const xor64 = ((uint64_t)pulse_round & 0xFF) <<  0 |
+                             ((uint64_t)pulse_round & 0xFF) <<  8 |
+                             ((uint64_t)pulse_round & 0xFF) << 16 |
+                             ((uint64_t)pulse_round & 0xFF) << 24 |
+                             ((uint64_t)pulse_round & 0xFF) << 32 |
+                             ((uint64_t)pulse_round & 0xFF) << 40 |
+                             ((uint64_t)pulse_round & 0xFF) << 48 |
+                             ((uint64_t)pulse_round & 0xFF) << 56;
       if (block.major_version >= HF_VERSION_PULSE)
       {
-        crypto::cn_fast_hash(block.pulse.random_value.data, sizeof(block.pulse.random_value), hash.data);
+        uint64_t random_value_xored[2];
+        static_assert(sizeof(block.pulse.random_value) == sizeof(random_value_xored), "Expected 16 byte size");
+
+        memcpy(&random_value_xored[0], block.pulse.random_value.data, sizeof(random_value_xored[0]));
+        memcpy(&random_value_xored[1], block.pulse.random_value.data + sizeof(random_value_xored[0]), sizeof(random_value_xored[1]));
+
+        random_value_xored[0] ^= xor64;
+        random_value_xored[1] ^= xor64;
+        crypto::cn_fast_hash(random_value_xored, sizeof(random_value_xored), hash.data);
       }
       else
       {
+        crypto::hash xor_hash;
+        static_assert(sizeof(xor_hash) % sizeof(xor64) == 0, "We want to construct a hash composed of the xor value");
+
+        for (size_t i = 0; i < sizeof(xor_hash) / sizeof(xor64); i++)
+        {
+          char *dest = xor_hash.data + (i * sizeof(xor64));
+          memcpy(dest, &xor64, sizeof(xor64));
+        }
+
         hash = cryptonote::get_block_hash(block);
+        crypto::hash_xor(hash, xor_hash);
       }
 
       assert(hash != crypto::null_hash);
@@ -1479,14 +1509,7 @@ namespace service_nodes
 
         case quorum_type::pulse:
         {
-          // NOTE: In Pulse, take the next Service Node Winner as the leader of
-          // the Pulse Quorum. We choose validators from the first half of the
-          // list and send them to the back of the list.  We need
-          // (PULSE_QUORUM_SIZE * 2) Service Nodes to avoid a chance of the
-          // just chosen Service Node re-entering the first half of the list and
-          // being selected again in the same quorum.
-
-          if (active_snode_list.size() < (PULSE_QUORUM_SIZE * 2) + 1 /*leader*/)
+          if (active_snode_list.size() < (PULSE_QUORUM_SIZE  + 1 /*leader*/))
           {
             // TODO(doyle): We need fallback code
             MERROR("Insufficient active Service Nodes for Pulse: " << active_snode_list.size());
@@ -1532,15 +1555,16 @@ namespace service_nodes
 
           for (size_t i = 0; i < pulse_entropy.size(); i++)
           {
+            size_t const partition_index = std::min(pulse_candidates.size() / 2, pulse_candidates.size());
+
             std::mt19937_64 rng(quorum_rng_seed(pulse_entropy[i], type));
-            size_t candidate_index             = tools::uniform_distribution_portable(rng, pulse_candidates.size() / 2);
+            size_t candidate_index             = tools::uniform_distribution_portable(rng, partition_index);
             pubkey_and_sninfo const *candidate = pulse_candidates[candidate_index];
 
             quorum->validators.push_back(candidate->first);
             pulse_candidates.erase(pulse_candidates.begin() + candidate_index);
 
             // NOTE: Send candidate to the back of the list
-            pulse_candidates.push_back(candidate);
             auto &info_ptr = state.service_nodes_infos.at(candidate->first);
             duplicate_info(info_ptr).last_height_validating_for_pulse = state.height;
           }
@@ -1667,7 +1691,7 @@ namespace service_nodes
 
     // TODO(doyle): Error handling, we assume it works
     std::vector<crypto::hash> entropy;
-    if (hf_version >= HF_VERSION_PULSE) get_pulse_entropy_from_blockchain(db, entropy);
+    if (hf_version >= HF_VERSION_PULSE) get_pulse_entropy_from_blockchain(db, entropy, 0 /*pulse_round*/);
     quorums = generate_quorums(*this, active_snode_list, nettype, hf_version, entropy);
   }
 
