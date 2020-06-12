@@ -5,6 +5,10 @@
 #include "service_node_voting.h"
 
 namespace service_nodes {
+  constexpr size_t PULSE_QUORUM_ENTROPY_LAG = 21; // How many blocks back from the tip of the Blockchain to source entropy for the Pulse quorums.
+  constexpr size_t PULSE_QUORUM_SIZE        = 11;
+  static_assert(PULSE_QUORUM_ENTROPY_LAG >= PULSE_QUORUM_SIZE, "We need to pull atleast PULSE_QUORUM_SIZE number of blocks from the Blockchain, we can't if the amount of blocks to go back from the tip of the Blockchain is less than the blocks we need.");
+
   // Service node decommissioning: as service nodes stay up they earn "credits" (measured in blocks)
   // towards a future outage.  A new service node starts out with INITIAL_CREDIT, and then builds up
   // CREDIT_PER_DAY for each day the service node remains active up to a maximum of
@@ -187,7 +191,8 @@ namespace service_nodes {
     return
         hf_version <= cryptonote::network_version_12_checkpointing ? quorum_type::obligations :
         hf_version <  cryptonote::network_version_14_blink         ? quorum_type::checkpointing :
-        quorum_type::blink;
+        hf_version <  HF_VERSION_PULSE                             ? quorum_type::blink :
+        quorum_type::pulse;
   }
 
   constexpr uint64_t staking_num_lock_blocks(cryptonote::network_type nettype)

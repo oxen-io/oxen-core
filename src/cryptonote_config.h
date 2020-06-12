@@ -172,6 +172,7 @@ static_assert(STAKING_PORTIONS % 12 == 0, "Use a multiple of twelve, so that it 
 #define HF_VERSION_REJECT_SIGS_IN_COINBASE      cryptonote::network_version_16
 #define HF_VERSION_ENFORCE_MIN_AGE              cryptonote::network_version_16
 #define HF_VERSION_EFFECTIVE_SHORT_TERM_MEDIAN_IN_PENALTY cryptonote::network_version_16
+#define HF_VERSION_PULSE cryptonote::network_version_16
 
 #define PER_KB_FEE_QUANTIZATION_DECIMALS        8
 

@@ -59,6 +59,7 @@ namespace service_nodes
     obligations = 0,
     checkpointing,
     blink,
+    pulse,
     _count
   };
 
@@ -68,6 +69,7 @@ namespace service_nodes
       case quorum_type::obligations:   return os << "obligation";
       case quorum_type::checkpointing: return os << "checkpointing";
       case quorum_type::blink:         return os << "blink";
+      case quorum_type::pulse:         return os << "pulse";
       default: assert(false);          return os << "xx_unhandled_type";
     }
   }
