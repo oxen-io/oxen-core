@@ -416,6 +416,20 @@ namespace cryptonote
   /************************************************************************/
   /*                                                                      */
   /************************************************************************/
+  struct pulse_random_value { unsigned char data[16]; };
+  struct pulse_header
+  {
+    pulse_random_value random_value;
+    uint8_t            round;
+    uint16_t           validator_participation_bits;
+
+    BEGIN_SERIALIZE()
+      FIELD(random_value);
+      FIELD(round);
+      FIELD(validator_participation_bits);
+    END_SERIALIZE();
+  };
+
   struct block_header
   {
     uint8_t major_version = cryptonote::network_version_7;
@@ -423,13 +437,17 @@ namespace cryptonote
     uint64_t timestamp;
     crypto::hash  prev_id;
     uint32_t nonce;
+    pulse_header pulse;
 
     BEGIN_SERIALIZE()
       VARINT_FIELD(major_version)
       VARINT_FIELD(minor_version)
       VARINT_FIELD(timestamp)
       FIELD(prev_id)
-      FIELD(nonce)
+      if (major_version >= HF_VERSION_PULSE)
+        FIELD(pulse)
+      else
+        FIELD(nonce)
     END_SERIALIZE()
   };
 
@@ -595,6 +613,7 @@ namespace std {
 
 BLOB_SERIALIZER(cryptonote::txout_to_key);
 BLOB_SERIALIZER(cryptonote::txout_to_scripthash);
+BLOB_SERIALIZER(cryptonote::pulse_random_value);
 
 VARIANT_TAG(cryptonote::txin_gen, "gen", 0xff);
 VARIANT_TAG(cryptonote::txin_to_script, "script", 0x0);

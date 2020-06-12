@@ -107,6 +107,7 @@ namespace service_nodes
       v2_ed25519,
       v3_quorumnet,
       v4_noproofs,
+      v5_pulse,
 
       _count
     };
@@ -179,6 +180,7 @@ namespace service_nodes
     uint64_t                           last_ip_change_height = 0; // The height of the last quorum penalty for changing IPs
     version_t                          version = tools::enum_top<version_t>;
     uint8_t                            registration_hf_version = 0;
+    uint64_t                           last_height_validating_for_pulse = 0;
 
     service_node_info() = default;
     bool is_fully_funded() const { return total_contributed >= staking_requirement; }
@@ -222,6 +224,8 @@ namespace service_nodes
           VARINT_FIELD_N("quorumnet_port", fake_port)
         }
       }
+      if (version >= version_t::v5_pulse)
+        VARINT_FIELD(last_height_validating_for_pulse);
     END_SERIALIZE()
   };
 
@@ -487,7 +491,6 @@ namespace service_nodes
       friend bool operator<(const state_t &s, block_height h)   { return s.height < h; }
       friend bool operator<(block_height h, const state_t &s)   { return        h < s.height; }
 
-      std::vector<pubkey_and_sninfo>  active_service_nodes_infos() const; // return: Filtered pubkey-sorted vector of service nodes that are active (fully funded and *not* decommissioned).
       std::vector<pubkey_and_sninfo>  decommissioned_service_nodes_infos() const; // return: All nodes that are fully funded *and* decommissioned.
       std::vector<crypto::public_key> get_expired_nodes(cryptonote::BlockchainDB const &db, cryptonote::network_type nettype, uint8_t hf_version, uint64_t block_height) const;
       void update_from_block(
