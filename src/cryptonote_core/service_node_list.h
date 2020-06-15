@@ -98,6 +98,17 @@ namespace service_nodes
     void store(const crypto::public_key &pubkey, cryptonote::Blockchain &blockchain);
   };
 
+  struct pulse_sort_key_t
+  {
+    uint64_t last_height_validating_in_quorum = 0;
+    uint8_t  quorum_index = 0;
+
+    BEGIN_SERIALIZE_OBJECT()
+      VARINT_FIELD(last_height_validating_in_quorum)
+      VARINT_FIELD(quorum_index)
+    END_SERIALIZE()
+  };
+
   struct service_node_info // registration information
   {
     enum class version_t : uint8_t
@@ -180,7 +191,7 @@ namespace service_nodes
     uint64_t                           last_ip_change_height = 0; // The height of the last quorum penalty for changing IPs
     version_t                          version = tools::enum_top<version_t>;
     uint8_t                            registration_hf_version = 0;
-    uint64_t                           last_height_validating_for_pulse = 0;
+    pulse_sort_key_t                   pulse_sort_key;
 
     service_node_info() = default;
     bool is_fully_funded() const { return total_contributed >= staking_requirement; }
@@ -199,9 +210,6 @@ namespace service_nodes
       VARINT_FIELD(last_reward_transaction_index)
       VARINT_FIELD(decommission_count)
       VARINT_FIELD(active_since_height)
-      if (version >= version_t::v5_pulse_recomm_credit)
-        VARINT_FIELD(recommission_credit)
-
       VARINT_FIELD(last_decommission_height)
       FIELD(contributors)
       VARINT_FIELD(total_contributed)
@@ -228,7 +236,10 @@ namespace service_nodes
         }
       }
       if (version >= version_t::v5_pulse_recomm_credit)
-        VARINT_FIELD(last_height_validating_for_pulse);
+      {
+        VARINT_FIELD(recommission_credit)
+        FIELD(pulse_sort_key);
+      }
     END_SERIALIZE()
   };
 
