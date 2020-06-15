@@ -1325,7 +1325,7 @@ namespace service_nodes
     // are no decommissioned nodes, so this distinction is irrelevant for network concensus).
     std::vector<pubkey_and_sninfo> decomm_snode_list;
     if (hf_version >= cryptonote::network_version_12_checkpointing)
-        decomm_snode_list = state.decommissioned_service_nodes_infos();
+      decomm_snode_list = state.decommissioned_service_nodes_infos();
 
     quorum_type const max_quorum_type = max_quorum_type_for_hf(hf_version);
     for (int type_int = 0; type_int <= (int)max_quorum_type; type_int++)
@@ -1465,15 +1465,19 @@ namespace service_nodes
           }
 
           // NOTE: Sort ascending in height i.e. sort preferring the longest time since the validator was in a Pulse quorum.
-          std::sort(pulse_candidates.begin(), pulse_candidates.end(), [](pubkey_and_sninfo const *a, pubkey_and_sninfo const *b) {
-                      bool result = a->second->last_height_validating_for_pulse < b->second->last_height_validating_for_pulse;
+          std::stable_sort(pulse_candidates.begin(), pulse_candidates.end(), [](pubkey_and_sninfo const *a, pubkey_and_sninfo const *b) {
+                      auto a_key  = std::make_pair(a->second->pulse_sort_key.last_height_validating_in_quorum, a->second->pulse_sort_key.quorum_index);
+                      auto b_key  = std::make_pair(b->second->pulse_sort_key.last_height_validating_in_quorum, b->second->pulse_sort_key.quorum_index);
+                      bool result = a_key < b_key;
                       return result;
                     });
 
+          // NOTE: Divide the list in half, select validators from the first half of the list.
+          // Remove them from the list of candidates once chosen.
+          size_t const midpoint = pulse_candidates.size() / 2;
           for (size_t i = 0; i < pulse_entropy.size(); i++)
           {
-            size_t const partition_index = std::min(pulse_candidates.size() / 2, pulse_candidates.size());
-
+            size_t const partition_index = std::min(midpoint, pulse_candidates.size());
             std::mt19937_64 rng(quorum_rng_seed(pulse_entropy[i], type));
             size_t candidate_index             = tools::uniform_distribution_portable(rng, partition_index);
             pubkey_and_sninfo const *candidate = pulse_candidates[candidate_index];
@@ -1483,7 +1487,9 @@ namespace service_nodes
 
             // NOTE: Send candidate to the back of the list
             auto &info_ptr = state.service_nodes_infos.at(candidate->first);
-            duplicate_info(info_ptr).last_height_validating_for_pulse = state.height;
+            service_node_info &new_info = duplicate_info(info_ptr);
+            new_info.pulse_sort_key.last_height_validating_in_quorum = state.height;
+            new_info.pulse_sort_key.quorum_index = quorum->validators.size() - 1;
           }
         }
         break;
@@ -2443,6 +2449,11 @@ namespace service_nodes
       {
         // Nothing to do here (the missing data will be generated in the new proofs db via uptime proofs).
         info.version = version_t::v4_noproofs;
+      }
+      if (info.version < version_t::v5_pulse)
+      {
+        info.version = version_t::v5_pulse;
+        info.pulse_sort_key.last_height_validating_in_quorum = info.last_reward_block_height;
       }
       // Make sure we handled any future state version upgrades:
       assert(info.version == tools::enum_top<decltype(info.version)>);
