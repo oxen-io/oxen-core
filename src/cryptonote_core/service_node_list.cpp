@@ -1574,6 +1574,8 @@ namespace service_nodes
             new_info.pulse_sort_key.last_height_validating_in_quorum = state.height;
             new_info.pulse_sort_key.quorum_index = quorum->validators.size() - 1;
           }
+
+          result.pulse = quorum;
         }
         break;
 
