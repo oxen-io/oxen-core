@@ -1371,14 +1371,6 @@ namespace service_nodes
     for (cryptonote::block const &block : blocks)
     {
       crypto::hash hash = {};
-      uint64_t const xor64 = ((uint64_t)pulse_round & 0xFF) <<  0 |
-                             ((uint64_t)pulse_round & 0xFF) <<  8 |
-                             ((uint64_t)pulse_round & 0xFF) << 16 |
-                             ((uint64_t)pulse_round & 0xFF) << 24 |
-                             ((uint64_t)pulse_round & 0xFF) << 32 |
-                             ((uint64_t)pulse_round & 0xFF) << 40 |
-                             ((uint64_t)pulse_round & 0xFF) << 48 |
-                             ((uint64_t)pulse_round & 0xFF) << 56;
       if (block.major_version >= cryptonote::network_version_16)
       {
         std::array<uint8_t, 1 + sizeof(block.pulse.random_value)> src = {pulse_round};
