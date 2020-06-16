@@ -191,7 +191,7 @@ namespace service_nodes {
     return
         hf_version <= cryptonote::network_version_12_checkpointing ? quorum_type::obligations :
         hf_version <  cryptonote::network_version_14_blink         ? quorum_type::checkpointing :
-        hf_version <  HF_VERSION_PULSE                             ? quorum_type::blink :
+        hf_version <  cryptonote::network_version_16               ? quorum_type::blink :
         quorum_type::pulse;
   }
 

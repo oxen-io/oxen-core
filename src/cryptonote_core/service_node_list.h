@@ -98,14 +98,20 @@ namespace service_nodes
     void store(const crypto::public_key &pubkey, cryptonote::Blockchain &blockchain);
   };
 
-  struct pulse_sort_key_t
+  struct pulse_sort_key
   {
     uint64_t last_height_validating_in_quorum = 0;
-    uint8_t  quorum_index = 0;
+    uint8_t quorum_index                      = 0;
+
+    bool operator<(pulse_sort_key const &other) const
+    {
+      bool result = std::make_pair(last_height_validating_in_quorum, quorum_index) < std::make_pair(other.last_height_validating_in_quorum, other.quorum_index);
+      return result;
+    }
 
     BEGIN_SERIALIZE_OBJECT()
       VARINT_FIELD(last_height_validating_in_quorum)
-      VARINT_FIELD(quorum_index)
+      FIELD(quorum_index)
     END_SERIALIZE()
   };
 
@@ -191,7 +197,7 @@ namespace service_nodes
     uint64_t                           last_ip_change_height = 0; // The height of the last quorum penalty for changing IPs
     version_t                          version = tools::enum_top<version_t>;
     uint8_t                            registration_hf_version = 0;
-    pulse_sort_key_t                   pulse_sort_key;
+    pulse_sort_key                     pulse_sorter;
 
     service_node_info() = default;
     bool is_fully_funded() const { return total_contributed >= staking_requirement; }
@@ -238,7 +244,7 @@ namespace service_nodes
       if (version >= version_t::v5_pulse_recomm_credit)
       {
         VARINT_FIELD(recommission_credit)
-        FIELD(pulse_sort_key);
+        FIELD(pulse_sorter)
       }
     END_SERIALIZE()
   };
