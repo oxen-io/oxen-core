@@ -444,10 +444,9 @@ namespace cryptonote
       VARINT_FIELD(minor_version)
       VARINT_FIELD(timestamp)
       FIELD(prev_id)
-      if (major_version >= HF_VERSION_PULSE)
+      FIELD(nonce)
+      if (major_version >= cryptonote::network_version_16)
         FIELD(pulse)
-      else
-        FIELD(nonce)
     END_SERIALIZE()
   };
 

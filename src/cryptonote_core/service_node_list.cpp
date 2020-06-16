@@ -1280,31 +1280,18 @@ namespace service_nodes
                              ((uint64_t)pulse_round & 0xFF) << 40 |
                              ((uint64_t)pulse_round & 0xFF) << 48 |
                              ((uint64_t)pulse_round & 0xFF) << 56;
-      if (block.major_version >= HF_VERSION_PULSE)
+      if (block.major_version >= cryptonote::network_version_16)
       {
-        uint64_t random_value_xored[2];
-        static_assert(sizeof(block.pulse.random_value) == sizeof(random_value_xored), "Expected 16 byte size");
-
-        memcpy(&random_value_xored[0], block.pulse.random_value.data, sizeof(random_value_xored[0]));
-        memcpy(&random_value_xored[1], block.pulse.random_value.data + sizeof(random_value_xored[0]), sizeof(random_value_xored[1]));
-
-        random_value_xored[0] ^= xor64;
-        random_value_xored[1] ^= xor64;
-        crypto::cn_fast_hash(random_value_xored, sizeof(random_value_xored), hash.data);
+        std::array<uint8_t, 1 + sizeof(block.pulse.random_value)> src = {pulse_round};
+        std::copy(std::begin(block.pulse.random_value.data), std::end(block.pulse.random_value.data), src.begin() + 1);
+        crypto::cn_fast_hash(src.data(), src.size(), hash.data);
       }
       else
       {
-        crypto::hash xor_hash;
-        static_assert(sizeof(xor_hash) % sizeof(xor64) == 0, "We want to construct a hash composed of the xor value");
-
-        for (size_t i = 0; i < sizeof(xor_hash) / sizeof(xor64); i++)
-        {
-          char *dest = xor_hash.data + (i * sizeof(xor64));
-          memcpy(dest, &xor64, sizeof(xor64));
-        }
-
-        hash = cryptonote::get_block_hash(block);
-        crypto::hash_xor(hash, xor_hash);
+        crypto::hash block_hash = cryptonote::get_block_hash(block);
+        std::array<uint8_t, 1 + sizeof(hash)> src = {pulse_round};
+        std::copy(std::begin(block_hash.data), std::end(block_hash.data), src.begin() + 1);
+        crypto::cn_fast_hash(src.data(), src.size(), hash.data);
       }
 
       assert(hash != crypto::null_hash);
@@ -1439,57 +1426,46 @@ namespace service_nodes
             continue;
           }
 
+          // NOTE: Find the leader for this block
+          block_winner winner = state.get_block_winner();
+          quorum->workers.push_back(winner.key);
+
           std::vector<pubkey_and_sninfo const *> pulse_candidates;
           pulse_candidates.reserve(active_snode_list.size());
-
-          // TODO(doyle): Support leaders failing and iterating the round for this block.
-          // NOTE: Find the leader for this block
+          for (auto &node : active_snode_list)
           {
-            auto best_leader_index = static_cast<size_t>(-1);
-            auto best_reward_time  = std::make_pair(static_cast<uint64_t>(-1), static_cast<uint32_t>(-1));
-            for (size_t node_index = 0; node_index < active_snode_list.size(); node_index++)
-            {
-              pubkey_and_sninfo const &node = active_snode_list[node_index];
-              auto reward_time = std::make_pair(node.second->last_reward_block_height, node.second->last_reward_transaction_index);
-              if (reward_time < best_reward_time)
-              {
-                best_reward_time  = reward_time;
-                best_leader_index = node_index;
-              }
-
+            if (node.first != winner.key)
               pulse_candidates.push_back(&node);
-            }
-
-            quorum->workers.push_back(pulse_candidates[best_leader_index]->first);
-            pulse_candidates.erase(pulse_candidates.begin() + best_leader_index);
           }
 
           // NOTE: Sort ascending in height i.e. sort preferring the longest time since the validator was in a Pulse quorum.
           std::stable_sort(pulse_candidates.begin(), pulse_candidates.end(), [](pubkey_and_sninfo const *a, pubkey_and_sninfo const *b) {
-                      auto a_key  = std::make_pair(a->second->pulse_sort_key.last_height_validating_in_quorum, a->second->pulse_sort_key.quorum_index);
-                      auto b_key  = std::make_pair(b->second->pulse_sort_key.last_height_validating_in_quorum, b->second->pulse_sort_key.quorum_index);
-                      bool result = a_key < b_key;
+                      bool result = a->second->pulse_sorter < b->second->pulse_sorter;
                       return result;
                     });
 
           // NOTE: Divide the list in half, select validators from the first half of the list.
-          // Remove them from the list of candidates once chosen.
-          size_t const midpoint = pulse_candidates.size() / 2;
-          for (size_t i = 0; i < pulse_entropy.size(); i++)
+          // Swap the chosen validator into first half of the list.
+          auto running_it              = pulse_candidates.begin();
+          size_t const partition_index = pulse_candidates.size() / 2;
+          for (crypto::hash const &entropy : pulse_entropy)
           {
-            size_t const partition_index = std::min(midpoint, pulse_candidates.size());
-            std::mt19937_64 rng(quorum_rng_seed(pulse_entropy[i], type));
-            size_t candidate_index             = tools::uniform_distribution_portable(rng, partition_index);
-            pubkey_and_sninfo const *candidate = pulse_candidates[candidate_index];
+            std::mt19937_64 rng(quorum_rng_seed(entropy, type));
+            size_t candidate_index = tools::uniform_distribution_portable(rng, partition_index - std::distance(pulse_candidates.begin(), running_it));
+            std::swap(*running_it, *(pulse_candidates.begin() + candidate_index));
+            running_it++;
+          }
 
-            quorum->validators.push_back(candidate->first);
-            pulse_candidates.erase(pulse_candidates.begin() + candidate_index);
+          for (auto it = pulse_candidates.begin(); it != running_it; it++)
+          {
+            crypto::public_key const &validator_key = (*it)->first;
+            quorum->validators.push_back(validator_key);
 
             // NOTE: Send candidate to the back of the list
-            auto &info_ptr = state.service_nodes_infos.at(candidate->first);
+            auto &info_ptr = state.service_nodes_infos.at(validator_key);
             service_node_info &new_info = duplicate_info(info_ptr);
-            new_info.pulse_sort_key.last_height_validating_in_quorum = state.height;
-            new_info.pulse_sort_key.quorum_index = quorum->validators.size() - 1;
+            new_info.pulse_sorter.last_height_validating_in_quorum = state.height;
+            new_info.pulse_sorter.quorum_index = quorum->validators.size() - 1;
           }
 
           result.pulse = quorum;
@@ -1616,7 +1592,7 @@ namespace service_nodes
 
     // TODO(doyle): Error handling, we assume it works
     std::vector<crypto::hash> entropy;
-    if (hf_version >= HF_VERSION_PULSE) get_pulse_entropy_from_blockchain(db, entropy, 0 /*pulse_round*/);
+    if (hf_version >= cryptonote::network_version_16) get_pulse_entropy_from_blockchain(db, entropy, 0 /*pulse_round*/);
     quorums = generate_quorums(*this, active_snode_list, nettype, hf_version, entropy);
   }
 
@@ -2455,7 +2431,7 @@ namespace service_nodes
       if (info.version < version_t::v5_pulse)
       {
         info.version = version_t::v5_pulse;
-        info.pulse_sort_key.last_height_validating_in_quorum = info.last_reward_block_height;
+        info.pulse_sorter.last_height_validating_in_quorum = info.last_reward_block_height;
       }
       // Make sure we handled any future state version upgrades:
       assert(info.version == tools::enum_top<decltype(info.version)>);
