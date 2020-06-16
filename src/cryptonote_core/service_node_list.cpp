@@ -1262,16 +1262,32 @@ namespace service_nodes
     return true;
   }
 
-  static uint64_t quorum_rng_seed(crypto::hash const &hash, quorum_type type)
+  static uint64_t quorum_rng_seed(uint8_t hf_version, crypto::hash const &hash, quorum_type type)
   {
     uint64_t result = 0;
-    std::memcpy(&result, hash.data, sizeof(result));
-    boost::endian::little_to_native_inplace(result);
-    result += static_cast<uint64_t>(type);
+    if (hf_version >= cryptonote::network_version_16)
+    {
+      std::array<uint32_t, (sizeof(hash) / sizeof(uint32_t)) + 1> src = {static_cast<uint32_t>(type)};
+      std::memcpy(&src[1], &hash, sizeof(hash));
+      for (uint32_t &val : src) boost::endian::little_to_native_inplace(val);
+      std::seed_seq sequence(src.begin(), src.end());
+
+      uint32_t seeds[2];
+      sequence.generate(std::begin(seeds), std::end(seeds));
+      result = (static_cast<uint64_t>(seeds[1]) << 32) | static_cast<uint64_t>(seeds[0]);
+    }
+    else
+    {
+      std::memcpy(&result, hash.data, sizeof(result));
+      boost::endian::little_to_native_inplace(result);
+      result += static_cast<uint64_t>(type);
+    }
+
     return result;
   }
 
   static std::vector<size_t> generate_shuffled_service_node_index_list(
+      uint8_t hf_version,
       size_t list_size,
       crypto::hash const &block_hash,
       quorum_type type,
@@ -1281,7 +1297,7 @@ namespace service_nodes
     std::vector<size_t> result(list_size);
     std::iota(result.begin(), result.end(), 0);
 
-    uint64_t seed = quorum_rng_seed(block_hash, type);
+    uint64_t seed = quorum_rng_seed(hf_version, block_hash, type);
     //       Shuffle 2
     //       |=================================|
     //       |                                 |
@@ -1417,7 +1433,7 @@ namespace service_nodes
           {
             size_t total_nodes         = active_snode_list.size() + decomm_snode_list.size();
             num_validators             = std::min(active_snode_list.size(), STATE_CHANGE_QUORUM_SIZE);
-            pub_keys_indexes           = generate_shuffled_service_node_index_list(total_nodes, state.block_hash, type, num_validators, active_snode_list.size());
+            pub_keys_indexes           = generate_shuffled_service_node_index_list(hf_version, total_nodes, state.block_hash, type, num_validators, active_snode_list.size());
             result.obligations         = quorum;
             size_t num_remaining_nodes = total_nodes - num_validators;
             num_workers                = std::min(num_remaining_nodes, std::max(STATE_CHANGE_MIN_NODES_TO_TEST, num_remaining_nodes/STATE_CHANGE_NTH_OF_THE_NETWORK_TO_TEST));
@@ -1440,7 +1456,7 @@ namespace service_nodes
 
             if (total_nodes >= CHECKPOINT_QUORUM_SIZE)
             {
-              pub_keys_indexes = generate_shuffled_service_node_index_list(total_nodes, state.block_hash, type);
+              pub_keys_indexes = generate_shuffled_service_node_index_list(hf_version, total_nodes, state.block_hash, type);
               num_validators   = std::min(pub_keys_indexes.size(), CHECKPOINT_QUORUM_SIZE);
             }
             result.checkpointing = quorum;
@@ -1466,7 +1482,7 @@ namespace service_nodes
 
             if (pub_keys_indexes.size() >= BLINK_MIN_VOTES)
             {
-              tools::shuffle_portable(pub_keys_indexes.begin(), pub_keys_indexes.end(), quorum_rng_seed(state.block_hash, type));
+              tools::shuffle_portable(pub_keys_indexes.begin(), pub_keys_indexes.end(), quorum_rng_seed(hf_version, state.block_hash, type));
               num_validators = std::min<size_t>(pub_keys_indexes.size(), BLINK_SUBQUORUM_SIZE);
             }
             // Otherwise leave empty to signal that there aren't enough SNs to form a usable quorum (to
@@ -1533,7 +1549,7 @@ namespace service_nodes
           size_t const partition_index = pulse_candidates.size() / 2;
           for (crypto::hash const &entropy : pulse_entropy)
           {
-            std::mt19937_64 rng(quorum_rng_seed(entropy, type));
+            std::mt19937_64 rng(quorum_rng_seed(hf_version, entropy, type));
             size_t candidate_index = tools::uniform_distribution_portable(rng, partition_index - std::distance(pulse_candidates.begin(), running_it));
             std::swap(*running_it, *(pulse_candidates.begin() + candidate_index));
             running_it++;
