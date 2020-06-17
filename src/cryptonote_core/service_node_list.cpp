@@ -1469,6 +1469,60 @@ namespace service_nodes
     return true;
   }
 
+  static service_nodes::quorum generate_pulse_quorum(service_node_list::state_t const &state, uint8_t hf_version, std::vector<pubkey_and_sninfo> const &active_snode_list, std::vector<crypto::hash> const &pulse_entropy)
+  {
+    service_nodes::quorum result = {};
+    if (active_snode_list.size() < (PULSE_QUORUM_SIZE  + 1 /*leader*/))
+    {
+      LOG_PRINT_L2("Insufficient active Service Nodes for Pulse: " << active_snode_list.size() << ", on block(" << state.height << "): " << state.block_hash);
+      return result;
+    }
+
+    if (pulse_entropy.size() < PULSE_QUORUM_SIZE)
+    {
+      LOG_PRINT_L2("Blockchain has insufficient blocks to generate Pulse data on block(" << state.height << "): " << state.block_hash);
+      return result;
+    }
+
+    // NOTE: Find the leader for this block
+    block_winner winner = state.get_block_winner();
+    result.workers.push_back(winner.key);
+
+    std::vector<pubkey_and_sninfo const *> pulse_candidates;
+    pulse_candidates.reserve(active_snode_list.size());
+    for (auto &node : active_snode_list)
+    {
+      if (node.first != winner.key)
+        pulse_candidates.push_back(&node);
+    }
+
+    // NOTE: Sort ascending in height i.e. sort preferring the longest time since the validator was in a Pulse quorum.
+    std::stable_sort(pulse_candidates.begin(), pulse_candidates.end(), [](pubkey_and_sninfo const *a, pubkey_and_sninfo const *b) {
+                bool result = a->second->pulse_sorter < b->second->pulse_sorter;
+                return result;
+              });
+
+    // NOTE: Divide the list in half, select validators from the first half of the list.
+    // Swap the chosen validator into first half of the list.
+    auto running_it              = pulse_candidates.begin();
+    size_t const partition_index = pulse_candidates.size() / 2;
+    for (crypto::hash const &entropy : pulse_entropy)
+    {
+      std::mt19937_64 rng = quorum_rng(hf_version, entropy, quorum_type::pulse);
+      size_t candidate_index = tools::uniform_distribution_portable(rng, partition_index - std::distance(pulse_candidates.begin(), running_it));
+      std::swap(*running_it, *(pulse_candidates.begin() + candidate_index));
+      running_it++;
+    }
+
+    for (auto it = pulse_candidates.begin(); it != running_it; it++)
+    {
+      crypto::public_key const &validator_key = (*it)->first;
+      result.validators.push_back(validator_key);
+    }
+
+    return result;
+  }
+
   static quorum_manager generate_quorums(service_node_list::state_t &state, std::vector<pubkey_and_sninfo> const &active_snode_list, cryptonote::network_type nettype, uint8_t hf_version, std::vector<crypto::hash> &pulse_entropy)
   {
     quorum_manager result = {};
@@ -1582,61 +1636,21 @@ namespace service_nodes
 
         case quorum_type::pulse:
         {
-          if (active_snode_list.size() < (PULSE_QUORUM_SIZE  + 1 /*leader*/))
+          *quorum = generate_pulse_quorum(state, hf_version, active_snode_list, pulse_entropy);
+          if (quorum->workers.size() == 1 && quorum->validators.size() == PULSE_QUORUM_SIZE)
           {
-            LOG_PRINT_L2("Insufficient active Service Nodes for Pulse: " << active_snode_list.size() << ", on block(" << state.height << "): " << state.block_hash);
-            continue;
+            for (size_t quorum_index = 0 ; quorum_index < quorum->validators.size(); quorum_index++)
+            {
+              // NOTE: Send candidate to the back of the list
+              crypto::public_key const &key                          = quorum->validators[quorum_index];
+              auto &info_ptr                                         = state.service_nodes_infos.at(key);
+              service_node_info &new_info                            = duplicate_info(info_ptr);
+              new_info.pulse_sorter.last_height_validating_in_quorum = state.height;
+              new_info.pulse_sorter.quorum_index                     = quorum_index;
+            }
+            result.pulse = quorum;
           }
 
-          if (pulse_entropy.size() < PULSE_QUORUM_SIZE)
-          {
-            LOG_PRINT_L2("Blockchain has insufficient blocks to generate Pulse data on block(" << state.height << "): " << state.block_hash);
-            continue;
-          }
-
-          // NOTE: Find the leader for this block
-          block_winner winner = state.get_block_winner();
-          quorum->workers.push_back(winner.key);
-
-          std::vector<pubkey_and_sninfo const *> pulse_candidates;
-          pulse_candidates.reserve(active_snode_list.size());
-          for (auto &node : active_snode_list)
-          {
-            if (node.first != winner.key)
-              pulse_candidates.push_back(&node);
-          }
-
-          // NOTE: Sort ascending in height i.e. sort preferring the longest time since the validator was in a Pulse quorum.
-          std::stable_sort(pulse_candidates.begin(), pulse_candidates.end(), [](pubkey_and_sninfo const *a, pubkey_and_sninfo const *b) {
-                      bool result = a->second->pulse_sorter < b->second->pulse_sorter;
-                      return result;
-                    });
-
-          // NOTE: Divide the list in half, select validators from the first half of the list.
-          // Swap the chosen validator into first half of the list.
-          auto running_it              = pulse_candidates.begin();
-          size_t const partition_index = pulse_candidates.size() / 2;
-          for (crypto::hash const &entropy : pulse_entropy)
-          {
-            std::mt19937_64 rng = quorum_rng(hf_version, entropy, type);
-            size_t candidate_index = tools::uniform_distribution_portable(rng, partition_index - std::distance(pulse_candidates.begin(), running_it));
-            std::swap(*running_it, *(pulse_candidates.begin() + candidate_index));
-            running_it++;
-          }
-
-          for (auto it = pulse_candidates.begin(); it != running_it; it++)
-          {
-            crypto::public_key const &validator_key = (*it)->first;
-            quorum->validators.push_back(validator_key);
-
-            // NOTE: Send candidate to the back of the list
-            auto &info_ptr = state.service_nodes_infos.at(validator_key);
-            service_node_info &new_info = duplicate_info(info_ptr);
-            new_info.pulse_sorter.last_height_validating_in_quorum = state.height;
-            new_info.pulse_sorter.quorum_index = quorum->validators.size() - 1;
-          }
-
-          result.pulse = quorum;
         }
         break;
 
