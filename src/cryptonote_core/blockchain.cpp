@@ -2820,13 +2820,6 @@ bool Blockchain::have_block(const crypto::hash& id) const
   return false;
 }
 //------------------------------------------------------------------
-bool Blockchain::handle_block_to_main_chain(const block& bl, block_verification_context& bvc, bool notify/* = true*/)
-{
-    LOG_PRINT_L3("Blockchain::" << __func__);
-    crypto::hash id = get_block_hash(bl);
-    return handle_block_to_main_chain(bl, id, bvc, nullptr /*checkpoint*/, notify);
-}
-//------------------------------------------------------------------
 size_t Blockchain::get_total_transactions() const
 {
   LOG_PRINT_L3("Blockchain::" << __func__);
