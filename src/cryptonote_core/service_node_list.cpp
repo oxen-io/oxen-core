@@ -1262,25 +1262,24 @@ namespace service_nodes
     return true;
   }
 
-  static uint64_t quorum_rng_seed(uint8_t hf_version, crypto::hash const &hash, quorum_type type)
+  static std::mt19937_64 quorum_rng(uint8_t hf_version, crypto::hash const &hash, quorum_type type)
   {
-    uint64_t result = 0;
+    std::mt19937_64 result;
     if (hf_version >= cryptonote::network_version_16)
     {
       std::array<uint32_t, (sizeof(hash) / sizeof(uint32_t)) + 1> src = {static_cast<uint32_t>(type)};
       std::memcpy(&src[1], &hash, sizeof(hash));
       for (uint32_t &val : src) boost::endian::little_to_native_inplace(val);
       std::seed_seq sequence(src.begin(), src.end());
-
-      uint32_t seeds[2];
-      sequence.generate(std::begin(seeds), std::end(seeds));
-      result = (static_cast<uint64_t>(seeds[1]) << 32) | static_cast<uint64_t>(seeds[0]);
+      result.seed(sequence);
     }
     else
     {
-      std::memcpy(&result, hash.data, sizeof(result));
-      boost::endian::little_to_native_inplace(result);
-      result += static_cast<uint64_t>(type);
+      uint64_t seed = 0;
+      std::memcpy(&seed, hash.data, sizeof(seed));
+      boost::endian::little_to_native_inplace(seed);
+      seed += static_cast<uint64_t>(type);
+      result.seed(seed);
     }
 
     return result;
@@ -1296,8 +1295,8 @@ namespace service_nodes
   {
     std::vector<size_t> result(list_size);
     std::iota(result.begin(), result.end(), 0);
+    std::mt19937_64 rng = quorum_rng(hf_version, block_hash, type);
 
-    uint64_t seed = quorum_rng_seed(hf_version, block_hash, type);
     //       Shuffle 2
     //       |=================================|
     //       |                                 |
@@ -1315,11 +1314,11 @@ namespace service_nodes
     // reuse the same seed for both partial shuffles, but again, that isn't an issue.
     if ((0 < sublist_size && sublist_size < list_size) && (0 < sublist_up_to && sublist_up_to < list_size)) {
       assert(sublist_size <= sublist_up_to); // Can't select N random items from M items when M < N
-      tools::shuffle_portable(result.begin(), result.begin() + sublist_up_to, seed);
-      tools::shuffle_portable(result.begin() + sublist_size, result.end(), seed);
+      tools::shuffle_portable(result.begin(), result.begin() + sublist_up_to, rng);
+      tools::shuffle_portable(result.begin() + sublist_size, result.end(), rng);
     }
     else {
-      tools::shuffle_portable(result.begin(), result.end(), seed);
+      tools::shuffle_portable(result.begin(), result.end(), rng);
     }
     return result;
   }
@@ -1474,7 +1473,8 @@ namespace service_nodes
 
             if (pub_keys_indexes.size() >= BLINK_MIN_VOTES)
             {
-              tools::shuffle_portable(pub_keys_indexes.begin(), pub_keys_indexes.end(), quorum_rng_seed(hf_version, state.block_hash, type));
+              std::mt19937_64 rng = quorum_rng(hf_version, state.block_hash, type);
+              tools::shuffle_portable(pub_keys_indexes.begin(), pub_keys_indexes.end(), rng);
               num_validators = std::min<size_t>(pub_keys_indexes.size(), BLINK_SUBQUORUM_SIZE);
             }
             // Otherwise leave empty to signal that there aren't enough SNs to form a usable quorum (to
@@ -1541,7 +1541,7 @@ namespace service_nodes
           size_t const partition_index = pulse_candidates.size() / 2;
           for (crypto::hash const &entropy : pulse_entropy)
           {
-            std::mt19937_64 rng(quorum_rng_seed(hf_version, entropy, type));
+            std::mt19937_64 rng = quorum_rng(hf_version, entropy, type);
             size_t candidate_index = tools::uniform_distribution_portable(rng, partition_index - std::distance(pulse_candidates.begin(), running_it));
             std::swap(*running_it, *(pulse_candidates.begin() + candidate_index));
             running_it++;
