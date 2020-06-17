@@ -44,11 +44,10 @@ uint64_t uniform_distribution_portable(std::mt19937_64& rng, uint64_t n);
 /// Uniformly shuffles all the elements in [begin, end) in a deterministic method so that, given the
 /// same seed, this will always produce the same result on any platform/compiler/etc.
 template<typename RandomIt>
-void shuffle_portable(RandomIt begin, RandomIt end, uint64_t seed)
+void shuffle_portable(RandomIt begin, RandomIt end, std::mt19937_64 &rng)
 {
   if (end <= begin + 1) return;
   const size_t size = std::distance(begin, end);
-  std::mt19937_64 rng{seed};
   for (size_t i = 1; i < size; i++)
   {
     size_t j = (size_t)uniform_distribution_portable(rng, i+1);
