@@ -5,8 +5,10 @@
 #include "service_node_voting.h"
 
 namespace service_nodes {
-  constexpr size_t PULSE_QUORUM_ENTROPY_LAG = 21; // How many blocks back from the tip of the Blockchain to source entropy for the Pulse quorums.
-  constexpr size_t PULSE_QUORUM_SIZE        = 11;
+  constexpr size_t PULSE_QUORUM_ENTROPY_LAG        = 21; // How many blocks back from the tip of the Blockchain to source entropy for the Pulse quorums.
+  constexpr size_t PULSE_QUORUM_SIZE               = 11;
+  constexpr size_t PULSE_BLOCK_REQUIRED_SIGNATURES = 7;  // A block must have exactly N signatures to be considered properly
+  static_assert(PULSE_QUORUM_SIZE >= PULSE_BLOCK_REQUIRED_SIGNATURES, "Quorum must be larger than the required number of signatures.");
   static_assert(PULSE_QUORUM_ENTROPY_LAG >= PULSE_QUORUM_SIZE, "We need to pull atleast PULSE_QUORUM_SIZE number of blocks from the Blockchain, we can't if the amount of blocks to go back from the tip of the Blockchain is less than the blocks we need.");
 
   // Service node decommissioning: as service nodes stay up they earn "credits" (measured in blocks)

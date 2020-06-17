@@ -417,16 +417,30 @@ namespace cryptonote
   /*                                                                      */
   /************************************************************************/
   struct pulse_random_value { unsigned char data[16]; };
+
+  struct pulse_verification
+  {
+    uint8_t           quorum_index;
+    crypto::signature signature;
+
+    BEGIN_SERIALIZE()
+      FIELD(quorum_index);
+      FIELD(signature);
+    END_SERIALIZE();
+  };
+
   struct pulse_header
   {
-    pulse_random_value random_value;
-    uint8_t            round;
-    uint16_t           validator_participation_bits;
+    pulse_random_value              random_value;
+    uint8_t                         round;
+    uint16_t                        validator_participation_bits;
+    std::vector<pulse_verification> verification;
 
     BEGIN_SERIALIZE()
       FIELD(random_value);
       FIELD(round);
       FIELD(validator_participation_bits);
+      FIELD(verification);
     END_SERIALIZE();
   };
 
@@ -437,7 +451,7 @@ namespace cryptonote
     uint64_t timestamp;
     crypto::hash  prev_id;
     uint32_t nonce;
-    pulse_header pulse;
+    pulse_header pulse = {};
 
     BEGIN_SERIALIZE()
       VARINT_FIELD(major_version)
