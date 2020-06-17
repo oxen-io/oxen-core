@@ -1235,6 +1235,38 @@ namespace service_nodes
     return false;
   }
 
+  static std::string dump_pulse_block_data(cryptonote::block const &block, service_nodes::quorum const *quorum)
+  {
+    std::stringstream stream;
+    std::bitset<8 * sizeof(block.pulse.validator_participation_bits)> const participation_bits = block.pulse.validator_participation_bits;
+    stream << "Block(" << cryptonote::get_block_height(block) << "): " << cryptonote::get_block_hash(block) << "\n";
+    stream << "Leader: ";
+    if (quorum) stream << (quorum->workers.empty() ? "(invalid leader)" : epee::string_tools::pod_to_hex(quorum->workers[0])) << "\n";
+    else        stream << "(invalid quorum)\n";
+    stream << "Round: " << static_cast<int>(block.pulse.round) << "\n";
+    stream << "Participating Validators: " << participation_bits << "\n";
+
+    stream << "Signatures: ";
+    if (block.pulse.verification.empty()) stream << "(none)";
+    stream << "\n";
+
+    for (size_t i = 0; i < block.pulse.verification.size(); i++)
+    {
+      if (i) stream << "\n";
+      cryptonote::pulse_verification const &entry = block.pulse.verification[i];
+      stream << "  [" << entry.quorum_index << "] validator: ";
+      if (quorum)
+      {
+        stream << (entry.quorum_index >= quorum->validators.size()) ? "(invalid quorum index)" : epee::string_tools::pod_to_hex(quorum->validators[entry.quorum_index]);
+        stream << ", signature: " << epee::string_tools::pod_to_hex(entry.signature);
+      }
+      else stream << "(invalid quorum)";
+    }
+
+    std::string result = stream.str();
+    return result;
+  }
+
   bool service_node_list::block_added(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs, cryptonote::checkpoint_t const *checkpoint)
   {
     if (block.major_version < cryptonote::network_version_9_service_nodes)
@@ -1242,6 +1274,52 @@ namespace service_nodes
 
     std::lock_guard lock(m_sn_mutex);
     process_block(block, txs);
+
+    if (block.major_version >= cryptonote::network_version_16)
+    {
+      assert(m_state.block_hash == cryptonote::get_block_hash(block));
+      std::shared_ptr<const quorum> quorum = get_quorum(quorum_type::pulse, cryptonote::get_block_height(block));
+      if (quorum)
+      {
+        if (block.pulse.verification.size() != PULSE_BLOCK_REQUIRED_SIGNATURES)
+        {
+          LOG_PRINT_L1("Pulse block(" << m_state.height << "): " << m_state.block_hash << " has " << block.pulse.verification.size() << " signatures but requires " << PULSE_BLOCK_REQUIRED_SIGNATURES << "\n" << dump_pulse_block_data(block, quorum.get()));
+          return false;
+        }
+
+        for (cryptonote::pulse_verification const &verification : block.pulse.verification)
+        {
+          if (verification.quorum_index >= quorum->validators.size())
+            return false;
+
+          uint16_t mask = 1 << verification.quorum_index;
+          if ((block.pulse.validator_participation_bits & mask) == 0)
+          {
+            LOG_PRINT_L1("Received pulse signature from validator " << verification.quorum_index << " that is not participating in round " << block.pulse.round << "\n" << dump_pulse_block_data(block, quorum.get()));
+            return false;
+          }
+
+          auto buf_to_hash = tools::memcpy_le(m_state.block_hash.data, block.pulse.random_value.data, block.pulse.round, block.pulse.validator_participation_bits);
+          crypto::hash prefix_hash = crypto::cn_fast_hash(buf_to_hash.data(), buf_to_hash.size());
+          if (!crypto::check_signature(prefix_hash, quorum->validators[verification.quorum_index], verification.signature))
+          {
+            LOG_PRINT_L1("Received pulse signature from validator " << verification.quorum_index << " that is invalid in round " << block.pulse.round << "\n" << dump_pulse_block_data(block, quorum.get()));
+            return false;
+          }
+        }
+      }
+      else
+      {
+        bool expect_pulse_quorum = (block.pulse.validator_participation_bits > 0 || block.pulse.verification.size());
+        if (expect_pulse_quorum)
+        {
+          LOG_PRINT_L1("Failed to get pulse quorum for block\n" << dump_pulse_block_data(block, quorum.get()));
+          return false;
+        }
+        // NOTE: Otherwise, block has no pulse information, there's no expected
+        // quorum, this is a fallback- nonce mined block, previously verified validly
+      }
+    }
 
     if (block.major_version >= cryptonote::network_version_13_enforce_checkpoints && checkpoint)
     {
@@ -1506,14 +1584,13 @@ namespace service_nodes
         {
           if (active_snode_list.size() < (PULSE_QUORUM_SIZE  + 1 /*leader*/))
           {
-            // TODO(doyle): We need fallback code
-            MERROR("Insufficient active Service Nodes for Pulse: " << active_snode_list.size());
+            LOG_PRINT_L2("Insufficient active Service Nodes for Pulse: " << active_snode_list.size() << ", on block(" << state.height << "): " << state.block_hash);
             continue;
           }
 
           if (pulse_entropy.size() < PULSE_QUORUM_SIZE)
           {
-            MERROR("Blockchain has insufficient blocks to generate Pulse data");
+            LOG_PRINT_L2("Blockchain has insufficient blocks to generate Pulse data on block(" << state.height << "): " << state.block_hash);
             continue;
           }
 
