@@ -155,6 +155,7 @@ int main(int argc, char* argv[])
     GENERATE_AND_PLAY(loki_pulse_generate_all_rounds);
     GENERATE_AND_PLAY(loki_pulse_out_of_order_voters);
     GENERATE_AND_PLAY(loki_pulse_reject_miner_block);
+    GENERATE_AND_PLAY(loki_pulse_generate_blocks_and_invalid_blocks);
 
     // NOTE: Monero Tests
     GENERATE_AND_PLAY(gen_simple_chain_001);
