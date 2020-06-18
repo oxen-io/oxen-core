@@ -133,6 +133,17 @@ loki_chain_generator_db::get_checkpoints_range(uint64_t start, uint64_t end, siz
   return result;
 }
 
+std::vector<cryptonote::block> loki_chain_generator_db::get_blocks_range(const uint64_t &h1,
+                                                                         const uint64_t &h2) const
+{
+  assert(h1 <= h2);
+  std::vector<cryptonote::block> result;
+  result.reserve(h2 - h1);
+  for (uint64_t height = h1; height <= h2; height++)
+    result.push_back(blocks.at(height).block);
+  return result;
+}
+
 loki_chain_generator::loki_chain_generator(std::vector<test_event_entry> &events, const std::vector<std::pair<uint8_t, uint64_t>> &hard_forks)
 : events_(events)
 , hard_forks_(hard_forks)
@@ -687,7 +698,6 @@ static void fill_nonce_with_loki_generator(loki_chain_generator const *generator
 
   while (!cryptonote::miner::find_nonce_for_given_block(get_block_hash, blk, TEST_DEFAULT_DIFFICULTY, height))
     blk.timestamp++;
-
 }
 
 loki_blockchain_entry loki_chain_generator::create_genesis_block(const cryptonote::account_base &miner, uint64_t timestamp)
@@ -874,8 +884,43 @@ bool loki_chain_generator::create_block(loki_blockchain_entry &entry,
     }
   }
 
-  fill_nonce_with_loki_generator(this, blk, TEST_DEFAULT_DIFFICULTY, height);
-  entry.txs = tx_list;
+  {
+    std::vector<service_nodes::pubkey_and_sninfo> active_snode_list = prev.service_node_state.active_service_nodes_infos();
+
+    if (hf_version >= cryptonote::network_version_16 &&
+        active_snode_list.size() >= (service_nodes::PULSE_QUORUM_SIZE + 1))
+    {
+      std::shared_ptr<const service_nodes::quorum> quorum = get_quorum(service_nodes::quorum_type::pulse, height - 1);
+      assert(quorum->validators.size() == service_nodes::PULSE_QUORUM_SIZE);
+      assert(quorum->workers.size() == 1);
+
+      // TODO(doyle): Parameterizable
+      blk.pulse.validator_participation_bits = static_cast<uint16_t>(-1); // NOTE: Everyone participates
+      blk.pulse.round = 0;
+      for (size_t i = 0; i < sizeof(blk.pulse.random_value.data); i++)
+        blk.pulse.random_value.data[i] = static_cast<char>(tools::uniform_distribution_portable(tools::rng, 256));
+
+      crypto::hash blk_hash = cryptonote::get_block_hash(blk);
+      assert(blk.verification.empty());
+
+      crypto::public_key const &leader = quorum->workers[0];
+      cryptonote::pulse_verification verification = {};
+      for (size_t i = 0; i < service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES; i++)
+      {
+        verification.quorum_index = i;
+        service_nodes::service_node_keys validator_keys = get_cached_keys(quorum->validators[i]);
+        assert(validator_keys.pub == quorum->validators[i]);
+        crypto::generate_signature(blk_hash, validator_keys.pub, validator_keys.key, verification.signature);
+        blk.verification.push_back(verification);
+      }
+    }
+    else
+    {
+      fill_nonce_with_loki_generator(this, blk, TEST_DEFAULT_DIFFICULTY, height);
+    }
+  }
+
+  entry.txs                = tx_list;
   entry.service_node_state = prev.service_node_state;
   entry.service_node_state.update_from_block(db_, cryptonote::FAKECHAIN, state_history_, {} /*state_archive*/, {} /*alt_states*/, entry.block, entry.txs, nullptr);
 
