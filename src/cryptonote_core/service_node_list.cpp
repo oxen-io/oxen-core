@@ -1506,11 +1506,14 @@ namespace service_nodes
     // Swap the chosen validator into first half of the list.
     auto running_it              = pulse_candidates.begin();
     size_t const partition_index = pulse_candidates.size() / 2;
-    for (crypto::hash const &entropy : pulse_entropy)
+    for (size_t i = 0; i < pulse_entropy.size(); i++)
     {
-      std::mt19937_64 rng = quorum_rng(hf_version, entropy, quorum_type::pulse);
-      size_t candidate_index = tools::uniform_distribution_portable(rng, partition_index - std::distance(pulse_candidates.begin(), running_it));
-      std::swap(*running_it, *(pulse_candidates.begin() + candidate_index));
+      crypto::hash const &entropy = pulse_entropy[i];
+      std::mt19937_64 rng         = quorum_rng(hf_version, entropy, quorum_type::pulse);
+      size_t validators_available = std::distance(running_it, pulse_candidates.end());
+
+      size_t candidate_index = tools::uniform_distribution_portable(rng, std::min(partition_index, validators_available));
+      std::swap(*running_it, *(running_it + candidate_index));
       running_it++;
     }
 
