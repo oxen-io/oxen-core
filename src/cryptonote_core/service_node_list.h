@@ -508,6 +508,7 @@ namespace service_nodes
       friend bool operator<(const state_t &s, block_height h)   { return s.height < h; }
       friend bool operator<(block_height h, const state_t &s)   { return        h < s.height; }
 
+      std::vector<pubkey_and_sninfo>  active_service_nodes_infos() const;
       std::vector<pubkey_and_sninfo>  decommissioned_service_nodes_infos() const; // return: All nodes that are fully funded *and* decommissioned.
       std::vector<crypto::public_key> get_expired_nodes(cryptonote::BlockchainDB const &db, cryptonote::network_type nettype, uint8_t hf_version, uint64_t block_height) const;
       void update_from_block(
@@ -624,6 +625,9 @@ namespace service_nodes
       const service_node_keys &keys,
       std::string &cmd,
       bool make_friendly);
+
+  bool get_pulse_entropy_from_blockchain(cryptonote::BlockchainDB const &db, std::vector<crypto::hash> &entropy, uint8_t pulse_round);
+  service_nodes::quorum generate_pulse_quorum(crypto::public_key const &leader, uint8_t hf_version, std::vector<pubkey_and_sninfo> const &active_snode_list, std::vector<crypto::hash> const &pulse_entropy);
 
   const static std::vector<payout_entry> null_winner = {{cryptonote::null_address, STAKING_PORTIONS}};
   const static block_winner null_block_winner        = {crypto::null_pkey, {null_winner}};
