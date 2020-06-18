@@ -1273,9 +1273,6 @@ namespace service_nodes
     if (block.major_version < cryptonote::network_version_9_service_nodes)
       return true;
 
-    std::lock_guard lock(m_sn_mutex);
-    process_block(block, txs);
-
     if (block.major_version >= cryptonote::network_version_16)
     {
       std::shared_ptr<const quorum> quorum = get_quorum(quorum_type::pulse, m_state.height);
@@ -1311,6 +1308,9 @@ namespace service_nodes
         // quorum, this is a fallback- nonce mined block, previously verified validly
       }
     }
+
+    std::lock_guard lock(m_sn_mutex);
+    process_block(block, txs);
 
     if (block.major_version >= cryptonote::network_version_13_enforce_checkpoints && checkpoint)
     {
