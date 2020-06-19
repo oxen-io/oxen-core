@@ -133,6 +133,35 @@ template<> constexpr std::array<bool, 10*10> quorum_conn_matrix<10>{{
     0,0,0,1,1,1,0,0,0,0,
 }};
 
+template<> constexpr std::array<bool, 11*11> quorum_conn_matrix<11>{{
+    0,1,0,0,0,0,1,0,0,0,1,
+    0,0,1,0,0,0,0,1,1,0,0,
+    0,0,0,1,1,0,0,1,0,0,0,
+    0,0,0,0,1,1,0,0,1,0,0,
+    1,1,0,0,0,0,1,0,0,0,0,
+    1,0,1,0,0,0,1,0,0,0,0,
+    0,0,0,0,0,0,0,1,0,1,0,
+    1,0,0,0,0,0,0,0,1,0,0,
+    0,0,0,0,0,0,0,0,0,1,1,
+    0,1,0,0,0,1,0,0,0,0,0,
+    0,0,0,1,0,1,0,0,0,0,0,
+}};
+
+template<> constexpr std::array<bool, 12*12> quorum_conn_matrix<12>{{
+    0,1,0,0,0,0,0,0,0,0,1,0,
+    0,0,1,1,0,0,0,0,1,0,0,0,
+    0,0,0,1,0,1,0,0,0,0,1,0,
+    1,0,0,0,1,0,0,1,0,0,0,0,
+    1,0,0,0,0,0,1,0,0,1,0,0,
+    0,1,0,0,0,0,1,1,0,0,0,0,
+    1,0,0,0,0,0,0,1,0,1,0,0,
+    0,0,0,0,0,0,0,0,1,0,1,0,
+    0,0,0,1,0,0,0,0,0,1,0,1,
+    0,0,0,0,0,1,0,0,0,0,0,1,
+    0,0,0,0,0,0,1,0,0,0,0,1,
+    0,0,1,0,1,0,0,0,0,0,0,0,
+}};
+
 template<> constexpr std::array<bool, 13*13> quorum_conn_matrix<13>{{
     0,1,1,1,0,1,0,0,0,0,0,0,0,
     0,0,1,0,0,0,0,1,0,0,0,0,1,
@@ -298,6 +327,8 @@ constexpr const bool *get_matrix(int N) {
         case 8: return &quorum_conn_matrix<8>[0];
         case 9: return &quorum_conn_matrix<9>[0];
         case 10: return &quorum_conn_matrix<10>[0];
+        case 11: return &quorum_conn_matrix<11>[0];
+        case 12: return &quorum_conn_matrix<12>[0];
         case 13: return &quorum_conn_matrix<13>[0];
         case 14: return &quorum_conn_matrix<14>[0];
         case 15: return &quorum_conn_matrix<15>[0];

@@ -22,7 +22,7 @@ TRACE = True
 # N sizes to calculate for.  The default calculates for all possible quorums that are capable of
 # achieving supermajority for blink and obligations quorums (10, 7 required) and checkpoint quorums
 # (20, 13 required)
-N = (7, 8, 9, 10, *range(13, 21))
+N = range(7, 21)
 
 # This defines how much 2-path connectivity we require for different values of N
 def min_connections(n):
