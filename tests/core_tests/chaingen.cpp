@@ -140,7 +140,10 @@ std::vector<cryptonote::block> loki_chain_generator_db::get_blocks_range(const u
   std::vector<cryptonote::block> result;
   result.reserve(h2 - h1);
   for (uint64_t height = h1; height <= h2; height++)
-    result.push_back(blocks.at(height).block);
+  {
+    result.push_back(blocks[height].block);
+    assert(cryptonote::get_block_height(result.back()) == height);
+  }
   return result;
 }
 
@@ -775,26 +778,21 @@ loki_blockchain_entry loki_chain_generator::create_genesis_block(const cryptonot
 }
 
 bool loki_chain_generator::create_block(loki_blockchain_entry &entry,
-                                        uint8_t hf_version,
-                                        loki_blockchain_entry const &prev,
-                                        const cryptonote::account_base &miner_acc,
-                                        uint64_t timestamp,
-                                        std::vector<uint64_t> &block_weights,
-                                        const std::vector<cryptonote::transaction> &tx_list,
-                                        const service_nodes::block_winner &block_winner,
-                                        uint64_t total_fee) const
+                                        loki_create_block_params &params,
+                                        const std::vector<cryptonote::transaction> &tx_list) const
 {
-  assert(hf_version >= prev.block.major_version);
-  uint64_t height        = get_block_height(prev.block) + 1;
+  assert(params.hf_version >= params.prev.block.major_version);
+  uint64_t height        = get_block_height(params.prev.block) + 1;
   entry                  = {};
   cryptonote::block &blk = entry.block;
-  blk.major_version      = hf_version;
-  blk.minor_version      = hf_version;
-  blk.timestamp          = timestamp;
-  blk.prev_id            = get_block_hash(prev.block);
+  blk.major_version      = params.hf_version;
+  blk.minor_version      = params.hf_version;
+  blk.timestamp          = params.timestamp;
+  blk.prev_id            = get_block_hash(params.prev.block);
 
+  uint64_t total_fee  = params.total_fee;
   bool calc_total_fee = total_fee == 0;
-  size_t txs_weight  = 0;
+  size_t txs_weight   = 0;
   blk.tx_hashes.reserve(tx_list.size());
   for(const cryptonote::transaction &tx : tx_list)
   {
@@ -807,26 +805,26 @@ bool loki_chain_generator::create_block(loki_blockchain_entry &entry,
   }
 
   // NOTE: Calculate governance
-  cryptonote::loki_miner_tx_context miner_tx_context(cryptonote::FAKECHAIN, block_winner);
-  if (hf_version >= cryptonote::network_version_10_bulletproofs &&
-      cryptonote::height_has_governance_output(cryptonote::FAKECHAIN, hf_version, height))
+  cryptonote::loki_miner_tx_context miner_tx_context(cryptonote::FAKECHAIN, params.block_winner);
+  if (blk.major_version >= cryptonote::network_version_10_bulletproofs &&
+      cryptonote::height_has_governance_output(cryptonote::FAKECHAIN, blk.major_version, height))
   {
     constexpr uint64_t num_blocks       = cryptonote::get_config(cryptonote::FAKECHAIN).GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS;
     uint64_t start_height               = height - num_blocks;
 
-    if (hf_version == cryptonote::network_version_15_lns)
+    if (blk.major_version == cryptonote::network_version_15_lns)
       miner_tx_context.batched_governance = FOUNDATION_REWARD_HF15 * num_blocks;
-    else if (hf_version == cryptonote::network_version_16)
+    else if (blk.major_version == cryptonote::network_version_16)
       miner_tx_context.batched_governance = FOUNDATION_REWARD_HF16 * num_blocks;
     else
     {
-      for (int i = (int)get_block_height(prev.block), count = 0;
+      for (int i = (int)get_block_height(params.prev.block), count = 0;
            i >= 0 && count <= (int)num_blocks;
            i--, count++)
       {
         loki_blockchain_entry const &historical_entry = db_.blocks[i];
         if (historical_entry.block.major_version < cryptonote::network_version_10_bulletproofs) break;
-        miner_tx_context.batched_governance += cryptonote::derive_governance_from_block_reward(cryptonote::FAKECHAIN, historical_entry.block, hf_version);
+        miner_tx_context.batched_governance += cryptonote::derive_governance_from_block_reward(cryptonote::FAKECHAIN, historical_entry.block, blk.major_version);
       }
     }
   }
@@ -835,14 +833,14 @@ bool loki_chain_generator::create_block(loki_blockchain_entry &entry,
   while (true)
   {
     if (!construct_miner_tx(height,
-                            epee::misc_utils::median(block_weights),
-                            prev.already_generated_coins,
+                            epee::misc_utils::median(params.block_weights),
+                            params.prev.already_generated_coins,
                             target_block_weight,
                             total_fee,
-                            miner_acc.get_keys().m_account_address,
+                            params.miner_acc.get_keys().m_account_address,
                             blk.miner_tx,
                             cryptonote::blobdata(),
-                            hf_version,
+                            blk.major_version,
                             miner_tx_context))
       return false;
 
@@ -885,31 +883,32 @@ bool loki_chain_generator::create_block(loki_blockchain_entry &entry,
   }
 
   {
-    std::vector<service_nodes::pubkey_and_sninfo> active_snode_list = prev.service_node_state.active_service_nodes_infos();
-
-    if (hf_version >= cryptonote::network_version_16 &&
+    std::vector<service_nodes::pubkey_and_sninfo> active_snode_list = params.prev.service_node_state.active_service_nodes_infos();
+    if (blk.major_version >= cryptonote::network_version_16 &&
         active_snode_list.size() >= (service_nodes::PULSE_QUORUM_SIZE + 1))
     {
-      std::shared_ptr<const service_nodes::quorum> quorum = get_quorum(service_nodes::quorum_type::pulse, height - 1);
-      assert(quorum->validators.size() == service_nodes::PULSE_QUORUM_SIZE);
-      assert(quorum->workers.size() == 1);
-
       // TODO(doyle): Parameterizable
       blk.pulse.validator_participation_bits = static_cast<uint16_t>(-1); // NOTE: Everyone participates
       blk.pulse.round = 0;
       for (size_t i = 0; i < sizeof(blk.pulse.random_value.data); i++)
         blk.pulse.random_value.data[i] = static_cast<char>(tools::uniform_distribution_portable(tools::rng, 256));
 
+      std::vector<crypto::hash> entropy;
+      assert(service_nodes::get_pulse_entropy_from_blockchain(db_, (height + 1), entropy, blk.pulse.round));
+      service_nodes::quorum quorum = service_nodes::generate_pulse_quorum(params.block_winner.key, params.hf_version, active_snode_list, entropy);
+      assert(quorum.validators.size() == service_nodes::PULSE_QUORUM_SIZE);
+      assert(quorum.workers.size() == 1);
+
       crypto::hash blk_hash = cryptonote::get_block_hash(blk);
       assert(blk.verification.empty());
 
-      crypto::public_key const &leader = quorum->workers[0];
-      cryptonote::pulse_verification verification = {};
       for (size_t i = 0; i < service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES; i++)
       {
-        verification.quorum_index = i;
-        service_nodes::service_node_keys validator_keys = get_cached_keys(quorum->validators[i]);
-        assert(validator_keys.pub == quorum->validators[i]);
+        service_nodes::service_node_keys validator_keys = get_cached_keys(quorum.validators[i]);
+        assert(validator_keys.pub == quorum.validators[i]);
+
+        cryptonote::pulse_verification verification = {};
+        verification.quorum_index                   = i;
         crypto::generate_signature(blk_hash, validator_keys.pub, validator_keys.key, verification.signature);
         blk.verification.push_back(verification);
       }
@@ -921,38 +920,40 @@ bool loki_chain_generator::create_block(loki_blockchain_entry &entry,
   }
 
   entry.txs                = tx_list;
-  entry.service_node_state = prev.service_node_state;
+  entry.service_node_state = params.prev.service_node_state;
   entry.service_node_state.update_from_block(db_, cryptonote::FAKECHAIN, state_history_, {} /*state_archive*/, {} /*alt_states*/, entry.block, entry.txs, nullptr);
 
   uint64_t block_reward, block_reward_unpenalized;
-  cryptonote::get_base_block_reward(epee::misc_utils::median(block_weights), entry.block_weight, prev.already_generated_coins, block_reward, block_reward_unpenalized, hf_version, height);
-  entry.already_generated_coins = block_reward + prev.already_generated_coins;
+  cryptonote::get_base_block_reward(epee::misc_utils::median(params.block_weights), entry.block_weight, params.prev.already_generated_coins, block_reward, block_reward_unpenalized, params.hf_version, height);
+  entry.already_generated_coins = block_reward + params.prev.already_generated_coins;
   return true;
 }
 
-loki_blockchain_entry loki_chain_generator::create_next_block(const std::vector<cryptonote::transaction>& txs, cryptonote::checkpoint_t const *checkpoint, uint64_t total_fee)
+loki_create_block_params loki_chain_generator::next_block_params() const
 {
-  loki_blockchain_entry result      = {};
   loki_blockchain_entry const &prev = top();
+  uint64_t next_height              = height() + 1;
+
+  loki_create_block_params result = {};
+  result.prev                     = prev;
+  result.miner_acc                = first_miner_;
+  result.timestamp                = prev.block.timestamp + DIFFICULTY_TARGET_V2;
+  result.block_weights            = last_n_block_weights(height(), CRYPTONOTE_REWARD_BLOCKS_WINDOW);
+  result.hf_version               = get_hf_version_at(next_height);
+  result.block_winner             = prev.service_node_state.get_block_winner();
+  result.total_fee                = 0; // Request chain generator to calculate the fee
+  return result;
+}
+
+loki_blockchain_entry loki_chain_generator::create_next_block(const std::vector<cryptonote::transaction>& txs, cryptonote::checkpoint_t const *checkpoint)
+{
+  loki_blockchain_entry result          = {};
+  loki_create_block_params block_params = next_block_params();
+  create_block(result, block_params, txs);
+  if (checkpoint)
   {
-    uint64_t new_height                 = height() + 1;
-    uint8_t desired_hf                  = get_hf_version_at(new_height);
-    service_nodes::block_winner winner  = prev.service_node_state.get_block_winner();
-    std::vector<uint64_t> block_weights = last_n_block_weights(new_height - 1, CRYPTONOTE_REWARD_BLOCKS_WINDOW);
-    create_block(result,
-                 desired_hf,
-                 prev,
-                 first_miner_,
-                 prev.block.timestamp + DIFFICULTY_TARGET_V2,
-                 block_weights,
-                 txs,
-                 winner,
-                 total_fee);
-    if (checkpoint)
-    {
-      result.checkpoint   = *checkpoint;
-      result.checkpointed = true;
-    }
+    result.checkpoint   = *checkpoint;
+    result.checkpointed = true;
   }
 
   hf_version_ = result.block.major_version;

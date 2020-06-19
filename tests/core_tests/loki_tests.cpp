@@ -593,8 +593,14 @@ bool loki_core_fee_burning::generate(std::vector<test_event_entry>& events)
   // Try to add another block with a fee that claims into the amount of the fee that must be burned
   txs.push_back(add_burning_tx(send_fee_burn[2]));
 
-  auto bad_fee_block = gen.create_next_block(txs, nullptr, send_fee_burn[2][1] - send_fee_burn[2][2] + 2);
-  gen.add_block(bad_fee_block, false, "Invalid miner reward");
+  {
+    loki_create_block_params block_params = gen.next_block_params();
+    block_params.total_fee = send_fee_burn[2][1] - send_fee_burn[2][2] + 2;
+
+    loki_blockchain_entry next = {};
+    assert(gen.create_block(next, block_params, txs));
+    gen.add_block(next, false, "Invalid miner reward");
+  }
 
   loki_register_callback(events, "check_fee_burned", [good_hash, good_miner_reward](cryptonote::core &c, size_t ev_index)
   {
@@ -3040,6 +3046,9 @@ bool loki_pulse_generate_blocks_and_invalid_blocks::generate(std::vector<test_ev
     registration_txs[i] = gen.create_and_add_registration_tx(gen.first_miner());
 
   gen.create_and_add_next_block({registration_txs});
+  gen.create_and_add_next_block();
+  gen.create_and_add_next_block();
+  gen.create_and_add_next_block();
   gen.create_and_add_next_block();
   return true;
 }
