@@ -4258,8 +4258,17 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
   for (std::pair<transaction, blobdata> const &tx_pair : txs)
     only_txs.push_back(tx_pair.first);
 
-  m_service_node_list.block_added(bl, only_txs, checkpoint);
-  m_lns_db.add_block(bl, only_txs);
+  if (!m_service_node_list.block_added(bl, only_txs, checkpoint))
+  {
+    MERROR("Failed to add block to Service Node List.");
+    return false;
+  }
+
+  if (!m_lns_db.add_block(bl, only_txs))
+  {
+    MERROR("Failed to add block to LNS DB.");
+    return false;
+  }
 
   for (BlockAddedHook* hook : m_block_added_hooks)
   {
