@@ -103,6 +103,10 @@ namespace service_nodes
     uint64_t last_height_validating_in_quorum = 0;
     uint8_t quorum_index                      = 0;
 
+    bool operator==(pulse_sort_key const &other) const
+    {
+      return last_height_validating_in_quorum == other.last_height_validating_in_quorum && quorum_index == other.quorum_index;
+    }
     bool operator<(pulse_sort_key const &other) const
     {
       bool result = std::make_pair(last_height_validating_in_quorum, quorum_index) < std::make_pair(other.last_height_validating_in_quorum, other.quorum_index);
@@ -626,7 +630,7 @@ namespace service_nodes
       std::string &cmd,
       bool make_friendly);
 
-  bool get_pulse_entropy_from_blockchain(cryptonote::BlockchainDB const &db, std::vector<crypto::hash> &entropy, uint8_t pulse_round);
+  bool get_pulse_entropy_from_blockchain(cryptonote::BlockchainDB const &db, uint64_t for_height, std::vector<crypto::hash> &entropy, uint8_t pulse_round);
   service_nodes::quorum generate_pulse_quorum(crypto::public_key const &leader, uint8_t hf_version, std::vector<pubkey_and_sninfo> const &active_snode_list, std::vector<crypto::hash> const &pulse_entropy);
 
   const static std::vector<payout_entry> null_winner = {{cryptonote::null_address, STAKING_PORTIONS}};
