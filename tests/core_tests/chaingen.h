@@ -1459,6 +1459,8 @@ struct loki_chain_generator
   loki_blockchain_entry                                create_genesis_block(const cryptonote::account_base &miner, uint64_t timestamp);
   loki_blockchain_entry                                create_next_block(const std::vector<cryptonote::transaction>& txs = {}, cryptonote::checkpoint_t const *checkpoint = nullptr);
   bool                                                 create_block(loki_blockchain_entry &entry, loki_create_block_params &params, const std::vector<cryptonote::transaction> &tx_list) const;
+  bool                                                 begin_block(loki_blockchain_entry &entry, loki_create_block_params &params, const std::vector<cryptonote::transaction> &tx_list) const;
+  void                                                 end_block(loki_blockchain_entry &entry, loki_create_block_params const &params) const;
 
   uint8_t                                              get_hf_version_at(uint64_t height) const;
   std::vector<uint64_t>                                last_n_block_weights(uint64_t height, uint64_t num) const;

@@ -3045,6 +3045,7 @@ bool loki_pulse_generate_blocks_and_invalid_blocks::generate(std::vector<test_ev
   for (auto i = 0u; i < NUM_SERVICE_NODES; ++i)
     registration_txs[i] = gen.create_and_add_registration_tx(gen.first_miner());
 
+  // NOTE: Generate Valid Blocks
   gen.create_and_add_next_block({registration_txs});
   gen.create_and_add_next_block();
   gen.create_and_add_next_block();
