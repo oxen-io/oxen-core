@@ -887,15 +887,12 @@ bool loki_chain_generator::create_block(loki_blockchain_entry &entry,
     if (blk.major_version >= cryptonote::network_version_16 &&
         active_snode_list.size() >= (service_nodes::PULSE_QUORUM_SIZE + 1))
     {
-      // TODO(doyle): Parameterizable
       blk.pulse.validator_participation_bits = static_cast<uint16_t>(-1); // NOTE: Everyone participates
       blk.pulse.round = 0;
       for (size_t i = 0; i < sizeof(blk.pulse.random_value.data); i++)
         blk.pulse.random_value.data[i] = static_cast<char>(tools::uniform_distribution_portable(tools::rng, 256));
 
-      std::vector<crypto::hash> entropy;
-      assert(service_nodes::get_pulse_entropy_from_blockchain(db_, (height + 1), entropy, blk.pulse.round));
-      service_nodes::quorum quorum = service_nodes::generate_pulse_quorum(params.block_winner.key, params.hf_version, active_snode_list, entropy);
+      service_nodes::quorum const &quorum = *params.prev.service_node_state.quorums.pulse;
       assert(quorum.validators.size() == service_nodes::PULSE_QUORUM_SIZE);
       assert(quorum.workers.size() == 1);
 

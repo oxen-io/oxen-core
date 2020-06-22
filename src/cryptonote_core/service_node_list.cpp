@@ -1278,36 +1278,30 @@ namespace service_nodes
 
     if (block.major_version >= cryptonote::network_version_16)
     {
-      crypto::public_key winner_pubkey = cryptonote::get_service_node_winner_from_tx_extra(block.miner_tx.extra);
-
-      // NOTE: We need to get the pulse quorum before we modify the list to produce the quorum from the same list as the Leader's Service Node List.
-      std::vector<crypto::hash> entropy;
-      get_pulse_entropy_from_blockchain(m_blockchain.get_db(), m_blockchain.get_current_blockchain_height(), entropy, block.pulse.round);
-      quorum pulse_quorum = generate_pulse_quorum(winner_pubkey, block.major_version, m_state.active_service_nodes_infos(), entropy);
-
-      if (pulse_quorum.validators.size() && pulse_quorum.workers.size())
+      std::shared_ptr<const quorum> quorum = get_quorum(quorum_type::pulse, m_state.height);
+      if (quorum)
       {
         if (block.verification.size() != PULSE_BLOCK_REQUIRED_SIGNATURES)
         {
-          LOG_PRINT_L1("Pulse block has " << block.verification.size() << " signatures but requires " << PULSE_BLOCK_REQUIRED_SIGNATURES << "\n" << dump_pulse_block_data(block, &pulse_quorum));
+          LOG_PRINT_L1("Pulse block has " << block.verification.size() << " signatures but requires " << PULSE_BLOCK_REQUIRED_SIGNATURES << "\n" << dump_pulse_block_data(block, quorum.get()));
           return false;
         }
 
         for (cryptonote::pulse_verification const &verification : block.verification)
         {
-          if (verification.quorum_index >= pulse_quorum.validators.size())
+          if (verification.quorum_index >= quorum->validators.size())
             return false;
 
           uint16_t mask = 1 << verification.quorum_index;
           if ((block.pulse.validator_participation_bits & mask) == 0)
           {
-            LOG_PRINT_L1("Received pulse signature from validator " << static_cast<int>(verification.quorum_index) << " that is not participating in round " << static_cast<int>(block.pulse.round) << "\n" << dump_pulse_block_data(block, &pulse_quorum));
+            LOG_PRINT_L1("Received pulse signature from validator " << static_cast<int>(verification.quorum_index) << " that is not participating in round " << static_cast<int>(block.pulse.round) << "\n" << dump_pulse_block_data(block, quorum.get()));
             return false;
           }
 
-          if (!crypto::check_signature(cryptonote::get_block_hash(block), pulse_quorum.validators[verification.quorum_index], verification.signature))
+          if (!crypto::check_signature(cryptonote::get_block_hash(block), quorum->validators[verification.quorum_index], verification.signature))
           {
-            LOG_PRINT_L1("Received pulse signature from validator " << static_cast<int>(verification.quorum_index) << " that is invalid in round " << static_cast<int>(block.pulse.round) << "\n" << dump_pulse_block_data(block, &pulse_quorum));
+            LOG_PRINT_L1("Received pulse signature from validator " << static_cast<int>(verification.quorum_index) << " that is invalid in round " << static_cast<int>(block.pulse.round) << "\n" << dump_pulse_block_data(block, quorum.get()));
             return false;
           }
         }
@@ -1317,7 +1311,7 @@ namespace service_nodes
         bool expect_pulse_quorum = (block.pulse.validator_participation_bits > 0 || block.verification.size());
         if (expect_pulse_quorum)
         {
-          LOG_PRINT_L1("Failed to get pulse quorum for block\n" << dump_pulse_block_data(block, nullptr));
+          LOG_PRINT_L1("Failed to get pulse quorum for block\n" << dump_pulse_block_data(block, quorum.get()));
           return false;
         }
         // NOTE: Otherwise, block has no pulse information, there's no expected
@@ -1648,12 +1642,6 @@ namespace service_nodes
 
         case quorum_type::pulse:
         {
-          // TODO(doyle): This is wrong because it generates a quorum for this
-          // block _AFTER_ Service Node changes have occurred in the block.
-          // The quorum for this height needs to use the Service Node List, or
-          // the Active Node List before the incoming's block changes are
-          // enacted on the list.
-#if 0
           block_winner winner = state.get_block_winner();
           *quorum = generate_pulse_quorum(winner.key, hf_version, active_snode_list, pulse_entropy);
           if (quorum->workers.size() == 1 && quorum->validators.size() == PULSE_QUORUM_SIZE)
@@ -1669,8 +1657,6 @@ namespace service_nodes
             }
             result.pulse = quorum;
           }
-#endif
-
         }
         break;
 
@@ -1794,7 +1780,7 @@ namespace service_nodes
 
     // TODO(doyle): Error handling, we assume it works
     std::vector<crypto::hash> entropy;
-    if (hf_version >= cryptonote::network_version_16) get_pulse_entropy_from_blockchain(db, db.height(), entropy, 0 /*pulse_round*/);
+    if (hf_version >= cryptonote::network_version_16) get_pulse_entropy_from_blockchain(db, cryptonote::get_block_height(block) + 1, entropy, block.pulse.round);
     quorums = generate_quorums(*this, active_snode_list, nettype, hf_version, entropy);
   }
 
