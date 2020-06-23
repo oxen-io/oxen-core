@@ -631,7 +631,7 @@ namespace service_nodes
       bool make_friendly);
 
   bool get_pulse_entropy_from_blockchain(cryptonote::BlockchainDB const &db, uint64_t for_height, std::vector<crypto::hash> &entropy, uint8_t pulse_round);
-  service_nodes::quorum generate_pulse_quorum(crypto::public_key const &leader, uint8_t hf_version, std::vector<pubkey_and_sninfo> const &active_snode_list, std::vector<crypto::hash> const &pulse_entropy);
+  service_nodes::quorum generate_pulse_quorum(crypto::public_key const &leader, uint8_t hf_version, std::vector<pubkey_and_sninfo> const &active_snode_list, std::vector<crypto::hash> const &pulse_entropy, uint8_t pulse_round);
 
   const static std::vector<payout_entry> null_winner = {{cryptonote::null_address, STAKING_PORTIONS}};
   const static block_winner null_block_winner        = {crypto::null_pkey, {null_winner}};

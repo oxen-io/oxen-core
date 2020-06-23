@@ -3033,7 +3033,7 @@ bool loki_service_nodes_insufficient_contribution::generate(std::vector<test_eve
   return true;
 }
 
-static loki_chain_generator setup_pulse_tests(std:vector<test_event_entry> &events)
+static loki_chain_generator setup_pulse_tests(std::vector<test_event_entry> &events)
 {
   std::vector<std::pair<uint8_t, uint64_t>> hard_forks = loki_generate_sequential_hard_fork_table();
   loki_chain_generator result(events, hard_forks);
@@ -3041,9 +3041,8 @@ static loki_chain_generator setup_pulse_tests(std:vector<test_event_entry> &even
   result.add_blocks_until_version(hard_forks.back().first);
   result.add_mined_money_unlock_blocks();
 
-  int constexpr NUM_SERVICE_NODES = service_nodes::PULSE_QUORUM_SIZE + 1 /*leader*/;
-  std::vector<cryptonote::transaction> registration_txs(NUM_SERVICE_NODES);
-  for (auto i = 0u; i < NUM_SERVICE_NODES; ++i)
+  std::vector<cryptonote::transaction> registration_txs(service_nodes::PULSE_MIN_SERVICE_NODES);
+  for (auto i = 0u; i < service_nodes::PULSE_MIN_SERVICE_NODES; ++i)
     registration_txs[i] = result.create_and_add_registration_tx(result.first_miner());
 
   // NOTE: Generate Valid Blocks
@@ -3059,7 +3058,7 @@ bool loki_pulse_invalid_participation_bits::generate(std::vector<test_event_entr
   loki_blockchain_entry entry     = {};
   loki_create_block_params params = gen.next_block_params();
   gen.block_begin(entry, params, {} /*tx_list*/);
-  gen.block_fill_pulse_data(entry, params);
+  gen.block_fill_pulse_data(entry, params, entry.block.pulse.round);
 
   // NOTE: Overwrite participation bits to be wrong
   entry.block.pulse.validator_participation_bits = ~service_nodes::PULSE_VALIDATOR_PARTICIPATION_MASK;
@@ -3077,7 +3076,7 @@ bool loki_pulse_invalid_signature::generate(std::vector<test_event_entry> &event
   loki_blockchain_entry entry     = {};
   loki_create_block_params params = gen.next_block_params();
   gen.block_begin(entry, params, {} /*tx_list*/);
-  gen.block_fill_pulse_data(entry, params);
+  gen.block_fill_pulse_data(entry, params, entry.block.pulse.round);
 
   // NOTE: Overwrite signature
   entry.block.verification[0].signature = {};
@@ -3094,10 +3093,10 @@ bool loki_pulse_oob_quorum_index::generate(std::vector<test_event_entry> &events
   loki_blockchain_entry entry     = {};
   loki_create_block_params params = gen.next_block_params();
   gen.block_begin(entry, params, {} /*tx_list*/);
-  gen.block_fill_pulse_data(entry, params);
+  gen.block_fill_pulse_data(entry, params, entry.block.pulse.round);
 
   // NOTE: Overwrite oob quorum index
-  entry.block.verification[0].quorum_index = service_nodes::PULSE_QUORUM_SIZE + 1;
+  entry.block.verification[0].quorum_index = service_nodes::PULSE_QUORUM_NUM_VALIDATORS + 1;
   gen.block_end(entry, params);
   gen.add_block(entry, false /*can_be_added_to_blockchain*/, "Invalid Pulse Block, specifies the wrong participation bits");
 
@@ -3114,19 +3113,22 @@ bool loki_pulse_non_participating_validator::generate(std::vector<test_event_ent
 
   // NOTE: Manually generate signatures to break test
   {
-    // NOTE: Check active service node list invariant
     {
-      std::vector<service_nodes::pubkey_and_sninfo> active_snode_list = params.prev.service_node_state.active_service_nodes_infos();
-      assert(active_snode_list.size() >= service_nodes::PULSE_MIN_SERVICE_NODES);
+      entry.block.pulse.round = 0;
+      for (size_t i = 0; i < sizeof(entry.block.pulse.random_value.data); i++)
+        entry.block.pulse.random_value.data[i] = static_cast<char>(tools::uniform_distribution_portable(tools::rng, 256));
     }
 
-    entry.block.pulse.round = 0;
-    for (size_t i = 0; i < sizeof(entry.block.pulse.random_value.data); i++)
-      entry.block.pulse.random_value.data[i] = static_cast<char>(tools::uniform_distribution_portable(tools::rng, 256));
+    service_nodes::quorum quorum = {};
+    {
+      std::vector<service_nodes::pubkey_and_sninfo> active_snode_list = params.prev.service_node_state.active_service_nodes_infos();
 
-    service_nodes::quorum const &quorum = *params.prev.service_node_state.quorums.pulse;
-    assert(quorum.validators.size() == service_nodes::PULSE_QUORUM_SIZE);
-    assert(quorum.workers.size() == 1);
+      std::vector<crypto::hash> entropy;
+      service_nodes::get_pulse_entropy_from_blockchain(gen.db_, cryptonote::get_block_height(entry.block) + 1, entropy, entry.block.pulse.round);
+      quorum = generate_pulse_quorum(params.block_winner.key, entry.block.major_version, active_snode_list, entropy, entry.block.pulse.round);
+      assert(quorum.validators.size() == service_nodes::PULSE_QUORUM_NUM_VALIDATORS);
+      assert(quorum.workers.size() == 1);
+    }
 
     // NOTE: First 7 validators are locked in. We received signatures from the
     // first 6 in the quorum, then the 8th validator in the quorum (who is not
@@ -3150,6 +3152,23 @@ bool loki_pulse_non_participating_validator::generate(std::vector<test_event_ent
 
   gen.block_end(entry, params);
   gen.add_block(entry, false /*can_be_added_to_blockchain*/, "Invalid Pulse Block, specifies the wrong participation bits");
+
+  return true;
+}
+
+bool loki_pulse_generate_all_rounds::generate(std::vector<test_event_entry> &events)
+{
+  loki_chain_generator gen = setup_pulse_tests(events);
+
+  for (uint8_t round = 0; round < static_cast<uint8_t>(-1); round++)
+  {
+    loki_blockchain_entry entry     = {};
+    loki_create_block_params params = gen.next_block_params();
+    gen.block_begin(entry, params, {} /*tx_list*/);
+    gen.block_fill_pulse_data(entry, params, round);
+    gen.block_end(entry, params);
+    gen.add_block(entry, true);
+  }
 
   return true;
 }
