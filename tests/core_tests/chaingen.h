@@ -803,8 +803,7 @@ public:
   bool operator()(const loki_blockchain_addable<cryptonote::block> &entry) const
   {
     log_event("loki_blockchain_addable<cryptonote::block>");
-    cryptonote::block const &block = entry.data;
-
+    cryptonote::block const &block             = entry.data;
     cryptonote::block_verification_context bvc = {};
     cryptonote::blobdata bd                    = t_serializable_object_to_blob(block);
     std::vector<cryptonote::block> pblocks;
@@ -1459,8 +1458,10 @@ struct loki_chain_generator
   loki_blockchain_entry                                create_genesis_block(const cryptonote::account_base &miner, uint64_t timestamp);
   loki_blockchain_entry                                create_next_block(const std::vector<cryptonote::transaction>& txs = {}, cryptonote::checkpoint_t const *checkpoint = nullptr);
   bool                                                 create_block(loki_blockchain_entry &entry, loki_create_block_params &params, const std::vector<cryptonote::transaction> &tx_list) const;
-  bool                                                 begin_block(loki_blockchain_entry &entry, loki_create_block_params &params, const std::vector<cryptonote::transaction> &tx_list) const;
-  void                                                 end_block(loki_blockchain_entry &entry, loki_create_block_params const &params) const;
+
+  bool                                                 block_begin(loki_blockchain_entry &entry, loki_create_block_params &params, const std::vector<cryptonote::transaction> &tx_list) const;
+  void                                                 block_fill_pulse_data(loki_blockchain_entry &entry, loki_create_block_params const &params) const;
+  void                                                 block_end(loki_blockchain_entry &entry, loki_create_block_params const &params) const;
 
   uint8_t                                              get_hf_version_at(uint64_t height) const;
   std::vector<uint64_t>                                last_n_block_weights(uint64_t height, uint64_t num) const;

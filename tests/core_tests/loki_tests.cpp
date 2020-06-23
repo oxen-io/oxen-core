@@ -30,6 +30,7 @@
 
 #include "loki_tests.h"
 #include "cryptonote_core/service_node_list.h"
+#include "common/random.h"
 
 extern "C"
 {
@@ -3032,24 +3033,123 @@ bool loki_service_nodes_insufficient_contribution::generate(std::vector<test_eve
   return true;
 }
 
-bool loki_pulse_generate_blocks_and_invalid_blocks::generate(std::vector<test_event_entry> &events)
+static loki_chain_generator setup_pulse_tests(std:vector<test_event_entry> &events)
 {
   std::vector<std::pair<uint8_t, uint64_t>> hard_forks = loki_generate_sequential_hard_fork_table();
-  loki_chain_generator gen(events, hard_forks);
+  loki_chain_generator result(events, hard_forks);
 
-  gen.add_blocks_until_version(hard_forks.back().first);
-  gen.add_mined_money_unlock_blocks();
+  result.add_blocks_until_version(hard_forks.back().first);
+  result.add_mined_money_unlock_blocks();
 
   int constexpr NUM_SERVICE_NODES = service_nodes::PULSE_QUORUM_SIZE + 1 /*leader*/;
   std::vector<cryptonote::transaction> registration_txs(NUM_SERVICE_NODES);
   for (auto i = 0u; i < NUM_SERVICE_NODES; ++i)
-    registration_txs[i] = gen.create_and_add_registration_tx(gen.first_miner());
+    registration_txs[i] = result.create_and_add_registration_tx(result.first_miner());
 
   // NOTE: Generate Valid Blocks
-  gen.create_and_add_next_block({registration_txs});
-  gen.create_and_add_next_block();
-  gen.create_and_add_next_block();
-  gen.create_and_add_next_block();
-  gen.create_and_add_next_block();
+  result.create_and_add_next_block({registration_txs});
+  result.create_and_add_next_block();
+  return result;
+}
+
+bool loki_pulse_invalid_participation_bits::generate(std::vector<test_event_entry> &events)
+{
+  loki_chain_generator gen = setup_pulse_tests(events);
+  gen.add_event_msg("Invalid Block: Participation bits wrong");
+  loki_blockchain_entry entry     = {};
+  loki_create_block_params params = gen.next_block_params();
+  gen.block_begin(entry, params, {} /*tx_list*/);
+  gen.block_fill_pulse_data(entry, params);
+
+  // NOTE: Overwrite participation bits to be wrong
+  entry.block.pulse.validator_participation_bits = ~service_nodes::PULSE_VALIDATOR_PARTICIPATION_MASK;
+
+  gen.block_end(entry, params);
+  gen.add_block(entry, false /*can_be_added_to_blockchain*/, "Invalid Pulse Block, specifies the wrong participation bits");
+
+  return true;
+}
+
+bool loki_pulse_invalid_signature::generate(std::vector<test_event_entry> &events)
+{
+  loki_chain_generator gen = setup_pulse_tests(events);
+  gen.add_event_msg("Invalid Block: Wrong signature given (null signature)");
+  loki_blockchain_entry entry     = {};
+  loki_create_block_params params = gen.next_block_params();
+  gen.block_begin(entry, params, {} /*tx_list*/);
+  gen.block_fill_pulse_data(entry, params);
+
+  // NOTE: Overwrite signature
+  entry.block.verification[0].signature = {};
+  gen.block_end(entry, params);
+  gen.add_block(entry, false /*can_be_added_to_blockchain*/, "Invalid Pulse Block, specifies the wrong participation bits");
+
+  return true;
+}
+
+bool loki_pulse_oob_quorum_index::generate(std::vector<test_event_entry> &events)
+{
+  loki_chain_generator gen = setup_pulse_tests(events);
+  gen.add_event_msg("Invalid Block: Quorum index that indexes out of bounds");
+  loki_blockchain_entry entry     = {};
+  loki_create_block_params params = gen.next_block_params();
+  gen.block_begin(entry, params, {} /*tx_list*/);
+  gen.block_fill_pulse_data(entry, params);
+
+  // NOTE: Overwrite oob quorum index
+  entry.block.verification[0].quorum_index = service_nodes::PULSE_QUORUM_SIZE + 1;
+  gen.block_end(entry, params);
+  gen.add_block(entry, false /*can_be_added_to_blockchain*/, "Invalid Pulse Block, specifies the wrong participation bits");
+
+  return true;
+}
+
+bool loki_pulse_non_participating_validator::generate(std::vector<test_event_entry> &events)
+{
+  loki_chain_generator gen = setup_pulse_tests(events);
+  gen.add_event_msg("Invalid Block: Validator gave signature but is not locked in to participate this round.");
+  loki_blockchain_entry entry     = {};
+  loki_create_block_params params = gen.next_block_params();
+  gen.block_begin(entry, params, {} /*tx_list*/);
+
+  // NOTE: Manually generate signatures to break test
+  {
+    // NOTE: Check active service node list invariant
+    {
+      std::vector<service_nodes::pubkey_and_sninfo> active_snode_list = params.prev.service_node_state.active_service_nodes_infos();
+      assert(active_snode_list.size() >= service_nodes::PULSE_MIN_SERVICE_NODES);
+    }
+
+    entry.block.pulse.round = 0;
+    for (size_t i = 0; i < sizeof(entry.block.pulse.random_value.data); i++)
+      entry.block.pulse.random_value.data[i] = static_cast<char>(tools::uniform_distribution_portable(tools::rng, 256));
+
+    service_nodes::quorum const &quorum = *params.prev.service_node_state.quorums.pulse;
+    assert(quorum.validators.size() == service_nodes::PULSE_QUORUM_SIZE);
+    assert(quorum.workers.size() == 1);
+
+    // NOTE: First 7 validators are locked in. We received signatures from the
+    // first 6 in the quorum, then the 8th validator in the quorum (who is not
+    // meant to be participating).
+    entry.block.pulse.validator_participation_bits = 0b0000'000'0111'1111;
+    size_t const quorum_indexes[]                  = {0, 1, 2, 3, 4, 5, 7};
+
+    crypto::hash block_hash = cryptonote::get_block_hash(entry.block);
+    assert(entry.block.verification.empty());
+    for (size_t index : quorum_indexes)
+    {
+      service_nodes::service_node_keys validator_keys = gen.get_cached_keys(quorum.validators[index]);
+      assert(validator_keys.pub == quorum.validators[index]);
+
+      cryptonote::pulse_verification verification = {};
+      verification.quorum_index                   = index;
+      crypto::generate_signature(block_hash, validator_keys.pub, validator_keys.key, verification.signature);
+      entry.block.verification.push_back(verification);
+    }
+  }
+
+  gen.block_end(entry, params);
+  gen.add_block(entry, false /*can_be_added_to_blockchain*/, "Invalid Pulse Block, specifies the wrong participation bits");
+
   return true;
 }
