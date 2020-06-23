@@ -4261,12 +4261,14 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
   if (!m_service_node_list.block_added(bl, only_txs, checkpoint))
   {
     MERROR("Failed to add block to Service Node List.");
+    bvc.m_verifivation_failed = true;
     return false;
   }
 
   if (!m_lns_db.add_block(bl, only_txs))
   {
     MERROR("Failed to add block to LNS DB.");
+    bvc.m_verifivation_failed = true;
     return false;
   }
 
@@ -4275,6 +4277,7 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
     if (!hook->block_added(bl, only_txs, checkpoint))
     {
       MERROR("Block added hook signalled failure");
+      bvc.m_verifivation_failed = true;
       return false;
     }
   }

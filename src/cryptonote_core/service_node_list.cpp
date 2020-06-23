@@ -1287,13 +1287,23 @@ namespace service_nodes
           return false;
         }
 
+        if ((block.pulse.validator_participation_bits & (~service_nodes::PULSE_VALIDATOR_PARTICIPATION_MASK)) > 0)
+        {
+          auto mask = std::bitset<sizeof(service_nodes::PULSE_VALIDATOR_PARTICIPATION_MASK) * 8>(service_nodes::PULSE_VALIDATOR_PARTICIPATION_MASK);
+          LOG_PRINT_L1("Pulse block specifies validator participation bits out of bounds. Expected the bit mask " << mask << "\n" << dump_pulse_block_data(block, quorum.get()));
+          return false;
+        }
+
         for (cryptonote::pulse_verification const &verification : block.verification)
         {
           if (verification.quorum_index >= quorum->validators.size())
+          {
+            LOG_PRINT_L1("Received pulse signature with quorum index out of array bounds " << static_cast<int>(verification.quorum_index) << "\n" << dump_pulse_block_data(block, quorum.get()));
             return false;
+          }
 
-          uint16_t mask = 1 << verification.quorum_index;
-          if ((block.pulse.validator_participation_bits & mask) == 0)
+          uint16_t bit = 1 << verification.quorum_index;
+          if ((block.pulse.validator_participation_bits & bit) == 0)
           {
             LOG_PRINT_L1("Received pulse signature from validator " << static_cast<int>(verification.quorum_index) << " that is not participating in round " << static_cast<int>(block.pulse.round) << "\n" << dump_pulse_block_data(block, quorum.get()));
             return false;
