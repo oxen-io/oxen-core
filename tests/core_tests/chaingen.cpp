@@ -777,7 +777,7 @@ loki_blockchain_entry loki_chain_generator::create_genesis_block(const cryptonot
   return result;
 }
 
-bool loki_chain_generator::begin_block(loki_blockchain_entry &entry, loki_create_block_params &params, const std::vector<cryptonote::transaction> &tx_list) const
+bool loki_chain_generator::block_begin(loki_blockchain_entry &entry, loki_create_block_params &params, const std::vector<cryptonote::transaction> &tx_list) const
 {
   assert(params.hf_version >= params.prev.block.major_version);
   uint64_t height          = get_block_height(params.prev.block) + 1;
@@ -887,46 +887,54 @@ bool loki_chain_generator::begin_block(loki_blockchain_entry &entry, loki_create
   return true;
 }
 
-void loki_chain_generator::end_block(loki_blockchain_entry &entry, loki_create_block_params const &params) const
+void loki_chain_generator::block_end(loki_blockchain_entry &entry, loki_create_block_params const &params) const
 {
   entry.service_node_state = params.prev.service_node_state;
   entry.service_node_state.update_from_block(db_, cryptonote::FAKECHAIN, state_history_, {} /*state_archive*/, {} /*alt_states*/, entry.block, entry.txs, nullptr);
+}
+
+void loki_chain_generator::block_fill_pulse_data(loki_blockchain_entry &entry, loki_create_block_params const &params) const
+{
+  std::vector<service_nodes::pubkey_and_sninfo> active_snode_list = params.prev.service_node_state.active_service_nodes_infos();
+  assert(active_snode_list.size() >= service_nodes::PULSE_MIN_SERVICE_NODES);
+
+  entry.block.pulse.validator_participation_bits = service_nodes::PULSE_VALIDATOR_PARTICIPATION_MASK; // NOTE: Everyone participates
+  entry.block.pulse.round = 0;
+  for (size_t i = 0; i < sizeof(entry.block.pulse.random_value.data); i++)
+    entry.block.pulse.random_value.data[i] = static_cast<char>(tools::uniform_distribution_portable(tools::rng, 256));
+
+  service_nodes::quorum const &quorum = *params.prev.service_node_state.quorums.pulse;
+  assert(quorum.validators.size() == service_nodes::PULSE_QUORUM_SIZE);
+  assert(quorum.workers.size() == 1);
+
+  crypto::hash block_hash = cryptonote::get_block_hash(entry.block);
+  assert(entry.block.verification.empty());
+
+  for (size_t i = 0; i < service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES; i++)
+  {
+    service_nodes::service_node_keys validator_keys = get_cached_keys(quorum.validators[i]);
+    assert(validator_keys.pub == quorum.validators[i]);
+
+    cryptonote::pulse_verification verification = {};
+    verification.quorum_index                   = i;
+    crypto::generate_signature(block_hash, validator_keys.pub, validator_keys.key, verification.signature);
+    entry.block.verification.push_back(verification);
+  }
 }
 
 bool loki_chain_generator::create_block(loki_blockchain_entry &entry,
                                         loki_create_block_params &params,
                                         const std::vector<cryptonote::transaction> &tx_list) const
 {
-  if (!begin_block(entry, params, tx_list))
+  if (!block_begin(entry, params, tx_list))
     return false;
 
   {
     std::vector<service_nodes::pubkey_and_sninfo> active_snode_list = params.prev.service_node_state.active_service_nodes_infos();
     if (entry.block.major_version >= cryptonote::network_version_16 &&
-        active_snode_list.size() >= (service_nodes::PULSE_QUORUM_SIZE + 1))
+        active_snode_list.size() >= service_nodes::PULSE_MIN_SERVICE_NODES)
     {
-      entry.block.pulse.validator_participation_bits = static_cast<uint16_t>(-1); // NOTE: Everyone participates
-      entry.block.pulse.round = 0;
-      for (size_t i = 0; i < sizeof(entry.block.pulse.random_value.data); i++)
-        entry.block.pulse.random_value.data[i] = static_cast<char>(tools::uniform_distribution_portable(tools::rng, 256));
-
-      service_nodes::quorum const &quorum = *params.prev.service_node_state.quorums.pulse;
-      assert(quorum.validators.size() == service_nodes::PULSE_QUORUM_SIZE);
-      assert(quorum.workers.size() == 1);
-
-      crypto::hash block_hash = cryptonote::get_block_hash(entry.block);
-      assert(entry.block.verification.empty());
-
-      for (size_t i = 0; i < service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES; i++)
-      {
-        service_nodes::service_node_keys validator_keys = get_cached_keys(quorum.validators[i]);
-        assert(validator_keys.pub == quorum.validators[i]);
-
-        cryptonote::pulse_verification verification = {};
-        verification.quorum_index                   = i;
-        crypto::generate_signature(block_hash, validator_keys.pub, validator_keys.key, verification.signature);
-        entry.block.verification.push_back(verification);
-      }
+      block_fill_pulse_data(entry, params);
     }
     else
     {
@@ -934,7 +942,7 @@ bool loki_chain_generator::create_block(loki_blockchain_entry &entry,
     }
   }
 
-  end_block(entry, params);
+  block_end(entry, params);
   return true;
 }
 

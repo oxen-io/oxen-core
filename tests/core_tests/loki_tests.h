@@ -77,5 +77,8 @@ struct loki_service_nodes_gen_nodes                                             
 struct loki_service_nodes_insufficient_contribution                                  : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
 struct loki_service_nodes_test_rollback                                              : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
 struct loki_service_nodes_test_swarms_basic                                          : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
-struct loki_pulse_generate_blocks_and_invalid_blocks                                 : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
+struct loki_pulse_invalid_participation_bits                                         : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
+struct loki_pulse_invalid_signature                                                  : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
+struct loki_pulse_oob_quorum_index                                                   : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
+struct loki_pulse_non_participating_validator                                        : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
 
