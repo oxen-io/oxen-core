@@ -1276,6 +1276,9 @@ namespace service_nodes
     if (block.major_version < cryptonote::network_version_9_service_nodes)
       return true;
 
+    std::lock_guard lock(m_sn_mutex);
+    process_block(block, txs);
+
     if (block.major_version >= cryptonote::network_version_16)
     {
       std::shared_ptr<const quorum> quorum = get_quorum(quorum_type::pulse, m_state.height);
@@ -1328,9 +1331,6 @@ namespace service_nodes
         // quorum, this is a fallback- nonce mined block, previously verified validly
       }
     }
-
-    std::lock_guard lock(m_sn_mutex);
-    process_block(block, txs);
 
     if (block.major_version >= cryptonote::network_version_13_enforce_checkpoints && checkpoint)
     {
@@ -1437,6 +1437,7 @@ namespace service_nodes
           entropy[8]  = crypto::hash{"\x8c\x81\x6c\x77\xf0\x62\x55\xff\x38\xec\x57\x22\x62\x2e\x49\xd4\x44\x5a\xe3\x02\x27\xb6\xb3\xe4\x3c\xc7\x9f\xb8\xc5\x90\xa1"};
           entropy[9]  = crypto::hash{"\x18\x8e\x4f\xb5\x99\x74\xec\x78\xf9\x7b\x36\x87\x14\x82\x05\x32\x07\xf3\x21\x21\x6d\x8e\xfd\x35\xe6\x70\xa3\x89\x17\x22\x4b"};
           entropy[10] = crypto::hash{"\xb7\xbe\x54\xe3\x21\xe3\xeb\x88\xda\xab\xf1\xf7\x50\xb9\xef\x98\xa5\xcf\x9f\x75\x81\x74\x16\xbc\x85\x78\x6e\x0c\xaa\x14\x99"};
+          entropy[11] = crypto::hash{"\xb7\x28\x54\xe3\x21\xe3\xeb\x88\xda\x12\xf1\xf7\x50\xb9\xca\x98\xa5\xcf\x9f\x75\x81\x74\x16\xbc\x85\x78\x6e\x0c\xaa\x14\x99"};
         }
         else
         {
@@ -1458,7 +1459,6 @@ namespace service_nodes
     for (cryptonote::block const &block : blocks)
     {
       crypto::hash hash = {};
-#if 0
       if (block.major_version >= cryptonote::network_version_16)
       {
         std::array<uint8_t, 1 + sizeof(block.pulse.random_value)> src = {pulse_round};
@@ -1466,7 +1466,6 @@ namespace service_nodes
         crypto::cn_fast_hash(src.data(), src.size(), hash.data);
       }
       else
-#endif
       {
         crypto::hash block_hash = cryptonote::get_block_hash(block);
         std::array<uint8_t, 1 + sizeof(hash)> src = {pulse_round};
@@ -1481,29 +1480,26 @@ namespace service_nodes
     return true;
   }
 
-  service_nodes::quorum generate_pulse_quorum(crypto::public_key const &leader, uint8_t hf_version, std::vector<pubkey_and_sninfo> const &active_snode_list, std::vector<crypto::hash> const &pulse_entropy)
+  service_nodes::quorum generate_pulse_quorum(crypto::public_key const &block_winner, uint8_t hf_version, std::vector<pubkey_and_sninfo> const &active_snode_list, std::vector<crypto::hash> const &pulse_entropy, uint8_t pulse_round)
   {
     service_nodes::quorum result = {};
-    if (active_snode_list.size() < (PULSE_QUORUM_SIZE  + 1 /*leader*/))
+    if (active_snode_list.size() < PULSE_MIN_SERVICE_NODES)
     {
       LOG_PRINT_L2("Insufficient active Service Nodes for Pulse: " << active_snode_list.size());
       return result;
     }
 
-    if (pulse_entropy.size() < PULSE_QUORUM_SIZE)
+    if (pulse_entropy.size() != PULSE_QUORUM_SIZE)
     {
       LOG_PRINT_L2("Blockchain has insufficient blocks to generate Pulse data");
       return result;
     }
 
-    // NOTE: Find the leader for this block
-    result.workers.push_back(leader);
-
     std::vector<pubkey_and_sninfo const *> pulse_candidates;
     pulse_candidates.reserve(active_snode_list.size());
     for (auto &node : active_snode_list)
     {
-      if (node.first != leader)
+      if (node.first != block_winner)
         pulse_candidates.push_back(&node);
     }
 
@@ -1515,33 +1511,59 @@ namespace service_nodes
           return a->second->pulse_sorter < b->second->pulse_sorter;
         });
 
-    // NOTE: Divide the list in half, select validators from the first half of the list.
-    // Swap the chosen validator into first half of the list.
-    auto running_it              = pulse_candidates.begin();
-    size_t const partition_index = pulse_candidates.size() / 2;
-    for (size_t i = 0; i < pulse_entropy.size(); i++)
+    // NOTE: Order the candidates so the first (1 + half) nodes in the list is the optional new leader + validators for this round.
+    // - If (round > 0) choose a service node to be the leader
+    // - Swap the optional leader into the first spot
+    // - Divide the remaining list in half, select validators from the first half of the list.
+    // - Swap the chosen validator into the moving first half of the list.
+    auto running_it = pulse_candidates.begin();
+    for (size_t i = 0; i < service_nodes::PULSE_QUORUM_SIZE; i++)
     {
       crypto::hash const &entropy = pulse_entropy[i];
       std::mt19937_64 rng         = quorum_rng(hf_version, entropy, quorum_type::pulse);
-      size_t validators_available = std::distance(running_it, pulse_candidates.end());
+      size_t swap_index           = 0;
 
-      size_t candidate_index = tools::uniform_distribution_portable(rng, std::min(partition_index, validators_available));
-      std::swap(*running_it, *(running_it + candidate_index));
+      if (i == 0) // The first hash is reserved as entropy for the new leader.
+      {
+        // Find the leader for this block when round has iterated because, the
+        // original leader (the block winner) failed to generate a Pulse Block.
+        if (pulse_round > 0)
+          swap_index = tools::uniform_distribution_portable(rng, pulse_candidates.size());
+      }
+      else // NOTE: Remaining entropy hashes for validators
+      {
+        size_t const partition_index = (pulse_candidates.size() - 1) / 2;
+        size_t validators_available  = std::distance(running_it, pulse_candidates.end());
+        swap_index = tools::uniform_distribution_portable(rng, std::min(partition_index, validators_available));
+      }
+
+      std::swap(*running_it, *(running_it + swap_index));
       running_it++;
     }
 
     for (auto it = pulse_candidates.begin(); it != running_it; it++)
     {
-      crypto::public_key const &validator_key = (*it)->first;
-      result.validators.push_back(validator_key);
+      size_t i = std::distance(pulse_candidates.begin(), it);
+      crypto::public_key const &node_key = (*it)->first;
+      if (i == 0)
+      {
+        if (pulse_round > 0)
+          result.workers.push_back(node_key);
+        else
+          result.workers.push_back(block_winner);
+      }
+      else
+      {
+        result.validators.push_back(node_key);
+      }
+
     }
 
     return result;
   }
 
-  static quorum_manager generate_quorums(service_node_list::state_t &state, std::vector<pubkey_and_sninfo> const &active_snode_list, cryptonote::network_type nettype, uint8_t hf_version, std::vector<crypto::hash> &pulse_entropy)
+  static void generate_other_quorums(service_node_list::state_t &state, std::vector<pubkey_and_sninfo> const &active_snode_list, cryptonote::network_type nettype, uint8_t hf_version)
   {
-    quorum_manager result = {};
     assert(state.block_hash != crypto::null_hash);
 
     // The two quorums here have different selection criteria: the entire checkpoint quorum and the
@@ -1573,7 +1595,7 @@ namespace service_nodes
             size_t total_nodes         = active_snode_list.size() + decomm_snode_list.size();
             num_validators             = std::min(active_snode_list.size(), STATE_CHANGE_QUORUM_SIZE);
             pub_keys_indexes           = generate_shuffled_service_node_index_list(hf_version, total_nodes, state.block_hash, type, num_validators, active_snode_list.size());
-            result.obligations         = quorum;
+            state.quorums.obligations  = quorum;
             size_t num_remaining_nodes = total_nodes - num_validators;
             num_workers                = std::min(num_remaining_nodes, std::max(STATE_CHANGE_MIN_NODES_TO_TEST, num_remaining_nodes/STATE_CHANGE_NTH_OF_THE_NETWORK_TO_TEST));
           }
@@ -1598,7 +1620,7 @@ namespace service_nodes
               pub_keys_indexes = generate_shuffled_service_node_index_list(hf_version, total_nodes, state.block_hash, type);
               num_validators   = std::min(pub_keys_indexes.size(), CHECKPOINT_QUORUM_SIZE);
             }
-            result.checkpointing = quorum;
+            state.quorums.checkpointing = quorum;
           }
           else
           {
@@ -1627,7 +1649,7 @@ namespace service_nodes
             }
             // Otherwise leave empty to signal that there aren't enough SNs to form a usable quorum (to
             // distinguish it from an invalid height, which gets left as a nullptr)
-            result.blink = quorum;
+            state.quorums.blink = quorum;
           }
 
           quorum->validators.reserve(num_validators);
@@ -1650,31 +1672,12 @@ namespace service_nodes
         }
         break;
 
-        case quorum_type::pulse:
-        {
-          block_winner winner = state.get_block_winner();
-          *quorum = generate_pulse_quorum(winner.key, hf_version, active_snode_list, pulse_entropy);
-          if (quorum->workers.size() == 1 && quorum->validators.size() == PULSE_QUORUM_SIZE)
-          {
-            for (size_t quorum_index = 0 ; quorum_index < quorum->validators.size(); quorum_index++)
-            {
-              // NOTE: Send candidate to the back of the list
-              crypto::public_key const &key                          = quorum->validators[quorum_index];
-              auto &info_ptr                                         = state.service_nodes_infos.at(key);
-              service_node_info &new_info                            = duplicate_info(info_ptr);
-              new_info.pulse_sorter.last_height_validating_in_quorum = state.height;
-              new_info.pulse_sorter.quorum_index                     = quorum_index;
-            }
-            result.pulse = quorum;
-          }
-        }
-        break;
+        // NOTE: NOP. Pulse quorums are generated pre-Service Node List changes for the block
+        case quorum_type::pulse: break;
 
         default: MERROR("Unhandled quorum type enum with value: " << type_int); break;
       }
     }
-
-    return result;
   }
 
   void service_node_list::state_t::update_from_block(cryptonote::BlockchainDB const &db,
@@ -1693,6 +1696,35 @@ namespace service_nodes
     quorums                  = {};
     block_hash               = cryptonote::get_block_hash(block);
     uint8_t const hf_version = block.major_version;
+
+    //
+    // Generate Pulse Quorum before any SN changes are applied to the list because,
+    // the Leader and Validators for this block generated Pulse Data before any
+    // TX's included in the block were applied
+    //   i.e. before any deregistrations, registrations, decommissions, recommissions.
+    //
+    crypto::public_key winner_pubkey = cryptonote::get_service_node_winner_from_tx_extra(block.miner_tx.extra);
+    if (hf_version >= cryptonote::network_version_16)
+    {
+      std::vector<crypto::hash> entropy;
+      get_pulse_entropy_from_blockchain(db, cryptonote::get_block_height(block) + 1, entropy, block.pulse.round);
+      quorum pulse_quorum = generate_pulse_quorum(winner_pubkey, hf_version, active_service_nodes_infos(), entropy, block.pulse.round);
+
+      if (pulse_quorum.workers.size() == 1 && pulse_quorum.validators.size() == PULSE_QUORUM_NUM_VALIDATORS)
+      {
+        // NOTE: Send candidate to the back of the list
+        for (size_t quorum_index = 0 ; quorum_index < pulse_quorum.validators.size(); quorum_index++)
+        {
+          crypto::public_key const &key                          = pulse_quorum.validators[quorum_index];
+          auto &info_ptr                                         = service_nodes_infos.at(key);
+          service_node_info &new_info                            = duplicate_info(info_ptr);
+          new_info.pulse_sorter.last_height_validating_in_quorum = height;
+          new_info.pulse_sorter.quorum_index                     = quorum_index;
+        }
+
+        quorums.pulse = std::make_shared<service_nodes::quorum>(std::move(pulse_quorum));
+      }
+    }
 
     //
     // Remove expired blacklisted key images
@@ -1728,7 +1760,6 @@ namespace service_nodes
     // Advance the list to the next candidate for a reward
     //
     {
-      crypto::public_key winner_pubkey = cryptonote::get_service_node_winner_from_tx_extra(block.miner_tx.extra);
       auto it = service_nodes_infos.find(winner_pubkey);
       if (it != service_nodes_infos.end())
       {
@@ -1788,10 +1819,7 @@ namespace service_nodes
       }
     }
 
-    // TODO(doyle): Error handling, we assume it works
-    std::vector<crypto::hash> entropy;
-    if (hf_version >= cryptonote::network_version_16) get_pulse_entropy_from_blockchain(db, cryptonote::get_block_height(block) + 1, entropy, block.pulse.round);
-    quorums = generate_quorums(*this, active_snode_list, nettype, hf_version, entropy);
+    generate_other_quorums(*this, active_snode_list, nettype, hf_version);
   }
 
   void service_node_list::process_block(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs)

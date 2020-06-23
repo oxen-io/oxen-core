@@ -1460,7 +1460,7 @@ struct loki_chain_generator
   bool                                                 create_block(loki_blockchain_entry &entry, loki_create_block_params &params, const std::vector<cryptonote::transaction> &tx_list) const;
 
   bool                                                 block_begin(loki_blockchain_entry &entry, loki_create_block_params &params, const std::vector<cryptonote::transaction> &tx_list) const;
-  void                                                 block_fill_pulse_data(loki_blockchain_entry &entry, loki_create_block_params const &params) const;
+  void                                                 block_fill_pulse_data(loki_blockchain_entry &entry, loki_create_block_params const &params, uint8_t round) const;
   void                                                 block_end(loki_blockchain_entry &entry, loki_create_block_params const &params) const;
 
   uint8_t                                              get_hf_version_at(uint64_t height) const;

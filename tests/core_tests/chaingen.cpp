@@ -893,27 +893,33 @@ void loki_chain_generator::block_end(loki_blockchain_entry &entry, loki_create_b
   entry.service_node_state.update_from_block(db_, cryptonote::FAKECHAIN, state_history_, {} /*state_archive*/, {} /*alt_states*/, entry.block, entry.txs, nullptr);
 }
 
-void loki_chain_generator::block_fill_pulse_data(loki_blockchain_entry &entry, loki_create_block_params const &params) const
+void loki_chain_generator::block_fill_pulse_data(loki_blockchain_entry &entry, loki_create_block_params const &params, uint8_t round) const
 {
   std::vector<service_nodes::pubkey_and_sninfo> active_snode_list = params.prev.service_node_state.active_service_nodes_infos();
   assert(active_snode_list.size() >= service_nodes::PULSE_MIN_SERVICE_NODES);
 
+  // NOTE: Set up Pulse Header
   entry.block.pulse.validator_participation_bits = service_nodes::PULSE_VALIDATOR_PARTICIPATION_MASK; // NOTE: Everyone participates
-  entry.block.pulse.round = 0;
+  entry.block.pulse.round = round;
   for (size_t i = 0; i < sizeof(entry.block.pulse.random_value.data); i++)
     entry.block.pulse.random_value.data[i] = static_cast<char>(tools::uniform_distribution_portable(tools::rng, 256));
 
-  service_nodes::quorum const &quorum = *params.prev.service_node_state.quorums.pulse;
-  assert(quorum.validators.size() == service_nodes::PULSE_QUORUM_SIZE);
-  assert(quorum.workers.size() == 1);
+  // NOTE: Get Pulse Quorum necessary for this block
+  std::vector<crypto::hash> entropy;
+  service_nodes::get_pulse_entropy_from_blockchain(db_, cryptonote::get_block_height(entry.block) + 1, entropy, entry.block.pulse.round);
+  service_nodes::quorum pulse_quorum = generate_pulse_quorum(params.block_winner.key, entry.block.major_version, active_snode_list, entropy, entry.block.pulse.round);
+
+  assert(pulse_quorum.validators.size() == service_nodes::PULSE_QUORUM_NUM_VALIDATORS);
+  assert(pulse_quorum.workers.size() == 1);
 
   crypto::hash block_hash = cryptonote::get_block_hash(entry.block);
   assert(entry.block.verification.empty());
 
+  // NOTE: Fill Pulse Verification Data
   for (size_t i = 0; i < service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES; i++)
   {
-    service_nodes::service_node_keys validator_keys = get_cached_keys(quorum.validators[i]);
-    assert(validator_keys.pub == quorum.validators[i]);
+    service_nodes::service_node_keys validator_keys = get_cached_keys(pulse_quorum.validators[i]);
+    assert(validator_keys.pub == pulse_quorum.validators[i]);
 
     cryptonote::pulse_verification verification = {};
     verification.quorum_index                   = i;
@@ -931,10 +937,9 @@ bool loki_chain_generator::create_block(loki_blockchain_entry &entry,
 
   {
     std::vector<service_nodes::pubkey_and_sninfo> active_snode_list = params.prev.service_node_state.active_service_nodes_infos();
-    if (entry.block.major_version >= cryptonote::network_version_16 &&
-        active_snode_list.size() >= service_nodes::PULSE_MIN_SERVICE_NODES)
+    if (entry.block.major_version >= cryptonote::network_version_16 && active_snode_list.size() >= service_nodes::PULSE_MIN_SERVICE_NODES)
     {
-      block_fill_pulse_data(entry, params);
+      block_fill_pulse_data(entry, params, entry.block.pulse.round);
     }
     else
     {

@@ -81,4 +81,5 @@ struct loki_pulse_invalid_participation_bits                                    
 struct loki_pulse_invalid_signature                                                  : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
 struct loki_pulse_oob_quorum_index                                                   : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
 struct loki_pulse_non_participating_validator                                        : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
+struct loki_pulse_generate_all_rounds                                                : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
 

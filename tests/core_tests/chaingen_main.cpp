@@ -152,6 +152,7 @@ int main(int argc, char* argv[])
     GENERATE_AND_PLAY(loki_pulse_invalid_signature);
     GENERATE_AND_PLAY(loki_pulse_oob_quorum_index);
     GENERATE_AND_PLAY(loki_pulse_non_participating_validator);
+    GENERATE_AND_PLAY(loki_pulse_generate_all_rounds);
 
     // NOTE: Monero Tests
     GENERATE_AND_PLAY(gen_simple_chain_001);
