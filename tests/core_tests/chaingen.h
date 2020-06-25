@@ -1128,11 +1128,18 @@ inline bool do_replay_file(const std::string& filename)
     std::list<cryptonote::transaction> SET_NAME; \
     MAKE_TX_LIST(VEC_EVENTS, SET_NAME, FROM, TO, AMOUNT, HEAD);
 
-#define MAKE_MINER_TX_MANUALLY(TX, BLK)         \
-  transaction TX;                     \
-  if (!construct_miner_tx(get_block_height(BLK)+1, 0, generator.get_already_generated_coins(BLK), \
-    0, 0, miner_account.get_keys().m_account_address, TX, {}, 7)) \
-    return false; \
+#define MAKE_MINER_TX_MANUALLY(TX, BLK)                                                                                \
+  transaction TX;                                                                                                      \
+  if (!construct_miner_tx(get_block_height(BLK) + 1,                                                                   \
+                          0,                                                                                           \
+                          generator.get_already_generated_coins(BLK),                                                  \
+                          0,                                                                                           \
+                          0,                                                                                           \
+                          TX,                                                                                          \
+                          cryptonote::loki_miner_tx_context::miner_block(cryptonote::FAKECHAIN, miner_account.get_keys().m_account_address), \
+                          {},                                                                                          \
+                          7))                                                                                          \
+    return false;
 
 #define MAKE_TX_LIST_START_RCT(VEC_EVENTS, SET_NAME, FROM, TO, AMOUNT, NMIX, HEAD) \
     std::list<cryptonote::transaction> SET_NAME; \

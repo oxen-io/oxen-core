@@ -50,12 +50,37 @@ namespace cryptonote
   uint64_t get_portion_of_reward                (uint64_t portions, uint64_t total_service_node_reward);
   uint64_t service_node_reward_formula          (uint64_t base_reward, uint8_t hard_fork_version);
 
-  struct loki_miner_tx_context // NOTE(loki): All the custom fields required by Loki to use construct_miner_tx
+  struct loki_miner_tx_context
   {
-    loki_miner_tx_context(network_type type = MAINNET, service_nodes::block_winner const &block_winner = service_nodes::null_block_winner) : nettype(type), block_winner(std::move(block_winner)) { }
-    network_type                nettype;
+    static loki_miner_tx_context miner_block(network_type nettype,
+                                             cryptonote::account_public_address const &block_producer,
+                                             service_nodes::block_winner const &winner = service_nodes::null_block_winner)
+    {
+        loki_miner_tx_context result = {};
+        result.nettype               = nettype;
+        result.block_producer_miner  = block_producer;
+        result.block_winner          = winner;
+        return result;
+    }
+
+    static loki_miner_tx_context pulse_block(network_type nettype,
+                                             service_nodes::block_winner const &block_producer,
+                                             service_nodes::block_winner const &winner = service_nodes::null_block_winner)
+    {
+      loki_miner_tx_context result = {};
+      result.pulse_block_producer  = true;
+      result.nettype               = nettype;
+      result.block_producer_snode  = block_producer;
+      result.block_winner          = winner;
+      return result;
+    }
+
+    network_type                nettype = MAINNET;
+    bool                        pulse_block_producer; // If true, block_producer_snode is set, otherwise block_producer_miner is set, determining who should get the producer/coinbase reward.
+    service_nodes::block_winner block_producer_snode;
+    account_public_address      block_producer_miner;
     service_nodes::block_winner block_winner;
-    uint64_t                    batched_governance = 0; // NOTE: 0 until hardfork v10, then use blockchain::calc_batched_governance_reward
+    uint64_t                    batched_governance; // NOTE: 0 until hardfork v10, then use blockchain::calc_batched_governance_reward
   };
 
   bool construct_miner_tx(
@@ -64,11 +89,10 @@ namespace cryptonote
       uint64_t already_generated_coins,
       size_t current_block_weight,
       uint64_t fee,
-      const account_public_address &miner_address,
       transaction& tx,
+      const loki_miner_tx_context &miner_context,
       const blobdata& extra_nonce = blobdata(),
-      uint8_t hard_fork_version = 1,
-      const loki_miner_tx_context &miner_context = {});
+      uint8_t hard_fork_version = 1);
 
   struct block_reward_parts
   {
