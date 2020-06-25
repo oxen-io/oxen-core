@@ -715,7 +715,6 @@ loki_blockchain_entry loki_chain_generator::create_genesis_block(const cryptonot
 
   // TODO(doyle): Does this evaluate to 0? If so we can simplify this a lot more
   size_t target_block_weight = get_transaction_weight(blk.miner_tx);
-  cryptonote::loki_miner_tx_context miner_tx_context(cryptonote::FAKECHAIN, {} /*winner*/);
 
   while (true)
   {
@@ -724,11 +723,10 @@ loki_blockchain_entry loki_chain_generator::create_genesis_block(const cryptonot
                                           0 /*already_generated_coins*/,
                                           target_block_weight,
                                           0 /*total_fee*/,
-                                          miner.get_keys().m_account_address,
                                           blk.miner_tx,
+                                          cryptonote::loki_miner_tx_context::miner_block(cryptonote::FAKECHAIN, miner.get_keys().m_account_address),
                                           cryptonote::blobdata(),
-                                          hf_version_,
-                                          miner_tx_context);
+                                          hf_version_);
     assert(constructed);
 
     size_t actual_block_weight = get_transaction_weight(blk.miner_tx);
@@ -803,7 +801,7 @@ bool loki_chain_generator::block_begin(loki_blockchain_entry &entry, loki_create
   }
 
   // NOTE: Calculate governance
-  cryptonote::loki_miner_tx_context miner_tx_context(cryptonote::FAKECHAIN, params.block_winner);
+  auto miner_tx_context = cryptonote::loki_miner_tx_context::miner_block(cryptonote::FAKECHAIN, params.miner_acc.get_keys().m_account_address, params.block_winner);
   if (blk.major_version >= cryptonote::network_version_10_bulletproofs &&
       cryptonote::height_has_governance_output(cryptonote::FAKECHAIN, blk.major_version, height))
   {
@@ -835,11 +833,11 @@ bool loki_chain_generator::block_begin(loki_blockchain_entry &entry, loki_create
                             params.prev.already_generated_coins,
                             target_block_weight,
                             total_fee,
-                            params.miner_acc.get_keys().m_account_address,
                             blk.miner_tx,
+                            miner_tx_context,
                             cryptonote::blobdata(),
-                            blk.major_version,
-                            miner_tx_context))
+                            blk.major_version
+                            ))
       return false;
 
     entry.block_weight = txs_weight + get_transaction_weight(blk.miner_tx);
@@ -1162,9 +1160,9 @@ bool test_generator::construct_block(cryptonote::block &blk,
     txs_weight += get_transaction_weight(tx);
   }
 
+  auto miner_tx_context = cryptonote::loki_miner_tx_context::miner_block(cryptonote::FAKECHAIN, miner_acc.get_keys().m_account_address, winner);
   blk.miner_tx = {};
   size_t target_block_weight = txs_weight + get_transaction_weight(blk.miner_tx);
-  cryptonote::loki_miner_tx_context miner_tx_context(cryptonote::FAKECHAIN, winner);
   manual_calc_batched_governance(*this, prev_id, miner_tx_context, m_hf_version, height);
 
   while (true)
@@ -1174,11 +1172,10 @@ bool test_generator::construct_block(cryptonote::block &blk,
                             already_generated_coins,
                             target_block_weight,
                             total_fee,
-                            miner_acc.get_keys().m_account_address,
                             blk.miner_tx,
+                            miner_tx_context,
                             cryptonote::blobdata(),
-                            m_hf_version,
-                            miner_tx_context))
+                            m_hf_version))
       return false;
 
     size_t actual_block_weight = txs_weight + get_transaction_weight(blk.miner_tx);
@@ -1277,11 +1274,12 @@ bool test_generator::construct_block_manually(cryptonote::block& blk, const cryp
   else
   {
     // TODO: This will work, until size of constructed block is less then CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE
-    cryptonote::loki_miner_tx_context miner_tx_context(cryptonote::FAKECHAIN);
+    cryptonote::loki_miner_tx_context miner_tx_context = {};
+    miner_tx_context.nettype                           = cryptonote::FAKECHAIN;
     manual_calc_batched_governance(*this, prev_id, miner_tx_context, m_hf_version, height);
 
     size_t current_block_weight = txs_weight + get_transaction_weight(blk.miner_tx);
-    if (!construct_miner_tx(height, epee::misc_utils::median(block_weights), already_generated_coins, current_block_weight, 0, miner_acc.get_keys().m_account_address, blk.miner_tx, cryptonote::blobdata(), m_hf_version, miner_tx_context))
+    if (!construct_miner_tx(height, epee::misc_utils::median(block_weights), already_generated_coins, current_block_weight, 0, blk.miner_tx, cryptonote::loki_miner_tx_context::miner_block(cryptonote::FAKECHAIN, miner_acc.get_keys().m_account_address), cryptonote::blobdata(), m_hf_version))
       return false;
   }
 

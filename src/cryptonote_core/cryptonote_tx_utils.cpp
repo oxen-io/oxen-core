@@ -226,11 +226,10 @@ namespace cryptonote
       uint64_t already_generated_coins,
       size_t current_block_weight,
       uint64_t fee,
-      const account_public_address &miner_address,
       transaction& tx,
+      const loki_miner_tx_context &miner_tx_context,
       const blobdata& extra_nonce,
-      uint8_t hard_fork_version,
-      const loki_miner_tx_context &miner_tx_context)
+      uint8_t hard_fork_version)
   {
     const network_type nettype = miner_tx_context.nettype;
 
@@ -276,6 +275,7 @@ namespace cryptonote
       return false;
     }
 
+    account_public_address const &miner_address = miner_tx_context.block_producer_miner;
     uint64_t summary_amounts = 0;
     // Miner Reward
     {

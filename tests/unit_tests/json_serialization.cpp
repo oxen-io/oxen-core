@@ -19,7 +19,7 @@ namespace
     make_miner_transaction(cryptonote::account_public_address const& to)
     {
         cryptonote::transaction tx{};
-        if (!cryptonote::construct_miner_tx(0, 0, 5000, 500, 500, to, tx))
+        if (!cryptonote::construct_miner_tx(0, 0, 5000, 500, 500, tx, cryptonote::loki_miner_tx_context::miner_block(cryptonote::FAKECHAIN, to)))
             throw std::runtime_error{"transaction construction error"};
 
         crypto::hash id{0};
