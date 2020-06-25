@@ -45,6 +45,29 @@
 #include "ringct/rctTypes.h"
 #include "device/device.hpp"
 
+namespace service_nodes
+{
+  struct quorum_signature
+  {
+    uint16_t voter_index;
+    char padding[6];
+    crypto::signature signature;
+
+    quorum_signature() = default;
+    quorum_signature(uint16_t voter_index, crypto::signature const &signature)
+    : voter_index(voter_index)
+    , signature(signature)
+    {
+      std::memset(padding, 0, sizeof(padding));
+    }
+
+    BEGIN_SERIALIZE()
+      FIELD(voter_index)
+      FIELD(signature)
+    END_SERIALIZE()
+  };
+};
+
 namespace cryptonote
 {
   typedef std::vector<crypto::signature> ring_signature;
@@ -411,23 +434,10 @@ namespace cryptonote
     return 0;
   }
 
-
-
   /************************************************************************/
   /*                                                                      */
   /************************************************************************/
   struct pulse_random_value { unsigned char data[16]; };
-
-  struct pulse_verification
-  {
-    uint8_t           quorum_index;
-    crypto::signature signature;
-
-    BEGIN_SERIALIZE()
-      FIELD(quorum_index);
-      FIELD(signature);
-    END_SERIALIZE();
-  };
 
   struct pulse_header
   {
@@ -471,10 +481,10 @@ namespace cryptonote
 
   public:
     block() = default;
-    block(const block &b): block_header(b), miner_tx{b.miner_tx}, tx_hashes{b.tx_hashes}, verification{b.verification} { copy_hash(b); }
-    block &operator=(const block &b) { block_header::operator=(b); miner_tx = b.miner_tx; tx_hashes = b.tx_hashes; verification = b.verification; copy_hash(b); return *this; }
-    block(block &&b) : block_header(std::move(b)), miner_tx{std::move(b.miner_tx)}, tx_hashes{std::move(b.tx_hashes)}, verification{std::move(b.verification)} { copy_hash(b); }
-    block &operator=(block &&b) { block_header::operator=(std::move(b)); miner_tx = std::move(b.miner_tx); tx_hashes = std::move(b.tx_hashes); verification = std::move(b.verification); copy_hash(b); return *this; }
+    block(const block &b): block_header(b), miner_tx{b.miner_tx}, tx_hashes{b.tx_hashes}, signatures{b.signatures} { copy_hash(b); }
+    block &operator=(const block &b) { block_header::operator=(b); miner_tx = b.miner_tx; tx_hashes = b.tx_hashes; signatures = b.signatures; copy_hash(b); return *this; }
+    block(block &&b) : block_header(std::move(b)), miner_tx{std::move(b.miner_tx)}, tx_hashes{std::move(b.tx_hashes)}, signatures{std::move(b.signatures)} { copy_hash(b); }
+    block &operator=(block &&b) { block_header::operator=(std::move(b)); miner_tx = std::move(b.miner_tx); tx_hashes = std::move(b.tx_hashes); signatures = std::move(b.signatures); copy_hash(b); return *this; }
     void invalidate_hashes() { set_hash_valid(false); }
     bool is_hash_valid() const { return hash_valid.load(std::memory_order_acquire); }
     void set_hash_valid(bool v) const { hash_valid.store(v,std::memory_order_release); }
@@ -484,7 +494,7 @@ namespace cryptonote
 
     // hash cash
     mutable crypto::hash hash;
-    std::vector<pulse_verification> verification;
+    std::vector<service_nodes::quorum_signature> signatures;
 
     BEGIN_SERIALIZE_OBJECT()
       if (Archive::is_deserializer)
@@ -496,7 +506,7 @@ namespace cryptonote
       if (tx_hashes.size() > CRYPTONOTE_MAX_TX_PER_BLOCK)
         throw std::invalid_argument{"too many txs in block"};
       if (major_version >= cryptonote::network_version_16)
-        FIELD(verification)
+        FIELD(signatures)
     END_SERIALIZE()
   };
 

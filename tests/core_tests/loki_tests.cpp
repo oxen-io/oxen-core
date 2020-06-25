@@ -3079,14 +3079,14 @@ bool loki_pulse_invalid_signature::generate(std::vector<test_event_entry> &event
   gen.block_fill_pulse_data(entry, params, entry.block.pulse.round);
 
   // NOTE: Overwrite signature
-  entry.block.verification[0].signature = {};
+  entry.block.signatures[0].signature = {};
   gen.block_end(entry, params);
   gen.add_block(entry, false /*can_be_added_to_blockchain*/, "Invalid Pulse Block, specifies the wrong participation bits");
 
   return true;
 }
 
-bool loki_pulse_oob_quorum_index::generate(std::vector<test_event_entry> &events)
+bool loki_pulse_oob_voter_index::generate(std::vector<test_event_entry> &events)
 {
   loki_chain_generator gen = setup_pulse_tests(events);
   gen.add_event_msg("Invalid Block: Quorum index that indexes out of bounds");
@@ -3095,8 +3095,8 @@ bool loki_pulse_oob_quorum_index::generate(std::vector<test_event_entry> &events
   gen.block_begin(entry, params, {} /*tx_list*/);
   gen.block_fill_pulse_data(entry, params, entry.block.pulse.round);
 
-  // NOTE: Overwrite oob quorum index
-  entry.block.verification[0].quorum_index = service_nodes::PULSE_QUORUM_NUM_VALIDATORS + 1;
+  // NOTE: Overwrite oob voter index
+  entry.block.signatures.back().voter_index = service_nodes::PULSE_QUORUM_NUM_VALIDATORS + 1;
   gen.block_end(entry, params);
   gen.add_block(entry, false /*can_be_added_to_blockchain*/, "Invalid Pulse Block, specifies the wrong participation bits");
 
@@ -3134,19 +3134,19 @@ bool loki_pulse_non_participating_validator::generate(std::vector<test_event_ent
     // first 6 in the quorum, then the 8th validator in the quorum (who is not
     // meant to be participating).
     entry.block.pulse.validator_participation_bits = 0b0000'000'0111'1111;
-    size_t const quorum_indexes[]                  = {0, 1, 2, 3, 4, 5, 7};
+    size_t const voter_indexes[]                  = {0, 1, 2, 3, 4, 5, 7};
 
     crypto::hash block_hash = cryptonote::get_block_hash(entry.block);
-    assert(entry.block.verification.empty());
-    for (size_t index : quorum_indexes)
+    assert(entry.block.signatures.empty());
+    for (size_t index : voter_indexes)
     {
       service_nodes::service_node_keys validator_keys = gen.get_cached_keys(quorum.validators[index]);
       assert(validator_keys.pub == quorum.validators[index]);
 
-      cryptonote::pulse_verification verification = {};
-      verification.quorum_index                   = index;
-      crypto::generate_signature(block_hash, validator_keys.pub, validator_keys.key, verification.signature);
-      entry.block.verification.push_back(verification);
+      service_nodes::quorum_signature signature = {};
+      signature.voter_index                     = index;
+      crypto::generate_signature(block_hash, validator_keys.pub, validator_keys.key, signature.signature);
+      entry.block.signatures.push_back(signature);
     }
   }
 
@@ -3172,3 +3172,23 @@ bool loki_pulse_generate_all_rounds::generate(std::vector<test_event_entry> &eve
 
   return true;
 }
+
+bool loki_pulse_out_of_order_voters::generate(std::vector<test_event_entry> &events)
+{
+  loki_chain_generator gen = setup_pulse_tests(events);
+  gen.add_event_msg("Invalid Block: Quorum voters are out of order");
+  loki_blockchain_entry entry     = {};
+  loki_create_block_params params = gen.next_block_params();
+  gen.block_begin(entry, params, {} /*tx_list*/);
+  gen.block_fill_pulse_data(entry, params, entry.block.pulse.round);
+
+  // NOTE: Swap voters so that the votes are not sorted in order
+  auto tmp                       = entry.block.signatures.back();
+  entry.block.signatures.back()  = entry.block.signatures.front();
+  entry.block.signatures.front() = tmp;
+  gen.block_end(entry, params);
+  gen.add_block(entry, false /*can_be_added_to_blockchain*/, "Invalid Pulse Block, specifies the signatures not in sorted order");
+
+  return true;
+}
+

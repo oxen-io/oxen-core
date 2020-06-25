@@ -55,7 +55,7 @@ namespace cryptonote
     checkpoint_type                                type;
     uint64_t                                       height;
     crypto::hash                                   block_hash;
-    std::vector<service_nodes::voter_to_signature> signatures; // Only service node checkpoints use signatures
+    std::vector<service_nodes::quorum_signature>   signatures; // Only service node checkpoints use signatures
     uint64_t                                       prev_height; // TODO(doyle): Unused
 
     bool               check         (crypto::hash const &block_hash) const;
