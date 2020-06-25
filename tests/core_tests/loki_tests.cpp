@@ -3192,3 +3192,19 @@ bool loki_pulse_out_of_order_voters::generate(std::vector<test_event_entry> &eve
   return true;
 }
 
+bool loki_pulse_reject_miner_block::generate(std::vector<test_event_entry> &events)
+{
+  loki_chain_generator gen = setup_pulse_tests(events);
+  gen.add_event_msg("Invalid Block: PoW Block but we have enough service nodes for Pulse");
+  loki_blockchain_entry entry     = {};
+  loki_create_block_params params = gen.next_block_params();
+  gen.block_begin(entry, params, {} /*tx_list*/);
+
+  // NOTE: Create an ordinary miner block even when we have enough Service Nodes for Pulse.
+  fill_nonce_with_loki_generator(&gen, entry.block, TEST_DEFAULT_DIFFICULTY, cryptonote::get_block_height(entry.block));
+
+  gen.block_end(entry, params);
+  gen.add_block(entry, false /*can_be_added_to_blockchain*/, "Invalid Pulse Block, block was mined with a miner but we have enough nodes for Pulse");
+
+  return true;
+}
