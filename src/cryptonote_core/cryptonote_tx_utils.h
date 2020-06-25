@@ -231,9 +231,9 @@ namespace cryptonote
   };
 
   class Blockchain;
-  crypto::hash get_block_longhash(randomx_longhash_context const &randomx_context, const block& b, uint64_t height, int miners);
-  crypto::hash get_altblock_longhash(randomx_longhash_context const &randomx_context, const block& b, uint64_t height);
-  crypto::hash get_block_longhash_w_blockchain(const Blockchain *pb, const block& b, uint64_t height, int miners);
+  crypto::hash get_block_longhash(cryptonote::network_type nettype, randomx_longhash_context const &randomx_context, const block& b, uint64_t height, int miners);
+  crypto::hash get_altblock_longhash(cryptonote::network_type nettype, randomx_longhash_context const &randomx_context, const block& b, uint64_t height);
+  crypto::hash get_block_longhash_w_blockchain(cryptonote::network_type nettype, const Blockchain *pb, const block& b, uint64_t height, int miners);
   void get_block_longhash_reorg(const uint64_t split_height);
 
 }
