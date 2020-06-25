@@ -675,7 +675,7 @@ static void fill_nonce_with_test_generator(test_generator *generator, cryptonote
 
   blk.nonce = 0;
   auto get_block_hash = [&randomx_context](const cryptonote::block &b, uint64_t height, unsigned int threads, crypto::hash &hash) {
-    hash = cryptonote::get_block_longhash(randomx_context, b, height, threads);
+    hash = cryptonote::get_block_longhash(cryptonote::FAKECHAIN, randomx_context, b, height, threads);
     return true;
   };
 
@@ -695,7 +695,7 @@ static void fill_nonce_with_loki_generator(loki_chain_generator const *generator
 
   blk.nonce = 0;
   auto get_block_hash = [&randomx_context](const cryptonote::block &blk, uint64_t height, unsigned int threads, crypto::hash &hash) {
-    hash = cryptonote::get_block_longhash(randomx_context, blk, height, threads);
+    hash = cryptonote::get_block_longhash(cryptonote::FAKECHAIN, randomx_context, blk, height, threads);
     return true;
   };
 
