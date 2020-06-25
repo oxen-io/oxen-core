@@ -683,7 +683,7 @@ static void fill_nonce_with_test_generator(test_generator *generator, cryptonote
     blk.timestamp++;
 }
 
-static void fill_nonce_with_loki_generator(loki_chain_generator const *generator, cryptonote::block& blk, const cryptonote::difficulty_type& diffic, uint64_t height)
+void fill_nonce_with_loki_generator(loki_chain_generator const *generator, cryptonote::block& blk, const cryptonote::difficulty_type& diffic, uint64_t height)
 {
   cryptonote::randomx_longhash_context randomx_context = {};
   if (generator->blocks().size() && generator->hardfork() >= cryptonote::network_version_12_checkpointing)
