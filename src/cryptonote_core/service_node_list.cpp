@@ -1251,17 +1251,17 @@ namespace service_nodes
     stream << "Participating Validators: " << participation_bits << "\n";
 
     stream << "Signatures: ";
-    if (block.verification.empty()) stream << "(none)";
+    if (block.signatures.empty()) stream << "(none)";
     stream << "\n";
 
-    for (size_t i = 0; i < block.verification.size(); i++)
+    for (size_t i = 0; i < block.signatures.size(); i++)
     {
       if (i) stream << "\n";
-      cryptonote::pulse_verification const &entry = block.verification[i];
-      stream << "  [" << static_cast<int>(entry.quorum_index) << "] validator: ";
+      service_nodes::quorum_signature const &entry = block.signatures[i];
+      stream << "  [" << static_cast<int>(entry.voter_index) << "] validator: ";
       if (quorum)
       {
-        stream << ((entry.quorum_index >= quorum->validators.size()) ? "(invalid quorum index)" : epee::string_tools::pod_to_hex(quorum->validators[entry.quorum_index]));
+        stream << ((entry.voter_index >= quorum->validators.size()) ? "(invalid quorum index)" : epee::string_tools::pod_to_hex(quorum->validators[entry.voter_index]));
         stream << ", signature: " << epee::string_tools::pod_to_hex(entry.signature);
       }
       else stream << "(invalid quorum)";
@@ -1284,12 +1284,6 @@ namespace service_nodes
       std::shared_ptr<const quorum> quorum = get_quorum(quorum_type::pulse, m_state.height);
       if (quorum)
       {
-        if (block.verification.size() != PULSE_BLOCK_REQUIRED_SIGNATURES)
-        {
-          LOG_PRINT_L1("Pulse block has " << block.verification.size() << " signatures but requires " << PULSE_BLOCK_REQUIRED_SIGNATURES << "\n" << dump_pulse_block_data(block, quorum.get()));
-          return false;
-        }
-
         if ((block.pulse.validator_participation_bits & (~service_nodes::PULSE_VALIDATOR_PARTICIPATION_MASK)) > 0)
         {
           auto mask = std::bitset<sizeof(service_nodes::PULSE_VALIDATOR_PARTICIPATION_MASK) * 8>(service_nodes::PULSE_VALIDATOR_PARTICIPATION_MASK);
@@ -1297,31 +1291,20 @@ namespace service_nodes
           return false;
         }
 
-        for (cryptonote::pulse_verification const &verification : block.verification)
+        if (!service_nodes::verify_quorum_signatures(*quorum,
+                                                     quorum_type::pulse,
+                                                     block.major_version,
+                                                     cryptonote::get_block_height(block),
+                                                     cryptonote::get_block_hash(block),
+                                                     block.signatures, &block))
         {
-          if (verification.quorum_index >= quorum->validators.size())
-          {
-            LOG_PRINT_L1("Received pulse signature with quorum index out of array bounds " << static_cast<int>(verification.quorum_index) << "\n" << dump_pulse_block_data(block, quorum.get()));
-            return false;
-          }
-
-          uint16_t bit = 1 << verification.quorum_index;
-          if ((block.pulse.validator_participation_bits & bit) == 0)
-          {
-            LOG_PRINT_L1("Received pulse signature from validator " << static_cast<int>(verification.quorum_index) << " that is not participating in round " << static_cast<int>(block.pulse.round) << "\n" << dump_pulse_block_data(block, quorum.get()));
-            return false;
-          }
-
-          if (!crypto::check_signature(cryptonote::get_block_hash(block), quorum->validators[verification.quorum_index], verification.signature))
-          {
-            LOG_PRINT_L1("Received pulse signature from validator " << static_cast<int>(verification.quorum_index) << " that is invalid in round " << static_cast<int>(block.pulse.round) << "\n" << dump_pulse_block_data(block, quorum.get()));
-            return false;
-          }
+          LOG_PRINT_L1(dump_pulse_block_data(block, quorum.get()));
+          return false;
         }
       }
       else
       {
-        bool expect_pulse_quorum = (block.pulse.validator_participation_bits > 0 || block.verification.size());
+        bool expect_pulse_quorum = (block.pulse.validator_participation_bits > 0 || block.signatures.size());
         if (expect_pulse_quorum)
         {
           LOG_PRINT_L1("Failed to get pulse quorum for block\n" << dump_pulse_block_data(block, quorum.get()));

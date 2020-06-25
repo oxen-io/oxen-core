@@ -150,9 +150,10 @@ int main(int argc, char* argv[])
     GENERATE_AND_PLAY(loki_service_nodes_test_swarms_basic);
     GENERATE_AND_PLAY(loki_pulse_invalid_participation_bits);
     GENERATE_AND_PLAY(loki_pulse_invalid_signature);
-    GENERATE_AND_PLAY(loki_pulse_oob_quorum_index);
+    GENERATE_AND_PLAY(loki_pulse_oob_voter_index);
     GENERATE_AND_PLAY(loki_pulse_non_participating_validator);
     GENERATE_AND_PLAY(loki_pulse_generate_all_rounds);
+    GENERATE_AND_PLAY(loki_pulse_out_of_order_voters);
 
     // NOTE: Monero Tests
     GENERATE_AND_PLAY(gen_simple_chain_001);

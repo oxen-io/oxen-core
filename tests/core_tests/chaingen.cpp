@@ -532,7 +532,7 @@ cryptonote::checkpoint_t loki_chain_generator::create_service_node_checkpoint(ui
   {
     auto keys = get_cached_keys(quorum.validators[i]);
     service_nodes::quorum_vote_t vote = service_nodes::make_checkpointing_vote(entry.block.major_version, result.block_hash, block_height, i, keys);
-    result.signatures.push_back(service_nodes::voter_to_signature(vote));
+    result.signatures.push_back(service_nodes::quorum_signature(vote.index_in_group, vote.signature));
   }
 
   return result;
@@ -913,18 +913,18 @@ void loki_chain_generator::block_fill_pulse_data(loki_blockchain_entry &entry, l
   assert(pulse_quorum.workers.size() == 1);
 
   crypto::hash block_hash = cryptonote::get_block_hash(entry.block);
-  assert(entry.block.verification.empty());
+  assert(entry.block.signatures.empty());
 
-  // NOTE: Fill Pulse Verification Data
+  // NOTE: Fill Pulse Signature Data
   for (size_t i = 0; i < service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES; i++)
   {
     service_nodes::service_node_keys validator_keys = get_cached_keys(pulse_quorum.validators[i]);
     assert(validator_keys.pub == pulse_quorum.validators[i]);
 
-    cryptonote::pulse_verification verification = {};
-    verification.quorum_index                   = i;
-    crypto::generate_signature(block_hash, validator_keys.pub, validator_keys.key, verification.signature);
-    entry.block.verification.push_back(verification);
+    service_nodes::quorum_signature signature = {};
+    signature.voter_index                     = i;
+    crypto::generate_signature(block_hash, validator_keys.pub, validator_keys.key, signature.signature);
+    entry.block.signatures.push_back(signature);
   }
 }
 
