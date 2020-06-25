@@ -178,7 +178,7 @@ local static_build_deps='autoconf automake make qttools5-dev file libtool gperf 
     debian_pipeline("Debian sid/clang-10 (amd64)", "debian:sid", deps='clang-10 '+default_deps_base,
                     cmake_extra='-DCMAKE_C_COMPILER=clang-10 -DCMAKE_CXX_COMPILER=clang++-10 ', lto=true),
     debian_pipeline("Debian sid/gcc-10 (amd64)", "debian:sid", deps='g++-10 '+default_deps_base,
-                    cmake_extra='-DCMAKE_C_COMPILER=gcc-10 -DCMAKE_CXX_COMPILER=g++-10'),
+                    cmake_extra='-DCMAKE_C_COMPILER=gcc-10 -DCMAKE_CXX_COMPILER=g++-10 -DBUILD_DEBUG_UTILS=ON'),
     debian_pipeline("Debian buster (i386)", "i386/debian:buster", cmake_extra='-DDOWNLOAD_SODIUM=ON -DARCH_ID=i386'),
     debian_pipeline("Ubuntu focal (amd64)", "ubuntu:focal"),
 
@@ -206,7 +206,7 @@ local static_build_deps='autoconf automake make qttools5-dev file libtool gperf 
 */
     // Macos builds:
     mac_builder('macOS (Release)', run_tests=true),
-    mac_builder('macOS (Debug)', build_type='Debug'),
+    mac_builder('macOS (Debug)', build_type='Debug', cmake_extra='-DBUILD_DEBUG_UTILS=ON'),
     mac_builder('macOS (Static)', cmake_extra='-DBUILD_STATIC_DEPS=ON -DCMAKE_OSX_DEPLOYMENT_TARGET=10.13',
                 build_tests=false, extra_cmds=static_check_and_upload),
 ]
