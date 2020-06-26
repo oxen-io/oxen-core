@@ -220,6 +220,21 @@ namespace cryptonote
     return reward;
   }
 
+  enum struct reward_type
+  {
+    miner,
+    snode,
+    governance
+  };
+
+  struct reward_payout
+  {
+    reward_type            type;
+    account_public_address address;
+    uint64_t               amount;
+    bool operator==(service_nodes::payout_entry const &other) const { return address == other.address; }
+  };
+
   bool construct_miner_tx(
       size_t height,
       size_t median_weight,
@@ -231,8 +246,6 @@ namespace cryptonote
       const blobdata& extra_nonce,
       uint8_t hard_fork_version)
   {
-    const network_type nettype = miner_tx_context.nettype;
-
     tx.vin.clear();
     tx.vout.clear();
     tx.extra.clear();
@@ -240,87 +253,100 @@ namespace cryptonote
     tx.type    = txtype::standard;
     tx.version = transaction::get_max_version_for_hf(hard_fork_version);
 
-    const crypto::public_key &service_node_key                        = miner_tx_context.block_winner.key;
-    const std::vector<service_nodes::payout_entry> &service_node_info = miner_tx_context.block_winner.payouts;
+    keypair const txkey   = keypair::generate(hw::get_device("default"));
+    keypair const gov_key = get_deterministic_keypair_from_height(height); // NOTE: Always need since we use same key for service node
 
-    keypair txkey = keypair::generate(hw::get_device("default"));
-    add_tx_extra<tx_extra_pub_key>(tx, txkey.pub);
-    if(!extra_nonce.empty())
-      if(!add_extra_nonce_to_tx_extra(tx.extra, extra_nonce))
-        return false;
-    if (!sort_tx_extra(tx.extra, tx.extra))
-      return false;
-
-    keypair gov_key = get_deterministic_keypair_from_height(height); // NOTE: Always need since we use same key for service node
-    if (already_generated_coins != 0)
+    // NOTE: TX Extra
     {
-      add_tx_extra<tx_extra_pub_key>(tx, gov_key.pub);
-    }
-
-    add_service_node_winner_to_tx_extra(tx.extra, service_node_key);
-
-    txin_gen in;
-    in.height = height;
-
-    loki_block_reward_context block_reward_context = {};
-    block_reward_context.fee                       = fee;
-    block_reward_context.height                    = height;
-    block_reward_context.service_node_payouts      = miner_tx_context.block_winner.payouts;
-    block_reward_context.batched_governance        = miner_tx_context.batched_governance;
-
-    block_reward_parts reward_parts;
-    if(!get_loki_block_reward(median_weight, current_block_weight, already_generated_coins, hard_fork_version, reward_parts, block_reward_context))
-    {
-      LOG_PRINT_L0("Failed to calculate block reward");
-      return false;
-    }
-
-    account_public_address const &miner_address = miner_tx_context.block_producer_miner;
-    uint64_t summary_amounts = 0;
-    // Miner Reward
-    {
-      crypto::key_derivation derivation{};
-      crypto::public_key out_eph_public_key{};
-      bool r = crypto::generate_key_derivation(miner_address.m_view_public_key, txkey.sec, derivation);
-      CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to generate_key_derivation(" << miner_address.m_view_public_key << ", " << txkey.sec << ")");
-
-      r = crypto::derive_public_key(derivation, 0, miner_address.m_spend_public_key, out_eph_public_key);
-      CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to derive_public_key(" << derivation << ", " << 0 << ", "<< miner_address.m_spend_public_key << ")");
-
-      txout_to_key tk;
-      tk.key = out_eph_public_key;
-
-      tx_out out;
-      summary_amounts += out.amount = reward_parts.miner_reward();
-      out.target = tk;
-      tx.vout.push_back(out);
-      tx.output_unlock_times.push_back(height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW);
-    }
-
-    if (hard_fork_version >= network_version_9_service_nodes) // Service Node Reward
-    {
-      for (size_t i = 0; i < service_node_info.size(); i++)
+      add_tx_extra<tx_extra_pub_key>(tx, txkey.pub);
+      if(!extra_nonce.empty())
       {
-        service_nodes::payout_entry const &payout = service_node_info[i];
-        crypto::key_derivation derivation{};
-        crypto::public_key out_eph_public_key{};
-        bool r = crypto::generate_key_derivation(payout.address.m_view_public_key, gov_key.sec, derivation);
-        CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to generate_key_derivation(" << payout.address.m_view_public_key << ", " << gov_key.sec << ")");
-        r = crypto::derive_public_key(derivation, 1+i, payout.address.m_spend_public_key, out_eph_public_key);
-        CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to derive_public_key(" << derivation << ", " << (1+i) << ", "<< payout.address.m_spend_public_key << ")");
+        if(!add_extra_nonce_to_tx_extra(tx.extra, extra_nonce))
+          return false;
+      }
 
-        txout_to_key tk;
-        tk.key = out_eph_public_key;
+      // TODO(doyle): We don't need to do this. It's a deterministic key.
+      if (already_generated_coins != 0)
+        add_tx_extra<tx_extra_pub_key>(tx, gov_key.pub);
 
-        tx_out out;
-        summary_amounts += out.amount = get_portion_of_reward(payout.portions, reward_parts.service_node_total);
-        out.target = tk;
-        tx.vout.push_back(out);
-        tx.output_unlock_times.push_back(height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW);
+      add_service_node_winner_to_tx_extra(tx.extra, miner_tx_context.block_winner.key);
+    }
+
+    block_reward_parts reward_parts = {};
+    {
+      loki_block_reward_context block_reward_context = {};
+      block_reward_context.fee                       = fee;
+      block_reward_context.height                    = height;
+      block_reward_context.service_node_payouts      = miner_tx_context.block_winner.payouts;
+      block_reward_context.batched_governance        = miner_tx_context.batched_governance;
+
+      if(!get_loki_block_reward(median_weight, current_block_weight, already_generated_coins, hard_fork_version, reward_parts, block_reward_context))
+      {
+        LOG_PRINT_L0("Failed to calculate block reward");
+        return false;
       }
     }
 
-    // Governance Distribution
+    if (miner_tx_context.pulse_block_producer)
+      CHECK_AND_ASSERT_MES(miner_tx_context.block_producer_snode.payouts.size(), false, "Constructing a reward for block produced by pulse but no payout entries specified");
+    else
+      CHECK_AND_ASSERT_MES(miner_tx_context.block_producer_snode.payouts.empty(), false, "Constructing a reward for block produced by miner but payout entries specified");
+
+    // NOTE: Summarise rewards to payout
+    // Up to 9 payout entries, up to 4 Pooled SN, up to 4 Block Producer (Pooled SN or 1 for Miner), up to 1 Governance
+    size_t rewards_length                = 0;
+    std::array<reward_payout, 9> rewards = {};
+
+    // NOTE: Add miner reward if block was not produced via Pulse
+    if (!miner_tx_context.pulse_block_producer)
+    {
+      reward_payout &entry = rewards[rewards_length++];
+      entry.type           = reward_type::miner;
+      entry.address        = miner_tx_context.block_producer_miner;
+      entry.amount         = reward_parts.miner_reward();
+    }
+
+    // NOTE: Merge any Service Node rewards that are the same.
+    // TODO(doyle): Need to update SNL reward validation
+#if 0
+    if (hard_fork_version >= cryptonote::network_version_16)
+    {
+      for (auto const *payout_list : {&miner_tx_context.block_winner.payouts, &miner_tx_context.block_producer_snode.payouts})
+      {
+        uint64_t amount = (payout_list == &miner_tx_context.block_winner.payouts) ? reward_parts.service_node_paid : reward_parts.miner_reward();
+        for (auto const &payee : (*payout_list))
+        {
+          auto end = rewards.begin() + rewards_length;
+          auto it  = std::find(rewards.begin(), end, payee);
+
+          if (it == end)
+          {
+            reward_payout &entry = rewards[rewards_length++];
+            entry.type           = reward_type::snode;
+            entry.address        = payee.address;
+            entry.amount         = get_portion_of_reward(payee.portions, amount);
+          }
+          else
+          {
+            it->amount += get_portion_of_reward(payee.portions, amount);
+          }
+        }
+      }
+    }
+    else
+#endif
+    if (hard_fork_version >= cryptonote::network_version_9_service_nodes)
+    {
+      for (auto const &payee : miner_tx_context.block_winner.payouts)
+      {
+        reward_payout &entry = rewards[rewards_length++];
+        entry.type           = reward_type::snode;
+        entry.address        = payee.address;
+        entry.amount         = get_portion_of_reward(payee.portions, reward_parts.service_node_paid);
+      }
+    }
+
+    // NOTE: Add Governance Payout
     if (already_generated_coins != 0)
     {
       if (reward_parts.governance_paid == 0)
@@ -329,33 +355,65 @@ namespace cryptonote
       }
       else
       {
+        const network_type nettype = miner_tx_context.nettype;
         cryptonote::address_parse_info governance_wallet_address;
-        cryptonote::get_account_address_from_str(governance_wallet_address, nettype, cryptonote::get_config(nettype).governance_wallet_address(hard_fork_version));
-        crypto::public_key out_eph_public_key{};
 
-        if (!get_deterministic_output_key(governance_wallet_address.address, gov_key, tx.vout.size(), out_eph_public_key))
+        cryptonote::get_account_address_from_str(governance_wallet_address, nettype, cryptonote::get_config(nettype).governance_wallet_address(hard_fork_version));
+        reward_payout &entry = rewards[rewards_length++];
+        entry.type           = reward_type::governance;
+        entry.amount         = reward_parts.governance_paid;
+        entry.address        = governance_wallet_address.address;
+      }
+    }
+    CHECK_AND_ASSERT_MES(rewards_length < rewards.size(), false, "More rewards specified than supported, number of rewards: " << rewards_length << ", capacity: " << rewards.size());
+    CHECK_AND_ASSERT_MES(rewards_length > 0,              false, "Zero rewards are to be payed out, there should be atleast 1");
+
+    // NOTE: Make TX Outputs
+    uint64_t summary_amounts = 0;
+    for (size_t reward_index = 0; reward_index < rewards_length; reward_index++)
+    {
+      reward_payout const &payout = rewards[reward_index];
+      crypto::public_key out_eph_public_key{};
+
+      if (payout.type == reward_type::governance)
+      {
+        if (!get_deterministic_output_key(payout.address, gov_key, tx.vout.size(), out_eph_public_key))
         {
           MERROR("Failed to generate deterministic output key for governance wallet output creation");
           return false;
         }
-
-        txout_to_key tk;
-        tk.key = out_eph_public_key;
-
-        tx_out out;
-        summary_amounts += out.amount = reward_parts.governance_paid;
-        out.target = tk;
-        tx.vout.push_back(out);
-        tx.output_unlock_times.push_back(height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW);
       }
+      else
+      {
+        // TODO(doyle): I don't think txkey is necessary, just use the governance key?
+        keypair const &derivation_pair = (payout.type == reward_type::miner) ? txkey : gov_key;
+        crypto::key_derivation derivation{};
+
+        bool r = crypto::generate_key_derivation(payout.address.m_view_public_key, derivation_pair.sec, derivation);
+        CHECK_AND_ASSERT_MES(r, false, "Creating miner tx output failed failed to generate_key_derivation(" << payout.address.m_view_public_key << ", " << derivation_pair.sec << ")");
+
+        r = crypto::derive_public_key(derivation, reward_index, payout.address.m_spend_public_key, out_eph_public_key);
+        CHECK_AND_ASSERT_MES(r, false, "Creating miner tx output failed to derive_public_key(" << derivation << ", " << reward_index << ", "<< payout.address.m_spend_public_key << ")");
+      }
+
+      txout_to_key tk = {};
+      tk.key          = out_eph_public_key;
+
+      tx_out out = {};
+      out.target = tk;
+      out.amount = payout.amount;
+      tx.vout.push_back(out);
+      tx.output_unlock_times.push_back(height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW);
+      summary_amounts += payout.amount;
     }
 
     uint64_t expected_amount = reward_parts.miner_reward() + reward_parts.governance_paid + reward_parts.service_node_paid;
     CHECK_AND_ASSERT_MES(summary_amounts == expected_amount, false, "Failed to construct miner tx, summary_amounts = " << summary_amounts << " not equal total block_reward = " << expected_amount);
+    CHECK_AND_ASSERT_MES(tx.vout.size() == rewards_length, false, "TX output mis-match with rewards expected: " << rewards_length << ", tx outputs: " << tx.vout.size());
 
     //lock
     tx.unlock_time = height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
-    tx.vin.push_back(in);
+    tx.vin.push_back(txin_gen{height});
     tx.invalidate_hashes();
 
     //LOG_PRINT("MINER_TX generated ok, block_reward=" << print_money(block_reward) << "("  << print_money(block_reward - fee) << "+" << print_money(fee)
