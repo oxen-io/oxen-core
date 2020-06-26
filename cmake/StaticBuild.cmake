@@ -315,7 +315,7 @@ set(Boost_VERSION ${BOOST_VERSION})
 
 
 build_external(sqlite3)
-add_static_target(sqlite3 sqlite_external libsqlite3.a)
+add_static_target(sqlite3 sqlite3_external libsqlite3.a)
 
 
 
