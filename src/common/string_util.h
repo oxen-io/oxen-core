@@ -4,9 +4,12 @@
 #include <iterator>
 #include <charconv>
 #include <sstream>
+#include <chrono>
 #include "span.h" // epee
 
 namespace tools {
+
+using namespace std::literals;
 
 /// Returns true if the first string is equal to the second string, compared case-insensitively.
 inline bool string_iequal(std::string_view s1, std::string_view s2) {
@@ -107,5 +110,8 @@ std::string copy_guts(const T& val) {
 }
 
 std::string lowercase_ascii_string(std::string src);
+
+/// Converts a duration into a human friendlier string.
+std::string friendly_duration(std::chrono::nanoseconds dur);
 
 }

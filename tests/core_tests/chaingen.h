@@ -917,6 +917,7 @@ inline bool do_replay_events_get_core(std::vector<test_event_entry>& events, cry
 {
   boost::program_options::options_description desc("Allowed options");
   cryptonote::core::init_options(desc);
+  cryptonote::long_poll_trigger = [](cryptonote::tx_memory_pool&) {};
   boost::program_options::variables_map vm;
   bool r = command_line::handle_error_helper(desc, [&]()
   {

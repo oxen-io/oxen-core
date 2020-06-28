@@ -59,8 +59,6 @@ class variables_map;
 
 namespace cryptonote { namespace rpc {
 
-  static constexpr auto long_poll_timeout = 15s;
-
   /// Exception when trying to invoke an RPC command that indicate a parameter parse failure (will
   /// give an invalid params error for JSON-RPC, for example).
   struct parse_error : std::runtime_error { using std::runtime_error::runtime_error; };
@@ -107,9 +105,9 @@ namespace cryptonote { namespace rpc {
     // The RPC engine source of the request, i.e. internal, HTTP, LMQ
     rpc_source source = rpc_source::internal;
 
-    // A free-form identifier identifiying the remote address of the request; this might be IP:PORT,
-    // or could contain a pubkey, or ...
-    std::string_view remote;
+    // A free-form identifier (meant for humans) identifiying the remote address of the request;
+    // this might be IP:PORT, or could contain a pubkey, or ...
+    std::string remote;
   };
 
   struct rpc_request {
@@ -138,6 +136,7 @@ namespace cryptonote { namespace rpc {
     std::string(*invoke)(rpc_request&&, core_rpc_server&);
     bool is_public; // callable via restricted RPC
     bool is_binary; // only callable at /name (for HTTP RPC), and binary data, not JSON.
+    bool is_legacy; // callable at /name (for HTTP RPC), even though it is JSON (for backwards compat).
   };
 
   /// RPC command registration; to add a new command, define it in core_rpc_server_commands_defs.h
@@ -176,6 +175,10 @@ namespace cryptonote { namespace rpc {
 
     static void init_options(boost::program_options::options_description& desc);
     void init(const boost::program_options::variables_map& vm);
+
+    /// Returns a reference to the owning cryptonote core object
+    core& get_core() { return m_core; }
+    const core& get_core() const { return m_core; }
 
     network_type nettype() const { return m_core.get_nettype(); }
 

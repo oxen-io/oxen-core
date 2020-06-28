@@ -218,18 +218,12 @@ int main(int argc, char const * argv[])
       {
         const cryptonote::rpc_args::descriptors arg{};
         auto rpc_ip_str = command_line::get_arg(vm, arg.rpc_bind_ip);
-        auto rpc_port_str = command_line::get_arg(vm, cryptonote::rpc::http_server::arg_rpc_bind_port);
+        auto rpc_port = command_line::get_arg(vm, cryptonote::rpc::http_server::arg_rpc_bind_port);
 
         uint32_t rpc_ip;
-        uint16_t rpc_port;
         if (!epee::string_tools::get_ip_int32_from_string(rpc_ip, rpc_ip_str))
         {
           std::cerr << "Invalid IP: " << rpc_ip_str << std::endl;
-          return 1;
-        }
-        if (!epee::string_tools::get_xtype_from_string(rpc_port, rpc_port_str))
-        {
-          std::cerr << "Invalid port: " << rpc_port_str << std::endl;
           return 1;
         }
 
@@ -252,11 +246,7 @@ int main(int argc, char const * argv[])
           }
         }
 
-        auto ssl_options = cryptonote::rpc_args::process_ssl(vm, true);
-        if (!ssl_options)
-          return 1;
-
-        daemonize::command_server rpc_commands{rpc_ip, rpc_port, std::move(login), std::move(*ssl_options)};
+        daemonize::command_server rpc_commands{rpc_ip, rpc_port, std::move(login)};
         return rpc_commands.process_command_and_log(command) ? 0 : 1;
       }
     }

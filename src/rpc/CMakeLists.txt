@@ -88,6 +88,8 @@ target_link_libraries(daemon_messages
     extra)
 
 target_link_libraries(daemon_rpc_server
+  PUBLIC
+    uWebSockets
   PRIVATE
     rpc
     daemon_messages
