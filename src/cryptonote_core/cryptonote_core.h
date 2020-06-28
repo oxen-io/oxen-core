@@ -92,8 +92,12 @@ namespace cryptonote
   // Sends a blink tx to the current blink quorum, returns a future that can be used to wait for the
   // result.
   extern std::future<std::pair<blink_result, std::string>> (*quorumnet_send_blink)(core& core, const std::string& tx_blob);
-  extern bool init_core_callback_complete;
 
+  // Function pointer that we invoke when the mempool has changed; this gets set during
+  // rpc/http_server.cpp's init_options().
+  extern void (*long_poll_trigger)(tx_memory_pool& pool);
+
+  extern bool init_core_callback_complete;
 
   /************************************************************************/
   /*                                                                      */
@@ -998,9 +1002,6 @@ namespace cryptonote
       * @return true
       */
      bool relay_txpool_transactions();
-
-     std::mutex              m_long_poll_mutex;
-     std::condition_variable m_long_poll_wake_up_clients;
  private:
 
      /**

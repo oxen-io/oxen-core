@@ -280,6 +280,7 @@ if(NOT MANUAL_SUBMODULES)
     if(BUILD_TESTS)
       check_submodule(external/googletest)
     endif()
+    check_submodule(external/uWebSockets uSockets)
   endif()
 endif()
 

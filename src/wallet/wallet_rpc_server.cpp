@@ -181,9 +181,13 @@ namespace tools
   //------------------------------------------------------------------------------------------------------------------------------
   bool wallet_rpc_server::init()
   {
-    auto rpc_config = cryptonote::rpc_args::process(m_vm);
-    if (!rpc_config)
+    cryptonote::rpc_args rpc_config;
+    try {
+      rpc_config = cryptonote::rpc_args::process(m_vm);
+    } catch (const std::exception& e) {
+      MERROR("Failed to process rpc arguments: " << e.what());
       return false;
+    }
 
     std::optional<epee::net_utils::http::login> http_login{};
     std::string bind_port = command_line::get_arg(m_vm, arg_rpc_bind_port);
@@ -215,7 +219,7 @@ namespace tools
 
     if (disable_auth)
     {
-      if (rpc_config->login)
+      if (rpc_config.login)
       {
         const cryptonote::rpc_args::descriptors arg{};
         LOG_ERROR(tr("Cannot specify --") << arg_disable_rpc_login.name << tr(" and --") << arg.rpc_login.name);
@@ -224,7 +228,7 @@ namespace tools
     }
     else // auth enabled
     {
-      if (!rpc_config->login)
+      if (!rpc_config.login)
       {
         std::array<std::uint8_t, 16> rand_128bit{{}};
         crypto::rand(rand_128bit.size(), rand_128bit.data());
@@ -255,7 +259,7 @@ namespace tools
       else // chosen user/pass
       {
         http_login.emplace(
-          std::move(rpc_config->login->username), std::move(rpc_config->login->password).password()
+          std::move(rpc_config.login->username), std::move(rpc_config.login->password).password()
         );
       }
       assert(bool(http_login));
@@ -267,10 +271,9 @@ namespace tools
     m_net_server.set_threads_prefix("RPC");
     auto rng = [](size_t len, uint8_t *ptr) { return crypto::rand(len, ptr); };
     return epee::http_server_impl_base<wallet_rpc_server, connection_context>::init(
-      rng, std::move(bind_port), std::move(rpc_config->bind_ip),
-      std::move(rpc_config->bind_ipv6_address), std::move(rpc_config->use_ipv6), std::move(rpc_config->require_ipv4),
-      std::move(rpc_config->access_control_origins), std::move(http_login),
-      std::move(rpc_config->ssl_options)
+      rng, std::move(bind_port), std::move(rpc_config.bind_ip),
+      std::move(rpc_config.bind_ipv6_address), std::move(rpc_config.use_ipv6), std::move(rpc_config.require_ipv4),
+      std::move(rpc_config.access_control_origins), std::move(http_login)
     );
   }
   //------------------------------------------------------------------------------------------------------------------------------

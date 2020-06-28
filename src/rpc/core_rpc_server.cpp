@@ -153,9 +153,9 @@ namespace cryptonote { namespace rpc {
       static_assert(std::is_same<Response, invoke_return_type>::value,
           "Unable to register RPC command: core_rpc_server::invoke(Request) is not defined or does not return a Response");
       auto cmd = std::make_shared<rpc_command>();
-      constexpr bool binary = std::is_base_of<BINARY, RPC>::value;
-      cmd->is_public = std::is_base_of<PUBLIC, RPC>::value;
-      cmd->is_binary = binary;
+      cmd->is_public = std::is_base_of_v<PUBLIC, RPC>;
+      cmd->is_binary = std::is_base_of_v<BINARY, RPC>;
+      cmd->is_legacy = std::is_base_of_v<LEGACY, RPC>;
       cmd->invoke = [](rpc_request&& request, core_rpc_server& server) {
         reg_helper<RPC> helper;
         Response res = server.invoke(helper.load(request), std::move(request.context));
@@ -203,7 +203,7 @@ namespace cryptonote { namespace rpc {
   {
     command_line::add_arg(desc, arg_bootstrap_daemon_address);
     command_line::add_arg(desc, arg_bootstrap_daemon_login);
-    cryptonote::rpc_args::init_options(desc, true);
+    cryptonote::rpc_args::init_options(desc);
   }
   //------------------------------------------------------------------------------------------------------------------------------
   core_rpc_server::core_rpc_server(
@@ -1328,47 +1328,6 @@ namespace cryptonote { namespace rpc {
 
     std::vector<crypto::hash> tx_pool_hashes;
     m_core.get_pool().get_transaction_hashes(tx_pool_hashes, context.admin);
-
-    if (req.long_poll)
-    {
-      /** FIXME: this needs to go into HTTP RPC-specific layer
-       *
-      if (m_max_long_poll_connections <= 0)
-      {
-        // Essentially disable long polling by making the wallet long polling thread go to sleep due to receiving this message
-        res.status = STATUS_TX_LONG_POLL_MAX_CONNECTIONS;
-        return res;
-      }
-
-      crypto::hash checksum = {};
-      for (crypto::hash const &hash : tx_pool_hashes) crypto::hash_xor(checksum, hash);
-
-      if (req.tx_pool_checksum == checksum)
-      {
-        size_t tx_count_before = tx_pool_hashes.size();
-        time_t before          = time(nullptr);
-        std::unique_lock<std::mutex> lock(m_core.m_long_poll_mutex);
-        if ((m_long_poll_active_connections + 1) > m_max_long_poll_connections)
-        {
-          res.status = STATUS_TX_LONG_POLL_MAX_CONNECTIONS;
-          return res;
-        }
-
-        m_long_poll_active_connections++;
-        bool condition_activated = m_core.m_long_poll_wake_up_clients.wait_for(lock, long_poll_timeout, [this, tx_count_before]() {
-              size_t tx_count_after = m_core.get_pool().get_transactions_count();
-              return tx_count_before != tx_count_after;
-            });
-
-        m_long_poll_active_connections--;
-        if (!condition_activated)
-        {
-          res.status = STATUS_TX_LONG_POLL_TIMED_OUT;
-          return res;
-        }
-      }
-      */
-    }
 
     res.tx_hashes = std::move(tx_pool_hashes);
     res.status    = STATUS_OK;

@@ -32,6 +32,7 @@
 #include <memory>
 #include <stdexcept>
 #include <lokimq/lokimq.h>
+#include <utility>
 
 #include "misc_log_ex.h"
 #if defined(PER_BLOCK_CHECKPOINT)
@@ -62,52 +63,12 @@ extern "C" {
 }
 #endif
 
+using namespace std::literals;
 
 #undef LOKI_DEFAULT_LOG_CATEGORY
 #define LOKI_DEFAULT_LOG_CATEGORY "daemon"
 
 namespace daemonize {
-
-http_rpc_server::http_rpc_server(boost::program_options::variables_map const &vm,
-                       cryptonote::rpc::core_rpc_server &corerpc,
-                       const bool restricted,
-                       const std::string &port,
-                       std::string description)
-: m_server{corerpc}
-, m_description{std::move(description)}
-{
-  if (!m_server.init(vm, restricted, port))
-  {
-    throw std::runtime_error("Failed to initialize " + m_description + " HTTP RPC server.");
-  }
-}
-
-void http_rpc_server::run()
-{
-  if (!m_server.run(m_server.m_max_long_poll_connections + cryptonote::rpc::http_server::DEFAULT_RPC_THREADS,
-                    false /*wait - for all threads in the pool to exit when terminating*/))
-  {
-    throw std::runtime_error("Failed to start " + m_description + " HTTP RPC server.");
-  }
-}
-
-void http_rpc_server::stop()
-{
-  m_server.send_stop_signal();
-  m_server.server_stop();
-}
-
-http_rpc_server::~http_rpc_server()
-{
-  try
-  {
-    m_server.deinit();
-  }
-  catch (...)
-  {
-    MERROR("Failed to deinitialize " << m_description << " RPC server...");
-  }
-}
 
 static uint16_t parse_public_rpc_port(const boost::program_options::variables_map& vm)
 {
@@ -171,14 +132,15 @@ daemon::daemon(boost::program_options::variables_map vm_) :
     const auto restricted = command_line::get_arg(vm, cryptonote::rpc::http_server::arg_restricted_rpc);
     const auto main_rpc_port = command_line::get_arg(vm, cryptonote::rpc::http_server::arg_rpc_bind_port);
     MGINFO("- core HTTP RPC server");
-    http_rpcs.emplace_back(vm, *rpc, restricted, main_rpc_port, "core");
+    http_rpcs.emplace_back(std::piecewise_construct, std::tie("core"), std::tie(*rpc, vm, restricted, main_rpc_port));
   }
 
   if (!command_line::is_arg_defaulted(vm, cryptonote::rpc::http_server::arg_rpc_restricted_bind_port))
   {
+    bool restricted = true;
     auto restricted_rpc_port = command_line::get_arg(vm, cryptonote::rpc::http_server::arg_rpc_restricted_bind_port);
     MGINFO("- restricted HTTP RPC server");
-    http_rpcs.emplace_back(vm, *rpc, true, restricted_rpc_port, "restricted");
+    http_rpcs.emplace_back(std::piecewise_construct, std::tie("restricted"), std::tie(*rpc, vm, restricted, restricted_rpc_port));
   }
 
   MGINFO_BLUE("Done daemon object initialization");
@@ -189,7 +151,7 @@ daemon::~daemon()
   MGINFO_BLUE("Deinitializing daemon objects...");
 
   while (!http_rpcs.empty()) {
-    MGINFO("- " << http_rpcs.back().m_description << " HTTP RPC server");
+    MGINFO("- " << http_rpcs.back().first << " HTTP RPC server");
     http_rpcs.pop_back();
   }
 
@@ -265,10 +227,14 @@ bool daemon::run(bool interactive)
     if (!core->init(vm, nullptr, get_checkpoints))
       throw std::runtime_error("Failed to start core");
 
-    for(auto& rpc: http_rpcs)
+    MGINFO("Starting LokiMQ");
+    lmq_rpc = std::make_unique<cryptonote::rpc::lmq_rpc>(*core, *rpc, vm);
+    core->start_lokimq();
+
+    for(auto& [desc, rpc]: http_rpcs)
     {
-      MGINFO("Starting " << rpc.m_description << " HTTP RPC server");
-      rpc.run();
+      MGINFO("Starting " << desc << " HTTP RPC server");
+      rpc.start();
     }
 
     MGINFO("Starting RPC daemon handler");
@@ -279,10 +245,6 @@ bool daemon::run(bool interactive)
       MGINFO("Public RPC port " << public_rpc_port << " will be advertised to other peers over P2P");
       p2p->set_rpc_port(public_rpc_port);
     }
-
-    MGINFO("Starting LokiMQ");
-    lmq_rpc = std::make_unique<cryptonote::rpc::lmq_rpc>(*core, *rpc, vm);
-    core->start_lokimq();
 
     std::unique_ptr<daemonize::command_server> rpc_commands;
     if (interactive)
@@ -307,10 +269,10 @@ bool daemon::run(bool interactive)
       rpc_commands->stop_handling();
     }
 
-    for (auto& rpc : http_rpcs)
+    for (auto& [desc, rpc] : http_rpcs)
     {
-      MGINFO("Stopping " << rpc.m_description << " HTTP RPC server...");
-      rpc.stop();
+      MGINFO("Stopping " << desc << " HTTP RPC server...");
+      rpc.shutdown();
     }
 
     MGINFO("Node stopped.");

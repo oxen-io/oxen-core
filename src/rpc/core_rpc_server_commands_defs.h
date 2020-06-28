@@ -1067,6 +1067,8 @@ namespace rpc {
   {
     static constexpr auto names() { return NAMES("get_transaction_pool_hashes.bin"); }
 
+    static constexpr std::chrono::seconds long_poll_timeout{15};
+
     struct request
     {
       bool         long_poll;        // Optional: If true, this call is blocking until timeout OR tx pool has changed since the last query. TX pool change is detected by comparing the hash of all the hashes in the tx pool.  Ignored when using LMQ RPC.

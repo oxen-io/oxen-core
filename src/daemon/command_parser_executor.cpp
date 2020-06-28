@@ -44,9 +44,8 @@ command_parser_executor::command_parser_executor(
     uint32_t ip
   , uint16_t port
   , const std::optional<tools::login>& login
-  , const epee::net_utils::ssl_options_t& ssl_options
   )
-  : m_executor{ip, port, login, ssl_options}
+  : m_executor{ip, port, login}
 {}
 
 command_parser_executor::command_parser_executor(cryptonote::rpc::core_rpc_server& rpc_server)

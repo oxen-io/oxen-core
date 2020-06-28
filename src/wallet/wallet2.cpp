@@ -46,7 +46,6 @@
 #include "wallet2.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "rpc/core_rpc_server_commands_defs.h"
-#include "rpc/core_rpc_server.h"
 #include "misc_language.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
 #include "cryptonote_basic/hardfork.h"
@@ -2990,7 +2989,12 @@ bool wallet2::long_poll_pool_state()
   // Update daemon address for long polling here instead of in set_daemon which
   // could block on the long polling connection thread.
   static bool local_address               = true;
-  std::chrono::milliseconds local_timeout = 500ms;
+  // How long we wait before retrying the connection if we get an error
+  constexpr auto local_retry = 500ms;
+  constexpr auto remote_retry = 3s;
+  // How long we wait for a long poll response before timing out; we add a 5s buffer to the usual
+  // timeout to allow for network latency and lokid response time.
+  constexpr auto long_poll_timeout = cryptonote::rpc::GET_TRANSACTION_POOL_HASHES_BIN::long_poll_timeout + 5s;
   {
     std::string new_host;
     std::optional<epee::net_utils::http::login> login;
@@ -3020,20 +3024,22 @@ bool wallet2::long_poll_pool_state()
   req.tx_pool_checksum = get_long_poll_tx_pool_checksum();
   bool r               = false;
   {
+    constexpr auto timeout = cryptonote::rpc::GET_TRANSACTION_POOL_HASHES_BIN::long_poll_timeout + 5s;
     std::lock_guard<decltype(m_long_poll_mutex)> lock(m_long_poll_mutex);
     r = epee::net_utils::invoke_http_bin("/" + std::string{rpc::GET_TRANSACTION_POOL_HASHES_BIN::names().front()},
                                           req,
                                           res,
                                           m_long_poll_client,
-                                          local_address ? local_timeout : cryptonote::rpc::long_poll_timeout,
+                                          timeout,
                                           "GET");
   }
 
   bool maxed_out_connections = res.status == rpc::STATUS_TX_LONG_POLL_MAX_CONNECTIONS;
   bool timed_out             = res.status == rpc::STATUS_TX_LONG_POLL_TIMED_OUT;
-  if (maxed_out_connections || timed_out)
+  if (!r || maxed_out_connections || timed_out)
   {
-    if (maxed_out_connections) std::this_thread::sleep_for(local_address ? local_timeout : cryptonote::rpc::long_poll_timeout);
+    MINFO("Long poll " << (!r ? "request error" : res.status == rpc::STATUS_TX_LONG_POLL_MAX_CONNECTIONS ? "replied with max connections" : "replied with no pool change"));
+    if (!r || maxed_out_connections) std::this_thread::sleep_for(local_address ? local_retry : remote_retry);
     return false;
   }
 

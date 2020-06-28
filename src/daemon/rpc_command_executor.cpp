@@ -219,13 +219,13 @@ rpc_command_executor::rpc_command_executor(
     uint32_t ip
   , uint16_t port
   , const std::optional<tools::login>& login
-  , const epee::net_utils::ssl_options_t& ssl_options
   )
 {
   std::optional<epee::net_utils::http::login> http_login{};
   if (login)
     http_login.emplace(login->username, login->password.password());
-  m_rpc_client = std::make_unique<tools::t_rpc_client>(ip, port, std::move(http_login), ssl_options);
+  // FIXME: make ssl argument here optional (and default to disabled)
+  m_rpc_client = std::make_unique<tools::t_rpc_client>(ip, port, std::move(http_login), epee::net_utils::ssl_support_t::e_ssl_support_disabled);
 }
 
 bool rpc_command_executor::print_checkpoints(uint64_t start_height, uint64_t end_height, bool print_json)
@@ -626,7 +626,6 @@ bool rpc_command_executor::print_connections() {
 
   tools::msg_writer() << std::setw(30) << std::left << "Remote Host"
       << std::setw(8) << "Type"
-      << std::setw(6) << "SSL"
       << std::setw(20) << "Peer id"
       << std::setw(20) << "Support Flags"
       << std::setw(30) << "Recv/Sent (inactive,sec)"
@@ -647,7 +646,6 @@ bool rpc_command_executor::print_connections() {
      //<< std::setw(30) << std::left << in_out
      << std::setw(30) << std::left << address
      << std::setw(8) << (get_address_type_name((epee::net_utils::address_type)info.address_type))
-     << std::setw(6) << (info.ssl ? "yes" : "no")
      << std::setw(20) << info.peer_id
      << std::setw(20) << info.support_flags
      << std::setw(30) << std::to_string(info.recv_count) + "("  + std::to_string(count_seconds(info.recv_idle_time)) + ")/" + std::to_string(info.send_count) + "(" + std::to_string(count_seconds(info.send_idle_time)) + ")"

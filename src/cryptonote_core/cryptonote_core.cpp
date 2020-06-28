@@ -275,19 +275,27 @@ namespace cryptonote
 
   // Loads stubs that fail if invoked.  The stubs are replaced in the cryptonote_protocol/quorumnet.cpp glue code.
   [[noreturn]] static void need_core_init() {
-      throw std::logic_error("Internal error: quorumnet::init_core_callbacks() should have been called");
+      throw std::logic_error("Internal error: core callback initialization was not performed!");
   }
   void *(*quorumnet_new)(core&);
   void (*quorumnet_delete)(void*&self);
   void (*quorumnet_relay_obligation_votes)(void* self, const std::vector<service_nodes::quorum_vote_t>&);
   std::future<std::pair<blink_result, std::string>> (*quorumnet_send_blink)(core& core, const std::string& tx_blob);
+
+  void (*long_poll_trigger)(tx_memory_pool& pool);
+
   static bool init_core_callback_stubs() {
     quorumnet_new = [](core&) -> void* { need_core_init(); };
     quorumnet_delete = [](void*&) { need_core_init(); };
     quorumnet_relay_obligation_votes = [](void*, const std::vector<service_nodes::quorum_vote_t>&) { need_core_init(); };
     quorumnet_send_blink = [](core&, const std::string&) -> std::future<std::pair<blink_result, std::string>> { need_core_init(); };
+
+    long_poll_trigger = [](tx_memory_pool&) { need_core_init(); };
+
     return false;
   }
+
+  // This variable is only here to let us call the above during static initialization.
   bool init_core_callback_complete = init_core_callback_stubs();
 
   //-----------------------------------------------------------------------------------------------
@@ -1134,7 +1142,6 @@ namespace cryptonote
     if (m_quorumnet_state)
       quorumnet_delete(m_quorumnet_state);
     m_lmq.reset();
-    m_long_poll_wake_up_clients.notify_all();
     m_service_node_list.store();
     m_miner.stop();
     m_mempool.deinit();
@@ -1407,7 +1414,7 @@ namespace cryptonote
       }
     }
 
-    if (tx_pool_changed) m_long_poll_wake_up_clients.notify_all();
+    if (tx_pool_changed) long_poll_trigger(m_mempool);
     return ok;
   }
   //-----------------------------------------------------------------------------------------------

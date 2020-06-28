@@ -47,21 +47,6 @@
 
 namespace daemonize
 {
-class http_rpc_server
-{
-public:
-  http_rpc_server(boost::program_options::variables_map const &vm,
-             cryptonote::rpc::core_rpc_server &corerpc,
-             const bool restricted,
-             const std::string &port,
-             std::string description);
-  void run();
-  void stop();
-  ~http_rpc_server();
-
-  cryptonote::rpc::http_server m_server;
-  std::string m_description;
-};
 
 class daemon {
 public:
@@ -87,7 +72,7 @@ private:
   std::unique_ptr<protocol_handler> protocol;
   std::unique_ptr<node_server> p2p;
   std::unique_ptr<cryptonote::rpc::core_rpc_server> rpc;
-  std::list<http_rpc_server> http_rpcs;
+  std::list<std::pair<std::string, cryptonote::rpc::http_server>> http_rpcs;
   std::unique_ptr<cryptonote::rpc::lmq_rpc> lmq_rpc;
 };
 

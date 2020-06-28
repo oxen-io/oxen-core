@@ -56,7 +56,6 @@ public:
       uint32_t ip
     , uint16_t port
     , const std::optional<tools::login>& user
-    , const epee::net_utils::ssl_options_t& ssl_options
     );
   /// Executor for local daemon RPC
   rpc_command_executor(cryptonote::rpc::core_rpc_server& rpc_server)
