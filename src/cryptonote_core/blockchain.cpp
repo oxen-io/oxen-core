@@ -1385,7 +1385,7 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
 
   for (ValidateMinerTxHook* hook : m_validate_miner_tx_hooks)
   {
-    if (!hook->validate_miner_tx(b.prev_id, b.miner_tx, m_db->height(), version, reward_parts))
+    if (!hook->validate_miner_tx(b, reward_parts))
       return false;
   }
 

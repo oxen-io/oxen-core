@@ -2005,11 +2005,15 @@ namespace service_nodes
       return (a > b ? a - b : b - a) <= T{1};
   }
 
-  bool service_node_list::validate_miner_tx(const crypto::hash& prev_id, const cryptonote::transaction& miner_tx, uint64_t height, int hf_version, cryptonote::block_reward_parts const &reward_parts) const
+  bool service_node_list::validate_miner_tx(cryptonote::block const &block, cryptonote::block_reward_parts const &reward_parts) const
   {
     std::lock_guard lock(m_sn_mutex);
-    if (hf_version < 9)
+    if (block.major_version < 9)
       return true;
+
+    uint8_t hf_version                      = block.major_version;
+    uint64_t height                         = cryptonote::get_block_height(block);
+    cryptonote::transaction const &miner_tx = block.miner_tx;
 
     // NOTE(loki): Service node reward distribution is calculated from the
     // original amount, i.e. 50% of the original base reward goes to service
