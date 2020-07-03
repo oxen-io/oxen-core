@@ -287,54 +287,60 @@ namespace cryptonote
       }
     }
 
-    if (miner_tx_context.pulse_block_producer)
-      CHECK_AND_ASSERT_MES(miner_tx_context.block_producer_snode.payouts.size(), false, "Constructing a reward for block produced by pulse but no payout entries specified");
-    else
-      CHECK_AND_ASSERT_MES(miner_tx_context.block_producer_snode.payouts.empty(), false, "Constructing a reward for block produced by miner but payout entries specified");
-
+    // TODO(doyle): Batching awards
     // NOTE: Summarise rewards to payout
-    // Up to 9 payout entries, up to 4 Pooled SN, up to 4 Block Producer (Pooled SN or 1 for Miner), up to 1 Governance
+    // Up to 13 payout entries, up to 4 Pooled SN, up to 4 Block Producer (Pooled SN or 1 for Miner), up to 4 for Original Block Leader, up to 1 Governance
     size_t rewards_length                = 0;
     std::array<reward_payout, 9> rewards = {};
 
-    // NOTE: Add miner reward if block was not produced via Pulse
-    if (!miner_tx_context.pulse_block_producer)
+    // NOTE: Add Block Producer Reward
+    if (miner_tx_context.pulse)
     {
-      reward_payout &entry = rewards[rewards_length++];
-      entry.type           = reward_type::miner;
-      entry.address        = miner_tx_context.block_producer_miner;
-      entry.amount         = reward_parts.miner_reward();
-    }
+      CHECK_AND_ASSERT_MES(miner_tx_context.pulse_block_producer.payouts.size(), false, "Constructing a reward for block produced by pulse but no payout entries specified");
+      CHECK_AND_ASSERT_MES(miner_tx_context.pulse_block_producer.payouts.size(), false, "Constructing a reward for block produced by pulse but no payout entries specified");
+      CHECK_AND_ASSERT_MES(miner_tx_context.pulse_block_producer.key, false, "Null Key given for Pulse Block Producer");
+      CHECK_AND_ASSERT_MES(hard_fork_version >= cryptonote::network_version_16, false, "Pulse Block Producer is not valid until HF16, current HF" << hard_fork_version);
 
-    // NOTE: Merge any Service Node rewards that are the same.
-    // TODO(doyle): Need to update SNL reward validation
-#if 0
-    if (hard_fork_version >= cryptonote::network_version_16)
-    {
-      for (auto const *payout_list : {&miner_tx_context.block_winner.payouts, &miner_tx_context.block_producer_snode.payouts})
+      service_nodes::block_winner const &producer = miner_tx_context.pulse_block_producer;
+      service_nodes::block_winner const &leader   = miner_tx_context.pulse_block_leader;
+
+      service_nodes::block_winner const *payout_lists[2] = {};
+      size_t payout_lists_size                           = 0;
+
+      payout_lists[payout_lists_size++] = &producer;
+      if (!leader.key == producer.key)
       {
-        uint64_t amount = (payout_list == &miner_tx_context.block_winner.payouts) ? reward_parts.service_node_paid : reward_parts.miner_reward();
-        for (auto const &payee : (*payout_list))
-        {
-          auto end = rewards.begin() + rewards_length;
-          auto it  = std::find(rewards.begin(), end, payee);
+        // NOTE: Block producer is different from the leader.
+        // This means the leader failed to generate the block.
+        // A small portion of the reward is allocated to the leader.
+        payout_lists[payout_lists_size++] = &leader;
+      }
 
-          if (it == end)
-          {
-            reward_payout &entry = rewards[rewards_length++];
-            entry.type           = reward_type::snode;
-            entry.address        = payee.address;
-            entry.amount         = get_portion_of_reward(payee.portions, amount);
-          }
-          else
-          {
-            it->amount += get_portion_of_reward(payee.portions, amount);
-          }
+      for (size_t i = 0; i < payout_lists_size; i++)
+      {
+        auto const *list = payout_lists[i];
+        uint64_t amount  = list == &producer ? reward_parts.miner_reward() : 0;
+        for (auto const &payee : list->payouts)
+        {
+          reward_payout &entry = rewards[rewards_length++];
+          entry.type           = reward_type::snode;
+          entry.address        = payee.address;
+          entry.amount         = get_portion_of_reward(payee.portions, amount);
         }
       }
     }
     else
-#endif
+    {
+      CHECK_AND_ASSERT_MES(miner_tx_context.pulse_block_producer.payouts.empty(), false, "Constructing a reward for block produced by miner but payout entries specified");
+      CHECK_AND_ASSERT_MES(miner_tx_context.pulse_block_leader.payouts.empty(), false, "Constructing a reward for block produced by miner but leader was specified");
+
+      reward_payout &entry = rewards[rewards_length++];
+      entry.type           = reward_type::miner;
+      entry.address        = miner_tx_context.miner_block_producer;
+      entry.amount         = reward_parts.miner_reward();
+    }
+
+    // NOTE: Add Service Node List Queue Winner
     if (hard_fork_version >= cryptonote::network_version_9_service_nodes)
     {
       for (auto const &payee : miner_tx_context.block_winner.payouts)
