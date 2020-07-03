@@ -58,29 +58,34 @@ namespace cryptonote
     {
         loki_miner_tx_context result = {};
         result.nettype               = nettype;
-        result.block_producer_miner  = block_producer;
+        result.miner_block_producer  = block_producer;
         result.block_winner          = winner;
         return result;
     }
 
     static loki_miner_tx_context pulse_block(network_type nettype,
+                                             service_nodes::block_winner const &original_pulse_leader,
                                              service_nodes::block_winner const &block_producer,
                                              service_nodes::block_winner const &winner = service_nodes::null_block_winner)
     {
       loki_miner_tx_context result = {};
-      result.pulse_block_producer  = true;
+      result.pulse                 = true;
       result.nettype               = nettype;
-      result.block_producer_snode  = block_producer;
+      result.pulse_block_producer  = block_producer;
+      result.pulse_block_leader    = original_pulse_leader;
       result.block_winner          = winner;
       return result;
     }
 
     network_type                nettype = MAINNET;
-    bool                        pulse_block_producer; // If true, block_producer_snode is set, otherwise block_producer_miner is set, determining who should get the producer/coinbase reward.
-    service_nodes::block_winner block_producer_snode;
-    account_public_address      block_producer_miner;
-    service_nodes::block_winner block_winner;
-    uint64_t                    batched_governance; // NOTE: 0 until hardfork v10, then use blockchain::calc_batched_governance_reward
+
+    bool                        pulse;                // If true, pulse_.* varables are set, otherwise miner_block_producer is set, determining who should get the coinbase reward.
+    service_nodes::block_winner pulse_block_leader;   // The original leader of the block in Pulse when round = 0.
+    service_nodes::block_winner pulse_block_producer; // Can be different from the leader in Pulse if the original leader fails to complete the round, the block producer changes.
+
+    account_public_address      miner_block_producer;
+    service_nodes::block_winner block_winner;         // Winner from the Service Node queuing in the Service Node List.
+    uint64_t                    batched_governance;   // NOTE: 0 until hardfork v10, then use blockchain::calc_batched_governance_reward
   };
 
   bool construct_miner_tx(

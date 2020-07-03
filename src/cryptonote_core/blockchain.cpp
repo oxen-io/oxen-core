@@ -1632,8 +1632,7 @@ bool Blockchain::create_block_template(block& b, const crypto::hash *from_block,
    block weight, so first miner transaction generated with fake amount of money, and with phase we know think we know expected block weight
    */
   //make blocks coin-base tx looks close to real coinbase tx to get truthful blob weight
-  uint8_t hf_version      = b.major_version;
-
+  uint8_t hf_version = b.major_version;
   auto miner_tx_context = loki_miner_tx_context::miner_block(m_nettype, miner_address, m_service_node_list.get_block_winner());
   if (!calc_batched_governance_reward(height, miner_tx_context.batched_governance))
   {
