@@ -3058,7 +3058,6 @@ bool loki_pulse_invalid_participation_bits::generate(std::vector<test_event_entr
   loki_blockchain_entry entry     = {};
   loki_create_block_params params = gen.next_block_params();
   gen.block_begin(entry, params, {} /*tx_list*/);
-  gen.block_fill_pulse_data(entry, params, entry.block.pulse.round);
 
   // NOTE: Overwrite participation bits to be wrong
   entry.block.pulse.validator_participation_bits = ~service_nodes::pulse_validator_bit_mask();
@@ -3076,7 +3075,6 @@ bool loki_pulse_invalid_signature::generate(std::vector<test_event_entry> &event
   loki_blockchain_entry entry     = {};
   loki_create_block_params params = gen.next_block_params();
   gen.block_begin(entry, params, {} /*tx_list*/);
-  gen.block_fill_pulse_data(entry, params, entry.block.pulse.round);
 
   // NOTE: Overwrite signature
   entry.block.signatures[0].signature = {};
@@ -3093,7 +3091,6 @@ bool loki_pulse_oob_voter_index::generate(std::vector<test_event_entry> &events)
   loki_blockchain_entry entry     = {};
   loki_create_block_params params = gen.next_block_params();
   gen.block_begin(entry, params, {} /*tx_list*/);
-  gen.block_fill_pulse_data(entry, params, entry.block.pulse.round);
 
   // NOTE: Overwrite oob voter index
   entry.block.signatures.back().voter_index = service_nodes::PULSE_QUORUM_NUM_VALIDATORS + 1;
@@ -3113,6 +3110,9 @@ bool loki_pulse_non_participating_validator::generate(std::vector<test_event_ent
 
   // NOTE: Manually generate signatures to break test
   {
+    entry.block.pulse = {};
+    entry.block.signatures.clear();
+
     {
       entry.block.pulse.round = 0;
       for (size_t i = 0; i < sizeof(entry.block.pulse.random_value.data); i++)
@@ -3137,7 +3137,6 @@ bool loki_pulse_non_participating_validator::generate(std::vector<test_event_ent
     size_t const voter_indexes[]                  = {0, 1, 2, 3, 4, 5, 7};
 
     crypto::hash block_hash = cryptonote::get_block_hash(entry.block);
-    assert(entry.block.signatures.empty());
     for (size_t index : voter_indexes)
     {
       service_nodes::service_node_keys validator_keys = gen.get_cached_keys(quorum.validators[index]);
@@ -3164,8 +3163,8 @@ bool loki_pulse_generate_all_rounds::generate(std::vector<test_event_entry> &eve
   {
     loki_blockchain_entry entry     = {};
     loki_create_block_params params = gen.next_block_params();
+    params.pulse_round              = round;
     gen.block_begin(entry, params, {} /*tx_list*/);
-    gen.block_fill_pulse_data(entry, params, round);
     gen.block_end(entry, params);
     gen.add_block(entry, true);
   }
@@ -3180,8 +3179,6 @@ bool loki_pulse_out_of_order_voters::generate(std::vector<test_event_entry> &eve
   loki_blockchain_entry entry     = {};
   loki_create_block_params params = gen.next_block_params();
   gen.block_begin(entry, params, {} /*tx_list*/);
-  gen.block_fill_pulse_data(entry, params, entry.block.pulse.round);
-
   // NOTE: Swap voters so that the votes are not sorted in order
   auto tmp                       = entry.block.signatures.back();
   entry.block.signatures.back()  = entry.block.signatures.front();
@@ -3198,6 +3195,7 @@ bool loki_pulse_reject_miner_block::generate(std::vector<test_event_entry> &even
   gen.add_event_msg("Invalid Block: PoW Block but we have enough service nodes for Pulse");
   loki_blockchain_entry entry     = {};
   loki_create_block_params params = gen.next_block_params();
+  params.type = loki_create_block_type::miner;
   gen.block_begin(entry, params, {} /*tx_list*/);
 
   // NOTE: Create an ordinary miner block even when we have enough Service Nodes for Pulse.

@@ -2073,7 +2073,6 @@ namespace service_nodes
     uint64_t const base_reward               = reward_parts.original_base_reward;
     uint64_t const total_service_node_reward = cryptonote::service_node_reward_formula(base_reward, hf_version);
     {
-
       auto const check_queued_winner_pubkey = cryptonote::get_service_node_winner_from_tx_extra(miner_tx.extra);
       if (queued_winner.key != check_queued_winner_pubkey)
       {
@@ -2089,7 +2088,7 @@ namespace service_nodes
     {
       std::vector<crypto::hash> entropy;
       get_pulse_entropy_from_blockchain(m_blockchain.get_db(), height + 1, entropy, block.pulse.round);
-      pulse_quorum = generate_pulse_quorum(queued_winner.key, hf_version, m_state.active_service_nodes_infos(), entropy, block.pulse.round);
+      pulse_quorum = generate_pulse_quorum(m_blockchain.nettype(), queued_winner.key, hf_version, m_state.active_service_nodes_infos(), entropy, block.pulse.round);
       pulse_block = block.signatures.size() || pulse_quorum.workers.size();
     }
 
