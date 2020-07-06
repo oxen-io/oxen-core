@@ -212,11 +212,11 @@ namespace cryptonote
     return rewardlo;
   }
 
-  static uint64_t calculate_sum_of_portions(const std::vector<service_nodes::payout_entry>& payouts, uint64_t total_service_node_reward)
+  static uint64_t calculate_sum_of_portions(const std::vector<service_nodes::payout_entry>& payout, uint64_t total_service_node_reward)
   {
     uint64_t reward = 0;
-    for (size_t i = 0; i < payouts.size(); i++)
-      reward += get_portion_of_reward(payouts[i].portions, total_service_node_reward);
+    for (auto const &entry : payout)
+      reward += get_portion_of_reward(entry.portions, total_service_node_reward);
     return reward;
   }
 
@@ -269,7 +269,7 @@ namespace cryptonote
       if (already_generated_coins != 0)
         add_tx_extra<tx_extra_pub_key>(tx, gov_key.pub);
 
-      add_service_node_winner_to_tx_extra(tx.extra, miner_tx_context.block_winner.key);
+      add_service_node_winner_to_tx_extra(tx.extra, miner_tx_context.queued_winner.key);
     }
 
     block_reward_parts reward_parts = {};
@@ -277,7 +277,7 @@ namespace cryptonote
       loki_block_reward_context block_reward_context = {};
       block_reward_context.fee                       = fee;
       block_reward_context.height                    = height;
-      block_reward_context.service_node_payouts      = miner_tx_context.block_winner.payouts;
+      block_reward_context.queued_winner_payouts     = miner_tx_context.queued_winner.payouts;
       block_reward_context.batched_governance        = miner_tx_context.batched_governance;
 
       if(!get_loki_block_reward(median_weight, current_block_weight, already_generated_coins, hard_fork_version, reward_parts, block_reward_context))
@@ -301,11 +301,11 @@ namespace cryptonote
       CHECK_AND_ASSERT_MES(miner_tx_context.pulse_block_producer.key, false, "Null Key given for Pulse Block Producer");
       CHECK_AND_ASSERT_MES(hard_fork_version >= cryptonote::network_version_16, false, "Pulse Block Producer is not valid until HF16, current HF" << hard_fork_version);
 
-      service_nodes::block_winner const &producer = miner_tx_context.pulse_block_producer;
-      service_nodes::block_winner const &leader   = miner_tx_context.pulse_block_leader;
+      service_nodes::payout const &producer = miner_tx_context.pulse_block_producer;
+      service_nodes::payout const &leader   = miner_tx_context.pulse_block_leader;
 
-      service_nodes::block_winner const *payout_lists[2] = {};
-      size_t payout_lists_size                           = 0;
+      service_nodes::payout const *payout_lists[2] = {};
+      size_t payout_lists_size                     = 0;
 
       payout_lists[payout_lists_size++] = &producer;
       if (!leader.key == producer.key)
@@ -343,7 +343,7 @@ namespace cryptonote
     // NOTE: Add Service Node List Queue Winner
     if (hard_fork_version >= cryptonote::network_version_9_service_nodes)
     {
-      for (auto const &payee : miner_tx_context.block_winner.payouts)
+      for (auto const &payee : miner_tx_context.queued_winner.payouts)
       {
         reward_payout &entry = rewards[rewards_length++];
         entry.type           = reward_type::snode;
@@ -456,7 +456,7 @@ namespace cryptonote
         hard_fork_version >= network_version_13_enforce_checkpoints ? base_reward_unpenalized : base_reward;
 
     result.service_node_total = service_node_reward_formula(result.original_base_reward, hard_fork_version);
-    result.service_node_paid  = calculate_sum_of_portions(loki_context.service_node_payouts, result.service_node_total);
+    result.service_node_paid  = calculate_sum_of_portions(loki_context.queued_winner_payouts, result.service_node_total);
 
     // There is a goverance fee due every block.  Beginning in hardfork 10 this is still subtracted
     // from the block reward as if it was paid, but the actual payments get batched into rare, large
