@@ -115,7 +115,7 @@ namespace cryptonote
     /// exceeding the median block size; starting in HF 13 the miner pays the full penalty.
     uint64_t original_base_reward;
 
-    uint64_t miner_reward() { return base_miner + base_miner_fee; }
+    uint64_t miner_reward() const { return base_miner + base_miner_fee; }
   };
 
   struct loki_block_reward_context

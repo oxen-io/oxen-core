@@ -801,7 +801,20 @@ bool loki_chain_generator::block_begin(loki_blockchain_entry &entry, loki_create
   }
 
   // NOTE: Calculate governance
-  auto miner_tx_context = cryptonote::loki_miner_tx_context::miner_block(cryptonote::FAKECHAIN, params.miner_acc.get_keys().m_account_address, params.queued_winner);
+  cryptonote::loki_miner_tx_context miner_tx_context = {};
+  std::vector<service_nodes::pubkey_and_sninfo> active_snode_list = params.prev.service_node_state.active_service_nodes_infos();
+  if (entry.block.major_version >= cryptonote::network_version_16 && active_snode_list.size() >= service_nodes::PULSE_MIN_SERVICE_NODES)
+  {
+    // TODO(doyle): We only support the queued winner as the block
+    // producer/leader By default if the pulse round is 0, the queued winner is
+    // the block producer, so i.e. we only support the default case atm
+    miner_tx_context = cryptonote::loki_miner_tx_context::pulse_block(cryptonote::FAKECHAIN, params.queued_winner, params.queued_winner, params.queued_winner);
+  }
+  else
+  {
+    miner_tx_context = cryptonote::loki_miner_tx_context::miner_block(cryptonote::FAKECHAIN, params.miner_acc.get_keys().m_account_address, params.queued_winner);
+  }
+
   if (blk.major_version >= cryptonote::network_version_10_bulletproofs &&
       cryptonote::height_has_governance_output(cryptonote::FAKECHAIN, blk.major_version, height))
   {

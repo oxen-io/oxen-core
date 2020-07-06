@@ -104,7 +104,6 @@ namespace cryptonote
 
   bool get_deterministic_output_key(const account_public_address& address, const keypair& tx_key, size_t output_index, crypto::public_key& output_key)
   {
-
     crypto::key_derivation derivation{};
     bool r = crypto::generate_key_derivation(address.m_view_public_key, tx_key.sec, derivation);
     CHECK_AND_ASSERT_MES(r, false, "failed to generate_key_derivation(" << address.m_view_public_key << ", " << tx_key.sec << ")");
@@ -290,14 +289,14 @@ namespace cryptonote
     // TODO(doyle): Batching awards
     // NOTE: Summarise rewards to payout
     // Up to 13 payout entries, up to 4 Pooled SN, up to 4 Block Producer (Pooled SN or 1 for Miner), up to 4 for Original Block Leader, up to 1 Governance
-    size_t rewards_length                = 0;
-    std::array<reward_payout, 9> rewards = {};
+    size_t rewards_length                 = 0;
+    std::array<reward_payout, 13> rewards = {};
 
     // NOTE: Add Block Producer Reward
     if (miner_tx_context.pulse)
     {
       CHECK_AND_ASSERT_MES(miner_tx_context.pulse_block_producer.payouts.size(), false, "Constructing a reward for block produced by pulse but no payout entries specified");
-      CHECK_AND_ASSERT_MES(miner_tx_context.pulse_block_producer.payouts.size(), false, "Constructing a reward for block produced by pulse but no payout entries specified");
+      CHECK_AND_ASSERT_MES(miner_tx_context.pulse_block_leader.payouts.size(), false, "Constructing a reward for block produced by pulse but no payout entries specified");
       CHECK_AND_ASSERT_MES(miner_tx_context.pulse_block_producer.key, false, "Null Key given for Pulse Block Producer");
       CHECK_AND_ASSERT_MES(hard_fork_version >= cryptonote::network_version_16, false, "Pulse Block Producer is not valid until HF16, current HF" << hard_fork_version);
 
@@ -319,7 +318,7 @@ namespace cryptonote
       for (size_t i = 0; i < payout_lists_size; i++)
       {
         auto const *list = payout_lists[i];
-        uint64_t amount  = list == &producer ? reward_parts.miner_reward() : 0;
+        uint64_t amount  = list == &producer ? reward_parts.miner_reward() : 0; // TODO(doyle): Amount
         for (auto const &payee : list->payouts)
         {
           reward_payout &entry = rewards[rewards_length++];
@@ -381,25 +380,14 @@ namespace cryptonote
       reward_payout const &payout = rewards[reward_index];
       crypto::public_key out_eph_public_key{};
 
-      if (payout.type == reward_type::governance)
-      {
-        if (!get_deterministic_output_key(payout.address, gov_key, tx.vout.size(), out_eph_public_key))
-        {
-          MERROR("Failed to generate deterministic output key for governance wallet output creation");
-          return false;
-        }
-      }
-      else
-      {
-        // TODO(doyle): I don't think txkey is necessary, just use the governance key?
-        keypair const &derivation_pair = (payout.type == reward_type::miner) ? txkey : gov_key;
-        crypto::key_derivation derivation{};
+      // TODO(doyle): I don't think txkey is necessary, just use the governance key?
+      keypair const &derivation_pair = (payout.type == reward_type::miner) ? txkey : gov_key;
+      crypto::key_derivation derivation{};
 
-        bool r = crypto::generate_key_derivation(payout.address.m_view_public_key, derivation_pair.sec, derivation);
-        CHECK_AND_ASSERT_MES(r, false, "Creating miner tx output failed failed to generate_key_derivation(" << payout.address.m_view_public_key << ", " << derivation_pair.sec << ")");
-
-        r = crypto::derive_public_key(derivation, reward_index, payout.address.m_spend_public_key, out_eph_public_key);
-        CHECK_AND_ASSERT_MES(r, false, "Creating miner tx output failed to derive_public_key(" << derivation << ", " << reward_index << ", "<< payout.address.m_spend_public_key << ")");
+      if (!get_deterministic_output_key(payout.address, derivation_pair, reward_index, out_eph_public_key))
+      {
+        MERROR("Failed to generate output one-time public key");
+        return false;
       }
 
       txout_to_key tk = {};

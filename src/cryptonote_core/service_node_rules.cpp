@@ -171,10 +171,10 @@ uint64_t get_min_node_contribution_in_portions(uint8_t version, uint64_t staking
   return result;
 }
 
-uint64_t get_portions_to_make_amount(uint64_t staking_requirement, uint64_t amount)
+uint64_t get_portions_to_make_amount(uint64_t staking_requirement, uint64_t amount, uint64_t max_portions)
 {
   uint64_t lo, hi, resulthi, resultlo;
-  lo = mul128(amount, STAKING_PORTIONS, &hi);
+  lo = mul128(amount, max_portions, &hi);
   if (lo > UINT64_MAX - (staking_requirement - 1))
     hi++;
   lo += staking_requirement-1;

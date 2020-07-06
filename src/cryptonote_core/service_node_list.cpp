@@ -1272,6 +1272,9 @@ namespace service_nodes
   {
     if (block.major_version < cryptonote::network_version_9_service_nodes)
       return true;
+    
+    std::lock_guard lock(m_sn_mutex);
+    process_block(block, txs);
 
     if (block.major_version >= cryptonote::network_version_16)
     {
@@ -1308,9 +1311,6 @@ namespace service_nodes
         // quorum, this is a fallback- nonce mined block, previously verified validly
       }
     }
-
-    std::lock_guard lock(m_sn_mutex);
-    process_block(block, txs);
 
     if (block.major_version >= cryptonote::network_version_13_enforce_checkpoints && checkpoint)
     {
@@ -2005,73 +2005,163 @@ namespace service_nodes
       return (a > b ? a - b : b - a) <= T{1};
   }
 
+  // NOTE: Verify queued service node coinbase or pulse block producer rewards
+  static bool verify_coinbase_tx_output(cryptonote::transaction const &miner_tx,
+                                        uint64_t height,
+                                        size_t output_index,
+                                        cryptonote::account_public_address const &receiver,
+                                        uint64_t portions,
+                                        uint64_t available_reward)
+  {
+    if (output_index >= miner_tx.vout.size())
+    {
+      MERROR("Output Index: " << output_index << ", indexes out of bounds in vout array with size: " << miner_tx.vout.size());
+      return false;
+    }
+
+    cryptonote::tx_out const &output = miner_tx.vout[output_index];
+
+    // Because FP math is involved in reward calculations (and compounded by CPUs, compilers,
+    // expression contraction, and RandomX fiddling with the rounding modes) we can end up with a
+    // 1 ULP difference in the reward calculations.
+    // TODO(loki): eliminate all FP math from reward calculations
+    uint64_t const reward = cryptonote::get_portion_of_reward(portions, available_reward);
+    if (!within_one(output.amount, reward))
+    {
+      MERROR("Service node reward amount incorrect. Should be " << cryptonote::print_money(reward) << ", is: " << cryptonote::print_money(output.amount));
+      return false;
+    }
+
+    if (!std::holds_alternative<cryptonote::txout_to_key>(output.target))
+    {
+      MERROR("Service node output target type should be txout_to_key");
+      return false;
+    }
+
+    // NOTE: Loki uses the governance key in the one-time ephemeral key
+    // derivation for both Pulse Block Producer/Queued Service Node Winner rewards
+    crypto::key_derivation derivation{};
+    crypto::public_key out_eph_public_key{};
+    cryptonote::keypair gov_key = cryptonote::get_deterministic_keypair_from_height(height);
+
+    bool r = crypto::generate_key_derivation(receiver.m_view_public_key, gov_key.sec, derivation);
+    CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to generate_key_derivation(" << receiver.m_view_public_key << ", " << gov_key.sec << ")");
+    r = crypto::derive_public_key(derivation, output_index, receiver.m_spend_public_key, out_eph_public_key);
+    CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to derive_public_key(" << derivation << ", " << output_index << ", "<< receiver.m_spend_public_key << ")");
+
+    if (std::get<cryptonote::txout_to_key>(output.target).key != out_eph_public_key)
+    {
+      MERROR("Invalid service node reward at output: " << output_index << ", output key, specifies wrong key");
+      return false;
+    }
+
+    return true;
+  }
+
   bool service_node_list::validate_miner_tx(cryptonote::block const &block, cryptonote::block_reward_parts const &reward_parts) const
   {
     std::lock_guard lock(m_sn_mutex);
     if (block.major_version < 9)
       return true;
 
-    uint8_t hf_version                      = block.major_version;
-    uint64_t height                         = cryptonote::get_block_height(block);
+    uint8_t const hf_version                = block.major_version;
+    uint64_t const height                   = cryptonote::get_block_height(block);
     cryptonote::transaction const &miner_tx = block.miner_tx;
 
+    // NOTE: Basic queued service node list winner checks
+    payout const queued_winner               = m_state.get_queued_winner();
+    uint64_t const base_reward               = reward_parts.original_base_reward;
+    uint64_t const total_service_node_reward = cryptonote::service_node_reward_formula(base_reward, hf_version);
+    {
+
+      auto const check_queued_winner_pubkey = cryptonote::get_service_node_winner_from_tx_extra(miner_tx.extra);
+      if (queued_winner.key != check_queued_winner_pubkey)
+      {
+        MERROR("Service node reward winner is incorrect! Expected " << queued_winner.key << ", block has " << check_queued_winner_pubkey);
+        return false;
+      }
+    }
+
+    // NOTE: Pulse Information
+    bool pulse_block           = false;
+    quorum pulse_quorum        = {};
+    if (hf_version >= cryptonote::network_version_16)
+    {
+      std::vector<crypto::hash> entropy;
+      get_pulse_entropy_from_blockchain(m_blockchain.get_db(), height + 1, entropy, block.pulse.round);
+      pulse_quorum = generate_pulse_quorum(queued_winner.key, hf_version, m_state.active_service_nodes_infos(), entropy, block.pulse.round);
+      pulse_block = block.signatures.size() || pulse_quorum.workers.size();
+    }
+
+    // NOTE: Verify miner tx vout composition
+    //
+    // Miner Block
+    // 0       | Miner
+    // Up To 4 | Queued Service Node
+    // Up To 1 | Governance
+    //
+    // Pulse Block
+    // Up to 4 | Block Producer (0-3 for Pooled Service Node)
+    // Up To 3 | Queued Service Node
+    // Up To 1 | Governance
+    std::shared_ptr<const service_node_info> pulse_block_producer = nullptr;
+    {
+      size_t expected_vouts_size = 0;
+      if (pulse_block) // NOTE: Verify Block Producer Reward
+      {
+        auto info_it = m_state.service_nodes_infos.find(pulse_quorum.workers[0]);
+        if (info_it == m_state.service_nodes_infos.end())
+        {
+          MERROR("Block producer is not a Service Node: " << pulse_quorum.workers[0]);
+          return false;
+        }
+
+        pulse_block_producer = info_it->second;
+        expected_vouts_size += pulse_block_producer->contributors.size();
+      }
+      else
+      {
+        expected_vouts_size += 1; /*miner*/
+      }
+
+      expected_vouts_size += queued_winner.payouts.size();
+      expected_vouts_size += static_cast<size_t>(cryptonote::height_has_governance_output(m_blockchain.nettype(), hf_version, height));
+
+      if (miner_tx.vout.size() != expected_vouts_size)
+      {
+        MERROR("Miner TX specifies a different amount of outputs vs the expected: " << expected_vouts_size << ", miner tx outputs: " << miner_tx.vout.size());
+        return false;
+      }
+    }
+
+    // NOTE: Verify pulse block producer coinbase outputs
+    assert(pulse_block == static_cast<bool>(pulse_block_producer));
+    if (pulse_block_producer)
+    {
+      const uint64_t max_portions = STAKING_PORTIONS - pulse_block_producer->portions_for_operator;
+      for (size_t vout_index = 0; vout_index < pulse_block_producer->contributors.size(); vout_index++)
+      {
+        const auto &contributor = pulse_block_producer->contributors[vout_index];
+        uint64_t portions = get_portions_to_make_amount(pulse_block_producer->staking_requirement, contributor.amount, max_portions);
+        if (contributor.address == pulse_block_producer->operator_address)
+          portions += pulse_block_producer->portions_for_operator;
+        if (!verify_coinbase_tx_output(miner_tx, height, vout_index, contributor.address, portions, reward_parts.miner_reward()))
+          return false;
+      }
+    }
+
+    // NOTE: Verify queued service node list coinbase outputs
     // NOTE(loki): Service node reward distribution is calculated from the
     // original amount, i.e. 50% of the original base reward goes to service
     // nodes not 50% of the reward after removing the governance component (the
     // adjusted base reward post hardfork 10).
-    uint64_t base_reward = reward_parts.original_base_reward;
-    uint64_t total_service_node_reward = cryptonote::service_node_reward_formula(base_reward, hf_version);
-
-    payout winner                    = m_state.get_queued_winner();
-    crypto::public_key check_winner_pubkey = cryptonote::get_service_node_winner_from_tx_extra(miner_tx.extra);
-    if (winner.key != check_winner_pubkey)
+    size_t vout_offset = pulse_block_producer ? pulse_block_producer->contributors.size() : 1;
+    for (size_t i = 0; i < queued_winner.payouts.size(); i++)
     {
-      MERROR("Service node reward winner is incorrect! Expected " << winner.key << ", block has " << check_winner_pubkey);
-      return false;
-    }
-
-    if ((miner_tx.vout.size() - 1) < winner.payouts.size())
-    {
-      MERROR("Service node reward specifies more winners than available outputs: " << (miner_tx.vout.size() - 1) << ", winners: " << winner.payouts.size());
-      return false;
-    }
-
-    for (size_t i = 0; i < winner.payouts.size(); i++)
-    {
-      size_t vout_index          = i + 1;
-      payout_entry const &payout = winner.payouts[i];
-      uint64_t reward            = cryptonote::get_portion_of_reward(payout.portions, total_service_node_reward);
-
-      // Because FP math is involved in reward calculations (and compounded by CPUs, compilers,
-      // expression contraction, and RandomX fiddling with the rounding modes) we can end up with a
-      // 1 ULP difference in the reward calculations.
-      // TODO(loki): eliminate all FP math from reward calculations
-      if (!within_one(miner_tx.vout[vout_index].amount, reward))
-      {
-        MERROR("Service node reward amount incorrect. Should be " << cryptonote::print_money(reward) << ", is: " << cryptonote::print_money(miner_tx.vout[vout_index].amount));
+      size_t const vout_index    = vout_offset + i;
+      payout_entry const &payout = queued_winner.payouts[i];
+      if (!verify_coinbase_tx_output(miner_tx, height, vout_index, payout.address, payout.portions, total_service_node_reward))
         return false;
-      }
-
-      if (!std::holds_alternative<cryptonote::txout_to_key>(miner_tx.vout[vout_index].target))
-      {
-        MERROR("Service node output target type should be txout_to_key");
-        return false;
-      }
-
-      crypto::key_derivation derivation{};
-      crypto::public_key out_eph_public_key{};
-      cryptonote::keypair gov_key = cryptonote::get_deterministic_keypair_from_height(height);
-
-      bool r = crypto::generate_key_derivation(payout.address.m_view_public_key, gov_key.sec, derivation);
-      CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to generate_key_derivation(" << payout.address.m_view_public_key << ", " << gov_key.sec << ")");
-      r = crypto::derive_public_key(derivation, vout_index, payout.address.m_spend_public_key, out_eph_public_key);
-      CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to derive_public_key(" << derivation << ", " << vout_index << ", "<< payout.address.m_spend_public_key << ")");
-
-      if (std::get<cryptonote::txout_to_key>(miner_tx.vout[vout_index].target).key != out_eph_public_key)
-      {
-        MERROR("Invalid service node reward output");
-        return false;
-      }
     }
 
     return true;
