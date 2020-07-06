@@ -1380,8 +1380,16 @@ struct loki_service_node_contribution
     uint64_t                           portions;
 };
 
+enum struct loki_create_block_type
+{
+  automatic,
+  pulse,
+  miner,
+};
+
 struct loki_create_block_params
 {
+  loki_create_block_type               type;
   uint8_t                              hf_version;
   loki_blockchain_entry                prev;
   cryptonote::account_base             miner_acc;
@@ -1390,6 +1398,7 @@ struct loki_create_block_params
   std::vector<cryptonote::transaction> tx_list;
   service_nodes::payout                queued_winner;
   uint64_t                             total_fee;
+  uint8_t                              pulse_round;
 };
 
 struct loki_chain_generator
