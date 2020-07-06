@@ -302,7 +302,7 @@ namespace service_nodes
     uint64_t portions;
   };
 
-  struct block_winner
+  struct payout
   {
     crypto::public_key key;
     std::vector<payout_entry> payouts;
@@ -347,7 +347,7 @@ namespace service_nodes
     void init() override;
     bool validate_miner_tx(cryptonote::block const &block, cryptonote::block_reward_parts const &base_reward) const override;
     bool alt_block_added(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs, cryptonote::checkpoint_t const *checkpoint) override;
-    block_winner get_block_winner() const { std::lock_guard lock{m_sn_mutex}; return m_state.get_block_winner(); }
+    payout get_queued_winner() const { std::lock_guard lock{m_sn_mutex}; return m_state.get_queued_winner(); }
     bool is_service_node(const crypto::public_key& pubkey, bool require_active = true) const;
     bool is_key_image_locked(crypto::key_image const &check_image, uint64_t *unlock_height = nullptr, service_node_info::contribution_t *the_locked_contribution = nullptr) const;
     uint64_t height() const { return m_state.height; }
@@ -542,7 +542,7 @@ namespace service_nodes
           const cryptonote::transaction& tx,
           const service_node_keys *my_keys);
       bool process_key_image_unlock_tx(cryptonote::network_type nettype, uint64_t block_height, const cryptonote::transaction &tx);
-      block_winner get_block_winner() const;
+      payout get_queued_winner() const;
     };
 
     // Can be set to true (via --dev-allow-local-ips) for debugging a new testnet on a local private network.
@@ -636,6 +636,6 @@ namespace service_nodes
   bool get_pulse_entropy_from_blockchain(cryptonote::BlockchainDB const &db, uint64_t for_height, std::vector<crypto::hash> &entropy, uint8_t pulse_round);
   service_nodes::quorum generate_pulse_quorum(cryptonote::network_type nettype, crypto::public_key const &leader, uint8_t hf_version, std::vector<pubkey_and_sninfo> const &active_snode_list, std::vector<crypto::hash> const &pulse_entropy, uint8_t pulse_round);
 
-  const static std::vector<payout_entry> null_winner = {{cryptonote::null_address, STAKING_PORTIONS}};
-  const static block_winner null_block_winner        = {crypto::null_pkey, {null_winner}};
+  const static payout_entry null_payout_entry = {cryptonote::null_address, STAKING_PORTIONS};
+  const static payout null_payout             = {crypto::null_pkey, {null_payout_entry}};
 }

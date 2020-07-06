@@ -801,7 +801,7 @@ bool loki_chain_generator::block_begin(loki_blockchain_entry &entry, loki_create
   }
 
   // NOTE: Calculate governance
-  auto miner_tx_context = cryptonote::loki_miner_tx_context::miner_block(cryptonote::FAKECHAIN, params.miner_acc.get_keys().m_account_address, params.block_winner);
+  auto miner_tx_context = cryptonote::loki_miner_tx_context::miner_block(cryptonote::FAKECHAIN, params.miner_acc.get_keys().m_account_address, params.queued_winner);
   if (blk.major_version >= cryptonote::network_version_10_bulletproofs &&
       cryptonote::height_has_governance_output(cryptonote::FAKECHAIN, blk.major_version, height))
   {
@@ -905,7 +905,7 @@ void loki_chain_generator::block_fill_pulse_data(loki_blockchain_entry &entry, l
   // NOTE: Get Pulse Quorum necessary for this block
   std::vector<crypto::hash> entropy;
   service_nodes::get_pulse_entropy_from_blockchain(db_, cryptonote::get_block_height(entry.block) + 1, entropy, entry.block.pulse.round);
-  service_nodes::quorum pulse_quorum = generate_pulse_quorum(cryptonote::FAKECHAIN, params.block_winner.key, entry.block.major_version, active_snode_list, entropy, entry.block.pulse.round);
+  service_nodes::quorum pulse_quorum = generate_pulse_quorum(cryptonote::FAKECHAIN, params.queued_winner.key, entry.block.major_version, active_snode_list, entropy, entry.block.pulse.round);
 
   assert(pulse_quorum.validators.size() == service_nodes::PULSE_QUORUM_NUM_VALIDATORS);
   assert(pulse_quorum.workers.size() == 1);
@@ -960,7 +960,7 @@ loki_create_block_params loki_chain_generator::next_block_params() const
   result.timestamp                = prev.block.timestamp + DIFFICULTY_TARGET_V2;
   result.block_weights            = last_n_block_weights(height(), CRYPTONOTE_REWARD_BLOCKS_WINDOW);
   result.hf_version               = get_hf_version_at(next_height);
-  result.block_winner             = prev.service_node_state.get_block_winner();
+  result.queued_winner            = prev.service_node_state.get_queued_winner();
   result.total_fee                = 0; // Request chain generator to calculate the fee
   return result;
 }
@@ -1132,7 +1132,7 @@ bool test_generator::construct_block(cryptonote::block &blk,
                                      uint64_t already_generated_coins,
                                      std::vector<uint64_t> &block_weights,
                                      const std::list<cryptonote::transaction> &tx_list,
-                                     const service_nodes::block_winner &winner)
+                                     const service_nodes::payout &queued_winner)
 {
   /// a temporary workaround
   blk.major_version = m_hf_version;
@@ -1160,7 +1160,7 @@ bool test_generator::construct_block(cryptonote::block &blk,
     txs_weight += get_transaction_weight(tx);
   }
 
-  auto miner_tx_context = cryptonote::loki_miner_tx_context::miner_block(cryptonote::FAKECHAIN, miner_acc.get_keys().m_account_address, winner);
+  auto miner_tx_context = cryptonote::loki_miner_tx_context::miner_block(cryptonote::FAKECHAIN, miner_acc.get_keys().m_account_address, queued_winner);
   blk.miner_tx = {};
   size_t target_block_weight = txs_weight + get_transaction_weight(blk.miner_tx);
   manual_calc_batched_governance(*this, prev_id, miner_tx_context, m_hf_version, height);
@@ -1236,7 +1236,7 @@ bool test_generator::construct_block(cryptonote::block &blk,
                                      const cryptonote::block &blk_prev,
                                      const cryptonote::account_base &miner_acc,
                                      const std::list<cryptonote::transaction> &tx_list /* = {}*/,
-                                     const service_nodes::block_winner &winner)
+                                     const service_nodes::payout &queued_winner)
 {
   uint64_t height = std::get<cryptonote::txin_gen>(blk_prev.miner_tx.vin.front()).height + 1;
   crypto::hash prev_id = get_block_hash(blk_prev);
@@ -1246,7 +1246,7 @@ bool test_generator::construct_block(cryptonote::block &blk,
   std::vector<uint64_t> block_weights;
   get_last_n_block_weights(block_weights, prev_id, CRYPTONOTE_REWARD_BLOCKS_WINDOW);
 
-  return construct_block(blk, height, prev_id, miner_acc, timestamp, already_generated_coins, block_weights, tx_list, winner);
+  return construct_block(blk, height, prev_id, miner_acc, timestamp, already_generated_coins, block_weights, tx_list, queued_winner);
 }
 
 bool test_generator::construct_block_manually(cryptonote::block& blk, const cryptonote::block& prev_block, const cryptonote::account_base& miner_acc,

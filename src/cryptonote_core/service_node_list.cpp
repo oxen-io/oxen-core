@@ -1460,7 +1460,7 @@ namespace service_nodes
     return true;
   }
 
-  service_nodes::quorum generate_pulse_quorum(cryptonote::network_type nettype, crypto::public_key const &block_winner, uint8_t hf_version, std::vector<pubkey_and_sninfo> const &active_snode_list, std::vector<crypto::hash> const &pulse_entropy, uint8_t pulse_round)
+  service_nodes::quorum generate_pulse_quorum(cryptonote::network_type nettype, crypto::public_key const &queued_winner, uint8_t hf_version, std::vector<pubkey_and_sninfo> const &active_snode_list, std::vector<crypto::hash> const &pulse_entropy, uint8_t pulse_round)
   {
     service_nodes::quorum result = {};
     if (active_snode_list.size() < pulse_min_service_nodes(nettype))
@@ -1479,7 +1479,7 @@ namespace service_nodes
     pulse_candidates.reserve(active_snode_list.size());
     for (auto &node : active_snode_list)
     {
-      if (node.first != block_winner || pulse_round > 0)
+      if (node.first != queued_winner || pulse_round > 0)
         pulse_candidates.push_back(&node);
     }
 
@@ -1494,7 +1494,7 @@ namespace service_nodes
     crypto::public_key block_producer;
     if (pulse_round == 0)
     {
-      block_producer = block_winner;
+      block_producer = queued_winner;
     }
     else
     {
@@ -1956,9 +1956,9 @@ namespace service_nodes
     return expired_nodes;
   }
 
-  block_winner service_node_list::state_t::get_block_winner() const
+  service_nodes::payout service_node_list::state_t::get_queued_winner() const
   {
-    block_winner result           = {};
+    service_nodes::payout result  = {};
     service_node_info const *info = nullptr;
     {
       auto oldest_waiting = std::make_tuple(std::numeric_limits<uint64_t>::max(), std::numeric_limits<uint32_t>::max(), crypto::null_pkey);
@@ -1980,7 +1980,7 @@ namespace service_nodes
 
     if (result.key == crypto::null_pkey)
     {
-      result = service_nodes::null_block_winner;
+      result = service_nodes::null_payout;
       return result;
     }
 
@@ -2022,7 +2022,7 @@ namespace service_nodes
     uint64_t base_reward = reward_parts.original_base_reward;
     uint64_t total_service_node_reward = cryptonote::service_node_reward_formula(base_reward, hf_version);
 
-    block_winner winner                    = m_state.get_block_winner();
+    payout winner                    = m_state.get_queued_winner();
     crypto::public_key check_winner_pubkey = cryptonote::get_service_node_winner_from_tx_extra(miner_tx.extra);
     if (winner.key != check_winner_pubkey)
     {
