@@ -268,7 +268,7 @@ namespace cryptonote
       if (already_generated_coins != 0)
         add_tx_extra<tx_extra_pub_key>(tx, gov_key.pub);
 
-      add_service_node_winner_to_tx_extra(tx.extra, miner_tx_context.queued_winner.key);
+      add_service_node_winner_to_tx_extra(tx.extra, miner_tx_context.block_leader.key);
     }
 
     block_reward_parts reward_parts = {};
@@ -276,7 +276,7 @@ namespace cryptonote
       loki_block_reward_context block_reward_context = {};
       block_reward_context.fee                       = fee;
       block_reward_context.height                    = height;
-      block_reward_context.queued_winner_payouts     = miner_tx_context.queued_winner.payouts;
+      block_reward_context.block_leader_payouts      = miner_tx_context.block_leader.payouts;
       block_reward_context.batched_governance        = miner_tx_context.batched_governance;
 
       if(!get_loki_block_reward(median_weight, current_block_weight, already_generated_coins, hard_fork_version, reward_parts, block_reward_context))
@@ -288,51 +288,38 @@ namespace cryptonote
 
     // TODO(doyle): Batching awards
     // NOTE: Summarise rewards to payout
-    // Up to 13 payout entries, up to 4 Pooled SN, up to 4 Block Producer (Pooled SN or 1 for Miner), up to 4 for Original Block Leader, up to 1 Governance
-    size_t rewards_length                 = 0;
-    std::array<reward_payout, 13> rewards = {};
+    // Up to 9 payout entries, up to 4 Block Producer (Pooled SN or 1 for Miner), up to 4 for Block Leader, up to 1 Governance
+    size_t rewards_length                = 0;
+    std::array<reward_payout, 9> rewards = {};
+    CHECK_AND_ASSERT_MES(miner_tx_context.block_leader.payouts.size(), false, "Constructing a block leader reward for block but no payout entries specified");
 
     // NOTE: Add Block Producer Reward
+    bool add_producer_reward_to_leader = false;
     if (miner_tx_context.pulse)
     {
       CHECK_AND_ASSERT_MES(miner_tx_context.pulse_block_producer.payouts.size(), false, "Constructing a reward for block produced by pulse but no payout entries specified");
-      CHECK_AND_ASSERT_MES(miner_tx_context.pulse_block_leader.payouts.size(), false, "Constructing a reward for block produced by pulse but no payout entries specified");
       CHECK_AND_ASSERT_MES(miner_tx_context.pulse_block_producer.key, false, "Null Key given for Pulse Block Producer");
       CHECK_AND_ASSERT_MES(hard_fork_version >= cryptonote::network_version_16, false, "Pulse Block Producer is not valid until HF16, current HF" << hard_fork_version);
 
-      service_nodes::payout const &producer = miner_tx_context.pulse_block_producer;
-      service_nodes::payout const &leader   = miner_tx_context.pulse_block_leader;
-
-      service_nodes::payout const *payout_lists[2] = {};
-      size_t payout_lists_size                     = 0;
-
-      payout_lists[payout_lists_size++] = &producer;
-      if (!leader.key == producer.key)
+      if (miner_tx_context.block_leader.key == miner_tx_context.pulse_block_producer.key)
       {
-        // NOTE: Block producer is different from the leader.
-        // This means the leader failed to generate the block.
-        // A small portion of the reward is allocated to the leader.
-        payout_lists[payout_lists_size++] = &leader;
+        add_producer_reward_to_leader = true;
       }
-
-      for (size_t i = 0; i < payout_lists_size; i++)
+      else
       {
-        auto const *list = payout_lists[i];
-        uint64_t amount  = list == &producer ? reward_parts.miner_reward() : 0; // TODO(doyle): Amount
-        for (auto const &payee : list->payouts)
+        service_nodes::payout const &producer = miner_tx_context.pulse_block_producer;
+        for (auto const &payee : producer.payouts)
         {
           reward_payout &entry = rewards[rewards_length++];
           entry.type           = reward_type::snode;
           entry.address        = payee.address;
-          entry.amount         = get_portion_of_reward(payee.portions, amount);
+          entry.amount         = get_portion_of_reward(payee.portions, reward_parts.miner_reward());
         }
       }
     }
     else
     {
       CHECK_AND_ASSERT_MES(miner_tx_context.pulse_block_producer.payouts.empty(), false, "Constructing a reward for block produced by miner but payout entries specified");
-      CHECK_AND_ASSERT_MES(miner_tx_context.pulse_block_leader.payouts.empty(), false, "Constructing a reward for block produced by miner but leader was specified");
-
       reward_payout &entry = rewards[rewards_length++];
       entry.type           = reward_type::miner;
       entry.address        = miner_tx_context.miner_block_producer;
@@ -342,12 +329,14 @@ namespace cryptonote
     // NOTE: Add Service Node List Queue Winner
     if (hard_fork_version >= cryptonote::network_version_9_service_nodes)
     {
-      for (auto const &payee : miner_tx_context.queued_winner.payouts)
+      for (auto const &payee : miner_tx_context.block_leader.payouts)
       {
         reward_payout &entry = rewards[rewards_length++];
         entry.type           = reward_type::snode;
         entry.address        = payee.address;
         entry.amount         = get_portion_of_reward(payee.portions, reward_parts.service_node_paid);
+        if (add_producer_reward_to_leader)
+          entry.amount += get_portion_of_reward(payee.portions, reward_parts.miner_reward());
       }
     }
 
@@ -444,7 +433,7 @@ namespace cryptonote
         hard_fork_version >= network_version_13_enforce_checkpoints ? base_reward_unpenalized : base_reward;
 
     result.service_node_total = service_node_reward_formula(result.original_base_reward, hard_fork_version);
-    result.service_node_paid  = calculate_sum_of_portions(loki_context.queued_winner_payouts, result.service_node_total);
+    result.service_node_paid  = calculate_sum_of_portions(loki_context.block_leader_payouts, result.service_node_total);
 
     // There is a goverance fee due every block.  Beginning in hardfork 10 this is still subtracted
     // from the block reward as if it was paid, but the actual payments get batched into rare, large

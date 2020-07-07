@@ -1460,7 +1460,7 @@ namespace service_nodes
     return true;
   }
 
-  service_nodes::quorum generate_pulse_quorum(cryptonote::network_type nettype, cryptonote::BlockchainDB const &db, uint64_t height, crypto::public_key const &queued_winner, uint8_t hf_version, std::vector<pubkey_and_sninfo> const &active_snode_list, uint8_t pulse_round)
+  service_nodes::quorum generate_pulse_quorum(cryptonote::network_type nettype, cryptonote::BlockchainDB const &db, uint64_t height, crypto::public_key const &block_leader, uint8_t hf_version, std::vector<pubkey_and_sninfo> const &active_snode_list, uint8_t pulse_round)
   {
     std::vector<crypto::hash> pulse_entropy;
     get_pulse_entropy_from_blockchain(db, height + 1, pulse_entropy, pulse_round);
@@ -1482,7 +1482,7 @@ namespace service_nodes
     pulse_candidates.reserve(active_snode_list.size());
     for (auto &node : active_snode_list)
     {
-      if (node.first != queued_winner || pulse_round > 0)
+      if (node.first != block_leader || pulse_round > 0)
         pulse_candidates.push_back(&node);
     }
 
@@ -1497,7 +1497,7 @@ namespace service_nodes
     crypto::public_key block_producer;
     if (pulse_round == 0)
     {
-      block_producer = queued_winner;
+      block_producer = block_leader;
     }
     else
     {
@@ -1956,7 +1956,7 @@ namespace service_nodes
     return expired_nodes;
   }
 
-  service_nodes::payout service_node_list::state_t::get_queued_winner() const
+  service_nodes::payout service_node_list::state_t::get_block_leader() const
   {
     service_nodes::payout result  = {};
     service_node_info const *info = nullptr;
@@ -2069,26 +2069,62 @@ namespace service_nodes
     cryptonote::transaction const &miner_tx = block.miner_tx;
 
     // NOTE: Basic queued service node list winner checks
-    payout const queued_winner               = m_state.get_queued_winner();
+    // NOTE(loki): Service node reward distribution is calculated from the
+    // original amount, i.e. 50% of the original base reward goes to service
+    // nodes not 50% of the reward after removing the governance component (the
+    // adjusted base reward post hardfork 10).
+    payout const block_leader                = m_state.get_block_leader();
     uint64_t const base_reward               = reward_parts.original_base_reward;
     uint64_t const total_service_node_reward = cryptonote::service_node_reward_formula(base_reward, hf_version);
     {
-      auto const check_queued_winner_pubkey = cryptonote::get_service_node_winner_from_tx_extra(miner_tx.extra);
-      if (queued_winner.key != check_queued_winner_pubkey)
+      auto const check_block_leader_pubkey = cryptonote::get_service_node_winner_from_tx_extra(miner_tx.extra);
+      if (block_leader.key != check_block_leader_pubkey)
       {
-        MERROR("Service node reward winner is incorrect! Expected " << queued_winner.key << ", block has " << check_queued_winner_pubkey);
+        MERROR("Service node reward winner is incorrect! Expected " << block_leader.key << ", block has " << check_block_leader_pubkey);
         return false;
       }
     }
 
-    // NOTE: Pulse Information
-    bool pulse_block           = false;
-    quorum pulse_quorum        = {};
+    enum struct verify_mode
+    {
+      miner,
+      pulse,
+      pulse_alt_round,
+    };
+
+    verify_mode mode                      = verify_mode::miner;
+    crypto::public_key block_producer_key = {};
     if (hf_version >= cryptonote::network_version_16)
     {
-      pulse_block  = block.signatures.size() || pulse_quorum.workers.size();
-      if (pulse_block)
-        pulse_quorum = generate_pulse_quorum(m_blockchain.nettype(), m_blockchain.get_db(), height + 1, queued_winner.key, hf_version, m_state.active_service_nodes_infos(), block.pulse.round);
+      quorum pulse_quorum = generate_pulse_quorum(m_blockchain.nettype(), m_blockchain.get_db(), height + 1, block_leader.key, hf_version, m_state.active_service_nodes_infos(), block.pulse.round);
+      if (block.signatures.size() || pulse_quorum.workers.size())
+      {
+        if (pulse_quorum.workers.empty())
+        {
+          MERROR("The block specified pulse signatures but there is no block producer for this height: " << height);
+          return false;
+        }
+
+        mode               = (block.pulse.round == 0) ? verify_mode::pulse : verify_mode::pulse_alt_round;
+        block_producer_key = pulse_quorum.workers[0];
+
+        if (mode == verify_mode::pulse)
+        {
+          if (block_producer_key != block_leader.key)
+          {
+            MERROR("The block producer in pulse round 0 should be the same node as the block leader: " << block_leader.key << ", actual producer: " << block_producer_key);
+            return false;
+          }
+        }
+        else
+        {
+          if (block_producer_key == block_leader.key)
+          {
+            MERROR("On alternative pulse block rounds we cannot have the block producer be the same as the block leader: " << block_leader.key << ", actual producer: " << block_producer_key);
+            return false;
+          }
+        }
+      }
     }
 
     // NOTE: Verify miner tx vout composition
@@ -2102,64 +2138,86 @@ namespace service_nodes
     // Up to 4 | Block Producer (0-3 for Pooled Service Node)
     // Up To 3 | Queued Service Node
     // Up To 1 | Governance
-    std::shared_ptr<const service_node_info> pulse_block_producer = nullptr;
+    //
+    std::shared_ptr<const service_node_info> block_producer = nullptr;
+    size_t expected_vouts_size                        = 0;
+    if (mode == verify_mode::pulse || mode == verify_mode::pulse_alt_round)
     {
-      size_t expected_vouts_size = 0;
-      if (pulse_block) // NOTE: Verify Block Producer Reward
+      auto info_it = m_state.service_nodes_infos.find(block_producer_key);
+      if (info_it == m_state.service_nodes_infos.end())
       {
-        auto info_it = m_state.service_nodes_infos.find(pulse_quorum.workers[0]);
-        if (info_it == m_state.service_nodes_infos.end())
+        MERROR("Block producer is not a Service Node: " << block_producer_key);
+        return false;
+      }
+
+      block_producer = info_it->second;
+      if (mode == verify_mode::pulse_alt_round)
+        expected_vouts_size += block_producer->contributors.size();
+    }
+    else
+    {
+      expected_vouts_size += 1; /*miner*/
+    }
+
+    expected_vouts_size += block_leader.payouts.size();
+    expected_vouts_size += static_cast<size_t>(cryptonote::height_has_governance_output(m_blockchain.nettype(), hf_version, height));
+
+    if (miner_tx.vout.size() != expected_vouts_size)
+    {
+      MERROR("Miner TX specifies a different amount of outputs vs the expected: " << expected_vouts_size << ", miner tx outputs: " << miner_tx.vout.size());
+      return false;
+    }
+
+    // NOTE: Verify Coinbase Amounts for Service Nodes
+    switch(mode)
+    {
+      case verify_mode::miner:
+      {
+        for (size_t i = 0; i < block_leader.payouts.size(); i++)
         {
-          MERROR("Block producer is not a Service Node: " << pulse_quorum.workers[0]);
-          return false;
+          size_t const vout_index    = 1 /*miner*/ + i;
+          payout_entry const &payout = block_leader.payouts[i];
+          if (!verify_coinbase_tx_output(miner_tx, height, vout_index, payout.address, payout.portions, total_service_node_reward))
+            return false;
+        }
+      }
+      break;
+
+      case verify_mode::pulse:
+      {
+        uint64_t total_reward = total_service_node_reward + reward_parts.miner_reward();
+        for (size_t vout_index = 0; vout_index < block_leader.payouts.size(); vout_index++)
+        {
+          payout_entry const &payout = block_leader.payouts[vout_index];
+          if (!verify_coinbase_tx_output(miner_tx, height, vout_index, payout.address, payout.portions, total_reward))
+            return false;
+        }
+      }
+      break;
+
+      case verify_mode::pulse_alt_round:
+      {
+        const uint64_t max_portions = STAKING_PORTIONS - block_producer->portions_for_operator;
+        for (size_t vout_index = 0; vout_index < block_producer->contributors.size(); vout_index++)
+        {
+          auto const &contributor = block_producer->contributors[vout_index];
+          uint64_t portions = get_portions_to_make_amount(block_producer->staking_requirement, contributor.amount, max_portions);
+          if (contributor.address == block_producer->operator_address)
+            portions += block_producer->portions_for_operator;
+
+          if (!verify_coinbase_tx_output(miner_tx, height, vout_index, contributor.address, portions, reward_parts.miner_reward()))
+            return false;
         }
 
-        pulse_block_producer = info_it->second;
-        expected_vouts_size += pulse_block_producer->contributors.size();
+        for (size_t i = 0; i < block_leader.payouts.size(); i++)
+        {
+          size_t const vout_index    = block_producer->contributors.size() + i;
+          payout_entry const &payout = block_leader.payouts[i];
+          if (!verify_coinbase_tx_output(miner_tx, height, vout_index, payout.address, payout.portions, total_service_node_reward))
+            return false;
+        }
       }
-      else
-      {
-        expected_vouts_size += 1; /*miner*/
-      }
-
-      expected_vouts_size += queued_winner.payouts.size();
-      expected_vouts_size += static_cast<size_t>(cryptonote::height_has_governance_output(m_blockchain.nettype(), hf_version, height));
-
-      if (miner_tx.vout.size() != expected_vouts_size)
-      {
-        MERROR("Miner TX specifies a different amount of outputs vs the expected: " << expected_vouts_size << ", miner tx outputs: " << miner_tx.vout.size());
-        return false;
-      }
-    }
-
-    // NOTE: Verify pulse block producer coinbase outputs
-    assert(pulse_block == static_cast<bool>(pulse_block_producer));
-    if (pulse_block_producer)
-    {
-      const uint64_t max_portions = STAKING_PORTIONS - pulse_block_producer->portions_for_operator;
-      for (size_t vout_index = 0; vout_index < pulse_block_producer->contributors.size(); vout_index++)
-      {
-        const auto &contributor = pulse_block_producer->contributors[vout_index];
-        uint64_t portions = get_portions_to_make_amount(pulse_block_producer->staking_requirement, contributor.amount, max_portions);
-        if (contributor.address == pulse_block_producer->operator_address)
-          portions += pulse_block_producer->portions_for_operator;
-        if (!verify_coinbase_tx_output(miner_tx, height, vout_index, contributor.address, portions, reward_parts.miner_reward()))
-          return false;
-      }
-    }
-
-    // NOTE: Verify queued service node list coinbase outputs
-    // NOTE(loki): Service node reward distribution is calculated from the
-    // original amount, i.e. 50% of the original base reward goes to service
-    // nodes not 50% of the reward after removing the governance component (the
-    // adjusted base reward post hardfork 10).
-    size_t vout_offset = pulse_block_producer ? pulse_block_producer->contributors.size() : 1;
-    for (size_t i = 0; i < queued_winner.payouts.size(); i++)
-    {
-      size_t const vout_index    = vout_offset + i;
-      payout_entry const &payout = queued_winner.payouts[i];
-      if (!verify_coinbase_tx_output(miner_tx, height, vout_index, payout.address, payout.portions, total_service_node_reward))
-        return false;
+      break;
     }
 
     return true;

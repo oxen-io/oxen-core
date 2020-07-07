@@ -818,18 +818,42 @@ bool loki_chain_generator::block_begin(loki_blockchain_entry &entry, loki_create
       blk.pulse.random_value.data[i] = static_cast<char>(tools::uniform_distribution_portable(tools::rng, 256));
 
     // NOTE: Get Pulse Quorum necessary for this block
-    pulse_quorum = generate_pulse_quorum(cryptonote::FAKECHAIN, db_, height + 1, params.queued_winner.key, blk.major_version, active_snode_list, blk.pulse.round);
+    pulse_quorum = generate_pulse_quorum(cryptonote::FAKECHAIN, db_, height + 1, params.block_leader.key, blk.major_version, active_snode_list, blk.pulse.round);
     assert(pulse_quorum.validators.size() == service_nodes::PULSE_QUORUM_NUM_VALIDATORS);
     assert(pulse_quorum.workers.size() == 1);
+
+    service_nodes::payout block_producer = {};
+    if (pulse_quorum.workers[0] == params.block_leader.key)
+    {
+      block_producer = params.block_leader;
+    }
+    else
+    {
+
+      block_producer.key = pulse_quorum.workers[0];
+      auto it = params.prev.service_node_state.service_nodes_infos.find(block_producer.key);
+      assert(it != params.prev.service_node_state.service_nodes_infos.end());
+
+      std::shared_ptr<const service_nodes::service_node_info> pulse_block_producer = it->second;
+      const uint64_t max_portions = STAKING_PORTIONS - pulse_block_producer->portions_for_operator;
+      for (size_t index = 0; index < pulse_block_producer->contributors.size(); index++)
+      {
+        const auto &contributor = pulse_block_producer->contributors[index];
+        uint64_t portions = service_nodes::get_portions_to_make_amount(pulse_block_producer->staking_requirement, contributor.amount, max_portions);
+        if (contributor.address == pulse_block_producer->operator_address)
+          portions += pulse_block_producer->portions_for_operator;
+        block_producer.payouts.push_back({contributor.address, portions});
+      }
+    }
 
     // TODO(doyle): We only support the queued winner as the block
     // producer/leader By default if the pulse round is 0, the queued winner is
     // the block producer, so i.e. we only support the default case atm
-    miner_tx_context = cryptonote::loki_miner_tx_context::pulse_block(cryptonote::FAKECHAIN, params.queued_winner, params.queued_winner, params.queued_winner);
+    miner_tx_context = cryptonote::loki_miner_tx_context::pulse_block(cryptonote::FAKECHAIN, block_producer, params.block_leader);
   }
   else
   {
-    miner_tx_context = cryptonote::loki_miner_tx_context::miner_block(cryptonote::FAKECHAIN, params.miner_acc.get_keys().m_account_address, params.queued_winner);
+    miner_tx_context = cryptonote::loki_miner_tx_context::miner_block(cryptonote::FAKECHAIN, params.miner_acc.get_keys().m_account_address, params.block_leader);
   }
 
   if (blk.major_version >= cryptonote::network_version_10_bulletproofs &&
@@ -966,7 +990,7 @@ loki_create_block_params loki_chain_generator::next_block_params() const
   result.timestamp                = prev.block.timestamp + DIFFICULTY_TARGET_V2;
   result.block_weights            = last_n_block_weights(height(), CRYPTONOTE_REWARD_BLOCKS_WINDOW);
   result.hf_version               = get_hf_version_at(next_height);
-  result.queued_winner            = prev.service_node_state.get_queued_winner();
+  result.block_leader             = prev.service_node_state.get_block_leader();
   result.total_fee                = 0; // Request chain generator to calculate the fee
   return result;
 }
@@ -1138,7 +1162,7 @@ bool test_generator::construct_block(cryptonote::block &blk,
                                      uint64_t already_generated_coins,
                                      std::vector<uint64_t> &block_weights,
                                      const std::list<cryptonote::transaction> &tx_list,
-                                     const service_nodes::payout &queued_winner)
+                                     const service_nodes::payout &block_leader)
 {
   /// a temporary workaround
   blk.major_version = m_hf_version;
@@ -1166,7 +1190,7 @@ bool test_generator::construct_block(cryptonote::block &blk,
     txs_weight += get_transaction_weight(tx);
   }
 
-  auto miner_tx_context = cryptonote::loki_miner_tx_context::miner_block(cryptonote::FAKECHAIN, miner_acc.get_keys().m_account_address, queued_winner);
+  auto miner_tx_context = cryptonote::loki_miner_tx_context::miner_block(cryptonote::FAKECHAIN, miner_acc.get_keys().m_account_address, block_leader);
   blk.miner_tx = {};
   size_t target_block_weight = txs_weight + get_transaction_weight(blk.miner_tx);
   manual_calc_batched_governance(*this, prev_id, miner_tx_context, m_hf_version, height);
@@ -1242,7 +1266,7 @@ bool test_generator::construct_block(cryptonote::block &blk,
                                      const cryptonote::block &blk_prev,
                                      const cryptonote::account_base &miner_acc,
                                      const std::list<cryptonote::transaction> &tx_list /* = {}*/,
-                                     const service_nodes::payout &queued_winner)
+                                     const service_nodes::payout &block_leader)
 {
   uint64_t height = std::get<cryptonote::txin_gen>(blk_prev.miner_tx.vin.front()).height + 1;
   crypto::hash prev_id = get_block_hash(blk_prev);
@@ -1252,7 +1276,7 @@ bool test_generator::construct_block(cryptonote::block &blk,
   std::vector<uint64_t> block_weights;
   get_last_n_block_weights(block_weights, prev_id, CRYPTONOTE_REWARD_BLOCKS_WINDOW);
 
-  return construct_block(blk, height, prev_id, miner_acc, timestamp, already_generated_coins, block_weights, tx_list, queued_winner);
+  return construct_block(blk, height, prev_id, miner_acc, timestamp, already_generated_coins, block_weights, tx_list, block_leader);
 }
 
 bool test_generator::construct_block_manually(cryptonote::block& blk, const cryptonote::block& prev_block, const cryptonote::account_base& miner_acc,
