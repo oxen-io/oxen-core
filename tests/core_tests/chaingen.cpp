@@ -818,10 +818,7 @@ bool loki_chain_generator::block_begin(loki_blockchain_entry &entry, loki_create
       blk.pulse.random_value.data[i] = static_cast<char>(tools::uniform_distribution_portable(tools::rng, 256));
 
     // NOTE: Get Pulse Quorum necessary for this block
-    std::vector<crypto::hash> entropy;
-    service_nodes::get_pulse_entropy_from_blockchain(db_, height + 1, entropy, blk.pulse.round);
-    pulse_quorum = generate_pulse_quorum(cryptonote::FAKECHAIN, params.queued_winner.key, blk.major_version, active_snode_list, entropy, blk.pulse.round);
-
+    pulse_quorum = generate_pulse_quorum(cryptonote::FAKECHAIN, db_, height + 1, params.queued_winner.key, blk.major_version, active_snode_list, blk.pulse.round);
     assert(pulse_quorum.validators.size() == service_nodes::PULSE_QUORUM_NUM_VALIDATORS);
     assert(pulse_quorum.workers.size() == 1);
 
