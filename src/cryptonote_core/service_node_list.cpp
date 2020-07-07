@@ -1392,7 +1392,7 @@ namespace service_nodes
     return result;
   }
 
-  bool get_pulse_entropy_from_blockchain(cryptonote::BlockchainDB const &db, uint64_t for_height, std::vector<crypto::hash> &entropy, uint8_t pulse_round)
+  static bool get_pulse_entropy_from_blockchain(cryptonote::BlockchainDB const &db, uint64_t for_height, std::vector<crypto::hash> &entropy, uint8_t pulse_round)
   {
     uint64_t start_height = for_height - PULSE_QUORUM_ENTROPY_LAG;
     uint64_t end_height   = start_height + PULSE_QUORUM_SIZE;
@@ -1460,8 +1460,11 @@ namespace service_nodes
     return true;
   }
 
-  service_nodes::quorum generate_pulse_quorum(cryptonote::network_type nettype, crypto::public_key const &queued_winner, uint8_t hf_version, std::vector<pubkey_and_sninfo> const &active_snode_list, std::vector<crypto::hash> const &pulse_entropy, uint8_t pulse_round)
+  service_nodes::quorum generate_pulse_quorum(cryptonote::network_type nettype, cryptonote::BlockchainDB const &db, uint64_t height, crypto::public_key const &queued_winner, uint8_t hf_version, std::vector<pubkey_and_sninfo> const &active_snode_list, uint8_t pulse_round)
   {
+    std::vector<crypto::hash> pulse_entropy;
+    get_pulse_entropy_from_blockchain(db, height + 1, pulse_entropy, pulse_round);
+
     service_nodes::quorum result = {};
     if (active_snode_list.size() < pulse_min_service_nodes(nettype))
     {
@@ -1670,10 +1673,7 @@ namespace service_nodes
     crypto::public_key winner_pubkey = cryptonote::get_service_node_winner_from_tx_extra(block.miner_tx.extra);
     if (hf_version >= cryptonote::network_version_16)
     {
-      std::vector<crypto::hash> entropy;
-      get_pulse_entropy_from_blockchain(db, cryptonote::get_block_height(block) + 1, entropy, block.pulse.round);
-      quorum pulse_quorum = generate_pulse_quorum(nettype, winner_pubkey, hf_version, active_service_nodes_infos(), entropy, block.pulse.round);
-
+      quorum pulse_quorum = generate_pulse_quorum(nettype, db, height + 1, winner_pubkey, hf_version, active_service_nodes_infos(), block.pulse.round);
       if (pulse_quorum.workers.size() == 1 && pulse_quorum.validators.size() == PULSE_QUORUM_NUM_VALIDATORS)
       {
         // NOTE: Send candidate to the back of the list
@@ -2086,10 +2086,9 @@ namespace service_nodes
     quorum pulse_quorum        = {};
     if (hf_version >= cryptonote::network_version_16)
     {
-      std::vector<crypto::hash> entropy;
-      get_pulse_entropy_from_blockchain(m_blockchain.get_db(), height + 1, entropy, block.pulse.round);
-      pulse_quorum = generate_pulse_quorum(m_blockchain.nettype(), queued_winner.key, hf_version, m_state.active_service_nodes_infos(), entropy, block.pulse.round);
-      pulse_block = block.signatures.size() || pulse_quorum.workers.size();
+      pulse_block  = block.signatures.size() || pulse_quorum.workers.size();
+      if (pulse_block)
+        pulse_quorum = generate_pulse_quorum(m_blockchain.nettype(), m_blockchain.get_db(), height + 1, queued_winner.key, hf_version, m_state.active_service_nodes_infos(), block.pulse.round);
     }
 
     // NOTE: Verify miner tx vout composition
