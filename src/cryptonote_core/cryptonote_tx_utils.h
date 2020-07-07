@@ -54,37 +54,34 @@ namespace cryptonote
   {
     static loki_miner_tx_context miner_block(network_type nettype,
                                              cryptonote::account_public_address const &block_producer,
-                                             service_nodes::payout const &queued_winner = service_nodes::null_payout)
+                                             service_nodes::payout const &block_leader = service_nodes::null_payout)
     {
         loki_miner_tx_context result = {};
         result.nettype               = nettype;
         result.miner_block_producer  = block_producer;
-        result.queued_winner         = queued_winner;
+        result.block_leader          = block_leader;
         return result;
     }
 
     static loki_miner_tx_context pulse_block(network_type nettype,
-                                             service_nodes::payout const &original_pulse_leader,
                                              service_nodes::payout const &block_producer,
-                                             service_nodes::payout const &queued_winner = service_nodes::null_payout)
+                                             service_nodes::payout const &block_leader = service_nodes::null_payout)
     {
       loki_miner_tx_context result = {};
       result.pulse                 = true;
       result.nettype               = nettype;
       result.pulse_block_producer  = block_producer;
-      result.pulse_block_leader    = original_pulse_leader;
-      result.queued_winner         = queued_winner;
+      result.block_leader          = block_leader;
       return result;
     }
 
     network_type           nettype = MAINNET;
 
     bool                   pulse;                // If true, pulse_.* varables are set, otherwise miner_block_producer is set, determining who should get the coinbase reward.
-    service_nodes::payout  pulse_block_leader;   // The original leader of the block in Pulse when round = 0.
     service_nodes::payout  pulse_block_producer; // Can be different from the leader in Pulse if the original leader fails to complete the round, the block producer changes.
 
     account_public_address miner_block_producer;
-    service_nodes::payout  queued_winner;        // Winner from the Service Node queuing in the Service Node List.
+    service_nodes::payout  block_leader;         // Winner from the Service Node queuing in the Service Node List.
     uint64_t               batched_governance;   // NOTE: 0 until hardfork v10, then use blockchain::calc_batched_governance_reward
   };
 
@@ -124,7 +121,7 @@ namespace cryptonote
     uint64_t              height;
     uint64_t              fee;
     uint64_t              batched_governance;   // Optional: 0 hardfork v10, then must be calculated using blockchain::calc_batched_governance_reward
-    std::vector<service_nodes::payout_entry> queued_winner_payouts = {service_nodes::null_payout_entry};
+    std::vector<service_nodes::payout_entry> block_leader_payouts = {service_nodes::null_payout_entry};
   };
 
   // NOTE(loki): I would combine this into get_base_block_reward, but

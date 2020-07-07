@@ -326,10 +326,10 @@ public:
   void add_block(const cryptonote::block& blk, size_t tsx_size, std::vector<uint64_t>& block_weights, uint64_t already_generated_coins);
   bool construct_block(cryptonote::block& blk, uint64_t height, const crypto::hash& prev_id,
     const cryptonote::account_base& miner_acc, uint64_t timestamp, uint64_t already_generated_coins,
-    std::vector<uint64_t>& block_weights, const std::list<cryptonote::transaction>& tx_list, const service_nodes::payout &queued_winner = {});
+    std::vector<uint64_t>& block_weights, const std::list<cryptonote::transaction>& tx_list, const service_nodes::payout &block_leader = {});
   bool construct_block(cryptonote::block& blk, const cryptonote::account_base& miner_acc, uint64_t timestamp);
   bool construct_block(cryptonote::block& blk, const cryptonote::block& blk_prev, const cryptonote::account_base& miner_acc,
-    const std::list<cryptonote::transaction>& tx_list = std::list<cryptonote::transaction>(), const service_nodes::payout &queued_winner = {});
+    const std::list<cryptonote::transaction>& tx_list = std::list<cryptonote::transaction>(), const service_nodes::payout &block_leader = {});
 
   bool construct_block_manually(cryptonote::block& blk, const cryptonote::block& prev_block,
     const cryptonote::account_base& miner_acc, int actual_params = bf_none, uint8_t major_ver = 0,
@@ -1396,7 +1396,7 @@ struct loki_create_block_params
   uint64_t                             timestamp;
   std::vector<uint64_t>                block_weights;
   std::vector<cryptonote::transaction> tx_list;
-  service_nodes::payout                queued_winner;
+  service_nodes::payout                block_leader;
   uint64_t                             total_fee;
   uint8_t                              pulse_round;
 };

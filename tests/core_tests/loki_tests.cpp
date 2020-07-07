@@ -3122,7 +3122,7 @@ bool loki_pulse_non_participating_validator::generate(std::vector<test_event_ent
     service_nodes::quorum quorum = {};
     {
       std::vector<service_nodes::pubkey_and_sninfo> active_snode_list = params.prev.service_node_state.active_service_nodes_infos();
-      quorum = generate_pulse_quorum(cryptonote::FAKECHAIN, gen.db_, cryptonote::get_block_height(entry.block) + 1, params.queued_winner.key, entry.block.major_version, active_snode_list, entry.block.pulse.round);
+      quorum = generate_pulse_quorum(cryptonote::FAKECHAIN, gen.db_, cryptonote::get_block_height(entry.block) + 1, params.block_leader.key, entry.block.major_version, active_snode_list, entry.block.pulse.round);
       assert(quorum.validators.size() == service_nodes::PULSE_QUORUM_NUM_VALIDATORS);
       assert(quorum.workers.size() == 1);
     }
