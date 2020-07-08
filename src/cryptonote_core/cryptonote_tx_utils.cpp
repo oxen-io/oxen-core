@@ -291,7 +291,6 @@ namespace cryptonote
     // Up to 9 payout entries, up to 4 Block Producer (Pooled SN or 1 for Miner), up to 4 for Block Leader, up to 1 Governance
     size_t rewards_length                = 0;
     std::array<reward_payout, 9> rewards = {};
-    CHECK_AND_ASSERT_MES(miner_tx_context.block_leader.payouts.size(), false, "Constructing a block leader reward for block but no payout entries specified");
 
     // NOTE: Add Block Producer Reward
     bool add_producer_reward_to_leader = false;
@@ -329,6 +328,7 @@ namespace cryptonote
     // NOTE: Add Service Node List Queue Winner
     if (hard_fork_version >= cryptonote::network_version_9_service_nodes)
     {
+      CHECK_AND_ASSERT_MES(miner_tx_context.block_leader.payouts.size(), false, "Constructing a block leader reward for block but no payout entries specified");
       for (auto const &payee : miner_tx_context.block_leader.payouts)
       {
         reward_payout &entry = rewards[rewards_length++];
