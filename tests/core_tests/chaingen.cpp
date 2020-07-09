@@ -899,7 +899,7 @@ void loki_chain_generator::block_fill_pulse_data(loki_blockchain_entry &entry, l
   assert(active_snode_list.size() >= service_nodes::PULSE_MIN_SERVICE_NODES);
 
   // NOTE: Set up Pulse Header
-  entry.block.pulse.validator_participation_bits = service_nodes::PULSE_VALIDATOR_PARTICIPATION_MASK; // NOTE: Everyone participates
+  entry.block.pulse.validator_participation_bits = service_nodes::pulse_validator_bit_mask(); // NOTE: Everyone participates
   entry.block.pulse.round = round;
   for (size_t i = 0; i < sizeof(entry.block.pulse.random_value.data); i++)
     entry.block.pulse.random_value.data[i] = static_cast<char>(tools::uniform_distribution_portable(tools::rng, 256));

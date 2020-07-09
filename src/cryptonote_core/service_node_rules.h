@@ -8,16 +8,19 @@ namespace service_nodes {
   constexpr size_t PULSE_QUORUM_ENTROPY_LAG             = 21; // How many blocks back from the tip of the Blockchain to source entropy for the Pulse quorums.
   constexpr size_t PULSE_QUORUM_NUM_VALIDATORS          = 11;
   constexpr size_t PULSE_QUORUM_SIZE                    = PULSE_QUORUM_NUM_VALIDATORS + 1 /*Leader*/;
+  constexpr size_t PULSE_MIN_SERVICE_NODES              = 20;
+  static_assert(PULSE_MIN_SERVICE_NODES >= PULSE_QUORUM_SIZE);
 
-  // NOTE: PULSE_QUORUM_SIZE + 1 for when round > 0. We remove the
-  // block_winner that failed in round 0 from the active list and we need
-  // 1 new leader from the list to take its spot.
-  // i.e. Service Node List must have 11 Validators + 1 Original Leader + 1 Optional New Leader
-  constexpr size_t PULSE_MIN_SERVICE_NODES              = PULSE_QUORUM_SIZE + 1 /*Optional for Leader when (Round > 0)*/;
+  constexpr uint16_t pulse_validator_bit_mask()
+  {
+    uint16_t result = 0;
+    for (size_t validator_index = 0; validator_index < PULSE_QUORUM_NUM_VALIDATORS; validator_index++)
+      result |= 1 << validator_index;
+    return result;
+  }
 
   constexpr size_t PULSE_BLOCK_REQUIRED_SIGNATURES      = 7;  // A block must have exactly N signatures to be considered properly
-  constexpr uint16_t PULSE_VALIDATOR_PARTICIPATION_MASK = 0b0000'0111'1111'1111; // A quorum size of 11,
-  static_assert(PULSE_QUORUM_NUM_VALIDATORS >= PULSE_BLOCK_REQUIRED_SIGNATURES, "Quorum must be larger than the required number of signatures.");
+  static_assert(PULSE_QUORUM_NUM_VALIDATORS >= PULSE_BLOCK_REQUIRED_SIGNATURES);
   static_assert(PULSE_QUORUM_ENTROPY_LAG >= PULSE_QUORUM_SIZE, "We need to pull atleast PULSE_QUORUM_SIZE number of blocks from the Blockchain, we can't if the amount of blocks to go back from the tip of the Blockchain is less than the blocks we need.");
 
   // Service node decommissioning: as service nodes stay up they earn "credits" (measured in blocks)

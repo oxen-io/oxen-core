@@ -3061,7 +3061,7 @@ bool loki_pulse_invalid_participation_bits::generate(std::vector<test_event_entr
   gen.block_fill_pulse_data(entry, params, entry.block.pulse.round);
 
   // NOTE: Overwrite participation bits to be wrong
-  entry.block.pulse.validator_participation_bits = ~service_nodes::PULSE_VALIDATOR_PARTICIPATION_MASK;
+  entry.block.pulse.validator_participation_bits = ~service_nodes::pulse_validator_bit_mask();
 
   gen.block_end(entry, params);
   gen.add_block(entry, false /*can_be_added_to_blockchain*/, "Invalid Pulse Block, specifies the wrong participation bits");

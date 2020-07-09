@@ -1245,30 +1245,27 @@ namespace service_nodes
     std::bitset<8 * sizeof(block.pulse.validator_participation_bits)> const participation_bits = block.pulse.validator_participation_bits;
     stream << "Block(" << cryptonote::get_block_height(block) << "): " << cryptonote::get_block_hash(block) << "\n";
     stream << "Leader: ";
-    if (quorum) stream << (quorum->workers.empty() ? "(invalid leader)" : epee::string_tools::pod_to_hex(quorum->workers[0])) << "\n";
+    if (quorum) stream << (quorum->workers.empty() ? "(invalid leader)" : lokimq::to_hex(tools::view_guts(quorum->workers[0]))) << "\n";
     else        stream << "(invalid quorum)\n";
-    stream << "Round: " << static_cast<int>(block.pulse.round) << "\n";
+    stream << "Round: " << +block.pulse.round << "\n";
     stream << "Participating Validators: " << participation_bits << "\n";
 
     stream << "Signatures: ";
     if (block.signatures.empty()) stream << "(none)";
-    stream << "\n";
 
-    for (size_t i = 0; i < block.signatures.size(); i++)
+    for (service_nodes::quorum_signature const &entry : block.signatures)
     {
-      if (i) stream << "\n";
-      service_nodes::quorum_signature const &entry = block.signatures[i];
-      stream << "  [" << static_cast<int>(entry.voter_index) << "] validator: ";
+      stream << "\n";
+      stream << "  [" << +entry.voter_index << "] validator: ";
       if (quorum)
       {
-        stream << ((entry.voter_index >= quorum->validators.size()) ? "(invalid quorum index)" : epee::string_tools::pod_to_hex(quorum->validators[entry.voter_index]));
-        stream << ", signature: " << epee::string_tools::pod_to_hex(entry.signature);
+        stream << ((entry.voter_index >= quorum->validators.size()) ? "(invalid quorum index)" : lokimq::to_hex(tools::view_guts(quorum->validators[entry.voter_index])));
+        stream << ", signature: " << lokimq::to_hex(tools::view_guts(entry.signature));
       }
       else stream << "(invalid quorum)";
     }
 
-    std::string result = stream.str();
-    return result;
+    return stream.str();
   }
 
   bool service_node_list::block_added(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs, cryptonote::checkpoint_t const *checkpoint)
@@ -1284,9 +1281,9 @@ namespace service_nodes
       std::shared_ptr<const quorum> quorum = get_quorum(quorum_type::pulse, m_state.height);
       if (quorum)
       {
-        if ((block.pulse.validator_participation_bits & (~service_nodes::PULSE_VALIDATOR_PARTICIPATION_MASK)) > 0)
+        if (block.pulse.validator_participation_bits >= (1 << PULSE_QUORUM_NUM_VALIDATORS))
         {
-          auto mask = std::bitset<sizeof(service_nodes::PULSE_VALIDATOR_PARTICIPATION_MASK) * 8>(service_nodes::PULSE_VALIDATOR_PARTICIPATION_MASK);
+          auto mask = std::bitset<sizeof(pulse_validator_bit_mask()) * 8>(pulse_validator_bit_mask());
           LOG_PRINT_L1("Pulse block specifies validator participation bits out of bounds. Expected the bit mask " << mask << "\n" << dump_pulse_block_data(block, quorum.get()));
           return false;
         }
@@ -1296,9 +1293,9 @@ namespace service_nodes
                                                      block.major_version,
                                                      cryptonote::get_block_height(block),
                                                      cryptonote::get_block_hash(block),
-                                                     block.signatures, &block))
+                                                     block.signatures, block))
         {
-          LOG_PRINT_L1(dump_pulse_block_data(block, quorum.get()));
+          LOG_PRINT_L1("Pulse signature verification failed: " << dump_pulse_block_data(block, quorum.get()));
           return false;
         }
       }
@@ -1482,7 +1479,7 @@ namespace service_nodes
     pulse_candidates.reserve(active_snode_list.size());
     for (auto &node : active_snode_list)
     {
-      if (node.first != block_winner)
+      if (node.first != block_winner || pulse_round > 0)
         pulse_candidates.push_back(&node);
     }
 
@@ -1494,54 +1491,41 @@ namespace service_nodes
           return a->second->pulse_sorter < b->second->pulse_sorter;
         });
 
-    // NOTE: Order the candidates so the first (1 + half) nodes in the list is the optional new leader + validators for this round.
-    // - If (round > 0) choose a service node to be the leader
-    // - Swap the optional leader into the first spot
-    // - Divide the remaining list in half, select validators from the first half of the list.
-    // - Swap the chosen validator into the moving first half of the list.
-    auto running_it = pulse_candidates.begin();
-    for (size_t i = 0; i < service_nodes::PULSE_QUORUM_SIZE; i++)
+    crypto::public_key block_producer;
+    if (pulse_round == 0)
     {
-      crypto::hash const &entropy = pulse_entropy[i];
+      block_producer = block_winner;
+    }
+    else
+    {
+      std::mt19937_64 rng   = quorum_rng(hf_version, pulse_entropy[0], quorum_type::pulse);
+      size_t producer_index = tools::uniform_distribution_portable(rng, pulse_candidates.size());
+      block_producer        = pulse_candidates[producer_index]->first;
+      pulse_candidates.erase(pulse_candidates.begin() + producer_index);
+    }
+
+    // NOTE: Order the candidates so the first half nodes in the list is the validators for this round.
+    // - Divide the list in half, select validators from the first half of the list.
+    // - Swap the chosen validator into the moving first half of the list.
+    auto running_it              = pulse_candidates.begin();
+    size_t const partition_index = (pulse_candidates.size() - 1) / 2;
+    for (size_t i = 0; i < service_nodes::PULSE_QUORUM_NUM_VALIDATORS; i++)
+    {
+      crypto::hash const &entropy = pulse_entropy[i + 1];
       std::mt19937_64 rng         = quorum_rng(hf_version, entropy, quorum_type::pulse);
-      size_t swap_index           = 0;
-
-      if (i == 0) // The first hash is reserved as entropy for the new leader.
-      {
-        // Find the leader for this block when round has iterated because, the
-        // original leader (the block winner) failed to generate a Pulse Block.
-        if (pulse_round > 0)
-          swap_index = tools::uniform_distribution_portable(rng, pulse_candidates.size());
-      }
-      else // NOTE: Remaining entropy hashes for validators
-      {
-        size_t const partition_index = (pulse_candidates.size() - 1) / 2;
-        size_t validators_available  = std::distance(running_it, pulse_candidates.end());
-        swap_index = tools::uniform_distribution_portable(rng, std::min(partition_index, validators_available));
-      }
-
+      size_t validators_available = std::distance(running_it, pulse_candidates.end());
+      size_t swap_index = tools::uniform_distribution_portable(rng, std::min(partition_index, validators_available));
       std::swap(*running_it, *(running_it + swap_index));
       running_it++;
     }
 
+    result.workers.push_back(block_producer);
+    result.validators.reserve(PULSE_QUORUM_NUM_VALIDATORS);
     for (auto it = pulse_candidates.begin(); it != running_it; it++)
     {
-      size_t i = std::distance(pulse_candidates.begin(), it);
       crypto::public_key const &node_key = (*it)->first;
-      if (i == 0)
-      {
-        if (pulse_round > 0)
-          result.workers.push_back(node_key);
-        else
-          result.workers.push_back(block_winner);
-      }
-      else
-      {
-        result.validators.push_back(node_key);
-      }
-
+      result.validators.push_back(node_key);
     }
-
     return result;
   }
 
@@ -1696,7 +1680,7 @@ namespace service_nodes
         for (size_t quorum_index = 0 ; quorum_index < pulse_quorum.validators.size(); quorum_index++)
         {
           crypto::public_key const &key                          = pulse_quorum.validators[quorum_index];
-          auto &info_ptr                                         = service_nodes_infos.at(key);
+          auto &info_ptr                                         = service_nodes_infos[key];
           service_node_info &new_info                            = duplicate_info(info_ptr);
           new_info.pulse_sorter.last_height_validating_in_quorum = height;
           new_info.pulse_sorter.quorum_index                     = quorum_index;
