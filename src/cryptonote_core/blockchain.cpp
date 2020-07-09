@@ -4307,8 +4307,28 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
   }
 
   abort_block.cancel();
-  char const *BLOCK_TYPE = bl.signatures.size() ? "PULSE" : "MINER";
-  MINFO("+++++ " << BLOCK_TYPE << " BLOCK SUCCESSFULLY ADDED" << std::endl << "id:\t" << id << std::endl << "PoW:\t" << proof_of_work << std::endl << "HEIGHT " << new_height-1 << ", difficulty:\t" << current_diffic << std::endl << "block reward: " << print_money(fee_summary + base_reward) << "(" << print_money(base_reward) << " + " << print_money(fee_summary) << "), coinbase_weight: " << coinbase_weight << ", cumulative weight: " << cumulative_block_weight << ", " << block_processing_time << "(" << target_calculating_time << "/" << longhash_calculating_time << ")ms");
+  if (bl.signatures.size())
+  {
+    MINFO("+++++ PULSE BLOCK SUCCESSFULLY ADDED\n"
+                   << "id:\t" << id << "\n"
+                   << "HEIGHT " << new_height - 1 << "\n"
+                   << "block reward: " << print_money(fee_summary + base_reward) << "(" << print_money(base_reward)
+                   << " + " << print_money(fee_summary) << "), coinbase_weight: " << coinbase_weight
+                   << ", cumulative weight: " << cumulative_block_weight << ", " << block_processing_time << "("
+                   << target_calculating_time << "/" << longhash_calculating_time << ")ms");
+  }
+  else
+  {
+    MINFO("+++++ MINER BLOCK SUCCESSFULLY ADDED\n"
+                   << "id:\t" << id << "\n"
+                   << "PoW:\t" << proof_of_work << "\n"
+                   << "HEIGHT " << new_height - 1 << ", difficulty:\t" << current_diffic << "\n"
+                   << "block reward: " << print_money(fee_summary + base_reward) << "(" << print_money(base_reward)
+                   << " + " << print_money(fee_summary) << "), coinbase_weight: " << coinbase_weight
+                   << ", cumulative weight: " << cumulative_block_weight << ", " << block_processing_time << "("
+                   << target_calculating_time << "/" << longhash_calculating_time << ")ms");
+  }
+
   if(m_show_time_stats)
   {
     MINFO("Height: " << new_height << " coinbase weight: " << coinbase_weight << " cumm: "

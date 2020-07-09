@@ -229,7 +229,7 @@ namespace service_nodes
     return true;
   }
 
-  bool verify_quorum_signatures(service_nodes::quorum const &quorum, service_nodes::quorum_type type, uint8_t hf_version, uint64_t height, crypto::hash const &hash, std::vector<quorum_signature> const &signatures, void const *context)
+  bool verify_quorum_signatures(service_nodes::quorum const &quorum, service_nodes::quorum_type type, uint8_t hf_version, uint64_t height, crypto::hash const &hash, std::vector<quorum_signature> const &signatures, std::any const &context)
   {
     bool enforce_vote_ordering                          = true;
     constexpr size_t MAX_QUORUM_SIZE                    = std::max(CHECKPOINT_QUORUM_SIZE, PULSE_QUORUM_NUM_VALIDATORS);
@@ -269,11 +269,11 @@ namespace service_nodes
           return false;
         }
 
-        auto const *block = reinterpret_cast<cryptonote::block const *>(context);
-        if ((block->pulse.validator_participation_bits & (~service_nodes::PULSE_VALIDATOR_PARTICIPATION_MASK)) > 0)
+        auto const &block = reinterpret_cast<cryptonote::block const &>(context);
+        if (block.pulse.validator_participation_bits >= (1 << PULSE_QUORUM_NUM_VALIDATORS))
         {
-          auto mask = std::bitset<sizeof(PULSE_VALIDATOR_PARTICIPATION_MASK) * 8>(PULSE_VALIDATOR_PARTICIPATION_MASK);
-          LOG_PRINT_L1("Pulse block specifies validator participation bits out of bounds. Expected the bit mask " << mask);
+          auto mask = std::bitset<sizeof(pulse_validator_bit_mask()) * 8>(pulse_validator_bit_mask());
+          LOG_PRINT_L1("Pulse block specifies validator participation bits out of bounds. Expected the bit mask: " << mask);
           return false;
         }
       }
@@ -300,11 +300,19 @@ namespace service_nodes
 
       if (type == quorum_type::pulse)
       {
-        auto const *block = reinterpret_cast<cryptonote::block const *>(context);
-        uint16_t bit = 1 << quorum_signature.voter_index;
-        if ((block->pulse.validator_participation_bits & bit) == 0)
+        try
         {
-          LOG_PRINT_L1("Received pulse signature from validator " << static_cast<int>(quorum_signature.voter_index) << " that is not participating in round " << static_cast<int>(block->pulse.round));
+          auto const block = std::any_cast<cryptonote::block const &>(context);
+          uint16_t bit     = 1 << quorum_signature.voter_index;
+          if ((block.pulse.validator_participation_bits & bit) == 0)
+          {
+            LOG_PRINT_L1("Received pulse signature from validator " << static_cast<int>(quorum_signature.voter_index) << " that is not participating in round " << static_cast<int>(block.pulse.round));
+            return false;
+          }
+        }
+        catch (const std::bad_any_cast &e)
+        {
+          LOG_PRINT_L1("Internal Error: Wrong type passed in any object, expected block.");
           return false;
         }
       }
@@ -342,7 +350,7 @@ namespace service_nodes
         return false;
       }
 
-      if (!verify_quorum_signatures(quorum, quorum_type::checkpointing, hf_version, checkpoint.height, checkpoint.block_hash, checkpoint.signatures, &checkpoint))
+      if (!verify_quorum_signatures(quorum, quorum_type::checkpointing, hf_version, checkpoint.height, checkpoint.block_hash, checkpoint.signatures, std::any{}))
         return false;
     }
     else
