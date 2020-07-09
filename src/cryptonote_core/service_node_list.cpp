@@ -2088,8 +2088,8 @@ namespace service_nodes
     enum struct verify_mode
     {
       miner,
-      pulse,
-      pulse_alt_round,
+      pulse_block_leader_is_producer,
+      pulse_different_block_producer,
     };
 
     verify_mode mode                      = verify_mode::miner;
@@ -2105,24 +2105,13 @@ namespace service_nodes
           return false;
         }
 
-        mode               = (block.pulse.round == 0) ? verify_mode::pulse : verify_mode::pulse_alt_round;
         block_producer_key = pulse_quorum.workers[0];
+        mode = (block_producer_key == block_leader.key) ? verify_mode::pulse_block_leader_is_producer : verify_mode::pulse_different_block_producer;
 
-        if (mode == verify_mode::pulse)
+        if (block.pulse.round == 0 && (mode == verify_mode::pulse_different_block_producer))
         {
-          if (block_producer_key != block_leader.key)
-          {
-            MERROR("The block producer in pulse round 0 should be the same node as the block leader: " << block_leader.key << ", actual producer: " << block_producer_key);
-            return false;
-          }
-        }
-        else
-        {
-          if (block_producer_key == block_leader.key)
-          {
-            MERROR("On alternative pulse block rounds we cannot have the block producer be the same as the block leader: " << block_leader.key << ", actual producer: " << block_producer_key);
-            return false;
-          }
+          MERROR("The block producer in pulse round 0 should be the same node as the block leader: " << block_leader.key << ", actual producer: " << block_producer_key);
+          return false;
         }
       }
     }
@@ -2141,7 +2130,7 @@ namespace service_nodes
     //
     std::shared_ptr<const service_node_info> block_producer = nullptr;
     size_t expected_vouts_size                        = 0;
-    if (mode == verify_mode::pulse || mode == verify_mode::pulse_alt_round)
+    if (mode == verify_mode::pulse_block_leader_is_producer || mode == verify_mode::pulse_different_block_producer)
     {
       auto info_it = m_state.service_nodes_infos.find(block_producer_key);
       if (info_it == m_state.service_nodes_infos.end())
@@ -2151,7 +2140,7 @@ namespace service_nodes
       }
 
       block_producer = info_it->second;
-      if (mode == verify_mode::pulse_alt_round)
+      if (mode == verify_mode::pulse_different_block_producer)
         expected_vouts_size += block_producer->contributors.size();
     }
     else
@@ -2183,7 +2172,7 @@ namespace service_nodes
       }
       break;
 
-      case verify_mode::pulse:
+      case verify_mode::pulse_block_leader_is_producer:
       {
         uint64_t total_reward = total_service_node_reward + reward_parts.miner_reward();
         for (size_t vout_index = 0; vout_index < block_leader.payouts.size(); vout_index++)
@@ -2195,7 +2184,7 @@ namespace service_nodes
       }
       break;
 
-      case verify_mode::pulse_alt_round:
+      case verify_mode::pulse_different_block_producer:
       {
         const uint64_t max_portions = STAKING_PORTIONS - block_producer->portions_for_operator;
         for (size_t vout_index = 0; vout_index < block_producer->contributors.size(); vout_index++)
