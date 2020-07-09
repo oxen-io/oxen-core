@@ -33,6 +33,8 @@
 
 #include <boost/endian/conversion.hpp>
 
+#include <lokimq/bt_serialize.h>
+
 extern "C" {
 #include <sodium.h>
 }
@@ -1955,6 +1957,49 @@ namespace service_nodes
     crypto::generate_signature(hash, keys.pub, keys.key, result.sig);
     crypto_sign_detached(result.sig_ed25519.data, NULL, reinterpret_cast<unsigned char *>(hash.data), sizeof(hash.data), keys.key_ed25519.data);
     return result;
+  }
+
+  void lokinet_peer_stats::bt_decode(std::string_view data)
+  {
+    constexpr auto NumConnectionAttemptsKey = "numConnectionAttempts";
+    constexpr auto NumConnectionSuccessesKey = "numConnectionSuccesses";
+    constexpr auto NumConnectionRejectionsKey = "numConnectionRejections";
+    constexpr auto NumConnectionTimeoutsKey = "numConnectionTimeouts";
+    constexpr auto NumPathBuildsKey = "numPathBuilds";
+    constexpr auto NumPacketsAttemptedKey = "numPacketsAttempted";
+    constexpr auto NumPacketsSentKey = "numPacketsSent";
+    constexpr auto NumPacketsDroppedKey = "numPacketsDropped";
+    constexpr auto NumPacketsResentKey = "numPacketsResent";
+    constexpr auto NumDistinctRCsReceivedKey = "numDistinctRCsReceived";
+    constexpr auto NumLateRCsKey = "numLateRCs";
+    constexpr auto PeakBandwidthBytesPerSecKey = "peakBandwidthBytesPerSec";
+    constexpr auto LongestRCReceiveIntervalKey = "longestRCReceiveInterval";
+    constexpr auto LeastRCRemainingLifetimeKey = "leastRCRemainingLifetime";
+    constexpr auto LastRCUpdatedKey = "lastRCUpdated";
+
+    auto dict = lokimq::bt_deserialize<lokimq::bt_dict>(data);
+
+    // TODO: router_id
+    // TODO: validation -- do we reject if we don't get a full message? or types are wrong?
+
+    num_connection_attempts = lokimq::get_int<int32_t>(dict.at(NumConnectionAttemptsKey));
+    num_connection_successes = lokimq::get_int<int32_t>(dict.at(NumConnectionSuccessesKey));
+    num_connection_rejections = lokimq::get_int<int32_t>(dict.at(NumConnectionRejectionsKey));
+    num_connection_timeouts = lokimq::get_int<int32_t>(dict.at(NumConnectionTimeoutsKey));
+
+    num_path_builds = lokimq::get_int<int32_t>(dict.at(NumPathBuildsKey));
+    num_packets_attempted = lokimq::get_int<int64_t>(dict.at(NumPacketsAttemptedKey));
+    num_packets_sent = lokimq::get_int<int64_t>(dict.at(NumPacketsSentKey));
+    num_packets_dropped = lokimq::get_int<int64_t>(dict.at(NumPacketsDroppedKey));
+    num_packets_resent = lokimq::get_int<int64_t>(dict.at(NumPacketsResentKey));
+
+    num_distinct_rcs_received = lokimq::get_int<int32_t>(dict.at(NumDistinctRCsReceivedKey));
+    num_late_rcs = lokimq::get_int<int32_t>(dict.at(NumLateRCsKey));
+
+    peak_bandwidth_bytes_per_sec = lokimq::get_int<int64_t>(dict.at(PeakBandwidthBytesPerSecKey));
+    longest_rc_receive_interval = std::chrono::milliseconds(lokimq::get_int<int64_t>(dict.at(LongestRCReceiveIntervalKey)));
+    least_rc_remaining_lifetime = std::chrono::milliseconds(lokimq::get_int<int64_t>(dict.at(LeastRCRemainingLifetimeKey)));
+    last_rc_updated = std::chrono::milliseconds(lokimq::get_int<int64_t>(dict.at(LastRCUpdatedKey)));
   }
 
 #ifdef __cpp_lib_erase_if // # (C++20)

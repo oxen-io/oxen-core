@@ -557,3 +557,47 @@ TEST(service_nodes, service_node_get_locked_key_image_unlock_height)
     ASSERT_EQ(unlock_height, expected);
   }
 }
+
+TEST(service_nodes, lokinet_peer_stats_deserialization)
+{
+  constexpr std::string_view data =
+    "d"
+    "21:numConnectionAttempts" "i1e"
+    "22:numConnectionSuccesses" "i2e"
+    "23:numConnectionRejections" "i3e"
+    "21:numConnectionTimeouts" "i4e"
+    "13:numPathBuilds" "i5e"
+    "19:numPacketsAttempted" "i6e"
+    "14:numPacketsSent" "i7e"
+    "17:numPacketsDropped" "i8e"
+    "16:numPacketsResent" "i9e"
+    "22:numDistinctRCsReceived" "i10e"
+    "10:numLateRCs" "i11e"
+    "24:peakBandwidthBytesPerSec" "i12e"
+    "24:longestRCReceiveInterval" "i13e"
+    "24:leastRCRemainingLifetime" "i14e"
+    "13:lastRCUpdated" "i15e"
+    "e";
+
+  service_nodes::lokinet_peer_stats stats;
+
+  ASSERT_NO_THROW(stats.bt_decode(data));
+
+  // TODO: router_id
+
+  ASSERT_EQ(1, stats.num_connection_attempts);
+  ASSERT_EQ(2, stats.num_connection_successes);
+  ASSERT_EQ(3, stats.num_connection_rejections);
+  ASSERT_EQ(4, stats.num_connection_timeouts);
+  ASSERT_EQ(5, stats.num_path_builds);
+  ASSERT_EQ(6, stats.num_packets_attempted);
+  ASSERT_EQ(7, stats.num_packets_sent);
+  ASSERT_EQ(8, stats.num_packets_dropped);
+  ASSERT_EQ(9, stats.num_packets_resent);
+  ASSERT_EQ(10, stats.num_distinct_rcs_received);
+  ASSERT_EQ(11, stats.num_late_rcs);
+  ASSERT_EQ(12, stats.peak_bandwidth_bytes_per_sec);
+  ASSERT_EQ(13, stats.longest_rc_receive_interval.count());
+  ASSERT_EQ(14, stats.least_rc_remaining_lifetime.count());
+  ASSERT_EQ(15, stats.last_rc_updated.count());
+}

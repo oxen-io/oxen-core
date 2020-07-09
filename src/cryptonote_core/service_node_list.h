@@ -28,6 +28,7 @@
 
 #pragma once
 
+#include <chrono>
 #include <mutex>
 #include <shared_mutex>
 #include <string_view>
@@ -37,6 +38,8 @@
 #include "cryptonote_core/service_node_voting.h"
 #include "cryptonote_core/service_node_quorum_cop.h"
 #include "common/util.h"
+
+using namespace std::chrono_literals;
 
 namespace cryptonote
 {
@@ -58,6 +61,33 @@ namespace service_nodes
       KV_SERIALIZE(height);
       KV_SERIALIZE(voted);
     END_KV_SERIALIZE_MAP()
+  };
+
+  // tracks lokinet's PeerStats struct and is used to reflect the behavior of a service node's peers on the lokinet network
+  struct lokinet_peer_stats
+  {
+    crypto::ed25519_public_key router_id = crypto::ed25519_public_key::null();
+
+    int32_t num_connection_attempts = 0;
+    int32_t num_connection_successes = 0;
+    int32_t num_connection_rejections = 0;
+    int32_t num_connection_timeouts = 0;
+
+    int32_t num_path_builds = 0;
+    int64_t num_packets_attempted = 0;
+    int64_t num_packets_sent = 0;
+    int64_t num_packets_dropped = 0;
+    int64_t num_packets_resent = 0;
+
+    int32_t num_distinct_rcs_received = 0;
+    int32_t num_late_rcs = 0;
+
+    int64_t peak_bandwidth_bytes_per_sec = 0;
+    std::chrono::milliseconds longest_rc_receive_interval = 0ms;
+    std::chrono::milliseconds least_rc_remaining_lifetime = 0ms;
+    std::chrono::milliseconds last_rc_updated = 0ms;
+
+    void bt_decode(std::string_view data);
   };
 
   struct proof_info
