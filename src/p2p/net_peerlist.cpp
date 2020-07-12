@@ -272,14 +272,14 @@ namespace nodetool
 
   void peerlist_manager::get_peerlist(std::vector<peerlist_entry>& pl_gray, std::vector<peerlist_entry>& pl_white)
   {
-    std::shared_lock lock{m_peerlist_lock};
+    std::lock_guard lock{m_peerlist_lock};
     copy_peers(pl_gray, m_peers_gray.get<by_addr>());
     copy_peers(pl_white, m_peers_white.get<by_addr>());
   }
 
   void peerlist_manager::get_peerlist(peerlist_types& peers)
   { 
-    std::shared_lock lock{m_peerlist_lock};
+    std::lock_guard lock{m_peerlist_lock};
     peers.white.reserve(peers.white.size() + m_peers_white.size());
     peers.gray.reserve(peers.gray.size() + m_peers_gray.size());
     peers.anchor.reserve(peers.anchor.size() + m_peers_anchor.size());

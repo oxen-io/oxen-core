@@ -35,7 +35,7 @@
 #include <string>
 #include <vector>
 #include <optional>
-#include <shared_mutex>
+#include <mutex>
 
 #include <boost/multi_index_container.hpp>
 #include <boost/multi_index/ordered_index.hpp>
@@ -100,8 +100,8 @@ namespace nodetool
   {
   public: 
     bool init(peerlist_types&& peers, bool allow_local_ip);
-    size_t get_white_peers_count(){std::shared_lock lock{m_peerlist_lock}; return m_peers_white.size();}
-    size_t get_gray_peers_count(){std::shared_lock lock{m_peerlist_lock}; return m_peers_gray.size();}
+    size_t get_white_peers_count(){std::lock_guard lock{m_peerlist_lock}; return m_peers_white.size();}
+    size_t get_gray_peers_count(){std::lock_guard lock{m_peerlist_lock}; return m_peers_gray.size();}
     bool merge_peerlist(const std::vector<peerlist_entry>& outer_bs, const std::function<bool(const peerlist_entry&)> &f = NULL);
     bool get_peerlist_head(std::vector<peerlist_entry>& bs_head, bool anonymize, uint32_t depth = P2P_DEFAULT_PEERS_IN_HANDSHAKE);
     void get_peerlist(std::vector<peerlist_entry>& pl_gray, std::vector<peerlist_entry>& pl_white);
@@ -184,7 +184,7 @@ namespace nodetool
     void trim_gray_peerlist();
 
     friend class boost::serialization::access;
-    std::shared_mutex m_peerlist_lock;
+    std::recursive_mutex m_peerlist_lock;
     std::string m_config_folder;
     bool m_allow_local_ip;
 

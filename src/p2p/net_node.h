@@ -39,6 +39,7 @@
 #include <functional>
 #include <utility>
 #include <vector>
+#include <shared_mutex>
 
 #include "cryptonote_config.h"
 #include "cryptonote_protocol/levin_notify.h"
