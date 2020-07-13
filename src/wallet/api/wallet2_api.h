@@ -814,7 +814,6 @@ struct Wallet
      * \param dst_addr                  vector of destination address as string
      * \param payment_id                optional payment_id, can be empty string
      * \param amount                    vector of amounts
-     * \param mixin_count               mixin count. if 0 passed, wallet will use default value
      * \param subaddr_account           subaddress account from which the input funds are taken
      * \param subaddr_indices           set of subaddress indices to use for transfer or sweeping. if set empty, all are chosen when sweeping, and one or more are automatically chosen when transferring. after execution, returns the set of actually used indices
      * \param priority
@@ -823,7 +822,7 @@ struct Wallet
      */
 
     virtual PendingTransaction * createTransactionMultDest(const std::vector<std::string> &dst_addr, const std::string &payment_id,
-                                                   optional<std::vector<uint64_t>> amount, uint32_t mixin_count,
+                                                   optional<std::vector<uint64_t>> amount,
                                                    uint32_t priority = 0,
                                                    uint32_t subaddr_account = 0,
                                                    std::set<uint32_t> subaddr_indices = {}) = 0;
@@ -833,7 +832,6 @@ struct Wallet
      * \param dst_addr          destination address as string
      * \param payment_id        optional payment_id, can be empty string
      * \param amount            amount
-     * \param mixin_count       mixin count. if 0 passed, wallet will use default value
      * \param subaddr_account   subaddress account from which the input funds are taken
      * \param subaddr_indices   set of subaddress indices to use for transfer or sweeping. if set empty, all are chosen when sweeping, and one or more are automatically chosen when transferring. after execution, returns the set of actually used indices
      * \param priority          set a priority for the transaction. Accepted Values are: default (0), or 0-5 for: default, unimportant, normal, elevated, priority, blink.
@@ -844,7 +842,6 @@ struct Wallet
     virtual PendingTransaction *createTransaction(const std::string &dst_addr,
                                                   const std::string &payment_id,
                                                   optional<uint64_t> amount,
-                                                  uint32_t mixin_count,
                                                   uint32_t priority                  = 0,
                                                   uint32_t subaddr_account           = 0,
                                                   std::set<uint32_t> subaddr_indices = {}) = 0;
