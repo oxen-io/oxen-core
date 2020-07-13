@@ -3041,8 +3041,8 @@ static loki_chain_generator setup_pulse_tests(std::vector<test_event_entry> &eve
   result.add_blocks_until_version(hard_forks.back().first);
   result.add_mined_money_unlock_blocks();
 
-  std::vector<cryptonote::transaction> registration_txs(service_nodes::PULSE_MIN_SERVICE_NODES);
-  for (auto i = 0u; i < service_nodes::PULSE_MIN_SERVICE_NODES; ++i)
+  std::vector<cryptonote::transaction> registration_txs(service_nodes::pulse_min_service_nodes(cryptonote::FAKECHAIN));
+  for (auto i = 0u; i < service_nodes::pulse_min_service_nodes(cryptonote::FAKECHAIN); ++i)
     registration_txs[i] = result.create_and_add_registration_tx(result.first_miner());
 
   // NOTE: Generate Valid Blocks
@@ -3125,7 +3125,7 @@ bool loki_pulse_non_participating_validator::generate(std::vector<test_event_ent
 
       std::vector<crypto::hash> entropy;
       service_nodes::get_pulse_entropy_from_blockchain(gen.db_, cryptonote::get_block_height(entry.block) + 1, entropy, entry.block.pulse.round);
-      quorum = generate_pulse_quorum(params.block_winner.key, entry.block.major_version, active_snode_list, entropy, entry.block.pulse.round);
+      quorum = generate_pulse_quorum(cryptonote::FAKECHAIN, params.block_winner.key, entry.block.major_version, active_snode_list, entropy, entry.block.pulse.round);
       assert(quorum.validators.size() == service_nodes::PULSE_QUORUM_NUM_VALIDATORS);
       assert(quorum.workers.size() == 1);
     }

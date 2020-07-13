@@ -1460,10 +1460,10 @@ namespace service_nodes
     return true;
   }
 
-  service_nodes::quorum generate_pulse_quorum(crypto::public_key const &block_winner, uint8_t hf_version, std::vector<pubkey_and_sninfo> const &active_snode_list, std::vector<crypto::hash> const &pulse_entropy, uint8_t pulse_round)
+  service_nodes::quorum generate_pulse_quorum(cryptonote::network_type nettype, crypto::public_key const &block_winner, uint8_t hf_version, std::vector<pubkey_and_sninfo> const &active_snode_list, std::vector<crypto::hash> const &pulse_entropy, uint8_t pulse_round)
   {
     service_nodes::quorum result = {};
-    if (active_snode_list.size() < PULSE_MIN_SERVICE_NODES)
+    if (active_snode_list.size() < pulse_min_service_nodes(nettype))
     {
       LOG_PRINT_L2("Insufficient active Service Nodes for Pulse: " << active_snode_list.size());
       return result;
@@ -1672,7 +1672,7 @@ namespace service_nodes
     {
       std::vector<crypto::hash> entropy;
       get_pulse_entropy_from_blockchain(db, cryptonote::get_block_height(block) + 1, entropy, block.pulse.round);
-      quorum pulse_quorum = generate_pulse_quorum(winner_pubkey, hf_version, active_service_nodes_infos(), entropy, block.pulse.round);
+      quorum pulse_quorum = generate_pulse_quorum(nettype, winner_pubkey, hf_version, active_service_nodes_infos(), entropy, block.pulse.round);
 
       if (pulse_quorum.workers.size() == 1 && pulse_quorum.validators.size() == PULSE_QUORUM_NUM_VALIDATORS)
       {

@@ -896,7 +896,7 @@ void loki_chain_generator::block_end(loki_blockchain_entry &entry, loki_create_b
 void loki_chain_generator::block_fill_pulse_data(loki_blockchain_entry &entry, loki_create_block_params const &params, uint8_t round) const
 {
   std::vector<service_nodes::pubkey_and_sninfo> active_snode_list = params.prev.service_node_state.active_service_nodes_infos();
-  assert(active_snode_list.size() >= service_nodes::PULSE_MIN_SERVICE_NODES);
+  assert(active_snode_list.size() >= service_nodes::pulse_min_service_nodes(cryptonote::FAKECHAIN));
 
   // NOTE: Set up Pulse Header
   entry.block.pulse.validator_participation_bits = service_nodes::pulse_validator_bit_mask(); // NOTE: Everyone participates
@@ -907,7 +907,7 @@ void loki_chain_generator::block_fill_pulse_data(loki_blockchain_entry &entry, l
   // NOTE: Get Pulse Quorum necessary for this block
   std::vector<crypto::hash> entropy;
   service_nodes::get_pulse_entropy_from_blockchain(db_, cryptonote::get_block_height(entry.block) + 1, entropy, entry.block.pulse.round);
-  service_nodes::quorum pulse_quorum = generate_pulse_quorum(params.block_winner.key, entry.block.major_version, active_snode_list, entropy, entry.block.pulse.round);
+  service_nodes::quorum pulse_quorum = generate_pulse_quorum(cryptonote::FAKECHAIN, params.block_winner.key, entry.block.major_version, active_snode_list, entropy, entry.block.pulse.round);
 
   assert(pulse_quorum.validators.size() == service_nodes::PULSE_QUORUM_NUM_VALIDATORS);
   assert(pulse_quorum.workers.size() == 1);
@@ -937,7 +937,7 @@ bool loki_chain_generator::create_block(loki_blockchain_entry &entry,
 
   {
     std::vector<service_nodes::pubkey_and_sninfo> active_snode_list = params.prev.service_node_state.active_service_nodes_infos();
-    if (entry.block.major_version >= cryptonote::network_version_16 && active_snode_list.size() >= service_nodes::PULSE_MIN_SERVICE_NODES)
+    if (entry.block.major_version >= cryptonote::network_version_16 && active_snode_list.size() >= service_nodes::pulse_min_service_nodes(cryptonote::FAKECHAIN))
     {
       block_fill_pulse_data(entry, params, entry.block.pulse.round);
     }

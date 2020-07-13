@@ -8,8 +8,13 @@ namespace service_nodes {
   constexpr size_t PULSE_QUORUM_ENTROPY_LAG             = 21; // How many blocks back from the tip of the Blockchain to source entropy for the Pulse quorums.
   constexpr size_t PULSE_QUORUM_NUM_VALIDATORS          = 11;
   constexpr size_t PULSE_QUORUM_SIZE                    = PULSE_QUORUM_NUM_VALIDATORS + 1 /*Leader*/;
-  constexpr size_t PULSE_MIN_SERVICE_NODES              = 50;
-  static_assert(PULSE_MIN_SERVICE_NODES >= PULSE_QUORUM_SIZE);
+  
+  constexpr size_t pulse_min_service_nodes(cryptonote::network_type nettype)
+  {
+    return (nettype == cryptonote::MAINNET) ? 50 : PULSE_QUORUM_SIZE;
+  }
+  static_assert(pulse_min_service_nodes(cryptonote::MAINNET) >= PULSE_QUORUM_SIZE);
+  static_assert(pulse_min_service_nodes(cryptonote::TESTNET) >= PULSE_QUORUM_SIZE);
 
   constexpr uint16_t pulse_validator_bit_mask()
   {
