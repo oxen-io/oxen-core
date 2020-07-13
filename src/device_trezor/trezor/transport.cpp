@@ -155,7 +155,11 @@ namespace trezor{
 #define PROTO_HEADER_SIZE 6
 
   static size_t message_size(const google::protobuf::Message &req){
+#if GOOGLE_PROTOBUF_VERSION >= 3004000
     return req.ByteSizeLong();
+#else
+    return req.ByteSize();
+#endif
   }
 
   static size_t serialize_message_buffer_size(size_t msg_size) {
@@ -754,7 +758,7 @@ namespace trezor{
     // Check whether the deadline has passed. We compare the deadline against
     // the current time since a new asynchronous operation may have moved the
     // deadline before this actor had a chance to run.
-    if (m_deadline.expiry() <= std::chrono::steady_clock::now())
+    if (m_deadline.expires_at() <= std::chrono::steady_clock::now())
     {
       // The deadline has passed. The outstanding asynchronous operation needs
       // to be cancelled so that the blocked receive() function will return.
