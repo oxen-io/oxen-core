@@ -1281,6 +1281,12 @@ namespace service_nodes
       std::shared_ptr<const quorum> quorum = get_quorum(quorum_type::pulse, m_state.height);
       if (quorum)
       {
+        if (block.nonce != 0)
+        {
+          LOG_PRINT_L1("Pulse block specified a nonce when quorum block generation is available, nonce: " << block.nonce);
+          return false;
+        }
+
         if (block.pulse.validator_participation_bits >= (1 << PULSE_QUORUM_NUM_VALIDATORS))
         {
           auto mask = std::bitset<sizeof(pulse_validator_bit_mask()) * 8>(pulse_validator_bit_mask());
