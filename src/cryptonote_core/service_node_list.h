@@ -547,6 +547,7 @@ namespace service_nodes
           const service_node_keys *my_keys);
       bool process_key_image_unlock_tx(cryptonote::network_type nettype, uint64_t block_height, const cryptonote::transaction &tx);
       payout get_block_leader() const;
+      payout get_block_producer(uint8_t pulse_round) const;
     };
 
     // Can be set to true (via --dev-allow-local-ips) for debugging a new testnet on a local private network.
@@ -638,6 +639,7 @@ namespace service_nodes
       bool make_friendly);
 
   service_nodes::quorum generate_pulse_quorum(cryptonote::network_type nettype, cryptonote::BlockchainDB const &db, uint64_t height, crypto::public_key const &leader, uint8_t hf_version, std::vector<pubkey_and_sninfo> const &active_snode_list, uint8_t pulse_round);
+  payout service_node_info_to_payout(crypto::public_key const &key, service_node_info const &info);
 
   const static payout_entry null_payout_entry = {cryptonote::null_address, STAKING_PORTIONS};
   const static payout null_payout             = {crypto::null_pkey, {null_payout_entry}};

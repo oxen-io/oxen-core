@@ -829,26 +829,12 @@ bool loki_chain_generator::block_begin(loki_blockchain_entry &entry, loki_create
     }
     else
     {
-
-      block_producer.key = pulse_quorum.workers[0];
-      auto it = params.prev.service_node_state.service_nodes_infos.find(block_producer.key);
+      crypto::public_key block_producer_key = pulse_quorum.workers[0];
+      auto it = params.prev.service_node_state.service_nodes_infos.find(block_producer_key);
       assert(it != params.prev.service_node_state.service_nodes_infos.end());
-
-      std::shared_ptr<const service_nodes::service_node_info> pulse_block_producer = it->second;
-      const uint64_t max_portions = STAKING_PORTIONS - pulse_block_producer->portions_for_operator;
-      for (size_t index = 0; index < pulse_block_producer->contributors.size(); index++)
-      {
-        const auto &contributor = pulse_block_producer->contributors[index];
-        uint64_t portions = service_nodes::get_portions_to_make_amount(pulse_block_producer->staking_requirement, contributor.amount, max_portions);
-        if (contributor.address == pulse_block_producer->operator_address)
-          portions += pulse_block_producer->portions_for_operator;
-        block_producer.payouts.push_back({contributor.address, portions});
-      }
+      block_producer = service_nodes::service_node_info_to_payout(block_producer_key, *info);
     }
 
-    // TODO(doyle): We only support the queued winner as the block
-    // producer/leader By default if the pulse round is 0, the queued winner is
-    // the block producer, so i.e. we only support the default case atm
     miner_tx_context = cryptonote::loki_miner_tx_context::pulse_block(cryptonote::FAKECHAIN, block_producer, params.block_leader);
   }
   else

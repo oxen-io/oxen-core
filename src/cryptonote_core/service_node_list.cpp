@@ -1968,7 +1968,7 @@ namespace service_nodes
 
   service_nodes::payout service_node_list::state_t::get_block_leader() const
   {
-    service_nodes::payout result  = {};
+    crypto::public_key key = crypto::null_pkey;
     service_node_info const *info = nullptr;
     {
       auto oldest_waiting = std::make_tuple(std::numeric_limits<uint64_t>::max(), std::numeric_limits<uint32_t>::max(), crypto::null_pkey);
@@ -1985,29 +1985,12 @@ namespace service_nodes
           }
         }
       }
-      result.key = std::get<2>(oldest_waiting);
+      key = std::get<2>(oldest_waiting);
     }
 
-    if (result.key == crypto::null_pkey)
-    {
-      result = service_nodes::null_payout;
-      return result;
-    }
-
-    // Add contributors and their portions to winners.
-    result.payouts.reserve(info->contributors.size());
-    const uint64_t remaining_portions = STAKING_PORTIONS - info->portions_for_operator;
-    for (const auto& contributor : info->contributors)
-    {
-      uint64_t hi, lo, resulthi, resultlo;
-      lo = mul128(contributor.amount, remaining_portions, &hi);
-      div128_64(hi, lo, info->staking_requirement, &resulthi, &resultlo);
-
-      if (contributor.address == info->operator_address)
-        resultlo += info->portions_for_operator;
-      result.payouts.push_back({contributor.address, resultlo});
-    }
-    return result;
+    if (key == crypto::null_pkey)
+      return service_nodes::null_payout;
+    return service_node_info_to_payout(key, *info);
   }
 
   template <typename T>
@@ -3288,5 +3271,26 @@ namespace service_nodes
     }
   }
 
+  payout service_node_info_to_payout(crypto::public_key const &key, service_node_info const &info)
+  {
+    service_nodes::payout result = {};
+    result.key                   = key;
+
+    // Add contributors and their portions to winners.
+    result.payouts.reserve(info.contributors.size());
+    const uint64_t remaining_portions = STAKING_PORTIONS - info.portions_for_operator;
+    for (const auto& contributor : info.contributors)
+    {
+      uint64_t hi, lo, resulthi, resultlo;
+      lo = mul128(contributor.amount, remaining_portions, &hi);
+      div128_64(hi, lo, info.staking_requirement, &resulthi, &resultlo);
+
+      if (contributor.address == info.operator_address)
+        resultlo += info.portions_for_operator;
+      result.payouts.push_back({contributor.address, resultlo});
+    }
+
+    return result;
+  }
 }
 
