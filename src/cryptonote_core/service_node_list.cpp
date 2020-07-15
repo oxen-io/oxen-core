@@ -1684,7 +1684,7 @@ namespace service_nodes
     if (hf_version >= cryptonote::network_version_16)
     {
       quorum pulse_quorum = generate_pulse_quorum(nettype, db, height + 1, winner_pubkey, hf_version, active_service_nodes_infos(), block.pulse.round);
-      if (pulse_quorum.workers.size() == 1 && pulse_quorum.validators.size() == PULSE_QUORUM_NUM_VALIDATORS)
+      if (verify_pulse_quorum_sizes(pulse_quorum))
       {
         // NOTE: Send candidate to the back of the list
         for (size_t quorum_index = 0 ; quorum_index < pulse_quorum.validators.size(); quorum_index++)

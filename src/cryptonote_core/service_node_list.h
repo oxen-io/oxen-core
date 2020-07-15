@@ -421,6 +421,10 @@ namespace service_nodes
       }
     }
 
+    std::vector<pubkey_and_sninfo> active_service_nodes_infos() const {
+      return m_state.active_service_nodes_infos();
+    }
+
     void set_my_service_node_keys(const service_node_keys *keys);
     void set_quorum_history_storage(uint64_t hist_size); // 0 = none (default), 1 = unlimited, N = # of blocks
     bool store();

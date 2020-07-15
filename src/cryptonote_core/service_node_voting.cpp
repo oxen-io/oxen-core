@@ -340,6 +340,12 @@ namespace service_nodes
     return true;
   }
 
+  bool verify_pulse_quorum_sizes(service_nodes::quorum const &quorum)
+  {
+    bool result = quorum.workers.size() == 1 && quorum.validators.size() == PULSE_QUORUM_NUM_VALIDATORS;
+    return result;
+  }
+
   bool verify_checkpoint(uint8_t hf_version, cryptonote::checkpoint_t const &checkpoint, service_nodes::quorum const &quorum)
   {
     if (checkpoint.type == cryptonote::checkpoint_type::service_node)
