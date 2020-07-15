@@ -3044,7 +3044,7 @@ bool wallet2::long_poll_pool_state()
 
   crypto::hash checksum = crypto::null_hash;
   for (crypto::hash const &hash : res.tx_hashes)
-    crypto::hash_xor(checksum, hash);
+    checksum ^= hash;
   {
     std::lock_guard<decltype(m_long_poll_tx_pool_checksum_mutex)> lock(m_long_poll_tx_pool_checksum_mutex);
     m_long_poll_tx_pool_checksum = std::move(checksum);
