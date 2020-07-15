@@ -1249,21 +1249,6 @@ namespace cryptonote
     /**
      * @brief validate and add a new block to the end of the blockchain
      *
-     * This function is merely a convenience wrapper around the other
-     * of the same name.  This one passes the block's hash to the other
-     * as well as the block and verification context.
-     *
-     * @param bl the block to be added
-     * @param bvc metadata concerning the block's validity
-     * @param notify if set to true, sends new block notification on success
-     *
-     * @return true if the block was added successfully, otherwise false
-     */
-    bool handle_block_to_main_chain(const block& bl, block_verification_context& bvc, bool notify = true);
-
-    /**
-     * @brief validate and add a new block to the end of the blockchain
-     *
      * When a block is given to Blockchain to be added to the blockchain, it
      * is passed here if it is determined to belong at the end of the current
      * chain.

@@ -1920,33 +1920,35 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
     CHECK_AND_ASSERT_MES(required_diff, false, "!!!!!!! DIFFICULTY OVERHEAD !!!!!!!");
     crypto::hash proof_of_work;
     std::memset(proof_of_work.data, 0xff, sizeof(proof_of_work.data));
-    if (b.major_version >= cryptonote::network_version_12_checkpointing)
-    {
-      randomx_longhash_context randomx_context  = {};
-      randomx_context.current_blockchain_height = curr_blockchain_height;
-      randomx_context.seed_height               = rx_seedheight(block_height);
 
-      // seedblock is on the alt chain somewhere
-      if (alt_chain.size() && alt_chain.front().height <= randomx_context.seed_height)
+    {
+      randomx_longhash_context randomx_context = {};
+      if (b.major_version >= cryptonote::network_version_12_checkpointing)
       {
-        for (auto it=alt_chain.begin(); it != alt_chain.end(); it++)
+        randomx_context.current_blockchain_height = curr_blockchain_height;
+        randomx_context.seed_height               = rx_seedheight(block_height);
+
+        // seedblock is on the alt chain somewhere
+        if (alt_chain.size() && alt_chain.front().height <= randomx_context.seed_height)
         {
-          if (it->height == randomx_context.seed_height+1)
+          for (auto it=alt_chain.begin(); it != alt_chain.end(); it++)
           {
-            randomx_context.seed_block_hash = it->bl.prev_id;
-            break;
+            if (it->height == randomx_context.seed_height+1)
+            {
+              randomx_context.seed_block_hash = it->bl.prev_id;
+              break;
+            }
           }
         }
-      } else
-      {
-        randomx_context.seed_block_hash = get_block_id_by_height(randomx_context.seed_height);
+        else
+        {
+          randomx_context.seed_block_hash = get_block_id_by_height(randomx_context.seed_height);
+        }
       }
 
-      proof_of_work = get_altblock_longhash(randomx_context, b, block_height);
-    } else
-    {
-      proof_of_work = get_block_longhash_w_blockchain(this, b, block_height, 0);
+      proof_of_work = get_altblock_longhash(m_nettype, randomx_context, b, block_height);
     }
+
     if(!check_hash(proof_of_work, required_diff))
     {
       MERROR_VER("Block with id: " << id << "\n for alternative chain, does not have enough proof of work: " << proof_of_work << "\n required difficulty: " << required_diff);
@@ -2818,13 +2820,6 @@ bool Blockchain::have_block(const crypto::hash& id) const
   }
 
   return false;
-}
-//------------------------------------------------------------------
-bool Blockchain::handle_block_to_main_chain(const block& bl, block_verification_context& bvc, bool notify/* = true*/)
-{
-    LOG_PRINT_L3("Blockchain::" << __func__);
-    crypto::hash id = get_block_hash(bl);
-    return handle_block_to_main_chain(bl, id, bvc, nullptr /*checkpoint*/, notify);
 }
 //------------------------------------------------------------------
 size_t Blockchain::get_total_transactions() const
@@ -4019,7 +4014,7 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
       proof_of_work = it->second;
     }
     else
-      proof_of_work = get_block_longhash_w_blockchain(this, bl, blockchain_height, 0);
+      proof_of_work = get_block_longhash_w_blockchain(m_nettype, this, bl, blockchain_height, 0);
 
     // validate proof_of_work versus difficulty target
     if(!check_hash(proof_of_work, required_diff))
@@ -4265,14 +4260,26 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
   for (std::pair<transaction, blobdata> const &tx_pair : txs)
     only_txs.push_back(tx_pair.first);
 
-  m_service_node_list.block_added(bl, only_txs, checkpoint);
-  m_lns_db.add_block(bl, only_txs);
+  if (!m_service_node_list.block_added(bl, only_txs, checkpoint))
+  {
+    MERROR("Failed to add block to Service Node List.");
+    bvc.m_verifivation_failed = true;
+    return false;
+  }
+
+  if (!m_lns_db.add_block(bl, only_txs))
+  {
+    MERROR("Failed to add block to LNS DB.");
+    bvc.m_verifivation_failed = true;
+    return false;
+  }
 
   for (BlockAddedHook* hook : m_block_added_hooks)
   {
     if (!hook->block_added(bl, only_txs, checkpoint))
     {
       MERROR("Block added hook signalled failure");
+      bvc.m_verifivation_failed = true;
       return false;
     }
   }
@@ -4300,7 +4307,28 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
   }
 
   abort_block.cancel();
-  MINFO("+++++ BLOCK SUCCESSFULLY ADDED" << std::endl << "id:\t" << id << std::endl << "PoW:\t" << proof_of_work << std::endl << "HEIGHT " << new_height-1 << ", difficulty:\t" << current_diffic << std::endl << "block reward: " << print_money(fee_summary + base_reward) << "(" << print_money(base_reward) << " + " << print_money(fee_summary) << "), coinbase_weight: " << coinbase_weight << ", cumulative weight: " << cumulative_block_weight << ", " << block_processing_time << "(" << target_calculating_time << "/" << longhash_calculating_time << ")ms");
+  if (bl.signatures.size())
+  {
+    MINFO("+++++ PULSE BLOCK SUCCESSFULLY ADDED\n"
+                   << "id:\t" << id << "\n"
+                   << "HEIGHT " << new_height - 1 << "\n"
+                   << "block reward: " << print_money(fee_summary + base_reward) << "(" << print_money(base_reward)
+                   << " + " << print_money(fee_summary) << "), coinbase_weight: " << coinbase_weight
+                   << ", cumulative weight: " << cumulative_block_weight << ", " << block_processing_time << "("
+                   << target_calculating_time << "/" << longhash_calculating_time << ")ms");
+  }
+  else
+  {
+    MINFO("+++++ MINER BLOCK SUCCESSFULLY ADDED\n"
+                   << "id:\t" << id << "\n"
+                   << "PoW:\t" << proof_of_work << "\n"
+                   << "HEIGHT " << new_height - 1 << ", difficulty:\t" << current_diffic << "\n"
+                   << "block reward: " << print_money(fee_summary + base_reward) << "(" << print_money(base_reward)
+                   << " + " << print_money(fee_summary) << "), coinbase_weight: " << coinbase_weight
+                   << ", cumulative weight: " << cumulative_block_weight << ", " << block_processing_time << "("
+                   << target_calculating_time << "/" << longhash_calculating_time << ")ms");
+  }
+
   if(m_show_time_stats)
   {
     MINFO("Height: " << new_height << " coinbase weight: " << coinbase_weight << " cumm: "
@@ -4584,7 +4612,7 @@ void Blockchain::block_longhash_worker(uint64_t height, const epee::span<const b
     if (m_cancel)
       break;
     crypto::hash id = get_block_hash(block);
-    crypto::hash pow = get_block_longhash_w_blockchain(this, block, height++, 0);
+    crypto::hash pow = get_block_longhash_w_blockchain(m_nettype, this, block, height++, 0);
     map.emplace(id, pow);
   }
 

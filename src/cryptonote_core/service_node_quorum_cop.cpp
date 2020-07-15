@@ -576,7 +576,7 @@ namespace service_nodes
         checkpoint.signatures.reserve(service_nodes::CHECKPOINT_QUORUM_SIZE);
         std::sort(checkpoint.signatures.begin(),
                   checkpoint.signatures.end(),
-                  [](service_nodes::voter_to_signature const &lhs, service_nodes::voter_to_signature const &rhs) {
+                  [](service_nodes::quorum_signature const &lhs, service_nodes::quorum_signature const &rhs) {
                     return lhs.voter_index < rhs.voter_index;
                   });
 
@@ -585,7 +585,7 @@ namespace service_nodes
           auto it = std::lower_bound(checkpoint.signatures.begin(),
                                      checkpoint.signatures.end(),
                                      pool_vote,
-                                     [](voter_to_signature const &lhs, pool_vote_entry const &vote) {
+                                     [](quorum_signature const &lhs, pool_vote_entry const &vote) {
                                        return lhs.voter_index < vote.vote.index_in_group;
                                      });
 
@@ -593,7 +593,7 @@ namespace service_nodes
               pool_vote.vote.index_in_group != it->voter_index)
           {
             update_checkpoint = true;
-            checkpoint.signatures.insert(it, voter_to_signature(pool_vote.vote));
+            checkpoint.signatures.insert(it, quorum_signature(pool_vote.vote.index_in_group, pool_vote.vote.signature));
           }
         }
       }
@@ -604,7 +604,7 @@ namespace service_nodes
       checkpoint = make_empty_service_node_checkpoint(vote.checkpoint.block_hash, vote.block_height);
       checkpoint.signatures.reserve(votes.size());
       for (pool_vote_entry const &pool_vote : votes)
-        checkpoint.signatures.push_back(voter_to_signature(pool_vote.vote));
+        checkpoint.signatures.push_back(quorum_signature(pool_vote.vote.index_in_group, pool_vote.vote.signature));
     }
 
     if (update_checkpoint)

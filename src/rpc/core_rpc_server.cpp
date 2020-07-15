@@ -1669,7 +1669,7 @@ namespace cryptonote { namespace rpc {
         throw rpc_error{ERROR_WRONG_BLOCKBLOB, "Wrong block blob"};
       b.nonce = req.starting_nonce;
       miner::find_nonce_for_given_block([this](const cryptonote::block &b, uint64_t height, unsigned int threads, crypto::hash &hash) {
-        hash = cryptonote::get_block_longhash_w_blockchain(&(m_core.get_blockchain_storage()), b, height, threads);
+        hash = cryptonote::get_block_longhash_w_blockchain(cryptonote::FAKECHAIN, &(m_core.get_blockchain_storage()), b, height, threads);
         return true;
       }, b, template_res.difficulty, template_res.height);
 
@@ -1713,7 +1713,7 @@ namespace cryptonote { namespace rpc {
     response.miner_reward = blk.miner_tx.vout[0].amount;
     response.block_size = response.block_weight = m_core.get_blockchain_storage().get_db().get_block_weight(height);
     response.num_txes = blk.tx_hashes.size();
-    response.pow_hash = fill_pow_hash ? string_tools::pod_to_hex(get_block_longhash_w_blockchain(&(m_core.get_blockchain_storage()), blk, height, 0)) : "";
+    response.pow_hash = fill_pow_hash ? string_tools::pod_to_hex(get_block_longhash_w_blockchain(m_core.get_nettype(), &(m_core.get_blockchain_storage()), blk, height, 0)) : "";
     response.long_term_weight = m_core.get_blockchain_storage().get_db().get_block_long_term_weight(height);
     response.miner_tx_hash = string_tools::pod_to_hex(cryptonote::get_transaction_hash(blk.miner_tx));
     response.service_node_winner = string_tools::pod_to_hex(cryptonote::get_service_node_winner_from_tx_extra(blk.miner_tx.extra));

@@ -990,18 +990,26 @@ namespace cryptonote
     bl.timestamp = 0;
     bl.nonce = nonce;
     miner::find_nonce_for_given_block([](const cryptonote::block &b, uint64_t height, unsigned int threads, crypto::hash &hash){
-      hash = cryptonote::get_block_longhash(cryptonote::randomx_longhash_context(NULL, b, height), b, height, threads);
+      hash = cryptonote::get_block_longhash(UNDEFINED, cryptonote::randomx_longhash_context(NULL, b, height), b, height, threads);
       return true;
     }, bl, 1, 0);
     bl.invalidate_hashes();
     return true;
   }
   //---------------------------------------------------------------
-  crypto::hash get_altblock_longhash(randomx_longhash_context const &randomx_context, const block& b, uint64_t height)
+  crypto::hash get_altblock_longhash(cryptonote::network_type nettype, randomx_longhash_context const &randomx_context, const block& b, uint64_t height)
   {
-    blobdata bd = get_block_hashing_blob(b);
-    crypto::hash result;
-    rx_slow_hash(randomx_context.current_blockchain_height, randomx_context.seed_height, randomx_context.seed_block_hash.data, bd.data(), bd.size(), result.data, 0, 1);
+    crypto::hash result = {};
+    if (nettype == FAKECHAIN || b.major_version < network_version_12_checkpointing)
+    {
+      result = get_block_longhash(nettype, randomx_context, b, height, 0);
+    }
+    else
+    {
+      blobdata bd = get_block_hashing_blob(b);
+      rx_slow_hash(randomx_context.current_blockchain_height, randomx_context.seed_height, randomx_context.seed_block_hash.data, bd.data(), bd.size(), result.data, 0, 1);
+    }
+
     return result;
   }
 
@@ -1021,7 +1029,7 @@ namespace cryptonote
     }
   }
 
-  crypto::hash get_block_longhash(randomx_longhash_context const &randomx_context, const block& b, uint64_t height, int miners)
+  crypto::hash get_block_longhash(cryptonote::network_type nettype, randomx_longhash_context const &randomx_context, const block& b, uint64_t height, int miners)
   {
     crypto::hash result      = {};
     const blobdata bd        = get_block_hashing_blob(b);
@@ -1031,32 +1039,39 @@ namespace cryptonote
     miners = 0;
 #endif
 
-    if (hf_version >= network_version_12_checkpointing)
-    {
-      rx_slow_hash(randomx_context.current_blockchain_height,
-                   randomx_context.seed_height,
-                   randomx_context.seed_block_hash.data,
-                   bd.data(),
-                   bd.size(),
-                   result.data,
-                   miners,
-                   0);
-      return result;
-    }
-
     crypto::cn_slow_hash_type cn_type = cn_slow_hash_type::heavy_v1;
-    if (hf_version >= network_version_11_infinite_staking)
+    if (nettype == FAKECHAIN)
+    {
       cn_type = cn_slow_hash_type::turtle_lite_v2;
-    else if (hf_version >= network_version_7)
-      cn_type = crypto::cn_slow_hash_type::heavy_v2;
+    }
+    else
+    {
+      if (hf_version >= network_version_12_checkpointing)
+      {
+        rx_slow_hash(randomx_context.current_blockchain_height,
+                     randomx_context.seed_height,
+                     randomx_context.seed_block_hash.data,
+                     bd.data(),
+                     bd.size(),
+                     result.data,
+                     miners,
+                     0);
+        return result;
+      }
+
+      if (hf_version >= network_version_11_infinite_staking)
+        cn_type = cn_slow_hash_type::turtle_lite_v2;
+      else if (hf_version >= network_version_7)
+        cn_type = crypto::cn_slow_hash_type::heavy_v2;
+    }
 
     crypto::cn_slow_hash(bd.data(), bd.size(), result, cn_type);
     return result;
   }
 
-  crypto::hash get_block_longhash_w_blockchain(const Blockchain *pbc, const block& b, uint64_t height, int miners)
+  crypto::hash get_block_longhash_w_blockchain(cryptonote::network_type nettype, const Blockchain *pbc, const block& b, uint64_t height, int miners)
   {
-    crypto::hash result = get_block_longhash(randomx_longhash_context(pbc, b, height), b, height, miners);
+    crypto::hash result = get_block_longhash(nettype,randomx_longhash_context(pbc, b, height), b, height, miners);
     return result;
   }
 
