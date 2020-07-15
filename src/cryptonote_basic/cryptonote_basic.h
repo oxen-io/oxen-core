@@ -70,11 +70,7 @@ namespace service_nodes
 
 namespace cryptonote
 {
-  typedef std::vector<crypto::signature> ring_signature;
-
-
   /* outputs */
-
   struct txout_to_script
   {
     std::vector<crypto::public_key> keys;
