@@ -475,6 +475,22 @@ namespace service_nodes
 
   bool quorum_cop::block_added(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs, cryptonote::checkpoint_t const * /*checkpoint*/)
   {
+
+    try
+    {
+      m_core.request_peer_stats([](bool success, std::vector<std::string> data){
+        // TODO: how should we handle this? 
+        if (not success)
+          MWARNING("Failed to request peer stats from lokinet");
+
+        // TODO: parse and inspect peer stats
+      });
+    }
+    catch (const std::exception& e)
+    {
+      MERROR("caught exception while trying to request peer stats: " << e.what());
+    }
+
     process_quorums(block);
     uint64_t const height = cryptonote::get_block_height(block) + 1; // chain height = new top block height + 1
     m_vote_pool.remove_expired_votes(height);
