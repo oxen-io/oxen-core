@@ -150,6 +150,7 @@ lmq_rpc::lmq_rpc(cryptonote::core& core, core_rpc_server& rpc, const boost::prog
       request.context.admin = m.access.auth >= AuthLevel::admin;
       request.context.source = rpc_source::lmq;
       request.context.remote = m.remote;
+      request.context.lmq_connection_id = m.conn;
       request.body = m.data.empty() ? ""sv : m.data[0];
 
       try {
