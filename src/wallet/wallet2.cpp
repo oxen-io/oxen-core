@@ -35,7 +35,6 @@
 #include <mutex>
 #include <boost/format.hpp>
 #include <boost/asio/ip/address.hpp>
-#include <boost/range/adaptor/transformed.hpp>
 #include <boost/preprocessor/stringize.hpp>
 #include <openssl/evp.h>
 #include <type_traits>

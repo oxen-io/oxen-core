@@ -28,7 +28,6 @@
 
 #include "json_object.h"
 
-#include <boost/range/adaptor/transformed.hpp>
 #include <limits>
 #include <type_traits>
 #include "string_tools.h"
@@ -958,18 +957,16 @@ void fromJsonValue(const rapidjson::Value& val, cryptonote::rpc::BlockHeaderResp
 
 void toJsonValue(rapidjson::Document& doc, const rct::rctSig& sig, rapidjson::Value& val)
 {
-  using boost::adaptors::transform;
-
   val.SetObject();
 
-  const auto just_mask = [] (rct::ctkey const& key) -> rct::key const&
-  {
-    return key.mask;
-  };
+  std::vector<rct::key> pk_masks;
+  pk_masks.reserve(sig.outPk.size());
+  for (const auto& key : sig.outPk)
+    pk_masks.push_back(key.mask);
 
   insert_into_json_object(val, doc, "type", sig.type);
   insert_into_json_object(val, doc, "encrypted", sig.ecdhInfo);
-  insert_into_json_object(val, doc, "commitments", transform(sig.outPk, just_mask));
+  insert_into_json_object(val, doc, "commitments", pk_masks);
   insert_into_json_object(val, doc, "fee", sig.txnFee);
 
   // prunable
@@ -988,8 +985,6 @@ void toJsonValue(rapidjson::Document& doc, const rct::rctSig& sig, rapidjson::Va
 
 void fromJsonValue(const rapidjson::Value& val, rct::rctSig& sig)
 {
-  using boost::adaptors::transform;
-
   if (!val.IsObject())
   {
     throw WRONG_TYPE("json object");

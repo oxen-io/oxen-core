@@ -30,8 +30,6 @@
 #include <unistd.h>
 #include <sys/types.h>
 #ifdef _WIN32
-#include <boost/algorithm/string/join.hpp>
-#include <boost/scope_exit.hpp>
 #include <windows.h>
 #else
 #include <sys/wait.h>
@@ -71,7 +69,7 @@ static void closefrom(int fd)
 int spawn(const char *filename, const std::vector<std::string>& args, bool wait)
 {
 #ifdef _WIN32
-  std::string joined = boost::algorithm::join(args, " ");
+  std::string joined = tools::join(" ", args);
   char *commandLine = !joined.empty() ? &joined[0] : nullptr;
   STARTUPINFOA si = {};
   si.cb = sizeof(si);

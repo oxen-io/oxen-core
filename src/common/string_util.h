@@ -3,6 +3,7 @@
 #include <vector>
 #include <iterator>
 #include <charconv>
+#include <sstream>
 #include "span.h" // epee
 
 namespace tools {
@@ -52,6 +53,22 @@ std::vector<std::string_view> split(std::string_view str, std::string_view delim
 ///
 ///     auto v = split_any("abcdedf", "dcx"); // v is {"ab", "e", "f"}
 std::vector<std::string_view> split_any(std::string_view str, std::string_view delims, bool trim = false);
+
+/// Joins [begin, end) with a delimiter and returns the resulting string.  Elements can be anything
+/// that can be sent to an ostream via `<<`.
+template <typename It>
+std::string join(std::string_view delimiter, It begin, It end) {
+    std::ostringstream o;
+    if (begin != end)
+        o << *begin++;
+    while (begin != end)
+        o << delimiter << *begin++;
+    return o.str();
+}
+
+/// Wrapper around the above that takes a container and passes c.begin(), c.end() to the above.
+template <typename Container>
+std::string join(std::string_view delimiter, const Container& c) { return join(delimiter, c.begin(), c.end()); }
 
 /// Simple version of whitespace trimming: mutates the given string view to remove leading
 /// space, \t, \r, \n.  (More exotic and locale-dependent whitespace is not removed).
