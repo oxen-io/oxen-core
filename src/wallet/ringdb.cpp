@@ -28,8 +28,6 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <lmdb.h>
-#include <boost/algorithm/string.hpp>
-#include <boost/range/adaptor/transformed.hpp>
 #include <boost/filesystem.hpp>
 #include "common/file.h"
 #include "misc_log_ex.h"
@@ -380,9 +378,9 @@ bool ringdb::get_ring(const crypto::chacha_key &chacha_key, const crypto::key_im
     outs = decompress_ring(data_plaintext, 0);
   }
   MDEBUG("Found ring for key image " << key_image << ":");
-  MDEBUG("Relative: " << boost::join(outs | boost::adaptors::transformed([](uint64_t out){return std::to_string(out);}), " "));
+  MDEBUG("Relative: " << tools::join(" ", outs));
   outs = cryptonote::relative_output_offsets_to_absolute(outs);
-  MDEBUG("Absolute: " << boost::join(outs | boost::adaptors::transformed([](uint64_t out){return std::to_string(out);}), " "));
+  MDEBUG("Absolute: " << tools::join(" ", outs));
 
   dbr = mdb_txn_commit(txn);
   THROW_WALLET_EXCEPTION_IF(dbr, tools::error::wallet_internal_error, "Failed to commit txn getting ring from database: " + std::string(mdb_strerror(dbr)));

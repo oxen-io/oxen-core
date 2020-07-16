@@ -50,9 +50,7 @@
 #include <regex>
 #include <boost/lexical_cast.hpp>
 #include <boost/program_options.hpp>
-#include <boost/algorithm/string.hpp>
 #include <boost/format.hpp>
-#include <boost/range/adaptor/transformed.hpp>
 #include <lokimq/hex.h>
 #include "include_base_utils.h"
 #include "console_handler.h"
@@ -8296,6 +8294,10 @@ bool simple_wallet::show_transfers(const std::vector<std::string> &args_)
 
     auto formatter = boost::format("%8.8s %6.6s %8.8s %12.12s %16.16s %20.20s %s %s %14.14s %s %s - %s");
 
+    std::vector<uint32_t> subaddr_minors;
+    std::transform(transfer.subaddr_indices.begin(), transfer.subaddr_indices.end(), std::back_inserter(subaddr_minors),
+        [](const auto& index) { return index.minor; });
+
     message_writer(color, false) << formatter
       % (transfer.type.size() ? transfer.type : (transfer.height == 0 && transfer.blink_mempool) ? "blink" : std::to_string(transfer.height))
       % tools::pay_type_string(transfer.pay_type)
@@ -8307,7 +8309,7 @@ bool simple_wallet::show_transfers(const std::vector<std::string> &args_)
       % transfer.payment_id
       % print_money(transfer.fee)
       % destinations
-      % boost::algorithm::join(transfer.subaddr_indices | boost::adaptors::transformed([](const cryptonote::subaddress_index& index) { return std::to_string(index.minor); }), ", ")
+      % tools::join(", ", subaddr_minors)
       % transfer.note;
   }
 
@@ -8778,7 +8780,7 @@ bool simple_wallet::account(const std::vector<std::string> &args/* = std::vector
   if (command == "new")
   {
     // create a new account and switch to it
-    std::string label = boost::join(local_args, " ");
+    std::string label = tools::join(" ", local_args);
     if (label.empty())
       label = tr("(Untitled account)");
     m_wallet->add_subaddress_account(label);
@@ -8815,7 +8817,7 @@ bool simple_wallet::account(const std::vector<std::string> &args/* = std::vector
       return true;
     }
     local_args.erase(local_args.begin());
-    std::string label = boost::join(local_args, " ");
+    std::string label = tools::join(" ", local_args);
     try
     {
       m_wallet->set_subaddress_label({index_major, 0}, label);
@@ -8881,7 +8883,7 @@ bool simple_wallet::account(const std::vector<std::string> &args/* = std::vector
     if (local_args.size() > 1)
     {
       local_args.erase(local_args.begin());
-      description = boost::join(local_args, " ");
+      description = tools::join(" ", local_args);
     }
     try
     {
@@ -8996,7 +8998,7 @@ bool simple_wallet::print_address(const std::vector<std::string> &args/* = std::
     local_args.erase(local_args.begin());
     std::string label;
     if (local_args.size() > 0)
-      label = boost::join(local_args, " ");
+      label = tools::join(" ", local_args);
     if (label.empty())
       label = tr("(Untitled address)");
     m_wallet->add_subaddress(m_current_subaddress_account, label);
@@ -9017,7 +9019,7 @@ bool simple_wallet::print_address(const std::vector<std::string> &args/* = std::
     }
     local_args.erase(local_args.begin());
     local_args.erase(local_args.begin());
-    std::string label = boost::join(local_args, " ");
+    std::string label = tools::join(" ", local_args);
     m_wallet->set_subaddress_label({m_current_subaddress_account, index}, label);
     print_address_sub(index);
   }
