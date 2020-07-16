@@ -3,11 +3,13 @@
 #include "crypto/crypto.h"
 #include "cryptonote_config.h"
 #include "service_node_voting.h"
+#include <chrono>
 
 namespace service_nodes {
-  constexpr size_t PULSE_QUORUM_ENTROPY_LAG             = 21; // How many blocks back from the tip of the Blockchain to source entropy for the Pulse quorums.
-  constexpr size_t PULSE_QUORUM_NUM_VALIDATORS          = 0;
-  constexpr size_t PULSE_QUORUM_SIZE                    = PULSE_QUORUM_NUM_VALIDATORS + 1 /*Leader*/;
+  constexpr auto PULSE_TIME_PER_BLOCK          = std::chrono::minutes(2);
+  constexpr size_t PULSE_QUORUM_ENTROPY_LAG    = 21; // How many blocks back from the tip of the Blockchain to source entropy for the Pulse quorums.
+  constexpr size_t PULSE_QUORUM_NUM_VALIDATORS = 0;
+  constexpr size_t PULSE_QUORUM_SIZE           = PULSE_QUORUM_NUM_VALIDATORS + 1 /*Leader*/;
   
   constexpr size_t pulse_min_service_nodes(cryptonote::network_type nettype)
   {

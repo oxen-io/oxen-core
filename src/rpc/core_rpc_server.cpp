@@ -1546,7 +1546,7 @@ namespace cryptonote { namespace rpc {
       if (!epee::string_tools::hex_to_pod(req.prev_block, prev_block))
         throw rpc_error{ERROR_INTERNAL, "Invalid prev_block"};
     }
-    if(!m_core.get_block_template(b, req.prev_block.empty() ? NULL : &prev_block, info.address, diff, res.height, res.expected_reward, blob_reserve))
+    if(!m_core.create_miner_block_template(b, req.prev_block.empty() ? NULL : &prev_block, info.address, diff, res.height, res.expected_reward, blob_reserve))
     {
       LOG_ERROR("Failed to create block template");
       throw rpc_error{ERROR_INTERNAL, "Internal error: failed to create block template"};

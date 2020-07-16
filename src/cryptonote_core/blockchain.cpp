@@ -1514,7 +1514,7 @@ uint64_t Blockchain::get_current_cumulative_block_weight_median() const
 //      unchanged for the time being.
 //
 // This function makes a new block for a miner to mine the hash for
-bool Blockchain::create_block_template(block& b, const crypto::hash *from_block, const account_public_address& miner_address, difficulty_type& diffic, uint64_t& height, uint64_t& expected_reward, const blobdata& ex_nonce)
+bool Blockchain::create_block_template_internal(block& b, const crypto::hash *from_block, const block_template_info& info, difficulty_type& diffic, uint64_t& height, uint64_t& expected_reward, const blobdata& ex_nonce)
 {
   LOG_PRINT_L3("Blockchain::" << __func__);
   size_t median_weight;
@@ -1522,12 +1522,13 @@ bool Blockchain::create_block_template(block& b, const crypto::hash *from_block,
   uint64_t pool_cookie;
 
   auto lock = tools::unique_locks(m_tx_pool, *this);
-  if (m_btc_valid && !from_block) {
+  if (0 && m_btc_valid && !from_block)
+  {
     // The pool cookie is atomic. The lack of locking is OK, as if it changes
     // just as we compare it, we'll just use a slightly old template, but
     // this would be the case anyway if we'd lock, and the change happened
     // just after the block template was created
-    if (!memcmp(&miner_address, &m_btc_address, sizeof(cryptonote::account_public_address)) && m_btc_nonce == ex_nonce
+    if (!memcmp(&info.miner_address, &m_btc_address, sizeof(cryptonote::account_public_address)) && m_btc_nonce == ex_nonce
       && m_btc_pool_cookie == m_tx_pool.cookie() && m_btc.prev_id == get_tail_id()) {
       MDEBUG("Using cached template");
       const uint64_t now = time(NULL);
@@ -1539,7 +1540,7 @@ bool Blockchain::create_block_template(block& b, const crypto::hash *from_block,
       expected_reward = m_btc_expected_reward;
       return true;
     }
-    MDEBUG("Not using cached template: address " << (!memcmp(&miner_address, &m_btc_address, sizeof(cryptonote::account_public_address))) << ", nonce " << (m_btc_nonce == ex_nonce) << ", cookie " << (m_btc_pool_cookie == m_tx_pool.cookie()) << ", from_block " << (!!from_block));
+    MDEBUG("Not using cached template: address " << (!memcmp(&info.miner_address, &m_btc_address, sizeof(cryptonote::account_public_address))) << ", nonce " << (m_btc_nonce == ex_nonce) << ", cookie " << (m_btc_pool_cookie == m_tx_pool.cookie()) << ", from_block " << (!!from_block));
     invalidate_block_template_cache();
   }
 
@@ -1633,7 +1634,10 @@ bool Blockchain::create_block_template(block& b, const crypto::hash *from_block,
    */
   //make blocks coin-base tx looks close to real coinbase tx to get truthful blob weight
   uint8_t hf_version = b.major_version;
-  auto miner_tx_context = loki_miner_tx_context::miner_block(m_nettype, miner_address, m_service_node_list.get_block_leader());
+  auto miner_tx_context =
+      info.is_miner
+          ? loki_miner_tx_context::miner_block(m_nettype, info.miner_address, m_service_node_list.get_block_leader())
+          : loki_miner_tx_context::pulse_block(m_nettype, info.service_node_payout, m_service_node_list.get_block_leader());
   if (!calc_batched_governance_reward(height, miner_tx_context.batched_governance))
   {
     LOG_ERROR("Failed to calculate batched governance reward");
@@ -1678,16 +1682,36 @@ bool Blockchain::create_block_template(block& b, const crypto::hash *from_block,
     CHECK_AND_ASSERT_MES(cumulative_weight == txs_weight + get_transaction_weight(b.miner_tx), false, "unexpected case: cumulative_weight=" << cumulative_weight << " is not equal txs_cumulative_weight=" << txs_weight << " + get_transaction_weight(b.miner_tx)=" << get_transaction_weight(b.miner_tx));
 
     if (!from_block)
-      cache_block_template(b, miner_address, ex_nonce, diffic, height, expected_reward, pool_cookie);
+      cache_block_template(b, info.miner_address, ex_nonce, diffic, height, expected_reward, pool_cookie);
     return true;
   }
   LOG_ERROR("Failed to create_block_template with " << 10 << " tries");
   return false;
 }
 //------------------------------------------------------------------
-bool Blockchain::create_next_block_template(block& b, const account_public_address& miner_address, difficulty_type& diffic, uint64_t& height, uint64_t& expected_reward, const blobdata& ex_nonce)
+bool Blockchain::create_miner_block_template(block& b, const crypto::hash *from_block, const account_public_address& miner_address, difficulty_type& diffic, uint64_t& height, uint64_t& expected_reward, const blobdata& ex_nonce)
 {
-  return create_block_template(b, NULL, miner_address, diffic, height, expected_reward, ex_nonce);
+  block_template_info info = {};
+  info.is_miner            = true;
+  info.miner_address       = miner_address;
+  return create_block_template_internal(b, from_block, info, diffic, height, expected_reward, ex_nonce);
+}
+//------------------------------------------------------------------
+bool Blockchain::create_next_miner_block_template(block& b, const account_public_address& miner_address, difficulty_type& diffic, uint64_t& height, uint64_t& expected_reward, const blobdata& ex_nonce)
+{
+  block_template_info info = {};
+  info.is_miner            = true;
+  info.miner_address       = miner_address;
+  return create_block_template_internal(b, NULL /*from_block*/, info, diffic, height, expected_reward, ex_nonce);
+}
+//------------------------------------------------------------------
+bool Blockchain::create_next_pulse_block_template(block& b, const service_nodes::payout& block_producer, uint64_t& height, uint64_t& expected_reward)
+{
+  block_template_info info = {};
+  info.service_node_payout = block_producer;
+  uint64_t diffic          = 0;
+  blobdata nonce           = {};
+  return create_block_template_internal(b, NULL /*from_block*/, info, diffic, height, expected_reward, nonce);
 }
 //------------------------------------------------------------------
 // for an alternate chain, get the timestamps from the main chain to complete
@@ -4307,7 +4331,7 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
   }
 
   abort_block.cancel();
-  if (bl.signatures.size())
+  if (bl.signatures.size() == service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES)
   {
     MINFO("+++++ PULSE BLOCK SUCCESSFULLY ADDED\n"
                    << "id:\t" << id << "\n"
@@ -4319,6 +4343,7 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
   }
   else
   {
+    assert(bl.signatures.empty() && "Signatures were supposted to be checked in Service Node List already.");
     MINFO("+++++ MINER BLOCK SUCCESSFULLY ADDED\n"
                    << "id:\t" << id << "\n"
                    << "PoW:\t" << proof_of_work << "\n"
