@@ -83,17 +83,21 @@ namespace cryptonote
   // has been set up but before it starts listening.  Return an opaque pointer (void *) that gets
   // passed into all the other callbacks below so that the callbacks can recast it into whatever it
   // should be.
-  extern void* (*quorumnet_new)(core& core);
+  using quorumnet_new_proc = void *(core &core);
   // Destroys the quorumnet state; called on shutdown *after* the LokiMQ object has been destroyed.
   // Should destroy the state object and set the pointer reference to nullptr.
-  extern void (*quorumnet_delete)(void*& self);
+  using quorumnet_delete_proc = void (void *&self);
   // Relays votes via quorumnet.
-  extern void (*quorumnet_relay_obligation_votes)(void *self, const std::vector<service_nodes::quorum_vote_t> &votes);
+  using quorumnet_relay_obligation_votes_proc = void (void *self, const std::vector<service_nodes::quorum_vote_t> &votes);
   // Sends a blink tx to the current blink quorum, returns a future that can be used to wait for the
   // result.
-  extern std::future<std::pair<blink_result, std::string>> (*quorumnet_send_blink)(core& core, const std::string& tx_blob);
-  extern bool init_core_callback_complete;
+  using quorumnet_send_blink_proc = std::future<std::pair<blink_result, std::string>> (core& core, const std::string& tx_blob);
 
+  extern quorumnet_new_proc *quorumnet_new;
+  extern quorumnet_delete_proc *quorumnet_delete;
+  extern quorumnet_relay_obligation_votes_proc *quorumnet_relay_obligation_votes;
+  extern quorumnet_send_blink_proc *quorumnet_send_blink;
+  extern bool init_core_callback_complete;
 
   /************************************************************************/
   /*                                                                      */
