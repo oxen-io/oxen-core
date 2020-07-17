@@ -39,6 +39,8 @@
 #include "misc_log_ex.h"
 #include "util.h"
 #include "spawn.h"
+#include "loki.h"
+#include "string_util.h"
 
 #undef LOKI_DEFAULT_LOG_CATEGORY
 #define LOKI_DEFAULT_LOG_CATEGORY "spawn"
@@ -46,6 +48,7 @@
 namespace tools
 {
 
+#ifndef _WIN32
 static void closefrom(int fd)
 {
 #if defined __FreeBSD__ || defined __OpenBSD__ || defined __NetBSD__ || defined __DragonFly__
@@ -64,6 +67,7 @@ static void closefrom(int fd)
   }
 #endif
 }
+#endif
 
 
 int spawn(const char *filename, const std::vector<std::string>& args, bool wait)
@@ -80,12 +84,10 @@ int spawn(const char *filename, const std::vector<std::string>& args, bool wait)
     return -1;
   }
   
-  BOOST_SCOPE_EXIT(&pi)
-  {
+  LOKI_DEFER {
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);
-  }
-  BOOST_SCOPE_EXIT_END
+  };
 
   if (!wait)
   {

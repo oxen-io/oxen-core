@@ -104,6 +104,12 @@ add_library(uSockets STATIC EXCLUDE_FROM_ALL ${usockets_src})
 target_compile_definitions(uSockets PRIVATE LIBUS_NO_SSL=1)
 target_include_directories(uSockets PRIVATE uWebSockets/uSockets/src)
 
+# On Windows uSockets uses libuv for its event loop:
+if (WIN32)
+  add_subdirectory(libuv EXCLUDE_FROM_ALL)
+  target_link_libraries(uSockets uv_a)
+endif()
+
 
 # The uWebSockets C++ layer is header-only but isn't actually prefixed in the repository itself, but
 # rather only on install (which, as above, is just a very simple Makefile).  This is unfortunate
