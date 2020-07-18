@@ -389,7 +389,11 @@ namespace cryptonote::rpc {
     std::string call_duration;
     if (time_logging)
       call_duration = " in " + tools::friendly_duration(std::chrono::steady_clock::now() - start);
-    MINFO("HTTP RPC " << data.uri << " [" << data.request.context.remote << "] OK (" << result.size() << " bytes)" << call_duration);
+    if (LOG_ENABLED(Info)) {
+      size_t bytes = 0;
+      for (const auto& r : result) bytes += r.size();
+      MINFO("HTTP RPC " << data.uri << " [" << data.request.context.remote << "] OK (" << bytes << " bytes)" << call_duration);
+    }
 
     queue_response(std::move(dataptr), std::move(result));
   }
@@ -567,6 +571,7 @@ namespace cryptonote::rpc {
     request.context.admin = !m_restricted;
     request.context.source = rpc_source::http;
     request.context.remote = get_remote_address(res);
+    MTRACE("Received " << req.getMethod() << " " << req.getUrl() << " request from " << request.context.remote);
 
     res.onAborted([data] { data->aborted = true; });
     res.onData([buffer=""s, data=std::move(data)](std::string_view d, bool done) mutable {
