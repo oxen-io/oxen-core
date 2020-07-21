@@ -97,7 +97,6 @@ namespace cryptonote
   extern quorumnet_delete_proc *quorumnet_delete;
   extern quorumnet_relay_obligation_votes_proc *quorumnet_relay_obligation_votes;
   extern quorumnet_send_blink_proc *quorumnet_send_blink;
-  extern bool init_core_callback_complete;
 
   /************************************************************************/
   /*                                                                      */

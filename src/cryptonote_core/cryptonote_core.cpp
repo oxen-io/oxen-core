@@ -277,18 +277,11 @@ namespace cryptonote
   [[noreturn]] static void need_core_init() {
       throw std::logic_error("Internal error: quorumnet::init_core_callbacks() should have been called");
   }
-  quorumnet_new_proc *quorumnet_new;
-  quorumnet_delete_proc *quorumnet_delete;
-  quorumnet_relay_obligation_votes_proc *quorumnet_relay_obligation_votes;
-  quorumnet_send_blink_proc *quorumnet_send_blink;
-  static bool init_core_callback_stubs() {
-    quorumnet_new = [](core&) -> void* { need_core_init(); };
-    quorumnet_delete = [](void*&) { need_core_init(); };
-    quorumnet_relay_obligation_votes = [](void*, const std::vector<service_nodes::quorum_vote_t>&) { need_core_init(); };
-    quorumnet_send_blink = [](core&, const std::string&) -> std::future<std::pair<blink_result, std::string>> { need_core_init(); };
-    return false;
-  }
-  bool init_core_callback_complete = init_core_callback_stubs();
+
+  quorumnet_new_proc *quorumnet_new = [](core&) -> void* { need_core_init(); };
+  quorumnet_delete_proc *quorumnet_delete = [](void*&) { need_core_init(); };
+  quorumnet_relay_obligation_votes_proc *quorumnet_relay_obligation_votes = [](void*, const std::vector<service_nodes::quorum_vote_t>&) { need_core_init(); };
+  quorumnet_send_blink_proc *quorumnet_send_blink = [](core&, const std::string&) -> std::future<std::pair<blink_result, std::string>> { need_core_init(); };
 
   //-----------------------------------------------------------------------------------------------
   core::core()
