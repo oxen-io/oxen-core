@@ -34,6 +34,7 @@ add_library(wallet
   node_rpc_proxy.cpp
   message_store.cpp
   message_transporter.cpp
+  transfer_view.cpp
 )
 
 target_link_libraries(wallet

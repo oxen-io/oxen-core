@@ -875,9 +875,9 @@ bool get_short_payment_id(crypto::hash8 &payment_id8, const tools::wallet2::pend
   return false;
 }
 
-tools::wallet2::tx_construction_data get_construction_data_with_decrypted_short_payment_id(const tools::wallet2::pending_tx &ptx, hw::device &hwdev)
+wallet::tx_construction_data get_construction_data_with_decrypted_short_payment_id(const tools::wallet2::pending_tx &ptx, hw::device &hwdev)
 {
-  tools::wallet2::tx_construction_data construction_data = ptx.construction_data;
+  wallet::tx_construction_data construction_data = ptx.construction_data;
   crypto::hash8 payment_id = null_hash8;
   if (get_short_payment_id(payment_id, ptx, hwdev))
   {
@@ -1779,7 +1779,7 @@ void wallet2::scan_output(const cryptonote::transaction &tx, bool miner_tx, cons
   uint64_t unlock_time = tx.get_unlock_time(vout_index);
 
   tx_money_got_in_out entry = {};
-  entry.type                = pay_type::in;
+  entry.type                = wallet::pay_type::in;
   entry.index               = tx_scan_info.received->index;
   entry.amount              = tx_scan_info.money_transfered;
   entry.unlock_time         = unlock_time;
@@ -1787,9 +1787,9 @@ void wallet2::scan_output(const cryptonote::transaction &tx, bool miner_tx, cons
   if (cryptonote::is_coinbase(tx))
   {
     // TODO(doyle): When batched governance comes in, this needs to check that the TX has a governance output, can't assume last one is governance
-    if      (vout_index == 0)                  entry.type = pay_type::miner;
-    // else if (vout_index == tx.vout.size() - 1) entry.type = pay_type::governance;
-    else                                       entry.type = pay_type::service_node;
+    if      (vout_index == 0)                  entry.type = wallet::pay_type::miner;
+    // else if (vout_index == tx.vout.size() - 1) entry.type = wallet::pay_type::governance;
+    else                                       entry.type = wallet::pay_type::service_node;
   }
 
   tx_money_got_in_outs.push_back(entry);
@@ -2540,7 +2540,7 @@ void wallet2::process_unconfirmed(const crypto::hash &txid, const cryptonote::tr
         // TODO(doyle): LNS introduces tx type stake, we can use this to quickly determine if a transaction is staking
         // transaction without having to parse tx_extra.
         bool stake = service_nodes::tx_get_staking_components(tx, nullptr /*stake*/);
-        tools::pay_type pay_type = stake ? tools::pay_type::stake : tools::pay_type::out;
+        wallet::pay_type pay_type = stake ? wallet::pay_type::stake : wallet::pay_type::out;
         m_confirmed_txs.insert(std::make_pair(txid, confirmed_transfer_details(unconf_it->second, height)));
       }
       catch (...) {
@@ -2580,7 +2580,7 @@ void wallet2::process_outgoing(const crypto::hash &txid, const cryptonote::trans
     entry.first->second.m_subaddr_indices = subaddr_indices;
 
     bool stake = service_nodes::tx_get_staking_components(tx, nullptr /*stake*/);
-    entry.first->second.m_pay_type = stake ? tools::pay_type::stake : tools::pay_type::out;
+    entry.first->second.m_pay_type = stake ? wallet::pay_type::stake : wallet::pay_type::out;
   }
 
   entry.first->second.m_rings.clear();
@@ -6221,7 +6221,7 @@ void wallet2::get_transfers(wallet2::transfer_container& incoming_transfers) con
   incoming_transfers = m_transfers;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-static void set_confirmations(transfer_view &entry, uint64_t blockchain_height, uint64_t block_reward)
+static void set_confirmations(wallet::transfer_view &entry, uint64_t blockchain_height, uint64_t block_reward)
 {
   if (entry.height >= blockchain_height || (entry.height == 0 && (entry.blink_mempool || entry.type == "pending" || entry.type == "pool")))
     entry.confirmations = 0;
@@ -6234,9 +6234,9 @@ static void set_confirmations(transfer_view &entry, uint64_t blockchain_height, 
     entry.suggested_confirmations_threshold = (entry.amount + block_reward - 1) / block_reward;
 }
 //----------------------------------------------------------------------------------------------------
-transfer_view wallet2::make_transfer_view(const crypto::hash &txid, const crypto::hash &payment_id, const tools::wallet2::payment_details &pd) const
+wallet::transfer_view wallet2::make_transfer_view(const crypto::hash &txid, const crypto::hash &payment_id, const tools::wallet2::payment_details &pd) const
 {
-  transfer_view result = {};
+  wallet::transfer_view result = {};
   result.txid = string_tools::pod_to_hex(pd.m_tx_hash);
   result.hash = txid;
   result.payment_id = string_tools::pod_to_hex(payment_id);
@@ -6264,9 +6264,9 @@ transfer_view wallet2::make_transfer_view(const crypto::hash &txid, const crypto
   return result;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-transfer_view wallet2::wallet2::make_transfer_view(const crypto::hash &txid, const tools::wallet2::confirmed_transfer_details &pd) const
+wallet::transfer_view wallet2::wallet2::make_transfer_view(const crypto::hash &txid, const tools::wallet2::confirmed_transfer_details &pd) const
 {
-  transfer_view result = {};
+  wallet::transfer_view result = {};
   result.txid = string_tools::pod_to_hex(txid);
   result.hash = txid;
   result.payment_id = string_tools::pod_to_hex(pd.m_payment_id);
@@ -6283,7 +6283,7 @@ transfer_view wallet2::wallet2::make_transfer_view(const crypto::hash &txid, con
 
   for (const auto &d: pd.m_dests) {
     result.destinations.push_back({});
-    transfer_destination &td = result.destinations.back();
+    auto& td = result.destinations.back();
     td.amount = d.amount;
     td.address = d.address(nettype(), pd.m_payment_id);
   }
@@ -6299,9 +6299,9 @@ transfer_view wallet2::wallet2::make_transfer_view(const crypto::hash &txid, con
   return result;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-transfer_view wallet2::make_transfer_view(const crypto::hash &txid, const tools::wallet2::unconfirmed_transfer_details &pd) const
+wallet::transfer_view wallet2::make_transfer_view(const crypto::hash &txid, const tools::wallet2::unconfirmed_transfer_details &pd) const
 {
-  transfer_view result = {};
+  wallet::transfer_view result = {};
   bool is_failed = pd.m_state == tools::wallet2::unconfirmed_transfer_details::failed;
   result.txid = string_tools::pod_to_hex(txid);
   result.hash = txid;
@@ -6319,7 +6319,7 @@ transfer_view wallet2::make_transfer_view(const crypto::hash &txid, const tools:
 
   for (const auto &d: pd.m_dests) {
     result.destinations.push_back({});
-    transfer_destination &td = result.destinations.back();
+    auto& td = result.destinations.back();
     td.amount = d.amount;
     td.address = d.address(nettype(), pd.m_payment_id);
   }
@@ -6334,9 +6334,9 @@ transfer_view wallet2::make_transfer_view(const crypto::hash &txid, const tools:
   return result;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-transfer_view wallet2::make_transfer_view(const crypto::hash &payment_id, const tools::wallet2::pool_payment_details &ppd) const
+wallet::transfer_view wallet2::make_transfer_view(const crypto::hash &payment_id, const tools::wallet2::pool_payment_details &ppd) const
 {
-  transfer_view result = {};
+  wallet::transfer_view result = {};
   const tools::wallet2::payment_details &pd = ppd.m_pd;
   result.txid = string_tools::pod_to_hex(pd.m_tx_hash);
   result.hash = pd.m_tx_hash;
@@ -6351,7 +6351,7 @@ transfer_view wallet2::make_transfer_view(const crypto::hash &payment_id, const 
   result.fee = pd.m_fee;
   result.note = get_tx_note(pd.m_tx_hash);
   result.double_spend_seen = ppd.m_double_spend_seen;
-  result.pay_type = pay_type::unspecified;
+  result.pay_type = wallet::pay_type::unspecified;
   result.type = "pool";
   result.subaddr_index = pd.m_subaddr_index;
   result.subaddr_indices.push_back(pd.m_subaddr_index);
@@ -6360,7 +6360,7 @@ transfer_view wallet2::make_transfer_view(const crypto::hash &payment_id, const 
   return result;
 }
 //----------------------------------------------------------------------------------------------------
-void wallet2::get_transfers(get_transfers_args_t args, std::vector<transfer_view>& transfers)
+void wallet2::get_transfers(get_transfers_args_t args, std::vector<wallet::transfer_view>& transfers)
 {
   std::optional<uint32_t> account_index = args.account_index;
   if (args.all_accounts)
@@ -6418,7 +6418,7 @@ void wallet2::get_transfers(get_transfers_args_t args, std::vector<transfer_view
   {
     bool add_entry = true;
     if (args.stake && args_count == 1)
-      add_entry = o.second.m_pay_type == tools::pay_type::stake;
+      add_entry = o.second.m_pay_type == wallet::pay_type::stake;
 
     if (add_entry)
       transfers.push_back(make_transfer_view(o.first, o.second));
@@ -6432,7 +6432,7 @@ void wallet2::get_transfers(get_transfers_args_t args, std::vector<transfer_view
   for (const auto &p : pool)
     transfers.push_back(make_transfer_view(p.first, p.second));
 
-  std::sort(transfers.begin(), transfers.end(), [](const transfer_view& a, const transfer_view& b) -> bool {
+  std::sort(transfers.begin(), transfers.end(), [](const auto& a, const auto& b) -> bool {
     if (a.confirmed != b.confirmed)
       return a.confirmed;
     if (a.blink_mempool != b.blink_mempool)
@@ -6445,7 +6445,7 @@ void wallet2::get_transfers(get_transfers_args_t args, std::vector<transfer_view
   });
 }
 
-std::string wallet2::transfers_to_csv(const std::vector<transfer_view>& transfers, bool formatting) const
+std::string wallet2::transfers_to_csv(const std::vector<wallet::transfer_view>& transfers, bool formatting) const
 {
   uint64_t running_balance = 0;
   auto data_formatter  = boost::format("%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'%s',%s");
@@ -6489,16 +6489,16 @@ std::string wallet2::transfers_to_csv(const std::vector<transfer_view>& transfer
   {
     switch (transfer.pay_type)
     {
-      case tools::pay_type::in:
-      case tools::pay_type::miner:
-      case tools::pay_type::service_node:
-      case tools::pay_type::governance:
+      case wallet::pay_type::in:
+      case wallet::pay_type::miner:
+      case wallet::pay_type::service_node:
+      case wallet::pay_type::governance:
         running_balance += transfer.amount;
         break;
-      case tools::pay_type::stake:
+      case wallet::pay_type::stake:
         running_balance -= transfer.fee;
         break;
-      case tools::pay_type::out:
+      case wallet::pay_type::out:
         running_balance -= transfer.amount + transfer.fee;
         break;
       default:
@@ -6962,7 +6962,7 @@ void wallet2::add_unconfirmed_tx(const cryptonote::transaction& tx, uint64_t amo
   utd.m_subaddr_account = subaddr_account;
   utd.m_subaddr_indices = subaddr_indices;
   bool stake = service_nodes::tx_get_staking_components(tx, nullptr /*stake*/);
-  utd.m_pay_type = stake ? tools::pay_type::stake : tools::pay_type::out;
+  utd.m_pay_type = stake ? wallet::pay_type::stake : wallet::pay_type::out;
   for (const auto &in: tx.vin)
   {
     if (!std::holds_alternative<cryptonote::txin_to_key>(in))
@@ -7005,8 +7005,6 @@ crypto::hash wallet2::get_payment_id(const pending_tx &ptx) const
 // take a pending tx and actually send it to the daemon
 void wallet2::commit_tx(pending_tx& ptx, bool blink)
 {
-  using namespace cryptonote;
-  
   if(m_light_wallet) 
   {
     light_rpc::SUBMIT_RAW_TX::request oreq{};
@@ -7226,7 +7224,7 @@ bool wallet2::sign_tx(unsigned_tx_set &exported_txs, std::vector<wallet2::pendin
   // sign the transactions
   for (size_t n = 0; n < exported_txs.txes.size(); ++n)
   {
-    tools::wallet2::tx_construction_data &sd = exported_txs.txes[n];
+    auto &sd = exported_txs.txes[n];
     THROW_WALLET_EXCEPTION_IF(sd.sources.empty(), error::wallet_internal_error, "Empty sources");
     LOG_PRINT_L1(" " << (n+1) << ": " << sd.sources.size() << " inputs, ring size " << sd.sources[0].outputs.size());
     signed_txes.ptx.push_back(pending_tx());
@@ -7703,7 +7701,7 @@ bool wallet2::sign_multisig_tx(multisig_tx_set &exported_txs, std::vector<crypto
   {
     tools::wallet2::pending_tx &ptx = exported_txs.m_ptx[n];
     THROW_WALLET_EXCEPTION_IF(ptx.multisig_sigs.empty(), error::wallet_internal_error, "No signatures found in multisig tx");
-    tools::wallet2::tx_construction_data &sd = ptx.construction_data;
+    auto &sd = ptx.construction_data;
     LOG_PRINT_L1(" " << (n+1) << ": " << sd.sources.size() << " inputs, mixin " << (sd.sources[0].outputs.size()-1) <<
         ", signed by " << exported_txs.m_signers.size() << "/" << m_multisig_threshold);
     cryptonote::transaction tx;
@@ -9880,7 +9878,6 @@ void wallet2::transfer_selected_rct(std::vector<cryptonote::tx_destination_entry
   std::vector<std::vector<tools::wallet2::get_outs_entry>> &outs,
   uint64_t unlock_time, uint64_t fee, const std::vector<uint8_t>& extra, cryptonote::transaction& tx, pending_tx &ptx, const rct::RCTConfig &rct_config, const loki_construct_tx_params &tx_params)
 {
-  using namespace cryptonote;
   // throw if attempting a transaction with no destinations
   THROW_WALLET_EXCEPTION_IF(dsts.empty(), error::zero_destination);
 
@@ -10112,7 +10109,7 @@ void wallet2::transfer_selected_rct(std::vector<cryptonote::tx_destination_entry
   }
   THROW_WALLET_EXCEPTION_IF(ins_order.size() != sources.size(), error::wallet_internal_error, "Failed to work out sources permutation");
 
-  std::vector<tools::wallet2::multisig_sig> multisig_sigs;
+  std::vector<wallet::multisig_sig> multisig_sigs;
   if (m_multisig)
   {
     auto ignore = ignore_sets.empty() ? std::unordered_set<crypto::public_key>() : ignore_sets.front();
@@ -10628,7 +10625,7 @@ void wallet2::light_wallet_get_address_txs()
     address_tx.m_block_height = t.height;
     address_tx.m_unlock_time  = t.unlock_time;
     address_tx.m_timestamp = t.timestamp;
-    address_tx.m_type  = t.coinbase ? pay_type::miner : pay_type::in; // TODO(loki): Only accounts for miner, but wait, do we even care about this code? Looks like openmonero code
+    address_tx.m_type  = t.coinbase ? wallet::pay_type::miner : wallet::pay_type::in; // TODO(loki): Only accounts for miner, but wait, do we even care about this code? Looks like openmonero code
     address_tx.m_mempool  = t.mempool;
     m_light_wallet_address_txs.emplace(tx_hash,address_tx);
 
@@ -10644,7 +10641,7 @@ void wallet2::light_wallet_get_address_txs()
       payment.m_block_height = t.height;
       payment.m_unlock_time  = t.unlock_time;
       payment.m_timestamp = t.timestamp;
-      payment.m_type = t.coinbase ? pay_type::miner : pay_type::in; // TODO(loki): Only accounts for miner, but wait, do we even care about this code? Looks like openmonero code
+      payment.m_type = t.coinbase ? wallet::pay_type::miner : wallet::pay_type::in; // TODO(loki): Only accounts for miner, but wait, do we even care about this code? Looks like openmonero code
         
       if (t.mempool) {   
         if (std::find(unconfirmed_payments_txs.begin(), unconfirmed_payments_txs.end(), tx_hash) == unconfirmed_payments_txs.end()) {
@@ -13706,7 +13703,7 @@ uint64_t wallet2::import_key_images(const std::vector<std::pair<crypto::key_imag
       pd.m_block_height                = 0;                 // spent block height is unknown
       const crypto::hash &spent_txid   = crypto::null_hash; // spent txid is unknown
       bool stake                       = service_nodes::tx_get_staking_components(td.m_tx, nullptr /*stake*/, td.m_txid);
-      pd.m_pay_type = stake ? tools::pay_type::stake : tools::pay_type::out;
+      pd.m_pay_type = stake ? wallet::pay_type::stake : wallet::pay_type::out;
       m_confirmed_txs.insert(std::make_pair(spent_txid, pd));
     }
     PERF_TIMER_STOP(import_key_images_G);
@@ -14102,7 +14099,7 @@ crypto::key_image wallet2::get_multisig_composite_key_image(size_t n) const
 //----------------------------------------------------------------------------------------------------
 cryptonote::blobdata wallet2::export_multisig()
 {
-  std::vector<tools::wallet2::multisig_info> info;
+  std::vector<wallet::multisig_info> info;
 
   const crypto::public_key signer = get_multisig_signer_public_key();
 
@@ -14151,7 +14148,7 @@ cryptonote::blobdata wallet2::export_multisig()
   return ciphertext;
 }
 //----------------------------------------------------------------------------------------------------
-void wallet2::update_multisig_rescan_info(const std::vector<std::vector<rct::key>> &multisig_k, const std::vector<std::vector<tools::wallet2::multisig_info>> &info, size_t n)
+void wallet2::update_multisig_rescan_info(const std::vector<std::vector<rct::key>> &multisig_k, const std::vector<std::vector<wallet::multisig_info>> &info, size_t n)
 {
   CHECK_AND_ASSERT_THROW_MES(n < m_transfers.size(), "Bad index in update_multisig_info");
   CHECK_AND_ASSERT_THROW_MES(multisig_k.size() >= m_transfers.size(), "Mismatched sizes of multisig_k and info");
@@ -14177,7 +14174,7 @@ size_t wallet2::import_multisig(std::vector<cryptonote::blobdata> blobs)
 {
   CHECK_AND_ASSERT_THROW_MES(m_multisig, "Wallet is not multisig");
 
-  std::vector<std::vector<tools::wallet2::multisig_info>> info;
+  std::vector<std::vector<wallet::multisig_info>> info;
   std::unordered_set<crypto::public_key> seen;
   for (cryptonote::blobdata &data: blobs)
   {
@@ -14211,7 +14208,7 @@ size_t wallet2::import_multisig(std::vector<cryptonote::blobdata> blobs)
     body.remove_prefix(headerlen);
     std::stringstream iss;
     iss << body;
-    std::vector<tools::wallet2::multisig_info> i;
+    std::vector<wallet::multisig_info> i;
     boost::archive::portable_binary_iarchive ar(iss);
     ar >> i;
     MINFO(i.size() << " outputs found");
@@ -14250,7 +14247,7 @@ size_t wallet2::import_multisig(std::vector<cryptonote::blobdata> blobs)
   // sort by signer
   if (!info.empty() && !info.front().empty())
   {
-    std::sort(info.begin(), info.end(), [](const std::vector<tools::wallet2::multisig_info> &i0, const std::vector<tools::wallet2::multisig_info> &i1){ return memcmp(&i0[0].m_signer, &i1[0].m_signer, sizeof(i0[0].m_signer)); });
+    std::sort(info.begin(), info.end(), [](const std::vector<wallet::multisig_info> &i0, const std::vector<wallet::multisig_info> &i1){ return memcmp(&i0[0].m_signer, &i1[0].m_signer, sizeof(i0[0].m_signer)); });
   }
 
   // first pass to determine where to detach the blockchain

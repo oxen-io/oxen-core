@@ -307,7 +307,7 @@ namespace tools
         balance_per_subaddress_per_account[req.account_index] = m_wallet->balance_per_subaddress(req.account_index, req.strict);
         unlocked_balance_per_subaddress_per_account[req.account_index] = m_wallet->unlocked_balance_per_subaddress(req.account_index, req.strict);
       }
-      std::vector<tools::wallet2::transfer_details> transfers;
+      std::vector<wallet::transfer_details> transfers;
       m_wallet->get_transfers(transfers);
       for (const auto& p : balance_per_subaddress_per_account)
       {
@@ -336,7 +336,7 @@ namespace tools
           info.blocks_to_unlock = unlocked_balance_per_subaddress[i].second.first;
           info.time_to_unlock = unlocked_balance_per_subaddress[i].second.second;
           info.label = m_wallet->get_subaddress_label(index);
-          info.num_unspent_outputs = std::count_if(transfers.begin(), transfers.end(), [&](const tools::wallet2::transfer_details& td) { return !td.m_spent && td.m_subaddr_index == index; });
+          info.num_unspent_outputs = std::count_if(transfers.begin(), transfers.end(), [&](const wallet::transfer_details& td) { return !td.m_spent && td.m_subaddr_index == index; });
           res.per_subaddress.emplace_back(std::move(info));
         }
       }
@@ -377,7 +377,7 @@ namespace tools
         info.address = m_wallet->get_subaddress_as_str(index);
         info.label = m_wallet->get_subaddress_label(index);
         info.address_index = index.minor;
-        info.used = std::find_if(transfers.begin(), transfers.end(), [&](const tools::wallet2::transfer_details& td) { return td.m_subaddr_index == index; }) != transfers.end();
+        info.used = std::find_if(transfers.begin(), transfers.end(), [&](const wallet::transfer_details& td) { return td.m_subaddr_index == index; }) != transfers.end();
       }
       res.address = m_wallet->get_subaddress_as_str({req.account_index, 0});
     }
@@ -648,7 +648,7 @@ namespace tools
   }
 
   //------------------------------------------------------------------------------------------------------------------------------
-  bool wallet_rpc_server::validate_transfer(const std::list<transfer_destination>& destinations, const std::string& payment_id, std::vector<cryptonote::tx_destination_entry>& dsts, std::vector<uint8_t>& extra, bool at_least_one_destination, epee::json_rpc::error& er)
+  bool wallet_rpc_server::validate_transfer(const std::list<wallet::transfer_destination>& destinations, const std::string& payment_id, std::vector<cryptonote::tx_destination_entry>& dsts, std::vector<uint8_t>& extra, bool at_least_one_destination, epee::json_rpc::error& er)
   {
     crypto::hash8 integrated_payment_id = crypto::null_hash8;
     std::string extra_nonce;
@@ -703,7 +703,7 @@ namespace tools
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
-  static std::string ptx_to_string(const tools::wallet2::pending_tx &ptx)
+  static std::string ptx_to_string(const wallet::pending_tx &ptx)
   {
     std::ostringstream oss;
     boost::archive::portable_binary_oarchive ar(oss);
@@ -737,7 +737,7 @@ namespace tools
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
-  static uint64_t total_amount(const tools::wallet2::pending_tx &ptx)
+  static uint64_t total_amount(const wallet::pending_tx &ptx)
   {
     uint64_t amount = 0;
     for (const auto &dest: ptx.dests) amount += dest.amount;
@@ -745,7 +745,7 @@ namespace tools
   }
   //------------------------------------------------------------------------------------------------------------------------------
   template<typename Ts, typename Tu>
-  bool wallet_rpc_server::fill_response(std::vector<tools::wallet2::pending_tx> &ptx_vector,
+  bool wallet_rpc_server::fill_response(std::vector<wallet::pending_tx> &ptx_vector,
       bool get_tx_key, Ts& tx_key, Tu &amount, Tu &fee, std::string &multisig_txset, std::string &unsigned_txset, bool do_not_relay, bool blink,
       Ts &tx_hash, bool get_tx_hex, Ts &tx_blob, bool get_tx_metadata, Ts &tx_metadata, epee::json_rpc::error &er)
   {
@@ -954,7 +954,7 @@ namespace tools
       return false;
     }
 
-    tools::wallet2::unsigned_tx_set exported_txs;
+    wallet::unsigned_tx_set exported_txs;
     if(!m_wallet->parse_unsigned_tx_from_str(blob, exported_txs))
     {
       er.code = WALLET_RPC_ERROR_CODE_BAD_UNSIGNED_TX_DATA;
@@ -962,10 +962,10 @@ namespace tools
       return false;
     }
 
-    std::vector<tools::wallet2::pending_tx> ptxs;
+    std::vector<wallet::pending_tx> ptxs;
     try
     {
-      tools::wallet2::signed_tx_set signed_txs;
+      wallet::signed_tx_set signed_txs;
       std::string ciphertext = m_wallet->sign_tx_dump_to_str(exported_txs, ptxs, signed_txs);
       if (ciphertext.empty())
       {
@@ -1033,10 +1033,10 @@ namespace tools
       return false;
     }
 
-    std::vector <wallet2::tx_construction_data> tx_constructions;
+    std::vector <wallet::tx_construction_data> tx_constructions;
     if (!req.unsigned_txset.empty()) {
       try {
-        tools::wallet2::unsigned_tx_set exported_txs;
+        wallet::unsigned_tx_set exported_txs;
         cryptonote::blobdata blob;
         if (!epee::string_tools::parse_hexstr_to_binbuff(req.unsigned_txset, blob)) {
           er.code = WALLET_RPC_ERROR_CODE_BAD_HEX;
@@ -1057,7 +1057,7 @@ namespace tools
       }
     } else if (!req.multisig_txset.empty()) {
       try {
-        tools::wallet2::multisig_tx_set exported_txs;
+        wallet::multisig_tx_set exported_txs;
         cryptonote::blobdata blob;
         if (!epee::string_tools::parse_hexstr_to_binbuff(req.multisig_txset, blob)) {
           er.code = WALLET_RPC_ERROR_CODE_BAD_HEX;
@@ -1088,7 +1088,7 @@ namespace tools
       int first_known_non_zero_change_index = -1;
       for (size_t n = 0; n < tx_constructions.size(); ++n)
       {
-        const tools::wallet2::tx_construction_data &cd = tx_constructions[n];
+        const auto &cd = tx_constructions[n];
         res.desc.push_back({0, 0, std::numeric_limits<uint32_t>::max(), 0, {}, "", 0, "", 0, 0, ""});
         wallet_rpc::COMMAND_RPC_DESCRIBE_TRANSFER::transfer_description &desc = res.desc.back();
 
@@ -1155,7 +1155,7 @@ namespace tools
           {
             if (first_known_non_zero_change_index == -1)
               first_known_non_zero_change_index = n;
-            const tools::wallet2::tx_construction_data &cdn = tx_constructions[first_known_non_zero_change_index];
+            const auto &cdn = tx_constructions[first_known_non_zero_change_index];
             if (memcmp(&cd.change_dts.addr, &cdn.change_dts.addr, sizeof(cd.change_dts.addr)))
             {
               er.code = WALLET_RPC_ERROR_CODE_BAD_UNSIGNED_TX_DATA;
@@ -1183,7 +1183,7 @@ namespace tools
 
         if (desc.change_amount > 0)
         {
-          const tools::wallet2::tx_construction_data &cd0 = tx_constructions[0];
+          const auto &cd0 = tx_constructions[0];
           desc.change_address = get_account_address_as_str(m_wallet->nettype(), cd0.subaddr_account > 0, cd0.change_dts.addr);
         }
 
@@ -1226,7 +1226,7 @@ namespace tools
       return false;
     }
 
-    std::vector<tools::wallet2::pending_tx> ptx_vector;
+    std::vector<wallet::pending_tx> ptx_vector;
     try
     {
       bool r = m_wallet->parse_tx_from_str(blob, ptx_vector, nullptr);
@@ -1301,8 +1301,8 @@ namespace tools
     }
 
     // validate the transfer requested and populate dsts & extra
-    std::list<transfer_destination> destination;
-    destination.push_back({});
+    std::list<wallet::transfer_destination> destination;
+    destination.emplace_back();
     destination.back().amount = 0;
     destination.back().address = req.address;
     if (!validate_transfer(destination, req.payment_id, dsts, extra, true, er))
@@ -1368,8 +1368,8 @@ namespace tools
     }
 
     // validate the transfer requested and populate dsts & extra
-    std::list<transfer_destination> destination;
-    destination.push_back(transfer_destination());
+    std::list<wallet::transfer_destination> destination;
+    destination.emplace_back();
     destination.back().amount = 0;
     destination.back().address = req.address;
     if (!validate_transfer(destination, req.payment_id, dsts, extra, true, er))
@@ -1442,7 +1442,7 @@ namespace tools
       return false;
     }
 
-    tools::wallet2::pending_tx ptx;
+    wallet::pending_tx ptx;
     try
     {
       std::istringstream iss(blob);
@@ -2323,21 +2323,21 @@ namespace tools
     args.account_index    = req.account_index;
     args.all_accounts     = req.all_accounts;
 
-    std::vector<transfer_view> transfers;
+    std::vector<wallet::transfer_view> transfers;
     m_wallet->get_transfers(args, transfers);
 
-    for (tools::transfer_view const &entry : transfers)
+    for (wallet::transfer_view const &entry : transfers)
     {
       // TODO(loki): This discrepancy between having to use pay_type if type is
       // empty and type if pay type is neither is super unintuitive.
-      if (entry.pay_type == tools::pay_type::in ||
-          entry.pay_type == tools::pay_type::miner ||
-          entry.pay_type == tools::pay_type::governance ||
-          entry.pay_type == tools::pay_type::service_node)
+      if (entry.pay_type == wallet::pay_type::in ||
+          entry.pay_type == wallet::pay_type::miner ||
+          entry.pay_type == wallet::pay_type::governance ||
+          entry.pay_type == wallet::pay_type::service_node)
       {
         res.in.push_back(entry);
       }
-      else if (entry.pay_type == tools::pay_type::out || entry.pay_type == tools::pay_type::stake)
+      else if (entry.pay_type == wallet::pay_type::out || entry.pay_type == wallet::pay_type::stake)
       {
         res.out.push_back(entry);
       }
@@ -2375,7 +2375,7 @@ namespace tools
     args.account_index = req.account_index;
     args.all_accounts = req.all_accounts;
 
-    std::vector<transfer_view> transfers;
+    std::vector<wallet::transfer_view> transfers;
     m_wallet->get_transfers(args, transfers);
 
     const bool formatting = false;
@@ -2858,7 +2858,7 @@ namespace tools
 
     rpc::START_MINING::request daemon_req{}; 
     daemon_req.miner_address = m_wallet->get_account().get_public_address_str(m_wallet->nettype());
-    daemon_req.threads_count        = req.threads_count;
+    daemon_req.threads_count = req.threads_count;
 
     rpc::START_MINING::response daemon_res{};
     bool r = m_wallet->invoke_http<rpc::START_MINING>(daemon_req, daemon_res);
@@ -3866,7 +3866,7 @@ namespace tools
       return false;
     }
 
-    tools::wallet2::multisig_tx_set txs;
+    wallet::multisig_tx_set txs;
     bool r = m_wallet->load_multisig_tx(blob, txs, nullptr);
     if (!r)
     {

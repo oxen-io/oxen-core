@@ -288,7 +288,7 @@ namespace trezor {
     }
 
     void device_trezor::ki_sync(wallet_shim * wallet,
-                                const std::vector<tools::wallet2::transfer_details> & transfers,
+                                const std::vector<wallet::transfer_details> & transfers,
                                 hw::device_cold::exported_key_image & ski)
     {
 #define EVENT_PROGRESS(P) do { if (m_callback) {(m_callback)->on_progress(device_cold::op_progress(P)); } }while(0)
@@ -485,8 +485,8 @@ namespace trezor {
     }
 
     void device_trezor::tx_sign(wallet_shim * wallet,
-                                const tools::wallet2::unsigned_tx_set & unsigned_tx,
-                                tools::wallet2::signed_tx_set & signed_tx,
+                                const wallet::unsigned_tx_set & unsigned_tx,
+                                wallet::signed_tx_set & signed_tx,
                                 hw::tx_aux_data & aux_data)
     {
       CHECK_AND_ASSERT_THROW_MES(unsigned_tx.transfers.first == 0, "Unsuported non zero offset");
@@ -573,7 +573,7 @@ namespace trezor {
     }
 
     void device_trezor::tx_sign(wallet_shim * wallet,
-                   const tools::wallet2::unsigned_tx_set & unsigned_tx,
+                   const wallet::unsigned_tx_set & unsigned_tx,
                    size_t idx,
                    hw::tx_aux_data & aux_data,
                    std::shared_ptr<protocol::tx::Signer> & signer)
@@ -591,7 +591,7 @@ namespace trezor {
 
       CHECK_AND_ASSERT_THROW_MES(idx < unsigned_tx.txes.size(), "Invalid transaction index");
       signer = std::make_shared<protocol::tx::Signer>(wallet, &unsigned_tx, idx, &aux_data);
-      const tools::wallet2::tx_construction_data & cur_tx = unsigned_tx.txes[idx];
+      const auto& cur_tx = unsigned_tx.txes[idx];
       unsigned long num_sources = cur_tx.sources.size();
       unsigned long num_outputs = cur_tx.splitted_dsts.size();
 
@@ -695,7 +695,7 @@ namespace trezor {
       return client_version;
     }
 
-    void device_trezor::transaction_versions_check(const ::tools::wallet2::unsigned_tx_set & unsigned_tx, hw::tx_aux_data & aux_data)
+    void device_trezor::transaction_versions_check(const wallet::unsigned_tx_set & unsigned_tx, hw::tx_aux_data & aux_data)
     {
       unsigned cversion = client_version();
 

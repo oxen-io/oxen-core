@@ -33,7 +33,8 @@
 #include "cryptonote_basic/cryptonote_basic.h"
 #include "cryptonote_basic/subaddress_index.h"
 #include "wallet_rpc_server_error_codes.h"
-#include "wallet2.h"
+#include "wallet/transfer_destination.h"
+#include "wallet/transfer_view.h"
 
 #include "common/loki.h"
 
@@ -461,7 +462,7 @@ namespace wallet_rpc
   {
     struct request
     {
-      std::list<transfer_destination> destinations; // Array of destinations to receive LOKI.
+      std::list<wallet::transfer_destination> destinations; // Array of destinations to receive LOKI.
       uint32_t account_index;                       // (Optional) Transfer from this account index. (Defaults to 0)
       std::set<uint32_t> subaddr_indices;           // (Optional) Transfer from this set of subaddresses. (Defaults to 0)
       uint32_t priority;                            // Set a priority for the transaction. Accepted values are: 1 for unimportant or 5 for blink.  (0 and 2-4 are accepted for backwards compatibility and are equivalent to 5)
@@ -518,7 +519,7 @@ namespace wallet_rpc
   {
     struct request
     {
-      std::list<transfer_destination> destinations; // Array of destinations to receive LOKI:
+      std::list<wallet::transfer_destination> destinations; // Array of destinations to receive LOKI:
       uint32_t account_index;                       // (Optional) Transfer from this account index. (Defaults to 0)
       std::set<uint32_t> subaddr_indices;           // (Optional) Transfer from this set of subaddresses. (Defaults to 0)
       uint32_t priority;                            // Set a priority for the transaction. Accepted values are: 1 for unimportant or 5 for blink.  (0 and 2-4 are accepted for backwards compatibility and are equivalent to 5)
@@ -1531,11 +1532,11 @@ namespace wallet_rpc
 
     struct response
     {
-      std::list<transfer_view> in;      // 
-      std::list<transfer_view> out;     //
-      std::list<transfer_view> pending; //
-      std::list<transfer_view> failed;  //
-      std::list<transfer_view> pool;    // 
+      std::list<wallet::transfer_view> in;      //
+      std::list<wallet::transfer_view> out;     //
+      std::list<wallet::transfer_view> pending; //
+      std::list<wallet::transfer_view> failed;  //
+      std::list<wallet::transfer_view> pool;    //
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(in);
@@ -1580,8 +1581,8 @@ namespace wallet_rpc
 
     struct response
     {
-      transfer_view transfer;             // 
-      std::list<transfer_view> transfers; // 
+      wallet::transfer_view transfer;             //
+      std::list<wallet::transfer_view> transfers; //
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(transfer);

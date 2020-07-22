@@ -1326,7 +1326,7 @@ bool simple_wallet::import_multisig_main(const std::vector<std::string> &args, b
 bool simple_wallet::accept_loaded_tx(const tools::wallet2::multisig_tx_set &txs)
 {
   std::string extra_message;
-  return accept_loaded_tx([&txs](){return txs.m_ptx.size();}, [&txs](size_t n)->const tools::wallet2::tx_construction_data&{return txs.m_ptx[n].construction_data;}, extra_message);
+  return accept_loaded_tx([&txs](){return txs.m_ptx.size();}, [&txs](size_t n)->const wallet::tx_construction_data&{return txs.m_ptx[n].construction_data;}, extra_message);
 }
 
 bool simple_wallet::sign_multisig(const std::vector<std::string> &args)
@@ -2084,7 +2084,7 @@ bool simple_wallet::frozen(const std::vector<std::string> &args)
     {
       if (!m_wallet->frozen(i))
         continue;
-      const tools::wallet2::transfer_details &td = m_wallet->get_transfer_details(i);
+      const auto& td = m_wallet->get_transfer_details(i);
       message_writer() << tr("Frozen: ") << td.m_key_image << " " << cryptonote::print_money(td.amount());
     }
   }
@@ -5124,13 +5124,13 @@ bool simple_wallet::show_balance_unlocked(bool detailed)
     return true;
   success_msg_writer() << tr("Balance per address:");
   success_msg_writer() << boost::format("%15s %21s %21s %7s %21s") % tr("Address") % tr("Balance") % tr("Unlocked balance") % tr("Outputs") % tr("Label");
-  std::vector<tools::wallet2::transfer_details> transfers;
+  std::vector<wallet::transfer_details> transfers;
   m_wallet->get_transfers(transfers);
   for (const auto& i : balance_per_subaddress)
   {
     cryptonote::subaddress_index subaddr_index = {m_current_subaddress_account, i.first};
     std::string address_str = m_wallet->get_subaddress_as_str(subaddr_index).substr(0, 6);
-    uint64_t num_unspent_outputs = std::count_if(transfers.begin(), transfers.end(), [&subaddr_index](const tools::wallet2::transfer_details& td) { return !td.m_spent && td.m_subaddr_index == subaddr_index; });
+    uint64_t num_unspent_outputs = std::count_if(transfers.begin(), transfers.end(), [&subaddr_index](const wallet::transfer_details& td) { return !td.m_spent && td.m_subaddr_index == subaddr_index; });
     success_msg_writer() << boost::format(tr("%8u %6s %21s %21s %7u %21s")) % i.first % address_str % print_money(i.second) % print_money(unlocked_balance_per_subaddress[i.first].first) % num_unspent_outputs % m_wallet->get_subaddress_label(subaddr_index);
   }
   return true;
@@ -5458,7 +5458,7 @@ bool simple_wallet::process_ring_members(const std::vector<tools::wallet2::pendi
   for (size_t n = 0; n < ptx_vector.size(); ++n)
   {
     const cryptonote::transaction& tx = ptx_vector[n].tx;
-    const tools::wallet2::tx_construction_data& construction_data = ptx_vector[n].construction_data;
+    const wallet::tx_construction_data& construction_data = ptx_vector[n].construction_data;
     if (verbose)
       ostr << boost::format(tr("\nTransaction %llu/%llu: txid=%s")) % (n + 1) % ptx_vector.size() % cryptonote::get_transaction_hash(tx);
     // for each input
@@ -5469,7 +5469,7 @@ bool simple_wallet::process_ring_members(const std::vector<tools::wallet2::pendi
       if (!std::holds_alternative<cryptonote::txin_to_key>(tx.vin[i]))
         continue;
       const cryptonote::txin_to_key& in_key = std::get<cryptonote::txin_to_key>(tx.vin[i]);
-      const tools::wallet2::transfer_details &td = m_wallet->get_transfer_details(construction_data.selected_transfers[i]);
+      const wallet::transfer_details &td = m_wallet->get_transfer_details(construction_data.selected_transfers[i]);
       const cryptonote::tx_source_entry *sptr = NULL;
       for (const auto &src: construction_data.sources)
         if (src.outputs[src.real_output].second.dest == td.get_public_key())
@@ -7382,7 +7382,7 @@ bool simple_wallet::sweep_below(const std::vector<std::string> &args_)
   return sweep_main(m_current_subaddress_account, below, Transfer::Normal, std::vector<std::string>(++args_.begin(), args_.end()));
 }
 //----------------------------------------------------------------------------------------------------
-bool simple_wallet::accept_loaded_tx(const std::function<size_t()> get_num_txes, const std::function<const tools::wallet2::tx_construction_data&(size_t)> &get_tx, const std::string &extra_message)
+bool simple_wallet::accept_loaded_tx(const std::function<size_t()> get_num_txes, const std::function<const wallet::tx_construction_data&(size_t)> &get_tx, const std::string &extra_message)
 {
   // gather info to ask the user
   uint64_t amount = 0, amount_to_dests = 0, change = 0;
@@ -7392,7 +7392,7 @@ bool simple_wallet::accept_loaded_tx(const std::function<size_t()> get_num_txes,
   std::string payment_id_string = "";
   for (size_t n = 0; n < get_num_txes(); ++n)
   {
-    const tools::wallet2::tx_construction_data &cd = get_tx(n);
+    const wallet::tx_construction_data &cd = get_tx(n);
 
     std::vector<tx_extra_field> tx_extra_fields;
     bool has_encrypted_payment_id = false;
@@ -7534,7 +7534,7 @@ bool simple_wallet::accept_loaded_tx(const tools::wallet2::unsigned_tx_set &txs)
   std::string extra_message;
   if (!txs.transfers.second.empty())
     extra_message = (boost::format("%u outputs to import. ") % (unsigned)txs.transfers.second.size()).str();
-  return accept_loaded_tx([&txs](){return txs.txes.size();}, [&txs](size_t n)->const tools::wallet2::tx_construction_data&{return txs.txes[n];}, extra_message);
+  return accept_loaded_tx([&txs](){return txs.txes.size();}, [&txs](size_t n)->const wallet::tx_construction_data&{return txs.txes[n];}, extra_message);
 }
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::accept_loaded_tx(const tools::wallet2::signed_tx_set &txs)
@@ -7542,7 +7542,7 @@ bool simple_wallet::accept_loaded_tx(const tools::wallet2::signed_tx_set &txs)
   std::string extra_message;
   if (!txs.key_images.empty())
     extra_message = (boost::format("%u key images to import. ") % (unsigned)txs.key_images.size()).str();
-  return accept_loaded_tx([&txs](){return txs.ptx.size();}, [&txs](size_t n)->const tools::wallet2::tx_construction_data&{return txs.ptx[n].construction_data;}, extra_message);
+  return accept_loaded_tx([&txs](){return txs.ptx.size();}, [&txs](size_t n)->const wallet::tx_construction_data&{return txs.ptx[n].construction_data;}, extra_message);
 }
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::sign_transfer(const std::vector<std::string> &args_)
@@ -8220,7 +8220,7 @@ static bool parse_get_transfers_args(std::vector<std::string>& local_args, tools
 }
 //----------------------------------------------------------------------------------------------------
 // mutates local_args as it parses and consumes arguments
-bool simple_wallet::get_transfers(std::vector<std::string>& local_args, std::vector<tools::transfer_view>& transfers)
+bool simple_wallet::get_transfers(std::vector<std::string>& local_args, std::vector<wallet::transfer_view>& transfers)
 {
   tools::wallet2::get_transfers_args_t args = {};
   if (!parse_get_transfers_args(local_args, args))
@@ -8245,7 +8245,7 @@ bool simple_wallet::show_transfers(const std::vector<std::string> &args_)
 
   LOCK_IDLE_SCOPE();
 
-  std::vector<tools::transfer_view> all_transfers;
+  std::vector<wallet::transfer_view> all_transfers;
 
   if (!get_transfers(local_args, all_transfers))
     return true;
@@ -8258,12 +8258,12 @@ bool simple_wallet::show_transfers(const std::vector<std::string> &args_)
     {
       switch (transfer.pay_type)
       {
-        case tools::pay_type::in:           color = epee::console_color_green; break;
-        case tools::pay_type::out:          color = epee::console_color_yellow; break;
-        case tools::pay_type::miner:        color = epee::console_color_cyan; break;
-        case tools::pay_type::governance:   color = epee::console_color_cyan; break;
-        case tools::pay_type::stake:        color = epee::console_color_blue; break;
-        case tools::pay_type::service_node: color = epee::console_color_cyan; break;
+        case wallet::pay_type::in:           color = epee::console_color_green; break;
+        case wallet::pay_type::out:          color = epee::console_color_yellow; break;
+        case wallet::pay_type::miner:        color = epee::console_color_cyan; break;
+        case wallet::pay_type::governance:   color = epee::console_color_cyan; break;
+        case wallet::pay_type::stake:        color = epee::console_color_blue; break;
+        case wallet::pay_type::service_node: color = epee::console_color_cyan; break;
         default:                            color = epee::console_color_magenta; break;
       }
     }
@@ -8280,10 +8280,10 @@ bool simple_wallet::show_transfers(const std::vector<std::string> &args_)
         if (!destinations.empty())
           destinations += ", ";
 
-        if (transfer.pay_type == tools::pay_type::in ||
-            transfer.pay_type == tools::pay_type::governance ||
-            transfer.pay_type == tools::pay_type::service_node ||
-            transfer.pay_type == tools::pay_type::miner)
+        if (transfer.pay_type == wallet::pay_type::in ||
+            transfer.pay_type == wallet::pay_type::governance ||
+            transfer.pay_type == wallet::pay_type::service_node ||
+            transfer.pay_type == wallet::pay_type::miner)
           destinations += output.address.substr(0, 6);
         else
           destinations += output.address;
@@ -8300,7 +8300,7 @@ bool simple_wallet::show_transfers(const std::vector<std::string> &args_)
 
     message_writer(color, false) << formatter
       % (transfer.type.size() ? transfer.type : (transfer.height == 0 && transfer.blink_mempool) ? "blink" : std::to_string(transfer.height))
-      % tools::pay_type_string(transfer.pay_type)
+      % wallet::pay_type_string(transfer.pay_type)
       % transfer.lock_msg
       % (transfer.checkpointed ? "checkpointed" : transfer.was_blink ? "blink" : "no")
       % tools::get_human_readable_timestamp(transfer.timestamp)
@@ -8328,7 +8328,7 @@ bool simple_wallet::export_transfers(const std::vector<std::string>& args_)
 
   LOCK_IDLE_SCOPE();
 
-  std::vector<tools::transfer_view> all_transfers;
+  std::vector<wallet::transfer_view> all_transfers;
 
   // might consumes arguments in local_args
   if (!get_transfers(local_args, all_transfers))
@@ -8976,7 +8976,7 @@ bool simple_wallet::print_address(const std::vector<std::string> &args/* = std::
   {
     bool used = std::find_if(
       transfers.begin(), transfers.end(),
-      [this, &index](const tools::wallet2::transfer_details& td) {
+      [this, &index](const wallet::transfer_details& td) {
         return td.m_subaddr_index == cryptonote::subaddress_index{ m_current_subaddress_account, index };
       }) != transfers.end();
     success_msg_writer() << index << "  " << m_wallet->get_subaddress_as_str({m_current_subaddress_account, index}) << "  " << (index == 0 ? tr("Primary address") : m_wallet->get_subaddress_label({m_current_subaddress_account, index})) << " " << (used ? tr("(used)") : "");
