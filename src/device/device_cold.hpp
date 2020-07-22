@@ -30,10 +30,16 @@
 #ifndef MONERO_DEVICE_COLD_H
 #define MONERO_DEVICE_COLD_H
 
-#include "wallet/wallet2.h"
+#include "crypto/crypto.h"
+#include "cryptonote_basic/cryptonote_format_utils.h"
 #include <optional>
 #include <functional>
 
+namespace tools::wallet2 {
+struct transfer_details;
+struct unsigned_tx_set;
+struct signed_tx_set;
+}
 
 namespace hw {
 
