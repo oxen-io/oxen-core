@@ -43,7 +43,6 @@
 #include "readline_buffer.h"
 #include "string_util.h"
 
-#include <boost/asio.hpp>
 #include <boost/format.hpp>
 #include "i18n.h"
 
@@ -211,45 +210,12 @@ namespace tools
 
   bool is_local_address(const std::string &address)
   {
-    // always assume Tor/I2P addresses to be untrusted by default
-    if (tools::ends_with(address, ".onion") || tools::ends_with(address, ".i2p"))
-    {
-      MDEBUG("Address '" << address << "' is Tor/I2P, non local");
-      return false;
-    }
-
-    // extract host
-    epee::net_utils::http::url_content u_c;
-    if (!epee::net_utils::parse_url(address, u_c))
-    {
-      MWARNING("Failed to determine whether address '" << address << "' is local, assuming not");
-      return false;
-    }
-    if (u_c.host.empty())
-    {
-      MWARNING("Failed to determine whether address '" << address << "' is local, assuming not");
-      return false;
-    }
-
-    // resolve to IP
-    boost::asio::io_service io_service;
-    boost::asio::ip::tcp::resolver resolver(io_service);
-    boost::asio::ip::tcp::resolver::query query(u_c.host, "");
-    boost::asio::ip::tcp::resolver::iterator i = resolver.resolve(query);
-    while (i != boost::asio::ip::tcp::resolver::iterator())
-    {
-      const boost::asio::ip::tcp::endpoint &ep = *i;
-      if (ep.address().is_loopback())
-      {
-        MDEBUG("Address '" << address << "' is local");
-        return true;
-      }
-      ++i;
-    }
-
-    MDEBUG("Address '" << address << "' is not local");
-    return false;
+    return address == "localhost"sv
+        || (tools::starts_with(address, "127."sv) && address.find_first_not_of("0123456789."sv) == std::string::npos)
+        || address == "::1"sv
+        || address == "[::1]"sv; // There are other uncommon ways to specify localhost (e.g. 0::1, ::0001) but don't worry about them.
   }
+
   int vercmp(std::string_view v0, std::string_view v1)
   {
     auto f0 = tools::split_any(v0, ".-");
