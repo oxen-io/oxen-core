@@ -43,7 +43,6 @@
 #include "readline_buffer.h"
 #include "string_util.h"
 
-#include <boost/format.hpp>
 #include "i18n.h"
 
 #ifdef __GLIBC__
@@ -311,34 +310,18 @@ namespace tools
 
   std::string get_human_readable_bytes(uint64_t bytes)
   {
-    struct byte_map
-    {
-        const char* const format;
-        const std::uint64_t bytes;
-    };
-
-    static constexpr const byte_map sizes[] =
-    {
-        {"%.0f B", 1000},
-        {"%.2f KB", 1000 * 1000},
-        {"%.2f MB", std::uint64_t(1000) * 1000 * 1000},
-        {"%.2f GB", std::uint64_t(1000) * 1000 * 1000 * 1000},
-        {"%.2f TB", std::uint64_t(1000) * 1000 * 1000 * 1000 * 1000}
-    };
-
-    struct bytes_less
-    {
-        bool operator()(const byte_map& lhs, const byte_map& rhs) const noexcept
-        {
-            return lhs.bytes < rhs.bytes;
-        }
-    };
-
-    const auto size = std::upper_bound(
-        std::begin(sizes), std::end(sizes) - 1, byte_map{"", bytes}, bytes_less{}
-    );
-    const std::uint64_t divisor = size->bytes / 1000;
-    return (boost::format(size->format) % (double(bytes) / divisor)).str();
+    if (bytes < 1000) return std::to_string(bytes) + " B";
+    constexpr std::array units{" kB", " MB", " GB", " TB"};
+    double b = bytes;
+    for (const auto& suffix : units) {
+      b /= 1000.;
+      if (b < 1000.) {
+        std::ostringstream o;
+        o << std::fixed << std::setprecision(2) << b;
+        return o.str() + suffix;
+      }
+    }
+    return std::to_string(std::lround(b)) + units.back();
   }
 
   // Calculate a "sync weight" over ranges of blocks in the blockchain, suitable for
