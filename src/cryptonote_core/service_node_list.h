@@ -32,6 +32,7 @@
 #include <mutex>
 #include <shared_mutex>
 #include <string_view>
+#include <lokimq/bt_serialize.h>
 #include "serialization/serialization.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
 #include "cryptonote_core/service_node_rules.h"
@@ -66,7 +67,7 @@ namespace service_nodes
   // tracks lokinet's PeerStats struct and is used to reflect the behavior of a service node's peers on the lokinet network
   struct lokinet_peer_stats
   {
-    crypto::ed25519_public_key router_id = crypto::ed25519_public_key::null();
+    std::string router_id;
 
     int32_t num_connection_attempts = 0;
     int32_t num_connection_successes = 0;
@@ -87,7 +88,12 @@ namespace service_nodes
     std::chrono::milliseconds least_rc_remaining_lifetime = 0ms;
     std::chrono::milliseconds last_rc_updated = 0ms;
 
+    // Decodes a peerstats into this existing struct
     void bt_decode(std::string_view data);
+    void bt_decode(const lokimq::bt_dict& dict);
+
+    // Decodes a list of peer stats
+    static std::unordered_map<crypto::ed25519_public_key, lokinet_peer_stats> bt_decode_list(std::string_view data);
   };
 
   struct proof_info

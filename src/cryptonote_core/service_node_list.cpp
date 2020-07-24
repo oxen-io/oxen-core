@@ -34,6 +34,8 @@
 #include <boost/endian/conversion.hpp>
 
 #include <lokimq/bt_serialize.h>
+#include <lokimq/base32z.h>
+#include <stdexcept>
 
 extern "C" {
 #include <sodium.h>
@@ -1961,6 +1963,12 @@ namespace service_nodes
 
   void lokinet_peer_stats::bt_decode(std::string_view data)
   {
+    bt_decode(lokimq::bt_deserialize<lokimq::bt_dict>(data));
+  }
+
+  void lokinet_peer_stats::bt_decode(const lokimq::bt_dict& dict)
+  {
+    constexpr auto RouterIdKey = "RouterIdKey";
     constexpr auto NumConnectionAttemptsKey = "numConnectionAttempts";
     constexpr auto NumConnectionSuccessesKey = "numConnectionSuccesses";
     constexpr auto NumConnectionRejectionsKey = "numConnectionRejections";
@@ -1977,10 +1985,9 @@ namespace service_nodes
     constexpr auto LeastRCRemainingLifetimeKey = "leastRCRemainingLifetime";
     constexpr auto LastRCUpdatedKey = "lastRCUpdated";
 
-    auto dict = lokimq::bt_deserialize<lokimq::bt_dict>(data);
-
-    // TODO: router_id
     // TODO: validation -- do we reject if we don't get a full message? or types are wrong?
+
+    router_id = std::get<std::string>(dict.at(RouterIdKey));
 
     num_connection_attempts = lokimq::get_int<int32_t>(dict.at(NumConnectionAttemptsKey));
     num_connection_successes = lokimq::get_int<int32_t>(dict.at(NumConnectionSuccessesKey));
@@ -2000,6 +2007,54 @@ namespace service_nodes
     longest_rc_receive_interval = std::chrono::milliseconds(lokimq::get_int<int64_t>(dict.at(LongestRCReceiveIntervalKey)));
     least_rc_remaining_lifetime = std::chrono::milliseconds(lokimq::get_int<int64_t>(dict.at(LeastRCRemainingLifetimeKey)));
     last_rc_updated = std::chrono::milliseconds(lokimq::get_int<int64_t>(dict.at(LastRCUpdatedKey)));
+  }
+
+  std::unordered_map<crypto::ed25519_public_key, lokinet_peer_stats> lokinet_peer_stats::bt_decode_list(std::string_view data)
+  {
+    // this is expected to be encoded as:
+    // dict [router_id -> [dict representing peer stats, e.g. lokinet_peer_stats::bt_decode()]]
+
+    std::unordered_map<crypto::ed25519_public_key, lokinet_peer_stats> stats_map;
+
+    // TODO: this should live elsewhere if it needs to be reused (or properly unit tested)
+    auto parse_router_id = [](std::string_view router_id) {
+
+      // lokinet's RouterID is serialized as 32 bytes base32z encoded (52 chars), followed by ".snode"
+      // 52 chars for pubkey and 6 for ".snode"
+      if (router_id.size() != 58)
+        throw std::invalid_argument("invalid router_id length");
+
+      std::string_view encoded = router_id.substr(0, 52);
+      std::string_view tld = router_id.substr(52);
+
+      if (tld != ".snode")
+        throw std::invalid_argument("invalid routerId tld");
+
+      std::string raw = lokimq::from_base32z(encoded.begin(), encoded.end());
+      if (raw.size() != sizeof(crypto::ed25519_public_key::data))
+        throw std::invalid_argument("routerId contains invalid pubkey");
+
+      // TODO: byte order?
+      crypto::ed25519_public_key pubkey;
+      memcpy(pubkey.data, raw.data(), sizeof(crypto::ed25519_public_key::data));
+
+      return pubkey;
+    };
+
+    auto dict = lokimq::bt_deserialize<lokimq::bt_dict>(data);
+    for (auto [router_id, value] : dict)
+    {
+      if (not std::holds_alternative<lokimq::bt_dict>(value))
+        throw std::invalid_argument("invalid bt-encoded list of stats, dict contains invalid entry");
+
+      auto pubkey = parse_router_id(router_id);
+
+      lokinet_peer_stats stats;
+      stats.bt_decode(std::get<lokimq::bt_dict>(value));
+      stats_map[pubkey] = std::move(stats);
+    }
+
+    return stats_map;
   }
 
 #ifdef __cpp_lib_erase_if // # (C++20)
