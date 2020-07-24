@@ -103,9 +103,6 @@ namespace service_nodes
   // Decodes a list of peer stats
   peer_stats_map bt_decode_peer_stats_map(std::string_view data);
 
-  // makes a request to lokinet to retrieve peer stats for a given list of service nodes
-  std::future<peer_stats_map> request_peer_stats(const cryptonote::core& core, std::vector<std::string> router_ids);
-
 
   struct proof_info
   {
@@ -129,6 +126,8 @@ namespace service_nodes
 
     // Derived from pubkey_ed25519, not serialized
     crypto::x25519_public_key pubkey_x25519 = crypto::x25519_public_key::null();
+
+    std::chrono::milliseconds last_rc_updated_ms = 0ms;
 
     // Updates pubkey_ed25519 to the given key, re-deriving the x25519 key if it actually changes
     // (does nothing if the key is the same as the current value).  If x25519 derivation fails then
@@ -370,6 +369,9 @@ namespace service_nodes
     bool is_service_node(const crypto::public_key& pubkey, bool require_active = true) const;
     bool is_key_image_locked(crypto::key_image const &check_image, uint64_t *unlock_height = nullptr, service_node_info::contribution_t *the_locked_contribution = nullptr) const;
     uint64_t height() const { return m_state.height; }
+
+    // makes a request to lokinet to retrieve peer stats for a given list of service nodes
+    std::future<peer_stats_map> update_peer_stats(const cryptonote::core& core, std::vector<std::string> router_ids);
 
     /// Note(maxim): this should not affect thread-safety as the returned object is const
     ///

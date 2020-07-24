@@ -69,6 +69,7 @@ static_assert(STAKING_PORTIONS % 12 == 0, "Use a multiple of twelve, so that it 
 
 #define STORAGE_SERVER_PING_LIFETIME                    UPTIME_PROOF_FREQUENCY_IN_SECONDS
 #define LOKINET_PING_LIFETIME                           UPTIME_PROOF_FREQUENCY_IN_SECONDS
+#define LOKINET_RC_RECEIVED_MAX_IN_SECONDS              (2*24*3600) // very relaxed restriction -- we must have seen an RC (RouterContact) within the last 2 days. TODO: tune
 
 #define CRYPTONOTE_REWARD_BLOCKS_WINDOW                 100
 #define CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V1    20000 // NOTE(loki): For testing suite, //size of block (bytes) after which reward for block calculated using block size - before first fork

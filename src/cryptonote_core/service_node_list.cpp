@@ -297,6 +297,44 @@ namespace service_nodes
     return false;
   }
 
+  std::future<peer_stats_map> service_node_list::update_peer_stats(
+      const cryptonote::core& core,
+      std::vector<std::string> router_ids)
+  {
+    std::promise<peer_stats_map> promise;
+    try
+    {
+      core.request_peer_stats(router_ids, [&](bool success, std::vector<std::string> data) {
+        if (not success)
+          throw std::runtime_error("Failed to request peer stats from lokinet");
+
+        if (data.empty())
+          throw std::runtime_error("Empty response from lokinet");
+
+        peer_stats_map stats_map = bt_decode_peer_stats_map(data[0]);
+
+        std::lock_guard lock{m_sn_mutex};
+        // TODO: avoid scan of map here
+        for (auto& [pubkey, proof] : proofs)
+        {
+          auto itr = stats_map.find(proof.pubkey_ed25519);
+          if (itr != stats_map.end())
+          {
+            proof.last_rc_updated_ms = itr->second.last_rc_updated;
+          }
+        }
+
+        promise.set_value(std::move(stats_map));
+      });
+    }
+    catch (const std::exception& e)
+    {
+      promise.set_exception(std::current_exception());
+    }
+
+    return promise.get_future();
+  }
+
   bool reg_tx_extract_fields(const cryptonote::transaction& tx, contributor_args_t &contributor_args, uint64_t& expiration_timestamp, crypto::public_key& service_node_key, crypto::signature& signature)
   {
     cryptonote::tx_extra_service_node_register registration;
@@ -2069,29 +2107,6 @@ namespace service_nodes
     router_id.append(".snode");
 
     return router_id;
-  }
-
-  std::future<peer_stats_map> request_peer_stats(const cryptonote::core& core, std::vector<std::string> router_ids)
-  {
-    std::promise<peer_stats_map> promise;
-    try
-    {
-      core.request_peer_stats(router_ids, [&](bool success, std::vector<std::string> data) {
-        if (not success)
-          throw std::runtime_error("Failed to request peer stats from lokinet");
-
-        if (data.empty())
-          throw std::runtime_error("Empty response from lokinet");
-
-        promise.set_value(bt_decode_peer_stats_map(data[0]));
-      });
-    }
-    catch (const std::exception& e)
-    {
-      promise.set_exception(std::current_exception());
-    }
-
-    return promise.get_future();
   }
 
 

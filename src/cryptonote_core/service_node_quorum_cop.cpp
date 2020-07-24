@@ -59,6 +59,7 @@ namespace service_nodes
     {
       buf_ptr += snprintf(buf_ptr, buf_end - buf_ptr, "Service Node is currently failing the following tests: ");
       if (!uptime_proved)         buf_ptr += snprintf(buf_ptr, buf_end - buf_ptr, "Uptime proof missing. ");
+      if (!rc_received_recently)  buf_ptr += snprintf(buf_ptr, buf_end - buf_ptr, "RC not received recently. ");
       if (!voted_in_checkpoints)  buf_ptr += snprintf(buf_ptr, buf_end - buf_ptr, "Skipped voting in at least %d checkpoints. ", (int)(CHECKPOINT_NUM_QUORUMS_TO_PARTICIPATE_IN - CHECKPOINT_MAX_MISSABLE_VOTES));
       buf_ptr += snprintf(buf_ptr, buf_end - buf_ptr, "Note: Storage server may not be reachable. This is only testable by an external Service Node.");
     }
@@ -83,20 +84,25 @@ namespace service_nodes
     service_node_test_results result; // Defaults to true for individual tests
     bool ss_reachable = true;
     uint64_t timestamp = 0;
+    uint64_t rc_timestamp = 0;
     decltype(std::declval<proof_info>().public_ips) ips{};
     decltype(std::declval<proof_info>().votes) votes;
     m_core.get_service_node_list().access_proof(pubkey, [&](const proof_info &proof) {
         ss_reachable = proof.storage_server_reachable;
         timestamp = std::max(proof.timestamp, proof.effective_timestamp);
+        rc_timestamp = proof.last_rc_updated_ms.count() / 1000;
         ips = proof.public_ips;
         votes = proof.votes;
     });
     uint64_t time_since_last_uptime_proof = std::time(nullptr) - timestamp;
+    uint64_t time_since_last_rc_received = std::time(nullptr) - rc_timestamp;
 
     bool check_uptime_obligation     = true;
+    bool check_rc_received_obligation= true;
     bool check_checkpoint_obligation = true;
 
 #if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
+    // TODO: provide similar override for rc received obligation
     if (integration_test::state.disable_obligation_uptime_proof) check_uptime_obligation = false;
     if (integration_test::state.disable_obligation_checkpointing) check_checkpoint_obligation = false;
 #endif
@@ -108,6 +114,15 @@ namespace service_nodes
                            << UPTIME_PROOF_MAX_TIME_IN_SECONDS << "s. Time since last uptime proof was: "
                            << tools::get_human_readable_timespan(std::chrono::seconds(time_since_last_uptime_proof)));
       result.uptime_proved = false;
+    }
+
+    if (check_rc_received_obligation && time_since_last_rc_received > LOKINET_RC_RECEIVED_MAX_IN_SECONDS)
+    {
+      LOG_PRINT_L1(
+          "Service Node: " << pubkey << ", failed RouterContact publishing obligation check: last RC was older than: "
+                           << LOKINET_RC_RECEIVED_MAX_IN_SECONDS << "s. Time since last RC receipt was: "
+                           << tools::get_human_readable_timespan(std::chrono::seconds(time_since_last_rc_received)));
+      result.rc_received_recently = false;
     }
 
     if (!ss_reachable)
@@ -350,7 +365,7 @@ namespace service_nodes
               //       with a better asynchronous model.
               lock.unlock();
 
-              auto future = service_nodes::request_peer_stats(m_core, router_ids);
+              auto future = m_core.get_service_node_list().update_peer_stats(m_core, router_ids);
               auto peer_stats = future.get();
               // TODO: inspect peer stats and modify proofs
 
