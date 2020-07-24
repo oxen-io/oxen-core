@@ -101,7 +101,7 @@ namespace service_nodes
   std::string ed25519_pubkey_to_router_id(const crypto::ed25519_public_key& pubkey);
 
   // Decodes a list of peer stats
-  peer_stats_list bt_doced_peer_stats_list(std::string_view data);
+  peer_stats_list bt_decode_peer_stats_list(std::string_view data);
 
   // makes a request to lokinet to retrieve peer stats for a given list of service nodes
   std::future<peer_stats_list> request_peer_stats(const cryptonote::core& core, std::vector<std::string> router_ids);

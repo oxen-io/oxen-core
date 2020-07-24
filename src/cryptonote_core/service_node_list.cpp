@@ -2010,7 +2010,7 @@ namespace service_nodes
     last_rc_updated = std::chrono::milliseconds(lokimq::get_int<int64_t>(dict.at(LastRCUpdatedKey)));
   }
 
-  peer_stats_list bt_doced_peer_stats_list(std::string_view data)
+  peer_stats_list bt_decode_peer_stats_list(std::string_view data)
   {
     // this is expected to be encoded as:
     // dict [router_id -> [dict representing peer stats, e.g. lokinet_peer_stats::bt_decode()]]
@@ -2083,7 +2083,7 @@ namespace service_nodes
         if (data.empty())
           throw std::runtime_error("Empty response from lokinet");
 
-        promise.set_value(bt_doced_peer_stats_list(data[0]));
+        promise.set_value(bt_decode_peer_stats_list(data[0]));
       });
     }
     catch (const std::exception& e)
