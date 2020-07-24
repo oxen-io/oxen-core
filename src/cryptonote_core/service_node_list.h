@@ -96,6 +96,10 @@ namespace service_nodes
     static std::unordered_map<crypto::ed25519_public_key, lokinet_peer_stats> bt_decode_list(std::string_view data);
   };
 
+  // functions for converting lokinet's RouterID string representation to/from an ed25519 public key
+  crypto::ed25519_public_key parse_router_id(std::string_view router_id);
+  std::string ed25519_pubkey_to_router_id(const crypto::ed25519_public_key& pubkey);
+
   struct proof_info
   {
     uint64_t timestamp           = 0; // The actual time we last received an uptime proof (serialized)

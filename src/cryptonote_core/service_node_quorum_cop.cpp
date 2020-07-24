@@ -296,16 +296,67 @@ namespace service_nodes
               continue;
             }
 
-            if (quorum->workers.empty()) continue;
+            MFATAL("ALMOST THERE...");
+
+            if (quorum->workers.empty())
+            {
+              MFATAL("No workers...");
+              continue;
+            }
+
+            if (not voting_enabled)
+            {
+              MFATAL("voting disabled...");
+            }
+
             int index_in_group = voting_enabled ? find_index_in_quorum_group(quorum->validators, my_keys.pub) : -1;
+            MFATAL("index_in_group" << index_in_group);
             if (index_in_group >= 0)
             {
               //
               // NOTE: I am in the quorum
               //
               auto worker_states = m_core.get_service_node_list_state(quorum->workers);
-              auto worker_it = worker_states.begin();
               std::unique_lock lock{m_lock};
+
+              // make first pass to calculate nodes we are going to vote on
+              std::vector<std::string> router_ids;
+              router_ids.reserve(worker_states.size());
+              for (const auto& state : worker_states)
+              {
+                m_core.get_service_node_list().access_proof(state.pubkey, [&](const proof_info &proof) {
+                  router_ids.push_back(ed25519_pubkey_to_router_id(proof.pubkey_ed25519));
+                });
+              }
+
+              // TODO: we unlock our mutex, make our request, and then wait for it to return. this should be done
+              //       with a better asynchronous model.
+              lock.unlock();
+
+              std::promise<std::unordered_map<crypto::ed25519_public_key, lokinet_peer_stats>> promise;
+
+              try
+              {
+                m_core.request_peer_stats(router_ids, [&](bool success, std::vector<std::string> data) {
+                  if (not success)
+                    throw std::runtime_error("Failed to request peer stats from lokinet");
+
+                  if (data.empty())
+                    throw std::runtime_error("Empty response from lokinet");
+
+                  promise.set_value(lokinet_peer_stats::bt_decode_list(data[0]));
+                });
+              }
+              catch (const std::exception& e)
+              {
+                promise.set_exception(std::current_exception());
+              }
+
+              auto peer_stats = promise.get_future().get();
+              // TODO: inspect peer stats and modify proofs
+
+              lock.lock();
+              auto worker_it = worker_states.begin();
               int good = 0, total = 0;
               for (size_t node_index = 0; node_index < quorum->workers.size(); ++worker_it, ++node_index)
               {
@@ -475,21 +526,6 @@ namespace service_nodes
 
   bool quorum_cop::block_added(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs, cryptonote::checkpoint_t const * /*checkpoint*/)
   {
-
-    try
-    {
-      m_core.request_peer_stats([](bool success, std::vector<std::string> data){
-        // TODO: how should we handle this? 
-        if (not success)
-          MWARNING("Failed to request peer stats from lokinet");
-
-        // TODO: parse and inspect peer stats
-      });
-    }
-    catch (const std::exception& e)
-    {
-      MERROR("caught exception while trying to request peer stats: " << e.what());
-    }
 
     process_quorums(block);
     uint64_t const height = cryptonote::get_block_height(block) + 1; // chain height = new top block height + 1

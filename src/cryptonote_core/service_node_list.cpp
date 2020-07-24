@@ -2016,31 +2016,6 @@ namespace service_nodes
 
     std::unordered_map<crypto::ed25519_public_key, lokinet_peer_stats> stats_map;
 
-    // TODO: this should live elsewhere if it needs to be reused (or properly unit tested)
-    auto parse_router_id = [](std::string_view router_id) {
-
-      // lokinet's RouterID is serialized as 32 bytes base32z encoded (52 chars), followed by ".snode"
-      // 52 chars for pubkey and 6 for ".snode"
-      if (router_id.size() != 58)
-        throw std::invalid_argument("invalid router_id length");
-
-      std::string_view encoded = router_id.substr(0, 52);
-      std::string_view tld = router_id.substr(52);
-
-      if (tld != ".snode")
-        throw std::invalid_argument("invalid routerId tld");
-
-      std::string raw = lokimq::from_base32z(encoded.begin(), encoded.end());
-      if (raw.size() != sizeof(crypto::ed25519_public_key::data))
-        throw std::invalid_argument("routerId contains invalid pubkey");
-
-      // TODO: byte order?
-      crypto::ed25519_public_key pubkey;
-      memcpy(pubkey.data, raw.data(), sizeof(crypto::ed25519_public_key::data));
-
-      return pubkey;
-    };
-
     auto dict = lokimq::bt_deserialize<lokimq::bt_dict>(data);
     for (auto [router_id, value] : dict)
     {
@@ -2056,6 +2031,45 @@ namespace service_nodes
 
     return stats_map;
   }
+
+  constexpr int router_id_size = 58;
+  constexpr int ed25519_pubkey_size = 32;
+
+  crypto::ed25519_public_key parse_router_id(std::string_view router_id)
+  {
+    // lokinet's RouterID is serialized as 32 bytes base32z encoded (52 chars), followed by ".snode"
+    // 52 chars for pubkey and 6 for ".snode"
+    if (router_id.size() != router_id_size)
+      throw std::invalid_argument("invalid router_id length");
+
+    std::string_view encoded = router_id.substr(0, 52);
+    std::string_view tld = router_id.substr(52);
+
+    if (tld != ".snode")
+      throw std::invalid_argument("invalid routerId tld");
+
+    std::string raw = lokimq::from_base32z(encoded.begin(), encoded.end());
+    if (raw.size() != sizeof(ed25519_pubkey_size))
+      throw std::invalid_argument("routerId contains invalid pubkey");
+
+    // TODO: byte order?
+    crypto::ed25519_public_key pubkey;
+    memcpy(pubkey.data, raw.data(), sizeof(ed25519_pubkey_size));
+
+    return pubkey;
+  }
+
+  std::string ed25519_pubkey_to_router_id(const crypto::ed25519_public_key& pubkey)
+  {
+    std::string router_id;
+    router_id.reserve(router_id_size);
+
+    router_id.append(lokimq::to_base32z(std::string_view((const char*)&pubkey.data, ed25519_pubkey_size)));
+    router_id.append(".snode");
+
+    return router_id;
+  }
+
 
 #ifdef __cpp_lib_erase_if // # (C++20)
   using std::erase_if;

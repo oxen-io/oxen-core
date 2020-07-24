@@ -329,7 +329,9 @@ namespace cryptonote
      void update_lmq_sns();
 
      /// Called (from service_node_quorum_cop) to request peer stats from the connected lokinet daemon
-     void request_peer_stats(std::function<void(bool success, std::vector<std::string> data)> results_handler);
+     void request_peer_stats(
+          std::vector<std::string> router_ids,
+          std::function<void(bool success, std::vector<std::string> data)> results_handler);
 
      /**
       * @brief get the cryptonote protocol instance

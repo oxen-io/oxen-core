@@ -2081,13 +2081,14 @@ namespace cryptonote
     m_lmq->set_active_sns(std::move(active_sns));
   }
 
-  void core::request_peer_stats(std::function<void(bool success, std::vector<std::string> data)> results_handler)
+  void core::request_peer_stats(
+      std::vector<std::string> router_ids,
+      std::function<void(bool success, std::vector<std::string> data)> results_handler)
   {
     if (not m_lokinet_lmq_connection)
       throw std::runtime_error("cannot request peer stats without a lokinet connected");
 
-    // TODO: pass desired peer pubkeys to lokinet
-    m_lmq->request(*m_lokinet_lmq_connection, "lokid.get_peer_stats", std::move(results_handler));
+    m_lmq->request(*m_lokinet_lmq_connection, "lokid.get_peer_stats", std::move(results_handler), lokimq::bt_serialize(router_ids));
   }
 
   //-----------------------------------------------------------------------------------------------
