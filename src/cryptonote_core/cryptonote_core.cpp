@@ -2083,7 +2083,7 @@ namespace cryptonote
 
   void core::request_peer_stats(
       std::vector<std::string> router_ids,
-      std::function<void(bool success, std::vector<std::string> data)> results_handler)
+      std::function<void(bool success, std::vector<std::string> data)> results_handler) const
   {
     if (not m_lokinet_lmq_connection)
       throw std::runtime_error("cannot request peer stats without a lokinet connected");

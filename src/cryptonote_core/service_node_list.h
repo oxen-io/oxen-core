@@ -30,6 +30,7 @@
 
 #include <chrono>
 #include <mutex>
+#include <future>
 #include <shared_mutex>
 #include <string_view>
 #include <lokimq/bt_serialize.h>
@@ -44,6 +45,7 @@ using namespace std::chrono_literals;
 
 namespace cryptonote
 {
+class core;
 class Blockchain;
 class BlockchainDB;
 struct checkpoint_t;
@@ -91,14 +93,19 @@ namespace service_nodes
     // Decodes a peerstats into this existing struct
     void bt_decode(std::string_view data);
     void bt_decode(const lokimq::bt_dict& dict);
-
-    // Decodes a list of peer stats
-    static std::unordered_map<crypto::ed25519_public_key, lokinet_peer_stats> bt_decode_list(std::string_view data);
   };
+  using peer_stats_list = std::unordered_map<crypto::ed25519_public_key, lokinet_peer_stats>;
 
   // functions for converting lokinet's RouterID string representation to/from an ed25519 public key
   crypto::ed25519_public_key parse_router_id(std::string_view router_id);
   std::string ed25519_pubkey_to_router_id(const crypto::ed25519_public_key& pubkey);
+
+  // Decodes a list of peer stats
+  peer_stats_list bt_doced_peer_stats_list(std::string_view data);
+
+  // makes a request to lokinet to retrieve peer stats for a given list of service nodes
+  std::future<peer_stats_list> request_peer_stats(const cryptonote::core& core, std::vector<std::string> router_ids);
+
 
   struct proof_info
   {

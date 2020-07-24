@@ -43,6 +43,7 @@ extern "C" {
 
 #include "ringct/rctSigs.h"
 #include "wallet/wallet2.h"
+#include "cryptonote_core/cryptonote_core.h"
 #include "cryptonote_tx_utils.h"
 #include "cryptonote_basic/tx_extra.h"
 #include "cryptonote_basic/hardfork.h"
@@ -2009,7 +2010,7 @@ namespace service_nodes
     last_rc_updated = std::chrono::milliseconds(lokimq::get_int<int64_t>(dict.at(LastRCUpdatedKey)));
   }
 
-  std::unordered_map<crypto::ed25519_public_key, lokinet_peer_stats> lokinet_peer_stats::bt_decode_list(std::string_view data)
+  peer_stats_list bt_doced_peer_stats_list(std::string_view data)
   {
     // this is expected to be encoded as:
     // dict [router_id -> [dict representing peer stats, e.g. lokinet_peer_stats::bt_decode()]]
@@ -2068,6 +2069,29 @@ namespace service_nodes
     router_id.append(".snode");
 
     return router_id;
+  }
+
+  std::future<peer_stats_list> request_peer_stats(const cryptonote::core& core, std::vector<std::string> router_ids)
+  {
+    std::promise<peer_stats_list> promise;
+    try
+    {
+      core.request_peer_stats(router_ids, [&](bool success, std::vector<std::string> data) {
+        if (not success)
+          throw std::runtime_error("Failed to request peer stats from lokinet");
+
+        if (data.empty())
+          throw std::runtime_error("Empty response from lokinet");
+
+        promise.set_value(bt_doced_peer_stats_list(data[0]));
+      });
+    }
+    catch (const std::exception& e)
+    {
+      promise.set_exception(std::current_exception());
+    }
+
+    return promise.get_future();
   }
 
 

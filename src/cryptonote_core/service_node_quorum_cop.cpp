@@ -333,26 +333,8 @@ namespace service_nodes
               //       with a better asynchronous model.
               lock.unlock();
 
-              std::promise<std::unordered_map<crypto::ed25519_public_key, lokinet_peer_stats>> promise;
-
-              try
-              {
-                m_core.request_peer_stats(router_ids, [&](bool success, std::vector<std::string> data) {
-                  if (not success)
-                    throw std::runtime_error("Failed to request peer stats from lokinet");
-
-                  if (data.empty())
-                    throw std::runtime_error("Empty response from lokinet");
-
-                  promise.set_value(lokinet_peer_stats::bt_decode_list(data[0]));
-                });
-              }
-              catch (const std::exception& e)
-              {
-                promise.set_exception(std::current_exception());
-              }
-
-              auto peer_stats = promise.get_future().get();
+              auto future = service_nodes::request_peer_stats(m_core, router_ids);
+              auto peer_stats = future.get();
               // TODO: inspect peer stats and modify proofs
 
               lock.lock();
