@@ -203,9 +203,13 @@ namespace service_nodes
 
   void quorum_cop::process_quorums(cryptonote::block const &block)
   {
+    MFATAL("process_quorums");
     uint8_t const hf_version = block.major_version;
     if (hf_version < cryptonote::network_version_9_service_nodes)
+    {
+      MFATAL("hf_version < version_9");
       return;
+    }
 
     uint64_t const REORG_SAFETY_BUFFER_BLOCKS = (hf_version >= cryptonote::network_version_12_checkpointing)
                                                     ? REORG_SAFETY_BUFFER_BLOCKS_POST_HF12
@@ -216,11 +220,17 @@ namespace service_nodes
     uint64_t const height        = cryptonote::get_block_height(block);
     uint64_t const latest_height = std::max(m_core.get_current_blockchain_height(), m_core.get_target_blockchain_height());
     if (latest_height < VOTE_LIFETIME)
+    {
+      MFATAL("< VOTE_LIFETIME");
       return;
+    }
 
     uint64_t const start_voting_from_height = latest_height - VOTE_LIFETIME;
     if (height < start_voting_from_height)
+    {
+      MFATAL("< start_voting_from_height");
       return;
+    }
 
     service_nodes::quorum_type const max_quorum_type = service_nodes::max_quorum_type_for_hf(hf_version);
     bool tested_myself_once_per_block                = false;
@@ -247,6 +257,7 @@ namespace service_nodes
 
         case quorum_type::obligations:
         {
+          MFATAL("obligations quorum");
 
           m_obligations_height = std::max(m_obligations_height, start_voting_from_height);
           for (; m_obligations_height < (height - REORG_SAFETY_BUFFER_BLOCKS); m_obligations_height++)
@@ -283,10 +294,16 @@ namespace service_nodes
             // NOTE: Wait at least 2 hours before we're allowed to vote so that we collect necessary voting information from people on the network
             bool alive_for_min_time = live_time >= MIN_TIME_IN_S_BEFORE_VOTING;
             if (!alive_for_min_time)
+            {
+              MFATAL("not up long enough");
               continue;
+            }
 
             if (!m_core.service_node())
+            {
+              MFATAL("not a service node");
               continue;
+            }
 
             auto quorum = m_core.get_quorum(quorum_type::obligations, m_obligations_height);
             if (!quorum)

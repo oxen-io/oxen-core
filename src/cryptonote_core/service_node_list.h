@@ -94,17 +94,17 @@ namespace service_nodes
     void bt_decode(std::string_view data);
     void bt_decode(const lokimq::bt_dict& dict);
   };
-  using peer_stats_list = std::unordered_map<crypto::ed25519_public_key, lokinet_peer_stats>;
+  using peer_stats_map = std::unordered_map<crypto::ed25519_public_key, lokinet_peer_stats>;
 
   // functions for converting lokinet's RouterID string representation to/from an ed25519 public key
   crypto::ed25519_public_key parse_router_id(std::string_view router_id);
   std::string ed25519_pubkey_to_router_id(const crypto::ed25519_public_key& pubkey);
 
   // Decodes a list of peer stats
-  peer_stats_list bt_decode_peer_stats_list(std::string_view data);
+  peer_stats_map bt_decode_peer_stats_map(std::string_view data);
 
   // makes a request to lokinet to retrieve peer stats for a given list of service nodes
-  std::future<peer_stats_list> request_peer_stats(const cryptonote::core& core, std::vector<std::string> router_ids);
+  std::future<peer_stats_map> request_peer_stats(const cryptonote::core& core, std::vector<std::string> router_ids);
 
 
   struct proof_info
