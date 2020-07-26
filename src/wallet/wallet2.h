@@ -45,8 +45,6 @@
 #include "cryptonote_basic/account.h"
 #include "cryptonote_basic/account_boost_serialization.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
-#include "net/http_client.h"
-#include "storages/http_abstract_invoke.h"
 #include "rpc/core_rpc_server_commands_defs.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_core/cryptonote_tx_utils.h"
@@ -77,6 +75,8 @@
 
 #include "common/loki_integration_test_hooks.h"
 #include "wipeable_string.h"
+
+#include "rpc/http_client.h"
 
 #undef LOKI_DEFAULT_LOG_CATEGORY
 #define LOKI_DEFAULT_LOG_CATEGORY "wallet.wallet2"
@@ -263,10 +263,11 @@ private:
 
     static bool has_testnet_option(const boost::program_options::variables_map& vm);
     static bool has_stagenet_option(const boost::program_options::variables_map& vm);
+    static std::vector<std::string> has_deprecated_options(const boost::program_options::variables_map& vm);
     static bool has_disable_rpc_long_poll(const boost::program_options::variables_map& vm);
     static std::string device_name_option(const boost::program_options::variables_map& vm);
     static std::string device_derivation_path_option(const boost::program_options::variables_map &vm);
-    static void init_options(boost::program_options::options_description& desc_params);
+    static void init_options(boost::program_options::options_description& desc_params, boost::program_options::options_description& hidden_params);
 
     //! Uses stdin and stdout. Returns a wallet2 if no errors.
     static std::pair<std::unique_ptr<wallet2>, password_container> make_from_json(const boost::program_options::variables_map& vm, bool unattended, const std::string& json_file, const std::function<std::optional<password_container>(const char *, bool)> &password_prompter);
@@ -284,7 +285,7 @@ private:
     static bool verify_password(const std::string& keys_file_name, const epee::wipeable_string& password, bool no_spend_key, hw::device &hwdev, uint64_t kdf_rounds);
     static bool query_device(hw::device::device_type& device_type, const std::string& keys_file_name, const epee::wipeable_string& password, uint64_t kdf_rounds = 1);
 
-    wallet2(cryptonote::network_type nettype = cryptonote::MAINNET, uint64_t kdf_rounds = 1, bool unattended = false, std::unique_ptr<epee::net_utils::http::http_client_factory> http_client_factory = std::unique_ptr<epee::net_utils::http::http_simple_client_factory>(new epee::net_utils::http::http_simple_client_factory()));
+    wallet2(cryptonote::network_type nettype = cryptonote::MAINNET, uint64_t kdf_rounds = 1, bool unattended = false);
     ~wallet2();
 
     struct tx_scan_info_t
@@ -618,15 +619,17 @@ private:
     bool explicit_refresh_from_block_height() const {return m_explicit_refresh_from_block_height;}
 
     bool deinit();
-    bool init(std::string daemon_address = "http://localhost:8080",
-      std::optional<epee::net_utils::http::login> daemon_login = std::nullopt,
-      boost::asio::ip::tcp::endpoint proxy = {},
-      uint64_t upper_transaction_weight_limit = 0,
-      bool trusted_daemon = true,
-      epee::net_utils::ssl_options_t ssl_options = epee::net_utils::ssl_support_t::e_ssl_support_autodetect);
-    bool set_daemon(std::string daemon_address = "http://localhost:8080",
-      std::optional<epee::net_utils::http::login> daemon_login = std::nullopt, bool trusted_daemon = true,
-      epee::net_utils::ssl_options_t ssl_options = epee::net_utils::ssl_support_t::e_ssl_support_autodetect);
+    bool init(
+        std::string daemon_address,
+        std::optional<tools::login> daemon_login = std::nullopt,
+        std::string proxy = "",
+        uint64_t upper_transaction_weight_limit = 0,
+        bool trusted_daemon = true);
+    bool set_daemon(
+        std::string daemon_address,
+        std::optional<tools::login> daemon_login = std::nullopt,
+        std::string proxy = "",
+        bool trusted_daemon = true);
 
     void stop() { m_run.store(false, std::memory_order_relaxed); m_message_store.stop(); }
 
@@ -754,8 +757,7 @@ private:
     bool sign_multisig_tx_to_file(multisig_tx_set &exported_txs, const std::string &filename, std::vector<crypto::hash> &txids);
     std::vector<pending_tx> create_unmixable_sweep_transactions();
     void discard_unmixable_outputs();
-    bool is_connected() const;
-    bool check_connection(cryptonote::rpc::version_t *version = NULL, bool *ssl = NULL, uint32_t timeout = 200000);
+    bool check_connection(cryptonote::rpc::version_t *version = nullptr, bool *ssl = nullptr, bool throw_on_http_error = false);
     wallet::transfer_view make_transfer_view(const crypto::hash &txid, const crypto::hash &payment_id, const wallet2::payment_details &pd) const;
     wallet::transfer_view make_transfer_view(const crypto::hash &txid, const tools::wallet2::confirmed_transfer_details &pd) const;
     wallet::transfer_view make_transfer_view(const crypto::hash &txid, const tools::wallet2::unconfirmed_transfer_details &pd) const;
@@ -787,12 +789,15 @@ private:
     void get_unconfirmed_payments_out(std::list<std::pair<crypto::hash,wallet2::unconfirmed_transfer_details>>& unconfirmed_payments, const std::optional<uint32_t>& subaddr_account = std::nullopt, const std::set<uint32_t>& subaddr_indices = {}) const;
     void get_unconfirmed_payments(std::list<std::pair<crypto::hash,wallet2::pool_payment_details>>& unconfirmed_payments, const std::optional<uint32_t>& subaddr_account = std::nullopt, const std::set<uint32_t>& subaddr_indices = {}) const;
 
+    // These return pairs where .first == true if the request was successful, and .second is a
+    // vector of the requested entries.
+    //
     // NOTE(loki): get_all_service_node caches the result, get_service_nodes doesn't
-    std::vector<cryptonote::rpc::GET_SERVICE_NODES::response::entry> get_all_service_nodes(std::optional<std::string> &failed)                                             const { return m_node_rpc_proxy.get_all_service_nodes(failed); }
-    std::vector<cryptonote::rpc::GET_SERVICE_NODES::response::entry> get_service_nodes    (std::vector<std::string> const &pubkeys, std::optional<std::string> &failed)    const { return m_node_rpc_proxy.get_service_nodes(pubkeys, failed); }
-    std::vector<cryptonote::rpc::GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES::entry> get_service_node_blacklisted_key_images(std::optional<std::string> &failed)               const { return m_node_rpc_proxy.get_service_node_blacklisted_key_images(failed); }
-    std::vector<cryptonote::rpc::LNS_OWNERS_TO_NAMES::response_entry> lns_owners_to_names(cryptonote::rpc::LNS_OWNERS_TO_NAMES::request const &request, std::optional<std::string> &failed) const { return m_node_rpc_proxy.lns_owners_to_names(request, failed); }
-    std::vector<cryptonote::rpc::LNS_NAMES_TO_OWNERS::response_entry> lns_names_to_owners(cryptonote::rpc::LNS_NAMES_TO_OWNERS::request const &request, std::optional<std::string> &failed) const { return m_node_rpc_proxy.lns_names_to_owners(request, failed); }
+    auto get_all_service_nodes()                                    const { return m_node_rpc_proxy.get_all_service_nodes(); }
+    auto get_service_nodes(std::vector<std::string> const &pubkeys) const { return m_node_rpc_proxy.get_service_nodes(pubkeys); }
+    auto get_service_node_blacklisted_key_images()                  const { return m_node_rpc_proxy.get_service_node_blacklisted_key_images(); }
+    auto lns_owners_to_names(cryptonote::rpc::LNS_OWNERS_TO_NAMES::request const &request) const { return m_node_rpc_proxy.lns_owners_to_names(request); }
+    auto lns_names_to_owners(cryptonote::rpc::LNS_NAMES_TO_OWNERS::request const &request) const { return m_node_rpc_proxy.lns_names_to_owners(request); }
 
     uint64_t get_blockchain_current_height() const { return m_light_wallet_blockchain_height ? m_light_wallet_blockchain_height : m_blockchain.size(); }
     void rescan_spent();
@@ -1038,7 +1043,6 @@ private:
     std::string get_wallet_file() const;
     std::string get_keys_file() const;
     std::string get_daemon_address() const;
-    const std::optional<epee::net_utils::http::login>& get_daemon_login() const { return m_daemon_login; }
     uint64_t get_daemon_blockchain_height(std::string& err) const;
     uint64_t get_daemon_blockchain_target_height(std::string& err);
    /*!
@@ -1135,6 +1139,9 @@ private:
     // if a network error.
     bool long_poll_pool_state();
 
+    // Attempts to cancel an existing long poll request (by resetting the timeout).
+    void cancel_long_poll();
+
     struct get_pool_state_tx
     {
         cryptonote::transaction tx;
@@ -1213,25 +1220,38 @@ private:
     crypto::public_key get_multisig_signing_public_key(const crypto::secret_key &skey) const;
 
     template <typename RPC>
-    bool invoke_http(const typename RPC::request& req, typename RPC::response& res)
+    bool invoke_http(const typename RPC::request& req, typename RPC::response& res, bool throw_on_error = false)
     {
       using namespace cryptonote::rpc;
       static_assert(std::is_base_of_v<RPC_COMMAND, RPC> || std::is_base_of_v<tools::light_rpc::LIGHT_RPC_COMMAND, RPC>);
 
       if (m_offline) return false;
-      std::lock_guard lock{m_daemon_rpc_mutex};
 
-      if constexpr (std::is_base_of_v<LEGACY, RPC>)
-        // TODO: post-8.x hard fork we can remove this one and let everything go through the
-        // non-binary json_rpc version instead (because all legacy json commands are callable via
-        // json_rpc as of daemon 8.x).
-        return epee::net_utils::invoke_http_json("/" + std::string{RPC::names().front()}, req, res, *m_http_client, rpc_timeout, "POST");
-      else if constexpr (std::is_base_of_v<BINARY, RPC>)
-        return epee::net_utils::invoke_http_bin("/" + std::string{RPC::names().front()}, req, res, *m_http_client, rpc_timeout, "POST");
-      else if constexpr (std::is_base_of_v<RPC_COMMAND, RPC>)
-        return epee::net_utils::invoke_http_json_rpc("/json_rpc", std::string{RPC::names().front()}, req, res, *m_http_client, rpc_timeout, "POST", "0");
-      else // light RPC:
-        return epee::net_utils::invoke_http_json("/" + std::string{RPC::name}, req, res, *m_http_client, rpc_timeout, "POST");
+      try {
+        if constexpr (std::is_base_of_v<LEGACY, RPC>)
+          // TODO: post-8.x hard fork we can remove this one and let everything go through the
+          // non-binary json_rpc version instead (because all legacy json commands are callable via
+          // json_rpc as of daemon 8.x).
+          res = m_http_client.json<RPC>(RPC::names().front(), req);
+        else if constexpr (std::is_base_of_v<BINARY, RPC>)
+          res = m_http_client.binary<RPC>(RPC::names().front(), req);
+        else if constexpr (std::is_base_of_v<RPC_COMMAND, RPC>)
+          res = m_http_client.json_rpc<RPC>(RPC::names().front(), req);
+        else // light RPC:
+          res = m_http_client.json<RPC>(RPC::name, req);
+        return true;
+      } catch (const std::exception& e) {
+        if (throw_on_error)
+          throw;
+        else
+          MERROR("HTTP request failed: " << e.what());
+      } catch (...) {
+        if (throw_on_error)
+          throw;
+        else
+          MERROR("HTTP request failed: unknown error");
+      }
+      return false;
     }
 
     bool set_ring_database(const std::string &filename);
@@ -1355,7 +1375,7 @@ private:
 
     void change_password(const std::string &filename, const epee::wipeable_string &original_password, const epee::wipeable_string &new_password);
 
-    void set_tx_notify(const std::shared_ptr<tools::Notify> &notify) { m_tx_notify = notify; }
+    void set_tx_notify(std::shared_ptr<tools::Notify> notify) { m_tx_notify = std::move(notify); }
 
     bool is_tx_spendtime_unlocked(uint64_t unlock_time, uint64_t block_height) const;
     void hash_m_transfer(const transfer_details & transfer, crypto::hash &hash) const;
@@ -1365,7 +1385,7 @@ private:
 
 
     std::atomic<bool> m_long_poll_disabled;
-    static std::string get_default_daemon_address() { std::lock_guard lock{default_daemon_address_mutex}; return default_daemon_address; }
+    static std::string get_default_daemon_address();
 
     /// Requests transactions from daemon given hex strings of the tx ids; throws a wallet exception
     /// on error, otherwise returns the response.
@@ -1377,6 +1397,9 @@ private:
 
     /// Same as above, but for a single transaction.
     cryptonote::rpc::GET_TRANSACTIONS::response request_transaction(const crypto::hash& txid) { return request_transactions(std::vector<crypto::hash>{{txid}}); }
+
+    // The wallet's RPC client; public for advanced configuration purposes.
+    cryptonote::rpc::http_client m_http_client;
 
   private:
     /*!
@@ -1484,17 +1507,13 @@ private:
     void on_device_progress(const hw::device_progress& event);
 
     std::string get_rpc_status(const std::string &s) const;
-    void throw_on_rpc_response_error(const std::optional<std::string> &status, const char *method) const;
 
     bool should_expand(const cryptonote::subaddress_index &index) const;
 
     cryptonote::account_base m_account;
-    std::optional<epee::net_utils::http::login> m_daemon_login;
-    std::string m_daemon_address;
     std::string m_wallet_file;
     std::string m_keys_file;
     std::string m_mms_file;
-    const std::unique_ptr<epee::net_utils::http::abstract_http_client> m_http_client;
     hashchain m_blockchain;
     std::unordered_map<crypto::hash, unconfirmed_transfer_details> m_unconfirmed_txs;
     std::unordered_map<crypto::hash, confirmed_transfer_details> m_confirmed_txs;
@@ -1502,11 +1521,10 @@ private:
     std::unordered_map<crypto::hash, crypto::secret_key> m_tx_keys;
     std::unordered_map<crypto::hash, std::vector<crypto::secret_key>> m_additional_tx_keys;
 
-    std::recursive_mutex                      m_long_poll_mutex;
-    epee::net_utils::http::http_simple_client m_long_poll_client;
+    cryptonote::rpc::http_client              m_long_poll_client;
+    bool                                      m_long_poll_local;
     mutable std::mutex                        m_long_poll_tx_pool_checksum_mutex;
     crypto::hash                              m_long_poll_tx_pool_checksum = {};
-    epee::net_utils::ssl_options_t            m_long_poll_ssl_options = epee::net_utils::ssl_support_t::e_ssl_support_autodetect;
 
     transfer_container m_transfers;
     payment_container m_payments;
@@ -1525,8 +1543,6 @@ private:
     std::unordered_map<crypto::public_key, crypto::key_image> m_cold_key_images;
 
     std::atomic<bool> m_run;
-
-    std::recursive_mutex m_daemon_rpc_mutex;
 
     bool m_trusted_daemon;
     i_wallet2_callback* m_callback;
@@ -1622,8 +1638,8 @@ private:
 
     ExportFormat m_export_format;
 
-    static std::mutex default_daemon_address_mutex;
-    static std::string default_daemon_address;
+    inline static std::mutex default_daemon_address_mutex;
+    inline static std::string default_daemon_address;
   };
 
   // TODO(loki): Hmm. We need this here because we make register_service_node do

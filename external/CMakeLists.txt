@@ -121,3 +121,17 @@ add_library(uWebSockets INTERFACE)
 target_include_directories(uWebSockets INTERFACE ${CMAKE_CURRENT_BINARY_DIR}/uWebSockets)
 target_link_libraries(uWebSockets INTERFACE uSockets)
 target_compile_definitions(uWebSockets INTERFACE UWS_HTTPRESPONSE_NO_WRITEMARK UWS_NO_ZLIB)
+
+
+# cpr configuration.  Ideally we'd just do this via add_subdirectory, but cpr's cmake requires
+# 3.15+, and we target lower than that (and this is fairly simple to build).
+
+find_package(CURL REQUIRED COMPONENTS PROTOCOLS HTTP HTTPS FEATURES SSL)
+
+file(GLOB cpr_sources ${conf_depends} cpr/cpr/*.cpp)
+
+add_library(cpr STATIC EXCLUDE_FROM_ALL ${cpr_sources})
+target_link_libraries(cpr PUBLIC CURL::libcurl)
+target_include_directories(cpr PUBLIC cpr/include)
+target_compile_definitions(cpr PUBLIC CPR_CURL_NOSIGNAL)
+add_library(cpr::cpr ALIAS cpr)

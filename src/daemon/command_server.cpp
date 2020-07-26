@@ -44,12 +44,8 @@
 
 namespace daemonize {
 
-command_server::command_server(
-    uint32_t ip
-  , uint16_t port
-  , const std::optional<tools::login>& login
-  )
-  : m_parser{ip, port, login}
+command_server::command_server(std::string daemon_url, const std::optional<tools::login>& login)
+  : m_parser{std::move(daemon_url), login}
 {
   init_commands();
 }

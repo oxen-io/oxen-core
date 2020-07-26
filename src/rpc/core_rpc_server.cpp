@@ -35,13 +35,12 @@
 #include <boost/endian/conversion.hpp>
 #include <algorithm>
 #include <cstring>
+#include <type_traits>
 #include <variant>
 #include "include_base_utils.h"
 #include "string_tools.h"
 #include "core_rpc_server.h"
 #include "common/command_line.h"
-#include "common/updates.h"
-#include "common/download.h"
 #include "common/loki.h"
 #include "common/sha256sum.h"
 #include "common/perf_timer.h"
@@ -142,7 +141,7 @@ namespace cryptonote { namespace rpc {
       }
     };
 
-    template <typename RPC>
+    template <typename RPC, std::enable_if_t<std::is_base_of_v<RPC_COMMAND, RPC>, int> = 0>
     void register_rpc_command(std::unordered_map<std::string, std::shared_ptr<const rpc_command>>& regs)
     {
       using Request = typename RPC::request;
@@ -214,16 +213,35 @@ namespace cryptonote { namespace rpc {
     , m_p2p(p2p)
     , m_was_bootstrap_ever_used(false)
   {}
-  //------------------------------------------------------------------------------------------------------------------------------
-  bool core_rpc_server::set_bootstrap_daemon(const std::string &address, const std::string &username_password)
+  bool core_rpc_server::set_bootstrap_daemon(const std::string &address, std::string_view username_password)
   {
-    std::optional<epee::net_utils::http::login> credentials;
-    const auto loc = username_password.find(':');
-    if (loc != std::string::npos)
+    std::string_view username, password;
+    if (auto loc = username_password.find(':'); loc != std::string::npos)
     {
-      credentials = epee::net_utils::http::login(username_password.substr(0, loc), username_password.substr(loc + 1));
+      username = username_password.substr(0, loc);
+      password = username_password.substr(loc + 1);
     }
-    return set_bootstrap_daemon(address, credentials);
+    return set_bootstrap_daemon(address, username, password);
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::set_bootstrap_daemon(const std::string &address, std::string_view username, std::string_view password)
+  {
+    std::optional<std::pair<std::string_view, std::string_view>> credentials;
+    if (!username.empty() || !password.empty())
+      credentials.emplace(username, password);
+
+    std::unique_lock lock{m_bootstrap_daemon_mutex};
+
+    if (address.empty())
+      m_bootstrap_daemon.reset();
+    else if (address == "auto")
+      m_bootstrap_daemon = std::make_unique<bootstrap_daemon>([this]{ return get_random_public_node(); });
+    else
+      m_bootstrap_daemon = std::make_unique<bootstrap_daemon>(address, credentials);
+
+    m_should_use_bootstrap_daemon = (bool) m_bootstrap_daemon;
+
+    return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
   std::optional<std::string> core_rpc_server::get_random_public_node()
@@ -264,28 +282,6 @@ namespace cryptonote { namespace rpc {
 
     MERROR("Failed to find any suitable public node");
     return std::nullopt;
-  }
-  //------------------------------------------------------------------------------------------------------------------------------
-  bool core_rpc_server::set_bootstrap_daemon(const std::string &address, const std::optional<epee::net_utils::http::login> &credentials)
-  {
-    std::unique_lock lock{m_bootstrap_daemon_mutex};
-
-    if (address.empty())
-    {
-      m_bootstrap_daemon.reset(nullptr);
-    }
-    else if (address == "auto")
-    {
-      m_bootstrap_daemon.reset(new bootstrap_daemon([this]{ return get_random_public_node(); }));
-    }
-    else
-    {
-      m_bootstrap_daemon.reset(new bootstrap_daemon(address, credentials));
-    }
-
-    m_should_use_bootstrap_daemon = m_bootstrap_daemon.get() != nullptr;
-
-    return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
   void core_rpc_server::init(const boost::program_options::variables_map& vm)
@@ -426,7 +422,6 @@ namespace cryptonote { namespace rpc {
     res.database_size = m_core.get_blockchain_storage().get_db().get_database_size();
     if (restricted)
       res.database_size = round_up(res.database_size, 1'000'000'000);
-    res.update_available = restricted ? false : m_core.is_update_available();
     res.version = restricted ? std::to_string(LOKI_VERSION[0]) : LOKI_VERSION_FULL;
     res.status_line = !restricted ? m_core.get_status_string() :
       "v" + std::to_string(LOKI_VERSION[0]) + "; Height: " + std::to_string(res.height);
@@ -1368,13 +1363,7 @@ namespace cryptonote { namespace rpc {
   {
     PERF_TIMER(on_set_bootstrap_daemon);
 
-    std::optional<epee::net_utils::http::login> credentials;
-    if (!req.username.empty() || !req.password.empty())
-    {
-      credentials = epee::net_utils::http::login(req.username, req.password);
-    }
-
-    if (!set_bootstrap_daemon(req.address, credentials))
+    if (!set_bootstrap_daemon(req.address, req.username, req.password))
       throw rpc_error{ERROR_WRONG_PARAM, "Failed to set bootstrap daemon to address = " + req.address};
 
     SET_BOOTSTRAP_DAEMON::response res{};
@@ -1713,7 +1702,7 @@ namespace cryptonote { namespace rpc {
       {
         MINFO("Bootstrap daemon is out of sync");
         lock.unlock();
-        m_bootstrap_daemon->handle_result(false);
+        m_bootstrap_daemon->set_failed();
         return lock;
       }
 
@@ -1748,26 +1737,7 @@ namespace cryptonote { namespace rpc {
 
     std::string command_name{RPC::names().front()};
 
-    bool success;
-    if (std::is_base_of<BINARY, RPC>::value)
-      success = m_bootstrap_daemon->invoke_http_bin(command_name, req, res);
-    else
-    {
-      // FIXME: this type explosion of having to instantiate nested types is an epee pain point:
-      // epee is only incapable of nested serialization if you build nested C++ classes mimicing the
-      // JSON nesting.  Ew.
-      epee::json_rpc::request<typename RPC::request> json_req{};
-      epee::json_rpc::response_with_error<typename RPC::response> json_resp{};
-      json_req.jsonrpc = "2.0";
-      json_req.id = epee::serialization::storage_entry(0);
-      json_req.method = command_name;
-      json_req.params = req;
-      success = m_bootstrap_daemon->invoke_http_json_rpc(command_name, json_req, json_resp);
-      if (success)
-        res = std::move(json_resp.result);
-    }
-
-    if (!success)
+    if (!m_bootstrap_daemon->invoke<RPC>(req, res))
       throw std::runtime_error{"Bootstrap request failed"};
 
     m_was_bootstrap_ever_used = true;
@@ -2320,113 +2290,6 @@ namespace cryptonote { namespace rpc {
     if (req.set)
       m_p2p.change_max_in_public_peers(req.in_peers);
     res.status = STATUS_OK;
-    return res;
-  }
-  //------------------------------------------------------------------------------------------------------------------------------
-  UPDATE::response core_rpc_server::invoke(UPDATE::request&& req, rpc_context context)
-  {
-    UPDATE::response res{};
-
-    PERF_TIMER(on_update);
-
-    if (m_core.offline())
-    {
-      res.status = "Daemon is running offline";
-      return res;
-    }
-
-    static const char software[] = "loki";
-#ifdef BUILD_TAG
-    static const char buildtag[] = BOOST_PP_STRINGIZE(BUILD_TAG);
-    static const char subdir[] = "cli";
-#else
-    static const char buildtag[] = "source";
-    static const char subdir[] = "source";
-#endif
-
-    if (req.command != "check" && req.command != "download" && req.command != "update")
-    {
-      res.status = "unknown command: '" + req.command + "'";
-      return res;
-    }
-
-    std::string version, hash;
-    if (!tools::check_updates(software, buildtag, version, hash))
-    {
-      res.status = "Error checking for updates";
-      return res;
-    }
-    if (tools::vercmp(version.c_str(), LOKI_VERSION_STR) <= 0)
-    {
-      res.update = false;
-      res.status = STATUS_OK;
-      return res;
-    }
-    res.update = true;
-    res.version = version;
-    res.user_uri = tools::get_update_url(software, subdir, buildtag, version, true);
-    res.auto_uri = tools::get_update_url(software, subdir, buildtag, version, false);
-    res.hash = hash;
-    if (req.command == "check")
-    {
-      res.status = STATUS_OK;
-      return res;
-    }
-
-    boost::filesystem::path path;
-    if (req.path.empty())
-    {
-      std::string filename;
-      const char *slash = strrchr(res.auto_uri.c_str(), '/');
-      if (slash)
-        filename = slash + 1;
-      else
-        filename = std::string(software) + "-update-" + version;
-      path = epee::string_tools::get_current_module_folder();
-      path /= filename;
-    }
-    else
-    {
-      path = req.path;
-    }
-
-    crypto::hash file_hash;
-    if (!tools::sha256sum_file(path.string(), file_hash) || (hash != epee::string_tools::pod_to_hex(file_hash)))
-    {
-      MDEBUG("We don't have that file already, downloading");
-      if (!tools::download(path.string(), res.auto_uri))
-      {
-        MERROR("Failed to download " << res.auto_uri);
-        res.status = "Failed to download";
-        return res;
-      }
-      if (!tools::sha256sum_file(path.string(), file_hash))
-      {
-        MERROR("Failed to hash " << path);
-        res.status = "Failed to hash";
-        return res;
-      }
-      if (hash != epee::string_tools::pod_to_hex(file_hash))
-      {
-        MERROR("Download from " << res.auto_uri << " does not match the expected hash");
-        res.status = "Failed: hash mismatch";
-        return res;
-      }
-      MINFO("New version downloaded to " << path);
-    }
-    else
-    {
-      MDEBUG("We already have " << path << " with expected hash");
-    }
-    res.path = path.string();
-
-    if (req.command == "download")
-    {
-      res.status = STATUS_OK;
-      return res;
-    }
-
-    res.status = "'update' not implemented yet";
     return res;
   }
   //------------------------------------------------------------------------------------------------------------------------------

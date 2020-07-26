@@ -2655,23 +2655,21 @@ namespace wallet_rpc
   {
     struct request
     {
-      std::string address;              // The remote address of the daemon
+      std::string address;              // The remote url of the daemon.
+      std::string proxy;                // Optional proxy to use for connection. E.g. socks4a://hostname:port for a SOCKS proxy.
       bool trusted;                     // When true, allow the usage of commands that may compromise privacy
-      std::string ssl_support;          // disabled, enabled, autodetect
-      std::string ssl_private_key_path;
-      std::string ssl_certificate_path;
-      std::string ssl_ca_file;
-      std::vector<std::string> ssl_allowed_fingerprints;
-      bool ssl_allow_any_cert;
+      std::string ssl_private_key_path; // HTTPS client authentication: path to private key.  Must use an address starting with https://
+      std::string ssl_certificate_path; // HTTPS client authentication: path to certificate.  Must use an address starting with https://
+      std::string ssl_ca_file;          // Path to CA bundle to use for HTTPS server certificate verification instead of system CA.  Requires an https:// address.
+      bool ssl_allow_any_cert;          // Make HTTPS insecure: disable HTTPS certificate verification when using an https:// address.
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(address)
+        KV_SERIALIZE(proxy)
         KV_SERIALIZE_OPT(trusted, false)
-        KV_SERIALIZE_OPT(ssl_support, (std::string)"autodetect")
         KV_SERIALIZE(ssl_private_key_path)
         KV_SERIALIZE(ssl_certificate_path)
         KV_SERIALIZE(ssl_ca_file)
-        KV_SERIALIZE(ssl_allowed_fingerprints)
         KV_SERIALIZE_OPT(ssl_allow_any_cert, false)
       END_KV_SERIALIZE_MAP()
     };

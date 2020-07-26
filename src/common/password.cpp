@@ -250,11 +250,6 @@ namespace tools
   {
   }
 
-  password_container::~password_container() noexcept
-  {
-    m_password.clear();
-  }
-
   std::atomic<bool> password_container::is_prompting(false);
 
   std::optional<password_container> password_container::prompt(const bool verify, const char *message, bool hide_input)

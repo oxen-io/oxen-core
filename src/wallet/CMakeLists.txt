@@ -47,6 +47,7 @@ target_link_libraries(wallet
     device_trezor
     net
     lmdb
+    rpc_http_client
     Boost::serialization
     Boost::filesystem
     Boost::thread

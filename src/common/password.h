@@ -58,9 +58,6 @@ namespace tools
     password_container(const password_container&) = delete;
     password_container(password_container&& rhs) = default;
 
-    //! Wipes internal password
-    ~password_container() noexcept;
-
     password_container& operator=(const password_container&) = delete;
     password_container& operator=(password_container&&) = default;
 

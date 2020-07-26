@@ -30,18 +30,22 @@
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
 #include <string>
+#include <iomanip>
+
+#include <openssl/ssl.h>
 
 #include "unbound.h"
 
 #include "include_base_utils.h"
+#include "string_tools.h"
 #include "wipeable_string.h"
 #include "crypto/crypto.h"
 #include "util.h"
 #include "stack_trace.h"
-#include "net/http_client.h"                        // epee::net_utils::...
 #include "misc_os_dependent.h"
 #include "readline_buffer.h"
 #include "string_util.h"
+#include <boost/filesystem/path.hpp>
 
 #include "i18n.h"
 

@@ -38,8 +38,6 @@
 #include <boost/program_options/variables_map.hpp>
 
 #include "bootstrap_daemon.h"
-#include "net/http_server_impl_base.h"
-#include "net/http_client.h"
 #include "core_rpc_server_commands_defs.h"
 #include "cryptonote_core/cryptonote_core.h"
 #include "p2p/net_node.h"
@@ -214,7 +212,6 @@ namespace cryptonote { namespace rpc {
     SET_LIMIT::response                                 invoke(SET_LIMIT::request&& req, rpc_context context);
     OUT_PEERS::response                                 invoke(OUT_PEERS::request&& req, rpc_context context);
     IN_PEERS::response                                  invoke(IN_PEERS::request&& req, rpc_context context);
-    UPDATE::response                                    invoke(UPDATE::request&& req, rpc_context context);
     GET_OUTPUT_DISTRIBUTION::response                   invoke(GET_OUTPUT_DISTRIBUTION::request&& req, rpc_context context, bool binary = false);
     GET_OUTPUT_DISTRIBUTION_BIN::response               invoke(GET_OUTPUT_DISTRIBUTION_BIN::request&& req, rpc_context context);
     POP_BLOCKS::response                                invoke(POP_BLOCKS::request&& req, rpc_context context);
@@ -311,8 +308,8 @@ private:
     //utils
     uint64_t get_block_reward(const block& blk);
     std::optional<std::string> get_random_public_node();
-    bool set_bootstrap_daemon(const std::string &address, const std::string &username_password);
-    bool set_bootstrap_daemon(const std::string &address, const std::optional<epee::net_utils::http::login> &credentials);
+    bool set_bootstrap_daemon(const std::string &address, std::string_view username_password);
+    bool set_bootstrap_daemon(const std::string &address, std::string_view username, std::string_view password);
     void fill_block_header_response(const block& blk, bool orphan_status, uint64_t height, const crypto::hash& hash, block_header_response& response, bool fill_pow_hash);
     std::unique_lock<std::shared_mutex> should_bootstrap_lock();
 

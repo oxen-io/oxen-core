@@ -40,12 +40,8 @@
 
 namespace daemonize {
 
-command_parser_executor::command_parser_executor(
-    uint32_t ip
-  , uint16_t port
-  , const std::optional<tools::login>& login
-  )
-  : m_executor{ip, port, login}
+command_parser_executor::command_parser_executor(std::string daemon_url, const std::optional<tools::login>& login)
+  : m_executor{std::move(daemon_url), login}
 {}
 
 command_parser_executor::command_parser_executor(cryptonote::rpc::core_rpc_server& rpc_server)
@@ -869,17 +865,6 @@ bool command_parser_executor::print_blockchain_dynamic_stats(const std::vector<s
   }
 
   return m_executor.print_blockchain_dynamic_stats(nblocks);
-}
-
-bool command_parser_executor::update(const std::vector<std::string>& args)
-{
-  if(args.size() != 1)
-  {
-    std::cout << "Exactly one parameter is needed: check, download, or update" << std::endl;
-    return false;
-  }
-
-  return m_executor.update(args.front());
 }
 
 bool command_parser_executor::relay_tx(const std::vector<std::string>& args)

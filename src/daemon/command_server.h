@@ -33,7 +33,6 @@
 #include "common/common_fwd.h"
 #include "console_handler.h"
 #include "daemon/command_parser_executor.h"
-#include "net/net_fwd.h"
 
 namespace daemonize {
 
@@ -45,11 +44,7 @@ private:
 
 public:
   /// Remote HTTP RPC constructor
-  command_server(
-      uint32_t ip
-    , uint16_t port
-    , const std::optional<tools::login>& login
-    );
+  command_server(std::string daemon_url, const std::optional<tools::login>& login);
 
   /// Non-remote constructor
   command_server(cryptonote::rpc::core_rpc_server& rpc_server);

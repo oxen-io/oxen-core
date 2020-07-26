@@ -52,9 +52,13 @@ add_library(daemon_rpc_server
   lmq_server.cpp
   )
 
+add_library(rpc_http_client
+    http_client.cpp
+    )
 target_link_libraries(rpc_commands
   PUBLIC
     common
+    cpr::cpr
   PRIVATE
     cryptonote_protocol
     extra)
@@ -95,4 +99,11 @@ target_link_libraries(daemon_rpc_server
     daemon_messages
     serialization
     Boost::thread
+    extra)
+
+target_link_libraries(rpc_http_client
+  PUBLIC
+    common
+    cpr::cpr
+  PRIVATE
     extra)

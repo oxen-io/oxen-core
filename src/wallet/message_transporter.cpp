@@ -30,13 +30,13 @@
 #include "string_coding.h"
 #include <boost/format.hpp>
 #include "wallet_errors.h"
-#include "net/http_client.h"
-#include "net/net_parse_helpers.h"
 #include <algorithm>
 
 #undef LOKI_DEFAULT_LOG_CATEGORY
 #define LOKI_DEFAULT_LOG_CATEGORY "wallet.mms"
 #define PYBITMESSAGE_DEFAULT_API_PORT 8442
+
+using namespace std::literals;
 
 namespace mms
 {
@@ -78,23 +78,18 @@ namespace bitmessage_rpc
 
 }
 
-message_transporter::message_transporter(std::unique_ptr<epee::net_utils::http::abstract_http_client> http_client) : m_http_client(std::move(http_client))
-{
-  m_run = true;
-}
-
 void message_transporter::set_options(const std::string &bitmessage_address, const epee::wipeable_string &bitmessage_login)
 {
-  m_bitmessage_url = bitmessage_address;
-  epee::net_utils::http::url_content address_parts{};
-  epee::net_utils::parse_url(m_bitmessage_url, address_parts);
-  if (address_parts.port == 0)
-  {
-    address_parts.port = PYBITMESSAGE_DEFAULT_API_PORT;
-  }
-  m_bitmessage_login = bitmessage_login;
+  auto [proto, host, port, uri] = m_http_client.parse_url(bitmessage_address);
+  if (port == 0) port = PYBITMESSAGE_DEFAULT_API_PORT;
 
-  m_http_client->set_server(address_parts.host, std::to_string(address_parts.port), std::nullopt);
+  m_http_client.set_base_url(proto + "://" + host + ":" + std::to_string(port) + uri);
+  if (!bitmessage_login.empty()) {
+    auto login = bitmessage_login.view();
+    auto colon = login.find(':');
+    m_http_client.set_auth(login.substr(0, colon), login.substr(colon == std::string_view::npos ? login.size() : colon + 1));
+  }
+  m_http_client.set_timeout(15s);
 }
 
 bool message_transporter::receive_messages(const std::vector<std::string> &destination_transport_addresses,
@@ -161,7 +156,7 @@ bool message_transporter::receive_messages(const std::vector<std::string> &desti
   return true;
 }
 
-bool message_transporter::send_message(const transport_message &message)
+void message_transporter::send_message(const transport_message &message)
 {
   // <toAddress> <fromAddress> <subject> <message> [encodingType [TTL]]
   std::string request;
@@ -176,10 +171,9 @@ bool message_transporter::send_message(const transport_message &message)
   end_xml_rpc_cmd(request);
   std::string answer;
   post_request(request, answer);
-  return true;
 }
 
-bool message_transporter::delete_message(const std::string &transport_id)
+void message_transporter::delete_message(const std::string &transport_id)
 {
   std::string request;
   start_xml_rpc_cmd(request, "trashMessage");
@@ -187,7 +181,6 @@ bool message_transporter::delete_message(const std::string &transport_id)
   end_xml_rpc_cmd(request);
   std::string answer;
   post_request(request, answer);
-  return true;
 }
 
 // Deterministically derive a new transport address from 'seed' (the 10-hex-digits auto-config
@@ -227,44 +220,26 @@ std::string message_transporter::derive_transport_address(const std::string &see
   return address;
 }
 
-bool message_transporter::delete_transport_address(const std::string &transport_address)
+void message_transporter::delete_transport_address(const std::string &transport_address)
 {
   std::string request;
   start_xml_rpc_cmd(request, "leaveChan");
   add_xml_rpc_string_param(request, transport_address);
   end_xml_rpc_cmd(request);
   std::string answer;
-  return post_request(request, answer);
+  post_request(request, answer);
 }
 
-bool message_transporter::post_request(const std::string &request, std::string &answer)
+void message_transporter::post_request(const std::string &request, std::string &answer)
 {
-  // Somehow things do not work out if one tries to connect "m_http_client" to Bitmessage
-  // and keep it connected over the course of several calls. But with a new connection per
-  // call and disconnecting after the call there is no problem (despite perhaps a small
-  // slowdown)
-  epee::net_utils::http::fields_list additional_params;
-
-  // Basic access authentication according to RFC 7617 (which the epee HTTP classes do not seem to support?)
-  // "m_bitmessage_login" just contains what is needed here, "user:password"
-  std::string auth_string = epee::string_encoding::base64_encode((const unsigned char*)m_bitmessage_login.data(), m_bitmessage_login.size());
-  auth_string.insert(0, "Basic ");
-  additional_params.push_back(std::make_pair("Authorization", auth_string));
-
-  additional_params.push_back(std::make_pair("Content-Type", "application/xml; charset=utf-8"));
-  const epee::net_utils::http::http_response_info* response = NULL;
-  std::chrono::milliseconds timeout = std::chrono::seconds(15);
-  bool r = m_http_client->invoke("/", "POST", request, timeout, std::addressof(response), std::move(additional_params));
-  if (r)
-  {
-    answer = response->m_body;
+  try {
+    auto res = m_http_client.post("", request, {{"Content-Type", "application/xml; charset=utf-8"}});
+    answer = res.text;
+  } catch (const std::exception& e) {
+    LOG_ERROR("POST request to Bitmessage failed: " << e.what());
+    THROW_WALLET_EXCEPTION(tools::error::no_connection_to_bitmessage, m_http_client.get_base_url());
   }
-  else
-  {
-    LOG_ERROR("POST request to Bitmessage failed: " << request.substr(0, 300));
-    THROW_WALLET_EXCEPTION(tools::error::no_connection_to_bitmessage, m_bitmessage_url);
-  }
-  m_http_client->disconnect();  // see comment above
+
   std::string string_value = get_str_between_tags(answer, "<string>", "</string>");
   if ((string_value.find("API Error") == 0) || (string_value.find("RPC ") == 0))
   {
@@ -285,8 +260,6 @@ bool message_transporter::post_request(const std::string &request, std::string &
       THROW_WALLET_EXCEPTION(tools::error::bitmessage_api_error, string_value);
     }
   }
-
-  return r;
 }
 
 // Pick some string between two delimiters

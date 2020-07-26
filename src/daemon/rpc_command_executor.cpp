@@ -216,16 +216,13 @@ namespace {
 }
 
 rpc_command_executor::rpc_command_executor(
-    uint32_t ip
-  , uint16_t port
-  , const std::optional<tools::login>& login
+    std::string remote_url,
+    const std::optional<tools::login>& login
   )
 {
-  std::optional<epee::net_utils::http::login> http_login{};
+  m_rpc_client.emplace(remote_url);
   if (login)
-    http_login.emplace(login->username, login->password.password());
-  // FIXME: make ssl argument here optional (and default to disabled)
-  m_rpc_client = std::make_unique<tools::t_rpc_client>(ip, port, std::move(http_login), epee::net_utils::ssl_support_t::e_ssl_support_disabled);
+    m_rpc_client->set_auth(login->username, std::string{login->password.password().view()});
 }
 
 bool rpc_command_executor::print_checkpoints(uint64_t start_height, uint64_t end_height, bool print_json)
@@ -1147,13 +1144,12 @@ bool rpc_command_executor::print_status()
     return false;
   }
 
-  bool daemon_is_alive = m_rpc_client->check_connection();
-
-  if(daemon_is_alive) {
-    tools::success_msg_writer() << "lokid is running";
+  // Make a request to get_height because it is public and relatively simple
+  GET_HEIGHT::response res;
+  if (invoke<GET_HEIGHT>({}, res, "lokid is NOT running")) {
+    tools::success_msg_writer() << "lokid is running (height: " << res.height << ")";
     return true;
   }
-  tools::fail_msg_writer() << "lokid is NOT running";
   return false;
 }
 
@@ -1493,34 +1489,6 @@ bool rpc_command_executor::print_blockchain_dynamic_stats(uint64_t nblocks)
     }
     tools::msg_writer() << "Block versions (major/minor): " << s.str();
   }
-  return true;
-}
-
-bool rpc_command_executor::update(const std::string &command)
-{
-  UPDATE::response res{};
-  if (!invoke<UPDATE>({command}, res, "Failed to fetch update info"))
-    return false;
-
-  if (!res.update)
-  {
-    tools::msg_writer() << "No update available";
-    return true;
-  }
-
-  tools::msg_writer() << "Update available: v" << res.version << ": " << res.user_uri << ", hash " << res.hash;
-  if (command == "check")
-    return true;
-
-  if (!res.path.empty())
-    tools::msg_writer() << "Update downloaded to: " << res.path;
-  else
-    tools::msg_writer() << "Update download failed: " << res.status;
-  if (command == "download")
-    return true;
-
-  tools::msg_writer() << "'" << command << "' not implemented yet";
-
   return true;
 }
 
@@ -2366,7 +2334,7 @@ bool rpc_command_executor::prepare_registration()
         const uint64_t amount_left = staking_requirement - state.total_reserved_contributions;
 
         std::cout << "Summary:" << std::endl;
-        std::cout << "Operating costs as % of reward: " << (state.operator_fee_portions * 100.0 / STAKING_PORTIONS) << "%" << std::endl;
+        std::cout << "Operating costs as % of reward: " << (state.operator_fee_portions * 100.0 / static_cast<double>(STAKING_PORTIONS)) << "%" << std::endl;
         printf("%-16s%-9s%-19s%-s\n", "Contributor", "Address", "Contribution", "Contribution(%)");
         printf("%-16s%-9s%-19s%-s\n", "___________", "_______", "____________", "_______________");
 

@@ -34,15 +34,17 @@
 #include <optional>
 #include <mutex>
 #include <boost/format.hpp>
-#include <boost/asio/ip/address.hpp>
-#include <boost/preprocessor/stringize.hpp>
 #include <openssl/evp.h>
+#include <openssl/pem.h>
 #include <type_traits>
+#include <cpr/parameters.h>
+#include "common/password.h"
 #include "common/string_util.h"
 #include "include_base_utils.h"
 #include "common/rules.h"
 #include "cryptonote_config.h"
 #include "cryptonote_core/tx_sanity_check.h"
+#include "wallet/wallet_errors.h"
 #include "wallet2.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "rpc/core_rpc_server_commands_defs.h"
@@ -79,7 +81,6 @@
 #include "ringdb.h"
 #include "device/device_cold.hpp"
 #include "device_trezor/device_trezor.hpp"
-#include "net/socks_connect.h"
 
 #include "cryptonote_core/service_node_list.h"
 #include "cryptonote_core/service_node_rules.h"
@@ -227,22 +228,24 @@ namespace {
 
 // Create on-demand to prevent static initialization order fiasco issues.
 struct options {
-  const command_line::arg_descriptor<std::string> daemon_address = {"daemon-address", tools::wallet2::tr("Use daemon instance at <host>:<port>"), ""};
-  const command_line::arg_descriptor<std::string> daemon_host = {"daemon-host", tools::wallet2::tr("Use daemon instance at host <arg> instead of localhost"), ""};
-  const command_line::arg_descriptor<std::string> proxy = {"proxy", tools::wallet2::tr("[<ip>:]<port> socks proxy to use for daemon connections"), {}, true};
+  const command_line::arg_descriptor<std::string> daemon_address = {"daemon-address", tools::wallet2::tr("Use lokid RPC at [http://]<host>[:<port>]"), ""};
+  const command_line::arg_descriptor<std::string> daemon_login = {"daemon-login", tools::wallet2::tr("Specify username[:password] for daemon RPC client"), "", true};
+  const command_line::arg_descriptor<std::string> proxy = {"proxy", tools::wallet2::tr("Use socks proxy at [socks4a://]<ip>:<port> for daemon connections"), "", true};
   const command_line::arg_descriptor<bool> trusted_daemon = {"trusted-daemon", tools::wallet2::tr("Enable commands which rely on a trusted daemon"), false};
   const command_line::arg_descriptor<bool> untrusted_daemon = {"untrusted-daemon", tools::wallet2::tr("Disable commands which rely on a trusted daemon"), false};
+  const command_line::arg_descriptor<std::string> daemon_ssl_private_key = {"daemon-ssl-private-key", tools::wallet2::tr("Path to a PEM format private key for HTTPS client authentication"), ""};
+  const command_line::arg_descriptor<std::string> daemon_ssl_certificate = {"daemon-ssl-certificate", tools::wallet2::tr("Path to a PEM format certificate for HTTPS client authentication"), ""};
+  const command_line::arg_descriptor<std::string> daemon_ssl_ca_certificates = {"daemon-ssl-ca-certificates", tools::wallet2::tr("Path to a CA certificate bundle to use to verify the remote node's HTTPS certificate instead of using your operating system CAs.")};
+  const command_line::arg_descriptor<bool> daemon_ssl_allow_any_cert = {"daemon-ssl-allow-any-cert", tools::wallet2::tr("Make the HTTPS connection insecure by allowing any SSL certificate from the daemon."), false};
+
+  // Deprecated and not listed in --help
+  const command_line::arg_descriptor<std::string> daemon_host = {"daemon-host", tools::wallet2::tr("Deprecated. Use --daemon-address instead"), ""};
+  const command_line::arg_descriptor<int> daemon_port = {"daemon-port", tools::wallet2::tr("Deprecated. Use --daemon-address instead"), 0};
+  const command_line::arg_descriptor<std::string> daemon_ssl = {"daemon-ssl", tools::wallet2::tr("Deprecated. Use --daemon-address https://... instead"), ""};
+
   const command_line::arg_descriptor<std::string> password = {"password", tools::wallet2::tr("Wallet password (escape/quote as needed)"), "", true};
   const command_line::arg_descriptor<std::string> password_file = {"password-file", tools::wallet2::tr("Wallet password file"), "", true};
-  const command_line::arg_descriptor<int> daemon_port = {"daemon-port", tools::wallet2::tr("Use daemon instance at port <arg> instead of 18081"), 0};
-  const command_line::arg_descriptor<std::string> daemon_login = {"daemon-login", tools::wallet2::tr("Specify username[:password] for daemon RPC client"), "", true};
-  const command_line::arg_descriptor<std::string> daemon_ssl = {"daemon-ssl", tools::wallet2::tr("Enable SSL on daemon RPC connections: enabled|disabled|autodetect"), "autodetect"};
-  const command_line::arg_descriptor<std::string> daemon_ssl_private_key = {"daemon-ssl-private-key", tools::wallet2::tr("Path to a PEM format private key"), ""};
-  const command_line::arg_descriptor<std::string> daemon_ssl_certificate = {"daemon-ssl-certificate", tools::wallet2::tr("Path to a PEM format certificate"), ""};
-  const command_line::arg_descriptor<std::string> daemon_ssl_ca_certificates = {"daemon-ssl-ca-certificates", tools::wallet2::tr("Path to file containing concatenated PEM format certificate(s) to replace system CA(s).")};
-  const command_line::arg_descriptor<std::vector<std::string>> daemon_ssl_allowed_fingerprints = {"daemon-ssl-allowed-fingerprints", tools::wallet2::tr("List of valid fingerprints of allowed RPC servers")};
-  const command_line::arg_descriptor<bool> daemon_ssl_allow_any_cert = {"daemon-ssl-allow-any-cert", tools::wallet2::tr("Allow any SSL certificate from the daemon"), false};
-  const command_line::arg_descriptor<bool> daemon_ssl_allow_chained = {"daemon-ssl-allow-chained", tools::wallet2::tr("Allow user (via --daemon-ssl-ca-certificates) chain certificates"), false};
+
   const command_line::arg_descriptor<bool> testnet = {"testnet", tools::wallet2::tr("For testnet. Daemon must also be launched with --testnet flag"), false};
   const command_line::arg_descriptor<bool> stagenet = {"stagenet", tools::wallet2::tr("For stagenet. Daemon must also be launched with --stagenet flag"), false};
   const command_line::arg_descriptor<bool> regtest = {"regtest", tools::wallet2::tr("For regression testing. Daemon must also be launched with --regtest flag"), false};
@@ -302,10 +305,10 @@ std::string get_weight_string(const cryptonote::transaction &tx, size_t blob_siz
   return get_weight_string(get_transaction_weight(tx, blob_size));
 }
 
+static const std::regex protocol_re{R"(^([a-zA-Z][a-zA-Z0-9+.-]*):)"};
+
 std::unique_ptr<tools::wallet2> make_basic(const boost::program_options::variables_map& vm, bool unattended, const options& opts, const std::function<std::optional<tools::password_container>(const char *, bool)> &password_prompter)
 {
-  namespace ip = boost::asio::ip;
-
   const bool testnet = command_line::get_arg(vm, opts.testnet);
   const bool stagenet = command_line::get_arg(vm, opts.stagenet);
   const bool fakenet = command_line::get_arg(vm, opts.regtest);
@@ -318,56 +321,20 @@ std::unique_ptr<tools::wallet2> make_basic(const boost::program_options::variabl
 
   const bool use_proxy = command_line::has_arg(vm, opts.proxy);
   auto daemon_address = command_line::get_arg(vm, opts.daemon_address);
+  // Deprecated:
   auto daemon_host = command_line::get_arg(vm, opts.daemon_host);
   auto daemon_port = command_line::get_arg(vm, opts.daemon_port);
+
   auto device_name = command_line::get_arg(vm, opts.hw_device);
   auto device_derivation_path = command_line::get_arg(vm, opts.hw_device_derivation_path);
-  auto daemon_ssl_private_key = command_line::get_arg(vm, opts.daemon_ssl_private_key);
-  auto daemon_ssl_certificate = command_line::get_arg(vm, opts.daemon_ssl_certificate);
-  auto daemon_ssl_ca_file = command_line::get_arg(vm, opts.daemon_ssl_ca_certificates);
-  auto daemon_ssl_allowed_fingerprints = command_line::get_arg(vm, opts.daemon_ssl_allowed_fingerprints);
-  auto daemon_ssl_allow_any_cert = command_line::get_arg(vm, opts.daemon_ssl_allow_any_cert);
-  auto daemon_ssl = command_line::get_arg(vm, opts.daemon_ssl);
 
-  // user specified CA file or fingeprints implies enabled SSL by default
-  epee::net_utils::ssl_options_t ssl_options = epee::net_utils::ssl_support_t::e_ssl_support_enabled;
-  if (command_line::get_arg(vm, opts.daemon_ssl_allow_any_cert))
-    ssl_options.verification = epee::net_utils::ssl_verification_t::none;
-  else if (!daemon_ssl_ca_file.empty() || !daemon_ssl_allowed_fingerprints.empty())
-  {
-    std::vector<std::vector<uint8_t>> ssl_allowed_fingerprints{ daemon_ssl_allowed_fingerprints.size() };
-    std::transform(daemon_ssl_allowed_fingerprints.begin(), daemon_ssl_allowed_fingerprints.end(), ssl_allowed_fingerprints.begin(), epee::from_hex::vector);
-    for (const auto &fpr: ssl_allowed_fingerprints)
-    {
-      THROW_WALLET_EXCEPTION_IF(fpr.size() != SSL_FINGERPRINT_SIZE, tools::error::wallet_internal_error,
-          "SHA-256 fingerprint should be " BOOST_PP_STRINGIZE(SSL_FINGERPRINT_SIZE) " bytes long.");
-    }
+  THROW_WALLET_EXCEPTION_IF(!daemon_address.empty() && (!daemon_host.empty() || 0 != daemon_port),
+      tools::error::wallet_internal_error, tools::wallet2::tr("--daemon-host/--daemon-port options are deprecated and cannot be combined with --daemon-address"));
 
-    ssl_options = epee::net_utils::ssl_options_t{
-      std::move(ssl_allowed_fingerprints), std::move(daemon_ssl_ca_file)
-    };
-
-    if (command_line::get_arg(vm, opts.daemon_ssl_allow_chained))
-      ssl_options.verification = epee::net_utils::ssl_verification_t::user_ca;
-  }
-
-  if (ssl_options.verification != epee::net_utils::ssl_verification_t::user_certificates || !command_line::is_arg_defaulted(vm, opts.daemon_ssl))
-  {
-    THROW_WALLET_EXCEPTION_IF(!epee::net_utils::ssl_support_from_string(ssl_options.support, daemon_ssl), tools::error::wallet_internal_error,
-       tools::wallet2::tr("Invalid argument for ") + std::string(opts.daemon_ssl.name));
-  }
-
-  ssl_options.auth = epee::net_utils::ssl_authentication_t{
-    std::move(daemon_ssl_private_key), std::move(daemon_ssl_certificate)
-  };
-
-  THROW_WALLET_EXCEPTION_IF(!daemon_address.empty() && !daemon_host.empty() && 0 != daemon_port,
-      tools::error::wallet_internal_error, tools::wallet2::tr("can't specify daemon host or port more than once"));
-
-  std::optional<epee::net_utils::http::login> login{};
+  std::optional<tools::login> login;
   if (command_line::has_arg(vm, opts.daemon_login))
   {
-    auto parsed = tools::login::parse(
+    login = tools::login::parse(
       command_line::get_arg(vm, opts.daemon_login), false, [password_prompter](bool verify) {
         if (!password_prompter)
         {
@@ -377,104 +344,70 @@ std::unique_ptr<tools::wallet2> make_basic(const boost::program_options::variabl
         return password_prompter("Daemon client password", verify);
       }
     );
-    if (!parsed)
+    if (!login)
       return nullptr;
-
-    login.emplace(std::move(parsed->username), std::move(parsed->password).password());
-  }
-
-  if (daemon_host.empty())
-    daemon_host = "localhost";
-
-  if (!daemon_port)
-  {
-    daemon_port = get_config(nettype).RPC_DEFAULT_PORT;
   }
 
   // if no daemon settings are given and we have a previous one, reuse that one
   if (command_line::is_arg_defaulted(vm, opts.daemon_host) && command_line::is_arg_defaulted(vm, opts.daemon_port) && command_line::is_arg_defaulted(vm, opts.daemon_address))
-  {
-    // not a bug: taking a const ref to a temporary in this way is actually ok in a recent C++ standard
-    const std::string &def = tools::wallet2::get_default_daemon_address();
-    if (!def.empty())
-      daemon_address = def;
+    daemon_address = tools::wallet2::get_default_daemon_address();
+
+  std::string default_protocol = "http://";
+  // Deprecated --daemon-ssl option: prepend https:// if there is no protocol on the daemon address
+  if (command_line::get_arg(vm, opts.daemon_ssl) == "enabled") {
+    default_protocol = "https://";
+    THROW_WALLET_EXCEPTION_IF(tools::starts_with(daemon_address, "http://"), tools::error::wallet_internal_error,
+        "Deprecated --daemon-ssl=enabled option conflicts with http://... daemon URL");
   }
 
   if (daemon_address.empty())
-    daemon_address = "http://" + daemon_host + ":" + std::to_string(daemon_port);
-
   {
-    auto real_daemon = std::string_view{daemon_address}.substr(0, daemon_address.rfind(':'));
-
-    /* If SSL or proxy is enabled, then a specific cert, CA or fingerprint must
-       be specified. This is specific to the wallet. */
-    const bool verification_required =
-      ssl_options.verification != epee::net_utils::ssl_verification_t::none &&
-      (ssl_options.support == epee::net_utils::ssl_support_t::e_ssl_support_enabled || use_proxy);
-
-    THROW_WALLET_EXCEPTION_IF(
-      verification_required && !ssl_options.has_strong_verification(real_daemon),
-      tools::error::wallet_internal_error,
-      tools::wallet2::tr("Enabling --") + std::string{use_proxy ? opts.proxy.name : opts.daemon_ssl.name} + tools::wallet2::tr(" requires --") +
-        opts.daemon_ssl_allow_any_cert.name + tools::wallet2::tr(" or --") +
-        opts.daemon_ssl_ca_certificates.name + tools::wallet2::tr(" or --") + opts.daemon_ssl_allowed_fingerprints.name + tools::wallet2::tr(" or use of a .onion/.i2p domain")
-    );
+    daemon_address = (daemon_host.empty() ? "localhost" : daemon_host) + ':' +
+      std::to_string(daemon_port > 0 ? daemon_port : get_config(nettype).RPC_DEFAULT_PORT);
   }
 
-  boost::asio::ip::tcp::endpoint proxy{};
+  if (!std::regex_search(daemon_address, protocol_re))
+  {
+    daemon_address.insert(0, default_protocol);
+  }
+
+  std::string proxy;
   if (use_proxy)
   {
-    namespace ip = boost::asio::ip;
-
-    const auto proxy_address = command_line::get_arg(vm, opts.proxy);
-
-    std::string_view proxy_port{proxy_address};
-    std::string_view proxy_host = proxy_port.substr(0, proxy_port.rfind(":"));
-    if (proxy_port.size() == proxy_host.size())
-      proxy_host = "127.0.0.1";
-    else
-      proxy_port.remove_prefix(proxy_host.size() + 1);
-
-    uint16_t port_value = 0;
-    THROW_WALLET_EXCEPTION_IF(
-      !epee::string_tools::get_xtype_from_string(port_value, std::string{proxy_port}),
-      tools::error::wallet_internal_error,
-      std::string{"Invalid port specified for --"} + opts.proxy.name
-    );
-
-    boost::system::error_code error{};
-    proxy = ip::tcp::endpoint{ip::address::from_string(std::string{proxy_host}, error), port_value};
-    THROW_WALLET_EXCEPTION_IF(bool(error), tools::error::wallet_internal_error, std::string{"Invalid IP address specified for --"} + opts.proxy.name);
+    proxy = command_line::get_arg(vm, opts.proxy);
+    try {
+      rpc::http_client::parse_url(proxy);
+    } catch (const std::exception& e) {
+      THROW_WALLET_EXCEPTION(tools::error::wallet_internal_error, "Failed to parse proxy address: "s + e.what());
+    }
   }
 
-  bool trusted_daemon;
+  bool trusted_daemon = false;
+  try {
+    auto [proto, host, port, url] = rpc::http_client::parse_url(daemon_address);
+    trusted_daemon = tools::is_local_address(host);
+  } catch (const std::exception& e) {
+    THROW_WALLET_EXCEPTION(tools::error::wallet_internal_error, tools::wallet2::tr("Invalid daemon address ") + "'"s + daemon_address + "': " + e.what());
+  }
+
   THROW_WALLET_EXCEPTION_IF(!command_line::is_arg_defaulted(vm, opts.trusted_daemon) && !command_line::is_arg_defaulted(vm, opts.untrusted_daemon),
     tools::error::wallet_internal_error, tools::wallet2::tr("--trusted-daemon and --untrusted-daemon cannot both be specified"));
   if (!command_line::is_arg_defaulted(vm, opts.trusted_daemon) || !command_line::is_arg_defaulted(vm, opts.untrusted_daemon))
     trusted_daemon = command_line::get_arg(vm, opts.trusted_daemon) && !command_line::get_arg(vm, opts.untrusted_daemon);
-  else
-  {
-    // set --trusted-daemon if local and not overridden
-    trusted_daemon = false;
-    try
-    {
-      if (tools::is_local_address(daemon_address))
-      {
-        MINFO(tools::wallet2::tr("Daemon is local, assuming trusted"));
-        trusted_daemon = true;
-      }
-    }
-    catch (const std::exception &e) { }
-  }
+  else if (trusted_daemon)
+    MINFO(tools::wallet2::tr("Daemon is local, assuming trusted"));
 
   std::unique_ptr<tools::wallet2> wallet(new tools::wallet2(nettype, kdf_rounds, unattended));
-  wallet->init(std::move(daemon_address), std::move(login), std::move(proxy), 0, trusted_daemon, std::move(ssl_options));
+  wallet->init(std::move(daemon_address), std::move(login), std::move(proxy), 0, trusted_daemon);
   boost::filesystem::path ringdb_path = command_line::get_arg(vm, opts.shared_ringdb_dir);
   wallet->set_ring_database(ringdb_path.string());
   wallet->get_message_store().set_options(vm);
   wallet->device_name(device_name);
   wallet->device_derivation_path(device_derivation_path);
   wallet->m_long_poll_disabled = command_line::get_arg(vm, opts.disable_rpc_long_poll);
+  wallet->m_http_client.set_https_client_cert(command_line::get_arg(vm, opts.daemon_ssl_certificate), command_line::get_arg(vm, opts.daemon_ssl_private_key));
+  wallet->m_http_client.set_insecure_https(command_line::get_arg(vm, opts.daemon_ssl_allow_any_cert));
+  wallet->m_http_client.set_https_cainfo(command_line::get_arg(vm, opts.daemon_ssl_ca_certificates));
 
   if (command_line::get_arg(vm, opts.offline))
     wallet->set_offline();
@@ -949,10 +882,6 @@ bool get_pruned_tx(const rpc::GET_TRANSACTIONS::entry &entry, cryptonote::transa
 namespace tools
 {
 
-std::mutex tools::wallet2::default_daemon_address_mutex;
-std::string tools::wallet2::default_daemon_address = "";
-
-constexpr const std::chrono::seconds wallet2::rpc_timeout;
 const char* wallet2::tr(const char* str) { return i18n_translate(str, "tools::wallet2"); }
 
 gamma_picker::gamma_picker(const std::vector<uint64_t> &rct_offsets, double shape, double scale):
@@ -1081,8 +1010,7 @@ void wallet_device_callback::on_progress(const hw::device_progress& event)
     wallet->on_device_progress(event);
 }
 
-wallet2::wallet2(network_type nettype, uint64_t kdf_rounds, bool unattended, std::unique_ptr<epee::net_utils::http::http_client_factory> http_client_factory):
-  m_http_client(http_client_factory->create()),
+wallet2::wallet2(network_type nettype, uint64_t kdf_rounds, bool unattended):
   m_multisig_rescan_info(NULL),
   m_multisig_rescan_k(NULL),
   m_upper_transaction_weight_limit(0),
@@ -1121,7 +1049,7 @@ wallet2::wallet2(network_type nettype, uint64_t kdf_rounds, bool unattended, std
   m_watch_only(false),
   m_multisig(false),
   m_multisig_threshold(0),
-  m_node_rpc_proxy(*m_http_client, m_daemon_rpc_mutex),
+  m_node_rpc_proxy(m_http_client),
   m_account_public_address{crypto::null_pkey, crypto::null_pkey},
   m_subaddress_lookahead_major(SUBADDRESS_LOOKAHEAD_MAJOR),
   m_subaddress_lookahead_minor(SUBADDRESS_LOOKAHEAD_MINOR),
@@ -1132,7 +1060,7 @@ wallet2::wallet2(network_type nettype, uint64_t kdf_rounds, bool unattended, std
   m_light_wallet_balance(0),
   m_light_wallet_unlocked_balance(0),
   m_original_keys_available(false),
-  m_message_store(http_client_factory->create()),
+  m_message_store(),
   m_key_device_type(hw::device::device_type::SOFTWARE),
   m_ring_history_saved(false),
   m_ringdb(),
@@ -1167,6 +1095,21 @@ bool wallet2::has_stagenet_option(const boost::program_options::variables_map& v
   return command_line::get_arg(vm, options().stagenet);
 }
 
+std::vector<std::string> wallet2::has_deprecated_options(const boost::program_options::variables_map& vm)
+{
+  std::vector<std::string> warnings;
+
+  // These are deprecated as of loki 8.x:
+  if (!command_line::is_arg_defaulted(vm, options().daemon_host))
+    warnings.emplace_back("--daemon-host. Use '--daemon-address http://HOSTNAME' instead");
+  if (!command_line::is_arg_defaulted(vm, options().daemon_port))
+    warnings.emplace_back("--daemon-port. Use '--daemon-address http://HOSTNAME:PORT' instead");
+  if (!command_line::is_arg_defaulted(vm, options().daemon_ssl))
+    warnings.emplace_back("--daemon-ssl has no effect. Use '--daemon-address https://...' instead");
+
+  return warnings;
+}
+
 std::string wallet2::device_name_option(const boost::program_options::variables_map& vm)
 {
   return command_line::get_arg(vm, options().hw_device);
@@ -1177,25 +1120,25 @@ std::string wallet2::device_derivation_path_option(const boost::program_options:
   return command_line::get_arg(vm, options().hw_device_derivation_path);
 }
 
-void wallet2::init_options(boost::program_options::options_description& desc_params)
+void wallet2::init_options(boost::program_options::options_description& desc_params, boost::program_options::options_description& hidden_params)
 {
   const options opts{};
   command_line::add_arg(desc_params, opts.daemon_address);
-  command_line::add_arg(desc_params, opts.daemon_host);
+  // deprecated:
+  command_line::add_arg(hidden_params, opts.daemon_host);
+  command_line::add_arg(hidden_params, opts.daemon_port);
+  command_line::add_arg(hidden_params, opts.daemon_ssl);
+
+  command_line::add_arg(desc_params, opts.daemon_login);
   command_line::add_arg(desc_params, opts.proxy);
   command_line::add_arg(desc_params, opts.trusted_daemon);
   command_line::add_arg(desc_params, opts.untrusted_daemon);
-  command_line::add_arg(desc_params, opts.password);
-  command_line::add_arg(desc_params, opts.password_file);
-  command_line::add_arg(desc_params, opts.daemon_port);
-  command_line::add_arg(desc_params, opts.daemon_login);
-  command_line::add_arg(desc_params, opts.daemon_ssl);
   command_line::add_arg(desc_params, opts.daemon_ssl_private_key);
   command_line::add_arg(desc_params, opts.daemon_ssl_certificate);
   command_line::add_arg(desc_params, opts.daemon_ssl_ca_certificates);
-  command_line::add_arg(desc_params, opts.daemon_ssl_allowed_fingerprints);
   command_line::add_arg(desc_params, opts.daemon_ssl_allow_any_cert);
-  command_line::add_arg(desc_params, opts.daemon_ssl_allow_chained);
+  command_line::add_arg(desc_params, opts.password);
+  command_line::add_arg(desc_params, opts.password_file);
   command_line::add_arg(desc_params, opts.testnet);
   command_line::add_arg(desc_params, opts.stagenet);
   command_line::add_arg(desc_params, opts.regtest);
@@ -1250,42 +1193,66 @@ std::unique_ptr<wallet2> wallet2::make_dummy(const boost::program_options::varia
   return make_basic(vm, unattended, opts, password_prompter);
 }
 
+std::string wallet2::get_default_daemon_address() {
+  std::lock_guard lock{default_daemon_address_mutex};
+  return default_daemon_address;
+}
+
 //----------------------------------------------------------------------------------------------------
-bool wallet2::set_daemon(std::string daemon_address, std::optional<epee::net_utils::http::login> daemon_login, bool trusted_daemon, epee::net_utils::ssl_options_t ssl_options)
+bool wallet2::set_daemon(std::string daemon_address, std::optional<tools::login> daemon_login, std::string proxy, bool trusted_daemon)
 {
-  std::lock_guard<std::recursive_mutex> daemon_mutex(m_daemon_rpc_mutex);
+  // If we're given a raw address, prepend http
+  if (!tools::starts_with(daemon_address, "http://") && !tools::starts_with(daemon_address, "https://"))
+    daemon_address.insert(0, "http://"sv);
 
-  if(m_http_client->is_connected())
-    m_http_client->disconnect();
+  bool localhost = false;
+  try {
+    auto [proto, host, port, uri] = rpc::http_client::parse_url(daemon_address);
+    localhost = tools::is_local_address(host);
+  } catch (const rpc::http_client_error& e) {
+    MWARNING("Invalid daemon URL: "s + e.what());
+    return false;
+  }
 
-  m_daemon_address        = std::move(daemon_address);
-  m_daemon_login          = std::move(daemon_login);
-  m_trusted_daemon        = trusted_daemon;
-  m_long_poll_ssl_options = ssl_options;
+  m_http_client.set_base_url(daemon_address);
+  m_http_client.set_timeout(rpc_timeout);
+  if (daemon_login)
+    m_http_client.set_auth(daemon_login->username, daemon_login->password.password().view());
+  else
+    m_http_client.set_auth();
 
-  const std::string address = get_daemon_address();
-  MINFO("setting daemon to " << address);
-  bool ret =  m_http_client->set_server(address, get_daemon_login(), std::move(ssl_options));
-  if (ret)
+  // If the proxy is given but starts with an address/hostname then prepend `socks4a://`.
+  // Use a regex here rather than parsing the URL (as above) because you might want to specify
+  // authentication info (e.g. with an HTTP or SOCKS5 proxy), which parse_url doesn't handle.
+  if (!proxy.empty() && !std::regex_search(proxy, protocol_re))
+    proxy.insert(0, "socks4a://"sv);
+  m_http_client.set_proxy(std::move(proxy));
+
+  m_trusted_daemon = trusted_daemon;
+
+  // Copy everything to the long poll client as well:
+  m_long_poll_client.copy_params_from(m_http_client);
+  m_long_poll_local = localhost;
+
+  m_node_rpc_proxy.invalidate();
+
+  std::string url = m_http_client.get_base_url();
+  MINFO("set daemon to " << (url.empty() ? "(none, offline)" : url));
   {
     std::lock_guard lock{default_daemon_address_mutex};
-    default_daemon_address = address;
+    default_daemon_address = std::move(url);
   }
-  return ret;
+  return true;
 }
 //----------------------------------------------------------------------------------------------------
-bool wallet2::init(std::string daemon_address, std::optional<epee::net_utils::http::login> daemon_login, boost::asio::ip::tcp::endpoint proxy, uint64_t upper_transaction_weight_limit, bool trusted_daemon, epee::net_utils::ssl_options_t ssl_options)
+bool wallet2::init(std::string daemon_address, std::optional<tools::login> daemon_login, std::string proxy, uint64_t upper_transaction_weight_limit, bool trusted_daemon)
 {
+  if (!set_daemon(std::move(daemon_address), std::move(daemon_login), std::move(proxy), trusted_daemon))
+    return false;
+
   m_is_initialized = true;
   m_upper_transaction_weight_limit = upper_transaction_weight_limit;
-  if (proxy != boost::asio::ip::tcp::endpoint{})
-  {
-    epee::net_utils::http::abstract_http_client* abstract_http_client = m_http_client.get();
-    epee::net_utils::http::http_simple_client* http_simple_client = dynamic_cast<epee::net_utils::http::http_simple_client*>(abstract_http_client);
-    CHECK_AND_ASSERT_MES(http_simple_client != nullptr, false, "http_simple_client must be used to set proxy");
-    http_simple_client->set_connector(net::socks::connector{std::move(proxy)});
-  }
-  return set_daemon(daemon_address, daemon_login, trusted_daemon, std::move(ssl_options));
+  return true;
 }
 //----------------------------------------------------------------------------------------------------
 bool wallet2::is_deterministic() const
@@ -2720,9 +2687,7 @@ void wallet2::pull_hashes(uint64_t start_height, uint64_t &blocks_start_height, 
   req.block_ids = short_chain_history;
 
   req.start_height = start_height;
-  m_daemon_rpc_mutex.lock();
   bool r = invoke_http<rpc::GET_HASHES_FAST>(req, res);
-  m_daemon_rpc_mutex.unlock();
   THROW_WALLET_EXCEPTION_IF(!r, error::no_connection_to_daemon, "gethashes.bin");
   THROW_WALLET_EXCEPTION_IF(res.status == rpc::STATUS_BUSY, error::daemon_busy, "gethashes.bin");
   THROW_WALLET_EXCEPTION_IF(res.status != rpc::STATUS_OK, error::get_hashes_error, get_rpc_status(res.status));
@@ -2986,64 +2951,36 @@ void wallet2::remove_obsolete_pool_txs(const std::vector<crypto::hash> &tx_hashe
 //----------------------------------------------------------------------------------------------------
 bool wallet2::long_poll_pool_state()
 {
-  // Update daemon address for long polling here instead of in set_daemon which
-  // could block on the long polling connection thread.
-  static bool local_address               = true;
-  // How long we wait before retrying the connection if we get an error
-  constexpr auto local_retry = 500ms;
-  constexpr auto remote_retry = 3s;
+  // How long we sleep (and thus prevent retrying the connection) if we get an error
+  const auto error_sleep = m_long_poll_local ? 500ms : 3s;
   // How long we wait for a long poll response before timing out; we add a 5s buffer to the usual
   // timeout to allow for network latency and lokid response time.
-  constexpr auto long_poll_timeout = cryptonote::rpc::GET_TRANSACTION_POOL_HASHES_BIN::long_poll_timeout + 5s;
-  {
-    std::string new_host;
-    std::optional<epee::net_utils::http::login> login;
-    {
-      std::lock_guard<std::recursive_mutex> daemon_mutex(m_daemon_rpc_mutex);
-      new_host = m_daemon_address;
-      login    = m_daemon_login;
-    }
+  m_long_poll_client.set_timeout(cryptonote::rpc::GET_TRANSACTION_POOL_HASHES_BIN::long_poll_timeout + 5s);
 
-    std::lock_guard<std::recursive_mutex> long_poll_mutex(m_long_poll_mutex);
-    epee::net_utils::http::url_content parsed{};
-    if (!epee::net_utils::parse_url(new_host, parsed))
-      return false;
+  using namespace cryptonote::rpc;
 
-    if (parsed.host != m_long_poll_client.get_host())
-    {
-      if(m_long_poll_client.is_connected())
-        m_long_poll_client.disconnect();
-      m_long_poll_client.set_server(parsed.host, std::to_string(parsed.port), login, m_long_poll_ssl_options);
-      local_address = tools::is_local_address(new_host);
-    }
-  }
-
-  cryptonote::rpc::GET_TRANSACTION_POOL_HASHES_BIN::request req  = {};
-  cryptonote::rpc::GET_TRANSACTION_POOL_HASHES_BIN::response res = {};
+  GET_TRANSACTION_POOL_HASHES_BIN::request req  = {};
   req.long_poll        = true;
   req.tx_pool_checksum = get_long_poll_tx_pool_checksum();
-  bool r               = false;
-  {
-    constexpr auto timeout = cryptonote::rpc::GET_TRANSACTION_POOL_HASHES_BIN::long_poll_timeout + 5s;
-    std::lock_guard<decltype(m_long_poll_mutex)> lock(m_long_poll_mutex);
-    r = epee::net_utils::invoke_http_bin("/" + std::string{rpc::GET_TRANSACTION_POOL_HASHES_BIN::names().front()},
-                                          req,
-                                          res,
-                                          m_long_poll_client,
-                                          timeout,
-                                          "GET");
+
+  GET_TRANSACTION_POOL_HASHES_BIN::response res;
+  try {
+    res = m_long_poll_client.binary<GET_TRANSACTION_POOL_HASHES_BIN>(GET_TRANSACTION_POOL_HASHES_BIN::names()[0], req);
+  } catch (const std::exception& e) {
+    MWARNING("Long poll request failed: " << e.what());
+    std::this_thread::sleep_for(error_sleep);
+    throw;
   }
 
   bool maxed_out_connections = res.status == rpc::STATUS_TX_LONG_POLL_MAX_CONNECTIONS;
   bool timed_out             = res.status == rpc::STATUS_TX_LONG_POLL_TIMED_OUT;
-  if (!r || maxed_out_connections || timed_out)
+  if (maxed_out_connections || timed_out)
   {
-    MINFO("Long poll " << (!r ? "request error" : res.status == rpc::STATUS_TX_LONG_POLL_MAX_CONNECTIONS ? "replied with max connections" : "replied with no pool change"));
-    if (!r || maxed_out_connections) std::this_thread::sleep_for(local_address ? local_retry : remote_retry);
+    MINFO("Long poll " << (maxed_out_connections ? "replied with max connections" : "replied with no pool change"));
+    if (maxed_out_connections) std::this_thread::sleep_for(error_sleep);
     return false;
   }
 
-  THROW_WALLET_EXCEPTION_IF(!r, error::no_connection_to_daemon, "get_transaction_pool_hashes.bin");
   THROW_WALLET_EXCEPTION_IF(res.status == rpc::STATUS_BUSY, error::daemon_busy, "get_transaction_pool_hashes.bin");
   THROW_WALLET_EXCEPTION_IF(res.status != rpc::STATUS_OK, error::get_tx_pool_error, res.status);
 
@@ -3051,10 +2988,16 @@ bool wallet2::long_poll_pool_state()
   for (crypto::hash const &hash : res.tx_hashes)
     checksum ^= hash;
   {
-    std::lock_guard<decltype(m_long_poll_tx_pool_checksum_mutex)> lock(m_long_poll_tx_pool_checksum_mutex);
+    std::lock_guard lock{m_long_poll_tx_pool_checksum_mutex};
     m_long_poll_tx_pool_checksum = std::move(checksum);
   }
   return true;
+}
+
+void wallet2::cancel_long_poll()
+{
+  m_long_poll_disabled = true;
+  m_long_poll_client.cancel();
 }
 
 // Requests transactions transactions; throws a wallet exception on error.
@@ -3634,8 +3577,7 @@ void wallet2::refresh(bool trusted_daemon, uint64_t start_height, uint64_t & blo
     received_money = true;
 
   uint64_t immutable_height = 0;
-  std::optional<std::string> fail_string = m_node_rpc_proxy.get_immutable_height(immutable_height);
-  if (!fail_string)
+  if (m_node_rpc_proxy.get_immutable_height(immutable_height))
     m_immutable_height = immutable_height;
 
   try
@@ -3671,31 +3613,15 @@ bool wallet2::refresh(bool trusted_daemon, uint64_t & blocks_fetched, bool& rece
 bool wallet2::get_rct_distribution(uint64_t &start_height, std::vector<uint64_t> &distribution)
 {
   rpc::version_t rpc_version;
-  std::optional<std::string> result = m_node_rpc_proxy.get_rpc_version(rpc_version);
-  // no error
-  if (result)
+  if (!m_node_rpc_proxy.get_rpc_version(rpc_version))
+    THROW_WALLET_EXCEPTION(tools::error::no_connection_to_daemon, "getversion");
+
+  if (rpc_version < rpc::version_t{1, 19})
   {
-    // empty string -> not connection
-    THROW_WALLET_EXCEPTION_IF(result->empty(), tools::error::no_connection_to_daemon, "getversion");
-    THROW_WALLET_EXCEPTION_IF(*result == rpc::STATUS_BUSY, tools::error::daemon_busy, "getversion");
-    if (*result != rpc::STATUS_OK)
-    {
-      MDEBUG("Cannot determine daemon RPC version, not requesting rct distribution");
-      return false;
-    }
+    MWARNING("Daemon is too old, not requesting rct distribution");
+    return false;
   }
-  else
-  {
-    if (rpc_version >= rpc::version_t{1, 19})
-    {
-      MDEBUG("Daemon is recent enough, requesting rct distribution");
-    }
-    else
-    {
-      MDEBUG("Daemon is too old, not requesting rct distribution");
-      return false;
-    }
-  }
+  MDEBUG("Daemon is recent enough, requesting rct distribution");
 
   cryptonote::rpc::GET_OUTPUT_DISTRIBUTION_BIN::request req{};
   cryptonote::rpc::GET_OUTPUT_DISTRIBUTION_BIN::response res{};
@@ -3740,30 +3666,16 @@ bool wallet2::get_rct_distribution(uint64_t &start_height, std::vector<uint64_t>
 bool wallet2::get_output_blacklist(std::vector<uint64_t> &blacklist)
 {
   rpc::version_t rpc_version;
-  std::optional<std::string> result = m_node_rpc_proxy.get_rpc_version(rpc_version);
-  if (result)
+  if (!m_node_rpc_proxy.get_rpc_version(rpc_version))
   {
-    // empty string -> not connection
-    THROW_WALLET_EXCEPTION_IF(result->empty(), tools::error::no_connection_to_daemon, "getversion");
-    THROW_WALLET_EXCEPTION_IF(*result == rpc::STATUS_BUSY, tools::error::daemon_busy, "getversion");
-    if (*result != rpc::STATUS_OK)
-    {
-      MDEBUG("Cannot determine daemon RPC version, not requesting output blacklist");
-      return false;
-    }
+    THROW_WALLET_EXCEPTION(tools::error::no_connection_to_daemon, "getversion");
   }
-  else
+  if (rpc_version < rpc::version_t{2, 3})
   {
-    if (rpc_version >= rpc::version_t{2, 3})
-    {
-      MDEBUG("Daemon is recent enough, requesting output blacklist");
-    }
-    else
-    {
-      MDEBUG("Daemon is too old, not requesting output  blacklist");
-      return false;
-    }
+    MWARNING("Daemon is too old, not requesting output blacklist");
+    return false;
   }
+  MDEBUG("Daemon is recent enough, requesting output blacklist");
 
   cryptonote::rpc::GET_OUTPUT_BLACKLIST::response res = {};
   bool r = invoke_http<rpc::GET_OUTPUT_BLACKLIST>({}, res);
@@ -5633,14 +5545,7 @@ bool wallet2::prepare_file_names(const std::string& file_path)
   return true;
 }
 //----------------------------------------------------------------------------------------------------
-bool wallet2::is_connected() const
-{
-  if (m_offline)      return false;
-  if (m_light_wallet) return m_light_wallet_connected;
-  return m_http_client->is_connected(nullptr);
-}
-//----------------------------------------------------------------------------------------------------
-bool wallet2::check_connection(rpc::version_t *version, bool *ssl, uint32_t timeout)
+bool wallet2::check_connection(rpc::version_t *version, bool *ssl, bool throw_on_http_error)
 {
   THROW_WALLET_EXCEPTION_IF(!m_is_initialized, error::wallet_not_initialized);
   if (version) *version = {};
@@ -5665,23 +5570,13 @@ bool wallet2::check_connection(rpc::version_t *version, bool *ssl, uint32_t time
       return m_light_wallet_connected;
   }
 
-  {
-    std::lock_guard <decltype(m_daemon_rpc_mutex)> lock(m_daemon_rpc_mutex);
-    if(!m_http_client->is_connected(ssl))
-    {
-      m_rpc_version = 0;
-      m_node_rpc_proxy.invalidate();
-      if (!m_http_client->connect(std::chrono::milliseconds(timeout)))
-        return false;
-      if(!m_http_client->is_connected(ssl))
-        return false;
-    }
-  }
+  if (ssl)
+    *ssl = tools::starts_with(m_http_client.get_base_url(), "https://");
 
   if (!m_rpc_version)
   {
     cryptonote::rpc::GET_VERSION::response resp_t{};
-    bool r = invoke_http<rpc::GET_VERSION>({}, resp_t);
+    bool r = invoke_http<rpc::GET_VERSION>({}, resp_t, throw_on_http_error);
     if(!r || resp_t.status != rpc::STATUS_OK) return false;
     m_rpc_version = resp_t.version;
   }
@@ -5695,21 +5590,6 @@ void wallet2::set_offline(bool offline)
 {
   m_offline = offline;
   m_node_rpc_proxy.set_offline(offline);
-  m_http_client->set_auto_connect(!offline);
-  if (offline)
-  {
-    std::lock_guard<std::recursive_mutex> lock(m_daemon_rpc_mutex);
-    if(m_http_client->is_connected())
-      m_http_client->disconnect();
-  }
-
-  m_long_poll_client.set_auto_connect(!offline);
-  if (offline)
-  {
-    std::lock_guard<std::recursive_mutex> lock(m_long_poll_mutex);
-    if(m_long_poll_client.is_connected())
-      m_long_poll_client.disconnect();
-  }
 }
 //----------------------------------------------------------------------------------------------------
 bool wallet2::generate_chacha_key_from_secret_keys(crypto::chacha_key &key) const
@@ -6717,7 +6597,7 @@ bool wallet2::is_transfer_unlocked(uint64_t unlock_time, uint64_t block_height, 
   if(block_height + CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE > blockchain_height)
     return false;
 
-  if (!is_connected())
+  if (!m_offline)
     return true;
 
   if (!key_image) // TODO(loki): Try make all callees always pass in a key image for accuracy
@@ -6726,10 +6606,11 @@ bool wallet2::is_transfer_unlocked(uint64_t unlock_time, uint64_t block_height, 
   {
     std::optional<std::string> failed;
     // FIXME: can just check one here by adding a is_key_image_blacklisted
-    std::vector<cryptonote::rpc::GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES::entry> blacklist = m_node_rpc_proxy.get_service_node_blacklisted_key_images(failed);
-    if (failed)
+    auto [success, blacklist] = m_node_rpc_proxy.get_service_node_blacklisted_key_images();
+    if (!success)
     {
-      LOG_PRINT_L1("Failed to query service node for blacklisted transfers, assuming transfer not blacklisted, reason: " << *failed);
+      // We'll already have a log message printed containing the request failure reason
+      LOG_PRINT_L1("Failed to query service node for blacklisted transfers, assuming transfer not blacklisted");
       return true;
     }
 
@@ -6750,10 +6631,10 @@ bool wallet2::is_transfer_unlocked(uint64_t unlock_time, uint64_t block_height, 
   {
     const std::string primary_address = get_address_as_str();
     std::optional<std::string> failed;
-    std::vector<cryptonote::rpc::GET_SERVICE_NODES::response::entry> service_nodes_states = m_node_rpc_proxy.get_contributed_service_nodes(primary_address, failed);
-    if (failed)
+    auto [success, service_nodes_states] = m_node_rpc_proxy.get_contributed_service_nodes(primary_address);
+    if (!success)
     {
-      LOG_PRINT_L1("Failed to query service node for locked transfers, assuming transfer not locked, reason: " << *failed);
+      LOG_PRINT_L1("Failed to query service node for locked transfers, assuming transfer not locked");
       return true;
     }
 
@@ -7851,8 +7732,7 @@ uint64_t wallet2::get_fee_percent(uint32_t priority, txtype type) const
 byte_and_output_fees wallet2::get_dynamic_base_fee_estimate() const
 {
   byte_and_output_fees fees;
-  std::optional<std::string> failure = m_node_rpc_proxy.get_dynamic_base_fee_estimate(FEE_ESTIMATE_GRACE_BLOCKS, fees);
-  if (!failure)
+  if (m_node_rpc_proxy.get_dynamic_base_fee_estimate(FEE_ESTIMATE_GRACE_BLOCKS, fees))
     return fees;
 
   if (use_fork_rules(HF_VERSION_PER_OUTPUT_FEE))
@@ -7880,10 +7760,9 @@ uint64_t wallet2::get_fee_quantization_mask() const
   }
 
   uint64_t fee_quantization_mask;
-  std::optional<std::string> result = m_node_rpc_proxy.get_fee_quantization_mask(fee_quantization_mask);
-  if (result)
-    return 1;
-  return fee_quantization_mask;
+  if (m_node_rpc_proxy.get_fee_quantization_mask(fee_quantization_mask))
+    return fee_quantization_mask;
+  return 1;
 }
 
 loki_construct_tx_params wallet2::construct_params(uint8_t hf_version, txtype tx_type, uint32_t priority, lns::mapping_type type)
@@ -8165,13 +8044,11 @@ wallet2::stake_result wallet2::check_stake_allowed(const crypto::public_key& sn_
 
   /// check that the service node is registered
   std::optional<std::string> failed;
-  const auto& response = this->get_service_nodes({ epee::string_tools::pod_to_hex(sn_key) }, failed);
-  if (failed)
+  const auto [success, response] = get_service_nodes({ lokimq::to_hex(tools::view_guts(sn_key)) });
+  if (!success)
   {
     result.status = stake_result_status::service_node_list_query_failed;
-    result.msg.reserve(failed->size() + 128);
     result.msg    = ERR_MSG_NETWORK_VERSION_QUERY_FAILED;
-    result.msg    += *failed;
     return result;
   }
 
@@ -8538,9 +8415,8 @@ wallet2::register_service_node_result wallet2::create_register_service_node_tx(c
   //
   refresh(false);
   {
-    std::optional<std::string> failed;
-    const std::vector<cryptonote::rpc::GET_SERVICE_NODES::response::entry> response = get_service_nodes({service_node_key_as_str}, failed);
-    if (failed)
+    const auto [success, response] = get_service_nodes({service_node_key_as_str});
+    if (!success)
     {
       result.status = register_service_node_result_status::service_node_list_query_failed;
       result.msg    = ERR_MSG_NETWORK_VERSION_QUERY_FAILED;
@@ -8619,14 +8495,12 @@ wallet2::request_stake_unlock_result wallet2::can_request_stake_unlock(const cry
   result.ptx.tx.version = cryptonote::txversion::v4_tx_types;
   result.ptx.tx.type    = cryptonote::txtype::key_image_unlock;
 
-  std::string const sn_key_as_str = epee::string_tools::pod_to_hex(sn_key);
+  std::string const sn_key_as_str = lokimq::to_hex(tools::view_guts(sn_key));
   {
-    using namespace cryptonote;
-    std::optional<std::string> failed;
-    const std::vector<rpc::GET_SERVICE_NODES::response::entry> response = get_service_nodes({sn_key_as_str}, failed);
-    if (failed)
+    const auto [success, response] = get_service_nodes({{sn_key_as_str}});
+    if (!success)
     {
-      result.msg = *failed;
+      result.msg = tr("Failed to retrieve service node data from daemon");
       return result;
     }
 
@@ -8824,15 +8698,14 @@ static lns_prepared_args prepare_tx_extra_loki_name_system_values(wallet2 const 
       request_entry.types.push_back(static_cast<uint16_t>(type));
     }
 
-    std::optional<std::string> failed;
-    std::vector<cryptonote::rpc::LNS_NAMES_TO_OWNERS::response_entry> response_;
-    if (!response) {
+    auto [success, response_] = wallet.lns_names_to_owners(request);
+    if (!response)
       response = &response_;
-    }
-    *response = wallet.lns_names_to_owners(request, failed);
-    if (failed)
+    else
+      *response = std::move(response_);
+    if (!success)
     {
-      if (reason) *reason = "Failed to query previous owner for LNS entry, reason=" + *failed;
+      if (reason) *reason = "Failed to query previous owner for LNS entry: communication with daemon failed";
       return result;
     }
 
@@ -9284,8 +9157,9 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
     uint64_t segregation_fork_height = get_segregation_fork_height();
     // check whether we're shortly after the fork
     uint64_t height;
-    std::optional<std::string> result = m_node_rpc_proxy.get_height(height);
-    throw_on_rpc_response_error(result, "get_info");
+    if (!m_node_rpc_proxy.get_height(height))
+      THROW_WALLET_EXCEPTION(tools::error::no_connection_to_daemon, __func__);
+
     bool is_shortly_after_segregation_fork = height >= segregation_fork_height && height < segregation_fork_height + SEGREGATION_FORK_VICINITY;
     bool is_after_segregation_fork = height >= segregation_fork_height;
 
@@ -10341,9 +10215,7 @@ bool wallet2::light_wallet_login(bool &new_address)
   request.view_key = string_tools::pod_to_hex(get_account().get_keys().m_view_secret_key);
   // Always create account if it doesn't exist.
   request.create_account = true;
-  m_daemon_rpc_mutex.lock();
   bool connected = invoke_http<light_rpc::LOGIN>(request, response);
-  m_daemon_rpc_mutex.unlock();
   // MyMonero doesn't send any status message. OpenMonero does. 
   m_light_wallet_connected  = connected && (response.status.empty() || response.status == "success");
   new_address = response.new_address;
@@ -10366,9 +10238,7 @@ bool wallet2::light_wallet_import_wallet_request(light_rpc::IMPORT_WALLET_REQUES
   light_rpc::IMPORT_WALLET_REQUEST::request oreq{};
   oreq.address = get_account().get_public_address_str(m_nettype);
   oreq.view_key = string_tools::pod_to_hex(get_account().get_keys().m_view_secret_key);
-  m_daemon_rpc_mutex.lock();
   bool r = invoke_http<light_rpc::IMPORT_WALLET_REQUEST>(oreq, response);
-  m_daemon_rpc_mutex.unlock();
   THROW_WALLET_EXCEPTION_IF(!r, error::no_connection_to_daemon, "import_wallet_request");
 
 
@@ -10392,9 +10262,7 @@ void wallet2::light_wallet_get_unspent_outs()
   oreq.use_dust = true;
 
 
-  m_daemon_rpc_mutex.lock();
   bool r = invoke_http<light_rpc::GET_UNSPENT_OUTS>(oreq, ores);
-  m_daemon_rpc_mutex.unlock();
   THROW_WALLET_EXCEPTION_IF(!r, error::no_connection_to_daemon, "get_unspent_outs");
   THROW_WALLET_EXCEPTION_IF(ores.status == "error", error::wallet_internal_error, ores.reason);
   
@@ -10539,9 +10407,7 @@ bool wallet2::light_wallet_get_address_info(light_rpc::GET_ADDRESS_INFO::respons
   
   request.address = get_account().get_public_address_str(m_nettype);
   request.view_key = string_tools::pod_to_hex(get_account().get_keys().m_view_secret_key);
-  m_daemon_rpc_mutex.lock();
   bool r = invoke_http<light_rpc::GET_ADDRESS_INFO>(request, response);
-  m_daemon_rpc_mutex.unlock();
   THROW_WALLET_EXCEPTION_IF(!r, error::no_connection_to_daemon, "get_address_info");
   // TODO: Validate result
   return true;
@@ -10556,9 +10422,7 @@ void wallet2::light_wallet_get_address_txs()
   
   ireq.address = get_account().get_public_address_str(m_nettype);
   ireq.view_key = string_tools::pod_to_hex(get_account().get_keys().m_view_secret_key);
-  m_daemon_rpc_mutex.lock();
   bool r = invoke_http<light_rpc::GET_ADDRESS_TXS>(ireq, ires);
-  m_daemon_rpc_mutex.unlock();
   THROW_WALLET_EXCEPTION_IF(!r, error::no_connection_to_daemon, "get_address_txs");
   //OpenMonero sends status=success, Mymonero doesn't. 
   THROW_WALLET_EXCEPTION_IF((!ires.status.empty() && ires.status != "success"), error::no_connection_to_daemon, "get_address_txs");
@@ -11837,8 +11701,8 @@ void wallet2::device_show_address(uint32_t account_index, uint32_t address_index
 //----------------------------------------------------------------------------------------------------
 void wallet2::get_hard_fork_info(uint8_t version, uint64_t &earliest_height) const
 {
-  std::optional<std::string> result = m_node_rpc_proxy.get_earliest_height(version, earliest_height);
-  throw_on_rpc_response_error(result, "get_hard_fork_info");
+  if (!m_node_rpc_proxy.get_earliest_height(version, earliest_height))
+    THROW_WALLET_EXCEPTION(tools::error::no_connection_to_daemon, __func__);
 }
 //----------------------------------------------------------------------------------------------------
 bool wallet2::use_fork_rules(uint8_t version, uint64_t early_blocks) const
@@ -11847,10 +11711,10 @@ bool wallet2::use_fork_rules(uint8_t version, uint64_t early_blocks) const
   if(m_light_wallet)
     return true;
   uint64_t height, earliest_height{0};
-  std::optional<std::string> result = m_node_rpc_proxy.get_height(height);
-  throw_on_rpc_response_error(result, "get_info");
-  result = m_node_rpc_proxy.get_earliest_height(version, earliest_height);
-  throw_on_rpc_response_error(result, "get_hard_fork_info");
+  if (!m_node_rpc_proxy.get_height(height))
+    THROW_WALLET_EXCEPTION(tools::error::no_connection_to_daemon, __func__);
+  if (!m_node_rpc_proxy.get_earliest_height(version, earliest_height))
+    THROW_WALLET_EXCEPTION(tools::error::no_connection_to_daemon, __func__);
 
   bool close_enough = height >= earliest_height - early_blocks; // start using the rules that many blocks beforehand
   if (early_blocks > earliest_height) // Start using rules early if early_blocks would underflow earliest_height, in prev calc
@@ -13004,40 +12868,32 @@ std::string wallet2::get_keys_file() const
 
 std::string wallet2::get_daemon_address() const
 {
-  return m_daemon_address;
+  return m_http_client.get_base_url();
 }
 
 uint64_t wallet2::get_daemon_blockchain_height(std::string& err) const
 {
   uint64_t height;
 
-  std::optional<std::string> result = m_node_rpc_proxy.get_height(height);
-  if (result)
+  if (!m_node_rpc_proxy.get_height(height))
   {
-    if (m_trusted_daemon)
-      err = *result;
-    else
-      err = "daemon error";
+    err = "daemon error";
     return 0;
   }
 
-  err = "";
+  err.clear();
   return height;
 }
 
 uint64_t wallet2::get_daemon_blockchain_target_height(std::string& err)
 {
-  err = "";
   uint64_t target_height = 0;
-  const auto result = m_node_rpc_proxy.get_target_height(target_height);
-  if (result && *result != rpc::STATUS_OK)
+  if (!m_node_rpc_proxy.get_target_height(target_height))
   {
-    if (m_trusted_daemon)
-      err = *result;
-    else
-      err = "daemon error";
+    err = "daemon error";
     return 0;
   }
+  err.clear();
   return target_height;
 }
 
@@ -14345,6 +14201,9 @@ epee::wipeable_string wallet2::decrypt_with_view_secret_key(std::string_view cip
 {
   return decrypt(ciphertext, get_account().get_keys().m_view_secret_key, authenticated);
 }
+
+static constexpr auto uri_prefix = "loki:"sv;
+
 //----------------------------------------------------------------------------------------------------
 std::string wallet2::make_uri(const std::string &address, const std::string &payment_id, uint64_t amount, const std::string &tx_description, const std::string &recipient_name, std::string &error) const
 {
@@ -14372,35 +14231,48 @@ std::string wallet2::make_uri(const std::string &address, const std::string &pay
     }
   }
 
-  std::string uri = "loki:" + address;
-  unsigned int n_fields = 0;
+  cpr::CurlHolder curl;
+  cpr::Parameters params;
 
   if (!payment_id.empty())
-  {
-    uri += (n_fields++ ? "&" : "?") + std::string("tx_payment_id=") + payment_id;
-  }
+    params.AddParameter({"tx_payment_id", payment_id}, curl);
 
-  if (amount > 0)
-  {
-    // URI encoded amount is in decimal units, not atomic units
-    uri += (n_fields++ ? "&" : "?") + std::string("tx_amount=") + cryptonote::print_money(amount);
-  }
+  if (amount > 0) // URI encoded amount is in decimal units, not atomic units
+    params.AddParameter({"tx_amount", cryptonote::print_money(amount)}, curl);
 
   if (!recipient_name.empty())
-  {
-    uri += (n_fields++ ? "&" : "?") + std::string("recipient_name=") + epee::net_utils::convert_to_url_format(recipient_name);
-  }
+    params.AddParameter({"recipient_name", recipient_name}, curl);
 
   if (!tx_description.empty())
-  {
-    uri += (n_fields++ ? "&" : "?") + std::string("tx_description=") + epee::net_utils::convert_to_url_format(tx_description);
-  }
+    params.AddParameter({"tx_description", tx_description}, curl);
 
+  std::string uri{uri_prefix};
+  uri += address;
+  if (!params.content.empty()) {
+    uri += '?';
+    uri += params.content;
+  }
   return uri;
 }
 
 namespace {
-constexpr auto uri_prefix = "loki:"sv;
+
+std::string uri_decode(std::string_view encoded)
+{
+  std::string decoded;
+  for (auto it = encoded.begin(); it != encoded.end(); )
+  {
+    if (*it == '%' && encoded.end() - it >= 3 && lokimq::is_hex(it + 1, it + 3))
+    {
+      decoded += lokimq::from_hex(it + 1, it + 3);
+      it += 3;
+    }
+    else
+      decoded += *it++;
+  }
+  return decoded;
+}
+
 }
 
 //----------------------------------------------------------------------------------------------------
@@ -14433,31 +14305,31 @@ bool wallet2::parse_uri(std::string_view uri, std::string &address, std::string 
   std::unordered_set<std::string_view> have_arg;
   for (const auto &arg: tools::split(uri, "&"sv))
   {
-    auto kv = tools::split(arg, "="sv);
-    if (kv.size() != 2)
+    auto raw_kv = tools::split(arg, "="sv);
+    if (raw_kv.size() != 2)
     {
       error = "URI has invalid parameter (expected key=val): "s;
       error += arg;
       return false;
     }
-    if (!have_arg.insert(kv[0]).second)
+    std::string key = uri_decode(raw_kv[0]);
+    if (!have_arg.insert(key).second)
     {
-      error = "URI has more than one instance of "s;
-      error += kv[0];
+      error = "URI has more than one instance of " + key;
       return false;
     }
+    std::string value = uri_decode(raw_kv[1]);
 
-    if (kv[0] == "tx_amount"sv)
+    if (key == "tx_amount"sv)
     {
       amount = 0;
-      if (!cryptonote::parse_amount(amount, kv[1]))
+      if (!cryptonote::parse_amount(amount, value))
       {
-        error = "URI has invalid amount: "s;
-        error += kv[1];
+        error = "URI has invalid amount: " + value;
         return false;
       }
     }
-    else if (kv[0] == "tx_payment_id"sv)
+    else if (key == "tx_payment_id"sv)
     {
       if (info.has_payment_id)
       {
@@ -14465,18 +14337,17 @@ bool wallet2::parse_uri(std::string_view uri, std::string &address, std::string 
         return false;
       }
       crypto::hash hash;
-      if (!wallet2::parse_payment_id(kv[1], hash))
+      if (!wallet2::parse_payment_id(value, hash))
       {
-        error = "Invalid payment id: ";
-        error += kv[1];
+        error = "Invalid payment id: " + value;
         return false;
       }
-      payment_id = kv[1];
+      payment_id = std::move(value);
     }
-    else if (kv[0] == "recipient_name"sv)
-      recipient_name = epee::net_utils::convert_from_url_format(kv[1]);
-    else if (kv[0] == "tx_description"sv)
-      tx_description = epee::net_utils::convert_from_url_format(kv[1]);
+    else if (key == "recipient_name"sv)
+      recipient_name = std::move(value);
+    else if (key == "tx_description"sv)
+      tx_description = std::move(value);
     else
       unknown_parameters.emplace_back(arg);
   }
@@ -14573,8 +14444,7 @@ uint64_t wallet2::get_blockchain_height_by_date(uint16_t year, uint8_t month, ui
 bool wallet2::is_synced() const
 {
   uint64_t height;
-  std::optional<std::string> result = m_node_rpc_proxy.get_height(height);
-  if (result && *result != rpc::STATUS_OK)
+  if (!m_node_rpc_proxy.get_height(height))
     return false;
   return get_blockchain_current_height() >= height;
 }
@@ -14717,21 +14587,6 @@ std::string wallet2::get_rpc_status(const std::string &s) const
   if (m_trusted_daemon)
     return s;
   return "<error>";
-}
-//----------------------------------------------------------------------------------------------------
-void wallet2::throw_on_rpc_response_error(const std::optional<std::string> &status, const char *method) const
-{
-  // no error
-  if (!status)
-    return;
-
-  MERROR("RPC error: " << method << ": status " << *status);
-
-  // empty string -> not connection
-  THROW_WALLET_EXCEPTION_IF(status->empty(), tools::error::no_connection_to_daemon, method);
-
-  THROW_WALLET_EXCEPTION_IF(*status == rpc::STATUS_BUSY, tools::error::daemon_busy, method);
-  THROW_WALLET_EXCEPTION_IF(*status != rpc::STATUS_OK, tools::error::wallet_generic_rpc_error, method, m_trusted_daemon ? *status : "daemon error");
 }
 //----------------------------------------------------------------------------------------------------
 
@@ -14902,11 +14757,11 @@ void wallet2::finish_rescan_bc_keep_key_images(uint64_t transfer_height, const c
 //----------------------------------------------------------------------------------------------------
 uint64_t wallet2::get_bytes_sent() const
 {
-  return m_http_client->get_bytes_sent() + m_long_poll_client.get_bytes_sent();
+  return m_http_client.get_bytes_sent() + m_long_poll_client.get_bytes_sent();
 }
 //----------------------------------------------------------------------------------------------------
 uint64_t wallet2::get_bytes_received() const
 {
-  return m_http_client->get_bytes_received() + m_long_poll_client.get_bytes_received();
+  return m_http_client.get_bytes_received() + m_long_poll_client.get_bytes_received();
 }
 }

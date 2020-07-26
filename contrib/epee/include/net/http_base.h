@@ -38,12 +38,8 @@
 #undef LOKI_DEFAULT_LOG_CATEGORY
 #define LOKI_DEFAULT_LOG_CATEGORY "net.http"
 
-namespace epee
+namespace epee::net_utils::http
 {
-namespace net_utils
-{
-	namespace http
-	{
 
 		enum http_method{
 			http_method_options,
@@ -191,6 +187,4 @@ namespace net_utils
 				memwipe(&m_body[0], m_body.size());
 			}
 		};
-	}
-}
 }

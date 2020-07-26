@@ -42,8 +42,6 @@
 #include "cryptonote_basic/cryptonote_basic.h"
 #include "common/i18n.h"
 #include "common/command_line.h"
-#include "wipeable_string.h"
-#include "net/abstract_http_client.h"
 #include "message_transporter.h"
 
 #undef LOKI_DEFAULT_LOG_CATEGORY
@@ -203,7 +201,7 @@ namespace mms
   class message_store
   {
   public:
-    message_store(std::unique_ptr<epee::net_utils::http::abstract_http_client> http_client);
+    message_store();
 
     // Initialize and start to use the MMS, set the first signer, this wallet itself
     // Filename, if not null and not empty, is used to create the ".mms" file

@@ -34,9 +34,9 @@
 #include <optional>
 
 #include "common/common_fwd.h"
-#include "common/rpc_client.h"
+#include "common/scoped_message_writer.h"
+#include "rpc/http_client.h"
 #include "cryptonote_basic/cryptonote_basic.h"
-#include "net/net_fwd.h"
 #include "rpc/core_rpc_server.h"
 
 #undef LOKI_DEFAULT_LOG_CATEGORY
@@ -46,16 +46,15 @@ namespace daemonize {
 
 class rpc_command_executor final {
 private:
-  std::unique_ptr<tools::t_rpc_client> m_rpc_client;
+  std::optional<cryptonote::rpc::http_client> m_rpc_client;
   cryptonote::rpc::core_rpc_server* m_rpc_server = nullptr;
   const cryptonote::rpc::rpc_context m_server_context{true};
 
 public:
   /// Executor for remote connection RPC
   rpc_command_executor(
-      uint32_t ip
-    , uint16_t port
-    , const std::optional<tools::login>& user
+      std::string remote_url,
+      const std::optional<tools::login>& user
     );
   /// Executor for local daemon RPC
   rpc_command_executor(cryptonote::rpc::core_rpc_server& rpc_server)
@@ -74,8 +73,7 @@ public:
   {
     try {
       if (m_rpc_client) {
-        if (!m_rpc_client->json_rpc_request(req, res, std::string{RPC::names()[0]}, error))
-          return false;
+        res = m_rpc_client->json_rpc<RPC>(RPC::names()[0], req);
       } else {
         res = m_rpc_server->invoke(std::move(req), m_server_context);
       }
@@ -84,7 +82,7 @@ public:
     } catch (const std::exception& e) {
       if (!error.empty())
         tools::fail_msg_writer() << error << ": " << e.what();
-      return true;
+      return false;
     } catch (...) {}
     if (!error.empty())
       tools::fail_msg_writer() << error;
@@ -176,8 +174,6 @@ public:
   bool alt_chain_info(const std::string &tip, size_t above, uint64_t last_blocks);
 
   bool print_blockchain_dynamic_stats(uint64_t nblocks);
-
-  bool update(const std::string &command);
 
   bool relay_tx(const std::string &txid);
 

@@ -34,7 +34,6 @@
 #include <fstream>
 #include <sstream>
 #include "file_io_utils.h"
-#include "storages/http_abstract_invoke.h"
 #include "wallet_errors.h"
 #include "serialization/binary_utils.h"
 #include "common/base58.h"
@@ -48,7 +47,7 @@
 namespace mms
 {
 
-message_store::message_store(std::unique_ptr<epee::net_utils::http::abstract_http_client> http_client) : m_transporter(std::move(http_client))
+message_store::message_store()
 {
   m_active = false;
   m_auto_send = false;

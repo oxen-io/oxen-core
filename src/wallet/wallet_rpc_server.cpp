@@ -4014,51 +4014,18 @@ namespace tools
       er.message = "Command unavailable in restricted mode.";
       return false;
     }
-   
-    std::vector<std::vector<uint8_t>> ssl_allowed_fingerprints;
-    ssl_allowed_fingerprints.reserve(req.ssl_allowed_fingerprints.size());
-    for (const std::string &fp: req.ssl_allowed_fingerprints)
-    {
-      ssl_allowed_fingerprints.push_back({});
-      std::vector<uint8_t> &v = ssl_allowed_fingerprints.back();
-      for (auto c: fp)
-        v.push_back(c);
-    }
 
-    epee::net_utils::ssl_options_t ssl_options = epee::net_utils::ssl_support_t::e_ssl_support_enabled;
-    if (req.ssl_allow_any_cert)
-      ssl_options.verification = epee::net_utils::ssl_verification_t::none;
-    else if (!ssl_allowed_fingerprints.empty() || !req.ssl_ca_file.empty())
-      ssl_options = epee::net_utils::ssl_options_t{std::move(ssl_allowed_fingerprints), std::move(req.ssl_ca_file)};
-
-    if (!epee::net_utils::ssl_support_from_string(ssl_options.support, req.ssl_support))
-    {
-      er.code = WALLET_RPC_ERROR_CODE_NO_DAEMON_CONNECTION;
-      er.message = std::string("Invalid ssl support mode");
-      return false;
-    }
-
-    ssl_options.auth = epee::net_utils::ssl_authentication_t{
-      std::move(req.ssl_private_key_path), std::move(req.ssl_certificate_path)
-    };
-
-    const bool verification_required =
-      ssl_options.verification != epee::net_utils::ssl_verification_t::none &&
-      ssl_options.support == epee::net_utils::ssl_support_t::e_ssl_support_enabled;
-
-    if (verification_required && !ssl_options.has_strong_verification(""sv))
-    {
-      er.code = WALLET_RPC_ERROR_CODE_NO_DAEMON_CONNECTION;
-      er.message = "SSL is enabled but no user certificate or fingerprints were provided";
-      return false;
-    }
-
-    if (!m_wallet->set_daemon(req.address, std::nullopt, req.trusted, std::move(ssl_options)))
+    if (!m_wallet->set_daemon(req.address, std::nullopt, req.proxy, req.trusted))
     {
       er.code = WALLET_RPC_ERROR_CODE_NO_DAEMON_CONNECTION;
       er.message = std::string("Unable to set daemon");
       return false;
     }
+
+    m_wallet->m_http_client.set_https_client_cert(req.ssl_certificate_path, req.ssl_private_key_path);
+    m_wallet->m_http_client.set_insecure_https(req.ssl_allow_any_cert);
+    m_wallet->m_http_client.set_https_cainfo(req.ssl_ca_file);
+
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
@@ -4633,7 +4600,8 @@ int main(int argc, char **argv)
   auto opt_size = command_line::boost_option_sizes();
 
   po::options_description desc_params(wallet_args::tr("Wallet options"), opt_size.first, opt_size.second);
-  tools::wallet2::init_options(desc_params);
+  po::options_description hidden_params("Hidden");
+  tools::wallet2::init_options(desc_params, hidden_params);
   command_line::add_arg(desc_params, arg_rpc_bind_port);
   command_line::add_arg(desc_params, arg_disable_rpc_login);
   command_line::add_arg(desc_params, arg_restricted);
@@ -4643,7 +4611,6 @@ int main(int argc, char **argv)
   command_line::add_arg(desc_params, arg_wallet_dir);
   command_line::add_arg(desc_params, arg_prompt_for_password);
 
-  po::options_description hidden_params("Hidden");
   daemonizer::init_options(hidden_params, desc_params);
 
   auto [vm, should_terminate] = wallet_args::main(

@@ -56,6 +56,8 @@
 namespace po = boost::program_options;
 namespace bf = boost::filesystem;
 
+using namespace std::literals;
+
 int main(int argc, char const * argv[])
 {
   try {
@@ -220,8 +222,7 @@ int main(int argc, char const * argv[])
         auto rpc_ip_str = command_line::get_arg(vm, arg.rpc_bind_ip);
         auto rpc_port = command_line::get_arg(vm, cryptonote::rpc::http_server::arg_rpc_bind_port);
 
-        uint32_t rpc_ip;
-        if (!epee::string_tools::get_ip_int32_from_string(rpc_ip, rpc_ip_str))
+        if (uint32_t rpc_ip; !epee::string_tools::get_ip_int32_from_string(rpc_ip, rpc_ip_str))
         {
           std::cerr << "Invalid IP: " << rpc_ip_str << std::endl;
           return 1;
@@ -246,7 +247,7 @@ int main(int argc, char const * argv[])
           }
         }
 
-        daemonize::command_server rpc_commands{rpc_ip, rpc_port, std::move(login)};
+        daemonize::command_server rpc_commands{"http://"s + rpc_ip_str + ":" + std::to_string(rpc_port), std::move(login)};
         return rpc_commands.process_command_and_log(command) ? 0 : 1;
       }
     }

@@ -133,7 +133,7 @@ namespace nodetool
     typedef epee::net_utils::boosted_tcp_server<epee::levin::async_protocol_handler<p2p_connection_context>> net_server;
 
     struct network_zone;
-    using connect_func = std::optional<p2p_connection_context>(network_zone&, epee::net_utils::network_address const&, epee::net_utils::ssl_support_t);
+    using connect_func = std::optional<p2p_connection_context>(network_zone&, epee::net_utils::network_address const&);
 
     struct config
     {
@@ -453,8 +453,8 @@ namespace nodetool
     //keep connections to initiate some interactions
 
 
-    static std::optional<p2p_connection_context> public_connect(network_zone&, epee::net_utils::network_address const&, epee::net_utils::ssl_support_t);
-    static std::optional<p2p_connection_context> socks_connect(network_zone&, epee::net_utils::network_address const&, epee::net_utils::ssl_support_t);
+    static std::optional<p2p_connection_context> public_connect(network_zone&, epee::net_utils::network_address const&);
+    static std::optional<p2p_connection_context> socks_connect(network_zone&, epee::net_utils::network_address const&);
 
 
     /* A `std::map` provides constant iterators and key/value pointers even with
@@ -480,8 +480,6 @@ namespace nodetool
 
     boost::uuids::uuid m_network_id;
     cryptonote::network_type m_nettype;
-
-    epee::net_utils::ssl_support_t m_ssl_support;
   };
 
     const int64_t default_limit_up = P2P_DEFAULT_LIMIT_RATE_UP;      // kB/s

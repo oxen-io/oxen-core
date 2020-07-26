@@ -3195,7 +3195,9 @@ Pending or Failed: "failed"|"pending",  "out", Lock, Checkpointed, Time, Amount*
 
 simple_wallet::~simple_wallet()
 {
-  if (m_wallet) m_wallet->m_long_poll_disabled = true;
+  if (m_wallet) {
+    m_wallet->cancel_long_poll();
+  }
   if (m_long_poll_thread.joinable())
       m_long_poll_thread.join();
 }
@@ -3485,6 +3487,12 @@ static bool datestr_to_int(const std::string &heightstr, uint16_t &year, uint8_t
 bool simple_wallet::init(const boost::program_options::variables_map& vm)
 {
   LOKI_DEFER { m_electrum_seed.wipe(); };
+
+  if (auto deprecations = tools::wallet2::has_deprecated_options(vm); !deprecations.empty())
+  {
+    for (auto msg : deprecations)
+      message_writer(epee::console_color_red, true) << tr("Warning: option is deprecated and will be removed in the future: ") << msg;
+  }
 
   const bool testnet = tools::wallet2::has_testnet_option(vm);
   const bool stagenet = tools::wallet2::has_stagenet_option(vm);
@@ -4151,12 +4159,22 @@ bool simple_wallet::try_connect_to_daemon(bool silent, rpc::version_t* version)
   rpc::version_t version_{};
   if (!version)
     version = &version_;
-  if (!m_wallet->check_connection(version))
-  {
+  bool good = false;
+  bool threw = false;
+  constexpr const char* bad_msg = "Check the port and daemon address; if incorrect you can use the 'set_daemon' command or '--daemon-address' option to change them.";
+  try {
+    good = m_wallet->check_connection(version, nullptr, !silent);
+  } catch (const std::exception& e) {
+    threw = true;
     if (!silent)
-      fail_msg_writer() << tr("wallet failed to connect to daemon: ") << m_wallet->get_daemon_address() << ". " <<
-        tr("Daemon either is not started or wrong port was passed. "
-        "Please make sure daemon is running or change the daemon address using the 'set_daemon' command.");
+      fail_msg_writer() << tr("wallet failed to connect to daemon at ") << m_wallet->get_daemon_address() << ": " << e.what() << ".\n"
+        << tr(bad_msg);
+  }
+  if (!good)
+  {
+    if (!silent && !threw)
+      // If we get here, the above didn't throw, which means we connected and got a response but the daemon returned a non-okay status
+      fail_msg_writer() << tr("wallet got bad status from daemon at ") << m_wallet->get_daemon_address() << ".\n" << tr(bad_msg);
     return false;
   }
   if (!m_allow_mismatched_daemon_version && version->first != rpc::VERSION.first)
@@ -4732,51 +4750,41 @@ bool simple_wallet::set_daemon(const std::vector<std::string>& args)
     return true;
   }
 
-  std::regex rgx{R"((?:.*://)?(?:[A-Za-z0-9.-]+|\[[0-9a-fA-F:.]+\])(:[0-9]+)?)"};
-  //                 proto       hostname/ipv4       [ipv6]         :port
-  std::smatch match;
-  if (std::regex_match(args[0], match, rgx))
-  {
-    daemon_url = args[0];
-    // If no port has been provided append the default from config
-    if (!match[1].matched)
-    {
-      int daemon_port = get_config(m_wallet->nettype()).RPC_DEFAULT_PORT;
-      daemon_url += ':';
-      daemon_url += std::to_string(daemon_port);
-    }
-    LOCK_IDLE_SCOPE();
-    m_wallet->init(daemon_url);
+  bool is_local = false;
+  try {
+    auto [proto, host, port, uri] = rpc::http_client::parse_url(args[0]);
+    if (proto.empty())
+      proto = "http";
+    if (port == 0)
+      port = get_config(m_wallet->nettype()).RPC_DEFAULT_PORT;
+    daemon_url = std::move(proto) + "://" + host + ":" + std::to_string(port) + uri;
+    is_local = tools::is_local_address(host);
+  } catch (const std::exception& e) {
+    fail_msg_writer() << tr("This does not seem to be a valid daemon URL; enter a URL such as: http://example.com:1234");
+    return false;
+  }
 
-    if (args.size() == 2)
-    {
-      if (args[1] == "trusted")
-        m_wallet->set_trusted_daemon(true);
-      else if (args[1] == "untrusted")
-        m_wallet->set_trusted_daemon(false);
-      else
-      {
-        fail_msg_writer() << tr("Expected trusted or untrusted, got ") << args[1] << ": assuming untrusted";
-        m_wallet->set_trusted_daemon(false);
-      }
-    }
+  LOCK_IDLE_SCOPE();
+  m_wallet->init(daemon_url);
+
+  if (args.size() == 2)
+  {
+    if (args[1] == "trusted")
+      m_wallet->set_trusted_daemon(true);
+    else if (args[1] == "untrusted")
+      m_wallet->set_trusted_daemon(false);
     else
     {
+      fail_msg_writer() << tr("Expected trusted or untrusted, got ") << args[1] << ": assuming untrusted";
       m_wallet->set_trusted_daemon(false);
-      try
-      {
-        if (tools::is_local_address(m_wallet->get_daemon_address()))
-        {
-          MINFO(tr("Daemon is local, assuming trusted"));
-          m_wallet->set_trusted_daemon(true);
-        }
-      }
-      catch (const std::exception &e) { }
     }
-    success_msg_writer() << boost::format("Daemon set to %s, %s") % daemon_url % (m_wallet->is_trusted_daemon() ? tr("trusted") : tr("untrusted"));
-  } else {
-    fail_msg_writer() << tr("This does not seem to be a valid daemon URL.");
   }
+  else if (is_local)
+  {
+    MINFO(tr("Daemon is local, assuming trusted"));
+    m_wallet->set_trusted_daemon(true);
+  }
+  success_msg_writer() << "Daemon set to " << daemon_url << ", " << tr(m_wallet->is_trusted_daemon() ? "trusted" : "untrusted");
   return true;
 }
 //----------------------------------------------------------------------------------------------------
@@ -6258,11 +6266,10 @@ bool simple_wallet::query_locked_stakes(bool print_result)
   std::string msg_buf;
   {
     using namespace cryptonote;
-    std::optional<std::string> failed;
-    const std::vector<rpc::GET_SERVICE_NODES::response::entry> response = m_wallet->get_all_service_nodes(failed);
-    if (failed)
+    auto [success, response] = m_wallet->get_all_service_nodes();
+    if (!success)
     {
-      fail_msg_writer() << *failed;
+      fail_msg_writer() << "Connection to daemon failed when requesting full service node list";
       return has_locked_stakes;
     }
 
@@ -6331,12 +6338,10 @@ bool simple_wallet::query_locked_stakes(bool print_result)
   }
 
   {
-    using namespace cryptonote;
-    std::optional<std::string> failed;
-    const std::vector<rpc::GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES::entry> response = m_wallet->get_service_node_blacklisted_key_images(failed);
-    if (failed)
+    auto [success, response] = m_wallet->get_service_node_blacklisted_key_images();
+    if (!success)
     {
-      fail_msg_writer() << *failed;
+      fail_msg_writer() << "Connection to daemon failed when retrieving blacklisted key images";
       return has_locked_stakes;
     }
 
@@ -6692,11 +6697,10 @@ bool simple_wallet::lns_print_name_to_owners(const std::vector<std::string>& arg
   rpc::LNS_NAMES_TO_OWNERS::request_entry &entry = request.entries.back();
   if (entry.types.empty()) entry.types.push_back(static_cast<uint16_t>(lns::mapping_type::session));
 
-  std::optional<std::string> failed;
-  std::vector<rpc::LNS_NAMES_TO_OWNERS::response_entry> response = m_wallet->lns_names_to_owners(request, failed);
-  if (failed)
+  auto [success, response] = m_wallet->lns_names_to_owners(request);
+  if (!success)
   {
-    fail_msg_writer() << *failed;
+    fail_msg_writer() << "Connection to daemon failed when requesting LNS owners";
     return false;
   }
 
@@ -6732,7 +6736,6 @@ bool simple_wallet::lns_print_owners_to_names(const std::vector<std::string>& ar
   if (!try_connect_to_daemon())
     return false;
 
-  std::optional<std::string> failed;
   std::vector<std::vector<cryptonote::rpc::LNS_OWNERS_TO_NAMES::response_entry>> rpc_results;
   std::vector<cryptonote::rpc::LNS_OWNERS_TO_NAMES::request> requests(1);
 
@@ -6770,10 +6773,10 @@ bool simple_wallet::lns_print_owners_to_names(const std::vector<std::string>& ar
   rpc_results.reserve(requests.size());
   for (auto const &request : requests)
   {
-    std::vector<cryptonote::rpc::LNS_OWNERS_TO_NAMES::response_entry> result = m_wallet->lns_owners_to_names(request, failed);
-    if (failed)
+    auto [success, result] = m_wallet->lns_owners_to_names(request);
+    if (!success)
     {
-      fail_msg_writer() << *failed;
+      fail_msg_writer() << "Connection to daemon failed when requesting LNS names";
       return false;
     }
     rpc_results.emplace_back(std::move(result));
@@ -8670,7 +8673,7 @@ std::string simple_wallet::get_prompt() const
     return std::string("[") + tr("locked due to inactivity") + "]";
   std::string addr_start = m_wallet->get_subaddress_as_str({m_current_subaddress_account, 0}).substr(0, 6);
   std::string prompt = std::string("[") + tr("wallet") + " " + addr_start;
-  if (!m_wallet->check_connection(NULL))
+  if (!m_wallet->check_connection())
     prompt += tr(" (no daemon)");
   else
   {
@@ -9922,7 +9925,8 @@ int main(int argc, char* argv[])
   auto opt_size = command_line::boost_option_sizes();
 
   po::options_description desc_params(wallet_args::tr("Wallet options"), opt_size.first, opt_size.second);
-  tools::wallet2::init_options(desc_params);
+  po::options_description hidden_params("Hidden");
+  tools::wallet2::init_options(desc_params, hidden_params);
   command_line::add_arg(desc_params, arg_wallet_file);
   command_line::add_arg(desc_params, arg_generate_new_wallet);
   command_line::add_arg(desc_params, arg_generate_from_device);
@@ -9932,7 +9936,8 @@ int main(int argc, char* argv[])
   command_line::add_arg(desc_params, arg_generate_from_multisig_keys);
   command_line::add_arg(desc_params, arg_generate_from_json);
   command_line::add_arg(desc_params, arg_mnemonic_language);
-  command_line::add_arg(desc_params, arg_command);
+  // Positional argument
+  command_line::add_arg(hidden_params, arg_command);
 
   command_line::add_arg(desc_params, arg_restore_deterministic_wallet );
   command_line::add_arg(desc_params, arg_restore_multisig_wallet );
@@ -9954,7 +9959,7 @@ int main(int argc, char* argv[])
    "loki-wallet-cli [--wallet-file=<filename>|--generate-new-wallet=<filename>] [<COMMAND>]",
     sw::tr("This is the command line Loki wallet. It needs to connect to a Loki\ndaemon to work correctly.\n\nWARNING: Do not reuse your Loki keys on a contentious fork, doing so will harm your privacy.\n Only consider reusing your key on a contentious fork if the fork has key reuse mitigations built in."),
     desc_params,
-    po::options_description{},
+    hidden_params,
     positional_options,
     [](const std::string &s, bool emphasis){ tools::scoped_message_writer(emphasis ? epee::console_color_white : epee::console_color_default, true) << s; },
     "loki-wallet-cli.log"
