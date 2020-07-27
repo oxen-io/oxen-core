@@ -36,7 +36,6 @@
 
 #include <unordered_set>
 #include <iomanip>
-#include <lokimq/hex.h>
 #include <lokimq/base32z.h>
 
 extern "C" {
@@ -53,6 +52,7 @@ extern "C" {
 #include "common/sha256sum.h"
 #include "common/threadpool.h"
 #include "common/command_line.h"
+#include "common/hex.h"
 #include "warnings.h"
 #include "crypto/crypto.h"
 #include "cryptonote_config.h"
@@ -981,15 +981,15 @@ namespace cryptonote
 
     if (m_service_node) {
       MGINFO_YELLOW("Service node public keys:");
-      MGINFO_YELLOW("- primary: " << lokimq::to_hex(tools::view_guts(keys.pub)));
-      MGINFO_YELLOW("- ed25519: " << lokimq::to_hex(tools::view_guts(keys.pub_ed25519)));
+      MGINFO_YELLOW("- primary: " << tools::type_to_hex(keys.pub));
+      MGINFO_YELLOW("- ed25519: " << tools::type_to_hex(keys.pub_ed25519));
       // .snode address is the ed25519 pubkey, encoded with base32z and with .snode appended:
       MGINFO_YELLOW("- lokinet: " << lokimq::to_base32z(tools::view_guts(keys.pub_ed25519)) << ".snode");
-      MGINFO_YELLOW("-  x25519: " << lokimq::to_hex(tools::view_guts(keys.pub_x25519)));
+      MGINFO_YELLOW("-  x25519: " << tools::type_to_hex(keys.pub_x25519));
     } else {
       // Only print the x25519 version because it's the only thing useful for a non-SN (for
       // encrypted LMQ RPC connections).
-      MGINFO_YELLOW("x25519 public key: " << lokimq::to_hex(tools::view_guts(keys.pub_x25519)));
+      MGINFO_YELLOW("x25519 public key: " << tools::type_to_hex(keys.pub_x25519));
     }
 
     return true;

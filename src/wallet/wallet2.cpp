@@ -3026,7 +3026,7 @@ static std::vector<std::string> hashes_to_hex(It begin, It end)
   if constexpr (std::is_base_of_v<std::random_access_iterator_tag, typename std::iterator_traits<It>::iterator_category>)
     hexes.reserve(std::distance(begin, end));
   while (begin != end)
-    hexes.push_back(lokimq::to_hex(tools::view_guts(begin++)));
+    hexes.push_back(tools::type_to_hex(begin++));
   return hexes;
 }
 
@@ -3191,7 +3191,7 @@ std::vector<wallet2::get_pool_state_tx> wallet2::get_pool_state(bool refreshed)
     std::vector<std::string> hex_hashes;
     hex_hashes.reserve(txids.size());
     for (const auto &p: txids)
-      hex_hashes.push_back(lokimq::to_hex(tools::view_guts(p.first)));
+      hex_hashes.push_back(tools::type_to_hex(p.first));
 
     try {
       res = request_transactions(std::move(hex_hashes));
@@ -8044,7 +8044,7 @@ wallet2::stake_result wallet2::check_stake_allowed(const crypto::public_key& sn_
 
   /// check that the service node is registered
   std::optional<std::string> failed;
-  const auto [success, response] = get_service_nodes({ lokimq::to_hex(tools::view_guts(sn_key)) });
+  const auto [success, response] = get_service_nodes({ tools::type_to_hex(sn_key) });
   if (!success)
   {
     result.status = stake_result_status::service_node_list_query_failed;
@@ -8495,7 +8495,7 @@ wallet2::request_stake_unlock_result wallet2::can_request_stake_unlock(const cry
   result.ptx.tx.version = cryptonote::txversion::v4_tx_types;
   result.ptx.tx.type    = cryptonote::txtype::key_image_unlock;
 
-  std::string const sn_key_as_str = lokimq::to_hex(tools::view_guts(sn_key));
+  std::string const sn_key_as_str = tools::type_to_hex(sn_key);
   {
     const auto [success, response] = get_service_nodes({{sn_key_as_str}});
     if (!success)
@@ -12738,7 +12738,7 @@ bool wallet2::check_reserve_proof(const cryptonote::account_public_address &addr
   for (const auto& proof : proofs)
   {
     prefix_data += tools::view_guts(proof.key_image);
-    txids_hex.push_back(lokimq::to_hex(tools::view_guts(proof.txid)));
+    txids_hex.push_back(tools::type_to_hex(proof.txid));
   }
   crypto::hash prefix_hash;
   crypto::cn_fast_hash(prefix_data.data(), prefix_data.size(), prefix_hash);

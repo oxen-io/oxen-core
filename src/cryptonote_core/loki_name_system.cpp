@@ -1,4 +1,5 @@
 #include <bitset>
+#include "common/hex.h"
 #include "loki_name_system.h"
 
 #include "common/loki.h"
@@ -139,7 +140,7 @@ std::string lns_extra_string(cryptonote::network_type nettype, cryptonote::tx_ex
     stream << ", backup_owner=" << (data.backup_owner ? data.backup_owner.to_string(nettype) : "(none)");
   }
   else
-    stream << "signature=" << lokimq::to_hex(tools::view_guts(data.signature.data));
+    stream << "signature=" << tools::type_to_hex(data.signature.data);
 
   stream << ", type=" << data.type << ", name_hash=" << data.name_hash << "}";
   return stream.str();

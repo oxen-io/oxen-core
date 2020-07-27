@@ -72,7 +72,7 @@ struct extra_printer {
   void operator()(const tx_extra_service_node_pubkey& x) { std::cout << "SN pubkey: " << x.m_service_node_key; }
   void operator()(const tx_extra_service_node_contributor& x) { std::cout << "SN contribution"; } // Can't actually print the address without knowing the network type
   void operator()(const tx_extra_service_node_deregister_old& x) { std::cout << "SN deregistration (pre-HF12)"; }
-  void operator()(const tx_extra_tx_secret_key& x) { std::cout << "TX secret key: " << lokimq::to_hex(tools::view_guts(x.key)); }
+  void operator()(const tx_extra_tx_secret_key& x) { std::cout << "TX secret key: " << tools::type_to_hex(x.key); }
   void operator()(const tx_extra_tx_key_image_proofs& x) { std::cout << "TX key image proofs (" << x.proofs.size() << ")"; }
   void operator()(const tx_extra_tx_key_image_unlock& x) { std::cout << "TX key image unlock: " << x.key_image; }
   void operator()(const tx_extra_burn& x) { std::cout << "Transaction burned fee/payment: " << print_money(x.amount); }

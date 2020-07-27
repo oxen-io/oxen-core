@@ -45,6 +45,7 @@
 #include "common/sha256sum.h"
 #include "common/perf_timer.h"
 #include "common/random.h"
+#include "common/hex.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_basic/account.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
@@ -3183,8 +3184,8 @@ namespace cryptonote { namespace rpc {
         entry.encrypted_value                                  = lokimq::to_hex(record.encrypted_value.to_view());
         entry.register_height                                  = record.register_height;
         entry.update_height                                    = record.update_height;
-        entry.txid                                             = lokimq::to_hex(tools::view_guts(record.txid));
-        if (record.prev_txid) entry.prev_txid                  = lokimq::to_hex(tools::view_guts(record.prev_txid));
+        entry.txid                                             = tools::type_to_hex(record.txid);
+        if (record.prev_txid) entry.prev_txid                  = tools::type_to_hex(record.prev_txid);
       }
     }
 
@@ -3239,8 +3240,8 @@ namespace cryptonote { namespace rpc {
       entry.encrypted_value = lokimq::to_hex(record.encrypted_value.to_view());
       entry.register_height = record.register_height;
       entry.update_height   = record.update_height;
-      entry.txid            = lokimq::to_hex(tools::view_guts(record.txid));
-      if (record.prev_txid) entry.prev_txid = lokimq::to_hex(tools::view_guts(record.prev_txid));
+      entry.txid            = tools::type_to_hex(record.txid);
+      if (record.prev_txid) entry.prev_txid = tools::type_to_hex(record.prev_txid);
     }
 
     res.status = STATUS_OK;
