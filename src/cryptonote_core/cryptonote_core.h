@@ -48,10 +48,12 @@
 #include "service_node_voting.h"
 #include "service_node_list.h"
 #include "service_node_quorum_cop.h"
+#include "pulse.h"
 #include "cryptonote_basic/miner.h"
 #include "cryptonote_basic/connection_context.h"
 #include "warnings.h"
 #include "crypto/hash.h"
+#include "cryptonote_protocol/quorumnet.h"
 PUSH_WARNINGS
 DISABLE_VS_WARNINGS(4355)
 
@@ -93,10 +95,24 @@ namespace cryptonote
   // result.
   using quorumnet_send_blink_proc = std::future<std::pair<blink_result, std::string>> (core& core, const std::string& tx_blob);
 
+  // TODO(doyle)
+  using quorumnet_send_pulse_validator_handshake_bit_proc = void (void *self, service_nodes::quorum const &quorum, crypto::hash const &top_hash);
+  using quorumnet_send_pulse_validator_handshake_bitset_proc = void (void *self, service_nodes::quorum const &quorum, crypto::hash const &top_hash, uint16_t handshake_bitset);
+
+  using quorumnet_pulse_pump_messages_proc = bool (void *self, pulse::message &msg, pulse::time_point end_time);
+  using quorumnet_pulse_relay_message_to_quorum_proc = void (void *, pulse::message const &msg, service_nodes::quorum const &quorum);
+
   extern quorumnet_new_proc *quorumnet_new;
   extern quorumnet_delete_proc *quorumnet_delete;
   extern quorumnet_relay_obligation_votes_proc *quorumnet_relay_obligation_votes;
   extern quorumnet_send_blink_proc *quorumnet_send_blink;
+
+  extern quorumnet_send_pulse_validator_handshake_bit_proc    *quorumnet_send_pulse_validator_handshake_bit;
+  extern quorumnet_send_pulse_validator_handshake_bitset_proc *quorumnet_send_pulse_validator_handshake_bitset;
+
+  extern quorumnet_pulse_pump_messages_proc *quorumnet_pulse_pump_messages;
+
+  extern quorumnet_pulse_relay_message_to_quorum_proc *quorumnet_pulse_relay_message_to_quorum;
 
   /************************************************************************/
   /*                                                                      */
@@ -1246,6 +1262,7 @@ namespace cryptonote
 
      std::shared_ptr<tools::Notify> m_block_rate_notify;
 
+     pulse::state m_pulse_state{};
    };
 }
 

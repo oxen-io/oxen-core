@@ -8,7 +8,7 @@
 namespace service_nodes {
   constexpr auto PULSE_TIME_PER_BLOCK          = std::chrono::minutes(2);
   constexpr size_t PULSE_QUORUM_ENTROPY_LAG    = 21; // How many blocks back from the tip of the Blockchain to source entropy for the Pulse quorums.
-  constexpr size_t PULSE_QUORUM_NUM_VALIDATORS = 0;
+  constexpr size_t PULSE_QUORUM_NUM_VALIDATORS = 11;
   constexpr size_t PULSE_QUORUM_SIZE           = PULSE_QUORUM_NUM_VALIDATORS + 1 /*Leader*/;
   
   constexpr size_t pulse_min_service_nodes(cryptonote::network_type nettype)
@@ -26,7 +26,7 @@ namespace service_nodes {
     return result;
   }
 
-  constexpr size_t PULSE_BLOCK_REQUIRED_SIGNATURES      = 0;  // A block must have exactly N signatures to be considered properly
+  constexpr size_t PULSE_BLOCK_REQUIRED_SIGNATURES = 7;  // A block must have exactly N signatures to be considered properly
   static_assert(PULSE_QUORUM_NUM_VALIDATORS >= PULSE_BLOCK_REQUIRED_SIGNATURES);
   static_assert(PULSE_QUORUM_ENTROPY_LAG >= PULSE_QUORUM_SIZE, "We need to pull atleast PULSE_QUORUM_SIZE number of blocks from the Blockchain, we can't if the amount of blocks to go back from the tip of the Blockchain is less than the blocks we need.");
 
