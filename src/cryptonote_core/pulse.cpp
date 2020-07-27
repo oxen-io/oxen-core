@@ -103,6 +103,102 @@ bool pulse::state::block_added(const cryptonote::block& block, const std::vector
   return true;
 }
 
+/*
+  'round_state' State Machine Flow Graph
+
+  +-----------------+
+  | Wait Next Block | <-----+
+  +-----------------+       |
+   |                        |
+   |                        |
+   V                      +-|-+
+  +----------------+      | | |
+  | Wait For Round |<-----+ | +------------------------------+
+  +----------------+        |                                |
+   |                        |                                |
+  [Enough SN's for Pulse?]--+ No                             |
+   |                        |                                |
+   | Yes                    |                                |
+   |                        |                                |
+  [Block Height Changed?]---+ Yes                            |
+   |                                                         |
+   | No                                                      |
+   |                                                         | No
+  [Are we a Block Validator?]------[Are we a Block Leader?]--+
+   |                                        |                |
+   | Yes                                    | Yes            |
+   |                                        |                |
+   V                                        |                |
+  +---------------------+                   |                |
+  | Wait For Handshakes |                   |                |
+  +---------------------+                   |                |
+   |                                        |                |
+  [Quorumnet Comms Fail?]------------------------------------+
+   |                      Yes               |                |
+   | No                                     |                |
+   |                                        |                |
+   V                                        V                |
+  +--------------------------------------------+             |
+  | Wait For Other Validator Handshake Bitsets |             |
+  +--------------------------------------------+             |
+   |                                                         |
+  [Quorumnet Comms Fail?]------------------------------------+
+   |                      Yes
+   | No
+   |
+   V
+  +-----------------------+
+  | Submit Block Template |
+  +-----------------------+
+
+
+  Wait Next Block:
+    - Sleeps until Blockchain is at HF16
+    - Sleeps until the timestamp of the next block has arrived.
+
+      Next Block Timestamp = G.Timestamp + (height * 2min)
+
+      Where 'G' is the base Pulse genesis block. That is determined by the
+      following
+
+      Genesis Block = max(HF16 block height, latest block height produced by Miner).
+
+      In case of the Service Node network failing, i.e. (pulse round > 255) or
+      insufficient Service Nodes for Pulse, mining is re-activated and accepted
+      as the next block in the blockchain. This resets the genesis block in
+      which future Pulse block timestamps are based off.
+
+      This prevents a situation where a long time could elapse between the next
+      miner block at a chain halt. Upon receiving the miner block, overdue
+      Pulse blocks would rapidly be generated in the chain to catch up to the
+      supposed timestamp the chain should be at.
+
+  Wait For Round:
+    - Generate Pulse quorum, if there are insufficient Service Nodes, we sleep
+      until the next Proof-of-Work block arrives.
+    - If not participating, the node waits until the next block or round and
+      re-checks participation.
+    - Block Validators handshake to confirm participation in the round and collect other handshakes.
+    - The Block Producer skips to waiting for the handshake bitsets from each validator
+
+  Wait For Handshakes:
+    - Validators will each individually collect handshakes and build up a
+      bitset of validators perceived to be participating.
+    - Block on the pulse message queue which receives the individual handshake
+      bits from Quorumnet until timeout or all handshakes received.
+
+  Wait For Handshake Bitset:
+    - Validators will each individually collect the handshake bitsets similar
+      to Wait For Handshakes.
+    - Upon receipt, the most common agreed upon bitset is used to lock in
+      participation for the round. The round proceeds if more than 60% of the
+      validators are participating, the round fails otherwise.
+
+  Submit Block Template:
+    - TBD
+
+*/
+
 void pulse::main(pulse::state &state, void *quorumnet_state, cryptonote::core &core)
 {
   cryptonote::Blockchain &blockchain          = core.get_blockchain_storage();
@@ -118,7 +214,7 @@ void pulse::main(pulse::state &state, void *quorumnet_state, cryptonote::core &c
   round_context context      = {};
   uint64_t const hf16_height = cryptonote::HardFork::get_hardcoded_hard_fork_height(blockchain.nettype(), cryptonote::network_version_16);
 
-  if (hf16_height == HardFork::INVALID_HF_VERSION_HEIGHT)
+  if (hf16_height == cryptonote::HardFork::INVALID_HF_VERSION_HEIGHT)
     return;
 
   for (auto round_state = round_state::wait_next_block;;)
@@ -317,9 +413,6 @@ void pulse::main(pulse::state &state, void *quorumnet_state, cryptonote::core &c
 
       case round_state::wait_for_handshakes:
       {
-        // TODO(doyle): We need to sleep on this step, otherwise we busy loop on handshakes
-        // and same for the bitset step
-
         bool timed_out      = pulse::clock::now() >= context.wait_for_handshakes.end_time;
         bool all_handshakes = context.wait_for_handshakes.all_received();
 
@@ -440,7 +533,10 @@ void pulse::main(pulse::state &state, void *quorumnet_state, cryptonote::core &c
       bool finish_pumping = false;
 
       if (msg.quorum_position >= static_cast<int>(context.wait_for_round.quorum.validators.size()))
+      {
+        MERROR("Quorum position " << msg.quorum_position << " in Pulse message indexes oob");
         continue;
+      }
 
       crypto::public_key const &validator_key = context.wait_for_round.quorum.validators[msg.quorum_position];
       if (msg.type == pulse::message_type::handshake)
