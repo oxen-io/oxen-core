@@ -152,12 +152,12 @@ public:
     PendingTransaction*  restoreMultisigTransaction(const std::string& signData) override;
 
     PendingTransaction * createTransactionMultDest(const std::vector<std::string> &dst_addr, const std::string &payment_id,
-                                        optional<std::vector<uint64_t>> amount,
+                                        std::optional<std::vector<uint64_t>> amount,
                                         uint32_t priority = 0,
                                         uint32_t subaddr_account = 0,
                                         std::set<uint32_t> subaddr_indices = {}) override;
     PendingTransaction * createTransaction(const std::string &dst_addr, const std::string &payment_id,
-                                        optional<uint64_t> amount,
+                                        std::optional<uint64_t> amount,
                                         uint32_t priority = 0,
                                         uint32_t subaddr_account = 0,
                                         std::set<uint32_t> subaddr_indices = {}) override;
@@ -268,7 +268,7 @@ private:
     std::atomic<bool>   m_rebuildWalletCache;
     // cache connection status to avoid unnecessary RPC calls
     mutable std::atomic<bool>   m_is_connected;
-    std::optional<epee::net_utils::http::login> m_daemon_login{};
+    std::optional<tools::login> m_daemon_login;
 };
 
 

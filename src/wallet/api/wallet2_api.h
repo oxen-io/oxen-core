@@ -38,6 +38,7 @@
 #include <ctime>
 #include <iostream>
 #include <stdexcept>
+#include <optional>
 
 //  Public interface for libwallet library
 namespace Monero {
@@ -52,19 +53,6 @@ enum NetworkType : uint8_t {
         bool isAddressLocal(const std::string &hostaddr);
         void onStartup();
     }
-
-    template<typename T>
-    class optional {
-      public:
-        optional(): set(false) {}
-        optional(const T &t): t(t), set(true) {}
-        const T &operator*() const { return t; }
-        T &operator*() { return t; }
-        operator bool() const { return set; }
-      private:
-        T t;
-        bool set;
-    };
 
 /**
  * @brief Transaction-like interface for sending money
@@ -387,16 +375,16 @@ struct WalletListener
     /**
      * @brief called by device when PIN is needed
      */
-    virtual optional<std::string> onDevicePinRequest() {
+    virtual std::optional<std::string> onDevicePinRequest() {
         throw std::runtime_error("Not supported");
     }
 
     /**
      * @brief called by device when passphrase entry is needed
      */
-    virtual optional<std::string> onDevicePassphraseRequest(bool & on_device) {
+    virtual std::optional<std::string> onDevicePassphraseRequest(bool & on_device) {
         on_device = true;
-        return optional<std::string>();
+        return std::nullopt;
     }
 
     /**
@@ -822,7 +810,7 @@ struct Wallet
      */
 
     virtual PendingTransaction * createTransactionMultDest(const std::vector<std::string> &dst_addr, const std::string &payment_id,
-                                                   optional<std::vector<uint64_t>> amount,
+                                                   std::optional<std::vector<uint64_t>> amount,
                                                    uint32_t priority = 0,
                                                    uint32_t subaddr_account = 0,
                                                    std::set<uint32_t> subaddr_indices = {}) = 0;
@@ -841,7 +829,7 @@ struct Wallet
 
     virtual PendingTransaction *createTransaction(const std::string &dst_addr,
                                                   const std::string &payment_id,
-                                                  optional<uint64_t> amount,
+                                                  std::optional<uint64_t> amount,
                                                   uint32_t priority                  = 0,
                                                   uint32_t subaddr_account           = 0,
                                                   std::set<uint32_t> subaddr_indices = {}) = 0;
@@ -1251,7 +1239,7 @@ struct WalletManagerBase
     virtual std::string errorString() const = 0;
 
     //! set the daemon address (hostname and port)
-    virtual void setDaemonAddress(const std::string &address) = 0;
+    virtual void setDaemonAddress(std::string address) = 0;
 
     //! returns whether the daemon can be reached, and its version number
     virtual bool connected(uint32_t *version = NULL) = 0;

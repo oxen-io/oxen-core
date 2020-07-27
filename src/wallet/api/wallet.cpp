@@ -273,7 +273,7 @@ struct Wallet2CallbackImpl : public tools::i_wallet2_callback
       return std::nullopt;
     }
 
-    std::optional<epee::wipeable_string> on_device_passphrase_request(bool on_device) override
+    std::optional<epee::wipeable_string> on_device_passphrase_request(bool& on_device) override
     {
       if (m_listener) {
         auto passphrase = m_listener->onDevicePassphraseRequest(on_device);
@@ -986,7 +986,7 @@ bool WalletImpl::lightWalletImportWalletRequest(std::string &payment_id, uint64_
 {
   try
   {
-    tools::COMMAND_RPC_IMPORT_WALLET_REQUEST::response response{};
+    tools::light_rpc::IMPORT_WALLET_REQUEST::response response{};
     if(!m_wallet->light_wallet_import_wallet_request(response)){
       setStatusError(tr("Failed to send import wallet request"));
       return false;
@@ -1203,7 +1203,7 @@ bool WalletImpl::exportKeyImages(const string &filename)
   
   try
   {
-    if (!m_wallet->export_key_images(filename, false /* requested_ki_only */))
+    if (!m_wallet->export_key_images_to_file(filename, false /* requested_ki_only */))
     {
       setStatusError(tr("failed to save file ") + filename);
       return false;
@@ -1227,7 +1227,7 @@ bool WalletImpl::importKeyImages(const string &filename)
   try
   {
     uint64_t spent = 0, unspent = 0;
-    uint64_t height = m_wallet->import_key_images(filename, spent, unspent);
+    uint64_t height = m_wallet->import_key_images_from_file(filename, spent, unspent);
     LOG_PRINT_L2("Signed key images imported to height " << height << ", "
         << print_money(spent) << " spent, " << print_money(unspent) << " unspent");
   }
@@ -1447,7 +1447,7 @@ PendingTransaction* WalletImpl::restoreMultisigTransaction(const string& signDat
 //    - unconfirmed_transfer_details;
 //    - confirmed_transfer_details)
 
-PendingTransaction *WalletImpl::createTransactionMultDest(const std::vector<string> &dst_addr, const string &payment_id, optional<std::vector<uint64_t>> amount, uint32_t priority, uint32_t subaddr_account, std::set<uint32_t> subaddr_indices)
+PendingTransaction *WalletImpl::createTransactionMultDest(const std::vector<string> &dst_addr, const string &payment_id, std::optional<std::vector<uint64_t>> amount, uint32_t priority, uint32_t subaddr_account, std::set<uint32_t> subaddr_indices)
 
 {
     clearStatus();
@@ -1526,16 +1526,16 @@ PendingTransaction *WalletImpl::createTransactionMultDest(const std::vector<stri
               setStatusError(tools::ERR_MSG_NETWORK_VERSION_QUERY_FAILED);
               return transaction;
             }
-            loki_construct_tx_params tx_params = tools::wallet2::construct_params(*hf_version, txtype::standard, priority);
 
             if (amount) {
+                loki_construct_tx_params tx_params = tools::wallet2::construct_params(*hf_version, txtype::standard, priority);
                 transaction->m_pending_tx = m_wallet->create_transactions_2(dsts, CRYPTONOTE_DEFAULT_TX_MIXIN, 0 /* unlock_time */,
                                                                             priority,
                                                                             extra, subaddr_account, subaddr_indices, tx_params);
             } else {
                 transaction->m_pending_tx = m_wallet->create_transactions_all(0, info.address, info.is_subaddress, 1, CRYPTONOTE_DEFAULT_TX_MIXIN, 0 /* unlock_time */,
                                                                               priority,
-                                                                              extra, subaddr_account, subaddr_indices, tx_params);
+                                                                              extra, subaddr_account, subaddr_indices);
             }
             pendingTxPostProcess(transaction);
 
@@ -1613,11 +1613,11 @@ PendingTransaction *WalletImpl::createTransactionMultDest(const std::vector<stri
     return transaction;
 }
 
-PendingTransaction *WalletImpl::createTransaction(const string &dst_addr, const string &payment_id, optional<uint64_t> amount,
+PendingTransaction *WalletImpl::createTransaction(const string &dst_addr, const string &payment_id, std::optional<uint64_t> amount,
                                                   uint32_t priority, uint32_t subaddr_account, std::set<uint32_t> subaddr_indices)
 
 {
-    return createTransactionMultDest(std::vector<string> {dst_addr}, payment_id, amount ? (std::vector<uint64_t> {*amount}) : (optional<std::vector<uint64_t>>()), mixin_count, priority, subaddr_account, subaddr_indices);
+    return createTransactionMultDest(std::vector<string> {dst_addr}, payment_id, amount ? (std::vector<uint64_t> {*amount}) : (optional<std::vector<uint64_t>>()), priority, subaddr_account, subaddr_indices);
 }
 
 PendingTransaction *WalletImpl::createSweepUnmixableTransaction()
@@ -2265,7 +2265,7 @@ void WalletImpl::pendingTxPostProcess(PendingTransactionImpl * pending)
 
 bool WalletImpl::doInit(const string &daemon_address, uint64_t upper_transaction_size_limit, bool ssl)
 {
-    if (!m_wallet->init(daemon_address, m_daemon_login, boost::asio::ip::tcp::endpoint{}, upper_transaction_size_limit))
+    if (!m_wallet->init(daemon_address, m_daemon_login, /*proxy=*/ "", upper_transaction_size_limit))
        return false;
 
     // in case new wallet, this will force fast-refresh (pulling hashes instead of blocks)
