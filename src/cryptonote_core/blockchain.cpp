@@ -287,13 +287,15 @@ bool Blockchain::scan_outputkeys_for_indexes(const txin_to_key& tx_in_to_key, vi
   return true;
 }
 //------------------------------------------------------------------
-uint64_t Blockchain::get_current_blockchain_height() const
+uint64_t Blockchain::get_current_blockchain_height(bool lock) const
 {
   LOG_PRINT_L3("Blockchain::" << __func__);
   // WARNING: this function does not take m_blockchain_lock, and thus should only call read only
   // m_db functions which do not depend on one another (ie, no getheight + gethash(height-1), as
   // well as not accessing class members, even read only (ie, m_invalid_blocks). The caller must
   // lock if it is otherwise needed.
+  std::unique_lock lock_{*this, std::defer_lock};
+  if (lock) lock_.lock();
   return m_db->height();
 }
 //------------------------------------------------------------------

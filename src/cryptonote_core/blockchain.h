@@ -292,7 +292,7 @@ namespace cryptonote
      *
      * @return the height
      */
-    uint64_t get_current_blockchain_height() const;
+    uint64_t get_current_blockchain_height(bool lock = false) const;
 
     /**
      * @brief get the hash of the most recent block on the blockchain
