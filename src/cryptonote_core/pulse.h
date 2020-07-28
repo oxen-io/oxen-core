@@ -25,7 +25,7 @@ namespace pulse
 using clock      = std::chrono::system_clock;
 using time_point = std::chrono::time_point<clock>;
 
-enum struct message_type
+enum struct message_type : uint8_t
 {
   invalid,
   handshake,
@@ -35,9 +35,9 @@ enum struct message_type
 struct message
 {
   message_type      type;
-  int               quorum_position;
-  crypto::signature signature;
+  uint16_t          quorum_position;
   uint16_t          validator_bitset;
+  crypto::signature signature;
 };
 
 struct state : public cryptonote::BlockAddedHook

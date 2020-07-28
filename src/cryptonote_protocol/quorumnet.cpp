@@ -1378,66 +1378,98 @@ void handle_blink_success(Message& m) {
 //
 // Pulse
 //
+const std::string PULSE_TAG_VALIDATOR_BITSET = "b";
+const std::string PULSE_TAG_QUORUM_POSITION  = "q";
+const std::string PULSE_TAG_SIGNATURE        = "s";
+
+const std::string PULSE_CMD_CATEGORY              = "pulse";
+const std::string PULSE_CMD_VALIDATOR_BITSET      = "validator_bitset";
+const std::string PULSE_CMD_VALIDATOR_BIT         = "validator_bit";
+const std::string PULSE_CMD_SEND_VALIDATOR_BITSET = PULSE_CMD_CATEGORY + "." + PULSE_CMD_VALIDATOR_BITSET;
+const std::string PULSE_CMD_SEND_VALIDATOR_BIT    = PULSE_CMD_CATEGORY + "." + PULSE_CMD_VALIDATOR_BIT;
+
+std::string pulse_serialise_message(pulse::message const &msg)
+{
+  std::string result;
+
+  switch(msg.type)
+  {
+    case pulse::message_type::invalid:
+    {
+      assert(!"Invalid Code Path");
+      return result;
+    }
+
+    case pulse::message_type::handshake:
+    {
+      result = bt_serialize<bt_dict>({
+          {PULSE_TAG_QUORUM_POSITION, msg.quorum_position},
+          {PULSE_TAG_SIGNATURE, tools::view_guts(msg.signature)}
+      });
+    }
+    break;
+
+    case pulse::message_type::handshake_bitset:
+    {
+      result = bt_serialize<bt_dict>({
+          {PULSE_TAG_VALIDATOR_BITSET, msg.validator_bitset},
+          {PULSE_TAG_QUORUM_POSITION, msg.quorum_position},
+          {PULSE_TAG_SIGNATURE, tools::view_guts(msg.signature)}
+      });
+    }
+    break;
+  }
+
+  return result;
+}
+
+// Send participation handshake to other validators in the quorum. Caller must
+// be a valid Service Node that is in the current quorum.
+// sending_bitset: When false, validator_bitset parameter is ignored.
 void send_pulse_validator_handshake_bit_or_bitset(void *self, bool sending_bitset, service_nodes::quorum const &quorum, crypto::hash const &top_hash, uint16_t validator_bitset)
 {
   QnetState &qnet = *static_cast<QnetState *>(self);
   cryptonote::core &core = qnet.core;
 
+  peer_info const peer_list{qnet, quorum_type::pulse, &quorum, false /*opportunistic*/};
+
   // NOTE: Invariants
   if (!core.service_node())
     throw std::runtime_error("Pulse: Daemon is not a service node.");
 
-  // NOTE: Check we are in quorum
-  std::unordered_map<crypto::public_key, uint16_t> validator_to_quorum_index;
-  for (size_t i = 0; i < quorum.validators.size(); i++)
-    validator_to_quorum_index[quorum.validators[i]] = i;
-
-  // NOTE: Generate list of nodes to contact
-  peer_info peer_list{qnet, quorum_type::pulse, &quorum, false /*opportunistic*/};
-
-  if (peer_list.my_position.empty() || peer_list.my_position[0])
+  if (peer_list.my_position.empty() || peer_list.my_position[0] == -1)
     throw std::runtime_error("Pulse: Could not find this node's public key in quorum");
-  int const my_quorum_position = peer_list.my_position[0];
 
-  std::string data;
-  auto command = (sending_bitset) ? "pulse.validator_bitset"sv : "pulse.validator_bit"sv;
+  pulse::message msg  = {};
+  msg.quorum_position = peer_list.my_position[0];
+
+  auto command = (sending_bitset) ? PULSE_CMD_SEND_VALIDATOR_BITSET : PULSE_CMD_SEND_VALIDATOR_BIT;
   if (sending_bitset)
   {
-    auto buf = tools::memcpy_le(validator_bitset, top_hash.data, my_quorum_position);
+    auto buf = tools::memcpy_le(validator_bitset, top_hash.data, msg.quorum_position);
     crypto::hash hash;
     crypto::cn_fast_hash(buf.data(), buf.size(), hash);
+    crypto::generate_signature(hash, core.get_service_keys().pub, core.get_service_keys().key, msg.signature);
 
-    crypto::signature signature;
-    crypto::generate_signature(hash, core.get_service_keys().pub, core.get_service_keys().key, signature);
-
-    data = bt_serialize<bt_dict>({
-        {"b", validator_bitset},
-        {"q", my_quorum_position},
-        {"s", tools::view_guts(signature)}
-    });
+    msg.type             = pulse::message_type::handshake_bitset;
+    msg.validator_bitset = validator_bitset;
   }
   else
   {
-    auto buf = tools::memcpy_le(top_hash.data, my_quorum_position);
+    auto buf = tools::memcpy_le(top_hash.data, msg.quorum_position);
     crypto::hash hash;
     crypto::cn_fast_hash(buf.data(), buf.size(), hash);
+    crypto::generate_signature(hash, core.get_service_keys().pub, core.get_service_keys().key, msg.signature);
 
-    crypto::signature signature;
-    crypto::generate_signature(hash, core.get_service_keys().pub, core.get_service_keys().key, signature);
-
-    data = bt_serialize<bt_dict>({
-        {"q", my_quorum_position},
-        {"s", tools::view_guts(signature)}
-    });
+    msg.type = pulse::message_type::handshake;
   }
-
 
   // NOTE: Dispatch
   for (auto const &remote : peer_list.remotes) {
     auto const &pubkey = remote.first;
     auto const &[x25519_pubkey_crypto, connection_location] = remote.second;
     std::string x25519_pubkey = get_data_as_string(x25519_pubkey_crypto);
-    qnet.core.get_lmq().send(x25519_pubkey, command, data, send_option::hint{connection_location});
+    qnet.core.get_lmq().send(x25519_pubkey, command, pulse_serialise_message(msg), send_option::hint{connection_location});
   }
 }
 
@@ -1451,6 +1483,10 @@ void send_pulse_validator_handshake_bitset(void *self, service_nodes::quorum con
   send_pulse_validator_handshake_bit_or_bitset(self, true /*sending_bitset*/, quorum, top_hash, validator_bitset);
 }
 
+// Invoked when daemon has received a participation handshake message via
+// QuorumNet from another validator, either forwarded or originating from that
+// node. The message is added to the Pulse message queue and validating the
+// contents of the message is left to the caller.
 void handle_pulse_participation_bit_or_bitset(Message &m, QnetState& qnet, bool bitset)
 {
   if (m.data.size() != 1)
@@ -1462,29 +1498,25 @@ void handle_pulse_participation_bit_or_bitset(Message &m, QnetState& qnet, bool 
 
   // NOTE: Extract Data
   bt_dict_consumer data{m.data[0]};
-  constexpr auto VALIDATOR_BITSET_TAG = "b"sv;
-  constexpr auto QUORUM_POSITION_TAG  = "q"sv;
-  constexpr auto SIGNATURE_TAG        = "s"sv;
-
   if (bitset)
   {
     std::string_view INVALID_ARG_PREFIX = bitset ? "Invalid pulse validator bitset: missing required field '"sv
                                                  : "Invalid pulse validator bit: missing required field '"sv;
-    if (data.skip_until(VALIDATOR_BITSET_TAG))
+    if (data.skip_until(PULSE_TAG_VALIDATOR_BITSET))
       validator_bitset = data.consume_integer<uint16_t>();
     else
-      throw std::invalid_argument(std::string(INVALID_ARG_PREFIX) + std::string(VALIDATOR_BITSET_TAG) + "'");
+      throw std::invalid_argument(std::string(INVALID_ARG_PREFIX) + std::string(PULSE_TAG_VALIDATOR_BITSET) + "'");
 
-    if (data.skip_until(QUORUM_POSITION_TAG))
+    if (data.skip_until(PULSE_TAG_QUORUM_POSITION))
       quorum_position = data.consume_integer<int>();
     else
-      throw std::invalid_argument(std::string(INVALID_ARG_PREFIX) + std::string(QUORUM_POSITION_TAG) + "'");
+      throw std::invalid_argument(std::string(INVALID_ARG_PREFIX) + std::string(PULSE_TAG_QUORUM_POSITION) + "'");
 
-    if (data.skip_until(SIGNATURE_TAG)) {
+    if (data.skip_until(PULSE_TAG_SIGNATURE)) {
       auto sig_str = data.consume_string_view();
       signature    = convert_string_view_bytes_to_signature(sig_str);
     } else {
-      throw std::invalid_argument(std::string(INVALID_ARG_PREFIX) + std::string(SIGNATURE_TAG) + "'");
+      throw std::invalid_argument(std::string(INVALID_ARG_PREFIX) + std::string(PULSE_TAG_SIGNATURE) + "'");
     }
 
     assert(validator_bitset != -1);
@@ -1494,16 +1526,16 @@ void handle_pulse_participation_bit_or_bitset(Message &m, QnetState& qnet, bool 
   else
   {
     constexpr auto INVALID_ARG_PREFIX  = "Invalid pulse validator bit: missing required field '"sv;
-    if (data.skip_until(QUORUM_POSITION_TAG))
+    if (data.skip_until(PULSE_TAG_QUORUM_POSITION))
       quorum_position = data.consume_integer<int>();
     else
-      throw std::invalid_argument(std::string(INVALID_ARG_PREFIX) + std::string(QUORUM_POSITION_TAG) + "'");
+      throw std::invalid_argument(std::string(INVALID_ARG_PREFIX) + std::string(PULSE_TAG_QUORUM_POSITION) + "'");
 
-    if (data.skip_until(SIGNATURE_TAG)) {
+    if (data.skip_until(PULSE_TAG_SIGNATURE)) {
       auto sig_str = data.consume_string_view();
       signature    = convert_string_view_bytes_to_signature(sig_str);
     } else {
-      throw std::invalid_argument(std::string(INVALID_ARG_PREFIX) + std::string(SIGNATURE_TAG) + "'");
+      throw std::invalid_argument(std::string(INVALID_ARG_PREFIX) + std::string(PULSE_TAG_SIGNATURE) + "'");
     }
 
     assert(quorum_position != -1);
@@ -1529,43 +1561,16 @@ void handle_pulse_participation_bit_or_bitset(Message &m, QnetState& qnet, bool 
 
 void pulse_relay_message_to_quorum(void *self, pulse::message const &msg, service_nodes::quorum const &quorum)
 {
-  using message_type = pulse::message_type;
-  std::string data;
-  switch(msg.type)
-  {
-    case message_type::invalid:
-    {
-      assert(!"Invalid Code Path");
-      return;
-    }
-
-    case message_type::handshake:
-    {
-      data = bt_serialize<bt_dict>({
-          {"q", msg.quorum_position},
-          {"s", tools::view_guts(msg.signature)}
-      });
-    }
-    break;
-
-    case message_type::handshake_bitset:
-    {
-      data = bt_serialize<bt_dict>({
-          {"b", msg.validator_bitset},
-          {"q", msg.quorum_position},
-          {"s", tools::view_guts(msg.signature)}
-      });
-    }
-    break;
-  }
+  assert(msg.quorum_position < quorum.validators.size());
 
   peer_info::exclude_set relay_exclude;
   relay_exclude.insert(quorum.validators[msg.quorum_position]);
 
   QnetState &qnet = *static_cast<QnetState *>(self);
-  peer_info peer_list{qnet, quorum_type::pulse, &quorum, true /*opportunistic*/, std::move(relay_exclude)};
-  char const *command = msg.type == message_type::handshake_bitset ? "pulse.validator_bitset" : "pulse.validator_bit";
-  peer_list.relay_to_peers(command, data);
+  peer_info peer_list{qnet, quorum_type::pulse, &quorum, false /*opportunistic*/, std::move(relay_exclude)};
+
+  auto command = (msg.type == pulse::message_type::handshake_bitset) ? PULSE_CMD_SEND_VALIDATOR_BITSET : PULSE_CMD_SEND_VALIDATOR_BIT;
+  peer_list.relay_to_peers(command, pulse_serialise_message(msg));
 }
 
 bool pulse_message_queue_pump_messages(void *self, pulse::message &msg, pulse::time_point sleep_until)
@@ -1645,9 +1650,9 @@ void setup_endpoints(QnetState& qnet) {
         .add_command("good", handle_blink_success)
         ;
 
-    lmq.add_category("pulse", Access{AuthLevel::none, true /*remote sn*/, true /*local sn*/}, 1 /*reserved thread*/)
-        .add_request_command("validator_bit", [&qnet](Message& m) { handle_pulse_participation_bit_or_bitset(m, qnet, false /*bitset*/); })
-        .add_request_command("validator_bitset", [&qnet](Message& m) { handle_pulse_participation_bit_or_bitset(m, qnet, true /*bitset*/); })
+    lmq.add_category(PULSE_CMD_CATEGORY, Access{AuthLevel::none, true /*remote sn*/, true /*local sn*/}, 1 /*reserved thread*/)
+        .add_request_command(PULSE_CMD_VALIDATOR_BIT, [&qnet](Message& m) { handle_pulse_participation_bit_or_bitset(m, qnet, false /*bitset*/); })
+        .add_request_command(PULSE_CMD_VALIDATOR_BITSET, [&qnet](Message& m) { handle_pulse_participation_bit_or_bitset(m, qnet, true /*bitset*/); })
         ;
 
     // Compatibility aliases.  No longer used since 7.1.4, but can still be received from previous
