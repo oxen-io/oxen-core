@@ -42,8 +42,9 @@ struct message
 
 struct state : public cryptonote::BlockAddedHook
 {
-  std::condition_variable block_added_cv;
+  std::condition_variable wakeup_cv;
   std::atomic<uint64_t>   last_miner_block;
+  std::atomic<bool>       shutdown;
   bool block_added(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs, cryptonote::checkpoint_t const *checkpoint) override;
 };
 

@@ -346,6 +346,8 @@ namespace cryptonote
   {
     m_miner.stop();
     m_blockchain_storage.cancel();
+    m_pulse_state.shutdown = true;
+    m_pulse_state.wakeup_cv.notify_one();
 
     tools::download_async_handle handle;
     {

@@ -14,9 +14,11 @@ enum struct round_state
 {
   wait_next_block,
   wait_for_round,
+  round_starts,
   wait_for_handshakes,
   wait_for_other_validator_handshake_bitsets,
   submit_block_template,
+  terminate,
 };
 
 struct round_context
@@ -30,8 +32,12 @@ struct round_context
   struct
   {
     service_nodes::quorum quorum;
-    bool producer;
   } wait_for_round;
+
+  struct
+  {
+    bool is_producer;
+  } round_starts;
 
   struct
   {
@@ -56,38 +62,74 @@ struct round_context
 
 namespace
 {
-round_state sleep_until_next_block_or_round(cryptonote::Blockchain const &blockchain, round_context &context, std::condition_variable &cv, std::mutex &mutex, uint64_t curr_height)
+
+enum sleep_until
 {
-  // TODO(doyle): Handle this error better
-  // assert(context.wait_next_block.round <= static_cast<uint8_t>(-1));
-  context.wait_next_block.round++;
+  next_block,
+  next_block_or_round,
+  round_starts
+};
 
-  pulse::time_point const start_time = context.wait_next_block.round_0_start_time +
-                                       (context.wait_next_block.round * service_nodes::PULSE_TIME_PER_BLOCK);
-
-  if (auto now = pulse::clock::now(); now < start_time)
+round_state thread_sleep(sleep_until until,
+                         pulse::state &state,
+                         cryptonote::Blockchain const &blockchain,
+                         round_context &context,
+                         std::mutex &mutex,
+                         uint64_t pulse_height)
+{
+  switch(until)
   {
-    auto duration = std::chrono::duration_cast<std::chrono::seconds>(start_time - now).count();
-    MGINFO("Pulse: Sleeping " << duration << "s until pulse round " << +context.wait_next_block.round << " commences for block " << curr_height);
-
-    uint64_t height = 0;
+    case sleep_until::next_block:
     {
       std::unique_lock lock{mutex};
-      cv.wait_until(lock, start_time, [&blockchain, start_time, &height, curr_height]() {
-        bool wakeup_time = pulse::clock::now() >= start_time;
-        height           = blockchain.get_current_blockchain_height(true /*lock*/);
-        return wakeup_time || (height != curr_height);
+      state.wakeup_cv.wait(lock, [&state, &blockchain, pulse_height]() {
+        uint64_t curr_height = blockchain.get_current_blockchain_height(true /*lock*/);
+        return pulse_height != curr_height || state.shutdown;
       });
+
+      return state.shutdown ? round_state::terminate : round_state::wait_next_block;
     }
 
-    if (height != curr_height)
+    default:
     {
-      MGINFO("Pulse: Blockchain height changed during sleep from " << curr_height << " to " << height << ", re-evaluating pulse block");
-      return round_state::wait_next_block;
+      if (until == sleep_until::next_block_or_round)
+      {
+        // TODO(doyle): Handle this error better
+        // assert(context.wait_next_block.round <= static_cast<uint8_t>(-1));
+        context.wait_next_block.round++;
+      }
+
+      pulse::time_point const start_time = context.wait_next_block.round_0_start_time +
+                                           (context.wait_next_block.round * service_nodes::PULSE_TIME_PER_BLOCK);
+
+      uint64_t curr_height = pulse_height;
+      if (auto now = pulse::clock::now(); now < start_time)
+      {
+        auto duration = std::chrono::duration_cast<std::chrono::seconds>(start_time - now).count();
+        MGINFO("Pulse: Sleeping " << duration << "s until pulse round " << +context.wait_next_block.round << " commences for block " << pulse_height);
+
+        std::unique_lock lock{mutex};
+        state.wakeup_cv.wait_until(lock, start_time, [&state, &blockchain, start_time, pulse_height, &curr_height]() {
+          bool wakeup_time = pulse::clock::now() >= start_time;
+          curr_height      = blockchain.get_current_blockchain_height(true /*lock*/);
+          return wakeup_time || (pulse_height != curr_height) || state.shutdown;
+        });
+
+        if (state.shutdown)
+          return round_state::terminate;
+
+      }
+
+      if (pulse_height != curr_height)
+      {
+        MGINFO("Pulse: Blockchain height changed during sleep from " << pulse_height << " to " << curr_height << ", re-evaluating pulse block");
+        return round_state::wait_next_block;
+      }
+
+      assert(until == sleep_until::next_block_or_round || until == sleep_until::round_starts);
+      return until == sleep_until::next_block_or_round ? round_state::wait_for_round : round_state::round_starts;
     }
   }
-
-  return round_state::wait_for_round;
 }
 
 } // anonymous namespace
@@ -99,7 +141,7 @@ bool pulse::state::block_added(const cryptonote::block& block, const std::vector
   if (block.signatures.size() != service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES || std::memcmp(&block.pulse, &null_header, sizeof(null_header) == 0))
     last_miner_block = cryptonote::get_block_height(block);
 
-  block_added_cv.notify_one();
+  wakeup_cv.notify_one();
   return true;
 }
 
@@ -123,18 +165,26 @@ bool pulse::state::block_added(const cryptonote::block& block, const std::vector
   [Block Height Changed?]---+ Yes                            |
    |                                                         |
    | No                                                      |
-   |                                                         | No
-  [Are we a Block Validator?]------[Are we a Block Leader?]--+
+   |                                                         |
+  +---------------------+                                    |
+  | Round Starts        |                                    |
+  +---------------------+                                    |
+   |                          No                             |
+  [Are we a Block Validator?]------[Are we a Block Leader?]--+ No
    |                                        |                |
    | Yes                                    | Yes            |
+   |                                        |                |
+  [Send Handshakes Fail?]------------------------------------+
+   |                                        |                |
+   | No                                     |                |
    |                                        |                |
    V                                        |                |
   +---------------------+                   |                |
   | Wait For Handshakes |                   |                |
   +---------------------+                   |                |
    |                                        |                |
-  [Quorumnet Comms Fail?]------------------------------------+
-   |                      Yes               |                |
+  [Send Handshake Bitsets Fails?]----------------------------+
+   |                                        |                |
    | No                                     |                |
    |                                        |                |
    V                                        V                |
@@ -151,9 +201,7 @@ bool pulse::state::block_added(const cryptonote::block& block, const std::vector
   | Submit Block Template |
   +-----------------------+
 
-
   Wait Next Block:
-    - Sleeps until Blockchain is at HF16
     - Sleeps until the timestamp of the next block has arrived.
 
       Next Block Timestamp = G.Timestamp + (height * 2min)
@@ -176,10 +224,13 @@ bool pulse::state::block_added(const cryptonote::block& block, const std::vector
   Wait For Round:
     - Generate Pulse quorum, if there are insufficient Service Nodes, we sleep
       until the next Proof-of-Work block arrives.
+    - Sleep until the round should start.
+
+  Start Handshaking:
+    - The Block Producer skips to waiting for the handshake bitsets from each validator
     - If not participating, the node waits until the next block or round and
       re-checks participation.
     - Block Validators handshake to confirm participation in the round and collect other handshakes.
-    - The Block Producer skips to waiting for the handshake bitsets from each validator
 
   Wait For Handshakes:
     - Validators will each individually collect handshakes and build up a
@@ -211,57 +262,51 @@ void pulse::main(pulse::state &state, void *quorumnet_state, cryptonote::core &c
   uint64_t pulse_height = 0;
   std::mutex pulse_mutex;
 
-  round_context context      = {};
+  round_context context = {};
+
+  //
+  // NOTE: Sleep until Blockchain is ready to produce Pulse Blocks
+  //
   uint64_t const hf16_height = cryptonote::HardFork::get_hardcoded_hard_fork_height(blockchain.nettype(), cryptonote::network_version_16);
+  {
+    if (hf16_height == cryptonote::HardFork::INVALID_HF_VERSION_HEIGHT)
+      return;
 
-  if (hf16_height == cryptonote::HardFork::INVALID_HF_VERSION_HEIGHT)
-    return;
+    uint64_t height = blockchain.get_current_blockchain_height(true /*lock*/);
+    if (height < hf16_height)
+      MGINFO("Pulse: Network at block " << height << " is not ready for Pulse until block " << hf16_height << ", worker going to sleep");
 
-  for (auto round_state = round_state::wait_next_block;;)
+    for (; height < hf16_height; height = blockchain.get_current_blockchain_height(true /*lock*/))
+    {
+      auto result = thread_sleep(sleep_until::next_block, state, blockchain, context, pulse_mutex, height);
+      if (result == round_state::terminate) return;
+    }
+  }
+
+  for (auto round_state = round_state::wait_next_block; !state.shutdown;)
   {
     switch (round_state)
     {
+      case round_state::terminate:
+        return;
+
       default:
         break;
 
       case round_state::wait_next_block:
       {
-        uint64_t curr_height     = blockchain.get_current_blockchain_height(true /*lock*/);
-#if 0
-        uint64_t starting_height = std::max(hf16_height, state.last_miner_block.load());
-#else
-        uint64_t starting_height = curr_height - 1; // (DEBUG): Make next block timestamps relative to previous block.
-#endif
-        context                  = {};
-
-        //
-        // NOTE: Sleep until Blockchain is ready to produce Pulse Blocks
-        //
-        if (curr_height < starting_height)
-        {
-          MGINFO("Pulse: Network at block " << curr_height << " is not ready for Pulse until block " << starting_height << ", worker going to sleep");
-          std::unique_lock lock{pulse_mutex};
-          state.block_added_cv.wait(lock, [&state, &blockchain, hf16_height, &curr_height, &starting_height]() {
-            curr_height     = blockchain.get_current_blockchain_height(true /*lock*/);
-            starting_height = std::max(hf16_height, state.last_miner_block.load());
-            return curr_height >= starting_height;
-          });
-        }
+        context = {};
 
         //
         // NOTE: If already processing pulse for height, wait for next height
         //
-        if (pulse_height == curr_height)
+        if (pulse_height == blockchain.get_current_blockchain_height(true /*lock*/))
         {
           MGINFO("Pulse: Network is currently producing block " << pulse_height << ", sleeping until next block");
-          std::unique_lock lock{pulse_mutex};
-          state.block_added_cv.wait(lock, [&blockchain, &curr_height, pulse_height]() {
-            curr_height = blockchain.get_current_blockchain_height(true /*lock*/);
-            return curr_height != pulse_height;
-          });
+          round_state = thread_sleep(sleep_until::next_block, state, blockchain, context, pulse_mutex, pulse_height);
         }
 
-        pulse_height = curr_height;
+        pulse_height = blockchain.get_current_blockchain_height(true /*lock*/);
         top_hash     = blockchain.get_block_id_by_height(pulse_height - 1);
 
         if (top_hash == crypto::null_hash)
@@ -273,12 +318,17 @@ void pulse::main(pulse::state &state, void *quorumnet_state, cryptonote::core &c
         //
         // NOTE: Get the round start time
         //
-        if (!base_block_initialized || (cryptonote::get_block_height(base_pulse_block) != starting_height))
+#if 0
+        uint64_t base_height = std::max(hf16_height, state.last_miner_block.load());
+#else
+        uint64_t base_height = std::max(hf16_height, pulse_height - 1); // (DEBUG): Make next block timestamps relative to previous block.
+#endif
+        if (!base_block_initialized || (cryptonote::get_block_height(base_pulse_block) != base_height))
         {
           std::vector<std::pair<cryptonote::blobdata, cryptonote::block>> block;
-          if (!blockchain.get_blocks(starting_height, 1, block))
+          if (!blockchain.get_blocks(base_height, 1, block))
           {
-            MERROR("Pulse: Could not query block " << starting_height << " from the DB, unable to continue with Pulse");
+            MERROR("Pulse: Could not query block " << base_height << " from the DB, unable to continue with Pulse");
             continue;
           }
 
@@ -287,7 +337,7 @@ void pulse::main(pulse::state &state, void *quorumnet_state, cryptonote::core &c
         }
 
         auto base_timestamp   = pulse::time_point(std::chrono::seconds(base_pulse_block.timestamp));
-        uint64_t delta_height = curr_height - cryptonote::get_block_height(base_pulse_block);
+        uint64_t delta_height = pulse_height - cryptonote::get_block_height(base_pulse_block);
         context.wait_next_block.round_0_start_time = base_timestamp + (delta_height * service_nodes::PULSE_TIME_PER_BLOCK);
 
         //
@@ -299,11 +349,8 @@ void pulse::main(pulse::state &state, void *quorumnet_state, cryptonote::core &c
         }
         else
         {
-          auto const time_since_block = pulse::clock::now() - context.wait_next_block.round_0_start_time;
-          size_t pulse_round_usize    = time_since_block / service_nodes::PULSE_TIME_PER_BLOCK;
-
-          // TODO(doyle): We need to handle this error better.
-          // assert(pulse_round_usize < static_cast<uint8_t>(-1));
+          auto const time_since_block   = pulse::clock::now() - context.wait_next_block.round_0_start_time;
+          size_t pulse_round_usize      = time_since_block / service_nodes::PULSE_TIME_PER_BLOCK;
           context.wait_next_block.round = static_cast<uint8_t>(pulse_round_usize);
         }
 
@@ -315,40 +362,53 @@ void pulse::main(pulse::state &state, void *quorumnet_state, cryptonote::core &c
       {
         context.wait_for_round = {};
 
+        //
+        // NOTE: Timings
+        //
         pulse::time_point const start_time = context.wait_next_block.round_0_start_time +
                                              (context.wait_next_block.round * service_nodes::PULSE_TIME_PER_BLOCK);
         context.wait_for_handshakes.end_time = start_time + std::chrono::seconds(10); // TODO(doyle): Formalize timings
         context.wait_for_other_validator_handshake_bitsets.end_time = context.wait_for_handshakes.end_time + std::chrono::seconds(10);
 
         //
-        // NOTE: Derive quorum for pulse round
+        // NOTE: Quorum
         //
+        context.wait_for_round.quorum =
+            service_nodes::generate_pulse_quorum(blockchain.nettype(),
+                                                 blockchain.get_db(),
+                                                 pulse_height - 1,
+                                                 blockchain.get_service_node_list().get_block_leader().key,
+                                                 blockchain.get_current_hard_fork_version(),
+                                                 blockchain.get_service_node_list().active_service_nodes_infos(),
+                                                 context.wait_next_block.round);
+
+        if (service_nodes::verify_pulse_quorum_sizes(context.wait_for_round.quorum))
         {
-          context.wait_for_round.quorum =
-              service_nodes::generate_pulse_quorum(blockchain.nettype(),
-                                                   blockchain.get_db(),
-                                                   pulse_height - 1,
-                                                   blockchain.get_service_node_list().get_block_leader().key,
-                                                   blockchain.get_current_hard_fork_version(),
-                                                   blockchain.get_service_node_list().active_service_nodes_infos(),
-                                                   context.wait_next_block.round);
-
-          if (!service_nodes::verify_pulse_quorum_sizes(context.wait_for_round.quorum)) // Insufficient Service Nodes for quorum
-          {
-            MGINFO("Pulse: Insufficient Service Nodes to execute Pulse on height " << pulse_height << ", we require a PoW miner block. Sleeping until next block.");
-            round_state = round_state::wait_next_block;
-            continue;
-          }
+          round_state = thread_sleep(sleep_until::round_starts, state, blockchain, context, pulse_mutex, pulse_height);
         }
+        else
+        {
+          MGINFO("Pulse: Insufficient Service Nodes to execute Pulse on height " << pulse_height << ", we require a PoW miner block. Sleeping until next block.");
+          round_state = thread_sleep(sleep_until::next_block, state, blockchain, context, pulse_mutex, pulse_height);
+        }
+      }
+      break;
+
+      case round_state::round_starts:
+      {
+        context.round_starts = {};
 
         //
-        // NOTE: Determine quorum participation
+        // NOTE: Quorum participation
         //
         if (key.pub == context.wait_for_round.quorum.workers[0])
         {
+          // NOTE: Producer doesn't send handshakes, they only collect the
+          // handshake bitsets from the other validators to determine who to
+          // lock in for this round in the block template.
           MGINFO("Pulse: We are the block producer for height " << pulse_height << " in round " << +context.wait_next_block.round << ", awaiting validator handshake bitsets.");
-          context.wait_for_round.producer = true;
-          round_state                     = round_state::wait_for_other_validator_handshake_bitsets;
+          context.round_starts.is_producer = true;
+          round_state                      = round_state::wait_for_other_validator_handshake_bitsets;
         }
         else
         {
@@ -359,53 +419,24 @@ void pulse::main(pulse::state &state, void *quorumnet_state, cryptonote::core &c
             if (validator) break;
           }
 
-          if (!validator)
+          if (validator)
+          {
+            try
+            {
+              MGINFO("Pulse: We are a pulse validator for height " << pulse_height << " in round " << +context.wait_next_block.round << ", sending handshake bit to quorum and collecting other validator handshakes.");
+              cryptonote::quorumnet_send_pulse_validator_handshake_bit(quorumnet_state, context.wait_for_round.quorum, top_hash);
+              round_state = round_state::wait_for_handshakes;
+            }
+            catch (std::exception const &e)
+            {
+              MERROR("Attempting to invoke and send a Pulse participation handshake unexpectedly failed. " << e.what());
+              round_state = thread_sleep(sleep_until::next_block_or_round, state, blockchain, context, pulse_mutex, pulse_height);
+            }
+          }
+          else
           {
             MGINFO("Pulse: We are not a pulse validator for height " << pulse_height << " in round " << +context.wait_next_block.round << ". Waiting for next pulse round or block.");
-            round_state = sleep_until_next_block_or_round(blockchain, context, state.block_added_cv, pulse_mutex, pulse_height);
-            break;
-          }
-        }
-
-        //
-        // NOTE: Sleep until round starts or block added
-        //
-        // TODO(doyle): DRY sleep code
-        if (auto now = pulse::clock::now(); now < start_time)
-        {
-          auto duration = std::chrono::duration_cast<std::chrono::seconds>(start_time - now).count();
-          MGINFO("Pulse: Sleeping " << duration << "s until pulse round " << +context.wait_next_block.round << " commences for block " << pulse_height);
-
-          uint64_t height = 0;
-          {
-            std::unique_lock lock{pulse_mutex};
-            state.block_added_cv.wait_until(lock, start_time, [&blockchain, start_time, &height, pulse_height]() {
-              bool wakeup_time = pulse::clock::now() >= start_time;
-              height           = blockchain.get_current_blockchain_height(true /*lock*/);
-              return wakeup_time || (height != pulse_height);
-            });
-          }
-
-          if (height != pulse_height)
-          {
-            MGINFO("Pulse: Blockchain height changed during sleep from " << pulse_height << " to " << height << ", re-evaluating pulse block");
-            round_state = round_state::wait_next_block;
-            break;
-          }
-        }
-
-        if (!context.wait_for_round.producer)
-        {
-          try
-          {
-            MGINFO("Pulse: We are a pulse validator for height " << pulse_height << " in round " << +context.wait_next_block.round << ", sending handshake bit to quorum and collecting other validator handshakes.");
-            cryptonote::quorumnet_send_pulse_validator_handshake_bit(quorumnet_state, context.wait_for_round.quorum, top_hash);
-            round_state = round_state::wait_for_handshakes;
-          }
-          catch (std::exception const &e)
-          {
-            MERROR("Attempting to invoke and send a Pulse participation handshake unexpectedly failed. " << e.what());
-            round_state = sleep_until_next_block_or_round(blockchain, context, state.block_added_cv, pulse_mutex, pulse_height);
+            round_state = thread_sleep(sleep_until::next_block_or_round, state, blockchain, context, pulse_mutex, pulse_height);
           }
         }
       }
@@ -429,7 +460,7 @@ void pulse::main(pulse::state &state, void *quorumnet_state, cryptonote::core &c
           catch(std::exception const &e)
           {
             MERROR("Attempting to invoke and send a Pulse participation handshake bitset unexpectedly failed. " << e.what());
-            round_state = sleep_until_next_block_or_round(blockchain, context, state.block_added_cv, pulse_mutex, pulse_height);
+            round_state = thread_sleep(sleep_until::next_block_or_round, state, blockchain, context, pulse_mutex, pulse_height);
           }
         }
       }
@@ -464,15 +495,15 @@ void pulse::main(pulse::state &state, void *quorumnet_state, cryptonote::core &c
             // about which validators are online, we wait until the
             // next round.
             MGINFO("Pulse: We heard back from less than 60% of the validators, waiting for next round.");
-            round_state = sleep_until_next_block_or_round(blockchain, context, state.block_added_cv, pulse_mutex, pulse_height);
+            round_state = thread_sleep(sleep_until::next_block_or_round, state, blockchain, context, pulse_mutex, pulse_height);
           }
           else
           {
             std::bitset<8 * sizeof(most_common_bitset)> bitset = most_common_bitset;
-            MGINFO("Pulse: " << count << " validators agreed on the participating nodes in the quorum " << bitset << (context.wait_for_round.producer ? "" : "Awaiting block template from block producer"));
+            MGINFO("Pulse: " << count << " validators agreed on the participating nodes in the quorum " << bitset << (context.round_starts.is_producer ? "" : "Awaiting block template from block producer"));
             context.submit_block_template.validator_bitset = most_common_bitset;
-            if (context.wait_for_round.producer)
-              round_state = context.wait_for_round.producer ? round_state::submit_block_template : round_state::wait_next_block;
+            if (context.round_starts.is_producer)
+              round_state = context.round_starts.is_producer ? round_state::submit_block_template : round_state::wait_next_block;
           }
         }
       }
@@ -480,7 +511,7 @@ void pulse::main(pulse::state &state, void *quorumnet_state, cryptonote::core &c
 
       case round_state::submit_block_template:
       {
-        assert(context.wait_for_round.producer);
+        assert(context.round_starts.is_producer);
         std::vector<service_nodes::service_node_pubkey_info> list_state = blockchain.get_service_node_list().get_service_node_list_state({key.pub});
 
         if (list_state.empty())
@@ -495,7 +526,7 @@ void pulse::main(pulse::state &state, void *quorumnet_state, cryptonote::core &c
         if (!info->is_active())
         {
           MGINFO("Pulse: Block producer (us) is not an active service node, waiting until next round");
-          round_state = sleep_until_next_block_or_round(blockchain, context, state.block_added_cv, pulse_mutex, pulse_height);
+          round_state = thread_sleep(sleep_until::next_block_or_round, state, blockchain, context, pulse_mutex, pulse_height);
           break;
         }
 
