@@ -126,7 +126,7 @@ target_compile_definitions(uWebSockets INTERFACE UWS_HTTPRESPONSE_NO_WRITEMARK U
 # cpr configuration.  Ideally we'd just do this via add_subdirectory, but cpr's cmake requires
 # 3.15+, and we target lower than that (and this is fairly simple to build).
 
-find_package(CURL REQUIRED COMPONENTS PROTOCOLS HTTP HTTPS FEATURES SSL)
+find_package(CURL REQUIRED COMPONENTS HTTP HTTPS SSL)
 
 file(GLOB cpr_sources ${conf_depends} cpr/cpr/*.cpp)
 
