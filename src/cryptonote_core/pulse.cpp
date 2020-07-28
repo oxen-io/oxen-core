@@ -317,7 +317,7 @@ void pulse::main(pulse::state &state, void *quorumnet_state, cryptonote::core &c
 
         pulse::time_point const start_time = context.wait_next_block.round_0_start_time +
                                              (context.wait_next_block.round * service_nodes::PULSE_TIME_PER_BLOCK);
-        context.wait_for_handshakes.end_time = start_time + std::chrono::seconds(10);
+        context.wait_for_handshakes.end_time = start_time + std::chrono::seconds(10); // TODO(doyle): Formalize timings
         context.wait_for_other_validator_handshake_bitsets.end_time = context.wait_for_handshakes.end_time + std::chrono::seconds(10);
 
         //
@@ -445,11 +445,18 @@ void pulse::main(pulse::state &state, void *quorumnet_state, cryptonote::core &c
           MGINFO("Pulse: Collected " << context.wait_for_other_validator_handshake_bitsets.received_bitsets_count << " handshake bitsets" << (missing_bitsets ? ", we timed out and some bitsets were not seen!" : ""));
 
           std::map<uint16_t, int> most_common_validator_bitset;
-          for (uint16_t bits : context.wait_for_other_validator_handshake_bitsets.received_bitsets)
-            most_common_validator_bitset[bits]++;
 
-          uint16_t most_common_bitset = most_common_validator_bitset.begin()->first;
-          uint16_t count              = most_common_validator_bitset.begin()->second;
+          uint16_t most_common_bitset = 0;
+          uint16_t count              = 0;
+          for (uint16_t bits : context.wait_for_other_validator_handshake_bitsets.received_bitsets)
+          {
+            uint16_t num = ++most_common_validator_bitset[bits];
+            if (num > count)
+            {
+              most_common_bitset = bits;
+              count              = num;
+            }
+          }
 
           if (count < (service_nodes::PULSE_QUORUM_NUM_VALIDATORS * 6 / 10))
           {
@@ -541,6 +548,8 @@ void pulse::main(pulse::state &state, void *quorumnet_state, cryptonote::core &c
       crypto::public_key const &validator_key = context.wait_for_round.quorum.validators[msg.quorum_position];
       if (msg.type == pulse::message_type::handshake)
       {
+        // TODO(doyle): We need some lenience in time for accepting early
+        // handshakes in case clocks are slightly out of sync.
         if (round_state != round_state::wait_for_handshakes)
           continue;
 

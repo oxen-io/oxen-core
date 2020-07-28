@@ -4345,7 +4345,7 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
   }
   else
   {
-    assert(bl.signatures.empty() && "Signatures were supposted to be checked in Service Node List already.");
+    assert(bl.signatures.empty() && "Signatures were supposed to be checked in Service Node List already.");
     MINFO("+++++ MINER BLOCK SUCCESSFULLY ADDED\n"
                    << "id:\t" << id << "\n"
                    << "PoW:\t" << proof_of_work << "\n"

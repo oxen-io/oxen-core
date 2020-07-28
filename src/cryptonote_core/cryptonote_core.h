@@ -102,7 +102,7 @@ namespace cryptonote
   // When sending the validator handshake bitset, the message is also sent to the block producer.
   using quorumnet_send_pulse_validator_handshake_bit_proc = void (void *self, service_nodes::quorum const &quorum, crypto::hash const &top_hash);
   using quorumnet_send_pulse_validator_handshake_bitset_proc = void (void *self, service_nodes::quorum const &quorum, crypto::hash const &top_hash, uint16_t handshake_bitset);
-  // Blocking call that waits on a message from the Pulse message queue which are received via QuorumNet for Pulse until the end time has passed.
+  // Blocking call that waits on a message from the Pulse message queue which are messages for Pulse received via QuorumNet until the end time has passed.
   // end_time: Set a clock time to which the call can return if there are no more messages queued up.
   // msg: When function returns true, the pumped message is written to msg.
   // return: False if there is no message and the clock has passed the end_time, true if there's a message.
