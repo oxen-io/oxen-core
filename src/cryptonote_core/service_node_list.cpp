@@ -726,7 +726,7 @@ namespace service_nodes
         }
         return true;
 
-      case new_state::recommission:
+      case new_state::recommission: {
         if (hf_version < cryptonote::network_version_12_checkpointing) {
           MERROR("Invalid recommission transaction seen before network v12");
           return false;
@@ -742,8 +742,13 @@ namespace service_nodes
         else
           LOG_PRINT_L1("Recommission for service node: " << key);
 
+        // To figure out how much credit the node gets at recommissioned we need to know how much it
+        // had when it got decommissioned, and how long it's been decommisioned.
+        int64_t credit_at_decomm = quorum_cop::calculate_decommission_credit(info, info.last_decommission_height);
+        int64_t decomm_blocks = block_height - info.last_decommission_height;
 
         info.active_since_height = block_height;
+        info.recommission_credit = RECOMMISSION_CREDIT(credit_at_decomm, decomm_blocks);
         // Move the SN at the back of the list as if it had just registered (or just won)
         info.last_reward_block_height = block_height;
         info.last_reward_transaction_index = std::numeric_limits<uint32_t>::max();
@@ -762,7 +767,7 @@ namespace service_nodes
           proof.votes.fill({});
         }
         return true;
-
+      }
       case new_state::ip_change_penalty:
         if (hf_version < cryptonote::network_version_12_checkpointing) {
           MERROR("Invalid ip_change_penalty transaction seen before network v12");
@@ -2275,6 +2280,18 @@ namespace service_nodes
       {
         // Nothing to do here (the missing data will be generated in the new proofs db via uptime proofs).
         info.version = version_t::v4_noproofs;
+      }
+      if (info.version < version_t::v5_recomm_credit)
+      {
+        // If it's an old record then assume it's from before loki 8, in which case there were only
+        // two valid values here: initial for a node that has never been recommissioned, or 0 for a recommission.
+
+        auto was = info.recommission_credit;
+        if (info.decommission_count <= info.is_decommissioned()) // Has never been decommissioned (or is currently in the first decommission), so add initial starting credit
+          info.recommission_credit = DECOMMISSION_INITIAL_CREDIT;
+        else
+          info.recommission_credit = 0;
+        info.version = version_t::v5_recomm_credit;
       }
       // Make sure we handled any future state version upgrades:
       assert(info.version == tools::enum_top<decltype(info.version)>);

@@ -17,15 +17,59 @@ namespace service_nodes {
   // back online (i.e. starts sending the required performance proofs again) before the credits run
   // out then a quorum will reinstate the service node using a recommission transaction, which adds
   // the service node back to the bottom of the service node reward list, and resets its accumulated
-  // credits to 0.  If it does not come back online within the required number of blocks (i.e. the
-  // accumulated credit at the point of decommissioning) then a quorum will send a permanent
-  // deregistration transaction to the network, starting a 30-day deregistration count down.
+  // credits to RECOMMISSION_CREDIT (see below).  If it does not come back online within the
+  // required number of blocks (i.e. the accumulated credit at the point of decommissioning) then a
+  // quorum will send a permanent deregistration transaction to the network, starting a 30-day
+  // deregistration count down.  (Note that it is possible for a server to slightly exceed its
+  // decommission time: the first quorum test after the credit expires determines whether the server
+  // gets recommissioned or decommissioned).
   constexpr int64_t DECOMMISSION_CREDIT_PER_DAY = BLOCKS_EXPECTED_IN_HOURS(24) / 30;
   constexpr int64_t DECOMMISSION_INITIAL_CREDIT = BLOCKS_EXPECTED_IN_HOURS(2);
   constexpr int64_t DECOMMISSION_MAX_CREDIT     = BLOCKS_EXPECTED_IN_HOURS(48);
   constexpr int64_t DECOMMISSION_MINIMUM        = BLOCKS_EXPECTED_IN_HOURS(2);
 
   static_assert(DECOMMISSION_INITIAL_CREDIT <= DECOMMISSION_MAX_CREDIT, "Initial registration decommission credit cannot be larger than the maximum decommission credit");
+
+  // This determines how many credits a node gets when being recommissioned after being
+  // decommissioned.  It gets passed two values: the credit at the time the node was decomissioned,
+  // and the number of blocks the decommission lasted.  Note that it is possible for decomm_blocks
+  // to be *larger* than credit_at_decomm: in particularl
+  //
+  // The default, starting in Loki 8, subtracts two blocks for every block you were decomissioned,
+  // or returns 0 if that value would be negative.  So, for example, if you had 1000 blocks of
+  // credit and got decomissioned for 100 blocks, you will be recommissioned with 800 blocks of
+  // credit.  If you got decomissioned for 500 or more you will be recommissioned with 0 blocks of
+  // credit.
+  //
+  // Before Loki 8 (when this configuration was added) recomissioning would always reset your credit
+  // to 0, which is what happens if this function always returns 0.
+  inline constexpr int64_t RECOMMISSION_CREDIT(int64_t credit_at_decomm, int64_t decomm_blocks) {
+      return std::max<int64_t>(0, credit_at_decomm - 2*decomm_blocks);
+  }
+
+  // Some sanity checks on the recommission credit value:
+  static_assert(RECOMMISSION_CREDIT(DECOMMISSION_MAX_CREDIT, 0) <= DECOMMISSION_MAX_CREDIT,
+          "Max recommission credit should not be higher than DECOMMISSION_MAX_CREDIT");
+
+  // These are by no means exhaustive, but will at least catch simple mistakes
+  static_assert(
+          RECOMMISSION_CREDIT(DECOMMISSION_MAX_CREDIT, DECOMMISSION_MAX_CREDIT) <= RECOMMISSION_CREDIT(DECOMMISSION_MAX_CREDIT, DECOMMISSION_MAX_CREDIT/2) &&
+          RECOMMISSION_CREDIT(DECOMMISSION_MAX_CREDIT, DECOMMISSION_MAX_CREDIT/2) <= RECOMMISSION_CREDIT(DECOMMISSION_MAX_CREDIT, 0) &&
+          RECOMMISSION_CREDIT(DECOMMISSION_MAX_CREDIT/2, DECOMMISSION_MAX_CREDIT/2) <= RECOMMISSION_CREDIT(DECOMMISSION_MAX_CREDIT/2, 0),
+          "Recommission credit should be (weakly) decreasing in the length of decommissioning");
+  static_assert(
+          RECOMMISSION_CREDIT(DECOMMISSION_MAX_CREDIT/2, 1) <= RECOMMISSION_CREDIT(DECOMMISSION_MAX_CREDIT, 1) &&
+          RECOMMISSION_CREDIT(0, 1) <= RECOMMISSION_CREDIT(DECOMMISSION_MAX_CREDIT/2, 1),
+          "Recommission credit should be (weakly) increasing in initial credit blocks");
+
+  // This one actually could be supported (i.e. you can have negative credit and half to crawl out
+  // of that hole), but the current code is entirely untested as to whether or not that actually
+  // works.
+  static_assert(
+          RECOMMISSION_CREDIT(DECOMMISSION_MAX_CREDIT, 0) >= 0 &&
+          RECOMMISSION_CREDIT(DECOMMISSION_MAX_CREDIT, DECOMMISSION_MAX_CREDIT) >= 0 &&
+          RECOMMISSION_CREDIT(DECOMMISSION_MAX_CREDIT, 2*DECOMMISSION_MAX_CREDIT) >= 0, // delayed recommission that overhangs your time
+          "Recommission credit should not be negative");
 
   constexpr uint64_t  CHECKPOINT_NUM_CHECKPOINTS_FOR_CHAIN_FINALITY = 2;  // Number of consecutive checkpoints before, blocks preceeding the N checkpoints are locked in
   constexpr uint64_t  CHECKPOINT_INTERVAL                           = 4;  // Checkpoint every 4 blocks and prune when too old except if (height % CHECKPOINT_STORE_PERSISTENTLY_INTERVAL == 0)

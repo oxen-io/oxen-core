@@ -107,6 +107,7 @@ namespace service_nodes
       v2_ed25519,
       v3_quorumnet,
       v4_noproofs,
+      v5_recomm_credit,
 
       _count
     };
@@ -169,6 +170,7 @@ namespace service_nodes
     uint32_t                           decommission_count = 0; // How many times this service node has been decommissioned
     int64_t                            active_since_height = 0; // if decommissioned: equal to the *negative* height at which you became active before the decommission
     uint64_t                           last_decommission_height = 0; // The height at which the last (or current!) decommissioning started, or 0 if never decommissioned
+    int64_t                            recommission_credit = DECOMMISSION_INITIAL_CREDIT; // The number of blocks of credit you started with or kept when you were last activated (i.e. as of `active_since_height`)
     std::vector<contributor_t>         contributors;
     uint64_t                           total_contributed = 0;
     uint64_t                           total_reserved = 0;
@@ -197,6 +199,9 @@ namespace service_nodes
       VARINT_FIELD(last_reward_transaction_index)
       VARINT_FIELD(decommission_count)
       VARINT_FIELD(active_since_height)
+      if (version >= version_t::v5_recomm_credit)
+        VARINT_FIELD(recommission_credit)
+
       VARINT_FIELD(last_decommission_height)
       FIELD(contributors)
       VARINT_FIELD(total_contributed)

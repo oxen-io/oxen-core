@@ -664,21 +664,18 @@ namespace service_nodes
     int64_t blocks_up;
     if (!info.is_fully_funded())
       blocks_up = 0;
-    if (info.is_decommissioned()) // decommissioned; the negative of active_since_height tells us when the period leading up to the current decommission started
+    else if (info.is_decommissioned()) // decommissioned; the negative of active_since_height tells us when the period leading up to the current decommission started
       blocks_up = int64_t(info.last_decommission_height) - (-info.active_since_height);
     else
       blocks_up = int64_t(current_height) - int64_t(info.active_since_height);
 
-    // Now we calculate the credit earned from being up for `blocks_up` blocks
-    int64_t credit = 0;
-    if (blocks_up >= 0) {
-      credit = blocks_up * DECOMMISSION_CREDIT_PER_DAY / BLOCKS_EXPECTED_IN_HOURS(24);
+    // Now we calculate the credit at last commission plus any credit earned from being up for `blocks_up` blocks since
+    int64_t credit = info.recommission_credit;
+    if (blocks_up > 0)
+      credit += blocks_up * DECOMMISSION_CREDIT_PER_DAY / BLOCKS_EXPECTED_IN_HOURS(24);
 
-      if (info.decommission_count <= info.is_decommissioned()) // Has never been decommissioned (or is currently in the first decommission), so add initial starting credit
-        credit += DECOMMISSION_INITIAL_CREDIT;
-      if (credit > DECOMMISSION_MAX_CREDIT)
-        credit = DECOMMISSION_MAX_CREDIT; // Cap the available decommission credit blocks if above the max
-    }
+    if (credit > DECOMMISSION_MAX_CREDIT)
+      credit = DECOMMISSION_MAX_CREDIT; // Cap the available decommission credit blocks if above the max
 
     // If currently decommissioned, remove any used credits used for the current downtime
     if (info.is_decommissioned())
