@@ -165,6 +165,8 @@ public:
   bool set_bootstrap_daemon(const std::vector<std::string>& args);
 
   bool flush_cache(const std::vector<std::string>& args);
+
+  void test_trigger_uptime_proof() { m_executor.test_trigger_uptime_proof(); }
 };
 
 } // namespace daemonize

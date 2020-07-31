@@ -3334,6 +3334,14 @@ namespace cryptonote { namespace rpc {
     return res;
   }
   //------------------------------------------------------------------------------------------------------------------------------
+  TEST_TRIGGER_UPTIME_PROOF::response core_rpc_server::invoke(TEST_TRIGGER_UPTIME_PROOF::request&& req, rpc_context context)
+  {
+    TEST_TRIGGER_UPTIME_PROOF::response res{};
+    m_core.submit_uptime_proof();
+    res.status = STATUS_OK;
+    return res;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
   LNS_NAMES_TO_OWNERS::response core_rpc_server::invoke(LNS_NAMES_TO_OWNERS::request&& req, rpc_context context)
   {
     LNS_NAMES_TO_OWNERS::response res{};

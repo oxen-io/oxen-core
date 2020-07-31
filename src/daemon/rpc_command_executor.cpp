@@ -2519,4 +2519,11 @@ bool rpc_command_executor::version()
     return true;
 }
 
+bool rpc_command_executor::test_trigger_uptime_proof()
+{
+  TEST_TRIGGER_UPTIME_PROOF::request req{};
+  TEST_TRIGGER_UPTIME_PROOF::response res{};
+  return invoke<TEST_TRIGGER_UPTIME_PROOF>(std::move(req), res, "Failed to trigger uptime proof");
+}
+
 }// namespace daemonize

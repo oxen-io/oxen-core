@@ -2348,6 +2348,13 @@ namespace rpc {
     struct response : STATUS {};
   };
 
+  struct TEST_TRIGGER_UPTIME_PROOF : RPC_COMMAND
+  {
+    static constexpr auto names() { return NAMES("test_trigger_uptime_proof"); }
+    struct request : EMPTY {};
+    struct response : STATUS {};
+  };
+
   LOKI_RPC_DOC_INTROSPECT
   // Get the name mapping for a Loki Name Service entry. Loki currently supports mappings
   // for Session.
@@ -2538,6 +2545,7 @@ namespace rpc {
     GET_SN_STATE_CHANGES,
     REPORT_PEER_SS_STATUS,
     TEST_TRIGGER_P2P_RESYNC,
+    TEST_TRIGGER_UPTIME_PROOF,
     LNS_NAMES_TO_OWNERS,
     LNS_OWNERS_TO_NAMES,
     FLUSH_CACHE

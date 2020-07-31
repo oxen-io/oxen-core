@@ -210,6 +210,8 @@ public:
   bool flush_cache(bool bad_txs, bool invalid_blocks);
 
   bool version();
+
+  bool test_trigger_uptime_proof();
 };
 
 } // namespace daemonize
