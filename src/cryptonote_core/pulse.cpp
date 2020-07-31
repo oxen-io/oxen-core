@@ -367,8 +367,8 @@ void pulse::main(pulse::state &state, void *quorumnet_state, cryptonote::core &c
         //
         pulse::time_point const start_time = context.wait_next_block.round_0_start_time +
                                              (context.wait_next_block.round * service_nodes::PULSE_TIME_PER_BLOCK);
-        context.wait_for_handshakes.end_time = start_time + std::chrono::seconds(10); // TODO(doyle): Formalize timings
-        context.wait_for_other_validator_handshake_bitsets.end_time = context.wait_for_handshakes.end_time + std::chrono::seconds(10);
+        context.wait_for_handshakes.end_time = start_time + service_nodes::PULSE_WAIT_FOR_HANDSHAKES_DURATION;
+        context.wait_for_other_validator_handshake_bitsets.end_time = context.wait_for_handshakes.end_time + service_nodes::PULSE_WAIT_FOR_OTHER_VALIDATOR_HANDSHAKES_DURATION;
 
         //
         // NOTE: Quorum
@@ -536,6 +536,9 @@ void pulse::main(pulse::state &state, void *quorumnet_state, cryptonote::core &c
         uint64_t expected_reward = 0;
         blockchain.create_next_pulse_block_template(block, block_producer_payouts, pulse_height, expected_reward);
 
+        block.pulse.round                        = context.wait_next_block.round;
+        block.pulse.validator_participation_bits = context.submit_block_template.validator_bitset;
+
         cryptonote::block_verification_context bvc = {};
         core.handle_block_found(block, bvc);
 
@@ -582,7 +585,10 @@ void pulse::main(pulse::state &state, void *quorumnet_state, cryptonote::core &c
         // TODO(doyle): We need some lenience in time for accepting early
         // handshakes in case clocks are slightly out of sync.
         if (round_state != round_state::wait_for_handshakes)
+        {
+          MGINFO("Dropping " << pulse::message_type_string(msg.type) << " message from validator " << msg.quorum_position << ", expecting only handshake messages");
           continue;
+        }
 
         // TODO(doyle): DRY
         // NOTE: Validate Signature
@@ -605,7 +611,10 @@ void pulse::main(pulse::state &state, void *quorumnet_state, cryptonote::core &c
       else if (msg.type == pulse::message_type::handshake_bitset)
       {
         if (round_state != round_state::wait_for_other_validator_handshake_bitsets)
+        {
+          MGINFO("Dropping " << pulse::message_type_string(msg.type) << " message from validator " << msg.quorum_position << ", expecting only handshake bitset messages");
           continue;
+        }
 
         // NOTE: Validate Signature
         {

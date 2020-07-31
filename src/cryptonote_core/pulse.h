@@ -3,6 +3,7 @@
 #include <atomic>
 #include <cstdint>
 #include <condition_variable>
+#include <string_view>
 
 #include "cryptonote_basic/cryptonote_basic_impl.h"
 #include "crypto/crypto.h"
@@ -31,6 +32,18 @@ enum struct message_type : uint8_t
   handshake,
   handshake_bitset,
 };
+
+constexpr std::string_view message_type_string(message_type type)
+{
+  using namespace std::literals;
+  switch(type)
+  {
+    default:
+    case message_type::invalid: return "Invalid"sv;
+    case message_type::handshake: return "Handshake"sv;
+    case message_type::handshake_bitset: return "Handshake Bitset"sv;
+  }
+}
 
 struct message
 {
