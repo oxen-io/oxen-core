@@ -168,9 +168,10 @@ public:
             quorum_type q_type,
             const quorum *quorum,
             bool opportunistic = true,
-            exclude_set exclude = {}
+            exclude_set exclude = {},
+            bool include_workers = false
             )
-        : peer_info(qnet, q_type, &quorum, &quorum + 1, opportunistic, std::move(exclude)) {}
+        : peer_info(qnet, q_type, &quorum, &quorum + 1, opportunistic, std::move(exclude), include_workers) {}
 
     /// Constructs peer information for the given quorums and quorum position of the caller.
     /// \param qnet - the QnetState reference
@@ -187,7 +188,8 @@ public:
             quorum_type q_type,
             QuorumIt qbegin, QuorumIt qend,
             bool opportunistic = true,
-            std::unordered_set<crypto::public_key> exclude = {}
+            std::unordered_set<crypto::public_key> exclude = {},
+            bool include_workers = false
             )
     : lmq{qnet.lmq} {
 
@@ -211,6 +213,14 @@ public:
             }
             my_position.push_back(my_pos);
             if (my_pos >= 0) my_position_count++;
+
+            if (include_workers)
+            {
+                auto &w = (*qit)->workers;
+                for (size_t i = 0; i < w.size(); i++) {
+                    if (!exclude.count(w[i])) add_peer(w[i]);
+                }
+            }
         }
 
         // Lookup the x25519 and ZMQ connection string for all peers
@@ -1431,7 +1441,7 @@ void send_pulse_validator_handshake_bit_or_bitset(void *self, bool sending_bitse
   QnetState &qnet = *static_cast<QnetState *>(self);
   cryptonote::core &core = qnet.core;
 
-  peer_info const peer_list{qnet, quorum_type::pulse, &quorum, false /*opportunistic*/};
+  peer_info const peer_list{qnet, quorum_type::pulse, &quorum, false /*opportunistic*/, {} /*exclude*/, true /*include_workers*/};
 
   // NOTE: Invariants
   if (!core.service_node())
