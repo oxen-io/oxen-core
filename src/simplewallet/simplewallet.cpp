@@ -5075,7 +5075,11 @@ bool simple_wallet::refresh_main(uint64_t start_height, enum ResetType reset, bo
     ss << tr("unknown error");
   }
 
-  if (!ok)
+  if (ok)
+  {
+    m_wallet->store();
+  }
+  else
   {
     fail_msg_writer() << tr("refresh failed: ") << ss.str() << ". " << tr("Blocks received: ") << fetched_blocks;
   }

@@ -1109,7 +1109,7 @@ namespace cryptonote { namespace rpc {
       res.status = "Already mining";
       return res;
     }
-    if(!miner.start(info.address, static_cast<size_t>(req.threads_count)))
+    if(!miner.start(info.address, static_cast<size_t>(req.threads_count), req.num_blocks))
     {
       res.status = "Failed, mining not started";
       LOG_PRINT_L0(res.status);

@@ -1106,22 +1106,22 @@ bool rpc_command_executor::print_transaction_pool_stats() {
   return true;
 }
 
-bool rpc_command_executor::start_mining(const cryptonote::account_public_address& address, uint64_t num_threads, int num_blocks, cryptonote::network_type nettype) {
+bool rpc_command_executor::start_mining(const cryptonote::account_public_address& address, uint64_t num_threads, uint32_t num_blocks, cryptonote::network_type nettype) {
   START_MINING::request req{};
   START_MINING::response res{};
+  req.num_blocks    = num_blocks;
   req.miner_address = cryptonote::get_account_address_as_str(nettype, false, address);
   req.threads_count = num_threads;
 
   if (!invoke<START_MINING>(std::move(req), res, "Unable to start mining"))
     return false;
 
-
   std::stringstream stream;
-  stream << "Mining started,";
+  stream << "Mining started";
   if (num_threads) stream << " with " << num_threads << " thread(s).";
-  else             stream << " auto detecting the number of threads to use.";
+  else             stream << ", auto detecting the number of threads to use.";
 
-  if (num_blocks) stream << " Mining for " << num_blocks << " before stopping or until manually stopped.";
+  if (num_blocks) stream << " Mining for " << num_blocks << " blocks before stopping or until manually stopped.";
   tools::success_msg_writer() << stream.str();
   return true;
 }

@@ -540,8 +540,8 @@ bool command_parser_executor::start_mining(const std::vector<std::string>& args)
   std::string_view threads_val    = tools::find_named_argument(args.begin() + 1, args.end(), "threads="sv);
   std::string_view num_blocks_val = tools::find_named_argument(args.begin() + 1, args.end(), "num_blocks="sv);
 
-  int num_blocks    = 0;
-  int threads_count = 1;
+  int threads_count   = 1;
+  uint32_t num_blocks = 0;
   if (threads_val.size())
   {
     if (threads_val == "auto"sv || threads_val == "autodetect"sv)
