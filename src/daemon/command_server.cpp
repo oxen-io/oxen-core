@@ -158,7 +158,7 @@ void command_server::init_commands(cryptonote::rpc::core_rpc_server* rpc_server)
   m_command_lookup.set_handler(
       "start_mining"
     , [this](const auto &x) { return m_parser.start_mining(x); }
-    , "start_mining <addr> [<threads>|auto]"
+    , "start_mining <addr> [threads=(<threads>|auto) [num_blocks=<num>]"
     , "Start mining for specified address. Defaults to 1 thread; use \"auto\" to autodetect optimal number of threads."
     );
   m_command_lookup.set_handler(

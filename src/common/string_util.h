@@ -91,4 +91,22 @@ std::string copy_guts(const T& val) {
 
 std::string lowercase_ascii_string(std::string src);
 
+/// Given an array of string arguments, look for strings of the format <prefix>=<value> and return <value>
+/// Returns empty string view if not found.
+template <typename It>
+std::string_view find_named_argument(It begin, It end, std::string_view prefix)
+{
+  std::string_view result = {};
+  for (auto it = begin; it != end; it++)
+  {
+    if (starts_with(*it, prefix))
+    {
+      auto src = std::string_view(*it);
+      result   = src.substr(prefix.size(), src.size() - prefix.size());
+    }
+  }
+
+  return result;
+}
+
 }
