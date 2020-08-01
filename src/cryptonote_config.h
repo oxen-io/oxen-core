@@ -37,6 +37,7 @@
 #include <stdexcept>
 #include <chrono>
 #include <array>
+#include <ratio>
 
 #define CRYPTONOTE_MAX_BLOCK_NUMBER                     500000000
 #define CRYPTONOTE_MAX_TX_SIZE                          1000000
@@ -195,6 +196,12 @@ namespace config
   inline constexpr uint8_t FEE_CALCULATION_MAX_RETRIES = 10;
   inline constexpr uint64_t DEFAULT_DUST_THRESHOLD = 2000000000; // 2 * pow(10, 9)
   inline constexpr uint64_t BASE_REWARD_CLAMP_THRESHOLD = 100000000; // pow(10, 8)
+
+  // Maximum allowed stake contribution, as a fraction of the available contribution room.  This
+  // should generally be slightly larger than 1.  This is used to disallow large overcontributions
+  // which can happen when there are competing stakes submitted at the same time for the same
+  // service node.
+  using MAXIMUM_ACCEPTABLE_STAKE = std::ratio<101, 100>;
 
   // Used to estimate the blockchain height from a timestamp, with some grace time.  This can drift
   // slightly over time (because average block time is not typically *exactly*

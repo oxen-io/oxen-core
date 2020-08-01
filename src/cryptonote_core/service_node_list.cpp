@@ -1113,6 +1113,13 @@ namespace service_nodes
       }
     }
 
+    // Check that the contribution isn't too large.
+    if (stake.transferred > get_max_node_contribution(hf_version, curinfo.staking_requirement, curinfo.total_reserved))
+    {
+      MINFO("TX: Amount " << stake.transferred << " is too large (this is probably a result of competing stakes)");
+      return false;
+    }
+
     //
     // Successfully Validated
     //

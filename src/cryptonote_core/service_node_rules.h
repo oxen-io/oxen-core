@@ -161,6 +161,15 @@ static_assert(STAKING_PORTIONS != UINT64_MAX, "UINT64_MAX is used as the invalid
 uint64_t get_min_node_contribution            (uint8_t version, uint64_t staking_requirement, uint64_t total_reserved, size_t num_contributions);
 uint64_t get_min_node_contribution_in_portions(uint8_t version, uint64_t staking_requirement, uint64_t total_reserved, size_t num_contributions);
 
+// Gets the maximum allowed stake amount.  This is used to prevent significant overstaking.  The
+// wallet tries to avoid this when submitting a stake, but it can still happen when competing stakes
+// get submitted into the mempool -- for example, with 10k of contribution room, two contributions
+// of 8k could get submitted and both would be accepted, but the second one would only count as 2k
+// of stake despite locking 8k.
+// Starting in HF16, we disallow a stake if it is more than MAXIMUM_ACCEPTABLE_STAKE ratio of the
+// available contribution room, which allows slight overstaking but disallows larger overstakes.
+uint64_t get_max_node_contribution(uint8_t version, uint64_t staking_requirement, uint64_t total_reserved);
+
 uint64_t get_staking_requirement(cryptonote::network_type nettype, uint64_t height, uint8_t hf_version);
 
 uint64_t portions_to_amount(uint64_t portions, uint64_t staking_requirement);

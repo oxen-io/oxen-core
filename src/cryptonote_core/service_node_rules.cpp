@@ -1,6 +1,7 @@
 #include "cryptonote_config.h"
 #include "common/loki.h"
 #include "int-util.h"
+#include <limits>
 #include <vector>
 #include <boost/lexical_cast.hpp>
 #include <cfenv>
@@ -140,6 +141,14 @@ uint64_t get_locked_key_image_unlock_height(cryptonote::network_type nettype, ui
 static uint64_t get_min_node_contribution_pre_v11(uint64_t staking_requirement, uint64_t total_reserved)
 {
   return std::min(staking_requirement - total_reserved, staking_requirement / MAX_NUMBER_OF_CONTRIBUTORS);
+}
+
+uint64_t get_max_node_contribution(uint8_t version, uint64_t staking_requirement, uint64_t total_reserved)
+{
+  if (version >= cryptonote::network_version_16)
+    return (staking_requirement - total_reserved) * config::MAXIMUM_ACCEPTABLE_STAKE::num
+      / config::MAXIMUM_ACCEPTABLE_STAKE::den;
+  return std::numeric_limits<uint64_t>::max();
 }
 
 uint64_t get_min_node_contribution(uint8_t version, uint64_t staking_requirement, uint64_t total_reserved, size_t num_contributions)
