@@ -2523,7 +2523,7 @@ namespace service_nodes
 
 #define REJECT_PROOF(log) do { LOG_PRINT_L2("Rejecting uptime proof from " << proof.pubkey << ": " log); return false; } while (0)
 
-  bool service_node_list::handle_uptime_proof(cryptonote::NOTIFY_UPTIME_PROOF::request const &proof, bool &my_uptime_proof_confirmation)
+  bool service_node_list::handle_uptime_proof(cryptonote::NOTIFY_UPTIME_PROOF::request const &proof, bool &my_uptime_proof_confirmation, crypto::x25519_public_key *x25519_pkey)
   {
     uint8_t const hf_version = m_blockchain.get_current_hard_fork_version();
     uint64_t const now       = time(nullptr);
@@ -2607,6 +2607,9 @@ namespace service_nodes
 
     if (derived_x25519_pubkey)
       x25519_to_pub[derived_x25519_pubkey] = {proof.pubkey, now};
+
+    if (x25519_pkey)
+      *x25519_pkey = derived_x25519_pubkey;
 
     return true;
   }

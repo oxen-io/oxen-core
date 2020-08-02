@@ -1825,7 +1825,15 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
   bool core::handle_uptime_proof(const NOTIFY_UPTIME_PROOF::request &proof, bool &my_uptime_proof_confirmation)
   {
-    return m_service_node_list.handle_uptime_proof(proof, my_uptime_proof_confirmation);
+    crypto::x25519_public_key pkey;
+    bool result = m_service_node_list.handle_uptime_proof(proof, my_uptime_proof_confirmation, &pkey);
+    if (result && m_service_node_list.is_service_node(proof.pubkey, true /*require_active*/))
+    {
+      lokimq::pubkey_set added;
+      added.insert(tools::copy_guts(pkey));
+      m_lmq->update_active_sns(added, {} /*removed*/);
+    }
+    return result;
   }
   //-----------------------------------------------------------------------------------------------
   crypto::hash core::on_transaction_relayed(const cryptonote::blobdata& tx_blob)
@@ -2000,11 +2008,7 @@ namespace cryptonote
   {
     bool result = m_blockchain_storage.add_new_block(b, bvc, checkpoint);
     if (result)
-    {
-      // TODO(loki): PERF(loki): This causes perf problems in integration mode, so in real-time operation it may not be
-      // noticeable but could bubble up and cause slowness if the runtime variables align up undesiredly.
       relay_service_node_votes(); // NOTE: nop if synchronising due to not accepting votes whilst syncing
-    }
     return result;
   }
   //-----------------------------------------------------------------------------------------------
