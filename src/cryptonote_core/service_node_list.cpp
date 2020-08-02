@@ -1522,14 +1522,21 @@ namespace service_nodes
     // - Swap the chosen validator into the moving first half of the list.
     auto running_it              = pulse_candidates.begin();
     size_t const partition_index = (pulse_candidates.size() - 1) / 2;
-    for (size_t i = 0; i < service_nodes::PULSE_QUORUM_NUM_VALIDATORS; i++)
+    if (partition_index == 0)
     {
-      crypto::hash const &entropy = pulse_entropy[i + 1];
-      std::mt19937_64 rng         = quorum_rng(hf_version, entropy, quorum_type::pulse);
-      size_t validators_available = std::distance(running_it, pulse_candidates.end());
-      size_t swap_index = tools::uniform_distribution_portable(rng, std::min(partition_index, validators_available));
-      std::swap(*running_it, *(running_it + swap_index));
-      running_it++;
+      running_it += service_nodes::PULSE_QUORUM_NUM_VALIDATORS;
+    }
+    else
+    {
+      for (size_t i = 0; i < service_nodes::PULSE_QUORUM_NUM_VALIDATORS; i++)
+      {
+        crypto::hash const &entropy = pulse_entropy[i + 1];
+        std::mt19937_64 rng         = quorum_rng(hf_version, entropy, quorum_type::pulse);
+        size_t validators_available = std::distance(running_it, pulse_candidates.end());
+        size_t swap_index = tools::uniform_distribution_portable(rng, std::min(partition_index, validators_available));
+        std::swap(*running_it, *(running_it + swap_index));
+        running_it++;
+      }
     }
 
     result.workers.push_back(block_producer);
