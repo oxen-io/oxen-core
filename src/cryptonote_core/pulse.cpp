@@ -479,8 +479,10 @@ void pulse::main(pulse::state &state, void *quorumnet_state, cryptonote::core &c
 
           uint16_t most_common_bitset = 0;
           uint16_t count              = 0;
+          int i = 0;
           for (uint16_t bits : context.wait_for_other_validator_handshake_bitsets.received_bitsets)
           {
+            MGINFO("Collected from Validator " << i++ << ", handshake bitset " << std::bitset<8 * sizeof(bits)>(bits));
             uint16_t num = ++most_common_validator_bitset[bits];
             if (num > count)
             {
@@ -500,10 +502,14 @@ void pulse::main(pulse::state &state, void *quorumnet_state, cryptonote::core &c
           else
           {
             std::bitset<8 * sizeof(most_common_bitset)> bitset = most_common_bitset;
-            MGINFO("Pulse: " << count << " validators agreed on the participating nodes in the quorum " << bitset << (context.round_starts.is_producer ? "" : "Awaiting block template from block producer"));
+            MGINFO("Pulse: " << count << " validators agreed on the participating nodes in the quorum " << bitset << (context.round_starts.is_producer ? "" : ". Awaiting block template from block producer"));
             context.submit_block_template.validator_bitset = most_common_bitset;
             if (context.round_starts.is_producer)
               round_state = context.round_starts.is_producer ? round_state::submit_block_template : round_state::wait_next_block;
+            else
+            {
+              round_state = thread_sleep(sleep_until::next_block_or_round, state, blockchain, context, pulse_mutex, pulse_height);
+            }
           }
         }
       }
