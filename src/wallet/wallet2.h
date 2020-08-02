@@ -1246,8 +1246,8 @@ private:
     void ignore_outputs_below(uint64_t value) { m_ignore_outputs_below = value; }
     bool track_uses() const { return m_track_uses; }
     void track_uses(bool value) { m_track_uses = value; }
-    uint32_t inactivity_lock_timeout() const { return m_inactivity_lock_timeout; }
-    void inactivity_lock_timeout(uint32_t seconds) { m_inactivity_lock_timeout = seconds; }
+    std::chrono::seconds inactivity_lock_timeout() const { return m_inactivity_lock_timeout; }
+    void inactivity_lock_timeout(std::chrono::seconds seconds) { m_inactivity_lock_timeout = seconds; }
     const std::string & device_name() const { return m_device_name; }
     void device_name(const std::string & device_name) { m_device_name = device_name; }
     const std::string & device_derivation_path() const { return m_device_derivation_path; }
@@ -1836,7 +1836,7 @@ private:
     uint64_t m_ignore_outputs_above;
     uint64_t m_ignore_outputs_below;
     bool m_track_uses;
-    uint32_t m_inactivity_lock_timeout;
+    std::chrono::seconds m_inactivity_lock_timeout;
     bool m_is_initialized;
     NodeRPCProxy m_node_rpc_proxy;
     std::unordered_set<crypto::hash> m_scanned_pool_txs[2];

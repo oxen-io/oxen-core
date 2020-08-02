@@ -2543,7 +2543,7 @@ bool simple_wallet::set_inactivity_lock_timeout(const std::vector<std::string> &
     uint32_t r;
     if (tools::parse_int(args[1], r))
     {
-      m_wallet->inactivity_lock_timeout(r);
+      m_wallet->inactivity_lock_timeout(std::chrono::seconds{r});
       m_wallet->rewrite(m_wallet_file, pwd_container->password());
     }
     else
@@ -3245,7 +3245,7 @@ bool simple_wallet::set_variable(const std::vector<std::string> &args)
     success_msg_writer() << "track-uses = " << m_wallet->track_uses();
     success_msg_writer() << "device_name = " << m_wallet->device_name();
     success_msg_writer() << "export-format = " << (m_wallet->export_format() == tools::wallet2::ExportFormat::Ascii ? "ascii" : "binary");
-    success_msg_writer() << "inactivity-lock-timeout = " << m_wallet->inactivity_lock_timeout()
+    success_msg_writer() << "inactivity-lock-timeout = " << m_wallet->inactivity_lock_timeout().count()
 #ifdef _WIN32
         << " (disabled on Windows)"
 #endif
@@ -8620,8 +8620,8 @@ bool simple_wallet::check_inactivity()
     // inactivity lock
     if (!m_locked && !m_in_command)
     {
-      const uint32_t seconds = m_wallet->inactivity_lock_timeout();
-      if (seconds > 0 && time(NULL) - m_last_activity_time > seconds)
+      const auto timeout = m_wallet->inactivity_lock_timeout();
+      if (timeout > 0s && std::chrono::seconds{time(NULL) - m_last_activity_time} > timeout)
       {
         m_locked = true;
         m_cmd_binder.cancel_input();

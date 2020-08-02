@@ -139,7 +139,7 @@ namespace {
   constexpr uint32_t DEFAULT_MIN_OUTPUT_COUNT = 5;
   constexpr uint64_t DEFAULT_MIN_OUTPUT_VALUE = 2*COIN;
 
-  constexpr uint32_t DEFAULT_INACTIVITY_LOCK_TIMEOUT = 90; // seconds
+  constexpr auto DEFAULT_INACTIVITY_LOCK_TIMEOUT = 10min;
 
   constexpr uint8_t IGNORE_LONG_PAYMENT_ID_FROM_BLOCK_VERSION = 12;
 
@@ -1116,7 +1116,7 @@ wallet2::wallet2(network_type nettype, uint64_t kdf_rounds, bool unattended, std
   m_ignore_outputs_above(MONEY_SUPPLY),
   m_ignore_outputs_below(0),
   m_track_uses(false),
-  m_inactivity_lock_timeout(DEFAULT_INACTIVITY_LOCK_TIMEOUT),
+  m_inactivity_lock_timeout(m_nettype == MAINNET ? DEFAULT_INACTIVITY_LOCK_TIMEOUT : 0s),
   m_is_initialized(false),
   m_kdf_rounds(kdf_rounds),
   is_old_file_format(false),
@@ -4076,7 +4076,7 @@ std::optional<wallet2::keys_file_data> wallet2::get_keys_file_data(const epee::w
   value2.SetInt(m_track_uses ? 1 : 0);
   json.AddMember("track_uses", value2, json.GetAllocator());
 
-  value2.SetInt(m_inactivity_lock_timeout);
+  value2.SetInt(m_inactivity_lock_timeout.count());
   json.AddMember("inactivity_lock_timeout", value2, json.GetAllocator());
 
   value2.SetUint(m_subaddress_lookahead_major);
@@ -4405,8 +4405,9 @@ bool wallet2::load_keys_buf(const std::string& keys_buf, const epee::wipeable_st
     m_ignore_outputs_below = field_ignore_outputs_below;
     GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, track_uses, int, Int, false, false);
     m_track_uses = field_track_uses;
-    GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, inactivity_lock_timeout, uint32_t, Uint, false, DEFAULT_INACTIVITY_LOCK_TIMEOUT);
-    m_inactivity_lock_timeout = field_inactivity_lock_timeout;
+    GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, inactivity_lock_timeout, uint32_t, Uint, false,
+            m_nettype == MAINNET ? std::chrono::seconds{DEFAULT_INACTIVITY_LOCK_TIMEOUT}.count() : 0);
+    m_inactivity_lock_timeout = std::chrono::seconds{field_inactivity_lock_timeout};
     GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, subaddress_lookahead_major, uint32_t, Uint, false, SUBADDRESS_LOOKAHEAD_MAJOR);
     m_subaddress_lookahead_major = field_subaddress_lookahead_major;
     GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, subaddress_lookahead_minor, uint32_t, Uint, false, SUBADDRESS_LOOKAHEAD_MINOR);
