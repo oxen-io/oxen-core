@@ -1436,8 +1436,14 @@ void pulse_relay_message_to_quorum(void *self, pulse::message const &msg, servic
   peer_info::exclude_set relay_exclude;
   relay_exclude.insert(quorum.validators[msg.quorum_position]);
 
+  bool include_block_producer = msg.type == pulse::message_type::handshake_bitset;
   QnetState &qnet = *static_cast<QnetState *>(self);
-  peer_info peer_list{qnet, quorum_type::pulse, &quorum, false /*opportunistic*/, std::move(relay_exclude)};
+  peer_info peer_list{qnet,
+                      quorum_type::pulse,
+                      &quorum,
+                      true /*opportunistic*/,
+                      std::move(relay_exclude),
+                      include_block_producer /*include_workers*/};
 
   auto command = (msg.type == pulse::message_type::handshake_bitset) ? PULSE_CMD_SEND_VALIDATOR_BITSET : PULSE_CMD_SEND_VALIDATOR_BIT;
   peer_list.relay_to_peers(command, pulse_serialize_message(msg));
@@ -1451,16 +1457,12 @@ void send_pulse_validator_handshake_bit_or_bitset(void *self, bool sending_bitse
   QnetState &qnet = *static_cast<QnetState *>(self);
   cryptonote::core &core = qnet.core;
 
-  peer_info const peer_list{qnet, quorum_type::pulse, &quorum, false /*opportunistic*/, {} /*exclude*/, true /*include_workers*/};
-
   // NOTE: Invariants
   if (!core.service_node())
     throw std::runtime_error("Pulse: Daemon is not a service node.");
 
-  pulse::message msg  = {};
-  msg.quorum_position = peer_list.my_position[0];
-
-  bool in_quorum = false;
+  pulse::message msg = {};
+  bool in_quorum     = false;
   for (size_t index = 0; index < quorum.validators.size(); index++)
   {
     if (quorum.validators[index] == core.get_service_keys().pub)
@@ -1580,8 +1582,11 @@ void handle_pulse_participation_bit_or_bitset(Message &m, QnetState& qnet, bool 
     msg.type = pulse::message_type::handshake;
   }
 
-  std::unique_lock lock{qnet.pulse_message_queue_mutex};
-  qnet.pulse_message_queue.push(std::move(msg));
+  {
+    std::unique_lock lock{qnet.pulse_message_queue_mutex};
+    qnet.pulse_message_queue.push(std::move(msg));
+  }
+  qnet.pulse_message_queue_cv.notify_one();
 }
 
 bool pulse_message_queue_pump_messages(void *self, pulse::message &msg, pulse::time_point sleep_until)
@@ -1589,15 +1594,17 @@ bool pulse_message_queue_pump_messages(void *self, pulse::message &msg, pulse::t
   auto qnet = static_cast<QnetState *>(self);
   std::unique_lock lock{qnet->pulse_message_queue_mutex};
 
-  bool has_message = false;
-  qnet->pulse_message_queue_cv.wait_until(lock, sleep_until, [qnet, sleep_until, &has_message]() {
-    has_message = qnet->pulse_message_queue.size();
-    return has_message || pulse::clock::now() >= sleep_until;
-  });
+  bool has_message = qnet->pulse_message_queue.size();
+  if (!has_message)
+  {
+    qnet->pulse_message_queue_cv.wait_until(lock, sleep_until, [qnet, sleep_until, &has_message]() {
+      has_message = qnet->pulse_message_queue.size();
+      return has_message || pulse::clock::now() >= sleep_until;
+    });
+  }
 
   if (has_message)
   {
-    lock.lock();
     msg = std::move(qnet->pulse_message_queue.front());
     qnet->pulse_message_queue.pop();
   }
@@ -1662,8 +1669,8 @@ void setup_endpoints(QnetState& qnet) {
         ;
 
     lmq.add_category(PULSE_CMD_CATEGORY, Access{AuthLevel::none, true /*remote sn*/, true /*local sn*/}, 1 /*reserved thread*/)
-        .add_request_command(PULSE_CMD_VALIDATOR_BIT, [&qnet](Message& m) { handle_pulse_participation_bit_or_bitset(m, qnet, false /*bitset*/); })
-        .add_request_command(PULSE_CMD_VALIDATOR_BITSET, [&qnet](Message& m) { handle_pulse_participation_bit_or_bitset(m, qnet, true /*bitset*/); })
+        .add_command(PULSE_CMD_VALIDATOR_BIT, [&qnet](Message& m) { handle_pulse_participation_bit_or_bitset(m, qnet, false /*bitset*/); })
+        .add_command(PULSE_CMD_VALIDATOR_BITSET, [&qnet](Message& m) { handle_pulse_participation_bit_or_bitset(m, qnet, true /*bitset*/); })
         ;
 
     // Compatibility aliases.  No longer used since 7.1.4, but can still be received from previous
