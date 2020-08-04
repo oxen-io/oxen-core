@@ -236,7 +236,7 @@ public:
 
     /// Relays a command and any number of serialized data to everyone we're supposed to relay to
     template <typename... T>
-    void relay_to_peers(const std::string &cmd, const T &...data) {
+    void relay_to_peers(const std::string_view &cmd, const T &...data) {
         relay_to_peers_impl(cmd, std::array<std::string, sizeof...(T)>{bt_serialize(data)...},
                 std::make_index_sequence<sizeof...(T)>{});
     }
@@ -354,7 +354,7 @@ private:
 
     /// Relays a command and pre-serialized data to everyone we're supposed to relay to
     template<size_t N, size_t... I>
-    void relay_to_peers_impl(const std::string &cmd, std::array<std::string, N> relay_data, std::index_sequence<I...>) {
+    void relay_to_peers_impl(const std::string_view &cmd, std::array<std::string, N> relay_data, std::index_sequence<I...>) {
         for (auto &peer : peers) {
             MTRACE("Relaying " << cmd << " to peer " << to_hex(peer.first) << (peer.second.empty() ? " (if connected)"s : " @ " + peer.second));
             if (peer.second.empty())
