@@ -214,8 +214,7 @@ public:
             my_position.push_back(my_pos);
             if (my_pos >= 0) my_position_count++;
 
-            if (include_workers)
-            {
+            if (include_workers) {
                 auto &w = (*qit)->workers;
                 for (size_t i = 0; i < w.size(); i++) {
                     if (!exclude.count(w[i])) add_peer(w[i]);
@@ -231,7 +230,15 @@ public:
                     "tcp://" + epee::string_tools::get_ip_string_from_int32(proof.public_ip) + ":" + std::to_string(proof.quorumnet_port)));
             });
 
-        compute_peers(qbegin, qend, opportunistic);
+        compute_validator_peers(qbegin, qend, opportunistic);
+
+        if (include_workers) {
+            for (auto qit = qbegin; qit != qend; ++qit) {
+                auto &w = (*qit)->workers;
+                for (size_t i = 0; i < w.size(); i++)
+                    add_peer(w[i]);
+            }
+        }
     }
 
     /// Relays a command and any number of serialized data to everyone we're supposed to relay to
@@ -271,7 +278,7 @@ private:
     // already connected) and empty if it's an opportunistic peer (i.e. only send along if we already
     // have a connection).
     template <typename QuorumIt>
-    void compute_peers(QuorumIt qbegin, QuorumIt qend, bool opportunistic) {
+    void compute_validator_peers(QuorumIt qbegin, QuorumIt qend, bool opportunistic) {
 
         // TODO: when we receive a new block, if our quorum starts soon we can tell SNNetwork to
         // pre-connect (to save the time in handshaking when we get an actual blink tx).
