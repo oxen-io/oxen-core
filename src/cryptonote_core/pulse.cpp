@@ -37,6 +37,7 @@ struct round_context
   struct
   {
     bool is_producer;
+    size_t my_quorum_position;
     std::string node_name;
   } round_starts;
 
@@ -437,7 +438,6 @@ void pulse::main(pulse::state &state, void *quorumnet_state, cryptonote::core &c
         //
         // NOTE: Quorum participation
         //
-        size_t quorum_position = 0;
         if (key.pub == context.wait_for_round.quorum.workers[0])
         {
           // NOTE: Producer doesn't send handshakes, they only collect the
@@ -456,7 +456,7 @@ void pulse::main(pulse::state &state, void *quorumnet_state, cryptonote::core &c
             validator                 = (validator_key == key.pub);
             if (validator)
             {
-              quorum_position = index;
+              context.round_starts.my_quorum_position = index;
               break;
             }
           }
@@ -464,14 +464,14 @@ void pulse::main(pulse::state &state, void *quorumnet_state, cryptonote::core &c
           if (validator || context.round_starts.is_producer)
           {
             context.round_starts.node_name =
-                context.round_starts.is_producer ? "W[0]" : "V[" + std::to_string(quorum_position) + "]";
+                context.round_starts.is_producer ? "W[0]" : "V[" + std::to_string(context.round_starts.my_quorum_position) + "]";
           }
 
           if (validator)
           {
             try
             {
-              context.wait_for_handshakes.validator_bits |= (1 << quorum_position); // Add myself
+              context.wait_for_handshakes.validator_bits |= (1 << context.round_starts.my_quorum_position); // Add myself
 
               MGINFO(log_prefix(pulse_height, context) << "We are a pulse validator, sending handshake bit to quorum and collecting other validator handshakes.");
               cryptonote::quorumnet_send_pulse_validator_handshake_bit(quorumnet_state, context.wait_for_round.quorum, top_hash);
@@ -495,12 +495,16 @@ void pulse::main(pulse::state &state, void *quorumnet_state, cryptonote::core &c
 
       case round_state::wait_for_handshakes:
       {
+        assert(!context.round_starts.is_producer);
         bool timed_out      = pulse::clock::now() >= context.wait_for_handshakes.end_time;
         bool all_handshakes = context.wait_for_handshakes.all_received();
 
         if (all_handshakes || timed_out)
         {
+          assert(context.round_starts.my_quorum_position < context.wait_for_other_validator_handshake_bitsets.received_bitsets.size());
           std::bitset<8 * sizeof(context.wait_for_handshakes.validator_bits)> bitset = context.wait_for_handshakes.validator_bits;
+          context.wait_for_other_validator_handshake_bitsets.received_bitsets[context.round_starts.my_quorum_position] = context.wait_for_handshakes.validator_bits;
+
           bool missing_handshakes = timed_out && !all_handshakes;
           MGINFO(log_prefix(pulse_height, context) << "Collected validator handshakes " << bitset << (missing_handshakes ? ", we timed out and some handshakes were not seen! " : ". ") << "Sending handshake bitset and collecting other validator bitsets.");
           try
