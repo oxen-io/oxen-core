@@ -137,7 +137,8 @@ round_state thread_sleep(sleep_until until,
 std::string log_prefix(uint64_t height, round_context const &context)
 {
   std::stringstream result;
-  result << "Pulse B" << height << " R" << +context.wait_next_block.round << ": " << context.round_starts.node_name << " ";
+  result << "Pulse B" << height << " R" << +context.wait_next_block.round << ": ";
+  if (context.round_starts.node_name.size()) result << context.round_starts.node_name << " ";
   return result.str();
 }
 
@@ -460,6 +461,12 @@ void pulse::main(pulse::state &state, void *quorumnet_state, cryptonote::core &c
             }
           }
 
+          if (validator || context.round_starts.is_producer)
+          {
+            context.round_starts.node_name =
+                context.round_starts.is_producer ? "W[0]" : "V[" + std::to_string(quorum_position) + "]";
+          }
+
           if (validator)
           {
             try
@@ -483,8 +490,6 @@ void pulse::main(pulse::state &state, void *quorumnet_state, cryptonote::core &c
           }
         }
 
-        context.round_starts.node_name =
-            context.round_starts.is_producer ? "L" : "V[" + std::to_string(quorum_position) + "]";
       }
       break;
 
