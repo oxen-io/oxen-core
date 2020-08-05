@@ -140,6 +140,77 @@ E get_enum(const bt_dict &d, const std::string &key) {
     throw std::invalid_argument("invalid enum value for field " + key);
 }
 
+struct prepared_relay_destinations
+{
+  std::string x25519_string;
+  std::string connect_string;
+};
+
+// Relay data to a random subset of the quorum up to num_peers. If the sender is
+// a validator in the quorum, prefer peer_info to get a fully connected relay
+// with redundancy.
+// Returns the number of peers it actually prepared relay destinations.
+template <typename It>
+std::vector<prepared_relay_destinations>
+peer_prepare_relay_to_quorum_subset(cryptonote::core &core, It quorum_begin, It quorum_end, size_t num_peers) {
+    // Lookup the x25519 and ZMQ connection string for all possible blink recipients so that we
+    // know where to send it to, and so that we can immediately exclude SNs that aren't active
+    // anymore.
+    std::unordered_set<crypto::public_key> candidates;
+    for (auto it = quorum_begin; it != quorum_end; it++)
+      candidates.insert((*it)->validators.begin(), (*it)->validators.end());
+
+    MDEBUG("Have " << candidates.size() << " SN candidates");
+
+    std::vector<std::tuple<std::string, std::string, decltype(proof_info{}.version)>> remotes; // {x25519 pubkey, connect string, version}
+    remotes.reserve(candidates.size());
+    core.get_service_node_list().for_each_service_node_info_and_proof(candidates.begin(), candidates.end(),
+        [&remotes](const auto &pubkey, const auto &info, const auto &proof) {
+            if (!info.is_active()) {
+                MTRACE("Not include inactive node " << pubkey);
+                return;
+            }
+            if (!proof.pubkey_x25519 || !proof.quorumnet_port || !proof.public_ip) {
+                MTRACE("Not including node " << pubkey << ": missing x25519(" << to_hex(get_data_as_string(proof.pubkey_x25519)) << "), "
+                        "public_ip(" << epee::string_tools::get_ip_string_from_int32(proof.public_ip) << "), or qnet port(" << proof.quorumnet_port << ")");
+                return;
+            }
+            remotes.emplace_back(get_data_as_string(proof.pubkey_x25519),
+                    "tcp://" + epee::string_tools::get_ip_string_from_int32(proof.public_ip) + ":" + std::to_string(proof.quorumnet_port),
+                    proof.version);
+        });
+
+    // Select 4 random SNs to send the data to, but prefer SNs with newer versions because they may have network fixes.
+    MDEBUG("Have " << remotes.size() << " candidates after checking active status and connection details");
+    std::vector<size_t> indices(remotes.size());
+    std::iota(indices.begin(), indices.end(), 0);
+    std::shuffle(indices.begin(), indices.end(), tools::rng);
+
+    // Stable sort by version so that we keep the shuffled order within a version
+    using std::get;
+    std::stable_sort(indices.begin(), indices.end(), [&remotes](size_t a, size_t b) {
+        return get<2>(remotes[a]) > get<2>(remotes[b]); });
+
+    if (indices.size() > num_peers)
+        indices.resize(num_peers);
+
+    std::vector<prepared_relay_destinations> result;
+    result.reserve(indices.size());
+
+    for (size_t i : indices)
+      result.push_back({std::move(get<0>(remotes[i])), std::move(get<1>(remotes[i]))});
+    return result;
+}
+
+void peer_relay_to_prepared_destinations(cryptonote::core &core, std::vector<prepared_relay_destinations> const &destinations, std::string_view command, std::string &&data)
+{
+    for (auto const &[x25519_string, connect_string]: destinations) {
+        MINFO("Relaying data to " << to_hex(x25519_string) << " @ " << connect_string);
+        core.get_lmq().send(x25519_string, command, std::move(data), send_option::hint{connect_string});
+    }
+}
+
+
 /// Helper class to calculate and relay to peers of quorums.
 ///
 /// TODO: add a wrapper that caches this so that looking up the same quorum peers within a certain
@@ -217,7 +288,7 @@ public:
             if (include_workers) {
                 auto &w = (*qit)->workers;
                 for (size_t i = 0; i < w.size(); i++) {
-                    if (!exclude.count(w[i])) add_peer(w[i]);
+                    if (!exclude.count(w[i])) need_remotes.insert(w[i]);
                 }
             }
         }
@@ -1223,50 +1294,6 @@ std::future<std::pair<cryptonote::blink_result, std::string>> send_blink(crypton
         uint64_t checksum;
         auto quorums = get_blink_quorums(height, core.get_service_node_list(), nullptr, &checksum);
 
-        // Lookup the x25519 and ZMQ connection string for all possible blink recipients so that we
-        // know where to send it to, and so that we can immediately exclude SNs that aren't active
-        // anymore.
-        std::unordered_set<crypto::public_key> candidates;
-        for (auto &q : quorums)
-            candidates.insert(q->validators.begin(), q->validators.end());
-
-        MDEBUG("Have " << candidates.size() << " blink SN candidates");
-
-        std::vector<std::tuple<std::string, std::string, decltype(proof_info{}.version)>> remotes; // {x25519 pubkey, connect string, version}
-        remotes.reserve(candidates.size());
-        core.get_service_node_list().for_each_service_node_info_and_proof(candidates.begin(), candidates.end(),
-            [&remotes](const auto &pubkey, const auto &info, const auto &proof) {
-                if (!info.is_active()) {
-                    MTRACE("Not include inactive node " << pubkey);
-                    return;
-                }
-                if (!proof.pubkey_x25519 || !proof.quorumnet_port || !proof.public_ip) {
-                    MTRACE("Not including node " << pubkey << ": missing x25519(" << to_hex(get_data_as_string(proof.pubkey_x25519)) << "), "
-                            "public_ip(" << epee::string_tools::get_ip_string_from_int32(proof.public_ip) << "), or qnet port(" << proof.quorumnet_port << ")");
-                    return;
-                }
-                remotes.emplace_back(get_data_as_string(proof.pubkey_x25519),
-                        "tcp://" + epee::string_tools::get_ip_string_from_int32(proof.public_ip) + ":" + std::to_string(proof.quorumnet_port),
-                        proof.version);
-            });
-
-        MDEBUG("Have " << remotes.size() << " blink SN candidates after checking active status and connection details");
-
-        // Select 4 random (active) blink quorum SNs to send the blink to, but prefer SNs with newer
-        // versions because they may have blink-related fixes.
-        std::vector<size_t> indices(remotes.size());
-        std::iota(indices.begin(), indices.end(), 0);
-        std::shuffle(indices.begin(), indices.end(), tools::rng);
-
-        // Stable sort by version so that we keep the shuffled order within a version
-        using std::get;
-        std::stable_sort(indices.begin(), indices.end(), [&remotes](size_t a, size_t b) {
-            return get<2>(remotes[a]) > get<2>(remotes[b]); });
-
-        if (indices.size() > 4)
-            indices.resize(4);
-        brd->remote_count = indices.size();
-
         std::string data = bt_serialize<bt_dict>({
             {"!", blink_tag},
             {"#", get_data_as_string(tx_hash)},
@@ -1275,10 +1302,10 @@ std::future<std::pair<cryptonote::blink_result, std::string>> send_blink(crypton
             {"t", tx_blob}
         });
 
-        for (size_t i : indices) {
-            MINFO("Relaying blink tx to " << to_hex(get<0>(remotes[i])) << " @ " << get<1>(remotes[i]));
-            core.get_lmq().send(get<0>(remotes[i]), "blink.submit", data, send_option::hint{get<1>(remotes[i])});
-        }
+        auto destinations = peer_prepare_relay_to_quorum_subset(core, quorums.begin(), quorums.end(), 4 /*num_peers*/);
+        brd->remote_count = destinations.size();
+        peer_relay_to_prepared_destinations(core, destinations, "blink.submit"sv, std::move(data));
+
     } catch (...) {
         std::unique_lock lock{pending_blink_result_mutex};
         auto it = pending_blink_results.find(blink_tag); // Look up again because `brd` might have been deleted
@@ -1398,12 +1425,15 @@ void handle_blink_success(Message& m) {
 const std::string PULSE_TAG_VALIDATOR_BITSET = "b";
 const std::string PULSE_TAG_QUORUM_POSITION  = "q";
 const std::string PULSE_TAG_SIGNATURE        = "s";
+const std::string PULSE_TAG_BLOCK_TEMPLATE   = "t";
 
 const std::string PULSE_CMD_CATEGORY              = "pulse";
 const std::string PULSE_CMD_VALIDATOR_BITSET      = "validator_bitset";
 const std::string PULSE_CMD_VALIDATOR_BIT         = "validator_bit";
+const std::string PULSE_CMD_BLOCK_TEMPLATE        = "block_template";
 const std::string PULSE_CMD_SEND_VALIDATOR_BITSET = PULSE_CMD_CATEGORY + "." + PULSE_CMD_VALIDATOR_BITSET;
 const std::string PULSE_CMD_SEND_VALIDATOR_BIT    = PULSE_CMD_CATEGORY + "." + PULSE_CMD_VALIDATOR_BIT;
+const std::string PULSE_CMD_SEND_BLOCK_TEMPLATE   = PULSE_CMD_CATEGORY + "." + PULSE_CMD_BLOCK_TEMPLATE;
 
 bt_dict pulse_serialize_message(pulse::message const &msg)
 {
@@ -1411,6 +1441,7 @@ bt_dict pulse_serialize_message(pulse::message const &msg)
 
   switch(msg.type)
   {
+    default:
     case pulse::message_type::invalid:
     {
       assert(!"Invalid Code Path");
@@ -1419,16 +1450,23 @@ bt_dict pulse_serialize_message(pulse::message const &msg)
 
     case pulse::message_type::handshake:
     {
-      result = {{PULSE_TAG_QUORUM_POSITION, msg.quorum_position},
-                {PULSE_TAG_SIGNATURE, tools::view_guts(msg.signature)}};
+      result = {{PULSE_TAG_QUORUM_POSITION, msg.handshakes.quorum_position},
+                {PULSE_TAG_SIGNATURE, tools::view_guts(msg.handshakes.signature)}};
     }
     break;
 
     case pulse::message_type::handshake_bitset:
     {
-      result = {{PULSE_TAG_VALIDATOR_BITSET, msg.validator_bitset},
-                {PULSE_TAG_QUORUM_POSITION, msg.quorum_position},
-                {PULSE_TAG_SIGNATURE, tools::view_guts(msg.signature)}};
+      result = {{PULSE_TAG_VALIDATOR_BITSET, msg.handshakes.validator_bitset},
+                {PULSE_TAG_QUORUM_POSITION, msg.handshakes.quorum_position},
+                {PULSE_TAG_SIGNATURE, tools::view_guts(msg.handshakes.signature)}};
+    }
+    break;
+
+    case pulse::message_type::block_template:
+    {
+      result = {{PULSE_TAG_SIGNATURE, tools::view_guts(msg.block_template.signature)},
+                {PULSE_TAG_BLOCK_TEMPLATE, msg.block_template.blob}};
     }
     break;
   }
@@ -1436,24 +1474,59 @@ bt_dict pulse_serialize_message(pulse::message const &msg)
   return result;
 }
 
-void pulse_relay_message_to_quorum(void *self, pulse::message const &msg, service_nodes::quorum const &quorum)
+void pulse_relay_message_to_quorum(void *self, pulse::message const &msg, service_nodes::quorum const &quorum, bool block_producer)
 {
-  assert(msg.quorum_position < quorum.validators.size());
-
   peer_info::exclude_set relay_exclude;
-  relay_exclude.insert(quorum.validators[msg.quorum_position]);
 
-  bool include_block_producer = msg.type == pulse::message_type::handshake_bitset;
+  bool include_block_producer = false;
+  std::string_view command    = {};
+  switch(msg.type)
+  {
+    default: break;
+
+    case pulse::message_type::block_template:
+    {
+      command = PULSE_CMD_SEND_BLOCK_TEMPLATE;
+    }
+    break;
+
+    case pulse::message_type::handshake: /* FALLTHRU */
+    case pulse::message_type::handshake_bitset:
+    {
+      assert(msg.handshakes.quorum_position < quorum.validators.size());
+
+      include_block_producer = msg.type == pulse::message_type::handshake_bitset;
+      relay_exclude.insert(quorum.validators[msg.handshakes.quorum_position]);
+
+      if (msg.type == pulse::message_type::handshake)
+        command = PULSE_CMD_SEND_VALIDATOR_BIT;
+      else
+      {
+        assert(msg.type == pulse::message_type::handshake_bitset);
+        command = PULSE_CMD_SEND_VALIDATOR_BITSET;
+      }
+    }
+    break;
+  }
+
   QnetState &qnet = *static_cast<QnetState *>(self);
-  peer_info peer_list{qnet,
-                      quorum_type::pulse,
-                      &quorum,
-                      true /*opportunistic*/,
-                      std::move(relay_exclude),
-                      include_block_producer /*include_workers*/};
+  if (block_producer)
+  {
+    service_nodes::quorum const *quorum_ptr = &quorum;
+    auto destinations = peer_prepare_relay_to_quorum_subset(qnet.core, &quorum_ptr, &quorum_ptr + 1, 4 /*num_peers*/);
+    peer_relay_to_prepared_destinations(qnet.core, destinations, command, bt_serialize(pulse_serialize_message(msg)));
+  }
+  else
+  {
+    peer_info peer_list{qnet,
+                        quorum_type::pulse,
+                        &quorum,
+                        true /*opportunistic*/,
+                        std::move(relay_exclude),
+                        include_block_producer /*include_workers*/};
 
-  auto command = (msg.type == pulse::message_type::handshake_bitset) ? PULSE_CMD_SEND_VALIDATOR_BITSET : PULSE_CMD_SEND_VALIDATOR_BIT;
-  peer_list.relay_to_peers(command, pulse_serialize_message(msg));
+    peer_list.relay_to_peers(command, pulse_serialize_message(msg));
+  }
 }
 
 // Send participation handshake to other validators in the quorum. Caller must
@@ -1474,8 +1547,8 @@ void send_pulse_validator_handshake_bit_or_bitset(void *self, bool sending_bitse
   {
     if (quorum.validators[index] == core.get_service_keys().pub)
     {
-      msg.quorum_position = index;
-      in_quorum           = true;
+      msg.handshakes.quorum_position = index;
+      in_quorum                      = true;
       break;
     }
   }
@@ -1486,25 +1559,25 @@ void send_pulse_validator_handshake_bit_or_bitset(void *self, bool sending_bitse
   auto command = (sending_bitset) ? PULSE_CMD_SEND_VALIDATOR_BITSET : PULSE_CMD_SEND_VALIDATOR_BIT;
   if (sending_bitset)
   {
-    auto buf = tools::memcpy_le(validator_bitset, top_hash.data, msg.quorum_position);
+    auto buf = tools::memcpy_le(validator_bitset, top_hash.data, msg.handshakes.quorum_position);
     crypto::hash hash;
     crypto::cn_fast_hash(buf.data(), buf.size(), hash);
-    crypto::generate_signature(hash, core.get_service_keys().pub, core.get_service_keys().key, msg.signature);
+    crypto::generate_signature(hash, core.get_service_keys().pub, core.get_service_keys().key, msg.handshakes.signature);
 
-    msg.type             = pulse::message_type::handshake_bitset;
-    msg.validator_bitset = validator_bitset;
+    msg.type                        = pulse::message_type::handshake_bitset;
+    msg.handshakes.validator_bitset = validator_bitset;
   }
   else
   {
-    auto buf = tools::memcpy_le(top_hash.data, msg.quorum_position);
+    auto buf = tools::memcpy_le(top_hash.data, msg.handshakes.quorum_position);
     crypto::hash hash;
     crypto::cn_fast_hash(buf.data(), buf.size(), hash);
-    crypto::generate_signature(hash, core.get_service_keys().pub, core.get_service_keys().key, msg.signature);
+    crypto::generate_signature(hash, core.get_service_keys().pub, core.get_service_keys().key, msg.handshakes.signature);
 
     msg.type = pulse::message_type::handshake;
   }
 
-  pulse_relay_message_to_quorum(self, msg, quorum);
+  pulse_relay_message_to_quorum(self, msg, quorum, false /*block_producer*/);
 }
 
 void send_pulse_validator_handshake_bit(void *self, service_nodes::quorum const &quorum, crypto::hash const &top_hash)
@@ -1515,6 +1588,19 @@ void send_pulse_validator_handshake_bit(void *self, service_nodes::quorum const 
 void send_pulse_validator_handshake_bitset(void *self, service_nodes::quorum const &quorum, crypto::hash const &top_hash, uint16_t validator_bitset)
 {
   send_pulse_validator_handshake_bit_or_bitset(self, true /*sending_bitset*/, quorum, top_hash, validator_bitset);
+}
+
+void send_pulse_block_template(void *self, std::string &&blob, crypto::signature const &signature, service_nodes::quorum const &quorum)
+{
+  QnetState &qnet        = *static_cast<QnetState *>(self);
+  cryptonote::core &core = qnet.core;
+
+  pulse::message msg           = {};
+  msg.type                     = pulse::message_type::block_template;
+  msg.block_template.blob      = std::move(blob);
+  msg.block_template.signature = signature;
+
+  pulse_relay_message_to_quorum(self, msg, quorum, true /*block_producer*/);
 }
 
 // Invoked when daemon has received a participation handshake message via
@@ -1576,17 +1662,48 @@ void handle_pulse_participation_bit_or_bitset(Message &m, QnetState& qnet, bool 
     assert(signature);
   }
 
-  pulse::message msg  = {};
-  msg.signature       = signature;
-  msg.quorum_position = quorum_position;
+  pulse::message msg             = {};
+  msg.handshakes.signature       = signature;
+  msg.handshakes.quorum_position = quorum_position;
   if (bitset)
   {
-    msg.type             = pulse::message_type::handshake_bitset;
-    msg.validator_bitset = validator_bitset;
+    msg.type                        = pulse::message_type::handshake_bitset;
+    msg.handshakes.validator_bitset = validator_bitset;
   }
   else
   {
     msg.type = pulse::message_type::handshake;
+  }
+
+  {
+    std::unique_lock lock{qnet.pulse_message_queue_mutex};
+    qnet.pulse_message_queue.push(std::move(msg));
+  }
+  qnet.pulse_message_queue_cv.notify_one();
+}
+
+void handle_pulse_block_template(Message &m, QnetState &qnet)
+{
+  if (m.data.size() != 1)
+      throw std::runtime_error(std::string("Rejecting pulse block template expected one data entry not ") + std::to_string(m.data.size()));
+
+  bt_dict_consumer data{m.data[0]};
+  pulse::message msg = {};
+  msg.type           = pulse::message_type::block_template;
+  {
+    std::string_view INVALID_ARG_PREFIX = "Invalid pulse block template: missing required field '"sv;
+
+    if (data.skip_until(PULSE_TAG_SIGNATURE)) {
+      auto sig_str                 = data.consume_string_view();
+      msg.block_template.signature = convert_string_view_bytes_to_signature(sig_str);
+    } else {
+      throw std::invalid_argument(std::string(INVALID_ARG_PREFIX) + std::string(PULSE_TAG_SIGNATURE) + "'");
+    }
+
+    if (data.skip_until(PULSE_TAG_BLOCK_TEMPLATE))
+      msg.block_template.blob = data.consume_string_view();
+    else
+      throw std::invalid_argument(std::string(INVALID_ARG_PREFIX) + std::string(PULSE_TAG_QUORUM_POSITION) + "'");
   }
 
   {
@@ -1632,6 +1749,7 @@ void init_core_callbacks() {
 
     cryptonote::quorumnet_send_pulse_validator_handshake_bit    = send_pulse_validator_handshake_bit;
     cryptonote::quorumnet_send_pulse_validator_handshake_bitset = send_pulse_validator_handshake_bitset;
+    cryptonote::quorumnet_send_pulse_block_template             = send_pulse_block_template;
 
     cryptonote::quorumnet_pulse_pump_messages = pulse_message_queue_pump_messages;
 
@@ -1678,6 +1796,7 @@ void setup_endpoints(QnetState& qnet) {
     lmq.add_category(PULSE_CMD_CATEGORY, Access{AuthLevel::none, true /*remote sn*/, true /*local sn*/}, 1 /*reserved thread*/)
         .add_command(PULSE_CMD_VALIDATOR_BIT, [&qnet](Message& m) { handle_pulse_participation_bit_or_bitset(m, qnet, false /*bitset*/); })
         .add_command(PULSE_CMD_VALIDATOR_BITSET, [&qnet](Message& m) { handle_pulse_participation_bit_or_bitset(m, qnet, true /*bitset*/); })
+        .add_command(PULSE_CMD_BLOCK_TEMPLATE, [&qnet](Message& m) { handle_pulse_block_template(m, qnet); })
         ;
 
     // Compatibility aliases.  No longer used since 7.1.4, but can still be received from previous

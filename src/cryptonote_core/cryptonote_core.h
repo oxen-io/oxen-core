@@ -102,13 +102,14 @@ namespace cryptonote
   // When sending the validator handshake bitset, the message is also sent to the block producer.
   using quorumnet_send_pulse_validator_handshake_bit_proc = void (void *self, service_nodes::quorum const &quorum, crypto::hash const &top_hash);
   using quorumnet_send_pulse_validator_handshake_bitset_proc = void (void *self, service_nodes::quorum const &quorum, crypto::hash const &top_hash, uint16_t handshake_bitset);
+  using quorumnet_send_pulse_block_template_proc = void (void *, std::string &&blob, crypto::signature const &, service_nodes::quorum const &);
   // Blocking call that waits on a message from the Pulse message queue which are messages for Pulse received via QuorumNet until the end time has passed.
   // end_time: Set a clock time to which the call can return if there are no more messages queued up.
   // msg: When function returns true, the pumped message is written to msg.
   // return: False if there is no message and the clock has passed the end_time, true if there's a message.
   using quorumnet_pulse_pump_messages_proc = bool (void *self, pulse::message &msg, pulse::time_point end_time);
   // Relay a Pulse message to members specified in the quorum excluding the originating message owner.
-  using quorumnet_pulse_relay_message_to_quorum_proc = void (void *, pulse::message const &msg, service_nodes::quorum const &quorum);
+  using quorumnet_pulse_relay_message_to_quorum_proc = void (void *, pulse::message const &msg, service_nodes::quorum const &quorum, bool block_producer);
 
   extern quorumnet_new_proc *quorumnet_new;
   extern quorumnet_delete_proc *quorumnet_delete;
@@ -117,6 +118,7 @@ namespace cryptonote
 
   extern quorumnet_send_pulse_validator_handshake_bit_proc    *quorumnet_send_pulse_validator_handshake_bit;
   extern quorumnet_send_pulse_validator_handshake_bitset_proc *quorumnet_send_pulse_validator_handshake_bitset;
+  extern quorumnet_send_pulse_block_template_proc             *quorumnet_send_pulse_block_template;
   extern quorumnet_pulse_pump_messages_proc                   *quorumnet_pulse_pump_messages;
   extern quorumnet_pulse_relay_message_to_quorum_proc         *quorumnet_pulse_relay_message_to_quorum;
 

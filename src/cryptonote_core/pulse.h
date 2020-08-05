@@ -31,6 +31,7 @@ enum struct message_type : uint8_t
   invalid,
   handshake,
   handshake_bitset,
+  block_template,
 };
 
 constexpr std::string_view message_type_string(message_type type)
@@ -47,10 +48,20 @@ constexpr std::string_view message_type_string(message_type type)
 
 struct message
 {
-  message_type      type;
-  uint16_t          quorum_position;
-  uint16_t          validator_bitset;
-  crypto::signature signature;
+  message_type type;
+
+  struct
+  {
+    uint16_t quorum_position;
+    uint16_t validator_bitset;   // Set if type is handshake_bitset, otherwise 0.
+    crypto::signature signature;
+  } handshakes;
+
+  struct
+  {
+    std::string blob;
+    crypto::signature signature;
+  } block_template;
 };
 
 struct state : public cryptonote::BlockAddedHook
