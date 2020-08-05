@@ -148,7 +148,7 @@ int main(int argc, char* argv[])
     GENERATE_AND_PLAY(loki_service_nodes_insufficient_contribution);
     GENERATE_AND_PLAY(loki_service_nodes_test_rollback);
     GENERATE_AND_PLAY(loki_service_nodes_test_swarms_basic);
-    GENERATE_AND_PLAY(loki_pulse_invalid_participation_bits);
+    GENERATE_AND_PLAY(loki_pulse_invalid_validator_bitset);
     GENERATE_AND_PLAY(loki_pulse_invalid_signature);
     GENERATE_AND_PLAY(loki_pulse_oob_voter_index);
     GENERATE_AND_PLAY(loki_pulse_non_participating_validator);

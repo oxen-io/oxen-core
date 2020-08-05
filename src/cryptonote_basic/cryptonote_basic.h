@@ -437,14 +437,14 @@ namespace cryptonote
 
   struct pulse_header
   {
-    pulse_random_value              random_value;
-    uint8_t                         round;
-    uint16_t                        validator_participation_bits;
+    pulse_random_value random_value;
+    uint8_t            round;
+    uint16_t           validator_bitset;
 
     BEGIN_SERIALIZE()
       FIELD(random_value);
       FIELD(round);
-      FIELD(validator_participation_bits);
+      FIELD(validator_bitset);
     END_SERIALIZE();
   };
 

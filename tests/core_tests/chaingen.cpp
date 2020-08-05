@@ -812,7 +812,7 @@ bool loki_chain_generator::block_begin(loki_blockchain_entry &entry, loki_create
   if (make_pulse_block)
   {
     // NOTE: Set up Pulse Header
-    blk.pulse.validator_participation_bits = service_nodes::pulse_validator_bit_mask(); // NOTE: Everyone participates
+    blk.pulse.validator_bitset = service_nodes::pulse_validator_bit_mask(); // NOTE: Everyone participates
     blk.pulse.round = params.pulse_round;
     for (size_t i = 0; i < sizeof(blk.pulse.random_value.data); i++)
       blk.pulse.random_value.data[i] = static_cast<char>(tools::uniform_distribution_portable(tools::rng, 256));

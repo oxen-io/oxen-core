@@ -1242,13 +1242,13 @@ namespace service_nodes
   static std::string dump_pulse_block_data(cryptonote::block const &block, service_nodes::quorum const *quorum)
   {
     std::stringstream stream;
-    std::bitset<8 * sizeof(block.pulse.validator_participation_bits)> const participation_bits = block.pulse.validator_participation_bits;
+    std::bitset<8 * sizeof(block.pulse.validator_bitset)> const validator_bitset = block.pulse.validator_bitset;
     stream << "Block(" << cryptonote::get_block_height(block) << "): " << cryptonote::get_block_hash(block) << "\n";
     stream << "Leader: ";
     if (quorum) stream << (quorum->workers.empty() ? "(invalid leader)" : lokimq::to_hex(tools::view_guts(quorum->workers[0]))) << "\n";
     else        stream << "(invalid quorum)\n";
     stream << "Round: " << +block.pulse.round << "\n";
-    stream << "Participating Validators: " << participation_bits << "\n";
+    stream << "Validator Bitset: " << validator_bitset << "\n";
 
     stream << "Signatures: ";
     if (block.signatures.empty()) stream << "(none)";
@@ -1287,10 +1287,10 @@ namespace service_nodes
           return false;
         }
 
-        if (block.pulse.validator_participation_bits >= (1 << PULSE_QUORUM_NUM_VALIDATORS))
+        if (block.pulse.validator_bitset >= (1 << PULSE_QUORUM_NUM_VALIDATORS))
         {
           auto mask = std::bitset<sizeof(pulse_validator_bit_mask()) * 8>(pulse_validator_bit_mask());
-          LOG_PRINT_L1("Pulse block specifies validator participation bits out of bounds. Expected the bit mask " << mask << "\n" << dump_pulse_block_data(block, quorum.get()));
+          LOG_PRINT_L1("Pulse block specifies validator bitset out of bounds. Expected the bit mask " << mask << "\n" << dump_pulse_block_data(block, quorum.get()));
           return false;
         }
 
@@ -1307,7 +1307,7 @@ namespace service_nodes
       }
       else
       {
-        bool expect_pulse_quorum = (block.pulse.validator_participation_bits > 0 || block.signatures.size());
+        bool expect_pulse_quorum = (block.pulse.validator_bitset > 0 || block.signatures.size());
         if (expect_pulse_quorum)
         {
           LOG_PRINT_L1("Failed to get pulse quorum for block\n" << dump_pulse_block_data(block, quorum.get()));

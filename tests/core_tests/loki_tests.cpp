@@ -3051,19 +3051,19 @@ static loki_chain_generator setup_pulse_tests(std::vector<test_event_entry> &eve
   return result;
 }
 
-bool loki_pulse_invalid_participation_bits::generate(std::vector<test_event_entry> &events)
+bool loki_pulse_invalid_validator_bitset::generate(std::vector<test_event_entry> &events)
 {
   loki_chain_generator gen = setup_pulse_tests(events);
-  gen.add_event_msg("Invalid Block: Participation bits wrong");
+  gen.add_event_msg("Invalid Block: Validator bitset wrong");
   loki_blockchain_entry entry     = {};
   loki_create_block_params params = gen.next_block_params();
   gen.block_begin(entry, params, {} /*tx_list*/);
 
-  // NOTE: Overwrite participation bits to be wrong
-  entry.block.pulse.validator_participation_bits = ~service_nodes::pulse_validator_bit_mask();
+  // NOTE: Overwrite valiadator bitset to be wrong
+  entry.block.pulse.validator_bitset = ~service_nodes::pulse_validator_bit_mask();
 
   gen.block_end(entry, params);
-  gen.add_block(entry, false /*can_be_added_to_blockchain*/, "Invalid Pulse Block, specifies the wrong participation bits");
+  gen.add_block(entry, false /*can_be_added_to_blockchain*/, "Invalid Pulse Block, specifies the wrong validator bitset");
 
   return true;
 }
@@ -3079,7 +3079,7 @@ bool loki_pulse_invalid_signature::generate(std::vector<test_event_entry> &event
   // NOTE: Overwrite signature
   entry.block.signatures[0].signature = {};
   gen.block_end(entry, params);
-  gen.add_block(entry, false /*can_be_added_to_blockchain*/, "Invalid Pulse Block, specifies the wrong participation bits");
+  gen.add_block(entry, false /*can_be_added_to_blockchain*/, "Invalid Pulse Block, specifies the wrong validator bitset");
 
   return true;
 }
@@ -3095,7 +3095,7 @@ bool loki_pulse_oob_voter_index::generate(std::vector<test_event_entry> &events)
   // NOTE: Overwrite oob voter index
   entry.block.signatures.back().voter_index = service_nodes::PULSE_QUORUM_NUM_VALIDATORS + 1;
   gen.block_end(entry, params);
-  gen.add_block(entry, false /*can_be_added_to_blockchain*/, "Invalid Pulse Block, specifies the wrong participation bits");
+  gen.add_block(entry, false /*can_be_added_to_blockchain*/, "Invalid Pulse Block, specifies the wrong validator bitset");
 
   return true;
 }
@@ -3130,8 +3130,8 @@ bool loki_pulse_non_participating_validator::generate(std::vector<test_event_ent
     // NOTE: First 7 validators are locked in. We received signatures from the
     // first 6 in the quorum, then the 8th validator in the quorum (who is not
     // meant to be participating).
-    entry.block.pulse.validator_participation_bits = 0b0000'000'0111'1111;
-    size_t const voter_indexes[]                  = {0, 1, 2, 3, 4, 5, 7};
+    entry.block.pulse.validator_bitset = 0b0000'000'0111'1111;
+    size_t const voter_indexes[]       = {0, 1, 2, 3, 4, 5, 7};
 
     crypto::hash block_hash = cryptonote::get_block_hash(entry.block);
     for (size_t index : voter_indexes)
@@ -3147,7 +3147,7 @@ bool loki_pulse_non_participating_validator::generate(std::vector<test_event_ent
   }
 
   gen.block_end(entry, params);
-  gen.add_block(entry, false /*can_be_added_to_blockchain*/, "Invalid Pulse Block, specifies the wrong participation bits");
+  gen.add_block(entry, false /*can_be_added_to_blockchain*/, "Invalid Pulse Block, specifies the wrong validator bitset");
 
   return true;
 }

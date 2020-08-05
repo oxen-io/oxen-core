@@ -270,7 +270,7 @@ namespace service_nodes
         }
 
         auto const &block = reinterpret_cast<cryptonote::block const &>(context);
-        if (block.pulse.validator_participation_bits >= (1 << PULSE_QUORUM_NUM_VALIDATORS))
+        if (block.pulse.validator_bitset >= (1 << PULSE_QUORUM_NUM_VALIDATORS))
         {
           auto mask = std::bitset<sizeof(pulse_validator_bit_mask()) * 8>(pulse_validator_bit_mask());
           LOG_PRINT_L1("Pulse block specifies validator participation bits out of bounds. Expected the bit mask: " << mask);
@@ -304,7 +304,7 @@ namespace service_nodes
         {
           auto const block = std::any_cast<cryptonote::block const &>(context);
           uint16_t bit     = 1 << quorum_signature.voter_index;
-          if ((block.pulse.validator_participation_bits & bit) == 0)
+          if ((block.pulse.validator_bitset & bit) == 0)
           {
             LOG_PRINT_L1("Received pulse signature from validator " << static_cast<int>(quorum_signature.voter_index) << " that is not participating in round " << static_cast<int>(block.pulse.round));
             return false;
