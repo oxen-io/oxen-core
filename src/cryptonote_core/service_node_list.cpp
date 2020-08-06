@@ -26,6 +26,7 @@
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#include "cryptonote_config.h"
 #include <functional>
 #include <random>
 #include <algorithm>
@@ -896,24 +897,51 @@ namespace service_nodes
       return false;
     }
 
-    const uint64_t min_transfer = get_min_node_contribution(hf_version, staking_requirement, info.total_reserved, info.total_num_locked_contributions());
-    if (stake.transferred < min_transfer)
+    if (hf_version >= cryptonote::network_version_16)
     {
-      LOG_PRINT_L1("Register TX: Contribution transferred: " << stake.transferred << " didn't meet the minimum transfer requirement: " << min_transfer << " on height: " << block_height << " for tx: " << cryptonote::get_transaction_hash(tx));
-      return false;
+      // In HF16 we start enforcing three things that were always done but weren't actually enforced:
+      // 1. the staked amount in the tx must be a single output.
+      if (stake.locked_contributions.size() != 1)
+      {
+        LOG_PRINT_L1("Register TX invalid: multi-output registration transactions are not permitted as of HF16");
+        return false;
+      }
+
+      // 2. the staked amount must be from the operator.  (Previously there was a weird edge case where you
+      // could manually construct a registration tx that stakes for someone *other* than the operator).
+      if (stake.address != contributor_args.addresses[0])
+      {
+        LOG_PRINT_L1("Register TX invalid: registration stake is not from the operator");
+        return false;
+      }
+
+      // 3. The operator must be staking at least his reserved amount in the registration details.
+      // (We check this later, after we calculate reserved atomic currency amounts).  In the pre-HF16
+      // code below it only had to satisfy >= 25% even if the reserved operator stake was higher.
     }
-
-    size_t total_num_of_addr = contributor_args.addresses.size();
-    if (std::find(contributor_args.addresses.begin(), contributor_args.addresses.end(), stake.address) == contributor_args.addresses.end())
-      total_num_of_addr++;
-
-    if (total_num_of_addr > MAX_NUMBER_OF_CONTRIBUTORS)
+    else // Pre-HF16
     {
-      LOG_PRINT_L1("Register TX: Number of participants: " << total_num_of_addr <<
-                   " exceeded the max number of contributors: " << MAX_NUMBER_OF_CONTRIBUTORS <<
-                   " on height: " << block_height <<
-                   " for tx: " << cryptonote::get_transaction_hash(tx));
-      return false;
+      const uint64_t min_transfer = get_min_node_contribution(hf_version, staking_requirement, 0, 0);
+      if (stake.transferred < min_transfer)
+      {
+        LOG_PRINT_L1("Register TX: Contribution transferred: " << stake.transferred << " didn't meet the minimum transfer requirement: " << min_transfer << " on height: " << block_height << " for tx: " << cryptonote::get_transaction_hash(tx));
+        return false;
+      }
+
+      size_t total_num_of_addr = contributor_args.addresses.size();
+      if (std::find(contributor_args.addresses.begin(), contributor_args.addresses.end(), stake.address) == contributor_args.addresses.end())
+        total_num_of_addr++;
+
+      // Don't need this check for HF16+ because the number of reserved spots is already checked in
+      // the registration details, and we disallow a non-operator registration.
+      if (total_num_of_addr > MAX_NUMBER_OF_CONTRIBUTORS)
+      {
+        LOG_PRINT_L1("Register TX: Number of participants: " << total_num_of_addr <<
+                     " exceeded the max number of contributors: " << MAX_NUMBER_OF_CONTRIBUTORS <<
+                     " on height: " << block_height <<
+                     " for tx: " << cryptonote::get_transaction_hash(tx));
+        return false;
+      }
     }
 
     // don't actually process this contribution now, do it when we fall through later.
@@ -950,6 +978,15 @@ namespace service_nodes
       contributor.reserved                         = resultlo;
       contributor.address                          = contributor_args.addresses[i];
       info.total_reserved += resultlo;
+    }
+
+    // In HF16 we require that the amount staked in the registration tx be at least the amount
+    // reserved for the operator.  Before HF16 it only had to be >= 25%, even if the operator
+    // reserved amount was higher (though wallets would never actually do this).
+    if (hf_version >= cryptonote::network_version_16 && stake.transferred < info.contributors[0].reserved)
+    {
+      LOG_PRINT_L1("Register TX rejected: TX does not have sufficient operator stake");
+      return false;
     }
 
     return true;
@@ -1073,21 +1110,42 @@ namespace service_nodes
     }
 
     auto &contributors = curinfo.contributors;
+    const size_t existing_contributions = curinfo.total_num_locked_contributions();
+    size_t other_reservations = 0; // Number of spots that must be left open, *not* counting this contributor (if they have a reserved spot)
     bool new_contributor = true;
     size_t contributor_position = 0;
+    uint64_t contr_unfilled_reserved = 0;
     for (size_t i = 0; i < contributors.size(); i++)
-      if (contributors[i].address == stake.address){
+    {
+      const auto& c = contributors[i];
+      if (c.address == stake.address)
+      {
         contributor_position = i;
         new_contributor = false;
-        break;
+        if (c.amount < c.reserved)
+          contr_unfilled_reserved = c.reserved - c.amount;
       }
+      else if (c.amount < c.reserved)
+        other_reservations++;
+    }
+
+    if (hf_version >= cryptonote::network_version_16 && stake.locked_contributions.size() != 1)
+    {
+      // Nothing has ever created stake txes with multiple stake outputs, but we start enforcing
+      // that in HF16.
+      LOG_PRINT_L1("Ignoring staking tx: multi-output stakes are not permitted as of HF16");
+      return false;
+    }
 
     // Check node contributor counts
     {
       bool too_many_contributions = false;
-      if (hf_version >= cryptonote::network_version_11_infinite_staking)
-        // As of HF11 we allow up to 4 stakes total.
-        too_many_contributions = curinfo.total_num_locked_contributions() + stake.locked_contributions.size() > MAX_NUMBER_OF_CONTRIBUTORS;
+      if (hf_version >= cryptonote::network_version_16)
+        // Before HF16 we didn't properly take into account unfilled reservation spots
+        too_many_contributions = existing_contributions + other_reservations + 1 > MAX_NUMBER_OF_CONTRIBUTORS;
+      else if (hf_version >= cryptonote::network_version_11_infinite_staking)
+        // As of HF11 we allow up to 4 stakes total (except for the loophole closed above)
+        too_many_contributions = existing_contributions + stake.locked_contributions.size() > MAX_NUMBER_OF_CONTRIBUTORS;
       else
         // Before HF11 we allowed up to 4 contributors, but each can contribute multiple times
         too_many_contributions = new_contributor && contributors.size() >= MAX_NUMBER_OF_CONTRIBUTORS;
@@ -1103,25 +1161,39 @@ namespace service_nodes
     }
 
     // Check that the contribution is large enough
+    uint64_t min_contribution;
+    if (!new_contributor && hf_version < cryptonote::network_version_11_infinite_staking)
+    { // Follow-up contributions from an existing contributor could be any size before HF11
+      min_contribution = 1;
+    }
+    else if (hf_version < cryptonote::network_version_16)
     {
-      const uint64_t min_contribution =
-        (!new_contributor && hf_version < cryptonote::network_version_11_infinite_staking)
-        ? 1 // Follow-up contributions from an existing contributor could be any size before HF11
-        : get_min_node_contribution(hf_version, curinfo.staking_requirement, curinfo.total_reserved, curinfo.total_num_locked_contributions());
-
-      if (stake.transferred < min_contribution)
-      {
-        LOG_PRINT_L1("TX: Amount " << stake.transferred << " did not meet min " << min_contribution
-                                   << " for service node: " << stake.service_node_pubkey << " on height: "
-                                   << block_height << " for tx: " << cryptonote::get_transaction_hash(tx));
-        return false;
-      }
+      // The implementation before HF16 was a bit broken w.r.t. properly handling reserved amounts
+      min_contribution = get_min_node_contribution(hf_version, curinfo.staking_requirement, curinfo.total_reserved, existing_contributions);
+    }
+    else // HF16+:
+    {
+      if (contr_unfilled_reserved > 0)
+        // We've got a reserved spot: require that it be filled in one go.  (Reservation contribution rules are already enforced in the registration).
+        min_contribution = contr_unfilled_reserved;
+      else
+        min_contribution = get_min_node_contribution(hf_version, curinfo.staking_requirement, curinfo.total_reserved, existing_contributions + other_reservations);
     }
 
-    // Check that the contribution isn't too large.
-    if (stake.transferred > get_max_node_contribution(hf_version, curinfo.staking_requirement, curinfo.total_reserved))
+    if (stake.transferred < min_contribution)
     {
-      MINFO("TX: Amount " << stake.transferred << " is too large (this is probably a result of competing stakes)");
+      LOG_PRINT_L1("TX: Amount " << stake.transferred << " did not meet min " << min_contribution
+                                 << " for service node: " << stake.service_node_pubkey << " on height: "
+                                 << block_height << " for tx: " << cryptonote::get_transaction_hash(tx));
+      return false;
+    }
+
+    // Check that the contribution isn't too large.  Subtract contr_unfilled_reserved because we want to
+    // calculate this using only the total reserved amounts of *other* contributors but not our own.
+    if (auto max = get_max_node_contribution(hf_version, curinfo.staking_requirement, curinfo.total_reserved - contr_unfilled_reserved);
+        stake.transferred > max)
+    {
+      MINFO("TX: Amount " << stake.transferred << " is too large (max " << max << ").  This is probably a result of competing stakes.");
       return false;
     }
 
@@ -1133,8 +1205,7 @@ namespace service_nodes
     if (new_contributor)
     {
       contributor_position = info.contributors.size();
-      info.contributors.emplace_back();
-      info.contributors.back().address = stake.address;
+      info.contributors.emplace_back().address = stake.address;
     }
     service_node_info::contributor_t& contributor = info.contributors[contributor_position];
 

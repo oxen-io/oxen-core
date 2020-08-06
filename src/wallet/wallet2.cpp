@@ -8191,13 +8191,17 @@ wallet2::stake_result wallet2::check_stake_allowed(const crypto::public_key& sn_
   const auto& snode_info  = response.front();
   if (amount == 0) amount = snode_info.staking_requirement * fraction;
 
-  size_t total_num_locked_contributions = 0;
+  size_t total_existing_contributions = 0; // Count both contributions and reserved spots
   for (auto const &contributor : snode_info.contributors)
-    total_num_locked_contributions += contributor.locked_contributions.size();
+  {
+    total_existing_contributions += contributor.locked_contributions.size(); // contribution
+    if (contributor.reserved > contributor.amount)
+        total_existing_contributions++; // reserved contributor spot
+  }
 
   uint8_t const hf_version   = *res;
   uint64_t max_contrib_total = snode_info.staking_requirement - snode_info.total_reserved;
-  uint64_t min_contrib_total = service_nodes::get_min_node_contribution(hf_version, snode_info.staking_requirement, snode_info.total_reserved, total_num_locked_contributions);
+  uint64_t min_contrib_total = service_nodes::get_min_node_contribution(hf_version, snode_info.staking_requirement, snode_info.total_reserved, total_existing_contributions);
 
   bool is_preexisting_contributor = false;
   for (const auto& contributor : snode_info.contributors)
