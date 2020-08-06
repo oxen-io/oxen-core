@@ -4576,6 +4576,16 @@ std::optional<epee::wipeable_string> simple_wallet::open_wallet(const boost::pro
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::close_wallet()
 {
+  try
+  {
+    m_wallet->store();
+  }
+  catch (const std::exception& e)
+  {
+    fail_msg_writer() << e.what();
+    return false;
+  }
+
   if (m_idle_run.load(std::memory_order_relaxed))
   {
     m_idle_run.store(false, std::memory_order_relaxed);
@@ -4591,16 +4601,6 @@ bool simple_wallet::close_wallet()
   if (!r)
   {
     fail_msg_writer() << tr("failed to deinitialize wallet");
-    return false;
-  }
-
-  try
-  {
-    m_wallet->store();
-  }
-  catch (const std::exception& e)
-  {
-    fail_msg_writer() << e.what();
     return false;
   }
 
@@ -5075,11 +5075,7 @@ bool simple_wallet::refresh_main(uint64_t start_height, enum ResetType reset, bo
     ss << tr("unknown error");
   }
 
-  if (ok)
-  {
-    m_wallet->store();
-  }
-  else
+  if (!ok)
   {
     fail_msg_writer() << tr("refresh failed: ") << ss.str() << ". " << tr("Blocks received: ") << fetched_blocks;
   }

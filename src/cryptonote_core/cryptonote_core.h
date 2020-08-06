@@ -60,8 +60,6 @@ DISABLE_VS_WARNINGS(4355)
 #include "common/loki_integration_test_hooks.h"
 namespace cryptonote
 {
-  using namespace std::literals;
-
    struct test_options {
      std::vector<std::pair<uint8_t, uint64_t>> hard_forks;
      size_t long_term_block_weight_window;

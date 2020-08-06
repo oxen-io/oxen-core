@@ -81,8 +81,6 @@ class wallet_accessor_test;
 LOKI_RPC_DOC_INTROSPECT
 namespace tools
 {
-  using namespace std::literals;
-
   static const char *ERR_MSG_NETWORK_VERSION_QUERY_FAILED = tr("Could not query the current network version, try later");
   static const char *ERR_MSG_NETWORK_HEIGHT_QUERY_FAILED = tr("Could not query the current network block height, try later: ");
   static const char *ERR_MSG_SERVICE_NODE_LIST_QUERY_FAILED = tr("Failed to query daemon for service node list");

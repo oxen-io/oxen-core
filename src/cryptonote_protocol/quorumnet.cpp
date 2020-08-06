@@ -50,7 +50,6 @@ namespace quorumnet {
 namespace {
 
 using namespace service_nodes;
-using namespace std::literals;
 using namespace lokimq;
 
 using blink_tx = cryptonote::blink_tx;
@@ -1542,19 +1541,11 @@ void send_pulse_validator_handshake_bit_or_bitset(void *self, bool sending_bitse
     throw std::runtime_error("Pulse: Daemon is not a service node.");
 
   pulse::message msg = {};
-  bool in_quorum     = false;
-  for (size_t index = 0; index < quorum.validators.size(); index++)
-  {
-    if (quorum.validators[index] == core.get_service_keys().pub)
-    {
-      msg.handshakes.quorum_position = index;
-      in_quorum                      = true;
-      break;
-    }
-  }
-
-  if (!in_quorum)
+  if (auto it = std::find_if(quorum.validators.begin(), quorum.validators.end(),
+          [&mypk=core.get_service_keys().pub] (auto const &pk) { return pk == mypk; }); it == quorum.validators.end())
     throw std::runtime_error("Pulse: Could not find this node's public key in quorum");
+  else
+    msg.handshakes.quorum_position = it - quorum.validators.begin();
 
   auto command = (sending_bitset) ? PULSE_CMD_SEND_VALIDATOR_BITSET : PULSE_CMD_SEND_VALIDATOR_BIT;
   if (sending_bitset)
@@ -1638,10 +1629,6 @@ void handle_pulse_participation_bit_or_bitset(Message &m, QnetState& qnet, bool 
     } else {
       throw std::invalid_argument(std::string(INVALID_ARG_PREFIX) + std::string(PULSE_TAG_SIGNATURE) + "'");
     }
-
-    assert(validator_bitset != -1);
-    assert(quorum_position != -1);
-    assert(signature);
   }
   else
   {
@@ -1657,9 +1644,6 @@ void handle_pulse_participation_bit_or_bitset(Message &m, QnetState& qnet, bool 
     } else {
       throw std::invalid_argument(std::string(INVALID_ARG_PREFIX) + std::string(PULSE_TAG_SIGNATURE) + "'");
     }
-
-    assert(quorum_position != -1);
-    assert(signature);
   }
 
   pulse::message msg             = {};

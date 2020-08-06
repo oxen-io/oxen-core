@@ -293,7 +293,7 @@ uint64_t Blockchain::get_current_blockchain_height(bool lock) const
   // WARNING: this function does not take m_blockchain_lock, and thus should only call read only
   // m_db functions which do not depend on one another (ie, no getheight + gethash(height-1), as
   // well as not accessing class members, even read only (ie, m_invalid_blocks). The caller must
-  // lock if it is otherwise needed.
+  // lock if it is otherwise needed or set lock to true.
   std::unique_lock lock_{*this, std::defer_lock};
   if (lock) lock_.lock();
   return m_db->height();
@@ -1530,7 +1530,7 @@ bool Blockchain::create_block_template_internal(block& b, const crypto::hash *fr
     // just as we compare it, we'll just use a slightly old template, but
     // this would be the case anyway if we'd lock, and the change happened
     // just after the block template was created
-    if (!memcmp(&info.miner_address, &m_btc_address, sizeof(cryptonote::account_public_address)) && m_btc_nonce == ex_nonce
+    if (info.miner_address != m_btc_address && m_btc_nonce == ex_nonce
       && m_btc_pool_cookie == m_tx_pool.cookie() && m_btc.prev_id == get_tail_id()) {
       MDEBUG("Using cached template");
       const uint64_t now = time(NULL);
@@ -1542,7 +1542,7 @@ bool Blockchain::create_block_template_internal(block& b, const crypto::hash *fr
       expected_reward = m_btc_expected_reward;
       return true;
     }
-    MDEBUG("Not using cached template: address " << (!memcmp(&info.miner_address, &m_btc_address, sizeof(cryptonote::account_public_address))) << ", nonce " << (m_btc_nonce == ex_nonce) << ", cookie " << (m_btc_pool_cookie == m_tx_pool.cookie()) << ", from_block " << (!!from_block));
+    MDEBUG("Not using cached template: address " << (bool)(info.miner_address != m_btc_address) << ", nonce " << (m_btc_nonce == ex_nonce) << ", cookie " << (m_btc_pool_cookie == m_tx_pool.cookie()) << ", from_block " << (!!from_block));
     invalidate_block_template_cache();
   }
 
@@ -1701,10 +1701,7 @@ bool Blockchain::create_miner_block_template(block& b, const crypto::hash *from_
 //------------------------------------------------------------------
 bool Blockchain::create_next_miner_block_template(block& b, const account_public_address& miner_address, difficulty_type& diffic, uint64_t& height, uint64_t& expected_reward, const blobdata& ex_nonce)
 {
-  block_template_info info = {};
-  info.is_miner            = true;
-  info.miner_address       = miner_address;
-  return create_block_template_internal(b, NULL /*from_block*/, info, diffic, height, expected_reward, ex_nonce);
+  return create_miner_block_template(b, nullptr /*from_block*/, miner_address, diffic, height, expected_reward, ex_nonce);
 }
 //------------------------------------------------------------------
 bool Blockchain::create_next_pulse_block_template(block& b, const service_nodes::payout& block_producer, uint64_t& height, uint64_t& expected_reward)

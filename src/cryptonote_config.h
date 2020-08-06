@@ -39,6 +39,8 @@
 #include <array>
 #include <ratio>
 
+using namespace std::literals;
+
 #define CRYPTONOTE_MAX_BLOCK_NUMBER                     500000000
 #define CRYPTONOTE_MAX_TX_SIZE                          1000000
 #define CRYPTONOTE_MAX_TX_PER_BLOCK                     0x10000000
@@ -190,8 +192,6 @@ static_assert(STAKING_PORTIONS % 12 == 0, "Use a multiple of twelve, so that it 
 // New constants are intended to go here
 namespace config
 {
-  using namespace std::literals;
-
   inline constexpr auto DNS_TIMEOUT = 20s;
   inline constexpr uint64_t DEFAULT_FEE_ATOMIC_XMR_PER_KB = 500; // Just a placeholder!  Change me!
   inline constexpr uint8_t FEE_CALCULATION_MAX_RETRIES = 10;

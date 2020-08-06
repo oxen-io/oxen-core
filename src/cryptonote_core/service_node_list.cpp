@@ -1808,7 +1808,7 @@ namespace service_nodes
     uint64_t block_height = cryptonote::get_block_height(block);
     uint8_t hf_version    = block.major_version;
 
-    if (hf_version < 9)
+    if (hf_version < cryptonote::network_version_9_service_nodes)
       return;
 
     // Cull old history
@@ -2060,11 +2060,11 @@ namespace service_nodes
 
   bool service_node_list::validate_miner_tx(cryptonote::block const &block, cryptonote::block_reward_parts const &reward_parts) const
   {
-    std::lock_guard lock(m_sn_mutex);
-    if (block.major_version < 9)
+    uint8_t const hf_version = block.major_version;
+    if (hf_version < cryptonote::network_version_9_service_nodes)
       return true;
 
-    uint8_t const hf_version                = block.major_version;
+    std::lock_guard lock(m_sn_mutex);
     uint64_t const height                   = cryptonote::get_block_height(block);
     cryptonote::transaction const &miner_tx = block.miner_tx;
 
@@ -2125,7 +2125,7 @@ namespace service_nodes
     //
     // Pulse Block
     // Up to 4 | Block Producer (0-3 for Pooled Service Node)
-    // Up To 3 | Queued Service Node
+    // Up To 4 | Queued Service Node
     // Up To 1 | Governance
     //
     std::shared_ptr<const service_node_info> block_producer = nullptr;
@@ -2523,7 +2523,7 @@ namespace service_nodes
 
 #define REJECT_PROOF(log) do { LOG_PRINT_L2("Rejecting uptime proof from " << proof.pubkey << ": " log); return false; } while (0)
 
-  bool service_node_list::handle_uptime_proof(cryptonote::NOTIFY_UPTIME_PROOF::request const &proof, bool &my_uptime_proof_confirmation, crypto::x25519_public_key *x25519_pkey)
+  bool service_node_list::handle_uptime_proof(cryptonote::NOTIFY_UPTIME_PROOF::request const &proof, bool &my_uptime_proof_confirmation, crypto::x25519_public_key &x25519_pkey)
   {
     uint8_t const hf_version = m_blockchain.get_current_hard_fork_version();
     uint64_t const now       = time(nullptr);
@@ -2608,8 +2608,8 @@ namespace service_nodes
     if (derived_x25519_pubkey)
       x25519_to_pub[derived_x25519_pubkey] = {proof.pubkey, now};
 
-    if (x25519_pkey)
-      *x25519_pkey = derived_x25519_pubkey;
+    if (derived_x25519_pubkey && (old_x25519 != derived_x25519_pubkey))
+      x25519_pkey = derived_x25519_pubkey;
 
     return true;
   }

@@ -65,7 +65,6 @@ namespace rpc = cryptonote::rpc;
 
 namespace
 {
-  using namespace std::literals;
   constexpr auto DEFAULT_AUTO_REFRESH_PERIOD = 20s;
 
   const command_line::arg_descriptor<std::string, true> arg_rpc_bind_port = {"rpc-bind-port", "Sets bind port for server"};

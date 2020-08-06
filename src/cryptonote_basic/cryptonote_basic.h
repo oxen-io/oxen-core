@@ -441,6 +441,13 @@ namespace cryptonote
     uint8_t            round;
     uint16_t           validator_bitset;
 
+    constexpr bool operator==(pulse_header const &other) const
+    {
+      return (std::memcmp(random_value.data, other.random_value.data, sizeof(random_value)) == 0) &&
+             round == other.round &&
+             validator_bitset == other.validator_bitset;
+    }
+
     BEGIN_SERIALIZE()
       FIELD(random_value);
       FIELD(round);

@@ -1826,9 +1826,9 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
   bool core::handle_uptime_proof(const NOTIFY_UPTIME_PROOF::request &proof, bool &my_uptime_proof_confirmation)
   {
-    crypto::x25519_public_key pkey;
-    bool result = m_service_node_list.handle_uptime_proof(proof, my_uptime_proof_confirmation, &pkey);
-    if (result && m_service_node_list.is_service_node(proof.pubkey, true /*require_active*/))
+    crypto::x25519_public_key pkey = {};
+    bool result = m_service_node_list.handle_uptime_proof(proof, my_uptime_proof_confirmation, pkey);
+    if (result && m_service_node_list.is_service_node(proof.pubkey, true /*require_active*/) && pkey)
     {
       lokimq::pubkey_set added;
       added.insert(tools::copy_guts(pkey));

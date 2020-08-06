@@ -56,8 +56,6 @@ namespace cryptonote
   /*                                                                      */
   /************************************************************************/
 
-  using namespace std::literals;
-
   //! tuple of <deregister, transaction fee, receive time> for organization
   typedef std::pair<std::tuple<bool, double, std::time_t>, crypto::hash> tx_by_fee_and_receive_time_entry;
 

@@ -3336,8 +3336,10 @@ namespace cryptonote { namespace rpc {
   //------------------------------------------------------------------------------------------------------------------------------
   TEST_TRIGGER_UPTIME_PROOF::response core_rpc_server::invoke(TEST_TRIGGER_UPTIME_PROOF::request&& req, rpc_context context)
   {
+    if (m_core.get_nettype() != cryptonote::MAINNET)
+      m_core.submit_uptime_proof();
+
     TEST_TRIGGER_UPTIME_PROOF::response res{};
-    m_core.submit_uptime_proof();
     res.status = STATUS_OK;
     return res;
   }

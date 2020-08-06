@@ -290,6 +290,8 @@ namespace cryptonote
     /**
      * @brief get the current height of the blockchain
      *
+     * @param lock lock the blockchain before querying the lock
+     *
      * @return the height
      */
     uint64_t get_current_blockchain_height(bool lock = false) const;

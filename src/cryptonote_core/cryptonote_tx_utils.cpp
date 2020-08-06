@@ -308,21 +308,13 @@ namespace cryptonote
       {
         service_nodes::payout const &producer = miner_tx_context.pulse_block_producer;
         for (auto const &payee : producer.payouts)
-        {
-          reward_payout &entry = rewards[rewards_length++];
-          entry.type           = reward_type::snode;
-          entry.address        = payee.address;
-          entry.amount         = get_portion_of_reward(payee.portions, reward_parts.miner_reward());
-        }
+          rewards[rewards_length++] = {reward_type::snode, payee.address, get_portion_of_reward(payee.portions, reward_parts.miner_reward())};
       }
     }
     else
     {
       CHECK_AND_ASSERT_MES(miner_tx_context.pulse_block_producer.payouts.empty(), false, "Constructing a reward for block produced by miner but payout entries specified");
-      reward_payout &entry = rewards[rewards_length++];
-      entry.type           = reward_type::miner;
-      entry.address        = miner_tx_context.miner_block_producer;
-      entry.amount         = reward_parts.miner_reward();
+      rewards[rewards_length++] = {reward_type::miner, miner_tx_context.miner_block_producer, reward_parts.miner_reward()};
     }
 
     // NOTE: Add Service Node List Queue Winner
@@ -331,12 +323,9 @@ namespace cryptonote
       CHECK_AND_ASSERT_MES(miner_tx_context.block_leader.payouts.size(), false, "Constructing a block leader reward for block but no payout entries specified");
       for (auto const &payee : miner_tx_context.block_leader.payouts)
       {
-        reward_payout &entry = rewards[rewards_length++];
-        entry.type           = reward_type::snode;
-        entry.address        = payee.address;
-        entry.amount         = get_portion_of_reward(payee.portions, reward_parts.service_node_paid);
+        rewards[rewards_length++] = {reward_type::snode, payee.address, get_portion_of_reward(payee.portions, reward_parts.service_node_paid)};
         if (add_producer_reward_to_leader)
-          entry.amount += get_portion_of_reward(payee.portions, reward_parts.miner_reward());
+          rewards[rewards_length - 1].amount += get_portion_of_reward(payee.portions, reward_parts.miner_reward());
       }
     }
 
@@ -351,29 +340,25 @@ namespace cryptonote
       {
         const network_type nettype = miner_tx_context.nettype;
         cryptonote::address_parse_info governance_wallet_address;
-
         cryptonote::get_account_address_from_str(governance_wallet_address, nettype, cryptonote::get_config(nettype).governance_wallet_address(hard_fork_version));
-        reward_payout &entry = rewards[rewards_length++];
-        entry.type           = reward_type::governance;
-        entry.amount         = reward_parts.governance_paid;
-        entry.address        = governance_wallet_address.address;
+        rewards[rewards_length++] = {reward_type::governance, governance_wallet_address.address, reward_parts.governance_paid};
       }
     }
-    CHECK_AND_ASSERT_MES(rewards_length < rewards.size(), false, "More rewards specified than supported, number of rewards: " << rewards_length << ", capacity: " << rewards.size());
-    CHECK_AND_ASSERT_MES(rewards_length > 0,              false, "Zero rewards are to be payed out, there should be atleast 1");
+    CHECK_AND_ASSERT_MES(rewards_length <= rewards.size(), false, "More rewards specified than supported, number of rewards: " << rewards_length << ", capacity: " << rewards.size());
+    CHECK_AND_ASSERT_MES(rewards_length > 0,               false, "Zero rewards are to be payed out, there should be atleast 1");
 
     // NOTE: Make TX Outputs
     uint64_t summary_amounts = 0;
     for (size_t reward_index = 0; reward_index < rewards_length; reward_index++)
     {
-      reward_payout const &payout = rewards[reward_index];
+      auto const &[type, address, amount] = rewards[reward_index];
       crypto::public_key out_eph_public_key{};
 
       // TODO(doyle): I don't think txkey is necessary, just use the governance key?
-      keypair const &derivation_pair = (payout.type == reward_type::miner) ? txkey : gov_key;
+      keypair const &derivation_pair = (type == reward_type::miner) ? txkey : gov_key;
       crypto::key_derivation derivation{};
 
-      if (!get_deterministic_output_key(payout.address, derivation_pair, reward_index, out_eph_public_key))
+      if (!get_deterministic_output_key(address, derivation_pair, reward_index, out_eph_public_key))
       {
         MERROR("Failed to generate output one-time public key");
         return false;
@@ -384,10 +369,10 @@ namespace cryptonote
 
       tx_out out = {};
       out.target = tk;
-      out.amount = payout.amount;
+      out.amount = amount;
       tx.vout.push_back(out);
       tx.output_unlock_times.push_back(height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW);
-      summary_amounts += payout.amount;
+      summary_amounts += amount;
     }
 
     uint64_t expected_amount = reward_parts.miner_reward() + reward_parts.governance_paid + reward_parts.service_node_paid;

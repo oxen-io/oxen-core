@@ -36,14 +36,14 @@ enum struct message_type : uint8_t
 
 constexpr std::string_view message_type_string(message_type type)
 {
-  using namespace std::literals;
   switch(type)
   {
-    default:
     case message_type::invalid: return "Invalid"sv;
     case message_type::handshake: return "Handshake"sv;
     case message_type::handshake_bitset: return "Handshake Bitset"sv;
+    case message_type::block_template: return "Block Template"sv;
   }
+  return "Invalid2"sv;
 }
 
 struct message
