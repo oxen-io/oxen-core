@@ -10123,7 +10123,7 @@ void wallet2::transfer_selected_rct(std::vector<cryptonote::tx_destination_entry
       {
         std::unordered_set<rct::key> new_used_L;
         size_t src_idx = 0;
-        THROW_WALLET_EXCEPTION_IF(selected_transfers.size() != sources.size(), error::wallet_internal_error, "mismatched selected_transfers and sources sixes");
+        THROW_WALLET_EXCEPTION_IF(selected_transfers.size() != sources.size(), error::wallet_internal_error, "mismatched selected_transfers and sources sizes");
         for(size_t idx: selected_transfers)
         {
           cryptonote::tx_source_entry& src = sources_copy[src_idx];
@@ -10147,7 +10147,7 @@ void wallet2::transfer_selected_rct(std::vector<cryptonote::tx_destination_entry
                                                       additional_tx_keys,
                                                       rct_config,
                                                       &msout,
-                                                      /*shuffle_outs*/ true,
+                                                      /*shuffle_outs*/ false,
                                                       tx_params);
         LOG_PRINT_L2("constructed tx, r="<<r);
         THROW_WALLET_EXCEPTION_IF(!r, error::tx_not_constructed, sources, splitted_dsts, unlock_time, m_nettype);
