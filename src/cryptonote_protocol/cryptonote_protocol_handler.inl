@@ -86,10 +86,6 @@ namespace cryptonote
 
   using seconds_f = std::chrono::duration<double>;
 
-  // Converts a duration to integer seconds, truncating sub-second amounts.
-  template <typename Duration>
-  auto count_seconds(const Duration &d) { return std::chrono::duration_cast<std::chrono::seconds>(d).count(); }
-
   //-----------------------------------------------------------------------------------------------------------------------
   template<class t_core>
     t_cryptonote_protocol_handler<t_core>::t_cryptonote_protocol_handler(t_core& rcore, bool offline):m_core(rcore),
@@ -233,10 +229,10 @@ namespace cryptonote
         cntxt.m_remote_address.str()
         << std::setw(20) << nodetool::peerid_to_string(peer_id)
         << std::setw(20) << std::hex << support_flags
-        << std::setw(30) << std::to_string(cntxt.m_recv_cnt) + "(" + std::to_string(count_seconds(now - cntxt.m_last_recv)) + ")" +
-                      "/" + std::to_string(cntxt.m_send_cnt) + "(" + std::to_string(count_seconds(now - cntxt.m_last_send)) + ")"
+        << std::setw(30) << std::to_string(cntxt.m_recv_cnt) + "(" + std::to_string(tools::to_seconds(now - cntxt.m_last_recv)) + ")" +
+                      "/" + std::to_string(cntxt.m_send_cnt) + "(" + std::to_string(tools::to_seconds(now - cntxt.m_last_send)) + ")"
         << std::setw(25) << get_protocol_state_string(cntxt.m_state)
-        << std::setw(20) << std::to_string(count_seconds(connection_time))
+        << std::setw(20) << std::to_string(tools::to_seconds(connection_time))
         << std::setw(12) << std::fixed << (connection_time < 1s ? 0.0 : cntxt.m_recv_cnt / connection_time.count() / 1024)
         << std::setw(14) << std::fixed << cntxt.m_current_speed_down / 1024
         << std::setw(10) << std::fixed << (connection_time < 1s ? 0.0 : cntxt.m_send_cnt / connection_time.count() / 1024)
@@ -472,7 +468,7 @@ namespace cryptonote
     uint64_t abs_diff = std::abs(diff);
     uint64_t max_block_height = std::max(hshd.current_height, curr_height);
     MCLOG(is_inital ? el::Level::Info : el::Level::Debug, "global", context <<  "Sync data returned a new top block candidate: " << curr_height << " -> " << hshd.current_height
-      << " [Your node is " << abs_diff << " blocks (" << (abs_diff / (24 * 60 * 60 / DIFFICULTY_TARGET_V2)) << " days) "
+      << " [Your node is " << abs_diff << " blocks (" << tools::get_human_readable_timespan(std::chrono::seconds(abs_diff / (24h / TARGET_BLOCK_TIME))) << " "
       << (0 <= diff ? std::string("behind") : std::string("ahead"))
       << "]\nSYNCHRONIZATION started");
 

@@ -973,7 +973,7 @@ loki_create_block_params loki_chain_generator::next_block_params() const
   loki_create_block_params result = {};
   result.prev                     = prev;
   result.miner_acc                = first_miner_;
-  result.timestamp                = prev.block.timestamp + DIFFICULTY_TARGET_V2;
+  result.timestamp                = prev.block.timestamp + TARGET_BLOCK_TIME;
   result.block_weights            = last_n_block_weights(height(), CRYPTONOTE_REWARD_BLOCKS_WINDOW);
   result.hf_version               = get_hf_version_at(next_height);
   result.block_leader             = prev.service_node_state.get_block_leader();
@@ -1257,7 +1257,7 @@ bool test_generator::construct_block(cryptonote::block &blk,
   uint64_t height = std::get<cryptonote::txin_gen>(blk_prev.miner_tx.vin.front()).height + 1;
   crypto::hash prev_id = get_block_hash(blk_prev);
   // Keep difficulty unchanged
-  uint64_t timestamp = blk_prev.timestamp + DIFFICULTY_TARGET_V2; // DIFFICULTY_BLOCKS_ESTIMATE_TIMESPAN;
+  uint64_t timestamp = blk_prev.timestamp + TARGET_BLOCK_TIME; // DIFFICULTY_BLOCKS_ESTIMATE_TIMESPAN;
   uint64_t already_generated_coins = get_already_generated_coins(prev_id);
   std::vector<uint64_t> block_weights;
   get_last_n_block_weights(block_weights, prev_id, CRYPTONOTE_REWARD_BLOCKS_WINDOW);

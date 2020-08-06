@@ -4743,12 +4743,12 @@ void BlockchainLMDB::fixup(fixup_context const context)
     uint8_t v12_initial_blocks_remaining = 0;
     uint8_t start_version = get_hard_fork_version(start_height);
     if (start_version < cryptonote::network_version_12_checkpointing) {
-      v12_initial_blocks_remaining = DIFFICULTY_WINDOW_V2;
-    } else if (start_version == cryptonote::network_version_12_checkpointing && start_height > DIFFICULTY_WINDOW_V2) {
-      uint8_t earlier_version = get_hard_fork_version(start_height - DIFFICULTY_WINDOW_V2);
+      v12_initial_blocks_remaining = DIFFICULTY_WINDOW;
+    } else if (start_version == cryptonote::network_version_12_checkpointing && start_height > DIFFICULTY_WINDOW) {
+      uint8_t earlier_version = get_hard_fork_version(start_height - DIFFICULTY_WINDOW);
       if (earlier_version < cryptonote::network_version_12_checkpointing) {
-        start_height -= DIFFICULTY_WINDOW_V2;
-        v12_initial_blocks_remaining = DIFFICULTY_WINDOW_V2;
+        start_height -= DIFFICULTY_WINDOW;
+        v12_initial_blocks_remaining = DIFFICULTY_WINDOW;
         LOG_PRINT_L2("Using earlier recalculation start height " << start_height << " to include v12 fork height");
       }
     }
@@ -4756,7 +4756,7 @@ void BlockchainLMDB::fixup(fixup_context const context)
     std::vector<uint64_t> timestamps;
     std::vector<difficulty_type> difficulties;
     {
-      uint64_t offset = start_height - std::min<size_t>(start_height, static_cast<size_t>(DIFFICULTY_BLOCKS_COUNT_V2));
+      uint64_t offset = start_height - std::min<size_t>(start_height, static_cast<size_t>(DIFFICULTY_BLOCKS_COUNT));
       if (offset == 0)
         offset = 1;
 
@@ -4797,7 +4797,7 @@ void BlockchainLMDB::fixup(fixup_context const context)
             v12_initial_override = true;
             v12_initial_blocks_remaining--;
           }
-          difficulty_type diff = next_difficulty_v2(timestamps, difficulties, DIFFICULTY_TARGET_V2,
+          difficulty_type diff = next_difficulty_v2(timestamps, difficulties, tools::to_seconds(TARGET_BLOCK_TIME),
               version <= cryptonote::network_version_9_service_nodes, v12_initial_override);
 
           MDB_val_set(key, curr_height);
@@ -4831,8 +4831,8 @@ void BlockchainLMDB::fixup(fixup_context const context)
             return;
           }
 
-          while (timestamps.size() > DIFFICULTY_BLOCKS_COUNT_V2) timestamps.erase(timestamps.begin());
-          while (difficulties.size() > DIFFICULTY_BLOCKS_COUNT_V2) difficulties.erase(difficulties.begin());
+          while (timestamps.size() > DIFFICULTY_BLOCKS_COUNT) timestamps.erase(timestamps.begin());
+          while (difficulties.size() > DIFFICULTY_BLOCKS_COUNT) difficulties.erase(difficulties.begin());
         }
 
         block_wtxn_stop();

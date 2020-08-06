@@ -20,6 +20,8 @@ namespace service_nodes {
   constexpr auto PULSE_WAIT_FOR_HANDSHAKES_DURATION                 = 7s;
   constexpr auto PULSE_WAIT_FOR_OTHER_VALIDATOR_HANDSHAKES_DURATION = 7s;
   constexpr auto PULSE_WAIT_FOR_BLOCK_TEMPLATE_DURATION             = 6s;
+  constexpr auto PULSE_MIN_BLOCK_TIME                               = 15s;
+  constexpr auto PULSE_MAX_BLOCK_TIME                               = 25s;
 
   constexpr size_t PULSE_QUORUM_NUM_VALIDATORS     = 7;
   constexpr size_t PULSE_BLOCK_REQUIRED_SIGNATURES = 7;  // A block must have exactly N signatures to be considered properly

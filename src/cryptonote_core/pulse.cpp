@@ -29,7 +29,6 @@ constexpr std::string_view round_state_string(round_state state)
 {
   switch(state)
   {
-    default: assert("Invalid Code Path" == nullptr);
     case round_state::wait_next_block: return "Wait Next Block"sv;
     case round_state::wait_for_round: return "Wait For Round"sv;
     case round_state::round_starts: return "Round Starts"sv;

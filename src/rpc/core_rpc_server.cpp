@@ -370,7 +370,7 @@ namespace cryptonote { namespace rpc {
     }
 
     res.difficulty = m_core.get_blockchain_storage().get_difficulty_for_next_block();
-    res.target = m_core.get_blockchain_storage().get_difficulty_target();
+    res.target = tools::to_seconds(TARGET_BLOCK_TIME);
     res.tx_count = m_core.get_blockchain_storage().get_total_transactions() - res.height; //without coinbase
     res.tx_pool_size = m_core.get_pool().get_transactions_count();
     res.alt_blocks_count = restricted ? 0 : m_core.get_blockchain_storage().get_alternative_blocks_count();
@@ -1149,7 +1149,7 @@ namespace cryptonote { namespace rpc {
 
     const miner& lMiner = m_core.get_miner();
     res.active = lMiner.is_mining();
-    res.block_target = DIFFICULTY_TARGET_V2;
+    res.block_target = tools::to_seconds(TARGET_BLOCK_TIME);
     res.difficulty = m_core.get_blockchain_storage().get_difficulty_for_next_block();
     if ( lMiner.is_mining() ) {
       res.speed = lMiner.get_speed();

@@ -64,8 +64,6 @@
 #define TESTS_DEFAULT_FEE ((uint64_t)200000000) // 2 * pow(10, 8)
 #define TEST_DEFAULT_DIFFICULTY 1
 
-#define DIFFICULTY_BLOCKS_ESTIMATE_TIMESPAN  DIFFICULTY_TARGET_V2
-
 #if defined(__GNUG__) && !defined(__clang__) && __GNUC__ < 6
 namespace service_nodes {
   const std::vector<payout_entry> dummy; // help GCC 5 realize it needs to generate a default constructor
