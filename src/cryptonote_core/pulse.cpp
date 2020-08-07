@@ -131,7 +131,7 @@ round_state thread_sleep(sleep_until until,
       }
 
       pulse::time_point const start_time = context.wait_next_block.round_0_start_time +
-                                           (context.wait_next_block.round * service_nodes::PULSE_TIME_PER_BLOCK);
+                                           (context.wait_next_block.round * service_nodes::PULSE_ROUND_TIME);
 
       uint64_t curr_height = context.height;
       if (auto now = pulse::clock::now(); now < start_time)
@@ -193,11 +193,6 @@ bool msg_time_check(round_context const &context, pulse::message const &msg, pul
 
 bool pulse::state::block_added(const cryptonote::block& block, const std::vector<cryptonote::transaction>&, cryptonote::checkpoint_t const *)
 {
-  // TODO(doyle): Better check than heuristics.
-  constexpr cryptonote::pulse_header null_header = {};
-  if (block.signatures.size() != service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES || block.pulse == null_header)
-    last_miner_block = cryptonote::get_block_height(block);
-
   wakeup_cv.notify_one();
   return true;
 }
@@ -479,9 +474,6 @@ void pulse::main(pulse::state &state, void *quorumnet_state, cryptonote::core &c
   cryptonote::Blockchain &blockchain          = core.get_blockchain_storage();
   service_nodes::service_node_keys const &key = core.get_service_keys();
 
-  bool base_block_initialized        = false;
-  cryptonote::block base_pulse_block = {};
-
   crypto::hash top_hash = {};
   std::mutex pulse_mutex;
 
@@ -520,48 +512,59 @@ void pulse::main(pulse::state &state, void *quorumnet_state, cryptonote::core &c
       {
         context = {};
 
+        // TODO(loki): After HF16 genesis block is checkpointed, move this out of the loop/hardcode this as it can't change.
+        uint64_t genesis_height         = hf16_height - 1;
+        crypto::hash genesis_hash       = blockchain.get_block_id_by_height(genesis_height);
+        cryptonote::block genesis_block = {};
+
+        if (bool orphaned = false; !blockchain.get_block_by_hash(genesis_hash, genesis_block, &orphaned) || orphaned)
+        {
+          MINFO(log_prefix(context) << "Network unexpectedly can not query the genesis block for Pulse at height " << genesis_height);
+          round_state = thread_sleep(sleep_until::next_block, state, blockchain, context, pulse_mutex);
+        }
+
         //
         // NOTE: If already processing pulse for height, wait for next height
         //
-        if (context.height == blockchain.get_current_blockchain_height(true /*lock*/))
+        uint64_t curr_height = blockchain.get_current_blockchain_height(true /*lock*/);
+        if (context.height == curr_height)
         {
           MINFO(log_prefix(context) << "Network is currently producing block " << context.height << ", sleeping until next block");
           round_state = thread_sleep(sleep_until::next_block, state, blockchain, context, pulse_mutex);
         }
 
-        context.height = blockchain.get_current_blockchain_height(true /*lock*/);
-        top_hash       = blockchain.get_block_id_by_height(context.height - 1);
+        context.height = curr_height;
 
+        //
+        // NOTE: Query Top Block
+        //
+        top_hash = blockchain.get_block_id_by_height(context.height - 1);
         if (top_hash == crypto::null_hash)
         {
-          MERROR(log_prefix(context) << "Block hash for height " << context.height << " does not exist!");
+          MERROR(log_prefix(context) << "Block hash for height " << (context.height - 1) << " does not exist!");
+          continue;
+        }
+
+        cryptonote::block top_block = {};
+        if (bool orphan = false;
+            !blockchain.get_block_by_hash(top_hash, top_block, &orphan) || orphan)
+        {
+          MERROR(log_prefix(context) << "Failed to query previous block in blockchain at height " << context.height - 1);
           continue;
         }
 
         //
-        // NOTE: Get the round start time
+        // NOTE: Block Timing
         //
-#if 0
-        uint64_t base_height = std::max(hf16_height, state.last_miner_block.load());
-#else
-        uint64_t base_height = std::max(hf16_height, context.height - 1); // (DEBUG): Make next block timestamps relative to previous block.
-#endif
-        if (!base_block_initialized || (cryptonote::get_block_height(base_pulse_block) != base_height))
-        {
-          std::vector<std::pair<cryptonote::blobdata, cryptonote::block>> block;
-          if (!blockchain.get_blocks(base_height, 1, block))
-          {
-            MERROR(log_prefix(context) << " Could not query block " << base_height << " from the DB, unable to continue with Pulse");
-            continue;
-          }
+        uint64_t const delta_height = context.height - cryptonote::get_block_height(genesis_block);
+        auto genesis_timestamp      = pulse::time_point(std::chrono::seconds(genesis_block.timestamp));
 
-          base_block_initialized = true;
-          base_pulse_block       = std::move(block[0].second);
-        }
+        pulse::time_point ideal_timestamp = genesis_timestamp + (TARGET_BLOCK_TIME * delta_height);
+        pulse::time_point prev_timestamp  = pulse::time_point(std::chrono::seconds(top_block.timestamp));
 
-        auto base_timestamp   = pulse::time_point(std::chrono::seconds(base_pulse_block.timestamp));
-        uint64_t delta_height = context.height - cryptonote::get_block_height(base_pulse_block);
-        context.wait_next_block.round_0_start_time = base_timestamp + (delta_height * service_nodes::PULSE_TIME_PER_BLOCK);
+        context.wait_next_block.round_0_start_time = std::clamp(ideal_timestamp,
+                                                                prev_timestamp + service_nodes::PULSE_MIN_TARGET_BLOCK_TIME,
+                                                                prev_timestamp + service_nodes::PULSE_MAX_TARGET_BLOCK_TIME);
 
         //
         // NOTE: Determine Pulse Round
@@ -573,7 +576,7 @@ void pulse::main(pulse::state &state, void *quorumnet_state, cryptonote::core &c
         else
         {
           auto const time_since_block   = now - context.wait_next_block.round_0_start_time;
-          size_t pulse_round_usize      = time_since_block / service_nodes::PULSE_TIME_PER_BLOCK;
+          size_t pulse_round_usize      = time_since_block / service_nodes::PULSE_ROUND_TIME;
           context.wait_next_block.round = static_cast<uint8_t>(pulse_round_usize);
         }
 
@@ -588,8 +591,7 @@ void pulse::main(pulse::state &state, void *quorumnet_state, cryptonote::core &c
         //
         // NOTE: Timings
         //
-        pulse::time_point const start_time = context.wait_next_block.round_0_start_time +
-                                             (context.wait_next_block.round * service_nodes::PULSE_TIME_PER_BLOCK);
+        pulse::time_point const start_time          = context.wait_next_block.round_0_start_time + (context.wait_next_block.round * service_nodes::PULSE_ROUND_TIME);
         context.wait_for_handshakes.end_time        = start_time                                  + service_nodes::PULSE_WAIT_FOR_HANDSHAKES_DURATION;
         context.wait_for_handshake_bitsets.end_time = context.wait_for_handshakes.end_time        + service_nodes::PULSE_WAIT_FOR_OTHER_VALIDATOR_HANDSHAKES_DURATION;
         context.wait_for_block_template.end_time    = context.wait_for_handshake_bitsets.end_time + service_nodes::PULSE_WAIT_FOR_BLOCK_TEMPLATE_DURATION;
