@@ -286,8 +286,6 @@ namespace cryptonote
   quorumnet_send_pulse_validator_handshake_bitset_proc *quorumnet_send_pulse_validator_handshake_bitset = [](void *, service_nodes::quorum const &, crypto::hash const &, uint16_t) -> void { need_core_init(); };
   quorumnet_send_pulse_block_template_proc *quorumnet_send_pulse_block_template = [](void *, std::string &&blob, crypto::signature const &, service_nodes::quorum const &) -> void { need_core_init(); };
 
-  quorumnet_pulse_pump_messages_proc *quorumnet_pulse_pump_messages = [](void*, pulse::message &, pulse::time_point) -> bool { need_core_init();  return false; };
-
   quorumnet_pulse_relay_message_to_quorum_proc *quorumnet_pulse_relay_message_to_quorum = [](void *, pulse::message const &, service_nodes::quorum const &, bool) -> void { need_core_init(); };
 
   //-----------------------------------------------------------------------------------------------
@@ -347,9 +345,6 @@ namespace cryptonote
   {
     m_miner.stop();
     m_blockchain_storage.cancel();
-    m_pulse_state.shutdown = true;
-    m_pulse_state.wakeup_cv.notify_one();
-
     tools::download_async_handle handle;
     {
       std::lock_guard lock{m_update_mutex};
@@ -1121,15 +1116,16 @@ namespace cryptonote
       update_lmq_sns(); // Ensure we have SNs set for the current block before starting
 
       if (m_service_node)
+        m_pulse_thread_id = m_lmq->add_tagged_thread("pulse");
+
+      m_lmq->start();
+
+      if (m_service_node)
       {
-        m_blockchain_storage.hook_block_added(m_pulse_state);
-        lokimq::TaggedThreadID pulse_thread_id = m_lmq->add_tagged_thread("pulse");
-        m_lmq->start();
-        m_lmq->job([this]() { pulse::main(m_pulse_state, m_quorumnet_state, *this); }, pulse_thread_id);
-      }
-      else
-      {
-        m_lmq->start();
+        m_lmq->add_timer([this]() { pulse::main(m_quorumnet_state, *this); },
+                         std::chrono::milliseconds(500),
+                         false,
+                         m_pulse_thread_id);
       }
   }
 

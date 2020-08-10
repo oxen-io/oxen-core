@@ -9,17 +9,17 @@ namespace service_nodes {
   constexpr size_t PULSE_QUORUM_ENTROPY_LAG    = 21; // How many blocks back from the tip of the Blockchain to source entropy for the Pulse quorums.
 #if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
   constexpr auto PULSE_ROUND_TIME                                   = 20s;
-  constexpr auto PULSE_WAIT_FOR_HANDSHAKES_DURATION                 = 5s;
-  constexpr auto PULSE_WAIT_FOR_OTHER_VALIDATOR_HANDSHAKES_DURATION = 5s;
-  constexpr auto PULSE_WAIT_FOR_BLOCK_TEMPLATE_DURATION             = 5s;
+  constexpr auto PULSE_WAIT_FOR_HANDSHAKES_DURATION                 = 7s;
+  constexpr auto PULSE_WAIT_FOR_OTHER_VALIDATOR_HANDSHAKES_DURATION = 7s;
+  constexpr auto PULSE_WAIT_FOR_BLOCK_TEMPLATE_DURATION             = 6s;
 
   constexpr size_t PULSE_QUORUM_NUM_VALIDATORS     = 0;
   constexpr size_t PULSE_BLOCK_REQUIRED_SIGNATURES = 0;
 #else
   constexpr auto PULSE_ROUND_TIME                                   = 60s;
-  constexpr auto PULSE_WAIT_FOR_HANDSHAKES_DURATION                 = 15s;
-  constexpr auto PULSE_WAIT_FOR_OTHER_VALIDATOR_HANDSHAKES_DURATION = 15s;
-  constexpr auto PULSE_WAIT_FOR_BLOCK_TEMPLATE_DURATION             = 15s;
+  constexpr auto PULSE_WAIT_FOR_HANDSHAKES_DURATION                 = 20s;
+  constexpr auto PULSE_WAIT_FOR_OTHER_VALIDATOR_HANDSHAKES_DURATION = 20s;
+  constexpr auto PULSE_WAIT_FOR_BLOCK_TEMPLATE_DURATION             = 20s;
 
   constexpr size_t PULSE_QUORUM_NUM_VALIDATORS     = 7;
   constexpr size_t PULSE_BLOCK_REQUIRED_SIGNATURES = 7;  // A block must have exactly N signatures to be considered properly

@@ -64,13 +64,7 @@ struct message
   } block_template;
 };
 
-struct state : public cryptonote::BlockAddedHook
-{
-  std::condition_variable wakeup_cv;
-  std::atomic<bool>       shutdown;
-  bool block_added(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs, cryptonote::checkpoint_t const *checkpoint) override;
-};
-
-void main(pulse::state &state, void *quorumnet_state, cryptonote::core &core);
+void main(void *quorumnet_state, cryptonote::core &core);
+void handle_message(void *quorumnet_state, pulse::message const &msg);
 
 } // namespace pulse

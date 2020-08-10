@@ -15,56 +15,71 @@
 
 enum struct round_state
 {
-  wait_next_block,
+  wait_for_next_block,
+
+  prepare_for_round,
   wait_for_round,
-  round_starts,
+
+  submit_handshakes,
   wait_for_handshakes,
+
   wait_for_handshake_bitsets,
   submit_block_template,
+
   wait_for_block_template,
-  terminate,
 };
 
 constexpr std::string_view round_state_string(round_state state)
 {
   switch(state)
   {
-    case round_state::wait_next_block: return "Wait Next Block"sv;
+    case round_state::wait_for_next_block: return "Wait For Next Block"sv;
+
+    case round_state::prepare_for_round: return "Prepare For Round"sv;
     case round_state::wait_for_round: return "Wait For Round"sv;
-    case round_state::round_starts: return "Round Starts"sv;
+
+    case round_state::submit_handshakes: return "Submit Handshakes"sv;
     case round_state::wait_for_handshakes: return "Wait For Handshakes"sv;
+
     case round_state::wait_for_handshake_bitsets: return "Wait For Validator Handshake Bitsets"sv;
     case round_state::submit_block_template: return "Submit Block Template"sv;
+
     case round_state::wait_for_block_template: return "Wait For Block Template"sv;
-    case round_state::terminate: return "Terminate"sv;
   }
 
   return "Invalid2"sv;
 }
 
+enum struct sn_type
+{
+  none,
+  producer,
+  validator,
+};
+
 struct round_context
 {
   struct
   {
+    uint64_t          height;
+    crypto::hash      top_hash;
+    uint64_t          top_block_timestamp;
     pulse::time_point round_0_start_time;
-    uint8_t round;
-  } wait_next_block;
+  } wait_for_next_block;
 
   struct
   {
+    bool                  queue_for_next_round;
+    uint8_t               round;
     service_nodes::quorum quorum;
-  } wait_for_round;
+    sn_type               participant;
+    size_t                my_quorum_position;
+    std::string           node_name;
+  } prepare_for_round;
 
   struct
   {
-    bool is_producer;
-    size_t my_quorum_position;
-    std::string node_name;
-  } round_starts;
-
-  struct
-  {
-    uint16_t validator_bits;
+    uint16_t          validator_bits;
     pulse::time_point start_time;
     pulse::time_point end_time;
     bool all_received() { return validator_bits == service_nodes::pulse_validator_bit_mask(); }
@@ -90,9 +105,10 @@ struct round_context
     pulse::time_point end_time;
   } wait_for_block_template;
 
-  uint64_t height;
+  round_state state;
 };
 
+static round_context context;
 namespace
 {
 
@@ -100,73 +116,20 @@ enum sleep_until
 {
   next_block,
   next_block_or_round,
-  round_starts
+  prepare_for_round
 };
-
-round_state thread_sleep(sleep_until until,
-                         pulse::state &state,
-                         cryptonote::Blockchain const &blockchain,
-                         round_context &context,
-                         std::mutex &mutex)
-{
-  switch(until)
-  {
-    case sleep_until::next_block:
-    {
-      std::unique_lock lock{mutex};
-      state.wakeup_cv.wait(lock, [&state, &blockchain, height = context.height]() {
-        return state.shutdown || height != blockchain.get_current_blockchain_height(true /*lock*/);
-      });
-
-      return state.shutdown ? round_state::terminate : round_state::wait_next_block;
-    }
-
-    default:
-    {
-      if (until == sleep_until::next_block_or_round)
-      {
-        // TODO(doyle): Handle this error better
-        // assert(context.wait_next_block.round <= static_cast<uint8_t>(-1));
-        context.wait_next_block.round++;
-      }
-
-      pulse::time_point const start_time = context.wait_next_block.round_0_start_time +
-                                           (context.wait_next_block.round * service_nodes::PULSE_ROUND_TIME);
-
-      uint64_t curr_height = context.height;
-      if (auto now = pulse::clock::now(); now < start_time)
-      {
-        MINFO("Pulse: Sleeping " << tools::get_human_readable_timespan(start_time - now) << " until pulse round " << +context.wait_next_block.round << " commences for block " << context.height);
-
-        std::unique_lock lock{mutex};
-        state.wakeup_cv.wait_until(lock, start_time, [&state, &blockchain, start_time, height = context.height, &curr_height]() {
-          bool wakeup_time = pulse::clock::now() >= start_time;
-          curr_height      = blockchain.get_current_blockchain_height(true /*lock*/);
-          return wakeup_time || (height != curr_height) || state.shutdown;
-        });
-
-        if (state.shutdown)
-          return round_state::terminate;
-
-      }
-
-      if (context.height != curr_height)
-      {
-        MINFO("Pulse: Blockchain height changed during sleep from " << context.height << " to " << curr_height << ", re-evaluating pulse block");
-        return round_state::wait_next_block;
-      }
-
-      assert(until == sleep_until::next_block_or_round || until == sleep_until::round_starts);
-      return until == sleep_until::next_block_or_round ? round_state::wait_for_round : round_state::round_starts;
-    }
-  }
-}
 
 std::string log_prefix(round_context const &context)
 {
   std::stringstream result;
-  result << "Pulse B" << context.height << " R" << +context.wait_next_block.round << ": ";
-  if (context.round_starts.node_name.size()) result << context.round_starts.node_name << " ";
+  result << "Pulse B" << context.wait_for_next_block.height << " R";
+  if (context.state >= round_state::prepare_for_round)
+    result << +context.prepare_for_round.round;
+  else
+    result << "0";
+  result << ": ";
+
+  if (context.prepare_for_round.node_name.size()) result << context.prepare_for_round.node_name << " ";
   return result.str();
 }
 
@@ -191,10 +154,118 @@ bool msg_time_check(round_context const &context, pulse::message const &msg, pul
 
 } // anonymous namespace
 
-bool pulse::state::block_added(const cryptonote::block& block, const std::vector<cryptonote::transaction>&, cryptonote::checkpoint_t const *)
+void pulse::handle_message(void *quorumnet_state, pulse::message const &msg)
 {
-  wakeup_cv.notify_one();
-  return true;
+  bool relay_message  = false;
+  if (msg.type == pulse::message_type::handshake || msg.type == pulse::message_type::handshake_bitset)
+  {
+    if (msg.handshakes.quorum_position >= static_cast<int>(context.prepare_for_round.quorum.validators.size()))
+    {
+      MERROR(log_prefix(context) << "Quorum position " << msg.handshakes.quorum_position << " in Pulse message indexes oob");
+      return;
+    }
+
+    crypto::public_key const &validator_key = context.prepare_for_round.quorum.validators[msg.handshakes.quorum_position];
+    crypto::hash hash = {};
+
+    if (msg.type == pulse::message_type::handshake)
+    {
+      auto buf = tools::memcpy_le(context.wait_for_next_block.top_hash.data, msg.handshakes.quorum_position);
+      hash     = crypto::cn_fast_hash(buf.data(), buf.size());
+    }
+    else
+    {
+      assert(msg.type == pulse::message_type::handshake_bitset);
+      auto buf = tools::memcpy_le(msg.handshakes.validator_bitset, context.wait_for_next_block.top_hash.data, msg.handshakes.quorum_position);
+      hash     = crypto::cn_fast_hash(buf.data(), buf.size());
+    }
+
+    if (!crypto::check_signature(hash, validator_key, msg.handshakes.signature))
+    {
+      MERROR(log_prefix(context) << "Signature from pulse handshake bit does not validate with node " << msg.handshakes.quorum_position << ":" << lokimq::to_hex(tools::view_guts(validator_key)) << ", at height " << context.wait_for_next_block.height << "; Validator signing outdated height or bad handshake data");
+      return;
+    }
+  }
+
+  switch(msg.type)
+  {
+    case pulse::message_type::invalid: assert("Invalid Code Path" != nullptr); break;
+
+    case pulse::message_type::handshake:
+    {
+      // TODO(doyle): We need some lenience in time for accepting early
+      // handshakes in case clocks are slightly out of sync.
+      if (!msg_time_check(context, msg, pulse::clock::now(), context.wait_for_handshakes.start_time, context.wait_for_handshakes.end_time))
+        return;
+
+      uint16_t quorum_position_bit = 1 << msg.handshakes.quorum_position;
+      relay_message = ((context.wait_for_handshakes.validator_bits & quorum_position_bit) == 0);
+      context.wait_for_handshakes.validator_bits |= quorum_position_bit;
+
+      if (relay_message) // First time seen handshake
+      {
+        auto position_bitset  = std::bitset<sizeof(quorum_position_bit) * 8>(quorum_position_bit);
+        auto validator_bitset = std::bitset<sizeof(quorum_position_bit) * 8>(context.wait_for_handshakes.validator_bits);
+        MINFO(log_prefix(context) << "Received handshake with quorum position bit (" << msg.handshakes.quorum_position <<") " << position_bitset << " saved to bitset " << validator_bitset);
+      }
+    }
+    break;
+
+    case pulse::message_type::handshake_bitset:
+    {
+      if (!msg_time_check(context, msg, pulse::clock::now(), context.wait_for_handshakes.start_time, context.wait_for_handshake_bitsets.end_time))
+        return;
+
+      uint16_t prev_bitset = context.wait_for_handshake_bitsets.bitsets[msg.handshakes.quorum_position];
+      if (context.prepare_for_round.participant == sn_type::validator)
+        relay_message = (prev_bitset != msg.handshakes.validator_bitset);
+
+      context.wait_for_handshake_bitsets.bitsets[msg.handshakes.quorum_position] = msg.handshakes.validator_bitset;
+      if (prev_bitset == 0)
+        context.wait_for_handshake_bitsets.bitsets_count++;
+    }
+    break;
+
+    case pulse::message_type::block_template:
+    {
+      assert(context.prepare_for_round.participant == sn_type::validator);
+      if (context.wait_for_block_template.received)
+        return;
+
+      if (!msg_time_check(context, msg, pulse::clock::now(), context.wait_for_handshakes.start_time, context.wait_for_block_template.end_time))
+        return;
+
+      cryptonote::block block = {};
+      if (!cryptonote::t_serializable_object_from_blob(block, msg.block_template.blob))
+      {
+        MINFO(log_prefix(context) << "Received unparsable pulse block template blob");
+        return;
+      }
+
+      crypto::public_key const &block_producer = context.prepare_for_round.quorum.workers[0];
+      crypto::hash hash = crypto::cn_fast_hash(msg.block_template.blob.data(), msg.block_template.blob.size());
+      if (!crypto::check_signature(hash, block_producer, msg.block_template.signature))
+      {
+        MINFO(log_prefix(context) << "Received pulse block template not signed by the block producer");
+        return;
+      }
+
+      if (block.pulse.round != context.prepare_for_round.round)
+      {
+        MINFO(log_prefix(context) << "Received pulse block template specifying different round " << +block.pulse.round << ", expected " << +context.prepare_for_round.round);
+        return;
+      }
+
+      context.wait_for_block_template.received = true;
+      context.wait_for_block_template.block    = std::move(block);
+      relay_message                            = true;
+
+    }
+    break;
+  }
+
+  if (relay_message)
+    cryptonote::quorumnet_pulse_relay_message_to_quorum(quorumnet_state, msg, context.prepare_for_round.quorum, context.prepare_for_round.participant == sn_type::producer);
 }
 
 /*
@@ -302,416 +373,271 @@ bool pulse::state::block_added(const cryptonote::block& block, const std::vector
 
 */
 
-void pump_messages_from_quorumnet(void *quorumnet_state, round_state round_state, round_context &context, crypto::hash const &top_hash)
-{
-  //
-  // NOTE: Determine how long to pump messages from the queue
-  //
-  pulse::time_point pump_messages_until = {};
-  switch(round_state)
-  {
-    default: break;
-
-    case round_state::wait_for_handshakes:
-      pump_messages_until = context.wait_for_handshakes.end_time;
-      break;
-
-    case round_state::wait_for_handshake_bitsets:
-      pump_messages_until = context.wait_for_handshake_bitsets.end_time;
-      break;
-
-    case round_state::wait_for_block_template:
-      pump_messages_until = context.wait_for_block_template.end_time;
-      break;
-  }
-
-  if (auto now = pulse::clock::now(); now < pump_messages_until)
-  {
-    MINFO(log_prefix(context) << "Pumping messages for '" << round_state_string(round_state) << "' from quorumnet for "
-                              << tools::get_human_readable_timespan(pump_messages_until - now)
-                              << " or until all messages received.");
-  }
-
-  //
-  // NOTE: Retrieve messages sent on Quorumnet from message queue
-  //
-  pulse::message msg = {};
-  while (cryptonote::quorumnet_pulse_pump_messages(quorumnet_state, msg, pump_messages_until))
-  {
-    bool relay_message  = false;
-    bool finish_pumping = false;
-
-    if (msg.type == pulse::message_type::handshake || msg.type == pulse::message_type::handshake_bitset)
-    {
-      if (msg.handshakes.quorum_position >= static_cast<int>(context.wait_for_round.quorum.validators.size()))
-      {
-        MERROR(log_prefix(context) << "Quorum position " << msg.handshakes.quorum_position << " in Pulse message indexes oob");
-        continue;
-      }
-
-      crypto::public_key const &validator_key = context.wait_for_round.quorum.validators[msg.handshakes.quorum_position];
-      crypto::hash hash = {};
-
-      if (msg.type == pulse::message_type::handshake)
-      {
-        auto buf = tools::memcpy_le(top_hash.data, msg.handshakes.quorum_position);
-        hash     = crypto::cn_fast_hash(buf.data(), buf.size());
-      }
-      else
-      {
-        auto buf = tools::memcpy_le(msg.handshakes.validator_bitset, top_hash.data, msg.handshakes.quorum_position);
-        hash     = crypto::cn_fast_hash(buf.data(), buf.size());
-      }
-
-      if (!crypto::check_signature(hash, validator_key, msg.handshakes.signature))
-      {
-        MERROR(log_prefix(context) << "Signature from pulse handshake bit does not validate with node " << msg.handshakes.quorum_position << ":" << lokimq::to_hex(tools::view_guts(validator_key)) << ", at height " << context.height << "; Validator signing outdated height or bad handshake data");
-        continue;
-      }
-    }
-
-    switch(msg.type)
-    {
-      default: assert(msg.type == pulse::message_type::invalid); break;
-
-      case pulse::message_type::handshake:
-      {
-        // TODO(doyle): We need some lenience in time for accepting early
-        // handshakes in case clocks are slightly out of sync.
-        if (!msg_time_check(context, msg, pulse::clock::now(), context.wait_for_handshakes.start_time, context.wait_for_handshakes.end_time))
-          continue;
-
-        uint16_t quorum_position_bit = 1 << msg.handshakes.quorum_position;
-        relay_message = ((context.wait_for_handshakes.validator_bits & quorum_position_bit) == 0);
-        context.wait_for_handshakes.validator_bits |= quorum_position_bit;
-        finish_pumping = context.wait_for_handshakes.all_received();
-
-        if (relay_message) // First time seen handshake
-        {
-          auto position_bitset  = std::bitset<sizeof(quorum_position_bit) * 8>(quorum_position_bit);
-          auto validator_bitset = std::bitset<sizeof(quorum_position_bit) * 8>(context.wait_for_handshakes.validator_bits);
-          MINFO(log_prefix(context) << "Received handshake with quorum position bit (" << msg.handshakes.quorum_position <<") " << position_bitset << " saved to bitset " << validator_bitset);
-        }
-      }
-      break;
-
-      case pulse::message_type::handshake_bitset:
-      {
-        if (!msg_time_check(context, msg, pulse::clock::now(), context.wait_for_handshakes.start_time, context.wait_for_handshake_bitsets.end_time))
-          continue;
-
-        uint16_t prev_bitset = context.wait_for_handshake_bitsets.bitsets[msg.handshakes.quorum_position];
-        if (!context.round_starts.is_producer)
-          relay_message = (prev_bitset != msg.handshakes.validator_bitset);
-
-        context.wait_for_handshake_bitsets.bitsets[msg.handshakes.quorum_position] = msg.handshakes.validator_bitset;
-        if (prev_bitset == 0)
-          context.wait_for_handshake_bitsets.bitsets_count++;
-
-        finish_pumping = context.wait_for_handshake_bitsets.all_received();
-      }
-      break;
-
-      case pulse::message_type::block_template:
-      {
-        assert(!context.round_starts.is_producer);
-
-        if (!msg_time_check(context, msg, pulse::clock::now(), context.wait_for_handshakes.start_time, context.wait_for_block_template.end_time))
-          continue;
-
-        // TODO(doyle): Time check
-        cryptonote::block block = {};
-        if (!cryptonote::t_serializable_object_from_blob(block, msg.block_template.blob))
-        {
-          MINFO(log_prefix(context) << "Received unparsable pulse block template blob");
-          continue;
-        }
-
-        crypto::public_key const &block_producer = context.wait_for_round.quorum.workers[0];
-        crypto::hash hash = crypto::cn_fast_hash(msg.block_template.blob.data(), msg.block_template.blob.size());
-        if (!crypto::check_signature(hash, block_producer, msg.block_template.signature))
-        {
-          MINFO(log_prefix(context) << "Received pulse block template not signed by the block producer");
-          continue;
-        }
-
-        if (block.pulse.round != context.wait_next_block.round)
-        {
-          MINFO(log_prefix(context) << "Received pulse block template specifying different round " << +block.pulse.round << ", expected " << +context.wait_next_block.round);
-          continue;
-        }
-
-        if (block.pulse.validator_bitset != context.submit_block_template.validator_bitset)
-        {
-          auto block_bitset = std::bitset<sizeof(block.pulse.validator_bitset) * 8>(block.pulse.validator_bitset);
-          auto our_bitset   = std::bitset<sizeof(block.pulse.validator_bitset) * 8>(context.submit_block_template.validator_bitset);
-          MINFO(log_prefix(context) << "Received pulse block template specifying different validator handshake bitsets " << block_bitset << ", expected " << our_bitset);
-          continue;
-        }
-
-        if (!context.wait_for_block_template.received)
-        {
-          context.wait_for_block_template.received = true;
-          context.wait_for_block_template.block    = std::move(block);
-          relay_message                            = true;
-        }
-
-        finish_pumping = true;
-      }
-      break;
-    }
-
-    if (relay_message)
-      cryptonote::quorumnet_pulse_relay_message_to_quorum(quorumnet_state, msg, context.wait_for_round.quorum, context.round_starts.is_producer);
-
-    if (finish_pumping)
-      break;
-  }
-}
-
-void pulse::main(pulse::state &state, void *quorumnet_state, cryptonote::core &core)
+void pulse::main(void *quorumnet_state, cryptonote::core &core)
 {
   cryptonote::Blockchain &blockchain          = core.get_blockchain_storage();
   service_nodes::service_node_keys const &key = core.get_service_keys();
-
-  crypto::hash top_hash = {};
   std::mutex pulse_mutex;
 
-  round_context context = {};
-
   //
-  // NOTE: Sleep until Blockchain is ready to produce Pulse Blocks
+  // NOTE: Early exit if too early
   //
-  uint64_t const hf16_height = cryptonote::HardFork::get_hardcoded_hard_fork_height(blockchain.nettype(), cryptonote::network_version_16);
+  static uint64_t const hf16_height = cryptonote::HardFork::get_hardcoded_hard_fork_height(blockchain.nettype(), cryptonote::network_version_16);
+  if (hf16_height == cryptonote::HardFork::INVALID_HF_VERSION_HEIGHT)
   {
-    if (hf16_height == cryptonote::HardFork::INVALID_HF_VERSION_HEIGHT)
-    {
-      MERROR("Pulse: HF16 is not defined, pulse worker exiting.");
-      return;
-    }
-
-    uint64_t height = blockchain.get_current_blockchain_height(true /*lock*/);
-    if (height < hf16_height)
-      MINFO("Pulse: Network at block " << height << " is not ready for Pulse until block " << hf16_height << ", worker going to sleep");
-
-    for (; height < hf16_height; height = blockchain.get_current_blockchain_height(true /*lock*/))
-    {
-      auto result = thread_sleep(sleep_until::next_block, state, blockchain, context, pulse_mutex);
-      if (result == round_state::terminate) return;
-    }
+    for (static bool once = true; once; once = !once)
+      MERROR("Pulse: HF16 is not defined, pulse worker waiting");
+    return;
   }
 
-  for (auto round_state = round_state::wait_next_block; !state.shutdown;)
+  if (uint64_t height = blockchain.get_current_blockchain_height(true /*lock*/); height < hf16_height)
   {
-    switch (round_state)
+    for (static bool once = true; once; once = !once)
+      MINFO("Pulse: Network at block " << height << " is not ready for Pulse until block " << hf16_height << ", waiting");
+    return;
+  }
+
+  for (;;)
+  {
+    switch (context.state)
     {
-      case round_state::terminate:
-        return;
-
-      case round_state::wait_next_block:
+      case round_state::wait_for_next_block:
       {
-        context = {};
-
-        // TODO(loki): After HF16 genesis block is checkpointed, move this out of the loop/hardcode this as it can't change.
-        uint64_t genesis_height         = hf16_height - 1;
-        crypto::hash genesis_hash       = blockchain.get_block_id_by_height(genesis_height);
-        cryptonote::block genesis_block = {};
-
-        if (bool orphaned = false; !blockchain.get_block_by_hash(genesis_hash, genesis_block, &orphaned) || orphaned)
-        {
-          MINFO(log_prefix(context) << "Network unexpectedly can not query the genesis block for Pulse at height " << genesis_height);
-          round_state = thread_sleep(sleep_until::next_block, state, blockchain, context, pulse_mutex);
-        }
-
         //
         // NOTE: If already processing pulse for height, wait for next height
         //
         uint64_t curr_height = blockchain.get_current_blockchain_height(true /*lock*/);
-        if (context.height == curr_height)
+        if (context.wait_for_next_block.height == curr_height)
         {
-          MINFO(log_prefix(context) << "Network is currently producing block " << context.height << ", sleeping until next block");
-          round_state = thread_sleep(sleep_until::next_block, state, blockchain, context, pulse_mutex);
+          for (static uint64_t last_height = 0; last_height != curr_height; last_height = curr_height)
+            MINFO(log_prefix(context) << "Network is currently producing block " << curr_height << ", waiting until next block");
+          return;
         }
 
-        context.height = curr_height;
-
-        //
-        // NOTE: Query Top Block
-        //
-        top_hash = blockchain.get_block_id_by_height(context.height - 1);
+        uint64_t top_height   = curr_height - 1;
+        crypto::hash top_hash = blockchain.get_block_id_by_height(top_height);
         if (top_hash == crypto::null_hash)
         {
-          MERROR(log_prefix(context) << "Block hash for height " << (context.height - 1) << " does not exist!");
-          continue;
+          for (static uint64_t last_height = 0; last_height != top_height; last_height = top_height)
+            MERROR(log_prefix(context) << "Block hash for height " << top_height << " does not exist!");
+          return;
         }
 
         cryptonote::block top_block = {};
         if (bool orphan = false;
             !blockchain.get_block_by_hash(top_hash, top_block, &orphan) || orphan)
         {
-          MERROR(log_prefix(context) << "Failed to query previous block in blockchain at height " << context.height - 1);
-          continue;
+          for (static uint64_t last_height = 0; last_height != top_height; last_height = top_height)
+            MERROR(log_prefix(context) << "Failed to query previous block in blockchain at height " << top_height);
+          return;
+        }
+
+        //
+        // NOTE: Query Pulse Genesis
+        // TODO(loki): After HF16 genesis block is checkpointed, move this out of the loop/hardcode this as it can't change.
+        //
+        crypto::hash genesis_hash       = blockchain.get_block_id_by_height(hf16_height - 1);
+        cryptonote::block genesis_block = {};
+        if (bool orphaned = false; !blockchain.get_block_by_hash(genesis_hash, genesis_block, &orphaned) || orphaned)
+        {
+          for (static bool once = true; once; once = !once)
+            MINFO(log_prefix(context) << "Failed to query the genesis block for Pulse at height " << hf16_height - 1);
+          return;
         }
 
         //
         // NOTE: Block Timing
         //
-        uint64_t const delta_height = context.height - cryptonote::get_block_height(genesis_block);
+        uint64_t const delta_height = context.wait_for_next_block.height - cryptonote::get_block_height(genesis_block);
+#if 0
         auto genesis_timestamp      = pulse::time_point(std::chrono::seconds(genesis_block.timestamp));
-
         pulse::time_point ideal_timestamp = genesis_timestamp + (TARGET_BLOCK_TIME * delta_height);
         pulse::time_point prev_timestamp  = pulse::time_point(std::chrono::seconds(top_block.timestamp));
+        context.wait_for_next_block.round_0_start_time =
+            std::clamp(ideal_timestamp,
+                       prev_timestamp + service_nodes::PULSE_MIN_TARGET_BLOCK_TIME,
+                       prev_timestamp + service_nodes::PULSE_MAX_TARGET_BLOCK_TIME);
+#else // NOTE: Debug, make next block start relatively soon
+        pulse::time_point prev_timestamp               = pulse::time_point(std::chrono::seconds(top_block.timestamp));
+        context.wait_for_next_block.round_0_start_time = prev_timestamp + service_nodes::PULSE_ROUND_TIME;
+#endif
 
-        context.wait_next_block.round_0_start_time = std::clamp(ideal_timestamp,
-                                                                prev_timestamp + service_nodes::PULSE_MIN_TARGET_BLOCK_TIME,
-                                                                prev_timestamp + service_nodes::PULSE_MAX_TARGET_BLOCK_TIME);
+        context.wait_for_next_block.height              = curr_height;
+        context.wait_for_next_block.top_hash            = top_hash;
+        context.wait_for_next_block.top_block_timestamp = top_block.timestamp;
 
-        //
-        // NOTE: Determine Pulse Round
-        //
-        if (auto now = pulse::clock::now(); now < context.wait_next_block.round_0_start_time)
-        {
-          context.wait_next_block.round = 0;
-        }
-        else
-        {
-          auto const time_since_block   = now - context.wait_next_block.round_0_start_time;
-          size_t pulse_round_usize      = time_since_block / service_nodes::PULSE_ROUND_TIME;
-          context.wait_next_block.round = static_cast<uint8_t>(pulse_round_usize);
-        }
-
-        round_state = round_state::wait_for_round;
+        context.state             = round_state::prepare_for_round;
+        context.prepare_for_round = {};
       }
       break;
 
-      case round_state::wait_for_round:
+      case round_state::prepare_for_round:
       {
-        context.wait_for_round = {};
+        context.wait_for_handshakes        = {};
+        context.wait_for_handshake_bitsets = {};
+        context.submit_block_template      = {};
+        context.wait_for_block_template    = {};
+
+        if (context.prepare_for_round.queue_for_next_round)
+        {
+          // Set when an intermediate Pulse stage has failed and we wait on the
+          // next round to occur.
+          context.prepare_for_round.queue_for_next_round = false;
+          context.prepare_for_round.round++; //TODO: Overflow check
+
+          // Also check if the blockchain has changed, in which case we stop and
+          // restart Pulse stages.
+          if (context.wait_for_next_block.height != blockchain.get_current_blockchain_height(true /*lock*/))
+            context.state = round_state::wait_for_next_block;
+        }
 
         //
-        // NOTE: Timings
+        // NOTE: Check Current Round
         //
-        pulse::time_point const start_time          = context.wait_next_block.round_0_start_time + (context.wait_next_block.round * service_nodes::PULSE_ROUND_TIME);
+        {
+          auto now                     = pulse::clock::now();
+          auto const time_since_block  = now <= context.wait_for_next_block.round_0_start_time ? std::chrono::seconds(0) : (now - context.wait_for_next_block.round_0_start_time);
+          size_t round_usize           = time_since_block / service_nodes::PULSE_ROUND_TIME;
+          uint8_t curr_round           = static_cast<uint8_t>(round_usize); // TODO: Overflow check
+
+          if (curr_round > context.prepare_for_round.round)
+            context.prepare_for_round.round = curr_round;
+        }
+
+        auto start_time = context.wait_for_next_block.round_0_start_time + (context.prepare_for_round.round * service_nodes::PULSE_ROUND_TIME);
+        context.wait_for_handshakes.start_time      = start_time;
         context.wait_for_handshakes.end_time        = start_time                                  + service_nodes::PULSE_WAIT_FOR_HANDSHAKES_DURATION;
         context.wait_for_handshake_bitsets.end_time = context.wait_for_handshakes.end_time        + service_nodes::PULSE_WAIT_FOR_OTHER_VALIDATOR_HANDSHAKES_DURATION;
         context.wait_for_block_template.end_time    = context.wait_for_handshake_bitsets.end_time + service_nodes::PULSE_WAIT_FOR_BLOCK_TEMPLATE_DURATION;
 
-        //
-        // NOTE: Quorum
-        //
-        context.wait_for_round.quorum =
+        context.prepare_for_round.quorum =
             service_nodes::generate_pulse_quorum(blockchain.nettype(),
                                                  blockchain.get_db(),
-                                                 context.height - 1,
+                                                 context.wait_for_next_block.height - 1,
                                                  blockchain.get_service_node_list().get_block_leader().key,
                                                  blockchain.get_current_hard_fork_version(),
                                                  blockchain.get_service_node_list().active_service_nodes_infos(),
-                                                 context.wait_next_block.round);
+                                                 context.prepare_for_round.round);
 
-        if (service_nodes::verify_pulse_quorum_sizes(context.wait_for_round.quorum))
+        if (!service_nodes::verify_pulse_quorum_sizes(context.prepare_for_round.quorum))
         {
-          round_state = thread_sleep(sleep_until::round_starts, state, blockchain, context, pulse_mutex);
+          MINFO(log_prefix(context) << "Insufficient Service Nodes to execute Pulse on height " << context.wait_for_next_block.height << ", we require a PoW miner block. Sleeping until next block.");
+          context.state = round_state::wait_for_next_block;
+          return;
         }
-        else
-        {
-          MINFO(log_prefix(context) << "Insufficient Service Nodes to execute Pulse on height " << context.height << ", we require a PoW miner block. Sleeping until next block.");
-          round_state = thread_sleep(sleep_until::next_block, state, blockchain, context, pulse_mutex);
-        }
-      }
-      break;
-
-      case round_state::round_starts:
-      {
-        context.round_starts = {};
 
         //
         // NOTE: Quorum participation
         //
-        bool validator = false;
-        if (key.pub == context.wait_for_round.quorum.workers[0])
+        if (key.pub == context.prepare_for_round.quorum.workers[0])
         {
           // NOTE: Producer doesn't send handshakes, they only collect the
           // handshake bitsets from the other validators to determine who to
           // lock in for this round in the block template.
-          context.round_starts.is_producer = true;
+          context.prepare_for_round.participant = sn_type::producer;
+          context.prepare_for_round.node_name   = "W[0]";
         }
         else
         {
-          for (size_t index = 0; index < context.wait_for_round.quorum.validators.size(); index++)
+          for (size_t index = 0; index < context.prepare_for_round.quorum.validators.size(); index++)
           {
-            auto const &validator_key = context.wait_for_round.quorum.validators[index];
-            validator                 = (validator_key == key.pub);
-            if (validator)
+            auto const &validator_key = context.prepare_for_round.quorum.validators[index];
+            if (validator_key == key.pub)
             {
-              context.round_starts.my_quorum_position = index;
+              context.prepare_for_round.participant        = sn_type::validator;
+              context.prepare_for_round.my_quorum_position = index;
+              context.prepare_for_round.node_name = "V[" + std::to_string(context.prepare_for_round.my_quorum_position) + "]";
               break;
             }
           }
         }
 
-        if (validator || context.round_starts.is_producer)
+        if (context.prepare_for_round.participant == sn_type::none)
         {
-          if (validator)
-          {
-            context.round_starts.node_name = "V[" + std::to_string(context.round_starts.my_quorum_position) + "]";
-            try
-            {
-              context.wait_for_handshakes.validator_bits |= (1 << context.round_starts.my_quorum_position); // Add myself
+          MINFO(log_prefix(context) << "We are not a pulse validator. Waiting for next pulse round or block.");
+          context.state                                  = round_state::prepare_for_round;
+          context.prepare_for_round.queue_for_next_round = true;
+          return;
+        }
 
-              MINFO(log_prefix(context) << "We are a pulse validator, sending handshake bit to quorum and collecting other validator handshakes.");
-              cryptonote::quorumnet_send_pulse_validator_handshake_bit(quorumnet_state, context.wait_for_round.quorum, top_hash);
-              round_state = round_state::wait_for_handshakes;
-            }
-            catch (std::exception const &e)
-            {
-              MERROR(log_prefix(context) << "Attempting to invoke and send a Pulse participation handshake unexpectedly failed. " << e.what());
-              round_state = thread_sleep(sleep_until::next_block_or_round, state, blockchain, context, pulse_mutex);
-            }
-          }
-          else
-          {
-            context.round_starts.node_name = "W[0]";
-            MINFO(log_prefix(context) << "We are the block producer for height " << context.height << " in round " << +context.wait_next_block.round << ", awaiting validator handshake bitsets.");
-            round_state = round_state::wait_for_handshake_bitsets;
-          }
+        context.state = round_state::wait_for_round;
+      }
+      break;
+
+      case round_state::wait_for_round:
+      {
+        auto start_time = context.wait_for_next_block.round_0_start_time + (context.prepare_for_round.round * service_nodes::PULSE_ROUND_TIME);
+        if (auto now = pulse::clock::now(); now < start_time)
+        {
+          for (static uint64_t last_height = 0; last_height != context.wait_for_next_block.height; last_height = context.wait_for_next_block.height)
+            MINFO(log_prefix(context) << "Waiting for Pulse round " << +context.prepare_for_round.round << " to start in " << tools::get_human_readable_timespan(start_time - now));
+          return;
+        }
+
+        if (context.prepare_for_round.participant == sn_type::validator)
+        {
+          MINFO(log_prefix(context) << "We are a pulse validator, sending handshake bit to quorum and collecting other validator handshakes.");
+          context.state = round_state::submit_handshakes;
         }
         else
         {
-          MINFO(log_prefix(context) << "We are not a pulse validator. Waiting for next pulse round or block.");
-          round_state = thread_sleep(sleep_until::next_block_or_round, state, blockchain, context, pulse_mutex);
+          MINFO(log_prefix(context) << "We are the block producer for height " << context.wait_for_next_block.height << " in round " << +context.prepare_for_round.round << ", awaiting validator handshake bitsets.");
+          context.state = round_state::wait_for_handshake_bitsets;
         }
+      }
+      break;
 
+      case round_state::submit_handshakes:
+      {
+        assert(context.prepare_for_round.participant == sn_type::validator);
+        try
+        {
+          context.wait_for_handshakes.validator_bits |= (1 << context.prepare_for_round.my_quorum_position); // Add myself
+          cryptonote::quorumnet_send_pulse_validator_handshake_bit(quorumnet_state, context.prepare_for_round.quorum, context.wait_for_next_block.top_hash);
+          context.state = round_state::wait_for_handshakes;
+        }
+        catch (std::exception const &e)
+        {
+          MERROR(log_prefix(context) << "Attempting to invoke and send a Pulse participation handshake unexpectedly failed. " << e.what());
+          context.state                                  = round_state::prepare_for_round;
+          context.prepare_for_round.queue_for_next_round = true;
+        }
       }
       break;
 
       case round_state::wait_for_handshakes:
       {
-        assert(!context.round_starts.is_producer);
-        assert(context.round_starts.my_quorum_position < context.wait_for_handshake_bitsets.bitsets.size());
+        assert(context.prepare_for_round.participant == sn_type::validator);
+        assert(context.prepare_for_round.my_quorum_position < context.wait_for_handshake_bitsets.bitsets.size());
 
         bool timed_out      = pulse::clock::now() >= context.wait_for_handshakes.end_time;
         bool all_handshakes = context.wait_for_handshakes.all_received();
 
         if (all_handshakes || timed_out)
         {
-          assert(context.round_starts.my_quorum_position < context.wait_for_handshake_bitsets.bitsets.size());
+          assert(context.prepare_for_round.my_quorum_position < context.wait_for_handshake_bitsets.bitsets.size());
           std::bitset<8 * sizeof(context.wait_for_handshakes.validator_bits)> bitset = context.wait_for_handshakes.validator_bits;
 
-          context.wait_for_handshake_bitsets.bitsets[context.round_starts.my_quorum_position] = context.wait_for_handshakes.validator_bits;
+          context.wait_for_handshake_bitsets.bitsets[context.prepare_for_round.my_quorum_position] = context.wait_for_handshakes.validator_bits;
           context.wait_for_handshake_bitsets.bitsets_count++;
 
           bool missing_handshakes = timed_out && !all_handshakes;
           MINFO(log_prefix(context) << "Collected validator handshakes " << bitset << (missing_handshakes ? ", we timed out and some handshakes were not seen! " : ". ") << "Sending handshake bitset and collecting other validator bitsets.");
           try
           {
-            cryptonote::quorumnet_send_pulse_validator_handshake_bitset(quorumnet_state, context.wait_for_round.quorum, top_hash, context.wait_for_handshakes.validator_bits);
-            round_state = round_state::wait_for_handshake_bitsets;
+            cryptonote::quorumnet_send_pulse_validator_handshake_bitset(quorumnet_state, context.prepare_for_round.quorum, context.wait_for_next_block.top_hash, context.wait_for_handshakes.validator_bits);
+            context.state = round_state::wait_for_handshake_bitsets;
           }
           catch(std::exception const &e)
           {
             MERROR(log_prefix(context) << "Attempting to invoke and send a Pulse validator bitset unexpectedly failed. " << e.what());
-            round_state = thread_sleep(sleep_until::next_block_or_round, state, blockchain, context, pulse_mutex);
+            context.state                                  = round_state::prepare_for_round;
+            context.prepare_for_round.queue_for_next_round = true;
           }
+        }
+        else
+        {
+          return;
         }
       }
       break;
@@ -763,32 +689,39 @@ void pulse::main(pulse::state &state, void *quorumnet_state, cryptonote::core &c
                      << max_bitsets << ", waiting for next round.");
             }
 
-            round_state = thread_sleep(sleep_until::next_block_or_round, state, blockchain, context, pulse_mutex);
+            context.state                                  = round_state::prepare_for_round;
+            context.prepare_for_round.queue_for_next_round = true;
           }
           else
           {
             std::bitset<8 * sizeof(most_common_bitset)> bitset = most_common_bitset;
-            MINFO(log_prefix(context) << count << "/" << max_bitsets << " validators agreed on the participating nodes in the quorum " << bitset << (context.round_starts.is_producer ? "" : ". Awaiting block template from block producer"));
             context.submit_block_template.validator_bitset = most_common_bitset;
 
-            if (context.round_starts.is_producer)
-              round_state = round_state::submit_block_template;
+            MINFO(log_prefix(context) << count << "/" << max_bitsets << " validators agreed on the participating nodes in the quorum " << bitset << (context.prepare_for_round.participant == sn_type::producer ? "" : ". Awaiting block template from block producer"));
+
+            if (context.prepare_for_round.participant == sn_type::producer)
+              context.state = round_state::submit_block_template;
             else
-              round_state = round_state::wait_for_block_template;
+              context.state = round_state::wait_for_block_template;
           }
+        }
+        else
+        {
+          return;
         }
       }
       break;
 
       case round_state::submit_block_template:
       {
-        assert(context.round_starts.is_producer);
+        assert(context.prepare_for_round.participant == sn_type::producer);
         std::vector<service_nodes::service_node_pubkey_info> list_state = blockchain.get_service_node_list().get_service_node_list_state({key.pub});
 
         if (list_state.empty())
         {
           MINFO(log_prefix(context) << "Block producer (us) is not available on the service node list, waiting until next round");
-          round_state = round_state::wait_next_block;
+          context.state                                  = round_state::prepare_for_round;
+          context.prepare_for_round.queue_for_next_round = true;
           break;
         }
 
@@ -797,18 +730,18 @@ void pulse::main(pulse::state &state, void *quorumnet_state, cryptonote::core &c
         if (!info->is_active())
         {
           MINFO(log_prefix(context) << "Block producer (us) is not an active service node, waiting until next round");
-          round_state = thread_sleep(sleep_until::next_block_or_round, state, blockchain, context, pulse_mutex);
+          context.state                                  = round_state::prepare_for_round;
+          context.prepare_for_round.queue_for_next_round = true;
           break;
         }
 
-        MINFO(log_prefix(context) << "Validators are handshaken and ready, sending block template from producer (us) to validators.\n");
         service_nodes::payout block_producer_payouts = service_nodes::service_node_info_to_payout(key.pub, *info);
 
         cryptonote::block block = {};
         uint64_t expected_reward = 0;
-        blockchain.create_next_pulse_block_template(block, block_producer_payouts, context.height, expected_reward);
+        blockchain.create_next_pulse_block_template(block, block_producer_payouts, context.wait_for_next_block.height, expected_reward);
 
-        block.pulse.round            = context.wait_next_block.round;
+        block.pulse.round            = context.prepare_for_round.round;
         block.pulse.validator_bitset = context.submit_block_template.validator_bitset;
 
         std::string block_blob = cryptonote::t_serializable_object_to_blob(block);
@@ -817,28 +750,46 @@ void pulse::main(pulse::state &state, void *quorumnet_state, cryptonote::core &c
         crypto::signature block_signature = {};
         crypto::generate_signature(hash, core.get_service_keys().pub, core.get_service_keys().key, block_signature);
 
-        cryptonote::quorumnet_send_pulse_block_template(quorumnet_state, std::move(block_blob), block_signature, context.wait_for_round.quorum);
-        round_state = thread_sleep(sleep_until::next_block, state, blockchain, context, pulse_mutex);
+        MINFO(log_prefix(context) << "Validators are handshaken and ready, sending block template from producer (us) to validators.\n" << cryptonote::obj_to_json_str(block));
+        cryptonote::quorumnet_send_pulse_block_template(quorumnet_state, std::move(block_blob), block_signature, context.prepare_for_round.quorum);
+        context.state = round_state::wait_for_next_block;
       }
       break;
 
       case round_state::wait_for_block_template:
       {
-        assert(!context.round_starts.is_producer);
+        assert(context.prepare_for_round.participant == sn_type::validator);
         bool timed_out = pulse::clock::now() >= context.wait_for_block_template.end_time;
         if (timed_out || context.wait_for_block_template.received)
         {
-          if (context.wait_for_block_template.received)
-            MINFO(log_prefix(context) << "Valid block received: " << cryptonote::obj_to_json_str(context.wait_for_block_template.block));
-          else
-            MINFO(log_prefix(context) << "Block template not received");
+          context.state = round_state::wait_for_next_block;
+          if (!context.wait_for_block_template.received)
+          {
+            MINFO(log_prefix(context) << "Timed out, block template was not received");
+            break;
+          }
 
-          round_state = thread_sleep(sleep_until::next_block, state, blockchain, context, pulse_mutex);
+          // Check validator bitset after message is received incase we're abit
+          // behind and still waiting to receive the bitsets from other
+          // validators.
+          cryptonote::block const &block = context.wait_for_block_template.block;
+          if (block.pulse.validator_bitset != context.submit_block_template.validator_bitset)
+          {
+            auto block_bitset = std::bitset<sizeof(block.pulse.validator_bitset) * 8>(block.pulse.validator_bitset);
+            auto our_bitset   = std::bitset<sizeof(block.pulse.validator_bitset) * 8>(context.submit_block_template.validator_bitset);
+            MINFO(log_prefix(context) << "Received pulse block template specifying different validator handshake bitsets " << block_bitset << ", expected " << our_bitset);
+            return;
+          }
+
+          MINFO(log_prefix(context) << "Valid block received: " << cryptonote::obj_to_json_str(context.wait_for_block_template.block));
+        }
+        else
+        {
+          return;
         }
       }
       break;
     }
-
-    pump_messages_from_quorumnet(quorumnet_state, round_state, context, top_hash);
   }
 }
+

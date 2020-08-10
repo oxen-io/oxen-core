@@ -1541,13 +1541,11 @@ void send_pulse_validator_handshake_bit_or_bitset(void *self, bool sending_bitse
     throw std::runtime_error("Pulse: Daemon is not a service node.");
 
   pulse::message msg = {};
-  if (auto it = std::find_if(quorum.validators.begin(), quorum.validators.end(),
-          [&mypk=core.get_service_keys().pub] (auto const &pk) { return pk == mypk; }); it == quorum.validators.end())
+  if (auto it = std::find(quorum.validators.begin(), quorum.validators.end(), core.get_service_keys().pub); it == quorum.validators.end())
     throw std::runtime_error("Pulse: Could not find this node's public key in quorum");
   else
     msg.handshakes.quorum_position = it - quorum.validators.begin();
 
-  auto command = (sending_bitset) ? PULSE_CMD_SEND_VALIDATOR_BITSET : PULSE_CMD_SEND_VALIDATOR_BIT;
   if (sending_bitset)
   {
     auto buf = tools::memcpy_le(validator_bitset, top_hash.data, msg.handshakes.quorum_position);
@@ -1659,11 +1657,8 @@ void handle_pulse_participation_bit_or_bitset(Message &m, QnetState& qnet, bool 
     msg.type = pulse::message_type::handshake;
   }
 
-  {
-    std::unique_lock lock{qnet.pulse_message_queue_mutex};
-    qnet.pulse_message_queue.push(std::move(msg));
-  }
-  qnet.pulse_message_queue_cv.notify_one();
+  auto *self = reinterpret_cast<void *>(&qnet);
+  qnet.lmq.job([self, data = std::move(msg)]() { pulse::handle_message(self, data); }, qnet.core.pulse_thread_id());
 }
 
 void handle_pulse_block_template(Message &m, QnetState &qnet)
@@ -1690,34 +1685,8 @@ void handle_pulse_block_template(Message &m, QnetState &qnet)
       throw std::invalid_argument(std::string(INVALID_ARG_PREFIX) + std::string(PULSE_TAG_QUORUM_POSITION) + "'");
   }
 
-  {
-    std::unique_lock lock{qnet.pulse_message_queue_mutex};
-    qnet.pulse_message_queue.push(std::move(msg));
-  }
-  qnet.pulse_message_queue_cv.notify_one();
-}
-
-bool pulse_message_queue_pump_messages(void *self, pulse::message &msg, pulse::time_point sleep_until)
-{
-  auto qnet = static_cast<QnetState *>(self);
-  std::unique_lock lock{qnet->pulse_message_queue_mutex};
-
-  bool has_message = qnet->pulse_message_queue.size();
-  if (!has_message)
-  {
-    qnet->pulse_message_queue_cv.wait_until(lock, sleep_until, [qnet, sleep_until, &has_message]() {
-      has_message = qnet->pulse_message_queue.size();
-      return has_message || pulse::clock::now() >= sleep_until;
-    });
-  }
-
-  if (has_message)
-  {
-    msg = std::move(qnet->pulse_message_queue.front());
-    qnet->pulse_message_queue.pop();
-  }
-
-  return has_message;
+  auto *self = reinterpret_cast<void *>(&qnet);
+  qnet.lmq.job([self, data = std::move(msg)]() { pulse::handle_message(self, data); }, qnet.core.pulse_thread_id());
 }
 
 } // end empty namespace
@@ -1734,8 +1703,6 @@ void init_core_callbacks() {
     cryptonote::quorumnet_send_pulse_validator_handshake_bit    = send_pulse_validator_handshake_bit;
     cryptonote::quorumnet_send_pulse_validator_handshake_bitset = send_pulse_validator_handshake_bitset;
     cryptonote::quorumnet_send_pulse_block_template             = send_pulse_block_template;
-
-    cryptonote::quorumnet_pulse_pump_messages = pulse_message_queue_pump_messages;
 
     cryptonote::quorumnet_pulse_relay_message_to_quorum = pulse_relay_message_to_quorum;
 }
