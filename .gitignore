@@ -106,3 +106,5 @@ local.properties
 .idea/
 
 /testnet
+
+docker-compose.override.yml
