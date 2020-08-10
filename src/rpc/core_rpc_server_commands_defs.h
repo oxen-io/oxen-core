@@ -2532,10 +2532,40 @@ constexpr char const CORE_RPC_STATUS_TX_LONG_POLL_MAX_CONNECTIONS[] = "Daemon ma
     };
     typedef epee::misc_utils::struct_init<request_t> request;
 
+    struct quorum_worker
+    {
+      std::string hash; // Public key of the worker service node
+      uint64_t uptime = 0; // Uptime of the worker service node
+      BEGIN_KV_SERIALIZE_MAP()
+       KV_SERIALIZE(hash)
+       KV_SERIALIZE(uptime)
+      END_KV_SERIALIZE_MAP()
+
+      BEGIN_SERIALIZE() // NOTE: For store_t_to_json
+       FIELD(hash)
+       FIELD(uptime)
+      END_SERIALIZE()
+    };
+
+    struct quorum_validator
+    {
+      std::string hash; // Public key of the validator service node
+      uint64_t uptime = 0; // Uptime of the validator service node
+      BEGIN_KV_SERIALIZE_MAP()
+       KV_SERIALIZE(hash)
+       KV_SERIALIZE(uptime)
+      END_KV_SERIALIZE_MAP()
+
+      BEGIN_SERIALIZE() // NOTE: For store_t_to_json
+       FIELD(hash)
+       FIELD(uptime)
+      END_SERIALIZE()
+    };
+
     struct quorum_t
     {
-      std::vector<std::string> validators; // Public key of the service node
-      std::vector<std::string> workers; // Public key of the service node
+      std::vector<quorum_validator> validators;
+      std::vector<quorum_worker> workers;
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(validators)
