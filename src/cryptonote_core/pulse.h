@@ -49,18 +49,17 @@ constexpr std::string_view message_type_string(message_type type)
 struct message
 {
   message_type type;
+  uint16_t quorum_position;
+  crypto::signature signature;
 
   struct
   {
-    uint16_t quorum_position;
     uint16_t validator_bitset;   // Set if type is handshake_bitset, otherwise 0.
-    crypto::signature signature;
   } handshakes;
 
   struct
   {
     std::string blob;
-    crypto::signature signature;
   } block_template;
 };
 

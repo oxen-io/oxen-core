@@ -1449,22 +1449,22 @@ bt_dict pulse_serialize_message(pulse::message const &msg)
 
     case pulse::message_type::handshake:
     {
-      result = {{PULSE_TAG_QUORUM_POSITION, msg.handshakes.quorum_position},
-                {PULSE_TAG_SIGNATURE, tools::view_guts(msg.handshakes.signature)}};
+      result = {{PULSE_TAG_QUORUM_POSITION, msg.quorum_position},
+                {PULSE_TAG_SIGNATURE, tools::view_guts(msg.signature)}};
     }
     break;
 
     case pulse::message_type::handshake_bitset:
     {
       result = {{PULSE_TAG_VALIDATOR_BITSET, msg.handshakes.validator_bitset},
-                {PULSE_TAG_QUORUM_POSITION, msg.handshakes.quorum_position},
-                {PULSE_TAG_SIGNATURE, tools::view_guts(msg.handshakes.signature)}};
+                {PULSE_TAG_QUORUM_POSITION, msg.quorum_position},
+                {PULSE_TAG_SIGNATURE, tools::view_guts(msg.signature)}};
     }
     break;
 
     case pulse::message_type::block_template:
     {
-      result = {{PULSE_TAG_SIGNATURE, tools::view_guts(msg.block_template.signature)},
+      result = {{PULSE_TAG_SIGNATURE, tools::view_guts(msg.signature)},
                 {PULSE_TAG_BLOCK_TEMPLATE, msg.block_template.blob}};
     }
     break;
@@ -1492,10 +1492,10 @@ void pulse_relay_message_to_quorum(void *self, pulse::message const &msg, servic
     case pulse::message_type::handshake: /* FALLTHRU */
     case pulse::message_type::handshake_bitset:
     {
-      assert(msg.handshakes.quorum_position < quorum.validators.size());
+      assert(msg.quorum_position < quorum.validators.size());
 
       include_block_producer = msg.type == pulse::message_type::handshake_bitset;
-      relay_exclude.insert(quorum.validators[msg.handshakes.quorum_position]);
+      relay_exclude.insert(quorum.validators[msg.quorum_position]);
 
       if (msg.type == pulse::message_type::handshake)
         command = PULSE_CMD_SEND_VALIDATOR_BIT;
@@ -1544,24 +1544,24 @@ void send_pulse_validator_handshake_bit_or_bitset(void *self, bool sending_bitse
   if (auto it = std::find(quorum.validators.begin(), quorum.validators.end(), core.get_service_keys().pub); it == quorum.validators.end())
     throw std::runtime_error("Pulse: Could not find this node's public key in quorum");
   else
-    msg.handshakes.quorum_position = it - quorum.validators.begin();
+    msg.quorum_position = it - quorum.validators.begin();
 
   if (sending_bitset)
   {
-    auto buf = tools::memcpy_le(validator_bitset, top_hash.data, msg.handshakes.quorum_position);
+    auto buf = tools::memcpy_le(validator_bitset, top_hash.data, msg.quorum_position);
     crypto::hash hash;
     crypto::cn_fast_hash(buf.data(), buf.size(), hash);
-    crypto::generate_signature(hash, core.get_service_keys().pub, core.get_service_keys().key, msg.handshakes.signature);
+    crypto::generate_signature(hash, core.get_service_keys().pub, core.get_service_keys().key, msg.signature);
 
     msg.type                        = pulse::message_type::handshake_bitset;
     msg.handshakes.validator_bitset = validator_bitset;
   }
   else
   {
-    auto buf = tools::memcpy_le(top_hash.data, msg.handshakes.quorum_position);
+    auto buf = tools::memcpy_le(top_hash.data, msg.quorum_position);
     crypto::hash hash;
     crypto::cn_fast_hash(buf.data(), buf.size(), hash);
-    crypto::generate_signature(hash, core.get_service_keys().pub, core.get_service_keys().key, msg.handshakes.signature);
+    crypto::generate_signature(hash, core.get_service_keys().pub, core.get_service_keys().key, msg.signature);
 
     msg.type = pulse::message_type::handshake;
   }
@@ -1584,10 +1584,10 @@ void send_pulse_block_template(void *self, std::string &&blob, crypto::signature
   QnetState &qnet        = *static_cast<QnetState *>(self);
   cryptonote::core &core = qnet.core;
 
-  pulse::message msg           = {};
-  msg.type                     = pulse::message_type::block_template;
-  msg.block_template.blob      = std::move(blob);
-  msg.block_template.signature = signature;
+  pulse::message msg      = {};
+  msg.type                = pulse::message_type::block_template;
+  msg.signature           = signature;
+  msg.block_template.blob = std::move(blob);
 
   pulse_relay_message_to_quorum(self, msg, quorum, true /*block_producer*/);
 }
@@ -1644,9 +1644,9 @@ void handle_pulse_participation_bit_or_bitset(Message &m, QnetState& qnet, bool 
     }
   }
 
-  pulse::message msg             = {};
-  msg.handshakes.signature       = signature;
-  msg.handshakes.quorum_position = quorum_position;
+  pulse::message msg  = {};
+  msg.signature       = signature;
+  msg.quorum_position = quorum_position;
   if (bitset)
   {
     msg.type                        = pulse::message_type::handshake_bitset;
@@ -1673,8 +1673,8 @@ void handle_pulse_block_template(Message &m, QnetState &qnet)
     std::string_view INVALID_ARG_PREFIX = "Invalid pulse block template: missing required field '"sv;
 
     if (data.skip_until(PULSE_TAG_SIGNATURE)) {
-      auto sig_str                 = data.consume_string_view();
-      msg.block_template.signature = convert_string_view_bytes_to_signature(sig_str);
+      auto sig_str  = data.consume_string_view();
+      msg.signature = convert_string_view_bytes_to_signature(sig_str);
     } else {
       throw std::invalid_argument(std::string(INVALID_ARG_PREFIX) + std::string(PULSE_TAG_SIGNATURE) + "'");
     }
