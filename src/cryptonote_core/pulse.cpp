@@ -21,11 +21,12 @@ enum struct round_state
   wait_for_round,
 
   submit_handshakes,
-  wait_for_handshakes_then_submit_bitset,
+  wait_for_handshakes,
 
+  submit_handshake_bitset,
   wait_for_handshake_bitsets,
-  submit_block_template,
 
+  submit_block_template,
   wait_for_block_template,
 };
 
@@ -39,11 +40,12 @@ constexpr std::string_view round_state_string(round_state state)
     case round_state::wait_for_round: return "Wait For Round"sv;
 
     case round_state::submit_handshakes: return "Submit Handshakes"sv;
-    case round_state::wait_for_handshakes_then_submit_bitset: return "Wait For Handshakes Then Submit Bitset"sv;
+    case round_state::wait_for_handshakes: return "Wait For Handshakes"sv;
 
+    case round_state::submit_handshake_bitset: return "Submit Handshake Bitset"sv;
     case round_state::wait_for_handshake_bitsets: return "Wait For Validator Handshake Bitsets"sv;
-    case round_state::submit_block_template: return "Submit Block Template"sv;
 
+    case round_state::submit_block_template: return "Submit Block Template"sv;
     case round_state::wait_for_block_template: return "Wait For Block Template"sv;
   }
 
@@ -83,7 +85,7 @@ struct round_context
     pulse::time_point start_time;
     pulse::time_point end_time;
     bool all_received() { return validator_bits == service_nodes::pulse_validator_bit_mask(); }
-  } wait_for_handshakes_then_submit_bitset;
+  } wait_for_handshakes;
 
   struct
   {
@@ -134,9 +136,9 @@ bool msg_time_check(round_context const &context, pulse::message const &msg, pul
     stream << log_prefix(context) << "Dropping " << pulse::message_type_string(msg.type) << " message from validator " << msg.quorum_position << ", message arrived ";
 
     if (now < start)
-      stream << tools::get_human_readable_timespan(context.wait_for_handshakes_then_submit_bitset.end_time - now) << " early";
+      stream << tools::get_human_readable_timespan(context.wait_for_handshakes.end_time - now) << " early";
     else
-      stream << tools::get_human_readable_timespan(now - context.wait_for_handshakes_then_submit_bitset.end_time) << " late";
+      stream << tools::get_human_readable_timespan(now - context.wait_for_handshakes.end_time) << " late";
 
     MINFO(stream.str());
     return false;
@@ -226,17 +228,17 @@ void pulse::handle_message(void *quorumnet_state, pulse::message const &msg)
     {
       // TODO(doyle): We need some lenience in time for accepting early
       // handshakes in case clocks are slightly out of sync.
-      if (!msg_time_check(context, msg, pulse::clock::now(), context.wait_for_handshakes_then_submit_bitset.start_time, context.wait_for_handshakes_then_submit_bitset.end_time))
+      if (!msg_time_check(context, msg, pulse::clock::now(), context.wait_for_handshakes.start_time, context.wait_for_handshakes.end_time))
         return;
 
       uint16_t quorum_position_bit = 1 << msg.quorum_position;
-      relay_message = ((context.wait_for_handshakes_then_submit_bitset.validator_bits & quorum_position_bit) == 0);
-      context.wait_for_handshakes_then_submit_bitset.validator_bits |= quorum_position_bit;
+      relay_message = ((context.wait_for_handshakes.validator_bits & quorum_position_bit) == 0);
+      context.wait_for_handshakes.validator_bits |= quorum_position_bit;
 
       if (relay_message) // First time seen handshake
       {
         auto position_bitset  = std::bitset<sizeof(quorum_position_bit) * 8>(quorum_position_bit);
-        auto validator_bitset = std::bitset<sizeof(quorum_position_bit) * 8>(context.wait_for_handshakes_then_submit_bitset.validator_bits);
+        auto validator_bitset = std::bitset<sizeof(quorum_position_bit) * 8>(context.wait_for_handshakes.validator_bits);
         MINFO(log_prefix(context) << "Received handshake with quorum position bit (" << msg.quorum_position <<") " << position_bitset << " saved to bitset " << validator_bitset);
       }
     }
@@ -244,7 +246,7 @@ void pulse::handle_message(void *quorumnet_state, pulse::message const &msg)
 
     case pulse::message_type::handshake_bitset:
     {
-      if (!msg_time_check(context, msg, pulse::clock::now(), context.wait_for_handshakes_then_submit_bitset.start_time, context.wait_for_handshake_bitsets.end_time))
+      if (!msg_time_check(context, msg, pulse::clock::now(), context.wait_for_handshakes.start_time, context.wait_for_handshake_bitsets.end_time))
         return;
 
       uint16_t prev_bitset = context.wait_for_handshake_bitsets.bitsets[msg.quorum_position];
@@ -263,7 +265,7 @@ void pulse::handle_message(void *quorumnet_state, pulse::message const &msg)
       if (context.wait_for_block_template.received)
         return;
 
-      if (!msg_time_check(context, msg, pulse::clock::now(), context.wait_for_handshakes_then_submit_bitset.start_time, context.wait_for_block_template.end_time))
+      if (!msg_time_check(context, msg, pulse::clock::now(), context.wait_for_handshakes.start_time, context.wait_for_block_template.end_time))
         return;
 
       cryptonote::block block = {};
@@ -344,9 +346,13 @@ Yes +-----[Quorumnet Comm Failure]                        |
     |      |                                              |
     |      | Yes                                          |
     |      |                                              |
-    |     +----------------------------------------+      |
-    |     | Wait For Handshakes Then Submit Bitset |      |
-    |     +----------------------------------------+      |
+    |     +---------------------+                         |
+    |     | Wait For Handshakes |                         |
+    |     +---------------------+                         |
+    |      |                                              |
+    |     +-------------------------+                     |
+    |     | Submit Handshake Bitset |                     |
+    |     +-------------------------+                     |
     |      |                                              |
 Yes +-----[Quorumnet Comm Failure]                        |
     |      |                                              |
@@ -530,7 +536,7 @@ event_loop wait_for_next_block(uint64_t hf16_height, round_context &context, cry
 
 event_loop prepare_for_round(round_context &context, service_nodes::service_node_keys const &key, cryptonote::Blockchain const &blockchain)
 {
-  context.wait_for_handshakes_then_submit_bitset        = {};
+  context.wait_for_handshakes        = {};
   context.wait_for_handshake_bitsets = {};
   context.submit_block_template      = {};
   context.wait_for_block_template    = {};
@@ -562,9 +568,9 @@ event_loop prepare_for_round(round_context &context, service_nodes::service_node
   }
 
   auto start_time = context.wait_for_next_block.round_0_start_time + (context.prepare_for_round.round * service_nodes::PULSE_ROUND_TIME);
-  context.wait_for_handshakes_then_submit_bitset.start_time      = start_time;
-  context.wait_for_handshakes_then_submit_bitset.end_time        = start_time                                  + service_nodes::PULSE_WAIT_FOR_HANDSHAKES_DURATION;
-  context.wait_for_handshake_bitsets.end_time = context.wait_for_handshakes_then_submit_bitset.end_time        + service_nodes::PULSE_WAIT_FOR_OTHER_VALIDATOR_HANDSHAKES_DURATION;
+  context.wait_for_handshakes.start_time      = start_time;
+  context.wait_for_handshakes.end_time        = start_time                                  + service_nodes::PULSE_WAIT_FOR_HANDSHAKES_DURATION;
+  context.wait_for_handshake_bitsets.end_time = context.wait_for_handshakes.end_time        + service_nodes::PULSE_WAIT_FOR_OTHER_VALIDATOR_HANDSHAKES_DURATION;
   context.wait_for_block_template.end_time    = context.wait_for_handshake_bitsets.end_time + service_nodes::PULSE_WAIT_FOR_BLOCK_TEMPLATE_DURATION;
 
   context.prepare_for_round.quorum =
@@ -659,9 +665,9 @@ event_loop submit_handshakes(round_context &context, void *quorumnet_state)
   assert(context.prepare_for_round.participant == sn_type::validator);
   try
   {
-    context.wait_for_handshakes_then_submit_bitset.validator_bits |= (1 << context.prepare_for_round.my_quorum_position); // Add myself
+    context.wait_for_handshakes.validator_bits |= (1 << context.prepare_for_round.my_quorum_position); // Add myself
     cryptonote::quorumnet_send_pulse_validator_handshake_bit(quorumnet_state, context.prepare_for_round.quorum, context.wait_for_next_block.top_hash);
-    context.state = round_state::wait_for_handshakes_then_submit_bitset;
+    context.state = round_state::wait_for_handshakes;
   }
   catch (std::exception const &e)
   {
@@ -673,41 +679,50 @@ event_loop submit_handshakes(round_context &context, void *quorumnet_state)
   return event_loop::return_to_caller;
 }
 
-event_loop wait_for_handshakes_then_submit_bitset(round_context &context, void *quorumnet_state)
+event_loop wait_for_handshakes(round_context &context, void *quorumnet_state)
 {
   assert(context.prepare_for_round.participant == sn_type::validator);
   assert(context.prepare_for_round.my_quorum_position < context.wait_for_handshake_bitsets.bitsets.size());
 
-  bool timed_out      = pulse::clock::now() >= context.wait_for_handshakes_then_submit_bitset.end_time;
-  bool all_handshakes = context.wait_for_handshakes_then_submit_bitset.all_received();
+  bool timed_out      = pulse::clock::now() >= context.wait_for_handshakes.end_time;
+  bool all_handshakes = context.wait_for_handshakes.all_received();
 
   if (all_handshakes || timed_out)
   {
-    assert(context.prepare_for_round.my_quorum_position < context.wait_for_handshake_bitsets.bitsets.size());
-    std::bitset<8 * sizeof(context.wait_for_handshakes_then_submit_bitset.validator_bits)> bitset = context.wait_for_handshakes_then_submit_bitset.validator_bits;
-
-    context.wait_for_handshake_bitsets.bitsets[context.prepare_for_round.my_quorum_position] = context.wait_for_handshakes_then_submit_bitset.validator_bits;
+    // Add my own bitset to the collected set.
+    context.wait_for_handshake_bitsets.bitsets[context.prepare_for_round.my_quorum_position] = context.wait_for_handshakes.validator_bits;
     context.wait_for_handshake_bitsets.bitsets_count++;
 
-    bool missing_handshakes = timed_out && !all_handshakes;
-    MINFO(log_prefix(context) << "Collected validator handshakes " << bitset << (missing_handshakes ? ", we timed out and some handshakes were not seen! " : ". ") << "Sending handshake bitset and collecting other validator bitsets.");
-    try
+    // Log collected handshake state
     {
-      cryptonote::quorumnet_send_pulse_validator_handshake_bitset(quorumnet_state, context.prepare_for_round.quorum, context.wait_for_next_block.top_hash, context.wait_for_handshakes_then_submit_bitset.validator_bits);
-      context.state = round_state::wait_for_handshake_bitsets;
-    }
-    catch(std::exception const &e)
-    {
-      MERROR(log_prefix(context) << "Attempting to invoke and send a Pulse validator bitset unexpectedly failed. " << e.what());
-      context.state                                  = round_state::prepare_for_round;
-      context.prepare_for_round.queue_for_next_round = true;
-      return event_loop::keep_running;
+      bool missing_handshakes = timed_out && !all_handshakes;
+      std::bitset<8 * sizeof(context.wait_for_handshakes.validator_bits)> bitset = context.wait_for_handshakes.validator_bits;
+      MINFO(log_prefix(context) << "Collected validator handshakes " << bitset << (missing_handshakes ? ", we timed out and some handshakes were not seen! " : ". ") << "Sending handshake bitset and collecting other validator bitsets.");
     }
 
+    context.state = round_state::submit_handshake_bitset;
     return event_loop::keep_running;
   }
 
   return event_loop::return_to_caller;
+}
+
+event_loop submit_handshake_bitset(round_context &context, void *quorumnet_state)
+{
+  assert(context.prepare_for_round.participant == sn_type::validator);
+  try
+  {
+    cryptonote::quorumnet_send_pulse_validator_handshake_bitset(quorumnet_state, context.prepare_for_round.quorum, context.wait_for_next_block.top_hash, context.wait_for_handshakes.validator_bits);
+    context.state = round_state::wait_for_handshake_bitsets;
+  }
+  catch(std::exception const &e)
+  {
+    MERROR(log_prefix(context) << "Attempting to invoke and send a Pulse validator bitset unexpectedly failed. " << e.what());
+    context.state                                  = round_state::prepare_for_round;
+    context.prepare_for_round.queue_for_next_round = true;
+  }
+
+  return event_loop::keep_running;
 }
 
 event_loop wait_for_handshake_bitsets(round_context &context)
@@ -903,8 +918,12 @@ void pulse::main(void *quorumnet_state, cryptonote::core &core)
         loop = submit_handshakes(context, quorumnet_state);
         break;
 
-      case round_state::wait_for_handshakes_then_submit_bitset:
-        loop = wait_for_handshakes_then_submit_bitset(context, quorumnet_state);
+      case round_state::wait_for_handshakes:
+        loop = wait_for_handshakes(context, quorumnet_state);
+        break;
+
+      case round_state::submit_handshake_bitset:
+        loop = submit_handshake_bitset(context, quorumnet_state);
         break;
 
       case round_state::wait_for_handshake_bitsets:
