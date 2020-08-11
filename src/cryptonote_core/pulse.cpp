@@ -261,109 +261,163 @@ void pulse::handle_message(void *quorumnet_state, pulse::message const &msg)
     cryptonote::quorumnet_pulse_relay_message_to_quorum(quorumnet_state, msg, context.prepare_for_round.quorum, context.prepare_for_round.participant == sn_type::producer);
 }
 
-// TODO(doyle): Update control flow graph for change to event based Pulse worker
 /*
-  'round_state' State Machine Flow Graph
+  Pulse progresses via a state-machine that is iterated through job submissions
+  to 1 dedicated Pulse thread, started by LMQ.
 
-  +-----------------+
-  | Wait Next Block | <-----+
-  +-----------------+       |
-   |                        |
-   |                        |
-   V                      +-|-+
-  +----------------+      | | |
-  | Wait For Round |<-----+ | +------------------------------+
-  +----------------+        |                                |
-   |                        |                                |
-  [Enough SN's for Pulse?]--+ No                             |
-   |                        |                                |
-   | Yes                    |                                |
-   |                        |                                |
-  [Block Height Changed?]---+ Yes                            |
-   |                                                         |
-   | No                                                      |
-   |                                                         |
-  +---------------------+                                    |
-  | Round Starts        |                                    |
-  +---------------------+                                    |
-   |                          No                             |
-  [Are we a Block Validator?]------[Are we a Block Leader?]--+ No
-   |                                        |                |
-   | Yes                                    | Yes            |
-   |                                        |                |
-  [Send Handshakes Fail?]------------------------------------+
-   |                                        |                |
-   | No                                     |                |
-   |                                        |                |
-   V                                        |                |
-  +---------------------+                   |                |
-  | Wait For Handshakes |                   |                |
-  +---------------------+                   |                |
-   |                                        |                |
-  [Send Handshake Bitsets Fails?]----------------------------+
-   |                                        |                |
-   | No                                     |                |
-   |                                        |                |
-   V                                        V                |
-  +--------------------------------------------+             |
-  | Wait For Other Validator Handshake Bitsets |             |
-  +--------------------------------------------+             |
-   |                                                         |
-  [Quorumnet Comms Fail?]------------------------------------+
-   |                      Yes
-   | No
-   |
-   V
-  +-----------------------+
-  | Submit Block Template |
-  +-----------------------+
+  Iterating the state-machine is done by a periodic invocation of
+  pulse::main(...) and messages received via Quorumnet for Pulse, which are
+  queued in the thread's job queue.
 
-  Wait Next Block:
-    - Sleeps until the timestamp of the next block has arrived.
+  Using 1 dedicated thread via LMQ avoids any synchronization required in the
+  user code when implementing Pulse.
 
-      Next Block Timestamp = G.Timestamp + (height * 2min)
+  Skip control flow graph for textual description of stages.
 
-      Where 'G' is the base Pulse genesis block. That is determined by the
-      following
+          +---------------------+
+          | Wait For Next Block |<--------+-------+
+          +---------------------+         |       |
+           |                              |       |
+           +-[Blocks for round acquired]--+ No    |
+           |                              |       |
+           | Yes                          |       |
+           |                              |       |
+          +---------------------+         |       |
+    +---->| Prepare For Round   |         |       |
+    |     +---------------------+         |       |
+    |      |                              |       |
+    |     [Enough SN's for Pulse]---------+ No    |
+    |      |                                      |
+    |     Yes                                     |
+    |      |                                      |
+ No +-----[Participating in Quorum?]              |
+    |      |                                      |
+    |      | Yes                                  |
+    |      |                                      |
+    |     +---------------------+                 |
+    |     | Wait For Round      |                 |
+    |     +---------------------+                 |
+    |      |                                      |
+    |     [Block Height Changed?]-----------------+ Yes
+    |      |
+    |      | No
+    |      |
+    |     [Validator?]------------------+ No (We are Block Producer)
+    |      |                            |
+    |      | Yes                        |
+    |      |                            |
+    |     +---------------------+       |
+    |     | Submit Handshakes   |       |
+    |     +---------------------+       |
+    |      |                            +-----------------+
+Yes +-----[Quorumnet Comm Failure]                        |
+    |      |                                              |
+    |      | Yes                                          |
+    |      |                                              |
+    |     +----------------------------------------+      |
+    |     | Wait For Handshakes Then Submit Bitset |      |
+    |     +----------------------------------------+      |
+    |      |                                              |
+Yes +-----[Quorumnet Comm Failure]                        |
+    |      |                                              |
+    |      | No                                           |
+    |      |                                              |
+    |     +----------------------------+                  |
+    |     | Wait For Handshake Bitsets |<-----------------+
+    |     +----------------------------+
+    |      |
+Yes +-----[Insufficient Bitsets]
+    |      |
+    |      | No
+    |      |
+    |     +-----------------------+
+    |     | Submit Block Template |
+    |     +-----------------------+
+    |      |
+ No +-----[Block Producer Passes SN List Checks]
+           |
+           | Yes
+           |
+          +-------------------------+
+          | Wait For Block Template |
+          +-------------------------+
+           |
+           | TODO(loki): TBD
+           |
+           V
 
-      Genesis Block = max(HF16 block height, latest block height produced by Miner).
+  Wait For Next Block:
+    - Checks for the next block in the blockchain to arrive. If it hasn't
+      arrived yet, return to the caller.
+
+    - Retrieves the blockchain metadata for starting a Pulse Round including the
+      Genesis Pulse Block for the base timestamp and the top block hash and
+      height for signatures.
+
+    - // TODO(loki): After the Genesis Pulse Block is checkpointed, we can
+      // remove it from the event loop. Right now we recheck every block incase
+      // of (the very unlikely event) reorgs that might change the block at the
+      // hardfork.
+
+    - The next block timestamp is determined by
+
+      G.Timestamp + (height * TARGET_BLOCK_TIME)
+
+      Where 'G' is the base Pulse genesis block, i.e. the hardforking block
+      activating Pulse (HF16).
 
       In case of the Service Node network failing, i.e. (pulse round > 255) or
       insufficient Service Nodes for Pulse, mining is re-activated and accepted
-      as the next block in the blockchain. This resets the genesis block in
-      which future Pulse block timestamps are based off.
+      as the next block in the blockchain.
 
-      This prevents a situation where a long time could elapse between the next
-      miner block at a chain halt. Upon receiving the miner block, overdue
-      Pulse blocks would rapidly be generated in the chain to catch up to the
-      supposed timestamp the chain should be at.
+      // TODO(loki): Activating mining on (Pulse Round > 255) needs to be
+      // implemented.
+
+  Prepare For Round:
+    - Generate data for executing the round such as the Quorum and stage
+      durations depending on the round Pulse is at by comparing the clock with
+      the ideal block timestamp.
+
+    - The state machine *always* reverts to 'Prepare For Round' when any
+      subsequent stage fails, except in the cases where Pulse can not proceed
+      because of an insufficient Service Node network.
 
   Wait For Round:
-    - Generate Pulse quorum, if there are insufficient Service Nodes, we sleep
-      until the next Proof-of-Work block arrives.
-    - Sleep until the round should start.
+    - Checks clock against the next expected Pulse timestamps has elapsed,
+      otherwise returns to caller.
 
-  Start Handshaking:
-    - The Block Producer skips to waiting for the handshake bitsets from each validator
-    - If not participating, the node waits until the next block or round and
-      re-checks participation.
+    - If we are a validator we 'Submit Handshakes' with other Validators
+      If we are a block producer we skip to 'Wait For Handshake Bitset' and
+      await the final handshake bitsets from all the Validators
+
+  Submit Handshakes:
     - Block Validators handshake to confirm participation in the round and collect other handshakes.
 
-  Wait For Handshakes:
+  Wait For Handshakes Then Submit Bitset:
     - Validators will each individually collect handshakes and build up a
       bitset of validators perceived to be participating.
-    - Block on the pulse message queue which receives the individual handshake
-      bits from Quorumnet until timeout or all handshakes received.
+
+    - When all handshakes are received we submit our bitset and progress to
+      'Wait For Handshake Bitsets'
 
   Wait For Handshake Bitset:
     - Validators will each individually collect the handshake bitsets similar
       to Wait For Handshakes.
+
     - Upon receipt, the most common agreed upon bitset is used to lock in
       participation for the round. The round proceeds if more than 60% of the
-      validators are participating, the round fails otherwise.
+      validators are participating, the round fails otherwise and reverts to
+      'Prepare For Round'.
+
+    - If we are a validator we go to 'Wait For Block Template'
+    - If we are a block producer we go to 'Submit Block Template'
 
   Submit Block Template:
-    - TBD
+    - Block producer signs the block template with the validator bitset and
+      pulse round applied to the block and submits it the Validators
+
+  Wait For Block Template:
+    - TODO(loki): TBD
 
 */
 
@@ -539,8 +593,15 @@ event_loop prepare_for_round(round_context &context, service_nodes::service_node
   return event_loop::keep_running;
 }
 
-event_loop wait_for_round(round_context &context)
+event_loop wait_for_round(round_context &context, cryptonote::Blockchain const &blockchain)
 {
+  if (context.wait_for_next_block.height != blockchain.get_current_blockchain_height(true /*lock*/))
+  {
+    MINFO(log_prefix(context) << "Block height changed whilst waiting for round " << +context.prepare_for_round.round << ", restarting Pulse stages");
+    context.state = round_state::wait_for_next_block;
+    return event_loop::keep_running;
+  }
+
   auto start_time = context.wait_for_next_block.round_0_start_time + (context.prepare_for_round.round * service_nodes::PULSE_ROUND_TIME);
   if (auto now = pulse::clock::now(); now < start_time)
   {
@@ -805,7 +866,7 @@ void pulse::main(void *quorumnet_state, cryptonote::core &core)
         break;
 
       case round_state::wait_for_round:
-        loop = wait_for_round(context);
+        loop = wait_for_round(context, blockchain);
         break;
 
       case round_state::submit_handshakes:
