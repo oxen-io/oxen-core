@@ -264,7 +264,6 @@ namespace cryptonote { namespace rpc {
     FLUSH_CACHE::response                               invoke(FLUSH_CACHE::request&& req, rpc_context);
 
 #if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
-
     void on_relay_uptime_and_votes()
     {
       m_core.submit_uptime_proof();
@@ -289,15 +288,15 @@ namespace cryptonote { namespace rpc {
         return;
       }
 
-      for (uint64_t i = 0; i < num_blocks; i++)
+      uint64_t height = m_core.get_current_blockchain_height();
+      if (!miner.start(info.address, 1, num_blocks))
       {
-        if(!miner.debug_mine_singular_block(info.address))
-        {
-          std::cout << "Failed, mining not started";
-          return;
-        }
+        std::cout << "Failed, mining not started";
+        return;
       }
 
+      while (m_core.get_current_blockchain_height() != (height + num_blocks))
+        std::this_thread::sleep_for(500ms);
       std::cout << "Mining stopped in daemon";
     }
 #endif
