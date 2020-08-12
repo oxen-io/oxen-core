@@ -28,9 +28,12 @@
 
 #pragma once
 
+#include <chrono>
 #include <mutex>
+#include <future>
 #include <shared_mutex>
 #include <string_view>
+#include <lokimq/bt_serialize.h>
 #include "serialization/serialization.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
 #include "cryptonote_core/service_node_rules.h"
@@ -38,8 +41,11 @@
 #include "cryptonote_core/service_node_quorum_cop.h"
 #include "common/util.h"
 
+using namespace std::chrono_literals;
+
 namespace cryptonote
 {
+class core;
 class Blockchain;
 class BlockchainDB;
 struct checkpoint_t;
@@ -59,6 +65,44 @@ namespace service_nodes
       KV_SERIALIZE(voted);
     END_KV_SERIALIZE_MAP()
   };
+
+  // tracks lokinet's PeerStats struct and is used to reflect the behavior of a service node's peers on the lokinet network
+  struct lokinet_peer_stats
+  {
+    std::string router_id;
+
+    int32_t num_connection_attempts = 0;
+    int32_t num_connection_successes = 0;
+    int32_t num_connection_rejections = 0;
+    int32_t num_connection_timeouts = 0;
+
+    int32_t num_path_builds = 0;
+    int64_t num_packets_attempted = 0;
+    int64_t num_packets_sent = 0;
+    int64_t num_packets_dropped = 0;
+    int64_t num_packets_resent = 0;
+
+    int32_t num_distinct_rcs_received = 0;
+    int32_t num_late_rcs = 0;
+
+    int64_t peak_bandwidth_bytes_per_sec = 0;
+    std::chrono::milliseconds longest_rc_receive_interval = 0ms;
+    std::chrono::milliseconds least_rc_remaining_lifetime = 0ms;
+    std::chrono::milliseconds last_rc_updated = 0ms;
+
+    // Decodes a peerstats into this existing struct
+    void bt_decode(std::string_view data);
+    void bt_decode(const lokimq::bt_dict& dict);
+  };
+  using peer_stats_map = std::unordered_map<crypto::ed25519_public_key, lokinet_peer_stats>;
+
+  // functions for converting lokinet's RouterID string representation to/from an ed25519 public key
+  crypto::ed25519_public_key parse_router_id(std::string_view router_id);
+  std::string ed25519_pubkey_to_router_id(const crypto::ed25519_public_key& pubkey);
+
+  // Decodes a list of peer stats
+  peer_stats_map bt_decode_peer_stats_map(std::string_view data);
+
 
   struct proof_info
   {
@@ -82,6 +126,8 @@ namespace service_nodes
 
     // Derived from pubkey_ed25519, not serialized
     crypto::x25519_public_key pubkey_x25519 = crypto::x25519_public_key::null();
+
+    std::chrono::milliseconds last_rc_updated_ms = 0ms;
 
     // Updates pubkey_ed25519 to the given key, re-deriving the x25519 key if it actually changes
     // (does nothing if the key is the same as the current value).  If x25519 derivation fails then
@@ -328,6 +374,9 @@ namespace service_nodes
     bool is_service_node(const crypto::public_key& pubkey, bool require_active = true) const;
     bool is_key_image_locked(crypto::key_image const &check_image, uint64_t *unlock_height = nullptr, service_node_info::contribution_t *the_locked_contribution = nullptr) const;
     uint64_t height() const { return m_state.height; }
+
+    // makes a request to lokinet to retrieve peer stats for a given list of service nodes
+    std::future<peer_stats_map> update_peer_stats(const cryptonote::core& core, std::vector<std::string> router_ids);
 
     /// Note(maxim): this should not affect thread-safety as the returned object is const
     ///

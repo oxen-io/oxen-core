@@ -59,6 +59,7 @@ namespace service_nodes
     {
       buf_ptr += snprintf(buf_ptr, buf_end - buf_ptr, "Service Node is currently failing the following tests: ");
       if (!uptime_proved)         buf_ptr += snprintf(buf_ptr, buf_end - buf_ptr, "Uptime proof missing. ");
+      if (!rc_received_recently)  buf_ptr += snprintf(buf_ptr, buf_end - buf_ptr, "RC not received recently. ");
       if (!voted_in_checkpoints)  buf_ptr += snprintf(buf_ptr, buf_end - buf_ptr, "Skipped voting in at least %d checkpoints. ", (int)(CHECKPOINT_NUM_QUORUMS_TO_PARTICIPATE_IN - CHECKPOINT_MAX_MISSABLE_VOTES));
       buf_ptr += snprintf(buf_ptr, buf_end - buf_ptr, "Note: Storage server may not be reachable. This is only testable by an external Service Node.");
     }
@@ -83,20 +84,25 @@ namespace service_nodes
     service_node_test_results result; // Defaults to true for individual tests
     bool ss_reachable = true;
     uint64_t timestamp = 0;
+    uint64_t rc_timestamp = 0;
     decltype(std::declval<proof_info>().public_ips) ips{};
     decltype(std::declval<proof_info>().votes) votes;
     m_core.get_service_node_list().access_proof(pubkey, [&](const proof_info &proof) {
         ss_reachable = proof.storage_server_reachable;
         timestamp = std::max(proof.timestamp, proof.effective_timestamp);
+        rc_timestamp = proof.last_rc_updated_ms.count() / 1000;
         ips = proof.public_ips;
         votes = proof.votes;
     });
     uint64_t time_since_last_uptime_proof = std::time(nullptr) - timestamp;
+    uint64_t time_since_last_rc_received = std::time(nullptr) - rc_timestamp;
 
     bool check_uptime_obligation     = true;
+    bool check_rc_received_obligation= true;
     bool check_checkpoint_obligation = true;
 
 #if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
+    // TODO: provide similar override for rc received obligation
     if (integration_test::state.disable_obligation_uptime_proof) check_uptime_obligation = false;
     if (integration_test::state.disable_obligation_checkpointing) check_checkpoint_obligation = false;
 #endif
@@ -108,6 +114,15 @@ namespace service_nodes
                            << UPTIME_PROOF_MAX_TIME_IN_SECONDS << "s. Time since last uptime proof was: "
                            << tools::get_human_readable_timespan(std::chrono::seconds(time_since_last_uptime_proof)));
       result.uptime_proved = false;
+    }
+
+    if (check_rc_received_obligation && time_since_last_rc_received > LOKINET_RC_RECEIVED_MAX_IN_SECONDS)
+    {
+      LOG_PRINT_L1(
+          "Service Node: " << pubkey << ", failed RouterContact publishing obligation check: last RC was older than: "
+                           << LOKINET_RC_RECEIVED_MAX_IN_SECONDS << "s. Time since last RC receipt was: "
+                           << tools::get_human_readable_timespan(std::chrono::seconds(time_since_last_rc_received)));
+      result.rc_received_recently = false;
     }
 
     if (!ss_reachable)
@@ -203,9 +218,13 @@ namespace service_nodes
 
   void quorum_cop::process_quorums(cryptonote::block const &block)
   {
+    MFATAL("process_quorums");
     uint8_t const hf_version = block.major_version;
     if (hf_version < cryptonote::network_version_9_service_nodes)
+    {
+      MFATAL("hf_version < version_9");
       return;
+    }
 
     uint64_t const REORG_SAFETY_BUFFER_BLOCKS = (hf_version >= cryptonote::network_version_12_checkpointing)
                                                     ? REORG_SAFETY_BUFFER_BLOCKS_POST_HF12
@@ -216,11 +235,17 @@ namespace service_nodes
     uint64_t const height        = cryptonote::get_block_height(block);
     uint64_t const latest_height = std::max(m_core.get_current_blockchain_height(), m_core.get_target_blockchain_height());
     if (latest_height < VOTE_LIFETIME)
+    {
+      MFATAL("< VOTE_LIFETIME");
       return;
+    }
 
     uint64_t const start_voting_from_height = latest_height - VOTE_LIFETIME;
     if (height < start_voting_from_height)
+    {
+      MFATAL("< start_voting_from_height");
       return;
+    }
 
     service_nodes::quorum_type const max_quorum_type = service_nodes::max_quorum_type_for_hf(hf_version);
     bool tested_myself_once_per_block                = false;
@@ -247,6 +272,7 @@ namespace service_nodes
 
         case quorum_type::obligations:
         {
+          MFATAL("obligations quorum");
 
           m_obligations_height = std::max(m_obligations_height, start_voting_from_height);
           for (; m_obligations_height < (height - REORG_SAFETY_BUFFER_BLOCKS); m_obligations_height++)
@@ -283,10 +309,16 @@ namespace service_nodes
             // NOTE: Wait at least 2 hours before we're allowed to vote so that we collect necessary voting information from people on the network
             bool alive_for_min_time = live_time >= MIN_TIME_IN_S_BEFORE_VOTING;
             if (!alive_for_min_time)
+            {
+              MFATAL("not up long enough");
               continue;
+            }
 
             if (!m_core.service_node())
+            {
+              MFATAL("not a service node");
               continue;
+            }
 
             auto quorum = m_core.get_quorum(quorum_type::obligations, m_obligations_height);
             if (!quorum)
@@ -296,16 +328,49 @@ namespace service_nodes
               continue;
             }
 
-            if (quorum->workers.empty()) continue;
+            MFATAL("ALMOST THERE...");
+
+            if (quorum->workers.empty())
+            {
+              MFATAL("No workers...");
+              continue;
+            }
+
+            if (not voting_enabled)
+            {
+              MFATAL("voting disabled...");
+            }
+
             int index_in_group = voting_enabled ? find_index_in_quorum_group(quorum->validators, my_keys.pub) : -1;
+            MFATAL("index_in_group" << index_in_group);
             if (index_in_group >= 0)
             {
               //
               // NOTE: I am in the quorum
               //
               auto worker_states = m_core.get_service_node_list_state(quorum->workers);
-              auto worker_it = worker_states.begin();
               std::unique_lock lock{m_lock};
+
+              // make first pass to calculate nodes we are going to vote on
+              std::vector<std::string> router_ids;
+              router_ids.reserve(worker_states.size());
+              for (const auto& state : worker_states)
+              {
+                m_core.get_service_node_list().access_proof(state.pubkey, [&](const proof_info &proof) {
+                  router_ids.push_back(ed25519_pubkey_to_router_id(proof.pubkey_ed25519));
+                });
+              }
+
+              // TODO: we unlock our mutex, make our request, and then wait for it to return. this should be done
+              //       with a better asynchronous model.
+              lock.unlock();
+
+              auto future = m_core.get_service_node_list().update_peer_stats(m_core, router_ids);
+              auto peer_stats = future.get();
+              // TODO: inspect peer stats and modify proofs
+
+              lock.lock();
+              auto worker_it = worker_states.begin();
               int good = 0, total = 0;
               for (size_t node_index = 0; node_index < quorum->workers.size(); ++worker_it, ++node_index)
               {
@@ -475,6 +540,7 @@ namespace service_nodes
 
   bool quorum_cop::block_added(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs, cryptonote::checkpoint_t const * /*checkpoint*/)
   {
+
     process_quorums(block);
     uint64_t const height = cryptonote::get_block_height(block) + 1; // chain height = new top block height + 1
     m_vote_pool.remove_expired_votes(height);

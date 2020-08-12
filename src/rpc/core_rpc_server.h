@@ -111,6 +111,9 @@ namespace cryptonote { namespace rpc {
     // A free-form identifier identifiying the remote address of the request; this might be IP:PORT,
     // or could contain a pubkey, or ...
     std::string_view remote;
+
+    // If RPC source is rpc_source::lmq, this stores the ConnectionID associated with the request.
+    std::optional<lokimq::ConnectionID> lmq_connection_id = std::nullopt;
   };
 
   struct rpc_request {

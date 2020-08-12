@@ -54,6 +54,9 @@ def vprint(*args, timestamp=True, **kwargs):
             print(datetime.now(), end=" ")
         print(*args, **kwargs)
 
+'''
+sleep a few seconds, then call code that calls snn.mine
+'''
 
 class SNNetwork:
     def __init__(self, datadir, *, binpath='../../build/bin', sns=20, nodes=3):

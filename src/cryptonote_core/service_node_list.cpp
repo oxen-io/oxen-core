@@ -34,12 +34,17 @@
 
 #include <boost/endian/conversion.hpp>
 
+#include <lokimq/bt_serialize.h>
+#include <lokimq/base32z.h>
+#include <stdexcept>
+
 extern "C" {
 #include <sodium.h>
 }
 
 #include "ringct/rctSigs.h"
 #include "wallet/wallet2.h"
+#include "cryptonote_core/cryptonote_core.h"
 #include "cryptonote_tx_utils.h"
 #include "cryptonote_basic/tx_extra.h"
 #include "cryptonote_basic/hardfork.h"
@@ -291,6 +296,44 @@ namespace service_nodes
       }
     }
     return false;
+  }
+
+  std::future<peer_stats_map> service_node_list::update_peer_stats(
+      const cryptonote::core& core,
+      std::vector<std::string> router_ids)
+  {
+    std::promise<peer_stats_map> promise;
+    try
+    {
+      core.request_peer_stats(router_ids, [&](bool success, std::vector<std::string> data) {
+        if (not success)
+          throw std::runtime_error("Failed to request peer stats from lokinet");
+
+        if (data.empty())
+          throw std::runtime_error("Empty response from lokinet");
+
+        peer_stats_map stats_map = bt_decode_peer_stats_map(data[0]);
+
+        std::lock_guard lock{m_sn_mutex};
+        // TODO: avoid scan of map here
+        for (auto& [pubkey, proof] : proofs)
+        {
+          auto itr = stats_map.find(proof.pubkey_ed25519);
+          if (itr != stats_map.end())
+          {
+            proof.last_rc_updated_ms = itr->second.last_rc_updated;
+          }
+        }
+
+        promise.set_value(std::move(stats_map));
+      });
+    }
+    catch (const std::exception& e)
+    {
+      promise.set_exception(std::current_exception());
+    }
+
+    return promise.get_future();
   }
 
   bool reg_tx_extract_fields(const cryptonote::transaction& tx, contributor_args_t &contributor_args, uint64_t& expiration_timestamp, crypto::public_key& service_node_key, crypto::signature& signature)
@@ -2039,6 +2082,116 @@ namespace service_nodes
     crypto_sign_detached(result.sig_ed25519.data, NULL, reinterpret_cast<unsigned char *>(hash.data), sizeof(hash.data), keys.key_ed25519.data);
     return result;
   }
+
+  void lokinet_peer_stats::bt_decode(std::string_view data)
+  {
+    bt_decode(lokimq::bt_deserialize<lokimq::bt_dict>(data));
+  }
+
+  void lokinet_peer_stats::bt_decode(const lokimq::bt_dict& dict)
+  {
+    constexpr auto RouterIdKey = "RouterIdKey";
+    constexpr auto NumConnectionAttemptsKey = "numConnectionAttempts";
+    constexpr auto NumConnectionSuccessesKey = "numConnectionSuccesses";
+    constexpr auto NumConnectionRejectionsKey = "numConnectionRejections";
+    constexpr auto NumConnectionTimeoutsKey = "numConnectionTimeouts";
+    constexpr auto NumPathBuildsKey = "numPathBuilds";
+    constexpr auto NumPacketsAttemptedKey = "numPacketsAttempted";
+    constexpr auto NumPacketsSentKey = "numPacketsSent";
+    constexpr auto NumPacketsDroppedKey = "numPacketsDropped";
+    constexpr auto NumPacketsResentKey = "numPacketsResent";
+    constexpr auto NumDistinctRCsReceivedKey = "numDistinctRCsReceived";
+    constexpr auto NumLateRCsKey = "numLateRCs";
+    constexpr auto PeakBandwidthBytesPerSecKey = "peakBandwidthBytesPerSec";
+    constexpr auto LongestRCReceiveIntervalKey = "longestRCReceiveInterval";
+    constexpr auto LeastRCRemainingLifetimeKey = "leastRCRemainingLifetime";
+    constexpr auto LastRCUpdatedKey = "lastRCUpdated";
+
+    // TODO: validation -- do we reject if we don't get a full message? or types are wrong?
+
+    router_id = std::get<std::string>(dict.at(RouterIdKey));
+
+    num_connection_attempts = lokimq::get_int<int32_t>(dict.at(NumConnectionAttemptsKey));
+    num_connection_successes = lokimq::get_int<int32_t>(dict.at(NumConnectionSuccessesKey));
+    num_connection_rejections = lokimq::get_int<int32_t>(dict.at(NumConnectionRejectionsKey));
+    num_connection_timeouts = lokimq::get_int<int32_t>(dict.at(NumConnectionTimeoutsKey));
+
+    num_path_builds = lokimq::get_int<int32_t>(dict.at(NumPathBuildsKey));
+    num_packets_attempted = lokimq::get_int<int64_t>(dict.at(NumPacketsAttemptedKey));
+    num_packets_sent = lokimq::get_int<int64_t>(dict.at(NumPacketsSentKey));
+    num_packets_dropped = lokimq::get_int<int64_t>(dict.at(NumPacketsDroppedKey));
+    num_packets_resent = lokimq::get_int<int64_t>(dict.at(NumPacketsResentKey));
+
+    num_distinct_rcs_received = lokimq::get_int<int32_t>(dict.at(NumDistinctRCsReceivedKey));
+    num_late_rcs = lokimq::get_int<int32_t>(dict.at(NumLateRCsKey));
+
+    peak_bandwidth_bytes_per_sec = lokimq::get_int<int64_t>(dict.at(PeakBandwidthBytesPerSecKey));
+    longest_rc_receive_interval = std::chrono::milliseconds(lokimq::get_int<int64_t>(dict.at(LongestRCReceiveIntervalKey)));
+    least_rc_remaining_lifetime = std::chrono::milliseconds(lokimq::get_int<int64_t>(dict.at(LeastRCRemainingLifetimeKey)));
+    last_rc_updated = std::chrono::milliseconds(lokimq::get_int<int64_t>(dict.at(LastRCUpdatedKey)));
+  }
+
+  peer_stats_map bt_decode_peer_stats_map(std::string_view data)
+  {
+    // this is expected to be encoded as:
+    // dict [router_id -> [dict representing peer stats, e.g. lokinet_peer_stats::bt_decode()]]
+
+    std::unordered_map<crypto::ed25519_public_key, lokinet_peer_stats> stats_map;
+
+    auto dict = lokimq::bt_deserialize<lokimq::bt_dict>(data);
+    for (auto [router_id, value] : dict)
+    {
+      if (not std::holds_alternative<lokimq::bt_dict>(value))
+        throw std::invalid_argument("invalid bt-encoded list of stats, dict contains invalid entry");
+
+      auto pubkey = parse_router_id(router_id);
+
+      lokinet_peer_stats stats;
+      stats.bt_decode(std::get<lokimq::bt_dict>(value));
+      stats_map[pubkey] = std::move(stats);
+    }
+
+    return stats_map;
+  }
+
+  constexpr int router_id_size = 58;
+  constexpr int ed25519_pubkey_size = 32;
+
+  crypto::ed25519_public_key parse_router_id(std::string_view router_id)
+  {
+    // lokinet's RouterID is serialized as 32 bytes base32z encoded (52 chars), followed by ".snode"
+    // 52 chars for pubkey and 6 for ".snode"
+    if (router_id.size() != router_id_size)
+      throw std::invalid_argument("invalid router_id length");
+
+    std::string_view encoded = router_id.substr(0, 52);
+    std::string_view tld = router_id.substr(52);
+
+    if (tld != ".snode")
+      throw std::invalid_argument("invalid routerId tld");
+
+    std::string raw = lokimq::from_base32z(encoded.begin(), encoded.end());
+    if (raw.size() != sizeof(ed25519_pubkey_size))
+      throw std::invalid_argument("routerId contains invalid pubkey");
+
+    // TODO: byte order?
+    crypto::ed25519_public_key pubkey;
+    memcpy(pubkey.data, raw.data(), sizeof(ed25519_pubkey_size));
+
+    return pubkey;
+  }
+
+  std::string ed25519_pubkey_to_router_id(const crypto::ed25519_public_key& pubkey)
+  {
+    std::string router_id;
+    router_id.reserve(router_id_size);
+
+    router_id.append(lokimq::to_base32z(std::string_view((const char*)&pubkey.data, ed25519_pubkey_size)));
+    router_id.append(".snode");
+
+    return router_id;
+  }
+
 
 #ifdef __cpp_lib_erase_if // # (C++20)
   using std::erase_if;

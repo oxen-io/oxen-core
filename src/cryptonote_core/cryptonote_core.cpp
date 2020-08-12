@@ -2080,6 +2080,17 @@ namespace cryptonote
     m_service_node_list.copy_active_x25519_pubkeys(std::inserter(active_sns, active_sns.end()));
     m_lmq->set_active_sns(std::move(active_sns));
   }
+
+  void core::request_peer_stats(
+      std::vector<std::string> router_ids,
+      std::function<void(bool success, std::vector<std::string> data)> results_handler) const
+  {
+    if (not m_lokinet_lmq_connection)
+      throw std::runtime_error("cannot request peer stats without a lokinet connected");
+
+    m_lmq->request(*m_lokinet_lmq_connection, "lokid.get_peer_stats", std::move(results_handler), lokimq::bt_serialize(router_ids));
+  }
+
   //-----------------------------------------------------------------------------------------------
   crypto::hash core::get_tail_id() const
   {

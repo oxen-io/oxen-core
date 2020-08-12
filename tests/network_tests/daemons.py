@@ -153,8 +153,6 @@ class Daemon(RPCDaemon):
                 '--p2p-bind-port={}'.format(self.p2p_port),
                 '--rpc-bind-ip={}'.format(self.listen_ip),
                 '--rpc-bind-port={}'.format(self.rpc_port),
-                '--zmq-rpc-bind-ip={}'.format(self.listen_ip),
-                '--zmq-rpc-bind-port={}'.format(self.zmq_port),
                 '--quorumnet-port={}'.format(self.qnet_port),
                 )
 

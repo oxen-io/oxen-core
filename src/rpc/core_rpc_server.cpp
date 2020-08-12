@@ -3148,7 +3148,12 @@ namespace cryptonote { namespace rpc {
     return handle_ping<LOKINET_PING>(
         req.version, service_nodes::MIN_LOKINET_VERSION,
         "Lokinet", m_core.m_last_lokinet_ping, LOKINET_PING_LIFETIME,
-        [this](bool significant) { if (significant) m_core.reset_proof_interval(); });
+        [this, &context](bool significant) {
+          if (significant) 
+            m_core.reset_proof_interval();
+
+          m_core.m_lokinet_lmq_connection = context.lmq_connection_id;
+        });
   }
   //------------------------------------------------------------------------------------------------------------------------------
   GET_STAKING_REQUIREMENT::response core_rpc_server::invoke(GET_STAKING_REQUIREMENT::request&& req, rpc_context context)

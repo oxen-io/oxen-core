@@ -78,6 +78,7 @@ namespace service_nodes
 
   struct service_node_test_results {
     bool uptime_proved            = true;
+    bool rc_received_recently     = true;
     bool single_ip                = true;
     bool voted_in_checkpoints     = true;
     bool storage_server_reachable = true;

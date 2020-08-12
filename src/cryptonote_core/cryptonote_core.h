@@ -328,6 +328,11 @@ namespace cryptonote
      /// active SNs.
      void update_lmq_sns();
 
+     /// Called (from service_node_quorum_cop) to request peer stats from the connected lokinet daemon
+     void request_peer_stats(
+          std::vector<std::string> router_ids,
+          std::function<void(bool success, std::vector<std::string> data)> results_handler) const;
+
      /**
       * @brief get the cryptonote protocol instance
       *
@@ -991,6 +996,11 @@ namespace cryptonote
      uint32_t sn_public_ip() const { return m_sn_public_ip; }
      uint16_t storage_port() const { return m_storage_port; }
      uint16_t quorumnet_port() const { return m_quorumnet_port; }
+
+     // when lokinet connects via lokimq, we keep up with the connection so that we can make
+     // bi-directional requests. TODO: this is a messy place to put this, but currently the
+     // lmq server is not accessible to quorum_cop where this connection is needed
+     std::optional<lokimq::ConnectionID> m_lokinet_lmq_connection = std::nullopt;
 
      /**
       * @brief attempts to relay any transactions in the mempool which need it
