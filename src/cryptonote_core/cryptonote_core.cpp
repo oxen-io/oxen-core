@@ -1116,17 +1116,14 @@ namespace cryptonote
       update_lmq_sns(); // Ensure we have SNs set for the current block before starting
 
       if (m_service_node)
-        m_pulse_thread_id = m_lmq->add_tagged_thread("pulse");
-
-      m_lmq->start();
-
-      if (m_service_node)
       {
+        m_pulse_thread_id = m_lmq->add_tagged_thread("pulse");
         m_lmq->add_timer([this]() { pulse::main(m_quorumnet_state, *this); },
                          std::chrono::milliseconds(500),
                          false,
                          m_pulse_thread_id);
       }
+      m_lmq->start();
   }
 
   //-----------------------------------------------------------------------------------------------

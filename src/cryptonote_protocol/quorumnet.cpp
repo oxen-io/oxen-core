@@ -1657,8 +1657,7 @@ void handle_pulse_participation_bit_or_bitset(Message &m, QnetState& qnet, bool 
     msg.type = pulse::message_type::handshake;
   }
 
-  auto *self = reinterpret_cast<void *>(&qnet);
-  qnet.lmq.job([self, data = std::move(msg)]() { pulse::handle_message(self, data); }, qnet.core.pulse_thread_id());
+  qnet.lmq.job([&qnet, data = std::move(msg)]() { pulse::handle_message(&qnet, data); }, qnet.core.pulse_thread_id());
 }
 
 void handle_pulse_block_template(Message &m, QnetState &qnet)
@@ -1685,8 +1684,7 @@ void handle_pulse_block_template(Message &m, QnetState &qnet)
       throw std::invalid_argument(std::string(INVALID_ARG_PREFIX) + std::string(PULSE_TAG_QUORUM_POSITION) + "'");
   }
 
-  auto *self = reinterpret_cast<void *>(&qnet);
-  qnet.lmq.job([self, data = std::move(msg)]() { pulse::handle_message(self, data); }, qnet.core.pulse_thread_id());
+  qnet.lmq.job([&qnet, data = std::move(msg)]() { pulse::handle_message(&qnet, data); }, qnet.core.pulse_thread_id());
 }
 
 } // end empty namespace
