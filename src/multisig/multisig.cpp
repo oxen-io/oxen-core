@@ -47,8 +47,8 @@ namespace cryptonote
   crypto::secret_key get_multisig_blinded_secret_key(const crypto::secret_key &key)
   {
     rct::key multisig_salt;
-    static_assert(sizeof(rct::key) == sizeof(config::HASH_KEY_MULTISIG), "Hash domain separator is an unexpected size");
-    memcpy(multisig_salt.bytes, config::HASH_KEY_MULTISIG, sizeof(rct::key));
+    static_assert(sizeof(rct::key) == config::HASH_KEY_MULTISIG.size(), "Hash domain separator is an unexpected size");
+    memcpy(multisig_salt.bytes, config::HASH_KEY_MULTISIG.data(), sizeof(rct::key));
 
     rct::keyV data;
     data.reserve(2);

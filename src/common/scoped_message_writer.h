@@ -44,7 +44,7 @@ class scoped_message_writer
 {
 private:
   bool m_flush;
-  std::stringstream m_oss;
+  std::ostringstream m_oss;
   epee::console_colors m_color;
   bool m_bright;
   el::Level m_log_level;
@@ -52,7 +52,7 @@ public:
   scoped_message_writer(
       epee::console_colors color = epee::console_color_default
     , bool bright = false
-    , std::string&& prefix = std::string()
+    , std::string prefix = {}
     , el::Level log_level = el::Level::Info
     )
     : m_flush(true)
@@ -68,12 +68,7 @@ public:
 
   scoped_message_writer(scoped_message_writer&& rhs)
     : m_flush(std::move(rhs.m_flush))
-#if defined(_MSC_VER)
     , m_oss(std::move(rhs.m_oss))
-#else
-      // GCC bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=54316
-    , m_oss(rhs.m_oss.str(), std::ios_base::out | std::ios_base::ate)
-#endif
     , m_color(std::move(rhs.m_color))
     , m_log_level(std::move(rhs.m_log_level))
   {

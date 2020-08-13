@@ -43,7 +43,9 @@ public:
 
     m_bob.generate();
 
-    if (!construct_miner_tx(0, 0, 0, 2, 0, m_bob.get_keys().m_account_address, m_tx))
+    loki_miner_tx_context miner_tx_context = {};
+    miner_tx_context.miner_block_producer  = m_bob.get_keys().m_account_address;
+    if (!construct_miner_tx(0, 0, 0, 2, 0, m_tx, cryptonote::loki_miner_tx_context::miner_block(cryptonote::FAKECHAIN, m_bob.get_keys().m_account_address)))
       return false;
 
     m_tx_pub_key = get_tx_pub_key_from_extra(m_tx);

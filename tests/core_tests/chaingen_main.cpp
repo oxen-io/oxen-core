@@ -148,6 +148,14 @@ int main(int argc, char* argv[])
     GENERATE_AND_PLAY(loki_service_nodes_insufficient_contribution);
     GENERATE_AND_PLAY(loki_service_nodes_test_rollback);
     GENERATE_AND_PLAY(loki_service_nodes_test_swarms_basic);
+    GENERATE_AND_PLAY(loki_pulse_invalid_validator_bitset);
+    GENERATE_AND_PLAY(loki_pulse_invalid_signature);
+    GENERATE_AND_PLAY(loki_pulse_oob_voter_index);
+    GENERATE_AND_PLAY(loki_pulse_non_participating_validator);
+    GENERATE_AND_PLAY(loki_pulse_generate_all_rounds);
+    GENERATE_AND_PLAY(loki_pulse_out_of_order_voters);
+    GENERATE_AND_PLAY(loki_pulse_reject_miner_block);
+    GENERATE_AND_PLAY(loki_pulse_generate_blocks_and_invalid_blocks);
 
     // NOTE: Monero Tests
     GENERATE_AND_PLAY(gen_simple_chain_001);

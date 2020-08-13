@@ -70,7 +70,6 @@ extern "C" {
 #include "memwipe.h"
 #include "common/i18n.h"
 #include "net/local_ip.h"
-#include "cryptonote_protocol/quorumnet.h"
 
 #include "common/loki_integration_test_hooks.h"
 
@@ -277,18 +276,17 @@ namespace cryptonote
   [[noreturn]] static void need_core_init() {
       throw std::logic_error("Internal error: quorumnet::init_core_callbacks() should have been called");
   }
-  void *(*quorumnet_new)(core&);
-  void (*quorumnet_delete)(void*&self);
-  void (*quorumnet_relay_obligation_votes)(void* self, const std::vector<service_nodes::quorum_vote_t>&);
-  std::future<std::pair<blink_result, std::string>> (*quorumnet_send_blink)(core& core, const std::string& tx_blob);
-  static bool init_core_callback_stubs() {
-    quorumnet_new = [](core&) -> void* { need_core_init(); };
-    quorumnet_delete = [](void*&) { need_core_init(); };
-    quorumnet_relay_obligation_votes = [](void*, const std::vector<service_nodes::quorum_vote_t>&) { need_core_init(); };
-    quorumnet_send_blink = [](core&, const std::string&) -> std::future<std::pair<blink_result, std::string>> { need_core_init(); };
-    return false;
-  }
-  bool init_core_callback_complete = init_core_callback_stubs();
+
+  quorumnet_new_proc *quorumnet_new = [](core&) -> void* { need_core_init(); };
+  quorumnet_delete_proc *quorumnet_delete = [](void*&) { need_core_init(); };
+  quorumnet_relay_obligation_votes_proc *quorumnet_relay_obligation_votes = [](void*, const std::vector<service_nodes::quorum_vote_t>&) { need_core_init(); };
+  quorumnet_send_blink_proc *quorumnet_send_blink = [](core&, const std::string&) -> std::future<std::pair<blink_result, std::string>> { need_core_init(); };
+
+  quorumnet_send_pulse_validator_handshake_bit_proc    *quorumnet_send_pulse_validator_handshake_bit = [](void *, service_nodes::quorum const &, crypto::hash const &) -> void { need_core_init(); };
+  quorumnet_send_pulse_validator_handshake_bitset_proc *quorumnet_send_pulse_validator_handshake_bitset = [](void *, service_nodes::quorum const &, crypto::hash const &, uint16_t) -> void { need_core_init(); };
+  quorumnet_send_pulse_block_template_proc *quorumnet_send_pulse_block_template = [](void *, std::string &&blob, crypto::signature const &, service_nodes::quorum const &) -> void { need_core_init(); };
+
+  quorumnet_pulse_relay_message_to_quorum_proc *quorumnet_pulse_relay_message_to_quorum = [](void *, pulse::message const &, service_nodes::quorum const &, bool) -> void { need_core_init(); };
 
   //-----------------------------------------------------------------------------------------------
   core::core()
@@ -297,7 +295,7 @@ namespace cryptonote
   , m_blockchain_storage(m_mempool, m_service_node_list)
   , m_quorum_cop(*this)
   , m_miner(this, [this](const cryptonote::block &b, uint64_t height, unsigned int threads, crypto::hash &hash) {
-    hash = cryptonote::get_block_longhash_w_blockchain(&m_blockchain_storage, b, height, threads);
+    hash = cryptonote::get_block_longhash_w_blockchain(m_nettype, &m_blockchain_storage, b, height, threads);
     return true;
   })
   , m_pprotocol(&m_protocol_stub)
@@ -347,7 +345,6 @@ namespace cryptonote
   {
     m_miner.stop();
     m_blockchain_storage.cancel();
-
     tools::download_async_handle handle;
     {
       std::lock_guard lock{m_update_mutex};
@@ -1117,6 +1114,15 @@ namespace cryptonote
 
   void core::start_lokimq() {
       update_lmq_sns(); // Ensure we have SNs set for the current block before starting
+
+      if (m_service_node)
+      {
+        m_pulse_thread_id = m_lmq->add_tagged_thread("pulse");
+        m_lmq->add_timer([this]() { pulse::main(m_quorumnet_state, *this); },
+                         std::chrono::milliseconds(500),
+                         false,
+                         m_pulse_thread_id);
+      }
       m_lmq->start();
   }
 
@@ -1813,7 +1819,15 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
   bool core::handle_uptime_proof(const NOTIFY_UPTIME_PROOF::request &proof, bool &my_uptime_proof_confirmation)
   {
-    return m_service_node_list.handle_uptime_proof(proof, my_uptime_proof_confirmation);
+    crypto::x25519_public_key pkey = {};
+    bool result = m_service_node_list.handle_uptime_proof(proof, my_uptime_proof_confirmation, pkey);
+    if (result && m_service_node_list.is_service_node(proof.pubkey, true /*require_active*/) && pkey)
+    {
+      lokimq::pubkey_set added;
+      added.insert(tools::copy_guts(pkey));
+      m_lmq->update_active_sns(added, {} /*removed*/);
+    }
+    return result;
   }
   //-----------------------------------------------------------------------------------------------
   crypto::hash core::on_transaction_relayed(const cryptonote::blobdata& tx_blob)
@@ -1856,14 +1870,14 @@ namespace cryptonote
     m_quorum_cop.set_votes_relayed(votes);
   }
   //-----------------------------------------------------------------------------------------------
-  bool core::get_block_template(block& b, const account_public_address& adr, difficulty_type& diffic, uint64_t& height, uint64_t& expected_reward, const blobdata& ex_nonce)
+  bool core::create_next_miner_block_template(block& b, const account_public_address& adr, difficulty_type& diffic, uint64_t& height, uint64_t& expected_reward, const blobdata& ex_nonce)
   {
-    return m_blockchain_storage.create_block_template(b, adr, diffic, height, expected_reward, ex_nonce);
+    return m_blockchain_storage.create_next_miner_block_template(b, adr, diffic, height, expected_reward, ex_nonce);
   }
   //-----------------------------------------------------------------------------------------------
-  bool core::get_block_template(block& b, const crypto::hash *prev_block, const account_public_address& adr, difficulty_type& diffic, uint64_t& height, uint64_t& expected_reward, const blobdata& ex_nonce)
+  bool core::create_miner_block_template(block& b, const crypto::hash *prev_block, const account_public_address& adr, difficulty_type& diffic, uint64_t& height, uint64_t& expected_reward, const blobdata& ex_nonce)
   {
-    return m_blockchain_storage.create_block_template(b, prev_block, adr, diffic, height, expected_reward, ex_nonce);
+    return m_blockchain_storage.create_miner_block_template(b, prev_block, adr, diffic, height, expected_reward, ex_nonce);
   }
   //-----------------------------------------------------------------------------------------------
   bool core::find_blockchain_supplement(const std::list<crypto::hash>& qblock_ids, NOTIFY_RESPONSE_CHAIN_ENTRY::request& resp) const
@@ -1988,11 +2002,7 @@ namespace cryptonote
   {
     bool result = m_blockchain_storage.add_new_block(b, bvc, checkpoint);
     if (result)
-    {
-      // TODO(loki): PERF(loki): This causes perf problems in integration mode, so in real-time operation it may not be
-      // noticeable but could bubble up and cause slowness if the runtime variables align up undesiredly.
       relay_service_node_votes(); // NOTE: nop if synchronising due to not accepting votes whilst syncing
-    }
     return result;
   }
   //-----------------------------------------------------------------------------------------------
@@ -2464,7 +2474,7 @@ namespace cryptonote
     return true;
 #endif
 
-    static constexpr double threshold = 1. / (864000 / DIFFICULTY_TARGET_V2); // one false positive every 10 days
+    static constexpr double threshold = 1. / ((24h * 10) / TARGET_BLOCK_TIME); // one false positive every 10 days
     static constexpr unsigned int max_blocks_checked = 150;
 
     const time_t now = time(NULL);
@@ -2476,7 +2486,7 @@ namespace cryptonote
       unsigned int b = 0;
       const time_t time_boundary = now - static_cast<time_t>(seconds[n]);
       for (time_t ts: timestamps) b += ts >= time_boundary;
-      const double p = probability(b, seconds[n] / DIFFICULTY_TARGET_V2);
+      const double p = probability(b, seconds[n] / tools::to_seconds(TARGET_BLOCK_TIME));
       MDEBUG("blocks in the last " << seconds[n] / 60 << " minutes: " << b << " (probability " << p << ")");
       if (p < threshold)
       {
@@ -2485,7 +2495,7 @@ namespace cryptonote
         std::shared_ptr<tools::Notify> block_rate_notify = m_block_rate_notify;
         if (block_rate_notify)
         {
-          auto expected = seconds[n] / DIFFICULTY_TARGET_V2;
+          auto expected = seconds[n] / tools::to_seconds(TARGET_BLOCK_TIME);
           block_rate_notify->notify("%t", std::to_string(seconds[n] / 60).c_str(), "%b", std::to_string(b).c_str(), "%e", std::to_string(expected).c_str(), NULL);
         }
 

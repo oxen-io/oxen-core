@@ -71,6 +71,18 @@ namespace tools
   std::string get_human_readable_timespan(std::chrono::seconds seconds);
   std::string get_human_readable_bytes(uint64_t bytes);
 
+  template <typename Duration, std::enable_if_t<!std::is_same_v<Duration, std::chrono::seconds>, int> = 0>
+  std::string get_human_readable_timespan(Duration d)
+  {
+    return get_human_readable_timespan(std::chrono::duration_cast<std::chrono::seconds>(d));
+  }
+
+  template <typename Duration>
+  constexpr uint64_t to_seconds(Duration d)
+  {
+    return std::chrono::duration_cast<std::chrono::seconds>(d).count();
+  }
+
   namespace detail {
     // Copy an integer type, swapping to little-endian if needed
     template <typename T, std::enable_if_t<std::is_integral<T>::value, int> = 0>

@@ -28,6 +28,7 @@
 
 #pragma once
 
+#include <any>
 #include <cassert>
 #include <mutex>
 #include <vector>
@@ -59,6 +60,7 @@ namespace service_nodes
     obligations = 0,
     checkpointing,
     blink,
+    pulse,
     _count
   };
 
@@ -68,6 +70,7 @@ namespace service_nodes
       case quorum_type::obligations:   return os << "obligation";
       case quorum_type::checkpointing: return os << "checkpointing";
       case quorum_type::blink:         return os << "blink";
+      case quorum_type::pulse:         return os << "pulse";
       default: assert(false);          return os << "xx_unhandled_type";
     }
   }
@@ -97,20 +100,6 @@ namespace service_nodes
     void serialize(Archive &ar, const unsigned int /*version*/) { }
   };
 
-  struct voter_to_signature
-  {
-    voter_to_signature() = default;
-    voter_to_signature(quorum_vote_t const &vote) : voter_index(vote.index_in_group), signature(vote.signature) { }
-    uint16_t          voter_index;
-    char              padding[6];
-    crypto::signature signature;
-
-    BEGIN_SERIALIZE()
-      FIELD(voter_index)
-      FIELD(signature)
-    END_SERIALIZE()
-  };
-
   struct service_node_keys;
 
   quorum_vote_t            make_state_change_vote(uint64_t block_height, uint16_t index_in_group, uint16_t worker_index, new_state state, const service_node_keys &keys);
@@ -121,8 +110,11 @@ namespace service_nodes
   bool               verify_tx_state_change             (const cryptonote::tx_extra_service_node_state_change& state_change, uint64_t latest_height, cryptonote::tx_verification_context& vvc, const service_nodes::quorum &quorum, uint8_t hf_version);
   bool               verify_vote_age                    (const quorum_vote_t& vote, uint64_t latest_height, cryptonote::vote_verification_context &vvc);
   bool               verify_vote_signature              (uint8_t hf_version, const quorum_vote_t& vote, cryptonote::vote_verification_context &vvc, const service_nodes::quorum &quorum);
+  bool               verify_quorum_signatures           (service_nodes::quorum const &quorum, service_nodes::quorum_type type, uint8_t hf_version, uint64_t height, crypto::hash const &hash, std::vector<quorum_signature> const &signatures, std::any const &context);
+  bool               verify_pulse_quorum_sizes          (service_nodes::quorum const &quorum);
   crypto::signature  make_signature_from_vote           (quorum_vote_t const &vote, const service_node_keys &keys);
   crypto::signature  make_signature_from_tx_state_change(cryptonote::tx_extra_service_node_state_change const &state_change, const service_node_keys &keys);
+
 
   struct pool_vote_entry
   {

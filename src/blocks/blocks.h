@@ -6,8 +6,6 @@
 namespace blocks
 {
 
-using namespace std::literals;
-
 template <cryptonote::network_type Network> std::string_view checkpoint_data() { return ""sv; }
 template<> std::string_view checkpoint_data<cryptonote::network_type::MAINNET>();
 template<> std::string_view checkpoint_data<cryptonote::network_type::STAGENET>();

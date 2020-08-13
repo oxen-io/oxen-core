@@ -467,6 +467,7 @@ namespace service_nodes
         }
         break;
 
+        case quorum_type::pulse:
         case quorum_type::blink:
         break;
       }
@@ -575,7 +576,7 @@ namespace service_nodes
         checkpoint.signatures.reserve(service_nodes::CHECKPOINT_QUORUM_SIZE);
         std::sort(checkpoint.signatures.begin(),
                   checkpoint.signatures.end(),
-                  [](service_nodes::voter_to_signature const &lhs, service_nodes::voter_to_signature const &rhs) {
+                  [](service_nodes::quorum_signature const &lhs, service_nodes::quorum_signature const &rhs) {
                     return lhs.voter_index < rhs.voter_index;
                   });
 
@@ -584,7 +585,7 @@ namespace service_nodes
           auto it = std::lower_bound(checkpoint.signatures.begin(),
                                      checkpoint.signatures.end(),
                                      pool_vote,
-                                     [](voter_to_signature const &lhs, pool_vote_entry const &vote) {
+                                     [](quorum_signature const &lhs, pool_vote_entry const &vote) {
                                        return lhs.voter_index < vote.vote.index_in_group;
                                      });
 
@@ -592,7 +593,7 @@ namespace service_nodes
               pool_vote.vote.index_in_group != it->voter_index)
           {
             update_checkpoint = true;
-            checkpoint.signatures.insert(it, voter_to_signature(pool_vote.vote));
+            checkpoint.signatures.insert(it, quorum_signature(pool_vote.vote.index_in_group, pool_vote.vote.signature));
           }
         }
       }
@@ -603,7 +604,7 @@ namespace service_nodes
       checkpoint = make_empty_service_node_checkpoint(vote.checkpoint.block_hash, vote.block_height);
       checkpoint.signatures.reserve(votes.size());
       for (pool_vote_entry const &pool_vote : votes)
-        checkpoint.signatures.push_back(voter_to_signature(pool_vote.vote));
+        checkpoint.signatures.push_back(quorum_signature(pool_vote.vote.index_in_group, pool_vote.vote.signature));
     }
 
     if (update_checkpoint)
@@ -664,21 +665,18 @@ namespace service_nodes
     int64_t blocks_up;
     if (!info.is_fully_funded())
       blocks_up = 0;
-    if (info.is_decommissioned()) // decommissioned; the negative of active_since_height tells us when the period leading up to the current decommission started
+    else if (info.is_decommissioned()) // decommissioned; the negative of active_since_height tells us when the period leading up to the current decommission started
       blocks_up = int64_t(info.last_decommission_height) - (-info.active_since_height);
     else
       blocks_up = int64_t(current_height) - int64_t(info.active_since_height);
 
-    // Now we calculate the credit earned from being up for `blocks_up` blocks
-    int64_t credit = 0;
-    if (blocks_up >= 0) {
-      credit = blocks_up * DECOMMISSION_CREDIT_PER_DAY / BLOCKS_EXPECTED_IN_HOURS(24);
+    // Now we calculate the credit at last commission plus any credit earned from being up for `blocks_up` blocks since
+    int64_t credit = info.recommission_credit;
+    if (blocks_up > 0)
+      credit += blocks_up * DECOMMISSION_CREDIT_PER_DAY / BLOCKS_EXPECTED_IN_HOURS(24);
 
-      if (info.decommission_count <= info.is_decommissioned()) // Has never been decommissioned (or is currently in the first decommission), so add initial starting credit
-        credit += DECOMMISSION_INITIAL_CREDIT;
-      if (credit > DECOMMISSION_MAX_CREDIT)
-        credit = DECOMMISSION_MAX_CREDIT; // Cap the available decommission credit blocks if above the max
-    }
+    if (credit > DECOMMISSION_MAX_CREDIT)
+      credit = DECOMMISSION_MAX_CREDIT; // Cap the available decommission credit blocks if above the max
 
     // If currently decommissioned, remove any used credits used for the current downtime
     if (info.is_decommissioned())

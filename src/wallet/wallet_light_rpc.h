@@ -32,16 +32,22 @@
 #include "cryptonote_basic/cryptonote_basic.h"
 #include "serialization/vector.h"
 #include "crypto/hash.h"
+#include <string_view>
 
 namespace tools
 {
 namespace light_rpc
 {
+  using namespace std::literals;
+
+  struct LIGHT_RPC_COMMAND {};
+
   //-----------------------------------------------
   LOKI_RPC_DOC_INTROSPECT
   // TODO: Undocumented light wallet RPC call
-  struct GET_ADDRESS_TXS
+  struct GET_ADDRESS_TXS : LIGHT_RPC_COMMAND
   {
+      static constexpr auto name = "get_address_txs"sv;
       struct request
       {
         std::string address;      // Address of wallet to receive tx information. 
@@ -130,8 +136,9 @@ namespace light_rpc
 
   LOKI_RPC_DOC_INTROSPECT
   // TODO: Undocumented light wallet RPC call
-  struct GET_ADDRESS_INFO
+  struct GET_ADDRESS_INFO : LIGHT_RPC_COMMAND
   {
+      static constexpr auto name = "get_address_info"sv;
       struct request
       {
         std::string address;
@@ -189,8 +196,9 @@ namespace light_rpc
 
   LOKI_RPC_DOC_INTROSPECT
   // TODO: Undocumented light wallet RPC call
-  struct GET_UNSPENT_OUTS
+  struct GET_UNSPENT_OUTS : LIGHT_RPC_COMMAND
   {
+      static constexpr auto name = "get_unspent_outs"sv;
       struct request
       {
         std::string amount;
@@ -260,8 +268,9 @@ namespace light_rpc
 
   LOKI_RPC_DOC_INTROSPECT
   // TODO: Undocumented light wallet RPC call
-  struct SUBMIT_RAW_TX
+  struct SUBMIT_RAW_TX : LIGHT_RPC_COMMAND
   {
+      static constexpr auto name = "submit_raw_tx"sv;
       struct request
       {
         std::string address;
@@ -293,8 +302,9 @@ namespace light_rpc
 
   LOKI_RPC_DOC_INTROSPECT
   // TODO: Undocumented light wallet RPC call
-  struct LOGIN
+  struct LOGIN : LIGHT_RPC_COMMAND
   {
+      static constexpr auto name = "login"sv;
       struct request
       {
         std::string address;
@@ -325,8 +335,9 @@ namespace light_rpc
 
   LOKI_RPC_DOC_INTROSPECT
   // TODO: Undocumented light wallet RPC call
-  struct IMPORT_WALLET_REQUEST
+  struct IMPORT_WALLET_REQUEST : LIGHT_RPC_COMMAND
   {
+      static constexpr auto name = "import_wallet_request"sv;
       struct request
       {
         std::string address;
@@ -363,8 +374,9 @@ namespace light_rpc
   //-----------------------------------------------
   LOKI_RPC_DOC_INTROSPECT
   // TODO: Undocumented light wallet RPC call
-  struct GET_RANDOM_OUTS
+  struct GET_RANDOM_OUTS : LIGHT_RPC_COMMAND
   {
+    static constexpr auto name = "get_random_outs"sv;
     struct request
     {
       std::vector<std::string> amounts;

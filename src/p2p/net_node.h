@@ -61,7 +61,6 @@ DISABLE_VS_WARNINGS(4355)
 
 namespace nodetool
 {
-  using namespace std::literals;
   struct proxy
   {
     proxy()

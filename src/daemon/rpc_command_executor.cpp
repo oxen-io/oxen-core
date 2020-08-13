@@ -614,10 +614,6 @@ bool rpc_command_executor::mining_status() {
   return true;
 }
 
-// Converts a duration to integer seconds, truncating sub-second amounts.
-template <typename Duration>
-static auto count_seconds(const Duration &d) { return std::chrono::duration_cast<std::chrono::seconds>(d).count(); }
-
 bool rpc_command_executor::print_connections() {
   GET_CONNECTIONS::response res{};
 
@@ -650,9 +646,9 @@ bool rpc_command_executor::print_connections() {
      << std::setw(6) << (info.ssl ? "yes" : "no")
      << std::setw(20) << info.peer_id
      << std::setw(20) << info.support_flags
-     << std::setw(30) << std::to_string(info.recv_count) + "("  + std::to_string(count_seconds(info.recv_idle_time)) + ")/" + std::to_string(info.send_count) + "(" + std::to_string(count_seconds(info.send_idle_time)) + ")"
+     << std::setw(30) << std::to_string(info.recv_count) + "("  + std::to_string(tools::to_seconds(info.recv_idle_time)) + ")/" + std::to_string(info.send_count) + "(" + std::to_string(tools::to_seconds(info.send_idle_time)) + ")"
      << std::setw(25) << info.state
-     << std::setw(20) << std::to_string(count_seconds(info.live_time))
+     << std::setw(20) << std::to_string(tools::to_seconds(info.live_time))
      << std::setw(12) << info.avg_download
      << std::setw(14) << info.current_download
      << std::setw(10) << info.avg_upload
@@ -1068,7 +1064,7 @@ bool rpc_command_executor::print_transaction_pool_stats() {
   else
   {
     uint64_t backlog = (res.pool_stats.bytes_total + full_reward_zone - 1) / full_reward_zone;
-    backlog_message = (boost::format("estimated %u block (%u minutes) backlog") % backlog % (backlog * DIFFICULTY_TARGET_V2 / 60)).str();
+    backlog_message = (boost::format("estimated %u block (%u minutes) backlog") % backlog % (backlog * TARGET_BLOCK_TIME / 1min)).str();
   }
 
   tools::msg_writer() << n_transactions << " tx(es), " << res.pool_stats.bytes_total << " bytes total (min " << res.pool_stats.bytes_min << ", max " << res.pool_stats.bytes_max << ", avg " << avg_bytes << ", median " << res.pool_stats.bytes_med << ")" << std::endl
@@ -1106,16 +1102,23 @@ bool rpc_command_executor::print_transaction_pool_stats() {
   return true;
 }
 
-bool rpc_command_executor::start_mining(const cryptonote::account_public_address& address, uint64_t num_threads, cryptonote::network_type nettype) {
+bool rpc_command_executor::start_mining(const cryptonote::account_public_address& address, uint64_t num_threads, uint32_t num_blocks, cryptonote::network_type nettype) {
   START_MINING::request req{};
   START_MINING::response res{};
+  req.num_blocks    = num_blocks;
   req.miner_address = cryptonote::get_account_address_as_str(nettype, false, address);
   req.threads_count = num_threads;
 
   if (!invoke<START_MINING>(std::move(req), res, "Unable to start mining"))
     return false;
 
-  tools::success_msg_writer() << "Mining started";
+  std::stringstream stream;
+  stream << "Mining started";
+  if (num_threads) stream << " with " << num_threads << " thread(s).";
+  else             stream << ", auto detecting the number of threads to use.";
+
+  if (num_blocks) stream << " Mining for " << num_blocks << " blocks before stopping or until manually stopped.";
+  tools::success_msg_writer() << stream.str();
   return true;
 }
 
@@ -1420,7 +1423,7 @@ bool rpc_command_executor::alt_chain_info(const std::string &tip, size_t above, 
         tools::msg_writer() << "Time span: " << tools::get_human_readable_timespan(std::chrono::seconds(dt));
         cryptonote::difficulty_type start_difficulty = bhres.block_headers.back().difficulty;
         if (start_difficulty > 0)
-          tools::msg_writer() << "Approximated " << 100.f * DIFFICULTY_TARGET_V2 * chain.length / dt << "% of network hash rate";
+          tools::msg_writer() << "Approximated " << 100.f * tools::to_seconds(TARGET_BLOCK_TIME) * chain.length / dt << "% of network hash rate";
         else
           tools::fail_msg_writer() << "Bad cmumulative difficulty reported by dameon";
       }
@@ -1641,7 +1644,7 @@ static void append_printable_service_node_list_entry(cryptonote::network_type ne
     else
     {
       uint64_t delta_height      = (blockchain_height >= expiry_height) ? 0 : expiry_height - blockchain_height;
-      uint64_t expiry_epoch_time = now + (delta_height * DIFFICULTY_TARGET_V2);
+      uint64_t expiry_epoch_time = now + (delta_height * tools::to_seconds(TARGET_BLOCK_TIME));
       stream << expiry_height << " (in " << delta_height << ") blocks\n";
       stream << indent2 << "Expiry Date (estimated): " << get_date_time(expiry_epoch_time) << " (" << get_human_time_ago(expiry_epoch_time, now) << ")\n";
     }
@@ -1965,6 +1968,7 @@ bool rpc_command_executor::prepare_registration()
     res.mainnet  ? cryptonote::MAINNET :
     res.stagenet ? cryptonote::STAGENET :
     res.testnet  ? cryptonote::TESTNET :
+    res.nettype == "fakechain" ? cryptonote::FAKECHAIN :
     cryptonote::UNDEFINED;
 #endif
 
@@ -2509,6 +2513,13 @@ bool rpc_command_executor::version()
         return false;
     tools::success_msg_writer() << response.version;
     return true;
+}
+
+bool rpc_command_executor::test_trigger_uptime_proof()
+{
+  TEST_TRIGGER_UPTIME_PROOF::request req{};
+  TEST_TRIGGER_UPTIME_PROOF::response res{};
+  return invoke<TEST_TRIGGER_UPTIME_PROOF>(std::move(req), res, "Failed to trigger uptime proof");
 }
 
 }// namespace daemonize

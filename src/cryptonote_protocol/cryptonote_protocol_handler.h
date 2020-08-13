@@ -58,8 +58,6 @@ DISABLE_VS_WARNINGS(4355)
 
 namespace cryptonote
 {
-  using namespace std::literals;
-
   template<class t_core>
   class t_cryptonote_protocol_handler:  public i_cryptonote_protocol
   {

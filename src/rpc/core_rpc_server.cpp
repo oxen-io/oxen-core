@@ -370,7 +370,7 @@ namespace cryptonote { namespace rpc {
     }
 
     res.difficulty = m_core.get_blockchain_storage().get_difficulty_for_next_block();
-    res.target = m_core.get_blockchain_storage().get_difficulty_target();
+    res.target = tools::to_seconds(TARGET_BLOCK_TIME);
     res.tx_count = m_core.get_blockchain_storage().get_total_transactions() - res.height; //without coinbase
     res.tx_pool_size = m_core.get_pool().get_transactions_count();
     res.alt_blocks_count = restricted ? 0 : m_core.get_blockchain_storage().get_alternative_blocks_count();
@@ -1109,7 +1109,7 @@ namespace cryptonote { namespace rpc {
       res.status = "Already mining";
       return res;
     }
-    if(!miner.start(info.address, static_cast<size_t>(req.threads_count)))
+    if(!miner.start(info.address, static_cast<size_t>(req.threads_count), req.num_blocks))
     {
       res.status = "Failed, mining not started";
       LOG_PRINT_L0(res.status);
@@ -1149,7 +1149,7 @@ namespace cryptonote { namespace rpc {
 
     const miner& lMiner = m_core.get_miner();
     res.active = lMiner.is_mining();
-    res.block_target = DIFFICULTY_TARGET_V2;
+    res.block_target = tools::to_seconds(TARGET_BLOCK_TIME);
     res.difficulty = m_core.get_blockchain_storage().get_difficulty_for_next_block();
     if ( lMiner.is_mining() ) {
       res.speed = lMiner.get_speed();
@@ -1546,7 +1546,7 @@ namespace cryptonote { namespace rpc {
       if (!epee::string_tools::hex_to_pod(req.prev_block, prev_block))
         throw rpc_error{ERROR_INTERNAL, "Invalid prev_block"};
     }
-    if(!m_core.get_block_template(b, req.prev_block.empty() ? NULL : &prev_block, info.address, diff, res.height, res.expected_reward, blob_reserve))
+    if(!m_core.create_miner_block_template(b, req.prev_block.empty() ? NULL : &prev_block, info.address, diff, res.height, res.expected_reward, blob_reserve))
     {
       LOG_ERROR("Failed to create block template");
       throw rpc_error{ERROR_INTERNAL, "Internal error: failed to create block template"};
@@ -1669,7 +1669,7 @@ namespace cryptonote { namespace rpc {
         throw rpc_error{ERROR_WRONG_BLOCKBLOB, "Wrong block blob"};
       b.nonce = req.starting_nonce;
       miner::find_nonce_for_given_block([this](const cryptonote::block &b, uint64_t height, unsigned int threads, crypto::hash &hash) {
-        hash = cryptonote::get_block_longhash_w_blockchain(&(m_core.get_blockchain_storage()), b, height, threads);
+        hash = cryptonote::get_block_longhash_w_blockchain(cryptonote::FAKECHAIN, &(m_core.get_blockchain_storage()), b, height, threads);
         return true;
       }, b, template_res.difficulty, template_res.height);
 
@@ -1713,7 +1713,7 @@ namespace cryptonote { namespace rpc {
     response.miner_reward = blk.miner_tx.vout[0].amount;
     response.block_size = response.block_weight = m_core.get_blockchain_storage().get_db().get_block_weight(height);
     response.num_txes = blk.tx_hashes.size();
-    response.pow_hash = fill_pow_hash ? string_tools::pod_to_hex(get_block_longhash_w_blockchain(&(m_core.get_blockchain_storage()), blk, height, 0)) : "";
+    response.pow_hash = fill_pow_hash ? string_tools::pod_to_hex(get_block_longhash_w_blockchain(m_core.get_nettype(), &(m_core.get_blockchain_storage()), blk, height, 0)) : "";
     response.long_term_weight = m_core.get_blockchain_storage().get_db().get_block_long_term_weight(height);
     response.miner_tx_hash = string_tools::pod_to_hex(cryptonote::get_transaction_hash(blk.miner_tx));
     response.service_node_winner = string_tools::pod_to_hex(cryptonote::get_service_node_winner_from_tx_extra(blk.miner_tx.extra));
@@ -2571,7 +2571,7 @@ namespace cryptonote { namespace rpc {
     return res;
   }
   //------------------------------------------------------------------------------------------------------------------------------
-  GET_OUTPUT_DISTRIBUTION::response core_rpc_server::invoke(GET_OUTPUT_DISTRIBUTION::request&& req, rpc_context context)
+  GET_OUTPUT_DISTRIBUTION::response core_rpc_server::invoke(GET_OUTPUT_DISTRIBUTION::request&& req, rpc_context context, bool binary)
   {
     GET_OUTPUT_DISTRIBUTION::response res{};
 
@@ -2596,7 +2596,10 @@ namespace cryptonote { namespace rpc {
         if (!data)
           throw rpc_error{ERROR_INTERNAL, "Failed to get output distribution"};
 
-        res.distributions.push_back({std::move(*data), amount, "", req.binary, req.compress});
+        // Force binary & compression off if this is a JSON request because trying to pass binary
+        // data through JSON explodes it in terms of size (most values under 0x20 have to be encoded
+        // using 6 chars such as "\u0002").
+        res.distributions.push_back({std::move(*data), amount, "", binary && req.binary, binary && req.compress});
       }
     }
     catch (const std::exception &e)
@@ -2623,7 +2626,7 @@ namespace cryptonote { namespace rpc {
     if (use_bootstrap_daemon_if_necessary<GET_OUTPUT_DISTRIBUTION_BIN>(req, res))
       return res;
 
-    return invoke(std::move(static_cast<GET_OUTPUT_DISTRIBUTION::request&>(req)), context);
+    return invoke(std::move(static_cast<GET_OUTPUT_DISTRIBUTION::request&>(req)), context, true);
   }
   //------------------------------------------------------------------------------------------------------------------------------
   PRUNE_BLOCKCHAIN::response core_rpc_server::invoke(PRUNE_BLOCKCHAIN::request&& req, rpc_context context)
@@ -3327,6 +3330,16 @@ namespace cryptonote { namespace rpc {
     TEST_TRIGGER_P2P_RESYNC::response res{};
 
     m_p2p.reset_peer_handshake_timer();
+    res.status = STATUS_OK;
+    return res;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+  TEST_TRIGGER_UPTIME_PROOF::response core_rpc_server::invoke(TEST_TRIGGER_UPTIME_PROOF::request&& req, rpc_context context)
+  {
+    if (m_core.get_nettype() != cryptonote::MAINNET)
+      m_core.submit_uptime_proof();
+
+    TEST_TRIGGER_UPTIME_PROOF::response res{};
     res.status = STATUS_OK;
     return res;
   }

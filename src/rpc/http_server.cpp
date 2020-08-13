@@ -188,6 +188,9 @@ namespace cryptonote { namespace rpc {
       // This isn't really WARNable as it's the client fault; log at info level instead.
       MINFO("RPC request for '/" << uri << "' called with invalid/unparseable data: " << e.what());
       return HTTP_BAD_REQUEST;
+    } catch (const rpc_error& e) {
+      MWARNING("RPC request for '/" << uri << "' failed with: " << e.what() << "; returning 500 error");
+      return HTTP_ERROR;
     } catch (const std::exception& e) {
       MWARNING("RPC request '/" << uri << "' request raised an exception: " << e.what());
       return HTTP_ERROR;
@@ -244,6 +247,9 @@ namespace cryptonote { namespace rpc {
       // This isn't really WARNable as it's the client fault; log at info level instead.
       MINFO("JSON RPC request for '" << method << "' called with invalid data: " << e.what());
       return json_rpc_error(-32602, "Invalid params", body);
+    } catch (const rpc_error& e) {
+      MWARNING("JSON RPC request for '" << method << "' failed with: " << e.what());
+      return json_rpc_error(e.code, e.message, body);
     } catch (const std::exception& e) {
       MWARNING("json_rpc '" << method << "' request raised an exception: " << e.what());
       return json_rpc_error(-32603, "Internal error", body);

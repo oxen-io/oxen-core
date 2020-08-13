@@ -31,6 +31,7 @@
 #include <ctime>
 #include <cstdint>
 #include "cryptonote_config.h"
+#include "common/util.h"
 
 namespace cryptonote
 {
@@ -53,7 +54,7 @@ bool is_output_unlocked(uint64_t unlock_time, uint64_t height)
   {
     //interpret as time
     uint64_t current_time = static_cast<uint64_t>(time(NULL));
-    if(current_time + CRYPTONOTE_LOCKED_TX_ALLOWED_DELTA_SECONDS_V2 >= unlock_time)
+    if(current_time + tools::to_seconds(CRYPTONOTE_LOCKED_TX_ALLOWED_DELTA_SECONDS_V2) >= unlock_time)
       return true;
     else
       return false;

@@ -61,7 +61,7 @@ enum struct lmdb_version
 {
     v4 = 4,
     v5,     // alt_block_data_1_t => alt_block_data_t: Alt block data has boolean for if the block was checkpointed
-    v6,     // remigrate voter_to_signature struct due to alignment change
+    v6,     // remigrate quorum_signature struct due to alignment change
     v7,     // rebuild the checkpoint table because v6 update in-place made MDB_LAST not give us the newest checkpoint
     _count
 };
@@ -408,7 +408,7 @@ struct blk_checkpoint_header
   uint64_t     num_signatures;
 };
 static_assert(sizeof(blk_checkpoint_header) == 2*sizeof(uint64_t) + sizeof(crypto::hash), "blk_checkpoint_header has unexpected padding");
-static_assert(sizeof(service_nodes::voter_to_signature) == sizeof(uint16_t) + 6 /*padding*/ + sizeof(crypto::signature), "Unexpected padding/struct size change. DB checkpoint signature entries need to be re-migrated to the new size");
+static_assert(sizeof(service_nodes::quorum_signature) == sizeof(uint16_t) + 6 /*padding*/ + sizeof(crypto::signature), "Unexpected padding/struct size change. DB checkpoint signature entries need to be re-migrated to the new size");
 
 typedef struct blk_height {
     crypto::hash bh_hash;
@@ -3967,7 +3967,7 @@ uint64_t BlockchainLMDB::add_block(const std::pair<block, blobdata>& blk, size_t
 
 struct checkpoint_mdb_buffer
 {
-  char data[sizeof(blk_checkpoint_header) + (sizeof(service_nodes::voter_to_signature) * service_nodes::CHECKPOINT_QUORUM_SIZE)];
+  char data[sizeof(blk_checkpoint_header) + (sizeof(service_nodes::quorum_signature) * service_nodes::CHECKPOINT_QUORUM_SIZE)];
   size_t len;
 };
 
@@ -4060,7 +4060,7 @@ static checkpoint_t convert_mdb_val_to_checkpoint(MDB_val const value)
   checkpoint_t result = {};
   auto const *header  = static_cast<blk_checkpoint_header const *>(value.mv_data);
   auto const *signatures =
-      reinterpret_cast<service_nodes::voter_to_signature *>(static_cast<uint8_t *>(value.mv_data) + sizeof(*header));
+      reinterpret_cast<service_nodes::quorum_signature *>(static_cast<uint8_t *>(value.mv_data) + sizeof(*header));
 
   auto num_sigs = little_to_native(header->num_signatures);
   result.height     = little_to_native(header->height);
@@ -4743,12 +4743,12 @@ void BlockchainLMDB::fixup(fixup_context const context)
     uint8_t v12_initial_blocks_remaining = 0;
     uint8_t start_version = get_hard_fork_version(start_height);
     if (start_version < cryptonote::network_version_12_checkpointing) {
-      v12_initial_blocks_remaining = DIFFICULTY_WINDOW_V2;
-    } else if (start_version == cryptonote::network_version_12_checkpointing && start_height > DIFFICULTY_WINDOW_V2) {
-      uint8_t earlier_version = get_hard_fork_version(start_height - DIFFICULTY_WINDOW_V2);
+      v12_initial_blocks_remaining = DIFFICULTY_WINDOW;
+    } else if (start_version == cryptonote::network_version_12_checkpointing && start_height > DIFFICULTY_WINDOW) {
+      uint8_t earlier_version = get_hard_fork_version(start_height - DIFFICULTY_WINDOW);
       if (earlier_version < cryptonote::network_version_12_checkpointing) {
-        start_height -= DIFFICULTY_WINDOW_V2;
-        v12_initial_blocks_remaining = DIFFICULTY_WINDOW_V2;
+        start_height -= DIFFICULTY_WINDOW;
+        v12_initial_blocks_remaining = DIFFICULTY_WINDOW;
         LOG_PRINT_L2("Using earlier recalculation start height " << start_height << " to include v12 fork height");
       }
     }
@@ -4756,7 +4756,7 @@ void BlockchainLMDB::fixup(fixup_context const context)
     std::vector<uint64_t> timestamps;
     std::vector<difficulty_type> difficulties;
     {
-      uint64_t offset = start_height - std::min<size_t>(start_height, static_cast<size_t>(DIFFICULTY_BLOCKS_COUNT_V2));
+      uint64_t offset = start_height - std::min<size_t>(start_height, static_cast<size_t>(DIFFICULTY_BLOCKS_COUNT));
       if (offset == 0)
         offset = 1;
 
@@ -4797,7 +4797,7 @@ void BlockchainLMDB::fixup(fixup_context const context)
             v12_initial_override = true;
             v12_initial_blocks_remaining--;
           }
-          difficulty_type diff = next_difficulty_v2(timestamps, difficulties, DIFFICULTY_TARGET_V2,
+          difficulty_type diff = next_difficulty_v2(timestamps, difficulties, tools::to_seconds(TARGET_BLOCK_TIME),
               version <= cryptonote::network_version_9_service_nodes, v12_initial_override);
 
           MDB_val_set(key, curr_height);
@@ -4831,8 +4831,8 @@ void BlockchainLMDB::fixup(fixup_context const context)
             return;
           }
 
-          while (timestamps.size() > DIFFICULTY_BLOCKS_COUNT_V2) timestamps.erase(timestamps.begin());
-          while (difficulties.size() > DIFFICULTY_BLOCKS_COUNT_V2) difficulties.erase(difficulties.begin());
+          while (timestamps.size() > DIFFICULTY_BLOCKS_COUNT) timestamps.erase(timestamps.begin());
+          while (difficulties.size() > DIFFICULTY_BLOCKS_COUNT) difficulties.erase(difficulties.begin());
         }
 
         block_wtxn_stop();
@@ -6023,7 +6023,7 @@ void BlockchainLMDB::migrate_5_6()
     char r[32];
   };
 
-  struct unaligned_voter_to_signature
+  struct unaligned_quorum_signature
   {
     uint16_t            voter_index;
     unaligned_signature signature;
@@ -6052,7 +6052,7 @@ void BlockchainLMDB::migrate_5_6()
 
     auto const *header = static_cast<blk_checkpoint_header const *>(val.mv_data);
     auto num_sigs      = little_to_native(header->num_signatures);
-    auto const *aligned_signatures = reinterpret_cast<service_nodes::voter_to_signature *>(static_cast<uint8_t *>(val.mv_data) + sizeof(*header));
+    auto const *aligned_signatures = reinterpret_cast<service_nodes::quorum_signature *>(static_cast<uint8_t *>(val.mv_data) + sizeof(*header));
     if (num_sigs == 0) continue; // NOTE: Hardcoded checkpoints
 
     checkpoint_t checkpoint = {};
@@ -6067,7 +6067,7 @@ void BlockchainLMDB::migrate_5_6()
       {
         auto const &entry = aligned_signatures[i];
         size_t const actual_num_bytes_for_signatures   = val.mv_size - sizeof(*header);
-        size_t const expected_num_bytes_for_signatures = sizeof(service_nodes::voter_to_signature) * num_sigs;
+        size_t const expected_num_bytes_for_signatures = sizeof(service_nodes::quorum_signature) * num_sigs;
         if (actual_num_bytes_for_signatures != expected_num_bytes_for_signatures)
         {
           unaligned_checkpoint = true;
@@ -6078,12 +6078,12 @@ void BlockchainLMDB::migrate_5_6()
 
     if (unaligned_checkpoint)
     {
-      auto const *unaligned_signatures = reinterpret_cast<unaligned_voter_to_signature *>(static_cast<uint8_t *>(val.mv_data) + sizeof(*header));
+      auto const *unaligned_signatures = reinterpret_cast<unaligned_quorum_signature *>(static_cast<uint8_t *>(val.mv_data) + sizeof(*header));
       for (size_t i = 0; i < num_sigs; i++)
       {
-        auto const &unaligned = unaligned_signatures[i];
-        service_nodes::voter_to_signature aligned = {};
-        aligned.voter_index                       = unaligned.voter_index;
+        auto const &unaligned                   = unaligned_signatures[i];
+        service_nodes::quorum_signature aligned = {};
+        aligned.voter_index                     = unaligned.voter_index;
         memcpy(aligned.signature.c.data, unaligned.signature.c, sizeof(aligned.signature.c));
         memcpy(aligned.signature.r.data, unaligned.signature.r, sizeof(aligned.signature.r));
         checkpoint.signatures.push_back(aligned);

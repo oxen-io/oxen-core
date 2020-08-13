@@ -48,8 +48,6 @@
 #include "p2p/p2p_protocol_defs.h"
 #include "string_tools.h"
 
-using namespace std::literals;
-
 namespace
 {
     constexpr const std::chrono::milliseconds future_poll_interval = 500ms;

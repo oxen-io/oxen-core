@@ -154,6 +154,7 @@ lmq_rpc::lmq_rpc(cryptonote::core& core, core_rpc_server& rpc, const boost::prog
 
       try {
         m.send_reply(LMQ_OK, call.invoke(std::move(request), rpc_));
+        return;
       } catch (const parse_error& e) {
         // This isn't really WARNable as it's the client fault; log at info level instead.
         //
@@ -163,6 +164,10 @@ lmq_rpc::lmq_rpc(cryptonote::core& core, core_rpc_server& rpc, const boost::prog
         // real).
         MINFO("LMQ RPC request '" << (call.is_public ? "rpc." : "admin.") << name << "' called with invalid/unparseable data: " << e.what());
         m.send_reply(LMQ_BAD_REQUEST, "Unable to parse request: "s + e.what());
+        return;
+      } catch (const rpc_error& e) {
+        MWARNING("LMQ RPC request '" << (call.is_public ? "rpc." : "admin.") << name << "' failed with: " << e.what());
+        m.send_reply(LMQ_ERROR, e.what());
         return;
       } catch (const std::exception& e) {
         MWARNING("LMQ RPC request '" << (call.is_public ? "rpc." : "admin.") << name << "' "

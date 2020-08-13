@@ -81,8 +81,6 @@ class wallet_accessor_test;
 LOKI_RPC_DOC_INTROSPECT
 namespace tools
 {
-  using namespace std::literals;
-
   static const char *ERR_MSG_NETWORK_VERSION_QUERY_FAILED = tr("Could not query the current network version, try later");
   static const char *ERR_MSG_NETWORK_HEIGHT_QUERY_FAILED = tr("Could not query the current network block height, try later: ");
   static const char *ERR_MSG_SERVICE_NODE_LIST_QUERY_FAILED = tr("Failed to query daemon for service node list");
@@ -334,7 +332,7 @@ private:
     friend class wallet_keys_unlocker;
     friend class wallet_device_callback;
   public:
-    static constexpr const std::chrono::seconds rpc_timeout = 3min + 30s;
+    static constexpr std::chrono::seconds rpc_timeout = 30s;
     enum RefreshType {
       RefreshFull,
       RefreshOptimizeCoinbase,
@@ -1246,8 +1244,8 @@ private:
     void ignore_outputs_below(uint64_t value) { m_ignore_outputs_below = value; }
     bool track_uses() const { return m_track_uses; }
     void track_uses(bool value) { m_track_uses = value; }
-    uint32_t inactivity_lock_timeout() const { return m_inactivity_lock_timeout; }
-    void inactivity_lock_timeout(uint32_t seconds) { m_inactivity_lock_timeout = seconds; }
+    std::chrono::seconds inactivity_lock_timeout() const { return m_inactivity_lock_timeout; }
+    void inactivity_lock_timeout(std::chrono::seconds seconds) { m_inactivity_lock_timeout = seconds; }
     const std::string & device_name() const { return m_device_name; }
     void device_name(const std::string & device_name) { m_device_name = device_name; }
     const std::string & device_derivation_path() const { return m_device_derivation_path; }
@@ -1481,26 +1479,26 @@ private:
     crypto::public_key get_multisig_signing_public_key(size_t idx) const;
     crypto::public_key get_multisig_signing_public_key(const crypto::secret_key &skey) const;
 
-    template<class t_request, class t_response>
-    inline bool invoke_http_json(const std::string_view uri, const t_request& req, t_response& res, std::chrono::milliseconds timeout = 15s, std::string_view http_method = "POST"sv)
+    template <typename RPC>
+    inline bool invoke_http(const typename RPC::request& req, typename RPC::response& res)
     {
+      using namespace cryptonote::rpc;
+      static_assert(std::is_base_of_v<RPC_COMMAND, RPC> || std::is_base_of_v<tools::light_rpc::LIGHT_RPC_COMMAND, RPC>);
+
       if (m_offline) return false;
-      std::lock_guard<std::recursive_mutex> lock(m_daemon_rpc_mutex);
-      return epee::net_utils::invoke_http_json(uri, req, res, *m_http_client, timeout, http_method);
-    }
-    template<class t_request, class t_response>
-    inline bool invoke_http_bin(std::string_view uri, const t_request& req, t_response& res, std::chrono::milliseconds timeout = 15s, std::string_view http_method = "POST"sv)
-    {
-      if (m_offline) return false;
-      std::lock_guard<std::recursive_mutex> lock(m_daemon_rpc_mutex);
-      return epee::net_utils::invoke_http_bin(uri, req, res, *m_http_client, timeout, http_method);
-    }
-    template<class t_request, class t_response>
-    inline bool invoke_http_json_rpc(std::string_view uri, const std::string& method_name, const t_request& req, t_response& res, std::chrono::milliseconds timeout = 15s, std::string_view http_method = "POST"sv, const std::string& req_id = "0")
-    {
-      if (m_offline) return false;
-      std::lock_guard<std::recursive_mutex> lock(m_daemon_rpc_mutex);
-      return epee::net_utils::invoke_http_json_rpc(uri, method_name, req, res, *m_http_client, timeout, http_method, req_id);
+      std::lock_guard lock{m_daemon_rpc_mutex};
+
+      if constexpr (std::is_base_of_v<LEGACY, RPC>)
+        // TODO: post-8.x hard fork we can remove this one and let everything go through the
+        // non-binary json_rpc version instead (because all legacy json commands are callable via
+        // json_rpc as of daemon 8.x).
+        return epee::net_utils::invoke_http_json("/" + std::string{RPC::names().front()}, req, res, *m_http_client, rpc_timeout, "POST");
+      else if constexpr (std::is_base_of_v<BINARY, RPC>)
+        return epee::net_utils::invoke_http_bin("/" + std::string{RPC::names().front()}, req, res, *m_http_client, rpc_timeout, "POST");
+      else if constexpr (std::is_base_of_v<RPC_COMMAND, RPC>)
+        return epee::net_utils::invoke_http_json_rpc("/json_rpc", std::string{RPC::names().front()}, req, res, *m_http_client, rpc_timeout, "POST", "0");
+      else // light RPC:
+        return epee::net_utils::invoke_http_json("/" + std::string{RPC::name}, req, res, *m_http_client, rpc_timeout, "POST");
     }
 
     bool set_ring_database(const std::string &filename);
@@ -1635,6 +1633,17 @@ private:
 
     std::atomic<bool> m_long_poll_disabled;
     static std::string get_default_daemon_address() { std::lock_guard lock{default_daemon_address_mutex}; return default_daemon_address; }
+
+    /// Requests transactions from daemon given hex strings of the tx ids; throws a wallet exception
+    /// on error, otherwise returns the response.
+    cryptonote::rpc::GET_TRANSACTIONS::response request_transactions(std::vector<std::string> txids_hex);
+
+    /// Requests transactions from daemon given a vector of crypto::hash.  Throws a wallet exception
+    /// on error, otherwise returns the response.
+    cryptonote::rpc::GET_TRANSACTIONS::response request_transactions(const std::vector<crypto::hash>& txids);
+
+    /// Same as above, but for a single transaction.
+    cryptonote::rpc::GET_TRANSACTIONS::response request_transaction(const crypto::hash& txid) { return request_transactions(std::vector<crypto::hash>{{txid}}); }
 
   private:
     /*!
@@ -1825,7 +1834,7 @@ private:
     uint64_t m_ignore_outputs_above;
     uint64_t m_ignore_outputs_below;
     bool m_track_uses;
-    uint32_t m_inactivity_lock_timeout;
+    std::chrono::seconds m_inactivity_lock_timeout;
     bool m_is_initialized;
     NodeRPCProxy m_node_rpc_proxy;
     std::unordered_set<crypto::hash> m_scanned_pool_txs[2];

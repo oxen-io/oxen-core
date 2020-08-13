@@ -529,32 +529,37 @@ bool command_parser_executor::start_mining(const std::vector<std::string>& args)
   }
   if (info.is_subaddress)
   {
-    tools::fail_msg_writer() << "subaddress for mining reward is not yet supported!" << std::endl;
+    tools::fail_msg_writer() << "subaddress for mining reward is not yet supported!";
     return true;
   }
   if(nettype != cryptonote::MAINNET)
-    std::cout << "Mining to a " << (nettype == cryptonote::TESTNET ? "testnet" : "stagenet") << " address, make sure this is intentional!" << std::endl;
-  uint64_t threads_count = 1;
-  if(args.size() > 2)
+    std::cout << "Mining to a " << (nettype == cryptonote::TESTNET ? "testnet" : "stagenet") << " address, make sure this is intentional!";
+
+  std::string_view threads_val    = tools::find_prefixed_value(args.begin() + 1, args.end(), "threads="sv);
+  std::string_view num_blocks_val = tools::find_prefixed_value(args.begin() + 1, args.end(), "num_blocks="sv);
+
+  int threads_count   = 1;
+  uint32_t num_blocks = 0;
+  if (threads_val.size())
   {
-    return false;
-  }
-  
-  if(args.size() >= 2)
-  {
-    if (args[1] == "auto" || args[1] == "autodetect")
+    if (threads_val == "auto"sv || threads_val == "autodetect"sv)
     {
       threads_count = 0;
     }
     else
     {
-      bool ok = epee::string_tools::get_xtype_from_string(threads_count, args[1]);
-      threads_count = (ok && 0 < threads_count) ? threads_count : 1;
+      if (!tools::parse_int(threads_val, threads_count))
+      {
+        tools::fail_msg_writer() << "Failed to parse threads value" << threads_val;
+        return false;
+      }
+
+      threads_count = 0 < threads_count ? threads_count : 1;
     }
   }
 
-  m_executor.start_mining(info.address, threads_count, nettype);
-
+  if (num_blocks_val.size()) tools::parse_int(num_blocks_val, num_blocks);
+  m_executor.start_mining(info.address, threads_count, num_blocks, nettype);
   return true;
 }
 

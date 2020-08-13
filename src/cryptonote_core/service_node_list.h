@@ -98,6 +98,27 @@ namespace service_nodes
     void store(const crypto::public_key &pubkey, cryptonote::Blockchain &blockchain);
   };
 
+  struct pulse_sort_key
+  {
+    uint64_t last_height_validating_in_quorum = 0;
+    uint8_t quorum_index                      = 0;
+
+    bool operator==(pulse_sort_key const &other) const
+    {
+      return last_height_validating_in_quorum == other.last_height_validating_in_quorum && quorum_index == other.quorum_index;
+    }
+    bool operator<(pulse_sort_key const &other) const
+    {
+      bool result = std::make_pair(last_height_validating_in_quorum, quorum_index) < std::make_pair(other.last_height_validating_in_quorum, other.quorum_index);
+      return result;
+    }
+
+    BEGIN_SERIALIZE_OBJECT()
+      VARINT_FIELD(last_height_validating_in_quorum)
+      FIELD(quorum_index)
+    END_SERIALIZE()
+  };
+
   struct service_node_info // registration information
   {
     enum class version_t : uint8_t
@@ -107,7 +128,7 @@ namespace service_nodes
       v2_ed25519,
       v3_quorumnet,
       v4_noproofs,
-
+      v5_pulse_recomm_credit,
       _count
     };
 
@@ -169,6 +190,7 @@ namespace service_nodes
     uint32_t                           decommission_count = 0; // How many times this service node has been decommissioned
     int64_t                            active_since_height = 0; // if decommissioned: equal to the *negative* height at which you became active before the decommission
     uint64_t                           last_decommission_height = 0; // The height at which the last (or current!) decommissioning started, or 0 if never decommissioned
+    int64_t                            recommission_credit = DECOMMISSION_INITIAL_CREDIT; // The number of blocks of credit you started with or kept when you were last activated (i.e. as of `active_since_height`)
     std::vector<contributor_t>         contributors;
     uint64_t                           total_contributed = 0;
     uint64_t                           total_reserved = 0;
@@ -179,6 +201,7 @@ namespace service_nodes
     uint64_t                           last_ip_change_height = 0; // The height of the last quorum penalty for changing IPs
     version_t                          version = tools::enum_top<version_t>;
     uint8_t                            registration_hf_version = 0;
+    pulse_sort_key                     pulse_sorter;
 
     service_node_info() = default;
     bool is_fully_funded() const { return total_contributed >= staking_requirement; }
@@ -221,6 +244,11 @@ namespace service_nodes
           uint16_t fake_port = 0;
           VARINT_FIELD_N("quorumnet_port", fake_port)
         }
+      }
+      if (version >= version_t::v5_pulse_recomm_credit)
+      {
+        VARINT_FIELD(recommission_credit)
+        FIELD(pulse_sorter)
       }
     END_SERIALIZE()
   };
@@ -274,7 +302,7 @@ namespace service_nodes
     uint64_t portions;
   };
 
-  struct block_winner
+  struct payout
   {
     crypto::public_key key;
     std::vector<payout_entry> payouts;
@@ -317,9 +345,9 @@ namespace service_nodes
     bool block_added(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs, cryptonote::checkpoint_t const *checkpoint) override;
     void blockchain_detached(uint64_t height, bool by_pop_blocks) override;
     void init() override;
-    bool validate_miner_tx(const crypto::hash& prev_id, const cryptonote::transaction& miner_tx, uint64_t height, int hard_fork_version, cryptonote::block_reward_parts const &base_reward) const override;
+    bool validate_miner_tx(cryptonote::block const &block, cryptonote::block_reward_parts const &base_reward) const override;
     bool alt_block_added(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs, cryptonote::checkpoint_t const *checkpoint) override;
-    block_winner get_block_winner() const { std::lock_guard lock{m_sn_mutex}; return m_state.get_block_winner(); }
+    payout get_block_leader() const { std::lock_guard lock{m_sn_mutex}; return m_state.get_block_leader(); }
     bool is_service_node(const crypto::public_key& pubkey, bool require_active = true) const;
     bool is_key_image_locked(crypto::key_image const &check_image, uint64_t *unlock_height = nullptr, service_node_info::contribution_t *the_locked_contribution = nullptr) const;
     uint64_t height() const { return m_state.height; }
@@ -393,6 +421,10 @@ namespace service_nodes
       }
     }
 
+    std::vector<pubkey_and_sninfo> active_service_nodes_infos() const {
+      return m_state.active_service_nodes_infos();
+    }
+
     void set_my_service_node_keys(const service_node_keys *keys);
     void set_quorum_history_storage(uint64_t hist_size); // 0 = none (default), 1 = unlimited, N = # of blocks
     bool store();
@@ -402,7 +434,7 @@ namespace service_nodes
                                                                    uint16_t storage_port,
                                                                    uint16_t storage_lmq_port,
                                                                    uint16_t quorumnet_port) const;
-    bool handle_uptime_proof        (cryptonote::NOTIFY_UPTIME_PROOF::request const &proof, bool &my_uptime_proof_confirmation);
+    bool handle_uptime_proof        (cryptonote::NOTIFY_UPTIME_PROOF::request const &proof, bool &my_uptime_proof_confirmation, crypto::x25519_public_key &x25519_pkey);
     void record_checkpoint_vote     (crypto::public_key const &pubkey, uint64_t height, bool voted);
 
     // Called every hour to remove proofs for expired SNs from memory and the database.
@@ -487,7 +519,7 @@ namespace service_nodes
       friend bool operator<(const state_t &s, block_height h)   { return s.height < h; }
       friend bool operator<(block_height h, const state_t &s)   { return        h < s.height; }
 
-      std::vector<pubkey_and_sninfo>  active_service_nodes_infos() const; // return: Filtered pubkey-sorted vector of service nodes that are active (fully funded and *not* decommissioned).
+      std::vector<pubkey_and_sninfo>  active_service_nodes_infos() const;
       std::vector<pubkey_and_sninfo>  decommissioned_service_nodes_infos() const; // return: All nodes that are fully funded *and* decommissioned.
       std::vector<crypto::public_key> get_expired_nodes(cryptonote::BlockchainDB const &db, cryptonote::network_type nettype, uint8_t hf_version, uint64_t block_height) const;
       void update_from_block(
@@ -514,7 +546,8 @@ namespace service_nodes
           const cryptonote::transaction& tx,
           const service_node_keys *my_keys);
       bool process_key_image_unlock_tx(cryptonote::network_type nettype, uint64_t block_height, const cryptonote::transaction &tx);
-      block_winner get_block_winner() const;
+      payout get_block_leader() const;
+      payout get_block_producer(uint8_t pulse_round) const;
     };
 
     // Can be set to true (via --dev-allow-local-ips) for debugging a new testnet on a local private network.
@@ -605,6 +638,9 @@ namespace service_nodes
       std::string &cmd,
       bool make_friendly);
 
-  const static std::vector<payout_entry> null_winner = {{cryptonote::null_address, STAKING_PORTIONS}};
-  const static block_winner null_block_winner        = {crypto::null_pkey, {null_winner}};
+  service_nodes::quorum generate_pulse_quorum(cryptonote::network_type nettype, cryptonote::BlockchainDB const &db, uint64_t height, crypto::public_key const &leader, uint8_t hf_version, std::vector<pubkey_and_sninfo> const &active_snode_list, uint8_t pulse_round);
+  payout service_node_info_to_payout(crypto::public_key const &key, service_node_info const &info);
+
+  const static payout_entry null_payout_entry = {cryptonote::null_address, STAKING_PORTIONS};
+  const static payout null_payout             = {crypto::null_pkey, {null_payout_entry}};
 }

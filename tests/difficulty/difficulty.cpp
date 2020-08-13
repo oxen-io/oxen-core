@@ -40,7 +40,6 @@
 #include "cryptonote_config.h"
 #include "cryptonote_basic/difficulty.h"
 
-#define DEFAULT_TEST_DIFFICULTY_TARGET        120
 #define DIFFICULTY_LAG                        15
 
 int main(int argc, char *argv[]) {
@@ -58,16 +57,16 @@ int main(int argc, char *argv[]) {
     size_t n = 0;
     while (data >> timestamp >> difficulty) {
         size_t begin, end;
-        if (n < DIFFICULTY_WINDOW_V2 + DIFFICULTY_LAG) {
+        if (n < DIFFICULTY_WINDOW + DIFFICULTY_LAG) {
             begin = 0;
-            end = std::min(n, (size_t) DIFFICULTY_WINDOW_V2);
+            end = std::min(n, (size_t) DIFFICULTY_WINDOW);
         } else {
             end = n - DIFFICULTY_LAG;
-            begin = end - DIFFICULTY_WINDOW_V2;
+            begin = end - DIFFICULTY_WINDOW;
         }
         uint64_t res = cryptonote::next_difficulty_v2(
             std::vector<uint64_t>(timestamps.begin() + begin, timestamps.begin() + end),
-            std::vector<uint64_t>(cumulative_difficulties.begin() + begin, cumulative_difficulties.begin() + end), DEFAULT_TEST_DIFFICULTY_TARGET, false/*use_old_lwma2*/, false);
+            std::vector<uint64_t>(cumulative_difficulties.begin() + begin, cumulative_difficulties.begin() + end), TARGET_BLOCK_TIME, false/*use_old_lwma2*/, false);
         if (res != difficulty) {
             std::cerr << "Wrong difficulty for block " << n
                 << "\nExpected: " << difficulty

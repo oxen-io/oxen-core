@@ -26,7 +26,7 @@ namespace epee {
 
     void dump_as_json(std::ostream& s, const std::string& v, size_t, bool)
     {
-      s << '"';
+      s.put('"');
       // JSON strings may only contain 0x20 and above, except for " and \\ which must be escaped.
       // For values below 0x20 we can use \u00XX escapes, except for the really common \n and \t (we
       // could also use \b, \f, \r, but it really isn't worth the bother.
@@ -34,23 +34,24 @@ namespace epee {
         switch(c) {
           case '"':
           case '\\':
-            s << '\\' << c;
+            s.put('\\'); s.put(c);
             break;
-          case '\n': s << "\\n"; break;
-          case '\t': s << "\\t"; break;
+          case '\n': s.write("\\n", 2); break;
+          case '\t': s.write("\\t", 2); break;
           case 0x00: case 0x01: case 0x02: case 0x03: case 0x04: case 0x05: case 0x06: case 0x07:
           case 0x08: /*\t=0x09: \n=0x0a*/  case 0x0b: case 0x0c: case 0x0d: case 0x0e: case 0x0f:
           case 0x10: case 0x11: case 0x12: case 0x13: case 0x14: case 0x15: case 0x16: case 0x17:
           case 0x18: case 0x19: case 0x1a: case 0x1b: case 0x1c: case 0x1d: case 0x1e: case 0x1f:
-            s << "\\u00" << (c >= 0x10 ? '1' : '0');
+            s.write("\\u00", 4);
+            s.put(c >= 0x10 ? '1' : '0');
             c &= 0xf;
-            s << (c < 0xa ? '0' + c : ('a' - 10) + c);
+            s.put(c < 0xa ? '0' + c : ('a' - 10) + c);
             break;
           default:
-            s << c;
+            s.put(c);
         }
       }
-      s << '"';
+      s.put('"');
     }
 
 

@@ -290,9 +290,11 @@ namespace cryptonote
     /**
      * @brief get the current height of the blockchain
      *
+     * @param lock lock the blockchain before querying the lock
+     *
      * @return the height
      */
-    uint64_t get_current_blockchain_height() const;
+    uint64_t get_current_blockchain_height(bool lock = false) const;
 
     /**
      * @brief get the hash of the most recent block on the blockchain
@@ -355,8 +357,9 @@ namespace cryptonote
      *
      * @return true if block template filled in successfully, else false
      */
-    bool create_block_template(block& b, const account_public_address& miner_address, difficulty_type& di, uint64_t& height, uint64_t& expected_reward, const blobdata& ex_nonce);
-    bool create_block_template(block& b, const crypto::hash *from_block, const account_public_address& miner_address, difficulty_type& di, uint64_t& height, uint64_t& expected_reward, const blobdata& ex_nonce);
+    bool create_miner_block_template     (block& b, const crypto::hash *from_block, const account_public_address& miner_address, difficulty_type& diffic, uint64_t& height, uint64_t& expected_reward, const blobdata& ex_nonce);
+    bool create_next_miner_block_template(block& b, const account_public_address& miner_address, difficulty_type& diffic, uint64_t& height, uint64_t& expected_reward, const blobdata& ex_nonce);
+    bool create_next_pulse_block_template(block& b, const service_nodes::payout& block_producer, uint64_t& height, uint64_t& expected_reward);
 
     /**
      * @brief checks if a block is known about with a given hash
@@ -854,13 +857,6 @@ namespace cryptonote
     bool get_hard_fork_voting_info(uint8_t version, uint32_t &window, uint32_t &votes, uint32_t &threshold, uint64_t &earliest_height, uint8_t &voting) const;
 
     /**
-     * @brief get difficulty target based on chain and hardfork version
-     *
-     * @return difficulty target
-     */
-    uint64_t get_difficulty_target() const;
-
-    /**
      * @brief remove transactions from the transaction pool (if present)
      *
      * @param txids a list of hashes of transactions to be removed
@@ -1061,6 +1057,15 @@ namespace cryptonote
   private:
 #endif
 
+    struct block_template_info
+    {
+      bool                   is_miner;
+      account_public_address miner_address;
+      service_nodes::payout  service_node_payout;
+    };
+
+    bool create_block_template_internal(block& b, const crypto::hash *from_block, block_template_info const &info, difficulty_type& di, uint64_t& height, uint64_t& expected_reward, const blobdata& ex_nonce);
+
     bool load_missing_blocks_into_loki_subsystems();
 
     // TODO: evaluate whether or not each of these typedefs are left over from blockchain_storage
@@ -1245,21 +1250,6 @@ namespace cryptonote
      * @return the block removed
      */
     block pop_block_from_blockchain();
-
-    /**
-     * @brief validate and add a new block to the end of the blockchain
-     *
-     * This function is merely a convenience wrapper around the other
-     * of the same name.  This one passes the block's hash to the other
-     * as well as the block and verification context.
-     *
-     * @param bl the block to be added
-     * @param bvc metadata concerning the block's validity
-     * @param notify if set to true, sends new block notification on success
-     *
-     * @return true if the block was added successfully, otherwise false
-     */
-    bool handle_block_to_main_chain(const block& bl, block_verification_context& bvc, bool notify = true);
 
     /**
      * @brief validate and add a new block to the end of the blockchain

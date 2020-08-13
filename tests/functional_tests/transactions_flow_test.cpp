@@ -269,12 +269,12 @@ bool transactions_flow_test(std::string& working_folder,
 
 
   LOG_PRINT_L0( "waiting some new blocks...");
-  epee::misc_utils::sleep_no_w(DIFFICULTY_TARGET_V2*20*1000);//wait two blocks before sync on another wallet on another daemon
+  epee::misc_utils::sleep_no_w(TARGET_BLOCK_TIME*20*1000);//wait two blocks before sync on another wallet on another daemon
   LOG_PRINT_L0( "refreshing...");
   bool recvd_money = false;
   while(w2.refresh(true, blocks_fetched, recvd_money, ok) && ( (blocks_fetched && recvd_money) || !blocks_fetched  ) )
   {
-    epee::misc_utils::sleep_no_w(DIFFICULTY_TARGET_V2*1000);//wait two blocks before sync on another wallet on another daemon
+    epee::misc_utils::sleep_no_w(TARGET_BLOCK_TIME*1000);//wait two blocks before sync on another wallet on another daemon
   }
 
   uint64_t money_2 = w2.balance(0, true);

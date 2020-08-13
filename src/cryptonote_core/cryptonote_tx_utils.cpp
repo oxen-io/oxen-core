@@ -33,6 +33,7 @@
 #include "include_base_utils.h"
 #include "string_tools.h"
 #include "common/apply_permutation.h"
+#include "common/hex.h"
 #include "cryptonote_tx_utils.h"
 #include "cryptonote_config.h"
 #include "blockchain.h"
@@ -103,7 +104,6 @@ namespace cryptonote
 
   bool get_deterministic_output_key(const account_public_address& address, const keypair& tx_key, size_t output_index, crypto::public_key& output_key)
   {
-
     crypto::key_derivation derivation{};
     bool r = crypto::generate_key_derivation(address.m_view_public_key, tx_key.sec, derivation);
     CHECK_AND_ASSERT_MES(r, false, "failed to generate_key_derivation(" << address.m_view_public_key << ", " << tx_key.sec << ")");
@@ -114,7 +114,7 @@ namespace cryptonote
     return true;
   }
 
-  bool validate_governance_reward_key(uint64_t height, const std::string& governance_wallet_address_str, size_t output_index, const crypto::public_key& output_key, const cryptonote::network_type nettype)
+  bool validate_governance_reward_key(uint64_t height, std::string_view governance_wallet_address_str, size_t output_index, const crypto::public_key& output_key, const cryptonote::network_type nettype)
   {
     keypair gov_key = get_deterministic_keypair_from_height(height);
 
@@ -152,8 +152,7 @@ namespace cryptonote
     if (hard_fork_version <= network_version_9_service_nodes)
       return true;
 
-    const cryptonote::config_t &network = cryptonote::get_config(nettype, hard_fork_version);
-    if (height % network.GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS != 0)
+    if (height % cryptonote::get_config(nettype).GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS != 0)
     {
       return false;
     }
@@ -212,13 +211,28 @@ namespace cryptonote
     return rewardlo;
   }
 
-  static uint64_t calculate_sum_of_portions(const std::vector<service_nodes::payout_entry>& payouts, uint64_t total_service_node_reward)
+  static uint64_t calculate_sum_of_portions(const std::vector<service_nodes::payout_entry>& payout, uint64_t total_service_node_reward)
   {
     uint64_t reward = 0;
-    for (size_t i = 0; i < payouts.size(); i++)
-      reward += get_portion_of_reward(payouts[i].portions, total_service_node_reward);
+    for (auto const &entry : payout)
+      reward += get_portion_of_reward(entry.portions, total_service_node_reward);
     return reward;
   }
+
+  enum struct reward_type
+  {
+    miner,
+    snode,
+    governance
+  };
+
+  struct reward_payout
+  {
+    reward_type            type;
+    account_public_address address;
+    uint64_t               amount;
+    bool operator==(service_nodes::payout_entry const &other) const { return address == other.address; }
+  };
 
   bool construct_miner_tx(
       size_t height,
@@ -226,14 +240,11 @@ namespace cryptonote
       uint64_t already_generated_coins,
       size_t current_block_weight,
       uint64_t fee,
-      const account_public_address &miner_address,
       transaction& tx,
+      const loki_miner_tx_context &miner_tx_context,
       const blobdata& extra_nonce,
-      uint8_t hard_fork_version,
-      const loki_miner_tx_context &miner_tx_context)
+      uint8_t hard_fork_version)
   {
-    const network_type nettype = miner_tx_context.nettype;
-
     tx.vin.clear();
     tx.vout.clear();
     tx.extra.clear();
@@ -241,86 +252,84 @@ namespace cryptonote
     tx.type    = txtype::standard;
     tx.version = transaction::get_max_version_for_hf(hard_fork_version);
 
-    const crypto::public_key &service_node_key                        = miner_tx_context.block_winner.key;
-    const std::vector<service_nodes::payout_entry> &service_node_info = miner_tx_context.block_winner.payouts;
+    keypair const txkey   = keypair::generate(hw::get_device("default"));
+    keypair const gov_key = get_deterministic_keypair_from_height(height); // NOTE: Always need since we use same key for service node
 
-    keypair txkey = keypair::generate(hw::get_device("default"));
-    add_tx_extra<tx_extra_pub_key>(tx, txkey.pub);
-    if(!extra_nonce.empty())
-      if(!add_extra_nonce_to_tx_extra(tx.extra, extra_nonce))
-        return false;
-    if (!sort_tx_extra(tx.extra, tx.extra))
-      return false;
-
-    keypair gov_key = get_deterministic_keypair_from_height(height); // NOTE: Always need since we use same key for service node
-    if (already_generated_coins != 0)
+    // NOTE: TX Extra
     {
-      add_tx_extra<tx_extra_pub_key>(tx, gov_key.pub);
-    }
-
-    add_service_node_winner_to_tx_extra(tx.extra, service_node_key);
-
-    txin_gen in;
-    in.height = height;
-
-    loki_block_reward_context block_reward_context = {};
-    block_reward_context.fee                       = fee;
-    block_reward_context.height                    = height;
-    block_reward_context.service_node_payouts      = miner_tx_context.block_winner.payouts;
-    block_reward_context.batched_governance        = miner_tx_context.batched_governance;
-
-    block_reward_parts reward_parts;
-    if(!get_loki_block_reward(median_weight, current_block_weight, already_generated_coins, hard_fork_version, reward_parts, block_reward_context))
-    {
-      LOG_PRINT_L0("Failed to calculate block reward");
-      return false;
-    }
-
-    uint64_t summary_amounts = 0;
-    // Miner Reward
-    {
-      crypto::key_derivation derivation{};
-      crypto::public_key out_eph_public_key{};
-      bool r = crypto::generate_key_derivation(miner_address.m_view_public_key, txkey.sec, derivation);
-      CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to generate_key_derivation(" << miner_address.m_view_public_key << ", " << txkey.sec << ")");
-
-      r = crypto::derive_public_key(derivation, 0, miner_address.m_spend_public_key, out_eph_public_key);
-      CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to derive_public_key(" << derivation << ", " << 0 << ", "<< miner_address.m_spend_public_key << ")");
-
-      txout_to_key tk;
-      tk.key = out_eph_public_key;
-
-      tx_out out;
-      summary_amounts += out.amount = reward_parts.miner_reward();
-      out.target = tk;
-      tx.vout.push_back(out);
-      tx.output_unlock_times.push_back(height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW);
-    }
-
-    if (hard_fork_version >= network_version_9_service_nodes) // Service Node Reward
-    {
-      for (size_t i = 0; i < service_node_info.size(); i++)
+      add_tx_extra<tx_extra_pub_key>(tx, txkey.pub);
+      if(!extra_nonce.empty())
       {
-        service_nodes::payout_entry const &payout = service_node_info[i];
-        crypto::key_derivation derivation{};
-        crypto::public_key out_eph_public_key{};
-        bool r = crypto::generate_key_derivation(payout.address.m_view_public_key, gov_key.sec, derivation);
-        CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to generate_key_derivation(" << payout.address.m_view_public_key << ", " << gov_key.sec << ")");
-        r = crypto::derive_public_key(derivation, 1+i, payout.address.m_spend_public_key, out_eph_public_key);
-        CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to derive_public_key(" << derivation << ", " << (1+i) << ", "<< payout.address.m_spend_public_key << ")");
+        if(!add_extra_nonce_to_tx_extra(tx.extra, extra_nonce))
+          return false;
+      }
 
-        txout_to_key tk;
-        tk.key = out_eph_public_key;
+      // TODO(doyle): We don't need to do this. It's a deterministic key.
+      if (already_generated_coins != 0)
+        add_tx_extra<tx_extra_pub_key>(tx, gov_key.pub);
 
-        tx_out out;
-        summary_amounts += out.amount = get_portion_of_reward(payout.portions, reward_parts.service_node_total);
-        out.target = tk;
-        tx.vout.push_back(out);
-        tx.output_unlock_times.push_back(height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW);
+      add_service_node_winner_to_tx_extra(tx.extra, miner_tx_context.block_leader.key);
+    }
+
+    block_reward_parts reward_parts = {};
+    {
+      loki_block_reward_context block_reward_context = {};
+      block_reward_context.fee                       = fee;
+      block_reward_context.height                    = height;
+      block_reward_context.block_leader_payouts      = miner_tx_context.block_leader.payouts;
+      block_reward_context.batched_governance        = miner_tx_context.batched_governance;
+
+      if(!get_loki_block_reward(median_weight, current_block_weight, already_generated_coins, hard_fork_version, reward_parts, block_reward_context))
+      {
+        LOG_PRINT_L0("Failed to calculate block reward");
+        return false;
       }
     }
 
-    // Governance Distribution
+    // TODO(doyle): Batching awards
+    // NOTE: Summarise rewards to payout
+    // Up to 9 payout entries, up to 4 Block Producer (Pooled SN or 1 for Miner), up to 4 for Block Leader, up to 1 Governance
+    size_t rewards_length                = 0;
+    std::array<reward_payout, 9> rewards = {};
+
+    // NOTE: Add Block Producer Reward
+    bool add_producer_reward_to_leader = false;
+    if (miner_tx_context.pulse)
+    {
+      CHECK_AND_ASSERT_MES(miner_tx_context.pulse_block_producer.payouts.size(), false, "Constructing a reward for block produced by pulse but no payout entries specified");
+      CHECK_AND_ASSERT_MES(miner_tx_context.pulse_block_producer.key, false, "Null Key given for Pulse Block Producer");
+      CHECK_AND_ASSERT_MES(hard_fork_version >= cryptonote::network_version_16, false, "Pulse Block Producer is not valid until HF16, current HF" << hard_fork_version);
+
+      if (miner_tx_context.block_leader.key == miner_tx_context.pulse_block_producer.key)
+      {
+        add_producer_reward_to_leader = true;
+      }
+      else
+      {
+        service_nodes::payout const &producer = miner_tx_context.pulse_block_producer;
+        for (auto const &payee : producer.payouts)
+          rewards[rewards_length++] = {reward_type::snode, payee.address, get_portion_of_reward(payee.portions, reward_parts.miner_reward())};
+      }
+    }
+    else
+    {
+      CHECK_AND_ASSERT_MES(miner_tx_context.pulse_block_producer.payouts.empty(), false, "Constructing a reward for block produced by miner but payout entries specified");
+      rewards[rewards_length++] = {reward_type::miner, miner_tx_context.miner_block_producer, reward_parts.miner_reward()};
+    }
+
+    // NOTE: Add Service Node List Queue Winner
+    if (hard_fork_version >= cryptonote::network_version_9_service_nodes)
+    {
+      CHECK_AND_ASSERT_MES(miner_tx_context.block_leader.payouts.size(), false, "Constructing a block leader reward for block but no payout entries specified");
+      for (auto const &payee : miner_tx_context.block_leader.payouts)
+      {
+        rewards[rewards_length++] = {reward_type::snode, payee.address, get_portion_of_reward(payee.portions, reward_parts.service_node_paid)};
+        if (add_producer_reward_to_leader)
+          rewards[rewards_length - 1].amount += get_portion_of_reward(payee.portions, reward_parts.miner_reward());
+      }
+    }
+
+    // NOTE: Add Governance Payout
     if (already_generated_coins != 0)
     {
       if (reward_parts.governance_paid == 0)
@@ -329,33 +338,50 @@ namespace cryptonote
       }
       else
       {
+        const network_type nettype = miner_tx_context.nettype;
         cryptonote::address_parse_info governance_wallet_address;
-        cryptonote::get_account_address_from_str(governance_wallet_address, nettype, *cryptonote::get_config(nettype, hard_fork_version).GOVERNANCE_WALLET_ADDRESS);
-        crypto::public_key out_eph_public_key{};
-
-        if (!get_deterministic_output_key(governance_wallet_address.address, gov_key, tx.vout.size(), out_eph_public_key))
-        {
-          MERROR("Failed to generate deterministic output key for governance wallet output creation");
-          return false;
-        }
-
-        txout_to_key tk;
-        tk.key = out_eph_public_key;
-
-        tx_out out;
-        summary_amounts += out.amount = reward_parts.governance_paid;
-        out.target = tk;
-        tx.vout.push_back(out);
-        tx.output_unlock_times.push_back(height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW);
+        cryptonote::get_account_address_from_str(governance_wallet_address, nettype, cryptonote::get_config(nettype).governance_wallet_address(hard_fork_version));
+        rewards[rewards_length++] = {reward_type::governance, governance_wallet_address.address, reward_parts.governance_paid};
       }
+    }
+    CHECK_AND_ASSERT_MES(rewards_length <= rewards.size(), false, "More rewards specified than supported, number of rewards: " << rewards_length << ", capacity: " << rewards.size());
+    CHECK_AND_ASSERT_MES(rewards_length > 0,               false, "Zero rewards are to be payed out, there should be atleast 1");
+
+    // NOTE: Make TX Outputs
+    uint64_t summary_amounts = 0;
+    for (size_t reward_index = 0; reward_index < rewards_length; reward_index++)
+    {
+      auto const &[type, address, amount] = rewards[reward_index];
+      crypto::public_key out_eph_public_key{};
+
+      // TODO(doyle): I don't think txkey is necessary, just use the governance key?
+      keypair const &derivation_pair = (type == reward_type::miner) ? txkey : gov_key;
+      crypto::key_derivation derivation{};
+
+      if (!get_deterministic_output_key(address, derivation_pair, reward_index, out_eph_public_key))
+      {
+        MERROR("Failed to generate output one-time public key");
+        return false;
+      }
+
+      txout_to_key tk = {};
+      tk.key          = out_eph_public_key;
+
+      tx_out out = {};
+      out.target = tk;
+      out.amount = amount;
+      tx.vout.push_back(out);
+      tx.output_unlock_times.push_back(height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW);
+      summary_amounts += amount;
     }
 
     uint64_t expected_amount = reward_parts.miner_reward() + reward_parts.governance_paid + reward_parts.service_node_paid;
     CHECK_AND_ASSERT_MES(summary_amounts == expected_amount, false, "Failed to construct miner tx, summary_amounts = " << summary_amounts << " not equal total block_reward = " << expected_amount);
+    CHECK_AND_ASSERT_MES(tx.vout.size() == rewards_length, false, "TX output mis-match with rewards expected: " << rewards_length << ", tx outputs: " << tx.vout.size());
 
     //lock
     tx.unlock_time = height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
-    tx.vin.push_back(in);
+    tx.vin.push_back(txin_gen{height});
     tx.invalidate_hashes();
 
     //LOG_PRINT("MINER_TX generated ok, block_reward=" << print_money(block_reward) << "("  << print_money(block_reward - fee) << "+" << print_money(fee)
@@ -392,7 +418,7 @@ namespace cryptonote
         hard_fork_version >= network_version_13_enforce_checkpoints ? base_reward_unpenalized : base_reward;
 
     result.service_node_total = service_node_reward_formula(result.original_base_reward, hard_fork_version);
-    result.service_node_paid  = calculate_sum_of_portions(loki_context.service_node_payouts, result.service_node_total);
+    result.service_node_paid  = calculate_sum_of_portions(loki_context.block_leader_payouts, result.service_node_total);
 
     // There is a goverance fee due every block.  Beginning in hardfork 10 this is still subtracted
     // from the block reward as if it was paid, but the actual payments get batched into rare, large
@@ -973,35 +999,42 @@ namespace cryptonote
   //---------------------------------------------------------------
   bool generate_genesis_block(
       block& bl
-    , std::string const & genesis_tx
+    , std::string_view genesis_tx_hex
     , uint32_t nonce
     )
   {
     //genesis block
     bl = {};
 
-    blobdata tx_bl;
-    bool r = epee::string_tools::parse_hexstr_to_binbuff(genesis_tx, tx_bl);
-    CHECK_AND_ASSERT_MES(r, false, "failed to parse coinbase tx from hard coded blob");
-    r = parse_and_validate_tx_from_blob(tx_bl, bl.miner_tx);
+    CHECK_AND_ASSERT_MES(lokimq::is_hex(genesis_tx_hex), false, "failed to parse coinbase tx from hard coded blob");
+    std::string tx_bl = lokimq::from_hex(genesis_tx_hex);
+    bool r = parse_and_validate_tx_from_blob(tx_bl, bl.miner_tx);
     CHECK_AND_ASSERT_MES(r, false, "failed to parse coinbase tx from hard coded blob");
     bl.major_version = 7;
     bl.minor_version = 7;
     bl.timestamp = 0;
     bl.nonce = nonce;
     miner::find_nonce_for_given_block([](const cryptonote::block &b, uint64_t height, unsigned int threads, crypto::hash &hash){
-      hash = cryptonote::get_block_longhash(cryptonote::randomx_longhash_context(NULL, b, height), b, height, threads);
+      hash = cryptonote::get_block_longhash(UNDEFINED, cryptonote::randomx_longhash_context(NULL, b, height), b, height, threads);
       return true;
     }, bl, 1, 0);
     bl.invalidate_hashes();
     return true;
   }
   //---------------------------------------------------------------
-  crypto::hash get_altblock_longhash(randomx_longhash_context const &randomx_context, const block& b, uint64_t height)
+  crypto::hash get_altblock_longhash(cryptonote::network_type nettype, randomx_longhash_context const &randomx_context, const block& b, uint64_t height)
   {
-    blobdata bd = get_block_hashing_blob(b);
-    crypto::hash result;
-    rx_slow_hash(randomx_context.current_blockchain_height, randomx_context.seed_height, randomx_context.seed_block_hash.data, bd.data(), bd.size(), result.data, 0, 1);
+    crypto::hash result = {};
+    if (nettype == FAKECHAIN || b.major_version < network_version_12_checkpointing)
+    {
+      result = get_block_longhash(nettype, randomx_context, b, height, 0);
+    }
+    else
+    {
+      blobdata bd = get_block_hashing_blob(b);
+      rx_slow_hash(randomx_context.current_blockchain_height, randomx_context.seed_height, randomx_context.seed_block_hash.data, bd.data(), bd.size(), result.data, 0, 1);
+    }
+
     return result;
   }
 
@@ -1021,42 +1054,49 @@ namespace cryptonote
     }
   }
 
-  crypto::hash get_block_longhash(randomx_longhash_context const &randomx_context, const block& b, uint64_t height, int miners)
+  crypto::hash get_block_longhash(cryptonote::network_type nettype, randomx_longhash_context const &randomx_context, const block& b, uint64_t height, int miners)
   {
     crypto::hash result      = {};
     const blobdata bd        = get_block_hashing_blob(b);
     const uint8_t hf_version = b.major_version;
 
-#if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
+#if defined(LOKI_INTEGRATION_TESTS)
     miners = 0;
 #endif
 
-    if (hf_version >= network_version_12_checkpointing)
-    {
-      rx_slow_hash(randomx_context.current_blockchain_height,
-                   randomx_context.seed_height,
-                   randomx_context.seed_block_hash.data,
-                   bd.data(),
-                   bd.size(),
-                   result.data,
-                   miners,
-                   0);
-      return result;
-    }
-
     crypto::cn_slow_hash_type cn_type = cn_slow_hash_type::heavy_v1;
-    if (hf_version >= network_version_11_infinite_staking)
+    if (nettype == FAKECHAIN)
+    {
       cn_type = cn_slow_hash_type::turtle_lite_v2;
-    else if (hf_version >= network_version_7)
-      cn_type = crypto::cn_slow_hash_type::heavy_v2;
+    }
+    else
+    {
+      if (hf_version >= network_version_12_checkpointing)
+      {
+        rx_slow_hash(randomx_context.current_blockchain_height,
+                     randomx_context.seed_height,
+                     randomx_context.seed_block_hash.data,
+                     bd.data(),
+                     bd.size(),
+                     result.data,
+                     miners,
+                     0);
+        return result;
+      }
+
+      if (hf_version >= network_version_11_infinite_staking)
+        cn_type = cn_slow_hash_type::turtle_lite_v2;
+      else if (hf_version >= network_version_7)
+        cn_type = crypto::cn_slow_hash_type::heavy_v2;
+    }
 
     crypto::cn_slow_hash(bd.data(), bd.size(), result, cn_type);
     return result;
   }
 
-  crypto::hash get_block_longhash_w_blockchain(const Blockchain *pbc, const block& b, uint64_t height, int miners)
+  crypto::hash get_block_longhash_w_blockchain(cryptonote::network_type nettype, const Blockchain *pbc, const block& b, uint64_t height, int miners)
   {
-    crypto::hash result = get_block_longhash(randomx_longhash_context(pbc, b, height), b, height, miners);
+    crypto::hash result = get_block_longhash(nettype,randomx_longhash_context(pbc, b, height), b, height, miners);
     return result;
   }
 

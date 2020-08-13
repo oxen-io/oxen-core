@@ -457,7 +457,7 @@ namespace rpc
 
     res.info.difficulty = chain.get_difficulty_for_next_block();
 
-    res.info.target = chain.get_difficulty_target();
+    res.info.target = tools::to_seconds(TARGET_BLOCK_TIME);
 
     res.info.tx_count = chain.get_total_transactions() - res.info.height; //without coinbase
 

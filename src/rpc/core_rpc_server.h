@@ -77,13 +77,14 @@ namespace cryptonote { namespace rpc {
   /// For HTTP JSON these become a 500 Internal Server Error response with the message as the body.
   /// For LokiMQ the code becomes the first part of the response and the message becomes the
   /// second part of the response.
-  struct rpc_error {
+  struct rpc_error : std::runtime_error {
     /// \param code - a signed, 16-bit numeric code.  0 must not be used (as it is used for a
     /// success code in LokiMQ), and values in the -32xxx range are reserved by JSON-RPC.
     ///
     /// \param message - a message to send along with the error code (see general description above).
     rpc_error(int16_t code, std::string message)
-      : code{code}, message{std::move(message)} {}
+      : std::runtime_error{"RPC error " + std::to_string(code) + ": " + message},
+        code{code}, message{std::move(message)} {}
 
     int16_t code;
     std::string message;
@@ -212,7 +213,7 @@ namespace cryptonote { namespace rpc {
     OUT_PEERS::response                                 invoke(OUT_PEERS::request&& req, rpc_context context);
     IN_PEERS::response                                  invoke(IN_PEERS::request&& req, rpc_context context);
     UPDATE::response                                    invoke(UPDATE::request&& req, rpc_context context);
-    GET_OUTPUT_DISTRIBUTION::response                   invoke(GET_OUTPUT_DISTRIBUTION::request&& req, rpc_context context);
+    GET_OUTPUT_DISTRIBUTION::response                   invoke(GET_OUTPUT_DISTRIBUTION::request&& req, rpc_context context, bool binary = false);
     GET_OUTPUT_DISTRIBUTION_BIN::response               invoke(GET_OUTPUT_DISTRIBUTION_BIN::request&& req, rpc_context context);
     POP_BLOCKS::response                                invoke(POP_BLOCKS::request&& req, rpc_context context);
     GETBLOCKCOUNT::response                             invoke(GETBLOCKCOUNT::request&& req, rpc_context context);
@@ -257,12 +258,12 @@ namespace cryptonote { namespace rpc {
     GET_SN_STATE_CHANGES::response                      invoke(GET_SN_STATE_CHANGES::request&& req, rpc_context context);
     REPORT_PEER_SS_STATUS::response                     invoke(REPORT_PEER_SS_STATUS::request&& req, rpc_context context);
     TEST_TRIGGER_P2P_RESYNC::response                   invoke(TEST_TRIGGER_P2P_RESYNC::request&& req, rpc_context context);
+    TEST_TRIGGER_UPTIME_PROOF::response                 invoke(TEST_TRIGGER_UPTIME_PROOF::request&& req, rpc_context context);
     LNS_NAMES_TO_OWNERS::response                       invoke(LNS_NAMES_TO_OWNERS::request&& req, rpc_context context);
     LNS_OWNERS_TO_NAMES::response                       invoke(LNS_OWNERS_TO_NAMES::request&& req, rpc_context context);
     FLUSH_CACHE::response                               invoke(FLUSH_CACHE::request&& req, rpc_context);
 
 #if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
-
     void on_relay_uptime_and_votes()
     {
       m_core.submit_uptime_proof();
@@ -287,15 +288,15 @@ namespace cryptonote { namespace rpc {
         return;
       }
 
-      for (uint64_t i = 0; i < num_blocks; i++)
+      uint64_t height = m_core.get_current_blockchain_height();
+      if (!miner.start(info.address, 1, num_blocks))
       {
-        if(!miner.debug_mine_singular_block(info.address))
-        {
-          std::cout << "Failed, mining not started";
-          return;
-        }
+        std::cout << "Failed, mining not started";
+        return;
       }
 
+      while (m_core.get_current_blockchain_height() != (height + num_blocks))
+        std::this_thread::sleep_for(500ms);
       std::cout << "Mining stopped in daemon";
     }
 #endif

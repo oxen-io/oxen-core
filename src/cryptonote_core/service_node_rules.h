@@ -3,8 +3,60 @@
 #include "crypto/crypto.h"
 #include "cryptonote_config.h"
 #include "service_node_voting.h"
+#include <chrono>
 
 namespace service_nodes {
+  constexpr size_t PULSE_QUORUM_ENTROPY_LAG    = 21; // How many blocks back from the tip of the Blockchain to source entropy for the Pulse quorums.
+#if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
+  constexpr auto PULSE_ROUND_TIME                                   = 20s;
+  constexpr auto PULSE_WAIT_FOR_HANDSHAKES_DURATION                 = 7s;
+  constexpr auto PULSE_WAIT_FOR_OTHER_VALIDATOR_HANDSHAKES_DURATION = 7s;
+  constexpr auto PULSE_WAIT_FOR_BLOCK_TEMPLATE_DURATION             = 6s;
+
+  constexpr size_t PULSE_QUORUM_NUM_VALIDATORS     = 0;
+  constexpr size_t PULSE_BLOCK_REQUIRED_SIGNATURES = 0;
+#else
+#if 0
+  constexpr auto PULSE_ROUND_TIME                                   = 60s;
+  constexpr auto PULSE_WAIT_FOR_HANDSHAKES_DURATION                 = 20s;
+  constexpr auto PULSE_WAIT_FOR_OTHER_VALIDATOR_HANDSHAKES_DURATION = 20s;
+  constexpr auto PULSE_WAIT_FOR_BLOCK_TEMPLATE_DURATION             = 20s;
+#else
+  constexpr auto PULSE_ROUND_TIME                                   = 20s;
+  constexpr auto PULSE_WAIT_FOR_HANDSHAKES_DURATION                 = 7s;
+  constexpr auto PULSE_WAIT_FOR_OTHER_VALIDATOR_HANDSHAKES_DURATION = 7s;
+  constexpr auto PULSE_WAIT_FOR_BLOCK_TEMPLATE_DURATION             = 6s;
+#endif
+
+  constexpr size_t PULSE_QUORUM_NUM_VALIDATORS     = 7;
+  constexpr size_t PULSE_BLOCK_REQUIRED_SIGNATURES = 7;  // A block must have exactly N signatures to be considered properly
+#endif
+
+  constexpr auto PULSE_MIN_TARGET_BLOCK_TIME = TARGET_BLOCK_TIME - 15s;
+  constexpr auto PULSE_MAX_TARGET_BLOCK_TIME = TARGET_BLOCK_TIME + 15s;
+  constexpr size_t PULSE_QUORUM_SIZE = PULSE_QUORUM_NUM_VALIDATORS + 1 /*Leader*/;
+
+  static_assert(PULSE_ROUND_TIME >=
+                PULSE_WAIT_FOR_HANDSHAKES_DURATION + PULSE_WAIT_FOR_OTHER_VALIDATOR_HANDSHAKES_DURATION + PULSE_WAIT_FOR_BLOCK_TEMPLATE_DURATION);
+
+  static_assert(PULSE_QUORUM_NUM_VALIDATORS >= PULSE_BLOCK_REQUIRED_SIGNATURES);
+  static_assert(PULSE_QUORUM_ENTROPY_LAG >= PULSE_QUORUM_SIZE, "We need to pull atleast PULSE_QUORUM_SIZE number of blocks from the Blockchain, we can't if the amount of blocks to go back from the tip of the Blockchain is less than the blocks we need.");
+  
+  constexpr size_t pulse_min_service_nodes(cryptonote::network_type nettype)
+  {
+    return (nettype == cryptonote::MAINNET) ? 50 : PULSE_QUORUM_SIZE;
+  }
+  static_assert(pulse_min_service_nodes(cryptonote::MAINNET) >= PULSE_QUORUM_SIZE);
+  static_assert(pulse_min_service_nodes(cryptonote::TESTNET) >= PULSE_QUORUM_SIZE);
+
+  constexpr uint16_t pulse_validator_bit_mask()
+  {
+    uint16_t result = 0;
+    for (size_t validator_index = 0; validator_index < PULSE_QUORUM_NUM_VALIDATORS; validator_index++)
+      result |= 1 << validator_index;
+    return result;
+  }
+
   // Service node decommissioning: as service nodes stay up they earn "credits" (measured in blocks)
   // towards a future outage.  A new service node starts out with INITIAL_CREDIT, and then builds up
   // CREDIT_PER_DAY for each day the service node remains active up to a maximum of
@@ -17,15 +69,59 @@ namespace service_nodes {
   // back online (i.e. starts sending the required performance proofs again) before the credits run
   // out then a quorum will reinstate the service node using a recommission transaction, which adds
   // the service node back to the bottom of the service node reward list, and resets its accumulated
-  // credits to 0.  If it does not come back online within the required number of blocks (i.e. the
-  // accumulated credit at the point of decommissioning) then a quorum will send a permanent
-  // deregistration transaction to the network, starting a 30-day deregistration count down.
+  // credits to RECOMMISSION_CREDIT (see below).  If it does not come back online within the
+  // required number of blocks (i.e. the accumulated credit at the point of decommissioning) then a
+  // quorum will send a permanent deregistration transaction to the network, starting a 30-day
+  // deregistration count down.  (Note that it is possible for a server to slightly exceed its
+  // decommission time: the first quorum test after the credit expires determines whether the server
+  // gets recommissioned or decommissioned).
   constexpr int64_t DECOMMISSION_CREDIT_PER_DAY = BLOCKS_EXPECTED_IN_HOURS(24) / 30;
   constexpr int64_t DECOMMISSION_INITIAL_CREDIT = BLOCKS_EXPECTED_IN_HOURS(2);
   constexpr int64_t DECOMMISSION_MAX_CREDIT     = BLOCKS_EXPECTED_IN_HOURS(48);
   constexpr int64_t DECOMMISSION_MINIMUM        = BLOCKS_EXPECTED_IN_HOURS(2);
 
   static_assert(DECOMMISSION_INITIAL_CREDIT <= DECOMMISSION_MAX_CREDIT, "Initial registration decommission credit cannot be larger than the maximum decommission credit");
+
+  // This determines how many credits a node gets when being recommissioned after being
+  // decommissioned.  It gets passed two values: the credit at the time the node was decomissioned,
+  // and the number of blocks the decommission lasted.  Note that it is possible for decomm_blocks
+  // to be *larger* than credit_at_decomm: in particularl
+  //
+  // The default, starting in Loki 8, subtracts two blocks for every block you were decomissioned,
+  // or returns 0 if that value would be negative.  So, for example, if you had 1000 blocks of
+  // credit and got decomissioned for 100 blocks, you will be recommissioned with 800 blocks of
+  // credit.  If you got decomissioned for 500 or more you will be recommissioned with 0 blocks of
+  // credit.
+  //
+  // Before Loki 8 (when this configuration was added) recomissioning would always reset your credit
+  // to 0, which is what happens if this function always returns 0.
+  inline constexpr int64_t RECOMMISSION_CREDIT(int64_t credit_at_decomm, int64_t decomm_blocks) {
+      return std::max<int64_t>(0, credit_at_decomm - 2*decomm_blocks);
+  }
+
+  // Some sanity checks on the recommission credit value:
+  static_assert(RECOMMISSION_CREDIT(DECOMMISSION_MAX_CREDIT, 0) <= DECOMMISSION_MAX_CREDIT,
+          "Max recommission credit should not be higher than DECOMMISSION_MAX_CREDIT");
+
+  // These are by no means exhaustive, but will at least catch simple mistakes
+  static_assert(
+          RECOMMISSION_CREDIT(DECOMMISSION_MAX_CREDIT, DECOMMISSION_MAX_CREDIT) <= RECOMMISSION_CREDIT(DECOMMISSION_MAX_CREDIT, DECOMMISSION_MAX_CREDIT/2) &&
+          RECOMMISSION_CREDIT(DECOMMISSION_MAX_CREDIT, DECOMMISSION_MAX_CREDIT/2) <= RECOMMISSION_CREDIT(DECOMMISSION_MAX_CREDIT, 0) &&
+          RECOMMISSION_CREDIT(DECOMMISSION_MAX_CREDIT/2, DECOMMISSION_MAX_CREDIT/2) <= RECOMMISSION_CREDIT(DECOMMISSION_MAX_CREDIT/2, 0),
+          "Recommission credit should be (weakly) decreasing in the length of decommissioning");
+  static_assert(
+          RECOMMISSION_CREDIT(DECOMMISSION_MAX_CREDIT/2, 1) <= RECOMMISSION_CREDIT(DECOMMISSION_MAX_CREDIT, 1) &&
+          RECOMMISSION_CREDIT(0, 1) <= RECOMMISSION_CREDIT(DECOMMISSION_MAX_CREDIT/2, 1),
+          "Recommission credit should be (weakly) increasing in initial credit blocks");
+
+  // This one actually could be supported (i.e. you can have negative credit and half to crawl out
+  // of that hole), but the current code is entirely untested as to whether or not that actually
+  // works.
+  static_assert(
+          RECOMMISSION_CREDIT(DECOMMISSION_MAX_CREDIT, 0) >= 0 &&
+          RECOMMISSION_CREDIT(DECOMMISSION_MAX_CREDIT, DECOMMISSION_MAX_CREDIT) >= 0 &&
+          RECOMMISSION_CREDIT(DECOMMISSION_MAX_CREDIT, 2*DECOMMISSION_MAX_CREDIT) >= 0, // delayed recommission that overhangs your time
+          "Recommission credit should not be negative");
 
   constexpr uint64_t  CHECKPOINT_NUM_CHECKPOINTS_FOR_CHAIN_FINALITY = 2;  // Number of consecutive checkpoints before, blocks preceeding the N checkpoints are locked in
   constexpr uint64_t  CHECKPOINT_INTERVAL                           = 4;  // Checkpoint every 4 blocks and prune when too old except if (height % CHECKPOINT_STORE_PERSISTENTLY_INTERVAL == 0)
@@ -143,7 +239,8 @@ namespace service_nodes {
     return
         hf_version <= cryptonote::network_version_12_checkpointing ? quorum_type::obligations :
         hf_version <  cryptonote::network_version_14_blink         ? quorum_type::checkpointing :
-        quorum_type::blink;
+        hf_version <  cryptonote::network_version_16               ? quorum_type::blink :
+        quorum_type::pulse;
   }
 
   constexpr uint64_t staking_num_lock_blocks(cryptonote::network_type nettype)
@@ -161,6 +258,15 @@ static_assert(STAKING_PORTIONS != UINT64_MAX, "UINT64_MAX is used as the invalid
 uint64_t get_min_node_contribution            (uint8_t version, uint64_t staking_requirement, uint64_t total_reserved, size_t num_contributions);
 uint64_t get_min_node_contribution_in_portions(uint8_t version, uint64_t staking_requirement, uint64_t total_reserved, size_t num_contributions);
 
+// Gets the maximum allowed stake amount.  This is used to prevent significant overstaking.  The
+// wallet tries to avoid this when submitting a stake, but it can still happen when competing stakes
+// get submitted into the mempool -- for example, with 10k of contribution room, two contributions
+// of 8k could get submitted and both would be accepted, but the second one would only count as 2k
+// of stake despite locking 8k.
+// Starting in HF16, we disallow a stake if it is more than MAXIMUM_ACCEPTABLE_STAKE ratio of the
+// available contribution room, which allows slight overstaking but disallows larger overstakes.
+uint64_t get_max_node_contribution(uint8_t version, uint64_t staking_requirement, uint64_t total_reserved);
+
 uint64_t get_staking_requirement(cryptonote::network_type nettype, uint64_t height, uint8_t hf_version);
 
 uint64_t portions_to_amount(uint64_t portions, uint64_t staking_requirement);
@@ -173,7 +279,7 @@ crypto::hash generate_request_stake_unlock_hash(uint32_t nonce);
 uint64_t     get_locked_key_image_unlock_height(cryptonote::network_type nettype, uint64_t node_register_height, uint64_t curr_height);
 
 // Returns lowest x such that (staking_requirement * x/STAKING_PORTIONS) >= amount
-uint64_t get_portions_to_make_amount(uint64_t staking_requirement, uint64_t amount);
+uint64_t get_portions_to_make_amount(uint64_t staking_requirement, uint64_t amount, uint64_t max_portions = STAKING_PORTIONS);
 
 bool get_portions_from_percent_str(std::string cut_str, uint64_t& portions);
 }

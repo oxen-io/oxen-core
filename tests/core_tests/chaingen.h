@@ -64,8 +64,6 @@
 #define TESTS_DEFAULT_FEE ((uint64_t)200000000) // 2 * pow(10, 8)
 #define TEST_DEFAULT_DIFFICULTY 1
 
-#define DIFFICULTY_BLOCKS_ESTIMATE_TIMESPAN  DIFFICULTY_TARGET_V2
-
 #if defined(__GNUG__) && !defined(__clang__) && __GNUC__ < 6
 namespace service_nodes {
   const std::vector<payout_entry> dummy; // help GCC 5 realize it needs to generate a default constructor
@@ -326,10 +324,10 @@ public:
   void add_block(const cryptonote::block& blk, size_t tsx_size, std::vector<uint64_t>& block_weights, uint64_t already_generated_coins);
   bool construct_block(cryptonote::block& blk, uint64_t height, const crypto::hash& prev_id,
     const cryptonote::account_base& miner_acc, uint64_t timestamp, uint64_t already_generated_coins,
-    std::vector<uint64_t>& block_weights, const std::list<cryptonote::transaction>& tx_list, const service_nodes::block_winner &winner = {});
+    std::vector<uint64_t>& block_weights, const std::list<cryptonote::transaction>& tx_list, const service_nodes::payout &block_leader = {});
   bool construct_block(cryptonote::block& blk, const cryptonote::account_base& miner_acc, uint64_t timestamp);
   bool construct_block(cryptonote::block& blk, const cryptonote::block& blk_prev, const cryptonote::account_base& miner_acc,
-    const std::list<cryptonote::transaction>& tx_list = std::list<cryptonote::transaction>(), const service_nodes::block_winner &winner = {});
+    const std::list<cryptonote::transaction>& tx_list = std::list<cryptonote::transaction>(), const service_nodes::payout &block_leader = {});
 
   bool construct_block_manually(cryptonote::block& blk, const cryptonote::block& prev_block,
     const cryptonote::account_base& miner_acc, int actual_params = bf_none, uint8_t major_ver = 0,
@@ -803,8 +801,7 @@ public:
   bool operator()(const loki_blockchain_addable<cryptonote::block> &entry) const
   {
     log_event("loki_blockchain_addable<cryptonote::block>");
-    cryptonote::block const &block = entry.data;
-
+    cryptonote::block const &block             = entry.data;
     cryptonote::block_verification_context bvc = {};
     cryptonote::blobdata bd                    = t_serializable_object_to_blob(block);
     std::vector<cryptonote::block> pblocks;
@@ -1129,11 +1126,18 @@ inline bool do_replay_file(const std::string& filename)
     std::list<cryptonote::transaction> SET_NAME; \
     MAKE_TX_LIST(VEC_EVENTS, SET_NAME, FROM, TO, AMOUNT, HEAD);
 
-#define MAKE_MINER_TX_MANUALLY(TX, BLK)         \
-  transaction TX;                     \
-  if (!construct_miner_tx(get_block_height(BLK)+1, 0, generator.get_already_generated_coins(BLK), \
-    0, 0, miner_account.get_keys().m_account_address, TX, {}, 7)) \
-    return false; \
+#define MAKE_MINER_TX_MANUALLY(TX, BLK)                                                                                \
+  transaction TX;                                                                                                      \
+  if (!construct_miner_tx(get_block_height(BLK) + 1,                                                                   \
+                          0,                                                                                           \
+                          generator.get_already_generated_coins(BLK),                                                  \
+                          0,                                                                                           \
+                          0,                                                                                           \
+                          TX,                                                                                          \
+                          cryptonote::loki_miner_tx_context::miner_block(cryptonote::FAKECHAIN, miner_account.get_keys().m_account_address), \
+                          {},                                                                                          \
+                          7))                                                                                          \
+    return false;
 
 #define MAKE_TX_LIST_START_RCT(VEC_EVENTS, SET_NAME, FROM, TO, AMOUNT, NMIX, HEAD) \
     std::list<cryptonote::transaction> SET_NAME; \
@@ -1340,6 +1344,7 @@ public:
   }
 };
 
+void                                      fill_nonce_with_loki_generator          (struct loki_chain_generator const *generator, cryptonote::block& blk, const cryptonote::difficulty_type& diffic, uint64_t height);
 void                                      loki_register_callback                  (std::vector<test_event_entry> &events, std::string const &callback_name, loki_callback callback);
 std::vector<std::pair<uint8_t, uint64_t>> loki_generate_sequential_hard_fork_table(uint8_t max_hf_version = cryptonote::network_version_count - 1);
 
@@ -1363,6 +1368,7 @@ struct loki_chain_generator_db : public cryptonote::BaseTestDB
   cryptonote::block                     get_block_from_height(const uint64_t &height) const override;
   bool                                  get_tx(const crypto::hash& h, cryptonote::transaction &tx) const override;
   std::vector<cryptonote::checkpoint_t> get_checkpoints_range(uint64_t start, uint64_t end, size_t num_desired_checkpoints) const override;
+  std::vector<cryptonote::block>        get_blocks_range(const uint64_t& h1, const uint64_t& h2) const override;
   uint64_t height() const override { return blocks.size(); }
 };
 
@@ -1370,6 +1376,27 @@ struct loki_service_node_contribution
 {
     cryptonote::account_public_address contributor;
     uint64_t                           portions;
+};
+
+enum struct loki_create_block_type
+{
+  automatic,
+  pulse,
+  miner,
+};
+
+struct loki_create_block_params
+{
+  loki_create_block_type               type;
+  uint8_t                              hf_version;
+  loki_blockchain_entry                prev;
+  cryptonote::account_base             miner_acc;
+  uint64_t                             timestamp;
+  std::vector<uint64_t>                block_weights;
+  std::vector<cryptonote::transaction> tx_list;
+  service_nodes::payout                block_leader;
+  uint64_t                             total_fee;
+  uint8_t                              pulse_round;
 };
 
 struct loki_chain_generator
@@ -1413,6 +1440,8 @@ struct loki_chain_generator
   void                                                 add_event_msg(std::string const &msg) { events_.push_back(msg); }
   void                                                 add_tx(cryptonote::transaction const &tx, bool can_be_added_to_blockchain = true, std::string const &fail_msg = {}, bool kept_by_block = false);
 
+  loki_create_block_params                             next_block_params() const;
+
   // NOTE: Add constructed TX to events_ and assume that it is valid to add to the blockchain. If the TX is meant to be unaddable to the blockchain use the individual create + add functions to
   // be able to mark the add TX event as something that should trigger a failure.
   cryptonote::transaction                              create_and_add_loki_name_system_tx(cryptonote::account_base const &src, lns::mapping_type type, std::string const &name, lns::mapping_value const &value, lns::generic_owner const *owner = nullptr, lns::generic_owner const *backup_owner = nullptr, bool kept_by_block = false);
@@ -1442,8 +1471,12 @@ struct loki_chain_generator
   cryptonote::transaction                              create_loki_name_system_tx_update_w_extra(cryptonote::account_base const &src, cryptonote::tx_extra_loki_name_system const &lns_extra) const;
 
   loki_blockchain_entry                                create_genesis_block(const cryptonote::account_base &miner, uint64_t timestamp);
-  loki_blockchain_entry                                create_next_block(const std::vector<cryptonote::transaction>& txs = {}, cryptonote::checkpoint_t const *checkpoint = nullptr, uint64_t total_fee = 0);
-  bool                                                 create_block(loki_blockchain_entry &entry, uint8_t hf_version, loki_blockchain_entry const &prev, const cryptonote::account_base &miner_acc, uint64_t timestamp, std::vector<uint64_t> &block_weights, const std::vector<cryptonote::transaction> &tx_list, const service_nodes::block_winner &block_winner, uint64_t total_fee = 0) const;
+  loki_blockchain_entry                                create_next_block(const std::vector<cryptonote::transaction>& txs = {}, cryptonote::checkpoint_t const *checkpoint = nullptr);
+  bool                                                 create_block(loki_blockchain_entry &entry, loki_create_block_params &params, const std::vector<cryptonote::transaction> &tx_list) const;
+
+  bool                                                 block_begin(loki_blockchain_entry &entry, loki_create_block_params &params, const std::vector<cryptonote::transaction> &tx_list) const;
+  void                                                 block_fill_pulse_data(loki_blockchain_entry &entry, loki_create_block_params const &params, uint8_t round) const;
+  void                                                 block_end(loki_blockchain_entry &entry, loki_create_block_params const &params) const;
 
   uint8_t                                              get_hf_version_at(uint64_t height) const;
   std::vector<uint64_t>                                last_n_block_weights(uint64_t height, uint64_t num) const;

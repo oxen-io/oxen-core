@@ -423,7 +423,7 @@ eof:
   public:
     using callback = std::function<bool(const std::vector<std::string> &)>;
     using empty_callback = std::function<bool()>;
-    using lookup = std::unordered_map<std::string, std::pair<callback, std::pair<std::string, std::string>>>;
+    using lookup = std::map<std::string, std::pair<callback, std::pair<std::string, std::string>>>;
 
     /// Go through registered commands in sorted order, call the function with three string
     /// arguments: command name, usage, and description.

@@ -1,6 +1,7 @@
 // Copyright (c) 2014-2019, The Monero Project
 // Copyright (c)      2019, The Loki Project
 //
+
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without modification, are
@@ -72,7 +73,6 @@ namespace cryptonote
     m_phandler(phandler),
     m_gbh(gbh),
     m_height(0),
-    m_threads_active(0),
     m_pausers_count(0),
     m_threads_total(0),
     m_starter_nonce(0),
@@ -124,7 +124,7 @@ namespace cryptonote
       extra_nonce = m_extra_messages[m_config.current_extra_message_index];
     }
 
-    if(!m_phandler->get_block_template(bl, m_mine_address, di, height, expected_reward, extra_nonce))
+    if(!m_phandler->create_next_miner_block_template(bl, m_mine_address, di, height, expected_reward, extra_nonce))
     {
       LOG_ERROR("Failed to get_block_template(), stopping mining");
       return false;
@@ -221,13 +221,12 @@ namespace cryptonote
     }
 
     // restart all threads
-    {
-      std::unique_lock lock{m_threads_lock};
-      m_stop = true;
-      while (m_threads_active > 0)
-        epee::misc_utils::sleep_no_w(100);
-      m_threads.clear();
-    }
+    std::unique_lock lock{m_threads_lock};
+    m_stop = true;
+    for (auto& th : m_threads)
+      if (th.joinable())
+        th.join();
+    m_threads.clear();
     m_stop = false;
     m_thread_index = 0;
     for(size_t i = 0; i != m_threads_total; i++)
@@ -376,8 +375,9 @@ namespace cryptonote
     }
 
     m_stop = true;
-    while (m_threads_active > 0)
-      epee::misc_utils::sleep_no_w(100);
+    for (auto& th : m_threads)
+      if (th.joinable())
+        th.join();
 
     MINFO("Mining has been stopped, " << m_threads.size() << " finished" );
     m_threads.clear();
@@ -445,11 +445,7 @@ namespace cryptonote
     uint32_t local_template_ver = 0;
     block b;
     rx_slow_hash_allocate_state();
-    ++m_threads_active;
     bool call_stop = false;
-#if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
-    call_stop = true;
-#endif
 
     while(!m_stop)
     {
@@ -480,8 +476,9 @@ namespace cryptonote
 
       if (height >= m_stop_height)
       {
-        m_stop = true;
-        call_stop = true;
+        // Whoever actually first sets m_stop has the responsibility of calling stop():
+        bool already_stopping = m_stop.exchange(true);
+        call_stop = !already_stopping;
         break;
       }
 
@@ -504,14 +501,6 @@ namespace cryptonote
           if (!m_config_folder_path.empty())
             epee::serialization::store_t_to_json_file(m_config, m_config_folder_path + "/" + MINER_CONFIG_FILE_NAME);
         }
-
-#if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
-        if (m_debug_mine_singular_block)
-        {
-          m_debug_mine_singular_block = false;
-          break;
-        }
-#endif
       }
 
       nonce+=m_threads_total;
@@ -520,9 +509,10 @@ namespace cryptonote
     }
     rx_slow_hash_free_state();
     MGINFO("Miner thread stopped ["<< th_local_index << "]");
-    --m_threads_active;
     if (call_stop)
-      stop();
+        // Call in a detached thread because the thread calling stop() needs to be able to join this
+        // worker thread.
+        std::thread{[this] { stop(); }}.detach();
     return true;
   }
 }
