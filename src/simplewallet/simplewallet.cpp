@@ -8253,10 +8253,12 @@ bool simple_wallet::show_transfers(const std::vector<std::string> &args_)
     return true;
 
   rdln::suspend_readline pause_readline;
+ 
+  auto color = epee::console_color_white;
   
   auto formatter = boost::format("%8.8s %6.6s %8.8s %12.12s %16.16s %20.20s %64s %16s %14.14s %s %s - %s");
  
-  message_writer(epee::console_color_white, true) << formatter
+  message_writer(color, true) << formatter
       % "Height"
       % "Type"
       % "Locked"
@@ -8272,7 +8274,7 @@ bool simple_wallet::show_transfers(const std::vector<std::string> &args_)
  
   for (const auto& transfer : all_transfers)
   {
-    auto color = epee::console_color_white;
+    
     if (transfer.confirmed)
     {
       switch (transfer.pay_type)
