@@ -8295,6 +8295,21 @@ bool simple_wallet::show_transfers(const std::vector<std::string> &args_)
     }
 
     auto formatter = boost::format("%8.8s %6.6s %8.8s %12.12s %16.16s %20.20s %s %s %14.14s %s %s - %s");
+   
+    message_writer(color, true) << formatter
+      % "Height"
+      % "Type"
+      % "Lock Message"
+      % "Checkpoint"
+      % "Date"
+      % "Amount"
+      % "Hash"
+      % "Payment ID"
+      % "Fee"
+      % "Destination"
+      % "Subaddress"
+      % "Note";
+     
 
     message_writer(color, false) << formatter
       % (transfer.type.size() ? transfer.type : (transfer.height == 0 && transfer.blink_mempool) ? "blink" : std::to_string(transfer.height))
