@@ -2732,10 +2732,10 @@ namespace cryptonote { namespace rpc {
             service_node_list.for_each_service_node_info_and_proof(
              quorum->validators.begin(),
              quorum->validators.end(),
-             [&](auto& public_key, auto&, auto& proof) {
-               cryptonote::COMMAND_RPC_GET_QUORUM_STATE::quorum_validator validator;
+             [&](auto& pub_key, auto&, auto& proof) {
+               cryptonote::rpc::GET_QUORUM_STATE::quorum_validator validator;
 
-               validator.hash = epee::string_tools::pod_to_hex(public_key);
+               validator.hash = lokimq::to_hex(tools::view_guts(pub_key));
                validator.uptime = now - proof.timestamp;
 
                entry.quorum.validators.push_back(validator);
@@ -2744,10 +2744,10 @@ namespace cryptonote { namespace rpc {
             service_node_list.for_each_service_node_info_and_proof(
               quorum->workers.begin(),
               quorum->workers.end(),
-              [&](auto& public_key, auto&, auto& proof) {
-                cryptonote::COMMAND_RPC_GET_QUORUM_STATE::quorum_worker worker;
+              [&](auto& pub_key, auto&, auto& proof) {
+                cryptonote::rpc::GET_QUORUM_STATE::quorum_worker worker;
 
-                worker.hash = epee::string_tools::pod_to_hex(public_key);
+                worker.hash = lokimq::to_hex(tools::view_guts(pub_key));
                 worker.uptime = now - proof.timestamp;
 
                 entry.quorum.workers.push_back(worker);
