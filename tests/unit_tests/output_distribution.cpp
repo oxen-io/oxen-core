@@ -86,7 +86,7 @@ bool get_output_distribution(uint64_t amount, uint64_t from, uint64_t to, uint64
     const cryptonote::test_options test_options = {
       hard_forks
     };
-    get_test_options():hard_forks{{std::make_pair((uint8_t)0, (uint64_t)0)}}{}
+    get_test_options():hard_forks{{std::make_pair((uint8_t)1, (uint64_t)0)}}{}
   } opts;
   cryptonote::Blockchain *blockchain = &bc.m_blockchain;
   bool r = blockchain->init(new TestDB(test_distribution_size), nullptr /*lns_db*/, cryptonote::FAKECHAIN, true, &opts.test_options, 0, NULL);
