@@ -555,7 +555,7 @@ namespace cryptonote::rpc {
 
     auto net = m_server.nettype();
     m_server_header = "lokid/"s + (m_restricted ? std::to_string(LOKI_VERSION[0]) : LOKI_VERSION_FULL)
-      + (net == MAINNET ? " mainnet" : net == TESTNET ? " testnet" : net == STAGENET ? " stagenet" : net == FAKECHAIN ? " fakenet" : " unknown net");
+      + (net == MAINNET ? " mainnet" : net == TESTNET ? " testnet" : net == DEVNET ? " devnet" : net == FAKECHAIN ? " fakenet" : " unknown net");
 
     m_startup_promise.set_value(true);
     m_sent_startup = true;

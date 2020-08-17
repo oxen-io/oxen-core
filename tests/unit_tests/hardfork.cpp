@@ -100,8 +100,8 @@ TEST(major, Only)
   HardFork hf(db, 1, 0, 0, 1, 0); // no voting
 
   //                      v  h  t
-  ASSERT_TRUE(hf.add_fork(1, 0, 0));
-  ASSERT_TRUE(hf.add_fork(2, 2, 1));
+  ASSERT_NO_THROW(hf.add_fork(1, 0, 0));
+  ASSERT_NO_THROW(hf.add_fork(2, 2, 1));
   hf.init();
 
   // block height 0, only version 1 is accepted
@@ -129,7 +129,7 @@ TEST(empty_hardforks, Success)
   TestDB db;
   HardFork hf(db);
 
-  ASSERT_TRUE(hf.add_fork(1, 0, 0));
+  ASSERT_NO_THROW(hf.add_fork(1, 0, 0));
   hf.init();
   ASSERT_TRUE(hf.get_state(time(NULL)) == HardFork::Ready);
   ASSERT_TRUE(hf.get_state(time(NULL) + 3600*24*400) == HardFork::Ready);
@@ -148,13 +148,13 @@ TEST(ordering, Success)
   TestDB db;
   HardFork hf(db);
 
-  ASSERT_TRUE(hf.add_fork(2, 2, 1));
-  ASSERT_FALSE(hf.add_fork(3, 3, 1));
-  ASSERT_FALSE(hf.add_fork(3, 2, 2));
-  ASSERT_FALSE(hf.add_fork(2, 3, 2));
-  ASSERT_TRUE(hf.add_fork(3, 10, 2));
-  ASSERT_TRUE(hf.add_fork(4, 20, 3));
-  ASSERT_FALSE(hf.add_fork(5, 5, 4));
+  ASSERT_NO_THROW(hf.add_fork(2, 2, 1));
+  ASSERT_ANY_THROW(hf.add_fork(3, 3, 0));
+  ASSERT_ANY_THROW(hf.add_fork(3, 2, 2));
+  ASSERT_ANY_THROW(hf.add_fork(2, 3, 2));
+  ASSERT_NO_THROW(hf.add_fork(3, 10, 2));
+  ASSERT_NO_THROW(hf.add_fork(4, 20, 3));
+  ASSERT_ANY_THROW(hf.add_fork(5, 5, 4));
 }
 
 TEST(check_for_height, Success)
@@ -162,8 +162,8 @@ TEST(check_for_height, Success)
   TestDB db;
   HardFork hf(db, 1, 0, 0, 1, 0); // no voting
 
-  ASSERT_TRUE(hf.add_fork(1, 0, 0));
-  ASSERT_TRUE(hf.add_fork(2, 5, 1));
+  ASSERT_NO_THROW(hf.add_fork(1, 0, 0));
+  ASSERT_NO_THROW(hf.add_fork(2, 5, 1));
   hf.init();
 
   for (uint64_t h = 0; h <= 4; ++h) {
@@ -186,9 +186,9 @@ TEST(get, next_version)
   TestDB db;
   HardFork hf(db);
 
-  ASSERT_TRUE(hf.add_fork(1, 0, 0));
-  ASSERT_TRUE(hf.add_fork(2, 5, 1));
-  ASSERT_TRUE(hf.add_fork(4, 10, 2));
+  ASSERT_NO_THROW(hf.add_fork(1, 0, 0));
+  ASSERT_NO_THROW(hf.add_fork(2, 5, 1));
+  ASSERT_NO_THROW(hf.add_fork(4, 10, 2));
   hf.init();
 
   for (uint64_t h = 0; h <= 4; ++h) {
@@ -215,8 +215,8 @@ TEST(states, Success)
   TestDB db;
   HardFork hf(db);
 
-  ASSERT_TRUE(hf.add_fork(1, 0, 0));
-  ASSERT_TRUE(hf.add_fork(2, BLOCKS_PER_YEAR, SECONDS_PER_YEAR));
+  ASSERT_NO_THROW(hf.add_fork(1, 0, 0));
+  ASSERT_NO_THROW(hf.add_fork(2, BLOCKS_PER_YEAR, SECONDS_PER_YEAR));
 
   ASSERT_TRUE(hf.get_state(0) == HardFork::Ready);
   ASSERT_TRUE(hf.get_state(SECONDS_PER_YEAR / 2) == HardFork::Ready);
@@ -224,7 +224,7 @@ TEST(states, Success)
   ASSERT_TRUE(hf.get_state(SECONDS_PER_YEAR + (HardFork::DEFAULT_UPDATE_TIME + HardFork::DEFAULT_FORKED_TIME) / 2) == HardFork::UpdateNeeded);
   ASSERT_TRUE(hf.get_state(SECONDS_PER_YEAR + HardFork::DEFAULT_FORKED_TIME * 2) == HardFork::LikelyForked);
 
-  ASSERT_TRUE(hf.add_fork(3, BLOCKS_PER_YEAR * 5, SECONDS_PER_YEAR * 5));
+  ASSERT_NO_THROW(hf.add_fork(3, BLOCKS_PER_YEAR * 5, SECONDS_PER_YEAR * 5));
 
   ASSERT_TRUE(hf.get_state(0) == HardFork::Ready);
   ASSERT_TRUE(hf.get_state(SECONDS_PER_YEAR / 2) == HardFork::Ready);
@@ -239,10 +239,10 @@ TEST(steps_asap, Success)
   HardFork hf(db, 1,1,1,1);
 
   //                 v  h  t
-  ASSERT_TRUE(hf.add_fork(1, 0, 0));
-  ASSERT_TRUE(hf.add_fork(4, 2, 1));
-  ASSERT_TRUE(hf.add_fork(7, 4, 2));
-  ASSERT_TRUE(hf.add_fork(9, 6, 3));
+  ASSERT_NO_THROW(hf.add_fork(1, 0, 0));
+  ASSERT_NO_THROW(hf.add_fork(4, 2, 1));
+  ASSERT_NO_THROW(hf.add_fork(7, 4, 2));
+  ASSERT_NO_THROW(hf.add_fork(9, 6, 3));
   hf.init();
 
   for (uint64_t h = 0; h < 10; ++h) {
@@ -267,9 +267,9 @@ TEST(steps_1, Success)
   TestDB db;
   HardFork hf(db, 1,1,1,1);
 
-  ASSERT_TRUE(hf.add_fork(1, 0, 0));
+  ASSERT_NO_THROW(hf.add_fork(1, 0, 0));
   for (int n = 1 ; n < 10; ++n)
-    ASSERT_TRUE(hf.add_fork(n+1, n, n));
+    ASSERT_NO_THROW(hf.add_fork(n+1, n, n));
   hf.init();
 
   for (uint64_t h = 0 ; h < 10; ++h) {
@@ -289,10 +289,10 @@ TEST(reorganize, Same)
     HardFork hf(db, 1, 1, 1, history, 100);
 
     //                 v  h  t
-    ASSERT_TRUE(hf.add_fork(1, 0, 0));
-    ASSERT_TRUE(hf.add_fork(4, 2, 1));
-    ASSERT_TRUE(hf.add_fork(7, 4, 2));
-    ASSERT_TRUE(hf.add_fork(9, 6, 3));
+    ASSERT_NO_THROW(hf.add_fork(1, 0, 0));
+    ASSERT_NO_THROW(hf.add_fork(4, 2, 1));
+    ASSERT_NO_THROW(hf.add_fork(7, 4, 1)); // <- same timestamp should be allowed
+    ASSERT_NO_THROW(hf.add_fork(9, 6, 1)); //
     hf.init();
 
     //                                 index  0  1  2  3  4  5  6  7  8  9
@@ -318,10 +318,10 @@ TEST(reorganize, Changed)
   HardFork hf(db, 1, 1, 1, 4, 100);
 
   //                 v  h  t
-  ASSERT_TRUE(hf.add_fork(1, 0, 0));
-  ASSERT_TRUE(hf.add_fork(4, 2, 1));
-  ASSERT_TRUE(hf.add_fork(7, 4, 2));
-  ASSERT_TRUE(hf.add_fork(9, 6, 3));
+  ASSERT_NO_THROW(hf.add_fork(1, 0, 0));
+  ASSERT_NO_THROW(hf.add_fork(4, 2, 1));
+  ASSERT_NO_THROW(hf.add_fork(7, 4, 2));
+  ASSERT_NO_THROW(hf.add_fork(9, 6, 3));
   hf.init();
 
   //                                    fork         4     7     9
@@ -367,8 +367,8 @@ TEST(voting, threshold)
     HardFork hf(db, 1, 1, 1, 8, threshold);
 
     //                 v  h  t
-    ASSERT_TRUE(hf.add_fork(1, 0, 0));
-    ASSERT_TRUE(hf.add_fork(2, 2, 1));
+    ASSERT_NO_THROW(hf.add_fork(1, 0, 0));
+    ASSERT_NO_THROW(hf.add_fork(2, 2, 1));
     hf.init();
 
     for (uint64_t h = 0; h <= 8; ++h) {
@@ -396,10 +396,10 @@ TEST(voting, different_thresholds)
     HardFork hf(db, 1, 1, 1, 4, 50); // window size 4
 
     //                 v  h  t
-    ASSERT_TRUE(hf.add_fork(1, 0, 0));
-    ASSERT_TRUE(hf.add_fork(2, 5, 0, 1)); // asap
-    ASSERT_TRUE(hf.add_fork(3, 10, 100, 2)); // all votes
-    ASSERT_TRUE(hf.add_fork(4, 15, 3)); // default 50% votes
+    ASSERT_NO_THROW(hf.add_fork(1, 0, 0));
+    ASSERT_NO_THROW(hf.add_fork(2, 5, 0, 1)); // asap
+    ASSERT_NO_THROW(hf.add_fork(3, 10, 100, 2)); // all votes
+    ASSERT_NO_THROW(hf.add_fork(4, 15, 3)); // default 50% votes
     hf.init();
 
     //                                           0  1  2  3  4  5  6  7  8  9  0  1  2  3  4  5  6  7  8  9
@@ -423,12 +423,12 @@ TEST(voting, info)
   HardFork hf(db, 1, 1, 1, 4, 50); // window size 4, default threshold 50%
 
   //                      v  h  ts
-  ASSERT_TRUE(hf.add_fork(1, 0,  0));
+  ASSERT_NO_THROW(hf.add_fork(1, 0,  0));
   //                      v  h   thr  ts
-  ASSERT_TRUE(hf.add_fork(2, 5,    0,  1)); // asap
-  ASSERT_TRUE(hf.add_fork(3, 10, 100,  2)); // all votes
+  ASSERT_NO_THROW(hf.add_fork(2, 5,    0,  1)); // asap
+  ASSERT_NO_THROW(hf.add_fork(3, 10, 100,  2)); // all votes
   //                      v   h  ts
-  ASSERT_TRUE(hf.add_fork(4, 15,  3)); // default 50% votes
+  ASSERT_NO_THROW(hf.add_fork(4, 15,  3)); // default 50% votes
   hf.init();
 
   //                                             0  1  2  3  4  5  6  7  8  9  0  1  2  3  4  5  6  7  8  9
@@ -472,8 +472,8 @@ TEST(new_blocks, denied)
     HardFork hf(db, 1, 1, 1, 4, 50);
 
     //                 v  h  t
-    ASSERT_TRUE(hf.add_fork(1, 0, 0));
-    ASSERT_TRUE(hf.add_fork(2, 2, 1));
+    ASSERT_NO_THROW(hf.add_fork(1, 0, 0));
+    ASSERT_NO_THROW(hf.add_fork(2, 2, 1));
     hf.init();
 
     ASSERT_TRUE(hf.add(mkblock(1, 1), 0));
@@ -495,8 +495,8 @@ TEST(new_version, early)
     HardFork hf(db, 1, 1, 1, 4, 50);
 
     //                 v  h  t
-    ASSERT_TRUE(hf.add_fork(1, 0, 0));
-    ASSERT_TRUE(hf.add_fork(2, 4, 1));
+    ASSERT_NO_THROW(hf.add_fork(1, 0, 0));
+    ASSERT_NO_THROW(hf.add_fork(2, 4, 1));
     hf.init();
 
     ASSERT_TRUE(hf.add(mkblock(1, 2), 0));
@@ -515,10 +515,10 @@ TEST(reorganize, changed)
     HardFork hf(db, 1, 1, 1, 4, 50);
 
     //                 v  h  t
-    ASSERT_TRUE(hf.add_fork(1, 0, 0));
-    ASSERT_TRUE(hf.add_fork(2, 2, 1));
-    ASSERT_TRUE(hf.add_fork(3, 5, 2));
-    ASSERT_TRUE(hf.add_fork(4, 555, 222));
+    ASSERT_NO_THROW(hf.add_fork(1, 0, 0));
+    ASSERT_NO_THROW(hf.add_fork(2, 2, 1));
+    ASSERT_NO_THROW(hf.add_fork(3, 5, 2));
+    ASSERT_NO_THROW(hf.add_fork(4, 555, 222));
     hf.init();
 
 #define ADD(v, h, a) \
@@ -566,9 +566,9 @@ TEST(get, higher)
     HardFork hf(db, 1, 1, 1, 4, 50);
 
     //                 v  h  t
-    ASSERT_TRUE(hf.add_fork(1, 0, 0));
-    ASSERT_TRUE(hf.add_fork(2, 2, 1));
-    ASSERT_TRUE(hf.add_fork(3, 5, 2));
+    ASSERT_NO_THROW(hf.add_fork(1, 0, 0));
+    ASSERT_NO_THROW(hf.add_fork(2, 2, 1));
+    ASSERT_NO_THROW(hf.add_fork(3, 5, 2));
     hf.init();
 
     ASSERT_EQ(hf.get_ideal_version(0), 1);
@@ -587,11 +587,11 @@ TEST(get, earliest_ideal_height)
     HardFork hf(db, 1, 1, 1, 4, 50);
 
     //                      v  h  t
-    ASSERT_TRUE(hf.add_fork(1, 0, 0));
-    ASSERT_TRUE(hf.add_fork(2, 2, 1));
-    ASSERT_TRUE(hf.add_fork(5, 5, 2));
-    ASSERT_TRUE(hf.add_fork(6, 10, 3));
-    ASSERT_TRUE(hf.add_fork(9, 15, 4));
+    ASSERT_NO_THROW(hf.add_fork(1, 0, 0));
+    ASSERT_NO_THROW(hf.add_fork(2, 2, 1));
+    ASSERT_NO_THROW(hf.add_fork(5, 5, 2));
+    ASSERT_NO_THROW(hf.add_fork(6, 10, 3));
+    ASSERT_NO_THROW(hf.add_fork(9, 15, 4));
     hf.init();
 
     ASSERT_EQ(hf.get_earliest_ideal_height_for_version(1), 0);

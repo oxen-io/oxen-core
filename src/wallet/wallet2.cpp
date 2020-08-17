@@ -255,12 +255,12 @@ struct options {
     "shared-ringdb-dir", tools::wallet2::tr("Set shared ring database path"),
     get_default_ringdb_path(),
     {{ &testnet, &devnet, &regtest }},
-    [](std::array<bool, 3> test_stage_fake, bool defaulted, std::string val)->std::string {
-      if (test_stage_fake[0])
+    [](std::array<bool, 3> test_dev_fake, bool defaulted, std::string val)->std::string {
+      if (test_dev_fake[0])
         return (boost::filesystem::path(val) / "testnet").string();
-      else if (test_stage_fake[1])
+      else if (test_dev_fake[1])
         return (boost::filesystem::path(val) / "devnet").string();
-      else if (test_stage_fake[2])
+      else if (test_dev_fake[2])
         return (boost::filesystem::path(val) / "fake").string();
       return val;
     }
