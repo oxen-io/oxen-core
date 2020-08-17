@@ -27,8 +27,6 @@
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#include <boost/range/adaptor/transformed.hpp>
-#include <boost/algorithm/string.hpp>
 #include "common/command_line.h"
 #include "common/varint.h"
 #include "cryptonote_core/cryptonote_core.h"
@@ -95,7 +93,7 @@ int main(int argc, char* argv[])
   const command_line::arg_descriptor<std::string> arg_input = {"input", ""};
 
   command_line::add_arg(desc_cmd_sett, cryptonote::arg_testnet_on);
-  command_line::add_arg(desc_cmd_sett, cryptonote::arg_stagenet_on);
+  command_line::add_arg(desc_cmd_sett, cryptonote::arg_devnet_on);
   command_line::add_arg(desc_cmd_sett, arg_log_level);
   command_line::add_arg(desc_cmd_sett, arg_rct_only);
   command_line::add_arg(desc_cmd_sett, arg_input);
@@ -134,8 +132,8 @@ int main(int argc, char* argv[])
   LOG_PRINT_L0("Starting...");
 
   bool opt_testnet = command_line::get_arg(vm, cryptonote::arg_testnet_on);
-  bool opt_stagenet = command_line::get_arg(vm, cryptonote::arg_stagenet_on);
-  network_type net_type = opt_testnet ? TESTNET : opt_stagenet ? STAGENET : MAINNET;
+  bool opt_devnet = command_line::get_arg(vm, cryptonote::arg_devnet_on);
+  network_type net_type = opt_testnet ? TESTNET : opt_devnet ? DEVNET : MAINNET;
   bool opt_rct_only = command_line::get_arg(vm, arg_rct_only);
 
   // If we wanted to use the memory pool, we would set up a fake_core.

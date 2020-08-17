@@ -48,21 +48,11 @@ namespace tools
     password_container() noexcept;
 
     //! `password` is used as password
-    password_container(std::string&& password) noexcept;
-    password_container(const epee::wipeable_string& password) noexcept;
+    password_container(epee::wipeable_string password) noexcept;
 
     //! \return A password from stdin TTY prompt or `std::cin` pipe.
     static std::optional<password_container> prompt(bool verify, const char *mesage = "Password", bool hide_input = true);
     static std::atomic<bool> is_prompting;
-
-    password_container(const password_container&) = delete;
-    password_container(password_container&& rhs) = default;
-
-    //! Wipes internal password
-    ~password_container() noexcept;
-
-    password_container& operator=(const password_container&) = delete;
-    password_container& operator=(password_container&&) = default;
 
     const epee::wipeable_string &password() const noexcept { return m_password; }
 
@@ -73,6 +63,10 @@ namespace tools
   struct login
   {
     login() = default;
+
+    /// Constructs a login from a username/password.  Does not prompt.
+    login(std::string_view user, epee::wipeable_string pass)
+        : username{user}, password{std::move(pass)} {}
 
     /*!
        Extracts username and password from the format `username:password`. A
@@ -88,12 +82,6 @@ namespace tools
          `password_container::prompt` fails.
      */
     static std::optional<login> parse(std::string&& userpass, bool verify, const std::function<std::optional<password_container>(bool)> &prompt);
-
-    login(const login&) = delete;
-    login(login&&) = default;
-    ~login() = default;
-    login& operator=(const login&) = delete;
-    login& operator=(login&&) = default;
 
     std::string username;
     password_container password;

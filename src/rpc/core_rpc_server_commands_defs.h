@@ -31,6 +31,7 @@
 
 #pragma once
 
+#include "crypto/crypto.h"
 #include "string_tools.h"
 
 #include "cryptonote_protocol/cryptonote_protocol_defs.h"
@@ -43,6 +44,7 @@
 #include "rpc/rpc_handler.h"
 #include "common/varint.h"
 #include "common/perf_timer.h"
+#include "common/meta.h"
 #include "checkpoints/checkpoints.h"
 
 #include "cryptonote_core/service_node_quorum_cop.h"
@@ -270,24 +272,74 @@ namespace rpc {
   {
     static constexpr auto names() { return NAMES("get_transactions", "gettransactions"); }
 
-    struct request
+    // Information from a transactions tx-extra fields.  Fields within this will only be populated
+    // when actually found in the transaction.  (Requires tx_extra=true in the request).
+    struct extra_entry
     {
-      std::vector<std::string> txs_hashes; // List of transaction hashes to look up.
-      bool decode_as_json;                 // Optional (`false` by default). If set true, the returned transaction information will be decoded rather than binary.
-      bool prune;                          // Prunes the blockchain, drops off 7/8 off the block iirc. Optional (`False` by default).
-      bool split;                          // Optional (`false` by default).
+      struct sn_reg_info
+      {
+        struct contribution
+        {
+          std::string wallet; // Contributor wallet
+          uint32_t portion;   // Reserved portion, as the rounded nearest value out of 1'000'000 (i.e. 234567 == 23.4567%).
+          KV_MAP_SERIALIZABLE
+        };
 
+        std::vector<contribution> contributors; // Operator contribution plus any reserved contributions
+        uint32_t fee;                           // Operator fee, as the rounded nearest value out of 1'000'000
+        uint64_t expiry;                        // unix timestamp at which the registration expires
+        KV_MAP_SERIALIZABLE
+      };
+      struct state_change
+      {
+        std::optional<bool> old_dereg; // Will be present and set to true iff this record is an old (pre-HF12) deregistration field
+        std::string type;              // "dereg", "decom", "recom", or "ip" indicating the state change type
+        uint64_t height;               // The voting block height for the changing service node and validators
+        uint32_t index;                // The index of all tested nodes at the given height for which this state change applies
+        std::vector<uint32_t> voters;  // The position of validators in the testing quorum who validated and voted for this state change. This typically contains just 7 required voter slots (of 10 eligible voters).
+        KV_MAP_SERIALIZABLE
+      };
+      struct lns_details
+      {
+        std::optional<bool> buy;                 // Provided and true iff this is an LNS buy record
+        std::optional<bool> update;              // Provided and true iff this is an LNS record update
+        std::string type;                        // The LNS request type.  For registrations: "lokinet", "session", "wallet"; for a record update: "update"
+        std::optional<uint32_t> blocks;          // The registration length in blocks (only applies to lokinet registrations; session/wallet registrations do not expire)
+        crypto::hash name;                       // The hashed name of the record being purchased/updated (the actual name is not provided on the blockchain).
+        std::optional<std::string> prev_txid;    // For an update, this points at the txid of the previous lns update transaction.
+        std::optional<std::string> value;        // The encrypted value of the record; note that this is encrypted using the actual name itself (*not* the hashed name).
+        std::optional<std::string> owner;        // The owner of this record; this can be a main wallet, wallet subaddress, or a plain public key.
+        std::optional<std::string> backup_owner; // Backup owner wallet/pubkey of the record, if provided.
+        KV_MAP_SERIALIZABLE
+      };
+
+      std::optional<std::string> pubkey;            // The tx extra public key
+      std::optional<uint64_t> burn_amount;          // The amount of LOKI that this transaction burns
+      std::optional<std::string> extra_nonce;       // Optional extra nonce value (in hex)
+      std::optional<uint32_t> mm_depth;             // (Merge-mining) the merge-mined depth
+      std::optional<std::string> mm_root;           // (Merge-mining) the merge mining merkle root hash
+      std::vector<std::string> additional_pubkeys;  // Additional public keys
+      std::optional<std::string> sn_winner;         // Service node block reward winner public key
+      std::optional<std::string> sn_pubkey;         // Service node public key (e.g. for registrations, stakes, unlocks)
+      std::optional<sn_reg_info> sn_registration;   // Service node registration details
+      std::optional<std::string> sn_contributor;    // Service node contributor wallet address (for stakes)
+      std::optional<state_change> sn_state_change;  // A state change transaction (deregistration, decommission, recommission, ip change)
+      std::optional<std::string> tx_secret_key;     // The transaction secret key, included in registrations/stakes to decrypt transaction amounts and recipients
+      std::vector<std::string> locked_key_images;   // Key image(s) locked by the transaction (for registrations, stakes)
+      std::optional<std::string> key_image_unlock;  // A key image being unlocked in a stake unlock request (an unlock will be started for *all* key images locked in the same SN contributions).
+      std::optional<lns_details> lns;               // an LNS registration or update
       KV_MAP_SERIALIZABLE
     };
 
     struct entry
     {
       std::string tx_hash;                  // Transaction hash.
-      std::string as_hex;                   // Full transaction information as a hex string.
-      std::string pruned_as_hex;
-      std::string prunable_as_hex;
-      std::string prunable_hash;
-      std::string as_json;                  // List of transaction info.
+      std::optional<std::string> as_hex;    // Full transaction information as a hex string. Always omitted if any of `decode_as_json`, `split`, or `prune` is requested; or if the transaction has been pruned in the database.
+      std::optional<std::string> pruned_as_hex;   // The non-prunable part of the transaction. Always included if `split` or `prune` and specified; without those options it will be included instead of `as_hex` if the transaction has been pruned.
+      std::optional<std::string> prunable_as_hex; // The prunable part of the transaction.  Only included when `split` is specified, the transaction is prunable, and the tx has not been pruned from the database.
+      std::optional<std::string> prunable_hash;   // The hash of the prunable part of the transaction.  Will be provided if either: the tx has been pruned; or the tx is prunable and either of `prune` or `split` are specified.
+      std::optional<std::string> as_json;   // Transaction information parsed into json. Requires decode_as_json in request.
+      uint32_t size;                        // Size of the transaction, in bytes. Note that if the transaction has been pruned this is the post-pruning size, not the original size.
       bool in_pool;                         // States if the transaction is in pool (`true`) or included in a block (`false`).
       bool double_spend_seen;               // States if the transaction is a double-spend (`true`) or not (`false`).
       uint64_t block_height;                // Block height including the transaction.
@@ -295,22 +347,28 @@ namespace rpc {
       std::vector<uint64_t> output_indices; // List of transaction indexes.
       uint64_t received_timestamp;          // Timestamp transaction was received in the pool.
       bool relayed;
-      bool blink;                           // True if this is an approved, blink transaction (only for in_pool transactions or txes in recent blocks)
+      bool blink;                           // True if this is an approved, blink transaction (only available for in_pool transactions or txes in recent blocks)
+      std::optional<extra_entry> extra;     // Parsed tx_extra information (only if requested)
 
       KV_MAP_SERIALIZABLE
     };
 
+    struct request
+    {
+      std::vector<std::string> txs_hashes; // List of transaction hashes to look up.
+      bool decode_as_json;                 // Optional (`false` by default). If set true, the returned transaction information will be decoded.
+      bool tx_extra;                       // Parse tx-extra information
+      bool split;                          // Always split transactions into non-prunable and prunable parts in the response.  `False` by default.
+      bool prune;                          // Like `split`, but also omits the prunable part (or details, for decode_as_json) of transactions from the response.  `False` by default.
+
+      KV_MAP_SERIALIZABLE
+    };
+
+
     struct response
     {
-      // older compatibility stuff
-      std::vector<std::string> txs_as_hex;  // Full transaction information as a hex string (old compatibility parameter)
-      std::vector<std::string> txs_as_json; // Transactions decoded as json (old compat)
-
-      // in both old and new
       std::vector<std::string> missed_tx;   // (Optional - returned if not empty) Transaction hashes that could not be found.
-
-      // new style
-      std::vector<entry> txs;               // Array of structure entry as follows:
+      std::vector<entry> txs;               // Array of tx data
       std::string status;                   // General RPC error code. "OK" means everything looks good.
       bool untrusted;                       // States if the result is obtained using the bootstrap mode, and is therefore not trusted (`true`), or when the daemon is fully synced (`false`).
 
@@ -559,7 +617,7 @@ namespace rpc {
       uint64_t grey_peerlist_size;          // Grey Peerlist Size
       bool mainnet;                         // States if the node is on the mainnet (`true`) or not (`false`).
       bool testnet;                         // States if the node is on the testnet (`true`) or not (`false`).
-      bool stagenet;                        // States if the node is on the stagenet (`true`) or not (`false`).
+      bool devnet;                          // States if the node is on the devnet (`true`) or not (`false`).
       std::string nettype;                  // Nettype value used.
       std::string top_block_hash;           // Hash of the highest block in the chain.
       std::string immutable_block_hash;     // Hash of the highest block in the chain that can not be reorganized.
@@ -579,7 +637,6 @@ namespace rpc {
       uint64_t height_without_bootstrap;    // Current length of the local chain of the daemon.
       bool was_bootstrap_ever_used;         // States if a bootstrap node has ever been used since the daemon started.
       uint64_t database_size;               // Current size of Blockchain data.
-      bool update_available;                // States if a update is available ('true') and if one is not available ('false').
       std::string version;                  // Current version of software running.
       std::string status_line;              // A short one-line summary status of the node (requires an admin/unrestricted connection for most details)
 
@@ -750,6 +807,7 @@ namespace rpc {
       std::string pow_hash;                   // The hash of the block's proof of work.
       uint64_t long_term_weight;              // Long term weight of the block.
       std::string miner_tx_hash;              // The TX hash of the miner transaction
+      std::vector<std::string> tx_hashes;     // The TX hashes of all non-coinbase transactions (requires `get_tx_hashes`)
       std::string service_node_winner;        // Service node that received a reward for this block
 
       KV_MAP_SERIALIZABLE
@@ -764,6 +822,7 @@ namespace rpc {
     struct request
     {
       bool fill_pow_hash; // Tell the daemon if it should fill out pow_hash field.
+      bool get_tx_hashes; // If true (default false) then include the hashes of non-coinbase transactions
 
       KV_MAP_SERIALIZABLE
     };
@@ -789,6 +848,7 @@ namespace rpc {
       std::string hash;   // The block's SHA256 hash.
       std::vector<std::string> hashes; // Request multiple blocks via an array of hashes
       bool fill_pow_hash; // Tell the daemon if it should fill out pow_hash field.
+      bool get_tx_hashes; // If true (default false) then include the hashes of non-coinbase transactions
 
       KV_MAP_SERIALIZABLE
     };
@@ -814,6 +874,7 @@ namespace rpc {
     {
       uint64_t height;    // The block's height.
       bool fill_pow_hash; // Tell the daemon if it should fill out pow_hash field.
+      bool get_tx_hashes; // If true (default false) then include the hashes of non-coinbase transactions
 
       KV_MAP_SERIALIZABLE
     };
@@ -831,7 +892,7 @@ namespace rpc {
   LOKI_RPC_DOC_INTROSPECT
   // Full block information can be retrieved by either block height or hash, like with the above block header calls.
   // For full block information, both lookups use the same method, but with different input parameters.
-  struct GET_BLOCK
+  struct GET_BLOCK : RPC_COMMAND
   {
     static constexpr auto names() { return NAMES("get_block", "getblock"); }
 
@@ -1067,6 +1128,8 @@ namespace rpc {
   {
     static constexpr auto names() { return NAMES("get_transaction_pool_hashes.bin"); }
 
+    static constexpr std::chrono::seconds long_poll_timeout{15};
+
     struct request
     {
       bool         long_poll;        // Optional: If true, this call is blocking until timeout OR tx pool has changed since the last query. TX pool change is detected by comparing the hash of all the hashes in the tx pool.  Ignored when using LMQ RPC.
@@ -1111,7 +1174,7 @@ namespace rpc {
 
   LOKI_RPC_DOC_INTROSPECT
   // Get all transaction pool backlog.
-  struct GET_TRANSACTION_POOL_BACKLOG
+  struct GET_TRANSACTION_POOL_BACKLOG : RPC_COMMAND
   {
     static constexpr auto names() { return NAMES("get_txpool_backlog"); }
 
@@ -1206,6 +1269,7 @@ namespace rpc {
       uint64_t start_height; // The starting block's height.
       uint64_t end_height;   // The ending block's height.
       bool fill_pow_hash;    // Tell the daemon if it should fill out pow_hash field.
+      bool get_tx_hashes;    // If true (default false) then include the hashes or txes in the block details
 
       KV_MAP_SERIALIZABLE
     };
@@ -1555,6 +1619,9 @@ namespace rpc {
       std::string status;         // General RPC error code. "OK" means everything looks good.
       uint64_t fee_per_byte;      // Amount of fees estimated per byte in atomic units
       uint64_t fee_per_output;    // Amount of fees per output generated by the tx (adds to the `fee_per_byte` per-byte value)
+      uint64_t blink_fee_per_byte;   // `fee_per_byte` value for sending a blink. The portion of the overall blink fee above the overall base fee is burned.
+      uint64_t blink_fee_per_output; // `fee_per_output` value for sending a blink. The portion of the overall blink fee above the overall base fee is burned.
+      uint64_t blink_fee_fixed;      // Fixed blink fee in addition to the per-output and per-byte amounts. The portion of the overall blink fee above the overall base fee is burned.
       uint64_t quantization_mask;
       bool untrusted;             // States if the result is obtained using the bootstrap mode, and is therefore not trusted (`true`), or when the daemon is fully synced (`false`).
 
@@ -1586,34 +1653,6 @@ namespace rpc {
     {
       std::string status;             // General RPC error code. "OK" means everything looks good.
       std::vector<chain_info> chains; // Array of Chains.
-
-      KV_MAP_SERIALIZABLE
-    };
-  };
-
-  LOKI_RPC_DOC_INTROSPECT
-  // Update daemon.
-  struct UPDATE : LEGACY
-  {
-    static constexpr auto names() { return NAMES("update"); }
-
-    struct request
-    {
-      std::string command; // Command to use, either check or download.
-      std::string path;    // Optional, path where to download the update.
-
-      KV_MAP_SERIALIZABLE
-    };
-
-    struct response
-    {
-      std::string status;   // General RPC error code. "OK" means everything looks good.
-      bool update;          // States if an update is available to download (`true`) or not (`false`).
-      std::string version;  // Version available for download.
-      std::string user_uri;
-      std::string auto_uri;
-      std::string hash;
-      std::string path;     // Path to download the update.
 
       KV_MAP_SERIALIZABLE
     };
@@ -2141,8 +2180,8 @@ namespace rpc {
 
   LOKI_RPC_DOC_INTROSPECT
   // Get the required amount of Loki to become a Service Node at the queried height.
-  // For stagenet and testnet values, ensure the daemon is started with the
-  // `--stagenet` or `--testnet` flags respectively.
+  // For devnet and testnet values, ensure the daemon is started with the
+  // `--devnet` or `--testnet` flags respectively.
   struct GET_STAKING_REQUIREMENT : PUBLIC
   {
     static constexpr auto names() { return NAMES("get_staking_requirement"); }
@@ -2322,7 +2361,7 @@ namespace rpc {
 
 
   LOKI_RPC_DOC_INTROSPECT
-  struct REPORT_PEER_SS_STATUS
+  struct REPORT_PEER_SS_STATUS : RPC_COMMAND
   {
     static constexpr auto names() { return NAMES("report_peer_storage_server_status"); }
 
@@ -2459,14 +2498,12 @@ namespace rpc {
     struct response : STATUS { };
   };
 
-  template <typename...> struct type_list {};
-
   /// List of all supported rpc command structs to allow compile-time enumeration of all supported
   /// RPC types.  Every type added above that has an RPC endpoint needs to be added here, and needs
   /// a core_rpc_server::invoke() overload that takes a <TYPE>::request and returns a
   /// <TYPE>::response.  The <TYPE>::request has to be unique (for overload resolution);
   /// <TYPE>::response does not.
-  using core_rpc_types = type_list<
+  using core_rpc_types = tools::type_list<
     GET_HEIGHT,
     GET_BLOCKS_FAST,
     GET_BLOCKS_BY_HEIGHT,
@@ -2521,7 +2558,6 @@ namespace rpc {
     GET_COINBASE_TX_SUM,
     GET_BASE_FEE_ESTIMATE,
     GET_ALTERNATE_CHAINS,
-    UPDATE,
     RELAY_TX,
     SYNC_INFO,
     GET_OUTPUT_DISTRIBUTION,

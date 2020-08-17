@@ -48,7 +48,7 @@ beginning_of_time = time.clock_gettime(time.CLOCK_MONOTONIC)
 print("Connecting to {}".format(remote), file=sys.stderr)
 socket.connect(remote)
 to_send = [sys.argv[1].encode(), b'tagxyz123']
-#to_send += (x.encode() for x in sys.argv[2:])
+to_send += (x.encode() for x in sys.argv[2:])
 print("Sending {}".format(to_send[0]), file=sys.stderr)
 socket.send_multipart(to_send)
 if socket.poll(timeout=5000):

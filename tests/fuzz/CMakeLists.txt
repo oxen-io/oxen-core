@@ -122,31 +122,6 @@ set_property(TARGET base58_fuzz_tests
   PROPERTY
     FOLDER "tests")
 
-add_executable(parse-url_fuzz_tests parse_url.cpp fuzzer.cpp)
-target_link_libraries(parse-url_fuzz_tests
-  PRIVATE
-    common
-    epee
-    Boost::program_options
-    Boost::system
-    extra)
-set_property(TARGET parse-url_fuzz_tests
-  PROPERTY
-    FOLDER "tests")
-
-add_executable(http-client_fuzz_tests http-client.cpp fuzzer.cpp)
-target_link_libraries(http-client_fuzz_tests
-  PRIVATE
-    common
-    epee
-    Boost::thread
-    Boost::program_options
-    Boost::system
-    extra)
-set_property(TARGET http-client_fuzz_tests
-  PROPERTY
-    FOLDER "tests")
-
 add_executable(levin_fuzz_tests levin.cpp fuzzer.cpp)
 target_link_libraries(levin_fuzz_tests
   PRIVATE

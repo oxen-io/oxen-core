@@ -34,18 +34,20 @@ add_library(wallet
   node_rpc_proxy.cpp
   message_store.cpp
   message_transporter.cpp
+  transfer_view.cpp
 )
 
 target_link_libraries(wallet
   PUBLIC
     multisig
     rpc_commands
-    rpc_args
+    rpc_server_base
     cryptonote_core
     mnemonics
     device_trezor
     net
     lmdb
+    rpc_http_client
     Boost::serialization
     Boost::filesystem
     Boost::thread
@@ -56,10 +58,12 @@ target_link_libraries(wallet
 
 loki_add_executable(wallet_rpc_server "loki-wallet-rpc"
   wallet_rpc_server.cpp
+  wallet_rpc_server_commands_defs.cpp
   )
 
 target_link_libraries(wallet_rpc_server
   PRIVATE
+    rpc_server_base
     wallet
     daemonizer
     Boost::program_options

@@ -69,9 +69,10 @@ struct json_archiver : public serializer
 
   void tag(std::string_view tag) {
     if (!object_begin)
-      stream_ << ", "sv;
+      stream_ << (indent_ ? ", "sv : ","sv);
     make_indent();
-    stream_ << '"' << tag << "\": "sv;
+    stream_ << '"' << tag << (indent_ ? "\": "sv : "\":");
+
     object_begin = false;
   }
 
@@ -171,11 +172,11 @@ struct json_archiver : public serializer
   {
     inner_array_contents_ = s > 0;
     ++depth_;
-    stream_ << "[ "sv;
+    stream_ << '[';
     return {*this};
   }
 
-  void delimit_array() { stream_ << ", "sv; }
+  void delimit_array() { stream_ << (indent_ ? ", "sv : ","sv); }
 
   void write_variant_tag(std::string_view t) { tag(t); }
 
@@ -191,7 +192,7 @@ private:
       stream_ << '\n';
       auto in = 2 * depth_;
       for (; in > indents.size(); in -= indents.size())
-        stream_ << indents.data();
+        stream_ << indents;
       stream_ << indents.substr(0, in);
     }
   }

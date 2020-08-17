@@ -618,7 +618,7 @@ namespace cryptonote
       if (it == result.end() || it->first != heights[i])
         result.emplace_hint(it, heights[i], hashes[i]);
       else
-        crypto::hash_xor(it->second, hashes[i]);
+        it->second ^= hashes[i];
     }
     return result;
   }

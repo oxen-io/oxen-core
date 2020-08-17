@@ -241,18 +241,9 @@ namespace tools
 {
   // deleted via private member
   password_container::password_container() noexcept : m_password() {}
-  password_container::password_container(std::string&& password) noexcept
-    : m_password(std::move(password)) 
+  password_container::password_container(epee::wipeable_string password) noexcept
+    : m_password{std::move(password)}
   {
-  }
-  password_container::password_container(const epee::wipeable_string& password) noexcept
-    : m_password(password)
-  {
-  }
-
-  password_container::~password_container() noexcept
-  {
-    m_password.clear();
   }
 
   std::atomic<bool> password_container::is_prompting(false);

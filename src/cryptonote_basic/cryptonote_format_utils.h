@@ -285,10 +285,10 @@ namespace cryptonote
   }
   //---------------------------------------------------------------
   template <typename T>
-  std::string obj_to_json_str(T& obj)
+  std::string obj_to_json_str(T&& obj, bool indent = false)
   {
     std::ostringstream ss;
-    serialization::json_archiver ar{ss, true /*indent*/};
+    serialization::json_archiver ar{ss, indent};
     try {
       serialize(ar, obj);
     } catch (const std::exception& e) {

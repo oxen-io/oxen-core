@@ -300,6 +300,8 @@ namespace service_nodes
   {
     cryptonote::account_public_address address;
     uint64_t portions;
+
+    constexpr bool operator==(const payout_entry& x) const { return portions == x.portions && address == x.address; }
   };
 
   struct payout

@@ -184,7 +184,7 @@ namespace rpc
     uint64_t grey_peerlist_size;
     bool mainnet;
     bool testnet;
-    bool stagenet;
+    bool devnet;
     std::string nettype;
     crypto::hash top_block_hash;
     uint64_t cumulative_difficulty;

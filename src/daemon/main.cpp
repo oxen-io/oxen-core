@@ -56,6 +56,8 @@
 namespace po = boost::program_options;
 namespace bf = boost::filesystem;
 
+using namespace std::literals;
+
 int main(int argc, char const * argv[])
 {
   try {
@@ -89,7 +91,7 @@ int main(int argc, char const * argv[])
       command_line::add_arg(core_settings, daemon_args::arg_max_concurrency);
 
       daemonizer::init_options(hidden_options, visible_options);
-      daemonize::daemon::init_options(core_settings);
+      daemonize::daemon::init_options(core_settings, hidden_options);
 
       // Hidden options
       command_line::add_arg(hidden_options, daemon_args::arg_command);
@@ -154,11 +156,11 @@ int main(int argc, char const * argv[])
     }
 
     const bool testnet = command_line::get_arg(vm, cryptonote::arg_testnet_on);
-    const bool stagenet = command_line::get_arg(vm, cryptonote::arg_stagenet_on);
+    const bool devnet = command_line::get_arg(vm, cryptonote::arg_devnet_on);
     const bool regtest = command_line::get_arg(vm, cryptonote::arg_regtest_on);
-    if (testnet + stagenet + regtest > 1)
+    if (testnet + devnet + regtest > 1)
     {
-      std::cerr << "Can't specify more than one of --tesnet and --stagenet and --regtest\n";
+      std::cerr << "Can't specify more than one of --testnet and --devnet and --regtest\n";
       return 1;
     }
 
@@ -218,18 +220,11 @@ int main(int argc, char const * argv[])
       {
         const cryptonote::rpc_args::descriptors arg{};
         auto rpc_ip_str = command_line::get_arg(vm, arg.rpc_bind_ip);
-        auto rpc_port_str = command_line::get_arg(vm, cryptonote::rpc::http_server::arg_rpc_bind_port);
+        auto rpc_port = command_line::get_arg(vm, cryptonote::rpc::http_server::arg_rpc_bind_port);
 
-        uint32_t rpc_ip;
-        uint16_t rpc_port;
-        if (!epee::string_tools::get_ip_int32_from_string(rpc_ip, rpc_ip_str))
+        if (uint32_t rpc_ip; !epee::string_tools::get_ip_int32_from_string(rpc_ip, rpc_ip_str))
         {
           std::cerr << "Invalid IP: " << rpc_ip_str << std::endl;
-          return 1;
-        }
-        if (!epee::string_tools::get_xtype_from_string(rpc_port, rpc_port_str))
-        {
-          std::cerr << "Invalid port: " << rpc_port_str << std::endl;
           return 1;
         }
 
@@ -252,11 +247,7 @@ int main(int argc, char const * argv[])
           }
         }
 
-        auto ssl_options = cryptonote::rpc_args::process_ssl(vm, true);
-        if (!ssl_options)
-          return 1;
-
-        daemonize::command_server rpc_commands{rpc_ip, rpc_port, std::move(login), std::move(*ssl_options)};
+        daemonize::command_server rpc_commands{"http://"s + rpc_ip_str + ":" + std::to_string(rpc_port), std::move(login)};
         return rpc_commands.process_command_and_log(command) ? 0 : 1;
       }
     }

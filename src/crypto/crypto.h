@@ -142,18 +142,6 @@ namespace crypto {
     generate_random_bytes_thread_safe(N, bytes);
   }
 
-  constexpr size_t SIZE_TS_IN_HASH = sizeof(crypto::hash) / sizeof(size_t);
-  static_assert(SIZE_TS_IN_HASH * sizeof(size_t) == sizeof(crypto::hash) && alignof(crypto::hash) >= alignof(size_t),
-      "Expected crypto::hash size/alignment not satisfied");
-
-  // Combine hashes together via XORs.
-  inline void hash_xor(crypto::hash &dest, const crypto::hash &src) {
-    size_t (&dest_)[SIZE_TS_IN_HASH] = reinterpret_cast<size_t (&)[SIZE_TS_IN_HASH]>(dest);
-    const size_t (&src_)[SIZE_TS_IN_HASH] = reinterpret_cast<const size_t (&)[SIZE_TS_IN_HASH]>(src);
-    for (size_t i = 0; i < SIZE_TS_IN_HASH; ++i)
-      dest_[i] ^= src_[i];
-  }
-
   /* Generate a value filled with random bytes.
    */
   template<typename T>
@@ -275,8 +263,8 @@ namespace crypto {
   inline std::ostream &operator <<(std::ostream &o, const crypto::x25519_public_key &v) {
     epee::to_hex::formatted(o, epee::as_byte_span(v)); return o;
   }
-  const extern crypto::public_key null_pkey;
-  const extern crypto::secret_key null_skey;
+  constexpr inline crypto::public_key null_pkey{};
+  const inline crypto::secret_key null_skey{};
 }
 
 CRYPTO_MAKE_HASHABLE(public_key)

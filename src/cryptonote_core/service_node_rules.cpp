@@ -16,6 +16,11 @@ uint64_t get_staking_requirement(cryptonote::network_type m_nettype, uint64_t he
   if (m_nettype == cryptonote::TESTNET || m_nettype == cryptonote::FAKECHAIN)
       return COIN * 100;
 
+  // For devnet we use the 10% of mainnet requirement at height (650k + H) so that we follow the
+  // same linear approximation but stay a bit ahead of it (devnet launched at ~600k mainnet height).
+  if (m_nettype == cryptonote::DEVNET)
+      return get_staking_requirement(cryptonote::MAINNET, 600000 + height, hf_version) / 10;
+
   if (hf_version >= cryptonote::network_version_13_enforce_checkpoints)
   {
     constexpr int64_t heights[] = {
@@ -71,7 +76,7 @@ uint64_t get_staking_requirement(cryptonote::network_type m_nettype, uint64_t he
     return static_cast<uint64_t>(result);
   }
 
-  uint64_t hardfork_height = m_nettype == cryptonote::MAINNET ? 101250 : 96210 /* stagenet */;
+  uint64_t hardfork_height = 101250;
   if (height < hardfork_height) height = hardfork_height;
 
   uint64_t height_adjusted = height - hardfork_height;

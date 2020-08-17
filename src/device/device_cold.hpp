@@ -30,15 +30,21 @@
 #ifndef MONERO_DEVICE_COLD_H
 #define MONERO_DEVICE_COLD_H
 
-#include "wallet/wallet2.h"
+#include "crypto/crypto.h"
+#include "cryptonote_basic/cryptonote_format_utils.h"
 #include <optional>
 #include <functional>
 
+namespace wallet {
+struct transfer_details;
+struct unsigned_tx_set;
+struct signed_tx_set;
+}
 
 namespace hw {
 
   struct wallet_shim {
-    std::function<crypto::public_key (const tools::wallet2::transfer_details &td)> get_tx_pub_key_from_received_outs;
+    std::function<crypto::public_key (const wallet::transfer_details &td)> get_tx_pub_key_from_received_outs;
   };
 
   class tx_aux_data {
@@ -106,15 +112,15 @@ namespace hw {
      * Key image sync with the cold protocol.
      */
     virtual void ki_sync(wallet_shim * wallet,
-                 const std::vector<::tools::wallet2::transfer_details> & transfers,
+                 const std::vector<wallet::transfer_details> & transfers,
                  exported_key_image & ski) =0;
 
     /**
      * Signs unsigned transaction with the cold protocol.
      */
     virtual void tx_sign(wallet_shim * wallet,
-                 const ::tools::wallet2::unsigned_tx_set & unsigned_tx,
-                 ::tools::wallet2::signed_tx_set & signed_tx,
+                 const wallet::unsigned_tx_set & unsigned_tx,
+                 wallet::signed_tx_set & signed_tx,
                  tx_aux_data & aux_data) =0;
 
     /**

@@ -16,3 +16,12 @@
 [submodule "external/googletest"]
 	path = external/googletest
 	url = https://github.com/google/googletest.git
+[submodule "external/uWebSockets"]
+	path = external/uWebSockets
+	url = https://github.com/uNetworking/uWebSockets.git
+[submodule "external/libuv"]
+	path = external/libuv
+	url = https://github.com/libuv/libuv.git
+[submodule "external/cpr"]
+	path = external/cpr
+	url = https://github.com/whoshuu/cpr.git

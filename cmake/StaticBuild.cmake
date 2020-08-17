@@ -98,6 +98,20 @@ set(ZMQ_SOURCE zeromq-${ZMQ_VERSION}.tar.gz)
 set(ZMQ_HASH SHA512=b6251641e884181db9e6b0b705cced7ea4038d404bdae812ff47bdd0eed12510b6af6846b85cb96898e253ccbac71eca7fe588673300ddb9c3109c973250c8e4
     CACHE STRING "libzmq source hash")
 
+set(ZLIB_VERSION 1.2.11 CACHE STRING "zlib version")
+set(ZLIB_MIRROR ${LOCAL_MIRROR} https://zlib.net
+    CACHE STRING "zlib mirror(s)")
+set(ZLIB_SOURCE zlib-${ZLIB_VERSION}.tar.gz)
+set(ZLIB_HASH SHA512=73fd3fff4adeccd4894084c15ddac89890cd10ef105dd5e1835e1e9bbb6a49ff229713bd197d203edfa17c2727700fce65a2a235f07568212d820dca88b528ae
+    CACHE STRING "zlib source hash")
+
+set(CURL_VERSION 7.71.1 CACHE STRING "curl version")
+set(CURL_MIRROR ${LOCAL_MIRROR} https://curl.haxx.se/download https://curl.askapache.com
+  CACHE STRING "curl mirror(s)")
+set(CURL_SOURCE curl-${CURL_VERSION}.tar.xz)
+set(CURL_HASH SHA256=40f83eda27cdbeb25cd4da48cefb639af1b9395d6026d2da1825bf059239658c
+  CACHE STRING "curl source hash")
+
 
 
 include(ExternalProject)
@@ -193,6 +207,16 @@ endfunction()
 
 
 
+build_external(zlib
+  CONFIGURE_COMMAND ${CMAKE_COMMAND} -E env "CC=${deps_cc}" "CFLAGS=-O2 ${flto}" ./configure --prefix=${DEPS_DESTDIR} --static
+  BUILD_BYPRODUCTS
+    ${DEPS_DESTDIR}/lib/libz.a
+    ${DEPS_DESTDIR}/include/zlib.h
+)
+add_static_target(zlib zlib_external libz.a)
+
+
+
 set(openssl_system_env "")
 if(CMAKE_CROSSCOMPILING)
   if(ARCH_TRIPLET STREQUAL x86_64-w64-mingw32)
@@ -205,7 +229,7 @@ build_external(openssl
   CONFIGURE_COMMAND ${CMAKE_COMMAND} -E env CC=${deps_cc} ${openssl_system_env} ./config
     --prefix=${DEPS_DESTDIR} no-shared no-capieng no-dso no-dtls1 no-ec_nistp_64_gcc_128 no-gost
     no-heartbeats no-md2 no-rc5 no-rdrand no-rfc3779 no-sctp no-ssl-trace no-ssl2 no-ssl3
-    no-static-engine no-tests no-weak-ssl-ciphers no-zlib no-zlib-dynamic "CFLAGS=-O2 ${flto}"
+    no-static-engine no-tests no-weak-ssl-ciphers no-zlib-dynamic "CFLAGS=-O2 ${flto}"
   INSTALL_COMMAND make install_sw
   BUILD_BYPRODUCTS
     ${DEPS_DESTDIR}/lib/libssl.a ${DEPS_DESTDIR}/lib/libcrypto.a
@@ -460,3 +484,43 @@ endif()
 set_target_properties(libzmq PROPERTIES
     INTERFACE_LINK_LIBRARIES "${libzmq_link_libs}"
     INTERFACE_COMPILE_DEFINITIONS "ZMQ_STATIC")
+
+
+
+set(curl_LIBS "")
+if(WIN32)
+  set(curl_ssl_opts --without-ssl --with-schannel)
+elseif(APPLE)
+  set(curl_ssl_opts --without-ssl --with-secure-transport)
+else()
+  set(curl_ssl_opts --with-ssl=${DEPS_DESTDIR})
+  set(curl_LIBS "LIBS=-pthread")
+endif()
+
+build_external(curl
+  DEPENDS openssl_external zlib_external
+  CONFIGURE_COMMAND ./configure ${cross_host} ${cross_rc} --prefix=${DEPS_DESTDIR} --disable-shared
+  --enable-static --disable-ares --disable-ftp --disable-ldap --disable-laps --disable-rtsp
+  --disable-dict --disable-telnet --disable-tftp --disable-pop3 --disable-imap --disable-smb
+  --disable-smtp --disable-gopher --disable-manual --disable-libcurl-option --enable-http
+  --enable-ipv6 --disable-threaded-resolver --disable-pthreads --disable-verbose --disable-sspi
+  --enable-crypto-auth --disable-ntlm-wb --disable-tls-srp --disable-unix-sockets --disable-cookies
+  --enable-http-auth --enable-doh --disable-mime --enable-dateparse --disable-netrc --without-libidn2
+  --disable-progress-meter --without-brotli --with-zlib=${DEPS_DESTDIR} ${curl_ssl_opts}
+  --without-libmetalink --without-librtmp --disable-versioned-symbols --enable-hidden-symbols
+  --without-zsh-functions-dir --without-fish-functions-dir
+  "CC=${deps_cc}" "CFLAGS=-O2 ${flto}" ${curl_LIBS}
+  BUILD_BYPRODUCTS
+    ${DEPS_DESTDIR}/lib/libcurl.a
+    ${DEPS_DESTDIR}/include/curl/curl.h
+)
+add_static_target(CURL::libcurl curl_external libcurl.a)
+set(libcurl_link_libs zlib)
+if(CMAKE_CROSSCOMPILING AND ARCH_TRIPLET MATCHES mingw)
+  list(APPEND libcurl_link_libs crypt32)
+elseif(APPLE)
+  list(APPEND libcurl_link_libs "-framework Security")
+endif()
+set_target_properties(CURL::libcurl PROPERTIES
+  INTERFACE_LINK_LIBRARIES "${libcurl_link_libs}"
+  INTERFACE_COMPILE_DEFINITIONS "CURL_STATICLIB")

@@ -31,10 +31,6 @@
  #define __STDC_FORMAT_MACROS // NOTE(loki): Explicitly define the PRIu64 macro on Mingw
 #endif
 
-#include <boost/range/adaptor/transformed.hpp>
-#include <boost/algorithm/string.hpp>
-#include <boost/archive/portable_binary_iarchive.hpp>
-#include <boost/archive/portable_binary_oarchive.hpp>
 #include "common/unordered_containers_boost_serialization.h"
 #include "common/command_line.h"
 #include "common/string_util.h"
@@ -611,8 +607,7 @@ static std::vector<uint64_t> canonicalize(const std::vector<uint64_t> &v)
   }
   if (c.size() < v.size())
   {
-    MINFO("Ring has duplicate member(s): " <<
-        boost::join(v | boost::adaptors::transformed([](uint64_t out){return std::to_string(out);}), " "));
+    MINFO("Ring has duplicate member(s): " << tools::join(" ", v));
   }
   return c;
 }
@@ -1500,9 +1495,8 @@ int main(int argc, char* argv[])
         }
         else if (n > 0 && get_relative_ring(txn, txin.k_image, relative_ring))
         {
-          MDEBUG("Key image " << txin.k_image << " already seen: rings " <<
-              boost::join(relative_ring | boost::adaptors::transformed([](uint64_t out){return std::to_string(out);}), " ") <<
-              ", " << boost::join(txin.key_offsets | boost::adaptors::transformed([](uint64_t out){return std::to_string(out);}), " "));
+          MDEBUG("Key image " << txin.k_image << " already seen: "
+              "rings " << tools::join(" ", relative_ring) << ", " << tools::join(" ", txin.key_offsets));
           std::cout << "\r" << start_idx << "/" << n_txes << "         \r" << std::flush;
           if (relative_ring != txin.key_offsets)
           {

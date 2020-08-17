@@ -33,7 +33,6 @@
 
 #include "daemon/rpc_command_executor.h"
 #include "common/common_fwd.h"
-#include "net/net_fwd.h"
 #include "rpc/core_rpc_server.h"
 
 namespace daemonize {
@@ -44,12 +43,7 @@ private:
   rpc_command_executor m_executor;
 public:
   /// Invokes via remote RPC
-  command_parser_executor(
-      uint32_t ip
-    , uint16_t port
-    , const std::optional<tools::login>& login
-    , const epee::net_utils::ssl_options_t& ssl_options
-    );
+  command_parser_executor(std::string daemon_url, const std::optional<tools::login>& login);
 
   /// Invokes via local daemon
   command_parser_executor(cryptonote::rpc::core_rpc_server& rpc_server);
@@ -143,8 +137,6 @@ public:
   bool alt_chain_info(const std::vector<std::string>& args);
 
   bool print_blockchain_dynamic_stats(const std::vector<std::string>& args);
-
-  bool update(const std::vector<std::string>& args);
 
   bool relay_tx(const std::vector<std::string>& args);
 

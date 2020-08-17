@@ -33,11 +33,14 @@
 
 #include <algorithm>
 #include <chrono>
+#include <iomanip>
+#include <sstream>
 #include <boost/endian/conversion.hpp>
 #include <boost/asio/io_service.hpp>
 #include <boost/asio/ip/udp.hpp>
-#include <boost/format.hpp>
+#include <lokimq/hex.h>
 #include "common/apply_permutation.h"
+#include "common/string_util.h"
 #include "transport.hpp"
 #include "messages/messages-common.pb.h"
 
@@ -335,26 +338,23 @@ namespace trezor{
 
   BridgeTransport::BridgeTransport(
         std::optional<std::string> device_path,
-        std::optional<std::string> bridge_host):
+        std::optional<std::string> bridge_url):
     m_device_path(device_path),
-    m_bridge_host(bridge_host.value_or(DEFAULT_BRIDGE)),
-    m_response(std::nullopt),
-    m_session(std::nullopt),
-    m_device_info(std::nullopt)
-    {
+    m_bridge_url(bridge_url.value_or(DEFAULT_BRIDGE))
+  {
       const char *env_bridge_port = nullptr;
-      if (!bridge_host && (env_bridge_port = getenv("TREZOR_BRIDGE_PORT")) != nullptr)
+      if (!bridge_url && (env_bridge_port = getenv("TREZOR_BRIDGE_PORT")) != nullptr)
       {
         uint16_t bridge_port;
-        CHECK_AND_ASSERT_THROW_MES(epee::string_tools::get_xtype_from_string(bridge_port, env_bridge_port), "Invalid bridge port: " << env_bridge_port);
+        CHECK_AND_ASSERT_THROW_MES(tools::parse_int(env_bridge_port, bridge_port), "Invalid bridge port: " << env_bridge_port);
         assert_port_number(bridge_port);
 
-        m_bridge_host = "127.0.0.1:" + std::to_string(bridge_port);
-        MDEBUG("Bridge host: " << m_bridge_host);
+        m_bridge_url = "http://127.0.0.1:" + std::to_string(bridge_port);
       }
-
-      m_http_client.set_server(m_bridge_host, std::nullopt, epee::net_utils::ssl_support_t::e_ssl_support_disabled);
-    }
+      else if (!tools::starts_with(m_bridge_url, "http://") && !tools::starts_with(m_bridge_url, "https://"))
+        m_bridge_url.insert(0, "http://");
+      MDEBUG("Bridge host: " << m_bridge_url);
+  }
 
   std::string BridgeTransport::get_path() const {
     if (!m_device_path){
@@ -368,7 +368,7 @@ namespace trezor{
     json bridge_res;
     std::string req;
 
-    bool req_status = invoke_bridge_http("/enumerate", req, bridge_res, m_http_client);
+    bool req_status = invoke_bridge_http("/enumerate", req, bridge_res);
     if (!req_status){
       throw exc::CommunicationException("Bridge enumeration failed");
     }
@@ -412,7 +412,7 @@ namespace trezor{
     std::string uri = "/acquire/" + *m_device_path + "/null";
     std::string req;
     json bridge_res;
-    bool req_status = invoke_bridge_http(uri, req, bridge_res, m_http_client);
+    bool req_status = invoke_bridge_http(uri, req, bridge_res);
     if (!req_status){
       throw exc::CommunicationException("Failed to acquire device");
     }
@@ -434,7 +434,7 @@ namespace trezor{
     std::string uri = "/release/" + *m_session;
     std::string req;
     json bridge_res;
-    bool req_status = invoke_bridge_http(uri, req, bridge_res, m_http_client);
+    bool req_status = invoke_bridge_http(uri, req, bridge_res);
     if (!req_status){
       throw exc::CommunicationException("Failed to release device");
     }
@@ -456,9 +456,11 @@ namespace trezor{
 
     std::string uri = "/call/" + *m_session;
     epee::wipeable_string res_hex;
-    epee::wipeable_string req_hex = epee::to_hex::wipeable_string(epee::span<const std::uint8_t>(req_buff_raw, buff_size));
+    epee::wipeable_string req_hex;
+    req_hex.reserve(buff_size * 2);
+    lokimq::to_hex(req_buff_raw, req_buff_raw + buff_size, std::back_inserter(req_hex));
 
-    bool req_status = invoke_bridge_http(uri, req_hex, res_hex, m_http_client);
+    bool req_status = invoke_bridge_http(uri, req_hex, res_hex);
     if (!req_status){
       throw exc::CommunicationException("Call method failed");
     }
@@ -494,6 +496,48 @@ namespace trezor{
     msg = msg_wrap;
   }
 
+  namespace {
+    class WipingBody : public cpr::Body {
+    public:
+      using cpr::Body::Body;
+      ~WipingBody() override { memwipe(str_.data(), str_.size()); }
+    };
+  }
+
+  std::string BridgeTransport::post_json(std::string_view uri, std::string json) {
+    std::string url = m_bridge_url;
+    if (!tools::ends_with(url, "/") && !tools::starts_with(uri, "/"))
+      url += '/';
+    url += uri;
+
+    WipingBody body{std::move(json)};
+
+    m_http_session.SetUrl(std::string{url});
+    m_http_session.SetTimeout(HTTP_TIMEOUT);
+    m_http_session.SetHeader({
+      {"Origin", "https://monero.trezor.io"}, // FIXME (loki) - does this matter to the bridge?
+      {"Content-Type", "application/json; charset=utf-8"}
+    });
+    m_http_session.SetBody(body);
+
+    cpr::Response res;
+    LOKI_DEFER {
+      if (!res.text.empty())
+        memwipe(res.text.data(), res.text.size());
+    };
+
+    res = m_http_session.Post();
+
+    if (res.error)
+      throw std::runtime_error{"Trezor bridge request failed: " + res.error.message};
+
+    if (res.status_code != 200)
+      throw std::runtime_error{"Trezor bridge request failed: received bad HTTP status " + res.status_line};
+
+    return std::move(res.text);
+  }
+
+
   const std::optional<json> & BridgeTransport::device_info() const {
     return m_device_info;
   }
@@ -508,13 +552,9 @@ namespace trezor{
   //
   // UdpTransport
   //
-  const char * UdpTransport::PATH_PREFIX = "udp:";
-  const char * UdpTransport::DEFAULT_HOST = "127.0.0.1";
-  const int UdpTransport::DEFAULT_PORT = 21324;
-
   static void parse_udp_path(std::string &host, int &port, std::string path)
   {
-    if (boost::starts_with(path, UdpTransport::PATH_PREFIX))
+    if (tools::starts_with(path, UdpTransport::PATH_PREFIX))
     {
       path = path.substr(strlen(UdpTransport::PATH_PREFIX));
     }
@@ -538,7 +578,7 @@ namespace trezor{
 
     if (device_path) {
       parse_udp_path(m_device_host, m_device_port, *device_path);
-    } else if ((env_trezor_path = getenv("TREZOR_PATH")) != nullptr && boost::starts_with(env_trezor_path, UdpTransport::PATH_PREFIX)){
+    } else if ((env_trezor_path = getenv("TREZOR_PATH")) != nullptr && tools::starts_with(env_trezor_path, UdpTransport::PATH_PREFIX)){
       parse_udp_path(m_device_host, m_device_port, std::string(env_trezor_path));
       MDEBUG("Applied TREZOR_PATH: " << m_device_host << ":" << m_device_port);
     } else {
@@ -837,11 +877,10 @@ namespace trezor{
   }
 
   static std::string get_usb_path(uint8_t bus_id, const std::vector<uint8_t> &path){
-    std::stringstream ss;
-    ss << WebUsbTransport::PATH_PREFIX << (boost::format("%03d") % ((int)bus_id));
-    for(uint8_t port : path){
-      ss << ":" << ((int) port);
-    }
+    std::ostringstream ss;
+    ss << WebUsbTransport::PATH_PREFIX << std::setw(3) << std::setfill('0') << (int)bus_id;
+    for (int port : path)
+      ss << ':' << port;
     return ss.str();
   }
 
@@ -1216,10 +1255,10 @@ namespace trezor{
   }
 
   std::shared_ptr<Transport> transport(const std::string & path){
-    if (boost::starts_with(path, BridgeTransport::PATH_PREFIX)){
+    if (tools::starts_with(path, BridgeTransport::PATH_PREFIX)){
       return std::make_shared<BridgeTransport>(path.substr(strlen(BridgeTransport::PATH_PREFIX)));
 
-    } else if (boost::starts_with(path, UdpTransport::PATH_PREFIX)){
+    } else if (tools::starts_with(path, UdpTransport::PATH_PREFIX)){
       return std::make_shared<UdpTransport>(path.substr(strlen(UdpTransport::PATH_PREFIX)));
 
     } else {

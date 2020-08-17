@@ -45,6 +45,7 @@ target_link_libraries(object_sizes
   PRIVATE
     lmdb
     p2p
+    cpr::cpr
     extra
     )
 

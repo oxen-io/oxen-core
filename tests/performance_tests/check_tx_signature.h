@@ -148,8 +148,9 @@ public:
     {
       destinations.clear();
       destinations.push_back(tx_destination_entry(this->m_source_amount - extra_outs + 1, m_alice.get_keys().m_account_address, false));
-      for (size_t n = 1; n < extra_outs; ++n)
-        destinations.push_back(tx_destination_entry(1, m_alice.get_keys().m_account_address, false));
+      if constexpr (extra_outs > 1)
+        for (size_t n = 1; n < extra_outs; ++n)
+          destinations.push_back(tx_destination_entry(1, m_alice.get_keys().m_account_address, false));
 
       if (!construct_tx_and_get_tx_key(this->m_miners[this->real_source_idx].get_keys(), subaddresses, this->m_sources, destinations, cryptonote::tx_destination_entry{}, std::vector<uint8_t>(), m_txes.back(), 0, tx_key, additional_tx_keys, {rct::RangeProofMultiOutputBulletproof, 2}, nullptr, tx_params))
         return false;

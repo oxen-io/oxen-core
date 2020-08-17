@@ -30,21 +30,24 @@
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
 #include <string>
+#include <iomanip>
+#include <thread>
+
+#include <openssl/ssl.h>
 
 #include "unbound.h"
 
 #include "include_base_utils.h"
+#include "string_tools.h"
 #include "wipeable_string.h"
 #include "crypto/crypto.h"
 #include "util.h"
 #include "stack_trace.h"
-#include "net/http_client.h"                        // epee::net_utils::...
 #include "misc_os_dependent.h"
 #include "readline_buffer.h"
 #include "string_util.h"
+#include <boost/filesystem/path.hpp>
 
-#include <boost/asio.hpp>
-#include <boost/format.hpp>
 #include "i18n.h"
 
 #ifdef __GLIBC__
@@ -211,45 +214,12 @@ namespace tools
 
   bool is_local_address(const std::string &address)
   {
-    // always assume Tor/I2P addresses to be untrusted by default
-    if (tools::ends_with(address, ".onion") || tools::ends_with(address, ".i2p"))
-    {
-      MDEBUG("Address '" << address << "' is Tor/I2P, non local");
-      return false;
-    }
-
-    // extract host
-    epee::net_utils::http::url_content u_c;
-    if (!epee::net_utils::parse_url(address, u_c))
-    {
-      MWARNING("Failed to determine whether address '" << address << "' is local, assuming not");
-      return false;
-    }
-    if (u_c.host.empty())
-    {
-      MWARNING("Failed to determine whether address '" << address << "' is local, assuming not");
-      return false;
-    }
-
-    // resolve to IP
-    boost::asio::io_service io_service;
-    boost::asio::ip::tcp::resolver resolver(io_service);
-    boost::asio::ip::tcp::resolver::query query(u_c.host, "");
-    boost::asio::ip::tcp::resolver::iterator i = resolver.resolve(query);
-    while (i != boost::asio::ip::tcp::resolver::iterator())
-    {
-      const boost::asio::ip::tcp::endpoint &ep = *i;
-      if (ep.address().is_loopback())
-      {
-        MDEBUG("Address '" << address << "' is local");
-        return true;
-      }
-      ++i;
-    }
-
-    MDEBUG("Address '" << address << "' is not local");
-    return false;
+    return address == "localhost"sv
+        || (tools::starts_with(address, "127."sv) && address.find_first_not_of("0123456789."sv) == std::string::npos)
+        || address == "::1"sv
+        || address == "[::1]"sv; // There are other uncommon ways to specify localhost (e.g. 0::1, ::0001) but don't worry about them.
   }
+
   int vercmp(std::string_view v0, std::string_view v1)
   {
     auto f0 = tools::split_any(v0, ".-");
@@ -345,34 +315,18 @@ namespace tools
 
   std::string get_human_readable_bytes(uint64_t bytes)
   {
-    struct byte_map
-    {
-        const char* const format;
-        const std::uint64_t bytes;
-    };
-
-    static constexpr const byte_map sizes[] =
-    {
-        {"%.0f B", 1000},
-        {"%.2f KB", 1000 * 1000},
-        {"%.2f MB", std::uint64_t(1000) * 1000 * 1000},
-        {"%.2f GB", std::uint64_t(1000) * 1000 * 1000 * 1000},
-        {"%.2f TB", std::uint64_t(1000) * 1000 * 1000 * 1000 * 1000}
-    };
-
-    struct bytes_less
-    {
-        bool operator()(const byte_map& lhs, const byte_map& rhs) const noexcept
-        {
-            return lhs.bytes < rhs.bytes;
-        }
-    };
-
-    const auto size = std::upper_bound(
-        std::begin(sizes), std::end(sizes) - 1, byte_map{"", bytes}, bytes_less{}
-    );
-    const std::uint64_t divisor = size->bytes / 1000;
-    return (boost::format(size->format) % (double(bytes) / divisor)).str();
+    if (bytes < 1000) return std::to_string(bytes) + " B";
+    constexpr std::array units{" kB", " MB", " GB", " TB"};
+    double b = bytes;
+    for (const auto& suffix : units) {
+      b /= 1000.;
+      if (b < 1000.) {
+        std::ostringstream o;
+        o << std::fixed << std::setprecision(2) << b;
+        return o.str() + suffix;
+      }
+    }
+    return std::to_string(std::lround(b)) + units.back();
   }
 
   // Calculate a "sync weight" over ranges of blocks in the blockchain, suitable for
@@ -381,7 +335,7 @@ namespace tools
   {
     // No detailed data available except for Mainnet: Give back the number of blocks
     // as a very simple and non-varying block sync weight for ranges of Testnet and
-    // Stagenet blocks
+    // Devnet blocks
     return num_blocks;
 
     // TODO(loki):
@@ -403,7 +357,7 @@ namespace tools
     // improve if one would not only take block sizes into account, but also varying
     // verification times i.e. the different CPU effort needed for the different
     // transaction types (pre / post RingCT, pre / post Bulletproofs).
-    // Testnet and Stagenet are neglected here because of their much smaller
+    // Testnet and Devnet are neglected here because of their much smaller
     // importance.
     static const uint32_t average_block_sizes[] =
     {

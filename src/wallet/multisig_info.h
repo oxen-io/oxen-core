@@ -1,3 +1,4 @@
+// Copyright (c) 2018-2020, The Loki Project
 // Copyright (c) 2014-2019, The Monero Project
 // 
 // All rights reserved.
@@ -27,43 +28,57 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #pragma once
+#include <ringct/rctTypes.h>
+#include <boost/serialization/version.hpp>
 
-#include <chrono>
-#include "string_tools.h"
-#include "net/http_client.h"
+namespace wallet {
 
-namespace tools {
-
-class t_http_connection {
-private:
-  epee::net_utils::http::http_simple_client * mp_http_client;
-  bool m_ok;
-public:
-  static constexpr std::chrono::seconds TIMEOUT()
+struct multisig_info
+{
+  struct LR
   {
-    return std::chrono::minutes(3) + std::chrono::seconds(30);
-  }
+    rct::key m_L;
+    rct::key m_R;
+  };
 
-  t_http_connection(epee::net_utils::http::http_simple_client* p_http_client)
-    : mp_http_client(p_http_client)
-    , m_ok(false)
-  {
-    m_ok = mp_http_client->connect(TIMEOUT());
-  }
+  crypto::public_key m_signer;
+  std::vector<LR> m_LR;
+  std::vector<crypto::key_image> m_partial_key_images; // one per key the participant has
+};
 
-  ~t_http_connection()
-  {
-    if (m_ok)
-    {
-      try { mp_http_client->disconnect(); }
-      catch (...) { /* do not propagate through dtor */ }
-    }
-  }
+template <class Archive>
+void serialize_value(Archive& ar, multisig_info::LR& x) {
+  field(ar, "m_L", x.m_L);
+  field(ar, "m_R", x.m_R);
+}
 
-  bool is_open() const
-  {
-    return m_ok;
-  }
-}; // class t_http_connection
+template <class Archive>
+void serialize_value(Archive& ar, multisig_info& x) {
+  field(ar, "m_signer", x.m_signer);
+  field(ar, "m_LR", x.m_LR);
+  field(ar, "m_partial_key_images", x.m_partial_key_images);
+}
 
-} // namespace tools
+}
+
+BOOST_CLASS_VERSION(wallet::multisig_info::LR, 0)
+BOOST_CLASS_VERSION(wallet::multisig_info, 1)
+
+namespace boost::serialization {
+
+template <class Archive>
+void serialize(Archive &a, wallet::multisig_info::LR &x, const unsigned int /*ver*/)
+{
+  a & x.m_L;
+  a & x.m_R;
+}
+
+template <class Archive>
+void serialize(Archive &a, wallet::multisig_info &x, const unsigned int /*ver*/)
+{
+  a & x.m_signer;
+  a & x.m_LR;
+  a & x.m_partial_key_images;
+}
+
+}

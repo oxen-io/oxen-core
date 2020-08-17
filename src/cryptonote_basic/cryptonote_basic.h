@@ -342,10 +342,10 @@ namespace cryptonote
       }
       else
       {
-        ar.tag("rct_signatures");
         if (!vin.empty())
         {
           {
+            ar.tag("rct_signatures");
             auto obj = ar.begin_object();
             rct_signatures.serialize_rctsig_base(ar, vin.size(), vout.size());
           }
@@ -373,10 +373,9 @@ namespace cryptonote
 
       if (version != txversion::v1)
       {
-        // FIXME - seems wrong to tag with no value if vin.empty?
-        ar.tag("rct_signatures");
         if (!vin.empty())
         {
+          ar.tag("rct_signatures");
           auto obj = ar.begin_object();
           rct_signatures.serialize_rctsig_base(ar, vin.size(), vout.size());
         }

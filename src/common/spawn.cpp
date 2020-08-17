@@ -30,8 +30,6 @@
 #include <unistd.h>
 #include <sys/types.h>
 #ifdef _WIN32
-#include <boost/algorithm/string/join.hpp>
-#include <boost/scope_exit.hpp>
 #include <windows.h>
 #else
 #include <sys/wait.h>
@@ -41,6 +39,8 @@
 #include "misc_log_ex.h"
 #include "util.h"
 #include "spawn.h"
+#include "loki.h"
+#include "string_util.h"
 
 #undef LOKI_DEFAULT_LOG_CATEGORY
 #define LOKI_DEFAULT_LOG_CATEGORY "spawn"
@@ -48,6 +48,7 @@
 namespace tools
 {
 
+#ifndef _WIN32
 static void closefrom(int fd)
 {
 #if defined __FreeBSD__ || defined __OpenBSD__ || defined __NetBSD__ || defined __DragonFly__
@@ -66,12 +67,13 @@ static void closefrom(int fd)
   }
 #endif
 }
+#endif
 
 
 int spawn(const char *filename, const std::vector<std::string>& args, bool wait)
 {
 #ifdef _WIN32
-  std::string joined = boost::algorithm::join(args, " ");
+  std::string joined = tools::join(" ", args);
   char *commandLine = !joined.empty() ? &joined[0] : nullptr;
   STARTUPINFOA si = {};
   si.cb = sizeof(si);
@@ -82,12 +84,10 @@ int spawn(const char *filename, const std::vector<std::string>& args, bool wait)
     return -1;
   }
   
-  BOOST_SCOPE_EXIT(&pi)
-  {
+  LOKI_DEFER {
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);
-  }
-  BOOST_SCOPE_EXIT_END
+  };
 
   if (!wait)
   {

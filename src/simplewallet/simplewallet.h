@@ -291,7 +291,7 @@ namespace cryptonote
     uint64_t get_daemon_blockchain_height(std::string& err);
     bool try_connect_to_daemon(bool silent = false, rpc::version_t* version = nullptr);
     bool ask_wallet_create_if_needed();
-    bool accept_loaded_tx(const std::function<size_t()> get_num_txes, const std::function<const tools::wallet2::tx_construction_data&(size_t)> &get_tx, const std::string &extra_message = std::string());
+    bool accept_loaded_tx(const std::function<size_t()> get_num_txes, const std::function<const wallet::tx_construction_data&(size_t)> &get_tx, const std::string &extra_message = std::string());
     bool accept_loaded_tx(const tools::wallet2::unsigned_tx_set &txs);
     bool accept_loaded_tx(const tools::wallet2::signed_tx_set &txs);
     bool process_ring_members(const std::vector<tools::wallet2::pending_tx>& ptx_vector, std::ostream& ostr, bool verbose);
@@ -305,7 +305,7 @@ namespace cryptonote
     bool on_cancelled_command();
     void check_for_inactivity_lock(bool user);
 
-    bool get_transfers(std::vector<std::string>& args_, std::vector<tools::transfer_view>& transfers);
+    bool get_transfers(std::vector<std::string>& args_, std::vector<wallet::transfer_view>& transfers);
 
     /*!
      * \brief Prints the seed with a nice message

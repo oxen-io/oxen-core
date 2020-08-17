@@ -1,29 +1,39 @@
+
 #include "http_server.h"
+#include <chrono>
+#include <exception>
+#include <lokimq/base64.h>
+#include <boost/endian/conversion.hpp>
+#include <variant>
+#include "common/string_util.h"
+#include "net/jsonrpc_structs.h" // epee
+#include "rpc/core_rpc_server_commands_defs.h"
 #include "rpc/rpc_args.h"
+#include "version.h"
 
 #undef LOKI_DEFAULT_LOG_CATEGORY
 #define LOKI_DEFAULT_LOG_CATEGORY "daemon.rpc"
 
-namespace cryptonote { namespace rpc {
+namespace cryptonote::rpc {
 
-  const command_line::arg_descriptor<std::string, false, true, 2> http_server::arg_rpc_bind_port = {
+  const command_line::arg_descriptor<uint16_t, false, true, 2> http_server::arg_rpc_bind_port = {
       "rpc-bind-port"
     , "Port for RPC server"
-    , std::to_string(config::RPC_DEFAULT_PORT)
-    , {{ &cryptonote::arg_testnet_on, &cryptonote::arg_stagenet_on }}
-    , [](std::array<bool, 2> testnet_stagenet, bool defaulted, std::string val)->std::string {
-        if (testnet_stagenet[0] && defaulted)
-          return std::to_string(config::testnet::RPC_DEFAULT_PORT);
-        else if (testnet_stagenet[1] && defaulted)
-          return std::to_string(config::stagenet::RPC_DEFAULT_PORT);
-        return val;
+    , config::RPC_DEFAULT_PORT
+    , {{ &cryptonote::arg_testnet_on, &cryptonote::arg_devnet_on }}
+    , [](std::array<bool, 2> testnet_devnet, bool defaulted, uint16_t val) {
+        auto [testnet, devnet] = testnet_devnet;
+        return
+          (defaulted && testnet) ? config::testnet::RPC_DEFAULT_PORT :
+          (defaulted && devnet) ? config::devnet::RPC_DEFAULT_PORT :
+          val;
       }
     };
 
-  const command_line::arg_descriptor<std::string> http_server::arg_rpc_restricted_bind_port = {
+  const command_line::arg_descriptor<uint16_t> http_server::arg_rpc_restricted_bind_port = {
       "rpc-restricted-bind-port"
     , "Port for restricted RPC server"
-    , ""
+    , 0
     };
 
   const command_line::arg_descriptor<bool> http_server::arg_restricted_rpc = {
@@ -38,16 +48,7 @@ namespace cryptonote { namespace rpc {
     , false
     };
 
-  //
-  // Loki
-  //
-  const command_line::arg_descriptor<int> http_server::arg_rpc_long_poll_connections = {
-      "rpc-long-poll-connections"
-    , "Number of RPC connections allocated for long polling wallet queries to the TX pool"
-    , 16
-    };
-
-  constexpr int http_server::DEFAULT_RPC_THREADS;
+  namespace { void long_poll_trigger(cryptonote::tx_memory_pool&); }
 
   //-----------------------------------------------------------------------------------
   void http_server::init_options(boost::program_options::options_description& desc)
@@ -56,217 +57,563 @@ namespace cryptonote { namespace rpc {
     command_line::add_arg(desc, arg_rpc_restricted_bind_port);
     command_line::add_arg(desc, arg_restricted_rpc);
     command_line::add_arg(desc, arg_public_node);
-    command_line::add_arg(desc, arg_rpc_long_poll_connections);
+
+    cryptonote::long_poll_trigger = long_poll_trigger;
   }
 
   //------------------------------------------------------------------------------------------------------------------------------
-  bool http_server::init(
-      const boost::program_options::variables_map& vm
-      , const bool restricted
-      , const std::string& port
-    )
+  http_server::http_server(
+      core_rpc_server& server,
+      const boost::program_options::variables_map& vm,
+      const bool restricted,
+      uint16_t port
+      ) : m_server{server}, m_restricted{restricted}
   {
-    m_restricted = restricted;
-    m_net_server.set_threads_prefix("RPC");
-    m_max_long_poll_connections = command_line::get_arg(vm, arg_rpc_long_poll_connections);
+    // uWS is designed to work from a single thread, which is good (we pull off the requests and
+    // then stick them into the LMQ job queue to be scheduled along with other jobs).  But as a
+    // consequence, we need to create everything inside that thread.  We *also* need to get the
+    // (thread local) event loop pointer back from the thread so that we can shut it down later
+    // (injecting a callback into it is one of the few thread-safe things we can do across threads).
+    //
+    // Things we need in the owning thread, fulfilled from the http thread:
 
-    auto rpc_config = cryptonote::rpc_args::process(vm, true);
-    if (!rpc_config)
-      return false;
+    // - the uWS::Loop* for the event loop thread (which is thread_local).  We can get this during
+    //   thread startup, after the thread does basic initialization.
+    std::promise<uWS::Loop*> loop_promise;
+    auto loop_future = loop_promise.get_future();
 
-    std::optional<epee::net_utils::http::login> http_login{};
+    // - the us_listen_socket_t* on which the server is listening.  We can't get this until we
+    //   actually start listening, so wait until `start()` for it.  (We also double-purpose it to
+    //   send back an exception if one fires during startup).
+    std::promise<std::vector<us_listen_socket_t*>> startup_success_promise;
+    m_startup_success = startup_success_promise.get_future();
 
-    if (rpc_config->login)
-      http_login.emplace(std::move(rpc_config->login->username), std::move(rpc_config->login->password).password());
+    // Things we need to send from the owning thread to the event loop thread:
+    // - a signal when the thread should bind to the port and start the event loop (when we call
+    //   start()).
+    //m_startup_promise
 
-    auto rng = [](size_t len, uint8_t *ptr){ return crypto::rand(len, ptr); };
-    return epee::http_server_impl_base<http_server, connection_context>::init(
-      rng, std::move(port), std::move(rpc_config->bind_ip),
-      std::move(rpc_config->bind_ipv6_address), std::move(rpc_config->use_ipv6), std::move(rpc_config->require_ipv4),
-      std::move(rpc_config->access_control_origins), std::move(http_login), std::move(rpc_config->ssl_options)
-    );
+    m_rpc_thread = std::thread{[this, rpc_config=cryptonote::rpc_args::process(vm), port] (
+        std::promise<uWS::Loop*> loop_promise,
+        std::future<bool> startup_future,
+        std::promise<std::vector<us_listen_socket_t*>> startup_success) {
+      uWS::App http;
+      try {
+        create_rpc_endpoints(http);
+      } catch (...) {
+        loop_promise.set_exception(std::current_exception());
+      }
+      loop_promise.set_value(uWS::Loop::get());
+      if (!startup_future.get())
+        // False means cancel, i.e. we got destroyed/shutdown without start() being called
+        return;
+
+      std::vector<std::pair<std::string /*addr*/, bool /*required*/>> bind_addr;
+      if (!rpc_config.bind_ip.empty())
+        bind_addr.emplace_back(rpc_config.bind_ip, rpc_config.require_ipv4);
+      if (rpc_config.use_ipv6 && !rpc_config.bind_ipv6_address.empty())
+        bind_addr.emplace_back(rpc_config.bind_ipv6_address, true);
+
+      m_login = rpc_config.login;
+
+      m_cors = {rpc_config.access_control_origins.begin(), rpc_config.access_control_origins.end()};
+
+      std::vector<us_listen_socket_t*> listening;
+      try {
+        bool bad = false;
+        int good = 0;
+        for (const auto& [addr, required] : bind_addr)
+          http.listen(addr, port, [&listening, req=required, &good, &bad](us_listen_socket_t* sock) {
+            listening.push_back(sock);
+            if (sock != nullptr) good++;
+            else if (req) bad = true;
+          });
+
+        if (!good || bad) {
+          std::ostringstream error;
+          error << "RPC HTTP server failed to bind; ";
+          if (listening.empty()) error << "no valid bind address(es) given";
+          else {
+            error << "tried to bind to:";
+            for (const auto& [addr, required] : bind_addr)
+              error << ' ' << addr << ':' << port;
+          }
+          throw std::runtime_error(error.str());
+        }
+      } catch (...) {
+        startup_success.set_exception(std::current_exception());
+        return;
+      }
+      startup_success.set_value(std::move(listening));
+
+      http.run();
+    }, std::move(loop_promise), m_startup_promise.get_future(), std::move(startup_success_promise)};
+
+    m_loop = loop_future.get();
   }
 
-  static constexpr http_response_code
-    HTTP_OK{200, "OK"sv},
-    HTTP_BAD_REQUEST{400, "Bad Request"sv},
-    HTTP_FORBIDDEN{403, "Forbidden"sv},
-    HTTP_NOT_FOUND{404, "Not Found"sv},
-    HTTP_ERROR{500, "Internal Server Error"sv};
-
-  bool http_server::handle_http_request(
-      const epee::net_utils::http::http_request_info& query_info,
-      epee::net_utils::http::http_response_info& response,
-      connection_context& context)
+  void http_server::create_rpc_endpoints(uWS::App& http)
   {
+    auto access_denied = [this](HttpResponse* res, HttpRequest* req) {
+      MINFO("Forbidden HTTP request for restricted endpoint " << req->getMethod() << " " << req->getUrl());
+      error_response(*res, HTTP_FORBIDDEN);
+    };
+
+    for (auto& [name, call] : rpc_commands) {
+      if (call->is_legacy || call->is_binary) {
+        if (!call->is_public && m_restricted)
+          http.any("/" + name, access_denied);
+        else
+          http.any("/" + name, [this, &call=*call](HttpResponse* res, HttpRequest* req) {
+            if (m_login && !check_auth(*req, *res))
+              return;
+            handle_base_request(*res, *req, call);
+          });
+      }
+    }
+    http.post("/json_rpc", [this](HttpResponse* res, HttpRequest* req) {
+      if (m_login && !check_auth(*req, *res))
+        return;
+      handle_json_rpc_request(*res, *req);
+    });
+
+    // Fallback to send a 404 for anything else:
+    http.any("/*", [this](HttpResponse* res, HttpRequest* req) {
+      if (m_login && !check_auth(*req, *res))
+        return;
+      MINFO("Invalid HTTP request for " << req->getMethod() << " " << req->getUrl());
+      error_response(*res, HTTP_NOT_FOUND);
+    });
+  }
+
+  namespace {
+
+  struct call_data {
+    http_server& http;
+    core_rpc_server& core_rpc;
+    HttpResponse& res;
+    std::string uri;
+    const rpc_command* call{nullptr};
+    rpc_request request{};
+    bool aborted{false};
+    bool replied{false};
+    bool jsonrpc{false};
+    std::string jsonrpc_id; // pre-formatted json value
+    std::vector<std::pair<std::string, std::string>> extra_headers; // Extra headers to send
+
+    // If we have to drop the request because we are overloaded we want to reply with an error (so
+    // that we close the connection instead of leaking it and leaving it hanging).  We don't do
+    // this, of course, if the request got aborted and replied to.
+    ~call_data() {
+      if (replied || aborted) return;
+      http.loop_defer([&http=http, &res=res, jsonrpc=jsonrpc] {
+        if (jsonrpc)
+          http.jsonrpc_error_response(res, -32003, "Server busy, try again later");
+        else
+          http.error_response(res, http_server::HTTP_SERVICE_UNAVAILABLE, "Server busy, try again later");
+      });
+    }
+
+    call_data(const call_data&) = delete;
+    call_data(call_data&&) = delete;
+    call_data& operator=(const call_data&) = delete;
+    call_data& operator=(call_data&&) = delete;
+  };
+
+  // Queues a response for the HTTP thread to handle; the response can be in multiple string pieces
+  // to be concatenated together.
+  void queue_response(std::shared_ptr<call_data> data, std::vector<std::string> body)
+  {
+    auto& http = data->http;
+    data->replied = true;
+    http.loop_defer([data=std::move(data), body=std::move(body)] {
+      if (data->aborted)
+        return;
+      data->res.cork([data=std::move(data), body=std::move(body)] {
+        auto& res = data->res;
+        res.writeHeader("Server", data->http.server_header());
+        res.writeHeader("Content-Type", data->call->is_binary ? "application/octet-stream"sv : "application/json"sv);
+        for (const auto& [name, value] : data->extra_headers)
+          res.writeHeader(name, value);
+
+        for (const auto& piece : body)
+          res.write(piece);
+
+        res.end();
+      });
+    });
+  }
+
+  // Wrapper around the above that takes a single string
+  void queue_response(std::shared_ptr<call_data> data, std::string body)
+  {
+    std::vector<std::string> b;
+    b.push_back(std::move(body));
+    queue_response(std::move(data), std::move(b));
+  }
+
+  void invoke_txpool_hashes_bin(std::shared_ptr<call_data> data);
+
+  // Invokes the actual RPC request; this is called (via lokimq) from some random LMQ worker thread,
+  // which means we can't just write our reply; instead we have to post it to the uWS loop.
+  void invoke_rpc(std::shared_ptr<call_data> dataptr)
+  {
+    auto& data = *dataptr;
+    if (data.aborted) return;
+
+    // Replace the default tx pool hashes callback with our own (which adds long poll support):
+    if (std::string_view{data.uri}.substr(1) == rpc::GET_TRANSACTION_POOL_HASHES_BIN::names()[0])
+      return invoke_txpool_hashes_bin(std::move(dataptr));
+
+    const bool time_logging = LOG_ENABLED(Debug);
     std::chrono::steady_clock::time_point start;
-    bool time_logging = LOG_ENABLED(Debug);
     if (time_logging)
       start = std::chrono::steady_clock::now();
 
-    std::pair<int, std::string_view> http_status = HTTP_ERROR;
-    std::string exception;
-    try {
-      http_status = handle_http(query_info, response, context);
-    } catch (const std::exception& e) {
-      exception = ", request raised an exception: "s + e.what();
-    } catch (...) {
-      exception = ", request raised an unknown exception";
-    }
-
-    response.m_response_code = http_status.first;
-    response.m_response_comment = std::string{http_status.second};
-
-    std::string elapsed;
-    if (time_logging)
+    std::vector<std::string> result;
+    result.reserve(data.jsonrpc ? 3 : 1);
+    if (data.jsonrpc)
     {
-      auto dur = std::chrono::steady_clock::now() - start;
-      std::ostringstream el;
-      el << ", in ";
-      el.precision(3);
-      if (dur >= 1s)
-        el << std::chrono::duration_cast<std::chrono::milliseconds>(dur).count() / 1000. << 's';
-      else if (dur >= 1ms)
-        el << std::chrono::duration_cast<std::chrono::microseconds>(dur).count() / 1000. << "ms";
-      else if (dur >= 1us)
-        el << std::chrono::duration_cast<std::chrono::nanoseconds>(dur).count() / 1000. << "us";
-      else
-        el << std::chrono::duration_cast<std::chrono::nanoseconds>(dur).count() << "ns";
-      elapsed = el.str();
+      result.emplace_back(R"({"jsonrpc":"2.0","id":)");
+      result.back() += data.jsonrpc_id;
+      result.back() += R"(,"result":)";
     }
 
-    MLOG(exception.empty() ? el::Level::Info : el::Level::Warning,
-        "HTTP [" << context.m_remote_address.host_str() << "] " << query_info.m_http_method_str << " " << query_info.m_URI <<
-        " >>> " << http_status.first << " " << http_status.second <<
-        exception << elapsed);
+    int json_error = -32603;
+    std::string json_message = "Internal error";
+    std::string http_message;
 
-    return true;
+    try {
+      result.push_back(data.call->invoke(std::move(data.request), data.core_rpc));
+      json_error = 0;
+    } catch (const parse_error& e) {
+      // This isn't really WARNable as it's the client fault; log at info level instead.
+      MINFO("HTTP RPC request '" << data.uri << "' called with invalid/unparseable data: " << e.what());
+      json_error = -32602;
+      http_message = "Unable to parse request: "s + e.what();
+      json_message = "Invalid params";
+    } catch (const rpc_error& e) {
+      MWARNING("HTTP RPC request '" << data.uri << "' failed with: " << e.what());
+      json_error = e.code;
+      json_message = e.message;
+      http_message = e.message;
+    } catch (const std::exception& e) {
+      MWARNING("HTTP RPC request '" << data.uri << "' raised an exception: " << e.what());
+    } catch (...) {
+      MWARNING("HTTP RPC request '" << data.uri << "' raised an unknown exception");
+    }
+
+    if (json_error != 0) {
+      data.replied = true;
+      data.http.loop_defer([data=std::move(dataptr), json_error, msg=std::move(data.jsonrpc ? json_message : http_message)] {
+        if (data->aborted) return;
+        if (data->jsonrpc)
+          data->http.jsonrpc_error_response(data->res, json_error, msg);
+        else
+          data->http.error_response(data->res, http_server::HTTP_ERROR, msg.empty() ? std::nullopt : std::make_optional<std::string_view>(msg));
+      });
+      return;
+    }
+
+    if (data.jsonrpc)
+      result.emplace_back("}\n");
+
+    std::string call_duration;
+    if (time_logging)
+      call_duration = " in " + tools::friendly_duration(std::chrono::steady_clock::now() - start);
+    if (LOG_ENABLED(Info)) {
+      size_t bytes = 0;
+      for (const auto& r : result) bytes += r.size();
+      MINFO("HTTP RPC " << data.uri << " [" << data.request.context.remote << "] OK (" << bytes << " bytes)" << call_duration);
+    }
+
+    queue_response(std::move(dataptr), std::move(result));
   }
 
-  static http_response_code json_rpc_error(int code, std::string message, std::string& body)
-  {
-    epee::json_rpc::error_response rsp;
-    rsp.jsonrpc = "2.0";
-    rsp.error.code = code;
-    rsp.error.message = std::move(message);
-    epee::serialization::store_t_to_json(rsp, body);
-    return HTTP_OK;
+  std::string pool_hashes_response(std::vector<crypto::hash>&& pool_hashes) {
+    GET_TRANSACTION_POOL_HASHES_BIN::response res{};
+    res.tx_hashes = std::move(pool_hashes);
+    res.status = STATUS_OK;
+
+    std::string response;
+    epee::serialization::store_t_to_binary(res, response);
+    return response;
   }
 
-  http_response_code http_server::handle_http(
-    const epee::net_utils::http::http_request_info& query_info,
-    epee::net_utils::http::http_response_info& response_info,
-    connection_context& context)
-  {
-    auto uri = query_info.m_URI.size() > 0 && query_info.m_URI[0] == '/' ? query_info.m_URI.substr(1) : query_info.m_URI;
+  std::list<std::pair<std::shared_ptr<call_data>, std::chrono::steady_clock::time_point>> long_pollers;
+  std::mutex long_poll_mutex;
 
-    auto remote = context.m_remote_address.str();
-    rpc_request request{};
+  // HTTP-only long-polling support for the transaction pool hashes command
+  void invoke_txpool_hashes_bin(std::shared_ptr<call_data> data) {
+    GET_TRANSACTION_POOL_HASHES_BIN::request req{};
+    std::string_view body;
+    if (auto body_sv = data->request.body_view())
+      body = *body_sv;
+    else
+      throw parse_error{"Internal error: got unexpected request body type"};
+
+    if (!epee::serialization::load_t_from_binary(req, body))
+      throw parse_error{"Failed to parse binary data parameters"};
+
+    std::vector<crypto::hash> pool_hashes;
+    data->core_rpc.get_core().get_pool().get_transaction_hashes(pool_hashes, data->request.context.admin);
+
+    if (req.long_poll)
+    {
+      crypto::hash checksum{};
+      for (const auto& h : pool_hashes) checksum ^= h;
+
+      if (req.tx_pool_checksum == checksum) {
+        // Hashes match, which means we need to defer this request until later.
+        std::lock_guard lock{long_poll_mutex};
+        MTRACE("Deferring long poll request from " << data->request.context.remote << ": long polling requested and remote's checksum matches current pool (" << checksum << ")");
+        long_pollers.emplace_back(std::move(data), std::chrono::steady_clock::now() + GET_TRANSACTION_POOL_HASHES_BIN::long_poll_timeout);
+        return;
+      }
+
+      MTRACE("Ignoring long poll request from " << data->request.context.remote << ": pool hash mismatch (remote: " << req.tx_pool_checksum << ", local: " << checksum << ")");
+    }
+
+    // Either not a long poll request or checksum didn't match
+    queue_response(std::move(data), pool_hashes_response(std::move(pool_hashes)));
+  }
+
+  // This get invoked (from cryptonote_core.cpp) whenever the mempool is added to.  We queue
+  // responses for everyone currently waiting.
+  void long_poll_trigger(tx_memory_pool &pool) {
+    std::lock_guard lock{long_poll_mutex};
+    if (long_pollers.empty())
+      return;
+
+    MDEBUG("TX pool changed; sending tx pool to " << long_pollers.size() << " pending long poll connections");
+
+    std::optional<std::string> body_public, body_admin;
+
+    for (auto& [dataptr, expiry]: long_pollers)
+    {
+      auto& data = *dataptr;
+      auto& body = data.request.context.admin ? body_admin : body_public;
+      if (!body)
+      {
+        std::vector<crypto::hash> pool_hashes;
+        pool.get_transaction_hashes(pool_hashes, data.request.context.admin);
+        body = pool_hashes_response(std::move(pool_hashes));
+      }
+      MTRACE("Sending deferred long poll pool update to " << data.request.context.remote);
+      queue_response(std::move(dataptr), *body);
+    }
+    long_pollers.clear();
+  }
+
+  std::string long_poll_timeout_body;
+
+  // Called periodically to clear expired Starts up a periodic timer for checking for expired long poll requests.  We run this only once
+  // a second because we don't really care if we time out at *precisely* 15 seconds.
+  void long_poll_process_timeouts() {
+    std::lock_guard lock{long_poll_mutex};
+
+    if (long_pollers.empty())
+      return;
+
+    if (long_poll_timeout_body.empty())
+    {
+      GET_TRANSACTION_POOL_HASHES_BIN::response res{};
+      res.status = STATUS_TX_LONG_POLL_TIMED_OUT;
+      epee::serialization::store_t_to_binary(res, long_poll_timeout_body);
+    }
+
+    int count = 0;
+    auto now = std::chrono::steady_clock::now();
+    for (auto it = long_pollers.begin(); it != long_pollers.end(); )
+    {
+      if (it->second < now)
+      {
+        MTRACE("Sending long poll timeout to " << it->first->request.context.remote);
+        queue_response(std::move(it->first), long_poll_timeout_body);
+        it = long_pollers.erase(it);
+        count++;
+      }
+      else
+        ++it;
+    }
+
+    if (count > 0)
+      MDEBUG("Timed out " << count << " long poll connections");
+    else
+      MTRACE("None of " << long_pollers.size() << " established long poll connections reached timeout");
+  }
+
+  } // anonymous namespace
+
+  void http_server::handle_base_request(
+        HttpResponse& res,
+        HttpRequest& req,
+        const rpc_command& call)
+  {
+    std::shared_ptr<call_data> data{new call_data{*this, m_server, res, std::string{req.getUrl()}, &call}};
+    auto& request = data->request;
+    request.body = ""s;
     request.context.admin = !m_restricted;
     request.context.source = rpc_source::http;
-    request.context.remote = remote;
+    request.context.remote = get_remote_address(res);
+    handle_cors(req, data->extra_headers);
+    MTRACE("Received " << req.getMethod() << " " << req.getUrl() << " request from " << request.context.remote);
 
-    if (uri == "json_rpc")
-      return handle_json_rpc_request(query_info, response_info, context, request);
+    res.onAborted([data] { data->aborted = true; });
+    res.onData([data=std::move(data)](std::string_view d, bool done) mutable {
+      std::get<std::string>(data->request.body) += d;
+      if (!done)
+        return;
 
-    auto it = rpc_commands.find(uri);
-    if (it == rpc_commands.end())
-      return HTTP_NOT_FOUND;
-
-    auto& cmd = *it->second;
-    if (m_restricted && !cmd.is_public)
-      return HTTP_FORBIDDEN;
-
-    request.body = std::move(query_info.m_body);
-    response_info.m_mime_type = cmd.is_binary ? "application/octet-stream" : "application/json";
-    response_info.m_header_info.m_content_type = response_info.m_mime_type;
-
-    try {
-      response_info.m_body = cmd.invoke(std::move(request), m_server);
-      return HTTP_OK;
-    } catch (const parse_error& e) {
-      // This isn't really WARNable as it's the client fault; log at info level instead.
-      MINFO("RPC request for '/" << uri << "' called with invalid/unparseable data: " << e.what());
-      return HTTP_BAD_REQUEST;
-    } catch (const rpc_error& e) {
-      MWARNING("RPC request for '/" << uri << "' failed with: " << e.what() << "; returning 500 error");
-      return HTTP_ERROR;
-    } catch (const std::exception& e) {
-      MWARNING("RPC request '/" << uri << "' request raised an exception: " << e.what());
-      return HTTP_ERROR;
-    } catch (...) {
-      MWARNING("RPC request '/" << uri << "' request raised an unknown exception");
-      return HTTP_ERROR;
-    }
+      auto& lmq = data->core_rpc.get_core().get_lmq();
+      std::string cat{data->call->is_public ? "rpc" : "admin"};
+      std::string cmd{"http:" + data->uri}; // Used for LMQ job logging; prefixed with http: so we can distinguish it
+      std::string remote{data->request.context.remote};
+      lmq.inject_task(std::move(cat), std::move(cmd), std::move(remote), [data=std::move(data)] { invoke_rpc(std::move(data)); });
+    });
   }
 
-  http_response_code http_server::handle_json_rpc_request(
-    const epee::net_utils::http::http_request_info& query_info,
-    epee::net_utils::http::http_response_info& response_info,
-    connection_context& context,
-    rpc_request& request)
+  void http_server::handle_json_rpc_request(HttpResponse& res, HttpRequest& req)
   {
-    auto& body = response_info.m_body;
+    std::shared_ptr<call_data> data{new call_data{*this, m_server, res, std::string{req.getUrl()}}};
+    data->jsonrpc = true;
+    auto& request = data->request;
+    request.context.admin = !m_restricted;
+    request.context.source = rpc_source::http;
+    request.context.remote = get_remote_address(res);
+    handle_cors(req, data->extra_headers);
 
-    request.body = jsonrpc_params{};
-    auto& epee_stuff = std::get<jsonrpc_params>(request.body);
-    auto& ps = epee_stuff.first;
-    if(!ps.load_from_json(query_info.m_body))
-      return json_rpc_error(-32700, "Parse error", body);
+    res.onAborted([data] { data->aborted = true; });
+    res.onData([buffer=""s, data, restricted=m_restricted](std::string_view d, bool done) mutable {
+      if (!done) {
+        buffer += d;
+        return;
+      }
 
-    epee::serialization::storage_entry id{std::string{}};
-    ps.get_value("id", id, nullptr);
-    std::string method;
-    if(!ps.get_value("method", method, nullptr))
-      return json_rpc_error(-32600, "Invalid Request", body);
+      std::string_view body;
+      if (buffer.empty())
+        body = d; // bypass copying the string_view to a string
+      else
+        body = (buffer += d);
 
-    auto it = rpc_commands.find(method);
-    if (it == rpc_commands.end() || it->second->is_binary)
-      return json_rpc_error(-32601, "Method not found", body);
+      auto& [ps, st_entry] = std::get<jsonrpc_params>(data->request.body = jsonrpc_params{});
+      if(!ps.load_from_json(body))
+        return data->http.jsonrpc_error_response(data->res, -32700, "Parse error");
 
-    const auto& command = *it->second;
-    if (m_restricted && !command.is_public)
-      return json_rpc_error(403, "Forbidden; this command is not available over public RPC", body);
+      epee::serialization::storage_entry id{std::string{}};
+      ps.get_value("id", id, nullptr);
 
-    std::string id_str;
-    {
-      std::ostringstream o;
-      epee::serialization::dump_as_json(o, id, 0 /*indent*/, false /*newlines*/);
-      id_str = o.str();
-    }
+      std::string method;
+      if(!ps.get_value("method", method, nullptr))
+      {
+        MINFO("Invalid JSON RPC request from " << data->request.context.remote << ": no 'method' in request");
+        return data->http.jsonrpc_error_response(data->res, -32600, "Invalid Request", id);
+      }
 
-    // Try to load "params" into a generic epee value; if it fails (because there is no "params")
-    // then we will replace it with an empty string to signal that no params were provided.
-    if (!ps.get_value("params", epee_stuff.second, nullptr))
-      request.body = ""sv;
+      auto it = rpc_commands.find(method);
+      if (it == rpc_commands.end() || it->second->is_binary)
+      {
+        MINFO("Invalid JSON RPC request from " << data->request.context.remote << ": method '" << method << "' is invalid");
+        return data->http.jsonrpc_error_response(data->res, -32601, "Method not found", id);
+      }
 
-    std::string result;
-    try {
-      result = command.invoke(std::move(request), m_server);
-    } catch (const parse_error& e) {
-      // This isn't really WARNable as it's the client fault; log at info level instead.
-      MINFO("JSON RPC request for '" << method << "' called with invalid data: " << e.what());
-      return json_rpc_error(-32602, "Invalid params", body);
-    } catch (const rpc_error& e) {
-      MWARNING("JSON RPC request for '" << method << "' failed with: " << e.what());
-      return json_rpc_error(e.code, e.message, body);
-    } catch (const std::exception& e) {
-      MWARNING("json_rpc '" << method << "' request raised an exception: " << e.what());
-      return json_rpc_error(-32603, "Internal error", body);
-    } catch (...) {
-      MWARNING("json_rpc '" << method << "' request raised an unknown exception");
-      return json_rpc_error(-32603, "Internal error", body);
-    }
+      data->call = it->second.get();
+      if (restricted && !data->call->is_public)
+      {
+        MWARNING("Invalid JSON RPC request from " << data->request.context.remote << ": method '" << method << "' is restricted");
+        return data->http.jsonrpc_error_response(data->res, 403, "Forbidden; this command is not available over public RPC", id);
+      }
 
-    assert(body.empty());
-    response_info.m_body_pieces.emplace_back(R"({"jsonrpc":"2.0","id":)");
-    response_info.m_body_pieces.back() += id_str;
-    response_info.m_body_pieces.back() += R"(,"result":)";
+      MDEBUG("Incoming JSON RPC request for " << method << " from " << data->request.context.remote);
 
-    response_info.m_body_pieces.push_back(std::move(result));
+      {
+        std::ostringstream o;
+        epee::serialization::dump_as_json(o, id, 0 /*indent*/, false /*newlines*/);
+        data->jsonrpc_id = o.str();
+      }
 
-    response_info.m_body_pieces.push_back("}\n");
-    return HTTP_OK;
+      // Try to load "params" into a generic epee value; if it fails (because there is no "params")
+      // then we replace request.body with an empty string (instead of the epee jsonrpc_params
+      // alternative) to signal that no params were provided at all.
+      if (!ps.get_value("params", st_entry, nullptr))
+        data->request.body = ""sv;
+
+      auto& lmq = data->core_rpc.get_core().get_lmq();
+      std::string cat{data->call->is_public ? "rpc" : "admin"};
+      std::string cmd{"jsonrpc:" + method}; // Used for LMQ job logging; prefixed with jsonrpc: so we can distinguish it
+      std::string remote{data->request.context.remote};
+      lmq.inject_task(std::move(cat), std::move(cmd), std::move(remote), [data=std::move(data)] { invoke_rpc(std::move(data)); });
+    });
   }
 
-}} // namespace cryptonote::rpc
+  static std::unordered_set<lokimq::LokiMQ*> timer_started;
+
+  void http_server::start()
+  {
+    if (m_sent_startup)
+      throw std::logic_error{"Cannot call http_server::start() more than once"};
+
+    auto net = m_server.nettype();
+    m_server_header = "lokid/"s + (m_restricted ? std::to_string(LOKI_VERSION[0]) : LOKI_VERSION_FULL)
+      + (net == MAINNET ? " mainnet" : net == TESTNET ? " testnet" : net == DEVNET ? " devnet" : net == FAKECHAIN ? " fakenet" : " unknown net");
+
+    m_startup_promise.set_value(true);
+    m_sent_startup = true;
+    m_listen_socks = m_startup_success.get();
+
+    auto& lmq = m_server.get_core().get_lmq();
+    if (timer_started.insert(&lmq).second)
+      lmq.add_timer(long_poll_process_timeouts, 1s);
+  }
+
+  void http_server::shutdown(bool join)
+  {
+    if (!m_rpc_thread.joinable())
+      return;
+
+    if (!m_sent_shutdown)
+    {
+      MTRACE("initiating shutdown");
+      if (!m_sent_startup)
+      {
+        m_startup_promise.set_value(false);
+        m_sent_startup = true;
+      }
+      else if (!m_listen_socks.empty())
+      {
+        loop_defer([this] {
+          MTRACE("closing " << m_listen_socks.size() << " listening sockets");
+          for (auto* s : m_listen_socks)
+            us_listen_socket_close(/*ssl=*/false, s);
+
+          {
+            // Destroy any pending long poll connections as well
+            MTRACE("closing pending long poll requests");
+            std::lock_guard lock{long_poll_mutex};
+            for (auto it = long_pollers.begin(); it != long_pollers.end(); )
+            {
+              if (&it->first->http != this)
+                continue; // Belongs to some other http_server instance
+              it->first->aborted = true;
+              it->first->res.close();
+              it = long_pollers.erase(it);
+            }
+          }
+        });
+      }
+      m_sent_shutdown = true;
+    }
+
+    MTRACE("joining rpc thread");
+    if (join)
+      m_rpc_thread.join();
+    MTRACE("done shutdown");
+  }
+
+  http_server::~http_server()
+  {
+    shutdown(true);
+  }
+
+
+} // namespace cryptonote::rpc

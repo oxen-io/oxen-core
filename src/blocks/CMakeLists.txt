@@ -26,7 +26,7 @@
 # STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-foreach(NET mainnet stagenet testnet)
+foreach(NET mainnet devnet testnet)
     file(READ "${NET}_blocks.dat" ${NET}_blocks_data HEX)
     string(REGEX REPLACE "([0-9a-f][0-9a-f])" "\\\\x\\1" ${NET}_blocks_data "${${NET}_blocks_data}")
 endforeach()

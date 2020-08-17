@@ -28,64 +28,16 @@
 //
 #include "rpc_args.h"
 
-#include <boost/algorithm/string.hpp>
+#include <boost/version.hpp>
 #include <boost/asio/ip/address.hpp>
 #include "common/command_line.h"
 #include "common/i18n.h"
-#include "hex.h"
+#include "common/string_util.h"
+
+using namespace std::literals;
 
 namespace cryptonote
 {
-  namespace
-  {
-    std::optional<epee::net_utils::ssl_options_t> do_process_ssl(const boost::program_options::variables_map& vm, const rpc_args::descriptors& arg, const bool any_cert_option)
-    {
-      bool ssl_required = false;
-      epee::net_utils::ssl_options_t ssl_options = epee::net_utils::ssl_support_t::e_ssl_support_enabled;
-      if (any_cert_option && command_line::get_arg(vm, arg.rpc_ssl_allow_any_cert))
-        ssl_options.verification = epee::net_utils::ssl_verification_t::none;
-      else
-      {
-        std::string ssl_ca_file = command_line::get_arg(vm, arg.rpc_ssl_ca_certificates);
-        const std::vector<std::string> ssl_allowed_fingerprints = command_line::get_arg(vm, arg.rpc_ssl_allowed_fingerprints);
-
-        std::vector<std::vector<uint8_t>> allowed_fingerprints{ ssl_allowed_fingerprints.size() };
-        std::transform(ssl_allowed_fingerprints.begin(), ssl_allowed_fingerprints.end(), allowed_fingerprints.begin(), epee::from_hex::vector);
-        for (const auto &fpr: allowed_fingerprints)
-        {
-          if (fpr.size() != SSL_FINGERPRINT_SIZE)
-          {
-            MERROR("SHA-256 fingerprint should be " BOOST_PP_STRINGIZE(SSL_FINGERPRINT_SIZE) " bytes long.");
-            return std::nullopt;
-          }
-        }
-
-        if (!allowed_fingerprints.empty() || !ssl_ca_file.empty())
-        {
-          ssl_required = true;
-          ssl_options = epee::net_utils::ssl_options_t{
-            std::move(allowed_fingerprints), std::move(ssl_ca_file)
-          };
-
-          if (command_line::get_arg(vm, arg.rpc_ssl_allow_chained))
-            ssl_options.verification = epee::net_utils::ssl_verification_t::user_ca;
-        }
-      }
-
-      // user specified CA file or fingeprints implies enabled SSL by default
-      if (!ssl_required && !epee::net_utils::ssl_support_from_string(ssl_options.support, command_line::get_arg(vm, arg.rpc_ssl)))
-      {
-        MERROR("Invalid argument for " << std::string(arg.rpc_ssl.name));
-        return std::nullopt;
-      }
-
-      ssl_options.auth = epee::net_utils::ssl_authentication_t{
-        command_line::get_arg(vm, arg.rpc_ssl_private_key), command_line::get_arg(vm, arg.rpc_ssl_certificate)
-      };
-
-      return {std::move(ssl_options)};
-    }
-  } // anonymous
 
   rpc_args::descriptors::descriptors()
      : rpc_bind_ip({"rpc-bind-ip", rpc_args::tr("Specify IP to bind RPC server"), "127.0.0.1"})
@@ -95,13 +47,6 @@ namespace cryptonote
      , rpc_login({"rpc-login", rpc_args::tr("Specify username[:password] required for RPC server"), "", true})
      , confirm_external_bind({"confirm-external-bind", rpc_args::tr("Confirm rpc-bind-ip value is NOT a loopback (local) IP")})
      , rpc_access_control_origins({"rpc-access-control-origins", rpc_args::tr("Specify a comma separated list of origins to allow cross origin resource sharing"), ""})
-     , rpc_ssl({"rpc-ssl", rpc_args::tr("Enable SSL on RPC connections: enabled|disabled|autodetect"), "autodetect"})
-     , rpc_ssl_private_key({"rpc-ssl-private-key", rpc_args::tr("Path to a PEM format private key"), ""})
-     , rpc_ssl_certificate({"rpc-ssl-certificate", rpc_args::tr("Path to a PEM format certificate"), ""})
-     , rpc_ssl_ca_certificates({"rpc-ssl-ca-certificates", rpc_args::tr("Path to file containing concatenated PEM format certificate(s) to replace system CA(s)."), ""})
-     , rpc_ssl_allowed_fingerprints({"rpc-ssl-allowed-fingerprints", rpc_args::tr("List of certificate fingerprints to allow")})
-     , rpc_ssl_allow_chained({"rpc-ssl-allow-chained", rpc_args::tr("Allow user (via --rpc-ssl-certificates) chain certificates"), false})
-     , rpc_ssl_allow_any_cert({"rpc-ssl-allow-any-cert", rpc_args::tr("Allow any peer certificate"), false})
      , rpc_public_node({"public-node", rpc_args::tr("Allow other users to use the node as a remote (restricted RPC mode, view-only commands) and advertise it over P2P"), false})
      , zmq_rpc_bind_ip({"zmq-rpc-bind-ip", rpc_args::tr("Deprecated option, ignored."), ""})
      , zmq_rpc_bind_port({"zmq-rpc-bind-port", rpc_args::tr("Deprecated option, ignored."), ""})
@@ -109,7 +54,7 @@ namespace cryptonote
 
   const char* rpc_args::tr(const char* str) { return i18n_translate(str, "cryptonote::rpc_args"); }
 
-  void rpc_args::init_options(boost::program_options::options_description& desc, const bool any_cert_option)
+  void rpc_args::init_options(boost::program_options::options_description& desc, boost::program_options::options_description& hidden)
   {
     const descriptors arg{};
     command_line::add_arg(desc, arg.rpc_bind_ip);
@@ -119,17 +64,29 @@ namespace cryptonote
     command_line::add_arg(desc, arg.rpc_login);
     command_line::add_arg(desc, arg.confirm_external_bind);
     command_line::add_arg(desc, arg.rpc_access_control_origins);
-    command_line::add_arg(desc, arg.rpc_ssl);
-    command_line::add_arg(desc, arg.rpc_ssl_private_key);
-    command_line::add_arg(desc, arg.rpc_ssl_certificate);
-    command_line::add_arg(desc, arg.rpc_ssl_ca_certificates);
-    command_line::add_arg(desc, arg.rpc_ssl_allowed_fingerprints);
-    command_line::add_arg(desc, arg.rpc_ssl_allow_chained);
-    if (any_cert_option)
-      command_line::add_arg(desc, arg.rpc_ssl_allow_any_cert);
+    command_line::add_arg(hidden, arg.zmq_rpc_bind_ip);
+    command_line::add_arg(hidden, arg.zmq_rpc_bind_port);
   }
 
-  std::optional<rpc_args> rpc_args::process(const boost::program_options::variables_map& vm, const bool any_cert_option)
+  // Checks an IP address for validity; throws on problem.
+  static void check_ip(const std::string& ip, bool allow_external, const std::string& option_name) {
+    boost::system::error_code ec{};
+    const auto parsed_ip =
+#if BOOST_VERSION >= 106600
+      boost::asio::ip::make_address(ip, ec);
+#else
+      boost::asio::ip::address::from_string(ip, ec);
+#endif
+    if (ec)
+      throw std::runtime_error{tr("Invalid IP address given for --") + option_name};
+
+    if (!parsed_ip.is_loopback() && !allow_external)
+      throw std::runtime_error{
+        "--" + option_name +
+        tr(" permits inbound unencrypted external connections. Consider SSH tunnel or SSL proxy instead. Override with --confirm-external-bind")};
+  }
+
+  rpc_args rpc_args::process(const boost::program_options::variables_map& vm)
   {
     const descriptors arg{};
     rpc_args config{};
@@ -139,102 +96,38 @@ namespace cryptonote
     config.use_ipv6 = command_line::get_arg(vm, arg.rpc_use_ipv6);
     config.require_ipv4 = !command_line::get_arg(vm, arg.rpc_ignore_ipv4);
     if (!config.bind_ip.empty())
-    {
-      // always parse IP here for error consistency
-      boost::system::error_code ec{};
-      const auto parsed_ip = boost::asio::ip::address::from_string(config.bind_ip, ec);
-      if (ec)
-      {
-        LOG_ERROR(tr("Invalid IP address given for --") << arg.rpc_bind_ip.name);
-        return std::nullopt;
-      }
+      check_ip(config.bind_ip, command_line::get_arg(vm, arg.confirm_external_bind), arg.rpc_bind_ip.name);
 
-      if (!parsed_ip.is_loopback() && !command_line::get_arg(vm, arg.confirm_external_bind))
-      {
-        LOG_ERROR(
-          "--" << arg.rpc_bind_ip.name <<
-          tr(" permits inbound unencrypted external connections. Consider SSH tunnel or SSL proxy instead. Override with --") <<
-          arg.confirm_external_bind.name
-        );
-        return std::nullopt;
-      }
-    }
     if (!config.bind_ipv6_address.empty())
     {
       // allow square braces, but remove them here if present
-      if (config.bind_ipv6_address.find('[') != std::string::npos)
-      {
+      if (config.bind_ipv6_address.find('[') != std::string::npos && config.bind_ipv6_address.rfind(']') != std::string::npos)
         config.bind_ipv6_address = config.bind_ipv6_address.substr(1, config.bind_ipv6_address.size() - 2);
-      }
-
-
-      // always parse IP here for error consistency
-      boost::system::error_code ec{};
-      const auto parsed_ip = boost::asio::ip::address::from_string(config.bind_ipv6_address, ec);
-      if (ec)
-      {
-        LOG_ERROR(tr("Invalid IP address given for --") << arg.rpc_bind_ipv6_address.name);
-        return std::nullopt;
-      }
-
-      if (!parsed_ip.is_loopback() && !command_line::get_arg(vm, arg.confirm_external_bind))
-      {
-        LOG_ERROR(
-          "--" << arg.rpc_bind_ipv6_address.name <<
-          tr(" permits inbound unencrypted external connections. Consider SSH tunnel or SSL proxy instead. Override with --") <<
-          arg.confirm_external_bind.name
-        );
-        return std::nullopt;
-      }
+      check_ip(config.bind_ipv6_address, command_line::get_arg(vm, arg.confirm_external_bind), arg.rpc_bind_ipv6_address.name);
     }
 
-    const char *env_rpc_login = nullptr;
-    const bool has_rpc_arg = command_line::has_arg(vm, arg.rpc_login);
-    const bool use_rpc_env = !has_rpc_arg && (env_rpc_login = getenv("RPC_LOGIN")) != nullptr && strlen(env_rpc_login) > 0;
-    std::optional<tools::login> login{};
-    if (has_rpc_arg || use_rpc_env)
-    {
-      config.login = tools::login::parse(
-          has_rpc_arg ? command_line::get_arg(vm, arg.rpc_login) : std::string(env_rpc_login), true, [](bool verify) {
-            return tools::password_container::prompt(verify, "RPC server password");
-          });
+    auto verify = [](bool verify) { return tools::password_container::prompt(verify, "RPC server password"); };
+    if (command_line::has_arg(vm, arg.rpc_login))
+      config.login = tools::login::parse(command_line::get_arg(vm, arg.rpc_login), true, verify);
+    else if (const char *env_rpc_login = std::getenv("RPC_LOGIN"); env_rpc_login != nullptr && std::strlen(env_rpc_login))
+      config.login = tools::login::parse(env_rpc_login, true, verify);
 
-      if (!config.login)
-        return std::nullopt;
-
-      if (config.login->username.empty())
-      {
-        LOG_ERROR(tr("Username specified with --") << arg.rpc_login.name << tr(" cannot be empty"));
-        return std::nullopt;
-      }
-    }
+    if (config.login && config.login->username.empty())
+      throw std::runtime_error{tr("Username specified with --") + std::string{arg.rpc_login.name} + " cannot be empty"};
 
     auto access_control_origins_input = command_line::get_arg(vm, arg.rpc_access_control_origins);
     if (!access_control_origins_input.empty())
     {
+      // FIXME: this requirement makes no sense.
       if (!config.login)
-      {
-        LOG_ERROR(arg.rpc_access_control_origins.name  << tr(" requires RPC server password --") << arg.rpc_login.name << tr(" cannot be empty"));
-        return std::nullopt;
-      }
+        throw std::runtime_error{"--"s + arg.rpc_access_control_origins.name + tr(" requires RPC server password --") + arg.rpc_login.name + tr(" cannot be empty")};
 
+      auto aco_entries = tools::split_any(access_control_origins_input, ", \t", true);
       std::vector<std::string> access_control_origins;
-      boost::split(access_control_origins, access_control_origins_input, boost::is_any_of(","));
-      std::for_each(access_control_origins.begin(), access_control_origins.end(), [](auto& a) { boost::trim(a, std::locale::classic()); });
-      config.access_control_origins = std::move(access_control_origins);
+      access_control_origins.reserve(aco_entries.size());
+      for (auto& aco : aco_entries) access_control_origins.emplace_back(aco);
     }
 
-    auto ssl_options = do_process_ssl(vm, arg, any_cert_option);
-    if (!ssl_options)
-      return std::nullopt;
-    config.ssl_options = std::move(*ssl_options);
-
-    return {std::move(config)};
-  }
-
-  std::optional<epee::net_utils::ssl_options_t> rpc_args::process_ssl(const boost::program_options::variables_map& vm, const bool any_cert_option)
-  {
-    const descriptors arg{};
-    return do_process_ssl(vm, arg, any_cert_option);
+    return config;
   }
 }
