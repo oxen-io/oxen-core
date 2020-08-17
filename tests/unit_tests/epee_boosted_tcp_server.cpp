@@ -112,13 +112,11 @@ TEST(boosted_tcp_server, worker_threads_are_exception_resistant)
 
   {
     std::unique_lock lock{mtx};
-    ASSERT_NE(std::cv_status::timeout, cond.wait_for(lock, 5s));
-    ASSERT_EQ(4, counter);
+    ASSERT_TRUE(cond.wait_for(lock, 5s, [&] { return counter == 4; }));
   }
 
   // Check if threads are alive
   counter = 0;
-  //auto counter_incrementer = [&counter]() { counter.fetch_add(1); epee::misc_utils::sleep_no_w(counter.load() * 10); };
   ASSERT_TRUE(srv.async_call(counter_incrementer));
   ASSERT_TRUE(srv.async_call(counter_incrementer));
   ASSERT_TRUE(srv.async_call(counter_incrementer));
@@ -126,8 +124,7 @@ TEST(boosted_tcp_server, worker_threads_are_exception_resistant)
 
   {
     std::unique_lock lock{mtx};
-    ASSERT_NE(std::cv_status::timeout, cond.wait_for(lock, 5s));
-    ASSERT_EQ(4, counter);
+    ASSERT_TRUE(cond.wait_for(lock, 5s, [&] { return counter == 4; }));
   }
 
   srv.send_stop_signal();
