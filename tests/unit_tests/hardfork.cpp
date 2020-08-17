@@ -94,7 +94,7 @@ static cryptonote::block mkblock(const HardFork &hf, uint64_t height, uint8_t vo
   return b;
 }
 
-TEST(major, Only)
+TEST(hardfork, major_only)
 {
   TestDB db;
   HardFork hf(db, 1, 0, 0, 1, 0); // no voting
@@ -124,7 +124,7 @@ TEST(major, Only)
   db.add_block(mkblock(2, 1), 0, 0, 0, 0, 0, crypto::hash());
 }
 
-TEST(empty_hardforks, Success)
+TEST(hardfork, empty_hardforks_success)
 {
   TestDB db;
   HardFork hf(db);
@@ -143,7 +143,7 @@ TEST(empty_hardforks, Success)
   ASSERT_EQ(hf.get(10), 1);
 }
 
-TEST(ordering, Success)
+TEST(hardfork, ordering_success)
 {
   TestDB db;
   HardFork hf(db);
@@ -157,7 +157,7 @@ TEST(ordering, Success)
   ASSERT_ANY_THROW(hf.add_fork(5, 5, 4));
 }
 
-TEST(check_for_height, Success)
+TEST(hardfork, check_for_height_success)
 {
   TestDB db;
   HardFork hf(db, 1, 0, 0, 1, 0); // no voting
@@ -181,7 +181,7 @@ TEST(check_for_height, Success)
   }
 }
 
-TEST(get, next_version)
+TEST(hardfork, get_next_version)
 {
   TestDB db;
   HardFork hf(db);
@@ -210,7 +210,7 @@ TEST(get, next_version)
   }
 }
 
-TEST(states, Success)
+TEST(hardfork, states_success)
 {
   TestDB db;
   HardFork hf(db);
@@ -233,7 +233,7 @@ TEST(states, Success)
   ASSERT_TRUE(hf.get_state(SECONDS_PER_YEAR + HardFork::DEFAULT_FORKED_TIME * 2) == HardFork::Ready);
 }
 
-TEST(steps_asap, Success)
+TEST(hardfork, steps_asap_success)
 {
   TestDB db;
   HardFork hf(db, 1,1,1,1);
@@ -262,7 +262,7 @@ TEST(steps_asap, Success)
   ASSERT_EQ(hf.get(9), 9);
 }
 
-TEST(steps_1, Success)
+TEST(hardfork, steps_1_success)
 {
   TestDB db;
   HardFork hf(db, 1,1,1,1);
@@ -282,7 +282,7 @@ TEST(steps_1, Success)
   }
 }
 
-TEST(reorganize, Same)
+TEST(hardfork, reorganize_same)
 {
   for (int history = 1; history <= 12; ++history) {
     TestDB db;
@@ -312,7 +312,7 @@ TEST(reorganize, Same)
   }
 }
 
-TEST(reorganize, Changed)
+TEST(hardfork, reorganize_changed_1)
 {
   TestDB db;
   HardFork hf(db, 1, 1, 1, 4, 100);
@@ -360,7 +360,7 @@ TEST(reorganize, Changed)
   }
 }
 
-TEST(voting, threshold)
+TEST(hardfork, voting_threshold)
 {
   for (int threshold = 87; threshold <= 88; ++threshold) {
     TestDB db;
@@ -389,7 +389,7 @@ TEST(voting, threshold)
   }
 }
 
-TEST(voting, different_thresholds)
+TEST(hardfork, voting_different_thresholds)
 {
   for (int threshold = 87; threshold <= 88; ++threshold) {
     TestDB db;
@@ -417,7 +417,7 @@ TEST(voting, different_thresholds)
   }
 }
 
-TEST(voting, info)
+TEST(hardfork, voting_info)
 {
   TestDB db;
   HardFork hf(db, 1, 1, 1, 4, 50); // window size 4, default threshold 50%
@@ -466,7 +466,7 @@ TEST(voting, info)
   }
 }
 
-TEST(new_blocks, denied)
+TEST(hardfork, new_blocks_denied)
 {
     TestDB db;
     HardFork hf(db, 1, 1, 1, 4, 50);
@@ -489,7 +489,7 @@ TEST(new_blocks, denied)
     ASSERT_TRUE(hf.add(mkblock(2, 2), 9));
 }
 
-TEST(new_version, early)
+TEST(hardfork, new_version_early)
 {
     TestDB db;
     HardFork hf(db, 1, 1, 1, 4, 50);
@@ -509,7 +509,7 @@ TEST(new_version, early)
     ASSERT_TRUE(hf.add(mkblock(2, 2), 7)); // but we do accept 2
 }
 
-TEST(reorganize, changed)
+TEST(hardfork, reorganize_changed_2)
 {
     TestDB db;
     HardFork hf(db, 1, 1, 1, 4, 50);
@@ -560,7 +560,7 @@ TEST(reorganize, changed)
     ASSERT_EQ(hf.get_current_version(), 2); // we did not bump to 3 this time
 }
 
-TEST(get, higher)
+TEST(hardfork, get_higher)
 {
     TestDB db;
     HardFork hf(db, 1, 1, 1, 4, 50);
@@ -581,7 +581,7 @@ TEST(get, higher)
     ASSERT_EQ(hf.get_ideal_version(7), 3);
 }
 
-TEST(get, earliest_ideal_height)
+TEST(hardfork, get_earliest_ideal_height)
 {
     TestDB db;
     HardFork hf(db, 1, 1, 1, 4, 50);
