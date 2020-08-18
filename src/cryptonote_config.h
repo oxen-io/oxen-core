@@ -96,7 +96,7 @@ constexpr auto TARGET_BLOCK_TIME           = 2min;
 constexpr auto DIFFICULTY_WINDOW           = 60;
 constexpr uint64_t DIFFICULTY_BLOCKS_COUNT = (DIFFICULTY_WINDOW + 1); // added +1 to make N=N
 
-constexpr uint64_t BLOCKS_EXPECTED_IN_HOURS(int hours) { return (1h / TARGET_BLOCK_TIME); }
+constexpr uint64_t BLOCKS_EXPECTED_IN_HOURS(int hours) { return (1h / TARGET_BLOCK_TIME) * hours; }
 constexpr uint64_t BLOCKS_EXPECTED_IN_DAYS(int days)   { return BLOCKS_EXPECTED_IN_HOURS(24) * days; }
 constexpr uint64_t BLOCKS_EXPECTED_IN_YEARS(int years) { return BLOCKS_EXPECTED_IN_DAYS(365) * years; }
 
