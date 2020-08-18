@@ -410,7 +410,7 @@ namespace cryptonote
       m_quorumnet_port = command_line::get_arg(vm, arg_quorumnet_port);
 
       bool storage_ok = true;
-      if (m_storage_port == 0) {
+      if (m_storage_port == 0 && m_nettype != DEVNET) {
         MERROR("Please specify the port on which the storage server is listening with: '--" << arg_storage_server_port.name << " <port>'");
         storage_ok = false;
       }
