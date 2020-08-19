@@ -668,7 +668,10 @@ bool pulse::get_round_timings(cryptonote::Blockchain const &blockchain, uint64_t
   if (bool orphan = false; !blockchain.get_block_by_hash(top_hash, top_block, &orphan) || orphan)
     return false;
 
-  static uint64_t const hf16_height = cryptonote::HardFork::get_hardcoded_hard_fork_height(blockchain.nettype(), cryptonote::network_version_16);
+  static uint64_t const hf16_height = blockchain.get_earliest_ideal_height_for_version(cryptonote::network_version_16);
+  if (hf16_height == std::numeric_limits<uint64_t>::max())
+    return false;
+
   crypto::hash genesis_hash       = blockchain.get_block_id_by_height(hf16_height - 1);
   cryptonote::block genesis_block = {};
   if (bool orphaned = false; !blockchain.get_block_by_hash(genesis_hash, genesis_block, &orphaned) || orphaned)

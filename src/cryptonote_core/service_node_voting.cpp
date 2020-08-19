@@ -269,11 +269,20 @@ namespace service_nodes
           return false;
         }
 
-        auto const &block = reinterpret_cast<cryptonote::block const &>(context);
-        if (block.pulse.validator_bitset >= (1 << PULSE_QUORUM_NUM_VALIDATORS))
+        try
         {
-          auto mask = std::bitset<sizeof(pulse_validator_bit_mask()) * 8>(pulse_validator_bit_mask());
-          LOG_PRINT_L1("Pulse block specifies validator participation bits out of bounds. Expected the bit mask: " << mask);
+          auto const block = std::any_cast<cryptonote::block const &>(context);
+          if (block.pulse.validator_bitset >= (1 << PULSE_QUORUM_NUM_VALIDATORS))
+          {
+            auto mask  = std::bitset<sizeof(pulse_validator_bit_mask()) * 8>(pulse_validator_bit_mask());
+            auto other = std::bitset<sizeof(pulse_validator_bit_mask()) * 8>(block.pulse.validator_bitset);
+            LOG_PRINT_L1("Pulse block specifies validator participation bits out of bounds. Expected the bit mask: " << mask << ", block: " << other);
+            return false;
+          }
+        }
+        catch (const std::bad_any_cast &e)
+        {
+          LOG_PRINT_L1("Internal Error: Wrong type passed in any object, expected block.");
           return false;
         }
       }

@@ -1290,11 +1290,12 @@ namespace service_nodes
     std::lock_guard lock(m_sn_mutex);
     process_block(block, txs);
 
+    // TODO(doyle): Check round closeness to expected round
     pulse::timings timings = {};
     uint64_t height        = cryptonote::get_block_height(block);
     if (block.major_version >= cryptonote::network_version_16)
     {
-      if (!pulse::get_round_timings(m_blockchain, cryptonote::get_block_height(block), timings))
+      if (!pulse::get_round_timings(m_blockchain, height, timings))
       {
         MERROR("Failed to query the block data for Pulse timings to validate incoming block at height " << height);
         return false;
@@ -1305,7 +1306,15 @@ namespace service_nodes
     // NOTE: Block Verification
     //
     std::shared_ptr<const quorum> pulse_quorum = get_quorum(quorum_type::pulse, m_state.height);
-    bool miner_blocks_only                     = pulse::clock::now() >= timings.miner_fallback_timestamp;
+    bool miner_blocks_only                     = pulse::clock::now() >= timings.miner_fallback_timestamp || !pulse_quorum;
+
+    if (m_blockchain.nettype() == cryptonote::FAKECHAIN)
+    {
+      // TODO(doyle): Core tests need to generate coherent timestamps with
+      // Pulse. So we relax the rules here for now.
+      miner_blocks_only = block.major_version <= cryptonote::network_version_15_lns || !pulse_quorum;
+    }
+
     if (miner_blocks_only)
     {
       if (is_pulse_block(block))
