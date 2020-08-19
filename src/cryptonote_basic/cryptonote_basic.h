@@ -61,7 +61,7 @@ namespace service_nodes
       std::memset(padding, 0, sizeof(padding));
     }
 
-    BEGIN_SERIALIZE()
+    BEGIN_SERIALIZE_OBJECT()
       FIELD(voter_index)
       FIELD(signature)
     END_SERIALIZE()
