@@ -1269,53 +1269,118 @@ namespace service_nodes
     return stream.str();
   }
 
+  static bool is_pulse_block(cryptonote::block const &block)
+  {
+    constexpr cryptonote::pulse_random_value empty_random_value = {};
+
+    bool signatures    = block.signatures.size();
+    bool bitset        = block.pulse.validator_bitset > 0;
+    bool random_value  = !(block.pulse.random_value == empty_random_value);
+    uint8_t hf_version = block.major_version;
+
+    bool result = hf_version >= cryptonote::network_version_16 && (signatures || bitset || random_value);
+    return result;
+  }
+
   bool service_node_list::block_added(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs, cryptonote::checkpoint_t const *checkpoint)
   {
     if (block.major_version < cryptonote::network_version_9_service_nodes)
       return true;
-    
+
     std::lock_guard lock(m_sn_mutex);
     process_block(block, txs);
 
+    pulse::timings timings = {};
+    uint64_t height        = cryptonote::get_block_height(block);
     if (block.major_version >= cryptonote::network_version_16)
     {
-      std::shared_ptr<const quorum> quorum = get_quorum(quorum_type::pulse, m_state.height);
-      if (quorum)
+      if (!pulse::get_round_timings(m_blockchain, cryptonote::get_block_height(block), timings))
       {
-        if (block.nonce != 0)
-        {
-          LOG_PRINT_L1("Pulse block specified a nonce when quorum block generation is available, nonce: " << block.nonce);
-          return false;
-        }
-
-        if (block.pulse.validator_bitset >= (1 << PULSE_QUORUM_NUM_VALIDATORS))
-        {
-          auto mask = std::bitset<sizeof(pulse_validator_bit_mask()) * 8>(pulse_validator_bit_mask());
-          LOG_PRINT_L1("Pulse block specifies validator bitset out of bounds. Expected the bit mask " << mask << "\n" << dump_pulse_block_data(block, quorum.get()));
-          return false;
-        }
-
-        if (!service_nodes::verify_quorum_signatures(*quorum,
-                                                     quorum_type::pulse,
-                                                     block.major_version,
-                                                     cryptonote::get_block_height(block),
-                                                     cryptonote::get_block_hash(block),
-                                                     block.signatures, block))
-        {
-          LOG_PRINT_L1("Pulse signature verification failed: " << dump_pulse_block_data(block, quorum.get()));
-          return false;
-        }
+        MERROR("Failed to query the block data for Pulse timings to validate incoming block at height " << height);
+        return false;
       }
-      else
+    }
+
+    //
+    // NOTE: Block Verification
+    //
+    std::shared_ptr<const quorum> pulse_quorum = get_quorum(quorum_type::pulse, m_state.height);
+    bool miner_blocks_only                     = pulse::clock::now() >= timings.miner_fallback_timestamp;
+    if (miner_blocks_only)
+    {
+      if (is_pulse_block(block))
       {
-        bool expect_pulse_quorum = (block.pulse.validator_bitset > 0 || block.signatures.size());
-        if (expect_pulse_quorum)
-        {
-          LOG_PRINT_L1("Failed to get pulse quorum for block\n" << dump_pulse_block_data(block, quorum.get()));
-          return false;
-        }
-        // NOTE: Otherwise, block has no pulse information, there's no expected
-        // quorum, this is a fallback- nonce mined block, previously verified validly
+        LOG_PRINT_L1("Pulse block received but only miner blocks are permitted\n" << dump_pulse_block_data(block, pulse_quorum.get()));
+        return false;
+      }
+
+      if (block.pulse.round != 0)
+      {
+        MERROR("Miner block given but unexpectedly set round " << block.pulse.round <<  " on height " << height);
+        return false;
+      }
+
+      if (block.pulse.validator_bitset != 0)
+      {
+        std::bitset<8 * sizeof(block.pulse.validator_bitset)> const bitset = block.pulse.validator_bitset;
+        MERROR("Miner block given but unexpectedly set validator bitset " << bitset <<  " on height " << height);
+        return false;
+      }
+
+      if (block.signatures.size())
+      {
+        MERROR("Miner block given but unexpectedly has " << block.signatures.size() <<  " signatures on height " << height);
+        return false;
+      }
+    }
+    else
+    {
+      if (!is_pulse_block(block))
+      {
+        LOG_PRINT_L1("Miner block received but only pulse blocks are permitted\n" << dump_pulse_block_data(block, pulse_quorum.get()));
+        return false;
+      }
+
+      if (!pulse_quorum)
+      {
+        LOG_PRINT_L1("Pulse block received but no Pulse quorum was available for this block\n" << dump_pulse_block_data(block, pulse_quorum.get()));
+        return false;
+      }
+
+      if (block.pulse.validator_bitset == 0)
+      {
+        MERROR("Pulse block given but unexpected empty validator bitset on height " << height);
+        return false;
+      }
+
+      if (block.signatures.size() != service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES)
+      {
+        MERROR("Pulseblock given but unexpectedly has the wrong number (" << block.signatures.size() <<  ") of signatures on height " << height);
+        return false;
+      }
+
+      if (block.nonce != 0)
+      {
+        LOG_PRINT_L1("Pulse block specified a nonce when quorum block generation is available, nonce: " << block.nonce);
+        return false;
+      }
+
+      if (block.pulse.validator_bitset >= (1 << PULSE_QUORUM_NUM_VALIDATORS))
+      {
+        auto mask = std::bitset<sizeof(pulse_validator_bit_mask()) * 8>(pulse_validator_bit_mask());
+        LOG_PRINT_L1("Pulse block specifies validator bitset out of bounds. Expected the bit mask " << mask << "\n" << dump_pulse_block_data(block, pulse_quorum.get()));
+        return false;
+      }
+
+      if (!service_nodes::verify_quorum_signatures(*pulse_quorum,
+                                                   quorum_type::pulse,
+                                                   block.major_version,
+                                                   cryptonote::get_block_height(block),
+                                                   cryptonote::get_block_hash(block),
+                                                   block.signatures, block))
+      {
+        LOG_PRINT_L1("Pulse signature verification failed: " << dump_pulse_block_data(block, pulse_quorum.get()));
+        return false;
       }
     }
 
@@ -2095,55 +2160,27 @@ namespace service_nodes
 
     verify_mode mode                      = verify_mode::miner;
     crypto::public_key block_producer_key = {};
-    if (hf_version >= cryptonote::network_version_16)
+
+    //
+    // NOTE: Determine if block leader/producer are different or the same.
+    //
+    if (is_pulse_block(block))
     {
-      // TODO(doyle): We need to verify that the block round is within a "range" of acceptable block rounds depending on the clock
       quorum pulse_quorum = generate_pulse_quorum(m_blockchain.nettype(), m_blockchain.get_db(), height + 1, block_leader.key, hf_version, m_state.active_service_nodes_infos(), block.pulse.round);
-
-      if (verify_pulse_quorum_sizes(pulse_quorum))
+      if (!verify_pulse_quorum_sizes(pulse_quorum))
       {
-        pulse::timings times = {};
-        if (!pulse::get_round_timings(m_blockchain, height, times))
-        {
-          MERROR("Failed to query the block data for Pulse timings to validate incoming block at height " << height);
-          return false;
-        }
-
-        auto r256_timestamp = times.r0_timestamp + (service_nodes::PULSE_ROUND_TIME * 256);
-        if (auto now = pulse::clock::now(); now < r256_timestamp)
-        {
-          block_producer_key = pulse_quorum.workers[0];
-          mode = (block_producer_key == block_leader.key) ? verify_mode::pulse_block_leader_is_producer : verify_mode::pulse_different_block_producer;
-
-          if (block.pulse.round == 0 && (mode == verify_mode::pulse_different_block_producer))
-          {
-            MERROR("The block producer in pulse round 0 should be the same node as the block leader: " << block_leader.key << ", actual producer: " << block_producer_key);
-            return false;
-          }
-        }
-        // else, timestamp is way past the 255th round, network has stalled. Verify the block in miner mode
+        MERROR("Pulse block received but Pulse has insufficient nodes for quorum, block hash " << cryptonote::get_block_hash(block) << ", height " << height);
+        return false;
       }
 
-      if (mode == verify_mode::miner)
+      block_producer_key = pulse_quorum.workers[0];
+      mode               = (block_producer_key == block_leader.key) ? verify_mode::pulse_block_leader_is_producer
+                                                                    : verify_mode::pulse_different_block_producer;
+
+      if (block.pulse.round == 0 && (mode == verify_mode::pulse_different_block_producer))
       {
-        if (block.pulse.round != 0)
-        {
-          MERROR("Miner block given but unexpectedly set round " << block.pulse.round <<  " on height " << height);
-          return false;
-        }
-
-        if (block.pulse.validator_bitset != 0)
-        {
-          std::bitset<8 * sizeof(block.pulse.validator_bitset)> const bitset = block.pulse.validator_bitset;
-          MERROR("Miner block given but unexpectedly set validator bitset " << bitset <<  " on height " << height);
-          return false;
-        }
-
-        if (block.signatures.size())
-        {
-          MERROR("Miner block given but unexpectedly has " << block.signatures.size() <<  " signatures on height " << height);
-          return false;
-        }
+        MERROR("The block producer in pulse round 0 should be the same node as the block leader: " << block_leader.key << ", actual producer: " << block_producer_key);
+        return false;
       }
     }
 

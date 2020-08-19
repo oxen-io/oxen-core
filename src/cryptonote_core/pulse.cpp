@@ -689,6 +689,8 @@ bool pulse::get_round_timings(cryptonote::Blockchain const &blockchain, uint64_t
   times.r0_timestamp = times.prev_timestamp + service_nodes::PULSE_ROUND_TIME;
 #endif
 
+  times.miner_fallback_timestamp = times.r0_timestamp + (service_nodes::PULSE_ROUND_TIME * 256);
+
   return true;
 }
 
@@ -944,7 +946,10 @@ round_state prepare_for_round(round_context &context, service_nodes::service_nod
     size_t round_usize           = time_since_block / service_nodes::PULSE_ROUND_TIME;
 
     if (round_usize > 255) // Network stalled
+    {
+      MINFO(log_prefix(context) << "Pulse has timed out, reverting to accepting miner blocks only.");
       return round_state::wait_for_next_block;
+    }
 
     uint8_t curr_round = static_cast<uint8_t>(round_usize);
     if (curr_round > context.prepare_for_round.round)

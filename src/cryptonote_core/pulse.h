@@ -92,6 +92,7 @@ struct timings
 
   pulse::time_point ideal_timestamp;
   pulse::time_point r0_timestamp;
+  pulse::time_point miner_fallback_timestamp;
 };
 
 bool get_round_timings(cryptonote::Blockchain const &blockchain, uint64_t height, timings &times);
