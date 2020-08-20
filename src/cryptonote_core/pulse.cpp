@@ -1013,12 +1013,6 @@ round_state prepare_for_round(round_context &context, service_nodes::service_nod
     }
   }
 
-  if (context.prepare_for_round.participant == sn_type::none)
-  {
-    MDEBUG(log_prefix(context) << "We are not a pulse validator. Waiting for next pulse round or block.");
-    return goto_preparing_for_next_round(context);
-  }
-
   return round_state::wait_for_round;
 }
 
@@ -1034,19 +1028,24 @@ round_state wait_for_round(round_context &context, cryptonote::Blockchain const 
   if (auto now = pulse::clock::now(); now < start_time)
   {
     for (static uint64_t last_height = 0; last_height != context.wait_for_next_block.height; last_height = context.wait_for_next_block.height)
-      MINFO(log_prefix(context) << "Waiting for Pulse round " << +context.prepare_for_round.round << " to start in " << tools::get_human_readable_timespan(start_time - now));
+      MINFO(log_prefix(context) << "Waiting for round " << +context.prepare_for_round.round << " to start in " << tools::get_human_readable_timespan(start_time - now));
     return round_state::wait_for_round;
   }
 
   if (context.prepare_for_round.participant == sn_type::validator)
   {
-    MINFO(log_prefix(context) << "We are a pulse validator, sending handshake bit to quorum and collecting other validator handshakes.");
+    MINFO(log_prefix(context) << "We are a pulse validator, sending handshake bit and collecting other handshakes.");
     return round_state::send_and_wait_for_handshakes;
+  }
+  else if (context.prepare_for_round.participant == sn_type::producer)
+  {
+    MINFO(log_prefix(context) << "We are the block producer for height " << context.wait_for_next_block.height << " in round " << +context.prepare_for_round.round << ", awaiting handshake bitsets.");
+    return round_state::wait_for_handshake_bitsets;
   }
   else
   {
-    MINFO(log_prefix(context) << "We are the block producer for height " << context.wait_for_next_block.height << " in round " << +context.prepare_for_round.round << ", awaiting validator handshake bitsets.");
-    return round_state::wait_for_handshake_bitsets;
+    MDEBUG(log_prefix(context) << "Non-participant for round, waiting on next round or block.");
+    return goto_preparing_for_next_round(context);
   }
 }
 
