@@ -865,19 +865,6 @@ namespace cryptonote
      */
     bool flush_txes_from_pool(const std::vector<crypto::hash> &txids);
 
-    struct block_pow_verified
-    {
-      bool         valid;
-      bool         precomputed;
-      bool         per_block_checkpointed;
-      crypto::hash proof_of_work;
-    };
-
-    /**
-     * @brief Verify block proof of work against the expected difficulty
-     */
-    block_pow_verified verify_block_pow(cryptonote::block const &blk, difficulty_type difficulty, uint64_t chain_height, bool alt_block);
-
     /**
      * @brief return a histogram of outputs on the blockchain
      *
@@ -1069,6 +1056,20 @@ namespace cryptonote
 #ifndef IN_UNIT_TESTS
   private:
 #endif
+
+    struct block_pow_verified
+    {
+      bool         valid;
+      bool         precomputed;
+      bool         per_block_checkpointed;
+      crypto::hash proof_of_work;
+    };
+
+    /**
+     * @brief Verify block proof of work against the expected difficulty
+     */
+    block_pow_verified verify_block_pow  (cryptonote::block const &blk, difficulty_type difficulty, uint64_t chain_height, bool alt_block);
+    bool               basic_block_checks(cryptonote::block const &blk, bool alt_block);
 
     struct block_template_info
     {
