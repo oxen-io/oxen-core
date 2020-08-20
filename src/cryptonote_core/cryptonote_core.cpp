@@ -272,6 +272,7 @@ namespace cryptonote
 
   void (*long_poll_trigger)(tx_memory_pool& pool) = [](tx_memory_pool&) { need_core_init(); };
   quorumnet_new_proc *quorumnet_new = [](core&) -> void* { need_core_init(); };
+  quorumnet_init_proc *quorumnet_init = [](core&, void*) { need_core_init(); };
   quorumnet_delete_proc *quorumnet_delete = [](void*&) { need_core_init(); };
   quorumnet_relay_obligation_votes_proc *quorumnet_relay_obligation_votes = [](void*, const std::vector<service_nodes::quorum_vote_t>&) { need_core_init(); };
   quorumnet_send_blink_proc *quorumnet_send_blink = [](core&, const std::string&) -> std::future<std::pair<blink_result, std::string>> { need_core_init(); };
@@ -1073,6 +1074,7 @@ namespace cryptonote
       m_quorumnet_state = quorumnet_new(*this);
     }
 
+    quorumnet_init(*this, m_quorumnet_state);
   }
 
   void core::start_lokimq() {
