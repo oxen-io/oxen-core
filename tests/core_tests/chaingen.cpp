@@ -45,7 +45,7 @@
 #include "cryptonote_basic/cryptonote_basic.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
-#include "cryptonote_basic/miner.h"
+#include "miner/miner.h"
 #include "loki_economy.h"
 
 #include "chaingen.h"

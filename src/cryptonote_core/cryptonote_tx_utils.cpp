@@ -37,7 +37,7 @@
 #include "cryptonote_tx_utils.h"
 #include "cryptonote_config.h"
 #include "blockchain.h"
-#include "cryptonote_basic/miner.h"
+#include "miner/miner.h"
 #include "cryptonote_basic/tx_extra.h"
 #include "crypto/crypto.h"
 #include "crypto/hash.h"
