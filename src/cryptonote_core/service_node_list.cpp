@@ -2090,7 +2090,7 @@ namespace service_nodes
   {
     if (output_index >= miner_tx.vout.size())
     {
-      MERROR("Output Index: " << output_index << ", indexes out of bounds in vout array with size: " << miner_tx.vout.size());
+      MGINFO_RED("Output Index: " << output_index << ", indexes out of bounds in vout array with size: " << miner_tx.vout.size());
       return false;
     }
 
@@ -2103,13 +2103,13 @@ namespace service_nodes
     uint64_t const reward = cryptonote::get_portion_of_reward(portions, available_reward);
     if (!within_one(output.amount, reward))
     {
-      MERROR("Service node reward amount incorrect. Should be " << cryptonote::print_money(reward) << ", is: " << cryptonote::print_money(output.amount));
+      MGINFO_RED("Service node reward amount incorrect. Should be " << cryptonote::print_money(reward) << ", is: " << cryptonote::print_money(output.amount));
       return false;
     }
 
     if (!std::holds_alternative<cryptonote::txout_to_key>(output.target))
     {
-      MERROR("Service node output target type should be txout_to_key");
+      MGINFO_RED("Service node output target type should be txout_to_key");
       return false;
     }
 
@@ -2126,7 +2126,7 @@ namespace service_nodes
 
     if (std::get<cryptonote::txout_to_key>(output.target).key != out_eph_public_key)
     {
-      MERROR("Invalid service node reward at output: " << output_index << ", output key, specifies wrong key");
+      MGINFO_RED("Invalid service node reward at output: " << output_index << ", output key, specifies wrong key");
       return false;
     }
 
@@ -2155,7 +2155,7 @@ namespace service_nodes
       auto const check_block_leader_pubkey = cryptonote::get_service_node_winner_from_tx_extra(miner_tx.extra);
       if (block_leader.key != check_block_leader_pubkey)
       {
-        MERROR("Service node reward winner is incorrect! Expected " << block_leader.key << ", block has " << check_block_leader_pubkey);
+        MGINFO_RED("Service node reward winner is incorrect! Expected " << block_leader.key << ", block has " << check_block_leader_pubkey);
         return false;
       }
     }
@@ -2178,7 +2178,7 @@ namespace service_nodes
       quorum pulse_quorum = generate_pulse_quorum(m_blockchain.nettype(), m_blockchain.get_db(), height + 1, block_leader.key, hf_version, m_state.active_service_nodes_infos(), block.pulse.round);
       if (!verify_pulse_quorum_sizes(pulse_quorum))
       {
-        MERROR("Pulse block received but Pulse has insufficient nodes for quorum, block hash " << cryptonote::get_block_hash(block) << ", height " << height);
+        MGINFO_RED("Pulse block received but Pulse has insufficient nodes for quorum, block hash " << cryptonote::get_block_hash(block) << ", height " << height);
         return false;
       }
 
@@ -2188,7 +2188,7 @@ namespace service_nodes
 
       if (block.pulse.round == 0 && (mode == verify_mode::pulse_different_block_producer))
       {
-        MERROR("The block producer in pulse round 0 should be the same node as the block leader: " << block_leader.key << ", actual producer: " << block_producer_key);
+        MGINFO_RED("The block producer in pulse round 0 should be the same node as the block leader: " << block_leader.key << ", actual producer: " << block_producer_key);
         return false;
       }
     }
@@ -2212,7 +2212,7 @@ namespace service_nodes
       auto info_it = m_state.service_nodes_infos.find(block_producer_key);
       if (info_it == m_state.service_nodes_infos.end())
       {
-        MERROR("The pulse block producer for round: " << +block.pulse.round << " is not currently a Service Node: " << block_producer_key);
+        MGINFO_RED("The pulse block producer for round: " << +block.pulse.round << " is not currently a Service Node: " << block_producer_key);
         return false;
       }
 
@@ -2233,7 +2233,7 @@ namespace service_nodes
       char const *type = mode == verify_mode::miner
                              ? "miner"
                              : mode == verify_mode::pulse_block_leader_is_producer ? "pulse" : "pulse alt round";
-      MERROR("Expected " << type << " block, the miner TX specifies a different amount of outputs vs the expected: " << expected_vouts_size << ", miner tx outputs: " << miner_tx.vout.size());
+      MGINFO_RED("Expected " << type << " block, the miner TX specifies a different amount of outputs vs the expected: " << expected_vouts_size << ", miner tx outputs: " << miner_tx.vout.size());
       return false;
     }
 

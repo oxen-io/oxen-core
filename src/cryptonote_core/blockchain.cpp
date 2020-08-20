@@ -3919,7 +3919,7 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
   ++blockchain_height; // block height to chain height
   if(bl.prev_id != top_hash)
   {
-    MERROR_VER("Block with id: " << id << std::endl << "has wrong prev_id: " << bl.prev_id << std::endl << "expected: " << top_hash);
+    MGINFO_RED("Block with id: " << id << std::endl << "has wrong prev_id: " << bl.prev_id << std::endl << "expected: " << top_hash);
     bvc.m_verifivation_failed = true;
     return false;
   }
@@ -3939,7 +3939,7 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
   // this is a cheap test
   if (!m_hardfork->check(bl))
   {
-    MERROR_VER("Block with id: " << id << std::endl << "has old version: " << (unsigned)bl.major_version << std::endl << "current: " << (unsigned)m_hardfork->get_current_version());
+    MGINFO_RED("Block with id: " << id << std::endl << "has old version: " << (unsigned)bl.major_version << std::endl << "current: " << (unsigned)m_hardfork->get_current_version());
     bvc.m_verifivation_failed = true;
     return false;
   }
@@ -3951,7 +3951,7 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
   // of a set number of the most recent blocks.
   if(!check_block_timestamp(bl))
   {
-    MERROR_VER("Block with id: " << id << std::endl << "has invalid timestamp: " << bl.timestamp);
+    MGINFO_RED("Block with id: " << id << std::endl << "has invalid timestamp: " << bl.timestamp);
     bvc.m_verifivation_failed = true;
     return false;
   }
@@ -4036,7 +4036,7 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
     // validate proof_of_work versus difficulty target
     if(!check_hash(proof_of_work, required_diff))
     {
-      MERROR_VER("Block with id: " << id << "\n does not have enough proof of work: " << proof_of_work << " at height " << blockchain_height << ", required difficulty: " << required_diff);
+      MGINFO_RED("Block with id: " << id << "\n does not have enough proof of work: " << proof_of_work << " at height " << blockchain_height << ", required difficulty: " << required_diff);
       bvc.m_verifivation_failed = true;
       return false;
     }
@@ -4051,7 +4051,7 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
     {
       if (!service_node_checkpoint || (service_node_checkpoint && bl.major_version >= cryptonote::network_version_13_enforce_checkpoints))
       {
-        LOG_ERROR("CHECKPOINT VALIDATION FAILED");
+        MGINFO_RED("CHECKPOINT VALIDATION FAILED");
         bvc.m_verifivation_failed = true;
         return false;
       }
@@ -4069,7 +4069,7 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
   const uint8_t hf_version = get_current_hard_fork_version();
   if(!prevalidate_miner_transaction(bl, blockchain_height, hf_version))
   {
-    MERROR_VER("Block with id: " << id << " failed to pass prevalidation");
+    MGINFO_RED("Block with id: " << id << " failed to pass prevalidation");
     bvc.m_verifivation_failed = true;
     return false;
   }
@@ -4106,7 +4106,7 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
 // XXX old code does not check whether tx exists
     if (m_db->tx_exists(tx_id))
     {
-      MERROR("Block with id: " << id << " attempting to add transaction already in blockchain with id: " << tx_id);
+      MGINFO_RED("Block with id: " << id << " attempting to add transaction already in blockchain with id: " << tx_id);
       bvc.m_verifivation_failed = true;
       return_tx_to_pool(txs);
       return false;
@@ -4119,7 +4119,7 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
     // get transaction with hash <tx_id> from tx_pool
     if(!m_tx_pool.take_tx(tx_id, tx_tmp, txblob, tx_weight, fee, relayed, do_not_relay, double_spend_seen))
     {
-      MERROR_VER("Block with id: " << id  << " has at least one unknown transaction with id: " << tx_id);
+      MGINFO_RED("Block with id: " << id  << " has at least one unknown transaction with id: " << tx_id);
       bvc.m_verifivation_failed = true;
       return_tx_to_pool(txs);
       return false;
@@ -4159,11 +4159,11 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
       tx_verification_context tvc{};
       if(!check_tx_inputs(tx, tvc))
       {
-        MERROR_VER("Block with id: " << id  << " has at least one transaction (id: " << tx_id << ") with wrong inputs.");
+        MGINFO_RED("Block with id: " << id  << " has at least one transaction (id: " << tx_id << ") with wrong inputs.");
 
         add_block_as_invalid(bl);
-        MERROR_VER("Block with id " << id << " added as invalid because of wrong inputs in transactions");
-        MERROR_VER("tx_index " << tx_index << ", m_blocks_txs_check " << m_blocks_txs_check.size() << ":");
+        MGINFO_RED("Block with id " << id << " added as invalid because of wrong inputs in transactions");
+        MGINFO_RED("tx_index " << tx_index << ", m_blocks_txs_check " << m_blocks_txs_check.size() << ":");
         for (const auto &h: m_blocks_txs_check) MERROR_VER("  " << h);
         bvc.m_verifivation_failed = true;
         return_tx_to_pool(txs);
@@ -4199,7 +4199,7 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
   uint64_t already_generated_coins = blockchain_height ? m_db->get_block_already_generated_coins(blockchain_height - 1) : 0;
   if(!validate_miner_transaction(bl, cumulative_block_weight, fee_summary, base_reward, already_generated_coins, m_hardfork->get_current_version()))
   {
-    MERROR_VER("Block with id: " << id << " has incorrect miner transaction");
+    MGINFO_RED("Block with id: " << id << " has incorrect miner transaction");
     bvc.m_verifivation_failed = true;
     return_tx_to_pool(txs);
     return false;
@@ -4237,7 +4237,7 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
     }
     catch (const KEY_IMAGE_EXISTS& e)
     {
-      LOG_ERROR("Error adding block with hash: " << id << " to blockchain, what = " << e.what());
+      MGINFO_RED("Error adding block with hash: " << id << " to blockchain, what = " << e.what());
       m_batch_success = false;
       bvc.m_verifivation_failed = true;
       return_tx_to_pool(txs);
@@ -4246,7 +4246,7 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
     catch (const std::exception& e)
     {
       //TODO: figure out the best way to deal with this failure
-      LOG_ERROR("Error adding block with hash: " << id << " to blockchain, what = " << e.what());
+      MGINFO_RED("Error adding block with hash: " << id << " to blockchain, what = " << e.what());
       m_batch_success = false;
       bvc.m_verifivation_failed = true;
       return_tx_to_pool(txs);
@@ -4255,7 +4255,7 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
   }
   else
   {
-    LOG_ERROR("Blocks that failed verification should not reach here");
+    MGINFO_RED("Blocks that failed verification should not reach here");
   }
 
   auto abort_block = loki::defer([&]() {
@@ -4279,14 +4279,14 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
 
   if (!m_service_node_list.block_added(bl, only_txs, checkpoint))
   {
-    MERROR("Failed to add block to Service Node List.");
+    MGINFO_RED("Failed to add block to Service Node List.");
     bvc.m_verifivation_failed = true;
     return false;
   }
 
   if (!m_lns_db.add_block(bl, only_txs))
   {
-    MERROR("Failed to add block to LNS DB.");
+    MGINFO_RED("Failed to add block to LNS DB.");
     bvc.m_verifivation_failed = true;
     return false;
   }
@@ -4295,7 +4295,7 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
   {
     if (!hook->block_added(bl, only_txs, checkpoint))
     {
-      MERROR("Block added hook signalled failure");
+      MGINFO_RED("Block added hook signalled failure");
       bvc.m_verifivation_failed = true;
       return false;
     }
@@ -4319,7 +4319,7 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
   // do this after updating the hard fork state since the weight limit may change due to fork
   if (!update_next_cumulative_weight_limit())
   {
-    MERROR("Failed to update next cumulative weight limit");
+    MGINFO_RED("Failed to update next cumulative weight limit");
     return false;
   }
 
@@ -4371,6 +4371,7 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
       block_notify->notify("%s", epee::string_tools::pod_to_hex(id).c_str(), NULL);
   }
 
+  success = true;
   return true;
 }
 //------------------------------------------------------------------
