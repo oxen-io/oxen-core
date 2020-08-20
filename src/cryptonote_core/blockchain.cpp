@@ -1927,48 +1927,9 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
 
     // Check the block's hash against the difficulty target for its alt chain
     difficulty_type current_diff = get_next_difficulty_for_alternative_chain(alt_chain, block_height);
-    difficulty_type required_diff = current_diff;
-    // Difficulty hack; see comment in main chain version
-    if (block_height >= 526483 && m_hardfork->get_current_version() < network_version_16)
+    block_pow_verified blk_pow = verify_block_pow(b, current_diff, curr_blockchain_height, true /*alt_block*/);
+    if (!blk_pow.valid)
     {
-      required_diff = (required_diff * 998) / 1000;
-    }
-
-    CHECK_AND_ASSERT_MES(required_diff, false, "!!!!!!! DIFFICULTY OVERHEAD !!!!!!!");
-    crypto::hash proof_of_work;
-    std::memset(proof_of_work.data, 0xff, sizeof(proof_of_work.data));
-
-    {
-      randomx_longhash_context randomx_context = {};
-      if (b.major_version >= cryptonote::network_version_12_checkpointing)
-      {
-        randomx_context.current_blockchain_height = curr_blockchain_height;
-        randomx_context.seed_height               = rx_seedheight(block_height);
-
-        // seedblock is on the alt chain somewhere
-        if (alt_chain.size() && alt_chain.front().height <= randomx_context.seed_height)
-        {
-          for (auto it=alt_chain.begin(); it != alt_chain.end(); it++)
-          {
-            if (it->height == randomx_context.seed_height+1)
-            {
-              randomx_context.seed_block_hash = it->bl.prev_id;
-              break;
-            }
-          }
-        }
-        else
-        {
-          randomx_context.seed_block_hash = get_block_id_by_height(randomx_context.seed_height);
-        }
-      }
-
-      proof_of_work = get_altblock_longhash(m_nettype, randomx_context, b, block_height);
-    }
-
-    if(!check_hash(proof_of_work, required_diff))
-    {
-      MERROR_VER("Block with id: " << id << "\n for alternative chain, does not have enough proof of work: " << proof_of_work << "\n required difficulty: " << required_diff);
       bvc.m_verifivation_failed = true;
       return false;
     }
@@ -2111,7 +2072,7 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
       }
       else
       {
-        MGINFO_BLUE("----- BLOCK ADDED AS ALTERNATIVE ON HEIGHT " << block_height << std::endl << "id:\t" << id << std::endl << "PoW:\t" << proof_of_work << std::endl << "difficulty:\t" << current_diff);
+        MGINFO_BLUE("----- BLOCK ADDED AS ALTERNATIVE ON HEIGHT " << block_height << std::endl << "id:\t" << id << std::endl << "PoW:\t" << blk_pow.proof_of_work << std::endl << "difficulty:\t" << current_diff);
         return true;
       }
     }
@@ -2129,7 +2090,7 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
       }
       else
       {
-        MGINFO_BLUE("----- BLOCK ADDED AS ALTERNATIVE ON HEIGHT " << block_height << std::endl << "id:\t" << id << std::endl << "PoW:\t" << proof_of_work << std::endl << "difficulty:\t" << current_diff);
+        MGINFO_BLUE("----- BLOCK ADDED AS ALTERNATIVE ON HEIGHT " << block_height << std::endl << "id:\t" << id << std::endl << "PoW:\t" << blk_pow.proof_of_work << std::endl << "difficulty:\t" << current_diff);
         return true;
       }
     }
@@ -3899,6 +3860,91 @@ bool Blockchain::flush_txes_from_pool(const std::vector<crypto::hash> &txids)
   }
   return res;
 }
+
+Blockchain::block_pow_verified Blockchain::verify_block_pow(cryptonote::block const &blk, difficulty_type difficulty, uint64_t chain_height, bool alt_block)
+{
+  block_pow_verified result = {};
+  std::memset(result.proof_of_work.data, 0xff, sizeof(result.proof_of_work.data));
+  crypto::hash const blk_hash = cryptonote::get_block_hash(blk);
+  uint64_t const blk_height   = cryptonote::get_block_height(blk);
+
+  // There is a difficulty bug in lokid that caused a network disagreement at height 526483 where
+  // somewhere around half the network had a slightly-too-high difficulty value and accepted the
+  // block while nodes with the correct difficulty value rejected it.  However this not-quite-enough
+  // difficulty chain had enough of the network following it that it got checkpointed several times
+  // and so cannot be rolled back.
+  //
+  // Hence this hack: starting at that block until the next hard fork, we allow a slight grace
+  // (0.2%) on the required difficulty (but we don't *change* the actual difficulty value used for
+  // diff calculation).
+  if (cryptonote::get_block_height(blk) >= 526483 && m_hardfork->get_current_version() < network_version_16)
+    difficulty = (difficulty * 998) / 1000;
+
+  CHECK_AND_ASSERT_MES(difficulty, result, "!!!!!!!!! difficulty overhead !!!!!!!!!");
+  if (alt_block)
+  {
+    randomx_longhash_context randomx_context = {};
+    if (blk.major_version >= cryptonote::network_version_12_checkpointing)
+    {
+      randomx_context.current_blockchain_height = chain_height;
+      randomx_context.seed_height               = rx_seedheight(blk_height);
+      randomx_context.seed_block_hash           = get_block_id_by_height(randomx_context.seed_height);
+    }
+
+    result.proof_of_work = get_altblock_longhash(m_nettype, randomx_context, blk, blk_height);
+  }
+  else
+  {
+    // Formerly the code below contained an if loop with the following condition
+    // !m_checkpoints.is_in_checkpoint_zone(get_current_blockchain_height())
+    // however, this caused the daemon to not bother checking PoW for blocks
+    // before checkpoints, which is very dangerous behaviour. We moved the PoW
+    // validation out of the next chunk of code to make sure that we correctly
+    // check PoW now.
+    // FIXME: height parameter is not used...should it be used or should it not
+    // be a parameter?
+    // validate proof_of_work versus difficulty target
+#if defined(PER_BLOCK_CHECKPOINT)
+    if (chain_height < m_blocks_hash_check.size())
+    {
+      const auto &expected_hash = m_blocks_hash_check[chain_height];
+      if (expected_hash != crypto::null_hash)
+      {
+        if (blk_hash != expected_hash)
+        {
+          MERROR_VER("Block with id is INVALID: " << blk_hash << ", expected " << expected_hash);
+          result.valid = false;
+          return result;
+        }
+
+        result.per_block_checkpointed = true;
+      }
+      else
+      {
+        MCINFO("verify", "No pre-validated hash at height " << chain_height << ", verifying fully");
+      }
+    }
+    else
+#endif
+    {
+      auto it = m_blocks_longhash_table.find(blk_hash);
+      if (it != m_blocks_longhash_table.end())
+      {
+        result.precomputed   = true;
+        result.proof_of_work = it->second;
+      }
+      else
+        result.proof_of_work = get_block_longhash_w_blockchain(m_nettype, this, blk, chain_height, 0);
+    }
+  }
+
+  // validate proof_of_work versus difficulty target
+  result.valid = check_hash(result.proof_of_work, difficulty);
+  if (!result.valid)
+    MGINFO_RED((alt_block ? "Alternative block" : "Block") << " with id: " << blk_hash << "\n does not have enough proof of work: " << result.proof_of_work << " at height " << blk_height << ", required difficulty: " << difficulty);
+
+  return result;
+}
 //------------------------------------------------------------------
 //      Needs to validate the block and acquire each transaction from the
 //      transaction mem_pool, then pass the block and transactions to
@@ -3961,90 +4007,37 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
   difficulty_type current_diffic = get_difficulty_for_next_block();
   TIME_MEASURE_FINISH(target_calculating_time);
 
-  TIME_MEASURE_START(longhash_calculating_time);
-  bool precomputed = false;
-  bool fast_check  = false;
-
-  crypto::hash proof_of_work;
-  std::memset(proof_of_work.data, 0xff, sizeof(proof_of_work.data));
-  if (cryptonote::block_has_pulse_components(bl))
+  TIME_MEASURE_START(verify_pow_time);
+  block_pow_verified blk_pow = {};
   {
-    // NOTE: Pulse blocks don't use PoW. They use Service Node signatures.
-    // Delay signature verification until Service Node List adds the block in
-    // the block_added hook.
+    std::memset(blk_pow.proof_of_work.data, 0xff, sizeof(blk_pow.proof_of_work.data));
+
+    LOKI_DEFER
+    {
+      TIME_MEASURE_FINISH(verify_pow_time);
+      if (blk_pow.precomputed)
+        verify_pow_time += m_fake_pow_calc_time;
+    };
+
+    if (cryptonote::block_has_pulse_components(bl))
+    {
+      // NOTE: Pulse blocks don't use PoW. They use Service Node signatures.
+      // Delay signature verification until Service Node List adds the block in
+      // the block_added hook.
+      blk_pow.valid = true;
+    }
+    else // check proof of work
+    {
+      blk_pow = verify_block_pow(bl, current_diffic, blockchain_height, false /*alt_block*/);
+    }
+
+    if (!blk_pow.valid)
+    {
+      bvc.m_verifivation_failed = true;
+      return false;
+    }
   }
-  else // check proof of work
-  {
-    difficulty_type required_diff = current_diffic;
 
-    // There is a difficulty bug in lokid that caused a network disagreement at height 526483 where
-    // somewhere around half the network had a slightly-too-high difficulty value and accepted the
-    // block while nodes with the correct difficulty value rejected it.  However this not-quite-enough
-    // difficulty chain had enough of the network following it that it got checkpointed several times
-    // and so cannot be rolled back.
-    //
-    // Hence this hack: starting at that block until the next hard fork, we allow a slight grace
-    // (0.2%) on the required difficulty (but we don't *change* the actual difficulty value used for
-    // diff calculation).
-    if (blockchain_height >= 526483 && m_hardfork->get_current_version() < network_version_16)
-    {
-      required_diff = (required_diff * 998) / 1000;
-    }
-
-    CHECK_AND_ASSERT_MES(required_diff, false, "!!!!!!!!! difficulty overhead !!!!!!!!!");
-
-    // Formerly the code below contained an if loop with the following condition
-    // !m_checkpoints.is_in_checkpoint_zone(get_current_blockchain_height())
-    // however, this caused the daemon to not bother checking PoW for blocks
-    // before checkpoints, which is very dangerous behaviour. We moved the PoW
-    // validation out of the next chunk of code to make sure that we correctly
-    // check PoW now.
-    // FIXME: height parameter is not used...should it be used or should it not
-    // be a parameter?
-    // validate proof_of_work versus difficulty target
-#if defined(PER_BLOCK_CHECKPOINT)
-    if (blockchain_height < m_blocks_hash_check.size())
-    {
-      const auto &expected_hash = m_blocks_hash_check[blockchain_height];
-      if (expected_hash != crypto::null_hash)
-      {
-        if (memcmp(&id, &expected_hash, sizeof(hash)) != 0)
-        {
-          MERROR_VER("Block with id is INVALID: " << id << ", expected " << expected_hash);
-          bvc.m_verifivation_failed = true;
-          return false;
-        }
-        fast_check = true;
-      }
-      else
-      {
-        MCINFO("verify", "No pre-validated hash at height " << blockchain_height << ", verifying fully");
-      }
-    }
-    else
-#endif
-    {
-      auto it = m_blocks_longhash_table.find(id);
-      if (it != m_blocks_longhash_table.end())
-      {
-        precomputed = true;
-        proof_of_work = it->second;
-      }
-      else
-        proof_of_work = get_block_longhash_w_blockchain(m_nettype, this, bl, blockchain_height, 0);
-
-      // validate proof_of_work versus difficulty target
-      if(!check_hash(proof_of_work, required_diff))
-      {
-        MGINFO_RED("Block with id: " << id << "\n does not have enough proof of work: " << proof_of_work << " at height " << blockchain_height << ", required difficulty: " << required_diff);
-        bvc.m_verifivation_failed = true;
-        return false;
-      }
-    }
-    if (precomputed)
-      longhash_calculating_time += m_fake_pow_calc_time;
-  }
-  TIME_MEASURE_FINISH(longhash_calculating_time);
   TIME_MEASURE_START(t3);
 
   // If we're at a checkpoint, ensure that our hardcoded checkpoint hash
@@ -4150,7 +4143,7 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
     TIME_MEASURE_START(cc);
 
 #if defined(PER_BLOCK_CHECKPOINT)
-    if (!fast_check)
+    if (!blk_pow.per_block_checkpointed)
 #endif
     {
       // validate that transaction inputs and the keys spending them are correct.
@@ -4219,7 +4212,7 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
     cumulative_difficulty += m_db->get_block_cumulative_difficulty(blockchain_height - 1);
 
   TIME_MEASURE_FINISH(block_processing_time);
-  if(precomputed)
+  if(blk_pow.precomputed)
     block_processing_time += m_fake_pow_calc_time;
 
   rtxn_guard.stop();
@@ -4330,26 +4323,26 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
                    << "block reward: " << print_money(fee_summary + base_reward) << "(" << print_money(base_reward)
                    << " + " << print_money(fee_summary) << "), coinbase_weight: " << coinbase_weight
                    << ", cumulative weight: " << cumulative_block_weight << ", " << block_processing_time << "("
-                   << target_calculating_time << "/" << longhash_calculating_time << ")ms");
+                   << target_calculating_time << ")ms");
   }
   else
   {
     assert(bl.signatures.empty() && "Signatures were supposed to be checked in Service Node List already.");
     MINFO("+++++ MINER BLOCK SUCCESSFULLY ADDED\n"
                    << "id:\t" << id << "\n"
-                   << "PoW:\t" << proof_of_work << "\n"
+                   << "PoW:\t" << blk_pow.proof_of_work << "\n"
                    << "HEIGHT " << new_height - 1 << ", difficulty:\t" << current_diffic << "\n"
                    << "block reward: " << print_money(fee_summary + base_reward) << "(" << print_money(base_reward)
                    << " + " << print_money(fee_summary) << "), coinbase_weight: " << coinbase_weight
                    << ", cumulative weight: " << cumulative_block_weight << ", " << block_processing_time << "("
-                   << target_calculating_time << "/" << longhash_calculating_time << ")ms");
+                   << target_calculating_time << "/" << verify_pow_time << ")ms");
   }
 
   if(m_show_time_stats)
   {
     MINFO("Height: " << new_height << " coinbase weight: " << coinbase_weight << " cumm: "
         << cumulative_block_weight << " p/t: " << block_processing_time << " ("
-        << target_calculating_time << "/" << longhash_calculating_time << "/"
+        << target_calculating_time << "/" << verify_pow_time << "/"
         << t1 << "/" << t2 << "/" << t3 << "/" << t_exists << "/" << t_pool
         << "/" << t_checktx << "/" << t_dblspnd << "/" << vmt << "/" << addblock << ")ms");
   }

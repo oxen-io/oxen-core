@@ -865,6 +865,19 @@ namespace cryptonote
      */
     bool flush_txes_from_pool(const std::vector<crypto::hash> &txids);
 
+    struct block_pow_verified
+    {
+      bool         valid;
+      bool         precomputed;
+      bool         per_block_checkpointed;
+      crypto::hash proof_of_work;
+    };
+
+    /**
+     * @brief Verify block proof of work against the expected difficulty
+     */
+    block_pow_verified verify_block_pow(cryptonote::block const &blk, difficulty_type difficulty, uint64_t chain_height, bool alt_block);
+
     /**
      * @brief return a histogram of outputs on the blockchain
      *
