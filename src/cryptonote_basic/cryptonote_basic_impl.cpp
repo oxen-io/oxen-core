@@ -64,6 +64,17 @@ namespace cryptonote {
   /* Cryptonote helper functions                                          */
   /************************************************************************/
   //-----------------------------------------------------------------------------------------------
+  bool block_has_pulse_components(block const &blk)
+  {
+    constexpr cryptonote::pulse_random_value empty_random_value = {};
+    bool signatures    = blk.signatures.size();
+    bool bitset        = blk.pulse.validator_bitset > 0;
+    bool random_value  = !(blk.pulse.random_value == empty_random_value);
+    uint8_t hf_version = blk.major_version;
+    bool result        = hf_version >= cryptonote::network_version_16 && (signatures || bitset || random_value);
+    return result;
+  }
+  //-----------------------------------------------------------------------------------------------
   size_t get_min_block_weight(uint8_t version)
   {
     return CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V5;

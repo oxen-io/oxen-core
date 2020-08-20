@@ -1269,19 +1269,6 @@ namespace service_nodes
     return stream.str();
   }
 
-  static bool is_pulse_block(cryptonote::block const &block)
-  {
-    constexpr cryptonote::pulse_random_value empty_random_value = {};
-
-    bool signatures    = block.signatures.size();
-    bool bitset        = block.pulse.validator_bitset > 0;
-    bool random_value  = !(block.pulse.random_value == empty_random_value);
-    uint8_t hf_version = block.major_version;
-
-    bool result = hf_version >= cryptonote::network_version_16 && (signatures || bitset || random_value);
-    return result;
-  }
-
   bool service_node_list::block_added(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs, cryptonote::checkpoint_t const *checkpoint)
   {
     if (block.major_version < cryptonote::network_version_9_service_nodes)
@@ -1317,7 +1304,7 @@ namespace service_nodes
 
     if (miner_blocks_only)
     {
-      if (is_pulse_block(block))
+      if (cryptonote::block_has_pulse_components(block))
       {
         MGINFO("Pulse block received but only miner blocks are permitted\n" << dump_pulse_block_data(block, pulse_quorum.get()));
         return false;
@@ -1344,7 +1331,7 @@ namespace service_nodes
     }
     else
     {
-      if (!is_pulse_block(block))
+      if (!cryptonote::block_has_pulse_components(block))
       {
         MGINFO("Miner block received but only pulse blocks are permitted\n" << dump_pulse_block_data(block, pulse_quorum.get()));
         return false;
@@ -2173,7 +2160,7 @@ namespace service_nodes
     //
     // NOTE: Determine if block leader/producer are different or the same.
     //
-    if (is_pulse_block(block))
+    if (cryptonote::block_has_pulse_components(block))
     {
       quorum pulse_quorum = generate_pulse_quorum(m_blockchain.nettype(), m_blockchain.get_db(), height + 1, block_leader.key, hf_version, m_state.active_service_nodes_infos(), block.pulse.round);
       if (!verify_pulse_quorum_sizes(pulse_quorum))

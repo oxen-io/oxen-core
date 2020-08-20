@@ -3936,7 +3936,6 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
     MCLOG_RED(level, "global", "**********************************************************************");
   }
 
-  // this is a cheap test
   if (!m_hardfork->check(bl))
   {
     MGINFO_RED("Block with id: " << id << std::endl << "has old version: " << (unsigned)bl.major_version << std::endl << "current: " << (unsigned)m_hardfork->get_current_version());
@@ -3957,112 +3956,113 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
   }
 
   TIME_MEASURE_FINISH(t2);
-  //check proof of work
+
   TIME_MEASURE_START(target_calculating_time);
-
-  // get the target difficulty for the block.
-  // the calculation can overflow, among other failure cases,
-  // so we need to check the return type.
-  // FIXME: get_difficulty_for_next_block can also assert, look into
-  // changing this to throwing exceptions instead so we can clean up.
   difficulty_type current_diffic = get_difficulty_for_next_block();
-  difficulty_type required_diff = current_diffic;
-
-  // There is a difficulty bug in lokid that caused a network disagreement at height 526483 where
-  // somewhere around half the network had a slightly-too-high difficulty value and accepted the
-  // block while nodes with the correct difficulty value rejected it.  However this not-quite-enough
-  // difficulty chain had enough of the network following it that it got checkpointed several times
-  // and so cannot be rolled back.
-  //
-  // Hence this hack: starting at that block until the next hard fork, we allow a slight grace
-  // (0.2%) on the required difficulty (but we don't *change* the actual difficulty value used for
-  // diff calculation).
-  if (blockchain_height >= 526483 && m_hardfork->get_current_version() < network_version_16)
-  {
-    required_diff = (required_diff * 998) / 1000;
-  }
-
-  CHECK_AND_ASSERT_MES(required_diff, false, "!!!!!!!!! difficulty overhead !!!!!!!!!");
-
   TIME_MEASURE_FINISH(target_calculating_time);
 
   TIME_MEASURE_START(longhash_calculating_time);
+  bool precomputed = false;
+  bool fast_check  = false;
 
   crypto::hash proof_of_work;
   std::memset(proof_of_work.data, 0xff, sizeof(proof_of_work.data));
-
-  // Formerly the code below contained an if loop with the following condition
-  // !m_checkpoints.is_in_checkpoint_zone(get_current_blockchain_height())
-  // however, this caused the daemon to not bother checking PoW for blocks
-  // before checkpoints, which is very dangerous behaviour. We moved the PoW
-  // validation out of the next chunk of code to make sure that we correctly
-  // check PoW now.
-  // FIXME: height parameter is not used...should it be used or should it not
-  // be a parameter?
-  // validate proof_of_work versus difficulty target
-  bool precomputed = false;
-  bool fast_check = false;
-#if defined(PER_BLOCK_CHECKPOINT)
-  if (blockchain_height < m_blocks_hash_check.size())
+  if (cryptonote::block_has_pulse_components(bl))
   {
-    const auto &expected_hash = m_blocks_hash_check[blockchain_height];
-    if (expected_hash != crypto::null_hash)
-    {
-      if (memcmp(&id, &expected_hash, sizeof(hash)) != 0)
-      {
-        MERROR_VER("Block with id is INVALID: " << id << ", expected " << expected_hash);
-        bvc.m_verifivation_failed = true;
-        return false;
-      }
-      fast_check = true;
-    }
-    else
-    {
-      MCINFO("verify", "No pre-validated hash at height " << blockchain_height << ", verifying fully");
-    }
+    // NOTE: Pulse blocks don't use PoW. They use Service Node signatures.
+    // Delay signature verification until Service Node List adds the block in
+    // the block_added hook.
   }
-  else
-#endif
+  else // check proof of work
   {
-    auto it = m_blocks_longhash_table.find(id);
-    if (it != m_blocks_longhash_table.end())
-    {
-      precomputed = true;
-      proof_of_work = it->second;
-    }
-    else
-      proof_of_work = get_block_longhash_w_blockchain(m_nettype, this, bl, blockchain_height, 0);
+    difficulty_type required_diff = current_diffic;
 
+    // There is a difficulty bug in lokid that caused a network disagreement at height 526483 where
+    // somewhere around half the network had a slightly-too-high difficulty value and accepted the
+    // block while nodes with the correct difficulty value rejected it.  However this not-quite-enough
+    // difficulty chain had enough of the network following it that it got checkpointed several times
+    // and so cannot be rolled back.
+    //
+    // Hence this hack: starting at that block until the next hard fork, we allow a slight grace
+    // (0.2%) on the required difficulty (but we don't *change* the actual difficulty value used for
+    // diff calculation).
+    if (blockchain_height >= 526483 && m_hardfork->get_current_version() < network_version_16)
+    {
+      required_diff = (required_diff * 998) / 1000;
+    }
+
+    CHECK_AND_ASSERT_MES(required_diff, false, "!!!!!!!!! difficulty overhead !!!!!!!!!");
+
+    // Formerly the code below contained an if loop with the following condition
+    // !m_checkpoints.is_in_checkpoint_zone(get_current_blockchain_height())
+    // however, this caused the daemon to not bother checking PoW for blocks
+    // before checkpoints, which is very dangerous behaviour. We moved the PoW
+    // validation out of the next chunk of code to make sure that we correctly
+    // check PoW now.
+    // FIXME: height parameter is not used...should it be used or should it not
+    // be a parameter?
     // validate proof_of_work versus difficulty target
-    if(!check_hash(proof_of_work, required_diff))
+#if defined(PER_BLOCK_CHECKPOINT)
+    if (blockchain_height < m_blocks_hash_check.size())
     {
-      MGINFO_RED("Block with id: " << id << "\n does not have enough proof of work: " << proof_of_work << " at height " << blockchain_height << ", required difficulty: " << required_diff);
-      bvc.m_verifivation_failed = true;
-      return false;
-    }
-  }
-
-  // If we're at a checkpoint, ensure that our hardcoded checkpoint hash
-  // is correct.
-  if(m_checkpoints.is_in_checkpoint_zone(blockchain_height))
-  {
-    bool service_node_checkpoint = false;
-    if(!m_checkpoints.check_block(blockchain_height, id, nullptr, &service_node_checkpoint))
-    {
-      if (!service_node_checkpoint || (service_node_checkpoint && bl.major_version >= cryptonote::network_version_13_enforce_checkpoints))
+      const auto &expected_hash = m_blocks_hash_check[blockchain_height];
+      if (expected_hash != crypto::null_hash)
       {
-        MGINFO_RED("CHECKPOINT VALIDATION FAILED");
+        if (memcmp(&id, &expected_hash, sizeof(hash)) != 0)
+        {
+          MERROR_VER("Block with id is INVALID: " << id << ", expected " << expected_hash);
+          bvc.m_verifivation_failed = true;
+          return false;
+        }
+        fast_check = true;
+      }
+      else
+      {
+        MCINFO("verify", "No pre-validated hash at height " << blockchain_height << ", verifying fully");
+      }
+    }
+    else
+#endif
+    {
+      auto it = m_blocks_longhash_table.find(id);
+      if (it != m_blocks_longhash_table.end())
+      {
+        precomputed = true;
+        proof_of_work = it->second;
+      }
+      else
+        proof_of_work = get_block_longhash_w_blockchain(m_nettype, this, bl, blockchain_height, 0);
+
+      // validate proof_of_work versus difficulty target
+      if(!check_hash(proof_of_work, required_diff))
+      {
+        MGINFO_RED("Block with id: " << id << "\n does not have enough proof of work: " << proof_of_work << " at height " << blockchain_height << ", required difficulty: " << required_diff);
         bvc.m_verifivation_failed = true;
         return false;
       }
     }
 
+    // If we're at a checkpoint, ensure that our hardcoded checkpoint hash
+    // is correct.
+    if(m_checkpoints.is_in_checkpoint_zone(blockchain_height))
+    {
+      bool service_node_checkpoint = false;
+      if(!m_checkpoints.check_block(blockchain_height, id, nullptr, &service_node_checkpoint))
+      {
+        if (!service_node_checkpoint || (service_node_checkpoint && bl.major_version >= cryptonote::network_version_13_enforce_checkpoints))
+        {
+          MGINFO_RED("CHECKPOINT VALIDATION FAILED");
+          bvc.m_verifivation_failed = true;
+          return false;
+        }
+      }
+
+    }
+
+    if (precomputed)
+      longhash_calculating_time += m_fake_pow_calc_time;
   }
-
   TIME_MEASURE_FINISH(longhash_calculating_time);
-  if (precomputed)
-    longhash_calculating_time += m_fake_pow_calc_time;
-
   TIME_MEASURE_START(t3);
 
   // sanity check basic miner tx properties;
