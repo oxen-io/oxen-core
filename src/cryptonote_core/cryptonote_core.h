@@ -297,12 +297,11 @@ namespace cryptonote
       * @param block_blob the block to be added
       * @param block the block to be added, or NULL
       * @param bvc return-by-reference metadata context about the block's validity
-      * @param update_miner_blocktemplate whether or not to update the miner's block template
       *
       * @return false if loading new checkpoints fails, or the block is not
       * added, otherwise true
       */
-     bool handle_incoming_block(const blobdata& block_blob, const block *b, block_verification_context& bvc, checkpoint_t *checkpoint, bool update_miner_blocktemplate = true);
+     bool handle_incoming_block(const blobdata& block_blob, const block *b, block_verification_context& bvc, checkpoint_t *checkpoint);
 
      /**
       * @copydoc Blockchain::prepare_handle_incoming_blocks
@@ -374,13 +373,6 @@ namespace cryptonote
       * @return a reference to the miner instance
       */
      miner& get_miner(){return m_miner;}
-
-     /**
-      * @brief gets the miner instance (const)
-      *
-      * @return a const reference to the miner instance
-      */
-     const miner& get_miner()const{return m_miner;}
 
      /**
       * @brief adds command line options to the given options set
@@ -1161,11 +1153,8 @@ namespace cryptonote
 
      i_cryptonote_protocol* m_pprotocol; //!< cryptonote protocol instance
      cryptonote_protocol_stub m_protocol_stub; //!< cryptonote protocol stub instance
-
+fm_
      std::recursive_mutex m_incoming_tx_lock; //!< incoming transaction lock
-
-     //m_miner and m_miner_addres are probably temporary here
-     miner m_miner; //!< miner instance
 
      std::string m_config_folder; //!< folder to look in for configs and other files
 

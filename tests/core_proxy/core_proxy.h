@@ -83,7 +83,7 @@ namespace tests
     std::vector<cryptonote::core::tx_verification_batch_info> handle_incoming_txs(const std::vector<cryptonote::blobdata>& tx_blobs, const cryptonote::tx_pool_options &opts);
     std::pair<std::vector<std::shared_ptr<cryptonote::blink_tx>>, std::unordered_set<crypto::hash>> parse_incoming_blinks(const std::vector<cryptonote::serializable_blink_metadata> &blinks);
     int add_blinks(const std::vector<std::shared_ptr<cryptonote::blink_tx>> &blinks) { return 0; }
-    bool handle_incoming_block(const cryptonote::blobdata& block_blob, const cryptonote::block *block, cryptonote::block_verification_context& bvc, cryptonote::checkpoint_t *checkpoint, bool update_miner_blocktemplate = true);
+    bool handle_incoming_block(const cryptonote::blobdata& block_blob, const cryptonote::block *block, cryptonote::block_verification_context& bvc, cryptonote::checkpoint_t *checkpoint);
     bool handle_uptime_proof(const cryptonote::NOTIFY_UPTIME_PROOF::request &proof, bool &my_uptime_proof_confirmation);
     void pause_mine(){}
     void resume_mine(){}

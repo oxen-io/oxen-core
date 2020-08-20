@@ -218,7 +218,7 @@ tests::proxy_core::parse_incoming_blinks(const std::vector<serializable_blink_me
     return {};
 }
 
-bool tests::proxy_core::handle_incoming_block(const cryptonote::blobdata& block_blob, const cryptonote::block *block_, cryptonote::block_verification_context& bvc, cryptonote::checkpoint_t *checkpoint, bool update_miner_blocktemplate) {
+bool tests::proxy_core::handle_incoming_block(const cryptonote::blobdata& block_blob, const cryptonote::block *block_, cryptonote::block_verification_context& bvc, cryptonote::checkpoint_t *checkpoint) {
     block b{};
 
     if(!parse_and_validate_block_from_blob(block_blob, b)) {

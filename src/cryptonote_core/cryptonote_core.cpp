@@ -297,10 +297,6 @@ namespace cryptonote
   , m_service_node_list(m_blockchain_storage)
   , m_blockchain_storage(m_mempool, m_service_node_list)
   , m_quorum_cop(*this)
-  , m_miner(this, [this](const cryptonote::block &b, uint64_t height, unsigned int threads, crypto::hash &hash) {
-    hash = cryptonote::get_block_longhash_w_blockchain(&m_blockchain_storage, b, height, threads);
-    return true;
-  })
   , m_pprotocol(&m_protocol_stub)
   , m_starter_message_showed(false)
   , m_target_blockchain_height(0)
@@ -344,7 +340,6 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------
   void core::stop()
   {
-    m_miner.stop();
     m_blockchain_storage.cancel();
   }
   //-----------------------------------------------------------------------------------
@@ -872,7 +867,6 @@ namespace cryptonote
     MGINFO("Loading checkpoints");
     CHECK_AND_ASSERT_MES(update_checkpoints_from_json_file(), false, "One or more checkpoints loaded from json conflicted with existing checkpoints.");
 
-    r = m_miner.init(vm, m_nettype);
     CHECK_AND_ASSERT_MES(r, false, "Failed to initialize miner instance");
 
     if (!keep_alt_blocks && !m_blockchain_storage.get_db().is_read_only())
@@ -1109,7 +1103,6 @@ namespace cryptonote
       quorumnet_delete(m_quorumnet_state);
     m_lmq.reset();
     m_service_node_list.store();
-    m_miner.stop();
     m_mempool.deinit();
     m_blockchain_storage.deinit();
   }
@@ -1961,12 +1954,10 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
   void core::pause_mine()
   {
-    m_miner.pause();
   }
   //-----------------------------------------------------------------------------------------------
   void core::resume_mine()
   {
-    m_miner.resume();
   }
   //-----------------------------------------------------------------------------------------------
   block_complete_entry get_block_complete_entry(block& b, tx_memory_pool &pool)
@@ -1986,9 +1977,7 @@ namespace cryptonote
   {
     bvc = {};
     std::vector<block_complete_entry> blocks;
-    m_miner.pause();
     {
-      LOKI_DEFER { m_miner.resume(); };
       try
       {
         blocks.push_back(get_block_complete_entry(b, m_mempool));
@@ -2005,7 +1994,6 @@ namespace cryptonote
       }
       add_new_block(b, bvc, nullptr /*checkpoint*/);
       cleanup_handle_incoming_blocks(true);
-      m_miner.on_block_chain_update();
     }
 
     CHECK_AND_ASSERT_MES(!bvc.m_verifivation_failed, false, "mined block failed verification");
@@ -2034,7 +2022,6 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
   void core::on_synchronized()
   {
-    m_miner.on_synchronized();
   }
   //-----------------------------------------------------------------------------------------------
   void core::safesyncmode(const bool onoff)
@@ -2078,7 +2065,7 @@ namespace cryptonote
   }
 
   //-----------------------------------------------------------------------------------------------
-  bool core::handle_incoming_block(const blobdata& block_blob, const block *b, block_verification_context& bvc, checkpoint_t *checkpoint, bool update_miner_blocktemplate)
+  bool core::handle_incoming_block(const blobdata& block_blob, const block *b, block_verification_context& bvc, checkpoint_t *checkpoint)
   {
     TRY_ENTRY();
     bvc = {};
@@ -2108,8 +2095,6 @@ namespace cryptonote
     }
 
     add_new_block(*b, bvc, checkpoint);
-    if(update_miner_blocktemplate && bvc.m_added_to_main_chain)
-       m_miner.on_block_chain_update();
     return true;
 
     CATCH_ENTRY_L0("core::handle_incoming_block()", false);
@@ -2272,7 +2257,6 @@ namespace cryptonote
     }
 
     m_blockchain_pruning_interval.do_call([this] { return update_blockchain_pruning(); });
-    m_miner.on_idle();
     m_mempool.on_idle();
 
 #if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
