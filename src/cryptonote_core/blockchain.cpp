@@ -4371,7 +4371,6 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
       block_notify->notify("%s", epee::string_tools::pod_to_hex(id).c_str(), NULL);
   }
 
-  success = true;
   return true;
 }
 //------------------------------------------------------------------
