@@ -4041,29 +4041,27 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
         return false;
       }
     }
-
-    // If we're at a checkpoint, ensure that our hardcoded checkpoint hash
-    // is correct.
-    if(m_checkpoints.is_in_checkpoint_zone(blockchain_height))
-    {
-      bool service_node_checkpoint = false;
-      if(!m_checkpoints.check_block(blockchain_height, id, nullptr, &service_node_checkpoint))
-      {
-        if (!service_node_checkpoint || (service_node_checkpoint && bl.major_version >= cryptonote::network_version_13_enforce_checkpoints))
-        {
-          MGINFO_RED("CHECKPOINT VALIDATION FAILED");
-          bvc.m_verifivation_failed = true;
-          return false;
-        }
-      }
-
-    }
-
     if (precomputed)
       longhash_calculating_time += m_fake_pow_calc_time;
   }
   TIME_MEASURE_FINISH(longhash_calculating_time);
   TIME_MEASURE_START(t3);
+
+  // If we're at a checkpoint, ensure that our hardcoded checkpoint hash
+  // is correct.
+  if(m_checkpoints.is_in_checkpoint_zone(blockchain_height))
+  {
+    bool service_node_checkpoint = false;
+    if(!m_checkpoints.check_block(blockchain_height, id, nullptr, &service_node_checkpoint))
+    {
+      if (!service_node_checkpoint || (service_node_checkpoint && bl.major_version >= cryptonote::network_version_13_enforce_checkpoints))
+      {
+        MGINFO_RED("CHECKPOINT VALIDATION FAILED");
+        bvc.m_verifivation_failed = true;
+        return false;
+      }
+    }
+  }
 
   // sanity check basic miner tx properties;
   const uint8_t hf_version = get_current_hard_fork_version();
