@@ -846,7 +846,7 @@ namespace cryptonote { namespace rpc {
     {
       std::vector<tx_info> pool_tx_info;
       std::vector<spent_key_image_info> pool_key_image_info;
-      bool r = pool.get_transactions_and_spent_keys_info(pool_tx_info, pool_key_image_info, context.admin);
+      bool r = pool.get_transactions_and_spent_keys_info(pool_tx_info, pool_key_image_info, nullptr, context.admin);
       if(r)
       {
         // sort to match original request
@@ -1058,7 +1058,7 @@ namespace cryptonote { namespace rpc {
     // check the pool too
     std::vector<tx_info> txs;
     std::vector<spent_key_image_info> ki;
-    r = m_core.get_pool().get_transactions_and_spent_keys_info(txs, ki, context.admin);
+    r = m_core.get_pool().get_transactions_and_spent_keys_info(txs, ki, nullptr, context.admin);
     if(!r)
     {
       res.status = "Failed";
@@ -1428,9 +1428,13 @@ namespace cryptonote { namespace rpc {
     if (use_bootstrap_daemon_if_necessary<GET_TRANSACTION_POOL>(req, res))
       return res;
 
-    m_core.get_pool().get_transactions_and_spent_keys_info(res.transactions, res.spent_key_images, context.admin);
+    std::function<void(const transaction& tx, tx_info& txi)> load_extra;
+    if (req.tx_extra)
+        load_extra = [this](const transaction& tx, tx_info& txi) { load_tx_extra_data(txi.extra.emplace(), tx, nettype()); };
+
+    m_core.get_pool().get_transactions_and_spent_keys_info(res.transactions, res.spent_key_images, load_extra, context.admin);
     for (tx_info& txi : res.transactions)
-      txi.tx_blob = epee::string_tools::buff_to_hex_nodelimer(txi.tx_blob);
+      txi.tx_blob = lokimq::to_hex(txi.tx_blob);
     res.status = STATUS_OK;
     return res;
   }

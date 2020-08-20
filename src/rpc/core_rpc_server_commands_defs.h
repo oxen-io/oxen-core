@@ -1089,6 +1089,7 @@ namespace rpc {
     bool double_spend_seen;             // States if this transaction has been seen as double spend.
     std::string tx_blob;                // Hexadecimal blob represnting the transaction.
     bool blink;                         // True if this is a signed blink transaction
+    std::optional<GET_TRANSACTIONS::extra_entry> extra; // Parsed tx_extra information (only if requested)
 
     KV_MAP_SERIALIZABLE
   };
@@ -1109,7 +1110,12 @@ namespace rpc {
   {
     static constexpr auto names() { return NAMES("get_transaction_pool"); }
 
-    struct request : EMPTY {};
+    struct request
+    {
+      bool tx_extra;                       // Parse tx-extra information and adds it to the `extra` field.
+
+      KV_MAP_SERIALIZABLE
+    };
 
     struct response
     {

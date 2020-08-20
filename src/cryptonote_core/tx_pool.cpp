@@ -1257,7 +1257,7 @@ namespace cryptonote
   }
   //------------------------------------------------------------------
   //TODO: investigate whether boolean return is appropriate
-  bool tx_memory_pool::get_transactions_and_spent_keys_info(std::vector<rpc::tx_info>& tx_infos, std::vector<rpc::spent_key_image_info>& key_image_infos, bool include_sensitive_data) const
+  bool tx_memory_pool::get_transactions_and_spent_keys_info(std::vector<rpc::tx_info>& tx_infos, std::vector<rpc::spent_key_image_info>& key_image_infos, std::function<void(const transaction&, rpc::tx_info&)> post_process, bool include_sensitive_data) const
   {
     std::unique_lock tx_lock{m_transactions_lock, std::defer_lock};
     std::unique_lock bc_lock{m_blockchain, std::defer_lock};
@@ -1267,7 +1267,7 @@ namespace cryptonote
     tx_infos.reserve(m_blockchain.get_txpool_tx_count());
     key_image_infos.reserve(m_blockchain.get_txpool_tx_count());
 
-    m_blockchain.for_all_txpool_txes([&tx_infos, this, include_sensitive_data](const crypto::hash &txid, const txpool_tx_meta_t &meta, const cryptonote::blobdata *bd){
+    m_blockchain.for_all_txpool_txes([&tx_infos, this, include_sensitive_data, post_process=std::move(post_process)](const crypto::hash &txid, const txpool_tx_meta_t &meta, const cryptonote::blobdata *bd){
       transaction tx;
       if (!parse_and_validate_tx_from_blob(*bd, tx))
       {
@@ -1297,6 +1297,8 @@ namespace cryptonote
       txi.do_not_relay = meta.do_not_relay;
       txi.double_spend_seen = meta.double_spend_seen;
       txi.blink = has_blink(txid);
+      if (post_process)
+        post_process(tx, txi);
       return true;
     }, true, include_sensitive_data);
 
