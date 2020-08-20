@@ -1028,7 +1028,7 @@ round_state wait_for_round(round_context &context, cryptonote::Blockchain const 
   if (auto now = pulse::clock::now(); now < start_time)
   {
     for (static uint64_t last_height = 0; last_height != context.wait_for_next_block.height; last_height = context.wait_for_next_block.height)
-      MINFO(log_prefix(context) << "Waiting for round " << +context.prepare_for_round.round << " to start in " << tools::get_human_readable_timespan(start_time - now));
+      MINFO(log_prefix(context) << "Waiting for round " << +context.prepare_for_round.round << " to start in " << tools::friendly_duration(start_time - now));
     return round_state::wait_for_round;
   }
 
