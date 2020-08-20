@@ -1293,7 +1293,7 @@ namespace service_nodes
     // NOTE: Block Verification
     //
     std::shared_ptr<const quorum> pulse_quorum = get_quorum(quorum_type::pulse, m_state.height);
-    bool miner_blocks_only                     = pulse::clock::now() >= timings.miner_fallback_timestamp || !pulse_quorum;
+    bool miner_blocks_only                     = pulse::time_point(std::chrono::seconds(block.timestamp)) >= timings.miner_fallback_timestamp || !pulse_quorum;
 
     if (m_blockchain.nettype() == cryptonote::FAKECHAIN)
     {
