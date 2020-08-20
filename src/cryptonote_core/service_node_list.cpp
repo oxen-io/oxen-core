@@ -1297,7 +1297,7 @@ namespace service_nodes
     {
       if (!pulse::get_round_timings(m_blockchain, height, timings))
       {
-        LOG_PRINT_L0("Failed to query the block data for Pulse timings to validate incoming block at height " << height);
+        MGINFO("Failed to query the block data for Pulse timings to validate incoming block at height " << height);
         return false;
       }
     }
@@ -1319,26 +1319,26 @@ namespace service_nodes
     {
       if (is_pulse_block(block))
       {
-        LOG_PRINT_L0("Pulse block received but only miner blocks are permitted\n" << dump_pulse_block_data(block, pulse_quorum.get()));
+        MGINFO("Pulse block received but only miner blocks are permitted\n" << dump_pulse_block_data(block, pulse_quorum.get()));
         return false;
       }
 
       if (block.pulse.round != 0)
       {
-        LOG_PRINT_L0("Miner block given but unexpectedly set round " << block.pulse.round <<  " on height " << height);
+        MGINFO("Miner block given but unexpectedly set round " << block.pulse.round <<  " on height " << height);
         return false;
       }
 
       if (block.pulse.validator_bitset != 0)
       {
         std::bitset<8 * sizeof(block.pulse.validator_bitset)> const bitset = block.pulse.validator_bitset;
-        LOG_PRINT_L0("Miner block given but unexpectedly set validator bitset " << bitset <<  " on height " << height);
+        MGINFO("Miner block given but unexpectedly set validator bitset " << bitset <<  " on height " << height);
         return false;
       }
 
       if (block.signatures.size())
       {
-        LOG_PRINT_L0("Miner block given but unexpectedly has " << block.signatures.size() <<  " signatures on height " << height);
+        MGINFO("Miner block given but unexpectedly has " << block.signatures.size() <<  " signatures on height " << height);
         return false;
       }
     }
@@ -1346,38 +1346,38 @@ namespace service_nodes
     {
       if (!is_pulse_block(block))
       {
-        LOG_PRINT_L0("Miner block received but only pulse blocks are permitted\n" << dump_pulse_block_data(block, pulse_quorum.get()));
+        MGINFO("Miner block received but only pulse blocks are permitted\n" << dump_pulse_block_data(block, pulse_quorum.get()));
         return false;
       }
 
       if (!pulse_quorum)
       {
-        LOG_PRINT_L0("Pulse block received but no Pulse quorum was available for this block\n" << dump_pulse_block_data(block, pulse_quorum.get()));
+        MGINFO("Pulse block received but no Pulse quorum was available for this block\n" << dump_pulse_block_data(block, pulse_quorum.get()));
         return false;
       }
 
       if (block.pulse.validator_bitset == 0)
       {
-        LOG_PRINT_L0("Pulse block given but unexpected empty validator bitset on height " << height);
+        MGINFO("Pulse block given but unexpected empty validator bitset on height " << height);
         return false;
       }
 
       if (block.signatures.size() != service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES)
       {
-        LOG_PRINT_L0("Pulseblock given but unexpectedly has the wrong number (" << block.signatures.size() <<  ") of signatures on height " << height);
+        MGINFO("Pulseblock given but unexpectedly has the wrong number (" << block.signatures.size() <<  ") of signatures on height " << height);
         return false;
       }
 
       if (block.nonce != 0)
       {
-        LOG_PRINT_L0("Pulse block specified a nonce when quorum block generation is available, nonce: " << block.nonce);
+        MGINFO("Pulse block specified a nonce when quorum block generation is available, nonce: " << block.nonce);
         return false;
       }
 
       if (block.pulse.validator_bitset >= (1 << PULSE_QUORUM_NUM_VALIDATORS))
       {
         auto mask = std::bitset<sizeof(pulse_validator_bit_mask()) * 8>(pulse_validator_bit_mask());
-        LOG_PRINT_L0("Pulse block specifies validator bitset out of bounds. Expected the bit mask " << mask << "\n" << dump_pulse_block_data(block, pulse_quorum.get()));
+        MGINFO("Pulse block specifies validator bitset out of bounds. Expected the bit mask " << mask << "\n" << dump_pulse_block_data(block, pulse_quorum.get()));
         return false;
       }
 
@@ -1388,7 +1388,7 @@ namespace service_nodes
                                                    cryptonote::get_block_hash(block),
                                                    block.signatures, block))
       {
-        LOG_PRINT_L0("Pulse signature verification failed: " << dump_pulse_block_data(block, pulse_quorum.get()));
+        MGINFO("Pulse signature verification failed: " << dump_pulse_block_data(block, pulse_quorum.get()));
         return false;
       }
     }
@@ -1398,13 +1398,13 @@ namespace service_nodes
       std::shared_ptr<const quorum> quorum = get_quorum(quorum_type::checkpointing, checkpoint->height);
       if (!quorum)
       {
-        LOG_PRINT_L0("Failed to get testing quorum checkpoint for block: " << cryptonote::get_block_hash(block));
+        MGINFO("Failed to get testing quorum checkpoint for block: " << cryptonote::get_block_hash(block));
         return false;
       }
 
       if (!service_nodes::verify_checkpoint(block.major_version, *checkpoint, *quorum))
       {
-        LOG_PRINT_L0("Service node checkpoint failed verification for block: " << cryptonote::get_block_hash(block));
+        MGINFO("Service node checkpoint failed verification for block: " << cryptonote::get_block_hash(block));
         return false;
       }
     }
