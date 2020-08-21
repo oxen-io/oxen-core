@@ -30,6 +30,7 @@
 
 #include "daemon_messages.h"
 #include "daemon_rpc_version.h"
+#include "miner/miner.h"
 #include "rpc_handler.h"
 #include "cryptonote_core/cryptonote_core.h"
 #include "cryptonote_protocol/cryptonote_protocol_handler.h"
@@ -50,7 +51,7 @@ class DaemonHandler : public RpcHandler
 {
   public:
 
-    DaemonHandler(cryptonote::core& c, t_p2p& p2p) : m_core(c), m_p2p(p2p) { }
+    DaemonHandler(cryptonote::core& c, t_p2p& p2p, cryptonote::miner& miner) : m_core(c), m_p2p(p2p), m_miner(miner) { }
 
     ~DaemonHandler() { }
 
@@ -142,6 +143,7 @@ class DaemonHandler : public RpcHandler
 
     cryptonote::core& m_core;
     t_p2p& m_p2p;
+		cryptonote::miner& m_miner;
 };
 
 }  // namespace rpc

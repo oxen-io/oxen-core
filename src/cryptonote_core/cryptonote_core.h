@@ -368,13 +368,6 @@ namespace cryptonote
      virtual crypto::hash on_transaction_relayed(const cryptonote::blobdata& tx);
 
      /**
-      * @brief gets the miner instance
-      *
-      * @return a reference to the miner instance
-      */
-     miner& get_miner(){return m_miner;}
-
-     /**
       * @brief adds command line options to the given options set
       *
       * As of now, there are no command line options specific to core,

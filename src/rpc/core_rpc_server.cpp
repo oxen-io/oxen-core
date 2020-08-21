@@ -51,6 +51,7 @@
 #include "cryptonote_basic/account.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
 #include "cryptonote_core/tx_sanity_check.h"
+#include "miner/miner.h"
 #include "misc_language.h"
 #include "net/parse.h"
 #include "crypto/hash.h"
@@ -217,6 +218,7 @@ namespace cryptonote { namespace rpc {
   core_rpc_server::core_rpc_server(
       core& cr
     , nodetool::node_server<cryptonote::t_cryptonote_protocol_handler<cryptonote::core> >& p2p
+    , miner& m_miner
     )
     : m_core(cr)
     , m_p2p(p2p)
@@ -1220,13 +1222,12 @@ namespace cryptonote { namespace rpc {
       return res;
     }
 
-    cryptonote::miner &miner= m_core.get_miner();
-    if (miner.is_mining())
+    if (m_miner.is_mining())
     {
       res.status = "Already mining";
       return res;
     }
-    if(!miner.start(info.address, static_cast<size_t>(req.threads_count)))
+    if(!m_miner.start(info.address, static_cast<size_t>(req.threads_count)))
     {
       res.status = "Failed, mining not started";
       LOG_PRINT_L0(res.status);
@@ -1241,14 +1242,13 @@ namespace cryptonote { namespace rpc {
     STOP_MINING::response res{};
 
     PERF_TIMER(on_stop_mining);
-    cryptonote::miner &miner= m_core.get_miner();
-    if(!miner.is_mining())
+    if(!m_miner.is_mining())
     {
       res.status = "Mining never started";
       LOG_PRINT_L0(res.status);
       return res;
     }
-    if(!miner.stop())
+    if(!m_miner.stop())
     {
       res.status = "Failed, mining not stopped";
       LOG_PRINT_L0(res.status);
@@ -1264,17 +1264,16 @@ namespace cryptonote { namespace rpc {
 
     PERF_TIMER(on_mining_status);
 
-    const miner& lMiner = m_core.get_miner();
-    res.active = lMiner.is_mining();
+    res.active = m_miner.is_mining();
     res.block_target = DIFFICULTY_TARGET_V2;
     res.difficulty = m_core.get_blockchain_storage().get_difficulty_for_next_block();
-    if ( lMiner.is_mining() ) {
-      res.speed = lMiner.get_speed();
-      res.threads_count = lMiner.get_threads_count();
-      res.block_reward = lMiner.get_block_reward();
+    if ( m_miner.is_mining() ) {
+      res.speed = m_miner.get_speed();
+      res.threads_count = m_miner.get_threads_count();
+      res.block_reward = m_miner.get_block_reward();
     }
-    const account_public_address& lMiningAdr = lMiner.get_mining_address();
-    if (lMiner.is_mining())
+    const account_public_address& lMiningAdr = m_miner.get_mining_address();
+    if (m_miner.is_mining())
       res.address = get_account_address_as_str(nettype(), false, lMiningAdr);
     const uint8_t major_version = m_core.get_blockchain_storage().get_current_hard_fork_version();
 
@@ -1382,9 +1381,9 @@ namespace cryptonote { namespace rpc {
     SET_LOG_HASH_RATE::response res{};
 
     PERF_TIMER(on_set_log_hash_rate);
-    if(m_core.get_miner().is_mining())
+    if(m_miner.is_mining())
     {
-      m_core.get_miner().do_print_hashrate(req.visible);
+      m_miner.do_print_hashrate(req.visible);
       res.status = STATUS_OK;
     }
     else

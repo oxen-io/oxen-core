@@ -40,6 +40,7 @@
 #include "bootstrap_daemon.h"
 #include "core_rpc_server_commands_defs.h"
 #include "cryptonote_core/cryptonote_core.h"
+#include "miner/miner.h"
 #include "p2p/net_node.h"
 #include "cryptonote_protocol/cryptonote_protocol_handler.h"
 
@@ -174,6 +175,7 @@ namespace cryptonote { namespace rpc {
     core_rpc_server(
         core& cr
       , nodetool::node_server<cryptonote::t_cryptonote_protocol_handler<cryptonote::core> >& p2p
+      , miner& m_miner
       );
 
     static void init_options(boost::program_options::options_description& desc, boost::program_options::options_description& hidden);
@@ -278,8 +280,7 @@ namespace cryptonote { namespace rpc {
 
     void on_debug_mine_n_blocks(std::string const &address, uint64_t num_blocks)
     {
-      cryptonote::miner &miner = m_core.get_miner();
-      if (miner.is_mining())
+      if (m_miner.is_mining())
       {
         std::cout << "Already mining";
         return;
@@ -294,7 +295,7 @@ namespace cryptonote { namespace rpc {
 
       for (uint64_t i = 0; i < num_blocks; i++)
       {
-        if(!miner.debug_mine_singular_block(info.address))
+        if(!m_miner.debug_mine_singular_block(info.address))
         {
           std::cout << "Failed, mining not started";
           return;
@@ -323,6 +324,7 @@ private:
     
     core& m_core;
     nodetool::node_server<cryptonote::t_cryptonote_protocol_handler<cryptonote::core> >& m_p2p;
+		miner& m_miner;
     std::shared_mutex m_bootstrap_daemon_mutex;
     std::atomic<bool> m_should_use_bootstrap_daemon;
     std::unique_ptr<bootstrap_daemon> m_bootstrap_daemon;

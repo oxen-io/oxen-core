@@ -74,6 +74,7 @@ target_link_libraries(rpc_server_base
 target_link_libraries(rpc
   PUBLIC
     cryptonote_core
+    miner
     rpc_commands
     rpc_server_base
     net
@@ -89,6 +90,7 @@ target_link_libraries(daemon_messages
   PRIVATE
     cryptonote_core
     cryptonote_protocol
+    miner
     version
     serialization
     extra)

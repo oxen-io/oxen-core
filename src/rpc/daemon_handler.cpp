@@ -430,7 +430,7 @@ namespace rpc
       return;
     }
 
-    if(!m_core.get_miner().start(info.address, static_cast<size_t>(req.threads_count)))
+    if(!m_miner.start(info.address, static_cast<size_t>(req.threads_count)))
     {
       res.error_details = "Failed, mining not started";
       LOG_PRINT_L0(res.error_details);
@@ -488,7 +488,7 @@ namespace rpc
 
   void DaemonHandler::handle(const StopMining::Request& req, StopMining::Response& res)
   {
-    if(!m_core.get_miner().stop())
+    if(!m_miner.stop())
     {
       res.error_details = "Failed, mining not stopped";
       LOG_PRINT_L0(res.error_details);
@@ -502,13 +502,12 @@ namespace rpc
 
   void DaemonHandler::handle(const MiningStatus::Request& req, MiningStatus::Response& res)
   {
-    const cryptonote::miner& lMiner = m_core.get_miner();
-    res.active = lMiner.is_mining();
+    res.active = m_miner.is_mining();
     
-    if ( lMiner.is_mining() ) {
-      res.speed = lMiner.get_speed();
-      res.threads_count = lMiner.get_threads_count();
-      const account_public_address& lMiningAdr = lMiner.get_mining_address();
+    if ( m_miner.is_mining() ) {
+      res.speed = m_miner.get_speed();
+      res.threads_count = m_miner.get_threads_count();
+      const account_public_address& lMiningAdr = m_miner.get_mining_address();
       res.address = get_account_address_as_str(m_core.get_nettype(), false, lMiningAdr);
     }
 

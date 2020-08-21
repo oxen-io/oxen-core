@@ -32,8 +32,7 @@ add_library(cryptonote_basic
   cryptonote_basic_impl.cpp
   cryptonote_format_utils.cpp
   difficulty.cpp
-  hardfork.cpp
-        ../miner/miner.cpp)
+  hardfork.cpp)
 
 target_link_libraries(cryptonote_basic
   PRIVATE

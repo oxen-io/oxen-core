@@ -385,7 +385,6 @@ namespace cryptonote
 #endif
     command_line::add_arg(desc, arg_lmq_quorumnet_public);
 
-    miner::init_options(desc);
     BlockchainDB::init_options(desc);
   }
   //-----------------------------------------------------------------------------------------------
@@ -866,8 +865,6 @@ namespace cryptonote
 
     MGINFO("Loading checkpoints");
     CHECK_AND_ASSERT_MES(update_checkpoints_from_json_file(), false, "One or more checkpoints loaded from json conflicted with existing checkpoints.");
-
-    CHECK_AND_ASSERT_MES(r, false, "Failed to initialize miner instance");
 
     if (!keep_alt_blocks && !m_blockchain_storage.get_db().is_read_only())
       m_blockchain_storage.get_db().drop_alt_blocks();
