@@ -80,13 +80,6 @@ namespace service_nodes
     return result;
   }
 
-  static constexpr service_node_info::version_t get_min_service_node_info_version_for_hf(uint8_t hf_version)
-  {
-    return hf_version < cryptonote::network_version_14_blink
-      ? service_node_info::version_t::v2_ed25519
-      : service_node_info::version_t::v3_quorumnet;
-  }
-
   service_node_list::service_node_list(cryptonote::Blockchain &blockchain)
   : m_blockchain(blockchain) // Warning: don't touch `blockchain`, it gets initialized *after* us
   , m_service_node_keys(nullptr)
@@ -958,7 +951,6 @@ namespace service_nodes
     info.last_reward_transaction_index = index;
     info.swarm_id                      = UNASSIGNED_SWARM_ID;
     info.last_ip_change_height         = block_height;
-    info.version                       = get_min_service_node_info_version_for_hf(hf_version);
 
     for (size_t i = 0; i < contributor_args.addresses.size(); i++)
     {
