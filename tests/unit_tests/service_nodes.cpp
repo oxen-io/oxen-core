@@ -46,16 +46,7 @@ TEST(service_nodes, staking_requirement)
   {
     uint64_t height = 100;
     uint64_t mainnet_requirement   = service_nodes::get_staking_requirement(cryptonote::MAINNET, height, cryptonote::network_version_8);
-    uint64_t stagenet_requirement  = service_nodes::get_staking_requirement(cryptonote::STAGENET, height, cryptonote::network_version_8);
-    ASSERT_EQ(stagenet_requirement, (45000 * COIN));
     ASSERT_EQ(mainnet_requirement,  (45000 * COIN));
-  }
-
-  // Starting height for stagenet
-  {
-    uint64_t height = 96210;
-    uint64_t stagenet_requirement  = service_nodes::get_staking_requirement(cryptonote::STAGENET, height, cryptonote::network_version_8);
-    ASSERT_EQ(stagenet_requirement, (45000 * COIN));
   }
 
   // Starting height for mainnet
@@ -64,13 +55,8 @@ TEST(service_nodes, staking_requirement)
     // so casting is safe.
     uint64_t height = 101250;
     int64_t mainnet_requirement  = (int64_t)service_nodes::get_staking_requirement(cryptonote::MAINNET, height, cryptonote::network_version_9_service_nodes);
-    int64_t stagenet_requirement = (int64_t)service_nodes::get_staking_requirement(cryptonote::STAGENET, height, cryptonote::network_version_9_service_nodes);
 
     ASSERT_EQ(mainnet_requirement,  (45000 * COIN));
-
-    int64_t stagenet_expected = (int64_t)((44069 * COIN) + 151880000);
-    int64_t stagenet_delta    = std::abs(stagenet_requirement - stagenet_expected);
-    ASSERT_LT(stagenet_delta, atomic_epsilon);
   }
 
   // Check the requirements are decreasing

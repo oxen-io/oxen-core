@@ -30,7 +30,7 @@
 
 
 #include "wallet/api/wallet2_api.h"
-#include "net/http_client.h"
+#include "rpc/http_client.h"
 #include <string>
 
 namespace Monero {
@@ -81,7 +81,7 @@ public:
     bool queryWalletDevice(Wallet::Device& device_type, const std::string &keys_file_name, const std::string &password, uint64_t kdf_rounds = 1) const override;
     std::vector<std::string> findWallets(const std::string &path) override;
     std::string errorString() const override;
-    void setDaemonAddress(const std::string &address) override;
+    void setDaemonAddress(std::string address) override;
     bool connected(uint32_t *version = NULL) override;
     uint64_t blockchainHeight() override;
     uint64_t blockchainTargetHeight() override;
@@ -96,7 +96,7 @@ public:
 private:
     WalletManagerImpl() {}
     friend struct WalletManagerFactory;
-    epee::net_utils::http::http_simple_client m_http_client;
+    cryptonote::rpc::http_client m_http_client;
     std::string m_errorString;
 };
 

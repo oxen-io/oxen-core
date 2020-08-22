@@ -116,10 +116,14 @@ public: \
   template<typename T> inline void serialize_default(const T &t, T v) { }
   template<typename T, typename S> inline void serialize_default(T &t, S &&v) { t = std::forward<S>(v); }
 
+  template <typename T1, typename T2, typename = void> constexpr bool is_comparable = false;
+  template <typename T1, typename T2> constexpr bool is_comparable<T1, T2, std::void_t<decltype(std::declval<T1>() == std::declval<T2>())>> = true;
+
 #define KV_SERIALIZE_OPT_N(variable, val_name, default_value) \
   do { \
-    if (is_store && this_ref.variable == default_value) \
-      break; \
+    if constexpr (epee::is_comparable<decltype(this_ref.variable), decltype(default_value)>) \
+      if (is_store && this_ref.variable == default_value) \
+          break; \
     if (!epee::serialization::perform_serialize<is_store>(this_ref.variable, stg, parent_section, val_name)) \
       epee::serialize_default(this_ref.variable, default_value); \
   } while (0);

@@ -971,23 +971,20 @@ namespace cryptonote
      return construct_tx_and_get_tx_key(sender_account_keys, subaddresses, sources, destinations_copy, change_addr, extra, tx, unlock_time, tx_key, additional_tx_keys, rct_config, NULL, tx_params);
   }
   //---------------------------------------------------------------
-  bool generate_genesis_block(
-      block& bl
-    , std::string_view genesis_tx_hex
-    , uint32_t nonce
-    )
+  bool generate_genesis_block(block& bl, network_type nettype)
   {
+      const auto& conf = get_config(nettype);
     //genesis block
     bl = {};
 
-    CHECK_AND_ASSERT_MES(lokimq::is_hex(genesis_tx_hex), false, "failed to parse coinbase tx from hard coded blob");
-    std::string tx_bl = lokimq::from_hex(genesis_tx_hex);
+    CHECK_AND_ASSERT_MES(lokimq::is_hex(conf.GENESIS_TX), false, "failed to parse coinbase tx from hard coded blob");
+    std::string tx_bl = lokimq::from_hex(conf.GENESIS_TX);
     bool r = parse_and_validate_tx_from_blob(tx_bl, bl.miner_tx);
     CHECK_AND_ASSERT_MES(r, false, "failed to parse coinbase tx from hard coded blob");
     bl.major_version = 7;
     bl.minor_version = 7;
     bl.timestamp = 0;
-    bl.nonce = nonce;
+    bl.nonce = conf.GENESIS_NONCE;
     miner::find_nonce_for_given_block([](const cryptonote::block &b, uint64_t height, unsigned int threads, crypto::hash &hash){
       hash = cryptonote::get_block_longhash(cryptonote::randomx_longhash_context(NULL, b, height), b, height, threads);
       return true;

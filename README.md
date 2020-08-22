@@ -52,6 +52,7 @@ library archives (`.a`).
 | sqlite3      | ?             | YES      | `libsqlite3-dev`      | `sqlite`     | `sqlite-devel`      | NO       | Loki Name System |
 | libunbound   | 1.4.16        | NO       | `libunbound-dev`      | `unbound`    | `unbound-devel`     | NO       | DNS resolver     |
 | libsodium    | 1.0.9         | YES      | `libsodium-dev`       | `libsodium`  | `libsodium-devel`   | NO       | cryptography     |
+| libuv (Win)  | any           | NO       | (Windows only)        | --           | --                  | NO       | RPC event loop   |
 | libunwind    | any           | NO       | `libunwind8-dev`      | `libunwind`  | `libunwind-devel`   | YES      | Stack traces     |
 | liblzma      | any           | NO       | `liblzma-dev`         | `xz`         | `xz-devel`          | YES      | For libunwind    |
 | libreadline  | 6.3.0         | NO       | `libreadline-dev`     | `readline`   | `readline-devel`    | YES      | Input editing    |

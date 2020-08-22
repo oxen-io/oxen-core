@@ -112,6 +112,24 @@ namespace crypto {
     tree_hash(reinterpret_cast<const char (*)[HASH_SIZE]>(hashes), count, reinterpret_cast<char *>(&root_hash));
   }
 
+  constexpr size_t SIZE_TS_IN_HASH = sizeof(crypto::hash) / sizeof(size_t);
+  static_assert(SIZE_TS_IN_HASH * sizeof(size_t) == sizeof(crypto::hash) && alignof(crypto::hash) >= alignof(size_t),
+      "Expected crypto::hash size/alignment not satisfied");
+
+  // Combine hashes together via XORs.
+  inline crypto::hash& operator^=(crypto::hash& a, const crypto::hash& b) {
+    size_t (&dest)[SIZE_TS_IN_HASH] = reinterpret_cast<size_t (&)[SIZE_TS_IN_HASH]>(a);
+    const size_t (&src)[SIZE_TS_IN_HASH] = reinterpret_cast<const size_t (&)[SIZE_TS_IN_HASH]>(b);
+    for (size_t i = 0; i < SIZE_TS_IN_HASH; ++i)
+      dest[i] ^= src[i];
+    return a;
+  }
+  inline crypto::hash operator^(const crypto::hash& a, const crypto::hash& b) {
+    crypto::hash c = a;
+    c ^= b;
+    return c;
+  }
+
   inline std::ostream &operator <<(std::ostream &o, const crypto::hash &v) {
     epee::to_hex::formatted(o, epee::as_byte_span(v)); return o;
   }
@@ -119,8 +137,8 @@ namespace crypto {
     epee::to_hex::formatted(o, epee::as_byte_span(v)); return o;
   }
 
-  constexpr static crypto::hash null_hash = {};
-  constexpr static crypto::hash8 null_hash8 = {};
+  constexpr inline crypto::hash null_hash = {};
+  constexpr inline crypto::hash8 null_hash8 = {};
 }
 
 CRYPTO_MAKE_HASHABLE(hash)

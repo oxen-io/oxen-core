@@ -50,9 +50,7 @@
 #include <regex>
 #include <boost/lexical_cast.hpp>
 #include <boost/program_options.hpp>
-#include <boost/algorithm/string.hpp>
 #include <boost/format.hpp>
-#include <boost/range/adaptor/transformed.hpp>
 #include <lokimq/hex.h>
 #include "include_base_utils.h"
 #include "console_handler.h"
@@ -70,7 +68,6 @@
 #include "cryptonote_core/loki_name_system.h"
 #include "simplewallet.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
-#include "storages/http_abstract_invoke.h"
 #include "rpc/core_rpc_server_commands_defs.h"
 #include "crypto/crypto.h"  // for crypto::secret_key definition
 #include "mnemonics/electrum-words.h"
@@ -1328,7 +1325,7 @@ bool simple_wallet::import_multisig_main(const std::vector<std::string> &args, b
 bool simple_wallet::accept_loaded_tx(const tools::wallet2::multisig_tx_set &txs)
 {
   std::string extra_message;
-  return accept_loaded_tx([&txs](){return txs.m_ptx.size();}, [&txs](size_t n)->const tools::wallet2::tx_construction_data&{return txs.m_ptx[n].construction_data;}, extra_message);
+  return accept_loaded_tx([&txs](){return txs.m_ptx.size();}, [&txs](size_t n)->const wallet::tx_construction_data&{return txs.m_ptx[n].construction_data;}, extra_message);
 }
 
 bool simple_wallet::sign_multisig(const std::vector<std::string> &args)
@@ -2086,7 +2083,7 @@ bool simple_wallet::frozen(const std::vector<std::string> &args)
     {
       if (!m_wallet->frozen(i))
         continue;
-      const tools::wallet2::transfer_details &td = m_wallet->get_transfer_details(i);
+      const auto& td = m_wallet->get_transfer_details(i);
       message_writer() << tr("Frozen: ") << td.m_key_image << " " << cryptonote::print_money(td.amount());
     }
   }
@@ -3172,12 +3169,12 @@ Pending or Failed: "failed"|"pending",  "out", Lock, Checkpointed, Time, Amount*
   m_cmd_binder.set_handler("lns_buy_mapping",
                            [this](const auto& x) { return lns_buy_mapping(x); },
                            tr(USAGE_LNS_BUY_MAPPING),
-                           tr(tools::wallet_rpc::COMMAND_RPC_LNS_BUY_MAPPING::description));
+                           tr(tools::wallet_rpc::LNS_BUY_MAPPING::description));
 
   m_cmd_binder.set_handler("lns_update_mapping",
                            [this](const auto& x) { return lns_update_mapping(x); },
                            tr(USAGE_LNS_UPDATE_MAPPING),
-                           tr(tools::wallet_rpc::COMMAND_RPC_LNS_UPDATE_MAPPING::description));
+                           tr(tools::wallet_rpc::LNS_UPDATE_MAPPING::description));
 
   m_cmd_binder.set_handler("lns_print_owners_to_names",
                            [this](const auto& x) { return lns_print_owners_to_names(x); },
@@ -3192,12 +3189,14 @@ Pending or Failed: "failed"|"pending",  "out", Lock, Checkpointed, Time, Amount*
   m_cmd_binder.set_handler("lns_make_update_mapping_signature",
                            [this](const auto& x) { return lns_make_update_mapping_signature(x); },
                            tr(USAGE_LNS_MAKE_UPDATE_MAPPING_SIGNATURE),
-                           tr(tools::wallet_rpc::COMMAND_RPC_LNS_MAKE_UPDATE_SIGNATURE::description));
+                           tr(tools::wallet_rpc::LNS_MAKE_UPDATE_SIGNATURE::description));
 }
 
 simple_wallet::~simple_wallet()
 {
-  if (m_wallet) m_wallet->m_long_poll_disabled = true;
+  if (m_wallet) {
+    m_wallet->cancel_long_poll();
+  }
   if (m_long_poll_thread.joinable())
       m_long_poll_thread.join();
 }
@@ -3488,14 +3487,20 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
 {
   LOKI_DEFER { m_electrum_seed.wipe(); };
 
-  const bool testnet = tools::wallet2::has_testnet_option(vm);
-  const bool stagenet = tools::wallet2::has_stagenet_option(vm);
-  if (testnet && stagenet)
+  if (auto deprecations = tools::wallet2::has_deprecated_options(vm); !deprecations.empty())
   {
-    fail_msg_writer() << tr("Can't specify more than one of --testnet and --stagenet");
+    for (auto msg : deprecations)
+      message_writer(epee::console_color_red, true) << tr("Warning: option is deprecated and will be removed in the future: ") << msg;
+  }
+
+  const bool testnet = tools::wallet2::has_testnet_option(vm);
+  const bool devnet = tools::wallet2::has_devnet_option(vm);
+  if (testnet && devnet)
+  {
+    fail_msg_writer() << tr("Can't specify more than one of --testnet and --devnet");
     return false;
   }
-  network_type const nettype = testnet ? TESTNET : stagenet ? STAGENET : MAINNET;
+  network_type const nettype = testnet ? TESTNET : devnet ? DEVNET : MAINNET;
 
   epee::wipeable_string multisig_keys;
   epee::wipeable_string password;
@@ -4070,20 +4075,21 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
 
   if (!m_wallet->is_trusted_daemon())
   {
-    message_writer(epee::console_color_red, true) << (boost::format(tr("Warning: using an untrusted daemon at %s")) % m_wallet->get_daemon_address()).str();
-    message_writer(epee::console_color_red, true) << boost::format(tr("Using a third party daemon can be detrimental to your security and privacy"));
+    message_writer(epee::console_color_yellow, true) << (boost::format(tr("Warning: using an untrusted daemon at %s")) % m_wallet->get_daemon_address()).str();
+    message_writer(epee::console_color_yellow, true) << tr("Using a third party daemon can be detrimental to your security and privacy");
     bool ssl = false;
-    if (m_wallet->check_connection(NULL, &ssl) && !ssl)
-      message_writer(epee::console_color_red, true) << boost::format(tr("Using your own without SSL exposes your RPC traffic to monitoring"));
-    message_writer(epee::console_color_red, true) << boost::format(tr("You are strongly encouraged to connect to the Loki network using your own daemon"));
-    message_writer(epee::console_color_red, true) << boost::format(tr("If you or someone you trust are operating this daemon, you can use --trusted-daemon"));
+    if (m_wallet->check_connection(nullptr, &ssl) && !ssl)
+      message_writer(epee::console_color_yellow, true) << tr("Using your own without SSL exposes your RPC traffic to monitoring");
+    message_writer(epee::console_color_yellow, true) << tr("You are strongly encouraged to connect to the Loki network using your own daemon");
+    message_writer(epee::console_color_yellow, true) << tr("If you or someone you trust are operating this daemon, you can use --trusted-daemon");
+    message_writer();
 
     cryptonote::rpc::GET_INFO::request req;
     cryptonote::rpc::GET_INFO::response res;
     bool r = m_wallet->invoke_http<rpc::GET_INFO>(req, res);
     std::string err = interpret_rpc_response(r, res.status);
     if (r && err.empty() && (res.was_bootstrap_ever_used || !res.bootstrap_daemon_address.empty()))
-      message_writer(epee::console_color_red, true) << boost::format(tr("Moreover, a daemon is also less secure when running in bootstrap mode"));
+      message_writer(epee::console_color_yellow, true) << tr("Moreover, a daemon is also less secure when running in bootstrap mode");
   }
 
   if (m_wallet->get_ring_database().empty())
@@ -4152,12 +4158,22 @@ bool simple_wallet::try_connect_to_daemon(bool silent, rpc::version_t* version)
   rpc::version_t version_{};
   if (!version)
     version = &version_;
-  if (!m_wallet->check_connection(version))
-  {
+  bool good = false;
+  bool threw = false;
+  constexpr const char* bad_msg = "Check the port and daemon address; if incorrect you can use the 'set_daemon' command or '--daemon-address' option to change them.";
+  try {
+    good = m_wallet->check_connection(version, nullptr, !silent);
+  } catch (const std::exception& e) {
+    threw = true;
     if (!silent)
-      fail_msg_writer() << tr("wallet failed to connect to daemon: ") << m_wallet->get_daemon_address() << ". " <<
-        tr("Daemon either is not started or wrong port was passed. "
-        "Please make sure daemon is running or change the daemon address using the 'set_daemon' command.");
+      fail_msg_writer() << tr("wallet failed to connect to daemon at ") << m_wallet->get_daemon_address() << ": " << e.what() << ".\n"
+        << tr(bad_msg);
+  }
+  if (!good)
+  {
+    if (!silent && !threw)
+      // If we get here, the above didn't throw, which means we connected and got a response but the daemon returned a non-okay status
+      fail_msg_writer() << tr("wallet got bad status from daemon at ") << m_wallet->get_daemon_address() << ".\n" << tr(bad_msg);
     return false;
   }
   if (!m_allow_mismatched_daemon_version && version->first != rpc::VERSION.first)
@@ -4733,51 +4749,41 @@ bool simple_wallet::set_daemon(const std::vector<std::string>& args)
     return true;
   }
 
-  std::regex rgx{R"((?:.*://)?(?:[A-Za-z0-9.-]+|\[[0-9a-fA-F:.]+\])(:[0-9]+)?)"};
-  //                 proto       hostname/ipv4       [ipv6]         :port
-  std::smatch match;
-  if (std::regex_match(args[0], match, rgx))
-  {
-    daemon_url = args[0];
-    // If no port has been provided append the default from config
-    if (!match[1].matched)
-    {
-      int daemon_port = get_config(m_wallet->nettype()).RPC_DEFAULT_PORT;
-      daemon_url += ':';
-      daemon_url += std::to_string(daemon_port);
-    }
-    LOCK_IDLE_SCOPE();
-    m_wallet->init(daemon_url);
+  bool is_local = false;
+  try {
+    auto [proto, host, port, uri] = rpc::http_client::parse_url(args[0]);
+    if (proto.empty())
+      proto = "http";
+    if (port == 0)
+      port = get_config(m_wallet->nettype()).RPC_DEFAULT_PORT;
+    daemon_url = std::move(proto) + "://" + host + ":" + std::to_string(port) + uri;
+    is_local = tools::is_local_address(host);
+  } catch (const std::exception& e) {
+    fail_msg_writer() << tr("This does not seem to be a valid daemon URL; enter a URL such as: http://example.com:1234");
+    return false;
+  }
 
-    if (args.size() == 2)
-    {
-      if (args[1] == "trusted")
-        m_wallet->set_trusted_daemon(true);
-      else if (args[1] == "untrusted")
-        m_wallet->set_trusted_daemon(false);
-      else
-      {
-        fail_msg_writer() << tr("Expected trusted or untrusted, got ") << args[1] << ": assuming untrusted";
-        m_wallet->set_trusted_daemon(false);
-      }
-    }
+  LOCK_IDLE_SCOPE();
+  m_wallet->init(daemon_url);
+
+  if (args.size() == 2)
+  {
+    if (args[1] == "trusted")
+      m_wallet->set_trusted_daemon(true);
+    else if (args[1] == "untrusted")
+      m_wallet->set_trusted_daemon(false);
     else
     {
+      fail_msg_writer() << tr("Expected trusted or untrusted, got ") << args[1] << ": assuming untrusted";
       m_wallet->set_trusted_daemon(false);
-      try
-      {
-        if (tools::is_local_address(m_wallet->get_daemon_address()))
-        {
-          MINFO(tr("Daemon is local, assuming trusted"));
-          m_wallet->set_trusted_daemon(true);
-        }
-      }
-      catch (const std::exception &e) { }
     }
-    success_msg_writer() << boost::format("Daemon set to %s, %s") % daemon_url % (m_wallet->is_trusted_daemon() ? tr("trusted") : tr("untrusted"));
-  } else {
-    fail_msg_writer() << tr("This does not seem to be a valid daemon URL.");
   }
+  else if (is_local)
+  {
+    MINFO(tr("Daemon is local, assuming trusted"));
+    m_wallet->set_trusted_daemon(true);
+  }
+  success_msg_writer() << "Daemon set to " << daemon_url << ", " << tr(m_wallet->is_trusted_daemon() ? "trusted" : "untrusted");
   return true;
 }
 //----------------------------------------------------------------------------------------------------
@@ -4826,7 +4832,7 @@ void simple_wallet::on_money_received(uint64_t height, const crypto::hash &txid,
       tr("idx ") << subaddr_index;
   }
 
-  const uint64_t warn_height = m_wallet->nettype() == TESTNET ? 1000000 : m_wallet->nettype() == STAGENET ? 50000 : 1650000;
+  const uint64_t warn_height = m_wallet->nettype() == TESTNET ? 1000000 : m_wallet->nettype() == DEVNET ? 0 : 1650000;
   if (height >= warn_height)
   {
     std::vector<tx_extra_field> tx_extra_fields;
@@ -5126,13 +5132,13 @@ bool simple_wallet::show_balance_unlocked(bool detailed)
     return true;
   success_msg_writer() << tr("Balance per address:");
   success_msg_writer() << boost::format("%15s %21s %21s %7s %21s") % tr("Address") % tr("Balance") % tr("Unlocked balance") % tr("Outputs") % tr("Label");
-  std::vector<tools::wallet2::transfer_details> transfers;
+  std::vector<wallet::transfer_details> transfers;
   m_wallet->get_transfers(transfers);
   for (const auto& i : balance_per_subaddress)
   {
     cryptonote::subaddress_index subaddr_index = {m_current_subaddress_account, i.first};
     std::string address_str = m_wallet->get_subaddress_as_str(subaddr_index).substr(0, 6);
-    uint64_t num_unspent_outputs = std::count_if(transfers.begin(), transfers.end(), [&subaddr_index](const tools::wallet2::transfer_details& td) { return !td.m_spent && td.m_subaddr_index == subaddr_index; });
+    uint64_t num_unspent_outputs = std::count_if(transfers.begin(), transfers.end(), [&subaddr_index](const wallet::transfer_details& td) { return !td.m_spent && td.m_subaddr_index == subaddr_index; });
     success_msg_writer() << boost::format(tr("%8u %6s %21s %21s %7u %21s")) % i.first % address_str % print_money(i.second) % print_money(unlocked_balance_per_subaddress[i.first].first) % num_unspent_outputs % m_wallet->get_subaddress_label(subaddr_index);
   }
   return true;
@@ -5460,7 +5466,7 @@ bool simple_wallet::process_ring_members(const std::vector<tools::wallet2::pendi
   for (size_t n = 0; n < ptx_vector.size(); ++n)
   {
     const cryptonote::transaction& tx = ptx_vector[n].tx;
-    const tools::wallet2::tx_construction_data& construction_data = ptx_vector[n].construction_data;
+    const wallet::tx_construction_data& construction_data = ptx_vector[n].construction_data;
     if (verbose)
       ostr << boost::format(tr("\nTransaction %llu/%llu: txid=%s")) % (n + 1) % ptx_vector.size() % cryptonote::get_transaction_hash(tx);
     // for each input
@@ -5471,7 +5477,7 @@ bool simple_wallet::process_ring_members(const std::vector<tools::wallet2::pendi
       if (!std::holds_alternative<cryptonote::txin_to_key>(tx.vin[i]))
         continue;
       const cryptonote::txin_to_key& in_key = std::get<cryptonote::txin_to_key>(tx.vin[i]);
-      const tools::wallet2::transfer_details &td = m_wallet->get_transfer_details(construction_data.selected_transfers[i]);
+      const wallet::transfer_details &td = m_wallet->get_transfer_details(construction_data.selected_transfers[i]);
       const cryptonote::tx_source_entry *sptr = NULL;
       for (const auto &src: construction_data.sources)
         if (src.outputs[src.real_output].second.dest == td.get_public_key())
@@ -6259,11 +6265,10 @@ bool simple_wallet::query_locked_stakes(bool print_result)
   std::string msg_buf;
   {
     using namespace cryptonote;
-    std::optional<std::string> failed;
-    const std::vector<rpc::GET_SERVICE_NODES::response::entry> response = m_wallet->get_all_service_nodes(failed);
-    if (failed)
+    auto [success, response] = m_wallet->get_all_service_nodes();
+    if (!success)
     {
-      fail_msg_writer() << *failed;
+      fail_msg_writer() << "Connection to daemon failed when requesting full service node list";
       return has_locked_stakes;
     }
 
@@ -6332,12 +6337,10 @@ bool simple_wallet::query_locked_stakes(bool print_result)
   }
 
   {
-    using namespace cryptonote;
-    std::optional<std::string> failed;
-    const std::vector<rpc::GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES::entry> response = m_wallet->get_service_node_blacklisted_key_images(failed);
-    if (failed)
+    auto [success, response] = m_wallet->get_service_node_blacklisted_key_images();
+    if (!success)
     {
-      fail_msg_writer() << *failed;
+      fail_msg_writer() << "Connection to daemon failed when retrieving blacklisted key images";
       return has_locked_stakes;
     }
 
@@ -6693,11 +6696,10 @@ bool simple_wallet::lns_print_name_to_owners(const std::vector<std::string>& arg
   rpc::LNS_NAMES_TO_OWNERS::request_entry &entry = request.entries.back();
   if (entry.types.empty()) entry.types.push_back(static_cast<uint16_t>(lns::mapping_type::session));
 
-  std::optional<std::string> failed;
-  std::vector<rpc::LNS_NAMES_TO_OWNERS::response_entry> response = m_wallet->lns_names_to_owners(request, failed);
-  if (failed)
+  auto [success, response] = m_wallet->lns_names_to_owners(request);
+  if (!success)
   {
-    fail_msg_writer() << *failed;
+    fail_msg_writer() << "Connection to daemon failed when requesting LNS owners";
     return false;
   }
 
@@ -6733,7 +6735,6 @@ bool simple_wallet::lns_print_owners_to_names(const std::vector<std::string>& ar
   if (!try_connect_to_daemon())
     return false;
 
-  std::optional<std::string> failed;
   std::vector<std::vector<cryptonote::rpc::LNS_OWNERS_TO_NAMES::response_entry>> rpc_results;
   std::vector<cryptonote::rpc::LNS_OWNERS_TO_NAMES::request> requests(1);
 
@@ -6771,10 +6772,10 @@ bool simple_wallet::lns_print_owners_to_names(const std::vector<std::string>& ar
   rpc_results.reserve(requests.size());
   for (auto const &request : requests)
   {
-    std::vector<cryptonote::rpc::LNS_OWNERS_TO_NAMES::response_entry> result = m_wallet->lns_owners_to_names(request, failed);
-    if (failed)
+    auto [success, result] = m_wallet->lns_owners_to_names(request);
+    if (!success)
     {
-      fail_msg_writer() << *failed;
+      fail_msg_writer() << "Connection to daemon failed when requesting LNS names";
       return false;
     }
     rpc_results.emplace_back(std::move(result));
@@ -7384,7 +7385,7 @@ bool simple_wallet::sweep_below(const std::vector<std::string> &args_)
   return sweep_main(m_current_subaddress_account, below, Transfer::Normal, std::vector<std::string>(++args_.begin(), args_.end()));
 }
 //----------------------------------------------------------------------------------------------------
-bool simple_wallet::accept_loaded_tx(const std::function<size_t()> get_num_txes, const std::function<const tools::wallet2::tx_construction_data&(size_t)> &get_tx, const std::string &extra_message)
+bool simple_wallet::accept_loaded_tx(const std::function<size_t()> get_num_txes, const std::function<const wallet::tx_construction_data&(size_t)> &get_tx, const std::string &extra_message)
 {
   // gather info to ask the user
   uint64_t amount = 0, amount_to_dests = 0, change = 0;
@@ -7394,7 +7395,7 @@ bool simple_wallet::accept_loaded_tx(const std::function<size_t()> get_num_txes,
   std::string payment_id_string = "";
   for (size_t n = 0; n < get_num_txes(); ++n)
   {
-    const tools::wallet2::tx_construction_data &cd = get_tx(n);
+    const wallet::tx_construction_data &cd = get_tx(n);
 
     std::vector<tx_extra_field> tx_extra_fields;
     bool has_encrypted_payment_id = false;
@@ -7536,7 +7537,7 @@ bool simple_wallet::accept_loaded_tx(const tools::wallet2::unsigned_tx_set &txs)
   std::string extra_message;
   if (!txs.transfers.second.empty())
     extra_message = (boost::format("%u outputs to import. ") % (unsigned)txs.transfers.second.size()).str();
-  return accept_loaded_tx([&txs](){return txs.txes.size();}, [&txs](size_t n)->const tools::wallet2::tx_construction_data&{return txs.txes[n];}, extra_message);
+  return accept_loaded_tx([&txs](){return txs.txes.size();}, [&txs](size_t n)->const wallet::tx_construction_data&{return txs.txes[n];}, extra_message);
 }
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::accept_loaded_tx(const tools::wallet2::signed_tx_set &txs)
@@ -7544,7 +7545,7 @@ bool simple_wallet::accept_loaded_tx(const tools::wallet2::signed_tx_set &txs)
   std::string extra_message;
   if (!txs.key_images.empty())
     extra_message = (boost::format("%u key images to import. ") % (unsigned)txs.key_images.size()).str();
-  return accept_loaded_tx([&txs](){return txs.ptx.size();}, [&txs](size_t n)->const tools::wallet2::tx_construction_data&{return txs.ptx[n].construction_data;}, extra_message);
+  return accept_loaded_tx([&txs](){return txs.ptx.size();}, [&txs](size_t n)->const wallet::tx_construction_data&{return txs.ptx[n].construction_data;}, extra_message);
 }
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::sign_transfer(const std::vector<std::string> &args_)
@@ -8222,7 +8223,7 @@ static bool parse_get_transfers_args(std::vector<std::string>& local_args, tools
 }
 //----------------------------------------------------------------------------------------------------
 // mutates local_args as it parses and consumes arguments
-bool simple_wallet::get_transfers(std::vector<std::string>& local_args, std::vector<tools::transfer_view>& transfers)
+bool simple_wallet::get_transfers(std::vector<std::string>& local_args, std::vector<wallet::transfer_view>& transfers)
 {
   tools::wallet2::get_transfers_args_t args = {};
   if (!parse_get_transfers_args(local_args, args))
@@ -8247,7 +8248,7 @@ bool simple_wallet::show_transfers(const std::vector<std::string> &args_)
 
   LOCK_IDLE_SCOPE();
 
-  std::vector<tools::transfer_view> all_transfers;
+  std::vector<wallet::transfer_view> all_transfers;
 
   if (!get_transfers(local_args, all_transfers))
     return true;
@@ -8279,12 +8280,12 @@ bool simple_wallet::show_transfers(const std::vector<std::string> &args_)
     {
       switch (transfer.pay_type)
       {
-        case tools::pay_type::in:           color = epee::console_color_green; break;
-        case tools::pay_type::out:          color = epee::console_color_yellow; break;
-        case tools::pay_type::miner:        color = epee::console_color_cyan; break;
-        case tools::pay_type::governance:   color = epee::console_color_cyan; break;
-        case tools::pay_type::stake:        color = epee::console_color_blue; break;
-        case tools::pay_type::service_node: color = epee::console_color_cyan; break;
+        case wallet::pay_type::in:           color = epee::console_color_green; break;
+        case wallet::pay_type::out:          color = epee::console_color_yellow; break;
+        case wallet::pay_type::miner:        color = epee::console_color_cyan; break;
+        case wallet::pay_type::governance:   color = epee::console_color_cyan; break;
+        case wallet::pay_type::stake:        color = epee::console_color_blue; break;
+        case wallet::pay_type::service_node: color = epee::console_color_cyan; break;
         default:                            color = epee::console_color_magenta; break;
       }
     }
@@ -8301,10 +8302,10 @@ bool simple_wallet::show_transfers(const std::vector<std::string> &args_)
         if (!destinations.empty())
           destinations += ", ";
 
-        if (transfer.pay_type == tools::pay_type::in ||
-            transfer.pay_type == tools::pay_type::governance ||
-            transfer.pay_type == tools::pay_type::service_node ||
-            transfer.pay_type == tools::pay_type::miner)
+        if (transfer.pay_type == wallet::pay_type::in ||
+            transfer.pay_type == wallet::pay_type::governance ||
+            transfer.pay_type == wallet::pay_type::service_node ||
+            transfer.pay_type == wallet::pay_type::miner)
           destinations += output.address.substr(0, 6);
         else
           destinations += output.address;
@@ -8314,9 +8315,13 @@ bool simple_wallet::show_transfers(const std::vector<std::string> &args_)
     }
 
 
+    std::vector<uint32_t> subaddr_minors;
+    std::transform(transfer.subaddr_indices.begin(), transfer.subaddr_indices.end(), std::back_inserter(subaddr_minors),
+        [](const auto& index) { return index.minor; });
+
     message_writer(color, false) << formatter
       % (transfer.type.size() ? transfer.type : (transfer.height == 0 && transfer.blink_mempool) ? "blink" : std::to_string(transfer.height))
-      % tools::pay_type_string(transfer.pay_type)
+      % wallet::pay_type_string(transfer.pay_type)
       % transfer.lock_msg
       % (transfer.checkpointed ? "checkpointed" : transfer.was_blink ? "blink" : "no")
       % tools::get_human_readable_timestamp(transfer.timestamp)
@@ -8325,7 +8330,7 @@ bool simple_wallet::show_transfers(const std::vector<std::string> &args_)
       % transfer.payment_id
       % print_money(transfer.fee)
       % destinations
-      % boost::algorithm::join(transfer.subaddr_indices | boost::adaptors::transformed([](const cryptonote::subaddress_index& index) { return std::to_string(index.minor); }), ", ")
+      % tools::join(", ", subaddr_minors)
       % transfer.note;
   }
 
@@ -8344,7 +8349,7 @@ bool simple_wallet::export_transfers(const std::vector<std::string>& args_)
 
   LOCK_IDLE_SCOPE();
 
-  std::vector<tools::transfer_view> all_transfers;
+  std::vector<wallet::transfer_view> all_transfers;
 
   // might consumes arguments in local_args
   if (!get_transfers(local_args, all_transfers))
@@ -8685,7 +8690,7 @@ std::string simple_wallet::get_prompt() const
     return std::string("[") + tr("locked due to inactivity") + "]";
   std::string addr_start = m_wallet->get_subaddress_as_str({m_current_subaddress_account, 0}).substr(0, 6);
   std::string prompt = std::string("[") + tr("wallet") + " " + addr_start;
-  if (!m_wallet->check_connection(NULL))
+  if (!m_wallet->check_connection())
     prompt += tr(" (no daemon)");
   else
   {
@@ -8796,7 +8801,7 @@ bool simple_wallet::account(const std::vector<std::string> &args/* = std::vector
   if (command == "new")
   {
     // create a new account and switch to it
-    std::string label = boost::join(local_args, " ");
+    std::string label = tools::join(" ", local_args);
     if (label.empty())
       label = tr("(Untitled account)");
     m_wallet->add_subaddress_account(label);
@@ -8833,7 +8838,7 @@ bool simple_wallet::account(const std::vector<std::string> &args/* = std::vector
       return true;
     }
     local_args.erase(local_args.begin());
-    std::string label = boost::join(local_args, " ");
+    std::string label = tools::join(" ", local_args);
     try
     {
       m_wallet->set_subaddress_label({index_major, 0}, label);
@@ -8899,7 +8904,7 @@ bool simple_wallet::account(const std::vector<std::string> &args/* = std::vector
     if (local_args.size() > 1)
     {
       local_args.erase(local_args.begin());
-      description = boost::join(local_args, " ");
+      description = tools::join(" ", local_args);
     }
     try
     {
@@ -8992,7 +8997,7 @@ bool simple_wallet::print_address(const std::vector<std::string> &args/* = std::
   {
     bool used = std::find_if(
       transfers.begin(), transfers.end(),
-      [this, &index](const tools::wallet2::transfer_details& td) {
+      [this, &index](const wallet::transfer_details& td) {
         return td.m_subaddr_index == cryptonote::subaddress_index{ m_current_subaddress_account, index };
       }) != transfers.end();
     success_msg_writer() << index << "  " << m_wallet->get_subaddress_as_str({m_current_subaddress_account, index}) << "  " << (index == 0 ? tr("Primary address") : m_wallet->get_subaddress_label({m_current_subaddress_account, index})) << " " << (used ? tr("(used)") : "");
@@ -9014,7 +9019,7 @@ bool simple_wallet::print_address(const std::vector<std::string> &args/* = std::
     local_args.erase(local_args.begin());
     std::string label;
     if (local_args.size() > 0)
-      label = boost::join(local_args, " ");
+      label = tools::join(" ", local_args);
     if (label.empty())
       label = tr("(Untitled address)");
     m_wallet->add_subaddress(m_current_subaddress_account, label);
@@ -9035,7 +9040,7 @@ bool simple_wallet::print_address(const std::vector<std::string> &args/* = std::
     }
     local_args.erase(local_args.begin());
     local_args.erase(local_args.begin());
-    std::string label = boost::join(local_args, " ");
+    std::string label = tools::join(" ", local_args);
     m_wallet->set_subaddress_label({m_current_subaddress_account, index}, label);
     print_address_sub(index);
   }
@@ -9361,7 +9366,7 @@ bool simple_wallet::wallet_info(const std::vector<std::string> &args)
   message_writer() << tr("Type: ") << type;
   message_writer() << tr("Network type: ") << (
     m_wallet->nettype() == cryptonote::TESTNET ? tr("Testnet") :
-    m_wallet->nettype() == cryptonote::STAGENET ? tr("Stagenet") : tr("Mainnet"));
+    m_wallet->nettype() == cryptonote::DEVNET ? tr("Devnet") : tr("Mainnet"));
   return true;
 }
 //----------------------------------------------------------------------------------------------------
@@ -9937,7 +9942,8 @@ int main(int argc, char* argv[])
   auto opt_size = command_line::boost_option_sizes();
 
   po::options_description desc_params(wallet_args::tr("Wallet options"), opt_size.first, opt_size.second);
-  tools::wallet2::init_options(desc_params);
+  po::options_description hidden_params("Hidden");
+  tools::wallet2::init_options(desc_params, hidden_params);
   command_line::add_arg(desc_params, arg_wallet_file);
   command_line::add_arg(desc_params, arg_generate_new_wallet);
   command_line::add_arg(desc_params, arg_generate_from_device);
@@ -9947,7 +9953,8 @@ int main(int argc, char* argv[])
   command_line::add_arg(desc_params, arg_generate_from_multisig_keys);
   command_line::add_arg(desc_params, arg_generate_from_json);
   command_line::add_arg(desc_params, arg_mnemonic_language);
-  command_line::add_arg(desc_params, arg_command);
+  // Positional argument
+  command_line::add_arg(hidden_params, arg_command);
 
   command_line::add_arg(desc_params, arg_restore_deterministic_wallet );
   command_line::add_arg(desc_params, arg_restore_multisig_wallet );
@@ -9969,7 +9976,7 @@ int main(int argc, char* argv[])
    "loki-wallet-cli [--wallet-file=<filename>|--generate-new-wallet=<filename>] [<COMMAND>]",
     sw::tr("This is the command line Loki wallet. It needs to connect to a Loki\ndaemon to work correctly.\n\nWARNING: Do not reuse your Loki keys on a contentious fork, doing so will harm your privacy.\n Only consider reusing your key on a contentious fork if the fork has key reuse mitigations built in."),
     desc_params,
-    po::options_description{},
+    hidden_params,
     positional_options,
     [](const std::string &s, bool emphasis){ tools::scoped_message_writer(emphasis ? epee::console_color_white : epee::console_color_default, true) << s; },
     "loki-wallet-cli.log"

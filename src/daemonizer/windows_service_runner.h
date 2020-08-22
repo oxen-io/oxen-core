@@ -138,7 +138,6 @@ namespace windows {
         case SERVICE_CONTROL_STOP:
           report_status(SERVICE_STOP_PENDING);
           app.stop();
-          report_status(SERVICE_STOPPED);
           break;
         case SERVICE_CONTROL_PAUSE:
           break;

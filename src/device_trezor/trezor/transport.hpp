@@ -37,7 +37,11 @@
 #include <string_view>
 #include <type_traits>
 #include <chrono>
-#include "net/http_client.h"
+
+#include <cpr/session.h>
+
+#include "wipeable_string.h"
+#include "misc_log_ex.h"
 
 #include "rapidjson/document.h"
 #include "rapidjson/writer.h"
@@ -46,6 +50,8 @@
 #include "exceptions.hpp"
 #include "trezor_defs.hpp"
 #include "messages_map.hpp"
+
+#include "common/loki.h"
 
 #include "messages/messages.pb.h"
 #include "messages/messages-common.pb.h"
@@ -58,9 +64,9 @@ namespace trezor {
 
   using json = rapidjson::Document;
   using json_val = rapidjson::Value;
-  namespace http = epee::net_utils::http;
 
-  const std::string DEFAULT_BRIDGE = "127.0.0.1:21325";
+  constexpr const char* DEFAULT_BRIDGE = "http://127.0.0.1:21325";
+  constexpr std::chrono::milliseconds HTTP_TIMEOUT = 180s;
 
   uint64_t pack_version(uint32_t major, uint32_t minor=0, uint32_t patch=0);
 
@@ -73,47 +79,6 @@ namespace trezor {
   bool t_deserialize(const std::string & in, std::string & out);
   bool t_deserialize(std::string & in, epee::wipeable_string & out);
   bool t_deserialize(const std::string & in, json & out);
-
-  // Flexible json serialization. HTTP client tailored for bridge API
-  template<class t_req, class t_res, class t_transport>
-  bool invoke_bridge_http(std::string_view uri, const t_req & out_struct, t_res & result_struct, t_transport& transport, std::string_view method = "POST"sv, std::chrono::milliseconds timeout = 180s)
-  {
-    std::string req_param;
-    t_serialize(out_struct, req_param);
-
-    http::fields_list additional_params;
-    additional_params.push_back(std::make_pair("Origin","https://monero.trezor.io"));
-    additional_params.push_back(std::make_pair("Content-Type","application/json; charset=utf-8"));
-
-    const http::http_response_info* pri = nullptr;
-    const auto data_cleaner = epee::misc_utils::create_scope_leave_handler([&]() {
-      if (!req_param.empty()) {
-        memwipe(&req_param[0], req_param.size());
-      }
-      transport.wipe_response();
-    });
-
-    if(!transport.invoke(uri, method, req_param, timeout, &pri, std::move(additional_params)))
-    {
-      MERROR("Failed to invoke http request to  " << uri);
-      return false;
-    }
-
-    if(!pri)
-    {
-      MERROR("Failed to invoke http request to  " << uri << ", internal error (null response ptr)");
-      return false;
-    }
-
-    if(pri->m_response_code != 200)
-    {
-      MERROR("Failed to invoke http request to  " << uri << ", wrong response code: " << pri->m_response_code
-             << " Response Body: " << pri->m_body);
-      return false;
-    }
-
-    return t_deserialize(const_cast<http::http_response_info*>(pri)->m_body, result_struct);
-  }
 
   // Forward decl
   class Transport;
@@ -190,9 +155,32 @@ namespace trezor {
     const std::optional<json> & device_info() const;
     std::ostream& dump(std::ostream& o) const override;
 
+    // posts a json request with the given body to the bridge.  Returns the body on success, throws
+    // on error.
+    std::string post_json(std::string_view uri, std::string json);
+
+    // Flexible json serialization. HTTP client tailored for bridge API
+    template<class t_req, class t_res>
+    bool invoke_bridge_http(std::string_view uri, const t_req & request, t_res & result)
+    {
+      std::string req;
+      t_serialize(request, req);
+
+      std::string res;
+      LOKI_DEFER { if (!res.empty()) memwipe(res.data(), res.size()); };
+
+      try {
+        res = post_json(uri, std::move(req));
+      } catch (const std::exception& e) {
+        MERROR(e.what() << " while requesting " << uri);
+      }
+
+      return t_deserialize(res, result);
+    }
+
   private:
-    epee::net_utils::http::http_simple_client m_http_client;
-    std::string m_bridge_host;
+    cpr::Session m_http_session;
+    std::string m_bridge_url;
     std::optional<std::string> m_device_path;
     std::optional<std::string> m_session;
     std::optional<epee::wipeable_string> m_response;
@@ -211,9 +199,9 @@ namespace trezor {
 
     virtual ~UdpTransport() = default;
 
-    static const char * PATH_PREFIX;
-    static const char * DEFAULT_HOST;
-    static const int DEFAULT_PORT;
+    static constexpr const char* PATH_PREFIX = "udp:";
+    static constexpr const char* DEFAULT_HOST = "127.0.0.1";
+    static constexpr int DEFAULT_PORT = 21324;
 
     bool ping() override;
     std::string get_path() const override;

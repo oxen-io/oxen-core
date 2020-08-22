@@ -42,23 +42,22 @@ namespace cryptonote
   {
     uint32_t major; // The account index, major index
     uint32_t minor; // The subaddress index, minor index
-    bool operator==(const subaddress_index& rhs) const { return !memcmp(this, &rhs, sizeof(subaddress_index)); }
+    bool operator==(const subaddress_index& rhs) const { return major == rhs.major && minor == rhs.minor; }
     bool operator!=(const subaddress_index& rhs) const { return !(*this == rhs); }
     bool is_zero() const { return major == 0 && minor == 0; }
-
-    BEGIN_SERIALIZE_OBJECT()
-      FIELD(major)
-      FIELD(minor)
-    END_SERIALIZE()
 
     BEGIN_KV_SERIALIZE_MAP()
       KV_SERIALIZE(major)
       KV_SERIALIZE(minor)
     END_KV_SERIALIZE_MAP()
   };
-}
 
-namespace cryptonote {
+  template <class Archive>
+  void serialize_value(Archive& ar, subaddress_index& x) {
+    field(ar, "major", x.major);
+    field(ar, "minor", x.minor);
+  }
+
   inline std::ostream& operator<<(std::ostream& out, const cryptonote::subaddress_index& subaddr_index)
   {
     return out << subaddr_index.major << '/' << subaddr_index.minor;

@@ -31,66 +31,74 @@
 
 #pragma once
 
-#include "net/http_server_impl_base.h"
 #include "common/command_line.h"
+#include "common/password.h"
 #include "core_rpc_server.h"
+#include "http_server_base.h"
 
-namespace cryptonote { namespace rpc {
-
-  using http_response_code = std::pair<int, std::string_view>;
+namespace cryptonote::rpc {
 
   /************************************************************************/
   /* Core HTTP RPC server                                                 */
   /************************************************************************/
-  class http_server: public epee::http_server_impl_base<http_server>
+  class http_server : public http_server_base
   {
   public:
-    static constexpr int DEFAULT_RPC_THREADS = 2;
-    static const command_line::arg_descriptor<std::string, false, true, 2> arg_rpc_bind_port;
-    static const command_line::arg_descriptor<std::string> arg_rpc_restricted_bind_port;
+    static const command_line::arg_descriptor<uint16_t, false, true, 2> arg_rpc_bind_port;
+    static const command_line::arg_descriptor<uint16_t> arg_rpc_restricted_bind_port;
     static const command_line::arg_descriptor<bool> arg_restricted_rpc;
-    static const command_line::arg_descriptor<std::string> arg_rpc_ssl;
-    static const command_line::arg_descriptor<std::string> arg_rpc_ssl_private_key;
-    static const command_line::arg_descriptor<std::string> arg_rpc_ssl_certificate;
-    static const command_line::arg_descriptor<std::string> arg_rpc_ssl_ca_certificates;
-    static const command_line::arg_descriptor<std::vector<std::string>> arg_rpc_ssl_allowed_fingerprints;
-    static const command_line::arg_descriptor<bool> arg_rpc_ssl_allow_any_cert;
     static const command_line::arg_descriptor<bool> arg_public_node;
-    static const command_line::arg_descriptor<int> arg_rpc_long_poll_connections;
-
-    typedef epee::net_utils::connection_context_base connection_context;
-
-    http_server(core_rpc_server& server) : m_server{server} {}
 
     static void init_options(boost::program_options::options_description& desc);
 
-    bool init(
+    http_server(
+        core_rpc_server& server,
         const boost::program_options::variables_map& vm,
         const bool restricted,
-        const std::string& port
-      );
+        uint16_t port
+        );
 
-    bool handle_http_request(
-        const epee::net_utils::http::http_request_info& query_info,
-        epee::net_utils::http::http_response_info& response,
-        connection_context& context) override;
+    ~http_server();
 
-    http_response_code handle_http(
-      const epee::net_utils::http::http_request_info& query_info,
-      epee::net_utils::http::http_response_info& response_info,
-      connection_context& context);
+    /// Starts the event loop in the thread handling http requests.  Core must have been initialized
+    /// and LokiMQ started.  Will propagate an exception from the thread if startup fails.
+    void start();
 
-    http_response_code handle_json_rpc_request(
-      const epee::net_utils::http::http_request_info& query_info,
-      epee::net_utils::http::http_response_info& response_info,
-      connection_context& context,
-      rpc_request& request);
+    /// Closes the http server connection.  Can safely be called multiple times, or to abort a
+    /// startup if called before start().
+    ///
+    /// \param join - if true, wait for the proxy thread to exit.  If false then joining will occur
+    /// during destruction.
+    void shutdown(bool join = false);
 
-    int m_max_long_poll_connections;
   private:
+
+    void create_rpc_endpoints(uWS::App& http) override;
+
+    /// Handles a request for a base url, e.g. /foo (but not /json_rpc).  `call` is the callback
+    /// we've already mapped the request to; restricted commands have also already been rejected
+    /// (unless the RPC is unrestricted).
+    void handle_base_request(
+        HttpResponse& res,
+        HttpRequest& req,
+        const rpc_command& call);
+
+    /// Handles a POST request to /json_rpc.
+    void handle_json_rpc_request(HttpResponse& res, HttpRequest& req);
+
+    // The core rpc server which handles the internal requests
     core_rpc_server& m_server;
+    // A promise we send from outside into the event loop thread to signal it to start.  We sent
+    // "true" to go ahead with binding + starting the event loop, or false to abort.
+    std::promise<bool> m_startup_promise;
+    // A future (promise held by the thread) that delivers us the listening uSockets sockets so
+    // that, when we want to shut down, we can tell uWebSockets to close them (which will then run
+    // off the end of the event loop).  This also doubles to propagate listen exceptions back to us.
+    std::future<std::vector<us_listen_socket_t*>> m_startup_success;
+    // Whether we have sent the startup/shutdown signals
+    bool m_sent_startup{false}, m_sent_shutdown{false};
+    // Whether this is restricted, i.e. public.  Unrestricted allows admin commands.
     bool m_restricted;
-    std::atomic<int> m_long_poll_active_connections;
   };
 
-}} // namespace cryptonote::rpc
+} // namespace cryptonote::rpc

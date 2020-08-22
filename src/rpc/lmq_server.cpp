@@ -132,7 +132,7 @@ lmq_rpc::lmq_rpc(cryptonote::core& core, core_rpc_server& rpc, const boost::prog
     auth.emplace(std::move(pk), AuthLevel::basic);
 
   // basic (non-admin) rpc commands go into the "rpc." category (e.g. 'rpc.get_info')
-  lmq.add_category("rpc", AuthLevel::basic);
+  lmq.add_category("rpc", AuthLevel::basic, 0 /*no reserved threads*/, 1000 /*max queued requests*/);
 
   // Admin rpc commands go into "admin.".  We also always keep one (potential) thread reserved for
   // admin RPC commands; that way even if there are loads of basic commands being processed we'll

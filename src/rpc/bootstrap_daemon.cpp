@@ -2,6 +2,7 @@
 
 #include <stdexcept>
 
+#include "common/string_util.h"
 #include "crypto/crypto.h"
 #include "cryptonote_core/cryptonote_core.h"
 #include "misc_log_ex.h"
@@ -17,7 +18,7 @@ namespace cryptonote
   {
   }
 
-  bootstrap_daemon::bootstrap_daemon(const std::string &address, const std::optional<epee::net_utils::http::login> &credentials)
+  bootstrap_daemon::bootstrap_daemon(const std::string &address, const std::optional<std::pair<std::string_view, std::string_view>> &credentials)
     : bootstrap_daemon(nullptr)
   {
     if (!set_server(address, credentials))
@@ -28,20 +29,14 @@ namespace cryptonote
 
   std::string bootstrap_daemon::address() const noexcept
   {
-    const auto& host = m_http_client.get_host();
-    if (host.empty())
-    {
-      return std::string();
-    }
-    return host + ":" + m_http_client.get_port();
+    return m_http_client.get_base_url();
   }
 
   std::optional<uint64_t> bootstrap_daemon::get_height()
   {
     // query bootstrap daemon's height
-    cryptonote::rpc::GET_HEIGHT::request req{};
-    cryptonote::rpc::GET_HEIGHT::response res{};
-    if (!invoke_http_json("/getheight", req, res))
+    rpc::GET_HEIGHT::response res{};
+    if (!invoke<rpc::GET_HEIGHT>({}, res))
     {
       return std::nullopt;
     }
@@ -54,38 +49,29 @@ namespace cryptonote
     return res.height;
   }
 
-  bool bootstrap_daemon::handle_result(bool success)
+  bool bootstrap_daemon::set_server(std::string url, const std::optional<std::pair<std::string_view, std::string_view>> &credentials /* = std::nullopt */)
   {
-    if (!success && m_get_next_public_node)
-    {
-      m_http_client.disconnect();
-    }
+    if (!tools::starts_with(url, "http://") && !tools::starts_with(url, "https://"))
+      url.insert(0, "http://");
+    m_http_client.set_base_url(std::move(url));
+    if (credentials)
+      m_http_client.set_auth(credentials->first, credentials->second);
+    else
+      m_http_client.set_auth();
 
-    return success;
-  }
-
-  bool bootstrap_daemon::set_server(const std::string &address, const std::optional<epee::net_utils::http::login> &credentials /* = std::nullopt */)
-  {
-    if (!m_http_client.set_server(address, credentials))
-    {
-      MERROR("Failed to set bootstrap daemon address " << address);
-      return false;
-    }
-
-    MINFO("Changed bootstrap daemon address to " << address);
+    MINFO("Changed bootstrap daemon address to " << url);
     return true;
   }
 
 
   bool bootstrap_daemon::switch_server_if_needed()
   {
-    if (!m_get_next_public_node || m_http_client.is_connected())
-    {
+    if (!m_failed || !m_get_next_public_node)
       return true;
-    }
 
     const std::optional<std::string> address = m_get_next_public_node();
     if (address) {
+      m_failed = false;
       return set_server(*address);
     }
 

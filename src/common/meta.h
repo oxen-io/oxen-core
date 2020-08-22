@@ -28,6 +28,9 @@ struct template_index_impl<T, C<Ts...>> : std::integral_constant<size_t, templat
 
 } // namespace detail
 
+/// Type wrapper that contains an arbitrary list of types.
+template <typename...> struct type_list {};
+
 /// Accesses the index of the first T within a template type's type list.  E.g.
 ///
 ///     template_index<int, std::variant<double, short, int>>() == 2

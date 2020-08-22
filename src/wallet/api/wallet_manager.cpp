@@ -31,13 +31,13 @@
 
 
 #include "wallet_manager.h"
+#include "common/string_util.h"
+#include "rpc/core_rpc_server_commands_defs.h"
 #include "wallet.h"
 #include "common_defines.h"
 #include "common/dns_utils.h"
 #include "common/util.h"
-#include "common/updates.h"
 #include "version.h"
-#include "net/http_client.h"
 #include <boost/filesystem.hpp>
 
 #undef LOKI_DEFAULT_LOG_CATEGORY
@@ -219,109 +219,92 @@ std::string WalletManagerImpl::errorString() const
     return m_errorString;
 }
 
-void WalletManagerImpl::setDaemonAddress(const std::string &address)
+void WalletManagerImpl::setDaemonAddress(std::string address)
 {
-    m_http_client.set_server(address, std::nullopt);
+    if (!tools::starts_with(address, "https://") && !tools::starts_with(address, "http://"))
+        address.insert(0, "http://");
+    m_http_client.set_base_url(std::move(address));
 }
 
 bool WalletManagerImpl::connected(uint32_t *version)
 {
-    epee::json_rpc::request<cryptonote::rpc::GET_VERSION::request> req_t{};
-    epee::json_rpc::response<cryptonote::rpc::GET_VERSION::response, std::string> resp_t{};
-    req_t.jsonrpc = "2.0";
-    req_t.id = epee::serialization::storage_entry(0);
-    req_t.method = "get_version";
-    if (!epee::net_utils::invoke_http_json("/json_rpc", req_t, resp_t, m_http_client))
-      return false;
+    using namespace cryptonote::rpc;
+    try {
+        auto res = m_http_client.json_rpc<GET_VERSION>(GET_VERSION::names()[0], {});
+        if (version) *version = res.version;
+        return true;
+    } catch (...) {}
 
-    if (version)
-        *version = resp_t.result.version;
-    return true;
+    return false;
 }
+
+template <typename RPC>
+static std::optional<typename RPC::response> json_rpc(cryptonote::rpc::http_client& http, const typename RPC::request& req = {})
+{
+    using namespace cryptonote::rpc;
+    try { return http.json_rpc<RPC>(RPC::names()[0], req); }
+    catch (...) {}
+    return std::nullopt;
+}
+
+static std::optional<cryptonote::rpc::GET_INFO::response> get_info(cryptonote::rpc::http_client& http)
+{
+    return json_rpc<cryptonote::rpc::GET_INFO>(http);
+}
+
 
 uint64_t WalletManagerImpl::blockchainHeight()
 {
-    cryptonote::rpc::GET_INFO::request ireq{};
-    cryptonote::rpc::GET_INFO::response ires{};
-
-    if (!epee::net_utils::invoke_http_json("/getinfo", ireq, ires, m_http_client))
-      return 0;
-    return ires.height;
+    auto res = get_info(m_http_client);
+    return res ? res->height : 0;
 }
 
 uint64_t WalletManagerImpl::blockchainTargetHeight()
 {
-    cryptonote::rpc::GET_INFO::request ireq{};
-    cryptonote::rpc::GET_INFO::response ires{};
-
-    if (!epee::net_utils::invoke_http_json("/getinfo", ireq, ires, m_http_client))
-      return 0;
-    return ires.target_height >= ires.height ? ires.target_height : ires.height;
+    auto res = get_info(m_http_client);
+    if (!res)
+        return 0;
+    return std::max(res->target_height, res->height);
 }
 
 uint64_t WalletManagerImpl::networkDifficulty()
 {
-    cryptonote::rpc::GET_INFO::request ireq{};
-    cryptonote::rpc::GET_INFO::response ires{};
-
-    if (!epee::net_utils::invoke_http_json("/getinfo", ireq, ires, m_http_client))
-      return 0;
-    return ires.difficulty;
+    auto res = get_info(m_http_client);
+    return res ? res->difficulty : 0;
 }
 
 double WalletManagerImpl::miningHashRate()
 {
-    cryptonote::rpc::MINING_STATUS::request mreq{};
-    cryptonote::rpc::MINING_STATUS::response mres{};
-
-    if (!epee::net_utils::invoke_http_json("/mining_status", mreq, mres, m_http_client))
-      return 0.0;
-    if (!mres.active)
-      return 0.0;
-    return mres.speed;
+    auto mres = json_rpc<cryptonote::rpc::MINING_STATUS>(m_http_client);
+    return mres && mres->active ? mres->speed : 0.0;
 }
 
 uint64_t WalletManagerImpl::blockTarget()
 {
-    cryptonote::rpc::GET_INFO::request ireq{};
-    cryptonote::rpc::GET_INFO::response ires{};
-
-    if (!epee::net_utils::invoke_http_json("/getinfo", ireq, ires, m_http_client))
-        return 0;
-    return ires.target;
+    auto res = get_info(m_http_client);
+    return res ? res->target : 0;
 }
 
 bool WalletManagerImpl::isMining()
 {
-    cryptonote::rpc::MINING_STATUS::request mreq{};
-    cryptonote::rpc::MINING_STATUS::response mres{};
-
-    if (!epee::net_utils::invoke_http_json("/mining_status", mreq, mres, m_http_client))
-      return false;
-    return mres.active;
+    auto mres = json_rpc<cryptonote::rpc::MINING_STATUS>(m_http_client);
+    return mres && mres->active;
 }
 
 bool WalletManagerImpl::startMining(const std::string &address, uint32_t threads)
 {
     cryptonote::rpc::START_MINING::request mreq{};
-    cryptonote::rpc::START_MINING::response mres{};
-
     mreq.miner_address = address;
     mreq.threads_count = threads;
 
-    if (!epee::net_utils::invoke_http_json("/start_mining", mreq, mres, m_http_client))
-      return false;
-    return mres.status == cryptonote::rpc::STATUS_OK;
+    auto mres = json_rpc<cryptonote::rpc::START_MINING>(m_http_client, mreq);
+    return mres && mres->status == cryptonote::rpc::STATUS_OK;
 }
 
 bool WalletManagerImpl::stopMining()
 {
-    cryptonote::rpc::STOP_MINING::request mreq{};
-    cryptonote::rpc::STOP_MINING::response mres{};
-
-    if (!epee::net_utils::invoke_http_json("/stop_mining", mreq, mres, m_http_client))
-      return false;
-    return mres.status == cryptonote::rpc::STATUS_OK;
+    auto mres = json_rpc<cryptonote::rpc::STOP_MINING>(m_http_client);
+    return mres && mres->status == cryptonote::rpc::STATUS_OK;
 }
 
 std::string WalletManagerImpl::resolveOpenAlias(const std::string &address, bool &dnssec_valid) const
@@ -331,40 +314,6 @@ std::string WalletManagerImpl::resolveOpenAlias(const std::string &address, bool
         return "";
     return addresses.front();
 }
-
-std::tuple<bool, std::string, std::string, std::string, std::string> WalletManagerBase::checkUpdates(
-    const std::string &software,
-    std::string subdir,
-    const char *buildtag/* = nullptr*/,
-    const char *current_version/* = nullptr*/)
-{
-    if (buildtag == nullptr)
-    {
-#ifdef BUILD_TAG
-        static const char buildtag_default[] = BOOST_PP_STRINGIZE(BUILD_TAG);
-#else
-        static const char buildtag_default[] = "source";
-        // Override the subdir string when built from source
-        subdir = "source";
-#endif
-        buildtag = buildtag_default;
-    }
-
-    std::string version, hash;
-    MDEBUG("Checking for a new " << software << " version for " << buildtag);
-    if (!tools::check_updates(software, buildtag, version, hash))
-      return std::make_tuple(false, "", "", "", "");
-
-    if (tools::vercmp(version.c_str(), current_version != nullptr ? current_version : LOKI_VERSION) > 0)
-    {
-      std::string user_url = tools::get_update_url(software, subdir, buildtag, version, true);
-      std::string auto_url = tools::get_update_url(software, subdir, buildtag, version, false);
-      MGINFO("Version " << version << " of " << software << " for " << buildtag << " is available: " << user_url << ", SHA256 hash " << hash);
-      return std::make_tuple(true, version, hash, user_url, auto_url);
-    }
-    return std::make_tuple(false, "", "", "", "");
-}
-
 
 ///////////////////// WalletManagerFactory implementation //////////////////////
 WalletManagerBase *WalletManagerFactory::getWalletManager()

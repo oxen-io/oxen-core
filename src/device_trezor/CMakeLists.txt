@@ -58,6 +58,7 @@ if(DEVICE_TREZOR_READY)
             sodium
             libusb
             protobuf
+            cpr::cpr
             extra)
 
 else()

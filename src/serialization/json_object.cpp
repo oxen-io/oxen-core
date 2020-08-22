@@ -28,7 +28,6 @@
 
 #include "json_object.h"
 
-#include <boost/range/adaptor/transformed.hpp>
 #include <limits>
 #include <type_traits>
 #include "string_tools.h"
@@ -958,18 +957,16 @@ void fromJsonValue(const rapidjson::Value& val, cryptonote::rpc::BlockHeaderResp
 
 void toJsonValue(rapidjson::Document& doc, const rct::rctSig& sig, rapidjson::Value& val)
 {
-  using boost::adaptors::transform;
-
   val.SetObject();
 
-  const auto just_mask = [] (rct::ctkey const& key) -> rct::key const&
-  {
-    return key.mask;
-  };
+  std::vector<rct::key> pk_masks;
+  pk_masks.reserve(sig.outPk.size());
+  for (const auto& key : sig.outPk)
+    pk_masks.push_back(key.mask);
 
   insert_into_json_object(val, doc, "type", sig.type);
   insert_into_json_object(val, doc, "encrypted", sig.ecdhInfo);
-  insert_into_json_object(val, doc, "commitments", transform(sig.outPk, just_mask));
+  insert_into_json_object(val, doc, "commitments", pk_masks);
   insert_into_json_object(val, doc, "fee", sig.txnFee);
 
   // prunable
@@ -988,8 +985,6 @@ void toJsonValue(rapidjson::Document& doc, const rct::rctSig& sig, rapidjson::Va
 
 void fromJsonValue(const rapidjson::Value& val, rct::rctSig& sig)
 {
-  using boost::adaptors::transform;
-
   if (!val.IsObject())
   {
     throw WRONG_TYPE("json object");
@@ -1202,7 +1197,7 @@ void toJsonValue(rapidjson::Document& doc, const cryptonote::rpc::DaemonInfo& in
   insert_into_json_object(val, doc, "grey_peerlist_size", info.grey_peerlist_size);
   insert_into_json_object(val, doc, "mainnet", info.mainnet);
   insert_into_json_object(val, doc, "testnet", info.testnet);
-  insert_into_json_object(val, doc, "stagenet", info.stagenet);
+  insert_into_json_object(val, doc, "devnet", info.devnet);
   insert_into_json_object(val, doc, "nettype", info.nettype);
   insert_into_json_object(val, doc, "top_block_hash", info.top_block_hash);
   insert_into_json_object(val, doc, "cumulative_difficulty", info.cumulative_difficulty);
@@ -1233,7 +1228,7 @@ void fromJsonValue(const rapidjson::Value& val, cryptonote::rpc::DaemonInfo& inf
   load_from_json_object(val, "grey_peerlist_size", info.grey_peerlist_size);
   load_from_json_object(val, "mainnet", info.mainnet);
   load_from_json_object(val, "testnet", info.testnet);
-  load_from_json_object(val, "stagenet", info.stagenet);
+  load_from_json_object(val, "devnet", info.devnet);
   load_from_json_object(val, "nettype", info.nettype);
   load_from_json_object(val, "top_block_hash", info.top_block_hash);
   load_from_json_object(val, "cumulative_difficulty", info.cumulative_difficulty);

@@ -33,7 +33,6 @@ add_library(common
   combinator.cpp
   command_line.cpp
   dns_utils.cpp
-  download.cpp
   error.cpp
   expect.cpp
   file.cpp
@@ -51,7 +50,6 @@ add_library(common
   string_util.cpp
   threadpool.cpp
   timings.cc
-  updates.cpp
   util.cpp
   ${PROJECT_BINARY_DIR}/translations/translation_files.cpp
   )

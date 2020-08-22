@@ -1,4 +1,5 @@
-// Copyright (c) 2017-2019, The Monero Project
+// Copyright (c) 2018-2020, The Loki Project
+// Copyright (c) 2014-2019, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -26,12 +27,37 @@
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#pragma once 
+#pragma once
+#include <unordered_set>
+#include <boost/serialization/version.hpp>
 
-#include <string>
+#include "ringct/rctTypes.h"
 
-namespace tools
+namespace wallet {
+
+struct multisig_sig
 {
-  bool check_updates(const std::string &software, const std::string &buildtag, std::string &version, std::string &hash);
-  std::string get_update_url(const std::string &software, const std::string &subdir, const std::string &buildtag, const std::string &version, bool user);
+  rct::rctSig sigs;
+  std::unordered_set<crypto::public_key> ignore;
+  std::unordered_set<rct::key> used_L;
+  std::unordered_set<crypto::public_key> signing_keys;
+  rct::multisig_out msout;
+};
+
+}
+
+BOOST_CLASS_VERSION(wallet::multisig_sig, 0)
+
+namespace boost::serialization {
+
+template <class Archive>
+void serialize(Archive &a, wallet::multisig_sig &x, const unsigned int ver)
+{
+  a & x.sigs;
+  a & x.ignore;
+  a & x.used_L;
+  a & x.signing_keys;
+  a & x.msout;
+}
+
 }

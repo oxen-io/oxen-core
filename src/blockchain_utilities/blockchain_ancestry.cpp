@@ -33,8 +33,6 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <boost/filesystem.hpp>
-#include <boost/range/adaptor/transformed.hpp>
-#include <boost/algorithm/string.hpp>
 #include <boost/archive/portable_binary_iarchive.hpp>
 #include <boost/archive/portable_binary_oarchive.hpp>
 #include "common/unordered_containers_boost_serialization.h"
@@ -363,7 +361,7 @@ int main(int argc, char* argv[])
 
   command_line::add_arg(desc_cmd_sett, cryptonote::arg_data_dir);
   command_line::add_arg(desc_cmd_sett, cryptonote::arg_testnet_on);
-  command_line::add_arg(desc_cmd_sett, cryptonote::arg_stagenet_on);
+  command_line::add_arg(desc_cmd_sett, cryptonote::arg_devnet_on);
   command_line::add_arg(desc_cmd_sett, arg_log_level);
   command_line::add_arg(desc_cmd_sett, arg_txid);
   command_line::add_arg(desc_cmd_sett, arg_output);
@@ -407,8 +405,8 @@ int main(int argc, char* argv[])
 
   std::string opt_data_dir = command_line::get_arg(vm, cryptonote::arg_data_dir);
   bool opt_testnet = command_line::get_arg(vm, cryptonote::arg_testnet_on);
-  bool opt_stagenet = command_line::get_arg(vm, cryptonote::arg_stagenet_on);
-  network_type net_type = opt_testnet ? TESTNET : opt_stagenet ? STAGENET : MAINNET;
+  bool opt_devnet = command_line::get_arg(vm, cryptonote::arg_devnet_on);
+  network_type net_type = opt_testnet ? TESTNET : opt_devnet ? DEVNET : MAINNET;
   std::string opt_txid_string = command_line::get_arg(vm, arg_txid);
   std::string opt_output_string = command_line::get_arg(vm, arg_output);
   uint64_t opt_height = command_line::get_arg(vm, arg_height);

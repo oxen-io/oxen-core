@@ -39,7 +39,7 @@ std::error_category const& common_category() noexcept;
 
 inline std::error_code make_error_code(::common_error value) noexcept
 {
-    return std::error_code{int(value), common_category()};
+    return std::error_code{static_cast<int>(value), common_category()};
 }
 
 namespace std

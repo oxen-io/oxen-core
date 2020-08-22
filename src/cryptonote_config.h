@@ -266,28 +266,28 @@ namespace config
 
   }
 
-  namespace stagenet
+  namespace devnet
   {
-    inline constexpr uint64_t HEIGHT_ESTIMATE_HEIGHT = 339767;
-    inline constexpr time_t HEIGHT_ESTIMATE_TIMESTAMP = 1595360006;
-    inline constexpr uint64_t CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX = 24;
-    inline constexpr uint64_t CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 25;
-    inline constexpr uint64_t CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX = 36;
-    inline constexpr uint16_t P2P_DEFAULT_PORT = 38056;
-    inline constexpr uint16_t RPC_DEFAULT_PORT = 38057;
-    inline constexpr uint16_t ZMQ_RPC_DEFAULT_PORT = 38058;
-    inline constexpr uint16_t QNET_DEFAULT_PORT = 38059;
+    inline constexpr uint64_t HEIGHT_ESTIMATE_HEIGHT = 0;
+    inline constexpr time_t HEIGHT_ESTIMATE_TIMESTAMP = 1597170000;
+    inline constexpr uint64_t CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX = 3930; // ~ dV1 .. dV3
+    inline constexpr uint64_t CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 4442; // ~ dVA .. dVC
+    inline constexpr uint64_t CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX = 5850; // ~dVa .. dVc
+    inline constexpr uint16_t P2P_DEFAULT_PORT = 38856;
+    inline constexpr uint16_t RPC_DEFAULT_PORT = 38857;
+    inline constexpr uint16_t ZMQ_RPC_DEFAULT_PORT = 38858;
+    inline constexpr uint16_t QNET_DEFAULT_PORT = 38859;
     inline constexpr boost::uuids::uuid const NETWORK_ID = { {
-        0xbb ,0x37, 0x9B, 0x22 , 0x0A, 0x66 , 0x69, 0x1E, 0x09, 0xB2, 0x97, 0x8A, 0xCC, 0xA1, 0xDF, 0x9C
-      } }; // Beep Boop
-    inline constexpr std::string_view GENESIS_TX = "021e01ff000380808d93f5d771027e4490431900c66a6532917ad9e6a1de634a209b708f653097e7b48efc1238c68080b4ccd4dfc60302ba19a224e6474371f9161b2e6271a36d060cbdc2e479ad78f1be64c56576fa07808088fccdbcc32302bccf9c13ba1b5bb02638de6e557acdd46bf48953e42cf98a12d2ad2900cc316121018fc6728d9e3c062d3afae3b2317998d2abee1e12f51271ba1c0d3cdd236b81d200"sv;
-    inline constexpr uint32_t GENESIS_NONCE = 10002;
+        0xa9, 0xf7, 0x5c, 0x7d, 0x55, 0x17, 0xcb, 0x6b, 0x5a, 0xf4, 0x63, 0x79, 0x7a, 0x57, 0xab, 0xd3
+      } };
+    inline constexpr std::string_view GENESIS_TX = "04011e1e01ff00018080c9db97f4fb2702fa27e905f604faa4eb084ee675faca77b0cfea9adec1526da33cae5e286f31624201dae05bf3fa1662b7fd373c92426763d921cf3745e10ee43edb510f690c656f247200000000000000000000000000000000000000000000000000000000000000000000"sv;
+    inline constexpr uint32_t GENESIS_NONCE = 12345;
 
     inline constexpr uint64_t GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS = ((60 * 60 * 24 * 7) / DIFFICULTY_TARGET_V2);
     inline constexpr std::array GOVERNANCE_WALLET_ADDRESS =
     {
-      "59f7FCwYMiwMnFr8HwsnfJ2hK3DYB1tryhjsfmXqEBJojKyqKeNWoaDaZaauoZPiZHUYp2wJuy5s9H96qy4q9xUVCXXHmTU"sv, // hardfork v7-9
-      "59f7FCwYMiwMnFr8HwsnfJ2hK3DYB1tryhjsfmXqEBJojKyqKeNWoaDaZaauoZPiZHUYp2wJuy5s9H96qy4q9xUVCXXHmTU"sv, // hardfork v10
+      "dV3EhSE1xXgSzswBgVioqFNTfcqGopvTrcYjs4YDLHUfU64DuHxFoEmbwoyipTidGiTXx5EuYdgzZhDLMTo9uEv82M4A7Uimp"sv, // hardfork v7-9
+      "dV3EhSE1xXgSzswBgVioqFNTfcqGopvTrcYjs4YDLHUfU64DuHxFoEmbwoyipTidGiTXx5EuYdgzZhDLMTo9uEv82M4A7Uimp"sv, // hardfork v10
     };
   }
 }
@@ -314,7 +314,7 @@ namespace cryptonote
   {
     MAINNET = 0,
     TESTNET,
-    STAGENET,
+    DEVNET,
     FAKECHAIN,
     UNDEFINED = 255
   };
@@ -378,22 +378,22 @@ namespace cryptonote
     ::config::testnet::GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS,
     ::config::testnet::GOVERNANCE_WALLET_ADDRESS,
   };
-  inline constexpr network_config stagenet_config = {
-    STAGENET,
-    ::config::stagenet::HEIGHT_ESTIMATE_HEIGHT,
-    ::config::stagenet::HEIGHT_ESTIMATE_TIMESTAMP,
-    ::config::stagenet::CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX,
-    ::config::stagenet::CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX,
-    ::config::stagenet::CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX,
-    ::config::stagenet::P2P_DEFAULT_PORT,
-    ::config::stagenet::RPC_DEFAULT_PORT,
-    ::config::stagenet::ZMQ_RPC_DEFAULT_PORT,
-    ::config::stagenet::QNET_DEFAULT_PORT,
-    ::config::stagenet::NETWORK_ID,
-    ::config::stagenet::GENESIS_TX,
-    ::config::stagenet::GENESIS_NONCE,
-    ::config::stagenet::GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS,
-    ::config::stagenet::GOVERNANCE_WALLET_ADDRESS,
+  inline constexpr network_config devnet_config = {
+    DEVNET,
+    ::config::devnet::HEIGHT_ESTIMATE_HEIGHT,
+    ::config::devnet::HEIGHT_ESTIMATE_TIMESTAMP,
+    ::config::devnet::CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX,
+    ::config::devnet::CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX,
+    ::config::devnet::CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX,
+    ::config::devnet::P2P_DEFAULT_PORT,
+    ::config::devnet::RPC_DEFAULT_PORT,
+    ::config::devnet::ZMQ_RPC_DEFAULT_PORT,
+    ::config::devnet::QNET_DEFAULT_PORT,
+    ::config::devnet::NETWORK_ID,
+    ::config::devnet::GENESIS_TX,
+    ::config::devnet::GENESIS_NONCE,
+    ::config::devnet::GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS,
+    ::config::devnet::GOVERNANCE_WALLET_ADDRESS,
   };
   inline constexpr network_config fakenet_config = {
     FAKECHAIN,
@@ -419,7 +419,7 @@ namespace cryptonote
     {
       case MAINNET: return mainnet_config;
       case TESTNET: return testnet_config;
-      case STAGENET: return stagenet_config;
+      case DEVNET: return devnet_config;
       case FAKECHAIN: return fakenet_config;
       default: throw std::runtime_error{"Invalid network type"};
     }

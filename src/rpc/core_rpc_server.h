@@ -38,8 +38,6 @@
 #include <boost/program_options/variables_map.hpp>
 
 #include "bootstrap_daemon.h"
-#include "net/http_server_impl_base.h"
-#include "net/http_client.h"
 #include "core_rpc_server_commands_defs.h"
 #include "cryptonote_core/cryptonote_core.h"
 #include "p2p/net_node.h"
@@ -58,8 +56,6 @@ class variables_map;
 }}
 
 namespace cryptonote { namespace rpc {
-
-  static constexpr auto long_poll_timeout = 15s;
 
   /// Exception when trying to invoke an RPC command that indicate a parameter parse failure (will
   /// give an invalid params error for JSON-RPC, for example).
@@ -108,23 +104,27 @@ namespace cryptonote { namespace rpc {
     // The RPC engine source of the request, i.e. internal, HTTP, LMQ
     rpc_source source = rpc_source::internal;
 
-    // A free-form identifier identifiying the remote address of the request; this might be IP:PORT,
-    // or could contain a pubkey, or ...
-    std::string_view remote;
+    // A free-form identifier (meant for humans) identifiying the remote address of the request;
+    // this might be IP:PORT, or could contain a pubkey, or ...
+    std::string remote;
   };
 
   struct rpc_request {
-    // The request body; for a non-HTTP-JSON-RPC request the string will be populated with the
-    // unparsed request body (though may be empty, e.g. for GET requests).  For HTTP JSON-RPC
-    // request, if the request has a "params" value then the epee storage pair will be set to the
-    // portable_storage entry and the storage entry containing "params".  If "params" is omitted
-    // entirely (or, for LMQ, there is no data part) then the string will be set in the variant (and
-    // empty).
+    // The request body; for a non-HTTP-JSON-RPC request the string or string_view will be populated
+    // with the unparsed request body (though may be empty, e.g. for GET requests).  For HTTP
+    // JSON-RPC request, if the request has a "params" value then the epee storage pair will be set
+    // to the portable_storage entry and the storage entry containing "params".  If "params" is
+    // omitted entirely (or, for LMQ, there is no data part) then the string will be set in the
+    // variant (and empty).
     //
     // The returned value in either case is the serialized value to return.
     //
     // If sometimes goes wrong, throw.
-    std::variant<std::string_view, jsonrpc_params> body;
+    std::variant<std::string_view, std::string, jsonrpc_params> body;
+
+    // Returns a string_view of the body, if the body is a string or string_view.  Returns
+    // std::nullopt if the body is a jsonrpc_params.
+    std::optional<std::string_view> body_view() const;
 
     // Values to pass through to the invoke() call
     rpc_context context;
@@ -139,6 +139,7 @@ namespace cryptonote { namespace rpc {
     std::string(*invoke)(rpc_request&&, core_rpc_server&);
     bool is_public; // callable via restricted RPC
     bool is_binary; // only callable at /name (for HTTP RPC), and binary data, not JSON.
+    bool is_legacy; // callable at /name (for HTTP RPC), even though it is JSON (for backwards compat).
   };
 
   /// RPC command registration; to add a new command, define it in core_rpc_server_commands_defs.h
@@ -175,8 +176,12 @@ namespace cryptonote { namespace rpc {
       , nodetool::node_server<cryptonote::t_cryptonote_protocol_handler<cryptonote::core> >& p2p
       );
 
-    static void init_options(boost::program_options::options_description& desc);
+    static void init_options(boost::program_options::options_description& desc, boost::program_options::options_description& hidden);
     void init(const boost::program_options::variables_map& vm);
+
+    /// Returns a reference to the owning cryptonote core object
+    core& get_core() { return m_core; }
+    const core& get_core() const { return m_core; }
 
     network_type nettype() const { return m_core.get_nettype(); }
 
@@ -212,7 +217,6 @@ namespace cryptonote { namespace rpc {
     SET_LIMIT::response                                 invoke(SET_LIMIT::request&& req, rpc_context context);
     OUT_PEERS::response                                 invoke(OUT_PEERS::request&& req, rpc_context context);
     IN_PEERS::response                                  invoke(IN_PEERS::request&& req, rpc_context context);
-    UPDATE::response                                    invoke(UPDATE::request&& req, rpc_context context);
     GET_OUTPUT_DISTRIBUTION::response                   invoke(GET_OUTPUT_DISTRIBUTION::request&& req, rpc_context context, bool binary = false);
     GET_OUTPUT_DISTRIBUTION_BIN::response               invoke(GET_OUTPUT_DISTRIBUTION_BIN::request&& req, rpc_context context);
     POP_BLOCKS::response                                invoke(POP_BLOCKS::request&& req, rpc_context context);
@@ -309,9 +313,9 @@ private:
     //utils
     uint64_t get_block_reward(const block& blk);
     std::optional<std::string> get_random_public_node();
-    bool set_bootstrap_daemon(const std::string &address, const std::string &username_password);
-    bool set_bootstrap_daemon(const std::string &address, const std::optional<epee::net_utils::http::login> &credentials);
-    void fill_block_header_response(const block& blk, bool orphan_status, uint64_t height, const crypto::hash& hash, block_header_response& response, bool fill_pow_hash);
+    bool set_bootstrap_daemon(const std::string &address, std::string_view username_password);
+    bool set_bootstrap_daemon(const std::string &address, std::string_view username, std::string_view password);
+    void fill_block_header_response(const block& blk, bool orphan_status, uint64_t height, const crypto::hash& hash, block_header_response& response, bool fill_pow_hash, bool get_tx_hashes);
     std::unique_lock<std::shared_mutex> should_bootstrap_lock();
 
     template <typename COMMAND_TYPE>

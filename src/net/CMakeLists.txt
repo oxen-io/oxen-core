@@ -32,7 +32,6 @@ add_library(net
   i2p_address.cpp
   parse.cpp
   socks.cpp
-  socks_connect.cpp
   tor_address.cpp
   epee_network_address_hack.cpp
   )

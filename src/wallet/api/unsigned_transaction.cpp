@@ -97,7 +97,7 @@ bool UnsignedTransactionImpl::sign(const std::string &signedFileName)
 }
 
 //----------------------------------------------------------------------------------------------------
-bool UnsignedTransactionImpl::checkLoadedTx(const std::function<size_t()> get_num_txes, const std::function<const tools::wallet2::tx_construction_data&(size_t)> &get_tx, const std::string &extra_message)
+bool UnsignedTransactionImpl::checkLoadedTx(const std::function<size_t()> get_num_txes, const std::function<const wallet::tx_construction_data&(size_t)> &get_tx, const std::string &extra_message)
 {
   // gather info to ask the user
   uint64_t amount = 0, amount_to_dests = 0, change = 0;
@@ -107,7 +107,7 @@ bool UnsignedTransactionImpl::checkLoadedTx(const std::function<size_t()> get_nu
   std::string payment_id_string = "";
   for (size_t n = 0; n < get_num_txes(); ++n)
   {
-    const tools::wallet2::tx_construction_data &cd = get_tx(n);
+    const wallet::tx_construction_data &cd = get_tx(n);
 
     std::vector<cryptonote::tx_extra_field> tx_extra_fields;
     bool has_encrypted_payment_id = false;

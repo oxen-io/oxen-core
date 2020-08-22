@@ -5,7 +5,7 @@
 namespace blocks {
 
 template<> std::string_view checkpoint_data<cryptonote::network_type::MAINNET>() { return "@mainnet_blocks_data@"sv; }
-template<> std::string_view checkpoint_data<cryptonote::network_type::STAGENET>() { return "@stagenet_blocks_data@"sv; }
+template<> std::string_view checkpoint_data<cryptonote::network_type::DEVNET>() { return "@devnet_blocks_data@"sv; }
 template<> std::string_view checkpoint_data<cryptonote::network_type::TESTNET>() { return "@testnet_blocks_data@"sv; }
 
 }

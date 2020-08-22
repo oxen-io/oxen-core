@@ -34,7 +34,8 @@
 #include "device/device_cold.hpp"
 #include "messages_map.hpp"
 #include "transport.hpp"
-#include "wallet/wallet2.h"
+#include "wallet/tx_construction_data.h"
+#include "wallet/tx_sets.h"
 
 namespace hw{
 namespace trezor{
@@ -111,7 +112,7 @@ namespace ki {
    * Converts transfer details to the MoneroTransferDetails required for KI sync
    */
   bool key_image_data(wallet_shim * wallet,
-                      const std::vector<tools::wallet2::transfer_details> & transfers,
+                      const std::vector<wallet::transfer_details> & transfers,
                       std::vector<MoneroTransferDetails> & res,
                       bool need_all_additionals=false);
 
@@ -124,7 +125,7 @@ namespace ki {
    * Generates KI sync request with commitments computed.
    */
   void generate_commitment(std::vector<MoneroTransferDetails> & mtds,
-                           const std::vector<tools::wallet2::transfer_details> & transfers,
+                           const std::vector<wallet::transfer_details> & transfers,
                            std::shared_ptr<messages::monero::MoneroKeyImageExportInitRequest> & req,
                            bool need_subaddr_indices=false);
 
@@ -149,9 +150,6 @@ namespace tx {
   using MoneroRctKey = messages::monero::MoneroTransactionSourceEntry_MoneroOutputEntry_MoneroRctKeyPublic;
   using MoneroRsigData = messages::monero::MoneroTransactionRsigData;
 
-  using tx_construction_data = tools::wallet2::tx_construction_data;
-  using unsigned_tx_set = tools::wallet2::unsigned_tx_set;
-
   void translate_address(MoneroAccountPublicAddress * dst, const cryptonote::account_public_address * src);
   void translate_dst_entry(MoneroTransactionDestinationEntry * dst, const cryptonote::tx_destination_entry * src);
   void translate_klrki(MoneroMultisigKLRki * dst, const rct::multisig_kLRki * src);
@@ -170,7 +168,7 @@ namespace tx {
   class TData {
   public:
     TsxData tsx_data;
-    tx_construction_data tx_data;
+    wallet::tx_construction_data tx_data;
     cryptonote::transaction tx;
     unsigned rsig_type;
     int bp_version;
@@ -212,27 +210,27 @@ namespace tx {
     wallet_shim * m_wallet2;
 
     size_t m_tx_idx;
-    const unsigned_tx_set * m_unsigned_tx;
+    const wallet::unsigned_tx_set * m_unsigned_tx;
     hw::tx_aux_data * m_aux_data;
 
     unsigned m_client_version;
     bool m_multisig;
 
-    const tx_construction_data & cur_src_tx() const {
+    const wallet::tx_construction_data & cur_src_tx() const {
       CHECK_AND_ASSERT_THROW_MES(m_tx_idx < m_unsigned_tx->txes.size(), "Invalid transaction index");
       return m_unsigned_tx->txes[m_tx_idx];
     }
 
-    const tx_construction_data & cur_tx() const {
+    const wallet::tx_construction_data & cur_tx() const {
       return m_ct.tx_data;
     }
 
-    const tools::wallet2::transfer_details & get_transfer(size_t idx) const {
+    const wallet::transfer_details & get_transfer(size_t idx) const {
       CHECK_AND_ASSERT_THROW_MES(idx < m_unsigned_tx->transfers.second.size() + m_unsigned_tx->transfers.first && idx >= m_unsigned_tx->transfers.first, "Invalid transfer index");
       return m_unsigned_tx->transfers.second[idx - m_unsigned_tx->transfers.first];
     }
 
-    const tools::wallet2::transfer_details & get_source_transfer(size_t idx) const {
+    const wallet::transfer_details & get_source_transfer(size_t idx) const {
       const auto & sel_transfers = cur_tx().selected_transfers;
       CHECK_AND_ASSERT_THROW_MES(idx < m_ct.source_permutation.size(), "Invalid source index - permutation");
       CHECK_AND_ASSERT_THROW_MES(m_ct.source_permutation[idx] < sel_transfers.size(), "Invalid source index");
@@ -247,7 +245,7 @@ namespace tx {
     void set_tx_input(MoneroTransactionSourceEntry * dst, size_t idx, bool need_ring_keys=false, bool need_ring_indices=false);
 
   public:
-    Signer(wallet_shim * wallet2, const unsigned_tx_set * unsigned_tx, size_t tx_idx = 0, hw::tx_aux_data * aux_data = nullptr);
+    Signer(wallet_shim * wallet2, const wallet::unsigned_tx_set * unsigned_tx, size_t tx_idx = 0, hw::tx_aux_data * aux_data = nullptr);
 
     std::shared_ptr<messages::monero::MoneroTransactionInitRequest> step_init();
     void step_init_ack(std::shared_ptr<const messages::monero::MoneroTransactionInitAck> ack);

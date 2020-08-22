@@ -47,6 +47,10 @@ namespace epee
     constexpr bool is_std_vector = false;
     template <typename... T>
     constexpr bool is_std_vector<std::vector<T...>> = true;
+    template <typename T>
+    constexpr bool is_std_optional = false;
+    template <typename T>
+    constexpr bool is_std_optional<std::optional<T>> = true;
   }
   namespace serialization
   {
@@ -54,6 +58,7 @@ namespace epee
     template <typename T, typename SFINAE = void> constexpr bool is_basic_serializable = false;
     template <typename T> constexpr bool is_basic_serializable<T, std::enable_if_t<std::is_integral<T>::value>> = true;
     template <typename T> constexpr bool is_basic_serializable<const T> = is_basic_serializable<T>;
+    template <typename T> constexpr bool is_basic_serializable<std::optional<T>> = is_basic_serializable<T>;
     template <> inline constexpr bool is_basic_serializable<std::string> = true;
     template <> inline constexpr bool is_basic_serializable<double> = true;
     template <> inline constexpr bool is_basic_serializable<storage_entry> = true;
@@ -297,50 +302,51 @@ namespace epee
         return unserialize_stl_container_pod_val_as_blob(d, stg, parent_section, pname);
     }
 
-    // Non-container basic serializable or using portable storage:
-    template<class T, class Storage, std::enable_if_t<!is_serialize_stl_container<T> && is_basic_serializable<T>, int> = 0>
+    template<class T, class Storage>
     bool kv_serialize(const T& d, Storage& stg, section* parent_section, const char* pname)
     {
-      return stg.set_value(pname, d, parent_section);
+      if constexpr (is_std_optional<T>)
+        // Optional: only serialize if non-empty
+        return d ? kv_serialize(*d, stg, parent_section, pname) : false;
+
+      else if constexpr (!is_serialize_stl_container<T>)
+      { // Non-container
+        if constexpr (is_basic_serializable<T>) // basic serializable or using portable storage:
+          return stg.set_value(pname, d, parent_section);
+        else // non-basic, non-portable serializable:
+          return serialize_t_obj(d, stg, parent_section, pname);
+      }
+      else if constexpr (is_basic_serializable<typename T::value_type>)
+        // stl container of basic or portable value type:
+        return serialize_stl_container_t_val(d, stg, parent_section, pname);
+      else
+        // stl containers (non-basic value type and non-portable storage), i.e. containers of custom
+        // serializable types.
+        return serialize_stl_container_t_obj(d, stg, parent_section, pname);
     }
-    template<class T, class Storage, std::enable_if_t<!is_serialize_stl_container<T> && is_basic_serializable<T>, int> = 0>
+    template<class T, class Storage>
     bool kv_unserialize(T& d, Storage& stg, section* parent_section, const char* pname)
     {
-      return stg.get_value(pname, d, parent_section);
-    } 
-    // Non-container non-basic serializable (and not portable storage):
-    template<class T, class Storage, std::enable_if_t<!is_serialize_stl_container<T> && !is_basic_serializable<T>, int> = 0>
-    bool kv_serialize(const T& d, Storage& stg, section* parent_section, const char* pname)
-    {
-      return serialize_t_obj(d, stg, parent_section, pname);
-    }
-    template<class T, class Storage, std::enable_if_t<!is_serialize_stl_container<T> && !is_basic_serializable<T>, int> = 0>
-    bool kv_unserialize(T& d, Storage& stg, section* parent_section, const char* pname)
-    {
-      return unserialize_t_obj(d, stg, parent_section, pname);
-    }
-    // stl containers (basic or portable value type):
-    template<class Container, class Storage, std::enable_if_t<is_serialize_stl_container<Container> && is_basic_serializable<typename Container::value_type>, int> = 0>
-    bool kv_serialize(const Container &d, Storage& stg, section* parent_section, const char* pname)
-    {
-      return serialize_stl_container_t_val(d, stg, parent_section, pname);
-    }
-    template<class Container, class Storage, std::enable_if_t<is_serialize_stl_container<Container> && is_basic_serializable<typename Container::value_type>, int> = 0>
-    bool kv_unserialize(Container &d, Storage& stg, section* parent_section, const char* pname)
-    {
-      return unserialize_stl_container_t_val(d, stg, parent_section, pname);
-    }
-    // stl containers (non-basic value type and non-portable storage), i.e. containers of custom
-    // serializable types.
-    template<class Container, class Storage, std::enable_if_t<is_serialize_stl_container<Container> && !is_basic_serializable<typename Container::value_type>, int> = 0>
-    bool kv_serialize(const Container &d, Storage& stg, section* parent_section, const char* pname)
-    {
-      return serialize_stl_container_t_obj(d, stg, parent_section, pname);
-    }
-    template<class Container, class Storage, std::enable_if_t<is_serialize_stl_container<Container> && !is_basic_serializable<typename Container::value_type>, int> = 0>
-    bool kv_unserialize(Container &d, Storage& stg, section* parent_section, const char* pname)
-    {
-      return unserialize_stl_container_t_obj(d, stg, parent_section, pname);
+      if constexpr (is_std_optional<T>) {
+        // Emplace a new value and try to deserialize into it
+        bool ret = kv_unserialize(d.emplace(), stg, parent_section, pname);
+        if (!ret) d.reset(); // Deserialization failed so clear the value
+        return ret;
+      }
+      else if constexpr (!is_serialize_stl_container<T>)
+      { // Non-container
+        if constexpr (is_basic_serializable<T>) // basic serializable or using portable storage:
+          return stg.get_value(pname, d, parent_section);
+        else // non-basic, non-portable serializable:
+          return unserialize_t_obj(d, stg, parent_section, pname);
+      }
+      else if constexpr (is_basic_serializable<typename T::value_type>)
+        // stl container of basic or portable value type:
+        return unserialize_stl_container_t_val(d, stg, parent_section, pname);
+      else
+        // stl containers (non-basic value type and non-portable storage), i.e. containers of custom
+        // serializable types.
+        return unserialize_stl_container_t_obj(d, stg, parent_section, pname);
     }
   }
 }

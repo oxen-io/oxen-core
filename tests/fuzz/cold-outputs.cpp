@@ -54,7 +54,7 @@ int ColdOutputsFuzzer::init()
 
   try
   {
-    wallet.init("", std::nullopt, boost::asio::ip::tcp::endpoint{}, 0, true, epee::net_utils::ssl_support_t::e_ssl_support_disabled);
+    wallet.init("");
     wallet.set_subaddress_lookahead(1, 1);
     wallet.generate("", "", spendkey, true, false);
   }

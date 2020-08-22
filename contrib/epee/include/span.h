@@ -30,6 +30,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <type_traits>

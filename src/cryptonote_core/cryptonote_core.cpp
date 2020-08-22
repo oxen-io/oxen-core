@@ -36,7 +36,6 @@
 
 #include <unordered_set>
 #include <iomanip>
-#include <lokimq/hex.h>
 #include <lokimq/base32z.h>
 
 extern "C" {
@@ -51,10 +50,9 @@ extern "C" {
 #include "cryptonote_core.h"
 #include "common/file.h"
 #include "common/sha256sum.h"
-#include "common/updates.h"
-#include "common/download.h"
 #include "common/threadpool.h"
 #include "common/command_line.h"
+#include "common/hex.h"
 #include "warnings.h"
 #include "crypto/crypto.h"
 #include "cryptonote_config.h"
@@ -93,9 +91,9 @@ namespace cryptonote
   , "Run on testnet. The wallet must be launched with --testnet flag."
   , false
   };
-  const command_line::arg_descriptor<bool, false> arg_stagenet_on  = {
-    "stagenet"
-  , "Run on stagenet. The wallet must be launched with --stagenet flag."
+  const command_line::arg_descriptor<bool, false> arg_devnet_on  = {
+    "devnet"
+  , "Run on devnet. The wallet must be launched with --devnet flag."
   , false
   };
   const command_line::arg_descriptor<bool> arg_regtest_on  = {
@@ -122,12 +120,12 @@ namespace cryptonote
     "data-dir"
   , "Specify data directory"
   , tools::get_default_data_dir()
-  , {{ &arg_testnet_on, &arg_stagenet_on }}
-  , [](std::array<bool, 2> testnet_stagenet, bool defaulted, std::string val)->std::string {
-      if (testnet_stagenet[0])
+  , {{ &arg_testnet_on, &arg_devnet_on }}
+  , [](std::array<bool, 2> testnet_devnet, bool defaulted, std::string val)->std::string {
+      if (testnet_devnet[0])
         return (boost::filesystem::path(val) / "testnet").string();
-      else if (testnet_stagenet[1])
-        return (boost::filesystem::path(val) / "stagenet").string();
+      else if (testnet_devnet[1])
+        return (boost::filesystem::path(val) / "devnet").string();
       return val;
     }
   };
@@ -170,11 +168,6 @@ namespace cryptonote
   , "How many blocks to sync at once during chain synchronization (0 = adaptive)."
   , 0
   };
-  static const command_line::arg_descriptor<std::string> arg_check_updates = {
-    "check-updates"
-  , "Check for new versions of loki: [disabled|notify|download|update]"
-  , "notify"
-  };
   static const command_line::arg_descriptor<bool> arg_pad_transactions  = {
     "pad-transactions"
   , "Pad relayed transactions to help defend against traffic volume analysis"
@@ -209,10 +202,10 @@ namespace cryptonote
     "on the `--service-node-public-ip' address and binds to the p2p IP address."
     " Only applies when running as a service node."
   , config::QNET_DEFAULT_PORT
-  , {{ &cryptonote::arg_testnet_on, &cryptonote::arg_stagenet_on }}
-  , [](std::array<bool, 2> testnet_stagenet, bool defaulted, uint16_t val) -> uint16_t {
-      return defaulted && testnet_stagenet[0] ? config::testnet::QNET_DEFAULT_PORT :
-             defaulted && testnet_stagenet[1] ? config::stagenet::QNET_DEFAULT_PORT :
+  , {{ &cryptonote::arg_testnet_on, &cryptonote::arg_devnet_on }}
+  , [](std::array<bool, 2> testnet_devnet, bool defaulted, uint16_t val) -> uint16_t {
+      return defaulted && testnet_devnet[0] ? config::testnet::QNET_DEFAULT_PORT :
+             defaulted && testnet_devnet[1] ? config::devnet::QNET_DEFAULT_PORT :
              val;
     }
   };
@@ -275,19 +268,27 @@ namespace cryptonote
 
   // Loads stubs that fail if invoked.  The stubs are replaced in the cryptonote_protocol/quorumnet.cpp glue code.
   [[noreturn]] static void need_core_init() {
-      throw std::logic_error("Internal error: quorumnet::init_core_callbacks() should have been called");
+      throw std::logic_error("Internal error: core callback initialization was not performed!");
   }
   void *(*quorumnet_new)(core&);
   void (*quorumnet_delete)(void*&self);
   void (*quorumnet_relay_obligation_votes)(void* self, const std::vector<service_nodes::quorum_vote_t>&);
   std::future<std::pair<blink_result, std::string>> (*quorumnet_send_blink)(core& core, const std::string& tx_blob);
+
+  void (*long_poll_trigger)(tx_memory_pool& pool);
+
   static bool init_core_callback_stubs() {
     quorumnet_new = [](core&) -> void* { need_core_init(); };
     quorumnet_delete = [](void*&) { need_core_init(); };
     quorumnet_relay_obligation_votes = [](void*, const std::vector<service_nodes::quorum_vote_t>&) { need_core_init(); };
     quorumnet_send_blink = [](core&, const std::string&) -> std::future<std::pair<blink_result, std::string>> { need_core_init(); };
+
+    long_poll_trigger = [](tx_memory_pool&) { need_core_init(); };
+
     return false;
   }
+
+  // This variable is only here to let us call the above during static initialization.
   bool init_core_callback_complete = init_core_callback_stubs();
 
   //-----------------------------------------------------------------------------------------------
@@ -305,9 +306,7 @@ namespace cryptonote
   , m_target_blockchain_height(0)
   , m_checkpoints_path("")
   , m_last_json_checkpoints_update(0)
-  , m_update_download(0)
   , m_nettype(UNDEFINED)
-  , m_update_available(false)
   , m_last_storage_server_ping(0)
   , m_last_lokinet_ping(0)
   , m_pad_transactions(false)
@@ -347,15 +346,6 @@ namespace cryptonote
   {
     m_miner.stop();
     m_blockchain_storage.cancel();
-
-    tools::download_async_handle handle;
-    {
-      std::lock_guard lock{m_update_mutex};
-      handle = m_update_download;
-      m_update_download = 0;
-    }
-    if (handle)
-      tools::download_cancel(handle);
   }
   //-----------------------------------------------------------------------------------
   void core::init_options(boost::program_options::options_description& desc)
@@ -366,7 +356,7 @@ namespace cryptonote
     command_line::add_arg(desc, arg_test_drop_download_height);
 
     command_line::add_arg(desc, arg_testnet_on);
-    command_line::add_arg(desc, arg_stagenet_on);
+    command_line::add_arg(desc, arg_devnet_on);
     command_line::add_arg(desc, arg_regtest_on);
     command_line::add_arg(desc, arg_keep_fakechain);
     command_line::add_arg(desc, arg_fixed_difficulty);
@@ -375,7 +365,6 @@ namespace cryptonote
     command_line::add_arg(desc, arg_fast_block_sync);
     command_line::add_arg(desc, arg_show_time_stats);
     command_line::add_arg(desc, arg_block_sync_size);
-    command_line::add_arg(desc, arg_check_updates);
     command_line::add_arg(desc, arg_offline);
     command_line::add_arg(desc, arg_block_download_max_size);
     command_line::add_arg(desc, arg_max_txpool_weight);
@@ -410,8 +399,8 @@ namespace cryptonote
     if (m_nettype != FAKECHAIN)
     {
       const bool testnet = command_line::get_arg(vm, arg_testnet_on);
-      const bool stagenet = command_line::get_arg(vm, arg_stagenet_on);
-      m_nettype = testnet ? TESTNET : stagenet ? STAGENET : MAINNET;
+      const bool devnet = command_line::get_arg(vm, arg_devnet_on);
+      m_nettype = testnet ? TESTNET : devnet ? DEVNET : MAINNET;
     }
 
     m_config_folder = command_line::get_arg(vm, arg_data_dir);
@@ -645,7 +634,6 @@ namespace cryptonote
     bool db_salvage = command_line::get_arg(vm, cryptonote::arg_db_salvage) != 0;
     bool fast_sync = command_line::get_arg(vm, arg_fast_block_sync) != 0;
     uint64_t blocks_threads = command_line::get_arg(vm, arg_prep_blocks_threads);
-    std::string check_updates_string = command_line::get_arg(vm, arg_check_updates);
     size_t max_txpool_weight = command_line::get_arg(vm, arg_max_txpool_weight);
     bool const prune_blockchain = false; /* command_line::get_arg(vm, arg_prune_blockchain); */
     bool keep_alt_blocks = command_line::get_arg(vm, arg_keep_alt_blocks);
@@ -884,20 +872,6 @@ namespace cryptonote
     MGINFO("Loading checkpoints");
     CHECK_AND_ASSERT_MES(update_checkpoints_from_json_file(), false, "One or more checkpoints loaded from json conflicted with existing checkpoints.");
 
-   // DNS versions checking
-    if (check_updates_string == "disabled")
-      check_updates_level = UPDATES_DISABLED;
-    else if (check_updates_string == "notify")
-      check_updates_level = UPDATES_NOTIFY;
-    else if (check_updates_string == "download")
-      check_updates_level = UPDATES_DOWNLOAD;
-    else if (check_updates_string == "update")
-      check_updates_level = UPDATES_UPDATE;
-    else {
-      MERROR("Invalid argument to --dns-versions-check: " << check_updates_string);
-      return false;
-    }
-
     r = m_miner.init(vm, m_nettype);
     CHECK_AND_ASSERT_MES(r, false, "Failed to initialize miner instance");
 
@@ -1007,15 +981,15 @@ namespace cryptonote
 
     if (m_service_node) {
       MGINFO_YELLOW("Service node public keys:");
-      MGINFO_YELLOW("- primary: " << lokimq::to_hex(tools::view_guts(keys.pub)));
-      MGINFO_YELLOW("- ed25519: " << lokimq::to_hex(tools::view_guts(keys.pub_ed25519)));
+      MGINFO_YELLOW("- primary: " << tools::type_to_hex(keys.pub));
+      MGINFO_YELLOW("- ed25519: " << tools::type_to_hex(keys.pub_ed25519));
       // .snode address is the ed25519 pubkey, encoded with base32z and with .snode appended:
       MGINFO_YELLOW("- lokinet: " << lokimq::to_base32z(tools::view_guts(keys.pub_ed25519)) << ".snode");
-      MGINFO_YELLOW("-  x25519: " << lokimq::to_hex(tools::view_guts(keys.pub_x25519)));
+      MGINFO_YELLOW("-  x25519: " << tools::type_to_hex(keys.pub_x25519));
     } else {
       // Only print the x25519 version because it's the only thing useful for a non-SN (for
       // encrypted LMQ RPC connections).
-      MGINFO_YELLOW("x25519 public key: " << lokimq::to_hex(tools::view_guts(keys.pub_x25519)));
+      MGINFO_YELLOW("x25519 public key: " << tools::type_to_hex(keys.pub_x25519));
     }
 
     return true;
@@ -1134,7 +1108,6 @@ namespace cryptonote
     if (m_quorumnet_state)
       quorumnet_delete(m_quorumnet_state);
     m_lmq.reset();
-    m_long_poll_wake_up_clients.notify_all();
     m_service_node_list.store();
     m_miner.stop();
     m_mempool.deinit();
@@ -1407,7 +1380,7 @@ namespace cryptonote
       }
     }
 
-    if (tx_pool_changed) m_long_poll_wake_up_clients.notify_all();
+    if (tx_pool_changed) long_poll_trigger(m_mempool);
     return ok;
   }
   //-----------------------------------------------------------------------------------------------
@@ -1699,20 +1672,88 @@ namespace cryptonote
     return m_mempool.check_for_key_images(key_im, spent);
   }
   //-----------------------------------------------------------------------------------------------
-  std::tuple<uint64_t, uint64_t, uint64_t> core::get_coinbase_tx_sum(const uint64_t start_offset, const size_t count)
+  std::optional<std::tuple<uint64_t, uint64_t, uint64_t>> core::get_coinbase_tx_sum(uint64_t start_offset, size_t count)
   {
-    uint64_t emission_amount = 0;
-    uint64_t total_fee_amount = 0;
-    uint64_t burnt_loki = 0;
-    if (count)
-    {
-      const uint64_t end = start_offset + count - 1;
-      m_blockchain_storage.for_blocks_range(start_offset, end,
-        [this, &emission_amount, &total_fee_amount, &burnt_loki](uint64_t, const crypto::hash& hash, const block& b){
+    std::tuple<uint64_t, uint64_t, uint64_t> result{0, 0, 0};
+    if (count == 0)
+      return result;
+
+    auto& [emission_amount, total_fee_amount, burnt_loki] = result;
+
+    // Caching.
+    //
+    // Requesting this value from the beginning of the chain is very slow, so we cache it.  That
+    // still means the first request will be slow, but that's okay.  To prevent a bunch of threads
+    // getting backed up trying to calculate this, we lock out more than one thread building the
+    // cache at a time if we're requesting a large number of block values at once.  Any other thread
+    // requesting will get a nullopt back.
+
+    constexpr uint64_t CACHE_LAG = 30; // We cache the values up to this many blocks ago; we lag so that we don't have to worry about small reorgs
+    constexpr uint64_t CACHE_EXCLUSIVE = 1000; // If we need to load more than this, we block out other threads
+
+    // Check if we have a cacheable from-the-beginning result
+    uint64_t cache_to = 0;
+    std::chrono::steady_clock::time_point cache_build_started;
+    if (start_offset == 0) {
+      uint64_t height = m_blockchain_storage.get_current_blockchain_height();
+      if (count > height) count = height;
+      cache_to = height - std::min(CACHE_LAG, height);
+      {
+        std::shared_lock lock{m_coinbase_cache.mutex};
+        if (count >= m_coinbase_cache.height) {
+          emission_amount = m_coinbase_cache.emissions;
+          total_fee_amount = m_coinbase_cache.fees;
+          burnt_loki = m_coinbase_cache.burnt;
+          start_offset = m_coinbase_cache.height;
+          count -= m_coinbase_cache.height;
+        }
+        // else don't change anything; we need a subset of blocks that ends before the cache.
+
+        if (cache_to <= m_coinbase_cache.height)
+          cache_to = 0; // Cache doesn't need updating
+      }
+
+      // If we're loading a lot then acquire an exclusive lock, recheck our variables, and block out
+      // other threads until we're done.  (We don't do this if we're only loading a few because even
+      // if we have some competing cache updates they don't hurt anything).
+      if (cache_to > 0 && count > CACHE_EXCLUSIVE) {
+        std::unique_lock lock{m_coinbase_cache.mutex};
+        if (m_coinbase_cache.building)
+          return std::nullopt; // Another thread is already updating the cache
+
+        if (m_coinbase_cache.height > start_offset) {
+          // Someone else updated the cache while we were acquiring the unique lock, so update our variables
+          if (m_coinbase_cache.height >= start_offset + count) {
+            // The cache is now *beyond* us, which means we can't use it, so reset start/count back
+            // to what they were originally.
+            count += start_offset;
+            start_offset = 0;
+            cache_to = 0;
+          } else {
+            // The cache is updated and we can still use it, so update our variables.
+            emission_amount = m_coinbase_cache.emissions;
+            total_fee_amount = m_coinbase_cache.fees;
+            burnt_loki = m_coinbase_cache.burnt;
+            count -= m_coinbase_cache.height - start_offset;
+            start_offset = m_coinbase_cache.height;
+          }
+        }
+        if (cache_to > 0 && count > CACHE_EXCLUSIVE) {
+          cache_build_started = std::chrono::steady_clock::now();
+          m_coinbase_cache.building = true; // Block out other threads until we're done
+          MINFO("Starting slow cache build request for get_coinbase_tx_sum(" << start_offset << ", " << count << ")");
+        }
+      }
+    }
+
+    const uint64_t end = start_offset + count - 1;
+    m_blockchain_storage.for_blocks_range(start_offset, end,
+      [this, &cache_to, &result, &cache_build_started](uint64_t height, const crypto::hash& hash, const block& b){
+      auto& [emission_amount, total_fee_amount, burnt_loki] = result;
       std::vector<transaction> txs;
       std::vector<crypto::hash> missed_txs;
       uint64_t coinbase_amount = get_outs_money_amount(b.miner_tx);
-      this->get_transactions(b.tx_hashes, txs, missed_txs);      
+      get_transactions(b.tx_hashes, txs, missed_txs);
       uint64_t tx_fee_amount = 0;
       for(const auto& tx: txs)
       {
@@ -1722,14 +1763,31 @@ namespace cryptonote
           burnt_loki += get_burned_amount_from_tx_extra(tx.extra);
         }
       }
-      
+
       emission_amount += coinbase_amount - tx_fee_amount;
       total_fee_amount += tx_fee_amount;
+      if (cache_to && cache_to == height)
+      {
+        std::unique_lock lock{m_coinbase_cache.mutex};
+        if (m_coinbase_cache.height < height)
+        {
+          m_coinbase_cache.height = height;
+          m_coinbase_cache.emissions = emission_amount;
+          m_coinbase_cache.fees = total_fee_amount;
+          m_coinbase_cache.burnt = burnt_loki;
+        }
+        if (m_coinbase_cache.building)
+        {
+          m_coinbase_cache.building = false;
+          MINFO("Finishing cache build for get_coinbase_tx_sum in " <<
+              std::chrono::duration<double>{std::chrono::steady_clock::now() - cache_build_started}.count() << "s");
+        }
+        cache_to = 0;
+      }
       return true;
-      });
-    }
+    });
 
-    return std::tuple<uint64_t, uint64_t, uint64_t>(emission_amount, total_fee_amount, burnt_loki);
+    return result;
   }
   //-----------------------------------------------------------------------------------------------
   bool core::check_tx_inputs_keyimages_diff(const transaction& tx) const
@@ -2150,28 +2208,21 @@ namespace cryptonote
           return;
         }
 
-        if (!check_external_ping(m_last_storage_server_ping, STORAGE_SERVER_PING_LIFETIME, "the storage server"))
+        if (m_nettype != DEVNET)
         {
-          MGINFO_RED(
-              "Failed to submit uptime proof: have not heard from the storage server recently. Make sure that it "
-              "is running! It is required to run alongside the Loki daemon");
-          return;
-        }
-        uint8_t hf_version = get_blockchain_storage().get_current_hard_fork_version();
-        if (!check_external_ping(m_last_lokinet_ping, LOKINET_PING_LIFETIME, "Lokinet"))
-        {
-          if (hf_version >= cryptonote::network_version_14_blink)
+          if (!check_external_ping(m_last_storage_server_ping, STORAGE_SERVER_PING_LIFETIME, "the storage server"))
+          {
+            MGINFO_RED(
+                "Failed to submit uptime proof: have not heard from the storage server recently. Make sure that it "
+                "is running! It is required to run alongside the Loki daemon");
+            return;
+          }
+          if (!check_external_ping(m_last_lokinet_ping, LOKINET_PING_LIFETIME, "Lokinet"))
           {
             MGINFO_RED(
                 "Failed to submit uptime proof: have not heard from lokinet recently. Make sure that it "
                 "is running! It is required to run alongside the Loki daemon");
             return;
-          }
-          else
-          {
-            MGINFO_RED(
-                "Have not heard from lokinet recently. Make sure that it is running! "
-                "It is required to run alongside the Loki daemon after hard fork 14");
           }
         }
 
@@ -2209,7 +2260,6 @@ namespace cryptonote
     m_fork_moaner.do_call([this] { return check_fork_time(); });
     m_txpool_auto_relayer.do_call([this] { return relay_txpool_transactions(); });
     m_service_node_vote_relayer.do_call([this] { return relay_service_node_votes(); });
-    // m_check_updates_interval.do_call([this] { return check_updates(); });
     m_check_disk_space_interval.do_call([this] { return check_disk_space(); });
     m_block_rate_interval.do_call([this] { return check_block_rate(); });
     m_sn_proof_cleanup_interval.do_call([&snl=m_service_node_list] { snl.cleanup_proofs(); return true; });
@@ -2276,136 +2326,6 @@ namespace cryptonote
   uint64_t core::get_earliest_ideal_height_for_version(uint8_t version) const
   {
     return get_blockchain_storage().get_earliest_ideal_height_for_version(version);
-  }
-  //-----------------------------------------------------------------------------------------------
-  bool core::check_updates()
-  {
-    static const char software[] = "loki";
-#ifdef BUILD_TAG
-    static const char buildtag[] = BOOST_PP_STRINGIZE(BUILD_TAG);
-    static const char subdir[] = "cli"; // because it can never be simple
-#else
-    static const char buildtag[] = "source";
-    static const char subdir[] = "source"; // because it can never be simple
-#endif
-
-    if (m_offline)
-      return true;
-
-    if (check_updates_level == UPDATES_DISABLED)
-      return true;
-
-    std::string version, hash;
-    MCDEBUG("updates", "Checking for a new " << software << " version for " << buildtag);
-    if (!tools::check_updates(software, buildtag, version, hash))
-      return false;
-
-    if (tools::vercmp(version.c_str(), LOKI_VERSION_STR) <= 0)
-    {
-      m_update_available = false;
-      return true;
-    }
-
-    std::string url = tools::get_update_url(software, subdir, buildtag, version, true);
-    MCLOG_CYAN(el::Level::Info, "global", "Version " << version << " of " << software << " for " << buildtag << " is available: " << url << ", SHA256 hash " << hash);
-    m_update_available = true;
-
-    if (check_updates_level == UPDATES_NOTIFY)
-      return true;
-
-    url = tools::get_update_url(software, subdir, buildtag, version, false);
-    std::string filename;
-    const char *slash = strrchr(url.c_str(), '/');
-    if (slash)
-      filename = slash + 1;
-    else
-      filename = std::string(software) + "-update-" + version;
-    boost::filesystem::path path(epee::string_tools::get_current_module_folder());
-    path /= filename;
-
-    std::unique_lock lock{m_update_mutex};
-
-    if (m_update_download != 0)
-    {
-      MCDEBUG("updates", "Already downloading update");
-      return true;
-    }
-
-    crypto::hash file_hash;
-    if (!tools::sha256sum_file(path.string(), file_hash) || (hash != epee::string_tools::pod_to_hex(file_hash)))
-    {
-      MCDEBUG("updates", "We don't have that file already, downloading");
-      const std::string tmppath = path.string() + ".tmp";
-      if (epee::file_io_utils::is_file_exist(tmppath))
-      {
-        MCDEBUG("updates", "We have part of the file already, resuming download");
-      }
-      m_last_update_length = 0;
-      m_update_download = tools::download_async(tmppath, url, [this, hash, path](const std::string &tmppath, const std::string &uri, bool success) {
-        bool remove = false, good = true;
-        if (success)
-        {
-          crypto::hash file_hash;
-          if (!tools::sha256sum_file(tmppath, file_hash))
-          {
-            MCERROR("updates", "Failed to hash " << tmppath);
-            remove = true;
-            good = false;
-          }
-          else if (hash != epee::string_tools::pod_to_hex(file_hash))
-          {
-            MCERROR("updates", "Download from " << uri << " does not match the expected hash");
-            remove = true;
-            good = false;
-          }
-        }
-        else
-        {
-          MCERROR("updates", "Failed to download " << uri);
-          good = false;
-        }
-        std::unique_lock lock{m_update_mutex};
-        m_update_download = 0;
-        if (success && !remove)
-        {
-          std::error_code e = tools::replace_file(tmppath, path.string());
-          if (e)
-          {
-            MCERROR("updates", "Failed to rename downloaded file");
-            good = false;
-          }
-        }
-        else if (remove)
-        {
-          if (!boost::filesystem::remove(tmppath))
-          {
-            MCERROR("updates", "Failed to remove invalid downloaded file");
-            good = false;
-          }
-        }
-        if (good)
-          MCLOG_CYAN(el::Level::Info, "updates", "New version downloaded to " << path.string());
-      }, [this](const std::string &path, const std::string &uri, size_t length, ssize_t content_length) {
-        if (length >= m_last_update_length + 1024 * 1024 * 10)
-        {
-          m_last_update_length = length;
-          MCDEBUG("updates", "Downloaded " << length << "/" << (content_length ? std::to_string(content_length) : "unknown"));
-        }
-        return true;
-      });
-    }
-    else
-    {
-      MCDEBUG("updates", "We already have " << path << " with expected hash");
-    }
-
-    lock.unlock();
-
-    if (check_updates_level == UPDATES_DOWNLOAD)
-      return true;
-
-    MCERROR("updates", "Download/update not implemented yet");
-    return true;
   }
   //-----------------------------------------------------------------------------------------------
   bool core::check_disk_space()

@@ -39,7 +39,7 @@ extern "C" {
 }
 
 #include "ringct/rctSigs.h"
-#include "wallet/wallet2.h"
+#include "net/local_ip.h"
 #include "cryptonote_tx_utils.h"
 #include "cryptonote_basic/tx_extra.h"
 #include "cryptonote_basic/hardfork.h"
@@ -1767,6 +1767,9 @@ namespace service_nodes
       return false;
     }
 
+    if (winner == null_block_winner)
+      return true;
+
     if ((miner_tx.vout.size() - 1) < winner.payouts.size())
     {
       MERROR("Service node reward specifies more winners than available outputs: " << (miner_tx.vout.size() - 1) << ", winners: " << winner.payouts.size());
@@ -2147,23 +2150,18 @@ namespace service_nodes
       REJECT_PROOF("signature validation failed");
 
     crypto::x25519_public_key derived_x25519_pubkey = crypto::x25519_public_key::null();
-    if (hf_version >= HF_VERSION_ED25519_KEY)
-    {
-      if (!proof.pubkey_ed25519)
-        REJECT_PROOF("required ed25519 auxiliary pubkey " << epee::string_tools::pod_to_hex(proof.pubkey_ed25519) << " not included in proof");
+    if (!proof.pubkey_ed25519)
+      REJECT_PROOF("required ed25519 auxiliary pubkey " << epee::string_tools::pod_to_hex(proof.pubkey_ed25519) << " not included in proof");
 
-      if (0 != crypto_sign_verify_detached(proof.sig_ed25519.data, reinterpret_cast<unsigned char *>(hash.data), sizeof(hash.data), proof.pubkey_ed25519.data))
-        REJECT_PROOF("ed25519 signature validation failed");
+    if (0 != crypto_sign_verify_detached(proof.sig_ed25519.data, reinterpret_cast<unsigned char *>(hash.data), sizeof(hash.data), proof.pubkey_ed25519.data))
+      REJECT_PROOF("ed25519 signature validation failed");
 
-      if (0 != crypto_sign_ed25519_pk_to_curve25519(derived_x25519_pubkey.data, proof.pubkey_ed25519.data)
-          || !derived_x25519_pubkey)
-        REJECT_PROOF("invalid ed25519 pubkey included in proof (x25519 derivation failed)");
-    }
-    if (hf_version >= cryptonote::network_version_14_blink)
-    {
-      if (proof.qnet_port == 0)
-        REJECT_PROOF("invalid quorumnet port in uptime proof");
-    }
+    if (0 != crypto_sign_ed25519_pk_to_curve25519(derived_x25519_pubkey.data, proof.pubkey_ed25519.data)
+        || !derived_x25519_pubkey)
+      REJECT_PROOF("invalid ed25519 pubkey included in proof (x25519 derivation failed)");
+
+    if (proof.qnet_port == 0)
+      REJECT_PROOF("invalid quorumnet port in uptime proof");
 
     auto locks = tools::unique_locks(m_blockchain, m_sn_mutex, m_x25519_map_mutex);
     auto it = m_state.service_nodes_infos.find(proof.pubkey);

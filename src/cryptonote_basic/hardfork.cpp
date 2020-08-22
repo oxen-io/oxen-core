@@ -88,14 +88,10 @@ static constexpr HardFork::Params testnet_hard_forks[] =
   { network_version_15_lns,                 244777, 0, 1583940000 }, // 2020-03-11 15:20UTC
 };
 
-static constexpr HardFork::Params stagenet_hard_forks[] =
+static constexpr HardFork::Params devnet_hard_forks[] =
 {
-  { network_version_7,                   1,      0, 1341378000 },
-  { network_version_8,                   64324,  0, 1533006000 },
-  { network_version_9_service_nodes,     96210,  0, 1536840000 },
-  { network_version_10_bulletproofs,     96211,  0, 1536840120 },
-  { network_version_11_infinite_staking, 147029, 0, 1551223964 }, // 2019-02-27 12:30 AEDT
-  { network_version_12_checkpointing,    213125, 0, 1561608000 }, // 2019-06-28 14:00 AEDT
+  { network_version_7,                      1,      0, 1597170000 },
+  { network_version_15_lns,                 2,      0, 1597170000 }, // 2020-08-11 18:20 UTC
 };
 
 uint64_t HardFork::get_hardcoded_hard_fork_height(network_type nettype, cryptonote::network_version version)
@@ -117,7 +113,7 @@ HardFork::ParamsIterator HardFork::get_hardcoded_hard_forks(network_type nettype
 {
   if (nettype == MAINNET)       return {mainnet_hard_forks, std::end(mainnet_hard_forks)};
   else if (nettype == TESTNET)  return {testnet_hard_forks, std::end(testnet_hard_forks)};
-  else if (nettype == STAGENET) return {stagenet_hard_forks, std::end(stagenet_hard_forks)};
+  else if (nettype == DEVNET) return {devnet_hard_forks, std::end(devnet_hard_forks)};
   return {nullptr, nullptr};
 }
 
@@ -131,35 +127,36 @@ HardFork::HardFork(cryptonote::BlockchainDB &db, uint8_t original_version, time_
   current_fork_index(0)
 {
   if (window_size == 0)
-    throw "window_size needs to be strictly positive";
+    throw std::logic_error{"window_size needs to be strictly positive"};
   if (default_threshold_percent > 100)
-    throw "default_threshold_percent needs to be between 0 and 100";
+    throw std::logic_error{"default_threshold_percent needs to be between 0 and 100"};
 }
 
-bool HardFork::add_fork(uint8_t version, uint64_t height, uint8_t threshold, time_t time)
+void HardFork::add_fork(uint8_t version, uint64_t height, uint8_t threshold, time_t time)
 {
   std::unique_lock l{lock};
 
   // add in order
   if (version == 0)
-    return false;
+    throw std::runtime_error{"Cannot add a hard fork with HF version 0"};
   if (!heights.empty()) {
-    if (version <= heights.back().version)
-      return false;
-    if (height <= heights.back().height)
-      return false;
-    if (time <= heights.back().time)
-      return false;
+    const auto& [v, h, _thresh, t] = heights.back();
+    if (version <= v)
+      throw std::runtime_error{"Cannot add hard fork: version(" + std::to_string(version) + ") must be > previous HF version(" + std::to_string(v) + ")"};
+    if (height <= h)
+      throw std::runtime_error{"Cannot add hard fork: height(" + std::to_string(height) + ") must be > previous HF height(" + std::to_string(h) + ")"};
+    if (time < t)
+      throw std::runtime_error{"Cannot add hard fork: timestamp(" + std::to_string(time) + ") must be >= previous HF timestamp(" + std::to_string(t) + ")"};
   }
   if (threshold > 100)
-    return false;
+    throw std::runtime_error{"Cannot add hard fork: invalid threshold (" + std::to_string(threshold) + ")"};
+
   heights.push_back({version, height, threshold, time});
-  return true;
 }
 
-bool HardFork::add_fork(uint8_t version, uint64_t height, time_t time)
+void HardFork::add_fork(uint8_t version, uint64_t height, time_t time)
 {
-  return add_fork(version, height, default_threshold_percent, time);
+  add_fork(version, height, default_threshold_percent, time);
 }
 
 uint8_t HardFork::get_effective_version(uint8_t voting_version) const

@@ -40,7 +40,6 @@
 #include "include_base_utils.h"
 #include "common/threadpool.h"
 #include "crypto/crypto.h"
-#include <boost/algorithm/string/join.hpp>
 
 #undef LOKI_DEFAULT_LOG_CATEGORY
 #define LOKI_DEFAULT_LOG_CATEGORY "net.dns"
@@ -219,7 +218,7 @@ DNSResolver::DNSResolver()
     dns_public_addr = tools::dns_utils::parse_dns_public(DNS_PUBLIC);
     if (!dns_public_addr.empty())
     {
-      MGINFO("Using public DNS server(s): " << boost::join(dns_public_addr, ", ") << " (TCP)");
+      MGINFO("Using public DNS server(s): " << tools::join(", ", dns_public_addr) << " (TCP)");
       use_dns_public = 1;
     }
     else
@@ -646,7 +645,7 @@ std::vector<std::string> parse_dns_public(const char *s)
   {
     for (auto& default_dns : DEFAULT_DNS_PUBLIC_ADDR)
       dns_public_addr.emplace_back(default_dns);
-    LOG_PRINT_L0("Using default public DNS server(s): " << boost::join(dns_public_addr, ", ") << " (TCP)");
+    LOG_PRINT_L0("Using default public DNS server(s): " << tools::join(", ", dns_public_addr) << " (TCP)");
   }
   else if (std::sscanf(s, "tcp://%u.%u.%u.%u%c", &ip0, &ip1, &ip2, &ip3, &c) == 4)
   {

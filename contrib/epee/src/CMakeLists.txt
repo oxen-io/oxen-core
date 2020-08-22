@@ -26,9 +26,22 @@
 # STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-add_library(epee hex.cpp abstract_http_client.cpp http_auth.cpp mlog.cpp net_helper.cpp net_utils_base.cpp string_tools.cpp wipeable_string.cpp
-    levin_base.cpp memwipe.c connection_basic.cpp network_throttle.cpp network_throttle-detail.cpp mlocker.cpp buffer.cpp net_ssl.cpp portable_storage.cpp
-    time_helper.cpp)
+add_library(epee
+    buffer.cpp
+    connection_basic.cpp
+    hex.cpp
+    levin_base.cpp
+    memwipe.c
+    mlocker.cpp
+    mlog.cpp
+    net_utils_base.cpp
+    network_throttle.cpp
+    network_throttle-detail.cpp
+    portable_storage.cpp
+    string_tools.cpp
+    time_helper.cpp
+    wipeable_string.cpp
+)
 
 if (TARGET readline)
   target_sources(epee PRIVATE readline_buffer.cpp)
@@ -54,8 +67,6 @@ target_link_libraries(epee
   PRIVATE
     Boost::filesystem
     Boost::thread
-    OpenSSL::SSL
-    OpenSSL::Crypto
     extra)
 
 target_include_directories(epee PUBLIC ../include)

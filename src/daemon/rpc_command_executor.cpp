@@ -33,6 +33,7 @@
 #include "common/password.h"
 #include "common/scoped_message_writer.h"
 #include "common/pruning.h"
+#include "common/hex.h"
 #include "daemon/rpc_command_executor.h"
 #include "int-util.h"
 #include "rpc/core_rpc_server_commands_defs.h"
@@ -216,16 +217,13 @@ namespace {
 }
 
 rpc_command_executor::rpc_command_executor(
-    uint32_t ip
-  , uint16_t port
-  , const std::optional<tools::login>& login
-  , const epee::net_utils::ssl_options_t& ssl_options
+    std::string remote_url,
+    const std::optional<tools::login>& login
   )
 {
-  std::optional<epee::net_utils::http::login> http_login{};
+  m_rpc_client.emplace(remote_url);
   if (login)
-    http_login.emplace(login->username, login->password.password());
-  m_rpc_client = std::make_unique<tools::t_rpc_client>(ip, port, std::move(http_login), ssl_options);
+    m_rpc_client->set_auth(login->username, std::string{login->password.password().view()});
 }
 
 bool rpc_command_executor::print_checkpoints(uint64_t start_height, uint64_t end_height, bool print_json)
@@ -520,7 +518,7 @@ bool rpc_command_executor::show_status() {
     % (unsigned long long)ires.height
     % (unsigned long long)net_height
     % get_sync_percentage(ires)
-    % (ires.testnet ? " ON TESTNET" : ires.stagenet ? " ON STAGENET" : ""/*mainnet*/)
+    % (ires.testnet ? " ON TESTNET" : ires.devnet ? " ON DEVNET" : ""/*mainnet*/)
     % bootstrap_msg
     % (!has_mining_info ? ", mining info unavailable" : mining_busy ? ", syncing" : mres.active ? ( ", mining at " + get_mining_speed(mres.speed)) : ""/*not mining*/)
     % get_mining_speed(ires.difficulty / ires.target)
@@ -626,7 +624,6 @@ bool rpc_command_executor::print_connections() {
 
   tools::msg_writer() << std::setw(30) << std::left << "Remote Host"
       << std::setw(8) << "Type"
-      << std::setw(6) << "SSL"
       << std::setw(20) << "Peer id"
       << std::setw(20) << "Support Flags"
       << std::setw(30) << "Recv/Sent (inactive,sec)"
@@ -647,7 +644,6 @@ bool rpc_command_executor::print_connections() {
      //<< std::setw(30) << std::left << in_out
      << std::setw(30) << std::left << address
      << std::setw(8) << (get_address_type_name((epee::net_utils::address_type)info.address_type))
-     << std::setw(6) << (info.ssl ? "yes" : "no")
      << std::setw(20) << info.peer_id
      << std::setw(20) << info.support_flags
      << std::setw(30) << std::to_string(info.recv_count) + "("  + std::to_string(count_seconds(info.recv_idle_time)) + ")/" + std::to_string(info.send_count) + "(" + std::to_string(count_seconds(info.send_idle_time)) + ")"
@@ -841,99 +837,63 @@ bool rpc_command_executor::print_transaction(const crypto::hash& transaction_has
   GET_TRANSACTIONS::request req{};
   GET_TRANSACTIONS::response res{};
 
-  req.txs_hashes.push_back(epee::string_tools::pod_to_hex(transaction_hash));
-  req.decode_as_json = false;
+  req.txs_hashes.push_back(tools::type_to_hex(transaction_hash));
   req.split = true;
-  req.prune = false;
   if (!invoke<GET_TRANSACTIONS>(std::move(req), res, "Transaction retrieval failed"))
     return false;
 
-  if (1 == res.txs.size() || 1 == res.txs_as_hex.size())
+  if (1 == res.txs.size())
   {
-    if (1 == res.txs.size())
+    auto& tx = res.txs.front();
+    bool pruned = tx.prunable_hash && !tx.prunable_as_hex;
+
+    if (tx.in_pool)
+      tools::success_msg_writer() << "Found in pool";
+    else
+      tools::success_msg_writer() << "Found in blockchain at height " << tx.block_height << (pruned ? " (pruned)" : "");
+
+    const std::string &pruned_as_hex = *tx.pruned_as_hex; // Always included with req.split=true
+
+    std::optional<cryptonote::transaction> t;
+    if (include_metadata || include_json)
     {
-      // only available for new style answers
-      bool pruned = res.txs.front().prunable_as_hex.empty() && res.txs.front().prunable_hash != epee::string_tools::pod_to_hex(crypto::null_hash);
-      if (res.txs.front().in_pool)
-        tools::success_msg_writer() << "Found in pool";
-      else
-        tools::success_msg_writer() << "Found in blockchain at height " << res.txs.front().block_height << (pruned ? " (pruned)" : "");
+      if (lokimq::is_hex(pruned_as_hex) && (!tx.prunable_as_hex || lokimq::is_hex(*tx.prunable_as_hex)))
+      {
+        std::string blob = lokimq::from_hex(pruned_as_hex);
+        if (tx.prunable_as_hex)
+          blob += lokimq::from_hex(*tx.prunable_as_hex);
+
+        bool parsed = pruned
+          ? cryptonote::parse_and_validate_tx_base_from_blob(blob, t.emplace())
+          : cryptonote::parse_and_validate_tx_from_blob(blob, t.emplace());
+        if (!parsed)
+        {
+          tools::fail_msg_writer() << "Failed to parse transaction data";
+          t.reset();
+        }
+      }
     }
 
-    const std::string &as_hex = (1 == res.txs.size()) ? res.txs.front().as_hex : res.txs_as_hex.front();
-    const std::string &pruned_as_hex = (1 == res.txs.size()) ? res.txs.front().pruned_as_hex : "";
-    const std::string &prunable_as_hex = (1 == res.txs.size()) ? res.txs.front().prunable_as_hex : "";
     // Print metadata if requested
     if (include_metadata)
     {
-      if (!res.txs.front().in_pool)
-      {
-        tools::msg_writer() << "Block timestamp: " << res.txs.front().block_timestamp << " (" << tools::get_human_readable_timestamp(res.txs.front().block_timestamp) << ")";
-      }
-      cryptonote::blobdata blob;
-      if (epee::string_tools::parse_hexstr_to_binbuff(pruned_as_hex + prunable_as_hex, blob))
-      {
-        cryptonote::transaction tx;
-        if (cryptonote::parse_and_validate_tx_from_blob(blob, tx))
-        {
-          tools::msg_writer() << "Size: " << blob.size();
-          tools::msg_writer() << "Weight: " << cryptonote::get_transaction_weight(tx);
-        }
-        else
-          tools::fail_msg_writer() << "Error parsing transaction blob";
-      }
-      else
-        tools::fail_msg_writer() << "Error parsing transaction from hex";
+      if (!tx.in_pool)
+        tools::msg_writer() << "Block timestamp: " << tx.block_timestamp << " (" << tools::get_human_readable_timestamp(tx.block_timestamp) << ")";
+      tools::msg_writer() << "Size: " << tx.size;
+      if (t)
+        tools::msg_writer() << "Weight: " << cryptonote::get_transaction_weight(*t);
     }
 
     // Print raw hex if requested
     if (include_hex)
-    {
-      if (!as_hex.empty())
-      {
-        tools::success_msg_writer() << as_hex << std::endl;
-      }
-      else
-      {
-        std::string output = pruned_as_hex + prunable_as_hex;
-        tools::success_msg_writer() << output << std::endl;
-      }
-    }
+      tools::success_msg_writer() << pruned_as_hex << (tx.prunable_as_hex ? *tx.prunable_as_hex : "") << '\n';
 
     // Print json if requested
-    if (include_json)
-    {
-      crypto::hash tx_hash, tx_prefix_hash;
-      cryptonote::transaction tx;
-      cryptonote::blobdata blob;
-      std::string source = as_hex.empty() ? pruned_as_hex + prunable_as_hex : as_hex;
-      bool pruned = !pruned_as_hex.empty() && prunable_as_hex.empty();
-      if (!epee::string_tools::parse_hexstr_to_binbuff(source, blob))
-      {
-        tools::fail_msg_writer() << "Failed to parse tx to get json format";
-      }
-      else
-      {
-        bool ret;
-        if (pruned)
-          ret = cryptonote::parse_and_validate_tx_base_from_blob(blob, tx);
-        else
-          ret = cryptonote::parse_and_validate_tx_from_blob(blob, tx);
-        if (!ret)
-        {
-          tools::fail_msg_writer() << "Failed to parse tx blob to get json format";
-        }
-        else
-        {
-          tools::success_msg_writer() << cryptonote::obj_to_json_str(tx) << std::endl;
-        }
-      }
-    }
+    if (include_json && t)
+      tools::success_msg_writer() << cryptonote::obj_to_json_str(*t) << '\n';
   }
   else
-  {
     tools::fail_msg_writer() << "Transaction wasn't found: " << transaction_hash << std::endl;
-  }
 
   return true;
 }
@@ -1149,13 +1109,12 @@ bool rpc_command_executor::print_status()
     return false;
   }
 
-  bool daemon_is_alive = m_rpc_client->check_connection();
-
-  if(daemon_is_alive) {
-    tools::success_msg_writer() << "lokid is running";
+  // Make a request to get_height because it is public and relatively simple
+  GET_HEIGHT::response res;
+  if (invoke<GET_HEIGHT>({}, res, "lokid is NOT running")) {
+    tools::success_msg_writer() << "lokid is running (height: " << res.height << ")";
     return true;
   }
-  tools::fail_msg_writer() << "lokid is NOT running";
   return false;
 }
 
@@ -1498,34 +1457,6 @@ bool rpc_command_executor::print_blockchain_dynamic_stats(uint64_t nblocks)
   return true;
 }
 
-bool rpc_command_executor::update(const std::string &command)
-{
-  UPDATE::response res{};
-  if (!invoke<UPDATE>({command}, res, "Failed to fetch update info"))
-    return false;
-
-  if (!res.update)
-  {
-    tools::msg_writer() << "No update available";
-    return true;
-  }
-
-  tools::msg_writer() << "Update available: v" << res.version << ": " << res.user_uri << ", hash " << res.hash;
-  if (command == "check")
-    return true;
-
-  if (!res.path.empty())
-    tools::msg_writer() << "Update downloaded to: " << res.path;
-  else
-    tools::msg_writer() << "Update download failed: " << res.status;
-  if (command == "download")
-    return true;
-
-  tools::msg_writer() << "'" << command << "' not implemented yet";
-
-  return true;
-}
-
 bool rpc_command_executor::relay_tx(const std::string &txid)
 {
     RELAY_TX::response res{};
@@ -1606,7 +1537,7 @@ static void append_printable_service_node_list_entry(cryptonote::network_type ne
   // Print Funding Status
   {
     stream << indent1 << "[" << entry_index << "] " << "Service Node: " << entry.service_node_pubkey << " ";
-    stream << "v" << entry.version_major << "." << entry.version_minor << "." << entry.version_patch << "\n";
+    stream << "v" << tools::join(".", entry.service_node_version) << "\n";
 
     if (detailed_view)
     {
@@ -1763,7 +1694,7 @@ bool rpc_command_executor::print_sn(const std::vector<std::string> &args)
 
     cryptonote::network_type nettype =
       get_info_res.mainnet  ? cryptonote::MAINNET :
-      get_info_res.stagenet ? cryptonote::STAGENET :
+      get_info_res.devnet ? cryptonote::DEVNET :
       get_info_res.testnet  ? cryptonote::TESTNET :
       cryptonote::UNDEFINED;
     uint64_t curr_height = get_info_res.height;
@@ -1963,7 +1894,7 @@ bool rpc_command_executor::prepare_registration()
 #else
   cryptonote::network_type const nettype =
     res.mainnet  ? cryptonote::MAINNET :
-    res.stagenet ? cryptonote::STAGENET :
+    res.devnet ? cryptonote::DEVNET :
     res.testnet  ? cryptonote::TESTNET :
     res.nettype == "fakechain" ? cryptonote::FAKECHAIN :
     cryptonote::UNDEFINED;
@@ -2369,7 +2300,7 @@ bool rpc_command_executor::prepare_registration()
         const uint64_t amount_left = staking_requirement - state.total_reserved_contributions;
 
         std::cout << "Summary:" << std::endl;
-        std::cout << "Operating costs as % of reward: " << (state.operator_fee_portions * 100.0 / STAKING_PORTIONS) << "%" << std::endl;
+        std::cout << "Operating costs as % of reward: " << (state.operator_fee_portions * 100.0 / static_cast<double>(STAKING_PORTIONS)) << "%" << std::endl;
         printf("%-16s%-9s%-19s%-s\n", "Contributor", "Address", "Contribution", "Contribution(%)");
         printf("%-16s%-9s%-19s%-s\n", "___________", "_______", "____________", "_______________");
 

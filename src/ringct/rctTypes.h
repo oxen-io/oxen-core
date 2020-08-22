@@ -380,7 +380,7 @@ namespace rct {
           {
             auto arr = start_array(ar, "pseudoOuts", pseudoOuts, inputs);
             for (auto& o : pseudoOuts)
-              value(ar, o);
+              value(arr.element(), o);
           }
         }
 

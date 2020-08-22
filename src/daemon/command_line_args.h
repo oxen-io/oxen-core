@@ -41,13 +41,13 @@ namespace daemon_args
     "config-file"
   , "Specify configuration file"
   , (daemonizer::get_default_data_dir() / std::string(CRYPTONOTE_NAME ".conf")).string()
-  , {{ &cryptonote::arg_testnet_on, &cryptonote::arg_stagenet_on }}
-  , [](std::array<bool, 2> testnet_stagenet, bool defaulted, std::string val)->std::string {
-      if (testnet_stagenet[0] && defaulted)
+  , {{ &cryptonote::arg_testnet_on, &cryptonote::arg_devnet_on }}
+  , [](std::array<bool, 2> testnet_devnet, bool defaulted, std::string val)->std::string {
+      if (testnet_devnet[0] && defaulted)
         return (daemonizer::get_default_data_dir() / "testnet" /
                 std::string(CRYPTONOTE_NAME ".conf")).string();
-      else if (testnet_stagenet[1] && defaulted)
-        return (daemonizer::get_default_data_dir() / "stagenet" /
+      else if (testnet_devnet[1] && defaulted)
+        return (daemonizer::get_default_data_dir() / "devnet" /
                 std::string(CRYPTONOTE_NAME ".conf")).string();
       return val;
     }
@@ -56,13 +56,13 @@ namespace daemon_args
     "log-file"
   , "Specify log file"
   , (daemonizer::get_default_data_dir() / std::string(CRYPTONOTE_NAME ".log")).string()
-  , {{ &cryptonote::arg_testnet_on, &cryptonote::arg_stagenet_on }}
-  , [](std::array<bool, 2> testnet_stagenet, bool defaulted, std::string val)->std::string {
-      if (testnet_stagenet[0] && defaulted)
+  , {{ &cryptonote::arg_testnet_on, &cryptonote::arg_devnet_on }}
+  , [](std::array<bool, 2> testnet_devnet, bool defaulted, std::string val)->std::string {
+      if (testnet_devnet[0] && defaulted)
         return (daemonizer::get_default_data_dir() / "testnet" /
                 std::string(CRYPTONOTE_NAME ".log")).string();
-      else if (testnet_stagenet[1] && defaulted)
-        return (daemonizer::get_default_data_dir() / "stagenet" /
+      else if (testnet_devnet[1] && defaulted)
+        return (daemonizer::get_default_data_dir() / "devnet" /
                 std::string(CRYPTONOTE_NAME ".log")).string();
       return val;
     }

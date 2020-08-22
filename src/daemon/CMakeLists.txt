@@ -37,6 +37,7 @@ loki_add_executable(daemon "lokid"
 target_link_libraries(daemon
   PRIVATE
     rpc
+    rpc_http_client
     blockchain_db
     cryptonote_core
     p2p

@@ -87,12 +87,15 @@ namespace cryptonote
      *
      * returns true if no error, false otherwise
      *
-     * @param version the major block version for the fork
-     * @param height The height the hardfork takes effect
+     * @param version the major block version for the fork, must be > 0 and > the last-added hf
+     * @param height The height the hardfork takes effect; must be > the last-added hf
      * @param threshold The threshold of votes needed for this fork (0-100)
-     * @param time Approximate time of the hardfork (seconds since epoch)
+     * @param time Approximate time of the hardfork (seconds since epoch); must be >= the timestamp
+     * of the last-added hf
+     *
+     * @throws std::invalid_argument if any parameters are invalid
      */
-    bool add_fork(uint8_t version, uint64_t height, uint8_t threshold, time_t time);
+    void add_fork(uint8_t version, uint64_t height, uint8_t threshold, time_t time);
 
     /**
      * @brief add a new hardfork height
@@ -102,8 +105,10 @@ namespace cryptonote
      * @param version the major block version for the fork
      * @param height The height the hardfork takes effect
      * @param time Approximate time of the hardfork (seconds since epoch)
+     *
+     * @throws std::invalid_argument if any parameters are invalid
      */
-    bool add_fork(uint8_t version, uint64_t height, time_t time);
+    void add_fork(uint8_t version, uint64_t height, time_t time);
 
     /**
      * @brief initialize the object

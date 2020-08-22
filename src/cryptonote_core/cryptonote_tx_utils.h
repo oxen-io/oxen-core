@@ -215,11 +215,7 @@ namespace cryptonote
                                       std::vector<rct::key> &amount_keys,
                                       crypto::public_key &out_eph_public_key) ;
 
-  bool generate_genesis_block(
-      block& bl
-    , std::string_view genesis_tx_hex
-    , uint32_t nonce
-    );
+  bool generate_genesis_block(block& bl, network_type nettype);
 
   struct randomx_longhash_context
   {
