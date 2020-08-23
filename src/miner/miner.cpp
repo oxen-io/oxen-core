@@ -37,9 +37,7 @@
 #include "file_io_utils.h"
 #include "common/command_line.h"
 #include "common/util.h"
-#include "common/string_util.h"
 #include "string_coding.h"
-#include "string_tools.h"
 #include "storages/portable_storage_template_helper.h"
 
 #undef LOKI_DEFAULT_LOG_CATEGORY
@@ -63,8 +61,8 @@ namespace cryptonote
     const command_line::arg_descriptor<uint32_t>      arg_mining_threads =  {"mining-threads", "Specify mining threads count", 0, true};
   }
 
-
-  miner::miner(i_miner_handler* phandler, const get_block_hash_t &gbh):m_stop(1),
+  miner::miner(i_miner_handler* phandler, const get_block_hash_t &gbh):
+    m_stop(true),
     m_template{},
     m_template_no(0),
     m_diffic(0),

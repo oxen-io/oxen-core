@@ -35,11 +35,8 @@
 #include "rpc/core_rpc_server.h"
 #include "rpc/http_server.h"
 #include "rpc/lmq_server.h"
-
+#include "miner/miner.h"
 #include "blocks/blocks.h"
-#include "rpc/core_rpc_server.h"
-#include "cryptonote_core/cryptonote_core.h"
-#include "cryptonote_protocol/cryptonote_protocol_handler.h"
 #include "misc_log_ex.h"
 
 #undef LOKI_DEFAULT_LOG_CATEGORY
@@ -74,6 +71,7 @@ private:
   std::unique_ptr<cryptonote::rpc::core_rpc_server> rpc;
   std::list<std::pair<std::string, cryptonote::rpc::http_server>> http_rpcs;
   std::unique_ptr<cryptonote::rpc::lmq_rpc> lmq_rpc;
+  std::unique_ptr<cryptonote::miner> miner;
 };
 
 } // namespace daemonize

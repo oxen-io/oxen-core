@@ -42,10 +42,10 @@
 #include "common/rules.h"
 
 #include "p2p/net_node.h"
+#include "cryptonote_core/cryptonote_core.h"
 #include "cryptonote_basic/cryptonote_basic.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
-#include "miner/miner.h"
 #include "loki_economy.h"
 
 #include "chaingen.h"

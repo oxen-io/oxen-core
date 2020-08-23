@@ -40,6 +40,7 @@ target_link_libraries(daemon
     rpc_http_client
     blockchain_db
     cryptonote_core
+    miner
     p2p
     cryptonote_protocol
     daemonizer

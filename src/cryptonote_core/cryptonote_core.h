@@ -48,6 +48,7 @@
 #include "service_node_list.h"
 #include "service_node_quorum_cop.h"
 #include "cryptonote_basic/connection_context.h"
+#include "cryptonote_basic/miner_handler.h"
 #include "warnings.h"
 #include "crypto/hash.h"
 PUSH_WARNINGS
@@ -58,10 +59,10 @@ namespace cryptonote
 {
   using namespace std::literals;
 
-   struct test_options {
-     std::vector<std::pair<uint8_t, uint64_t>> hard_forks;
-     size_t long_term_block_weight_window;
-   };
+  struct test_options {
+    std::vector<std::pair<uint8_t, uint64_t>> hard_forks;
+    size_t long_term_block_weight_window;
+  };
 
   extern const command_line::arg_descriptor<std::string, false, true, 2> arg_data_dir;
   extern const command_line::arg_descriptor<bool, false> arg_testnet_on;
@@ -97,8 +98,6 @@ namespace cryptonote
 
   extern bool init_core_callback_complete;
 
-	typedef std::function<bool(const cryptonote::block&, uint64_t, unsigned int, crypto::hash&)> get_block_hash_t;
-
   /************************************************************************/
   /*                                                                      */
   /************************************************************************/
@@ -110,7 +109,7 @@ namespace cryptonote
     * limited to, communication among the Blockchain, the transaction pool,
     * and the network.
     */
-   class core
+   class core: public i_miner_handler
    {
    public:
 
@@ -340,7 +339,30 @@ namespace cryptonote
 
 	   static bool find_nonce_for_given_block(const get_block_hash_t &gbh, block& bl, const difficulty_type& diffic, uint64_t height);
 
-     /**
+	   //-------------------- i_miner_handler -----------------------
+	   /**
+			* @brief stores and relays a block found by a miner
+			*
+			* Updates the miner's target block, attempts to store the found
+			* block in Blockchain, and -- on success -- relays that block to
+			* the network.
+			*
+			* @param b the block found
+			* @param bvc returns the block verification flags
+			*
+			* @return true if the block was added to the main chain, otherwise false
+			*/
+	   virtual bool handle_block_found(block& b, block_verification_context &bvc);
+
+	   /**
+			* @copydoc Blockchain::create_block_template
+			*
+			* @note see Blockchain::create_block_template
+			*/
+	   virtual bool get_block_template(block& b, const account_public_address& adr, difficulty_type& diffic, uint64_t& height, uint64_t& expected_reward, const blobdata& ex_nonce);
+	   virtual bool get_block_template(block& b, const crypto::hash *prev_block, const account_public_address& adr, difficulty_type& diffic, uint64_t& height, uint64_t& expected_reward, const blobdata& ex_nonce);
+
+	   /**
       * @brief called when a transaction is relayed; return the hash of the parsed tx, or null_hash
       * on parse failure.
       */

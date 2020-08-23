@@ -218,11 +218,12 @@ namespace cryptonote { namespace rpc {
   core_rpc_server::core_rpc_server(
       core& cr
     , nodetool::node_server<cryptonote::t_cryptonote_protocol_handler<cryptonote::core> >& p2p
-    , miner& m_miner
+    , miner& minr
     )
     : m_core(cr)
     , m_p2p(p2p)
     , m_was_bootstrap_ever_used(false)
+    , m_miner(minr)
   {}
   bool core_rpc_server::set_bootstrap_daemon(const std::string &address, std::string_view username_password)
   {

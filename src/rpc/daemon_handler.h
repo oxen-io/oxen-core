@@ -141,9 +141,9 @@ class DaemonHandler : public RpcHandler
 
     void handleTxBlob(const std::string& tx_blob, bool relay, SendRawTx::Response& res);
 
-    cryptonote::core& m_core;
-    t_p2p& m_p2p;
-		cryptonote::miner& m_miner;
+    cryptonote::core &m_core;
+    t_p2p &m_p2p;
+    cryptonote::miner &m_miner;
 };
 
 }  // namespace rpc

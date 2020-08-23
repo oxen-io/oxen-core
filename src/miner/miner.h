@@ -48,14 +48,6 @@ namespace cryptonote
 {
   using namespace std::literals;
 
-  struct i_miner_handler
-  {
-    virtual bool handle_block_found(block& b, block_verification_context &bvc) = 0;
-    virtual bool get_block_template(block& b, const account_public_address& adr, difficulty_type& diffic, uint64_t& height, uint64_t& expected_reward, const blobdata& ex_nonce) = 0;
-  protected:
-    ~i_miner_handler(){};
-  };
-
   /************************************************************************/
   /*                                                                      */
   /************************************************************************/
@@ -76,7 +68,6 @@ namespace cryptonote
     const account_public_address& get_mining_address() const;
     bool on_idle();
     void on_synchronized();
-    //synchronous analog (for fast calls)
     void pause();
     void resume();
     void do_print_hashrate(bool do_hr);
@@ -126,12 +117,12 @@ namespace cryptonote
     std::mutex m_threads_lock;
     i_miner_handler* m_phandler;
     get_block_hash_t m_gbh;
-    account_public_address m_mine_address;
+    account_public_address m_mine_address{};
     tools::periodic_task m_update_block_template_interval{5s};
     tools::periodic_task m_update_merge_hr_interval{2s};
     tools::periodic_task m_autodetect_interval{1s};
     std::vector<blobdata> m_extra_messages;
-    miner_config m_config;
+    miner_config m_config{};
     std::string m_config_folder_path;    
     std::atomic<uint64_t> m_last_hr_merge_time;
     std::atomic<uint64_t> m_hashes;
