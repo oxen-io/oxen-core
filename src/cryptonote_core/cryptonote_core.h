@@ -47,7 +47,6 @@
 #include "service_node_voting.h"
 #include "service_node_list.h"
 #include "service_node_quorum_cop.h"
-#include "miner/miner.h"
 #include "cryptonote_basic/connection_context.h"
 #include "warnings.h"
 #include "crypto/hash.h"
@@ -98,6 +97,8 @@ namespace cryptonote
 
   extern bool init_core_callback_complete;
 
+	typedef std::function<bool(const cryptonote::block&, uint64_t, unsigned int, crypto::hash&)> get_block_hash_t;
+
   /************************************************************************/
   /*                                                                      */
   /************************************************************************/
@@ -107,9 +108,9 @@ namespace cryptonote
     *
     * This class coordinates cryptonote functionality including, but not
     * limited to, communication among the Blockchain, the transaction pool,
-    * any miners, and the network.
+    * and the network.
     */
-   class core: public i_miner_handler
+   class core
    {
    public:
 
@@ -337,29 +338,7 @@ namespace cryptonote
       */
      i_cryptonote_protocol* get_protocol(){return m_pprotocol;}
 
-     //-------------------- i_miner_handler -----------------------
-
-     /**
-      * @brief stores and relays a block found by a miner
-      *
-      * Updates the miner's target block, attempts to store the found
-      * block in Blockchain, and -- on success -- relays that block to
-      * the network.
-      *
-      * @param b the block found
-      * @param bvc returns the block verification flags
-      *
-      * @return true if the block was added to the main chain, otherwise false
-      */
-     virtual bool handle_block_found(block& b, block_verification_context &bvc);
-
-     /**
-      * @copydoc Blockchain::create_block_template
-      *
-      * @note see Blockchain::create_block_template
-      */
-     virtual bool get_block_template(block& b, const account_public_address& adr, difficulty_type& diffic, uint64_t& height, uint64_t& expected_reward, const blobdata& ex_nonce);
-     virtual bool get_block_template(block& b, const crypto::hash *prev_block, const account_public_address& adr, difficulty_type& diffic, uint64_t& height, uint64_t& expected_reward, const blobdata& ex_nonce);
+	   static bool find_nonce_for_given_block(const get_block_hash_t &gbh, block& bl, const difficulty_type& diffic, uint64_t height);
 
      /**
       * @brief called when a transaction is relayed; return the hash of the parsed tx, or null_hash
@@ -1146,7 +1125,7 @@ namespace cryptonote
 
      i_cryptonote_protocol* m_pprotocol; //!< cryptonote protocol instance
      cryptonote_protocol_stub m_protocol_stub; //!< cryptonote protocol stub instance
-fm_
+
      std::recursive_mutex m_incoming_tx_lock; //!< incoming transaction lock
 
      std::string m_config_folder; //!< folder to look in for configs and other files

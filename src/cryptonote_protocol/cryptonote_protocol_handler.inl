@@ -1553,7 +1553,7 @@ namespace cryptonote
               TIME_MEASURE_START(block_process_time);
               block_verification_context bvc{};
 
-              m_core.handle_incoming_block(block_entry.block, pblocks.empty() ? NULL : &pblocks[blockidx], bvc, checkpoint, false); // <--- process block
+              m_core.handle_incoming_block(block_entry.block, pblocks.empty() ? NULL : &pblocks[blockidx], bvc, checkpoint); // <--- process block
 
               if (bvc.m_verifivation_failed || bvc.m_marked_as_orphaned)
               {

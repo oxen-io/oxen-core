@@ -43,7 +43,6 @@
 #include "blockchain_db/blockchain_db.h"
 #include "cryptonote_basic/cryptonote_boost_serialization.h"
 #include "cryptonote_config.h"
-#include "miner/miner.h"
 #include "misc_language.h"
 #include "profile_tools.h"
 #include "file_io_utils.h"

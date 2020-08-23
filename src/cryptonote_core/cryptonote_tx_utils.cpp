@@ -985,7 +985,7 @@ namespace cryptonote
     bl.minor_version = 7;
     bl.timestamp = 0;
     bl.nonce = conf.GENESIS_NONCE;
-    miner::find_nonce_for_given_block([](const cryptonote::block &b, uint64_t height, unsigned int threads, crypto::hash &hash){
+    cryptonote::core::find_nonce_for_given_block([](const cryptonote::block &b, uint64_t height, unsigned int threads, crypto::hash &hash){
       hash = cryptonote::get_block_longhash(cryptonote::randomx_longhash_context(NULL, b, height), b, height, threads);
       return true;
     }, bl, 1, 0);

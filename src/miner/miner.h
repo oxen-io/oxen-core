@@ -32,6 +32,7 @@
 
 #include <atomic>
 #include <thread>
+#include "cryptonote_core/cryptonote_core.h"
 #include "cryptonote_basic/blobdatatype.h"
 #include "cryptonote_basic/cryptonote_basic.h"
 #include "cryptonote_basic/verification_context.h"
@@ -55,8 +56,6 @@ namespace cryptonote
     ~i_miner_handler(){};
   };
 
-  typedef std::function<bool(const cryptonote::block&, uint64_t, unsigned int, crypto::hash&)> get_block_hash_t;
-
   /************************************************************************/
   /*                                                                      */
   /************************************************************************/
@@ -78,7 +77,6 @@ namespace cryptonote
     bool on_idle();
     void on_synchronized();
     //synchronous analog (for fast calls)
-    static bool find_nonce_for_given_block(const get_block_hash_t &gbh, block& bl, const difficulty_type& diffic, uint64_t height);
     void pause();
     void resume();
     void do_print_hashrate(bool do_hr);

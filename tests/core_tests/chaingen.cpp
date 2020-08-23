@@ -665,7 +665,7 @@ static void fill_nonce_with_test_generator(test_generator *generator, cryptonote
     return true;
   };
 
-  while (!cryptonote::miner::find_nonce_for_given_block(get_block_hash, blk, diffic, height))
+  while (!cryptonote::core::find_nonce_for_given_block(get_block_hash, blk, diffic, height))
     blk.timestamp++;
 }
 
@@ -685,7 +685,7 @@ static void fill_nonce_with_loki_generator(loki_chain_generator const *generator
     return true;
   };
 
-  while (!cryptonote::miner::find_nonce_for_given_block(get_block_hash, blk, TEST_DEFAULT_DIFFICULTY, height))
+  while (!cryptonote::core::find_nonce_for_given_block(get_block_hash, blk, TEST_DEFAULT_DIFFICULTY, height))
     blk.timestamp++;
 
 }
