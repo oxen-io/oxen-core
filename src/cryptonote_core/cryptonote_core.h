@@ -337,30 +337,34 @@ namespace cryptonote
       */
      i_cryptonote_protocol* get_protocol(){return m_pprotocol;}
 
-	   static bool find_nonce_for_given_block(const get_block_hash_t &gbh, block& bl, const difficulty_type& diffic, uint64_t height);
+     static bool find_nonce_for_given_block(const get_block_hash_t &gbh, block &bl, const difficulty_type &diffic, uint64_t height);
 
-	   //-------------------- i_miner_handler -----------------------
-	   /**
-			* @brief stores and relays a block found by a miner
-			*
-			* Updates the miner's target block, attempts to store the found
-			* block in Blockchain, and -- on success -- relays that block to
-			* the network.
-			*
-			* @param b the block found
-			* @param bvc returns the block verification flags
-			*
-			* @return true if the block was added to the main chain, otherwise false
-			*/
-	   virtual bool handle_block_found(block& b, block_verification_context &bvc);
+     //-------------------- i_miner_handler -----------------------
+     /**
+      * @brief stores and relays a block found by a miner
+      *
+      * Updates the miner's target block, attempts to store the found
+      * block in Blockchain, and -- on success -- relays that block to
+      * the network.
+      *
+      * @param b the block found
+      * @param bvc returns the block verification flags
+      *
+      * @return true if the block was added to the main chain, otherwise false
+      */
+     virtual bool handle_block_found(block &b, block_verification_context &bvc);
 
-	   /**
-			* @copydoc Blockchain::create_block_template
-			*
-			* @note see Blockchain::create_block_template
-			*/
-	   virtual bool get_block_template(block& b, const account_public_address& adr, difficulty_type& diffic, uint64_t& height, uint64_t& expected_reward, const blobdata& ex_nonce);
-	   virtual bool get_block_template(block& b, const crypto::hash *prev_block, const account_public_address& adr, difficulty_type& diffic, uint64_t& height, uint64_t& expected_reward, const blobdata& ex_nonce);
+     /**
+      * @copydoc Blockchain::create_block_template
+      *
+      * @note see Blockchain::create_block_template
+      */
+     virtual bool get_block_template(block &b, const account_public_address &adr, difficulty_type &diffic, uint64_t &height,
+                        uint64_t &expected_reward, const blobdata &ex_nonce);
+
+     virtual bool get_block_template(block &b, const crypto::hash *prev_block, const account_public_address &adr,
+                                     difficulty_type &diffic, uint64_t &height, uint64_t &expected_reward,
+                                     const blobdata &ex_nonce);
 
 	   /**
       * @brief called when a transaction is relayed; return the hash of the parsed tx, or null_hash

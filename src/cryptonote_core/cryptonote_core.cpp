@@ -1980,61 +1980,63 @@ namespace cryptonote
     }
     return result;
   }
+  //-----------------------------------------------------------------------------------------------
+  bool core::handle_block_found(block &b, block_verification_context &bvc)
+  {
+    bvc = {};
+    std::vector<block_complete_entry> blocks;
+    {
+      try {
+        blocks.push_back(get_block_complete_entry(b, m_mempool));
+      }
+      catch (const std::exception &e) {
+        return false;
+      }
+      std::vector<block> pblocks;
+      if (!prepare_handle_incoming_blocks(blocks, pblocks)) {
+        MERROR("Block found, but failed to prepare to add");
+        return false;
+      }
+      add_new_block(b, bvc, nullptr /*checkpoint*/);
+      cleanup_handle_incoming_blocks(true);
+    }
 
-	bool core::handle_block_found(block& b, block_verification_context &bvc)
-	{
-		bvc = {};
-		std::vector<block_complete_entry> blocks;
-		{
-			try
-			{
-				blocks.push_back(get_block_complete_entry(b, m_mempool));
-			}
-			catch (const std::exception &e)
-			{
-				return false;
-			}
-			std::vector<block> pblocks;
-			if (!prepare_handle_incoming_blocks(blocks, pblocks))
-			{
-				MERROR("Block found, but failed to prepare to add");
-				return false;
-			}
-			add_new_block(b, bvc, nullptr /*checkpoint*/);
-			cleanup_handle_incoming_blocks(true);
-		}
+    CHECK_AND_ASSERT_MES(!bvc.m_verifivation_failed, false, "mined block failed verification");
+    if (bvc.m_added_to_main_chain) {
+      std::vector<crypto::hash> missed_txs;
+      std::vector<cryptonote::blobdata> txs;
+      m_blockchain_storage.get_transactions_blobs(b.tx_hashes, txs, missed_txs);
+      if (missed_txs.size() && m_blockchain_storage.get_block_id_by_height(get_block_height(b)) != get_block_hash(b)) {
+        LOG_PRINT_L1("Block found but, seems that reorganize just happened after that, do not relay this block");
+        return true;
+      }
+      CHECK_AND_ASSERT_MES(txs.size() == b.tx_hashes.size() && !missed_txs.size(), false,
+                           "can't find some transactions in found block:" << get_block_hash(b) << " txs.size()="
+                                                                          << txs.size()
+                                                                          << ", b.tx_hashes.size()="
+                                                                          << b.tx_hashes.size() << ", missed_txs.size()"
+                                                                          << missed_txs.size());
+      cryptonote_connection_context exclude_context{};
+      NOTIFY_NEW_FLUFFY_BLOCK::request arg{};
 
-		CHECK_AND_ASSERT_MES(!bvc.m_verifivation_failed, false, "mined block failed verification");
-		if(bvc.m_added_to_main_chain)
-		{
-			std::vector<crypto::hash> missed_txs;
-			std::vector<cryptonote::blobdata> txs;
-			m_blockchain_storage.get_transactions_blobs(b.tx_hashes, txs, missed_txs);
-			if(missed_txs.size() && m_blockchain_storage.get_block_id_by_height(get_block_height(b)) != get_block_hash(b))
-			{
-				LOG_PRINT_L1("Block found but, seems that reorganize just happened after that, do not relay this block");
-				return true;
-			}
-			CHECK_AND_ASSERT_MES(txs.size() == b.tx_hashes.size() && !missed_txs.size(), false, "can't find some transactions in found block:" << get_block_hash(b) << " txs.size()=" << txs.size()
-			                                                                                                                                   << ", b.tx_hashes.size()=" << b.tx_hashes.size() << ", missed_txs.size()" << missed_txs.size());
-			cryptonote_connection_context exclude_context{};
-			NOTIFY_NEW_FLUFFY_BLOCK::request arg{};
+      arg.current_blockchain_height = m_blockchain_storage.get_current_blockchain_height();
+      arg.b = blocks[0];
 
-			arg.current_blockchain_height = m_blockchain_storage.get_current_blockchain_height();
-			arg.b                         = blocks[0];
+      m_pprotocol->relay_block(arg, exclude_context);
+    }
+    return true;
+  }
 
-			m_pprotocol->relay_block(arg, exclude_context);
-		}
-		return true;
-	}
-	bool core::get_block_template(block& b, const account_public_address& adr, difficulty_type& diffic, uint64_t& height, uint64_t& expected_reward, const blobdata& ex_nonce)
-	{
-		return m_blockchain_storage.create_block_template(b, adr, diffic, height, expected_reward, ex_nonce);
-	}
-	bool core::get_block_template(block& b, const crypto::hash *prev_block, const account_public_address& adr, difficulty_type& diffic, uint64_t& height, uint64_t& expected_reward, const blobdata& ex_nonce)
-	{
-		return m_blockchain_storage.create_block_template(b, prev_block, adr, diffic, height, expected_reward, ex_nonce);
-	}
+  bool core::get_block_template(block &b, const account_public_address &adr, difficulty_type &diffic, uint64_t &height,
+                                uint64_t &expected_reward, const blobdata &ex_nonce) {
+    return m_blockchain_storage.create_block_template(b, adr, diffic, height, expected_reward, ex_nonce);
+  }
+
+  bool core::get_block_template(block &b, const crypto::hash *prev_block, const account_public_address &adr,
+                                difficulty_type &diffic, uint64_t &height, uint64_t &expected_reward,
+                                const blobdata &ex_nonce) {
+    return m_blockchain_storage.create_block_template(b, prev_block, adr, diffic, height, expected_reward, ex_nonce);
+  }
   //-----------------------------------------------------------------------------------------------
   bool core::prepare_handle_incoming_blocks(const std::vector<block_complete_entry> &blocks_entry, std::vector<block> &blocks)
   {
@@ -2046,7 +2048,6 @@ namespace cryptonote
     }
     return true;
   }
-
   //-----------------------------------------------------------------------------------------------
   bool core::cleanup_handle_incoming_blocks(bool force_sync)
   {
@@ -2488,20 +2489,19 @@ namespace cryptonote
   {
     raise(SIGTERM);
   }
-	bool core::find_nonce_for_given_block(const get_block_hash_t &gbh, block& bl, const difficulty_type& diffic, uint64_t height)
-	{
-		for(; bl.nonce != std::numeric_limits<uint32_t>::max(); bl.nonce++)
-		{
-			crypto::hash h;
-			gbh(bl, height, tools::get_max_concurrency(), h);
+  //-----------------------------------------------------------------------------------------------
+  bool core::find_nonce_for_given_block(const get_block_hash_t &gbh, block &bl, const difficulty_type &diffic, uint64_t height)
+  {
+    for (; bl.nonce != std::numeric_limits<uint32_t>::max(); bl.nonce++) {
+      crypto::hash h;
+      gbh(bl, height, tools::get_max_concurrency(), h);
 
-			if(check_hash(h, diffic))
-			{
-				bl.invalidate_hashes();
-				return true;
-			}
-		}
-		bl.invalidate_hashes();
-		return false;
-	}
+      if (check_hash(h, diffic)) {
+        bl.invalidate_hashes();
+        return true;
+      }
+    }
+    bl.invalidate_hashes();
+    return false;
+  }
 }

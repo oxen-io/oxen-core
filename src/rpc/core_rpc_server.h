@@ -321,10 +321,10 @@ private:
 
     template <typename COMMAND_TYPE>
     bool use_bootstrap_daemon_if_necessary(const typename COMMAND_TYPE::request& req, typename COMMAND_TYPE::response& res);
-    
-    core& m_core;
-    nodetool::node_server<cryptonote::t_cryptonote_protocol_handler<cryptonote::core> >& m_p2p;
-		miner& m_miner;
+
+    core &m_core;
+    nodetool::node_server<cryptonote::t_cryptonote_protocol_handler<cryptonote::core> > &m_p2p;
+    miner &m_miner;
     std::shared_mutex m_bootstrap_daemon_mutex;
     std::atomic<bool> m_should_use_bootstrap_daemon;
     std::unique_ptr<bootstrap_daemon> m_bootstrap_daemon;

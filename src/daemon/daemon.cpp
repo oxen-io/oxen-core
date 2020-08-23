@@ -111,13 +111,13 @@ daemon::daemon(boost::program_options::variables_map vm_) :
     protocol{std::make_unique<protocol_handler>(*core, command_line::get_arg(vm, cryptonote::arg_offline))},
     p2p{std::make_unique<node_server>(*protocol)},
     miner{
-	   std::make_unique<cryptonote::miner>(
-	   	*core,
-		  [&](const cryptonote::block &b, uint64_t height, unsigned int threads, crypto::hash &hash) {
-			    hash = cryptonote::get_block_longhash_w_blockchain(&core->get_blockchain_storage(), b, height, threads);
-			    return true;
-      }
-     )
+        std::make_unique<cryptonote::miner>(
+            *core,
+            [&](const cryptonote::block &b, uint64_t height, unsigned int threads, crypto::hash &hash) {
+              hash = cryptonote::get_block_longhash_w_blockchain(&core->get_blockchain_storage(), b, height, threads);
+              return true;
+            }
+        )
     },
     rpc{std::make_unique<cryptonote::rpc::core_rpc_server>(*core, *p2p, *miner)}
 {
@@ -200,7 +200,7 @@ void daemon::init_options(boost::program_options::options_description& option_sp
   cryptonote::rpc::http_server::init_options(option_spec);
   cryptonote::rpc::init_lmq_options(option_spec);
   quorumnet::init_core_callbacks();
-	cryptonote::miner::init_options(option_spec);
+  cryptonote::miner::init_options(option_spec);
 }
 
 bool daemon::run(bool interactive)
@@ -235,9 +235,9 @@ bool daemon::run(bool interactive)
     if (!core->init(vm, nullptr, get_checkpoints))
       throw std::runtime_error("Failed to start core");
 
-	  MGINFO("Starting miner");
-	  if (!miner->init(vm, core->get_nettype()))
-		  throw std::runtime_error("Failed to initialize miner instance.");
+    MGINFO("Starting miner");
+    if (!miner->init(vm, core->get_nettype()))
+      throw std::runtime_error("Failed to initialize miner instance.");
 
     MGINFO("Starting LokiMQ");
     lmq_rpc = std::make_unique<cryptonote::rpc::lmq_rpc>(*core, *rpc, vm);
