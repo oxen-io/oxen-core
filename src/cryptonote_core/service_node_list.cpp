@@ -1443,8 +1443,9 @@ namespace service_nodes
     // reuse the same seed for both partial shuffles, but again, that isn't an issue.
     if ((0 < sublist_size && sublist_size < list_size) && (0 < sublist_up_to && sublist_up_to < list_size)) {
       assert(sublist_size <= sublist_up_to); // Can't select N random items from M items when M < N
+      auto rng_copy = rng;
       tools::shuffle_portable(result.begin(), result.begin() + sublist_up_to, rng);
-      tools::shuffle_portable(result.begin() + sublist_size, result.end(), rng);
+      tools::shuffle_portable(result.begin() + sublist_size, result.end(), rng_copy);
     }
     else {
       tools::shuffle_portable(result.begin(), result.end(), rng);
