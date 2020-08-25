@@ -726,10 +726,6 @@ bool pulse::get_round_timings(cryptonote::Blockchain const &blockchain, uint64_t
     |      |                                      |
     |     Yes                                     |
     |      |                                      |
- No +-----[Participating in Quorum?]              |
-    |      |                                      |
-    |      | Yes                                  |
-    |      |                                      |
     |     +---------------------+                 |
     |     | Wait For Round      |                 |
     |     +---------------------+                 |
@@ -738,25 +734,26 @@ bool pulse::get_round_timings(cryptonote::Blockchain const &blockchain, uint64_t
     |      |
     |      | No
     |      |
-    |     [Validator?]------------------+ No (We are Block Producer)
-    |      |                            |
-    |      | Yes                        |
-    |      |                            |
-    |     +---------------------+       |
-    |     | Submit Handshakes   |       |
-    |     +---------------------+       |
-    |      |                            +-----------------+
-Yes +-----[Quorumnet Comm Failure]                        |
+ No +-----[Participating in Quorum?]
+    |      |
+    |      | Yes
+    |      |
+    |      |
+    |     [Validator?]------------------------------------+ No (We are Block Producer)
     |      |                                              |
     |      | Yes                                          |
     |      |                                              |
-    |     +---------------------+                         |
-    |     | Wait For Handshakes |                         |
-    |     +---------------------+                         |
+    |     +-----------------------------+                 |
+    |     | Send And Wait For Handshakes|                 |
+    |     +-----------------------------+                 |
     |      |                                              |
-    |     +-------------------------+                     |
-    |     | Submit Handshake Bitset |                     |
-    |     +-------------------------+                     |
+Yes +-----[Quorumnet Comm Failure]                        |
+    |      |                                              |
+    |      | No                                           |
+    |      |                                              |
+    |     +-----------------------+                       |
+    |     | Send Handshake Bitset |                       |
+    |     +-----------------------+                       |
     |      |                                              |
 Yes +-----[Quorumnet Comm Failure]                        |
     |      |                                              |
@@ -770,25 +767,53 @@ Yes +-----[Insufficient Bitsets]
     |      |
     |      | No
     |      |
-    |     +-----------------------+
-    |     | Submit Block Template |
-    |     +-----------------------+
+    |     [Block Producer?]-------------------------------+ No (We are a Validator)
+    |      |                                              |
+    |      | Yes                                          |
+    |      |                                              |
+    |     +---------------------+                         |
+    |     | Send Block Template |                         |
+    |     +---------------------+                         |
+    |      |                                              |
+    +------+ (Block Producer's role is finished)          |
+    |                                                     |
+    |                                                     |
+    |     +-------------------------+                     |
+    |     | Wait For Block Template |<--------------------+
+    |     +-------------------------+
     |      |
- No +-----[Block Producer Passes SN List Checks]
+Yes +-----[Timed Out Waiting for Template]
+    |      |
+    |      | No
+    |      |
+    |     +---------------------------------------+
+    |     | Send And Wait For Random Value Hashes |
+    |     +---------------------------------------+
+    |      |
+Yes +-----[Insufficient Hashes]
+    |      |
+    |      | No
+    |      |
+    |     +--------------------------------+
+    |     | Send And Wait For Random Value |
+    |     +--------------------------------+
+    |      |
+Yes +-----[Insufficient Values]
+    |      |
+    |      | No
+    |      |
+    |     +---------------------------------+
+    |     | Send And Wait For Signed Blocks |
+    |     +---------------------------------+
+    |      |
+Yes +-----[Block can not be added to blockchain]
            |
-           | Yes
+           | No
            |
-          +-------------------------+
-          | Wait For Block Template |
-          +-------------------------+
-           |
-           | TODO(loki): TBD
-           |
-           V
+           + (Finished, state machine resets)
 
   Wait For Next Block:
-    - Checks for the next block in the blockchain to arrive. If it hasn't
-      arrived yet, return to the caller.
+    - Waits for the next block in the blockchain to arrive
 
     - Retrieves the blockchain metadata for starting a Pulse Round including the
       Genesis Pulse Block for the base timestamp and the top block hash and
@@ -799,19 +824,19 @@ Yes +-----[Insufficient Bitsets]
       // of (the very unlikely event) reorgs that might change the block at the
       // hardfork.
 
-    - The next block timestamp is determined by
+    - The ideal next block timestamp is determined by
 
       G.Timestamp + (height * TARGET_BLOCK_TIME)
 
       Where 'G' is the base Pulse genesis block, i.e. the hardforking block
       activating Pulse (HF16).
 
-      In case of the Service Node network failing, i.e. (pulse round > 255) or
-      insufficient Service Nodes for Pulse, mining is re-activated and accepted
-      as the next block in the blockchain.
+      The actual next block timestamp is determined by
 
-      // TODO(loki): Activating mining on (Pulse Round > 255) needs to be
-      // implemented.
+      P.Timestamp + (TARGET_BLOCK_TIME ±15s)
+
+      Where 'P' is the previous block. The block time is adjusted ±15s depending
+      on how close/far away the ideal block time is.
 
   Prepare For Round:
     - Generate data for executing the round such as the Quorum and stage
@@ -822,43 +847,82 @@ Yes +-----[Insufficient Bitsets]
       subsequent stage fails, except in the cases where Pulse can not proceed
       because of an insufficient Service Node network.
 
-  Wait For Round:
-    - Checks clock against the next expected Pulse timestamps has elapsed,
-      otherwise returns to caller.
+    - If the next round to prepare for is >255, we disable Pulse and re-allow
+      PoW blocks to be added to the chain, the Pulse state machine resets and
+      waits for the next block to arrive and re-evaluates if Pulse is possible
+      again.
+
+  Wait For Round (Block Producer & Validator)
+    - Checks clock against the next expected Pulse timestamps has arrived,
+      otherwise continues sleeping.
 
     - If we are a validator we 'Submit Handshakes' with other Validators
       If we are a block producer we skip to 'Wait For Handshake Bitset' and
       await the final handshake bitsets from all the Validators
+      Otherwise we return to 'Prepare For Round' and sleep.
 
-  Submit Handshakes:
-    - Block Validators handshake to confirm participation in the round and collect other handshakes.
+  Send And Wait For Handshakes (Validator)
+    - On first invocation, we send the handshakes to Validator peers, then waits
+      for handshakes. Validators handshake to confirm participation in the round
+      and collect other handshakes.
 
-  Wait For Handshakes Then Submit Bitset:
-    - Validators will each individually collect handshakes and build up a
-      bitset of validators perceived to be participating.
+  Send Handshake Bitset (Validator)
+    - Send our collected participation bitset to the validators
 
-    - When all handshakes are received we send our bitset and progress to
-      'Wait For Handshake Bitsets'
-
-  Wait For Handshake Bitset:
-    - Validators will each individually collect the handshake bitsets similar
-      to Wait For Handshakes.
-
+  Wait For Handshake Bitsets (Block Producer & Validator)
     - Upon receipt, the most common agreed upon bitset is used to lock in
       participation for the round. The round proceeds if more than 60% of the
       validators are participating, the round fails otherwise and reverts to
       'Prepare For Round'.
 
-    - If we are a validator we go to 'Wait For Block Template'
+    - If we are a validator      we go to 'Wait For Block Template'
     - If we are a block producer we go to 'Submit Block Template'
 
-  Submit Block Template:
+  Submit Block Template (Block Producer)
     - Block producer signs the block template with the validator bitset and
-      pulse round applied to the block and sends it the Validators
+      pulse round applied to the block and sends it to the round validators
 
-  Wait For Block Template:
-    - TODO(loki): TBD
+    - The block producer is finished for the round and awaits the next
+      round (if any subsequent stage fails) or block.
 
+  Wait For Block Template (Validator)
+    - Await the block template and ensure it's signed by the block producer, if
+      not we revert to 'Prepare For Round'
+
+    - We generate our part of the random value and prepare the hash of the
+      random value and proceed to the next stage.
+
+  Send And Wait For Random Value Hashes (Validator)
+    - On first invcation, send the hash of our random value prepared in the
+      'Wait For Block Template' stage, followed by waiting for the other random
+      value hashes from validators.
+
+    - If not all hashes are received according to the locked in validator bitset
+      in the block, we revert to 'Prepare For Round'.
+
+  Send And Wait For Random Value (Validator)
+    - On first invcation, send the random value prepared in the 'Wait For Block
+      Template' stage, followed by waiting for the other random values from
+      validators.
+
+    - If not all values are received according to the locked in validator bitset
+      in the block, we revert to 'Prepare For Round'.
+
+  Send And Wait For Signed Block (Validator)
+    - On first invcation, send our signature, signing the block template with
+      all the random values combined into 1 to other validators and await for
+      the other signatures to arrive.
+
+    - Ensure the signature signs the same block template we received at the
+      beginning from the Block Producer.
+
+    - If not all values are received according to the locked in validator bitset
+      in the block, we revert to 'Prepare For Round'.
+
+    - Add the block to the blockchain and on success, that will automatically
+      begin propagating the block via P2P. The signatures in the block are added
+      in any order, as soon as the first N signatures arrive the block can be
+      P2P-ed.
 */
 
 
@@ -870,7 +934,6 @@ round_state goto_preparing_for_next_round(round_context &context)
 
 round_state wait_for_next_block(uint64_t hf16_height, round_context &context, cryptonote::Blockchain const &blockchain)
 {
-
   //
   // NOTE: If already processing pulse for height, wait for next height
   //
