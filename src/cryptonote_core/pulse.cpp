@@ -1245,7 +1245,6 @@ round_state send_block_template(round_context &context, void *quorumnet_state, s
   std::vector<service_nodes::service_node_pubkey_info> list_state = blockchain.get_service_node_list().get_service_node_list_state({key.pub});
 
   // Invariants
-  // TODO(doyle): These checks can be done earlier?
   if (list_state.empty())
   {
     MWARNING(log_prefix(context) << "Block producer (us) is not available on the service node list, waiting until next round");
