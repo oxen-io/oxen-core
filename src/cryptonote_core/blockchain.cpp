@@ -1875,8 +1875,8 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
   LOG_PRINT_L3("Blockchain::" << __func__);
   std::unique_lock lock{*this};
 
-  uint64_t const blk_height            = get_block_height(b);
-  uint64_t const chain_height          = get_current_blockchain_height();
+  uint64_t const blk_height   = get_block_height(b);
+  uint64_t const chain_height = get_current_blockchain_height();
 
   // NOTE: Check block parent's existence
   alt_block_data_t prev_data = {};
@@ -1908,6 +1908,16 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
   int num_checkpoints_on_chain     = 0;
   if (!build_alt_chain(b.prev_id, alt_chain, timestamps, bvc, &num_checkpoints_on_alt_chain, &num_checkpoints_on_chain))
     return false;
+
+  // NOTE: verify that the block's timestamp is within the acceptable range
+  // (not earlier than the median of the last X blocks in the built alt chain)
+  if(!check_block_timestamp(timestamps, b))
+  {
+    MERROR_VER("Block with id: " << id << std::endl << " for alternative chain, has invalid timestamp: " << b.timestamp);
+    bvc.m_verifivation_failed = true;
+    return false;
+  }
+
 
   // NOTE: Check proof of work
   difficulty_type const current_diff = get_next_difficulty_for_alternative_chain(alt_chain, blk_height);
@@ -3980,18 +3990,20 @@ bool Blockchain::basic_block_checks(cryptonote::block const &blk, bool alt_block
         }
       }
     }
+
+    // make sure block timestamp is not less than the median timestamp of a set
+    // number of the most recent blocks.
+    if(!check_block_timestamp(blk))
+    {
+      MGINFO_RED("Block with id: " << blk_hash << ", has invalid timestamp: " << blk.timestamp);
+      return false;
+    }
   }
 
-  // make sure block timestamp is not less than the median timestamp of a set
-  // number of the most recent blocks.
-  if(!check_block_timestamp(blk))
-  {
-    MGINFO_RED("Block with id: " << blk_hash << ", has invalid timestamp: " << blk.timestamp);
-    return false;
-  }
-
+  // When verifying an alt block, we're replacing the blk at blk_height, not
+  // adding a new block to the chain
   // sanity check basic miner tx properties;
-  if(!prevalidate_miner_transaction(blk, chain_height, hf_version))
+  if(!prevalidate_miner_transaction(blk, alt_block ? blk_height : chain_height, hf_version))
   {
     MGINFO_RED("Block with id: " << blk_hash << " failed to pass prevalidation");
     return false;
