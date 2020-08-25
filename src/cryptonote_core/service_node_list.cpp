@@ -1335,28 +1335,9 @@ namespace service_nodes
         return false;
       }
 
-      if (block.pulse.validator_bitset == 0)
-      {
-        MGINFO("Pulse block given but unexpected empty validator bitset on height " << height);
-        return false;
-      }
-
-      if (block.signatures.size() != service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES)
-      {
-        MGINFO("Pulseblock given but unexpectedly has the wrong number (" << block.signatures.size() <<  ") of signatures on height " << height);
-        return false;
-      }
-
       if (block.nonce != 0)
       {
         MGINFO("Pulse block specified a nonce when quorum block generation is available, nonce: " << block.nonce);
-        return false;
-      }
-
-      if (block.pulse.validator_bitset >= (1 << PULSE_QUORUM_NUM_VALIDATORS))
-      {
-        auto mask = std::bitset<sizeof(pulse_validator_bit_mask()) * 8>(pulse_validator_bit_mask());
-        MGINFO("Pulse block specifies validator bitset out of bounds. Expected the bit mask " << mask << "\n" << dump_pulse_block_data(block, pulse_quorum.get()));
         return false;
       }
 
@@ -1370,6 +1351,11 @@ namespace service_nodes
         MGINFO("Pulse signature verification failed: " << dump_pulse_block_data(block, pulse_quorum.get()));
         return false;
       }
+
+      // NOTE: These invariants are already checked in verify_quorum_signatures
+      assert(block.pulse.validator_bitset != 0);
+      assert(block.pulse.validator_bitset < (1 << PULSE_QUORUM_NUM_VALIDATORS));
+      assert(block.signatures.size() == service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES);
     }
 
     if (block.major_version >= cryptonote::network_version_13_enforce_checkpoints && checkpoint)
