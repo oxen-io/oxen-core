@@ -1698,13 +1698,18 @@ bool Blockchain::create_next_miner_block_template(block& b, const account_public
   return create_miner_block_template(b, nullptr /*from_block*/, miner_address, diffic, height, expected_reward, ex_nonce);
 }
 //------------------------------------------------------------------
-bool Blockchain::create_next_pulse_block_template(block& b, const service_nodes::payout& block_producer, uint64_t& height, uint64_t& expected_reward)
+bool Blockchain::create_next_pulse_block_template(block& b, const service_nodes::payout& block_producer, uint8_t round, uint16_t validator_bitset, uint64_t& height)
 {
+  uint64_t expected_reward = 0;
   block_template_info info = {};
   info.service_node_payout = block_producer;
   uint64_t diffic          = 0;
   blobdata nonce           = {};
-  return create_block_template_internal(b, NULL /*from_block*/, info, diffic, height, expected_reward, nonce);
+
+  bool result = create_block_template_internal(b, NULL /*from_block*/, info, diffic, height, expected_reward, nonce);
+  b.pulse.round = round;
+  b.pulse.validator_bitset = validator_bitset;
+  return result;
 }
 //------------------------------------------------------------------
 // for an alternate chain, get the timestamps from the main chain to complete

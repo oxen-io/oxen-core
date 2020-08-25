@@ -359,7 +359,19 @@ namespace cryptonote
      */
     bool create_miner_block_template     (block& b, const crypto::hash *from_block, const account_public_address& miner_address, difficulty_type& diffic, uint64_t& height, uint64_t& expected_reward, const blobdata& ex_nonce);
     bool create_next_miner_block_template(block& b, const account_public_address& miner_address, difficulty_type& diffic, uint64_t& height, uint64_t& expected_reward, const blobdata& ex_nonce);
-    bool create_next_pulse_block_template(block& b, const service_nodes::payout& block_producer, uint64_t& height, uint64_t& expected_reward);
+
+    /**
+     * @brief creates the next block suitable for using in a Pulse enabled network
+     *
+     * @param b return-by-reference block to be filled in
+     * @param block_producer the service node that will receive the block reward
+     * @param round the current pulse round the block is being generated for
+     * @param validator_bitset the bitset indicating which validators in the quorum are participating in constructing the block.
+     * @param ex_nonce extra data to be added to the miner transaction's extra
+     *
+     * @return true if block template filled in successfully, else false
+     */
+    bool create_next_pulse_block_template(block& b, const service_nodes::payout& block_producer, uint8_t round, uint16_t validator_bitset, uint64_t& height);
 
     /**
      * @brief checks if a block is known about with a given hash

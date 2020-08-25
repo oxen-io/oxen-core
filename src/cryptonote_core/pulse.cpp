@@ -1260,15 +1260,21 @@ round_state send_block_template(round_context &context, void *quorumnet_state, s
   }
 
   // Block
-  // TODO(doyle): Round and validator bitset should go into the create_next_pulse_block_template arguments
   cryptonote::block block = {};
   {
-    uint64_t expected_reward = 0;
+    uint64_t height                              = 0;
     service_nodes::payout block_producer_payouts = service_nodes::service_node_info_to_payout(key.pub, *info);
-    blockchain.create_next_pulse_block_template(block, block_producer_payouts, context.wait_for_next_block.height, expected_reward);
+    blockchain.create_next_pulse_block_template(block,
+                                                block_producer_payouts,
+                                                context.prepare_for_round.round,
+                                                context.transient.wait_for_handshake_bitsets.best_bitset,
+                                                height);
 
-    block.pulse.round            = context.prepare_for_round.round;
-    block.pulse.validator_bitset = context.transient.wait_for_handshake_bitsets.best_bitset;
+    if (context.wait_for_next_block.height != height)
+    {
+      MDEBUG(log_prefix(context) << "Block height changed whilst preparing block template for round " << +context.prepare_for_round.round << ", restarting Pulse stages");
+      return round_state::wait_for_next_block;
+    }
   }
 
   // Message
