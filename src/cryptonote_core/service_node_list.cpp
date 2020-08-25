@@ -1335,6 +1335,23 @@ namespace service_nodes
         return false;
       }
 
+      if (m_blockchain.nettype() != cryptonote::FAKECHAIN)
+      {
+        auto round_begin_timestamp = timings.r0_timestamp + (block.pulse.round * PULSE_ROUND_TIME);
+        auto round_end_timestamp   = round_begin_timestamp + PULSE_ROUND_TIME;
+
+        uint64_t begin_time = tools::to_seconds(round_begin_timestamp.time_since_epoch());
+        uint64_t end_time   = tools::to_seconds(round_end_timestamp.time_since_epoch());
+        if (!(block.timestamp >= begin_time && block.timestamp <= end_time))
+        {
+          std::string time  = tools::get_human_readable_timestamp(block.timestamp);
+          std::string begin = tools::get_human_readable_timestamp(begin_time);
+          std::string end   = tools::get_human_readable_timestamp(end_time);
+          MGINFO("Pulse block with round " << +block.pulse.round << " specifies timestamp " << time << " is not within an acceptable range of time [" << begin << ", " << end << "]");
+          return false;
+        }
+      }
+
       if (block.nonce != 0)
       {
         MGINFO("Pulse block specified a nonce when quorum block generation is available, nonce: " << block.nonce);
