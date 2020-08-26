@@ -266,16 +266,16 @@ namespace cryptonote
     0};
 
   // Loads stubs that fail if invoked.  The stubs are replaced in the cryptonote_protocol/quorumnet.cpp glue code.
-  [[noreturn]] static void need_core_init() {
-      throw std::logic_error("Internal error: core callback initialization was not performed!");
+  [[noreturn]] static void need_core_init(std::string_view stub_name) {
+      throw std::logic_error("Internal error: core callback initialization was not performed for "s + std::string(stub_name));
   }
 
-  void (*long_poll_trigger)(tx_memory_pool& pool) = [](tx_memory_pool&) { need_core_init(); };
-  quorumnet_new_proc *quorumnet_new = [](core&) -> void* { need_core_init(); };
-  quorumnet_delete_proc *quorumnet_delete = [](void*&) { need_core_init(); };
-  quorumnet_relay_obligation_votes_proc *quorumnet_relay_obligation_votes = [](void*, const std::vector<service_nodes::quorum_vote_t>&) { need_core_init(); };
-  quorumnet_send_blink_proc *quorumnet_send_blink = [](core&, const std::string&) -> std::future<std::pair<blink_result, std::string>> { need_core_init(); };
-  quorumnet_pulse_relay_message_to_quorum_proc *quorumnet_pulse_relay_message_to_quorum = [](void *, pulse::message const &, service_nodes::quorum const &, bool) -> void { need_core_init(); };
+  void (*long_poll_trigger)(tx_memory_pool& pool) = [](tx_memory_pool&) { need_core_init("long_poll_trigger"sv); };
+  quorumnet_new_proc *quorumnet_new = [](core&) -> void* { need_core_init("quorumnet_new"sv); };
+  quorumnet_delete_proc *quorumnet_delete = [](void*&) { need_core_init("quorumnet_delete"sv); };
+  quorumnet_relay_obligation_votes_proc *quorumnet_relay_obligation_votes = [](void*, const std::vector<service_nodes::quorum_vote_t>&) { need_core_init("quorumnet_relay_obligation_votes"sv); };
+  quorumnet_send_blink_proc *quorumnet_send_blink = [](core&, const std::string&) -> std::future<std::pair<blink_result, std::string>> { need_core_init("quorumnet_send_blink"sv); };
+  quorumnet_pulse_relay_message_to_quorum_proc *quorumnet_pulse_relay_message_to_quorum = [](void *, pulse::message const &, service_nodes::quorum const &, bool) -> void { need_core_init("quorumnet_pulse_relay_message_to_quorum"sv); };
 
   //-----------------------------------------------------------------------------------------------
   core::core()
