@@ -112,7 +112,7 @@ daemon::daemon(boost::program_options::variables_map vm_) :
     p2p{std::make_unique<node_server>(*protocol)},
     miner{
         std::make_unique<cryptonote::miner>(
-            *core,
+            core.get(),
             [&](const cryptonote::block &b, uint64_t height, unsigned int threads, crypto::hash &hash) {
               hash = cryptonote::get_block_longhash_w_blockchain(&core->get_blockchain_storage(), b, height, threads);
               return true;
@@ -235,7 +235,7 @@ bool daemon::run(bool interactive)
     if (!core->init(vm, nullptr, get_checkpoints))
       throw std::runtime_error("Failed to start core");
 
-    MGINFO("Starting miner");
+    MGINFO("Initializing miner");
     if (!miner->init(vm, core->get_nettype()))
       throw std::runtime_error("Failed to initialize miner instance.");
 
