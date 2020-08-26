@@ -926,6 +926,7 @@ inline bool do_replay_events_get_core(std::vector<test_event_entry>& events, cry
     return false;
 
   auto & c = *core;
+  quorumnet::init_core_callbacks();
 
   // TODO(loki): Deprecate having to specify hardforks in a templated struct. This
   // puts an unecessary level of indirection that makes it hard to follow the

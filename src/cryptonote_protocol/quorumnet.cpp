@@ -113,12 +113,10 @@ crypto::x25519_public_key x25519_from_string(std::string_view pubkey) {
     return x25519_pub;
 }
 
-void setup_endpoints(QnetState& qnet);
+void setup_endpoints(cryptonote::core& core, void* obj);
 
 void *new_qnetstate(cryptonote::core& core) {
-    QnetState* obj = new QnetState(core);
-    setup_endpoints(*obj);
-    return obj;
+    return new QnetState(core);
 }
 
 void delete_qnetstate(void *&obj) {
@@ -1520,7 +1518,7 @@ void pulse_relay_message_to_quorum(void *self, pulse::message const &msg, servic
   }
 
 
-  QnetState &qnet = *static_cast<QnetState *>(self);
+  auto &qnet = QnetState::from(self);
   if (block_producer)
   {
     service_nodes::quorum const *quorum_ptr = &quorum;
@@ -1673,6 +1671,7 @@ void handle_pulse_signed_block(Message &m, QnetState &qnet)
 /// cryptonote_protocol).  Called from daemon/daemon.cpp.  Also registers quorum command callbacks.
 void init_core_callbacks() {
     cryptonote::quorumnet_new = new_qnetstate;
+    cryptonote::quorumnet_init = setup_endpoints;
     cryptonote::quorumnet_delete = delete_qnetstate;
     cryptonote::quorumnet_relay_obligation_votes = relay_obligation_votes;
     cryptonote::quorumnet_send_blink = send_blink;
@@ -1680,24 +1679,38 @@ void init_core_callbacks() {
 }
 
 namespace {
-void setup_endpoints(QnetState& qnet) {
-    auto& lmq = qnet.lmq;
+void setup_endpoints(cryptonote::core& core, void* obj) {
+    auto& lmq = core.get_lmq();
 
-    // quorum.*: commands between quorum members, requires that both side of the connection is a SN
-    lmq.add_category("quorum", Access{AuthLevel::none, true /*remote sn*/, true /*local sn*/}, 2 /*reserved threads*/)
-        // Receives an obligation vote
-        .add_command("vote_ob", [&qnet](Message& m) { handle_obligation_vote(m, qnet); })
-        // Receives blink tx signatures or rejections between quorum members (either original or
-        // forwarded).  These are propagated by the receiver if new
-        .add_command("blink_sign", [&qnet](Message& m) { handle_blink_signature(m, qnet); })
-        ;
+    if (core.service_node()) {
+        if (!obj)
+            throw std::logic_error{"qnet initialization failure: quorumnet_new must be called for service node operation"};
+        auto& qnet = QnetState::from(obj);
+        // quorum.*: commands between quorum members, requires that both side of the connection is a SN
+        lmq.add_category("quorum", Access{AuthLevel::none, true /*remote sn*/, true /*local sn*/}, 2 /*reserved threads*/)
+            // Receives an obligation vote
+            .add_command("vote_ob", [&qnet](Message& m) { handle_obligation_vote(m, qnet); })
+            // Receives blink tx signatures or rejections between quorum members (either original or
+            // forwarded).  These are propagated by the receiver if new
+            .add_command("blink_sign", [&qnet](Message& m) { handle_blink_signature(m, qnet); })
+            ;
 
-    // blink.*: commands sent to blink quorum members from anyone (e.g. blink submission)
-    lmq.add_category("blink", Access{AuthLevel::none, false /*remote sn*/, true /*local sn*/}, 1 /*reserved thread*/)
-        // Receives a new blink tx submission from an external node, or forward from other quorum
-        // members who received it from an external node.
-        .add_command("submit", [&qnet](Message& m) { handle_blink(m, qnet); })
-        ;
+        // blink.*: commands sent to blink quorum members from anyone (e.g. blink submission)
+        lmq.add_category("blink", Access{AuthLevel::none, false /*remote sn*/, true /*local sn*/}, 1 /*reserved thread*/)
+            // Receives a new blink tx submission from an external node, or forward from other quorum
+            // members who received it from an external node.
+            .add_command("submit", [&qnet](Message& m) { handle_blink(m, qnet); })
+            ;
+
+        lmq.add_category(PULSE_CMD_CATEGORY, Access{AuthLevel::none, true /*remote sn*/, true /*local sn*/}, 1 /*reserved thread*/)
+            .add_command(PULSE_CMD_VALIDATOR_BIT, [&qnet](Message& m) { handle_pulse_participation_bit_or_bitset(m, qnet, false /*bitset*/); })
+            .add_command(PULSE_CMD_VALIDATOR_BITSET, [&qnet](Message& m) { handle_pulse_participation_bit_or_bitset(m, qnet, true /*bitset*/); })
+            .add_command(PULSE_CMD_BLOCK_TEMPLATE, [&qnet](Message& m) { handle_pulse_block_template(m, qnet); })
+            .add_command(PULSE_CMD_RANDOM_VALUE_HASH, [&qnet](Message& m) { handle_pulse_random_value_hash(m, qnet); })
+            .add_command(PULSE_CMD_RANDOM_VALUE, [&qnet](Message& m) { handle_pulse_random_value(m, qnet); })
+            .add_command(PULSE_CMD_SIGNED_BLOCK, [&qnet](Message& m) { handle_pulse_signed_block(m, qnet); })
+            ;
+    }
 
     // bl.*: responses to blinks sent from quorum members back to the node who submitted the blink
     lmq.add_category("bl", Access{AuthLevel::none, true /*remote sn*/, false /*local sn*/})
@@ -1714,15 +1727,6 @@ void setup_endpoints(QnetState& qnet) {
         // Sends a message from the entry SNs back to the initiator that the Blink tx has been
         // accepted and validated and is being broadcast to the network.
         .add_command("good", handle_blink_success)
-        ;
-
-    lmq.add_category(PULSE_CMD_CATEGORY, Access{AuthLevel::none, true /*remote sn*/, true /*local sn*/}, 1 /*reserved thread*/)
-        .add_command(PULSE_CMD_VALIDATOR_BIT, [&qnet](Message& m) { handle_pulse_participation_bit_or_bitset(m, qnet, false /*bitset*/); })
-        .add_command(PULSE_CMD_VALIDATOR_BITSET, [&qnet](Message& m) { handle_pulse_participation_bit_or_bitset(m, qnet, true /*bitset*/); })
-        .add_command(PULSE_CMD_BLOCK_TEMPLATE, [&qnet](Message& m) { handle_pulse_block_template(m, qnet); })
-        .add_command(PULSE_CMD_RANDOM_VALUE_HASH, [&qnet](Message& m) { handle_pulse_random_value_hash(m, qnet); })
-        .add_command(PULSE_CMD_RANDOM_VALUE, [&qnet](Message& m) { handle_pulse_random_value(m, qnet); })
-        .add_command(PULSE_CMD_SIGNED_BLOCK, [&qnet](Message& m) { handle_pulse_signed_block(m, qnet); })
         ;
 
     // Compatibility aliases.  No longer used since 7.1.4, but can still be received from previous
