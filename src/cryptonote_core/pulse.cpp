@@ -268,7 +268,11 @@ crypto::hash msg_signature_hash(round_context const &context, pulse::message con
     break;
 
     case pulse::message_type::block_template:
-      result = blake2b_hash(msg.block_template.blob.data(), msg.block_template.blob.size());
+    {
+      crypto::hash block_hash = blake2b_hash(msg.block_template.blob.data(), msg.block_template.blob.size());
+      auto buf                = tools::memcpy_le(msg.round, block_hash.data);
+      result                  = blake2b_hash(buf.data(), buf.size());
+    }
     break;
 
     case pulse::message_type::random_value_hash:
@@ -294,15 +298,15 @@ crypto::hash msg_signature_hash(round_context const &context, pulse::message con
 }
 
 // Generate a helper string that describes the origin of the message, i.e.
-// 'Signed Block' from 6:f9337ffc8bc30baf3fca92a13fa5a3a7ab7c93e69acb7136906e7feae9d3e769
+// 'Signed Block' at round 2 from 6:f9337ffc8bc30baf3fca92a13fa5a3a7ab7c93e69acb7136906e7feae9d3e769
 //   or
-// <Message Type> from <Validator Index>:<Validator Public Key>
+// <Message Type> at round <Round> from <Validator Index>:<Validator Public Key>
 std::string msg_source_string(round_context const &context, pulse::message const &msg)
 {
   if (msg.quorum_position >= context.prepare_for_round.quorum.validators.size()) return "XX";
 
   std::stringstream stream;
-  stream << "'" << message_type_string(msg.type) << "' from " << msg.quorum_position << ", round " << +msg.round;
+  stream << "'" << message_type_string(msg.type) << " at round " << +msg.round << " from " << msg.quorum_position;
   if (context.state >= round_state::prepare_for_round)
   {
     if (msg.quorum_position < context.prepare_for_round.quorum.validators.size())
@@ -451,6 +455,10 @@ bool enforce_validator_participation_and_timeouts(round_context const &context,
 
 void pulse::handle_message(void *quorumnet_state, pulse::message const &msg)
 {
+  // TODO(loki): We don't support messages from future rounds. A round
+  // mismatch will be detected in the signature as the round is included in the
+  // signature hash.
+
   if (msg.type == pulse::message_type::signed_block)
   {
     // Signed Block is the last message in the Pulse stage. This message
@@ -470,6 +478,14 @@ void pulse::handle_message(void *quorumnet_state, pulse::message const &msg)
     // contents of the message itself, of which, these messages are processed
     // when we have reached that Pulse stage (where we have all the necessary
     // information to validate the contents).
+
+    // Since we delay full verification, manually reject messages we know are
+    // immediately invalid here.
+    if (msg.round != context.prepare_for_round.round)
+    {
+      MTRACE(log_prefix(context) << "Signed block signature received from a mismatching round, " << msg_source_string(context, msg) << ", dropped.");
+      return;
+    }
   }
   else
   {
@@ -487,13 +503,6 @@ void pulse::handle_message(void *quorumnet_state, pulse::message const &msg)
     case pulse::message_type::random_value_hash: stage = &context.transient.random_value_hashes.wait.stage;     break;
     case pulse::message_type::random_value:      stage = &context.transient.random_value.wait.stage;            break;
     case pulse::message_type::signed_block:      stage = &context.transient.signed_block.wait.stage;            break;
-  }
-
-  // TODO(doyle): We need to support potentially receiving messages from the future up to 1 round.
-  if (msg.round != context.prepare_for_round.round)
-  {
-    MTRACE(log_prefix(context) << "Message received from a future round too early, " << msg_source_string(context, msg) << ", dropping the message.");
-    return;
   }
 
   bool msg_received_early = false;
