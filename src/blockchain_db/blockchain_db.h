@@ -1812,29 +1812,18 @@ public:
    */
   virtual uint64_t get_database_size() const = 0;
 
-  // TODO: this should perhaps be (or call) a series of functions which
-  // progressively update through version updates
   /**
    * @brief fix up anything that may be wrong due to past bugs
    */
-  enum struct fixup_type
-  {
-    standard,
-    calculate_difficulty,
-  };
-
   struct fixup_context
   {
-    fixup_type type;
-    union
+    struct
     {
-      struct
-      {
-        uint64_t start_height;
-      } calculate_difficulty_params;
-    };
+      uint64_t hf12_height;
+      uint64_t start_height;
+    } recalc_diff;
   };
-  virtual void fixup(fixup_context const context = {});
+  virtual void fixup(fixup_context const context);
 
   virtual void get_output_blacklist(std::vector<uint64_t> &blacklist) const   = 0;
   virtual void add_output_blacklist(std::vector<uint64_t> const &blacklist)   = 0;

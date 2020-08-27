@@ -493,8 +493,9 @@ bool Blockchain::init(BlockchainDB* db, sqlite3 *lns_db, const network_type nett
 
   if (m_nettype != FAKECHAIN)
   {
-    // ensure we fixup anything we found and fix in the future
-    m_db->fixup();
+    cryptonote::BlockchainDB::fixup_context context = {};
+    context.recalc_diff.hf12_height                 = HardFork::get_hardcoded_hard_fork_height(m_nettype, cryptonote::network_version_12_checkpointing);
+    m_db->fixup(context);
   }
 
   db_rtxn_guard rtxn_guard(m_db);
@@ -1020,12 +1021,12 @@ difficulty_type Blockchain::get_difficulty_for_next_block()
     m_timestamps = timestamps;
     m_difficulties = difficulties;
   }
-  // HF12 switches to RandomX with a likely drastically reduced hashrate versus Turtle, so override
-  // difficulty for the first difficulty window blocks:
-  uint64_t hf12_height = m_hardfork->get_earliest_ideal_height_for_version(network_version_12_checkpointing);
 
-  difficulty_type diff = next_difficulty_v2(timestamps, difficulties, tools::to_seconds(TARGET_BLOCK_TIME), version <= cryptonote::network_version_9_service_nodes,
-          height >= hf12_height && height < hf12_height + DIFFICULTY_WINDOW);
+  uint64_t hf12_height = m_hardfork->get_earliest_ideal_height_for_version(network_version_12_checkpointing);
+  difficulty_type diff = next_difficulty_v2(timestamps,
+                                            difficulties,
+                                            tools::to_seconds(TARGET_BLOCK_TIME),
+                                            difficulty_mode(version, height, hf12_height));
 
   std::unique_lock diff_lock{m_difficulty_lock};
   m_difficulty_for_next_block_top_hash = top_hash;
@@ -1274,15 +1275,14 @@ difficulty_type Blockchain::get_next_difficulty_for_alternative_chain(const std:
     }
   }
 
-  // FIXME: This will fail if fork activation heights are subject to voting
-  // HF12 switches to RandomX with a likely drastically reduced hashrate versus Turtle, so override
-  // difficulty for the first difficulty window blocks:
   uint64_t hf12_height = m_hardfork->get_earliest_ideal_height_for_version(network_version_12_checkpointing);
   uint64_t height = (alt_chain.size() ? alt_chain.front().height : alt_block_height) + alt_chain.size() + 1;
 
   // calculate the difficulty target for the block and return it
-  return next_difficulty_v2(timestamps, cumulative_difficulties, tools::to_seconds(TARGET_BLOCK_TIME), get_current_hard_fork_version() <= cryptonote::network_version_9_service_nodes,
-      height >= hf12_height && height < hf12_height + DIFFICULTY_WINDOW);
+  return next_difficulty_v2(timestamps,
+                            cumulative_difficulties,
+                            tools::to_seconds(TARGET_BLOCK_TIME),
+                            difficulty_mode(get_current_hard_fork_version(), height, hf12_height));
 }
 //------------------------------------------------------------------
 // This function does a sanity check on basic things that all miner
@@ -4041,7 +4041,8 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
     block_pow_verified blk_pow = {};
   } miner = {};
 
-  if (cryptonote::block_has_pulse_components(bl))
+  bool const pulse_block = cryptonote::block_has_pulse_components(bl);
+  if (pulse_block)
   {
     // NOTE: Pulse blocks don't use PoW. They use Service Node signatures.
     // Delay signature verification until Service Node List adds the block in
@@ -4302,8 +4303,8 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
     if (nettype() == MAINNET && (block_height % BLOCKS_EXPECTED_IN_DAYS(1) == 0))
     {
       cryptonote::BlockchainDB::fixup_context context  = {};
-      context.type                                     = cryptonote::BlockchainDB::fixup_type::calculate_difficulty;
-      context.calculate_difficulty_params.start_height = block_height - BLOCKS_EXPECTED_IN_DAYS(1);
+      context.recalc_diff.hf12_height  = HardFork::get_hardcoded_hard_fork_height(m_nettype, cryptonote::network_version_12_checkpointing);
+      context.recalc_diff.start_height = block_height - BLOCKS_EXPECTED_IN_DAYS(1);
       m_db->fixup(context);
     }
   }
@@ -4352,7 +4353,8 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
   ++m_sync_counter;
 
   m_tx_pool.on_blockchain_inc(bl);
-  get_difficulty_for_next_block(); // just to cache it
+  if (!pulse_block)
+    get_difficulty_for_next_block(); // just to cache it
   invalidate_block_template_cache();
 
   if (notify)

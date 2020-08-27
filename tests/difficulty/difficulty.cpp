@@ -67,7 +67,9 @@ int main(int argc, char *argv[]) {
         }
         uint64_t res = cryptonote::next_difficulty_v2(
             std::vector<uint64_t>(timestamps.begin() + begin, timestamps.begin() + end),
-            std::vector<uint64_t>(cumulative_difficulties.begin() + begin, cumulative_difficulties.begin() + end), tools::to_seconds(TARGET_BLOCK_TIME), false/*use_old_lwma2*/, false);
+            std::vector<uint64_t>(cumulative_difficulties.begin() + begin, cumulative_difficulties.begin() + end),
+            tools::to_seconds(TARGET_BLOCK_TIME),
+            cryptonote::difficulty_calc_mode::pre_pulse);
         if (res != difficulty) {
             std::cerr << "Wrong difficulty for block " << n
                 << "\nExpected: " << difficulty

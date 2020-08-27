@@ -54,6 +54,18 @@ namespace cryptonote
      */
     bool check_hash(const crypto::hash &hash, difficulty_type difficulty);
 
-    difficulty_type next_difficulty_v2(std::vector<std::uint64_t> timestamps, std::vector<difficulty_type> cumulative_difficulties, size_t target_second,
-        bool use_old_lwma, bool v12_initial_override);
+    enum struct difficulty_calc_mode
+    {
+      use_old_lwma,
+      hf12_override,
+      pre_pulse,
+      post_pulse,
+    };
+
+    difficulty_calc_mode difficulty_mode(uint8_t hf_version, uint64_t height, uint64_t hf12_height);
+
+    difficulty_type next_difficulty_v2(std::vector<std::uint64_t> timestamps,
+                                       std::vector<difficulty_type> cumulative_difficulties,
+                                       size_t target_second,
+                                       difficulty_calc_mode mode);
 }

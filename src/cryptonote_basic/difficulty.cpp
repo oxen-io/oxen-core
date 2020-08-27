@@ -140,8 +140,33 @@ namespace cryptonote {
   // be reduced from 60*60*2 to 500 seconds to prevent timestamp manipulation from miner's with 
   //  > 50% hash power.  If this is too small, it can be increased to 1000 at a cost in protection.
 
-  difficulty_type next_difficulty_v2(std::vector<std::uint64_t> timestamps, std::vector<difficulty_type> cumulative_difficulties, size_t target_seconds,
-      bool use_old_lwma, bool v12_initial_override) {
+  difficulty_calc_mode difficulty_mode(uint8_t hf_version, uint64_t height, uint64_t hf12_height)
+  {
+    auto result = difficulty_calc_mode::post_pulse;
+    if (hf_version <= cryptonote::network_version_9_service_nodes)
+    {
+      result = difficulty_calc_mode::use_old_lwma;
+    }
+    // HF12 switches to RandomX with a likely drastically reduced hashrate versus Turtle, so override
+    // difficulty for the first difficulty window blocks:
+    else if (hf_version >= cryptonote::network_version_12_checkpointing &&
+             height < hf12_height + DIFFICULTY_WINDOW)
+    {
+      result = difficulty_calc_mode::hf12_override;
+    }
+    else if (hf_version <= cryptonote::network_version_15_lns)
+    {
+      result = difficulty_calc_mode::pre_pulse;
+    }
+
+    return result;
+  }
+
+  difficulty_type next_difficulty_v2(std::vector<std::uint64_t> timestamps,
+                                     std::vector<difficulty_type> cumulative_difficulties,
+                                     size_t target_seconds,
+                                     difficulty_calc_mode mode)
+  {
 
     const int64_t T = static_cast<int64_t>(target_seconds);
 
@@ -176,7 +201,7 @@ namespace cryptonote {
     for (int64_t i = 1; i <= (int64_t)N; i++) {
       solveTime = static_cast<int64_t>(timestamps[i]) - static_cast<int64_t>(timestamps[i - 1]);
 
-      if (use_old_lwma) solveTime = std::max<int64_t>(solveTime, (-7 * T));
+      if (mode == difficulty_calc_mode::use_old_lwma) solveTime = std::max<int64_t>(solveTime, (-7 * T));
       solveTime = std::min<int64_t>(solveTime, (T * 7));
 
       difficulty = cumulative_difficulties[i] - cumulative_difficulties[i - 1];
@@ -202,7 +227,7 @@ namespace cryptonote {
     // Rough estimate based on comparable coins, pre-merge-mining hashrate, and hashrate changes is
     // that 30MH/s seems more or less right, so we cap it there for the first WINDOW blocks to
     // prevent too-long blocks right after the fork.
-    if (v12_initial_override)
+    if (mode == difficulty_calc_mode::hf12_override)
       return std::min(next_difficulty, 30000000 * uint64_t(target_seconds));
 
     return next_difficulty;

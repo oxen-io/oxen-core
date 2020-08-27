@@ -837,8 +837,8 @@ namespace cryptonote
     if (recalc_diff_from_block > 0)
     {
       cryptonote::BlockchainDB::fixup_context context  = {};
-      context.type                                     = cryptonote::BlockchainDB::fixup_type::calculate_difficulty;
-      context.calculate_difficulty_params.start_height = recalc_diff_from_block;
+      context.recalc_diff.hf12_height  = HardFork::get_hardcoded_hard_fork_height(m_nettype, cryptonote::network_version_12_checkpointing);
+      context.recalc_diff.start_height = recalc_diff_from_block;
       m_blockchain_storage.get_db().fixup(context);
     }
 
