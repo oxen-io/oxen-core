@@ -70,6 +70,19 @@ uint64_t db_batch_size = 100;
 uint64_t db_batch_size_verify = 5000;
 
 std::string refresh_string = "\r                                    \r";
+
+const command_line::arg_descriptor<uint64_t> arg_recalculate_difficulty = {
+  "recalculate-difficulty",
+  "Recalculate per-block difficulty starting from the height specified",
+  // This is now enabled by default because the network broke at 526483 because of divergent
+  // difficulty values (and the chain that kept going violated the correct difficulty, and got
+  // checkpointed multiple times because enough of the network followed it).
+  //
+  // TODO: We can disable this post-pulse (since diff won't matter anymore), but until then there
+  // is a subtle bug somewhere in difficulty calculations that can cause divergence; this seems
+  // important enough to just rescan at every startup (and only takes a few seconds).
+  1};
+
 }
 
 
@@ -713,16 +726,6 @@ int main(int argc, char* argv[])
     MINFO("height: " << core.get_blockchain_storage().get_current_blockchain_height());
     pop_blocks(core, num_blocks);
     MINFO("height: " << core.get_blockchain_storage().get_current_blockchain_height());
-    return 0;
-  }
-
-  if (!command_line::is_arg_defaulted(vm, arg_recalculate_difficulty))
-  {
-    uint64_t recalc_diff_from_block = command_line::get_arg(vm, arg_recalculate_difficulty);
-    cryptonote::BlockchainDB::fixup_context context  = {};
-    context.recalc_diff.hf12_height  = HardFork::get_hardcoded_hard_fork_height(core.get_nettype(), cryptonote::network_version_12_checkpointing);
-    context.recalc_diff.start_height = recalc_diff_from_block;
-    core.get_blockchain_storage().get_db().fixup(context);
     return 0;
   }
 

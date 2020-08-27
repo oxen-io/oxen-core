@@ -246,18 +246,6 @@ namespace cryptonote
   , false
   };
 
-  const command_line::arg_descriptor<uint64_t> arg_recalculate_difficulty = {
-    "recalculate-difficulty",
-    "Recalculate per-block difficulty starting from the height specified",
-    // This is now enabled by default because the network broke at 526483 because of divergent
-    // difficulty values (and the chain that kept going violated the correct difficulty, and got
-    // checkpointed multiple times because enough of the network followed it).
-    //
-    // TODO: We can disable this post-pulse (since diff won't matter anymore), but until then there
-    // is a subtle bug somewhere in difficulty calculations that can cause divergence; this seems
-    // important enough to just rescan at every startup (and only takes a few seconds).
-    1};
-
   static const command_line::arg_descriptor<uint64_t> arg_store_quorum_history = {
     "store-quorum-history",
     "Store the service node quorum history for the last N blocks to allow historic quorum lookups "
@@ -369,7 +357,6 @@ namespace cryptonote
     command_line::add_arg(desc, arg_block_rate_notify);
     command_line::add_arg(desc, arg_keep_alt_blocks);
 
-    command_line::add_arg(desc, arg_recalculate_difficulty);
     command_line::add_arg(desc, arg_store_quorum_history);
 #if defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS)
     command_line::add_arg(desc, integration_test::arg_hardforks_override);
@@ -832,15 +819,6 @@ namespace cryptonote
     const difficulty_type fixed_difficulty = command_line::get_arg(vm, arg_fixed_difficulty);
     r = m_blockchain_storage.init(db.release(), lns_db, m_nettype, m_offline, regtest ? &regtest_test_options : test_options, fixed_difficulty, get_checkpoints);
     CHECK_AND_ASSERT_MES(r, false, "Failed to initialize blockchain storage");
-
-    uint64_t recalc_diff_from_block = command_line::get_arg(vm, arg_recalculate_difficulty);
-    if (recalc_diff_from_block > 0)
-    {
-      cryptonote::BlockchainDB::fixup_context context  = {};
-      context.recalc_diff.hf12_height  = HardFork::get_hardcoded_hard_fork_height(m_nettype, cryptonote::network_version_12_checkpointing);
-      context.recalc_diff.start_height = recalc_diff_from_block;
-      m_blockchain_storage.get_db().fixup(context);
-    }
 
     r = m_mempool.init(max_txpool_weight);
     CHECK_AND_ASSERT_MES(r, false, "Failed to initialize memory pool");
