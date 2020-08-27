@@ -1518,7 +1518,7 @@ bool Blockchain::create_block_template_internal(block& b, const crypto::hash *fr
   uint64_t pool_cookie;
 
   auto lock = tools::unique_locks(m_tx_pool, *this);
-  if (0 && m_btc_valid && !from_block)
+  if (m_btc_valid && !from_block)
   {
     // The pool cookie is atomic. The lack of locking is OK, as if it changes
     // just as we compare it, we'll just use a slightly old template, but
