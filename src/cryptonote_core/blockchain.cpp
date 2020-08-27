@@ -4031,40 +4031,40 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
   }
   TIME_MEASURE_FINISH(t1);
 
-  TIME_MEASURE_START(target_calculating_time);
-  difficulty_type const current_diffic = get_difficulty_for_next_block();
-  TIME_MEASURE_FINISH(target_calculating_time);
-
-  TIME_MEASURE_START(verify_pow_time);
-  block_pow_verified blk_pow  = {};
   uint64_t const chain_height = get_current_blockchain_height();
+
+  struct
   {
-    std::memset(blk_pow.proof_of_work.data, 0xff, sizeof(blk_pow.proof_of_work.data));
+    uint64_t           verify_pow_time;
+    uint64_t           difficulty_calc_time;
+    difficulty_type    current_diffic;
+    block_pow_verified blk_pow = {};
+  } miner = {};
 
-    LOKI_DEFER
-    {
-      TIME_MEASURE_FINISH(verify_pow_time);
-      if (blk_pow.precomputed)
-        verify_pow_time += m_fake_pow_calc_time;
-    };
+  if (cryptonote::block_has_pulse_components(bl))
+  {
+    // NOTE: Pulse blocks don't use PoW. They use Service Node signatures.
+    // Delay signature verification until Service Node List adds the block in
+    // the block_added hook.
+  }
+  else // check proof of work
+  {
+    miner.difficulty_calc_time = epee::misc_utils::get_tick_count();
+    miner.current_diffic       = get_difficulty_for_next_block();
+    miner.difficulty_calc_time = epee::misc_utils::get_tick_count() - miner.difficulty_calc_time;
 
-    if (cryptonote::block_has_pulse_components(bl))
-    {
-      // NOTE: Pulse blocks don't use PoW. They use Service Node signatures.
-      // Delay signature verification until Service Node List adds the block in
-      // the block_added hook.
-      blk_pow.valid = true;
-    }
-    else // check proof of work
-    {
-      blk_pow = verify_block_pow(bl, current_diffic, chain_height, false /*alt_block*/);
-    }
+    miner.verify_pow_time = epee::misc_utils::get_tick_count();
+    miner.blk_pow         = verify_block_pow(bl, miner.current_diffic, chain_height, false /*alt_block*/);
+    miner.verify_pow_time = epee::misc_utils::get_tick_count() - miner.verify_pow_time;
 
-    if (!blk_pow.valid)
+    if (!miner.blk_pow.valid)
     {
       bvc.m_verifivation_failed = true;
       return false;
     }
+
+    if (miner.blk_pow.precomputed)
+      miner.verify_pow_time += m_fake_pow_calc_time;
   }
 
   size_t const coinbase_weight   = get_transaction_weight(bl.miner_tx);
@@ -4144,7 +4144,7 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
     TIME_MEASURE_START(cc);
 
 #if defined(PER_BLOCK_CHECKPOINT)
-    if (!blk_pow.per_block_checkpointed)
+    if (!miner.blk_pow.per_block_checkpointed)
 #endif
     {
       // validate that transaction inputs and the keys spending them are correct.
@@ -4203,7 +4203,7 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
 
   // populate various metadata about the block to be stored alongside it.
   block_weight = cumulative_block_weight;
-  cumulative_difficulty = current_diffic;
+  cumulative_difficulty = miner.current_diffic;
   // In the "tail" state when the minimum subsidy (implemented in get_block_reward) is in effect, the number of
   // coins will eventually exceed MONEY_SUPPLY and overflow a uint64. To prevent overflow, cap already_generated_coins
   // at MONEY_SUPPLY. already_generated_coins is only used to compute the block subsidy and MONEY_SUPPLY yields a
@@ -4213,7 +4213,7 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
     cumulative_difficulty += m_db->get_block_cumulative_difficulty(chain_height - 1);
 
   TIME_MEASURE_FINISH(block_processing_time);
-  if(blk_pow.precomputed)
+  if(miner.blk_pow.precomputed)
     block_processing_time += m_fake_pow_calc_time;
 
   rtxn_guard.stop();
@@ -4323,27 +4323,26 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
                    << "HEIGHT " << new_height - 1 << "\n"
                    << "block reward: " << print_money(fee_summary + base_reward) << "(" << print_money(base_reward)
                    << " + " << print_money(fee_summary) << "), coinbase_weight: " << coinbase_weight
-                   << ", cumulative weight: " << cumulative_block_weight << ", " << block_processing_time << "("
-                   << target_calculating_time << ")ms");
+                   << ", cumulative weight: " << cumulative_block_weight << ", " << block_processing_time);
   }
   else
   {
     assert(bl.signatures.empty() && "Signatures were supposed to be checked in Service Node List already.");
     MINFO("+++++ MINER BLOCK SUCCESSFULLY ADDED\n"
           << "id:\t" << id << "\n"
-          << "PoW:\t" << blk_pow.proof_of_work << "\n"
-          << "HEIGHT " << new_height - 1 << ", difficulty:\t" << current_diffic << "\n"
+          << "PoW:\t" << miner.blk_pow.proof_of_work << "\n"
+          << "HEIGHT " << new_height - 1 << ", difficulty:\t" << miner.current_diffic << "\n"
           << "block reward: " << print_money(fee_summary + base_reward) << "(" << print_money(base_reward) << " + "
           << print_money(fee_summary) << "), coinbase_weight: " << coinbase_weight
           << ", cumulative weight: " << cumulative_block_weight << ", " << block_processing_time << "("
-          << target_calculating_time << "/" << verify_pow_time << ")ms");
+          << miner.difficulty_calc_time << "/" << miner.verify_pow_time << ")ms");
   }
 
   if(m_show_time_stats)
   {
     MINFO("Height: " << new_height << " coinbase weight: " << coinbase_weight << " cumm: "
         << cumulative_block_weight << " p/t: " << block_processing_time << " ("
-        << target_calculating_time << "/" << verify_pow_time << "/"
+        << miner.difficulty_calc_time << "/" << miner.verify_pow_time << "/"
         << t1 << "/" << t_exists << "/" << t_pool
         << "/" << t_checktx << "/" << t_dblspnd << "/" << vmt << "/" << addblock << ")ms");
   }
