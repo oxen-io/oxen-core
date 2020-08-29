@@ -1161,7 +1161,7 @@ std::future<std::pair<cryptonote::blink_result, std::string>> send_blink(crypton
         std::unique_lock lock{pending_blink_result_mutex};
         for (auto it = pending_blink_results.begin(); it != pending_blink_results.end(); ) {
             auto &b_results = it->second;
-            if (b_results.expiry >= now) {
+            if (b_results.expiry < now) {
                 try { b_results.promise.set_value(std::make_pair(cryptonote::blink_result::timeout, "Blink quorum timeout")); }
                 catch (const std::future_error &) { /* ignore */ }
                 it = pending_blink_results.erase(it);
