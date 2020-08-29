@@ -105,3 +105,6 @@ target_link_libraries(blockchain_stats PRIVATE blockchain_tools_common_libs)
 #   PRIVATE
 #     blockchain_tools_common_libs
 #     p2p)
+
+loki_add_executable(sn_key_tool "loki-sn-keys" sn_key_tool.cpp)
+target_link_libraries(sn_key_tool PRIVATE sodium lokimq)
