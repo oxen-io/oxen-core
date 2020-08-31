@@ -36,7 +36,17 @@ const command_line::arg_descriptor<std::vector<std::string>> arg_lmq_user{
 const command_line::arg_descriptor<std::vector<std::string>> arg_lmq_local_control{
   "lmq-local-control",
   "Adds an unencrypted LokiMQ RPC listener with full, unrestricted capabilities and no authentication at the given address. "
+#ifndef _WIN32
+    "Listens at ipc://<data-dir>/lokid.sock if not specified. Specify 'none' to disable the default. "
+#endif
     "WARNING: Do not use this on a publicly accessible address!"};
+
+#ifndef _WIN32
+const command_line::arg_descriptor<std::string> arg_lmq_umask{
+  "lmq-umask",
+  "Sets the umask to apply to any listening ipc:///path/to/sock LMQ sockets, in octal.",
+  "0007"};
+#endif
 
 
 void check_lmq_listen_addr(std::string_view addr) {
@@ -78,6 +88,7 @@ void init_lmq_options(boost::program_options::options_description& desc)
   command_line::add_arg(desc, arg_lmq_admin);
   command_line::add_arg(desc, arg_lmq_user);
   command_line::add_arg(desc, arg_lmq_local_control);
+  command_line::add_arg(desc, arg_lmq_umask);
 }
 
 lmq_rpc::lmq_rpc(cryptonote::core& core, core_rpc_server& rpc, const boost::program_options::variables_map& vm)
@@ -109,12 +120,39 @@ lmq_rpc::lmq_rpc(cryptonote::core& core, core_rpc_server& rpc, const boost::prog
         [&core](std::string_view ip, std::string_view pk, bool /*sn*/) { return core.lmq_allow(ip, pk, AuthLevel::denied); });
   }
 
-  for (const auto &addr : command_line::get_arg(vm, arg_lmq_local_control)) {
+  auto locals = command_line::get_arg(vm, arg_lmq_local_control);
+  if (locals.empty()) {
+    // FIXME: this requires unix sockets and so probably won't work on older Windows 10 or pre-Win10
+    // windows.  In theory we could do some runtime detection to see if the Windows version is new
+    // enough to support unix domain sockets, but for now the Windows default is just "don't listen"
+#ifndef _WIN32
+    locals.push_back("ipc://" + command_line::get_arg(vm, cryptonote::arg_data_dir) + "/lokid.sock");
+#endif
+  } else if (locals.size() == 1 && locals[0] == "none") {
+    locals.clear();
+  }
+  for (const auto &addr : locals) {
     check_lmq_listen_addr(addr);
     MGINFO("LMQ listening on " << addr << " (unauthenticated local admin)");
     lmq.listen_plain(addr,
         [&core](std::string_view ip, std::string_view pk, bool /*sn*/) { return core.lmq_allow(ip, pk, AuthLevel::admin); });
   }
+
+#ifndef _WIN32
+  auto umask_str = command_line::get_arg(vm, arg_lmq_umask);
+  try {
+    int umask = -1;
+    size_t len = 0;
+    umask = std::stoi(umask_str, &len, 8);
+    if (len != umask_str.size())
+      throw std::invalid_argument("not an octal value");
+    if (umask < 0 || umask > 0777)
+      throw std::invalid_argument("invalid umask value");
+    lmq.STARTUP_UMASK = umask;
+  } catch (const std::exception& e) {
+    throw std::invalid_argument("Invalid --lmq-umask value '" + umask_str + "': value must be an octal value between 0 and 0777");
+  }
+#endif
 
 
   // Insert our own pubkey so that, e.g., console commands from localhost automatically get full access
