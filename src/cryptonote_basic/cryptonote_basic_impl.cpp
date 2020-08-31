@@ -64,14 +64,22 @@ namespace cryptonote {
   /* Cryptonote helper functions                                          */
   /************************************************************************/
   //-----------------------------------------------------------------------------------------------
-  bool block_has_pulse_components(block const &blk)
+  bool block_header_has_pulse_components(block_header const &blk_header)
   {
     constexpr cryptonote::pulse_random_value empty_random_value = {};
+    bool bitset        = blk_header.pulse.validator_bitset > 0;
+    bool random_value  = !(blk_header.pulse.random_value == empty_random_value);
+    uint8_t hf_version = blk_header.major_version;
+    bool result        = hf_version >= cryptonote::network_version_16 && (bitset || random_value);
+    return result;
+  }
+  //-----------------------------------------------------------------------------------------------
+  bool block_has_pulse_components(block const &blk)
+  {
     bool signatures    = blk.signatures.size();
-    bool bitset        = blk.pulse.validator_bitset > 0;
-    bool random_value  = !(blk.pulse.random_value == empty_random_value);
     uint8_t hf_version = blk.major_version;
-    bool result        = hf_version >= cryptonote::network_version_16 && (signatures || bitset || random_value);
+    bool result =
+        (hf_version >= cryptonote::network_version_16 && signatures) || block_header_has_pulse_components(blk);
     return result;
   }
   //-----------------------------------------------------------------------------------------------

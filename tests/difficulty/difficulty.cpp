@@ -69,7 +69,7 @@ int main(int argc, char *argv[]) {
             std::vector<uint64_t>(timestamps.begin() + begin, timestamps.begin() + end),
             std::vector<uint64_t>(cumulative_difficulties.begin() + begin, cumulative_difficulties.begin() + end),
             tools::to_seconds(TARGET_BLOCK_TIME),
-            cryptonote::difficulty_calc_mode::pre_pulse);
+            cryptonote::difficulty_calc_mode::normal);
         if (res != difficulty) {
             std::cerr << "Wrong difficulty for block " << n
                 << "\nExpected: " << difficulty

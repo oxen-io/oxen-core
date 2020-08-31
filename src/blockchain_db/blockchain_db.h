@@ -1817,9 +1817,9 @@ public:
    */
   struct fixup_context
   {
+    cryptonote::network_type nettype;
     struct
     {
-      uint64_t hf12_height;
       uint64_t start_height;
     } recalc_diff;
   };
@@ -1844,6 +1844,33 @@ public:
   /// Removes stored serialized proof sn data associated with the given pubkey.  Returns true if
   /// found, false if not found.
   virtual bool remove_service_node_proof(const crypto::public_key &pubkey) = 0;
+
+  // This function accepts an empty timestamps/difficulties array to fill, or
+  // a prior timestamps/difficulties array that was filled by a previous call to
+  // this same function in which case it will optimally insert and remove the
+  // new data instead of reconstructing the entrie array.
+  //
+  // timestamps: On return, timestamps of the last loaded
+  // 'DIFFICULTY_WINDOW' blocks starting from top_block_height stored in
+  // ascending block height order.
+  //
+  // difficulties: On return, cumulative difficulties of the last loaded
+  // DIFFICULTY_WINDOW blocks starting from 'top_block_height' stored in
+  // ascending block height order
+  //
+  // chain_height: The blockchain height, (next height a block will be added
+  // at). The input arrays will be filled with the prior `timestamps` and
+  // `difficulties` DIFFICULTY_WINDOW worth of values.
+  //
+  // timestamps_difficulty_height: The last 'chain_height' that this function
+  // was invoked and loaded historical timestamp/difficulties into (allowing
+  // this function to be called iteratively on the same input arrays over time).
+  // This should be set to 0 on the initial call.
+  void fill_timestamps_and_difficulties_for_pow(cryptonote::network_type nettype,
+                                                std::vector<uint64_t> &timestamps,
+                                                std::vector<uint64_t> &difficulties,
+                                                uint64_t chain_height,
+                                                uint64_t timestamps_difficulty_height) const;
 
   /**
    * @brief set whether or not to automatically remove logs

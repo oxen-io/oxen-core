@@ -33,6 +33,8 @@
 #include <cstdint>
 #include <cstddef>
 #include <vector>
+#include "cryptonote_config.h"
+#include "common/util.h"
 
 namespace crypto { struct hash; }
 
@@ -54,15 +56,15 @@ namespace cryptonote
      */
     bool check_hash(const crypto::hash &hash, difficulty_type difficulty);
 
+    constexpr difficulty_type PULSE_FIXED_DIFFICULTY = 1'000'000 * tools::to_seconds(TARGET_BLOCK_TIME);
     enum struct difficulty_calc_mode
     {
       use_old_lwma,
       hf12_override,
-      pre_pulse,
-      post_pulse,
+      normal,
     };
 
-    difficulty_calc_mode difficulty_mode(uint8_t hf_version, uint64_t height, uint64_t hf12_height);
+    difficulty_calc_mode difficulty_mode(network_type nettype, uint8_t hf_version, uint64_t height);
 
     difficulty_type next_difficulty_v2(std::vector<std::uint64_t> timestamps,
                                        std::vector<difficulty_type> cumulative_difficulties,

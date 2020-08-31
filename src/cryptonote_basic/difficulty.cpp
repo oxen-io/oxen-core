@@ -34,8 +34,8 @@
 #include "common/loki.h"
 #include "int-util.h"
 #include "crypto/hash.h"
-#include "cryptonote_config.h"
 #include "difficulty.h"
+#include "hardfork.h"
 
 #undef LOKI_DEFAULT_LOG_CATEGORY
 #define LOKI_DEFAULT_LOG_CATEGORY "difficulty"
@@ -140,9 +140,11 @@ namespace cryptonote {
   // be reduced from 60*60*2 to 500 seconds to prevent timestamp manipulation from miner's with 
   //  > 50% hash power.  If this is too small, it can be increased to 1000 at a cost in protection.
 
-  difficulty_calc_mode difficulty_mode(uint8_t hf_version, uint64_t height, uint64_t hf12_height)
+  difficulty_calc_mode difficulty_mode(cryptonote::network_type nettype, uint8_t hf_version, uint64_t height)
   {
-    auto result = difficulty_calc_mode::post_pulse;
+    static const uint64_t hf12_height = cryptonote::HardFork::get_hardcoded_hard_fork_height(nettype, cryptonote::network_version_12_checkpointing);
+    auto result = difficulty_calc_mode::normal;
+
     if (hf_version <= cryptonote::network_version_9_service_nodes)
     {
       result = difficulty_calc_mode::use_old_lwma;
@@ -154,10 +156,6 @@ namespace cryptonote {
     {
       result = difficulty_calc_mode::hf12_override;
     }
-    else if (hf_version <= cryptonote::network_version_15_lns)
-    {
-      result = difficulty_calc_mode::pre_pulse;
-    }
 
     return result;
   }
@@ -167,10 +165,8 @@ namespace cryptonote {
                                      size_t target_seconds,
                                      difficulty_calc_mode mode)
   {
-
     const int64_t T = static_cast<int64_t>(target_seconds);
-
-    size_t N = DIFFICULTY_WINDOW - 1;
+    size_t N        = DIFFICULTY_WINDOW - 1;
 
     // Return a difficulty of 1 for first 4 blocks if it's the start of the chain.
     if (timestamps.size() < 4) {
@@ -180,13 +176,13 @@ namespace cryptonote {
     else if ( timestamps.size()-1 < N ) {
       N = timestamps.size() - 1;
     }
-    // Otherwise make sure timestamps and cumulative_difficulties are correct size.
-    else {
-      // TODO: put asserts here, so that the difficulty algorithm is never called with an oversized window
-      //       OR make this use the last N+1 timestamps and cum_diff, not the first.
+    else
+    {
+      // Otherwise make sure timestamps and cumulative_difficulties are correct size.
       timestamps.resize(N+1);
       cumulative_difficulties.resize(N+1);
     }
+
     // To get an average solvetime to within +/- ~0.1%, use an adjustment factor.
     // adjust=0.999 for 80 < N < 120(?)
     const double adjust = 0.998;
@@ -228,7 +224,7 @@ namespace cryptonote {
     // that 30MH/s seems more or less right, so we cap it there for the first WINDOW blocks to
     // prevent too-long blocks right after the fork.
     if (mode == difficulty_calc_mode::hf12_override)
-      return std::min(next_difficulty, 30000000 * uint64_t(target_seconds));
+      return std::min(next_difficulty, 30'000'000 * uint64_t(target_seconds));
 
     return next_difficulty;
   }

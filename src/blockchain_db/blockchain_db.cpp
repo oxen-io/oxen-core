@@ -415,4 +415,54 @@ uint64_t BlockchainDB::get_tx_block_height(const crypto::hash &h) const
   return result;
 }
 
+void BlockchainDB::fill_timestamps_and_difficulties_for_pow(cryptonote::network_type nettype,
+                                                            std::vector<uint64_t> &timestamps,
+                                                            std::vector<uint64_t> &difficulties,
+                                                            uint64_t chain_height,
+                                                            uint64_t timestamps_difficulty_height) const
+{
+  constexpr uint64_t MIN_HEIGHT = 2;
+  if (chain_height < MIN_HEIGHT)
+    return;
+
+  const uint64_t top_block_height   = chain_height - 1;
+  static const uint64_t hf16_height = HardFork::get_hardcoded_hard_fork_height(nettype, cryptonote::network_version_16);
+  bool const before_hf16     = top_block_height < hf16_height;
+  uint64_t const block_count = DIFFICULTY_BLOCKS_COUNT(before_hf16);
+
+  timestamps.reserve(block_count);
+  difficulties.reserve(block_count);
+
+  if (timestamps_difficulty_height == 0 ||
+      (chain_height - timestamps_difficulty_height) != 1 ||
+      timestamps.size()   != block_count ||
+      difficulties.size() != block_count)
+  {
+    // Cache invalidated.
+    timestamps.clear();
+    difficulties.clear();
+
+    // Fill missing timestamps/difficulties, up to one before the latest (latest is added below).
+    uint64_t start_height = chain_height - std::min<size_t>(chain_height, block_count);
+    start_height          = std::max<uint64_t>(start_height, MIN_HEIGHT);
+
+    for (uint64_t block_height = start_height; block_height < (chain_height - 1); block_height++)
+    {
+      timestamps.push_back(get_block_timestamp(block_height));
+      difficulties.push_back(get_block_cumulative_difficulty(block_height));
+    }
+  }
+
+  // Add latest timestamp/difficulty
+  timestamps.push_back(get_block_timestamp(top_block_height));
+  difficulties.push_back(get_block_cumulative_difficulty(top_block_height));
+
+  // Trim down arrays
+  while (timestamps.size() > block_count)
+    timestamps.erase(timestamps.begin());
+  while (difficulties.size() > block_count)
+    difficulties.erase(difficulties.begin());
+}
+
+
 }  // namespace cryptonote

@@ -114,6 +114,7 @@ namespace cryptonote {
   /************************************************************************/
   /* Cryptonote helper functions                                          */
   /************************************************************************/
+  bool block_header_has_pulse_components(block_header const &blk_header);
   bool block_has_pulse_components(block const &blk);
   size_t get_min_block_weight(uint8_t version);
   size_t get_max_tx_size();

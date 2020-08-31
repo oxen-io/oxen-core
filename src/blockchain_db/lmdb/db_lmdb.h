@@ -205,6 +205,8 @@ public:
 
   block_header get_block_header(const crypto::hash& h) const override;
 
+  block_header get_block_header_by_height(uint64_t height) const;
+
   cryptonote::blobdata get_block_blob(const crypto::hash& h) const override;
 
   cryptonote::blobdata get_block_blob_from_height(const uint64_t& height) const override;

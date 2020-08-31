@@ -57,6 +57,7 @@
 #include "cryptonote_basic/hardfork.h"
 #include "blockchain_db/blockchain_db.h"
 #include "cryptonote_core/loki_name_system.h"
+#include "pulse.h"
 
 struct sqlite3;
 namespace service_nodes { class service_node_list; };
@@ -1134,17 +1135,31 @@ namespace cryptonote
     uint64_t m_fake_scan_time;
     uint64_t m_sync_counter;
     uint64_t m_bytes_to_sync;
-    std::vector<uint64_t> m_timestamps;
-    std::vector<difficulty_type> m_difficulties;
-    uint64_t m_timestamps_and_difficulties_height;
+
     uint64_t m_long_term_block_weights_window;
     uint64_t m_long_term_effective_median_block_weight;
     mutable crypto::hash m_long_term_block_weights_cache_tip_hash;
     mutable epee::misc_utils::rolling_median_t<uint64_t> m_long_term_block_weights_cache_rolling_median;
 
-    std::mutex m_difficulty_lock;
-    crypto::hash m_difficulty_for_next_block_top_hash;
-    difficulty_type m_difficulty_for_next_block;
+    // NOTE: PoW/Difficulty Cache
+    // Before HF16, we use timestamps and difficulties only.
+    // After HF16, we check if the state of block producing in Pulse and return
+    // the PoW difficulty or the fixed Pulse difficulty if we're still eligible
+    // for Pulse blocks.
+    struct
+    {
+      std::mutex m_difficulty_lock;
+
+      // NOTE: PoW Difficulty Calculation Metadata
+      std::vector<uint64_t> m_timestamps;
+      std::vector<difficulty_type> m_difficulties;
+
+      // NOTE: Cache Invalidation Checks
+      uint64_t m_timestamps_and_difficulties_height{0};
+      crypto::hash m_difficulty_for_next_block_top_hash{crypto::null_hash};
+      difficulty_type m_difficulty_for_next_block{1};
+      pulse::timings m_pulse_timings{};
+    } m_cache;
 
     boost::asio::io_service m_async_service;
     std::thread m_async_thread;

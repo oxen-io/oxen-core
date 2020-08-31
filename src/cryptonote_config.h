@@ -93,8 +93,46 @@ static_assert(STAKING_PORTIONS % 12 == 0, "Use a multiple of twelve, so that it 
 #define DYNAMIC_FEE_REFERENCE_TRANSACTION_WEIGHT_V12    ((uint64_t)240000) // Only v12 (v13 switches back)
 
 constexpr auto TARGET_BLOCK_TIME           = 2min;
-constexpr auto DIFFICULTY_WINDOW           = 60;
-constexpr uint64_t DIFFICULTY_BLOCKS_COUNT = (DIFFICULTY_WINDOW + 1); // added +1 to make N=N
+constexpr uint64_t DIFFICULTY_WINDOW       = 60;
+constexpr uint64_t DIFFICULTY_BLOCKS_COUNT(bool before_hf16)
+{
+  // NOTE(loki): next_difficulty_v2(...) calculates the next block difficulty
+  // by examining the past N window of blocks i.e.
+  //
+  // N = (DIFFICULTY_WINDOW - 1)
+  //
+  // and resizes the timestamps/difficulty arrays to
+  //
+  // array.resize(N+1) or in otherwords array.resize(DIFFICULTY_WINDOW)
+  //
+  // However all the code responsible for filling the timestamps/difficulty
+  // arrays prior to HF16 used DIFFICULTY_BLOCKS_COUNT which was defined as,
+  //
+  // constexpr uint64_t DIFFICULTY_BLOCKS_COUNT = (DIFFICULTY_WINDOW + 1); // added +1 to make N=N
+  //
+  // The comment suggests that +1 makes N=N, assuming the N refers to
+  // next_difficulty_v2's N variable. Adding +1 here does not make
+  // DIFFICULTY_BLOCKS_COUNT be equal to N.
+  //
+  // N = N1 = (DIFFICULTY_WINDOW - 1)
+  //     N2 = DIFFICULTY_BLOCKS_COUNT = (DIFFICULTY_WINDOW + 1)
+  //
+  // What this means in practice is that, we fill DIFFICULTY_BLOCKS_COUNT
+  // worth of values and resize to DIFFICULTY_WINDOW size (chopping off the
+  // latest 2 blocks).
+  //
+  // This for example means when calculating the difficulty for a block, we
+  //   1. Fill the timestamps/difficulties with the latest DIFFICULTY_BLOCKS_COUNT data
+  //   2. Resize the timestamps/difficulties to DIFFICULTY_WINDOW. This steps
+  //      chops off the last 2 blocks from consideration.
+  //
+  // So prior to HF16, we revert to the incorrect value, and afterwards we
+  // calculate correctly. With Pulse in HF16, this is largely a non-issue, but
+  // for future correctness (when the network falls back to PoW stalled) and
+  // purpose of documentation this is fixed and addressed in this function.
+  uint64_t result = (before_hf16) ? DIFFICULTY_WINDOW + 1 : DIFFICULTY_WINDOW;
+  return result;
+}
 
 constexpr uint64_t BLOCKS_EXPECTED_IN_HOURS(int hours) { return (1h / TARGET_BLOCK_TIME) * hours; }
 constexpr uint64_t BLOCKS_EXPECTED_IN_DAYS(int days)   { return BLOCKS_EXPECTED_IN_HOURS(24) * days; }

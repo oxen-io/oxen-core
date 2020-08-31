@@ -394,6 +394,11 @@ struct mdb_block_info_2 : mdb_block_info_1
   uint64_t bi_cum_rct;
 };
 
+struct mdb_block_info_3 : mdb_block_info_2
+{
+  uint8_t bi_pulse;
+};
+
 struct mdb_block_info : mdb_block_info_2
 {
   uint64_t bi_long_term_block_weight;
@@ -2544,11 +2549,18 @@ uint64_t BlockchainLMDB::get_block_height(const crypto::hash& h) const
   return ret;
 }
 
+block_header BlockchainLMDB::get_block_header_by_height(uint64_t height) const
+{
+  LOG_PRINT_L3("BlockchainLMDB::" << __func__);
+  check_open();
+  // block_header object is automatically cast from block object
+  return get_block_from_height(height);
+}
+
 block_header BlockchainLMDB::get_block_header(const crypto::hash& h) const
 {
   LOG_PRINT_L3("BlockchainLMDB::" << __func__);
   check_open();
-
   // block_header object is automatically cast from block object
   return get_block(h);
 }
@@ -4736,23 +4748,11 @@ void BlockchainLMDB::fixup(fixup_context const context)
 
   std::vector<uint64_t> timestamps;
   std::vector<difficulty_type> difficulties;
-  {
-    uint64_t offset = start_height - std::min<size_t>(start_height, static_cast<size_t>(DIFFICULTY_BLOCKS_COUNT));
-    if (offset == 0)
-      offset = 1;
-
-    if (start_height > offset)
-    {
-      timestamps.reserve  (start_height - offset);
-      difficulties.reserve(start_height - offset);
-    }
-
-    for (; offset < start_height; offset++)
-    {
-      timestamps.push_back  (get_block_timestamp(offset));
-      difficulties.push_back(get_block_cumulative_difficulty(offset));
-    }
-  }
+  BlockchainDB::fill_timestamps_and_difficulties_for_pow(context.nettype,
+                                                         timestamps,
+                                                         difficulties,
+                                                         context.recalc_diff.start_height + 1 /*chain_height*/,
+                                                         0 /*timestamps_difficulty_height*/);
 
   try
   {
@@ -4772,12 +4772,19 @@ void BlockchainLMDB::fixup(fixup_context const context)
       for (uint64_t block_index = 0; block_index < blocks_in_batch; block_index++)
       {
         uint64_t const curr_height = (start_height + (batch_index * BLOCKS_PER_BATCH) + block_index);
-        uint8_t version            = get_hard_fork_version(curr_height);
-        difficulty_type diff =
-            next_difficulty_v2(timestamps,
-                               difficulties,
-                               tools::to_seconds(TARGET_BLOCK_TIME),
-                               difficulty_mode(version, curr_height, context.recalc_diff.hf12_height));
+        difficulty_type diff       = {};
+        block_header header        = get_block_header_by_height(curr_height);
+        if (block_header_has_pulse_components(header))
+        {
+          diff = PULSE_FIXED_DIFFICULTY;
+        }
+        else
+        {
+          diff = next_difficulty_v2(timestamps,
+                                    difficulties,
+                                    tools::to_seconds(TARGET_BLOCK_TIME),
+                                    difficulty_mode(context.nettype, header.major_version, curr_height));
+        }
 
         MDB_val_set(key, curr_height);
 
@@ -4810,8 +4817,10 @@ void BlockchainLMDB::fixup(fixup_context const context)
           return;
         }
 
-        while (timestamps.size() > DIFFICULTY_BLOCKS_COUNT) timestamps.erase(timestamps.begin());
-        while (difficulties.size() > DIFFICULTY_BLOCKS_COUNT) difficulties.erase(difficulties.begin());
+        static const uint64_t hf16_height = HardFork::get_hardcoded_hard_fork_height(context.nettype, cryptonote::network_version_16);
+        bool before_hf16 = curr_height < hf16_height;
+        while (timestamps.size() > DIFFICULTY_BLOCKS_COUNT(before_hf16)) timestamps.erase(timestamps.begin());
+        while (difficulties.size() > DIFFICULTY_BLOCKS_COUNT(before_hf16)) difficulties.erase(difficulties.begin());
       }
 
       block_wtxn_stop();
@@ -5954,10 +5963,9 @@ void BlockchainLMDB::migrate_4_5(cryptonote::network_type nettype)
   txn.commit();
 
   // NOTE: Rescan chain difficulty to mitigate difficulty problem pre hardfork v12
-  uint64_t hf12_height = HardFork::get_hardcoded_hard_fork_height(nettype, cryptonote::network_version_12_checkpointing);
   fixup_context context            = {};
-  context.recalc_diff.start_height = hf12_height;
-  context.recalc_diff.hf12_height  = hf12_height;
+  context.nettype                  = nettype;
+  context.recalc_diff.start_height = HardFork::get_hardcoded_hard_fork_height(nettype, cryptonote::network_version_12_checkpointing);
 
   uint64_t constexpr FUDGE = BLOCKS_EXPECTED_IN_DAYS(1);
   context.recalc_diff.start_height = (context.recalc_diff.start_height < FUDGE) ? 0 : context.recalc_diff.start_height - FUDGE;

@@ -110,14 +110,12 @@ Blockchain::block_extended_info::block_extended_info(const alt_block_data_t &src
 
 //------------------------------------------------------------------
 Blockchain::Blockchain(tx_memory_pool& tx_pool, service_nodes::service_node_list& service_node_list):
-  m_db(), m_tx_pool(tx_pool), m_hardfork(NULL), m_timestamps_and_difficulties_height(0), m_current_block_cumul_weight_limit(0), m_current_block_cumul_weight_median(0),
+  m_db(), m_tx_pool(tx_pool), m_hardfork(NULL), m_current_block_cumul_weight_limit(0), m_current_block_cumul_weight_median(0),
   m_max_prepare_blocks_threads(4), m_db_sync_on_blocks(true), m_db_sync_threshold(1), m_db_sync_mode(db_async), m_db_default_sync(false), m_fast_sync(true), m_show_time_stats(false), m_sync_counter(0), m_bytes_to_sync(0), m_cancel(false),
   m_long_term_block_weights_window(CRYPTONOTE_LONG_TERM_BLOCK_WEIGHT_WINDOW_SIZE),
   m_long_term_effective_median_block_weight(0),
   m_long_term_block_weights_cache_tip_hash(crypto::null_hash),
   m_long_term_block_weights_cache_rolling_median(CRYPTONOTE_LONG_TERM_BLOCK_WEIGHT_WINDOW_SIZE),
-  m_difficulty_for_next_block_top_hash(crypto::null_hash),
-  m_difficulty_for_next_block(1),
   m_service_node_list(service_node_list),
   m_btc_valid(false),
   m_batch_success(true),
@@ -494,7 +492,7 @@ bool Blockchain::init(BlockchainDB* db, sqlite3 *lns_db, const network_type nett
   if (m_nettype != FAKECHAIN)
   {
     cryptonote::BlockchainDB::fixup_context context = {};
-    context.recalc_diff.hf12_height                 = HardFork::get_hardcoded_hard_fork_height(m_nettype, cryptonote::network_version_12_checkpointing);
+    context.nettype = m_nettype;
     m_db->fixup(context);
   }
 
@@ -518,6 +516,7 @@ bool Blockchain::init(BlockchainDB* db, sqlite3 *lns_db, const network_type nett
     load_compiled_in_block_hashes(get_checkpoints);
 #endif
 
+  // TODO(doyle): I'm not sure that we want to cache difficulty right here
   MINFO("Blockchain initialized. last block: " << m_db->height() - 1 << ", " << epee::misc_utils::get_time_interval_string(timestamp_diff) << " time ago, current difficulty: " << get_difficulty_for_next_block());
 
   rtxn_guard.stop();
@@ -564,7 +563,7 @@ bool Blockchain::init(BlockchainDB* db, sqlite3 *lns_db, const network_type nett
   }
   if (num_popped_blocks > 0)
   {
-    m_timestamps_and_difficulties_height = 0;
+    m_cache.m_timestamps_and_difficulties_height = 0;
     m_hardfork->reorganize_from_chain_height(get_current_blockchain_height());
     m_tx_pool.on_blockchain_dec();
   }
@@ -734,7 +733,7 @@ block Blockchain::pop_block_from_blockchain()
   LOG_PRINT_L3("Blockchain::" << __func__);
   std::unique_lock lock{*this};
 
-  m_timestamps_and_difficulties_height = 0;
+  m_cache.m_timestamps_and_difficulties_height = 0;
 
   block popped_block;
   std::vector<transaction> popped_txs;
@@ -809,7 +808,7 @@ bool Blockchain::reset_and_set_genesis_block(const block& b)
 {
   LOG_PRINT_L3("Blockchain::" << __func__);
   std::unique_lock lock{*this};
-  m_timestamps_and_difficulties_height = 0;
+  m_cache.m_timestamps_and_difficulties_height = 0;
   invalidate_block_template_cache();
   m_db->reset();
   m_db->drop_alt_blocks();
@@ -948,89 +947,69 @@ bool Blockchain::get_block_by_hash(const crypto::hash &h, block &blk, bool *orph
 }
 //------------------------------------------------------------------
 // This function aggregates the cumulative difficulties and timestamps of the
-// last DIFFICULTY_BLOCKS_COUNT blocks and passes them to next_difficulty,
+// last DIFFICULTY_WINDOW blocks and passes them to next_difficulty,
 // returning the result of that call.  Ignores the genesis block, and can use
 // less blocks than desired if there aren't enough.
 difficulty_type Blockchain::get_difficulty_for_next_block()
 {
+  LOG_PRINT_L3("Blockchain::" << __func__);
   if (m_fixed_difficulty)
   {
     return m_db->height() ? m_fixed_difficulty : 1;
   }
 
-  LOG_PRINT_L3("Blockchain::" << __func__);
-
+  uint8_t const hf_version = get_current_hard_fork_version();
   crypto::hash top_hash = get_tail_id();
   {
-    std::unique_lock diff_lock{m_difficulty_lock};
+    std::unique_lock diff_lock{m_cache.m_difficulty_lock};
     // we can call this without the blockchain lock, it might just give us
     // something a bit out of date, but that's fine since anything which
     // requires the blockchain lock will have acquired it in the first place,
     // and it will be unlocked only when called from the getinfo RPC
-    if (top_hash == m_difficulty_for_next_block_top_hash)
-      return m_difficulty_for_next_block;
+    if (top_hash == m_cache.m_difficulty_for_next_block_top_hash)
+    {
+      if (hf_version >= cryptonote::network_version_16 && pulse::clock::now() < m_cache.m_pulse_timings.miner_fallback_timestamp)
+        return PULSE_FIXED_DIFFICULTY;
+      else
+        return m_cache.m_difficulty_for_next_block;
+    }
   }
 
   std::unique_lock lock{*this};
-  std::vector<uint64_t> timestamps;
-  std::vector<difficulty_type> difficulties;
-  uint64_t height;
-  uint8_t version = get_current_hard_fork_version();
-  top_hash = get_tail_id(height); // get it again now that we have the lock
-  ++height; // top block height to blockchain height
-  // ND: Speedup
-  // 1. Keep a list of the last 735 (or less) blocks that is used to compute difficulty,
-  //    then when the next block difficulty is queried, push the latest height data and
-  //    pop the oldest one from the list. This only requires 1x read per height instead
-  //    of doing 735 (DIFFICULTY_BLOCKS_COUNT).
-  if (m_timestamps_and_difficulties_height != 0 && ((height - m_timestamps_and_difficulties_height) == 1) && m_timestamps.size() >= DIFFICULTY_BLOCKS_COUNT)
+  uint64_t top_block_height = 0;
+  top_hash                  = get_tail_id(top_block_height); // get it again now that we have the lock
+  uint64_t chain_height     = top_block_height + 1;
+
+  bool pulse_override_difficulty = false;
+  if (hf_version >= cryptonote::network_version_16)
   {
-    uint64_t index = height - 1;
-    m_timestamps.push_back(m_db->get_block_timestamp(index));
-    m_difficulties.push_back(m_db->get_block_cumulative_difficulty(index));
+    pulse::get_round_timings(*this, chain_height, m_cache.m_pulse_timings);
+    pulse_override_difficulty = (pulse::clock::now() < m_cache.m_pulse_timings.miner_fallback_timestamp);
+  }
 
-    while (m_timestamps.size() > DIFFICULTY_BLOCKS_COUNT)
-      m_timestamps.erase(m_timestamps.begin());
-    while (m_difficulties.size() > DIFFICULTY_BLOCKS_COUNT)
-      m_difficulties.erase(m_difficulties.begin());
+  difficulty_type diff                         = {};
+  m_cache.m_timestamps_and_difficulties_height = chain_height;
 
-    m_timestamps_and_difficulties_height = height;
-    timestamps = m_timestamps;
-    difficulties = m_difficulties;
+  if (pulse_override_difficulty)
+  {
+    // All blocks generated by a Quorum in Pulse have difficulty fixed to
+    // 1'000'000 such that, when we have to fallback to PoW difficulty is
+    // a reasonable value to allow continuing the network onwards.
+    diff = PULSE_FIXED_DIFFICULTY;
   }
   else
   {
-    uint64_t offset = height - std::min < size_t > (height, static_cast<size_t>(DIFFICULTY_BLOCKS_COUNT));
-    if (offset == 0)
-      ++offset;
-
-    timestamps.clear();
-    difficulties.clear();
-    if (height > offset)
-    {
-      timestamps.reserve(height - offset);
-      difficulties.reserve(height - offset);
-    }
-    for (; offset < height; offset++)
-    {
-      timestamps.push_back(m_db->get_block_timestamp(offset));
-      difficulties.push_back(m_db->get_block_cumulative_difficulty(offset));
-    }
-
-    m_timestamps_and_difficulties_height = height;
-    m_timestamps = timestamps;
-    m_difficulties = difficulties;
+    m_db->fill_timestamps_and_difficulties_for_pow(
+        m_nettype, m_cache.m_timestamps, m_cache.m_difficulties, chain_height, m_cache.m_timestamps_and_difficulties_height);
+    diff = next_difficulty_v2(m_cache.m_timestamps,
+                              m_cache.m_difficulties,
+                              tools::to_seconds(TARGET_BLOCK_TIME),
+                              difficulty_mode(m_nettype, hf_version, chain_height));
   }
 
-  uint64_t hf12_height = m_hardfork->get_earliest_ideal_height_for_version(network_version_12_checkpointing);
-  difficulty_type diff = next_difficulty_v2(timestamps,
-                                            difficulties,
-                                            tools::to_seconds(TARGET_BLOCK_TIME),
-                                            difficulty_mode(version, height, hf12_height));
-
-  std::unique_lock diff_lock{m_difficulty_lock};
-  m_difficulty_for_next_block_top_hash = top_hash;
-  m_difficulty_for_next_block = diff;
+  std::unique_lock diff_lock{m_cache.m_difficulty_lock};
+  m_cache.m_difficulty_for_next_block_top_hash = top_hash;
+  m_cache.m_difficulty_for_next_block          = diff;
   return diff;
 }
 //------------------------------------------------------------------
@@ -1059,7 +1038,7 @@ bool Blockchain::rollback_blockchain_switching(const std::list<block_and_checkpo
     return true;
   }
 
-  m_timestamps_and_difficulties_height = 0;
+  m_cache.m_timestamps_and_difficulties_height = 0;
 
   // remove blocks from blockchain until we get back to where we should be.
   while (m_db->height() != rollback_height)
@@ -1110,7 +1089,7 @@ bool Blockchain::switch_to_alternative_blockchain(const std::list<block_extended
   LOG_PRINT_L3("Blockchain::" << __func__);
   std::unique_lock lock{*this};
 
-  m_timestamps_and_difficulties_height = 0;
+  m_cache.m_timestamps_and_difficulties_height = 0;
 
   // if empty alt chain passed (not sure how that could happen), return false
   CHECK_AND_ASSERT_MES(alt_chain.size(), false, "switch_to_alternative_blockchain: empty chain passed");
@@ -1221,18 +1200,32 @@ difficulty_type Blockchain::get_next_difficulty_for_alternative_chain(const std:
   }
 
   LOG_PRINT_L3("Blockchain::" << __func__);
+
+  uint64_t block_count = 0;
+  {
+    bool before_hf16 = false;
+    if (alt_chain.size())
+      before_hf16 = alt_chain.back().bl.major_version < network_version_16;
+    else
+    {
+      static const uint64_t hf16_height = HardFork::get_hardcoded_hard_fork_height(m_nettype, cryptonote::network_version_16);
+      before_hf16                       = get_current_blockchain_height() < hf16_height;
+    }
+
+    block_count = DIFFICULTY_BLOCKS_COUNT(before_hf16);
+  }
+
   std::vector<uint64_t> timestamps;
   std::vector<difficulty_type> cumulative_difficulties;
-
   // if the alt chain isn't long enough to calculate the difficulty target
   // based on its blocks alone, need to get more blocks from the main chain
-  if(alt_chain.size() < DIFFICULTY_BLOCKS_COUNT)
+  if(alt_chain.size() < block_count)
   {
     std::unique_lock lock{*this};
 
     // Figure out start and stop offsets for main chain blocks
     size_t main_chain_stop_offset = alt_chain.size() ? alt_chain.front().height : alt_block_height;
-    size_t main_chain_count = DIFFICULTY_BLOCKS_COUNT - std::min(static_cast<size_t>(DIFFICULTY_BLOCKS_COUNT), alt_chain.size());
+    size_t main_chain_count = block_count - std::min(static_cast<size_t>(block_count), alt_chain.size());
     main_chain_count = std::min(main_chain_count, main_chain_stop_offset);
     size_t main_chain_start_offset = main_chain_stop_offset - main_chain_count;
 
@@ -1247,7 +1240,7 @@ difficulty_type Blockchain::get_next_difficulty_for_alternative_chain(const std:
     }
 
     // make sure we haven't accidentally grabbed too many blocks...maybe don't need this check?
-    CHECK_AND_ASSERT_MES((alt_chain.size() + timestamps.size()) <= DIFFICULTY_BLOCKS_COUNT, false, "Internal error, alt_chain.size()[" << alt_chain.size() << "] + vtimestampsec.size()[" << timestamps.size() << "] NOT <= DIFFICULTY_WINDOW[]" << DIFFICULTY_BLOCKS_COUNT);
+    CHECK_AND_ASSERT_MES((alt_chain.size() + timestamps.size()) <= block_count, false, "Internal error, alt_chain.size()[" << alt_chain.size() << "] + vtimestampsec.size()[" << timestamps.size() << "] NOT <= DIFFICULTY_WINDOW[]" << block_count);
 
     for (const auto &bei : alt_chain)
     {
@@ -1259,8 +1252,8 @@ difficulty_type Blockchain::get_next_difficulty_for_alternative_chain(const std:
   // and timestamps from it alone
   else
   {
-    timestamps.resize(static_cast<size_t>(DIFFICULTY_BLOCKS_COUNT));
-    cumulative_difficulties.resize(static_cast<size_t>(DIFFICULTY_BLOCKS_COUNT));
+    timestamps.resize(static_cast<size_t>(block_count));
+    cumulative_difficulties.resize(static_cast<size_t>(block_count));
     size_t count = 0;
     size_t max_i = timestamps.size()-1;
     // get difficulties and timestamps from most recent blocks in alt chain
@@ -1270,19 +1263,17 @@ difficulty_type Blockchain::get_next_difficulty_for_alternative_chain(const std:
       timestamps[max_i - count] = bei.bl.timestamp;
       cumulative_difficulties[max_i - count] = bei.cumulative_difficulty;
       count++;
-      if(count >= DIFFICULTY_BLOCKS_COUNT)
+      if(count >= block_count)
         break;
     }
   }
 
-  uint64_t hf12_height = m_hardfork->get_earliest_ideal_height_for_version(network_version_12_checkpointing);
-  uint64_t height = (alt_chain.size() ? alt_chain.front().height : alt_block_height) + alt_chain.size() + 1;
-
   // calculate the difficulty target for the block and return it
+  uint64_t height = (alt_chain.size() ? alt_chain.front().height : alt_block_height) + alt_chain.size() + 1;
   return next_difficulty_v2(timestamps,
                             cumulative_difficulties,
                             tools::to_seconds(TARGET_BLOCK_TIME),
-                            difficulty_mode(get_current_hard_fork_version(), height, hf12_height));
+                            difficulty_mode(m_nettype, get_current_hard_fork_version(), height));
 }
 //------------------------------------------------------------------
 // This function does a sanity check on basic things that all miner
@@ -1598,12 +1589,12 @@ bool Blockchain::create_block_template_internal(block& b, const crypto::hash *fr
   }
   else
   {
-    height = m_db->height();
-    b.major_version = m_hardfork->get_current_version();
-    b.minor_version = m_hardfork->get_ideal_version();
-    b.prev_id = get_tail_id();
-    median_weight = m_current_block_cumul_weight_limit / 2;
-    diffic = get_difficulty_for_next_block();
+    height                  = m_db->height();
+    b.major_version         = m_hardfork->get_current_version();
+    b.minor_version         = m_hardfork->get_ideal_version();
+    b.prev_id               = get_tail_id();
+    median_weight           = m_current_block_cumul_weight_limit / 2;
+    diffic                  = get_difficulty_for_next_block();
     already_generated_coins = m_db->get_block_already_generated_coins(height - 1);
   }
   b.timestamp = time(NULL);
@@ -1899,7 +1890,7 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
   }
 
   // NOTE: Reset timestamp/difficulty cache
-  m_timestamps_and_difficulties_height = 0;
+  m_cache.m_timestamps_and_difficulties_height = 0;
 
   // NOTE: Build the alternative chain for checking reorg-ability
   std::list<block_extended_info> alt_chain;
@@ -4303,7 +4294,7 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
     if (nettype() == MAINNET && (block_height % BLOCKS_EXPECTED_IN_DAYS(1) == 0))
     {
       cryptonote::BlockchainDB::fixup_context context  = {};
-      context.recalc_diff.hf12_height  = HardFork::get_hardcoded_hard_fork_height(m_nettype, cryptonote::network_version_12_checkpointing);
+      context.nettype = m_nettype;
       context.recalc_diff.start_height = block_height - BLOCKS_EXPECTED_IN_DAYS(1);
       m_db->fixup(context);
     }
@@ -4353,8 +4344,7 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
   ++m_sync_counter;
 
   m_tx_pool.on_blockchain_inc(bl);
-  if (!pulse_block)
-    get_difficulty_for_next_block(); // just to cache it
+  get_difficulty_for_next_block(); // just to cache it
   invalidate_block_template_cache();
 
   if (notify)
