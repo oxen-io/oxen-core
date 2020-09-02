@@ -1344,7 +1344,7 @@ namespace cryptonote
      *
      * @return the difficulty requirement
      */
-    difficulty_type get_next_difficulty_for_alternative_chain(const std::list<block_extended_info>& alt_chain, uint64_t height) const;
+    difficulty_type get_difficulty_for_alternative_chain(const std::list<block_extended_info>& alt_chain, uint64_t height) const;
 
     /**
      * @brief sanity checks a miner transaction before validating an entire block

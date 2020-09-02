@@ -1191,7 +1191,7 @@ bool Blockchain::switch_to_alternative_blockchain(const std::list<block_extended
 //------------------------------------------------------------------
 // This function calculates the difficulty target for the block being added to
 // an alternate chain.
-difficulty_type Blockchain::get_next_difficulty_for_alternative_chain(const std::list<block_extended_info>& alt_chain, uint64_t alt_block_height) const
+difficulty_type Blockchain::get_difficulty_for_alternative_chain(const std::list<block_extended_info>& alt_chain, uint64_t alt_block_height) const
 {
   if (m_fixed_difficulty)
   {
@@ -1584,7 +1584,7 @@ bool Blockchain::create_block_template_internal(block& b, const crypto::hash *fr
     bei.bl = b;
     bei.height = alt_chain.size() ? prev_data.height + 1 : m_db->get_block_height(*from_block) + 1;
 
-    diffic = get_next_difficulty_for_alternative_chain(alt_chain, bei.height);
+    diffic = get_difficulty_for_alternative_chain(alt_chain, bei.height);
   }
   else
   {
@@ -1910,7 +1910,7 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
 
 
   // NOTE: Check proof of work
-  difficulty_type const current_diff = get_next_difficulty_for_alternative_chain(alt_chain, blk_height);
+  difficulty_type const current_diff = get_difficulty_for_alternative_chain(alt_chain, blk_height);
   block_pow_verified const blk_pow   = verify_block_pow(b, current_diff, chain_height, true /*alt_block*/);
   if (!blk_pow.valid)
   {
