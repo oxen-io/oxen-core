@@ -421,22 +421,22 @@ void BlockchainDB::fill_timestamps_and_difficulties_for_pow(cryptonote::network_
                                                             uint64_t chain_height,
                                                             uint64_t timestamps_difficulty_height) const
 {
-  constexpr uint64_t MIN_HEIGHT = 2;
-  if (chain_height < MIN_HEIGHT)
+  constexpr uint64_t MIN_HEIGHT = 1;
+  if (chain_height <= MIN_HEIGHT)
     return;
 
-  const uint64_t top_block_height   = chain_height - 1;
+  uint64_t const top_block_height   = chain_height - 1;
   static const uint64_t hf16_height = HardFork::get_hardcoded_hard_fork_height(nettype, cryptonote::network_version_16);
-  bool const before_hf16     = top_block_height < hf16_height;
-  uint64_t const block_count = DIFFICULTY_BLOCKS_COUNT(before_hf16);
+  bool const before_hf16            = chain_height < hf16_height;
+  uint64_t const block_count        = DIFFICULTY_BLOCKS_COUNT(before_hf16);
 
   timestamps.reserve(block_count);
   difficulties.reserve(block_count);
 
   if (timestamps_difficulty_height == 0 ||
       (chain_height - timestamps_difficulty_height) != 1 ||
-      timestamps.size()   != block_count ||
-      difficulties.size() != block_count)
+      timestamps.size()   > block_count ||
+      difficulties.size() > block_count)
   {
     // Cache invalidated.
     timestamps.clear();
@@ -444,9 +444,9 @@ void BlockchainDB::fill_timestamps_and_difficulties_for_pow(cryptonote::network_
 
     // Fill missing timestamps/difficulties, up to one before the latest (latest is added below).
     uint64_t start_height = chain_height - std::min<size_t>(chain_height, block_count);
-    start_height          = std::max<uint64_t>(start_height, MIN_HEIGHT);
+    start_height          = std::max<uint64_t>(start_height, 1);
 
-    for (uint64_t block_height = start_height; block_height < (chain_height - 1); block_height++)
+    for (uint64_t block_height = start_height; block_height < (chain_height - MIN_HEIGHT); block_height++)
     {
       timestamps.push_back(get_block_timestamp(block_height));
       difficulties.push_back(get_block_cumulative_difficulty(block_height));
@@ -454,14 +454,13 @@ void BlockchainDB::fill_timestamps_and_difficulties_for_pow(cryptonote::network_
   }
 
   // Add latest timestamp/difficulty
-  timestamps.push_back(get_block_timestamp(top_block_height));
-  difficulties.push_back(get_block_cumulative_difficulty(top_block_height));
+  add_timestamp_and_difficulty(nettype,
+                               chain_height,
+                               timestamps,
+                               difficulties,
+                               get_block_timestamp(top_block_height),
+                               get_block_cumulative_difficulty(top_block_height));
 
-  // Trim down arrays
-  while (timestamps.size() > block_count)
-    timestamps.erase(timestamps.begin());
-  while (difficulties.size() > block_count)
-    difficulties.erase(difficulties.begin());
 }
 
 

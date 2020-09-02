@@ -56,6 +56,16 @@ namespace cryptonote
      */
     bool check_hash(const crypto::hash &hash, difficulty_type difficulty);
 
+    // Add one timestamp and difficulty to the input arrays, trimming down the
+    // array if necessary for usage in next_difficulty_v2.
+    void add_timestamp_and_difficulty(cryptonote::network_type nettype,
+                                      uint64_t chain_height,
+                                      std::vector<uint64_t> &timestamps,
+                                      std::vector<difficulty_type> &difficulties,
+                                      uint64_t timestamp,
+                                      uint64_t cumulative_difficulty);
+
+
     constexpr difficulty_type PULSE_FIXED_DIFFICULTY = 1'000'000 * tools::to_seconds(TARGET_BLOCK_TIME);
     enum struct difficulty_calc_mode
     {

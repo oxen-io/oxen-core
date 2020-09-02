@@ -117,6 +117,29 @@ namespace cryptonote {
     return !carry;
   }
 
+  void add_timestamp_and_difficulty(cryptonote::network_type nettype,
+                                    uint64_t chain_height,
+                                    std::vector<uint64_t> &timestamps,
+                                    std::vector<difficulty_type> &difficulties,
+                                    uint64_t timestamp,
+                                    uint64_t cumulative_difficulty)
+  {
+    timestamps.push_back(timestamp);
+    difficulties.push_back(cumulative_difficulty);
+
+    static const uint64_t hf16_height = HardFork::get_hardcoded_hard_fork_height(nettype, cryptonote::network_version_16);
+    bool const before_hf16            = chain_height < hf16_height;
+
+    // Trim down arrays
+    while (timestamps.size() > DIFFICULTY_BLOCKS_COUNT(before_hf16))
+      timestamps.erase(timestamps.begin());
+
+    while (difficulties.size() > DIFFICULTY_BLOCKS_COUNT(before_hf16))
+      difficulties.erase(difficulties.begin());
+  }
+
+  //---------------------------------------------------------------
+
   // LWMA difficulty algorithm
   // Background:  https://github.com/zawy12/difficulty-algorithms/issues/3
   // Copyright (c) 2017-2018 Zawy (pseudocode)

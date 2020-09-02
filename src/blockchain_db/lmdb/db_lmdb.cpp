@@ -4751,7 +4751,7 @@ void BlockchainLMDB::fixup(fixup_context const context)
   BlockchainDB::fill_timestamps_and_difficulties_for_pow(context.nettype,
                                                          timestamps,
                                                          difficulties,
-                                                         context.recalc_diff.start_height + 1 /*chain_height*/,
+                                                         context.recalc_diff.start_height /*chain_height*/,
                                                          0 /*timestamps_difficulty_height*/);
 
   try
@@ -4807,8 +4807,8 @@ void BlockchainLMDB::fixup(fixup_context const context)
           if (int result = mdb_cursor_put(m_cur_block_info, (MDB_val *)&zerokval, &val, MDB_CURRENT))
               throw1(BLOCK_DNE(lmdb_error("Failed to put block info: ", result).c_str()));
 
-          timestamps.push_back(block_info.bi_timestamp);
-          difficulties.push_back(block_info.bi_diff);
+          add_timestamp_and_difficulty(
+              context.nettype, curr_height, timestamps, difficulties, block_info.bi_timestamp, block_info.bi_diff);
         }
         catch (DB_ERROR const &e)
         {
@@ -4816,13 +4816,7 @@ void BlockchainLMDB::fixup(fixup_context const context)
           LOG_PRINT_L0("Something went wrong recalculating difficulty for block " << curr_height << e.what());
           return;
         }
-
-        static const uint64_t hf16_height = HardFork::get_hardcoded_hard_fork_height(context.nettype, cryptonote::network_version_16);
-        bool before_hf16 = curr_height < hf16_height;
-        while (timestamps.size() > DIFFICULTY_BLOCKS_COUNT(before_hf16)) timestamps.erase(timestamps.begin());
-        while (difficulties.size() > DIFFICULTY_BLOCKS_COUNT(before_hf16)) difficulties.erase(difficulties.begin());
       }
-
       block_wtxn_stop();
     }
 
