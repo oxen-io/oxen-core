@@ -892,7 +892,7 @@ namespace rpc {
   LOKI_RPC_DOC_INTROSPECT
   // Full block information can be retrieved by either block height or hash, like with the above block header calls.
   // For full block information, both lookups use the same method, but with different input parameters.
-  struct GET_BLOCK : RPC_COMMAND
+  struct GET_BLOCK : PUBLIC
   {
     static constexpr auto names() { return NAMES("get_block", "getblock"); }
 
@@ -980,7 +980,7 @@ namespace rpc {
 
   LOKI_RPC_DOC_INTROSPECT
   // Query the daemon's peerlist and retrieve peers who have set their public rpc port.
-  struct GET_PUBLIC_NODES : RPC_COMMAND
+  struct GET_PUBLIC_NODES : PUBLIC
   {
     static constexpr auto names() { return NAMES("get_public_nodes"); }
 
@@ -1180,7 +1180,7 @@ namespace rpc {
 
   LOKI_RPC_DOC_INTROSPECT
   // Get all transaction pool backlog.
-  struct GET_TRANSACTION_POOL_BACKLOG : RPC_COMMAND
+  struct GET_TRANSACTION_POOL_BACKLOG : PUBLIC
   {
     static constexpr auto names() { return NAMES("get_txpool_backlog"); }
 
@@ -1762,7 +1762,7 @@ namespace rpc {
 
   LOKI_RPC_DOC_INTROSPECT
   // Exactly like GET_OUTPUT_DISTRIBUTION, but does a binary RPC transfer instead of JSON
-  struct GET_OUTPUT_DISTRIBUTION_BIN : BINARY
+  struct GET_OUTPUT_DISTRIBUTION_BIN : PUBLIC, BINARY
   {
     static constexpr auto names() { return NAMES("get_output_distribution.bin"); }
 
