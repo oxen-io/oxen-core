@@ -2521,6 +2521,61 @@ bool BlockchainLMDB::block_exists(const crypto::hash& h, uint64_t *height) const
   return ret;
 }
 
+template <typename T,
+          std::enable_if_t<std::is_same_v<T, cryptonote::block> ||
+                           std::is_same_v<T, cryptonote::block_header> ||
+                           std::is_same_v<T, cryptonote::blobdata>, int> = 0>
+T BlockchainLMDB::get_and_convert_block_blob_from_height(uint64_t height) const
+{
+  // NOTE: Avoid any intermediary functions like taking a blob, then converting
+  // to block which incurs a copy into blobdata then conversion, and prefer
+  // converting directly from the data initially fetched.
+
+  // Avoid casting block to block_header so we only have to deserialize the
+  // header, not the full-block (of which a good chunk is thrown away because we
+  // only want the header).
+  LOG_PRINT_L3("BlockchainLMDB::" << __func__);
+  check_open();
+
+  TXN_PREFIX_RDONLY();
+  RCURSOR(blocks);
+
+  MDB_val_copy<uint64_t> key(height);
+  MDB_val value;
+  auto get_result = mdb_cursor_get(m_cur_blocks, &key, &value, MDB_SET);
+  if (get_result == MDB_NOTFOUND)
+    throw0(BLOCK_DNE(std::string("Attempt to get block from height ").append(std::to_string(height)).append(" failed -- block not in db").c_str()));
+  else if (get_result)
+    throw0(DB_ERROR("Error attempting to retrieve a block from the db"));
+
+  std::string_view blob{reinterpret_cast<const char *>(value.mv_data), value.mv_size};
+
+  T result;
+  if constexpr (std::is_same_v<T, cryptonote::block>)
+  {
+    if (!parse_and_validate_block_from_blob(blob, result))
+      throw DB_ERROR("Failed to parse block from blob retrieved from the db");
+  }
+  else if constexpr (std::is_same_v<T, cryptonote::block_header>)
+  {
+    serialization::binary_string_unarchiver ba{blob};
+    serialization::value(ba, result);
+  }
+  else if constexpr (std::is_same_v<T, cryptonote::blobdata>)
+  {
+    result = blob;
+  }
+
+  return result;
+}
+
+block BlockchainLMDB::get_block_from_height(uint64_t height) const
+{
+  LOG_PRINT_L3("BlockchainLMDB::" << __func__);
+  block result = get_and_convert_block_blob_from_height<block>(height);
+  return result;
+}
+
 cryptonote::blobdata BlockchainLMDB::get_block_blob(const crypto::hash& h) const
 {
   LOG_PRINT_L3("BlockchainLMDB::" << __func__);
@@ -2549,44 +2604,17 @@ uint64_t BlockchainLMDB::get_block_height(const crypto::hash& h) const
   return ret;
 }
 
-block_header BlockchainLMDB::get_block_header_by_height(uint64_t height) const
+block_header BlockchainLMDB::get_block_header_from_height(uint64_t height) const
 {
-  LOG_PRINT_L3("BlockchainLMDB::" << __func__);
-  check_open();
-  // block_header object is automatically cast from block object
-  return get_block_from_height(height);
+  block_header result = get_and_convert_block_blob_from_height<cryptonote::block_header>(height);
+  return result;
 }
 
-block_header BlockchainLMDB::get_block_header(const crypto::hash& h) const
+cryptonote::blobdata BlockchainLMDB::get_block_blob_from_height(uint64_t height) const
 {
   LOG_PRINT_L3("BlockchainLMDB::" << __func__);
-  check_open();
-  // block_header object is automatically cast from block object
-  return get_block(h);
-}
-
-cryptonote::blobdata BlockchainLMDB::get_block_blob_from_height(const uint64_t& height) const
-{
-  LOG_PRINT_L3("BlockchainLMDB::" << __func__);
-  check_open();
-
-  TXN_PREFIX_RDONLY();
-  RCURSOR(blocks);
-
-  MDB_val_copy<uint64_t> key(height);
-  MDB_val result;
-  auto get_result = mdb_cursor_get(m_cur_blocks, &key, &result, MDB_SET);
-  if (get_result == MDB_NOTFOUND)
-  {
-    throw0(BLOCK_DNE(std::string("Attempt to get block from height ").append(boost::lexical_cast<std::string>(height)).append(" failed -- block not in db").c_str()));
-  }
-  else if (get_result)
-    throw0(DB_ERROR("Error attempting to retrieve a block from the db"));
-
-  blobdata bd;
-  bd.assign(reinterpret_cast<char*>(result.mv_data), result.mv_size);
-
-  return bd;
+  cryptonote::blobdata result = get_and_convert_block_blob_from_height<blobdata>(height);
+  return result;
 }
 
 uint64_t BlockchainLMDB::get_block_timestamp(const uint64_t& height) const
@@ -3132,7 +3160,8 @@ bool BlockchainLMDB::get_tx_blob(const crypto::hash& h, cryptonote::blobdata &bd
   else if (get_result)
     throw0(DB_ERROR(lmdb_error("DB error attempting to fetch tx from hash", get_result).c_str()));
 
-  bd.assign(reinterpret_cast<char*>(result0.mv_data), result0.mv_size);
+  bd.reserve(result0.mv_size + result1.mv_size);
+  bd.append(reinterpret_cast<char*>(result0.mv_data), result0.mv_size);
   bd.append(reinterpret_cast<char*>(result1.mv_data), result1.mv_size);
 
   return true;
@@ -4773,7 +4802,7 @@ void BlockchainLMDB::fixup(fixup_context const context)
       {
         uint64_t const curr_height = (start_height + (batch_index * BLOCKS_PER_BATCH) + block_index);
         difficulty_type diff       = {};
-        block_header header        = get_block_header_by_height(curr_height);
+        block_header header        = get_block_header_from_height(curr_height);
         if (block_header_has_pulse_components(header))
         {
           diff = PULSE_FIXED_DIFFICULTY;

@@ -467,12 +467,7 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
   bool core::get_blocks(uint64_t start_offset, size_t count, std::vector<block>& blocks) const
   {
-    std::vector<std::pair<cryptonote::blobdata, cryptonote::block>> bs;
-    if (!m_blockchain_storage.get_blocks(start_offset, count, bs))
-      return false;
-    for (const auto &b: bs)
-      blocks.push_back(b.second);
-    return true;
+    return m_blockchain_storage.get_blocks_only(start_offset, count, blocks);
   }
   //-----------------------------------------------------------------------------------------------
   bool core::get_transactions(const std::vector<crypto::hash>& txs_ids, std::vector<cryptonote::blobdata>& txs, std::vector<crypto::hash>& missed_txs) const

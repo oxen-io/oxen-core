@@ -165,6 +165,7 @@ namespace cryptonote
      */
     bool deinit();
 
+    bool get_blocks_only(uint64_t start_offset, size_t count, std::vector<block>& blocks, std::vector<cryptonote::blobdata> *txs = nullptr) const;
     /**
      * @brief get blocks and transactions from blocks based on start height and count
      *

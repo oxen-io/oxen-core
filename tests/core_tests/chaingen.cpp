@@ -86,11 +86,16 @@ loki_generate_sequential_hard_fork_table(uint8_t max_hf_version)
   return result;
 }
 
-cryptonote::block loki_chain_generator_db::get_block_from_height(const uint64_t &height) const
+cryptonote::block loki_chain_generator_db::get_block_from_height(uint64_t height) const
 {
   assert(height < blocks.size());
   cryptonote::block result = this->blocks[height].block;
   return result;
+}
+
+cryptonote::block_header loki_chain_generator_db::get_block_header_from_height(uint64_t height) const
+{
+  return get_block_from_height(height);
 }
 
 service_nodes::service_node_keys loki_chain_generator::get_cached_keys(const crypto::public_key &pubkey) const {

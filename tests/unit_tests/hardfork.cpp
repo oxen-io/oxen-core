@@ -59,7 +59,7 @@ public:
     blocks.push_back(blk);
   }
   virtual void remove_block() override { blocks.pop_back(); }
-  virtual block get_block_from_height(const uint64_t& height) const override {
+  virtual block get_block_from_height(uint64_t height) const override {
     return blocks.at(height);
   }
   virtual void set_hard_fork_version(uint64_t height, uint8_t version) override {

@@ -875,7 +875,7 @@ public:
    *
    * @return the block requested
    */
-  virtual block get_block(const crypto::hash& h) const;
+  block get_block(const crypto::hash& h) const;
 
   /**
    * @brief gets the height of the block with a given hash
@@ -902,7 +902,21 @@ public:
    *
    * @return the block header
    */
-  virtual block_header get_block_header(const crypto::hash& h) const = 0;
+  block_header get_block_header(const crypto::hash& h) const;
+
+  /**
+   * @brief fetch a block header with height
+   *
+   * The subclass should return the block header from the block with
+   * the given hash.
+   *
+   * If the block does not exist, the subclass should throw BLOCK_DNE
+   *
+   * @param h the height to look for
+   *
+   * @return the block header
+   */
+  virtual block_header get_block_header_from_height(uint64_t height) const = 0;
 
   /**
    * @brief fetch a block blob by height
@@ -916,7 +930,7 @@ public:
    *
    * @return the block blob
    */
-  virtual cryptonote::blobdata get_block_blob_from_height(const uint64_t& height) const = 0;
+  virtual cryptonote::blobdata get_block_blob_from_height(uint64_t height) const = 0;
 
   /**
    * @brief fetch a block by height
@@ -928,7 +942,7 @@ public:
    *
    * @return the block
    */
-  virtual block get_block_from_height(const uint64_t& height) const;
+  virtual block get_block_from_height(uint64_t height) const = 0;
 
   /**
    * @brief fetch a block's timestamp

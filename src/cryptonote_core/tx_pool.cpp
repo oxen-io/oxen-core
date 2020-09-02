@@ -1605,15 +1605,15 @@ namespace cryptonote
         // code is here, and even if someone did want to they'd have to also be 51% attacking the
         // network to wipe out recently mined blinks -- but that can't work anyway.
         //
-        std::vector<std::pair<cryptonote::blobdata, cryptonote::block>> blocks;
-        if (m_blockchain.get_blocks(immutable + 1, height, blocks))
+        std::vector<cryptonote::block> blocks;
+        if (m_blockchain.get_blocks_only(immutable + 1, height, blocks))
         {
           std::vector<cryptonote::transaction> txs;
           std::vector<crypto::hash> missed_txs;
           uint64_t earliest = height;
           for (auto it = blocks.rbegin(); it != blocks.rend(); it++)
           {
-            const auto& block = it->second;
+            const auto& block = *it;
             auto block_height = cryptonote::get_block_height(block);
             txs.clear();
             missed_txs.clear();

@@ -316,7 +316,7 @@ bool Blockchain::load_missing_blocks_into_loki_subsystems()
   auto scan_start               = work_start;
   work_time lns_duration{}, snl_duration{}, lns_iteration_duration{}, snl_iteration_duration{};
 
-  std::vector<std::pair<cryptonote::blobdata, cryptonote::block>> blocks;
+  std::vector<cryptonote::block> blocks;
   std::vector<cryptonote::transaction> txs;
   std::vector<crypto::hash> missed_txs;
 
@@ -344,16 +344,15 @@ bool Blockchain::load_missing_blocks_into_loki_subsystems()
 
     blocks.clear();
     uint64_t height = start_height + (index * BLOCK_COUNT);
-    if (!get_blocks(height, static_cast<uint64_t>(BLOCK_COUNT), blocks))
+    if (!get_blocks_only(height, static_cast<uint64_t>(BLOCK_COUNT), blocks))
     {
       LOG_ERROR("Unable to get checkpointed historical blocks for updating loki subsystems");
       return false;
     }
 
-    for (std::pair<cryptonote::blobdata, cryptonote::block> const &pair : blocks)
+    for (cryptonote::block const &blk : blocks)
     {
-      cryptonote::block const &blk = pair.second;
-      uint64_t block_height        = get_block_height(blk);
+      uint64_t block_height = get_block_height(blk);
 
       txs.clear();
       missed_txs.clear();
@@ -383,9 +382,9 @@ bool Blockchain::load_missing_blocks_into_loki_subsystems()
       if (m_lns_db.db && (block_height >= lns_height))
       {
         auto lns_start = clock::now();
-        if (!m_lns_db.add_block(pair.second, txs))
+        if (!m_lns_db.add_block(blk, txs))
         {
-          MERROR("Unable to process block for updating LNS DB: " << cryptonote::get_block_hash(pair.second));
+          MERROR("Unable to process block for updating LNS DB: " << cryptonote::get_block_hash(blk));
           return false;
         }
         lns_iteration_duration += clock::now() - lns_start;
@@ -2074,6 +2073,42 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
   return true;
 }
 //------------------------------------------------------------------
+bool Blockchain::get_blocks_only(uint64_t start_offset, size_t count, std::vector<block>& blocks, std::vector<cryptonote::blobdata>* txs) const
+{
+  LOG_PRINT_L3("Blockchain::" << __func__);
+  std::unique_lock lock{*this};
+  const uint64_t height = m_db->height();
+  if(start_offset >= height)
+    return false;
+
+  const size_t num_blocks = std::min<uint64_t>(height - start_offset, count);
+  blocks.reserve(blocks.size() + num_blocks);
+  for(size_t i = 0; i < num_blocks; i++)
+  {
+    try
+    {
+      blocks.emplace_back(m_db->get_block_from_height(start_offset + i));
+    }
+    catch(std::exception const &e)
+    {
+      LOG_ERROR("Invalid block at height " << start_offset + i << ". " << e.what());
+      return false;
+    }
+  }
+
+  if (txs)
+  {
+    for(const auto& blk : blocks)
+    {
+      std::vector<crypto::hash> missed_ids;
+      get_transactions_blobs(blk.tx_hashes, *txs, missed_ids);
+      CHECK_AND_ASSERT_MES(!missed_ids.size(), false, "has missed transactions in own block in main blockchain");
+    }
+  }
+
+  return true;
+}
+//------------------------------------------------------------------
 bool Blockchain::get_blocks(uint64_t start_offset, size_t count, std::vector<std::pair<cryptonote::blobdata,block>>& blocks, std::vector<cryptonote::blobdata>& txs) const
 {
   LOG_PRINT_L3("Blockchain::" << __func__);
@@ -2590,11 +2625,12 @@ bool Blockchain::get_transactions(const std::vector<crypto::hash>& txs_ids, std:
   std::unique_lock lock{*this};
 
   txs.reserve(txs_ids.size());
+  cryptonote::blobdata tx;
   for (const auto& tx_hash : txs_ids)
   {
+    tx.clear();
     try
     {
-      cryptonote::blobdata tx;
       if (m_db->get_tx_blob(tx_hash, tx))
       {
         txs.emplace_back();
@@ -4837,16 +4873,15 @@ bool Blockchain::calc_batched_governance_reward(uint64_t height, uint64_t &rewar
     num_blocks   = height;
   }
 
-  std::vector<std::pair<cryptonote::blobdata, cryptonote::block>> blocks;
-  if (!get_blocks(start_height, num_blocks, blocks))
+  std::vector<cryptonote::block> blocks;
+  if (!get_blocks_only(start_height, num_blocks, blocks))
   {
     LOG_ERROR("Unable to get historical blocks to calculated batched governance payment");
     return false;
   }
 
-  for (const auto &it : blocks)
+  for (const auto &block : blocks)
   {
-    cryptonote::block const &block = it.second;
     if (block.major_version >= network_version_10_bulletproofs)
       reward += derive_governance_from_block_reward(nettype(), block, hard_fork_version);
   }

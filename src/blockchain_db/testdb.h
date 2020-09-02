@@ -66,15 +66,15 @@ public:
 
   virtual void drop_hard_fork_info() override {}
   virtual bool block_exists(const crypto::hash& h, uint64_t *height) const override { return false; }
-  virtual cryptonote::blobdata get_block_blob_from_height(const uint64_t& height) const override { return cryptonote::t_serializable_object_to_blob(get_block_from_height(height)); }
+  virtual cryptonote::blobdata get_block_blob_from_height(uint64_t height) const override { return cryptonote::t_serializable_object_to_blob(get_block_from_height(height)); }
   virtual cryptonote::blobdata get_block_blob(const crypto::hash& h) const override { return cryptonote::blobdata(); }
+  virtual cryptonote::block_header get_block_header_from_height(uint64_t height) const override { return get_block_from_height(height); }
   virtual bool get_tx_blob(const crypto::hash& h, cryptonote::blobdata &tx) const override { return false; }
   virtual bool get_pruned_tx_blob(const crypto::hash& h, cryptonote::blobdata &tx) const override { return false; }
   virtual bool get_pruned_tx_blobs_from(const crypto::hash& h, size_t count, std::vector<cryptonote::blobdata> &bd) const override { return false; }
   virtual bool get_prunable_tx_blob(const crypto::hash& h, cryptonote::blobdata &tx) const override { return false; }
   virtual bool get_prunable_tx_hash(const crypto::hash& tx_hash, crypto::hash &prunable_hash) const override { return false; }
   virtual uint64_t get_block_height(const crypto::hash& h) const override { return 0; }
-  virtual cryptonote::block_header get_block_header(const crypto::hash& h) const override { return cryptonote::block_header(); }
   virtual uint64_t get_block_timestamp(const uint64_t& height) const override { return 0; }
   virtual std::vector<uint64_t> get_block_cumulative_rct_outputs(const std::vector<uint64_t> &heights) const override { return {}; }
   virtual uint64_t get_top_block_timestamp() const override { return 0; }
@@ -145,7 +145,7 @@ public:
                         , uint64_t num_rct_outs
                         , const crypto::hash& blk_hash
                         ) override { }
-  virtual cryptonote::block get_block_from_height(const uint64_t& height) const override { return cryptonote::block(); }
+  virtual cryptonote::block get_block_from_height(uint64_t height) const override { return cryptonote::block(); }
   virtual void set_hard_fork_version(uint64_t height, uint8_t version) override {}
   virtual uint8_t get_hard_fork_version(uint64_t height) const override { return 0; }
   virtual void check_hard_fork_info() override {}
