@@ -3205,7 +3205,7 @@ bool loki_pulse_reject_miner_block::generate(std::vector<test_event_entry> &even
   return true;
 }
 
-bool loki_pulse_generate_blocks_and_invalid_blocks::generate(std::vector<test_event_entry> &events)
+bool loki_pulse_generate_blocks::generate(std::vector<test_event_entry> &events)
 {
   std::vector<std::pair<uint8_t, uint64_t>> hard_forks = loki_generate_sequential_hard_fork_table();
   loki_chain_generator gen(events, hard_forks);
@@ -3219,6 +3219,58 @@ bool loki_pulse_generate_blocks_and_invalid_blocks::generate(std::vector<test_ev
     registration_txs[i] = gen.create_and_add_registration_tx(gen.first_miner());
 
   gen.create_and_add_next_block({registration_txs});
+  gen.add_n_blocks(40);
+  return true;
+}
+
+bool loki_pulse_fallback_to_pow_and_back::generate(std::vector<test_event_entry> &events)
+{
+  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = loki_generate_sequential_hard_fork_table();
+  loki_chain_generator gen(events, hard_forks);
+
+  gen.add_blocks_until_version(hard_forks.back().first);
+  gen.add_mined_money_unlock_blocks();
+
+  int constexpr NUM_SERVICE_NODES = service_nodes::pulse_min_service_nodes(cryptonote::FAKECHAIN);
+  std::vector<cryptonote::transaction> registration_txs(NUM_SERVICE_NODES);
+  for (auto i = 0u; i < NUM_SERVICE_NODES; ++i)
+    registration_txs[i] = gen.create_and_add_registration_tx(gen.first_miner());
+
+  gen.create_and_add_next_block({registration_txs});
   gen.create_and_add_next_block();
+
+  gen.add_event_msg("Deregister 1 node, we now have insufficient nodes for Pulse");
+  {
+    const auto deregister_pub_key_1 = gen.top_quorum().obligations->workers[0];
+    cryptonote::transaction tx =
+        gen.create_and_add_state_change_tx(service_nodes::new_state::deregister, deregister_pub_key_1);
+    gen.create_and_add_next_block({tx});
+  }
+
+  gen.add_event_msg("Check that we accept a PoW block");
+  {
+    loki_create_block_params block_params = gen.next_block_params();
+    block_params.type                     = loki_create_block_type::miner;
+
+    loki_blockchain_entry entry = {};
+    assert(gen.create_block(entry, block_params, {}));
+    gen.add_block(entry, true, "Can add a Miner block, we have insufficient nodes for Pulse so we fall back to PoW blocks.");
+  }
+
+  loki_register_callback(events, "check_no_pulse_quorum_exists", [](cryptonote::core &c, size_t ev_index)
+  {
+    DEFINE_TESTS_ERROR_CONTEXT("check_no_pulse_quorum_exists");
+    const auto quorum = c.get_quorum(service_nodes::quorum_type::pulse, c.get_current_blockchain_height() - 1, false, nullptr);
+    CHECK_EQ(quorum, nullptr);
+    return true;
+  });
+
+  gen.add_event_msg("Re-register a node, allowing us to re-enter Pulse");
+  {
+    cryptonote::transaction registration_txs = gen.create_and_add_registration_tx(gen.first_miner());
+    gen.create_and_add_next_block({registration_txs});
+    gen.add_n_blocks(10);
+  }
+
   return true;
 }

@@ -84,5 +84,6 @@ struct loki_pulse_non_participating_validator                                   
 struct loki_pulse_generate_all_rounds                                                : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
 struct loki_pulse_out_of_order_voters                                                : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
 struct loki_pulse_reject_miner_block                                                 : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
-struct loki_pulse_generate_blocks_and_invalid_blocks                                 : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
+struct loki_pulse_generate_blocks                                                    : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
+struct loki_pulse_fallback_to_pow_and_back                                           : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
 
