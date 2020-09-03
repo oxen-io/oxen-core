@@ -4802,21 +4802,28 @@ void BlockchainLMDB::fixup(fixup_context const context)
       {
         uint64_t const curr_height = (start_height + (batch_index * BLOCKS_PER_BATCH) + block_index);
         difficulty_type diff       = {};
-        block_header header        = get_block_header_from_height(curr_height);
-        if (block_header_has_pulse_components(header))
+
+        bool use_next_difficulty_function = true;
+        uint8_t hf_version                = get_hard_fork_version(curr_height);
+        if (hf_version >= cryptonote::network_version_16)
         {
-          diff = PULSE_FIXED_DIFFICULTY;
+          block_header header = get_block_header_from_height(curr_height);
+          if (block_header_has_pulse_components(header))
+          {
+            diff                         = PULSE_FIXED_DIFFICULTY;
+            use_next_difficulty_function = false;
+          }
         }
-        else
+
+        if (use_next_difficulty_function)
         {
           diff = next_difficulty_v2(timestamps,
                                     difficulties,
                                     tools::to_seconds(TARGET_BLOCK_TIME),
-                                    difficulty_mode(context.nettype, header.major_version, curr_height));
+                                    difficulty_mode(context.nettype, hf_version, curr_height));
         }
 
         MDB_val_set(key, curr_height);
-
         try
         {
           if (int result = mdb_cursor_get(m_cur_block_info, (MDB_val *)&zerokval, &key, MDB_GET_BOTH))
