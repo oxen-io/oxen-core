@@ -185,7 +185,7 @@ bool loki_checkpointing_alt_chain_receive_checkpoint_votes_should_reorg_back::ge
     registration_txs[i] = gen.create_and_add_registration_tx(gen.first_miner());
   gen.create_and_add_next_block(registration_txs);
 
-  // NOTE: Add blocks until we get to the first height that has a checkpointing quorum AND there are service nodes in the quorum.
+  gen.add_event_msg("Add blocks until we get to the first height that has a checkpointing quorum AND there are service nodes in the quorum.");
   int const MAX_TRIES = 16;
   int tries           = 0;
   for (; tries < MAX_TRIES; tries++)
@@ -196,7 +196,7 @@ bool loki_checkpointing_alt_chain_receive_checkpoint_votes_should_reorg_back::ge
   }
   assert(tries != MAX_TRIES);
 
-  // NOTE: Diverge the two chains in tandem, so they have the same PoW and generate alt service node states, but still remain on the mainchain due to PoW
+  gen.add_event_msg("Diverge the two chains in tandem, so they have the same PoW and generate alt service node states, but still remain on the mainchain due to PoW");
   loki_chain_generator fork = gen;
   for (size_t i = 0; i < service_nodes::CHECKPOINT_INTERVAL; i++)
   {
@@ -204,7 +204,7 @@ bool loki_checkpointing_alt_chain_receive_checkpoint_votes_should_reorg_back::ge
     fork.create_and_add_next_block();
   }
 
-  // NOTE: Fork generate two checkpoints worth of blocks.
+  gen.add_event_msg("Fork generate two checkpoints worth of blocks.");
   uint64_t first_checkpointed_height    = fork.height();
   uint64_t first_checkpointed_height_hf = fork.top().block.major_version;
   crypto::hash first_checkpointed_hash  = cryptonote::get_block_hash(fork.top().block);
@@ -216,13 +216,14 @@ bool loki_checkpointing_alt_chain_receive_checkpoint_votes_should_reorg_back::ge
     fork.create_and_add_next_block();
   }
 
-  // NOTE: Fork generates service node votes, upon sending them over and the
-  // main chain collecting them validly (they should be able to verify
-  // signatures because we store alt quorums) it should generate a checkpoint
-  // belonging to the forked chain- which should cause it to detach back to the
-  // checkpoint height
+  gen.add_event_msg(
+      "Fork generates service node votes, upon sending them over and the main chain collecting them validly (they "
+      "should be able to verify signatures because we store alt quorums) it should generate a checkpoint belonging to "
+      "the forked chain- which should cause it to detach back to the checkpoint height");
 
-  // Then we send the votes for the 2nd newest checkpoint. We don't reorg back until we receive a block confirming this checkpoint.
+  gen.add_event_msg(
+      "Then we send the votes for the 2nd newest checkpoint. We don't reorg back until we receive a block confirming "
+      "this checkpoint.");
   for (size_t i = 0; i < service_nodes::CHECKPOINT_MIN_VOTES; i++)
   {
     auto keys = gen.get_cached_keys(first_quorum->validators[i]);
@@ -230,7 +231,7 @@ bool loki_checkpointing_alt_chain_receive_checkpoint_votes_should_reorg_back::ge
     events.push_back(loki_blockchain_addable<service_nodes::quorum_vote_t>(fork_vote, true/*can_be_added_to_blockchain*/, "A first_checkpoint vote from the forked chain should be accepted since we should be storing alternative service node states and quorums"));
   }
 
-  // Upon adding the last block, we should now switch to our forked chain
+  gen.add_event_msg("Upon adding the last block, we should now switch to our forked chain");
   fork.create_and_add_next_block({});
   crypto::hash const fork_top_hash = cryptonote::get_block_hash(fork.top().block);
   loki_register_callback(events, "check_switched_to_alt_chain", [fork_top_hash](cryptonote::core &c, size_t ev_index)

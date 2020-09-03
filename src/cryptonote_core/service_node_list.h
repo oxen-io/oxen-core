@@ -560,6 +560,9 @@ namespace service_nodes
     bool m_rescanning = false; /* set to true when doing a rescan so we know not to reset proofs */
     void process_block(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs);
 
+    // Verify block against Service Node state that has just been called with 'state.update_from_block(block)'.
+    bool verify_block(const cryptonote::block& block, bool alt_block, cryptonote::checkpoint_t const *checkpoint);
+
     void reset(bool delete_db_entry = false);
     bool load(uint64_t current_height);
 

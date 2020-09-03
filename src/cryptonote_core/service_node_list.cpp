@@ -162,9 +162,6 @@ namespace service_nodes
         quorums = &it->quorums;
     }
 
-    if (!quorums)
-      return nullptr;
-
     if (alt_quorums)
     {
       for (const auto& [hash, alt_state] : m_transient.alt_state)
@@ -176,6 +173,9 @@ namespace service_nodes
         }
       }
     }
+
+    if (!quorums)
+      return nullptr;
 
     std::shared_ptr<const quorum> result = quorums->get(type);
     return result;
@@ -1261,81 +1261,59 @@ namespace service_nodes
     return stream.str();
   }
 
-  bool service_node_list::block_added(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs, cryptonote::checkpoint_t const *checkpoint)
+  static bool verify_block_components(cryptonote::network_type nettype,
+                                      cryptonote::block const &block,
+                                      bool miner_block,
+                                      bool alt_block,
+                                      bool log_errors,
+                                      pulse::timings &timings,
+                                      std::shared_ptr<const quorum> pulse_quorum,
+                                      std::vector<std::shared_ptr<const quorum>> &alt_pulse_quorums)
   {
-    if (block.major_version < cryptonote::network_version_9_service_nodes)
-      return true;
+    std::string_view block_type = alt_block ? "alt block "sv : "block "sv;
+    uint64_t height             = cryptonote::get_block_height(block);
+    crypto::hash hash           = cryptonote::get_block_hash(block);
 
-    std::lock_guard lock(m_sn_mutex);
-    process_block(block, txs);
-
-    // TODO(doyle): Check round closeness to expected round
-    pulse::timings timings = {};
-    uint64_t height        = cryptonote::get_block_height(block);
-    if (block.major_version >= cryptonote::network_version_16)
-    {
-      if (!pulse::get_round_timings(m_blockchain, height, timings))
-      {
-        MGINFO("Failed to query the block data for Pulse timings to validate incoming block at height " << height);
-        return false;
-      }
-    }
-
-    //
-    // NOTE: Block Verification
-    //
-    std::shared_ptr<const quorum> pulse_quorum = get_quorum(quorum_type::pulse, m_state.height);
-    bool miner_blocks_only                     = pulse::time_point(std::chrono::seconds(block.timestamp)) >= timings.miner_fallback_timestamp || !pulse_quorum;
-
-    if (m_blockchain.nettype() == cryptonote::FAKECHAIN)
-    {
-      // TODO(doyle): Core tests need to generate coherent timestamps with
-      // Pulse. So we relax the rules here for now.
-      miner_blocks_only = block.major_version <= cryptonote::network_version_15_lns || !pulse_quorum;
-    }
-
-    if (miner_blocks_only)
+    if (miner_block)
     {
       if (cryptonote::block_has_pulse_components(block))
       {
-        MGINFO("Pulse block received but only miner blocks are permitted\n" << dump_pulse_block_data(block, pulse_quorum.get()));
+        if (log_errors) MGINFO("Pulse " << block_type << "received but only miner blocks are permitted\n" << dump_pulse_block_data(block, pulse_quorum.get()));
         return false;
       }
 
       if (block.pulse.round != 0)
       {
-        MGINFO("Miner block given but unexpectedly set round " << block.pulse.round <<  " on height " << height);
+        if (log_errors) MGINFO("Miner " << block_type << "given but unexpectedly set round " << block.pulse.round <<  " on height " << height);
         return false;
       }
 
       if (block.pulse.validator_bitset != 0)
       {
         std::bitset<8 * sizeof(block.pulse.validator_bitset)> const bitset = block.pulse.validator_bitset;
-        MGINFO("Miner block given but unexpectedly set validator bitset " << bitset <<  " on height " << height);
+        if (log_errors) MGINFO("Miner " << block_type << "block given but unexpectedly set validator bitset " << bitset <<  " on height " << height);
         return false;
       }
 
       if (block.signatures.size())
       {
-        MGINFO("Miner block given but unexpectedly has " << block.signatures.size() <<  " signatures on height " << height);
+        if (log_errors) MGINFO("Miner " << block_type << "block given but unexpectedly has " << block.signatures.size() <<  " signatures on height " << height);
         return false;
       }
+
+      return true;
     }
     else
     {
       if (!cryptonote::block_has_pulse_components(block))
       {
-        MGINFO("Miner block received but only pulse blocks are permitted\n" << dump_pulse_block_data(block, pulse_quorum.get()));
+        if (log_errors) MGINFO("Miner " << block_type << "received but only pulse blocks are permitted\n" << dump_pulse_block_data(block, pulse_quorum.get()));
         return false;
       }
 
-      if (!pulse_quorum)
-      {
-        MGINFO("Pulse block received but no Pulse quorum was available for this block\n" << dump_pulse_block_data(block, pulse_quorum.get()));
-        return false;
-      }
-
-      if (m_blockchain.nettype() != cryptonote::FAKECHAIN)
+      // TODO(doyle): Core tests need to generate coherent timestamps with
+      // Pulse. So we relax the rules here for now.
+      if (nettype != cryptonote::FAKECHAIN)
       {
         auto round_begin_timestamp = timings.r0_timestamp + (block.pulse.round * PULSE_ROUND_TIME);
         auto round_end_timestamp   = round_begin_timestamp + PULSE_ROUND_TIME;
@@ -1347,51 +1325,215 @@ namespace service_nodes
           std::string time  = tools::get_human_readable_timestamp(block.timestamp);
           std::string begin = tools::get_human_readable_timestamp(begin_time);
           std::string end   = tools::get_human_readable_timestamp(end_time);
-          MGINFO("Pulse block with round " << +block.pulse.round << " specifies timestamp " << time << " is not within an acceptable range of time [" << begin << ", " << end << "]");
+          if (log_errors) MGINFO("Pulse " << block_type << "with round " << +block.pulse.round << " specifies timestamp " << time << " is not within an acceptable range of time [" << begin << ", " << end << "]");
           return false;
         }
       }
 
       if (block.nonce != 0)
       {
-        MGINFO("Pulse block specified a nonce when quorum block generation is available, nonce: " << block.nonce);
+        if (log_errors) MGINFO("Pulse " << block_type << "specified a nonce when quorum block generation is available, nonce: " << block.nonce);
         return false;
       }
 
-      if (!service_nodes::verify_quorum_signatures(*pulse_quorum,
-                                                   quorum_type::pulse,
-                                                   block.major_version,
-                                                   cryptonote::get_block_height(block),
-                                                   cryptonote::get_block_hash(block),
-                                                   block.signatures, block))
+      bool quorum_verified = false;
+      if (alt_block)
       {
-        MGINFO("Pulse signature verification failed: " << dump_pulse_block_data(block, pulse_quorum.get()));
-        return false;
+        // NOTE: Check main pulse quorum. It might not necessarily exist because
+        // the alt-block's chain could be in any arbitrary state.
+        bool failed_quorum_verify = true;
+        if (pulse_quorum)
+        {
+          failed_quorum_verify = service_nodes::verify_quorum_signatures(*pulse_quorum,
+                                                                         quorum_type::pulse,
+                                                                         block.major_version,
+                                                                         height,
+                                                                         hash,
+                                                                         block.signatures,
+                                                                         block) == false;
+        }
+
+        // NOTE: Check alt pulse quorums
+        if (failed_quorum_verify)
+        {
+          for (auto const &alt_quorum : alt_pulse_quorums)
+          {
+            if (service_nodes::verify_quorum_signatures(*alt_quorum,
+                                                        quorum_type::pulse,
+                                                        block.major_version,
+                                                        height,
+                                                        hash,
+                                                        block.signatures,
+                                                        block))
+            {
+              failed_quorum_verify = false;
+              break;
+            }
+          }
+        }
+
+        quorum_verified = !failed_quorum_verify;
+      }
+      else
+      {
+        // NOTE: We only accept insufficient node for Pulse if we're on an alt
+        // block (that chain would be in any arbitrary state, we could be
+        // completely isolated from the correct network for example).
+        bool insufficient_nodes_for_pulse = pulse_quorum == nullptr;
+        if (insufficient_nodes_for_pulse)
+        {
+          if (log_errors) MGINFO("Pulse " << block_type << "specified but no quorum available " << dump_pulse_block_data(block, pulse_quorum.get()));
+          return false;
+        }
+
+        quorum_verified = service_nodes::verify_quorum_signatures(*pulse_quorum,
+                                                                  quorum_type::pulse,
+                                                                  block.major_version,
+                                                                  cryptonote::get_block_height(block),
+                                                                  cryptonote::get_block_hash(block),
+                                                                  block.signatures,
+                                                                  block);
       }
 
-      // NOTE: These invariants are already checked in verify_quorum_signatures
-      assert(block.pulse.validator_bitset != 0);
-      assert(block.pulse.validator_bitset < (1 << PULSE_QUORUM_NUM_VALIDATORS));
-      assert(block.signatures.size() == service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES);
-    }
+      if (quorum_verified)
+      {
+        // NOTE: These invariants are already checked in verify_quorum_signatures
+        assert(block.pulse.validator_bitset != 0);
+        assert(block.pulse.validator_bitset < (1 << PULSE_QUORUM_NUM_VALIDATORS));
+        assert(block.signatures.size() == service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES);
+      }
+      else
+      {
+        if (log_errors)
+          MGINFO("Pulse " << block_type << "failed quorum verification" << dump_pulse_block_data(block, pulse_quorum.get()));
+      }
 
+      return quorum_verified;
+    }
+  }
+
+  bool service_node_list::verify_block(const cryptonote::block &block, bool alt_block, cryptonote::checkpoint_t const *checkpoint)
+  {
+    if (block.major_version < cryptonote::network_version_9_service_nodes)
+      return true;
+
+    std::string_view block_type = alt_block ? "alt block "sv : "block "sv;
+
+    //
+    // NOTE: Verify the checkpoint given on this height that locks in a block in the past.
+    //
     if (block.major_version >= cryptonote::network_version_13_enforce_checkpoints && checkpoint)
     {
-      std::shared_ptr<const quorum> quorum = get_quorum(quorum_type::checkpointing, checkpoint->height);
+      std::vector<std::shared_ptr<const service_nodes::quorum>> alt_quorums;
+      std::shared_ptr<const quorum> quorum = get_quorum(quorum_type::checkpointing, checkpoint->height, false, alt_block ? &alt_quorums : nullptr);
+
       if (!quorum)
       {
-        MGINFO("Failed to get testing quorum checkpoint for block: " << cryptonote::get_block_hash(block));
+        MGINFO("Failed to get testing quorum checkpoint for " << block_type << cryptonote::get_block_hash(block));
         return false;
       }
 
-      if (!service_nodes::verify_checkpoint(block.major_version, *checkpoint, *quorum))
+      bool failed_checkpoint_verify = !service_nodes::verify_checkpoint(block.major_version, *checkpoint, *quorum);
+      if (alt_block && failed_checkpoint_verify)
       {
-        MGINFO("Service node checkpoint failed verification for block: " << cryptonote::get_block_hash(block));
+        for (std::shared_ptr<const service_nodes::quorum> alt_quorum : alt_quorums)
+        {
+          if (service_nodes::verify_checkpoint(block.major_version, *checkpoint, *alt_quorum))
+          {
+            failed_checkpoint_verify = false;
+            break;
+          }
+        }
+      }
+
+      if (failed_checkpoint_verify)
+      {
+        MGINFO("Service node checkpoint failed verification for " << block_type << cryptonote::get_block_hash(block));
         return false;
       }
     }
 
-    return true;
+    //
+    // NOTE: Get Pulse Block Timing Information
+    //
+    pulse::timings timings = {};
+    uint64_t height        = cryptonote::get_block_height(block);
+    if (block.major_version >= cryptonote::network_version_16)
+    {
+      if (!pulse::get_round_timings(m_blockchain, height, timings))
+      {
+        MGINFO("Failed to query the block data for Pulse timings to validate incoming " << block_type << "at height " << height);
+        return false;
+      }
+    }
+
+
+    //
+    // NOTE: Load Pulse Quorums
+    //
+    std::shared_ptr<const quorum>              pulse_quorum;
+    std::vector<std::shared_ptr<const quorum>> alt_pulse_quorums;
+    bool pulse_hf = block.major_version >= cryptonote::network_version_16;
+
+    if (pulse_hf)
+    {
+      pulse_quorum = get_quorum(quorum_type::pulse,
+                                height,
+                                false /*include historical quorums*/,
+                                alt_block ? &alt_pulse_quorums : nullptr);
+    }
+
+    if (m_blockchain.nettype() != cryptonote::FAKECHAIN)
+    {
+      // TODO(doyle): Core tests don't generate proper timestamps for detecting
+      // timeout yet. So we don't do a timeout check and assume all blocks
+      // incoming from Pulse are valid if they have the correct signatures
+      // (despite timestamp being potentially wrong).
+      if (pulse::time_point(std::chrono::seconds(block.timestamp)) >= timings.miner_fallback_timestamp)
+        pulse_quorum = nullptr;
+    }
+
+    //
+    // NOTE: Verify Block
+    //
+    bool result = false;
+    if (alt_block)
+    {
+      // NOTE: Verify as a pulse block first if possible, then as a miner block.
+      // This alt block could belong to a chain that is in an arbitrary state.
+      if (pulse_hf)
+        result = verify_block_components(m_blockchain.nettype(), block, false /*miner_block*/, true /*alt_block*/, false /*log_errors*/, timings, pulse_quorum, alt_pulse_quorums);
+
+      if (!result)
+        result = verify_block_components(m_blockchain.nettype(), block, true /*miner_block*/, true /*alt_block*/, false /*log_errors*/, timings, pulse_quorum, alt_pulse_quorums);
+    }
+    else
+    {
+      // NOTE: No pulse quorums are generated when the network has insufficient nodes to generate quorums
+      //       Or, block specifies time after all the rounds have timed out
+      bool miner_block = !pulse_hf || !pulse_quorum;
+
+      result = verify_block_components(m_blockchain.nettype(),
+                                       block,
+                                       miner_block,
+                                       false /*alt_block*/,
+                                       true /*log_errors*/,
+                                       timings,
+                                       pulse_quorum,
+                                       alt_pulse_quorums);
+    }
+
+    return result;
+  }
+
+  bool service_node_list::block_added(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs, cryptonote::checkpoint_t const *checkpoint)
+  {
+    if (block.major_version < cryptonote::network_version_9_service_nodes)
+      return true;
+
+    std::lock_guard lock(m_sn_mutex);
+    process_block(block, txs);
+    return verify_block(block, false /*alt_block*/, checkpoint);
   }
 
   static std::mt19937_64 quorum_rng(uint8_t hf_version, crypto::hash const &hash, quorum_type type)
@@ -2277,6 +2419,15 @@ namespace service_nodes
 
   bool service_node_list::alt_block_added(cryptonote::block const &block, std::vector<cryptonote::transaction> const &txs, cryptonote::checkpoint_t const *checkpoint)
   {
+    // NOTE: The premise is to search the main list and the alternative list for
+    // the parent of the block we just received, generate the new Service Node
+    // state with this alt-block and verify that the block passes all
+    // the necessary checks.
+
+    // On success, this function returns true, signifying the block is valid to
+    // store into the alt-chain until it gathers enough blocks to cause
+    // a reorganization (more checkpoints/PoW than the main chain).
+
     if (block.major_version < cryptonote::network_version_9_service_nodes)
       return true;
 
@@ -2315,6 +2466,7 @@ namespace service_nodes
       return false;
     }
 
+    // NOTE: Generate the next Service Node list state from this Alt block.
     state_t alt_state = *starting_state;
     alt_state.update_from_block(m_blockchain.get_db(), m_blockchain.nettype(), m_transient.state_history, m_transient.state_archive, m_transient.alt_state, block, txs, m_service_node_keys);
     auto alt_it = m_transient.alt_state.find(block_hash);
@@ -2323,31 +2475,7 @@ namespace service_nodes
     else
       m_transient.alt_state.emplace(block_hash, std::move(alt_state));
 
-    if (checkpoint)
-    {
-      std::vector<std::shared_ptr<const service_nodes::quorum>> alt_quorums;
-      std::shared_ptr<const quorum> quorum = get_quorum(quorum_type::checkpointing, checkpoint->height, false, &alt_quorums);
-      if (!quorum)
-        return false;
-
-      if (!service_nodes::verify_checkpoint(block.major_version, *checkpoint, *quorum))
-      {
-        bool verified_on_alt_quorum = false;
-        for (std::shared_ptr<const service_nodes::quorum> alt_quorum : alt_quorums)
-        {
-          if (service_nodes::verify_checkpoint(block.major_version, *checkpoint, *alt_quorum))
-          {
-            verified_on_alt_quorum = true;
-            break;
-          }
-        }
-
-        if (!verified_on_alt_quorum)
-            return false;
-      }
-    }
-
-    return true;
+    return verify_block(block, true /*alt_block*/, checkpoint);
   }
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

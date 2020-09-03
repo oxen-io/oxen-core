@@ -1910,12 +1910,22 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
 
 
   // NOTE: Check proof of work
+  block_pow_verified blk_pow         = {};
   difficulty_type const current_diff = get_difficulty_for_alternative_chain(alt_chain, blk_height);
-  block_pow_verified const blk_pow   = verify_block_pow(b, current_diff, chain_height, true /*alt_block*/);
-  if (!blk_pow.valid)
+  if (b.major_version >= cryptonote::network_version_16)
   {
-    bvc.m_verifivation_failed = true;
-    return false;
+    // NOTE: Pulse blocks don't use PoW. They use Service Node signatures.
+    // Delay signature verification until Service Node List adds the block in
+    // the block_added hook.
+  }
+  else
+  {
+    block_pow_verified const blk_pow = verify_block_pow(b, current_diff, chain_height, true /*alt_block*/);
+    if (!blk_pow.valid)
+    {
+      bvc.m_verifivation_failed = true;
+      return false;
+    }
   }
 
   // NOTE: Calculate cumulative difficulty
