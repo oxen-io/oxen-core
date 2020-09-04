@@ -1649,7 +1649,8 @@ namespace service_nodes
     for (cryptonote::block const &block : blocks)
     {
       crypto::hash hash = {};
-      if (block.major_version >= cryptonote::network_version_16)
+      if (block.major_version >= cryptonote::network_version_16 &&
+          cryptonote::block_has_pulse_components(block))
       {
         std::array<uint8_t, 1 + sizeof(block.pulse.random_value)> src = {pulse_round};
         std::copy(std::begin(block.pulse.random_value.data), std::end(block.pulse.random_value.data), src.begin() + 1);
