@@ -668,14 +668,12 @@ void pulse::handle_message(void *quorumnet_state, pulse::message const &msg)
     cryptonote::quorumnet_pulse_relay_message_to_quorum(quorumnet_state, msg, context.prepare_for_round.quorum, context.prepare_for_round.participant == sn_type::producer);
 }
 
-bool pulse::get_round_timings(cryptonote::Blockchain const &blockchain, uint64_t height, pulse::timings &times)
+bool pulse::get_round_timings_for_block(cryptonote::Blockchain const &blockchain, cryptonote::block const &block, pulse::timings &times)
 {
   times = {};
 
-  crypto::hash top_hash       = blockchain.get_block_id_by_height(height - 1);
-  cryptonote::block top_block = {};
-  if (bool orphan = false; !blockchain.get_block_by_hash(top_hash, top_block, &orphan) || orphan)
-    return false;
+  crypto::hash top_hash              = cryptonote::get_block_hash(block);
+  cryptonote::block const &top_block = block;
 
   static uint64_t const hf16_height = blockchain.get_earliest_ideal_height_for_version(cryptonote::network_version_16);
   if (hf16_height == std::numeric_limits<uint64_t>::max())
@@ -687,7 +685,7 @@ bool pulse::get_round_timings(cryptonote::Blockchain const &blockchain, uint64_t
     return false;
 
 #if 1
-  uint64_t const delta_height = height - cryptonote::get_block_height(genesis_block);
+  uint64_t const delta_height = (cryptonote::get_block_height(block) + 1) - cryptonote::get_block_height(genesis_block);
   times.genesis_timestamp     = pulse::time_point(std::chrono::seconds(genesis_block.timestamp));
 
   times.prev_hash      = top_hash;
@@ -704,6 +702,17 @@ bool pulse::get_round_timings(cryptonote::Blockchain const &blockchain, uint64_t
   times.miner_fallback_timestamp = times.r0_timestamp + (service_nodes::PULSE_ROUND_TIME * 256);
 
   return true;
+}
+
+bool pulse::get_round_timings(cryptonote::Blockchain const &blockchain, uint64_t height, pulse::timings &times)
+{
+  times = {};
+  crypto::hash top_hash       = {};
+  cryptonote::block top_block = {};
+  if (bool orphan = false; !blockchain.get_block_by_hash(top_hash, top_block, &orphan) || orphan)
+    return false;
+
+  return get_round_timings_for_block(blockchain, top_block, times);
 }
 
 /*
@@ -1042,13 +1051,13 @@ round_state prepare_for_round(round_context &context, service_nodes::service_nod
     context.transient.signed_block.wait.stage.end_time            = context.transient.random_value.wait.stage.end_time            + PULSE_WAIT_FOR_SIGNED_BLOCK_DURATION;
   }
 
+  std::vector<crypto::hash> entropy = service_nodes::get_pulse_entropy_for_next_block(blockchain.get_db(), context.wait_for_next_block.top_hash, context.prepare_for_round.round);
   context.prepare_for_round.quorum =
       service_nodes::generate_pulse_quorum(blockchain.nettype(),
-                                           blockchain.get_db(),
-                                           context.wait_for_next_block.height + 1,
                                            blockchain.get_service_node_list().get_block_leader().key,
                                            blockchain.get_current_hard_fork_version(),
                                            blockchain.get_service_node_list().active_service_nodes_infos(),
+                                           entropy,
                                            context.prepare_for_round.round);
 
   if (!service_nodes::verify_pulse_quorum_sizes(context.prepare_for_round.quorum))

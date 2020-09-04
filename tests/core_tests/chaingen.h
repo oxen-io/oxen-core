@@ -1367,6 +1367,7 @@ struct loki_chain_generator_db : public cryptonote::BaseTestDB
   std::unordered_map<crypto::hash, cryptonote::transaction> tx_table;
   std::unordered_map<crypto::hash, loki_blockchain_entry>   block_table;
 
+  uint64_t                              get_block_height(crypto::hash const &hash) const override;
   cryptonote::block_header              get_block_header_from_height(uint64_t height) const override;
   cryptonote::block                     get_block_from_height(uint64_t height) const override;
   bool                                  get_tx(const crypto::hash& h, cryptonote::transaction &tx) const override;

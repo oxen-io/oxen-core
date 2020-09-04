@@ -290,7 +290,7 @@ public:
   bool check_pruning() override;
 
   void add_alt_block(const crypto::hash &blkid, const cryptonote::alt_block_data_t &data, const cryptonote::blobdata &blob, const cryptonote::blobdata *checkpoint) override;
-  bool get_alt_block(const crypto::hash &blkid, alt_block_data_t *data, cryptonote::blobdata *blob, cryptonote::blobdata *checkpoint) override;
+  bool get_alt_block(const crypto::hash &blkid, alt_block_data_t *data, cryptonote::blobdata *blob, cryptonote::blobdata *checkpoint) const override;
   void remove_alt_block(const crypto::hash &blkid) override;
   uint64_t get_alt_block_count() override;
   void drop_alt_blocks() override;

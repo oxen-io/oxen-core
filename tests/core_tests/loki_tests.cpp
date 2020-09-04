@@ -969,23 +969,28 @@ bool loki_core_test_deregister_on_split::generate(std::vector<test_event_entry> 
   gen.create_and_add_next_block(); // Can't change service node state on the same height it was registered in
   auto fork = gen;
 
-  /// public key of the node to deregister (valid at the height of the pivot block)
+  gen.add_event_msg("public key of the node to deregister (valid at the height of the pivot block)");
   const auto pk           = gen.top_quorum().obligations->workers[0];
   const auto split_height = gen.height();
 
-  /// create deregistration A
+  gen.add_event_msg("create deregistration A");
   std::vector<uint64_t> const quorum_indexes = {1, 2, 3, 4, 5, 6, 7};
   const auto dereg_a                         = gen.create_and_add_state_change_tx(service_nodes::new_state::deregister, pk, split_height, quorum_indexes);
 
-  /// create deregistration on alt chain (B)
+  gen.add_event_msg("create deregistration on alt chain (B)");
   std::vector<uint64_t> const fork_quorum_indexes = {1, 3, 4, 5, 6, 7, 8};
   const auto dereg_b            = fork.create_and_add_state_change_tx(service_nodes::new_state::deregister, pk, split_height, fork_quorum_indexes, 0 /*fee*/, true /*kept_by_block*/);
   crypto::hash expected_tx_hash = cryptonote::get_transaction_hash(dereg_b);
   size_t dereg_index            = gen.event_index();
 
-  gen.create_and_add_next_block({dereg_a});    /// continue main chain with deregister A
-  fork.create_and_add_next_block({dereg_b});   /// continue alt chain with deregister B
-  fork.create_and_add_next_block();            /// one more block on alt chain to switch
+  gen.add_event_msg("continue main chain with deregister A");
+  gen.create_and_add_next_block({dereg_a});
+
+  fork.add_event_msg("continue alt chain with deregister B");
+  fork.create_and_add_next_block({dereg_b});
+
+  fork.add_event_msg("one more block on alt chain to switch");
+  fork.create_and_add_next_block();
 
   loki_register_callback(events, "test_on_split", [&events, expected_tx_hash](cryptonote::core &c, size_t ev_index)
   {
@@ -3123,7 +3128,8 @@ bool loki_pulse_non_participating_validator::generate(std::vector<test_event_ent
     service_nodes::quorum quorum = {};
     {
       std::vector<service_nodes::pubkey_and_sninfo> active_snode_list = params.prev.service_node_state.active_service_nodes_infos();
-      quorum = generate_pulse_quorum(cryptonote::FAKECHAIN, gen.db_, cryptonote::get_block_height(entry.block) + 1, params.block_leader.key, entry.block.major_version, active_snode_list, entry.block.pulse.round);
+      std::vector<crypto::hash> entropy = service_nodes::get_pulse_entropy_for_next_block(gen.db_, params.prev.block, entry.block.pulse.round);
+      quorum = generate_pulse_quorum(cryptonote::FAKECHAIN, params.block_leader.key, entry.block.major_version, active_snode_list, entropy, entry.block.pulse.round);
       assert(quorum.validators.size() == service_nodes::PULSE_QUORUM_NUM_VALIDATORS);
       assert(quorum.workers.size() == 1);
     }
@@ -3272,5 +3278,70 @@ bool loki_pulse_fallback_to_pow_and_back::generate(std::vector<test_event_entry>
     gen.add_n_blocks(10);
   }
 
+  return true;
+}
+
+bool loki_pulse_chain_split::generate(std::vector<test_event_entry> &events)
+{
+  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = loki_generate_sequential_hard_fork_table();
+  loki_chain_generator gen(events, hard_forks);
+
+  gen.add_blocks_until_version(hard_forks.back().first);
+  gen.add_mined_money_unlock_blocks();
+
+  int constexpr NUM_SERVICE_NODES = std::max(service_nodes::pulse_min_service_nodes(cryptonote::FAKECHAIN), service_nodes::CHECKPOINT_QUORUM_SIZE);
+  std::vector<cryptonote::transaction> registration_txs(NUM_SERVICE_NODES);
+  for (auto i = 0u; i < NUM_SERVICE_NODES; ++i)
+    registration_txs[i] = gen.create_and_add_registration_tx(gen.first_miner());
+
+  gen.create_and_add_next_block({registration_txs});
+  gen.create_and_add_next_block();
+
+  gen.add_event_msg("Deregister 1 node, we now have insufficient nodes for Pulse and enter PoW");
+  {
+    const auto deregister_pub_key_1 = gen.top_quorum().obligations->workers[0];
+    cryptonote::transaction tx =
+        gen.create_and_add_state_change_tx(service_nodes::new_state::deregister, deregister_pub_key_1);
+    gen.create_and_add_next_block({tx});
+  }
+
+  gen.add_event_msg("Diverge the two chains");
+  loki_chain_generator fork = gen;
+  gen.create_and_add_next_block();
+  fork.create_and_add_next_block();
+
+  fork.add_event_msg("Alt chain re-register a node, allowing us to re-enter Pulse");
+  {
+    cryptonote::transaction registration_txs = fork.create_and_add_registration_tx(fork.first_miner());
+    fork.create_and_add_next_block({registration_txs});
+  }
+
+  fork.add_event_msg("Add blocks until we get to the first height that has a checkpointing quorum AND there are service nodes in the quorum.");
+  int const MAX_TRIES = 16;
+  int tries           = 0;
+  for (; tries < MAX_TRIES; tries++)
+  {
+    fork.add_blocks_until_next_checkpointable_height();
+    std::shared_ptr<const service_nodes::quorum> quorum = fork.get_quorum(service_nodes::quorum_type::checkpointing, fork.height());
+    if (quorum && quorum->validators.size()) break;
+  }
+  assert(tries != MAX_TRIES);
+
+  fork.add_blocks_until_next_checkpointable_height();
+  fork.add_service_node_checkpoint(fork.height(), service_nodes::CHECKPOINT_MIN_VOTES);
+
+  fork.add_blocks_until_next_checkpointable_height();
+  fork.add_service_node_checkpoint(fork.height(), service_nodes::CHECKPOINT_MIN_VOTES);
+
+  crypto::hash const fork_top_hash = cryptonote::get_block_hash(fork.top().block);
+  loki_register_callback(events, "check_reorganized_to_pulse_chain_with_checkpoints", [fork_top_hash](cryptonote::core &c, size_t ev_index)
+  {
+    DEFINE_TESTS_ERROR_CONTEXT("check_reorganized_to_pulse_chain_with_checkpoints");
+    uint64_t top_height;
+    crypto::hash top_hash;
+    c.get_blockchain_top(top_height, top_hash);
+    CHECK_EQ(fork_top_hash, top_hash);
+    return true;
+  });
   return true;
 }

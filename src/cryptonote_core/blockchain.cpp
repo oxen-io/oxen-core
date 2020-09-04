@@ -1908,11 +1908,13 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
     return false;
   }
 
+  bool const pulse_block      = cryptonote::block_has_pulse_components(b);
+  std::string_view block_type = pulse_block ? "PULSE"sv : "MINER"sv;
 
   // NOTE: Check proof of work
   block_pow_verified blk_pow         = {};
   difficulty_type const current_diff = get_difficulty_for_alternative_chain(alt_chain, blk_height);
-  if (b.major_version >= cryptonote::network_version_16)
+  if (pulse_block)
   {
     // NOTE: Pulse blocks don't use PoW. They use Service Node signatures.
     // Delay signature verification until Service Node List adds the block in
@@ -2011,11 +2013,6 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
     }
   }
 
-  difficulty_type const main_chain_cumulative_difficulty = m_db->get_block_cumulative_difficulty(m_db->height() - 1);
-  bool alt_chain_has_greater_pow       = alt_data.cumulative_difficulty > main_chain_cumulative_difficulty;
-  bool alt_chain_has_more_checkpoints  = (num_checkpoints_on_alt_chain > num_checkpoints_on_chain);
-  bool alt_chain_has_equal_checkpoints = (num_checkpoints_on_alt_chain == num_checkpoints_on_chain);
-
   // NOTE: Execute Alt Block Hooks
   {
     std::vector<transaction> txs;
@@ -2026,6 +2023,28 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
       return false;
     }
 
+    // NOTE: Foreign blocks will not necessarily have TX's stored in the main-db
+    // (because they are not part of the main chain) but instead sitting in the
+    // mempool.
+    for (crypto::hash const &missed_tx : missed)
+    {
+      cryptonote::blobdata blob;
+      if (!m_tx_pool.get_transaction(missed_tx, blob))
+      {
+        MERROR_VER("Alternative block references unknown TX, rejected alt block " << blk_height << " " << id);
+        return false;
+      }
+
+      transaction tx;
+      if (!parse_and_validate_tx_from_blob(blob, tx))
+      {
+        MERROR_VER("Failed to parse block blob from tx pool when querying the missed transactions in block " << blk_height << " " << id);
+        return false;
+      }
+
+      txs.push_back(tx);
+    }
+
     for (AltBlockAddedHook *hook : m_alt_block_added_hooks)
     {
       if (!hook->alt_block_added(b, txs, checkpoint))
@@ -2033,22 +2052,13 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
     }
   }
 
-  if (b.major_version >= network_version_13_enforce_checkpoints)
-  {
-    if (alt_chain_has_more_checkpoints || (alt_chain_has_greater_pow && alt_chain_has_equal_checkpoints))
-    {
-      bool keep_alt_chain = false;
-      if (alt_chain_has_more_checkpoints)
-      {
-        MGINFO_GREEN("###### REORGANIZE on height: " << alt_chain.front().height << " of " << m_db->height() - 1 << ", checkpoint is found in alternative chain on height " << blk_height);
-      }
-      else
-      {
-        keep_alt_chain = true;
-        MGINFO_GREEN("###### REORGANIZE on height: " << alt_chain.front().height << " of " << m_db->height() - 1 << " with cum_difficulty " << m_db->get_block_cumulative_difficulty(m_db->height() - 1) << std::endl << " alternative blockchain size: " << alt_chain.size() << " with cum_difficulty " << alt_data.cumulative_difficulty);
-      }
+  bool const alt_chain_has_more_checkpoints = (num_checkpoints_on_alt_chain > num_checkpoints_on_chain);
 
-      bool r = switch_to_alternative_blockchain(alt_chain, keep_alt_chain);
+  if (b.major_version >= cryptonote::network_version_16)
+  {
+    if (alt_chain_has_more_checkpoints)
+    {
+      bool r = switch_to_alternative_blockchain(alt_chain, false /*keep_alt_chain*/);
       if (r)
         bvc.m_added_to_main_chain = true;
       else
@@ -2057,26 +2067,61 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
     }
     else
     {
-      MGINFO_BLUE("----- BLOCK ADDED AS ALTERNATIVE ON HEIGHT " << blk_height << std::endl << "id:\t" << id << std::endl << "PoW:\t" << blk_pow.proof_of_work << std::endl << "difficulty:\t" << current_diff);
+      MGINFO_BLUE("----- " << block_type << " BLOCK ADDED AS ALTERNATIVE ON HEIGHT " << blk_height << std::endl << "id:\t" << id << std::endl << "PoW:\t" << blk_pow.proof_of_work << std::endl << "difficulty:\t" << current_diff);
       return true;
     }
   }
   else
   {
-    if (alt_chain_has_greater_pow)
+    difficulty_type const main_chain_cumulative_difficulty = m_db->get_block_cumulative_difficulty(m_db->height() - 1);
+    bool const alt_chain_has_equal_checkpoints = (num_checkpoints_on_alt_chain == num_checkpoints_on_chain);
+    bool const alt_chain_has_greater_pow       = alt_data.cumulative_difficulty > main_chain_cumulative_difficulty;
+
+    if (b.major_version >= network_version_13_enforce_checkpoints)
     {
-      MGINFO_GREEN("###### REORGANIZE on height: " << alt_chain.front().height << " of " << m_db->height() - 1 << " with cum_difficulty " << m_db->get_block_cumulative_difficulty(m_db->height() - 1) << std::endl << " alternative blockchain size: " << alt_chain.size() << " with cum_difficulty " << alt_data.cumulative_difficulty);
-      bool r = switch_to_alternative_blockchain(alt_chain, true);
-      if (r)
-        bvc.m_added_to_main_chain = true;
+      if (alt_chain_has_more_checkpoints || (alt_chain_has_greater_pow && alt_chain_has_equal_checkpoints))
+      {
+        bool keep_alt_chain = false;
+        if (alt_chain_has_more_checkpoints)
+        {
+          MGINFO_GREEN("###### REORGANIZE on height: " << alt_chain.front().height << " of " << m_db->height() - 1 << ", checkpoint is found in alternative chain on height " << blk_height);
+        }
+        else
+        {
+          keep_alt_chain = true;
+          MGINFO_GREEN("###### REORGANIZE on height: " << alt_chain.front().height << " of " << m_db->height() - 1 << " with cum_difficulty " << m_db->get_block_cumulative_difficulty(m_db->height() - 1) << std::endl << " alternative blockchain size: " << alt_chain.size() << " with cum_difficulty " << alt_data.cumulative_difficulty);
+        }
+
+        bool r = switch_to_alternative_blockchain(alt_chain, keep_alt_chain);
+        if (r)
+          bvc.m_added_to_main_chain = true;
+        else
+          bvc.m_verifivation_failed = true;
+        return r;
+      }
       else
-        bvc.m_verifivation_failed = true;
-      return r;
+      {
+        MGINFO_BLUE("----- " << block_type << " BLOCK ADDED AS ALTERNATIVE ON HEIGHT " << blk_height << std::endl << "id:\t" << id << std::endl << "PoW:\t" << blk_pow.proof_of_work << std::endl << "difficulty:\t" << current_diff);
+        return true;
+      }
     }
     else
     {
-      MGINFO_BLUE("----- BLOCK ADDED AS ALTERNATIVE ON HEIGHT " << blk_height << std::endl << "id:\t" << id << std::endl << "PoW:\t" << blk_pow.proof_of_work << std::endl << "difficulty:\t" << current_diff);
-      return true;
+      if (alt_chain_has_greater_pow)
+      {
+        MGINFO_GREEN("###### REORGANIZE on height: " << alt_chain.front().height << " of " << m_db->height() - 1 << " with cum_difficulty " << m_db->get_block_cumulative_difficulty(m_db->height() - 1) << std::endl << " alternative blockchain size: " << alt_chain.size() << " with cum_difficulty " << alt_data.cumulative_difficulty);
+        bool r = switch_to_alternative_blockchain(alt_chain, true);
+        if (r)
+          bvc.m_added_to_main_chain = true;
+        else
+          bvc.m_verifivation_failed = true;
+        return r;
+      }
+      else
+      {
+        MGINFO_BLUE("----- " << block_type << " BLOCK ADDED AS ALTERNATIVE ON HEIGHT " << blk_height << std::endl << "id:\t" << id << std::endl << "PoW:\t" << blk_pow.proof_of_work << std::endl << "difficulty:\t" << current_diff);
+        return true;
+      }
     }
   }
 

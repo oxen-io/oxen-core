@@ -643,7 +643,17 @@ namespace service_nodes
       std::string &cmd,
       bool make_friendly);
 
-  service_nodes::quorum generate_pulse_quorum(cryptonote::network_type nettype, cryptonote::BlockchainDB const &db, uint64_t height, crypto::public_key const &leader, uint8_t hf_version, std::vector<pubkey_and_sninfo> const &active_snode_list, uint8_t pulse_round);
+  service_nodes::quorum generate_pulse_quorum(cryptonote::network_type nettype,
+                                              crypto::public_key const &leader,
+                                              uint8_t hf_version,
+                                              std::vector<pubkey_and_sninfo> const &active_snode_list,
+                                              std::vector<crypto::hash> const &pulse_entropy,
+                                              uint8_t pulse_round);
+
+  // The pulse entropy is generated for the next block after the top_block passed in.
+  std::vector<crypto::hash> get_pulse_entropy_for_next_block(cryptonote::BlockchainDB const &db, cryptonote::block const &top_block, uint8_t pulse_round);
+  std::vector<crypto::hash> get_pulse_entropy_for_next_block(cryptonote::BlockchainDB const &db, crypto::hash const &top_hash, uint8_t pulse_round);
+
   payout service_node_info_to_payout(crypto::public_key const &key, service_node_info const &info);
 
   const static payout_entry null_payout_entry = {cryptonote::null_address, STAKING_PORTIONS};

@@ -157,6 +157,7 @@ int main(int argc, char* argv[])
     GENERATE_AND_PLAY(loki_pulse_reject_miner_block);
     GENERATE_AND_PLAY(loki_pulse_generate_blocks);
     GENERATE_AND_PLAY(loki_pulse_fallback_to_pow_and_back);
+    GENERATE_AND_PLAY(loki_pulse_chain_split);
 
     // NOTE: Monero Tests
     GENERATE_AND_PLAY(gen_simple_chain_001);

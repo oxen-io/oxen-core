@@ -96,5 +96,6 @@ struct timings
 };
 
 bool get_round_timings(cryptonote::Blockchain const &blockchain, uint64_t height, timings &times);
+bool get_round_timings_for_block(cryptonote::Blockchain const &blockchain, cryptonote::block const &block, pulse::timings &times);
 
 } // namespace pulse

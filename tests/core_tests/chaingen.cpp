@@ -86,10 +86,18 @@ loki_generate_sequential_hard_fork_table(uint8_t max_hf_version)
   return result;
 }
 
+uint64_t loki_chain_generator_db::get_block_height(crypto::hash const &hash) const
+{
+  loki_blockchain_entry const &entry = this->block_table.at(hash);
+  uint64_t result                    = cryptonote::get_block_height(entry.block);
+  return result;
+}
+
 cryptonote::block loki_chain_generator_db::get_block_from_height(uint64_t height) const
 {
   assert(height < blocks.size());
-  cryptonote::block result = this->blocks[height].block;
+  cryptonote::block const &result = this->blocks[height].block;
+  assert(cryptonote::get_block_height(result) == height);
   return result;
 }
 
@@ -823,7 +831,8 @@ bool loki_chain_generator::block_begin(loki_blockchain_entry &entry, loki_create
       blk.pulse.random_value.data[i] = static_cast<char>(tools::uniform_distribution_portable(tools::rng, 256));
 
     // NOTE: Get Pulse Quorum necessary for this block
-    pulse_quorum = generate_pulse_quorum(cryptonote::FAKECHAIN, db_, height + 1, params.block_leader.key, blk.major_version, active_snode_list, blk.pulse.round);
+    std::vector<crypto::hash> entropy = service_nodes::get_pulse_entropy_for_next_block(db_, params.prev.block, blk.pulse.round);
+    pulse_quorum = service_nodes::generate_pulse_quorum(cryptonote::FAKECHAIN, params.block_leader.key, blk.major_version, active_snode_list, entropy, blk.pulse.round);
     assert(pulse_quorum.validators.size() == service_nodes::PULSE_QUORUM_NUM_VALIDATORS);
     assert(pulse_quorum.workers.size() == 1);
 

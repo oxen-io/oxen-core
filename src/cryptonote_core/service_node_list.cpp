@@ -1405,7 +1405,7 @@ namespace service_nodes
       else
       {
         if (log_errors)
-          MGINFO("Pulse " << block_type << "failed quorum verification" << dump_pulse_block_data(block, pulse_quorum.get()));
+          MGINFO("Pulse " << block_type << "failed quorum verification\n" << dump_pulse_block_data(block, pulse_quorum.get()));
       }
 
       return quorum_verified;
@@ -1460,13 +1460,12 @@ namespace service_nodes
     uint64_t height        = cryptonote::get_block_height(block);
     if (block.major_version >= cryptonote::network_version_16)
     {
-      if (!pulse::get_round_timings(m_blockchain, height, timings))
+      if (!pulse::get_round_timings_for_block(m_blockchain, block, timings))
       {
         MGINFO("Failed to query the block data for Pulse timings to validate incoming " << block_type << "at height " << height);
         return false;
       }
     }
-
 
     //
     // NOTE: Load Pulse Quorums
@@ -1598,57 +1597,16 @@ namespace service_nodes
     return result;
   }
 
-  static bool get_pulse_entropy_from_blockchain(cryptonote::BlockchainDB const &db, uint64_t for_height, std::vector<crypto::hash> &entropy, uint8_t pulse_round)
+  template <typename It>
+  static std::vector<crypto::hash> make_pulse_entropy_from_blocks(It begin, It end, uint8_t pulse_round)
   {
-    uint64_t start_height = for_height - PULSE_QUORUM_ENTROPY_LAG;
-    uint64_t end_height   = start_height + PULSE_QUORUM_SIZE;
-    std::vector<cryptonote::block> blocks;
+    std::vector<crypto::hash> result;
+    result.reserve(std::distance(begin, end));
 
-    try
+    for (auto it = begin; it != end; it++)
     {
-      const bool DEVELOPER_MODE = true;
-      if (for_height < PULSE_QUORUM_ENTROPY_LAG)
-      {
-        if (DEVELOPER_MODE)
-        {
-          entropy.resize(PULSE_QUORUM_SIZE);
-          for (size_t i = 0; i < PULSE_QUORUM_SIZE; i++)
-          {
-            if (i == 0) entropy[i]       = crypto::hash{"\x87\x28\x89\xe2\xe3\x63\xc7\x7d\xb6\x38\xbd\xa3\xa2\x00\x57\x2f\x3a\x01\x2d\x8a\xd1\x2c\xb6\xab\x00\x55\x6b\x60\xda\x25\xca"};
-            else if (i == 1) entropy[i]  = crypto::hash{"\x27\xca\xab\x1e\xcf\x33\xa7\x49\x88\xba\x17\xb0\x28\xa4\x19\x76\x84\x7f\x71\xa7\xeb\x38\xb1\x16\x10\xa0\xe3\x89\xa3\xd7\xa6"};
-            else if (i == 2) entropy[i]  = crypto::hash{"\x61\xc6\x37\x25\x58\x50\x7f\x11\x12\x8f\x79\xa7\x2c\xdb\x89\xdb\x43\x15\xe9\xd8\x28\x19\xe2\x68\xeb\x31\xb5\xad\x10\xf4\xb6"};
-            else if (i == 3) entropy[i]  = crypto::hash{"\x85\x7a\xb6\xf4\x4b\x87\xff\xa4\x2e\x7f\x38\xb1\x18\xa3\xfa\xef\xa6\xea\xad\x23\xcf\xbd\x29\xf4\x31\x51\xb5\xa4\xf7\x9d\x37"};
-            else if (i == 4) entropy[i]  = crypto::hash{"\x8a\x32\x67\xfc\xfe\xb5\xe7\x0c\x46\xea\x15\x2d\xd9\xf0\xc5\xbf\xd6\x34\x52\xeb\x2f\x57\xd3\x00\xef\x3d\x5f\xc1\x1e\x19\x4d"};
-            else if (i == 5) entropy[i]  = crypto::hash{"\xef\xd0\x45\xac\x06\x35\x3a\x36\xd4\xd5\xdb\xd9\x40\x31\xb7\x7b\x73\x87\x71\x43\x58\x13\x33\xa1\xa1\x59\xde\x13\x3f\x1b\xc1"};
-            else if (i == 6) entropy[i]  = crypto::hash{"\xa6\x83\x32\x9a\x70\x69\x55\x78\x1a\x25\x13\x9e\x60\x1e\x71\x31\x2a\x04\x89\xe0\xfe\x47\x5b\x14\x90\xc5\x58\x88\x2a\x90\x86"};
-            else if (i == 7) entropy[i]  = crypto::hash{"\x3b\x77\xff\x72\x0d\x22\x12\xb9\xb1\x64\x0d\xef\x2f\x80\x4a\x64\x5d\xdc\xba\xa0\x1f\xf7\x4d\xbc\xd4\x1d\xe8\xea\x6c\x3f\xbd"};
-            else if (i == 8) entropy[i]  = crypto::hash{"\x8c\x81\x6c\x77\xf0\x62\x55\xff\x38\xec\x57\x22\x62\x2e\x49\xd4\x44\x5a\xe3\x02\x27\xb6\xb3\xe4\x3c\xc7\x9f\xb8\xc5\x90\xa1"};
-            else if (i == 9) entropy[i]  = crypto::hash{"\x18\x8e\x4f\xb5\x99\x74\xec\x78\xf9\x7b\x36\x87\x14\x82\x05\x32\x07\xf3\x21\x21\x6d\x8e\xfd\x35\xe6\x70\xa3\x89\x17\x22\x4b"};
-            else if (i == 10) entropy[i] = crypto::hash{"\xb7\xbe\x54\xe3\x21\xe3\xeb\x88\xda\xab\xf1\xf7\x50\xb9\xef\x98\xa5\xcf\x9f\x75\x81\x74\x16\xbc\x85\x78\x6e\x0c\xaa\x14\x99"};
-            else if (i == 11) entropy[i] = crypto::hash{"\xb7\x28\x54\xe3\x21\xe3\xeb\x88\xda\x12\xf1\xf7\x50\xb9\xca\x98\xa5\xcf\x9f\x75\x81\x74\x16\xbc\x85\x78\x6e\x0c\xaa\x14\x99"};
-            else assert(!"insufficient hashes");
-          }
-        }
-        else
-        {
-          return false;
-        }
-      }
-      else
-      {
-        blocks = db.get_blocks_range(start_height, end_height - 1 /*it is inclusive*/);
-      }
-    }
-    catch(std::exception const &e)
-    {
-      MERROR("Failed to get quorum entropy for Pulse, starting from block: " << start_height << ", reason: " << e.what());
-      return false;
-    }
-
-    entropy.reserve(blocks.size());
-    for (cryptonote::block const &block : blocks)
-    {
-      crypto::hash hash = {};
+      cryptonote::block const &block = *it;
+      crypto::hash hash              = {};
       if (block.major_version >= cryptonote::network_version_16 &&
           cryptonote::block_has_pulse_components(block))
       {
@@ -1665,17 +1623,98 @@ namespace service_nodes
       }
 
       assert(hash != crypto::null_hash);
-      entropy.push_back(hash);
+      result.push_back(hash);
+    }
+
+    return result;
+  }
+
+  static bool find_block_in_db(cryptonote::BlockchainDB const &db, crypto::hash const &hash, cryptonote::block &block)
+  {
+    try
+    {
+      block = db.get_block(hash);
+    }
+    catch(std::exception const &e)
+    {
+      // ignore not found block, try alt db
+      cryptonote::alt_block_data_t alt_data;
+      cryptonote::blobdata blob;
+      if (!db.get_alt_block(hash, &alt_data, &blob, nullptr))
+      {
+        MERROR("Failed to find block " << hash);
+        return false;
+      }
+
+      if (!cryptonote::parse_and_validate_block_from_blob(blob, block, nullptr))
+        return false;
     }
 
     return true;
   }
 
-  service_nodes::quorum generate_pulse_quorum(cryptonote::network_type nettype, cryptonote::BlockchainDB const &db, uint64_t height, crypto::public_key const &block_leader, uint8_t hf_version, std::vector<pubkey_and_sninfo> const &active_snode_list, uint8_t pulse_round)
+  std::vector<crypto::hash> get_pulse_entropy_for_next_block(cryptonote::BlockchainDB const &db,
+                                                             cryptonote::block const &top_block,
+                                                             uint8_t pulse_round)
   {
-    std::vector<crypto::hash> pulse_entropy;
-    get_pulse_entropy_from_blockchain(db, height + 1, pulse_entropy, pulse_round);
+    uint64_t const top_height = cryptonote::get_block_height(top_block);
+    if (top_height < PULSE_QUORUM_ENTROPY_LAG)
+    {
+      MERROR("Insufficient blocks to get quorum entropy for Pulse, height is " << top_height << ", we need " << PULSE_QUORUM_ENTROPY_LAG << " blocks.");
+      return {};
+    }
 
+    uint64_t const start_height = top_height - PULSE_QUORUM_ENTROPY_LAG;
+    uint64_t const end_height   = start_height + PULSE_QUORUM_SIZE;
+
+    std::vector<cryptonote::block> blocks;
+    blocks.reserve(PULSE_QUORUM_SIZE);
+
+    // NOTE: Go backwards from the block and retrieve the blocks for entropy.
+    // We search by block so that this function handles alternatives blocks as
+    // well as mainchain blocks.
+    crypto::hash prev_hash = top_block.prev_id;
+    uint64_t prev_height   = top_height;
+    while (prev_height > start_height)
+    {
+      cryptonote::block block;
+      if (!find_block_in_db(db, prev_hash, block))
+      {
+        MERROR("Failed to get quorum entropy for Pulse, block at " << prev_height << prev_hash);
+        return {};
+      }
+
+      prev_hash = block.prev_id;
+      if (prev_height >= start_height && prev_height <= end_height)
+        blocks.push_back(block);
+
+      prev_height--;
+    }
+
+    return make_pulse_entropy_from_blocks(blocks.rbegin(), blocks.rend(), pulse_round);
+  }
+
+  std::vector<crypto::hash> get_pulse_entropy_for_next_block(cryptonote::BlockchainDB const &db,
+                                                             crypto::hash const &top_hash,
+                                                             uint8_t pulse_round)
+  {
+    cryptonote::block top_block;
+    if (!find_block_in_db(db, top_hash, top_block))
+    {
+      MERROR("Failed to get quorum entropy for Pulse, next block parent " << top_hash);
+      return {};
+    }
+
+    return get_pulse_entropy_for_next_block(db, top_block, pulse_round);
+  }
+
+  service_nodes::quorum generate_pulse_quorum(cryptonote::network_type nettype,
+                                              crypto::public_key const &block_leader,
+                                              uint8_t hf_version,
+                                              std::vector<pubkey_and_sninfo> const &active_snode_list,
+                                              std::vector<crypto::hash> const &pulse_entropy,
+                                              uint8_t pulse_round)
+  {
     service_nodes::quorum result = {};
     if (active_snode_list.size() < pulse_min_service_nodes(nettype))
     {
@@ -1891,7 +1930,8 @@ namespace service_nodes
     crypto::public_key winner_pubkey = cryptonote::get_service_node_winner_from_tx_extra(block.miner_tx.extra);
     if (hf_version >= cryptonote::network_version_16)
     {
-      quorum pulse_quorum = generate_pulse_quorum(nettype, db, height + 1, winner_pubkey, hf_version, active_service_nodes_infos(), block.pulse.round);
+      std::vector<crypto::hash> entropy = get_pulse_entropy_for_next_block(db, block.prev_id, block.pulse.round);
+      quorum pulse_quorum = generate_pulse_quorum(nettype, winner_pubkey, hf_version, active_service_nodes_infos(), entropy, block.pulse.round);
       if (verify_pulse_quorum_sizes(pulse_quorum))
       {
         // NOTE: Send candidate to the back of the list
@@ -2301,7 +2341,8 @@ namespace service_nodes
     //
     if (cryptonote::block_has_pulse_components(block))
     {
-      quorum pulse_quorum = generate_pulse_quorum(m_blockchain.nettype(), m_blockchain.get_db(), height + 1, block_leader.key, hf_version, m_state.active_service_nodes_infos(), block.pulse.round);
+      std::vector<crypto::hash> entropy = get_pulse_entropy_for_next_block(m_blockchain.get_db(), block.prev_id, block.pulse.round);
+      quorum pulse_quorum = generate_pulse_quorum(m_blockchain.nettype(), block_leader.key, hf_version, m_state.active_service_nodes_infos(), entropy, block.pulse.round);
       if (!verify_pulse_quorum_sizes(pulse_quorum))
       {
         MGINFO_RED("Pulse block received but Pulse has insufficient nodes for quorum, block hash " << cryptonote::get_block_hash(block) << ", height " << height);
