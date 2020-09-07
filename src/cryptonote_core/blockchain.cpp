@@ -1518,7 +1518,7 @@ bool Blockchain::create_block_template_internal(block& b, const crypto::hash *fr
       && m_btc_pool_cookie == m_tx_pool.cookie() && m_btc.prev_id == get_tail_id()) {
       MDEBUG("Using cached template");
       const uint64_t now = time(NULL);
-      if (m_btc.timestamp < now) // ensures it can't get below the median of the last few blocks
+      if (m_btc.timestamp < now /*ensures it can't get below the median of the last few blocks*/ || !info.is_miner)
         m_btc.timestamp = now;
       b = m_btc;
       diffic = m_btc_difficulty;

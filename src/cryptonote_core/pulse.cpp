@@ -668,12 +668,15 @@ void pulse::handle_message(void *quorumnet_state, pulse::message const &msg)
     cryptonote::quorumnet_pulse_relay_message_to_quorum(quorumnet_state, msg, context.prepare_for_round.quorum, context.prepare_for_round.participant == sn_type::producer);
 }
 
-bool pulse::get_round_timings_for_block(cryptonote::Blockchain const &blockchain, cryptonote::block const &block, pulse::timings &times)
+bool pulse::get_round_timings(cryptonote::Blockchain const &blockchain, uint64_t height, pulse::timings &times)
 {
   times = {};
+  std::vector<cryptonote::block> blocks;
+  if (!blockchain.get_blocks_only(height - 1, 1, blocks, nullptr))
+    return false;
 
-  crypto::hash top_hash              = cryptonote::get_block_hash(block);
-  cryptonote::block const &top_block = block;
+  cryptonote::block const &top_block = blocks[0];
+  crypto::hash top_hash              = cryptonote::get_block_hash(top_block);
 
   static uint64_t const hf16_height = blockchain.get_earliest_ideal_height_for_version(cryptonote::network_version_16);
   if (hf16_height == std::numeric_limits<uint64_t>::max())
@@ -684,14 +687,14 @@ bool pulse::get_round_timings_for_block(cryptonote::Blockchain const &blockchain
   if (bool orphaned = false; !blockchain.get_block_by_hash(genesis_hash, genesis_block, &orphaned) || orphaned)
     return false;
 
-#if 1
-  uint64_t const delta_height = (cryptonote::get_block_height(block) + 1) - cryptonote::get_block_height(genesis_block);
+  uint64_t const delta_height = (cryptonote::get_block_height(top_block) + 1) - cryptonote::get_block_height(genesis_block);
   times.genesis_timestamp     = pulse::time_point(std::chrono::seconds(genesis_block.timestamp));
 
-  times.prev_hash      = top_hash;
-  times.prev_timestamp = pulse::time_point(std::chrono::seconds(top_block.timestamp));
-
+  times.prev_hash       = top_hash;
+  times.prev_timestamp  = pulse::time_point(std::chrono::seconds(top_block.timestamp));
   times.ideal_timestamp = pulse::time_point(times.genesis_timestamp + (TARGET_BLOCK_TIME * delta_height));
+
+#if 1
   times.r0_timestamp    = std::clamp(times.ideal_timestamp,
                                   times.prev_timestamp + service_nodes::PULSE_MIN_TARGET_BLOCK_TIME,
                                   times.prev_timestamp + service_nodes::PULSE_MAX_TARGET_BLOCK_TIME);
@@ -699,19 +702,8 @@ bool pulse::get_round_timings_for_block(cryptonote::Blockchain const &blockchain
   times.r0_timestamp = times.prev_timestamp + service_nodes::PULSE_ROUND_TIME;
 #endif
 
-  times.miner_fallback_timestamp = times.r0_timestamp + (service_nodes::PULSE_ROUND_TIME * 256);
-
+  times.miner_fallback_timestamp = times.r0_timestamp + (service_nodes::PULSE_ROUND_TIME * 255);
   return true;
-}
-
-bool pulse::get_round_timings(cryptonote::Blockchain const &blockchain, uint64_t height, pulse::timings &times)
-{
-  times = {};
-  std::vector<cryptonote::block> blocks;
-  if (!blockchain.get_blocks_only(height - 1, 1, blocks, nullptr))
-    return false;
-
-  return get_round_timings_for_block(blockchain, blocks[0], times);
 }
 
 /*

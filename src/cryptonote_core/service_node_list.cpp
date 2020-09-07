@@ -1460,7 +1460,7 @@ namespace service_nodes
     uint64_t height        = cryptonote::get_block_height(block);
     if (block.major_version >= cryptonote::network_version_16)
     {
-      if (!pulse::get_round_timings_for_block(m_blockchain, block, timings))
+      if (!pulse::get_round_timings(m_blockchain, height, timings))
       {
         MGINFO("Failed to query the block data for Pulse timings to validate incoming " << block_type << "at height " << height);
         return false;
