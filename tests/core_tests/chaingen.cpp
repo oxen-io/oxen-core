@@ -283,17 +283,22 @@ void loki_chain_generator::add_n_blocks(int n)
   }
 }
 
-void loki_chain_generator::add_blocks_until_next_checkpointable_height()
+bool loki_chain_generator::add_blocks_until_next_checkpointable_height()
 {
-  if (height() % service_nodes::CHECKPOINT_INTERVAL == 0)
+  if (top().service_node_state.active_service_nodes_infos().size() < service_nodes::CHECKPOINT_QUORUM_SIZE)
+    return false;
+
+  // NOTE: Add blocks until we get to the first height that has a checkpointing
+  // quorum AND there are service nodes in the quorum. Note we do this naiively
+  // as tests shouldn't have to care about implementation details.
+  for (;;)
   {
-      add_n_blocks(service_nodes::CHECKPOINT_INTERVAL);
+    create_and_add_next_block();
+    std::shared_ptr<const service_nodes::quorum> quorum = get_quorum(service_nodes::quorum_type::checkpointing, height());
+    if (quorum && quorum->validators.size()) break;
   }
-  else
-  {
-    while (height() % service_nodes::CHECKPOINT_INTERVAL != 0)
-      create_and_add_next_block();
-  }
+
+  return true;
 }
 
 void loki_chain_generator::add_service_node_checkpoint(uint64_t block_height, size_t num_votes)
@@ -533,7 +538,6 @@ cryptonote::transaction loki_chain_generator::create_state_change_tx(service_nod
 
 cryptonote::checkpoint_t loki_chain_generator::create_service_node_checkpoint(uint64_t block_height, size_t num_votes) const
 {
-  assert(block_height % service_nodes::CHECKPOINT_INTERVAL == 0);
   service_nodes::quorum const &quorum = *get_quorum(service_nodes::quorum_type::checkpointing, block_height);
   assert(num_votes < quorum.validators.size());
 

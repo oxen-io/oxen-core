@@ -1436,7 +1436,7 @@ struct loki_chain_generator
   loki_blockchain_entry                               &add_block(loki_blockchain_entry const &entry, bool can_be_added_to_blockchain = true, std::string const &fail_msg = {});
   void                                                 add_blocks_until_version(uint8_t hf_version);
   void                                                 add_n_blocks(int n);
-  void                                                 add_blocks_until_next_checkpointable_height();
+  bool                                                 add_blocks_until_next_checkpointable_height();
   void                                                 add_service_node_checkpoint(uint64_t block_height, size_t num_votes);
   void                                                 add_mined_money_unlock_blocks(); // NOTE: Unlock all Loki generated from mining prior to this call i.e. CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW
 
