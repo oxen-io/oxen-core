@@ -37,6 +37,14 @@ extern "C"
 #include <sodium.h>
 };
 
+static void add_service_nodes(loki_chain_generator &gen, size_t count)
+{
+  std::vector<cryptonote::transaction> registration_txs(count);
+  for (auto i = 0u; i < count; ++i)
+    registration_txs[i] = gen.create_and_add_registration_tx(gen.first_miner());
+  gen.create_and_add_next_block(registration_txs);
+}
+
 #undef LOKI_DEFAULT_LOG_CATEGORY
 #define LOKI_DEFAULT_LOG_CATEGORY "sn_core_tests"
 
@@ -59,12 +67,7 @@ bool loki_checkpointing_alt_chain_handle_alt_blocks_at_tip::generate(std::vector
 
   gen.add_blocks_until_version(hard_forks.back().first);
   gen.add_mined_money_unlock_blocks();
-
-  int constexpr NUM_SERVICE_NODES = service_nodes::CHECKPOINT_QUORUM_SIZE;
-  std::vector<cryptonote::transaction> registration_txs(NUM_SERVICE_NODES);
-  for (auto i = 0u; i < NUM_SERVICE_NODES; ++i)
-    registration_txs[i] = gen.create_and_add_registration_tx(gen.first_miner());
-  gen.create_and_add_next_block(registration_txs);
+  add_service_nodes(gen, service_nodes::CHECKPOINT_QUORUM_SIZE);
 
   // NOTE: Create next block on checkpoint boundary and add checkpoiont
 
@@ -262,12 +265,8 @@ bool loki_checkpointing_alt_chain_with_increasing_service_node_checkpoints::gene
 
   gen.add_blocks_until_version(hard_forks.back().first);
   gen.add_mined_money_unlock_blocks();
+  add_service_nodes(gen, service_nodes::CHECKPOINT_QUORUM_SIZE);
 
-  int constexpr NUM_SERVICE_NODES = service_nodes::CHECKPOINT_QUORUM_SIZE;
-  std::vector<cryptonote::transaction> registration_txs(NUM_SERVICE_NODES);
-  for (auto i = 0u; i < NUM_SERVICE_NODES; ++i)
-    registration_txs[i] = gen.create_and_add_registration_tx(gen.first_miner());
-  gen.create_and_add_next_block(registration_txs);
   gen.add_blocks_until_next_checkpointable_height();
 
   // Setup the two chains as follows, where C = checkpointed block, B = normal
@@ -326,13 +325,7 @@ bool loki_checkpointing_service_node_checkpoint_from_votes::generate(std::vector
 
   gen.add_blocks_until_version(hard_forks.back().first);
   gen.add_mined_money_unlock_blocks();
-
-  int constexpr NUM_SERVICE_NODES = service_nodes::CHECKPOINT_QUORUM_SIZE;
-  std::vector<cryptonote::transaction> registration_txs(NUM_SERVICE_NODES);
-  for (auto i = 0u; i < NUM_SERVICE_NODES; ++i)
-    registration_txs[i] = gen.create_and_add_registration_tx(gen.first_miner());
-  gen.create_and_add_next_block(registration_txs);
-
+  add_service_nodes(gen, service_nodes::CHECKPOINT_QUORUM_SIZE);
 
   // NOTE: Generate service node votes
   gen.add_blocks_until_next_checkpointable_height();
@@ -396,12 +389,7 @@ bool loki_checkpointing_service_node_checkpoints_check_reorg_windows::generate(s
 
   gen.add_blocks_until_version(hard_forks.back().first);
   gen.add_mined_money_unlock_blocks();
-
-  int constexpr NUM_SERVICE_NODES = service_nodes::CHECKPOINT_QUORUM_SIZE;
-  std::vector<cryptonote::transaction> registration_txs(NUM_SERVICE_NODES);
-  for (auto i = 0u; i < NUM_SERVICE_NODES; ++i)
-    registration_txs[i] = gen.create_and_add_registration_tx(gen.first_miner());
-  gen.create_and_add_next_block(registration_txs);
+  add_service_nodes(gen, service_nodes::CHECKPOINT_QUORUM_SIZE);
 
   // NOTE: Add blocks until we get to the first height that has a checkpointing quorum AND there are service nodes in the quorum.
   int const MAX_TRIES = 16;
@@ -717,15 +705,7 @@ bool loki_core_test_deregister_preferred::generate(std::vector<test_event_entry>
   gen.add_blocks_until_version(hard_forks.back().first);
   gen.add_n_blocks(60); /// give miner some outputs to spend and unlock them
   gen.add_mined_money_unlock_blocks();
-
-  std::vector<cryptonote::transaction> reg_txs; /// register 12 random service nodes
-  for (auto i = 0; i < 12; ++i)
-  {
-    const auto tx = gen.create_and_add_registration_tx(miner);
-    reg_txs.push_back(tx);
-  }
-
-  gen.create_and_add_next_block(reg_txs);
+  add_service_nodes(gen, 12);
 
   /// generate transactions to fill up txpool entirely
   for (auto i = 0u; i < 45; ++i) {
@@ -781,17 +761,7 @@ bool loki_core_test_deregister_safety_buffer::generate(std::vector<test_event_en
   gen.add_blocks_until_version(hard_forks.back().first);
   gen.add_n_blocks(40); /// give miner some outputs to spend and unlock them
   gen.add_mined_money_unlock_blocks();
-
-  std::vector<cryptonote::keypair> used_sn_keys; /// save generated keys here
-  std::vector<cryptonote::transaction> reg_txs; /// register 21 random service nodes
-
-  constexpr auto SERVICE_NODES_NEEDED = service_nodes::STATE_CHANGE_QUORUM_SIZE * 2 + 1;
-  for (auto i = 0u; i < SERVICE_NODES_NEEDED; ++i)
-  {
-    const auto tx = gen.create_and_add_registration_tx(miner);
-    reg_txs.push_back(tx);
-  }
-  gen.create_and_add_next_block({reg_txs});
+  add_service_nodes(gen, service_nodes::STATE_CHANGE_QUORUM_SIZE * 2 + 1);
 
   const auto height_a                      = gen.height();
   std::vector<crypto::public_key> quorum_a = gen.quorum(height_a).obligations->workers;
@@ -840,14 +810,7 @@ bool loki_core_test_deregister_too_old::generate(std::vector<test_event_entry>& 
   /// generate some outputs and unlock them
   gen.add_n_blocks(20);
   gen.add_mined_money_unlock_blocks();
- 
-  std::vector<cryptonote::transaction> reg_txs; /// register 11 service nodes (10 voters and 1 to test)
-  for (auto i = 0; i < 11; ++i)
-  {
-    const auto tx = gen.create_and_add_registration_tx(gen.first_miner());
-    reg_txs.push_back(tx);
-  }
-  gen.create_and_add_next_block(reg_txs);
+  add_service_nodes(gen, 11);
 
   const auto pk       = gen.top_quorum().obligations->workers[0];
   const auto dereg_tx = gen.create_and_add_state_change_tx(service_nodes::new_state::deregister, pk);
@@ -896,12 +859,7 @@ bool loki_core_test_deregister_on_split::generate(std::vector<test_event_entry> 
   gen.add_blocks_until_version(hard_forks.back().first);
   gen.add_mined_money_unlock_blocks();
  
-  size_t NUM_SERVICE_NODES = service_nodes::CHECKPOINT_QUORUM_SIZE + 1;
-  std::vector<cryptonote::transaction> reg_txs(NUM_SERVICE_NODES);
-  for (auto i = 0u; i < NUM_SERVICE_NODES; ++i)
-    reg_txs[i] = gen.create_and_add_registration_tx(gen.first_miner());
-
-  gen.create_and_add_next_block(reg_txs);
+  add_service_nodes(gen, service_nodes::CHECKPOINT_QUORUM_SIZE + 1);
   gen.create_and_add_next_block(); // Can't change service node state on the same height it was registered in
   auto fork = gen;
 
@@ -961,14 +919,7 @@ bool loki_core_test_state_change_ip_penalty_disallow_dupes::generate(std::vector
   gen.add_blocks_until_version(hard_forks.back().first);
   gen.add_mined_money_unlock_blocks();
 
-  std::vector<cryptonote::transaction> reg_txs;
-  for (auto i = 0u; i < service_nodes::STATE_CHANGE_QUORUM_SIZE + 1; ++i)
-  {
-    const auto tx = gen.create_and_add_registration_tx(gen.first_miner());
-    reg_txs.push_back(tx);
-  }
-
-  gen.create_and_add_next_block(reg_txs);
+  add_service_nodes(gen, service_nodes::STATE_CHANGE_QUORUM_SIZE + 1);
   gen.create_and_add_next_block(); // Can't change service node state on the same height it was registered in
 
   const auto pub_key                         = gen.top_quorum().obligations->workers[0];
@@ -2541,12 +2492,7 @@ bool loki_service_nodes_alt_quorums::generate(std::vector<test_event_entry>& eve
 
   gen.add_blocks_until_version(hard_forks.back().first);
   gen.add_mined_money_unlock_blocks();
-
-  int constexpr NUM_SERVICE_NODES = service_nodes::STATE_CHANGE_QUORUM_SIZE + 3;
-  std::vector<cryptonote::transaction> registration_txs(NUM_SERVICE_NODES);
-  for (auto i = 0u; i < NUM_SERVICE_NODES; ++i)
-    registration_txs[i] = gen.create_and_add_registration_tx(gen.first_miner());
-  gen.create_and_add_next_block(registration_txs);
+  add_service_nodes(gen, service_nodes::STATE_CHANGE_QUORUM_SIZE + 3);
 
   loki_chain_generator fork = gen;
   gen.create_and_add_next_block();
@@ -2594,11 +2540,7 @@ bool loki_service_nodes_checkpoint_quorum_size::generate(std::vector<test_event_
 
   gen.add_blocks_until_version(hard_forks.back().first);
   gen.add_mined_money_unlock_blocks();
-
-  std::vector<cryptonote::transaction> registration_txs(service_nodes::CHECKPOINT_QUORUM_SIZE - 1);
-  for (auto i = 0u; i < service_nodes::CHECKPOINT_QUORUM_SIZE - 1; ++i)
-    registration_txs[i] = gen.create_and_add_registration_tx(gen.first_miner());
-  gen.create_and_add_next_block(registration_txs);
+  add_service_nodes(gen, service_nodes::CHECKPOINT_QUORUM_SIZE - 1);
 
   for (int i = 0; i < 16; i++)
   {
@@ -2714,14 +2656,7 @@ bool loki_service_nodes_test_rollback::generate(std::vector<test_event_entry>& e
   gen.add_blocks_until_version(hard_forks.back().first);
   gen.add_n_blocks(20); /// generate some outputs and unlock them
   gen.add_mined_money_unlock_blocks();
-
-  std::vector<cryptonote::transaction> reg_txs;
-  for (auto i = 0; i < 11; ++i) /// register some service nodes
-  {
-    const auto tx = gen.create_and_add_registration_tx(gen.first_miner());
-    reg_txs.push_back(tx);
-  }
-  gen.create_and_add_next_block(reg_txs);
+  add_service_nodes(gen, 11);
 
   gen.add_n_blocks(5);   /// create a few blocks with active service nodes
   auto fork = gen;       /// chain split here
@@ -2804,14 +2739,7 @@ bool loki_service_nodes_test_swarms_basic::generate(std::vector<test_event_entry
   gen.add_mined_money_unlock_blocks();
 
   /// register some service nodes
-  std::vector<cryptonote::transaction> reg_txs;
-  for (auto i = 0u; i < INIT_SN_COUNT; ++i)
-  {
-    const auto tx = gen.create_and_add_registration_tx(gen.first_miner());
-    reg_txs.push_back(tx);
-  }
-
-  gen.create_and_add_next_block(reg_txs);
+  add_service_nodes(gen, INIT_SN_COUNT);
 
   /// create a few blocks with active service nodes
   gen.add_n_blocks(5);
@@ -3139,13 +3067,19 @@ bool loki_pulse_generate_blocks::generate(std::vector<test_event_entry> &events)
   gen.add_blocks_until_version(hard_forks.back().first);
   gen.add_mined_money_unlock_blocks();
 
-  int constexpr NUM_SERVICE_NODES = service_nodes::PULSE_QUORUM_SIZE + 1 /*leader*/;
-  std::vector<cryptonote::transaction> registration_txs(NUM_SERVICE_NODES);
-  for (auto i = 0u; i < NUM_SERVICE_NODES; ++i)
-    registration_txs[i] = gen.create_and_add_registration_tx(gen.first_miner());
+  add_service_nodes(gen, service_nodes::pulse_min_service_nodes(cryptonote::FAKECHAIN));
+  gen.add_n_blocks(40); // Chain genereator will generate blocks via Pulse quorums
 
-  gen.create_and_add_next_block({registration_txs});
-  gen.add_n_blocks(40);
+  loki_register_callback(events, "check_pulse_blocks", [](cryptonote::core &c, size_t ev_index)
+  {
+    DEFINE_TESTS_ERROR_CONTEXT("check_pulse_blocks");
+    uint64_t top_height;
+    crypto::hash top_hash;
+    c.get_blockchain_top(top_height, top_hash);
+    cryptonote::block top_block = c.get_blockchain_storage().get_db().get_block(top_hash);
+    CHECK_TEST_CONDITION(cryptonote::block_has_pulse_components(top_block));
+    return true;
+  });
   return true;
 }
 
@@ -3157,12 +3091,7 @@ bool loki_pulse_fallback_to_pow_and_back::generate(std::vector<test_event_entry>
   gen.add_blocks_until_version(hard_forks.back().first);
   gen.add_mined_money_unlock_blocks();
 
-  int constexpr NUM_SERVICE_NODES = service_nodes::pulse_min_service_nodes(cryptonote::FAKECHAIN);
-  std::vector<cryptonote::transaction> registration_txs(NUM_SERVICE_NODES);
-  for (auto i = 0u; i < NUM_SERVICE_NODES; ++i)
-    registration_txs[i] = gen.create_and_add_registration_tx(gen.first_miner());
-
-  gen.create_and_add_next_block({registration_txs});
+  add_service_nodes(gen, service_nodes::pulse_min_service_nodes(cryptonote::FAKECHAIN));
   gen.create_and_add_next_block();
 
   gen.add_event_msg("Deregister 1 node, we now have insufficient nodes for Pulse");
@@ -3208,15 +3137,9 @@ bool loki_pulse_chain_split::generate(std::vector<test_event_entry> &events)
 
   gen.add_blocks_until_version(hard_forks.back().first);
   gen.add_mined_money_unlock_blocks();
+  add_service_nodes(gen, std::max(service_nodes::pulse_min_service_nodes(cryptonote::FAKECHAIN), service_nodes::CHECKPOINT_QUORUM_SIZE));
 
-  int constexpr NUM_SERVICE_NODES = std::max(service_nodes::pulse_min_service_nodes(cryptonote::FAKECHAIN), service_nodes::CHECKPOINT_QUORUM_SIZE);
-  std::vector<cryptonote::transaction> registration_txs(NUM_SERVICE_NODES);
-  for (auto i = 0u; i < NUM_SERVICE_NODES; ++i)
-    registration_txs[i] = gen.create_and_add_registration_tx(gen.first_miner());
-
-  gen.create_and_add_next_block({registration_txs});
   gen.create_and_add_next_block();
-
   gen.add_event_msg("Deregister 1 node, we now have insufficient nodes for Pulse and enter PoW");
   {
     const auto deregister_pub_key_1 = gen.top_quorum().obligations->workers[0];
