@@ -707,12 +707,11 @@ bool pulse::get_round_timings_for_block(cryptonote::Blockchain const &blockchain
 bool pulse::get_round_timings(cryptonote::Blockchain const &blockchain, uint64_t height, pulse::timings &times)
 {
   times = {};
-  crypto::hash top_hash       = {};
-  cryptonote::block top_block = {};
-  if (bool orphan = false; !blockchain.get_block_by_hash(top_hash, top_block, &orphan) || orphan)
+  std::vector<cryptonote::block> blocks;
+  if (!blockchain.get_blocks_only(height - 1, 1, blocks, nullptr))
     return false;
 
-  return get_round_timings_for_block(blockchain, top_block, times);
+  return get_round_timings_for_block(blockchain, blocks[0], times);
 }
 
 /*
