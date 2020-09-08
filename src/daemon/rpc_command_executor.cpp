@@ -1530,6 +1530,9 @@ static std::string to_string_rounded(double d, int precision) {
 
 static void print_vote_history(std::ostringstream &stream, std::vector<service_nodes::participation_entry> const &votes)
 {
+  if (votes.empty())
+    stream << "(Awaiting votes from service node)";
+
   // NOTE: Votes were stored in a ring buffer and copied naiively into the vote
   // array so they may be out of order. Find the smallest entry (by height) and
   // print starting from that entry.
@@ -1539,23 +1542,16 @@ static void print_vote_history(std::ostringstream &stream, std::vector<service_n
   for (size_t i = 0; i < votes.size(); i++)
   {
     service_nodes::participation_entry const &entry = votes[(offset + i) % votes.size()];
-    if (entry.height == service_nodes::INVALID_HEIGHT)
+    if (entry.is_pulse)
     {
-      stream << "[N/A: N/A]";
+      stream << "[" << entry.height << ", ";
+      stream << +entry.pulse.round << ", ";
+      stream << (entry.pulse.block_producer ? "Block Producer" : "Validator") << ", ";
+      stream << (entry.voted ? "Yes" : "No") << "]";
     }
     else
     {
-      if (entry.is_pulse)
-      {
-        stream << "[H " << entry.height;
-        stream << " R " << entry.pulse.round;
-        stream << " " << (entry.pulse.block_producer ? "Block Producer" : "Validator");
-        stream << " Voted: " << (entry.voted ? "Yes" : "No") << "]";
-      }
-      else
-      {
-        stream << "[H" << entry.height << " Voted: " << (entry.voted ? "Yes" : "No") << "]";
-      }
+      stream << "[" << entry.height << ", " << (entry.voted ? "Yes" : "No") << "]";
     }
     if (i < (votes.size() - 1)) stream << ",";
     stream << " ";
@@ -1668,18 +1664,8 @@ static void append_printable_service_node_list_entry(cryptonote::network_type ne
     stream << ")\n";
 
     //
-    // NOTE: Print Voting History
-    //
-    stream << indent2 <<  "Checkpoint Participation [Height, Voted]";
-    print_vote_history(stream, entry.checkpoint_participation);
-
-    stream << indent2 <<  "Pulse Participation [Height, Round, (Block Producer|Validator), Voted]";
-    print_vote_history(stream, entry.pulse_participation);
-
-    //
     // NOTE: Node Credits
     //
-    stream << "\n";
     stream << indent2;
     if (entry.active) {
       stream << "Downtime Credits: " << entry.earned_downtime_blocks << " blocks";
@@ -1690,6 +1676,16 @@ static void append_printable_service_node_list_entry(cryptonote::network_type ne
       stream << "Current Status: DECOMMISSIONED\n";
       stream << indent2 << "Remaining Decommission Time Until DEREGISTRATION: " << entry.earned_downtime_blocks << " blocks";
     }
+    stream << "\n";
+
+    //
+    // NOTE: Print Voting History
+    //
+    stream << indent2 <<  "Checkpoint Participation [Height, Voted]\n" << indent3;
+    print_vote_history(stream, entry.checkpoint_participation);
+
+    stream << "\n\n" << indent2 << "Pulse Participation [Height, Round, (Block Producer|Validator), Voted]\n" << indent3;
+    print_vote_history(stream, entry.pulse_participation);
   }
 
   stream << "\n";
