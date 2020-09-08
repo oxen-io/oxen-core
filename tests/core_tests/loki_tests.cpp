@@ -891,7 +891,7 @@ bool loki_core_test_deregister_on_split::generate(std::vector<test_event_entry> 
   fork.add_blocks_until_next_checkpointable_height();
   fork.add_service_node_checkpoint(fork.height(), service_nodes::CHECKPOINT_MIN_VOTES);
 
-  loki_register_callback(events, "test_on_split", [&events, expected_tx_hash, expected_block_hash](cryptonote::core &c, size_t ev_index)
+  loki_register_callback(events, "test_on_split", [expected_tx_hash, expected_block_hash](cryptonote::core &c, size_t ev_index)
   {
     /// Check that the deregister transaction is the one from the alternative branch
     DEFINE_TESTS_ERROR_CONTEXT("test_on_split");
@@ -3116,7 +3116,7 @@ bool loki_pulse_fallback_to_pow_and_back::generate(std::vector<test_event_entry>
   {
     DEFINE_TESTS_ERROR_CONTEXT("check_no_pulse_quorum_exists");
     const auto quorum = c.get_quorum(service_nodes::quorum_type::pulse, c.get_current_blockchain_height() - 1, false, nullptr);
-    CHECK_EQ(quorum, nullptr);
+    CHECK_TEST_CONDITION(quorum.get() == nullptr);
     return true;
   });
 
