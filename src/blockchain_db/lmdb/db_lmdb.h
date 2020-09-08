@@ -203,7 +203,7 @@ public:
 
   uint64_t get_block_height(const crypto::hash& h) const override;
 
-  block get_block_from_height(uint64_t height) const;
+  block get_block_from_height(uint64_t height) const override;
 
   block_header get_block_header_from_height(uint64_t height) const override;
 
