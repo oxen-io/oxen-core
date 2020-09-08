@@ -2041,7 +2041,8 @@ namespace rpc {
       bool version_major;
       bool version_minor;
       bool version_patch;
-      bool votes;
+      bool checkpoint_participation;
+      bool pulse_participation;
 
       bool block_hash;
       bool height;
@@ -2094,13 +2095,14 @@ namespace rpc {
         std::string                           pubkey_x25519;                 // The service node's x25519 public key for auxiliary services
 
         // Service Node Testing
-        uint64_t                                           last_uptime_proof;                   // The last time this Service Node's uptime proof was relayed by at least 1 Service Node other than itself in unix epoch time.
-        bool                                               storage_server_reachable;            // Whether the node's storage server has been reported as unreachable for a long time
-        uint64_t                                           storage_server_reachable_timestamp;  // The last time this Service Node's storage server was contacted
-        uint16_t                                           version_major;                       // Major version the node is currently running
-        uint16_t                                           version_minor;                       // Minor version the node is currently running
-        uint16_t                                           version_patch;                       // Patch version the node is currently running
-        std::vector<service_nodes::checkpoint_vote_record> votes;                               // Of the last N checkpoints the Service Node is in a checkpointing quorum, record whether or not the Service Node voted to checkpoint a block
+        uint64_t                                last_uptime_proof;                   // The last time this Service Node's uptime proof was relayed by at least 1 Service Node other than itself in unix epoch time.
+        bool                                    storage_server_reachable;            // Whether the node's storage server has been reported as unreachable for a long time
+        uint64_t                                storage_server_reachable_timestamp;  // The last time this Service Node's storage server was contacted
+        uint16_t                                version_major;                       // Major version the node is currently running
+        uint16_t                                version_minor;                       // Minor version the node is currently running
+        uint16_t                                version_patch;                       // Patch version the node is currently running
+        std::vector<service_nodes::participation_entry> checkpoint_participation;    // Of the last N checkpoints the Service Node is in a checkpointing quorum, record whether or not the Service Node voted to checkpoint a block
+        std::vector<service_nodes::participation_entry> pulse_participation;         // Of the last N pulse blocks the Service Node is in a pulse quorum, record whether or not the Service Node voted (participated) in that block
 
         KV_MAP_SERIALIZABLE
       };

@@ -1114,7 +1114,8 @@ KV_SERIALIZE_MAP_CODE_BEGIN(GET_SERVICE_NODES::requested_fields_t)
     KV_SERIALIZE(version_major)
     KV_SERIALIZE(version_minor)
     KV_SERIALIZE(version_patch)
-    KV_SERIALIZE(votes)
+    KV_SERIALIZE(checkpoint_participation)
+    KV_SERIALIZE(pulse_participation)
   }
 KV_SERIALIZE_MAP_CODE_END()
 
@@ -1166,7 +1167,8 @@ KV_SERIALIZE_MAP_CODE_BEGIN(GET_SERVICE_NODES::response::entry)
   KV_SERIALIZE_ENTRY_FIELD_IF_REQUESTED(version_major);
   KV_SERIALIZE_ENTRY_FIELD_IF_REQUESTED(version_minor);
   KV_SERIALIZE_ENTRY_FIELD_IF_REQUESTED(version_patch);
-  KV_SERIALIZE_ENTRY_FIELD_IF_REQUESTED(votes);
+  KV_SERIALIZE_ENTRY_FIELD_IF_REQUESTED(checkpoint_participation);
+  KV_SERIALIZE_ENTRY_FIELD_IF_REQUESTED(pulse_participation);
 KV_SERIALIZE_MAP_CODE_END()
 
 

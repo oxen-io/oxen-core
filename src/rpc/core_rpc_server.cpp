@@ -2848,7 +2848,11 @@ namespace cryptonote { namespace rpc {
         entry.version_major                      = proof.version[0];
         entry.version_minor                      = proof.version[1];
         entry.version_patch                      = proof.version[2];
-        entry.votes = std::vector<service_nodes::checkpoint_vote_record>(proof.votes.begin(), proof.votes.end());
+
+        service_nodes::participation_history const &checkpoint_participation = proof.checkpoint_participation;
+        service_nodes::participation_history const &pulse_participation      = proof.pulse_participation;
+        entry.checkpoint_participation = std::vector<service_nodes::participation_entry>(checkpoint_participation.begin(), checkpoint_participation.end());
+        entry.pulse_participation      = std::vector<service_nodes::participation_entry>(pulse_participation.begin(),      pulse_participation.end());
     });
 
     entry.contributors.reserve(info.contributors.size());

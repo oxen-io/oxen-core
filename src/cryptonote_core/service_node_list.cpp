@@ -759,7 +759,8 @@ namespace service_nodes
         {
           auto &proof = sn_list->proofs[key];
           proof.effective_timestamp = block.timestamp;
-          proof.votes.fill({});
+          proof.checkpoint_participation.reset();
+          proof.pulse_participation.reset();
         }
         return true;
       }
@@ -2918,16 +2919,35 @@ namespace service_nodes
     return "tcp://" + epee::string_tools::get_ip_string_from_int32(ip) + ":" + std::to_string(port);
   }
 
-  void service_node_list::record_checkpoint_vote(crypto::public_key const &pubkey, uint64_t height, bool voted)
+  void service_node_list::record_checkpoint_participation(crypto::public_key const &pubkey, uint64_t height, bool participated)
   {
     std::lock_guard lock(m_sn_mutex);
     if (!m_state.service_nodes_infos.count(pubkey))
       return;
 
+    participation_entry entry  = {};
+    entry.height               = height;
+    entry.voted                = participated;
+
     auto &info = proofs[pubkey];
-    info.votes[info.vote_index].height = height;
-    info.votes[info.vote_index].voted  = voted;
-    info.vote_index                    = (info.vote_index + 1) % info.votes.size();
+    info.checkpoint_participation.add(entry);
+  }
+
+  void service_node_list::record_pulse_participation(crypto::public_key const &pubkey, uint64_t height, uint8_t round, bool participated, bool block_producer)
+  {
+    std::lock_guard lock(m_sn_mutex);
+    if (!m_state.service_nodes_infos.count(pubkey))
+      return;
+
+    participation_entry entry  = {};
+    entry.is_pulse             = true;
+    entry.height               = height;
+    entry.voted                = participated;
+    entry.pulse.block_producer = block_producer;
+    entry.pulse.round          = round;
+
+    auto &info = proofs[pubkey];
+    info.pulse_participation.add(entry);
   }
 
   bool service_node_list::set_storage_server_peer_reachable(crypto::public_key const &pubkey, bool value)

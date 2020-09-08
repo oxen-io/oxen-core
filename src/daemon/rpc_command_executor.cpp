@@ -1528,6 +1528,40 @@ static std::string to_string_rounded(double d, int precision) {
   return ss.str();
 }
 
+static void print_vote_history(std::ostringstream &stream, std::vector<service_nodes::participation_entry> const &votes)
+{
+  // NOTE: Votes were stored in a ring buffer and copied naiively into the vote
+  // array so they may be out of order. Find the smallest entry (by height) and
+  // print starting from that entry.
+  auto it       = std::min_element(votes.begin(), votes.end(), [](const auto &a, const auto &b) { return a.height < b.height; });
+  size_t offset = std::distance(votes.begin(), it);
+
+  for (size_t i = 0; i < votes.size(); i++)
+  {
+    service_nodes::participation_entry const &entry = votes[(offset + i) % votes.size()];
+    if (entry.height == service_nodes::INVALID_HEIGHT)
+    {
+      stream << "[N/A: N/A]";
+    }
+    else
+    {
+      if (entry.is_pulse)
+      {
+        stream << "[H " << entry.height;
+        stream << " R " << entry.pulse.round;
+        stream << " " << (entry.pulse.block_producer ? "Block Producer" : "Validator");
+        stream << " Voted: " << (entry.voted ? "Yes" : "No") << "]";
+      }
+      else
+      {
+        stream << "[H" << entry.height << " Voted: " << (entry.voted ? "Yes" : "No") << "]";
+      }
+    }
+    if (i < (votes.size() - 1)) stream << ",";
+    stream << " ";
+  }
+}
+
 static void append_printable_service_node_list_entry(cryptonote::network_type nettype, bool detailed_view, uint64_t blockchain_height, uint64_t entry_index, GET_SERVICE_NODES::response::entry const &entry, std::string &buffer)
 {
   const char indent1[] = "    ";
@@ -1606,6 +1640,9 @@ static void append_printable_service_node_list_entry(cryptonote::network_type ne
       stream << "Last Uptime Proof Received: " << get_human_time_ago(entry.last_uptime_proof, time(nullptr));
     }
 
+    //
+    // NOTE: Node Identification
+    //
     stream << "\n";
     stream << indent2 << "IP Address & Ports: ";
     if (entry.public_ip == "0.0.0.0")
@@ -1620,6 +1657,9 @@ static void append_printable_service_node_list_entry(cryptonote::network_type ne
              << indent3 << (entry.pubkey_ed25519.empty() ? "(not yet received)" : entry.pubkey_ed25519) << " (Ed25519)\n"
              << indent3 << (entry.pubkey_x25519.empty()  ? "(not yet received)" : entry.pubkey_x25519)  << " (X25519)\n";
 
+    //
+    // NOTE: Storage Server Test
+    //
     stream << indent2 << "Storage Server Reachable: " << (entry.storage_server_reachable ? "Yes" : "No") << " (";
     if (entry.storage_server_reachable_timestamp == 0)
       stream << "Awaiting first test";
@@ -1627,25 +1667,18 @@ static void append_printable_service_node_list_entry(cryptonote::network_type ne
       stream << "Last checked: " << get_human_time_ago(entry.storage_server_reachable_timestamp, now);
     stream << ")\n";
 
-    stream << indent2 <<  "Checkpoint Participation [Height: Voted]: ";
-    // Checkpoints heights are a rotating queue, so find the smallest one and print starting from there
-    auto it = std::min_element(entry.votes.begin(), entry.votes.end(), [](const auto &a, const auto &b) { return a.height < b.height; });
-    size_t offset = std::distance(entry.votes.begin(), it);
-    for (size_t i = 0; i < entry.votes.size(); i++)
-    {
-      service_nodes::checkpoint_vote_record const &record = entry.votes[(offset + i) % entry.votes.size()];
-      if (record.height == service_nodes::INVALID_HEIGHT)
-      {
-        stream << "[N/A: N/A]";
-      }
-      else
-      {
-        stream << "[" << record.height << ": " << (record.voted ? "Yes" : "No") << "]";
-      }
-      if (i < (entry.votes.size() - 1)) stream << ",";
-      stream << " ";
-    }
+    //
+    // NOTE: Print Voting History
+    //
+    stream << indent2 <<  "Checkpoint Participation [Height, Voted]";
+    print_vote_history(stream, entry.checkpoint_participation);
 
+    stream << indent2 <<  "Pulse Participation [Height, Round, (Block Producer|Validator), Voted]";
+    print_vote_history(stream, entry.pulse_participation);
+
+    //
+    // NOTE: Node Credits
+    //
     stream << "\n";
     stream << indent2;
     if (entry.active) {

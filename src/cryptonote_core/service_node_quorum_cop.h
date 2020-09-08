@@ -88,11 +88,12 @@ namespace service_nodes
   struct service_node_test_results {
     bool uptime_proved            = true;
     bool single_ip                = true;
-    bool voted_in_checkpoints     = true;
+    bool checkpoint_participation = true;
+    bool pulse_participation      = true;
     bool storage_server_reachable = true;
 
     char const *why() const;
-    bool passed() const { return uptime_proved && voted_in_checkpoints && storage_server_reachable; }
+    bool passed() const { return uptime_proved && checkpoint_participation && pulse_participation && storage_server_reachable; }
   };
 
   class quorum_cop

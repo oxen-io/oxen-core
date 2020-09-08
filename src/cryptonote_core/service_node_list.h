@@ -48,29 +48,63 @@ struct checkpoint_t;
 namespace service_nodes
 {
   constexpr uint64_t INVALID_HEIGHT = static_cast<uint64_t>(-1);
+
   LOKI_RPC_DOC_INTROSPECT
-  struct checkpoint_vote_record
+  struct participation_entry
   {
+    bool is_pulse   = false;
     uint64_t height = INVALID_HEIGHT;
     bool voted      = true;
+
+    struct
+    {
+      uint8_t round          = 0;
+      bool    block_producer = false;
+    } pulse;
 
     BEGIN_KV_SERIALIZE_MAP()
       KV_SERIALIZE(height);
       KV_SERIALIZE(voted);
+      KV_SERIALIZE(is_pulse);
+      if (this_ref.is_pulse)
+      {
+        KV_SERIALIZE_N(pulse.round,          "pulse_round");
+        KV_SERIALIZE_N(pulse.block_producer, "pulse_block_producer");
+      }
     END_KV_SERIALIZE_MAP()
+  };
+
+  struct participation_history
+  {
+    std::array<participation_entry, QUORUM_VOTE_CHECK_COUNT> array;
+    size_t                                                   write_index;
+
+    void reset() { write_index = 0; }
+
+    void add(participation_entry const &entry)
+    {
+      size_t real_write_index = write_index % array.size();
+      array[real_write_index] = entry;
+      write_index++;
+    }
+
+    participation_entry       *begin()       { return array.data(); }
+    participation_entry       *end()         { return array.data() + std::min(array.size(), write_index); }
+    participation_entry const *begin() const { return array.data(); }
+    participation_entry const *end()   const { return array.data() + std::min(array.size(), write_index); }
   };
 
   struct proof_info
   {
+    participation_history pulse_participation{};
+    participation_history checkpoint_participation{};
+
     uint64_t timestamp           = 0; // The actual time we last received an uptime proof (serialized)
     uint64_t effective_timestamp = 0; // Typically the same, but on recommissions it is set to the recommission block time to fend off instant obligation checks
-    std::array<checkpoint_vote_record, CHECKPOINT_NUM_QUORUMS_TO_PARTICIPATE_IN> votes;
-    uint8_t vote_index = 0;
     std::array<std::pair<uint32_t, uint64_t>, 2> public_ips = {}; // (not serialized)
 
     bool storage_server_reachable               = true;
     uint64_t storage_server_reachable_timestamp = 0;
-    proof_info() { votes.fill({}); }
 
     // Unlike all of the above (except for timestamp), these values *do* get serialized
     uint32_t public_ip        = 0;
@@ -436,8 +470,10 @@ namespace service_nodes
                                                                    uint16_t storage_port,
                                                                    uint16_t storage_lmq_port,
                                                                    uint16_t quorumnet_port) const;
-    bool handle_uptime_proof        (cryptonote::NOTIFY_UPTIME_PROOF::request const &proof, bool &my_uptime_proof_confirmation, crypto::x25519_public_key &x25519_pkey);
-    void record_checkpoint_vote     (crypto::public_key const &pubkey, uint64_t height, bool voted);
+    bool handle_uptime_proof(cryptonote::NOTIFY_UPTIME_PROOF::request const &proof, bool &my_uptime_proof_confirmation, crypto::x25519_public_key &x25519_pkey);
+
+    void record_checkpoint_participation(crypto::public_key const &pubkey, uint64_t height, bool participated);
+    void record_pulse_participation     (crypto::public_key const &pubkey, uint64_t height, uint8_t round, bool participated, bool block_producer);
 
     // Called every hour to remove proofs for expired SNs from memory and the database.
     void cleanup_proofs();

@@ -58,8 +58,9 @@ namespace service_nodes
     else
     {
       buf_ptr += snprintf(buf_ptr, buf_end - buf_ptr, "Service Node is currently failing the following tests: ");
-      if (!uptime_proved)         buf_ptr += snprintf(buf_ptr, buf_end - buf_ptr, "Uptime proof missing. ");
-      if (!voted_in_checkpoints)  buf_ptr += snprintf(buf_ptr, buf_end - buf_ptr, "Skipped voting in at least %d checkpoints. ", (int)(CHECKPOINT_NUM_QUORUMS_TO_PARTICIPATE_IN - CHECKPOINT_MAX_MISSABLE_VOTES));
+      if (!uptime_proved)            buf_ptr += snprintf(buf_ptr, buf_end - buf_ptr, "Uptime proof missing.\n");
+      if (!checkpoint_participation) buf_ptr += snprintf(buf_ptr, buf_end - buf_ptr, "Skipped voting in at least %d checkpoints.\n", (int)(QUORUM_VOTE_CHECK_COUNT - CHECKPOINT_MAX_MISSABLE_VOTES));
+      if (!pulse_participation)      buf_ptr += snprintf(buf_ptr, buf_end - buf_ptr, "Skipped voting in at least %d pulse quorums.\n", (int)(QUORUM_VOTE_CHECK_COUNT - PULSE_MAX_MISSABLE_VOTES));
       buf_ptr += snprintf(buf_ptr, buf_end - buf_ptr, "Note: Storage server may not be reachable. This is only testable by an external Service Node.");
     }
     return buf;
@@ -84,12 +85,15 @@ namespace service_nodes
     bool ss_reachable = true;
     uint64_t timestamp = 0;
     decltype(std::declval<proof_info>().public_ips) ips{};
-    decltype(std::declval<proof_info>().votes) votes;
+
+    service_nodes::participation_history checkpoint_participation{};
+    service_nodes::participation_history pulse_participation{};
     m_core.get_service_node_list().access_proof(pubkey, [&](const proof_info &proof) {
-        ss_reachable = proof.storage_server_reachable;
-        timestamp = std::max(proof.timestamp, proof.effective_timestamp);
-        ips = proof.public_ips;
-        votes = proof.votes;
+      ss_reachable             = proof.storage_server_reachable;
+      timestamp                = std::max(proof.timestamp, proof.effective_timestamp);
+      ips                      = proof.public_ips;
+      checkpoint_participation = proof.checkpoint_participation;
+      pulse_participation      = proof.pulse_participation;
     });
     uint64_t time_since_last_uptime_proof = std::time(nullptr) - timestamp;
 
@@ -131,24 +135,45 @@ namespace service_nodes
       }
     }
 
-    if (check_checkpoint_obligation && !info.is_decommissioned())
+    if (!info.is_decommissioned())
     {
-      int missed_votes = 0;
-      for (checkpoint_vote_record const &record : votes)
+      if (check_checkpoint_obligation)
       {
-        if (!record.voted) missed_votes++;
+        if (checkpoint_participation.write_index >= CHECKPOINT_MAX_MISSABLE_VOTES)
+        {
+          int missed_participation = 0;
+          for (participation_entry const &entry : checkpoint_participation)
+            if (!entry.voted) missed_participation++;
+
+          if (missed_participation > CHECKPOINT_MAX_MISSABLE_VOTES)
+          {
+            LOG_PRINT_L1("Service Node: " << pubkey << ", failed checkpoint obligation check: missed the last: "
+                                          << missed_participation << " checkpoint votes from: "
+                                          << QUORUM_VOTE_CHECK_COUNT
+                                          << " quorums that they were required to participate in.");
+            if (hf_version >= cryptonote::network_version_13_enforce_checkpoints)
+              result.checkpoint_participation = false;
+          }
+        }
       }
 
-      if (missed_votes > CHECKPOINT_MAX_MISSABLE_VOTES)
+      if (pulse_participation.write_index >= PULSE_MAX_MISSABLE_VOTES)
       {
-        LOG_PRINT_L1("Service Node: " << pubkey << ", failed checkpoint obligation check: missed the last: "
-                                      << missed_votes << " checkpoint votes from: "
-                                      << CHECKPOINT_NUM_QUORUMS_TO_PARTICIPATE_IN
-                                      << " quorums that they were required to participate in.");
-        if (hf_version >= cryptonote::network_version_13_enforce_checkpoints)
-          result.voted_in_checkpoints = false;
+        int missed_participation = 0;
+        for (participation_entry const &entry : pulse_participation)
+          if (!entry.voted) missed_participation++;
+
+        if (missed_participation > PULSE_MAX_MISSABLE_VOTES)
+        {
+          LOG_PRINT_L1("Service Node: " << pubkey << ", failed pulse obligation check: did not participate in the last: "
+                                        << missed_participation << " pulse quorums from: "
+                                        << QUORUM_VOTE_CHECK_COUNT
+                                        << " quorums that they were required to participate in.");
+          result.pulse_participation = false;
+        }
       }
     }
+
 
     return result;
   }
@@ -260,7 +285,9 @@ namespace service_nodes
             // don't vote for the first 2 hours so this is purely cosmetic
             if (obligations_height_hf_version >= cryptonote::network_version_12_checkpointing)
             {
-              auto quorum = m_core.get_quorum(quorum_type::checkpointing, m_obligations_height);
+              service_nodes::service_node_list &node_list = m_core.get_service_node_list();
+
+              auto quorum = node_list.get_quorum(quorum_type::checkpointing, m_obligations_height);
               std::vector<cryptonote::block> blocks;
               if (quorum && m_core.get_blocks(m_obligations_height, 1, blocks))
               {
@@ -271,7 +298,7 @@ namespace service_nodes
                   for (size_t index_in_quorum = 0; index_in_quorum < quorum->validators.size(); index_in_quorum++)
                   {
                     crypto::public_key const &key = quorum->validators[index_in_quorum];
-                    m_core.record_checkpoint_vote(
+                    node_list.record_checkpoint_participation(
                         key,
                         quorum_height,
                         m_vote_pool.received_checkpoint_vote(m_obligations_height, index_in_quorum));
