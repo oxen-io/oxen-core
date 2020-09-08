@@ -1227,18 +1227,30 @@ round_state wait_for_handshake_bitsets(round_context &context, service_nodes::se
       }
     }
 
-    if (count < service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES || best_bitset == 0)
+    bool i_am_not_participating = false;
+    if (best_bitset != 0)
+      i_am_not_participating = ((best_bitset & (1 << context.prepare_for_round.my_quorum_position)) == 0);
+
+    if (count < service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES || best_bitset == 0 || i_am_not_participating)
     {
-      // Less than the threshold of the validators can't come to agreement about
-      // which validators are online, we wait until the next round.
       if (best_bitset == 0)
       {
-        MDEBUG(log_prefix(context) << count << "/" << quorum.size() << " validators did not send any handshake bitset or sent an empty handshake bitset");
+        // Less than the threshold of the validators can come to agreement about
+        // which validators are online, we wait until the next round.
+        MDEBUG(log_prefix(context) << count << "/" << quorum.size()
+                                   << " validators did not send any handshake bitset or sent an empty handshake "
+                                      "bitset and have failed to come to agreement. Waiting until next round.");
+      }
+      else if (i_am_not_participating)
+      {
+        MDEBUG(log_prefix(context) << "The participating validator bitset " << bitset_view16(best_bitset)
+                                   << " does not include us (quorum index " << context.prepare_for_round.my_quorum_position << "). Waiting until next round.");
       }
       else
       {
+        // Can't come to agreement, see threshold comment above
         MDEBUG(log_prefix(context) << "We heard back from less than " << service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES << " of the validators ("
-                                   << count << "/" << quorum.size() << ", waiting for next round.");
+                                   << count << "/" << quorum.size() << ". Waiting until next round.");
       }
 
       return goto_preparing_for_next_round(context);
