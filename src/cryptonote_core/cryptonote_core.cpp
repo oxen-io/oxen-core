@@ -664,6 +664,8 @@ namespace cryptonote
       return false;
     }
 
+    auto lns_db_file_path = folder / "lns.db";
+
     folder /= db->get_db_name();
     MGINFO("Loading blockchain from folder " << folder.string() << " ...");
 
@@ -673,7 +675,6 @@ namespace cryptonote
     bool sync_on_blocks = true;
     uint64_t sync_threshold = 1;
 
-    std::string const lns_db_file_path = m_config_folder + "/lns.db";
 #if !defined(LOKI_ENABLE_INTEGRATION_TEST_HOOKS) // In integration mode, don't delete the DB. This should be explicitly done in the tests. Otherwise the more likely behaviour is persisting the DB across multiple daemons in the same test.
     if (m_nettype == FAKECHAIN && !keep_fakechain)
     {
