@@ -282,9 +282,16 @@ bool gen_double_spend_in_alt_chain_in_different_blocks::generate(std::vector<tes
   return true;
 }
 
+char *tprint(char const *fmt, ...)
+{
+  LOCAL_PERSIST char buffer[1024];
+  buffer[0] = 0;
+  snprintf(buffer, );
+}
+
 bool gen_double_spend_in_different_chains::generate(std::vector<test_event_entry>& events) const
 {
-  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = loki_generate_sequential_hard_fork_table();
+  std::vector<std::pair<uint8_t, uint64_t>> hard_forks = loki_generate_sequential_hard_fork_table(cryptonote::network_version_15_lns);
   loki_chain_generator gen(events, hard_forks);
   gen.add_blocks_until_version(hard_forks.back().first);
   gen.add_n_blocks(10);
