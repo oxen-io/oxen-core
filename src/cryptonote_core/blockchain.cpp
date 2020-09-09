@@ -982,7 +982,7 @@ difficulty_type Blockchain::get_difficulty_for_next_block()
   bool pulse_override_difficulty = false;
   if (hf_version >= cryptonote::network_version_16)
   {
-    pulse::get_round_timings(*this, chain_height, m_cache.m_pulse_timings);
+    pulse::get_round_timings(*this, chain_height, m_db->get_block_timestamp(top_block_height), m_cache.m_pulse_timings);
     pulse_override_difficulty = (pulse::clock::now() < m_cache.m_pulse_timings.miner_fallback_timestamp);
   }
 

@@ -682,16 +682,9 @@ void pulse::handle_message(void *quorumnet_state, pulse::message const &msg)
     cryptonote::quorumnet_pulse_relay_message_to_quorum(quorumnet_state, msg, context.prepare_for_round.quorum, context.prepare_for_round.participant == sn_type::producer);
 }
 
-bool pulse::get_round_timings(cryptonote::Blockchain const &blockchain, uint64_t height, pulse::timings &times)
+bool pulse::get_round_timings(cryptonote::Blockchain const &blockchain, uint64_t block_height, uint64_t prev_timestamp, pulse::timings &times)
 {
   times = {};
-  std::vector<cryptonote::block> blocks;
-  if (!blockchain.get_blocks_only(height - 1, 1, blocks, nullptr))
-    return false;
-
-  cryptonote::block const &top_block = blocks[0];
-  crypto::hash top_hash              = cryptonote::get_block_hash(top_block);
-
   static uint64_t const hf16_height = blockchain.get_earliest_ideal_height_for_version(cryptonote::network_version_16);
   if (hf16_height == std::numeric_limits<uint64_t>::max())
     return false;
@@ -701,11 +694,10 @@ bool pulse::get_round_timings(cryptonote::Blockchain const &blockchain, uint64_t
   if (bool orphaned = false; !blockchain.get_block_by_hash(genesis_hash, genesis_block, &orphaned) || orphaned)
     return false;
 
-  uint64_t const delta_height = (cryptonote::get_block_height(top_block) + 1) - cryptonote::get_block_height(genesis_block);
+  uint64_t const delta_height = block_height - cryptonote::get_block_height(genesis_block);
   times.genesis_timestamp     = pulse::time_point(std::chrono::seconds(genesis_block.timestamp));
 
-  times.prev_hash       = top_hash;
-  times.prev_timestamp  = pulse::time_point(std::chrono::seconds(top_block.timestamp));
+  times.prev_timestamp  = pulse::time_point(std::chrono::seconds(prev_timestamp));
   times.ideal_timestamp = pulse::time_point(times.genesis_timestamp + (TARGET_BLOCK_TIME * delta_height));
 
 #if 1
@@ -960,25 +952,45 @@ round_state wait_for_next_block(uint64_t hf16_height, round_context &context, cr
   //
   // NOTE: If already processing pulse for height, wait for next height
   //
-  uint64_t curr_height = blockchain.get_current_blockchain_height(true /*lock*/);
-  if (context.wait_for_next_block.height == curr_height)
+  uint64_t chain_height = blockchain.get_current_blockchain_height(true /*lock*/);
+  if (context.wait_for_next_block.height == chain_height)
   {
-    for (static uint64_t last_height = 0; last_height != curr_height; last_height = curr_height)
-      MDEBUG(log_prefix(context) << "Network is currently producing block " << curr_height << ", waiting until next block");
+    for (static uint64_t last_height = 0; last_height != chain_height; last_height = chain_height)
+      MDEBUG(log_prefix(context) << "Network is currently producing block " << chain_height << ", waiting until next block");
+    return round_state::wait_for_next_block;
+  }
+
+  crypto::hash prev_hash = blockchain.get_block_id_by_height(chain_height - 1);
+  if (prev_hash == crypto::null_hash)
+  {
+    for (static uint64_t last_height = 0; last_height != chain_height; last_height = chain_height)
+      MDEBUG(log_prefix(context) << "Failed to query the block hash for height " << chain_height - 1);
+    return round_state::wait_for_next_block;
+  }
+
+  uint64_t prev_timestamp = 0;
+  try
+  {
+    prev_timestamp = blockchain.get_db().get_block_timestamp(chain_height - 1);
+  }
+  catch(std::exception const &e)
+  {
+    for (static uint64_t last_height = 0; last_height != chain_height; last_height = chain_height)
+      MDEBUG(log_prefix(context) << "Failed to query the block hash for height " << chain_height - 1);
     return round_state::wait_for_next_block;
   }
 
   pulse::timings times = {};
-  if (!get_round_timings(blockchain, curr_height, times))
+  if (!get_round_timings(blockchain, chain_height, prev_timestamp, times))
   {
-    for (static bool once = true; once; once = !once)
+    for (static uint64_t last_height = 0; last_height != chain_height; last_height = chain_height)
       MERROR(log_prefix(context) << "Failed to query the block data for Pulse timings");
     return round_state::wait_for_next_block;
   }
 
   context.wait_for_next_block.round_0_start_time = times.r0_timestamp;
-  context.wait_for_next_block.height             = curr_height;
-  context.wait_for_next_block.top_hash           = times.prev_hash;
+  context.wait_for_next_block.height             = chain_height;
+  context.wait_for_next_block.top_hash           = prev_hash;
   context.prepare_for_round                      = {};
 
   return round_state::prepare_for_round;

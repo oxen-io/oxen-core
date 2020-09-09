@@ -407,6 +407,28 @@ uint64_t BlockchainDB::get_tx_block_height(const crypto::hash &h) const
   return result;
 }
 
+bool BlockchainDB::get_alt_block_header(const crypto::hash &blkid, alt_block_data_t *data, cryptonote::block_header *header, cryptonote::blobdata *checkpoint) const
+{
+  cryptonote::blobdata blob;
+  if (!get_alt_block(blkid, data, &blob, checkpoint))
+  {
+    throw BLOCK_DNE("Block with hash "s.append(epee::string_tools::pod_to_hex(blkid)).append(" not found in db").c_str());
+    return false;
+  }
+
+  try
+  {
+    serialization::binary_string_unarchiver ba{blob};
+    serialization::value(ba, *header);
+  }
+  catch(std::exception &e)
+  {
+    return false;
+  }
+
+  return true;
+}
+
 void BlockchainDB::fill_timestamps_and_difficulties_for_pow(cryptonote::network_type nettype,
                                                             std::vector<uint64_t> &timestamps,
                                                             std::vector<uint64_t> &difficulties,

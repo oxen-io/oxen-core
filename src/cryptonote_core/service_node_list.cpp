@@ -1461,7 +1461,26 @@ namespace service_nodes
     uint64_t height        = cryptonote::get_block_height(block);
     if (block.major_version >= cryptonote::network_version_16)
     {
-      if (!pulse::get_round_timings(m_blockchain, height, timings))
+      uint64_t prev_timestamp = 0;
+      if (alt_block)
+      {
+        cryptonote::block_header prev_header;
+        cryptonote::alt_block_data_t data;
+        if (!m_blockchain.get_db().get_alt_block_header(block.prev_id, &data, &prev_header, nullptr))
+        {
+          MGINFO("Alt block " << cryptonote::get_block_hash(block) << " references previous block " << block.prev_id << " not available in DB.");
+          return false;
+        }
+
+        prev_timestamp = prev_header.timestamp;
+      }
+      else
+      {
+        uint64_t prev_height = height - 1;
+        prev_timestamp       = m_blockchain.get_db().get_block_timestamp(prev_height);
+      }
+
+      if (!pulse::get_round_timings(m_blockchain, height, prev_timestamp, timings))
       {
         MGINFO("Failed to query the block data for Pulse timings to validate incoming " << block_type << "at height " << height);
         return false;

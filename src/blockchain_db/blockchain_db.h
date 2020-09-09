@@ -1643,6 +1643,18 @@ public:
   virtual bool get_alt_block(const crypto::hash &blkid, alt_block_data_t *data, cryptonote::blobdata *blob, cryptonote::blobdata *checkpoint) const = 0;
 
   /**
+   * @brief get the block header from the alternative block db
+   *
+   * @param: blkid: the block hash
+   * @param: data: the metadata for the block
+   * @param: header: the alt block's header
+   * @param: checkpoint: the Service Nodee checkpoint associated with the block
+   *
+   * @return true if the block was found in the alternative blocks list, false otherwise
+   */
+  bool get_alt_block_header(const crypto::hash &blkid, alt_block_data_t *data, cryptonote::block_header *header, cryptonote::blobdata *checkpoint) const;
+
+  /**
    * @brief remove an alternative block
    *
    * @param: blkid the block hash

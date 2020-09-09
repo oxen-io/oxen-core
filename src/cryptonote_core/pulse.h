@@ -86,8 +86,6 @@ void handle_message(void *quorumnet_state, pulse::message const &msg);
 struct timings
 {
   pulse::time_point genesis_timestamp;
-
-  crypto::hash      prev_hash;
   pulse::time_point prev_timestamp;
 
   pulse::time_point ideal_timestamp;
@@ -95,6 +93,6 @@ struct timings
   pulse::time_point miner_fallback_timestamp;
 };
 
-bool get_round_timings(cryptonote::Blockchain const &blockchain, uint64_t height, timings &times);
+bool get_round_timings(cryptonote::Blockchain const &blockchain, uint64_t height, uint64_t prev_timestamp, pulse::timings &times);
 
 } // namespace pulse
