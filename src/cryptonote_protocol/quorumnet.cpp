@@ -1429,10 +1429,11 @@ const std::string PULSE_TAG_BLOCK_ROUND       = "r";
 const std::string PULSE_TAG_SIGNATURE         = "s";
 
 // Extra fields are intentionally given tags after the common header fields.
-const std::string PULSE_TAG_BLOCK_TEMPLATE    = "t";
-const std::string PULSE_TAG_VALIDATOR_BITSET  = "u";
-const std::string PULSE_TAG_RANDOM_VALUE      = "v";
-const std::string PULSE_TAG_RANDOM_VALUE_HASH = "x";
+const std::string PULSE_TAG_BLOCK_TEMPLATE        = "t";
+const std::string PULSE_TAG_VALIDATOR_BITSET      = "u";
+const std::string PULSE_TAG_RANDOM_VALUE          = "v";
+const std::string PULSE_TAG_RANDOM_VALUE_HASH     = "x";
+const std::string PULSE_TAG_FINAL_BLOCK_SIGNATURE = "z";
 
 const std::string PULSE_CMD_CATEGORY               = "pulse";
 const std::string PULSE_CMD_VALIDATOR_BITSET       = "validator_bitset";
@@ -1475,7 +1476,10 @@ void pulse_relay_message_to_quorum(void *self, pulse::message const &msg, servic
         break;
 
       case pulse::message_type::signed_block:
+      {
         command = PULSE_CMD_SEND_SIGNED_BLOCK;
+        data[PULSE_TAG_FINAL_BLOCK_SIGNATURE] = tools::view_guts(msg.signed_block.signature_of_final_block_hash);
+      }
       break;
 
       case pulse::message_type::block_template: break;
@@ -1657,9 +1661,16 @@ void handle_pulse_signed_block(Message &m, QnetState &qnet)
   if (m.data.size() != 1)
       throw std::runtime_error("Rejecting pulse signed block expected one data entry not "s + std::to_string(m.data.size()));
 
-  std::string_view constexpr INVALID_ARG_PREFIX = "Invalid pulse signed block: missing required field '"sv;
+  std::string_view constexpr INVALID_ARG_PREFIX = "Invalid pulse signed blocr: missing required field '"sv;
   bt_dict_consumer data{m.data[0]};
   pulse::message msg = pulse_parse_msg_header_fields(pulse::message_type::signed_block, data, INVALID_ARG_PREFIX);
+
+  if (auto const &tag = PULSE_TAG_FINAL_BLOCK_SIGNATURE; data.skip_until(tag)) {
+    auto sig_str                                   = data.consume_string_view();
+    msg.signed_block.signature_of_final_block_hash = convert_string_view_bytes_to_signature(sig_str);
+  } else {
+    throw std::invalid_argument("Invalid pulse signed block: missing required field '"s + tag + "'");
+  }
 
   qnet.lmq.job([&qnet, data = std::move(msg)]() { pulse::handle_message(&qnet, data); }, qnet.core.pulse_thread_id());
 }
