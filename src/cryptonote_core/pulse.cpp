@@ -443,22 +443,19 @@ bool enforce_validator_participation_and_timeouts(round_context const &context,
       }
     }
 
-    MDEBUG(log_prefix(context) << "We timed out and there were insufficient responses, required "
-                               << service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES << ", received " << stage.msgs_received
-                               << " from " << bitset_view16(stage.bitset) << " expected " << bitset_view16(validator_bitset));
+    MDEBUG(log_prefix(context) << "Stage timed out: insufficient responses. Expected "
+                               << "(" << bitset_view16(validator_bitset).count() << ") " << bitset_view16(validator_bitset) << " received "
+                               << "(" << bitset_view16(stage.bitset).count()     << ") " << bitset_view16(stage.bitset));
     return false;
   }
 
   // NOTE: This is not technically meant to hit, internal invariant checking
-  // that should have been triggered earlier.
+  // that should have been triggered earlier. Enforce validator participation is
+  // only called after the stage has ended/timed out.
   bool unexpected_items = (stage.bitset | validator_bitset) != validator_bitset;
   if (stage.msgs_received == 0 || unexpected_items)
   {
-    if (unexpected_items)
-      MERROR(log_prefix(context) << "Internal error, unexpected block validator bitset is " << bitset_view16(validator_bitset) << ", our bitset was " << bitset_view16(stage.bitset));
-    else
-      MERROR(log_prefix(context) << "Internal error, unexpected empty bitset received, we expected " << bitset_view16(validator_bitset));
-
+    MERROR(log_prefix(context) << "Internal error: expected bitset " << bitset_view16(validator_bitset) << ", but accepted and received " << bitset_view16(stage.bitset));
     return false;
   }
 
@@ -510,7 +507,12 @@ void pulse::handle_message(void *quorumnet_state, pulse::message const &msg)
   pulse_wait_stage *stage = nullptr;
   switch(msg.type)
   {
-    case pulse::message_type::invalid:           assert("Invalid Code Path" != nullptr);                        return;
+    case pulse::message_type::invalid:
+    {
+      MTRACE(log_prefix(context) << "Received invalid message type, dropped");
+      return;
+    }
+
     case pulse::message_type::handshake:         stage = &context.transient.send_and_wait_for_handshakes.stage; break;
     case pulse::message_type::handshake_bitset:  stage = &context.transient.wait_for_handshake_bitsets.stage;   break;
     case pulse::message_type::block_template:    stage = &context.transient.wait_for_block_template.stage;      break;
@@ -1404,14 +1406,14 @@ round_state send_and_wait_for_random_value_hashes(round_context &context, servic
 
   auto const &quorum    = context.transient.random_value_hashes.wait.data;
   bool const timed_out  = pulse::clock::now() >= stage.end_time;
-  bool const all_hashes = stage.msgs_received == context.transient.wait_for_handshake_bitsets.best_count;
+  bool const all_hashes = stage.bitset == context.transient.wait_for_handshake_bitsets.best_bitset;
 
   if (timed_out || all_hashes)
   {
     if (!enforce_validator_participation_and_timeouts(context, stage, node_list, timed_out, all_hashes))
       return goto_preparing_for_next_round(context);
 
-    MINFO(log_prefix(context) << "Received " << stage.msgs_received << " random value hashes from " << bitset_view16(stage.bitset) << (timed_out ? ". We timed out and some hashes are missing" : ""));
+    MINFO(log_prefix(context) << "Received " << bitset_view16(stage.bitset).count() << " random value hashes from " << bitset_view16(stage.bitset) << (timed_out ? ". We timed out and some hashes are missing" : ""));
     return round_state::send_and_wait_for_random_value;
   }
 
@@ -1442,7 +1444,7 @@ round_state send_and_wait_for_random_value(round_context &context, service_nodes
 
   auto const &quorum    = context.transient.random_value.wait.data;
   bool const timed_out  = pulse::clock::now() >= stage.end_time;
-  bool const all_values = stage.msgs_received == context.transient.wait_for_handshake_bitsets.best_count;
+  bool const all_values = stage.bitset == context.transient.wait_for_handshake_bitsets.best_bitset;
 
   if (timed_out || all_values)
   {
@@ -1517,7 +1519,7 @@ round_state send_and_wait_for_signed_blocks(round_context &context, service_node
 
   auto const &quorum   = context.transient.signed_block.wait.data;
   bool const timed_out = pulse::clock::now() >= stage.end_time;
-  bool const enough    = stage.msgs_received >= context.transient.wait_for_handshake_bitsets.best_count;
+  bool const enough    = stage.bitset >= context.transient.wait_for_handshake_bitsets.best_bitset;
 
   if (timed_out || enough)
   {
