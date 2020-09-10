@@ -117,8 +117,22 @@ struct pulse_send_stage
   }
 };
 
+struct round_history
+{
+  uint64_t              height;
+  uint8_t               round;
+  crypto::hash          top_block_hash;
+  service_nodes::quorum quorum;
+};
+
 struct round_context
 {
+  // Store the recent history of quorums in the past to allow validating late
+  // arriving messages and allow printing out the correct response ('error
+  // unknown message origin' or 'ok to ignore').
+  std::array<round_history, 3> quorum_history;
+  size_t                      quorum_history_index;
+
   struct
   {
     uint64_t          height;              // Current blockchain height that Pulse wants to generate a block for
@@ -245,9 +259,8 @@ pulse::message msg_init_from_context(round_context const &context)
 // Generate the hash necessary for signing a message. All fields of the 'msg'
 // must have been set for the type of the message except the signature for the
 // hash to be generated correctly.
-crypto::hash msg_signature_hash(round_context const &context, pulse::message const &msg)
+crypto::hash msg_signature_hash(crypto::hash const &top_block_hash, pulse::message const &msg)
 {
-  assert(context.state >= round_state::wait_for_next_block);
   crypto::hash result = {};
   switch(msg.type)
   {
@@ -257,14 +270,14 @@ crypto::hash msg_signature_hash(round_context const &context, pulse::message con
 
     case pulse::message_type::handshake:
     {
-      auto buf = tools::memcpy_le(context.wait_for_next_block.top_hash.data, msg.quorum_position, msg.round);
+      auto buf = tools::memcpy_le(top_block_hash.data, msg.quorum_position, msg.round);
       result   = blake2b_hash(buf.data(), buf.size());
     }
     break;
 
     case pulse::message_type::handshake_bitset:
     {
-      auto buf = tools::memcpy_le(msg.handshakes.validator_bitset, context.wait_for_next_block.top_hash.data, msg.quorum_position, msg.round);
+      auto buf = tools::memcpy_le(msg.handshakes.validator_bitset, top_block_hash.data, msg.quorum_position, msg.round);
       result   = blake2b_hash(buf.data(), buf.size());
     }
     break;
@@ -279,14 +292,14 @@ crypto::hash msg_signature_hash(round_context const &context, pulse::message con
 
     case pulse::message_type::random_value_hash:
     {
-      auto buf = tools::memcpy_le(context.wait_for_next_block.top_hash.data, msg.quorum_position, msg.round, msg.random_value_hash.hash.data);
+      auto buf = tools::memcpy_le(top_block_hash.data, msg.quorum_position, msg.round, msg.random_value_hash.hash.data);
       result   = blake2b_hash(buf.data(), buf.size());
     }
     break;
 
     case pulse::message_type::random_value:
     {
-      auto buf = tools::memcpy_le(context.wait_for_next_block.top_hash.data, msg.quorum_position, msg.round, msg.random_value.value.data);
+      auto buf = tools::memcpy_le(top_block_hash.data, msg.quorum_position, msg.round, msg.random_value.value.data);
       result   = blake2b_hash(buf.data(), buf.size());
     }
     break;
@@ -294,7 +307,7 @@ crypto::hash msg_signature_hash(round_context const &context, pulse::message con
     case pulse::message_type::signed_block:
     {
       crypto::signature const &final_signature = msg.signed_block.signature_of_final_block_hash;
-      auto buf = tools::memcpy_le(context.wait_for_next_block.top_hash.data, msg.quorum_position, msg.round, final_signature.c.data, final_signature.r.data);
+      auto buf = tools::memcpy_le(top_block_hash.data, msg.quorum_position, msg.round, final_signature.c.data, final_signature.r.data);
       result   = blake2b_hash(buf.data(), buf.size());
     }
     break;
@@ -325,8 +338,13 @@ std::string msg_source_string(round_context const &context, pulse::message const
   return stream.str();
 }
 
-bool msg_signature_check(pulse::message const &msg, service_nodes::quorum const &quorum)
+bool msg_signature_check(pulse::message const &msg, crypto::hash const &top_block_hash, service_nodes::quorum const &quorum, std::string *error)
 {
+  std::stringstream stream;
+  LOKI_DEFER {
+    if (error) *error = stream.str();
+  };
+
   // Get Service Node Key
   crypto::public_key const *key = nullptr;
   switch (msg.type)
@@ -334,7 +352,7 @@ bool msg_signature_check(pulse::message const &msg, service_nodes::quorum const 
     case pulse::message_type::invalid:
     {
       assert("Invalid Code Path" == nullptr);
-      MERROR(log_prefix(context) << "Unhandled message type '" << pulse::message_type_string(msg.type) << "' can not verify signature.");
+      if (error) stream << log_prefix(context) << "Unhandled message type '" << pulse::message_type_string(msg.type) << "' can not verify signature.";
       return false;
     }
     break;
@@ -347,7 +365,7 @@ bool msg_signature_check(pulse::message const &msg, service_nodes::quorum const 
     {
       if (msg.quorum_position >= static_cast<int>(quorum.validators.size()))
       {
-        MERROR(log_prefix(context) << "Quorum position " << msg.quorum_position << " in Pulse message indexes oob");
+        if (error) stream << log_prefix(context) << "Quorum position " << msg.quorum_position << " in Pulse message indexes oob";
         return false;
       }
 
@@ -359,7 +377,7 @@ bool msg_signature_check(pulse::message const &msg, service_nodes::quorum const 
     {
       if (msg.quorum_position != 0)
       {
-        MERROR(log_prefix(context) << "Quorum position " << msg.quorum_position << " in Pulse message indexes oob");
+        if (error) stream << log_prefix(context) << "Quorum position " << msg.quorum_position << " in Pulse message indexes oob";
         return false;
       }
 
@@ -368,9 +386,9 @@ bool msg_signature_check(pulse::message const &msg, service_nodes::quorum const 
     break;
   }
 
-  if (!crypto::check_signature(msg_signature_hash(context, msg), *key, msg.signature))
+  if (!crypto::check_signature(msg_signature_hash(top_block_hash, msg), *key, msg.signature))
   {
-    MERROR(log_prefix(context) << "Signature for " << msg_source_string(context, msg) << " at height " << context.wait_for_next_block.height << "; is invalid");
+    if (error) stream << log_prefix(context) << "Signature for " << msg_source_string(context, msg) << " at height " << context.wait_for_next_block.height << "; is invalid";
     return false;
   }
 
@@ -401,7 +419,7 @@ void relay_validator_handshake_bit_or_bitset(round_context const &context, void 
   {
     msg.type = pulse::message_type::handshake;
   }
-  crypto::generate_signature(msg_signature_hash(context, msg), key.pub, key.key, msg.signature);
+  crypto::generate_signature(msg_signature_hash(context.wait_for_next_block.top_hash, msg), key.pub, key.key, msg.signature);
   handle_message(quorumnet_state, msg); // Add our own. We receive our own msg for the first time which also triggers us to relay.
 }
 
@@ -485,8 +503,47 @@ void pulse::handle_message(void *quorumnet_state, pulse::message const &msg)
   // mismatch will be detected in the signature as the round is included in the
   // signature hash.
 
-  if (!msg_signature_check(msg, context.prepare_for_round.quorum))
+  if (std::string sig_check_err;
+      !msg_signature_check(msg, context.wait_for_next_block.top_hash, context.prepare_for_round.quorum, &sig_check_err))
+  {
+    bool print_err    = true;
+    size_t iterations = std::min(context.quorum_history.size(), context.quorum_history_index);
+    for (size_t i = 0; i < iterations; i++)
+    {
+      auto const &past_round = context.quorum_history[i];
+      //
+      // NOTE: We can't do any filtering on the quorums to check against
+      // (like comparing the round in the message with the past_round's round)
+      // because the intermediary relayers of this message might have modified
+      // it maliciously before propagating it.
+      //
+      // Hence we check it against all the quorums in history. So keep the
+      // number of quorums stored in history very small to keep this fast!
+      //
+
+      if (msg_signature_check(msg, past_round.top_block_hash, past_round.quorum, nullptr /*error msg*/))
+      {
+        // NOTE: This is ok, we detected a round failed earlier than someone else
+        // and lingering messages are still going around on Quorumnet from
+        // a round in the past.
+        //
+        // i.e. You were the block producer and have submitted the block template,
+        // in which case your role in the ceremony is done and you sleep until
+        // the next round/block. Old lingering messages for the block producer
+        // (you) might still being propagated, and that is ok, and should not be
+        // marked an error, just ignored.
+
+        print_err = false;
+        MTRACE(log_prefix(context) << "Received valid message from the past (round " << msg.round << "), ignoring");
+        break;
+      } // else: Message has unknown origins, it is not something we know how to validate.
+    }
+
+    if (print_err)
+      MERROR(sig_check_err);
+
     return;
+  }
 
   pulse_wait_stage *stage = nullptr;
   switch(msg.type)
@@ -941,6 +998,56 @@ round_state goto_preparing_for_next_round(round_context &context)
   return round_state::prepare_for_round;
 }
 
+void clear_round_data(round_context &context)
+{
+  if (service_nodes::verify_pulse_quorum_sizes(context.prepare_for_round.quorum))
+  {
+    // NOTE: Store the quorum into history before deleting it from memory.
+    // This way we can verify late arriving messages when we may have progressed
+    // already into a new round/block.
+
+    bool store        = true;
+    size_t iterations = std::min(context.quorum_history.size(), context.quorum_history_index);
+    for (size_t i = 0; i < iterations; i++)
+    {
+      auto &quorum = context.quorum_history[i];
+      if (quorum.height == context.wait_for_next_block.height &&
+          quorum.round == context.prepare_for_round.round)
+      {
+        store = false; // Already stored quorum
+        break;
+      }
+    }
+
+    if (store)
+    {
+      size_t real_quorum_history_index = context.quorum_history_index % context.quorum_history.size();
+      context.quorum_history_index++;
+
+      round_history &entry = context.quorum_history[real_quorum_history_index];
+      entry                = {};
+
+      entry.top_block_hash = context.wait_for_next_block.top_hash;
+      entry.height         = context.wait_for_next_block.height;
+      entry.round          = context.prepare_for_round.round;
+      entry.quorum         = std::move(context.prepare_for_round.quorum);
+    }
+  }
+
+  context.transient = {};
+  cryptonote::pulse_random_value &old_random_value = context.transient.random_value.send.data;
+  auto &old_random_values_array                    = context.transient.random_value.wait.data;
+  memwipe(old_random_value.data, sizeof(old_random_value));
+  memwipe(old_random_values_array.data(), old_random_values_array.size() * sizeof(old_random_values_array[0]));
+  context.prepare_for_round = {};
+}
+
+round_state goto_wait_for_next_block_and_clear_round_data(round_context &context)
+{
+  clear_round_data(context);
+  return round_state::wait_for_next_block;
+}
+
 round_state wait_for_next_block(uint64_t hf16_height, round_context &context, cryptonote::Blockchain const &blockchain)
 {
   //
@@ -992,44 +1099,39 @@ round_state wait_for_next_block(uint64_t hf16_height, round_context &context, cr
 
 round_state prepare_for_round(round_context &context, service_nodes::service_node_keys const &key, cryptonote::Blockchain const &blockchain)
 {
-  // Clear memory
+  //
+  // NOTE: Clear Round Data
+  //
   {
-    context.transient = {};
-    cryptonote::pulse_random_value &old_random_value = context.transient.random_value.send.data;
-    auto &old_random_values_array                    = context.transient.random_value.wait.data;
-    memwipe(old_random_value.data, sizeof(old_random_value));
-    memwipe(old_random_values_array.data(), old_random_values_array.size() * sizeof(old_random_values_array[0]));
-
     // Store values
-    bool queue_for_round = context.prepare_for_round.queue_for_next_round;
-    uint8_t round        = context.prepare_for_round.round;
+    uint8_t round             = context.prepare_for_round.round;
+    bool queue_for_next_round = context.prepare_for_round.queue_for_next_round;
 
-    // Blanket clear
-    context.prepare_for_round = {};
+    clear_round_data(context);
 
     // Restore values
     context.prepare_for_round.round                = round;
-    context.prepare_for_round.queue_for_next_round = queue_for_round;
+    context.prepare_for_round.queue_for_next_round = queue_for_next_round;
   }
 
   if (context.prepare_for_round.queue_for_next_round)
   {
-    // Set when an intermediate Pulse stage has failed and we wait on the
-    // next round to occur.
-    context.prepare_for_round.queue_for_next_round = false;
-
     if (context.prepare_for_round.round >= 255)
     {
       // If the next round overflows, we consider the network stalled. Wait for
       // the next block and allow PoW to return.
-      return round_state::wait_for_next_block;
+      return goto_wait_for_next_block_and_clear_round_data(context);
     }
-    context.prepare_for_round.round++;
 
     // Also check if the blockchain has changed, in which case we stop and
     // restart Pulse stages.
     if (context.wait_for_next_block.height != blockchain.get_current_blockchain_height(true /*lock*/))
-      return round_state::wait_for_next_block;
+      return goto_wait_for_next_block_and_clear_round_data(context);
+
+    // 'queue_for_next_round' is set when an intermediate Pulse stage has failed
+    // and the caller requests us to wait until the next round to occur.
+    context.prepare_for_round.queue_for_next_round = false;
+    context.prepare_for_round.round++;
   }
 
   //
@@ -1043,7 +1145,7 @@ round_state prepare_for_round(round_context &context, service_nodes::service_nod
     if (round_usize > 255) // Network stalled
     {
       MINFO(log_prefix(context) << "Pulse has timed out, reverting to accepting miner blocks only.");
-      return round_state::wait_for_next_block;
+      return goto_wait_for_next_block_and_clear_round_data(context);
     }
 
     uint8_t curr_round = static_cast<uint8_t>(round_usize);
@@ -1062,19 +1164,23 @@ round_state prepare_for_round(round_context &context, service_nodes::service_nod
     context.transient.signed_block.wait.stage.end_time            = context.transient.random_value.wait.stage.end_time            + PULSE_WAIT_FOR_SIGNED_BLOCK_DURATION;
   }
 
-  std::vector<crypto::hash> entropy = service_nodes::get_pulse_entropy_for_next_block(blockchain.get_db(), context.wait_for_next_block.top_hash, context.prepare_for_round.round);
+  std::vector<crypto::hash> const entropy = service_nodes::get_pulse_entropy_for_next_block(blockchain.get_db(), context.wait_for_next_block.top_hash, context.prepare_for_round.round);
+  auto const active_node_list             = blockchain.get_service_node_list().active_service_nodes_infos();
+  uint8_t const hf_version                = blockchain.get_current_hard_fork_version();
+  crypto::public_key const &block_leader  = blockchain.get_service_node_list().get_block_leader().key;
+
   context.prepare_for_round.quorum =
       service_nodes::generate_pulse_quorum(blockchain.nettype(),
-                                           blockchain.get_service_node_list().get_block_leader().key,
-                                           blockchain.get_current_hard_fork_version(),
-                                           blockchain.get_service_node_list().active_service_nodes_infos(),
+                                           block_leader,
+                                           hf_version,
+                                           active_node_list,
                                            entropy,
                                            context.prepare_for_round.round);
 
   if (!service_nodes::verify_pulse_quorum_sizes(context.prepare_for_round.quorum))
   {
     MINFO(log_prefix(context) << "Insufficient Service Nodes to execute Pulse on height " << context.wait_for_next_block.height << ", we require a PoW miner block. Sleeping until next block.");
-    return round_state::wait_for_next_block;
+    return goto_wait_for_next_block_and_clear_round_data(context);
   }
 
   MDEBUG(log_prefix(context) << "Generate Pulse quorum: " << context.prepare_for_round.quorum);
@@ -1113,7 +1219,7 @@ round_state wait_for_round(round_context &context, cryptonote::Blockchain const 
   if (context.wait_for_next_block.height != blockchain.get_current_blockchain_height(true /*lock*/))
   {
     MDEBUG(log_prefix(context) << "Block height changed whilst waiting for round " << +context.prepare_for_round.round << ", restarting Pulse stages");
-    return round_state::wait_for_next_block;
+    return goto_wait_for_next_block_and_clear_round_data(context);
   }
 
   auto start_time = context.prepare_for_round.start_time;
@@ -1211,10 +1317,6 @@ round_state wait_for_handshake_bitsets(round_context &context, service_nodes::se
 
   if (timed_out || all_bitsets)
   {
-    bool missing_bitsets = timed_out && !all_bitsets;
-    MDEBUG(log_prefix(context) << "Collected " << stage.msgs_received << "/" << quorum.size() << " handshake bitsets"
-                               << (missing_bitsets ? ", we timed out and some bitsets were not seen!" : ""));
-
     std::map<uint16_t, int> most_common_bitset;
     uint16_t best_bitset = 0;
     size_t count         = 0;
@@ -1323,7 +1425,7 @@ round_state send_block_template(round_context &context, void *quorumnet_state, s
     if (context.wait_for_next_block.height != height)
     {
       MDEBUG(log_prefix(context) << "Block height changed whilst preparing block template for round " << +context.prepare_for_round.round << ", restarting Pulse stages");
-      return round_state::wait_for_next_block;
+      return goto_wait_for_next_block_and_clear_round_data(context);
     }
   }
 
@@ -1331,7 +1433,7 @@ round_state send_block_template(round_context &context, void *quorumnet_state, s
   pulse::message msg      = msg_init_from_context(context);
   msg.type                = pulse::message_type::block_template;
   msg.block_template.blob = cryptonote::t_serializable_object_to_blob(block);
-  crypto::generate_signature(msg_signature_hash(context, msg), key.pub, key.key, msg.signature);
+  crypto::generate_signature(msg_signature_hash(context.wait_for_next_block.top_hash, msg), key.pub, key.key, msg.signature);
 
   // Send
   MINFO(log_prefix(context) << "Validators are handshaken and ready, sending block template from producer (us) to validators.\n" << cryptonote::obj_to_json_str(block));
@@ -1386,7 +1488,7 @@ round_state send_and_wait_for_random_value_hashes(round_context &context, servic
     pulse::message msg         = msg_init_from_context(context);
     msg.type                   = pulse::message_type::random_value_hash;
     msg.random_value_hash.hash = context.transient.random_value_hashes.send.data;
-    crypto::generate_signature(msg_signature_hash(context, msg), key.pub, key.key, msg.signature);
+    crypto::generate_signature(msg_signature_hash(context.wait_for_next_block.top_hash, msg), key.pub, key.key, msg.signature);
     handle_message(quorumnet_state, msg); // Add our own. We receive our own msg for the first time which also triggers us to relay.
   }
 
@@ -1424,7 +1526,7 @@ round_state send_and_wait_for_random_value(round_context &context, service_nodes
     pulse::message msg     = msg_init_from_context(context);
     msg.type               = pulse::message_type::random_value;
     msg.random_value.value = context.transient.random_value.send.data;
-    crypto::generate_signature(msg_signature_hash(context, msg), key.pub, key.key, msg.signature);
+    crypto::generate_signature(msg_signature_hash(context.wait_for_next_block.top_hash, msg), key.pub, key.key, msg.signature);
     handle_message(quorumnet_state, msg); // Add our own. We receive our own msg for the first time which also triggers us to relay.
   }
 
@@ -1505,7 +1607,7 @@ round_state send_and_wait_for_signed_blocks(round_context &context, service_node
     pulse::message msg                             = msg_init_from_context(context);
     msg.type                                       = pulse::message_type::signed_block;
     msg.signed_block.signature_of_final_block_hash = context.transient.signed_block.send.data;
-    crypto::generate_signature(msg_signature_hash(context, msg), key.pub, key.key, msg.signature);
+    crypto::generate_signature(msg_signature_hash(context.wait_for_next_block.top_hash, msg), key.pub, key.key, msg.signature);
     handle_message(quorumnet_state, msg); // Add our own. We receive our own msg for the first time which also triggers us to relay.
   }
 
@@ -1569,7 +1671,7 @@ round_state send_and_wait_for_signed_blocks(round_context &context, service_node
     if (!core.handle_block_found(final_block, bvc))
       return goto_preparing_for_next_round(context);
 
-    return round_state::wait_for_next_block;
+    return goto_wait_for_next_block_and_clear_round_data(context);
   }
 
   return round_state::send_and_wait_for_signed_blocks;
