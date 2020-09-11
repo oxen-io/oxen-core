@@ -493,7 +493,6 @@ void pulse::handle_message(void *quorumnet_state, pulse::message const &msg)
   if (context.state < round_state::wait_for_round)
   {
     // TODO(doyle): Handle this better.
-
     // We are not ready for any messages because we haven't prepared for a round
     // yet (don't have the necessary information yet to validate the message).
     return;

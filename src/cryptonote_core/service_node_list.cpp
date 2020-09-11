@@ -2383,7 +2383,7 @@ namespace service_nodes
     // NOTE: Verify miner tx vout composition
     //
     // Miner Block
-    // 0       | Miner
+    // 1       | Miner
     // Up To 4 | Queued Service Node
     // Up To 1 | Governance
     //
@@ -2392,6 +2392,9 @@ namespace service_nodes
     // Up To 4 | Queued Service Node
     // Up To 1 | Governance
     //
+    // NOTE: See cryptonote_tx_utils.cpp construct_miner_tx(...) for payment details.
+    //
+
     std::shared_ptr<const service_node_info> block_producer = nullptr;
     size_t expected_vouts_size                        = 0;
     if (mode == verify_mode::pulse_block_leader_is_producer || mode == verify_mode::pulse_different_block_producer)
@@ -2441,7 +2444,7 @@ namespace service_nodes
 
       case verify_mode::pulse_block_leader_is_producer:
       {
-        uint64_t total_reward = total_service_node_reward + reward_parts.miner_reward();
+        uint64_t total_reward = total_service_node_reward + reward_parts.base_miner_fee + reward_parts.base_miner;
         for (size_t vout_index = 0; vout_index < block_leader.payouts.size(); vout_index++)
         {
           payout_entry const &payout = block_leader.payouts[vout_index];
@@ -2461,7 +2464,7 @@ namespace service_nodes
           if (contributor.address == block_producer->operator_address)
             portions += block_producer->portions_for_operator;
 
-          if (!verify_coinbase_tx_output(miner_tx, height, vout_index, contributor.address, portions, reward_parts.miner_reward()))
+          if (!verify_coinbase_tx_output(miner_tx, height, vout_index, contributor.address, portions, reward_parts.base_miner_fee))
             return false;
         }
 
@@ -2469,7 +2472,7 @@ namespace service_nodes
         {
           size_t const vout_index    = block_producer->contributors.size() + i;
           payout_entry const &payout = block_leader.payouts[i];
-          if (!verify_coinbase_tx_output(miner_tx, height, vout_index, payout.address, payout.portions, total_service_node_reward))
+          if (!verify_coinbase_tx_output(miner_tx, height, vout_index, payout.address, payout.portions, reward_parts.base_miner + total_service_node_reward))
             return false;
         }
       }

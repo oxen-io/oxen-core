@@ -287,45 +287,93 @@ namespace cryptonote
     }
 
     // TODO(doyle): Batching awards
-    // NOTE: Summarise rewards to payout
-    // Up to 9 payout entries, up to 4 Block Producer (Pooled SN or 1 for Miner), up to 4 for Block Leader, up to 1 Governance
+    //
+    // NOTE: Summarise rewards to payout (up to 9 payout entries/outputs)
+    //
+    // Miner Block
+    // - 1       | Miner
+    // - Up To 4 | Block Leader (Queued node at the top of the Service Node List)
+    // - Up To 1 | Governance
+    //
+    // Pulse Block
+    // - Up to 4 | Block Producer (0-3 for Pooled Service Node)
+    // - Up To 4 | Block Leader   (Queued node at the top of the Service Node List)
+    // - Up To 1 | Governance     (When a block is at the Governance payout interval)
+    //
+    // NOTE: Pulse Block Payment Details
+    //
+    // By default, when Pulse round is 0, the Block Producer is the Block
+    // Leader. Coinbase and transaction fees are given to the Block Leader.
+    // This is the common case, and in that instance we avoid generating
+    // duplicate outputs and payment occurs in 1 output.
+    //
+    // On alternative rounds, transaction fees are given to the alternative
+    // block producer (which is now different from the Block Leader). The
+    // original block producer still receives the coinbase reward. A Pulse
+    // round's failure is determined by the non-participation of the members of
+    // the quorum, so failing a round's onus is not always on the original block
+    // producer (it could be the validators colluding) hence why they still
+    // receive the coinbase.
+    //
+    // Allocating the transaction fee to alternative block producers on
+    // alternative rounds dis-incentivizes members in the quorum from
+    // intentionally not participating in the quorum to try and attain a spot as
+    // the subsequent alternative leader and snag a reward. The reward they
+    // receive instead is just the transaction fee.
+    //
+    // Purposely not participating to exploit alternative round transaction fees
+    // is further dis-incentivized as it is recorded on their behaviour metrics
+    // (multiple non-participation marks over the monitoring period will induce
+    // a decommission) by members of the quorum.
+
     size_t rewards_length                = 0;
     std::array<reward_payout, 9> rewards = {};
 
+    if (hard_fork_version >= cryptonote::network_version_9_service_nodes)
+      CHECK_AND_ASSERT_MES(miner_tx_context.block_leader.payouts.size(), false, "Constructing a block leader reward for block but no payout entries specified");
+
     // NOTE: Add Block Producer Reward
-    bool add_producer_reward_to_leader = false;
     if (miner_tx_context.pulse)
     {
       CHECK_AND_ASSERT_MES(miner_tx_context.pulse_block_producer.payouts.size(), false, "Constructing a reward for block produced by pulse but no payout entries specified");
       CHECK_AND_ASSERT_MES(miner_tx_context.pulse_block_producer.key, false, "Null Key given for Pulse Block Producer");
       CHECK_AND_ASSERT_MES(hard_fork_version >= cryptonote::network_version_16, false, "Pulse Block Producer is not valid until HF16, current HF" << hard_fork_version);
 
+      uint64_t leader_reward = reward_parts.service_node_paid + reward_parts.base_miner;
       if (miner_tx_context.block_leader.key == miner_tx_context.pulse_block_producer.key)
       {
-        add_producer_reward_to_leader = true;
+        leader_reward += reward_parts.base_miner_fee;
       }
       else
       {
+        // Alternative Block Producer (receives just miner fee)
         service_nodes::payout const &producer = miner_tx_context.pulse_block_producer;
         for (auto const &payee : producer.payouts)
-          rewards[rewards_length++] = {reward_type::snode, payee.address, get_portion_of_reward(payee.portions, reward_parts.miner_reward())};
+          rewards[rewards_length++] = {reward_type::snode, payee.address, get_portion_of_reward(payee.portions, reward_parts.base_miner_fee)};
+      }
+
+      for (auto const &payee : miner_tx_context.block_leader.payouts)
+      {
+        rewards[rewards_length++] = {
+            reward_type::snode,
+            payee.address,
+            get_portion_of_reward(payee.portions, leader_reward)};
       }
     }
     else
     {
       CHECK_AND_ASSERT_MES(miner_tx_context.pulse_block_producer.payouts.empty(), false, "Constructing a reward for block produced by miner but payout entries specified");
-      rewards[rewards_length++] = {reward_type::miner, miner_tx_context.miner_block_producer, reward_parts.miner_reward()};
-    }
+      rewards[rewards_length++] = {reward_type::miner, miner_tx_context.miner_block_producer, reward_parts.base_miner + reward_parts.base_miner_fee};
 
-    // NOTE: Add Service Node List Queue Winner
-    if (hard_fork_version >= cryptonote::network_version_9_service_nodes)
-    {
-      CHECK_AND_ASSERT_MES(miner_tx_context.block_leader.payouts.size(), false, "Constructing a block leader reward for block but no payout entries specified");
-      for (auto const &payee : miner_tx_context.block_leader.payouts)
+      if (hard_fork_version >= cryptonote::network_version_9_service_nodes)
       {
-        rewards[rewards_length++] = {reward_type::snode, payee.address, get_portion_of_reward(payee.portions, reward_parts.service_node_paid)};
-        if (add_producer_reward_to_leader)
-          rewards[rewards_length - 1].amount += get_portion_of_reward(payee.portions, reward_parts.miner_reward());
+        for (auto const &payee : miner_tx_context.block_leader.payouts)
+        {
+          rewards[rewards_length++] = {
+              reward_type::snode,
+              payee.address,
+              get_portion_of_reward(payee.portions, reward_parts.service_node_paid)};
+        }
       }
     }
 
@@ -375,7 +423,7 @@ namespace cryptonote
       summary_amounts += amount;
     }
 
-    uint64_t expected_amount = reward_parts.miner_reward() + reward_parts.governance_paid + reward_parts.service_node_paid;
+    uint64_t expected_amount = reward_parts.base_miner + reward_parts.base_miner_fee + reward_parts.governance_paid + reward_parts.service_node_paid;
     CHECK_AND_ASSERT_MES(summary_amounts == expected_amount, false, "Failed to construct miner tx, summary_amounts = " << summary_amounts << " not equal total block_reward = " << expected_amount);
     CHECK_AND_ASSERT_MES(tx.vout.size() == rewards_length, false, "TX output mis-match with rewards expected: " << rewards_length << ", tx outputs: " << tx.vout.size());
 
