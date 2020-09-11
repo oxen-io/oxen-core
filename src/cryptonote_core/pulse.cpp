@@ -990,6 +990,7 @@ Yes +-----[Block can not be added to blockchain]
       P2P-ed.
 */
 
+#define PULSE_TEST_CODE 1
 
 round_state goto_preparing_for_next_round(round_context &context)
 {
@@ -1229,6 +1230,23 @@ round_state wait_for_round(round_context &context, cryptonote::Blockchain const 
     return round_state::wait_for_round;
   }
 
+#if PULSE_TEST_CODE
+  size_t faulty_chance = tools::uniform_distribution_portable(tools::rng, 100);
+  if (faulty_chance < 10)
+  {
+    MDEBUG(log_prefix(context) << "FAULTY NODE ACTIVATED");
+    return goto_preparing_for_next_round(context);
+  }
+
+  size_t sleep_chance = tools::uniform_distribution_portable(tools::rng, 100);
+  if (sleep_chance < 10)
+  {
+    auto sleep_time = std::chrono::seconds(tools::uniform_distribution_portable(tools::rng, 20));
+    std::this_thread::sleep_for(sleep_time);
+    MDEBUG(log_prefix(context) << "SLEEP TIME ACTIVATED " << tools::to_seconds(sleep_time) << "s");
+  }
+#endif
+
   if (context.prepare_for_round.participant == sn_type::validator)
   {
     MINFO(log_prefix(context) << "We are a pulse validator, sending handshake bit and collecting other handshakes.");
@@ -1335,7 +1353,7 @@ round_state wait_for_handshake_bitsets(round_context &context, service_nodes::se
     }
 
     bool i_am_not_participating = false;
-    if (best_bitset != 0 && conteext.prepare_for_round.participant == sn_type::validator)
+    if (best_bitset != 0 && context.prepare_for_round.participant == sn_type::validator)
       i_am_not_participating = ((best_bitset & (1 << context.prepare_for_round.my_quorum_position)) == 0);
 
     if (count < service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES || best_bitset == 0 || i_am_not_participating)
