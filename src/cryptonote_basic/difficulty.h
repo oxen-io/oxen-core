@@ -66,7 +66,7 @@ namespace cryptonote
                                       uint64_t cumulative_difficulty);
 
 
-    constexpr difficulty_type PULSE_FIXED_DIFFICULTY = 1'000'000 * tools::to_seconds(TARGET_BLOCK_TIME);
+    constexpr difficulty_type PULSE_FIXED_DIFFICULTY = 1'000'000;
     enum struct difficulty_calc_mode
     {
       use_old_lwma,
