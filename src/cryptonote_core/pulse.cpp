@@ -1335,7 +1335,7 @@ round_state wait_for_handshake_bitsets(round_context &context, service_nodes::se
     }
 
     bool i_am_not_participating = false;
-    if (best_bitset != 0)
+    if (best_bitset != 0 && conteext.prepare_for_round.participant == sn_type::validator)
       i_am_not_participating = ((best_bitset & (1 << context.prepare_for_round.my_quorum_position)) == 0);
 
     if (count < service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES || best_bitset == 0 || i_am_not_participating)
