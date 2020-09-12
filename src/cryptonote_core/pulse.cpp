@@ -1216,7 +1216,8 @@ round_state prepare_for_round(round_context &context, service_nodes::service_nod
 
 round_state wait_for_round(round_context &context, cryptonote::Blockchain const &blockchain)
 {
-  if (context.wait_for_next_block.height != blockchain.get_current_blockchain_height(true /*lock*/))
+  const auto curr_height = blockchain.get_current_blockchain_height(true /*lock*/);
+  if (context.wait_for_next_block.height != curr_height)
   {
     MDEBUG(log_prefix(context) << "Block height changed whilst waiting for round " << +context.prepare_for_round.round << ", restarting Pulse stages");
     return goto_wait_for_next_block_and_clear_round_data(context);
@@ -1231,19 +1232,25 @@ round_state wait_for_round(round_context &context, cryptonote::Blockchain const 
   }
 
 #if PULSE_TEST_CODE
-  size_t faulty_chance = tools::uniform_distribution_portable(tools::rng, 100);
-  if (faulty_chance < 10)
+  // For testing purposes: we apply possible random non-response and random delays to half of all
+  // blocks; we go in batches of 10: 10 maybe-faulty blocks followed by 10 well-behaved blocks.
+  // (Faulty blocks have an odd second-last height digit).
+  if (curr_height % 20 >= 10)
   {
-    MDEBUG(log_prefix(context) << "FAULTY NODE ACTIVATED");
-    return goto_preparing_for_next_round(context);
-  }
+    size_t faulty_chance = tools::uniform_distribution_portable(tools::rng, 100);
+    if (faulty_chance < 10)
+    {
+      MDEBUG(log_prefix(context) << "FAULTY NODE ACTIVATED");
+      return goto_preparing_for_next_round(context);
+    }
 
-  size_t sleep_chance = tools::uniform_distribution_portable(tools::rng, 100);
-  if (sleep_chance < 10)
-  {
-    auto sleep_time = std::chrono::seconds(tools::uniform_distribution_portable(tools::rng, 20));
-    std::this_thread::sleep_for(sleep_time);
-    MDEBUG(log_prefix(context) << "SLEEP TIME ACTIVATED " << tools::to_seconds(sleep_time) << "s");
+    size_t sleep_chance = tools::uniform_distribution_portable(tools::rng, 100);
+    if (sleep_chance < 10)
+    {
+      auto sleep_time = std::chrono::seconds(tools::uniform_distribution_portable(tools::rng, 20));
+      std::this_thread::sleep_for(sleep_time);
+      MDEBUG(log_prefix(context) << "SLEEP TIME ACTIVATED " << tools::to_seconds(sleep_time) << "s");
+    }
   }
 #endif
 
