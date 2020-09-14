@@ -347,9 +347,15 @@ namespace cryptonote
       else
       {
         // Alternative Block Producer (receives just miner fee)
-        service_nodes::payout const &producer = miner_tx_context.pulse_block_producer;
-        for (auto const &payee : producer.payouts)
-          rewards[rewards_length++] = {reward_type::snode, payee.address, get_portion_of_reward(payee.portions, reward_parts.base_miner_fee)};
+        if (reward_parts.base_miner_fee)
+        {
+          service_nodes::payout const &producer = miner_tx_context.pulse_block_producer;
+          for (auto const &payee : producer.payouts)
+          {
+            uint64_t reward_amount = get_portion_of_reward(payee.portions, reward_parts.base_miner_fee);
+            rewards[rewards_length++] = {reward_type::snode, payee.address, reward_amount};
+          }
+        }
       }
 
       for (auto const &payee : miner_tx_context.block_leader.payouts)
@@ -362,8 +368,11 @@ namespace cryptonote
     }
     else
     {
+
       CHECK_AND_ASSERT_MES(miner_tx_context.pulse_block_producer.payouts.empty(), false, "Constructing a reward for block produced by miner but payout entries specified");
-      rewards[rewards_length++] = {reward_type::miner, miner_tx_context.miner_block_producer, reward_parts.base_miner + reward_parts.base_miner_fee};
+
+      if (uint64_t miner_amount = reward_parts.base_miner + reward_parts.base_miner_fee; miner_amount)
+        rewards[rewards_length++] = {reward_type::miner, miner_tx_context.miner_block_producer, miner_amount};
 
       if (hard_fork_version >= cryptonote::network_version_9_service_nodes)
       {

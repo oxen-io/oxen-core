@@ -15,7 +15,7 @@ constexpr uint64_t SN_REWARD_HF15         = BLOCK_REWARD_HF15 * 66 / 100;
 constexpr uint64_t FOUNDATION_REWARD_HF15 = BLOCK_REWARD_HF15 * 10 / 100;
 
 // New (HF16+) money supply parameters (tentative - HF16 not yet scheduled)
-constexpr uint64_t BLOCK_REWARD_HF16      = 21 * COIN + 1 /* TODO - see below */;
+constexpr uint64_t BLOCK_REWARD_HF16      = 21 * COIN /* TODO - see below */;
 constexpr uint64_t SN_REWARD_HF16         = BLOCK_REWARD_HF16 * 90 / 100;
 constexpr uint64_t FOUNDATION_REWARD_HF16 = BLOCK_REWARD_HF16 * 10 / 100;
 
@@ -24,10 +24,10 @@ constexpr uint64_t FOUNDATION_REWARD_HF16 = BLOCK_REWARD_HF16 * 10 / 100;
 // support that yet in the current code and if we put an output of 0 it currently breaks the test
 // suite (which assumes an output of 0 means ringct, which this is not).  Thus this +1 hack for now,
 // to keep the current test suite happy until we actually implement this for HF16.
-constexpr uint64_t MINER_REWARD_HF16 = 1;
+// constexpr uint64_t MINER_REWARD_HF16 = 0;
 
 static_assert(MINER_REWARD_HF15 + SN_REWARD_HF15 + FOUNDATION_REWARD_HF15 == BLOCK_REWARD_HF15);
-static_assert(MINER_REWARD_HF16 + SN_REWARD_HF16 + FOUNDATION_REWARD_HF16 == BLOCK_REWARD_HF16);
+static_assert(                    SN_REWARD_HF16 + FOUNDATION_REWARD_HF16 == BLOCK_REWARD_HF16);
 
 // -------------------------------------------------------------------------------------------------
 //

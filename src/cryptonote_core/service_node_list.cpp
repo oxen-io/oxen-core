@@ -1413,6 +1413,31 @@ namespace service_nodes
     }
   }
 
+  static bool find_block_in_db(cryptonote::BlockchainDB const &db, crypto::hash const &hash, cryptonote::block &block)
+  {
+    try
+    {
+      block = db.get_block(hash);
+    }
+    catch(std::exception const &e)
+    {
+      // ignore not found block, try alt db
+      cryptonote::alt_block_data_t alt_data;
+      cryptonote::blobdata blob;
+      if (!db.get_alt_block(hash, &alt_data, &blob, nullptr))
+      {
+        MERROR("Failed to find block " << hash);
+        return false;
+      }
+
+      if (!cryptonote::parse_and_validate_block_from_blob(blob, block, nullptr))
+        return false;
+    }
+
+    return true;
+  }
+
+
   bool service_node_list::verify_block(const cryptonote::block &block, bool alt_block, cryptonote::checkpoint_t const *checkpoint)
   {
     if (block.major_version < cryptonote::network_version_9_service_nodes)
@@ -1464,15 +1489,14 @@ namespace service_nodes
       uint64_t prev_timestamp = 0;
       if (alt_block)
       {
-        cryptonote::block_header prev_header;
-        cryptonote::alt_block_data_t data;
-        if (!m_blockchain.get_db().get_alt_block_header(block.prev_id, &data, &prev_header, nullptr))
+        cryptonote::block prev_block;
+        if (!find_block_in_db(m_blockchain.get_db(), block.prev_id, prev_block))
         {
           MGINFO("Alt block " << cryptonote::get_block_hash(block) << " references previous block " << block.prev_id << " not available in DB.");
           return false;
         }
 
-        prev_timestamp = prev_header.timestamp;
+        prev_timestamp = prev_block.timestamp;
       }
       else
       {
@@ -1647,30 +1671,6 @@ namespace service_nodes
     }
 
     return result;
-  }
-
-  static bool find_block_in_db(cryptonote::BlockchainDB const &db, crypto::hash const &hash, cryptonote::block &block)
-  {
-    try
-    {
-      block = db.get_block(hash);
-    }
-    catch(std::exception const &e)
-    {
-      // ignore not found block, try alt db
-      cryptonote::alt_block_data_t alt_data;
-      cryptonote::blobdata blob;
-      if (!db.get_alt_block(hash, &alt_data, &blob, nullptr))
-      {
-        MERROR("Failed to find block " << hash);
-        return false;
-      }
-
-      if (!cryptonote::parse_and_validate_block_from_blob(blob, block, nullptr))
-        return false;
-    }
-
-    return true;
   }
 
   std::vector<crypto::hash> get_pulse_entropy_for_next_block(cryptonote::BlockchainDB const &db,
@@ -2407,12 +2407,13 @@ namespace service_nodes
       }
 
       block_producer = info_it->second;
-      if (mode == verify_mode::pulse_different_block_producer)
+      if (mode == verify_mode::pulse_different_block_producer && reward_parts.base_miner_fee > 0)
         expected_vouts_size += block_producer->contributors.size();
     }
     else
     {
-      expected_vouts_size += 1; /*miner*/
+      if ((reward_parts.base_miner + reward_parts.base_miner_fee) > 0) // (HF >= 16) this can be zero, no miner coinbase.
+        expected_vouts_size += 1; /*miner*/
     }
 
     expected_vouts_size += block_leader.payouts.size();
@@ -2427,14 +2428,18 @@ namespace service_nodes
       return false;
     }
 
+    if (mode != verify_mode::miner)
+      assert(reward_parts.base_miner == 0);
+
     // NOTE: Verify Coinbase Amounts for Service Nodes
     switch(mode)
     {
       case verify_mode::miner:
       {
+        size_t const vout_offset = (reward_parts.base_miner + reward_parts.base_miner_fee) > 0 ? 1 : 0;
         for (size_t i = 0; i < block_leader.payouts.size(); i++)
         {
-          size_t const vout_index    = 1 /*miner*/ + i;
+          size_t const vout_index    = vout_offset /*miner*/ + i;
           payout_entry const &payout = block_leader.payouts[i];
           if (!verify_coinbase_tx_output(miner_tx, height, vout_index, payout.address, payout.portions, total_service_node_reward))
             return false;
@@ -2456,21 +2461,25 @@ namespace service_nodes
 
       case verify_mode::pulse_different_block_producer:
       {
-        const uint64_t max_portions = STAKING_PORTIONS - block_producer->portions_for_operator;
-        for (size_t vout_index = 0; vout_index < block_producer->contributors.size(); vout_index++)
+        if (reward_parts.base_miner_fee)
         {
-          auto const &contributor = block_producer->contributors[vout_index];
-          uint64_t portions = get_portions_to_make_amount(block_producer->staking_requirement, contributor.amount, max_portions);
-          if (contributor.address == block_producer->operator_address)
-            portions += block_producer->portions_for_operator;
+          const uint64_t max_portions = STAKING_PORTIONS - block_producer->portions_for_operator;
+          for (size_t vout_index = 0; vout_index < block_producer->contributors.size(); vout_index++)
+          {
+            auto const &contributor = block_producer->contributors[vout_index];
+            uint64_t portions = get_portions_to_make_amount(block_producer->staking_requirement, contributor.amount, max_portions);
+            if (contributor.address == block_producer->operator_address)
+              portions += block_producer->portions_for_operator;
 
-          if (!verify_coinbase_tx_output(miner_tx, height, vout_index, contributor.address, portions, reward_parts.base_miner_fee))
-            return false;
+            if (!verify_coinbase_tx_output(miner_tx, height, vout_index, contributor.address, portions, reward_parts.base_miner_fee))
+              return false;
+          }
         }
 
+        size_t const vout_offset = (reward_parts.base_miner_fee) ? block_producer->contributors.size() : 0;
         for (size_t i = 0; i < block_leader.payouts.size(); i++)
         {
-          size_t const vout_index    = block_producer->contributors.size() + i;
+          size_t const vout_index    = vout_offset + i;
           payout_entry const &payout = block_leader.payouts[i];
           if (!verify_coinbase_tx_output(miner_tx, height, vout_index, payout.address, payout.portions, reward_parts.base_miner + total_service_node_reward))
             return false;

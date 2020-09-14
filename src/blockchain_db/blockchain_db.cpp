@@ -412,7 +412,7 @@ bool BlockchainDB::get_alt_block_header(const crypto::hash &blkid, alt_block_dat
   cryptonote::blobdata blob;
   if (!get_alt_block(blkid, data, &blob, checkpoint))
   {
-    throw BLOCK_DNE("Block with hash "s.append(epee::string_tools::pod_to_hex(blkid)).append(" not found in db").c_str());
+    throw BLOCK_DNE("Alt-block with hash "s.append(epee::string_tools::pod_to_hex(blkid)).append(" not found in db").c_str());
     return false;
   }
 

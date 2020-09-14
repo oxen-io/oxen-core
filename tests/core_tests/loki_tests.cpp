@@ -402,31 +402,29 @@ bool loki_checkpointing_service_node_checkpoints_check_reorg_windows::generate(s
   }
   assert(tries != MAX_TRIES);
 
-  // NOTE: Mine up until 1 block before the next checkpointable height, fork the chain.
+  gen.add_event_msg("Mine up until 1 block before the next checkpointable height, fork the chain.");
   gen.add_n_blocks(service_nodes::CHECKPOINT_INTERVAL - 1);
   loki_chain_generator fork_1_block_before_checkpoint = gen;
 
-  // Mine one block and fork the chain before we add the checkpoint.
+  gen.add_event_msg("Mine one block and fork the chain before we add the checkpoint.");
   gen.create_and_add_next_block();
-  loki_chain_generator fork_1_block_after_checkpoint = gen;
   gen.add_service_node_checkpoint(gen.height(), service_nodes::CHECKPOINT_MIN_VOTES);
+  loki_chain_generator fork_1_block_after_checkpoint = gen;
 
-  // Add the next service node checkpoints on the main chain to lock in the chain preceeding the first checkpoint
+  gen.add_event_msg("Add the next service node checkpoints on the main chain to lock in the chain preceeding the first checkpoint");
   gen.add_n_blocks(service_nodes::CHECKPOINT_INTERVAL - 1);
   loki_chain_generator fork_1_block_before_second_checkpoint = gen;
 
   gen.create_and_add_next_block();
   gen.add_service_node_checkpoint(gen.height(), service_nodes::CHECKPOINT_MIN_VOTES);
 
-  // Try add a block before first checkpoint, should fail because we are already 2 checkpoints deep.
+  gen.add_event_msg("Try add a block before first checkpoint, should fail because we are already 2 checkpoints deep.");
   fork_1_block_before_checkpoint.create_and_add_next_block({}, nullptr /*checkpoint*/, false /*can_be_added_to_blockchain*/, "Can NOT add a block if the height would equal the immutable height");
 
-  // Try add a block after the first checkpoint. This should succeed because we can reorg the chain within the 2 checkpoint window
+  gen.add_event_msg("Try add a block after the first checkpoint. This should succeed because we can reorg the chain within the 2 checkpoint window");
   fork_1_block_after_checkpoint.create_and_add_next_block({});
 
-  // Try add a block on the second checkpoint. This should also succeed because we can reorg the chain within the 2
-  // checkpoint window, and although the height is checkpointed and should fail checkpoints::check, it should still be
-  // allowed as an alt block
+  gen.add_event_msg("Try add a block on the second checkpoint. This should also succeed because we can reorg the chain within the 2 checkpoint window, and although the height is checkpointed and should fail checkpoints::check, it should still be allowed as an alt block");
   fork_1_block_before_second_checkpoint.create_and_add_next_block({});
   return true;
 }
@@ -671,20 +669,19 @@ bool loki_core_block_rewards_lrc6::generate(std::vector<test_event_entry>& event
       else
         CHECK_EQ(block.miner_tx.vout.size(), 2);
     }
+
     for (size_t block_height = hf16_height; block_height < height; ++block_height)
     {
       const cryptonote::block &block = blockchain[block_height];
-      // TODO: this 1 sat miner fee is just a placeholder until we address this properly in HF16.
-      CHECK_EQ(block.miner_tx.vout.at(0).amount, 1);
-      CHECK_EQ(block.miner_tx.vout.at(1).amount, SN_REWARD_HF16);
+      CHECK_EQ(block.miner_tx.vout.at(0).amount, SN_REWARD_HF16);
       if (cryptonote::block_has_governance_output(cryptonote::FAKECHAIN, block))
       {
         hf16_gov++;
-        CHECK_EQ(block.miner_tx.vout.at(2).amount, FOUNDATION_REWARD_HF16 * interval);
-        CHECK_EQ(block.miner_tx.vout.size(), 3);
+        CHECK_EQ(block.miner_tx.vout.at(1).amount, FOUNDATION_REWARD_HF16 * interval);
+        CHECK_EQ(block.miner_tx.vout.size(), 2);
       }
       else
-        CHECK_EQ(block.miner_tx.vout.size(), 2);
+        CHECK_EQ(block.miner_tx.vout.size(), 1);
     }
     CHECK_EQ(hf15_gov, 1);
     CHECK_EQ(hf16_gov, 1);

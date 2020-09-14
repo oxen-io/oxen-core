@@ -1313,7 +1313,7 @@ bool test_generator::construct_block_manually(cryptonote::block& blk, const cryp
     manual_calc_batched_governance(*this, prev_id, miner_tx_context, m_hf_version, height);
 
     size_t current_block_weight = txs_weight + get_transaction_weight(blk.miner_tx);
-    if (!construct_miner_tx(height, epee::misc_utils::median(block_weights), already_generated_coins, current_block_weight, 0, blk.miner_tx, cryptonote::loki_miner_tx_context::miner_block(cryptonote::FAKECHAIN, miner_acc.get_keys().m_account_address), cryptonote::blobdata(), m_hf_version))
+    if (!construct_miner_tx(height, epee::misc_utils::median(block_weights), already_generated_coins, current_block_weight, TESTS_DEFAULT_FEE * blk.tx_hashes.size(), blk.miner_tx, cryptonote::loki_miner_tx_context::miner_block(cryptonote::FAKECHAIN, miner_acc.get_keys().m_account_address), cryptonote::blobdata(), m_hf_version))
       return false;
   }
 
@@ -1485,6 +1485,7 @@ bool init_output_indices(std::vector<output_index>& outs, std::vector<size_t>& o
                         outs_mine.push_back(oi.idx);
                         if (oi.amount == 0)
                         {
+                          assert(oi.is_coin_base == false);
                           oi.amount = get_amount(from, tx, j);
                           oi.mask   = tx.rct_signatures.outPk[j].mask;
                         }
