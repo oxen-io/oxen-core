@@ -596,6 +596,13 @@ bool Blockchain::init(BlockchainDB* db, sqlite3 *lns_db, const network_type nett
     return false;
   }
 
+  if (m_nettype == DEVNET && get_current_blockchain_height() > 1)
+  {
+    block_header header = m_db->get_block_header_from_height(1);
+    if (header.timestamp < 1600000000)
+      pop_blocks(get_current_blockchain_height() - 1);
+  }
+
   return true;
 }
 //------------------------------------------------------------------
