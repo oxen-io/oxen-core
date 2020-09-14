@@ -31,8 +31,8 @@ namespace service_nodes {
   constexpr size_t PULSE_BLOCK_REQUIRED_SIGNATURES = 7;  // A block must have exactly N signatures to be considered properly
 #endif
 
-  constexpr auto PULSE_MIN_TARGET_BLOCK_TIME = TARGET_BLOCK_TIME - 15s;
-  constexpr auto PULSE_MAX_TARGET_BLOCK_TIME = TARGET_BLOCK_TIME + 15s;
+  constexpr auto PULSE_MIN_TARGET_BLOCK_TIME = TARGET_BLOCK_TIME - 30s;
+  constexpr auto PULSE_MAX_TARGET_BLOCK_TIME = TARGET_BLOCK_TIME + 30s;
   constexpr size_t PULSE_QUORUM_SIZE = PULSE_QUORUM_NUM_VALIDATORS + 1 /*Leader*/;
 
   static_assert(PULSE_ROUND_TIME >=
