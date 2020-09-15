@@ -347,23 +347,20 @@ namespace cryptonote
       else
       {
         // Alternative Block Producer (receives just miner fee)
-        if (reward_parts.base_miner_fee)
+        service_nodes::payout const &producer = miner_tx_context.pulse_block_producer;
+        for (auto const &payee : producer.payouts)
         {
-          service_nodes::payout const &producer = miner_tx_context.pulse_block_producer;
-          for (auto const &payee : producer.payouts)
-          {
-            uint64_t reward_amount = get_portion_of_reward(payee.portions, reward_parts.base_miner_fee);
+          uint64_t reward_amount = get_portion_of_reward(payee.portions, reward_parts.base_miner_fee);
+          if (reward_amount)
             rewards[rewards_length++] = {reward_type::snode, payee.address, reward_amount};
-          }
         }
       }
 
       for (auto const &payee : miner_tx_context.block_leader.payouts)
       {
-        rewards[rewards_length++] = {
-            reward_type::snode,
-            payee.address,
-            get_portion_of_reward(payee.portions, leader_reward)};
+        uint64_t reward_amount = get_portion_of_reward(payee.portions, leader_reward);
+        if (reward_amount)
+          rewards[rewards_length++] = {reward_type::snode, payee.address, reward_amount};
       }
     }
     else
@@ -378,10 +375,9 @@ namespace cryptonote
       {
         for (auto const &payee : miner_tx_context.block_leader.payouts)
         {
-          rewards[rewards_length++] = {
-              reward_type::snode,
-              payee.address,
-              get_portion_of_reward(payee.portions, reward_parts.service_node_paid)};
+          uint64_t reward_amount = get_portion_of_reward(payee.portions, reward_parts.service_node_paid);
+          if (reward_amount)
+            rewards[rewards_length++] = {reward_type::snode, payee.address, reward_amount};
         }
       }
     }
@@ -409,6 +405,8 @@ namespace cryptonote
     for (size_t reward_index = 0; reward_index < rewards_length; reward_index++)
     {
       auto const &[type, address, amount] = rewards[reward_index];
+      assert(amount > 0);
+
       crypto::public_key out_eph_public_key{};
 
       // TODO(doyle): I don't think txkey is necessary, just use the governance key?
@@ -420,6 +418,7 @@ namespace cryptonote
         MERROR("Failed to generate output one-time public key");
         return false;
       }
+
 
       txout_to_key tk = {};
       tk.key          = out_eph_public_key;

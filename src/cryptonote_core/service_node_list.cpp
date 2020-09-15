@@ -2271,8 +2271,7 @@ namespace service_nodes
                                         uint64_t height,
                                         size_t output_index,
                                         cryptonote::account_public_address const &receiver,
-                                        uint64_t portions,
-                                        uint64_t available_reward)
+                                        uint64_t reward)
   {
     if (output_index >= miner_tx.vout.size())
     {
@@ -2286,7 +2285,6 @@ namespace service_nodes
     // expression contraction, and RandomX fiddling with the rounding modes) we can end up with a
     // 1 ULP difference in the reward calculations.
     // TODO(loki): eliminate all FP math from reward calculations
-    uint64_t const reward = cryptonote::get_portion_of_reward(portions, available_reward);
     if (!within_one(output.amount, reward))
     {
       MGINFO_RED("Service node reward amount incorrect. Should be " << cryptonote::print_money(reward) << ", is: " << cryptonote::print_money(output.amount));
@@ -2428,32 +2426,56 @@ namespace service_nodes
       return false;
     }
 
-    if (mode != verify_mode::miner)
-      assert(reward_parts.base_miner == 0);
+    if (hf_version >= cryptonote::network_version_16)
+    {
+      if (reward_parts.base_miner != 0)
+      {
+        MGINFO_RED("Miner reward is incorrect expected 0 reward, block specified " << cryptonote::print_money(reward_parts.base_miner));
+        return false;
+      }
+    }
 
-    // NOTE: Verify Coinbase Amounts for Service Nodes
+    // NOTE: Verify Coinbase Amounts
     switch(mode)
     {
       case verify_mode::miner:
       {
-        size_t const vout_offset = (reward_parts.base_miner + reward_parts.base_miner_fee) > 0 ? 1 : 0;
+        size_t vout_index           = 0;
+        uint64_t const miner_reward = reward_parts.base_miner + reward_parts.base_miner_fee;
+        if (miner_reward > 0)
+        {
+          cryptonote::tx_out const &output = miner_tx.vout[vout_index];
+          if (output.amount != miner_reward)
+          {
+            MGINFO_RED("Miner reward amount incorrect. Should be " << cryptonote::print_money(miner_reward) << ", is: " << cryptonote::print_money(output.amount));
+            return false;
+          }
+
+          vout_index++;
+        }
+
         for (size_t i = 0; i < block_leader.payouts.size(); i++)
         {
-          size_t const vout_index    = vout_offset /*miner*/ + i;
           payout_entry const &payout = block_leader.payouts[i];
-          if (!verify_coinbase_tx_output(miner_tx, height, vout_index, payout.address, payout.portions, total_service_node_reward))
-            return false;
+          uint64_t const reward = cryptonote::get_portion_of_reward(payout.portions, total_service_node_reward);
+          if (reward)
+          {
+            if (!verify_coinbase_tx_output(miner_tx, height, vout_index, payout.address, reward))
+              return false;
+            vout_index++;
+          }
         }
       }
       break;
 
       case verify_mode::pulse_block_leader_is_producer:
       {
-        uint64_t total_reward = total_service_node_reward + reward_parts.base_miner_fee + reward_parts.base_miner;
+        uint64_t total_reward = total_service_node_reward + reward_parts.base_miner_fee;
+        assert(total_reward > 0);
         for (size_t vout_index = 0; vout_index < block_leader.payouts.size(); vout_index++)
         {
           payout_entry const &payout = block_leader.payouts[vout_index];
-          if (!verify_coinbase_tx_output(miner_tx, height, vout_index, payout.address, payout.portions, total_reward))
+          if (!verify_coinbase_tx_output(miner_tx, height, vout_index, payout.address, total_reward))
             return false;
         }
       }
@@ -2461,28 +2483,37 @@ namespace service_nodes
 
       case verify_mode::pulse_different_block_producer:
       {
-        if (reward_parts.base_miner_fee)
+        const uint64_t max_portions = STAKING_PORTIONS - block_producer->portions_for_operator;
+        size_t vout_index           = 0;
+        for (size_t i = 0; i < block_producer->contributors.size(); i++)
         {
-          const uint64_t max_portions = STAKING_PORTIONS - block_producer->portions_for_operator;
-          for (size_t vout_index = 0; vout_index < block_producer->contributors.size(); vout_index++)
-          {
-            auto const &contributor = block_producer->contributors[vout_index];
-            uint64_t portions = get_portions_to_make_amount(block_producer->staking_requirement, contributor.amount, max_portions);
-            if (contributor.address == block_producer->operator_address)
-              portions += block_producer->portions_for_operator;
+          auto const &contributor = block_producer->contributors[i];
 
-            if (!verify_coinbase_tx_output(miner_tx, height, vout_index, contributor.address, portions, reward_parts.base_miner_fee))
+          uint64_t portions = get_portions_to_make_amount(block_producer->staking_requirement, contributor.amount, max_portions);
+          if (contributor.address == block_producer->operator_address)
+            portions += block_producer->portions_for_operator;
+
+          uint64_t const reward = cryptonote::get_portion_of_reward(portions, reward_parts.base_miner_fee);
+          if (reward)
+          {
+            if (!verify_coinbase_tx_output(miner_tx, height, vout_index, contributor.address, reward))
               return false;
+
+            vout_index++;
           }
         }
 
-        size_t const vout_offset = (reward_parts.base_miner_fee) ? block_producer->contributors.size() : 0;
         for (size_t i = 0; i < block_leader.payouts.size(); i++)
         {
-          size_t const vout_index    = vout_offset + i;
           payout_entry const &payout = block_leader.payouts[i];
-          if (!verify_coinbase_tx_output(miner_tx, height, vout_index, payout.address, payout.portions, reward_parts.base_miner + total_service_node_reward))
-            return false;
+          uint64_t const reward = cryptonote::get_portion_of_reward(payout.portions, reward_parts.base_miner + total_service_node_reward);
+          if (reward)
+          {
+            if (!verify_coinbase_tx_output(miner_tx, height, vout_index, payout.address, reward))
+              return false;
+
+            vout_index++;
+          }
         }
       }
       break;
