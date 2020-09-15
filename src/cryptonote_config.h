@@ -93,44 +93,24 @@ static_assert(STAKING_PORTIONS % 12 == 0, "Use a multiple of twelve, so that it 
 #define DYNAMIC_FEE_REFERENCE_TRANSACTION_WEIGHT_V12    ((uint64_t)240000) // Only v12 (v13 switches back)
 
 constexpr auto TARGET_BLOCK_TIME           = 2min;
-constexpr uint64_t DIFFICULTY_WINDOW       = 60;
+constexpr uint64_t DIFFICULTY_WINDOW       = 59;
 constexpr uint64_t DIFFICULTY_BLOCKS_COUNT(bool before_hf16)
 {
-  // NOTE(loki): next_difficulty_v2(...) calculates the next block difficulty
-  // by examining the past N window of blocks i.e.
+  // NOTE: We used to have a different setup here where,
+  // DIFFICULTY_WINDOW       = 60
+  // DIFFICULTY_BLOCKS_COUNT = 61
+  // next_difficulty_v2's  N = DIFFICULTY_WINDOW - 1
   //
-  // N = (DIFFICULTY_WINDOW - 1)
+  // And we resized timestamps/difficulties to (N+1) (chopping off the latest timestamp).
   //
-  // and resizes the timestamps/difficulty arrays to
+  // Now we re-adjust DIFFICULTY_WINDOW to 59. To preserve the old behaviour we
+  // add +2. After HF16 we avoid trimming the top block and just add +1.
   //
-  // array.resize(N+1) or in otherwords array.resize(DIFFICULTY_WINDOW)
-  //
-  // However all the code responsible for filling the timestamps/difficulty
-  // arrays prior to HF16 used DIFFICULTY_BLOCKS_COUNT which was defined as,
-  //
-  // constexpr uint64_t DIFFICULTY_BLOCKS_COUNT = (DIFFICULTY_WINDOW + 1); // added +1 to make N=N
-  //
-  // The comment suggests that +1 makes N=N, assuming the N refers to
-  // next_difficulty_v2's N variable. Adding +1 here does not make
-  // DIFFICULTY_BLOCKS_COUNT be equal to N.
-  //
-  // N = N1 = (DIFFICULTY_WINDOW - 1)
-  //     N2 = DIFFICULTY_BLOCKS_COUNT = (DIFFICULTY_WINDOW + 1)
-  //
-  // What this means in practice is that, we fill DIFFICULTY_BLOCKS_COUNT
-  // worth of values and resize to DIFFICULTY_WINDOW size (chopping off the
-  // latest 2 blocks).
-  //
-  // This for example means when calculating the difficulty for a block, we
-  //   1. Fill the timestamps/difficulties with the latest DIFFICULTY_BLOCKS_COUNT data
-  //   2. Resize the timestamps/difficulties to DIFFICULTY_WINDOW. This steps
-  //      chops off the last 2 blocks from consideration.
-  //
-  // So prior to HF16, we revert to the incorrect value, and afterwards we
-  // calculate correctly. With Pulse in HF16, this is largely a non-issue, but
-  // for future correctness (when the network falls back to PoW stalled) and
-  // purpose of documentation this is fixed and addressed in this function.
-  uint64_t result = (before_hf16) ? DIFFICULTY_WINDOW + 1 : DIFFICULTY_WINDOW;
+  // Ideally, we just set DIFFICULTY_BLOCKS_COUNT to DIFFICULTY_WINDOW
+  // + 1 for before and after HF16 (having one unified constant) but this
+  // requires some more investigation to get it working with pre HF16 blocks and
+  // alt chain code without bugs.
+  uint64_t result = (before_hf16) ? DIFFICULTY_WINDOW + 2 : DIFFICULTY_WINDOW + 1;
   return result;
 }
 

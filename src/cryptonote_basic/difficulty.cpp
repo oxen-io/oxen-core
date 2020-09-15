@@ -175,7 +175,7 @@ namespace cryptonote {
     // HF12 switches to RandomX with a likely drastically reduced hashrate versus Turtle, so override
     // difficulty for the first difficulty window blocks:
     else if (hf_version >= cryptonote::network_version_12_checkpointing &&
-             height < hf12_height + DIFFICULTY_WINDOW)
+             height < hf12_height + (DIFFICULTY_WINDOW + 1))
     {
       result = difficulty_calc_mode::hf12_override;
     }
@@ -189,7 +189,7 @@ namespace cryptonote {
                                      difficulty_calc_mode mode)
   {
     const int64_t T = static_cast<int64_t>(target_seconds);
-    size_t N        = DIFFICULTY_WINDOW - 1;
+    size_t N        = DIFFICULTY_WINDOW;
 
     // Return a difficulty of 1 for first 4 blocks if it's the start of the chain.
     if (timestamps.size() < 4) {
