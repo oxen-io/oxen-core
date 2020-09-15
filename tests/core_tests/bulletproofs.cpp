@@ -166,6 +166,7 @@ bool gen_bp_tx_validation_base::generate_with(std::vector<test_event_entry>& eve
   std::vector<transaction> rct_txes;
   cryptonote::block blk_txes;
   std::vector<crypto::hash> starting_rct_tx_hashes;
+  uint64_t txn_fee = 0;
 
   for (size_t n = 0, block_index = 0; n < n_txes; ++n)
   {
@@ -292,6 +293,7 @@ bool gen_bp_tx_validation_base::generate_with(std::vector<test_event_entry>& eve
       expected_amount_encoded += *amounts_paid++;
     ++amounts_paid;
 
+    txn_fee += tx.rct_signatures.txnFee;
     CHECK_AND_ASSERT_MES(expected_amount_encoded == total_amount_encoded, false, "Decoded rct did not match amount to pay");
   }
 
@@ -302,7 +304,7 @@ bool gen_bp_tx_validation_base::generate_with(std::vector<test_event_entry>& eve
   CHECK_AND_ASSERT_MES(generator.construct_block_manually(blk_txes, blk_last, miner_account,
       test_generator::bf_major_ver | test_generator::bf_minor_ver | test_generator::bf_timestamp | test_generator::bf_tx_hashes | test_generator::bf_hf_version,
       generator.m_hf_version, generator.m_hf_version, blk_last.timestamp + tools::to_seconds(TARGET_BLOCK_TIME) * 2, // v2 has blocks twice as long
-      crypto::hash(), 0, transaction(), starting_rct_tx_hashes, 0),
+      crypto::hash(), 0, transaction(), starting_rct_tx_hashes, 0, txn_fee),
       false, "Failed to generate block");
   if (!valid)
     DO_CALLBACK(events, "mark_invalid_block");

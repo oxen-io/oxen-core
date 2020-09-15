@@ -1283,13 +1283,20 @@ bool test_generator::construct_block(cryptonote::block &blk,
   return construct_block(blk, height, prev_id, miner_acc, timestamp, already_generated_coins, block_weights, tx_list, block_leader);
 }
 
-bool test_generator::construct_block_manually(cryptonote::block& blk, const cryptonote::block& prev_block, const cryptonote::account_base& miner_acc,
-                                              int actual_params/* = bf_none*/, uint8_t major_ver/* = 0*/,
-                                              uint8_t minor_ver/* = 0*/, uint64_t timestamp/* = 0*/,
-                                              const crypto::hash& prev_id/* = crypto::hash()*/, const cryptonote::difficulty_type& diffic/* = 1*/,
-                                              const cryptonote::transaction& miner_tx/* = transaction()*/,
-                                              const std::vector<crypto::hash>& tx_hashes/* = std::vector<crypto::hash>()*/,
-                                              size_t txs_weight/* = 0*/)
+bool test_generator::construct_block_manually(
+    cryptonote::block &blk,
+    const cryptonote::block &prev_block,
+    const cryptonote::account_base &miner_acc,
+    int actual_params /* = bf_none*/,
+    uint8_t major_ver /* = 0*/,
+    uint8_t minor_ver /* = 0*/,
+    uint64_t timestamp /* = 0*/,
+    const crypto::hash &prev_id /* = crypto::hash()*/,
+    const cryptonote::difficulty_type &diffic /* = 1*/,
+    const cryptonote::transaction &miner_tx /* = transaction()*/,
+    const std::vector<crypto::hash> &tx_hashes /* = std::vector<crypto::hash>()*/,
+    size_t txs_weight /* = 0*/,
+    size_t miner_fee /*= 0*/)
 {
   blk.major_version = actual_params & bf_major_ver ? major_ver : static_cast<uint8_t>(cryptonote::network_version_7);
   blk.minor_version = actual_params & bf_minor_ver ? minor_ver : static_cast<uint8_t>(cryptonote::network_version_7);
@@ -1313,7 +1320,7 @@ bool test_generator::construct_block_manually(cryptonote::block& blk, const cryp
     manual_calc_batched_governance(*this, prev_id, miner_tx_context, m_hf_version, height);
 
     size_t current_block_weight = txs_weight + get_transaction_weight(blk.miner_tx);
-    if (!construct_miner_tx(height, epee::misc_utils::median(block_weights), already_generated_coins, current_block_weight, TESTS_DEFAULT_FEE * blk.tx_hashes.size(), blk.miner_tx, cryptonote::loki_miner_tx_context::miner_block(cryptonote::FAKECHAIN, miner_acc.get_keys().m_account_address), cryptonote::blobdata(), m_hf_version))
+    if (!construct_miner_tx(height, epee::misc_utils::median(block_weights), already_generated_coins, current_block_weight, miner_fee, blk.miner_tx, cryptonote::loki_miner_tx_context::miner_block(cryptonote::FAKECHAIN, miner_acc.get_keys().m_account_address), cryptonote::blobdata(), m_hf_version))
       return false;
   }
 
@@ -1331,7 +1338,7 @@ bool test_generator::construct_block_manually_tx(cryptonote::block& blk, const c
                                                  const cryptonote::account_base& miner_acc,
                                                  const std::vector<crypto::hash>& tx_hashes, size_t txs_weight)
 {
-  return construct_block_manually(blk, prev_block, miner_acc, bf_tx_hashes, 0, 0, 0, crypto::hash(), 0, cryptonote::transaction(), tx_hashes, txs_weight);
+  return construct_block_manually(blk, prev_block, miner_acc, bf_tx_hashes, 0, 0, 0, crypto::hash(), 0, cryptonote::transaction(), tx_hashes, txs_weight, 0);
 }
 
 cryptonote::transaction make_registration_tx(std::vector<test_event_entry>& events,
