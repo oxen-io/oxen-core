@@ -58,13 +58,6 @@
 #include <cctype>
 #endif
 
-//tools::is_hdd
-#ifdef __GLIBC__
-  #include <sstream>
-  #include <sys/sysmacros.h>
-  #include <fstream>
-#endif
-
 #include "cryptonote_config.h"
 
 #undef LOKI_DEFAULT_LOG_CATEGORY
@@ -382,42 +375,6 @@ namespace tools {
     mode_t mode = strict ? 077 : 0;
     umask(mode);
 #endif
-  }
-
-  std::optional<bool> is_hdd(const char *file_path)
-  {
-#ifdef __GLIBC__
-    struct stat st;
-    std::string prefix;
-    if(stat(file_path, &st) == 0)
-    {
-      std::ostringstream s;
-      s << "/sys/dev/block/" << major(st.st_dev) << ":" << minor(st.st_dev);
-      prefix = s.str();
-    }
-    else
-    {
-      return std::nullopt;
-    }
-    std::string attr_path = prefix + "/queue/rotational";
-    std::ifstream f(attr_path, std::ios_base::in);
-    if(not f.is_open())
-    {
-      attr_path = prefix + "/../queue/rotational";
-      f.open(attr_path, std::ios_base::in);
-      if(not f.is_open())
-      {
-          return std::nullopt;
-      }
-    }
-    unsigned short val = 0xdead;
-    f >> val;
-    if(not f.fail())
-    {
-      return (val == 1);
-    }
-#endif
-    return std::nullopt;
   }
 
 }

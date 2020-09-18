@@ -89,7 +89,6 @@ add_executable(unit_tests
   vercmp.cpp
   ringdb.cpp
   wipeable_string.cpp
-  is_hdd.cpp
   aligned.cpp)
 
 target_link_libraries(unit_tests

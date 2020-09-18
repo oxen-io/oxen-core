@@ -135,8 +135,6 @@ namespace tools {
 
   void set_strict_default_file_permissions(bool strict);
 
-  std::optional<bool> is_hdd(const char *path);
-
   void closefrom(int fd);
 
 }
