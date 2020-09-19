@@ -218,6 +218,22 @@ namespace cryptonote::rpc {
     call_data(call_data&&) = delete;
     call_data& operator=(const call_data&) = delete;
     call_data& operator=(call_data&&) = delete;
+
+    // Wrappers around .http.jsonrpc_error_response and .http.error_response that do nothing if the
+    // request is already replied to, and otherwise set `replied` and forward everything passed in
+    // to http.<method>(...).
+    template <typename... T>
+    auto jsonrpc_error_response(T&&... args) {
+        if (replied || aborted) return;
+        replied = true;
+        return http.jsonrpc_error_response(std::forward<T>(args)...);
+    }
+    template <typename... T>
+    auto error_response(T&&... args) {
+        if (replied || aborted) return;
+        replied = true;
+        return http.error_response(std::forward<T>(args)...);
+    }
   };
 
   // Queues a response for the HTTP thread to handle; the response can be in multiple string pieces
@@ -304,13 +320,11 @@ namespace cryptonote::rpc {
     }
 
     if (json_error != 0) {
-      data.replied = true;
       data.http.loop_defer([data=std::move(dataptr), json_error, msg=std::move(data.jsonrpc ? json_message : http_message)] {
-        if (data->aborted) return;
         if (data->jsonrpc)
-          data->http.jsonrpc_error_response(data->res, json_error, msg);
+          data->jsonrpc_error_response(data->res, json_error, msg);
         else
-          data->http.error_response(data->res, http_server::HTTP_ERROR, msg.empty() ? std::nullopt : std::make_optional<std::string_view>(msg));
+          data->error_response(data->res, http_server::HTTP_ERROR, msg.empty() ? std::nullopt : std::make_optional<std::string_view>(msg));
       });
       return;
     }
@@ -498,7 +512,7 @@ namespace cryptonote::rpc {
 
       auto& [ps, st_entry] = std::get<jsonrpc_params>(data->request.body = jsonrpc_params{});
       if(!ps.load_from_json(body))
-        return data->http.jsonrpc_error_response(data->res, -32700, "Parse error");
+        return data->jsonrpc_error_response(data->res, -32700, "Parse error");
 
       epee::serialization::storage_entry id{std::string{}};
       ps.get_value("id", id, nullptr);
@@ -507,21 +521,21 @@ namespace cryptonote::rpc {
       if(!ps.get_value("method", method, nullptr))
       {
         MINFO("Invalid JSON RPC request from " << data->request.context.remote << ": no 'method' in request");
-        return data->http.jsonrpc_error_response(data->res, -32600, "Invalid Request", id);
+        return data->jsonrpc_error_response(data->res, -32600, "Invalid Request", id);
       }
 
       auto it = rpc_commands.find(method);
       if (it == rpc_commands.end() || it->second->is_binary)
       {
         MINFO("Invalid JSON RPC request from " << data->request.context.remote << ": method '" << method << "' is invalid");
-        return data->http.jsonrpc_error_response(data->res, -32601, "Method not found", id);
+        return data->jsonrpc_error_response(data->res, -32601, "Method not found", id);
       }
 
       data->call = it->second.get();
       if (restricted && !data->call->is_public)
       {
         MWARNING("Invalid JSON RPC request from " << data->request.context.remote << ": method '" << method << "' is restricted");
-        return data->http.jsonrpc_error_response(data->res, 403, "Forbidden; this command is not available over public RPC", id);
+        return data->jsonrpc_error_response(data->res, 403, "Forbidden; this command is not available over public RPC", id);
       }
 
       MDEBUG("Incoming JSON RPC request for " << method << " from " << data->request.context.remote);
