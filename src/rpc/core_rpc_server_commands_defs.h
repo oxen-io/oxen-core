@@ -306,9 +306,9 @@ namespace rpc {
         std::optional<bool> renew;               // Provided and true iff this is an LNS record renewal
         std::string type;                        // The LNS request type.  For registrations: "lokinet", "session", "wallet"; for a record update: "update"
         std::optional<uint64_t> blocks;          // The registration length in blocks (only applies to lokinet registrations; session/wallet registrations do not expire)
-        crypto::hash name;                       // The hashed name of the record being purchased/updated (the actual name is not provided on the blockchain).
+        std::string name_hash;                   // The hashed name of the record being purchased/updated, in hex (the actual name is not provided on the blockchain).
         std::optional<std::string> prev_txid;    // For an update, this points at the txid of the previous lns update transaction.
-        std::optional<std::string> value;        // The encrypted value of the record; note that this is encrypted using the actual name itself (*not* the hashed name).
+        std::optional<std::string> value;        // The encrypted value of the record, in hex.  Note that this is encrypted using the actual name itself (*not* the hashed name).
         std::optional<std::string> owner;        // The owner of this record; this can be a main wallet, wallet subaddress, or a plain public key.
         std::optional<std::string> backup_owner; // Backup owner wallet/pubkey of the record, if provided.
         KV_MAP_SERIALIZABLE

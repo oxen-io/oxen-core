@@ -791,9 +791,9 @@ namespace cryptonote { namespace rpc {
           lns.update = true;
         else if (x.is_renewing())
           lns.renew = true;
-        lns.name = x.name_hash;
+        lns.name_hash = tools::type_to_hex(x.name_hash);
         if (!x.encrypted_value.empty())
-          lns.value = x.encrypted_value;
+          lns.value = lokimq::to_hex(x.encrypted_value);
         _load_owner(lns.owner, x.owner);
         _load_owner(lns.backup_owner, x.backup_owner);
       }
