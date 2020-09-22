@@ -951,7 +951,7 @@ namespace cryptonote
         std::memcpy(keys.key.data, pk_sh_data, 32);
         if (!crypto::secret_key_to_public_key(keys.key, keys.pub))
           throw std::runtime_error{"Failed to derive primary key from ed25519 key"};
-        assert(0 == std::memcmp(keys.pub.data, keys.pub_x25519.data, 32));
+        assert(0 == std::memcmp(keys.pub.data, keys.pub_ed25519.data, 32));
       } else if (!init_key(m_config_folder + "/key", keys.key, keys.pub,
           crypto::secret_key_to_public_key,
           [](crypto::secret_key &key, crypto::public_key &pubkey) {
