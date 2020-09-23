@@ -329,7 +329,8 @@ namespace epee
     {
       if constexpr (is_std_optional<T>) {
         // Emplace a new value and try to deserialize into it
-        bool ret = kv_unserialize(d.emplace(), stg, parent_section, pname);
+        d = T{};
+        bool ret = kv_unserialize(*d, stg, parent_section, pname);
         if (!ret) d.reset(); // Deserialization failed so clear the value
         return ret;
       }
