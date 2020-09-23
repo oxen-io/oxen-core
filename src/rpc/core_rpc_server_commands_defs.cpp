@@ -1129,20 +1129,19 @@ KV_SERIALIZE_MAP_CODE_BEGIN(GET_SERVICE_NODES::requested_fields_t)
 KV_SERIALIZE_MAP_CODE_END()
 
 
-static constexpr GET_SERVICE_NODES::requested_fields_t all_fields{true};
 KV_SERIALIZE_MAP_CODE_BEGIN(GET_SERVICE_NODES::request)
   KV_SERIALIZE(service_node_pubkeys);
   KV_SERIALIZE(include_json);
   KV_SERIALIZE(limit)
   KV_SERIALIZE(active_only)
-  KV_SERIALIZE_OPT(fields, all_fields)
+  KV_SERIALIZE(fields)
   KV_SERIALIZE(poll_block_hash)
 KV_SERIALIZE_MAP_CODE_END()
 
 
 KV_SERIALIZE_MAP_CODE_BEGIN(GET_SERVICE_NODES::response::entry)
   const auto* res = stg.template get_context<response>();
-  const bool all = !res || res->fields.all;
+  const bool all = !is_store || !res || res->fields.all;
 
   #define KV_SERIALIZE_ENTRY_FIELD_IF_REQUESTED(var) if (all || res->fields.var) KV_SERIALIZE(var)
 

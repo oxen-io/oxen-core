@@ -2916,6 +2916,8 @@ namespace cryptonote { namespace rpc {
     entry.registration_hf_version       = info.registration_hf_version;
 
   }
+
+  static constexpr GET_SERVICE_NODES::requested_fields_t all_fields{true};
   //------------------------------------------------------------------------------------------------------------------------------
   GET_SERVICE_NODES::response core_rpc_server::invoke(GET_SERVICE_NODES::request&& req, rpc_context context)
   {
@@ -2931,7 +2933,7 @@ namespace cryptonote { namespace rpc {
       res.polling_mode = true;
       if (req.poll_block_hash == res.block_hash) {
         res.unchanged = true;
-        res.fields = req.fields;
+        res.fields = req.fields.value_or(all_fields);
         return res;
       }
     }
@@ -2980,7 +2982,7 @@ namespace cryptonote { namespace rpc {
     }
 
     res.service_node_states.reserve(sn_infos.size());
-    res.fields = req.fields;
+    res.fields = req.fields.value_or(all_fields);
 
     if (req.include_json)
     {
