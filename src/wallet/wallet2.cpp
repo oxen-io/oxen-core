@@ -8113,7 +8113,8 @@ wallet2::stake_result wallet2::check_stake_allowed(const crypto::public_key& sn_
       max_contrib_total  += reserved_amount_not_contributed_yet;
       is_preexisting_contributor = true;
 
-      min_contrib_total = std::max(min_contrib_total, reserved_amount_not_contributed_yet);
+      if (min_contrib_total == UINT64_MAX || reserved_amount_not_contributed_yet > min_contrib_total)
+        min_contrib_total = reserved_amount_not_contributed_yet;
       break;
     }
   }
