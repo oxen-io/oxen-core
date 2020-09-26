@@ -957,12 +957,28 @@ if (iwyu_tool_path AND PYTHONINTERP_FOUND)
   )
 endif()
 
-get_property(loki_exec_tgts GLOBAL PROPERTY loki_executable_targets)
+# Set up a `make strip_binaries` target that strips built binaries.  This depends on all
+# default-built binaries and strips them after build.  (To also build and strip debug utilities
+# there is also a `make strip_binaries_all` target.)
+get_property(loki_exec_tgts_all GLOBAL PROPERTY loki_executable_targets)
+set(loki_exec_tgts "")
 set(strip_binaries "")
-foreach(tgt ${loki_exec_tgts})
-  list(APPEND strip_binaries COMMAND ${CMAKE_STRIP} $<TARGET_FILE:${tgt}>)
+set(strip_binaries_all "")
+foreach(tgt ${loki_exec_tgts_all})
+  list(APPEND strip_binaries_all COMMAND ${CMAKE_STRIP} $<TARGET_FILE:${tgt}>)
+  # Look for a EXCLUDE_FROM_ALL property:
+  get_property(tgt_excl_all TARGET ${tgt} PROPERTY EXCLUDE_FROM_ALL)
+  # Also look for EXCLUDE_FROM_ALL on the target's source directory (this, unfortunately, is not
+  # inherited into the target itself, hence we check both).
+  get_property(tgt_dir TARGET ${tgt} PROPERTY SOURCE_DIR)
+  get_property(tgt_dir_excl_all DIRECTORY ${tgt_dir} PROPERTY EXCLUDE_FROM_ALL)
+  if (NOT tgt_excl_all AND NOT tgt_dir_excl_all)
+    list(APPEND loki_exec_tgts ${tgt})
+    list(APPEND strip_binaries COMMAND ${CMAKE_STRIP} $<TARGET_FILE:${tgt}>)
+  endif()
 endforeach()
 add_custom_target(strip_binaries ${strip_binaries} DEPENDS ${loki_exec_tgts})
+add_custom_target(strip_binaries_all ${strip_binaries_all} DEPENDS ${loki_exec_tgts_all})
 
 execute_process(COMMAND tar --version RESULT_VARIABLE tar_exit_code OUTPUT_VARIABLE tar_vers)
 set(git_tag "unknown")
