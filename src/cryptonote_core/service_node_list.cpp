@@ -1581,19 +1581,31 @@ namespace service_nodes
     bool result = verify_block(block, false /*alt_block*/, checkpoint);
     if (result && cryptonote::block_has_pulse_components(block))
     {
+      // NOTE: Only record participation if its a block we recently received.
+      // Otherwise processing blocks in retrospect/re-loading on restart seeds
+      // in old-data.
       uint64_t const block_height = cryptonote::get_block_height(block);
-      std::shared_ptr<const quorum> quorum = get_quorum(quorum_type::pulse, block_height, false, nullptr);
-      if (!quorum || quorum->validators.empty())
-      {
-        MERROR("Unexpected Pulse error " << (quorum ? " quorum was not generated" : " quorum was empty"));
-        return false;
-      }
+      bool newest_block           = m_blockchain.get_current_blockchain_height() == (block_height + 1);
 
-      for (size_t validator_index = 0; validator_index < service_nodes::PULSE_QUORUM_NUM_VALIDATORS; validator_index++)
+      auto now                    = pulse::clock::now().time_since_epoch();
+      auto earliest_time          = std::chrono::seconds(block.timestamp) - TARGET_BLOCK_TIME;
+      auto latest_time            = std::chrono::seconds(block.timestamp) + TARGET_BLOCK_TIME;
+
+      if (newest_block && (now >= earliest_time && now <= latest_time))
       {
-        uint16_t bit      = 1 << validator_index;
-        bool participated = block.pulse.validator_bitset & bit;
-        record_pulse_participation(quorum->validators[validator_index], block_height, block.pulse.round, participated);
+        std::shared_ptr<const quorum> quorum = get_quorum(quorum_type::pulse, block_height, false, nullptr);
+        if (!quorum || quorum->validators.empty())
+        {
+          MERROR("Unexpected Pulse error " << (quorum ? " quorum was not generated" : " quorum was empty"));
+          return false;
+        }
+
+        for (size_t validator_index = 0; validator_index < service_nodes::PULSE_QUORUM_NUM_VALIDATORS; validator_index++)
+        {
+          uint16_t bit      = 1 << validator_index;
+          bool participated = block.pulse.validator_bitset & bit;
+          record_pulse_participation(quorum->validators[validator_index], block_height, block.pulse.round, participated);
+        }
       }
     }
     return result;

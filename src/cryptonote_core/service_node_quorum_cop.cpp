@@ -139,7 +139,7 @@ namespace service_nodes
     {
       if (check_checkpoint_obligation)
       {
-        if (checkpoint_participation.write_index >= CHECKPOINT_MAX_MISSABLE_VOTES)
+        if (checkpoint_participation.write_index >= QUORUM_VOTE_CHECK_COUNT)
         {
           int missed_participation = 0;
           for (participation_entry const &entry : checkpoint_participation)
@@ -157,7 +157,7 @@ namespace service_nodes
         }
       }
 
-      if (pulse_participation.write_index >= PULSE_MAX_MISSABLE_VOTES)
+      if (pulse_participation.write_index >= QUORUM_VOTE_CHECK_COUNT)
       {
         int missed_participation = 0;
         for (participation_entry const &entry : pulse_participation)
