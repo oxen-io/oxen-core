@@ -35,6 +35,7 @@
 #include <boost/filesystem.hpp>
 #include <boost/algorithm/string.hpp>
 #include <unistd.h>
+#include "cryptonote_protocol/quorumnet.h"
 #include "misc_log_ex.h"
 #include "bootstrap_file.h"
 #include "bootstrap_serialization.h"
@@ -713,6 +714,9 @@ int main(int argc, char* argv[])
 #else
   const GetCheckpointsCallback& get_checkpoints = nullptr;
 #endif
+
+  quorumnet::init_core_callbacks();
+
   if (!core.init(vm, nullptr, get_checkpoints))
   {
     std::cerr << "Failed to initialize core\n";

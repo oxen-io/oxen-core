@@ -43,7 +43,9 @@ loki_add_executable(blockchain_import "loki-blockchain-import"
   blocksdat_file.cpp
   )
 
-target_link_libraries(blockchain_import PRIVATE blockchain_tools_common_libs)
+target_link_libraries(blockchain_import PRIVATE
+    blockchain_tools_common_libs
+    cryptonote_protocol)
 
 if(ARCH_WIDTH)
   target_compile_definitions(blockchain_import PRIVATE ARCH_WIDTH=${ARCH_WIDTH})
