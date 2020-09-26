@@ -436,6 +436,8 @@ namespace cryptonote
   {
     unsigned char data[16];
     bool operator==(pulse_random_value const &other) const { return std::memcmp(data, other.data, sizeof(data)) == 0; }
+
+    static constexpr bool binary_serializable = true;
   };
 
   struct pulse_header
@@ -443,12 +445,16 @@ namespace cryptonote
     pulse_random_value random_value;
     uint8_t            round;
     uint16_t           validator_bitset;
-    BEGIN_SERIALIZE()
-      FIELD(random_value);
-      FIELD(round);
-      FIELD(validator_bitset);
-    END_SERIALIZE();
   };
+
+  template <typename Archive>
+  void serialize_value(Archive& ar, pulse_header& p)
+  {
+    auto obj = ar.begin_object();
+    serialization::field(ar, "random_value", p.random_value);
+    serialization::field(ar, "round", p.round);
+    serialization::field(ar, "validator_bitset", p.validator_bitset);
+  }
 
   struct block_header
   {
@@ -635,7 +641,6 @@ namespace std {
 
 BLOB_SERIALIZER(cryptonote::txout_to_key);
 BLOB_SERIALIZER(cryptonote::txout_to_scripthash);
-BLOB_SERIALIZER(cryptonote::pulse_random_value);
 
 VARIANT_TAG(cryptonote::txin_gen, "gen", 0xff);
 VARIANT_TAG(cryptonote::txin_to_script, "script", 0x0);
