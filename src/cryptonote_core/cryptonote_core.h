@@ -1016,6 +1016,12 @@ namespace cryptonote
       * @return true
       */
      bool relay_txpool_transactions();
+
+     /**
+      * @brief returns the lokid config directory
+      */
+     const std::string& get_config_directory() const { return m_config_folder; }
+
  private:
 
      /**
