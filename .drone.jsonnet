@@ -188,7 +188,7 @@ local static_build_deps='autoconf automake make qttools5-dev file libtool gperf 
 
     // Static build (on bionic) which gets uploaded to builds.lokinet.dev:
     debian_pipeline("Static (bionic amd64)", "ubuntu:bionic", deps='g++-8 '+static_build_deps,
-                    cmake_extra='-DBUILD_STATIC_DEPS=ON -DCMAKE_C_COMPILER=gcc-8 -DCMAKE_CXX_COMPILER=g++-8',
+                    cmake_extra='-DBUILD_STATIC_DEPS=ON -DCMAKE_C_COMPILER=gcc-8 -DCMAKE_CXX_COMPILER=g++-8 -DARCH=x86-64',
                     build_tests=false, lto=true, extra_cmds=static_check_and_upload),
     // Static mingw build (on focal) which gets uploaded to builds.lokinet.dev:
     debian_pipeline("Static (win64)", "ubuntu:focal", deps='g++ g++-mingw-w64-x86-64 '+static_build_deps,
