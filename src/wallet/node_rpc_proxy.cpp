@@ -140,7 +140,7 @@ bool NodeRPCProxy::get_immutable_height(uint64_t &height) const
   if (!get_info())
     return false;
   height = m_immutable_height;
-  return false;
+  return true;
 }
 
 bool NodeRPCProxy::get_block_weight_limit(uint64_t &block_weight_limit) const
