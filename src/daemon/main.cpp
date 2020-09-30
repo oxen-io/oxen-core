@@ -140,7 +140,10 @@ int main(int argc, char const * argv[])
     {
       try
       {
-        po::store(po::parse_config_file<char>(config_path.string<std::string>().c_str(), core_settings), vm);
+        po::store(po::parse_config_file<char>(
+                    config_path.string<std::string>().c_str(),
+                    po::options_description{}.add(core_settings).add(hidden_options)),
+                vm);
       }
       catch (const std::exception &e)
       {
