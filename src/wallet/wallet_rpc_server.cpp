@@ -159,6 +159,16 @@ namespace
     {}
   };
 
+  uint32_t convert_priority(uint32_t priority)
+  {
+    // NOTE: Map all priorites to blink for backwards compatibility purposes
+    // and leaving priority 'unimportant' or '1' as the only other alternative.
+    uint32_t result = priority;
+    if (result != tools::tx_priority_unimportant)
+      result = tools::tx_priority_blink;
+    return result;
+  }
+
 } // anon namespace
 
 namespace tools
@@ -995,10 +1005,7 @@ namespace tools
     validate_transfer(req.destinations, req.payment_id, dsts, extra, true);
 
     {
-      uint32_t priority = req.priority;
-      if (req.blink || priority != tx_priority_unimportant)
-        priority = tx_priority_blink;
-
+      uint32_t priority = convert_priority(req.priority);
       std::optional<uint8_t> hf_version = m_wallet->get_hard_fork_version();
       if (!hf_version)
         throw wallet_rpc_error{error_code::HF_QUERY_FAILED, tools::ERR_MSG_NETWORK_VERSION_QUERY_FAILED};
@@ -1032,10 +1039,7 @@ namespace tools
     validate_transfer(req.destinations, req.payment_id, dsts, extra, true);
 
     {
-      uint32_t priority = req.priority;
-      if (req.blink || priority != tx_priority_unimportant)
-        priority = tx_priority_blink;
-
+      uint32_t priority = convert_priority(req.priority);
       std::optional<uint8_t> hf_version = m_wallet->get_hard_fork_version();
       if (!hf_version)
         throw wallet_rpc_error{error_code::HF_QUERY_FAILED, tools::ERR_MSG_NETWORK_VERSION_QUERY_FAILED};
@@ -1331,10 +1335,7 @@ namespace tools
     }
 
     {
-      uint32_t priority = req.priority;
-      if (req.blink || priority != tx_priority_unimportant)
-        priority = tx_priority_blink;
-
+      uint32_t priority = convert_priority(req.priority);
       std::vector<wallet2::pending_tx> ptx_vector = m_wallet->create_transactions_all(req.below_amount, dsts[0].addr, dsts[0].is_subaddress, req.outputs, CRYPTONOTE_DEFAULT_TX_MIXIN, req.unlock_time, priority, extra, req.account_index, subaddr_indices);
 
       fill_response(ptx_vector, req.get_tx_keys, res.tx_key_list, res.amount_list, res.fee_list, res.multisig_txset, res.unsigned_txset, req.do_not_relay, priority == tx_priority_blink,
@@ -1366,10 +1367,7 @@ namespace tools
       throw wallet_rpc_error{error_code::WRONG_KEY_IMAGE, "failed to parse key image"};
 
     {
-      uint32_t priority = req.priority;
-      if (req.blink || priority != tx_priority_unimportant)
-        priority = tx_priority_blink;
-
+      uint32_t priority = convert_priority(req.priority);
       std::vector<wallet2::pending_tx> ptx_vector = m_wallet->create_transactions_single(ki, dsts[0].addr, dsts[0].is_subaddress, req.outputs, CRYPTONOTE_DEFAULT_TX_MIXIN, req.unlock_time, priority, extra);
 
       if (ptx_vector.empty())

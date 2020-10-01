@@ -119,8 +119,8 @@ namespace tools::wallet_rpc {
 
     struct response
     {
-      uint64_t 	 balance;                              // The total balance (atomic units) of the currently opened wallet.
-      uint64_t 	 unlocked_balance;                     // Unlocked funds are those funds that are sufficiently deep enough in the loki blockchain to be considered safe to spend.
+      uint64_t   balance;                              // The total balance (atomic units) of the currently opened wallet.
+      uint64_t   unlocked_balance;                     // Unlocked funds are those funds that are sufficiently deep enough in the loki blockchain to be considered safe to spend.
       bool       multisig_import_needed;               // True if importing multisig data is needed for returning a correct balance.
       std::vector<per_subaddress_info> per_subaddress; // Balance information for each subaddress in an account.
       uint64_t blocks_to_unlock;                       // The number of blocks remaining for the balance to unlock
@@ -406,8 +406,7 @@ namespace tools::wallet_rpc {
       std::list<wallet::transfer_destination> destinations; // Array of destinations to receive LOKI.
       uint32_t account_index;                       // (Optional) Transfer from this account index. (Defaults to 0)
       std::set<uint32_t> subaddr_indices;           // (Optional) Transfer from this set of subaddresses. (Defaults to 0)
-      uint32_t priority;                            // Set a priority for the transaction. Accepted values are: 1 for unimportant or 5 for blink.  (0 and 2-4 are accepted for backwards compatibility and are equivalent to 5)
-      bool blink;                                   // (Deprecated) Set priority to 5 for blink, field is deprecated: specifies that the tx should be blinked (`priority` will be ignored).
+      uint32_t priority;                            // Set a priority for the transaction. Accepted values are: 1 for unimportant or 5 for blink. (0 and 2-4 are accepted for backwards compatibility and are equivalent to 5)
       uint64_t unlock_time;                         // Number of blocks before the loki can be spent (0 to use the default lock time).
       std::string payment_id;                       // (Optional) Random 64-character hex string to identify a transaction.
       bool get_tx_key;                              // (Optional) Return the transaction key after sending.
@@ -444,8 +443,7 @@ namespace tools::wallet_rpc {
       std::list<wallet::transfer_destination> destinations; // Array of destinations to receive LOKI:
       uint32_t account_index;                       // (Optional) Transfer from this account index. (Defaults to 0)
       std::set<uint32_t> subaddr_indices;           // (Optional) Transfer from this set of subaddresses. (Defaults to 0)
-      uint32_t priority;                            // Set a priority for the transaction. Accepted values are: 1 for unimportant or 5 for blink.  (0 and 2-4 are accepted for backwards compatibility and are equivalent to 5)
-      bool blink;                                   // (Deprecated) Set priority to 5 for blink, field is deprecated: specifies that the tx should be blinked (`priority` will be ignored).
+      uint32_t priority;                            // Set a priority for the transaction. Accepted values are: 1 for unimportant or 5 for blink. (0 and 2-4 are accepted for backwards compatibility and are equivalent to 5)
       uint64_t unlock_time;                         // Number of blocks before the loki can be spent (0 to not add a lock).
       std::string payment_id;                       // (Optional) Random 32-byte/64-character hex string to identify a transaction.
       bool get_tx_keys;                             // (Optional) Return the transaction keys after sending.
@@ -621,10 +619,9 @@ namespace tools::wallet_rpc {
       uint32_t account_index;             // Sweep transactions from this account.
       std::set<uint32_t> subaddr_indices; // (Optional) Sweep from this set of subaddresses in the account.
       bool subaddr_indices_all;           //
-      uint32_t priority;                  // Set a priority for the transaction. Accepted values are: 1 for unimportant or 5 for blink.  (0 and 2-4 are accepted for backwards compatibility and are equivalent to 5)
-      bool blink;                         // (Deprecated) Set priority to 5 for blink, field is deprecated: specifies that the tx should be blinked (`priority` will be ignored).
+      uint32_t priority;                  // Set a priority for the transaction. Accepted values are: 1 for unimportant or 5 for blink. (0 and 2-4 are accepted for backwards compatibility and are equivalent to 5)
       uint64_t outputs;                   // 
-      uint64_t unlock_time;               // Number of blocks before the loki can be spent (0 to not add a lock). 
+      uint64_t unlock_time;               // Number of blocks before the loki can be spent (0 to not add a lock).
       std::string payment_id;             // (Optional) 64-character hex string to identify a transaction.
       bool get_tx_keys;                   // (Optional) Return the transaction keys after sending.
       uint64_t below_amount;              // (Optional) Include outputs below this amount.
@@ -666,8 +663,7 @@ namespace tools::wallet_rpc {
     struct request
     {
       std::string address;    // Destination public address.
-      uint32_t priority;      // Set a priority for the transaction. Accepted values are: 1 for unimportant or 5 for blink.  (0 and 2-4 are accepted for backwards compatibility and are equivalent to 5)
-      bool blink;             // (Deprecated) Set priority to 5 for blink, field is deprecated: specifies that the tx should be blinked (`priority` will be ignored).
+      uint32_t priority;      // Set a priority for the transaction. Accepted values are: 1 for unimportant or 5 for blink. (0 and 2-4 are accepted for backwards compatibility and are equivalent to 5)
       uint64_t outputs;       // 
       uint64_t unlock_time;   // Number of blocks before the loki can be spent (0 to not add a lock).
       std::string payment_id; // (Optional) 64-character hex string to identify a transaction.
@@ -704,7 +700,7 @@ namespace tools::wallet_rpc {
     struct request
     {
       std::string hex; // Transaction metadata returned from a transfer method with get_tx_metadata set to true.
-      bool blink;      // (Optional): True if this tx was constructed with a blink priority and should be submitted to the blink quorum
+      bool blink;      // (Optional): Set to true if this tx was constructed with a blink priority and should be submitted to the blink quorum.
 
       KV_MAP_SERIALIZABLE
     };
