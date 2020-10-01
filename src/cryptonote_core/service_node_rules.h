@@ -222,7 +222,7 @@ namespace service_nodes {
   };
 
   constexpr proof_version MIN_UPTIME_PROOF_VERSIONS[] = {
-    {cryptonote::network_version_16_pulse,                {8,0,0}},
+    {cryptonote::network_version_16_pulse,                {8,1,0}},
     {cryptonote::network_version_15_lns,                  {7,1,2}},
     {cryptonote::network_version_14_blink,                {6,1,0}},
     {cryptonote::network_version_13_enforce_checkpoints,  {5,1,0}},
