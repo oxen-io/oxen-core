@@ -76,23 +76,26 @@ static uint16_t parse_public_rpc_port(const boost::program_options::variables_ma
   if (!public_node)
     return 0;
 
-  std::string rpc_port_str;
-  const auto &restricted_rpc_port = cryptonote::rpc::http_server::arg_rpc_restricted_bind_port;
-  if (!command_line::is_arg_defaulted(vm, restricted_rpc_port))
-    rpc_port_str = command_line::get_arg(vm, restricted_rpc_port);
-  else if (command_line::get_arg(vm, cryptonote::rpc::http_server::arg_restricted_rpc))
-    rpc_port_str = command_line::get_arg(vm, cryptonote::rpc::http_server::arg_rpc_bind_port);
-  else
-    throw std::runtime_error("restricted RPC mode is required for --" + std::string{public_node_arg.name});
+  uint16_t rpc_port = 0;
+  const auto &arg_rpc_restricted_bind_port = cryptonote::rpc::http_server::arg_rpc_restricted_bind_port;
+  const auto &arg_rpc_bind_port            = cryptonote::rpc::http_server::arg_rpc_bind_port;
+  const auto &arg_restricted_rpc           = cryptonote::rpc::http_server::arg_restricted_rpc;
 
-  uint16_t rpc_port;
-  if (!epee::string_tools::get_xtype_from_string(rpc_port, rpc_port_str))
-    throw std::runtime_error("invalid RPC port " + rpc_port_str);
+  bool specified_restricted_port = !command_line::is_arg_defaulted(vm, arg_rpc_restricted_bind_port);
+  if (specified_restricted_port)
+    rpc_port = command_line::get_arg(vm, arg_rpc_restricted_bind_port);
+  else if (command_line::get_arg(vm, arg_restricted_rpc))
+    rpc_port = command_line::get_arg(vm, arg_rpc_bind_port);
+  else
+    throw std::runtime_error("Restricted RPC is required for --"s + public_node_arg.name + ", specify a restricted port via --" + arg_rpc_restricted_bind_port.name + " or restrict server via --" + arg_restricted_rpc.name);
+
+  if (rpc_port == 0)
+    throw std::runtime_error("Please specify a non-zero port for restricted rpc via --"s + (specified_restricted_port ? arg_rpc_restricted_bind_port.name : arg_rpc_bind_port.name));
 
   const auto rpc_bind_address = command_line::get_arg(vm, cryptonote::rpc_args::descriptors().rpc_bind_ip);
   const auto address = net::get_network_address(rpc_bind_address, rpc_port);
   if (!address)
-    throw std::runtime_error("failed to parse RPC bind address");
+    throw std::runtime_error("Failed to parse RPC bind address "s + rpc_bind_address + ":" + std::to_string(rpc_port));
   if (address->get_zone() != epee::net_utils::zone::public_)
     throw std::runtime_error(std::string(zone_to_string(address->get_zone()))
       + " network zone is not supported, please check RPC server bind address");
