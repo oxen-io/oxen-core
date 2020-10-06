@@ -776,9 +776,6 @@ static bool check_condition(bool condition, std::string* reason, T&&... args) {
 
 bool validate_lns_name(mapping_type type, std::string name, std::string *reason)
 {
-  std::stringstream err_stream;
-  LOKI_DEFER { if (reason) *reason = err_stream.str(); };
-
   bool const is_lokinet = is_lokinet_type(type);
   size_t max_name_len   = 0;
 
@@ -790,7 +787,7 @@ bool validate_lns_name(mapping_type type, std::string name, std::string *reason)
   else if (type == mapping_type::wallet)  max_name_len = lns::WALLET_NAME_MAX;
   else
   {
-    if (reason) err_stream << "LNS type=" << type << ", specifies unhandled mapping type in name validation";
+    if (reason) *reason = "LNS type="s + mapping_type_str(type) + " specifies unhandled mapping type in name validation";
     return false;
   }
 
