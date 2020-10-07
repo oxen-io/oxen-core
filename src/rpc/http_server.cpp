@@ -249,6 +249,7 @@ namespace cryptonote::rpc {
         auto& res = data->res;
         res.writeHeader("Server", data->http.server_header());
         res.writeHeader("Content-Type", data->call->is_binary ? "application/octet-stream"sv : "application/json"sv);
+        if (data->http.closing()) res.writeHeader("Connection", "close");
         for (const auto& [name, value] : data->extra_headers)
           res.writeHeader(name, value);
 
@@ -256,6 +257,7 @@ namespace cryptonote::rpc {
           res.write(piece);
 
         res.end();
+        if (data->http.closing()) res.close();
       });
     });
   }
@@ -599,6 +601,8 @@ namespace cryptonote::rpc {
           MTRACE("closing " << m_listen_socks.size() << " listening sockets");
           for (auto* s : m_listen_socks)
             us_listen_socket_close(/*ssl=*/false, s);
+
+          m_closing = true;
 
           {
             // Destroy any pending long poll connections as well

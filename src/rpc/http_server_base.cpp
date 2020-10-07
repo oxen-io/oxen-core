@@ -48,8 +48,10 @@ namespace cryptonote::rpc {
       res.writeHeader("Server", m_server_header);
       res.writeHeader("WWW-Authenticate", *www_auth);
       res.writeHeader("Content-Type", "text/plain");
+      if (m_closing) res.writeHeader("Connection", "close");
       if (req.getMethod() != "HEAD"sv)
         res.end("Login required\n");
+      if (m_closing) res.close();
       return false;
     }
     return true;
@@ -63,10 +65,12 @@ namespace cryptonote::rpc {
     res.writeStatus(std::to_string(code.first) + " " + std::string{code.second});
     res.writeHeader("Server", m_server_header);
     res.writeHeader("Content-Type", "text/plain");
+    if (m_closing) res.writeHeader("Connection", "close");
     if (body)
       res.end(*body);
     else
       res.end(std::string{code.second} + "\n");
+    if (m_closing) res.close();
   }
 
   // Similar to the above, but for JSON errors (which are 200 OK + error embedded in JSON)
@@ -85,7 +89,9 @@ namespace cryptonote::rpc {
     res.writeStatus("200 OK"sv);
     res.writeHeader("Server", m_server_header);
     res.writeHeader("Content-Type", "application/json");
+    if (m_closing) res.writeHeader("Connection", "close");
     res.end(body);
+    if (m_closing) res.close();
   }
 
   std::string http_server_base::get_remote_address(HttpResponse& res) {

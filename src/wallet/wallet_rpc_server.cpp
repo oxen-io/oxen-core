@@ -311,8 +311,10 @@ namespace tools
       res.writeHeader("Content-Type", "application/json");
       for (const auto& [name, value] : extra_headers)
         res.writeHeader(name, value);
+      if (closing()) res.writeHeader("Connection", "close");
 
       res.end(result);
+      if (closing()) res.close();
     });
   }
 
@@ -415,6 +417,7 @@ namespace tools
     // Stopped: close the sockets, cancel the long poll, and rejoin the threads
     for (auto* s : m_listen_socks)
       us_listen_socket_close(/*ssl=*/false, s);
+    m_closing = true;
 
     stop_long_poll_thread();
 
