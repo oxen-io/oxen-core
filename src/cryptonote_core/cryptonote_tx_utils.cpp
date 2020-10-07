@@ -461,7 +461,26 @@ namespace cryptonote
       summary_amounts += amount;
     }
 
-    uint64_t expected_amount = reward_parts.base_miner + reward_parts.miner_fee + reward_parts.governance_paid + reward_parts.service_node_total;
+    uint64_t expected_amount = 0;
+    if (hard_fork_version <= cryptonote::network_version_15_lns)
+    {
+      // NOTE: Use the amount actually paid out when we split the service node
+      // reward (across up to 4 recipients) which may actually pay out less than
+      // the total reward allocated for Service Nodes (due to remainder from
+      // division). This occurred prior to HF15, after that we redistribute dust
+      // properly.
+      expected_amount = reward_parts.base_miner + reward_parts.miner_fee + reward_parts.governance_paid;
+      for (size_t reward_index = 0; reward_index < rewards_length; reward_index++)
+      {
+        [[maybe_unused]] auto const &[type, address, amount] = rewards[reward_index];
+        if (type == reward_type::snode) expected_amount += amount;
+      }
+    }
+    else
+    {
+      expected_amount = reward_parts.base_miner + reward_parts.miner_fee + reward_parts.governance_paid + reward_parts.service_node_total;
+    }
+
     CHECK_AND_ASSERT_MES(summary_amounts == expected_amount, false, "Failed to construct miner tx, summary_amounts = " << summary_amounts << " not equal total block_reward = " << expected_amount);
     CHECK_AND_ASSERT_MES(tx.vout.size() == rewards_length, false, "TX output mis-match with rewards expected: " << rewards_length << ", tx outputs: " << tx.vout.size());
 
