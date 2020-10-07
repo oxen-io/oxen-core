@@ -8836,28 +8836,19 @@ std::vector<wallet2::pending_tx> wallet2::lns_create_buy_mapping_tx(lns::mapping
   return result;
 }
 
-std::vector<wallet2::pending_tx> wallet2::lns_create_buy_mapping_tx(std::string const &type,
-                                                                    std::string const *owner,
-                                                                    std::string const *backup_owner,
-                                                                    std::string const &name,
-                                                                    std::string const &value,
-                                                                    std::string *reason,
-                                                                    uint32_t priority,
-                                                                    uint32_t account_index,
-                                                                    std::set<uint32_t> subaddr_indices)
+std::optional<lns::mapping_type> wallet2::lns_validate_type(std::string_view type, lns::lns_tx_type lns_action, std::string *reason)
 {
   std::optional<uint8_t> hf_version = get_hard_fork_version();
   if (!hf_version)
   {
     if (reason) *reason = ERR_MSG_NETWORK_VERSION_QUERY_FAILED;
-    return {};
+    return std::nullopt;
   }
   lns::mapping_type mapping_type;
-  if (!lns::validate_mapping_type(type, *hf_version, lns::lns_tx_type::buy, &mapping_type, reason))
-    return {};
+  if (!lns::validate_mapping_type(type, *hf_version, lns_action, &mapping_type, reason))
+    return std::nullopt;
 
-  std::vector<wallet2::pending_tx> result = lns_create_buy_mapping_tx(mapping_type, owner, backup_owner, name, value, reason, priority, account_index, subaddr_indices);
-  return result;
+  return mapping_type;
 }
 
 std::vector<wallet2::pending_tx> wallet2::lns_create_renewal_tx(
@@ -8900,29 +8891,6 @@ std::vector<wallet2::pending_tx> wallet2::lns_create_renewal_tx(
                                       subaddr_indices,
                                       tx_params);
   return result;
-}
-
-std::vector<wallet2::pending_tx> wallet2::lns_create_renewal_tx(
-    std::string const &type,
-    std::string const &name,
-    std::string *reason,
-    uint32_t priority,
-    uint32_t account_index,
-    std::set<uint32_t> subaddr_indices,
-    std::vector<cryptonote::rpc::LNS_NAMES_TO_OWNERS::response_entry> *response
-    )
-{
-  lns::mapping_type mapping_type = lns::mapping_type::session;
-  std::optional<uint8_t> hf_version = get_hard_fork_version();
-  if (!hf_version)
-  {
-    if (reason) *reason = ERR_MSG_NETWORK_VERSION_QUERY_FAILED;
-    return {};
-  }
-  if (!lns::validate_mapping_type(type, *hf_version, lns::lns_tx_type::renew, &mapping_type, reason))
-    return {};
-
-  return lns_create_renewal_tx(mapping_type, name, reason, priority, account_index, subaddr_indices, response);
 }
 
 
@@ -8982,32 +8950,6 @@ std::vector<wallet2::pending_tx> wallet2::lns_create_update_mapping_tx(lns::mapp
                                       account_index,
                                       subaddr_indices,
                                       tx_params);
-  return result;
-}
-
-std::vector<wallet2::pending_tx> wallet2::lns_create_update_mapping_tx(std::string const &type,
-                                                                       std::string const &name,
-                                                                       std::string const *value,
-                                                                       std::string const *owner,
-                                                                       std::string const *backup_owner,
-                                                                       std::string const *signature,
-                                                                       std::string *reason,
-                                                                       uint32_t priority,
-                                                                       uint32_t account_index,
-                                                                       std::set<uint32_t> subaddr_indices,
-                                                                       std::vector<cryptonote::rpc::LNS_NAMES_TO_OWNERS::response_entry> *response)
-{
-  lns::mapping_type mapping_type = lns::mapping_type::session;
-  std::optional<uint8_t> hf_version = get_hard_fork_version();
-  if (!hf_version)
-  {
-    if (reason) *reason = ERR_MSG_NETWORK_VERSION_QUERY_FAILED;
-    return {};
-  }
-  if (!lns::validate_mapping_type(type, *hf_version, lns::lns_tx_type::update, &mapping_type, reason))
-    return {};
-
-  std::vector<wallet2::pending_tx> result = lns_create_update_mapping_tx(mapping_type, name, value, owner, backup_owner, signature, reason, priority, account_index, subaddr_indices, response);
   return result;
 }
 

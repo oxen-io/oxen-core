@@ -39,7 +39,7 @@
 #include <chrono>
 #include <exception>
 
-#include "wallet/wallet_rpc_server_error_codes.h"
+#include "wallet_rpc_server_error_codes.h"
 #include "wallet_rpc_server.h"
 #include "wallet/wallet_args.h"
 #include "common/command_line.h"
@@ -3057,7 +3057,11 @@ namespace {
     LNS_BUY_MAPPING::response res{};
 
     std::string reason;
-    std::vector<wallet2::pending_tx> ptx_vector = m_wallet->lns_create_buy_mapping_tx(req.type,
+    auto type = m_wallet->lns_validate_type(req.type, lns::lns_tx_type::buy, &reason);
+    if (!type)
+      throw wallet_rpc_error{error_code::TX_NOT_POSSIBLE, "Invalid LNS buy type: " + reason};
+
+    std::vector<wallet2::pending_tx> ptx_vector = m_wallet->lns_create_buy_mapping_tx(*type,
                                                                                       req.owner.size() ? &req.owner : nullptr,
                                                                                       req.backup_owner.size() ? &req.backup_owner : nullptr,
                                                                                       req.name,
@@ -3072,7 +3076,7 @@ namespace {
     //Save the LNS record to the wallet cache
     std::string name_hash_str = lns::name_to_base64_hash(req.name);
     tools::wallet2::lns_detail detail = {
-      lns::mapping_type::session,
+      *type,
       req.name,
       name_hash_str,
       req.value,
@@ -3104,11 +3108,15 @@ namespace {
     LNS_RENEW_MAPPING::response res{};
 
     std::string reason;
+    auto type = m_wallet->lns_validate_type(req.type, lns::lns_tx_type::renew, &reason);
+    if (!type)
+      throw wallet_rpc_error{error_code::TX_NOT_POSSIBLE, "Invalid LNS renewal type: " + reason};
+
     std::vector<wallet2::pending_tx> ptx_vector = m_wallet->lns_create_renewal_tx(
-        req.type, req.name, &reason, req.priority, req.account_index, req.subaddr_indices);
+        *type, req.name, &reason, req.priority, req.account_index, req.subaddr_indices);
 
     if (ptx_vector.empty())
-      throw wallet_rpc_error{error_code::TX_NOT_POSSIBLE, "Failed to create LNS transaction: " + reason};
+      throw wallet_rpc_error{error_code::TX_NOT_POSSIBLE, "Failed to create LNS renewal transaction: " + reason};
 
     fill_response(         ptx_vector,
                            req.get_tx_key,
@@ -3134,8 +3142,12 @@ namespace {
     LNS_UPDATE_MAPPING::response res{};
 
     std::string reason;
+    auto type = m_wallet->lns_validate_type(req.type, lns::lns_tx_type::update, &reason);
+    if (!type)
+      throw wallet_rpc_error{error_code::TX_NOT_POSSIBLE, "Invalid LNS update type: " + reason};
+
     std::vector<wallet2::pending_tx> ptx_vector =
-        m_wallet->lns_create_update_mapping_tx(req.type,
+        m_wallet->lns_create_update_mapping_tx(*type,
                                                req.name,
                                                req.value.empty()        ? nullptr : &req.value,
                                                req.owner.empty()        ? nullptr : &req.owner,
@@ -3153,7 +3165,7 @@ namespace {
     std::string name_hash_str = lns::name_to_base64_hash(req.name);
     m_wallet->delete_lns_cache_record(name_hash_str);
     tools::wallet2::lns_detail detail = {
-      lns::mapping_type::session,
+      *type,
       req.name,
       name_hash_str,
       req.value,
