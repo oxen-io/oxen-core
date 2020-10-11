@@ -71,6 +71,18 @@ library archives (`.a`).
 [1] On Ubuntu Bionic you will need the g++-8 package instead of g++ (which is version 7) and will
 need to run `export CC=gcc-8 CXX=g++-8` before running `make` or `cmake`.
 
+Install gcc-8 g++-8 On Ubuntu
+
+```
+sudo add-apt-repository ppa:ubuntu-toolchain-r/test
+sudo apt update
+sudo apt install gcc-8 g++-8
+
+export CC=/usr/bin/gcc-8
+export CXX=/usr/bin/g++-8
+make
+```
+
 [2] libboost-all-dev includes a lot of unnecessary packages; see the apt command below for a
 breakdown of the minimum set of required boost packages.
 
@@ -81,7 +93,7 @@ sudo apt update && \
 sudo apt install g++ cmake pkg-config libboost-filesystem-dev libboost-thread-dev libboost-date-time-dev \
     libboost-serialization-dev libboost-program-options-dev \
     libssl-dev libzmq3-dev libsqlite3-dev libunbound-dev libsodium-dev libunwind8-dev liblzma-dev libreadline-dev \
-    libldns-dev libexpat1-dev doxygen graphviz libsqlite3-dev libcurl4-openssl-dev
+    libldns-dev libexpat1-dev doxygen graphviz libsqlite3-dev libcurl4-openssl-dev charconv-dev
 ```
 
 Install all dependencies at once on macOS with the provided Brewfile:
