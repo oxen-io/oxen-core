@@ -150,7 +150,7 @@ local static_build_deps='autoconf automake make qttools5-dev file libtool gperf 
                     build_tests=false, lto=true, extra_cmds=static_check_and_upload),
     // Static mingw build (on focal) which gets uploaded to builds.lokinet.dev:
     debian_pipeline("Static (win64)", "ubuntu:focal", deps='g++ g++-mingw-w64-x86-64 '+static_build_deps,
-                    cmake_extra='-DCMAKE_TOOLCHAIN_FILE=../cmake/64-bit-toolchain.cmake -DBUILD_STATIC_DEPS=ON',
+                    cmake_extra='-DCMAKE_TOOLCHAIN_FILE=../cmake/64-bit-toolchain.cmake -DBUILD_STATIC_DEPS=ON -DARCH=x86-64',
                     build_tests=false, lto=false, test_lokid=false, extra_cmds=[
                         'ninja strip_binaries', 'ninja create_zip', '../utils/build_scripts/drone-static-upload.sh']),
 
