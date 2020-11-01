@@ -201,10 +201,10 @@ local android_build_steps(android_abi, android_platform=21, jobs=6, cmake_extra=
 
     // iOS build
     {   name: 'iOS wallet_api', kind: 'pipeline', type: 'exec', platform: { os: 'darwin', arch: 'amd64' },
-        steps: [submodules, {
+        steps: [{
             name: 'build',
             environment: { SSH_KEY: { from_secret: "SSH_KEY" } },
-            commands: [
+            commands: submodules_commands + [
                 'mkdir build-ios',
                 'cd build-ios',
                 'cmake .. -G Ninja ' +
