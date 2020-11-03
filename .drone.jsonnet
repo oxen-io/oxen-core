@@ -141,6 +141,7 @@ local android_build_steps(android_abi, android_platform=21, jobs=6, cmake_extra=
 
 
 [
+/*
     // Various debian builds
     debian_pipeline("Debian (w/ tests) (amd64)", "debian:sid", lto=true, run_tests=true),
     debian_pipeline("Debian Debug (amd64)", "debian:sid", build_type='Debug'),
@@ -198,6 +199,7 @@ local android_build_steps(android_abi, android_platform=21, jobs=6, cmake_extra=
             }
         ]
     },
+    */
 
     // iOS build
     {   name: 'iOS wallet_api', kind: 'pipeline', type: 'exec', platform: { os: 'darwin', arch: 'amd64' },
