@@ -313,13 +313,19 @@ build_external(expat
 add_static_target(expat expat_external libexpat.a)
 
 
+set(unbound_extra)
+if(APPLE AND IOS)
+  # I have no idea why this is necessary: without this it runs `clang -E` which should work, but
+  # doesn't because... hurray ios is wonderful?
+  set(unbound_extra CPP=cpp)
+endif()
 build_external(unbound
   DEPENDS openssl_external expat_external
   CONFIGURE_COMMAND ./configure ${cross_host} ${cross_extra} --prefix=${DEPS_DESTDIR} --disable-shared
   --enable-static --with-libunbound-only --with-pic --disable-gost
   --$<IF:$<BOOL:${USE_LTO}>,enable,disable>-flto --with-ssl=${DEPS_DESTDIR}
   --with-libexpat=${DEPS_DESTDIR}
-  "CC=${deps_cc}" "CFLAGS=${deps_CFLAGS}"
+  "CC=${deps_cc}" "CFLAGS=${deps_CFLAGS}" ${unbound_extra}
 )
 add_static_target(libunbound unbound_external libunbound.a)
 if(WIN32)
