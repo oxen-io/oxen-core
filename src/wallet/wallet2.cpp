@@ -3085,22 +3085,31 @@ std::vector<wallet2::get_pool_state_tx> wallet2::get_pool_state(bool refreshed)
 {
   std::vector<wallet2::get_pool_state_tx> process_txs;
   MTRACE("get_pool_state: take hashes from cache");
-  std::vector<crypto::hash> tx_hashes;
+  std::vector<crypto::hash> blink_hashes, pool_hashes;
   {
-    // NOTE: Only request blinked transactions, normal transactions will appear
-    // in the wallet when it arrives in a block. This is to prevent pulling down
-    // TX's that are awaiting blink approval being cached in the wallet as
-    // non-blink and external applications failing to respect this.
+    // We make two requests here: one for all pool txes, and then (assuming there are any) a second
+    // one for blink txes.
     cryptonote::rpc::GET_TRANSACTION_POOL_HASHES_BIN::request req{};
-    req.blinked_txs_only = true;
-
     cryptonote::rpc::GET_TRANSACTION_POOL_HASHES_BIN::response res{};
     bool r = invoke_http<rpc::GET_TRANSACTION_POOL_HASHES_BIN>(req, res);
     THROW_WALLET_EXCEPTION_IF(!r, error::no_connection_to_daemon, "get_transaction_pool_hashes.bin");
     THROW_WALLET_EXCEPTION_IF(res.status == rpc::STATUS_BUSY, error::daemon_busy, "get_transaction_pool_hashes.bin");
     THROW_WALLET_EXCEPTION_IF(res.status != rpc::STATUS_OK, error::get_tx_pool_error);
-    MTRACE("get_pool_state got pool");
-    tx_hashes = std::move(res.tx_hashes);
+    MTRACE("get_pool_state got full pool");
+    pool_hashes = std::move(res.tx_hashes);
+
+    // NOTE: Only request blinked transactions, normal transactions will appear
+    // in the wallet when it arrives in a block. This is to prevent pulling down
+    // TX's that are awaiting blink approval being cached in the wallet as
+    // non-blink and external applications failing to respect this.
+    req.blinked_txs_only = true;
+    res = {};
+    r = invoke_http<rpc::GET_TRANSACTION_POOL_HASHES_BIN>(req, res);
+    THROW_WALLET_EXCEPTION_IF(!r, error::no_connection_to_daemon, "get_transaction_pool_hashes.bin");
+    THROW_WALLET_EXCEPTION_IF(res.status == rpc::STATUS_BUSY, error::daemon_busy, "get_transaction_pool_hashes.bin");
+    THROW_WALLET_EXCEPTION_IF(res.status != rpc::STATUS_OK, error::get_tx_pool_error);
+    MTRACE("get_pool_state got blinks");
+    blink_hashes = std::move(res.tx_hashes);
   }
 
   LOKI_DEFER {
@@ -3116,15 +3125,7 @@ std::vector<wallet2::get_pool_state_tx> wallet2::get_pool_state(bool refreshed)
   while (it != m_unconfirmed_txs.end())
   {
     const crypto::hash &txid = it->first;
-    bool found = false;
-    for (const auto &it2: tx_hashes)
-    {
-      if (it2 == txid)
-      {
-        found = true;
-        break;
-      }
-    }
+    bool found = std::find(pool_hashes.begin(), pool_hashes.end(), txid) != pool_hashes.end();
     auto pit = it++;
     if (!found)
     {
@@ -3172,13 +3173,14 @@ std::vector<wallet2::get_pool_state_tx> wallet2::get_pool_state(bool refreshed)
   // the in transfers list instead (or nowhere if it just
   // disappeared without being mined)
   if (refreshed)
-    remove_obsolete_pool_txs(tx_hashes);
+    remove_obsolete_pool_txs(pool_hashes);
 
   MTRACE("get_pool_state done second loop");
 
-  // gather txids of new pool txes to us
+  // gather txids of new blink txes to us. We just ignore non-blinks here (we pick them up when they
+  // get mined into a block).
   std::vector<std::pair<crypto::hash, bool>> txids;
-  for (const auto &txid: tx_hashes)
+  for (const auto &txid: blink_hashes)
   {
     bool txid_found_in_up = false;
     for (const auto &up: m_unconfirmed_payments)
