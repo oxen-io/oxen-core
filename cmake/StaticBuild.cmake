@@ -599,17 +599,18 @@ set_target_properties(libzmq PROPERTIES
 
 
 
-set(curl_LIBS "")
+set(curl_extra)
 if(WIN32)
   set(curl_ssl_opts --without-ssl --with-schannel)
 elseif(APPLE)
   set(curl_ssl_opts --without-ssl --with-secure-transport)
   if(IOS)
-    set(curl_LIBS "LDFLAGS=-L${DEPS_DESTDIR}/lib -isysroot ${CMAKE_OSX_SYSROOT}")
+    # This CPP crap shouldn't be necessary but is because Apple's toolchain is trash
+    set(curl_extra "LDFLAGS=-L${DEPS_DESTDIR}/lib -isysroot ${CMAKE_OSX_SYSROOT}" CPP=cpp)
   endif()
 else()
   set(curl_ssl_opts --with-ssl=${DEPS_DESTDIR})
-  set(curl_LIBS "LIBS=-pthread")
+  set(curl_extra "LIBS=-pthread")
 endif()
 
 set(curl_arches default)
@@ -651,7 +652,7 @@ foreach(curl_arch ${curl_arches})
     --disable-progress-meter --without-brotli --with-zlib=${DEPS_DESTDIR} ${curl_ssl_opts}
     --without-libmetalink --without-librtmp --disable-versioned-symbols --enable-hidden-symbols
     --without-zsh-functions-dir --without-fish-functions-dir
-    "CC=${deps_cc}" "CFLAGS=${deps_noarch_CFLAGS}${cflags_extra}" ${curl_LIBS}
+    "CC=${deps_cc}" "CFLAGS=${deps_noarch_CFLAGS}${cflags_extra}" ${curl_extra}
     BUILD_COMMAND true
     INSTALL_COMMAND make -C lib install && make -C include install
     BUILD_BYPRODUCTS
