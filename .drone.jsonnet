@@ -215,6 +215,14 @@ local android_build_steps(android_abi, android_platform=21, jobs=6, cmake_extra=
                     '-DRANDOMX_ENABLE_JIT=OFF  -DCMAKE_CXX_FLAGS=-fcolor-diagnostics',
                 'ninja -j6 -v wallet_merged',
                 'cd ..',
+                'mkdir build-simulator',
+                'cd build-simulator',
+                'cmake .. -G Ninja ' +
+                    '-DCMAKE_TOOLCHAIN_FILE=../cmake/ios.toolchain.cmake -DPLATFORM=SIMULATOR64 -DDEPLOYMENT_TARGET=11 -DENABLE_VISIBILITY=ON -DENABLE_BITCODE=OFF ' +
+                    '-DSTATIC=ON -DBUILD_STATIC_DEPS=ON -DUSE_LTO=OFF -DCMAKE_BUILD_TYPE=Release ' +
+                    '-DRANDOMX_ENABLE_JIT=OFF  -DCMAKE_CXX_FLAGS=-fcolor-diagnostics',
+                'ninja -j6 -v wallet_merged',
+                'cd ..',
                 './utils/build_scripts/drone-ios-static-upload.sh'
             ]
         }]

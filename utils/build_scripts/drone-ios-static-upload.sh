@@ -24,10 +24,12 @@ branch_or_tag=${DRONE_BRANCH:-${DRONE_TAG:-unknown}}
 upload_to="builds.lokinet.dev/${DRONE_REPO// /_}/${branch_or_tag// /_}"
 
 tmpdir=ios-deps-${DRONE_COMMIT}
-mkdir -p $tmpdir
+mkdir -p $tmpdir/ios
+mkdir -p $tmpdir/sim64
 cp src/wallet/api/wallet2_api.h $tmpdir
 
-ln -s ../build-ios/src/wallet/api/libwallet_merged.a $tmpdir/
+ln -s ../build-ios/src/wallet/api/libwallet_merged.a $tmpdir/ios
+ln -s ../build-simulator/src/wallet/api/libwallet_merged.a $tmpdir/sim64
 
 filename=ios-deps-${DRONE_COMMIT}.tar.xz
 XZ_OPTS="--threads=6" tar --dereference -cJvf $filename $tmpdir
