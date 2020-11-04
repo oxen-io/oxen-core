@@ -28,8 +28,8 @@ mkdir -p $tmpdir/ios
 mkdir -p $tmpdir/sim64
 cp src/wallet/api/wallet2_api.h $tmpdir
 
-ln -s ../build-ios/src/wallet/api/libwallet_merged.a $tmpdir/ios
-ln -s ../build-simulator/src/wallet/api/libwallet_merged.a $tmpdir/sim64
+ln -s ../../build-ios/src/wallet/api/libwallet_merged.a $tmpdir/ios
+ln -s ../../build-simulator/src/wallet/api/libwallet_merged.a $tmpdir/sim64
 
 filename=ios-deps-${DRONE_COMMIT}.tar.xz
 XZ_OPTS="--threads=6" tar --dereference -cJvf $filename $tmpdir
