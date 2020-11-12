@@ -72,10 +72,7 @@ using namespace std::literals;
 
 namespace daemonize {
 
-// Parse an IP:PORT string into a {IP,PORT} pair.  Throws if the string value is not valid.  Accepts
-// both IPv4 and IPv6 addresses, but the latter must be specified in square brackets, e.g. [::1]:2345,
-// and will be returned *without* square brackets.
-static std::pair<std::string, uint16_t> parse_ip_port(std::string_view ip_port, const std::string& argname)
+std::pair<std::string, uint16_t> parse_ip_port(std::string_view ip_port, const std::string& argname)
 {
   std::pair<std::string, uint16_t> result;
   auto& [ip, port] = result;
@@ -167,7 +164,7 @@ daemon::daemon(boost::program_options::variables_map vm_) :
       else if (command_line::get_arg(vm, cryptonote::arg_devnet_on))
         main_rpc_port = config::devnet::RPC_DEFAULT_PORT;
       else
-        main_rpc_port = config::testnet::RPC_DEFAULT_PORT;
+        main_rpc_port = config::RPC_DEFAULT_PORT;
     }
     if (main_rpc_port && main_rpc_port == restricted_rpc_port)
       restricted = true;

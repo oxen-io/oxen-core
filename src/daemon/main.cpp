@@ -221,36 +221,31 @@ int main(int argc, char const * argv[])
 
       if (command.size())
       {
-        const cryptonote::rpc_args::descriptors arg{};
-        auto rpc_ip_str = command_line::get_arg(vm, arg.rpc_bind_ip);
-        auto rpc_port = command_line::get_arg(vm, cryptonote::rpc::http_server::arg_rpc_bind_port);
-
-        if (uint32_t rpc_ip; !epee::string_tools::get_ip_int32_from_string(rpc_ip, rpc_ip_str))
-        {
-          std::cerr << "Invalid IP: " << rpc_ip_str << std::endl;
-          return 1;
+        auto rpc_config = cryptonote::rpc_args::process(vm);
+        std::string rpc_addr;
+        // TODO: remove this in loki 9.x and only use rpc-admin
+        if (!is_arg_defaulted(vm, cryptonote::rpc::http_server::arg_rpc_bind_port) ||
+            rpc_config.bind_ip.has_value()) {
+          auto rpc_port = command_line::get_arg(vm, cryptonote::rpc::http_server::arg_rpc_bind_port);
+          if (rpc_port == 0)
+            rpc_port =
+              command_line::get_arg(vm, cryptonote::arg_testnet_on) ? config::testnet::RPC_DEFAULT_PORT :
+              command_line::get_arg(vm, cryptonote::arg_devnet_on) ? config::devnet::RPC_DEFAULT_PORT :
+              config::RPC_DEFAULT_PORT;
+          rpc_addr = rpc_config.bind_ip.value_or("127.0.0.1") + ":" + std::to_string(rpc_port);
+        } else {
+          rpc_addr = command_line::get_arg(vm, cryptonote::rpc::http_server::arg_rpc_admin)[0];
+          if (rpc_addr == "none")
+            throw std::runtime_error{"Cannot invoke lokid command: --rpc-admin is disabled"};
         }
 
-        const char *env_rpc_login = nullptr;
-        const bool has_rpc_arg = command_line::has_arg(vm, arg.rpc_login);
-        const bool use_rpc_env = !has_rpc_arg && (env_rpc_login = getenv("RPC_LOGIN")) != nullptr && strlen(env_rpc_login) > 0;
-        std::optional<tools::login> login{};
-        if (has_rpc_arg || use_rpc_env)
         {
-          login = tools::login::parse(
-            has_rpc_arg ? command_line::get_arg(vm, arg.rpc_login) : std::string(env_rpc_login), false, [](bool verify) {
-              rdln::suspend_readline pause_readline;
-              return tools::password_container::prompt(verify, "Daemon client password");
-            }
-          );
-          if (!login)
-          {
-            std::cerr << "Failed to obtain password" << std::endl;
-            return 1;
-          }
+          // Throws if invalid:
+          auto [ip, port] = daemonize::parse_ip_port(rpc_addr, "--rpc-admin");
+          rpc_addr = "http://"s + (ip.find(':') != std::string::npos ? "[" + ip + "]" : ip) + ":" + std::to_string(port);
         }
 
-        daemonize::command_server rpc_commands{"http://"s + rpc_ip_str + ":" + std::to_string(rpc_port), std::move(login)};
+        daemonize::command_server rpc_commands{rpc_addr, rpc_config.login};
         return rpc_commands.process_command_and_log(command) ? 0 : 1;
       }
     }

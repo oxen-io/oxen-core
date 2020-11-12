@@ -48,6 +48,11 @@
 namespace daemonize
 {
 
+// Parse an IP:PORT string into a {IP,PORT} pair.  Throws if the string value is not valid.  Accepts
+// both IPv4 and IPv6 addresses, but the latter must be specified in square brackets, e.g. [::1]:2345,
+// and will be returned *without* square brackets.
+std::pair<std::string, uint16_t> parse_ip_port(std::string_view ip_port, const std::string& argname);
+
 class daemon {
 public:
   static void init_options(boost::program_options::options_description& option_spec, boost::program_options::options_description& hidden);
