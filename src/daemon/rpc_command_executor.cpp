@@ -498,7 +498,7 @@ bool rpc_command_executor::show_status() {
   std::ostringstream str;
   str << "Height: " << ires.height;
   if (ires.height != net_height)
-      str << "/ " << net_height << " (" << boost::format("%.1f") % get_sync_percentage(ires) << ")";
+      str << "/" << net_height << " (" << boost::format("%.1f") % get_sync_percentage(ires) << "%)";
 
   if (ires.testnet)     str << " ON TESTNET";
   else if (ires.devnet) str << " ON DEVNET";
