@@ -619,8 +619,7 @@ namespace cryptonote
       folder /= "fake";
 
     // make sure the data directory exists, and try to lock it
-
-    if (std::error_code ec; !fs::create_directories(folder, ec) && ec)
+    if (std::error_code ec; !fs::is_directory(folder, ec) && !fs::create_directories(folder, ec) && ec)
     {
       MERROR("Failed to create directory " + folder.u8string() + (ec ? ": " + ec.message() : ""s));
       return false;
