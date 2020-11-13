@@ -488,10 +488,10 @@ namespace tools
       return false;
     }
 
-    if (rpc_config.bind_ip && !rpc_config.bind_ip->empty())
-      m_bind.emplace_back(*rpc_config.bind_ip, port, rpc_config.require_ipv4);
-    if (rpc_config.use_ipv6 && rpc_config.bind_ipv6_address && !rpc_config.bind_ipv6_address->empty())
-      m_bind.emplace_back(*rpc_config.bind_ipv6_address, port, true);
+    if (!rpc_config.bind_ip || !rpc_config.bind_ip->empty())
+      m_bind.emplace_back(rpc_config.bind_ip.value_or("127.0.0.1"), port, rpc_config.require_ipv4);
+    if (rpc_config.use_ipv6 && (!rpc_config.bind_ipv6_address || !rpc_config.bind_ipv6_address->empty()))
+      m_bind.emplace_back(rpc_config.bind_ipv6_address.value_or("::1"), port, true);
 
     const bool disable_auth = command_line::get_arg(m_vm, arg_disable_rpc_login);
 
