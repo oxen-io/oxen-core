@@ -28,6 +28,7 @@ local debian_pipeline(name, image,
         run_tests=false, # Runs full test suite
         cmake_extra='',
         extra_cmds=[],
+        extra_steps=[],
         jobs=6,
         allow_fail=false) = {
     kind: 'pipeline',
@@ -73,7 +74,7 @@ local debian_pipeline(name, image,
                 ] else []
             ) + extra_cmds,
         }
-    ],
+    ] + extra_steps,
 };
 
 // Macos build
@@ -85,6 +86,7 @@ local mac_builder(name,
         run_tests=false,
         cmake_extra='',
         extra_cmds=[],
+        extra_steps=[],
         jobs=6,
         allow_fail=false) = {
     kind: 'pipeline',
@@ -115,7 +117,7 @@ local mac_builder(name,
                 ] else []
             ) + extra_cmds,
         }
-    ]
+    ] + extra_steps
 };
 
 local static_check_and_upload = [
@@ -141,6 +143,49 @@ local android_build_steps(android_abi, android_platform=21, jobs=6, cmake_extra=
     'cd ..',
 ];
 
+local gui_wallet_step(image, wine=false) = {
+    name: 'GUI Wallet (dev)',
+    platform: { arch: 'amd64' },
+    image: image,
+    environment: { SSH_KEY: { from_secret: "SSH_KEY" } },
+    commands: [
+        'echo "man-db man-db/auto-update boolean false" | debconf-set-selections',
+        ] + (if wine then ['dpkg --add-architecture i386'] else []) + [
+        apt_get_quiet + ' update',
+        apt_get_quiet + ' install -y eatmydata',
+        'eatmydata ' + apt_get_quiet + ' dist-upgrade -y',
+        'eatmydata ' + apt_get_quiet + ' install -y --no-install-recommends git ssh curl ca-certificates binutils make' + (if wine then ' wine32 wine sed' else ''),
+        'curl -sSL https://deb.nodesource.com/setup_14.x | bash -',
+        'eatmydata ' + apt_get_quiet + ' update',
+        'eatmydata ' + apt_get_quiet + ' install -y nodejs',
+        'git clone https://github.com/loki-project/loki-electron-gui-wallet.git',
+        'cp -v build/bin/lokid' + (if wine then '.exe' else '') + ' loki-electron-gui-wallet/bin',
+        'cp -v build/bin/loki-wallet-rpc' + (if wine then '.exe' else '') + ' loki-electron-gui-wallet/bin',
+        'cd loki-electron-gui-wallet',
+        'eatmydata npm install',
+        'sed -i -e \'s/^\\\\( *"version": ".*\\\\)",/\\\\\\\\1-${DRONE_COMMIT_SHA:0:8}",/\' package.json',
+        ] + (if wine then ['sed -i -e \'s/^\\\\( *"build": "quasar.*\\\\)",/\\\\\\\\1 --target=win",/\' package.json'] else []) + [
+        'eatmydata npm run build',
+        '../utils/build_scripts/drone-wallet-upload.sh'
+    ]
+};
+local gui_wallet_step_darwin = {
+    name: 'GUI Wallet (dev)',
+    platform: { os: 'darwin', arch: 'amd64' },
+    environment: { SSH_KEY: { from_secret: "SSH_KEY" }, CSC_IDENTITY_AUTO_DISCOVERY: 'false' },
+    commands: [
+        'git clone https://github.com/loki-project/loki-electron-gui-wallet.git',
+        'cp -v build/bin/{lokid,loki-wallet-rpc} loki-electron-gui-wallet/bin',
+        'cd loki-electron-gui-wallet',
+        'sed -i -e \'s/^\\\\( *"version": ".*\\\\)",/\\\\1-${DRONE_COMMIT_SHA:0:8}",/\' package.json',
+        'npm install',
+        'npm run build',
+        '../utils/build_scripts/drone-wallet-upload.sh'
+    ]
+};
+
+
+
 
 
 [
@@ -161,16 +206,19 @@ local android_build_steps(android_abi, android_platform=21, jobs=6, cmake_extra=
     // Static build (on bionic) which gets uploaded to builds.lokinet.dev:
     debian_pipeline("Static (bionic amd64)", "ubuntu:bionic", deps='g++-8 '+static_build_deps,
                     cmake_extra='-DBUILD_STATIC_DEPS=ON -DCMAKE_C_COMPILER=gcc-8 -DCMAKE_CXX_COMPILER=g++-8 -DARCH=x86-64',
-                    build_tests=false, lto=true, extra_cmds=static_check_and_upload),
+                    build_tests=false, lto=true, extra_cmds=static_check_and_upload,
+                    extra_steps=[gui_wallet_step('ubuntu:bionic')]),
+
     // Static mingw build (on focal) which gets uploaded to builds.lokinet.dev:
     debian_pipeline("Static (win64)", "ubuntu:focal", deps='g++ g++-mingw-w64-x86-64 '+static_build_deps,
                     cmake_extra='-DCMAKE_TOOLCHAIN_FILE=../cmake/64-bit-toolchain.cmake -DBUILD_STATIC_DEPS=ON -DARCH=x86-64',
                     build_tests=false, lto=false, test_lokid=false, extra_cmds=[
-                        'ninja strip_binaries', 'ninja create_zip', '../utils/build_scripts/drone-static-upload.sh']),
+                        'ninja strip_binaries', 'ninja create_zip', '../utils/build_scripts/drone-static-upload.sh'],
+                    extra_steps=[gui_wallet_step('debian:stable', wine=true)]),
 
     // Macos builds:
     mac_builder('macOS (Static)', cmake_extra='-DBUILD_STATIC_DEPS=ON -DARCH=core2 -DARCH_ID=amd64',
-                build_tests=false, extra_cmds=static_check_and_upload, lto=true),
+                build_tests=false, lto=true, extra_cmds=static_check_and_upload, extra_steps=[gui_wallet_step_darwin]),
     mac_builder('macOS (Release)', run_tests=true),
     mac_builder('macOS (Debug)', build_type='Debug', cmake_extra='-DBUILD_DEBUG_UTILS=ON'),
 
