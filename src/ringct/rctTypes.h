@@ -30,6 +30,7 @@
 
 #pragma once
 
+#include "common/hex.h"
 #include <cstddef>
 #include <vector>
 #include <cstdint>
@@ -571,7 +572,7 @@ namespace cryptonote {
 }
 
 namespace rct {
-inline std::ostream &operator <<(std::ostream &o, const rct::key &v) {
+inline std::ostream& operator<<(std::ostream& o, const rct::key& v) {
   return o << '<' << tools::type_to_hex(v) << '>';
 }
 }
