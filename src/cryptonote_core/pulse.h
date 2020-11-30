@@ -58,6 +58,7 @@ struct message
   message_type type;
   uint16_t quorum_position;
   uint8_t  round;
+  std::chrono::time_point<std::chrono::system_clock> timestamp;
   crypto::signature signature; // Signs the contents of the message, proving it came from the node at quorum_position
 
   struct

@@ -256,6 +256,7 @@ pulse::message msg_init_from_context(round_context const &context)
   pulse::message result  = {};
   result.quorum_position = context.prepare_for_round.my_quorum_position;
   result.round           = context.prepare_for_round.round;
+  result.timestamp       = pulse::clock::now();
   return result;
 }
 
@@ -442,6 +443,20 @@ void handle_messages_received_early_for(pulse_wait_stage &stage, void *quorumnet
       queued = queueing_state::processed;
     }
   }
+}
+
+// Check the timestamps of the message queue and returns the average
+std::chrono::time_point<std::chrono::system_clock> average_timestamp(message_queue const &queue)
+{
+  std::chrono::time_point<std::chrono::_V2::system_clock, std::chrono::duration<long int, std::ratio<1, 1000000000> > > t0 = queue.buffer[0].first.timestamp;
+  std::chrono::time_point<std::chrono::_V2::system_clock, std::chrono::duration<long int, std::ratio<1, 1000000000> > > total;
+  for (auto &[msg, queued] : queue.buffer)
+  {
+    total += (msg.timestamp - t0);
+  }
+
+  return t0 + total/(1 + sizeof(queue.buffer));
+
 }
 
 // In Pulse, after the block template and validators are locked in, enforce that
