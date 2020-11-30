@@ -8702,8 +8702,8 @@ wallet2::request_stake_unlock_result wallet2::can_request_stake_unlock(const cry
     std::set<uint32_t> subaddr_indices  = {};
     loki_construct_tx_params tx_params = wallet2::construct_params(*hf_version, cryptonote::txtype::key_image_unlock, priority);
 
-    add_service_node_pubkey_to_tx_extra(result.ptx.tx.extra, sn_key);
-    add_tx_key_image_unlock_to_tx_extra(result.ptx.tx.extra, unlock);
+    add_service_node_pubkey_to_tx_extra(extra, sn_key);
+    add_tx_key_image_unlock_to_tx_extra(extra, unlock);
     auto ptx_vector      = create_transactions_2(dsts,
                                       CRYPTONOTE_DEFAULT_TX_MIXIN,
                                       0,
