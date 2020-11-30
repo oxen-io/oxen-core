@@ -8575,8 +8575,6 @@ wallet2::register_service_node_result wallet2::create_register_service_node_tx(c
 wallet2::request_stake_unlock_result wallet2::can_request_stake_unlock(const crypto::public_key &sn_key)
 {
   request_stake_unlock_result result = {};
-  result.ptx.tx.version = cryptonote::txversion::v4_tx_types;
-  result.ptx.tx.type    = cryptonote::txtype::key_image_unlock;
 
   std::string const sn_key_as_str = tools::type_to_hex(sn_key);
   {
@@ -8691,8 +8689,31 @@ wallet2::request_stake_unlock_result wallet2::can_request_stake_unlock(const cry
       }
     }
 
+    std::vector<cryptonote::tx_destination_entry> dsts;
+    cryptonote::tx_destination_entry de = {};
+    de.addr = this->get_address();
+    de.is_subaddress = false;
+    de.amount = 0;
+    dsts.push_back(de);
+
+    std::optional<uint8_t> hf_version = get_hard_fork_version();
+    std::vector<uint8_t> extra;
+    uint32_t priority = this->get_default_priority();
+    std::set<uint32_t> subaddr_indices  = {};
+    loki_construct_tx_params tx_params = wallet2::construct_params(*hf_version, cryptonote::txtype::key_image_unlock, priority);
+
     add_service_node_pubkey_to_tx_extra(result.ptx.tx.extra, sn_key);
     add_tx_key_image_unlock_to_tx_extra(result.ptx.tx.extra, unlock);
+    auto ptx_vector      = create_transactions_2(dsts,
+                                      CRYPTONOTE_DEFAULT_TX_MIXIN,
+                                      0,
+                                      priority,
+                                      extra,
+                                      0,
+                                      subaddr_indices,
+                                      tx_params);
+    result.ptx    = ptx_vector[0];
+
   }
 
   result.success = true;
