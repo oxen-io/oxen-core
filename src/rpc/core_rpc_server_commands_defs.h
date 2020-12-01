@@ -2124,6 +2124,8 @@ namespace rpc {
         uint64_t                                storage_server_reachable_timestamp;  // The last time this Service Node's storage server was contacted
         std::vector<service_nodes::participation_entry> checkpoint_participation;    // Of the last N checkpoints the Service Node is in a checkpointing quorum, record whether or not the Service Node voted to checkpoint a block
         std::vector<service_nodes::participation_entry> pulse_participation;         // Of the last N pulse blocks the Service Node is in a pulse quorum, record whether or not the Service Node voted (participated) in that block
+        std::vector<service_nodes::timestamp_participation_entry> timestamp_participation;         // Of the last N timestamp messages, record whether or not the Service Node was in sync with the network
+        std::vector<service_nodes::timesync_entry> timesync_status;         // Of the last N timestamp messages, record whether or not the Service Node responded
 
         KV_MAP_SERIALIZABLE
       };
@@ -2257,7 +2259,6 @@ namespace rpc {
   struct GET_OUTPUT_BLACKLIST : PUBLIC, BINARY
   {
     static constexpr auto names() { return NAMES("get_output_blacklist.bin"); }
-
     struct request : EMPTY {};
 
     struct response

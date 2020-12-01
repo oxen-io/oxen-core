@@ -35,6 +35,7 @@
 #include "epee/string_tools.h"
 
 #include <unordered_set>
+#include <sstream>
 #include <iomanip>
 #include <lokimq/base32z.h>
 
@@ -502,6 +503,27 @@ namespace cryptonote
     if (seconds >= 60)
       return std::to_string(seconds / 60) + "m" + std::to_string(seconds % 60) + "s";
     return std::to_string(seconds % 60) + "s";
+  }
+
+  // Returns a bool on whether the service node is currently active
+  bool core::is_active_sn() const
+  {
+    auto info = get_my_sn_info();
+    return (info && info->is_active());
+  }
+
+  // Returns the service nodes info
+  std::shared_ptr<const service_nodes::service_node_info> core::get_my_sn_info() const
+  {
+    auto& snl = get_service_node_list();
+    const auto& pubkey = get_service_keys().pub;
+    auto states = snl.get_service_node_list_state({ pubkey });
+    if (states.empty())
+      return nullptr;
+    else
+    {
+      return states[0].info;
+    }
   }
 
   // Returns a string for systemd status notifications such as:
@@ -1077,6 +1099,9 @@ namespace cryptonote
                          std::chrono::milliseconds(500),
                          false,
                          m_pulse_thread_id);
+        m_lmq->add_timer([this]() {this->check_service_node_time();},
+                         5s,
+                         false);
       }
       m_lmq->start();
   }
@@ -1631,6 +1656,61 @@ namespace cryptonote
       return false;
     }
 
+    return true;
+  }
+  //-----------------------------------------------------------------------------------------------
+  bool core::check_service_node_time()
+  {
+
+    if(!is_active_sn()) {return true;}
+
+    crypto::public_key pubkey = m_service_node_list.get_random_pubkey();
+    crypto::x25519_public_key x_pkey{0};
+    constexpr std::array<uint16_t, 3> MIN_TIMESTAMP_VERSION{8,1,5};
+    std::array<uint16_t,3> proofversion;
+    m_service_node_list.access_proof(pubkey, [&](auto &proof) { 
+      x_pkey = proof.pubkey_x25519; 
+      proofversion = proof.version;
+    });
+
+    if (proofversion >= MIN_TIMESTAMP_VERSION && x_pkey) {
+      m_lmq->request(
+        tools::view_guts(x_pkey),
+        "quorum.timestamp",
+        [this, pubkey](bool success, std::vector<std::string> data) {
+          const time_t local_seconds = time(nullptr);
+          MDEBUG("Timestamp message received: " << data[0] <<", local time is: " << local_seconds);
+          if(success){ 
+            int64_t received_seconds;
+            if (tools::parse_int(data[0],received_seconds)){
+              uint16_t variance;
+              if (received_seconds > local_seconds + 65535 || received_seconds < local_seconds - 65535) {
+                variance = 65535;
+              } else {
+                variance = std::abs(local_seconds - received_seconds);
+              }
+              std::lock_guard<std::mutex> lk(m_sn_timestamp_mutex);
+              // Records the variance into the record of our performance (m_sn_times)
+              service_nodes::timesync_entry entry{variance <= service_nodes::THRESHOLD_SECONDS_OUT_OF_SYNC};
+              m_sn_times.add(entry); 
+
+              // Counts the number of times we have been out of sync
+              uint8_t num_sn_out_of_sync = std::count_if(m_sn_times.begin(), m_sn_times.end(), 
+                [](const service_nodes::timesync_entry entry) { return !entry.in_sync; });
+              if (num_sn_out_of_sync > (m_sn_times.array.size() * service_nodes::MAXIMUM_EXTERNAL_OUT_OF_SYNC/100)) {
+                MWARNING("service node time might be out of sync");
+                // If we are out of sync record the other service node as in sync
+                m_service_node_list.record_timesync_status(pubkey, true);
+              } else {
+                m_service_node_list.record_timesync_status(pubkey, variance <= service_nodes::THRESHOLD_SECONDS_OUT_OF_SYNC);
+              }
+            } else {
+              success = false;
+            }
+          }
+          m_service_node_list.record_timestamp_participation(pubkey, success);
+        });
+    }
     return true;
   }
   //-----------------------------------------------------------------------------------------------

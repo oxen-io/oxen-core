@@ -37,7 +37,6 @@
 #include "daemon/rpc_command_executor.h"
 #include "epee/int-util.h"
 #include "rpc/core_rpc_server_commands_defs.h"
-#include "cryptonote_core/cryptonote_core.h"
 #include "cryptonote_core/service_node_rules.h"
 #include "cryptonote_basic/hardfork.h"
 #include "checkpoints/checkpoints.h"
@@ -1559,6 +1558,21 @@ static void print_vote_history(std::ostringstream &stream, std::vector<service_n
   }
 }
 
+template <class participationEntry>
+static void print_participation_history(std::ostringstream &stream, std::vector<participationEntry> const &votes)
+{
+  if (votes.empty())
+    stream << "(Awaiting votes from service node)";
+
+  for (size_t i = 0; i < votes.size(); i++)
+  {
+    participationEntry const &entry = votes[i];
+    stream << "["<< (entry.pass() ? "Yes" : "No") << "]";
+    if (i < (votes.size() - 1)) stream << ",";
+    stream << " ";
+  }
+}
+
 static void append_printable_service_node_list_entry(cryptonote::network_type nettype, bool detailed_view, uint64_t blockchain_height, uint64_t entry_index, GET_SERVICE_NODES::response::entry const &entry, std::string &buffer)
 {
   const char indent1[] = "    ";
@@ -1687,6 +1701,12 @@ static void append_printable_service_node_list_entry(cryptonote::network_type ne
 
     stream << "\n\n" << indent2 << "Pulse Participation [Height, Round, Voted]\n" << indent3;
     print_vote_history(stream, entry.pulse_participation);
+
+    stream << "\n\n" << indent2 << "Timestamp Participation [in_sync]\n" << indent3;
+    print_participation_history(stream, entry.timestamp_participation);
+
+    stream << "\n\n" << indent2 << "Timesync Response [responded]\n" << indent3;
+    print_participation_history(stream, entry.timesync_status);
   }
 
   stream << "\n";

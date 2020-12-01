@@ -3032,10 +3032,14 @@ namespace cryptonote { namespace rpc {
         entry.storage_server_reachable           = proof.storage_server_reachable;
         entry.storage_server_reachable_timestamp = proof.storage_server_reachable_timestamp;
 
-        service_nodes::participation_history const &checkpoint_participation = proof.checkpoint_participation;
-        service_nodes::participation_history const &pulse_participation      = proof.pulse_participation;
+        service_nodes::participation_history<service_nodes::participation_entry> const &checkpoint_participation = proof.checkpoint_participation;
+        service_nodes::participation_history<service_nodes::participation_entry> const &pulse_participation      = proof.pulse_participation;
+        service_nodes::participation_history<service_nodes::timestamp_participation_entry> const &timestamp_participation      = proof.timestamp_participation;
+        service_nodes::participation_history<service_nodes::timesync_entry> const &timesync_status      = proof.timesync_status;
         entry.checkpoint_participation = std::vector<service_nodes::participation_entry>(checkpoint_participation.begin(), checkpoint_participation.end());
         entry.pulse_participation      = std::vector<service_nodes::participation_entry>(pulse_participation.begin(),      pulse_participation.end());
+        entry.timestamp_participation  = std::vector<service_nodes::timestamp_participation_entry>(timestamp_participation.begin(),      timestamp_participation.end());
+        entry.timesync_status          = std::vector<service_nodes::timesync_entry>(timesync_status.begin(),      timesync_status.end());
     });
 
     entry.contributors.reserve(info.contributors.size());

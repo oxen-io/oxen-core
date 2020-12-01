@@ -61,6 +61,8 @@ namespace service_nodes
       if (!uptime_proved)            buf_ptr += snprintf(buf_ptr, buf_end - buf_ptr, "Uptime proof missing.\n");
       if (!checkpoint_participation) buf_ptr += snprintf(buf_ptr, buf_end - buf_ptr, "Skipped voting in at least %d checkpoints.\n", (int)(QUORUM_VOTE_CHECK_COUNT - CHECKPOINT_MAX_MISSABLE_VOTES));
       if (!pulse_participation)      buf_ptr += snprintf(buf_ptr, buf_end - buf_ptr, "Skipped voting in at least %d pulse quorums.\n", (int)(QUORUM_VOTE_CHECK_COUNT - PULSE_MAX_MISSABLE_VOTES));
+      if (!timestamp_participation)      buf_ptr += snprintf(buf_ptr, buf_end - buf_ptr, "Replied out of sync time for at least %d timestamp mesages.\n", (int)(QUORUM_VOTE_CHECK_COUNT - TIMESTAMP_MAX_MISSABLE_VOTES));
+      if (!timesync_status)      buf_ptr += snprintf(buf_ptr, buf_end - buf_ptr, "Missed replying to at least %d timesync messages.\n", (int)(QUORUM_VOTE_CHECK_COUNT - TIMESYNC_MAX_UNSYNCED_VOTES));
       buf_ptr += snprintf(buf_ptr, buf_end - buf_ptr, "Note: Storage server may not be reachable. This is only testable by an external Service Node.");
     }
     return buf;
@@ -86,14 +88,28 @@ namespace service_nodes
     uint64_t timestamp = 0;
     decltype(std::declval<proof_info>().public_ips) ips{};
 
-    service_nodes::participation_history checkpoint_participation{};
-    service_nodes::participation_history pulse_participation{};
+    service_nodes::participation_history<service_nodes::participation_entry> checkpoint_participation{};
+    service_nodes::participation_history<service_nodes::participation_entry> pulse_participation{};
+    service_nodes::participation_history<service_nodes::timestamp_participation_entry> timestamp_participation{};
+    service_nodes::participation_history<service_nodes::timesync_entry> timesync_status{};
+
+    constexpr std::array<uint16_t, 3> MIN_TIMESTAMP_VERSION{9,0,0};
+    bool check_timestamp_obligation = false;
+
     m_core.get_service_node_list().access_proof(pubkey, [&](const proof_info &proof) {
       ss_reachable             = proof.storage_server_reachable;
       timestamp                = std::max(proof.timestamp, proof.effective_timestamp);
       ips                      = proof.public_ips;
       checkpoint_participation = proof.checkpoint_participation;
       pulse_participation      = proof.pulse_participation;
+
+      // TODO: remove after HF17
+      if (proof.version >= MIN_TIMESTAMP_VERSION && hf_version >= cryptonote::network_version_17) {
+        timestamp_participation  = proof.timestamp_participation;
+        timesync_status          = proof.timesync_status;
+        check_timestamp_obligation = true;
+      }
+
     });
     uint64_t time_since_last_uptime_proof = std::time(nullptr) - timestamp;
 
@@ -139,37 +155,30 @@ namespace service_nodes
     {
       if (check_checkpoint_obligation)
       {
-        if (checkpoint_participation.write_index >= QUORUM_VOTE_CHECK_COUNT)
+        if (!checkpoint_participation.check_participation(CHECKPOINT_MAX_MISSABLE_VOTES) )
         {
-          int missed_participation = 0;
-          for (participation_entry const &entry : checkpoint_participation)
-            if (!entry.voted) missed_participation++;
-
-          if (missed_participation > CHECKPOINT_MAX_MISSABLE_VOTES)
-          {
-            LOG_PRINT_L1("Service Node: " << pubkey << ", failed checkpoint obligation check: missed the last: "
-                                          << missed_participation << " checkpoint votes from: "
-                                          << QUORUM_VOTE_CHECK_COUNT
-                                          << " quorums that they were required to participate in.");
-            if (hf_version >= cryptonote::network_version_13_enforce_checkpoints)
-              result.checkpoint_participation = false;
-          }
+          LOG_PRINT_L1("Service Node: " << pubkey << ", failed checkpoint obligation check");
+          if (hf_version >= cryptonote::network_version_13_enforce_checkpoints)
+            result.checkpoint_participation = false;
         }
       }
 
-      if (pulse_participation.write_index >= QUORUM_VOTE_CHECK_COUNT)
+      if (!pulse_participation.check_participation(PULSE_MAX_MISSABLE_VOTES) )
       {
-        int missed_participation = 0;
-        for (participation_entry const &entry : pulse_participation)
-          if (!entry.voted) missed_participation++;
+        LOG_PRINT_L1("Service Node: " << pubkey << ", failed pulse obligation check");
+        result.pulse_participation = false;
+      }
 
-        if (missed_participation > PULSE_MAX_MISSABLE_VOTES)
+      if (check_timestamp_obligation){
+        if (!timestamp_participation.check_participation(TIMESTAMP_MAX_MISSABLE_VOTES) )
         {
-          LOG_PRINT_L1("Service Node: " << pubkey << ", failed pulse obligation check: did not participate in the last: "
-                                        << missed_participation << " pulse quorums from: "
-                                        << QUORUM_VOTE_CHECK_COUNT
-                                        << " quorums that they were required to participate in.");
-          result.pulse_participation = false;
+          LOG_PRINT_L1("Service Node: " << pubkey << ", failed timestamp obligation check");
+          result.timestamp_participation = false;
+        }
+        if (!timesync_status.check_participation(TIMESYNC_MAX_UNSYNCED_VOTES) )
+        {
+          LOG_PRINT_L1("Service Node: " << pubkey << ", failed timesync obligation check");
+          result.timesync_status = false;
         }
       }
     }
@@ -690,7 +699,6 @@ namespace service_nodes
   }
 
   // Calculate the decommission credit for a service node.  If the SN is current decommissioned this
-  // returns the number of blocks remaining in the credit; otherwise this is the number of currently
   // accumulated blocks.
   int64_t quorum_cop::calculate_decommission_credit(const service_node_info &info, uint64_t current_height)
   {

@@ -29,7 +29,6 @@
 #include "cryptonote_config.h"
 #include "ringct/rctTypes.h"
 #include <functional>
-#include <random>
 #include <algorithm>
 #include <chrono>
 
@@ -763,6 +762,8 @@ namespace service_nodes
           proof.effective_timestamp = block.timestamp;
           proof.checkpoint_participation.reset();
           proof.pulse_participation.reset();
+          proof.timestamp_participation.reset();
+          proof.timesync_status.reset();
         }
         return true;
       }
@@ -2976,6 +2977,16 @@ namespace service_nodes
     return crypto::null_pkey;
   }
 
+  crypto::public_key service_node_list::get_random_pubkey() {
+    std::lock_guard lock{m_sn_mutex};
+    auto it  = tools::select_randomly(m_state.service_nodes_infos.begin(), m_state.service_nodes_infos.end());
+    if(it != m_state.service_nodes_infos.end()) {
+      return it->first;
+    } else {
+      return m_state.service_nodes_infos.begin()->first;
+    }
+  }
+
   void service_node_list::initialize_x25519_map() {
     auto locks = tools::unique_locks(m_sn_mutex, m_x25519_map_mutex);
 
@@ -3051,6 +3062,32 @@ namespace service_nodes
 
     auto &info = proofs[pubkey];
     info.pulse_participation.add(entry);
+  }
+
+  void service_node_list::record_timestamp_participation(crypto::public_key const &pubkey, bool participated)
+  {
+    std::lock_guard lock(m_sn_mutex);
+    if (!m_state.service_nodes_infos.count(pubkey))
+      return;
+
+    timestamp_participation_entry entry  = {};
+    entry.participated                = participated;
+
+    auto &info = proofs[pubkey];
+    info.timestamp_participation.add(entry);
+  }
+
+  void service_node_list::record_timesync_status(crypto::public_key const &pubkey, bool synced)
+  {
+    std::lock_guard lock(m_sn_mutex);
+    if (!m_state.service_nodes_infos.count(pubkey))
+      return;
+
+    timesync_entry entry  = {};
+    entry.in_sync                = synced;
+
+    auto &info = proofs[pubkey];
+    info.timesync_status.add(entry);
   }
 
   bool service_node_list::set_storage_server_peer_reachable(crypto::public_key const &pubkey, bool value)

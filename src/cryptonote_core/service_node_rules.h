@@ -135,6 +135,8 @@ namespace service_nodes {
   constexpr int16_t QUORUM_VOTE_CHECK_COUNT       = 8;
   constexpr int16_t PULSE_MAX_MISSABLE_VOTES      = 4;
   constexpr int16_t CHECKPOINT_MAX_MISSABLE_VOTES = 4;
+  constexpr int16_t TIMESTAMP_MAX_MISSABLE_VOTES  = 4;
+  constexpr int16_t TIMESYNC_MAX_UNSYNCED_VOTES   = 4;
   static_assert(CHECKPOINT_MAX_MISSABLE_VOTES < QUORUM_VOTE_CHECK_COUNT,
                 "The maximum number of votes a service node can miss cannot be greater than the amount of checkpoint "
                 "quorums they must participate in before we check if they should be deregistered or not.");
@@ -259,6 +261,12 @@ namespace service_nodes {
     }
   }
 
+  //If a nodes timestamp varies by this amount of seconds they will be considered out of sync
+  constexpr uint8_t THRESHOLD_SECONDS_OUT_OF_SYNC = 30;
+
+  //If the below percentage of service nodes are out of sync we will consider our clock out of sync
+  constexpr uint8_t MAXIMUM_EXTERNAL_OUT_OF_SYNC = 80;
+
 static_assert(STAKING_PORTIONS != UINT64_MAX, "UINT64_MAX is used as the invalid value for failing to calculate the min_node_contribution");
 // return: UINT64_MAX if (num_contributions > the max number of contributions), otherwise the amount in loki atomic units
 uint64_t get_min_node_contribution            (uint8_t version, uint64_t staking_requirement, uint64_t total_reserved, size_t num_contributions);
@@ -288,4 +296,5 @@ uint64_t     get_locked_key_image_unlock_height(cryptonote::network_type nettype
 uint64_t get_portions_to_make_amount(uint64_t staking_requirement, uint64_t amount, uint64_t max_portions = STAKING_PORTIONS);
 
 bool get_portions_from_percent_str(std::string cut_str, uint64_t& portions);
+
 }

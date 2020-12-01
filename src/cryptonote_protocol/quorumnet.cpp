@@ -41,6 +41,7 @@
 #include <lokimq/hex.h>
 #include <shared_mutex>
 #include <iterator>
+#include <time.h>
 
 #undef LOKI_DEFAULT_LOG_CATEGORY
 #define LOKI_DEFAULT_LOG_CATEGORY "qnet"
@@ -562,6 +563,12 @@ void handle_obligation_vote(Message& m, QnetState& qnet) {
     catch (const std::exception &e) {
         MWARNING("Deserialization of vote from " << to_hex(m.conn.pubkey()) << " failed: " << e.what());
     }
+}
+
+void handle_timestamp(Message& m) {
+    MDEBUG("Received a timestamp request from " << to_hex(m.conn.pubkey()));
+    const time_t seconds = time(nullptr);
+    m.send_reply(std::to_string(seconds));
 }
 
 /// Gets an integer value out of a bt_dict, if present and fits (i.e. get_int<> succeeds); if not
@@ -1704,6 +1711,8 @@ void setup_endpoints(cryptonote::core& core, void* obj) {
             // Receives blink tx signatures or rejections between quorum members (either original or
             // forwarded).  These are propagated by the receiver if new
             .add_command("blink_sign", [&qnet](Message& m) { handle_blink_signature(m, qnet); })
+            // Receives a request for the timestamp
+            .add_request_command("timestamp", [](Message& m) { handle_timestamp(m); })
             ;
 
         // blink.*: commands sent to blink quorum members from anyone (e.g. blink submission)
@@ -1750,6 +1759,7 @@ void setup_endpoints(cryptonote::core& core, void* obj) {
 
     lmq.add_command_alias("vote_ob", "quorum.vote_ob");
     lmq.add_command_alias("blink_sign", "quorum.blink_sign");
+    lmq.add_command_alias("timestamp", "quorum.timestamp");
     lmq.add_command_alias("blink", "blink.submit");
     lmq.add_command_alias("bl_nostart", "bl.nostart");
     lmq.add_command_alias("bl_bad", "bl.bad");

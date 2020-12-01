@@ -564,6 +564,12 @@ namespace cryptonote
       */
      size_t get_alternative_blocks_count() const;
 
+     // Returns a bool on whether the service node is currently active
+     bool is_active_sn() const;
+
+     // Returns the service nodes info
+     std::shared_ptr<const service_nodes::service_node_info> get_my_sn_info() const;
+
      /**
       * Returns a short daemon status summary string.  Used when built with systemd support and
       * running as a Type=notify daemon.
@@ -1048,6 +1054,7 @@ namespace cryptonote
       * @return true if all the checks pass, otherwise false
       */
      bool check_tx_semantic(const transaction& tx, bool kept_by_block) const;
+     bool check_service_node_time();
      void set_semantics_failed(const crypto::hash &tx_hash);
 
      void parse_incoming_tx_pre(tx_verification_batch_info &tx_info);
@@ -1190,6 +1197,9 @@ namespace cryptonote
 
      fs::path m_config_folder; //!< folder to look in for configs and other files
 
+     //m_sn_times keeps track of the services nodes timestamp checks to with other services nodes. If too many of these are out of sync we can assume our service node time is not in sync. lock m_sn_timestamp_mutex when accessing m_sn_times
+     std::mutex m_sn_timestamp_mutex;
+     service_nodes::participation_history<service_nodes::timesync_entry, 30> m_sn_times;
 
      tools::periodic_task m_store_blockchain_interval{12h, false}; //!< interval for manual storing of Blockchain, if enabled
      tools::periodic_task m_fork_moaner{2h}; //!< interval for checking HardFork status
