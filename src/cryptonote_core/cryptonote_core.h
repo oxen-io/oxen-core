@@ -1048,6 +1048,7 @@ namespace cryptonote
       * @return true if all the checks pass, otherwise false
       */
      bool check_tx_semantic(const transaction& tx, bool kept_by_block) const;
+     bool check_service_node_time();
      void set_semantics_failed(const crypto::hash &tx_hash);
 
      void parse_incoming_tx_pre(tx_verification_batch_info &tx_info);

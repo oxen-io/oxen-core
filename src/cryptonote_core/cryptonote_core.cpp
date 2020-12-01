@@ -1077,6 +1077,9 @@ namespace cryptonote
                          std::chrono::milliseconds(500),
                          false,
                          m_pulse_thread_id);
+        m_lmq->add_timer([this]() {this->check_service_node_time();},
+                         std::chrono::seconds(30),
+                         false);
       }
       m_lmq->start();
   }
@@ -1632,6 +1635,21 @@ namespace cryptonote
     }
 
     return true;
+  }
+  //-----------------------------------------------------------------------------------------------
+  bool core::check_service_node_time()
+  {
+    //TODO sean
+    for (size_t n = 0; n < 5; ++n)
+    {
+      crypto::public_key key = m_service_node_list.get_random_pubkey();
+      m_lmq->request(
+          key,
+          "quorum.timestamp",
+          [](bool success, std::vector<std::string> data) {
+            //TODO test here for time difference
+          });
+    }
   }
   //-----------------------------------------------------------------------------------------------
   bool core::is_key_image_spent(const crypto::key_image &key_image) const

@@ -416,6 +416,9 @@ namespace service_nodes
     /// key if not found.  (Note: this is just looking up the association, not derivation).
     crypto::public_key get_pubkey_from_x25519(const crypto::x25519_public_key &x25519) const;
 
+    // Returns a pubkey of a random service node in the service node list
+    crypto::public_key get_random_pubkey();
+
     /// Initializes the x25519 map from current pubkey state; called during initialization
     void initialize_x25519_map();
 
