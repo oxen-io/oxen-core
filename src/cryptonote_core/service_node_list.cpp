@@ -29,10 +29,10 @@
 #include "cryptonote_config.h"
 #include "ringct/rctTypes.h"
 #include <functional>
-#include <random>
+//#include <random>
 #include <algorithm>
 #include <chrono>
-#include <iterator>
+//#include <iterator>
 
 #include <boost/endian/conversion.hpp>
 
@@ -2978,27 +2978,10 @@ namespace service_nodes
     return crypto::null_pkey;
   }
 
-  template<typename Iter, typename RandomGenerator>
-  Iter select_randomly(Iter start, Iter end, RandomGenerator& g) {
-      std::uniform_int_distribution<> dis(0, std::distance(start, end) - 1);
-      std::advance(start, dis(g));
-      return start;
-  }
-
-  template<typename Iter>
-  Iter select_randomly(Iter start, Iter end) {
-      static std::random_device rd;
-      static std::mt19937 gen(rd());
-      return select_randomly(start, end, gen);
-  }
-
   crypto::public_key service_node_list::get_random_pubkey() {
-    //TODO sean
-    
-    //using service_nodes_infos_t = std::unordered_map<crypto::public_key, std::shared_ptr<const service_node_info>>;
-
-    auto (key, info) = select_randomly(m_state.service_nodes_infos.begin(), m_state.service_nodes_infos.end());
-    return key;
+    std::lock_guard lock{m_sn_mutex};
+    auto it  = tools::select_randomly(m_state.service_nodes_infos.begin(), m_state.service_nodes_infos.end());
+    return it->first;
   }
 
   void service_node_list::initialize_x25519_map() {

@@ -56,5 +56,18 @@ void shuffle_portable(RandomIt begin, RandomIt end, std::mt19937_64 &rng)
   }
 }
 
+/// Returns a random element between the elements in [start, end] will use the random number generator provided as g
+template<typename Iter, typename RandomGenerator>
+Iter select_randomly(Iter start, Iter end, RandomGenerator& g) {
+    std::uniform_int_distribution<> dis(0, std::distance(start, end) - 1);
+    std::advance(start, dis(g));
+    return start;
+}
+
+/// Returns a random element same as above but defaults to the seeded random number generator defined in this file
+template<typename Iter>
+Iter select_randomly(Iter start, Iter end) {
+    return select_randomly(start, end, rng);
+}
 
 };

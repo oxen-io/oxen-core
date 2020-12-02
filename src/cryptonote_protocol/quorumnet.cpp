@@ -565,10 +565,10 @@ void handle_obligation_vote(Message& m, QnetState& qnet) {
     }
 }
 
-void handle_timestamp(Message& m, QnetState& qnet) {
+void handle_timestamp(Message& m) {
     MDEBUG("Received a timestamp request from " << to_hex(m.conn.pubkey()));
     time_t seconds = time(NULL);
-    m.send_reply(get_data_as_string(seconds));
+    m.send_reply(std::to_string(seconds));
 }
 
 /// Gets an integer value out of a bt_dict, if present and fits (i.e. get_int<> succeeds); if not
@@ -1712,7 +1712,7 @@ void setup_endpoints(cryptonote::core& core, void* obj) {
             // forwarded).  These are propagated by the receiver if new
             .add_command("blink_sign", [&qnet](Message& m) { handle_blink_signature(m, qnet); })
             // Receives a request for the timestamp
-            .add_command("timestamp", [&qnet](Message& m) { handle_timestamp(m, qnet); })
+            .add_command("timestamp", [](Message& m) { handle_timestamp(m); })
             ;
 
         // blink.*: commands sent to blink quorum members from anyone (e.g. blink submission)

@@ -35,6 +35,7 @@
 #include "epee/string_tools.h"
 
 #include <unordered_set>
+#include <sstream>
 #include <iomanip>
 #include <lokimq/base32z.h>
 
@@ -1078,7 +1079,7 @@ namespace cryptonote
                          false,
                          m_pulse_thread_id);
         m_lmq->add_timer([this]() {this->check_service_node_time();},
-                         std::chrono::seconds(30),
+                         30s,
                          false);
       }
       m_lmq->start();
@@ -1639,16 +1640,43 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
   bool core::check_service_node_time()
   {
-    //TODO sean
-    for (size_t n = 0; n < 5; ++n)
+    std::vector<time_t> sn_times;
+
+    //Number of Service nodes to compare timestamps
+    const uint8_t NUM_SN_TO_TEST = 5;
+
+    //If a nodes timestamp varies by this amount of seconds they will be considered out of sync
+    const uint8_t THRESHOLD_SECONDS_OUT_OF_SYNC = 30;
+
+    //If the below percentage of service nodes are out of sync we will consider our clock out of sync
+    const uint8_t MAXIMUM_EXTERNAL_OUT_OF_SYNC = 80;
+  
+    for (size_t n = 0; n < NUM_SN_TO_TEST; ++n)
     {
-      crypto::public_key key = m_service_node_list.get_random_pubkey();
-      m_lmq->request(
-          key,
-          "quorum.timestamp",
-          [](bool success, std::vector<std::string> data) {
-            //TODO test here for time difference
-          });
+      crypto::public_key pubkey = m_service_node_list.get_random_pubkey();
+      crypto::x25519_public_key x_pkey{0};
+      m_service_node_list.access_proof(pubkey, [&](auto &proof) { x_pkey = proof.pubkey_x25519; });
+      if (x_pkey) {
+        m_lmq->request(
+            std::to_string(x_pkey),
+            "quorum.timestamp",
+            [&sn_times](bool success, std::vector<std::string> data) {
+              if(success && data.size() == 1){ 
+                try {
+                  sn_times.push_back(std::stoi(data[0])); 
+                } catch (...) {
+                  // Ignore the message if cannot parse the message
+                }
+                }
+            });
+      }
+    }
+
+    time_t local_seconds = time(NULL);
+    int num_sn_out_of_sync = std::count_if(sn_times.begin(), sn_times.end(), 
+        [local_seconds](const uint8_t external_time) { return std::abs(external_time-local_seconds) > THRESHOLD_SECONDS_OUT_OF_SYNC; });
+    if (num_sn_out_of_sync > (NUM_SN_TO_TEST * MAXIMUM_EXTERNAL_OUT_OF_SYNC/100)) {
+      MWARNING("service node time might be out of sync");
     }
   }
   //-----------------------------------------------------------------------------------------------
