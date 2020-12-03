@@ -96,6 +96,8 @@ namespace service_nodes
   {
     participation_history pulse_participation{};
     participation_history checkpoint_participation{};
+    participation_history timestamp_participation{};
+    participation_history timesync_status{};
 
     uint64_t timestamp           = 0; // The actual time we last received an uptime proof (serialized)
     uint64_t effective_timestamp = 0; // Typically the same, but on recommissions it is set to the recommission block time to fend off instant obligation checks
@@ -591,6 +593,8 @@ namespace service_nodes
 
     // Can be set to true (via --dev-allow-local-ips) for debugging a new testnet on a local private network.
     bool debug_allow_local_ips = false;
+    void record_timestamp_participation(crypto::public_key const &pubkey, bool participated);
+    void record_timesync_status(crypto::public_key const &pubkey, bool synced);
 
   private:
     // Note(maxim): private methods don't have to be protected the mutex

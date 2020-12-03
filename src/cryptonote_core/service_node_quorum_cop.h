@@ -90,10 +90,12 @@ namespace service_nodes
     bool single_ip                = true;
     bool checkpoint_participation = true;
     bool pulse_participation      = true;
+    bool timestamp_participation  = true;
+    bool timesync_status          = true;
     bool storage_server_reachable = true;
 
     char const *why() const;
-    bool passed() const { return uptime_proved && checkpoint_participation && pulse_participation && storage_server_reachable; }
+    bool passed() const { return uptime_proved && checkpoint_participation && pulse_participation && storage_server_reachable && timestamp_participation && timesync_status; }
   };
 
   class quorum_cop

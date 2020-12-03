@@ -1191,6 +1191,9 @@ namespace cryptonote
 
      fs::path m_config_folder; //!< folder to look in for configs and other files
 
+     std::mutex m_sn_timestamp_lock;
+     std::vector<time_t> m_sn_times;
+
 
      tools::periodic_task m_store_blockchain_interval{12h, false}; //!< interval for manual storing of Blockchain, if enabled
      tools::periodic_task m_fork_moaner{2h}; //!< interval for checking HardFork status
