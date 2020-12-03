@@ -29,10 +29,8 @@
 #include "cryptonote_config.h"
 #include "ringct/rctTypes.h"
 #include <functional>
-//#include <random>
 #include <algorithm>
 #include <chrono>
-//#include <iterator>
 
 #include <boost/endian/conversion.hpp>
 
