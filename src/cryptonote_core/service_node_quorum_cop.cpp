@@ -86,10 +86,10 @@ namespace service_nodes
     uint64_t timestamp = 0;
     decltype(std::declval<proof_info>().public_ips) ips{};
 
-    service_nodes::participation_history checkpoint_participation{};
-    service_nodes::participation_history pulse_participation{};
-    service_nodes::participation_history timestamp_participation{};
-    service_nodes::participation_history timesync_status{};
+    service_nodes::participation_history<service_nodes::participation_entry> checkpoint_participation{};
+    service_nodes::participation_history<service_nodes::participation_entry> pulse_participation{};
+    service_nodes::participation_history<service_nodes::timestamp_participation_entry> timestamp_participation{};
+    service_nodes::participation_history<service_nodes::timesync_entry> timesync_status{};
     m_core.get_service_node_list().access_proof(pubkey, [&](const proof_info &proof) {
       ss_reachable             = proof.storage_server_reachable;
       timestamp                = std::max(proof.timestamp, proof.effective_timestamp);
@@ -180,8 +180,8 @@ namespace service_nodes
       if (timestamp_participation.write_index >= QUORUM_VOTE_CHECK_COUNT)
       {
         int missed_participation = 0;
-        for (participation_entry const &entry : timestamp_participation)
-          if (!entry.voted) missed_participation++;
+        for (timestamp_participation_entry const &entry : timestamp_participation)
+          if (!entry.participated) missed_participation++;
 
         if (missed_participation > TIMESTAMP_MAX_MISSABLE_VOTES)
         {
@@ -194,14 +194,14 @@ namespace service_nodes
       }
       if (timesync_status.write_index >= QUORUM_VOTE_CHECK_COUNT)
       {
-        int missed_participation = 0;
-        for (participation_entry const &entry : timestamp_participation)
-          if (!entry.voted) missed_participation++;
+        int missed_syncs = 0;
+        for (timesync_entry const &entry : timesync_status)
+          if (!entry.in_sync) missed_syncs++;
 
-        if (missed_participation > TIMESYNC_MAX_UNSYNCED_VOTES)
+        if (missed_syncs > TIMESYNC_MAX_UNSYNCED_VOTES)
         {
           LOG_PRINT_L1("Service Node: " << pubkey << ", failed timesync obligation check: timestamp variance in "
-                                        << missed_participation << " timestamp checks from: "
+                                        << missed_syncs << " timestamp checks from: "
                                         << QUORUM_VOTE_CHECK_COUNT
                                         << " timestamp checks that they were required to participate in.");
           result.timesync_status = false;

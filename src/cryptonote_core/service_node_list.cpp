@@ -3065,21 +3065,22 @@ namespace service_nodes
     if (!m_state.service_nodes_infos.count(pubkey))
       return;
 
-    participation_entry entry  = {};
-    entry.voted                = participated;
+    timestamp_participation_entry entry  = {};
+    entry.participated                = participated;
 
     auto &info = proofs[pubkey];
     info.timestamp_participation.add(entry);
   }
 
-  void service_node_list::record_timesync_status(crypto::public_key const &pubkey, bool synced)
+  void service_node_list::record_timesync_status(crypto::public_key const &pubkey, bool synced, uint16_t variance)
   {
     std::lock_guard lock(m_sn_mutex);
     if (!m_state.service_nodes_infos.count(pubkey))
       return;
 
-    participation_entry entry  = {};
-    entry.voted                = synced;
+    timesync_entry entry  = {};
+    entry.in_sync                = synced;
+    entry.variance               = variance;
 
     auto &info = proofs[pubkey];
     info.timesync_status.add(entry);

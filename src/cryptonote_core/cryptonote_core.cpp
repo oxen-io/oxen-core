@@ -1648,20 +1648,29 @@ namespace cryptonote
       m_lmq->request(
           std::to_string(x_pkey),
           "quorum.timestamp",
-          [&](bool success, std::vector<std::string> data) {
+          [&, pubkey=pubkey](bool success, std::vector<std::string> data) {
             m_service_node_list.record_timestamp_participation(pubkey, success);
             if(success && data.size() == 1){ 
               try {
-                std::lock_guard<std::mutex> lk(m_sn_timestamp_lock);
-                time_t local_seconds = time(NULL);
-                uint8_t variance = std::abs(std::stoi(data[0])-local_seconds);
-                m_sn_times.push_back(variance); 
-                int num_sn_out_of_sync = std::count_if(m_sn_times.begin(), m_sn_times.end(), 
-                    [](const uint8_t external_variance) { return external_variance > service_nodes::THRESHOLD_SECONDS_OUT_OF_SYNC; });
-                if (num_sn_out_of_sync > (sizeof(m_sn_times) * service_nodes::MAXIMUM_EXTERNAL_OUT_OF_SYNC/100)) {
-                  MWARNING("service node time might be out of sync");
-                } else {
-                  m_service_node_list.record_timesync_status(pubkey, variance <= service_nodes::THRESHOLD_SECONDS_OUT_OF_SYNC);
+                int64_t received_seconds;
+                if (tools::parse_int(data[0],received_seconds)) {
+                    const time_t local_seconds = time(nullptr);
+                    uint16_t variance;
+                    if(received_seconds <0 || (received_seconds > std::numeric_limits<uint16_t>::max() - local_seconds)) {
+                      variance = std::numeric_limits<uint16_t>::max();
+                    } else {
+                      variance = std::abs(int(local_seconds - received_seconds));
+                    }
+                    std::lock_guard<std::mutex> lk(m_sn_timestamp_lock);
+                    service_nodes::timesync_entry entry{variance > service_nodes::THRESHOLD_SECONDS_OUT_OF_SYNC, variance};
+                    m_sn_times.add(entry); 
+                    uint8_t num_sn_out_of_sync = std::count_if(m_sn_times.begin(), m_sn_times.end(), 
+                        [](const service_nodes::timesync_entry entry) { return !entry.in_sync; });
+                    if (num_sn_out_of_sync > (sizeof(m_sn_times) * service_nodes::MAXIMUM_EXTERNAL_OUT_OF_SYNC/100)) {
+                      MWARNING("service node time might be out of sync");
+                    } else {
+                      m_service_node_list.record_timesync_status(pubkey, variance <= service_nodes::THRESHOLD_SECONDS_OUT_OF_SYNC, variance);
+                    }
                 }
               } catch (...) {
                 // Ignore the message if cannot parse the data received

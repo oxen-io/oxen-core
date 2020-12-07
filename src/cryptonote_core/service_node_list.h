@@ -72,32 +72,52 @@ namespace service_nodes
     END_KV_SERIALIZE_MAP()
   };
 
-  struct participation_history
+  struct timestamp_participation_entry
   {
-    std::array<participation_entry, QUORUM_VOTE_CHECK_COUNT> array;
-    size_t                                                   write_index;
+    bool participated      = true;
+
+    BEGIN_KV_SERIALIZE_MAP()
+      KV_SERIALIZE(participated);
+    END_KV_SERIALIZE_MAP()
+  };
+
+  struct timesync_entry
+  {
+    bool in_sync       = true;
+    uint8_t variance   = 0;
+
+    BEGIN_KV_SERIALIZE_MAP()
+      KV_SERIALIZE(in_sync);
+      KV_SERIALIZE(variance);
+    END_KV_SERIALIZE_MAP()
+  };
+
+  template <typename ValueType, size_t Count = QUORUM_VOTE_CHECK_COUNT>
+  struct participation_history {
+    std::array<ValueType, Count> array;
+    size_t write_index;
 
     void reset() { write_index = 0; }
 
-    void add(participation_entry const &entry)
+    void add(ValueType const &entry)
     {
       size_t real_write_index = write_index % array.size();
       array[real_write_index] = entry;
       write_index++;
     }
 
-    participation_entry       *begin()       { return array.data(); }
-    participation_entry       *end()         { return array.data() + std::min(array.size(), write_index); }
-    participation_entry const *begin() const { return array.data(); }
-    participation_entry const *end()   const { return array.data() + std::min(array.size(), write_index); }
+    ValueType *begin()       { return array.data(); }
+    ValueType *end()         { return array.data() + std::min(array.size(), write_index); }
+    ValueType const *begin() const { return array.data(); }
+    ValueType const *end()   const { return array.data() + std::min(array.size(), write_index); }
   };
 
   struct proof_info
   {
-    participation_history pulse_participation{};
-    participation_history checkpoint_participation{};
-    participation_history timestamp_participation{};
-    participation_history timesync_status{};
+    participation_history<participation_entry,QUORUM_VOTE_CHECK_COUNT> pulse_participation{};
+    participation_history<participation_entry,QUORUM_VOTE_CHECK_COUNT> checkpoint_participation{};
+    participation_history<timestamp_participation_entry,QUORUM_VOTE_CHECK_COUNT> timestamp_participation{};
+    participation_history<timesync_entry,QUORUM_VOTE_CHECK_COUNT> timesync_status{};
 
     uint64_t timestamp           = 0; // The actual time we last received an uptime proof (serialized)
     uint64_t effective_timestamp = 0; // Typically the same, but on recommissions it is set to the recommission block time to fend off instant obligation checks
@@ -594,7 +614,7 @@ namespace service_nodes
     // Can be set to true (via --dev-allow-local-ips) for debugging a new testnet on a local private network.
     bool debug_allow_local_ips = false;
     void record_timestamp_participation(crypto::public_key const &pubkey, bool participated);
-    void record_timesync_status(crypto::public_key const &pubkey, bool synced);
+    void record_timesync_status(crypto::public_key const &pubkey, bool synced, uint16_t variance);
 
   private:
     // Note(maxim): private methods don't have to be protected the mutex

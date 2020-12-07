@@ -37,7 +37,6 @@
 #include "daemon/rpc_command_executor.h"
 #include "epee/int-util.h"
 #include "rpc/core_rpc_server_commands_defs.h"
-#include "cryptonote_core/cryptonote_core.h"
 #include "cryptonote_core/service_node_rules.h"
 #include "cryptonote_basic/hardfork.h"
 #include "checkpoints/checkpoints.h"

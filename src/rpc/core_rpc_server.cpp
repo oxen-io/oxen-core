@@ -3032,8 +3032,8 @@ namespace cryptonote { namespace rpc {
         entry.storage_server_reachable           = proof.storage_server_reachable;
         entry.storage_server_reachable_timestamp = proof.storage_server_reachable_timestamp;
 
-        service_nodes::participation_history const &checkpoint_participation = proof.checkpoint_participation;
-        service_nodes::participation_history const &pulse_participation      = proof.pulse_participation;
+        service_nodes::participation_history<service_nodes::participation_entry> const &checkpoint_participation = proof.checkpoint_participation;
+        service_nodes::participation_history<service_nodes::participation_entry> const &pulse_participation      = proof.pulse_participation;
         entry.checkpoint_participation = std::vector<service_nodes::participation_entry>(checkpoint_participation.begin(), checkpoint_participation.end());
         entry.pulse_participation      = std::vector<service_nodes::participation_entry>(pulse_participation.begin(),      pulse_participation.end());
     });

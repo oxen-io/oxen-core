@@ -567,7 +567,7 @@ void handle_obligation_vote(Message& m, QnetState& qnet) {
 
 void handle_timestamp(Message& m) {
     MDEBUG("Received a timestamp request from " << to_hex(m.conn.pubkey()));
-    time_t seconds = time(NULL);
+    const time_t seconds = time(nullptr);
     m.send_reply(std::to_string(seconds));
 }
 
