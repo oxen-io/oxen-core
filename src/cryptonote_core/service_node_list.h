@@ -61,6 +61,10 @@ namespace service_nodes
       uint8_t round = 0;
     } pulse;
 
+    bool pass() {
+      return voted;
+    }; 
+
     BEGIN_KV_SERIALIZE_MAP()
       KV_SERIALIZE(height);
       KV_SERIALIZE(voted);
@@ -75,6 +79,9 @@ namespace service_nodes
   struct timestamp_participation_entry
   {
     bool participated      = true;
+    bool pass() {
+      return participated;
+    }; 
 
     BEGIN_KV_SERIALIZE_MAP()
       KV_SERIALIZE(participated);
@@ -84,7 +91,10 @@ namespace service_nodes
   struct timesync_entry
   {
     bool in_sync       = true;
-    uint8_t variance   = 0;
+    uint16_t variance   = 0;
+    bool pass() {
+      return in_sync;
+    }; 
 
     BEGIN_KV_SERIALIZE_MAP()
       KV_SERIALIZE(in_sync);
@@ -106,6 +116,20 @@ namespace service_nodes
       write_index++;
     }
 
+    bool check_participation(uint16_t threshold) 
+    {
+      if (this->write_index >= Count)
+      {
+        int failed_counter = 0;
+        for (ValueType &entry : array)
+          if (!entry.pass()) failed_counter++;
+
+        if (failed_counter > threshold)
+          return false;
+      }
+      return true;
+    }
+
     ValueType *begin()       { return array.data(); }
     ValueType *end()         { return array.data() + std::min(array.size(), write_index); }
     ValueType const *begin() const { return array.data(); }
@@ -114,10 +138,10 @@ namespace service_nodes
 
   struct proof_info
   {
-    participation_history<participation_entry,QUORUM_VOTE_CHECK_COUNT> pulse_participation{};
-    participation_history<participation_entry,QUORUM_VOTE_CHECK_COUNT> checkpoint_participation{};
-    participation_history<timestamp_participation_entry,QUORUM_VOTE_CHECK_COUNT> timestamp_participation{};
-    participation_history<timesync_entry,QUORUM_VOTE_CHECK_COUNT> timesync_status{};
+    participation_history<participation_entry> pulse_participation{};
+    participation_history<participation_entry> checkpoint_participation{};
+    participation_history<timestamp_participation_entry> timestamp_participation{};
+    participation_history<timesync_entry> timesync_status{};
 
     uint64_t timestamp           = 0; // The actual time we last received an uptime proof (serialized)
     uint64_t effective_timestamp = 0; // Typically the same, but on recommissions it is set to the recommission block time to fend off instant obligation checks

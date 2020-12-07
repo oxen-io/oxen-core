@@ -143,69 +143,29 @@ namespace service_nodes
     {
       if (check_checkpoint_obligation)
       {
-        if (checkpoint_participation.write_index >= QUORUM_VOTE_CHECK_COUNT)
+        if (checkpoint_participation.check_participation(CHECKPOINT_MAX_MISSABLE_VOTES) )
         {
-          int missed_participation = 0;
-          for (participation_entry const &entry : checkpoint_participation)
-            if (!entry.voted) missed_participation++;
-
-          if (missed_participation > CHECKPOINT_MAX_MISSABLE_VOTES)
-          {
-            LOG_PRINT_L1("Service Node: " << pubkey << ", failed checkpoint obligation check: missed the last: "
-                                          << missed_participation << " checkpoint votes from: "
-                                          << QUORUM_VOTE_CHECK_COUNT
-                                          << " quorums that they were required to participate in.");
-            if (hf_version >= cryptonote::network_version_13_enforce_checkpoints)
-              result.checkpoint_participation = false;
-          }
+          LOG_PRINT_L1("Service Node: " << pubkey << ", failed checkpoint obligation check");
+          if (hf_version >= cryptonote::network_version_13_enforce_checkpoints)
+            result.checkpoint_participation = false;
         }
       }
 
-      if (pulse_participation.write_index >= QUORUM_VOTE_CHECK_COUNT)
+      if (pulse_participation.check_participation(PULSE_MAX_MISSABLE_VOTES) )
       {
-        int missed_participation = 0;
-        for (participation_entry const &entry : pulse_participation)
-          if (!entry.voted) missed_participation++;
-
-        if (missed_participation > PULSE_MAX_MISSABLE_VOTES)
-        {
-          LOG_PRINT_L1("Service Node: " << pubkey << ", failed pulse obligation check: did not participate in the last: "
-                                        << missed_participation << " pulse quorums from: "
-                                        << QUORUM_VOTE_CHECK_COUNT
-                                        << " quorums that they were required to participate in.");
-          result.pulse_participation = false;
-        }
+        LOG_PRINT_L1("Service Node: " << pubkey << ", failed pulse obligation check");
+        result.pulse_participation = false;
       }
 
-      if (timestamp_participation.write_index >= QUORUM_VOTE_CHECK_COUNT)
+      if (timestamp_participation.check_participation(TIMESTAMP_MAX_MISSABLE_VOTES) )
       {
-        int missed_participation = 0;
-        for (timestamp_participation_entry const &entry : timestamp_participation)
-          if (!entry.participated) missed_participation++;
-
-        if (missed_participation > TIMESTAMP_MAX_MISSABLE_VOTES)
-        {
-          LOG_PRINT_L1("Service Node: " << pubkey << ", failed timestamp obligation check: did not participate in "
-                                        << missed_participation << " timestamp checks from: "
-                                        << QUORUM_VOTE_CHECK_COUNT
-                                        << " timestamp checks that they were required to participate in.");
-          result.timestamp_participation = false;
-        }
+        LOG_PRINT_L1("Service Node: " << pubkey << ", failed timestamp obligation check");
+        result.timestamp_participation = false;
       }
-      if (timesync_status.write_index >= QUORUM_VOTE_CHECK_COUNT)
+      if (timesync_status.check_participation(TIMESYNC_MAX_UNSYNCED_VOTES) )
       {
-        int missed_syncs = 0;
-        for (timesync_entry const &entry : timesync_status)
-          if (!entry.in_sync) missed_syncs++;
-
-        if (missed_syncs > TIMESYNC_MAX_UNSYNCED_VOTES)
-        {
-          LOG_PRINT_L1("Service Node: " << pubkey << ", failed timesync obligation check: timestamp variance in "
-                                        << missed_syncs << " timestamp checks from: "
-                                        << QUORUM_VOTE_CHECK_COUNT
-                                        << " timestamp checks that they were required to participate in.");
-          result.timesync_status = false;
-        }
+        LOG_PRINT_L1("Service Node: " << pubkey << ", failed timesync obligation check");
+        result.timesync_status = false;
       }
     }
 
