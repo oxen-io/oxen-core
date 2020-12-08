@@ -61,7 +61,7 @@ namespace service_nodes
       uint8_t round = 0;
     } pulse;
 
-    bool pass() {
+    const bool pass() {
       return voted;
     }; 
 
@@ -79,7 +79,7 @@ namespace service_nodes
   struct timestamp_participation_entry
   {
     bool participated      = true;
-    bool pass() {
+    const bool pass() {
       return participated;
     }; 
 
@@ -92,7 +92,7 @@ namespace service_nodes
   {
     bool in_sync       = true;
     uint16_t variance   = 0;
-    bool pass() {
+    const bool pass() {
       return in_sync;
     }; 
 
@@ -116,7 +116,7 @@ namespace service_nodes
       write_index++;
     }
 
-    bool check_participation(uint16_t threshold) 
+    const bool check_participation(uint16_t threshold) 
     {
       if (this->write_index >= Count)
       {

@@ -1191,7 +1191,8 @@ namespace cryptonote
 
      fs::path m_config_folder; //!< folder to look in for configs and other files
 
-     std::mutex m_sn_timestamp_lock;
+     //m_sn_times keeps track of the services nodes timestamp checks to with other services nodes. If too many of these are out of sync we can assume our service node time is not in sync. lock m_sn_timestamp_mutex when accessing m_sn_times
+     std::mutex m_sn_timestamp_mutex;
      service_nodes::participation_history<service_nodes::timesync_entry> m_sn_times;
 
      tools::periodic_task m_store_blockchain_interval{12h, false}; //!< interval for manual storing of Blockchain, if enabled
