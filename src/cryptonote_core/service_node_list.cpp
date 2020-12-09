@@ -2979,7 +2979,11 @@ namespace service_nodes
   crypto::public_key service_node_list::get_random_pubkey() {
     std::lock_guard lock{m_sn_mutex};
     auto it  = tools::select_randomly(m_state.service_nodes_infos.begin(), m_state.service_nodes_infos.end());
-    return it->first;
+    if(it != m_state.service_nodes_infos.end()) {
+      return it->first;
+    } else {
+      return m_state.service_nodes_infos.begin()->first;
+    }
   }
 
   void service_node_list::initialize_x25519_map() {

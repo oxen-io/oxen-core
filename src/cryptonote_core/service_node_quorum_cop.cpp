@@ -90,14 +90,23 @@ namespace service_nodes
     service_nodes::participation_history<service_nodes::participation_entry> pulse_participation{};
     service_nodes::participation_history<service_nodes::timestamp_participation_entry> timestamp_participation{};
     service_nodes::participation_history<service_nodes::timesync_entry> timesync_status{};
+
+    constexpr std::array<uint16_t, 3> MIN_TIMESTAMP_VERSION{8,1,5};
+    bool check_timestamp_obligation = false;
+
     m_core.get_service_node_list().access_proof(pubkey, [&](const proof_info &proof) {
       ss_reachable             = proof.storage_server_reachable;
       timestamp                = std::max(proof.timestamp, proof.effective_timestamp);
       ips                      = proof.public_ips;
       checkpoint_participation = proof.checkpoint_participation;
-      timestamp_participation  = proof.timestamp_participation;
       pulse_participation      = proof.pulse_participation;
-      timesync_status          = proof.timesync_status;
+
+      if (proof.version >= MIN_TIMESTAMP_VERSION){
+        timestamp_participation  = proof.timestamp_participation;
+        timesync_status          = proof.timesync_status;
+        check_timestamp_obligation = true;
+      }
+
     });
     uint64_t time_since_last_uptime_proof = std::time(nullptr) - timestamp;
 
@@ -157,15 +166,17 @@ namespace service_nodes
         result.pulse_participation = false;
       }
 
-      if (timestamp_participation.check_participation(TIMESTAMP_MAX_MISSABLE_VOTES) )
-      {
-        LOG_PRINT_L1("Service Node: " << pubkey << ", failed timestamp obligation check");
-        result.timestamp_participation = false;
-      }
-      if (timesync_status.check_participation(TIMESYNC_MAX_UNSYNCED_VOTES) )
-      {
-        LOG_PRINT_L1("Service Node: " << pubkey << ", failed timesync obligation check");
-        result.timesync_status = false;
+      if (check_timestamp_obligation){
+        if (timestamp_participation.check_participation(TIMESTAMP_MAX_MISSABLE_VOTES) )
+        {
+          LOG_PRINT_L1("Service Node: " << pubkey << ", failed timestamp obligation check");
+          result.timestamp_participation = false;
+        }
+        if (timesync_status.check_participation(TIMESYNC_MAX_UNSYNCED_VOTES) )
+        {
+          LOG_PRINT_L1("Service Node: " << pubkey << ", failed timesync obligation check");
+          result.timesync_status = false;
+        }
       }
     }
 

@@ -1642,8 +1642,13 @@ namespace cryptonote
   {
     crypto::public_key pubkey = m_service_node_list.get_random_pubkey();
     crypto::x25519_public_key x_pkey{0};
-    m_service_node_list.access_proof(pubkey, [&](auto &proof) { x_pkey = proof.pubkey_x25519; });
-    if (x_pkey) {
+    constexpr std::array<uint16_t, 3> MIN_TIMESTAMP_VERSION{8,1,5};
+    std::array<uint16_t,3> proofversion;
+    m_service_node_list.access_proof(pubkey, [&](auto &proof) { 
+      x_pkey = proof.pubkey_x25519; 
+      proofversion = proof.version;
+    });
+    if (proofversion >= MIN_TIMESTAMP_VERSION && x_pkey) {
       m_lmq->request(
         std::to_string(x_pkey),
         "quorum.timestamp",
