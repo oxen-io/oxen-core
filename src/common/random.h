@@ -61,7 +61,7 @@ template<typename Iter, typename RandomGenerator>
 Iter select_randomly(Iter begin, Iter end, RandomGenerator& g) {
   auto dist = std::distance(begin, end);
   if (dist <= 1) return begin; // Handles both begin=end case and single-element case
-  std::advance(begin, std::uniform_int_distribution<>{0, dist-1}(g));
+  std::advance(begin, std::uniform_int_distribution<>{0, static_cast<int>(dist-1)}(g));
   return begin;
 }
 
