@@ -68,7 +68,7 @@ namespace epee
     void split(std::vector<wipeable_string> &fields) const;
     std::optional<wipeable_string> parse_hexstr() const;
     template<typename T> inline bool hex_to_pod(T &pod) const;
-    template<typename T> inline bool hex_to_pod(tools::scrubbed<T> &pod) const { return hex_to_pod(unwrap(pod)); }
+    template<typename T> inline bool hex_to_pod(tools::scrubbed<T> &pod) const { return hex_to_pod(pod); }
     void resize(size_t sz);
     void reserve(size_t sz);
     void clear();

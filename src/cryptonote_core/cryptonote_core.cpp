@@ -880,7 +880,7 @@ namespace cryptonote
     {
       std::string keystr;
       bool r = tools::slurp_file(keypath, keystr);
-      memcpy(&unwrap(unwrap(privkey)), keystr.data(), sizeof(privkey));
+      memcpy(privkey.data, keystr.data(), sizeof(privkey));
       memwipe(&keystr[0], keystr.size());
       CHECK_AND_ASSERT_MES(r, false, "failed to load service node key from " + keypath.u8string());
       CHECK_AND_ASSERT_MES(keystr.size() == sizeof(privkey), false,

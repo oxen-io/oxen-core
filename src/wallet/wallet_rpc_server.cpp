@@ -1865,21 +1865,20 @@ namespace tools
     if (!tools::hex_to_type(req.txid, txid))
       throw wallet_rpc_error{error_code::WRONG_TXID, "TX ID has invalid format"};
 
-    epee::wipeable_string tx_key_str = req.tx_key;
-    if (tx_key_str.size() < 64 || tx_key_str.size() % 64)
+    epee::wipeable_string tx_key_str{std::move(req.tx_key)};
+    auto data = tx_key_str.view();
+    if (data.empty() || data.size() % 64 != 0)
       throw wallet_rpc_error{error_code::WRONG_KEY, "Tx key has invalid format"};
-    const char *data = tx_key_str.data();
     crypto::secret_key tx_key;
-    if (!epee::wipeable_string(data, 64).hex_to_pod(unwrap(unwrap(tx_key))))
+    if (!tools::hex_to_type(data.substr(0, 64), tx_key))
       throw wallet_rpc_error{error_code::WRONG_KEY, "Tx key has invalid format"};
-    size_t offset = 64;
+    data.remove_prefix(64);
     std::vector<crypto::secret_key> additional_tx_keys;
-    while (offset < tx_key_str.size())
+    while (!data.empty())
     {
-      additional_tx_keys.resize(additional_tx_keys.size() + 1);
-      if (!epee::wipeable_string(data + offset, 64).hex_to_pod(unwrap(unwrap(additional_tx_keys.back()))))
+      if (!tools::hex_to_type(data.substr(0, 64), additional_tx_keys.emplace_back()))
         throw wallet_rpc_error{error_code::WRONG_KEY, "Tx key has invalid format"};
-      offset += 64;
+      data.remove_prefix(64);
     }
 
     cryptonote::address_parse_info info;
@@ -2568,9 +2567,9 @@ namespace {
       throw wallet_rpc_error{error_code::UNKNOWN_ERROR, "Failed to parse public address"};
 
     epee::wipeable_string password = rc.second.password();
-    epee::wipeable_string viewkey_string = req.viewkey;
+    epee::wipeable_string viewkey_string{std::move(req.viewkey)};
     crypto::secret_key viewkey;
-    if (!viewkey_string.hex_to_pod(unwrap(unwrap(viewkey))))
+    if (!tools::hex_to_type(viewkey_string.view(), viewkey))
       throw wallet_rpc_error{error_code::UNKNOWN_ERROR, "Failed to parse view key secret key"};
 
     close_wallet(req.autosave_current);
@@ -2578,9 +2577,9 @@ namespace {
     {
       if (!req.spendkey.empty())
       {
-        epee::wipeable_string spendkey_string = req.spendkey;
+        epee::wipeable_string spendkey_string{std::move(req.spendkey)};
         crypto::secret_key spendkey;
-        if (!spendkey_string.hex_to_pod(unwrap(unwrap(spendkey))))
+        if (!tools::hex_to_type(spendkey_string.view(), spendkey))
           throw wallet_rpc_error{error_code::UNKNOWN_ERROR, "Failed to parse spend key secret key"};
         wal->generate(wallet_file, std::move(rc.second).password(), info.address, spendkey, viewkey, false);
         res.info = "Wallet has been generated successfully.";
