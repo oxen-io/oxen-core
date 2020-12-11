@@ -1901,7 +1901,7 @@ namespace boost::serialization
       {
         crypto::hash payment_id;
         a & payment_id;
-        x.m_has_payment_id = payment_id;
+        x.m_has_payment_id = (bool) payment_id;
         if (x.m_has_payment_id)
         {
           bool is_long = false;

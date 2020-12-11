@@ -52,7 +52,7 @@ namespace crypto {
   struct alignas(size_t) ec_point {
     char data[32];
     // Returns true if non-null, i.e. not 0.
-    operator bool() const { static constexpr char null[32] = {0}; return memcmp(data, null, sizeof(data)); }
+    explicit operator bool() const { static constexpr char null[32] = {0}; return memcmp(data, null, sizeof(data)); }
   };
 
   struct alignas(size_t) ec_scalar {
@@ -68,7 +68,7 @@ namespace crypto {
     static const secret_key null;
     bool operator==(const secret_key& x) const { return crypto_verify_32(reinterpret_cast<const unsigned char*>(data), reinterpret_cast<const unsigned char*>(x.data)) == 0; }
     bool operator!=(const secret_key& x) const { return !(*this == x); }
-    operator bool() const { return *this != null; }
+    explicit operator bool() const { return *this != null; }
   };
   inline const secret_key secret_key::null{};
 
@@ -80,7 +80,7 @@ namespace crypto {
     ec_scalar c, r;
 
     // Returns true if non-null, i.e. not 0.
-    operator bool() const { static constexpr char null[64] = {0}; return memcmp(this, null, sizeof(null)); }
+    explicit operator bool() const { static constexpr char null[64] = {0}; return memcmp(this, null, sizeof(null)); }
   };
 
   // The sizes below are all provided by sodium.h, but we don't want to depend on it here; we check
@@ -89,7 +89,7 @@ namespace crypto {
     unsigned char data[32]; // 32 = crypto_sign_ed25519_PUBLICKEYBYTES
     static const ed25519_public_key null;
     /// Returns true if non-null
-    operator bool() const { return memcmp(data, null().data, sizeof(data)); }
+    explicit operator bool() const { return memcmp(data, null.data, sizeof(*this)); }
   };
   inline constexpr ed25519_public_key ed25519_public_key::null{};
 
@@ -103,7 +103,7 @@ namespace crypto {
     unsigned char data[64]; // 64 = crypto_sign_BYTES
     static const ed25519_signature null;
     // Returns true if non-null, i.e. not 0.
-    operator bool() const { auto z = null(); return memcmp(this, &z, sizeof(z)); }
+    explicit operator bool() const { return memcmp(this, &null, sizeof(null)); }
   };
   inline constexpr ed25519_signature ed25519_signature::null{};
 
@@ -111,7 +111,7 @@ namespace crypto {
     unsigned char data[32]; // crypto_scalarmult_curve25519_BYTES
     static const x25519_public_key null;
     /// Returns true if non-null
-    operator bool() const { return memcmp(data, null().data, sizeof(data)); }
+    explicit operator bool() const { return memcmp(data, null.data, sizeof(null)); }
   };
   inline constexpr x25519_public_key x25519_public_key::null{};
 

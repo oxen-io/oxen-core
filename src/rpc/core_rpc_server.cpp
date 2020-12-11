@@ -505,12 +505,12 @@ namespace cryptonote { namespace rpc {
       if (req.no_miner_tx)
         res.output_indices.back().indices.push_back(GET_BLOCKS_FAST::tx_output_indices());
       res.blocks.back().txs.reserve(bd.second.size());
-      for (std::vector<std::pair<crypto::hash, cryptonote::blobdata>>::iterator i = bd.second.begin(); i != bd.second.end(); ++i)
+      for (auto& [hash, data] : bd.second)
       {
-        res.blocks.back().txs.push_back({std::move(i->second), crypto::hash::null});
-        i->second.clear();
-        i->second.shrink_to_fit();
-        size += res.blocks.back().txs.back().size();
+        size += data.size();
+        res.blocks.back().txs.push_back(std::move(data));
+        data.clear();
+        data.shrink_to_fit();
       }
 
       const size_t n_txes_to_lookup = bd.second.size() + (req.no_miner_tx ? 0 : 1);
@@ -938,7 +938,7 @@ namespace cryptonote { namespace rpc {
       // If the transaction was pruned then the prunable part will be empty but the prunable hash
       // will be non-null.  (Some txes, like coinbase txes, are non-prunable and will have empty
       // *and* null prunable hash).
-      bool prunable = prunable_hash;
+      bool prunable = (bool) prunable_hash;
       bool pruned = prunable && prunable_data.empty();
 
       if (pruned || (prunable && (req.split || req.prune)))
