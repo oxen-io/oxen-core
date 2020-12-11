@@ -66,9 +66,6 @@ namespace rct {
 
     using namespace std::literals;
 
-    //basic ops containers
-    typedef unsigned char * Bytes;
-
     // Can contain a secret or public key
     //  similar to secret_key / public_key of crypto-ops,
     //  but uses unsigned chars,
@@ -83,8 +80,8 @@ namespace rct {
         bool operator==(const key &k) const { return !crypto_verify_32(bytes, k.bytes); }
         unsigned char bytes[32];
     };
-    typedef std::vector<key> keyV; //vector of keys
-    typedef std::vector<keyV> keyM; //matrix of keys (indexed by column first)
+    using keyV = std::vector<key>;
+    using keyM = std::vector<std::vector<key>>; //matrix of keys (indexed by column first)
 
     //containers For CT operations
     //if it's  representing a private ctkey then "dest" contains the secret key of the address
@@ -95,8 +92,8 @@ namespace rct {
         key dest;
         key mask; //C here if public
     };
-    typedef std::vector<ctkey> ctkeyV;
-    typedef std::vector<ctkeyV> ctkeyM;
+    using ctkeyV = std::vector<ctkey>;
+    using ctkeyM = std::vector<std::vector<ctkey>>;
 
     //used for multisig data
     struct multisig_kLRki {

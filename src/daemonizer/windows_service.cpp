@@ -45,7 +45,7 @@ namespace windows {
 using namespace std::literals;
 
 namespace {
-  typedef std::unique_ptr<std::remove_pointer<SC_HANDLE>::type, decltype(&::CloseServiceHandle)> service_handle;
+  using service_handle = std::unique_ptr<std::remove_pointer_t<SC_HANDLE>, decltype(&::CloseServiceHandle)>;
 
   std::string get_last_error()
   {

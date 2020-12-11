@@ -41,9 +41,6 @@
 namespace nodetool
 {
 
-  typedef boost::uuids::uuid uuid;
-  typedef boost::uuids::uuid net_connection_id;
-
   template<class t_connection_context>
   struct i_p2p_endpoint
   {

@@ -78,7 +78,7 @@ namespace cryptonote
     static const char *tr(const char *str) { return i18n_translate(str, "cryptonote::simple_wallet"); }
 
   public:
-    typedef std::vector<std::string> command_type;
+    using command_type = std::vector<std::string>;
 
     simple_wallet();
     ~simple_wallet();

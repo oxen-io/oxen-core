@@ -158,8 +158,8 @@ namespace tools
       std::string m_status;
     };
     //----------------------------------------------------------------------------------------------------
-    typedef wallet_error_base<std::logic_error> wallet_logic_error;
-    typedef wallet_error_base<std::runtime_error> wallet_runtime_error;
+    using wallet_logic_error = wallet_error_base<std::logic_error>;
+    using wallet_runtime_error = wallet_error_base<std::runtime_error>;
     //----------------------------------------------------------------------------------------------------
     struct wallet_internal_error : public wallet_runtime_error
     {
@@ -261,10 +261,10 @@ namespace tools
       fs::path m_file;
     };
     //----------------------------------------------------------------------------------------------------
-    typedef file_error_base<file_exists_message_index> file_exists;
-    typedef file_error_base<file_not_found_message_index>  file_not_found;
-    typedef file_error_base<file_read_error_message_index> file_read_error;
-    typedef file_error_base<file_save_error_message_index> file_save_error;
+    using file_exists = file_error_base<file_exists_message_index>;
+    using file_not_found = file_error_base<file_not_found_message_index> ;
+    using file_read_error = file_error_base<file_read_error_message_index>;
+    using file_save_error = file_error_base<file_save_error_message_index>;
     //----------------------------------------------------------------------------------------------------
     struct invalid_password : public wallet_logic_error
     {
@@ -382,13 +382,13 @@ namespace tools
       cryptonote::blobdata m_block_blob;
     };
     //----------------------------------------------------------------------------------------------------
-    typedef failed_rpc_request<refresh_error, get_blocks_error_message_index> get_blocks_error;
+    using get_blocks_error = failed_rpc_request<refresh_error, get_blocks_error_message_index>;
     //----------------------------------------------------------------------------------------------------
-    typedef failed_rpc_request<refresh_error, get_service_nodes_error_message_index> get_service_nodes_error;
+    using get_service_nodes_error = failed_rpc_request<refresh_error, get_service_nodes_error_message_index>;
     //----------------------------------------------------------------------------------------------------
-    typedef failed_rpc_request<refresh_error, get_hashes_error_message_index> get_hashes_error;
+    using get_hashes_error = failed_rpc_request<refresh_error, get_hashes_error_message_index>;
     //----------------------------------------------------------------------------------------------------
-    typedef failed_rpc_request<refresh_error, get_out_indices_error_message_index> get_out_indices_error;
+    using get_out_indices_error = failed_rpc_request<refresh_error, get_out_indices_error_message_index>;
     //----------------------------------------------------------------------------------------------------
     struct tx_parse_error : public refresh_error
     {
@@ -443,9 +443,9 @@ namespace tools
       }
     };
     //----------------------------------------------------------------------------------------------------
-    typedef failed_rpc_request<transfer_error, get_hard_fork_version_error_message_index> get_hard_fork_version_error;
+    using get_hard_fork_version_error = failed_rpc_request<transfer_error, get_hard_fork_version_error_message_index>;
     //----------------------------------------------------------------------------------------------------
-    typedef failed_rpc_request<transfer_error, get_outs_error_message_index> get_outs_error;
+    using get_outs_error = failed_rpc_request<transfer_error, get_outs_error_message_index>;
     //----------------------------------------------------------------------------------------------------
     struct not_enough_unlocked_money : public transfer_error
     {
@@ -531,7 +531,7 @@ namespace tools
     //----------------------------------------------------------------------------------------------------
     struct not_enough_outs_to_mix : public transfer_error
     {
-      typedef std::unordered_map<uint64_t, uint64_t> scanty_outs_t;
+      using scanty_outs_t = std::unordered_map<uint64_t, uint64_t>;
 
       explicit not_enough_outs_to_mix(std::string&& loc, const scanty_outs_t& scanty_outs, size_t mixin_count)
         : transfer_error(std::move(loc), "Not enough outputs to use")
@@ -561,8 +561,8 @@ namespace tools
     //----------------------------------------------------------------------------------------------------
     struct tx_not_constructed : public transfer_error
     {
-      typedef std::vector<cryptonote::tx_source_entry> sources_t;
-      typedef std::vector<cryptonote::tx_destination_entry> destinations_t;
+      using sources_t = std::vector<cryptonote::tx_source_entry>;
+      using destinations_t = std::vector<cryptonote::tx_destination_entry>;
 
       explicit tx_not_constructed(
           std::string && loc

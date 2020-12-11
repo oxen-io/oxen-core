@@ -534,8 +534,8 @@ bool rpc_command_executor::show_status() {
   print_fork_extra_info(str, hfres.earliest_height, net_height, ires.target);
 
   str << ", " << (
-    hfres.state == cryptonote::HardFork::Ready ? "up to date" :
-    hfres.state == cryptonote::HardFork::UpdateNeeded ? "update needed" :
+    hfres.state == static_cast<int>(cryptonote::HardFork::State::Ready) ? "up to date" :
+    hfres.state == static_cast<int>(cryptonote::HardFork::State::UpdateNeeded) ? "update needed" :
     "out of date, likely forked");
 
   std::time_t now = std::time(nullptr);

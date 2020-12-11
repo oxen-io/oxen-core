@@ -55,7 +55,7 @@ namespace cryptonote
   /************************************************************************/
 
   //! tuple of <deregister, transaction fee, receive time> for organization
-  typedef std::pair<std::tuple<bool, double, std::time_t>, crypto::hash> tx_by_fee_and_receive_time_entry;
+  using tx_by_fee_and_receive_time_entry = std::pair<std::tuple<bool, double, std::time_t>, crypto::hash>;
 
   class txCompare
   {
@@ -69,7 +69,7 @@ namespace cryptonote
   };
 
   //! container for sorting transactions by fee per unit size
-  typedef std::set<tx_by_fee_and_receive_time_entry, txCompare> sorted_tx_container;
+  using sorted_tx_container = std::set<tx_by_fee_and_receive_time_entry, txCompare>;
 
   /// Argument passed into add_tx specifying different requires on the transaction
   struct tx_pool_options {
@@ -696,7 +696,7 @@ namespace cryptonote
      *  transaction on the assumption that the original will not be in a
      *  block again.
      */
-    typedef std::unordered_map<crypto::key_image, std::unordered_set<crypto::hash> > key_images_container;
+    using key_images_container = std::unordered_map<crypto::key_image, std::unordered_set<crypto::hash>>;
 
     mutable std::recursive_mutex m_transactions_lock;  //!< mutex for the pool
 

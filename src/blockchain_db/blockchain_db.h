@@ -105,8 +105,8 @@ namespace cryptonote
 {
 struct checkpoint_t;
 
-/** a pair of <transaction hash, output index>, typedef for convenience */
-typedef std::pair<crypto::hash, uint64_t> tx_out_index;
+/** a pair of <transaction hash, output index> type alias for convenience */
+using tx_out_index = std::pair<crypto::hash, uint64_t>;
 
 extern const command_line::arg_descriptor<std::string> arg_db_sync_mode;
 extern const command_line::arg_descriptor<bool, false> arg_db_salvage;

@@ -106,7 +106,7 @@ namespace trezor {
 
 
   // Base transport
-  typedef std::vector<std::shared_ptr<Transport>> t_transport_vect;
+  using t_transport_vect = std::vector<std::shared_ptr<Transport>>;
 
   class Transport {
   public:

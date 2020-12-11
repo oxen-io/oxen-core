@@ -68,7 +68,7 @@ namespace cryptonote
 
       bool operator<(const span &s) const { return start_block_height < s.start_block_height; }
     };
-    typedef std::set<span> block_map;
+    using block_map = std::set<span>;
 
   public:
     void add_blocks(uint64_t height, std::vector<cryptonote::block_complete_entry> bcel, const boost::uuids::uuid &connection_id, float rate, size_t size);

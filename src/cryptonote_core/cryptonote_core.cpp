@@ -2423,15 +2423,14 @@ namespace cryptonote
     HardFork::State state = m_blockchain_storage.get_hard_fork_state();
     const el::Level level = el::Level::Warning;
     switch (state) {
-      case HardFork::LikelyForked:
+        case HardFork::State::LikelyForked:
         MCLOG_RED(level, "global", "**********************************************************************");
         MCLOG_RED(level, "global", "Last scheduled hard fork is too far in the past.");
         MCLOG_RED(level, "global", "We are most likely forked from the network. Daemon update needed now.");
         MCLOG_RED(level, "global", "**********************************************************************");
         break;
-      case HardFork::UpdateNeeded:
-        break;
-      default:
+      case HardFork::State::UpdateNeeded:
+      case HardFork::State::Ready:
         break;
     }
     return true;

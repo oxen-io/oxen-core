@@ -62,9 +62,9 @@ namespace cryptonote
   class t_cryptonote_protocol_handler:  public i_cryptonote_protocol
   {
   public:
-    typedef cryptonote_connection_context connection_context;
-    typedef t_cryptonote_protocol_handler<t_core> cryptonote_protocol_handler;
-    typedef CORE_SYNC_DATA payload_type;
+    using connection_context = cryptonote_connection_context;
+    using cryptonote_protocol_handler = t_cryptonote_protocol_handler<t_core>;
+    using payload_type = CORE_SYNC_DATA;
 
     t_cryptonote_protocol_handler(t_core& rcore, bool offline = false);
 

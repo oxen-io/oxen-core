@@ -152,7 +152,7 @@ namespace crypto {
    */
   struct random_device
   {
-    typedef uint64_t result_type;
+    using result_type = uint64_t;
     static constexpr result_type min() { return 0; }
     static constexpr result_type max() { return result_type(-1); }
     result_type operator()() const { return crypto::rand<result_type>(); }

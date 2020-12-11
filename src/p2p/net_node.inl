@@ -1808,8 +1808,7 @@ namespace nodetool
     // globally.
 
     MDEBUG("STARTED PEERLIST IDLE HANDSHAKE");
-    typedef std::list<std::pair<epee::net_utils::connection_context_base, peerid_type> > local_connects_type;
-    local_connects_type cncts;
+    std::list<std::pair<epee::net_utils::connection_context_base, peerid_type>> cncts;
     for(auto& zone : m_network_zones)
     {
       zone.second.m_net_server.get_config_object().foreach_connection([&](p2p_connection_context& cntxt)
@@ -1817,13 +1816,13 @@ namespace nodetool
         if(cntxt.peer_id && !cntxt.m_in_timedsync)
         {
           cntxt.m_in_timedsync = true;
-          cncts.push_back(local_connects_type::value_type(cntxt, cntxt.peer_id));//do idle sync only with handshaked connections
+          cncts.emplace_back(cntxt, cntxt.peer_id);//do idle sync only with handshaked connections
         }
         return true;
       });
     }
 
-    std::for_each(cncts.begin(), cncts.end(), [&](const typename local_connects_type::value_type& vl){do_peer_timed_sync(vl.first, vl.second);});
+    std::for_each(cncts.begin(), cncts.end(), [&](const auto& vl){ do_peer_timed_sync(vl.first, vl.second); });
 
     MDEBUG("FINISHED PEERLIST IDLE HANDSHAKE");
     return true;

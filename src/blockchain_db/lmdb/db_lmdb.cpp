@@ -438,28 +438,28 @@ struct blk_checkpoint_header
 static_assert(sizeof(blk_checkpoint_header) == 2*sizeof(uint64_t) + sizeof(crypto::hash), "blk_checkpoint_header has unexpected padding");
 static_assert(sizeof(service_nodes::quorum_signature) == sizeof(uint16_t) + 6 /*padding*/ + sizeof(crypto::signature), "Unexpected padding/struct size change. DB checkpoint signature entries need to be re-migrated to the new size");
 
-typedef struct blk_height {
+struct blk_height {
     crypto::hash bh_hash;
     uint64_t bh_height;
-} blk_height;
+};
 
-typedef struct pre_rct_outkey {
+struct pre_rct_outkey {
     uint64_t amount_index;
     uint64_t output_id;
     pre_rct_output_data_t data;
-} pre_rct_outkey;
+};
 
-typedef struct outkey {
+struct outkey {
     uint64_t amount_index;
     uint64_t output_id;
     output_data_t data;
-} outkey;
+};
 
-typedef struct outtx {
+struct outtx {
     uint64_t output_id;
     crypto::hash tx_hash;
     uint64_t local_index;
-} outtx;
+};
 
 std::atomic<uint64_t> mdb_txn_safe::num_active_txns{0};
 std::atomic_flag mdb_txn_safe::creation_gate = ATOMIC_FLAG_INIT;

@@ -160,7 +160,7 @@ namespace nodetool
     };
 
 
-    typedef boost::multi_index_container<
+    using peers_indexed = boost::multi_index_container<
       peerlist_entry,
       boost::multi_index::indexed_by<
       // access by peerlist_entry::net_adress
@@ -168,9 +168,9 @@ namespace nodetool
       // sort by peerlist_entry::last_seen<
       boost::multi_index::ordered_non_unique<boost::multi_index::tag<by_time>, boost::multi_index::member<peerlist_entry,int64_t,&peerlist_entry::last_seen> >
       > 
-    > peers_indexed;
+    >;
 
-    typedef boost::multi_index_container<
+    using anchor_peers_indexed = boost::multi_index_container<
       anchor_peerlist_entry,
       boost::multi_index::indexed_by<
       // access by anchor_peerlist_entry::net_adress
@@ -178,7 +178,7 @@ namespace nodetool
       // sort by anchor_peerlist_entry::first_seen
       boost::multi_index::ordered_non_unique<boost::multi_index::tag<by_time>, boost::multi_index::member<anchor_peerlist_entry,int64_t,&anchor_peerlist_entry::first_seen> >
       >
-    > anchor_peers_indexed;
+    >;
 
   private: 
     void trim_white_peerlist();

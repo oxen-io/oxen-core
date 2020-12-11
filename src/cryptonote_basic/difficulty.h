@@ -38,7 +38,7 @@
 
 namespace cryptonote
 {
-    typedef std::uint64_t difficulty_type;
+    using difficulty_type = std::uint64_t;
 
     /**
      * @brief checks if a hash fits the given difficulty

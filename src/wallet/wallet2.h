@@ -107,13 +107,7 @@ namespace tools
     gamma_picker(const std::vector<uint64_t> &rct_offsets, double shape, double scale);
 
   private:
-    struct gamma_engine
-    {
-      typedef uint64_t result_type;
-      static constexpr result_type min() { return 0; }
-      static constexpr result_type max() { return std::numeric_limits<result_type>::max(); }
-      result_type operator()() { return crypto::rand<result_type>(); }
-    } engine;
+    crypto::random_device engine;
 
 private:
     std::gamma_distribution<double> gamma;
@@ -445,7 +439,7 @@ private:
       crypto::signature key_image_sig;
     };
 
-    typedef std::tuple<uint64_t, crypto::public_key, rct::key> get_outs_entry;
+    using get_outs_entry = std::tuple<uint64_t, crypto::public_key, rct::key>;
 
     struct parsed_block
     {

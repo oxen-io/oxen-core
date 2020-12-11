@@ -69,8 +69,8 @@ protected:
   Blockchain* m_blockchain_storage;
 
   tx_memory_pool* m_tx_pool;
-  typedef std::vector<char> buffer_type;
-  std::ofstream * m_raw_data_file;
+  using buffer_type = std::vector<char>;
+  std::ofstream* m_raw_data_file;
   buffer_type m_buffer;
   boost::iostreams::stream<boost::iostreams::back_insert_device<buffer_type>>* m_output_stream;
 

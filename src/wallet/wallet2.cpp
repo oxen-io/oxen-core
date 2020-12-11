@@ -9998,31 +9998,28 @@ void wallet2::transfer_selected_rct(std::vector<cryptonote::tx_destination_entry
 
     THROW_WALLET_EXCEPTION_IF(outs.size() < out_index + 1 ,  error::wallet_internal_error, "outs.size() < out_index + 1");
     THROW_WALLET_EXCEPTION_IF(outs[out_index].size() < fake_outputs_count ,  error::wallet_internal_error, "fake_outputs_count > random outputs found");
-
-    typedef cryptonote::tx_source_entry::output_entry tx_output_entry;
+      
     for (size_t n = 0; n < fake_outputs_count + 1; ++n)
     {
-      tx_output_entry oe;
+      auto& oe = src.outputs.emplace_back();
       oe.first = std::get<0>(outs[out_index][n]);
       oe.second.dest = rct::pk2rct(std::get<1>(outs[out_index][n]));
       oe.second.mask = std::get<2>(outs[out_index][n]);
-      src.outputs.push_back(oe);
     }
     ++i;
 
     //paste real transaction to the random index
-    auto it_to_replace = std::find_if(src.outputs.begin(), src.outputs.end(), [&](const tx_output_entry& a)
+    auto it_to_replace = std::find_if(src.outputs.begin(), src.outputs.end(), [&](const auto& a)
     {
       return a.first == td.m_global_output_index;
     });
     THROW_WALLET_EXCEPTION_IF(it_to_replace == src.outputs.end(), error::wallet_internal_error,
         "real output not found");
 
-    tx_output_entry real_oe;
+    auto& real_oe = *it_to_replace;
     real_oe.first = td.m_global_output_index;
     real_oe.second.dest = rct::pk2rct(td.get_public_key());
     real_oe.second.mask = rct::commit(td.amount(), td.m_mask);
-    *it_to_replace = real_oe;
     src.real_out_tx_key = get_tx_pub_key_from_extra(td.m_tx, td.m_pk_index);
     src.real_out_additional_tx_keys = get_additional_tx_pub_keys_from_extra(td.m_tx);
     src.real_output = it_to_replace - src.outputs.begin();

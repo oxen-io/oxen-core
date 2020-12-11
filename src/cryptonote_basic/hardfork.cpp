@@ -395,14 +395,14 @@ HardFork::State HardFork::get_state(time_t t) const
 
   // no hard forks setup yet
   if (heights.size() <= 1)
-    return Ready;
+    return State::Ready;
 
   time_t t_last_fork = heights.back().time;
   if (t >= t_last_fork + forked_time)
-    return LikelyForked;
+    return State::LikelyForked;
   if (t >= t_last_fork + update_time)
-    return UpdateNeeded;
-  return Ready;
+    return State::UpdateNeeded;
+  return State::Ready;
 }
 
 HardFork::State HardFork::get_state() const
