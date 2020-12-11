@@ -39,7 +39,7 @@ static crypto::hash make_hash(uint64_t n)
     crypto::hash hash;
     uint64_t n;
   } hash;
-  hash.hash = crypto::null_hash;
+  hash.hash = crypto::hash::null;
   hash.n = n;
   return hash.hash;
 }

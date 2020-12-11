@@ -32,7 +32,9 @@
 
 #include <cstddef>
 #include <ostream>
+#include <type_traits>
 
+#include "hash_type.h"
 #include "generic-ops.h"
 #include "common/hex.h"
 #include "crypto/cn_heavy_hash.hpp"
@@ -43,29 +45,20 @@ namespace crypto {
 #include "hash-ops.h"
   }
 
-  struct alignas(size_t) hash {
-    char data[HASH_SIZE];
-    static constexpr hash null() { return {0}; }
-    operator bool() const { return memcmp(data, null().data, sizeof(data)); }
-  };
-  struct hash8 {
-    char data[8];
-  };
-
-  static_assert(sizeof(hash) == HASH_SIZE, "Invalid structure size");
-  static_assert(sizeof(hash8) == 8, "Invalid structure size");
+  static_assert(HASH_SIZE == hash::size);
+  static_assert(std::has_unique_object_representations_v<hash>);
 
   /*
     Cryptonight hash functions
   */
 
   inline void cn_fast_hash(const void *data, std::size_t length, hash &hash) {
-    cn_fast_hash(data, length, reinterpret_cast<char *>(&hash));
+    cn_fast_hash(data, length, hash.data);
   }
 
   inline hash cn_fast_hash(const void *data, std::size_t length) {
     hash h;
-    cn_fast_hash(data, length, reinterpret_cast<char *>(&h));
+    cn_fast_hash(data, length, h.data);
     return h;
   }
 
@@ -138,34 +131,10 @@ namespace crypto {
     tree_hash(reinterpret_cast<const char (*)[HASH_SIZE]>(hashes), count, reinterpret_cast<char *>(&root_hash));
   }
 
-  constexpr size_t SIZE_TS_IN_HASH = sizeof(crypto::hash) / sizeof(size_t);
-  static_assert(SIZE_TS_IN_HASH * sizeof(size_t) == sizeof(crypto::hash) && alignof(crypto::hash) >= alignof(size_t),
-      "Expected crypto::hash size/alignment not satisfied");
-
-  // Combine hashes together via XORs.
-  inline crypto::hash& operator^=(crypto::hash& a, const crypto::hash& b) {
-    size_t (&dest)[SIZE_TS_IN_HASH] = reinterpret_cast<size_t (&)[SIZE_TS_IN_HASH]>(a);
-    const size_t (&src)[SIZE_TS_IN_HASH] = reinterpret_cast<const size_t (&)[SIZE_TS_IN_HASH]>(b);
-    for (size_t i = 0; i < SIZE_TS_IN_HASH; ++i)
-      dest[i] ^= src[i];
-    return a;
-  }
-  inline crypto::hash operator^(const crypto::hash& a, const crypto::hash& b) {
-    crypto::hash c = a;
-    c ^= b;
-    return c;
-  }
-
   inline std::ostream &operator <<(std::ostream &o, const crypto::hash &v) {
     return o << '<' << tools::type_to_hex(v) << '>';
   }
   inline std::ostream &operator <<(std::ostream &o, const crypto::hash8 &v) {
     return o << '<' << tools::type_to_hex(v) << '>';
   }
-
-  constexpr inline crypto::hash null_hash = {};
-  constexpr inline crypto::hash8 null_hash8 = {};
 }
-
-CRYPTO_MAKE_HASHABLE(hash)
-CRYPTO_MAKE_COMPARABLE(hash8)

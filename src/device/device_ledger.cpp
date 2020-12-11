@@ -28,6 +28,7 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
+#include "crypto/crypto.h"
 #include "version.h"
 #include "device_ledger.hpp"
 #include "ringct/rctOps.h"
@@ -227,7 +228,7 @@ namespace hw {
     /* ===                       Internal Helpers                       ==== */
     /* ===================================================================== */
     static bool is_fake_view_key(const crypto::secret_key &sec) {
-      return sec == crypto::null_skey;
+      return sec == crypto::secret_key::null;
     }
 
     bool operator==(const crypto::key_derivation &d0, const crypto::key_derivation &d1) {
@@ -1092,7 +1093,7 @@ namespace hw {
         }
       }
       CHECK_AND_ASSERT_THROW_MES(pkey, "Mismatched derivation on scan info");
-      return generate_key_derivation(*pkey,  crypto::null_skey, derivation);
+      return generate_key_derivation(*pkey,  crypto::secret_key::null, derivation);
     }
 
     bool device_ledger::derivation_to_scalar(const crypto::key_derivation &derivation, const size_t output_index, crypto::ec_scalar &res) {

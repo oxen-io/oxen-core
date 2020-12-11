@@ -968,8 +968,8 @@ namespace cryptonote
           }))
         return false;
     } else {
-      keys.key = crypto::null_skey;
-      keys.pub = crypto::null_pkey;
+      keys.key = crypto::secret_key::null;
+      keys.pub = crypto::public_key::null;
     }
 
     if (m_service_node) {
@@ -1985,7 +1985,7 @@ namespace cryptonote
     if (!parse_and_validate_tx_from_blob(tx_blob, tx, tx_hash))
     {
       LOG_ERROR("Failed to parse relayed transaction");
-      return crypto::null_hash;
+      return crypto::hash::null;
     }
     txs.push_back(std::make_pair(tx_hash, std::move(tx_blob)));
     m_mempool.set_relayed(txs);
@@ -2311,7 +2311,7 @@ namespace cryptonote
           return;
 
         auto pubkey = m_service_node_list.get_pubkey_from_x25519(m_service_keys.pub_x25519);
-        if (pubkey != crypto::null_pkey && pubkey != m_service_keys.pub && m_service_node_list.is_service_node(pubkey, false /*don't require active*/))
+        if (pubkey && pubkey != m_service_keys.pub && m_service_node_list.is_service_node(pubkey, false /*don't require active*/))
         {
           MGINFO_RED(
               "Failed to submit uptime proof: another service node on the network is using the same ed/x25519 keys as "

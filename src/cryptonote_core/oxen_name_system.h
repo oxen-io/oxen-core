@@ -321,7 +321,7 @@ struct name_system_db
 private:
   cryptonote::network_type nettype;
   uint64_t last_processed_height = 0;
-  crypto::hash last_processed_hash = crypto::null_hash;
+  crypto::hash last_processed_hash = crypto::hash::null;
   sql_compiled_statement save_owner_sql{*this};
   sql_compiled_statement save_mapping_sql{*this};
   sql_compiled_statement save_settings_sql{*this};

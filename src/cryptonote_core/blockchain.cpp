@@ -113,7 +113,7 @@ Blockchain::Blockchain(tx_memory_pool& tx_pool, service_nodes::service_node_list
   m_max_prepare_blocks_threads(4), m_db_sync_on_blocks(true), m_db_sync_threshold(1), m_db_sync_mode(db_async), m_db_default_sync(false), m_fast_sync(true), m_show_time_stats(false), m_sync_counter(0), m_bytes_to_sync(0), m_cancel(false),
   m_long_term_block_weights_window(CRYPTONOTE_LONG_TERM_BLOCK_WEIGHT_WINDOW_SIZE),
   m_long_term_effective_median_block_weight(0),
-  m_long_term_block_weights_cache_tip_hash(crypto::null_hash),
+  m_long_term_block_weights_cache_tip_hash(crypto::hash::null),
   m_long_term_block_weights_cache_rolling_median(CRYPTONOTE_LONG_TERM_BLOCK_WEIGHT_WINDOW_SIZE),
   m_service_node_list(service_node_list),
   m_btc_valid(false),
@@ -884,7 +884,7 @@ crypto::hash Blockchain::get_block_id_by_height(uint64_t height) const
     MERROR(std::string("Something went wrong fetching block hash by height"));
     throw;
   }
-  return null_hash;
+  return hash::null;
 }
 //------------------------------------------------------------------
 crypto::hash Blockchain::get_pending_block_id_by_height(uint64_t height) const
@@ -1435,7 +1435,7 @@ uint64_t Blockchain::get_long_term_block_weight_median(uint64_t start_height, si
   bool cached = false;
   uint64_t blockchain_height = m_db->height();
   uint64_t tip_height = start_height + count - 1;
-  crypto::hash tip_hash = crypto::null_hash;
+  crypto::hash tip_hash = crypto::hash::null;
   if (tip_height < blockchain_height && count == (size_t)m_long_term_block_weights_cache_rolling_median.size())
   {
     tip_hash = m_db->get_block_hash_from_height(tip_height);
@@ -1727,7 +1727,7 @@ bool Blockchain::build_alt_chain(const crypto::hash &prev_id,
 
     int alt_checkpoint_count = 0;
     int checkpoint_count     = 0;
-    crypto::hash prev_hash = crypto::null_hash;
+    crypto::hash prev_hash = crypto::hash::null;
     block_extended_info bei = {};
     blobdata checkpoint_blob;
     for(bool found = m_db->get_alt_block(prev_id, &data, &blob, &checkpoint_blob);
@@ -2448,7 +2448,7 @@ bool Blockchain::get_outs(const rpc::GET_OUTPUTS_BIN::request& req, rpc::GET_OUT
       return false;
     }
     for (const auto &t: data)
-      res.outs.push_back({t.pubkey, t.commitment, is_output_spendtime_unlocked(t.unlock_time), t.height, crypto::null_hash});
+      res.outs.push_back({t.pubkey, t.commitment, is_output_spendtime_unlocked(t.unlock_time), t.height, crypto::hash::null});
 
     if (req.get_txid)
     {
@@ -2693,7 +2693,7 @@ bool Blockchain::get_split_transactions_blobs(const std::vector<crypto::hash>& t
       cryptonote::blobdata tx;
       if (m_db->get_pruned_tx_blob(tx_hash, tx))
       {
-        auto& [hash, pruned, pruned_hash, prunable] = txs.emplace_back(tx_hash, std::move(tx), crypto::null_hash, cryptonote::blobdata());
+        auto& [hash, pruned, pruned_hash, prunable] = txs.emplace_back(tx_hash, std::move(tx), crypto::hash::null, cryptonote::blobdata());
         if (!is_v1_tx(pruned) && !m_db->get_prunable_tx_hash(tx_hash, pruned_hash))
         {
           MERROR("Prunable data hash not found for " << tx_hash);
@@ -2827,7 +2827,7 @@ bool Blockchain::find_blockchain_supplement(const uint64_t req_start_block, cons
     blocks.back().first.first = m_db->get_block_blob_from_height(i);
     block b;
     CHECK_AND_ASSERT_MES(parse_and_validate_block_from_blob(blocks.back().first.first, b), false, "internal error, invalid block");
-    blocks.back().first.second = get_miner_tx_hash ? cryptonote::get_transaction_hash(b.miner_tx) : crypto::null_hash;
+    blocks.back().first.second = get_miner_tx_hash ? cryptonote::get_transaction_hash(b.miner_tx) : crypto::hash::null;
     std::vector<cryptonote::blobdata> txs;
     if (pruned)
     {
@@ -3017,7 +3017,7 @@ bool Blockchain::check_tx_inputs(transaction& tx, uint64_t& max_used_block_heigh
   // check if we're doing per-block checkpointing
   if (m_db->height() < m_blocks_hash_check.size() && kept_by_block)
   {
-    max_used_block_id = null_hash;
+    max_used_block_id = hash::null;
     max_used_block_height = 0;
     return true;
   }
@@ -4051,7 +4051,7 @@ Blockchain::block_pow_verified Blockchain::verify_block_pow(cryptonote::block co
     if (chain_height < m_blocks_hash_check.size())
     {
       const auto &expected_hash = m_blocks_hash_check[chain_height];
-      if (expected_hash != crypto::null_hash)
+      if (expected_hash != crypto::hash::null)
       {
         if (blk_hash != expected_hash)
         {
@@ -4954,7 +4954,7 @@ uint64_t Blockchain::prevalidate_block_hashes(uint64_t height, const std::vector
       size_t end = n * HASH_OF_HASHES_STEP + HASH_OF_HASHES_STEP;
       for (size_t i = n * HASH_OF_HASHES_STEP; i < end; ++i)
       {
-        CHECK_AND_ASSERT_MES(m_blocks_hash_check[i] == crypto::null_hash || m_blocks_hash_check[i] == data[i - first_index * HASH_OF_HASHES_STEP],
+        CHECK_AND_ASSERT_MES(m_blocks_hash_check[i] == crypto::hash::null || m_blocks_hash_check[i] == data[i - first_index * HASH_OF_HASHES_STEP],
             0, "Consistency failure in m_blocks_hash_check construction");
         m_blocks_hash_check[i] = data[i - first_index * HASH_OF_HASHES_STEP];
       }
@@ -5597,7 +5597,7 @@ void Blockchain::load_compiled_in_block_hashes(const GetCheckpointsCallback& get
           std::memcpy(hash.data, checkpoints.data(), sizeof(hash.data));
           checkpoints.remove_prefix(sizeof(hash.data));
         }
-        m_blocks_hash_check.resize(m_blocks_hash_of_hashes.size() * HASH_OF_HASHES_STEP, crypto::null_hash);
+        m_blocks_hash_check.resize(m_blocks_hash_of_hashes.size() * HASH_OF_HASHES_STEP, crypto::hash::null);
         MINFO(nblocks << " block hashes loaded");
 
         // FIXME: clear tx_pool because the process might have been

@@ -1711,7 +1711,7 @@ namespace service_nodes
         crypto::cn_fast_hash(src.data(), src.size(), hash.data);
       }
 
-      assert(hash != crypto::null_hash);
+      assert(hash);
       result.push_back(hash);
     }
 
@@ -1862,7 +1862,7 @@ namespace service_nodes
 
   static void generate_other_quorums(service_node_list::state_t &state, std::vector<pubkey_and_sninfo> const &active_snode_list, cryptonote::network_type nettype, uint8_t hf_version)
   {
-    assert(state.block_hash != crypto::null_hash);
+    assert(state.block_hash);
 
     // The two quorums here have different selection criteria: the entire checkpoint quorum and the
     // state change *validators* want only active service nodes, but the state change *workers*
@@ -2287,10 +2287,10 @@ namespace service_nodes
 
   service_nodes::payout service_node_list::state_t::get_block_leader() const
   {
-    crypto::public_key key = crypto::null_pkey;
+    crypto::public_key key = crypto::public_key::null;
     service_node_info const *info = nullptr;
     {
-      auto oldest_waiting = std::make_tuple(std::numeric_limits<uint64_t>::max(), std::numeric_limits<uint32_t>::max(), crypto::null_pkey);
+      auto oldest_waiting = std::make_tuple(std::numeric_limits<uint64_t>::max(), std::numeric_limits<uint32_t>::max(), crypto::public_key::null);
       for (const auto &info_it : service_nodes_infos)
       {
         const auto &sninfo = *info_it.second;
@@ -2307,8 +2307,8 @@ namespace service_nodes
       key = std::get<2>(oldest_waiting);
     }
 
-    if (key == crypto::null_pkey)
-      return service_nodes::null_payout;
+    if (!key)
+      return service_nodes::payout::null;
     return service_node_info_to_payout(key, *info);
   }
 
@@ -2897,8 +2897,8 @@ namespace service_nodes
       proof->pubkey_ed25519 = pk;
     } else {
       MWARNING("Failed to derive x25519 pubkey from ed25519 pubkey " << proof->pubkey_ed25519);
-      pubkey_x25519 = crypto::x25519_public_key::null();
-      proof->pubkey_ed25519 = crypto::ed25519_public_key::null();
+      pubkey_x25519 = crypto::x25519_public_key::null;
+      proof->pubkey_ed25519 = crypto::ed25519_public_key::null;
     }
   }
 
@@ -2932,7 +2932,7 @@ namespace service_nodes
     if (!crypto::check_signature(hash, proof.pubkey, proof.sig))
       REJECT_PROOF("signature validation failed");
 
-    crypto::x25519_public_key derived_x25519_pubkey = crypto::x25519_public_key::null();
+    crypto::x25519_public_key derived_x25519_pubkey = crypto::x25519_public_key::null;
     if (!proof.pubkey_ed25519)
       REJECT_PROOF("required ed25519 auxiliary pubkey " << proof.pubkey_ed25519 << " not included in proof");
 
@@ -3117,7 +3117,7 @@ namespace service_nodes
     auto it = x25519_to_pub.find(x25519);
     if (it != x25519_to_pub.end())
       return it->second.first;
-    return crypto::null_pkey;
+    return crypto::public_key::null;
   }
 
   crypto::public_key service_node_list::get_random_pubkey() {
@@ -3493,7 +3493,7 @@ namespace service_nodes
         for (size_t i = 0; i < last_index; i++)
         {
           state_serialized &entry = data_in.states[i];
-          if (entry.block_hash == crypto::null_hash) entry.block_hash = m_blockchain.get_block_id_by_height(entry.height);
+          if (!entry.block_hash) entry.block_hash = m_blockchain.get_block_id_by_height(entry.height);
           m_transient.state_history.emplace_hint(m_transient.state_history.end(), this, std::move(entry));
         }
 

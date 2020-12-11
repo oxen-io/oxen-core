@@ -908,7 +908,7 @@ namespace tools
   //------------------------------------------------------------------------------------------------------------------------------
   void wallet_rpc_server::validate_transfer(const std::list<wallet::transfer_destination>& destinations, const std::string& payment_id, std::vector<cryptonote::tx_destination_entry>& dsts, std::vector<uint8_t>& extra, bool at_least_one_destination)
   {
-    crypto::hash8 integrated_payment_id = crypto::null_hash8;
+    crypto::hash8 integrated_payment_id = crypto::hash8::null;
     std::string extra_nonce;
     for (auto it = destinations.begin(); it != destinations.end(); it++)
     {
@@ -924,7 +924,7 @@ namespace tools
 
       if (info.has_payment_id)
       {
-        if (!payment_id.empty() || integrated_payment_id != crypto::null_hash8)
+        if (!payment_id.empty() || integrated_payment_id)
           throw wallet_rpc_error{error_code::WRONG_PAYMENT_ID, "A single payment id is allowed per transaction"};
         integrated_payment_id = info.payment_id;
         cryptonote::set_encrypted_payment_id_to_tx_extra_nonce(extra_nonce, integrated_payment_id);
@@ -1203,7 +1203,7 @@ namespace tools
 
         std::vector<cryptonote::tx_extra_field> tx_extra_fields;
         bool has_encrypted_payment_id = false;
-        crypto::hash8 payment_id8 = crypto::null_hash8;
+        crypto::hash8 payment_id8 = crypto::hash8::null;
         if (cryptonote::parse_tx_extra(cd.extra, tx_extra_fields))
         {
           cryptonote::tx_extra_nonce extra_nonce;
@@ -1212,7 +1212,7 @@ namespace tools
             crypto::hash payment_id;
             if(cryptonote::get_encrypted_payment_id_from_tx_extra_nonce(extra_nonce.nonce, payment_id8))
             {
-              if (payment_id8 != crypto::null_hash8)
+              if (payment_id8)
               {
                 desc.payment_id = tools::type_to_hex(payment_id8);
                 has_encrypted_payment_id = true;

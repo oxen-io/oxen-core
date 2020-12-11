@@ -416,7 +416,7 @@ int main(int argc, char* argv[])
     std::cerr << "Only one of --txid, --height, --output can be given" << std::endl;
     return 1;
   }
-  crypto::hash opt_txid = crypto::null_hash;
+  crypto::hash opt_txid = crypto::hash::null;
   uint64_t output_amount = 0, output_offset = 0;
   if (!opt_txid_string.empty())
   {

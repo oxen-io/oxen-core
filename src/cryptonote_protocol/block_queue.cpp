@@ -411,7 +411,7 @@ size_t block_queue::get_num_filled_spans() const
 crypto::hash block_queue::get_last_known_hash(const boost::uuids::uuid &connection_id) const
 {
   std::unique_lock lock{mutex};
-  crypto::hash hash = crypto::null_hash;
+  crypto::hash hash = crypto::hash::null;
   uint64_t highest_height = 0;
   for (const auto &span: blocks)
   {

@@ -223,10 +223,8 @@ void BootstrapFile::write_block(block& block)
   // now add all regular transactions
   for (const auto& tx_id : block.tx_hashes)
   {
-    if (tx_id == crypto::null_hash)
-    {
-      throw std::runtime_error("Aborting: tx == null_hash");
-    }
+    if (!tx_id)
+      throw std::runtime_error("Aborting: tx hash is null");
     transaction tx = m_blockchain_storage->get_db().get_tx(tx_id);
 
     txs.push_back(tx);

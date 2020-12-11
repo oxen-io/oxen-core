@@ -36,8 +36,6 @@
 #include "cryptonote_config.h"
 #include "common/util.h"
 
-namespace crypto { struct hash; }
-
 namespace cryptonote
 {
     typedef std::uint64_t difficulty_type;

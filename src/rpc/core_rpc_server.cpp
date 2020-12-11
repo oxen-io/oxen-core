@@ -507,7 +507,7 @@ namespace cryptonote { namespace rpc {
       res.blocks.back().txs.reserve(bd.second.size());
       for (std::vector<std::pair<crypto::hash, cryptonote::blobdata>>::iterator i = bd.second.begin(); i != bd.second.end(); ++i)
       {
-        res.blocks.back().txs.push_back({std::move(i->second), crypto::null_hash});
+        res.blocks.back().txs.push_back({std::move(i->second), crypto::hash::null});
         i->second.clear();
         i->second.shrink_to_fit();
         size += res.blocks.back().txs.back().size();
@@ -938,7 +938,7 @@ namespace cryptonote { namespace rpc {
       // If the transaction was pruned then the prunable part will be empty but the prunable hash
       // will be non-null.  (Some txes, like coinbase txes, are non-prunable and will have empty
       // *and* null prunable hash).
-      bool prunable = prunable_hash != crypto::null_hash;
+      bool prunable = prunable_hash;
       bool pruned = prunable && prunable_data.empty();
 
       if (pruned || (prunable && (req.split || req.prune)))
@@ -1682,7 +1682,7 @@ namespace cryptonote { namespace rpc {
 
     blobdata block_blob = t_serializable_object_to_blob(b);
     crypto::public_key tx_pub_key = cryptonote::get_tx_pub_key_from_extra(b.miner_tx);
-    if(tx_pub_key == crypto::null_pkey)
+    if (!tx_pub_key)
     {
       LOG_ERROR("Failed to get tx pub key in coinbase extra");
       throw rpc_error{ERROR_INTERNAL, "Internal error: failed to create block template"};
@@ -2598,8 +2598,8 @@ namespace cryptonote { namespace rpc {
       std::mutex mutex;
       std::vector<std::uint64_t> cached_distribution;
       std::uint64_t cached_from = 0, cached_to = 0, cached_start_height = 0, cached_base = 0;
-      crypto::hash cached_m10_hash = crypto::null_hash;
-      crypto::hash cached_top_hash = crypto::null_hash;
+      crypto::hash cached_m10_hash = crypto::hash::null;
+      crypto::hash cached_top_hash = crypto::hash::null;
       bool cached = false;
     } output_dist_cache;
   }
@@ -2617,7 +2617,7 @@ namespace cryptonote { namespace rpc {
       auto& d = output_dist_cache;
       const std::unique_lock lock{d.mutex};
 
-      crypto::hash top_hash = crypto::null_hash;
+      crypto::hash top_hash = crypto::hash::null;
       if (d.cached_to < blockchain_height)
         top_hash = get_hash(d.cached_to);
       if (d.cached && amount == 0 && d.cached_from == from_height && d.cached_to == to_height && d.cached_top_hash == top_hash)
@@ -2639,7 +2639,7 @@ namespace cryptonote { namespace rpc {
           {
             d.cached_to -= 10;
             d.cached_top_hash = hash10;
-            d.cached_m10_hash = crypto::null_hash;
+            d.cached_m10_hash = crypto::hash::null;
             CHECK_AND_ASSERT_MES(d.cached_distribution.size() >= 10, std::nullopt, "Cached distribution size does not match cached bounds");
             for (int p = 0; p < 10; ++p)
               d.cached_distribution.pop_back();
@@ -2677,7 +2677,7 @@ namespace cryptonote { namespace rpc {
         d.cached_from = from_height;
         d.cached_to = to_height;
         d.cached_top_hash = get_hash(d.cached_to);
-        d.cached_m10_hash = d.cached_to >= 10 ? get_hash(d.cached_to - 10) : crypto::null_hash;
+        d.cached_m10_hash = d.cached_to >= 10 ? get_hash(d.cached_to - 10) : crypto::hash::null;
         d.cached_distribution = distribution;
         d.cached_start_height = start_height;
         d.cached_base = base;
@@ -3021,7 +3021,7 @@ namespace cryptonote { namespace rpc {
     PERF_TIMER(on_get_service_node_key);
 
     const auto& keys = m_core.get_service_keys();
-    if (keys.key != crypto::null_skey)
+    if (keys.key)
       res.service_node_privkey = tools::type_to_hex(keys.key.data);
     res.service_node_ed25519_privkey = tools::type_to_hex(keys.key_ed25519.data);
     res.service_node_x25519_privkey = tools::type_to_hex(keys.key_x25519.data);

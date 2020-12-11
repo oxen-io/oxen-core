@@ -477,8 +477,10 @@ namespace cryptonote
     {
       return !(*this == rhs);
     }
+
+    static const account_public_address null;
   };
-  inline constexpr account_public_address null_address{};
+  constexpr account_public_address account_public_address::null{};
 
   struct keypair
   {

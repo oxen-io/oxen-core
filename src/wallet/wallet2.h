@@ -187,7 +187,7 @@ private:
   class hashchain
   {
   public:
-    hashchain(): m_genesis(crypto::null_hash), m_offset(0) {}
+    hashchain(): m_genesis(crypto::hash::null), m_offset(0) {}
 
     size_t size() const { return m_blockchain.size() + m_offset; }
     size_t offset() const { return m_offset; }
@@ -376,7 +376,7 @@ private:
       std::vector<std::pair<crypto::key_image, std::vector<uint64_t>>> m_rings; // relative
       wallet::pay_type m_pay_type = wallet::pay_type::out;
 
-      confirmed_transfer_details(): m_amount_in(0), m_amount_out(0), m_change((uint64_t)-1), m_block_height(0), m_payment_id(crypto::null_hash), m_timestamp(0), m_unlock_time(0), m_subaddr_account((uint32_t)-1) {}
+      confirmed_transfer_details(): m_amount_in(0), m_amount_out(0), m_change((uint64_t)-1), m_block_height(0), m_payment_id(crypto::hash::null), m_timestamp(0), m_unlock_time(0), m_subaddr_account((uint32_t)-1) {}
       confirmed_transfer_details(const unconfirmed_transfer_details &utd, uint64_t height)
       : m_amount_in(utd.m_amount_in)
       , m_amount_out(utd.m_amount_out)
@@ -1901,7 +1901,7 @@ namespace boost::serialization
       {
         crypto::hash payment_id;
         a & payment_id;
-        x.m_has_payment_id = !(payment_id == crypto::null_hash);
+        x.m_has_payment_id = payment_id;
         if (x.m_has_payment_id)
         {
           bool is_long = false;
@@ -1910,7 +1910,7 @@ namespace boost::serialization
           if (is_long)
           {
             MWARNING("Long payment ID ignored on address book load");
-            x.m_payment_id = crypto::null_hash8;
+            x.m_payment_id = crypto::hash8::null;
             x.m_has_payment_id = false;
           }
           else

@@ -55,7 +55,7 @@ namespace cryptonote
   {
     static oxen_miner_tx_context miner_block(network_type nettype,
                                              cryptonote::account_public_address const &block_producer,
-                                             service_nodes::payout const &block_leader = service_nodes::null_payout)
+                                             service_nodes::payout const &block_leader = service_nodes::payout::null)
     {
         oxen_miner_tx_context result = {};
         result.nettype               = nettype;
@@ -66,7 +66,7 @@ namespace cryptonote
 
     static oxen_miner_tx_context pulse_block(network_type nettype,
                                              service_nodes::payout const &block_producer,
-                                             service_nodes::payout const &block_leader = service_nodes::null_payout)
+                                             service_nodes::payout const &block_leader = service_nodes::payout::null)
     {
       oxen_miner_tx_context result = {};
       result.pulse                 = true;
@@ -120,7 +120,7 @@ namespace cryptonote
     uint64_t                 height;
     uint64_t                 fee;
     uint64_t                 batched_governance;   // Optional: 0 hardfork v10, then must be calculated using blockchain::calc_batched_governance_reward
-    std::vector<service_nodes::payout_entry> block_leader_payouts = {service_nodes::null_payout_entry};
+    std::vector<service_nodes::payout_entry> block_leader_payouts = {service_nodes::payout_entry::null};
   };
 
   // NOTE(oxen): I would combine this into get_base_block_reward, but

@@ -467,8 +467,8 @@ namespace service_nodes
     if (!result)
       return result;
 
-    crypto::public_key key = crypto::null_pkey;
-    crypto::hash hash      = crypto::null_hash;
+    crypto::public_key key = crypto::public_key::null;
+    crypto::hash hash      = crypto::hash::null;
 
     switch(vote.type)
     {

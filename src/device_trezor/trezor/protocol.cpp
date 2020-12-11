@@ -264,7 +264,7 @@ namespace ki {
     memcpy(sig.c.data, buff + 32, 32);
     memcpy(sig.r.data, buff + 64, 32);
     in_ephemeral.pub = out_key;
-    in_ephemeral.sec = ::crypto::null_skey;
+    in_ephemeral.sec = ::crypto::secret_key::null;
 
     // Verification
     std::vector<const ::crypto::public_key*> pkeys;

@@ -51,13 +51,13 @@ crypto::public_key blink_tx::get_sn_pubkey(subquorum q, int position, const serv
         // TODO FIXME XXX - we don't want a failure here; if this happens we need to go back into state
         // history to retrieve the state info.  (Or maybe this can't happen?)
         MERROR("FIXME: could not get blink quorum for blink_tx");
-        return crypto::null_pkey;
+        return crypto::public_key::null;
     }
 
     if (position < (int) blink_quorum->validators.size())
         return blink_quorum->validators[position];
 
-    return crypto::null_pkey;
+    return crypto::public_key::null;
 };
 
 crypto::hash blink_tx::hash(bool approved) const {

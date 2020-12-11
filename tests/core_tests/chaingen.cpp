@@ -627,7 +627,7 @@ cryptonote::transaction oxen_chain_generator::create_oxen_name_system_tx(crypton
   auto lcname = tools::lowercase_ascii_string(name);
   crypto::hash name_hash       = ons::name_to_hash(lcname);
   std::string name_base64_hash = ons::name_to_base64_hash(lcname);
-  crypto::hash prev_txid = crypto::null_hash;
+  crypto::hash prev_txid = crypto::hash::null;
   if (ons::mapping_record mapping = ons_db_->get_mapping(type, name_base64_hash, new_height))
     prev_txid = mapping.txid;
 
@@ -820,7 +820,7 @@ oxen_blockchain_entry oxen_chain_generator::create_genesis_block(const cryptonot
   blk.major_version            = hf_version_;
   blk.minor_version            = hf_version_;
   blk.timestamp                = timestamp;
-  blk.prev_id                  = crypto::null_hash;
+  blk.prev_id                  = crypto::hash::null;
 
   // TODO(doyle): Does this evaluate to 0? If so we can simplify this a lot more
   size_t target_block_weight = get_transaction_weight(blk.miner_tx);
@@ -1143,7 +1143,7 @@ std::vector<uint64_t> oxen_chain_generator::last_n_block_weights(uint64_t height
 void test_generator::get_block_chain(std::vector<block_info>& blockchain, const crypto::hash& head, size_t n) const
 {
   crypto::hash curr = head;
-  while (crypto::null_hash != curr && blockchain.size() < n)
+  while (curr && blockchain.size() < n)
   {
     auto it = m_blocks_info.find(curr);
     if (m_blocks_info.end() == it)
@@ -1164,7 +1164,7 @@ void test_generator::get_block_chain(std::vector<cryptonote::block> &blockchain,
                                      size_t n) const
 {
   crypto::hash curr = head;
-  while (crypto::null_hash != curr && blockchain.size() < n)
+  while (curr && blockchain.size() < n)
   {
     auto it = m_blocks_info.find(curr);
     if (m_blocks_info.end() == it)
@@ -1359,7 +1359,7 @@ bool test_generator::construct_block(cryptonote::block &blk,
 {
   std::vector<uint64_t> block_weights;
   std::list<cryptonote::transaction> tx_list;
-  return construct_block(blk, 0, crypto::null_hash, miner_acc, timestamp, 0, block_weights, tx_list);
+  return construct_block(blk, 0, crypto::hash::null, miner_acc, timestamp, 0, block_weights, tx_list);
 }
 
 bool test_generator::construct_block(cryptonote::block &blk,
@@ -2413,7 +2413,7 @@ bool find_block_chain(const std::vector<test_event_entry> &events, std::vector<c
   {
     blockchain.push_back(*it->second);
     id = it->second->prev_id;
-    if (crypto::null_hash == id)
+    if (!id)
     {
       b_success = true;
       break;
@@ -2471,7 +2471,7 @@ bool find_block_chain(const std::vector<test_event_entry> &events, std::vector<c
   {
     blockchain.push_back(it->second);
     id = it->second->prev_id;
-    if (crypto::null_hash == id)
+    if (!id)
     {
       b_success = true;
       break;

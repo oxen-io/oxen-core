@@ -515,7 +515,7 @@ std::pair<std::unique_ptr<tools::wallet2>, tools::password_container> generate_f
       if(!tools::hex_to_type(field_viewkey, viewkey))
         THROW_WALLET_EXCEPTION(tools::error::wallet_internal_error, tools::wallet2::tr("failed to parse view key secret key"));
       crypto::public_key pkey;
-      if (viewkey == crypto::null_skey)
+      if (!viewkey)
         THROW_WALLET_EXCEPTION(tools::error::wallet_internal_error, tools::wallet2::tr("view secret key may not be all zeroes"));
       if (!crypto::secret_key_to_public_key(viewkey, pkey)) {
         THROW_WALLET_EXCEPTION(tools::error::wallet_internal_error, tools::wallet2::tr("failed to verify view key secret key"));
@@ -529,7 +529,7 @@ std::pair<std::unique_ptr<tools::wallet2>, tools::password_container> generate_f
       if(!tools::hex_to_type(field_spendkey, spendkey))
         THROW_WALLET_EXCEPTION(tools::error::wallet_internal_error, tools::wallet2::tr("failed to parse spend key secret key"));
       crypto::public_key pkey;
-      if (spendkey == crypto::null_skey)
+      if (!spendkey)
         THROW_WALLET_EXCEPTION(tools::error::wallet_internal_error, tools::wallet2::tr("spend secret key may not be all zeroes"));
       if (!crypto::secret_key_to_public_key(spendkey, pkey)) {
         THROW_WALLET_EXCEPTION(tools::error::wallet_internal_error, tools::wallet2::tr("failed to verify spend key secret key"));
@@ -822,7 +822,7 @@ bool get_short_payment_id(crypto::hash8 &payment_id8, const tools::wallet2::pend
 wallet::tx_construction_data get_construction_data_with_decrypted_short_payment_id(const tools::wallet2::pending_tx &ptx, hw::device &hwdev)
 {
   wallet::tx_construction_data construction_data = ptx.construction_data;
-  crypto::hash8 payment_id = null_hash8;
+  crypto::hash8 payment_id = hash8::null;
   if (get_short_payment_id(payment_id, ptx, hwdev))
   {
     // Remove encrypted
@@ -1061,7 +1061,7 @@ wallet2::wallet2(network_type nettype, uint64_t kdf_rounds, bool unattended):
   m_multisig(false),
   m_multisig_threshold(0),
   m_node_rpc_proxy(m_http_client),
-  m_account_public_address{crypto::null_pkey, crypto::null_pkey},
+  m_account_public_address{crypto::public_key::null, crypto::public_key::null},
   m_subaddress_lookahead_major(SUBADDRESS_LOOKAHEAD_MAJOR),
   m_subaddress_lookahead_minor(SUBADDRESS_LOOKAHEAD_MINOR),
   m_light_wallet(false),
@@ -1734,7 +1734,7 @@ void wallet2::scan_output(const cryptonote::transaction &tx, bool miner_tx, cons
   if (m_multisig)
   {
     tx_scan_info.in_ephemeral.pub = var::get<cryptonote::txout_to_key>(tx.vout[vout_index].target).key;
-    tx_scan_info.in_ephemeral.sec = crypto::null_skey;
+    tx_scan_info.in_ephemeral.sec = crypto::secret_key::null;
     tx_scan_info.ki = rct::rct2ki(rct::zero());
   }
   else
@@ -1835,7 +1835,7 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
   //       i.e. duplicated key images
   std::vector<tx_money_got_in_out> tx_money_got_in_outs;
   tx_money_got_in_outs.reserve(tx.vout.size());
-  crypto::public_key tx_pub_key = null_pkey;
+  crypto::public_key tx_pub_key = public_key::null;
   bool notify = false;
 
   std::vector<tx_extra_field> local_tx_extra_fields;
@@ -2395,19 +2395,19 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
   }
 
   // create payment_details for each incoming transfer to a subaddress index
-  crypto::hash payment_id = null_hash;
+  crypto::hash payment_id = hash::null;
   if (tx_money_got_in_outs.size() > 0 || earliest_blink_got_mined_transfers_index != NO_BLINK_MINED_INDEX)
   {
     tx_extra_nonce extra_nonce;
     if (find_tx_extra_field_by_type(tx_extra_fields, extra_nonce))
     {
-      crypto::hash8 payment_id8 = null_hash8;
+      crypto::hash8 payment_id8 = hash8::null;
       if(get_encrypted_payment_id_from_tx_extra_nonce(extra_nonce.nonce, payment_id8))
       {
         // We got a payment ID to go with this tx
         LOG_PRINT_L2("Found encrypted payment ID: " << payment_id8);
         MINFO("Consider using subaddresses instead of encrypted payment IDs");
-        if (tx_pub_key != null_pkey)
+        if (tx_pub_key)
         {
           if (!m_account.get_device().decrypt_payment_id(payment_id8, tx_pub_key, m_account.get_keys().m_view_secret_key))
           {
@@ -2434,7 +2434,7 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
         {
           LOG_PRINT_L2("Found unencrypted payment ID in tx " << txid << " (ignored)");
           MWARNING("Found OBSOLETE AND IGNORED unencrypted payment ID: these are bad for privacy, use subaddresses instead");
-          payment_id = crypto::null_hash;
+          payment_id = crypto::hash::null;
         }
         else
         {
@@ -3022,7 +3022,7 @@ bool wallet2::long_poll_pool_state()
   THROW_WALLET_EXCEPTION_IF(res.status == rpc::STATUS_BUSY, error::daemon_busy, "get_transaction_pool_hashes.bin");
   THROW_WALLET_EXCEPTION_IF(res.status != rpc::STATUS_OK, error::get_tx_pool_error, res.status);
 
-  crypto::hash checksum = crypto::null_hash;
+  crypto::hash checksum = crypto::hash::null;
   for (crypto::hash const &hash : res.tx_hashes)
     checksum ^= hash;
   {
@@ -3030,7 +3030,7 @@ bool wallet2::long_poll_pool_state()
     m_long_poll_tx_pool_checksum = checksum;
   }
 
-  return checksum != crypto::null_hash;
+  return checksum != crypto::hash::null;
 }
 
 void wallet2::cancel_long_poll()
@@ -3308,7 +3308,7 @@ void wallet2::fast_refresh(uint64_t stop_height, uint64_t &blocks_start_height, 
     // we will drop all these, so don't bother getting them
     uint64_t missing_blocks = checkpoint_height - m_blockchain.size();
     while (missing_blocks-- > 0)
-      m_blockchain.push_back(crypto::null_hash); // maybe a bit suboptimal, but deque won't do huge reallocs like vector
+      m_blockchain.push_back(crypto::hash::null); // maybe a bit suboptimal, but deque won't do huge reallocs like vector
     m_blockchain.push_back(checkpoint_hash);
     m_blockchain.trim(checkpoint_height);
     short_chain_history.clear();
@@ -3368,7 +3368,7 @@ bool wallet2::add_address_book_row(const cryptonote::account_public_address &add
   wallet2::address_book_row a;
   a.m_address = address;
   a.m_has_payment_id = !!payment_id;
-  a.m_payment_id = payment_id ? *payment_id : crypto::null_hash8;
+  a.m_payment_id = payment_id ? *payment_id : crypto::hash8::null;
   a.m_description = description;
   a.m_is_subaddress = is_subaddress;
 
@@ -3384,7 +3384,7 @@ bool wallet2::set_address_book_row(size_t row_id, const cryptonote::account_publ
   wallet2::address_book_row a;
   a.m_address = address;
   a.m_has_payment_id = !!payment_id;
-  a.m_payment_id = payment_id ? *payment_id : crypto::null_hash8;
+  a.m_payment_id = payment_id ? *payment_id : crypto::hash8::null;
   a.m_description = description;
   a.m_is_subaddress = is_subaddress;
 
@@ -3462,7 +3462,7 @@ void wallet2::refresh(bool trusted_daemon, uint64_t start_height, uint64_t & blo
   blocks_fetched = 0;
   uint64_t added_blocks = 0;
   size_t try_count = 0;
-  crypto::hash last_tx_hash_id = m_transfers.size() ? m_transfers.back().m_txid : null_hash;
+  crypto::hash last_tx_hash_id = m_transfers.size() ? m_transfers.back().m_txid : hash::null;
   std::list<crypto::hash> short_chain_history;
   tools::threadpool& tpool = tools::threadpool::getInstance();
   tools::threadpool::waiter waiter;
@@ -3622,7 +3622,7 @@ void wallet2::refresh(bool trusted_daemon, uint64_t start_height, uint64_t & blo
       }
     }
   }
-  if(last_tx_hash_id != (m_transfers.size() ? m_transfers.back().m_txid : null_hash))
+  if(last_tx_hash_id != (m_transfers.size() ? m_transfers.back().m_txid : hash::null))
     received_money = true;
 
   uint64_t immutable_height = 0;
@@ -5050,7 +5050,7 @@ std::string wallet2::make_multisig(const epee::wipeable_string &password,
     auto derivations = cryptonote::generate_multisig_derivations(get_account().get_keys(), spend_keys);
 
     spend_pkey = rct::identity();
-    multisig_signers = std::vector<crypto::public_key>(spend_keys.size() + 1, crypto::null_pkey);
+    multisig_signers = std::vector<crypto::public_key>(spend_keys.size() + 1, crypto::public_key::null);
 
     if (threshold == spend_keys.size())
     {
@@ -5370,7 +5370,7 @@ bool wallet2::unpack_extra_multisig_info(const std::vector<std::string>& info,
   std::unordered_set<crypto::public_key> &pkeys) const
 {
   // parse all multisig info
-  signers.resize(info.size(), crypto::null_pkey);
+  signers.resize(info.size(), crypto::public_key::null);
   for (size_t i = 0; i < info.size(); ++i)
   {
       if (!verify_extra_multisig_info(info[i], pkeys, signers[i]))
@@ -5579,7 +5579,7 @@ bool wallet2::parse_payment_id(std::string_view payment_id_str, crypto::hash& pa
   crypto::hash8 payment_id8;
   if (tools::hex_to_type(payment_id_str, payment_id8))
   {
-    payment_id = crypto::null_hash;
+    payment_id = crypto::hash::null;
     std::memcpy(payment_id.data, payment_id8.data, sizeof(payment_id8));
     return true;
   }
@@ -6925,16 +6925,16 @@ crypto::hash wallet2::get_payment_id(const pending_tx &ptx) const
   std::vector<tx_extra_field> tx_extra_fields;
   parse_tx_extra(ptx.tx.extra, tx_extra_fields); // ok if partially parsed
   tx_extra_nonce extra_nonce;
-  crypto::hash payment_id = null_hash;
+  crypto::hash payment_id = hash::null;
   if (find_tx_extra_field_by_type(tx_extra_fields, extra_nonce))
   {
-    crypto::hash8 payment_id8 = null_hash8;
+    crypto::hash8 payment_id8 = hash8::null;
     if(get_encrypted_payment_id_from_tx_extra_nonce(extra_nonce.nonce, payment_id8))
     {
       if (ptx.dests.empty())
       {
         MWARNING("Encrypted payment id found, but no destinations public key, cannot decrypt");
-        return crypto::null_hash;
+        return crypto::hash::null;
       }
       if (m_account.get_device().decrypt_payment_id(payment_id8, ptx.dests[0].addr.m_view_public_key, ptx.tx_key))
       {
@@ -6943,7 +6943,7 @@ crypto::hash wallet2::get_payment_id(const pending_tx &ptx) const
     }
     else if (!get_payment_id_from_tx_extra_nonce(extra_nonce.nonce, payment_id))
     {
-      payment_id = crypto::null_hash;
+      payment_id = crypto::hash::null;
     }
   }
   return payment_id;
@@ -6991,7 +6991,7 @@ void wallet2::commit_tx(pending_tx& ptx, bool blink)
   crypto::hash txid;
 
   txid = get_transaction_hash(ptx.tx);
-  crypto::hash payment_id = crypto::null_hash;
+  crypto::hash payment_id = crypto::hash::null;
   std::vector<cryptonote::tx_destination_entry> dests;
   uint64_t amount_in = 0;
   if (store_tx_info())
@@ -7002,7 +7002,7 @@ void wallet2::commit_tx(pending_tx& ptx, bool blink)
       amount_in += m_transfers[idx].amount();
   }
   add_unconfirmed_tx(ptx.tx, amount_in, dests, payment_id, ptx.change_dts.amount, ptx.construction_data.subaddr_account, ptx.construction_data.subaddr_indices);
-  if (store_tx_info() && ptx.tx_key != crypto::null_skey)
+  if (store_tx_info() && ptx.tx_key)
   {
     m_tx_keys.insert(std::make_pair(txid, ptx.tx_key));
     m_additional_tx_keys.insert(std::make_pair(txid, ptx.additional_tx_keys));
@@ -7193,7 +7193,7 @@ bool wallet2::sign_tx(unsigned_tx_set &exported_txs, std::vector<wallet2::pendin
     // normally, the tx keys are saved in commit_tx, when the tx is actually sent to the daemon.
     // we can't do that here since the tx will be sent from the compromised wallet, which we don't want
     // to see that info, so we save it here
-    if (store_tx_info() && tx_key != crypto::null_skey)
+    if (store_tx_info() && tx_key)
     {
       const crypto::hash txid = get_transaction_hash(ptx.tx);
       m_tx_keys.insert(std::make_pair(txid, tx_key));
@@ -9048,7 +9048,7 @@ bool wallet2::ons_make_update_mapping_signature(ons::mapping_type type,
   ons_prepared_args prepared_args = prepare_tx_extra_oxen_name_system_values(*this, type, tx_priority_unimportant, name, value, owner, backup_owner, make_signature, ons::ons_tx_type::update, account_index, reason, &response);
   if (!prepared_args) return false;
 
-  if (prepared_args.prev_txid == crypto::null_hash)
+  if (prepared_args.prev_txid == crypto::hash::null)
   {
     if (reason) *reason = "name=\"" + name + std::string("\" does not have a corresponding ONS record, the mapping is available for purchase, update signature is not required.");
     return false;
@@ -10620,7 +10620,7 @@ void wallet2::light_wallet_get_address_txs()
     if(total_sent == 0 && total_received == 0)
       continue;
 
-    crypto::hash payment_id = null_hash;
+    crypto::hash payment_id = hash::null;
     crypto::hash tx_hash;
 
     THROW_WALLET_EXCEPTION_IF(t.payment_id.size() != 64 || !oxenmq::is_hex(t.payment_id), error::wallet_internal_error, "Invalid payment_id field");
@@ -12030,7 +12030,7 @@ bool wallet2::get_tx_key_cached(const crypto::hash &txid, crypto::secret_key &tx
   if (i == m_tx_keys.end())
     return false;
   tx_key = i->second;
-  if (tx_key == crypto::null_skey)
+  if (!tx_key)
     return false;
   const auto j = m_additional_tx_keys.find(txid);
   if (j != m_additional_tx_keys.end())
@@ -12101,7 +12101,7 @@ bool wallet2::get_tx_key(const crypto::hash &txid, crypto::secret_key &tx_key, s
     return false;
   }
 
-  if (tx_keys[0] == crypto::null_skey)
+  if (!tx_keys[0])
   {
     return false;
   }
@@ -12436,7 +12436,7 @@ std::string wallet2::get_tx_proof(const crypto::hash &txid, const cryptonote::ac
     THROW_WALLET_EXCEPTION_IF(tx_hash != txid, error::wallet_internal_error, "Failed to get the right transaction from daemon");
 
     // determine if the address is found in the subaddress hash table (i.e. whether the proof is outbound or inbound)
-    crypto::secret_key tx_key = crypto::null_skey;
+    crypto::secret_key tx_key = crypto::secret_key::null;
     std::vector<crypto::secret_key> additional_tx_keys;
     const bool is_out = m_subaddresses.count(address.m_spend_public_key) == 0;
     if (is_out)
@@ -12504,7 +12504,7 @@ std::string wallet2::get_tx_proof(const cryptonote::transaction &tx, const crypt
   else
   {
     crypto::public_key tx_pub_key = get_tx_pub_key_from_extra(tx);
-    THROW_WALLET_EXCEPTION_IF(tx_pub_key == null_pkey, error::wallet_internal_error, "Tx pubkey was not found");
+    THROW_WALLET_EXCEPTION_IF(!tx_pub_key, error::wallet_internal_error, "Tx pubkey was not found");
 
     std::vector<crypto::public_key> additional_tx_pub_keys = get_additional_tx_pub_keys_from_extra(tx);
     const size_t num_sigs = 1 + additional_tx_pub_keys.size();
@@ -12626,7 +12626,7 @@ bool wallet2::check_tx_proof(const cryptonote::transaction &tx, const cryptonote
   }
 
   crypto::public_key tx_pub_key = get_tx_pub_key_from_extra(tx);
-  THROW_WALLET_EXCEPTION_IF(tx_pub_key == null_pkey, error::wallet_internal_error, "Tx pubkey was not found");
+  THROW_WALLET_EXCEPTION_IF(!tx_pub_key, error::wallet_internal_error, "Tx pubkey was not found");
 
   std::vector<crypto::public_key> additional_tx_pub_keys = get_additional_tx_pub_keys_from_extra(tx);
   THROW_WALLET_EXCEPTION_IF(additional_tx_pub_keys.size() + 1 != num_sigs, error::wallet_internal_error, "Signature size mismatch with additional tx pubkeys");
@@ -12741,7 +12741,7 @@ std::string wallet2::get_reserve_proof(const std::optional<std::pair<uint32_t, u
 
     // get tx pub key
     const crypto::public_key tx_pub_key = get_tx_pub_key_from_extra(td.m_tx, td.m_pk_index);
-    THROW_WALLET_EXCEPTION_IF(tx_pub_key == crypto::null_pkey, error::wallet_internal_error, "The tx public key isn't found");
+    THROW_WALLET_EXCEPTION_IF(!tx_pub_key, error::wallet_internal_error, "The tx public key isn't found");
     const std::vector<crypto::public_key> additional_tx_pub_keys = get_additional_tx_pub_keys_from_extra(td.m_tx);
 
     // determine which tx pub key was used for deriving the output key
@@ -12903,7 +12903,7 @@ bool wallet2::check_reserve_proof(const cryptonote::account_public_address &addr
     else
     {
       const crypto::public_key tx_pub_key = get_tx_pub_key_from_extra(tx);
-      THROW_WALLET_EXCEPTION_IF(tx_pub_key == crypto::null_pkey, error::wallet_internal_error, "The tx public key isn't found");
+      THROW_WALLET_EXCEPTION_IF(!tx_pub_key, error::wallet_internal_error, "The tx public key isn't found");
       ok = crypto::check_tx_proof(prefix_hash, address.m_view_public_key, tx_pub_key, std::nullopt, proof.shared_secret, proof.shared_secret_sig);
     }
 
@@ -13704,10 +13704,9 @@ uint64_t wallet2::import_key_images(const std::vector<std::pair<crypto::key_imag
       pd.m_change    = (uint64_t)-1;                        // change is unknown
       pd.m_amount_in = pd.m_amount_out = td.amount();       // fee is unknown
       pd.m_block_height                = 0;                 // spent block height is unknown
-      const crypto::hash &spent_txid   = crypto::null_hash; // spent txid is unknown
       bool stake                       = service_nodes::tx_get_staking_components(td.m_tx, nullptr /*stake*/, td.m_txid);
       pd.m_pay_type = stake ? wallet::pay_type::stake : wallet::pay_type::out;
-      m_confirmed_txs.insert(std::make_pair(spent_txid, pd));
+      m_confirmed_txs.emplace(crypto::hash::null, std::move(pd));
     }
     PERF_TIMER_STOP(import_key_images_G);
   }
@@ -13784,7 +13783,7 @@ std::tuple<size_t,crypto::hash,std::vector<crypto::hash>> wallet2::export_blockc
 {
   std::tuple<size_t, crypto::hash, std::vector<crypto::hash>> bc;
   std::get<0>(bc) = m_blockchain.offset();
-  std::get<1>(bc) = m_blockchain.empty() ? crypto::null_hash: m_blockchain.genesis();
+  std::get<1>(bc) = m_blockchain.empty() ? crypto::hash::null: m_blockchain.genesis();
   for (size_t n = m_blockchain.offset(); n < m_blockchain.size(); ++n)
   {
     std::get<2>(bc).push_back(m_blockchain[n]);

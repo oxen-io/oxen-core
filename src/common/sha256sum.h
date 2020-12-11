@@ -3,8 +3,7 @@
 #include <string>
 #include <string_view>
 #include "fs.h"
-
-namespace crypto { struct hash; }
+#include "crypto/hash_type.h"
 
 namespace tools {
 

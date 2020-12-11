@@ -4839,7 +4839,7 @@ void simple_wallet::on_money_received(uint64_t height, const crypto::hash &txid,
     parse_tx_extra(tx.extra, tx_extra_fields); // failure ok
     tx_extra_nonce extra_nonce;
     tx_extra_pub_key extra_pub_key;
-    crypto::hash8 payment_id8 = crypto::null_hash8;
+    crypto::hash8 payment_id8 = crypto::hash8::null;
     if (find_tx_extra_field_by_type(tx_extra_fields, extra_pub_key))
     {
       const crypto::public_key &tx_pub_key = extra_pub_key.pub_key;
@@ -4852,11 +4852,11 @@ void simple_wallet::on_money_received(uint64_t height, const crypto::hash &txid,
      }
     }
 
-    if (payment_id8 != crypto::null_hash8)
+    if (payment_id8)
       message_writer() <<
         tr("NOTE: this transaction uses an encrypted payment ID: consider using subaddresses instead");
 
-    crypto::hash payment_id = crypto::null_hash;
+    crypto::hash payment_id = crypto::hash::null;
     if (get_payment_id_from_tx_extra_nonce(extra_nonce.nonce, payment_id))
       message_writer(epee::console_color_red, false) <<
         tr("WARNING: this transaction uses an unencrypted payment ID: these are obsolete and ignored. Use subaddresses instead.");
@@ -7659,7 +7659,7 @@ bool simple_wallet::accept_loaded_tx(const std::function<size_t()> get_num_txes,
 
     std::vector<tx_extra_field> tx_extra_fields;
     bool has_encrypted_payment_id = false;
-    crypto::hash8 payment_id8 = crypto::null_hash8;
+    crypto::hash8 payment_id8 = crypto::hash8::null;
     if (cryptonote::parse_tx_extra(cd.extra, tx_extra_fields))
     {
       tx_extra_nonce extra_nonce;

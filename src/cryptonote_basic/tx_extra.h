@@ -111,7 +111,7 @@ struct alignas(size_t) generic_owner
   char                   padding02_[7];
 
   std::string to_string(cryptonote::network_type nettype) const;
-  explicit operator bool() const { return (type == generic_owner_sig_type::monero) ? wallet.address != cryptonote::null_address : ed25519; }
+  explicit operator bool() const { return (type == generic_owner_sig_type::monero) ? wallet.address != cryptonote::account_public_address::null : ed25519; }
   bool operator==(generic_owner const &other) const;
 
   BEGIN_SERIALIZE()
@@ -536,7 +536,7 @@ namespace cryptonote
     uint8_t                 version = 0;
     ons::mapping_type       type;
     crypto::hash            name_hash;
-    crypto::hash            prev_txid = crypto::null_hash;  // previous txid that purchased the mapping
+    crypto::hash            prev_txid = crypto::hash::null;  // previous txid that purchased the mapping
     ons::extra_field        fields;
     ons::generic_owner      owner        = {};
     ons::generic_owner      backup_owner = {};

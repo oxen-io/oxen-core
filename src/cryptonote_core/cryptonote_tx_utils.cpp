@@ -565,7 +565,7 @@ namespace cryptonote
 
   crypto::public_key get_destination_view_key_pub(const std::vector<tx_destination_entry> &destinations, const std::optional<cryptonote::tx_destination_entry>& change_addr)
   {
-    account_public_address addr = {null_pkey, null_pkey};
+    account_public_address addr = account_public_address::null;
     size_t count = 0;
     bool found_change = false;
     for (const auto &i : destinations)
@@ -580,7 +580,7 @@ namespace cryptonote
       if (i.addr == addr)
         continue;
       if (count > 0)
-        return null_pkey;
+        return public_key::null;
       addr = i.addr;
       ++count;
     }
@@ -641,13 +641,13 @@ namespace cryptonote
       tx_extra_nonce extra_nonce;
       if (find_tx_extra_field_by_type(tx_extra_fields, extra_nonce))
       {
-        crypto::hash payment_id = null_hash;
-        crypto::hash8 payment_id8 = null_hash8;
+        crypto::hash payment_id = hash::null;
+        crypto::hash8 payment_id8 = hash8::null;
         if (get_encrypted_payment_id_from_tx_extra_nonce(extra_nonce.nonce, payment_id8))
         {
           LOG_PRINT_L2("Encrypting payment id " << payment_id8);
           crypto::public_key view_key_pub = get_destination_view_key_pub(destinations, change_addr);
-          if (view_key_pub == null_pkey)
+          if (!view_key_pub)
           {
             LOG_ERROR("Destinations have to have exactly one output to support encrypted payment ids");
             return false;
@@ -685,9 +685,9 @@ namespace cryptonote
         // if we have neither long nor short payment id, add a dummy short one,
         // this should end up being the vast majority of txes as time goes on
         std::string extra_nonce;
-        crypto::hash8 payment_id8 = null_hash8;
+        crypto::hash8 payment_id8 = hash8::null;
         crypto::public_key view_key_pub = get_destination_view_key_pub(destinations, change_addr);
-        if (view_key_pub == null_pkey)
+        if (view_key_pub == public_key::null)
         {
           LOG_ERROR("Failed to get key to encrypt dummy payment id with");
         }

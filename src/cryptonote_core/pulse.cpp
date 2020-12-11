@@ -1061,7 +1061,7 @@ round_state wait_for_next_block(uint64_t hf16_height, round_context &context, cr
   }
 
   crypto::hash prev_hash = blockchain.get_block_id_by_height(chain_height - 1);
-  if (prev_hash == crypto::null_hash)
+  if (!prev_hash)
   {
     for (static uint64_t last_height = 0; last_height != chain_height; last_height = chain_height)
       MDEBUG(log_prefix(context) << "Failed to query the block hash for height " << chain_height - 1);

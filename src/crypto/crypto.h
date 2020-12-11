@@ -59,9 +59,18 @@ namespace crypto {
     char data[32];
   };
 
-  struct public_key : ec_point {};
+  struct public_key : ec_point {
+    static const public_key null;
+  };
+  inline constexpr public_key public_key::null{};
 
-  using secret_key = epee::mlocked<tools::scrubbed<ec_scalar>>;
+  struct secret_key : epee::mlocked<tools::scrubbed<ec_scalar>> {
+    static const secret_key null;
+    bool operator==(const secret_key& x) const { return crypto_verify_32(reinterpret_cast<const unsigned char*>(data), reinterpret_cast<const unsigned char*>(x.data)) == 0; }
+    bool operator!=(const secret_key& x) const { return !(*this == x); }
+    operator bool() const { return *this != null; }
+  };
+  inline const secret_key secret_key::null{};
 
   struct public_keyV {
     std::vector<public_key> keys;
@@ -79,9 +88,9 @@ namespace crypto {
     std::vector<secret_keyV> column_vectors;
   };
 
-  struct key_derivation: ec_point {};
+  struct key_derivation : ec_point {};
 
-  struct key_image: ec_point {};
+  struct key_image : ec_point {};
 
   struct signature {
     ec_scalar c, r;
@@ -94,10 +103,11 @@ namespace crypto {
   // that they agree with the actual constants from sodium.h when compiling cryptonote_core.cpp.
   struct alignas(size_t) ed25519_public_key {
     unsigned char data[32]; // 32 = crypto_sign_ed25519_PUBLICKEYBYTES
-    static constexpr ed25519_public_key null() { return {0}; }
+    static const ed25519_public_key null;
     /// Returns true if non-null
     operator bool() const { return memcmp(data, null().data, sizeof(data)); }
   };
+  inline constexpr ed25519_public_key ed25519_public_key::null{};
 
   struct alignas(size_t) ed25519_secret_key_ {
     // 64 = crypto_sign_ed25519_SECRETKEYBYTES (but we don't depend on libsodium header here)
@@ -107,17 +117,19 @@ namespace crypto {
 
   struct alignas(size_t) ed25519_signature {
     unsigned char data[64]; // 64 = crypto_sign_BYTES
-    static constexpr ed25519_signature null() { return {0}; }
+    static const ed25519_signature null;
     // Returns true if non-null, i.e. not 0.
     operator bool() const { auto z = null(); return memcmp(this, &z, sizeof(z)); }
   };
+  inline constexpr ed25519_signature ed25519_signature::null{};
 
   struct alignas(size_t) x25519_public_key {
     unsigned char data[32]; // crypto_scalarmult_curve25519_BYTES
-    static constexpr x25519_public_key null() { return {0}; }
+    static const x25519_public_key null;
     /// Returns true if non-null
     operator bool() const { return memcmp(data, null().data, sizeof(data)); }
   };
+  inline constexpr x25519_public_key x25519_public_key::null{};
 
   struct alignas(size_t) x25519_secret_key_ {
     unsigned char data[32]; // crypto_scalarmult_curve25519_BYTES
@@ -285,9 +297,6 @@ namespace crypto {
   inline std::ostream &operator <<(std::ostream &o, const crypto::public_key &v) {
     return o << '<' << tools::type_to_hex(v) << '>';
   }
-  inline std::ostream &operator <<(std::ostream &o, const crypto::secret_key &v) {
-    return o << '<' << tools::type_to_hex(v) << '>';
-  }
   inline std::ostream &operator <<(std::ostream &o, const crypto::key_derivation &v) {
     return o << '<' << tools::type_to_hex(v) << '>';
   }
@@ -303,12 +312,17 @@ namespace crypto {
   inline std::ostream &operator <<(std::ostream &o, const crypto::x25519_public_key &v) {
     return o << '<' << tools::type_to_hex(v) << '>';
   }
-  constexpr inline crypto::public_key null_pkey{};
-  const inline crypto::secret_key null_skey{};
+}
+
+namespace epee { template <> constexpr bool is_byte_spannable<crypto::secret_key> = true; }
+
+namespace crypto {
+  inline std::ostream &operator <<(std::ostream &o, const crypto::secret_key &v) {
+    return o << '<' << tools::type_to_hex(v) << '>';
+  }
 }
 
 CRYPTO_MAKE_HASHABLE(public_key)
-CRYPTO_MAKE_HASHABLE_CONSTANT_TIME(secret_key)
 CRYPTO_MAKE_HASHABLE(key_image)
 CRYPTO_MAKE_HASHABLE(signature)
 CRYPTO_MAKE_HASHABLE(ed25519_public_key)

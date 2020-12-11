@@ -402,8 +402,8 @@ void message_store::stop_auto_config()
       m_transporter.delete_transport_address(m.auto_config_transport_address);
     }
     m.auto_config_token.clear();
-    m.auto_config_public_key = crypto::null_pkey;
-    m.auto_config_secret_key = crypto::null_skey;
+    m.auto_config_public_key = crypto::public_key::null;
+    m.auto_config_secret_key = crypto::secret_key::null;
     m.auto_config_transport_address.clear();
     m.auto_config_running = false;
   }  
@@ -533,7 +533,7 @@ size_t message_store::add_message(const multisig_wallet_state &state,
     m.round = 0;
   }
   m.signature_count = 0;  // Future expansion for signature counting when signing txs
-  m.hash = crypto::null_hash;
+  m.hash = crypto::hash::null;
   m_messages.push_back(m);
 
   // Save for every new message right away (at least while in beta)

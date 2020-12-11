@@ -1083,7 +1083,7 @@ static bool validate_against_previous_mapping(ons::name_system_db &ons_db, uint6
   std::stringstream err_stream;
   OXEN_DEFER { if (reason && reason->empty()) *reason = err_stream.str(); };
 
-  crypto::hash expected_prev_txid = crypto::null_hash;
+  crypto::hash expected_prev_txid = crypto::hash::null;
   std::string name_hash           = hash_to_base64(ons_extra.name_hash);
   ons::mapping_record mapping     = ons_db.get_mapping(ons_extra.type, name_hash);
 
@@ -1237,7 +1237,7 @@ bool name_system_db::validate_ons_tx(uint8_t hf_version, uint64_t blockchain_hei
   // ONS Field(s) Validation
   // -----------------------------------------------------------------------------------------------
   {
-    if (check_condition((ons_extra.name_hash == null_name_hash || ons_extra.name_hash == crypto::null_hash), reason, tx, ", ", ons_extra_string(nettype, ons_extra), " specified the null name hash"))
+    if (check_condition((ons_extra.name_hash == null_name_hash || !ons_extra.name_hash), reason, tx, ", ", ons_extra_string(nettype, ons_extra), " specified the null name hash"))
         return false;
 
     if (ons_extra.field_is_set(ons::extra_field::encrypted_value))

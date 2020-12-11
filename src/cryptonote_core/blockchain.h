@@ -1176,7 +1176,7 @@ namespace cryptonote
 
       // NOTE: Cache Invalidation Checks
       uint64_t m_timestamps_and_difficulties_height{0};
-      crypto::hash m_difficulty_for_next_block_top_hash{crypto::null_hash};
+      crypto::hash m_difficulty_for_next_block_top_hash{crypto::hash::null};
       difficulty_type m_difficulty_for_next_miner_block{1};
     } m_cache;
 
