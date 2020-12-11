@@ -72,22 +72,6 @@ namespace crypto {
   };
   inline const secret_key secret_key::null{};
 
-  struct public_keyV {
-    std::vector<public_key> keys;
-    int rows;
-  };
-
-  struct secret_keyV {
-    std::vector<secret_key> keys;
-    int rows;
-  };
-
-  struct public_keyM {
-    int cols;
-    int rows;
-    std::vector<secret_keyV> column_vectors;
-  };
-
   struct key_derivation : ec_point {};
 
   struct key_image : ec_point {};
