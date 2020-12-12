@@ -1652,7 +1652,7 @@ namespace cryptonote
       m_lmq->request(
         std::to_string(x_pkey),
         "quorum.timestamp",
-        [&, pubkey](bool success, std::vector<std::string> data) {
+        [this, pubkey](bool success, std::vector<std::string> data) {
           if(success && data.size() == 1){ 
             uint64_t received_seconds;
             if (tools::parse_int(data[0],received_seconds) && received_seconds <= 65535) {

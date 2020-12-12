@@ -101,6 +101,7 @@ namespace service_nodes
       checkpoint_participation = proof.checkpoint_participation;
       pulse_participation      = proof.pulse_participation;
 
+      // TODO: remove after HF17
       if (proof.version >= MIN_TIMESTAMP_VERSION){
         timestamp_participation  = proof.timestamp_participation;
         timesync_status          = proof.timesync_status;
