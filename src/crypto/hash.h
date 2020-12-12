@@ -35,7 +35,6 @@
 #include <type_traits>
 
 #include "hash_type.h"
-#include "generic-ops.h"
 #include "common/hex.h"
 #include "crypto/cn_heavy_hash.hpp"
 
