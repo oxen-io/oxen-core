@@ -61,6 +61,14 @@ namespace crypto {
     return h;
   }
 
+  inline void cn_fast_hash(std::string_view data, hash& hash) {
+      return cn_fast_hash(data.data(), data.size(), hash);
+  }
+
+  inline hash cn_fast_hash(std::string_view data) {
+      return cn_fast_hash(data.data(), data.size());
+  }
+
   enum struct cn_slow_hash_type
   {
 #ifdef ENABLE_MONERO_SLOW_HASH
@@ -126,8 +134,11 @@ namespace crypto {
     }
   }
 
-  inline void tree_hash(const hash *hashes, std::size_t count, hash &root_hash) {
-    tree_hash(reinterpret_cast<const char (*)[HASH_SIZE]>(hashes), count, reinterpret_cast<char *>(&root_hash));
+  inline hash tree_hash(const std::vector<hash>& hashes) {
+    assert(!hashes.empty());
+    hash root_hash;
+    tree_hash(reinterpret_cast<const char* const*>(hashes.data()), hashes.size(), root_hash.data);
+    return root_hash;
   }
 
   inline std::ostream &operator <<(std::ostream &o, const crypto::hash &v) {

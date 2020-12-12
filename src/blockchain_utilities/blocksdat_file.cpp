@@ -104,8 +104,7 @@ void BlocksdatFile::write_block(const crypto::hash& block_hash)
   m_hashes.push_back(block_hash);
   while (m_hashes.size() >= HASH_OF_HASHES_STEP)
   {
-    crypto::hash hash;
-    crypto::cn_fast_hash(m_hashes.data(), HASH_OF_HASHES_STEP * sizeof(crypto::hash), hash);
+    auto hash = crypto::cn_fast_hash(m_hashes.data(), HASH_OF_HASHES_STEP * sizeof(crypto::hash));
     memmove(m_hashes.data(), m_hashes.data() + HASH_OF_HASHES_STEP, (m_hashes.size() - HASH_OF_HASHES_STEP) * sizeof(crypto::hash));
     m_hashes.resize(m_hashes.size() - HASH_OF_HASHES_STEP);
     const std::string data(hash.data, sizeof(hash));

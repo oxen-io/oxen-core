@@ -154,7 +154,7 @@ int main(int argc, char *argv[]) {
       {
         if ((len & 31) != 0)
           throw std::ios_base::failure("Invalid input length for tree_hash");
-        tree_hash((const char (*)[crypto::HASH_SIZE]) buf, len >> 5, actual_byte_ptr);
+        tree_hash(reinterpret_cast<const char *const *>(buf), len >> 5, actual_byte_ptr);
       }
       break;
 

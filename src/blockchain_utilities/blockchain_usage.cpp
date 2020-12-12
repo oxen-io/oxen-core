@@ -58,8 +58,7 @@ namespace std
     size_t operator()(const output_data &od) const
     {
       const uint64_t data[2] = {od.amount, od.index};
-      crypto::hash h;
-      crypto::cn_fast_hash(data, 2 * sizeof(uint64_t), h);
+      auto h = crypto::cn_fast_hash(data, 2 * sizeof(uint64_t));
       return reinterpret_cast<const std::size_t &>(h);
     }
   };

@@ -1047,11 +1047,6 @@ namespace cryptonote
     return true;
   }
   //---------------------------------------------------------------
-  void get_blob_hash(const std::string_view blob, crypto::hash& res)
-  {
-    cn_fast_hash(blob.data(), blob.size(), res);
-  }
-  //---------------------------------------------------------------
   std::string get_unit(unsigned int decimal_point)
   {
     if (decimal_point == (unsigned int)-1)
@@ -1170,13 +1165,6 @@ namespace cryptonote
     return valid;
   }
   //---------------------------------------------------------------
-  crypto::hash get_blob_hash(const std::string_view blob)
-  {
-    crypto::hash h;
-    get_blob_hash(blob, h);
-    return h;
-  }
-  //---------------------------------------------------------------
   crypto::hash get_transaction_hash(const transaction& t)
   {
     crypto::hash h = hash::null;
@@ -1198,7 +1186,7 @@ namespace cryptonote
     if (blob && unprunable_size)
     {
       CHECK_AND_ASSERT_MES(unprunable_size <= blob->size(), false, "Inconsistent transaction unprunable and blob sizes");
-      cryptonote::get_blob_hash(std::string_view{*blob}.substr(unprunable_size), res);
+      cn_fast_hash(std::string_view{*blob}.substr(unprunable_size), res);
     }
     else
     {
@@ -1213,7 +1201,7 @@ namespace cryptonote
         LOG_ERROR("Failed to serialize rct signatures (prunable): " << e.what());
         return false;
       }
-      cryptonote::get_blob_hash(ba.str(), res);
+      cn_fast_hash(ba.str(), res);
     }
     return true;
   }
@@ -1245,7 +1233,7 @@ namespace cryptonote
       const size_t inputs = t.vin.size();
       const size_t outputs = t.vout.size();
       tt.rct_signatures.serialize_rctsig_base(ba, inputs, outputs); // throws on error (good)
-      cryptonote::get_blob_hash(ba.str(), hashes[1]);
+      cn_fast_hash(ba.str(), hashes[1]);
     }
 
     // prunable rct
@@ -1288,7 +1276,7 @@ namespace cryptonote
       // base rct
       CHECK_AND_ASSERT_MES(prefix_size <= unprunable_size && unprunable_size <= blob.size(), false,
               "Inconsistent transaction prefix (" << prefix_size << "), unprunable (" << unprunable_size << ") and blob (" << blob.size() << ") sizes in: " << __func__);
-      cryptonote::get_blob_hash(std::string_view{blob}.substr(prefix_size, unprunable_size - prefix_size), hashes[1]);
+      cn_fast_hash(std::string_view{blob}.substr(prefix_size, unprunable_size - prefix_size), hashes[1]);
     }
     else
     {
@@ -1300,7 +1288,7 @@ namespace cryptonote
         LOG_ERROR("Failed to serialize rct signatures base: " << e.what());
         return false;
       }
-      cryptonote::get_blob_hash(ba.str(), hashes[1]);
+      cn_fast_hash(ba.str(), hashes[1]);
     }
 
     // prunable rct
@@ -1509,18 +1497,6 @@ namespace cryptonote
     return t_serializable_object_to_blob(tx, b_blob);
   }
   //---------------------------------------------------------------
-  void get_tx_tree_hash(const std::vector<crypto::hash>& tx_hashes, crypto::hash& h)
-  {
-    tree_hash(tx_hashes.data(), tx_hashes.size(), h);
-  }
-  //---------------------------------------------------------------
-  crypto::hash get_tx_tree_hash(const std::vector<crypto::hash>& tx_hashes)
-  {
-    crypto::hash h = hash::null;
-    get_tx_tree_hash(tx_hashes, h);
-    return h;
-  }
-  //---------------------------------------------------------------
   crypto::hash get_tx_tree_hash(const block& b)
   {
     std::vector<crypto::hash> txs_ids;
@@ -1531,7 +1507,7 @@ namespace cryptonote
     txs_ids.push_back(h);
     for(auto& th: b.tx_hashes)
       txs_ids.push_back(th);
-    return get_tx_tree_hash(txs_ids);
+    return tree_hash(txs_ids);
   }
   //---------------------------------------------------------------
   void get_hash_stats(uint64_t &tx_hashes_calculated, uint64_t &tx_hashes_cached, uint64_t &block_hashes_calculated, uint64_t & block_hashes_cached)

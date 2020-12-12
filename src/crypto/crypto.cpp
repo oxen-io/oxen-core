@@ -154,7 +154,8 @@ namespace crypto {
   }
 
   void hash_to_scalar(const void *data, size_t length, ec_scalar &res) {
-    cn_fast_hash(data, length, reinterpret_cast<hash &>(res));
+    auto h = cn_fast_hash(data, length);
+    std::copy(std::begin(h.data), std::end(h.data), std::begin(res.data));
     sc_reduce32(&res);
   }
 
@@ -498,10 +499,9 @@ namespace crypto {
   }
 
   static void hash_to_ec(const public_key &key, ge_p3 &res) {
-    hash h;
     ge_p2 point;
     ge_p1p1 point2;
-    cn_fast_hash(&key, sizeof(public_key), h);
+    auto h = cn_fast_hash(&key, sizeof(public_key));
     ge_fromfe_frombytes_vartime(&point, reinterpret_cast<const unsigned char *>(&h));
     ge_mul8(&point2, &point);
     ge_p1p1_to_p3(&res, &point2);

@@ -176,8 +176,6 @@ namespace cryptonote
   uint64_t get_tx_miner_fee(const transaction& tx, bool burning_enabled);
   bool generate_key_image_helper(const account_keys& ack, const std::unordered_map<crypto::public_key, subaddress_index>& subaddresses, const crypto::public_key& out_key, const crypto::public_key& tx_public_key, const std::vector<crypto::public_key>& additional_tx_public_keys, size_t real_output_index, keypair& in_ephemeral, crypto::key_image& ki, hw::device &hwdev);
   bool generate_key_image_helper_precomp(const account_keys& ack, const crypto::public_key& out_key, const crypto::key_derivation& recv_derivation, size_t real_output_index, const subaddress_index& received_index, keypair& in_ephemeral, crypto::key_image& ki, hw::device &hwdev);
-  void get_blob_hash(const std::string_view blob, crypto::hash& res);
-  crypto::hash get_blob_hash(const std::string_view blob);
   std::string short_hash_str(const crypto::hash& h);
 
   bool get_registration_hash(const std::vector<cryptonote::account_public_address>& addresses, uint64_t operator_portions, const std::vector<uint64_t>& portions, uint64_t expiration_timestamp, crypto::hash& hash);
@@ -262,7 +260,7 @@ namespace cryptonote
   template <typename T>
   bool get_object_hash(const T& o, crypto::hash& res)
   {
-    get_blob_hash(t_serializable_object_to_blob(o), res);
+    cn_fast_hash(t_serializable_object_to_blob(o), res);
     return true;
   }
   //---------------------------------------------------------------
@@ -279,7 +277,7 @@ namespace cryptonote
     if (!t_serializable_object_to_blob(o, bl))
       return false;
     blob_size = bl.size();
-    get_blob_hash(bl, res);
+    cn_fast_hash(bl, res);
     return true;
   }
   //---------------------------------------------------------------
@@ -301,8 +299,6 @@ namespace cryptonote
   bool block_to_blob(const block& b, blobdata& b_blob);
   blobdata tx_to_blob(const transaction& b);
   bool tx_to_blob(const transaction& b, blobdata& b_blob);
-  void get_tx_tree_hash(const std::vector<crypto::hash>& tx_hashes, crypto::hash& h);
-  crypto::hash get_tx_tree_hash(const std::vector<crypto::hash>& tx_hashes);
   crypto::hash get_tx_tree_hash(const block& b);
   void get_hash_stats(uint64_t &tx_hashes_calculated, uint64_t &tx_hashes_cached, uint64_t &block_hashes_calculated, uint64_t & block_hashes_cached);
 

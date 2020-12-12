@@ -578,7 +578,7 @@ namespace cryptonote
           LOG_ERROR_CCONTEXT
           (
             "NOTIFY_NEW_FLUFFY_BLOCK -> request/response mismatch, " 
-            << "block = " << tools::type_to_hex(get_blob_hash(arg.b.block))
+            << "block = " << tools::type_to_hex(crypto::cn_fast_hash(arg.b.block))
             << ", requested = " << context.m_requested_objects.size() 
             << ", received = " << new_block.tx_hashes.size()
             << ", dropping connection"
@@ -1272,7 +1272,7 @@ namespace cryptonote
       auto req_it = context.m_requested_objects.find(block_hash);
       if(req_it == context.m_requested_objects.end())
       {
-        LOG_ERROR_CCONTEXT("sent wrong NOTIFY_RESPONSE_GET_BLOCKS: block with id=" << tools::type_to_hex(get_blob_hash(block_entry.block))
+        LOG_ERROR_CCONTEXT("sent wrong NOTIFY_RESPONSE_GET_BLOCKS: block with id=" << tools::type_to_hex(crypto::cn_fast_hash(block_entry.block))
           << " wasn't requested, dropping connection");
         drop_connection(context, false, false);
         ++m_sync_bad_spans_downloaded;
@@ -1280,7 +1280,7 @@ namespace cryptonote
       }
       if(b.tx_hashes.size() != block_entry.txs.size())
       {
-        LOG_ERROR_CCONTEXT("sent wrong NOTIFY_RESPONSE_GET_BLOCKS: block with id=" << tools::type_to_hex(get_blob_hash(block_entry.block))
+        LOG_ERROR_CCONTEXT("sent wrong NOTIFY_RESPONSE_GET_BLOCKS: block with id=" << tools::type_to_hex(crypto::cn_fast_hash(block_entry.block))
           << ", tx_hashes.size()=" << b.tx_hashes.size() << " mismatch with block_complete_entry.m_txs.size()=" << block_entry.txs.size() << ", dropping connection");
         drop_connection(context, false, false);
         ++m_sync_bad_spans_downloaded;

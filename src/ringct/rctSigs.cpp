@@ -409,7 +409,6 @@ namespace rct {
       keyV hashes;
       hashes.reserve(3);
       hashes.push_back(rv.message);
-      crypto::hash h;
 
       CHECK_AND_ASSERT_THROW_MES(!rv.mixRing.empty(), "Empty mixRing");
       const size_t inputs = is_rct_simple(rv.type) ? rv.mixRing.size() : rv.mixRing[0].size();
@@ -421,8 +420,7 @@ namespace rct {
         const_cast<rctSig&>(rv).serialize_rctsig_base(ba, inputs, outputs);
         blob = ba.str();
       }
-      cryptonote::get_blob_hash(blob, h);
-      hashes.push_back(hash2rct(h));
+      hashes.push_back(hash2rct(crypto::cn_fast_hash(blob)));
 
       keyV kv;
       if (rct::is_rct_bulletproof(rv.type))
