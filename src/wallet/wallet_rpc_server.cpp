@@ -992,10 +992,15 @@ namespace tools
     {
       if (get_tx_key)
       {
-        epee::wipeable_string s = epee::to_hex::wipeable_string(ptx.tx_key);
-        for (const crypto::secret_key& additional_tx_key : ptx.additional_tx_keys)
-          s += epee::to_hex::wipeable_string(additional_tx_key);
-        fill(tx_key, std::string(s.data(), s.size()));
+        const size_t hex_size = 2*sizeof(ptx.tx_key.data)*(1 + ptx.additional_tx_keys.size());
+        std::string s;
+        s.reserve(hex_size);
+        auto ins = std::back_inserter(s);
+        lokimq::to_hex(std::begin(ptx.tx_key.data), std::end(ptx.tx_key.data), ins);
+        for (const auto& key : ptx.additional_tx_keys)
+          lokimq::to_hex(std::begin(key.data), std::end(key.data), ins);
+        assert(s.size() == hex_size);
+        fill(tx_key, std::move(s));
       }
       // Compute amount leaving wallet in tx. By convention dests does not include change outputs
       fill(amount, total_amount(ptx));
@@ -1286,7 +1291,7 @@ namespace tools
 
         desc.fee = desc.amount_in - desc.amount_out;
         desc.unlock_time = cd.unlock_time;
-        desc.extra = epee::to_hex::string({cd.extra.data(), cd.extra.size()});
+        desc.extra = lokimq::to_hex(cd.extra.begin(), cd.extra.end());
       }
     }
     catch (const wallet_rpc_error& e)
@@ -1712,15 +1717,13 @@ namespace tools
       }
       else if(req.key_type.compare("view_key") == 0)
       {
-          epee::wipeable_string key = epee::to_hex::wipeable_string(m_wallet->get_account().get_keys().m_view_secret_key);
-          res.key = std::string(key.data(), key.size());
+          res.key = tools::view_guts(m_wallet->get_account().get_keys().m_view_secret_key);
       }
       else if(req.key_type.compare("spend_key") == 0)
       {
           if (m_wallet->watch_only())
             throw wallet_rpc_error{error_code::WATCH_ONLY, "The wallet is watch-only. Cannot retrieve spend key."};
-          epee::wipeable_string key = epee::to_hex::wipeable_string(m_wallet->get_account().get_keys().m_spend_secret_key);
-          res.key = std::string(key.data(), key.size());
+          res.key = tools::view_guts(m_wallet->get_account().get_keys().m_spend_secret_key);
       }
       else
         throw wallet_rpc_error{error_code::UNKNOWN_ERROR, "key_type " + req.key_type + " not found"};
@@ -1848,11 +1851,14 @@ namespace tools
     if (!m_wallet->get_tx_key(txid, tx_key, additional_tx_keys))
       throw wallet_rpc_error{error_code::NO_TXKEY, "No tx secret key is stored for this tx"};
 
-    epee::wipeable_string s;
-    s += epee::to_hex::wipeable_string(tx_key);
-    for (size_t i = 0; i < additional_tx_keys.size(); ++i)
-      s += epee::to_hex::wipeable_string(additional_tx_keys[i]);
-    res.tx_key = std::string(s.data(), s.size());
+    res.tx_key.clear();
+    const size_t hex_size = 2*sizeof(tx_key.data)*(1 + additional_tx_keys.size());
+    res.tx_key.reserve(hex_size);
+    auto ins = std::back_inserter(res.tx_key);
+    lokimq::to_hex(std::begin(tx_key.data), std::end(tx_key.data), ins);
+    for (const auto& key : additional_tx_keys)
+      lokimq::to_hex(std::begin(key.data), std::end(key.data), ins);
+    assert(ins.size() == hex_size);
     return res;
   }
   //------------------------------------------------------------------------------------------------------------------------------
