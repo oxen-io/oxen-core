@@ -1112,9 +1112,9 @@ namespace tools
     if(m_wallet->watch_only())
       throw wallet_rpc_error{error_code::WATCH_ONLY, "command not supported by watch-only wallet"};
 
-    cryptonote::blobdata blob;
-    if (!epee::string_tools::parse_hexstr_to_binbuff(req.unsigned_txset, blob))
+    if (!lokimq::is_hex(req.unsigned_txset))
       throw wallet_rpc_error{error_code::BAD_HEX, "Failed to parse hex."};
+    auto blob = lokimq::from_hex(req.unsigned_txset);
 
     wallet::unsigned_tx_set exported_txs;
     if(!m_wallet->parse_unsigned_tx_from_str(blob, exported_txs))
@@ -1167,9 +1167,9 @@ namespace tools
     if (!req.unsigned_txset.empty()) {
       try {
         wallet::unsigned_tx_set exported_txs;
-        cryptonote::blobdata blob;
-        if (!epee::string_tools::parse_hexstr_to_binbuff(req.unsigned_txset, blob))
+        if (!lokimq::is_hex(req.unsigned_txset))
           throw wallet_rpc_error{error_code::BAD_HEX, "Failed to parse hex."};
+        auto blob = lokimq::from_hex(req.unsigned_txset);
         if (!m_wallet->parse_unsigned_tx_from_str(blob, exported_txs))
           throw wallet_rpc_error{error_code::BAD_UNSIGNED_TX_DATA, "cannot load unsigned_txset"};
         tx_constructions = exported_txs.txes;
@@ -1180,9 +1180,9 @@ namespace tools
     } else if (!req.multisig_txset.empty()) {
       try {
         wallet::multisig_tx_set exported_txs;
-        cryptonote::blobdata blob;
-        if (!epee::string_tools::parse_hexstr_to_binbuff(req.multisig_txset, blob))
+        if (!lokimq::is_hex(req.multisig_txset))
           throw wallet_rpc_error{error_code::BAD_HEX, "Failed to parse hex."};
+        auto blob = lokimq::from_hex(req.multisig_txset);
         if (!m_wallet->parse_multisig_tx_from_str(blob, exported_txs))
           throw wallet_rpc_error{error_code::BAD_MULTISIG_TX_DATA, "cannot load multisig_txset"};
 
@@ -1313,9 +1313,9 @@ namespace tools
     if (m_wallet->key_on_device())
       throw wallet_rpc_error{error_code::UNKNOWN_ERROR, "command not supported by HW wallet"};
 
-    cryptonote::blobdata blob;
-    if (!epee::string_tools::parse_hexstr_to_binbuff(req.tx_data_hex, blob))
+    if (!lokimq::is_hex(req.tx_data_hex))
       throw wallet_rpc_error{error_code::BAD_HEX, "Failed to parse hex."};
+    auto blob = lokimq::from_hex(req.tx_data_hex);
 
     std::vector<wallet::pending_tx> ptx_vector;
     if (!m_wallet->parse_tx_from_str(blob, ptx_vector, nullptr))
@@ -1434,9 +1434,9 @@ namespace tools
     require_open();
     RELAY_TX::response res{};
 
-    cryptonote::blobdata blob;
-    if (!epee::string_tools::parse_hexstr_to_binbuff(req.hex, blob))
+    if (!lokimq::is_hex(req.hex))
       throw wallet_rpc_error{error_code::BAD_HEX, "Failed to parse hex."};
+    auto blob = lokimq::from_hex(req.hex);
 
     wallet::pending_tx ptx;
     try
@@ -1531,25 +1531,12 @@ namespace tools
     require_open();
     GET_PAYMENTS::response res{};
     crypto::hash payment_id;
-    crypto::hash8 payment_id8;
-    cryptonote::blobdata payment_id_blob;
-    if(!epee::string_tools::parse_hexstr_to_binbuff(req.payment_id, payment_id_blob))
-      throw wallet_rpc_error{error_code::WRONG_PAYMENT_ID, "Payment ID has invalid format"};
-
-    {
-      if(sizeof(payment_id) == payment_id_blob.size())
-      {
-        payment_id = *reinterpret_cast<const crypto::hash*>(payment_id_blob.data());
-      }
-      else if(sizeof(payment_id8) == payment_id_blob.size())
-      {
-        payment_id8 = *reinterpret_cast<const crypto::hash8*>(payment_id_blob.data());
-        memcpy(payment_id.data, payment_id8.data, 8);
-        memset(payment_id.data + 8, 0, 24);
-      }
-      else
-        throw wallet_rpc_error{error_code::WRONG_PAYMENT_ID, "Payment ID has invalid size: " + req.payment_id};
+    if (crypto::hash8 payment_id8; tools::hex_to_type(req.payment_id, payment_id8)) {
+      memcpy(payment_id.data, payment_id8.data, 8);
+      memset(payment_id.data + 8, 0, 24);
     }
+    else if (!tools::hex_to_type(req.payment_id, payment_id))
+      throw wallet_rpc_error{error_code::WRONG_PAYMENT_ID, "Payment ID has invalid format: " + req.payment_id};
 
     std::list<wallet2::payment_details> payment_list;
     m_wallet->get_payments(payment_id, payment_list);
@@ -1775,22 +1762,14 @@ namespace tools
       throw wallet_rpc_error{error_code::UNKNOWN_ERROR, "Different amount of txids and notes"};
 
     std::list<crypto::hash> txids;
-    std::list<std::string>::const_iterator i = req.txids.begin();
-    while (i != req.txids.end())
-    {
-      cryptonote::blobdata txid_blob;
-      if(!epee::string_tools::parse_hexstr_to_binbuff(*i++, txid_blob) || txid_blob.size() != sizeof(crypto::hash))
+    for (const auto& txid_hex : req.txids)
+      if (!tools::hex_to_type(txid_hex, txids.emplace_back()))
         throw wallet_rpc_error{error_code::WRONG_TXID, "TX ID has invalid format"};
 
-      crypto::hash txid = *reinterpret_cast<const crypto::hash*>(txid_blob.data());
-      txids.push_back(txid);
-    }
-
-    std::list<crypto::hash>::const_iterator il = txids.begin();
-    std::list<std::string>::const_iterator in = req.notes.begin();
-    while (il != txids.end())
-    {
-      m_wallet->set_tx_note(*il++, *in++);
+    while (!txids.empty()) {
+      m_wallet->set_tx_note(std::move(txids.front()), std::move(req.notes.front()));
+      txids.pop_front();
+      req.notes.pop_front();
     }
 
     return {};
@@ -1801,23 +1780,13 @@ namespace tools
     require_open();
     GET_TX_NOTES::response res{};
 
-    std::list<crypto::hash> txids;
-    std::list<std::string>::const_iterator i = req.txids.begin();
-    while (i != req.txids.end())
-    {
-      cryptonote::blobdata txid_blob;
-      if(!epee::string_tools::parse_hexstr_to_binbuff(*i++, txid_blob) || txid_blob.size() != sizeof(crypto::hash))
+    for (const auto& txid_hex : req.txids) {
+      if (crypto::hash txid; tools::hex_to_type(txid_hex, txid))
+        res.notes.push_back(m_wallet->get_tx_note(txid));
+      else
         throw wallet_rpc_error{error_code::WRONG_TXID, "TX ID has invalid format"};
-
-      crypto::hash txid = *reinterpret_cast<const crypto::hash*>(txid_blob.data());
-      txids.push_back(txid);
     }
 
-    std::list<crypto::hash>::const_iterator il = txids.begin();
-    while (il != txids.end())
-    {
-      res.notes.push_back(m_wallet->get_tx_note(*il++));
-    }
     return res;
   }
   //------------------------------------------------------------------------------------------------------------------------------
@@ -2078,16 +2047,8 @@ namespace tools
     GET_TRANSFER_BY_TXID::response res{};
 
     crypto::hash txid;
-    cryptonote::blobdata txid_blob;
-    if(!epee::string_tools::parse_hexstr_to_binbuff(req.txid, txid_blob))
+    if (!tools::hex_to_type(req.txid, txid))
       throw wallet_rpc_error{error_code::WRONG_TXID, "Transaction ID has invalid format"};
-
-    if(sizeof(txid) == txid_blob.size())
-    {
-      txid = *reinterpret_cast<const crypto::hash*>(txid_blob.data());
-    }
-    else
-      throw wallet_rpc_error{error_code::WRONG_TXID, "Transaction ID has invalid size: " + req.txid};
 
     if (req.account_index >= m_wallet->get_num_subaddress_accounts())
       throw wallet_rpc_error{error_code::ACCOUNT_INDEX_OUT_OF_BOUNDS, "Account index is out of bound"};
@@ -2185,9 +2146,9 @@ namespace tools
     if (m_wallet->key_on_device())
       throw wallet_rpc_error{error_code::UNKNOWN_ERROR, "command not supported by HW wallet"};
 
-    cryptonote::blobdata blob;
-    if (!epee::string_tools::parse_hexstr_to_binbuff(req.outputs_data_hex, blob))
+    if (!lokimq::is_hex(req.outputs_data_hex))
       throw wallet_rpc_error{error_code::BAD_HEX, "Failed to parse hex."};
+    auto blob = lokimq::from_hex(req.outputs_data_hex);
 
     res.num_imported = m_wallet->import_outputs_from_str(blob);
 
@@ -2767,10 +2728,12 @@ namespace {
       throw wallet_rpc_error{error_code::THRESHOLD_NOT_REACHED, "Needs multisig export info from more participants"};
 
     std::vector<cryptonote::blobdata> info;
-    info.resize(req.info.size());
-    for (size_t n = 0; n < info.size(); ++n)
+    info.reserve(req.info.size());
+    for (auto& info_hex : req.info)
     {
-      if (!epee::string_tools::parse_hexstr_to_binbuff(req.info[n], info[n]))
+      if (lokimq::is_hex(info_hex))
+        info.push_back(lokimq::from_hex(info_hex));
+      else
         throw wallet_rpc_error{error_code::BAD_HEX, "Failed to parse hex."};
     }
 
@@ -2845,9 +2808,9 @@ namespace {
     if (!ready)
       throw wallet_rpc_error{error_code::NOT_MULTISIG, "This wallet is multisig, but not yet finalized"};
 
-    cryptonote::blobdata blob;
-    if (!epee::string_tools::parse_hexstr_to_binbuff(req.tx_data_hex, blob))
+    if (!lokimq::is_hex(req.tx_data_hex))
       throw wallet_rpc_error{error_code::BAD_HEX, "Failed to parse hex."};
+    auto blob = lokimq::from_hex(req.tx_data_hex);
 
     wallet::multisig_tx_set txs;
     bool r = m_wallet->load_multisig_tx(blob, txs, nullptr);
@@ -2887,9 +2850,9 @@ namespace {
     if (!ready)
       throw wallet_rpc_error{error_code::NOT_MULTISIG, "This wallet is multisig, but not yet finalized"};
 
-    cryptonote::blobdata blob;
-    if (!epee::string_tools::parse_hexstr_to_binbuff(req.tx_data_hex, blob))
+    if (!lokimq::is_hex(req.tx_data_hex))
       throw wallet_rpc_error{error_code::BAD_HEX, "Failed to parse hex."};
+    auto blob = lokimq::from_hex(req.tx_data_hex);
 
     tools::wallet2::multisig_tx_set txs;
     bool r = m_wallet->load_multisig_tx(blob, txs, nullptr);

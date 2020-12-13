@@ -67,8 +67,8 @@ namespace epee
     std::string_view view() const noexcept { return std::string_view{data(), size()}; }
     void split(std::vector<wipeable_string> &fields) const;
     std::optional<wipeable_string> parse_hexstr() const;
-    template<typename T> inline bool hex_to_pod(T &pod) const;
-    template<typename T> inline bool hex_to_pod(tools::scrubbed<T> &pod) const { return hex_to_pod(pod); }
+    template<typename T> bool hex_to_pod(T &pod) const;
+    template<typename T> bool hex_to_pod(tools::scrubbed<T> &pod) const { return hex_to_pod(pod); }
     void resize(size_t sz);
     void reserve(size_t sz);
     void clear();
@@ -84,7 +84,7 @@ namespace epee
     std::vector<char> buffer;
   };
 
-  template<typename T> inline bool wipeable_string::hex_to_pod(T &pod) const
+  template<typename T> bool wipeable_string::hex_to_pod(T &pod) const
   {
     static_assert(std::is_pod<T>::value, "expected pod type");
     if (size() != sizeof(T) * 2)

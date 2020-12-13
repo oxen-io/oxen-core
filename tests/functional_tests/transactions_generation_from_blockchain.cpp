@@ -35,7 +35,6 @@ using namespace cryptonote;
 /*
 bool transactions_generation_from_blockchain(std::string& blockchain_folder_path)
 {
-  string_tools::parse_hexstr_to_binbuff()
   tx_memory_pool pool;
   blockchain_storage bchs(pool);
   bool r = bchs.init(blockchain_folder_path);

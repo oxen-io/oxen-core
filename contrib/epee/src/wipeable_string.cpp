@@ -34,21 +34,10 @@
 #include <utility>
 #include <vector>
 #include <cstring>
+#include <lokimq/hex.h>
 #include "epee/memwipe.h"
 #include "epee/misc_log_ex.h"
 #include "epee/wipeable_string.h"
-
-static constexpr const char hex[] = u8"0123456789abcdef";
-
-namespace
-{
-  int atolower(int c)
-  {
-    if (c >= 'A' && c <= 'Z')
-      c |= 32;
-    return c;
-  }
-}
 
 namespace epee
 {
@@ -207,24 +196,12 @@ void wipeable_string::split(std::vector<wipeable_string> &fields) const
 
 std::optional<epee::wipeable_string> wipeable_string::parse_hexstr() const
 {
-  if (size() % 2 != 0)
+  auto hex = view();
+  if (!lokimq::is_hex(hex))
     return std::nullopt;
-  std::optional<epee::wipeable_string> res = epee::wipeable_string("");
-  const size_t len = size();
-  const char *d = data();
-  res->grow(0, len / 2);
-  for (size_t i = 0; i < len; i += 2)
-  {
-    char c = atolower(d[i]);
-    const char *ptr0 = strchr(hex, c);
-    if (!ptr0)
-      return std::nullopt;
-    c = atolower(d[i+1]);
-    const char *ptr1 = strchr(hex, c);
-    if (!ptr1)
-      return std::nullopt;
-    res->push_back(((ptr0-hex)<<4) | (ptr1-hex));
-  }
+  auto res = std::make_optional<epee::wipeable_string>();
+  res->resize(hex.size() / 2);
+  lokimq::from_hex(hex.begin(), hex.end(), res->data());
   return res;
 }
 

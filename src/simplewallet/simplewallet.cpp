@@ -122,7 +122,7 @@ using sw = cryptonote::simple_wallet;
 
 #define SCOPED_WALLET_UNLOCK() SCOPED_WALLET_UNLOCK_ON_BAD_PASSWORD(return true;)
 
-#define PRINT_USAGE(usage_help) fail_msg_writer() << boost::format(tr("usage: %s")) % usage_help;
+#define PRINT_USAGE(usage_help) fail_msg_writer() << boost::format(tr("usage: %s")) % usage_help
 
 namespace
 {
@@ -623,7 +623,7 @@ namespace
 
   void print_secret_key(const crypto::secret_key &k)
   {
-    std::string_view data{k.data, sizeof(k.data)};
+    std::string_view data = tools::view_guts(k.data);
     std::ostream_iterator<char> osi{std::cout};
     oxenmq::to_hex(data.begin(), data.end(), osi);
   }
@@ -6330,7 +6330,6 @@ bool simple_wallet::query_locked_stakes(bool print_result)
           if (!print_result)
             continue;
 
-          msg_buf.reserve(512);
           if (only_once)
           {
             only_once = false;
@@ -6379,26 +6378,22 @@ bool simple_wallet::query_locked_stakes(bool print_result)
     }
 
     bool once_only = true;
-    cryptonote::blobdata binary_buf;
-    binary_buf.reserve(sizeof(crypto::key_image));
-    for (size_t i = 0; i < response.size(); ++i)
+    crypto::key_image ki;
+    for (const auto& entry : response)
     {
-      rpc::GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES::entry const &entry = response[i];
-      binary_buf.clear();
-      if(!epee::string_tools::parse_hexstr_to_binbuff(entry.key_image, binary_buf) || binary_buf.size() != sizeof(crypto::key_image))
+      if (!tools::hex_to_type(entry.key_image, ki))
       {
         fail_msg_writer() << tr("Failed to parse hex representation of key image: ") << entry.key_image;
         continue;
       }
 
-      if (!m_wallet->contains_key_image(*reinterpret_cast<const crypto::key_image*>(binary_buf.data())))
+      if (!m_wallet->contains_key_image(ki))
         continue;
 
       has_locked_stakes = true;
       if (!print_result)
         continue;
 
-      msg_buf.reserve(512);
       if (once_only)
       {
         msg_buf.append("Blacklisted Stakes\n");
@@ -6417,21 +6412,16 @@ bool simple_wallet::query_locked_stakes(bool print_result)
         msg_buf.append("\n");
       }
 
-      if (i < (response.size() - 1))
-        msg_buf.append("\n");
+      msg_buf.append("\n");
     }
   }
 
   if (print_result)
   {
-    if (has_locked_stakes)
-    {
-      tools::msg_writer() << msg_buf;
-    }
-    else
-    {
-      tools::msg_writer() << "No locked stakes known for this wallet on the network";
-    }
+    if (!msg_buf.empty() && msg_buf.back() == '\n')
+      msg_buf.resize(msg_buf.size()-1);
+
+    tools::msg_writer() << (has_locked_stakes ? msg_buf : "No locked stakes known for this wallet on the network"s);
   }
 
   return has_locked_stakes;
@@ -9498,27 +9488,11 @@ bool simple_wallet::address_book(const std::vector<std::string> &args/* = std::v
 bool simple_wallet::set_tx_note(const std::vector<std::string> &args)
 {
   if (args.size() == 0)
-  {
     PRINT_USAGE(USAGE_SET_TX_NOTE);
-    return true;
-  }
-
-  cryptonote::blobdata txid_data;
-  if(!epee::string_tools::parse_hexstr_to_binbuff(args.front(), txid_data) || txid_data.size() != sizeof(crypto::hash))
-  {
+  else if (crypto::hash txid; tools::hex_to_type(args.front(), txid))
+    m_wallet->set_tx_note(txid, tools::join(" ", args.begin() + 1, args.end()));
+  else
     fail_msg_writer() << tr("failed to parse txid");
-    return true;
-  }
-  crypto::hash txid = *reinterpret_cast<const crypto::hash*>(txid_data.data());
-
-  std::string note = "";
-  for (size_t n = 1; n < args.size(); ++n)
-  {
-    if (n > 1)
-      note += " ";
-    note += args[n];
-  }
-  m_wallet->set_tx_note(txid, note);
 
   return true;
 }
@@ -9526,24 +9500,13 @@ bool simple_wallet::set_tx_note(const std::vector<std::string> &args)
 bool simple_wallet::get_tx_note(const std::vector<std::string> &args)
 {
   if (args.size() != 1)
-  {
     PRINT_USAGE(USAGE_GET_TX_NOTE);
-    return true;
-  }
-
-  cryptonote::blobdata txid_data;
-  if(!epee::string_tools::parse_hexstr_to_binbuff(args.front(), txid_data) || txid_data.size() != sizeof(crypto::hash))
-  {
+  else if (crypto::hash txid; !tools::hex_to_type(args.front(), txid))
     fail_msg_writer() << tr("failed to parse txid");
-    return true;
-  }
-  crypto::hash txid = *reinterpret_cast<const crypto::hash*>(txid_data.data());
-
-  std::string note = m_wallet->get_tx_note(txid);
-  if (note.empty())
-    success_msg_writer() << "no note found";
-  else
+  else if (std::string note = m_wallet->get_tx_note(txid); !note.empty())
     success_msg_writer() << "note found: " << note;
+  else
+    success_msg_writer() << "no note found";
 
   return true;
 }
@@ -9552,14 +9515,7 @@ bool simple_wallet::set_description(const std::vector<std::string> &args)
 {
   // 0 arguments allowed, for setting the description to empty string
 
-  std::string description = "";
-  for (size_t n = 0; n < args.size(); ++n)
-  {
-    if (n > 0)
-      description += " ";
-    description += args[n];
-  }
-  m_wallet->set_description(description);
+  m_wallet->set_description(tools::join(" ", args));
 
   return true;
 }
@@ -9567,13 +9523,8 @@ bool simple_wallet::set_description(const std::vector<std::string> &args)
 bool simple_wallet::get_description(const std::vector<std::string> &args)
 {
   if (args.size() != 0)
-  {
     PRINT_USAGE(USAGE_GET_DESCRIPTION);
-    return true;
-  }
-
-  std::string description = m_wallet->get_description();
-  if (description.empty())
+  else if (std::string description = m_wallet->get_description(); description.empty())
     success_msg_writer() << tr("no description found");
   else
     success_msg_writer() << tr("description found: ") << description;
@@ -10017,13 +9968,12 @@ bool simple_wallet::show_transfer(const std::vector<std::string> &args)
     return true;
   }
 
-  cryptonote::blobdata txid_data;
-  if(!epee::string_tools::parse_hexstr_to_binbuff(args.front(), txid_data) || txid_data.size() != sizeof(crypto::hash))
+  crypto::hash txid;
+  if (!tools::hex_to_type(args.front(), txid))
   {
     fail_msg_writer() << tr("failed to parse txid");
     return true;
   }
-  crypto::hash txid = *reinterpret_cast<const crypto::hash*>(txid_data.data());
 
   const uint64_t last_block_height = m_wallet->get_blockchain_current_height();
 

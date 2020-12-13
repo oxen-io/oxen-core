@@ -852,12 +852,21 @@ void setup_shim(hw::wallet_shim * shim, tools::wallet2 * wallet)
 
 bool get_pruned_tx(const rpc::GET_TRANSACTIONS::entry &entry, cryptonote::transaction &tx, crypto::hash &tx_hash)
 {
-  cryptonote::blobdata bd;
-
   // easy case if we have the whole tx
   if (entry.as_hex || (entry.prunable_as_hex && entry.pruned_as_hex))
   {
-    CHECK_AND_ASSERT_MES(epee::string_tools::parse_hexstr_to_binbuff(entry.as_hex ? *entry.as_hex : *entry.pruned_as_hex + *entry.prunable_as_hex, bd), false, "Failed to parse tx data");
+    std::string_view hex;
+    std::string bd;
+    if (entry.as_hex)
+      hex = *entry.as_hex;
+    else if (entry.prunable_as_hex->empty())
+      hex = *entry.pruned_as_hex;
+    else {
+      bd = *entry.pruned_as_hex + *entry.prunable_as_hex;
+      hex = bd;
+    }
+    CHECK_AND_ASSERT_MES(lokimq::is_hex(hex), false, "Failed to parse tx data");
+    bd = lokimq::from_hex(hex);
     CHECK_AND_ASSERT_MES(cryptonote::parse_and_validate_tx_from_blob(bd, tx), false, "Invalid tx data");
     tx_hash = cryptonote::get_transaction_hash(tx);
     // if the hash was given, check it matches
@@ -870,18 +879,15 @@ bool get_pruned_tx(const rpc::GET_TRANSACTIONS::entry &entry, cryptonote::transa
   {
     crypto::hash ph;
     CHECK_AND_ASSERT_MES(tools::hex_to_type(*entry.prunable_hash, ph), false, "Failed to parse prunable hash");
-    CHECK_AND_ASSERT_MES(epee::string_tools::parse_hexstr_to_binbuff(*entry.pruned_as_hex, bd), false, "Failed to parse pruned data");
+    CHECK_AND_ASSERT_MES(lokimq::is_hex(*entry.pruned_as_hex), false, "Failed to parse pruned data");
+    auto bd = lokimq::from_hex(*entry.pruned_as_hex);
     CHECK_AND_ASSERT_MES(parse_and_validate_tx_base_from_blob(bd, tx), false, "Invalid base tx data");
     // only v2 txes can calculate their txid after pruned
-    if (bd[0] > 1)
-    {
+    if (bd[0] >= 2)
       tx_hash = cryptonote::get_pruned_transaction_hash(tx, ph);
-    }
     else
-    {
       // for v1, we trust the dameon
       CHECK_AND_ASSERT_MES(tools::hex_to_type(entry.tx_hash, tx_hash), false, "Failed to parse tx hash");
-    }
     return true;
   }
   return false;
@@ -1353,7 +1359,8 @@ bool wallet2::get_multisig_seed(epee::wipeable_string& seed, const epee::wipeabl
 
   if (raw)
   {
-    seed = epee::to_hex::wipeable_string({(const unsigned char*)data.data(), data.size()});
+    seed.resize(data.size()*2);
+    lokimq::to_hex(data.data(), data.data() + data.size(), seed.data());
   }
   else
   {
@@ -12075,19 +12082,21 @@ bool wallet2::get_tx_key(const crypto::hash &txid, crypto::secret_key &tx_key, s
   {
     auto res = request_transaction(txid);
 
-    cryptonote::transaction tx;
-    crypto::hash tx_hash{};
-    cryptonote::blobdata tx_data;
-    crypto::hash tx_prefix_hash{};
     const auto& res_tx = res.txs.front();
-    bool valid_hex = string_tools::parse_hexstr_to_binbuff(*res_tx.pruned_as_hex + (res_tx.prunable_as_hex ? *res_tx.prunable_as_hex : ""s), tx_data);
-    THROW_WALLET_EXCEPTION_IF(!valid_hex, error::wallet_internal_error, "Failed to parse transaction from daemon");
+    std::string tx_data = *res_tx.pruned_as_hex;
+    if (res_tx.prunable_as_hex) tx_data += *res_tx.prunable_as_hex;
+    if (!lokimq::is_hex(tx_data))
+      THROW_WALLET_EXCEPTION(error::wallet_internal_error, "Failed to parse transaction from daemon");
+    tx_data = lokimq::from_hex(tx_data);
+
+    cryptonote::transaction tx;
+    crypto::hash tx_hash, tx_prefix_hash;
     THROW_WALLET_EXCEPTION_IF(!cryptonote::parse_and_validate_tx_from_blob(tx_data, tx, tx_hash, tx_prefix_hash),
                               error::wallet_internal_error, "Failed to validate transaction from daemon");
     THROW_WALLET_EXCEPTION_IF(tx_hash != txid, error::wallet_internal_error,
                               "Failed to get the right transaction from daemon");
 
-    tx_key_data.tx_prefix_hash = std::string(tx_prefix_hash.data, 32);
+    tx_key_data.tx_prefix_hash = tools::view_guts(tx_prefix_hash.data);
   }
 
   std::vector<crypto::secret_key> tx_keys;

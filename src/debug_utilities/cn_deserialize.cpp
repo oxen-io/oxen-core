@@ -170,10 +170,9 @@ int main(int argc, char* argv[])
 
   mlog_configure("", true);
 
-  cryptonote::blobdata blob;
-  if (epee::string_tools::parse_hexstr_to_binbuff(input, blob))
+  if (lokimq::is_hex(input))
   {
-    bool full;
+    auto blob = lokimq::from_hex(input);
     cryptonote::block block;
     cryptonote::transaction tx;
     std::vector<cryptonote::tx_extra_field> fields;
@@ -203,7 +202,8 @@ int main(int argc, char* argv[])
         std::cout << "No fields were found in tx_extra" << std::endl;
       }
     }
-    else if (((full = cryptonote::parse_tx_extra(std::vector<uint8_t>(blob.begin(), blob.end()), fields)) || true) && !fields.empty())
+    else if (bool full = cryptonote::parse_tx_extra(std::vector<uint8_t>(blob.begin(), blob.end()), fields);
+            !fields.empty())
     {
       std::cout << "Parsed" << (full ? "" : " partial") << " tx_extra:" << std::endl;
       print_extra_fields(fields);
