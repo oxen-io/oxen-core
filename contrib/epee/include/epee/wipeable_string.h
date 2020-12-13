@@ -32,8 +32,8 @@
 #include <cstddef>
 #include <vector>
 #include <string>
+#include <string_view>
 #include "memwipe.h"
-#include "fnv1.h"
 
 namespace epee
 {
@@ -99,13 +99,10 @@ namespace epee
   }
 }
 
-namespace std
-{
-  template<> struct hash<epee::wipeable_string>
-  {
-    size_t operator()(const epee::wipeable_string &s) const
-    {
-      return epee::fnv::FNV1a(s.data(), s.size());
+namespace std {
+  template<> struct hash<epee::wipeable_string> {
+    size_t operator()(const epee::wipeable_string &s) const {
+      return hash<std::string_view>{}(s.view());
     }
   };
 }
