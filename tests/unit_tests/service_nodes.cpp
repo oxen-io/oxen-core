@@ -64,7 +64,7 @@ TEST(service_nodes, staking_requirement)
     uint64_t height = 209250;
     int64_t mainnet_requirement  = (int64_t)service_nodes::get_staking_requirement(cryptonote::MAINNET, height, cryptonote::network_version_10_bulletproofs);
 
-    int64_t  mainnet_expected = (int64_t)((29643 * COIN) + 670390000);
+    int64_t  mainnet_expected = 29643'670390000;
     int64_t  mainnet_delta    = std::abs(mainnet_requirement - mainnet_expected);
     ASSERT_LT(mainnet_delta, atomic_epsilon);
   }
@@ -75,7 +75,7 @@ TEST(service_nodes, staking_requirement)
     uint64_t height = 235987;
     int64_t  mainnet_requirement  = (int64_t)service_nodes::get_staking_requirement(cryptonote::MAINNET, height, cryptonote::network_version_11_infinite_staking);
 
-    int64_t  mainnet_expected = (int64_t)((27164 * COIN) + 648610000);
+    int64_t  mainnet_expected = 27164'648610000;
     int64_t  mainnet_delta    = std::abs(mainnet_requirement - mainnet_expected);
     ASSERT_LT(mainnet_delta, atomic_epsilon);
   }
@@ -85,7 +85,7 @@ TEST(service_nodes, staking_requirement)
     uint64_t height = 373200;
     int64_t  mainnet_requirement  = (int64_t)service_nodes::get_staking_requirement(cryptonote::MAINNET, height, cryptonote::network_version_11_infinite_staking);
 
-    int64_t  mainnet_expected = (int64_t)((20839 * COIN) + 644149350);
+    int64_t  mainnet_expected = 20839'644149350;
     ASSERT_EQ(mainnet_requirement, mainnet_expected);
   }
 
@@ -94,23 +94,32 @@ TEST(service_nodes, staking_requirement)
     uint64_t height = 450000;
     uint64_t mainnet_requirement  = service_nodes::get_staking_requirement(cryptonote::MAINNET, height, cryptonote::network_version_13_enforce_checkpoints);
 
-    uint64_t  mainnet_expected = (18898 * COIN) + 351896001;
+    uint64_t  mainnet_expected = 18898'351896001;
     ASSERT_EQ(mainnet_requirement, mainnet_expected);
   }
 
-  // Just before 15k boundary
+  // Just before drop to 15k
   {
-    uint64_t height = 999999;
-    uint64_t mainnet_requirement  = service_nodes::get_staking_requirement(cryptonote::MAINNET, height, cryptonote::network_version_13_enforce_checkpoints);
+    uint64_t height = 641110;
+    uint64_t mainnet_requirement  = service_nodes::get_staking_requirement(cryptonote::MAINNET, height, cryptonote::network_version_15_lns);
 
-    uint64_t mainnet_expected = (15000 * COIN) + 3122689;
+    uint64_t mainnet_expected = 16396'730529714;
     ASSERT_EQ(mainnet_requirement, mainnet_expected);
   }
 
-  // 15k requirement boundary
+  // 15k requirement begins
   {
-    uint64_t height = 1000000;
-    uint64_t mainnet_requirement  = service_nodes::get_staking_requirement(cryptonote::MAINNET, height, cryptonote::network_version_13_enforce_checkpoints);
+    uint64_t height = 641111;
+    uint64_t mainnet_requirement = service_nodes::get_staking_requirement(cryptonote::MAINNET, height, cryptonote::network_version_16_pulse);
+
+    uint64_t mainnet_expected = 15000 * COIN;
+    ASSERT_EQ(mainnet_requirement, mainnet_expected);
+  }
+
+  // into the Future
+  {
+    uint64_t height = 800'000;
+    uint64_t mainnet_requirement = service_nodes::get_staking_requirement(cryptonote::MAINNET, height, cryptonote::network_version_16_pulse);
 
     uint64_t mainnet_expected = 15000 * COIN;
     ASSERT_EQ(mainnet_requirement, mainnet_expected);
