@@ -1578,7 +1578,7 @@ round_state send_and_wait_for_random_value(round_context &context, service_nodes
 #endif
 
           MDEBUG(log_prefix(context) << "Final random value seeding with V[" << index << "] " << string.view());
-          crypto_generichash_update(&state, random_value->data, sizeof(random_value->data));
+          crypto_generichash_update(&state, reinterpret_cast<const unsigned char*>(random_value->data), sizeof(random_value->data));
         }
       }
 

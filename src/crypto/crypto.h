@@ -50,10 +50,17 @@ namespace crypto {
 #include "random.h"
   }
 
+  // Some 0s for us to compare things against.
+  inline constexpr std::byte zero32[32] = {};
+
   struct alignas(size_t) ec_point {
-    char data[32];
+    std::byte data[32];
     // Returns true if non-null, i.e. not 0.
-    explicit operator bool() const { static constexpr char null[32] = {0}; return memcmp(data, null, sizeof(data)); }
+    explicit operator bool() const { return memcmp(data, zero32, sizeof(data)); }
+
+    // Implicit unsigned char* conversion operators for easily passing into libsodium functions.
+    operator unsigned char*() { return reinterpret_cast<unsigned char*>(data); }
+    operator const unsigned char*() const { return reinterpret_cast<const unsigned char*>(data); }
   };
 
   template <typename T1, typename T2> using is_same_point_type = std::enable_if_t<std::is_base_of_v<ec_point, T1> && std::is_same_v<T1, T2> && sizeof(T1) == sizeof(ec_point)>;
@@ -68,7 +75,11 @@ namespace crypto {
   bool operator<(const T1& a, const T2& b) { return memcmp(a.data, b.data, sizeof(ec_point)) < 0; }
 
   struct alignas(size_t) ec_scalar {
-    char data[32];
+    std::byte data[32];
+
+    // Implicit unsigned char* conversion operators for easily passing into libsodium functions.
+    operator unsigned char*() { return reinterpret_cast<unsigned char*>(data); }
+    operator const unsigned char*() const { return reinterpret_cast<const unsigned char*>(data); }
   };
 
   struct public_key : ec_point {
@@ -78,7 +89,9 @@ namespace crypto {
 
   struct secret_key : epee::mlocked<tools::scrubbed<ec_scalar>> {
     static const secret_key null;
-    bool operator==(const secret_key& x) const { return crypto_verify_32(reinterpret_cast<const unsigned char*>(data), reinterpret_cast<const unsigned char*>(x.data)) == 0; }
+
+    // constant-time == comparison
+    bool operator==(const secret_key& x) const { return crypto_verify_32(*this, x) == 0; }
     bool operator!=(const secret_key& x) const { return !(*this == x); }
     explicit operator bool() const { return *this != null; }
   };
@@ -96,51 +109,71 @@ namespace crypto {
 
     static const signature null;
 
-    // Returns true if non-null, i.e. not 0.
     bool operator==(const signature& x) const { return !memcmp(this, &x, sizeof(*this)); }
     bool operator!=(const signature& x) const { return !(*this == x); }
-    explicit operator bool() const { return *this != null; }
+
+    // Returns true if non-null, i.e. not 0.
+    explicit operator bool() const { return *this == null; }
   };
   inline constexpr signature signature::null{};
 
   // The sizes below are all provided by sodium.h, but we don't want to depend on it here; we check
   // that they agree with the actual constants from sodium.h when compiling cryptonote_core.cpp.
   struct alignas(size_t) ed25519_public_key {
-    unsigned char data[32]; // 32 = crypto_sign_ed25519_PUBLICKEYBYTES
+    std::byte data[32]; // 32 = crypto_sign_ed25519_PUBLICKEYBYTES
+
     static const ed25519_public_key null;
-    /// Returns true if non-null
+
     bool operator==(const ed25519_public_key& x) const { return !memcmp(this, &x, sizeof(*this)); }
     bool operator!=(const ed25519_public_key& x) const { return !(*this == x); }
-    explicit operator bool() const { return memcmp(data, null.data, sizeof(*this)); }
+
+    /// Returns true if non-null
+    explicit operator bool() const { return *this != null; }
+
+    // Implicit conversion to unsigned char* for easier passing into libsodium functions
+    operator unsigned char*() { return reinterpret_cast<unsigned char*>(data); }
+    operator const unsigned char*() const { return reinterpret_cast<const unsigned char*>(data); }
   };
   inline constexpr ed25519_public_key ed25519_public_key::null{};
 
   struct alignas(size_t) ed25519_secret_key_ {
     // 64 = crypto_sign_ed25519_SECRETKEYBYTES (but we don't depend on libsodium header here)
-    unsigned char data[64];
+    std::byte data[64];
+    // Implicit conversion to unsigned char* for easier passing into libsodium functions
+    operator unsigned char*() { return reinterpret_cast<unsigned char*>(data); }
+    operator const unsigned char*() const { return reinterpret_cast<const unsigned char*>(data); }
   };
   using ed25519_secret_key = epee::mlocked<tools::scrubbed<ed25519_secret_key_>>;
 
   struct alignas(size_t) ed25519_signature {
-    unsigned char data[64]; // 64 = crypto_sign_BYTES
+    std::byte data[64]; // 64 = crypto_sign_BYTES
     static const ed25519_signature null;
     // Returns true if non-null, i.e. not 0.
     explicit operator bool() const { return memcmp(this, &null, sizeof(null)); }
+    // Implicit conversion to unsigned char* for easier passing into libsodium functions
+    operator unsigned char*() { return reinterpret_cast<unsigned char*>(data); }
+    operator const unsigned char*() const { return reinterpret_cast<const unsigned char*>(data); }
   };
   inline constexpr ed25519_signature ed25519_signature::null{};
 
   struct alignas(size_t) x25519_public_key {
-    unsigned char data[32]; // crypto_scalarmult_curve25519_BYTES
+    std::byte data[32]; // crypto_scalarmult_curve25519_BYTES
     static const x25519_public_key null;
     /// Returns true if non-null
     bool operator==(const x25519_public_key& x) const { return !memcmp(this, &x, sizeof(*this)); }
     bool operator!=(const x25519_public_key& x) const { return !(*this == x); }
     explicit operator bool() const { return memcmp(data, null.data, sizeof(null)); }
+    // Implicit conversion to unsigned char* for easier passing into libsodium functions
+    operator unsigned char*() { return reinterpret_cast<unsigned char*>(data); }
+    operator const unsigned char*() const { return reinterpret_cast<const unsigned char*>(data); }
   };
   inline constexpr x25519_public_key x25519_public_key::null{};
 
   struct alignas(size_t) x25519_secret_key_ {
-    unsigned char data[32]; // crypto_scalarmult_curve25519_BYTES
+    std::byte data[32]; // crypto_scalarmult_curve25519_BYTES
+    // Implicit conversion to unsigned char* for easier passing into libsodium functions
+    operator unsigned char*() { return reinterpret_cast<unsigned char*>(data); }
+    operator const unsigned char*() const { return reinterpret_cast<const unsigned char*>(data); }
   };
   using x25519_secret_key = epee::mlocked<tools::scrubbed<x25519_secret_key_>>;
 

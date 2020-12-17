@@ -135,18 +135,20 @@ struct generic_signature
   union
   {
     crypto::ed25519_signature ed25519;
-    crypto::signature         monero;
-    unsigned char             data[sizeof(crypto::ed25519_signature)];
+    crypto::signature monero;
+    std::byte data[sizeof(crypto::ed25519_signature)];
   };
-  static constexpr generic_signature null() { return {}; }
-  explicit operator bool() const { return memcmp(data, null().data, sizeof(data)); }
+  static const generic_signature null;
+  explicit operator bool() const { return memcmp(data, null.data, sizeof(data)); }
   bool operator==(generic_signature const &other) const { return other.type == type && memcmp(data, other.data, sizeof(data)) == 0; }
+  bool operator!=(generic_signature const& other) const { return !(*this == other); }
 
   BEGIN_SERIALIZE()
     ENUM_FIELD(type, type < generic_owner_sig_type::_count)
     FIELD(ed25519);
   END_SERIALIZE()
 };
+constexpr generic_signature generic_signature::null{};
 
 static_assert(sizeof(crypto::ed25519_signature) == sizeof(crypto::signature), "ONS allows storing either ed25519 or monero style signatures, we store all signatures into crypto::signature in ONS");
 inline std::ostream &operator<<(std::ostream &o, const generic_signature &v) {
@@ -499,13 +501,15 @@ namespace cryptonote
     crypto::signature signature;
     uint32_t          nonce; // TODO: remove this nonce value if we ever have to make other changes to this structure
 
+    using b = std::byte;
     // The value we sign when signing an unlock request.  For backwards compatibility we send this as a
     // "nonce" (although it isn't and never was a nonce), which is required to be an unsigned 32-bit
     // value.  We could just as easily sign with crypto::null_hash, but using a distinct value makes it
     // slightly less likely that we could end up using the same message as some other signing process.
     static constexpr crypto::hash HASH{
-      'U','N','L','K','U','N','L','K','U','N','L','K','U','N','L','K',
-      'U','N','L','K','U','N','L','K','U','N','L','K','U','N','L','K'};
+      b{'U'},b{'N'},b{'L'},b{'K'},b{'U'},b{'N'},b{'L'},b{'K'},b{'U'},b{'N'},b{'L'},b{'K'},b{'U'},b{'N'},b{'L'},b{'K'},
+      b{'U'},b{'N'},b{'L'},b{'K'},b{'U'},b{'N'},b{'L'},b{'K'},b{'U'},b{'N'},b{'L'},b{'K'},b{'U'},b{'N'},b{'L'},b{'K'}};
+
     // For now, we still have to send that (not a) "nonce" value in the unlock tx on the wire, but
     // future HF versions could remove it from the wire (though at 4 bytes it isn't worth doing
     // until we also need to make some other change to unlocks here).  So for now, we always send

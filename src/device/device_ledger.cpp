@@ -717,7 +717,7 @@ namespace hw {
         send_bytes(&index, sizeof(index), offset);
 
         //payment ID
-        send_bytes(payment_id ? payment_id->data : crypto::null_hash8.data, 8, offset);
+        send_bytes(payment_id ? payment_id->data : crypto::hash8::null.data, 8, offset);
 
         CHECK_AND_ASSERT_THROW_MES(finish_and_exchange(offset, true) == SW_OK, "Timeout/Error on display address.");
     }
@@ -751,7 +751,7 @@ namespace hw {
         //pub
         send_bytes(pub.data, 32, offset);
         //derivation
-        send_secret(derivation.data, offset);
+        send_secret(derivation, offset);
         //index
         send_u32(output_index, offset);
 
@@ -864,7 +864,7 @@ namespace hw {
 
         int offset = set_command_header_noopt(INS_GET_SUBADDRESS_SECRET_KEY);
         //sec
-        send_secret(sec.data, offset);
+        send_secret(sec, offset);
         //index
         static_assert(sizeof(cryptonote::subaddress_index) == 8);
         send_bytes(&index, sizeof(index), offset);
@@ -872,7 +872,7 @@ namespace hw {
         finish_and_exchange(offset);
 
         offset = 0;
-        receive_secret(sub_sec.data,  offset);
+        receive_secret(sub_sec,  offset);
 
 #ifdef DEBUG_HWDEVICE
         crypto::secret_key            sub_sec_clear =   hw::ledger::decrypt(sub_sec);
@@ -892,7 +892,7 @@ namespace hw {
 
         offset = set_command_header_noopt(INS_VERIFY_KEY);
         //sec
-        send_secret(secret_key.data, offset);
+        send_secret(secret_key, offset);
         //pub
         send_bytes(public_key.data, 32, offset);
 
@@ -920,7 +920,7 @@ namespace hw {
         //pub
         send_bytes(P.bytes, 32, offset);
         //sec
-        send_secret(a.bytes, offset);
+        send_secret(a, offset);
 
         finish_and_exchange(offset);
 
@@ -947,7 +947,7 @@ namespace hw {
 
         int offset = set_command_header_noopt(INS_SECRET_SCAL_MUL_BASE);
         //sec
-        send_secret(a.bytes, offset);
+        send_secret(a, offset);
 
         finish_and_exchange(offset);
 
@@ -978,15 +978,15 @@ namespace hw {
 
         offset = set_command_header_noopt(INS_SECRET_KEY_ADD);
         //sec key
-        send_secret(a.data, offset);
+        send_secret(a, offset);
         //sec key
-        send_secret(b.data, offset);
+        send_secret(b, offset);
 
         finish_and_exchange(offset);
 
         //sec key
         offset = 0;
-        receive_secret(r.data, offset);
+        receive_secret(r, offset);
 
 #ifdef DEBUG_HWDEVICE
         crypto::secret_key r_clear = hw::ledger::decrypt(r);
@@ -1017,8 +1017,8 @@ namespace hw {
 
         offset = 0;
         //pub key
-        receive_bytes(pub.data, 32, offset);
-        receive_secret(sec.data, offset);
+        receive_bytes(pub, 32, offset);
+        receive_secret(sec, offset);
 
 #ifdef DEBUG_HWDEVICE
         crypto::secret_key sec_clear = hw::ledger::decrypt(sec);
@@ -1059,13 +1059,13 @@ namespace hw {
         //pub
         send_bytes(pub.data, 32, offset);
          //sec
-        send_secret(sec.data, offset);
+        send_secret(sec, offset);
 
         finish_and_exchange(offset);
 
         offset = 0;
         //derivation data
-        receive_secret(derivation.data, offset);
+        receive_secret(derivation, offset);
 
         r = true;
       }
@@ -1110,7 +1110,7 @@ namespace hw {
 
         int offset = set_command_header_noopt(INS_DERIVATION_TO_SCALAR);
         //derivation
-        send_secret(derivation.data, offset);
+        send_secret(derivation, offset);
 
         //index
         send_u32(output_index, offset);
@@ -1119,7 +1119,7 @@ namespace hw {
 
         //derivation data
         offset = 0;
-        receive_secret(res.data, offset);
+        receive_secret(res, offset);
 
 #ifdef DEBUG_HWDEVICE
         crypto::ec_scalar res_clear  = hw::ledger::decrypt(res);
@@ -1145,17 +1145,17 @@ namespace hw {
 
         int offset = set_command_header_noopt(INS_DERIVE_SECRET_KEY);
         //derivation
-        send_secret(derivation.data, offset);
+        send_secret(derivation, offset);
         //index
         send_u32(output_index, offset);
         //sec
-        send_secret(sec.data, offset);
+        send_secret(sec, offset);
 
         finish_and_exchange(offset);
 
         offset = 0;
         //sec key
-        receive_secret(derived_sec.data, offset);
+        receive_secret(derived_sec, offset);
 
 #ifdef DEBUG_HWDEVICE
         crypto::secret_key derived_sec_clear = hw::ledger::decrypt(derived_sec);
@@ -1180,7 +1180,7 @@ namespace hw {
 
         int offset = set_command_header_noopt(INS_DERIVE_PUBLIC_KEY);
         //derivation
-        send_secret(derivation.data, offset);
+        send_secret(derivation, offset);
         //index
         send_u32(output_index, offset);
         //pub
@@ -1214,7 +1214,7 @@ namespace hw {
 
         int offset = set_command_header_noopt(INS_SECRET_KEY_TO_PUBLIC_KEY);
         //sec key
-        send_secret(sec.data, offset);
+        send_secret(sec, offset);
 
         finish_and_exchange(offset);
 
@@ -1244,7 +1244,7 @@ namespace hw {
         //pub
         send_bytes(pub.data, 32, offset);
         //sec
-        send_secret(sec.data, offset);
+        send_secret(sec, offset);
 
         finish_and_exchange(offset);
 
@@ -1264,7 +1264,7 @@ namespace hw {
         int offset = set_command_header_noopt(INS_GEN_KEY_IMAGE_SIGNATURE);
         send_bytes(image.data, 32, offset);
         send_bytes(pub.data, 32, offset);
-        send_secret(sec.data, offset);
+        send_secret(sec, offset);
 
         finish_and_exchange(offset);
 
@@ -1300,7 +1300,7 @@ namespace hw {
         // If we got permission then we can ask for the actual signature:
         offset = set_command_header_noopt(INS_GEN_UNLOCK_SIGNATURE, 1);
         send_bytes(pub.data, 32, offset);
-        send_secret(sec.data, offset);
+        send_secret(sec, offset);
         finish_and_exchange(offset);
 
         receive_bytes(reinterpret_cast<char*>(&sig), 64);
@@ -1369,9 +1369,9 @@ namespace hw {
       send_bytes(prefix_hash.data, 32, offset);                     // prefix_hash
       send_bytes(R.data, 32, offset);                               // R
       send_bytes(A.data, 32, offset);                               // A
-      send_bytes(B ? B->data : crypto::null_pkey.data, 32, offset); // B
+      send_bytes(B ? B->data : crypto::public_key::null.data, 32, offset); // B
       send_bytes(D.data, 32, offset);                               // D
-      send_secret(r.data, offset);                                  // r
+      send_secret(r, offset);                                       // r
 
       finish_and_exchange(offset);
 
@@ -1406,7 +1406,7 @@ namespace hw {
         //skip R, receive: r, r_hmac, fake_a, a_hmac, fake_b, hmac_b
         unsigned char tmp[32];
         offset = 32;
-        receive_secret(tx_key.data, offset);
+        receive_secret(tx_key, offset);
         receive_secret(tmp, offset);
         receive_secret(tmp, offset);
 
@@ -1506,7 +1506,7 @@ namespace hw {
 
         int offset = set_command_header_noopt(INS_ENCRYPT_PAYMENT_ID);
         send_bytes(public_key.data, 32, offset); // pub
-        send_secret(secret_key.data, offset); //sec
+        send_secret(secret_key, offset); //sec
         send_bytes(payment_id.data, 8, offset); //id
 
         finish_and_exchange(offset);
@@ -1591,7 +1591,7 @@ namespace hw {
 
       int offset = set_command_header_noopt(INS_GEN_TXOUT_KEYS);
       send_u32(tx_version, offset); //tx_version
-      send_secret(tx_key.data, offset); //tx_key
+      send_secret(tx_key, offset); //tx_key
       send_bytes(txkey_pub.data, 32, offset); //txkey_pub
       send_bytes(dst_entr.addr.m_view_public_key.data, 32, offset); //Aout
       send_bytes(dst_entr.addr.m_spend_public_key.data, 32, offset); //Bout
@@ -1601,7 +1601,7 @@ namespace hw {
       buffer_send[offset++] = need_additional_txkeys; //need_additional_key
       //additional_tx_key
       if (need_additional_txkeys)
-        send_secret(additional_txkey.sec.data, offset);
+        send_secret(additional_txkey.sec, offset);
 
       finish_and_exchange(offset);
 
@@ -1612,7 +1612,7 @@ namespace hw {
       {
         CHECK_AND_ASSERT_THROW_MES(recv_len>=32, "Not enough data from device");
         crypto::secret_key scalar1;
-        receive_secret(scalar1.data, offset);
+        receive_secret(scalar1, offset);
         amount_keys.push_back(rct::sk2rct(scalar1));
         recv_len -= 32;
       }
@@ -1661,7 +1661,7 @@ namespace hw {
         rct::key mask;
         int offset = set_command_header_noopt(INS_GEN_COMMITMENT_MASK);
         // AKout
-        send_secret(AKout.bytes, offset);
+        send_secret(AKout, offset);
 
         finish_and_exchange(offset);
 
@@ -1685,7 +1685,7 @@ namespace hw {
 
         int offset = set_command_header(INS_BLIND);
         buffer_send[offset++] = short_amount ? 0x02 : 0x00; //options
-        send_secret(AKout.bytes, offset); // AKout
+        send_secret(AKout, offset); // AKout
         send_bytes(unmasked.mask.bytes, 32, offset); //mask k
         send_bytes(unmasked.amount.bytes, 32, offset); //value v
 
@@ -1717,7 +1717,7 @@ namespace hw {
 
         int offset = set_command_header(INS_UNBLIND);
         buffer_send[offset++] = short_amount ? 0x02 : 0x00; //options
-        send_secret(AKout.bytes, offset); // AKout
+        send_secret(AKout, offset); // AKout
         send_bytes(masked.mask.bytes, 32, offset); //mask k
         send_bytes(masked.amount.bytes, 32, offset); //value v
 
@@ -1789,13 +1789,13 @@ namespace hw {
           buffer_send[offset++] = outKeys.is_change_address; //is_change_address
           send_bytes(outKeys.Aout.bytes, 32, offset); //Aout
           send_bytes(outKeys.Bout.bytes, 32, offset); //Bout
-          send_secret(outKeys.AKout.bytes, offset); //AKout
+          send_secret(outKeys.AKout, offset); //AKout
           send_bytes(&data[C_offset], 32, offset); //C
           C_offset += 32;
-          send_bytes(crypto::null_hash.data, 32, offset); // k
+          send_bytes(crypto::hash::null.data, 32, offset); // k
           send_bytes(&data[kv_offset], 8, offset); // v
           kv_offset += 8;
-          send_bytes(crypto::null_hash.data, 24, offset); // v padding
+          send_bytes(crypto::hash::null.data, 24, offset); // v padding
 
           // check transaction user input
           CHECK_AND_ASSERT_THROW_MES(finish_and_exchange(offset, true) == SW_OK, "Transaction denied on device.");
@@ -1849,14 +1849,14 @@ namespace hw {
         rct::scalarmultKey(D,H,z); // D = z*H
         */
         int offset = set_command_header_noopt(INS_CLSAG, 1);
-        send_secret(p.bytes, offset); //p
+        send_secret(p, offset); //p
         send_bytes(z.bytes, 32, offset); //z
         send_bytes(H.bytes, 32, offset); //H
 
         finish_and_exchange(offset);
 
         offset = 0;
-        receive_secret(a.bytes, offset); //a
+        receive_secret(a, offset); //a
         receive_bytes(aG.bytes, 32, offset); //aG
         receive_bytes(aH.bytes, 32, offset); //aH
         receive_bytes(I.bytes, 32, offset); //I = pH
@@ -1911,8 +1911,8 @@ namespace hw {
 
         int offset = set_command_header_noopt(INS_CLSAG, 3);
 
-        send_secret(a.bytes, offset); //a
-        send_secret(p.bytes, offset); //p
+        send_secret(a, offset); //a
+        send_secret(p, offset); //p
         send_bytes(z.bytes, 32, offset); //z
         send_bytes(mu_P.bytes, 32, offset); //mu_P
         send_bytes(mu_C.bytes, 32, offset); //mu_C

@@ -176,7 +176,7 @@ namespace cryptonote
           CHECK_AND_ASSERT_MES(n_amounts == rv.outPk.size(), false, "Internal error filling out V");
           rv.p.bulletproofs[0].V.resize(n_amounts);
           for (size_t i = 0; i < n_amounts; ++i)
-            rv.p.bulletproofs[0].V[i] = rct::scalarmultKey(rv.outPk[i].mask, rct::INV_EIGHT);
+            rv.p.bulletproofs[0].V[i] = rct::scalarmultKey(rv.outPk[i].mask, rct::key::inv_eight);
         }
       }
     }
@@ -274,7 +274,7 @@ namespace cryptonote
     if (!r)
     {
       MWARNING("key image helper: failed to generate_key_derivation(" << tx_public_key << ", " << ack.m_view_secret_key << ")");
-      memcpy(&recv_derivation, rct::identity().bytes, sizeof(recv_derivation));
+      memcpy(&recv_derivation, rct::key::identity.bytes, sizeof(recv_derivation));
     }
 
     std::vector<crypto::key_derivation> additional_recv_derivations;

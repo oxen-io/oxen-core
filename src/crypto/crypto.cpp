@@ -314,7 +314,7 @@ namespace crypto {
     memwipe(&k, sizeof(k));
   }
 
-  static constexpr ec_point infinity = {{ 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}};
+  static constexpr ec_point infinity = {{ std::byte{1}, std::byte{0} /* ... 0 */ }};
 
   bool check_signature(const hash &prefix_hash, const public_key &pub, const signature &sig) {
     ge_p2 tmp2;
@@ -332,7 +332,7 @@ namespace crypto {
     }
     ge_double_scalarmult_base_vartime(&tmp2, &sig.c, &tmp3, &sig.r); // tmp2 = sig.c A + sig.r G
     ge_tobytes(&buf.comm, &tmp2);
-    if (memcmp(&buf.comm, &infinity, 32) == 0)
+    if (buf.comm == infinity)
       return false;
     hash_to_scalar(&buf, sizeof(s_comm), c);
     sc_sub(&c, &c, &sig.c);
@@ -502,7 +502,7 @@ namespace crypto {
     ge_p2 point;
     ge_p1p1 point2;
     auto h = cn_fast_hash(&key, sizeof(public_key));
-    ge_fromfe_frombytes_vartime(&point, reinterpret_cast<const unsigned char *>(&h));
+    ge_fromfe_frombytes_vartime(&point, h);
     ge_mul8(&point2, &point);
     ge_p1p1_to_p3(&res, &point2);
   }

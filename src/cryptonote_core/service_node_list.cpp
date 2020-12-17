@@ -1695,23 +1695,22 @@ namespace service_nodes
     for (auto it = begin; it != end; it++)
     {
       cryptonote::block const &block = *it;
-      crypto::hash hash              = {};
+      crypto::hash hash;
       if (block.major_version >= cryptonote::network_version_16_pulse &&
           cryptonote::block_has_pulse_components(block))
       {
-        std::array<uint8_t, 1 + sizeof(block.pulse.random_value)> src = {pulse_round};
+        std::array<std::byte, 1 + sizeof(block.pulse.random_value)> src = {std::byte{pulse_round}};
         std::copy(std::begin(block.pulse.random_value.data), std::end(block.pulse.random_value.data), src.begin() + 1);
-        crypto::cn_fast_hash(src.data(), src.size(), hash.data);
+        hash = crypto::cn_fast_hash(src.data(), src.size());
       }
       else
       {
         crypto::hash block_hash = cryptonote::get_block_hash(block);
-        std::array<uint8_t, 1 + sizeof(hash)> src = {pulse_round};
+        std::array<std::byte, 1 + sizeof(crypto::hash)> src = {std::byte{pulse_round}};
         std::copy(std::begin(block_hash.data), std::end(block_hash.data), src.begin() + 1);
-        crypto::cn_fast_hash(src.data(), src.size(), hash.data);
+        hash = crypto::cn_fast_hash(src.data(), src.size());
       }
 
-      assert(hash);
       result.push_back(hash);
     }
 
@@ -2776,7 +2775,7 @@ namespace service_nodes
 
     crypto::hash hash = hash_uptime_proof(result);
     crypto::generate_signature(hash, keys.pub, keys.key, result.sig);
-    crypto_sign_detached(result.sig_ed25519.data, NULL, reinterpret_cast<unsigned char *>(hash.data), sizeof(hash.data), keys.key_ed25519.data);
+    crypto_sign_detached(result.sig_ed25519, nullptr, hash, sizeof(hash.data), keys.key_ed25519);
     return result;
   }
 
@@ -2893,7 +2892,7 @@ namespace service_nodes
   void proof_info::update_pubkey(const crypto::ed25519_public_key &pk) {
     if (pk == proof->pubkey_ed25519)
       return;
-    if (pk && 0 == crypto_sign_ed25519_pk_to_curve25519(pubkey_x25519.data, pk.data)) {
+    if (pk && 0 == crypto_sign_ed25519_pk_to_curve25519(pubkey_x25519, pk)) {
       proof->pubkey_ed25519 = pk;
     } else {
       MWARNING("Failed to derive x25519 pubkey from ed25519 pubkey " << proof->pubkey_ed25519);
@@ -2936,10 +2935,10 @@ namespace service_nodes
     if (!proof.pubkey_ed25519)
       REJECT_PROOF("required ed25519 auxiliary pubkey " << proof.pubkey_ed25519 << " not included in proof");
 
-    if (0 != crypto_sign_verify_detached(proof.sig_ed25519.data, reinterpret_cast<unsigned char *>(hash.data), sizeof(hash.data), proof.pubkey_ed25519.data))
+    if (0 != crypto_sign_verify_detached(proof.sig_ed25519, hash, sizeof(hash.data), proof.pubkey_ed25519))
       REJECT_PROOF("ed25519 signature validation failed");
 
-    if (0 != crypto_sign_ed25519_pk_to_curve25519(derived_x25519_pubkey.data, proof.pubkey_ed25519.data)
+    if (0 != crypto_sign_ed25519_pk_to_curve25519(derived_x25519_pubkey, proof.pubkey_ed25519)
         || !derived_x25519_pubkey)
       REJECT_PROOF("invalid ed25519 pubkey included in proof (x25519 derivation failed)");
 

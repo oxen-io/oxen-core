@@ -102,12 +102,6 @@ struct QnetState {
     }
 };
 
-template <typename T>
-std::string get_data_as_string(const T &key) {
-    static_assert(std::is_trivial<T>(), "cannot safely copy non-trivial class to string");
-    return {reinterpret_cast<const char *>(&key), sizeof(key)};
-}
-
 crypto::x25519_public_key x25519_from_string(std::string_view pubkey) {
     crypto::x25519_public_key x25519_pub = crypto::x25519_public_key::null;
     if (pubkey.size() == sizeof(crypto::x25519_public_key))
@@ -170,11 +164,11 @@ peer_prepare_relay_to_quorum_subset(cryptonote::core &core, It quorum_begin, It 
                 return;
             }
             if (!proof.pubkey_x25519 || !proof.proof->qnet_port || !proof.proof->public_ip) {
-                MTRACE("Not including node " << pubkey << ": missing x25519(" << to_hex(get_data_as_string(proof.pubkey_x25519)) << "), "
+                MTRACE("Not including node " << pubkey << ": missing x25519(" << tools::type_to_hex(proof.pubkey_x25519) << "), "
                         "public_ip(" << epee::string_tools::get_ip_string_from_int32(proof.proof->public_ip) << "), or qnet port(" << proof.proof->qnet_port << ")");
                 return;
             }
-            remotes.emplace_back(get_data_as_string(proof.pubkey_x25519),
+            remotes.emplace_back(tools::copy_guts(proof.pubkey_x25519),
                     "tcp://" + epee::string_tools::get_ip_string_from_int32(proof.proof->public_ip) + ":" + std::to_string(proof.proof->qnet_port),
                     proof.proof->version);
         });
@@ -329,7 +323,7 @@ private:
         auto it = remotes.find(pubkey);
         if (it != remotes.end()) {
             std::string remote_addr = strong ? it->second.second : ""s;
-            auto ins = peers.emplace(get_data_as_string(it->second.first), std::move(remote_addr));
+            auto ins = peers.emplace(tools::copy_guts(it->second.first), std::move(remote_addr));
             if (strong && !ins.second && ins.first->second.empty()) {
                 ins.first->second = it->second.second;
                 strong_peers++;
@@ -451,10 +445,10 @@ bt_dict serialize_vote(const quorum_vote_t &vote) {
         {"h", vote.block_height},
         {"g", static_cast<uint8_t>(vote.group)},
         {"i", vote.index_in_group},
-        {"s", get_data_as_string(vote.signature)},
+        {"s", tools::copy_guts(vote.signature)},
     };
     if (vote.type == quorum_type::checkpointing)
-        result["bh"] = std::string{vote.checkpoint.block_hash.data, sizeof(crypto::hash)};
+        result["bh"] = tools::copy_guts(vote.checkpoint.block_hash.data);
     else {
         result["wi"] = vote.state_change.worker_index;
         result["sc"] = static_cast<std::underlying_type_t<new_state>>(vote.state_change.state);
@@ -777,12 +771,12 @@ void process_blink_signatures(QnetState &qnet, const std::shared_ptr<blink_tx> &
         i_list.emplace_back(std::get<uint8_t>(s));
         p_list.emplace_back(std::get<int>(s));
         r_list.emplace_back(std::get<bool>(s));
-        s_list.emplace_back(get_data_as_string(std::get<crypto::signature>(s)));
+        s_list.emplace_back(tools::copy_guts(std::get<crypto::signature>(s)));
     }
 
     bt_dict blink_sign_data{
         {"h", btx.height},
-        {"#", get_data_as_string(btx.get_txhash())},
+        {"#", tools::copy_guts(btx.get_txhash())},
         {"q", quorum_checksum},
         {"i", std::move(i_list)},
         {"p", std::move(p_list)},
@@ -929,7 +923,7 @@ void handle_blink(oxenmq::Message& m, QnetState& qnet) {
                 }
             }
         }
-        MTRACE("Blink tx hash: " << to_hex(tx_hash.data));
+        MTRACE("Blink tx hash: " << tools::type_to_hex(tx_hash));
     } else {
         MINFO("Rejecting blink tx: invalid tx hash included in request");
         if (tag)
@@ -1303,7 +1297,7 @@ std::future<std::pair<cryptonote::blink_result, std::string>> send_blink(crypton
 
         std::string data = bt_serialize<bt_dict>({
             {"!", blink_tag},
-            {"#", get_data_as_string(tx_hash)},
+            {"#", tools::view_guts(tx_hash)},
             {"h", height},
             {"q", checksum},
             {"t", tx_blob}
@@ -1464,10 +1458,10 @@ void pulse_relay_message_to_quorum(void *self, pulse::message const &msg, servic
   peer_info::exclude_set relay_exclude;
 
   bool include_block_producer = false;
-  std::string_view command    = {};
+  std::string_view command;
 
-  bt_dict data                = {};
-  data[PULSE_TAG_SIGNATURE]   = tools::view_guts(msg.signature);
+  bt_dict data;
+  data[PULSE_TAG_SIGNATURE] = tools::view_guts(msg.signature);
   data[PULSE_TAG_BLOCK_ROUND] = msg.round;
 
   if (msg.type == pulse::message_type::block_template)

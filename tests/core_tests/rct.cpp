@@ -104,7 +104,7 @@ bool gen_rct_tx_validation_base::generate_with_full(std::vector<test_event_entry
     src.real_out_tx_key = cryptonote::get_tx_pub_key_from_extra(blocks[n].miner_tx);
     src.real_output = n;
     src.real_output_in_tx_index = index_in_tx;
-    src.mask = rct::identity();
+    src.mask = rct::key::identity;
     src.rct = false;
 
     //fill outputs entry
@@ -201,7 +201,7 @@ bool gen_rct_tx_validation_base::generate_with_full(std::vector<test_event_entry
       src.amount = 5000000000000;
       src.real_out_tx_key = cryptonote::get_tx_pub_key_from_extra(blocks[pre_rct_idx].miner_tx);
       src.real_output_in_tx_index = 4;
-      src.mask = rct::identity();
+      src.mask = rct::key::identity;
       src.rct = false;
       for (int m = 0; m <= mixin; ++m) {
         src.push_output(m, var::get<txout_to_key>(blocks[pre_rct_idx].miner_tx.vout[4].target).key, src.amount);
@@ -368,7 +368,7 @@ bool gen_rct_tx_rct_spend_with_zero_commit::generate(std::vector<test_event_entr
   const int out_idx[] = {1, -1};
   const uint64_t amount_paid = 10000;
   return generate_with(events, out_idx, mixin, amount_paid, false,
-    [](std::vector<tx_source_entry> &sources, std::vector<tx_destination_entry> &destinations) {sources[0].outputs[0].second.mask = rct::zeroCommit(sources[0].amount); sources[0].mask = rct::identity();},
+    [](std::vector<tx_source_entry> &sources, std::vector<tx_destination_entry> &destinations) {sources[0].outputs[0].second.mask = rct::zeroCommit(sources[0].amount); sources[0].mask = rct::key::identity;},
     [](transaction &tx){var::get<txin_to_key>(tx.vin[0]).amount = 0;});
 }
 

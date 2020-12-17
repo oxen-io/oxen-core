@@ -60,6 +60,8 @@ namespace epee
     char pop_back();
     const char *data() const noexcept { return buffer.data(); }
     char *data() noexcept { return buffer.data(); }
+    const std::byte* bytes() const noexcept { return reinterpret_cast<const std::byte*>(data()); }
+    std::byte* bytes() noexcept { return reinterpret_cast<std::byte*>(data()); }
     size_t size() const noexcept { return buffer.size(); }
     size_t length() const noexcept { return buffer.size(); }
     bool empty() const noexcept { return buffer.empty(); }

@@ -1742,7 +1742,7 @@ void wallet2::scan_output(const cryptonote::transaction &tx, bool miner_tx, cons
   {
     tx_scan_info.in_ephemeral.pub = var::get<cryptonote::txout_to_key>(tx.vout[vout_index].target).key;
     tx_scan_info.in_ephemeral.sec = crypto::secret_key::null;
-    tx_scan_info.ki = rct::rct2ki(rct::zero());
+    tx_scan_info.ki = rct::rct2ki(rct::key::zero);
   }
   else
   {
@@ -1922,7 +1922,7 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
       {
         MWARNING("Failed to generate key derivation from tx pubkey in " << txid << ", skipping");
         static_assert(sizeof(derivation) == sizeof(rct::key), "Mismatched sizes of key_derivation and rct::key");
-        memcpy(&derivation, rct::identity().bytes, sizeof(derivation));
+        memcpy(&derivation, rct::key::identity.bytes, sizeof(derivation));
       }
 
       if (pk_index == 1)
@@ -1936,7 +1936,7 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
             if (!hwdev.generate_key_derivation(additional_tx_pub_keys.data[i], keys.m_view_secret_key, additional_derivations.back()))
             {
               MWARNING("Failed to generate key derivation from additional tx pubkey in " << txid << ", skipping");
-              memcpy(&additional_derivations.back(), rct::identity().bytes, sizeof(crypto::key_derivation));
+              memcpy(&additional_derivations.back(), rct::key::identity.bytes, sizeof(crypto::key_derivation));
             }
           }
         }
@@ -2083,12 +2083,12 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
             }
             else if (miner_tx && tx.version >= txversion::v2_ringct)
             {
-              td.m_mask = rct::identity();
+              td.m_mask = rct::key::identity;
               td.m_rct = true;
             }
             else
             {
-              td.m_mask = rct::identity();
+              td.m_mask = rct::key::identity;
               td.m_rct = false;
             }
             td.m_frozen = false;
@@ -2263,12 +2263,12 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
             }
             else if (miner_tx && tx.version >= txversion::v2_ringct)
             {
-              transfer.m_mask = rct::identity();
+              transfer.m_mask = rct::key::identity;
               transfer.m_rct = true;
             }
             else
             {
-              transfer.m_mask = rct::identity();
+              transfer.m_mask = rct::key::identity;
               transfer.m_rct = false;
             }
             if (output_tracker_cache)
@@ -2787,7 +2787,7 @@ void wallet2::process_parsed_blocks(uint64_t start_height, const std::vector<cry
     {
       MWARNING("Failed to generate key derivation from tx pubkey, skipping");
       static_assert(sizeof(iod.derivation) == sizeof(rct::key), "Mismatched sizes of key_derivation and rct::key");
-      memcpy(&iod.derivation, rct::identity().bytes, sizeof(iod.derivation));
+      memcpy(&iod.derivation, rct::key::identity.bytes, sizeof(iod.derivation));
     }
   };
 
@@ -4724,7 +4724,7 @@ void wallet2::generate(const fs::path& wallet_, const epee::wipeable_string& pas
     THROW_WALLET_EXCEPTION_IF(fs::exists(m_keys_file,   ignored_ec), error::file_exists, m_keys_file);
   }
 
-  m_account.generate(rct::rct2sk(rct::zero()), true, false);
+  m_account.generate(rct::rct2sk(rct::key::zero), true, false);
 
   THROW_WALLET_EXCEPTION_IF(multisig_data.size() < 32, error::invalid_multisig_seed);
   size_t offset = 0;
@@ -4764,9 +4764,9 @@ void wallet2::generate(const fs::path& wallet_, const epee::wipeable_string& pas
   crypto::public_key local_signer;
   THROW_WALLET_EXCEPTION_IF(!crypto::secret_key_to_public_key(spend_secret_key, local_signer), error::invalid_multisig_seed);
   THROW_WALLET_EXCEPTION_IF(std::find(multisig_signers.begin(), multisig_signers.end(), local_signer) == multisig_signers.end(), error::invalid_multisig_seed);
-  rct::key skey = rct::zero();
+  rct::key skey = rct::key::zero;
   for (const auto &msk: multisig_keys)
-    sc_add(skey.bytes, skey.bytes, rct::sk2rct(msk).bytes);
+    sc_add(skey, skey, rct::sk2rct(msk));
   THROW_WALLET_EXCEPTION_IF(!(rct::rct2sk(skey) == spend_secret_key), error::invalid_multisig_seed);
   memwipe(&skey, sizeof(rct::key));
 
@@ -4999,7 +4999,7 @@ std::string wallet2::make_multisig(const epee::wipeable_string &password,
 
   std::string extra_multisig_info;
   std::vector<crypto::secret_key> multisig_keys;
-  rct::key spend_pkey = rct::identity();
+  rct::key spend_pkey = rct::key::identity;
   rct::key spend_skey;
   OXEN_DEFER { memwipe(&spend_skey, sizeof(spend_skey)); };
   std::vector<crypto::public_key> multisig_signers;
@@ -5056,7 +5056,7 @@ std::string wallet2::make_multisig(const epee::wipeable_string &password,
     // note that derivations are public keys as DH exchange suppose it to be
     auto derivations = cryptonote::generate_multisig_derivations(get_account().get_keys(), spend_keys);
 
-    spend_pkey = rct::identity();
+    spend_pkey = rct::key::identity;
     multisig_signers = std::vector<crypto::public_key>(spend_keys.size() + 1, crypto::public_key::null);
 
     if (threshold == spend_keys.size())
@@ -5262,7 +5262,7 @@ std::string wallet2::exchange_multisig_keys(const epee::wipeable_string &passwor
     // And summing it to get personal secret spend key
     crypto::secret_key spend_skey = cryptonote::calculate_multisig_signer_key(multisig_keys);
 
-    m_account.make_multisig(m_account.get_keys().m_view_secret_key, spend_skey, rct::rct2pk(rct::identity()), multisig_keys);
+    m_account.make_multisig(m_account.get_keys().m_view_secret_key, spend_skey, rct::rct2pk(rct::key::identity), multisig_keys);
 
     // Packing public multisig keys to exchange with others and calculate common public spend key in the last round
     extra_multisig_info = pack_multisignature_keys(secret_keys_to_public_keys(multisig_keys), spend_skey);
@@ -5515,7 +5515,7 @@ bool wallet2::multisig(bool *ready, uint32_t *threshold, uint32_t *total) const
   if (total)
     *total = m_multisig_signers.size();
   if (ready)
-    *ready = !(get_account().get_keys().m_account_address.m_spend_public_key == rct::rct2pk(rct::identity()));
+    *ready = !(get_account().get_keys().m_account_address.m_spend_public_key == rct::rct2pk(rct::key::identity));
   return true;
 }
 
@@ -6766,7 +6766,7 @@ namespace
   {
     CHECK_AND_ASSERT_MES(!vec.empty(), T(), "Vector must be non-empty");
 
-    size_t idx = crypto::rand_idx(vec.size());
+    size_t idx = crypto::random_index(vec.size());
     return pop_index (vec, idx);
   }
 
@@ -6869,7 +6869,7 @@ size_t wallet2::pop_best_value_from(const transfer_container &transfers, std::ve
   }
   else
   {
-    idx = crypto::rand_idx(candidates.size());
+    idx = crypto::random_index(candidates.size());
   }
   return pop_index (unused_indices, candidates[idx]);
 }
@@ -7224,7 +7224,7 @@ bool wallet2::sign_tx(unsigned_tx_set &exported_txs, std::vector<wallet2::pendin
     ptx.dust_added_to_fee = false;
     ptx.change_dts = sd.change_dts;
     ptx.selected_transfers = sd.selected_transfers;
-    ptx.tx_key = rct::rct2sk(rct::identity()); // don't send it back to the untrusted view wallet
+    ptx.tx_key = rct::rct2sk(rct::key::identity); // don't send it back to the untrusted view wallet
     ptx.dests = sd.dests;
     ptx.construction_data = sd;
 
@@ -7261,7 +7261,7 @@ bool wallet2::sign_tx(unsigned_tx_set &exported_txs, std::vector<wallet2::pendin
     {
       MWARNING("Failed to generate key derivation from tx pubkey in " << cryptonote::get_transaction_hash(tx) << ", skipping");
       static_assert(sizeof(derivation) == sizeof(rct::key), "Mismatched sizes of key_derivation and rct::key");
-      memcpy(&derivation, rct::identity().bytes, sizeof(derivation));
+      memcpy(&derivation, rct::key::identity.bytes, sizeof(derivation));
     }
     for (size_t i = 0; i < additional_tx_pub_keys.size(); ++i)
     {
@@ -7269,7 +7269,7 @@ bool wallet2::sign_tx(unsigned_tx_set &exported_txs, std::vector<wallet2::pendin
       if (!hwdev.generate_key_derivation(additional_tx_pub_keys[i], keys.m_view_secret_key, additional_derivations.back()))
       {
         MWARNING("Failed to generate key derivation from additional tx pubkey in " << cryptonote::get_transaction_hash(tx) << ", skipping");
-        memcpy(&additional_derivations.back(), rct::identity().bytes, sizeof(crypto::key_derivation));
+        memcpy(&additional_derivations.back(), rct::key::identity.bytes, sizeof(crypto::key_derivation));
       }
     }
 
@@ -7681,7 +7681,7 @@ bool wallet2::sign_multisig_tx(multisig_tx_set &exported_txs, std::vector<crypto
         ptx.tx.rct_signatures = sig.sigs;
 
         rct::keyV k;
-        rct::key skey = rct::zero();
+        rct::key skey = rct::key::zero;
         OXEN_DEFER {
           memwipe(k.data(), k.size() * sizeof(rct::key));
           memwipe(&skey, sizeof(skey));
@@ -7697,7 +7697,7 @@ bool wallet2::sign_multisig_tx(multisig_tx_set &exported_txs, std::vector<crypto
 
           if (sig.signing_keys.find(pmsk) == sig.signing_keys.end())
           {
-            sc_add(skey.bytes, skey.bytes, rct::sk2rct(msk).bytes);
+            sc_add(skey, skey, rct::sk2rct(msk));
             sig.signing_keys.insert(pmsk);
           }
         }
@@ -10038,7 +10038,7 @@ void wallet2::transfer_selected_rct(std::vector<cryptonote::tx_destination_entry
       src.multisig_kLRki = get_multisig_composite_kLRki(idx, ignore_set, used_L, used_L);
     }
     else
-      src.multisig_kLRki = rct::multisig_kLRki({rct::zero(), rct::zero(), rct::zero(), rct::zero()});
+      src.multisig_kLRki = rct::multisig_kLRki({rct::key::zero, rct::key::zero, rct::key::zero, rct::key::zero});
 
     {
       std::string indexes;
@@ -10521,7 +10521,7 @@ void wallet2::light_wallet_get_unspent_outs()
       // Coinbase tx's
       if(miner_tx)
       {
-        td.m_mask = rct::identity();
+        td.m_mask = rct::key::identity;
       }
       else
       {
@@ -10544,7 +10544,7 @@ void wallet2::light_wallet_get_unspent_outs()
     }
     else
     {
-      td.m_mask = rct::identity();
+      td.m_mask = rct::key::identity;
       td.m_rct = false;
     }
     if(!spent)
@@ -10778,7 +10778,7 @@ bool wallet2::light_wallet_parse_rct_str(const std::string& rct_string, const cr
     THROW_WALLET_EXCEPTION_IF(!r, error::wallet_internal_error, "Failed to generate key derivation");
     crypto::secret_key scalar;
     crypto::derivation_to_scalar(derivation, internal_output_index, scalar);
-    sc_sub(decrypted_mask.bytes,encrypted_mask.bytes,rct::hash_to_scalar(rct::sk2rct(scalar)).bytes);
+    sc_sub(decrypted_mask, encrypted_mask, rct::hash_to_scalar(rct::sk2rct(scalar)));
   }
   return true;
 }
@@ -12392,8 +12392,8 @@ void wallet2::check_tx_key_helper(const cryptonote::transaction &tx, const crypt
         rct::ecdhDecode(ecdh_info, rct::sk2rct(scalar1), tools::equals_any(tx.rct_signatures.type, rct::RCTType::Bulletproof2, rct::RCTType::CLSAG));
         const rct::key C = tx.rct_signatures.outPk[n].mask;
         rct::key Ctmp;
-        THROW_WALLET_EXCEPTION_IF(sc_check(ecdh_info.mask.bytes) != 0, error::wallet_internal_error, "Bad ECDH input mask");
-        THROW_WALLET_EXCEPTION_IF(sc_check(ecdh_info.amount.bytes) != 0, error::wallet_internal_error, "Bad ECDH input amount");
+        THROW_WALLET_EXCEPTION_IF(sc_check(ecdh_info.mask) != 0, error::wallet_internal_error, "Bad ECDH input mask");
+        THROW_WALLET_EXCEPTION_IF(sc_check(ecdh_info.amount) != 0, error::wallet_internal_error, "Bad ECDH input amount");
         rct::addKeys2(Ctmp, ecdh_info.mask, ecdh_info.amount, rct::H);
         if (rct::equalKeys(C, Ctmp))
           amount = rct::h2d(ecdh_info.amount);
@@ -12547,10 +12547,10 @@ std::string wallet2::get_tx_proof(const cryptonote::transaction &tx, const crypt
 
   // check if this address actually received any funds
   crypto::key_derivation derivation;
-  THROW_WALLET_EXCEPTION_IF(!crypto::generate_key_derivation(shared_secret[0], rct::rct2sk(rct::I), derivation), error::wallet_internal_error, "Failed to generate key derivation");
+  THROW_WALLET_EXCEPTION_IF(!crypto::generate_key_derivation(shared_secret[0], rct::rct2sk(rct::key::identity), derivation), error::wallet_internal_error, "Failed to generate key derivation");
   std::vector<crypto::key_derivation> additional_derivations(num_sigs - 1);
   for (size_t i = 1; i < num_sigs; ++i)
-    THROW_WALLET_EXCEPTION_IF(!crypto::generate_key_derivation(shared_secret[i], rct::rct2sk(rct::I), additional_derivations[i - 1]), error::wallet_internal_error, "Failed to generate key derivation");
+    THROW_WALLET_EXCEPTION_IF(!crypto::generate_key_derivation(shared_secret[i], rct::rct2sk(rct::key::identity), additional_derivations[i - 1]), error::wallet_internal_error, "Failed to generate key derivation");
   uint64_t received;
   check_tx_key_helper(tx, derivation, additional_derivations, address, received);
   THROW_WALLET_EXCEPTION_IF(!received, error::wallet_internal_error, tr("No funds received in this tx."));
@@ -12677,12 +12677,12 @@ bool wallet2::check_tx_proof(const cryptonote::transaction &tx, const cryptonote
     // obtain key derivation by multiplying scalar 1 to the shared secret
     crypto::key_derivation derivation;
     if (good_signature[0])
-      THROW_WALLET_EXCEPTION_IF(!crypto::generate_key_derivation(shared_secret[0], rct::rct2sk(rct::I), derivation), error::wallet_internal_error, "Failed to generate key derivation");
+      THROW_WALLET_EXCEPTION_IF(!crypto::generate_key_derivation(shared_secret[0], rct::rct2sk(rct::key::identity), derivation), error::wallet_internal_error, "Failed to generate key derivation");
 
     std::vector<crypto::key_derivation> additional_derivations(num_sigs - 1);
     for (size_t i = 1; i < num_sigs; ++i)
       if (good_signature[i])
-        THROW_WALLET_EXCEPTION_IF(!crypto::generate_key_derivation(shared_secret[i], rct::rct2sk(rct::I), additional_derivations[i - 1]), error::wallet_internal_error, "Failed to generate key derivation");
+        THROW_WALLET_EXCEPTION_IF(!crypto::generate_key_derivation(shared_secret[i], rct::rct2sk(rct::key::identity), additional_derivations[i - 1]), error::wallet_internal_error, "Failed to generate key derivation");
 
     check_tx_key_helper(tx, derivation, additional_derivations, address, received);
     return true;
@@ -12756,7 +12756,7 @@ std::string wallet2::get_reserve_proof(const std::optional<std::pair<uint32_t, u
     {
       proof.shared_secret = rct::rct2pk(rct::scalarmultKey(rct::pk2rct(*tx_pub_key_used), rct::sk2rct(m_account.get_keys().m_view_secret_key)));
       crypto::key_derivation derivation;
-      THROW_WALLET_EXCEPTION_IF(!crypto::generate_key_derivation(proof.shared_secret, rct::rct2sk(rct::I), derivation),
+      THROW_WALLET_EXCEPTION_IF(!crypto::generate_key_derivation(proof.shared_secret, rct::rct2sk(rct::key::identity), derivation),
         error::wallet_internal_error, "Failed to generate key derivation");
       crypto::public_key subaddress_spendkey;
       THROW_WALLET_EXCEPTION_IF(!derive_subaddress_public_key(td.get_public_key(), derivation, proof.index_in_tx, subaddress_spendkey),
@@ -12930,7 +12930,7 @@ bool wallet2::check_reserve_proof(const cryptonote::account_public_address &addr
 
     // check if the address really received the fund
     crypto::key_derivation derivation;
-    THROW_WALLET_EXCEPTION_IF(!crypto::generate_key_derivation(proof.shared_secret, rct::rct2sk(rct::I), derivation), error::wallet_internal_error, "Failed to generate key derivation");
+    THROW_WALLET_EXCEPTION_IF(!crypto::generate_key_derivation(proof.shared_secret, rct::rct2sk(rct::key::identity), derivation), error::wallet_internal_error, "Failed to generate key derivation");
     crypto::public_key subaddr_spendkey;
     crypto::derive_subaddress_public_key(out_key->key, derivation, proof.index_in_tx, subaddr_spendkey);
     THROW_WALLET_EXCEPTION_IF(subaddr_spendkeys.count(subaddr_spendkey) == 0, error::wallet_internal_error,
@@ -13488,7 +13488,7 @@ uint64_t wallet2::import_key_images(const std::vector<std::pair<crypto::key_imag
     std::string const key_image_str = tools::type_to_hex(key_image);
     if (!td.m_key_image_known || !(key_image == td.m_key_image))
     {
-      THROW_WALLET_EXCEPTION_IF(!(rct::scalarmultKey(rct::ki2rct(key_image), rct::curveOrder()) == rct::identity()),
+      THROW_WALLET_EXCEPTION_IF(!(rct::scalarmultKey(rct::ki2rct(key_image), rct::key::L) == rct::key::identity),
           error::wallet_internal_error, "Key image out of validity domain: input " + std::to_string(n + offset) + "/"
           + std::to_string(signed_key_images.size()) + ", key image " + key_image_str);
 
@@ -14036,7 +14036,7 @@ rct::key wallet2::get_multisig_k(size_t idx, const std::unordered_set<rct::key> 
       return k;
   }
   THROW_WALLET_EXCEPTION(tools::error::multisig_export_needed);
-  return rct::zero();
+  return rct::key::zero;
 }
 //----------------------------------------------------------------------------------------------------
 rct::multisig_kLRki wallet2::get_multisig_kLRki(size_t n, const rct::key &k) const

@@ -822,7 +822,7 @@ namespace tx {
       CHECK_AND_ASSERT_THROW_MES(bidx < m_ct.tx_out_pk.size(), "Invalid out index");
 
       rct::key commitment = m_ct.tx_out_pk[bidx].mask;
-      commitment = rct::scalarmultKey(commitment, rct::INV_EIGHT);
+      commitment = rct::scalarmultKey(commitment, rct::key::inv_eight);
       bproof.V.push_back(commitment);
     }
 

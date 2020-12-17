@@ -367,7 +367,7 @@ namespace cryptonote
   /************************************************************************/
   struct pulse_random_value
   {
-    unsigned char data[16];
+    std::byte data[16];
     bool operator==(pulse_random_value const &other) const { return std::memcmp(data, other.data, sizeof(data)) == 0; }
 
     static constexpr bool binary_serializable = true;

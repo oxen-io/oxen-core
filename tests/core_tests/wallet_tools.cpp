@@ -196,7 +196,7 @@ void wallet_tools::gen_tx_src(size_t mixin, uint64_t cur_height, const tools::wa
   src.real_out_tx_key = get_tx_pub_key_from_extra(td.m_tx, td.m_pk_index);
   src.real_out_additional_tx_keys = get_additional_tx_pub_keys_from_extra(td.m_tx);
   src.real_output_in_tx_index = td.m_internal_output_index;
-  src.multisig_kLRki = rct::multisig_kLRki({rct::zero(), rct::zero(), rct::zero(), rct::zero()});
+  src.multisig_kLRki = rct::multisig_kLRki({rct::key::zero, rct::key::zero, rct::key::zero, rct::key::zero});
 }
 
 void wallet_tools::gen_block_data(block_tracker &bt, const cryptonote::block *bl, const map_hash2tx_t &mtx, cryptonote::block_complete_entry &bche, tools::wallet2::parsed_block &parsed_block, uint64_t &height)

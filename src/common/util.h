@@ -83,26 +83,32 @@ namespace tools
 
   namespace detail {
     // Copy an integer type, swapping to little-endian if needed
-    template <typename T, std::enable_if_t<std::is_integral<T>::value, int> = 0>
-    void memcpy_one(char*& dest, T t) {
+    template <typename T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
+    void memcpy_one(std::byte*& dest, T t) {
       boost::endian::native_to_little_inplace(t);
       std::memcpy(dest, &t, sizeof(T));
       dest += sizeof(T);
     }
 
+    // Copy a byte
+    inline void memcpy_one(std::byte*& dest, std::byte b) {
+      *dest++ = b;
+    }
+
     // Copy a class byte-for-byte (but only if it is standard layout and has byte alignment)
-    template <typename T, std::enable_if_t<std::is_class<T>::value, int> = 0>
-    void memcpy_one(char*& dest, const T& t) {
+    template <typename T, std::enable_if_t<std::is_class_v<T>, int> = 0>
+    void memcpy_one(std::byte*& dest, const T& t) {
       // We don't *actually* require byte alignment here but it's quite possibly an error (i.e.
       // passing in a type containing integer members) so disallow it.
-      static_assert(std::is_trivially_copyable<T>::value && alignof(T) == 1, "memcpy_le() may only be used on simple (1-byte alignment) struct types");
+      static_assert(std::is_trivially_copyable_v<T> && std::has_unique_object_representations_v<T> && alignof(T) == 1,
+          "memcpy_le() may only be used on simple (1-byte alignment), padding-free struct types");
       std::memcpy(dest, &t, sizeof(T));
       dest += sizeof(T);
     }
 
     // Copy a string literal
     template <typename T, size_t N>
-    void memcpy_one(char*& dest, const T (&arr)[N]) {
+    void memcpy_one(std::byte*& dest, const T (&arr)[N]) {
       for (const T &t : arr)
         memcpy_one(dest, t);
     }
@@ -118,8 +124,8 @@ namespace tools
   // you have a contained type with a larger alignment, which is probably an integer.
   template <typename... T>
   auto memcpy_le(const T &...t) {
-    std::array<char, (0 + ... + sizeof(T))> r;
-    char* dest = r.data();
+    std::array<std::byte, (0 + ... + sizeof(T))> r;
+    std::byte* dest = r.data();
     (..., detail::memcpy_one(dest, t));
     return r;
   }

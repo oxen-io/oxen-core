@@ -28,6 +28,7 @@
 // 
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
+#include <boost/endian/conversion.hpp>
 #include <unordered_set>
 #include <random>
 #include "epee/string_tools.h"
@@ -85,16 +86,9 @@ namespace cryptonote
 
     ec_scalar& sec = k.sec;
 
-    for (int i=0; i < 8; i++)
-    {
-      uint64_t height_byte = height & ((uint64_t)0xFF << (i*8));
-      uint8_t byte = height_byte >> i*8;
-      sec.data[i] = byte;
-    }
-    for (int i=8; i < 32; i++)
-    {
-      sec.data[i] = 0x00;
-    }
+    boost::endian::native_to_little_inplace(height);
+    std::memcpy(sec.data, &height, 8);
+    std::memset(sec.data+8, 0, 32);
 
     generate_keys(k.pub, k.sec, k.sec, true);
 
@@ -901,10 +895,7 @@ namespace cryptonote
     }
 
     // check for watch only wallet
-    bool zero_secret_key = true;
-    for (size_t i = 0; i < sizeof(sender_account_keys.m_spend_secret_key); ++i)
-      zero_secret_key &= (sender_account_keys.m_spend_secret_key.data[i] == 0);
-    if (zero_secret_key)
+    if (!sender_account_keys.m_spend_secret_key)
     {
       MDEBUG("Null secret key, skipping signatures");
     }
@@ -1066,7 +1057,7 @@ namespace cryptonote
     else
     {
       blobdata bd = get_block_hashing_blob(b);
-      rx_slow_hash(randomx_context.current_blockchain_height, randomx_context.seed_height, randomx_context.seed_block_hash.data, bd.data(), bd.size(), result.data, 0, 1);
+      rx_slow_hash(randomx_context.current_blockchain_height, randomx_context.seed_height, randomx_context.seed_block_hash, bd.data(), bd.size(), result, 0, 1);
     }
 
     return result;
@@ -1109,10 +1100,10 @@ namespace cryptonote
       {
         rx_slow_hash(randomx_context.current_blockchain_height,
                      randomx_context.seed_height,
-                     randomx_context.seed_block_hash.data,
+                     randomx_context.seed_block_hash,
                      bd.data(),
                      bd.size(),
-                     result.data,
+                     result,
                      miners,
                      0);
         return result;

@@ -49,7 +49,7 @@ constexpr char ONS_WALLET_TYPE_INTEGRATED = 0x02;
 struct mapping_value
 {
   static size_t constexpr BUFFER_SIZE = std::max({WALLET_ACCOUNT_BINARY_LENGTH_INC_PAYMENT_ID, LOKINET_ADDRESS_BINARY_LENGTH, SESSION_PUBLIC_KEY_BINARY_LENGTH}) + SODIUM_ENCRYPTION_EXTRA_BYTES;
-  std::array<uint8_t, BUFFER_SIZE> buffer;
+  std::array<std::byte, BUFFER_SIZE> buffer;
   bool encrypted;
   size_t len;
 
@@ -60,7 +60,7 @@ struct mapping_value
   // session values the nonce will be all 0 bytes *if* the encrypted value is not the proper length
   // for an including-the-nonce value.  For newer session and all others the nonce is always
   // present.
-  std::pair<std::basic_string_view<unsigned char>, std::basic_string_view<unsigned char>> value_nonce(mapping_type type) const;
+  std::pair<std::basic_string_view<std::byte>, std::basic_string_view<std::byte>> value_nonce(mapping_type type) const;
   bool operator==(mapping_value const &other) const { return encrypted == other.encrypted && other.to_view() == to_view(); }
   bool operator==(std::string_view other)     const { return other == to_view(); }
 

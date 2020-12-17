@@ -43,7 +43,6 @@
 #include "../io.h"
 
 using namespace crypto;
-typedef crypto::hash chash;
 
 using std::cerr;
 using std::endl;
@@ -78,7 +77,7 @@ int main(int argc, char *argv[]) {
 
   std::fstream input;
   std::vector<char> data;
-  chash expected, actual;
+  crypto::hash expected, actual;
   size_t test = 0;
   bool error = false;
   if (argc != 3) {
@@ -146,22 +145,21 @@ int main(int argc, char *argv[]) {
 
     void const *buf   = data.data();
     size_t len        = data.size();
-    auto *actual_byte_ptr = reinterpret_cast<char *>(&actual);
     switch(type)
     {
-      case hash_type::fast: cn_fast_hash(buf, len, actual_byte_ptr); break;
+      case hash_type::fast: cn_fast_hash(buf, len, actual); break;
       case hash_type::tree:
       {
         if ((len & 31) != 0)
           throw std::ios_base::failure("Invalid input length for tree_hash");
-        tree_hash(reinterpret_cast<const char *const *>(buf), len >> 5, actual_byte_ptr);
+        tree_hash(reinterpret_cast<const unsigned char *const *>(buf), len >> 5, actual);
       }
       break;
 
-      case hash_type::extra_blake:     hash_extra_blake  (buf, len, actual_byte_ptr); break;
-      case hash_type::extra_groestl:   hash_extra_groestl(buf, len, actual_byte_ptr); break;
-      case hash_type::extra_jh:        hash_extra_jh     (buf, len, actual_byte_ptr); break;
-      case hash_type::extra_skein:     hash_extra_skein  (buf, len, actual_byte_ptr); break;
+      case hash_type::extra_blake:     hash_extra_blake  (buf, len, actual); break;
+      case hash_type::extra_groestl:   hash_extra_groestl(buf, len, actual); break;
+      case hash_type::extra_jh:        hash_extra_jh     (buf, len, actual); break;
+      case hash_type::extra_skein:     hash_extra_skein  (buf, len, actual); break;
       case hash_type::heavy_v1:        cn_slow_hash      (buf, len, actual, cn_slow_hash_type::heavy_v1); break;
       case hash_type::heavy_v2:        cn_slow_hash      (buf, len, actual, cn_slow_hash_type::heavy_v2); break;
       case hash_type::turtle_light_v2: cn_slow_hash      (buf, len, actual, cn_slow_hash_type::turtle_lite_v2); break;

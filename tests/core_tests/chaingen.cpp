@@ -1723,7 +1723,7 @@ bool fill_tx_sources(std::vector<cryptonote::tx_source_entry>& sources, const st
         ts.real_output_in_tx_index = oi.out_no;
         ts.real_out_tx_key = get_tx_pub_key_from_extra(tx); // incoming tx public key
         ts.real_out_additional_tx_keys = get_additional_tx_pub_keys_from_extra(tx);
-        ts.mask = rct::identity();
+        ts.mask = rct::key::identity;
         ts.rct = true;
 
         rct::key comm = rct::zeroCommit(ts.amount);

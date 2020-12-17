@@ -30,6 +30,7 @@
 
 #pragma once
 
+#include "ringct/multiexp.h"
 #include "ringct/rctSigs.h"
 #include "ringct/rctTypes.h"
 #include "device/device.hpp"
@@ -71,8 +72,8 @@ class test_sig_clsag
             // TODO: random signing indices
             C_offsets = keyV(w); // P[l[u]] - C_offsets[u] = Com(0,s[u]-s1[u])
             s1 = keyV(w);
-            key a_sum = zero();
-            key s1_sum = zero();
+            key a_sum = key::zero;
+            key s1_sum = key::zero;
             messages = keyV(w);
             for (size_t u = 0; u < w; u++)
             {
@@ -85,28 +86,28 @@ class test_sig_clsag
                 s1[u] = skGen(); // C_offsets[u] = Com(a[u],s1[u])
                 addKeys2(C_offsets[u],s1[u],a[u],H);
 
-                sc_add(a_sum.bytes,a_sum.bytes,a[u].bytes);
-                sc_add(s1_sum.bytes,s1_sum.bytes,s1[u].bytes);
+                sc_add(a_sum, a_sum, a[u]);
+                sc_add(s1_sum, s1_sum, s1[u]);
 
                 messages[u] = skGen();
             }
 
             // Outputs
-            key b_sum = zero();
-            key t_sum = zero();
+            key b_sum = key::zero;
+            key t_sum = key::zero;
             for (size_t j = 0; j < T-1; j++)
             {
                 b[j] = skGen(); // Q[j] = Com(b[j],t[j])
                 t[j] = skGen();
                 addKeys2(Q[j],t[j],b[j],H);
 
-                sc_add(b_sum.bytes,b_sum.bytes,b[j].bytes);
-                sc_add(t_sum.bytes,t_sum.bytes,t[j].bytes);
+                sc_add(b_sum, b_sum, b[j]);
+                sc_add(t_sum, t_sum, t[j]);
             }
             // Value/mask balance for Q[T-1]
-            sc_sub(b[T-1].bytes,a_sum.bytes,b_sum.bytes);
-            sc_sub(t[T-1].bytes,s1_sum.bytes,t_sum.bytes);
-            addKeys2(Q[T-1],t[T-1],b[T-1],H);
+            sc_sub(b[T-1], a_sum, b_sum);
+            sc_sub(t[T-1], s1_sum, t_sum);
+            addKeys2(Q[T-1], t[T-1], b[T-1], H);
 
             // Build proofs
             sigs.reserve(w);
@@ -133,23 +134,21 @@ class test_sig_clsag
                 }
             }
 
-            // Check balanace
+            // Check balance
             std::vector<MultiexpData> balance;
             balance.reserve(w + T);
             balance.resize(0);
-            key ZERO = zero();
-            key ONE = identity();
             key MINUS_ONE;
-            sc_sub(MINUS_ONE.bytes,ZERO.bytes,ONE.bytes);
+            sc_sub(MINUS_ONE, key::zero, key::identity);
             for (size_t u = 0; u < w; u++)
             {
-                balance.push_back({ONE,C_offsets[u]});
+                balance.push_back({key::identity, C_offsets[u]});
             }
             for (size_t j = 0; j < T; j++)
             {
-                balance.push_back({MINUS_ONE,Q[j]});
+                balance.push_back({MINUS_ONE, Q[j]});
             }
-            if (!(straus(balance) == ONE)) // group identity
+            if (!(straus(balance) == key::identity)) // group identity
             {
                 return false;
             }

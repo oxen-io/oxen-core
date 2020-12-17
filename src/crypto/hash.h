@@ -52,12 +52,12 @@ namespace crypto {
   */
 
   inline void cn_fast_hash(const void *data, std::size_t length, hash &hash) {
-    cn_fast_hash(data, length, hash.data);
+    cn_fast_hash(data, length, hash);
   }
 
   inline hash cn_fast_hash(const void *data, std::size_t length) {
     hash h;
-    cn_fast_hash(data, length, h.data);
+    cn_fast_hash(data, length, h);
     return h;
   }
 
@@ -124,7 +124,7 @@ namespace crypto {
          const uint32_t CN_TURTLE_ITERATIONS = 131072;
          cn_turtle_hash(data,
              length,
-             hash.data,
+             hash,
              1, // light
              2, // variant
              0, // pre-hashed
@@ -137,7 +137,7 @@ namespace crypto {
   inline hash tree_hash(const std::vector<hash>& hashes) {
     assert(!hashes.empty());
     hash root_hash;
-    tree_hash(reinterpret_cast<const char* const*>(hashes.data()), hashes.size(), root_hash.data);
+    tree_hash(reinterpret_cast<const unsigned char* const*>(hashes.data()), hashes.size(), root_hash);
     return root_hash;
   }
 

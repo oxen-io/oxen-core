@@ -49,7 +49,7 @@ TEST(ringct, CLSAG)
   const size_t idx = 5;
   ctkeyV pubs;
   key p, t, t2, u;
-  const key message = identity();
+  const key message = key::identity;
   ctkey backup;
   clsag clsag;
 
@@ -83,7 +83,7 @@ TEST(ringct, CLSAG)
   insk.mask = t;
   
   // bad message
-  clsag = rct::proveRctCLSAGSimple(zero(),pubs,insk,t2,Cout,NULL,NULL,NULL,idx,hw::get_device("default"));
+  clsag = rct::proveRctCLSAGSimple(key::zero,pubs,insk,t2,Cout,NULL,NULL,NULL,idx,hw::get_device("default"));
   ASSERT_FALSE(rct::verRctCLSAGSimple(message,clsag,pubs,Cout));
 
   // bad index at creation
@@ -228,7 +228,7 @@ TEST(ringct, range_proofs)
 
   //add output 500
   amounts.push_back(500);
-  amount_keys.push_back(rct::hash_to_scalar(rct::zero()));
+  amount_keys.push_back(rct::hash_to_scalar(rct::key::zero));
   keyV destinations;
   key Sk, Pk;
   skpkGen(Sk, Pk);
@@ -237,14 +237,14 @@ TEST(ringct, range_proofs)
 
   //add output for 12500
   amounts.push_back(12500);
-  amount_keys.push_back(rct::hash_to_scalar(rct::zero()));
+  amount_keys.push_back(rct::hash_to_scalar(rct::key::zero));
   skpkGen(Sk, Pk);
   destinations.push_back(Pk);
 
   const rct::RCTConfig rct_config { RangeProofType::PaddedBulletproof, 0 };
 
   //compute rct data with mixin 3
-  rctSig s = genRctSimple(rct::zero(), sc, pc, destinations, inamounts, amounts, amount_keys, NULL, NULL, 0, 3, rct_config, hw::get_device("default"));
+  rctSig s = genRctSimple(rct::key::zero, sc, pc, destinations, inamounts, amounts, amount_keys, NULL, NULL, 0, 3, rct_config, hw::get_device("default"));
 
   //verify rct data
   ASSERT_TRUE(verRctSimple(s));
@@ -261,7 +261,7 @@ TEST(ringct, range_proofs)
 
 
   //compute rct data with mixin 3
-  s = genRctSimple(rct::zero(), sc, pc, destinations, inamounts, amounts, amount_keys, NULL, NULL, 0, 3, rct_config, hw::get_device("default"));
+  s = genRctSimple(rct::key::zero, sc, pc, destinations, inamounts, amounts, amount_keys, NULL, NULL, 0, 3, rct_config, hw::get_device("default"));
 
   //verify rct data
   ASSERT_FALSE(verRctSimple(s));
@@ -294,7 +294,7 @@ TEST(ringct, range_proofs_with_fee)
 
   //add output 500
   amounts.push_back(500);
-  amount_keys.push_back(rct::hash_to_scalar(rct::zero()));
+  amount_keys.push_back(rct::hash_to_scalar(rct::key::zero));
   keyV destinations;
   key Sk, Pk;
   skpkGen(Sk, Pk);
@@ -302,14 +302,14 @@ TEST(ringct, range_proofs_with_fee)
 
   //add output for 12500
   amounts.push_back(12500);
-  amount_keys.push_back(hash_to_scalar(zero()));
+  amount_keys.push_back(hash_to_scalar(key::zero));
   skpkGen(Sk, Pk);
   destinations.push_back(Pk);
 
   const rct::RCTConfig rct_config { RangeProofType::PaddedBulletproof, 0 };
 
   //compute rct data with mixin 3
-  rctSig s = genRctSimple(rct::zero(), sc, pc, destinations, inamounts, amounts, amount_keys, NULL, NULL, 1, 3, rct_config, hw::get_device("default"));
+  rctSig s = genRctSimple(rct::key::zero, sc, pc, destinations, inamounts, amounts, amount_keys, NULL, NULL, 1, 3, rct_config, hw::get_device("default"));
 
   //verify rct data
   ASSERT_TRUE(verRctSimple(s));
@@ -326,7 +326,7 @@ TEST(ringct, range_proofs_with_fee)
 
 
   //compute rct data with mixin 3
-  s = genRctSimple(rct::zero(), sc, pc, destinations, inamounts, amounts, amount_keys, NULL, NULL, 500, 3, rct_config, hw::get_device("default"));
+  s = genRctSimple(rct::key::zero, sc, pc, destinations, inamounts, amounts, amount_keys, NULL, NULL, 500, 3, rct_config, hw::get_device("default"));
 
   //verify rct data
   ASSERT_FALSE(verRctSimple(s));
@@ -366,7 +366,7 @@ TEST(ringct, simple)
 
   //add output 5000
   outamounts.push_back(5000);
-  amount_keys.push_back(rct::hash_to_scalar(rct::zero()));
+  amount_keys.push_back(rct::hash_to_scalar(rct::key::zero));
   //add the corresponding destination pubkey
   key Sk, Pk;
   skpkGen(Sk, Pk);
@@ -374,7 +374,7 @@ TEST(ringct, simple)
 
   //add output 999
   outamounts.push_back(999);
-  amount_keys.push_back(rct::hash_to_scalar(rct::zero()));
+  amount_keys.push_back(rct::hash_to_scalar(rct::key::zero));
   //add the corresponding destination pubkey
   skpkGen(Sk, Pk);
   destinations.push_back(Pk);
@@ -412,13 +412,13 @@ static rct::rctSig make_sample_simple_rct_sig(int n_inputs, const uint64_t input
 
   for (int n = 0; n < n_outputs; ++n) {
     outamounts.push_back(output_amounts[n]);
-    amount_keys.push_back(hash_to_scalar(zero()));
+    amount_keys.push_back(hash_to_scalar(key::zero));
     skpkGen(Sk, Pk);
     destinations.push_back(Pk);
   }
 
   const rct::RCTConfig rct_config { RangeProofType::PaddedBulletproof, 0 };
-  return genRctSimple(rct::zero(), sc, pc, destinations, inamounts, outamounts, amount_keys, NULL, NULL, fee, 3, rct_config, hw::get_device("default"));
+  return genRctSimple(rct::key::zero, sc, pc, destinations, inamounts, outamounts, amount_keys, NULL, NULL, fee, 3, rct_config, hw::get_device("default"));
 }
 
 static bool range_proof_test(
@@ -652,14 +652,14 @@ TEST(ringct, HPow2)
   // Don't use it elsewhere
   key H = cn_fast_hash(G);
   ge_p3 H_p3;
-  int decode = ge_frombytes_vartime(&H_p3, H.bytes);
+  int decode = ge_frombytes_vartime(&H_p3, H);
   ASSERT_EQ(decode, 0); // this is known to pass for the particular value G
   ge_p2 H_p2;
   ge_p3_to_p2(&H_p2, &H_p3);
   ge_p1p1 H8_p1p1;
   ge_mul8(&H8_p1p1, &H_p2);
   ge_p1p1_to_p3(&H_p3, &H8_p1p1);
-  ge_p3_tobytes(H.bytes, &H_p3);
+  ge_p3_tobytes(H, &H_p3);
 
   for (int j = 0 ; j < ATOMS ; j++) {
     ASSERT_TRUE(equalKeys(H, H2[j]));
@@ -790,7 +790,7 @@ TEST(ringct, zeroCommmit)
 {
   static const uint64_t amount = crypto::rand<uint64_t>();
   const rct::key z = rct::zeroCommit(amount);
-  const rct::key a = rct::scalarmultBase(rct::identity());
+  const rct::key a = rct::scalarmultBase(rct::key::identity);
   const rct::key b = rct::scalarmultH(rct::d2h(amount));
   const rct::key manual = rct::addKeys(a, b);
   ASSERT_EQ(z, manual);
@@ -800,7 +800,7 @@ static rct::key uncachedZeroCommit(uint64_t amount)
 {
   const rct::key am = rct::d2h(amount);
   const rct::key bH = rct::scalarmultH(am);
-  return rct::addKeys(rct::G, bH);
+  return rct::addKeys(rct::key::G, bH);
 }
 
 TEST(ringct, zeroCommitCache)
@@ -818,7 +818,7 @@ TEST(ringct, zeroCommitCache)
 TEST(ringct, H)
 {
   ge_p3 p3;
-  ASSERT_EQ(ge_frombytes_vartime(&p3, rct::H.bytes), 0);
+  ASSERT_EQ(ge_frombytes_vartime(&p3, rct::H), 0);
   ASSERT_EQ(memcmp(&p3, &ge_p3_H, sizeof(ge_p3)), 0);
 }
 
@@ -826,15 +826,16 @@ TEST(ringct, mul8)
 {
   ge_p3 p3;
   rct::key key;
-  ASSERT_EQ(rct::scalarmult8(rct::identity()), rct::identity());
-  rct::scalarmult8(p3,rct::identity());
-  ge_p3_tobytes(key.bytes, &p3);
-  ASSERT_EQ(key, rct::identity());
-  ASSERT_EQ(rct::scalarmult8(rct::H), rct::scalarmultKey(rct::H, rct::EIGHT));
+  ASSERT_EQ(rct::scalarmult8(rct::key::identity), rct::key::identity);
+  rct::scalarmult8(p3,rct::key::identity);
+  ge_p3_tobytes(key, &p3);
+  ASSERT_EQ(key, rct::key::identity);
+  constexpr auto EIGHT = rct::key::constant(8,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
+  ASSERT_EQ(rct::scalarmult8(rct::H), rct::scalarmultKey(rct::H, EIGHT));
   rct::scalarmult8(p3,rct::H);
-  ge_p3_tobytes(key.bytes, &p3);
-  ASSERT_EQ(key, rct::scalarmultKey(rct::H, rct::EIGHT));
-  ASSERT_EQ(rct::scalarmultKey(rct::scalarmultKey(rct::H, rct::INV_EIGHT), rct::EIGHT), rct::H);
+  ge_p3_tobytes(key, &p3);
+  ASSERT_EQ(key, rct::scalarmultKey(rct::H, EIGHT));
+  ASSERT_EQ(rct::scalarmultKey(rct::scalarmultKey(rct::H, rct::key::inv_eight), EIGHT), rct::H);
 }
 
 TEST(ringct, aggregated)

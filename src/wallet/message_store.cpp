@@ -313,7 +313,7 @@ bool message_store::check_auto_config_token(const std::string &raw_token,
     return false;
   auto token_bytes = lokimq::from_hex(hex_digits);
   auto hash = crypto::cn_fast_hash(token_bytes.data(), token_bytes.size() - 1);
-  if (token_bytes[AUTO_CONFIG_TOKEN_BYTES] != hash.data[0])
+  if (token_bytes[AUTO_CONFIG_TOKEN_BYTES] != static_cast<char>(hash.data[0]))
   {
     return false;
   }
@@ -324,17 +324,13 @@ bool message_store::check_auto_config_token(const std::string &raw_token,
 // Create a new auto-config token with prefix, random 8-hex digits plus 2 checksum digits
 std::string message_store::create_auto_config_token()
 {
-  unsigned char random[AUTO_CONFIG_TOKEN_BYTES];
-  crypto::rand(AUTO_CONFIG_TOKEN_BYTES, random);
-  std::string token_bytes;
-  token_bytes.append((char *)random, AUTO_CONFIG_TOKEN_BYTES);
+  std::byte random[AUTO_CONFIG_TOKEN_BYTES+1];
+  randombytes_buf(reinterpret_cast<unsigned char*>(random), AUTO_CONFIG_TOKEN_BYTES);
 
   // Add a checksum because technically ANY four bytes are a valid token, and without a checksum we would send
   // auto-config messages "to nowhere" after the slightest typo without knowing it
-  auto hash = crypto::cn_fast_hash(token_bytes.data(), token_bytes.size());
-  token_bytes += hash.data[0];
-  std::string prefix(AUTO_CONFIG_TOKEN_PREFIX);
-  return prefix + oxenmq::to_hex(token_bytes);
+  random[AUTO_CONFIG_TOKEN_BYTES] = crypto::cn_fast_hash(random, AUTO_CONFIG_TOKEN_BYTES).data[0];
+  return AUTO_CONFIG_TOKEN_PREFIX + lokimq::to_hex(std::begin(random), std::end(random));
 }
 
 // Add a message for sending "me" address data to the auto-config transport address

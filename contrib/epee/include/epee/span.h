@@ -43,7 +43,7 @@ namespace epee
     Inspired by `gsl::span` and/or `boost::iterator_range`. This class is
     intended to be used as a parameter type for functions that need to take a
     writable or read-only sequence of data. Most common cases are `span<char>`
-    and `span<std::uint8_t>`. Using as a class member is only recommended if
+    and `span<std::byte>`. Using as a class member is only recommended if
     clearly documented as not doing a deep-copy. C-arrays are easily convertible
     to this type.
 
@@ -137,30 +137,30 @@ namespace epee
   template<typename T>
   constexpr bool is_byte_spannable = std::has_unique_object_representations_v<T>;
 
-  //! \return Cast data from `src` as `span<const std::uint8_t>`.
+  //! \return Cast data from `src` as `span<const std::byte>`.
   template<typename T>
-  span<const std::uint8_t> to_byte_span(const span<const T> src) noexcept
+  span<const std::byte> to_byte_span(const span<const T> src) noexcept
   {
     static_assert(is_byte_spannable<T>, "source type may have padding");
-    return {reinterpret_cast<const std::uint8_t*>(src.data()), src.size_bytes()}; 
+    return {reinterpret_cast<const std::byte*>(src.data()), src.size_bytes()};
   }
 
-  //! \return `span<const std::uint8_t>` which represents the bytes at `&src`.
+  //! \return `span<const std::byte>` which represents the bytes at `&src`.
   template<typename T>
-  span<const std::uint8_t> as_byte_span(const T& src) noexcept
+  span<const std::byte> as_byte_span(const T& src) noexcept
   {
     static_assert(!std::is_empty<T>(), "empty types cannot be converted to a byte span");
     static_assert(is_byte_spannable<T>, "source type may have padding");
-    return {reinterpret_cast<const std::uint8_t*>(std::addressof(src)), sizeof(T)};
+    return {reinterpret_cast<const std::byte*>(std::addressof(src)), sizeof(T)};
   }
 
-  //! \return `span<std::uint8_t>` which represents the bytes at `&src`.
+  //! \return `span<std::byte>` which represents the bytes at `&src`.
   template<typename T>
-  span<std::uint8_t> as_mut_byte_span(T& src) noexcept
+  span<std::byte> as_mut_byte_span(T& src) noexcept
   {
     static_assert(!std::is_empty<T>(), "empty types cannot be converted to a byte span");
     static_assert(is_byte_spannable<T>, "source type may have padding");
-    return {reinterpret_cast<std::uint8_t*>(std::addressof(src)), sizeof(T)};
+    return {reinterpret_cast<std::byte*>(std::addressof(src)), sizeof(T)};
   }
 
   //! make a span from a std::string_view (and thus, implicitly, also std::string or string literal)

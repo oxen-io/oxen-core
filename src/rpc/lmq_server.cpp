@@ -168,7 +168,8 @@ omq_rpc::omq_rpc(cryptonote::core& core, core_rpc_server& rpc, const boost::prog
   {
     crypto::x25519_public_key my_pubkey;
     const std::string& pk = omq.get_pubkey();
-    std::copy(pk.begin(), pk.end(), my_pubkey.data);
+    assert(pk.size() == sizeof(my_pubkey));
+    std::copy(pk.begin(), pk.end(), static_cast<unsigned char*>(my_pubkey));
     auth.emplace(std::move(my_pubkey), AuthLevel::admin);
   }
 

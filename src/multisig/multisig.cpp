@@ -38,8 +38,6 @@
 #undef OXEN_DEFAULT_LOG_CATEGORY
 #define OXEN_DEFAULT_LOG_CATEGORY "multisig"
 
-using namespace std;
-
 namespace cryptonote
 {
   //-----------------------------------------------------------------
@@ -73,8 +71,8 @@ namespace cryptonote
   void generate_multisig_N1_N(const account_keys &keys, const std::vector<crypto::public_key> &spend_keys, std::vector<crypto::secret_key> &multisig_keys, rct::key &spend_skey, rct::key &spend_pkey)
   {
     multisig_keys.clear();
-    spend_pkey = rct::identity();
-    spend_skey = rct::zero();
+    spend_pkey = rct::key::identity;
+    spend_skey = rct::key::zero;
 
     // create all our composite private keys
     crypto::secret_key blinded_skey = get_multisig_blinded_secret_key(keys.m_spend_secret_key);
@@ -84,7 +82,7 @@ namespace cryptonote
       crypto::secret_key msk = get_multisig_blinded_secret_key(rct::rct2sk(sk));
       memwipe(&sk, sizeof(sk));
       multisig_keys.push_back(msk);
-      sc_add(spend_skey.bytes, spend_skey.bytes, (const unsigned char*)msk.data);
+      sc_add(spend_skey, spend_skey, msk);
     }
   }
   //-----------------------------------------------------------------
@@ -103,11 +101,9 @@ namespace cryptonote
   //-----------------------------------------------------------------
   crypto::secret_key calculate_multisig_signer_key(const std::vector<crypto::secret_key>& multisig_keys)
   {
-    rct::key secret_key = rct::zero();
+    rct::key secret_key = rct::key::zero;
     for (const auto &k: multisig_keys)
-    {
-      sc_add(secret_key.bytes, secret_key.bytes, (const unsigned char*)k.data);
-    }
+      sc_add(secret_key, secret_key, k);
 
     return rct::rct2sk(secret_key);
   }
@@ -129,13 +125,13 @@ namespace cryptonote
   {
     crypto::secret_key view_skey = get_multisig_blinded_secret_key(skey);
     for (const auto &k: skeys)
-      sc_add(reinterpret_cast<unsigned char*>(view_skey.data), rct::sk2rct(view_skey).bytes, rct::sk2rct(k).bytes);
+      sc_add(view_skey, view_skey, rct::sk2rct(k));
     return view_skey;
   }
   //-----------------------------------------------------------------
   crypto::public_key generate_multisig_M_N_spend_public_key(const std::vector<crypto::public_key> &pkeys)
   {
-    rct::key spend_public_key = rct::identity();
+    rct::key spend_public_key = rct::key::identity;
     for (const auto &pk: pkeys)
     {
       rct::addKeys(spend_public_key, spend_public_key, rct::pk2rct(pk));

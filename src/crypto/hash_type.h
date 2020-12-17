@@ -12,15 +12,19 @@ struct alignas(hash_chunk_t) hash_t {
   constexpr static std::size_t size = Bytes;
   static_assert(size % sizeof(hash_chunk_t) == 0);
 
-  char data[size];
+  std::byte data[size];
 
   static const hash_t null;
+
+  explicit operator bool() const { return *this != null; }
 
   bool operator==(const hash_t& h) const { return !memcmp(data, h.data, size); }
   bool operator!=(const hash_t& h) const { return !(*this == h); }
   bool operator<(const hash_t& h) const { return memcmp(data, h.data, size) < 0; }
 
-  explicit operator bool() const { return *this != null; }
+  // Implicit conversion to unsigned char* to make it much easier to pass around to C functions
+  operator unsigned char*() { return reinterpret_cast<unsigned char*>(data); }
+  operator const unsigned char*() const { return reinterpret_cast<const unsigned char*>(data); }
 
   // Combine hashes together via XORs.
   hash_t& operator^=(const hash_t& h) {

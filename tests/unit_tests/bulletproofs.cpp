@@ -114,7 +114,7 @@ TEST(bulletproofs, multi_splitting)
     {
       amount = rct::randXmrAmount(available);
       outamounts.push_back(amount);
-      amount_keys.push_back(rct::hash_to_scalar(rct::zero()));
+      amount_keys.push_back(rct::hash_to_scalar(rct::key::zero));
       rct::skpkGen(Sk, Pk);
       destinations.push_back(Pk);
       available -= amount;
@@ -133,7 +133,7 @@ TEST(bulletproofs, multi_splitting)
 
     rct::ctkeyV outSk;
     rct::RCTConfig rct_config { rct::RangeProofType::PaddedBulletproof, 0 };
-    rct::rctSig s = rct::genRctSimple(rct::zero(), sc, destinations, inamounts, outamounts, available, mixRing, amount_keys, NULL, NULL, index, outSk, rct_config, hw::get_device("default"));
+    rct::rctSig s = rct::genRctSimple(rct::key::zero, sc, destinations, inamounts, outamounts, available, mixRing, amount_keys, NULL, NULL, index, outSk, rct_config, hw::get_device("default"));
     ASSERT_TRUE(rct::verRctSimple(s));
     for (size_t i = 0; i < n_outputs; ++i)
     {
@@ -166,16 +166,16 @@ TEST(bulletproofs, valid_aggregated)
 
 TEST(bulletproofs, invalid_8)
 {
-  rct::key invalid_amount = rct::zero();
-  invalid_amount[8] = 1;
+  rct::key invalid_amount = rct::key::zero;
+  invalid_amount[8] = std::byte{1};
   rct::Bulletproof proof = bulletproof_PROVE(invalid_amount, rct::skGen());
   ASSERT_FALSE(rct::bulletproof_VERIFY(proof));
 }
 
 TEST(bulletproofs, invalid_31)
 {
-  rct::key invalid_amount = rct::zero();
-  invalid_amount[31] = 1;
+  rct::key invalid_amount = rct::key::zero;
+  invalid_amount[31] = std::byte{1};
   rct::Bulletproof proof = bulletproof_PROVE(invalid_amount, rct::skGen());
   ASSERT_FALSE(rct::bulletproof_VERIFY(proof));
 }

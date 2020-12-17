@@ -929,15 +929,15 @@ namespace cryptonote
     // Ed25519 signing).
     //
     if (!init_key(m_config_folder / "key_ed25519", keys.key_ed25519, keys.pub_ed25519,
-          [](crypto::ed25519_secret_key &sk, crypto::ed25519_public_key &pk) { crypto_sign_ed25519_sk_to_pk(pk.data, sk.data); return true; },
-          [](crypto::ed25519_secret_key &sk, crypto::ed25519_public_key &pk) { crypto_sign_ed25519_keypair(pk.data, sk.data); })
+          [](const crypto::ed25519_secret_key &sk, crypto::ed25519_public_key &pk) { crypto_sign_ed25519_sk_to_pk(pk, sk); return true; },
+          [](crypto::ed25519_secret_key &sk, crypto::ed25519_public_key &pk) { crypto_sign_ed25519_keypair(pk, sk); })
        )
       return false;
 
     // Standard x25519 keys generated from the ed25519 keypair, used for encrypted communication between SNs
-    int rc = crypto_sign_ed25519_pk_to_curve25519(keys.pub_x25519.data, keys.pub_ed25519.data);
+    int rc = crypto_sign_ed25519_pk_to_curve25519(keys.pub_x25519, keys.pub_ed25519);
     CHECK_AND_ASSERT_MES(rc == 0, false, "failed to convert ed25519 pubkey to x25519");
-    crypto_sign_ed25519_sk_to_curve25519(keys.key_x25519.data, keys.key_ed25519.data);
+    crypto_sign_ed25519_sk_to_curve25519(keys.key_x25519, keys.key_ed25519);
 
     // Legacy primary SN key file; we only load this if it exists, otherwise we use `key_ed25519`
     // for the primary SN keypair.  (This key predates the Ed25519 keys and so is needed for
@@ -949,7 +949,7 @@ namespace cryptonote
         epee::wipeable_string privkey_signhash;
         privkey_signhash.resize(crypto_hash_sha512_BYTES);
         unsigned char* pk_sh_data = reinterpret_cast<unsigned char*>(privkey_signhash.data());
-        crypto_hash_sha512(pk_sh_data, keys.key_ed25519.data, 32 /* first 32 bytes are the seed to be SHA512 hashed (the last 32 are just the pubkey) */);
+        crypto_hash_sha512(pk_sh_data, keys.key_ed25519, 32 /* first 32 bytes are the seed to be SHA512 hashed (the last 32 are just the pubkey) */);
         // Clamp private key (as libsodium does and expects -- see https://www.jcraige.com/an-explainer-on-ed25519-clamping if you want the broader reasons)
         pk_sh_data[0] &= 248;
         pk_sh_data[31] &= 63; // (some implementations put 127 here, but with the |64 in the next line it is the same thing)
@@ -1890,7 +1890,7 @@ namespace cryptonote
     for(const auto& in: tx.vin)
     {
       CHECKED_GET_SPECIFIC_VARIANT(in, txin_to_key, tokey_in, false);
-      if (!(rct::scalarmultKey(rct::ki2rct(tokey_in.k_image), rct::curveOrder()) == rct::identity()))
+      if (!(rct::scalarmultKey(rct::ki2rct(tokey_in.k_image), rct::key::L) == rct::key::identity))
         return false;
     }
     return true;

@@ -1898,10 +1898,7 @@ namespace boost::serialization
         x.m_has_payment_id = (bool) payment_id;
         if (x.m_has_payment_id)
         {
-          bool is_long = false;
-          for (int i = 8; i < 32; ++i)
-            is_long |= payment_id.data[i];
-          if (is_long)
+          if (std::any_of(payment_id.data+8, payment_id.data+32, [](auto b) { return b != std::byte{0}; }))
           {
             MWARNING("Long payment ID ignored on address book load");
             x.m_payment_id = crypto::hash8::null;

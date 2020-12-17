@@ -276,7 +276,7 @@ bool gen_multisig_tx_validation_base::generate_with(std::vector<test_event_entry
     kLRkis.push_back(rct::multisig_kLRki());
     rct::multisig_kLRki &kLRki = kLRkis.back();
 #ifdef NO_MULTISIG
-    kLRki = {rct::zero(), rct::zero(), rct::zero(), rct::zero()};
+    kLRki = {rct::key::zero, rct::key::zero, rct::key::zero, rct::key::zero};
 #else
     kLRki.k = rct::sk2rct(account_k[creator][tdidx][0]);
     kLRki.L = rct::pk2rct(account_L[creator][tdidx][0]);
@@ -333,7 +333,7 @@ bool gen_multisig_tx_validation_base::generate_with(std::vector<test_event_entry
     src.amount = blocks[n].miner_tx.vout[0].amount;
     src.real_out_tx_key = tx_pub_key[n];
     src.real_output_in_tx_index = 0;
-    src.mask = rct::identity();
+    src.mask = rct::key::identity;
     src.rct = true;
     src.multisig_kLRki = kLRkis[n];
 
@@ -342,7 +342,7 @@ bool gen_multisig_tx_validation_base::generate_with(std::vector<test_event_entry
       rct::ctkey ctkey;
       ctkey.dest = rct::pk2rct(var::get<txout_to_key>(blocks[m].miner_tx.vout[0].target).key);
       MDEBUG("using " << (m == n ? "real" : "fake") << " input " << ctkey.dest);
-      ctkey.mask = rct::commit(blocks[m].miner_tx.vout[0].amount, rct::identity()); // since those are coinbases, the masks are known
+      ctkey.mask = rct::commit(blocks[m].miner_tx.vout[0].amount, rct::key::identity); // since those are coinbases, the masks are known
       src.outputs.push_back(std::make_pair(m, ctkey));
     }
   }
@@ -396,7 +396,7 @@ bool gen_multisig_tx_validation_base::generate_with(std::vector<test_event_entry
     used_keys.insert(sk);
   for (size_t signer: signers)
   {
-    rct::key skey = rct::zero();
+    rct::key skey = rct::key::zero;
     const std::vector<crypto::secret_key> &msk1 = miner_account[signer].get_multisig_keys();
     for (size_t n = 0; n < msk1.size(); ++n)
     {
@@ -404,27 +404,27 @@ bool gen_multisig_tx_validation_base::generate_with(std::vector<test_event_entry
       if (used_keys.find(sk1) == used_keys.end())
       {
         used_keys.insert(sk1);
-        sc_add(skey.bytes, skey.bytes, rct::sk2rct(sk1).bytes);
+        sc_add(skey, skey, rct::sk2rct(sk1));
       }
     }
-    CHECK_AND_ASSERT_MES(!(skey == rct::zero()), false, "failed to find secret multisig key to sign transaction");
+    CHECK_AND_ASSERT_MES(!(skey == rct::key::zero), false, "failed to find secret multisig key to sign transaction");
     std::vector<unsigned int> indices;
     for (const auto &src: sources_copy)
       indices.push_back(src.real_output);
     rct::keyV k;
     for (size_t tdidx = 0; tdidx < inputs; ++tdidx)
     {
-      k.push_back(rct::zero());
+      k.push_back(rct::key::zero);
       for (size_t n = 0; n < account_k[signer][tdidx].size(); ++n)
       {
         crypto::public_key L;
         rct::scalarmultBase((rct::key&)L, rct::sk2rct(account_k[signer][tdidx][n]));
         if (used_L.find(L) != used_L.end())
         {
-          sc_add(k.back().bytes, k.back().bytes, rct::sk2rct(account_k[signer][tdidx][n]).bytes);
+          sc_add(k.back(), k.back(), rct::sk2rct(account_k[signer][tdidx][n]));
         }
       }
-      CHECK_AND_ASSERT_MES(!(k.back() == rct::zero()), false, "failed to find k to sign transaction");
+      CHECK_AND_ASSERT_MES(!(k.back() == rct::key::zero), false, "failed to find k to sign transaction");
     }
     tools::apply_permutation(ins_order, indices);
     tools::apply_permutation(ins_order, k);
