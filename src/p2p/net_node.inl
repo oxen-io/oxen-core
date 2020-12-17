@@ -1084,6 +1084,10 @@ namespace nodetool
       return 0;
 
     size_t x = crypto::random_filled<size_t>()%(max_index+1);
+
+    // WTF? This seems really broken (it gives something vaguely like an exponential distribution,
+    // but with various amounts impossible to ever choose). I'm not 100% sure what to switch it to,
+    // and the method description doesn't help.
     size_t res = (x*x*x)/(max_index*max_index); //parabola \/
     MDEBUG("Random connection index=" << res << "(x="<< x << ", max_index=" << max_index << ")");
     return res;
