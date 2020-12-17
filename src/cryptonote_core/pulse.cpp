@@ -1473,7 +1473,7 @@ round_state wait_for_block_template(round_context &context, service_nodes::servi
       MINFO(log_prefix(context) << "Valid block received: " << cryptonote::obj_to_json_str(context.transient.wait_for_block_template.block));
 
       // Generate my random value and its hash
-      crypto::generate_random_bytes_thread_safe(sizeof(context.transient.random_value.send.data), context.transient.random_value.send.data.data);
+      crypto::fill_random(context.transient.random_value.send.data.data);
       context.transient.random_value_hashes.send.data = blake2b_hash(&context.transient.random_value.send.data, sizeof(context.transient.random_value.send.data));
       return round_state::send_and_wait_for_random_value_hashes;
     }

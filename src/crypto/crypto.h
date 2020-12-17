@@ -32,6 +32,7 @@
 
 #include <cstddef>
 #include <iostream>
+#include <limits>
 #include <optional>
 #include <type_traits>
 #include <vector>
@@ -43,12 +44,9 @@
 #include "hash.h"
 
 #include <sodium/crypto_verify_32.h>
+#include <sodium/randombytes.h>
 
 namespace crypto {
-
-  extern "C" {
-#include "random.h"
-  }
 
   // Some 0s for us to compare things against.
   inline constexpr std::byte zero32[32] = {};
@@ -178,57 +176,51 @@ namespace crypto {
   using x25519_secret_key = epee::mlocked<tools::scrubbed<x25519_secret_key_>>;
 
   void hash_to_scalar(const void *data, size_t length, ec_scalar &res);
-  void random_scalar(unsigned char* bytes);
-  void random_scalar(ec_scalar& res);
-  ec_scalar random_scalar();
 
   static_assert(sizeof(ec_point) == 32 && sizeof(ec_scalar) == 32 &&
     sizeof(public_key) == 32 && sizeof(secret_key) == 32 &&
     sizeof(key_derivation) == 32 && sizeof(key_image) == 32 &&
     sizeof(signature) == 64, "Invalid structure size");
 
-  void generate_random_bytes_thread_safe(size_t N, uint8_t *bytes);
-  void add_extra_entropy_thread_safe(const void *ptr, size_t bytes);
-
-  /* Generate N random bytes
+  /* Fill a value with random bytes.
    */
-  inline void rand(size_t N, uint8_t *bytes) {
-    generate_random_bytes_thread_safe(N, bytes);
+  template <typename T, typename = std::enable_if_t<!std::is_const_v<T> && std::has_unique_object_representations_v<T>>>
+  void fill_random(T& val) {
+    randombytes_buf(reinterpret_cast<unsigned char*>(&val), sizeof(val));
   }
 
   /* Generate a value filled with random bytes.
    */
-  template<typename T>
-  typename std::enable_if<std::is_pod<T>::value, T>::type rand() {
-    typename std::remove_cv<T>::type res;
-    generate_random_bytes_thread_safe(sizeof(T), (uint8_t*)&res);
+  template <typename T, typename = std::enable_if_t<std::has_unique_object_representations_v<T>>>
+  T random_filled() {
+    T res;
+    fill_random(res);
     return res;
   }
 
-  /* UniformRandomBitGenerator using crypto::rand<uint64_t>()
+  /* UniformRandomBitGenerator using libsodium randombytes_buf
    */
   struct random_device
   {
     using result_type = uint64_t;
-    static constexpr result_type min() { return 0; }
-    static constexpr result_type max() { return result_type(-1); }
-    result_type operator()() const { return crypto::rand<result_type>(); }
+    static constexpr result_type min() { return std::numeric_limits<result_type>::min(); }
+    static constexpr result_type max() { return std::numeric_limits<result_type>::max(); }
+    result_type operator()() const { return random_filled<result_type>(); }
   };
 
-  /* Generate a random value between range_min and range_max
+  /* Generate a (secure) random value between range_min and range_max
    */
-  template<typename T>
-  typename std::enable_if<std::is_integral<T>::value, T>::type rand_range(T range_min, T range_max) {
-    crypto::random_device rd;
-    std::uniform_int_distribution<T> dis(range_min, range_max);
-    return dis(rd);
+  template <typename T, typename = std::enable_if_t<std::is_integral_v<T>>>
+  T random_range(T range_min, T range_max) {
+    random_device rd;
+    return std::uniform_int_distribution{range_min, range_max}(rd);
   }
 
-  /* Generate a random index between 0 and sz-1
+  /* Generate a random index between 0 and sz-1 (inclusive).
    */
-  template<typename T>
-  typename std::enable_if<std::is_unsigned<T>::value, T>::type rand_idx(T sz) {
-    return crypto::rand_range<T>(0, sz-1);
+  template <typename T, typename = std::enable_if_t<std::is_integral_v<T>>>
+  T random_index(T sz) {
+    return random_range(T{0}, sz - T{1});
   }
 
   /* Generate a new key pair

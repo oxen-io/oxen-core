@@ -695,7 +695,7 @@ void message_store::write_to_file(const multisig_wallet_state &state, const fs::
   file_data write_file_data{};
   write_file_data.magic_string = "MMS";
   write_file_data.file_version = 0;
-  write_file_data.iv = crypto::rand<crypto::chacha_iv>();
+  write_file_data.iv = crypto::random_filled<crypto::chacha_iv>();
   std::string encrypted_data;
   encrypted_data.resize(buf.size());
   crypto::chacha20(buf.data(), buf.size(), key, write_file_data.iv, &encrypted_data[0]);
@@ -1165,7 +1165,7 @@ void message_store::encrypt(crypto::public_key public_key, const std::string &pl
 
   crypto::chacha_key chacha_key;
   crypto::generate_chacha_key(&derivation, sizeof(derivation), chacha_key, 1);
-  iv = crypto::rand<crypto::chacha_iv>();
+  iv = crypto::random_filled<crypto::chacha_iv>();
   ciphertext.resize(plaintext.size());
   crypto::chacha20(plaintext.data(), plaintext.size(), chacha_key, iv, &ciphertext[0]);
 }

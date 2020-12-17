@@ -1907,7 +1907,7 @@ void block_tracker::get_fake_outs(size_t num_outs, uint64_t amount, uint64_t glo
   std::vector<size_t> choices;
   choices.resize(n_outs);
   for(size_t i=0; i < n_outs; ++i) choices[i] = i;
-  shuffle(choices.begin(), choices.end(), std::default_random_engine(crypto::rand<unsigned>()));
+  std::shuffle(choices.begin(), choices.end(), crypto::random_device{});
 
   size_t n_iters = 0;
   ssize_t idx = -1;

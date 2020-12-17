@@ -286,7 +286,6 @@ struct options {
   const command_line::arg_descriptor<std::string> hw_device_derivation_path = {"hw-device-deriv-path", tools::wallet2::tr("HW device wallet derivation path (e.g., SLIP-10)"), ""};
   const command_line::arg_descriptor<std::string> tx_notify = { "tx-notify" , "Run a program for each new incoming transaction, '%s' will be replaced by the transaction hash" , "" };
   const command_line::arg_descriptor<bool> offline = {"offline", tools::wallet2::tr("Do not connect to a daemon"), false};
-  const command_line::arg_descriptor<std::string> extra_entropy = {"extra-entropy", tools::wallet2::tr("File containing extra entropy to initialize the PRNG (any data, aim for 256 bits of entropy to be useful, wihch typically means more than 256 bits of data)")};
 };
 
 void do_prepare_file_names(const fs::path& file_path, fs::path& keys_file, fs::path& wallet_file, fs::path &mms_file)
@@ -420,15 +419,6 @@ std::unique_ptr<tools::wallet2> make_basic(const boost::program_options::variabl
 
   if (command_line::get_arg(vm, opts.offline))
     wallet->set_offline();
-
-  const std::string extra_entropy = command_line::get_arg(vm, opts.extra_entropy);
-  if (!extra_entropy.empty())
-  {
-    std::string data;
-    THROW_WALLET_EXCEPTION_IF(!tools::slurp_file(fs::u8path(extra_entropy), data),
-        tools::error::wallet_internal_error, "Failed to load extra entropy from " + extra_entropy);
-    add_extra_entropy_thread_safe(data.data(), data.size());
-  }
 
   try
   {
@@ -936,7 +926,7 @@ uint64_t gamma_picker::pick()
   if (n_rct == 0)
     return std::numeric_limits<uint64_t>::max(); // bad pick
   MTRACE("Picking 1/" << n_rct << " in block " << index);
-  return first_rct + crypto::rand_idx(n_rct);
+  return first_rct + crypto::random_index(n_rct);
 };
 
 std::mutex wallet_keys_unlocker::lockers_mutex;
@@ -1167,7 +1157,6 @@ void wallet2::init_options(boost::program_options::options_description& desc_par
   command_line::add_arg(desc_params, opts.tx_notify);
   command_line::add_arg(desc_params, opts.offline);
   command_line::add_arg(desc_params, opts.disable_rpc_long_poll);
-  command_line::add_arg(desc_params, opts.extra_entropy);
 }
 
 std::pair<std::unique_ptr<wallet2>, tools::password_container> wallet2::make_from_json(const boost::program_options::variables_map& vm, bool unattended, const fs::path& json_file, const std::function<std::optional<tools::password_container>(const char *, bool)> &password_prompter)
@@ -4100,7 +4089,7 @@ std::optional<wallet2::keys_file_data> wallet2::get_keys_file_data(const epee::w
   // Encrypt the entire JSON object.
   std::string cipher;
   cipher.resize(account_data.size());
-  keys_file_data->iv = crypto::rand<crypto::chacha_iv>();
+  keys_file_data->iv = crypto::random_filled<crypto::chacha_iv>();
   crypto::chacha20(account_data.data(), account_data.size(), key, keys_file_data->iv, &cipher[0]);
   keys_file_data->account_data = cipher;
   return keys_file_data;
@@ -5987,7 +5976,7 @@ std::optional<wallet2::cache_file_data> wallet2::get_cache_file_data(const epee:
     cache_file_data->cache_data = oss.str();
     std::string cipher;
     cipher.resize(cache_file_data->cache_data.size());
-    cache_file_data->iv = crypto::rand<crypto::chacha_iv>();
+    cache_file_data->iv = crypto::random_filled<crypto::chacha_iv>();
     crypto::chacha20(cache_file_data->cache_data.data(), cache_file_data->cache_data.size(), m_cache_key, cache_file_data->iv, &cipher[0]);
     cache_file_data->cache_data = cipher;
     return cache_file_data;
@@ -9618,49 +9607,44 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
               type = "gamma";
             }
           }
-          else if (num_found - 1 < recent_outputs_count) // -1 to account for the real one we seeded with
-          {
-            // triangular distribution over [a,b) with a=0, mode c=b=up_index_limit
-            uint64_t r = crypto::rand<uint64_t>() % ((uint64_t)1 << 53);
-            double frac = std::sqrt((double)r / ((uint64_t)1 << 53));
-            i = (uint64_t)(frac*num_recent_outs) + num_outs - num_recent_outs;
-            // just in case rounding up to 1 occurs after calc
-            if (i == num_outs)
-              --i;
-            type = "recent";
-          }
-          else if (num_found -1 < recent_outputs_count + pre_fork_outputs_count)
-          {
-            // triangular distribution over [a,b) with a=0, mode c=b=up_index_limit
-            uint64_t r = crypto::rand<uint64_t>() % ((uint64_t)1 << 53);
-            double frac = std::sqrt((double)r / ((uint64_t)1 << 53));
-            i = (uint64_t)(frac*segregation_limit[amount].first);
-            // just in case rounding up to 1 occurs after calc
-            if (i == num_outs)
-              --i;
-            type = " pre-fork";
-          }
-          else if (num_found -1 < recent_outputs_count + pre_fork_outputs_count + post_fork_outputs_count)
-          {
-            // triangular distribution over [a,b) with a=0, mode c=b=up_index_limit
-            uint64_t r = crypto::rand<uint64_t>() % ((uint64_t)1 << 53);
-            double frac = std::sqrt((double)r / ((uint64_t)1 << 53));
-            i = (uint64_t)(frac*num_post_fork_outs) + segregation_limit[amount].first;
-            // just in case rounding up to 1 occurs after calc
-            if (i == num_post_fork_outs+segregation_limit[amount].first)
-              --i;
-            type = "post-fork";
-          }
           else
           {
             // triangular distribution over [a,b) with a=0, mode c=b=up_index_limit
-            uint64_t r = crypto::rand<uint64_t>() % ((uint64_t)1 << 53);
-            double frac = std::sqrt((double)r / ((uint64_t)1 << 53));
-            i = (uint64_t)(frac*num_outs);
-            // just in case rounding up to 1 occurs after calc
-            if (i == num_outs)
-              --i;
-            type = "triangular";
+            crypto::random_device rd;
+            double frac = std::sqrt(std::uniform_real_distribution<double>{}(rd));
+
+            if (num_found - 1 < recent_outputs_count) // -1 to account for the real one we seeded with
+            {
+              i = (uint64_t)(frac*num_recent_outs) + num_outs - num_recent_outs;
+              // just in case rounding up to 1 occurs after calc
+              if (i == num_outs)
+                --i;
+              type = "recent";
+            }
+            else if (num_found -1 < recent_outputs_count + pre_fork_outputs_count)
+            {
+              i = (uint64_t)(frac*segregation_limit[amount].first);
+              // just in case rounding up to 1 occurs after calc
+              if (i == num_outs)
+                --i;
+              type = " pre-fork";
+            }
+            else if (num_found -1 < recent_outputs_count + pre_fork_outputs_count + post_fork_outputs_count)
+            {
+              i = (uint64_t)(frac*num_post_fork_outs) + segregation_limit[amount].first;
+              // just in case rounding up to 1 occurs after calc
+              if (i == num_post_fork_outs+segregation_limit[amount].first)
+                --i;
+              type = "post-fork";
+            }
+            else
+            {
+              i = (uint64_t)(frac*num_outs);
+              // just in case rounding up to 1 occurs after calc
+              if (i == num_outs)
+                --i;
+              type = "triangular";
+            }
           }
 
           if (seen_indices.count(i))
@@ -11504,7 +11488,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_all(uint64_t below
     if (unused_transfer_dust_indices_per_subaddr.count(0) == 1 && unused_transfer_dust_indices_per_subaddr.size() > 1)
       unused_transfer_dust_indices_per_subaddr.erase(0);
     auto i = unused_transfer_dust_indices_per_subaddr.begin();
-    std::advance(i, crypto::rand_idx(unused_transfer_dust_indices_per_subaddr.size()));
+    std::advance(i, crypto::random_index(unused_transfer_dust_indices_per_subaddr.size()));
     unused_transfers_indices = i->second.first;
     unused_dust_indices = i->second.second;
     LOG_PRINT_L2("Spending from subaddress index " << i->first);
@@ -14302,7 +14286,7 @@ std::string wallet2::encrypt(std::string_view plaintext, const crypto::secret_ke
   crypto::chacha_key key;
   crypto::generate_chacha_key(&skey, sizeof(skey), key, m_kdf_rounds);
   std::string ciphertext;
-  crypto::chacha_iv iv = crypto::rand<crypto::chacha_iv>();
+  crypto::chacha_iv iv = crypto::random_filled<crypto::chacha_iv>();
   ciphertext.resize(plaintext.size() + sizeof(iv) + (authenticated ? sizeof(crypto::signature) : 0));
   crypto::chacha20(plaintext.data(), plaintext.size(), key, iv, &ciphertext[sizeof(iv)]);
   memcpy(&ciphertext[0], &iv, sizeof(iv));

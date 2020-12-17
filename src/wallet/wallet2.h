@@ -114,7 +114,7 @@ private:
     const std::vector<uint64_t> &rct_offsets;
     const uint64_t *begin, *end;
     uint64_t num_rct_outputs;
-    double average_output_time;
+    uint64_t average_output_time;
   };
 
   class wallet_keys_unlocker

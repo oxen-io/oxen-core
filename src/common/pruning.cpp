@@ -109,7 +109,7 @@ uint64_t get_next_pruned_block_height(uint64_t block_height, uint64_t blockchain
 
 uint32_t get_random_stripe()
 {
-  return 1 + crypto::rand<uint8_t>() % (1ul << CRYPTONOTE_PRUNING_LOG_STRIPES);
+  return 1 + crypto::random_index(1ul << CRYPTONOTE_PRUNING_LOG_STRIPES);
 }
 
 }

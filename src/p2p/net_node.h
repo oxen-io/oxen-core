@@ -138,7 +138,7 @@ namespace nodetool
     struct config
     {
       network_config m_net_config{};
-      uint64_t m_peer_id{crypto::rand<uint64_t>()};
+      uint64_t m_peer_id{crypto::random_filled<uint64_t>()};
       uint32_t m_support_flags{0};
     };
 

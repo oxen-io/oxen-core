@@ -397,7 +397,7 @@ namespace nodetool
       for(const std::string& pr_str: perrs)
       {
         nodetool::peerlist_entry pe{};
-        pe.id = crypto::rand<uint64_t>();
+        pe.id = crypto::random_filled<uint64_t>();
         const uint16_t default_port = cryptonote::get_config(m_nettype).P2P_DEFAULT_PORT;
         expect<epee::net_utils::network_address> adr = net::get_network_address(pr_str, default_port);
         if (adr)
@@ -416,7 +416,7 @@ namespace nodetool
         CHECK_AND_ASSERT_MES(r, false, "Failed to parse or resolve address from string: " << pr_str);
         for (const epee::net_utils::network_address& addr : resolved_addrs)
         {
-          pe.id = crypto::rand<uint64_t>();
+          pe.id = crypto::random_filled<uint64_t>();
           pe.adr = addr;
           m_command_line_peers.push_back(pe);
         }
@@ -1083,7 +1083,7 @@ namespace nodetool
     if(!max_index)
       return 0;
 
-    size_t x = crypto::rand<size_t>()%(max_index+1);
+    size_t x = crypto::random_filled<size_t>()%(max_index+1);
     size_t res = (x*x*x)/(max_index*max_index); //parabola \/
     MDEBUG("Random connection index=" << res << "(x="<< x << ", max_index=" << max_index << ")");
     return res;
@@ -1431,7 +1431,7 @@ namespace nodetool
         }
       }
       else
-        random_index = crypto::rand_idx(filtered.size());
+        random_index = crypto::random_index(filtered.size());
 
       CHECK_AND_ASSERT_MES(random_index < filtered.size(), false, "random_index < filtered.size() failed!!");
       random_index = filtered[random_index];
@@ -1503,7 +1503,7 @@ namespace nodetool
 
       size_t try_count = 0;
       bool is_connected_to_at_least_one_seed_node = false;
-      size_t current_index = crypto::rand_idx(m_seed_nodes.size());
+      size_t current_index = crypto::random_index(m_seed_nodes.size());
       const net_server& server = m_network_zones.at(epee::net_utils::zone::public_).m_net_server;
       while(true)
       {

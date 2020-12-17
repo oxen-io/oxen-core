@@ -35,6 +35,7 @@
 #include "cryptonote_basic/cryptonote_basic_impl.h"
 #include <chrono>
 #include <exception>
+#include <lokimq/base64.h>
 
 #include "wallet_rpc_server_error_codes.h"
 #include "wallet_rpc_server.h"
@@ -539,11 +540,13 @@ namespace tools
     {
       if (!rpc_config.login)
       {
-        std::array<std::uint8_t, 16> rand_128bit{{}};
-        crypto::rand(rand_128bit.size(), rand_128bit.data());
+        // FIXME: since we are base64 encoding it would make more sense to have this as a multiple
+        // of 3 (say 15 bytes) to avoid padding characters in the generated password.
+        std::array<std::byte, 16> rand_128bit;
+        randombytes_buf(reinterpret_cast<unsigned char*>(rand_128bit.data()), rand_128bit.size());
         m_login.emplace(
           default_rpc_username,
-          epee::string_encoding::base64_encode(rand_128bit.data(), rand_128bit.size())
+          lokimq::to_base64(rand_128bit.begin(), rand_128bit.end())
         );
 
         std::string temp = "oxen-wallet-rpc." + std::to_string(port) + ".login";
@@ -1472,7 +1475,7 @@ namespace tools
       crypto::hash8 payment_id;
       if (req.payment_id.empty())
       {
-        payment_id = crypto::rand<crypto::hash8>();
+        payment_id = crypto::random_filled<crypto::hash8>();
       }
       else
       {

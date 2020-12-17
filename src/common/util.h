@@ -35,6 +35,7 @@
 #include <memory>
 #include <string>
 #include <chrono>
+#include <type_traits>
 
 #include "crypto/hash.h"
 #include "cryptonote_config.h"

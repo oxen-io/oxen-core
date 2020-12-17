@@ -31,6 +31,9 @@
 #include "epee/misc_log_ex.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "rctOps.h"
+
+#include <sodium/crypto_core_ed25519.h>
+
 using namespace crypto;
 
 #undef OXEN_DEFAULT_LOG_CATEGORY

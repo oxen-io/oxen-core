@@ -96,7 +96,7 @@ namespace dandelionpp
                 break;
             }
 
-            return choices[crypto::rand_idx(choices.size())];
+            return choices[crypto::random_index(choices.size())];
         }
     } // anonymous
 
@@ -113,7 +113,7 @@ namespace dandelionpp
         if (stems < out_mapping_.size())
         {
             for (unsigned i = 0; i < stems; ++i)
-                std::swap(out_mapping_[i], out_mapping_.at(i + crypto::rand_idx(out_mapping_.size() - i)));
+                std::swap(out_mapping_[i], out_mapping_.at(i + crypto::random_index(out_mapping_.size() - i)));
 
             out_mapping_.resize(stems);
         }
@@ -157,7 +157,7 @@ namespace dandelionpp
             const bool increase_stems = out_mapping_.size() <= i;
             if (increase_stems || out_mapping_[i].is_nil())
             {
-                std::swap(current.back(), current.at(crypto::rand_idx(current.size())));
+                std::swap(current.back(), current.at(crypto::random_index(current.size())));
                 if (increase_stems)
                     out_mapping_.push_back(current.back());
                 else

@@ -101,7 +101,7 @@ DISABLE_VS_WARNINGS(4244 4345)
   //-----------------------------------------------------------------
   void account_keys::encrypt(const crypto::chacha_key &key)
   {
-    m_encryption_iv = crypto::rand<crypto::chacha_iv>();
+    m_encryption_iv = crypto::random_filled<crypto::chacha_iv>();
     xor_with_key_stream(key);
   }
   //-----------------------------------------------------------------

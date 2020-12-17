@@ -44,7 +44,6 @@ add_library(cncrypto
   jh.c
   keccak.c
   oaes_lib.c
-  random.c
   skein.c
   cn_heavy_hash_hard_arm.cpp
   cn_heavy_hash_hard_intel.cpp

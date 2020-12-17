@@ -336,7 +336,7 @@ uint64_t Wallet::amountFromDouble(double amount)
 EXPORT
 std::string Wallet::genPaymentId()
 {
-    crypto::hash8 payment_id = crypto::rand<crypto::hash8>();
+    crypto::hash8 payment_id = crypto::random_filled<crypto::hash8>();
     return tools::type_to_hex(payment_id);
 
 }
