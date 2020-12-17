@@ -666,7 +666,7 @@ namespace crypto {
 
 
     sig.c = rs.hash_to_scalar(); // c = H(I || L || R) = H(I || kG || kH(A))
-    sc_mulsub(&sig.r, &sig.c, &unwrap(sec), &k); // r = k - ac = k - aH(I || kG || kH(A))
+    sc_mulsub(&sig.r, &sig.c, &sec, &k); // r = k - ac = k - aH(I || kG || kH(A))
 
     memwipe(&k, sizeof(k));
   }
