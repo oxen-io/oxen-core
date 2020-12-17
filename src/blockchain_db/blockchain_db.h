@@ -32,7 +32,8 @@
 
 #include <string>
 #include <exception>
-#include <boost/program_options.hpp>
+#include <type_traits>
+#include <boost/program_options/options_description.hpp>
 #include "common/command_line.h"
 #include "common/fs.h"
 #include "crypto/hash.h"
@@ -111,8 +112,6 @@ using tx_out_index = std::pair<crypto::hash, uint64_t>;
 extern const command_line::arg_descriptor<std::string> arg_db_sync_mode;
 extern const command_line::arg_descriptor<bool, false> arg_db_salvage;
 
-#pragma pack(push, 1)
-
 /**
  * @brief a struct containing output metadata
  */
@@ -123,16 +122,14 @@ struct output_data_t
   uint64_t           height;       //!< the height of the block which created the output
   rct::key           commitment;   //!< the output's amount commitment (for spend verification)
 };
-#pragma pack(pop)
+static_assert(std::has_unique_object_representations_v<output_data_t>);
 
-#pragma pack(push, 1)
 struct tx_data_t
 {
   uint64_t tx_id;
   uint64_t unlock_time;
   uint64_t block_id;
 };
-#pragma pack(pop)
 
 struct alt_block_data_1_t
 {
