@@ -3034,6 +3034,7 @@ namespace cryptonote { namespace rpc {
 
         service_nodes::participation_history<service_nodes::participation_entry> const &checkpoint_participation = proof.checkpoint_participation;
         service_nodes::participation_history<service_nodes::participation_entry> const &pulse_participation      = proof.pulse_participation;
+<<<<<<< HEAD
         service_nodes::participation_history<service_nodes::timestamp_participation_entry> const &timestamp_participation      = proof.timestamp_participation;
         service_nodes::participation_history<service_nodes::timesync_entry> const &timesync_status      = proof.timesync_status;
         entry.checkpoint_participation = std::vector<service_nodes::participation_entry>(checkpoint_participation.begin(), checkpoint_participation.end());

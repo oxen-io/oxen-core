@@ -155,7 +155,11 @@ namespace service_nodes
     {
       if (check_checkpoint_obligation)
       {
+<<<<<<< HEAD
         if (!checkpoint_participation.check_participation(CHECKPOINT_MAX_MISSABLE_VOTES) )
+=======
+        if (checkpoint_participation.check_participation(CHECKPOINT_MAX_MISSABLE_VOTES) )
+>>>>>>> b85c3f5d1623a82f7c3ecb73f7e7cb9b59ebffaf
         {
           LOG_PRINT_L1("Service Node: " << pubkey << ", failed checkpoint obligation check");
           if (hf_version >= cryptonote::network_version_13_enforce_checkpoints)
@@ -163,19 +167,31 @@ namespace service_nodes
         }
       }
 
+<<<<<<< HEAD
       if (!pulse_participation.check_participation(PULSE_MAX_MISSABLE_VOTES) )
+=======
+      if (pulse_participation.check_participation(PULSE_MAX_MISSABLE_VOTES) )
+>>>>>>> b85c3f5d1623a82f7c3ecb73f7e7cb9b59ebffaf
       {
         LOG_PRINT_L1("Service Node: " << pubkey << ", failed pulse obligation check");
         result.pulse_participation = false;
       }
 
       if (check_timestamp_obligation){
+<<<<<<< HEAD
         if (!timestamp_participation.check_participation(TIMESTAMP_MAX_MISSABLE_VOTES) )
+=======
+        if (timestamp_participation.check_participation(TIMESTAMP_MAX_MISSABLE_VOTES) )
+>>>>>>> b85c3f5d1623a82f7c3ecb73f7e7cb9b59ebffaf
         {
           LOG_PRINT_L1("Service Node: " << pubkey << ", failed timestamp obligation check");
           result.timestamp_participation = false;
         }
+<<<<<<< HEAD
         if (!timesync_status.check_participation(TIMESYNC_MAX_UNSYNCED_VOTES) )
+=======
+        if (timesync_status.check_participation(TIMESYNC_MAX_UNSYNCED_VOTES) )
+>>>>>>> b85c3f5d1623a82f7c3ecb73f7e7cb9b59ebffaf
         {
           LOG_PRINT_L1("Service Node: " << pubkey << ", failed timesync obligation check");
           result.timesync_status = false;
