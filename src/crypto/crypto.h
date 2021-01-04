@@ -198,7 +198,10 @@ namespace crypto {
     return res;
   }
 
-  /* UniformRandomBitGenerator using libsodium randombytes_buf
+  /* Trivial UniformRandomBitGenerator using libsodium's randombytes_buf.
+   *
+   * Note that sodium_init() must have been called (typically via a call to common/util's
+   * tools::on_startup()).
    */
   struct random_device
   {
@@ -207,21 +210,7 @@ namespace crypto {
     static constexpr result_type max() { return std::numeric_limits<result_type>::max(); }
     result_type operator()() const { return random_filled<result_type>(); }
   };
-
-  /* Generate a (secure) random value between range_min and range_max
-   */
-  template <typename T, typename = std::enable_if_t<std::is_integral_v<T>>>
-  T random_range(T range_min, T range_max) {
-    random_device rd;
-    return std::uniform_int_distribution{range_min, range_max}(rd);
-  }
-
-  /* Generate a random index between 0 and sz-1 (inclusive).
-   */
-  template <typename T, typename = std::enable_if_t<std::is_integral_v<T>>>
-  T random_index(T sz) {
-    return random_range(T{0}, sz - T{1});
-  }
+  constexpr random_device rng{};
 
   /* Generate a new key pair
    */

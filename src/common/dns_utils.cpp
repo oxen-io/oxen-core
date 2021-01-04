@@ -34,6 +34,7 @@
 
 #include <chrono>
 #include <optional>
+#include <random>
 #include <stdexcept>
 #include <cstdlib>
 #include <cstdio>
@@ -558,7 +559,7 @@ bool load_txt_records_from_dns(std::vector<std::string> &good_records, const std
   std::vector<std::vector<std::string> > records;
   records.resize(dns_urls.size());
 
-  size_t first_index = crypto::random_index(dns_urls.size());
+  size_t first_index = std::uniform_int_distribution{size_t{0}, dns_urls.size()}(crypto::rng);
 
   // send all requests in parallel
   std::deque<bool> avail(dns_urls.size(), false), valid(dns_urls.size(), false);

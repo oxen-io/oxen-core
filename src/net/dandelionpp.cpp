@@ -33,12 +33,11 @@
 #include <chrono>
 
 #include "common/expect.h"
+#include "common/random.h"
 #include "cryptonote_config.h"
 #include "crypto/crypto.h"
 
-namespace net
-{
-namespace dandelionpp
+namespace net::dandelionpp
 {
     namespace
     {
@@ -96,31 +95,23 @@ namespace dandelionpp
                 break;
             }
 
-            return choices[crypto::random_index(choices.size())];
+            return tools::random_element(choices, crypto::rng);
         }
     } // anonymous
 
     connection_map::connection_map(std::vector<boost::uuids::uuid> out_connections, const std::size_t stems)
-      : out_mapping_(std::move(out_connections)),
-        in_mapping_(),
-        usage_count_()
     {
         // max value is used by `select_stem` as error case
         if (stems == std::numeric_limits<std::size_t>::max())
             MONERO_THROW(common_error::kInvalidArgument, "stems value cannot be max size_t");
 
         usage_count_.resize(stems);
-        if (stems < out_mapping_.size())
-        {
-            for (unsigned i = 0; i < stems; ++i)
-                std::swap(out_mapping_[i], out_mapping_.at(i + crypto::random_index(out_mapping_.size() - i)));
 
-            out_mapping_.resize(stems);
-        }
-        else
-        {
-            std::shuffle(out_mapping_.begin(), out_mapping_.end(), crypto::random_device{});
-        }
+        out_mapping_.reserve(stems);
+        std::sample(
+                std::make_move_iterator(out_connections.begin()), std::make_move_iterator(out_connections.end()),
+                std::back_inserter(out_mapping_), stems,
+                crypto::rng);
     }
 
     connection_map::~connection_map() noexcept
@@ -157,7 +148,7 @@ namespace dandelionpp
             const bool increase_stems = out_mapping_.size() <= i;
             if (increase_stems || out_mapping_[i].is_nil())
             {
-                std::swap(current.back(), current.at(crypto::random_index(current.size())));
+                std::swap(current.back(), tools::random_element(current, crypto::rng));
                 if (increase_stems)
                     out_mapping_.push_back(current.back());
                 else
@@ -208,5 +199,4 @@ namespace dandelionpp
 
         return out_mapping_[elem->second];
     }
-} // dandelionpp
-} // net
+} // net::dandelionpp

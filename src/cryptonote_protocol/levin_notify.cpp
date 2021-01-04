@@ -32,6 +32,7 @@
 #include <boost/system/system_error.hpp>
 #include <chrono>
 #include <deque>
+#include <random>
 #include <stdexcept>
 
 #include "common/expect.h"
@@ -69,7 +70,7 @@ namespace levin
     std::chrono::steady_clock::duration random_duration(std::chrono::steady_clock::duration range)
     {
       using rep = std::chrono::steady_clock::rep;
-      return std::chrono::steady_clock::duration{crypto::random_range(rep(0), range.count())};
+      return std::chrono::steady_clock::duration{std::uniform_int_distribution{rep{0}, range.count()}(crypto::rng)};
     }
 
     //! \return All outgoing connections supporting fragments in `connections`.

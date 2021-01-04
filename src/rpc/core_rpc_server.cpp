@@ -275,7 +275,7 @@ namespace cryptonote { namespace rpc {
     }
 
     const auto get_random_node_address = [](const std::vector<public_node>& public_nodes) -> std::string {
-      const auto& random_node = public_nodes[crypto::random_index(public_nodes.size())];
+      const auto& random_node = tools::random_element(public_nodes);
       const auto address = random_node.host + ":" + std::to_string(random_node.rpc_port);
       return address;
     };

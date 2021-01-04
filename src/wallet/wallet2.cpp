@@ -41,6 +41,7 @@
 #include <cpr/parameters.h>
 #include <oxenmq/base64.h>
 #include "common/password.h"
+#include "common/random.h"
 #include "common/string_util.h"
 #include "cryptonote_basic/tx_extra.h"
 #include "cryptonote_core/oxen_name_system.h"
@@ -926,7 +927,7 @@ uint64_t gamma_picker::pick()
   if (n_rct == 0)
     return std::numeric_limits<uint64_t>::max(); // bad pick
   MTRACE("Picking 1/" << n_rct << " in block " << index);
-  return first_rct + crypto::random_index(n_rct);
+  return first_rct + tools::random_index(n_rct, crypto::rng);
 };
 
 std::mutex wallet_keys_unlocker::lockers_mutex;
@@ -6740,12 +6741,12 @@ namespace
     CHECK_AND_ASSERT_MES(!vec.empty(), T(), "Vector must be non-empty");
     CHECK_AND_ASSERT_MES(idx < vec.size(), T(), "idx out of bounds");
 
-    T res = vec[idx];
+    T res = std::move(vec[idx]);
     if (idx + 1 != vec.size())
     {
-      vec[idx] = vec.back();
+      vec[idx] = std::move(vec.back());
     }
-    vec.resize(vec.size() - 1);
+    vec.pop_back();
 
     return res;
   }
@@ -6849,7 +6850,7 @@ size_t wallet2::pop_best_value_from(const transfer_container &transfers, std::ve
   }
   else
   {
-    idx = crypto::random_index(candidates.size());
+    idx = tools::random_index(candidates.size(), crypto::rng);
   }
   return pop_index (unused_indices, candidates[idx]);
 }
@@ -11478,11 +11479,10 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_all(uint64_t below
     // in case subaddress index wasn't specified, choose non-empty subaddress randomly (with index=0 being chosen last)
     if (unused_transfer_dust_indices_per_subaddr.count(0) == 1 && unused_transfer_dust_indices_per_subaddr.size() > 1)
       unused_transfer_dust_indices_per_subaddr.erase(0);
-    auto i = unused_transfer_dust_indices_per_subaddr.begin();
-    std::advance(i, crypto::random_index(unused_transfer_dust_indices_per_subaddr.size()));
-    unused_transfers_indices = i->second.first;
-    unused_dust_indices = i->second.second;
-    LOG_PRINT_L2("Spending from subaddress index " << i->first);
+    auto& i = tools::random_element(unused_transfer_dust_indices_per_subaddr, crypto::rng);
+    unused_transfers_indices = i.second.first;
+    unused_dust_indices = i.second.second;
+    LOG_PRINT_L2("Spending from subaddress index " << i.first);
   }
   else
   {

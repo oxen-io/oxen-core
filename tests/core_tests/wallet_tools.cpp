@@ -174,7 +174,7 @@ void wallet_tools::gen_tx_src(size_t mixin, uint64_t cur_height, const tools::wa
     oe.second.mask = std::get<2>(outs[n]);
   }
 
-  size_t real_idx = crypto::rand<size_t>() % mixin;
+  size_t real_idx = tools::random_index(mixin, crypto::rng);
 
   cryptonote::tx_source_entry::output_entry &real_oe = src.outputs[real_idx];
   real_oe.first = td.m_global_output_index;

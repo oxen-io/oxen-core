@@ -430,9 +430,7 @@ namespace nodetool
       return false;
     }
 
-    size_t random_index = crypto::random_index(m_peers_gray.size());
-
-    pe = *std::next(m_peers_gray.get<by_time>().rbegin(), random_index);
+    pe = tools::random_element(m_peers_gray.get<by_time>(), crypto::rng);
 
     return true;
 

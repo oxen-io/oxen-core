@@ -1358,7 +1358,6 @@ namespace nodetool
     while(rand_count < (max_random_index+1)*3 &&  try_count < 10 && !zone.m_net_server.is_stop_signal_sent())
     {
       ++rand_count;
-      size_t random_index;
       const uint32_t next_needed_pruning_stripe = m_payload_handler.get_next_needed_pruning_stripe().second;
 
       // build a set of all the /16 we're connected to, and prefer a peer that's not in that set
@@ -1413,6 +1412,8 @@ namespace nodetool
         MDEBUG("No available peer in " << (use_white_list ? "white" : "gray") << " list filtered by " << next_needed_pruning_stripe);
         return false;
       }
+
+      size_t random_index;
       if (use_white_list)
       {
         // if using the white list, we first pick in the set of peers we've already been using earlier
@@ -1435,7 +1436,7 @@ namespace nodetool
         }
       }
       else
-        random_index = crypto::random_index(filtered.size());
+        random_index = tools::random_index(filtered.size(), crypto::rng);
 
       CHECK_AND_ASSERT_MES(random_index < filtered.size(), false, "random_index < filtered.size() failed!!");
       random_index = filtered[random_index];
@@ -1507,7 +1508,7 @@ namespace nodetool
 
       size_t try_count = 0;
       bool is_connected_to_at_least_one_seed_node = false;
-      size_t current_index = crypto::random_index(m_seed_nodes.size());
+      size_t current_index = tools::random_index(m_seed_nodes.size(), crypto::rng);
       const net_server& server = m_network_zones.at(epee::net_utils::zone::public_).m_net_server;
       while(true)
       {

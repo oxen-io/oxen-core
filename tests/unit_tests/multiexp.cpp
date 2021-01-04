@@ -235,7 +235,7 @@ TEST(multiexp, straus_cached)
   for (size_t n = 0; n < N/16; ++n)
   {
     std::vector<rct::MultiexpData> data;
-    size_t sz = 1 + crypto::rand<size_t>() % (N-1);
+    size_t sz = std::uniform_int_distribution<size_t>{1, N-1}(crypto::rng);
     for (size_t s = 0; s < sz; ++s)
     {
       data.push_back({rct::skGen(), P[s].point});
@@ -257,7 +257,7 @@ TEST(multiexp, pippenger_cached)
   for (size_t n = 0; n < N/16; ++n)
   {
     std::vector<rct::MultiexpData> data;
-    size_t sz = 1 + crypto::rand<size_t>() % (N-1);
+    size_t sz = std::uniform_int_distribution<size_t>{1, N-1}(crypto::rng);
     for (size_t s = 0; s < sz; ++s)
     {
       data.push_back({rct::skGen(), P[s].point});
