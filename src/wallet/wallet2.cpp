@@ -6751,15 +6751,6 @@ namespace
   }
 
   template<typename T>
-  T pop_random_value(std::vector<T>& vec)
-  {
-    CHECK_AND_ASSERT_MES(!vec.empty(), T(), "Vector must be non-empty");
-
-    size_t idx = crypto::random_index(vec.size());
-    return pop_index (vec, idx);
-  }
-
-  template<typename T>
   T pop_back(std::vector<T>& vec)
   {
     CHECK_AND_ASSERT_MES(!vec.empty(), T(), "Vector must be non-empty");
