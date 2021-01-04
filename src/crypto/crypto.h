@@ -182,11 +182,17 @@ namespace crypto {
     sizeof(key_derivation) == 32 && sizeof(key_image) == 32 &&
     sizeof(signature) == 64, "Invalid structure size");
 
-  /* Fill a value with random bytes.
+  /// Fill a buffer with random bytes
+  template <typename T, typename = std::enable_if_t<sizeof(T) == 1>>
+  void fill_random(T* buf, size_t length) {
+    randombytes_buf(reinterpret_cast<unsigned char*>(buf), length);
+  }
+
+  /* Fill a trivially constructible value with random bytes.
    */
-  template <typename T, typename = std::enable_if_t<!std::is_const_v<T> && std::has_unique_object_representations_v<T>>>
+  template <typename T, typename = std::enable_if_t<!std::is_const_v<T> && !std::is_pointer_v<T> && std::has_unique_object_representations_v<T>>>
   void fill_random(T& val) {
-    randombytes_buf(reinterpret_cast<unsigned char*>(&val), sizeof(val));
+    fill_random(reinterpret_cast<unsigned char*>(&val), sizeof(val));
   }
 
   /* Generate a value filled with random bytes.
