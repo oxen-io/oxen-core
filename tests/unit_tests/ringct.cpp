@@ -645,7 +645,7 @@ TEST(ringct, range_proofs_accept_very_long_simple)
 
 TEST(ringct, HPow2)
 {
-  key G = scalarmultBase(d2h(1));
+  key G = scalarmultBase(rct::key::constant(1));
 
   // Note that H is computed differently than standard hashing
   // This method is not guaranteed to return a curvepoint for all inputs
@@ -669,12 +669,10 @@ TEST(ringct, HPow2)
 
 static const xmr_amount test_amounts[]={0, 1, 2, 3, 4, 5, 10000, 10000000000000000000ull, 10203040506070809000ull, 123456789123456789};
 
-TEST(ringct, d2h)
+TEST(ringct, rct_key_constant)
 {
-  key k, P1;
-  skpkGen(k, P1);
   for (auto amount: test_amounts) {
-    d2h(k, amount);
+    auto k = rct::key::constant(amount);
     ASSERT_TRUE(amount == h2d(k));
   }
 }
@@ -791,14 +789,14 @@ TEST(ringct, zeroCommmit)
   static const uint64_t amount = crypto::rand<uint64_t>();
   const rct::key z = rct::zeroCommit(amount);
   const rct::key a = rct::scalarmultBase(rct::key::identity);
-  const rct::key b = rct::scalarmultH(rct::d2h(amount));
+  const rct::key b = rct::scalarmultH(rct::key::constant(amount));
   const rct::key manual = rct::addKeys(a, b);
   ASSERT_EQ(z, manual);
 }
 
 static rct::key uncachedZeroCommit(uint64_t amount)
 {
-  const rct::key am = rct::d2h(amount);
+  const rct::key am = rct::key::constant(amount);
   const rct::key bH = rct::scalarmultH(am);
   return rct::addKeys(rct::key::G, bH);
 }

@@ -270,7 +270,7 @@ namespace ki {
     std::vector<const ::crypto::public_key*> pkeys;
     pkeys.push_back(&out_key);
 
-    CHECK_AND_ASSERT_THROW_MES(rct::scalarmultKey(rct::ki2rct(ki), rct::curveOrder()) == rct::identity(),
+    CHECK_AND_ASSERT_THROW_MES(rct::scalarmultKey(rct::ki2rct(ki), rct::key::L) == rct::key::identity,
                                "Key image out of validity domain: key image " << tools::type_to_hex(ki));
 
     CHECK_AND_ASSERT_THROW_MES(::crypto::check_ring_signature((const ::crypto::hash&)ki, ki, pkeys, &sig),
