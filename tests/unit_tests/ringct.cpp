@@ -786,7 +786,7 @@ TEST(ringct, key_ostream)
 
 TEST(ringct, zeroCommmit)
 {
-  static const uint64_t amount = crypto::rand<uint64_t>();
+  static const uint64_t amount = crypto::random_filled<uint64_t>();
   const rct::key z = rct::zeroCommit(amount);
   const rct::key a = rct::scalarmultBase(rct::key::identity);
   const rct::key b = rct::scalarmultH(rct::key::constant(amount));

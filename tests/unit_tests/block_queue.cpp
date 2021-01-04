@@ -34,13 +34,13 @@
 
 static const boost::uuids::uuid &uuid1()
 {
-  static const boost::uuids::uuid uuid = crypto::rand<boost::uuids::uuid>();
+  static const boost::uuids::uuid uuid = crypto::random_filled<boost::uuids::uuid>();
   return uuid;
 }
 
 static const boost::uuids::uuid &uuid2()
 {
-  static const boost::uuids::uuid uuid = crypto::rand<boost::uuids::uuid>();
+  static const boost::uuids::uuid uuid = crypto::random_filled<boost::uuids::uuid>();
   return uuid;
 }
 

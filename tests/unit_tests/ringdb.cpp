@@ -37,7 +37,6 @@
 
 #include "epee/string_tools.h"
 #include "crypto/crypto.h"
-#include "crypto/random.h"
 #include "crypto/chacha.h"
 #include "ringct/rctOps.h"
 #include "cryptonote_basic/cryptonote_basic.h"
@@ -50,7 +49,7 @@ namespace {
 crypto::chacha_key generate_chacha_key()
 {
   crypto::chacha_key chacha_key;
-  uint64_t password = crypto::rand<uint64_t>();
+  uint64_t password = crypto::random_filled<uint64_t>();
   crypto::generate_chacha_key(std::string((const char*)&password, sizeof(password)), chacha_key, 1);
   return chacha_key;
 }

@@ -68,7 +68,6 @@ add_executable(unit_tests
   parse_amount.cpp
   parse_address.cpp
   pruning.cpp
-  random.cpp
   rolling_median.cpp
   serialization.cpp
   service_nodes.cpp

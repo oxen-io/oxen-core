@@ -56,7 +56,7 @@ TEST(bulletproofs, valid_random)
 {
   for (int n = 0; n < 8; ++n)
   {
-    rct::Bulletproof proof = bulletproof_PROVE(crypto::rand<uint64_t>(), rct::skGen());
+    rct::Bulletproof proof = bulletproof_PROVE(crypto::random_filled<uint64_t>(), rct::skGen());
     ASSERT_TRUE(rct::bulletproof_VERIFY(proof));
   }
 }
@@ -70,7 +70,7 @@ TEST(bulletproofs, valid_multi_random)
     rct::keyV gamma;
     for (size_t i = 0; i < outputs; ++i)
     {
-      amounts.push_back(crypto::rand<uint64_t>());
+      amounts.push_back(crypto::random_filled<uint64_t>());
       gamma.push_back(rct::skGen());
     }
     rct::Bulletproof proof = bulletproof_PROVE(amounts, gamma);
@@ -155,7 +155,7 @@ TEST(bulletproofs, valid_aggregated)
     rct::keyV gamma;
     for (size_t i = 0; i < outputs; ++i)
     {
-      amounts.push_back(crypto::rand<uint64_t>());
+      amounts.push_back(crypto::random_filled<uint64_t>());
       gamma.push_back(rct::skGen());
     }
     proofs[n] = bulletproof_PROVE(amounts, gamma);

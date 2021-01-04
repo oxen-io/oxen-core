@@ -37,7 +37,7 @@ public:
 
   bool init()
   {
-    m_hash = crypto::rand<crypto::hash>();
+    m_hash = crypto::random_filled<crypto::hash>();
     return true;
   }
 

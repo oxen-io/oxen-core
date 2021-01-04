@@ -37,13 +37,13 @@ public:
 
   bool init()
   {
-    m_scalar = crypto::rand<crypto::ec_scalar>();
+    m_scalar = crypto::random_filled<crypto::ec_scalar>();
     return true;
   }
 
   bool test()
   {
-    sc_check((unsigned char*)m_scalar.data);
+    crypto::sc_check((unsigned char*)m_scalar.data);
     return true;
   }
 

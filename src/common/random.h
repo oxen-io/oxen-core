@@ -75,7 +75,8 @@ Iter select_randomly(Iter begin, Iter end) {
 /// Returns a random element by reference from a container. Can be called with a random generator,
 /// or no argument at all to use `tools::rng`.  Undefined behaviour if called on an empty container.
 template <typename Container, typename... Args>
-typename Container::value_type& random_element(const Container& c, Args&&... args) {
+auto& random_element(Container& c, Args&&... args) {
+  static_assert(std::is_reference_v<decltype(*std::begin(c))>, "random_element requires a reference-returning container");
   return *select_randomly(std::begin(c), std::end(c), std::forward<Args>(args)...);
 }
 

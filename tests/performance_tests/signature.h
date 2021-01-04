@@ -46,7 +46,7 @@ public:
     if (!single_tx_test_base::init())
       return false;
 
-    message = crypto::rand<crypto::hash>();
+    message = crypto::random_filled<crypto::hash>();
     keys = cryptonote::keypair{hw::get_device("default")};
     crypto::generate_signature(message, keys.pub, keys.sec, m_signature);
 
