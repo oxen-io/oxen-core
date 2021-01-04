@@ -233,7 +233,7 @@ namespace trezor {
         req->set_minor(subaddress->minor);
       }
       if (payment_id){
-        req->set_payment_id(std::string(payment_id->data, 8));
+        req->set_payment_id(payment_id->data, 8);
       }
 
       auto response = this->client_exchange<messages::monero::MoneroAddress>(req);

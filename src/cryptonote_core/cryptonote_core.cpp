@@ -1660,7 +1660,7 @@ namespace cryptonote
     if(!is_active_sn()) {return true;}
 
     crypto::public_key pubkey = m_service_node_list.get_random_pubkey();
-    crypto::x25519_public_key x_pkey{0};
+    auto x_pkey = crypto::x25519_public_key::null;
     constexpr std::array<uint16_t, 3> MIN_TIMESTAMP_VERSION{9,1,0};
     std::array<uint16_t,3> proofversion;
     m_service_node_list.access_proof(pubkey, [&](auto &proof) {

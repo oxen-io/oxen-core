@@ -1354,7 +1354,7 @@ bool wallet2::get_multisig_seed(epee::wipeable_string& seed, const epee::wipeabl
   }
   else
   {
-    if (!crypto::ElectrumWords::bytes_to_words(data.data(), data.size(), seed, seed_language))
+    if (!crypto::ElectrumWords::bytes_to_words(reinterpret_cast<std::byte*>(data.data()), data.size(), seed, seed_language))
     {
       std::cout << "Failed to encode seed";
       return false;
