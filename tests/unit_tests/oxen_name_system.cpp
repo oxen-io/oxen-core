@@ -111,7 +111,7 @@ TEST(oxen_name_system, value_encrypt_and_decrypt)
     ASSERT_TRUE(mval.encrypt(name));
     ASSERT_TRUE(mval.encrypted);
 
-    mval.buffer[0] = 'Z';
+    mval.buffer[0] = std::byte{'Z'};
     ASSERT_FALSE(mval.decrypt(name, type));
     ASSERT_TRUE(mval.encrypted);
   }

@@ -28,6 +28,7 @@
 // 
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
+#include "common/random.h"
 #include "ringct/rctSigs.h"
 #include "ringct/bulletproofs.h"
 #include "chaingen.h"
@@ -250,12 +251,11 @@ bool gen_bp_tx_validation_base::generate_with(std::vector<test_event_entry>& eve
       // Serialization failed, so just make a random value.  We start it with 0123456789abcdef so
       // that it looks obviously fake, then fill the rest with randomness (so that it is still
       // unique).
-      for (size_t i = 0; i < 8; i++)
-        tx_hash.data[i] = 0x01 + (0x22 * i);
-      static std::mt19937_64 rng{std::random_device{}()};
+      constexpr auto rando = "0123456789abcdef"sv;
+      lokimq::from_hex(rando.begin(), rando.end(), std::begin(tx_hash.data));
       std::uniform_int_distribution<char> unif{std::numeric_limits<char>::min()};
       for (size_t i = 8; i < sizeof(tx_hash.data); i++)
-        tx_hash.data[i] = unif(rng);
+        tx_hash.data[i] = static_cast<std::byte>(unif(tools::rng));
     }
     starting_rct_tx_hashes.push_back(tx_hash);
     LOG_PRINT_L0("Test tx: " << obj_to_json_str(rct_txes.back()));

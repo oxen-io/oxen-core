@@ -116,23 +116,23 @@ std::string make(const T&... val) {
   return tools::join(" ", std::initializer_list<std::string>{make_single(val)...});
 }
 
-static std::mt19937_64 rng{42};
+static std::mt19937_64 testrng{42};
 static void test_rng_bytes(void* const buf, const size_t size) {
     // Copy 8 bytes at a time:
     for (size_t i = 0; i < size/8; i++) {
-        uint64_t x = rng();
+        uint64_t x = testrng();
         std::memcpy(reinterpret_cast<unsigned char*>(buf) + 8*i, &x, 8);
     }
     // If requesting something not a multiple of 8 then get one more random value and copy over the
     // first n bytes:
     if (size_t leftover = size % 8; leftover > 0) {
-        uint64_t x = rng();
+        uint64_t x = testrng();
         std::memcpy(reinterpret_cast<unsigned char*>(buf) + size - leftover, &x, leftover);
     }
 }
 static randombytes_implementation testing_rng_impl{
     [] { return "loki crypto test suite"; }, // name
-    [] { return static_cast<uint32_t>(rng()); }, // random
+    [] { return static_cast<uint32_t>(testrng()); }, // random
     nullptr, // stir
     nullptr, // uniform
     test_rng_bytes, // buf

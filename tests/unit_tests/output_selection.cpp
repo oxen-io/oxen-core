@@ -43,10 +43,8 @@ static tools::wallet2::transfer_container make_transfers_container(size_t N)
     td.m_block_height = 1000;
     td.m_spent = false;
     td.m_txid = crypto::hash::null;
-    td.m_txid.data[0] = n & 0xff;
-    td.m_txid.data[1] = (n >> 8) & 0xff;
-    td.m_txid.data[2] = (n >> 16) & 0xff;
-    td.m_txid.data[3] = (n >> 24) & 0xff;
+    uint32_t x = boost::endian::native_to_little(n);
+    std::memcpy(td.m_txid.data, &x, 4);
   }
   return transfers;
 }
@@ -138,7 +136,7 @@ TEST(select_outputs, density)
   static const size_t NPICKS = 1000000;
   std::vector<uint64_t> offsets;
 
-  MKOFFSETS(300000, std::uniform_int_distribution<size_t>{1, 16}(crypto::rng));
+  MKOFFSETS(300000, std::uniform_int_distribution<size_t>(1, 16)(crypto::rng));
   tools::gamma_picker picker(offsets);
 
   std::vector<int> picks(/*n_outs*/offsets.size(), 0);
@@ -181,7 +179,7 @@ TEST(select_outputs, same_distribution)
   static const size_t NPICKS = 1000000;
   std::vector<uint64_t> offsets;
 
-  MKOFFSETS(300000, std::uniform_int_distribution<size_t>{1, 16}(crypto::rng));
+  MKOFFSETS(300000, std::uniform_int_distribution<size_t>(1, 16)(crypto::rng));
   tools::gamma_picker picker(offsets);
 
   std::vector<int> chain_picks(offsets.size(), 0);

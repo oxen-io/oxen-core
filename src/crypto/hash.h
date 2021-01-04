@@ -52,7 +52,7 @@ namespace crypto {
   */
 
   inline void cn_fast_hash(const void *data, std::size_t length, hash &hash) {
-    cn_fast_hash(data, length, hash);
+    cn_fast_hash(data, length, reinterpret_cast<unsigned char*>(&hash));
   }
 
   inline hash cn_fast_hash(const void *data, std::size_t length) {

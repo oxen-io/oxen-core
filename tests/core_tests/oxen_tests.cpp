@@ -1097,7 +1097,7 @@ static ons_keys_t make_ons_keys(cryptonote::account_base const &src)
   // NOTE: Just needs a 32 byte key. Reuse spend key
   memcpy(&result.lokinet_value.buffer[0], (char *)&result.owner.wallet.address.m_spend_public_key, result.lokinet_value.len);
 
-  result.session_value.buffer[0] = 5; // prefix with 0x05
+  result.session_value.buffer[0] = std::byte{0x05}; // prefix with 0x05
   return result;
 }
 
@@ -3085,8 +3085,7 @@ bool oxen_pulse_non_participating_validator::generate(std::vector<test_event_ent
 
     {
       entry.block.pulse.round = 0;
-      for (size_t i = 0; i < sizeof(entry.block.pulse.random_value.data); i++)
-        entry.block.pulse.random_value.data[i] = static_cast<char>(tools::uniform_distribution_portable(tools::rng, 256));
+      crypto::fill_random(entry.block.pulse.random_value.data);
     }
 
     service_nodes::quorum quorum = {};

@@ -4,6 +4,7 @@
 
 #include "wallet_tools.h"
 #include "cryptonote_core/uptime_proof.h"
+#include "common/random.h"
 #include <random>
 
 using namespace crypto;

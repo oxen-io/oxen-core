@@ -923,8 +923,7 @@ bool oxen_chain_generator::block_begin(oxen_blockchain_entry &entry, oxen_create
     // NOTE: Set up Pulse Header
     blk.pulse.validator_bitset = service_nodes::pulse_validator_bit_mask(); // NOTE: Everyone participates
     blk.pulse.round = params.pulse_round;
-    for (size_t i = 0; i < sizeof(blk.pulse.random_value.data); i++)
-      blk.pulse.random_value.data[i] = static_cast<char>(tools::uniform_distribution_portable(tools::rng, 256));
+    crypto::fill_random(blk.pulse.random_value.data);
 
     // NOTE: Get Pulse Quorum necessary for this block
     std::vector<crypto::hash> entropy = service_nodes::get_pulse_entropy_for_next_block(db_, params.prev.block, blk.pulse.round);

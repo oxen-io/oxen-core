@@ -300,18 +300,23 @@ TEST(Span, RemovePrefix)
   EXPECT_EQ(0u, span.remove_prefix(100));
 }
 
+template <typename... Bytes>
+static std::array<std::byte, sizeof...(Bytes)> byte_array(Bytes... bytes) {
+  return std::array<std::byte, sizeof...(Bytes)>{{static_cast<std::byte>(bytes)...}};
+}
+
 TEST(Span, ToByteSpan)
 {
   const char expected[] = {56, 44, 11, 5};
   EXPECT_TRUE(
     boost::range::equal(
-      std::array<std::uint8_t, 4>{{56, 44, 11, 5}},
+      byte_array(56, 44, 11, 5),
       epee::to_byte_span<char>(expected)
     )
   );
   EXPECT_TRUE(
     boost::range::equal(
-      std::array<char, 4>{{56, 44, 11, 5}},
+      byte_array(56, 44, 11, 5),
       epee::to_byte_span(epee::span<const char>{expected})
     )
   );
@@ -323,13 +328,13 @@ TEST(Span, AsByteSpan)
   const some_pod immutable {{ 5, 10, 12, 127 }};
   EXPECT_TRUE(
     boost::range::equal(
-      std::array<unsigned char, 4>{{5, 10, 12, 127}},
+      byte_array(5, 10, 12, 127),
       epee::as_byte_span(immutable)
     )
   );
   EXPECT_TRUE(
     boost::range::equal(
-      std::array<std::uint8_t, 3>{{'a', 'y', 0x00}}, epee::as_byte_span("ay")
+      byte_array('a', 'y', 0x00), epee::as_byte_span("ay")
     )
   );
 }
@@ -340,7 +345,8 @@ TEST(Span, AsMutByteSpan)
   some_pod actual {};
 
   auto span = epee::as_mut_byte_span(actual);
-  boost::range::iota(span, 1);
+  for (size_t i = 0; i < span.size(); i++)
+    *(span.begin() + i) = static_cast<std::byte>(i+1);
   EXPECT_TRUE(
     boost::range::equal(
       std::array<unsigned char, 4>{{1, 2, 3, 4}}, actual.value

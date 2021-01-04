@@ -33,6 +33,7 @@
 #include "crypto/crypto.h"
 #include "cryptonote_basic/cryptonote_basic.h"
 
+#include "multi_tx_test_base.h"
 #include "single_tx_test_base.h"
 
 class test_ge_tobytes : public multi_tx_test_base<1>
@@ -70,7 +71,7 @@ public:
   bool test()
   {
     rct::key key;
-    ge_p3_tobytes(key.bytes, &m_p3);
+    ge_p3_tobytes(key, &m_p3);
     return true;
   }
 

@@ -28,6 +28,7 @@
 
 #pragma once
 
+#include "crypto/crypto-ops.h"
 #include "crypto/crypto.h"
 
 class test_sc_check
@@ -43,7 +44,7 @@ public:
 
   bool test()
   {
-    crypto::sc_check((unsigned char*)m_scalar.data);
+    sc_check(m_scalar);
     return true;
   }
 
