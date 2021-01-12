@@ -8698,9 +8698,11 @@ wallet2::request_stake_unlock_result wallet2::can_request_stake_unlock(const cry
 
     std::optional<uint8_t> hf_version = get_hard_fork_version();
     std::vector<uint8_t> extra;
-    uint32_t priority = this->get_default_priority();
+    // Priority set to unimportant because it does not take effect until processed in a block
+    uint32_t priority = tx_priority::tx_priority_unimportant; 
     std::set<uint32_t> subaddr_indices  = {};
-    loki_construct_tx_params tx_params = wallet2::construct_params(*hf_version, cryptonote::txtype::key_image_unlock, priority);
+    oxen_construct_tx_params tx_params = wallet2::construct_params(*hf_version, cryptonote::txtype::key_image_unlock, priority);
+    tx_params.burn_fixed = UNSTAKE_BURN_FIXED;
 
     add_service_node_pubkey_to_tx_extra(extra, sn_key);
     add_tx_key_image_unlock_to_tx_extra(extra, unlock);
