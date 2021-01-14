@@ -6,7 +6,7 @@
 #include "epee/span.h"
 #include "cryptonote_basic/tx_extra.h"
 #include "common/fs.h"
-#include <lokimq/hex.h>
+#include <oxenmq/hex.h>
 
 #include <cassert>
 #include <string>
@@ -104,7 +104,7 @@ struct mapping_value
   // mapping_value, ready for decryption via decrypt().
   static bool validate_encrypted(mapping_type type, std::string_view value, mapping_value *blob = nullptr, std::string *reason = nullptr);
 };
-inline std::ostream &operator<<(std::ostream &os, mapping_value const &v) { return os << lokimq::to_hex(v.to_view()); }
+inline std::ostream &operator<<(std::ostream &os, mapping_value const &v) { return os << oxenmq::to_hex(v.to_view()); }
 
 inline std::string_view mapping_type_str(mapping_type type)
 {

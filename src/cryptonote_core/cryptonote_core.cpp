@@ -37,7 +37,7 @@
 #include <unordered_set>
 #include <sstream>
 #include <iomanip>
-#include <lokimq/base32z.h>
+#include <oxenmq/base32z.h>
 
 extern "C" {
 #include <sodium.h>
@@ -827,7 +827,7 @@ namespace cryptonote
     sqlite3 *lns_db = lns::init_oxen_name_system(lns_db_file_path, db->is_read_only());
     if (!lns_db) return false;
 
-    init_lokimq(vm);
+    init_oxenmq(vm);
 
     const difficulty_type fixed_difficulty = command_line::get_arg(vm, arg_fixed_difficulty);
     r = m_blockchain_storage.init(db.release(), lns_db, m_nettype, m_offline, regtest ? &regtest_test_options : test_options, fixed_difficulty, get_checkpoints);
@@ -983,7 +983,7 @@ namespace cryptonote
       MGINFO_YELLOW("- primary: " << tools::type_to_hex(keys.pub));
       MGINFO_YELLOW("- ed25519: " << tools::type_to_hex(keys.pub_ed25519));
       // .snode address is the ed25519 pubkey, encoded with base32z and with .snode appended:
-      MGINFO_YELLOW("- lokinet: " << lokimq::to_base32z(tools::view_guts(keys.pub_ed25519)) << ".snode");
+      MGINFO_YELLOW("- lokinet: " << oxenmq::to_base32z(tools::view_guts(keys.pub_ed25519)) << ".snode");
       MGINFO_YELLOW("-  x25519: " << tools::type_to_hex(keys.pub_x25519));
     } else {
       // Only print the x25519 version because it's the only thing useful for a non-SN (for
@@ -994,8 +994,8 @@ namespace cryptonote
     return true;
   }
 
-  static constexpr el::Level easylogging_level(lokimq::LogLevel level) {
-    using namespace lokimq;
+  static constexpr el::Level easylogging_level(oxenmq::LogLevel level) {
+    using namespace oxenmq;
     switch (level) {
         case LogLevel::fatal: return el::Level::Fatal;
         case LogLevel::error: return el::Level::Error;
@@ -1007,11 +1007,11 @@ namespace cryptonote
     }
   }
 
-  lokimq::AuthLevel core::lmq_check_access(const crypto::x25519_public_key& pubkey) const {
+  oxenmq::AuthLevel core::lmq_check_access(const crypto::x25519_public_key& pubkey) const {
     auto it = m_lmq_auth.find(pubkey);
     if (it != m_lmq_auth.end())
       return it->second;
-    return lokimq::AuthLevel::denied;
+    return oxenmq::AuthLevel::denied;
   }
 
   // Builds an allow function; takes `*this`, the default auth level, and whether this connection
@@ -1025,8 +1025,8 @@ namespace cryptonote
   // check_sn is whether we check an incoming key against known service nodes (and thus return
   // "true" for the service node access if it checks out).
   //
-  lokimq::AuthLevel core::lmq_allow(std::string_view ip, std::string_view x25519_pubkey_str, lokimq::AuthLevel default_auth) {
-    using namespace lokimq;
+  oxenmq::AuthLevel core::lmq_allow(std::string_view ip, std::string_view x25519_pubkey_str, oxenmq::AuthLevel default_auth) {
+    using namespace oxenmq;
     AuthLevel auth = default_auth;
     if (x25519_pubkey_str.size() == sizeof(crypto::x25519_public_key)) {
       crypto::x25519_public_key x25519_pubkey;
@@ -1046,10 +1046,10 @@ namespace cryptonote
     return auth;
   }
 
-  void core::init_lokimq(const boost::program_options::variables_map& vm) {
-    using namespace lokimq;
-    MGINFO("Starting lokimq");
-    m_lmq = std::make_unique<LokiMQ>(
+  void core::init_oxenmq(const boost::program_options::variables_map& vm) {
+    using namespace oxenmq;
+    MGINFO("Starting oxenmq");
+    m_lmq = std::make_unique<OxenMQ>(
         tools::copy_guts(m_service_keys.pub_x25519),
         tools::copy_guts(m_service_keys.key_x25519),
         m_service_node,
@@ -1059,7 +1059,7 @@ namespace cryptonote
           if (ELPP->vRegistry()->allowed(easylogging_level(level), "lmq"))
             el::base::Writer(easylogging_level(level), file, line, ELPP_FUNC, el::base::DispatchAction::NormalLog).construct("lmq") << msg;
         },
-        lokimq::LogLevel::trace
+        oxenmq::LogLevel::trace
     );
 
     // ping.ping: a simple debugging target for pinging the lmq listener
@@ -1089,7 +1089,7 @@ namespace cryptonote
     quorumnet_init(*this, m_quorumnet_state);
   }
 
-  void core::start_lokimq() {
+  void core::start_oxenmq() {
       update_lmq_sns(); // Ensure we have SNs set for the current block before starting
 
       if (m_service_node)
@@ -1946,7 +1946,7 @@ namespace cryptonote
     bool result = m_service_node_list.handle_uptime_proof(proof, my_uptime_proof_confirmation, pkey);
     if (result && m_service_node_list.is_service_node(proof.pubkey, true /*require_active*/) && pkey)
     {
-      lokimq::pubkey_set added;
+      oxenmq::pubkey_set added;
       added.insert(tools::copy_guts(pkey));
       m_lmq->update_active_sns(added, {} /*removed*/);
     }
@@ -2214,7 +2214,7 @@ namespace cryptonote
   void core::update_lmq_sns()
   {
     // TODO: let callers (e.g. lokinet, ss) subscribe to callbacks when this fires
-    lokimq::pubkey_set active_sns;
+    oxenmq::pubkey_set active_sns;
     m_service_node_list.copy_active_x25519_pubkeys(std::inserter(active_sns, active_sns.end()));
     m_lmq->set_active_sns(std::move(active_sns));
   }

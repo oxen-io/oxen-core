@@ -110,7 +110,7 @@ target_link_libraries(blockchain_stats PRIVATE blockchain_tools_common_libs)
 
 if (TARGET sodium_vendor OR NOT SODIUM_VERSION VERSION_LESS 1.0.17)
     oxen_add_executable(sn_key_tool "oxen-sn-keys" sn_key_tool.cpp)
-    target_link_libraries(sn_key_tool PRIVATE sodium lokimq filesystem)
+    target_link_libraries(sn_key_tool PRIVATE sodium oxenmq filesystem)
 else()
     message(STATUS "Not building oxen-sn-keys tool (requires libsodium >= 1.0.17)")
 endif()

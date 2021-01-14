@@ -1,7 +1,7 @@
 
 #include "http_server_base.h"
-#include <lokimq/base64.h>
-#include <lokimq/hex.h>
+#include <oxenmq/base64.h>
+#include <oxenmq/hex.h>
 #include "common/string_util.h"
 
 // epee:
@@ -25,9 +25,9 @@ namespace cryptonote::rpc {
   std::optional<std::string> check_authorization(std::string_view auth_header, std::string_view realm, Callback check_login) {
     std::string fail = "Basic realm=\"" + std::string{realm} + "\", charset=\"UTF-8\"";
     auto parts = tools::split_any(auth_header, " \t\r\n", true);
-    if (parts.size() < 2 || parts[0] != "Basic"sv || !lokimq::is_base64(parts[1]))
+    if (parts.size() < 2 || parts[0] != "Basic"sv || !oxenmq::is_base64(parts[1]))
       return fail;
-    auto login = lokimq::from_base64(parts[1]);
+    auto login = oxenmq::from_base64(parts[1]);
     auto colon = login.find(':');
     if (colon == std::string_view::npos)
       return fail;
@@ -144,7 +144,7 @@ namespace cryptonote::rpc {
       result << ']';
     }
     else
-      result << "{unknown:" << lokimq::to_hex(addr) << "}";
+      result << "{unknown:" << oxenmq::to_hex(addr) << "}";
     return result.str();
   }
 

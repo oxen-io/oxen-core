@@ -39,7 +39,7 @@
 #include <openssl/pem.h>
 #include <type_traits>
 #include <cpr/parameters.h>
-#include <lokimq/base64.h>
+#include <oxenmq/base64.h>
 #include "common/password.h"
 #include "common/string_util.h"
 #include "cryptonote_basic/tx_extra.h"
@@ -6923,7 +6923,7 @@ void wallet2::commit_tx(pending_tx& ptx, bool blink)
     light_rpc::SUBMIT_RAW_TX::response ores{};
     oreq.address = get_account().get_public_address_str(m_nettype);
     oreq.view_key = tools::type_to_hex(get_account().get_keys().m_view_secret_key);
-    oreq.tx = lokimq::to_hex(tx_to_blob(ptx.tx));
+    oreq.tx = oxenmq::to_hex(tx_to_blob(ptx.tx));
     oreq.blink = blink;
     bool r = invoke_http<light_rpc::SUBMIT_RAW_TX>(oreq, ores);
     THROW_WALLET_EXCEPTION_IF(!r, error::no_connection_to_daemon, "submit_raw_tx");
@@ -6934,7 +6934,7 @@ void wallet2::commit_tx(pending_tx& ptx, bool blink)
   {
     // Normal submit
     rpc::SEND_RAW_TX::request req{};
-    req.tx_as_hex = lokimq::to_hex(tx_to_blob(ptx.tx));
+    req.tx_as_hex = oxenmq::to_hex(tx_to_blob(ptx.tx));
     req.do_not_relay = false;
     req.do_sanity_checks = true;
     req.blink = blink;
@@ -7281,7 +7281,7 @@ bool wallet2::sign_tx(unsigned_tx_set& exported_txs, const fs::path& signed_file
   {
     for (size_t i = 0; i < signed_txes.ptx.size(); ++i)
     {
-      std::string tx_as_hex = lokimq::to_hex(tx_to_blob(signed_txes.ptx[i].tx));
+      std::string tx_as_hex = oxenmq::to_hex(tx_to_blob(signed_txes.ptx[i].tx));
       fs::path raw_filename = signed_filename;
       raw_filename += "_raw";
       if (signed_txes.ptx.size() > 1) raw_filename += "_" + std::to_string(i);
@@ -8737,7 +8737,7 @@ static lns_prepared_args prepare_tx_extra_oxen_name_system_values(wallet2 const 
     cryptonote::rpc::LNS_NAMES_TO_OWNERS::request request = {};
     {
       auto &request_entry = request.entries.emplace_back();
-      request_entry.name_hash = lokimq::to_base64(tools::view_guts(result.name_hash));
+      request_entry.name_hash = oxenmq::to_base64(tools::view_guts(result.name_hash));
       request_entry.types.push_back(lns::db_mapping_type(type));
     }
 
@@ -9151,7 +9151,7 @@ void wallet2::light_wallet_get_outs(std::vector<std::vector<tools::wallet2::get_
       rct::key mask{}; // decrypted mask - not used here
       rct::key rct_commit{};
       const auto& pkey = ores.amount_outs[amount_key].outputs[i].public_key;
-      THROW_WALLET_EXCEPTION_IF(pkey.size() != 64 || !lokimq::is_hex(pkey), error::wallet_internal_error, "Invalid public_key");
+      THROW_WALLET_EXCEPTION_IF(pkey.size() != 64 || !oxenmq::is_hex(pkey), error::wallet_internal_error, "Invalid public_key");
       tools::hex_to_type(ores.amount_outs[amount_key].outputs[i].public_key, tx_public_key);
       const uint64_t global_index = ores.amount_outs[amount_key].outputs[i].global_index;
       if(!light_wallet_parse_rct_str(ores.amount_outs[amount_key].outputs[i].rct, tx_public_key, 0, mask, rct_commit, false))
@@ -10396,14 +10396,14 @@ void wallet2::light_wallet_get_unspent_outs()
     bool add_transfer = true;
     crypto::key_image unspent_key_image;
     crypto::public_key tx_public_key{};
-    THROW_WALLET_EXCEPTION_IF(o.tx_pub_key.size() != 64 || !lokimq::is_hex(o.tx_pub_key), error::wallet_internal_error, "Invalid tx_pub_key field");
+    THROW_WALLET_EXCEPTION_IF(o.tx_pub_key.size() != 64 || !oxenmq::is_hex(o.tx_pub_key), error::wallet_internal_error, "Invalid tx_pub_key field");
     tools::hex_to_type(o.tx_pub_key, tx_public_key);
     
     for (const std::string &ski: o.spend_key_images) {
       spent = false;
 
       // Check if key image is ours
-      THROW_WALLET_EXCEPTION_IF(ski.size() != 64 || !lokimq::is_hex(ski), error::wallet_internal_error, "Invalid key image");
+      THROW_WALLET_EXCEPTION_IF(ski.size() != 64 || !oxenmq::is_hex(ski), error::wallet_internal_error, "Invalid key image");
       tools::hex_to_type(ski, unspent_key_image);
       if(light_wallet_key_image_is_ours(unspent_key_image, tx_public_key, o.index)){
         MTRACE("Output " << o.public_key << " is spent. Key image: " <<  ski);
@@ -10418,9 +10418,9 @@ void wallet2::light_wallet_get_unspent_outs()
     crypto::hash txid;
     crypto::public_key tx_pub_key;
     crypto::public_key public_key;
-    THROW_WALLET_EXCEPTION_IF(o.tx_hash.size() != 64 || !lokimq::is_hex(o.tx_hash), error::wallet_internal_error, "Invalid tx_hash field");
-    THROW_WALLET_EXCEPTION_IF(o.public_key.size() != 64 || !lokimq::is_hex(o.public_key), error::wallet_internal_error, "Invalid public_key field");
-    THROW_WALLET_EXCEPTION_IF(o.tx_pub_key.size() != 64 || !lokimq::is_hex(o.tx_pub_key), error::wallet_internal_error, "Invalid tx_pub_key field");
+    THROW_WALLET_EXCEPTION_IF(o.tx_hash.size() != 64 || !oxenmq::is_hex(o.tx_hash), error::wallet_internal_error, "Invalid tx_hash field");
+    THROW_WALLET_EXCEPTION_IF(o.public_key.size() != 64 || !oxenmq::is_hex(o.public_key), error::wallet_internal_error, "Invalid public_key field");
+    THROW_WALLET_EXCEPTION_IF(o.tx_pub_key.size() != 64 || !oxenmq::is_hex(o.tx_pub_key), error::wallet_internal_error, "Invalid tx_pub_key field");
     tools::hex_to_type(o.tx_hash, txid);
     tools::hex_to_type(o.public_key, public_key);
     tools::hex_to_type(o.tx_pub_key, tx_pub_key);
@@ -10564,8 +10564,8 @@ void wallet2::light_wallet_get_address_txs()
     {
       crypto::public_key tx_public_key;
       crypto::key_image key_image;
-      THROW_WALLET_EXCEPTION_IF(so.tx_pub_key.size() != 64 || !lokimq::is_hex(so.tx_pub_key), error::wallet_internal_error, "Invalid tx_pub_key field");
-      THROW_WALLET_EXCEPTION_IF(so.key_image.size() != 64 || !lokimq::is_hex(so.key_image), error::wallet_internal_error, "Invalid key_image field");
+      THROW_WALLET_EXCEPTION_IF(so.tx_pub_key.size() != 64 || !oxenmq::is_hex(so.tx_pub_key), error::wallet_internal_error, "Invalid tx_pub_key field");
+      THROW_WALLET_EXCEPTION_IF(so.key_image.size() != 64 || !oxenmq::is_hex(so.key_image), error::wallet_internal_error, "Invalid key_image field");
       tools::hex_to_type(so.tx_pub_key, tx_public_key);
       tools::hex_to_type(so.key_image, key_image);
 
@@ -10582,8 +10582,8 @@ void wallet2::light_wallet_get_address_txs()
     crypto::hash payment_id = null_hash;
     crypto::hash tx_hash;
     
-    THROW_WALLET_EXCEPTION_IF(t.payment_id.size() != 64 || !lokimq::is_hex(t.payment_id), error::wallet_internal_error, "Invalid payment_id field");
-    THROW_WALLET_EXCEPTION_IF(t.hash.size() != 64 || !lokimq::is_hex(t.hash), error::wallet_internal_error, "Invalid hash field");
+    THROW_WALLET_EXCEPTION_IF(t.payment_id.size() != 64 || !oxenmq::is_hex(t.payment_id), error::wallet_internal_error, "Invalid payment_id field");
+    THROW_WALLET_EXCEPTION_IF(t.hash.size() != 64 || !oxenmq::is_hex(t.hash), error::wallet_internal_error, "Invalid hash field");
     tools::hex_to_type(t.payment_id, payment_id);
     tools::hex_to_type(t.hash, tx_hash);
 
@@ -10722,8 +10722,8 @@ bool wallet2::light_wallet_parse_rct_str(const std::string& rct_string, const cr
   rct::key encrypted_mask;
   std::string rct_commit_str = rct_string.substr(0,64);
   std::string encrypted_mask_str = rct_string.substr(64,64);
-  THROW_WALLET_EXCEPTION_IF(rct_commit_str.size() != 64 || !lokimq::is_hex(rct_commit_str), error::wallet_internal_error, "Invalid rct commit hash: " + rct_commit_str);
-  THROW_WALLET_EXCEPTION_IF(encrypted_mask_str.size() != 64 || !lokimq::is_hex(encrypted_mask_str), error::wallet_internal_error, "Invalid rct mask: " + encrypted_mask_str);
+  THROW_WALLET_EXCEPTION_IF(rct_commit_str.size() != 64 || !oxenmq::is_hex(rct_commit_str), error::wallet_internal_error, "Invalid rct commit hash: " + rct_commit_str);
+  THROW_WALLET_EXCEPTION_IF(encrypted_mask_str.size() != 64 || !oxenmq::is_hex(encrypted_mask_str), error::wallet_internal_error, "Invalid rct mask: " + encrypted_mask_str);
   tools::hex_to_type(rct_commit_str, rct_commit);
   tools::hex_to_type(encrypted_mask_str, encrypted_mask);
   if (decrypt) {
@@ -14387,9 +14387,9 @@ std::string uri_decode(std::string_view encoded)
   std::string decoded;
   for (auto it = encoded.begin(); it != encoded.end(); )
   {
-    if (*it == '%' && encoded.end() - it >= 3 && lokimq::is_hex(it + 1, it + 3))
+    if (*it == '%' && encoded.end() - it >= 3 && oxenmq::is_hex(it + 1, it + 3))
     {
-      decoded += lokimq::from_hex(it + 1, it + 3);
+      decoded += oxenmq::from_hex(it + 1, it + 3);
       it += 3;
     }
     else

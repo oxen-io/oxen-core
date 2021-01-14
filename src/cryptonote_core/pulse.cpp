@@ -1568,7 +1568,7 @@ round_state send_and_wait_for_random_value(round_context &context, service_nodes
       {
         if (auto &random_value = quorum[index]; random_value)
         {
-          epee::wipeable_string string = lokimq::to_hex(tools::view_guts(random_value->data));
+          epee::wipeable_string string = oxenmq::to_hex(tools::view_guts(random_value->data));
 
 #if defined(NDEBUG)
           // Mask the random value generated incase someone is snooping logs
@@ -1599,7 +1599,7 @@ round_state send_and_wait_for_random_value(round_context &context, service_nodes
     crypto::hash const &final_block_hash = cryptonote::get_block_hash(final_block);
     crypto::generate_signature(final_block_hash, key.pub, key.key, context.transient.signed_block.send.data);
 
-    MINFO(log_prefix(context) << "Block final random value " << lokimq::to_hex(tools::view_guts(final_block.pulse.random_value.data)) << " generated from validators " << bitset_view16(stage.bitset));
+    MINFO(log_prefix(context) << "Block final random value " << oxenmq::to_hex(tools::view_guts(final_block.pulse.random_value.data)) << " generated from validators " << bitset_view16(stage.bitset));
     return round_state::send_and_wait_for_signed_blocks;
   }
 

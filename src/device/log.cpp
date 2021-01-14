@@ -28,7 +28,7 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-#include <lokimq/hex.h>
+#include <oxenmq/hex.h>
 #include "epee/misc_log_ex.h"
 #include "log.hpp"
 
@@ -38,7 +38,7 @@ namespace hw {
   #define OXEN_DEFAULT_LOG_CATEGORY "device"
 
   void log_hexbuffer(std::string_view msg, const void* buff, size_t len) {
-    MDEBUG(msg << ": " << lokimq::to_hex(std::string_view{reinterpret_cast<const char*>(buff), len}));
+    MDEBUG(msg << ": " << oxenmq::to_hex(std::string_view{reinterpret_cast<const char*>(buff), len}));
   }
 
   void log_message(std::string_view msg, std::string_view info) {
@@ -119,7 +119,7 @@ namespace hw {
           log_hexbuffer("    host  ", h, len);
           log_hexbuffer("    device", d, len);
       } else {
-        log_message("ASSERT EQ OK",  msg + ": " + info + ": " + lokimq::to_hex(d, d+len));
+        log_message("ASSERT EQ OK",  msg + ": " + info + ": " + oxenmq::to_hex(d, d+len));
       }
     }
 

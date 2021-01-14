@@ -1,5 +1,5 @@
 #pragma once
-#include <lokimq/hex.h>
+#include <oxenmq/hex.h>
 #include <type_traits>
 #include "epee/span.h" // epee
 
@@ -11,9 +11,9 @@ namespace tools {
     !std::is_const_v<T> && (std::is_trivially_copyable_v<T> || epee::is_byte_spannable<T>)
   >>
   bool hex_to_type(std::string_view hex, T& x) {
-    if (!lokimq::is_hex(hex) || hex.size() != 2*sizeof(T))
+    if (!oxenmq::is_hex(hex) || hex.size() != 2*sizeof(T))
       return false;
-    lokimq::from_hex(hex.begin(), hex.end(), reinterpret_cast<char*>(&x));
+    oxenmq::from_hex(hex.begin(), hex.end(), reinterpret_cast<char*>(&x));
     return true;
   }
 
@@ -23,6 +23,6 @@ namespace tools {
       || epee::is_byte_spannable<T>
   >>
   std::string type_to_hex(const T& val) {
-    return lokimq::to_hex(std::string_view{reinterpret_cast<const char*>(&val), sizeof(val)});
+    return oxenmq::to_hex(std::string_view{reinterpret_cast<const char*>(&val), sizeof(val)});
   }
 }

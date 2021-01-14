@@ -911,7 +911,7 @@ namespace tools
     {
       return "";
     }
-    return lokimq::to_hex(oss.str());
+    return oxenmq::to_hex(oss.str());
   }
   //------------------------------------------------------------------------------------------------------------------------------
   template<typename T> static bool is_error_value(const T &val) { return false; }
@@ -961,14 +961,14 @@ namespace tools
 
     if (m_wallet->multisig())
     {
-      multisig_txset = lokimq::to_hex(m_wallet->save_multisig_tx(ptx_vector));
+      multisig_txset = oxenmq::to_hex(m_wallet->save_multisig_tx(ptx_vector));
       if (multisig_txset.empty())
         throw wallet_rpc_error{error_code::UNKNOWN_ERROR, "Failed to save multisig tx set after creation"};
     }
     else
     {
       if (m_wallet->watch_only()){
-        unsigned_txset = lokimq::to_hex(m_wallet->dump_tx_to_str(ptx_vector));
+        unsigned_txset = oxenmq::to_hex(m_wallet->dump_tx_to_str(ptx_vector));
         if (unsigned_txset.empty())
           throw wallet_rpc_error{error_code::UNKNOWN_ERROR, "Failed to save unsigned tx set after creation"};
       }
@@ -979,7 +979,7 @@ namespace tools
       for (auto & ptx : ptx_vector)
       {
         bool r = fill(tx_hash, tools::type_to_hex(cryptonote::get_transaction_hash(ptx.tx)));
-        r = r && (!get_tx_hex || fill(tx_blob, lokimq::to_hex(tx_to_blob(ptx.tx))));
+        r = r && (!get_tx_hex || fill(tx_blob, oxenmq::to_hex(tx_to_blob(ptx.tx))));
         r = r && (!get_tx_metadata || fill(tx_metadata, ptx_to_string(ptx)));
         if (!r)
           throw wallet_rpc_error{error_code::UNKNOWN_ERROR, "Failed to save tx info"};
@@ -1079,7 +1079,7 @@ namespace tools
       if (ciphertext.empty())
         throw wallet_rpc_error{error_code::SIGN_UNSIGNED, "Failed to sign unsigned tx"};
 
-      res.signed_txset = lokimq::to_hex(ciphertext);
+      res.signed_txset = oxenmq::to_hex(ciphertext);
     }
 
     for (auto &ptx: ptxs)
@@ -1097,7 +1097,7 @@ namespace tools
     {
       for (auto &ptx: ptxs)
       {
-        res.tx_raw_list.push_back(lokimq::to_hex(cryptonote::tx_to_blob(ptx.tx)));
+        res.tx_raw_list.push_back(oxenmq::to_hex(cryptonote::tx_to_blob(ptx.tx)));
       }
     }
 
@@ -2096,7 +2096,7 @@ namespace tools
     if (m_wallet->key_on_device())
       throw wallet_rpc_error{error_code::UNKNOWN_ERROR, "command not supported by HW wallet"};
 
-    res.outputs_data_hex = lokimq::to_hex(m_wallet->export_outputs_to_str(req.all));
+    res.outputs_data_hex = oxenmq::to_hex(m_wallet->export_outputs_to_str(req.all));
 
     return res;
   }
@@ -2689,7 +2689,7 @@ namespace {
     cryptonote::blobdata info;
     info = m_wallet->export_multisig();
 
-    res.info = lokimq::to_hex(info);
+    res.info = oxenmq::to_hex(info);
 
     return res;
   }
@@ -2808,7 +2808,7 @@ namespace {
       throw wallet_rpc_error{error_code::MULTISIG_SIGNATURE, "Failed to sign multisig tx: "s + e.what()};
     }
 
-    res.tx_data_hex = lokimq::to_hex(m_wallet->save_multisig_tx(txs));
+    res.tx_data_hex = oxenmq::to_hex(m_wallet->save_multisig_tx(txs));
     if (!txids.empty())
     {
       for (const crypto::hash &txid: txids)
@@ -3281,12 +3281,12 @@ namespace {
             res_e.expired = *res_e.expiration_height < curr_height;
           res_e.txid = std::move(rec.txid);
 
-          if (req.decrypt && !res_e.encrypted_value.empty() && lokimq::is_hex(res_e.encrypted_value))
+          if (req.decrypt && !res_e.encrypted_value.empty() && oxenmq::is_hex(res_e.encrypted_value))
           {
             lns::mapping_value value;
             const auto type = entry_types[type_offset + rec.entry_index];
             std::string errmsg;
-            if (lns::mapping_value::validate_encrypted(type, lokimq::from_hex(res_e.encrypted_value), &value, &errmsg)
+            if (lns::mapping_value::validate_encrypted(type, oxenmq::from_hex(res_e.encrypted_value), &value, &errmsg)
                 && value.decrypt(res_e.name, type))
               res_e.value = value.to_readable_value(nettype, type);
             else
@@ -3350,7 +3350,7 @@ namespace {
     if (req.encrypted_value.size() >= (lns::mapping_value::BUFFER_SIZE * 2))
       throw wallet_rpc_error{error_code::LNS_VALUE_TOO_LONG, "Value too long to decrypt=" + req.encrypted_value};
 
-    if (!lokimq::is_hex(req.encrypted_value))
+    if (!oxenmq::is_hex(req.encrypted_value))
       throw wallet_rpc_error{error_code::LNS_VALUE_NOT_HEX, "Value is not hex=" + req.encrypted_value};
 
     // ---------------------------------------------------------------------------------------------
@@ -3379,7 +3379,7 @@ namespace {
     lns::mapping_value value = {};
     value.len = req.encrypted_value.size() / 2;
     value.encrypted = true;
-    lokimq::from_hex(req.encrypted_value.begin(), req.encrypted_value.end(), value.buffer.begin());
+    oxenmq::from_hex(req.encrypted_value.begin(), req.encrypted_value.end(), value.buffer.begin());
 
     if (!value.decrypt(req.name, type))
       throw wallet_rpc_error{error_code::LNS_VALUE_NOT_HEX, "Value decryption failure"};
@@ -3414,7 +3414,7 @@ namespace {
     if (!value.encrypt(req.name, nullptr, old_argon2))
       throw wallet_rpc_error{error_code::LNS_VALUE_ENCRYPT_FAILED, "Value encryption failure"};
 
-    return {lokimq::to_hex(value.to_view())};
+    return {oxenmq::to_hex(value.to_view())};
   }
 
   std::unique_ptr<tools::wallet2> wallet_rpc_server::load_wallet()

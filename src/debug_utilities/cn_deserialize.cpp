@@ -34,7 +34,7 @@
 #include "oxen_economy.h"
 #include "common/hex.h"
 #include "version.h"
-#include <lokimq/hex.h>
+#include <oxenmq/hex.h>
 
 #undef OXEN_DEFAULT_LOG_CATEGORY
 #define OXEN_DEFAULT_LOG_CATEGORY "debugtools.deserialize"
@@ -46,10 +46,10 @@ using namespace cryptonote;
 static std::string extra_nonce_to_string(const cryptonote::tx_extra_nonce &extra_nonce)
 {
   if (extra_nonce.nonce.size() == 9 && extra_nonce.nonce[0] == TX_EXTRA_NONCE_ENCRYPTED_PAYMENT_ID)
-    return "encrypted payment ID: " + lokimq::to_hex(extra_nonce.nonce.begin() + 1, extra_nonce.nonce.end());
+    return "encrypted payment ID: " + oxenmq::to_hex(extra_nonce.nonce.begin() + 1, extra_nonce.nonce.end());
   if (extra_nonce.nonce.size() == 33 && extra_nonce.nonce[0] == TX_EXTRA_NONCE_PAYMENT_ID)
-    return "plaintext payment ID: " + lokimq::to_hex(extra_nonce.nonce.begin() + 1, extra_nonce.nonce.end());
-  return lokimq::to_hex(extra_nonce.nonce);
+    return "plaintext payment ID: " + oxenmq::to_hex(extra_nonce.nonce.begin() + 1, extra_nonce.nonce.end());
+  return oxenmq::to_hex(extra_nonce.nonce);
 }
 
 struct extra_printer {
@@ -66,7 +66,7 @@ struct extra_printer {
       std::cout << pk;
     }
   }
-  void operator()(const tx_extra_mysterious_minergate& x) { std::cout << "minergate custom: " << lokimq::to_hex(x.data); }
+  void operator()(const tx_extra_mysterious_minergate& x) { std::cout << "minergate custom: " << oxenmq::to_hex(x.data); }
   void operator()(const tx_extra_service_node_winner& x) { std::cout << "SN reward winner: " << x.m_service_node_key; }
   void operator()(const tx_extra_service_node_register& x) { std::cout << "SN registration data"; } // TODO: could parse this further
   void operator()(const tx_extra_service_node_pubkey& x) { std::cout << "SN pubkey: " << x.m_service_node_key; }

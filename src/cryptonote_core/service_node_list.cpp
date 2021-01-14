@@ -1242,7 +1242,7 @@ namespace service_nodes
     std::bitset<8 * sizeof(block.pulse.validator_bitset)> const validator_bitset = block.pulse.validator_bitset;
     stream << "Block(" << cryptonote::get_block_height(block) << "): " << cryptonote::get_block_hash(block) << "\n";
     stream << "Leader: ";
-    if (quorum) stream << (quorum->workers.empty() ? "(invalid leader)" : lokimq::to_hex(tools::view_guts(quorum->workers[0]))) << "\n";
+    if (quorum) stream << (quorum->workers.empty() ? "(invalid leader)" : oxenmq::to_hex(tools::view_guts(quorum->workers[0]))) << "\n";
     else        stream << "(invalid quorum)\n";
     stream << "Round: " << +block.pulse.round << "\n";
     stream << "Validator Bitset: " << validator_bitset << "\n";
@@ -1256,8 +1256,8 @@ namespace service_nodes
       stream << "  [" << +entry.voter_index << "] validator: ";
       if (quorum)
       {
-        stream << ((entry.voter_index >= quorum->validators.size()) ? "(invalid quorum index)" : lokimq::to_hex(tools::view_guts(quorum->validators[entry.voter_index])));
-        stream << ", signature: " << lokimq::to_hex(tools::view_guts(entry.signature));
+        stream << ((entry.voter_index >= quorum->validators.size()) ? "(invalid quorum index)" : oxenmq::to_hex(tools::view_guts(quorum->validators[entry.voter_index])));
+        stream << ", signature: " << oxenmq::to_hex(tools::view_guts(entry.signature));
       }
       else stream << "(invalid quorum)";
     }

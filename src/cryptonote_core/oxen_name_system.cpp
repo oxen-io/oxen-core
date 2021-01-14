@@ -13,9 +13,9 @@
 #include "cryptonote_core/blockchain.h"
 #include "oxen_economy.h"
 
-#include <lokimq/hex.h>
-#include <lokimq/base32z.h>
-#include <lokimq/base64.h>
+#include <oxenmq/hex.h>
+#include <oxenmq/base32z.h>
+#include <oxenmq/base64.h>
 
 #include <sqlite3.h>
 
@@ -105,7 +105,7 @@ std::string lns::mapping_value::to_readable_value(cryptonote::network_type netty
   std::string result;
   if (is_lokinet_type(type))
   {
-    result = lokimq::to_base32z(to_view()) + ".loki";
+    result = oxenmq::to_base32z(to_view()) + ".loki";
   }
   else if (type == lns::mapping_type::wallet)
   {
@@ -120,7 +120,7 @@ std::string lns::mapping_value::to_readable_value(cryptonote::network_type netty
   }
   else
   {
-    result = lokimq::to_hex(to_view());
+    result = oxenmq::to_hex(to_view());
   }
 
   return result;
@@ -701,9 +701,9 @@ bool parse_owner_to_generic_owner(cryptonote::network_type nettype, std::string_
   {
     result = lns::make_monero_owner(parsed_addr.address, parsed_addr.is_subaddress);
   }
-  else if (owner.size() == 2*sizeof(ed_owner.data) && lokimq::is_hex(owner))
+  else if (owner.size() == 2*sizeof(ed_owner.data) && oxenmq::is_hex(owner))
   {
-    lokimq::from_hex(owner.begin(), owner.end(), ed_owner.data);
+    oxenmq::from_hex(owner.begin(), owner.end(), ed_owner.data);
     result = lns::make_ed25519_owner(ed_owner);
   }
   else
@@ -864,7 +864,7 @@ static bool check_lengths(mapping_type type, std::string_view value, size_t max,
     {
       std::stringstream err_stream;
       err_stream << "LNS type=" << type << ", specifies mapping from name_hash->encrypted_value where the value's length=" << value.size() << ", does not equal the required length=" << max << ", given value=";
-      if (binary_val) err_stream << lokimq::to_hex(value);
+      if (binary_val) err_stream << oxenmq::to_hex(value);
       else            err_stream << value;
       *reason = err_stream.str();
     }
@@ -912,14 +912,14 @@ bool mapping_value::validate(cryptonote::network_type nettype, mapping_type type
     // We need a 52 char base32z string that decodes to a 32-byte value, which really means we need
     // 51 base32z chars (=255 bits) followed by a 1-bit value ('y'=0, or 'o'=0b10000); anything else
     // in the last spot isn't a valid lokinet address.
-    if (check_condition(value.size() != 57 || !tools::ends_with(value, ".loki") || !lokimq::is_base32z(value.substr(0, 52)) || !(value[51] == 'y' || value[51] == 'o'),
+    if (check_condition(value.size() != 57 || !tools::ends_with(value, ".loki") || !oxenmq::is_base32z(value.substr(0, 52)) || !(value[51] == 'y' || value[51] == 'o'),
                 reason, "'", value, "' is not a valid lokinet address"))
       return false;
 
     if (blob)
     {
       blob->len = sizeof(crypto::ed25519_public_key);
-      lokimq::from_base32z(value.begin(), value.begin() + 52, blob->buffer.begin());
+      oxenmq::from_base32z(value.begin(), value.begin() + 52, blob->buffer.begin());
     }
   }
   else
@@ -929,7 +929,7 @@ bool mapping_value::validate(cryptonote::network_type nettype, mapping_type type
     if (check_condition(value.size() != 2*SESSION_PUBLIC_KEY_BINARY_LENGTH, reason, "The value=", value, " is not the required ", 2*SESSION_PUBLIC_KEY_BINARY_LENGTH, "-character hex string session public key, length=", value.size()))
       return false;
 
-    if (check_condition(!lokimq::is_hex(value), reason, ", specifies name -> value mapping where the value is not a hex string given value="))
+    if (check_condition(!oxenmq::is_hex(value), reason, ", specifies name -> value mapping where the value is not a hex string given value="))
       return false;
 
     // NOTE: Session public keys are 33 bytes, with the first byte being 0x05 and the remaining 32 being the public key.
@@ -940,7 +940,7 @@ bool mapping_value::validate(cryptonote::network_type nettype, mapping_type type
     {
       blob->len = value.size() / 2;
       assert(blob->len <= blob->buffer.size());
-      lokimq::from_hex(value.begin(), value.end(), blob->buffer.begin());
+      oxenmq::from_hex(value.begin(), value.end(), blob->buffer.begin());
 
     }
   }
@@ -992,17 +992,17 @@ std::string name_hash_bytes_to_base64(std::string_view bytes)
 {
   if (bytes.size() != NAME_HASH_SIZE)
     throw std::runtime_error{"Invalid name hash: expected exactly 32 bytes"};
-  return lokimq::to_base64(bytes);
+  return oxenmq::to_base64(bytes);
 }
 
 std::optional<std::string> name_hash_input_to_base64(std::string_view input)
 {
   if (input.size() == NAME_HASH_SIZE)
     return name_hash_bytes_to_base64(input);
-  if (input.size() == 2*NAME_HASH_SIZE && lokimq::is_hex(input))
-    return name_hash_bytes_to_base64(lokimq::from_hex(input));
-  if (input.size() >= NAME_HASH_SIZE_B64_MIN && input.size() <= NAME_HASH_SIZE_B64_MAX && lokimq::is_base64(input)) {
-    std::string tmp = lokimq::from_base64(input);
+  if (input.size() == 2*NAME_HASH_SIZE && oxenmq::is_hex(input))
+    return name_hash_bytes_to_base64(oxenmq::from_hex(input));
+  if (input.size() >= NAME_HASH_SIZE_B64_MIN && input.size() <= NAME_HASH_SIZE_B64_MAX && oxenmq::is_base64(input)) {
+    std::string tmp = oxenmq::from_base64(input);
     if (tmp.size() == NAME_HASH_SIZE) // Could still be off from too much/too little padding
       return name_hash_bytes_to_base64(tmp);
   }
@@ -2120,7 +2120,7 @@ owner_record name_system_db::get_owner_by_id(int64_t owner_id)
 
 mapping_record name_system_db::get_mapping(mapping_type type, std::string_view name_base64_hash, std::optional<uint64_t> blockchain_height)
 {
-  assert(name_base64_hash.size() == 44 && name_base64_hash.back() == '=' && lokimq::is_base64(name_base64_hash));
+  assert(name_base64_hash.size() == 44 && name_base64_hash.back() == '=' && oxenmq::is_base64(name_base64_hash));
   mapping_record result = {};
   result.loaded         = bind_and_run(lns_sql_type::get_mapping, get_mapping_sql, &result,
       db_mapping_type(type), name_base64_hash);
@@ -2131,7 +2131,7 @@ mapping_record name_system_db::get_mapping(mapping_type type, std::string_view n
 
 std::optional<mapping_value> name_system_db::resolve(mapping_type type, std::string_view name_hash_b64, uint64_t blockchain_height)
 {
-  assert(name_hash_b64.size() == 44 && name_hash_b64.back() == '=' && lokimq::is_base64(name_hash_b64));
+  assert(name_hash_b64.size() == 44 && name_hash_b64.back() == '=' && oxenmq::is_base64(name_hash_b64));
   std::optional<mapping_value> result;
   bind_all(resolve_sql, db_mapping_type(type), name_hash_b64, blockchain_height);
   if (step(resolve_sql) == SQLITE_ROW)
@@ -2152,7 +2152,7 @@ std::optional<mapping_value> name_system_db::resolve(mapping_type type, std::str
 
 std::vector<mapping_record> name_system_db::get_mappings(std::vector<mapping_type> const &types, std::string_view name_base64_hash, std::optional<uint64_t> blockchain_height)
 {
-  assert(name_base64_hash.size() == 44 && name_base64_hash.back() == '=' && lokimq::is_base64(name_base64_hash));
+  assert(name_base64_hash.size() == 44 && name_base64_hash.back() == '=' && oxenmq::is_base64(name_base64_hash));
   std::vector<mapping_record> result;
   if (types.empty())
     return result;

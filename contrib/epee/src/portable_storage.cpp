@@ -1,6 +1,6 @@
 #include "epee/storages/portable_storage_to_json.h"
 #include "epee/storages/portable_storage.h"
-#include <lokimq/variant.h>
+#include <oxenmq/variant.h>
 
 namespace epee {
   namespace serialization {

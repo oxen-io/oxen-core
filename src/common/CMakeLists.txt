@@ -71,7 +71,7 @@ endif()
 target_link_libraries(common
   PUBLIC
     cncrypto
-    lokimq::lokimq
+    oxenmq::oxenmq
     filesystem
   PRIVATE
     libunbound

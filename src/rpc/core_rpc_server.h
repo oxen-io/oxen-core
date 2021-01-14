@@ -71,11 +71,11 @@ namespace cryptonote::rpc {
   /// For JSON RPC these become an error response with the code as the error.code value and the
   /// string as the error.message.
   /// For HTTP JSON these become a 500 Internal Server Error response with the message as the body.
-  /// For LokiMQ the code becomes the first part of the response and the message becomes the
+  /// For OxenMQ the code becomes the first part of the response and the message becomes the
   /// second part of the response.
   struct rpc_error : std::runtime_error {
     /// \param code - a signed, 16-bit numeric code.  0 must not be used (as it is used for a
-    /// success code in LokiMQ), and values in the -32xxx range are reserved by JSON-RPC.
+    /// success code in OxenMQ), and values in the -32xxx range are reserved by JSON-RPC.
     ///
     /// \param message - a message to send along with the error code (see general description above).
     rpc_error(int16_t code, std::string message)
