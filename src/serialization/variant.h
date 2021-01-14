@@ -36,7 +36,7 @@
  */
 #pragma once
 
-#include <lokimq/variant.h>
+#include <oxenmq/variant.h>
 #include "serialization.h"
 #include "common/meta.h"
 

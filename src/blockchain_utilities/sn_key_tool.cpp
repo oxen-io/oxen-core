@@ -4,8 +4,8 @@ extern "C" {
 }
 #include <iostream>
 #include <fstream>
-#include <lokimq/hex.h>
-#include <lokimq/base32z.h>
+#include <oxenmq/hex.h>
+#include <oxenmq/base32z.h>
 #include <string_view>
 #include <string>
 #include <list>
@@ -137,7 +137,7 @@ int generate(bool ed25519, std::list<std::string_view> args) {
         return error(11, "Internal error: pubkey check failed");
 
     if (pubkey_pos != std::string::npos)
-        filename.replace(pubkey_pos, 6, lokimq::to_hex(pubkey.begin(), pubkey.end()));
+        filename.replace(pubkey_pos, 6, oxenmq::to_hex(pubkey.begin(), pubkey.end()));
     fs::ofstream out{fs::u8path(filename), std::ios::trunc | std::ios::binary};
     if (!out.good())
         return error(2, "Failed to open output file '" + filename + "': " + std::strerror(errno));
@@ -156,11 +156,11 @@ int generate(bool ed25519, std::list<std::string_view> args) {
         if (0 != crypto_sign_ed25519_pk_to_curve25519(x_pubkey.data(), pubkey.data()))
             return error(14, "Internal error: unable to convert Ed25519 pubkey to X25519 pubkey");
         std::cout <<
-              "Public key:      " << lokimq::to_hex(pubkey.begin(), pubkey.end()) <<
-            "\nX25519 pubkey:   " << lokimq::to_hex(x_pubkey.begin(), x_pubkey.end()) <<
-            "\nLokinet address: " << lokimq::to_base32z(pubkey.begin(), pubkey.end()) << ".snode\n";
+              "Public key:      " << oxenmq::to_hex(pubkey.begin(), pubkey.end()) <<
+            "\nX25519 pubkey:   " << oxenmq::to_hex(x_pubkey.begin(), x_pubkey.end()) <<
+            "\nLokinet address: " << oxenmq::to_base32z(pubkey.begin(), pubkey.end()) << ".snode\n";
     } else {
-        std::cout << "Public key: " << lokimq::to_hex(pubkey.begin(), pubkey.end()) << "\n";
+        std::cout << "Public key: " << oxenmq::to_hex(pubkey.begin(), pubkey.end()) << "\n";
     }
 
     return 0;
@@ -220,8 +220,8 @@ int show(std::list<std::string_view> args) {
         pubkey = pubkey_from_privkey(seckey);
 
         std::cout << filename.u8string() << " (legacy SN keypair)" << "\n==========" <<
-            "\nPrivate key: " << lokimq::to_hex(seckey.begin(), seckey.begin() + 32) <<
-            "\nPublic key:  " << lokimq::to_hex(pubkey.begin(), pubkey.end()) << "\n\n";
+            "\nPrivate key: " << oxenmq::to_hex(seckey.begin(), seckey.begin() + 32) <<
+            "\nPublic key:  " << oxenmq::to_hex(pubkey.begin(), pubkey.end()) << "\n\n";
         return 0;
     }
 
@@ -234,16 +234,16 @@ int show(std::list<std::string_view> args) {
     ustring_view privkey{privkey_signhash.data(), 32};
     pubkey = pubkey_from_privkey(privkey);
     if (size >= 64 && ustring_view{pubkey.data(), pubkey.size()} != ustring_view{seckey.data() + 32, 32})
-        return error(13, "Error: derived pubkey (" + lokimq::to_hex(pubkey.begin(), pubkey.end()) + ")"
-                " != embedded pubkey (" + lokimq::to_hex(seckey.begin() + 32, seckey.end()) + ")");
+        return error(13, "Error: derived pubkey (" + oxenmq::to_hex(pubkey.begin(), pubkey.end()) + ")"
+                " != embedded pubkey (" + oxenmq::to_hex(seckey.begin() + 32, seckey.end()) + ")");
     if (0 != crypto_sign_ed25519_pk_to_curve25519(x_pubkey.data(), pubkey.data()))
         return error(14, "Unable to convert Ed25519 pubkey to X25519 pubkey; is this a really valid secret key?");
 
     std::cout << filename << " (Ed25519 SN keypair)" << "\n==========" <<
-        "\nSecret key:      " << lokimq::to_hex(seckey.begin(), seckey.begin() + 32) <<
-        "\nPublic key:      " << lokimq::to_hex(pubkey.begin(), pubkey.end()) <<
-        "\nX25519 pubkey:   " << lokimq::to_hex(x_pubkey.begin(), x_pubkey.end()) <<
-        "\nLokinet address: " << lokimq::to_base32z(pubkey.begin(), pubkey.end()) << ".snode\n\n";
+        "\nSecret key:      " << oxenmq::to_hex(seckey.begin(), seckey.begin() + 32) <<
+        "\nPublic key:      " << oxenmq::to_hex(pubkey.begin(), pubkey.end()) <<
+        "\nX25519 pubkey:   " << oxenmq::to_hex(x_pubkey.begin(), x_pubkey.end()) <<
+        "\nLokinet address: " << oxenmq::to_base32z(pubkey.begin(), pubkey.end()) << ".snode\n\n";
     return 0;
 }
 
@@ -278,15 +278,15 @@ int restore(bool ed25519, std::list<std::string_view> args) {
 
     // Advanced feature: if you provide the concatenated privkey and pubkey in hex, we won't prompt
     // for verification (as long as the pubkey matches what we derive from the privkey).
-    if (!(skey_hex.size() == 64 || skey_hex.size() == 128) || !lokimq::is_hex(skey_hex))
+    if (!(skey_hex.size() == 64 || skey_hex.size() == 128) || !oxenmq::is_hex(skey_hex))
         return error(7, "Invalid input: provide the secret key as 64 hex characters");
     std::array<unsigned char, crypto_sign_SECRETKEYBYTES> skey;
     std::array<unsigned char, crypto_sign_PUBLICKEYBYTES> pubkey;
     std::array<unsigned char, crypto_sign_SEEDBYTES> seed;
     std::optional<std::array<unsigned char, crypto_sign_PUBLICKEYBYTES>> pubkey_expected;
-    lokimq::from_hex(skey_hex.begin(), skey_hex.begin() + 64, seed.begin());
+    oxenmq::from_hex(skey_hex.begin(), skey_hex.begin() + 64, seed.begin());
     if (skey_hex.size() == 128)
-        lokimq::from_hex(skey_hex.begin() + 64, skey_hex.end(), pubkey_expected.emplace().begin());
+        oxenmq::from_hex(skey_hex.begin() + 64, skey_hex.end(), pubkey_expected.emplace().begin());
 
     if (ed25519) {
         crypto_sign_seed_keypair(pubkey.data(), skey.data(), seed.data());
@@ -294,19 +294,19 @@ int restore(bool ed25519, std::list<std::string_view> args) {
         pubkey = pubkey_from_privkey(seed);
     }
 
-    std::cout << "\nPublic key:      " << lokimq::to_hex(pubkey.begin(), pubkey.end()) << "\n";
+    std::cout << "\nPublic key:      " << oxenmq::to_hex(pubkey.begin(), pubkey.end()) << "\n";
     if (ed25519) {
         std::array<unsigned char, crypto_scalarmult_curve25519_BYTES> x_pubkey;
         if (0 != crypto_sign_ed25519_pk_to_curve25519(x_pubkey.data(), pubkey.data()))
             return error(14, "Unable to convert Ed25519 pubkey to X25519 pubkey; is this a really valid secret key?");
-        std::cout << "X25519 pubkey:   " << lokimq::to_hex(x_pubkey.begin(), x_pubkey.end()) <<
-            "\nLokinet address: " << lokimq::to_base32z(pubkey.begin(), pubkey.end()) << ".snode";
+        std::cout << "X25519 pubkey:   " << oxenmq::to_hex(x_pubkey.begin(), x_pubkey.end()) <<
+            "\nLokinet address: " << oxenmq::to_base32z(pubkey.begin(), pubkey.end()) << ".snode";
     }
 
     if (pubkey_expected) {
         if (*pubkey_expected != pubkey)
-            return error(2, "Derived pubkey (" + lokimq::to_hex(pubkey.begin(), pubkey.end()) + ") doesn't match "
-                    "provided pubkey (" + lokimq::to_hex(pubkey_expected->begin(), pubkey_expected->end()) + ")");
+            return error(2, "Derived pubkey (" + oxenmq::to_hex(pubkey.begin(), pubkey.end()) + ") doesn't match "
+                    "provided pubkey (" + oxenmq::to_hex(pubkey_expected->begin(), pubkey_expected->end()) + ")");
     } else {
         std::cout << "\nIs this correct?  Press Enter to continue, Ctrl-C to cancel.\n";
         std::cin.getline(buf, 129);
@@ -315,7 +315,7 @@ int restore(bool ed25519, std::list<std::string_view> args) {
     }
 
     if (pubkey_pos != std::string::npos)
-        filename.replace(pubkey_pos, 6, lokimq::to_hex(pubkey.begin(), pubkey.end()));
+        filename.replace(pubkey_pos, 6, oxenmq::to_hex(pubkey.begin(), pubkey.end()));
 
     auto filepath = fs::u8path(filename);
     if (!overwrite && fs::exists(filepath))

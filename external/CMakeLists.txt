@@ -46,7 +46,7 @@ if(NOT STATIC AND NOT BUILD_STATIC_DEPS)
     pkg_check_modules(MINIUPNPC miniupnpc>=2.1)
   endif()
   pkg_check_modules(UNBOUND libunbound)
-  pkg_check_modules(LOKIMQ liblokimq>=1.2)
+  pkg_check_modules(LOKIMQ liboxenmq>=1.2.3)
 endif()
 
 if(NOT WITH_MINIUPNPC)
@@ -73,7 +73,7 @@ endif()
 
 
 if(NOT LOKIMQ_FOUND)
-  message(STATUS "Using in-tree lokimq")
+  message(STATUS "Using in-tree oxenmq")
   if (DEPENDS)
     # The depends system builds a static libzmq so set up a target loki-mq can use to avoid building
     add_library(libzmq STATIC IMPORTED GLOBAL)
@@ -84,18 +84,18 @@ if(NOT LOKIMQ_FOUND)
   endif()
   add_subdirectory(loki-mq)
 else()
-  add_library(lokimq INTERFACE)
-  link_dep_libs(lokimq INTERFACE "${LOKIMQ_LIBRARY_DIRS}" ${LOKIMQ_LIBRARIES})
-  target_include_directories(lokimq INTERFACE ${LOKIMQ_INCLUDE_DIRS})
-  add_library(lokimq::lokimq ALIAS lokimq)
-  message(STATUS "Found liblokimq ${LOKIMQ_VERSION}")
+  add_library(oxenmq INTERFACE)
+  link_dep_libs(oxenmq INTERFACE "${LOKIMQ_LIBRARY_DIRS}" ${LOKIMQ_LIBRARIES})
+  target_include_directories(oxenmq INTERFACE ${LOKIMQ_INCLUDE_DIRS})
+  add_library(oxenmq::oxenmq ALIAS oxenmq)
+  message(STATUS "Found liboxenmq ${LOKIMQ_VERSION}")
 
   # TODO: Temporary fix for also linking libzmq; this can go when the direct zmq code (for zmq
-  # server) gets replaced with lokimq.
+  # server) gets replaced with oxenmq.
   pkg_check_modules(LIBZMQ libzmq)
   if (LIBZMQ_FOUND)
-    link_dep_libs(lokimq INTERFACE "${LIBZMQ_LIBRARY_DIRS}" ${LIBZMQ_LIBRARIES})
-    target_include_directories(lokimq INTERFACE ${LIBZMQ_INCLUDE_DIRS})
+    link_dep_libs(oxenmq INTERFACE "${LIBZMQ_LIBRARY_DIRS}" ${LIBZMQ_LIBRARIES})
+    target_include_directories(oxenmq INTERFACE ${LIBZMQ_INCLUDE_DIRS})
   endif()
 endif()
 

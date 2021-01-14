@@ -419,7 +419,7 @@ namespace service_nodes
     /// Initializes the x25519 map from current pubkey state; called during initialization
     void initialize_x25519_map();
 
-    /// Remote SN lookup address function for LokiMQ: given a string_view of a x25519 pubkey, this
+    /// Remote SN lookup address function for OxenMQ: given a string_view of a x25519 pubkey, this
     /// returns that service node's quorumnet contact information, if we have it, else empty string.
     std::string remote_lookup(std::string_view x25519_pk);
 

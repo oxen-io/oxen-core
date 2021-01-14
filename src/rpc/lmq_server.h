@@ -31,16 +31,16 @@
 
 #include "core_rpc_server.h"
 #include "cryptonote_core/blockchain.h"
-#include "lokimq/connections.h"
+#include "oxenmq/connections.h"
 
-namespace lokimq { class LokiMQ; }
+namespace oxenmq { class OxenMQ; }
 
 namespace cryptonote { namespace rpc {
 
 void init_lmq_options(boost::program_options::options_description& desc);
 
 /**
- * LMQ RPC server class.  This doesn't actually hold the LokiMQ instance--that's in
+ * LMQ RPC server class.  This doesn't actually hold the OxenMQ instance--that's in
  * cryptonote_core--but it works with it to add RPC endpoints, make it listen on RPC ports, and
  * handles RPC requests.
  */
@@ -59,8 +59,8 @@ class lmq_rpc final : public cryptonote::BlockAddedHook {
   cryptonote::core& core_;
   core_rpc_server& rpc_;
   std::shared_timed_mutex subs_mutex_;
-  std::unordered_map<lokimq::ConnectionID, mempool_sub> mempool_subs_;
-  std::unordered_map<lokimq::ConnectionID, block_sub> block_subs_;
+  std::unordered_map<oxenmq::ConnectionID, mempool_sub> mempool_subs_;
+  std::unordered_map<oxenmq::ConnectionID, block_sub> block_subs_;
 
 public:
   lmq_rpc(cryptonote::core& core, core_rpc_server& rpc, const boost::program_options::variables_map& vm);

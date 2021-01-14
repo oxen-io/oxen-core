@@ -375,7 +375,7 @@ namespace hw {
 #endif
         cmd << " p=(0x" << std::setw(2) << +buffer_send[2] << ",0x" << std::setw(2) << +buffer_send[3] << ')';
         cmd << " sz=0x" << std::setw(2) << +buffer_send[4] << '[' << std::to_string(buffer_send[4]) << "] ";
-        MDEBUG("CMD: " << cmd.str() << lokimq::to_hex(buffer_send + 5, buffer_send + length_send));
+        MDEBUG("CMD: " << cmd.str() << oxenmq::to_hex(buffer_send + 5, buffer_send + length_send));
         last_cmd = std::chrono::steady_clock::now();
       }
     }
@@ -383,8 +383,8 @@ namespace hw {
     void device_ledger::logRESP() {
       if (apdu_verbose)
         MDEBUG("RESP (+" << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - last_cmd).count() << "ms): "
-              << lokimq::to_hex(std::string_view{reinterpret_cast<const char*>(&sw), sizeof(sw)})
-              << ' ' << lokimq::to_hex(buffer_recv, buffer_recv + length_recv));
+              << oxenmq::to_hex(std::string_view{reinterpret_cast<const char*>(&sw), sizeof(sw)})
+              << ' ' << oxenmq::to_hex(buffer_recv, buffer_recv + length_recv));
     }
 
     int device_ledger::set_command_header(unsigned char ins, unsigned char p1, unsigned char p2) {

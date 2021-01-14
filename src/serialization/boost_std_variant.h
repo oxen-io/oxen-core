@@ -5,7 +5,7 @@
 // interchangeable).
 //
 
-#include <lokimq/variant.h>
+#include <oxenmq/variant.h>
 
 #include <boost/archive/archive_exception.hpp>
 

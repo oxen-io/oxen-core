@@ -38,7 +38,7 @@
 #include <boost/endian/conversion.hpp>
 #include <boost/asio/io_service.hpp>
 #include <boost/asio/ip/udp.hpp>
-#include <lokimq/hex.h>
+#include <oxenmq/hex.h>
 #include "common/apply_permutation.h"
 #include "common/string_util.h"
 #include "transport.hpp"
@@ -458,7 +458,7 @@ namespace trezor{
     epee::wipeable_string res_hex;
     epee::wipeable_string req_hex;
     req_hex.reserve(buff_size * 2);
-    lokimq::to_hex(req_buff_raw, req_buff_raw + buff_size, std::back_inserter(req_hex));
+    oxenmq::to_hex(req_buff_raw, req_buff_raw + buff_size, std::back_inserter(req_hex));
 
     bool req_status = invoke_bridge_http(uri, req_hex, res_hex);
     if (!req_status){

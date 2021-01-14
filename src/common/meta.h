@@ -1,6 +1,6 @@
 #pragma once
 #include <string>
-#include <lokimq/variant.h>
+#include <oxenmq/variant.h>
 #include <array>
 #include <typeinfo>
 #ifdef __GNUG__

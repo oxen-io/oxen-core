@@ -84,7 +84,7 @@ namespace hw {
 
     void device_io_hid::io_hid_log(int read, unsigned char* buffer, int block_len) {
       if (hid_verbose)
-        MDEBUG("HID " << (read ? '<' : '>') << " : " << lokimq::to_hex(buffer, buffer + block_len));
+        MDEBUG("HID " << (read ? '<' : '>') << " : " << oxenmq::to_hex(buffer, buffer + block_len));
     }
  
     void device_io_hid::init() {

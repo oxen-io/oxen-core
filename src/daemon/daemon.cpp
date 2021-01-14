@@ -32,7 +32,7 @@
 #include <boost/asio/ip/address.hpp>
 #include <memory>
 #include <stdexcept>
-#include <lokimq/lokimq.h>
+#include <oxenmq/oxenmq.h>
 #include <utility>
 
 #include "cryptonote_config.h"
@@ -306,9 +306,9 @@ bool daemon::run(bool interactive)
     if (!core->init(vm, nullptr, get_checkpoints))
       throw std::runtime_error("Failed to start core");
 
-    MGINFO("Starting LokiMQ");
+    MGINFO("Starting OxenMQ");
     lmq_rpc = std::make_unique<cryptonote::rpc::lmq_rpc>(*core, *rpc, vm);
-    core->start_lokimq();
+    core->start_oxenmq();
 
     if (http_rpc_admin) {
       MGINFO("Starting admin HTTP RPC server");

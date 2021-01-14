@@ -31,7 +31,7 @@
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
 #include <numeric>
-#include <lokimq/base64.h>
+#include <oxenmq/base64.h>
 #include "epee/misc_language.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "epee/misc_os_dependent.h"
@@ -254,13 +254,13 @@ namespace cryptonote
         tools::trim(extra_vec[i]);
         if(!extra_vec[i].size())
           continue;
-        if (!lokimq::is_base64(extra_vec[i]))
+        if (!oxenmq::is_base64(extra_vec[i]))
         {
           MWARNING("Invalid (non-base64) extra message `" << extra_vec[i] << "'");
           continue;
         }
 
-        std::string buff = lokimq::from_base64(extra_vec[i]);
+        std::string buff = oxenmq::from_base64(extra_vec[i]);
         if(buff != "0")
           m_extra_messages[i] = buff;
       }
