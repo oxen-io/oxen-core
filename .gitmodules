@@ -12,7 +12,7 @@
 	url = https://github.com/oxen-io/loki-randomXL
 [submodule "external/loki-mq"]
 	path = external/loki-mq
-	url = https://github.com/loki-project/loki-mq.git
+	url = https://github.com/oxen-io/loki-mq.git
 [submodule "external/googletest"]
 	path = external/googletest
 	url = https://github.com/google/googletest.git
