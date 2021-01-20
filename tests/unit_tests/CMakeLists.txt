@@ -46,6 +46,7 @@ add_executable(unit_tests
   get_xtype_from_string.cpp
   hashchain.cpp
   hmac_keccak.cpp
+  ip_utils.cpp
   keccak.cpp
   levin.cpp
   logging.cpp
