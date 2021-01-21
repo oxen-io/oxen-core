@@ -3,7 +3,6 @@ name: Test for OpenRC script 'oxen-node'
 on:
   pull_request
     types: [synchronize, opened, reopened, ready_for_review]
-    branch: debian/sid
     paths:
     - 'debian/oxen-node.openrc'
 env:
