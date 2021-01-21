@@ -30,3 +30,16 @@ jobs:
           service oxen-node status
           service oxen-node stop
           service oxen-node status || true
+  shellcheck:
+    runs-on: ubuntu-latest
+    container: debian:unstable
+    steps:
+      - name: Installing dependencies..
+        run: |
+          apt-get update
+          apt-get install shellcheck --yes
+      - name: Pulling git dir..
+        uses: actions/checkout@v2
+      - name: Lint the service file..
+        run: |
+          shellcheck --external-sources --shell=sh "$GITHUB_WORKSPACE/debian/oxen-node.openrc" 
