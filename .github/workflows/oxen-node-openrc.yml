@@ -1,7 +1,7 @@
 
 name: Test for OpenRC script 'oxen-node'
 on:
-  pull_request
+  pull_request:
     types: [synchronize, opened, reopened, ready_for_review]
     paths:
     - 'debian/oxen-node.openrc'
