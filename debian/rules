@@ -39,3 +39,6 @@ override_dh_strip:
 override_dh_installsystemd:
 	dh_installsystemd --name=oxen-testnet-node --no-enable --no-start
 	dh_installsystemd --name=oxen-node
+
+override_dh_installinit:
+	dh_installinit --name=oxen-node
