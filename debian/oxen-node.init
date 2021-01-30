@@ -25,7 +25,7 @@ set +a
 DESC="oxen-node"
 DAEMON="/usr/bin/oxend"
 DAEMON_ARGS="--non-interactive --config-file /etc/oxen/oxen.conf"
-PIDFILE="/var/run/oxen-node-sysd2v.pid"
+PIDFILE="/var/run/oxen-node.pid"
 START_ARGS="--user _loki --chuid _loki --chdir /var/lib/oxen --background --make-pidfile --notify-await" # --notify-timeout infinity
 STOP_ARGS="--user _loki"
 
