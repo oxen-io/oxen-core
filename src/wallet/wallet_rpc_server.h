@@ -176,6 +176,9 @@ namespace tools
       // Checks that a wallet is open; if not, throws an error.
       void require_open();
 
+      // Safely and cleanly closes the currently open wallet (if one is open)
+      void close_wallet(bool save_current);
+
       template<typename Ts, typename Tu>
       void fill_response(std::vector<tools::wallet2::pending_tx> &ptx_vector,
           bool get_tx_key, Ts& tx_key, Tu &amount, Tu &fee, std::string &multisig_txset, std::string &unsigned_txset, bool do_not_relay, bool blink,
