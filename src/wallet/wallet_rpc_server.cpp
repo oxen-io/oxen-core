@@ -588,17 +588,17 @@ namespace tools
   {
     if (m_wallet)
     {
-      LOG_PRINT_L0(tools::wallet_rpc_server::tr("Closing wallet..."));
+      MDEBUG(tools::wallet_rpc_server::tr("Closing wallet..."));
       stop_long_poll_thread();
       if (save_current)
       {
-        LOG_PRINT_L0(tools::wallet_rpc_server::tr("Saving wallet..."));
+        MDEBUG(tools::wallet_rpc_server::tr("Saving wallet..."));
         m_wallet->store();
-        LOG_PRINT_L0(tools::wallet_rpc_server::tr("Successfully saved"));
+        MINFO(tools::wallet_rpc_server::tr("Wallet saved"));
       }
       m_wallet->deinit();
       m_wallet.reset();
-      LOG_PRINT_L0(tools::wallet_rpc_server::tr("Successfully closed"));
+      MINFO(tools::wallet_rpc_server::tr("Wallet closed"));
     }
   }
   //------------------------------------------------------------------------------------------------------------------------------
