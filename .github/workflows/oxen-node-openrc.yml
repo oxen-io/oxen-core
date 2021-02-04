@@ -18,6 +18,8 @@ jobs:
           apt-get install curl lsb-release --yes
           curl -so /etc/apt/trusted.gpg.d/oxen.gpg https://deb.oxen.io/pub.gpg
           echo "deb https://deb.oxen.io $(lsb_release -sc) main" | tee /etc/apt/sources.list.d/oxen.list
+          # Required to pre-seed as the oxend requires set IP
+          echo "oxen-service-node oxen-service-node/ip-address string $(curl ifconfig.me)" | debconf-set-selections
           apt-get update
           apt-get install openrc oxen-service-node --yes
       - name: Pulling git dir..
