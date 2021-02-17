@@ -377,6 +377,11 @@ namespace
     return tools::scoped_message_writer(epee::console_color_red, true, sw::tr("Error: "), el::Level::Error);
   }
 
+  tools::scoped_message_writer warn_msg_writer()
+  {
+    return tools::scoped_message_writer(epee::console_color_red, true, sw::tr("Warning: "), el::Level::Error);
+  }
+
   bool parse_bool(const std::string& s, bool& result)
   {
     if (command_line::is_yes(s, "1", "true", simple_wallet::tr("true")))
@@ -707,6 +712,14 @@ bool simple_wallet::spendkey(const std::vector<std::string> &args/* = std::vecto
     std::cout << "secret: On device. Not available" << std::endl;
   } else {
     SCOPED_WALLET_UNLOCK();
+
+    warn_msg_writer() << tr("NEVER give your Oxen wallet private spend key (or seed phrase) to ANYONE else. "
+            "NEVER input your Oxen private spend key (or seed phrase) into any software or website other than the OFFICIAL "
+            "Oxen CLI or GUI wallets, downloaded directly from the Oxen GitHub (https://github.com/oxen-io/) or compiled from source.");
+    std::string confirm = input_line(tr("Are you sure you want to access your private spend key?"), true);
+    if (std::cin.eof() || !command_line::is_yes(confirm))
+      return false;
+
     std::cout << "secret: ";
     print_secret_key(m_wallet->get_account().get_keys().m_spend_secret_key);
     std::cout << '\n';
@@ -3411,6 +3424,14 @@ void simple_wallet::print_seed(const epee::wipeable_string &seed)
   success_msg_writer(true) << "\n" << boost::format(tr("NOTE: the following %s can be used to recover access to your wallet. "
     "Write them down and store them somewhere safe and secure. Please do not store them in "
     "your email or on file storage services outside of your immediate control.\n")) % (m_wallet->multisig() ? tr("string") : tr("25 words"));
+
+  warn_msg_writer() << tr("NEVER give your Oxen wallet seed to ANYONE else. NEVER input your Oxen "
+          "wallet seed into any software or website other than the OFFICIAL Oxen CLI or GUI wallets, "
+          "downloaded directly from the Oxen GitHub (https://github.com/oxen-io/) or compiled from source.");
+  std::string confirm = input_line(tr("Are you sure you want to access your wallet seed?"), true);
+  if (std::cin.eof() || !command_line::is_yes(confirm))
+    return;
+
   // don't log
   int space_index = 0;
   size_t len  = seed.size();
