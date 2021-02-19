@@ -1711,7 +1711,7 @@ public:
    * not found.  Current implementations simply return false.
    *
    * @param h1 the start height
-   * @param h2 the end height
+   * @param h2 the end height (inclusive)
    * @param std::function fn the function to run
    *
    * @return false if the function returns false for any block, otherwise true
