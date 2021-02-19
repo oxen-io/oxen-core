@@ -1691,7 +1691,7 @@ namespace cryptonote
       cache_to = height - std::min(CACHE_LAG, height);
       {
         std::shared_lock lock{m_coinbase_cache.mutex};
-        if (count >= m_coinbase_cache.height) {
+        if (m_coinbase_cache.height && count >= m_coinbase_cache.height) {
           emission_amount = m_coinbase_cache.emissions;
           total_fee_amount = m_coinbase_cache.fees;
           burnt_oxen = m_coinbase_cache.burnt;
@@ -1712,7 +1712,7 @@ namespace cryptonote
         if (m_coinbase_cache.building)
           return std::nullopt; // Another thread is already updating the cache
 
-        if (m_coinbase_cache.height >= start_offset) {
+        if (m_coinbase_cache.height && m_coinbase_cache.height >= start_offset) {
           // Someone else updated the cache while we were acquiring the unique lock, so update our variables
           if (m_coinbase_cache.height >= start_offset + count) {
             // The cache is now *beyond* us, which means we can't use it, so reset start/count back
