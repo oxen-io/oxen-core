@@ -1695,7 +1695,7 @@ namespace cryptonote
           emission_amount = m_coinbase_cache.emissions;
           total_fee_amount = m_coinbase_cache.fees;
           burnt_oxen = m_coinbase_cache.burnt;
-          start_offset = m_coinbase_cache.height;
+          start_offset = m_coinbase_cache.height + 1;
           count -= m_coinbase_cache.height;
         }
         // else don't change anything; we need a subset of blocks that ends before the cache.
@@ -1712,12 +1712,12 @@ namespace cryptonote
         if (m_coinbase_cache.building)
           return std::nullopt; // Another thread is already updating the cache
 
-        if (m_coinbase_cache.height > start_offset) {
+        if (m_coinbase_cache.height >= start_offset) {
           // Someone else updated the cache while we were acquiring the unique lock, so update our variables
           if (m_coinbase_cache.height >= start_offset + count) {
             // The cache is now *beyond* us, which means we can't use it, so reset start/count back
             // to what they were originally.
-            count += start_offset;
+            count += start_offset - 1;
             start_offset = 0;
             cache_to = 0;
           } else {
@@ -1725,8 +1725,8 @@ namespace cryptonote
             emission_amount = m_coinbase_cache.emissions;
             total_fee_amount = m_coinbase_cache.fees;
             burnt_oxen = m_coinbase_cache.burnt;
-            count -= m_coinbase_cache.height - start_offset;
-            start_offset = m_coinbase_cache.height;
+            count -= m_coinbase_cache.height - start_offset + 1;
+            start_offset = m_coinbase_cache.height + 1;
           }
         }
         if (cache_to > 0 && count > CACHE_EXCLUSIVE) {
