@@ -366,27 +366,19 @@ namespace cryptonote
       {
         leader_reward += reward_parts.miner_fee;
       }
-      else
+      else if (reward_parts.miner_fee)
       {
-        // Alternative Block Producer (receives just miner fee)
+        // Alternative Block Producer (receives just miner fee, if there is one)
         service_nodes::payout const &producer = miner_tx_context.pulse_block_producer;
         std::vector<uint64_t> split_rewards   = distribute_reward_by_portions(producer.payouts, reward_parts.miner_fee, true /*distribute_remainder*/);
 
         for (size_t i = 0; i < producer.payouts.size(); i++)
-        {
-          auto const &payee = producer.payouts[i];
-          if (uint64_t amount = split_rewards[i]; amount)
-            rewards[rewards_length++] = {reward_type::snode, payee.address, amount};
-        }
+          rewards[rewards_length++] = {reward_type::snode, producer.payouts[i].address, split_rewards[i]};
       }
 
       std::vector<uint64_t> split_rewards = distribute_reward_by_portions(leader.payouts, leader_reward, true /*distribute_remainder*/);
       for (size_t i = 0; i < leader.payouts.size(); i++)
-      {
-        auto const &payee = leader.payouts[i];
-        if (uint64_t amount = split_rewards[i]; amount)
-          rewards[rewards_length++] = {reward_type::snode, payee.address, amount};
-      }
+        rewards[rewards_length++] = {reward_type::snode, leader.payouts[i].address, split_rewards[i]};
     }
     else
     {
@@ -403,11 +395,7 @@ namespace cryptonote
                                           reward_parts.service_node_total,
                                           hard_fork_version >= cryptonote::network_version_16_pulse /*distribute_remainder*/);
         for (size_t i = 0; i < leader.payouts.size(); i++)
-        {
-          auto const &payee = leader.payouts[i];
-          if (split_rewards[i])
-            rewards[rewards_length++] = {reward_type::snode, payee.address, split_rewards[i]};
-        }
+          rewards[rewards_length++] = {reward_type::snode, leader.payouts[i].address, split_rewards[i]};
       }
     }
 
