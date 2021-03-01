@@ -45,7 +45,7 @@ namespace service_nodes {
 
   static_assert(PULSE_QUORUM_NUM_VALIDATORS >= PULSE_BLOCK_REQUIRED_SIGNATURES);
   static_assert(PULSE_QUORUM_ENTROPY_LAG >= PULSE_QUORUM_SIZE, "We need to pull atleast PULSE_QUORUM_SIZE number of blocks from the Blockchain, we can't if the amount of blocks to go back from the tip of the Blockchain is less than the blocks we need.");
-  
+
   constexpr size_t pulse_min_service_nodes(cryptonote::network_type nettype)
   {
     return (nettype == cryptonote::MAINNET) ? 50 : PULSE_QUORUM_SIZE;
@@ -293,5 +293,7 @@ uint64_t     get_locked_key_image_unlock_height(cryptonote::network_type nettype
 uint64_t get_portions_to_make_amount(uint64_t staking_requirement, uint64_t amount, uint64_t max_portions = STAKING_PORTIONS);
 
 bool get_portions_from_percent_str(std::string cut_str, uint64_t& portions);
+
+bool validate_unstake_tx(uint8_t hf_version, uint64_t blockchain_height, cryptonote::transaction const &tx, cryptonote::tx_extra_field &extra, std::string *reason);
 
 }

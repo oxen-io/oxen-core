@@ -2,6 +2,7 @@
 #include "cryptonote_basic/hardfork.h"
 #include "common/oxen.h"
 #include "epee/int-util.h"
+#include "cryptonote_basic/cryptonote_format_utils.h"
 #include <boost/endian/conversion.hpp>
 #include <limits>
 #include <vector>
@@ -203,6 +204,59 @@ bool get_portions_from_percent_str(std::string cut_str, uint64_t& portions) {
   }
 
   return get_portions_from_percent(cut_percent, portions);
+}
+
+template <typename... T>
+static bool check_condition(bool condition, std::string* reason, T&&... args) {
+  if (condition && reason)
+  {
+    std::ostringstream os;
+    (os << ... << std::forward<T>(args));
+    *reason = os.str();
+  }
+  return condition;
+}
+
+bool validate_unstake_tx(uint8_t hf_version, uint64_t blockchain_height, cryptonote::transaction const &tx, cryptonote::tx_extra_field &extra, std::string *reason)
+{
+  // -----------------------------------------------------------------------------------------------
+  // Pull out Extra from TX
+  // -----------------------------------------------------------------------------------------------
+  {
+    if (check_condition(tx.type != cryptonote::txtype::key_image_unlock, reason, tx, ", uses wrong tx type, expected=", cryptonote::txtype::key_image_unlock))
+      return false;
+
+    //if (check_condition(!cryptonote::get_field_from_tx_extra(tx.extra, extra), reason, tx, ", didn't have unstake tx_extra"))
+      //return false;
+  }
+
+  // -----------------------------------------------------------------------------------------------
+  // Simple Unstake Extra Validation
+  // -----------------------------------------------------------------------------------------------
+  {
+    //if (check_condition(extra.version != 0, reason, tx, ", ", lns_extra_string(nettype, lns_extra), " unexpected version=", std::to_string(lns_extra.version), ", expected=0"))
+      //return false;
+
+    //if (check_condition(!lns::mapping_type_allowed(hf_version, lns_extra.type), reason, tx, ", ", lns_extra_string(nettype, lns_extra), " specifying type=", lns_extra.type, " that is disallowed in hardfork ", hf_version))
+      //return false;
+  }
+
+  // -----------------------------------------------------------------------------------------------
+  // Burn Validation
+  // -----------------------------------------------------------------------------------------------
+  {
+    uint64_t burn                = cryptonote::get_burned_amount_from_tx_extra(tx.extra);
+    uint64_t const burn_required = UNSTAKE_BURN_FIXED;
+    if (burn != burn_required)
+    {
+      char const *over_or_under = burn > burn_required ? "too much " : "insufficient ";
+      //if (check_condition(true, reason, tx, ", ", lns_extra_string(nettype, lns_extra), " burned ", over_or_under, "oxen=", burn, ", require=", burn_required))
+      //if (check_condition(true, reason, tx, ", burned ", over_or_under, "oxen=", burn, ", require=", burn_required))
+        //return false;
+    }
+  }
+
+  return true;
 }
 
 } // namespace service_nodes
