@@ -2,7 +2,7 @@
 
 #include "service_node_list.h"
 #include "../cryptonote_protocol/cryptonote_protocol_defs.h"
-#include <lokimq/lokimq.h>
+#include <oxenmq/bt_serialize.h>
 
 namespace uptime_proof
 {
@@ -29,7 +29,7 @@ public:
   Proof(uint32_t sn_public_ip, uint16_t sn_storage_port, uint16_t sn_storage_lmq_port, std::array<uint16_t, 3> ss_version, uint16_t quorumnet_port, std::array<uint16_t, 3> lokinet_version, const service_nodes::service_node_keys& keys);
 
   Proof(const std::string& serialized_proof);
-  lokimq::bt_dict bt_encode_uptime_proof() const;
+  oxenmq::bt_dict bt_encode_uptime_proof() const;
 
   crypto::hash hash_uptime_proof() const;
 

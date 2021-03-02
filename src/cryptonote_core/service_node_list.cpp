@@ -60,7 +60,6 @@ extern "C" {
 #include "uptime_proof.h"
 #include "service_node_rules.h"
 #include "service_node_swarm.h"
-#include <lokimq/bt_serialize.h>
 #include "version.h"
 
 #undef OXEN_DEFAULT_LOG_CATEGORY

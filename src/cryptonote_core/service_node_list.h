@@ -38,8 +38,6 @@
 #include "cryptonote_core/service_node_quorum_cop.h"
 #include "common/util.h"
 
-#include <lokimq/bt_serialize.h>
-
 namespace cryptonote
 {
 class Blockchain;
