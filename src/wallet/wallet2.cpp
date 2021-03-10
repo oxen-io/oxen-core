@@ -8693,13 +8693,13 @@ wallet2::request_stake_unlock_result wallet2::can_request_stake_unlock(const cry
     cryptonote::tx_destination_entry de = {};
     de.addr = this->get_address();
     de.is_subaddress = false;
-    de.amount = 0;
+    de.amount = UNSTAKE_BURN_FIXED;
     dsts.push_back(de);
 
     std::optional<uint8_t> hf_version = get_hard_fork_version();
     std::vector<uint8_t> extra;
     // Priority set to unimportant because it does not take effect until processed in a block
-    uint32_t priority = tx_priority::tx_priority_unimportant; 
+    uint32_t priority = tx_priority::tx_priority_unimportant;
     std::set<uint32_t> subaddr_indices  = {};
     oxen_construct_tx_params tx_params = wallet2::construct_params(*hf_version, cryptonote::txtype::key_image_unlock, priority);
     tx_params.burn_fixed = UNSTAKE_BURN_FIXED;
@@ -10867,6 +10867,7 @@ bool wallet2::light_wallet_key_image_is_ours(const crypto::key_image& key_image,
 // usable balance.
 std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryptonote::tx_destination_entry> dsts, const size_t fake_outs_count, const uint64_t unlock_time, uint32_t priority, const std::vector<uint8_t>& extra_base, uint32_t subaddr_account, std::set<uint32_t> subaddr_indices, oxen_construct_tx_params &tx_params)
 {
+
   //ensure device is let in NONE mode in any case
   hw::device &hwdev = m_account.get_device();
   std::unique_lock hwdev_lock{hwdev};
