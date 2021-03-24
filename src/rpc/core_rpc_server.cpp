@@ -1122,13 +1122,13 @@ namespace cryptonote { namespace rpc {
 
     CHECK_CORE_READY();
 
-    if (!lokimq::is_hex(req.tx_as_hex))
+    if (!oxenmq::is_hex(req.tx_as_hex))
     {
       LOG_PRINT_L0("[on_send_raw_tx]: Failed to parse tx from hexbuff: " << req.tx_as_hex);
       res.status = "Failed";
       return res;
     }
-    auto tx_blob = lokimq::from_hex(req.tx_as_hex);
+    auto tx_blob = oxenmq::from_hex(req.tx_as_hex);
 
     if (req.do_sanity_checks && !cryptonote::tx_sanity_check(tx_blob, m_core.get_blockchain_storage().get_num_mature_outputs(0)))
     {
@@ -1642,9 +1642,9 @@ namespace cryptonote { namespace rpc {
     cryptonote::blobdata blob_reserve;
     if(!req.extra_nonce.empty())
     {
-      if (!lokimq::is_hex(req.extra_nonce))
+      if (!oxenmq::is_hex(req.extra_nonce))
         throw rpc_error{ERROR_WRONG_PARAM, "Parameter extra_nonce should be a hex string"};
-      blob_reserve = lokimq::from_hex(req.extra_nonce);
+      blob_reserve = oxenmq::from_hex(req.extra_nonce);
     }
     else
       blob_reserve.resize(req.reserve_size, 0);
@@ -1721,9 +1721,9 @@ namespace cryptonote { namespace rpc {
     CHECK_CORE_READY();
     if(req.blob.size()!=1)
       throw rpc_error{ERROR_WRONG_PARAM, "Wrong param"};
-    if (!lokimq::is_hex(req.blob[0]))
+    if (!oxenmq::is_hex(req.blob[0]))
       throw rpc_error{ERROR_WRONG_BLOCKBLOB, "Wrong block blob"};
-    auto blockblob = lokimq::from_hex(req.blob[0]);
+    auto blockblob = oxenmq::from_hex(req.blob[0]);
 
     // Fixing of high orphan issue for most pools
     // Thanks Boolberry!
@@ -1771,9 +1771,9 @@ namespace cryptonote { namespace rpc {
       res.status = template_res.status;
 
       block b;
-      if (!lokimq::is_hex(template_res.blocktemplate_blob))
+      if (!oxenmq::is_hex(template_res.blocktemplate_blob))
         throw rpc_error{ERROR_WRONG_BLOCKBLOB, "Wrong block blob"};
-      if(!parse_and_validate_block_from_blob(lokimq::from_hex(template_res.blocktemplate_blob), b))
+      if(!parse_and_validate_block_from_blob(oxenmq::from_hex(template_res.blocktemplate_blob), b))
         throw rpc_error{ERROR_WRONG_BLOCKBLOB, "Wrong block blob"};
       b.nonce = req.starting_nonce;
       miner::find_nonce_for_given_block([this](const cryptonote::block &b, uint64_t height, unsigned int threads, crypto::hash &hash) {

@@ -1450,13 +1450,13 @@ size_t WalletImpl::importMultisigImages(const std::vector<std::string>& images) 
         blobs.reserve(images.size());
 
         for (const auto& image: images) {
-            if (!lokimq::is_hex(image)) {
+            if (!oxenmq::is_hex(image)) {
                 LOG_ERROR("Failed to parse imported multisig images");
                 setStatusError(tr("Failed to parse imported multisig images"));
                 return 0;
             }
 
-            blobs.push_back(lokimq::from_hex(image));
+            blobs.push_back(oxenmq::from_hex(image));
         }
 
         return m_wallet->import_multisig(blobs);
@@ -1489,9 +1489,9 @@ PendingTransaction* WalletImpl::restoreMultisigTransaction(const std::string& si
         clearStatus();
         checkMultisigWalletReady(m_wallet);
 
-        if (!lokimq::is_hex(signData))
+        if (!oxenmq::is_hex(signData))
             throw std::runtime_error("Failed to deserialize multisig transaction");
-        auto binary = lokimq::from_hex(signData);
+        auto binary = oxenmq::from_hex(signData);
 
         tools::wallet2::multisig_tx_set txSet;
         if (!m_wallet->load_multisig_tx(binary, txSet, {}))

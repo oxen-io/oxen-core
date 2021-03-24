@@ -252,7 +252,7 @@ bool gen_bp_tx_validation_base::generate_with(std::vector<test_event_entry>& eve
       // that it looks obviously fake, then fill the rest with randomness (so that it is still
       // unique).
       constexpr auto rando = "0123456789abcdef"sv;
-      lokimq::from_hex(rando.begin(), rando.end(), std::begin(tx_hash.data));
+      oxenmq::from_hex(rando.begin(), rando.end(), std::begin(tx_hash.data));
       std::uniform_int_distribution<char> unif{std::numeric_limits<char>::min()};
       for (size_t i = 8; i < sizeof(tx_hash.data); i++)
         tx_hash.data[i] = static_cast<std::byte>(unif(tools::rng));

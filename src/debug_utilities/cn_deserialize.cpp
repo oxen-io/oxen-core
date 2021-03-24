@@ -170,9 +170,9 @@ int main(int argc, char* argv[])
 
   mlog_configure("", true);
 
-  if (lokimq::is_hex(input))
+  if (oxenmq::is_hex(input))
   {
-    auto blob = lokimq::from_hex(input);
+    auto blob = oxenmq::from_hex(input);
     cryptonote::block block;
     cryptonote::transaction tx;
     std::vector<cryptonote::tx_extra_field> fields;

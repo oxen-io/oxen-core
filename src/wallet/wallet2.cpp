@@ -856,8 +856,8 @@ bool get_pruned_tx(const rpc::GET_TRANSACTIONS::entry &entry, cryptonote::transa
       bd = *entry.pruned_as_hex + *entry.prunable_as_hex;
       hex = bd;
     }
-    CHECK_AND_ASSERT_MES(lokimq::is_hex(hex), false, "Failed to parse tx data");
-    bd = lokimq::from_hex(hex);
+    CHECK_AND_ASSERT_MES(oxenmq::is_hex(hex), false, "Failed to parse tx data");
+    bd = oxenmq::from_hex(hex);
     CHECK_AND_ASSERT_MES(cryptonote::parse_and_validate_tx_from_blob(bd, tx), false, "Invalid tx data");
     tx_hash = cryptonote::get_transaction_hash(tx);
     // if the hash was given, check it matches
@@ -870,8 +870,8 @@ bool get_pruned_tx(const rpc::GET_TRANSACTIONS::entry &entry, cryptonote::transa
   {
     crypto::hash ph;
     CHECK_AND_ASSERT_MES(tools::hex_to_type(*entry.prunable_hash, ph), false, "Failed to parse prunable hash");
-    CHECK_AND_ASSERT_MES(lokimq::is_hex(*entry.pruned_as_hex), false, "Failed to parse pruned data");
-    auto bd = lokimq::from_hex(*entry.pruned_as_hex);
+    CHECK_AND_ASSERT_MES(oxenmq::is_hex(*entry.pruned_as_hex), false, "Failed to parse pruned data");
+    auto bd = oxenmq::from_hex(*entry.pruned_as_hex);
     CHECK_AND_ASSERT_MES(parse_and_validate_tx_base_from_blob(bd, tx), false, "Invalid base tx data");
     // only v2 txes can calculate their txid after pruned
     if (bd[0] >= 2)
@@ -1350,7 +1350,7 @@ bool wallet2::get_multisig_seed(epee::wipeable_string& seed, const epee::wipeabl
   if (raw)
   {
     seed.resize(data.size()*2);
-    lokimq::to_hex(data.data(), data.data() + data.size(), seed.data());
+    oxenmq::to_hex(data.data(), data.data() + data.size(), seed.data());
   }
   else
   {
@@ -12060,9 +12060,9 @@ bool wallet2::get_tx_key(const crypto::hash &txid, crypto::secret_key &tx_key, s
     const auto& res_tx = res.txs.front();
     std::string tx_data = *res_tx.pruned_as_hex;
     if (res_tx.prunable_as_hex) tx_data += *res_tx.prunable_as_hex;
-    if (!lokimq::is_hex(tx_data))
+    if (!oxenmq::is_hex(tx_data))
       THROW_WALLET_EXCEPTION(error::wallet_internal_error, "Failed to parse transaction from daemon");
-    tx_data = lokimq::from_hex(tx_data);
+    tx_data = oxenmq::from_hex(tx_data);
 
     cryptonote::transaction tx;
     crypto::hash tx_hash, tx_prefix_hash;

@@ -35,7 +35,7 @@
 #include "cryptonote_basic/cryptonote_basic_impl.h"
 #include <chrono>
 #include <exception>
-#include <lokimq/base64.h>
+#include <oxenmq/base64.h>
 
 #include "wallet_rpc_server_error_codes.h"
 #include "wallet_rpc_server.h"
@@ -546,7 +546,7 @@ namespace tools
         randombytes_buf(reinterpret_cast<unsigned char*>(rand_128bit.data()), rand_128bit.size());
         m_login.emplace(
           default_rpc_username,
-          lokimq::to_base64(rand_128bit.begin(), rand_128bit.end())
+          oxenmq::to_base64(rand_128bit.begin(), rand_128bit.end())
         );
 
         std::string temp = "oxen-wallet-rpc." + std::to_string(port) + ".login";
@@ -999,9 +999,9 @@ namespace tools
         std::string s;
         s.reserve(hex_size);
         auto ins = std::back_inserter(s);
-        lokimq::to_hex(std::begin(ptx.tx_key.data), std::end(ptx.tx_key.data), ins);
+        oxenmq::to_hex(std::begin(ptx.tx_key.data), std::end(ptx.tx_key.data), ins);
         for (const auto& key : ptx.additional_tx_keys)
-          lokimq::to_hex(std::begin(key.data), std::end(key.data), ins);
+          oxenmq::to_hex(std::begin(key.data), std::end(key.data), ins);
         assert(s.size() == hex_size);
         fill(tx_key, std::move(s));
       }
@@ -1115,9 +1115,9 @@ namespace tools
     if(m_wallet->watch_only())
       throw wallet_rpc_error{error_code::WATCH_ONLY, "command not supported by watch-only wallet"};
 
-    if (!lokimq::is_hex(req.unsigned_txset))
+    if (!oxenmq::is_hex(req.unsigned_txset))
       throw wallet_rpc_error{error_code::BAD_HEX, "Failed to parse hex."};
-    auto blob = lokimq::from_hex(req.unsigned_txset);
+    auto blob = oxenmq::from_hex(req.unsigned_txset);
 
     wallet::unsigned_tx_set exported_txs;
     if(!m_wallet->parse_unsigned_tx_from_str(blob, exported_txs))
@@ -1170,9 +1170,9 @@ namespace tools
     if (!req.unsigned_txset.empty()) {
       try {
         wallet::unsigned_tx_set exported_txs;
-        if (!lokimq::is_hex(req.unsigned_txset))
+        if (!oxenmq::is_hex(req.unsigned_txset))
           throw wallet_rpc_error{error_code::BAD_HEX, "Failed to parse hex."};
-        auto blob = lokimq::from_hex(req.unsigned_txset);
+        auto blob = oxenmq::from_hex(req.unsigned_txset);
         if (!m_wallet->parse_unsigned_tx_from_str(blob, exported_txs))
           throw wallet_rpc_error{error_code::BAD_UNSIGNED_TX_DATA, "cannot load unsigned_txset"};
         tx_constructions = exported_txs.txes;
@@ -1183,9 +1183,9 @@ namespace tools
     } else if (!req.multisig_txset.empty()) {
       try {
         wallet::multisig_tx_set exported_txs;
-        if (!lokimq::is_hex(req.multisig_txset))
+        if (!oxenmq::is_hex(req.multisig_txset))
           throw wallet_rpc_error{error_code::BAD_HEX, "Failed to parse hex."};
-        auto blob = lokimq::from_hex(req.multisig_txset);
+        auto blob = oxenmq::from_hex(req.multisig_txset);
         if (!m_wallet->parse_multisig_tx_from_str(blob, exported_txs))
           throw wallet_rpc_error{error_code::BAD_MULTISIG_TX_DATA, "cannot load multisig_txset"};
 
@@ -1294,7 +1294,7 @@ namespace tools
 
         desc.fee = desc.amount_in - desc.amount_out;
         desc.unlock_time = cd.unlock_time;
-        desc.extra = lokimq::to_hex(cd.extra.begin(), cd.extra.end());
+        desc.extra = oxenmq::to_hex(cd.extra.begin(), cd.extra.end());
       }
     }
     catch (const wallet_rpc_error& e)
@@ -1316,9 +1316,9 @@ namespace tools
     if (m_wallet->key_on_device())
       throw wallet_rpc_error{error_code::UNKNOWN_ERROR, "command not supported by HW wallet"};
 
-    if (!lokimq::is_hex(req.tx_data_hex))
+    if (!oxenmq::is_hex(req.tx_data_hex))
       throw wallet_rpc_error{error_code::BAD_HEX, "Failed to parse hex."};
-    auto blob = lokimq::from_hex(req.tx_data_hex);
+    auto blob = oxenmq::from_hex(req.tx_data_hex);
 
     std::vector<wallet::pending_tx> ptx_vector;
     if (!m_wallet->parse_tx_from_str(blob, ptx_vector, nullptr))
@@ -1437,9 +1437,9 @@ namespace tools
     require_open();
     RELAY_TX::response res{};
 
-    if (!lokimq::is_hex(req.hex))
+    if (!oxenmq::is_hex(req.hex))
       throw wallet_rpc_error{error_code::BAD_HEX, "Failed to parse hex."};
-    auto blob = lokimq::from_hex(req.hex);
+    auto blob = oxenmq::from_hex(req.hex);
 
     wallet::pending_tx ptx;
     try
@@ -1827,9 +1827,9 @@ namespace tools
     const size_t hex_size = 2*sizeof(tx_key.data)*(1 + additional_tx_keys.size());
     res.tx_key.reserve(hex_size);
     auto ins = std::back_inserter(res.tx_key);
-    lokimq::to_hex(std::begin(tx_key.data), std::end(tx_key.data), ins);
+    oxenmq::to_hex(std::begin(tx_key.data), std::end(tx_key.data), ins);
     for (const auto& key : additional_tx_keys)
-      lokimq::to_hex(std::begin(key.data), std::end(key.data), ins);
+      oxenmq::to_hex(std::begin(key.data), std::end(key.data), ins);
     assert(ins.size() == hex_size);
     return res;
   }
@@ -2149,9 +2149,9 @@ namespace tools
     if (m_wallet->key_on_device())
       throw wallet_rpc_error{error_code::UNKNOWN_ERROR, "command not supported by HW wallet"};
 
-    if (!lokimq::is_hex(req.outputs_data_hex))
+    if (!oxenmq::is_hex(req.outputs_data_hex))
       throw wallet_rpc_error{error_code::BAD_HEX, "Failed to parse hex."};
-    auto blob = lokimq::from_hex(req.outputs_data_hex);
+    auto blob = oxenmq::from_hex(req.outputs_data_hex);
 
     res.num_imported = m_wallet->import_outputs_from_str(blob);
 
@@ -2734,8 +2734,8 @@ namespace {
     info.reserve(req.info.size());
     for (auto& info_hex : req.info)
     {
-      if (lokimq::is_hex(info_hex))
-        info.push_back(lokimq::from_hex(info_hex));
+      if (oxenmq::is_hex(info_hex))
+        info.push_back(oxenmq::from_hex(info_hex));
       else
         throw wallet_rpc_error{error_code::BAD_HEX, "Failed to parse hex."};
     }
@@ -2811,9 +2811,9 @@ namespace {
     if (!ready)
       throw wallet_rpc_error{error_code::NOT_MULTISIG, "This wallet is multisig, but not yet finalized"};
 
-    if (!lokimq::is_hex(req.tx_data_hex))
+    if (!oxenmq::is_hex(req.tx_data_hex))
       throw wallet_rpc_error{error_code::BAD_HEX, "Failed to parse hex."};
-    auto blob = lokimq::from_hex(req.tx_data_hex);
+    auto blob = oxenmq::from_hex(req.tx_data_hex);
 
     wallet::multisig_tx_set txs;
     bool r = m_wallet->load_multisig_tx(blob, txs, nullptr);
@@ -2853,9 +2853,9 @@ namespace {
     if (!ready)
       throw wallet_rpc_error{error_code::NOT_MULTISIG, "This wallet is multisig, but not yet finalized"};
 
-    if (!lokimq::is_hex(req.tx_data_hex))
+    if (!oxenmq::is_hex(req.tx_data_hex))
       throw wallet_rpc_error{error_code::BAD_HEX, "Failed to parse hex."};
-    auto blob = lokimq::from_hex(req.tx_data_hex);
+    auto blob = oxenmq::from_hex(req.tx_data_hex);
 
     tools::wallet2::multisig_tx_set txs;
     bool r = m_wallet->load_multisig_tx(blob, txs, nullptr);

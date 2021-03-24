@@ -309,9 +309,9 @@ bool message_store::check_auto_config_token(const std::string &raw_token,
   std::replace(hex_digits.begin(), hex_digits.end(), 'l', '1');
 
   // Now it must be correct hex with correct checksum, no further tolerance possible
-  if (!lokimq::is_hex(hex_digits))
+  if (!oxenmq::is_hex(hex_digits))
     return false;
-  auto token_bytes = lokimq::from_hex(hex_digits);
+  auto token_bytes = oxenmq::from_hex(hex_digits);
   auto hash = crypto::cn_fast_hash(token_bytes.data(), token_bytes.size() - 1);
   if (token_bytes[AUTO_CONFIG_TOKEN_BYTES] != static_cast<char>(hash.data[0]))
   {
@@ -330,7 +330,7 @@ std::string message_store::create_auto_config_token()
   // Add a checksum because technically ANY four bytes are a valid token, and without a checksum we would send
   // auto-config messages "to nowhere" after the slightest typo without knowing it
   random[AUTO_CONFIG_TOKEN_BYTES] = crypto::cn_fast_hash(random, AUTO_CONFIG_TOKEN_BYTES).data[0];
-  return AUTO_CONFIG_TOKEN_PREFIX + lokimq::to_hex(std::begin(random), std::end(random));
+  return AUTO_CONFIG_TOKEN_PREFIX + oxenmq::to_hex(std::begin(random), std::end(random));
 }
 
 // Add a message for sending "me" address data to the auto-config transport address
