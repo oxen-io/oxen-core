@@ -3023,14 +3023,14 @@ namespace service_nodes
     if (!crypto::check_signature(hash, proof->pubkey, proof->sig))
       REJECT_PROOF("signature validation failed");
 
-    crypto::x25519_public_key derived_x25519_pubkey = crypto::x25519_public_key::null();
+    crypto::x25519_public_key derived_x25519_pubkey = crypto::x25519_public_key::null;
     if (!proof->pubkey_ed25519)
       REJECT_PROOF("required ed25519 auxiliary pubkey " << proof->pubkey_ed25519 << " not included in proof");
 
-    if (0 != crypto_sign_verify_detached(proof->sig_ed25519.data, reinterpret_cast<unsigned char *>(hash.data), sizeof(hash.data), proof->pubkey_ed25519.data))
+    if (0 != crypto_sign_verify_detached(proof->sig_ed25519, hash, sizeof(hash), proof->pubkey_ed25519))
       REJECT_PROOF("ed25519 signature validation failed");
 
-    if (0 != crypto_sign_ed25519_pk_to_curve25519(derived_x25519_pubkey.data, proof->pubkey_ed25519.data)
+    if (0 != crypto_sign_ed25519_pk_to_curve25519(derived_x25519_pubkey, proof->pubkey_ed25519)
         || !derived_x25519_pubkey)
       REJECT_PROOF("invalid ed25519 pubkey included in proof (x25519 derivation failed)");
 

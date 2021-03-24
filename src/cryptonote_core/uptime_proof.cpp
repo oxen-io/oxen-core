@@ -36,7 +36,7 @@ Proof::Proof(
   crypto::hash hash = this->hash_uptime_proof();
 
   crypto::generate_signature(hash, keys.pub, keys.key, sig);
-  crypto_sign_detached(sig_ed25519.data, NULL, reinterpret_cast<unsigned char *>(hash.data), sizeof(hash.data), keys.key_ed25519.data);
+  crypto_sign_detached(sig_ed25519, nullptr, hash, sizeof(hash), keys.key_ed25519);
 }
 
 //Deserialize from a btencoded string into our Proof instance
