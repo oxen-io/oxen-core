@@ -85,6 +85,9 @@ namespace rct {
         bool operator!=(const key &k) const { return !(*this == k); }
         // Explicit bool conversion: true if non-zero
         explicit operator bool() const { return *this != zero; }
+        // Provide a non-const version because otherwise the non-const unsigned char* conversion
+        // would end up as a better match for bool conversion.
+        explicit operator bool() { return *this != zero; }
 
         template <typename... Char, typename = std::enable_if_t<sizeof...(Char) == 32>>
         static constexpr key constant(Char... c) {

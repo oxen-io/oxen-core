@@ -53,8 +53,11 @@ namespace crypto {
 
   struct alignas(size_t) ec_point {
     std::byte data[32];
-    // Returns true if non-null, i.e. not 0.
+    // Returns true if non-null, i.e. not 0.  (We have both const and non-const because otherwise
+    // the `operator unsigned char*()` would get preferred for bool conversion on a non-const
+    // instance).
     explicit operator bool() const { return memcmp(data, zero32, sizeof(data)); }
+    explicit operator bool() { return memcmp(data, zero32, sizeof(data)); }
 
     // Implicit unsigned char* conversion operators for easily passing into libsodium functions.
     operator unsigned char*() { return reinterpret_cast<unsigned char*>(data); }
@@ -78,6 +81,12 @@ namespace crypto {
     // Implicit unsigned char* conversion operators for easily passing into libsodium functions.
     operator unsigned char*() { return reinterpret_cast<unsigned char*>(data); }
     operator const unsigned char*() const { return reinterpret_cast<const unsigned char*>(data); }
+
+    // Don't provide bool operators on the base class because different subclasses have different
+    // check implementations (and explicitly delete because we don't want bool conversion to fall
+    // through to the implicit unsigned char* conversions above).
+    explicit operator bool() const = delete;
+    explicit operator bool() = delete;
   };
 
   struct public_key : ec_point {
@@ -92,6 +101,7 @@ namespace crypto {
     bool operator==(const secret_key& x) const { return crypto_verify_32(*this, x) == 0; }
     bool operator!=(const secret_key& x) const { return !(*this == x); }
     explicit operator bool() const { return *this != null; }
+    explicit operator bool() { return *this != null; }
   };
   inline const secret_key secret_key::null{};
 
@@ -111,7 +121,8 @@ namespace crypto {
     bool operator!=(const signature& x) const { return !(*this == x); }
 
     // Returns true if non-null, i.e. not 0.
-    explicit operator bool() const { return *this == null; }
+    explicit operator bool() const { return *this != null; }
+    explicit operator bool() { return *this != null; }
   };
   inline constexpr signature signature::null{};
 
@@ -127,6 +138,7 @@ namespace crypto {
 
     /// Returns true if non-null
     explicit operator bool() const { return *this != null; }
+    explicit operator bool() { return *this != null; }
 
     // Implicit conversion to unsigned char* for easier passing into libsodium functions
     operator unsigned char*() { return reinterpret_cast<unsigned char*>(data); }
@@ -148,6 +160,7 @@ namespace crypto {
     static const ed25519_signature null;
     // Returns true if non-null, i.e. not 0.
     explicit operator bool() const { return memcmp(this, &null, sizeof(null)); }
+    explicit operator bool() { return memcmp(this, &null, sizeof(null)); }
     // Implicit conversion to unsigned char* for easier passing into libsodium functions
     operator unsigned char*() { return reinterpret_cast<unsigned char*>(data); }
     operator const unsigned char*() const { return reinterpret_cast<const unsigned char*>(data); }
@@ -161,6 +174,7 @@ namespace crypto {
     bool operator==(const x25519_public_key& x) const { return !memcmp(this, &x, sizeof(*this)); }
     bool operator!=(const x25519_public_key& x) const { return !(*this == x); }
     explicit operator bool() const { return memcmp(data, null.data, sizeof(null)); }
+    explicit operator bool() { return memcmp(data, null.data, sizeof(null)); }
     // Implicit conversion to unsigned char* for easier passing into libsodium functions
     operator unsigned char*() { return reinterpret_cast<unsigned char*>(data); }
     operator const unsigned char*() const { return reinterpret_cast<const unsigned char*>(data); }
@@ -172,6 +186,8 @@ namespace crypto {
     // Implicit conversion to unsigned char* for easier passing into libsodium functions
     operator unsigned char*() { return reinterpret_cast<unsigned char*>(data); }
     operator const unsigned char*() const { return reinterpret_cast<const unsigned char*>(data); }
+    explicit operator bool() const = delete;
+    explicit operator bool() = delete;
   };
   using x25519_secret_key = epee::mlocked<tools::scrubbed<x25519_secret_key_>>;
 
