@@ -171,7 +171,7 @@ namespace service_nodes
     // Note that this does not update the m_x25519_to_pub map if the x25519 key changes (that's the
     // caller's responsibility).
     bool update(uint64_t ts, std::unique_ptr<uptime_proof::Proof> new_proof, const crypto::x25519_public_key &pk_x2);
-    // TODO: remove after HF 17
+    // TODO: remove after HF18
     bool update(uint64_t ts, uint32_t ip, uint16_t s_port, uint16_t s_lmq_port, uint16_t q_port, std::array<uint16_t, 3> ver, const crypto::ed25519_public_key &pk_ed, const crypto::x25519_public_key &pk_x2);
 
     // Stores this record in the database.
@@ -515,11 +515,11 @@ namespace service_nodes
     void set_quorum_history_storage(uint64_t hist_size); // 0 = none (default), 1 = unlimited, N = # of blocks
     bool store();
 
-    //TODO: remove after HF17
+    //TODO: remove after HF18
     crypto::hash hash_uptime_proof(const cryptonote::NOTIFY_UPTIME_PROOF::request &proof) const;
 
     /// Record public ip and storage port and add them to the service node list
-    //TODO: remove after HF17
+    //TODO: remove after HF18
     cryptonote::NOTIFY_UPTIME_PROOF::request generate_uptime_proof(uint32_t public_ip,
                                                                    uint16_t storage_port,
                                                                    uint16_t storage_lmq_port,
@@ -527,7 +527,7 @@ namespace service_nodes
     
     uptime_proof::Proof generate_uptime_proof(uint32_t public_ip, uint16_t storage_port, uint16_t storage_lmq_port, std::array<uint16_t, 3> ss_version, uint16_t quorumnet_port, std::array<uint16_t, 3> lokinet_version) const;
 
-    //TODO: remove after HF17
+    //TODO: remove after HF18
     bool handle_uptime_proof(cryptonote::NOTIFY_UPTIME_PROOF::request const &proof, bool &my_uptime_proof_confirmation, crypto::x25519_public_key &x25519_pkey);
 
     bool handle_btencoded_uptime_proof(std::unique_ptr<uptime_proof::Proof> proof, bool &my_uptime_proof_confirmation, crypto::x25519_public_key &x25519_pkey);

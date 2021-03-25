@@ -104,8 +104,8 @@ namespace service_nodes
       checkpoint_participation = proof.checkpoint_participation;
       pulse_participation      = proof.pulse_participation;
 
-      // TODO: remove after HF17
-      if (proof.proof->version >= MIN_TIMESTAMP_VERSION && hf_version >= cryptonote::network_version_17) {
+      // TODO: remove after HF18
+      if (proof.proof->version >= MIN_TIMESTAMP_VERSION && hf_version >= cryptonote::network_version_18) {
         timestamp_participation  = proof.timestamp_participation;
         timesync_status          = proof.timesync_status;
         check_timestamp_obligation = true;

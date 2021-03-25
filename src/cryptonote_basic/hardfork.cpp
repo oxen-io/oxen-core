@@ -75,6 +75,7 @@ static constexpr HardFork::Params mainnet_hard_forks[] =
   { network_version_15_lns,                 496969, 0, 1585105200 }, // 2020-03-25 14:00AEDT (03:00UTC)
   { network_version_16_pulse,               641111, 0, 1602464400 }, // 2020-10-12 12:00AEDT (01:00UTC)
   { network_version_17,                     641111 + BLOCKS_EXPECTED_IN_DAYS(180), 0, 1602464400 + 180*24*60*60 }, // HF16 + 180 days
+  { network_version_18,                     641111 + BLOCKS_EXPECTED_IN_DAYS(200), 0, 1602464400 + 200*24*60*60 }, // HF16 + 200 days
 };
 
 static constexpr HardFork::Params testnet_hard_forks[] =
@@ -90,6 +91,7 @@ static constexpr HardFork::Params testnet_hard_forks[] =
   { network_version_15_lns,                 244777, 0, 1583940000 }, // 2020-03-11 15:20UTC
   { network_version_16_pulse,               382222, 0, 1600468200 }, // 2020-09-18 22:30UTC
   { network_version_17,                     447275, 0, 1608276840 }, // 2020-12-18 05:34UTC 
+  { network_version_18,                     447275, 0, 1608276840 }, // 2020-12-18 05:34UTC 
 };
 
 static constexpr HardFork::Params devnet_hard_forks[] =

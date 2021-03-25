@@ -1935,7 +1935,7 @@ namespace cryptonote
     bool relayed;
     auto height = get_current_blockchain_height();
     auto hf_version = get_hard_fork_version(height);
-    //TODO: remove after HF17
+    //TODO: remove after HF18
     if (hf_version < HF_VERSION_PROOF_BTENC) {
       NOTIFY_UPTIME_PROOF::request req = m_service_node_list.generate_uptime_proof(m_sn_public_ip, m_storage_port, m_storage_lmq_port, m_quorumnet_port);
       relayed = get_protocol()->relay_uptime_proof(req, fake_context);
