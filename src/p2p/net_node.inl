@@ -372,7 +372,7 @@ namespace nodetool
     }
     else if (sigd == "delayed")
     {
-      if (has_no_igd && !command_line::is_arg_defaulted(vm, arg_igd))
+      if (has_no_igd)
       {
         MFATAL("Cannot have both --" << arg_no_igd.name << " and --" << arg_igd.name << " delayed");
         return false;
