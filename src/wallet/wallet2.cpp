@@ -8693,7 +8693,7 @@ wallet2::request_stake_unlock_result wallet2::can_request_stake_unlock(const cry
     cryptonote::tx_destination_entry de = {};
     de.addr = this->get_address();
     de.is_subaddress = false;
-    de.amount = UNSTAKE_BURN_FIXED;
+    de.amount = 0;
     dsts.push_back(de);
 
     std::optional<uint8_t> hf_version = get_hard_fork_version();
@@ -8701,8 +8701,7 @@ wallet2::request_stake_unlock_result wallet2::can_request_stake_unlock(const cry
     // Priority set to unimportant because it does not take effect until processed in a block
     uint32_t priority = tx_priority::tx_priority_unimportant;
     std::set<uint32_t> subaddr_indices  = {};
-    oxen_construct_tx_params tx_params = wallet2::construct_params(*hf_version, cryptonote::txtype::key_image_unlock, priority);
-    tx_params.burn_fixed = UNSTAKE_BURN_FIXED;
+    oxen_construct_tx_params tx_params = wallet2::construct_params(*hf_version, cryptonote::txtype::key_image_unlock, priority, UNSTAKE_BURN_FIXED);
 
     add_service_node_pubkey_to_tx_extra(extra, sn_key);
     add_tx_key_image_unlock_to_tx_extra(extra, unlock);
@@ -9927,7 +9926,7 @@ void wallet2::transfer_selected_rct(std::vector<cryptonote::tx_destination_entry
   // throw if total amount overflows uint64_t
   for(auto& dt: dsts)
   {
-    THROW_WALLET_EXCEPTION_IF(0 == dt.amount && (tx_params.tx_type != txtype::oxen_name_system), error::zero_destination);
+    THROW_WALLET_EXCEPTION_IF(0 == dt.amount && !(tx_params.tx_type == txtype::oxen_name_system || tx_params.tx_type == txtype::key_image_unlock), error::zero_destination);
     needed_money += dt.amount;
     LOG_PRINT_L2("transfer: adding " << print_money(dt.amount) << ", for a total of " << print_money (needed_money));
     THROW_WALLET_EXCEPTION_IF(needed_money < dt.amount, error::tx_sum_overflow, dsts, fee, m_nettype);
@@ -10874,6 +10873,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryp
   hw::mode_resetter rst{hwdev};
 
   bool const is_ons_tx = (tx_params.tx_type == txtype::oxen_name_system);
+  bool const is_unstake_tx = (tx_params.tx_type == txtype::key_image_unlock);
   auto original_dsts = dsts;
   if (is_ons_tx)
   {
@@ -10965,7 +10965,8 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryp
   needed_money = 0;
   for(auto& dt: dsts)
   {
-    THROW_WALLET_EXCEPTION_IF(0 == dt.amount && !is_ons_tx, error::zero_destination);
+    THROW_WALLET_EXCEPTION_IF(0 == dt.amount && !(is_ons_tx || is_unstake_tx), error::zero_destination);
+
     needed_money += dt.amount;
     LOG_PRINT_L2("transfer: adding " << print_money(dt.amount) << ", for a total of " << print_money (needed_money));
     THROW_WALLET_EXCEPTION_IF(needed_money < dt.amount, error::tx_sum_overflow, dsts, 0, m_nettype);
@@ -10973,7 +10974,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryp
 
 
   // throw if attempting a transaction with no money
-  THROW_WALLET_EXCEPTION_IF(needed_money == 0 && !is_ons_tx, error::zero_destination);
+  THROW_WALLET_EXCEPTION_IF(needed_money == 0 && !(is_ons_tx || is_unstake_tx), error::zero_destination);
 
   std::map<uint32_t, std::pair<uint64_t, std::pair<uint64_t, uint64_t>>> unlocked_balance_per_subaddr = unlocked_balance_per_subaddress(subaddr_account, false);
   std::map<uint32_t, uint64_t> balance_per_subaddr = balance_per_subaddress(subaddr_account, false);
