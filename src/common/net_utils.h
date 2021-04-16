@@ -30,6 +30,7 @@
 #include <string>
 #include <functional>
 #include <optional>
+#include <array>
 
 namespace tools
 {

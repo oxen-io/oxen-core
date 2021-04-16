@@ -29,6 +29,7 @@
 #include "common/net_utils.h"
 
 #include "epee/misc_log_ex.h"
+#include <array>
 
 #undef OXEN_DEFAULT_LOG_CATEGORY
 #define OXEN_DEFAULT_LOG_CATEGORY "net.net"
