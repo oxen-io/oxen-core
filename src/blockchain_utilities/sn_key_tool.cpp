@@ -308,6 +308,15 @@ int restore(bool ed25519, std::list<std::string_view> args) {
             return error(2, "Derived pubkey (" + oxenmq::to_hex(pubkey.begin(), pubkey.end()) + ") doesn't match "
                     "provided pubkey (" + oxenmq::to_hex(pubkey_expected->begin(), pubkey_expected->end()) + ")");
     } else {
+
+        if (ed25519 && filename.size() >= 4 && filename.substr(filename.size() - 4) == "/key") {
+            std::cout << "\n\n\x1b[31;1m"
+                "Warning: You are trying to restore a file named 'key' using the 'restore'\n"
+                "command, which is intended for the key_ed25519 key file; for old service nodes\n"
+                "with both key files you want to use 'restore-legacy' to restore the old\n"
+                "(pre-Loki 8.x) pubkey.\x1b[0m\n";
+        }
+
         std::cout << "\nIs this correct?  Press Enter to continue, Ctrl-C to cancel.\n";
         std::cin.getline(buf, 129);
         if (!std::cin.good())
