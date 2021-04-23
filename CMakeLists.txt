@@ -53,7 +53,7 @@ set(CMAKE_OSX_DEPLOYMENT_TARGET 10.12 CACHE STRING "macOS deployment target (App
 project(oxen
     VERSION 9.1.0
     LANGUAGES CXX C)
-  set(OXEN_RELEASE_CODENAME "Salty Saga")
+  set(OXEN_RELEASE_CODENAME "Audacious Aurochs")
 
 # String value to append to the full version string; this is intended to easily identify whether a
 # binary was build from the release or development branches.  This should be permanently set to an
