@@ -912,7 +912,7 @@ bool mapping_value::validate(cryptonote::network_type nettype, mapping_type type
     if (blob)
     {
       auto iter = blob->buffer.begin();
-      uint8_t identifier = 0;
+      auto identifier = std::byte{0};
       if (addr_info.is_subaddress) {
         identifier |= ONS_WALLET_TYPE_SUBADDRESS;
       } else if (addr_info.has_payment_id) {
@@ -1021,15 +1021,19 @@ bool mapping_value::validate_encrypted(mapping_type type, std::string_view value
 }
 
 
-mapping_value::mapping_value(std::string encrypted_value, std::string nonce): buffer{0}
+mapping_value::mapping_value(std::string_view encrypted_value, std::string_view nonce)
 {
-  auto it = std::copy(encrypted_value.begin(), encrypted_value.end(), buffer.begin());
-  std::copy(nonce.begin(), nonce.end(), it);
   len = encrypted_value.size() + nonce.size();
+  if (len > buffer.size())
+    throw std::runtime_error{"Invalid encrypted value: too long (" +
+      std::to_string(len) + " > " + std::to_string(buffer.size()) + ")"};
+
+  auto ev = as_byte_view(encrypted_value);
+  auto nc = as_byte_view(nonce);
+  auto it = std::copy(ev.begin(), ev.end(), buffer.begin());
+  std::copy(nc.begin(), nc.end(), it);
   encrypted = true;
 }
-
-mapping_value::mapping_value() : buffer{0},encrypted(false),len(0){}
 
 std::string name_hash_bytes_to_base64(std::string_view bytes)
 {
@@ -1528,7 +1532,7 @@ std::optional<cryptonote::address_parse_info> mapping_value::get_wallet_address_
   assert(!encrypted);
   if (encrypted) return std::nullopt;
 
-  cryptonote::address_parse_info addr_info{0};
+  cryptonote::address_parse_info addr_info{};
   auto* bufpos = &buffer[1];
   std::memcpy(&addr_info.address.m_spend_public_key.data, bufpos, 32);
   bufpos += 32;

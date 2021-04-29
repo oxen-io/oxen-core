@@ -42,16 +42,16 @@ constexpr size_t NAME_HASH_SIZE_B64_MAX = (NAME_HASH_SIZE + 2) / 3 * 4; // With 
 
 constexpr size_t SODIUM_ENCRYPTION_EXTRA_BYTES = 40; // crypto_aead_xchacha20poly1305_ietf_ABYTES (16) + crypto_aead_xchacha20poly1305_ietf_NPUBBYTES (24), but we don't include sodium here
 
-constexpr char ONS_WALLET_TYPE_PRIMARY = 0x00;
-constexpr char ONS_WALLET_TYPE_SUBADDRESS = 0x01;
-constexpr char ONS_WALLET_TYPE_INTEGRATED = 0x02;
+constexpr auto ONS_WALLET_TYPE_PRIMARY = std::byte{0x00};
+constexpr auto ONS_WALLET_TYPE_SUBADDRESS = std::byte{0x01};
+constexpr auto ONS_WALLET_TYPE_INTEGRATED = std::byte{0x02};
 
 struct mapping_value
 {
   static size_t constexpr BUFFER_SIZE = std::max({WALLET_ACCOUNT_BINARY_LENGTH_INC_PAYMENT_ID, LOKINET_ADDRESS_BINARY_LENGTH, SESSION_PUBLIC_KEY_BINARY_LENGTH}) + SODIUM_ENCRYPTION_EXTRA_BYTES;
-  std::array<std::byte, BUFFER_SIZE> buffer;
-  bool encrypted;
-  size_t len;
+  std::array<std::byte, BUFFER_SIZE> buffer = {};
+  bool encrypted = false;
+  size_t len = 0;
 
   std::string      to_string() const { return std::string{to_view()}; }
   std::string_view to_view()   const { return {reinterpret_cast<const char*>(buffer.data()), len}; }
@@ -112,8 +112,8 @@ struct mapping_value
   // mapping_value, ready for decryption via decrypt().
   static bool validate_encrypted(mapping_type type, std::string_view value, mapping_value *blob = nullptr, std::string *reason = nullptr);
 
-  mapping_value();
-  mapping_value(std::string encrypted_value, std::string nonce);
+  mapping_value() = default;
+  mapping_value(std::string_view encrypted_value, std::string_view nonce);
 };
 inline std::ostream &operator<<(std::ostream &os, mapping_value const &v) { return os << oxenmq::to_hex(v.to_view()); }
 
