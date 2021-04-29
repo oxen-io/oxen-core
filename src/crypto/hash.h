@@ -137,7 +137,7 @@ namespace crypto {
   inline hash tree_hash(const std::vector<hash>& hashes) {
     assert(!hashes.empty());
     hash root_hash;
-    tree_hash(reinterpret_cast<const unsigned char* const*>(hashes.data()), hashes.size(), root_hash);
+    tree_hash(hashes.front(), hashes.size(), root_hash);
     return root_hash;
   }
 

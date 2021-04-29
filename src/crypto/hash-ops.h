@@ -72,7 +72,7 @@ void hash_extra_groestl(const void *data, size_t length, unsigned char *hash);
 void hash_extra_jh(const void *data, size_t length, unsigned char *hash);
 void hash_extra_skein(const void *data, size_t length, unsigned char *hash);
 
-void tree_hash(const unsigned char *const *hashes, size_t count, unsigned char *root_hash);
+void tree_hash(const unsigned char* hashes, size_t count, unsigned char *root_hash);
 
 void rx_slow_hash_allocate_state(void);
 void rx_slow_hash_free_state(void);
