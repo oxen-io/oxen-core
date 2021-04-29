@@ -254,7 +254,7 @@ static const zero_commitment zero_commitments[] = {
 
     //generates a random scalar which can be used as a secret key or mask
     void skGen(key &sk) {
-        crypto_core_ed25519_random(sk);
+        crypto_core_ed25519_scalar_random(sk);
     }
 
     //generates a random scalar which can be used as a secret key or mask
