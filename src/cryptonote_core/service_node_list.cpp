@@ -3334,6 +3334,11 @@ namespace service_nodes
         info.pulse_sorter = {};
         info.version      = version_t::v6_reassign_sort_keys;
       }
+      if (info.version < version_t::v7_decommission_reason)
+      {
+        // Nothing to do here (leave consensus reasons as 0s)
+        info.version = version_t::v7_decommission_reason;
+      }
       // Make sure we handled any future state version upgrades:
       assert(info.version == tools::enum_top<decltype(info.version)>);
       service_nodes_infos.emplace(std::move(pubkey_info.pubkey), std::move(pubkey_info.info));
