@@ -50,7 +50,6 @@
 #include "signature.h"
 #include "is_out_to_acc.h"
 #include "subaddress_expand.h"
-#include "sc_reduce32.h"
 #include "sc_check.h"
 #include "cn_fast_hash.h"
 #include "equality.h"
@@ -188,7 +187,6 @@ int main(int argc, char** argv)
   TEST_PERFORMANCE0(filter, p, test_ge_frombytes_vartime);
   TEST_PERFORMANCE0(filter, p, test_ge_tobytes);
   TEST_PERFORMANCE0(filter, p, test_generate_keypair);
-  TEST_PERFORMANCE0(filter, p, test_sc_reduce32);
   TEST_PERFORMANCE0(filter, p, test_sc_check);
   TEST_PERFORMANCE1(filter, p, test_signature, false);
   TEST_PERFORMANCE1(filter, p, test_signature, true);

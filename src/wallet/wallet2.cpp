@@ -1269,8 +1269,8 @@ bool wallet2::init(std::string daemon_address, std::optional<tools::login> daemo
 bool wallet2::is_deterministic() const
 {
   crypto::secret_key second;
-  keccak((uint8_t *)&get_account().get_keys().m_spend_secret_key, sizeof(crypto::secret_key), (uint8_t *)&second, sizeof(crypto::secret_key));
-  sc_reduce32((uint8_t *)&second);
+  keccak(get_account().get_keys().m_spend_secret_key, sizeof(crypto::secret_key), second, sizeof(crypto::secret_key));
+  second %= crypto::L;
   return memcmp(second.data,get_account().get_keys().m_view_secret_key.data, sizeof(crypto::secret_key)) == 0;
 }
 //----------------------------------------------------------------------------------------------------
@@ -1343,7 +1343,7 @@ bool wallet2::get_multisig_seed(epee::wipeable_string& seed, const epee::wipeabl
   {
     crypto::secret_key key;
     crypto::cn_slow_hash(passphrase.data(), passphrase.size(), (crypto::hash&)key, crypto::cn_slow_hash_type::heavy_v1);
-    sc_reduce32((unsigned char*)key.data);
+    key %= crypto::L;
     data = encrypt(data.view(), key, true);
   }
 

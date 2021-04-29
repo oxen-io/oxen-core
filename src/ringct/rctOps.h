@@ -39,7 +39,6 @@
 
 extern "C" {
 #include "crypto/keccak.h"
-#include "rctCryptoOps.h"
 }
 #include "crypto/crypto.h"
 

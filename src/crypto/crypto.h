@@ -361,6 +361,31 @@ namespace crypto {
   struct already_hashed {
     std::size_t operator()(const T& v) const { return *reinterpret_cast<const std::size_t*>(&v); }
   };
+
+  // Wrapper around crypto_core_ed25519_scalar_reduce that operates on a 32-byte value (copying it
+  // into a 64-byte buffer with trailing 0's).
+  void ed25519_scalar_reduce32(unsigned char* buf);
+
+  // Stand-in object to aid with operations, most notably `scalar %= L` to reduce.
+  struct ed25519_order_t {};
+  inline constexpr ed25519_order_t L{};
+
+  // Reduces something held in a 32-byte trivial type (e.g. ec_scalar, rct::key) to be mod L:
+  //
+  //     s %= L;
+  //
+  template <typename T, typename = std::enable_if_t<(std::is_trivial_v<T> || std::is_same_v<T, secret_key>) && sizeof(T) == 32>>
+  T& operator%=(T& scalar, ed25519_order_t) {
+    ed25519_scalar_reduce32(reinterpret_cast<unsigned char*>(&scalar));
+    return scalar;
+  }
+
+  template <typename T, typename = std::enable_if_t<(std::is_trivial_v<T> || std::is_same_v<T, secret_key>) && sizeof(T) == 32>>
+  T operator%(T scalar, ed25519_order_t) {
+    scalar %= L;
+    return scalar;
+  }
+
 }
 
 namespace epee { template <> inline constexpr bool is_byte_spannable<crypto::secret_key> = true; }

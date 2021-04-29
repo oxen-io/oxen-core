@@ -97,7 +97,7 @@ extern "C" {
   void hash_to_scalar(const void *data, size_t length, ec_scalar &res) {
     auto h = cn_fast_hash(data, length);
     std::copy(std::begin(h.data), std::end(h.data), std::begin(res.data));
-    sc_reduce32(&res);
+    res %= L;
   }
 
   /*
@@ -112,8 +112,7 @@ extern "C" {
       sk = recovery_key;
     else
       crypto_core_ed25519_scalar_random(sk);
-    sec = sk;
-    sc_reduce32(&sec);  // reduce in case second round of keys (sendkeys)
+    sec = sk % L; // reduce in case second round of keys (sendkeys)
 
     ge_scalarmult_base(&point, &sec);
     ge_p3_tobytes(&pub, &point);
@@ -468,7 +467,7 @@ extern "C" {
       keccak_update(&state, reinterpret_cast<const uint8_t*>(ab.data()), 64*ab.size());
       ec_scalar result;
       keccak_finish(&state, reinterpret_cast<uint8_t*>(&result));
-      sc_reduce32(&result);
+      result %= L;
       return result;
     };
   };
@@ -649,6 +648,13 @@ extern "C" {
     ec_scalar h = rs.hash_to_scalar();
     sc_sub(&h, &h, &sig.c);
     return sc_isnonzero(&h) == 0;
+  }
+
+  void ed25519_scalar_reduce32(unsigned char* buf) {
+    unsigned char tmp[64];
+    std::memcpy(tmp, buf, 32);
+    std::memset(tmp+32, 0, 32);
+    crypto_core_ed25519_scalar_reduce(buf, tmp);
   }
 
 }

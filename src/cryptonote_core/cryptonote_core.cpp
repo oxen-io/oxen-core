@@ -954,9 +954,9 @@ namespace cryptonote
         pk_sh_data[0] &= 248;
         pk_sh_data[31] &= 63; // (some implementations put 127 here, but with the |64 in the next line it is the same thing)
         pk_sh_data[31] |= 64;
-        // Monero crypto requires a pointless check that the secret key is < basepoint, so calculate
-        // it mod basepoint to make it happy:
-        sc_reduce32(pk_sh_data);
+        // Monero crypto requires a pointless check that the secret key is < L, so calculate
+        // it mod L to make it happy:
+        crypto::ed25519_scalar_reduce32(pk_sh_data);
         std::memcpy(keys.key.data, pk_sh_data, 32);
         if (!crypto::secret_key_to_public_key(keys.key, keys.pub))
           throw std::runtime_error{"Failed to derive primary key from ed25519 key"};

@@ -123,10 +123,6 @@ void ge_scalarmult_base(ge_p3 *, const unsigned char *);
 
 void ge_tobytes(unsigned char *, const ge_p2 *);
 
-/* From sc_reduce.c */
-
-void sc_reduce(unsigned char *);
-
 /* New code */
 
 void ge_scalarmult(ge_p2 *, const unsigned char *, const ge_p3 *);
@@ -146,7 +142,6 @@ extern const ge_p3 ge_p3_identity;
 extern const ge_p3 ge_p3_H;
 void ge_fromfe_frombytes_vartime(ge_p2 *, const unsigned char *);
 void sc_0(unsigned char *);
-void sc_reduce32(unsigned char *);
 void sc_add(unsigned char *, const unsigned char *, const unsigned char *);
 void sc_sub(unsigned char *, const unsigned char *, const unsigned char *);
 void sc_mulsub(unsigned char *, const unsigned char *, const unsigned char *, const unsigned char *);

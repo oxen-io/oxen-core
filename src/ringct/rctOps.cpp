@@ -352,7 +352,7 @@ static const zero_commitment zero_commitments[] = {
     //does a * G where a is a scalar and G is the curve basepoint
     void scalarmultBase(key &aG,const key &a) {
         ge_p3 point;
-        sc_reduce32copy(aG, a); //do this beforehand!
+        aG = a % crypto::L; //do this beforehand!
         ge_scalarmult_base(&point, aG);
         ge_p3_tobytes(aG, &point);
     }
@@ -361,7 +361,7 @@ static const zero_commitment zero_commitments[] = {
     key scalarmultBase(const key & a) {
         ge_p3 point;
         key aG;
-        sc_reduce32copy(aG, a); //do this beforehand
+        crypto_core_ed25519_scalar_reduce(aG, a); //do this beforehand
         ge_scalarmult_base(&point, aG);
         ge_p3_tobytes(aG, &point);
         return aG;
@@ -567,7 +567,7 @@ static const zero_commitment zero_commitments[] = {
     
     void hash_to_scalar(key &hash, const void * data, const std::size_t l) {
         cn_fast_hash(hash, data, l);
-        sc_reduce32(hash);
+        hash %= crypto::L;
     }
 
     //cn_fast_hash for a 32 byte key
@@ -577,7 +577,7 @@ static const zero_commitment zero_commitments[] = {
     
     void hash_to_scalar(key & hash, const key & in) {
         cn_fast_hash(hash, in);
-        sc_reduce32(hash);
+        hash %= crypto::L;
     }
 
     //cn_fast_hash for a 32 byte key
@@ -588,9 +588,7 @@ static const zero_commitment zero_commitments[] = {
     }
     
      key hash_to_scalar(const key & in) {
-        key hash = cn_fast_hash(in);
-        sc_reduce32(hash);
-        return hash;
+        return cn_fast_hash(in) % crypto::L;
      }
     
     //cn_fast_hash for a 128 byte unsigned char
@@ -601,9 +599,7 @@ static const zero_commitment zero_commitments[] = {
     }
     
     key hash_to_scalar128(const void * in) {
-        key hash = cn_fast_hash128(in);
-        sc_reduce32(hash);
-        return hash;
+        return cn_fast_hash128(in) % crypto::L;;
     }
     
     //cn_fast_hash for multisig purpose
@@ -617,9 +613,7 @@ static const zero_commitment zero_commitments[] = {
     }
     
     key hash_to_scalar(const ctkeyV &PC) {
-        key rv = cn_fast_hash(PC);
-        sc_reduce32(rv);
-        return rv;
+        return cn_fast_hash(PC) % crypto::L;
     }
     
    //cn_fast_hash for a key-vector of arbitrary length
@@ -635,9 +629,7 @@ static const zero_commitment zero_commitments[] = {
    }
    
    key hash_to_scalar(const keyV &keys) {
-       key rv = cn_fast_hash(keys);
-       sc_reduce32(rv);
-       return rv;
+       return cn_fast_hash(keys) % crypto::L;
    }
 
    key cn_fast_hash(const key64 keys) {
@@ -648,9 +640,7 @@ static const zero_commitment zero_commitments[] = {
    }
 
    key hash_to_scalar(const key64 keys) {
-       key rv = cn_fast_hash(keys);
-       sc_reduce32(rv);
-       return rv;
+       return cn_fast_hash(keys) % crypto::L;
    }
     
     // Hash a key to p3 representation
