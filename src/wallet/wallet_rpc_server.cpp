@@ -1830,7 +1830,7 @@ namespace tools
     oxenmq::to_hex(std::begin(tx_key.data), std::end(tx_key.data), ins);
     for (const auto& key : additional_tx_keys)
       oxenmq::to_hex(std::begin(key.data), std::end(key.data), ins);
-    assert(ins.size() == hex_size);
+    assert(res.tx_key.size() == hex_size);
     return res;
   }
   //------------------------------------------------------------------------------------------------------------------------------
