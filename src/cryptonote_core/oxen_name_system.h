@@ -27,24 +27,24 @@ class Blockchain;
 namespace ons
 {
 
-constexpr size_t WALLET_NAME_MAX                  = 64;
-constexpr size_t WALLET_ACCOUNT_BINARY_LENGTH_INC_PAYMENT_ID     = 73;  // Wallet will encrypt an identifier (1 byte) a public spend and view key (2x 32 bytes) = 65 bytes plus an additional item for payment id (8 bytes) if necessary. The identifier 0 -> No Subaddress or Payment ID, 1 -> Has Subaddress, 2-> Has Payment ID
-constexpr size_t WALLET_ACCOUNT_BINARY_LENGTH_NO_PAYMENT_ID     = 65;
-constexpr size_t LOKINET_DOMAIN_NAME_MAX          = 63 + 5; // DNS components name must be at most 63 (+ 5 for .loki); this limit applies if there is at least one hyphen (and thus includes punycode)
-constexpr size_t LOKINET_DOMAIN_NAME_MAX_NOHYPHEN = 32 + 5; // If the name does not contain a - then we restrict it to 32 characters so that it cannot be (and is obviously not) an encoded .loki address (52 characters)
-constexpr size_t LOKINET_ADDRESS_BINARY_LENGTH    = sizeof(crypto::ed25519_public_key);
-constexpr size_t SESSION_DISPLAY_NAME_MAX         = 64;
-constexpr size_t SESSION_PUBLIC_KEY_BINARY_LENGTH = 1 + sizeof(crypto::ed25519_public_key); // Session keys at prefixed with 0x05 + ed25519 key
+inline constexpr size_t WALLET_NAME_MAX = 64;
+inline constexpr size_t WALLET_ACCOUNT_BINARY_LENGTH_INC_PAYMENT_ID = 73;  // Wallet will encrypt an identifier (1 byte) a public spend and view key (2x 32 bytes) = 65 bytes plus an additional item for payment id (8 bytes) if necessary. The identifier 0 -> No Subaddress or Payment ID, 1 -> Has Subaddress, 2-> Has Payment ID
+inline constexpr size_t WALLET_ACCOUNT_BINARY_LENGTH_NO_PAYMENT_ID = 65;
+inline constexpr size_t LOKINET_DOMAIN_NAME_MAX = 63 + 5; // DNS components name must be at most 63 (+ 5 for .loki); this limit applies if there is at least one hyphen (and thus includes punycode)
+inline constexpr size_t LOKINET_DOMAIN_NAME_MAX_NOHYPHEN = 32 + 5; // If the name does not contain a - then we restrict it to 32 characters so that it cannot be (and is obviously not) an encoded .loki address (52 characters)
+inline constexpr size_t LOKINET_ADDRESS_BINARY_LENGTH = sizeof(crypto::ed25519_public_key);
+inline constexpr size_t SESSION_DISPLAY_NAME_MAX = 64;
+inline constexpr size_t SESSION_PUBLIC_KEY_BINARY_LENGTH = 1 + sizeof(crypto::ed25519_public_key); // Session keys at prefixed with 0x05 + ed25519 key
 
-constexpr size_t NAME_HASH_SIZE = sizeof(crypto::hash);
-constexpr size_t NAME_HASH_SIZE_B64_MIN = (4*NAME_HASH_SIZE + 2) / 3; // No padding
-constexpr size_t NAME_HASH_SIZE_B64_MAX = (NAME_HASH_SIZE + 2) / 3 * 4; // With padding
+inline constexpr size_t NAME_HASH_SIZE = sizeof(crypto::hash);
+inline constexpr size_t NAME_HASH_SIZE_B64_MIN = (4*NAME_HASH_SIZE + 2) / 3; // No padding
+inline constexpr size_t NAME_HASH_SIZE_B64_MAX = (NAME_HASH_SIZE + 2) / 3 * 4; // With padding
 
-constexpr size_t SODIUM_ENCRYPTION_EXTRA_BYTES = 40; // crypto_aead_xchacha20poly1305_ietf_ABYTES (16) + crypto_aead_xchacha20poly1305_ietf_NPUBBYTES (24), but we don't include sodium here
+inline constexpr size_t SODIUM_ENCRYPTION_EXTRA_BYTES = 40; // crypto_aead_xchacha20poly1305_ietf_ABYTES (16) + crypto_aead_xchacha20poly1305_ietf_NPUBBYTES (24), but we don't include sodium here
 
-constexpr auto ONS_WALLET_TYPE_PRIMARY = std::byte{0x00};
-constexpr auto ONS_WALLET_TYPE_SUBADDRESS = std::byte{0x01};
-constexpr auto ONS_WALLET_TYPE_INTEGRATED = std::byte{0x02};
+inline constexpr auto ONS_WALLET_TYPE_PRIMARY = std::byte{0x00};
+inline constexpr auto ONS_WALLET_TYPE_SUBADDRESS = std::byte{0x01};
+inline constexpr auto ONS_WALLET_TYPE_INTEGRATED = std::byte{0x02};
 
 struct mapping_value
 {
