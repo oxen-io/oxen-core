@@ -108,11 +108,14 @@ extern "C" {
 
     secret_key sk;
 
-    if (recover)
+    if (recover) {
       sk = recovery_key;
-    else
+      sec = sk % L; // reduce in case second round of keys (sendkeys)
+    }
+    else {
       crypto_core_ed25519_scalar_random(sk);
-    sec = sk % L; // reduce in case second round of keys (sendkeys)
+      sec = sk;
+    }
 
     ge_scalarmult_base(&point, &sec);
     ge_p3_tobytes(&pub, &point);

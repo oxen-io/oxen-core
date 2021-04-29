@@ -359,11 +359,8 @@ static const zero_commitment zero_commitments[] = {
 
     //does a * G where a is a scalar and G is the curve basepoint
     key scalarmultBase(const key & a) {
-        ge_p3 point;
         key aG;
-        crypto_core_ed25519_scalar_reduce(aG, a); //do this beforehand
-        ge_scalarmult_base(&point, aG);
-        ge_p3_tobytes(aG, &point);
+        scalarmultBase(aG, a);
         return aG;
     }
 
@@ -378,12 +375,8 @@ static const zero_commitment zero_commitments[] = {
 
     //does a * P where a is a scalar and P is an arbitrary point
     key scalarmultKey(const key & P, const key & a) {
-        ge_p3 A;
-        ge_p2 R;
-        CHECK_AND_ASSERT_THROW_MES_L1(ge_frombytes_vartime(&A, P) == 0, "ge_frombytes_vartime failed at "+std::to_string(__LINE__));
-        ge_scalarmult(&R, a, &A);
         key aP;
-        ge_tobytes(aP, &R);
+        scalarmultKey(aP, P, a);
         return aP;
     }
 
