@@ -34,7 +34,7 @@
 #include <utility>
 #include <vector>
 #include <cstring>
-#include <lokimq/hex.h>
+#include <oxenmq/hex.h>
 #include "epee/memwipe.h"
 #include "epee/misc_log_ex.h"
 #include "epee/wipeable_string.h"
@@ -197,11 +197,11 @@ void wipeable_string::split(std::vector<wipeable_string> &fields) const
 std::optional<epee::wipeable_string> wipeable_string::parse_hexstr() const
 {
   auto hex = view();
-  if (!lokimq::is_hex(hex))
+  if (!oxenmq::is_hex(hex))
     return std::nullopt;
   auto res = std::make_optional<epee::wipeable_string>();
   res->resize(hex.size() / 2);
-  lokimq::from_hex(hex.begin(), hex.end(), res->data());
+  oxenmq::from_hex(hex.begin(), hex.end(), res->data());
   return res;
 }
 
