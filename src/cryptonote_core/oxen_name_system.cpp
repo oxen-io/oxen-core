@@ -88,7 +88,7 @@ enum struct mapping_record_column
 
 using byte_view = std::basic_string_view<std::byte>;
 // Makes a byte view from a string
-byte_view as_byte_view(std::string_view x) { return reinterpret_cast<const std::byte*>(x.data(), x.size()); }
+byte_view as_byte_view(std::string_view x) { return {reinterpret_cast<const std::byte*>(x.data()), x.size()}; }
 
 
 static constexpr std::byte OLD_ENCRYPTION_NONCE[crypto_secretbox_NONCEBYTES] = {};
@@ -2004,7 +2004,7 @@ FROM "mappings" WHERE "type" = ? AND "name_hash" = ? ORDER BY "update_height" DE
     if (entry.field_is_set(ons::extra_field::encrypted_value))
     {
       sql += ", ?";
-      bind.emplace_back(as_byte_view(entry.encrypted_value));
+      bind.push_back(as_byte_view(entry.encrypted_value));
     }
     else
       sql += R"(, "encrypted_value")";
