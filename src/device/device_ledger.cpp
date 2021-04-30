@@ -1017,7 +1017,7 @@ namespace hw {
 
         offset = 0;
         //pub key
-        receive_bytes(pub, 32, offset);
+        receive_bytes(pub.data, 32, offset);
         receive_secret(sec, offset);
 
 #ifdef DEBUG_HWDEVICE

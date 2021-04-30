@@ -53,15 +53,17 @@ namespace crypto {
 
   struct alignas(size_t) ec_point {
     std::byte data[32];
-    // Returns true if non-null, i.e. not 0.  (We have both const and non-const because otherwise
-    // the `operator unsigned char*()` would get preferred for bool conversion on a non-const
-    // instance).
+    // Returns true if non-null, i.e. not 0.
     explicit operator bool() const { return memcmp(data, zero32, sizeof(data)); }
-    explicit operator bool() { return memcmp(data, zero32, sizeof(data)); }
 
     // Implicit unsigned char* conversion operators for easily passing into libsodium functions.
-    operator unsigned char*() { return reinterpret_cast<unsigned char*>(data); }
-    operator const unsigned char*() const { return reinterpret_cast<const unsigned char*>(data); }
+    // (This goes through template deduction so that it only applies if we're looking for *exactly*
+    // an unsigned char*, but not in places where an unsigned char* would just happen to work.  For
+    // example, we don't want (a != b) to go via the implicit conversion).
+    template <typename T, typename = std::enable_if_t<std::is_same_v<T, unsigned char*>>>
+    operator T() { return reinterpret_cast<unsigned char*>(data); }
+    template <typename T, typename = std::enable_if_t<std::is_same_v<T, const unsigned char*>>>
+    operator T() const { return reinterpret_cast<const unsigned char*>(data); }
   };
 
   template <typename T1, typename T2> using is_same_point_type = std::enable_if_t<std::is_base_of_v<ec_point, T1> && std::is_same_v<T1, T2> && sizeof(T1) == sizeof(ec_point)>;
@@ -79,14 +81,11 @@ namespace crypto {
     std::byte data[32];
 
     // Implicit unsigned char* conversion operators for easily passing into libsodium functions.
-    operator unsigned char*() { return reinterpret_cast<unsigned char*>(data); }
-    operator const unsigned char*() const { return reinterpret_cast<const unsigned char*>(data); }
-
-    // Don't provide bool operators on the base class because different subclasses have different
-    // check implementations (and explicitly delete because we don't want bool conversion to fall
-    // through to the implicit unsigned char* conversions above).
-    explicit operator bool() const = delete;
-    explicit operator bool() = delete;
+    // See ec_point for why the templates are here.
+    template <typename T, typename = std::enable_if_t<std::is_same_v<T, unsigned char*>>>
+    operator T() { return reinterpret_cast<unsigned char*>(data); }
+    template <typename T, typename = std::enable_if_t<std::is_same_v<T, const unsigned char*>>>
+    operator T() const { return reinterpret_cast<const unsigned char*>(data); }
   };
 
   struct public_key : ec_point {
@@ -100,8 +99,8 @@ namespace crypto {
     // constant-time == comparison
     bool operator==(const secret_key& x) const { return crypto_verify_32(*this, x) == 0; }
     bool operator!=(const secret_key& x) const { return !(*this == x); }
+
     explicit operator bool() const { return *this != null; }
-    explicit operator bool() { return *this != null; }
   };
   inline const secret_key secret_key::null{};
 
@@ -122,7 +121,6 @@ namespace crypto {
 
     // Returns true if non-null, i.e. not 0.
     explicit operator bool() const { return *this != null; }
-    explicit operator bool() { return *this != null; }
   };
   inline constexpr signature signature::null{};
 
@@ -138,11 +136,13 @@ namespace crypto {
 
     /// Returns true if non-null
     explicit operator bool() const { return *this != null; }
-    explicit operator bool() { return *this != null; }
 
-    // Implicit conversion to unsigned char* for easier passing into libsodium functions
-    operator unsigned char*() { return reinterpret_cast<unsigned char*>(data); }
-    operator const unsigned char*() const { return reinterpret_cast<const unsigned char*>(data); }
+    // Implicit conversion to unsigned char* for easier passing into libsodium functions. See
+    // ec_point regarding the template usage.
+    template <typename T, typename = std::enable_if_t<std::is_same_v<T, unsigned char*>>>
+    operator T() { return reinterpret_cast<unsigned char*>(data); }
+    template <typename T, typename = std::enable_if_t<std::is_same_v<T, const unsigned char*>>>
+    operator T() const { return reinterpret_cast<const unsigned char*>(data); }
   };
   inline constexpr ed25519_public_key ed25519_public_key::null{};
 
@@ -150,20 +150,28 @@ namespace crypto {
     // 64 = crypto_sign_ed25519_SECRETKEYBYTES (but we don't depend on libsodium header here)
     std::byte data[64];
     // Implicit conversion to unsigned char* for easier passing into libsodium functions
-    operator unsigned char*() { return reinterpret_cast<unsigned char*>(data); }
-    operator const unsigned char*() const { return reinterpret_cast<const unsigned char*>(data); }
+    template <typename T, typename = std::enable_if_t<std::is_same_v<T, unsigned char*>>>
+    operator T() { return reinterpret_cast<unsigned char*>(data); }
+    template <typename T, typename = std::enable_if_t<std::is_same_v<T, const unsigned char*>>>
+    operator T() const { return reinterpret_cast<const unsigned char*>(data); }
   };
   using ed25519_secret_key = epee::mlocked<tools::scrubbed<ed25519_secret_key_>>;
 
   struct alignas(size_t) ed25519_signature {
     std::byte data[64]; // 64 = crypto_sign_BYTES
     static const ed25519_signature null;
+
     // Returns true if non-null, i.e. not 0.
     explicit operator bool() const { return memcmp(this, &null, sizeof(null)); }
-    explicit operator bool() { return memcmp(this, &null, sizeof(null)); }
+
+    bool operator==(const ed25519_signature& x) const { return !memcmp(this, &x, sizeof(*this)); }
+    bool operator!=(const ed25519_signature& x) const { return !(*this == x); }
+
     // Implicit conversion to unsigned char* for easier passing into libsodium functions
-    operator unsigned char*() { return reinterpret_cast<unsigned char*>(data); }
-    operator const unsigned char*() const { return reinterpret_cast<const unsigned char*>(data); }
+    template <typename T, typename = std::enable_if_t<std::is_same_v<T, unsigned char*>>>
+    operator T() { return reinterpret_cast<unsigned char*>(data); }
+    template <typename T, typename = std::enable_if_t<std::is_same_v<T, const unsigned char*>>>
+    operator T() const { return reinterpret_cast<const unsigned char*>(data); }
   };
   inline constexpr ed25519_signature ed25519_signature::null{};
 
@@ -173,21 +181,24 @@ namespace crypto {
     /// Returns true if non-null
     bool operator==(const x25519_public_key& x) const { return !memcmp(this, &x, sizeof(*this)); }
     bool operator!=(const x25519_public_key& x) const { return !(*this == x); }
+
     explicit operator bool() const { return memcmp(data, null.data, sizeof(null)); }
-    explicit operator bool() { return memcmp(data, null.data, sizeof(null)); }
+
     // Implicit conversion to unsigned char* for easier passing into libsodium functions
-    operator unsigned char*() { return reinterpret_cast<unsigned char*>(data); }
-    operator const unsigned char*() const { return reinterpret_cast<const unsigned char*>(data); }
+    template <typename T, typename = std::enable_if_t<std::is_same_v<T, unsigned char*>>>
+    operator T() { return reinterpret_cast<unsigned char*>(data); }
+    template <typename T, typename = std::enable_if_t<std::is_same_v<T, const unsigned char*>>>
+    operator T() const { return reinterpret_cast<const unsigned char*>(data); }
   };
   inline constexpr x25519_public_key x25519_public_key::null{};
 
   struct alignas(size_t) x25519_secret_key_ {
     std::byte data[32]; // crypto_scalarmult_curve25519_BYTES
     // Implicit conversion to unsigned char* for easier passing into libsodium functions
-    operator unsigned char*() { return reinterpret_cast<unsigned char*>(data); }
-    operator const unsigned char*() const { return reinterpret_cast<const unsigned char*>(data); }
-    explicit operator bool() const = delete;
-    explicit operator bool() = delete;
+    template <typename T, typename = std::enable_if_t<std::is_same_v<T, unsigned char*>>>
+    operator T() { return reinterpret_cast<unsigned char*>(data); }
+    template <typename T, typename = std::enable_if_t<std::is_same_v<T, const unsigned char*>>>
+    operator T() const { return reinterpret_cast<const unsigned char*>(data); }
   };
   using x25519_secret_key = epee::mlocked<tools::scrubbed<x25519_secret_key_>>;
 
