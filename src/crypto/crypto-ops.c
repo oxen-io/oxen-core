@@ -2181,13 +2181,6 @@ setsign:
 #endif
 }
 
-void sc_0(unsigned char *s) {
-  int i;
-  for (i = 0; i < 32; i++) {
-    s[i] = 0;
-  }
-}
-
 void sc_add(unsigned char *s, const unsigned char *a, const unsigned char *b) {
   int64_t a0 = 2097151 & load_3(a);
   int64_t a1 = 2097151 & (load_4(a + 2) >> 5);

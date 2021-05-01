@@ -172,9 +172,7 @@ namespace rct {
         // Aggregation hashes
         keyV mu_P_to_hash(2*n+4); // domain, I, D, P, C, C_offset
         keyV mu_C_to_hash(2*n+4); // domain, I, D, P, C, C_offset
-        sc_0(mu_P_to_hash[0]);
         memcpy(mu_P_to_hash[0].bytes, config::HASH_KEY_CLSAG_AGG_0.data(), config::HASH_KEY_CLSAG_AGG_0.size());
-        sc_0(mu_C_to_hash[0]);
         memcpy(mu_C_to_hash[0].bytes, config::HASH_KEY_CLSAG_AGG_1.data(), config::HASH_KEY_CLSAG_AGG_1.size());
         for (size_t i = 1; i < n+1; ++i) {
             mu_P_to_hash[i] = P[i-1];
@@ -197,7 +195,6 @@ namespace rct {
         // Initial commitment
         keyV c_to_hash(2*n+5); // domain, P, C, C_offset, message, aG, aH
         key c;
-        sc_0(c_to_hash[0]);
         memcpy(c_to_hash[0].bytes, config::HASH_KEY_CLSAG_ROUND.data(), config::HASH_KEY_CLSAG_ROUND.size());
         for (size_t i = 1; i < n+1; ++i)
         {
@@ -240,7 +237,7 @@ namespace rct {
 
         while (i != l) {
             sig.s[i] = skGen();
-            sc_0(c_new);
+            c_new = {};
             sc_mul(c_p,mu_P,c);
             sc_mul(c_c,mu_C,c);
 
@@ -322,7 +319,7 @@ namespace rct {
         toHash[0] = message;
         i = 0;
         while (i < cols) {
-            sc_0(c);
+            c = {};
             for (j = 0; j < dsRows; j++) {
                 addKeys2(L, rv.ss[i][j], c_old, pk[i][j]);
 
@@ -597,9 +594,7 @@ namespace rct {
             // Aggregation hashes
             keyV mu_P_to_hash(2*n+4); // domain, I, D, P, C, C_offset
             keyV mu_C_to_hash(2*n+4); // domain, I, D, P, C, C_offset
-            sc_0(mu_P_to_hash[0]);
             memcpy(mu_P_to_hash[0], config::HASH_KEY_CLSAG_AGG_0.data(), config::HASH_KEY_CLSAG_AGG_0.size());
-            sc_0(mu_C_to_hash[0]);
             memcpy(mu_C_to_hash[0], config::HASH_KEY_CLSAG_AGG_1.data(), config::HASH_KEY_CLSAG_AGG_1.size());
             for (size_t i = 1; i < n+1; ++i) {
                 mu_P_to_hash[i] = pubs[i-1].dest;
@@ -621,7 +616,6 @@ namespace rct {
 
             // Set up round hash
             keyV c_to_hash(2*n+5); // domain, P, C, C_offset, message, L, R
-            sc_0(c_to_hash[0]);
             memcpy(c_to_hash[0], config::HASH_KEY_CLSAG_ROUND.data(), config::HASH_KEY_CLSAG_ROUND.size());
             for (size_t i = 1; i < n+1; ++i)
             {
@@ -645,7 +639,7 @@ namespace rct {
             ge_p1p1 temp_p1;
 
             while (i < n) {
-                sc_0(c_new);
+                c_new = {};
                 sc_mul(c_p,mu_P,c);
                 sc_mul(c_c,mu_C,c);
 

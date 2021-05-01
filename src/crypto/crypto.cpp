@@ -507,8 +507,7 @@ extern "C" {
     }
     ge_dsmp image_pre;
     ge_dsm_precomp(image_pre, &image_unp);
-    ec_scalar sum;
-    sc_0(&sum); // will be sum of cj, j≠s
+    ec_scalar sum{}; // will be sum of cj, j≠s
 
     rs_comm rs{prefix_hash, pubs.size()};
     ec_scalar qs;
@@ -561,8 +560,7 @@ extern "C" {
     }
     ge_dsmp image_pre;
     ge_dsm_precomp(image_pre, &image_unp);
-    ec_scalar sum;
-    sc_0(&sum);
+    ec_scalar sum{};
 
     rs_comm rs{prefix_hash, pubs.size()};
     for (size_t i = 0; i < pubs.size(); i++) {
