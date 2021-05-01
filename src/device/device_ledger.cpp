@@ -1737,7 +1737,7 @@ namespace hw {
     }
 
     bool device_ledger::clsag_prehash(const std::string &data, size_t inputs_size, size_t outputs_size,
-                                     const rct::keyV &hashes, const rct::ctkeyV &outPk,
+                                     const std::array<rct::key, 3>& hashes, const rct::ctkeyV &outPk,
                                      rct::key &prehash) {
         auto locks = tools::unique_locks(device_locker, command_locker);
 

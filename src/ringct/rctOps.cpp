@@ -342,11 +342,6 @@ static const zero_commitment zero_commitments[] = {
         return c;
     }
 
-    //generates a random uint long long (for testing)
-    xmr_amount randXmrAmount(xmr_amount upperlimit) {
-        return h2d(skGen()) % (upperlimit);
-    }
-
     //Scalar multiplications of curve points
 
     //does a * G where a is a scalar and G is the curve basepoint
@@ -616,7 +611,7 @@ static const zero_commitment zero_commitments[] = {
    key cn_fast_hash(const keyV &keys) {
        if (keys.empty()) return rct::hash2rct(crypto::cn_fast_hash("", 0));
        key rv;
-       cn_fast_hash(rv, &keys[0], keys.size() * sizeof(keys[0]));
+       cn_fast_hash(rv, keys.data(), keys.size() * sizeof(keys[0]));
        //dp(rv);
        return rv;
    }

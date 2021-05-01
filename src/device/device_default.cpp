@@ -404,8 +404,8 @@ namespace hw {
             return true;
         }
 
-        bool  device_default::clsag_prehash(const std::string &blob, size_t inputs_size, size_t outputs_size, const rct::keyV &hashes, const rct::ctkeyV &outPk, rct::key &prehash) {
-            prehash = rct::cn_fast_hash(hashes);
+        bool  device_default::clsag_prehash(const std::string &blob, size_t inputs_size, size_t outputs_size, const std::array<rct::key, 3>& hashes, const rct::ctkeyV &outPk, rct::key &prehash) {
+            rct::cn_fast_hash(prehash, hashes.data(), hashes.size() * sizeof(hashes[0]));
             return true;
         }
 

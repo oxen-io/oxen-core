@@ -218,45 +218,39 @@ namespace rct {
         }
         hwdev.clsag_hash(c_to_hash,c);
         
-        size_t i;
-        i = (l + 1) % n;
+        size_t i = (l + 1) % n;
         if (i == 0)
             sig.c1 = c;
 
         // Decoy indices
         sig.s = keyV(n);
-        key c_new;
-        key L;
-        key R;
-        key c_p; // = c[i]*mu_P
-        key c_c; // = c[i]*mu_C
-        geDsmp P_precomp;
-        geDsmp C_precomp;
-        geDsmp H_precomp;
-        ge_p3 Hi_p3;
 
         while (i != l) {
             sig.s[i] = skGen();
-            c_new = {};
+            key c_p;
             sc_mul(c_p,mu_P,c);
+            key c_c;
             sc_mul(c_c,mu_C,c);
 
             // Precompute points
+            geDsmp P_precomp;
+            geDsmp C_precomp;
             precomp(P_precomp.k,P[i]);
             precomp(C_precomp.k,C[i]);
 
             // Compute L
+            key& L = c_to_hash[2*n+3];
             addKeys_aGbBcC(L,sig.s[i],c_p,P_precomp.k,c_c,C_precomp.k);
 
             // Compute R
+            key& R = c_to_hash[2*n+4];
+            ge_p3 Hi_p3;
             hash_to_p3(Hi_p3,P[i]);
+            geDsmp H_precomp;
             ge_dsm_precomp(H_precomp.k, &Hi_p3);
             addKeys_aAbBcC(R,sig.s[i],H_precomp.k,c_p,I_precomp.k,c_c,D_precomp.k);
 
-            c_to_hash[2*n+3] = L;
-            c_to_hash[2*n+4] = R;
-            hwdev.clsag_hash(c_to_hash,c_new);
-            c = c_new;
+            hwdev.clsag_hash(c_to_hash, c);
             
             i = (i + 1) % n;
             if (i == 0)
@@ -306,45 +300,43 @@ namespace rct {
         }
         CHECK_AND_ASSERT_MES(sc_check(rv.cc) == 0, false, "Bad initial signature hash");
 
-        size_t i = 0, j = 0, ii = 0;
-        key c,  L, R;
-        key c_old = rv.cc;
+        key c = rv.cc;
         std::vector<geDsmp> Ip(dsRows);
-        for (i = 0 ; i < dsRows ; i++) {
+        for (size_t i = 0 ; i < dsRows ; i++) {
             CHECK_AND_ASSERT_MES(rv.II[i] != key::identity, false, "Bad key image");
             precomp(Ip[i].k, rv.II[i]);
         }
         size_t ndsRows = 3 * dsRows; // number of dimensions not requiring linkability
         keyV toHash(1 + 3 * dsRows + 2 * (rows - dsRows));
         toHash[0] = message;
-        i = 0;
-        while (i < cols) {
-            c = {};
-            for (j = 0; j < dsRows; j++) {
-                addKeys2(L, rv.ss[i][j], c_old, pk[i][j]);
+        for (size_t i = 0; i < cols; i++) {
+            for (size_t j = 0; j < dsRows; j++) {
+                auto& p = toHash[3 * j + 1];
+                auto& L = toHash[3 * j + 2];
+                auto& R = toHash[3 * j + 3];
+
+                p = pk[i][j];
+
+                addKeys2(L, rv.ss[i][j], c, p);
 
                 // Compute R directly
                 ge_p3 hash8_p3;
                 hash_to_p3(hash8_p3, pk[i][j]);
                 ge_p2 R_p2;
-                ge_double_scalarmult_precomp_vartime(&R_p2, rv.ss[i][j], &hash8_p3, c_old, Ip[j].k);
+                ge_double_scalarmult_precomp_vartime(&R_p2, rv.ss[i][j], &hash8_p3, c, Ip[j].k);
                 ge_tobytes(R, &R_p2);
-
-                toHash[3 * j + 1] = pk[i][j];
-                toHash[3 * j + 2] = L; 
-                toHash[3 * j + 3] = R;
             }
-            for (j = dsRows, ii = 0 ; j < rows ; j++, ii++) {
-                addKeys2(L, rv.ss[i][j], c_old, pk[i][j]);
-                toHash[ndsRows + 2 * ii + 1] = pk[i][j];
-                toHash[ndsRows + 2 * ii + 2] = L;
+            for (size_t j = dsRows, ii = 0; j < rows; j++, ii++) {
+                auto& p = toHash[ndsRows + 2 * ii + 1];
+                auto& L = toHash[ndsRows + 2 * ii + 2];
+
+                p = pk[i][j];
+                addKeys2(L, rv.ss[i][j], c, p);
             }
             c = hash_to_scalar(toHash);
             CHECK_AND_ASSERT_MES(c, false, "Bad signature hash");
-            c_old = c;
-            i = (i + 1);
         }
-        sc_sub(c, c_old, rv.cc);
+        sc_sub(c, c, rv.cc);
         return sc_isnonzero(c) == 0;
     }
 
@@ -362,9 +354,8 @@ namespace rct {
       {
         PERF_TIMER(verRange);
         ge_p3 CiH[64], asCi[64];
-        int i = 0;
         ge_p3 Ctmp_p3 = ge_p3_identity;
-        for (i = 0; i < 64; i++) {
+        for (int i = 0; i < 64; i++) {
             // faster equivalent of:
             // subKeys(CiH[i], as.Ci[i], H2[i]);
             // addKeys(Ctmp, Ctmp, as.Ci[i]);
@@ -394,9 +385,9 @@ namespace rct {
 
     key get_pre_clsag_hash(const rctSig &rv, hw::device &hwdev)
     {
-      keyV hashes;
-      hashes.reserve(3);
-      hashes.push_back(rv.message);
+      std::array<key, 3> hashes;
+      auto hashes_it = hashes.begin();
+      *hashes_it++ = rv.message;
 
       CHECK_AND_ASSERT_THROW_MES(!rv.mixRing.empty(), "Empty mixRing");
       const size_t inputs = is_rct_simple(rv.type) ? rv.mixRing.size() : rv.mixRing[0].size();
@@ -408,7 +399,7 @@ namespace rct {
         const_cast<rctSig&>(rv).serialize_rctsig_base(ba, inputs, outputs);
         blob = ba.str();
       }
-      hashes.push_back(hash2rct(crypto::cn_fast_hash(blob)));
+      *hashes_it++ = hash2rct(crypto::cn_fast_hash(blob));
 
       keyV kv;
       if (rct::is_rct_bulletproof(rv.type))
@@ -435,19 +426,17 @@ namespace rct {
       }
       else
       {
-        kv.reserve((64*3+1) * rv.p.rangeSigs.size());
-        for (const auto &r: rv.p.rangeSigs)
-        {
-          for (size_t n = 0; n < 64; ++n)
-            kv.push_back(r.asig.s0[n]);
-          for (size_t n = 0; n < 64; ++n)
-            kv.push_back(r.asig.s1[n]);
-          kv.push_back(r.asig.ee);
-          for (size_t n = 0; n < 64; ++n)
-            kv.push_back(r.Ci[n]);
-        }
+        static_assert(
+            std::is_same_v<decltype(rv.p.rangeSigs)::value_type, rangeSig> &&
+            sizeof(rangeSig) == (64*3 + 1) * sizeof(key) &&
+            sizeof(rangeSig::asig) == (2*64 + 1) * sizeof(key) &&
+            sizeof(rangeSig::Ci) == 64 * sizeof(key));
+
+        kv.resize((64*3+1) * rv.p.rangeSigs.size());
+        std::memcpy(kv.data(), rv.p.rangeSigs.data(), sizeof(rangeSig) * rv.p.rangeSigs.size());
       }
-      hashes.push_back(cn_fast_hash(kv));
+      *hashes_it++ = cn_fast_hash(kv);
+      assert(hashes_it == hashes.end());
       hwdev.clsag_prehash(blob, inputs, outputs, hashes, rv.outPk, prehash);
       return  prehash;
     }
@@ -624,51 +613,43 @@ namespace rct {
             }
             c_to_hash[2*n+1] = C_offset;
             c_to_hash[2*n+2] = message;
-            key c_p; // = c[i]*mu_P
-            key c_c; // = c[i]*mu_C
-            key c_new;
-            key L;
-            key R;
-            geDsmp P_precomp;
-            geDsmp C_precomp;
-            geDsmp H_precomp;
-            size_t i = 0;
-            ge_p3 hash8_p3;
-            geDsmp hash_precomp;
-            ge_p3 temp_p3;
-            ge_p1p1 temp_p1;
 
-            while (i < n) {
-                c_new = {};
+            for (size_t i = 0; i < n; i++) {
+                key c_p;
                 sc_mul(c_p,mu_P,c);
+                key c_c;
                 sc_mul(c_c,mu_C,c);
 
                 // Precompute points for L/R
+                geDsmp P_precomp;
                 precomp(P_precomp.k,pubs[i].dest);
 
+                ge_p3 temp_p3;
                 CHECK_AND_ASSERT_MES(ge_frombytes_vartime(&temp_p3, pubs[i].mask) == 0, false, "point conv failed");
+                ge_p1p1 temp_p1;
                 ge_sub(&temp_p1,&temp_p3,&C_offset_cached);
                 ge_p1p1_to_p3(&temp_p3,&temp_p1);
+                geDsmp C_precomp;
                 ge_dsm_precomp(C_precomp.k,&temp_p3);
 
                 // Compute L
+                auto& L = c_to_hash[2*n+3];
                 addKeys_aGbBcC(L,sig.s[i],c_p,P_precomp.k,c_c,C_precomp.k);
 
                 // Compute R
+                auto& R = c_to_hash[2*n+4];
+                ge_p3 hash8_p3;
                 hash_to_p3(hash8_p3,pubs[i].dest);
+                geDsmp hash_precomp;
                 ge_dsm_precomp(hash_precomp.k, &hash8_p3);
                 addKeys_aAbBcC(R,sig.s[i],hash_precomp.k,c_p,I_precomp.k,c_c,D_precomp.k);
 
-                c_to_hash[2*n+3] = L;
-                c_to_hash[2*n+4] = R;
-                c_new = hash_to_scalar(c_to_hash);
-                CHECK_AND_ASSERT_MES(c_new, false, "Bad signature hash");
-                c = c_new;
-
-                i = i + 1;
+                c = hash_to_scalar(c_to_hash);
+                CHECK_AND_ASSERT_MES(c, false, "Bad signature hash");
             }
-            sc_sub(c_new,c,sig.c1);
-            return sc_isnonzero(c_new) == 0;
+            key c_check;
+            sc_sub(c_check,c,sig.c1);
+            return sc_isnonzero(c_check) == 0;
         }
         catch (...) { return false; }
     }
@@ -687,34 +668,14 @@ namespace rct {
     //These functions get keys from blockchain
     //replace these when connecting blockchain
     //getKeyFromBlockchain grabs a key from the blockchain at "reference_index" to mix with
-    //populateFromBlockchain creates a keymatrix with "mixin" + 1 columns and one of the columns is inPk
-    //   the return value are the key matrix, and the index where inPk was put (random).     
-    std::tuple<ctkeyM, xmr_amount> populateFromBlockchain(ctkeyV inPk, int mixin) {
-        int rows = inPk.size();
-        ctkeyM rv(mixin + 1, inPk);
-        int index = randXmrAmount(mixin);
-        int i = 0, j = 0;
-        for (i = 0; i <= mixin; i++) {
-            if (i != index) {
-                for (j = 0; j < rows; j++) {
-                    getKeyFromBlockchain(rv[i][j], (size_t)randXmrAmount);
-                }
-            }
-        }
-        return std::make_tuple(rv, index);
-    }
-
-    //These functions get keys from blockchain
-    //replace these when connecting blockchain
-    //getKeyFromBlockchain grabs a key from the blockchain at "reference_index" to mix with
     //populateFromBlockchain creates a keymatrix with "mixin" columns and one of the columns is inPk
     //   the return value are the key matrix, and the index where inPk was put (random).     
     xmr_amount populateFromBlockchainSimple(ctkeyV & mixRing, const ctkey & inPk, int mixin) {
-        int index = randXmrAmount(mixin);
+        int index = randombytes_uniform(mixin);
         int i = 0;
         for (i = 0; i <= mixin; i++) {
             if (i != index) {
-                getKeyFromBlockchain(mixRing[i], (size_t)randXmrAmount(1000));
+                getKeyFromBlockchain(mixRing[i], (size_t)randombytes_uniform(1000));
             } else {
                 mixRing[i] = inPk;
             }
