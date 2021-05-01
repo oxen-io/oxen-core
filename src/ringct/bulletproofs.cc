@@ -428,10 +428,14 @@ Bulletproof bulletproof_PROVE(const rct::keyV &sv, const rct::keyV &gamma)
 
   PERF_TIMER_UNIT(PROVE, 1000000);
 
+  constexpr size_t N = 64;
   constexpr size_t logN = 6; // log2(64)
-  constexpr size_t N = 1<<logN;
-  size_t M, logM;
-  for (logM = 0; (M = 1<<logM) <= maxM && M < sv.size(); ++logM);
+  size_t logM = 0;
+  size_t M = 1;
+  while (M < sv.size()) {
+    ++logM;
+    M <<= 1;
+  }
   CHECK_AND_ASSERT_THROW_MES(M <= maxM, "sv/gamma are too large");
   const size_t logMN = logM + logN;
   const size_t MN = M * N;
