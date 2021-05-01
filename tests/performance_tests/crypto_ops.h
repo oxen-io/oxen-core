@@ -35,9 +35,6 @@
 
 enum test_op
 {
-  op_sc_add,
-  op_sc_sub,
-  op_sc_mul,
   op_ge_add_raw,
   op_ge_add_p3_p3,
   op_zeroCommitCached,
@@ -100,9 +97,6 @@ public:
     ge_dsmp dsmp;
     switch (op)
     {
-      case op_sc_add: sc_add(key, scalar0, scalar1); break;
-      case op_sc_sub: sc_sub(key, scalar0, scalar1); break;
-      case op_sc_mul: sc_mul(key, scalar0, scalar1); break;
       case op_ge_add_p3_p3: {
         ge_p3_to_cached(&tmp_cached, &p3_0);
         ge_add(&tmp_p1p1, &p3_1, &tmp_cached);

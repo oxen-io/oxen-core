@@ -141,10 +141,7 @@ extern const fe fe_fffb4;
 extern const ge_p3 ge_p3_identity;
 extern const ge_p3 ge_p3_H;
 void ge_fromfe_frombytes_vartime(ge_p2 *, const unsigned char *);
-void sc_add(unsigned char *, const unsigned char *, const unsigned char *);
-void sc_sub(unsigned char *, const unsigned char *, const unsigned char *);
 void sc_mulsub(unsigned char *, const unsigned char *, const unsigned char *, const unsigned char *);
-void sc_mul(unsigned char *, const unsigned char *, const unsigned char *);
 void sc_muladd(unsigned char *s, const unsigned char *a, const unsigned char *b, const unsigned char *c);
 int sc_check(const unsigned char *);
 int sc_isnonzero(const unsigned char *); /* Doesn't normalize */

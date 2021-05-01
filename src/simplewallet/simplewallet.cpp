@@ -3876,7 +3876,7 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
         // sum the spend keys together to get the master spend key
         spendkey = multisig_secret_spendkeys[0];
         for(unsigned int i=1; i<multisig_n; ++i)
-          sc_add(reinterpret_cast<unsigned char*>(&spendkey), reinterpret_cast<unsigned char*>(&spendkey), reinterpret_cast<unsigned char*>(&multisig_secret_spendkeys[i]));
+          crypto_core_ed25519_scalar_add(spendkey, spendkey, multisig_secret_spendkeys[i]);
       }
       // parsing M/N
       else

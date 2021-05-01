@@ -33,6 +33,7 @@
 #include <boost/algorithm/string.hpp>
 #include <limits>
 #include <oxenmq/hex.h>
+#include <sodium/crypto_core_ed25519.h>
 #include <variant>
 #include "common/hex.h"
 #include "epee/wipeable_string.h"
@@ -1522,7 +1523,7 @@ namespace cryptonote
   {
     crypto::hash hash;
     crypto::cn_slow_hash(passphrase.data(), passphrase.size(), hash, crypto::cn_slow_hash_type::heavy_v1);
-    sc_add((unsigned char*)key.data, (const unsigned char*)key.data, (const unsigned char*)hash.data);
+    crypto_core_ed25519_scalar_add(key, key, hash);
     return key;
   }
   //---------------------------------------------------------------
@@ -1530,7 +1531,7 @@ namespace cryptonote
   {
     crypto::hash hash;
     crypto::cn_slow_hash(passphrase.data(), passphrase.size(), hash, crypto::cn_slow_hash_type::heavy_v1);
-    sc_sub((unsigned char*)key.data, (const unsigned char*)key.data, (const unsigned char*)hash.data);
+    crypto_core_ed25519_scalar_sub(key, key, hash);
     return key;
   }
 

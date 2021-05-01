@@ -230,9 +230,6 @@ int main(int argc, char** argv)
   TEST_PERFORMANCE6(filter, p, test_aggregated_bulletproof, false, 2, 1, 1, 0, 64);
   TEST_PERFORMANCE6(filter, p, test_aggregated_bulletproof, true, 2, 1, 1, 0, 64); // 64 proof, each with 2 amounts
 
-  TEST_PERFORMANCE1(filter, p, test_crypto_ops, op_sc_add);
-  TEST_PERFORMANCE1(filter, p, test_crypto_ops, op_sc_sub);
-  TEST_PERFORMANCE1(filter, p, test_crypto_ops, op_sc_mul);
   TEST_PERFORMANCE1(filter, p, test_crypto_ops, op_ge_add_raw);
   TEST_PERFORMANCE1(filter, p, test_crypto_ops, op_ge_add_p3_p3);
   TEST_PERFORMANCE1(filter, p, test_crypto_ops, op_addKeys);

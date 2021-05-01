@@ -189,7 +189,7 @@ extern "C" {
     ec_scalar scalar;
     assert(sc_check(&base) == 0);
     derivation_to_scalar(derivation, output_index, scalar);
-    sc_add(&derived_key, &base, &scalar);
+    crypto_core_ed25519_scalar_add(derived_key, base, scalar);
   }
 
   bool derive_subaddress_public_key(const public_key &out_key, const key_derivation &derivation, std::size_t output_index, public_key &derived_key) {
@@ -274,7 +274,7 @@ extern "C" {
     if (buf.comm == infinity)
       return false;
     hash_to_scalar(&buf, sizeof(s_comm), c);
-    sc_sub(&c, &c, &sig.c);
+    crypto_core_ed25519_scalar_sub(c, c, sig.c);
     return sc_isnonzero(&c) == 0;
   }
 
@@ -434,7 +434,7 @@ extern "C" {
     hash_to_scalar(&buf, sizeof(s_comm_2), c2);
 
     // test if c2 == sig.c
-    sc_sub(&c2, &c2, &sig.c);
+    crypto_core_ed25519_scalar_sub(&c2, &c2, &sig.c);
     return sc_isnonzero(&c2) == 0;
   }
 
@@ -534,11 +534,11 @@ extern "C" {
         hash_to_ec(*pubs[i], tmp3); // Hp(Pj)
         ge_double_scalarmult_precomp_vartime(&tmp2, &sig[i].r, &tmp3, &sig[i].c, image_pre); // Ri = qj Hp(Pj) + wj I
         ge_tobytes(&rs.ab[i].second, &tmp2);
-        sc_add(&sum, &sum, &sig[i].c);
+        crypto_core_ed25519_scalar_add(sum, sum, sig[i].c);
       }
     }
     ec_scalar c = rs.hash_to_scalar(); // c = Hs(prefix_hash || L0 || ... || L{n-1} || R0 || ... || R{n-1})
-    sc_sub(&sig[sec_index].c, &c, &sum); // cs = c - sum(ci, i≠s) = c - sum(wi)
+    crypto_core_ed25519_scalar_sub(sig[sec_index].c, c, sum); // cs = c - sum(ci, i≠s) = c - sum(wi)
     sc_mulsub(&sig[sec_index].r, &sig[sec_index].c, &sec, &qs); // rs = qs - cs*x
 
     memwipe(&qs, sizeof(qs));
@@ -577,10 +577,10 @@ extern "C" {
       hash_to_ec(*pubs[i], tmp3);
       ge_double_scalarmult_precomp_vartime(&tmp2, &sig[i].r, &tmp3, &sig[i].c, image_pre);
       ge_tobytes(&rs.ab[i].second, &tmp2);
-      sc_add(&sum, &sum, &sig[i].c);
+      crypto_core_ed25519_scalar_add(sum, sum, sig[i].c);
     }
     ec_scalar h = rs.hash_to_scalar();
-    sc_sub(&h, &h, &sum);
+    crypto_core_ed25519_scalar_sub(h, h, sum);
     return sc_isnonzero(&h) == 0;
   }
 
@@ -647,7 +647,8 @@ extern "C" {
     // Now we can calculate our own H(I || L || R), and compare it to the signature's c (which was
     // set to the signer's H(I || L || R) calculation).
     ec_scalar h = rs.hash_to_scalar();
-    sc_sub(&h, &h, &sig.c);
+    crypto_core_ed25519_scalar_sub(h, h, sig.c);
+
     return sc_isnonzero(&h) == 0;
   }
 

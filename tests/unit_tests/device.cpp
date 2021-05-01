@@ -29,6 +29,7 @@
 #include "gtest/gtest.h"
 #include "ringct/rctOps.h"
 #include "device/device_default.hpp"
+#include <sodium/crypto_core_ed25519.h>
 
 TEST(device, name)
 {
@@ -86,7 +87,7 @@ TEST(device, ops)
   ASSERT_EQ(resd, res);
 
   dev.sc_secret_add((crypto::secret_key&)resd, sk0, sk1);
-  sc_add((unsigned char*)&res, (unsigned char*)&sk0, (unsigned char*)&sk1);
+  crypto_core_ed25519_scalar_add(res, sk0, sk1);
   ASSERT_EQ(resd, res);
 
   dev.generate_key_derivation(pk0, sk0, derd);

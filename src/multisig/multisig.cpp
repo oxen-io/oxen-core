@@ -27,6 +27,7 @@
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#include <sodium/crypto_core_ed25519.h>
 #include <unordered_set>
 #include "crypto/crypto.h"
 #include "ringct/rctOps.h"
@@ -82,7 +83,7 @@ namespace cryptonote
       crypto::secret_key msk = get_multisig_blinded_secret_key(rct::rct2sk(sk));
       memwipe(&sk, sizeof(sk));
       multisig_keys.push_back(msk);
-      sc_add(spend_skey, spend_skey, msk);
+      crypto_core_ed25519_scalar_add(spend_skey, spend_skey, msk);
     }
   }
   //-----------------------------------------------------------------
@@ -103,7 +104,7 @@ namespace cryptonote
   {
     rct::key secret_key = rct::key::zero;
     for (const auto &k: multisig_keys)
-      sc_add(secret_key, secret_key, k);
+      crypto_core_ed25519_scalar_add(secret_key, secret_key, k);
 
     return rct::rct2sk(secret_key);
   }
@@ -125,7 +126,7 @@ namespace cryptonote
   {
     crypto::secret_key view_skey = get_multisig_blinded_secret_key(skey);
     for (const auto &k: skeys)
-      sc_add(view_skey, view_skey, rct::sk2rct(k));
+      crypto_core_ed25519_scalar_add(view_skey, view_skey, k);
     return view_skey;
   }
   //-----------------------------------------------------------------

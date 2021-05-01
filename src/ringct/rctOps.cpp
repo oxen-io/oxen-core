@@ -641,7 +641,7 @@ static const zero_commitment zero_commitments[] = {
       ge_p1p1_to_p3(&hash8_p3, &hash8_p1p1);
     }
 
-    //sums a vector of curve points (for scalars use sc_add)
+    //sums a vector of curve points (for scalars use crypto_core_ed25519_scalar_add)
     void sumKeys(key & Csum, const keyV &  Cis) {
         Csum = key::identity;
         size_t i = 0;
@@ -687,8 +687,8 @@ static const zero_commitment zero_commitments[] = {
         {
           key sharedSec1 = hash_to_scalar(sharedSec);
           key sharedSec2 = hash_to_scalar(sharedSec1);
-          sc_add(unmasked.mask, unmasked.mask, sharedSec1);
-          sc_add(unmasked.amount, unmasked.amount, sharedSec2);
+          crypto_core_ed25519_scalar_add(unmasked.mask, unmasked.mask, sharedSec1);
+          crypto_core_ed25519_scalar_add(unmasked.amount, unmasked.amount, sharedSec2);
         }
     }
     void ecdhDecode(ecdhTuple & masked, const key & sharedSec, bool v2) {
@@ -702,8 +702,8 @@ static const zero_commitment zero_commitments[] = {
         {
           key sharedSec1 = hash_to_scalar(sharedSec);
           key sharedSec2 = hash_to_scalar(sharedSec1);
-          sc_sub(masked.mask, masked.mask, sharedSec1);
-          sc_sub(masked.amount, masked.amount, sharedSec2);
+          crypto_core_ed25519_scalar_sub(masked.mask, masked.mask, sharedSec1);
+          crypto_core_ed25519_scalar_sub(masked.amount, masked.amount, sharedSec2);
         }
     }
 }

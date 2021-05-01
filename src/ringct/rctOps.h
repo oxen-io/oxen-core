@@ -151,7 +151,7 @@ namespace rct {
 
     void hash_to_p3(ge_p3 &hash8_p3, const key &k);
 
-    //sums a vector of curve points (for scalars use sc_add)
+    //sums a vector of curve points (for scalars use crypto_core_ed25519_scalar_add)
     void sumKeys(key & Csum, const key &Cis);
 
     //Elliptic Curve Diffie Helman: encodes and decodes the amount b and mask a

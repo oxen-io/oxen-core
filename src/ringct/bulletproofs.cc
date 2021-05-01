@@ -29,9 +29,9 @@
 // Adapted from Java code by Sarang Noether
 // Paper references are to https://eprint.iacr.org/2017/1066 (revision 1 July 2018)
 
+#include <sodium/crypto_core_ed25519.h>
 #include <stdlib.h>
 #include "epee/misc_log_ex.h"
-#include "epee/span.h"
 #include "common/perf_timer.h"
 #include "common/varint.h"
 #include "cryptonote_config.h"
@@ -171,16 +171,16 @@ static rct::key cross_vector_exponent8(size_t size, const std::vector<ge_p3> &A,
   multiexp_data.resize(size*2 + (!!extra_point));
   for (size_t i = 0; i < size; ++i)
   {
-    sc_mul(multiexp_data[i*2].scalar, a[ao+i], key::inv_eight);
+    crypto_core_ed25519_scalar_mul(multiexp_data[i*2].scalar, a[ao+i], key::inv_eight);
     multiexp_data[i*2].point = A[Ao+i];
-    sc_mul(multiexp_data[i*2+1].scalar, b[bo+i], key::inv_eight);
+    crypto_core_ed25519_scalar_mul(multiexp_data[i*2+1].scalar, b[bo+i], key::inv_eight);
     if (scale)
-      sc_mul(multiexp_data[i*2+1].scalar, multiexp_data[i*2+1].scalar, (*scale)[Bo+i]);
+      crypto_core_ed25519_scalar_mul(multiexp_data[i*2+1].scalar, multiexp_data[i*2+1].scalar, (*scale)[Bo+i]);
     multiexp_data[i*2+1].point = B[Bo+i];
   }
   if (extra_point)
   {
-    sc_mul(multiexp_data.back().scalar, *extra_scalar, key::inv_eight);
+    crypto_core_ed25519_scalar_mul(multiexp_data.back().scalar, *extra_scalar, key::inv_eight);
     multiexp_data.back().point = *extra_point;
   }
   return multiexp(multiexp_data, 0);
@@ -198,7 +198,7 @@ static rct::keyV vector_powers(const rct::key &x, size_t n)
   res[1] = x;
   for (size_t i = 2; i < n; ++i)
   {
-    sc_mul(res[i], res[i-1], x);
+    crypto_core_ed25519_scalar_mul(res[i], res[i-1], x);
   }
   return res;
 }
@@ -215,10 +215,10 @@ static rct::key vector_power_sum(rct::key x, size_t n)
   const bool is_power_of_2 = (n & (n - 1)) == 0;
   if (is_power_of_2)
   {
-    sc_add(res, res, x);
+    crypto_core_ed25519_scalar_add(res, res, x);
     while (n > 2)
     {
-      sc_mul(x, x, x);
+      crypto_core_ed25519_scalar_mul(x, x, x);
       sc_muladd(res, x, res, res);
       n /= 2;
     }
@@ -229,8 +229,8 @@ static rct::key vector_power_sum(rct::key x, size_t n)
     for (size_t i = 1; i < n; ++i)
     {
       if (i > 1)
-        sc_mul(prev, prev, x);
-      sc_add(res, res, prev);
+        crypto_core_ed25519_scalar_mul(prev, prev, x);
+      crypto_core_ed25519_scalar_add(res, res, prev);
     }
   }
 
@@ -238,20 +238,21 @@ static rct::key vector_power_sum(rct::key x, size_t n)
 }
 
 /* Given two scalar arrays, construct the inner product */
-static rct::key inner_product(const epee::span<const rct::key> &a, const epee::span<const rct::key> &b)
+template <typename It>
+static rct::key inner_product(It a_begin, It a_end, It b_begin, It b_end)
 {
-  CHECK_AND_ASSERT_THROW_MES(a.size() == b.size(), "Incompatible sizes of a and b");
+  CHECK_AND_ASSERT_THROW_MES(std::distance(a_begin, a_end) == std::distance(b_begin, b_end), "Incompatible sizes of a and b");
   rct::key res = key::zero;
-  for (size_t i = 0; i < a.size(); ++i)
+  for (; a_begin != a_end; ++a_begin, ++b_begin)
   {
-    sc_muladd(res, a[i], b[i], res);
+    sc_muladd(res, *a_begin, *b_begin, res);
   }
   return res;
 }
 
 static rct::key inner_product(const rct::keyV &a, const rct::keyV &b)
 {
-  return inner_product(epee::span<const rct::key>(a.data(), a.size()), epee::span<const rct::key>(b.data(), b.size()));
+  return inner_product(a.begin(), a.end(), b.begin(), b.end());
 }
 
 /* Given two scalar arrays, construct the Hadamard product */
@@ -261,7 +262,7 @@ static rct::keyV hadamard(const rct::keyV &a, const rct::keyV &b)
   rct::keyV res(a.size());
   for (size_t i = 0; i < a.size(); ++i)
   {
-    sc_mul(res[i], a[i], b[i]);
+    crypto_core_ed25519_scalar_mul(res[i], a[i], b[i]);
   }
   return res;
 }
@@ -277,8 +278,13 @@ static void hadamard_fold(std::vector<ge_p3> &v, const rct::keyV *scale, const r
     ge_dsm_precomp(c[0], &v[n]);
     ge_dsm_precomp(c[1], &v[sz + n]);
     rct::key sa, sb;
-    if (scale) sc_mul(sa, a, (*scale)[n]); else sa = a;
-    if (scale) sc_mul(sb, b, (*scale)[sz + n]); else sb = b;
+    if (scale) {
+        crypto_core_ed25519_scalar_mul(sa, a, (*scale)[n]);
+        crypto_core_ed25519_scalar_mul(sb, b, (*scale)[sz + n]);
+    } else {
+        sa = a;
+        sb = b;
+    }
     ge_double_scalarmult_precomp_vartime2_p3(&v[n], sa, c[0], sb, c[1]);
   }
   v.resize(sz);
@@ -291,7 +297,7 @@ static rct::keyV vector_add(const rct::keyV &a, const rct::keyV &b)
   rct::keyV res(a.size());
   for (size_t i = 0; i < a.size(); ++i)
   {
-    sc_add(res[i], a[i], b[i]);
+    crypto_core_ed25519_scalar_add(res[i], a[i], b[i]);
   }
   return res;
 }
@@ -302,7 +308,7 @@ static rct::keyV vector_add(const rct::keyV &a, const rct::key &b)
   rct::keyV res(a.size());
   for (size_t i = 0; i < a.size(); ++i)
   {
-    sc_add(res[i], a[i], b);
+    crypto_core_ed25519_scalar_add(res[i], a[i], b);
   }
   return res;
 }
@@ -313,87 +319,27 @@ static rct::keyV vector_subtract(const rct::keyV &a, const rct::key &b)
   rct::keyV res(a.size());
   for (size_t i = 0; i < a.size(); ++i)
   {
-    sc_sub(res[i], a[i], b);
+    crypto_core_ed25519_scalar_sub(res[i], a[i], b);
   }
   return res;
 }
 
 /* Multiply a scalar and a vector */
-static rct::keyV vector_scalar(const epee::span<const rct::key> &a, const rct::key &x)
+template <typename It>
+static rct::keyV vector_scalar(It begin, It end, const rct::key& x)
 {
-  rct::keyV res(a.size());
-  for (size_t i = 0; i < a.size(); ++i)
+  rct::keyV res(std::distance(begin, end));
+  auto out = res.begin();
+  while (begin != end)
   {
-    sc_mul(res[i], a[i], x);
+    crypto_core_ed25519_scalar_mul(*out++, *begin++, x);
   }
   return res;
 }
 
 static rct::keyV vector_scalar(const rct::keyV &a, const rct::key &x)
 {
-  return vector_scalar(epee::span<const rct::key>(a.data(), a.size()), x);
-}
-
-static rct::key sm(rct::key y, int n, const rct::key &x)
-{
-  while (n--)
-    sc_mul(y, y, y);
-  sc_mul(y, y, x);
-  return y;
-}
-
-/* Compute the inverse of a scalar, the clever way */
-static rct::key invert(const rct::key &x)
-{
-  rct::key _1, _10, _100, _11, _101, _111, _1001, _1011, _1111;
-
-  _1 = x;
-  sc_mul(_10, _1, _1);
-  sc_mul(_100, _10, _10);
-  sc_mul(_11, _10, _1);
-  sc_mul(_101, _10, _11);
-  sc_mul(_111, _10, _101);
-  sc_mul(_1001, _10, _111);
-  sc_mul(_1011, _10, _1001);
-  sc_mul(_1111, _100, _1011);
-
-  rct::key inv;
-  sc_mul(inv, _1111, _1);
-
-  inv = sm(inv, 123 + 3, _101);
-  inv = sm(inv, 2 + 2, _11);
-  inv = sm(inv, 1 + 4, _1111);
-  inv = sm(inv, 1 + 4, _1111);
-  inv = sm(inv, 4, _1001);
-  inv = sm(inv, 2, _11);
-  inv = sm(inv, 1 + 4, _1111);
-  inv = sm(inv, 1 + 3, _101);
-  inv = sm(inv, 3 + 3, _101);
-  inv = sm(inv, 3, _111);
-  inv = sm(inv, 1 + 4, _1111);
-  inv = sm(inv, 2 + 3, _111);
-  inv = sm(inv, 2 + 2, _11);
-  inv = sm(inv, 1 + 4, _1011);
-  inv = sm(inv, 2 + 4, _1011);
-  inv = sm(inv, 6 + 4, _1001);
-  inv = sm(inv, 2 + 2, _11);
-  inv = sm(inv, 3 + 2, _11);
-  inv = sm(inv, 3 + 2, _11);
-  inv = sm(inv, 1 + 4, _1001);
-  inv = sm(inv, 1 + 3, _111);
-  inv = sm(inv, 2 + 4, _1111);
-  inv = sm(inv, 1 + 4, _1011);
-  inv = sm(inv, 3, _101);
-  inv = sm(inv, 2 + 4, _1111);
-  inv = sm(inv, 3, _101);
-  inv = sm(inv, 1 + 2, _11);
-
-#ifdef DEBUG_BP
-  rct::key tmp;
-  sc_mul(tmp, inv, x);
-  CHECK_AND_ASSERT_THROW_MES(tmp == key::identity, "invert failed");
-#endif
-  return inv;
+  return vector_scalar(a.begin(), a.end(), x);
 }
 
 static rct::keyV invert(rct::keyV x)
@@ -408,29 +354,20 @@ static rct::keyV invert(rct::keyV x)
     if (n == 0)
       acc = x[0];
     else
-      sc_mul(acc, acc, x[n]);
+      crypto_core_ed25519_scalar_mul(acc, acc, x[n]);
   }
 
-  acc = invert(acc);
+  crypto_core_ed25519_scalar_invert(acc, acc);
 
   rct::key tmp;
   for (int i = x.size(); i-- > 0; )
   {
-    sc_mul(tmp, acc, x[i]);
-    sc_mul(x[i], acc, scratch[i]);
+    crypto_core_ed25519_scalar_mul(tmp, acc, x[i]);
+    crypto_core_ed25519_scalar_mul(x[i], acc, scratch[i]);
     acc = tmp;
   }
 
   return x;
-}
-
-/* Compute the slice of a vector */
-static epee::span<const rct::key> slice(const rct::keyV &a, size_t start, size_t stop)
-{
-  CHECK_AND_ASSERT_THROW_MES(start < a.size(), "Invalid start index");
-  CHECK_AND_ASSERT_THROW_MES(stop <= a.size(), "Invalid stop index");
-  CHECK_AND_ASSERT_THROW_MES(start < stop, "Invalid start/stop indices");
-  return epee::span<const rct::key>(&a[start], stop - start);
 }
 
 static rct::key hash_cache_mash(rct::key &hash_cache, const rct::key &mash0, const rct::key &mash1)
@@ -508,8 +445,8 @@ Bulletproof bulletproof_PROVE(const rct::keyV &sv, const rct::keyV &gamma)
   for (size_t i = 0; i < sv.size(); ++i)
   {
     rct::key gamma8, sv8;
-    sc_mul(gamma8, gamma[i], key::inv_eight);
-    sc_mul(sv8, sv[i], key::inv_eight);
+    crypto_core_ed25519_scalar_mul(gamma8, gamma[i], key::inv_eight);
+    crypto_core_ed25519_scalar_mul(sv8, sv[i], key::inv_eight);
     rct::addKeys2(V[i], gamma8, sv8, rct::H);
   }
   PERF_TIMER_STOP_BP(PROVE_v);
@@ -564,7 +501,7 @@ try_again:
   rct::key alpha = rct::skGen();
   rct::key ve = vector_exponent(aL8, aR8);
   rct::key A;
-  sc_mul(tmp, alpha, key::inv_eight);
+  crypto_core_ed25519_scalar_mul(tmp, alpha, key::inv_eight);
   rct::addKeys(A, ve, rct::scalarmultBase(tmp));
 
   // PAPER LINES 45-47
@@ -604,7 +541,7 @@ try_again:
       {
           CHECK_AND_ASSERT_THROW_MES(j+2 < zpow.size(), "invalid zpow index");
           CHECK_AND_ASSERT_THROW_MES(i < twoN.size(), "invalid twoN index");
-          sc_mul(zero_twos[j*N+i],zpow[j+2],twoN[i]);
+          crypto_core_ed25519_scalar_mul(zero_twos[j*N+i],zpow[j+2],twoN[i]);
       }
   }
 
@@ -618,7 +555,7 @@ try_again:
   rct::key t1_1 = inner_product(l0, r1);
   rct::key t1_2 = inner_product(l1, r0);
   rct::key t1;
-  sc_add(t1, t1_1, t1_2);
+  crypto_core_ed25519_scalar_add(t1, t1_1, t1_2);
   rct::key t2 = inner_product(l1, r1);
 
   PERF_TIMER_STOP_BP(PROVE_step1);
@@ -629,12 +566,12 @@ try_again:
 
   rct::key T1, T2;
   ge_p3 p3;
-  sc_mul(tmp, t1, key::inv_eight);
-  sc_mul(tmp2, tau1, key::inv_eight);
+  crypto_core_ed25519_scalar_mul(tmp, t1, key::inv_eight);
+  crypto_core_ed25519_scalar_mul(tmp2, tau1, key::inv_eight);
   ge_double_scalarmult_base_vartime_p3(&p3, tmp, &ge_p3_H, tmp2);
   ge_p3_tobytes(T1, &p3);
-  sc_mul(tmp, t2, key::inv_eight);
-  sc_mul(tmp2, tau2, key::inv_eight);
+  crypto_core_ed25519_scalar_mul(tmp, t2, key::inv_eight);
+  crypto_core_ed25519_scalar_mul(tmp2, tau2, key::inv_eight);
   ge_double_scalarmult_base_vartime_p3(&p3, tmp, &ge_p3_H, tmp2);
   ge_p3_tobytes(T2, &p3);
 
@@ -649,9 +586,9 @@ try_again:
 
   // PAPER LINES 61-63
   rct::key taux;
-  sc_mul(taux, tau1, x);
+  crypto_core_ed25519_scalar_mul(taux, tau1, x);
   rct::key xsq;
-  sc_mul(xsq, x, x);
+  crypto_core_ed25519_scalar_mul(xsq, x, x);
   sc_muladd(taux, tau2, xsq, taux);
   for (size_t j = 1; j <= sv.size(); ++j)
   {
@@ -695,7 +632,8 @@ try_again:
   std::vector<ge_p3> Hprime(MN);
   rct::keyV aprime(MN);
   rct::keyV bprime(MN);
-  const rct::key yinv = invert(y);
+  rct::key yinv;
+  crypto_core_ed25519_scalar_invert(yinv, y);
   rct::keyV yinvpow(MN);
   yinvpow[0] = key::identity;
   yinvpow[1] = yinv;
@@ -704,7 +642,7 @@ try_again:
     Gprime[i] = Gi_p3[i];
     Hprime[i] = Hi_p3[i];
     if (i > 1)
-      sc_mul(yinvpow[i], yinvpow[i-1], yinv);
+      crypto_core_ed25519_scalar_mul(yinvpow[i], yinvpow[i-1], yinv);
     aprime[i] = l[i];
     bprime[i] = r[i];
   }
@@ -723,15 +661,15 @@ try_again:
 
     // PAPER LINES 21-22
     PERF_TIMER_START_BP(PROVE_inner_product);
-    rct::key cL = inner_product(slice(aprime, 0, nprime), slice(bprime, nprime, bprime.size()));
-    rct::key cR = inner_product(slice(aprime, nprime, aprime.size()), slice(bprime, 0, nprime));
+    rct::key cL = inner_product(aprime.begin(), aprime.begin()+nprime, bprime.begin()+nprime, bprime.end());
+    rct::key cR = inner_product(aprime.begin()+nprime, aprime.end(), bprime.begin(), bprime.begin()+nprime);
     PERF_TIMER_STOP_BP(PROVE_inner_product);
 
     // PAPER LINES 23-24
     PERF_TIMER_START_BP(PROVE_LR);
-    sc_mul(tmp, cL, x_ip);
+    crypto_core_ed25519_scalar_mul(tmp, cL, x_ip);
     L[round] = cross_vector_exponent8(nprime, Gprime, nprime, Hprime, 0, aprime, 0, bprime, nprime, scale, &ge_p3_H, &tmp);
-    sc_mul(tmp, cR, x_ip);
+    crypto_core_ed25519_scalar_mul(tmp, cR, x_ip);
     R[round] = cross_vector_exponent8(nprime, Gprime, 0, Hprime, nprime, aprime, nprime, bprime, 0, scale, &ge_p3_H, &tmp);
     PERF_TIMER_STOP_BP(PROVE_LR);
 
@@ -745,7 +683,8 @@ try_again:
     }
 
     // PAPER LINES 29-30
-    const rct::key winv = invert(w[round]);
+    rct::key winv;
+    crypto_core_ed25519_scalar_invert(winv, w[round]);
     if (nprime > 1)
     {
       PERF_TIMER_START_BP(PROVE_hadamard2);
@@ -756,8 +695,8 @@ try_again:
 
     // PAPER LINES 33-34
     PERF_TIMER_START_BP(PROVE_prime);
-    aprime = vector_add(vector_scalar(slice(aprime, 0, nprime), w[round]), vector_scalar(slice(aprime, nprime, aprime.size()), winv));
-    bprime = vector_add(vector_scalar(slice(bprime, 0, nprime), winv), vector_scalar(slice(bprime, nprime, bprime.size()), w[round]));
+    aprime = vector_add(vector_scalar(aprime.begin(), aprime.begin()+nprime, w[round]), vector_scalar(aprime.begin()+nprime, aprime.end(), winv));
+    bprime = vector_add(vector_scalar(bprime.begin(), bprime.begin()+nprime, winv),     vector_scalar(bprime.begin()+nprime, bprime.end(), w[round]));
     PERF_TIMER_STOP_BP(PROVE_prime);
 
     scale = NULL;
@@ -929,24 +868,24 @@ bool bulletproof_VERIFY(const std::vector<const Bulletproof*> &proofs)
 
     PERF_TIMER_START_BP(VERIFY_line_61rl_new);
     sc_muladd(tmp, pd.z, ip1y, k);
-    sc_sub(tmp, proof.t, tmp);
+    crypto_core_ed25519_scalar_sub(tmp, proof.t, tmp);
     sc_muladd(y1, tmp, weight_y, y1);
     for (size_t j = 0; j < proof8_V.size(); j++)
     {
-      sc_mul(tmp, zpow[j+2], weight_y);
+      crypto_core_ed25519_scalar_mul(tmp, zpow[j+2], weight_y);
       multiexp_data.emplace_back(tmp, proof8_V[j]);
     }
-    sc_mul(tmp, pd.x, weight_y);
+    crypto_core_ed25519_scalar_mul(tmp, pd.x, weight_y);
     multiexp_data.emplace_back(tmp, proof8_T1);
     rct::key xsq;
-    sc_mul(xsq, pd.x, pd.x);
-    sc_mul(tmp, xsq, weight_y);
+    crypto_core_ed25519_scalar_mul(xsq, pd.x, pd.x);
+    crypto_core_ed25519_scalar_mul(tmp, xsq, weight_y);
     multiexp_data.emplace_back(tmp, proof8_T2);
     PERF_TIMER_STOP_BP(VERIFY_line_61rl_new);
 
     PERF_TIMER_START_BP(VERIFY_line_62);
     multiexp_data.emplace_back(weight_z, proof8_A);
-    sc_mul(tmp, pd.x, weight_z);
+    crypto_core_ed25519_scalar_mul(tmp, pd.x, weight_z);
     multiexp_data.emplace_back(tmp, proof8_S);
     PERF_TIMER_STOP_BP(VERIFY_line_62);
 
@@ -972,8 +911,8 @@ bool bulletproof_VERIFY(const std::vector<const Bulletproof*> &proofs)
       const size_t slots = 1<<(j+1);
       for (size_t s = slots; s-- > 0; --s)
       {
-        sc_mul(w_cache[s], w_cache[s/2], pd.w[j]);
-        sc_mul(w_cache[s-1], w_cache[s/2], winv[j]);
+        crypto_core_ed25519_scalar_mul(w_cache[s], w_cache[s/2], pd.w[j]);
+        crypto_core_ed25519_scalar_mul(w_cache[s-1], w_cache[s/2], winv[j]);
       }
     }
     PERF_TIMER_STOP_BP(VERIFY_line_24_25_precalc);
@@ -985,20 +924,20 @@ bool bulletproof_VERIFY(const std::vector<const Bulletproof*> &proofs)
       if (i == 0)
         h_scalar = proof.b;
       else
-        sc_mul(h_scalar, proof.b, yinvpow);
+        crypto_core_ed25519_scalar_mul(h_scalar, proof.b, yinvpow);
 
       // Convert the index to binary IN REVERSE and construct the scalar exponent
-      sc_mul(g_scalar, g_scalar, w_cache[i]);
-      sc_mul(h_scalar, h_scalar, w_cache[(~i) & (MN-1)]);
+      crypto_core_ed25519_scalar_mul(g_scalar, g_scalar, w_cache[i]);
+      crypto_core_ed25519_scalar_mul(h_scalar, h_scalar, w_cache[(~i) & (MN-1)]);
 
-      sc_add(g_scalar, g_scalar, pd.z);
+      crypto_core_ed25519_scalar_add(g_scalar, g_scalar, pd.z);
       CHECK_AND_ASSERT_MES(2+i/N < zpow.size(), false, "invalid zpow index");
       CHECK_AND_ASSERT_MES(i%N < twoN.size(), false, "invalid twoN index");
-      sc_mul(tmp, zpow[2+i/N], twoN[i%N]);
+      crypto_core_ed25519_scalar_mul(tmp, zpow[2+i/N], twoN[i%N]);
       if (i == 0)
       {
-        sc_add(tmp, tmp, pd.z);
-        sc_sub(h_scalar, h_scalar, tmp);
+        crypto_core_ed25519_scalar_add(tmp, tmp, pd.z);
+        crypto_core_ed25519_scalar_sub(h_scalar, h_scalar, tmp);
       }
       else
       {
@@ -1016,8 +955,8 @@ bool bulletproof_VERIFY(const std::vector<const Bulletproof*> &proofs)
       }
       else if (i != MN-1)
       {
-        sc_mul(yinvpow, yinvpow, yinv);
-        sc_mul(ypow, ypow, pd.y);
+        crypto_core_ed25519_scalar_mul(yinvpow, yinvpow, yinv);
+        crypto_core_ed25519_scalar_mul(ypow, ypow, pd.y);
       }
     }
 
@@ -1027,24 +966,24 @@ bool bulletproof_VERIFY(const std::vector<const Bulletproof*> &proofs)
     sc_muladd(z1, proof.mu, weight_z, z1);
     for (size_t i = 0; i < rounds; ++i)
     {
-      sc_mul(tmp, pd.w[i], pd.w[i]);
-      sc_mul(tmp, tmp, weight_z);
+      crypto_core_ed25519_scalar_mul(tmp, pd.w[i], pd.w[i]);
+      crypto_core_ed25519_scalar_mul(tmp, tmp, weight_z);
       multiexp_data.emplace_back(tmp, proof8_L[i]);
-      sc_mul(tmp, winv[i], winv[i]);
-      sc_mul(tmp, tmp, weight_z);
+      crypto_core_ed25519_scalar_mul(tmp, winv[i], winv[i]);
+      crypto_core_ed25519_scalar_mul(tmp, tmp, weight_z);
       multiexp_data.emplace_back(tmp, proof8_R[i]);
     }
     sc_mulsub(tmp, proof.a, proof.b, proof.t);
-    sc_mul(tmp, tmp, pd.x_ip);
+    crypto_core_ed25519_scalar_mul(tmp, tmp, pd.x_ip);
     sc_muladd(z3, tmp, weight_z, z3);
     PERF_TIMER_STOP_BP(VERIFY_line_26_new);
   }
 
   // now check all proofs at once
   PERF_TIMER_START_BP(VERIFY_step2_check);
-  sc_sub(tmp, m_y0, z1);
+  crypto_core_ed25519_scalar_sub(tmp, m_y0, z1);
   multiexp_data.emplace_back(tmp, key::G);
-  sc_sub(tmp, z3, y1);
+  crypto_core_ed25519_scalar_sub(tmp, z3, y1);
   multiexp_data.emplace_back(tmp, rct::H);
   for (size_t i = 0; i < maxMN; ++i)
   {

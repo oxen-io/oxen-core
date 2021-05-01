@@ -36,6 +36,7 @@
 #include "bulletproofs.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_config.h"
+#include <sodium/crypto_core_ed25519.h>
 
 #undef OXEN_DEFAULT_LOG_CATEGORY
 #define OXEN_DEFAULT_LOG_CATEGORY "ringct"
@@ -59,7 +60,7 @@ namespace
         {
             masks[i] = I;
             rct::key sv8;
-            sc_mul(sv8, rct::key::constant(outamounts[i]), rct::key::inv_eight);
+            crypto_core_ed25519_scalar_mul(sv8, rct::key::constant(outamounts[i]), rct::key::inv_eight);
             rct::addKeys2(C[i], rct::key::inv_eight, sv8, rct::H);
         }
 
@@ -228,9 +229,9 @@ namespace rct {
         while (i != l) {
             sig.s[i] = skGen();
             key c_p;
-            sc_mul(c_p,mu_P,c);
+            crypto_core_ed25519_scalar_mul(c_p,mu_P,c);
             key c_c;
-            sc_mul(c_c,mu_C,c);
+            crypto_core_ed25519_scalar_mul(c_c,mu_C,c);
 
             // Precompute points
             geDsmp P_precomp;
@@ -336,7 +337,7 @@ namespace rct {
             c = hash_to_scalar(toHash);
             CHECK_AND_ASSERT_MES(c, false, "Bad signature hash");
         }
-        sc_sub(c, c, rv.cc);
+        crypto_core_ed25519_scalar_sub(c, c, rv.cc);
         return sc_isnonzero(c) == 0;
     }
 
@@ -466,7 +467,7 @@ namespace rct {
         }
 
         sk[0] = inSk.dest;
-        sc_sub(sk[1], inSk.mask, a);
+        crypto_core_ed25519_scalar_sub(sk[1], inSk.mask, a);
         clsag result = CLSAG_Gen(message, P, sk[0], C, sk[1], C_nonzero, Cout, index, kLRki, mscout, mspout, hwdev);
         memwipe(sk.data(), sk.size() * sizeof(key));
         return result;
@@ -616,9 +617,9 @@ namespace rct {
 
             for (size_t i = 0; i < n; i++) {
                 key c_p;
-                sc_mul(c_p,mu_P,c);
+                crypto_core_ed25519_scalar_mul(c_p,mu_P,c);
                 key c_c;
-                sc_mul(c_c,mu_C,c);
+                crypto_core_ed25519_scalar_mul(c_c,mu_C,c);
 
                 // Precompute points for L/R
                 geDsmp P_precomp;
@@ -648,7 +649,7 @@ namespace rct {
                 CHECK_AND_ASSERT_MES(c, false, "Bad signature hash");
             }
             key c_check;
-            sc_sub(c_check,c,sig.c1);
+            crypto_core_ed25519_scalar_sub(c_check,c,sig.c1);
             return sc_isnonzero(c_check) == 0;
         }
         catch (...) { return false; }
@@ -778,7 +779,7 @@ namespace rct {
         key sumout = rct::key::zero;
         for (i = 0; i < outSk.size(); ++i)
         {
-            sc_add(sumout, outSk[i].mask, sumout);
+            crypto_core_ed25519_scalar_add(sumout, outSk[i].mask, sumout);
 
             //mask amount and mask
             rv.ecdhInfo[i].mask = outSk[i].mask;
@@ -795,10 +796,10 @@ namespace rct {
         keyV a(inamounts.size());
         for (i = 0 ; i < inamounts.size() - 1; i++) {
             skGen(a[i]);
-            sc_add(sumpouts, a[i], sumpouts);
+            crypto_core_ed25519_scalar_add(sumpouts, a[i], sumpouts);
             genC(pseudoOuts[i], a[i], inamounts[i]);
         }
-        sc_sub(a[i], sumout, sumpouts);
+        crypto_core_ed25519_scalar_sub(a[i], sumout, sumpouts);
         genC(pseudoOuts[i], a[i], inamounts[i]);
         DP(pseudoOuts[i]);
 
@@ -1166,7 +1167,7 @@ namespace rct {
         for (size_t n = 0; n < indices.size(); ++n) {
             rct::key diff;
             sc_mulsub(diff, msout.c[n], secret_key, k[n]);
-            sc_add(rv.p.MGs[n].ss[indices[n]][0], rv.p.MGs[n].ss[indices[n]][0], diff);
+            crypto_core_ed25519_scalar_add(rv.p.MGs[n].ss[indices[n]][0], rv.p.MGs[n].ss[indices[n]][0], diff);
         }
         return true;
     }
@@ -1186,9 +1187,9 @@ namespace rct {
         // cc: msout.c[n], mu_p, msout.mu_p[n], secret_key_share: secret_key
         for (size_t n = 0; n < indices.size(); ++n) {
             rct::key diff, sk;
-            sc_mul(sk, msout.mu_p[n], secret_key);
+            crypto_core_ed25519_scalar_mul(sk, msout.mu_p[n], secret_key);
             sc_mulsub(diff, msout.c[n], sk, k[n]);
-            sc_add(rv.p.CLSAGs[n].s[indices[n]], rv.p.CLSAGs[n].s[indices[n]], diff);
+            crypto_core_ed25519_scalar_add(rv.p.CLSAGs[n].s[indices[n]], rv.p.CLSAGs[n].s[indices[n]], diff);
         }
         return true;
     }

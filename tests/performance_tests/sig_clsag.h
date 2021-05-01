@@ -34,6 +34,7 @@
 #include "ringct/rctSigs.h"
 #include "ringct/rctTypes.h"
 #include "device/device.hpp"
+#include <sodium/crypto_core_ed25519.h>
 
 using namespace rct;
 
@@ -86,8 +87,8 @@ class test_sig_clsag
                 s1[u] = skGen(); // C_offsets[u] = Com(a[u],s1[u])
                 addKeys2(C_offsets[u],s1[u],a[u],H);
 
-                sc_add(a_sum, a_sum, a[u]);
-                sc_add(s1_sum, s1_sum, s1[u]);
+                crypto_core_ed25519_scalar_add(a_sum, a_sum, a[u]);
+                crypto_core_ed25519_scalar_add(s1_sum, s1_sum, s1[u]);
 
                 messages[u] = skGen();
             }
@@ -101,12 +102,12 @@ class test_sig_clsag
                 t[j] = skGen();
                 addKeys2(Q[j],t[j],b[j],H);
 
-                sc_add(b_sum, b_sum, b[j]);
-                sc_add(t_sum, t_sum, t[j]);
+                crypto_core_ed25519_scalar_add(b_sum, b_sum, b[j]);
+                crypto_core_ed25519_scalar_add(t_sum, t_sum, t[j]);
             }
             // Value/mask balance for Q[T-1]
-            sc_sub(b[T-1], a_sum, b_sum);
-            sc_sub(t[T-1], s1_sum, t_sum);
+            crypto_core_ed25519_scalar_sub(b[T-1], a_sum, b_sum);
+            crypto_core_ed25519_scalar_sub(t[T-1], s1_sum, t_sum);
             addKeys2(Q[T-1], t[T-1], b[T-1], H);
 
             // Build proofs
@@ -139,7 +140,7 @@ class test_sig_clsag
             balance.reserve(w + T);
             balance.resize(0);
             key MINUS_ONE;
-            sc_sub(MINUS_ONE, key::zero, key::identity);
+            crypto_core_ed25519_scalar_sub(MINUS_ONE, key::zero, key::identity);
             for (size_t u = 0; u < w; u++)
             {
                 balance.push_back({key::identity, C_offsets[u]});

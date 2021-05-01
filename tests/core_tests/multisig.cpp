@@ -37,6 +37,7 @@
 #include "chaingen.h"
 #include "multisig.h"
 #include "device/device.hpp"
+#include <sodium/crypto_core_ed25519.h>
 using namespace crypto;
 using namespace cryptonote;
 
@@ -404,7 +405,7 @@ bool gen_multisig_tx_validation_base::generate_with(std::vector<test_event_entry
       if (used_keys.find(sk1) == used_keys.end())
       {
         used_keys.insert(sk1);
-        sc_add(skey, skey, rct::sk2rct(sk1));
+        crypto_core_ed25519_scalar_add(skey, skey, sk1);
       }
     }
     CHECK_AND_ASSERT_MES(!(skey == rct::key::zero), false, "failed to find secret multisig key to sign transaction");
@@ -421,7 +422,7 @@ bool gen_multisig_tx_validation_base::generate_with(std::vector<test_event_entry
         rct::scalarmultBase((rct::key&)L, rct::sk2rct(account_k[signer][tdidx][n]));
         if (used_L.find(L) != used_L.end())
         {
-          sc_add(k.back(), k.back(), rct::sk2rct(account_k[signer][tdidx][n]));
+          crypto_core_ed25519_scalar_add(k.back(), k.back(), account_k[signer][tdidx][n]);
         }
       }
       CHECK_AND_ASSERT_MES(!(k.back() == rct::key::zero), false, "failed to find k to sign transaction");

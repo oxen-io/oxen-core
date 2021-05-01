@@ -37,6 +37,7 @@ extern "C"
 #include "common/aligned.h"
 #include "rctOps.h"
 #include "multiexp.h"
+#include <sodium/crypto_core_ed25519.h>
 
 #undef OXEN_DEFAULT_LOG_CATEGORY
 #define OXEN_DEFAULT_LOG_CATEGORY "multiexp"
@@ -193,7 +194,7 @@ rct::key bos_coster_heap_conv(std::vector<MultiexpData> data)
     MULTIEXP_PERF(PERF_TIMER_PAUSE(add));
 
     MULTIEXP_PERF(PERF_TIMER_RESUME(sub));
-    sc_sub(data[index1].scalar, data[index1].scalar, data[index2].scalar);
+    crypto_core_ed25519_scalar_sub(data[index1].scalar, data[index1].scalar, data[index2].scalar);
     MULTIEXP_PERF(PERF_TIMER_PAUSE(sub));
 
     MULTIEXP_PERF(PERF_TIMER_RESUME(push));
@@ -307,7 +308,7 @@ rct::key bos_coster_heap_conv_robust(std::vector<MultiexpData> data)
     MULTIEXP_PERF(PERF_TIMER_PAUSE(add));
 
     MULTIEXP_PERF(PERF_TIMER_RESUME(sub));
-    sc_sub(data[index1].scalar, data[index1].scalar, data[index2].scalar);
+    crypto_core_ed25519_scalar_sub(data[index1].scalar, data[index1].scalar, data[index2].scalar);
     MULTIEXP_PERF(PERF_TIMER_PAUSE(sub));
 
     MULTIEXP_PERF(PERF_TIMER_RESUME(push));

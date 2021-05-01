@@ -4756,7 +4756,7 @@ void wallet2::generate(const fs::path& wallet_, const epee::wipeable_string& pas
   THROW_WALLET_EXCEPTION_IF(std::find(multisig_signers.begin(), multisig_signers.end(), local_signer) == multisig_signers.end(), error::invalid_multisig_seed);
   rct::key skey = rct::key::zero;
   for (const auto &msk: multisig_keys)
-    sc_add(skey, skey, rct::sk2rct(msk));
+    crypto_core_ed25519_scalar_add(skey, skey, msk);
   THROW_WALLET_EXCEPTION_IF(!(rct::rct2sk(skey) == spend_secret_key), error::invalid_multisig_seed);
   memwipe(&skey, sizeof(rct::key));
 
@@ -7678,7 +7678,7 @@ bool wallet2::sign_multisig_tx(multisig_tx_set &exported_txs, std::vector<crypto
 
           if (sig.signing_keys.find(pmsk) == sig.signing_keys.end())
           {
-            sc_add(skey, skey, rct::sk2rct(msk));
+            crypto_core_ed25519_scalar_add(skey, skey, msk);
             sig.signing_keys.insert(pmsk);
           }
         }
@@ -10754,7 +10754,7 @@ bool wallet2::light_wallet_parse_rct_str(const std::string& rct_string, const cr
     THROW_WALLET_EXCEPTION_IF(!r, error::wallet_internal_error, "Failed to generate key derivation");
     crypto::secret_key scalar;
     crypto::derivation_to_scalar(derivation, internal_output_index, scalar);
-    sc_sub(decrypted_mask, encrypted_mask, rct::hash_to_scalar(rct::sk2rct(scalar)));
+    crypto_core_ed25519_scalar_sub(decrypted_mask, encrypted_mask, rct::hash_to_scalar(rct::sk2rct(scalar)));
   }
   return true;
 }
@@ -12768,7 +12768,7 @@ std::string wallet2::get_reserve_proof(const std::optional<std::pair<uint32_t, u
     {
       crypto::secret_key m = m_account.get_device().get_subaddress_secret_key(m_account.get_keys().m_view_secret_key, index);
       crypto::secret_key tmp = subaddr_spend_skey;
-      sc_add((unsigned char*)&subaddr_spend_skey, (unsigned char*)&m, (unsigned char*)&tmp);
+      crypto_core_ed25519_scalar_add(subaddr_spend_skey, m, tmp);
     }
     crypto::public_key subaddr_spend_pkey;
     secret_key_to_public_key(subaddr_spend_skey, subaddr_spend_pkey);
@@ -13143,7 +13143,7 @@ std::string wallet2::sign(std::string_view data, cryptonote::subaddress_index in
   else
   {
     crypto::secret_key m = m_account.get_device().get_subaddress_secret_key(keys.m_view_secret_key, index);
-    sc_add((unsigned char*)&skey, (unsigned char*)&m, (unsigned char*)&skey);
+    crypto_core_ed25519_scalar_add(skey, m, skey);
     secret_key_to_public_key(skey, pkey);
   }
   crypto::generate_signature(hash, pkey, skey, signature);

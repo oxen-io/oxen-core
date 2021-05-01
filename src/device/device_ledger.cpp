@@ -1903,7 +1903,7 @@ namespace hw {
 
         /*
         rct::key s0_p_mu_P;
-        sc_mul(s0_p_mu_P.bytes,mu_P.bytes,p.bytes);
+        crypto_core_ed25519_scalar_mul(s0_p_mu_P.bytes,mu_P.bytes,p.bytes);
         rct::key s0_add_z_mu_C;
         sc_muladd(s0_add_z_mu_C.bytes,mu_C.bytes,z.bytes,s0_p_mu_P.bytes);
         sc_mulsub(s.bytes,c.bytes,s0_add_z_mu_C.bytes,a.bytes);
