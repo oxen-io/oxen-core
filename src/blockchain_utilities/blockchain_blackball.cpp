@@ -816,8 +816,7 @@ static std::string keep_under_511(const std::string &s)
 {
   if (s.size() <= 511)
     return s;
-  crypto::hash hash;
-  crypto::cn_fast_hash(s.data(), s.size(), hash);
+  auto hash = crypto::cn_fast_hash(s.data(), s.size());
   return std::string((const char*)&hash, 32);
 }
 

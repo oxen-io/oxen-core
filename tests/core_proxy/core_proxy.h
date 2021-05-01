@@ -49,7 +49,7 @@ namespace tests
       cryptonote::blobdata blob;
       std::list<cryptonote::transaction> txes;
 
-      block_index() : height(0), id(crypto::null_hash), longhash(crypto::null_hash) { }
+      block_index() : height(0), id(crypto::hash::null), longhash(crypto::hash::null) { }
       block_index(size_t _height, const crypto::hash &_id, const crypto::hash &_longhash, const cryptonote::block &_blk, const cryptonote::blobdata &_blob, const std::list<cryptonote::transaction> &_txes)
           : height(_height), id(_id), longhash(_longhash), blk(_blk), blob(_blob), txes(_txes) { }
   };
@@ -98,7 +98,7 @@ namespace tests
     bool cleanup_handle_incoming_blocks(bool force_sync = false) { return true; }
     uint64_t get_target_blockchain_height() const { return 1; }
     size_t get_block_sync_size(uint64_t height) const { return BLOCKS_SYNCHRONIZING_DEFAULT_COUNT; }
-    virtual crypto::hash on_transaction_relayed(const cryptonote::blobdata& tx) { return crypto::null_hash; }
+    virtual crypto::hash on_transaction_relayed(const cryptonote::blobdata& tx) { return crypto::hash::null; }
     cryptonote::network_type get_nettype() const { return cryptonote::MAINNET; }
     bool get_blocks(uint64_t start_offset, size_t count, std::vector<std::pair<cryptonote::blobdata, cryptonote::block>>& blocks, std::vector<cryptonote::blobdata>& txs) const { return false; }
     bool get_transactions(const std::vector<crypto::hash>& txs_ids, std::vector<cryptonote::transaction>& txs, std::vector<crypto::hash>& missed_txs) const { return false; }

@@ -32,6 +32,7 @@
 #include <cstring>
 #include <fstream>
 #include <initializer_list>
+#include <random>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -115,13 +116,36 @@ std::string make(const T&... val) {
   return tools::join(" ", std::initializer_list<std::string>{make_single(val)...});
 }
 
+static std::mt19937_64 testrng{42};
+static void test_rng_bytes(void* const buf, const size_t size) {
+    // Copy 8 bytes at a time:
+    for (size_t i = 0; i < size/8; i++) {
+        uint64_t x = testrng();
+        std::memcpy(reinterpret_cast<unsigned char*>(buf) + 8*i, &x, 8);
+    }
+    // If requesting something not a multiple of 8 then get one more random value and copy over the
+    // first n bytes:
+    if (size_t leftover = size % 8; leftover > 0) {
+        uint64_t x = testrng();
+        std::memcpy(reinterpret_cast<unsigned char*>(buf) + size - leftover, &x, leftover);
+    }
+}
+static randombytes_implementation testing_rng_impl{
+    [] { return "loki crypto test suite"; }, // name
+    [] { return static_cast<uint32_t>(testrng()); }, // random
+    nullptr, // stir
+    nullptr, // uniform
+    test_rng_bytes, // buf
+    nullptr, // close
+};
+
 int main(int argc, char *argv[]) {
   std::fstream input;
   input.exceptions(std::ios::badbit | std::ios::failbit);
   std::string cmd;
   size_t test = 0;
   size_t errors = 0;
-  setup_random();
+  randombytes_set_implementation(&testing_rng_impl);
   if (argc != 2) {
       std::cerr << "Invalid arguments! Usage: " << argv[0] << " /path/to/tests.txt\n";
     return 1;
@@ -163,12 +187,6 @@ int main(int argc, char *argv[]) {
       bool actual = check_scalar(scalar);
       if (expected != actual)
         fail_line = make(scalar, actual);
-    } else if (cmd == "random_scalar") {
-      auto [expected] = extract<ec_scalar>(test_args);
-      ec_scalar actual;
-      random_scalar(actual);
-      if (expected != actual)
-        fail_line = make(actual);
     } else if (cmd == "hash_to_scalar") {
       auto [data, expected] = extract<std::string_view, ec_scalar>(test_args);
       ec_scalar actual;

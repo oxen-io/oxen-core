@@ -30,9 +30,6 @@
 
 #pragma once
 
-#ifndef MULTIEXP_H
-#define MULTIEXP_H
-
 #include <vector>
 #include "crypto/crypto.h"
 #include "rctTypes.h"
@@ -49,7 +46,7 @@ struct MultiexpData {
   MultiexpData(const rct::key &s, const ge_p3 &p): scalar(s), point(p) {}
   MultiexpData(const rct::key &s, const rct::key &p): scalar(s)
   {
-    CHECK_AND_ASSERT_THROW_MES(ge_frombytes_vartime(&point, p.bytes) == 0, "ge_frombytes_vartime failed");
+    CHECK_AND_ASSERT_THROW_MES(ge_frombytes_vartime(&point, p) == 0, "ge_frombytes_vartime failed");
   }
 };
 
@@ -67,5 +64,3 @@ size_t get_pippenger_c(size_t N);
 rct::key pippenger(const std::vector<MultiexpData> &data, const std::shared_ptr<pippenger_cached_data> &cache = NULL, size_t cache_size = 0, size_t c = 0);
 
 }
-
-#endif

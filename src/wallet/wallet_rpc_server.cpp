@@ -35,6 +35,7 @@
 #include "cryptonote_basic/cryptonote_basic_impl.h"
 #include <chrono>
 #include <exception>
+#include <oxenmq/base64.h>
 
 #include "wallet_rpc_server_error_codes.h"
 #include "wallet_rpc_server.h"
@@ -539,11 +540,13 @@ namespace tools
     {
       if (!rpc_config.login)
       {
-        std::array<std::uint8_t, 16> rand_128bit{{}};
-        crypto::rand(rand_128bit.size(), rand_128bit.data());
+        // FIXME: since we are base64 encoding it would make more sense to have this as a multiple
+        // of 3 (say 15 bytes) to avoid padding characters in the generated password.
+        std::array<std::byte, 16> rand_128bit;
+        randombytes_buf(reinterpret_cast<unsigned char*>(rand_128bit.data()), rand_128bit.size());
         m_login.emplace(
           default_rpc_username,
-          epee::string_encoding::base64_encode(rand_128bit.data(), rand_128bit.size())
+          oxenmq::to_base64(rand_128bit.begin(), rand_128bit.end())
         );
 
         std::string temp = "oxen-wallet-rpc." + std::to_string(port) + ".login";
@@ -908,7 +911,7 @@ namespace tools
   //------------------------------------------------------------------------------------------------------------------------------
   void wallet_rpc_server::validate_transfer(const std::list<wallet::transfer_destination>& destinations, const std::string& payment_id, std::vector<cryptonote::tx_destination_entry>& dsts, std::vector<uint8_t>& extra, bool at_least_one_destination)
   {
-    crypto::hash8 integrated_payment_id = crypto::null_hash8;
+    crypto::hash8 integrated_payment_id = crypto::hash8::null;
     std::string extra_nonce;
     for (auto it = destinations.begin(); it != destinations.end(); it++)
     {
@@ -924,7 +927,7 @@ namespace tools
 
       if (info.has_payment_id)
       {
-        if (!payment_id.empty() || integrated_payment_id != crypto::null_hash8)
+        if (!payment_id.empty() || integrated_payment_id)
           throw wallet_rpc_error{error_code::WRONG_PAYMENT_ID, "A single payment id is allowed per transaction"};
         integrated_payment_id = info.payment_id;
         cryptonote::set_encrypted_payment_id_to_tx_extra_nonce(extra_nonce, integrated_payment_id);
@@ -992,10 +995,15 @@ namespace tools
     {
       if (get_tx_key)
       {
-        epee::wipeable_string s = epee::to_hex::wipeable_string(ptx.tx_key);
-        for (const crypto::secret_key& additional_tx_key : ptx.additional_tx_keys)
-          s += epee::to_hex::wipeable_string(additional_tx_key);
-        fill(tx_key, std::string(s.data(), s.size()));
+        const size_t hex_size = 2*sizeof(ptx.tx_key.data)*(1 + ptx.additional_tx_keys.size());
+        std::string s;
+        s.reserve(hex_size);
+        auto ins = std::back_inserter(s);
+        oxenmq::to_hex(std::begin(ptx.tx_key.data), std::end(ptx.tx_key.data), ins);
+        for (const auto& key : ptx.additional_tx_keys)
+          oxenmq::to_hex(std::begin(key.data), std::end(key.data), ins);
+        assert(s.size() == hex_size);
+        fill(tx_key, std::move(s));
       }
       // Compute amount leaving wallet in tx. By convention dests does not include change outputs
       fill(amount, total_amount(ptx));
@@ -1107,9 +1115,9 @@ namespace tools
     if(m_wallet->watch_only())
       throw wallet_rpc_error{error_code::WATCH_ONLY, "command not supported by watch-only wallet"};
 
-    cryptonote::blobdata blob;
-    if (!epee::string_tools::parse_hexstr_to_binbuff(req.unsigned_txset, blob))
+    if (!oxenmq::is_hex(req.unsigned_txset))
       throw wallet_rpc_error{error_code::BAD_HEX, "Failed to parse hex."};
+    auto blob = oxenmq::from_hex(req.unsigned_txset);
 
     wallet::unsigned_tx_set exported_txs;
     if(!m_wallet->parse_unsigned_tx_from_str(blob, exported_txs))
@@ -1162,9 +1170,9 @@ namespace tools
     if (!req.unsigned_txset.empty()) {
       try {
         wallet::unsigned_tx_set exported_txs;
-        cryptonote::blobdata blob;
-        if (!epee::string_tools::parse_hexstr_to_binbuff(req.unsigned_txset, blob))
+        if (!oxenmq::is_hex(req.unsigned_txset))
           throw wallet_rpc_error{error_code::BAD_HEX, "Failed to parse hex."};
+        auto blob = oxenmq::from_hex(req.unsigned_txset);
         if (!m_wallet->parse_unsigned_tx_from_str(blob, exported_txs))
           throw wallet_rpc_error{error_code::BAD_UNSIGNED_TX_DATA, "cannot load unsigned_txset"};
         tx_constructions = exported_txs.txes;
@@ -1175,9 +1183,9 @@ namespace tools
     } else if (!req.multisig_txset.empty()) {
       try {
         wallet::multisig_tx_set exported_txs;
-        cryptonote::blobdata blob;
-        if (!epee::string_tools::parse_hexstr_to_binbuff(req.multisig_txset, blob))
+        if (!oxenmq::is_hex(req.multisig_txset))
           throw wallet_rpc_error{error_code::BAD_HEX, "Failed to parse hex."};
+        auto blob = oxenmq::from_hex(req.multisig_txset);
         if (!m_wallet->parse_multisig_tx_from_str(blob, exported_txs))
           throw wallet_rpc_error{error_code::BAD_MULTISIG_TX_DATA, "cannot load multisig_txset"};
 
@@ -1203,7 +1211,7 @@ namespace tools
 
         std::vector<cryptonote::tx_extra_field> tx_extra_fields;
         bool has_encrypted_payment_id = false;
-        crypto::hash8 payment_id8 = crypto::null_hash8;
+        crypto::hash8 payment_id8 = crypto::hash8::null;
         if (cryptonote::parse_tx_extra(cd.extra, tx_extra_fields))
         {
           cryptonote::tx_extra_nonce extra_nonce;
@@ -1212,7 +1220,7 @@ namespace tools
             crypto::hash payment_id;
             if(cryptonote::get_encrypted_payment_id_from_tx_extra_nonce(extra_nonce.nonce, payment_id8))
             {
-              if (payment_id8 != crypto::null_hash8)
+              if (payment_id8)
               {
                 desc.payment_id = tools::type_to_hex(payment_id8);
                 has_encrypted_payment_id = true;
@@ -1286,7 +1294,7 @@ namespace tools
 
         desc.fee = desc.amount_in - desc.amount_out;
         desc.unlock_time = cd.unlock_time;
-        desc.extra = epee::to_hex::string({cd.extra.data(), cd.extra.size()});
+        desc.extra = oxenmq::to_hex(cd.extra.begin(), cd.extra.end());
       }
     }
     catch (const wallet_rpc_error& e)
@@ -1308,9 +1316,9 @@ namespace tools
     if (m_wallet->key_on_device())
       throw wallet_rpc_error{error_code::UNKNOWN_ERROR, "command not supported by HW wallet"};
 
-    cryptonote::blobdata blob;
-    if (!epee::string_tools::parse_hexstr_to_binbuff(req.tx_data_hex, blob))
+    if (!oxenmq::is_hex(req.tx_data_hex))
       throw wallet_rpc_error{error_code::BAD_HEX, "Failed to parse hex."};
+    auto blob = oxenmq::from_hex(req.tx_data_hex);
 
     std::vector<wallet::pending_tx> ptx_vector;
     if (!m_wallet->parse_tx_from_str(blob, ptx_vector, nullptr))
@@ -1429,9 +1437,9 @@ namespace tools
     require_open();
     RELAY_TX::response res{};
 
-    cryptonote::blobdata blob;
-    if (!epee::string_tools::parse_hexstr_to_binbuff(req.hex, blob))
+    if (!oxenmq::is_hex(req.hex))
       throw wallet_rpc_error{error_code::BAD_HEX, "Failed to parse hex."};
+    auto blob = oxenmq::from_hex(req.hex);
 
     wallet::pending_tx ptx;
     try
@@ -1467,7 +1475,7 @@ namespace tools
       crypto::hash8 payment_id;
       if (req.payment_id.empty())
       {
-        payment_id = crypto::rand<crypto::hash8>();
+        payment_id = crypto::random_filled<crypto::hash8>();
       }
       else
       {
@@ -1526,25 +1534,12 @@ namespace tools
     require_open();
     GET_PAYMENTS::response res{};
     crypto::hash payment_id;
-    crypto::hash8 payment_id8;
-    cryptonote::blobdata payment_id_blob;
-    if(!epee::string_tools::parse_hexstr_to_binbuff(req.payment_id, payment_id_blob))
-      throw wallet_rpc_error{error_code::WRONG_PAYMENT_ID, "Payment ID has invalid format"};
-
-    {
-      if(sizeof(payment_id) == payment_id_blob.size())
-      {
-        payment_id = *reinterpret_cast<const crypto::hash*>(payment_id_blob.data());
-      }
-      else if(sizeof(payment_id8) == payment_id_blob.size())
-      {
-        payment_id8 = *reinterpret_cast<const crypto::hash8*>(payment_id_blob.data());
-        memcpy(payment_id.data, payment_id8.data, 8);
-        memset(payment_id.data + 8, 0, 24);
-      }
-      else
-        throw wallet_rpc_error{error_code::WRONG_PAYMENT_ID, "Payment ID has invalid size: " + req.payment_id};
+    if (crypto::hash8 payment_id8; tools::hex_to_type(req.payment_id, payment_id8)) {
+      memcpy(payment_id.data, payment_id8.data, 8);
+      memset(payment_id.data + 8, 0, 24);
     }
+    else if (!tools::hex_to_type(req.payment_id, payment_id))
+      throw wallet_rpc_error{error_code::WRONG_PAYMENT_ID, "Payment ID has invalid format: " + req.payment_id};
 
     std::list<wallet2::payment_details> payment_list;
     m_wallet->get_payments(payment_id, payment_list);
@@ -1712,15 +1707,13 @@ namespace tools
       }
       else if(req.key_type.compare("view_key") == 0)
       {
-          epee::wipeable_string key = epee::to_hex::wipeable_string(m_wallet->get_account().get_keys().m_view_secret_key);
-          res.key = std::string(key.data(), key.size());
+          res.key = tools::view_guts(m_wallet->get_account().get_keys().m_view_secret_key);
       }
       else if(req.key_type.compare("spend_key") == 0)
       {
           if (m_wallet->watch_only())
             throw wallet_rpc_error{error_code::WATCH_ONLY, "The wallet is watch-only. Cannot retrieve spend key."};
-          epee::wipeable_string key = epee::to_hex::wipeable_string(m_wallet->get_account().get_keys().m_spend_secret_key);
-          res.key = std::string(key.data(), key.size());
+          res.key = tools::view_guts(m_wallet->get_account().get_keys().m_spend_secret_key);
       }
       else
         throw wallet_rpc_error{error_code::UNKNOWN_ERROR, "key_type " + req.key_type + " not found"};
@@ -1772,22 +1765,14 @@ namespace tools
       throw wallet_rpc_error{error_code::UNKNOWN_ERROR, "Different amount of txids and notes"};
 
     std::list<crypto::hash> txids;
-    std::list<std::string>::const_iterator i = req.txids.begin();
-    while (i != req.txids.end())
-    {
-      cryptonote::blobdata txid_blob;
-      if(!epee::string_tools::parse_hexstr_to_binbuff(*i++, txid_blob) || txid_blob.size() != sizeof(crypto::hash))
+    for (const auto& txid_hex : req.txids)
+      if (!tools::hex_to_type(txid_hex, txids.emplace_back()))
         throw wallet_rpc_error{error_code::WRONG_TXID, "TX ID has invalid format"};
 
-      crypto::hash txid = *reinterpret_cast<const crypto::hash*>(txid_blob.data());
-      txids.push_back(txid);
-    }
-
-    std::list<crypto::hash>::const_iterator il = txids.begin();
-    std::list<std::string>::const_iterator in = req.notes.begin();
-    while (il != txids.end())
-    {
-      m_wallet->set_tx_note(*il++, *in++);
+    while (!txids.empty()) {
+      m_wallet->set_tx_note(std::move(txids.front()), std::move(req.notes.front()));
+      txids.pop_front();
+      req.notes.pop_front();
     }
 
     return {};
@@ -1798,23 +1783,13 @@ namespace tools
     require_open();
     GET_TX_NOTES::response res{};
 
-    std::list<crypto::hash> txids;
-    std::list<std::string>::const_iterator i = req.txids.begin();
-    while (i != req.txids.end())
-    {
-      cryptonote::blobdata txid_blob;
-      if(!epee::string_tools::parse_hexstr_to_binbuff(*i++, txid_blob) || txid_blob.size() != sizeof(crypto::hash))
+    for (const auto& txid_hex : req.txids) {
+      if (crypto::hash txid; tools::hex_to_type(txid_hex, txid))
+        res.notes.push_back(m_wallet->get_tx_note(txid));
+      else
         throw wallet_rpc_error{error_code::WRONG_TXID, "TX ID has invalid format"};
-
-      crypto::hash txid = *reinterpret_cast<const crypto::hash*>(txid_blob.data());
-      txids.push_back(txid);
     }
 
-    std::list<crypto::hash>::const_iterator il = txids.begin();
-    while (il != txids.end())
-    {
-      res.notes.push_back(m_wallet->get_tx_note(*il++));
-    }
     return res;
   }
   //------------------------------------------------------------------------------------------------------------------------------
@@ -1848,11 +1823,14 @@ namespace tools
     if (!m_wallet->get_tx_key(txid, tx_key, additional_tx_keys))
       throw wallet_rpc_error{error_code::NO_TXKEY, "No tx secret key is stored for this tx"};
 
-    epee::wipeable_string s;
-    s += epee::to_hex::wipeable_string(tx_key);
-    for (size_t i = 0; i < additional_tx_keys.size(); ++i)
-      s += epee::to_hex::wipeable_string(additional_tx_keys[i]);
-    res.tx_key = std::string(s.data(), s.size());
+    res.tx_key.clear();
+    const size_t hex_size = 2*sizeof(tx_key.data)*(1 + additional_tx_keys.size());
+    res.tx_key.reserve(hex_size);
+    auto ins = std::back_inserter(res.tx_key);
+    oxenmq::to_hex(std::begin(tx_key.data), std::end(tx_key.data), ins);
+    for (const auto& key : additional_tx_keys)
+      oxenmq::to_hex(std::begin(key.data), std::end(key.data), ins);
+    assert(res.tx_key.size() == hex_size);
     return res;
   }
   //------------------------------------------------------------------------------------------------------------------------------
@@ -1865,21 +1843,20 @@ namespace tools
     if (!tools::hex_to_type(req.txid, txid))
       throw wallet_rpc_error{error_code::WRONG_TXID, "TX ID has invalid format"};
 
-    epee::wipeable_string tx_key_str = req.tx_key;
-    if (tx_key_str.size() < 64 || tx_key_str.size() % 64)
+    epee::wipeable_string tx_key_str{std::move(req.tx_key)};
+    auto data = tx_key_str.view();
+    if (data.empty() || data.size() % 64 != 0)
       throw wallet_rpc_error{error_code::WRONG_KEY, "Tx key has invalid format"};
-    const char *data = tx_key_str.data();
     crypto::secret_key tx_key;
-    if (!epee::wipeable_string(data, 64).hex_to_pod(unwrap(unwrap(tx_key))))
+    if (!tools::hex_to_type(data.substr(0, 64), tx_key))
       throw wallet_rpc_error{error_code::WRONG_KEY, "Tx key has invalid format"};
-    size_t offset = 64;
+    data.remove_prefix(64);
     std::vector<crypto::secret_key> additional_tx_keys;
-    while (offset < tx_key_str.size())
+    while (!data.empty())
     {
-      additional_tx_keys.resize(additional_tx_keys.size() + 1);
-      if (!epee::wipeable_string(data + offset, 64).hex_to_pod(unwrap(unwrap(additional_tx_keys.back()))))
+      if (!tools::hex_to_type(data.substr(0, 64), additional_tx_keys.emplace_back()))
         throw wallet_rpc_error{error_code::WRONG_KEY, "Tx key has invalid format"};
-      offset += 64;
+      data.remove_prefix(64);
     }
 
     cryptonote::address_parse_info info;
@@ -2073,16 +2050,8 @@ namespace tools
     GET_TRANSFER_BY_TXID::response res{};
 
     crypto::hash txid;
-    cryptonote::blobdata txid_blob;
-    if(!epee::string_tools::parse_hexstr_to_binbuff(req.txid, txid_blob))
+    if (!tools::hex_to_type(req.txid, txid))
       throw wallet_rpc_error{error_code::WRONG_TXID, "Transaction ID has invalid format"};
-
-    if(sizeof(txid) == txid_blob.size())
-    {
-      txid = *reinterpret_cast<const crypto::hash*>(txid_blob.data());
-    }
-    else
-      throw wallet_rpc_error{error_code::WRONG_TXID, "Transaction ID has invalid size: " + req.txid};
 
     if (req.account_index >= m_wallet->get_num_subaddress_accounts())
       throw wallet_rpc_error{error_code::ACCOUNT_INDEX_OUT_OF_BOUNDS, "Account index is out of bound"};
@@ -2180,9 +2149,9 @@ namespace tools
     if (m_wallet->key_on_device())
       throw wallet_rpc_error{error_code::UNKNOWN_ERROR, "command not supported by HW wallet"};
 
-    cryptonote::blobdata blob;
-    if (!epee::string_tools::parse_hexstr_to_binbuff(req.outputs_data_hex, blob))
+    if (!oxenmq::is_hex(req.outputs_data_hex))
       throw wallet_rpc_error{error_code::BAD_HEX, "Failed to parse hex."};
+    auto blob = oxenmq::from_hex(req.outputs_data_hex);
 
     res.num_imported = m_wallet->import_outputs_from_str(blob);
 
@@ -2568,9 +2537,9 @@ namespace {
       throw wallet_rpc_error{error_code::UNKNOWN_ERROR, "Failed to parse public address"};
 
     epee::wipeable_string password = rc.second.password();
-    epee::wipeable_string viewkey_string = req.viewkey;
+    epee::wipeable_string viewkey_string{std::move(req.viewkey)};
     crypto::secret_key viewkey;
-    if (!viewkey_string.hex_to_pod(unwrap(unwrap(viewkey))))
+    if (!tools::hex_to_type(viewkey_string.view(), viewkey))
       throw wallet_rpc_error{error_code::UNKNOWN_ERROR, "Failed to parse view key secret key"};
 
     close_wallet(req.autosave_current);
@@ -2578,9 +2547,9 @@ namespace {
     {
       if (!req.spendkey.empty())
       {
-        epee::wipeable_string spendkey_string = req.spendkey;
+        epee::wipeable_string spendkey_string{std::move(req.spendkey)};
         crypto::secret_key spendkey;
-        if (!spendkey_string.hex_to_pod(unwrap(unwrap(spendkey))))
+        if (!tools::hex_to_type(spendkey_string.view(), spendkey))
           throw wallet_rpc_error{error_code::UNKNOWN_ERROR, "Failed to parse spend key secret key"};
         wal->generate(wallet_file, std::move(rc.second).password(), info.address, spendkey, viewkey, false);
         res.info = "Wallet has been generated successfully.";
@@ -2762,10 +2731,12 @@ namespace {
       throw wallet_rpc_error{error_code::THRESHOLD_NOT_REACHED, "Needs multisig export info from more participants"};
 
     std::vector<cryptonote::blobdata> info;
-    info.resize(req.info.size());
-    for (size_t n = 0; n < info.size(); ++n)
+    info.reserve(req.info.size());
+    for (auto& info_hex : req.info)
     {
-      if (!epee::string_tools::parse_hexstr_to_binbuff(req.info[n], info[n]))
+      if (oxenmq::is_hex(info_hex))
+        info.push_back(oxenmq::from_hex(info_hex));
+      else
         throw wallet_rpc_error{error_code::BAD_HEX, "Failed to parse hex."};
     }
 
@@ -2840,9 +2811,9 @@ namespace {
     if (!ready)
       throw wallet_rpc_error{error_code::NOT_MULTISIG, "This wallet is multisig, but not yet finalized"};
 
-    cryptonote::blobdata blob;
-    if (!epee::string_tools::parse_hexstr_to_binbuff(req.tx_data_hex, blob))
+    if (!oxenmq::is_hex(req.tx_data_hex))
       throw wallet_rpc_error{error_code::BAD_HEX, "Failed to parse hex."};
+    auto blob = oxenmq::from_hex(req.tx_data_hex);
 
     wallet::multisig_tx_set txs;
     bool r = m_wallet->load_multisig_tx(blob, txs, nullptr);
@@ -2882,9 +2853,9 @@ namespace {
     if (!ready)
       throw wallet_rpc_error{error_code::NOT_MULTISIG, "This wallet is multisig, but not yet finalized"};
 
-    cryptonote::blobdata blob;
-    if (!epee::string_tools::parse_hexstr_to_binbuff(req.tx_data_hex, blob))
+    if (!oxenmq::is_hex(req.tx_data_hex))
       throw wallet_rpc_error{error_code::BAD_HEX, "Failed to parse hex."};
+    auto blob = oxenmq::from_hex(req.tx_data_hex);
 
     tools::wallet2::multisig_tx_set txs;
     bool r = m_wallet->load_multisig_tx(blob, txs, nullptr);

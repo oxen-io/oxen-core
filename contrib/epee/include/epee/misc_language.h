@@ -56,48 +56,6 @@ namespace epee
 
 namespace misc_utils
 {
-	template<typename t_type>
-		t_type get_max_t_val(t_type t)
-		{
-			return (std::numeric_limits<t_type>::max)();
-		}
-
-		
-	template<typename t_iterator>
-		t_iterator move_it_forward(t_iterator it, size_t count)
-		{
-			while(count--)
-				it++;
-			return it;
-		}
-
-    template<typename t_iterator>
-    t_iterator move_it_backward(t_iterator it, size_t count)
-    {
-      while(count--)
-        it--;
-      return it;
-    }
-
-
-	// TEMPLATE STRUCT less
-	template<class _Ty>
-	struct less_as_pod
-		: public std::binary_function<_Ty, _Ty, bool>
-	{	// functor for operator<
-		bool operator()(const _Ty& _Left, const _Ty& _Right) const
-		{	// apply operator< to operands
-			return memcmp(&_Left, &_Right, sizeof(_Left)) < 0;
-		}
-	};
-
-  template<class _Ty>
-  bool is_less_as_pod(const _Ty& _Left, const _Ty& _Right)
-  {	// apply operator< to operands
-      return memcmp(&_Left, &_Right, sizeof(_Left)) < 0;
-  }
-	
-
 	inline
 	void sleep_no_w(long ms)
 	{

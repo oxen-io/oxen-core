@@ -47,7 +47,6 @@
 #include "boost/archive/portable_binary_oarchive.hpp"
 #include "epee/shared_sv.h"
 #include "crypto/crypto.h"
-#include "epee/hex.h"
 #include "epee/net/net_utils_base.h"
 #include "epee/net/local_ip.h"
 #include "epee/net/buffer.h"
@@ -91,25 +90,6 @@ namespace
   static_assert(epee::span<char>().empty(), "test failure");
   static_assert(epee::span<char>(nullptr).empty(), "test failure");
   static_assert(epee::span<const char>("foo", 2).size() == 2, "test failure");
-
-  std::string std_to_hex(const std::vector<unsigned char>& source)
-  {
-    std::stringstream out;
-    out << std::hex;
-    for (const unsigned char byte : source)
-    {
-      out << std::setw(2) << std::setfill('0') << int(byte);
-    }
-    return out.str();
-  }
-
-  std::vector<unsigned char> get_all_bytes()
-  {
-    std::vector<unsigned char> out;
-    out.resize(256);
-    boost::range::iota(out, 0);
-    return out;
-  }
 
   #define CHECK_EQUAL(lhs, rhs) \
     EXPECT_TRUE( lhs == rhs );  \
@@ -320,18 +300,23 @@ TEST(Span, RemovePrefix)
   EXPECT_EQ(0u, span.remove_prefix(100));
 }
 
+template <typename... Bytes>
+static std::array<std::byte, sizeof...(Bytes)> byte_array(Bytes... bytes) {
+  return std::array<std::byte, sizeof...(Bytes)>{{static_cast<std::byte>(bytes)...}};
+}
+
 TEST(Span, ToByteSpan)
 {
   const char expected[] = {56, 44, 11, 5};
   EXPECT_TRUE(
     boost::range::equal(
-      std::array<std::uint8_t, 4>{{56, 44, 11, 5}},
+      byte_array(56, 44, 11, 5),
       epee::to_byte_span<char>(expected)
     )
   );
   EXPECT_TRUE(
     boost::range::equal(
-      std::array<char, 4>{{56, 44, 11, 5}},
+      byte_array(56, 44, 11, 5),
       epee::to_byte_span(epee::span<const char>{expected})
     )
   );
@@ -343,13 +328,13 @@ TEST(Span, AsByteSpan)
   const some_pod immutable {{ 5, 10, 12, 127 }};
   EXPECT_TRUE(
     boost::range::equal(
-      std::array<unsigned char, 4>{{5, 10, 12, 127}},
+      byte_array(5, 10, 12, 127),
       epee::as_byte_span(immutable)
     )
   );
   EXPECT_TRUE(
     boost::range::equal(
-      std::array<std::uint8_t, 3>{{'a', 'y', 0x00}}, epee::as_byte_span("ay")
+      byte_array('a', 'y', 0x00), epee::as_byte_span("ay")
     )
   );
 }
@@ -360,7 +345,8 @@ TEST(Span, AsMutByteSpan)
   some_pod actual {};
 
   auto span = epee::as_mut_byte_span(actual);
-  boost::range::iota(span, 1);
+  for (size_t i = 0; i < span.size(); i++)
+    *(span.begin() + i) = static_cast<std::byte>(i+1);
   EXPECT_TRUE(
     boost::range::equal(
       std::array<unsigned char, 4>{{1, 2, 3, 4}}, actual.value
@@ -418,85 +404,6 @@ TEST(SharedSV, Tests)
   EXPECT_EQ(0, from_str.size());
   EXPECT_EQ(0, sv2.size());
   EXPECT_EQ(0, sv3.size());
-}
-
-TEST(ToHex, String)
-{
-  EXPECT_TRUE(epee::to_hex::string(nullptr).empty());
-  EXPECT_EQ(
-    std::string{"ffab0100"},
-    epee::to_hex::string(epee::as_byte_span("\xff\xab\x01"))
-  );
-
-  const std::vector<unsigned char> all_bytes = get_all_bytes();
-  EXPECT_EQ(
-    std_to_hex(all_bytes), epee::to_hex::string(epee::to_span(all_bytes))
-  );
-
-}
-
-TEST(FromHex, String)
-{
-    // the source data to encode and decode
-    std::vector<uint8_t> source{{ 0x00, 0xFF, 0x0F, 0xF0 }};
-
-    // encode and decode the data
-    auto hex = epee::to_hex::string({ source.data(), source.size() });
-    auto decoded = epee::from_hex::vector(hex);
-
-    // encoded should be twice the size and should decode to the exact same data
-    EXPECT_EQ(source.size() * 2, hex.size());
-    EXPECT_EQ(source, decoded);
-
-    // we will now create a padded hex string, we want to explicitly allow
-    // decoding it this way also, ignoring spaces and colons between the numbers
-    hex.assign("00:ff 0f:f0");
-    EXPECT_EQ(source, epee::from_hex::vector(hex));
-}
-
-TEST(ToHex, Array)
-{
-  EXPECT_EQ(
-    (std::array<char, 8>{{'f', 'f', 'a', 'b', '0', '1', '0', '0'}}),
-    (epee::to_hex::array(std::array<unsigned char, 4>{{0xFF, 0xAB, 0x01, 0x00}}))
-  );
-}
-
-TEST(ToHex, Ostream)
-{
-  std::stringstream out;
-  epee::to_hex::buffer(out, nullptr);
-  EXPECT_TRUE(out.str().empty());
-
-  {
-    const std::uint8_t source[] = {0xff, 0xab, 0x01, 0x00};
-    epee::to_hex::buffer(out, source);
-  }
-
-  std::string expected{"ffab0100"};
-  EXPECT_EQ(expected, out.str());
-
-  const std::vector<unsigned char> all_bytes = get_all_bytes();
-
-  expected.append(std_to_hex(all_bytes));
-  epee::to_hex::buffer(out, epee::to_span(all_bytes));
-  EXPECT_EQ(expected, out.str());
-}
-
-TEST(StringTools, ParseNotHex)
-{
-  std::string res;
-  for (size_t i = 0; i < 256; ++i)
-  {
-    std::string inputHexString = std::string(2, static_cast<char>(i));
-    if ((i >= '0' && i <= '9') || (i >= 'A' && i <= 'F') || (i >= 'a' && i <= 'f')) {
-      ASSERT_TRUE(epee::string_tools::parse_hexstr_to_binbuff(inputHexString, res));
-    } else {
-      ASSERT_FALSE(epee::string_tools::parse_hexstr_to_binbuff(inputHexString, res));
-    }
-  }
-
-  ASSERT_FALSE(epee::string_tools::parse_hexstr_to_binbuff(std::string("a"), res));
 }
 
 TEST(StringTools, GetIpString)

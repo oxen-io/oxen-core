@@ -52,7 +52,7 @@ namespace crypto {
 #if defined(__cplusplus)
   }
 
-  using chacha_key = epee::mlocked<tools::scrubbed_arr<uint8_t, CHACHA_KEY_SIZE>>;
+  using chacha_key = epee::mlocked<tools::scrubbed<std::array<uint8_t, CHACHA_KEY_SIZE>>>;
 
   struct chacha_iv {
     uint8_t data[CHACHA_IV_SIZE];
@@ -70,22 +70,22 @@ namespace crypto {
 
   inline void generate_chacha_key(const void *data, size_t size, chacha_key& key, uint64_t kdf_rounds) {
     static_assert(sizeof(chacha_key) <= sizeof(hash), "Size of hash must be at least that of chacha_key");
-    epee::mlocked<tools::scrubbed_arr<char, HASH_SIZE>> pwd_hash;
+    epee::mlocked<tools::scrubbed<std::array<char, HASH_SIZE>>> pwd_hash;
     static thread_local cn_heavy_hash_v1 ctx;
     ctx.hash(data, size, pwd_hash.data());
     for (uint64_t n = 1; n < kdf_rounds; ++n)
       ctx.hash(pwd_hash.data(), pwd_hash.size(), pwd_hash.data());
-    memcpy(&unwrap(unwrap(key)), pwd_hash.data(), sizeof(key));
+    memcpy(key.data(), pwd_hash.data(), sizeof(key));
   }
 
   inline void generate_chacha_key_prehashed(const void *data, size_t size, chacha_key& key, uint64_t kdf_rounds) {
     static_assert(sizeof(chacha_key) <= sizeof(hash), "Size of hash must be at least that of chacha_key");
-    epee::mlocked<tools::scrubbed_arr<char, HASH_SIZE>> pwd_hash;
+    epee::mlocked<tools::scrubbed<std::array<char, HASH_SIZE>>> pwd_hash;
     static thread_local cn_heavy_hash_v1 ctx;
     ctx.hash(data, size, pwd_hash.data(), true);
     for (uint64_t n = 1; n < kdf_rounds; ++n)
       ctx.hash(pwd_hash.data(), pwd_hash.size(), pwd_hash.data());
-    memcpy(&unwrap(unwrap(key)), pwd_hash.data(), sizeof(key));
+    memcpy(key.data(), pwd_hash.data(), sizeof(key));
   }
 
   inline void generate_chacha_key(std::string password, chacha_key& key, uint64_t kdf_rounds) {

@@ -32,8 +32,8 @@
 #include <cstddef>
 #include <vector>
 #include <string>
+#include <string_view>
 #include "memwipe.h"
-#include "fnv1.h"
 
 namespace epee
 {
@@ -60,6 +60,8 @@ namespace epee
     char pop_back();
     const char *data() const noexcept { return buffer.data(); }
     char *data() noexcept { return buffer.data(); }
+    const std::byte* bytes() const noexcept { return reinterpret_cast<const std::byte*>(data()); }
+    std::byte* bytes() noexcept { return reinterpret_cast<std::byte*>(data()); }
     size_t size() const noexcept { return buffer.size(); }
     size_t length() const noexcept { return buffer.size(); }
     bool empty() const noexcept { return buffer.empty(); }
@@ -67,8 +69,8 @@ namespace epee
     std::string_view view() const noexcept { return std::string_view{data(), size()}; }
     void split(std::vector<wipeable_string> &fields) const;
     std::optional<wipeable_string> parse_hexstr() const;
-    template<typename T> inline bool hex_to_pod(T &pod) const;
-    template<typename T> inline bool hex_to_pod(tools::scrubbed<T> &pod) const { return hex_to_pod(unwrap(pod)); }
+    template<typename T> bool hex_to_pod(T &pod) const;
+    template<typename T> bool hex_to_pod(tools::scrubbed<T> &pod) const { return hex_to_pod(pod); }
     void resize(size_t sz);
     void reserve(size_t sz);
     void clear();
@@ -84,7 +86,7 @@ namespace epee
     std::vector<char> buffer;
   };
 
-  template<typename T> inline bool wipeable_string::hex_to_pod(T &pod) const
+  template<typename T> bool wipeable_string::hex_to_pod(T &pod) const
   {
     static_assert(std::is_pod<T>::value, "expected pod type");
     if (size() != sizeof(T) * 2)
@@ -99,13 +101,10 @@ namespace epee
   }
 }
 
-namespace std
-{
-  template<> struct hash<epee::wipeable_string>
-  {
-    size_t operator()(const epee::wipeable_string &s) const
-    {
-      return epee::fnv::FNV1a(s.data(), s.size());
+namespace std {
+  template<> struct hash<epee::wipeable_string> {
+    size_t operator()(const epee::wipeable_string &s) const {
+      return hash<std::string_view>{}(s.view());
     }
   };
 }

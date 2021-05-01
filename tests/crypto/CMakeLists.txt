@@ -31,8 +31,7 @@ add_executable(cncrypto-tests
   crypto-ops.c
   crypto.cpp
   hash.c
-  main.cpp
-  random.c)
+  main.cpp)
 
 target_link_libraries(cncrypto-tests
   PRIVATE

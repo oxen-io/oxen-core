@@ -53,29 +53,10 @@ namespace tools {
   template <class T>
   struct scrubbed : public T {
     using type = T;
-
-    ~scrubbed() {
-      scrub();
-    }
-
-    /// Destroy the contents of the contained type.
-    void scrub() {
-      static_assert(std::is_trivially_copyable<T>::value,
-                    "T cannot be auto-scrubbed. T must be POD.");
-      static_assert(std::is_trivially_destructible<T>::value,
-                    "T cannot be auto-scrubbed. T must be trivially destructable.");
-      memwipe(this, sizeof(T));
-    }
+    static_assert(std::is_trivially_copyable_v<type>);
+    ~scrubbed() { memwipe(this, sizeof(type)); }
   };
 
-  template<typename T>
-  T& unwrap(scrubbed<T>& src) { return src; }
-
-  template<typename T>
-  const T& unwrap(scrubbed<T> const& src) { return src; }
-
-  template <class T, size_t N>
-  using scrubbed_arr = scrubbed<std::array<T, N>>;
 } // namespace tools
 
 namespace epee {

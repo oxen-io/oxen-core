@@ -29,7 +29,6 @@
 add_library(epee
     buffer.cpp
     connection_basic.cpp
-    hex.cpp
     levin_base.cpp
     memwipe.c
     mlocker.cpp

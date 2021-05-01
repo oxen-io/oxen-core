@@ -72,7 +72,7 @@ public:
     source_entry.real_output_in_tx_index = 0;
     source_entry.outputs.swap(output_entries);
     source_entry.real_output = real_source_idx;
-    source_entry.mask = rct::identity();
+    source_entry.mask = rct::key::identity;
     source_entry.rct = false;
 
     m_sources.push_back(source_entry);

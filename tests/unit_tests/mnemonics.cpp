@@ -80,10 +80,7 @@ namespace
     std::string seed, return_seed;
     // Generate a random seed without checksum
     crypto::secret_key randkey;
-    for (size_t ii = 0; ii < sizeof(randkey); ++ii)
-    {
-      randkey.data[ii] = crypto::rand<uint8_t>();
-    }
+    crypto::fill_random(randkey.data);
     crypto::ElectrumWords::bytes_to_words(randkey, w_seed, language.get_language_name());
     seed = std::string(w_seed.data(), w_seed.size());
     // remove the checksum word

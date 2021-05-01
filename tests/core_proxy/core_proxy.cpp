@@ -163,7 +163,7 @@ std::vector<cryptonote::core::tx_verification_batch_info> tests::proxy_core::par
 
     for (size_t i = 0; i < tx_blobs.size(); i++) {
         auto &txi = tx_info[i];
-        crypto::hash tx_prefix_hash = null_hash;
+        crypto::hash tx_prefix_hash = hash::null;
         if (opts.kept_by_block) {
             txi.result = txi.parsed = true;
         } else if (parse_and_validate_tx_from_blob(tx_blobs[i], txi.tx, txi.tx_hash, tx_prefix_hash)) {
@@ -284,7 +284,7 @@ void tests::proxy_core::build_short_history(std::list<crypto::hash> &m_history, 
         m_history.push_front(cit->first);
 
         size_t n = 1 << m_history.size();
-        while (m_hash2blkidx.end() != cit && crypto::null_hash != cit->second.blk.prev_id && n > 0) {
+        while (m_hash2blkidx.end() != cit && cit->second.blk.prev_id && n > 0) {
             n--;
             cit = m_hash2blkidx.find(cit->second.blk.prev_id);
         }
@@ -294,7 +294,7 @@ void tests::proxy_core::build_short_history(std::list<crypto::hash> &m_history, 
 bool tests::proxy_core::add_block(const crypto::hash &_id, const crypto::hash &_longhash, const cryptonote::block &_blk, const cryptonote::blobdata &_blob, cryptonote::checkpoint_t const *) {
     size_t height = 0;
 
-    if (crypto::null_hash != _blk.prev_id) {
+    if (_blk.prev_id) {
         std::unordered_map<crypto::hash, tests::block_index>::const_iterator cit = m_hash2blkidx.find(_blk.prev_id);
         if (m_hash2blkidx.end() == cit) {
             std::cerr << "ERROR: can't find previous block with id \"" << _blk.prev_id << "\"\n";

@@ -32,12 +32,12 @@
 #include <boost/system/system_error.hpp>
 #include <chrono>
 #include <deque>
+#include <random>
 #include <stdexcept>
 
 #include "common/expect.h"
 #include "common/varint.h"
 #include "cryptonote_config.h"
-#include "crypto/random.h"
 #include "cryptonote_basic/connection_context.h"
 #include "cryptonote_protocol/cryptonote_protocol_defs.h"
 #include "net/dandelionpp.h"
@@ -70,7 +70,7 @@ namespace levin
     std::chrono::steady_clock::duration random_duration(std::chrono::steady_clock::duration range)
     {
       using rep = std::chrono::steady_clock::rep;
-      return std::chrono::steady_clock::duration{crypto::rand_range(rep(0), range.count())};
+      return std::chrono::steady_clock::duration{std::uniform_int_distribution{rep{0}, range.count()}(crypto::rng)};
     }
 
     //! \return All outgoing connections supporting fragments in `connections`.

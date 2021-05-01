@@ -168,7 +168,8 @@ omq_rpc::omq_rpc(cryptonote::core& core, core_rpc_server& rpc, const boost::prog
   {
     crypto::x25519_public_key my_pubkey;
     const std::string& pk = omq.get_pubkey();
-    std::copy(pk.begin(), pk.end(), my_pubkey.data);
+    assert(pk.size() == sizeof(my_pubkey));
+    std::copy(pk.begin(), pk.end(), static_cast<unsigned char*>(my_pubkey));
     auth.emplace(std::move(my_pubkey), AuthLevel::admin);
   }
 
@@ -360,7 +361,7 @@ bool omq_rpc::block_added(const block& block, const std::vector<transaction>& tx
   auto& omq = core_.get_omq();
   std::string height = std::to_string(get_block_height(block));
   send_notifies(subs_mutex_, block_subs_, "block", [&](auto& conn, auto& sub) {
-    omq.send(conn, "notify.block", height, std::string_view{block.hash.data, sizeof(block.hash.data)});
+    omq.send(conn, "notify.block", height, tools::view_guts(block.hash));
   });
 
   return true;
@@ -371,7 +372,7 @@ void omq_rpc::send_mempool_notifications(const crypto::hash& id, const transacti
   auto& omq = core_.get_omq();
   send_notifies(subs_mutex_, mempool_subs_, "mempool", [&](auto& conn, auto& sub) {
     if (sub.type == mempool_sub_type::all || opts.approved_blink)
-      omq.send(conn, "notify.mempool", std::string_view{id.data, sizeof(id.data)}, blob);
+      omq.send(conn, "notify.mempool", tools::view_guts(id), blob);
   });
 }
 

@@ -33,11 +33,12 @@
 namespace tools {
 
 /// A thread-local, pre-seeded mt19937_64 rng ready for use.  Don't use this where an RNG with a
-/// specific seed is needed.
+/// specific seed is needed.  Don't use this where cryptographically secure random numbers are
+/// needed: use crypto::rng (from crypto/crypto.h) instead.
 extern thread_local std::mt19937_64 rng;
 
 /// Generates a deterministic uint64_t uniformly distributed over [0, n).  This is roughly
-/// equivalent to `std::uniform_int_distribution<uint64_t>{0, n}(rng)`, but that is not guaranteed
+/// equivalent to `std::uniform_int_distribution<uint64_t>{0, n-1}(rng)`, but that is not guaranteed
 /// to be unique across platforms/compilers, while this is.
 uint64_t uniform_distribution_portable(std::mt19937_64& rng, uint64_t n);
 
@@ -71,4 +72,19 @@ Iter select_randomly(Iter begin, Iter end) {
   return select_randomly(begin, end, rng);
 }
 
-};
+/// Returns a random element by reference from a container. Can be called with a random generator,
+/// or no argument at all to use `tools::rng`.  Undefined behaviour if called on an empty container.
+template <typename Container, typename... Args>
+auto& random_element(Container& c, Args&&... args) {
+  static_assert(std::is_reference_v<decltype(*std::begin(c))>, "random_element requires a reference-returning container");
+  return *select_randomly(std::begin(c), std::end(c), std::forward<Args>(args)...);
+}
+
+/// Returns a random index for the given container size. The `g` argument should typically be
+/// `tools::rng` or `crypto::rng`.
+template <typename T, typename RandomGenerator, typename = std::enable_if_t<std::is_integral_v<T>>>
+T random_index(T sz, RandomGenerator& g) {
+  return std::uniform_int_distribution{T{0}, sz - T{1}}(g);
+}
+
+}

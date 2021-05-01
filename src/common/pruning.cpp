@@ -30,6 +30,7 @@
 #include "epee/misc_log_ex.h"
 #include "crypto/crypto.h"
 #include "pruning.h"
+#include <random>
 
 namespace tools
 {
@@ -109,7 +110,7 @@ uint64_t get_next_pruned_block_height(uint64_t block_height, uint64_t blockchain
 
 uint32_t get_random_stripe()
 {
-  return 1 + crypto::rand<uint8_t>() % (1ul << CRYPTONOTE_PRUNING_LOG_STRIPES);
+  return std::uniform_int_distribution<uint32_t>{1, 1ul << CRYPTONOTE_PRUNING_LOG_STRIPES}(crypto::rng);
 }
 
 }

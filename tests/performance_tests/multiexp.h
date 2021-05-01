@@ -52,12 +52,12 @@ public:
   bool init()
   {
     data.resize(npoints);
-    res = rct::identity();
+    res = rct::key::identity;
     for (size_t n = 0; n < npoints; ++n)
     {
       data[n].scalar = rct::skGen();
       rct::key point = rct::scalarmultBase(rct::skGen());
-      if (ge_frombytes_vartime(&data[n].point, point.bytes))
+      if (ge_frombytes_vartime(&data[n].point, point))
         return false;
       rct::key kn = rct::scalarmultKey(point, data[n].scalar);
       res = rct::addKeys(res, kn);

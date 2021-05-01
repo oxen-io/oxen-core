@@ -107,20 +107,14 @@ namespace tools
     gamma_picker(const std::vector<uint64_t> &rct_offsets, double shape, double scale);
 
   private:
-    struct gamma_engine
-    {
-      typedef uint64_t result_type;
-      static constexpr result_type min() { return 0; }
-      static constexpr result_type max() { return std::numeric_limits<result_type>::max(); }
-      result_type operator()() { return crypto::rand<result_type>(); }
-    } engine;
+    crypto::random_device engine;
 
 private:
     std::gamma_distribution<double> gamma;
     const std::vector<uint64_t> &rct_offsets;
     const uint64_t *begin, *end;
     uint64_t num_rct_outputs;
-    double average_output_time;
+    uint64_t average_output_time;
   };
 
   class wallet_keys_unlocker
@@ -187,7 +181,7 @@ private:
   class hashchain
   {
   public:
-    hashchain(): m_genesis(crypto::null_hash), m_offset(0) {}
+    hashchain(): m_genesis(crypto::hash::null), m_offset(0) {}
 
     size_t size() const { return m_blockchain.size() + m_offset; }
     size_t offset() const { return m_offset; }
@@ -376,7 +370,7 @@ private:
       std::vector<std::pair<crypto::key_image, std::vector<uint64_t>>> m_rings; // relative
       wallet::pay_type m_pay_type = wallet::pay_type::out;
 
-      confirmed_transfer_details(): m_amount_in(0), m_amount_out(0), m_change((uint64_t)-1), m_block_height(0), m_payment_id(crypto::null_hash), m_timestamp(0), m_unlock_time(0), m_subaddr_account((uint32_t)-1) {}
+      confirmed_transfer_details(): m_amount_in(0), m_amount_out(0), m_change((uint64_t)-1), m_block_height(0), m_payment_id(crypto::hash::null), m_timestamp(0), m_unlock_time(0), m_subaddr_account((uint32_t)-1) {}
       confirmed_transfer_details(const unconfirmed_transfer_details &utd, uint64_t height)
       : m_amount_in(utd.m_amount_in)
       , m_amount_out(utd.m_amount_out)
@@ -445,7 +439,7 @@ private:
       crypto::signature key_image_sig;
     };
 
-    typedef std::tuple<uint64_t, crypto::public_key, rct::key> get_outs_entry;
+    using get_outs_entry = std::tuple<uint64_t, crypto::public_key, rct::key>;
 
     struct parsed_block
     {
@@ -1901,16 +1895,13 @@ namespace boost::serialization
       {
         crypto::hash payment_id;
         a & payment_id;
-        x.m_has_payment_id = !(payment_id == crypto::null_hash);
+        x.m_has_payment_id = (bool) payment_id;
         if (x.m_has_payment_id)
         {
-          bool is_long = false;
-          for (int i = 8; i < 32; ++i)
-            is_long |= payment_id.data[i];
-          if (is_long)
+          if (std::any_of(payment_id.data+8, payment_id.data+32, [](auto b) { return b != std::byte{0}; }))
           {
             MWARNING("Long payment ID ignored on address book load");
-            x.m_payment_id = crypto::null_hash8;
+            x.m_payment_id = crypto::hash8::null;
             x.m_has_payment_id = false;
           }
           else

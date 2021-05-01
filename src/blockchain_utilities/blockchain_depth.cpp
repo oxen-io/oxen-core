@@ -109,7 +109,7 @@ int main(int argc, char* argv[])
     std::cerr << "txid and height cannot be given at the same time" << std::endl;
     return 1;
   }
-  crypto::hash opt_txid = crypto::null_hash;
+  crypto::hash opt_txid = crypto::hash::null;
   if (!opt_txid_string.empty())
   {
     if (!tools::hex_to_type(opt_txid_string, opt_txid))

@@ -28,6 +28,7 @@
 // 
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
+#include <boost/endian/conversion.hpp>
 #include <unordered_set>
 #include <random>
 #include "epee/string_tools.h"
@@ -85,16 +86,9 @@ namespace cryptonote
 
     ec_scalar& sec = k.sec;
 
-    for (int i=0; i < 8; i++)
-    {
-      uint64_t height_byte = height & ((uint64_t)0xFF << (i*8));
-      uint8_t byte = height_byte >> i*8;
-      sec.data[i] = byte;
-    }
-    for (int i=8; i < 32; i++)
-    {
-      sec.data[i] = 0x00;
-    }
+    boost::endian::native_to_little_inplace(height);
+    std::memcpy(sec.data, &height, 8);
+    std::memset(sec.data+8, 0, 32);
 
     generate_keys(k.pub, k.sec, k.sec, true);
 
@@ -565,7 +559,7 @@ namespace cryptonote
 
   crypto::public_key get_destination_view_key_pub(const std::vector<tx_destination_entry> &destinations, const std::optional<cryptonote::tx_destination_entry>& change_addr)
   {
-    account_public_address addr = {null_pkey, null_pkey};
+    account_public_address addr = account_public_address::null;
     size_t count = 0;
     bool found_change = false;
     for (const auto &i : destinations)
@@ -580,7 +574,7 @@ namespace cryptonote
       if (i.addr == addr)
         continue;
       if (count > 0)
-        return null_pkey;
+        return public_key::null;
       addr = i.addr;
       ++count;
     }
@@ -641,13 +635,13 @@ namespace cryptonote
       tx_extra_nonce extra_nonce;
       if (find_tx_extra_field_by_type(tx_extra_fields, extra_nonce))
       {
-        crypto::hash payment_id = null_hash;
-        crypto::hash8 payment_id8 = null_hash8;
+        crypto::hash payment_id = hash::null;
+        crypto::hash8 payment_id8 = hash8::null;
         if (get_encrypted_payment_id_from_tx_extra_nonce(extra_nonce.nonce, payment_id8))
         {
           LOG_PRINT_L2("Encrypting payment id " << payment_id8);
           crypto::public_key view_key_pub = get_destination_view_key_pub(destinations, change_addr);
-          if (view_key_pub == null_pkey)
+          if (!view_key_pub)
           {
             LOG_ERROR("Destinations have to have exactly one output to support encrypted payment ids");
             return false;
@@ -685,9 +679,9 @@ namespace cryptonote
         // if we have neither long nor short payment id, add a dummy short one,
         // this should end up being the vast majority of txes as time goes on
         std::string extra_nonce;
-        crypto::hash8 payment_id8 = null_hash8;
+        crypto::hash8 payment_id8 = hash8::null;
         crypto::public_key view_key_pub = get_destination_view_key_pub(destinations, change_addr);
-        if (view_key_pub == null_pkey)
+        if (view_key_pub == public_key::null)
         {
           LOG_ERROR("Failed to get key to encrypt dummy payment id with");
         }
@@ -901,10 +895,7 @@ namespace cryptonote
     }
 
     // check for watch only wallet
-    bool zero_secret_key = true;
-    for (size_t i = 0; i < sizeof(sender_account_keys.m_spend_secret_key); ++i)
-      zero_secret_key &= (sender_account_keys.m_spend_secret_key.data[i] == 0);
-    if (zero_secret_key)
+    if (!sender_account_keys.m_spend_secret_key)
     {
       MDEBUG("Null secret key, skipping signatures");
     }
@@ -1066,7 +1057,7 @@ namespace cryptonote
     else
     {
       blobdata bd = get_block_hashing_blob(b);
-      rx_slow_hash(randomx_context.current_blockchain_height, randomx_context.seed_height, randomx_context.seed_block_hash.data, bd.data(), bd.size(), result.data, 0, 1);
+      rx_slow_hash(randomx_context.current_blockchain_height, randomx_context.seed_height, randomx_context.seed_block_hash, bd.data(), bd.size(), result, 0, 1);
     }
 
     return result;
@@ -1109,10 +1100,10 @@ namespace cryptonote
       {
         rx_slow_hash(randomx_context.current_blockchain_height,
                      randomx_context.seed_height,
-                     randomx_context.seed_block_hash.data,
+                     randomx_context.seed_block_hash,
                      bd.data(),
                      bd.size(),
-                     result.data,
+                     result,
                      miners,
                      0);
         return result;

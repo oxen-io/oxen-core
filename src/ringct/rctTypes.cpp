@@ -32,8 +32,8 @@
 #include "cryptonote_config.h"
 #include "rctTypes.h"
 #include "epee/int-util.h"
+#include <boost/endian/conversion.hpp>
 using namespace crypto;
-using namespace std;
 
 #undef OXEN_DEFAULT_LOG_CATEGORY
 #define OXEN_DEFAULT_LOG_CATEGORY "ringct"
@@ -115,18 +115,12 @@ namespace rct {
     }
 
     //Various Conversions 
-    
-    //uint long long to 32 byte key
-    void d2h(key & amounth, const xmr_amount in) {
-        sc_0(amounth.bytes);
-        memcpy_swap64le(amounth.bytes, &in, 1);
-    }
-    
-    //uint long long to 32 byte key
-    key d2h(const xmr_amount in) {
-        key amounth;
-        d2h(amounth, in);
-        return amounth;
+
+    key key::constant(uint64_t v) {
+      boost::endian::native_to_little_inplace(v);
+      key k{};
+      std::memcpy(k.bytes, &v, 8);
+      return k;
     }
 
     //uint long long to int[64]
@@ -141,15 +135,13 @@ namespace rct {
     //32 byte key to uint long long
     // if the key holds a value > 2^64
     // then the value in the first 8 bytes is returned    
-    xmr_amount h2d(const key & test) {
-        xmr_amount vali = 0;
-        int j = 0;
-        for (j = 7; j >= 0; j--) {
-            vali = (xmr_amount)(vali * 256 + (unsigned char)test.bytes[j]);
-        }
-        return vali;
+    uint64_t h2d(const key& k) {
+        uint64_t v;
+        std::memcpy(&v, k.bytes, 8);
+        boost::endian::little_to_native_inplace(v);
+        return v;
     }
-    
+
     //32 byte key to int[64]
     void h2b(bits amountb2, const key & test) {
         int val = 0, i = 0, j = 0;
@@ -171,10 +163,10 @@ namespace rct {
             for (i = 7; i > -1; i--) {
                 byte = byte * 2 + amountb2[8 * j + i];
             }
-            amountdh[j] = (unsigned char)byte;
+            amountdh[j] = (std::byte)byte;
         }
         for (j = 8; j < 32; j++) {
-            amountdh[j] = (unsigned char)(0x00);
+            amountdh[j] = (std::byte)(0x00);
         }
     }
     

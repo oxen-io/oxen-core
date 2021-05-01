@@ -1089,15 +1089,15 @@ static ons_keys_t make_ons_keys(cryptonote::account_base const &src)
   memcpy(&result.session_value.buffer[0] + 1, &result.owner.wallet.address.m_spend_public_key, result.lokinet_value.len);
 
   auto iter = result.wallet_value.buffer.begin();
-  uint8_t identifier = 0;
+  auto identifier = std::byte{0};
   iter = std::copy_n(&identifier, 1, iter);
-  iter = std::copy_n(src.get_keys().m_account_address.m_spend_public_key.data, sizeof(&src.get_keys().m_account_address.m_spend_public_key.data), iter);
-  iter = std::copy_n(src.get_keys().m_account_address.m_view_public_key.data, sizeof(&src.get_keys().m_account_address.m_view_public_key.data), iter);
+  iter = std::copy_n(src.get_keys().m_account_address.m_spend_public_key.data, sizeof(src.get_keys().m_account_address.m_spend_public_key.data), iter);
+  iter = std::copy_n(src.get_keys().m_account_address.m_view_public_key.data, sizeof(src.get_keys().m_account_address.m_view_public_key.data), iter);
 
   // NOTE: Just needs a 32 byte key. Reuse spend key
   memcpy(&result.lokinet_value.buffer[0], (char *)&result.owner.wallet.address.m_spend_public_key, result.lokinet_value.len);
 
-  result.session_value.buffer[0] = 5; // prefix with 0x05
+  result.session_value.buffer[0] = std::byte{0x05}; // prefix with 0x05
   return result;
 }
 
@@ -2165,8 +2165,8 @@ bool oxen_name_system_update_mapping_multiple_owners::generate(std::vector<test_
     crypto::ed25519_secret_key owner1_key;
     crypto::ed25519_secret_key owner2_key;
 
-    crypto_sign_ed25519_keypair(owner1.ed25519.data, owner1_key.data);
-    crypto_sign_ed25519_keypair(owner2.ed25519.data, owner2_key.data);
+    crypto_sign_ed25519_keypair(owner1.ed25519, owner1_key);
+    crypto_sign_ed25519_keypair(owner2.ed25519, owner2_key);
     owner1.type = ons::generic_owner_sig_type::ed25519;
     owner2.type = ons::generic_owner_sig_type::ed25519;
 
@@ -2294,7 +2294,7 @@ bool oxen_name_system_update_mapping_multiple_owners::generate(std::vector<test_
     ons::generic_owner owner2 = ons::make_monero_owner(account2.get_keys().m_account_address, false /*subaddress*/);
     crypto::ed25519_secret_key owner1_key;
 
-    crypto_sign_ed25519_keypair(owner1.ed25519.data, owner1_key.data);
+    crypto_sign_ed25519_keypair(owner1.ed25519, owner1_key);
     owner1.type = ons::generic_owner_sig_type::ed25519;
 
     std::string name = "hello_driver";
@@ -2354,7 +2354,7 @@ bool oxen_name_system_update_mapping_multiple_owners::generate(std::vector<test_
     ons::generic_owner owner2;
 
     crypto::ed25519_secret_key owner2_key;
-    crypto_sign_ed25519_keypair(owner2.ed25519.data, owner2_key.data);
+    crypto_sign_ed25519_keypair(owner2.ed25519, owner2_key);
     owner2.type = ons::generic_owner_sig_type::ed25519;
 
     std::string name = "hello_passenger";
@@ -3085,8 +3085,7 @@ bool oxen_pulse_non_participating_validator::generate(std::vector<test_event_ent
 
     {
       entry.block.pulse.round = 0;
-      for (size_t i = 0; i < sizeof(entry.block.pulse.random_value.data); i++)
-        entry.block.pulse.random_value.data[i] = static_cast<char>(tools::uniform_distribution_portable(tools::rng, 256));
+      crypto::fill_random(entry.block.pulse.random_value.data);
     }
 
     service_nodes::quorum quorum = {};

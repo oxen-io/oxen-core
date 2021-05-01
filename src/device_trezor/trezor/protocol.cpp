@@ -80,22 +80,6 @@ namespace hw{
 namespace trezor{
 namespace protocol{
 
-  std::string key_to_string(const ::crypto::ec_point & key){
-    return std::string(key.data, sizeof(key.data));
-  }
-
-  std::string key_to_string(const ::crypto::ec_scalar & key){
-    return std::string(key.data, sizeof(key.data));
-  }
-
-  std::string key_to_string(const ::crypto::hash & key){
-    return std::string(key.data, sizeof(key.data));
-  }
-
-  std::string key_to_string(const ::rct::key & key){
-    return std::string(reinterpret_cast<const char*>(key.bytes), sizeof(key.bytes));
-  }
-
   void string_to_key(::crypto::ec_scalar & key, const std::string & str){
     if (str.size() != sizeof(key.data)){
       throw std::invalid_argument(std::string("Key has to have ") + std::to_string(sizeof(key.data)) + " B");
@@ -158,17 +142,17 @@ namespace ki {
       res.emplace_back();
       auto & cres = res.back();
 
-      cres.set_out_key(key_to_string(var::get<cryptonote::txout_to_key>(td.m_tx.vout[td.m_internal_output_index].target).key));
-      cres.set_tx_pub_key(key_to_string(tx_pub_key));
+      cres.set_out_key(tools::copy_guts(var::get<cryptonote::txout_to_key>(td.m_tx.vout[td.m_internal_output_index].target).key));
+      cres.set_tx_pub_key(tools::copy_guts(tx_pub_key));
       cres.set_internal_output_index(td.m_internal_output_index);
       cres.set_sub_addr_major(td.m_subaddr_index.major);
       cres.set_sub_addr_minor(td.m_subaddr_index.minor);
       if (need_all_additionals) {
         for (auto &aux : additional_tx_pub_keys) {
-          cres.add_additional_tx_pub_keys(key_to_string(aux));
+          cres.add_additional_tx_pub_keys(tools::copy_guts(aux));
         }
       } else if (!additional_tx_pub_keys.empty() && additional_tx_pub_keys.size() > td.m_internal_output_index) {
-        cres.add_additional_tx_pub_keys(key_to_string(additional_tx_pub_keys[td.m_internal_output_index]));
+        cres.add_additional_tx_pub_keys(tools::copy_guts(additional_tx_pub_keys[td.m_internal_output_index]));
       }
     }
 
@@ -241,8 +225,7 @@ namespace ki {
                         ::cryptonote::keypair& in_ephemeral,
                         ::crypto::key_image& ki)
   {
-    std::string str_out_key(out_key.data, sizeof(out_key.data));
-    auto enc_key = protocol::tx::compute_enc_key(view_key_priv, str_out_key, ack->salt());
+    auto enc_key = protocol::tx::compute_enc_key(view_key_priv, tools::view_guts(out_key), ack->salt());
 
     const size_t len_ciphertext = ack->key_image().size();  // IV || keys
     CHECK_AND_ASSERT_THROW_MES(len_ciphertext > crypto::chacha::IV_SIZE + crypto::chacha::TAG_SIZE, "Invalid size");
@@ -264,13 +247,13 @@ namespace ki {
     memcpy(sig.c.data, buff + 32, 32);
     memcpy(sig.r.data, buff + 64, 32);
     in_ephemeral.pub = out_key;
-    in_ephemeral.sec = ::crypto::null_skey;
+    in_ephemeral.sec = ::crypto::secret_key::null;
 
     // Verification
     std::vector<const ::crypto::public_key*> pkeys;
     pkeys.push_back(&out_key);
 
-    CHECK_AND_ASSERT_THROW_MES(rct::scalarmultKey(rct::ki2rct(ki), rct::curveOrder()) == rct::identity(),
+    CHECK_AND_ASSERT_THROW_MES(rct::scalarmultKey(rct::ki2rct(ki), rct::key::L) == rct::key::identity,
                                "Key image out of validity domain: key image " << tools::type_to_hex(ki));
 
     CHECK_AND_ASSERT_THROW_MES(::crypto::check_ring_signature((const ::crypto::hash&)ki, ki, pkeys, &sig),
@@ -284,8 +267,8 @@ namespace ki {
 namespace tx {
 
   void translate_address(MoneroAccountPublicAddress * dst, const cryptonote::account_public_address * src){
-    dst->set_view_public_key(key_to_string(src->m_view_public_key));
-    dst->set_spend_public_key(key_to_string(src->m_spend_public_key));
+    dst->set_view_public_key(tools::copy_guts(src->m_view_public_key));
+    dst->set_spend_public_key(tools::copy_guts(src->m_spend_public_key));
   }
 
   void translate_dst_entry(MoneroTransactionDestinationEntry * dst, const cryptonote::tx_destination_entry * src){
@@ -297,15 +280,15 @@ namespace tx {
   }
 
   void translate_klrki(MoneroMultisigKLRki * dst, const rct::multisig_kLRki * src){
-    dst->set_k(key_to_string(src->k));
-    dst->set_l(key_to_string(src->L));
-    dst->set_r(key_to_string(src->R));
-    dst->set_ki(key_to_string(src->ki));
+    dst->set_k(tools::copy_guts(src->k));
+    dst->set_l(tools::copy_guts(src->L));
+    dst->set_r(tools::copy_guts(src->R));
+    dst->set_ki(tools::copy_guts(src->ki));
   }
 
   void translate_rct_key(MoneroRctKey * dst, const rct::ctkey * src){
-    dst->set_dest(key_to_string(src->dest));
-    dst->set_commitment(key_to_string(src->mask));
+    dst->set_dest(tools::copy_guts(src->dest));
+    dst->set_commitment(tools::copy_guts(src->mask));
   }
 
   std::string hash_addr(const MoneroAccountPublicAddress * addr, std::optional<uint64_t> amount, std::optional<bool> is_subaddr){
@@ -344,7 +327,7 @@ namespace tx {
     return std::string(buff, offset);
   }
 
-  ::crypto::secret_key compute_enc_key(const ::crypto::secret_key & private_view_key, const std::string & aux, const std::string & salt)
+  ::crypto::secret_key compute_enc_key(const ::crypto::secret_key & private_view_key, std::string_view aux, std::string_view salt)
   {
     uint8_t hash[32];
     KECCAK_CTX ctx;
@@ -422,11 +405,11 @@ namespace tx {
       ::crypto::hash8 payment_id8{};
       if(cryptonote::get_encrypted_payment_id_from_tx_extra_nonce(extra_nonce.nonce, payment_id8))
       {
-        m_ct.tsx_data.set_payment_id(std::string(payment_id8.data, 8));
+        m_ct.tsx_data.set_payment_id(tools::copy_guts(payment_id8));
       }
       else if (cryptonote::get_payment_id_from_tx_extra_nonce(extra_nonce.nonce, payment_id))
       {
-        m_ct.tsx_data.set_payment_id(std::string(payment_id.data, 32));
+        m_ct.tsx_data.set_payment_id(tools::copy_guts(payment_id));
       }
     }
   }
@@ -488,20 +471,20 @@ namespace tx {
       }
     }
 
-    dst->set_real_out_tx_key(key_to_string(src.real_out_tx_key));
+    dst->set_real_out_tx_key(tools::copy_guts(src.real_out_tx_key));
     dst->set_real_output_in_tx_index(src.real_output_in_tx_index);
 
     if (client_version() <= 1) {
       for (auto &cur : src.real_out_additional_tx_keys) {
-        dst->add_real_out_additional_tx_keys(key_to_string(cur));
+        dst->add_real_out_additional_tx_keys(tools::copy_guts(cur));
       }
     } else if (!src.real_out_additional_tx_keys.empty()) {
-      dst->add_real_out_additional_tx_keys(key_to_string(src.real_out_additional_tx_keys.at(src.real_output_in_tx_index)));
+      dst->add_real_out_additional_tx_keys(tools::copy_guts(src.real_out_additional_tx_keys.at(src.real_output_in_tx_index)));
     }
 
     dst->set_amount(src.amount);
     dst->set_rct(src.rct);
-    dst->set_mask(key_to_string(src.mask));
+    dst->set_mask(tools::copy_guts(src.mask));
     translate_klrki(dst->mutable_multisig_klrki(), &(src.multisig_kLRki));
     dst->set_subaddr_minor(transfer.m_subaddr_index.minor);
   }
@@ -822,7 +805,7 @@ namespace tx {
       CHECK_AND_ASSERT_THROW_MES(bidx < m_ct.tx_out_pk.size(), "Invalid out index");
 
       rct::key commitment = m_ct.tx_out_pk[bidx].mask;
-      commitment = rct::scalarmultKey(commitment, rct::INV_EIGHT);
+      commitment = rct::scalarmultKey(commitment, rct::key::inv_eight);
       bproof.V.push_back(commitment);
     }
 
@@ -873,7 +856,7 @@ namespace tx {
 
     ::crypto::hash tx_prefix_hash{};
     cryptonote::get_transaction_prefix_hash(m_ct.tx, tx_prefix_hash);
-    m_ct.tx_prefix_hash = key_to_string(tx_prefix_hash);
+    m_ct.tx_prefix_hash = tools::copy_guts(tx_prefix_hash);
     if (crypto_verify_32(reinterpret_cast<const unsigned char *>(tx_prefix_hash.data),
         reinterpret_cast<const unsigned char *>(ack->tx_prefix_hash().data()))){
       throw exc::proto::SecurityException("Transaction prefix has does not match to the computed value");
@@ -1113,7 +1096,7 @@ namespace tx {
 
   void get_tx_key_ack(
       std::vector<::crypto::secret_key> & tx_keys,
-      const std::string & tx_prefix_hash,
+      std::string_view tx_prefix_hash,
       const ::crypto::secret_key & view_key_priv,
       std::shared_ptr<const messages::monero::MoneroGetTxKeyAck> ack
   )

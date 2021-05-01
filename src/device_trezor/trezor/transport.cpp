@@ -110,17 +110,17 @@ namespace trezor{
     return patch | (((uint64_t)minor) << bits_2) | (((uint64_t)major) << (bits_1 + bits_2));
   }
 
-  typedef struct {
+  struct trezor_usb_desc_t {
     uint16_t trezor_type;
     uint16_t id_vendor;
     uint16_t id_product;
-  } trezor_usb_desc_t;
+  };
 
-  static trezor_usb_desc_t TREZOR_DESC_T1 = {1, 0x534C, 0x0001};
-  static trezor_usb_desc_t TREZOR_DESC_T2 = {2, 0x1209, 0x53C1};
-  static trezor_usb_desc_t TREZOR_DESC_T2_BL = {3, 0x1209, 0x53C0};
+  static constexpr trezor_usb_desc_t TREZOR_DESC_T1 = {1, 0x534C, 0x0001};
+  static constexpr trezor_usb_desc_t TREZOR_DESC_T2 = {2, 0x1209, 0x53C1};
+  static constexpr trezor_usb_desc_t TREZOR_DESC_T2_BL = {3, 0x1209, 0x53C0};
 
-  static trezor_usb_desc_t TREZOR_DESCS[] = {
+  static constexpr trezor_usb_desc_t TREZOR_DESCS[] = {
       TREZOR_DESC_T1,
       TREZOR_DESC_T2,
       TREZOR_DESC_T2_BL,

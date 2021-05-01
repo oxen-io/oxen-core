@@ -66,22 +66,6 @@ namespace cryptonote {
     virtual bool alt_block_added(const block &block, const std::vector<transaction>& txs, struct checkpoint_t const *checkpoint) = 0;
   };
 
-#pragma pack(push, 1)
-  struct public_address_outer_blob
-  {
-    uint8_t m_ver;
-    account_public_address m_address;
-    uint8_t check_sum;
-  };
-  struct public_integrated_address_outer_blob
-  {
-    uint8_t m_ver;
-    account_public_address m_address;
-    crypto::hash8 payment_id;
-    uint8_t check_sum;
-  };
-#pragma pack (pop)
-
   inline std::string return_first_address(const std::string_view url, const std::vector<std::string> &addresses, bool dnssec_valid)
   {
     if (addresses.empty())
@@ -111,8 +95,6 @@ namespace cryptonote {
   uint64_t block_reward_unpenalized_formula_v7(uint64_t already_generated_coins, uint64_t height);
   uint64_t block_reward_unpenalized_formula_v8(uint64_t height);
   bool get_base_block_reward(size_t median_weight, size_t current_block_weight, uint64_t already_generated_coins, uint64_t &reward, uint64_t &reward_unpenalized, uint8_t version, uint64_t height);
-  uint8_t get_account_address_checksum(const public_address_outer_blob& bl);
-  uint8_t get_account_integrated_address_checksum(const public_integrated_address_outer_blob& bl);
 
   std::string get_account_address_as_str(
       network_type nettype

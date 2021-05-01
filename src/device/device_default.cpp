@@ -38,6 +38,7 @@
 #include "cryptonote_core/cryptonote_tx_utils.h"
 #include "ringct/rctOps.h"
 #include "cryptonote_config.h"
+#include <sodium/crypto_core_ed25519.h>
 #include <sodium/crypto_generichash.h>
 
 namespace hw {
@@ -104,7 +105,7 @@ namespace hw {
         bool  device_default::generate_chacha_key(const cryptonote::account_keys &keys, crypto::chacha_key &key, uint64_t kdf_rounds) {
             const crypto::secret_key &view_key = keys.m_view_secret_key;
             const crypto::secret_key &spend_key = keys.m_spend_secret_key;
-            epee::mlocked<tools::scrubbed_arr<char, sizeof(view_key) + sizeof(spend_key) + 1>> data;
+            epee::mlocked<tools::scrubbed<std::array<char, sizeof(view_key) + sizeof(spend_key) + 1>>> data;
             memcpy(data.data(), &view_key, sizeof(view_key));
             memcpy(data.data() + sizeof(view_key), &spend_key, sizeof(spend_key));
             data[sizeof(data) - 1] = config::HASH_KEY_WALLET;
@@ -229,7 +230,7 @@ namespace hw {
         }
 
         bool device_default::sc_secret_add(crypto::secret_key &r, const crypto::secret_key &a, const crypto::secret_key &b) {
-            sc_add(&r, &a, &b);
+            crypto_core_ed25519_scalar_add(r, a, b);
             return true;
         }
 
@@ -404,8 +405,8 @@ namespace hw {
             return true;
         }
 
-        bool  device_default::clsag_prehash(const std::string &blob, size_t inputs_size, size_t outputs_size, const rct::keyV &hashes, const rct::ctkeyV &outPk, rct::key &prehash) {
-            prehash = rct::cn_fast_hash(hashes);
+        bool  device_default::clsag_prehash(const std::string &blob, size_t inputs_size, size_t outputs_size, const std::array<rct::key, 3>& hashes, const rct::ctkeyV &outPk, rct::key &prehash) {
+            rct::cn_fast_hash(prehash, hashes.data(), hashes.size() * sizeof(hashes[0]));
             return true;
         }
 
@@ -424,10 +425,10 @@ namespace hw {
 
         bool device_default::clsag_sign(const rct::key &c, const rct::key &a, const rct::key &p, const rct::key &z, const rct::key &mu_P, const rct::key &mu_C, rct::key &s) {
             rct::key s0_p_mu_P;
-            sc_mul(s0_p_mu_P.bytes,mu_P.bytes,p.bytes);
+            crypto_core_ed25519_scalar_mul(s0_p_mu_P, mu_P, p);
             rct::key s0_add_z_mu_C;
-            sc_muladd(s0_add_z_mu_C.bytes,mu_C.bytes,z.bytes,s0_p_mu_P.bytes);
-            sc_mulsub(s.bytes,c.bytes,s0_add_z_mu_C.bytes,a.bytes);
+            sc_muladd(s0_add_z_mu_C, mu_C, z, s0_p_mu_P);
+            sc_mulsub(s, c, s0_add_z_mu_C, a);
 
             return true;
         }

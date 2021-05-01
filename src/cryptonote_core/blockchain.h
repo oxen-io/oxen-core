@@ -1115,12 +1115,10 @@ namespace cryptonote
 
     bool load_missing_blocks_into_oxen_subsystems();
 
-    // TODO: evaluate whether or not each of these typedefs are left over from blockchain_storage
-    typedef std::unordered_set<crypto::key_image> key_images_container;
-
-    typedef std::vector<block_extended_info> blocks_container;
-
-    typedef std::unordered_map<crypto::hash, block_extended_info> blocks_ext_by_hash;
+    // TODO: evaluate whether or not each of these aliases are left over from blockchain_storage
+    using key_images_container = std::unordered_set<crypto::key_image>;
+    using blocks_container = std::vector<block_extended_info>;
+    using blocks_ext_by_hash = std::unordered_map<crypto::hash, block_extended_info>;
 
 
     BlockchainDB* m_db;
@@ -1176,7 +1174,7 @@ namespace cryptonote
 
       // NOTE: Cache Invalidation Checks
       uint64_t m_timestamps_and_difficulties_height{0};
-      crypto::hash m_difficulty_for_next_block_top_hash{crypto::null_hash};
+      crypto::hash m_difficulty_for_next_block_top_hash{crypto::hash::null};
       difficulty_type m_difficulty_for_next_miner_block{1};
     } m_cache;
 

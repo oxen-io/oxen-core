@@ -188,7 +188,7 @@ namespace trezor {
         // In the test (debugging mode) we need to leave this field intact as it is already set by
         // the debugging code and need to remain same for the testing purposes.
 #ifndef WITH_TREZOR_DEBUGGING
-        spendkey = crypto::null_skey; // not given
+        spendkey = crypto::secret_key::null; // not given
 #endif
 
         memcpy(viewkey.data, res->watch_key().data(), 32);
@@ -233,7 +233,7 @@ namespace trezor {
         req->set_minor(subaddress->minor);
       }
       if (payment_id){
-        req->set_payment_id(std::string(payment_id->data, 8));
+        req->set_payment_id(payment_id->data, 8);
       }
 
       auto response = this->client_exchange<messages::monero::MoneroAddress>(req);

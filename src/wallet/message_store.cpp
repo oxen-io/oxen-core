@@ -309,13 +309,11 @@ bool message_store::check_auto_config_token(const std::string &raw_token,
   std::replace(hex_digits.begin(), hex_digits.end(), 'l', '1');
 
   // Now it must be correct hex with correct checksum, no further tolerance possible
-  std::string token_bytes;
-  if (!epee::string_tools::parse_hexstr_to_binbuff(hex_digits, token_bytes))
-  {
+  if (!oxenmq::is_hex(hex_digits))
     return false;
-  }
-  const crypto::hash &hash = crypto::cn_fast_hash(token_bytes.data(), token_bytes.size() - 1);
-  if (token_bytes[AUTO_CONFIG_TOKEN_BYTES] != hash.data[0])
+  auto token_bytes = oxenmq::from_hex(hex_digits);
+  auto hash = crypto::cn_fast_hash(token_bytes.data(), token_bytes.size() - 1);
+  if (token_bytes[AUTO_CONFIG_TOKEN_BYTES] != static_cast<char>(hash.data[0]))
   {
     return false;
   }
@@ -326,17 +324,13 @@ bool message_store::check_auto_config_token(const std::string &raw_token,
 // Create a new auto-config token with prefix, random 8-hex digits plus 2 checksum digits
 std::string message_store::create_auto_config_token()
 {
-  unsigned char random[AUTO_CONFIG_TOKEN_BYTES];
-  crypto::rand(AUTO_CONFIG_TOKEN_BYTES, random);
-  std::string token_bytes;
-  token_bytes.append((char *)random, AUTO_CONFIG_TOKEN_BYTES);
+  std::byte random[AUTO_CONFIG_TOKEN_BYTES+1];
+  randombytes_buf(reinterpret_cast<unsigned char*>(random), AUTO_CONFIG_TOKEN_BYTES);
 
   // Add a checksum because technically ANY four bytes are a valid token, and without a checksum we would send
   // auto-config messages "to nowhere" after the slightest typo without knowing it
-  const crypto::hash &hash = crypto::cn_fast_hash(token_bytes.data(), token_bytes.size());
-  token_bytes += hash.data[0];
-  std::string prefix(AUTO_CONFIG_TOKEN_PREFIX);
-  return prefix + oxenmq::to_hex(token_bytes);
+  random[AUTO_CONFIG_TOKEN_BYTES] = crypto::cn_fast_hash(random, AUTO_CONFIG_TOKEN_BYTES).data[0];
+  return AUTO_CONFIG_TOKEN_PREFIX + oxenmq::to_hex(std::begin(random), std::end(random));
 }
 
 // Add a message for sending "me" address data to the auto-config transport address
@@ -402,8 +396,8 @@ void message_store::stop_auto_config()
       m_transporter.delete_transport_address(m.auto_config_transport_address);
     }
     m.auto_config_token.clear();
-    m.auto_config_public_key = crypto::null_pkey;
-    m.auto_config_secret_key = crypto::null_skey;
+    m.auto_config_public_key = crypto::public_key::null;
+    m.auto_config_secret_key = crypto::secret_key::null;
     m.auto_config_transport_address.clear();
     m.auto_config_running = false;
   }  
@@ -533,7 +527,7 @@ size_t message_store::add_message(const multisig_wallet_state &state,
     m.round = 0;
   }
   m.signature_count = 0;  // Future expansion for signature counting when signing txs
-  m.hash = crypto::null_hash;
+  m.hash = crypto::hash::null;
   m_messages.push_back(m);
 
   // Save for every new message right away (at least while in beta)
@@ -701,7 +695,7 @@ void message_store::write_to_file(const multisig_wallet_state &state, const fs::
   file_data write_file_data{};
   write_file_data.magic_string = "MMS";
   write_file_data.file_version = 0;
-  write_file_data.iv = crypto::rand<crypto::chacha_iv>();
+  write_file_data.iv = crypto::random_filled<crypto::chacha_iv>();
   std::string encrypted_data;
   encrypted_data.resize(buf.size());
   crypto::chacha20(buf.data(), buf.size(), key, write_file_data.iv, &encrypted_data[0]);
@@ -1171,7 +1165,7 @@ void message_store::encrypt(crypto::public_key public_key, const std::string &pl
 
   crypto::chacha_key chacha_key;
   crypto::generate_chacha_key(&derivation, sizeof(derivation), chacha_key, 1);
-  iv = crypto::rand<crypto::chacha_iv>();
+  iv = crypto::random_filled<crypto::chacha_iv>();
   ciphertext.resize(plaintext.size());
   crypto::chacha20(plaintext.data(), plaintext.size(), chacha_key, iv, &ciphertext[0]);
 }

@@ -34,8 +34,8 @@
 
 namespace {
 
-const rct::key TESTPOW2SCALAR = {{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}};
-const rct::key TESTSMALLSCALAR = {{5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}};
+constexpr rct::key TESTPOW2SCALAR = rct::key::constant(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+constexpr rct::key TESTSMALLSCALAR = rct::key::constant(5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 struct lazy_init
 {
    rct::key TESTSCALAR = rct::skGen();
@@ -56,20 +56,20 @@ rct::key basic(const std::vector<rct::MultiexpData> &data)
     ge_cached cached;
     ge_p3 p3;
     ge_p1p1 p1;
-    ge_scalarmult_p3(&p3, d.scalar.bytes, &d.point);
+    ge_scalarmult_p3(&p3, d.scalar, &d.point);
     ge_p3_to_cached(&cached, &p3);
     ge_add(&p1, &res_p3, &cached);
     ge_p1p1_to_p3(&res_p3, &p1);
   }
   rct::key res;
-  ge_p3_tobytes(res.bytes, &res_p3);
+  ge_p3_tobytes(res, &res_p3);
   return res;
 }
 
 ge_p3 get_p3(const rct::key &point)
 {
   ge_p3 p3;
-  EXPECT_TRUE(ge_frombytes_vartime(&p3, point.bytes) == 0);
+  EXPECT_TRUE(ge_frombytes_vartime(&p3, point) == 0);
   return p3;
 }
 
@@ -78,28 +78,28 @@ ge_p3 get_p3(const rct::key &point)
 TEST(multiexp, bos_coster_empty)
 {
   std::vector<rct::MultiexpData> data;
-  data.push_back({rct::zero(), get_p3(rct::identity())});
+  data.push_back({rct::key::zero, get_p3(rct::key::identity)});
   ASSERT_TRUE(basic(data) == bos_coster_heap_conv_robust(data));
 }
 
 TEST(multiexp, straus_empty)
 {
   std::vector<rct::MultiexpData> data;
-  data.push_back({rct::zero(), get_p3(rct::identity())});
+  data.push_back({rct::key::zero, get_p3(rct::key::identity)});
   ASSERT_TRUE(basic(data) == straus(data));
 }
 
 TEST(multiexp, pippenger_empty)
 {
   std::vector<rct::MultiexpData> data;
-  data.push_back({rct::zero(), get_p3(rct::identity())});
+  data.push_back({rct::key::zero, get_p3(rct::key::identity)});
   ASSERT_TRUE(basic(data) == pippenger(data));
 }
 
 TEST(multiexp, bos_coster_zero_and_non_zero)
 {
   std::vector<rct::MultiexpData> data;
-  data.push_back({rct::zero(), get_p3(get_context().TESTPOINT)});
+  data.push_back({rct::key::zero, get_p3(get_context().TESTPOINT)});
   data.push_back({get_context().TESTSCALAR, get_p3(get_context().TESTPOINT)});
   ASSERT_TRUE(basic(data) == bos_coster_heap_conv_robust(data));
 }
@@ -107,7 +107,7 @@ TEST(multiexp, bos_coster_zero_and_non_zero)
 TEST(multiexp, straus_zero_and_non_zero)
 {
   std::vector<rct::MultiexpData> data;
-  data.push_back({rct::zero(), get_p3(get_context().TESTPOINT)});
+  data.push_back({rct::key::zero, get_p3(get_context().TESTPOINT)});
   data.push_back({get_context().TESTSCALAR, get_p3(get_context().TESTPOINT)});
   ASSERT_TRUE(basic(data) == straus(data));
 }
@@ -115,7 +115,7 @@ TEST(multiexp, straus_zero_and_non_zero)
 TEST(multiexp, pippenger_zero_and_non_zero)
 {
   std::vector<rct::MultiexpData> data;
-  data.push_back({rct::zero(), get_p3(get_context().TESTPOINT)});
+  data.push_back({rct::key::zero, get_p3(get_context().TESTPOINT)});
   data.push_back({get_context().TESTSCALAR, get_p3(get_context().TESTPOINT)});
   ASSERT_TRUE(basic(data) == pippenger(data));
 }
@@ -148,7 +148,7 @@ TEST(multiexp, bos_coster_only_zeroes)
 {
   std::vector<rct::MultiexpData> data;
   for (int n = 0; n < 16; ++n)
-    data.push_back({rct::zero(), get_p3(get_context().TESTPOINT)});
+    data.push_back({rct::key::zero, get_p3(get_context().TESTPOINT)});
   ASSERT_TRUE(basic(data) == bos_coster_heap_conv_robust(data));
 }
 
@@ -156,7 +156,7 @@ TEST(multiexp, straus_only_zeroes)
 {
   std::vector<rct::MultiexpData> data;
   for (int n = 0; n < 16; ++n)
-    data.push_back({rct::zero(), get_p3(get_context().TESTPOINT)});
+    data.push_back({rct::key::zero, get_p3(get_context().TESTPOINT)});
   ASSERT_TRUE(basic(data) == straus(data));
 }
 
@@ -164,7 +164,7 @@ TEST(multiexp, pippenger_only_zeroes)
 {
   std::vector<rct::MultiexpData> data;
   for (int n = 0; n < 16; ++n)
-    data.push_back({rct::zero(), get_p3(get_context().TESTPOINT)});
+    data.push_back({rct::key::zero, get_p3(get_context().TESTPOINT)});
   ASSERT_TRUE(basic(data) == pippenger(data));
 }
 
@@ -172,7 +172,7 @@ TEST(multiexp, bos_coster_only_identities)
 {
   std::vector<rct::MultiexpData> data;
   for (int n = 0; n < 16; ++n)
-    data.push_back({get_context().TESTSCALAR, get_p3(rct::identity())});
+    data.push_back({get_context().TESTSCALAR, get_p3(rct::key::identity)});
   ASSERT_TRUE(basic(data) == bos_coster_heap_conv_robust(data));
 }
 
@@ -180,7 +180,7 @@ TEST(multiexp, straus_only_identities)
 {
   std::vector<rct::MultiexpData> data;
   for (int n = 0; n < 16; ++n)
-    data.push_back({get_context().TESTSCALAR, get_p3(rct::identity())});
+    data.push_back({get_context().TESTSCALAR, get_p3(rct::key::identity)});
   ASSERT_TRUE(basic(data) == straus(data));
 }
 
@@ -188,7 +188,7 @@ TEST(multiexp, pippenger_only_identities)
 {
   std::vector<rct::MultiexpData> data;
   for (int n = 0; n < 16; ++n)
-    data.push_back({get_context().TESTSCALAR, get_p3(rct::identity())});
+    data.push_back({get_context().TESTSCALAR, get_p3(rct::key::identity)});
   ASSERT_TRUE(basic(data) == pippenger(data));
 }
 
@@ -228,14 +228,14 @@ TEST(multiexp, straus_cached)
   std::vector<rct::MultiexpData> P(N);
   for (size_t n = 0; n < N; ++n)
   {
-    P[n].scalar = rct::zero();
-    ASSERT_TRUE(ge_frombytes_vartime(&P[n].point, rct::scalarmultBase(rct::skGen()).bytes) == 0);
+    P[n].scalar = rct::key::zero;
+    ASSERT_TRUE(ge_frombytes_vartime(&P[n].point, rct::scalarmultBase(rct::skGen())) == 0);
   }
   std::shared_ptr<rct::straus_cached_data> cache = rct::straus_init_cache(P);
   for (size_t n = 0; n < N/16; ++n)
   {
     std::vector<rct::MultiexpData> data;
-    size_t sz = 1 + crypto::rand<size_t>() % (N-1);
+    size_t sz = std::uniform_int_distribution<size_t>{1, N-1}(crypto::rng);
     for (size_t s = 0; s < sz; ++s)
     {
       data.push_back({rct::skGen(), P[s].point});
@@ -250,14 +250,14 @@ TEST(multiexp, pippenger_cached)
   std::vector<rct::MultiexpData> P(N);
   for (size_t n = 0; n < N; ++n)
   {
-    P[n].scalar = rct::zero();
-    ASSERT_TRUE(ge_frombytes_vartime(&P[n].point, rct::scalarmultBase(rct::skGen()).bytes) == 0);
+    P[n].scalar = rct::key::zero;
+    ASSERT_TRUE(ge_frombytes_vartime(&P[n].point, rct::scalarmultBase(rct::skGen())) == 0);
   }
   std::shared_ptr<rct::pippenger_cached_data> cache = rct::pippenger_init_cache(P);
   for (size_t n = 0; n < N/16; ++n)
   {
     std::vector<rct::MultiexpData> data;
-    size_t sz = 1 + crypto::rand<size_t>() % (N-1);
+    size_t sz = std::uniform_int_distribution<size_t>{1, N-1}(crypto::rng);
     for (size_t s = 0; s < sz; ++s)
     {
       data.push_back({rct::skGen(), P[s].point});
@@ -273,14 +273,15 @@ TEST(multiexp, scalarmult_triple)
   rct::key res;
   ge_p3 Gp3;
 
-  ge_frombytes_vartime(&Gp3, rct::G.bytes);
+  ge_frombytes_vartime(&Gp3, rct::key::G);
 
-  static const rct::key scalars[] = {
-    rct::Z,
-    rct::I,
-    rct::L,
-    rct::EIGHT,
-    rct::INV_EIGHT,
+  static constexpr rct::key scalars[] = {
+    rct::key::zero,
+    rct::key::identity,
+    rct::key::L,
+    // eight:
+    rct::key::constant(0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00),
+    rct::key::inv_eight,
   };
   static const ge_p3 points[] = {
     ge_p3_identity,
@@ -310,15 +311,15 @@ TEST(multiexp, scalarmult_triple)
             data[0].point = Gp3;
             data[2].point = points[j];
 
-            ge_triple_scalarmult_base_vartime(&p2, data[0].scalar.bytes, data[1].scalar.bytes, ppre[i], data[2].scalar.bytes, ppre[j]);
-            ge_tobytes(res.bytes, &p2);
+            ge_triple_scalarmult_base_vartime(&p2, data[0].scalar, data[1].scalar, ppre[i], data[2].scalar, ppre[j]);
+            ge_tobytes(res, &p2);
             ASSERT_TRUE(basic(data) == res);
 
             for (size_t k = 0; k < sizeof(points) / sizeof(points[0]); ++k)
             {
               data[0].point = points[k];
-              ge_triple_scalarmult_precomp_vartime(&p2, data[0].scalar.bytes, ppre[k], data[1].scalar.bytes, ppre[i], data[2].scalar.bytes, ppre[j]);
-              ge_tobytes(res.bytes, &p2);
+              ge_triple_scalarmult_precomp_vartime(&p2, data[0].scalar, ppre[k], data[1].scalar, ppre[i], data[2].scalar, ppre[j]);
+              ge_tobytes(res, &p2);
               ASSERT_TRUE(basic(data) == res);
             }
           }

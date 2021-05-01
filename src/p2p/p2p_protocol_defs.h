@@ -44,8 +44,7 @@
 
 namespace nodetool
 {
-  typedef boost::uuids::uuid uuid;
-  typedef uint64_t peerid_type;
+  using peerid_type = uint64_t;
 
   static inline std::string peerid_to_string(peerid_type peer_id)
   {
@@ -84,7 +83,7 @@ namespace nodetool
       KV_SERIALIZE_OPT(rpc_port, (uint16_t)0)
     END_KV_SERIALIZE_MAP()
   };
-  typedef peerlist_entry_base<epee::net_utils::network_address> peerlist_entry;
+  using peerlist_entry = peerlist_entry_base<epee::net_utils::network_address>;
 
   template<typename AddressType>
   struct anchor_peerlist_entry_base
@@ -99,7 +98,7 @@ namespace nodetool
       KV_SERIALIZE(first_seen)
     END_KV_SERIALIZE_MAP()
   };
-  typedef anchor_peerlist_entry_base<epee::net_utils::network_address> anchor_peerlist_entry;
+  using anchor_peerlist_entry = anchor_peerlist_entry_base<epee::net_utils::network_address>;
 
   template<typename AddressType>
   struct connection_entry_base
@@ -114,7 +113,7 @@ namespace nodetool
       KV_SERIALIZE(is_income)
     END_KV_SERIALIZE_MAP()
   };
-  typedef connection_entry_base<epee::net_utils::network_address> connection_entry;
+  using connection_entry = connection_entry_base<epee::net_utils::network_address>;
 
 #pragma pack(pop)
 
@@ -159,7 +158,7 @@ namespace nodetool
 
   struct basic_node_data
   {
-    uuid network_id;                   
+    boost::uuids::uuid network_id;                   
     uint32_t my_port;
     uint16_t rpc_port;
     peerid_type peer_id;

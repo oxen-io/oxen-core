@@ -880,7 +880,7 @@ namespace cryptonote
     {
       std::string keystr;
       bool r = tools::slurp_file(keypath, keystr);
-      memcpy(&unwrap(unwrap(privkey)), keystr.data(), sizeof(privkey));
+      memcpy(privkey.data, keystr.data(), sizeof(privkey));
       memwipe(&keystr[0], keystr.size());
       CHECK_AND_ASSERT_MES(r, false, "failed to load service node key from " + keypath.u8string());
       CHECK_AND_ASSERT_MES(keystr.size() == sizeof(privkey), false,
@@ -929,15 +929,15 @@ namespace cryptonote
     // Ed25519 signing).
     //
     if (!init_key(m_config_folder / "key_ed25519", keys.key_ed25519, keys.pub_ed25519,
-          [](crypto::ed25519_secret_key &sk, crypto::ed25519_public_key &pk) { crypto_sign_ed25519_sk_to_pk(pk.data, sk.data); return true; },
-          [](crypto::ed25519_secret_key &sk, crypto::ed25519_public_key &pk) { crypto_sign_ed25519_keypair(pk.data, sk.data); })
+          [](const crypto::ed25519_secret_key &sk, crypto::ed25519_public_key &pk) { crypto_sign_ed25519_sk_to_pk(pk, sk); return true; },
+          [](crypto::ed25519_secret_key &sk, crypto::ed25519_public_key &pk) { crypto_sign_ed25519_keypair(pk, sk); })
        )
       return false;
 
     // Standard x25519 keys generated from the ed25519 keypair, used for encrypted communication between SNs
-    int rc = crypto_sign_ed25519_pk_to_curve25519(keys.pub_x25519.data, keys.pub_ed25519.data);
+    int rc = crypto_sign_ed25519_pk_to_curve25519(keys.pub_x25519, keys.pub_ed25519);
     CHECK_AND_ASSERT_MES(rc == 0, false, "failed to convert ed25519 pubkey to x25519");
-    crypto_sign_ed25519_sk_to_curve25519(keys.key_x25519.data, keys.key_ed25519.data);
+    crypto_sign_ed25519_sk_to_curve25519(keys.key_x25519, keys.key_ed25519);
 
     // Legacy primary SN key file; we only load this if it exists, otherwise we use `key_ed25519`
     // for the primary SN keypair.  (This key predates the Ed25519 keys and so is needed for
@@ -949,14 +949,14 @@ namespace cryptonote
         epee::wipeable_string privkey_signhash;
         privkey_signhash.resize(crypto_hash_sha512_BYTES);
         unsigned char* pk_sh_data = reinterpret_cast<unsigned char*>(privkey_signhash.data());
-        crypto_hash_sha512(pk_sh_data, keys.key_ed25519.data, 32 /* first 32 bytes are the seed to be SHA512 hashed (the last 32 are just the pubkey) */);
+        crypto_hash_sha512(pk_sh_data, keys.key_ed25519, 32 /* first 32 bytes are the seed to be SHA512 hashed (the last 32 are just the pubkey) */);
         // Clamp private key (as libsodium does and expects -- see https://www.jcraige.com/an-explainer-on-ed25519-clamping if you want the broader reasons)
         pk_sh_data[0] &= 248;
         pk_sh_data[31] &= 63; // (some implementations put 127 here, but with the |64 in the next line it is the same thing)
         pk_sh_data[31] |= 64;
-        // Monero crypto requires a pointless check that the secret key is < basepoint, so calculate
-        // it mod basepoint to make it happy:
-        sc_reduce32(pk_sh_data);
+        // Monero crypto requires a pointless check that the secret key is < L, so calculate
+        // it mod L to make it happy:
+        crypto::ed25519_scalar_reduce32(pk_sh_data);
         std::memcpy(keys.key.data, pk_sh_data, 32);
         if (!crypto::secret_key_to_public_key(keys.key, keys.pub))
           throw std::runtime_error{"Failed to derive primary key from ed25519 key"};
@@ -968,8 +968,8 @@ namespace cryptonote
           }))
         return false;
     } else {
-      keys.key = crypto::null_skey;
-      keys.pub = crypto::null_pkey;
+      keys.key = crypto::secret_key::null;
+      keys.pub = crypto::public_key::null;
     }
 
     if (m_service_node) {
@@ -1660,7 +1660,7 @@ namespace cryptonote
     if(!is_active_sn()) {return true;}
 
     crypto::public_key pubkey = m_service_node_list.get_random_pubkey();
-    crypto::x25519_public_key x_pkey{0};
+    auto x_pkey = crypto::x25519_public_key::null;
     constexpr std::array<uint16_t, 3> MIN_TIMESTAMP_VERSION{9,1,0};
     std::array<uint16_t,3> proofversion;
     m_service_node_list.access_proof(pubkey, [&](auto &proof) {
@@ -1890,7 +1890,7 @@ namespace cryptonote
     for(const auto& in: tx.vin)
     {
       CHECKED_GET_SPECIFIC_VARIANT(in, txin_to_key, tokey_in, false);
-      if (!(rct::scalarmultKey(rct::ki2rct(tokey_in.k_image), rct::curveOrder()) == rct::identity()))
+      if (!(rct::scalarmultKey(rct::ki2rct(tokey_in.k_image), rct::key::L) == rct::key::identity))
         return false;
     }
     return true;
@@ -1985,7 +1985,7 @@ namespace cryptonote
     if (!parse_and_validate_tx_from_blob(tx_blob, tx, tx_hash))
     {
       LOG_ERROR("Failed to parse relayed transaction");
-      return crypto::null_hash;
+      return crypto::hash::null;
     }
     txs.push_back(std::make_pair(tx_hash, std::move(tx_blob)));
     m_mempool.set_relayed(txs);
@@ -2311,7 +2311,7 @@ namespace cryptonote
           return;
 
         auto pubkey = m_service_node_list.get_pubkey_from_x25519(m_service_keys.pub_x25519);
-        if (pubkey != crypto::null_pkey && pubkey != m_service_keys.pub && m_service_node_list.is_service_node(pubkey, false /*don't require active*/))
+        if (pubkey && pubkey != m_service_keys.pub && m_service_node_list.is_service_node(pubkey, false /*don't require active*/))
         {
           MGINFO_RED(
               "Failed to submit uptime proof: another service node on the network is using the same ed/x25519 keys as "
@@ -2423,15 +2423,14 @@ namespace cryptonote
     HardFork::State state = m_blockchain_storage.get_hard_fork_state();
     const el::Level level = el::Level::Warning;
     switch (state) {
-      case HardFork::LikelyForked:
+        case HardFork::State::LikelyForked:
         MCLOG_RED(level, "global", "**********************************************************************");
         MCLOG_RED(level, "global", "Last scheduled hard fork is too far in the past.");
         MCLOG_RED(level, "global", "We are most likely forked from the network. Daemon update needed now.");
         MCLOG_RED(level, "global", "**********************************************************************");
         break;
-      case HardFork::UpdateNeeded:
-        break;
-      default:
+      case HardFork::State::UpdateNeeded:
+      case HardFork::State::Ready:
         break;
     }
     return true;

@@ -86,10 +86,15 @@ enum struct mapping_record_column
   _count,
 };
 
-static constexpr unsigned char OLD_ENCRYPTION_NONCE[crypto_secretbox_NONCEBYTES] = {};
-std::pair<std::basic_string_view<unsigned char>, std::basic_string_view<unsigned char>> ons::mapping_value::value_nonce(mapping_type type) const
+using byte_view = std::basic_string_view<std::byte>;
+// Makes a byte view from a string
+byte_view as_byte_view(std::string_view x) { return {reinterpret_cast<const std::byte*>(x.data()), x.size()}; }
+
+
+static constexpr std::byte OLD_ENCRYPTION_NONCE[crypto_secretbox_NONCEBYTES] = {};
+std::pair<byte_view, byte_view> ons::mapping_value::value_nonce(mapping_type type) const
 {
-  std::pair<std::basic_string_view<unsigned char>, std::basic_string_view<unsigned char>> result;
+  std::pair<byte_view, byte_view> result;
   auto& [head, tail] = result;
   head = {buffer.data(), len};
   if ((type == mapping_type::session && len != SESSION_PUBLIC_KEY_BINARY_LENGTH + crypto_aead_xchacha20poly1305_ietf_ABYTES + crypto_aead_xchacha20poly1305_ietf_NPUBBYTES)
@@ -206,22 +211,10 @@ bool bind(sql_compiled_statement& s, int index, std::string&& text)
 }
 */
 
-// Simple decorator around a string_view so that you can pass a blob into `bind` by wrapping it
-// with a `blob_view` such as:
-//
-// bind(s, 123, blob_view{data, size});
-// auto data = get<blob_view>(s, 2);
-//
-struct blob_view {
-  std::string_view data;
-  /// Constructor that simply forwards anything to the `data` (string_view) member constructor
-  template <typename... T> explicit blob_view(T&&... args) : data{std::forward<T>(args)...} {}
-};
-
-// Binds a blob wrapped in a blob_view decorator
-bool bind(sql_compiled_statement& s, int index, blob_view blob)
+// Binds a blob from a basic_string_view<std::byte>
+bool bind(sql_compiled_statement& s, int index, byte_view blob)
 {
-  return SQLITE_OK == sqlite3_bind_blob(s.statement, index, blob.data.data(), blob.data.size(), nullptr /*dtor*/);
+  return SQLITE_OK == sqlite3_bind_blob(s.statement, index, blob.data(), blob.size(), nullptr /*dtor*/);
 }
 
 // Binds a variant of bindable types; calls one of the above according to the contained type
@@ -314,12 +307,12 @@ std::string get(sql_compiled_statement& s, int index)
           static_cast<size_t>(sqlite3_column_bytes(s.statement, index))};
 }
 
-// blob_view pointing at the blob data
-template <typename T, std::enable_if_t<std::is_same_v<T, blob_view>, int> = 0>
-blob_view get(sql_compiled_statement& s, int index)
+// byte_view pointing at the blob data
+template <typename T, std::enable_if_t<std::is_same_v<T, byte_view>, int> = 0>
+byte_view get(sql_compiled_statement& s, int index)
 {
-  return blob_view{
-    reinterpret_cast<const char*>(sqlite3_column_blob(s.statement, index)),
+  return byte_view{
+    reinterpret_cast<const std::byte*>(sqlite3_column_blob(s.statement, index)),
     static_cast<size_t>(sqlite3_column_bytes(s.statement, index))};
 }
 
@@ -354,15 +347,15 @@ template <typename I>
 bool sql_copy_blob(sql_compiled_statement& statement, I column, void *dest, size_t dest_size)
 {
 
-  auto blob = get<blob_view>(statement, column);
-  if (blob.data.size() != dest_size)
+  auto blob = get<byte_view>(statement, column);
+  if (blob.size() != dest_size)
   {
-    LOG_PRINT_L0("Unexpected blob size=" << blob.data.size() << ", in ONS DB does not match expected size=" << dest_size);
-    assert(blob.data.size() == dest_size);
+    LOG_PRINT_L0("Unexpected blob size=" << blob.size() << ", in ONS DB does not match expected size=" << dest_size);
+    assert(blob.size() == dest_size);
     return false;
   }
 
-  std::memcpy(dest, blob.data.data(), blob.data.size());
+  std::memcpy(dest, blob.data(), blob.size());
   return true;
 }
 
@@ -672,7 +665,7 @@ ons::generic_signature make_ed25519_signature(crypto::hash const &hash, crypto::
 {
   ons::generic_signature result = {};
   result.type                   = ons::generic_owner_sig_type::ed25519;
-  crypto_sign_detached(result.ed25519.data, NULL, reinterpret_cast<unsigned char const *>(hash.data), sizeof(hash), skey.data);
+  crypto_sign_detached(result.ed25519, nullptr, hash, sizeof(hash), skey);
   return result;
 }
 
@@ -919,7 +912,7 @@ bool mapping_value::validate(cryptonote::network_type nettype, mapping_type type
     if (blob)
     {
       auto iter = blob->buffer.begin();
-      uint8_t identifier = 0;
+      auto identifier = std::byte{0};
       if (addr_info.is_subaddress) {
         identifier |= ONS_WALLET_TYPE_SUBADDRESS;
       } else if (addr_info.has_payment_id) {
@@ -930,7 +923,7 @@ bool mapping_value::validate(cryptonote::network_type nettype, mapping_type type
       iter = std::copy_n(addr_info.address.m_view_public_key.data, sizeof(addr_info.address.m_view_public_key.data), iter);
 
       size_t counter = 65;
-      assert(std::distance(blob->buffer.begin(), iter) == counter);
+      assert((size_t)std::distance(blob->buffer.begin(), iter) == counter);
       if (addr_info.has_payment_id) {
         std::copy_n(addr_info.payment_id.data, sizeof(addr_info.payment_id.data), iter);
         counter+=sizeof(addr_info.payment_id);
@@ -1028,15 +1021,19 @@ bool mapping_value::validate_encrypted(mapping_type type, std::string_view value
 }
 
 
-mapping_value::mapping_value(std::string encrypted_value, std::string nonce): buffer{0}
+mapping_value::mapping_value(std::string_view encrypted_value, std::string_view nonce)
 {
-  auto it = std::copy(encrypted_value.begin(), encrypted_value.end(), buffer.begin());
-  std::copy(nonce.begin(), nonce.end(), it);
   len = encrypted_value.size() + nonce.size();
+  if (len > buffer.size())
+    throw std::runtime_error{"Invalid encrypted value: too long (" +
+      std::to_string(len) + " > " + std::to_string(buffer.size()) + ")"};
+
+  auto ev = as_byte_view(encrypted_value);
+  auto nc = as_byte_view(nonce);
+  auto it = std::copy(ev.begin(), ev.end(), buffer.begin());
+  std::copy(nc.begin(), nc.end(), it);
   encrypted = true;
 }
-
-mapping_value::mapping_value() : buffer{0},encrypted(false),len(0){}
 
 std::string name_hash_bytes_to_base64(std::string_view bytes)
 {
@@ -1074,7 +1071,7 @@ static bool verify_ons_signature(crypto::hash const &hash, ons::generic_signatur
   }
   else
   {
-    return (crypto_sign_verify_detached(signature.data, reinterpret_cast<unsigned char const *>(hash.data), sizeof(hash.data), owner.ed25519.data) == 0);
+    return (crypto_sign_verify_detached(signature.ed25519, hash, sizeof(hash), owner.ed25519) == 0);
   }
 }
 
@@ -1083,7 +1080,7 @@ static bool validate_against_previous_mapping(ons::name_system_db &ons_db, uint6
   std::stringstream err_stream;
   OXEN_DEFER { if (reason && reason->empty()) *reason = err_stream.str(); };
 
-  crypto::hash expected_prev_txid = crypto::null_hash;
+  crypto::hash expected_prev_txid = crypto::hash::null;
   std::string name_hash           = hash_to_base64(ons_extra.name_hash);
   ons::mapping_record mapping     = ons_db.get_mapping(ons_extra.type, name_hash);
 
@@ -1237,7 +1234,7 @@ bool name_system_db::validate_ons_tx(uint8_t hf_version, uint64_t blockchain_hei
   // ONS Field(s) Validation
   // -----------------------------------------------------------------------------------------------
   {
-    if (check_condition((ons_extra.name_hash == null_name_hash || ons_extra.name_hash == crypto::null_hash), reason, tx, ", ", ons_extra_string(nettype, ons_extra), " specified the null name hash"))
+    if (check_condition((ons_extra.name_hash == null_name_hash || !ons_extra.name_hash), reason, tx, ", ", ons_extra_string(nettype, ons_extra), " specified the null name hash"))
         return false;
 
     if (ons_extra.field_is_set(ons::extra_field::encrypted_value))
@@ -1410,9 +1407,9 @@ bool mapping_value::encrypt(std::string_view name, const crypto::hash* name_hash
   {
     if (name_to_encryption_key_argon2(name, skey))
       encrypted = (crypto_secretbox_easy(
-            enc_buffer.data(),
-            buffer.data(), len,
-            OLD_ENCRYPTION_NONCE,
+            reinterpret_cast<unsigned char*>(enc_buffer.data()),
+            reinterpret_cast<const unsigned char*>(buffer.data()), len,
+            reinterpret_cast<const unsigned char*>(OLD_ENCRYPTION_NONCE),
             skey.data) == 0);
   }
   else
@@ -1421,12 +1418,12 @@ bool mapping_value::encrypt(std::string_view name, const crypto::hash* name_hash
     unsigned long long actual_length;
 
     // Create a random nonce:
-    auto* nonce = &enc_buffer[encryption_len - crypto_aead_xchacha20poly1305_ietf_NPUBBYTES];
+    auto* nonce = reinterpret_cast<unsigned char*>(&enc_buffer[encryption_len - crypto_aead_xchacha20poly1305_ietf_NPUBBYTES]);
     randombytes_buf(nonce, crypto_aead_xchacha20poly1305_ietf_NPUBBYTES);
 
     encrypted = 0 == crypto_aead_xchacha20poly1305_ietf_encrypt(
-        &enc_buffer[0], &actual_length,
-        &buffer[0], len,
+        reinterpret_cast<unsigned char*>(enc_buffer.data()), &actual_length,
+        reinterpret_cast<const unsigned char*>(buffer.data()), len,
         nullptr, 0, // additional data
         nullptr, // nsec, always nullptr according to libsodium docs (just here for API compat)
         nonce,
@@ -1460,7 +1457,12 @@ bool mapping_value::decrypt(std::string_view name, mapping_type type, const cryp
   {
     dec_length = SESSION_PUBLIC_KEY_BINARY_LENGTH;
     encrypted = !(name_to_encryption_key_argon2(name, skey) &&
-        0 == crypto_secretbox_open_easy(dec_buffer.data(), buffer.data(), len, OLD_ENCRYPTION_NONCE, skey.data));
+        0 == crypto_secretbox_open_easy(
+            reinterpret_cast<unsigned char*>(dec_buffer.data()),
+            reinterpret_cast<const unsigned char*>(buffer.data()),
+            len,
+            reinterpret_cast<const unsigned char*>(OLD_ENCRYPTION_NONCE),
+            skey.data));
   }
   else
   {
@@ -1491,11 +1493,11 @@ bool mapping_value::decrypt(std::string_view name, mapping_type type, const cryp
     name_to_encryption_key(name, name_hash, skey);
     unsigned long long actual_length;
     encrypted = !(0 == crypto_aead_xchacha20poly1305_ietf_decrypt(
-          dec_buffer.data(), &actual_length,
+          reinterpret_cast<unsigned char*>(dec_buffer.data()), &actual_length,
           nullptr, // nsec (always null for this algo)
-          enc.data(), enc.size(),
+          reinterpret_cast<const unsigned char*>(enc.data()), enc.size(),
           nullptr, 0, // additional data
-          nonce.data(),
+          reinterpret_cast<const unsigned char*>(nonce.data()),
           skey.data));
 
     if (!encrypted) assert(actual_length == dec_length);
@@ -1530,7 +1532,7 @@ std::optional<cryptonote::address_parse_info> mapping_value::get_wallet_address_
   assert(!encrypted);
   if (encrypted) return std::nullopt;
 
-  cryptonote::address_parse_info addr_info{0};
+  cryptonote::address_parse_info addr_info{};
   auto* bufpos = &buffer[1];
   std::memcpy(&addr_info.address.m_spend_public_key.data, bufpos, 32);
   bufpos += 32;
@@ -1938,7 +1940,7 @@ std::optional<int64_t> add_or_get_owner_id(ons::name_system_db &ons_db, crypto::
 
 // Build a query and bind values that will create a new row at the given height by copying the
 // current highest-height row values and/or updating the given update fields.
-using update_variant = std::variant<uint16_t, int64_t, uint64_t, blob_view, std::string>;
+using update_variant = std::variant<uint16_t, int64_t, uint64_t, byte_view, std::string>;
 std::pair<std::string, std::vector<update_variant>> update_record_query(name_system_db& ons_db, uint64_t height, const cryptonote::tx_extra_oxen_name_system& entry, const crypto::hash& tx_hash)
 {
   assert(entry.is_updating() || entry.is_renewing());
@@ -1951,7 +1953,7 @@ std::pair<std::string, std::vector<update_variant>> update_record_query(name_sys
 INSERT INTO "mappings" ("type", "name_hash", "txid", "update_height", "expiration_height", "owner_id", "backup_owner_id", "encrypted_value")
 SELECT                  "type", "name_hash", ?,      ?)";
 
-  bind.emplace_back(blob_view{tx_hash.data, sizeof(tx_hash)});
+  bind.emplace_back(byte_view{tx_hash.data, sizeof(tx_hash)});
   bind.emplace_back(height);
 
   constexpr auto suffix = R"(
@@ -2002,7 +2004,7 @@ FROM "mappings" WHERE "type" = ? AND "name_hash" = ? ORDER BY "update_height" DE
     if (entry.field_is_set(ons::extra_field::encrypted_value))
     {
       sql += ", ?";
-      bind.emplace_back(blob_view{entry.encrypted_value});
+      bind.push_back(as_byte_view(entry.encrypted_value));
     }
     else
       sql += R"(, "encrypted_value")";
@@ -2168,7 +2170,7 @@ void name_system_db::block_detach(cryptonote::Blockchain const &blockchain, uint
 bool name_system_db::save_owner(ons::generic_owner const &owner, int64_t *row_id)
 {
   bool result = bind_and_run(ons_sql_type::save_owner, save_owner_sql, nullptr,
-      blob_view{reinterpret_cast<const char*>(&owner), sizeof(owner)});
+      byte_view{reinterpret_cast<const std::byte*>(&owner), sizeof(owner)});
 
   if (row_id) *row_id = sqlite3_last_insert_rowid(db);
   return result;
@@ -2184,8 +2186,8 @@ bool name_system_db::save_mapping(crypto::hash const &tx_hash, cryptonote::tx_ex
   clear_bindings(statement);
   bind(statement, mapping_record_column::type, db_mapping_type(src.type));
   bind(statement, mapping_record_column::name_hash, name_hash);
-  bind(statement, mapping_record_column::encrypted_value, blob_view{src.encrypted_value});
-  bind(statement, mapping_record_column::txid, blob_view{tx_hash.data, sizeof(tx_hash)});
+  bind(statement, mapping_record_column::encrypted_value, as_byte_view(src.encrypted_value));
+  bind(statement, mapping_record_column::txid, byte_view{tx_hash.data, sizeof(tx_hash)});
   bind(statement, mapping_record_column::update_height, height);
   bind(statement, mapping_record_column::expiration_height, expiration);
   bind(statement, mapping_record_column::owner_id, owner_id);
@@ -2199,7 +2201,7 @@ bool name_system_db::save_settings(uint64_t top_height, crypto::hash const &top_
 {
   auto& statement = save_settings_sql;
   bind(statement, ons_db_setting_column::top_height, top_height);
-  bind(statement, ons_db_setting_column::top_hash, blob_view{top_hash.data, sizeof(top_hash)});
+  bind(statement, ons_db_setting_column::top_hash, byte_view{top_hash.data, sizeof(top_hash)});
   bind(statement, ons_db_setting_column::version, version);
   bool result = sql_run_statement(ons_sql_type::save_setting, statement, nullptr);
   return result;
@@ -2218,7 +2220,7 @@ owner_record name_system_db::get_owner_by_key(ons::generic_owner const &owner)
 {
   owner_record result = {};
   result.loaded       = bind_and_run(ons_sql_type::get_owner, get_owner_by_key_sql, &result,
-      blob_view{reinterpret_cast<const char*>(&owner), sizeof(owner)});
+      byte_view{reinterpret_cast<const std::byte*>(&owner), sizeof(owner)});
   return result;
 }
 
@@ -2266,13 +2268,13 @@ std::optional<mapping_value> name_system_db::resolve(mapping_type type, std::str
   bind_all(resolve_sql, db_mapping_type(type), name_hash_b64, blockchain_height);
   if (step(resolve_sql) == SQLITE_ROW)
   {
-    if (auto blob = get<std::optional<blob_view>>(resolve_sql, 0))
+    if (auto blob = get<std::optional<byte_view>>(resolve_sql, 0))
     {
       auto& r = result.emplace();
-      assert(blob->data.size() <= r.buffer.size());
-      r.len = blob->data.size();
+      assert(blob->size() <= r.buffer.size());
+      r.len = blob->size();
       r.encrypted = true;
-      std::copy(blob->data.begin(), blob->data.end(), r.buffer.begin());
+      std::copy(blob->begin(), blob->end(), r.buffer.begin());
     }
   }
   reset(resolve_sql);
@@ -2332,7 +2334,7 @@ std::vector<mapping_record> name_system_db::get_mappings(std::vector<mapping_typ
 std::vector<mapping_record> name_system_db::get_mappings_by_owners(std::vector<generic_owner> const &owners, std::optional<uint64_t> blockchain_height)
 {
   std::string sql_statement;
-  std::vector<std::variant<blob_view, uint64_t>> bind;
+  std::vector<std::variant<byte_view, uint64_t>> bind;
   // Generate string statement
   {
     constexpr auto SQL_WHERE_OWNER = R"(WHERE ("o1"."address" IN ()"sv;
@@ -2357,7 +2359,7 @@ std::vector<mapping_record> name_system_db::get_mappings_by_owners(std::vector<g
 
     for (int i : {0, 1})
       for (auto const &owner : owners)
-        bind.emplace_back(blob_view{reinterpret_cast<const char*>(&owner), sizeof(owner)});
+        bind.emplace_back(byte_view{reinterpret_cast<const std::byte*>(&owner), sizeof(owner)});
   }
 
   if (blockchain_height)
@@ -2384,7 +2386,7 @@ std::vector<mapping_record> name_system_db::get_mappings_by_owners(std::vector<g
 std::vector<mapping_record> name_system_db::get_mappings_by_owner(generic_owner const &owner, std::optional<uint64_t> blockchain_height)
 {
   std::vector<mapping_record> result = {};
-  blob_view ownerblob{reinterpret_cast<const char*>(&owner), sizeof(owner)};
+  byte_view ownerblob{reinterpret_cast<const std::byte*>(&owner), sizeof(owner)};
   bind_and_run(ons_sql_type::get_mappings_by_owner, get_mappings_by_owner_sql, &result,
       ownerblob, ownerblob);
   if (blockchain_height)

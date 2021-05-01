@@ -101,12 +101,12 @@ namespace hw {
       size_t m_max_substep;
     };
 
-    typedef struct {
+    struct tx_key_data_t {
       std::string salt1;
       std::string salt2;
       std::string tx_enc_keys;
       std::string tx_prefix_hash;
-    } tx_key_data_t;
+    };
 
     /**
      * Key image sync with the cold protocol.

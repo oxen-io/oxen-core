@@ -143,7 +143,7 @@ int check_flush(cryptonote::core &core, std::vector<block_complete_entry> &block
     if (!parse_and_validate_block_from_blob(b.block, block))
     {
       MERROR("Failed to parse block: "
-          << tools::type_to_hex(get_blob_hash(b.block)));
+          << tools::type_to_hex(crypto::cn_fast_hash(b.block)));
       core.cleanup_handle_incoming_blocks();
       return 1;
     }
@@ -176,7 +176,7 @@ int check_flush(cryptonote::core &core, std::vector<block_complete_entry> &block
       if(tvc.m_verifivation_failed)
       {
         MERROR("transaction verification failed, tx_id = "
-            << tools::type_to_hex(get_blob_hash(tx_blob)));
+            << tools::type_to_hex(crypto::cn_fast_hash(tx_blob)));
         core.cleanup_handle_incoming_blocks();
         return 1;
       }
@@ -191,7 +191,7 @@ int check_flush(cryptonote::core &core, std::vector<block_complete_entry> &block
     if(bvc.m_verifivation_failed)
     {
       MERROR("Block verification failed, id = "
-          << tools::type_to_hex(get_blob_hash(block_entry.block)));
+          << tools::type_to_hex(crypto::cn_fast_hash(block_entry.block)));
       core.cleanup_handle_incoming_blocks();
       return 1;
     }

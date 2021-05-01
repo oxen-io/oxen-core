@@ -38,14 +38,7 @@
 #include "wallet/tx_construction_data.h"
 #include "wallet/tx_sets.h"
 
-namespace hw{
-namespace trezor{
-namespace protocol{
-
-  std::string key_to_string(const ::crypto::ec_point & key);
-  std::string key_to_string(const ::crypto::ec_scalar & key);
-  std::string key_to_string(const ::crypto::hash & key);
-  std::string key_to_string(const ::rct::key & key);
+namespace hw::trezor::protocol {
 
   void string_to_key(::crypto::ec_scalar & key, const std::string & str);
   void string_to_key(::crypto::ec_point & key, const std::string & str);
@@ -158,7 +151,7 @@ namespace tx {
   std::string hash_addr(const MoneroAccountPublicAddress * addr, std::optional<uint64_t> amount = std::nullopt, std::optional<bool> is_subaddr = std::nullopt);
   std::string hash_addr(const std::string & spend_key, const std::string & view_key, std::optional<uint64_t> amount = std::nullopt, std::optional<bool> is_subaddr = std::nullopt);
   std::string hash_addr(const ::crypto::public_key * spend_key, const ::crypto::public_key * view_key, std::optional<uint64_t> amount = std::nullopt, std::optional<bool> is_subaddr = std::nullopt);
-  ::crypto::secret_key compute_enc_key(const ::crypto::secret_key & private_view_key, const std::string & aux, const std::string & salt);
+  ::crypto::secret_key compute_enc_key(const ::crypto::secret_key& private_view_key, std::string_view aux, std::string_view salt);
   std::string compute_sealing_key(const std::string & master_key, size_t idx, bool is_iv=false);
 
   using rsig_v = std::variant<rct::rangeSig, rct::Bulletproof>;
@@ -329,14 +322,12 @@ namespace tx {
 
   void get_tx_key_ack(
       std::vector<::crypto::secret_key> & tx_keys,
-      const std::string & tx_prefix_hash,
+      std::string_view tx_prefix_hash,
       const ::crypto::secret_key & view_key_priv,
       std::shared_ptr<const messages::monero::MoneroGetTxKeyAck> ack
   );
 }
 
-}
-}
 }
 
 

@@ -132,8 +132,8 @@ TEST(hardfork, empty_hardforks_success)
 
   ASSERT_NO_THROW(hf.add_fork(1, 0, 0));
   hf.init();
-  ASSERT_TRUE(hf.get_state(time(NULL)) == HardFork::Ready);
-  ASSERT_TRUE(hf.get_state(time(NULL) + 3600*24*400) == HardFork::Ready);
+  ASSERT_TRUE(hf.get_state(time(NULL)) == HardFork::State::Ready);
+  ASSERT_TRUE(hf.get_state(time(NULL) + 3600*24*400) == HardFork::State::Ready);
 
   for (uint64_t h = 0; h <= 10; ++h) {
     db.add_block(mkblock(hf, h, 1), 0, 0, 0, 0, 0, crypto::hash());
@@ -219,19 +219,19 @@ TEST(hardfork, states_success)
   ASSERT_NO_THROW(hf.add_fork(1, 0, 0));
   ASSERT_NO_THROW(hf.add_fork(2, BLOCKS_PER_YEAR, SECONDS_PER_YEAR));
 
-  ASSERT_TRUE(hf.get_state(0) == HardFork::Ready);
-  ASSERT_TRUE(hf.get_state(SECONDS_PER_YEAR / 2) == HardFork::Ready);
-  ASSERT_TRUE(hf.get_state(SECONDS_PER_YEAR + HardFork::DEFAULT_UPDATE_TIME / 2) == HardFork::Ready);
-  ASSERT_TRUE(hf.get_state(SECONDS_PER_YEAR + (HardFork::DEFAULT_UPDATE_TIME + HardFork::DEFAULT_FORKED_TIME) / 2) == HardFork::UpdateNeeded);
-  ASSERT_TRUE(hf.get_state(SECONDS_PER_YEAR + HardFork::DEFAULT_FORKED_TIME * 2) == HardFork::LikelyForked);
+  ASSERT_TRUE(hf.get_state(0) == HardFork::State::Ready);
+  ASSERT_TRUE(hf.get_state(SECONDS_PER_YEAR / 2) == HardFork::State::Ready);
+  ASSERT_TRUE(hf.get_state(SECONDS_PER_YEAR + HardFork::DEFAULT_UPDATE_TIME / 2) == HardFork::State::Ready);
+  ASSERT_TRUE(hf.get_state(SECONDS_PER_YEAR + (HardFork::DEFAULT_UPDATE_TIME + HardFork::DEFAULT_FORKED_TIME) / 2) == HardFork::State::UpdateNeeded);
+  ASSERT_TRUE(hf.get_state(SECONDS_PER_YEAR + HardFork::DEFAULT_FORKED_TIME * 2) == HardFork::State::LikelyForked);
 
   ASSERT_NO_THROW(hf.add_fork(3, BLOCKS_PER_YEAR * 5, SECONDS_PER_YEAR * 5));
 
-  ASSERT_TRUE(hf.get_state(0) == HardFork::Ready);
-  ASSERT_TRUE(hf.get_state(SECONDS_PER_YEAR / 2) == HardFork::Ready);
-  ASSERT_TRUE(hf.get_state(SECONDS_PER_YEAR + HardFork::DEFAULT_UPDATE_TIME / 2) == HardFork::Ready);
-  ASSERT_TRUE(hf.get_state(SECONDS_PER_YEAR + (HardFork::DEFAULT_UPDATE_TIME + HardFork::DEFAULT_FORKED_TIME) / 2) == HardFork::Ready);
-  ASSERT_TRUE(hf.get_state(SECONDS_PER_YEAR + HardFork::DEFAULT_FORKED_TIME * 2) == HardFork::Ready);
+  ASSERT_TRUE(hf.get_state(0) == HardFork::State::Ready);
+  ASSERT_TRUE(hf.get_state(SECONDS_PER_YEAR / 2) == HardFork::State::Ready);
+  ASSERT_TRUE(hf.get_state(SECONDS_PER_YEAR + HardFork::DEFAULT_UPDATE_TIME / 2) == HardFork::State::Ready);
+  ASSERT_TRUE(hf.get_state(SECONDS_PER_YEAR + (HardFork::DEFAULT_UPDATE_TIME + HardFork::DEFAULT_FORKED_TIME) / 2) == HardFork::State::Ready);
+  ASSERT_TRUE(hf.get_state(SECONDS_PER_YEAR + HardFork::DEFAULT_FORKED_TIME * 2) == HardFork::State::Ready);
 }
 
 TEST(hardfork, steps_asap_success)

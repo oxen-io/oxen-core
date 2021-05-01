@@ -43,7 +43,6 @@
 #include <boost/lexical_cast.hpp>
 #include <boost/algorithm/string/predicate.hpp>
 #include "storages/parserse_base_utils.h"
-#include "hex.h"
 #include "mlocker.h"
 #include "span.h"
 #include "warnings.h"
@@ -60,36 +59,6 @@ using namespace std::literals;
 
 namespace string_tools
 {
-  //----------------------------------------------------------------------------
-  inline bool parse_hexstr_to_binbuff(const epee::span<const char> s, epee::span<char>& res)
-  {
-      if (s.size() != res.size() * 2)
-        return false;
-
-      unsigned char *dst = (unsigned char *)&res[0];
-      const unsigned char *src = (const unsigned char *)s.data();
-      for(size_t i = 0; i < s.size(); i += 2)
-      {
-        int tmp = *src++;
-        tmp = epee::misc_utils::parse::isx[tmp];
-        if (tmp == 0xff) return false;
-        int t2 = *src++;
-        t2 = epee::misc_utils::parse::isx[t2];
-        if (t2 == 0xff) return false;
-        *dst++ = (tmp << 4) | t2;
-      }
-
-      return true;
-  }
-  //----------------------------------------------------------------------------
-  inline bool parse_hexstr_to_binbuff(const std::string& s, std::string& res)
-  {
-    if (s.size() & 1)
-      return false;
-    res.resize(s.size() / 2);
-    epee::span<char> rspan((char*)&res[0], res.size());
-    return parse_hexstr_to_binbuff(epee::to_span(s), rspan);
-  }
   //----------------------------------------------------------------------------
 PUSH_WARNINGS
 DISABLE_GCC_WARNING(maybe-uninitialized)

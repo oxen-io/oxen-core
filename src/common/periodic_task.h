@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <atomic>
+#include <random>
 #include "crypto/crypto.h"
 
 namespace tools
@@ -19,7 +20,8 @@ class periodic_task
       , m_last_worked_time{std::chrono::steady_clock::now()}
       , m_trigger_now{start_immediately}
       , m_random_delay_interval{random_delay_interval}
-      , m_next_delay{std::chrono::microseconds(crypto::rand_range(m_random_delay_interval.first, m_random_delay_interval.second))}
+      , m_next_delay{std::chrono::microseconds{std::uniform_int_distribution{
+          m_random_delay_interval.first, m_random_delay_interval.second}(crypto::rng)}}
       {}
 
   template <class functor_t>
@@ -30,7 +32,8 @@ class periodic_task
       functr();
       m_last_worked_time = std::chrono::steady_clock::now();
       m_trigger_now = false;
-      m_next_delay = std::chrono::microseconds(crypto::rand_range(m_random_delay_interval.first, m_random_delay_interval.second));
+      m_next_delay = std::chrono::microseconds{std::uniform_int_distribution{
+          m_random_delay_interval.first, m_random_delay_interval.second}(crypto::rng)};
     }
   }
 
@@ -48,4 +51,5 @@ private:
   std::pair<int, int> m_random_delay_interval;
   std::chrono::microseconds m_next_delay;
 };
-};
+
+}

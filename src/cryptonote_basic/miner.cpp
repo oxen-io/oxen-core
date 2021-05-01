@@ -99,7 +99,7 @@ namespace cryptonote
     m_height = height;
     m_block_reward = block_reward;
     ++m_template_no;
-    m_starter_nonce = crypto::rand<uint32_t>();
+    m_starter_nonce = crypto::random_filled<uint32_t>();
     return true;
   }
   //-----------------------------------------------------------------------------------------------------
@@ -321,7 +321,7 @@ namespace cryptonote
       m_threads_autodetect.push_back({epee::misc_utils::get_ns_count(), m_total_hashes});
       m_threads_total = 1;
     }
-    m_starter_nonce = crypto::rand<uint32_t>();
+    m_starter_nonce = crypto::random_filled<uint32_t>();
     std::unique_lock lock{m_threads_lock};
     if(is_mining())
     {

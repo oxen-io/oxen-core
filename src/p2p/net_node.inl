@@ -397,7 +397,7 @@ namespace nodetool
       for(const std::string& pr_str: perrs)
       {
         nodetool::peerlist_entry pe{};
-        pe.id = crypto::rand<uint64_t>();
+        pe.id = crypto::random_filled<uint64_t>();
         const uint16_t default_port = cryptonote::get_config(m_nettype).P2P_DEFAULT_PORT;
         expect<epee::net_utils::network_address> adr = net::get_network_address(pr_str, default_port);
         if (adr)
@@ -416,7 +416,7 @@ namespace nodetool
         CHECK_AND_ASSERT_MES(r, false, "Failed to parse or resolve address from string: " << pr_str);
         for (const epee::net_utils::network_address& addr : resolved_addrs)
         {
-          pe.id = crypto::rand<uint64_t>();
+          pe.id = crypto::random_filled<uint64_t>();
           pe.adr = addr;
           m_command_line_peers.push_back(pe);
         }
@@ -1083,7 +1083,11 @@ namespace nodetool
     if(!max_index)
       return 0;
 
-    size_t x = crypto::rand<size_t>()%(max_index+1);
+    size_t x = crypto::random_filled<size_t>()%(max_index+1);
+
+    // WTF? This seems really broken (it gives something vaguely like an exponential distribution,
+    // but with various amounts impossible to ever choose). I'm not 100% sure what to switch it to,
+    // and the method description doesn't help.
     size_t res = (x*x*x)/(max_index*max_index); //parabola \/
     MDEBUG("Random connection index=" << res << "(x="<< x << ", max_index=" << max_index << ")");
     return res;
@@ -1354,7 +1358,6 @@ namespace nodetool
     while(rand_count < (max_random_index+1)*3 &&  try_count < 10 && !zone.m_net_server.is_stop_signal_sent())
     {
       ++rand_count;
-      size_t random_index;
       const uint32_t next_needed_pruning_stripe = m_payload_handler.get_next_needed_pruning_stripe().second;
 
       // build a set of all the /16 we're connected to, and prefer a peer that's not in that set
@@ -1409,6 +1412,8 @@ namespace nodetool
         MDEBUG("No available peer in " << (use_white_list ? "white" : "gray") << " list filtered by " << next_needed_pruning_stripe);
         return false;
       }
+
+      size_t random_index;
       if (use_white_list)
       {
         // if using the white list, we first pick in the set of peers we've already been using earlier
@@ -1431,7 +1436,7 @@ namespace nodetool
         }
       }
       else
-        random_index = crypto::rand_idx(filtered.size());
+        random_index = tools::random_index(filtered.size(), crypto::rng);
 
       CHECK_AND_ASSERT_MES(random_index < filtered.size(), false, "random_index < filtered.size() failed!!");
       random_index = filtered[random_index];
@@ -1503,7 +1508,7 @@ namespace nodetool
 
       size_t try_count = 0;
       bool is_connected_to_at_least_one_seed_node = false;
-      size_t current_index = crypto::rand_idx(m_seed_nodes.size());
+      size_t current_index = tools::random_index(m_seed_nodes.size(), crypto::rng);
       const net_server& server = m_network_zones.at(epee::net_utils::zone::public_).m_net_server;
       while(true)
       {
@@ -1808,8 +1813,7 @@ namespace nodetool
     // globally.
 
     MDEBUG("STARTED PEERLIST IDLE HANDSHAKE");
-    typedef std::list<std::pair<epee::net_utils::connection_context_base, peerid_type> > local_connects_type;
-    local_connects_type cncts;
+    std::list<std::pair<epee::net_utils::connection_context_base, peerid_type>> cncts;
     for(auto& zone : m_network_zones)
     {
       zone.second.m_net_server.get_config_object().foreach_connection([&](p2p_connection_context& cntxt)
@@ -1817,13 +1821,13 @@ namespace nodetool
         if(cntxt.peer_id && !cntxt.m_in_timedsync)
         {
           cntxt.m_in_timedsync = true;
-          cncts.push_back(local_connects_type::value_type(cntxt, cntxt.peer_id));//do idle sync only with handshaked connections
+          cncts.emplace_back(cntxt, cntxt.peer_id);//do idle sync only with handshaked connections
         }
         return true;
       });
     }
 
-    std::for_each(cncts.begin(), cncts.end(), [&](const typename local_connects_type::value_type& vl){do_peer_timed_sync(vl.first, vl.second);});
+    std::for_each(cncts.begin(), cncts.end(), [&](const auto& vl){ do_peer_timed_sync(vl.first, vl.second); });
 
     MDEBUG("FINISHED PEERLIST IDLE HANDSHAKE");
     return true;

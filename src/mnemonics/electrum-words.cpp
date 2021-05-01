@@ -380,15 +380,15 @@ namespace crypto
      * \param  language_name Seed language name
      * \return               true if successful false if not. Unsuccessful if wrong key size.
      */
-    bool bytes_to_words(const char *src, size_t len, epee::wipeable_string& words,
-      const std::string &language_name)
+    bool bytes_to_words(const std::byte* src, size_t len, epee::wipeable_string& words,
+      const std::string& language_name)
     {
 
       if (len % 4 != 0 || len == 0) return false;
 
-      const Language::Base *language = NULL;
+      const Language::Base* language = nullptr;
       const std::vector<const Language::Base*> language_list = crypto::ElectrumWords::get_language_list();
-      for (const Language::Base *l: language_list)
+      for (const Language::Base* l : language_list)
       {
         if (language_name == l->get_language_name() || language_name == l->get_english_language_name())
           language = l;

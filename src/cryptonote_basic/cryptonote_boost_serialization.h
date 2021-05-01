@@ -312,7 +312,7 @@ namespace boost
     outPk_.resize(outPk.size());
     for (size_t n = 0; n < outPk_.size(); ++n)
     {
-      outPk_[n].dest = rct::identity();
+      outPk_[n].dest = rct::key::identity;
       outPk_[n].mask = outPk[n];
     }
   }

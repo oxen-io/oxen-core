@@ -83,11 +83,11 @@ public:
     threadpool(unsigned int max_threads = 0);
     void destroy();
     void create(unsigned int max_threads);
-    typedef struct entry {
+    struct entry {
       waiter *wo;
       std::function<void()> f;
       bool leaf;
-    } entry;
+    };
     std::deque<entry> queue;
     std::condition_variable has_work;
     std::mutex mutex;

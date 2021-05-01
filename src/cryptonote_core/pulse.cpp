@@ -1061,7 +1061,7 @@ round_state wait_for_next_block(uint64_t hf16_height, round_context &context, cr
   }
 
   crypto::hash prev_hash = blockchain.get_block_id_by_height(chain_height - 1);
-  if (prev_hash == crypto::null_hash)
+  if (!prev_hash)
   {
     for (static uint64_t last_height = 0; last_height != chain_height; last_height = chain_height)
       MDEBUG(log_prefix(context) << "Failed to query the block hash for height " << chain_height - 1);
@@ -1473,7 +1473,7 @@ round_state wait_for_block_template(round_context &context, service_nodes::servi
       MINFO(log_prefix(context) << "Valid block received: " << cryptonote::obj_to_json_str(context.transient.wait_for_block_template.block));
 
       // Generate my random value and its hash
-      crypto::generate_random_bytes_thread_safe(sizeof(context.transient.random_value.send.data), context.transient.random_value.send.data.data);
+      crypto::fill_random(context.transient.random_value.send.data.data);
       context.transient.random_value_hashes.send.data = blake2b_hash(&context.transient.random_value.send.data, sizeof(context.transient.random_value.send.data));
       return round_state::send_and_wait_for_random_value_hashes;
     }
@@ -1578,7 +1578,7 @@ round_state send_and_wait_for_random_value(round_context &context, service_nodes
 #endif
 
           MDEBUG(log_prefix(context) << "Final random value seeding with V[" << index << "] " << string.view());
-          crypto_generichash_update(&state, random_value->data, sizeof(random_value->data));
+          crypto_generichash_update(&state, reinterpret_cast<const unsigned char*>(random_value->data), sizeof(random_value->data));
         }
       }
 

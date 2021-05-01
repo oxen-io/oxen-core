@@ -384,7 +384,7 @@ namespace cryptonote
      virtual bool create_miner_block_template(block& b, const crypto::hash *prev_block, const account_public_address& adr, difficulty_type& diffic, uint64_t& height, uint64_t& expected_reward, const blobdata& ex_nonce);
 
      /**
-      * @brief called when a transaction is relayed; return the hash of the parsed tx, or null_hash
+      * @brief called when a transaction is relayed; return the hash of the parsed tx, or hash::null
       * on parse failure.
       */
      virtual crypto::hash on_transaction_relayed(const cryptonote::blobdata& tx);

@@ -35,5 +35,5 @@
 
 namespace cryptonote
 {
-  typedef std::string blobdata;
+  using blobdata = std::string;
 }

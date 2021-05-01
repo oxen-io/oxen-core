@@ -104,14 +104,13 @@ fs::path get_rings_filename(fs::path filename)
 
 static crypto::chacha_iv make_iv(const crypto::key_image &key_image, const crypto::chacha_key &key, uint8_t field)
 {
-  uint8_t buffer[sizeof(key_image) + sizeof(key) + config::HASH_KEY_RINGDB.size() + sizeof(field)];
+  std::byte buffer[sizeof(key_image) + sizeof(key) + config::HASH_KEY_RINGDB.size() + sizeof(field)];
   memcpy(buffer, &key_image, sizeof(key_image));
   memcpy(buffer + sizeof(key_image), &key, sizeof(key));
   memcpy(buffer + sizeof(key_image) + sizeof(key), config::HASH_KEY_RINGDB.data(), config::HASH_KEY_RINGDB.size());
   memcpy(buffer + sizeof(key_image) + sizeof(key) + config::HASH_KEY_RINGDB.size(), &field, sizeof(field));
-  crypto::hash hash;
   // if field is 0, backward compat mode: hash without the field
-  crypto::cn_fast_hash(buffer, sizeof(buffer) - !field, hash.data);
+  auto hash = crypto::cn_fast_hash(buffer, sizeof(buffer) - !field);
   static_assert(sizeof(hash) >= CHACHA_IV_SIZE, "Incompatible hash and chacha IV sizes");
   crypto::chacha_iv iv;
   memcpy(&iv, &hash, CHACHA_IV_SIZE);

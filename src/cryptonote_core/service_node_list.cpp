@@ -1695,23 +1695,22 @@ namespace service_nodes
     for (auto it = begin; it != end; it++)
     {
       cryptonote::block const &block = *it;
-      crypto::hash hash              = {};
+      crypto::hash hash;
       if (block.major_version >= cryptonote::network_version_16_pulse &&
           cryptonote::block_has_pulse_components(block))
       {
-        std::array<uint8_t, 1 + sizeof(block.pulse.random_value)> src = {pulse_round};
+        std::array<std::byte, 1 + sizeof(block.pulse.random_value)> src = {std::byte{pulse_round}};
         std::copy(std::begin(block.pulse.random_value.data), std::end(block.pulse.random_value.data), src.begin() + 1);
-        crypto::cn_fast_hash(src.data(), src.size(), hash.data);
+        hash = crypto::cn_fast_hash(src.data(), src.size());
       }
       else
       {
         crypto::hash block_hash = cryptonote::get_block_hash(block);
-        std::array<uint8_t, 1 + sizeof(hash)> src = {pulse_round};
+        std::array<std::byte, 1 + sizeof(crypto::hash)> src = {std::byte{pulse_round}};
         std::copy(std::begin(block_hash.data), std::end(block_hash.data), src.begin() + 1);
-        crypto::cn_fast_hash(src.data(), src.size(), hash.data);
+        hash = crypto::cn_fast_hash(src.data(), src.size());
       }
 
-      assert(hash != crypto::null_hash);
       result.push_back(hash);
     }
 
@@ -1862,7 +1861,7 @@ namespace service_nodes
 
   static void generate_other_quorums(service_node_list::state_t &state, std::vector<pubkey_and_sninfo> const &active_snode_list, cryptonote::network_type nettype, uint8_t hf_version)
   {
-    assert(state.block_hash != crypto::null_hash);
+    assert(state.block_hash);
 
     // The two quorums here have different selection criteria: the entire checkpoint quorum and the
     // state change *validators* want only active service nodes, but the state change *workers*
@@ -2287,10 +2286,10 @@ namespace service_nodes
 
   service_nodes::payout service_node_list::state_t::get_block_leader() const
   {
-    crypto::public_key key = crypto::null_pkey;
+    crypto::public_key key = crypto::public_key::null;
     service_node_info const *info = nullptr;
     {
-      auto oldest_waiting = std::make_tuple(std::numeric_limits<uint64_t>::max(), std::numeric_limits<uint32_t>::max(), crypto::null_pkey);
+      auto oldest_waiting = std::make_tuple(std::numeric_limits<uint64_t>::max(), std::numeric_limits<uint32_t>::max(), crypto::public_key::null);
       for (const auto &info_it : service_nodes_infos)
       {
         const auto &sninfo = *info_it.second;
@@ -2307,8 +2306,8 @@ namespace service_nodes
       key = std::get<2>(oldest_waiting);
     }
 
-    if (key == crypto::null_pkey)
-      return service_nodes::null_payout;
+    if (!key)
+      return service_nodes::payout::null;
     return service_node_info_to_payout(key, *info);
   }
 
@@ -2776,7 +2775,7 @@ namespace service_nodes
 
     crypto::hash hash = hash_uptime_proof(result);
     crypto::generate_signature(hash, keys.pub, keys.key, result.sig);
-    crypto_sign_detached(result.sig_ed25519.data, NULL, reinterpret_cast<unsigned char *>(hash.data), sizeof(hash.data), keys.key_ed25519.data);
+    crypto_sign_detached(result.sig_ed25519, nullptr, hash, sizeof(hash.data), keys.key_ed25519);
     return result;
   }
 
@@ -2893,12 +2892,12 @@ namespace service_nodes
   void proof_info::update_pubkey(const crypto::ed25519_public_key &pk) {
     if (pk == proof->pubkey_ed25519)
       return;
-    if (pk && 0 == crypto_sign_ed25519_pk_to_curve25519(pubkey_x25519.data, pk.data)) {
+    if (pk && 0 == crypto_sign_ed25519_pk_to_curve25519(pubkey_x25519, pk)) {
       proof->pubkey_ed25519 = pk;
     } else {
       MWARNING("Failed to derive x25519 pubkey from ed25519 pubkey " << proof->pubkey_ed25519);
-      pubkey_x25519 = crypto::x25519_public_key::null();
-      proof->pubkey_ed25519 = crypto::ed25519_public_key::null();
+      pubkey_x25519 = crypto::x25519_public_key::null;
+      proof->pubkey_ed25519 = crypto::ed25519_public_key::null;
     }
   }
 
@@ -2932,14 +2931,14 @@ namespace service_nodes
     if (!crypto::check_signature(hash, proof.pubkey, proof.sig))
       REJECT_PROOF("signature validation failed");
 
-    crypto::x25519_public_key derived_x25519_pubkey = crypto::x25519_public_key::null();
+    crypto::x25519_public_key derived_x25519_pubkey = crypto::x25519_public_key::null;
     if (!proof.pubkey_ed25519)
       REJECT_PROOF("required ed25519 auxiliary pubkey " << proof.pubkey_ed25519 << " not included in proof");
 
-    if (0 != crypto_sign_verify_detached(proof.sig_ed25519.data, reinterpret_cast<unsigned char *>(hash.data), sizeof(hash.data), proof.pubkey_ed25519.data))
+    if (0 != crypto_sign_verify_detached(proof.sig_ed25519, hash, sizeof(hash.data), proof.pubkey_ed25519))
       REJECT_PROOF("ed25519 signature validation failed");
 
-    if (0 != crypto_sign_ed25519_pk_to_curve25519(derived_x25519_pubkey.data, proof.pubkey_ed25519.data)
+    if (0 != crypto_sign_ed25519_pk_to_curve25519(derived_x25519_pubkey, proof.pubkey_ed25519)
         || !derived_x25519_pubkey)
       REJECT_PROOF("invalid ed25519 pubkey included in proof (x25519 derivation failed)");
 
@@ -3024,14 +3023,14 @@ namespace service_nodes
     if (!crypto::check_signature(hash, proof->pubkey, proof->sig))
       REJECT_PROOF("signature validation failed");
 
-    crypto::x25519_public_key derived_x25519_pubkey = crypto::x25519_public_key::null();
+    crypto::x25519_public_key derived_x25519_pubkey = crypto::x25519_public_key::null;
     if (!proof->pubkey_ed25519)
       REJECT_PROOF("required ed25519 auxiliary pubkey " << proof->pubkey_ed25519 << " not included in proof");
 
-    if (0 != crypto_sign_verify_detached(proof->sig_ed25519.data, reinterpret_cast<unsigned char *>(hash.data), sizeof(hash.data), proof->pubkey_ed25519.data))
+    if (0 != crypto_sign_verify_detached(proof->sig_ed25519, hash, sizeof(hash), proof->pubkey_ed25519))
       REJECT_PROOF("ed25519 signature validation failed");
 
-    if (0 != crypto_sign_ed25519_pk_to_curve25519(derived_x25519_pubkey.data, proof->pubkey_ed25519.data)
+    if (0 != crypto_sign_ed25519_pk_to_curve25519(derived_x25519_pubkey, proof->pubkey_ed25519)
         || !derived_x25519_pubkey)
       REJECT_PROOF("invalid ed25519 pubkey included in proof (x25519 derivation failed)");
 
@@ -3117,7 +3116,7 @@ namespace service_nodes
     auto it = x25519_to_pub.find(x25519);
     if (it != x25519_to_pub.end())
       return it->second.first;
-    return crypto::null_pkey;
+    return crypto::public_key::null;
   }
 
   crypto::public_key service_node_list::get_random_pubkey() {
@@ -3335,6 +3334,11 @@ namespace service_nodes
         info.pulse_sorter = {};
         info.version      = version_t::v6_reassign_sort_keys;
       }
+      if (info.version < version_t::v7_decommission_reason)
+      {
+        // Nothing to do here (leave consensus reasons as 0s)
+        info.version = version_t::v7_decommission_reason;
+      }
       // Make sure we handled any future state version upgrades:
       assert(info.version == tools::enum_top<decltype(info.version)>);
       service_nodes_infos.emplace(std::move(pubkey_info.pubkey), std::move(pubkey_info.info));
@@ -3493,7 +3497,7 @@ namespace service_nodes
         for (size_t i = 0; i < last_index; i++)
         {
           state_serialized &entry = data_in.states[i];
-          if (entry.block_hash == crypto::null_hash) entry.block_hash = m_blockchain.get_block_id_by_height(entry.height);
+          if (!entry.block_hash) entry.block_hash = m_blockchain.get_block_id_by_height(entry.height);
           m_transient.state_history.emplace_hint(m_transient.state_history.end(), this, std::move(entry));
         }
 

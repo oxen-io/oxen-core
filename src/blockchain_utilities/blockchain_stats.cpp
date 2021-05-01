@@ -260,14 +260,10 @@ skip:
     currsz += bd.size();
     for (const auto& tx_id : blk.tx_hashes)
     {
-      if (tx_id == crypto::null_hash)
-      {
-        throw std::runtime_error("Aborting: tx == null_hash");
-      }
+      if (!tx_id)
+        throw std::runtime_error("Aborting: tx hash is null");
       if (!db->get_pruned_tx_blob(tx_id, bd))
-      {
         throw std::runtime_error("Aborting: tx not found");
-      }
       transaction tx;
       if (!parse_and_validate_tx_base_from_blob(bd, tx))
       {

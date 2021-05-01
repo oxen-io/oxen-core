@@ -360,7 +360,7 @@ namespace cryptonote
 
     time_t receive_time = time(nullptr);
 
-    crypto::hash max_used_block_id = null_hash;
+    crypto::hash max_used_block_id = hash::null;
     uint64_t max_used_block_height = 0;
     cryptonote::txpool_tx_meta_t meta;
     bool inputs_okay = check_tx_inputs([&tx]()->cryptonote::transaction&{ return tx; }, id, max_used_block_height, max_used_block_id, tvc, opts.kept_by_block,
@@ -374,10 +374,10 @@ namespace cryptonote
       {
         meta.weight = tx_weight;
         meta.fee = fee;
-        meta.max_used_block_id = null_hash;
+        meta.max_used_block_id = hash::null;
         meta.max_used_block_height = 0;
         meta.last_failed_height = 0;
-        meta.last_failed_id = null_hash;
+        meta.last_failed_id = hash::null;
         meta.kept_by_block = opts.kept_by_block;
         meta.receive_time = receive_time;
         meta.last_relayed_time = time(NULL);
@@ -421,7 +421,7 @@ namespace cryptonote
       meta.max_used_block_id = max_used_block_id;
       meta.max_used_block_height = max_used_block_height;
       meta.last_failed_height = 0;
-      meta.last_failed_id = null_hash;
+      meta.last_failed_id = hash::null;
       meta.receive_time = receive_time;
       meta.last_relayed_time = time(NULL);
       meta.relayed = opts.relayed;
@@ -472,7 +472,7 @@ namespace cryptonote
   //---------------------------------------------------------------------------------
   bool tx_memory_pool::add_tx(transaction &tx, tx_verification_context& tvc, const tx_pool_options &opts, uint8_t version)
   {
-    crypto::hash h = null_hash;
+    crypto::hash h = hash::null;
     size_t blob_size = 0;
     cryptonote::blobdata bl;
     t_serializable_object_to_blob(tx, bl);
@@ -1044,7 +1044,7 @@ namespace cryptonote
 
               tx_verification_context tvc;
               uint64_t max_used_block_height = 0;
-              crypto::hash max_used_block_id = null_hash;
+              crypto::hash max_used_block_id = hash::null;
               if (!m_blockchain.check_tx_inputs(tx, max_used_block_height, max_used_block_id, tvc, /*kept_by_block*/ false))
               {
                 LOG_PRINT_L1("TX type: " << tx.type << " considered for relaying failed tx inputs check, txid: " << txid << ", reason: " << print_tx_verification_context(tvc, &tx));
@@ -1633,10 +1633,10 @@ end:
 
     //not the best implementation at this time, sorry :(
     //check is ring_signature already checked ?
-    if(txd.max_used_block_id == null_hash)
+    if(txd.max_used_block_id == hash::null)
     {//not checked, lets try to check
 
-      if(txd.last_failed_id != null_hash && m_blockchain.get_current_blockchain_height() > txd.last_failed_height && txd.last_failed_id == m_blockchain.get_block_id_by_height(txd.last_failed_height))
+      if(txd.last_failed_id != hash::null && m_blockchain.get_current_blockchain_height() > txd.last_failed_height && txd.last_failed_id == m_blockchain.get_block_id_by_height(txd.last_failed_height))
         return false;//we already sure that this tx is broken for this height
 
       tx_verification_context tvc;

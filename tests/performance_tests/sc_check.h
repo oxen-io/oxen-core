@@ -28,6 +28,7 @@
 
 #pragma once
 
+#include "crypto/crypto-ops.h"
 #include "crypto/crypto.h"
 
 class test_sc_check
@@ -37,13 +38,13 @@ public:
 
   bool init()
   {
-    m_scalar = crypto::rand<crypto::ec_scalar>();
+    m_scalar = crypto::random_filled<crypto::ec_scalar>();
     return true;
   }
 
   bool test()
   {
-    sc_check((unsigned char*)m_scalar.data);
+    sc_check(m_scalar);
     return true;
   }
 

@@ -41,7 +41,7 @@ public:
 
   bool init()
   {
-    crypto::rand(bytes, m_data.data());
+    crypto::fill_random(m_data.data(), m_data.size());
     return true;
   }
 

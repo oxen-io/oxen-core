@@ -442,7 +442,7 @@ TEST(serialization, serializes_transaction_signatures_correctly)
   tx.signatures[1].resize(2);
   for (char i : {0, 1})
     for (char j : {0, 1})
-      tx.signatures[i][j].c.data[2*i + j] = ((i+1) << 4) + 2*i + j + 1;
+      tx.signatures[i][j].c.data[2*i + j] = std::byte(((i+1) << 4) + 2*i + j + 1);
   tx.invalidate_hashes();
   ASSERT_NO_THROW(blob = serialization::dump_binary(tx));
   ASSERT_EQ(oxenmq::to_hex(blob),
@@ -569,19 +569,19 @@ TEST(serialization, serializes_ringct)
   rct::keyV amount_keys;
   //add output 500
   amounts.push_back(500);
-  amount_keys.push_back(rct::hash_to_scalar(rct::zero()));
+  amount_keys.push_back(rct::hash_to_scalar(rct::key::zero));
   rct::keyV destinations;
   rct::key Sk, Pk;
   rct::skpkGen(Sk, Pk);
   destinations.push_back(Pk);
   //add output for 12500
   amounts.push_back(12500);
-  amount_keys.push_back(rct::hash_to_scalar(rct::zero()));
+  amount_keys.push_back(rct::hash_to_scalar(rct::key::zero));
   rct::skpkGen(Sk, Pk);
   destinations.push_back(Pk);
 
   const rct::RCTConfig rct_config_clsag{ rct::RangeProofType::PaddedBulletproof, 3 };
-  auto s0 = rct::genRctSimple(rct::zero(), sc, pc, destinations, inamounts, amounts, amount_keys, NULL, NULL, 0, 3, rct_config_clsag, hw::get_device("default"));
+  auto s0 = rct::genRctSimple(rct::key::zero, sc, pc, destinations, inamounts, amounts, amount_keys, NULL, NULL, 0, 3, rct_config_clsag, hw::get_device("default"));
 
   ASSERT_FALSE(s0.p.CLSAGs.empty());
   ASSERT_TRUE(s0.p.MGs.empty());
@@ -723,16 +723,10 @@ TEST(serialization, portability_wallet)
   ASSERT_TRUE(w.m_address_book.size() == 1);
   {
     auto address_book_row = w.m_address_book.begin();
-<<<<<<< HEAD
     ASSERT_TRUE(tools::type_to_hex(address_book_row->m_address.m_spend_public_key) == "938fc84cbacb271fdbc9bfc34e9d887f4bdb89f20a9d4e2c05916d6b9f6a7cb8");
     ASSERT_TRUE(tools::type_to_hex(address_book_row->m_address.m_view_public_key) == "9eec0bbb1728bce79209e1ae995cbae8e3f6cf78f7262b5db049594e4907bb33");
     ASSERT_TRUE(tools::type_to_hex(address_book_row->m_payment_id) == "e0470453783dd65dc16bb740f82902b9a26a48216e4c89278586637011c858a3");
     ASSERT_TRUE(address_book_row->m_description == "A test address");
-=======
-    ASSERT_TRUE(tools::type_to_hex(address_book_row->m_address.m_spend_public_key) == "9bc53a6ff7b0831c9470f71b6b972dbe5ad1e8606f72682868b1dda64e119fb3");
-    ASSERT_TRUE(tools::type_to_hex(address_book_row->m_address.m_view_public_key) == "49fece1ef97dc0c0f7a5e2106e75e96edd910f7e86b56e1e308cd0cf734df191");
-    ASSERT_TRUE(address_book_row->m_description == "testnet wallet 9y52S6");
->>>>>>> a26e5b3
   }
 }
 

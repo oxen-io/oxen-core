@@ -48,11 +48,11 @@ namespace cryptonote
 
     constexpr static uint8_t INVALID_HF_VERSION         = 255;
     constexpr static uint64_t INVALID_HF_VERSION_HEIGHT = static_cast<uint64_t>(-1);
-    typedef enum {
+    enum class State {
       LikelyForked,
       UpdateNeeded,
       Ready,
-    } State;
+    };
 
     static const uint64_t DEFAULT_ORIGINAL_VERSION_TILL_HEIGHT = 0; // <= actual height
     static const time_t DEFAULT_FORKED_TIME = 31557600; // a year in seconds

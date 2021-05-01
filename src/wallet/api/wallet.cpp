@@ -336,7 +336,7 @@ uint64_t Wallet::amountFromDouble(double amount)
 EXPORT
 std::string Wallet::genPaymentId()
 {
-    crypto::hash8 payment_id = crypto::rand<crypto::hash8>();
+    crypto::hash8 payment_id = crypto::random_filled<crypto::hash8>();
     return tools::type_to_hex(payment_id);
 
 }
@@ -370,13 +370,12 @@ bool Wallet::keyValid(const std::string &secret_key_string, const std::string &a
       return false;
   }
   
-  cryptonote::blobdata key_data;
-  if(!epee::string_tools::parse_hexstr_to_binbuff(secret_key_string, key_data) || key_data.size() != sizeof(crypto::secret_key))
+  crypto::secret_key key;
+  if (!tools::hex_to_type(secret_key_string, key.data))
   {
       error = tr("Failed to parse key");
       return false;
   }
-  crypto::secret_key key = *reinterpret_cast<const crypto::secret_key*>(key_data.data());
 
   // check the key match the given address
   crypto::public_key pkey;
@@ -635,19 +634,16 @@ bool WalletImpl::recoverFromKeysWithPassword(std::string_view path_,
     crypto::secret_key spendkey;
     bool has_spendkey = false;
     if (!spendkey_string.empty()) {
-        cryptonote::blobdata spendkey_data;
-        if(!epee::string_tools::parse_hexstr_to_binbuff(spendkey_string, spendkey_data) || spendkey_data.size() != sizeof(crypto::secret_key))
+        if (!tools::hex_to_type(spendkey_string, spendkey.data))
         {
             setStatusError(tr("failed to parse secret spend key"));
             return false;
         }
         has_spendkey = true;
-        spendkey = *reinterpret_cast<const crypto::secret_key*>(spendkey_data.data());
     }
 
     // parse view secret key
     bool has_viewkey = true;
-    crypto::secret_key viewkey;
     if (viewkey_string.empty()) {
         if(has_spendkey) {
           has_viewkey = false;
@@ -657,14 +653,13 @@ bool WalletImpl::recoverFromKeysWithPassword(std::string_view path_,
           return false;
         }
     }
+    crypto::secret_key viewkey;
     if(has_viewkey) {
-      cryptonote::blobdata viewkey_data;
-      if(!epee::string_tools::parse_hexstr_to_binbuff(viewkey_string, viewkey_data) || viewkey_data.size() != sizeof(crypto::secret_key))
+      if (!tools::hex_to_type(viewkey_string, viewkey.data))
       {
           setStatusError(tr("failed to parse secret view key"));
           return false;
       }
-      viewkey = *reinterpret_cast<const crypto::secret_key*>(viewkey_data.data());
     }
     // check the spend and view keys match the given address
     crypto::public_key pkey;
@@ -1455,14 +1450,13 @@ size_t WalletImpl::importMultisigImages(const std::vector<std::string>& images) 
         blobs.reserve(images.size());
 
         for (const auto& image: images) {
-            std::string blob;
-            if (!epee::string_tools::parse_hexstr_to_binbuff(image, blob)) {
+            if (!oxenmq::is_hex(image)) {
                 LOG_ERROR("Failed to parse imported multisig images");
                 setStatusError(tr("Failed to parse imported multisig images"));
                 return 0;
             }
 
-            blobs.emplace_back(std::move(blob));
+            blobs.push_back(oxenmq::from_hex(image));
         }
 
         return m_wallet->import_multisig(blobs);
@@ -1495,9 +1489,9 @@ PendingTransaction* WalletImpl::restoreMultisigTransaction(const std::string& si
         clearStatus();
         checkMultisigWalletReady(m_wallet);
 
-        std::string binary;
-        if (!epee::string_tools::parse_hexstr_to_binbuff(signData, binary))
+        if (!oxenmq::is_hex(signData))
             throw std::runtime_error("Failed to deserialize multisig transaction");
+        auto binary = oxenmq::from_hex(signData);
 
         tools::wallet2::multisig_tx_set txSet;
         if (!m_wallet->load_multisig_tx(binary, txSet, {}))
@@ -1838,10 +1832,9 @@ std::string WalletImpl::getCacheAttribute(const std::string &key) const
 EXPORT
 bool WalletImpl::setUserNote(const std::string &txid, const std::string &note)
 {
-    cryptonote::blobdata txid_data;
-    if(!epee::string_tools::parse_hexstr_to_binbuff(txid, txid_data) || txid_data.size() != sizeof(crypto::hash))
+    crypto::hash htxid;
+    if (!tools::hex_to_type(txid, htxid))
       return false;
-    const crypto::hash htxid = *reinterpret_cast<const crypto::hash*>(txid_data.data());
 
     m_wallet->set_tx_note(htxid, note);
     return true;
@@ -1850,12 +1843,9 @@ bool WalletImpl::setUserNote(const std::string &txid, const std::string &note)
 EXPORT
 std::string WalletImpl::getUserNote(const std::string &txid) const
 {
-    cryptonote::blobdata txid_data;
-    if(!epee::string_tools::parse_hexstr_to_binbuff(txid, txid_data) || txid_data.size() != sizeof(crypto::hash))
-      return "";
-    const crypto::hash htxid = *reinterpret_cast<const crypto::hash*>(txid_data.data());
-
-    return m_wallet->get_tx_note(htxid);
+    if (crypto::hash htxid; tools::hex_to_type(txid, htxid))
+      return m_wallet->get_tx_note(htxid);
+    return ""s;
 }
 
 EXPORT
@@ -2133,12 +2123,11 @@ bool WalletImpl::verifyMessageWithPublicKey(const std::string &message, const st
 {
     clearStatus();
 
-    cryptonote::blobdata pkeyData;
-    if(!epee::string_tools::parse_hexstr_to_binbuff(publicKey, pkeyData) || pkeyData.size() != sizeof(crypto::public_key))
+    crypto::public_key pkey;
+    if (!tools::hex_to_type(publicKey, pkey))
         return setStatusError(tr("Given string is not a key"));
 
     try {
-        crypto::public_key pkey = *reinterpret_cast<const crypto::public_key*>(pkeyData.data());
         return m_wallet->verify_with_public_key(message, pkey, signature);
     } catch (const std::exception& e) {
         return setStatusError(e.what());

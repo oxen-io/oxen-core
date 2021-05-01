@@ -32,6 +32,7 @@
 #include <string>
 #include <iomanip>
 #include <thread>
+#include <sodium/core.h>
 
 #include <openssl/ssl.h>
 
@@ -156,6 +157,11 @@ namespace tools
 #else
     OPENSSL_init_ssl(0, NULL);
 #endif
+
+    if (sodium_init() == -1) {
+        MCLOG_RED(el::Level::Fatal, "global", "sodium initialization failed, unable to continue!");
+        abort();
+    }
 
     if (!unbound_built_with_threads())
       MCLOG_RED(el::Level::Warning, "global", "libunbound was not built with threads enabled - crashes may occur");

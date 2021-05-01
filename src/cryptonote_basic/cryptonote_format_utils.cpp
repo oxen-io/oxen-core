@@ -33,6 +33,7 @@
 #include <boost/algorithm/string.hpp>
 #include <limits>
 #include <oxenmq/hex.h>
+#include <sodium/crypto_core_ed25519.h>
 #include <variant>
 #include "common/hex.h"
 #include "epee/wipeable_string.h"
@@ -116,7 +117,7 @@ namespace cryptonote
   //---------------------------------------------------------------  
   crypto::hash get_transaction_prefix_hash(const transaction_prefix& tx, hw::device &hwdev)
   {
-    crypto::hash h = null_hash;
+    crypto::hash h = hash::null;
     get_transaction_prefix_hash(tx, h, hwdev);
     return h;
   }
@@ -124,7 +125,7 @@ namespace cryptonote
   //---------------------------------------------------------------
   crypto::hash get_transaction_prefix_hash(const transaction_prefix& tx)
   {
-    crypto::hash h = null_hash;
+    crypto::hash h = hash::null;
     get_transaction_prefix_hash(tx, h);
     return h;
   }
@@ -176,7 +177,7 @@ namespace cryptonote
           CHECK_AND_ASSERT_MES(n_amounts == rv.outPk.size(), false, "Internal error filling out V");
           rv.p.bulletproofs[0].V.resize(n_amounts);
           for (size_t i = 0; i < n_amounts; ++i)
-            rv.p.bulletproofs[0].V[i] = rct::scalarmultKey(rv.outPk[i].mask, rct::INV_EIGHT);
+            rv.p.bulletproofs[0].V[i] = rct::scalarmultKey(rv.outPk[i].mask, rct::key::inv_eight);
         }
       }
     }
@@ -274,7 +275,7 @@ namespace cryptonote
     if (!r)
     {
       MWARNING("key image helper: failed to generate_key_derivation(" << tx_public_key << ", " << ack.m_view_secret_key << ")");
-      memcpy(&recv_derivation, rct::identity().bytes, sizeof(recv_derivation));
+      memcpy(&recv_derivation, rct::key::identity.bytes, sizeof(recv_derivation));
     }
 
     std::vector<crypto::key_derivation> additional_recv_derivations;
@@ -305,11 +306,11 @@ namespace cryptonote
       return true;
     }
 
-    if (ack.m_spend_secret_key == crypto::null_skey)
+    if (!ack.m_spend_secret_key)
     {
       // for watch-only wallet, simply copy the known output pubkey
       in_ephemeral.pub = out_key;
-      in_ephemeral.sec = crypto::null_skey;
+      in_ephemeral.sec = crypto::secret_key::null;
     }
     else
     {
@@ -581,7 +582,7 @@ namespace cryptonote
     tx_extra_pub_key pub_key_field;
     if (get_field_from_tx_extra(tx_extra, pub_key_field, pk_index))
       return pub_key_field.pub_key;
-    return null_pkey;
+    return public_key::null;
   }
   //---------------------------------------------------------------
   crypto::public_key get_tx_pub_key_from_extra(const transaction_prefix& tx_prefix, size_t pk_index)
@@ -785,7 +786,7 @@ namespace cryptonote
     tx_extra_service_node_winner winner;
     if (get_field_from_tx_extra(tx_extra, winner))
       return winner.m_service_node_key;
-    return crypto::null_pkey;
+    return crypto::public_key::null;
   }
   //---------------------------------------------------------------
   void add_oxen_name_system_to_tx_extra(std::vector<uint8_t> &tx_extra, tx_extra_oxen_name_system const &entry)
@@ -1023,7 +1024,7 @@ namespace cryptonote
   bool lookup_acc_outs(const account_keys& acc, const transaction& tx, std::vector<size_t>& outs, uint64_t& money_transfered)
   {
     crypto::public_key tx_pub_key = get_tx_pub_key_from_extra(tx);
-    if(null_pkey == tx_pub_key)
+    if(!tx_pub_key)
       return false;
     std::vector<crypto::public_key> additional_tx_pub_keys = get_additional_tx_pub_keys_from_extra(tx);
     return lookup_acc_outs(acc, tx, tx_pub_key, additional_tx_pub_keys, outs, money_transfered);
@@ -1045,11 +1046,6 @@ namespace cryptonote
       i++;
     }
     return true;
-  }
-  //---------------------------------------------------------------
-  void get_blob_hash(const std::string_view blob, crypto::hash& res)
-  {
-    cn_fast_hash(blob.data(), blob.size(), res);
   }
   //---------------------------------------------------------------
   std::string get_unit(unsigned int decimal_point)
@@ -1170,16 +1166,9 @@ namespace cryptonote
     return valid;
   }
   //---------------------------------------------------------------
-  crypto::hash get_blob_hash(const std::string_view blob)
-  {
-    crypto::hash h;
-    get_blob_hash(blob, h);
-    return h;
-  }
-  //---------------------------------------------------------------
   crypto::hash get_transaction_hash(const transaction& t)
   {
-    crypto::hash h = null_hash;
+    crypto::hash h = hash::null;
     get_transaction_hash(t, h, NULL);
     CHECK_AND_ASSERT_THROW_MES(get_transaction_hash(t, h, NULL), "Failed to calculate transaction hash");
     return h;
@@ -1198,7 +1187,7 @@ namespace cryptonote
     if (blob && unprunable_size)
     {
       CHECK_AND_ASSERT_MES(unprunable_size <= blob->size(), false, "Inconsistent transaction unprunable and blob sizes");
-      cryptonote::get_blob_hash(std::string_view{*blob}.substr(unprunable_size), res);
+      cn_fast_hash(std::string_view{*blob}.substr(unprunable_size), res);
     }
     else
     {
@@ -1213,7 +1202,7 @@ namespace cryptonote
         LOG_ERROR("Failed to serialize rct signatures (prunable): " << e.what());
         return false;
       }
-      cryptonote::get_blob_hash(ba.str(), res);
+      cn_fast_hash(ba.str(), res);
     }
     return true;
   }
@@ -1245,12 +1234,12 @@ namespace cryptonote
       const size_t inputs = t.vin.size();
       const size_t outputs = t.vout.size();
       tt.rct_signatures.serialize_rctsig_base(ba, inputs, outputs); // throws on error (good)
-      cryptonote::get_blob_hash(ba.str(), hashes[1]);
+      cn_fast_hash(ba.str(), hashes[1]);
     }
 
     // prunable rct
     if (t.rct_signatures.type == rct::RCTType::Null)
-      hashes[2] = crypto::null_hash;
+      hashes[2] = crypto::hash::null;
     else
       hashes[2] = pruned_data_hash;
 
@@ -1288,7 +1277,7 @@ namespace cryptonote
       // base rct
       CHECK_AND_ASSERT_MES(prefix_size <= unprunable_size && unprunable_size <= blob.size(), false,
               "Inconsistent transaction prefix (" << prefix_size << "), unprunable (" << unprunable_size << ") and blob (" << blob.size() << ") sizes in: " << __func__);
-      cryptonote::get_blob_hash(std::string_view{blob}.substr(prefix_size, unprunable_size - prefix_size), hashes[1]);
+      cn_fast_hash(std::string_view{blob}.substr(prefix_size, unprunable_size - prefix_size), hashes[1]);
     }
     else
     {
@@ -1300,13 +1289,13 @@ namespace cryptonote
         LOG_ERROR("Failed to serialize rct signatures base: " << e.what());
         return false;
       }
-      cryptonote::get_blob_hash(ba.str(), hashes[1]);
+      cn_fast_hash(ba.str(), hashes[1]);
     }
 
     // prunable rct
     if (t.rct_signatures.type == rct::RCTType::Null)
     {
-      hashes[2] = crypto::null_hash;
+      hashes[2] = crypto::hash::null;
     }
     else if (!calculate_transaction_prunable_hash(t, &blob, hashes[2]))
     {
@@ -1433,7 +1422,7 @@ namespace cryptonote
   //---------------------------------------------------------------
   crypto::hash get_block_hash(const block& b)
   {
-    crypto::hash p = null_hash;
+    crypto::hash p = hash::null;
     get_block_hash(b, p);
     return p;
   }
@@ -1509,29 +1498,17 @@ namespace cryptonote
     return t_serializable_object_to_blob(tx, b_blob);
   }
   //---------------------------------------------------------------
-  void get_tx_tree_hash(const std::vector<crypto::hash>& tx_hashes, crypto::hash& h)
-  {
-    tree_hash(tx_hashes.data(), tx_hashes.size(), h);
-  }
-  //---------------------------------------------------------------
-  crypto::hash get_tx_tree_hash(const std::vector<crypto::hash>& tx_hashes)
-  {
-    crypto::hash h = null_hash;
-    get_tx_tree_hash(tx_hashes, h);
-    return h;
-  }
-  //---------------------------------------------------------------
   crypto::hash get_tx_tree_hash(const block& b)
   {
     std::vector<crypto::hash> txs_ids;
     txs_ids.reserve(1 + b.tx_hashes.size());
-    crypto::hash h = null_hash;
+    crypto::hash h = hash::null;
     size_t bl_sz = 0;
     CHECK_AND_ASSERT_THROW_MES(get_transaction_hash(b.miner_tx, h, bl_sz), "Failed to calculate transaction hash");
     txs_ids.push_back(h);
     for(auto& th: b.tx_hashes)
       txs_ids.push_back(th);
-    return get_tx_tree_hash(txs_ids);
+    return tree_hash(txs_ids);
   }
   //---------------------------------------------------------------
   void get_hash_stats(uint64_t &tx_hashes_calculated, uint64_t &tx_hashes_cached, uint64_t &block_hashes_calculated, uint64_t & block_hashes_cached)
@@ -1546,7 +1523,7 @@ namespace cryptonote
   {
     crypto::hash hash;
     crypto::cn_slow_hash(passphrase.data(), passphrase.size(), hash, crypto::cn_slow_hash_type::heavy_v1);
-    sc_add((unsigned char*)key.data, (const unsigned char*)key.data, (const unsigned char*)hash.data);
+    crypto_core_ed25519_scalar_add(key, key, hash);
     return key;
   }
   //---------------------------------------------------------------
@@ -1554,7 +1531,7 @@ namespace cryptonote
   {
     crypto::hash hash;
     crypto::cn_slow_hash(passphrase.data(), passphrase.size(), hash, crypto::cn_slow_hash_type::heavy_v1);
-    sc_sub((unsigned char*)key.data, (const unsigned char*)key.data, (const unsigned char*)hash.data);
+    crypto_core_ed25519_scalar_sub(key, key, hash);
     return key;
   }
 

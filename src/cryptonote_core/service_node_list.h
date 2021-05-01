@@ -32,6 +32,7 @@
 #include <mutex>
 #include <shared_mutex>
 #include <string_view>
+#include "cryptonote_basic/cryptonote_basic.h"
 #include "serialization/serialization.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
 #include "cryptonote_core/service_node_rules.h"
@@ -174,7 +175,7 @@ namespace service_nodes
     std::unique_ptr<uptime_proof::Proof> proof;
 
     // Derived from pubkey_ed25519, not serialized
-    crypto::x25519_public_key pubkey_x25519 = crypto::x25519_public_key::null();
+    crypto::x25519_public_key pubkey_x25519 = crypto::x25519_public_key::null;
 
     // Updates pubkey_ed25519 to the given key, re-deriving the x25519 key if it actually changes
     // (does nothing if the key is the same as the current value).  If x25519 derivation fails then
@@ -337,7 +338,7 @@ namespace service_nodes
       if (version >= version_t::v1_add_registration_hf_version)
         VARINT_FIELD(registration_hf_version);
       if (version >= version_t::v2_ed25519 && version < version_t::v4_noproofs) {
-        crypto::ed25519_public_key fake_pk = crypto::ed25519_public_key::null();
+        crypto::ed25519_public_key fake_pk = crypto::ed25519_public_key::null;
         FIELD_N("pubkey_ed25519", fake_pk)
         if (version >= version_t::v3_quorumnet) {
           uint16_t fake_port = 0;
@@ -406,13 +407,20 @@ namespace service_nodes
     uint64_t portions;
 
     constexpr bool operator==(const payout_entry& x) const { return portions == x.portions && address == x.address; }
+
+    const static payout_entry null;
   };
+
+  constexpr payout_entry payout_entry::null{cryptonote::account_public_address::null, STAKING_PORTIONS};
 
   struct payout
   {
     crypto::public_key key;
     std::vector<payout_entry> payouts;
+
+    const static payout null;
   };
+  inline const payout payout::null{crypto::public_key::null, {payout_entry::null}};
 
   /// Collection of keys used by a service node
   struct service_node_keys {
@@ -659,7 +667,7 @@ namespace service_nodes
     using block_height = uint64_t;
     struct state_t
     {
-      crypto::hash                           block_hash{crypto::null_hash};
+      crypto::hash                           block_hash{crypto::hash::null};
       bool                                   only_loaded_quorums{false};
       service_nodes_infos_t                  service_nodes_infos;
       std::vector<key_image_blacklist_entry> key_image_blacklist;
@@ -814,7 +822,4 @@ namespace service_nodes
   std::vector<crypto::hash> get_pulse_entropy_for_next_block(cryptonote::BlockchainDB const &db, uint8_t pulse_round = 0);
 
   payout service_node_info_to_payout(crypto::public_key const &key, service_node_info const &info);
-
-  const static payout_entry null_payout_entry = {cryptonote::null_address, STAKING_PORTIONS};
-  const static payout null_payout             = {crypto::null_pkey, {null_payout_entry}};
 }

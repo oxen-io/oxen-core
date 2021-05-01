@@ -189,8 +189,8 @@ static void rx_initdata(randomx_cache *rs_cache, const int miners, const uint64_
   rx_dataset_height = seedheight;
 }
 
-void rx_slow_hash(const uint64_t mainheight, const uint64_t seedheight, const char *seedhash, const void *data, size_t length,
-  char *hash, int miners, int is_alt) {
+void rx_slow_hash(const uint64_t mainheight, const uint64_t seedheight, const unsigned char *seedhash, const void *data, size_t length,
+  unsigned char *hash, int miners, int is_alt) {
   uint64_t s_height = rx_seedheight(mainheight);
   int toggle = (s_height & SEEDHASH_EPOCH_BLOCKS) != 0;
   randomx_flags flags = enabled_flags() & ~disabled_flags();

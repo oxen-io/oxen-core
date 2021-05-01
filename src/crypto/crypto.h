@@ -32,6 +32,7 @@
 
 #include <cstddef>
 #include <iostream>
+#include <limits>
 #include <optional>
 #include <type_traits>
 #include <vector>
@@ -39,144 +40,210 @@
 
 #include "epee/memwipe.h"
 #include "epee/mlocker.h"
-#include "generic-ops.h"
 #include "common/hex.h"
 #include "hash.h"
 
+#include <sodium/crypto_verify_32.h>
+#include <sodium/randombytes.h>
+
 namespace crypto {
 
-  extern "C" {
-#include "random.h"
-  }
+  // Some 0s for us to compare things against.
+  inline constexpr std::byte zero32[32] = {};
 
   struct alignas(size_t) ec_point {
-    char data[32];
+    std::byte data[32];
     // Returns true if non-null, i.e. not 0.
-    operator bool() const { static constexpr char null[32] = {0}; return memcmp(data, null, sizeof(data)); }
+    explicit operator bool() const { return memcmp(data, zero32, sizeof(data)); }
+
+    // Implicit unsigned char* conversion operators for easily passing into libsodium functions.
+    // (This goes through template deduction so that it only applies if we're looking for *exactly*
+    // an unsigned char*, but not in places where an unsigned char* would just happen to work.  For
+    // example, we don't want (a != b) to go via the implicit conversion).
+    template <typename T, typename = std::enable_if_t<std::is_same_v<T, unsigned char*>>>
+    operator T() { return reinterpret_cast<unsigned char*>(data); }
+    template <typename T, typename = std::enable_if_t<std::is_same_v<T, const unsigned char*>>>
+    operator T() const { return reinterpret_cast<const unsigned char*>(data); }
   };
+
+  template <typename T1, typename T2> using is_same_point_type = std::enable_if_t<std::is_base_of_v<ec_point, T1> && std::is_same_v<T1, T2> && sizeof(T1) == sizeof(ec_point)>;
+
+  // Equality, inequality, and less-than comparison between ec_point or subclasses. This is only
+  // allowed if both arguments are of the same type.
+  template <typename T1, typename T2, typename = is_same_point_type<T1, T2>>
+  bool operator==(const T1& a, const T2& b) { return memcmp(a.data, b.data, sizeof(ec_point)) == 0; }
+  template <typename T1, typename T2, typename = is_same_point_type<T1, T2>>
+  bool operator!=(const T1& a, const T2& b) { return !(a == b); }
+  template <typename T1, typename T2, typename = is_same_point_type<T1, T2>>
+  bool operator<(const T1& a, const T2& b) { return memcmp(a.data, b.data, sizeof(ec_point)) < 0; }
 
   struct alignas(size_t) ec_scalar {
-    char data[32];
+    std::byte data[32];
+
+    // Implicit unsigned char* conversion operators for easily passing into libsodium functions.
+    // See ec_point for why the templates are here.
+    template <typename T, typename = std::enable_if_t<std::is_same_v<T, unsigned char*>>>
+    operator T() { return reinterpret_cast<unsigned char*>(data); }
+    template <typename T, typename = std::enable_if_t<std::is_same_v<T, const unsigned char*>>>
+    operator T() const { return reinterpret_cast<const unsigned char*>(data); }
   };
 
-  struct public_key : ec_point {};
-
-  using secret_key = epee::mlocked<tools::scrubbed<ec_scalar>>;
-
-  struct public_keyV {
-    std::vector<public_key> keys;
-    int rows;
+  struct public_key : ec_point {
+    static const public_key null;
   };
+  inline constexpr public_key public_key::null{};
 
-  struct secret_keyV {
-    std::vector<secret_key> keys;
-    int rows;
+  struct secret_key : epee::mlocked<tools::scrubbed<ec_scalar>> {
+    static const secret_key null;
+
+    // constant-time == comparison
+    bool operator==(const secret_key& x) const { return crypto_verify_32(*this, x) == 0; }
+    bool operator!=(const secret_key& x) const { return !(*this == x); }
+
+    explicit operator bool() const { return *this != null; }
   };
+  inline const secret_key secret_key::null{};
 
-  struct public_keyM {
-    int cols;
-    int rows;
-    std::vector<secret_keyV> column_vectors;
+  struct key_derivation : ec_point {};
+
+  struct key_image : ec_point {
+    static const key_image null;
   };
-
-  struct key_derivation: ec_point {};
-
-  struct key_image: ec_point {};
+  inline constexpr key_image key_image::null{};
 
   struct signature {
     ec_scalar c, r;
 
+    static const signature null;
+
+    bool operator==(const signature& x) const { return !memcmp(this, &x, sizeof(*this)); }
+    bool operator!=(const signature& x) const { return !(*this == x); }
+
     // Returns true if non-null, i.e. not 0.
-    operator bool() const { static constexpr char null[64] = {0}; return memcmp(this, null, sizeof(null)); }
+    explicit operator bool() const { return *this != null; }
   };
+  inline constexpr signature signature::null{};
 
   // The sizes below are all provided by sodium.h, but we don't want to depend on it here; we check
   // that they agree with the actual constants from sodium.h when compiling cryptonote_core.cpp.
   struct alignas(size_t) ed25519_public_key {
-    unsigned char data[32]; // 32 = crypto_sign_ed25519_PUBLICKEYBYTES
-    static constexpr ed25519_public_key null() { return {0}; }
+    std::byte data[32]; // 32 = crypto_sign_ed25519_PUBLICKEYBYTES
+
+    static const ed25519_public_key null;
+
+    bool operator==(const ed25519_public_key& x) const { return !memcmp(this, &x, sizeof(*this)); }
+    bool operator!=(const ed25519_public_key& x) const { return !(*this == x); }
+
     /// Returns true if non-null
-    operator bool() const { return memcmp(data, null().data, sizeof(data)); }
+    explicit operator bool() const { return *this != null; }
+
+    // Implicit conversion to unsigned char* for easier passing into libsodium functions. See
+    // ec_point regarding the template usage.
+    template <typename T, typename = std::enable_if_t<std::is_same_v<T, unsigned char*>>>
+    operator T() { return reinterpret_cast<unsigned char*>(data); }
+    template <typename T, typename = std::enable_if_t<std::is_same_v<T, const unsigned char*>>>
+    operator T() const { return reinterpret_cast<const unsigned char*>(data); }
   };
+  inline constexpr ed25519_public_key ed25519_public_key::null{};
 
   struct alignas(size_t) ed25519_secret_key_ {
     // 64 = crypto_sign_ed25519_SECRETKEYBYTES (but we don't depend on libsodium header here)
-    unsigned char data[64];
+    std::byte data[64];
+    // Implicit conversion to unsigned char* for easier passing into libsodium functions
+    template <typename T, typename = std::enable_if_t<std::is_same_v<T, unsigned char*>>>
+    operator T() { return reinterpret_cast<unsigned char*>(data); }
+    template <typename T, typename = std::enable_if_t<std::is_same_v<T, const unsigned char*>>>
+    operator T() const { return reinterpret_cast<const unsigned char*>(data); }
   };
   using ed25519_secret_key = epee::mlocked<tools::scrubbed<ed25519_secret_key_>>;
 
   struct alignas(size_t) ed25519_signature {
-    unsigned char data[64]; // 64 = crypto_sign_BYTES
-    static constexpr ed25519_signature null() { return {0}; }
+    std::byte data[64]; // 64 = crypto_sign_BYTES
+    static const ed25519_signature null;
+
     // Returns true if non-null, i.e. not 0.
-    operator bool() const { auto z = null(); return memcmp(this, &z, sizeof(z)); }
+    explicit operator bool() const { return memcmp(this, &null, sizeof(null)); }
+
+    bool operator==(const ed25519_signature& x) const { return !memcmp(this, &x, sizeof(*this)); }
+    bool operator!=(const ed25519_signature& x) const { return !(*this == x); }
+
+    // Implicit conversion to unsigned char* for easier passing into libsodium functions
+    template <typename T, typename = std::enable_if_t<std::is_same_v<T, unsigned char*>>>
+    operator T() { return reinterpret_cast<unsigned char*>(data); }
+    template <typename T, typename = std::enable_if_t<std::is_same_v<T, const unsigned char*>>>
+    operator T() const { return reinterpret_cast<const unsigned char*>(data); }
   };
+  inline constexpr ed25519_signature ed25519_signature::null{};
 
   struct alignas(size_t) x25519_public_key {
-    unsigned char data[32]; // crypto_scalarmult_curve25519_BYTES
-    static constexpr x25519_public_key null() { return {0}; }
+    std::byte data[32]; // crypto_scalarmult_curve25519_BYTES
+    static const x25519_public_key null;
     /// Returns true if non-null
-    operator bool() const { return memcmp(data, null().data, sizeof(data)); }
+    bool operator==(const x25519_public_key& x) const { return !memcmp(this, &x, sizeof(*this)); }
+    bool operator!=(const x25519_public_key& x) const { return !(*this == x); }
+
+    explicit operator bool() const { return memcmp(data, null.data, sizeof(null)); }
+
+    // Implicit conversion to unsigned char* for easier passing into libsodium functions
+    template <typename T, typename = std::enable_if_t<std::is_same_v<T, unsigned char*>>>
+    operator T() { return reinterpret_cast<unsigned char*>(data); }
+    template <typename T, typename = std::enable_if_t<std::is_same_v<T, const unsigned char*>>>
+    operator T() const { return reinterpret_cast<const unsigned char*>(data); }
   };
+  inline constexpr x25519_public_key x25519_public_key::null{};
 
   struct alignas(size_t) x25519_secret_key_ {
-    unsigned char data[32]; // crypto_scalarmult_curve25519_BYTES
+    std::byte data[32]; // crypto_scalarmult_curve25519_BYTES
+    // Implicit conversion to unsigned char* for easier passing into libsodium functions
+    template <typename T, typename = std::enable_if_t<std::is_same_v<T, unsigned char*>>>
+    operator T() { return reinterpret_cast<unsigned char*>(data); }
+    template <typename T, typename = std::enable_if_t<std::is_same_v<T, const unsigned char*>>>
+    operator T() const { return reinterpret_cast<const unsigned char*>(data); }
   };
   using x25519_secret_key = epee::mlocked<tools::scrubbed<x25519_secret_key_>>;
 
   void hash_to_scalar(const void *data, size_t length, ec_scalar &res);
-  void random_scalar(unsigned char* bytes);
-  void random_scalar(ec_scalar& res);
-  ec_scalar random_scalar();
 
   static_assert(sizeof(ec_point) == 32 && sizeof(ec_scalar) == 32 &&
     sizeof(public_key) == 32 && sizeof(secret_key) == 32 &&
     sizeof(key_derivation) == 32 && sizeof(key_image) == 32 &&
     sizeof(signature) == 64, "Invalid structure size");
 
-  void generate_random_bytes_thread_safe(size_t N, uint8_t *bytes);
-  void add_extra_entropy_thread_safe(const void *ptr, size_t bytes);
+  /// Fill a buffer with random bytes
+  template <typename T, typename = std::enable_if_t<sizeof(T) == 1>>
+  void fill_random(T* buf, size_t length) {
+    randombytes_buf(reinterpret_cast<unsigned char*>(buf), length);
+  }
 
-  /* Generate N random bytes
+  /* Fill a trivially constructible value with random bytes.
    */
-  inline void rand(size_t N, uint8_t *bytes) {
-    generate_random_bytes_thread_safe(N, bytes);
+  template <typename T, typename = std::enable_if_t<!std::is_const_v<T> && !std::is_pointer_v<T> && std::has_unique_object_representations_v<T>>>
+  void fill_random(T& val) {
+    fill_random(reinterpret_cast<unsigned char*>(&val), sizeof(val));
   }
 
   /* Generate a value filled with random bytes.
    */
-  template<typename T>
-  typename std::enable_if<std::is_pod<T>::value, T>::type rand() {
-    typename std::remove_cv<T>::type res;
-    generate_random_bytes_thread_safe(sizeof(T), (uint8_t*)&res);
+  template <typename T, typename = std::enable_if_t<std::has_unique_object_representations_v<T>>>
+  T random_filled() {
+    T res;
+    fill_random(res);
     return res;
   }
 
-  /* UniformRandomBitGenerator using crypto::rand<uint64_t>()
+  /* Trivial UniformRandomBitGenerator using libsodium's randombytes_buf.
+   *
+   * Note that sodium_init() must have been called (typically via a call to common/util's
+   * tools::on_startup()).
    */
   struct random_device
   {
-    typedef uint64_t result_type;
-    static constexpr result_type min() { return 0; }
-    static constexpr result_type max() { return result_type(-1); }
-    result_type operator()() const { return crypto::rand<result_type>(); }
+    using result_type = uint64_t;
+    static constexpr result_type min() { return std::numeric_limits<result_type>::min(); }
+    static constexpr result_type max() { return std::numeric_limits<result_type>::max(); }
+    result_type operator()() const { return random_filled<result_type>(); }
   };
-
-  /* Generate a random value between range_min and range_max
-   */
-  template<typename T>
-  typename std::enable_if<std::is_integral<T>::value, T>::type rand_range(T range_min, T range_max) {
-    crypto::random_device rd;
-    std::uniform_int_distribution<T> dis(range_min, range_max);
-    return dis(rd);
-  }
-
-  /* Generate a random index between 0 and sz-1
-   */
-  template<typename T>
-  typename std::enable_if<std::is_unsigned<T>::value, T>::type rand_idx(T sz) {
-    return crypto::rand_range<T>(0, sz-1);
-  }
+  constexpr random_device rng{};
 
   /* Generate a new key pair
    */
@@ -285,9 +352,6 @@ namespace crypto {
   inline std::ostream &operator <<(std::ostream &o, const crypto::public_key &v) {
     return o << '<' << tools::type_to_hex(v) << '>';
   }
-  inline std::ostream &operator <<(std::ostream &o, const crypto::secret_key &v) {
-    return o << '<' << tools::type_to_hex(v) << '>';
-  }
   inline std::ostream &operator <<(std::ostream &o, const crypto::key_derivation &v) {
     return o << '<' << tools::type_to_hex(v) << '>';
   }
@@ -303,13 +367,51 @@ namespace crypto {
   inline std::ostream &operator <<(std::ostream &o, const crypto::x25519_public_key &v) {
     return o << '<' << tools::type_to_hex(v) << '>';
   }
-  constexpr inline crypto::public_key null_pkey{};
-  const inline crypto::secret_key null_skey{};
+
+  template <typename T>
+  struct already_hashed {
+    std::size_t operator()(const T& v) const { return *reinterpret_cast<const std::size_t*>(&v); }
+  };
+
+  // Wrapper around crypto_core_ed25519_scalar_reduce that operates on a 32-byte value (copying it
+  // into a 64-byte buffer with trailing 0's).
+  void ed25519_scalar_reduce32(unsigned char* buf);
+
+  // Stand-in object to aid with operations, most notably `scalar %= L` to reduce.
+  struct ed25519_order_t {};
+  inline constexpr ed25519_order_t L{};
+
+  // Reduces something held in a 32-byte trivial type (e.g. ec_scalar, rct::key) to be mod L:
+  //
+  //     s %= L;
+  //
+  template <typename T, typename = std::enable_if_t<(std::is_trivial_v<T> || std::is_same_v<T, secret_key>) && sizeof(T) == 32>>
+  T& operator%=(T& scalar, ed25519_order_t) {
+    ed25519_scalar_reduce32(reinterpret_cast<unsigned char*>(&scalar));
+    return scalar;
+  }
+
+  template <typename T, typename = std::enable_if_t<(std::is_trivial_v<T> || std::is_same_v<T, secret_key>) && sizeof(T) == 32>>
+  T operator%(T scalar, ed25519_order_t) {
+    scalar %= L;
+    return scalar;
+  }
+
 }
 
-CRYPTO_MAKE_HASHABLE(public_key)
-CRYPTO_MAKE_HASHABLE_CONSTANT_TIME(secret_key)
-CRYPTO_MAKE_HASHABLE(key_image)
-CRYPTO_MAKE_HASHABLE(signature)
-CRYPTO_MAKE_HASHABLE(ed25519_public_key)
-CRYPTO_MAKE_HASHABLE(x25519_public_key)
+namespace epee { template <> inline constexpr bool is_byte_spannable<crypto::secret_key> = true; }
+
+namespace crypto {
+  inline std::ostream &operator <<(std::ostream &o, const crypto::secret_key &v) {
+    return o << '<' << tools::type_to_hex(v) << '>';
+  }
+}
+
+namespace std {
+  template<> struct hash<crypto::secret_key> : crypto::already_hashed<crypto::secret_key> {};
+  template<> struct hash<crypto::public_key> : crypto::already_hashed<crypto::public_key> {};
+  template<> struct hash<crypto::key_image> : crypto::already_hashed<crypto::key_image> {};
+  template<> struct hash<crypto::signature> : crypto::already_hashed<crypto::signature> {};
+  template<> struct hash<crypto::ed25519_public_key> : crypto::already_hashed<crypto::ed25519_public_key> {};
+  template<> struct hash<crypto::x25519_public_key> : crypto::already_hashed<crypto::x25519_public_key> {};
+}

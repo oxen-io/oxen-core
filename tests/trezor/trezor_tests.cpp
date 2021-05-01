@@ -446,7 +446,7 @@ bool get_short_payment_id(crypto::hash8 &payment_id8, const tools::wallet2::pend
 static tools::wallet2::tx_construction_data get_construction_data_with_decrypted_short_payment_id(const tools::wallet2::pending_tx &ptx, hw::device &hwdev)
 {
   tools::wallet2::tx_construction_data construction_data = ptx.construction_data;
-  crypto::hash8 payment_id = crypto::null_hash8;
+  crypto::hash8 payment_id = crypto::hash8::null;
   if (get_short_payment_id(payment_id, ptx, hwdev))
   {
     // Remove encrypted

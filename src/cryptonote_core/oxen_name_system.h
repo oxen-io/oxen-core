@@ -27,31 +27,31 @@ class Blockchain;
 namespace ons
 {
 
-constexpr size_t WALLET_NAME_MAX                  = 64;
-constexpr size_t WALLET_ACCOUNT_BINARY_LENGTH_INC_PAYMENT_ID     = 73;  // Wallet will encrypt an identifier (1 byte) a public spend and view key (2x 32 bytes) = 65 bytes plus an additional item for payment id (8 bytes) if necessary. The identifier 0 -> No Subaddress or Payment ID, 1 -> Has Subaddress, 2-> Has Payment ID
-constexpr size_t WALLET_ACCOUNT_BINARY_LENGTH_NO_PAYMENT_ID     = 65;
-constexpr size_t LOKINET_DOMAIN_NAME_MAX          = 63 + 5; // DNS components name must be at most 63 (+ 5 for .loki); this limit applies if there is at least one hyphen (and thus includes punycode)
-constexpr size_t LOKINET_DOMAIN_NAME_MAX_NOHYPHEN = 32 + 5; // If the name does not contain a - then we restrict it to 32 characters so that it cannot be (and is obviously not) an encoded .loki address (52 characters)
-constexpr size_t LOKINET_ADDRESS_BINARY_LENGTH    = sizeof(crypto::ed25519_public_key);
-constexpr size_t SESSION_DISPLAY_NAME_MAX         = 64;
-constexpr size_t SESSION_PUBLIC_KEY_BINARY_LENGTH = 1 + sizeof(crypto::ed25519_public_key); // Session keys at prefixed with 0x05 + ed25519 key
+inline constexpr size_t WALLET_NAME_MAX = 64;
+inline constexpr size_t WALLET_ACCOUNT_BINARY_LENGTH_INC_PAYMENT_ID = 73;  // Wallet will encrypt an identifier (1 byte) a public spend and view key (2x 32 bytes) = 65 bytes plus an additional item for payment id (8 bytes) if necessary. The identifier 0 -> No Subaddress or Payment ID, 1 -> Has Subaddress, 2-> Has Payment ID
+inline constexpr size_t WALLET_ACCOUNT_BINARY_LENGTH_NO_PAYMENT_ID = 65;
+inline constexpr size_t LOKINET_DOMAIN_NAME_MAX = 63 + 5; // DNS components name must be at most 63 (+ 5 for .loki); this limit applies if there is at least one hyphen (and thus includes punycode)
+inline constexpr size_t LOKINET_DOMAIN_NAME_MAX_NOHYPHEN = 32 + 5; // If the name does not contain a - then we restrict it to 32 characters so that it cannot be (and is obviously not) an encoded .loki address (52 characters)
+inline constexpr size_t LOKINET_ADDRESS_BINARY_LENGTH = sizeof(crypto::ed25519_public_key);
+inline constexpr size_t SESSION_DISPLAY_NAME_MAX = 64;
+inline constexpr size_t SESSION_PUBLIC_KEY_BINARY_LENGTH = 1 + sizeof(crypto::ed25519_public_key); // Session keys at prefixed with 0x05 + ed25519 key
 
-constexpr size_t NAME_HASH_SIZE = sizeof(crypto::hash);
-constexpr size_t NAME_HASH_SIZE_B64_MIN = (4*NAME_HASH_SIZE + 2) / 3; // No padding
-constexpr size_t NAME_HASH_SIZE_B64_MAX = (NAME_HASH_SIZE + 2) / 3 * 4; // With padding
+inline constexpr size_t NAME_HASH_SIZE = sizeof(crypto::hash);
+inline constexpr size_t NAME_HASH_SIZE_B64_MIN = (4*NAME_HASH_SIZE + 2) / 3; // No padding
+inline constexpr size_t NAME_HASH_SIZE_B64_MAX = (NAME_HASH_SIZE + 2) / 3 * 4; // With padding
 
-constexpr size_t SODIUM_ENCRYPTION_EXTRA_BYTES = 40; // crypto_aead_xchacha20poly1305_ietf_ABYTES (16) + crypto_aead_xchacha20poly1305_ietf_NPUBBYTES (24), but we don't include sodium here
+inline constexpr size_t SODIUM_ENCRYPTION_EXTRA_BYTES = 40; // crypto_aead_xchacha20poly1305_ietf_ABYTES (16) + crypto_aead_xchacha20poly1305_ietf_NPUBBYTES (24), but we don't include sodium here
 
-constexpr char ONS_WALLET_TYPE_PRIMARY = 0x00;
-constexpr char ONS_WALLET_TYPE_SUBADDRESS = 0x01;
-constexpr char ONS_WALLET_TYPE_INTEGRATED = 0x02;
+inline constexpr auto ONS_WALLET_TYPE_PRIMARY = std::byte{0x00};
+inline constexpr auto ONS_WALLET_TYPE_SUBADDRESS = std::byte{0x01};
+inline constexpr auto ONS_WALLET_TYPE_INTEGRATED = std::byte{0x02};
 
 struct mapping_value
 {
   static size_t constexpr BUFFER_SIZE = std::max({WALLET_ACCOUNT_BINARY_LENGTH_INC_PAYMENT_ID, LOKINET_ADDRESS_BINARY_LENGTH, SESSION_PUBLIC_KEY_BINARY_LENGTH}) + SODIUM_ENCRYPTION_EXTRA_BYTES;
-  std::array<uint8_t, BUFFER_SIZE> buffer;
-  bool encrypted;
-  size_t len;
+  std::array<std::byte, BUFFER_SIZE> buffer = {};
+  bool encrypted = false;
+  size_t len = 0;
 
   std::string      to_string() const { return std::string{to_view()}; }
   std::string_view to_view()   const { return {reinterpret_cast<const char*>(buffer.data()), len}; }
@@ -60,7 +60,7 @@ struct mapping_value
   // session values the nonce will be all 0 bytes *if* the encrypted value is not the proper length
   // for an including-the-nonce value.  For newer session and all others the nonce is always
   // present.
-  std::pair<std::basic_string_view<unsigned char>, std::basic_string_view<unsigned char>> value_nonce(mapping_type type) const;
+  std::pair<std::basic_string_view<std::byte>, std::basic_string_view<std::byte>> value_nonce(mapping_type type) const;
   bool operator==(mapping_value const &other) const { return encrypted == other.encrypted && other.to_view() == to_view(); }
   bool operator==(std::string_view other)     const { return other == to_view(); }
 
@@ -112,8 +112,8 @@ struct mapping_value
   // mapping_value, ready for decryption via decrypt().
   static bool validate_encrypted(mapping_type type, std::string_view value, mapping_value *blob = nullptr, std::string *reason = nullptr);
 
-  mapping_value();
-  mapping_value(std::string encrypted_value, std::string nonce);
+  mapping_value() = default;
+  mapping_value(std::string_view encrypted_value, std::string_view nonce);
 };
 inline std::ostream &operator<<(std::ostream &os, mapping_value const &v) { return os << oxenmq::to_hex(v.to_view()); }
 
@@ -321,7 +321,7 @@ struct name_system_db
 private:
   cryptonote::network_type nettype;
   uint64_t last_processed_height = 0;
-  crypto::hash last_processed_hash = crypto::null_hash;
+  crypto::hash last_processed_hash = crypto::hash::null;
   sql_compiled_statement save_owner_sql{*this};
   sql_compiled_statement save_mapping_sql{*this};
   sql_compiled_statement save_settings_sql{*this};

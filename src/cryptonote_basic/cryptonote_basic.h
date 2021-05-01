@@ -151,7 +151,6 @@ namespace cryptonote
 
   using txout_target_v = std::variant<txout_to_script, txout_to_scripthash, txout_to_key>;
 
-  //typedef std::pair<uint64_t, txout> out_t;
   struct tx_out
   {
     uint64_t amount;
@@ -368,7 +367,7 @@ namespace cryptonote
   /************************************************************************/
   struct pulse_random_value
   {
-    unsigned char data[16];
+    std::byte data[16];
     bool operator==(pulse_random_value const &other) const { return std::memcmp(data, other.data, sizeof(data)) == 0; }
 
     static constexpr bool binary_serializable = true;
@@ -477,8 +476,10 @@ namespace cryptonote
     {
       return !(*this == rhs);
     }
+
+    static const account_public_address null;
   };
-  inline constexpr account_public_address null_address{};
+  constexpr account_public_address account_public_address::null{};
 
   struct keypair
   {
