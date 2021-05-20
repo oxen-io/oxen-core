@@ -1992,14 +1992,14 @@ bool rpc_command_executor::prepare_registration(bool force_registration)
     tools::fail_msg_writer() << "Unable to prepare registration: this daemon is not running in --service-node mode";
     return false;
   }
-  else if (long last_lokinet_ping = res.last_lokinet_ping.value_or(0);
+  else if (auto last_lokinet_ping = static_cast<std::time_t>(res.last_lokinet_ping.value_or(0));
       last_lokinet_ping < (time(nullptr) - 60) && !force_registration)
   {
     tools::fail_msg_writer() << "Unable to prepare registration: this daemon has not received a ping from lokinet "
                              << (res.last_lokinet_ping == 0 ? "yet" : "since " + get_human_time_ago(last_lokinet_ping, std::time(nullptr)));
     return false;
   }
-  else if (long last_storage_server_ping = res.last_storage_server_ping.value_or(0);
+  else if (auto last_storage_server_ping = static_cast<std::time_t>(res.last_storage_server_ping.value_or(0));
       last_storage_server_ping < (time(nullptr) - 60) && !force_registration)
   {
     tools::fail_msg_writer() << "Unable to prepare registration: this daemon has not received a ping from the storage server "
