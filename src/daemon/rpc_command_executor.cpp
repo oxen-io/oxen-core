@@ -191,20 +191,6 @@ namespace {
     return get_human_time_ago(std::chrono::seconds{now - t}, abbreviate);
   }
 
-  std::string get_human_time_ago(std::optional<uint64_t> t, std::time_t now, bool abbreviate = false) {
-    std::time_t time;
-    if (t.has_value())
-    {
-      time = t.value() / 1000000000;
-    }
-    else
-    {
-      time = now;
-    }
-
-    return get_human_time_ago(time, now, abbreviate);
-  }
-
   char const *get_date_time(time_t t)
   {
     static char buf[128];
@@ -2006,16 +1992,18 @@ bool rpc_command_executor::prepare_registration(bool force_registration)
     tools::fail_msg_writer() << "Unable to prepare registration: this daemon is not running in --service-node mode";
     return false;
   }
-  else if (res.last_lokinet_ping < (time(nullptr) - 60) && !force_registration)
+  else if (long last_lokinet_ping = res.last_lokinet_ping.value_or(0);
+      last_lokinet_ping < (time(nullptr) - 60) && !force_registration)
   {
     tools::fail_msg_writer() << "Unable to prepare registration: this daemon has not received a ping from lokinet "
-                             << (res.last_lokinet_ping == 0 ? "yet" : "since " + get_human_time_ago(res.last_lokinet_ping, std::time(nullptr)));
+                             << (res.last_lokinet_ping == 0 ? "yet" : "since " + get_human_time_ago(last_lokinet_ping, std::time(nullptr)));
     return false;
   }
-  else if (res.last_storage_server_ping < (time(nullptr) - 60) && !force_registration)
+  else if (long last_storage_server_ping = res.last_storage_server_ping.value_or(0);
+      last_storage_server_ping < (time(nullptr) - 60) && !force_registration)
   {
     tools::fail_msg_writer() << "Unable to prepare registration: this daemon has not received a ping from the storage server "
-                             << (res.last_storage_server_ping == 0 ? "yet" : "since " + get_human_time_ago(res.last_storage_server_ping, std::time(nullptr)));
+                             << (res.last_storage_server_ping == 0 ? "yet" : "since " + get_human_time_ago(last_storage_server_ping, std::time(nullptr)));
     return false;
   }
 
