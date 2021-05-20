@@ -202,7 +202,7 @@ namespace {
       time = now;
     }
 
-    return get_human_time_ago(std::chrono::seconds{now - time}, abbreviate);
+    return get_human_time_ago(time, now, abbreviate);
   }
 
   char const *get_date_time(time_t t)
