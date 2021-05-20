@@ -186,8 +186,23 @@ namespace {
     }
     return s + " " + (ago < 0s ? "in the future" : "ago");
   }
+
   std::string get_human_time_ago(std::time_t t, std::time_t now, bool abbreviate = false) {
     return get_human_time_ago(std::chrono::seconds{now - t}, abbreviate);
+  }
+
+  std::string get_human_time_ago(std::optional<uint64_t> t, std::time_t now, bool abbreviate = false) {
+    std::time_t time;
+    if (t.has_value())
+    {
+      time = t.value() / 1000000000;
+    }
+    else
+    {
+      time = now;
+    }
+
+    return get_human_time_ago(std::chrono::seconds{now - time}, abbreviate);
   }
 
   char const *get_date_time(time_t t)
@@ -1967,7 +1982,7 @@ static uint64_t get_actual_amount(uint64_t amount, uint64_t portions)
   return resultlo;
 }
 
-bool rpc_command_executor::prepare_registration(bool force_registration=false)
+bool rpc_command_executor::prepare_registration(bool force_registration)
 {
   // RAII-style class to temporarily clear categories and restore upon destruction (i.e. upon returning).
   struct clear_log_categories {
@@ -1991,14 +2006,16 @@ bool rpc_command_executor::prepare_registration(bool force_registration=false)
     tools::fail_msg_writer() << "Unable to prepare registration: this daemon is not running in --service-node mode";
     return false;
   }
-  else if (res.last_lokinet_ping == 0 && !force_registration)
+  else if (res.last_lokinet_ping < (time(nullptr) - 60) && !force_registration)
   {
-    tools::fail_msg_writer() << "Unable to prepare registration: this daemon has not received a ping from lokinet yet";
+    tools::fail_msg_writer() << "Unable to prepare registration: this daemon has not received a ping from lokinet "
+                             << (res.last_lokinet_ping == 0 ? "yet" : "since " + get_human_time_ago(res.last_lokinet_ping, std::time(nullptr)));
     return false;
   }
-  else if (res.last_storage_server_ping == 0 && !force_registration)
+  else if (res.last_storage_server_ping < (time(nullptr) - 60) && !force_registration)
   {
-    tools::fail_msg_writer() << "Unable to prepare registration: this daemon has not received a ping from the storage server yet";
+    tools::fail_msg_writer() << "Unable to prepare registration: this daemon has not received a ping from the storage server "
+                             << (res.last_storage_server_ping == 0 ? "yet" : "since " + get_human_time_ago(res.last_storage_server_ping, std::time(nullptr)));
     return false;
   }
 
