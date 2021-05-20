@@ -187,7 +187,7 @@ public:
 
   bool print_sr(uint64_t height);
 
-  bool prepare_registration(bool force_registration);
+  bool prepare_registration(bool force_registration=false);
 
   bool print_sn(const std::vector<std::string> &args);
 
