@@ -1967,7 +1967,7 @@ static uint64_t get_actual_amount(uint64_t amount, uint64_t portions)
   return resultlo;
 }
 
-bool rpc_command_executor::prepare_registration()
+bool rpc_command_executor::prepare_registration(bool force_registration=false)
 {
   // RAII-style class to temporarily clear categories and restore upon destruction (i.e. upon returning).
   struct clear_log_categories {
@@ -1989,6 +1989,16 @@ bool rpc_command_executor::prepare_registration()
   if (!res.service_node)
   {
     tools::fail_msg_writer() << "Unable to prepare registration: this daemon is not running in --service-node mode";
+    return false;
+  }
+  else if (res.last_lokinet_ping == 0 && !force_registration)
+  {
+    tools::fail_msg_writer() << "Unable to prepare registration: this daemon has not received a ping from lokinet yet";
+    return false;
+  }
+  else if (res.last_storage_server_ping == 0 && !force_registration)
+  {
+    tools::fail_msg_writer() << "Unable to prepare registration: this daemon has not received a ping from the storage server yet";
     return false;
   }
 

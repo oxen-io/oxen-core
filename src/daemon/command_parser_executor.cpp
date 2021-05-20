@@ -305,10 +305,16 @@ bool command_parser_executor::print_sr(const std::vector<std::string>& args)
   return result;
 }
 
-bool command_parser_executor::prepare_registration()
+bool command_parser_executor::prepare_registration(const std::vector<std::string>& args)
 {
-  bool result = m_executor.prepare_registration();
-  return result;
+  bool force_registration = false;
+  for (auto& arg : args)
+  {
+    if (arg == "+force")
+      force_registration = true;
+  }
+
+  return m_executor.prepare_registration(force_registration);
 }
 
 bool command_parser_executor::print_sn(const std::vector<std::string>& args)
