@@ -14,8 +14,8 @@ LISTEN_IP, NEXT_PORT = (
         if sys.platform == 'linux' else
         ('127.0.0.1', random.randint(5000, 20000)))
 
-verbose = True
-# verbose = False
+# verbose = True
+verbose = False
 
 def next_port():
     global NEXT_PORT

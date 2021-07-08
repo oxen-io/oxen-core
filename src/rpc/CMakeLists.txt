@@ -75,6 +75,7 @@ target_link_libraries(rpc
     cryptonote_protocol
     Boost::thread
     Boost::program_options
+    sqlite_orm
     OpenSSL::SSL
     extra)
 
@@ -83,6 +84,7 @@ target_link_libraries(daemon_rpc_server
     rpc_server_base
     rpc
     Boost::thread
+    sqlite_orm
     extra)
 
 target_link_libraries(rpc_http_client

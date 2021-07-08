@@ -55,6 +55,7 @@ target_link_libraries(cryptonote_core
     SQLite::SQLite3
   PRIVATE
     Boost::program_options
+    sqlite_orm
     systemd
     extra)
 

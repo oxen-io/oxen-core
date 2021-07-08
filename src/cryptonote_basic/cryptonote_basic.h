@@ -208,7 +208,11 @@ namespace cryptonote
       FIELD(vin)
       FIELD(vout)
       if (version >= txversion::v3_per_output_unlock_times && vout.size() != output_unlock_times.size())
+      {
+        MINFO(__FILE__ << ":" << __LINE__ << " TODO sean remove this - AAAAAAAAAA - vout.size(): " << vout.size());
+        MINFO(__FILE__ << ":" << __LINE__ << " TODO sean remove this - AAAAAAAAAA - output unlock times.size(): " << output_unlock_times.size());
         throw std::invalid_argument{"v3 tx without correct unlock times"};
+      }
       FIELD(extra)
       if (version >= txversion::v4_tx_types)
         ENUM_FIELD_N("type", type, type < txtype::_count);
@@ -428,6 +432,9 @@ namespace cryptonote
     void set_hash_valid(bool v) const;
 
     transaction miner_tx;
+    size_t height;
+    crypto::public_key service_node_winner_key;
+    uint64_t reward;
     std::vector<crypto::hash> tx_hashes;
 
     // hash cache
@@ -445,6 +452,12 @@ namespace cryptonote
         throw std::invalid_argument{"too many txs in block"};
       if (major_version >= cryptonote::network_version_16_pulse)
         FIELD(signatures)
+      if (major_version >= cryptonote::network_version_19)
+      {
+        VARINT_FIELD(height)
+        FIELD(service_node_winner_key)
+        VARINT_FIELD(reward) 
+      }
     END_SERIALIZE()
   };
 
