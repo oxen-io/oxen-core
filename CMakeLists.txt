@@ -86,6 +86,9 @@ else()
   message(WARNING "PIE disabled: cmake 3.14+ is required for proper PIE linking support")
 endif()
 
+# TODO sean remove this
+set(CMAKE_CXX_LINK_EXECUTABLE "${CMAKE_CXX_LINK_EXECUTABLE} -ldl")
+
 include(CheckCCompilerFlag)
 include(CheckCXXCompilerFlag)
 include(CheckLinkerFlag)
@@ -289,7 +292,7 @@ if(NOT MANUAL_SUBMODULES)
     check_submodule(external/trezor-common)
     check_submodule(external/randomx)
     check_submodule(external/loki-mq cppzmq)
-    check_submodule(external/sqlite_orm)
+    check_submodule(external/SQLiteCpp)
     if(BUILD_TESTS)
       check_submodule(external/googletest)
     endif()
@@ -878,7 +881,6 @@ if(CMAKE_C_COMPILER_ID STREQUAL "Clang" AND ARCH_WIDTH EQUAL "32" AND NOT IOS AN
     target_link_libraries(extra INTERFACE ${ATOMIC})
   endif()
 endif()
-
 
 add_subdirectory(contrib)
 add_subdirectory(src)

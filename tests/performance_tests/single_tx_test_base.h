@@ -44,7 +44,7 @@ public:
     m_bob.generate();
 
     oxen_miner_tx_context miner_tx_context = {};
-    std::optional<std::vector<cryptonote::reward_payout>> sn_rwds;
+    std::optional<std::vector<cryptonote::batch_sn_payment>> sn_rwds;
     miner_tx_context.miner_block_producer  = m_bob.get_keys().m_account_address;
 
     uint64_t block_rewards = 0;

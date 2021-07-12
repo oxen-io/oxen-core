@@ -33,6 +33,7 @@
 #include <chrono>
 #include <cstdio>
 #include <boost/endian/conversion.hpp>
+#include <sodium.h>
 
 #include "common/rules.h"
 #include "common/hex.h"
@@ -300,10 +301,11 @@ uint64_t Blockchain::get_current_blockchain_height(bool lock) const
 //------------------------------------------------------------------
 bool Blockchain::load_missing_blocks_into_oxen_subsystems()
 {
-  uint64_t const snl_height   = std::max(hard_fork_begins(m_nettype, network_version_9_service_nodes).value_or(0), m_service_node_list.height() + 1);
-  uint64_t const ons_height   = std::max(hard_fork_begins(m_nettype, network_version_15_ons).value_or(0),          m_ons_db.height() + 1);
-  uint64_t const end_height   = m_db->height();
-  uint64_t const start_height = std::min(end_height, std::min(ons_height, snl_height));
+  uint64_t const snl_height    = std::max(hard_fork_begins(m_nettype, network_version_9_service_nodes).value_or(0), m_service_node_list.height() + 1);
+  uint64_t const ons_height    = std::max(hard_fork_begins(m_nettype, network_version_15_ons).value_or(0),          m_ons_db.height() + 1);
+  //uint64_t const sqlite_height = std::max(hard_fork_begins(m_nettype, network_version_19).value_or(0),              m_sqlite_db->height + 1);
+  uint64_t const end_height    = m_db->height();
+  uint64_t const start_height  = std::min(end_height, std::min(ons_height, snl_height));
 
   int64_t const total_blocks = static_cast<int64_t>(end_height) - static_cast<int64_t>(start_height);
   if (total_blocks <= 0) return true;
@@ -440,6 +442,10 @@ bool Blockchain::init(BlockchainDB* db, sqlite3 *ons_db, std::shared_ptr<crypton
 
   if (test_options) // Fakechain mode
     fakechain_hardforks = test_options->hard_forks;
+  if (sqlite_db)
+  {
+    m_sqlite_db = std::move(sqlite_db);
+  }
 
   // if the blockchain is new, add the genesis block
   // this feels kinda kludgy to do it this way, but can be looked at later.
@@ -512,6 +518,25 @@ bool Blockchain::init(BlockchainDB* db, sqlite3 *ons_db, std::shared_ptr<crypton
       try
       {
         m_db->pop_block(popped_block, popped_txs);
+        std::vector<cryptonote::batch_sn_payment> contributors;
+        if (popped_block.major_version >= cryptonote::network_version_19)
+        {
+          if (crypto_core_ed25519_is_valid_point(reinterpret_cast<const unsigned char *>(popped_block.service_node_winner_key.data)))
+          {
+            auto service_node_array = m_service_node_list.get_service_node_list_state({popped_block.service_node_winner_key});
+            if (service_node_array.size() > 0){
+              for (auto & contributor : service_node_array[0].info->contributors)
+              {
+                contributors.emplace_back(contributor.address, contributor.amount, m_nettype);
+              }
+            }
+          }
+        }
+        if (!m_sqlite_db->pop_block(m_nettype, popped_block, contributors))
+        {
+          LOG_ERROR("Failed to pop to batch rewards DB. throwing");
+          throw;
+        }
       }
       // anything that could cause this to throw is likely catastrophic,
       // so we re-throw
@@ -551,10 +576,6 @@ bool Blockchain::init(BlockchainDB* db, sqlite3 *ons_db, std::shared_ptr<crypton
     return false;
   }
 
-  if (sqlite_db)
-  {
-    m_sqlite_db = std::move(sqlite_db);
-  }
 
   hook_block_added(m_checkpoints);
   hook_blockchain_detached(m_checkpoints);
@@ -715,21 +736,24 @@ block Blockchain::pop_block_from_blockchain()
     LOG_ERROR("Error popping block from blockchain, throwing!");
     throw;
   }
-  if ( popped_block.major_version >= cryptonote::network_version_19 && m_nettype != FAKECHAIN )
+  std::vector<cryptonote::batch_sn_payment> contributors;
+  if (popped_block.major_version >= cryptonote::network_version_19)
   {
-    //TODO sean this needs to be updated to get the service node winner for block not coinbase tx
-    // Also service_node_list has a function that can do this: payout service_node_info_to_payout(crypto::public_key const &key, service_node_info const &info)
-    std::vector<cryptonote::reward_payout> contributors{0};
-    auto service_node_array = m_service_node_list.get_service_node_list_state({popped_block.service_node_winner_key});
-    for (auto & contributor : service_node_array[0].info->contributors)
+    if (crypto_core_ed25519_is_valid_point(reinterpret_cast<const unsigned char *>(popped_block.service_node_winner_key.data)))
     {
-      contributors.emplace_back(cryptonote::reward_type::snode, contributor.address, contributor.amount);
+      auto service_node_array = m_service_node_list.get_service_node_list_state({popped_block.service_node_winner_key});
+      if (service_node_array.size() > 0){
+        for (auto & contributor : service_node_array[0].info->contributors)
+        {
+          contributors.emplace_back(contributor.address, contributor.amount, m_nettype);
+        }
+      }
     }
-    if (m_sqlite_db->pop_block(m_nettype, popped_block, contributors))
-    {
-      LOG_ERROR("Failed to pop to batch rewards DB. throwing");
-      throw;
-    }
+  }
+  if (!m_sqlite_db->pop_block(m_nettype, popped_block, contributors))
+  {
+    LOG_ERROR("Failed to pop to batch rewards DB. throwing");
+    throw;
   }
 
   m_ons_db.block_detach(*this, m_db->height());
@@ -1283,8 +1307,6 @@ bool Blockchain::prevalidate_miner_transaction(const block& b, uint64_t height, 
       MERROR("miner transaction has money overflow in block " << get_block_hash(b));
       return false;
     }
-  } else {
-    //TODO sean make sure miner tx is empty
   }
 
   return true;
@@ -1297,11 +1319,12 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
   //validate reward
   uint64_t const money_in_use = get_outs_money_amount(b.miner_tx);
   if (b.miner_tx.vout.size() == 0) {
-    //TODO sean - check that a batch should be paid out - give warning maybe?
-    if (b.major_version >= cryptonote::network_version_19)
-      return true;
-    MERROR_VER("miner tx has no outputs");
-    return false;
+    if (b.major_version < cryptonote::network_version_19) {
+      MERROR_VER("miner tx has no outputs");
+      return false;
+    //} else {
+      //return true;
+    }
   }
 
   uint64_t median_weight;
@@ -1332,9 +1355,11 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
   if (!get_oxen_block_reward(median_weight, cumulative_block_weight, already_generated_coins, version, reward_parts, block_reward_context))
     return false;
 
+  auto batched_sn_payments = m_sqlite_db->get_sn_payments(m_nettype, height);
+  cryptonote::block bl = b;
   for (ValidateMinerTxHook* hook : m_validate_miner_tx_hooks)
   {
-    if (!hook->validate_miner_tx(b, reward_parts))
+    if (!hook->validate_miner_tx(b, reward_parts, batched_sn_payments))
       return false;
   }
 
@@ -1367,20 +1392,33 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
 
   // +1 here to allow a 1 atomic unit error in the calculation (which can happen because of floating point errors or rounding)
   // TODO(oxen): eliminate all floating point math in reward calculations.
-  // TODO sean not sure what this does probably need to revisit
-  if (b.major_version < cryptonote::network_version_19)
-  {
-    uint64_t max_base_reward = reward_parts.base_miner + reward_parts.governance_paid + reward_parts.service_node_total + 1;
-    uint64_t max_money_in_use = max_base_reward + reward_parts.miner_fee;
-    if (money_in_use > max_money_in_use)
-    {
-      MERROR_VER("coinbase transaction spends too much money (" << print_money(money_in_use) << "). Maximum block reward is "
-              << print_money(max_money_in_use) << " (= " << print_money(max_base_reward) << " base + " << print_money(reward_parts.miner_fee) << " fees)");
-      return false;
-    }
+  uint64_t max_base_reward = reward_parts.governance_paid + 1;
 
+  if (version >= network_version_19 && batched_sn_payments.has_value()) {
+    max_base_reward += std::accumulate(batched_sn_payments->begin(), batched_sn_payments->end(), uint64_t{0}, [&](auto a, auto b){return a + b.amount;});
+  } else {
+    max_base_reward += reward_parts.base_miner + reward_parts.service_node_total;
+  }
+
+  uint64_t max_money_in_use = max_base_reward + reward_parts.miner_fee;
+
+  if (money_in_use > max_money_in_use)
+  {
+    MERROR_VER("coinbase transaction spends too much money (" << print_money(money_in_use) << "). Maximum block reward is "
+            << print_money(max_money_in_use) << " (= " << print_money(max_base_reward) << " base + " << print_money(reward_parts.miner_fee) << " fees)");
+    return false;
+  }
+
+  if (version < network_version_19) {
     CHECK_AND_ASSERT_MES(money_in_use >= reward_parts.miner_fee, false, "base reward calculation bug");
     base_reward = money_in_use - reward_parts.miner_fee;
+  }
+
+  if (b.reward > reward_parts.base_miner + reward_parts.miner_fee + reward_parts.service_node_total)
+  {
+    MERROR_VER("block reward to be batched spends too much money (" << print_money(b.reward) << "). Maximum block reward is "
+            << print_money(max_money_in_use) << " (= " << print_money(max_base_reward) << " base + " << print_money(reward_parts.miner_fee) << " fees)");
+    return false;
   }
 
   return true;
@@ -1582,8 +1620,6 @@ bool Blockchain::create_block_template_internal(block& b, const crypto::hash *fr
   size_t txs_weight;
   uint64_t fee;
 
-
-
   // Add transactions in mempool to block
   if (!m_tx_pool.fill_block_template(b, median_weight, already_generated_coins, txs_weight, fee, expected_reward, b.major_version, height))
   {
@@ -1606,7 +1642,7 @@ bool Blockchain::create_block_template_internal(block& b, const crypto::hash *fr
     return false;
   }
 
-  std::optional<std::vector<cryptonote::reward_payout>> sn_rwds = std::nullopt;
+  std::optional<std::vector<cryptonote::batch_sn_payment>> sn_rwds = std::nullopt;
   if (hf_version >= cryptonote::network_version_19)
   {
     sn_rwds = m_sqlite_db->get_sn_payments(m_nettype, height); //Rewards to pay out
@@ -1653,15 +1689,14 @@ bool Blockchain::create_block_template_internal(block& b, const crypto::hash *fr
 
     if (!from_block)
       cache_block_template(b, info.miner_address, ex_nonce, diffic, height, expected_reward, pool_cookie);
-    //TODO sean should be producer? This really needs to handle many edge cases
+
     if (miner_tx_context.pulse)
     {
       b.service_node_winner_key = miner_tx_context.pulse_block_producer.key;
+    } else {
+      b.service_node_winner_key = {0};
     }
-    else
-    {
-      b.service_node_winner_key = miner_tx_context.block_leader.key;
-    }
+
 
     b.reward = block_rewards;
     b.height = height;
@@ -2916,6 +2951,7 @@ size_t Blockchain::get_total_transactions() const
   // m_db functions which do not depend on one another (ie, no getheight + gethash(height-1), as
   // well as not accessing class members, even read only (ie, m_invalid_blocks). The caller must
   // lock if it is otherwise needed.
+
   return m_db->get_tx_count();
 }
 //------------------------------------------------------------------
@@ -3062,10 +3098,10 @@ bool Blockchain::check_tx_outputs(const transaction& tx, tx_verification_context
   std::unique_lock lock{*this};
 
   for (const auto &o: tx.vout) {
-    //if (o.amount != 0) { // in a v2 tx, all outputs must have 0 amount NOTE(oxen): All oxen tx's are atleast v2 from the beginning
-      //tvc.m_invalid_output = true;
-      //return false;
-    //}
+    if (o.amount != 0) { // in a v2 tx, all outputs must have 0 amount NOTE(oxen): All oxen tx's are atleast v2 from the beginning
+      tvc.m_invalid_output = true;
+      return false;
+    }
 
     // from hardfork v4, forbid invalid pubkeys NOTE(oxen): We started from hf7 so always execute branch
     if (auto* out_to_key = std::get_if<txout_to_key>(&o.target); out_to_key && !crypto::check_key(out_to_key->key)) {
@@ -3303,85 +3339,80 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
       // Monero Checks
       //
       // make sure output being spent is of type txin_to_key, rather than e.g.  txin_gen, which is only used for miner transactions
-      if (hf_version < cryptonote::network_version_19 || !std::holds_alternative<txin_gen>(txin))
+      CHECK_AND_ASSERT_MES(std::holds_alternative<txin_to_key>(txin), false, "wrong type id in tx input at Blockchain::check_tx_inputs");
+      const txin_to_key& in_to_key = var::get<txin_to_key>(txin);
       {
-        CHECK_AND_ASSERT_MES(std::holds_alternative<txin_to_key>(txin), false, "wrong type id in tx input at Blockchain::check_tx_inputs");
-        const txin_to_key& in_to_key = var::get<txin_to_key>(txin);
-        {
-          // make sure tx output has key offset(s) (is signed to be used)
-          CHECK_AND_ASSERT_MES(in_to_key.key_offsets.size(), false, "empty in_to_key.key_offsets in transaction with id " << get_transaction_hash(tx));
+        // make sure tx output has key offset(s) (is signed to be used)
+        CHECK_AND_ASSERT_MES(in_to_key.key_offsets.size(), false, "empty in_to_key.key_offsets in transaction with id " << get_transaction_hash(tx));
 
-          // Mixin Check, from hard fork 7, we require mixin at least 9, always.
-          if (in_to_key.key_offsets.size() - 1 != CRYPTONOTE_DEFAULT_TX_MIXIN)
+        // Mixin Check, from hard fork 7, we require mixin at least 9, always.
+        if (in_to_key.key_offsets.size() - 1 != CRYPTONOTE_DEFAULT_TX_MIXIN)
+        {
+          MERROR_VER("Tx " << get_transaction_hash(tx) << " has incorrect ring size (" << in_to_key.key_offsets.size() - 1 << ", expected (" << CRYPTONOTE_DEFAULT_TX_MIXIN << ")");
+          tvc.m_low_mixin = true;
+          return false;
+        }
+
+        // from v7, sorted ins
+        {
+          if (last_key_image && memcmp(&in_to_key.k_image, last_key_image, sizeof(*last_key_image)) >= 0)
           {
-            MERROR_VER("Tx " << get_transaction_hash(tx) << " has incorrect ring size (" << in_to_key.key_offsets.size() - 1 << ", expected (" << CRYPTONOTE_DEFAULT_TX_MIXIN << ")");
-            tvc.m_low_mixin = true;
+            MERROR_VER("transaction has unsorted inputs");
+            tvc.m_verifivation_failed = true;
             return false;
           }
+          last_key_image = &in_to_key.k_image;
+        }
 
-          // from v7, sorted ins
+        if(have_tx_keyimg_as_spent(in_to_key.k_image))
+        {
+          MERROR_VER("Key image already spent in blockchain: " << tools::type_to_hex(in_to_key.k_image));
+          if (key_image_conflicts)
+            key_image_conflicts->insert(in_to_key.k_image);
+          else
           {
-            if (last_key_image && memcmp(&in_to_key.k_image, last_key_image, sizeof(*last_key_image)) >= 0)
-            {
-              MERROR_VER("transaction has unsorted inputs");
-              tvc.m_verifivation_failed = true;
-              return false;
-            }
-            last_key_image = &in_to_key.k_image;
-          }
-
-          if(have_tx_keyimg_as_spent(in_to_key.k_image))
-          {
-            MERROR_VER("Key image already spent in blockchain: " << tools::type_to_hex(in_to_key.k_image));
-            if (key_image_conflicts)
-              key_image_conflicts->insert(in_to_key.k_image);
-            else
-            {
-              tvc.m_double_spend = true;
-              return false;
-            }
-          }
-
-          // make sure that output being spent matches up correctly with the
-          // signature spending it.
-          if (!check_tx_input(in_to_key, tx_prefix_hash, pubkeys[sig_index], pmax_used_block_height))
-          {
-            MERROR_VER("Failed to check ring signature for tx " << get_transaction_hash(tx) << "  vin key with k_image: " << in_to_key.k_image << "  sig_index: " << sig_index);
-            if (pmax_used_block_height) // a default value of NULL is used when called from Blockchain::handle_block_to_main_chain()
-            {
-              MERROR_VER("  *pmax_used_block_height: " << *pmax_used_block_height);
-            }
-
+            tvc.m_double_spend = true;
             return false;
           }
         }
 
-        //
-        // Service Node Checks
-        //
-        if (hf_version >= cryptonote::network_version_11_infinite_staking)
+        // make sure that output being spent matches up correctly with the
+        // signature spending it.
+        if (!check_tx_input(in_to_key, tx_prefix_hash, pubkeys[sig_index], pmax_used_block_height))
         {
-          const auto &blacklist = m_service_node_list.get_blacklisted_key_images();
-          for (const auto &entry : blacklist)
+          MERROR_VER("Failed to check ring signature for tx " << get_transaction_hash(tx) << "  vin key with k_image: " << in_to_key.k_image << "  sig_index: " << sig_index);
+          if (pmax_used_block_height) // a default value of NULL is used when called from Blockchain::handle_block_to_main_chain()
           {
-            if (in_to_key.k_image == entry.key_image) // Check if key image is on the blacklist
-            {
-              MERROR_VER("Key image: " << tools::type_to_hex(entry.key_image) << " is blacklisted by the service node network");
-              tvc.m_key_image_blacklisted = true;
-              return false;
-            }
+            MERROR_VER("  *pmax_used_block_height: " << *pmax_used_block_height);
           }
 
-          uint64_t unlock_height = 0;
-          if (m_service_node_list.is_key_image_locked(in_to_key.k_image, &unlock_height))
+          return false;
+        }
+      }
+
+      //
+      // Service Node Checks
+      //
+      if (hf_version >= cryptonote::network_version_11_infinite_staking)
+      {
+        const auto &blacklist = m_service_node_list.get_blacklisted_key_images();
+        for (const auto &entry : blacklist)
+        {
+          if (in_to_key.k_image == entry.key_image) // Check if key image is on the blacklist
           {
-            MERROR_VER("Key image: " << tools::type_to_hex(in_to_key.k_image) << " is locked in a stake until height: " << unlock_height);
-            tvc.m_key_image_locked_by_snode = true;
+            MERROR_VER("Key image: " << tools::type_to_hex(entry.key_image) << " is blacklisted by the service node network");
+            tvc.m_key_image_blacklisted = true;
             return false;
           }
         }
-      } else {
-        //TODO sean check that txin_gen is valid for HF19
+
+        uint64_t unlock_height = 0;
+        if (m_service_node_list.is_key_image_locked(in_to_key.k_image, &unlock_height))
+        {
+          MERROR_VER("Key image: " << tools::type_to_hex(in_to_key.k_image) << " is locked in a stake until height: " << unlock_height);
+          tvc.m_key_image_locked_by_snode = true;
+          return false;
+        }
       }
     }
 
@@ -4295,6 +4326,7 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
     TIME_MEASURE_START(aa);
 
 // XXX old code does not check whether tx exists
+    
     if (m_db->tx_exists(tx_id))
     {
       MGINFO_RED("Block with id: " << id << " attempting to add transaction already in blockchain with id: " << tx_id);
@@ -4479,23 +4511,24 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
     bvc.m_verifivation_failed = true;
     return false;
   } 
-
-  if ( bl.major_version >= cryptonote::network_version_19 && m_nettype != FAKECHAIN )
+  std::vector<cryptonote::batch_sn_payment> contributors;
+  if (m_sqlite_db && bl.major_version >= cryptonote::network_version_19)
   {
-    //TODO sean this needs to be updated to get the service node winner for block not coinbase tx
-    // Also service_node_list has a function that can do this: payout service_node_info_to_payout(crypto::public_key const &key, service_node_info const &info)
-    std::vector<cryptonote::reward_payout> contributors{0};
-    //auto service_node_array = m_service_node_list.get_service_node_list_state({cryptonote::get_service_node_winner_from_tx_extra(bl.miner_tx.extra)});
-    auto service_node_array = m_service_node_list.get_service_node_list_state({bl.service_node_winner_key});
-    for (auto & contributor : service_node_array[0].info->contributors)
+    if (bl.service_node_winner_key && crypto_core_ed25519_is_valid_point(reinterpret_cast<const unsigned char *>(bl.service_node_winner_key.data)))
     {
-      contributors.emplace_back(cryptonote::reward_type::snode, contributor.address, contributor.amount);
+      auto service_node_array = m_service_node_list.get_service_node_list_state({bl.service_node_winner_key});
+      if (service_node_array.size() > 0){
+        for (auto & contributor : service_node_array[0].info->contributors)
+        {
+          contributors.emplace_back(contributor.address, contributor.amount, m_nettype);
+        }
+      }
     }
-    MINFO(__FILE__ << ":" << __LINE__ << " TODO sean remove this - ABCDEF - Adding SN rewards number contributors: " << contributors.size());
+  }
+  if (m_sqlite_db) {
     if (!m_sqlite_db->add_block(m_nettype, bl, contributors))
     {
-      MINFO("Failed to add block to batch rewards DB.");
-      MGINFO_RED("Failed to add block to batch rewards DB.");
+      MERROR("Failed to add block to batch rewards DB.");
       bvc.m_verifivation_failed = true;
       return false;
     }

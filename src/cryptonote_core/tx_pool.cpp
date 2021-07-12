@@ -267,8 +267,6 @@ namespace cryptonote
       return false;
     }
 
-    //TODO check if has_txin_gen then it should comply with the desired correct payout of get_sn_rewards
-
     uint64_t fee, burned;
 
     if (!get_tx_miner_fee(tx, fee, hf_version >= HF_VERSION_FEE_BURNING, &burned))
@@ -280,7 +278,6 @@ namespace cryptonote
       tvc.m_fee_too_low = true;
       return false;
     }
-
 
     if(hf_version < cryptonote::network_version_19)
     {

@@ -88,8 +88,7 @@ struct oxen_pulse_out_of_order_voters                                           
 struct oxen_pulse_reject_miner_block                                                 : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
 struct oxen_pulse_generate_blocks                                                    : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
 struct oxen_pulse_fallback_to_pow_and_back                                           : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
-struct oxen_pulse_chain_split                                                        : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
-struct oxen_pulse_chain_split_with_no_checkpoints                                    : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
+struct oxen_pulse_chain_split                                                        : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); }; struct oxen_pulse_chain_split_with_no_checkpoints                                    : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
 struct oxen_batch_sn_rewards                                                         : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
 struct oxen_batch_sn_rewards_bad_amount                                              : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
 struct oxen_batch_sn_rewards_bad_address                                             : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };

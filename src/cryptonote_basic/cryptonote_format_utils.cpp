@@ -883,7 +883,6 @@ namespace cryptonote
   //---------------------------------------------------------------
   uint64_t get_block_height(const block& b)
   {
-    //TODO sean miner size
     cryptonote::block bl = b;
     if (b.miner_tx.vout.size() > 0)
     {

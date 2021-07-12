@@ -35,7 +35,7 @@ add_library(blockchain_db
 
 target_link_libraries(blockchain_db
   PUBLIC
-    sqlite_orm
+    SQLiteCpp
   PRIVATE
     common
     ringct

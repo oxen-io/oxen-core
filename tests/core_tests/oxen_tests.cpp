@@ -44,12 +44,14 @@ extern "C"
 #include <sodium.h>
 };
 
-static void add_service_nodes(oxen_chain_generator &gen, size_t count)
+static void add_service_nodes(oxen_chain_generator &gen, size_t count, uint8_t hf_version)
 {
   std::vector<cryptonote::transaction> registration_txs(count);
+  uint64_t curr_height   = gen.height();
   for (auto i = 0u; i < count; ++i)
   {
     registration_txs[i] = gen.create_and_add_registration_tx(gen.first_miner());
+    gen.process_registration_tx(registration_txs[i], curr_height + 1, hf_version);
   }
   gen.create_and_add_next_block(registration_txs);
 }
@@ -76,7 +78,7 @@ bool oxen_checkpointing_alt_chain_handle_alt_blocks_at_tip::generate(std::vector
 
   gen.add_blocks_until_version(hard_forks.back().version);
   gen.add_mined_money_unlock_blocks();
-  add_service_nodes(gen, service_nodes::CHECKPOINT_QUORUM_SIZE);
+  add_service_nodes(gen, service_nodes::CHECKPOINT_QUORUM_SIZE, hard_forks.back().version);
 
   // NOTE: Create next block on checkpoint boundary and add checkpoiont
 
@@ -90,6 +92,7 @@ bool oxen_checkpointing_alt_chain_handle_alt_blocks_at_tip::generate(std::vector
   // the alt db because we don't trigger a chain switch until we receive a 2nd
   // block that confirms the alt block.
   uint64_t curr_height   = gen.height();
+
   crypto::hash curr_hash = get_block_hash(gen.top().block);
   oxen_register_callback(events, "check_alt_block_count", [curr_height, curr_hash](cryptonote::core &c, size_t ev_index)
   {
@@ -114,7 +117,7 @@ bool oxen_checkpointing_alt_chain_handle_alt_blocks_at_tip::generate(std::vector
   gen.create_and_add_next_block();
   fork.create_and_add_next_block();
 
-  crypto::hash expected_top_hash = cryptonote::get_block_hash(fork.top().block);
+  crypto::hash expected_top_hash = cryptonote::get_block_hash(fork.top().block); 
   oxen_register_callback(events, "check_chain_reorged", [expected_top_hash](cryptonote::core &c, size_t ev_index)
   {
     DEFINE_TESTS_ERROR_CONTEXT("check_chain_reorged");
@@ -137,11 +140,7 @@ bool oxen_checkpointing_alt_chain_more_service_node_checkpoints_less_pow_overtak
   gen.add_blocks_until_version(hard_forks.back().version);
   gen.add_mined_money_unlock_blocks();
 
-  int constexpr NUM_SERVICE_NODES = service_nodes::CHECKPOINT_QUORUM_SIZE;
-  std::vector<cryptonote::transaction> registration_txs(NUM_SERVICE_NODES);
-  for (auto i = 0u; i < NUM_SERVICE_NODES; ++i)
-    registration_txs[i] = gen.create_and_add_registration_tx(gen.first_miner());
-  gen.create_and_add_next_block(registration_txs);
+  add_service_nodes(gen, service_nodes::CHECKPOINT_QUORUM_SIZE, hard_forks.back().version);
 
   gen.add_blocks_until_next_checkpointable_height();
   oxen_chain_generator fork_with_more_checkpoints = gen;
@@ -174,11 +173,7 @@ bool oxen_checkpointing_alt_chain_receive_checkpoint_votes_should_reorg_back::ge
   gen.add_blocks_until_version(hard_forks.back().version);
   gen.add_mined_money_unlock_blocks();
 
-  int constexpr NUM_SERVICE_NODES = service_nodes::CHECKPOINT_QUORUM_SIZE;
-  std::vector<cryptonote::transaction> registration_txs(NUM_SERVICE_NODES);
-  for (auto i = 0u; i < NUM_SERVICE_NODES; ++i)
-    registration_txs[i] = gen.create_and_add_registration_tx(gen.first_miner());
-  gen.create_and_add_next_block(registration_txs);
+  add_service_nodes(gen, service_nodes::CHECKPOINT_QUORUM_SIZE, hard_forks.back().version);
 
   gen.add_event_msg("Add blocks until we get to the first height that has a checkpointing quorum AND there are service nodes in the quorum.");
   gen.add_blocks_until_next_checkpointable_height();
@@ -240,11 +235,7 @@ bool oxen_checkpointing_alt_chain_too_old_should_be_dropped::generate(std::vecto
   gen.add_blocks_until_version(hard_forks.back().version);
   gen.add_mined_money_unlock_blocks();
 
-  int constexpr NUM_SERVICE_NODES = service_nodes::CHECKPOINT_QUORUM_SIZE;
-  std::vector<cryptonote::transaction> registration_txs(NUM_SERVICE_NODES);
-  for (auto i = 0u; i < NUM_SERVICE_NODES; ++i)
-    registration_txs[i] = gen.create_and_add_registration_tx(gen.first_miner());
-  gen.create_and_add_next_block(registration_txs);
+  add_service_nodes(gen, service_nodes::CHECKPOINT_QUORUM_SIZE, hard_forks.back().version);
 
   oxen_chain_generator fork = gen;
   gen.add_blocks_until_next_checkpointable_height();
@@ -275,7 +266,7 @@ bool oxen_checkpointing_alt_chain_with_increasing_service_node_checkpoints::gene
 
   gen.add_blocks_until_version(hard_forks.back().version);
   gen.add_mined_money_unlock_blocks();
-  add_service_nodes(gen, service_nodes::CHECKPOINT_QUORUM_SIZE);
+  add_service_nodes(gen, service_nodes::CHECKPOINT_QUORUM_SIZE, hard_forks.back().version);
 
   gen.add_blocks_until_next_checkpointable_height();
 
@@ -335,7 +326,7 @@ bool oxen_checkpointing_service_node_checkpoint_from_votes::generate(std::vector
 
   gen.add_blocks_until_version(hard_forks.back().version);
   gen.add_mined_money_unlock_blocks();
-  add_service_nodes(gen, service_nodes::CHECKPOINT_QUORUM_SIZE);
+  add_service_nodes(gen, service_nodes::CHECKPOINT_QUORUM_SIZE, hard_forks.back().version);
 
   // NOTE: Generate service node votes
   gen.add_blocks_until_next_checkpointable_height();
@@ -399,7 +390,7 @@ bool oxen_checkpointing_service_node_checkpoints_check_reorg_windows::generate(s
 
   gen.add_blocks_until_version(hard_forks.back().version);
   gen.add_mined_money_unlock_blocks();
-  add_service_nodes(gen, service_nodes::CHECKPOINT_QUORUM_SIZE);
+  add_service_nodes(gen, service_nodes::CHECKPOINT_QUORUM_SIZE, hard_forks.back().version);
 
   // NOTE: Add blocks until we get to the first height that has a checkpointing quorum AND there are service nodes in the quorum.
   int const MAX_TRIES = 16;
@@ -530,7 +521,7 @@ bool oxen_core_block_reward_unpenalized_post_pulse::generate(std::vector<test_ev
 
 bool oxen_core_fee_burning::generate(std::vector<test_event_entry>& events)
 {
-  auto hard_forks = oxen_generate_hard_fork_table(cryptonote::network_version_19-1);
+  auto hard_forks = oxen_generate_hard_fork_table();
   oxen_chain_generator gen(events, hard_forks);
   gen.add_blocks_until_version(hard_forks.back().version);
 
@@ -538,6 +529,8 @@ bool oxen_core_fee_burning::generate(std::vector<test_event_entry>& events)
   assert(newest_hf >= cryptonote::network_version_14_blink);
 
   gen.add_mined_money_unlock_blocks();
+
+  add_service_nodes(gen, service_nodes::CHECKPOINT_QUORUM_SIZE, hard_forks.back().version);
 
   using namespace cryptonote;
   account_base dummy = gen.add_account();
@@ -572,7 +565,7 @@ bool oxen_core_fee_burning::generate(std::vector<test_event_entry>& events)
     ctx.fee = send_fee_burn[0][1] + send_fee_burn[1][1] - send_fee_burn[0][2] - send_fee_burn[1][2];
     block_reward_parts reward_parts;
     cryptonote::get_oxen_block_reward(0, 0, 1 /*already generated, needs to be >0 to avoid premine*/, newest_hf, reward_parts, ctx);
-    good_miner_reward = reward_parts.miner_fee + reward_parts.base_miner;
+    good_miner_reward = reward_parts.miner_fee + reward_parts.base_miner + reward_parts.service_node_total;
   }
 
   txs.clear();
@@ -603,7 +596,7 @@ bool oxen_core_fee_burning::generate(std::vector<test_event_entry>& events)
 
     CHECK_EQ(top_hash, good_hash);
 
-    CHECK_EQ(top_block.miner_tx.vout[0].amount, good_miner_reward);
+    CHECK_EQ(top_block.reward, good_miner_reward);
 
     return true;
   });
@@ -778,7 +771,7 @@ bool oxen_core_test_deregister_preferred::generate(std::vector<test_event_entry>
 
   gen.add_blocks_until_version(hard_forks.back().version);
   gen.add_n_blocks(10); /// give miner some outputs to spend and unlock them
-  add_service_nodes(gen, 12);
+  add_service_nodes(gen, 12, hard_forks.back().version);
   gen.add_mined_money_unlock_blocks();
 
   /// generate high fee transactions with huge fees to fill up txpool entirely. This pushes all the
@@ -840,7 +833,7 @@ bool oxen_core_test_deregister_safety_buffer::generate(std::vector<test_event_en
 
   gen.add_blocks_until_version(hard_forks.back().version);
   gen.add_mined_money_unlock_blocks();
-  add_service_nodes(gen, service_nodes::STATE_CHANGE_QUORUM_SIZE * 2 + 1);
+  add_service_nodes(gen, service_nodes::STATE_CHANGE_QUORUM_SIZE * 2 + 1, hard_forks.back().version);
   gen.add_n_blocks(1);
 
   const auto height_a                      = gen.height();
@@ -890,7 +883,7 @@ bool oxen_core_test_deregister_too_old::generate(std::vector<test_event_entry>& 
   /// generate some outputs and unlock them
   gen.add_n_blocks(20);
   gen.add_mined_money_unlock_blocks();
-  add_service_nodes(gen, 11);
+  add_service_nodes(gen, 11, hard_forks.back().version);
   gen.add_n_blocks(1);
 
   const auto pk       = gen.top_quorum().obligations->workers[0];
@@ -940,7 +933,7 @@ bool oxen_core_test_deregister_on_split::generate(std::vector<test_event_entry> 
   gen.add_blocks_until_version(hard_forks.back().version);
   gen.add_mined_money_unlock_blocks();
  
-  add_service_nodes(gen, service_nodes::CHECKPOINT_QUORUM_SIZE + 1);
+  add_service_nodes(gen, service_nodes::CHECKPOINT_QUORUM_SIZE + 1, hard_forks.back().version);
   gen.create_and_add_next_block(); // Can't change service node state on the same height it was registered in
   auto fork = gen;
 
@@ -1000,7 +993,7 @@ bool oxen_core_test_state_change_ip_penalty_disallow_dupes::generate(std::vector
   gen.add_blocks_until_version(hard_forks.back().version);
   gen.add_mined_money_unlock_blocks();
 
-  add_service_nodes(gen, service_nodes::STATE_CHANGE_QUORUM_SIZE + 1);
+  add_service_nodes(gen, service_nodes::STATE_CHANGE_QUORUM_SIZE + 1, hard_forks.back().version);
   gen.create_and_add_next_block(); // Can't change service node state on the same height it was registered in
 
   const auto pub_key                         = gen.top_quorum().obligations->workers[0];
@@ -2613,7 +2606,7 @@ bool oxen_service_nodes_alt_quorums::generate(std::vector<test_event_entry>& eve
 
   gen.add_blocks_until_version(hard_forks.back().version);
   gen.add_mined_money_unlock_blocks();
-  add_service_nodes(gen, service_nodes::STATE_CHANGE_QUORUM_SIZE + 3);
+  add_service_nodes(gen, service_nodes::STATE_CHANGE_QUORUM_SIZE + 3, hard_forks.back().version);
 
   oxen_chain_generator fork = gen;
   gen.create_and_add_next_block();
@@ -2661,7 +2654,7 @@ bool oxen_service_nodes_checkpoint_quorum_size::generate(std::vector<test_event_
 
   gen.add_blocks_until_version(hard_forks.back().version);
   gen.add_mined_money_unlock_blocks();
-  add_service_nodes(gen, service_nodes::CHECKPOINT_QUORUM_SIZE - 1);
+  add_service_nodes(gen, service_nodes::CHECKPOINT_QUORUM_SIZE - 1, hard_forks.back().version);
 
   for (int i = 0; i < 16; i++)
   {
@@ -2778,7 +2771,7 @@ bool oxen_service_nodes_test_rollback::generate(std::vector<test_event_entry>& e
   auto hard_forks = oxen_generate_hard_fork_table();
   oxen_chain_generator gen(events, hard_forks);
   gen.add_blocks_until_version(hard_forks.back().version);
-  add_service_nodes(gen, 11);
+  add_service_nodes(gen, 11, hard_forks.back().version);
 
   gen.add_n_blocks(5);   /// create a few blocks with active service nodes
   auto fork = gen;       /// chain split here
@@ -2862,7 +2855,7 @@ bool oxen_service_nodes_test_swarms_basic::generate(std::vector<test_event_entry
   gen.add_mined_money_unlock_blocks();
 
   /// register some service nodes
-  add_service_nodes(gen, INIT_SN_COUNT);
+  add_service_nodes(gen, INIT_SN_COUNT, hard_forks.back().version);
 
   /// create a few blocks with active service nodes
   gen.add_n_blocks(5);
@@ -3018,9 +3011,12 @@ static oxen_chain_generator setup_pulse_tests(std::vector<test_event_entry> &eve
   result.add_blocks_until_version(hard_forks.back().version);
   result.add_mined_money_unlock_blocks();
 
+  uint64_t curr_height   = result.height();
   std::vector<cryptonote::transaction> registration_txs(service_nodes::pulse_min_service_nodes(cryptonote::FAKECHAIN));
-  for (auto i = 0u; i < service_nodes::pulse_min_service_nodes(cryptonote::FAKECHAIN); ++i)
+  for (auto i = 0u; i < service_nodes::pulse_min_service_nodes(cryptonote::FAKECHAIN); ++i) {
     registration_txs[i] = result.create_and_add_registration_tx(result.first_miner());
+    result.process_registration_tx(registration_txs[i], curr_height + 1, hard_forks.back().version);
+  }
 
   // NOTE: Generate Valid Blocks
   result.create_and_add_next_block({registration_txs});
@@ -3190,7 +3186,7 @@ bool oxen_pulse_generate_blocks::generate(std::vector<test_event_entry> &events)
   gen.add_blocks_until_version(hard_forks.back().version);
   gen.add_mined_money_unlock_blocks();
 
-  add_service_nodes(gen, service_nodes::pulse_min_service_nodes(cryptonote::FAKECHAIN));
+  add_service_nodes(gen, service_nodes::pulse_min_service_nodes(cryptonote::FAKECHAIN), hard_forks.back().version);
   gen.add_n_blocks(40); // Chain genereator will generate blocks via Pulse quorums
 
   oxen_register_callback(events, "check_pulse_blocks", [](cryptonote::core &c, size_t ev_index)
@@ -3214,7 +3210,7 @@ bool oxen_pulse_fallback_to_pow_and_back::generate(std::vector<test_event_entry>
   gen.add_blocks_until_version(hard_forks.back().version);
   gen.add_mined_money_unlock_blocks();
 
-  add_service_nodes(gen, service_nodes::pulse_min_service_nodes(cryptonote::FAKECHAIN));
+  add_service_nodes(gen, service_nodes::pulse_min_service_nodes(cryptonote::FAKECHAIN), hard_forks.back().version);
   gen.create_and_add_next_block();
 
   gen.add_event_msg("Deregister 1 node, we now have insufficient nodes for Pulse");
@@ -3261,7 +3257,7 @@ bool oxen_pulse_chain_split::generate(std::vector<test_event_entry> &events)
 
   gen.add_blocks_until_version(hard_forks.back().version);
   gen.add_mined_money_unlock_blocks();
-  add_service_nodes(gen, std::max(service_nodes::pulse_min_service_nodes(cryptonote::FAKECHAIN), service_nodes::CHECKPOINT_QUORUM_SIZE));
+  add_service_nodes(gen, std::max(service_nodes::pulse_min_service_nodes(cryptonote::FAKECHAIN), service_nodes::CHECKPOINT_QUORUM_SIZE), hard_forks.back().version);
 
   gen.create_and_add_next_block();
 
@@ -3306,7 +3302,7 @@ bool oxen_pulse_chain_split_with_no_checkpoints::generate(std::vector<test_event
 
   gen.add_blocks_until_version(hard_forks.back().version);
   gen.add_mined_money_unlock_blocks();
-  add_service_nodes(gen, std::max(service_nodes::pulse_min_service_nodes(cryptonote::FAKECHAIN), service_nodes::CHECKPOINT_QUORUM_SIZE));
+  add_service_nodes(gen, std::max(service_nodes::pulse_min_service_nodes(cryptonote::FAKECHAIN), service_nodes::CHECKPOINT_QUORUM_SIZE), hard_forks.back().version);
 
   gen.create_and_add_next_block();
 
@@ -3355,12 +3351,12 @@ bool oxen_batch_sn_rewards::generate(std::vector<test_event_entry> &events)
     gen.process_registration_tx(registration_txs[i], 12+i, hard_forks.back().version);
   }
 
-
-  // NOTE: Generate Valid Blocks
   gen.create_and_add_next_block({registration_txs});
     
   oxen_register_callback(events, "check_registered", [&events, alice, min_service_nodes](cryptonote::core &c, size_t ev_index)
-  { DEFINE_TESTS_ERROR_CONTEXT("gen_service_nodes::check_registered"); std::vector<cryptonote::block> blocks;
+  { 
+    DEFINE_TESTS_ERROR_CONTEXT("gen_service_nodes::check_registered"); 
+    std::vector<cryptonote::block> blocks;
     bool r = c.get_blocks((uint64_t)0, (uint64_t)-1, blocks);
     CHECK_TEST_CONDITION(r);
     std::vector<cryptonote::block> chain;
@@ -3371,7 +3367,6 @@ bool oxen_batch_sn_rewards::generate(std::vector<test_event_entry> &events)
     const uint64_t unlocked_balance    = get_unlocked_balance(alice, blocks, mtx);
     const uint64_t staking_requirement = MK_COINS(100);
 
-    //TODO sean -- WHY IS IT 201! this makes no sense
     CHECK_EQ((MK_COINS(201) - TESTS_DEFAULT_FEE - staking_requirement)*min_service_nodes, unlocked_balance);
 
     /// check that alice is registered
@@ -3380,6 +3375,7 @@ bool oxen_batch_sn_rewards::generate(std::vector<test_event_entry> &events)
     return true;
   });
 
+  // Add blocks up to just before the batching payout block
   for (auto i = 0u; i < conf.BATCHING_INTERVAL; ++i)
     gen.create_and_add_next_block();
 
@@ -3396,8 +3392,8 @@ bool oxen_batch_sn_rewards::generate(std::vector<test_event_entry> &events)
     r = find_block_chain(events, chain, mtx, cryptonote::get_block_hash(blocks.back()));
     CHECK_TEST_CONDITION(r);
 
-    // Expect no change in balance after blocks < batched constant
-    // 201 (balance) - 100 (stake) - 0.2 (test fee) = 0.8 oxen
+    // Expect no change in balance after blocks < batched block count constant
+    // 201 (balance) - 100 (stake) - 0.2 (test fee)
     const uint64_t balance    = get_balance(alice, blocks, mtx);
     const uint64_t staking_requirement = MK_COINS(100);
 
@@ -3405,7 +3401,9 @@ bool oxen_batch_sn_rewards::generate(std::vector<test_event_entry> &events)
     return true;
   });
 
+  // Add block that will contain the batching reward
   gen.create_and_add_next_block();
+
   oxen_register_callback(events, "check_rewards_received_after_batch", [&events, alice, min_service_nodes](cryptonote::core &c, size_t ev_index)
   {
     DEFINE_TESTS_ERROR_CONTEXT("check_rewards_received_after_batch");
@@ -3420,7 +3418,7 @@ bool oxen_batch_sn_rewards::generate(std::vector<test_event_entry> &events)
     CHECK_TEST_CONDITION(r);
 
     // Expect increase in balance after blocks < batched constant
-    // 201 (balance) - 100 (stake) - 0.2 (test fee) + 16.5*6 (Batched reward)= 1.8 oxen
+    // 201 (balance) - 100 (stake) - 0.2 (test fee) + 16.5*Batching_Interval (Batched reward)
     const uint64_t balance    = get_balance(alice, blocks, mtx);
     const uint64_t staking_requirement = MK_COINS(100);
     const uint64_t batched_rewards_earned = MK_COINS(1) * 16.5 * conf.BATCHING_INTERVAL;
@@ -3553,75 +3551,44 @@ bool oxen_batch_sn_rewards_pop_blocks::generate(std::vector<test_event_entry> &e
   // NOTE: Generate Valid Blocks
   gen.create_and_add_next_block({registration_txs});
     
+  // Generate blocks up to the block before the batched rewards are paid out.
   for (auto i = 0u; i < conf.BATCHING_INTERVAL; ++i)
     gen.create_and_add_next_block();
 
   oxen_register_callback(events, "trigger_blockchain_detach", [=](cryptonote::core &c, size_t ev_index)
   {
     DEFINE_TESTS_ERROR_CONTEXT("trigger_blockchain_detach");
-    cryptonote::Blockchain &blockchain = c.get_blockchain_storage();
-
-    uint64_t curr_height   = blockchain.get_current_blockchain_height();
-    // NOTE: Reorg to remove one block
-    blockchain.pop_blocks(1);
+    cryptonote::Blockchain& blockchain = c.get_blockchain_storage();
+    uint64_t curr_height = blockchain.get_current_blockchain_height();
     auto sqliteDB = blockchain.sqlite_db();
-    CHECK_EQ((*sqliteDB).height, blockchain.get_current_blockchain_height() - 1);
-
-    std::optional<std::vector<cryptonote::reward_payout>> records;
-    records = (*sqliteDB).get_sn_payments(cryptonote::network_type::TESTNET, 7);
+    CHECK_EQ((*sqliteDB).height, curr_height - 1);
+    // curr_height + 1 = the block that would contain the batched service node payment
+    std::optional<std::vector<cryptonote::batch_sn_payment>> records;
+    records = (*sqliteDB).get_sn_payments(cryptonote::network_type::FAKECHAIN, curr_height + 1);
     CHECK_EQ(records.has_value(), true);
     CHECK_EQ((*records).size(), 1);
-    const uint64_t batched_rewards_earned = MK_COINS(1) * 16.5 * (conf.BATCHING_INTERVAL - 2);
-    CHECK_EQ((*records)[0].amount, batched_rewards_earned);
-    CHECK_EQ(tools::view_guts((*records)[0].address), tools::view_guts(alice.get_keys().m_account_address));
+    // Check that the database has a full batch amount that includes the soon to be popped block 
+    uint64_t batched_rewards_earned = MK_COINS(1) * 16.5 * (conf.BATCHING_INTERVAL);
 
-    return true;
-  });
-
-  oxen_blockchain_entry entry   = gen.create_next_block();
-  //Modify SN rewards winner
-  entry.block.service_node_winner_key = crypto::public_key{0};
-  oxen_blockchain_entry &result = gen.add_block(entry, true, "Block with modified service node winner should have been inserted successfully");
-
-  gen.create_and_add_next_block();
-
-  gen.create_and_add_next_block();
-  oxen_register_callback(events, "check_rewards_received_after_batch", [&events, alice, min_service_nodes](cryptonote::core &c, size_t ev_index)
-  {
-    DEFINE_TESTS_ERROR_CONTEXT("check_rewards_received_after_batch");
-    const auto stake_lock_time = service_nodes::staking_num_lock_blocks(cryptonote::FAKECHAIN);
-
-    std::vector<cryptonote::block> blocks;
-    bool r = c.get_blocks((uint64_t)0, (uint64_t)-1, blocks);
-    CHECK_TEST_CONDITION(r);
-    std::vector<cryptonote::block> chain;
-    map_hash2tx_t mtx;
-    r = find_block_chain(events, chain, mtx, cryptonote::get_block_hash(blocks.back()));
-    CHECK_TEST_CONDITION(r);
-
-    // Expect increase in balance after blocks < batched constant
-    // 201 (balance) - 100 (stake) - 0.2 (test fee) + 16.5*6 (Batched reward)= 1.8 oxen
-    const uint64_t balance    = get_balance(alice, blocks, mtx);
-    const uint64_t staking_requirement = MK_COINS(100);
-    const uint64_t batched_rewards_earned = MK_COINS(1) * 16.5 * (conf.BATCHING_INTERVAL - 2);
-
-    CHECK_EQ((MK_COINS(201) - TESTS_DEFAULT_FEE - staking_requirement)*min_service_nodes + batched_rewards_earned, balance);
-    return true;
-  });
-
-  oxen_register_callback(events, "trigger_blockchain_detach_all_records_gone", [](cryptonote::core &c, size_t ev_index)
-  {
-    DEFINE_TESTS_ERROR_CONTEXT("check_second_ons_entries");
-    cryptonote::Blockchain &blockchain = c.get_blockchain_storage();
-
-    // NOTE: Reorg to just before the 2nd round of ONS entries
-    uint64_t curr_height   = blockchain.get_current_blockchain_height();
-    blockchain.pop_blocks(conf.BATCHING_INTERVAL);
-    auto sqliteDB = blockchain.sqlite_db();
+    // NOTE: Reorg to remove one block
+    blockchain.pop_blocks(1);
     CHECK_EQ((*sqliteDB).height, blockchain.get_current_blockchain_height() - 1);
+    CHECK_EQ((*sqliteDB).height, curr_height - 2);
 
-    std::optional<std::vector<cryptonote::reward_payout>> records;
-    records = (*sqliteDB).get_sn_payments(cryptonote::network_type::TESTNET, 7);
+    records = (*sqliteDB).get_sn_payments(cryptonote::network_type::FAKECHAIN, curr_height + 1);
+    CHECK_EQ(records.has_value(), true);
+    CHECK_EQ((*records).size(), 1);
+    // Check that the database has a lower amount that does not include the popped block
+    batched_rewards_earned = MK_COINS(1) * 16.5 * (conf.BATCHING_INTERVAL - 1);
+    CHECK_EQ((*records)[0].amount, batched_rewards_earned);
+    CHECK_EQ(tools::view_guts((*records)[0].address_info.address), tools::view_guts(alice.get_keys().m_account_address));
+
+    // Pop the rest of the blocks and check that it goes to zero
+    blockchain.pop_blocks(conf.BATCHING_INTERVAL - 1);
+    CHECK_EQ((*sqliteDB).height, blockchain.get_current_blockchain_height() - 1);
+    CHECK_EQ((*sqliteDB).height, curr_height - conf.BATCHING_INTERVAL - 1);
+
+    records = (*sqliteDB).get_sn_payments(cryptonote::network_type::FAKECHAIN, curr_height + 1);
     CHECK_EQ((*records).size(), 0);
 
     return true;

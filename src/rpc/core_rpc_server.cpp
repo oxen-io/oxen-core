@@ -1844,8 +1844,6 @@ namespace cryptonote { namespace rpc {
       response.service_node_winner = tools::type_to_hex(cryptonote::get_service_node_winner_from_tx_extra(blk.miner_tx.extra));
     } else {
       response.miner_reward = blk.reward;
-      //TODO sean this is an address i guess?
-      //response.service_node_winner = blk.service_node_winner_key;
     }
     if (get_tx_hashes)
     {

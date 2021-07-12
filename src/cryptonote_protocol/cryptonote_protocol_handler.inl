@@ -556,15 +556,7 @@ namespace cryptonote
   template<class t_core>
   int t_cryptonote_protocol_handler<t_core>::handle_notify_new_fluffy_block(int command, NOTIFY_NEW_FLUFFY_BLOCK::request& arg, cryptonote_connection_context& context)
   {
-    //MLOGIF_P2P_MESSAGE(crypto::hash hash; cryptonote::block b; bool ret = cryptonote::parse_and_validate_block_from_blob(arg.b.block, b, &hash);, ret, "Received NOTIFY_NEW_FLUFFY_BLOCK " << hash << " (height " << arg.current_blockchain_height << ", " << arg.b.txs.size() << " txes)");
-    cryptonote::block b;
-    bool ret;
-    MLOGIF_P2P_MESSAGE(crypto::hash hash; ret = cryptonote::parse_and_validate_block_from_blob(arg.b.block, b, &hash);, ret, "Received NOTIFY_NEW_FLUFFY_BLOCK " << hash << " (height " << arg.current_blockchain_height << ", " << arg.b.txs.size() << " txes)");
-
-    //TODO sean figure out whats going on here when block received
-    MLOG_P2P_MESSAGE(__FILE__ << ":" << __LINE__ << " TODO sean remove this - valid block: " << ret);
-    MLOG_P2P_MESSAGE(__FILE__ << ":" << __LINE__ << " TODO sean remove this - block " << cryptonote::obj_to_json_str(b));
-
+    MLOGIF_P2P_MESSAGE(crypto::hash hash; cryptonote::block b; bool ret = cryptonote::parse_and_validate_block_from_blob(arg.b.block, b, &hash);, ret, "Received NOTIFY_NEW_FLUFFY_BLOCK " << hash << " (height " << arg.current_blockchain_height << ", " << arg.b.txs.size() << " txes)");
 
     if(context.m_state != cryptonote_connection_context::state_normal)
       return 1;

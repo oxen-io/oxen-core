@@ -163,7 +163,7 @@ class SNNetwork:
         for sn in self.sns[-1:]:
             self.mike.register_sn(sn)
             vprint(".", end="", flush=True, timestamp=False)
-        self.sync_nodes(self.mine(1))
+        self.sync_nodes(self.mine(1), timeout=30)
         time.sleep(10)
         for sn in self.sns:
             sn.send_uptime_proof()
@@ -171,9 +171,6 @@ class SNNetwork:
 
         vprint("Local Devnet SN network setup complete!")
         vprint("Communicate with daemon on ip: {} port: {}".format(self.sns[0].listen_ip,self.sns[0].rpc_port))
-
-
-
 
     def refresh_wallets(self, *, extra=[]):
         vprint("Refreshing wallets")

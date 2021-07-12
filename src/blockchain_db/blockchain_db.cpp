@@ -197,13 +197,6 @@ uint64_t BlockchainDB::add_block( const std::pair<block, blobdata>& blck
   time1 = epee::misc_utils::get_tick_count();
 
   uint64_t num_rct_outs = 0;
-  //if (blk.miner_tx.vout.size() > 0)
-  //{
-    //add_transaction(blk_hash, std::make_pair(blk.miner_tx, tx_to_blob(blk.miner_tx)));
-    //if (blk.miner_tx.version >= cryptonote::txversion::v2_ringct)
-      //num_rct_outs += blk.miner_tx.vout.size();
-  //}
-  // Include an empty miner_tx for now
   add_transaction(blk_hash, std::make_pair(blk.miner_tx, tx_to_blob(blk.miner_tx)));
   if (blk.miner_tx.version >= cryptonote::txversion::v2_ringct)
     num_rct_outs += blk.miner_tx.vout.size();

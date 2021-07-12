@@ -166,6 +166,17 @@ namespace cryptonote {
     return true;
   }
   //------------------------------------------------------------------------------------
+  batch_sn_payment::batch_sn_payment(std::string addr, uint64_t amt, cryptonote::network_type nettype):address(addr),amount(amt){
+    cryptonote::get_account_address_from_str(address_info, nettype, address);
+  };
+  batch_sn_payment::batch_sn_payment(cryptonote::address_parse_info& addr_info, uint64_t amt, cryptonote::network_type nettype):address_info(addr_info),amount(amt){
+    address = cryptonote::get_account_address_as_str(nettype, address_info.is_subaddress, address_info.address);
+  };
+  batch_sn_payment::batch_sn_payment(const cryptonote::account_public_address& addr, uint64_t amt, cryptonote::network_type nettype):amount(amt){
+    address_info = cryptonote::address_parse_info{addr,0};
+    address = cryptonote::get_account_address_as_str(nettype, address_info.is_subaddress, address_info.address);
+  };
+  //------------------------------------------------------------------------------------
   uint8_t get_account_address_checksum(const public_address_outer_blob& bl)
   {
     const unsigned char* pbuf = reinterpret_cast<const unsigned char*>(&bl);

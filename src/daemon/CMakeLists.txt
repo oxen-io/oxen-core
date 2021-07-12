@@ -47,6 +47,6 @@ target_link_libraries(daemon
     version
     filesystem
     Boost::program_options
-    sqlite_orm
+    SQLiteCpp
     systemd
     extra)

@@ -33,7 +33,7 @@
 # ...except for FreeBSD, because FreeBSD is a special case that doesn't play well with
 # others.
 
-include(FetchContent)
+#include(FetchContent)
 
 set(DEFAULT_WITH_MINIUPNPC ON)
 if(ANDROID OR IOS)
@@ -140,16 +140,6 @@ if(NOT BUILD_STATIC_DEPS)
 endif()
 
 file(GLOB cpr_sources ${conf_depends} cpr/cpr/*.cpp)
-
-# You can configure this for your need, presumbably you want speificy a git tag here instead of a branch
-#FetchContent_Declare(sqliteOrm
-  #GIT_REPOSITORY https://github.com/fnc12/sqlite_orm
-  #GIT_TAG        origin/dev
-#)
-add_library(sqlite_orm INTERFACE)
-target_include_directories(sqlite_orm INTERFACE sqlite_orm/include)
-
-#add_subdirectory(sqlite_orm)
 
 add_library(cpr STATIC EXCLUDE_FROM_ALL ${cpr_sources})
 target_link_libraries(cpr PUBLIC CURL::libcurl)

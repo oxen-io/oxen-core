@@ -84,7 +84,7 @@ class RPCDaemon:
         return self.args
 
 
-    def json_rpc(self, method, params=None, *, timeout=10):
+    def json_rpc(self, method, params=None, *, timeout=100):
         """Sends a json_rpc request to the rpc port.  Returns the response object."""
         if not self.proc:
             raise RuntimeError("Cannot make rpc request before calling start()")
@@ -139,7 +139,7 @@ class Daemon(RPCDaemon):
             name=None,
             datadir=None,
             service_node=False,
-            log_level=2,
+            log_level=3,
             peers=()):
         self.rpc_port = rpc_port or next_port()
         if name is None:
@@ -250,7 +250,7 @@ class Wallet(RPCDaemon):
             datadir=None,
             listen_ip=None,
             rpc_port=None,
-            log_level=2):
+            log_level=3):
 
         self.listen_ip = listen_ip or LISTEN_IP
         self.rpc_port = rpc_port or next_port()

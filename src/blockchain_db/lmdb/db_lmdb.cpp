@@ -2541,6 +2541,7 @@ T BlockchainLMDB::get_and_convert_block_blob_from_height(uint64_t height) const
   // header, not the full-block (of which a good chunk is thrown away because we
   // only want the header).
   LOG_PRINT_L3("BlockchainLMDB::" << __func__);
+
   check_open();
 
   TXN_PREFIX_RDONLY();
@@ -3619,10 +3620,8 @@ bool BlockchainLMDB::for_all_transactions(std::function<bool(const crypto::hash&
     {
       if (!parse_and_validate_tx_base_from_blob(bd, tx))
       {
-        MINFO(__FILE__ << ":" << __LINE__ << " TODO sean remove this - return from parse_and_validate_tx_base_from_blob");
         throw0(DB_ERROR("Failed to parse tx from blob retrieved from the db"));
       }
-      MINFO(__FILE__ << ":" << __LINE__ << " TODO sean remove this - return from parse_and_validate_tx_base_from_blob");
     }
     else
     {

@@ -105,7 +105,6 @@ namespace string_tools = epee::string_tools;
 
 #undef OXEN_DEFAULT_LOG_CATEGORY
 #define OXEN_DEFAULT_LOG_CATEGORY "wallet.wallet2"
-
 namespace {
 
   constexpr std::string_view UNSIGNED_TX_PREFIX = "Loki unsigned tx set\004"sv;

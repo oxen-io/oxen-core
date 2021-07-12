@@ -611,6 +611,14 @@ namespace cryptonote
     if(fs::exists(folder / "lns.db"))
       ons_db_file_path = folder / "lns.db";
 
+    auto sqlite_db_file_path = folder / "sqlite.db";
+    auto sqliteDB = std::make_shared<cryptonote::BlockchainSQLite>();
+    if (m_nettype == FAKECHAIN)
+    {
+      sqlite_db_file_path = ":memory:";
+    }
+
+    sqliteDB->load_database(sqlite_db_file_path);
 
     folder /= db->get_db_name();
     MGINFO("Loading blockchain from folder " << folder << " ...");
@@ -782,10 +790,6 @@ namespace cryptonote
     sqlite3 *ons_db = ons::init_oxen_name_system(ons_db_file_path, db->is_read_only());
     if (!ons_db) return false;
 
-    //TODO sean make this work
-    auto sqlite_db_file_path = folder / "sqlite.db";
-    auto sqliteDB = std::make_shared<cryptonote::BlockchainSQLite>();
-    sqliteDB->load_database(sqlite_db_file_path);
 
     init_oxenmq(vm);
 

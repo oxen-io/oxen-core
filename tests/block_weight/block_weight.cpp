@@ -129,10 +129,11 @@ static void test(test_t t, uint64_t blocks)
   const cryptonote::test_options test_options{hard_forks, 5000};
 
   auto& bc = bc_objects.m_blockchain;
-  if (!bc.init(new TestDB(), nullptr, nullptr, cryptonote ::FAKECHAIN, true, &test_options, 0)) {
+  if (!bc.init(new TestDB(), nullptr /*ons_db*/, nullptr /*sqlite_db*/, cryptonote ::FAKECHAIN, true, &test_options, 0, NULL)) {
     fprintf(stderr, "Failed to init blockchain\n");
     exit(1);
   };
+
 
   for (uint64_t h = 0; h < LONG_TERM_BLOCK_WEIGHT_WINDOW; ++h)
   {

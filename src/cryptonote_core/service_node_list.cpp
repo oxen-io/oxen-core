@@ -2369,7 +2369,7 @@ namespace service_nodes
     return true;
   }
 
-  bool service_node_list::validate_miner_tx(cryptonote::block const &block, cryptonote::block_reward_parts const &reward_parts) const
+  bool service_node_list::validate_miner_tx(cryptonote::block const &block, cryptonote::block_reward_parts const &reward_parts, std::optional<std::vector<cryptonote::batch_sn_payment>> const &batched_sn_payments) const
   {
     uint8_t const hf_version = block.major_version;
     if (hf_version < cryptonote::network_version_9_service_nodes)
@@ -2399,8 +2399,7 @@ namespace service_nodes
       miner,
       pulse_block_leader_is_producer,
       pulse_different_block_producer,
-      batched_no_outputs,
-      batched_bulk_outputs,
+      batched_sn_rewards,
     };
 
     verify_mode mode                      = verify_mode::miner;
@@ -2446,21 +2445,8 @@ namespace service_nodes
     //
 
     std::shared_ptr<const service_node_info> block_producer = nullptr;
-    size_t expected_vouts_size                        = 0;
+    size_t expected_vouts_size = 0;
 
-    //TODO sean - 
-    // - Check that a batch should be paid out, compare with the output of get_sn_payments
-    // - Check that the new amount in the block is right
-    // - Check that the winner in the block is actually the winner
-    // - Check that the height in the block matches the height in coinbase if exists and it is in order
-    // - Check that the Service node winner is actually an address
-    // - 
-    if (block.major_version >= cryptonote::network_version_19)
-      return true;
-
-    //mode = verify_mode::batched_no_outputs;
-    //MGINFO("Batched miner reward");
-    // make a verify_mode for this.
     if (mode == verify_mode::pulse_block_leader_is_producer || mode == verify_mode::pulse_different_block_producer)
     {
       auto info_it = m_state.service_nodes_infos.find(block_producer_key);
@@ -2476,7 +2462,15 @@ namespace service_nodes
         expected_vouts_size += block_producer->contributors.size();
       }
     }
-    else
+
+    if (block.major_version >= cryptonote::network_version_19)
+    {
+      mode = verify_mode::batched_sn_rewards;
+      MDEBUG("Batched miner reward");
+    }
+
+
+    if (mode == verify_mode::miner)
     {
       if ((reward_parts.base_miner + reward_parts.miner_fee) > 0) // (HF >= 16) this can be zero, no miner coinbase.
       {
@@ -2484,11 +2478,20 @@ namespace service_nodes
       }
     }
 
-    if (mode != verify_mode::batched_no_outputs)
+    if (mode == verify_mode::batched_sn_rewards)
     {
+      if (batched_sn_payments.has_value())
+        expected_vouts_size += batched_sn_payments->size();
+    } else {
       expected_vouts_size += block_leader.payouts.size();
     }
-    expected_vouts_size += static_cast<size_t>(cryptonote::height_has_governance_output(m_blockchain.nettype(), hf_version, height));
+    bool has_governance_output = cryptonote::height_has_governance_output(m_blockchain.nettype(), hf_version, height);
+    uint64_t batched_governance_reward = 0;
+    if(has_governance_output) {
+      size_t num_blocks = cryptonote::get_config(m_blockchain.nettype()).GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS;
+      batched_governance_reward = num_blocks * FOUNDATION_REWARD_HF17;
+      expected_vouts_size += static_cast<size_t>(has_governance_output);
+    }
     if (miner_tx.vout.size() != expected_vouts_size)
     {
       char const *type = mode == verify_mode::miner
@@ -2588,15 +2591,53 @@ namespace service_nodes
       }
       break;
 
-      case verify_mode::batched_no_outputs:
+      case verify_mode::batched_sn_rewards:
       {
-        //TODO sean do some checks here
-      }
-      break;
+        size_t vout_index = 0;
+        uint64_t total_payout_in_our_db = std::accumulate(batched_sn_payments->begin(),batched_sn_payments->end(), uint64_t{0}, [](auto const a, auto const b){return a + b.amount;});
+        uint64_t total_payout_in_vouts = 0;
+        cryptonote::keypair const deterministic_keypair = cryptonote::get_deterministic_keypair_from_height(height);
+        for(auto & vout : block.miner_tx.vout)
+        {
+          if (!std::holds_alternative<cryptonote::txout_to_key>(vout.target))
+          {
+            MGINFO_RED("Service node output target type should be txout_to_key");
+            return false;
+          }
 
-      case verify_mode::batched_bulk_outputs:
-      {
-        //TODO sean do some checks here
+          if(has_governance_output && vout.amount == batched_governance_reward) 
+          {
+            total_payout_in_vouts += batched_governance_reward;
+            total_payout_in_our_db += batched_governance_reward;
+            vout_index++;
+            continue;
+          }
+
+          if (vout.amount != (*batched_sn_payments)[vout_index].amount)
+          {
+            MERROR("Service node reward amount incorrect. Should be " << cryptonote::print_money((*batched_sn_payments)[vout_index].amount) << ", is: " << cryptonote::print_money(vout.amount));
+            return false;
+          }
+          crypto::public_key out_eph_public_key{};
+          if (!cryptonote::get_deterministic_output_key((*batched_sn_payments)[vout_index].address_info.address, deterministic_keypair, vout_index, out_eph_public_key))
+          {
+            MERROR("Failed to generate output one-time public key");
+            return false;
+          }
+          const auto& out_to_key = var::get<cryptonote::txout_to_key>(vout.target);
+          if (tools::view_guts(out_to_key) != tools::view_guts(out_eph_public_key))
+          {
+            MERROR("Output Ephermeral Public Key does not match");
+            return false;
+          }
+          total_payout_in_vouts += vout.amount;
+          vout_index++;
+        }
+        if (total_payout_in_vouts != total_payout_in_our_db)
+        {
+          MERROR("Total service node reward amount incorrect. Should be " << cryptonote::print_money(total_payout_in_our_db) << ", is: " << cryptonote::print_money(total_payout_in_vouts));
+          return false;
+        }
       }
       break;
     }
@@ -3048,7 +3089,7 @@ namespace service_nodes
       REJECT_PROOF("timestamp is too far from now");
 
     for (auto const &min : MIN_UPTIME_PROOF_VERSIONS) {
-      if (vers >= min.hardfork_revision) {
+      if (vers >= min.hardfork_revision && m_blockchain.nettype() != cryptonote::DEVNET) {
         if (proof->version < min.oxend)
           REJECT_PROOF("v" << tools::join(".", min.oxend) << "+ oxend version is required for v" << +vers.first << "." << +vers.second << "+ network proofs");
         if (proof->lokinet_version < min.lokinet)

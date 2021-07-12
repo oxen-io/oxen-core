@@ -54,10 +54,32 @@ namespace cryptonote {
     virtual void init() = 0;
   };
 
+  struct address_parse_info
+  {
+    account_public_address address;
+    bool is_subaddress;
+    bool has_payment_id;
+    crypto::hash8 payment_id;
+
+    std::string as_str(network_type nettype) const;
+
+    KV_MAP_SERIALIZABLE
+  };
+
+  struct batch_sn_payment {
+    std::string address;
+    cryptonote::address_parse_info address_info;
+    uint64_t amount;
+    batch_sn_payment() = default;
+    batch_sn_payment(std::string addr, uint64_t amt, cryptonote::network_type nettype);
+    batch_sn_payment(cryptonote::address_parse_info& addr_info, uint64_t amt, cryptonote::network_type nettype);
+    batch_sn_payment(const cryptonote::account_public_address& addr, uint64_t amt, cryptonote::network_type nettype);
+  };
+
   class ValidateMinerTxHook
   {
   public:
-    virtual bool validate_miner_tx(cryptonote::block const &block, struct block_reward_parts const &reward_parts) const = 0;
+    virtual bool validate_miner_tx(cryptonote::block const &block, struct block_reward_parts const &reward_parts, std::optional<std::vector<cryptonote::batch_sn_payment>> const &batched_sn_payments) const = 0;
   };
 
   class AltBlockAddedHook
@@ -89,17 +111,7 @@ namespace cryptonote {
     return addresses[0];
   }
 
-  struct address_parse_info
-  {
-    account_public_address address;
-    bool is_subaddress;
-    bool has_payment_id;
-    crypto::hash8 payment_id;
 
-    std::string as_str(network_type nettype) const;
-
-    KV_MAP_SERIALIZABLE
-  };
 
   /************************************************************************/
   /* Cryptonote helper functions                                          */
