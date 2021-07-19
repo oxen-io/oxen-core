@@ -1,4 +1,4 @@
-#include <db.hpp>
+#include "db.hpp"
 
 namespace wallet
 {
@@ -8,7 +8,7 @@ namespace wallet
 
     void InitDB(std::shared_ptr<SQLite::Database> db)
     {
-      db.exec("CREATE TABLE outputs ("
+      db->exec("CREATE TABLE outputs ("
               "id INTEGER PRIMARY KEY,"
               "amount INTEGER,"
               "output_index INTEGER,"
@@ -23,7 +23,7 @@ namespace wallet
               ")");
 
       // CHECK (id = 0) restricts this table to a single row
-      db.exec("CREATE TABLE metadata ("
+      db->exec("CREATE TABLE metadata ("
               "id INTEGER PRIMARY KEY CHECK (id = 0),"
               "balance INTEGER,"
               "unlocked_balance INTEGER,"
@@ -32,7 +32,7 @@ namespace wallet
 
 
       // insert metadata row as default
-      db.exec("INSERT INTO metadata VALUES (NULL,0,0,0)");
+      db->exec("INSERT INTO metadata VALUES (NULL,0,0,0)");
 
     }
 
@@ -42,9 +42,9 @@ namespace wallet
       auto flags = SQLite::OPEN_READWRITE;
       if (create) flags |= SQLite::OPEN_CREATE;
 
-      std::shared_ptr<SQLite::Database> db{filename, flags};
+      auto db = std::make_shared<SQLite::Database>(filename, flags);
 
-      db.key(password);
+      db->key(std::string{password});
 
       if (create) InitDB(db);
 

@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <string>
 
-#include <src/crypto/crypto.h>
+#include <crypto/crypto.h>
 
 namespace wallet
 {

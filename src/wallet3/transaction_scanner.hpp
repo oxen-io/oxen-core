@@ -2,7 +2,7 @@
 
 #include <vector>
 
-#include <src/cryptonote_basic/cryptonote_basic.hpp>
+#include <cryptonote_basic/cryptonote_basic.h>
 #include "output.hpp"
 
 namespace wallet

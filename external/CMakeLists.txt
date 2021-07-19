@@ -143,3 +143,11 @@ target_link_libraries(cpr PUBLIC CURL::libcurl)
 target_include_directories(cpr PUBLIC cpr/include)
 target_compile_definitions(cpr PUBLIC CPR_CURL_NOSIGNAL)
 add_library(cpr::cpr ALIAS cpr)
+
+
+add_subdirectory(Catch2)
+# disable bundled sqlite3 in sqlitecpp
+if(TARGET sqlite3)
+  set(SQLITECPP_INTERNAL_SQLITE OFF)
+endif()
+add_subdirectory(SQLiteCpp)

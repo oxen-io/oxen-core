@@ -1,6 +1,6 @@
 #include "transaction_scanner.hpp"
 
-#include <src/common/string_util.h>
+#include <common/string_util.h>
 
 namespace wallet
 {
