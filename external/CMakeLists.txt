@@ -148,6 +148,6 @@ add_library(cpr::cpr ALIAS cpr)
 add_subdirectory(Catch2)
 # disable bundled sqlite3 in sqlitecpp
 if(TARGET sqlite3)
-  set(SQLITECPP_INTERNAL_SQLITE OFF)
+  option(SQLITECPP_INTERNAL_SQLITE "" OFF)
 endif()
 add_subdirectory(SQLiteCpp)
