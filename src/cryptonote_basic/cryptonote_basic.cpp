@@ -1,5 +1,7 @@
 #include "cryptonote_basic.h"
 
+#include "cryptonote_format_utils.h"
+
 namespace cryptonote {
 
 void transaction_prefix::set_null() {
@@ -10,6 +12,26 @@ void transaction_prefix::set_null() {
   extra.clear();
   output_unlock_times.clear();
   type = txtype::standard;
+}
+
+std::vector<crypto::public_key> transaction_prefix::get_public_keys()
+{
+  std::vector<cryptonote::tx_extra_field> fields;
+
+  if (!parse_tx_extra(extra, fields))
+  {
+    throw std::invalid_argument("Failed to parse tx_extra of a transaction.");
+  }
+
+  std::vector<crypto::public_key> keys;
+  tx_extra_pub_key pk_field;
+  size_t i=0;
+  while(find_tx_extra_field_by_type(fields, pk_field, i++))
+  {
+    keys.push_back(pk_field.pub_key);
+  }
+
+  return keys;
 }
 
 transaction::transaction(const transaction &t) :

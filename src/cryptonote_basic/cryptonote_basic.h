@@ -232,6 +232,7 @@ namespace cryptonote
       return unlock_time;
     }
 
+    std::vector<crypto::public_key> get_public_keys();
   };
 
   class transaction final : public transaction_prefix
