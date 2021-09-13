@@ -14,7 +14,7 @@ void transaction_prefix::set_null() {
   type = txtype::standard;
 }
 
-std::vector<crypto::public_key> transaction_prefix::get_public_keys()
+std::vector<crypto::public_key> transaction_prefix::get_public_keys() const
 {
   std::vector<cryptonote::tx_extra_field> fields;
 

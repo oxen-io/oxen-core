@@ -14,13 +14,13 @@ namespace wallet
 
   std::vector<Output> TransactionScanner::ScanTransactionReceived(const cryptonote::transaction& tx, const crypto::hash& tx_hash, uint64_t height, uint64_t timestamp)
   {
+    const auto tx_public_keys = tx.get_public_keys();
 
-    auto tx_public_keys = tx.get_public_keys();
 
     if (tx_public_keys.empty())
     {
       LOG_PRINT_L0("TransactionScanner found no tx public keys in transaction with hash <" << tx_hash << ">.");
-      return;
+      return {};
     }
 
     // simple case first, handle only first found tx pubkey
@@ -56,7 +56,7 @@ namespace wallet
         //       if so, this output is for us.
 
         // auto subaddress_index = <check if we have the public key output_spend_key, get the subaddress index>
-        auto key_image = wallet_keys->KeyImage(tx_public_keys[0], derivation, output_index, subaddress_index);
+        // auto key_image = wallet_keys->KeyImage(tx_public_keys[0], derivation, output_index, subaddress_index);
       }
       else
       {

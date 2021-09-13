@@ -1,6 +1,6 @@
 #pragma once
 
-#include <cryptonote_basic/subaddress_index.h>
+#include <cryptonote_basic/cryptonote_basic.h>
 
 namespace wallet
 {

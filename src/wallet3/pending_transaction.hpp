@@ -1,15 +1,16 @@
 #pragma once
 
+#include <cryptonote_basic/cryptonote_basic.h>
+#include "address.hpp"
 #include "db.hpp"
+#include "output.hpp"
 
 #include <vector>
 #include <string>
 
 namespace wallet
 {
-
-  struct address; // XXX: placeholder type
-  struct verison; // XXX: placeholder type
+  struct version {}; // XXX: placeholder type
 
   struct PendingTransaction
   {

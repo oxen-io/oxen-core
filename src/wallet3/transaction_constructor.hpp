@@ -1,4 +1,7 @@
 #pragma once
+#include <cstdint>
+#include <vector>
+#include "address.hpp"
 
 namespace wallet
 {

@@ -1,7 +1,7 @@
 #pragma once
 
-#include <src/crypto/hash.h>
-#include <src/cryptonote_basic/cryptonote_basic.h>
+#include <crypto/hash.h>
+#include <cryptonote_basic/cryptonote_basic.h>
 
 #include <vector>
 

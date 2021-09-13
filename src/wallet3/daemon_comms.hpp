@@ -21,7 +21,7 @@ namespace wallet
 
     virtual void SetNewBlockCallback(std::function<void(Block)> cb) = 0;
 
-    virtual void GetDecoyOutputs( /*TODO: args */, std::function<void(std::vector<Decoy>)> cb);
+    virtual void GetDecoyOutputs( /*TODO: args */ std::function<void(std::vector<Decoy>)> cb);
 
     virtual void SubmitTransaction(PendingTransaction tx, std::function<void(bool success)> cb) = 0;
   };
