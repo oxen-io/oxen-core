@@ -34,7 +34,7 @@
 TEST(SQLITE, AddSNRewards)
 {
   cryptonote::BlockchainSQLite sqliteDB;
-  sqliteDB.load_database(":memory:");
+  sqliteDB.load_database(cryptonote::network_type::TESTNET, ":memory:");
 
   std::cout << "in memory db opened" << std::endl;
 
@@ -48,28 +48,28 @@ TEST(SQLITE, AddSNRewards)
 
   t1.emplace_back(wallet_address.address, 16500000000/2, cryptonote::network_type::TESTNET);
 
-  bool success = sqliteDB.add_sn_payments(cryptonote::network_type::TESTNET, t1, 1); 
+  bool success = sqliteDB.add_sn_payments(t1, 1); 
   EXPECT_TRUE(success);
-  success = sqliteDB.add_sn_payments(cryptonote::network_type::TESTNET, t1, 2); 
+  success = sqliteDB.add_sn_payments(t1, 2); 
   EXPECT_TRUE(success);
-  success = sqliteDB.add_sn_payments(cryptonote::network_type::TESTNET, t1, 3); 
+  success = sqliteDB.add_sn_payments(t1, 3); 
   EXPECT_TRUE(success);
-  success = sqliteDB.add_sn_payments(cryptonote::network_type::TESTNET, t1, 4); 
+  success = sqliteDB.add_sn_payments(t1, 4); 
   EXPECT_TRUE(success);
-  success = sqliteDB.add_sn_payments(cryptonote::network_type::TESTNET, t1, 5); 
+  success = sqliteDB.add_sn_payments(t1, 5); 
   EXPECT_TRUE(success);
-  success = sqliteDB.add_sn_payments(cryptonote::network_type::TESTNET, t1, 6); 
+  success = sqliteDB.add_sn_payments(t1, 6); 
   EXPECT_TRUE(success);
 
   EXPECT_TRUE(sqliteDB.batching_count() == 1);
 
   std::optional<std::vector<cryptonote::batch_sn_payment>> p1;
-  p1 = sqliteDB.get_sn_payments(cryptonote::network_type::TESTNET, 6);
+  p1 = sqliteDB.get_sn_payments(6);
   EXPECT_TRUE(p1.has_value());
   EXPECT_TRUE((*p1).size() == 0);
 
   std::optional<std::vector<cryptonote::batch_sn_payment>> p2;
-  p2 = sqliteDB.get_sn_payments(cryptonote::network_type::TESTNET, 7);
+  p2 = sqliteDB.get_sn_payments(7);
   EXPECT_TRUE(p2.has_value());
   EXPECT_TRUE((*p2).size() == 1);
   //uint64_t expected_amount = (16500000000 * 2 + 16500000000/2) * 6;
@@ -80,7 +80,7 @@ TEST(SQLITE, AddSNRewards)
   std::vector<cryptonote::batch_sn_payment> t2;
   t2.emplace_back(wallet_address.address, expected_amount, cryptonote::network_type::TESTNET);
 
-  success = sqliteDB.subtract_sn_payments(cryptonote::network_type::TESTNET, t2, 7); 
+  success = sqliteDB.subtract_sn_payments(t2, 7); 
   EXPECT_TRUE(success);
   EXPECT_TRUE(sqliteDB.batching_count() == 0);
 }

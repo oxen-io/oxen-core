@@ -3564,7 +3564,7 @@ bool oxen_batch_sn_rewards_pop_blocks::generate(std::vector<test_event_entry> &e
     CHECK_EQ((*sqliteDB).height, curr_height - 1);
     // curr_height + 1 = the block that would contain the batched service node payment
     std::optional<std::vector<cryptonote::batch_sn_payment>> records;
-    records = (*sqliteDB).get_sn_payments(cryptonote::network_type::FAKECHAIN, curr_height + 1);
+    records = (*sqliteDB).get_sn_payments(curr_height + 1);
     CHECK_EQ(records.has_value(), true);
     CHECK_EQ((*records).size(), 1);
     // Check that the database has a full batch amount that includes the soon to be popped block 
@@ -3575,7 +3575,7 @@ bool oxen_batch_sn_rewards_pop_blocks::generate(std::vector<test_event_entry> &e
     CHECK_EQ((*sqliteDB).height, blockchain.get_current_blockchain_height() - 1);
     CHECK_EQ((*sqliteDB).height, curr_height - 2);
 
-    records = (*sqliteDB).get_sn_payments(cryptonote::network_type::FAKECHAIN, curr_height + 1);
+    records = (*sqliteDB).get_sn_payments(curr_height + 1);
     CHECK_EQ(records.has_value(), true);
     CHECK_EQ((*records).size(), 1);
     // Check that the database has a lower amount that does not include the popped block
@@ -3588,7 +3588,7 @@ bool oxen_batch_sn_rewards_pop_blocks::generate(std::vector<test_event_entry> &e
     CHECK_EQ((*sqliteDB).height, blockchain.get_current_blockchain_height() - 1);
     CHECK_EQ((*sqliteDB).height, curr_height - conf.BATCHING_INTERVAL - 1);
 
-    records = (*sqliteDB).get_sn_payments(cryptonote::network_type::FAKECHAIN, curr_height + 1);
+    records = (*sqliteDB).get_sn_payments(curr_height + 1);
     CHECK_EQ((*records).size(), 0);
 
     return true;

@@ -170,7 +170,7 @@ oxen_chain_generator::oxen_chain_generator(std::vector<test_event_entry> &events
   bool init = ons_db_->init(nullptr, cryptonote::FAKECHAIN, ons::init_oxen_name_system("", false /*read_only*/));
   assert(init);
 
-  sqlite_db_->load_database(":memory:");
+  sqlite_db_->load_database(cryptonote::FAKECHAIN, ":memory:");
 
   first_miner_.generate();
   oxen_blockchain_entry genesis = oxen_chain_generator::create_genesis_block(first_miner_, 1338224400);
@@ -254,7 +254,7 @@ oxen_blockchain_entry &oxen_chain_generator::add_block(oxen_blockchain_entry con
       }
     }
   }
-  sqlite_db_->add_block(cryptonote::FAKECHAIN, entry.block, contributors);
+  sqlite_db_->add_block(entry.block, contributors);
 
   // TODO(oxen): State history culling and alt states
   state_history_.emplace_hint(state_history_.end(), result.service_node_state);
@@ -1006,7 +1006,7 @@ bool oxen_chain_generator::block_begin(oxen_blockchain_entry &entry, oxen_create
   std::optional<std::vector<cryptonote::batch_sn_payment>> sn_rwds;
   if (hf_version_ >= cryptonote::network_version_19)
   {
-    sn_rwds = sqlite_db_->get_sn_payments(cryptonote::FAKECHAIN, height); //Rewards to pay out
+    sn_rwds = sqlite_db_->get_sn_payments(height); //Rewards to pay out
   }
   uint64_t block_rewards = 0;
   bool r;
