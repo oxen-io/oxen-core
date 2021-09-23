@@ -532,7 +532,7 @@ bool Blockchain::init(BlockchainDB* db, sqlite3 *ons_db, std::shared_ptr<crypton
             }
           }
         }
-        if (!m_sqlite_db->pop_block(m_nettype, popped_block, contributors))
+        if (!m_sqlite_db->pop_block(popped_block, contributors))
         {
           LOG_ERROR("Failed to pop to batch rewards DB. throwing");
           throw;
@@ -750,7 +750,7 @@ block Blockchain::pop_block_from_blockchain()
       }
     }
   }
-  if (!m_sqlite_db->pop_block(m_nettype, popped_block, contributors))
+  if (!m_sqlite_db->pop_block(popped_block, contributors))
   {
     LOG_ERROR("Failed to pop to batch rewards DB. throwing");
     throw;
@@ -1355,7 +1355,7 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
   if (!get_oxen_block_reward(median_weight, cumulative_block_weight, already_generated_coins, version, reward_parts, block_reward_context))
     return false;
 
-  auto batched_sn_payments = m_sqlite_db->get_sn_payments(m_nettype, height);
+  auto batched_sn_payments = m_sqlite_db->get_sn_payments(height);
   cryptonote::block bl = b;
   for (ValidateMinerTxHook* hook : m_validate_miner_tx_hooks)
   {
@@ -1645,7 +1645,7 @@ bool Blockchain::create_block_template_internal(block& b, const crypto::hash *fr
   std::optional<std::vector<cryptonote::batch_sn_payment>> sn_rwds = std::nullopt;
   if (hf_version >= cryptonote::network_version_19)
   {
-    sn_rwds = m_sqlite_db->get_sn_payments(m_nettype, height); //Rewards to pay out
+    sn_rwds = m_sqlite_db->get_sn_payments(height); //Rewards to pay out
   }
 
   uint64_t block_rewards = 0;
@@ -4526,7 +4526,7 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
     }
   }
   if (m_sqlite_db) {
-    if (!m_sqlite_db->add_block(m_nettype, bl, contributors))
+    if (!m_sqlite_db->add_block(bl, contributors))
     {
       MERROR("Failed to add block to batch rewards DB.");
       bvc.m_verifivation_failed = true;

@@ -618,7 +618,7 @@ namespace cryptonote
       sqlite_db_file_path = ":memory:";
     }
 
-    sqliteDB->load_database(sqlite_db_file_path);
+    sqliteDB->load_database(m_nettype, sqlite_db_file_path);
 
     folder /= db->get_db_name();
     MGINFO("Loading blockchain from folder " << folder << " ...");
