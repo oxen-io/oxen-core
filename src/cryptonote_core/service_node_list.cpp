@@ -2484,14 +2484,16 @@ namespace service_nodes
         expected_vouts_size += batched_sn_payments->size();
     } else {
       expected_vouts_size += block_leader.payouts.size();
+      bool has_governance_output = cryptonote::height_has_governance_output(m_blockchain.nettype(), hf_version, height);
+      uint64_t batched_governance_reward = 0;
+      if(has_governance_output) {
+        size_t num_blocks = cryptonote::get_config(m_blockchain.nettype()).GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS;
+        batched_governance_reward = num_blocks * FOUNDATION_REWARD_HF17;
+        expected_vouts_size += static_cast<size_t>(has_governance_output);
+      }
     }
-    bool has_governance_output = cryptonote::height_has_governance_output(m_blockchain.nettype(), hf_version, height);
-    uint64_t batched_governance_reward = 0;
-    if(has_governance_output) {
-      size_t num_blocks = cryptonote::get_config(m_blockchain.nettype()).GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS;
-      batched_governance_reward = num_blocks * FOUNDATION_REWARD_HF17;
-      expected_vouts_size += static_cast<size_t>(has_governance_output);
-    }
+
+
     if (miner_tx.vout.size() != expected_vouts_size)
     {
       char const *type = mode == verify_mode::miner
@@ -2603,14 +2605,6 @@ namespace service_nodes
           {
             MGINFO_RED("Service node output target type should be txout_to_key");
             return false;
-          }
-
-          if(has_governance_output && vout.amount == batched_governance_reward) 
-          {
-            total_payout_in_vouts += batched_governance_reward;
-            total_payout_in_our_db += batched_governance_reward;
-            vout_index++;
-            continue;
           }
 
           if (vout.amount != (*batched_sn_payments)[vout_index].amount)

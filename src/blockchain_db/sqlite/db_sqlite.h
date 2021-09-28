@@ -75,7 +75,7 @@ public:
   bool pop_block(const cryptonote::block &block, std::vector<cryptonote::batch_sn_payment> contributors);
 
   // validate_batch_payment -> used to make sure that list of miner_tx_vouts is correct. Compares the miner_tx_vouts with a list previously extracted payments to make sure that the correct persons are being paid.
-  bool validate_batch_payment(std::vector<std::tuple<crypto::public_key, uint64_t>> miner_tx_vouts, std::vector<cryptonote::batch_sn_payment> calculated_payments_from_batching_db, uint64_t block_height, bool has_batched_governance_output, bool save_payment);
+  bool validate_batch_payment(std::vector<std::tuple<crypto::public_key, uint64_t>> miner_tx_vouts, std::vector<cryptonote::batch_sn_payment> calculated_payments_from_batching_db, uint64_t block_height, bool save_payment);
   
   // is_governance_payment -> internally used to ignore miner_tx_vouts that are related to the governance reward and not to the batching payouts
   bool is_governance_payment(cryptonote::tx_out out);

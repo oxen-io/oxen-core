@@ -1322,8 +1322,6 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
     if (b.major_version < cryptonote::network_version_19) {
       MERROR_VER("miner tx has no outputs");
       return false;
-    //} else {
-      //return true;
     }
   }
 
@@ -1363,7 +1361,7 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
       return false;
   }
 
-  if (already_generated_coins != 0 && block_has_governance_output(nettype(), b))
+  if (already_generated_coins != 0 && block_has_governance_output(nettype(), b) && version < cryptonote::network_version_19)
   {
     if (version >= network_version_10_bulletproofs && reward_parts.governance_paid == 0)
     {
@@ -1691,12 +1689,9 @@ bool Blockchain::create_block_template_internal(block& b, const crypto::hash *fr
       cache_block_template(b, info.miner_address, ex_nonce, diffic, height, expected_reward, pool_cookie);
 
     if (miner_tx_context.pulse)
-    {
       b.service_node_winner_key = miner_tx_context.pulse_block_producer.key;
-    } else {
+    else
       b.service_node_winner_key = {0};
-    }
-
 
     b.reward = block_rewards;
     b.height = height;
@@ -5063,6 +5058,13 @@ bool Blockchain::calc_batched_governance_reward(uint64_t height, uint64_t &rewar
     return true;
   }
 
+  // Constant reward every block at HF19 and batched through service node batching 
+  if (hard_fork_version >= cryptonote::network_version_19)
+  {
+    reward = FOUNDATION_REWARD_HF17;
+    return true;
+  }
+
   // Ignore governance reward and payout instead the last
   // GOVERNANCE_BLOCK_REWARD_INTERVAL number of blocks governance rewards.  We
   // come back for this height's rewards in the next interval. The reward is
@@ -5082,8 +5084,7 @@ bool Blockchain::calc_batched_governance_reward(uint64_t height, uint64_t &rewar
   }
 
   uint64_t start_height = height - num_blocks;
-  if (height < num_blocks)
-  {
+  if (height < num_blocks) {
     start_height = 0;
     num_blocks   = height;
   }

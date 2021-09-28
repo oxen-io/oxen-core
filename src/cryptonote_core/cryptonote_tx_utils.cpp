@@ -152,8 +152,9 @@ namespace cryptonote
     if (height == 0)
       return false;
 
-    if (hard_fork_version <= network_version_9_service_nodes)
+    if (hard_fork_version <= network_version_9_service_nodes || hard_fork_version >= cryptonote::network_version_19)
       return true;
+
 
     if (height % cryptonote::get_config(nettype).GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS != 0)
     {
@@ -279,9 +280,7 @@ namespace cryptonote
     if (already_generated_coins != 0)
       add_tx_extra<tx_extra_pub_key>(tx, gov_key.pub);
 
-
     add_service_node_winner_to_tx_extra(tx.extra, miner_tx_context.block_leader.key);
-
 
     oxen_block_reward_context block_reward_context = {};
     block_reward_context.fee                       = fee;
@@ -415,17 +414,6 @@ namespace cryptonote
       }
     }
 
-    uint64_t total_sn_rewards = 0;
-    // Add SN rewards to the block
-    if (sn_rwds)
-      for (const auto &reward : *sn_rwds)
-      {
-        rewards.emplace_back(reward_type::snode, reward.address_info.address, reward.amount);
-        total_sn_rewards += reward.amount;
-      }
-
-
-
     // NOTE: Add Governance Payout
     if (already_generated_coins != 0)
     {
@@ -437,8 +425,21 @@ namespace cryptonote
       {
         cryptonote::address_parse_info governance_wallet_address;
         cryptonote::get_account_address_from_str(governance_wallet_address, nettype, cryptonote::get_config(nettype).governance_wallet_address(hard_fork_version));
-        rewards.push_back({reward_type::governance, governance_wallet_address.address, reward_parts.governance_paid});
+        // Governance reward paid out through SN rewards batching after HF19
+        if (hard_fork_version < cryptonote::network_version_19) {
+          rewards.push_back({reward_type::governance, governance_wallet_address.address, reward_parts.governance_paid});
+        }
+      }
+    }
 
+    uint64_t total_sn_rewards = 0;
+    // Add SN rewards to the block
+    if (sn_rwds)
+    {
+      for (const auto &reward : *sn_rwds)
+      {
+        rewards.emplace_back(reward_type::snode, reward.address_info.address, reward.amount);
+        total_sn_rewards += reward.amount;
       }
     }
 
@@ -447,10 +448,6 @@ namespace cryptonote
       CHECK_AND_ASSERT_MES(rewards.size() <= 9, std::make_pair(false, block_rewards), "More rewards specified than supported, number of rewards: " << rewards.size()  << ", capacity: " << rewards.size());
       CHECK_AND_ASSERT_MES(rewards.size() > 0, std::make_pair(false, block_rewards), "Zero rewards are to be payed out, there should be at least 1");
     }
-
-
-
-
 
     // NOTE: Make TX Outputs
     uint64_t summary_amounts = 0;
@@ -499,9 +496,9 @@ namespace cryptonote
     }
     else
     {
-      expected_amount = reward_parts.governance_paid;
+      expected_amount = 0;
       if (hard_fork_version < cryptonote::network_version_19)
-        expected_amount = expected_amount + reward_parts.base_miner + reward_parts.miner_fee + reward_parts.service_node_total;
+        expected_amount = expected_amount + reward_parts.base_miner + reward_parts.miner_fee + reward_parts.service_node_total + reward_parts.governance_paid;
       else
         expected_amount = expected_amount + total_sn_rewards;
     }

@@ -373,12 +373,24 @@ std::vector<cryptonote::batch_sn_payment> BlockchainSQLite::calculate_rewards(co
 {
   LOG_PRINT_L3("BlockchainDB_SQLITE::" << __func__);
   uint64_t distribution_amount = block.reward;
+  uint8_t hf_version = block.major_version;
+  auto block_height = get_block_height(block);
+
 
   uint64_t total_contributed_to_winner_sn = std::accumulate(contributors.begin(), contributors.end(), uint64_t(0), [](auto const a, auto const b){return a + b.amount;});
 
   std::vector<cryptonote::batch_sn_payment> payments;
   for (auto & contributor : contributors)
     payments.emplace_back(contributor.address, (contributor.amount / total_contributed_to_winner_sn * distribution_amount), m_nettype);
+
+  // Add Governance reward to the list
+  if (m_nettype != cryptonote::FAKECHAIN)
+  {
+    cryptonote::address_parse_info governance_wallet_address;
+    cryptonote::get_account_address_from_str(governance_wallet_address, m_nettype, cryptonote::get_config(m_nettype).governance_wallet_address(hf_version));
+    payments.emplace_back(governance_wallet_address.address, FOUNDATION_REWARD_HF17, m_nettype);
+  }
+
 
   return payments;
 }
@@ -410,8 +422,6 @@ bool BlockchainSQLite::add_block(const cryptonote::block& block, std::vector<cry
 
   std::vector<std::tuple<crypto::public_key, uint64_t>> miner_tx_vouts;
 
-  bool has_batched_governance_reward = height_has_governance_output(m_nettype, hf_version, block_height);
-
   auto calculated_rewards = get_sn_payments(block_height);
 
   for(auto & vout : block.miner_tx.vout)
@@ -421,7 +431,7 @@ bool BlockchainSQLite::add_block(const cryptonote::block& block, std::vector<cry
   try
   {
     SQLite::Transaction transaction{*db};
-    if (!validate_batch_payment(miner_tx_vouts, *calculated_rewards, block_height, has_batched_governance_reward, true)) {
+    if (!validate_batch_payment(miner_tx_vouts, *calculated_rewards, block_height, true)) {
       return false;
     } else {
       if (!subtract_sn_payments(*calculated_rewards, block_height)) {
@@ -447,6 +457,7 @@ bool BlockchainSQLite::add_block(const cryptonote::block& block, std::vector<cry
 bool BlockchainSQLite::pop_block(const cryptonote::block &block, std::vector<cryptonote::batch_sn_payment> contributors)
 {
   auto block_height = get_block_height(block);
+
   LOG_PRINT_L3("BlockchainDB_SQLITE::" << __func__ << " called on height: " << block_height);
   if (height < block_height) {
     MDEBUG("Block above batching DB height skipping pop");
@@ -465,7 +476,6 @@ bool BlockchainSQLite::pop_block(const cryptonote::block &block, std::vector<cry
     return decrement_height();
 
   std::vector<std::tuple<crypto::public_key, uint64_t>> miner_tx_vouts;
-  bool has_batched_governance_reward = height_has_governance_output(m_nettype, hf_version, block_height);
   for(auto & vout : block.miner_tx.vout)
     miner_tx_vouts.emplace_back(var::get<cryptonote::txout_to_key>(vout.target).key, vout.amount);
 
@@ -485,7 +495,7 @@ bool BlockchainSQLite::pop_block(const cryptonote::block &block, std::vector<cry
     SQLite::Transaction transaction{*db};
     if (previous_block_payments.size() > 0)
     {
-      if (!validate_batch_payment(miner_tx_vouts, previous_block_payments, block_height, has_batched_governance_reward, false))
+      if (!validate_batch_payment(miner_tx_vouts, previous_block_payments, block_height, false))
       {
         MINFO(__FILE__ << ":" << __LINE__ << " failing validate_batch_payments function call");
         return false;
@@ -512,19 +522,12 @@ bool BlockchainSQLite::pop_block(const cryptonote::block &block, std::vector<cry
   return success;
 }
 
-bool BlockchainSQLite::validate_batch_payment(std::vector<std::tuple<crypto::public_key, uint64_t>> miner_tx_vouts, std::vector<cryptonote::batch_sn_payment> calculated_payments_from_batching_db, uint64_t block_height, bool has_batched_governance_output, bool save_payment)
+bool BlockchainSQLite::validate_batch_payment(std::vector<std::tuple<crypto::public_key, uint64_t>> miner_tx_vouts, std::vector<cryptonote::batch_sn_payment> calculated_payments_from_batching_db, uint64_t block_height, bool save_payment)
 {
   LOG_PRINT_L3("BlockchainDB_SQLITE::" << __func__);
   size_t length_miner_tx_vouts = miner_tx_vouts.size();
   size_t length_calculated_payments_from_batching_db = calculated_payments_from_batching_db.size();
 
-  uint64_t batched_governance_reward = 0;
-  if(has_batched_governance_output)
-  {
-    length_calculated_payments_from_batching_db++;
-    size_t num_blocks = cryptonote::get_config(m_nettype).GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS;
-    batched_governance_reward = num_blocks * FOUNDATION_REWARD_HF17;
-  }
   if (length_miner_tx_vouts != length_calculated_payments_from_batching_db)
   {
     MERROR("Length of batch paments does not match, block vouts: " << length_miner_tx_vouts << " batch size: " << length_calculated_payments_from_batching_db);
@@ -538,14 +541,6 @@ bool BlockchainSQLite::validate_batch_payment(std::vector<std::tuple<crypto::pub
   cryptonote::keypair const deterministic_keypair = cryptonote::get_deterministic_keypair_from_height(block_height);
   for(auto & vout : miner_tx_vouts)
   {
-    if(has_batched_governance_output && std::get<1>(vout) == batched_governance_reward) 
-    {
-      total_oxen_payout_in_vouts += batched_governance_reward;
-      total_oxen_payout_in_our_db += batched_governance_reward;
-      vout_index++;
-      continue;
-    }
-
     if (std::get<1>(vout) != calculated_payments_from_batching_db[vout_index].amount)
     {
       MERROR("Service node reward amount incorrect. Should be " << cryptonote::print_money(calculated_payments_from_batching_db[vout_index].amount) << ", is: " << cryptonote::print_money(std::get<1>(vout)));
