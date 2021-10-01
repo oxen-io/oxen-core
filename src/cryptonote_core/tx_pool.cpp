@@ -260,7 +260,7 @@ namespace cryptonote
       return false;
     }
 
-    if(!check_inputs_types_supported(tx))
+    if (!check_inputs_types_supported(tx))
     {
       tvc.m_verifivation_failed = true;
       tvc.m_invalid_input = true;
@@ -279,7 +279,7 @@ namespace cryptonote
       return false;
     }
 
-    if(hf_version < cryptonote::network_version_19)
+    if (hf_version < cryptonote::network_version_19)
     {
       if (!opts.kept_by_block && tx.is_transfer() && !m_blockchain.check_fee(tx_weight, tx.vout.size(), fee, burned, opts))
       {

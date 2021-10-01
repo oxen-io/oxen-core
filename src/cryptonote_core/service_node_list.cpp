@@ -2485,7 +2485,7 @@ namespace service_nodes
     } else {
       expected_vouts_size += block_leader.payouts.size();
       bool has_governance_output = cryptonote::height_has_governance_output(m_blockchain.nettype(), hf_version, height);
-      if(has_governance_output) {
+      if (has_governance_output) {
         expected_vouts_size++;
       }
     }
@@ -2596,7 +2596,7 @@ namespace service_nodes
         uint64_t total_payout_in_our_db = std::accumulate(batched_sn_payments->begin(),batched_sn_payments->end(), uint64_t{0}, [](auto const a, auto const b){return a + b.amount;});
         uint64_t total_payout_in_vouts = 0;
         cryptonote::keypair const deterministic_keypair = cryptonote::get_deterministic_keypair_from_height(height);
-        for(auto & vout : block.miner_tx.vout)
+        for (auto & vout : block.miner_tx.vout)
         {
           if (!std::holds_alternative<cryptonote::txout_to_key>(vout.target))
           {

@@ -888,7 +888,7 @@ namespace cryptonote
     {
       CHECK_AND_ASSERT_MES(b.miner_tx.vin.size() == 1, 0, "wrong miner tx in block: " << get_block_hash(b) << ", b.miner_tx.vin.size() != 1 (size is: " << b.miner_tx.vin.size() << ")");
       CHECKED_GET_SPECIFIC_VARIANT(b.miner_tx.vin[0], txin_gen, coinbase_in, 0);
-      if(b.major_version >= cryptonote::network_version_19)
+      if (b.major_version >= cryptonote::network_version_19)
       {
         CHECK_AND_ASSERT_MES(coinbase_in.height == b.height, 0, "wrong miner tx in block: " << get_block_hash(b));
       }
