@@ -60,9 +60,8 @@ public:
   uint64_t batching_count();
   std::optional<uint64_t> retrieve_amount_by_address(const std::string& address);
 
-  // add/subtract_sn_payments -> passing an array of addresses and amounts. These will be added or subtracted to the database for each address specified. If the address does not exist it will be created.
+  // add_sn_payments -> passing an array of addresses and amounts. These will be added or subtracted to the database for each address specified. If the address does not exist it will be created.
   bool add_sn_payments(std::vector<cryptonote::batch_sn_payment>& payments, uint64_t block_height);
-  bool subtract_sn_payments(std::vector<cryptonote::batch_sn_payment>& payments, uint64_t block_height);
 
   // get_payments -> passing a block height will return an array of payments that should be created in a coinbase transaction on that block given the current batching DB state.
   std::optional<std::vector<cryptonote::batch_sn_payment>> get_sn_payments(uint64_t block_height);
@@ -77,11 +76,10 @@ public:
   // validate_batch_payment -> used to make sure that list of miner_tx_vouts is correct. Compares the miner_tx_vouts with a list previously extracted payments to make sure that the correct persons are being paid.
   bool validate_batch_payment(std::vector<std::tuple<crypto::public_key, uint64_t>> miner_tx_vouts, std::vector<cryptonote::batch_sn_payment> calculated_payments_from_batching_db, uint64_t block_height, bool save_payment);
   
-  // is_governance_payment -> internally used to ignore miner_tx_vouts that are related to the governance reward and not to the batching payouts
-  bool is_governance_payment(cryptonote::tx_out out);
-
   // these keep track of payments made to SN operators after then payment has been made. Allows for popping blocks back and knowing who got paid in those blocks.
-  bool save_block_payments(std::vector<std::tuple<std::string, int64_t, int8_t, int64_t>> finalised_payments);
+  // passing in a list of people to be marked as paid in the paid_amounts vector, the amounts MUST reconcile with what is currently in the database 
+  // else it will fail. Block height will be added to the batched_payments database as height_paid.
+  bool save_payments(uint64_t block_height, std::vector<batch_sn_payment> paid_amounts);
   std::vector<cryptonote::batch_sn_payment> get_block_payments(uint64_t block_height);
   bool delete_block_payments(uint64_t block_height);
 
@@ -90,7 +88,6 @@ public:
   cryptonote::network_type m_nettype;
   std::unique_ptr<SQLite::Database> db;
   std::string filename;
-
 
 private:
 

@@ -76,11 +76,16 @@ TEST(SQLITE, AddSNRewards)
   uint64_t expected_amount = (16500000000/2) * 6;
   EXPECT_TRUE((*p2)[0].amount == expected_amount);
 
-  // Subtract the amount back out and expect the database to be empty
+  // Pay an amount less than the database expects and test for failure
   std::vector<cryptonote::batch_sn_payment> t2;
-  t2.emplace_back(wallet_address.address, expected_amount, cryptonote::network_type::TESTNET);
+  t2.emplace_back(wallet_address.address, expected_amount - 1, cryptonote::network_type::TESTNET);
+  EXPECT_FALSE(sqliteDB.save_payments(7, t2));
 
-  success = sqliteDB.subtract_sn_payments(t2, 7); 
+  // Pay the amount back out and expect the database to be empty
+  std::vector<cryptonote::batch_sn_payment> t3;
+  t3.emplace_back(wallet_address.address, expected_amount, cryptonote::network_type::TESTNET);
+
+  success = sqliteDB.save_payments(7, t3); 
   EXPECT_TRUE(success);
   EXPECT_TRUE(sqliteDB.batching_count() == 0);
 }

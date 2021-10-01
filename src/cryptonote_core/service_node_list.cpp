@@ -2485,11 +2485,8 @@ namespace service_nodes
     } else {
       expected_vouts_size += block_leader.payouts.size();
       bool has_governance_output = cryptonote::height_has_governance_output(m_blockchain.nettype(), hf_version, height);
-      uint64_t batched_governance_reward = 0;
       if(has_governance_output) {
-        size_t num_blocks = cryptonote::get_config(m_blockchain.nettype()).GOVERNANCE_REWARD_INTERVAL_IN_BLOCKS;
-        batched_governance_reward = num_blocks * FOUNDATION_REWARD_HF17;
-        expected_vouts_size += static_cast<size_t>(has_governance_output);
+        expected_vouts_size++;
       }
     }
 
