@@ -301,23 +301,28 @@ uint64_t Blockchain::get_current_blockchain_height(bool lock) const
 //------------------------------------------------------------------
 bool Blockchain::load_missing_blocks_into_oxen_subsystems()
 {
+  std::vector<uint64_t> start_height_options;
   uint64_t const snl_height    = std::max(hard_fork_begins(m_nettype, network_version_9_service_nodes).value_or(0), m_service_node_list.height() + 1);
+  start_height_options.push_back(snl_height);
   uint64_t const ons_height    = std::max(hard_fork_begins(m_nettype, network_version_15_ons).value_or(0),          m_ons_db.height() + 1);
-  //uint64_t const sqlite_height = std::max(hard_fork_begins(m_nettype, network_version_19).value_or(0),              m_sqlite_db->height + 1);
+  start_height_options.push_back(ons_height);
+  uint64_t const sqlite_height = std::max(hard_fork_begins(m_nettype, network_version_19).value_or(0),              m_sqlite_db->height + 1);
+  start_height_options.push_back(sqlite_height);
   uint64_t const end_height    = m_db->height();
-  uint64_t const start_height  = std::min(end_height, std::min(ons_height, snl_height));
+  start_height_options.push_back(end_height);
+  uint64_t const start_height  = *std::min_element(start_height_options.begin(), start_height_options.end());
 
   int64_t const total_blocks = static_cast<int64_t>(end_height) - static_cast<int64_t>(start_height);
   if (total_blocks <= 0) return true;
   if (total_blocks > 1)
-    MGINFO("Loading blocks into oxen subsystems, scanning blockchain from height: " << start_height << " to: " << end_height << " (snl: " << snl_height << ", ons: " << ons_height << ")");
+    MGINFO("Loading blocks into oxen subsystems, scanning blockchain from height: " << start_height << " to: " << end_height << " (snl: " << snl_height << ", ons: " << ons_height << ", sqlite: " << sqlite_height << ")");
 
   using clock                   = std::chrono::steady_clock;
   using work_time               = std::chrono::duration<float>;
   int64_t constexpr BLOCK_COUNT = 1000;
   auto work_start               = clock::now();
   auto scan_start               = work_start;
-  work_time ons_duration{}, snl_duration{}, ons_iteration_duration{}, snl_iteration_duration{};
+  work_time ons_duration{}, snl_duration{}, sqlite_duration{}, ons_iteration_duration{}, snl_iteration_duration{}, sqlite_iteration_duration{};
 
   std::vector<cryptonote::block> blocks;
   std::vector<cryptonote::transaction> txs;
@@ -342,6 +347,7 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems()
 
       ons_duration += ons_iteration_duration;
       snl_duration += snl_iteration_duration;
+      sqlite_duration += sqlite_iteration_duration;
       ons_iteration_duration = snl_iteration_duration = {};
     }
 
@@ -392,13 +398,38 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems()
         }
         ons_iteration_duration += clock::now() - ons_start;
       }
+
+      if (m_sqlite_db && (block_height >= sqlite_height))
+      {
+        auto sqlite_start = clock::now();
+        std::vector<cryptonote::batch_sn_payment> contributors;
+        if (blk.major_version >= cryptonote::network_version_19)
+        {
+          if (blk.service_node_winner_key && crypto_core_ed25519_is_valid_point(reinterpret_cast<const unsigned char *>(blk.service_node_winner_key.data)))
+          {
+            auto service_node_array = m_service_node_list.get_service_node_list_state({blk.service_node_winner_key});
+            if (service_node_array.size() > 0){
+              for (auto & contributor : service_node_array[0].info->contributors)
+              {
+                contributors.emplace_back(contributor.address, contributor.amount, m_nettype);
+              }
+            }
+          }
+        }
+        if (!m_sqlite_db->add_block(blk, contributors))
+        {
+          MFATAL("Unable to process block for updating SQLite DB: " << cryptonote::get_block_hash(blk));
+          return false;
+        }
+        sqlite_iteration_duration += clock::now() - sqlite_start;
+      }
     }
   }
 
   if (total_blocks > 1)
   {
     auto duration = work_time{clock::now() - scan_start};
-    MGINFO("Done recalculating oxen subsystems (" << duration.count() << "s) (snl: " << snl_duration.count() << "s; ons: " << ons_duration.count() << "s)");
+    MGINFO("Done recalculating oxen subsystems (" << duration.count() << "s) (snl: " << snl_duration.count() << "s; ons: " << ons_duration.count() << "s)" << "s; sqlite: " << sqlite_duration.count() << "s)");
   }
 
   if (total_blocks > 0)
