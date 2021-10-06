@@ -44,7 +44,6 @@ class BlockchainSQLite
 {
 public:
   BlockchainSQLite() = default;
-  BlockchainSQLite(const BlockchainSQLite &other);
 
   // Database management functions. Should be called on creation of BlockchainSQLite
   void create_schema();
@@ -56,9 +55,6 @@ public:
   bool increment_height();
   bool decrement_height();
 
-  // Helper functions, used in testing to assess the state of the database
-  uint64_t batching_count();
-  std::optional<uint64_t> retrieve_amount_by_address(const std::string& address);
 
   // add_sn_payments -> passing an array of addresses and amounts. These will be added or subtracted to the database for each address specified. If the address does not exist it will be created.
   bool add_sn_payments(std::vector<cryptonote::batch_sn_payment>& payments, uint64_t block_height);
@@ -90,6 +86,18 @@ public:
   std::string filename;
 
 private:
+
+};
+
+class BlockchainSQLiteTest : public BlockchainSQLite
+{
+public:
+  BlockchainSQLiteTest() = default;
+  BlockchainSQLiteTest(const BlockchainSQLiteTest &other);
+
+  // Helper functions, used in testing to assess the state of the database
+  uint64_t batching_count();
+  std::optional<uint64_t> retrieve_amount_by_address(const std::string& address);
 
 };
 

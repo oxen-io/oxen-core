@@ -33,7 +33,7 @@
 
 TEST(SQLITE, AddSNRewards)
 {
-  cryptonote::BlockchainSQLite sqliteDB;
+  cryptonote::BlockchainSQLiteTest sqliteDB;
   sqliteDB.load_database(cryptonote::network_type::TESTNET, ":memory:");
 
   std::cout << "in memory db opened" << std::endl;

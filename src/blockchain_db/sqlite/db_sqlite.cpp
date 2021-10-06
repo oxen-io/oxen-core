@@ -96,7 +96,7 @@ int exec_query(SQLite::Database& db, const char* query, const T&... bind) {
 
 constexpr std::chrono::milliseconds SQLite_busy_timeout = 3s;
 
-BlockchainSQLite::BlockchainSQLite(const BlockchainSQLite &other) {
+BlockchainSQLiteTest::BlockchainSQLiteTest(const BlockchainSQLiteTest &other) {
   filename = other.filename;
 
   if (filename != ":memory:") {
@@ -235,7 +235,7 @@ bool BlockchainSQLite::decrement_height() {
   return update_height(this->height - 1);
 }
 
-uint64_t BlockchainSQLite::batching_count() {
+uint64_t BlockchainSQLiteTest::batching_count() {
   LOG_PRINT_L3("BlockchainDB_SQLITE::" << __func__);
   SQLite::Statement st{*db, "SELECT count(*) FROM accrued_rewards"};
   uint64_t count = 0;
@@ -245,7 +245,7 @@ uint64_t BlockchainSQLite::batching_count() {
   return count;
 }
 
-std::optional<uint64_t> BlockchainSQLite::retrieve_amount_by_address(const std::string& address) {
+std::optional<uint64_t> BlockchainSQLiteTest::retrieve_amount_by_address(const std::string& address) {
   LOG_PRINT_L3("BlockchainDB_SQLITE::" << __func__);
   SQLite::Statement st{*db, "SELECT amount FROM accrued_amounts WHERE address = ?"};
   st.bind(1, address);
