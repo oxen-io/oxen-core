@@ -258,7 +258,7 @@ namespace config
   inline constexpr std::string_view HASH_KEY_CLSAG_AGG_1 = "CLSAG_agg_1"sv;
 
   //Batching SN Rewards
-  inline constexpr uint64_t BATCHING_INTERVAL = 6;
+  inline constexpr uint64_t BATCHING_INTERVAL = 2000;
   inline constexpr uint64_t MIN_BATCH_PAYMENT_AMOUNT = 10;
   inline constexpr uint64_t LIMIT_BATCH_OUTPUTS = 15;
 

@@ -156,7 +156,7 @@ INSERT INTO batch_db_info (height) VALUES (0);
 CREATE TRIGGER batch_payments_prune_paid
 AFTER UPDATE ON batch_db_info FOR EACH ROW
 BEGIN
-    DELETE FROM batched_payments WHERE height_paid < (NEW.height - 500);
+    DELETE FROM batched_payments WHERE height_paid < (NEW.height - 10000);
 END;
 	)");
 
