@@ -33,6 +33,7 @@
 #include "epee/misc_log_ex.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_core/cryptonote_tx_utils.h"
+#include "sqlitedb/database.hpp"
 #include "common/fs.h"
 
 #include <SQLiteCpp/SQLiteCpp.h>
@@ -40,15 +41,17 @@
 namespace cryptonote
 {
 
-class BlockchainSQLite
+fs::path check_if_copy_filename(std::string_view db_path);
+
+class BlockchainSQLite : public db::Database
 {
 public:
-  BlockchainSQLite() = default;
+  BlockchainSQLite(cryptonote::network_type nettype, fs::path db_path);
+  BlockchainSQLite(const BlockchainSQLite&) = delete;
 
   // Database management functions. Should be called on creation of BlockchainSQLite
   void create_schema();
   void clear_database();
-  void load_database(cryptonote::network_type nettype, std::optional<fs::path> file);
 
   // The batching database maintains a height variable to know if it gets out of sync with the mainchain. Calling increment and decrement is the primary method of interacting with this height variable
   bool update_height(uint64_t new_height);
@@ -81,24 +84,23 @@ public:
 
   uint64_t height;
 
-  cryptonote::network_type m_nettype;
-  std::unique_ptr<SQLite::Database> db;
-  std::string filename;
+protected:
 
-private:
+  cryptonote::network_type m_nettype;
+  std::string filename;
 
 };
 
 class BlockchainSQLiteTest : public BlockchainSQLite
 {
 public:
-  BlockchainSQLiteTest() = default;
-  BlockchainSQLiteTest(const BlockchainSQLiteTest &other);
+  BlockchainSQLiteTest(cryptonote::network_type nettype, fs::path db_path)
+    : BlockchainSQLite(nettype, db_path) {};
+  BlockchainSQLiteTest(BlockchainSQLiteTest &other);
 
   // Helper functions, used in testing to assess the state of the database
   uint64_t batching_count();
   std::optional<uint64_t> retrieve_amount_by_address(const std::string& address);
-
 };
 
 }

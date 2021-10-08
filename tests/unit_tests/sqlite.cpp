@@ -33,8 +33,7 @@
 
 TEST(SQLITE, AddSNRewards)
 {
-  cryptonote::BlockchainSQLiteTest sqliteDB;
-  sqliteDB.load_database(cryptonote::network_type::TESTNET, ":memory:");
+  cryptonote::BlockchainSQLiteTest sqliteDB(cryptonote::network_type::TESTNET, ":memory:");
 
   std::cout << "in memory db opened" << std::endl;
 
@@ -48,44 +47,38 @@ TEST(SQLITE, AddSNRewards)
 
   t1.emplace_back(wallet_address.address, 16500000000/2, cryptonote::network_type::TESTNET);
 
-  bool success = sqliteDB.add_sn_payments(t1, 1); 
-  EXPECT_TRUE(success);
-  success = sqliteDB.add_sn_payments(t1, 2); 
-  EXPECT_TRUE(success);
-  success = sqliteDB.add_sn_payments(t1, 3); 
-  EXPECT_TRUE(success);
-  success = sqliteDB.add_sn_payments(t1, 4); 
-  EXPECT_TRUE(success);
-  success = sqliteDB.add_sn_payments(t1, 5); 
-  EXPECT_TRUE(success);
-  success = sqliteDB.add_sn_payments(t1, 6); 
-  EXPECT_TRUE(success);
+  bool success = false; 
+  for (int i = 1; i <= config::BATCHING_INTERVAL; i++)
+  {
+    success = sqliteDB.add_sn_payments(t1, i); 
+    EXPECT_TRUE(success);
+  }
 
   EXPECT_TRUE(sqliteDB.batching_count() == 1);
 
   std::optional<std::vector<cryptonote::batch_sn_payment>> p1;
-  p1 = sqliteDB.get_sn_payments(6);
+  p1 = sqliteDB.get_sn_payments(config::BATCHING_INTERVAL);
   EXPECT_TRUE(p1.has_value());
   EXPECT_TRUE((*p1).size() == 0);
 
   std::optional<std::vector<cryptonote::batch_sn_payment>> p2;
-  p2 = sqliteDB.get_sn_payments(7);
+  p2 = sqliteDB.get_sn_payments(config::BATCHING_INTERVAL + 1);
   EXPECT_TRUE(p2.has_value());
+  MDEBUG(__FILE__ << ":" << __LINE__ << " (" << __func__ << ") TODO sean remove this - " << config::BATCHING_INTERVAL << " - debug");
   EXPECT_TRUE((*p2).size() == 1);
-  //uint64_t expected_amount = (16500000000 * 2 + 16500000000/2) * 6;
-  uint64_t expected_amount = (16500000000/2) * 6;
+  uint64_t expected_amount = (16500000000/2) * config::BATCHING_INTERVAL;
   EXPECT_TRUE((*p2)[0].amount == expected_amount);
 
   // Pay an amount less than the database expects and test for failure
   std::vector<cryptonote::batch_sn_payment> t2;
   t2.emplace_back(wallet_address.address, expected_amount - 1, cryptonote::network_type::TESTNET);
-  EXPECT_FALSE(sqliteDB.save_payments(7, t2));
+  EXPECT_FALSE(sqliteDB.save_payments(config::BATCHING_INTERVAL, t2));
 
   // Pay the amount back out and expect the database to be empty
   std::vector<cryptonote::batch_sn_payment> t3;
   t3.emplace_back(wallet_address.address, expected_amount, cryptonote::network_type::TESTNET);
 
-  success = sqliteDB.save_payments(7, t3); 
+  success = sqliteDB.save_payments(config::BATCHING_INTERVAL, t3); 
   EXPECT_TRUE(success);
   EXPECT_TRUE(sqliteDB.batching_count() == 0);
 }

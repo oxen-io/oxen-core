@@ -1438,7 +1438,7 @@ struct oxen_chain_generator
   service_nodes::service_node_list::state_set                        state_history_;
   uint64_t                                                           last_cull_height_ = 0;
   std::shared_ptr<ons::name_system_db>                               ons_db_ = std::make_shared<ons::name_system_db>();
-  std::unique_ptr<cryptonote::BlockchainSQLiteTest>                  sqlite_db_ = std::make_unique<cryptonote::BlockchainSQLiteTest>();
+  std::unique_ptr<cryptonote::BlockchainSQLiteTest>                  sqlite_db_;
   oxen_chain_generator_db                                            db_;
   uint8_t                                                            hf_version_ = cryptonote::network_version_7;
   std::vector<test_event_entry>&                                     events_;
