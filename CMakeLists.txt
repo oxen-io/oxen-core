@@ -86,9 +86,6 @@ else()
   message(WARNING "PIE disabled: cmake 3.14+ is required for proper PIE linking support")
 endif()
 
-# TODO sean remove this
-set(CMAKE_CXX_LINK_EXECUTABLE "${CMAKE_CXX_LINK_EXECUTABLE} -ldl")
-
 include(CheckCCompilerFlag)
 include(CheckCXXCompilerFlag)
 include(CheckLinkerFlag)

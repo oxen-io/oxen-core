@@ -33,8 +33,6 @@
 # ...except for FreeBSD, because FreeBSD is a special case that doesn't play well with
 # others.
 
-#include(FetchContent)
-
 set(DEFAULT_WITH_MINIUPNPC ON)
 if(ANDROID OR IOS)
   set(DEFAULT_WITH_MINIUPNPC OFF)
