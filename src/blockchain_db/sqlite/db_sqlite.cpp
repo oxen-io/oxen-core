@@ -44,7 +44,7 @@ namespace cryptonote
 {
 
 BlockchainSQLite::BlockchainSQLite(cryptonote::network_type nettype, fs::path db_path)
-  : db::Database(db_path, ""), m_nettype(nettype), filename(db_path)
+  : db::Database(db_path, ""), m_nettype(nettype), filename(db_path.u8string())
 {
   LOG_PRINT_L3("BlockchainDB_SQLITE::" << __func__);
   height = 0;
@@ -434,7 +434,7 @@ bool BlockchainSQLite::delete_block_payments(uint64_t block_height)
 
 fs::path check_if_copy_filename(std::string_view db_path)
 {
-  return (db_path != ":memory:") ? fs::path(std::move(std::string(db_path) + "-copy")) : fs::path(std::move(std::string(db_path)));
+  return (db_path != ":memory:") ? fs::path(std::string(db_path) + "-copy") : fs::path(std::string(db_path));
 }
 
 BlockchainSQLiteTest::BlockchainSQLiteTest(BlockchainSQLiteTest &other)
