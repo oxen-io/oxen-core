@@ -19,15 +19,15 @@
 namespace db
 {
   template <typename T>
-  constexpr bool is_cstr = false;
+  inline constexpr bool is_cstr = false;
   template <size_t N>
-  constexpr bool is_cstr<char[N]> = true;
+  inline constexpr bool is_cstr<char[N]> = true;
   template <size_t N>
-  constexpr bool is_cstr<const char[N]> = true;
+  inline constexpr bool is_cstr<const char[N]> = true;
   template <>
-  constexpr bool is_cstr<char*> = true;
+  inline constexpr bool is_cstr<char*> = true;
   template <>
-  constexpr bool is_cstr<const char*> = true;
+  inline constexpr bool is_cstr<const char*> = true;
 
   // Simple wrapper class that can be used to bind a blob through the templated binding code below.
   // E.g. `exec_query(st, 100, 42, blob_binder{data})` binds the third parameter using no-copy blob
