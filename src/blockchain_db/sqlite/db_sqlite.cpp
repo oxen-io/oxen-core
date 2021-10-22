@@ -235,16 +235,16 @@ bool BlockchainSQLite::add_block(const cryptonote::block& block, std::vector<cry
     return true;
   }
 
+  auto hf_version = block.major_version;
+  if (hf_version < cryptonote::network_version_19)
+  {
+    return update_height(block_height);
+  }
+
   if (block_height != height + 1)
   {
     MERROR("Block height out of sync with batching database. Block height: " << block_height << " batching db height: " << height);
     return false;
-  }
-
-  auto hf_version = block.major_version;
-  if (hf_version < cryptonote::network_version_19)
-  {
-    return increment_height();
   }
 
   std::vector<std::tuple<crypto::public_key, uint64_t>> miner_tx_vouts;
