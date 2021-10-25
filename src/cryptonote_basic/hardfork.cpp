@@ -65,6 +65,7 @@ static constexpr std::array testnet_hard_forks =
   hard_fork{17, 0,   447275, 1608276840 }, // 2020-12-18 05:34 UTC
   hard_fork{18, 0,   501750, 1616631051 }, // 2021-03-25 12:10 UTC
   hard_fork{18, 1,   578637, 1624040400 }, // 2021-06-18 18:20 UTC
+  hard_fork{19, 0,   669420, 1635277890 }, // 2021-10-26 19:51 UTC
 };
 
 static constexpr std::array devnet_hard_forks =
