@@ -302,19 +302,19 @@ uint64_t Blockchain::get_current_blockchain_height(bool lock) const
 bool Blockchain::load_missing_blocks_into_oxen_subsystems()
 {
   std::vector<uint64_t> start_height_options;
-  uint64_t const snl_height    = std::max(hard_fork_begins(m_nettype, network_version_9_service_nodes).value_or(0), m_service_node_list.height() + 1);
+  uint64_t const snl_height = std::max(hard_fork_begins(m_nettype, network_version_9_service_nodes).value_or(0), m_service_node_list.height() + 1);
   start_height_options.push_back(snl_height);
-  uint64_t const ons_height    = std::max(hard_fork_begins(m_nettype, network_version_15_ons).value_or(0),          m_ons_db.height() + 1);
+  uint64_t const ons_height = std::max(hard_fork_begins(m_nettype, network_version_15_ons).value_or(0), m_ons_db.height() + 1);
   start_height_options.push_back(ons_height);
   uint64_t sqlite_height = 0;
   if (m_sqlite_db)
   {
-    sqlite_height = std::max(hard_fork_begins(m_nettype, network_version_19).value_or(0),              m_sqlite_db->height + 1);
+    sqlite_height = std::max(hard_fork_begins(m_nettype, network_version_19).value_or(0) - 1, m_sqlite_db->height + 1);
     start_height_options.push_back(sqlite_height);
   }
-  uint64_t const end_height    = m_db->height();
+  uint64_t const end_height = m_db->height();
   start_height_options.push_back(end_height);
-  uint64_t const start_height  = *std::min_element(start_height_options.begin(), start_height_options.end());
+  uint64_t const start_height = *std::min_element(start_height_options.begin(), start_height_options.end());
 
   int64_t const total_blocks = static_cast<int64_t>(end_height) - static_cast<int64_t>(start_height);
   if (total_blocks <= 0) return true;
@@ -341,7 +341,7 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems()
     {
       m_service_node_list.store();
       auto duration = work_time{clock::now() - work_start};
-      MGINFO("... scanning height " << start_height + (index * BLOCK_COUNT) << " (" << duration.count() << "s) (snl: " << snl_iteration_duration.count() << "s; ons: " << ons_iteration_duration.count() << "s)");
+      MGINFO("... scanning height " << start_height + (index * BLOCK_COUNT) << " (" << duration.count() << "s) (snl: " << snl_iteration_duration.count() << "s; ons: " << ons_iteration_duration.count() << "s; sqlite: " << sqlite_iteration_duration.count() << "s)");
 #ifdef ENABLE_SYSTEMD
       // Tell systemd that we're doing something so that it should let us continue starting up
       // (giving us 120s until we have to send the next notification):
