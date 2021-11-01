@@ -209,7 +209,15 @@ std::vector<cryptonote::batch_sn_payment> BlockchainSQLite::calculate_rewards(co
 
   std::vector<cryptonote::batch_sn_payment> payments;
   for (auto & contributor : contributors)
-    payments.emplace_back(contributor.address, (contributor.amount / total_contributed_to_winner_sn * distribution_amount), m_nettype);
+  {
+    // This calculates (contributor.amount / total_contributed_to_winner_sn) * distribution_amount but using 128 bit integer math
+    uint64_t hi, lo, resulthi, resultlo;
+    lo = mul128(contributor.amount, distribution_amount, &hi);
+    div128_64(hi, lo, total_contributed_to_winner_sn, &resulthi, &resultlo);
+    if (resulthi > 0)
+      throw std::logic_error("overflow from calculating sn contributor reward");
+    payments.emplace_back(contributor.address, resultlo, m_nettype);
+  }
 
   // Add Governance reward to the list
   if (m_nettype != cryptonote::FAKECHAIN)
