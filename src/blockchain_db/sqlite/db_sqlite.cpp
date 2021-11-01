@@ -238,6 +238,8 @@ bool BlockchainSQLite::add_block(const cryptonote::block& block, std::vector<cry
   auto hf_version = block.major_version;
   if (hf_version < cryptonote::network_version_19)
   {
+    if (height > block_height)
+      clear_database();
     return update_height(block_height);
   }
 
