@@ -83,3 +83,30 @@ TEST(SQLITE, AddSNRewards)
   EXPECT_TRUE(sqliteDB.batching_count() == 0);
 }
 
+TEST(SQLITE, CalculateRewards)
+{
+  cryptonote::BlockchainSQLiteTest sqliteDB(cryptonote::network_type::TESTNET, ":memory:");
+
+  cryptonote::block block;
+  block.reward = 200;
+
+  // Check that a single contributor receives 100% of the block reward
+  std::vector<cryptonote::batch_sn_payment> single_contributor;
+  single_contributor.emplace_back("first_address", block.reward, cryptonote::network_type::TESTNET);
+  auto rewards = sqliteDB.calculate_rewards(block, single_contributor);
+
+  EXPECT_TRUE(rewards[0].amount == block.reward);
+
+  // Check that 3 contributor receives their portion of the block reward
+  std::vector<cryptonote::batch_sn_payment> multiple_contributors;
+  multiple_contributors.emplace_back("first_address", 33, cryptonote::network_type::TESTNET);
+  multiple_contributors.emplace_back("second_address", 33, cryptonote::network_type::TESTNET);
+  multiple_contributors.emplace_back("third_address", 34, cryptonote::network_type::TESTNET);
+  auto multiple_rewards = sqliteDB.calculate_rewards(block, multiple_contributors);
+
+  EXPECT_TRUE(multiple_rewards[0].amount == 66);
+  EXPECT_TRUE(multiple_rewards[1].amount == 66);
+  EXPECT_TRUE(multiple_rewards[2].amount == 68);
+
+  //std::vector<cryptonote::batch_sn_payment> BlockchainSQLite::calculate_rewards(const cryptonote::block& block, std::vector<cryptonote::batch_sn_payment> contributors)
+}
