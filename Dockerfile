@@ -48,8 +48,7 @@ ARG BOOST_VERSION=1_72_0
 ARG BOOST_VERSION_DOT=1.72.0
 ARG BOOST_HASH=59c9b274bc451cf91a9ba1dd2c7fdcaf5d60b1b3aa83f2c9fa143417cc660722
 RUN set -ex \
-    && curl -s -L -o  boost_${BOOST_VERSION}.tar.bz2 https://dl.bintray.com/boostorg/release/${BOOST_VERSION_DOT}/source/boost_${BOOST_VERSION}.tar.bz2 \
-    && echo "${BOOST_HASH}  boost_${BOOST_VERSION}.tar.bz2" | sha256sum -c \
+    && curl -s -L -O  https://boostorg.jfrog.io/artifactory/main/release/${BOOST_VERSION_DOT}/source/boost_${BOOST_VERSION}.tar.bz2 \
     && tar xf boost_${BOOST_VERSION}.tar.bz2 \
     && cd boost_${BOOST_VERSION} \
     && ./bootstrap.sh \
@@ -94,6 +93,37 @@ RUN set -ex \
     && ./configure --disable-shared --prefix=/usr --with-pic \
     && make -j$(nproc) \
     && make install
+
+RUN set -ex \
+    && apt install wget -y \
+    && wget https://github.com/libexpat/libexpat/releases/download/R_2_3_0/expat-2.3.0.tar.gz \
+    && tar xf expat-2.3.0.tar.gz \
+    && cd expat-2.3.0 \
+    && ./configure --enable-static --prefix=/usr && make && make install
+
+RUN set -ex \
+    && wget https://curl.se/download/curl-7.76.1.tar.gz \
+    && tar xf curl-7.76.1.tar.gz \
+    && cd curl-7.76.1 \
+    && ./configure --with-openssl --enable-static --prefix=/usr && make && make install
+
+RUN set -ex \
+    && apt-get update -y \
+    && apt install software-properties-common -y \
+    && add-apt-repository ppa:ubuntu-toolchain-r/test \
+    && apt-get update -y \
+    && apt install gcc-7 g++-7 gcc-8 g++-8 gcc-9 g++-9 -y \
+    && update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-9 90 --slave /usr/bin/g++ g++ /usr/bin/g++-9 --slave /usr/bin/gcov gcov /usr/bin/gcov-9 \
+    && update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-8 80 --slave /usr/bin/g++ g++ /usr/bin/g++-8 --slave /usr/bin/gcov gcov /usr/bin/gcov-8 \
+    && update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-7 70 --slave /usr/bin/g++ g++ /usr/bin/g++-7 --slave /usr/bin/gcov gcov /usr/bin/gcov-7 \
+    && gcc --version
+
+RUN set -ex \
+    && apt install libevent-dev -y \
+    && wget https://nlnetlabs.nl/downloads/unbound/unbound-1.13.1.tar.gz \
+    && tar xf unbound-1.13.1.tar.gz \
+    && cd unbound-1.13.1 \
+     && ./configure --enable-static --disable-flto --prefix=/usr CFLAGS=-fPIC && make && make install
 
 WORKDIR /src
 COPY . .
