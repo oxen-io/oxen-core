@@ -33,4 +33,5 @@
 	url = https://github.com/fmtlib/fmt.git
 [submodule "external/SQLiteCpp"]
 	path = external/SQLiteCpp
-	url = https://github.com/SRombauts/SQLiteCpp
+  url = https://github.com/SRombauts/SQLiteCpp
+  branch = master
