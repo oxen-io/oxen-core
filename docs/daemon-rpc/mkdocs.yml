@@ -1,0 +1,3 @@
+site_name: Oxen RPC Docs
+theme: nature
+markdown_extensions: [codehilite]
