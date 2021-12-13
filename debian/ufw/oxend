@@ -2,3 +2,8 @@
 title=Oxen network daemon
 description=Oxen daemon for running a local node or service node
 ports=22022,22025,38156,38159/tcp
+
+[oxen-service-node]
+title=Oxen service node
+description=Oxen firewall rules for running a full service node
+ports=22020,22021,22022,22025/tcp|1090/udp
