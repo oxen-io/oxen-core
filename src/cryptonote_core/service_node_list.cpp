@@ -133,6 +133,10 @@ namespace service_nodes
     return sort_and_filter(service_nodes_infos, [](const service_node_info &info) { return info.is_decommissioned() && info.is_fully_funded(); }, /*reserve=*/ false);
   }
 
+  std::vector<pubkey_and_sninfo> service_node_list::state_t::payable_service_nodes_infos(uint64_t height) const {
+    return sort_and_filter(service_nodes_infos, [height](const service_node_info &info) { return info.is_payable(height); }, /*reserve=*/ true);
+  }
+
   std::shared_ptr<const quorum> service_node_list::get_quorum(quorum_type type, uint64_t height, bool include_old, std::vector<std::shared_ptr<const quorum>> *alt_quorums) const
   {
     height = offset_testing_quorum_height(type, height);
@@ -1623,6 +1627,11 @@ namespace service_nodes
       }
     }
     return result;
+  }
+
+  bool service_node_list::process_batching_rewards(const cryptonote::block& block)
+  {
+    return m_blockchain.sqlite_db()->add_block(block, m_state);
   }
 
   static std::mt19937_64 quorum_rng(uint8_t hf_version, crypto::hash const &hash, quorum_type type)

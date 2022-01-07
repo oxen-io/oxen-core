@@ -454,7 +454,7 @@ namespace cryptonote
       {
         VARINT_FIELD(height)
         FIELD(service_node_winner_key)
-        VARINT_FIELD(reward) 
+        FIELD(reward) 
       }
     END_SERIALIZE()
   };
@@ -488,6 +488,10 @@ namespace cryptonote
     {
       return !(*this == rhs);
     }
+
+    uint64_t modulus(uint64_t interval) const;
+    uint64_t next_payout_height(uint64_t current_height, uint64_t interval) const;
+
   };
   inline constexpr account_public_address null_address{};
 

@@ -28,6 +28,8 @@ answer = instruct_daemon('get_last_block_header', params)
 
 # print(json.dumps(answer['result']['block_header']['timestamp'], indent=4, sort_keys=True))
 
+blockheight = answer['result']['block_header']['height']
+print("Block height: " + str(blockheight))
 blocktime = datetime.fromtimestamp(answer['result']['block_header']['timestamp'])
 print("Block time:   " + str(blocktime))
 

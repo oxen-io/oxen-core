@@ -13,6 +13,7 @@ def instruct_daemon(method, params):
     headers = {'content-type': "application/json"}
     try:
         response = requests.request("POST", "http://"+config.listen_ip+":"+config.listen_port+"/json_rpc", data=payload, headers=headers)
+        # response = requests.request("POST", "http://"+config.listen_ip+":1165/json_rpc", data=payload, headers=headers)
         return json.loads(response.text)
     except requests.exceptions.RequestException as e:
         print(e)

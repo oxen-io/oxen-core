@@ -3350,8 +3350,14 @@ bool oxen_batch_sn_rewards::generate(std::vector<test_event_entry> &events)
     registration_txs[i] = gen.create_and_add_registration_tx(alice);
     gen.process_registration_tx(registration_txs[i], 12+i, hard_forks.back().version);
   }
-
   gen.create_and_add_next_block({registration_txs});
+
+  uint64_t next_payout = alice.get_keys().m_account_address.next_payout_height(gen.height(), conf.BATCHING_INTERVAL);
+  uint64_t more_blocks = next_payout - gen.height();
+  // There is an edge case where we get paid out before the node has been online long enough 
+  // if this is the case just cycle for another batching interval
+  if (more_blocks <= service_nodes::SERVICE_NODE_PAYABLE_AFTER_BLOCKS)
+    more_blocks += conf.BATCHING_INTERVAL;
     
   oxen_register_callback(events, "check_registered", [&events, alice, min_service_nodes](cryptonote::core &c, size_t ev_index)
   { 
@@ -3364,10 +3370,8 @@ bool oxen_batch_sn_rewards::generate(std::vector<test_event_entry> &events)
     r = find_block_chain(events, chain, mtx, cryptonote::get_block_hash(blocks.back()));
     CHECK_TEST_CONDITION(r);
 
-    const uint64_t unlocked_balance    = get_unlocked_balance(alice, blocks, mtx);
-    const uint64_t staking_requirement = MK_COINS(100);
-
-    CHECK_EQ((MK_COINS(201) - TESTS_DEFAULT_FEE - staking_requirement)*min_service_nodes, unlocked_balance);
+    const uint64_t unlocked_balance    = get_balance(alice, blocks, mtx);
+    CHECK_EQ((MK_COINS(101) - TESTS_DEFAULT_FEE)*min_service_nodes, unlocked_balance);
 
     /// check that alice is registered
     const auto info_v = c.get_service_node_list_state({});
@@ -3375,14 +3379,16 @@ bool oxen_batch_sn_rewards::generate(std::vector<test_event_entry> &events)
     return true;
   });
 
+
   // Add blocks up to just before the batching payout block
-  for (auto i = 0u; i < conf.BATCHING_INTERVAL; ++i)
+  for (auto i = 0u; i < more_blocks - 1; ++i)
     gen.create_and_add_next_block();
 
   oxen_register_callback(events, "check_no_rewards_before_batch", [&events, alice, min_service_nodes](cryptonote::core &c, size_t ev_index)
   {
     DEFINE_TESTS_ERROR_CONTEXT("check_no_rewards_before_batch");
     const auto stake_lock_time = service_nodes::staking_num_lock_blocks(cryptonote::FAKECHAIN);
+
 
     std::vector<cryptonote::block> blocks;
     bool r = c.get_blocks((uint64_t)0, (uint64_t)-1, blocks);
@@ -3393,18 +3399,18 @@ bool oxen_batch_sn_rewards::generate(std::vector<test_event_entry> &events)
     CHECK_TEST_CONDITION(r);
 
     // Expect no change in balance after blocks < batched block count constant
-    // 201 (balance) - 100 (stake) - 0.2 (test fee)
+    // 101 (balance) - 0.2 (test fee)
     const uint64_t balance    = get_balance(alice, blocks, mtx);
-    const uint64_t staking_requirement = MK_COINS(100);
+    CHECK_EQ((MK_COINS(101) - TESTS_DEFAULT_FEE)*min_service_nodes, balance);
 
-    CHECK_EQ((MK_COINS(201) - TESTS_DEFAULT_FEE - staking_requirement)*min_service_nodes, balance);
     return true;
   });
 
   // Add block that will contain the batching reward
   gen.create_and_add_next_block();
+  //void oxen_chain_generator::add_mined_money_unlock_blocks()
 
-  oxen_register_callback(events, "check_rewards_received_after_batch", [&events, alice, min_service_nodes](cryptonote::core &c, size_t ev_index)
+  oxen_register_callback(events, "check_rewards_received_after_batch", [&events, alice, min_service_nodes, more_blocks](cryptonote::core &c, size_t ev_index)
   {
     DEFINE_TESTS_ERROR_CONTEXT("check_rewards_received_after_batch");
     const auto stake_lock_time = service_nodes::staking_num_lock_blocks(cryptonote::FAKECHAIN);
@@ -3421,7 +3427,7 @@ bool oxen_batch_sn_rewards::generate(std::vector<test_event_entry> &events)
     // 201 (balance) - 100 (stake) - 0.2 (test fee) + 16.5*Batching_Interval (Batched reward)
     const uint64_t balance    = get_balance(alice, blocks, mtx);
     const uint64_t staking_requirement = MK_COINS(100);
-    const uint64_t batched_rewards_earned = MK_COINS(1) * 16.5 * conf.BATCHING_INTERVAL;
+    const uint64_t batched_rewards_earned = MK_COINS(1) * 16.5 * (more_blocks - service_nodes::SERVICE_NODE_PAYABLE_AFTER_BLOCKS);
 
     CHECK_EQ((MK_COINS(201) - TESTS_DEFAULT_FEE - staking_requirement)*min_service_nodes + batched_rewards_earned, balance);
     return true;
@@ -3431,6 +3437,7 @@ bool oxen_batch_sn_rewards::generate(std::vector<test_event_entry> &events)
 
 bool oxen_batch_sn_rewards_bad_amount::generate(std::vector<test_event_entry> &events)
 {
+
   constexpr auto& conf = cryptonote::get_config(cryptonote::FAKECHAIN);
   auto hard_forks = oxen_generate_hard_fork_table();
   oxen_chain_generator gen(events, hard_forks);
@@ -3454,12 +3461,16 @@ bool oxen_batch_sn_rewards_bad_amount::generate(std::vector<test_event_entry> &e
     registration_txs[i] = gen.create_and_add_registration_tx(alice);
     gen.process_registration_tx(registration_txs[i], 12+i, hard_forks.back().version);
   }
-
-
-  // NOTE: Generate Valid Blocks
   gen.create_and_add_next_block({registration_txs});
 
-  for (auto i = 0u; i < conf.BATCHING_INTERVAL; ++i)
+  uint64_t next_payout = alice.get_keys().m_account_address.next_payout_height(gen.height(), conf.BATCHING_INTERVAL);
+  uint64_t more_blocks = next_payout - gen.height();
+  // There is an edge case where we get paid out before the node has been online long enough 
+  // if this is the case just cycle for another batching interval
+  if (more_blocks <= service_nodes::SERVICE_NODE_PAYABLE_AFTER_BLOCKS)
+    more_blocks += conf.BATCHING_INTERVAL;
+
+  for (auto i = 0u; i < more_blocks - 1; ++i)
     gen.create_and_add_next_block();
 
   //THIS BLOCK WILL CONTAIN THE BATCH TRANSACTION
@@ -3497,11 +3508,16 @@ bool oxen_batch_sn_rewards_bad_address::generate(std::vector<test_event_entry> &
     registration_txs[i] = gen.create_and_add_registration_tx(alice);
     gen.process_registration_tx(registration_txs[i], 12+i, hard_forks.back().version);
   }
-
-  // NOTE: Generate Valid Blocks
   gen.create_and_add_next_block({registration_txs});
 
-  for (auto i = 0u; i < conf.BATCHING_INTERVAL; ++i)
+  uint64_t next_payout = alice.get_keys().m_account_address.next_payout_height(gen.height(), conf.BATCHING_INTERVAL);
+  uint64_t more_blocks = next_payout - gen.height();
+  // There is an edge case where we get paid out before the node has been online long enough 
+  // if this is the case just cycle for another batching interval
+  if (more_blocks <= service_nodes::SERVICE_NODE_PAYABLE_AFTER_BLOCKS)
+    more_blocks += conf.BATCHING_INTERVAL;
+
+  for (auto i = 0u; i < more_blocks - 1; ++i)
     gen.create_and_add_next_block();
 
   //THIS BLOCK WILL CONTAIN THE BATCH TRANSACTION
@@ -3547,12 +3563,17 @@ bool oxen_batch_sn_rewards_pop_blocks::generate(std::vector<test_event_entry> &e
     registration_txs[i] = gen.create_and_add_registration_tx(alice);
     gen.process_registration_tx(registration_txs[i], 12+i, hard_forks.back().version);
   }
-
-  // NOTE: Generate Valid Blocks
   gen.create_and_add_next_block({registration_txs});
+
+  uint64_t next_payout = alice.get_keys().m_account_address.next_payout_height(gen.height(), conf.BATCHING_INTERVAL);
+  uint64_t more_blocks = next_payout - gen.height();
+  // There is an edge case where we get paid out before the node has been online long enough 
+  // if this is the case just cycle for another batching interval
+  if (more_blocks <= service_nodes::SERVICE_NODE_PAYABLE_AFTER_BLOCKS)
+    more_blocks += conf.BATCHING_INTERVAL;
     
   // Generate blocks up to the block before the batched rewards are paid out.
-  for (auto i = 0u; i < conf.BATCHING_INTERVAL; ++i)
+  for (auto i = 0u; i < more_blocks - 1; ++i)
     gen.create_and_add_next_block();
 
   oxen_register_callback(events, "trigger_blockchain_detach", [=](cryptonote::core &c, size_t ev_index)
@@ -3568,7 +3589,7 @@ bool oxen_batch_sn_rewards_pop_blocks::generate(std::vector<test_event_entry> &e
     CHECK_EQ(records.has_value(), true);
     CHECK_EQ((*records).size(), 1);
     // Check that the database has a full batch amount that includes the soon to be popped block 
-    uint64_t batched_rewards_earned = MK_COINS(1) * 16.5 * (conf.BATCHING_INTERVAL);
+    uint64_t batched_rewards_earned = MK_COINS(1) * 16.5 * (more_blocks - service_nodes::SERVICE_NODE_PAYABLE_AFTER_BLOCKS);
 
     // NOTE: Reorg to remove one block
     blockchain.pop_blocks(1);
@@ -3579,14 +3600,14 @@ bool oxen_batch_sn_rewards_pop_blocks::generate(std::vector<test_event_entry> &e
     CHECK_EQ(records.has_value(), true);
     CHECK_EQ((*records).size(), 1);
     // Check that the database has a lower amount that does not include the popped block
-    batched_rewards_earned = MK_COINS(1) * 16.5 * (conf.BATCHING_INTERVAL - 1);
+    batched_rewards_earned = MK_COINS(1) * 16.5 * (more_blocks - service_nodes::SERVICE_NODE_PAYABLE_AFTER_BLOCKS - 1);
     CHECK_EQ((*records)[0].amount, batched_rewards_earned);
     CHECK_EQ(tools::view_guts((*records)[0].address_info.address), tools::view_guts(alice.get_keys().m_account_address));
 
     // Pop the rest of the blocks and check that it goes to zero
-    blockchain.pop_blocks(conf.BATCHING_INTERVAL - 1);
+    blockchain.pop_blocks(more_blocks - 1);
     CHECK_EQ((*sqliteDB).height, blockchain.get_current_blockchain_height() - 1);
-    CHECK_EQ((*sqliteDB).height, curr_height - conf.BATCHING_INTERVAL - 1);
+    CHECK_EQ((*sqliteDB).height, curr_height - more_blocks - 1);
 
     records = (*sqliteDB).get_sn_payments(curr_height + 1);
     CHECK_EQ((*records).size(), 0);

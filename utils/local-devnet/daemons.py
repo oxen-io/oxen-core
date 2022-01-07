@@ -151,6 +151,7 @@ class Daemon(RPCDaemon):
         self.qnet_port = qnet_port or next_port()
         self.ss_port = ss_port or next_port()
         self.peers = []
+        self.service_node_key = None
 
         self.args = [oxend] + list(self.__class__.base_args)
         self.args += (
@@ -234,6 +235,15 @@ class Daemon(RPCDaemon):
     def p2p_resync(self):
         """Triggers a p2p resync to happen soon (i.e. at the next p2p idle loop)."""
         self.json_rpc("test_trigger_p2p_resync")
+
+    def sn_key(self):
+        if not self.service_node_key:
+            self.service_node_key = self.json_rpc("get_service_keys").json()["result"]["service_node_pubkey"]
+
+        return self.service_node_key
+
+    def sn_status(self):
+        return self.json_rpc("get_service_node_status").json()["result"]
 
 
 
@@ -363,3 +373,25 @@ class Wallet(RPCDaemon):
         r = self.json_rpc("register_service_node", {"register_service_node_str": cmd}).json()
         if 'error' in r:
             raise RuntimeError("Failed to submit service node registration tx: {}".format(r['error']['message']))
+
+    def register_sn_for_contributions(self, sn):
+        r = sn.json_rpc("get_service_node_registration_cmd", {
+            "operator_cut": "10",
+            "contributions": [{"address": self.address(), "amount": 50000000000}],
+            "staking_requirement": 100000000000
+        }).json()
+        if 'error' in r:
+            raise RuntimeError("Registration cmd generation failed: {}".format(r['error']['message']))
+        cmd = r['result']['registration_cmd']
+        r = self.json_rpc("register_service_node", {"register_service_node_str": cmd}).json()
+        if 'error' in r:
+            raise RuntimeError("Failed to submit service node registration tx: {}".format(r['error']['message']))
+
+    def contribute_to_sn(self, sn):
+        r = self.json_rpc("stake", {
+            "destination": self.address(),
+            "amount": 50000000000,
+            "service_node_key": sn.sn_key(),
+        }).json()
+        if 'error' in r:
+            raise RuntimeError("Failed to submit stake tx: {}".format(r['error']['message']))

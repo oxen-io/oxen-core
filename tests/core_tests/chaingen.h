@@ -1386,6 +1386,7 @@ struct oxen_blockchain_entry
   cryptonote::checkpoint_t                   checkpoint;
 };
 
+
 struct oxen_chain_generator_db : public cryptonote::BaseTestDB
 {
   std::vector<oxen_blockchain_entry>                        blocks;
@@ -1434,7 +1435,6 @@ struct oxen_chain_generator
   // We already store blockchain_entries in block_ vector which stores the actual backing transaction entries.
   std::unordered_map<crypto::hash, cryptonote::transaction>          tx_table_;
   mutable std::unordered_map<crypto::public_key, crypto::secret_key> service_node_keys_;
-  std::unordered_map<crypto::public_key, std::vector<std::pair<cryptonote::account_public_address, uint64_t>>> service_node_contributors_;
   service_nodes::service_node_list::state_set                        state_history_;
   uint64_t                                                           last_cull_height_ = 0;
   std::shared_ptr<ons::name_system_db>                               ons_db_ = std::make_shared<ons::name_system_db>();
@@ -1447,7 +1447,7 @@ struct oxen_chain_generator
 
   oxen_chain_generator(std::vector<test_event_entry> &events, const std::vector<cryptonote::hard_fork>& hard_forks);
   oxen_chain_generator(const oxen_chain_generator &other)
-    :tx_table_(other.tx_table_), service_node_keys_(other.service_node_keys_), service_node_contributors_(other.service_node_contributors_), state_history_(other.state_history_), last_cull_height_(other.last_cull_height_), sqlite_db_(std::make_unique<cryptonote::BlockchainSQLiteTest>(*other.sqlite_db_)),
+    :tx_table_(other.tx_table_), service_node_keys_(other.service_node_keys_), state_history_(other.state_history_), last_cull_height_(other.last_cull_height_), sqlite_db_(std::make_unique<cryptonote::BlockchainSQLiteTest>(*other.sqlite_db_)),
   ons_db_(other.ons_db_ ), db_(other.db_), hf_version_(other.hf_version_), events_(other.events_), hard_forks_(other.hard_forks_), first_miner_(other.first_miner_) {};
 
   uint64_t                                             height()       const { return cryptonote::get_block_height(db_.blocks.back().block); }

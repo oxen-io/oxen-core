@@ -241,20 +241,6 @@ oxen_blockchain_entry &oxen_chain_generator::add_block(oxen_blockchain_entry con
     ons_db_->add_block(entry.block, entry.txs);
   }
 
-  std::vector<cryptonote::batch_sn_payment> contributors;
-  if ( entry.block.major_version >= cryptonote::network_version_19)
-  {
-    auto service_node_array = service_node_contributors_.find(entry.block.service_node_winner_key);
-    if (service_node_array != service_node_contributors_.end())
-    {
-      for (auto & contributor : (*service_node_array).second)
-      {
-        contributors.emplace_back(contributor.first, contributor.second, cryptonote::FAKECHAIN);
-      }
-    }
-  }
-  sqlite_db_->add_block(entry.block, contributors);
-
   // TODO(oxen): State history culling and alt states
   state_history_.emplace_hint(state_history_.end(), result.service_node_state);
 
@@ -272,6 +258,8 @@ oxen_blockchain_entry &oxen_chain_generator::add_block(oxen_blockchain_entry con
   }
 
   cryptonote::block sopthing = entry.block;
+
+  sqlite_db_->add_block(entry.block, entry.service_node_state);
 
   return result;
 }
@@ -1108,17 +1096,6 @@ bool oxen_chain_generator::process_registration_tx(cryptonote::transaction& tx, 
     return false;
 
   uint64_t staking_requirement = service_nodes::get_staking_requirement(cryptonote::FAKECHAIN, block_height);
-  std::vector<std::pair<cryptonote::account_public_address, uint64_t>> contributors;
-  for (size_t i = 0; i < contributor_args.addresses.size(); i++)
-  {
-    uint64_t hi, lo, resulthi, resultlo;
-    lo = mul128(staking_requirement, contributor_args.portions[i], &hi);
-    div128_64(hi, lo, STAKING_PORTIONS, &resulthi, &resultlo);
-
-    contributors.emplace_back(contributor_args.addresses[i], resultlo);
-  }
-
-  service_node_contributors_[service_node_key] = contributors;
 
   return true;
 }

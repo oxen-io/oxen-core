@@ -133,7 +133,8 @@ class SNNetwork:
             self.mine(6*len(self.sns))
 
             self.print_wallet_balances()
-
+            self.mike.transfer(self.alice, 150000000000)
+            self.mike.transfer(self.bob, 150000000000)
             vprint("Submitting more service node registrations: ", end="", flush=True)
             for sn in self.sns[5:-1]:
                 self.mike.register_sn(sn)
@@ -144,7 +145,7 @@ class SNNetwork:
         self.print_wallet_balances()
 
         vprint("Mining 40 blocks (registrations + blink quorum lag) and waiting for nodes to sync")
-        self.sync_nodes(self.mine(40))
+        self.sync_nodes(self.mine(40), timeout=120)
 
         self.print_wallet_balances()
 
@@ -160,10 +161,20 @@ class SNNetwork:
             wait_for(lambda: all_service_nodes_proofed(sn), timeout=120)
             vprint(".", end="", flush=True, timestamp=False)
         vprint(timestamp=False)
-        for sn in self.sns[-1:]:
-            self.mike.register_sn(sn)
-            vprint(".", end="", flush=True, timestamp=False)
-        self.sync_nodes(self.mine(1), timeout=30)
+        # This commented out code will register the last SN through Mikes wallet (Has done every other SN)
+        # for sn in self.sns[-1:]:
+            # self.mike.register_sn(sn)
+            # vprint(".", end="", flush=True, timestamp=False)
+
+        # This commented out code will register the last SN through Bobs wallet (Has not done any others)
+        # self.bob.register_sn(self.sns[-1])
+
+        # This commented out code will register the last SN through Bobs wallet (Has not done any others)
+        # and also get alice to contribute 50% of the node with a 10% operator fee
+        self.bob.register_sn_for_contributions(self.sns[-1])
+        self.sync_nodes(self.mine(5), timeout=120)
+        self.alice.contribute_to_sn(self.sns[-1])
+        self.sync_nodes(self.mine(2), timeout=120)
         time.sleep(10)
         for sn in self.sns:
             sn.send_uptime_proof()

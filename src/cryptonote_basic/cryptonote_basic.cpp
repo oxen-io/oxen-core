@@ -136,4 +136,23 @@ void block::set_hash_valid(bool v) const
   hash_valid.store(v,std::memory_order_release);
 }
 
+// Convert the address to an integer and then performs (address % interval)
+// it does this by taking the first 64 bits of the public_view_key and converting to an integer
+// This is used to determine when an address gets paid their batching reward.
+uint64_t account_public_address::modulus(uint64_t interval) const
+{
+  uint64_t address_as_integer = 0;
+  std::memcpy(&address_as_integer, m_view_public_key.data, sizeof(address_as_integer));
+  boost::endian::native_to_little_inplace(address_as_integer);
+  return address_as_integer % interval;
+}
+
+uint64_t account_public_address::next_payout_height(uint64_t current_height, uint64_t interval) const
+{
+  uint64_t next_payout_height = current_height + (modulus(interval) - current_height % interval);
+  if (next_payout_height <= current_height)
+    next_payout_height += interval;
+  return next_payout_height;
+}
+
 }

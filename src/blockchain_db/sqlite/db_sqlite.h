@@ -66,11 +66,16 @@ public:
   std::optional<std::vector<cryptonote::batch_sn_payment>> get_sn_payments(uint64_t block_height);
 
   // calculate_rewards -> takes a list of contributors with their SN contribution amounts and will calculate how much of the block rewards should be the allocated to the contributors. The function will return a list suitable for passing to add_sn_payments
-  std::vector<cryptonote::batch_sn_payment> calculate_rewards(const cryptonote::block& block, std::vector<cryptonote::batch_sn_payment> contributors);
+  std::vector<cryptonote::batch_sn_payment> calculate_rewards(uint8_t hf_version, uint64_t distribution_amount, service_nodes::service_node_info sn_info);
 
-  // add/pop_block -> takes a block that contains new block rewards to be batched and added to the database and/or batching payments that need to be subtracted from the database, in addition it takes an externally generated list of contributors for the SN winner of that block. The function will then process this block add and subtracting to the batching DB appropriately. This is the primary entry point for the blockchain to add to the batching database. Each accepted block should call this passing in the SN winners contributors at the same time.
-  bool add_block(const cryptonote::block &block, std::vector<cryptonote::batch_sn_payment> contributors);
-  bool pop_block(const cryptonote::block &block, std::vector<cryptonote::batch_sn_payment> contributors);
+  // add/pop_block -> takes a block that contains new block rewards to be batched and added to the database
+  // and/or batching payments that need to be subtracted from the database, in addition it takes a reference to
+  // the service node list which it will use to calculate the individual payouts.
+  // The function will then process this block add and subtracting to the batching DB appropriately.
+  // This is the primary entry point for the blockchain to add to the batching database.
+  // Each accepted block should call this passing in the SN list structure.
+  bool add_block(const cryptonote::block& block, const service_nodes::service_node_list::state_t& service_nodes_state);
+  bool pop_block(const cryptonote::block& block);
 
   // validate_batch_payment -> used to make sure that list of miner_tx_vouts is correct. Compares the miner_tx_vouts with a list previously extracted payments to make sure that the correct persons are being paid.
   bool validate_batch_payment(std::vector<std::tuple<crypto::public_key, uint64_t>> miner_tx_vouts, std::vector<cryptonote::batch_sn_payment> calculated_payments_from_batching_db, uint64_t block_height, bool save_payment);

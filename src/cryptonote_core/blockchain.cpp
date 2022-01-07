@@ -406,21 +406,7 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems()
       if (m_sqlite_db && (block_height >= sqlite_height))
       {
         auto sqlite_start = clock::now();
-        std::vector<cryptonote::batch_sn_payment> contributors;
-        if (blk.major_version >= cryptonote::network_version_19)
-        {
-          if (blk.service_node_winner_key && crypto_core_ed25519_is_valid_point(reinterpret_cast<const unsigned char *>(blk.service_node_winner_key.data)))
-          {
-            auto service_node_array = m_service_node_list.get_service_node_list_state({blk.service_node_winner_key});
-            if (service_node_array.size() > 0){
-              for (auto & contributor : service_node_array[0].info->contributors)
-              {
-                contributors.emplace_back(contributor.address, contributor.amount, m_nettype);
-              }
-            }
-          }
-        }
-        if (!m_sqlite_db->add_block(blk, contributors))
+        if (!m_service_node_list.process_batching_rewards(blk))
         {
           MFATAL("Unable to process block for updating SQLite DB: " << cryptonote::get_block_hash(blk));
           return false;
@@ -553,21 +539,7 @@ bool Blockchain::init(BlockchainDB* db, sqlite3 *ons_db, std::shared_ptr<crypton
       try
       {
         m_db->pop_block(popped_block, popped_txs);
-        std::vector<cryptonote::batch_sn_payment> contributors;
-        if (popped_block.major_version >= cryptonote::network_version_19)
-        {
-          if (crypto_core_ed25519_is_valid_point(reinterpret_cast<const unsigned char *>(popped_block.service_node_winner_key.data)))
-          {
-            auto service_node_array = m_service_node_list.get_service_node_list_state({popped_block.service_node_winner_key});
-            if (service_node_array.size() > 0){
-              for (auto & contributor : service_node_array[0].info->contributors)
-              {
-                contributors.emplace_back(contributor.address, contributor.amount, m_nettype);
-              }
-            }
-          }
-        }
-        if (!m_sqlite_db->pop_block(popped_block, contributors))
+        if (!m_sqlite_db->pop_block(popped_block))
         {
           LOG_ERROR("Failed to pop to batch rewards DB. throwing");
           throw;
@@ -771,21 +743,7 @@ block Blockchain::pop_block_from_blockchain()
     LOG_ERROR("Error popping block from blockchain, throwing!");
     throw;
   }
-  std::vector<cryptonote::batch_sn_payment> contributors;
-  if (popped_block.major_version >= cryptonote::network_version_19)
-  {
-    if (crypto_core_ed25519_is_valid_point(reinterpret_cast<const unsigned char *>(popped_block.service_node_winner_key.data)))
-    {
-      auto service_node_array = m_service_node_list.get_service_node_list_state({popped_block.service_node_winner_key});
-      if (service_node_array.size() > 0){
-        for (auto & contributor : service_node_array[0].info->contributors)
-        {
-          contributors.emplace_back(contributor.address, contributor.amount, m_nettype);
-        }
-      }
-    }
-  }
-  if (!m_sqlite_db->pop_block(popped_block, contributors))
+  if (!m_sqlite_db->pop_block(popped_block))
   {
     LOG_ERROR("Failed to pop to batch rewards DB. throwing");
     throw;
@@ -1675,6 +1633,7 @@ bool Blockchain::create_block_template_internal(block& b, const crypto::hash *fr
     return false;
   }
 
+  // This will check the batching database for who is due to be paid out in this block
   std::optional<std::vector<cryptonote::batch_sn_payment>> sn_rwds = std::nullopt;
   if (hf_version >= cryptonote::network_version_19)
   {
@@ -4541,22 +4500,8 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
     bvc.m_verifivation_failed = true;
     return false;
   } 
-  std::vector<cryptonote::batch_sn_payment> contributors;
-  if (m_sqlite_db && bl.major_version >= cryptonote::network_version_19)
-  {
-    if (bl.service_node_winner_key && crypto_core_ed25519_is_valid_point(reinterpret_cast<const unsigned char *>(bl.service_node_winner_key.data)))
-    {
-      auto service_node_array = m_service_node_list.get_service_node_list_state({bl.service_node_winner_key});
-      if (service_node_array.size() > 0){
-        for (auto & contributor : service_node_array[0].info->contributors)
-        {
-          contributors.emplace_back(contributor.address, contributor.amount, m_nettype);
-        }
-      }
-    }
-  }
   if (m_sqlite_db) {
-    if (!m_sqlite_db->add_block(bl, contributors))
+    if (!m_service_node_list.process_batching_rewards(bl))
     {
       MERROR("Failed to add block to batch rewards DB.");
       bvc.m_verifivation_failed = true;

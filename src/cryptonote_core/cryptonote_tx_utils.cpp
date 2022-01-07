@@ -295,30 +295,23 @@ namespace cryptonote
       return std::make_pair(false, block_rewards);
     }
 
-    // TODO(doyle): Batching awards
+    // NOTE: Batched Pulse Block Payment Details
     //
-    // NOTE: Summarise rewards to payout (up to 9 payout entries/outputs)
+    // Each block accrues a small reward to each service node this amount
+    // is essentially 16.5 (Coinbase reward for Service Nodes) divided by
+    // the size of the service node list. 
     //
-    // Miner Block
-    // - 1       | Miner
-    // - Up To 4 | Block Leader (Queued node at the top of the Service Node List)
-    // - Up To 1 | Governance
-    //
-    // Pulse Block
-    // - Up to 4 | Block Producer (0-3 for Pooled Service Node)
-    // - Up To 4 | Block Leader   (Queued node at the top of the Service Node List)
-    // - Up To 1 | Governance     (When a block is at the Governance payout interval)
-    //
-    // NOTE: Pulse Block Payment Details
-    //
+    // The service node list is adjusted to only accrue for nodes 
+    // that have been online for greater than 1 hour.
+    // 
     // By default, when Pulse round is 0, the Block Producer is the Block
-    // Leader. Coinbase and transaction fees are given to the Block Leader.
-    // This is the common case, and in that instance we avoid generating
-    // duplicate outputs and payment occurs in 1 output.
+    // Leader. Transaction fees are given to the Block Leader.
+    // This is the common case, and the transaction fees incentivise the 
+    // block producer to produce the block and not stall the network.
     //
     // On alternative rounds, transaction fees are given to the alternative
     // block producer (which is now different from the Block Leader). The
-    // original block producer still receives the coinbase reward. A Pulse
+    // original block producer still accrues their share of the coinbase. A Pulse
     // round's failure is determined by the non-participation of the members of
     // the quorum, so failing a round's onus is not always on the original block
     // producer (it could be the validators colluding) hence why they still
