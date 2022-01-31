@@ -1633,6 +1633,10 @@ namespace service_nodes
   {
     return m_blockchain.sqlite_db()->add_block(block, m_state);
   }
+  bool service_node_list::pop_batching_rewards_block(const cryptonote::block& block)
+  {
+    return m_blockchain.sqlite_db()->pop_block(block, m_state);
+  }
 
   static std::mt19937_64 quorum_rng(uint8_t hf_version, crypto::hash const &hash, quorum_type type)
   {

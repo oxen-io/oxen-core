@@ -301,8 +301,9 @@ bool oxen_checkpointing_alt_chain_with_increasing_service_node_checkpoints::gene
   gen.create_and_add_next_block();
 
   fork.add_blocks_until_next_checkpointable_height();
-  cryptonote::checkpoint_t fork_second_checkpoint = fork.create_service_node_checkpoint(fork.height(), service_nodes::CHECKPOINT_MIN_VOTES);
-  fork.create_and_add_next_block({}, &fork_second_checkpoint);
+  //cryptonote::checkpoint_t fork_second_checkpoint = fork.create_service_node_checkpoint(fork.height(), service_nodes::CHECKPOINT_MIN_VOTES);
+  //fork.create_and_add_next_block({}, &fork_second_checkpoint);
+  fork.add_service_node_checkpoint(fork.height(), service_nodes::CHECKPOINT_MIN_VOTES);
 
   crypto::hash const fork_top_hash = cryptonote::get_block_hash(fork.top().block);
   oxen_register_callback(events, "check_switched_to_alt_chain", [fork_top_hash](cryptonote::core &c, size_t ev_index)
@@ -3583,9 +3584,9 @@ bool oxen_batch_sn_rewards_pop_blocks::generate(std::vector<test_event_entry> &e
     uint64_t curr_height = blockchain.get_current_blockchain_height();
     auto sqliteDB = blockchain.sqlite_db();
     CHECK_EQ((*sqliteDB).height, curr_height - 1);
-    // curr_height + 1 = the block that would contain the batched service node payment
     std::optional<std::vector<cryptonote::batch_sn_payment>> records;
-    records = (*sqliteDB).get_sn_payments(curr_height + 1);
+    // curr_height = the block that would contain the batched service node payment
+    records = (*sqliteDB).get_sn_payments(curr_height);
     CHECK_EQ(records.has_value(), true);
     CHECK_EQ((*records).size(), 1);
     // Check that the database has a full batch amount that includes the soon to be popped block 
@@ -3596,7 +3597,7 @@ bool oxen_batch_sn_rewards_pop_blocks::generate(std::vector<test_event_entry> &e
     CHECK_EQ((*sqliteDB).height, blockchain.get_current_blockchain_height() - 1);
     CHECK_EQ((*sqliteDB).height, curr_height - 2);
 
-    records = (*sqliteDB).get_sn_payments(curr_height + 1);
+    records = (*sqliteDB).get_sn_payments(curr_height);
     CHECK_EQ(records.has_value(), true);
     CHECK_EQ((*records).size(), 1);
     // Check that the database has a lower amount that does not include the popped block
@@ -3610,6 +3611,29 @@ bool oxen_batch_sn_rewards_pop_blocks::generate(std::vector<test_event_entry> &e
     CHECK_EQ((*sqliteDB).height, curr_height - more_blocks - 1);
 
     records = (*sqliteDB).get_sn_payments(curr_height + 1);
+    CHECK_EQ((*records).size(), 0);
+
+    return true;
+  });
+
+  // Generate blocks up through a few payment cycles and check that we can get back safely.
+  for (auto i = 0u; i < conf.BATCHING_INTERVAL * 3; ++i)
+    gen.create_and_add_next_block();
+
+  oxen_register_callback(events, "pop_3_cycles", [=](cryptonote::core &c, size_t ev_index)
+  {
+    DEFINE_TESTS_ERROR_CONTEXT("pop_3_cycles");
+    cryptonote::Blockchain& blockchain = c.get_blockchain_storage();
+    uint64_t curr_height = blockchain.get_current_blockchain_height();
+    auto sqliteDB = blockchain.sqlite_db();
+    CHECK_EQ((*sqliteDB).height, curr_height - 1);
+
+    blockchain.pop_blocks(conf.BATCHING_INTERVAL * 3);
+
+    CHECK_EQ((*sqliteDB).height, blockchain.get_current_blockchain_height() - 1);
+    CHECK_EQ((*sqliteDB).height, curr_height - more_blocks - 1);
+
+    auto records = (*sqliteDB).get_sn_payments(curr_height + 1);
     CHECK_EQ((*records).size(), 0);
 
     return true;

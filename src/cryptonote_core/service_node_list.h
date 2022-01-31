@@ -456,6 +456,7 @@ namespace service_nodes
 
     bool block_added(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs, cryptonote::checkpoint_t const *checkpoint) override;
     bool process_batching_rewards(const cryptonote::block& block);
+    bool pop_batching_rewards_block(const cryptonote::block& block);
     void blockchain_detached(uint64_t height, bool by_pop_blocks) override;
     void init() override;
     bool validate_miner_tx(cryptonote::block const &block, cryptonote::block_reward_parts const &base_reward, std::optional<std::vector<cryptonote::batch_sn_payment>> const &batched_sn_payments) const override;

@@ -61,6 +61,7 @@ public:
 
   // add_sn_payments -> passing an array of addresses and amounts. These will be added or subtracted to the database for each address specified. If the address does not exist it will be created.
   bool add_sn_payments(std::vector<cryptonote::batch_sn_payment>& payments, uint64_t block_height);
+  bool subtract_sn_payments(std::vector<cryptonote::batch_sn_payment>& payments);
 
   // get_payments -> passing a block height will return an array of payments that should be created in a coinbase transaction on that block given the current batching DB state.
   std::optional<std::vector<cryptonote::batch_sn_payment>> get_sn_payments(uint64_t block_height);
@@ -75,7 +76,7 @@ public:
   // This is the primary entry point for the blockchain to add to the batching database.
   // Each accepted block should call this passing in the SN list structure.
   bool add_block(const cryptonote::block& block, const service_nodes::service_node_list::state_t& service_nodes_state);
-  bool pop_block(const cryptonote::block& block);
+  bool pop_block(const cryptonote::block& block, const service_nodes::service_node_list::state_t& service_nodes_state);
 
   // validate_batch_payment -> used to make sure that list of miner_tx_vouts is correct. Compares the miner_tx_vouts with a list previously extracted payments to make sure that the correct persons are being paid.
   bool validate_batch_payment(std::vector<std::tuple<crypto::public_key, uint64_t>> miner_tx_vouts, std::vector<cryptonote::batch_sn_payment> calculated_payments_from_batching_db, uint64_t block_height, bool save_payment);
