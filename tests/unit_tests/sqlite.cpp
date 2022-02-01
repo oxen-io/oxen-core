@@ -59,7 +59,7 @@ TEST(SQLITE, AddSNRewards)
   t1.emplace_back(wallet_address.address, 16500000000/2, cryptonote::network_type::TESTNET);
 
   bool success = false; 
-  success = sqliteDB.add_sn_payments(t1, 1); 
+  success = sqliteDB.add_sn_payments(t1); 
   EXPECT_TRUE(success);
 
   EXPECT_TRUE(sqliteDB.batching_count() == 1);

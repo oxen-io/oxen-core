@@ -93,8 +93,9 @@ CREATE TRIGGER batch_payments_prune_paid
 AFTER UPDATE ON batch_db_info
 FOR EACH ROW
 BEGIN
-    UPDATE batched_payments_paid SET amount = 0 WHERE height_paid < (NEW.height - 10000);
+    UPDATE batch_db_info SET fire_trigger = 0;
     DELETE FROM batched_payments_paid WHERE height_paid < (NEW.height - 10000);
+    UPDATE batch_db_info SET fire_trigger = 1;
 END;
 
 CREATE TRIGGER batch_payments_delete_empty
@@ -111,7 +112,7 @@ BEGIN
 END;
 
 CREATE TRIGGER delete_payment AFTER DELETE ON batched_payments_paid
-FOR EACH ROW WHEN OLD.amount > 0 AND (SELECT fire_trigger from batch_db_info)
+FOR EACH ROW WHEN (SELECT fire_trigger from batch_db_info)
 BEGIN
     UPDATE batched_payments_accrued SET amount = (amount + OLD.amount) WHERE address = OLD.address;
 END;
