@@ -40,6 +40,7 @@
 #include <fstream>
 
 #include "common/string_util.h"
+#include "common/hex.h"
 #include "common/varint.h"
 #include "epee/console_handler.h"
 #include "common/rules.h"
@@ -163,7 +164,7 @@ std::vector<cryptonote::block> oxen_chain_generator_db::get_blocks_range(const u
   return result;
 }
 
-oxen_chain_generator::oxen_chain_generator(std::vector<test_event_entry> &events, const std::vector<cryptonote::hard_fork>& hard_forks)
+oxen_chain_generator::oxen_chain_generator(std::vector<test_event_entry>& events, const std::vector<cryptonote::hard_fork>& hard_forks, std::string first_miner_seed)
 : events_(events)
 , hard_forks_(hard_forks)
 , sqlite_db_(std::make_unique<cryptonote::BlockchainSQLiteTest>(cryptonote::FAKECHAIN, ":memory:"))
@@ -171,7 +172,14 @@ oxen_chain_generator::oxen_chain_generator(std::vector<test_event_entry> &events
   bool init = ons_db_->init(nullptr, cryptonote::FAKECHAIN, ons::init_oxen_name_system("", false /*read_only*/));
   assert(init);
 
-  first_miner_.generate();
+  if (first_miner_seed == "") {
+    first_miner_.generate();
+  } else {
+    crypto::secret_key seeded_secret_key;
+    tools::hex_to_type<crypto::secret_key>(first_miner_seed, seeded_secret_key);
+    first_miner_.generate(seeded_secret_key, true);
+  }
+
   oxen_blockchain_entry genesis = oxen_chain_generator::create_genesis_block(first_miner_, 1338224400);
   events_.push_back(genesis.block);
   db_.blocks.push_back(genesis);
@@ -241,6 +249,8 @@ oxen_blockchain_entry &oxen_chain_generator::add_block(oxen_blockchain_entry con
     ons_db_->add_block(entry.block, entry.txs);
   }
 
+  sqlite_db_->add_block(entry.block, entry.service_node_state);
+
   // TODO(oxen): State history culling and alt states
   state_history_.emplace_hint(state_history_.end(), result.service_node_state);
 
@@ -259,7 +269,6 @@ oxen_blockchain_entry &oxen_chain_generator::add_block(oxen_blockchain_entry con
 
   cryptonote::block sopthing = entry.block;
 
-  sqlite_db_->add_block(entry.block, entry.service_node_state);
 
   return result;
 }

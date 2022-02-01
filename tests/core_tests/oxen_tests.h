@@ -93,4 +93,5 @@ struct oxen_batch_sn_rewards                                                    
 struct oxen_batch_sn_rewards_bad_amount                                              : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
 struct oxen_batch_sn_rewards_bad_address                                             : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
 struct oxen_batch_sn_rewards_pop_blocks                                              : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
+struct oxen_batch_sn_rewards_pop_blocks_after_big_cycle                              : public test_chain_unit_base { bool generate(std::vector<test_event_entry>& events); };
 

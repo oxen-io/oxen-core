@@ -59,19 +59,19 @@ public:
   bool decrement_height();
 
 
-  // add_sn_payments -> passing an array of addresses and amounts. These will be added or subtracted to the database for each address specified. If the address does not exist it will be created.
-  bool add_sn_payments(std::vector<cryptonote::batch_sn_payment>& payments, uint64_t block_height);
+  // add_sn_payments/subtract_sn_payments -> passing an array of addresses and amounts. These will be added or subtracted to the database for each address specified. If the address does not exist it will be created.
+  bool add_sn_payments(std::vector<cryptonote::batch_sn_payment>& payments);
   bool subtract_sn_payments(std::vector<cryptonote::batch_sn_payment>& payments);
 
   // get_payments -> passing a block height will return an array of payments that should be created in a coinbase transaction on that block given the current batching DB state.
   std::optional<std::vector<cryptonote::batch_sn_payment>> get_sn_payments(uint64_t block_height);
 
-  // calculate_rewards -> takes a list of contributors with their SN contribution amounts and will calculate how much of the block rewards should be the allocated to the contributors. The function will return a list suitable for passing to add_sn_payments
+  // calculate_rewards -> takes the list of contributors from sn_info with their SN contribution amounts and will calculate how much of the block rewards should be the allocated to the contributors. The function will return a list suitable for passing to add_sn_payments
   std::vector<cryptonote::batch_sn_payment> calculate_rewards(uint8_t hf_version, uint64_t distribution_amount, service_nodes::service_node_info sn_info);
 
   // add/pop_block -> takes a block that contains new block rewards to be batched and added to the database
   // and/or batching payments that need to be subtracted from the database, in addition it takes a reference to
-  // the service node list which it will use to calculate the individual payouts.
+  // the service node state which it will use to calculate the individual payouts.
   // The function will then process this block add and subtracting to the batching DB appropriately.
   // This is the primary entry point for the blockchain to add to the batching database.
   // Each accepted block should call this passing in the SN list structure.
@@ -82,8 +82,7 @@ public:
   bool validate_batch_payment(std::vector<std::tuple<crypto::public_key, uint64_t>> miner_tx_vouts, std::vector<cryptonote::batch_sn_payment> calculated_payments_from_batching_db, uint64_t block_height, bool save_payment);
   
   // these keep track of payments made to SN operators after then payment has been made. Allows for popping blocks back and knowing who got paid in those blocks.
-  // passing in a list of people to be marked as paid in the paid_amounts vector, the amounts MUST reconcile with what is currently in the database 
-  // else it will fail. Block height will be added to the batched_payments database as height_paid.
+  // passing in a list of people to be marked as paid in the paid_amounts vector. Block height will be added to the batched_payments_paid database as height_paid.
   bool save_payments(uint64_t block_height, std::vector<batch_sn_payment> paid_amounts);
   std::vector<cryptonote::batch_sn_payment> get_block_payments(uint64_t block_height);
   bool delete_block_payments(uint64_t block_height);

@@ -4500,6 +4500,8 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
     bvc.m_verifivation_failed = true;
     return false;
   } 
+
+  // TODO sean - this should not be here. Mock and enfore m_sqlite_db
   if (m_sqlite_db) {
     if (!m_service_node_list.process_batching_rewards(bl))
     {
