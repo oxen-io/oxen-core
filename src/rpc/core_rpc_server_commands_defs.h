@@ -564,6 +564,43 @@ namespace cryptonote::rpc {
   ///   as a service node)
   /// - `last_lokinet_ping` -- Last ping time of lokinet (0 if never or not running as a service node)
   /// - `free_space` -- Available disk space on the node.
+  ///
+  /// Example output:
+  ///
+  ///     :::json
+  ///     {
+  ///       "block_size_limit": 600000,
+  ///       "block_size_median": 300000,
+  ///       "block_weight_limit": 600000,
+  ///       "block_weight_median": 300000,
+  ///       "cumulative_difficulty": 4556030616038589,
+  ///       "database_size": 17000000000,
+  ///       "devnet": false,
+  ///       "difficulty": 1000000,
+  ///       "height": 947084,
+  ///       "immutable_block_hash": "628923285c83aee8cf585d87acd59edebb5d41cc6433db894a3fb6d5c14bdde5",
+  ///       "immutable_height": 947076,
+  ///       "mainnet": true,
+  ///       "nettype": "mainnet",
+  ///       "offline": false,
+  ///       "ons_counts": [
+  ///         584,
+  ///         34,
+  ///         331
+  ///       ],
+  ///       "pulse_ideal_timestamp": 1639186221,
+  ///       "pulse_target_timestamp": 1639186221,
+  ///       "status": "OK",
+  ///       "status_line": "v9; Height: 947084",
+  ///       "target": 120,
+  ///       "target_height": 945528,
+  ///       "testnet": false,
+  ///       "top_block_hash": "24b9f97623ba08c33bfe30eaa49f69342e9ffd267a8b4657dcf61b8f8a90853a",
+  ///       "tx_count": 791186,
+  ///       "tx_pool_size": 0,
+  ///       "untrusted": false,
+  ///       "version": "9"
+  ///     }
   struct GET_INFO : PUBLIC, LEGACY, NO_ARGS
   {
     static constexpr auto names() { return NAMES("get_info", "getinfo"); }
