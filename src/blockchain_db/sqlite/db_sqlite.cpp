@@ -314,7 +314,7 @@ bool BlockchainSQLite::add_block(const cryptonote::block& block, const service_n
   bool success = false;
   try
   {
-    SQLite::Transaction transaction{db};
+    SQLite::Transaction transaction{db, SQLite::TransactionBehavior::IMMEDIATE};
 
     // Goes through the miner transactions vouts checks they are right and marks them as paid in the database
     if (!validate_batch_payment(miner_tx_vouts, *calculated_rewards, block_height, true)) {
@@ -401,7 +401,7 @@ bool BlockchainSQLite::pop_block(const cryptonote::block& block, const service_n
   bool success = false;
   try
   {
-    SQLite::Transaction transaction{db};
+    SQLite::Transaction transaction{db, SQLite::TransactionBehavior::IMMEDIATE};
 
     // Add back to the database payments that had been made in this block
     delete_block_payments(block_height);
@@ -590,7 +590,7 @@ BlockchainSQLiteTest::BlockchainSQLiteTest(BlockchainSQLiteTest &other)
   while (st2.executeStep())
     all_payments_paid.emplace_back(st2.getColumn(0).getString(), st2.getColumn(1).getInt64(), st2.getColumn(2).getInt64());
 
-  SQLite::Transaction transaction{db};
+  SQLite::Transaction transaction{db, SQLite::TransactionBehavior::IMMEDIATE};
 
   SQLite::Statement insert_payment_paid{db,
     "INSERT INTO batched_payments_paid (address, amount, height_paid) VALUES (?, ?, ?)"};
