@@ -109,12 +109,15 @@ CREATE TRIGGER make_payment AFTER INSERT ON batched_payments_paid
 FOR EACH ROW WHEN (SELECT fire_trigger from batch_db_info)
 BEGIN
     UPDATE batched_payments_accrued SET amount = (amount - NEW.amount) WHERE address = NEW.address;
+    SELECT RAISE(ABORT, 'Address not found') WHERE changes() = 0;
 END;
 
 CREATE TRIGGER delete_payment AFTER DELETE ON batched_payments_paid
 FOR EACH ROW WHEN (SELECT fire_trigger from batch_db_info)
 BEGIN
-    UPDATE batched_payments_accrued SET amount = (amount + OLD.amount) WHERE address = OLD.address;
+    INSERT INTO batched_payments_accrued
+        (address, amount) VALUES (OLD.address, OLD.amount)
+        ON CONFLICT (address) DO UPDATE SET amount = (amount + excluded.amount);
 END;
 	)");
 
@@ -165,7 +168,7 @@ bool BlockchainSQLite::add_sn_payments(std::vector<cryptonote::batch_sn_payment>
 {
   LOG_PRINT_L3("BlockchainDB_SQLITE::" << __func__);
   SQLite::Statement insert_payment{db,
-    "INSERT INTO batched_payments_accrued (address, amount) VALUES (?1, ?2) ON CONFLICT (address) DO UPDATE SET amount = amount + (?2)"};
+    "INSERT INTO batched_payments_accrued (address, amount) VALUES (?, ?) ON CONFLICT (address) DO UPDATE SET amount = amount + excluded.amount"};
 
   for (auto& payment: payments) {
     std::string address_str = cryptonote::get_account_address_as_str(m_nettype, 0, payment.address_info.address);
@@ -403,8 +406,6 @@ bool BlockchainSQLite::pop_block(const cryptonote::block& block, const service_n
   {
     SQLite::Transaction transaction{db, SQLite::TransactionBehavior::IMMEDIATE};
 
-    // Add back to the database payments that had been made in this block
-    delete_block_payments(block_height);
 
     // Step 1: Remove the block producers txn fees
     uint64_t service_node_reward = cryptonote::service_node_reward_formula(0, block.major_version);
@@ -450,6 +451,9 @@ bool BlockchainSQLite::pop_block(const cryptonote::block& block, const service_n
       if (!success)
         return false;
     }
+
+    // Add back to the database payments that had been made in this block
+    delete_block_payments(block_height);
 
     if (decrement_height())
       success = true;
