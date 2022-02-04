@@ -1272,7 +1272,7 @@ static void manual_calc_batched_governance(const test_generator &generator,
 
     if (hard_fork_version >= cryptonote::network_version_15_ons)
     {
-      miner_tx_context.batched_governance = num_blocks * cryptonote::governance_reward_formula(0, hard_fork_version);
+      miner_tx_context.batched_governance = num_blocks * cryptonote::governance_reward_formula(hard_fork_version);
       return;
     }
 

@@ -133,7 +133,7 @@ namespace cryptonote
     return correct_key == output_key;
   }
 
-  uint64_t governance_reward_formula(uint64_t base_reward, uint8_t hf_version)
+  uint64_t governance_reward_formula(uint8_t hf_version, uint64_t base_reward)
   {
     return hf_version >= network_version_17         ? FOUNDATION_REWARD_HF17 :
            hf_version >= network_version_16_pulse   ? FOUNDATION_REWARD_HF15 + CHAINFLIP_LIQUIDITY_HF16 :
@@ -167,7 +167,7 @@ namespace cryptonote
   uint64_t derive_governance_from_block_reward(network_type nettype, const cryptonote::block &block, uint8_t hf_version)
   {
     if (hf_version >= 15)
-      return governance_reward_formula(0, hf_version);
+      return governance_reward_formula(hf_version);
 
     uint64_t result       = 0;
     uint64_t snode_reward = 0;
@@ -183,7 +183,7 @@ namespace cryptonote
     }
 
     uint64_t base_reward  = snode_reward * 2; // pre-HF15, SN reward = half of base reward
-    uint64_t governance   = governance_reward_formula(base_reward, hf_version);
+    uint64_t governance   = governance_reward_formula(hf_version, base_reward);
     uint64_t block_reward = base_reward - governance;
 
     uint64_t actual_reward = 0; // sanity check
@@ -542,7 +542,7 @@ namespace cryptonote
     // There is a goverance fee due every block.  Beginning in hardfork 10 this is still subtracted
     // from the block reward as if it was paid, but the actual payments get batched into rare, large
     // accumulated payments.  (Before hardfork 10 they are included in every block, unbatched).
-    result.governance_due  = governance_reward_formula(result.original_base_reward, hard_fork_version);
+    result.governance_due  = governance_reward_formula(hard_fork_version, result.original_base_reward);
     result.governance_paid = hard_fork_version >= network_version_10_bulletproofs
         ? oxen_context.batched_governance
         : result.governance_due;

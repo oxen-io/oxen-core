@@ -79,7 +79,7 @@ public:
   bool pop_block(const cryptonote::block& block, const service_nodes::service_node_list::state_t& service_nodes_state);
 
   // validate_batch_payment -> used to make sure that list of miner_tx_vouts is correct. Compares the miner_tx_vouts with a list previously extracted payments to make sure that the correct persons are being paid.
-  bool validate_batch_payment(std::vector<std::tuple<crypto::public_key, uint64_t>> miner_tx_vouts, std::vector<cryptonote::batch_sn_payment> calculated_payments_from_batching_db, uint64_t block_height, bool save_payment);
+  bool validate_batch_payment(std::vector<std::tuple<crypto::public_key, uint64_t>> miner_tx_vouts, std::vector<cryptonote::batch_sn_payment> calculated_payments_from_batching_db, uint64_t block_height);
   
   // these keep track of payments made to SN operators after then payment has been made. Allows for popping blocks back and knowing who got paid in those blocks.
   // passing in a list of people to be marked as paid in the paid_amounts vector. Block height will be added to the batched_payments_paid database as height_paid.

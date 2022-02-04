@@ -311,6 +311,9 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems()
   {
     sqlite_height = std::max(hard_fork_begins(m_nettype, network_version_19).value_or(0) - 1, m_sqlite_db->height + 1);
     start_height_options.push_back(sqlite_height);
+  } else {
+    if (m_nettype != FAKECHAIN)
+      throw std::logic_error("Blockchain missing SQLite Database");
   }
   uint64_t const end_height = m_db->height();
   start_height_options.push_back(end_height);
@@ -466,6 +469,9 @@ bool Blockchain::init(BlockchainDB* db, sqlite3 *ons_db, std::shared_ptr<crypton
   if (sqlite_db)
   {
     m_sqlite_db = std::move(sqlite_db);
+  } else {
+    if (m_nettype != FAKECHAIN)
+      throw std::logic_error("Blockchain missing SQLite Database");
   }
 
   // if the blockchain is new, add the genesis block
@@ -4501,7 +4507,6 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
     return false;
   } 
 
-  // TODO sean - this should not be here. Mock and enfore m_sqlite_db
   if (m_sqlite_db) {
     if (!m_service_node_list.process_batching_rewards(bl))
     {
@@ -4509,6 +4514,9 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
       bvc.m_verifivation_failed = true;
       return false;
     }
+  } else {
+    if (m_nettype != FAKECHAIN)
+      throw std::logic_error("Blockchain missing SQLite Database");
   }
 
   for (BlockAddedHook* hook : m_block_added_hooks)
@@ -5043,7 +5051,7 @@ bool Blockchain::calc_batched_governance_reward(uint64_t height, uint64_t &rewar
   // Constant reward every block at HF19 and batched through service node batching 
   if (hard_fork_version >= cryptonote::network_version_19)
   {
-    reward = FOUNDATION_REWARD_HF17;
+    reward = cryptonote::governance_reward_formula(hard_fork_version);
     return true;
   }
 
