@@ -3625,7 +3625,7 @@ bool oxen_batch_sn_rewards_pop_blocks_after_big_cycle::generate(std::vector<test
   auto hard_forks = oxen_generate_hard_fork_table();
   oxen_chain_generator gen(events, hard_forks);
   const auto miner                      = gen.first_miner();
-  const auto alice                      = gen.add_account();
+  const cryptonote::account_base alice  = gen.add_account();
   size_t alice_account_base_event_index = gen.event_index();
   auto min_service_nodes = service_nodes::pulse_min_service_nodes(cryptonote::FAKECHAIN);
 
@@ -3668,7 +3668,7 @@ bool oxen_batch_sn_rewards_pop_blocks_after_big_cycle::generate(std::vector<test
   for (auto i = 0u; i < conf.BATCHING_INTERVAL * 3; ++i)
     gen.create_and_add_next_block();
 
-  oxen_register_callback(events, "pop_3_cycles", [amount, &alice](cryptonote::core &c, size_t ev_index)
+  oxen_register_callback(events, "pop_3_cycles", [amount, alice](cryptonote::core &c, size_t ev_index)
   {
     DEFINE_TESTS_ERROR_CONTEXT("pop_3_cycles");
     cryptonote::Blockchain& blockchain = c.get_blockchain_storage();
