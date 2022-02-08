@@ -3599,11 +3599,16 @@ bool oxen_batch_sn_rewards_pop_blocks::generate(std::vector<test_event_entry> &e
 
     records = (*sqliteDB).get_sn_payments(curr_height);
     CHECK_EQ(records.has_value(), true);
-    CHECK_EQ((*records).size(), 1);
-    // Check that the database has a lower amount that does not include the popped block
-    batched_rewards_earned = MK_COINS(1) * 16.5 * (more_blocks - service_nodes::SERVICE_NODE_PAYABLE_AFTER_BLOCKS - 1);
-    CHECK_EQ((*records)[0].amount, batched_rewards_earned);
-    CHECK_EQ(tools::view_guts((*records)[0].address_info.address), tools::view_guts(alice.get_keys().m_account_address));
+    if (batched_rewards_earned != MK_COINS(1) * 16.5)
+    {
+      CHECK_EQ((*records).size(), 1);
+      // Check that the database has a lower amount that does not include the popped block
+      batched_rewards_earned = MK_COINS(1) * 16.5 * (more_blocks - service_nodes::SERVICE_NODE_PAYABLE_AFTER_BLOCKS - 1);
+      CHECK_EQ((*records)[0].amount, batched_rewards_earned);
+      CHECK_EQ(tools::view_guts((*records)[0].address_info.address), tools::view_guts(alice.get_keys().m_account_address));
+    }
+    else
+      CHECK_EQ((*records).size(), 0);
 
     // Pop the rest of the blocks and check that it goes to zero
     blockchain.pop_blocks(more_blocks - 1);
