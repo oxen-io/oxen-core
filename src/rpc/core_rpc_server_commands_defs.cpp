@@ -182,11 +182,6 @@ void to_json(nlohmann::json& j, const ONS_OWNERS_TO_NAMES::response_entry& r)
   };
 }
 
-KV_SERIALIZE_MAP_CODE_BEGIN(STATUS)
-  KV_SERIALIZE(status)
-KV_SERIALIZE_MAP_CODE_END()
-
-
 KV_SERIALIZE_MAP_CODE_BEGIN(EMPTY)
 KV_SERIALIZE_MAP_CODE_END()
 

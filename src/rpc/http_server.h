@@ -34,8 +34,8 @@
 #include "common/command_line.h"
 #include "common/password.h"
 #include "core_rpc_server.h"
-#include "http_server_base.h"
-#include "rpc/rpc_args.h"
+#include "rpc/common/http_server_base.h"
+#include "rpc/common/rpc_args.h"
 
 namespace cryptonote::rpc {
 

@@ -39,7 +39,7 @@
 #include "daemonizer/daemonizer.h"
 #include "epee/misc_log_ex.h"
 #include "p2p/net_node.h"
-#include "rpc/rpc_args.h"
+#include "rpc/common/rpc_args.h"
 #include "rpc/core_rpc_server.h"
 #include "daemon/command_line_args.h"
 #include "version.h"

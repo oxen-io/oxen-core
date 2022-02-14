@@ -50,7 +50,7 @@
 #include "core_rpc_server_binary_commands.h"
 #include "core_rpc_server_command_parser.h"
 #include "core_rpc_server_error_codes.h"
-#include "rpc_args.h"
+#include "rpc/common/rpc_args.h"
 #include "common/command_line.h"
 #include "common/oxen.h"
 #include "common/sha256sum.h"
@@ -68,44 +68,18 @@
 #include "p2p/net_node.h"
 #include "version.h"
 
+#include "rpc/common/json_bt.h"
+#include "rpc/common/rpc_command.h"
+
 #undef OXEN_DEFAULT_LOG_CATEGORY
 #define OXEN_DEFAULT_LOG_CATEGORY "daemon.rpc"
-
 
 namespace cryptonote::rpc {
 
   using nlohmann::json;
+  using oxen::json_to_bt;
 
   namespace {
-
-    oxenmq::bt_value json_to_bt(json&& j) {
-      using namespace oxenmq;
-      if (j.is_object()) {
-        bt_dict res;
-        for (auto& [k, v] : j.items()) {
-          if (v.is_null())
-            continue; // skip k-v pairs with a null v (for other nulls we fail).
-          res[k] = json_to_bt(std::move(v));
-        }
-        return res;
-      }
-      if (j.is_array()) {
-        bt_list res;
-        for (auto& v : j)
-          res.push_back(json_to_bt(std::move(v)));
-        return res;
-      }
-      if (j.is_string()) {
-        return std::move(j.get_ref<std::string&>());
-      }
-      if (j.is_boolean())
-        return j.get<bool>() ? 1 : 0;
-      if (j.is_number_unsigned())
-        return j.get<uint64_t>();
-      if (j.is_number_integer())
-        return j.get<int64_t>();
-      throw std::domain_error{"internal error: encountered some unhandled/invalid type in json-to-bt translation"};
-    }
 
     template <typename RPC>
     void register_rpc_command(std::unordered_map<std::string, std::shared_ptr<const rpc_command>>& regs)
@@ -118,37 +92,8 @@ namespace cryptonote::rpc {
       // Temporary: remove once RPC conversion is complete
       static_assert(!FIXME_has_nested_response_v<RPC>);
 
-      cmd->invoke = [](rpc_request&& request, core_rpc_server& server) -> rpc_command::result_type {
-        RPC rpc{};
-        try {
-          if (auto body = request.body_view()) {
-            if (body->front() == 'd') { // Looks like a bt dict
-              rpc.set_bt();
-              parse_request(rpc, oxenmq::bt_dict_consumer{*body});
-            }
-            else
-              parse_request(rpc, json::parse(*body));
-          } else if (auto* j = std::get_if<json>(&request.body)) {
-            parse_request(rpc, std::move(*j));
-          } else {
-            assert(std::holds_alternative<std::monostate>(request.body));
-            parse_request(rpc, std::monostate{});
-          }
-        } catch (const std::exception& e) {
-          throw parse_error{"Failed to parse request parameters: "s + e.what()};
-        }
-
-        server.invoke(rpc, std::move(request.context));
-
-        if (rpc.response.is_null())
-          rpc.response = json::object();
-
-        if (rpc.is_bt())
-          return json_to_bt(std::move(rpc.response));
-        else
-          return std::move(rpc.response);
-      };
-
+      cmd->invoke = make_invoke<RPC, core_rpc_server, rpc_command>();
+        
       for (const auto& name : RPC::names())
         regs.emplace(name, cmd);
     }
@@ -200,12 +145,6 @@ namespace cryptonote::rpc {
   }
 
   const std::unordered_map<std::string, std::shared_ptr<const rpc_command>> rpc_commands = register_rpc_commands(rpc::core_rpc_types{}, rpc::core_rpc_binary_types{});
-
-  std::optional<std::string_view> rpc_request::body_view() const {
-    if (auto* sv = std::get_if<std::string_view>(&body)) return *sv;
-    if (auto* s = std::get_if<std::string>(&body)) return *s;
-    return std::nullopt;
-  }
 
   //-----------------------------------------------------------------------------------
   void core_rpc_server::init_options(boost::program_options::options_description& desc, boost::program_options::options_description& hidden)

@@ -42,7 +42,7 @@
 #include "common/periodic_task.h"
 #include "wallet_rpc_server_commands_defs.h"
 #include "wallet2.h"
-#include "rpc/http_server_base.h"
+#include "rpc/common/http_server_base.h"
 
 #undef OXEN_DEFAULT_LOG_CATEGORY
 #define OXEN_DEFAULT_LOG_CATEGORY "wallet.rpc"

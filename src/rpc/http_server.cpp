@@ -11,7 +11,7 @@
 #include "cryptonote_core/cryptonote_core.h"
 #include "epee/net/jsonrpc_structs.h"
 #include "rpc/core_rpc_server_commands_defs.h"
-#include "rpc/rpc_args.h"
+#include "rpc/common/rpc_args.h"
 #include "version.h"
 
 #undef OXEN_DEFAULT_LOG_CATEGORY
@@ -170,6 +170,7 @@ namespace cryptonote::rpc {
       error_response(*res, HTTP_FORBIDDEN);
     };
 
+    //note: rpc_commands is a pseudo-global in core_rpc_server.h
     for (auto& [name, call] : rpc_commands) {
       if (call->is_legacy || call->is_binary) {
         if (!call->is_public && m_restricted)

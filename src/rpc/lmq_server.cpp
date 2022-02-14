@@ -1,6 +1,6 @@
 
 #include "lmq_server.h"
-#include "param_parser.hpp"
+#include "rpc/common/param_parser.hpp"
 #include "oxenmq/oxenmq.h"
 #include "oxenc/bt.h"
 

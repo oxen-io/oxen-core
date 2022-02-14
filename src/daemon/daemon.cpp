@@ -41,7 +41,7 @@
 #if defined(PER_BLOCK_CHECKPOINT)
 #include "blocks/blocks.h"
 #endif
-#include "rpc/rpc_args.h"
+#include "rpc/common/rpc_args.h"
 #include "rpc/http_server.h"
 #include "rpc/lmq_server.h"
 #include "cryptonote_protocol/quorumnet.h"

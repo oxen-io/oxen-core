@@ -27,16 +27,12 @@
 # STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+add_subdirectory(common)
+
 add_library(rpc_commands
   core_rpc_server_commands_defs.cpp
   core_rpc_server_binary_commands.cpp
   core_rpc_server_command_parser.cpp
-  rpc_binary.cpp
-  )
-
-add_library(rpc_server_base
-  rpc_args.cpp
-  http_server_base.cpp
   )
 
 add_library(rpc
@@ -53,6 +49,7 @@ add_library(rpc_http_client
     )
 target_link_libraries(rpc_commands
   PUBLIC
+    rpc_common
     common
     cpr::cpr
     nlohmann_json::nlohmann_json
@@ -60,19 +57,11 @@ target_link_libraries(rpc_commands
     cryptonote_protocol
     extra)
 
-target_link_libraries(rpc_server_base
-  PUBLIC
-    common
-    uWebSockets
-    nlohmann_json::nlohmann_json
-  PRIVATE
-    extra)
-
 target_link_libraries(rpc
   PUBLIC
     cryptonote_core
     rpc_commands
-    rpc_server_base
+    rpc_common
     net
     version
   PRIVATE
@@ -85,7 +74,7 @@ target_link_libraries(rpc
 target_link_libraries(daemon_rpc_server
   PRIVATE
     oxenc
-    rpc_server_base
+    rpc_common
     rpc
     Boost::thread
     extra)

@@ -51,7 +51,7 @@
 #include "epee/string_tools.h"
 #include "crypto/hash.h"
 #include "mnemonics/electrum-words.h"
-#include "rpc/rpc_args.h"
+#include "rpc/common/rpc_args.h"
 #include "rpc/core_rpc_server_commands_defs.h"
 #include "daemonizer/daemonizer.h"
 #include "cryptonote_core/oxen_name_system.h"

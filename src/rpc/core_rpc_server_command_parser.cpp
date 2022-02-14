@@ -1,6 +1,6 @@
 #include "core_rpc_server_command_parser.h"
 #include "oxenmq/bt_serialize.h"
-#include "param_parser.hpp"
+#include "rpc/common/param_parser.hpp"
 
 #include <chrono>
 #include <oxenmq/base64.h>
