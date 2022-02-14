@@ -31,6 +31,8 @@ namespace wallet
       , tx_scanner{keys, db}
       , tx_constructor{tx_constructor}
       , daemon_comms{daemon_comms}
+      , request_handler{*this}
+      , omq_server{omq, request_handler}
   {
     create_schema(db->db);
     last_scanned_height = db->prepared_get<int64_t>("SELECT last_scan_height FROM metadata WHERE id=0;");
@@ -40,6 +42,8 @@ namespace wallet
   void
   Wallet::init()
   {
+    omq->start();
+    daemon_comms->set_remote("ipc://./oxend.sock");
     daemon_comms->register_wallet(*this, last_scanned_height + 1 /*next needed block*/, true);
   }
 

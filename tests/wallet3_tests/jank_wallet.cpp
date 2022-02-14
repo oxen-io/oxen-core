@@ -28,9 +28,8 @@ int main(void)
 
   auto oxenmq = std::make_shared<oxenmq::OxenMQ>();
   auto comms = std::make_shared<wallet::DefaultDaemonComms>(oxenmq);
-  comms->set_remote("ipc://./oxend.sock");
-  oxenmq->start();
   auto ctor = std::make_shared<wallet::TransactionConstructor>(nullptr, comms);
+
   auto wallet = wallet::Wallet::create(oxenmq, keyring, ctor, comms, ":memory:", "");
 
   std::this_thread::sleep_for(2s);
@@ -38,34 +37,11 @@ int main(void)
 
   std::cout << "chain height: " << chain_height << "\n";
 
-  std::shared_ptr<wallet::Wallet> wallet2{nullptr};
-  bool made_second = false;
-  bool dereg_second = false;
-
   while (true)
   {
     using namespace std::chrono_literals;
 
     std::this_thread::sleep_for(1s);
     std::cout << "after block " << wallet->last_scanned_height << ", balance is: " << wallet->get_balance() << "\n";
-    if (wallet->last_scanned_height > 5000 and not made_second)
-    {
-      wallet2 = wallet::Wallet::create(oxenmq, keyring, ctor, comms, ":memory:", "");
-      made_second = true;
-    }
-    if (wallet2)
-    {
-      std::cout << "after block " << wallet2->last_scanned_height << ", wallet2 balance is: " << wallet2->get_balance() << "\n";
-
-      if (wallet2->last_scanned_height > 3000)
-      {
-        if (not dereg_second)
-        {
-          wallet2->deregister();
-          dereg_second = true;
-        }
-        std::cout << "After deregister(), ref count = " << wallet2.use_count() << "\n";
-      }
-    }
   }
 }

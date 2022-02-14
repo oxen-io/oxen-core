@@ -5,6 +5,9 @@
 #include "daemon_comms.hpp"
 #include "keyring.hpp"
 
+#include "rpc/request_handler.h"
+#include "rpc/omq_server.h"
+
 #include <memory>
 #include <string_view>
 
@@ -25,6 +28,8 @@ namespace wallet
 
   class Wallet : public std::enable_shared_from_this<Wallet>
   {
+    friend class wallet::rpc::RequestHandler;
+
    protected:
     Wallet(
         std::shared_ptr<oxenmq::OxenMQ> omq,
@@ -108,6 +113,8 @@ namespace wallet
     TransactionScanner tx_scanner;
     std::shared_ptr<TransactionConstructor> tx_constructor;
     std::shared_ptr<DaemonComms> daemon_comms;
+    wallet::rpc::RequestHandler request_handler;
+    wallet::rpc::OmqServer omq_server;
     bool running = true;
   };
 

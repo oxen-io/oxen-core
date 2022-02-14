@@ -6,7 +6,6 @@
 #include <crypto/crypto.h>
 #include <cryptonote_basic/subaddress_index.h>
 #include <ringct/rctTypes.h>
-#include <sqlitedb/database.hpp>
 
 namespace wallet
 {
