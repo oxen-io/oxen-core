@@ -11,11 +11,6 @@
 #include <memory>
 #include <string_view>
 
-namespace db
-{
-  class Database;
-}
-
 namespace oxenmq
 {
   class OxenMQ;
@@ -24,6 +19,8 @@ namespace oxenmq
 
 namespace wallet
 {
+  class WalletDB;
+
   struct Block;
 
   class Wallet : public std::enable_shared_from_this<Wallet>
@@ -92,22 +89,13 @@ namespace wallet
     deregister();
 
     int64_t scan_target_height = 0;
-    int64_t last_scanned_height = -1;
+    int64_t last_scan_height = -1;
 
    protected:
-    void
-    store_transaction(
-        const crypto::hash& tx_hash, const int64_t height, const std::vector<Output>& outputs);
-
-    void
-    store_spends(
-        const crypto::hash& tx_hash,
-        const int64_t height,
-        const std::vector<crypto::key_image>& spends);
 
     std::shared_ptr<oxenmq::OxenMQ> omq;
 
-    std::shared_ptr<db::Database> db;
+    std::shared_ptr<WalletDB> db;
 
     std::shared_ptr<Keyring> keys;
     TransactionScanner tx_scanner;

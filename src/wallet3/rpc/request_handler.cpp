@@ -4,7 +4,7 @@
 #include "command_parser.h"
 #include <wallet3/wallet.hpp>
 
-#include <sqlitedb/database.hpp>
+#include <wallet3/db_schema.hpp>
 
 #include <unordered_map>
 #include <memory>
@@ -83,7 +83,7 @@ void RequestHandler::invoke(SET_ACCOUNT_TAG_DESCRIPTION& command, rpc_context co
 }
 
 void RequestHandler::invoke(GET_HEIGHT& command, rpc_context context) {
-  auto height = wallet.db->prepared_get<int64_t>("SELECT COUNT(*) FROM blocks;");
+  auto height = wallet.db->scan_target_height();
   command.response["height"] = height;
 
   //TODO: this

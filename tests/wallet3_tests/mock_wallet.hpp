@@ -3,6 +3,7 @@
 #include <wallet3/wallet.hpp>
 #include <wallet3/block.hpp>
 #include <sqlitedb/database.hpp>
+#include <wallet3/db_schema.hpp>
 
 namespace wallet
 {
@@ -23,11 +24,11 @@ class MockWallet : public Wallet
 {
   public:
 
-    MockWallet() : Wallet({},{},{},{},":memory:",{}){};
+    MockWallet() : Wallet({},std::make_shared<Keyring>(),{},{},":memory:",{}){};
 
     int64_t height = 0;
 
-    std::shared_ptr<db::Database> get_db() { return db; };
+    std::shared_ptr<WalletDB> get_db() { return db; };
 
     void
     store_test_transaction(const int64_t amount) 
@@ -48,8 +49,8 @@ class MockWallet : public Wallet
       o.key_image = debug_random_filled<crypto::key_image>(height);
       dummy_outputs.push_back(o);
 
-      SQLite::Transaction db_tx(db->db);
-      store_transaction(hash, height, dummy_outputs);
+      auto db_tx = db->db_transaction();
+      db->store_transaction(hash, height, dummy_outputs);
       db_tx.commit();
     };
 

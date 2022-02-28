@@ -3,7 +3,7 @@
 #include "decoy.hpp"
 #include "output_selection/output_selection.hpp"
 #include "decoy_selection/decoy_selection.hpp"
-#include <sqlitedb/database.hpp>
+#include "db_schema.hpp"
 
 namespace wallet
 {
@@ -46,8 +46,7 @@ namespace wallet
     // as an additional (2nd+) input. Finally if the wallet balance is not sufficient
     // allow the change to be dust but this will only occur if the wallet has enough to cover the
     // transaction but not enough to also cover the dust which should be extremely unlikely.
-    int64_t wallet_balance = db->prepared_get<int>(
-        "SELECT sum(amount) FROM outputs WHERE amount > ?", additional_input * static_cast<int64_t>(ptx.fee_per_byte));
+    int64_t wallet_balance = db->available_balance(additional_input * static_cast<int64_t>(ptx.fee_per_byte));
     if (wallet_balance < transaction_total)
       throw std::runtime_error("Insufficient Wallet Balance");
     else if (wallet_balance > transaction_total + single_input_size * static_cast<int64_t>(ptx.fee_per_byte))
@@ -55,19 +54,8 @@ namespace wallet
     else if (wallet_balance > transaction_total + additional_input * static_cast<int64_t>(ptx.fee_per_byte))
       transaction_total += additional_input * ptx.fee_per_byte;
 
-    std::vector<Output> available_outputs{};
-
     // Selects all outputs where the amount is greater than the estimated fee for an ADDITIONAL input.
-    SQLite::Statement st{
-        db->db,
-        "SELECT amount, output_index, global_index, unlock_time, block_height, spending, "
-        "spent_height FROM outputs WHERE amount > ? ORDER BY amount"};
-    st.bind(1, additional_input * static_cast<int64_t>(ptx.fee_per_byte));
-    while (st.executeStep())
-    {
-      wallet::Output o(db::get<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t>(st));
-      available_outputs.push_back(o);
-    }
+    auto available_outputs = db->available_outputs(additional_input * static_cast<int64_t>(ptx.fee_per_byte));
     ptx.chosen_outputs = select_outputs(available_outputs, transaction_total);
     ptx.fee = ptx.get_fee();
     ptx.update_change();
@@ -81,10 +69,7 @@ namespace wallet
   {
     ptx.decoys = {};
     // This initialises the decoys to be selected from global_output_index= 0 to global_output_index = highest_output_index
-    // Oxen started with ringct transaction from its genesis so all transactions should be usable as decoys.
-    // We keep track of the number of transactions in each block so we can recreate the highest_output_index by summing
-    // all the transactions in every block.
-    int64_t max_output_index = db->prepared_get<int>("SELECT sum(transaction_count) FROM blocks;");
+    int64_t max_output_index = db->chain_output_count();
     DecoySelector decoy_selection(0, max_output_index);
     std::vector<int64_t> indexes;
     for (const auto& output : ptx.chosen_outputs)

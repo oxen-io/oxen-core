@@ -27,10 +27,10 @@ namespace wallet::rpc
 using namespace cryptonote::rpc;
 using oxenmq::AuthLevel;
 
-OmqServer::OmqServer(std::shared_ptr<oxenmq::OxenMQ> omq, RequestHandler& request_handler)
-  : omq(omq)
-  , request_handler(request_handler)
+void
+OmqServer::set_omq(std::shared_ptr<oxenmq::OxenMQ> omq_in)
 {
+  omq = omq_in;
 
   //TODO: parametrize listening address(es) and auth
   omq->listen_plain("ipc://./rpc.sock");
@@ -41,7 +41,7 @@ OmqServer::OmqServer(std::shared_ptr<oxenmq::OxenMQ> omq, RequestHandler& reques
   //omq->add_category("admin", oxenmq::AuthLevel::admin, 1 /* one reserved admin command thread */);
   for (auto& cmd : rpc_commands) {
     omq->add_request_command(cmd.second->is_restricted ? "restricted" : "rpc", cmd.first,
-        [name=std::string_view{cmd.first}, &call=*cmd.second, &request_handler, this](oxenmq::Message& m) {
+        [name=std::string_view{cmd.first}, &call=*cmd.second, this](oxenmq::Message& m) {
       if (m.data.size() > 1)
         m.send_reply(LMQ_BAD_REQUEST, "Bad request: RPC commands must have at most one data part "
             "(received " + std::to_string(m.data.size()) + ")");

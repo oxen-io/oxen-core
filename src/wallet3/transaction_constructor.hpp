@@ -7,17 +7,14 @@
 #include "pending_transaction.hpp"
 #include "daemon_comms.hpp"
 
-namespace db
-{
-  class Database;
-}
-
 namespace wallet
 {
+  class WalletDB;
+
   class TransactionConstructor
   {
    public:
-    TransactionConstructor(std::shared_ptr<db::Database> database, std::shared_ptr<DaemonComms> dmn)
+    TransactionConstructor(std::shared_ptr<WalletDB> database, std::shared_ptr<DaemonComms> dmn)
         : db(std::move(database)), daemon(std::move(dmn))
     {
       std::tie(fee_per_byte, fee_per_output) = daemon->get_fee_parameters();
@@ -42,7 +39,7 @@ namespace wallet
     int64_t
     estimate_fee() const;
 
-    std::shared_ptr<db::Database> db;
+    std::shared_ptr<WalletDB> db;
     std::shared_ptr<DaemonComms> daemon;
 
   };

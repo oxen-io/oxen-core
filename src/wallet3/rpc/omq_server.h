@@ -16,7 +16,12 @@ class OmqServer
 
 public:
 
-  OmqServer(std::shared_ptr<oxenmq::OxenMQ> omq, RequestHandler& request_handler);
+  OmqServer(RequestHandler& request_handler) :
+    omq(nullptr), request_handler(request_handler)
+  {}
+
+  void
+  set_omq(std::shared_ptr<oxenmq::OxenMQ> omq);
 };
 
 

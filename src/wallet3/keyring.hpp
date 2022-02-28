@@ -26,6 +26,8 @@ namespace wallet
         , view_public_key(_view_public_key)
     {}
 
+    Keyring() {}
+
     virtual crypto::secret_key
     generate_tx_key(uint8_t hf_version);
 

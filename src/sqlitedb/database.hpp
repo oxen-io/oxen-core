@@ -15,6 +15,7 @@
 #include <thread>
 #include <unordered_set>
 #include <optional>
+#include <string_view>
 
 namespace db
 {

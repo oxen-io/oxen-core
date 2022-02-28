@@ -5,15 +5,15 @@
 
 TEST_CASE("DB Schema", "[wallet,db]")
 {
-  db::Database db{std::filesystem::path(":memory:"), ""};
+  wallet::WalletDB db{std::filesystem::path(":memory:"), ""};
 
   SECTION("db schema creation succeeds")
   {
-    REQUIRE_NOTHROW(wallet::create_schema(db.db));
+    REQUIRE_NOTHROW(db.create_schema());
   }
 
   // will not throw if schema is already set up
-  REQUIRE_NOTHROW(wallet::create_schema(db.db));
+  REQUIRE_NOTHROW(db.create_schema());
 
   REQUIRE(db.db.tableExists("blocks"));
 
@@ -61,9 +61,9 @@ TEST_CASE("DB Schema", "[wallet,db]")
 
 TEST_CASE("DB Triggers", "[wallet,db]")
 {
-  db::Database db{std::filesystem::path(":memory:"), ""};
+  wallet::WalletDB db{std::filesystem::path(":memory:"), ""};
 
-  REQUIRE_NOTHROW(wallet::create_schema(db.db));
+  REQUIRE_NOTHROW(db.create_schema());
   REQUIRE(db.db.tableExists("blocks"));
 
   REQUIRE_NOTHROW(db.prepared_exec("INSERT INTO blocks VALUES(?,?,?,?);", 0, 0, "foo", 0));
