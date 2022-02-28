@@ -99,13 +99,13 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("get_balance", "getbalance"); }
 
-    struct request
+    struct REQUEST
     {
       uint32_t account_index;             // Return balance for this account.
       std::set<uint32_t> address_indices; // (Optional) Return balance detail for those subaddresses.
       bool all_accounts;                  // If true, return balance for all accounts, subaddr_indices and account_index are ignored
       bool strict;                        // If true, only return the balance for transactions that have been spent and are not pending (i.e. excluding any transactions sitting in the TX pool)
-    };
+    } request;
 
     struct per_subaddress_info
     {
@@ -141,11 +141,11 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("get_address", "getaddress"); }
 
-    struct request
+    struct REQUEST
     {
       uint32_t account_index;              // Get the wallet addresses for the specified account.
       std::vector<uint32_t> address_index; // (Optional) List of subaddresses to return from the aforementioned account.
-    };
+    } request;
 
     struct address_info
     {
@@ -170,10 +170,10 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("get_address_index"); }
 
-    struct request
+    struct REQUEST
     {
       std::string address; // (Sub)address to look for.
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -195,12 +195,12 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("create_address"); }
 
-    struct request
+    struct REQUEST
     {
       uint32_t account_index; // Create a new subaddress for this account.
       std::string label;      // (Optional) Label for the new subaddress.
       uint32_t    count;      // Number of addresses to create, defaults to 1.
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -217,11 +217,11 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("label_address"); }
 
-    struct request
+    struct REQUEST
     {
       cryptonote::subaddress_index index; // Major & minor address index
       std::string label;                  // Label for the address.
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -247,11 +247,11 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("get_accounts"); }
 
-    struct request
+    struct REQUEST
     {
       std::string tag;      // (Optional) Tag for filtering accounts. All accounts if empty, otherwise those accounts with this tag
       bool strict_balances; // If true, only return the balance for transactions that have been spent and are not pending (i.e. excluding any transactions sitting in the TX pool)
-    };
+    } request;
 
     struct subaddress_account_info
     {
@@ -279,10 +279,10 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("create_account"); }
 
-    struct request
+    struct REQUEST
     {
       std::string label; // (Optional) Label for the account.
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -299,11 +299,11 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("label_account"); }
 
-    struct request
+    struct REQUEST
     {
       uint32_t account_index; // Account index to set the label for.
       std::string label;      // Label for the account.
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -322,7 +322,7 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("get_account_tags"); }
 
-    struct request : EMPTY {};
+    struct REQUEST : EMPTY {} request;
 
     struct account_tag_info
     {
@@ -346,11 +346,11 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("tag_accounts"); }
 
-    struct request
+    struct REQUEST
     {
       std::string tag;             // Tag for the accounts.
       std::set<uint32_t> accounts; // Tag this list of accounts.
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -366,10 +366,10 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("untag_accounts"); }
 
-    struct request
+    struct REQUEST
     {
       std::set<uint32_t> accounts; // Remove tag from this list of accounts.
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -386,11 +386,11 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("set_account_tag_description"); }
 
-    struct request
+    struct REQUEST
     {
       std::string tag;         // Set a description for this tag.
       std::string description; // Description for the tag.
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -407,7 +407,7 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("get_height", "getheight"); }
 
-    struct request : EMPTY {};
+    struct REQUEST : EMPTY {} request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -417,7 +417,8 @@ namespace wallet::rpc {
   /// Inputs:
   ///
   /// - \p destinations -- Array of destinations to receive OXEN.
-  ///   - \p TODO: fields here
+  ///   - \p address -- destination address
+  ///   - \p amount -- destination amount, in atomic units
   /// - \p account_index -- (Optional) Transfer from this account index. (Defaults to 0)
   /// - \p subaddr_indices -- (Optional) Transfer from this set of subaddresses. (Defaults to 0)
   /// - \p priority -- Set a priority for the transaction. Accepted values are: 1 for unimportant or 5 for blink. (0 and 2-4 are accepted for backwards compatibility and are equivalent to 5)
@@ -442,11 +443,13 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("transfer"); }
 
-    struct request
+    using destination = std::pair<std::string, uint64_t>; // address, amount
+
+    struct REQUEST
     {
-      std::list<wallet::transfer_destination> destinations; // Array of destinations to receive OXEN.
+      std::vector<destination> destinations; // Array of destinations to receive OXEN.
       uint32_t account_index;                       // (Optional) Transfer from this account index. (Defaults to 0)
-      std::set<uint32_t> subaddr_indices;           // (Optional) Transfer from this set of subaddresses. (Defaults to 0)
+      std::vector<uint32_t> subaddr_indices;           // (Optional) Transfer from this set of subaddresses. (Defaults to 0)
       uint32_t priority;                            // Set a priority for the transaction. Accepted values are: 1 for unimportant or 5 for blink. (0 and 2-4 are accepted for backwards compatibility and are equivalent to 5)
       uint64_t unlock_time;                         // Number of blocks before the oxen can be spent (0 to use the default lock time).
       std::string payment_id;                       // (Optional) Random 64-character hex string to identify a transaction.
@@ -454,7 +457,7 @@ namespace wallet::rpc {
       bool do_not_relay;                            // (Optional) If true, the newly created transaction will not be relayed to the oxen network. (Defaults to false)
       bool get_tx_hex;                              // Return the transaction as hex string after sending. (Defaults to false)
       bool get_tx_metadata;                         // Return the metadata needed to relay the transaction. (Defaults to false)
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -488,7 +491,7 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("transfer_split"); }
 
-    struct request
+    struct REQUEST
     {
       std::list<wallet::transfer_destination> destinations; // Array of destinations to receive OXEN:
       uint32_t account_index;                       // (Optional) Transfer from this account index. (Defaults to 0)
@@ -500,7 +503,7 @@ namespace wallet::rpc {
       bool do_not_relay;                            // (Optional) If true, the newly created transaction will not be relayed to the oxen network. (Defaults to false)
       bool get_tx_hex;                              // Return the transactions as hex string after sending.
       bool get_tx_metadata;                         // Return list of transaction metadata needed to relay the transfer later.
-    };
+    } request;
   };
 
   //TODO: Confirm these parameters and descriptions even make sense...
@@ -553,11 +556,11 @@ namespace wallet::rpc {
       std::string extra;               // Data stored in the tx extra represented in hex.
     };
 
-    struct request
+    struct REQUEST
     {
       std::string unsigned_txset; // Set of unsigned tx returned by "transfer" or "transfer_split" methods.
       std::string multisig_txset; // Set of unsigned multisig txes returned by "transfer" or "transfer_split" methods
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -579,12 +582,12 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("sign_transfer"); }
 
-    struct request
+    struct REQUEST
     {
       std::string unsigned_txset; // Set of unsigned tx returned by "transfer" or "transfer_split" methods.
       bool export_raw;            // (Optional) If true, return the raw transaction data. (Defaults to false)
       bool get_tx_keys;           // (Optional) Return the transaction keys after sending.
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -601,10 +604,10 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("submit_transfer"); }
 
-    struct request
+    struct REQUEST
     {
       std::string tx_data_hex; // Set of signed tx returned by "sign_transfer".
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -631,13 +634,13 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("sweep_dust", "sweep_unmixable"); }
 
-    struct request
+    struct REQUEST
     {
       bool get_tx_keys;     // (Optional) Return the transaction keys after sending.
       bool do_not_relay;    // (Optional) If true, the newly created transaction will not be relayed to the oxen network. (Defaults to false)
       bool get_tx_hex;      // (Optional) Return the transactions as hex string after sending. (Defaults to false)
       bool get_tx_metadata; // (Optional) Return list of transaction metadata needed to relay the transfer later. (Defaults to false)
-    };
+    } request;
 
     struct key_list
     {
@@ -678,7 +681,7 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("sweep_all"); }
 
-    struct request
+    struct REQUEST
     {
       std::string address;                // Destination public address.
       uint32_t account_index;             // Sweep transactions from this account.
@@ -693,7 +696,7 @@ namespace wallet::rpc {
       bool do_not_relay;                  // (Optional) If true, do not relay this sweep transfer. (Defaults to false)
       bool get_tx_hex;                    // (Optional) return the transactions as hex encoded string. (Defaults to false)
       bool get_tx_metadata;               // (Optional) return the transaction metadata as a string. (Defaults to false)
-    };
+    } request;
 
     struct key_list
     {
@@ -731,7 +734,7 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("sweep_single"); }
 
-    struct request
+    struct REQUEST
     {
       std::string address;    // Destination public address.
       uint32_t priority;      // Set a priority for the transaction. Accepted values are: 1 for unimportant or 5 for blink. (0 and 2-4 are accepted for backwards compatibility and are equivalent to 5)
@@ -743,7 +746,7 @@ namespace wallet::rpc {
       bool do_not_relay;      // (Optional) If true, do not relay this sweep transfer. (Defaults to false)
       bool get_tx_hex;        // (Optional) return the transactions as hex encoded string. (Defaults to false)
       bool get_tx_metadata;   // (Optional) return the transaction metadata as a string. (Defaults to false)
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -761,11 +764,11 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("relay_tx"); }
 
-    struct request
+    struct REQUEST
     {
       std::string hex; // Transaction metadata returned from a transfer method with get_tx_metadata set to true.
       bool blink;      // (Optional): Set to true if this tx was constructed with a blink priority and should be submitted to the blink quorum.
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -780,7 +783,7 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("store"); }
 
-    struct request : EMPTY {};
+    struct REQUEST : EMPTY {} request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -821,10 +824,10 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("get_payments"); }
 
-    struct request
+    struct REQUEST
     {
       std::string payment_id; // Payment ID used to find the payments (16 characters hex).
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -848,11 +851,11 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("get_bulk_payments"); }
 
-    struct request
+    struct REQUEST
     {
       std::vector<std::string> payment_ids; // Payment IDs used to find the payments (16 characters hex).
       uint64_t min_block_height;            // The block height at which to start looking for payments.
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -897,12 +900,12 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("incoming_transfers"); }
 
-    struct request
+    struct REQUEST
     {
       std::string transfer_type;          // "all": all the transfers, "available": only transfers which are not yet spent, OR "unavailable": only transfers which are already spent.
       uint32_t account_index;             // (Optional) Return transfers for this account. (defaults to 0)
       std::set<uint32_t> subaddr_indices; // (Optional) Return transfers sent to these subaddresses.
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -919,10 +922,10 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("query_key"); }
 
-    struct request
+    struct REQUEST
     {
       std::string key_type; // Which key to retrieve: "mnemonic" - the mnemonic seed (older wallets do not have one) OR "view_key" - the view key
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -941,11 +944,11 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("make_integrated_address"); }
 
-    struct request
+    struct REQUEST
     {
       std::string standard_address; // (Optional, defaults to primary address) Destination public address.
       std::string payment_id;       // (Optional, defaults to a random ID) 16 characters hex encoded.
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -964,10 +967,10 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("split_integrated_address"); }
 
-    struct request
+    struct REQUEST
     {
       std::string integrated_address; //
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -982,7 +985,7 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("stop_wallet"); }
 
-    struct request : EMPTY {};
+    struct REQUEST : EMPTY {} request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -1001,10 +1004,10 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("rescan_blockchain"); }
 
-    struct request
+    struct REQUEST
     {
       bool hard; //
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -1020,11 +1023,11 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("set_tx_notes"); }
 
-    struct request
+    struct REQUEST
     {
       std::list<std::string> txids; // Transaction ids.
       std::list<std::string> notes; // Notes for the transactions.
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -1041,10 +1044,10 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("get_tx_notes"); }
 
-    struct request
+    struct REQUEST
     {
       std::list<std::string> txids; // Transaction ids.
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -1060,11 +1063,11 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("set_attribute"); }
 
-    struct request
+    struct REQUEST
     {
       std::string key;   // Attribute name.
       std::string value; // Attribute value.
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -1081,11 +1084,11 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("get_attribute"); }
 
-    struct request
+    struct REQUEST
     {
 
       std::string key; // Attribute name.
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -1102,10 +1105,10 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("get_tx_key"); }
 
-    struct request
+    struct REQUEST
     {
       std::string txid; // Transaction id.
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -1126,12 +1129,12 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("check_tx_key"); }
 
-    struct request
+    struct REQUEST
     {
       std::string txid;    // Transaction id.
       std::string tx_key;  // Transaction secret key.
       std::string address; // Destination public address of the transaction.
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -1150,12 +1153,12 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("get_tx_proof"); }
 
-    struct request
+    struct REQUEST
     {
       std::string txid;    // Transaction id.
       std::string address; // Destination public address of the transaction.
       std::string message; // (Optional) add a message to the signature to further authenticate the prooving process.
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -1178,13 +1181,13 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("check_tx_proof"); }
 
-    struct request
+    struct REQUEST
     {
       std::string txid;      // Transaction id.
       std::string address;   // Destination public address of the transaction.
       std::string message;   // (Optional) Should be the same message used in `get_tx_proof`.
       std::string signature; // Transaction signature to confirm.
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -1202,11 +1205,11 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("get_spend_proof"); }
 
-    struct request
+    struct REQUEST
     {
       std::string txid;    // Transaction id.
       std::string message; // (Optional) add a message to the signature to further authenticate the prooving process.
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -1225,12 +1228,12 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("check_spend_proof"); }
 
-    struct request
+    struct REQUEST
     {
       std::string txid;      // Transaction id.
       std::string message;   // (Optional) Should be the same message used in `get_spend_proof`.
       std::string signature; // Spend signature to confirm.
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -1250,13 +1253,13 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("get_reserve_proof"); }
 
-    struct request
+    struct REQUEST
     {
       bool all;               // Proves all wallet balance to be disposable.
       uint32_t account_index; // Specify the account from witch to prove reserve. (ignored if all is set to true)
       uint64_t amount;        // Amount (in atomic units) to prove the account has for reserve. (ignored if all is set to true)
       std::string message;    // (Optional) add a message to the signature to further authenticate the prooving process.
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -1277,12 +1280,12 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("check_reserve_proof"); }
 
-    struct request
+    struct REQUEST
     {
       std::string address;   // Public address of the wallet.
       std::string message;   // (Optional) Should be the same message used in get_reserve_proof.
       std::string signature; // Reserve signature to confirm.
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -1320,7 +1323,7 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("get_transfers"); }
 
-    struct request
+    struct REQUEST
     {
       bool in;                            // (Optional) Include incoming transfers.
       bool out;                           // (Optional) Include outgoing transfers.
@@ -1336,7 +1339,7 @@ namespace wallet::rpc {
       uint32_t account_index;             // (Optional) Index of the account to query for transfers. (defaults to 0)
       std::set<uint32_t> subaddr_indices; // (Optional) List of subaddress indices to query for transfers. (defaults to 0)
       bool all_accounts;                  // If true, return transfers for all accounts, subaddr_indices and account_index are ignored
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -1365,7 +1368,7 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("get_transfers_csv"); }
 
-    struct request : GET_TRANSFERS::request {};
+    struct REQUEST : GET_TRANSFERS::REQUEST {} request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -1386,11 +1389,11 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("get_transfer_by_txid"); }
 
-    struct request
+    struct REQUEST
     {
       std::string txid;       // Transaction ID used to find the transfer.
       uint32_t account_index; // (Optional) Index of the account to query for the transfer.
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -1409,12 +1412,12 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("sign"); }
 
-    struct request
+    struct REQUEST
     {
       std::string data; // Anything you need to sign.
       uint32_t account_index; // The account to use for signing
       uint32_t address_index; // The subaddress in the account to sign with
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -1433,12 +1436,12 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("verify"); }
 
-    struct request
+    struct REQUEST
     {
       std::string data;      // What should have been signed.
       std::string address;   // Public address of the wallet used to sign the data.
       std::string signature; // Signature generated by `sign` method.
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -1455,10 +1458,10 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("export_outputs"); }
 
-    struct request
+    struct REQUEST
     {
       bool all;
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -1487,7 +1490,7 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("export_transfers"); }
 
-    struct request
+    struct REQUEST
     {
       bool in = false;
       bool out = false;
@@ -1502,7 +1505,7 @@ namespace wallet::rpc {
       std::set<uint32_t> subaddr_indices;
       uint32_t account_index;
       bool all_accounts;
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -1519,10 +1522,10 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("import_outputs"); }
 
-    struct request
+    struct REQUEST
     {
       std::string outputs_data_hex; // Wallet outputs in hex format.
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -1542,10 +1545,10 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("export_key_images"); }
 
-    struct request
+    struct REQUEST
     {
       bool requested_only; // Default `false`.
-    };
+    } request;
 
     struct signed_key_image
     {
@@ -1579,11 +1582,11 @@ namespace wallet::rpc {
       std::string signature; // Transaction signature.
     };
 
-    struct request
+    struct REQUEST
     {
       uint32_t offset;
       std::vector<signed_key_image> signed_key_images;
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -1617,7 +1620,7 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("make_uri"); }
 
-    struct request: public uri_spec {};
+    struct REQUEST: public uri_spec {} request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -1636,10 +1639,10 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("parse_uri"); }
 
-    struct request
+    struct REQUEST
     {
       std::string uri; // This contains all the payment input information as a properly formatted payment URI.
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -1657,11 +1660,11 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("add_address_book"); }
 
-    struct request
+    struct REQUEST
     {
       std::string address;     // Public address of the entry.
       std::string description; // (Optional), defaults to "".
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -1680,14 +1683,14 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("edit_address_book"); }
 
-    struct request
+    struct REQUEST
     {
       uint64_t index;
       bool set_address;
       std::string address;
       bool set_description;
       std::string description;
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -1707,10 +1710,10 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("get_address_book"); }
 
-    struct request
+    struct REQUEST
     {
       std::list<uint64_t> entries; // Indices of the requested address book entries.
-    };
+    } request;
 
     struct entry
     {
@@ -1732,10 +1735,10 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("delete_address_book"); }
 
-    struct request
+    struct REQUEST
     {
       uint64_t index; // The index of the address book entry.
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -1748,7 +1751,7 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("rescan_spent"); }
 
-    struct request : EMPTY {};
+    struct REQUEST : EMPTY {} request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -1766,10 +1769,10 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("refresh"); }
 
-    struct request
+    struct REQUEST
     {
       uint64_t start_height; // (Optional) The block height from which to start refreshing.
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -1785,11 +1788,11 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("auto_refresh"); }
 
-    struct request
+    struct REQUEST
     {
       bool enable;
       uint32_t period; // seconds
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -1804,10 +1807,10 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("start_mining"); }
 
-    struct request
+    struct REQUEST
     {
       uint64_t    threads_count;        // Number of threads created for mining.
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -1820,7 +1823,7 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("stop_mining"); }
 
-    struct request : EMPTY {};
+    struct REQUEST : EMPTY {} request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -1836,7 +1839,7 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("get_languages"); }
 
-    struct request : EMPTY {};
+    struct REQUEST : EMPTY {} request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -1856,7 +1859,7 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("create_wallet"); }
 
-    struct request
+    struct REQUEST
     {
       std::string filename; // Set the wallet file name.
       std::string password; // (Optional) Set the password to protect the wallet.
@@ -1864,7 +1867,7 @@ namespace wallet::rpc {
       bool hardware_wallet; // Create this wallet from a connected hardware wallet.  (`language` will be ignored).
       std::string device_name; // When `hardware` is true, this specifies the hardware wallet device type (currently supported: "Ledger").  If omitted "Ledger" is used.
       std::optional<std::string> device_label; // Custom label to write to a `wallet.hwdev.txt`. Can be empty; omit the parameter entirely to not write a .hwdev.txt file at all.
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -1883,12 +1886,12 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("open_wallet"); }
 
-    struct request
+    struct REQUEST
     {
       std::string filename; // Wallet name stored in "--wallet-dir".
       std::string password; // The wallet password, set as "" if there's no password
       bool autosave_current; // (Optional: Default true): If a pre-existing wallet is open, save to disk before opening the new wallet.
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -1903,10 +1906,10 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("close_wallet"); }
 
-    struct request
+    struct REQUEST
     {
       bool autosave_current; // Save the wallet state on close
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -1922,11 +1925,11 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("change_wallet_password"); }
 
-    struct request
+    struct REQUEST
     {
       std::string old_password; // (Optional) Current wallet password, if defined.
       std::string new_password; // (Optional) New wallet password, if not blank.
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -1950,7 +1953,7 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("generate_from_keys"); }
 
-    struct request
+    struct REQUEST
     {
       uint64_t restore_height; // (Optional: Default 0) Height in which to start scanning the blockchain for transactions into and out of this Wallet.
       std::string filename;    // Set the name of the wallet.
@@ -1959,7 +1962,7 @@ namespace wallet::rpc {
       std::string viewkey;     // The private view key of the wallet.
       std::string password;    // Set password for Wallet.
       bool autosave_current;   // (Optional: Default true): If a pre-existing wallet is open, save to disk before opening the new wallet.
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -1985,7 +1988,7 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("restore_deterministic_wallet"); }
 
-    struct request
+    struct REQUEST
     {
       uint64_t restore_height; // Height in which to start scanning the blockchain for transactions into and out of this Wallet.
       std::string filename;    // Set the name of the Wallet.
@@ -1994,7 +1997,7 @@ namespace wallet::rpc {
       std::string password;    // Set password for Wallet.
       std::string language;    // Set language for the wallet.
       bool autosave_current;   // (Optional: Default true): If a pre-existing wallet is open, save to disk before opening the new wallet.
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -2012,7 +2015,7 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("is_multisig"); }
 
-    struct request : EMPTY {};
+    struct REQUEST : EMPTY {} request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -2027,7 +2030,7 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("prepare_multisig"); }
 
-    struct request : EMPTY {};
+    struct REQUEST : EMPTY {} request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -2047,12 +2050,12 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("make_multisig"); }
 
-    struct request
+    struct REQUEST
     {
       std::vector<std::string> multisig_info; // List of multisig string from peers.
       uint32_t threshold;                     // Amount of signatures needed to sign a transfer. Must be less or equal than the amount of signature in `multisig_info`.
       std::string password;                   // Wallet password.
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -2067,7 +2070,7 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("export_multisig_info"); }
 
-    struct request : EMPTY {};
+    struct REQUEST : EMPTY {} request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -2084,10 +2087,10 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("import_multisig_info"); }
 
-    struct request
+    struct REQUEST
     {
       std::vector<std::string> info; // List of multisig info in hex format from other participants.
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -2105,11 +2108,11 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("finalize_multisig"); }
 
-    struct request
+    struct REQUEST
     {
       std::string password;                   // Wallet password.
       std::vector<std::string> multisig_info; // List of multisig string from peers.
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -2128,11 +2131,11 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("exchange_multisig_keys"); }
 
-    struct request
+    struct REQUEST
     {
       std::string password;                   // Wallet password.
       std::vector<std::string> multisig_info; // List of multisig string from peers.
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -2150,10 +2153,10 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("sign_multisig"); }
 
-    struct request
+    struct REQUEST
     {
       std::string tx_data_hex; // Multisig transaction in hex format, as returned by transfer under `multisig_txset`.
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -2170,10 +2173,10 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("submit_multisig"); }
 
-    struct request
+    struct REQUEST
     {
       std::string tx_data_hex; // Multisig transaction in hex format, as returned by sign_multisig under tx_data_hex.
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -2188,7 +2191,7 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("get_version"); }
 
-    struct request : EMPTY {};
+    struct REQUEST : EMPTY {} request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -2220,7 +2223,7 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("stake"); }
 
-    struct request
+    struct REQUEST
     {
       std::string        destination;      // Primary Public address that the rewards will go to.
       uint64_t           amount;           // Amount of Loki to stake in atomic units.
@@ -2231,7 +2234,7 @@ namespace wallet::rpc {
       bool               do_not_relay;     // (Optional) If true, the newly created transaction will not be relayed to the oxen network. (Defaults to false)
       bool               get_tx_hex;       // Return the transaction as hex string after sending (Defaults to false)
       bool               get_tx_metadata;  // Return the metadata needed to relay the transaction. (Defaults to false)
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -2259,14 +2262,14 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("register_service_node"); }
 
-    struct request
+    struct REQUEST
     {
       std::string register_service_node_str; // String supplied by the prepare_registration command.
       bool        get_tx_key;                // (Optional) Return the transaction key after sending.
       bool        do_not_relay;              // (Optional) If true, the newly created transaction will not be relayed to the oxen network. (Defaults to false)
       bool        get_tx_hex;                // Return the transaction as hex string after sending (Defaults to false)
       bool        get_tx_metadata;           // Return the metadata needed to relay the transaction. (Defaults to false)
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -2284,7 +2287,7 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("request_stake_unlock"); }
 
-    struct request
+    struct REQUEST
     {
       std::string service_node_key; // Service Node Public Key.
     };
@@ -2305,7 +2308,7 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("can_request_stake_unlock"); }
 
-    struct request
+    struct REQUEST
     {
       std::string service_node_key; // Service node public address.
     };
@@ -2331,12 +2334,12 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("validate_address"); }
 
-    struct request
+    struct REQUEST
     {
       std::string address;  // Address to check.
       bool any_net_type;    // ???
       bool allow_openalias; // ???
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -2357,7 +2360,7 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("set_daemon"); }
 
-    struct request
+    struct REQUEST
     {
       std::string address;              // The remote url of the daemon.
       std::string proxy;                // Optional proxy to use for connection. E.g. socks4a://hostname:port for a SOCKS proxy.
@@ -2366,7 +2369,7 @@ namespace wallet::rpc {
       std::string ssl_certificate_path; // HTTPS client authentication: path to certificate.  Must use an address starting with https://
       std::string ssl_ca_file;          // Path to CA bundle to use for HTTPS server certificate verification instead of system CA.  Requires an https:// address.
       bool ssl_allow_any_cert;          // Make HTTPS insecure: disable HTTPS certificate verification when using an https:// address.
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -2381,10 +2384,10 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("set_log_level"); }
 
-    struct request
+    struct REQUEST
     {
       int8_t level; // ???
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -2401,10 +2404,10 @@ namespace wallet::rpc {
   {
     static constexpr auto names() { return NAMES("set_log_categories"); }
 
-    struct request
+    struct REQUEST
     {
       std::string categories; // ???
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -2458,7 +2461,7 @@ When specifying owners, either a wallet (sub)address or standard ed25519 public 
 
 For more information on updating and signing see the ONS_UPDATE_MAPPING documentation.)";
 
-    struct request
+    struct REQUEST
     {
       std::string        type;            // The mapping type: "session", "lokinet", "lokinet_2y", "lokinet_5y", "lokinet_10y", "wallet".
       std::string        owner;           // (Optional): The ed25519 public key or wallet address that has authority to update the mapping.
@@ -2473,7 +2476,7 @@ For more information on updating and signing see the ONS_UPDATE_MAPPING document
       bool               do_not_relay;    // (Optional) If true, the newly created transaction will not be relayed to the oxen network. (Defaults to false)
       bool               get_tx_hex;      // Return the transaction as hex string after sending (Defaults to false)
       bool               get_tx_metadata; // Return the metadata needed to relay the transaction. (Defaults to false)
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -2513,7 +2516,7 @@ R"(Renews a Loki Name System lokinet mapping by adding to the existing expiry ti
 
 The renewal can be for 1, 2, 5, or 10 years by specifying a `type` value of "lokinet_2y", "lokinet_10y", etc.)";
 
-    struct request
+    struct REQUEST
     {
       std::string        type;      // The mapping type, "lokinet" (1-year), or "lokinet_2y", "lokinet_5y", "lokinet_10y" for multi-year registrations.
       std::string        name;      // The name to update
@@ -2525,7 +2528,7 @@ The renewal can be for 1, 2, 5, or 10 years by specifying a `type` value of "lok
       bool               do_not_relay;     // (Optional) If true, the newly created transaction will not be relayed to the oxen network. (Defaults to false)
       bool               get_tx_hex;       // Return the transaction as hex string after sending (Defaults to false)
       bool               get_tx_metadata;  // Return the metadata needed to relay the transaction. (Defaults to false)
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -2574,7 +2577,7 @@ The existing owner (wallet address or ed25519 public key) of the mapping must be
 
 If signing is performed externally then you must first encrypt the `value` (if being updated), then sign a BLAKE2b hash of {encryptedvalue || owner || backup_owner || txid} (where txid is the most recent ONS update or registration transaction of this mapping; each of encrypted/owner/backup are empty strings if not being updated). For a wallet owner this is signed using the owning wallet's spend key; for a Ed25519 key this is a standard Ed25519 signature.)";
 
-    struct request
+    struct REQUEST
     {
       std::string        type;      // The mapping type, "session", "lokinet", or "wallet".
       std::string        name;      // The name to update via Loki Name Service
@@ -2591,7 +2594,7 @@ If signing is performed externally then you must first encrypt the `value` (if b
       bool               get_tx_hex;       // Return the transaction as hex string after sending (Defaults to false)
       bool               get_tx_metadata;  // Return the metadata needed to relay the transaction. (Defaults to false)
 
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -2620,7 +2623,7 @@ R"(Generate the signature necessary for updating the requested record using the 
 
 This command is only required if the open wallet is one of the owners of a ONS record but wants the update transaction to occur via another non-owning wallet. By default, if no signature is specified to the update transaction, the open wallet is assumed the owner and it's active [sub]address's spend key will automatically be used.)";
 
-    struct request
+    struct REQUEST
     {
       std::string type;  // The mapping type, currently we support "session", "lokinet" and "wallet" mappings.
       std::string name;  // The desired name to update via Oxen Name Service
@@ -2628,7 +2631,7 @@ This command is only required if the open wallet is one of the owners of a ONS r
       std::string owner;     // (Optional): The new owner of the mapping. If not specified or given the empty string "", then the mapping's owner remains unchanged.
       std::string backup_owner; // (Optional): The new backup owner of the mapping. If not specified or given the empty string "", then the mapping's backup owner remains unchanged.
       uint32_t account_index; // (Optional) Use this wallet's subaddress account for generating the signature
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -2646,11 +2649,11 @@ This command is only required if the open wallet is one of the owners of a ONS r
   {
     static constexpr auto names() { return NAMES("ons_hash_name"); }
 
-    struct request
+    struct REQUEST
     {
       std::string type; // The mapping type, "session", "lokinet" or "wallet".
       std::string name; // The desired name to hash
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -2695,10 +2698,10 @@ This command is only required if the open wallet is one of the owners of a ONS r
       std::optional<bool> expired;               // Indicates whether the record has expired. Only included in the response if "include_expired" is specified in the request.
       std::string txid;                          // The txid of the mapping's most recent update or purchase.
     };
-    struct request {
+    struct REQUEST {
       bool decrypt;         // If true (default false) then also decrypt and include the `value` field
       bool include_expired; // If true (default false) then also include expired records
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -2722,10 +2725,10 @@ This command is only required if the open wallet is one of the owners of a ONS r
       std::string name; // The (unhashed) name of the record
     };
 
-    struct request
+    struct REQUEST
     {
       std::vector<record> names; // List of names to add to the cache
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -2744,12 +2747,12 @@ This command is only required if the open wallet is one of the owners of a ONS r
   {
     static constexpr auto names() { return NAMES("ons_encrypt_value"); }
 
-    struct request
+    struct REQUEST
     {
       std::string name;            // The ONS name with which to encrypt the value.
       std::string type;            // The mapping type: "session" or "lokinet".
       std::string value;           // The value to be encrypted.
-    };
+    } request;
   };
 
   OXEN_RPC_DOC_INTROSPECT
@@ -2768,12 +2771,12 @@ This command is only required if the open wallet is one of the owners of a ONS r
   {
     static constexpr auto names() { return NAMES("ons_decrypt_value"); }
 
-    struct request
+    struct REQUEST
     {
       std::string name;            // The ONS name of the given encrypted value.
       std::string type;            // The mapping type: "session" or "lokinet".
       std::string encrypted_value; // The encrypted value represented in hex.
-    };
+    } request;
   };
 
   /// List of all supported rpc command structs to allow compile-time enumeration of all supported
