@@ -22,6 +22,7 @@ namespace wallet
     int64_t spent_time;
 
     crypto::hash tx_hash;
+    crypto::public_key tx_public_key;
     crypto::public_key key;
     crypto::key_derivation derivation;
     rct::key rct_mask;

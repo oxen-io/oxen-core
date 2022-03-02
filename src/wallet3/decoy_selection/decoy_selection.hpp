@@ -13,7 +13,7 @@ namespace wallet
   class DecoySelector
   {
    public:
-    std::vector<int64_t>
+    virtual std::vector<int64_t>
     operator()(const Output& selected_output);
 
     DecoySelector(int64_t min, int64_t max) : min_output_index(min), max_output_index(max) {};

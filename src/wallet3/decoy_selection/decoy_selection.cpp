@@ -5,7 +5,6 @@ namespace wallet
   std::vector<int64_t>
   DecoySelector::operator()(const Output& selected_output)
   {
-    std::vector<Decoy> return_decoys;
     const size_t n_decoys = 13;
 
     // Select some random outputs according to gamma distribution

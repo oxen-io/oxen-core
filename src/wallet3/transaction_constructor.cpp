@@ -2,15 +2,19 @@
 #include "pending_transaction.hpp"
 #include "decoy.hpp"
 #include "output_selection/output_selection.hpp"
+<<<<<<< HEAD
 #include "decoy_selection/decoy_selection.hpp"
 #include "db_schema.hpp"
+=======
+#include <sqlitedb/database.hpp>
+>>>>>>> Loads in real data to test if the transaction is signing correctly
 
 namespace wallet
 {
   // create_transaction will create a vanilla spend transaction without any special features.
   PendingTransaction
   TransactionConstructor::create_transaction(
-      const std::vector<cryptonote::tx_destination_entry>& recipients) const
+      const std::vector<cryptonote::tx_destination_entry>& recipients)
   {
     PendingTransaction new_tx(recipients);
     new_tx.fee_per_byte = fee_per_byte;
@@ -65,7 +69,7 @@ namespace wallet
   // details necessary for a ring signature from teh daemon and add them to the
   // transaction ready to sign at a later point in time.
   void
-  TransactionConstructor::select_and_fetch_decoys(PendingTransaction& ptx) const
+  TransactionConstructor::select_and_fetch_decoys(PendingTransaction& ptx)
   {
     ptx.decoys = {};
     // This initialises the decoys to be selected from global_output_index= 0 to global_output_index = highest_output_index
@@ -74,7 +78,7 @@ namespace wallet
     std::vector<int64_t> indexes;
     for (const auto& output : ptx.chosen_outputs)
     {
-      indexes = decoy_selection(output);
+      indexes = (*decoy_selector)(output);
       auto decoy_promise = daemon->fetch_decoys(indexes);
       decoy_promise.wait();
       ptx.decoys.emplace_back(decoy_promise.get());
@@ -82,7 +86,7 @@ namespace wallet
   }
 
   void
-  TransactionConstructor::select_inputs_and_finalise(PendingTransaction& ptx) const
+  TransactionConstructor::select_inputs_and_finalise(PendingTransaction& ptx)
   {
     while (true)
     {

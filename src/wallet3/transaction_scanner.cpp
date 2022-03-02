@@ -75,6 +75,7 @@ namespace wallet
         o.output_index = output_index;
         o.global_index = tx.global_indices[output_index];
         o.tx_hash = tx.hash;
+        o.tx_public_key = tx_public_keys[0];
         o.block_height = height;
         o.block_time = timestamp;
         o.unlock_time = tx.tx.get_unlock_time(output_index);
