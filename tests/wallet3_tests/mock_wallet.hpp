@@ -47,6 +47,7 @@ class MockWallet : public Wallet
       o.block_height = height;
       o.subaddress_index = cryptonote::subaddress_index{0,0};
       o.key_image = debug_random_filled<crypto::key_image>(height);
+      o.tx_public_key = debug_random_filled<crypto::public_key>(height);
       dummy_outputs.push_back(o);
 
       auto db_tx = db->db_transaction();

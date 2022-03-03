@@ -35,7 +35,7 @@ TEST_CASE("DB Schema", "[wallet,db]")
   SECTION("Insert and fetch transaction")
   {
     REQUIRE_NOTHROW(db.prepared_exec("INSERT INTO blocks VALUES(?,?,?,?);", 0, 0, "foo", 0));
-    REQUIRE_NOTHROW(db.prepared_exec("INSERT INTO transactions VALUES(?,?,?);", 42, 0, "footx"));
+    REQUIRE_NOTHROW(db.prepared_exec("INSERT INTO transactions VALUES(?,?,?,?);", 42, 0, "footx", "barx"));
 
     std::tuple<std::string, int> res;
     REQUIRE_NOTHROW(res = db.prepared_get<std::string, int>("SELECT hash,block FROM transactions WHERE id = 42"));
@@ -67,7 +67,7 @@ TEST_CASE("DB Triggers", "[wallet,db]")
   REQUIRE(db.db.tableExists("blocks"));
 
   REQUIRE_NOTHROW(db.prepared_exec("INSERT INTO blocks VALUES(?,?,?,?);", 0, 0, "foo", 0));
-  REQUIRE_NOTHROW(db.prepared_exec("INSERT INTO transactions VALUES(?,?,?);", 0, 0, "footx"));
+  REQUIRE_NOTHROW(db.prepared_exec("INSERT INTO transactions VALUES(?,?,?,?);", 0, 0, "footx", "barx"));
   REQUIRE_NOTHROW(db.prepared_exec("INSERT INTO key_images VALUES(?,?);", 0, "key_image"));
   REQUIRE_NOTHROW(db.prepared_exec("INSERT INTO outputs VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?);",
         0, 42, 0, 0, 0, 0, false, 0, 0, "out_key", "rct_mask", 0, 0, 0));
@@ -79,7 +79,7 @@ TEST_CASE("DB Triggers", "[wallet,db]")
   }
 
   REQUIRE_NOTHROW(db.prepared_exec("INSERT INTO blocks VALUES(?,?,?,?);", 1, 0, "bar", 0));
-  REQUIRE_NOTHROW(db.prepared_exec("INSERT INTO transactions VALUES(?,?,?);", 1, 1, "bartx"));
+  REQUIRE_NOTHROW(db.prepared_exec("INSERT INTO transactions VALUES(?,?,?,?);", 1, 1, "bartx","barx"));
   REQUIRE_NOTHROW(db.prepared_exec("INSERT INTO spends VALUES(?,?,?,?);", 0, 0, 1, 1));
 
   SECTION("Confirm spend insert triggers")
