@@ -131,7 +131,6 @@ namespace wallet
   crypto::public_key
   Keyring::generate_output_ephemeral_keys(const crypto::secret_key& tx_key, const cryptonote::tx_destination_entry& dst_entr, const size_t output_index, std::vector<rct::key>& amount_keys)
   {
-            
     crypto::public_key out_eph_public_key;
     cryptonote::account_keys sender_account_keys{};
     sender_account_keys.m_view_secret_key = view_private_key;
@@ -155,7 +154,34 @@ namespace wallet
         additional_tx_public_keys, // std::vector<crypto::public_key> public keys of additional keys. Return parameter?
         amount_keys, // std::vector<rct::key> keys that committing to the amount. Device APPENDS to the vector, is essentially a return parameter
         out_eph_public_key); // crypto::public_key -> Return parameter
-                             //
+    return out_eph_public_key;
+  }
+
+  crypto::public_key
+  Keyring::generate_change_address_ephemeral_keys(const crypto::secret_key& tx_key, const cryptonote::tx_destination_entry& dst_entr, const size_t output_index, std::vector<rct::key>& amount_keys)
+  {
+    crypto::public_key out_eph_public_key;
+    cryptonote::account_keys sender_account_keys{};
+    sender_account_keys.m_view_secret_key = view_private_key;
+    const auto tx_key_pub = secret_tx_key_to_public_tx_key(tx_key);
+    bool this_dst_is_change_addr = true;
+    bool need_additional_txkeys = false;
+    std::vector<crypto::secret_key> additional_tx_keys{};
+    std::vector<crypto::public_key> additional_tx_public_keys{};
+    key_device.generate_output_ephemeral_keys(
+        static_cast<uint16_t>(cryptonote::txversion::v4_tx_types), // size_t -> should be 4?
+        this_dst_is_change_addr, // bool -> found change. Return parameter?
+        sender_account_keys, // cryptonote::account_keys -> only uses view key i believe
+        tx_key_pub, // crypto::public_key -> public key of the transaction
+        tx_key, // crypto::secret_key -> secret key of the transaction
+        dst_entr, // cryptonote::tx_destination_entry -> data of the transaction
+        dst_entr, // std::optional<cryptonote::tx_destination_entry> -> it will check if the data is the change because the one time address is different
+        output_index, // position the output is in the transaction, concatenated to generate consistently
+        need_additional_txkeys, // bool -> what are additional_txkeys ffs
+        additional_tx_keys, // std::vector<crypto::secret_key> more additional tx keys, this time secret keys
+        additional_tx_public_keys, // std::vector<crypto::public_key> public keys of additional keys. Return parameter?
+        amount_keys, // std::vector<rct::key> keys that committing to the amount. Device APPENDS to the vector, is essentially a return parameter
+        out_eph_public_key); // crypto::public_key -> Return parameter
     return out_eph_public_key;
   }
 
@@ -256,9 +282,9 @@ namespace wallet
     {
       //amount_keys is a return parameter here, generate_output_ephemeral keys appends to the vector as it goes
       crypto::public_key out_eph_public_key = generate_output_ephemeral_keys(tx_key, recipient, i, amount_keys);
-      cryptonote::tx_out out;
+      cryptonote::tx_out out{};
       out.amount = recipient.amount;
-      cryptonote::txout_to_key tk;
+      cryptonote::txout_to_key tk{};
       tk.key = out_eph_public_key;
       out.target = tk;
       dest_keys.push_back(rct::pk2rct(out_eph_public_key));
@@ -268,6 +294,18 @@ namespace wallet
       // also a change address needs to be in here
       i++;
     }
+
+    // Generate one time destination key for change address (Output Ephemeral Key)
+    crypto::public_key change_out_eph_public_key = generate_change_address_ephemeral_keys(tx_key, ptx.change, i, amount_keys);
+    cryptonote::tx_out change_out{};
+    change_out.amount = ptx.change.amount;
+    cryptonote::txout_to_key change_tk{};
+    change_tk.key = change_out_eph_public_key;
+    change_out.target = change_tk;
+    dest_keys.push_back(rct::pk2rct(change_out_eph_public_key));
+    outamounts.push_back(ptx.change.amount);
+    amount_out += ptx.change.amount;
+
 
     crypto::hash tx_prefix_hash = get_transaction_prefix_hash(ptx.tx);
 

@@ -69,7 +69,7 @@ namespace wallet
 
           CREATE TABLE outputs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            amount INTEGER NOT NULL,
+            amount BIGINT NOT NULL,
             output_index INTEGER NOT NULL,
             global_index INTEGER NOT NULL,
             unlock_time INTEGER NOT NULL,

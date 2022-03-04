@@ -2,12 +2,8 @@
 #include "pending_transaction.hpp"
 #include "decoy.hpp"
 #include "output_selection/output_selection.hpp"
-<<<<<<< HEAD
 #include "decoy_selection/decoy_selection.hpp"
 #include "db_schema.hpp"
-=======
-#include <sqlitedb/database.hpp>
->>>>>>> Loads in real data to test if the transaction is signing correctly
 
 namespace wallet
 {
@@ -19,6 +15,7 @@ namespace wallet
     PendingTransaction new_tx(recipients);
     new_tx.fee_per_byte = fee_per_byte;
     new_tx.fee_per_output = fee_per_output;
+    new_tx.change = cryptonote::tx_destination_entry(0, senders_address.address, senders_address.is_subaddress);
     select_inputs_and_finalise(new_tx);
     return new_tx;
   }

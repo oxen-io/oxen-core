@@ -28,8 +28,9 @@ int main(void)
 
   auto oxenmq = std::make_shared<oxenmq::OxenMQ>();
   auto comms = std::make_shared<wallet::DefaultDaemonComms>(oxenmq);
-  auto ctor = std::make_shared<wallet::TransactionConstructor>(nullptr, comms);
-
+  cryptonote::address_parse_info senders_address{};
+  cryptonote::get_account_address_from_str(senders_address, cryptonote::TESTNET, "T6Td9RNPPsMMApoxc59GLiVDS9a82FL2cNEwdMUCGWDLYTLv7e7rvi99aWdF4M2V1zN7q1Vdf1mage87SJ9gcgSu1wJZu3rFs");
+  auto ctor = std::make_shared<wallet::TransactionConstructor>(nullptr, comms, senders_address);
   auto wallet = wallet::Wallet::create(oxenmq, keyring, ctor, comms, ":memory:", "");
 
   std::this_thread::sleep_for(2s);

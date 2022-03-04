@@ -82,6 +82,13 @@ namespace wallet
         const size_t output_index,
         std::vector<rct::key>& amount_keys);
 
+    virtual crypto::public_key
+    generate_change_address_ephemeral_keys(
+        const crypto::secret_key& tx_key,
+        const cryptonote::tx_destination_entry& dst_entr,
+        const size_t output_index,
+        std::vector<rct::key>& amount_keys);
+
     virtual crypto::secret_key
     derive_transaction_secret_key(
         const crypto::key_derivation& key_derivation,

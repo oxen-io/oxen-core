@@ -9,8 +9,8 @@ namespace wallet
     int64_t wallet_balance = std::accumulate(
         available_outputs.begin(),
         available_outputs.end(),
-        0,
-        [](const auto& accumulator, const auto& x) { return accumulator + x.amount; });
+        int64_t{0},
+        [](const int64_t& accumulator, const auto& x) { return accumulator + x.amount; });
     int64_t fee = 0;
     auto pos = fee_map.find(1);
     if (pos == fee_map.end()) {
@@ -19,7 +19,13 @@ namespace wallet
         fee = pos->second;
     }
     if (wallet_balance < amount + fee)
+    {
+      std::cout << __FILE__ << ":" << __LINE__ << " (" << __func__ << ") TODO sean remove this - wallet balance: " << wallet_balance << " - debug\n";
+      std::cout << __FILE__ << ":" << __LINE__ << " (" << __func__ << ") TODO sean remove this - transaction total: " << amount + fee<< " - debug\n";
+      std::cout << __FILE__ << ":" << __LINE__ << " (" << __func__ << ") TODO sean remove this - amount: " << amount << " - debug\n";
+      std::cout << __FILE__ << ":" << __LINE__ << " (" << __func__ << ") TODO sean remove this - fee: " << fee << " - debug\n";
       throw std::runtime_error("Insufficient Wallet Balance");
+    }
 
     // Prefer a single output if suitable
     std::vector<Output> outputs_bigger_than_amount{};

@@ -22,9 +22,5 @@ namespace wallet
     std::string txid; 
     bool unlocked; 
     int64_t global_index;
-
-
-
-
   };
 }  // namespace wallet

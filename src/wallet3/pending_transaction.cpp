@@ -7,8 +7,6 @@ namespace wallet
   PendingTransaction::PendingTransaction(const std::vector<cryptonote::tx_destination_entry>& new_recipients)
       : recipients(new_recipients)
   {
-    // TODO sean address of change needs to be creator
-    change = cryptonote::tx_destination_entry{};
     int64_t sum_recipient_amounts = 0;
     for (const auto& recipient : new_recipients)
     {

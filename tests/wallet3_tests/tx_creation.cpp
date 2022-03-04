@@ -18,7 +18,9 @@ TEST_CASE("Transaction Creation", "[wallet,tx]")
 {
   auto wallet = wallet::MockWallet();
   auto comms = std::make_shared<wallet::MockDaemonComms>();
-  auto ctor = wallet::TransactionConstructor(wallet.get_db(), comms);
+  cryptonote::address_parse_info senders_address{};
+  cryptonote::get_account_address_from_str(senders_address, cryptonote::TESTNET, "T6Td9RNPPsMMApoxc59GLiVDS9a82FL2cNEwdMUCGWDLYTLv7e7rvi99aWdF4M2V1zN7q1Vdf1mage87SJ9gcgSu1wJZu3rFs");
+  auto ctor = wallet::TransactionConstructor(wallet.get_db(), comms, senders_address);
   ctor.fee_per_byte = 0;
   ctor.fee_per_output  = 0;
   SECTION("Expect Fail if database is empty")
@@ -116,6 +118,10 @@ TEST_CASE("Transaction Creation", "[wallet,tx]")
     for (const auto& decoys : ptx.decoys)
       REQUIRE(decoys.size() == 13);
   }
+}
+
+TEST_CASE("Transaction Signing", "[wallet,tx]")
+{
 
   SECTION("Creates a successful transaction then signs using the keyring successfully")
   {
@@ -123,18 +129,20 @@ TEST_CASE("Transaction Creation", "[wallet,tx]")
     auto wallet_with_valid_inputs = wallet::MockWallet();
 
     auto comms_with_decoys = std::make_shared<wallet::MockDaemonComms>();
-    comms_with_decoys->add_decoy("37d660205a18fb91debe5b73911e30ed2d353a0b611e89cf20a110653b3d39377ad740731e5b26a0f1e87f3fc0702865196b9a58dccf7d7fc47e721f6a9837b0", 894631);
-    comms_with_decoys->add_decoy("0c86e47e52bed3925cd9dc56052279af96e26b18741bae79ae86e019bac0fdc07ad740731e5b26a0f1e87f3fc0702865196b9a58dccf7d7fc47e721f6a9837b0", 1038224);
-    comms_with_decoys->add_decoy("a44418c0eaf4f295092b5be2bdfc6a8a7e78d57e2fe3f1a0af267a8a2a451fd17ad740731e5b26a0f1e87f3fc0702865196b9a58dccf7d7fc47e721f6a9837b0", 1049882);
-    comms_with_decoys->add_decoy("590bcaf258e68c79620e9a0b62d81ff2b4cbd19001d4764b76f17d8fceeff8e77ad740731e5b26a0f1e87f3fc0702865196b9a58dccf7d7fc47e721f6a9837b0", 1093414);
-    comms_with_decoys->add_decoy("460f88c45744fc4b78f7df046a9bf254194fceac1074dc9674a54ee41d4baf477ad740731e5b26a0f1e87f3fc0702865196b9a58dccf7d7fc47e721f6a9837b0", 1093914);
-    comms_with_decoys->add_decoy("f075807f61c902e65b2b0f6ea817699c8dd291b060284a77c890586632da42637ad740731e5b26a0f1e87f3fc0702865196b9a58dccf7d7fc47e721f6a9837b0", 1094315);
-    comms_with_decoys->add_decoy("87b2d9b0550a72781b75d190096ffd7e9a5bb15b9f22652f042135fbf7a353187ad740731e5b26a0f1e87f3fc0702865196b9a58dccf7d7fc47e721f6a9837b0", 1094323);
-    comms_with_decoys->add_decoy("5e549f2f3f67cc369cb4387fdee18c5bfde2917e4157aee2cb9129b02f3aafe07ad740731e5b26a0f1e87f3fc0702865196b9a58dccf7d7fc47e721f6a9837b0", 1094368);
-    comms_with_decoys->add_decoy("48a8ff99d1bb51271d2fc3bfbf6af754dc16835a7ba1993ddeadbe1a77efd15b7ad740731e5b26a0f1e87f3fc0702865196b9a58dccf7d7fc47e721f6a9837b0", 1094881);
-    comms_with_decoys->add_decoy("02c6cf65059a02844ca0e7442687d704a0806f055a1e8e0032cd07e1d08885b27ad5bc62d68270ae3e5879ed425603e6b1534328f4419ad84b8c8077f9221721", 1094887); // Real Output
+    comms_with_decoys->add_decoy(894631, "37d660205a18fb91debe5b73911e30ed2d353a0b611e89cf20a110653b3d3937", "7ad740731e5b26a0f1e87f3fc0702865196b9a58dccf7d7fc47e721f6a9837b0");
+    comms_with_decoys->add_decoy(1038224, "0c86e47e52bed3925cd9dc56052279af96e26b18741bae79ae86e019bac0fdc0", "7ad740731e5b26a0f1e87f3fc0702865196b9a58dccf7d7fc47e721f6a9837b0");
+    comms_with_decoys->add_decoy(1049882, "a44418c0eaf4f295092b5be2bdfc6a8a7e78d57e2fe3f1a0af267a8a2a451fd1", "7ad740731e5b26a0f1e87f3fc0702865196b9a58dccf7d7fc47e721f6a9837b0");
+    comms_with_decoys->add_decoy(1093414, "590bcaf258e68c79620e9a0b62d81ff2b4cbd19001d4764b76f17d8fceeff8e7", "7ad740731e5b26a0f1e87f3fc0702865196b9a58dccf7d7fc47e721f6a9837b0");
+    comms_with_decoys->add_decoy(1093914, "460f88c45744fc4b78f7df046a9bf254194fceac1074dc9674a54ee41d4baf47", "7ad740731e5b26a0f1e87f3fc0702865196b9a58dccf7d7fc47e721f6a9837b0");
+    comms_with_decoys->add_decoy(1094315, "f075807f61c902e65b2b0f6ea817699c8dd291b060284a77c890586632da4263", "7ad740731e5b26a0f1e87f3fc0702865196b9a58dccf7d7fc47e721f6a9837b0");
+    comms_with_decoys->add_decoy(1094323, "87b2d9b0550a72781b75d190096ffd7e9a5bb15b9f22652f042135fbf7a35318", "7ad740731e5b26a0f1e87f3fc0702865196b9a58dccf7d7fc47e721f6a9837b0");
+    comms_with_decoys->add_decoy(1094368, "5e549f2f3f67cc369cb4387fdee18c5bfde2917e4157aee2cb9129b02f3aafe0", "7ad740731e5b26a0f1e87f3fc0702865196b9a58dccf7d7fc47e721f6a9837b0");
+    comms_with_decoys->add_decoy(1094881, "48a8ff99d1bb51271d2fc3bfbf6af754dc16835a7ba1993ddeadbe1a77efd15b", "7ad740731e5b26a0f1e87f3fc0702865196b9a58dccf7d7fc47e721f6a9837b0");
+    comms_with_decoys->add_decoy(1094887, "02c6cf65059a02844ca0e7442687d704a0806f055a1e8e0032cd07e1d08885b2", "7ad5bc62d68270ae3e5879ed425603e6b1534328f4419ad84b8c8077f9221721"); // Real Output
 
-    auto ctor_for_signing = wallet::TransactionConstructor(wallet_with_valid_inputs.get_db(), comms_with_decoys);
+    cryptonote::address_parse_info senders_address{};
+    cryptonote::get_account_address_from_str(senders_address, cryptonote::TESTNET, "T6Td9RNPPsMMApoxc59GLiVDS9a82FL2cNEwdMUCGWDLYTLv7e7rvi99aWdF4M2V1zN7q1Vdf1mage87SJ9gcgSu1wJZu3rFs");
+    auto ctor_for_signing = wallet::TransactionConstructor(wallet_with_valid_inputs.get_db(), comms_with_decoys, senders_address);
 
     auto decoy_selector = std::make_unique<wallet::MockDecoySelector>();
     decoy_selector->add_index({894631, 1038224, 1049882, 1093414, 1093914, 1094315, 1094323, 1094368, 1094881, 1094887});
@@ -143,15 +151,17 @@ TEST_CASE("Transaction Creation", "[wallet,tx]")
     wallet::Output o{};
     o.amount = 1000000000000;
     tools::hex_to_type("3bf997b70d9a26e60525f1b14d0383f08c3ec0559aaf7639827d08214d6aa664", o.tx_public_key);
-    tools::hex_to_type("02c6cf65059a02844ca0e7442687d704a0806f055a1e8e0032cd07e1d08885b27ad5bc62d68270ae3e5879ed425603e6b1534328f4419ad84b8c8077f9221721", o.key); // Public Key of Output
+    tools::hex_to_type("02c6cf65059a02844ca0e7442687d704a0806f055a1e8e0032cd07e1d08885b2", o.key); // Public Key of Output
     tools::hex_to_type("145209bdaf35087c0e61daa14a9b7d3fe3a3c14fc266724d3e7c38cd0b43a201", o.rct_mask);
     tools::hex_to_type("1b6e1e63b1b634c6faaad8eb23f273f98b4b7cedb0a449f8d25c7eea2361d458", o.key_image);
     o.subaddress_index = cryptonote::subaddress_index{0,0};
 
     wallet_with_valid_inputs.store_test_output(o);
     std::vector<cryptonote::tx_destination_entry> recipients;
-    recipients.emplace_back(cryptonote::tx_destination_entry{});
-    recipients.back().amount = 4001;
+
+    cryptonote::address_parse_info recipient_address{};
+    cryptonote::get_account_address_from_str(recipient_address, cryptonote::TESTNET, "T6Sv1u1q5yTLaWCjASLPbkFz8ZFZJXQTn97tUZKDX8XaGFFEqJ5C4CC9aw1XGGfKAe8RzojvN5Mf7APr7Bpo6etb2ffiNBaSs");
+    recipients.emplace_back(cryptonote::tx_destination_entry(50000000000, recipient_address.address, recipient_address.is_subaddress));
     wallet::PendingTransaction ptx = ctor_for_signing.create_transaction(recipients);
     REQUIRE(ptx.finalise());
 
@@ -160,8 +170,37 @@ TEST_CASE("Transaction Creation", "[wallet,tx]")
     auto& signedtx = ptx.tx;
     for (const auto& decoys : ptx.decoys)
     {
-      REQUIRE(decoys.size() == 13);
+      REQUIRE(decoys.size() == 10);
     }
+
+    std::cout << __FILE__ << ":" << __LINE__ << " (" << __func__ << ") TODO sean remove this - transaction hash: " << cryptonote::obj_to_json_str(ptx.tx.hash) << "\n";
+    for (size_t n = 0; n < ptx.tx.vin.size(); ++n)
+    {
+      std::cout << __FILE__ << ":" << __LINE__ << " (" << __func__ << ") TODO sean remove this - VIN number: " << n << "\n";
+      std::cout << __FILE__ << ":" << __LINE__ << " (" << __func__ << ") TODO sean remove this - VIN: " << cryptonote::obj_to_json_str(ptx.tx.vin[n]) << "\n";
+    }
+    for (size_t n = 0; n < ptx.tx.vout.size(); ++n)
+    {
+      std::cout << __FILE__ << ":" << __LINE__ << " (" << __func__ << ") TODO sean remove this - VOUT number: " << n << "\n";
+      std::cout << __FILE__ << ":" << __LINE__ << " (" << __func__ << ") TODO sean remove this - VOUT: " << cryptonote::obj_to_json_str(ptx.tx.vout[n]) << "\n";
+    }
+    for (size_t n = 0; n < ptx.tx.signatures.size(); ++n)
+    {
+      std::cout << __FILE__ << ":" << __LINE__ << " (" << __func__ << ") TODO sean remove this - signature number: " << n << "\n";
+      std::cout << __FILE__ << ":" << __LINE__ << " (" << __func__ << ") TODO sean remove this - signature: " << cryptonote::obj_to_json_str(ptx.tx.signatures[n]) << "\n";
+    }
+    std::cout << __FILE__ << ":" << __LINE__ << " (" << __func__ << ") TODO sean remove this - rct_signature key: " << cryptonote::obj_to_json_str(ptx.tx.rct_signatures.message) << "\n";
+    std::cout << __FILE__ << ":" << __LINE__ << " (" << __func__ << ") TODO sean remove this - rct_signature mixring: " << cryptonote::obj_to_json_str(ptx.tx.rct_signatures.mixRing) << "\n";
+    std::cout << __FILE__ << ":" << __LINE__ << " (" << __func__ << ") TODO sean remove this - rct_signature pseudoOuts: " << cryptonote::obj_to_json_str(ptx.tx.rct_signatures.pseudoOuts) << "\n";
+    std::cout << __FILE__ << ":" << __LINE__ << " (" << __func__ << ") TODO sean remove this - rct_signature ecdhInfo: " << cryptonote::obj_to_json_str(ptx.tx.rct_signatures.ecdhInfo) << "\n";
+    std::cout << __FILE__ << ":" << __LINE__ << " (" << __func__ << ") TODO sean remove this - rct_signature outPk: " << cryptonote::obj_to_json_str(ptx.tx.rct_signatures.outPk) << "\n";
+    std::cout << __FILE__ << ":" << __LINE__ << " (" << __func__ << ") TODO sean remove this - rct_signature xmr_amount fee: " << cryptonote::obj_to_json_str(ptx.tx.rct_signatures.txnFee) << "\n";
+    std::cout << __FILE__ << ":" << __LINE__ << " (" << __func__ << ") TODO sean remove this - rct_signature rct prunable rangeSigs: " << cryptonote::obj_to_json_str(ptx.tx.rct_signatures.p.rangeSigs) << "\n";
+    std::cout << __FILE__ << ":" << __LINE__ << " (" << __func__ << ") TODO sean remove this - rct_signature rct prunable bulletproofs: " << cryptonote::obj_to_json_str(ptx.tx.rct_signatures.p.bulletproofs) << "\n";
+    std::cout << __FILE__ << ":" << __LINE__ << " (" << __func__ << ") TODO sean remove this - rct_signature rct prunable mgsig: " << cryptonote::obj_to_json_str(ptx.tx.rct_signatures.p.MGs) << "\n";
+    std::cout << __FILE__ << ":" << __LINE__ << " (" << __func__ << ") TODO sean remove this - rct_signature rct prunable clsag: " << cryptonote::obj_to_json_str(ptx.tx.rct_signatures.p.CLSAGs) << "\n";
+    std::cout << __FILE__ << ":" << __LINE__ << " (" << __func__ << ") TODO sean remove this - rct_signature rct prunable pseudoOuts: " << cryptonote::obj_to_json_str(ptx.tx.rct_signatures.p.pseudoOuts) << "\n";
+
 
     //Final Transaction should look like this
         //{ "version": 4, "output_unlock_times": [ 0, 0 ], "unlock_time": 0,
