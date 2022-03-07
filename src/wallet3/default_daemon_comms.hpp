@@ -50,6 +50,9 @@ namespace wallet
     std::future<std::vector<Decoy>>
     fetch_decoys(const std::vector<int64_t>& indexes);
 
+    std::future<std::string>
+    submit_transaction(const cryptonote::transaction& tx, bool blink);
+
    private:
 
     void

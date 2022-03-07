@@ -5,6 +5,7 @@
 #include "block.hpp"
 #include "block_tx.hpp"
 
+#include <cryptonote_basic/cryptonote_format_utils.h>
 #include <common/string_util.h>
 #include <epee/misc_log_ex.h>
 #include "oxenmq/oxenmq.h"
@@ -361,6 +362,56 @@ namespace wallet
     }
     req_params_dict["outputs"] = std::move(decoy_list_bt);
     omq->request(conn, "rpc.get_outs", req_cb, oxenmq::bt_serialize(req_params_dict));
+
+    return fut;
+  }
+
+  std::future<std::string>
+  DefaultDaemonComms::submit_transaction(const cryptonote::transaction& tx, bool blink)
+  {
+    auto p = std::make_shared<std::promise<std::string> >();
+    auto fut = p->get_future();
+    auto req_cb = [p=std::move(p)](bool ok, std::vector<std::string> response)
+    {
+      // TODO: handle various error cases.
+      if (not ok or response.size() != 2 or response[0] != "200")
+      {
+        p->set_value("Unknown Error");
+        return;
+      }
+      else
+      {
+        oxenmq::bt_dict_consumer dc{response[1]};
+        if (not dc.skip_until("reason"))
+        {
+          p->set_value("Invalid response from daemon");
+          return;
+        }
+        auto reason = dc.consume_string();
+
+        if (not dc.skip_until("status"))
+        {
+          p->set_value("Invalid response from daemon");
+          return;
+        }
+
+        auto status = dc.consume_string();
+
+        if (status == "OK")
+          p->set_value("OK");
+        else
+          p->set_value(std::string("Something getting wrong.") + reason);
+      }
+    };
+
+    auto tx_str = tx_to_blob(tx);
+
+    oxenmq::bt_dict req_params_dict;
+
+    req_params_dict["tx"] = tx_str;
+    req_params_dict["blink"] = blink;
+
+    omq->request(conn, "rpc.submit_transaction", req_cb, oxenmq::bt_serialize(req_params_dict));
 
     return fut;
   }
