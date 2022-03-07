@@ -20,10 +20,6 @@ namespace wallet
     }
     if (wallet_balance < amount + fee)
     {
-      std::cout << __FILE__ << ":" << __LINE__ << " (" << __func__ << ") TODO sean remove this - wallet balance: " << wallet_balance << " - debug\n";
-      std::cout << __FILE__ << ":" << __LINE__ << " (" << __func__ << ") TODO sean remove this - transaction total: " << amount + fee<< " - debug\n";
-      std::cout << __FILE__ << ":" << __LINE__ << " (" << __func__ << ") TODO sean remove this - amount: " << amount << " - debug\n";
-      std::cout << __FILE__ << ":" << __LINE__ << " (" << __func__ << ") TODO sean remove this - fee: " << fee << " - debug\n";
       throw std::runtime_error("Insufficient Wallet Balance");
     }
 

@@ -11,7 +11,7 @@ namespace wallet
     MockDecoySelector() : DecoySelector(0,0) {}
 
     std::vector<int64_t> predetermined_indexes;
-    int64_t last_index = 0;
+    int64_t next_index = 0;
 
     virtual std::vector<int64_t>
     operator()(const Output& selected_output) override
@@ -20,11 +20,11 @@ namespace wallet
       std::vector<int64_t> decoy_indexes;
       for (size_t i = 0; i < n_decoys; ++i)
       {
-        decoy_indexes.push_back(predetermined_indexes[last_index]);
-        if (last_index + 1 == static_cast<int64_t>(predetermined_indexes.size()))
-          last_index = 0;
+        decoy_indexes.push_back(predetermined_indexes[next_index]);
+        if (next_index + 1 == static_cast<int64_t>(predetermined_indexes.size()))
+          next_index = 0;
         else
-          last_index++;
+          next_index++;
       }
       return decoy_indexes;
     }

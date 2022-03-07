@@ -79,7 +79,6 @@ namespace wallet
     size_t n_outputs = recipients.size() + 1; // Recipients plus change
     if (n_outputs == 0)
       throw std::runtime_error{"Get Transaction Weight called on a transaction with no recipients"};
-    std::cout << __FILE__ << ":" << __LINE__ << " (" << __func__ << ") TODO sean remove this - n_outputs " << n_outputs << " - debug\n";
 
     size += 1 + 6; // tx prefix, first few bytes
     size += n_inputs * (1+6+(mixin_count+1)*2+32); // vin

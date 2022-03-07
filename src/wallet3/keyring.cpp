@@ -304,10 +304,6 @@ namespace wallet
     crypto::public_key change_out_eph_public_key = generate_change_address_ephemeral_keys(tx_key, ptx.change, i, amount_keys);
     cryptonote::tx_out change_out{};
     change_out.amount = ptx.change.amount;
-    std::cout << __FILE__ << ":" << __LINE__ << " (" << __func__ << ") TODO sean remove this - sum inputs: " << ptx.sum_inputs() << " - debug\n";
-    std::cout << __FILE__ << ":" << __LINE__ << " (" << __func__ << ") TODO sean remove this - sum outputs: " << ptx.sum_outputs() << " - debug\n";
-    std::cout << __FILE__ << ":" << __LINE__ << " (" << __func__ << ") TODO sean remove this - fee: " << ptx.get_fee() << " - debug\n";
-    std::cout << __FILE__ << ":" << __LINE__ << " (" << __func__ << ") TODO sean remove this - change amount: " << ptx.change.amount << " - debug\n";
     cryptonote::txout_to_key change_tk{};
     change_tk.key = change_out_eph_public_key;
     change_out.target = change_tk;

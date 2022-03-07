@@ -139,6 +139,9 @@ TEST_CASE("Transaction Signing", "[wallet,tx]")
     comms_with_decoys->add_decoy(1094368, "5e549f2f3f67cc369cb4387fdee18c5bfde2917e4157aee2cb9129b02f3aafe0", "7ad740731e5b26a0f1e87f3fc0702865196b9a58dccf7d7fc47e721f6a9837b0");
     comms_with_decoys->add_decoy(1094881, "48a8ff99d1bb51271d2fc3bfbf6af754dc16835a7ba1993ddeadbe1a77efd15b", "7ad740731e5b26a0f1e87f3fc0702865196b9a58dccf7d7fc47e721f6a9837b0");
     comms_with_decoys->add_decoy(1094887, "02c6cf65059a02844ca0e7442687d704a0806f055a1e8e0032cd07e1d08885b2", "7ad5bc62d68270ae3e5879ed425603e6b1534328f4419ad84b8c8077f9221721"); // Real Output
+    
+    auto keys = std::make_unique<wallet::MockKeyring>();
+    keys->add_tx_key("3d6035889b8dd0b5ecff1c7f37acb7fb7129a5d6bcecc9c69af56d4f2a2c910b");
 
     cryptonote::address_parse_info senders_address{};
     cryptonote::get_account_address_from_str(senders_address, cryptonote::TESTNET, "T6Td9RNPPsMMApoxc59GLiVDS9a82FL2cNEwdMUCGWDLYTLv7e7rvi99aWdF4M2V1zN7q1Vdf1mage87SJ9gcgSu1wJZu3rFs");
@@ -147,7 +150,6 @@ TEST_CASE("Transaction Signing", "[wallet,tx]")
     auto decoy_selector = std::make_unique<wallet::MockDecoySelector>();
     decoy_selector->add_index({894631, 1038224, 1049882, 1093414, 1093914, 1094315, 1094323, 1094368, 1094881, 1094887});
     ctor_for_signing.decoy_selector = std::move(decoy_selector);
-    MDEBUG(__FILE__ << ":" << __LINE__ << " (" << __func__ << ") TODO sean remove this - ctor fee_per_byte " << ctor_for_signing.fee_per_byte << " - debug");
 
     wallet::Output o{};
     o.amount = 1000000000000;
@@ -166,7 +168,7 @@ TEST_CASE("Transaction Signing", "[wallet,tx]")
     wallet::PendingTransaction ptx = ctor_for_signing.create_transaction(recipients);
     REQUIRE(ptx.finalise());
 
-    auto keys = std::make_unique<wallet::MockKeyring>();
+
     REQUIRE_NOTHROW(keys->sign_transaction(ptx));
     auto& signedtx = ptx.tx;
     for (const auto& decoys : ptx.decoys)
