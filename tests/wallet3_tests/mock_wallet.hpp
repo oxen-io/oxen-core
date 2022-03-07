@@ -70,7 +70,7 @@ class MockWallet : public Wallet
       dummy_outputs.push_back(o);
 
       SQLite::Transaction db_tx(db->db);
-      store_transaction(hash, height, dummy_outputs);
+      db->store_transaction(hash, height, dummy_outputs);
       db_tx.commit();
     };
 };
