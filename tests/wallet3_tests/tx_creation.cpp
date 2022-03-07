@@ -147,6 +147,7 @@ TEST_CASE("Transaction Signing", "[wallet,tx]")
     auto decoy_selector = std::make_unique<wallet::MockDecoySelector>();
     decoy_selector->add_index({894631, 1038224, 1049882, 1093414, 1093914, 1094315, 1094323, 1094368, 1094881, 1094887});
     ctor_for_signing.decoy_selector = std::move(decoy_selector);
+    MDEBUG(__FILE__ << ":" << __LINE__ << " (" << __func__ << ") TODO sean remove this - ctor fee_per_byte " << ctor_for_signing.fee_per_byte << " - debug");
 
     wallet::Output o{};
     o.amount = 1000000000000;

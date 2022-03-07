@@ -17,11 +17,6 @@ class MockDaemonComms: public DefaultDaemonComms
       return std::make_shared<oxenmq::OxenMQ>();
     }
 
-    std::pair<int64_t, int64_t>
-    get_fee_parameters() override { 
-      return std::make_pair(0,0);
-    }
-
     std::future<std::vector<Decoy>>
     fetch_decoys(const std::vector<int64_t>& indexes) override {
       auto p = std::promise<std::vector<Decoy>>();

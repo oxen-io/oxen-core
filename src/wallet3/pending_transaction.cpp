@@ -30,7 +30,7 @@ namespace wallet
     return std::accumulate(
         chosen_outputs.begin(),
         chosen_outputs.end(),
-        0,
+        int64_t{0},
         [](int64_t accumulator, const Output& output) { return accumulator + output.amount; });
   }
 
@@ -40,7 +40,7 @@ namespace wallet
     return std::accumulate(
         recipients.begin(),
         recipients.end(),
-        0,
+        int64_t{0},
         [](int64_t accumulator, const cryptonote::tx_destination_entry& recipient) {
           return accumulator + recipient.amount;
         });
@@ -60,7 +60,7 @@ namespace wallet
     int64_t burn_pct = 0;
     int64_t fee_percent = BLINK_BURN_TX_FEE_PERCENT_V18; // 100%
     if (blink)
-      fee_percent = BLINK_MINER_TX_FEE_PERCENT + burn_pct; // Blink ends up being 300%
+      fee_percent = BLINK_MINER_TX_FEE_PERCENT + BLINK_BURN_TX_FEE_PERCENT_V18 + burn_pct; // Blink ends up being 300%
 
     int64_t fee = (get_tx_weight(n_inputs) * fee_per_byte + (recipients.size() + 1) * fee_per_output) * fee_percent / 100;
     // Add fixed amount to the fee for items such as burning. This is defined in the pending transactions
@@ -79,6 +79,7 @@ namespace wallet
     size_t n_outputs = recipients.size() + 1; // Recipients plus change
     if (n_outputs == 0)
       throw std::runtime_error{"Get Transaction Weight called on a transaction with no recipients"};
+    std::cout << __FILE__ << ":" << __LINE__ << " (" << __func__ << ") TODO sean remove this - n_outputs " << n_outputs << " - debug\n";
 
     size += 1 + 6; // tx prefix, first few bytes
     size += n_inputs * (1+6+(mixin_count+1)*2+32); // vin

@@ -269,10 +269,16 @@ namespace wallet
       index.push_back(src_entr.global_index);
 
       input_to_key.key_offsets = cryptonote::absolute_output_offsets_to_relative(input_to_key.key_offsets);
+      ptx.tx.vin.push_back(input_to_key);
       i++;
     }
 
-    // TODO sean the inputs should be sorted by key_image
+    // Sort the inputs by their key image
+    std::sort(ptx.tx.vin.begin(), ptx.tx.vin.end(), [&](const auto& a, const auto& b) {
+      const cryptonote::txin_to_key &tk0 = var::get<cryptonote::txin_to_key>(a);
+      const cryptonote::txin_to_key &tk1 = var::get<cryptonote::txin_to_key>(b);
+      return memcmp(&tk0.k_image, &tk1.k_image, sizeof(tk0.k_image)) > 0;
+    });
 
     std::vector<rct::key> amount_keys;
     amount_keys.clear();
@@ -291,7 +297,6 @@ namespace wallet
       outamounts.push_back(recipient.amount);
       amount_out += recipient.amount;
       // TODO sean the output should be shuffled
-      // also a change address needs to be in here
       i++;
     }
 
@@ -299,6 +304,10 @@ namespace wallet
     crypto::public_key change_out_eph_public_key = generate_change_address_ephemeral_keys(tx_key, ptx.change, i, amount_keys);
     cryptonote::tx_out change_out{};
     change_out.amount = ptx.change.amount;
+    std::cout << __FILE__ << ":" << __LINE__ << " (" << __func__ << ") TODO sean remove this - sum inputs: " << ptx.sum_inputs() << " - debug\n";
+    std::cout << __FILE__ << ":" << __LINE__ << " (" << __func__ << ") TODO sean remove this - sum outputs: " << ptx.sum_outputs() << " - debug\n";
+    std::cout << __FILE__ << ":" << __LINE__ << " (" << __func__ << ") TODO sean remove this - fee: " << ptx.get_fee() << " - debug\n";
+    std::cout << __FILE__ << ":" << __LINE__ << " (" << __func__ << ") TODO sean remove this - change amount: " << ptx.change.amount << " - debug\n";
     cryptonote::txout_to_key change_tk{};
     change_tk.key = change_out_eph_public_key;
     change_out.target = change_tk;
