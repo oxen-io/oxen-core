@@ -23,6 +23,7 @@ namespace wallet
 
     crypto::hash tx_hash;
     crypto::public_key key;
+    crypto::public_key derivation;
     rct::key rct_mask;
     crypto::key_image key_image;
     cryptonote::subaddress_index subaddress_index;

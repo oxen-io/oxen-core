@@ -79,6 +79,7 @@ namespace wallet
         o.block_time = timestamp;
         o.unlock_time = tx.tx.get_unlock_time(output_index);
         o.key = output_target->key;
+        o.derivation = derivations[derivation_index];
 
         received_outputs.push_back(std::move(o));
       }
