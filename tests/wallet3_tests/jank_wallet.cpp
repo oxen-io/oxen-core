@@ -43,6 +43,6 @@ int main(void)
     using namespace std::chrono_literals;
 
     std::this_thread::sleep_for(1s);
-    std::cout << "after block " << wallet->last_scanned_height << ", balance is: " << wallet->get_balance() << "\n";
+    std::cout << "after block " << wallet->last_scan_height << ", balance is: " << wallet->get_balance() << "\n";
   }
 }

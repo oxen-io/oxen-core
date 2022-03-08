@@ -32,7 +32,6 @@ namespace wallet
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             block INTEGER NOT NULL REFERENCES blocks(height) ON DELETE CASCADE,
             hash TEXT NOT NULL,
-            public_key TEXT NOT NULL,
             UNIQUE(hash)
           );
 

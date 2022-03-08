@@ -7,11 +7,54 @@
 #include <sqlitedb/database.hpp>
 
 #include "mock_wallet.hpp"
-#include "mock_keyring.hpp"
 #include "mock_daemon_comms.hpp"
 #include "mock_decoy_selector.hpp"
 
 #include <oxenmq/hex.h>
+
+namespace wallet
+{
+class MockSigningKeyring : public Keyring
+{
+  public:
+
+    MockSigningKeyring() : Keyring() {}
+    MockSigningKeyring(
+        crypto::secret_key _spend_private_key,
+        crypto::public_key _spend_public_key,
+        crypto::secret_key _view_private_key,
+        crypto::public_key _view_public_key)
+        : Keyring(_spend_private_key, _spend_public_key, _view_private_key, _view_public_key)
+    {}
+
+    std::vector<crypto::secret_key> predetermined_tx_keys{};
+    int64_t next_tx_key = 0;
+
+    void
+    add_tx_key(const std::string_view& key)
+    {
+      predetermined_tx_keys.push_back(crypto::secret_key{});
+      crypto::secret_key& ephemeral_key = predetermined_tx_keys.back();
+      tools::hex_to_type(key, ephemeral_key);
+    }
+
+
+    crypto::secret_key
+    generate_tx_key(uint8_t hf_version)
+    {
+      if (predetermined_tx_keys.size() > 0)
+      {
+        auto& return_key = predetermined_tx_keys[next_tx_key];
+        if (next_tx_key + 1 == static_cast<int64_t>(predetermined_tx_keys.size()))
+          next_tx_key = 0;
+        else
+          next_tx_key++;
+        return return_key;
+      }
+      return Keyring::generate_tx_key(hf_version);
+    }
+};
+}
 
 
 TEST_CASE("Transaction Creation", "[wallet,tx]")
@@ -140,7 +183,24 @@ TEST_CASE("Transaction Signing", "[wallet,tx]")
     comms_with_decoys->add_decoy(1094881, "48a8ff99d1bb51271d2fc3bfbf6af754dc16835a7ba1993ddeadbe1a77efd15b", "7ad740731e5b26a0f1e87f3fc0702865196b9a58dccf7d7fc47e721f6a9837b0");
     comms_with_decoys->add_decoy(1094887, "02c6cf65059a02844ca0e7442687d704a0806f055a1e8e0032cd07e1d08885b2", "7ad5bc62d68270ae3e5879ed425603e6b1534328f4419ad84b8c8077f9221721"); // Real Output
     
-    auto keys = std::make_unique<wallet::MockKeyring>();
+
+    // Spendkey
+    //secret: 018f2288a77909f312baacbeabc192a53119edc53364d7ee64ac226392c6560e
+    //public: adb121d075407895ba22ff3927b3a8aec60c29176fe97efce7f4d0a7d2c7bc0d
+    // Viewkey
+    //secret: 84d59173dddd78b840f03550f6e3d58163a7d06f35db9585b381e26de440f303
+    //public: 66eb874ad6ee33487c5fe4dab8f17e412d320b8933b1ddf108dd15dd45026d0c
+    crypto::secret_key spend_priv;
+    tools::hex_to_type<crypto::secret_key>("018f2288a77909f312baacbeabc192a53119edc53364d7ee64ac226392c6560e", spend_priv);
+    crypto::public_key spend_pub;
+    tools::hex_to_type<crypto::public_key>("adb121d075407895ba22ff3927b3a8aec60c29176fe97efce7f4d0a7d2c7bc0d", spend_pub);
+
+    crypto::secret_key view_priv;
+    tools::hex_to_type<crypto::secret_key>("84d59173dddd78b840f03550f6e3d58163a7d06f35db9585b381e26de440f303", view_priv);
+    crypto::public_key view_pub;
+    tools::hex_to_type<crypto::public_key>("66eb874ad6ee33487c5fe4dab8f17e412d320b8933b1ddf108dd15dd45026d0c", view_pub);
+
+    auto keys = std::make_shared<wallet::MockSigningKeyring>(spend_priv, spend_pub, view_priv, view_pub);
     keys->add_tx_key("3d6035889b8dd0b5ecff1c7f37acb7fb7129a5d6bcecc9c69af56d4f2a2c910b");
 
     cryptonote::address_parse_info senders_address{};
@@ -153,11 +213,20 @@ TEST_CASE("Transaction Signing", "[wallet,tx]")
 
     wallet::Output o{};
     o.amount = 1000000000000;
-    tools::hex_to_type("3bf997b70d9a26e60525f1b14d0383f08c3ec0559aaf7639827d08214d6aa664", o.tx_public_key);
+
+    crypto::public_key tx_pub_key;
+    tools::hex_to_type("3bf997b70d9a26e60525f1b14d0383f08c3ec0559aaf7639827d08214d6aa664", tx_pub_key); // TODO sean this is pubkey
+    o.derivation = keys->generate_key_derivation(tx_pub_key);
     tools::hex_to_type("02c6cf65059a02844ca0e7442687d704a0806f055a1e8e0032cd07e1d08885b2", o.key); // Public Key of Output
     tools::hex_to_type("145209bdaf35087c0e61daa14a9b7d3fe3a3c14fc266724d3e7c38cd0b43a201", o.rct_mask);
     tools::hex_to_type("1b6e1e63b1b634c6faaad8eb23f273f98b4b7cedb0a449f8d25c7eea2361d458", o.key_image);
     o.subaddress_index = cryptonote::subaddress_index{0,0};
+    o.output_index = 0;
+
+    auto keyimage = keys->key_image(o.derivation, o.key, o.output_index, o.subaddress_index);
+      std::cout << __FILE__ << ":" << __LINE__ << " (" << __func__ << ") TODO sean remove this - derivation: " << tools::type_to_hex(o.derivation) << " - debug\n";
+    std::cout << __FILE__ << ":" << __LINE__ << " (" << __func__ << ") TODO sean remove this - key: " << tools::type_to_hex(o.key) << " - debug\n";
+    std::cout << __FILE__ << ":" << __LINE__ << " (" << __func__ << ") TODO sean remove this - key image: " << tools::type_to_hex(keyimage) << " - debug\n";
 
     wallet_with_valid_inputs.store_test_output(o);
     std::vector<cryptonote::tx_destination_entry> recipients;
@@ -170,7 +239,7 @@ TEST_CASE("Transaction Signing", "[wallet,tx]")
 
 
     REQUIRE_NOTHROW(keys->sign_transaction(ptx));
-    auto& signedtx = ptx.tx;
+    auto& signedtx = ptx.tx; // TODO sean use this
     for (const auto& decoys : ptx.decoys)
     {
       REQUIRE(decoys.size() == 10);
@@ -185,6 +254,7 @@ TEST_CASE("Transaction Signing", "[wallet,tx]")
     for (size_t n = 0; n < ptx.tx.vout.size(); ++n)
     {
       std::cout << __FILE__ << ":" << __LINE__ << " (" << __func__ << ") TODO sean remove this - VOUT number: " << n << "\n";
+      std::cout << __FILE__ << ":" << __LINE__ << " (" << __func__ << ") TODO sean remove this - VOUT: " << cryptonote::obj_to_json_str(ptx.tx.vout[n]) << "\n";
       std::cout << __FILE__ << ":" << __LINE__ << " (" << __func__ << ") TODO sean remove this - VOUT: " << cryptonote::obj_to_json_str(ptx.tx.vout[n]) << "\n";
     }
     for (size_t n = 0; n < ptx.tx.signatures.size(); ++n)

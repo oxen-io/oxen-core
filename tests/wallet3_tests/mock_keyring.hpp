@@ -9,7 +9,14 @@ class MockKeyring : public Keyring
 {
   public:
 
-    MockKeyring() : Keyring({},{},{},{}) {}
+    MockKeyring() : Keyring() {}
+    MockKeyring(
+        crypto::secret_key _spend_private_key,
+        crypto::public_key _spend_public_key,
+        crypto::secret_key _view_private_key,
+        crypto::public_key _view_public_key)
+        : Keyring(_spend_private_key, _spend_public_key, _view_private_key, _view_public_key)
+    {}
 
     std::vector<std::tuple<crypto::public_key, uint64_t, uint64_t, cryptonote::subaddress_index> > ours;
     std::vector<crypto::secret_key> predetermined_tx_keys{};

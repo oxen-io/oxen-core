@@ -44,7 +44,7 @@ namespace wallet
     if (not daemon_comms)
       daemon_comms = std::make_shared<DefaultDaemonComms>(omq);
     if (not tx_constructor)
-      tx_constructor = std::make_shared<TransactionConstructor>(db, daemon_comms);
+      tx_constructor = std::make_shared<TransactionConstructor>(db, daemon_comms); // TODO sean fix the input that is blank
 
     db->create_schema();
     last_scan_height = db->last_scan_height();

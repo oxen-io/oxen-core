@@ -15,7 +15,7 @@ namespace wallet
   class TransactionConstructor
   {
    public:
-    TransactionConstructor(std::shared_ptr<WalletDB> database, std::shared_ptr<DaemonComms> dmn, cryptonote::address_parse_info sender)
+    TransactionConstructor(std::shared_ptr<WalletDB> database, std::shared_ptr<DaemonComms> dmn, cryptonote::address_parse_info sender = {})
         : db(std::move(database)), daemon(std::move(dmn)), decoy_selector(std::make_unique<DecoySelector>(0,0)), senders_address(sender)
     {
       std::tie(fee_per_byte, fee_per_output) = daemon->get_fee_parameters();

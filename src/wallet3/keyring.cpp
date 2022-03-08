@@ -220,7 +220,7 @@ namespace wallet
     // Loop over inputs for the transaction to build the VIN array (Amount = 0, keyimage, array of offsets for ring)
     // and collect all the transaction private keys so we can spend our outputs in this transaction.
     int i = 0;
-    for(const wallet::Output& src_entr: ptx.chosen_outputs)
+    for(const auto& src_entr: ptx.chosen_outputs)
     {
       // This takes the source outputs public transaction and combines it with our secret view key 
       // to make a key derivation. This derivation can be used evaluate an output on the 
@@ -228,8 +228,7 @@ namespace wallet
       // has collected them at an earlier point in time. Now we combine this derivation
       // with the output index and our secret spend key to generate
       // the actual transaction secret key which we can use to spend the output.
-      crypto::key_derivation key_derivation = generate_key_derivation(src_entr.key);
-      crypto::secret_key output_secret_key = derive_transaction_secret_key(key_derivation, src_entr.output_index);
+      crypto::secret_key output_secret_key = derive_transaction_secret_key(src_entr.derivation, src_entr.output_index);
 
       // There is a input secret keys structure (inSk) that gets passed to the ringct library/module and it is
       // essentially an array of our output secret keys. It also needs to know the mask which is
@@ -248,8 +247,7 @@ namespace wallet
       // when first scanning the outputs so we can just copy it straight from the database
       cryptonote::txin_to_key input_to_key;
       input_to_key.amount = 0;
-      input_to_key.k_image = src_entr.key_image;
-
+      input_to_key.k_image = key_image(src_entr.derivation, src_entr.key, src_entr.output_index, src_entr.subaddress_index);
       // The outputs array in the VIN structure lists all the global indexs of the ring decoys,
       // it uses offsets relative to the first output to save space on chain, so they need 
       // to be converted from absolute to relative afterwards using the utility function.
