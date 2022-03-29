@@ -4,6 +4,7 @@
 #include "command_parser.h"
 #include <wallet3/wallet.hpp>
 #include <wallet3/db_schema.hpp>
+#include <wallet3/version.hpp>
 
 #include <cryptonote_core/cryptonote_tx_utils.h>
 
@@ -321,6 +322,10 @@ void RequestHandler::invoke(SUBMIT_MULTISIG& command, rpc_context context) {
 }
 
 void RequestHandler::invoke(GET_VERSION& command, rpc_context context) {
+  if (auto w = wallet.lock())
+  {
+    command.response["version"] = VERSION_STR;
+  }
 }
 
 void RequestHandler::invoke(STAKE& command, rpc_context context) {

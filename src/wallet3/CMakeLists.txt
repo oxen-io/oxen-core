@@ -1,3 +1,5 @@
+configure_file(version.cpp.in version.cpp @ONLY)
+
 add_library(wallet3
   db_schema.cpp
   default_daemon_comms.cpp
@@ -9,6 +11,7 @@ add_library(wallet3
   decoy_selection/decoy_selection.cpp
   wallet.cpp
   wallet2½.cpp
+  version.cpp
   rpc/command_parser.cpp
   rpc/request_handler.cpp
   rpc/omq_server.cpp)
