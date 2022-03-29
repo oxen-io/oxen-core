@@ -1,0 +1,10 @@
+#include "version.h"
+
+using namespace std::literals;
+
+const std::array<uint16_t, 3> OXEN_VERSION = {@PROJECT_VERSION_MAJOR@, @PROJECT_VERSION_MINOR@, @PROJECT_VERSION_PATCH@};
+
+const std::string_view VERSION_TAG = "@VERSIONTAG@"sv;
+const std::string_view VERSION_STR = "@PROJECT_VERSION@"sv;
+const std::string_view VERSION_FULL = "@PROJECT_VERSION@-@VERSIONTAG@"sv;
+
