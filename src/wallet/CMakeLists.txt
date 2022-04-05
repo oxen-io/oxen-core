@@ -51,7 +51,6 @@ target_link_libraries(wallet
   PUBLIC
     multisig
     rpc_commands
-    rpc_server_base
     cryptonote_core
     mnemonics
     device_trezor
@@ -73,7 +72,6 @@ oxen_add_executable(wallet_rpc_server "oxen-wallet-rpc"
 
 target_link_libraries(wallet_rpc_server
   PRIVATE
-    rpc_server_base
     wallet
     daemonizer
     Boost::program_options

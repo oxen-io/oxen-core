@@ -1,6 +1,7 @@
 #pragma once
 
 #include "decoy.hpp"
+
 #include <memory>
 #include <future>
 
@@ -20,6 +21,9 @@ namespace wallet
 
     virtual void
     set_remote(std::string_view address) = 0;
+
+    virtual void
+    propogate_config() = 0;
 
     virtual int64_t
     get_height() = 0;

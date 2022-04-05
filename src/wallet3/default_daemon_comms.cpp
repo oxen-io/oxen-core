@@ -201,8 +201,9 @@ namespace wallet
         }, "de");
   }
 
-  DefaultDaemonComms::DefaultDaemonComms(std::shared_ptr<oxenmq::OxenMQ> omq)
+  DefaultDaemonComms::DefaultDaemonComms(std::shared_ptr<oxenmq::OxenMQ> omq, DaemonCommsConfig& cfg)
     : omq(omq),
+      config(cfg),
       sync_thread(omq->add_tagged_thread("sync"))
   {
     omq->MAX_MSG_SIZE = max_response_size;
@@ -225,6 +226,13 @@ namespace wallet
     conn = omq->connect_remote(remote, [](auto){}, [](auto,auto){});
 
     request_top_block_info();
+  }
+
+  void
+  DefaultDaemonComms::propogate_config()
+  {
+    //This should refresh everywhere when a member in the config changes
+    set_remote(config.address);
   }
 
   void

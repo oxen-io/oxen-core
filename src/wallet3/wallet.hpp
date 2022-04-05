@@ -5,6 +5,8 @@
 #include "daemon_comms.hpp"
 #include "keyring.hpp"
 
+#include "config/config.hpp"
+
 #include "rpc/request_handler.h"
 #include "rpc/omq_server.h"
 
@@ -50,6 +52,11 @@ namespace wallet
     }
 
     ~Wallet();
+
+    Config config;
+
+    void
+    propogate_config();
 
     uint64_t
     get_balance();

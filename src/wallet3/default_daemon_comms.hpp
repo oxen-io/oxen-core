@@ -2,6 +2,7 @@
 
 #include "daemon_comms.hpp"
 #include "cryptonote_config.h"
+#include "config/config.hpp"
 
 #include <crypto/crypto.h>
 
@@ -30,10 +31,13 @@ namespace wallet
 
    public:
 
-    DefaultDaemonComms(std::shared_ptr<oxenmq::OxenMQ> omq);
+    DefaultDaemonComms(std::shared_ptr<oxenmq::OxenMQ> omq, DaemonCommsConfig& cfg);
 
     void
     set_remote(std::string_view address);
+
+    void
+    propogate_config();
 
     int64_t
     get_height() { return top_block_height; }
@@ -69,6 +73,7 @@ namespace wallet
 
     std::unordered_map<std::shared_ptr<Wallet>, int64_t> wallets;
 
+    DaemonCommsConfig& config;
     std::shared_ptr<oxenmq::OxenMQ> omq;
     oxenmq::address remote;
     oxenmq::ConnectionID conn;
