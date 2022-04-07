@@ -351,4 +351,14 @@ namespace wallet
         key_device); // hw::device& hwdev
   }
 
+  cryptonote::account_keys
+  Keyring::export_keys()
+  {
+    cryptonote::account_keys returned_keys{};
+    returned_keys.m_account_address = cryptonote::account_public_address{spend_public_key, view_public_key};
+    returned_keys.m_spend_secret_key = spend_private_key;
+    returned_keys.m_view_secret_key = view_private_key;
+    return returned_keys;
+  }
+
 }  // namespace wallet

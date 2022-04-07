@@ -15,12 +15,25 @@ using rpc_input = std::variant<std::monostate, nlohmann::json, oxenmq::bt_dict_c
 
 
 void parse_request(GET_BALANCE& req, rpc_input in) {
+    get_values(in,
+        "account_index", req.request.account_index,
+        "address_indices", req.request.address_indices,
+        "all_accounts", req.request.all_accounts,
+        "strict", req.request.strict
+        );
 }
 
 void parse_request(GET_ADDRESS& req, rpc_input in) {
+    get_values(in,
+        "account_index", req.request.account_index,
+        "address_index", req.request.address_index
+        );
 }
 
 void parse_request(GET_ADDRESS_INDEX& req, rpc_input in) {
+    get_values(in,
+        "address", req.request.address
+        );
 }
 
 void parse_request(CREATE_ADDRESS& req, rpc_input in) {
@@ -140,7 +153,14 @@ void parse_request(GET_BULK_PAYMENTS& req, rpc_input in) {
 void parse_request(INCOMING_TRANSFERS& req, rpc_input in) {
 }
 
-void parse_request(QUERY_KEY& req, rpc_input in) {
+void parse_request(EXPORT_VIEW_KEY& req, rpc_input in) {
+}
+
+void parse_request(EXPORT_SPEND_KEY& req, rpc_input in) {
+}
+
+void parse_request(EXPORT_MNEMONIC_KEY& req, rpc_input in) {
+  get_values(in, "language", req.request.language);
 }
 
 void parse_request(MAKE_INTEGRATED_ADDRESS& req, rpc_input in) {
@@ -321,6 +341,15 @@ void parse_request(VALIDATE_ADDRESS& req, rpc_input in) {
 }
 
 void parse_request(SET_DAEMON& req, rpc_input in) {
+    get_values(in,
+        "address", req.request.address,
+        "proxy", req.request.proxy,
+        "ssl_allow_any_cert", req.request.ssl_allow_any_cert,
+        "ssl_ca_file", req.request.ssl_ca_file,
+        "ssl_certificate_path", req.request.ssl_certificate_path,
+        "ssl_ssl_private_key_path", req.request.ssl_private_key_path,
+        "trusted", req.request.trusted
+        );
 }
 
 void parse_request(SET_LOG_LEVEL& req, rpc_input in) {

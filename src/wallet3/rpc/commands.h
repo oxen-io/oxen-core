@@ -102,7 +102,7 @@ namespace wallet::rpc {
     struct REQUEST
     {
       uint32_t account_index;             // Return balance for this account.
-      std::set<uint32_t> address_indices; // (Optional) Return balance detail for those subaddresses.
+      std::vector<uint32_t> address_indices; // (Optional) Return balance detail for those subaddresses.
       bool all_accounts;                  // If true, return balance for all accounts, subaddr_indices and account_index are ignored
       bool strict;                        // If true, only return the balance for transactions that have been spent and are not pending (i.e. excluding any transactions sitting in the TX pool)
     } request;
@@ -909,22 +909,54 @@ namespace wallet::rpc {
   };
 
   OXEN_RPC_DOC_INTROSPECT
-  /// Return the spend or view private key.
+  /// Return the private view key.
   ///
-  /// Inputs:
-  ///
-  /// - \p key_type -- Which key to retrieve: "mnemonic" - the mnemonic seed (older wallets do not have one) OR "view_key" - the view key
+  /// Inputs: None
   ///
   /// Outputs:
   ///
-  /// - \p key --  The view key will be hex encoded, while the mnemonic will be a string of words.
-  struct QUERY_KEY : RESTRICTED
+  /// - \p key --  The key will be a hex encoded string.
+  ///
+  struct EXPORT_VIEW_KEY : RESTRICTED
   {
-    static constexpr auto names() { return NAMES("query_key"); }
+    static constexpr auto names() { return NAMES("export_view_key"); }
+
+    struct REQUEST : EMPTY {} request;
+  };
+
+  OXEN_RPC_DOC_INTROSPECT
+  /// Return the private spend key.
+  ///
+  /// Inputs: None
+  ///
+  /// Outputs:
+  ///
+  /// - \p key --  The key will be a hex encoded string.
+  ///
+  struct EXPORT_SPEND_KEY : RESTRICTED
+  {
+    static constexpr auto names() { return NAMES("export_spend_key"); }
+
+    struct REQUEST : EMPTY {} request;
+  };
+
+  OXEN_RPC_DOC_INTROSPECT
+  /// Return the mnemonic.
+  ///
+  /// Inputs:
+  ///
+  /// - \p language -- Which language should be used for the wordlist. Defaults to english
+  ///
+  /// Outputs:
+  ///
+  /// - \p mnemonic --  The mnemonic will be a string of words.
+  struct EXPORT_MNEMONIC_KEY : RESTRICTED
+  {
+    static constexpr auto names() { return NAMES("export_mnemonic_key"); }
 
     struct REQUEST
     {
-      std::string key_type; // Which key to retrieve: "mnemonic" - the mnemonic seed (older wallets do not have one) OR "view_key" - the view key
+      std::string language; // Which key to retrieve: "mnemonic" - the mnemonic seed (older wallets do not have one) OR "view_key" - the view key
     } request;
   };
 
@@ -2811,7 +2843,6 @@ This command is only required if the open wallet is one of the owners of a ONS r
     GET_PAYMENTS,
     GET_BULK_PAYMENTS,
     INCOMING_TRANSFERS,
-    QUERY_KEY,
     MAKE_INTEGRATED_ADDRESS,
     SPLIT_INTEGRATED_ADDRESS,
     STOP_WALLET,
@@ -2838,6 +2869,9 @@ This command is only required if the open wallet is one of the owners of a ONS r
     IMPORT_OUTPUTS,
     EXPORT_KEY_IMAGES,
     IMPORT_KEY_IMAGES,
+    EXPORT_VIEW_KEY,
+    EXPORT_SPEND_KEY,
+    EXPORT_MNEMONIC_KEY,
     MAKE_URI,
     PARSE_URI,
     ADD_ADDRESS_BOOK_ENTRY,

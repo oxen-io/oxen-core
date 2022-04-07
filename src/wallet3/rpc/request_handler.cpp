@@ -11,6 +11,10 @@
 #include <unordered_map>
 #include <memory>
 
+#include <common/hex.h>
+#include "mnemonics/electrum-words.h"
+
+
 
 namespace wallet::rpc {
 
@@ -50,9 +54,40 @@ using cryptonote::rpc::rpc_error;
 const std::unordered_map<std::string, std::shared_ptr<const rpc_command>> rpc_commands = register_rpc_commands(wallet_rpc_types{});
 
 void RequestHandler::invoke(GET_BALANCE& command, rpc_context context) {
+  if (auto w = wallet.lock())
+  {
+    command.response["balance"] = w->get_balance();
+    command.response["unlocked_balance"] = w->get_unlocked_balance();
+  }
+  //TODO handle subaddresses and params passed for them
 }
 
 void RequestHandler::invoke(GET_ADDRESS& command, rpc_context context) {
+  if (auto w = wallet.lock())
+  {
+    auto& addresses = (command.response["addresses"] = json::array());
+    if (command.request.address_index.size() == 0)
+    {
+      auto address = w->get_subaddress(command.request.account_index, 0);
+      addresses.push_back(json{
+        {"address", address.as_str(cryptonote::MAINNET)},
+        {"label", ""},
+        {"address_index", command.request.address_index},
+        {"used", true}
+      });
+    } else {
+      for (const auto& address_index: command.request.address_index)
+      {
+        auto address = w->get_subaddress(command.request.account_index, address_index);
+        addresses.push_back(json{
+          {"address", address.as_str(cryptonote::MAINNET)},
+          {"label", ""},
+          {"address_index", command.request.address_index},
+          {"used", true}
+        });
+      }
+    }
+  }
 }
 
 void RequestHandler::invoke(GET_ADDRESS_INDEX& command, rpc_context context) {
@@ -159,9 +194,33 @@ void RequestHandler::invoke(GET_BULK_PAYMENTS& command, rpc_context context) {
 void RequestHandler::invoke(INCOMING_TRANSFERS& command, rpc_context context) {
 }
 
-void RequestHandler::invoke(QUERY_KEY& command, rpc_context context) {
+void RequestHandler::invoke(EXPORT_VIEW_KEY& command, rpc_context context) {
+  if (auto w = wallet.lock())
+  {
+    const auto& keys = w->export_keys();
+    command.response["key"] = tools::type_to_hex(keys.m_view_secret_key);
+  }
 }
 
+void RequestHandler::invoke(EXPORT_SPEND_KEY& command, rpc_context context) {
+  if (auto w = wallet.lock())
+  {
+    const auto& keys = w->export_keys();
+    command.response["key"] = tools::type_to_hex(keys.m_spend_secret_key);
+  }
+}
+
+void RequestHandler::invoke(EXPORT_MNEMONIC_KEY& command, rpc_context context) {
+  if (auto w = wallet.lock())
+  {
+    const auto keys = w->export_keys();
+    const crypto::secret_key& key = keys.m_spend_secret_key;
+    //if (!passphrase.empty())
+      //key = cryptonote::encrypt_key(key, passphrase);
+    std::string electrum_words;
+    command.response["mnemonic"] = crypto::ElectrumWords::bytes_to_words(key, command.request.language);
+  }
+}
 void RequestHandler::invoke(MAKE_INTEGRATED_ADDRESS& command, rpc_context context) {
 }
 
@@ -344,6 +403,29 @@ void RequestHandler::invoke(VALIDATE_ADDRESS& command, rpc_context context) {
 }
 
 void RequestHandler::invoke(SET_DAEMON& command, rpc_context context) {
+  if (auto w = wallet.lock())
+  {
+    if (command.request.address != "")
+      w->config.daemon.address = command.request.address;
+
+    if (command.request.proxy != "")
+      w->config.daemon.proxy = command.request.proxy;
+
+    w->config.daemon.trusted = command.request.trusted;
+
+    if (command.request.ssl_private_key_path != "")
+      w->config.daemon.ssl_private_key_path = command.request.ssl_private_key_path;
+
+    if (command.request.ssl_certificate_path != "")
+      w->config.daemon.ssl_certificate_path = command.request.ssl_certificate_path;
+
+    if (command.request.ssl_ca_file != "")
+      w->config.daemon.ssl_ca_file = command.request.ssl_ca_file;
+
+    w->config.daemon.ssl_allow_any_cert = command.request.ssl_allow_any_cert;
+
+    w->propogate_config();
+  }
 }
 
 void RequestHandler::invoke(SET_LOG_LEVEL& command, rpc_context context) {

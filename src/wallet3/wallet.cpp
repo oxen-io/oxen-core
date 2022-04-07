@@ -80,6 +80,12 @@ namespace wallet
     return db->overall_balance();
   }
 
+  cryptonote::account_keys
+  Wallet::export_keys()
+  {
+    return keys->export_keys();
+  };
+
   void
   Wallet::add_block(const Block& block)
   {

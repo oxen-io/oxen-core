@@ -105,6 +105,14 @@ namespace crypto
       const std::string &language_name);
 
     /*!
+     * \brief Converts bytes (secret key) to seed words.
+     * \param  src           Secret key
+     * \param  language_name Seed language name
+     * \return               Space delimited concatenated words get written here.
+     */
+    std::string bytes_to_words(const crypto::secret_key& src, const std::string &language_name);
+
+    /*!
      * \brief Gets a list of seed languages that are supported.
      * \param languages A vector is set to the list of languages.
      * \param english whether to get the names in English or the language language

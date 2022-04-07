@@ -70,7 +70,9 @@ public:
   void invoke(GET_PAYMENTS& command, rpc_context context);
   void invoke(GET_BULK_PAYMENTS& command, rpc_context context);
   void invoke(INCOMING_TRANSFERS& command, rpc_context context);
-  void invoke(QUERY_KEY& command, rpc_context context);
+  void invoke(EXPORT_VIEW_KEY& command, rpc_context context);
+  void invoke(EXPORT_SPEND_KEY& command, rpc_context context);
+  void invoke(EXPORT_MNEMONIC_KEY& command, rpc_context context);
   void invoke(MAKE_INTEGRATED_ADDRESS& command, rpc_context context);
   void invoke(SPLIT_INTEGRATED_ADDRESS& command, rpc_context context);
   void invoke(STOP_WALLET& command, rpc_context context);

@@ -3,7 +3,6 @@
 #include <cstdint>
 #include <vector>
 #include <memory>
-#include "address.hpp"
 #include "pending_transaction.hpp"
 #include "daemon_comms.hpp"
 #include "decoy_selection/decoy_selection.hpp"

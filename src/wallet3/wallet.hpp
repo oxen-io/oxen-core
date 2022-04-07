@@ -62,11 +62,15 @@ namespace wallet
     get_balance();
     uint64_t
     get_unlocked_balance();
-    address
+
+    cryptonote::address_parse_info
     get_address();
 
+    cryptonote::account_keys
+    export_keys();
+
     // FIXME: argument nomenclature
-    address
+    cryptonote::address_parse_info
     get_subaddress(int32_t account, int32_t index);
 
     // TODO: error types to throw

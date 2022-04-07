@@ -436,6 +436,15 @@ namespace crypto
       return bytes_to_words(src.data, sizeof(src), words, language_name);
     }
 
+    std::string bytes_to_words(const crypto::secret_key& src,
+      const std::string &language_name)
+    {
+      epee::wipeable_string epee_words;
+      if (!bytes_to_words(src.data, sizeof(src), epee_words, language_name))
+        throw std::runtime_error("Failed to create seed from key for language: " + language_name);
+      return std::string(epee_words.view());
+    }
+
     std::vector<const Language::Base*> get_language_list()
     {
       static const std::vector<const Language::Base*> language_instances({
