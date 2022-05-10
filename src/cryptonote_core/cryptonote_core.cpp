@@ -70,7 +70,7 @@ extern "C" {
 #include "version.h"
 #include "epee/memwipe.h"
 #include "common/i18n.h"
-#include "epee/net/local_ip.h"
+#include "common/net_utils.h"
 
 #undef OXEN_DEFAULT_LOG_CATEGORY
 #define OXEN_DEFAULT_LOG_CATEGORY "cn"
@@ -404,7 +404,8 @@ namespace cryptonote
           args_okay = false;
         }
 
-        if (!epee::net_utils::is_ip_public(m_sn_public_ip)) {
+        if (!tools::net_utils::is_ip_public(tools::net_utils::from_big_endian(m_sn_public_ip)))
+        {
           if (m_service_node_list.debug_allow_local_ips) {
             MWARNING("Address given for public-ip is not public; allowing it because dev-allow-local-ips was specified. This service node WILL NOT WORK ON THE PUBLIC OXEN NETWORK!");
           } else {

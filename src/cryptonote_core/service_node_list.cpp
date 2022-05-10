@@ -39,7 +39,6 @@ extern "C" {
 }
 
 #include "ringct/rctSigs.h"
-#include "epee/net/local_ip.h"
 #include "cryptonote_tx_utils.h"
 #include "cryptonote_basic/tx_extra.h"
 #include "cryptonote_basic/hardfork.h"
@@ -51,6 +50,7 @@ extern "C" {
 #include "common/random.h"
 #include "common/lock.h"
 #include "common/hex.h"
+#include "common/net_utils.h"
 #include "epee/misc_os_dependent.h"
 #include "blockchain.h"
 #include "service_node_quorum_cop.h"
@@ -3003,7 +3003,7 @@ namespace service_nodes
       if (vers >= min.hardfork_revision && proof.snode_version < min.oxend)
         REJECT_PROOF("v" << tools::join(".", min.oxend) << "+ oxend version is required for v" << +vers.first << "." << +vers.second << "+ network proofs");
 
-    if (!debug_allow_local_ips && !epee::net_utils::is_ip_public(proof.public_ip))
+    if (!debug_allow_local_ips && !tools::net_utils::is_ip_public(tools::net_utils::from_big_endian(proof.public_ip)))
       REJECT_PROOF("public_ip is not actually public");
 
     //
@@ -3103,7 +3103,7 @@ namespace service_nodes
       }
     }
 
-    if (!debug_allow_local_ips && !epee::net_utils::is_ip_public(proof->public_ip))
+    if (!debug_allow_local_ips && !tools::net_utils::is_ip_public(tools::net_utils::from_big_endian(proof->public_ip)))
       REJECT_PROOF("public_ip is not actually public");
 
     //

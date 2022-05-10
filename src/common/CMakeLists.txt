@@ -37,6 +37,7 @@ add_library(common
   file.cpp
   i18n.cpp
   oxen.cpp
+  net_utils.cpp
   notify.cpp
   password.cpp
   perf_timer.cpp

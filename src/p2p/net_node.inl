@@ -50,7 +50,6 @@
 #include "common/periodic_task.h"
 #include "epee/misc_log_ex.h"
 #include "p2p_protocol_defs.h"
-#include "epee/net/local_ip.h"
 #include "crypto/crypto.h"
 #include "epee/storages/levin_abstract_invoke2.h"
 #include "cryptonote_core/cryptonote_core.h"

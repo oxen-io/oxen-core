@@ -38,7 +38,6 @@
 #include "../warnings.h"
 #include "../string_tools.h"
 #include "../scope_leaver.h"
-#include "local_ip.h"
 #include "../pragma_comp_defs.h"
 
 #include <chrono>
