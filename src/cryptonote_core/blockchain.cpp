@@ -3081,7 +3081,7 @@ bool Blockchain::check_tx_inputs(transaction& tx, uint64_t& max_used_block_heigh
   if (!res)
     return false;
 
-  CHECK_AND_ASSERT_MES(max_used_block_height < m_db->height(), false, 
+  CHECK_AND_ASSERT_MES(max_used_block_height < m_db->height(), false,
       "internal error: max used block index=" << max_used_block_height << " is not less then blockchain size = " << m_db->height());
   max_used_block_id = m_db->get_block_hash_from_height(max_used_block_height);
   return true;
@@ -3588,6 +3588,17 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
       if (!m_ons_db.validate_ons_tx(hf_version, get_current_blockchain_height(), tx, data, &fail_reason))
       {
         MERROR_VER("Failed to validate ONS TX reason: " << fail_reason);
+        tvc.m_verbose_error = std::move(fail_reason);
+        return false;
+      }
+    }
+    if (tx.type == txtype::key_image_unlock)
+    {
+      cryptonote::tx_extra_field data;
+      std::string fail_reason;
+      if (!service_nodes::validate_unstake_tx(hf_version, get_current_blockchain_height(), tx, data, &fail_reason))
+      {
+        MERROR_VER("Failed to validate Unstake TX reason: " << fail_reason);
         tvc.m_verbose_error = std::move(fail_reason);
         return false;
       }

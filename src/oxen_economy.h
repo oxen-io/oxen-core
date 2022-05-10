@@ -31,6 +31,14 @@ constexpr uint64_t FOUNDATION_REWARD_HF17 =  1'833'333'333;
 static_assert(MINER_REWARD_HF15        + SN_REWARD_HF15 + FOUNDATION_REWARD_HF15 == BLOCK_REWARD_HF15);
 static_assert(CHAINFLIP_LIQUIDITY_HF16 + SN_REWARD_HF15 + FOUNDATION_REWARD_HF15 == BLOCK_REWARD_HF16);
 static_assert(                           SN_REWARD_HF15 + FOUNDATION_REWARD_HF17 == BLOCK_REWARD_HF17);
+// -------------------------------------------------------------------------------------------------
+//
+// Staking
+//
+// -------------------------------------------------------------------------------------------------
+
+// A fixed amount (in atomic currency units) that a service node unstaker must burn.
+inline constexpr uint64_t UNSTAKE_BURN_FIXED           = 0.5 * ::COIN;  
 
 // -------------------------------------------------------------------------------------------------
 //

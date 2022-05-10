@@ -184,7 +184,7 @@ namespace cryptonote
     txversion version;
     txtype type;
 
-    bool is_transfer() const { return type == txtype::standard || type == txtype::stake || type == txtype::oxen_name_system; }
+    bool is_transfer() const { return type == txtype::standard || type == txtype::stake || type == txtype::key_image_unlock || type == txtype::oxen_name_system; }
 
     // not used after version 2, but remains for compatibility
     uint64_t unlock_time;  //number of block (or time), used as a limitation like: spend this tx not early then block/time
