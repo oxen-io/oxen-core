@@ -36,7 +36,6 @@
 #include "version.h"
 #include "common/oxen.h"
 #include "common/util.h"
-#include "epee/net/local_ip.h"
 #include <boost/endian/conversion.hpp>
 
 #undef OXEN_DEFAULT_LOG_CATEGORY
