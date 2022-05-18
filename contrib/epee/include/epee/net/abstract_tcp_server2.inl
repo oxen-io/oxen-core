@@ -103,7 +103,7 @@ PRAGMA_WARNING_DISABLE_VS(4355)
 		m_local(false),
 		m_ready_to_close(false)
   {
-    MDEBUG("test, connection constructor set m_connection_type="<<m_connection_type);
+    MTRACE("test, connection constructor set m_connection_type="<<m_connection_type);
   }
 
 PRAGMA_WARNING_DISABLE_VS(4355)
@@ -559,7 +559,7 @@ PRAGMA_WARNING_DISABLE_VS(4355)
     if(m_send_que.size() > 1)
     { // active operation should be in progress, nothing to do, just wait last operation callback
         auto size_now = m_send_que.back().size();
-        MDEBUG("do_send_chunk() NOW just queues: packet="<<size_now<<" B, is added to queue-size="<<m_send_que.size());
+        // MDEBUG("do_send_chunk() NOW just queues: packet="<<size_now<<" B, is added to queue-size="<<m_send_que.size());
         //do_send_handler_delayed( ptr , size_now ); // (((H))) // empty function
       
       LOG_TRACE_CC(context, "[sock " << socket().native_handle() << "] Async send requested " << m_send_que.front().size());
@@ -574,7 +574,7 @@ PRAGMA_WARNING_DISABLE_VS(4355)
         }
 
         auto size_now = m_send_que.front().size();
-        MDEBUG("do_send_chunk() NOW SENSD: packet="<<size_now<<" B");
+        MTRACE("do_send_chunk() NOW SENSD: packet="<<size_now<<" B");
         if (speed_limit_is_enabled())
 			do_send_handler_write( m_send_que.back().data(), m_send_que.back().size() ); // (((H)))
 
@@ -1390,7 +1390,7 @@ POP_WARNINGS
 
     }
 
-    MDEBUG("Trying to connect to " << adr << ":" << port << ", bind_ip = " << bind_ip_to_use);
+    MTRACE("Trying to connect to " << adr << ":" << port << ", bind_ip = " << bind_ip_to_use);
 
     //boost::asio::ip::tcp::endpoint remote_endpoint(boost::asio::ip::address::from_string(addr.c_str()), port);
     boost::asio::ip::tcp::endpoint remote_endpoint(*iterator);

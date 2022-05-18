@@ -3354,7 +3354,7 @@ namespace service_nodes
       return false;
     }
 
-    MDEBUG("Received " << type << (reachable ? " reachable" : " UNREACHABLE") << " report for SN " << pubkey);
+    MTRACE("Received " << type << (reachable ? " reachable" : " UNREACHABLE") << " report for SN " << pubkey);
 
     const auto now = std::chrono::steady_clock::now();
 

@@ -1179,7 +1179,7 @@ round_state prepare_for_round(round_context &context, service_nodes::service_nod
     return goto_wait_for_next_block_and_clear_round_data(context);
   }
 
-  MDEBUG(log_prefix(context) << "Generate Pulse quorum: " << context.prepare_for_round.quorum);
+  MTRACE(log_prefix(context) << "Generate Pulse quorum: " << context.prepare_for_round.quorum);
 
   //
   // NOTE: Quorum participation
@@ -1215,7 +1215,7 @@ round_state wait_for_round(round_context &context, cryptonote::Blockchain const 
   const auto curr_height = blockchain.get_current_blockchain_height(true /*lock*/);
   if (context.wait_for_next_block.height != curr_height)
   {
-    MDEBUG(log_prefix(context) << "Block height changed whilst waiting for round " << +context.prepare_for_round.round << ", restarting Pulse stages");
+    MTRACE(log_prefix(context) << "Block height changed whilst waiting for round " << +context.prepare_for_round.round << ", restarting Pulse stages");
     return goto_wait_for_next_block_and_clear_round_data(context);
   }
 
@@ -1223,7 +1223,7 @@ round_state wait_for_round(round_context &context, cryptonote::Blockchain const 
   if (auto now = pulse::clock::now(); now < start_time)
   {
     for (static uint64_t last_height = 0; last_height != context.wait_for_next_block.height; last_height = context.wait_for_next_block.height)
-      MINFO(log_prefix(context) << "Waiting for round " << +context.prepare_for_round.round << " to start in " << tools::friendly_duration(start_time - now));
+      MTRACE(log_prefix(context) << "Waiting for round " << +context.prepare_for_round.round << " to start in " << tools::friendly_duration(start_time - now));
     return round_state::wait_for_round;
   }
 

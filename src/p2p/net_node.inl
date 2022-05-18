@@ -880,7 +880,7 @@ namespace nodetool
 
       if(code < 0)
       {
-        LOG_WARNING_CC(context, "COMMAND_HANDSHAKE invoke failed. (" << code <<  ", " << epee::levin::get_err_descr(code) << ")");
+        LOG_WARNING_CC_L0(context, "COMMAND_HANDSHAKE invoke failed. (" << code <<  ", " << epee::levin::get_err_descr(code) << ")");
         if (code == LEVIN_ERROR_CONNECTION_TIMEDOUT || code == LEVIN_ERROR_CONNECTION_DESTROYED)
           timeout = true;
         return;
@@ -2015,7 +2015,7 @@ namespace nodetool
           zone.m_net_server.get_config_object().close(ping_context.m_connection_id);
           return;
         }
-        zone.m_net_server.get_config_object().close(ping_context.m_connection_id);
+        LOG_PRINT_CC_L0(context, "ping handle before callback");
         cb();
       });
 
@@ -2051,7 +2051,7 @@ namespace nodetool
       {  
         if(code < 0)
         {
-          LOG_WARNING_CC(context_, "COMMAND_REQUEST_SUPPORT_FLAGS invoke failed. (" << code <<  ", " << epee::levin::get_err_descr(code) << ")");
+          LOG_WARNING_CC_L0(context_, "COMMAND_REQUEST_SUPPORT_FLAGS invoke failed. (" << code <<  ", " << epee::levin::get_err_descr(code) << ")");
           return;
         }
         
@@ -2111,7 +2111,7 @@ namespace nodetool
     if(arg.node_data.network_id != m_network_id)
     {
 
-      LOG_INFO_CC(context, "WRONG NETWORK AGENT CONNECTED! id=" << arg.node_data.network_id);
+      LOG_PRINT_CCONTEXT_L0(context, "WRONG NETWORK AGENT CONNECTED! id=" << arg.node_data.network_id);
       drop_connection(context);
       add_host_fail(context.m_remote_address);
       return 1;
@@ -2119,7 +2119,7 @@ namespace nodetool
 
     if(!context.m_is_income)
     {
-      LOG_WARNING_CC(context, "COMMAND_HANDSHAKE came not from incoming connection");
+      LOG_PRINT_CCONTEXT_L0(context, "COMMAND_HANDSHAKE came not from incoming connection");
       drop_connection(context);
       add_host_fail(context.m_remote_address);
       return 1;
@@ -2127,7 +2127,7 @@ namespace nodetool
 
     if(context.peer_id)
     {
-      LOG_WARNING_CC(context, "COMMAND_HANDSHAKE came, but seems that connection already have associated peer_id (double COMMAND_HANDSHAKE?)");
+      LOG_PRINT_CCONTEXT_L0(context, "COMMAND_HANDSHAKE came, but seems that connection already have associated peer_id (double COMMAND_HANDSHAKE?)");
       drop_connection(context);
       return 1;
     }
@@ -2138,28 +2138,28 @@ namespace nodetool
     // and pass in a tor connection's peer id, and deduce the two are the same if you reject it
     if(arg.node_data.peer_id == zone.m_config.m_peer_id)
     {
-      LOG_DEBUG_CC(context, "Connection to self detected, dropping connection");
+      LOG_PRINT_CCONTEXT_L0(context, "Connection to self detected, dropping connection");
       drop_connection(context);
       return 1;
     }
 
     if (zone.m_current_number_of_in_peers >= zone.m_config.m_net_config.max_in_connection_count) // in peers limit
     {
-      LOG_WARNING_CC(context, "COMMAND_HANDSHAKE came, but already have max incoming connections, so dropping this one.");
+      LOG_PRINT_CCONTEXT_L0(context, "COMMAND_HANDSHAKE came, but already have max incoming connections, so dropping this one.");
       drop_connection(context);
       return 1;
     }
 
     if(!m_payload_handler.process_payload_sync_data(std::move(arg.payload_data), context, true))
     {
-      LOG_WARNING_CC(context, "COMMAND_HANDSHAKE came, but process_payload_sync_data returned false, dropping connection.");
+      LOG_PRINT_CCONTEXT_L0(context, "COMMAND_HANDSHAKE came, but process_payload_sync_data returned false, dropping connection.");
       drop_connection(context);
       return 1;
     }
 
     if(has_too_many_connections(context.m_remote_address))
     {
-      LOG_PRINT_CCONTEXT_L1("CONNECTION FROM " << context.m_remote_address.host_str() << " REFUSED, too many connections from the same address");
+      LOG_PRINT_CCONTEXT_L0("CONNECTION FROM " << context.m_remote_address.host_str() << " REFUSED, too many connections from the same address");
       drop_connection(context);
       return 1;
     }
@@ -2218,7 +2218,7 @@ namespace nodetool
   template<class t_payload_net_handler>
   int node_server<t_payload_net_handler>::handle_ping(int command, COMMAND_PING::request& arg, COMMAND_PING::response& rsp, p2p_connection_context& context)
   {
-    LOG_DEBUG_CC(context, "COMMAND_PING");
+    LOG_PRINT_CC_L0(context, "COMMAND_PING");
     rsp.status = PING_OK_RESPONSE_STATUS_TEXT;
     rsp.peer_id = m_network_zones.at(context.m_remote_address.get_zone()).m_config.m_peer_id;
     return 1;

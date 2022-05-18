@@ -535,7 +535,7 @@ void relay_obligation_votes(void *obj, const std::vector<service_nodes::quorum_v
 }
 
 void handle_obligation_vote(Message& m, QnetState& qnet) {
-    MDEBUG("Received a relayed obligation vote from " << to_hex(m.conn.pubkey()));
+    //MDEBUG("Received a relayed obligation vote from " << to_hex(m.conn.pubkey()));
 
     if (m.data.size() != 1) {
         MINFO("Ignoring vote: expected 1 data part, not " << m.data.size());
@@ -573,7 +573,7 @@ void handle_obligation_vote(Message& m, QnetState& qnet) {
 }
 
 void handle_timestamp(Message& m) {
-    MDEBUG("Received a timestamp request from " << to_hex(m.conn.pubkey()));
+    //MDEBUG("Received a timestamp request from " << to_hex(m.conn.pubkey()));
     const time_t seconds = time(nullptr);
     m.send_reply(std::to_string(seconds));
 }
