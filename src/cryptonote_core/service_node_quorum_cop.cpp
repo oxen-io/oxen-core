@@ -377,24 +377,24 @@ namespace service_nodes
 
                   if (info.is_decommissioned()) {
                     if (credit >= 0) {
-                      LOG_PRINT_L2("Decommissioned service node "
+                      LOG_PRINT_L3("Decommissioned service node "
                                    << quorum->workers[node_index]
                                    << " is still not passing required checks, but has remaining credit (" << credit
                                    << " blocks); abstaining (to leave decommissioned)");
                       continue;
                     }
 
-                    LOG_PRINT_L2("Decommissioned service node " << quorum->workers[node_index] << " has no remaining credit; voting to deregister");
+                    LOG_PRINT_L3("Decommissioned service node " << quorum->workers[node_index] << " has no remaining credit; voting to deregister");
                     vote_for_state = new_state::deregister; // Credit ran out!
                   } else {
                     if (credit >= DECOMMISSION_MINIMUM) {
                       vote_for_state = new_state::decommission;
-                      LOG_PRINT_L2("Service node "
+                      LOG_PRINT_L3("Service node "
                                    << quorum->workers[node_index]
                                    << " has stopped passing required checks, but has sufficient earned credit (" << credit << " blocks) to avoid deregistration; voting to decommission");
                     } else {
                       vote_for_state = new_state::deregister;
-                      LOG_PRINT_L2("Service node "
+                      LOG_PRINT_L3("Service node "
                                    << quorum->workers[node_index]
                                    << " has stopped passing required checks, but does not have sufficient earned credit ("
                                    << credit << " blocks, " << DECOMMISSION_MINIMUM
@@ -409,7 +409,7 @@ namespace service_nodes
                   LOG_ERROR("Failed to add state change vote; reason: " << print_vote_verification_context(vvc, &vote));
               }
               if (good > 0)
-                LOG_PRINT_L2(good << " of " << total << " service nodes are active and passing checks; no state change votes required");
+                LOG_PRINT_L3(good << " of " << total << " service nodes are active and passing checks; no state change votes required");
             }
             else if (!tested_myself_once_per_block && (find_index_in_quorum_group(quorum->workers, my_keys.pub) >= 0))
             {
