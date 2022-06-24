@@ -105,7 +105,7 @@ namespace cryptonote::rpc {
     STATUS_TX_LONG_POLL_TIMED_OUT = "Long polling client timed out before txpool had an update";
 
 
-  /// RPC: get_height
+  /// RPC: blockchain/get_height
   ///
   /// Get the node's current height.
   ///
@@ -120,24 +120,13 @@ namespace cryptonote::rpc {
   ///   because of a hardcoded checkpoint or 2 SN checkpoints.  Omitted if not available.
   /// - `immutable_hash` -- Hash of the highest block in the chain that cannot be reorganized.
   ///
-  /// Example output:
-  ///
-  ///     :::json
-  ///     {
-  ///       "hash": "3a9cb03c59945d5233c3dc59d8c6a7f2e93d5b09bf8d74a0216b51e87d32053d",
-  ///       "height": 946867,
-  ///       "immutable_hash": "1329cc4a2fe207c7853a44b98900f424eb23bd59c91354812e1610d40e393986",
-  ///       "immutable_height": 946860,
-  ///       "status": "OK",
-  ///       "untrusted": false
-  ///     }
-  /// 
+  /// Example-JSON-Fetch
   struct GET_HEIGHT : PUBLIC, LEGACY, NO_ARGS
   {
     static constexpr auto names() { return NAMES("get_height", "getheight"); }
   };
 
-  /// RPC: get_transactions
+  /// RPC: blockchain/get_transactions
   ///
   /// Look up one or more transactions by hash.
   ///
@@ -313,7 +302,7 @@ namespace cryptonote::rpc {
   };
 
 
-  /// RPC: is_key_image_spent
+  /// RPC: blockchain/is_key_image_spent
   /// Queries whether outputs have been spent using the key image associated with the output.
   ///
   /// Inputs:
@@ -328,7 +317,6 @@ namespace cryptonote::rpc {
   ///   Each value is one of:
   ///   - `0` -- the key image is unspent
   ///   - `1` -- the key image is spent in a mined block
-  ///   - `2` -- the key image is spent in a transaction currently in the mempool
   ///   - `2` -- the key image is spent in a transaction currently in the mempool
   struct IS_KEY_IMAGE_SPENT : PUBLIC, LEGACY
   {
@@ -346,7 +334,7 @@ namespace cryptonote::rpc {
   };
 
 
-  /// RPC: get_outs
+  /// RPC: blockchain/get_outs
   /// Retrieve transaction outputs
   ///
   /// Inputs:
@@ -383,7 +371,7 @@ namespace cryptonote::rpc {
     } request;
   };
 
-  /// RPC: submit_transaction
+  /// RPC: blockchain/submit_transaction
   /// Submit a transaction to be broadcast to the network.
   ///
   /// Inputs:
@@ -437,7 +425,7 @@ namespace cryptonote::rpc {
     } request;
   };
 
-  /// RPC: start_mining
+  /// RPC: daemon/start_mining
   ///
   /// Start mining on the daemon
   ///
@@ -465,7 +453,7 @@ namespace cryptonote::rpc {
     } request;
   };
 
-  /// RPC: stop_mining
+  /// RPC: daemon/stop_mining
   /// Stop mining on the daemon.
   ///
   /// Inputs: none
@@ -478,7 +466,7 @@ namespace cryptonote::rpc {
     static constexpr auto names() { return NAMES("stop_mining"); }
   };
 
-  /// RPC: mining_status
+  /// RPC: daemon/mining_status
   /// Get the mining status of the daemon.
   ///
   /// Inputs: none
@@ -499,7 +487,7 @@ namespace cryptonote::rpc {
     static constexpr auto names() { return NAMES("mining_status"); }
   };
 
-  /// RPC: get_info
+  /// RPC: network/get_info
   /// Retrieve general information about the state of the node and the network.
   ///
   /// Inputs: none.
@@ -565,49 +553,14 @@ namespace cryptonote::rpc {
   /// - `last_lokinet_ping` -- Last ping time of lokinet (0 if never or not running as a service node)
   /// - `free_space` -- Available disk space on the node.
   ///
-  /// Example output:
-  ///
-  ///     :::json
-  ///     {
-  ///       "block_size_limit": 600000,
-  ///       "block_size_median": 300000,
-  ///       "block_weight_limit": 600000,
-  ///       "block_weight_median": 300000,
-  ///       "cumulative_difficulty": 4556030616038589,
-  ///       "database_size": 17000000000,
-  ///       "devnet": false,
-  ///       "difficulty": 1000000,
-  ///       "height": 947084,
-  ///       "immutable_block_hash": "628923285c83aee8cf585d87acd59edebb5d41cc6433db894a3fb6d5c14bdde5",
-  ///       "immutable_height": 947076,
-  ///       "mainnet": true,
-  ///       "nettype": "mainnet",
-  ///       "offline": false,
-  ///       "ons_counts": [
-  ///         584,
-  ///         34,
-  ///         331
-  ///       ],
-  ///       "pulse_ideal_timestamp": 1639186221,
-  ///       "pulse_target_timestamp": 1639186221,
-  ///       "status": "OK",
-  ///       "status_line": "v9; Height: 947084",
-  ///       "target": 120,
-  ///       "target_height": 945528,
-  ///       "testnet": false,
-  ///       "top_block_hash": "24b9f97623ba08c33bfe30eaa49f69342e9ffd267a8b4657dcf61b8f8a90853a",
-  ///       "tx_count": 791186,
-  ///       "tx_pool_size": 0,
-  ///       "untrusted": false,
-  ///       "version": "9"
-  ///     }
+  /// Example-JSON-Fetch
   struct GET_INFO : PUBLIC, LEGACY, NO_ARGS
   {
     static constexpr auto names() { return NAMES("get_info", "getinfo"); }
   };
 
-  /// RPC: get_net_stats
-  /// Retrieve general information about the state of the network.
+  /// RPC: daemon/get_net_stats
+  /// Retrieve general information about the network statistics of the daemon.
   ///
   /// Inputs: none.
   ///
@@ -626,7 +579,7 @@ namespace cryptonote::rpc {
   };
 
 
-  /// RPC: save_bc
+  /// RPC: daemon/save_bc
   /// Save the blockchain. The blockchain does not need saving and is always saved when modified,
   /// however it does a sync to flush the filesystem cache onto the disk for safety purposes,
   /// against Operating System or Hardware crashes.
@@ -641,7 +594,7 @@ namespace cryptonote::rpc {
     static constexpr auto names() { return NAMES("save_bc"); }
   };
 
-  /// RPC: get_block_count
+  /// RPC: blockchain/get_block_count
   /// Look up how many blocks are in the longest chain known to the node.
   ///
   /// Inputs: none
@@ -650,12 +603,14 @@ namespace cryptonote::rpc {
   ///
   /// - `status` -- General RPC status string. `"OK"` means everything looks good.
   /// - `count` -- Number of blocks in logest chain seen by the node.
+  ///
+  /// Example-JSON-Fetch
   struct GET_BLOCK_COUNT : PUBLIC, NO_ARGS
   {
     static constexpr auto names() { return NAMES("get_block_count", "getblockcount"); }
   };
 
-  /// RPC: get_block_hash
+  /// RPC: blockchain/get_block_hash
   /// Look up one or more blocks' hashes by their height.
   ///
   /// Inputs:
@@ -671,18 +626,20 @@ namespace cryptonote::rpc {
   ///
   /// Example input:
   ///
-  ///     :::json
-  ///     { "heights": [42, 123456] }
+  /// ```json
+  /// { "heights": [42, 123456] }
+  /// ```
   ///
   /// Example output:
   ///
-  ///     :::json
-  ///     {
-  ///       "status": "OK",
-  ///       "height": 123456,
-  ///       "42": "b269367374fa87ec517405bf120f831e9b13b12c0ee6721dcca69d2c0fe73a0f",
-  ///       "123456": "aa1f3b566aba42e522f8097403a3c513069206286ff08c2ff2871757dbc3e436"
-  ///     }
+  /// ```json
+  /// {
+  ///   "status": "OK",
+  ///   "height": 123456,
+  ///   "42": "b269367374fa87ec517405bf120f831e9b13b12c0ee6721dcca69d2c0fe73a0f",
+  ///   "123456": "aa1f3b566aba42e522f8097403a3c513069206286ff08c2ff2871757dbc3e436"
+  /// }
+  /// ```
   struct GET_BLOCK_HASH : PUBLIC
   {
     static constexpr auto names() { return NAMES("get_block_hash", "on_get_block_hash", "on_getblockhash"); }
@@ -725,7 +682,7 @@ namespace cryptonote::rpc {
   void to_json(nlohmann::json& j, const block_header_response& h);
   void from_json(const nlohmann::json& j, block_header_response& h);
 
-  /// RPC: get_last_block_header
+  /// RPC: blockchain/get_last_block_header
   /// Block header information for the most recent block is easily retrieved with this method. No inputs are needed.
   ///
   /// Inputs:
@@ -758,6 +715,12 @@ namespace cryptonote::rpc {
   ///   - `tx_hashes` -- The TX hashes of all non-coinbase transactions (requires `get_tx_hashes`)
   ///   - `service_node_winner` -- Service node that received a reward for this block
   ///
+  /// Example input:
+  /// ```json
+  /// {}
+  /// ```
+  ///
+  /// Example-JSON-Fetch
   struct GET_LAST_BLOCK_HEADER : PUBLIC
   {
     static constexpr auto names() { return NAMES("get_last_block_header", "getlastblockheader"); }
@@ -769,7 +732,7 @@ namespace cryptonote::rpc {
     } request;
   };
 
-  /// RPC: get_block_header_by_hash
+  /// RPC: blockchain/get_block_header_by_hash
   /// Block header information can be retrieved using either a block's hash or height. This method includes a block's hash as an input parameter to retrieve basic information about the block.
   ///
   /// Inputs:
@@ -796,7 +759,7 @@ namespace cryptonote::rpc {
     } request;
   };
 
-  /// RPC: get_block_header_by_height
+  /// RPC: blockchain/get_block_header_by_height
   /// Similar to get_block_header_by_hash above, this method includes a block's height as an input parameter to retrieve basic information about the block.
   ///
   /// Inputs:
@@ -824,7 +787,7 @@ namespace cryptonote::rpc {
     } request;
   };
 
-  /// RPC: get_block
+  /// RPC: blockchain/get_block
   /// Full block information can be retrieved by either block height or hash, like with the above block header calls.
   /// For full block information, both lookups use the same method, but with different input parameters.
   ///
@@ -841,6 +804,14 @@ namespace cryptonote::rpc {
   /// - `tx_hashes` -- List of hashes of non-coinbase transactions in the block. If there are no other transactions, this will be an empty list.
   /// - `blob` -- Hexadecimal blob of block information.
   /// - `json` -- JSON formatted block details.
+  ///
+  /// Example input:
+  ///
+  /// ```json
+  /// { "height": 42 }
+  /// ```
+  ///
+  /// Example-JSON-Fetch
   struct GET_BLOCK : PUBLIC
   {
     static constexpr auto names() { return NAMES("get_block", "getblock"); }
@@ -853,7 +824,7 @@ namespace cryptonote::rpc {
     } request;
   };
 
-  /// RPC: get_peer_list
+  /// RPC: daemon/get_peer_list
   /// Get the list of current network peers known to this node.
   ///
   /// Inputs: none
@@ -884,7 +855,7 @@ namespace cryptonote::rpc {
 
   };
 
-  /// RPC: set_log_level
+  /// RPC: daemon/set_log_level
   /// Set the daemon log level. By default, log level is set to `0`.  For more fine-tuned logging
   /// control set the set_log_categories command instead.
   ///
@@ -905,7 +876,7 @@ namespace cryptonote::rpc {
 
   };
 
-  /// RPC: set_log_categories
+  /// RPC: daemon/set_log_categories
   ///
   /// Set the daemon log categories for debugging purposes.
   ///
@@ -937,7 +908,7 @@ namespace cryptonote::rpc {
     } request;
   };
 
-  /// RPC: get_transaction_pool_hashes
+  /// RPC: blockchain/get_transaction_pool_hashes
   /// Get hashes from transaction pool.
   ///
   /// Inputs: none
@@ -951,7 +922,7 @@ namespace cryptonote::rpc {
     static constexpr auto names() { return NAMES("get_transaction_pool_hashes"); }
   };
 
-  /// RPC: get_transaction_pool_stats
+  /// RPC: blockchain/get_transaction_pool_stats
   /// Get the transaction pool statistics.
   ///
   /// Inputs: none
@@ -1000,7 +971,7 @@ namespace cryptonote::rpc {
     } request;
   };
 
-  /// RPC: get_connections
+  /// RPC: daemon/get_connections
   /// Retrieve information about incoming and outgoing P2P connections to your node.
   ///
   /// Inputs: none
@@ -1036,12 +1007,73 @@ namespace cryptonote::rpc {
   ///   - `localhost` -- set to true if the peer is a localhost connection; omitted otherwise.
   ///   - `local_ip` -- set to true if the peer is a non-public, local network connection; omitted
   ///     otherwise.
+  ///
+  /// Example output:
+  /// ```json
+  /// {
+  ///   "connections": [
+  ///     {
+  ///       "address": "1.2.3.4:51890",
+  ///       "address_type": 1,
+  ///       "avg_download": 0,
+  ///       "avg_upload": 2,
+  ///       "connection_id": "abcdef0123456789abcdef0123456789",
+  ///       "current_download": 0,
+  ///       "current_upload": 0,
+  ///       "height": 1088107,
+  ///       "host": "1.2.3.4",
+  ///       "incoming": true,
+  ///       "ip": "1.2.3.4",
+  ///       "live_time": 33,
+  ///       "local_ip": false,
+  ///       "localhost": false,
+  ///       "peer_id": "fedcba9876543210",
+  ///       "port": "51890",
+  ///       "pruning_seed": 0,
+  ///       "recv_count": 20628,
+  ///       "recv_idle_time": 0,
+  ///       "rpc_port": 0,
+  ///       "send_count": 83253,
+  ///       "send_idle_time": 0,
+  ///       "state": "normal",
+  ///       "support_flags": 1
+  ///     },
+  ///     {
+  ///       "address": "5.6.7.8:22022",
+  ///       "address_type": 1,
+  ///       "avg_download": 1,
+  ///       "avg_upload": 1,
+  ///       "connection_id": "00112233445566778899aabbccddeeff",
+  ///       "current_download": 0,
+  ///       "current_upload": 0,
+  ///       "height": 1088107,
+  ///       "host": "5.6.7.8",
+  ///       "incoming": false,
+  ///       "ip": "5.6.7.8",
+  ///       "live_time": 66,
+  ///       "local_ip": false,
+  ///       "localhost": false,
+  ///       "peer_id": "ffddbb9977553311",
+  ///       "port": "22022",
+  ///       "pruning_seed": 0,
+  ///       "recv_count": 95687,
+  ///       "recv_idle_time": 0,
+  ///       "rpc_port": 0,
+  ///       "send_count": 85542,
+  ///       "send_idle_time": 0,
+  ///       "state": "normal",
+  ///       "support_flags": 1
+  ///     }
+  ///   ],
+  ///   "status": "OK"
+  /// }
+  /// ```
   struct GET_CONNECTIONS : NO_ARGS
   {
     static constexpr auto names() { return NAMES("get_connections"); }
   };
 
-  /// RPC: get_block_headers_range
+  /// RPC: blockchain/get_block_headers_range
   /// Similar to get_block_header_by_height above, but for a range of blocks.
   /// This method includes a starting block height and an ending block height as
   /// parameters to retrieve basic information about the range of blocks.
@@ -1058,6 +1090,13 @@ namespace cryptonote::rpc {
   ///
   /// - `status` -- General RPC status string. `"OK"` means everything looks good.
   /// - `headers` -- Array of block_header (a structure containing block header information. See get_last_block_header).
+  ///
+  /// Example input:
+  /// ```json
+  /// { "start_height": 1087845, "end_height": 1087847, "get_tx_hashes": true }
+  /// ```
+  ///
+  /// Example-JSON-Fetch
   struct GET_BLOCK_HEADERS_RANGE : PUBLIC
   {
     static constexpr auto names() { return NAMES("get_block_headers_range", "getblockheadersrange"); }
@@ -1071,7 +1110,7 @@ namespace cryptonote::rpc {
     } request;
   };
 
-  /// RPC: stop_daemon
+  /// RPC: daemon/stop_daemon
   /// Stop the daemon.
   ///
   /// Inputs: none
@@ -1084,7 +1123,7 @@ namespace cryptonote::rpc {
     static constexpr auto names() { return NAMES("stop_daemon"); }
   };
 
-  /// RPC: get_limit
+  /// RPC: daemon/get_limit
   /// Get daemon p2p bandwidth limits.
   ///
   /// Inputs: none.
@@ -1099,7 +1138,7 @@ namespace cryptonote::rpc {
     static constexpr auto names() { return NAMES("get_limit"); }
   };
 
-  /// RPC: set_limit
+  /// RPC: daemon/set_limit
   /// Set daemon p2p bandwidth limits.
   ///
   /// Inputs:
@@ -1124,7 +1163,7 @@ namespace cryptonote::rpc {
     } request;
   };
 
-  /// RPC: out_peers
+  /// RPC: daemon/out_peers
   /// Limit number of Outgoing peers.
   ///
   /// Inputs:
@@ -1148,7 +1187,7 @@ namespace cryptonote::rpc {
     } request;
   };
 
-  /// RPC: in_peers
+  /// RPC: daemon/in_peers
   /// Limit number of Incoming peers.
   ///
   /// Inputs:
@@ -1172,7 +1211,7 @@ namespace cryptonote::rpc {
     } request;
   };
 
-  /// RPC: hard_fork_info
+  /// RPC: network/hard_fork_info
   ///
   /// Inputs:
   ///
@@ -1191,6 +1230,14 @@ namespace cryptonote::rpc {
   /// - `earliest_height` -- Block height at which the hard fork will become enabled.
   /// - `last_height` -- The last block height at which this hard fork will be active; will be
   ///   omitted if this oxend is not aware of any following hard fork.
+  ///
+  /// Example input:
+  ///
+  /// ```json
+  /// { "version": 19 }
+  /// ```
+  ///
+  /// Example-JSON-Fetch
   struct HARD_FORK_INFO : PUBLIC
   {
     static constexpr auto names() { return NAMES("hard_fork_info"); }
@@ -1201,7 +1248,7 @@ namespace cryptonote::rpc {
     } request;
   };
 
-  /// RPC: get_bans
+  /// RPC: daemon/get_bans
   /// Get list of banned IPs.
   ///
   /// Inputs: None
@@ -1212,6 +1259,25 @@ namespace cryptonote::rpc {
   /// - `bans` -- List of banned nodes.  Each element is a dict containing:
   ///   - `host` -- Banned host (IP in A.B.C.D form).
   ///   - `seconds` -- Unix timestamp when the ban expires
+  ///
+  /// Example output:
+  /// ```json
+  /// {
+  ///   "bans": [
+  ///     {
+  ///       "host": "1.2.3.4",
+  ///       "ip": 67305985,
+  ///       "seconds": 5504
+  ///     },
+  ///     {
+  ///       "host": "8.8.8.8",
+  ///       "ip": 134744072,
+  ///       "seconds": 679104
+  ///     }
+  ///   ],
+  ///   "status": "OK"
+  /// }
+  /// ```
   struct GETBANS : RPC_COMMAND
   {
     static constexpr auto names() { return NAMES("get_bans"); }
@@ -1224,7 +1290,7 @@ namespace cryptonote::rpc {
   };
   inline void to_json(nlohmann::json& j, const ban& b) { j = nlohmann::json{{"host", b.host}, {"seconds", b.seconds} }; };
 
-  /// RPC: set_bans
+  /// RPC: daemon/set_bans
   /// Ban another node by IP.
   ///
   /// Inputs: 
@@ -1248,7 +1314,7 @@ namespace cryptonote::rpc {
     } request;
   };
 
-  /// RPC: banned
+  /// RPC: daemon/banned
   /// Determine whether a given IP address is banned
   ///
   /// Inputs:
@@ -1259,6 +1325,33 @@ namespace cryptonote::rpc {
   /// - `status` -- General RPC status string. `"OK"` means everything looks good.
   /// - `banned` -- True if the given address is banned, false otherwise.
   /// - `seconds` -- The number of seconds remaining in the ban.
+  ///
+  /// Example input:
+  /// ```json
+  /// { "address": "1.2.3.4" }
+  /// ```
+  ///
+  /// Example output:
+  /// ```json
+  /// {
+  ///   "banned": true,
+  ///   "seconds": 5710,
+  ///   "status": "OK"
+  /// }
+  ///
+  /// Example input:
+  /// ```json
+  /// { "addess": "4.3.2.1" }
+  /// ```
+  ///
+  /// Example output:
+  /// ```json
+  /// {
+  ///   "banned": false,
+  ///   "seconds": 0,
+  ///   "status": "OK"
+  /// }
+  /// ```
   struct BANNED : RPC_COMMAND
   {
     static constexpr auto names() { return NAMES("banned"); }
@@ -1269,7 +1362,7 @@ namespace cryptonote::rpc {
     } request;
   };
 
-  /// RPC: flush_txpool
+  /// RPC: daemon/flush_txpool
   /// Flush tx ids from transaction pool..
   ///
   /// Inputs:
@@ -1288,7 +1381,7 @@ namespace cryptonote::rpc {
     } request;
   };
 
-  /// RPC: get_output_histogram
+  /// RPC: blockchain/get_output_histogram
   /// Get a histogram of output amounts. For all amounts (possibly filtered by parameters),
   /// gives the number of outputs on the chain for that amount. RingCT outputs counts as 0 amount.
   ///
@@ -1332,7 +1425,7 @@ namespace cryptonote::rpc {
   void to_json(nlohmann::json& j, const GET_OUTPUT_HISTOGRAM::entry& c);
   void from_json(const nlohmann::json& j, GET_OUTPUT_HISTOGRAM::entry& c);
 
-  /// RPC: get_version
+  /// RPC: daemon/get_version
   /// Get current RPC protocol version.
   ///
   /// Inputs: None
@@ -1346,8 +1439,13 @@ namespace cryptonote::rpc {
     static constexpr auto names() { return NAMES("get_version"); }
   };
 
-  /// RPC: get_coinbase_tx_sum
+  /// RPC: blockchain/get_coinbase_tx_sum
   /// Get the coinbase amount and the fees amount for n last blocks starting at particular height.
+  ///
+  /// Note that this call can be extremely slow the first time it is called, particularly when
+  /// requesting the values for the entire chain (by specifying `height=0`), as it has to scan the
+  /// full blockchain to calculate the result.  As such this call is restricted to admin
+  /// connections.  Future versions may lift this restriction.
   ///
   /// Inputs:
   ///
@@ -1360,6 +1458,21 @@ namespace cryptonote::rpc {
   /// - `emission_amount` -- Amount of coinbase reward in atomic units.
   /// - `fee_amount` -- Amount of fees in atomic units.
   /// - `burn_amount` -- Amount of burnt oxen.
+  ///
+  /// Example input:
+  /// ```json
+  /// {"height": 0, "count":1000000000}
+  /// ```
+  ///
+  /// Example output:
+  /// ```json
+  /// {
+  ///   "burn_amount": 720279959424405,
+  ///   "emission_amount": 59537648307402880,
+  ///   "fee_amount": 80671056941541,
+  ///   "status": "OK"
+  /// }
+  /// ```
   struct GET_COINBASE_TX_SUM : RPC_COMMAND
   {
     static constexpr auto names() { return NAMES("get_coinbase_tx_sum"); }
@@ -1371,7 +1484,7 @@ namespace cryptonote::rpc {
     } request;
   };
 
-  /// RPC: get_fee_estimate
+  /// RPC: network/get_fee_estimate
   /// Gives an estimation of per-output + per-byte fees
   ///
   /// Inputs:
@@ -1395,6 +1508,14 @@ namespace cryptonote::rpc {
   /// - `blink_fee_fixed` -- Fixed blink fee in addition to the per-output and per-byte amounts. The
   ///   portion of the overall blink fee above the overall base fee is burned.
   /// - `quantization_mask`
+  ///
+  /// Example input:
+  ///
+  /// ```json
+  /// {}
+  /// ```
+  ///
+  /// Example-JSON-Fetch
   struct GET_BASE_FEE_ESTIMATE : PUBLIC
   {
     static constexpr auto names() { return NAMES("get_fee_estimate"); }
@@ -1405,7 +1526,7 @@ namespace cryptonote::rpc {
     } request;
   };
 
-  /// RPC: get_alternative_chains
+  /// RPC: blockchain/get_alternative_chains
   ///
   /// Display alternative chains seen by the node.
   ///
@@ -1438,7 +1559,7 @@ namespace cryptonote::rpc {
   void to_json(nlohmann::json& j, const GET_ALTERNATE_CHAINS::chain_info& c);
   void from_json(const nlohmann::json& j, GET_ALTERNATE_CHAINS::chain_info& c);
 
-  /// RPC: relay_tx
+  /// RPC: daemon/relay_tx
   /// Relay a list of transaction IDs.
   ///
   /// Inputs: 
@@ -1458,7 +1579,7 @@ namespace cryptonote::rpc {
     } request;
   };
 
-  /// RPC: sync_info
+  /// RPC: daemon/sync_info
   /// Get node synchronisation information.  This returns information on the node's syncing "spans"
   /// which are block segments being downloaded from peers while syncing; spans are generally
   /// downloaded out of order from multiple peers, and so these spans reflect in-progress downloaded
@@ -1500,7 +1621,44 @@ namespace cryptonote::rpc {
   };
 
 
-  OXEN_RPC_DOC_INTROSPECT
+  /// RPC: blockchain/get_output_distribution
+  ///
+  /// This endpoint returns the output distribution of the blockchain.  Its primary use is for the
+  /// wallet to obtain the distribution of outputs on the blockchain so as to construct a feasible
+  /// decoy set.
+  ///
+  /// Inputs:
+  ///
+  /// - `amounts` -- Amounts to look for in atomic units.
+  /// - `from_height` -- starting height to check from.  Optional (default is 0).
+  /// - `to_height` -- ending height to check up to; 0 (or omitted) means the current chain height.
+  /// - `cumulative` -- if true then results are cumulative output counts up to the given block; if
+  ///   false (or omitted) then results are the number of outputs added in the given block.
+  /// - `binary` -- request the result in binary format (ignored for JSON requests)
+  /// - `compressed` -- (required `binary`) -- use varint encoding of the binary result
+  ///
+  /// Outputs:
+  /// - `status` -- General RPC status string. `"OK"` means everything looks good.
+  /// - `distributions` -- array of distribution data; each element is an object containing keys:
+  ///   - `amount` -- the requested amount
+  ///   - `start_height` -- the requested start height
+  ///   - `base` -- the number of outputs at the start_height
+  ///   - `binary` -- true if the result is binary.  This will always be false for JSON-encoded
+  ///     responses.
+  ///   - `compressed` -- true if the result is binary and using varint encoding.  Will always be
+  ///     false for JSON-encoded responses.
+  ///   - `distribution` -- the distribution of rct outputs in blocks beginning after
+  ///     `start_height`.  If `binary` and `compressed` are true then this is a binary value
+  ///     consisting of varint-encoded values; if just `binary` is set then this is a raw dump of
+  ///     unsigned 64-bit integer binary data of the values.  When `binary` is unset (i.e. for a
+  ///     JSON response) this is an array of integer values.
+  ///
+  /// Example input:
+  /// ```json
+  /// { "amounts": [0], "from_height": 100002, "to_height": 100008, "cumulative": false }
+  /// ```
+  ///
+  /// Example-JSON-Fetch
   struct GET_OUTPUT_DISTRIBUTION : PUBLIC
   {
     static constexpr auto names() { return NAMES("get_output_distribution"); }
@@ -1537,7 +1695,7 @@ namespace cryptonote::rpc {
     };
   };
 
-  /// RPC: pop_blocks
+  /// RPC: daemon/pop_blocks
   /// Pop blocks off the main chain
   ///
   /// Inputs:
@@ -1558,7 +1716,7 @@ namespace cryptonote::rpc {
     } request;
   };
 
-  /// RPC: prune_blockchain
+  /// RPC: daemon/prune_blockchain
   /// Pruning is the process of removing non-critical blockchain information from local storage. 
   /// Full nodes keep an entire copy of everything that is stored on the blockchain, including data
   /// that is not very useful anymore. Pruned nodes remove much of this less relevant information 
@@ -1585,7 +1743,7 @@ namespace cryptonote::rpc {
   };
 
 
-  /// RPC: get_quorum_state
+  /// RPC: network/get_quorum_state
   /// Accesses the list of public keys of the nodes who are participating or being tested in a quorum.
   ///
   /// Inputs:
@@ -1604,6 +1762,14 @@ namespace cryptonote::rpc {
   ///   - `quorum` -- Quorum of Service Nodes. Each element is structured with the following keys:
   ///     - `validators` -- List of service node public keys in the quorum. For obligations quorums these are the testing nodes; for checkpoint and blink these are the participating nodes (there are no workers); for Pulse blink quorums these are the block signers. This is hex encoded, even for bt-encoded requests.
   ///     - `workers` -- Public key of the quorum workers. For obligations quorums these are the nodes being tested; for Pulse quorums this is the block producer. Checkpoint and Blink quorums do not populate this field. This is hex encoded, even for bt-encoded requests.
+  ///
+  /// Example input:
+  ///
+  /// ```json
+  /// { "quorum_type": 3 }
+  /// ```
+  ///
+  /// Example-JSON-Fetch
   struct GET_QUORUM_STATE : PUBLIC
   {
     static constexpr auto names() { return NAMES("get_quorum_state"); }
@@ -1634,13 +1800,12 @@ namespace cryptonote::rpc {
   void to_json(nlohmann::json& j, const GET_QUORUM_STATE::quorum_t& q);
   void to_json(nlohmann::json& j, const GET_QUORUM_STATE::quorum_for_height& q);
 
-  /// RPC: get_service_node_registration_cmd_raw
-  /// Returns the command that should be run to prepare a service node, includes correct parameters 
-  /// and service node ids formatted ready for cut and paste into daemon console.
+  /// RPC: service_node/get_service_node_registration_cmd_raw
+  /// Generates a signed service node registration command for use in the operator's Oxen wallet.
+  /// This endpoint is primarily for internal use by the `oxend prepare_registration` command.
   ///
   /// Inputs:
   ///
-  /// - `check` -- Instead of running check if the blockchain has already been pruned.
   /// - `args` -- (Developer) The list of arguments used in raw registration, i.e. portions
   /// - `make_friendly` -- Provide information about how to use the command in the result.
   /// - `staking_requirement` -- The staking requirement to become a Service Node the registration command will be generated upon
@@ -1655,9 +1820,9 @@ namespace cryptonote::rpc {
 
     struct request_parameters
     {
-      std::vector<std::string> args; // (Developer) The arguments used in raw registration, i.e. portions
-      bool make_friendly;            // Provide information about how to use the command in the result.
-      uint64_t staking_requirement;  // The staking requirement to become a Service Node the registration command will be generated upon
+      std::vector<std::string> args;
+      bool make_friendly;
+      uint64_t staking_requirement;
     } request;
   };
 
@@ -1692,7 +1857,7 @@ namespace cryptonote::rpc {
     };
   };
 
-  /// RPC: get_service_keys
+  /// RPC: service_node/get_service_keys
   /// Get the service public keys of the queried daemon, encoded in hex.  All three keys are used
   /// when running as a service node; when running as a regular node only the x25519 key is regularly
   /// used for some RPC and and node-to-SN communication requests.
@@ -1710,7 +1875,7 @@ namespace cryptonote::rpc {
     static constexpr auto names() { return NAMES("get_service_keys", "get_service_node_key"); }
   };
 
-  /// RPC: get_service_privkeys
+  /// RPC: service_node/get_service_privkeys
   /// Get the service private keys of the queried daemon, encoded in hex.  Do not ever share
   /// these keys: they would allow someone to impersonate your service node.  All three keys are used
   /// when running as a service node; when running as a regular node only the x25519 key is regularly
@@ -1729,7 +1894,7 @@ namespace cryptonote::rpc {
     static constexpr auto names() { return NAMES("get_service_privkeys", "get_service_node_privkey"); }
   };
 
-  /// RPC: get_service_nodes
+  /// RPC: service_node/get_service_nodes
   /// Get information on some, all, or a random subset of Service Nodes.
   ///
   /// Inputs:
@@ -1964,7 +2129,7 @@ namespace cryptonote::rpc {
     } request;
   };
 
-  /// RPC: get_service_node_status
+  /// RPC: service_node/get_service_node_status
   /// Retrieves information on the current daemon's Service Node state.  The returned information is
   /// the same as what would be returned by "get_service_nodes" when passed this service node's
   /// public key.
@@ -1987,7 +2152,7 @@ namespace cryptonote::rpc {
     static constexpr auto names() { return NAMES("get_service_node_status"); }
   };
 
-  /// RPC: storage_server_ping
+  /// Dev-RPC: service_node/storage_server_ping
   /// Endpoint to receive an uptime ping from the connected storage server. This is used
   /// to record whether the storage server is ready before the service node starts
   /// sending uptime proofs. This is usually called internally from the storage server
@@ -2014,7 +2179,7 @@ namespace cryptonote::rpc {
     } request;
   };
 
-  /// RPC: lokinet_ping
+  /// Dev-RPC: service_node/lokinet_ping
   /// Endpoint to receive an uptime ping from the connected lokinet server. This is used 
   /// to record whether lokinet is ready before the service node starts sending uptime proofs.
   /// This is usually called internally from Lokinet and this endpoint is mostly
@@ -2037,7 +2202,7 @@ namespace cryptonote::rpc {
     } request;
   };
 
-  /// RPC: get_staking_requirement
+  /// RPC: service_node/get_staking_requirement
   /// Get the required amount of Oxen to become a Service Node at the queried height.
   /// For devnet and testnet values, ensure the daemon is started with the
   /// `--devnet` or `--testnet` flags respectively.
@@ -2061,7 +2226,7 @@ namespace cryptonote::rpc {
     } request;
   };
 
-  /// RPC: get_service_node_blacklisted_key_images
+  /// RPC: blockchain/get_service_node_blacklisted_key_images
   /// Get information on blacklisted Service Node key images.
   ///
   /// Inputs: None
@@ -2078,7 +2243,7 @@ namespace cryptonote::rpc {
     static constexpr auto names() { return NAMES("get_service_node_blacklisted_key_images"); }
   };
 
-  /// RPC: get_checkpoints
+  /// RPC: blockchain/get_checkpoints
   /// Query hardcoded/service node checkpoints stored for the blockchain. Omit all arguments to retrieve the latest "count" checkpoints.
   ///
   /// Inputs:
@@ -2091,6 +2256,13 @@ namespace cryptonote::rpc {
   ///
   /// - `status` -- generic RPC error code; "OK" means the request was successful.
   /// - `checkpoints` -- Array of requested checkpoints
+  ///
+  /// Example input:
+  /// ```json
+  /// { "count": 2 }
+  /// ```
+  ///
+  /// Example-JSON-Fetch
   struct GET_CHECKPOINTS : PUBLIC
   {
     static constexpr auto names() { return NAMES("get_checkpoints"); }
@@ -2106,7 +2278,7 @@ namespace cryptonote::rpc {
     } request;
   };
 
-  /// RPC: get_service_nodes_state_changes
+  /// RPC: blockchain/get_service_nodes_state_changes
   /// Query the number of service node state change transactions contained in a range of blocks.
   ///
   /// Inputs:
@@ -2124,6 +2296,13 @@ namespace cryptonote::rpc {
   /// - `total_unlock` -- the total number of service node unlock requests
   /// - `start_height` -- the start height of the given statistics
   /// - `end_height` -- the end height of the given statistics
+  ///
+  /// Example input:
+  /// ```json
+  /// { "start_height": 1085000, "end_height": 1085191 }
+  /// ```
+  ///
+  /// Example-JSON-Fetch
   struct GET_SN_STATE_CHANGES : PUBLIC
   {
     static constexpr auto names() { return NAMES("get_service_nodes_state_changes"); }
@@ -2137,7 +2316,7 @@ namespace cryptonote::rpc {
   };
 
 
-  /// No-RPC: report_peer_status
+  /// Dev-RPC: service_node/report_peer_status
   /// Reports service node peer status (success/fail) from lokinet and storage server.
   ///
   /// Inputs:
@@ -2164,7 +2343,7 @@ namespace cryptonote::rpc {
     } request;
   };
 
-  /// No-RPC: test_trigger_p2p_resync
+  /// Dev-RPC: daemon/test_trigger_p2p_resync
   /// Deliberately undocumented; this RPC call is really only useful for testing purposes to reset
   /// the resync idle timer (which normally fires every 60s) for the test suite.
   ///
@@ -2178,7 +2357,7 @@ namespace cryptonote::rpc {
     static constexpr auto names() { return NAMES("test_trigger_p2p_resync"); }
   };
 
-  /// No-RPC: test_trigger_uptime_proof
+  /// Dev-RPC: service_node/test_trigger_uptime_proof
   /// Deliberately undocumented; this RPC call is really only useful for testing purposes to
   /// force send an uptime proof. NOT available on mainnet
   ///
@@ -2241,7 +2420,7 @@ namespace cryptonote::rpc {
     };
   };
 
-  /// RPC: ons_owners_to_names
+  /// RPC: ons/ons_owners_to_names
   /// Get all the name mappings for the queried owner. The owner can be either a ed25519 public key or Monero style
   /// public key; by default purchases are owned by the spend public key of the purchasing wallet.
   ///
@@ -2289,7 +2468,7 @@ namespace cryptonote::rpc {
   };
   void to_json(nlohmann::json& j, const ONS_OWNERS_TO_NAMES::response_entry& r);
 
-  /// RPC: ons_resolve
+  /// RPC: ons/ons_resolve
   /// Performs a simple ONS lookup of a BLAKE2b-hashed name.  This RPC method is meant for simple,
   /// single-value resolutions that do not care about registration details, etc.; if you need more
   /// information use ONS_NAMES_TO_OWNERS instead.
@@ -2329,40 +2508,44 @@ namespace cryptonote::rpc {
   /// To look up the lokinet address for blocks.loki, we first need to get the name hash.  Using
   /// Python, for example:
   ///
-  ///     :::Python
-  ///     >>> import hashlib
-  ///     >>> import base64
-  ///     >>> name_hash = hashlib.blake2b(b'blocks.loki', digest_size=32).digest()
-  ///     >>> base64.b64encode(name_hash)
-  ///     b'IeynFEjyxigd0Lcmo5FWYaGp/uVXsa5grK8Jml0ai3o='
+  /// ```python
+  /// >>> import hashlib
+  /// >>> import base64
+  /// >>> name_hash = hashlib.blake2b(b'blocks.loki', digest_size=32).digest()
+  /// >>> base64.b64encode(name_hash)
+  /// b'IeynFEjyxigd0Lcmo5FWYaGp/uVXsa5grK8Jml0ai3o='
+  /// ```
   ///
   /// Which then allows the RPC lookup:
   ///
-  ///     :::json
-  ///     { "type": 2, "name_hash": "IeynFEjyxigd0Lcmo5FWYaGp/uVXsa5grK8Jml0ai3o=" }
+  /// ```json
+  /// { "type": 2, "name_hash": "IeynFEjyxigd0Lcmo5FWYaGp/uVXsa5grK8Jml0ai3o=" }
+  /// ```
   ///
   /// Example output:
   ///
-  ///     :::json
-  ///     {
-  ///       "encrypted_value": "b52c088ae51171a9e2e44cc98c10006547e2981d4cbe196525c948fa2fa48a11e8712eccd0ba20e4b93fb3989361df8a",
-  ///       "nonce": "6e3e80c7927108612475a0eeddf472af6177c9776d6943ed"
-  ///     }
+  /// ```json
+  /// {
+  ///   "encrypted_value": "b52c088ae51171a9e2e44cc98c10006547e2981d4cbe196525c948fa2fa48a11e8712eccd0ba20e4b93fb3989361df8a",
+  ///   "nonce": "6e3e80c7927108612475a0eeddf472af6177c9776d6943ed"
+  /// }
+  /// ```
   ///
   /// To decrypt, again using Python for an example:
   ///
-  ///     :::Python
-  ///     >>> import hashlib
-  ///     >>> import base64
-  ///     >>> import nacl.bindings
-  ///     >>> import oxenc
-  ///     >>> data = bytes.fromhex("b52c088ae51171a9e2e44cc98c10006547e2981d4cbe196525c948fa2fa48a11e8712eccd0ba20e4b93fb3989361df8a")
-  ///     >>> nonce = bytes.fromhex("6e3e80c7927108612475a0eeddf472af6177c9776d6943ed")
-  ///     >>> name_hash = hashlib.blake2b(b'blocks.loki', digest_size=32).digest()
-  ///     >>> key = hashlib.blake2b(b'blocks.loki', key=name_hash, digest_size=32).digest()
-  ///     >>> val = nacl.bindings.crypto_aead_xchacha20poly1305_ietf_decrypt(ciphertext=data, nonce=nonce, aad=b'', key=key)
-  ///     >>> oxenc.to_base32z(val) + ".loki"
-  ///     'kcpyawm9se7trdbzncimdi5t7st4p5mh9i1mg7gkpuubi4k4ku1y.loki'
+  /// ```python
+  /// >>> import hashlib
+  /// >>> import base64
+  /// >>> import nacl.bindings
+  /// >>> import oxenc
+  /// >>> data = bytes.fromhex("b52c088ae51171a9e2e44cc98c10006547e2981d4cbe196525c948fa2fa48a11e8712eccd0ba20e4b93fb3989361df8a")
+  /// >>> nonce = bytes.fromhex("6e3e80c7927108612475a0eeddf472af6177c9776d6943ed")
+  /// >>> name_hash = hashlib.blake2b(b'blocks.loki', digest_size=32).digest()
+  /// >>> key = hashlib.blake2b(b'blocks.loki', key=name_hash, digest_size=32).digest()
+  /// >>> val = nacl.bindings.crypto_aead_xchacha20poly1305_ietf_decrypt(ciphertext=data, nonce=nonce, aad=b'', key=key)
+  /// >>> oxenc.to_base32z(val) + ".loki"
+  /// 'kcpyawm9se7trdbzncimdi5t7st4p5mh9i1mg7gkpuubi4k4ku1y.loki'
+  /// ```
   ///
   /// which is the full lokinet address of the blocks.loki.
   ///
@@ -2372,29 +2555,33 @@ namespace cryptonote::rpc {
   /// session ID instead of `blocks.loki`.  For example for the Session ONS `jagerman` you would get
   /// the name_hash and then request:
   ///
-  ///     :::json
-  ///     { "type": 0, "name_hash": "yB7mbm2q1MaczqNZCYguH+71z5jooEMeXA0sncfni+g=" }
+  /// ```json
+  /// { "type": 0, "name_hash": "yB7mbm2q1MaczqNZCYguH+71z5jooEMeXA0sncfni+g=" }
+  /// ```
   ///
   /// Example output:
   ///
-  ///     :::json
-  ///     {
-  ///       "encrypted_value": "d9bca6752665f2254ec7522f98aa5f2dfb13c9fa1ad1e39cd3d7a89a0df04719e348da537bc310a53e3b59ca24639b9b42",
-  ///       "nonce": "73e8243f3fadd471be36c6df3d62f863f9bb3a9d1cc696c0"
-  ///     }
+  /// ```json
+  /// {
+  ///   "encrypted_value": "d9bca6752665f2254ec7522f98aa5f2dfb13c9fa1ad1e39cd3d7a89a0df04719e348da537bc310a53e3b59ca24639b9b42",
+  ///   "nonce": "73e8243f3fadd471be36c6df3d62f863f9bb3a9d1cc696c0"
+  /// }
+  /// ```
   ///
   /// Decryption here is exactly the same as the above example except for the last step:
   ///
-  ///     >>> import hashlib
-  ///     >>> import base64
-  ///     >>> import nacl.bindings
-  ///     >>> data = bytes.fromhex("d9bca6752665f2254ec7522f98aa5f2dfb13c9fa1ad1e39cd3d7a89a0df04719e348da537bc310a53e3b59ca24639b9b42")
-  ///     >>> nonce = bytes.fromhex("73e8243f3fadd471be36c6df3d62f863f9bb3a9d1cc696c0")
-  ///     >>> name_hash = hashlib.blake2b(b'jagerman', digest_size=32).digest()
-  ///     >>> key = hashlib.blake2b(b'jagerman', key=name_hash, digest_size=32).digest()
-  ///     >>> val = nacl.bindings.crypto_aead_xchacha20poly1305_ietf_decrypt(ciphertext=data, nonce=nonce, aad=b'', key=key)
-  ///     >>> '05' + val.hex()
-  ///     '0505fb466d312e1666ad1c84c4ee55b7e034151c0e366a313d95d11436a5f36e1e75'
+  /// ```python
+  /// >>> import hashlib
+  /// >>> import base64
+  /// >>> import nacl.bindings
+  /// >>> data = bytes.fromhex("d9bca6752665f2254ec7522f98aa5f2dfb13c9fa1ad1e39cd3d7a89a0df04719e348da537bc310a53e3b59ca24639b9b42")
+  /// >>> nonce = bytes.fromhex("73e8243f3fadd471be36c6df3d62f863f9bb3a9d1cc696c0")
+  /// >>> name_hash = hashlib.blake2b(b'jagerman', digest_size=32).digest()
+  /// >>> key = hashlib.blake2b(b'jagerman', key=name_hash, digest_size=32).digest()
+  /// >>> val = nacl.bindings.crypto_aead_xchacha20poly1305_ietf_decrypt(ciphertext=data, nonce=nonce, aad=b'', key=key)
+  /// >>> '05' + val.hex()
+  /// '0505fb466d312e1666ad1c84c4ee55b7e034151c0e366a313d95d11436a5f36e1e75'
+  /// ```
   /// 
   /// which is jagerman's full Session ID.
   struct ONS_RESOLVE : PUBLIC
@@ -2409,7 +2596,7 @@ namespace cryptonote::rpc {
     } request;
   };
 
-  /// RPC: flush_cache
+  /// RPC: daemon/flush_cache
   /// Clear TXs from the daemon cache, currently only the cache storing TX hashes that were
   /// previously verified bad by the daemon.
   ///
