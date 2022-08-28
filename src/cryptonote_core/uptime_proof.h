@@ -13,6 +13,33 @@ struct service_node_keys;
 namespace uptime_proof
 {
 
+// Keeps track of the reason why an uptime proof is not sent
+// when adding more error flags double the integer so that it will
+// BINARY OR properly
+enum error_flag
+{
+    SHARED_PRIVATE_KEY = 1,
+    NO_STORAGE_SERVER_PING = 2,
+    NO_LOKINET_PING = 4
+};
+
+inline error_flag operator|(error_flag a, error_flag b)
+{
+    return static_cast<error_flag>(static_cast<int>(a) | static_cast<int>(b));
+}
+
+class uptime_state
+{
+
+public:
+  std::chrono::steady_clock::time_point last_uptime_proof_check;
+  bool passing_uptime_proof;
+  error_flag error;
+
+  void set_error(error_flag err);
+  void set_passing();
+};
+
 class Proof
 {
   

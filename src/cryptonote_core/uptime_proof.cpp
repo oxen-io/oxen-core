@@ -14,6 +14,19 @@ extern "C"
 namespace uptime_proof
 {
 
+void uptime_state::set_passing()
+{
+  last_uptime_proof_check = std::chrono::steady_clock::now();
+  passing_uptime_proof = true;
+  error = static_cast<error_flag>(0);
+}
+
+void uptime_state::set_error(error_flag new_error)
+{
+  passing_uptime_proof = false;
+  error = error | new_error;
+}
+
 //Constructor for the uptime proof, will take the service node keys as a param and sign 
 Proof::Proof(
         uint32_t sn_public_ip,

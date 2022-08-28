@@ -1193,6 +1193,10 @@ namespace cryptonote
      // avoid linking issues (protocol does not link against core).
      void* m_quorumnet_state = nullptr;
 
+     // Tracks why a node is not sending uptime proofs
+     uptime_proof::uptime_state m_uptime_state;
+
+
      /// Stores x25519 -> access level for LMQ authentication.
      /// Not to be modified after the LMQ listener starts.
      std::unordered_map<crypto::x25519_public_key, oxenmq::AuthLevel> m_omq_auth;

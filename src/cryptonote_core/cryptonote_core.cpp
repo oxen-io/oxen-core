@@ -270,6 +270,7 @@ namespace cryptonote
   , m_last_storage_server_ping(0)
   , m_last_lokinet_ping(0)
   , m_pad_transactions(false)
+  , m_uptime_state{std::chrono::steady_clock::now(), false, static_cast<uptime_proof::error_flag>(0)}
   , ss_version{0}
   , lokinet_version{0}
   {
@@ -2271,6 +2272,8 @@ namespace cryptonote
         if ((uint64_t) std::time(nullptr) < next_proof_time)
           return;
 
+        m_uptime_state.set_passing();
+
         auto pubkey = m_service_node_list.get_pubkey_from_x25519(m_service_keys.pub_x25519);
         if (pubkey != crypto::null_pkey && pubkey != m_service_keys.pub && m_service_node_list.is_service_node(pubkey, false /*don't require active*/))
         {
@@ -2278,6 +2281,7 @@ namespace cryptonote
               "Failed to submit uptime proof: another service node on the network is using the same ed/x25519 keys as "
               "this service node. This typically means both have the same 'key_ed25519' private key file.");
           return;
+          m_uptime_state.set_error(uptime_proof::error_flag::SHARED_PRIVATE_KEY);
         }
 
         {
@@ -2307,6 +2311,8 @@ namespace cryptonote
             MGINFO_RED(
                 "Failed to submit uptime proof: have not heard from the storage server recently. Make sure that it "
                 "is running! It is required to run alongside the Loki daemon");
+
+            m_uptime_state.set_error(uptime_proof::error_flag::NO_STORAGE_SERVER_PING);
             return;
           }
           if (!check_external_ping(m_last_lokinet_ping, get_net_config().UPTIME_PROOF_FREQUENCY, "Lokinet"))
@@ -2314,6 +2320,7 @@ namespace cryptonote
             MGINFO_RED(
                 "Failed to submit uptime proof: have not heard from lokinet recently. Make sure that it "
                 "is running! It is required to run alongside the Loki daemon");
+            m_uptime_state.set_error(uptime_proof::error_flag::NO_LOKINET_PING);
             return;
           }
         }
