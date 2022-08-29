@@ -1121,6 +1121,9 @@ namespace cryptonote
      std::array<uint16_t, 3> ss_version;
      std::array<uint16_t, 3> lokinet_version;
 
+     // Tracks why a node is not sending uptime proofs
+     uptime_proof::uptime_state m_uptime_state;
+
  private:
 
      /**
@@ -1192,10 +1195,6 @@ namespace cryptonote
      // Internal opaque data object managed by cryptonote_protocol/quorumnet.cpp.  void pointer to
      // avoid linking issues (protocol does not link against core).
      void* m_quorumnet_state = nullptr;
-
-     // Tracks why a node is not sending uptime proofs
-     uptime_proof::uptime_state m_uptime_state;
-
 
      /// Stores x25519 -> access level for LMQ authentication.
      /// Not to be modified after the LMQ listener starts.

@@ -2196,6 +2196,7 @@ namespace rpc {
     struct response
     {
       GET_SERVICE_NODES::response::entry service_node_state; // Service node registration information
+      uptime_proof::uptime_state uptime_proof_state; // Service node uptime proof information
       uint64_t    height;                     // Current block's height.
       std::string block_hash;                 // Current block's hash.
       std::string status;                     // Generic RPC error code. "OK" is the success value.

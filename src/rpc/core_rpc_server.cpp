@@ -2367,6 +2367,9 @@ namespace cryptonote { namespace rpc {
       res.service_node_state = std::move(get_service_nodes_res.service_node_states[0]);
     }
 
+    res.uptime_proof_state = m_core.m_uptime_state;
+    auto& netconf = m_core.get_net_config();
+
     res.height = get_service_nodes_res.height;
     res.block_hash = get_service_nodes_res.block_hash;
     res.status = get_service_nodes_res.status;
