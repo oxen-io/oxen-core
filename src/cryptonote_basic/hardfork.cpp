@@ -75,11 +75,11 @@ static constexpr std::array devnet_hard_forks =
   hard_fork{hf::hf13_enforce_checkpoints, 0,     4,  1653500577},
   hard_fork{hf::hf14_blink,               0,     5,  1653500577},
   hard_fork{hf::hf15_ons,                 0,     6,  1653500577},
-  hard_fork{hf::hf16_pulse,               0,   100,  1653500577},
-  hard_fork{hf::hf17,                     0,   151,  1653500577},
-  hard_fork{hf::hf18,                     0,   152,  1653500577},
-  hard_fork{hf::hf19_reward_batching,     0,   153,  1653500577},
-  hard_fork{hf::hf19_reward_batching,     1,   154,  1653500577},
+  hard_fork{hf::hf16_pulse,               0,   200,  1653500577},
+  hard_fork{hf::hf17,                     0,   251,  1653500577},
+  hard_fork{hf::hf18,                     0,   252,  1653500577},
+  hard_fork{hf::hf19_reward_batching,     0,   253,  1653500577},
+  hard_fork{hf::hf19_reward_batching,     1,   254,  1653500577},
 };
 
 
