@@ -7,27 +7,26 @@
 
 #include <cryptonote_basic/cryptonote_format_utils.h>
 #include <common/string_util.h>
-#include <epee/misc_log_ex.h>
 
 #include <iostream>
 
 namespace wallet
 {
+  static auto logcat = oxen::log::Cat("wallet");
+
   void
   DefaultDaemonComms::on_get_blocks_response(std::vector<std::string> response)
   {
     if (not response.size())
     {
-      std::cout << "on_get_blocks_response(): empty get_blocks response\n";
-      //TODO: error handling
+      oxen::log::warning(logcat, "on_get_blocks_response(): empty get_blocks response\n");
       return;
     }
 
     const auto& status = response[0];
     if (status != "OK" and status != "END")
     {
-      std::cout << "get_blocks response: " << response[0] << "\n";
-      //TODO: error handling
+      oxen::log::warning(logcat, "get_blocks response: {}\n", response[0]);
       return;
     }
 
@@ -35,7 +34,7 @@ namespace wallet
     // TODO: decide/confirm this behavior on the daemon side of things
     if (response.size() == 1)
     {
-      std::cout << "get_blocks response.size() == 1\n";
+      oxen::log::warning(logcat, "get_blocks response.size() == 1\n");
       return;
     }
 
@@ -103,13 +102,13 @@ namespace wallet
     }
     catch (const std::exception& e)
     {
-      std::cout << e.what() << "\n";
+      oxen::log::warning(logcat, "exception thrown: {}\n", e.what());
       return;
     }
 
     if (blocks.size() == 0)
     {
-      std::cout << "received no blocks, but server said response OK\n";
+      oxen::log::warning(logcat, "received no blocks, but server said response OK\n");
       return;
     }
 
@@ -142,6 +141,7 @@ namespace wallet
   void
   DefaultDaemonComms::request_top_block_info()
   {
+    oxen::log::info(logcat, "request top block called");
     auto timeout_job = [self=weak_from_this()](){
       if (auto comms = self.lock())
         comms->request_top_block_info();
@@ -155,9 +155,11 @@ namespace wallet
     else
       omq->add_timer(status_timer, timeout_job, 15s);
 
+    oxen::log::info(logcat, "requesting rpc.get_height");
     omq->request(conn, "rpc.get_height",
         [this](bool ok, std::vector<std::string> response)
         {
+          oxen::log::info(logcat, "rpc get_height response");
           if (not ok or response.size() != 2 or response[0] != "200")
             return;
 
@@ -167,11 +169,17 @@ namespace wallet
           crypto::hash new_hash;
 
           if (not dc.skip_until("hash"))
+          {
+            oxen::log::warning(logcat, "bad response from rpc.get_height, key 'hash' missing");
             throw std::runtime_error("bad response from rpc.get_height, key 'hash' missing");
+          }
           new_hash = tools::make_from_guts<crypto::hash>(dc.consume_string_view());
 
           if (not dc.skip_until("height"))
+          {
+            oxen::log::warning(logcat, "bad response from rpc.get_height, key 'height' missing");
             throw std::runtime_error("bad response from rpc.get_height, key 'height' missing");
+          }
           new_height = dc.consume_integer<int64_t>();
 
           bool got_new = (new_height > (top_block_height + 1));
@@ -193,9 +201,11 @@ namespace wallet
           }
         }, "de");
 
+    oxen::log::info(logcat, "requesting rpc.get_fee_estimate");
     omq->request(conn, "rpc.get_fee_estimate",
         [this](bool ok, std::vector<std::string> response)
         {
+          oxen::log::info(logcat, "rpc get_fee estimate response");
           if (not ok or response.size() != 2 or response[0] != "200")
             return;
 
@@ -205,11 +215,17 @@ namespace wallet
           int64_t new_fee_per_output = 0;
 
           if (not dc.skip_until("fee_per_byte"))
+          {
+            oxen::log::warning(logcat, "bad response from rpc.get_fee_estimate, key 'fee_per_byte' missing");
             throw std::runtime_error("bad response from rpc.get_fee_estimate, key 'fee_per_byte' missing");
+          }
           new_fee_per_byte = dc.consume_integer<int64_t>();
 
           if (not dc.skip_until("fee_per_output"))
+          {
+            oxen::log::warning(logcat, "bad response from rpc.get_fee_estimate, key 'fee_per_output' missing");
             throw std::runtime_error("bad response from rpc.get_fee_estimate, key 'fee_per_output' missing");
+          }
           new_fee_per_output = dc.consume_integer<int64_t>();
 
           fee_per_byte = new_fee_per_byte;
@@ -229,6 +245,7 @@ namespace wallet
   void
   DefaultDaemonComms::set_remote(std::string_view address)
   {
+    oxen::log::info(logcat, "Set remote called with address: {}", address);
     try
     {
       remote = oxenmq::address{address};
@@ -239,8 +256,16 @@ namespace wallet
       throw;
     }
 
-    // TODO: proper callbacks
-    conn = omq->connect_remote(remote, [](auto){}, [](auto,auto){});
+    oxen::log::info(logcat, "Daemon Comms trying to connect to OMQ");
+    conn = omq->connect_remote(remote,
+        // Callback for success case of connect remote
+        [](auto){
+          oxen::log::info(logcat, "Daemon Comms successfully connected to OMQ");
+        },
+        // Callback for failure case of connect remote
+        [](auto, auto reason){
+          oxen::log::error(logcat, "Daemon Comms was not successful in connecting to OMQ. Reason: {}", reason);
+        });
 
     request_top_block_info();
   }
@@ -301,10 +326,9 @@ namespace wallet
       // if not OK
       if (response[0] != "200")
       {
-        std::cout << "get_outputs response not ok: " << response[0] << "\n";
+        oxen::log::warning(logcat, "get_outputs response not ok: {}\n", response[0]);
         if (response.size() == 2)
-          std::cout << " -- error: \"" << response[1] << "\"\n";
-        //TODO: error handling
+          oxen::log::warning(logcat, " -- error: \"{}\"\n", response[1]);
         return;
       }
 
@@ -312,7 +336,7 @@ namespace wallet
       // TODO: decide/confirm this behavior on the daemon side of things
       if (response.size() == 1)
       {
-        std::cout << "get_blocks response.size() == 1\n";
+        oxen::log::warning(logcat, "get_blocks response.size() == 1\n");
         return;
       }
 
@@ -365,13 +389,13 @@ namespace wallet
       }
       catch (const std::exception& e)
       {
-        std::cout << e.what() << "\n";
+        oxen::log::warning(logcat, "exception thrown: {}\n", e.what());
         return;
       }
 
       if (outputs.size() == 0)
       {
-        std::cout << "received no outputs, but server said response OK\n";
+        oxen::log::warning(logcat, "received no outputs, but server said response OK\n");
         return;
       }
 
@@ -446,7 +470,9 @@ namespace wallet
   void
   DefaultDaemonComms::register_wallet(wallet::Wallet& wallet, int64_t height, bool check_sync_height, bool new_wallet)
   {
+    oxen::log::trace(logcat, "Daemon Comms register_wallet called");
     omq->job([this,w=wallet.shared_from_this(),height,check_sync_height,new_wallet](){
+        oxen::log::trace(logcat, "register_wallet lambda called");
         if (wallets.count(w))
           wallets[w] = height;
         else if (new_wallet)
@@ -472,6 +498,7 @@ namespace wallet
   void
   DefaultDaemonComms::deregister_wallet(wallet::Wallet& wallet, std::promise<void>& p)
   {
+    oxen::log::trace(logcat, "Daemon Comms deregister_wallet called");
     auto dereg_finish = [this,&p]() mutable {
       p.set_value();
     };
@@ -493,7 +520,7 @@ namespace wallet
             syncing = false;
           }
 
-          std::cout << "deregister_wallet() setting sync_from_height to " << sync_from_height << "\n";
+          oxen::log::debug(logcat, "deregister_wallet() setting sync_from_height to {}", sync_from_height);
           if (sync_from_height != 0 and sync_from_height == top_block_height)
             syncing = false;
         }, sync_thread);
@@ -516,7 +543,11 @@ namespace wallet
 
     // if we get caught up, or all wallets are removed, no need to request more blocks
     if (not syncing)
+    {
+      std::cout << "Finished syncing\n";
+
       return;
+    }
 
     get_blocks();
   }
@@ -527,6 +558,7 @@ namespace wallet
     if ((not syncing and sync_from_height <= top_block_height) or (top_block_height == 0))
     {
       syncing = true;
+      oxen::log::debug(logcat, "Start Syncing");
       get_blocks();
     }
   }

@@ -12,15 +12,20 @@
 #include <sqlitedb/database.hpp>
 #include <oxenmq/oxenmq.h>
 
-#include "common/fs.h"
 #include <future>
 #include <chrono>
 #include <thread>
 
 #include <iostream>
 
+#include <oxen/log.hpp>
+
+#include <spdlog/sinks/rotating_file_sink.h>
+
 namespace wallet
 {
+  static auto logcat = oxen::log::Cat("wallet");
+
   Wallet::Wallet(
       std::shared_ptr<oxenmq::OxenMQ> omq,
       std::shared_ptr<Keyring> keys,
@@ -30,7 +35,7 @@ namespace wallet
       std::string_view dbPassword,
       wallet::Config config_in)
       : omq(omq)
-      , db{std::make_shared<WalletDB>(fs::path(dbFilename), dbPassword)}
+      , db{std::make_shared<WalletDB>(file_path_from_default_datadir(config_in, dbFilename), dbPassword)}
       , keys{keys}
       , tx_scanner{keys, db}
       , tx_constructor{tx_constructor}
@@ -45,6 +50,7 @@ namespace wallet
     if (not tx_constructor)
       this->tx_constructor = std::make_shared<TransactionConstructor>(db, daemon_comms);
 
+    config.omq_rpc.sockname = file_path_from_default_datadir(config, config.omq_rpc.sockname);
     omq_server.set_omq(this->omq, config.omq_rpc);
 
     db->create_schema();
@@ -56,12 +62,33 @@ namespace wallet
   void
   Wallet::init()
   {
+    oxen::log::reset_level(*oxen::logging::parse_level(config.logging.level));
+    fs::path log_location = "";
+    if (config.logging.save_logs_in_subdirectory)
+      log_location /= config.logging.logdir;
+    log_location /= config.logging.log_filename;
+
+    log_location = file_path_from_default_datadir(config, log_location);
+
+    auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
+        log_location, 
+        config.logging.log_file_size_limit,
+        config.logging.extra_files,
+        config.logging.rotate_on_open
+        );
+
+    oxen::log::add_sink(std::move(file_sink));
+    oxen::log::info(logcat, "Writing logs to {}", log_location.string());
+
+    oxen::log::info(logcat, "Remote Daemon set to {}", config.daemon.address);
     request_handler.set_wallet(weak_from_this());
     omq->start();
+    oxen::log::info(logcat, "OMQ started");
     daemon_comms->set_remote(config.daemon.address);
     daemon_comms->register_wallet(*this, last_scan_height + 1 /*next needed block*/,
         true /* update sync height */,
         true /* new wallet */);
+    oxen::log::info(logcat, "Finished wallet init");
   }
 
   Wallet::~Wallet()
@@ -95,6 +122,7 @@ namespace wallet
   void
   Wallet::add_block(const Block& block)
   {
+    oxen::log::trace(logcat, "add block called with block height {}", block.height);
     auto db_tx = db->db_transaction();
 
     db->store_block(block);
@@ -104,11 +132,13 @@ namespace wallet
       if (auto outputs = tx_scanner.scan_received(tx, block.height, block.timestamp);
           not outputs.empty())
       {
+        oxen::log::debug(logcat, "outputs: tx.hash {}, block.height {}, outputs {}", tx.hash, block.height, outputs.size());
         db->store_transaction(tx.hash, block.height, outputs);
       }
 
       if (auto spends = tx_scanner.scan_spent(tx.tx); not spends.empty())
       {
+        oxen::log::debug(logcat, "spends: tx.hash {}, block.height {}, spends {}", tx.hash, block.height, spends.size());
         db->store_spends(tx.hash, block.height, spends);
       }
     }
@@ -124,11 +154,14 @@ namespace wallet
       return;
 
     if (blocks.size() == 0)
-      //TODO: error handling; this shouldn't be able to happen
+    {
+      oxen::log::warning(logcat, "blocks size is zero, this shouldn't be able to happen");
       return;
+    }
 
     if (blocks.front().height > last_scan_height + 1)
     {
+      oxen::log::warning(logcat, "blocks.front height is greater than last scan height, calling register wallet with last scan height of {}", last_scan_height + 1);
       daemon_comms->register_wallet(*this, last_scan_height + 1 /*next needed block*/, true);
       return;
     }

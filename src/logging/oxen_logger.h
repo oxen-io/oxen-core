@@ -28,6 +28,9 @@ namespace oxen::logging
   void
   process_categories_string(const std::string& categories);
 
+  std::optional<spdlog::level::level_enum>
+  parse_level(std::string_view input);
+
   std::optional<log::Level>
   parse_level(std::string input);
   std::optional<log::Level>

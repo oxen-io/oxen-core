@@ -4,6 +4,7 @@
 #include "transaction_constructor.hpp"
 #include "daemon_comms.hpp"
 #include "keyring.hpp"
+#include "common/fs.h"
 
 #include "config/config.hpp"
 
@@ -21,6 +22,17 @@ namespace oxenmq
 
 namespace wallet
 {
+  template <typename FileType>
+  fs::path file_path_from_default_datadir(const Config& c, const FileType& filename)
+  {
+    auto file_location = fs::absolute(fs::u8path(c.general.datadir));
+    if (c.general.nettype != "mainnet" && c.general.append_network_type_to_datadir)
+      file_location /= c.general.nettype;
+    file_location /= filename;
+
+    return file_location;
+  }
+
   class WalletDB;
 
   struct Block;
@@ -110,6 +122,7 @@ namespace wallet
     wallet::rpc::OmqServer omq_server;
     bool running = true;
 
+    //TODO get this from config
     cryptonote::network_type nettype = cryptonote::network_type::TESTNET;
   };
 

@@ -21,6 +21,9 @@ class Context:
         self.__dict__.update(options)
         self.wallet_core_config = pywallet3.WalletConfig()
         self.wallet_core_config.daemon.address = self.options["oxend_url"]
+        self.wallet_core_config.general.datadir = self.options["datadir"]
+        self.wallet_core_config.general.append_network_type_to_datadir = self.options["append_network_to_datadir"]
+        self.wallet_core_config.logging.level = self.options["log_level"]
         self.keyring_manager = pywallet3.KeyringManager(self.options["network"])
         self.configured = True
 

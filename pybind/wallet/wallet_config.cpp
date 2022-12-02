@@ -8,6 +8,8 @@ namespace wallet
   {
     py::class_<Config, std::shared_ptr<Config>>(mod, "WalletConfig")
       .def(py::init<>())
+      .def_readwrite("general", &Config::general)
+      .def_readwrite("logging", &Config::logging)
       .def_readwrite("daemon", &Config::daemon)
       .def_readwrite("omq_rpc", &Config::omq_rpc);
   }

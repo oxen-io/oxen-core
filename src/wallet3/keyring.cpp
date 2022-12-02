@@ -13,6 +13,8 @@
 
 namespace wallet
 {
+  static auto logcat = oxen::log::Cat("wallet");
+
   std::string
   Keyring::get_main_address()
   {

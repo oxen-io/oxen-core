@@ -26,6 +26,10 @@ target_link_libraries(wallet3
     cryptonote_core
     extra
     mnemonics
+    logging
+    oxen::logging
+    spdlog::spdlog
+    fmt::fmt
     SQLiteCpp)
 
 function(combine_archives output_archive)

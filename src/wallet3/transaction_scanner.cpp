@@ -10,7 +10,12 @@
 namespace wallet
 {
   namespace log = oxen::log;
-  static auto logcat = log::Cat("wallet.wallet3");
+  static auto logcat = log::Cat("wallet");
+
+  bool is_coinbase(const BlockTX& tx)
+  {
+    return tx.tx.vin.size() == 1 && std::holds_alternative<cryptonote::txin_gen>(tx.tx.vin[0]);
+  }
 
   std::vector<Output>
   TransactionScanner::scan_received(
@@ -32,7 +37,7 @@ namespace wallet
     }
 
     auto derivations = wallet_keys->generate_key_derivations(tx_public_keys);
-
+    bool coinbase_transaction = is_coinbase(tx);
     // Output belongs to public key derived as follows:
     //      let `Hs` := hash_to_scalar
     //      let `B`  := recipient public spend key
@@ -62,14 +67,21 @@ namespace wallet
 
         // TODO: device "conceal derivation" as needed
 
+
+
         auto key_image = wallet_keys->key_image(
             derivations[derivation_index], output_target->key, output_index, *sub_index);
 
         Output o;
 
-        // TODO: ringct mask returned by reference.  ugh.
-        std::tie(o.amount, o.rct_mask) = wallet_keys->output_amount_and_mask(
-            tx.tx.rct_signatures, derivations[derivation_index], output_index);
+        if (coinbase_transaction)
+        {
+          o.amount = output.amount;
+          o.rct_mask = rct::identity();
+        } else {
+          std::tie(o.amount, o.rct_mask) = wallet_keys->output_amount_and_mask(
+              tx.tx.rct_signatures, derivations[derivation_index], output_index);
+        }
 
         o.key_image = key_image;
         o.subaddress_index = *sub_index;

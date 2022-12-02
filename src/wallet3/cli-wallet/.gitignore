@@ -4,3 +4,4 @@ venv/
 build/
 release/
 dist/
+testnet-oxen-wallet.s*

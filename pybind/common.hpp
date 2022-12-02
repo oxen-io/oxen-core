@@ -17,11 +17,18 @@ namespace wallet
   KeyringManager_Init(py::module& mod);
 
   void
+  WalletConfig_Init(py::module& mod);
+
+  void
+  GeneralWalletConfig_Init(py::module& mod);
+
+  void
   DaemonCommsConfig_Init(py::module& mod);
 
   void
   RPCConfig_Init(py::module& mod);
 
   void
-  WalletConfig_Init(py::module& mod);
+  LoggingConfig_Init(py::module& mod);
+
 }  // namespace wallet

@@ -11,6 +11,8 @@
 
 namespace wallet
 {
+  static auto logcat = oxen::log::Cat("wallet");
+
   WalletDB::~WalletDB()
   {
   }

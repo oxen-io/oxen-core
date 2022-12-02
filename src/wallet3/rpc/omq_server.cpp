@@ -34,9 +34,9 @@ OmqServer::set_omq(std::shared_ptr<oxenmq::OxenMQ> omq_in, wallet::rpc::Config c
 {
   omq = omq_in;
 
-  //TODO: parametrize listening address(es) and auth
-  omq->listen_plain(std::string("ipc://./") + config.sockname);
+  omq->listen_plain(std::string("ipc://") + config.sockname);
 
+  //TODO: parametrize auth
   omq->add_category("rpc", AuthLevel::none, 0 /*no reserved threads*/, 100 /*max queued requests*/);
   // TODO: actually make restricted category require auth
   omq->add_category("restricted", AuthLevel::none, 0 /*no reserved threads*/, 100 /*max queued requests*/);

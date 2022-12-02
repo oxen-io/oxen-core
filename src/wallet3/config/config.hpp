@@ -3,6 +3,24 @@
 namespace wallet
 {
 
+  struct GeneralWalletConfig
+  {
+    std::string nettype = "testnet";                     // What network the wallet is operating on ("mainnet" | "testnet" | "devnet")
+    std::string datadir = "/home/sean/.oxen-wallet";     // Directory to store data (Database files, websocket file, logs)
+    bool append_network_type_to_datadir = true;          // If you specify a datadir do you want the wallet to save into subdirs for testnet 
+  };
+
+  struct LoggingConfig
+  {
+    std::string level = "info";
+    bool save_logs_in_subdirectory = true;            // e.g ~/.oxen-wallet/testnet/logs/wallet_logs.txt vs ~/oxen-wallet/testnet/wallet_logs.txt
+    std::string logdir = "logs";                      // Directory to store log data
+    std::string log_filename = "wallet_logs.txt";     // name for logs
+    size_t log_file_size_limit = 1024 * 1024 * 50;    // 50MiB
+    size_t extra_files = 1;
+    bool rotate_on_open = true;                       // wallet will create a new log file every time its opened
+  };
+
   struct DaemonCommsConfig
   {
     std::string address;              // The remote url of the daemon.
@@ -24,6 +42,8 @@ namespace wallet
 
   struct Config
   {
+    GeneralWalletConfig general;
+    LoggingConfig logging;
     DaemonCommsConfig daemon;
     wallet::rpc::Config omq_rpc;
   };
