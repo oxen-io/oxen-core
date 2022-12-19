@@ -7,7 +7,7 @@ PIP_WITH_VERSION=pip$(PYTHON_VERSION)
 all: build
 
 system_dependencies:
-	sudo apt install python3.10-venv
+	sudo apt install python3.10-venv python3-oxenmq
 	$(PIP_WITH_VERSION) install --upgrade pip
 	$(PIP_WITH_VERSION) install --upgrade build
 	$(PIP_WITH_VERSION) install --upgrade setuptools

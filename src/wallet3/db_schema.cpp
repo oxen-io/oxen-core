@@ -49,11 +49,15 @@ namespace wallet
             last_scan_height INTEGER NOT NULL DEFAULT -1,
             scan_target_hash TEXT NOT NULL,
             scan_target_height INTEGER NOT NULL DEFAULT 0,
-            output_count INTEGER NOT NULL DEFAULT 0
+            output_count INTEGER NOT NULL DEFAULT 0,
+            spend_priv TEXT,
+            spend_pub TEXT,
+            view_priv TEXT,
+            view_pub TEXT
           );
 
           -- insert metadata row as default
-          INSERT INTO metadata VALUES (0,0,"testnet",0,0,-1,"",0,0);
+          INSERT INTO metadata VALUES (0,0,"testnet",0,0,-1,"",0,0,"","","","");
 
           CREATE TABLE blocks (
             height INTEGER NOT NULL PRIMARY KEY,
@@ -421,6 +425,67 @@ namespace wallet
   WalletDB::chain_output_count()
   {
     return prepared_get<int64_t>("SELECT output_count FROM metadata WHERE id=0;");
+  }
+  void
+  WalletDB::save_keys(std::shared_ptr<Keyring> keys) 
+  {
+    std::string query = "SELECT spend_priv, spend_pub, view_priv, view_pub FROM metadata WHERE id=0";
+    auto st = prepared_st(query);
+    std::string spend_priv_str;
+    std::string spend_pub_str;
+    std::string view_priv_str;
+    std::string view_pub_str;
+    while (st->executeStep())
+    {
+      auto from_db = db::get<std::string, std::string, std::string, std::string>(st);
+      spend_priv_str = std::get<0>(from_db);
+      spend_pub_str = std::get<1>(from_db);
+      view_priv_str = std::get<2>(from_db);
+      view_pub_str = std::get<3>(from_db);
+    }
+    if (spend_priv_str != "" || spend_pub_str != "" || view_priv_str != "" || view_pub_str != "")
+    {
+      crypto::secret_key spend_priv;
+      crypto::public_key spend_pub;
+      crypto::secret_key view_priv;
+      crypto::public_key view_pub;
+      tools::hex_to_type<crypto::secret_key>(spend_priv_str, spend_priv);
+      tools::hex_to_type<crypto::public_key>(spend_pub_str, spend_pub);
+      tools::hex_to_type<crypto::secret_key>(view_priv_str, view_priv);
+      tools::hex_to_type<crypto::public_key>(view_pub_str, view_pub);
+      auto keyring = Keyring(spend_priv, spend_pub, view_priv, view_pub, keys->nettype);
+      if (keyring.get_main_address() != keys->get_main_address())
+        throw std::runtime_error("loaded keys do not match database file");
+
+    } else {
+      auto account_keys = keys->export_keys();
+      prepared_exec("UPDATE metadata SET spend_priv = ?, spend_pub = ?, view_priv = ?, view_pub = ? where id = 0;",
+          tools::type_to_hex(account_keys.m_spend_secret_key),
+          tools::type_to_hex(account_keys.m_account_address.m_spend_public_key),
+          tools::type_to_hex(account_keys.m_view_secret_key),
+          tools::type_to_hex(account_keys.m_account_address.m_view_public_key));
+
+    }
+  }
+
+  std::shared_ptr<Keyring>
+  WalletDB::load_keys(cryptonote::network_type _nettype) 
+  {
+    std::string query = "SELECT spend_priv, spend_pub, view_priv, view_pub FROM metadata WHERE id=0";
+    auto st = prepared_st(query);
+    crypto::secret_key spend_priv;
+    crypto::public_key spend_pub;
+    crypto::secret_key view_priv;
+    crypto::public_key view_pub;
+    while (st->executeStep())
+    {
+      auto from_db = db::get<std::string, std::string, std::string, std::string>(st);
+      tools::hex_to_type<crypto::secret_key>(std::get<0>(from_db), spend_priv);
+      tools::hex_to_type<crypto::public_key>(std::get<1>(from_db), spend_pub);
+      tools::hex_to_type<crypto::secret_key>(std::get<2>(from_db), view_priv);
+      tools::hex_to_type<crypto::public_key>(std::get<3>(from_db), view_pub);
+    }
+    return std::make_shared<wallet::Keyring>(spend_priv, spend_pub, view_priv, view_pub, _nettype);
   }
 
 }  // namespace wallet

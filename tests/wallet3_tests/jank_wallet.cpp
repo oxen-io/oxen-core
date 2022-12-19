@@ -46,13 +46,13 @@ int main(int argc, char** argv)
 
   auto keyring = std::make_shared<wallet::Keyring>(spend_priv, spend_pub, view_priv, view_pub, cryptonote::network_type::TESTNET);
 
-  wallet::Config config;
+  wallet::Config config = {};
   auto& comms_config = config.daemon;
   auto& omq_rpc_config = config.omq_rpc;
   auto oxenmq = std::make_shared<oxenmq::OxenMQ>();
   auto comms = std::make_shared<wallet::DefaultDaemonComms>(oxenmq, comms_config);
   config.omq_rpc.sockname = wallet_name + ".sock";
-  auto wallet = wallet::Wallet::create(oxenmq, keyring, nullptr, comms, wallet_name + ".sqlite", "", config);
+  auto wallet = wallet::Wallet::create(oxenmq, keyring, nullptr, comms, ":memory:", "", config);
 
   std::this_thread::sleep_for(1s);
 

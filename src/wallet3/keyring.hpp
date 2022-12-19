@@ -112,6 +112,8 @@ namespace wallet
     virtual cryptonote::account_keys
     export_keys();
 
+    cryptonote::network_type nettype;
+
    private:
     crypto::secret_key spend_private_key;
     crypto::public_key spend_public_key;
@@ -119,7 +121,6 @@ namespace wallet
     crypto::secret_key view_private_key;
     crypto::public_key view_public_key;
 
-    cryptonote::network_type nettype;
 
     hw::core::device_default key_device;
   };

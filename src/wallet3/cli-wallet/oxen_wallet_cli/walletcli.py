@@ -34,6 +34,8 @@ def walletcli(click_ctx, **options):
     context.configure(options)
 
     if click_ctx.invoked_subcommand is None:
+        click.echo("Oxen wallet started, you will need to load a wallet to continue")
+        click.echo("Please use load-from-file or load-from-seed")
         click.echo("Run 'help' for help information, or 'quit' to quit.")
         click_repl.repl(click_ctx)
 
@@ -57,6 +59,7 @@ def load_test_wallet():
         name = context.options['wallet_name']
     context.wallet_core_config.omq_rpc.sockname = name + ".sock";
     context.wallet = pywallet3.Wallet(name, keyring, context.wallet_core_config)
+    context.omq_connection()
 
 @walletcli.command()
 @click.argument('seed_phrase', nargs=25)
@@ -76,6 +79,23 @@ def load_from_seed(seed_phrase, seed_phrase_passphrase):
         name = context.options['wallet_name']
     context.wallet_core_config.omq_rpc.sockname = name + ".sock";
     context.wallet = pywallet3.Wallet(name, keyring, context.wallet_core_config)
+    context.omq_connection()
+
+@walletcli.command()
+def load_from_file():
+    click.echo("Loading wallet from file")
+    if context.wallet is not None:
+        click.echo("Wallet already loaded")
+        return
+
+    keyring = None
+    if context.options['wallet_name'] is None:
+        name = click.prompt("Wallet Name", default="{}-oxen-wallet".format(context.options["network"])).strip()
+    else:
+        name = context.options['wallet_name']
+    context.wallet_core_config.omq_rpc.sockname = name + ".sock";
+    context.wallet = pywallet3.Wallet(name, keyring, context.wallet_core_config)
+    context.omq_connection()
 
 @walletcli.command()
 def register_service_node():
@@ -92,12 +112,35 @@ def address():
     click.echo("Address: {}".format("TODO sean get the address here"))
 
 @walletcli.command()
-def get_balance():
+def balance():
+    if context.wallet is None:
+        click.echo("Wallet not loaded")
+        return
     click.echo("Balance: {}".format(context.wallet.get_balance()))
 
 @walletcli.command()
-def get_unlocked_balance():
+def unlocked_balance():
     click.echo("Unlocked Balance: {}".format(context.wallet.get_unlocked_balance()))
+
+@walletcli.command()
+def height():
+    height_future = context.rpc_future("rpc.get_height");
+    height = height_future.get();
+    click.echo("Height: {}".format(height))
+
+@walletcli.command()
+def transfer():
+    address = click.prompt("Enter the destination wallet address", default="").strip()
+    amount = click.prompt("Enter the amount in oxen to be sent to {}".format(address), default=0.0)
+    if address == "" or amount == 0.0:
+        click.prompt("Invalid address/amount entered")
+        return
+    amount_in_atomic_units = round(amount * 10e9, 0);
+    destination = {"address": address, "amount": amount_in_atomic_units}
+    transfer_params = {"destinations": [destination]}
+    transfer_future = context.rpc_future("restricted.transfer", args=transfer_params);
+    transfer_response = transfer_future.get();
+    click.echo("Transfer Response: {}".format(transfer_response))
 
 @walletcli.command()
 def quit():

@@ -28,7 +28,7 @@ namespace wallet
 
   Wallet::Wallet(
       std::shared_ptr<oxenmq::OxenMQ> omq,
-      std::shared_ptr<Keyring> keys,
+      std::shared_ptr<Keyring> keyring,
       std::shared_ptr<TransactionConstructor> tx_constructor,
       std::shared_ptr<DaemonComms> daemon_comms,
       std::string_view dbFilename,
@@ -36,9 +36,8 @@ namespace wallet
       wallet::Config config_in)
       : omq(omq)
       , db{std::make_shared<WalletDB>(file_path_from_default_datadir(config_in, dbFilename), dbPassword)}
-      , keys{keys}
-      , tx_scanner{keys, db}
       , tx_constructor{tx_constructor}
+      , tx_scanner{keyring, db}
       , daemon_comms{daemon_comms}
       , omq_server{request_handler}
       , config(config_in)
@@ -50,10 +49,20 @@ namespace wallet
     if (not tx_constructor)
       this->tx_constructor = std::make_shared<TransactionConstructor>(db, daemon_comms);
 
-    config.omq_rpc.sockname = file_path_from_default_datadir(config, config.omq_rpc.sockname);
+    config.omq_rpc.sockname = file_path_from_default_datadir(config, config.omq_rpc.sockname).string();
     omq_server.set_omq(this->omq, config.omq_rpc);
 
     db->create_schema();
+    if (keyring)
+    {
+      keys = keyring;
+      db->save_keys(keys);
+    }
+    else
+    {
+      keys = db->load_keys(nettype);
+      tx_scanner = TransactionScanner(keys, db);
+    }
     db->add_address(0, 0, keys->get_main_address());
     last_scan_height = db->last_scan_height();
     scan_target_height = db->scan_target_height();
@@ -71,7 +80,7 @@ namespace wallet
     log_location = file_path_from_default_datadir(config, log_location);
 
     auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
-        log_location, 
+        log_location.string(),
         config.logging.log_file_size_limit,
         config.logging.extra_files,
         config.logging.rotate_on_open

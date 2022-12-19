@@ -25,14 +25,14 @@ class MockWallet : public Wallet
 {
   public:
 
-    MockWallet() : Wallet({},std::make_shared<Keyring>(),{},std::make_shared<MockDaemonComms>(),":memory:",{}){};
+    MockWallet() : Wallet({},std::make_shared<Keyring>(),{},std::make_shared<MockDaemonComms>(),":memory:","",{}){};
     MockWallet(
         crypto::secret_key _spend_private_key,
         crypto::public_key _spend_public_key,
         crypto::secret_key _view_private_key,
         crypto::public_key _view_public_key,
         cryptonote::network_type _nettype = cryptonote::network_type::TESTNET
-        ) : Wallet({},std::make_shared<Keyring>(_spend_private_key, _spend_public_key, _view_private_key, _view_public_key),{},std::make_shared<MockDaemonComms>(),":memory:",{}){};
+        ) : Wallet({},std::make_shared<Keyring>(_spend_private_key, _spend_public_key, _view_private_key, _view_public_key),{},std::make_shared<MockDaemonComms>(),":memory:","",{}){};
 
     int64_t height = 0;
 

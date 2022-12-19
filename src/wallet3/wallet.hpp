@@ -25,6 +25,9 @@ namespace wallet
   template <typename FileType>
   fs::path file_path_from_default_datadir(const Config& c, const FileType& filename)
   {
+    if constexpr (std::is_same_v<FileType, std::string_view>) if (filename == ":memory:")
+        return filename;
+
     auto file_location = fs::absolute(fs::u8path(c.general.datadir));
     if (c.general.nettype != "mainnet" && c.general.append_network_type_to_datadir)
       file_location /= c.general.nettype;
@@ -44,7 +47,7 @@ namespace wallet
    protected:
     Wallet(
         std::shared_ptr<oxenmq::OxenMQ> omq,
-        std::shared_ptr<Keyring> keys,
+        std::shared_ptr<Keyring> keyring,
         std::shared_ptr<TransactionConstructor> tx_constructor,
         std::shared_ptr<DaemonComms> daemon_comms,
         std::string_view dbFilename,

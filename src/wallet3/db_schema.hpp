@@ -4,6 +4,7 @@
 #include <sqlitedb/database.hpp>
 
 #include "output.hpp"
+#include "keyring.hpp"
 
 #include <optional>
 
@@ -92,5 +93,14 @@ namespace wallet
     // and thus mixable, this can be used for decoy selection.
     int64_t
     chain_output_count();
+
+    // Saves keys to the database, will check if keys match if already exists and throw 
+    // if different
+    void
+    save_keys(std::shared_ptr<Keyring> keys);
+
+    // Loads keys from an already created database, will throw if keys don't exist
+    std::shared_ptr<Keyring>
+    load_keys(cryptonote::network_type _nettype);
   };
 }

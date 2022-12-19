@@ -543,11 +543,7 @@ namespace wallet
 
     // if we get caught up, or all wallets are removed, no need to request more blocks
     if (not syncing)
-    {
-      std::cout << "Finished syncing\n";
-
       return;
-    }
 
     get_blocks();
   }
