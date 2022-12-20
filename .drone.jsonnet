@@ -237,6 +237,43 @@ local gui_wallet_step_darwin = {
 
 
 [
+  // Static build to make wallet3:
+  {
+    name: 'Static (wallet3)',
+    kind: 'pipeline',
+    type: 'docker',
+    platform: { arch: 'amd64' },
+    steps: [{
+      name: 'build',
+      image: docker_base + 'ubuntu-lts',
+      pull: 'always',
+      environment: { SSH_KEY: { from_secret: 'SSH_KEY' } },
+      commands: submodules_commands + [
+        'apt update',
+        'eatmydata ' + apt_get_quiet + ' install -y --no-install-recommends cmake git ninja-build ccache '
+        + std.join(' ', static_build_deps),
+        'eatmydata ' + apt_get_quiet + ' install --no-install-recommends -y lsb-release',
+        'cp contrib/deb.oxen.io.gpg /etc/apt/trusted.gpg.d',
+        'echo deb http://deb.oxen.io $$(lsb_release -sc) main >/etc/apt/sources.list.d/oxen.list',
+        'eatmydata ' + apt_get_quiet + ' update',
+        'apt update',
+        'eatmydata ' + apt_get_quiet + ' install --no-install-recommends -y python3-venv python3-oxenmq',
+        'pip3 install --upgrade pip',
+        'pip3 install --upgrade build',
+        'pip3 install --upgrade setuptools',
+        'mkdir build',
+        'cd build',
+        'cmake .. -G Ninja ' +
+        '-DSTATIC=ON -DBUILD_STATIC_DEPS=ON -DUSE_LTO=OFF -DCMAKE_BUILD_TYPE=Release -DWARNINGS_AS_ERRORS=OFF',
+        'ninja -j6 -v wallet3_merged',
+        'pip3 install ./pybind/',
+        'cd ..',
+        'cd src/wallet3/cli-wallet/',
+        'python3.10 -m build',
+      ],
+    }],
+  },
+
   // Various debian builds
   debian_pipeline('Debian sid (w/ tests) (amd64)', docker_base + 'debian-sid', lto=true, run_tests=true),
   debian_pipeline('Debian sid Debug (amd64)', docker_base + 'debian-sid', build_type='Debug', cmake_extra='-DBUILD_DEBUG_UTILS=ON'),
@@ -353,4 +390,5 @@ local gui_wallet_step_darwin = {
       ],
     }],
   },
+
 ]
