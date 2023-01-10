@@ -999,6 +999,7 @@ private:
      * \param  wallet_file_exists  Whether bin file exists
      */
     static void wallet_exists(const fs::path& file_path, bool& keys_file_exists, bool& wallet_file_exists);
+    static void remove_wallet_file(const fs::path& file_path);
     static bool parse_payment_id(std::string_view payment_id_str, crypto::hash& payment_id);
 
     bool always_confirm_transfers() const { return m_always_confirm_transfers; }

@@ -726,6 +726,19 @@ Wallet::Device WalletImpl::getDeviceType() const
 }
 
 EXPORT
+bool WalletImpl::clear_wallet_file(std::string_view path_)
+{
+    auto path = fs::u8path(path_);
+    bool keys_file_exists;
+    bool wallet_file_exists;
+    tools::wallet2::wallet_exists(path, keys_file_exists, wallet_file_exists);
+    if(wallet_file_exists){
+      tools::wallet2::remove_wallet_file(path);
+    }
+    return good();
+}
+
+EXPORT
 bool WalletImpl::open(std::string_view path_, const std::string &password)
 {
     auto path = fs::u8path(path_);

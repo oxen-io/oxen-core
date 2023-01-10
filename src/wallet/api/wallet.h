@@ -82,6 +82,7 @@ public:
                 const std::string &language);
     bool createWatchOnly(std::string_view path, const std::string &password,
                             const std::string &language) const override;
+    bool clear_wallet_file(std::string_view path);
     bool open(std::string_view path, const std::string &password);
     bool recover(std::string_view path,const std::string &password,
                             const std::string &seed, const std::string &seed_offset = {});

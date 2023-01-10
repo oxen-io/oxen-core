@@ -5568,6 +5568,13 @@ void wallet2::wallet_exists(const fs::path& file_path, bool& keys_file_exists, b
   wallet_file_exists = fs::exists(wallet_file, ignore);
 }
 //----------------------------------------------------------------------------------------------------
+void wallet2::remove_wallet_file(const fs::path& file_path)
+{
+  fs::path keys_file, wallet_file;
+  do_prepare_file_names(file_path, keys_file, wallet_file);
+  fs::remove(wallet_file);
+}
+//----------------------------------------------------------------------------------------------------
 bool wallet2::parse_payment_id(std::string_view payment_id_str, crypto::hash& payment_id)
 {
   if (tools::hex_to_type(payment_id_str, payment_id))
