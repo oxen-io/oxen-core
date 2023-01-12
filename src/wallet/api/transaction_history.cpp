@@ -43,25 +43,21 @@
 
 namespace Wallet {
 
-EXPORT
 TransactionHistory::~TransactionHistory() {}
 
 
-EXPORT
 TransactionHistoryImpl::TransactionHistoryImpl(WalletImpl *wallet)
     : m_wallet(wallet)
 {
 
 }
 
-EXPORT
 TransactionHistoryImpl::~TransactionHistoryImpl()
 {
     for (auto t : m_history)
         delete t;
 }
 
-EXPORT
 int TransactionHistoryImpl::count() const
 {
     std::shared_lock lock{m_historyMutex};
@@ -69,7 +65,6 @@ int TransactionHistoryImpl::count() const
     return result;
 }
 
-EXPORT
 TransactionInfo *TransactionHistoryImpl::transaction(int index) const
 {
     std::shared_lock lock{m_historyMutex};
@@ -80,7 +75,6 @@ TransactionInfo *TransactionHistoryImpl::transaction(int index) const
     return index_ < m_history.size() ? m_history[index_] : nullptr;
 }
 
-EXPORT
 TransactionInfo *TransactionHistoryImpl::transaction(std::string_view id) const
 {
     std::shared_lock lock{m_historyMutex};
@@ -91,7 +85,6 @@ TransactionInfo *TransactionHistoryImpl::transaction(std::string_view id) const
     return itr != m_history.end() ? *itr : nullptr;
 }
 
-EXPORT
 std::vector<TransactionInfo *> TransactionHistoryImpl::getAll() const
 {
     std::shared_lock lock{m_historyMutex};
@@ -106,7 +99,6 @@ static reward_type from_pay_type(wallet::pay_type ptype) {
     }
 }
 
-EXPORT
 void TransactionHistoryImpl::refresh()
 {
     // multithreaded access:

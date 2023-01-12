@@ -43,33 +43,27 @@
 
 namespace Wallet {
 
-EXPORT
 PendingTransaction::~PendingTransaction() {}
 
 
-EXPORT
 PendingTransactionImpl::PendingTransactionImpl(WalletImpl &wallet)
     : m_wallet(wallet), m_status{Status_Ok, ""}
 {
 }
 
-EXPORT
 PendingTransactionImpl::PendingTransactionImpl(WalletImpl& wallet, std::vector<tools::wallet2::pending_tx> pending_tx)
     : m_wallet{wallet}, m_status{Status_Ok, ""}, m_pending_tx{std::move(pending_tx)}
 {}
 
-EXPORT
 PendingTransactionImpl::~PendingTransactionImpl()
 {
 
 }
 
-EXPORT
 void PendingTransactionImpl::setError(std::string error_msg) {
   m_status = {Status_Error, tr(error_msg)};
 }
 
-EXPORT
 std::vector<std::string> PendingTransactionImpl::txid() const
 {
     std::vector<std::string> txid;
@@ -78,7 +72,6 @@ std::vector<std::string> PendingTransactionImpl::txid() const
     return txid;
 }
 
-EXPORT
 bool PendingTransactionImpl::commit(std::string_view filename_, bool overwrite, bool blink)
 {
 
@@ -152,7 +145,6 @@ bool PendingTransactionImpl::commit(std::string_view filename_, bool overwrite, 
     return good();
 }
 
-EXPORT
 uint64_t PendingTransactionImpl::amount() const
 {
     uint64_t result = 0;
@@ -175,7 +167,6 @@ uint64_t PendingTransactionImpl::amount() const
     return result;
 }
 
-EXPORT
 uint64_t PendingTransactionImpl::dust() const
 {
     uint64_t result = 0;
@@ -185,7 +176,6 @@ uint64_t PendingTransactionImpl::dust() const
     return result;
 }
 
-EXPORT
 uint64_t PendingTransactionImpl::fee() const
 {
     uint64_t result = 0;
@@ -195,13 +185,11 @@ uint64_t PendingTransactionImpl::fee() const
     return result;
 }
 
-EXPORT
 uint64_t PendingTransactionImpl::txCount() const
 {
     return m_pending_tx.size();
 }
 
-EXPORT
 std::vector<uint32_t> PendingTransactionImpl::subaddrAccount() const
 {
     std::vector<uint32_t> result;
@@ -210,7 +198,6 @@ std::vector<uint32_t> PendingTransactionImpl::subaddrAccount() const
     return result;
 }
 
-EXPORT
 std::vector<std::set<uint32_t>> PendingTransactionImpl::subaddrIndices() const
 {
     std::vector<std::set<uint32_t>> result;
@@ -219,7 +206,6 @@ std::vector<std::set<uint32_t>> PendingTransactionImpl::subaddrIndices() const
     return result;
 }
 
-EXPORT
 std::string PendingTransactionImpl::multisigSignData() {
     try {
         if (!m_wallet.multisig().isMultisig) {
@@ -239,7 +225,6 @@ std::string PendingTransactionImpl::multisigSignData() {
     return std::string();
 }
 
-EXPORT
 void PendingTransactionImpl::signMultisigTx() {
     try {
         std::vector<crypto::hash> ignore;
@@ -259,7 +244,6 @@ void PendingTransactionImpl::signMultisigTx() {
     }
 }
 
-EXPORT
 std::vector<std::string> PendingTransactionImpl::signersKeys() const {
     std::vector<std::string> keys;
     keys.reserve(m_signers.size());

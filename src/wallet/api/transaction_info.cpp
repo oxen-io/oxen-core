@@ -34,15 +34,12 @@
 
 namespace Wallet {
 
-EXPORT
 TransactionInfo::~TransactionInfo() {}
 
-EXPORT
 TransactionInfo::Transfer::Transfer(uint64_t _amount, std::string _address)
     : amount(_amount), address(std::move(_address)) {}
 
 
-EXPORT
 TransactionInfoImpl::TransactionInfoImpl()
     : m_direction(Direction_Out)
       , m_pending(false)
@@ -60,116 +57,97 @@ TransactionInfoImpl::TransactionInfoImpl()
 
 }
 
-EXPORT
 TransactionInfoImpl::~TransactionInfoImpl()
 {
 
 }
 
-EXPORT
 int TransactionInfoImpl::direction() const
 {
     return m_direction;
 }
 
-EXPORT
 bool TransactionInfoImpl::isServiceNodeReward() const
 {
     return m_reward_type == reward_type::service_node;
 }
 
-EXPORT
 bool TransactionInfoImpl::isMinerReward() const
 {
     return m_reward_type == reward_type::miner;
 }
 
-EXPORT
 bool TransactionInfoImpl::isStake() const
 {
     return m_is_stake;
 }
 
-EXPORT
 bool TransactionInfoImpl::isPending() const
 {
     return m_pending;
 }
 
-EXPORT
 bool TransactionInfoImpl::isFailed() const
 {
     return m_failed;
 }
 
-EXPORT
 uint64_t TransactionInfoImpl::amount() const
 {
     return m_amount;
 }
 
-EXPORT
 uint64_t TransactionInfoImpl::fee() const
 {
     return m_fee;
 }
 
-EXPORT
 uint64_t TransactionInfoImpl::blockHeight() const
 {
     return m_blockheight;
 }
 
-EXPORT
 std::set<uint32_t> TransactionInfoImpl::subaddrIndex() const
 {
     return m_subaddrIndex;
 }
 
-EXPORT
 uint32_t TransactionInfoImpl::subaddrAccount() const
 {
     return m_subaddrAccount;
 }
 
-EXPORT
 std::string TransactionInfoImpl::label() const
 {
     return m_label;
 }
 
 
-EXPORT
 std::string TransactionInfoImpl::hash() const
 {
     return m_hash;
 }
 
-EXPORT
 std::time_t TransactionInfoImpl::timestamp() const
 {
     return m_timestamp;
 }
 
-EXPORT
 std::string TransactionInfoImpl::paymentId() const
 {
     return m_paymentid;
 }
 
-EXPORT
 const std::vector<TransactionInfo::Transfer> &TransactionInfoImpl::transfers() const
 {
     return m_transfers;
 }
 
-EXPORT
 uint64_t TransactionInfoImpl::confirmations() const
 {
     return m_confirmations;
 }
 
-EXPORT
 uint64_t TransactionInfoImpl::unlockTime() const
 {
     return m_unlock_time;

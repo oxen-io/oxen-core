@@ -41,7 +41,6 @@
 
 namespace Wallet {
 
-EXPORT
 Wallet* WalletManagerImpl::createWallet(std::string_view path, const std::string &password,
                                     const std::string &language, NetworkType nettype, uint64_t kdf_rounds)
 {
@@ -50,7 +49,6 @@ Wallet* WalletManagerImpl::createWallet(std::string_view path, const std::string
     return wallet;
 }
 
-EXPORT
 Wallet* WalletManagerImpl::openWallet(std::string_view path, const std::string &password, NetworkType nettype, uint64_t kdf_rounds, WalletListener * listener)
 {
     WalletImpl* wallet = new WalletImpl(nettype, kdf_rounds);
@@ -65,7 +63,6 @@ Wallet* WalletManagerImpl::openWallet(std::string_view path, const std::string &
     return wallet;
 }
 
-EXPORT
 Wallet* WalletManagerImpl::recoveryWallet(std::string_view path,
                                                 const std::string &password,
                                                 const std::string &mnemonic,
@@ -82,7 +79,6 @@ Wallet* WalletManagerImpl::recoveryWallet(std::string_view path,
     return wallet;
 }
 
-EXPORT
 Wallet* WalletManagerImpl::createWalletFromKeys(std::string_view path,
                                                 const std::string &password,
                                                 const std::string &language,
@@ -101,7 +97,6 @@ Wallet* WalletManagerImpl::createWalletFromKeys(std::string_view path,
     return wallet;
 }
 
-EXPORT
 Wallet* WalletManagerImpl::createWalletFromDevice(std::string_view path,
                                                   const std::string &password,
                                                   NetworkType nettype,
@@ -131,7 +126,6 @@ Wallet* WalletManagerImpl::createWalletFromDevice(std::string_view path,
     return wallet;
 }
 
-EXPORT
 bool WalletManagerImpl::closeWallet(Wallet* wallet, bool store)
 {
     WalletImpl* wallet_ = dynamic_cast<WalletImpl*>(wallet);
@@ -146,7 +140,6 @@ bool WalletManagerImpl::closeWallet(Wallet* wallet, bool store)
     return result;
 }
 
-EXPORT
 bool WalletManagerImpl::walletExists(std::string_view path)
 {
     bool keys_file_exists;
@@ -158,13 +151,11 @@ bool WalletManagerImpl::walletExists(std::string_view path)
     return false;
 }
 
-EXPORT
 bool WalletManagerImpl::verifyWalletPassword(std::string_view keys_file_name, const std::string &password, bool no_spend_key, uint64_t kdf_rounds) const
 {
 	    return tools::wallet2::verify_password(fs::u8path(keys_file_name), password, no_spend_key, hw::get_device("default"), kdf_rounds);
 }
 
-EXPORT
 bool WalletManagerImpl::queryWalletDevice(Wallet::Device& device_type, std::string_view keys_file_name, const std::string &password, uint64_t kdf_rounds) const
 {
     hw::device::type type;
@@ -173,7 +164,6 @@ bool WalletManagerImpl::queryWalletDevice(Wallet::Device& device_type, std::stri
     return r;
 }
 
-EXPORT
 std::vector<std::string> WalletManagerImpl::findWallets(std::string_view path_)
 {
     auto path = fs::u8path(path_);
@@ -202,13 +192,11 @@ std::vector<std::string> WalletManagerImpl::findWallets(std::string_view path_)
     return result;
 }
 
-EXPORT
 std::string WalletManagerImpl::errorString() const
 {
     return m_errorString;
 }
 
-EXPORT
 void WalletManagerImpl::setDaemonAddress(std::string address)
 {
     if (!tools::starts_with(address, "https://") && !tools::starts_with(address, "http://"))
@@ -216,7 +204,6 @@ void WalletManagerImpl::setDaemonAddress(std::string address)
     m_http_client.set_base_url(std::move(address));
 }
 
-EXPORT
 bool WalletManagerImpl::connected(uint32_t *version)
 {
     using namespace cryptonote::rpc;
@@ -235,14 +222,12 @@ static nlohmann::json get_info(cryptonote::rpc::http_client& http)
 }
 
 
-EXPORT
 uint64_t WalletManagerImpl::blockchainHeight()
 {
     auto res = get_info(m_http_client);
     return res ? res["height"].get<uint64_t>() : 0;
 }
 
-EXPORT
 uint64_t WalletManagerImpl::blockchainTargetHeight()
 {
     auto res = get_info(m_http_client);
@@ -251,7 +236,6 @@ uint64_t WalletManagerImpl::blockchainTargetHeight()
     return std::max(res["target_height"].get<uint64_t>(), res["height"].get<uint64_t>());
 }
 
-EXPORT
 uint64_t WalletManagerImpl::blockTarget()
 {
     auto res = get_info(m_http_client);
@@ -259,7 +243,6 @@ uint64_t WalletManagerImpl::blockTarget()
 }
 
 ///////////////////// WalletManagerFactory implementation //////////////////////
-EXPORT
 WalletManagerBase *WalletManagerFactory::getWalletManager()
 {
 
@@ -272,7 +255,6 @@ WalletManagerBase *WalletManagerFactory::getWalletManager()
     return g_walletManager;
 }
 
-EXPORT
 void WalletManagerFactory::setLogLevel(int level)
 {
     auto log_level = oxen::logging::parse_level(level);
@@ -280,7 +262,6 @@ void WalletManagerFactory::setLogLevel(int level)
       log::reset_level(*log_level);
 }
 
-EXPORT
 void WalletManagerFactory::setLogCategories(const std::string &categories)
 {
     oxen::logging::process_categories_string(categories);

@@ -39,14 +39,11 @@
 
 namespace Wallet {
 
-EXPORT
 AddressBook::~AddressBook() {}
 
-EXPORT
 AddressBookImpl::AddressBookImpl(WalletImpl *wallet)
     : m_wallet(wallet), m_errorCode(Status_Ok) {}
 
-EXPORT
 bool AddressBookImpl::addRow(const std::string &dst_addr, const std::string &description)
 {
   clearStatus();
@@ -67,7 +64,6 @@ bool AddressBookImpl::addRow(const std::string &dst_addr, const std::string &des
   return r;
 }
 
-EXPORT
 void AddressBookImpl::refresh() 
 {
   log::debug(logcat, "Refreshing addressbook");
@@ -90,7 +86,6 @@ void AddressBookImpl::refresh()
   
 }
 
-EXPORT
 bool AddressBookImpl::deleteRow(std::size_t rowId)
 {
   log::debug(logcat, "Deleting address book row {}", rowId);
@@ -100,7 +95,6 @@ bool AddressBookImpl::deleteRow(std::size_t rowId)
   return r;
 } 
 
-EXPORT
 void AddressBookImpl::clearRows() {
    for (auto r : m_rows) {
      delete r;
@@ -108,20 +102,17 @@ void AddressBookImpl::clearRows() {
    m_rows.clear();
 }
 
-EXPORT
 void AddressBookImpl::clearStatus(){
   m_errorString = "";
   m_errorCode = 0;
 }
 
-EXPORT
 std::vector<AddressBookRow*> AddressBookImpl::getAll() const
 {
   return m_rows;
 }
 
 
-EXPORT
 AddressBookImpl::~AddressBookImpl()
 {
   clearRows();

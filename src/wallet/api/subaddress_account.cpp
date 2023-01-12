@@ -36,28 +36,23 @@
 
 namespace Wallet {
   
-EXPORT
 SubaddressAccount::~SubaddressAccount() {}
   
-EXPORT
 SubaddressAccountImpl::SubaddressAccountImpl(WalletImpl *wallet)
     : m_wallet(wallet) {}
 
-EXPORT
 void SubaddressAccountImpl::addRow(const std::string &label)
 {
   m_wallet->wallet()->add_subaddress_account(label);
   refresh();
 }
 
-EXPORT
 void SubaddressAccountImpl::setLabel(uint32_t accountIndex, const std::string &label)
 {
   m_wallet->wallet()->set_subaddress_label({accountIndex, 0}, label);
   refresh();
 }
 
-EXPORT
 void SubaddressAccountImpl::refresh() 
 {
   log::debug(logcat, "Refreshing subaddress account");
@@ -76,7 +71,6 @@ void SubaddressAccountImpl::refresh()
   }
 }
 
-EXPORT
 void SubaddressAccountImpl::clearRows() {
    for (auto r : m_rows) {
      delete r;
@@ -84,13 +78,11 @@ void SubaddressAccountImpl::clearRows() {
    m_rows.clear();
 }
 
-EXPORT
 std::vector<SubaddressAccountRow*> SubaddressAccountImpl::getAll() const
 {
   return m_rows;
 }
 
-EXPORT
 SubaddressAccountImpl::~SubaddressAccountImpl()
 {
   clearRows();

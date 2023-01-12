@@ -53,6 +53,7 @@ target_link_libraries(wallet_api
     extra)
 
 set_property(TARGET wallet_api PROPERTY EXCLUDE_FROM_ALL TRUE)
+target_compile_options(wallet_api PRIVATE -fvisibility=default)
 
 if(IOS)
     set(lib_folder lib-${ARCH})

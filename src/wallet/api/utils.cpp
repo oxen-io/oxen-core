@@ -35,7 +35,6 @@
 namespace Wallet {
 namespace Utils {
 
-EXPORT
 bool isAddressLocal(const std::string &address)
 { 
     try {
@@ -46,7 +45,6 @@ bool isAddressLocal(const std::string &address)
     }
 }
 
-EXPORT
 void onStartup()
 {
     tools::on_startup();
