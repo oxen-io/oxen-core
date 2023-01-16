@@ -94,9 +94,10 @@ namespace wallet
         std::vector<rct::key>& amount_keys);
 
     virtual crypto::secret_key
-    derive_transaction_secret_key(
+    derive_output_secret_key(
         const crypto::key_derivation& key_derivation,
-        const size_t output_index
+        const size_t output_index,
+        const cryptonote::subaddress_index& sub_index
     );
 
     virtual crypto::hash
@@ -108,6 +109,11 @@ namespace wallet
     sign_transaction(
         PendingTransaction& ptx
     );
+
+    virtual std::vector<crypto::public_key> get_subaddress_spend_public_keys(uint32_t account, uint32_t begin, uint32_t end);
+
+    virtual void
+    expand_subaddresses(const cryptonote::subaddress_index& lookahead);
 
     virtual cryptonote::account_keys
     export_keys();
@@ -123,6 +129,7 @@ namespace wallet
 
 
     hw::core::device_default key_device;
+    std::unordered_map<crypto::public_key, cryptonote::subaddress_index> subaddresses;
   };
 
 }  // namespace wallet

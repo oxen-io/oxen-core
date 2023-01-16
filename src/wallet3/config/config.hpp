@@ -6,8 +6,10 @@ namespace wallet
   struct GeneralWalletConfig
   {
     std::string nettype = "testnet";                     // What network the wallet is operating on ("mainnet" | "testnet" | "devnet")
-    std::string datadir = "oxen-wallet";     // Directory to store data (Database files, websocket file, logs)
+    std::string datadir = "oxen-wallet";                 // Directory to store data (Database files, websocket file, logs)
     bool append_network_type_to_datadir = true;          // If you specify a datadir do you want the wallet to save into subdirs for testnet 
+    uint32_t subaddress_lookahead_major = 50;            // The wallet will generate a number of accounts based on this figure
+    uint32_t subaddress_lookahead_minor = 200;           // The wallet will generate a number of addresses for each account based on this figure
   };
 
   struct LoggingConfig

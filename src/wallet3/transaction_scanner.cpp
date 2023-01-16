@@ -27,7 +27,8 @@ namespace wallet
 
     if (tx_public_keys.empty())
     {
-      log::warning(logcat, "TransactionScanner found no tx public keys in transaction with hash <{}>.", tx.hash);
+      // This sometimes occurs for things like recommission transactions sent by the quorum
+      log::trace(logcat, "TransactionScanner found no tx public keys in transaction with hash <{}>.", tx.hash);
       return {};
     }
     if (tx.tx.vout.size() != tx.global_indices.size())
@@ -36,6 +37,8 @@ namespace wallet
           "Invalid wallet::BlockTX, created outputs count != global indices count.");
     }
 
+    // A derivation is simply the private view key multiplied by the tx public key
+    // do this for every tx public key in the transaction
     auto derivations = wallet_keys->generate_key_derivations(tx_public_keys);
     bool coinbase_transaction = is_coinbase(tx);
     // Output belongs to public key derived as follows:
@@ -48,6 +51,7 @@ namespace wallet
     //      `out_key - Hs(R || output_index) * G == B`
     for (size_t output_index = 0; output_index < tx.tx.vout.size(); output_index++)
     {
+      log::debug(logcat, "scanning output at height: {} output index: {}", height, output_index);
       const auto& output = tx.tx.vout[output_index];
 
       if (auto* output_target = std::get_if<cryptonote::txout_to_key>(&output.target))
@@ -64,9 +68,10 @@ namespace wallet
 
         if (not sub_index)
           continue;  // not ours, move on to the next output
+                     //
+        log::info(logcat, "Found an output belonging to us with subindex: {}:{}", sub_index->major, sub_index->minor);
 
         // TODO: device "conceal derivation" as needed
-
 
 
         auto key_image = wallet_keys->key_image(

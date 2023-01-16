@@ -96,7 +96,7 @@ namespace cryptonote
   {
     if (std::error_code ec; !fs::exists(json_hashfile_fullpath, ec))
     {
-      log::info(logcat, "Blockchain checkpoints file not found");
+      log::debug(logcat, "Blockchain checkpoints file not found");
       return true;
     }
 

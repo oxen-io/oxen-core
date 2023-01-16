@@ -25,7 +25,6 @@ namespace wallet
   crypto::secret_key
   Keyring::generate_tx_key(cryptonote::hf hf_version)
   {
-    // TODO sean make sure this is zero
     crypto::secret_key tx_key{};
 
     if (!key_device.open_tx(tx_key, cryptonote::transaction::get_max_version_for_hf(hf_version), cryptonote::txtype::standard))
@@ -37,7 +36,6 @@ namespace wallet
   crypto::public_key
   Keyring::secret_tx_key_to_public_tx_key(const crypto::secret_key a)
   {
-    // TODO sean make sure this is zero
     rct::key aG{};
     if (!key_device.scalarmultBase(aG, rct::sk2rct(a)))
       throw std::runtime_error("Could not convert secret tx key to public tx key");
@@ -85,11 +83,12 @@ namespace wallet
   {
     auto candidate_key = output_spend_key(derivation, output_key, output_index);
 
-    // TODO: handle checking against subaddresses
-    if (candidate_key == spend_public_key)
-    {
-      return cryptonote::subaddress_index{0, 0};
-    }
+    // Searchs against our map for subaddress public view keys which also includes our
+    // regular view key at index (0,0)
+    const auto subaddr_viewed = get_subaddress_spend_public_keys(0, 0, 1);
+    if (const auto subaddress_index = subaddresses.find(candidate_key); subaddress_index != subaddresses.end())
+      return (*subaddress_index).second;
+
     return std::nullopt;
   }
 
@@ -100,13 +99,7 @@ namespace wallet
       uint64_t output_index,
       const cryptonote::subaddress_index& sub_index)
   {
-    // TODO: subaddress support, for now throw if not main address
-    if (not sub_index.is_zero())
-    {
-      throw std::invalid_argument("Subaddresses not yet supported in wallet3");
-    }
-
-    auto output_private_key = derive_transaction_secret_key(derivation, output_index);
+    auto output_private_key = derive_output_secret_key(derivation, output_index, sub_index);
 
     crypto::public_key output_pubkey_computed;
     key_device.secret_key_to_public_key(output_private_key, output_pubkey_computed);
@@ -196,13 +189,18 @@ namespace wallet
 
   // This is called over a transaction input to produce the secret key that can spend an outputs funds.
   // The key derivation is usually produced from calling generate_key_derivation().
-  // computes Hs(a*R || idx) + b
-  // TODO: subaddress support
+  // computes Hs(a*R || idx) + b if main address
+  // computes Hs(a*R || idx) + b + m if subaddress
   crypto::secret_key
-  Keyring::derive_transaction_secret_key(const crypto::key_derivation& key_derivation, const size_t output_index)
+  Keyring::derive_output_secret_key(const crypto::key_derivation& key_derivation, const size_t output_index, const cryptonote::subaddress_index& sub_index)
   {
     crypto::secret_key output_secret_key;
     key_device.derive_secret_key(key_derivation, output_index, spend_private_key, output_secret_key);
+
+    // If we have a subaddress that received the output then add the subaddress private key to the output secret key
+    if (!sub_index.is_zero())
+      key_device.sc_secret_add(output_secret_key, output_secret_key, key_device.get_subaddress_secret_key(view_private_key, sub_index));
+
     return output_secret_key;
   }
 
@@ -254,8 +252,8 @@ namespace wallet
       // blockchain to see if it is ours to spend. We already know its ours because the wallet 
       // has collected them at an earlier point in time. Now we combine this derivation
       // with the output index and our secret spend key to generate
-      // the actual transaction secret key which we can use to spend the output.
-      crypto::secret_key output_secret_key = derive_transaction_secret_key(src_entr.derivation, src_entr.output_index);
+      // the output secret key which we can use to spend the output.
+      crypto::secret_key output_secret_key = derive_output_secret_key(src_entr.derivation, src_entr.output_index, src_entr.subaddress_index);
 
       crypto::public_key computed_output_pubkey{};
       if (!key_device.secret_key_to_public_key(output_secret_key, computed_output_pubkey)
@@ -392,6 +390,57 @@ namespace wallet
 
     if (not rct::verRctNonSemanticsSimple(ptx.tx.rct_signatures))
       throw std::runtime_error("RCT signing went wrong -- verRctNonSemanticsSimple returned false");
+  }
+
+  // Will create subaddress spend public keys from {account, begin} to {account, end} inclusive of begin and end
+  std::vector<crypto::public_key> Keyring::get_subaddress_spend_public_keys(uint32_t account, uint32_t begin, uint32_t end) {
+    if (begin > end)
+      throw std::runtime_error("begin > end");
+
+    std::vector<crypto::public_key> pkeys;
+    pkeys.reserve(end - begin + 1);
+    cryptonote::subaddress_index index = {account, begin};
+
+    ge_p3 p3;
+    ge_cached cached;
+    if (ge_frombytes_vartime(&p3, spend_public_key.data()) != 0)
+      throw std::runtime_error("ge_frombytes_vartime failed to convert spend public key");
+    ge_p3_to_cached(&cached, &p3);
+
+    for (uint32_t idx = begin; idx <= end; ++idx)
+    {
+      index.minor = idx;
+      if (index.is_zero())
+      {
+        pkeys.push_back(spend_public_key);
+        continue;
+      }
+      crypto::secret_key m = key_device.get_subaddress_secret_key(view_private_key, index);
+
+      // M = m*G
+      ge_scalarmult_base(&p3, m.data());
+
+      // D = B + M
+      crypto::public_key D;
+      ge_p1p1 p1p1;
+      ge_add(&p1p1, &p3, &cached);
+      ge_p1p1_to_p3(&p3, &p1p1);
+      ge_p3_tobytes(D.data(), &p3);
+
+      pkeys.push_back(D);
+    }
+    return pkeys;
+  }
+
+  void
+  Keyring::expand_subaddresses(const cryptonote::subaddress_index& lookahead)
+  {
+    for (uint32_t i = 0; i < lookahead.major; i++) {
+      const std::vector<crypto::public_key> pkeys = get_subaddress_spend_public_keys(i, 0, lookahead.minor);
+      for (uint32_t j = 0; j < lookahead.minor; j++) {
+         subaddresses[pkeys[j]] = {i,j};
+      }
+    }
   }
 
   cryptonote::account_keys

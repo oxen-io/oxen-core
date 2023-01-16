@@ -123,8 +123,7 @@ namespace wallet
             rct_mask BLOB NOT NULL,
             key_image INTEGER NOT NULL REFERENCES key_images(id),
             subaddress_major INTEGER NOT NULL,
-            subaddress_minor INTEGER NOT NULL,
-            FOREIGN KEY(subaddress_major, subaddress_minor) REFERENCES subaddresses(major_index, minor_index)
+            subaddress_minor INTEGER NOT NULL
           );
           CREATE INDEX output_key_image ON outputs(key_image);
 
@@ -427,7 +426,7 @@ namespace wallet
     return prepared_get<int64_t>("SELECT output_count FROM metadata WHERE id=0;");
   }
   void
-  WalletDB::save_keys(std::shared_ptr<Keyring> keys) 
+  WalletDB::save_keys(std::shared_ptr<Keyring> keys)
   {
     std::string query = "SELECT spend_priv, spend_pub, view_priv, view_pub FROM metadata WHERE id=0";
     auto st = prepared_st(query);
@@ -469,7 +468,7 @@ namespace wallet
   }
 
   std::shared_ptr<Keyring>
-  WalletDB::load_keys(cryptonote::network_type _nettype) 
+  WalletDB::load_keys(cryptonote::network_type _nettype)
   {
     std::string query = "SELECT spend_priv, spend_pub, view_priv, view_pub FROM metadata WHERE id=0";
     auto st = prepared_st(query);

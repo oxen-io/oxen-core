@@ -117,7 +117,7 @@ namespace wallet
 
     omq->job([blocks=std::move(blocks),this](){
         for_each_wallet([&](std::shared_ptr<Wallet> wallet){
-            wallet->add_blocks(blocks);
+              wallet->add_blocks(blocks);
             });
         }, sync_thread);
 
@@ -141,7 +141,7 @@ namespace wallet
   void
   DefaultDaemonComms::request_top_block_info()
   {
-    oxen::log::info(logcat, "request top block called");
+    oxen::log::trace(logcat, "request top block called");
     auto timeout_job = [self=weak_from_this()](){
       if (auto comms = self.lock())
         comms->request_top_block_info();
@@ -155,11 +155,11 @@ namespace wallet
     else
       omq->add_timer(status_timer, timeout_job, 15s);
 
-    oxen::log::info(logcat, "requesting rpc.get_height");
+    oxen::log::trace(logcat, "requesting rpc.get_height");
     omq->request(conn, "rpc.get_height",
         [this](bool ok, std::vector<std::string> response)
         {
-          oxen::log::info(logcat, "rpc get_height response");
+          oxen::log::trace(logcat, "rpc get_height response");
           if (not ok or response.size() != 2 or response[0] != "200")
             return;
 
@@ -201,11 +201,11 @@ namespace wallet
           }
         }, "de");
 
-    oxen::log::info(logcat, "requesting rpc.get_fee_estimate");
+    oxen::log::trace(logcat, "requesting rpc.get_fee_estimate");
     omq->request(conn, "rpc.get_fee_estimate",
         [this](bool ok, std::vector<std::string> response)
         {
-          oxen::log::info(logcat, "rpc get_fee estimate response");
+          oxen::log::trace(logcat, "rpc get_fee estimate response");
           if (not ok or response.size() != 2 or response[0] != "200")
             return;
 

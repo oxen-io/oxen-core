@@ -71,6 +71,7 @@ namespace wallet
   void
   Wallet::init()
   {
+    keys->expand_subaddresses({config.general.subaddress_lookahead_major, config.general.subaddress_lookahead_minor});
     oxen::log::reset_level(*oxen::logging::parse_level(config.logging.level));
     fs::path log_location = "";
     if (config.logging.save_logs_in_subdirectory)
@@ -134,6 +135,9 @@ namespace wallet
     oxen::log::trace(logcat, "add block called with block height {}", block.height);
     auto db_tx = db->db_transaction();
 
+    //TODO sean delete this:
+    try {
+
     db->store_block(block);
 
     for (const auto& tx : block.transactions)
@@ -141,18 +145,22 @@ namespace wallet
       if (auto outputs = tx_scanner.scan_received(tx, block.height, block.timestamp);
           not outputs.empty())
       {
-        oxen::log::debug(logcat, "outputs: tx.hash {}, block.height {}, outputs {}", tx.hash, block.height, outputs.size());
+        oxen::log::info(logcat, "outputs: tx.hash {}, block.height {}, outputs {}", tx.hash, block.height, outputs.size());
         db->store_transaction(tx.hash, block.height, outputs);
       }
 
       if (auto spends = tx_scanner.scan_spent(tx.tx); not spends.empty())
       {
-        oxen::log::debug(logcat, "spends: tx.hash {}, block.height {}, spends {}", tx.hash, block.height, spends.size());
+        oxen::log::info(logcat, "spends: tx.hash {}, block.height {}, spends {}", tx.hash, block.height, spends.size());
         db->store_spends(tx.hash, block.height, spends);
       }
     }
 
     db_tx.commit();
+
+    } catch (const std::exception& ex) {
+      oxen::log::warning(logcat, "Could not add blocks exception thrown: {}", ex.what());
+    }
     last_scan_height++;
   }
 
