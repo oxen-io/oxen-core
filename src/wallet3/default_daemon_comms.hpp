@@ -49,8 +49,10 @@ class DefaultDaemonComms : public DaemonComms,
     std::future<std::pair<std::string, crypto::hash>> ons_names_to_owners(
             const std::string& name_hash, const uint16_t type);
 
-  private:
-    void for_each_wallet(std::function<void(std::shared_ptr<Wallet>)> func);
+    std::future<oxenc::bt_list_consumer>
+    get_service_nodes(const std::vector<std::string>& service_node_keys);
+
+   private:
 
     void get_blocks();
 

@@ -2182,6 +2182,7 @@ struct GET_VERSION : RPC_COMMAND {
 struct STAKE : RESTRICTED {
     static constexpr auto names() { return NAMES("stake"); }
 
+<<<<<<< HEAD
     struct REQUEST {
         std::string destination;             // Primary Public address that the rewards will go to.
         uint64_t amount;                     // Amount of Loki to stake in atomic units.
@@ -2196,6 +2197,19 @@ struct STAKE : RESTRICTED {
         bool get_tx_hex;  // Return the transaction as hex string after sending (Defaults to false)
         bool get_tx_metadata;  // Return the metadata needed to relay the transaction. (Defaults to
                                // false)
+=======
+    struct REQUEST
+    {
+      std::string           destination;      // Primary Public address that the rewards will go to.
+      uint64_t              amount;           // Amount of Loki to stake in atomic units.
+      std::vector<uint32_t> subaddr_indices;  // (Optional) Transfer from this set of subaddresses. (Defaults to 0)
+      std::string           service_node_key; // Service Node Public Address.
+      uint32_t              priority;         // Set a priority for the transaction. Accepted values are: or 0-4 for: default, unimportant, normal, elevated, priority.
+      bool                  get_tx_key;       // (Optional) Return the transaction key after sending.
+      bool                  do_not_relay;     // (Optional) If true, the newly created transaction will not be relayed to the oxen network. (Defaults to false)
+      bool                  get_tx_hex;       // Return the transaction as hex string after sending (Defaults to false)
+      bool                  get_tx_metadata;  // Return the metadata needed to relay the transaction. (Defaults to false)
+>>>>>>> 6c61efda8 (wallet3 stake tx)
     } request;
 };
 

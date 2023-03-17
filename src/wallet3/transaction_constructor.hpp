@@ -59,6 +59,21 @@ class TransactionConstructor {
             const cryptonote::tx_destination_entry& change_recipient,
             std::shared_ptr<Keyring> keyring);
 
+    void
+    validate_stake_parameters(
+        const std::string& service_node_key,
+        uint64_t& amount,
+        const cryptonote::tx_destination_entry& change_recipient
+        );
+
+    PendingTransaction
+    create_stake_transaction(
+        const std::string& destination,
+        const std::string& service_node_key,
+        const uint64_t requested_amount,
+        const cryptonote::tx_destination_entry& change_recipient
+        );
+
     uint64_t fee_per_byte = cryptonote::FEE_PER_BYTE_V13;
     uint64_t fee_per_output = cryptonote::FEE_PER_OUTPUT_V18;
 

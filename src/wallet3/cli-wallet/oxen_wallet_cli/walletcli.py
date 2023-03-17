@@ -195,12 +195,33 @@ def transfer():
     if address == "" or amount == 0.0:
         click.prompt("Invalid address/amount entered")
         return
-    amount_in_atomic_units = round(amount * OXEN_ATOMIC_UNITS, 0);
+    amount_in_atomic_units = round(amount * OXEN_ATOMIC_UNITS);
     destination = {"address": address, "amount": amount_in_atomic_units}
     transfer_params = {"destinations": [destination]}
     transfer_future = context.rpc_future("restricted.transfer", args=transfer_params);
     transfer_response = transfer_future.get();
     click.echo("Transfer Response: {}".format(transfer_response))
+
+@walletcli.command()
+def stake():
+    service_node_key = click.prompt("Enter the public key of the service node you wish to stake to: ", default="").strip()
+    amount = click.prompt("Enter the amount in oxen to be contributed to (Optional: 0 will automatically contribute the minimum){}".format(service_node_key), default=0.0)
+    if service_node_key == "":
+        click.prompt("Invalid public key entered")
+        return
+    amount_in_atomic_units = round(amount * OXEN_ATOMIC_UNITS);
+
+    get_address_future = context.rpc_future("rpc.get_address");
+    get_address_response = get_address_future.get();
+
+    stake_params = {
+            "destination": get_address_response['address'],
+            "service_node_key": service_node_key,
+            "amount": amount_in_atomic_units
+            }
+    stake_future = context.rpc_future("restricted.stake", args=stake_params);
+    stake_response = stake_future.get();
+    click.echo("Stake Response: {}".format(stake_response))
 
 lokinet_years_dict = {"1": "lokinet", "2": "lokinet_2years", "5": "lokinet_5years", "10": "lokinet_10years"}
 
