@@ -144,7 +144,6 @@ namespace wallet
   Wallet::add_block(const Block& block)
   {
     oxen::log::trace(logcat, "add block called with block height {}", block.height);
-    auto db_tx = db->db_transaction();
 
     db->store_block(block);
 
@@ -164,9 +163,7 @@ namespace wallet
       }
     }
 
-    db_tx.commit();
 
-    last_scan_height++;
   }
 
   void
@@ -185,11 +182,24 @@ namespace wallet
       return;
     }
 
+    std::vector<std::thread> threads;
+
+    auto db_tx = db->db_transaction();
     for (const auto& block : blocks)
     {
       if (block.height == last_scan_height + 1)
-        add_block(block);
+      {
+        threads.emplace_back([&]() {
+          add_block(block);
+        });
+        last_scan_height++;
+      }
     }
+    // Wait for all threads to finish
+    for (auto& t : threads) {
+        t.join();
+    }
+    db_tx.commit();
     daemon_comms->register_wallet(*this, last_scan_height + 1 /*next needed block*/, false);
   }
 
