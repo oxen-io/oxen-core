@@ -34,6 +34,7 @@ namespace wallet
 
     // A derivation is simply the private view key multiplied by the tx public key
     // do this for every tx public key in the transaction
+    //TODO SEAN THIS IS A BOTTLENECK
     auto derivations = wallet_keys->generate_key_derivations(tx_public_keys);
     bool coinbase_transaction = cryptonote::is_coinbase(tx.tx);
     // Output belongs to public key derived as follows:
@@ -55,6 +56,7 @@ namespace wallet
         std::optional<cryptonote::subaddress_index> sub_index{std::nullopt};
         for (derivation_index = 0; derivation_index < derivations.size(); derivation_index++)
         {
+          //TODO SEAN THIS IS A BOTTLENECK
           sub_index = wallet_keys->output_and_derivation_ours(
               derivations[derivation_index], output_target->key, output_index);
           if (sub_index)
