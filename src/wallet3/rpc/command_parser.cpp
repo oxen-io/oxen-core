@@ -267,7 +267,20 @@ void parse_request(STAKE& req, rpc_input in) {
         );
 }
 
-void parse_request(REGISTER_SERVICE_NODE& req, rpc_input in) {}
+void parse_request(REGISTER_SERVICE_NODE& req, rpc_input in) {
+    get_values(in,
+        "addresses", req.request.addresses,
+        "amounts", req.request.amounts,
+        "do_not_relay", req.request.do_not_relay,
+        "fee", req.request.fee,
+        "get_tx_hex", req.request.get_tx_hex,
+        "get_tx_key", req.request.get_tx_key,
+        "get_tx_metadata", req.request.get_tx_metadata,
+        "hardfork", req.request.hardfork,
+        "service_node_key", req.request.service_node_key,
+        "signature", req.request.signature
+        );
+}
 
 void parse_request(REQUEST_STAKE_UNLOCK& req, rpc_input in) {}
 

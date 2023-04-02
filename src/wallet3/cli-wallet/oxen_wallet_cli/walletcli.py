@@ -202,6 +202,30 @@ def transfer():
     transfer_response = transfer_future.get();
     click.echo("Transfer Response: {}".format(transfer_response))
 
+@walletcli.command(name='register_service_node')
+@click.argument('fee', nargs=1, type=click.INT)
+@click.argument('address_amount', nargs=-1)
+@click.argument('hardfork', nargs=1, type=click.INT)
+@click.argument('service_node_pubkey', nargs=1)
+@click.argument('signature', nargs=1)
+def register_service_node(fee, address_amount, hardfork, service_node_pubkey, signature):
+
+    addresses = address_amount[::2]
+    amounts   = [int(x) for x in address_amount[1::2]]
+    print(fee)
+
+    register_params= {
+        "fee": fee,
+        "addresses": addresses,
+        "amounts": amounts,
+        "hardfork": hardfork,
+        "service_node_key": service_node_pubkey,
+        "signature": signature
+    }
+    register_future = context.rpc_future("restricted.register_service_node", args=register_params);
+    register_response = register_future.get();
+    click.echo("Register Service Node Response: {}".format(register_response))
+
 @walletcli.command()
 def stake():
     service_node_key = click.prompt("Enter the public key of the service node you wish to stake to: ", default="").strip()

@@ -188,6 +188,99 @@ PendingTransaction TransactionConstructor::create_ons_update_transaction(
 }
 
   void
+  TransactionConstructor::validate_register_service_node_parameters(
+      const std::string& service_node_key,
+      const service_nodes::registration_details& registration,
+      cryptonote::hf hf_version
+      )
+  {
+    auto staking_requirement = service_nodes::get_staking_requirement(nettype, db->scan_target_height());
+    auto now = std::chrono::system_clock::now();
+
+    if (uint64_t(hf_version) != registration.hf)
+      throw service_nodes::invalid_registration{"hardfork is invalid"};
+    // Validate registration
+    service_nodes::validate_registration(hf_version, nettype, staking_requirement, std::chrono::system_clock::to_time_t(now), registration);
+    auto hash = service_nodes::get_registration_hash(registration);
+    if (!crypto::check_key(registration.service_node_pubkey))
+      throw service_nodes::invalid_registration{"Service Node Key is not a valid public key (" + tools::type_to_hex(registration.service_node_pubkey) + ")"};
+
+    if (!crypto::check_signature(hash, registration.service_node_pubkey, registration.signature))
+      throw service_nodes::invalid_registration{"Registration signature verification failed for pubkey/hash: " +
+        tools::type_to_hex(registration.service_node_pubkey) + "/" + tools::type_to_hex(hash)};
+
+    // Check Service Node is able to be registered
+    auto get_service_node_future = daemon->get_service_nodes({service_node_key});
+    if (get_service_node_future.wait_for(5s) != std::future_status::ready)
+      throw std::runtime_error("request to daemon for get_service_nodes timed out");
+
+    auto response = get_service_node_future.get();
+    if(!response.is_finished())
+      throw service_nodes::invalid_registration{"This service node is already registered"};
+  }
+
+  PendingTransaction
+  TransactionConstructor::create_register_service_node_transaction(
+      const uint64_t fee,
+      const std::vector<std::string>& addresses,
+      const std::vector<uint64_t>& amounts,
+      const uint64_t registration_hardfork,
+      const std::string& service_node_key,
+      const std::string& signature_str,
+      const cryptonote::tx_destination_entry& change_recipient
+      )
+  {
+
+    std::vector<cryptonote::tx_destination_entry> recipients;
+    auto& staked_amount_to_self = recipients.emplace_back();
+    staked_amount_to_self.original = change_recipient.original;
+    staked_amount_to_self.amount = amounts[0];
+    staked_amount_to_self.addr = change_recipient.addr;
+    staked_amount_to_self.is_subaddress = change_recipient.is_subaddress;
+    staked_amount_to_self.is_integrated = change_recipient.is_integrated;
+
+    PendingTransaction new_tx(recipients);
+    auto [hf, hf_uint8] = cryptonote::get_ideal_block_version(db->network_type(), db->scan_target_height());
+    new_tx.tx.version = cryptonote::transaction::get_max_version_for_hf(hf);
+    new_tx.tx.type = cryptonote::txtype::stake;
+    new_tx.fee_per_byte = fee_per_byte;
+    new_tx.fee_per_output = fee_per_output;
+    new_tx.change = change_recipient;
+    new_tx.blink = false;
+
+    cryptonote::add_service_node_contributor_to_tx_extra(new_tx.extra, change_recipient.addr);
+
+    crypto::public_key service_node_public_key;
+    if (!tools::hex_to_type(service_node_key, service_node_public_key))
+      throw std::runtime_error("could not read service node key");
+    cryptonote::add_service_node_pubkey_to_tx_extra(new_tx.extra, service_node_public_key);
+
+    crypto::signature signature;
+    if (!tools::hex_to_type(signature_str, signature))
+      throw std::runtime_error("could not read signature");
+    service_nodes::registration_details registration{service_node_public_key, {}, fee, registration_hardfork, false, signature};
+    cryptonote::address_parse_info addr_info;
+    for (size_t i = 0; i < amounts.size(); i++) {
+      cryptonote::get_account_address_from_str(addr_info, nettype, addresses[i]);
+      if (addr_info.has_payment_id)
+        throw service_nodes::invalid_registration{"Can't use a payment id for staking tx"};
+
+      if (addr_info.is_subaddress)
+        throw service_nodes::invalid_registration{"Can't use a subaddress for staking tx"};
+      registration.reserved.emplace_back(addr_info.address, amounts[i]);
+    }
+    if (!cryptonote::add_service_node_registration_to_tx_extra(new_tx.extra, registration))
+      throw std::runtime_error("Failed to serialize service node registration tx extra");
+
+    validate_register_service_node_parameters(service_node_key, registration, hf);
+
+    new_tx.update_change();
+
+    select_inputs_and_finalise(new_tx);
+    return new_tx;
+  }
+
+  void
   TransactionConstructor::validate_stake_parameters(
       const std::string& service_node_key,
       uint64_t& amount,

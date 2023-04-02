@@ -60,6 +60,24 @@ class TransactionConstructor {
             std::shared_ptr<Keyring> keyring);
 
     void
+    validate_register_service_node_parameters(
+        const std::string& service_node_key,
+        const service_nodes::registration_details& registration,
+        cryptonote::hf hf_version
+        );
+
+    PendingTransaction
+    create_register_service_node_transaction(
+        const uint64_t fee,
+        const std::vector<std::string>& addresses,
+        const std::vector<uint64_t>& amounts,
+        const uint64_t registration_hardfork,
+        const std::string& service_node_key,
+        const std::string& signature_str,
+        const cryptonote::tx_destination_entry& change_recipient
+        );
+
+    void
     validate_stake_parameters(
         const std::string& service_node_key,
         uint64_t& amount,
