@@ -286,13 +286,13 @@ def ons_update_mapping():
            }
     ons_value = click.prompt("Optional: Please enter a value to modify the ons mapping", default="").strip()
     if len(ons_value) > 0:
-        ons_buy_params["value"] = ons_value
+        ons_update_params["value"] = ons_value
     ons_owner = click.prompt("Optional: Please enter an address to modify the owner", default="").strip()
     if len(ons_owner) > 0:
-        ons_buy_params["owner"] = ons_owner
+        ons_update_params["owner"] = ons_owner
     ons_backup_owner = click.prompt("Optional: Please enter an address to modify the backup owner", default="").strip()
     if len(ons_backup_owner) > 0:
-        ons_buy_params["backup_owner"] = ons_backup_owner
+        ons_update_params["backup_owner"] = ons_backup_owner
 
     transfer_future = context.rpc_future("restricted.ons_update_mapping", args=ons_update_params);
     transfer_response = transfer_future.get();
