@@ -282,7 +282,11 @@ void parse_request(REGISTER_SERVICE_NODE& req, rpc_input in) {
         );
 }
 
-void parse_request(REQUEST_STAKE_UNLOCK& req, rpc_input in) {}
+void parse_request(REQUEST_STAKE_UNLOCK& req, rpc_input in) {
+    get_values(in,
+        "service_node_key", req.request.service_node_key
+        );
+}
 
 void parse_request(CAN_REQUEST_STAKE_UNLOCK& req, rpc_input in) {}
 

@@ -116,6 +116,9 @@ class Keyring : public WalletKeys {
             const crypto::hash& prev_txid,
             const cryptonote::network_type& nettype);
 
+    virtual crypto::signature generate_stake_unlock_signature(
+            const Output& locked_stake_output);
+
     cryptonote::network_type nettype;
 
     crypto::secret_key spend_private_key;

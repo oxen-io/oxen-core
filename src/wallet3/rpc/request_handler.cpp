@@ -397,7 +397,29 @@ void RequestHandler::invoke(REGISTER_SERVICE_NODE& command, rpc_context context)
   command.response["status"] = "200";
 }
 
-void RequestHandler::invoke(REQUEST_STAKE_UNLOCK& command, rpc_context context) {}
+void RequestHandler::invoke(REQUEST_STAKE_UNLOCK& command, rpc_context context) {
+  oxen::log::info(logcat, "RPC Handler received REQUEST_STAKE_UNLOCK command");
+  wallet::PendingTransaction ptx;
+  if (auto w = wallet.lock())
+  {
+    cryptonote::tx_destination_entry change_dest;
+    change_dest.original = w->keys->get_main_address();
+    cryptonote::address_parse_info change_addr_info;
+    cryptonote::get_account_address_from_str(change_addr_info, w->nettype, change_dest.original);
+    change_dest.amount = 0;
+    change_dest.addr = change_addr_info.address;
+    change_dest.is_subaddress = change_addr_info.is_subaddress;
+    change_dest.is_integrated = change_addr_info.has_payment_id;
+
+    ptx = w->tx_constructor->create_stake_unlock_transaction(
+      command.request.service_node_key,
+      change_dest,
+      w->keys
+    );
+  }
+  command.response["result"] = submit_transaction(ptx);
+  command.response["status"] = "200";
+}
 
 void RequestHandler::invoke(CAN_REQUEST_STAKE_UNLOCK& command, rpc_context context) {}
 

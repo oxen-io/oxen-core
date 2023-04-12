@@ -442,6 +442,82 @@ PendingTransaction TransactionConstructor::create_ons_update_transaction(
     return new_tx;
   }
 
+  PendingTransaction
+  TransactionConstructor::create_stake_unlock_transaction(
+      const std::string& service_node_key,
+      const cryptonote::tx_destination_entry& change_recipient,
+      std::shared_ptr<Keyring> keyring)
+  {
+
+    std::vector<cryptonote::tx_destination_entry> recipients;
+    PendingTransaction new_tx(recipients);
+    auto [hf, hf_uint8] = cryptonote::get_ideal_block_version(db->network_type(), db->scan_target_height());
+    new_tx.tx.version = cryptonote::transaction::get_max_version_for_hf(hf);
+    new_tx.tx.type = cryptonote::txtype::stake;
+    new_tx.fee_per_byte = fee_per_byte;
+    new_tx.fee_per_output = fee_per_output;
+    new_tx.change = change_recipient;
+    new_tx.blink = false;
+
+    crypto::public_key service_node_public_key;
+    if (!tools::hex_to_type(service_node_key, service_node_public_key))
+      throw std::runtime_error("could not read service node key");
+    cryptonote::add_service_node_pubkey_to_tx_extra(new_tx.extra, service_node_public_key);
+
+    auto get_service_node_future = daemon->get_service_nodes({service_node_key});
+    if (get_service_node_future.wait_for(5s) != std::future_status::ready)
+      throw std::runtime_error("request to daemon for get_service_nodes timed out");
+
+    auto response = get_service_node_future.get();
+    if(response.is_finished())
+      throw std::runtime_error("Could not find service node in service node list, please make sure it is registered first.");
+    auto snode_info = response.consume_dict_consumer();
+
+    const auto hf_version = cryptonote::get_latest_hard_fork(nettype).version;
+
+    if (not snode_info.skip_until("contributors"))
+      throw std::runtime_error{"Invalid response from daemon"};
+    auto contributors = snode_info.consume_list_consumer();
+
+    cryptonote::tx_extra_tx_key_image_unlock unlock = {};
+    unlock.nonce = cryptonote::tx_extra_tx_key_image_unlock::FAKE_NONCE;
+    // Loop over contributors
+    bool found_our_contribution = false;
+    while (not contributors.is_finished())
+    {
+        auto contributor = contributors.consume_dict_consumer();
+
+        if (not contributor.skip_until("address"))
+            throw std::runtime_error{"Invalid response from daemon"};
+        auto contributor_address = contributor.consume_string();
+        if (contributor_address != change_recipient.address(nettype, {}))
+            continue;
+
+        found_our_contribution = true;
+
+        if (not contributor.skip_until("key_image"))
+            throw std::runtime_error{"Invalid response from daemon"};
+
+        const auto key_image = response.consume_string();
+        if(!tools::hex_to_type(key_image, unlock.key_image))
+            throw std::runtime_error{"Failed to parse hex representation of key image"s + key_image};
+
+        const auto locked_stake_output = db->get_output_from_key_image(key_image);
+
+        unlock.signature = keyring->generate_stake_unlock_signature(locked_stake_output);
+    }
+
+    // If did not find then throw
+    if (not found_our_contribution)
+        throw std::runtime_error{"did not find our contribution in this service node"};
+
+    add_tx_key_image_unlock_to_tx_extra(new_tx.extra, unlock);
+    new_tx.update_change();
+    select_inputs_and_finalise(new_tx);
+
+    return new_tx;
+  }
+
 
   // SelectInputs will choose some available unspent outputs from the database and allocate to the
   // transaction can be called multiple times and will add until enough is sufficient

@@ -2257,7 +2257,7 @@ struct REQUEST_STAKE_UNLOCK : RESTRICTED {
 
     struct REQUEST {
         std::string service_node_key;  // Service Node Public Key.
-    };
+    } request;
 };
 
 /// Check if Service Node can unlock its stake.

@@ -247,6 +247,19 @@ def stake():
     stake_response = stake_future.get();
     click.echo("Stake Response: {}".format(stake_response))
 
+@walletcli.command()
+def unstake():
+    service_node_key = click.prompt("Enter the public key of the service node you wish to unstake from: ", default="").strip()
+    if service_node_key == "":
+        click.prompt("Invalid public key entered")
+        return
+    unstake_params = {
+            "service_node_key": service_node_key,
+            }
+    stake_future = context.rpc_future("restricted.request_stake_unlock", args=unstake_params);
+    stake_response = stake_future.get();
+    click.echo("Unstake Response: {}".format(stake_response))
+
 lokinet_years_dict = {"1": "lokinet", "2": "lokinet_2years", "5": "lokinet_5years", "10": "lokinet_10years"}
 
 # TODO better names for these ONS commands

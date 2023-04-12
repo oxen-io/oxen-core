@@ -495,4 +495,20 @@ ons::generic_signature Keyring::generate_ons_signature(
     return result;
 }
 
+crypto::signature Keyring::generate_stake_unlock_signature(const Output& locked_stake_output) {
+    crypto::signature signature;
+
+    // Calculate the outputs spending keypair
+    auto output_private_key = derive_output_secret_key(locked_stake_output.derivation, locked_stake_output.output_index, locked_stake_output.subaddress_index);
+
+    crypto::public_key output_pubkey_computed;
+    key_device.secret_key_to_public_key(output_private_key, output_pubkey_computed);
+
+    // Use the keypair for our signature to go into the txextra for stake unlock
+    if (!key_device.generate_unlock_signature(output_pubkey_computed, output_private_key, signature))
+        throw std::runtime_error("Hardware device failed to sign the unlock request");
+
+    return signature;
+}
+
 }  // namespace wallet
