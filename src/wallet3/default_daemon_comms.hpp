@@ -54,6 +54,8 @@ class DefaultDaemonComms : public DaemonComms,
 
    private:
 
+    void for_each_wallet(std::function<void(std::shared_ptr<Wallet>)> func);
+
     void get_blocks();
 
     void got_blocks(int64_t start_height, int64_t end_height);
