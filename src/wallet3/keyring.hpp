@@ -77,6 +77,10 @@ class Keyring : public WalletKeys {
             uint64_t output_index,
             const cryptonote::subaddress_index& sub_index);
 
+    virtual crypto::key_image generate_key_image(const crypto::secret_key& output_private_key);
+
+    virtual crypto::signature generate_key_image_signature(const crypto::secret_key& output_private_key, const crypto::key_image& key_image);
+
     virtual std::pair<uint64_t, rct::key> output_amount_and_mask(
             const rct::rctSig& rv, const crypto::key_derivation& derivation, unsigned int i);
 

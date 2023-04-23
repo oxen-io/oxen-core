@@ -74,8 +74,8 @@ class TransactionConstructor {
         const uint64_t registration_hardfork,
         const std::string& service_node_key,
         const std::string& signature_str,
-        const cryptonote::tx_destination_entry& change_recipient
-        );
+        const cryptonote::tx_destination_entry& change_recipient,
+        std::shared_ptr<Keyring> keyring);
 
     void
     validate_stake_parameters(

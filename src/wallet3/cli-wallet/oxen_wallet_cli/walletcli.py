@@ -80,10 +80,14 @@ def load_test_wallet():
         click.echo("Wallet already loaded")
         return
 
-    spend_priv = "e6c9165356c619a64a0d26fafd99891acccccf8717a8067859d972ecd8bcfc0a"
-    spend_pub = "b76f2d7c8a036ff65c564dcb27081c04fe3f2157942e23b0496ca797ba728e4f"
-    view_priv = "961d67bb5b3ed1af8678bbfcf621f9c15c2b7bff080892890020bdfd47fe4f0a"
-    view_pub = "8a0ebacd613e0b03b8f27bc64bd961ea2ebf4c671c6e7f3268651acf0823fed5"
+    # spend_priv = "e6c9165356c619a64a0d26fafd99891acccccf8717a8067859d972ecd8bcfc0a"
+    # spend_pub = "b76f2d7c8a036ff65c564dcb27081c04fe3f2157942e23b0496ca797ba728e4f"
+    # view_priv = "961d67bb5b3ed1af8678bbfcf621f9c15c2b7bff080892890020bdfd47fe4f0a"
+    # view_pub = "8a0ebacd613e0b03b8f27bc64bd961ea2ebf4c671c6e7f3268651acf0823fed5"
+    view_pub = "ed26f4f9ed44baccb0aa32bfd91fd546115a60c77e6e8098cd4debf8f33cb9f9"
+    spend_pub = "9834c238ebecb78b1f30115c50b956e9e5e0d86072c61d57e65ee04f9c650b40"
+    view_priv = "5f51194e0f839ee32fdd85765be009b1fceb70e78204e4bfa3010e2ade61fc0d"
+    spend_priv = "0ac3dc5fff3a7a303b893a50119ff2da3125f6a51b980e409d6c8a3a3f7ec80b"
 
     keyring = pywallet3.Keyring(spend_priv, spend_pub, view_priv, view_pub, context.options["network"])
     click.echo("Wallet address " + click.style("{}", fg='cyan', bold=True).format(keyring.get_main_address()) + " loaded")

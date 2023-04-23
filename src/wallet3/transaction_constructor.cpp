@@ -227,8 +227,8 @@ PendingTransaction TransactionConstructor::create_ons_update_transaction(
       const uint64_t registration_hardfork,
       const std::string& service_node_key,
       const std::string& signature_str,
-      const cryptonote::tx_destination_entry& change_recipient
-      )
+      const cryptonote::tx_destination_entry& change_recipient,
+      std::shared_ptr<Keyring> keyring)
   {
 
     std::vector<cryptonote::tx_destination_entry> recipients;
@@ -272,10 +272,27 @@ PendingTransaction TransactionConstructor::create_ons_update_transaction(
     if (!cryptonote::add_service_node_registration_to_tx_extra(new_tx.extra, registration))
       throw std::runtime_error("Failed to serialize service node registration tx extra");
 
+
+    new_tx.tx_secret_key = keyring->generate_tx_key(hf);
+    cryptonote::add_tx_secret_key_to_tx_extra(new_tx.extra, *new_tx.tx_secret_key);
+    // TODO this sends the secret key to the hardware device so it know to use it
+    //if (!hwdev.update_staking_tx_secret_key(tx_sk)) {
+        //log::warning(globallogcat, "Failed to add tx secret key to stake transaction");
+        //return false;
+    //}
+    
+    cryptonote::tx_extra_tx_key_image_proofs key_image_proofs;
+
+    auto& proof = key_image_proofs.proofs.emplace_back();
+    proof.key_image = keyring->generate_key_image(*new_tx.tx_secret_key);
+    proof.signature = keyring->generate_key_image_signature(*new_tx.tx_secret_key, proof.key_image);
+    cryptonote::add_tx_key_image_proofs_to_tx_extra(new_tx.extra, key_image_proofs);
+
     validate_register_service_node_parameters(service_node_key, registration, hf);
 
     new_tx.update_change();
 
+    //TODO sean get use the new tx_key from somewhere
     select_inputs_and_finalise(new_tx);
     return new_tx;
   }

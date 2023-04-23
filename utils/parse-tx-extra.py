@@ -130,6 +130,12 @@ def eat_ons_data():
     return ons_data
 
 def eat_uint64_t():
+    return eat_uint(8)
+
+def eat_uint8_t():
+    return eat_uint(1)
+
+def eat_uint(size_in_bytes):
     global tx_extra_list
     amount = ''.join(tx_extra_list[:8*2])
     tx_extra_list = tx_extra_list[8*2:]
@@ -140,13 +146,119 @@ def eat_burn():
     global tx_extra_list
     return {"amount": eat_uint64_t()}
 
+def eat_varint():
+    global tx_extra_list
+    length = 0
+    x = 0
+    b = 1
+    for i in range(0, len(tx_extra_list), 2):
+        length = length + 2
+        z = int(''.join(tx_extra_list[i:i+2]), 16)
+        x += b * (z & ~0x80)
+        if z & 0x80 == 0:
+            break
+        b <<= 7
+    tx_extra_list = tx_extra_list[length:]
+    return x
 
+def eat_service_node_contributor():
+    global tx_extra_list
+    spend_public_key = ''.join(tx_extra_list[:64])
+    tx_extra_list = tx_extra_list[64:]
+    view_public_key = ''.join(tx_extra_list[:64])
+    tx_extra_list = tx_extra_list[64:]
+    return {"spend_public_key": spend_public_key,
+            "view_public_key": view_public_key }
+
+def eat_service_node_pubkey():
+    global tx_extra_list
+    public_key = ''.join(tx_extra_list[:64])
+    tx_extra_list = tx_extra_list[64:]
+    return {"service_node_pubkey": public_key}
+
+def eat_list(elem_size):
+    global tx_extra_list
+    results = []
+    size_hex = ''.join(tx_extra_list[:2])
+    tx_extra_list = tx_extra_list[2:]
+    size = int(size_hex, 16)
+    for i in range(size):
+        result = ''.join(tx_extra_list[:elem_size])
+        tx_extra_list = tx_extra_list[elem_size:]
+        results.append(result)
+    return results
+
+def eat_uint64_t_list():
+    global tx_extra_list
+    results = []
+    size_hex = ''.join(tx_extra_list[:2])
+    tx_extra_list = tx_extra_list[2:]
+    size = int(size_hex, 16)
+    for i in range(size):
+        result = eat_uint64_t()
+        results.append(result)
+    return results
+
+def eat_varint_list():
+    global tx_extra_list
+    results = []
+    size_hex = ''.join(tx_extra_list[:2])
+    tx_extra_list = tx_extra_list[2:]
+    size = int(size_hex, 16)
+    for i in range(size):
+        result = eat_varint()
+        results.append(result)
+    return results
+
+def eat_service_node_registration():
+    global tx_extra_list
+    public_spend_keys = eat_list(64)
+    public_view_keys = eat_list(64)
+    fee = eat_uint64_t()
+    amounts= eat_varint_list()
+    hf = eat_uint8_t()
+    signature = ''.join(tx_extra_list[:128])
+    tx_extra_list = tx_extra_list[128:]
+    return {"public_spend_keys": public_spend_keys,
+            "public_view_keys": public_view_keys,
+            "fee": fee,
+            "amounts":amounts,
+            "hf":hf,
+            "signature": signature}
+
+def eat_tx_secret_key():
+    global tx_extra_list
+    tx_secret_key = ''.join(tx_extra_list[:64])
+    tx_extra_list = tx_extra_list[64:]
+    return {"tx_secret_key": tx_secret_key}
+
+def eat_tx_key_image_proofs():
+    global tx_extra_list
+    size_hex = ''.join(tx_extra_list[:2])
+    tx_extra_list = tx_extra_list[2:]
+    size = int(size_hex, 16)
+    key_images = []
+    signatures = []
+    for i in range(size):
+        tx_key_image = ''.join(tx_extra_list[:64])
+        key_images.append(tx_key_image)
+        tx_extra_list = tx_extra_list[64:]
+        signature = ''.join(tx_extra_list[:128])
+        signatures.append(signature)
+        tx_extra_list = tx_extra_list[128:]
+    return {"key_images": key_images,
+            "signatures": signatures}
 
 eat_data_functions = {
     "TX_EXTRA_TAG_PUBKEY": eat_pubkey_data,
     "TX_EXTRA_NONCE": eat_nonce_data,
     "TX_EXTRA_TAG_OXEN_NAME_SYSTEM": eat_ons_data,
-    "TX_EXTRA_TAG_BURN": eat_burn
+    "TX_EXTRA_TAG_BURN": eat_burn,
+    "TX_EXTRA_TAG_SERVICE_NODE_CONTRIBUTOR": eat_service_node_contributor,
+    "TX_EXTRA_TAG_SERVICE_NODE_PUBKEY": eat_service_node_pubkey,
+    "TX_EXTRA_TAG_SERVICE_NODE_REGISTER": eat_service_node_registration,
+    "TX_EXTRA_TAG_TX_SECRET_KEY": eat_tx_secret_key,
+    "TX_EXTRA_TAG_TX_KEY_IMAGE_PROOFS": eat_tx_key_image_proofs
 }
 
 # Main loop that reads over every item

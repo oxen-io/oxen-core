@@ -63,11 +63,11 @@ std::string RequestHandler::submit_transaction(wallet::PendingTransaction& ptx)
   {
     w->keys->sign_transaction(ptx);
 
-        auto submit_future = w->daemon_comms->submit_transaction(ptx.tx, false);
+    auto submit_future = w->daemon_comms->submit_transaction(ptx.tx, false);
 
-        if (submit_future.wait_for(5s) != std::future_status::ready)
-            throw rpc_error(500, "request to daemon timed out");
-        response = submit_future.get();
+    if (submit_future.wait_for(5s) != std::future_status::ready)
+        throw rpc_error(500, "request to daemon timed out");
+    response = submit_future.get();
     }
     return response;
 }
@@ -390,7 +390,8 @@ void RequestHandler::invoke(REGISTER_SERVICE_NODE& command, rpc_context context)
       command.request.hardfork,
       command.request.service_node_key,
       command.request.signature,
-      change_dest
+      change_dest,
+      w->keys
     );
   }
   command.response["result"] = submit_transaction(ptx);
