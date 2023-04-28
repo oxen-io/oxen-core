@@ -6,6 +6,7 @@ from functools import partial
 from service_node_network import coins, vprint
 from ledgerapi import LedgerAPI
 from expected import *
+import daemons
 
 
 def test_init(net, mike, hal, ledger):
@@ -111,24 +112,26 @@ def test_multisend(net, mike, alice, bob, hal, ledger):
         fee = float(m[1][1])
 
     recipient_addrs = []
+
     def store_addr(val):
         nonlocal recipient_addrs
         recipient_addrs.append(val)
-        print(f"recipient addr: {val}")
 
     recipient_amounts = []
+
     def store_amount(_, m):
         nonlocal recipient_addrs
         recipient_amounts.append(m[1][1])
-        print(f"recipient amount: {m[1][1]}")
 
-    recipient_expected = [(alice.address(), "18.0"),
-                          (bob.address(), "19.0"),
-                          (alice.address(), "20.0"),
-                          (alice.address(), "21.0"),
-                          (hal.address(), "22.0")]
+    recipient_expected = [
+        (alice.address(), "18.0"),
+        (bob.address(), "19.0"),
+        (alice.address(), "20.0"),
+        (alice.address(), "21.0"),
+        (hal.address(), "22.0"),
+    ]
 
-    hal.timeout = 120 # creating this tx with the ledger takes ages
+    hal.timeout = 120  # creating this tx with the ledger takes ages
     run_with_interactions(
         ledger,
         partial(hal.multi_transfer, (alice, bob, alice, alice, hal), coins(18, 19, 20, 21, 22)),
@@ -189,6 +192,69 @@ def test_multisend(net, mike, alice, bob, hal, ledger):
     assert hal.balances(refresh=True) == (remaining,) * 2
     assert alice.balances(refresh=True) == coins((18 + 20 + 21,) * 2)
     assert bob.balances(refresh=True) == coins(19, 19)
+
+
+def test_reject_send(net, mike, alice, hal, ledger):
+    mike.transfer(hal, coins(100))
+    net.mine()
+    hal.refresh()
+
+    with pytest.raises(daemons.TransferFailed):
+        run_with_interactions(
+            ledger,
+            partial(hal.transfer, alice, coins(42.5)),
+            ExactScreen(["Processing TX"]),
+            MatchScreen([r"^Confirm Fee$", r"^(0.01\d{1,7})$"], fail_index=1),
+            Do.right,
+            ExactScreen(["Accept"]),
+            Do.right,
+            ExactScreen(["Reject"]),
+            Do.both,
+        )
+
+    with pytest.raises(daemons.TransferFailed):
+        run_with_interactions(
+            ledger,
+            partial(hal.transfer, alice, coins(42.5)),
+            ExactScreen(["Processing TX"]),
+            MatchScreen([r"^Confirm Fee$", r"^(0.01\d{1,7})$"], fail_index=1),
+            Do.right,
+            ExactScreen(["Accept"]),
+            Do.both,
+            ExactScreen(["Confirm Amount", "42.5"], fail_index=1),
+            Do.right,
+            MatchMulti("Recipient", alice.address()),
+            Do.right,
+            ExactScreen(["Accept"]),
+            Do.right,
+            ExactScreen(["Reject"]),
+            Do.both,
+        )
+
+    fee = None
+
+    def store_fee(_, m):
+        nonlocal fee
+        fee = float(m[1][1])
+
+    run_with_interactions(
+        ledger,
+        partial(hal.transfer, alice, coins(42.5)),
+        ExactScreen(["Processing TX"]),
+        MatchScreen([r"^Confirm Fee$", r"^(0.01\d{1,7})$"], store_fee, fail_index=1),
+        Do.right,
+        ExactScreen(["Accept"]),
+        Do.both,
+        ExactScreen(["Confirm Amount", "42.5"], fail_index=1),
+        Do.right,
+        MatchMulti("Recipient", alice.address()),
+        Do.right,
+        ExactScreen(["Accept"]),
+        Do.both,
+    )
+
+    net.mine(10)
+    assert hal.balances(refresh=True) == coins((100 - 42.5 - fee,) * 2)
 
 
 def check_sn_rewards(net, hal, sn, starting_bal, reward):
