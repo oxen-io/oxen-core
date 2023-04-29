@@ -2,7 +2,7 @@
 
 import pytest
 import os.path
-from service_node_network import sn_net as net
+import service_node_network
 
 
 def pytest_addoption(parser):
@@ -21,6 +21,11 @@ def binary_dir(request):
             )
 
     return binpath
+
+
+@pytest.fixture
+def net(pytestconfig, tmp_path, binary_dir):
+    return service_node_network.sn_net(pytestconfig, tmp_path, binary_dir)
 
 
 # Shortcuts for accessing the named wallets

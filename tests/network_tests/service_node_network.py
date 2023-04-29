@@ -1,5 +1,5 @@
-# Provides a pytest fixture of a configured service node network with 20 service nodes, 3 regular
-# nodes, and 3 wallets (each connected to a different node).
+# Provides a configured service node network with 20 service nodes, 3 regular nodes, and 3 wallets
+# (each connected to a different node).
 #
 # The 20 service nodes are registered, have mined enough to make the blink quorum active, and have
 # sent uptime proofs to each other.
@@ -12,9 +12,6 @@
 # - alice and bob will have any existing funds transferred to mike but may still have tx history of
 # previous tests.  (The wallet-emptying sweep to mike, however, may not yet be confirmed).
 #
-# A fourth malicious wallet is available by importing the fixture `chuck`, which generates new
-# wallets and nodes each time (see the fixture for details).
-
 
 from daemons import Daemon, Wallet, coins
 import vprint as v
@@ -259,7 +256,6 @@ class SNNetwork:
 snn = None
 
 
-@pytest.fixture
 def sn_net(pytestconfig, tmp_path, binary_dir):
     """Fixture that returns the service node network.  It is persistent across tests: the first time
     it loads it starts the daemons and wallets, mines a bunch of blocks and submits SN
@@ -288,31 +284,11 @@ def sn_net(pytestconfig, tmp_path, binary_dir):
     return snn
 
 
-@pytest.fixture
 def basic_net(pytestconfig, tmp_path, binary_dir):
-    """Fixture that returns a network of just one service node (solely for the rewards) and one
-    regular node.  It is persistent across tests: the first time it loads it starts the daemons and
-    wallets, mines a bunch of blocks and submits the SN registration.  On subsequent loads it mines
-    5 blocks so that mike always has some available funds, and resets alice and bob to new
-    wallets."""
-    global snn
-    if not snn:
-        v.verbose = pytestconfig.getoption("verbose") >= 2
-        if v.verbose:
-            print("\nConstructing initial node network")
-        snn = SNNetwork(datadir=tmp_path, binpath=binary_dir, sns=1, nodes=1, unstaked_sns=1)
-    else:
-        snn.alice.new_wallet()
-        snn.bob.new_wallet()
-
-        # Flush pools because some tests leave behind impossible txes
-        for n in snn.all_nodes:
-            assert n.json_rpc("flush_txpool").json()["result"]["status"] == "OK"
-
-        # Mine a few to clear out anything in the mempool that can be cleared
-        snn.mine(5, sync=True)
-
-        vprint("Alice has new wallet: {}".format(snn.alice.address()))
-        vprint("Bob   has new wallet: {}".format(snn.bob.address()))
-
-    return snn
+    """
+    Fixture that returns a network of just one service node (solely for the rewards) and one
+    regular node.  Unlike sn_net, it is not persistent across tests: it starts new daemons and
+    wallets each time it is constructed.
+    """
+    v.verbose = pytestconfig.getoption("verbose") >= 2
+    return SNNetwork(datadir=tmp_path, binpath=binary_dir, sns=1, nodes=1, unstaked_sns=1)

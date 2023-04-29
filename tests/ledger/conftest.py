@@ -2,7 +2,7 @@
 
 import pytest
 import os.path
-from service_node_network import basic_net as net
+import service_node_network
 
 from ledgerapi import LedgerAPI
 
@@ -35,6 +35,12 @@ def ledger(request):
 
 
 @pytest.fixture
+def net(pytestconfig, tmp_path, binary_dir):
+    import vprint
+    return service_node_network.basic_net(pytestconfig, tmp_path, binary_dir)
+
+
+@pytest.fixture
 def hal(net, request):
     """
     `hal` is a Ledger hardware-backed wallet.
@@ -62,9 +68,11 @@ def mike(net):
 def alice(net):
     return net.alice
 
+
 @pytest.fixture
 def bob(net):
     return net.bob
+
 
 # Gives you an (unstaked) sn
 @pytest.fixture
