@@ -65,7 +65,7 @@ def test_send(net, mike, alice, hal, ledger):
         ledger,
         partial(hal.transfer, alice, coins(42.5)),
         ExactScreen(["Processing TX"]),
-        MatchScreen([r"^Confirm Fee$", r"^(0.01\d{1,7})$"], store_fee, fail_index=1),
+        MatchScreen([r"^Confirm Fee$", r"^(0\.01\d{1,7})$"], store_fee, fail_index=1),
         Do.right,
         ExactScreen(["Accept"]),
         Do.right,
@@ -134,42 +134,24 @@ def test_multisend(net, mike, alice, bob, hal, ledger):
     hal.timeout = 120  # creating this tx with the ledger takes ages
     run_with_interactions(
         ledger,
-        partial(hal.multi_transfer, (alice, bob, alice, alice, hal), coins(18, 19, 20, 21, 22)),
+        partial(hal.multi_transfer, [alice, bob, alice, alice, hal], coins(18, 19, 20, 21, 22)),
         ExactScreen(["Processing TX"]),
-        MatchScreen([r"^Confirm Fee$", r"^(0.\d{1,9})$"], store_fee, fail_index=1),
+        MatchScreen([r"^Confirm Fee$", r"^(0\.\d{1,9})$"], store_fee, fail_index=1),
         Do.right,
         ExactScreen(["Accept"]),
         Do.both,
-        MatchScreen(["Confirm Amount", r"^(\d{2}.0)$"], store_amount, fail_index=1),
-        Do.right,
-        MatchMulti("Recipient", None, callback=store_addr),
-        Do.right,
-        ExactScreen(["Accept"]),
-        Do.both,
-        MatchScreen(["Confirm Amount", r"^(\d{2}.0)$"], store_amount, fail_index=1),
-        Do.right,
-        MatchMulti("Recipient", None, callback=store_addr),
-        Do.right,
-        ExactScreen(["Accept"]),
-        Do.both,
-        MatchScreen(["Confirm Amount", r"^(\d{2}.0)$"], store_amount, fail_index=1),
-        Do.right,
-        MatchMulti("Recipient", None, callback=store_addr),
-        Do.right,
-        ExactScreen(["Accept"]),
-        Do.both,
-        MatchScreen(["Confirm Amount", r"^(\d{2}.0)$"], store_amount, fail_index=1),
-        Do.right,
-        MatchMulti("Recipient", None, callback=store_addr),
-        Do.right,
-        ExactScreen(["Accept"]),
-        Do.both,
-        MatchScreen(["Confirm Amount", r"^(\d{2}.0)$"], store_amount, fail_index=1),
-        Do.right,
-        MatchMulti("Recipient", None, callback=store_addr),
-        Do.right,
-        ExactScreen(["Accept"]),
-        Do.both,
+        *(
+            cmds
+            for i in range(len(recipient_expected))
+            for cmds in [
+                MatchScreen([r"^Confirm Amount$", r"^(\d+\.\d+)$"], store_amount, fail_index=1),
+                Do.right,
+                MatchMulti("Recipient", None, callback=store_addr),
+                Do.right,
+                ExactScreen(["Accept"]),
+                Do.both,
+            ]
+        ),
         ExactScreen(["Processing TX"]),
         timeout=120,
     )
@@ -204,7 +186,7 @@ def test_reject_send(net, mike, alice, hal, ledger):
             ledger,
             partial(hal.transfer, alice, coins(42.5)),
             ExactScreen(["Processing TX"]),
-            MatchScreen([r"^Confirm Fee$", r"^(0.01\d{1,7})$"], fail_index=1),
+            MatchScreen([r"^Confirm Fee$", r"^(0\.01\d{1,7})$"], fail_index=1),
             Do.right,
             ExactScreen(["Accept"]),
             Do.right,
@@ -217,7 +199,7 @@ def test_reject_send(net, mike, alice, hal, ledger):
             ledger,
             partial(hal.transfer, alice, coins(42.5)),
             ExactScreen(["Processing TX"]),
-            MatchScreen([r"^Confirm Fee$", r"^(0.01\d{1,7})$"], fail_index=1),
+            MatchScreen([r"^Confirm Fee$", r"^(0\.01\d{1,7})$"], fail_index=1),
             Do.right,
             ExactScreen(["Accept"]),
             Do.both,
@@ -241,7 +223,7 @@ def test_reject_send(net, mike, alice, hal, ledger):
         ledger,
         partial(hal.transfer, alice, coins(42.5)),
         ExactScreen(["Processing TX"]),
-        MatchScreen([r"^Confirm Fee$", r"^(0.01\d{1,7})$"], store_fee, fail_index=1),
+        MatchScreen([r"^Confirm Fee$", r"^(0\.01\d{1,7})$"], store_fee, fail_index=1),
         Do.right,
         ExactScreen(["Accept"]),
         Do.both,
@@ -255,6 +237,150 @@ def test_reject_send(net, mike, alice, hal, ledger):
 
     net.mine(10)
     assert hal.balances(refresh=True) == coins((100 - 42.5 - fee,) * 2)
+
+
+def test_subaddr_receive(net, mike, hal):
+    hal.json_rpc("create_address", {"count": 3})
+    subaddrs = [hal.get_subaddress(0, i) for i in range(1, 4)]
+    mike.multi_transfer(subaddrs, coins([5] * len(subaddrs)))
+
+    subaddr0 = "LQM2cdzDY311111111111111111111111111111111111111111111111111111111111111111111111111111116onhCC"
+    subaddrZ = "La3hdSoi9JWjpXCZedGfVQjpXCZedGfVQjpXCZedGfVQjpXCZedGfVQjpXCZedGfVQjpXCZedGfVQjpXCZedGfVQVrgyHVC"
+
+    for s in subaddrs:
+        assert subaddr0 <= s <= subaddrZ
+
+    assert len(set(subaddrs)) == len(subaddrs)
+
+    net.mine(blocks=2)
+    assert hal.balances(refresh=True) == coins(5 * len(subaddrs), 0)
+    net.mine(blocks=8)
+    assert hal.balances(refresh=True) == coins((5 * len(subaddrs),) * 2)
+
+    subaccounts = []
+    for i in range(3):
+        r = hal.json_rpc("create_account").json()["result"]
+        assert r["account_index"] == i + 1
+        assert subaddr0 <= r["address"] <= subaddrZ
+        subaccounts.append(r["address"])
+        hal.json_rpc("create_address", {"account_index": i + 1, "count": 1})
+
+    assert len(set(subaccounts + subaddrs)) == len(subaccounts) + len(subaddrs)
+
+    for i in range(3):
+        assert subaccounts[i] == hal.get_subaddress(i + 1, 0)
+        subaddrs.append(hal.get_subaddress(i + 1, 1))
+
+    for s in subaddrs:
+        assert subaddr0 <= s <= subaddrZ
+
+    assert len(set(subaccounts + subaddrs)) == len(subaccounts) + len(subaddrs)
+
+    assert len(subaccounts) + len(subaddrs) == 9
+
+    mike.multi_transfer(
+        subaddrs + subaccounts, coins(list(range(1, 1 + len(subaddrs) + len(subaccounts))))
+    )
+
+    net.mine()
+
+    hal.refresh()
+    balances = []
+    for i in range(len(subaccounts) + 1):
+        r = hal.json_rpc(
+            "get_balance", {"account_index": i, "subaddress_indices": list(range(10))}
+        ).json()["result"]
+        balances.append(
+            (
+                r["balance"],
+                r["unlocked_balance"],
+                {x["address"]: x["unlocked_balance"] for x in r["per_subaddress"]},
+            )
+        )
+
+    assert balances == [
+        (coins(21), coins(21), {subaddrs[i]: coins(5 + i + 1) for i in range(3)}),
+        (coins(11), coins(11), {subaddrs[3]: coins(4), subaccounts[0]: coins(7)}),
+        (coins(13), coins(13), {subaddrs[4]: coins(5), subaccounts[1]: coins(8)}),
+        (coins(15), coins(15), {subaddrs[5]: coins(6), subaccounts[2]: coins(9)}),
+    ]
+
+
+def test_subaddr_send(net, mike, alice, bob, hal, ledger):
+    mike.transfer(hal, coins(100))
+    net.mine()
+
+    alice.json_rpc("create_address", {"count": 2})
+    bob.json_rpc("create_address", {"count": 2})
+
+    hal.refresh()
+    mike_bal = mike.balances(refresh=True)
+
+    to = [addrs for w in (alice, bob) for addrs in (w.address(), w.get_subaddress(0, 1), w.get_subaddress(0, 2))]
+
+    assert len(to) == 6
+
+    amounts = list(range(1, len(to) + 1))
+
+    fee = None
+
+    def store_fee(_, m):
+        nonlocal fee
+        fee = float(m[1][1])
+
+    recipient_addrs = []
+
+    def store_addr(val):
+        nonlocal recipient_addrs
+        recipient_addrs.append(val)
+
+    recipient_amounts = []
+
+    def store_amount(_, m):
+        nonlocal recipient_addrs
+        recipient_amounts.append(m[1][1])
+
+    recipient_expected = [(addr, f"{amt}.0") for addr, amt in zip(to, amounts)]
+
+    hal.timeout = 180  # creating this tx with the ledger takes ages
+    run_with_interactions(
+        ledger,
+        partial(hal.multi_transfer, to, [coins(a) for a in amounts]),
+        ExactScreen(["Processing TX"]),
+        MatchScreen([r"^Confirm Fee$", r"^(0\.\d{1,9})$"], store_fee, fail_index=1),
+        Do.right,
+        ExactScreen(["Accept"]),
+        Do.both,
+        *(
+            cmds
+            for i in range(len(recipient_expected))
+            for cmds in [
+                MatchScreen([r"^Confirm Amount$", r"^(\d+\.\d+)$"], store_amount, fail_index=1),
+                Do.right,
+                MatchMulti("Recipient", None, callback=store_addr),
+                Do.right,
+                ExactScreen(["Accept"]),
+                Do.both,
+            ]
+        ),
+        ExactScreen(["Processing TX"]),
+        timeout=180,
+    )
+
+    assert 0.03 < fee < 1
+
+    recipient_expected.sort()
+
+    recipient_got = sorted(zip(recipient_addrs, recipient_amounts))
+
+    assert recipient_expected == recipient_got
+
+    vprint("recipients look good, checking final balances")
+
+    net.mine()
+    assert alice.balances(refresh=True) == coins(6, 6)
+    assert bob.balances(refresh=True) == coins(15, 15)
+    assert hal.balances(refresh=True) == (coins(100 - sum(amounts) - fee),) * 2
 
 
 def check_sn_rewards(net, hal, sn, starting_bal, reward):
@@ -297,7 +423,7 @@ def test_sn_register(net, mike, hal, ledger, sn):
         ledger,
         partial(hal.register_sn, sn),
         ExactScreen(["Processing Stake"]),
-        MatchScreen([r"^Confirm Fee$", r"^(0.01\d{1,7})$"], store_fee, fail_index=1),
+        MatchScreen([r"^Confirm Fee$", r"^(0\.01\d{1,7})$"], store_fee, fail_index=1),
         Do.right,
         ExactScreen(["Accept"]),
         Do.both,
@@ -336,7 +462,7 @@ def test_sn_stake(net, mike, alice, hal, ledger, sn):
         ledger,
         partial(hal.stake_sn, sn, coins(13)),
         ExactScreen(["Processing Stake"]),
-        MatchScreen([r"^Confirm Fee$", r"^(0.01\d{1,7})$"], store_fee, fail_index=1),
+        MatchScreen([r"^Confirm Fee$", r"^(0\.01\d{1,7})$"], store_fee, fail_index=1),
         Do.right,
         ExactScreen(["Accept"]),
         Do.both,

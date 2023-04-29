@@ -284,7 +284,8 @@ class Wallet(RPCDaemon):
             f"--rpc-bind-port={self.rpc_port}",
             f"--log-level={log_level}",
             f"--log-file={self.walletdir}/log.txt",
-            f"--shared-ringdb-dir", "",
+            f"--shared-ringdb-dir",
+            "",
             f"--daemon-address={node.listen_ip}:{node.rpc_port}",
             f"--wallet-dir={self.walletdir}",
         )
@@ -328,6 +329,14 @@ class Wallet(RPCDaemon):
             self.wallet_address = self.json_rpc("get_address").json()["result"]["address"]
 
         return self.wallet_address
+
+    def get_subaddress(self, account, subaddr):
+        r = self.json_rpc(
+            "get_address", {"account_index": account, "address_index": [subaddr]}
+        ).json()
+        if "result" not in r:
+            raise RuntimeError(f"Unable to retrieve subaddr {account}.{subaddr}: {r['error']}")
+        return r["result"]["addresses"][0]["address"]
 
     def new_wallet(self):
         self.wallet_address = None
@@ -373,15 +382,20 @@ class Wallet(RPCDaemon):
     def transfer(self, to, amount=None, *, priority=None, sweep=False):
         """Attempts a transfer.  Throws TransferFailed if it gets rejected by the daemon, otherwise
         returns the 'result' key."""
+        if isinstance(to, Wallet):
+            to = to.address()
+        else:
+            assert isinstance(to, str)
+
         if priority is None:
             priority = 1
         if sweep and not amount:
-            r = self.json_rpc("sweep_all", {"address": to.address(), "priority": priority})
+            r = self.json_rpc("sweep_all", {"address": to, "priority": priority})
         elif amount and not sweep:
             r = self.json_rpc(
                 "transfer_split",
                 {
-                    "destinations": [{"address": to.address(), "amount": amount}],
+                    "destinations": [{"address": to, "amount": amount}],
                     "priority": priority,
                 },
             )
@@ -397,13 +411,19 @@ class Wallet(RPCDaemon):
         """Attempts a transfer to multiple recipients at once.  Throws TransferFailed if it gets
         rejected by the daemon, otherwise returns the 'result' key."""
         assert 0 < len(recipients) == len(amounts)
+        for i in range(len(recipients)):
+            if isinstance(recipients[i], Wallet):
+                recipients[i] = recipients[i].address()
+            else:
+                assert isinstance(recipients[i], str)
+
         if priority is None:
             priority = 1
         r = self.json_rpc(
             "transfer_split",
             {
                 "destinations": [
-                    {"address": r.address(), "amount": a} for r, a in zip(recipients, amounts)
+                    {"address": r, "amount": a} for r, a in zip(recipients, amounts)
                 ],
                 "priority": priority,
             },

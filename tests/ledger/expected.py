@@ -49,6 +49,7 @@ class MatchScreen:
                 matches.append(self.regexes[i].search(text[i]))
                 if not matches[-1]:
                     if i >= self.fail_index or immediate:
+                        vprint(f"fatal match fail: {text} against {self.desc}")
                         raise ValueError(f"wrong screen value: {text}, expected {self.desc}")
                     return False
             if self.callback:
