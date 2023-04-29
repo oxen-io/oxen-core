@@ -284,6 +284,7 @@ class Wallet(RPCDaemon):
             f"--rpc-bind-port={self.rpc_port}",
             f"--log-level={log_level}",
             f"--log-file={self.walletdir}/log.txt",
+            f"--shared-ringdb-dir", "",
             f"--daemon-address={node.listen_ip}:{node.rpc_port}",
             f"--wallet-dir={self.walletdir}",
         )
