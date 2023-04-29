@@ -268,6 +268,8 @@ struct options {
     get_default_ringdb_path(),
     {{ &testnet, &devnet, &regtest }},
     [](std::array<bool, 3> test_dev_fake, bool defaulted, std::string val)->std::string {
+      if (val.empty())
+        return val;
       if (test_dev_fake[0])
         return (fs::u8path(val) / "testnet").u8string();
       else if (test_dev_fake[1])
