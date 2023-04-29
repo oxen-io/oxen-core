@@ -483,6 +483,48 @@ def test_sn_stake(net, mike, alice, hal, ledger, sn):
     check_sn_rewards(net, hal, sn, 13 - fee, reward)
 
 
+def test_sn_reject(net, mike, hal, ledger, sn):
+    mike.transfer(hal, coins(101))
+    net.mine()
+
+    assert hal.balances(refresh=True) == coins(101, 101)
+
+    fee = None
+
+    def store_fee(_, m):
+        nonlocal fee
+        fee = float(m[1][1])
+
+    with pytest.raises(RuntimeError, match=r'Fee denied on device\.$'):
+        run_with_interactions(
+            ledger,
+            partial(hal.register_sn, sn),
+            ExactScreen(["Processing Stake"]),
+            MatchScreen([r"^Confirm Fee$", r"^(0\.01\d{1,7})$"], store_fee, fail_index=1),
+            Do.right,
+            Do.right,
+            ExactScreen(["Reject"]),
+            Do.both,
+        )
+
+    with pytest.raises(RuntimeError, match=r'Transaction denied on device\.$'):
+        run_with_interactions(
+            ledger,
+            partial(hal.register_sn, sn),
+            ExactScreen(["Processing Stake"]),
+            MatchScreen([r"^Confirm Fee$", r"^(0\.01\d{1,7})$"], store_fee, fail_index=1),
+            Do.right,
+            ExactScreen(["Accept"]),
+            Do.both,
+            ExactScreen(["Confirm Stake", "100.0"], fail_index=1),
+            Do.right,
+            ExactScreen(["Accept"]),
+            Do.right,
+            ExactScreen(["Reject"]),
+            Do.both,
+        )
+
+
 def test_sn_unstake(net, mike, hal, ledger, sn):
     # Do the full registration:
     test_sn_register(net, mike, hal, ledger, sn)
