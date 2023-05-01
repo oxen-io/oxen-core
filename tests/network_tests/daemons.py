@@ -479,3 +479,73 @@ class Wallet(RPCDaemon):
             raise RuntimeError(f"Failed to submit unstake: {r['error']['message']}")
         if not r["result"]["unlocked"]:
             raise RuntimeError(f"Failed to submit unstake: {r['result']['msg']}")
+
+    def buy_ons(self, onstype, name, value, *, owner=None, backup_owner=None):
+        if onstype not in (
+            "session",
+            "wallet",
+            "lokinet",
+            "lokinet_2y",
+            "lokinet_5y",
+            "lokinet_10y",
+        ):
+            raise ValueError(f"Invalid ONS type '{onstype}'")
+
+        params = {
+            "type": onstype,
+            "owner": self.address() if owner is None else owner,
+            "name": name,
+            "value": value,
+        }
+        if backup_owner:
+            params["backup_owner"] = backup_owner
+
+        r = self.json_rpc("ons_buy_mapping", params).json()
+        if "error" in r:
+            raise RuntimeError(f"Failed to buy ONS: {r['error']['message']}")
+        return r
+
+    def renew_ons(self, onstype, name):
+        if onstype not in ("lokinet", "lokinet_2y", "lokinet_5y", "lokinet_10y"):
+            raise ValueError(f"Invalid ONS renewal type '{onstype}'")
+
+        r = self.json_rpc("ons_renew_mapping", {"type": onstype, "name": name}).json()
+        if "error" in r:
+            raise RuntimeError(f"Failed to buy ONS: {r['error']['message']}")
+        return r
+
+    def update_ons(self, onstype, name, *, value=None, owner=None, backup_owner=None):
+        if onstype not in ("session", "wallet", "lokinet"):
+            raise ValueError(f"Invalid ONS update type '{onstype}'")
+
+        params = {"type": onstype, "name": name}
+        if value is not None:
+            params["value"] = value
+        if owner is not None:
+            params["owner"] = owner
+        if backup_owner is not None:
+            params["backup_owner"] = backup_owner
+
+        r = self.json_rpc("ons_update_mapping", params).json()
+        if "error" in r:
+            raise RuntimeError(f"Failed to buy ONS: {r['error']['message']}")
+
+        return r
+
+    def get_ons(self, *, include_txid=False, include_encrypted=False, include_height=False):
+        r = self.json_rpc("ons_known_names", {"decrypt": True}).json()
+        if "error" in r:
+            raise RuntimeError(f"Failed to buy ONS: {r['error']['message']}")
+
+        names = sorted(r["result"]["known_names"], key=lambda x: (x["type"], x["name"]))
+        if not include_txid:
+            for n in names:
+                del n["txid"]
+        if not include_encrypted:
+            for n in names:
+                del n["encrypted_value"]
+        if not include_height:
+            for n in names:
+                del n["update_height"]
+                n.pop("expiration_height", None)
+        return names
