@@ -9,6 +9,11 @@ from expected import *
 import daemons
 
 
+def balance(c):
+    """Shortcut for coins(c,c), particularly useful when c is complex"""
+    return coins(c, c)
+
+
 def test_init(net, mike, hal, ledger):
     """
     Tests that the node fakenet got initialized properly, and that the wallet starts up and shows
@@ -54,16 +59,20 @@ def test_receive(net, mike, hal):
     assert hal.balances(refresh=True) == coins(100, 100)
 
 
+class StoreFee:
+    def __init__(self):
+        self.fee = None
+
+    def __call__(self, _, m):
+        self.fee = float(m[1][1])
+
+
 def test_send(net, mike, alice, hal, ledger):
     mike.transfer(hal, coins(100))
     net.mine()
     hal.refresh()
 
-    fee = None
-
-    def store_fee(_, m):
-        nonlocal fee
-        fee = float(m[1][1])
+    store_fee = StoreFee()
 
     run_with_interactions(
         ledger,
@@ -93,7 +102,7 @@ def test_send(net, mike, alice, hal, ledger):
     )
 
     net.mine(1)
-    remaining = coins(100 - 42.5 - fee)
+    remaining = coins(100 - 42.5 - store_fee.fee)
     hal_bal = hal.balances(refresh=True)
     assert hal_bal[0] == remaining
     assert hal_bal[1] < remaining
@@ -109,11 +118,7 @@ def test_multisend(net, mike, alice, bob, hal, ledger):
 
     assert hal.balances(refresh=True) == coins(105, 105)
 
-    fee = None
-
-    def store_fee(_, m):
-        nonlocal fee
-        fee = float(m[1][1])
+    store_fee = StoreFee()
 
     recipient_addrs = []
 
@@ -168,7 +173,7 @@ def test_multisend(net, mike, alice, bob, hal, ledger):
     assert recipient_expected == recipient_got
 
     net.mine(1)
-    remaining = coins(105 - 100 - fee + 22)
+    remaining = coins(105 - 100 - store_fee.fee + 22)
     hal_bal = hal.balances(refresh=True)
     assert hal_bal[0] == remaining
     assert hal_bal[1] < remaining
@@ -176,8 +181,8 @@ def test_multisend(net, mike, alice, bob, hal, ledger):
     assert bob.balances(refresh=True) == coins(19, 0)
     net.mine(9)
     assert hal.balances(refresh=True) == (remaining,) * 2
-    assert alice.balances(refresh=True) == coins((18 + 20 + 21,) * 2)
-    assert bob.balances(refresh=True) == coins(19, 19)
+    assert alice.balances(refresh=True) == balance(18 + 20 + 21)
+    assert bob.balances(refresh=True) == balance(19)
 
 
 def test_reject_send(net, mike, alice, hal, ledger):
@@ -217,11 +222,7 @@ def test_reject_send(net, mike, alice, hal, ledger):
             Do.both,
         )
 
-    fee = None
-
-    def store_fee(_, m):
-        nonlocal fee
-        fee = float(m[1][1])
+    store_fee = StoreFee()
 
     run_with_interactions(
         ledger,
@@ -240,7 +241,7 @@ def test_reject_send(net, mike, alice, hal, ledger):
     )
 
     net.mine(10)
-    assert hal.balances(refresh=True) == coins((100 - 42.5 - fee,) * 2)
+    assert hal.balances(refresh=True) == balance(100 - 42.5 - store_fee.fee)
 
 
 def test_subaddr_receive(net, mike, hal):
@@ -259,7 +260,7 @@ def test_subaddr_receive(net, mike, hal):
     net.mine(blocks=2)
     assert hal.balances(refresh=True) == coins(5 * len(subaddrs), 0)
     net.mine(blocks=8)
-    assert hal.balances(refresh=True) == coins((5 * len(subaddrs),) * 2)
+    assert hal.balances(refresh=True) == balance(5 * len(subaddrs))
 
     subaccounts = []
     for i in range(3):
@@ -320,17 +321,17 @@ def test_subaddr_send(net, mike, alice, bob, hal, ledger):
     hal.refresh()
     mike_bal = mike.balances(refresh=True)
 
-    to = [addrs for w in (alice, bob) for addrs in (w.address(), w.get_subaddress(0, 1), w.get_subaddress(0, 2))]
+    to = [
+        addrs
+        for w in (alice, bob)
+        for addrs in (w.address(), w.get_subaddress(0, 1), w.get_subaddress(0, 2))
+    ]
 
     assert len(to) == 6
 
     amounts = list(range(1, len(to) + 1))
 
-    fee = None
-
-    def store_fee(_, m):
-        nonlocal fee
-        fee = float(m[1][1])
+    store_fee = StoreFee()
 
     recipient_addrs = []
 
@@ -371,7 +372,7 @@ def test_subaddr_send(net, mike, alice, bob, hal, ledger):
         timeout=180,
     )
 
-    assert 0.03 < fee < 1
+    assert 0.03 < store_fee.fee < 1
 
     recipient_expected.sort()
 
@@ -384,7 +385,7 @@ def test_subaddr_send(net, mike, alice, bob, hal, ledger):
     net.mine()
     assert alice.balances(refresh=True) == coins(6, 6)
     assert bob.balances(refresh=True) == coins(15, 15)
-    assert hal.balances(refresh=True) == (coins(100 - sum(amounts) - fee),) * 2
+    assert hal.balances(refresh=True) == balance(100 - sum(amounts) - store_fee.fee)
 
 
 def check_sn_rewards(net, hal, sn, starting_bal, reward):
@@ -417,11 +418,7 @@ def test_sn_register(net, mike, hal, ledger, sn):
 
     assert hal.balances(refresh=True) == coins(101, 101)
 
-    fee = None
-
-    def store_fee(_, m):
-        nonlocal fee
-        fee = float(m[1][1])
+    store_fee = StoreFee()
 
     run_with_interactions(
         ledger,
@@ -443,7 +440,7 @@ def test_sn_register(net, mike, hal, ledger, sn):
 
     # We are half the SN network, so get half of the block reward per block:
     reward = 0.5 * 16.5
-    check_sn_rewards(net, hal, sn, 101 - fee, reward)
+    check_sn_rewards(net, hal, sn, 101 - store_fee.fee, reward)
 
 
 def test_sn_stake(net, mike, alice, hal, ledger, sn):
@@ -456,11 +453,7 @@ def test_sn_stake(net, mike, alice, hal, ledger, sn):
     alice.register_sn(sn, stake=coins(87))
     net.mine(1)
 
-    fee = None
-
-    def store_fee(_, m):
-        nonlocal fee
-        fee = float(m[1][1])
+    store_fee = StoreFee()
 
     run_with_interactions(
         ledger,
@@ -484,7 +477,7 @@ def test_sn_stake(net, mike, alice, hal, ledger, sn):
     # fee, then hal gets 13/100 of the rest:
     reward = 0.5 * 16.5 * 0.9 * 0.13
 
-    check_sn_rewards(net, hal, sn, 13 - fee, reward)
+    check_sn_rewards(net, hal, sn, 13 - store_fee.fee, reward)
 
 
 def test_sn_reject(net, mike, hal, ledger, sn):
@@ -493,13 +486,9 @@ def test_sn_reject(net, mike, hal, ledger, sn):
 
     assert hal.balances(refresh=True) == coins(101, 101)
 
-    fee = None
+    store_fee = StoreFee()
 
-    def store_fee(_, m):
-        nonlocal fee
-        fee = float(m[1][1])
-
-    with pytest.raises(RuntimeError, match=r'Fee denied on device\.$'):
+    with pytest.raises(RuntimeError, match=r"Fee denied on device\.$"):
         run_with_interactions(
             ledger,
             partial(hal.register_sn, sn),
@@ -511,7 +500,7 @@ def test_sn_reject(net, mike, hal, ledger, sn):
             Do.both,
         )
 
-    with pytest.raises(RuntimeError, match=r'Transaction denied on device\.$'):
+    with pytest.raises(RuntimeError, match=r"Transaction denied on device\.$"):
         run_with_interactions(
             ledger,
             partial(hal.register_sn, sn),

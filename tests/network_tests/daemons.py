@@ -394,10 +394,7 @@ class Wallet(RPCDaemon):
         elif amount and not sweep:
             r = self.json_rpc(
                 "transfer_split",
-                {
-                    "destinations": [{"address": to, "amount": amount}],
-                    "priority": priority,
-                },
+                {"destinations": [{"address": to, "amount": amount}], "priority": priority},
             )
         else:
             raise RuntimeError("Wallet.transfer: either `sweep` or `amount` must be given")
@@ -422,9 +419,7 @@ class Wallet(RPCDaemon):
         r = self.json_rpc(
             "transfer_split",
             {
-                "destinations": [
-                    {"address": r, "amount": a} for r, a in zip(recipients, amounts)
-                ],
+                "destinations": [{"address": r, "amount": a} for r, a in zip(recipients, amounts)],
                 "priority": priority,
             },
         )
