@@ -15,6 +15,13 @@ def pytest_addoption(parser):
     parser.addoption("--ledger-api", default="http://127.0.0.1:5000", action="store")
 
 
+def pytest_collection_modifyitems(session, config, items):
+    """Reorders the tests more logically than the default alphabetical order"""
+    pos = {"test_basic.py": 1, "test_transfers.py": 2, "test_sn.py": 3, "test_ons.py": 4, "": 5}
+
+    items.sort(key=lambda i: pos.get(i.parent.name, pos[""]))
+
+
 @pytest.fixture(scope="session")
 def binary_dir(request):
     binpath = request.config.getoption("--binary-dir")
@@ -36,7 +43,6 @@ def ledger(request):
 
 @pytest.fixture
 def net(pytestconfig, tmp_path, binary_dir):
-    import vprint
     return service_node_network.basic_net(pytestconfig, tmp_path, binary_dir)
 
 
