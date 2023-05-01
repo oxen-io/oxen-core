@@ -37,6 +37,10 @@ def test_init(net, mike, hal, ledger):
         ExactScreen(["Regular address", "(fakenet)"]),
         Do.right,
         MatchMulti("Address", address),
+        Do.right,
+        ExactScreen(["Back"]),
+        Do.both,
+        MatchScreen([r"^OXEN wallet$", r"^(\w+)\.\.(\w+)$"], check_addr),
     )
 
 
