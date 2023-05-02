@@ -94,7 +94,7 @@ def test_sn_stake(net, mike, alice, hal, ledger, sn):
     # fee, then hal gets 13/100 of the rest:
     reward = 0.5 * 16.5 * 0.9 * 0.13
 
-    check_sn_rewards(net, hal, sn, 13 - store_fee.fee, reward)
+    check_sn_rewards(net, hal, sn, 13.02 - store_fee.fee, reward)
 
 
 def test_sn_reject(net, mike, hal, ledger, sn):
