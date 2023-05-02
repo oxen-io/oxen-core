@@ -74,8 +74,21 @@ class ExactScreen(MatchScreen):
     Other arguments are forwarded to MatchScreen.
     """
 
-    def __init__(self, result, *args, **kwargs):
-        super().__init__(["^" + re.escape(x) + "$" for x in result], *args, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.made_buggy = False
+
+    def __call__(self, ledger, *args, **kwargs):
+        if not self.made_buggy:
+            self.made_buggy = True
+            # Work around Speculos bugs:
+
+            # ledger.buggy_S - can't read "S" off the Nano X screen:
+            # https://github.com/LedgerHQ/speculos/issues/204
+            if ledger.buggy_S:
+                for i in range(len(self.regexes)):
+                    self.regexes[i] = re.compile(self.regexes[i].pattern.replace("S", "S?"))
+        return super().__call__(ledger, *args, **kwargs)
 
 
 class MatchMulti:
@@ -99,14 +112,20 @@ class MatchMulti:
 
     def __call__(self, ledger, immediate=False):
         text = ledger.curr()
-        if len(text) != 2:
+        if len(text) < 2:
             return False
         m = self.re.search(text[0])
         if not m:
             return False
         val = ledger.read_multi_value(self.title)
-        if self.expected is not None and val != self.expected:
-            raise ValueError(f"{self.title} value {val} did not match expected {self.expected}")
+        if self.expected is not None:
+            if val != self.expected:
+                if ledger.buggy_S and self.expected.replace("S", "") == val:
+                    pass
+                else:
+                    raise ValueError(
+                        f"{self.title} value {val} did not match expected {self.expected}"
+                    )
 
         if self.callback:
             self.callback(val)

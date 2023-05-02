@@ -81,13 +81,16 @@ def test_multisend(net, mike, alice, bob, hal, ledger):
         nonlocal recipient_addrs
         recipient_amounts.append(m[1][1])
 
-    recipient_expected = [
-        (alice.address(), "18.0"),
-        (bob.address(), "19.0"),
-        (alice.address(), "20.0"),
-        (alice.address(), "21.0"),
-        (hal.address(), "22.0"),
-    ]
+    recipient_expected = ledger.buggy_crap(
+        [
+            (alice.address(), "18.0"),
+            (bob.address(), "19.0"),
+            (alice.address(), "20.0"),
+            (alice.address(), "21.0"),
+            (hal.address(), "22.0"),
+        ]
+    )
+    recipient_expected.sort()
 
     hal.timeout = 120  # creating this tx with the ledger takes ages
     run_with_interactions(
@@ -113,8 +116,6 @@ def test_multisend(net, mike, alice, bob, hal, ledger):
         ExactScreen(["Processing TX"]),
         timeout=120,
     )
-
-    recipient_expected.sort()
 
     recipient_got = list(zip(recipient_addrs, recipient_amounts))
     recipient_got.sort()
@@ -294,9 +295,10 @@ def test_subaddr_send(net, mike, alice, bob, hal, ledger):
         nonlocal recipient_addrs
         recipient_amounts.append(m[1][1])
 
-    recipient_expected = [(addr, f"{amt}.0") for addr, amt in zip(to, amounts)]
+    recipient_expected = ledger.buggy_crap([(addr, f"{amt}.0") for addr, amt in zip(to, amounts)])
+    recipient_expected.sort()
 
-    hal.timeout = 180  # creating this tx with the ledger takes ages
+    hal.timeout = 300  # creating this tx with the ledger takes ages
     run_with_interactions(
         ledger,
         partial(hal.multi_transfer, to, [coins(a) for a in amounts]),
@@ -322,8 +324,6 @@ def test_subaddr_send(net, mike, alice, bob, hal, ledger):
     )
 
     assert 0.03 < store_fee.fee < 1
-
-    recipient_expected.sort()
 
     recipient_got = sorted(zip(recipient_addrs, recipient_amounts))
 

@@ -38,7 +38,12 @@ def binary_dir(request):
 
 @pytest.fixture(scope="session")
 def ledger(request):
-    return LedgerAPI(request.config.getoption("--ledger-api"))
+    l = LedgerAPI(request.config.getoption("--ledger-api"))
+    if l.buggy_S:
+        import warnings
+
+        warnings.warn("Detected Speculos buggy 'S' handling (issue #204); applying workarounds")
+    return l
 
 
 @pytest.fixture
