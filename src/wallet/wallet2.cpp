@@ -1268,7 +1268,8 @@ gamma_picker::gamma_picker(const std::vector<uint64_t>& rct_offsets, double shap
                                           ? rct_offsets[rct_offsets.size() - blocks_to_consider - 1]
                                           : 0);
     begin = rct_offsets.data();
-    end = rct_offsets.data() + rct_offsets.size() - DEFAULT_TX_SPENDABLE_AGE;
+    end = rct_offsets.data() + rct_offsets.size() -
+          (std::max(1, CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE) - 1);
     num_rct_outputs = *(end - 1);
     THROW_WALLET_EXCEPTION_IF(num_rct_outputs == 0, error::wallet_internal_error, "No rct outputs");
     average_output_time =
@@ -10599,7 +10600,7 @@ void wallet2::get_outs(
             } else {
                 // the base offset of the first rct output in the first unlocked block (or the one
                 // to be if there's none)
-                num_outs = rct_offsets[rct_offsets.size() - DEFAULT_TX_SPENDABLE_AGE];
+                num_outs = gamma->get_num_rct_outs();
                 log::info(logcat, "{} unlocked rct outputs", num_outs);
                 THROW_WALLET_EXCEPTION_IF(
                         num_outs == 0,
@@ -10923,7 +10924,7 @@ void wallet2::get_outs(
                 }
             bool use_histogram = amount != 0 || !has_rct_distribution;
             if (!use_histogram)
-                num_outs = rct_offsets[rct_offsets.size() - DEFAULT_TX_SPENDABLE_AGE];
+                num_outs = gamma->get_num_rct_outs();
 
             // make sure the real outputs we asked for are really included, along
             // with the correct key and mask: this guards against an active attack
