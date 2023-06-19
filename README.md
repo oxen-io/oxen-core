@@ -73,7 +73,7 @@ sudo apt update && sudo apt install build-essential cmake pkg-config libboost-al
 ```
 
 Install all dependencies at once on macOS with the provided Brewfile:
-``` brew update && brew bundle --file=contrib/brew/Brewfile ```
+```brew update && brew bundle --file=contrib/brew/Brewfile --no-lock```
 
 FreeBSD one liner for required to build dependencies
 ```pkg install git gmake cmake pkgconf boost-libs libzmq4 libsodium sqlite3```
