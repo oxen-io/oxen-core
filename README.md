@@ -46,7 +46,7 @@ library archives (`.a`).
 | libzmq       | 4.3.0         | YES      | `libzmq3-dev`          | `zeromq`     | `zeromq-devel`      | NO       | ZeroMQ library   |
 | sqlite3      | 3.24.0        | YES      | `libsqlite3-dev`       | `sqlite`     | `sqlite-devel`      | NO       | ONS, batching    |
 | libsodium    | 1.0.9         | YES      | `libsodium-dev`        | `libsodium`  | `libsodium-devel`   | NO       | cryptography     |
-| libcurl      | 4.0           | NO       | `libcurl4-dev`         | `curl`       | `curl-devel`        | NO       | HTTP RPC         |
+| libcurl      | 4.0           | NO       | `libcurl4-openssl-dev` | `curl`       | `curl-devel`        | NO       | HTTP RPC         |
 | libuv (Win)  | any           | NO       | (Windows only)         | --           | --                  | NO       | RPC event loop   |
 | libunwind    | any           | NO       | `libunwind8-dev`       | `libunwind`  | `libunwind-devel`   | YES      | Stack traces     |
 | liblzma      | any           | NO       | `liblzma-dev`          | `xz`         | `xz-devel`          | YES      | For libunwind    |
@@ -69,7 +69,7 @@ breakdown of the minimum set of required boost packages.
 Install all dependencies at once on Debian/Ubuntu:
 
 ```
-sudo apt update && sudo apt install build-essential cmake pkg-config libboost-all-dev libzmq3-dev libsodium-dev libunwind8-dev liblzma-dev libreadline6-dev doxygen graphviz libpgm-dev libsqlite3-dev libcurl4-dev
+sudo apt update && sudo apt install build-essential cmake pkg-config libboost-all-dev libzmq3-dev libsodium-dev libunwind8-dev liblzma-dev libreadline6-dev doxygen graphviz libpgm-dev libsqlite3-dev libcurl4-openssl-dev
 ```
 
 Install all dependencies at once on macOS with the provided Brewfile:
