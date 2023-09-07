@@ -7196,7 +7196,7 @@ bool simple_wallet::ons_lookup(std::vector<std::string> args) {
         tools::wallet2::ons_detail detail = {
                 static_cast<ons::mapping_type>(mapping["type"]),
                 name,
-                mapping.name_hash};
+                mapping["name_hash"]};
         m_wallet->set_ons_cache_record(detail);
     }
     for (size_t i = last_index + 1; i < args.size(); i++)
