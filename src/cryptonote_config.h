@@ -409,9 +409,9 @@ namespace config {
     inline constexpr uint64_t STORE_LONG_TERM_STATE_INTERVAL = 10000;
 
     // Details of the ethereum smart contract managing rewards and chain its kept on
-    inline constexpr uint32_t ETHEREUM_CHAIN_ID = 31337;
-    inline constexpr std::string_view ETHEREUM_REWARDS_CONTRACT = "0x5FC8d32690cc91D4c39d9d3abcBD16989F875707";
-    inline constexpr std::string_view ETHEREUM_POOL_CONTRACT = "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0";
+    inline constexpr uint32_t ETHEREUM_CHAIN_ID = 421614;
+    inline constexpr std::string_view ETHEREUM_REWARDS_CONTRACT = "0x8E7085eEF00064D840FB69e32Ec3CC343DA98CFb";
+    inline constexpr std::string_view ETHEREUM_POOL_CONTRACT = "0x7F5D426c9011Df7a98dF3Ef95C9B0dfD2bD4C191";
 
     namespace testnet {
         inline constexpr uint64_t HEIGHT_ESTIMATE_HEIGHT = 339767;
