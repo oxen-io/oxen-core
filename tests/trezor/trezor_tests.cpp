@@ -221,7 +221,7 @@ int main(int argc, char* argv[])
 
     return failed_tests.empty() ? 0 : 1;
 
-  CATCH_ENTRY_L0("main", 1);
+  CATCH_ENTRY("main", 1);
 }
 
 static void rollback_chain(cryptonote::core * core, const cryptonote::block & head)
@@ -267,7 +267,7 @@ static bool unserialize_chain_from_file(std::vector<test_event_entry>& events, g
       oxen::log::warning(logcat, "Chain deserialization failed");
       return false;
     }
-  CATCH_ENTRY_L0("unserialize_chain_from_file", false);
+  CATCH_ENTRY("unserialize_chain_from_file", false);
 }
 
 static bool serialize_chain_to_file(std::vector<test_event_entry>& events, gen_trezor_base &test_base, const std::string& file_path)
@@ -291,7 +291,7 @@ static bool serialize_chain_to_file(std::vector<test_event_entry>& events, gen_t
       return false;
     }
     return false;
-  CATCH_ENTRY_L0("serialize_chain_to_file", false);
+  CATCH_ENTRY("serialize_chain_to_file", false);
 }
 
 template<class t_test_class>

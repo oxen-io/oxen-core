@@ -4,6 +4,7 @@
 #include <string_view>
 #include <unordered_set>
 
+#include "basic_char.h"
 #include "crypto/crypto.h"
 #include "ringct/rctTypes.h"
 
@@ -45,12 +46,18 @@ inline constexpr bool json_is_binary_container<const T&> = json_is_binary_contai
 template <typename T>
 inline constexpr bool json_is_binary_container<T&&> = json_is_binary_container<T>;
 
+template <typename T>
+concept binary_json = json_is_binary<T>;
+
+template <typename T>
+concept binary_json_container = json_is_binary_container<T>;
+
 void load_binary_parameter_impl(
         std::string_view bytes, size_t raw_size, bool allow_raw, uint8_t* val_data);
 
 // Loads a binary value from a string_view which may contain hex, base64, and (optionally) raw
 // bytes.
-template <typename T, typename = std::enable_if_t<json_is_binary<T>>>
+template <binary_json T>
 void load_binary_parameter(std::string_view bytes, bool allow_raw, T& val) {
     load_binary_parameter_impl(bytes, sizeof(T), allow_raw, reinterpret_cast<uint8_t*>(&val));
 }
@@ -86,9 +93,8 @@ class json_binary_proxy {
 
     /// Assigns binary data from a string_view over a 1-byte, non-char type (e.g. unsigned char or
     /// uint8_t).
-    template <
-            typename Char,
-            std::enable_if_t<sizeof(Char) == 1 && !std::is_same_v<Char, char>, int> = 0>
+    template <basic_char Char>
+        requires(!std::same_as<Char, char>)
     nlohmann::json& operator=(std::basic_string_view<Char> binary_data) {
         return *this = std::string_view{
                        reinterpret_cast<const char*>(binary_data.data()), binary_data.size()};
@@ -96,14 +102,14 @@ class json_binary_proxy {
 
     /// Takes a trivial, no-padding data structure (e.g. a crypto::hash) as the value and dumps its
     /// contents as the binary value.
-    template <typename T, std::enable_if_t<json_is_binary<T>, int> = 0>
+    template <binary_json T>
     nlohmann::json& operator=(const T& val) {
         return *this = std::string_view{reinterpret_cast<const char*>(&val), sizeof(val)};
     }
 
     /// Takes a vector of some json_binary_proxy-assignable type and builds an array by assigning
     /// each one into a new array of binary values.
-    template <typename T, std::enable_if_t<json_is_binary_container<T>, int> = 0>
+    template <binary_json_container T>
     nlohmann::json& operator=(const T& vals) {
         auto a = nlohmann::json::array();
         for (auto& val : vals)
@@ -136,11 +142,11 @@ class json_binary_proxy {
 // them encoded in hex or base64.  These may *not* be used for serialization, and will throw if so
 // invoked; for serialization you need to use RPC_COMMAND::response_hex (or _b64) instead.
 namespace nlohmann {
-template <typename T>
-struct adl_serializer<T, std::enable_if_t<tools::json_is_binary<T>>> {
+template <tools::binary_json T>
+struct adl_serializer<T> {
     static_assert(std::is_trivially_copyable_v<T> && std::has_unique_object_representations_v<T>);
 
-    static void to_json(json& j, const T&) {
+    static void to_json(json&, const T&) {
         throw std::logic_error{"Internal error: binary types are not directly serializable"};
     }
     static void from_json(const json& j, T& val) {

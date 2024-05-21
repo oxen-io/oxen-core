@@ -117,7 +117,7 @@ unsigned get_max_concurrency() {
 
 bool is_local_address(const std::string& address) {
     return address == "localhost"sv ||
-           (tools::starts_with(address, "127."sv) &&
+           (address.starts_with("127."sv) &&
             address.find_first_not_of("0123456789."sv) == std::string::npos) ||
            address == "::1"sv ||
            address == "[::1]"sv;  // There are other uncommon ways to specify localhost (e.g. 0::1,

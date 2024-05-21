@@ -37,6 +37,5 @@ target_link_libraries(l2_tracker
     common
     ethyl
     cryptonote_basic
-    filesystem
     logging
     extra)

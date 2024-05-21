@@ -28,8 +28,6 @@ target_link_libraries(wallet3
     mnemonics
     logging
     oxen::logging
-    spdlog::spdlog
-    fmt::fmt
     SQLiteCpp)
 
 function(combine_archives output_archive)
@@ -106,8 +104,6 @@ if (STATIC AND BUILD_STATIC_DEPS)
             uSockets
             cpr
             oxen::logging
-            spdlog::spdlog
-            fmt::fmt
 
             ${optional_targets}
             )

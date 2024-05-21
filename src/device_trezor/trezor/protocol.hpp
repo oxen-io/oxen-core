@@ -38,360 +38,349 @@
 #include "wallet/tx_construction_data.h"
 #include "wallet/tx_sets.h"
 
-namespace hw { namespace trezor { namespace protocol {
+namespace hw::trezor::protocol {
 
-    std::string key_to_string(const ::crypto::ec_point& key);
-    std::string key_to_string(const ::crypto::ec_scalar& key);
-    std::string key_to_string(const ::crypto::hash& key);
-    std::string key_to_string(const ::rct::key& key);
+std::string key_to_string(const ::crypto::ec_point& key);
+std::string key_to_string(const ::crypto::ec_scalar& key);
+std::string key_to_string(const ::crypto::hash& key);
+std::string key_to_string(const ::rct::key& key);
 
-    void string_to_key(::crypto::ec_scalar& key, const std::string& str);
-    void string_to_key(::crypto::ec_point& key, const std::string& str);
-    void string_to_key(::rct::key& key, const std::string& str);
+void string_to_key(::crypto::ec_scalar& key, const std::string& str);
+void string_to_key(::crypto::ec_point& key, const std::string& str);
+void string_to_key(::rct::key& key, const std::string& str);
 
-    template <class sub_t, class InputIterator>
-    void assign_to_repeatable(
-            ::google::protobuf::RepeatedField<sub_t>* dst,
-            const InputIterator begin,
-            const InputIterator end) {
-        for (InputIterator it = begin; it != end; it++) {
-            auto s = dst->Add();
-            *s = *it;
-        }
+template <class sub_t, class InputIterator>
+void assign_to_repeatable(
+        ::google::protobuf::RepeatedField<sub_t>* dst,
+        const InputIterator begin,
+        const InputIterator end) {
+    for (InputIterator it = begin; it != end; it++) {
+        auto s = dst->Add();
+        *s = *it;
     }
+}
 
-    template <class sub_t, class InputIterator>
-    void assign_from_repeatable(
-            std::vector<sub_t>* dst, const InputIterator begin, const InputIterator end) {
-        for (InputIterator it = begin; it != end; it++) {
-            dst->push_back(*it);
-        }
+template <class sub_t, class InputIterator>
+void assign_from_repeatable(
+        std::vector<sub_t>* dst, const InputIterator begin, const InputIterator end) {
+    for (InputIterator it = begin; it != end; it++) {
+        dst->push_back(*it);
+    }
+};
+
+template <typename T>
+bool cn_deserialize(const std::string_view buff, T& dst) {
+    try {
+        serialization::parse_binary(buff, dst);
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
+template <typename T>
+std::string cn_serialize(T& obj) {
+    try {
+        return serialization::dump_binary(obj);
+    } catch (...) {
+        throw exc::EncodingException("Could not CN serialize given object");
+    }
+}
+
+// Crypto / encryption
+namespace crypto::chacha {
+    // Constants as defined in RFC 7539.
+    constexpr unsigned IV_SIZE = 12;
+    constexpr unsigned TAG_SIZE = 16;  // crypto_aead_chacha20poly1305_IETF_ABYTES;
+
+    /**
+     * Chacha20Poly1305 decryption with tag verification. RFC 7539.
+     */
+    void decrypt(
+            const void* ciphertext,
+            size_t length,
+            const uint8_t* key,
+            const uint8_t* iv,
+            char* plaintext,
+            size_t* plaintext_len = nullptr);
+
+}  // namespace crypto::chacha
+
+// Cold Key image sync
+namespace ki {
+
+    using MoneroTransferDetails =
+            messages::monero::MoneroKeyImageSyncStepRequest_MoneroTransferDetails;
+    using MoneroSubAddressIndicesList =
+            messages::monero::MoneroKeyImageExportInitRequest_MoneroSubAddressIndicesList;
+    using MoneroExportedKeyImage =
+            messages::monero::MoneroKeyImageSyncStepAck_MoneroExportedKeyImage;
+    using exported_key_image = hw::device_cold::exported_key_image;
+
+    /**
+     * Converts transfer details to the MoneroTransferDetails required for KI sync
+     */
+    bool key_image_data(
+            wallet_shim* wallet,
+            const std::vector<wallet::transfer_details>& transfers,
+            std::vector<MoneroTransferDetails>& res,
+            bool need_all_additionals = false);
+
+    /**
+     * Computes a hash over MoneroTransferDetails. Commitment used in the KI sync.
+     */
+    std::string compute_hash(const MoneroTransferDetails& rr);
+
+    /**
+     * Generates KI sync request with commitments computed.
+     */
+    void generate_commitment(
+            std::vector<MoneroTransferDetails>& mtds,
+            const std::vector<wallet::transfer_details>& transfers,
+            std::shared_ptr<messages::monero::MoneroKeyImageExportInitRequest>& req,
+            bool need_subaddr_indices = false);
+
+    /**
+     * Processes Live refresh step response, parses KI, checks the signature
+     */
+    void live_refresh_ack(
+            const ::crypto::secret_key& view_key_priv,
+            const ::crypto::public_key& out_key,
+            const std::shared_ptr<messages::monero::MoneroLiveRefreshStepAck>& ack,
+            ::cryptonote::keypair& in_ephemeral,
+            ::crypto::key_image& ki);
+}  // namespace ki
+
+// Cold transaction signing
+namespace tx {
+    using TsxData = messages::monero::MoneroTransactionInitRequest_MoneroTransactionData;
+    using MoneroTransactionDestinationEntry = messages::monero::MoneroTransactionDestinationEntry;
+    using MoneroAccountPublicAddress =
+            messages::monero::MoneroTransactionDestinationEntry_MoneroAccountPublicAddress;
+    using MoneroTransactionSourceEntry = messages::monero::MoneroTransactionSourceEntry;
+    using MoneroMultisigKLRki = messages::monero::MoneroTransactionSourceEntry_MoneroMultisigKLRki;
+    using MoneroOutputEntry = messages::monero::MoneroTransactionSourceEntry_MoneroOutputEntry;
+    using MoneroRctKey =
+            messages::monero::MoneroTransactionSourceEntry_MoneroOutputEntry_MoneroRctKeyPublic;
+    using MoneroRsigData = messages::monero::MoneroTransactionRsigData;
+
+    void translate_address(
+            MoneroAccountPublicAddress* dst, const cryptonote::account_public_address* src);
+    void translate_dst_entry(
+            MoneroTransactionDestinationEntry* dst, const cryptonote::tx_destination_entry* src);
+    void translate_klrki(MoneroMultisigKLRki* dst, const rct::multisig_kLRki* src);
+    void translate_rct_key(MoneroRctKey* dst, const rct::ctkey* src);
+    std::string hash_addr(
+            const MoneroAccountPublicAddress* addr,
+            std::optional<uint64_t> amount = std::nullopt,
+            std::optional<bool> is_subaddr = std::nullopt);
+    std::string hash_addr(
+            const std::string& spend_key,
+            const std::string& view_key,
+            std::optional<uint64_t> amount = std::nullopt,
+            std::optional<bool> is_subaddr = std::nullopt);
+    std::string hash_addr(
+            const ::crypto::public_key* spend_key,
+            const ::crypto::public_key* view_key,
+            std::optional<uint64_t> amount = std::nullopt,
+            std::optional<bool> is_subaddr = std::nullopt);
+    ::crypto::secret_key compute_enc_key(
+            const ::crypto::secret_key& private_view_key,
+            const std::string& aux,
+            const std::string& salt);
+    std::string compute_sealing_key(const std::string& master_key, size_t idx, bool is_iv = false);
+
+    using rsig_v = std::variant<rct::rangeSig, rct::Bulletproof>;
+
+    /**
+     * Transaction signer state holder.
+     */
+    class TData {
+      public:
+        TsxData tsx_data;
+        wallet::tx_construction_data tx_data;
+        cryptonote::transaction tx;
+        rct::RangeProofType rsig_type;
+        int bp_version;
+        std::vector<uint64_t> grouping_vct;
+        std::shared_ptr<MoneroRsigData> rsig_param;
+        size_t cur_input_idx;
+        size_t cur_output_idx;
+        size_t cur_batch_idx;
+        size_t cur_output_in_batch_idx;
+
+        std::vector<std::string> tx_in_hmacs;
+        std::vector<std::string> tx_out_entr_hmacs;
+        std::vector<std::string> tx_out_hmacs;
+        std::vector<rsig_v> tx_out_rsigs;
+        std::vector<rct::ctkey> tx_out_pk;
+        std::vector<rct::ecdhTuple> tx_out_ecdh;
+        std::vector<size_t> source_permutation;
+        std::vector<std::string> alphas;
+        std::vector<std::string> spend_encs;
+        std::vector<std::string> pseudo_outs;
+        std::vector<std::string> pseudo_outs_hmac;
+        std::vector<std::string> couts;
+        std::vector<std::string> couts_dec;
+        std::vector<std::string> signatures;
+        std::vector<rct::key> rsig_gamma;
+        std::string tx_prefix_hash;
+        std::string enc_salt1;
+        std::string enc_salt2;
+        std::string enc_keys;
+
+        std::shared_ptr<rct::rctSig> rv;
+
+        TData();
     };
 
-    template <typename T>
-    bool cn_deserialize(const std::string_view buff, T& dst) {
-        try {
-            serialization::parse_binary(buff, dst);
-            return true;
-        } catch (...) {
-            return false;
+    class Signer {
+      private:
+        TData m_ct;
+        wallet_shim* m_wallet2;
+
+        size_t m_tx_idx;
+        const wallet::unsigned_tx_set* m_unsigned_tx;
+        hw::tx_aux_data* m_aux_data;
+
+        unsigned m_client_version;
+        bool m_multisig;
+
+        const wallet::tx_construction_data& cur_src_tx() const {
+            CHECK_AND_ASSERT_THROW_MES(
+                    m_tx_idx < m_unsigned_tx->txes.size(), "Invalid transaction index");
+            return m_unsigned_tx->txes[m_tx_idx];
         }
-    }
 
-    template <typename T>
-    std::string cn_serialize(T& obj) {
-        try {
-            return serialization::dump_binary(obj);
-        } catch (...) {
-            throw exc::EncodingException("Could not CN serialize given object");
+        const wallet::tx_construction_data& cur_tx() const { return m_ct.tx_data; }
+
+        const wallet::transfer_details& get_transfer(size_t idx) const {
+            CHECK_AND_ASSERT_THROW_MES(
+                    idx < m_unsigned_tx->transfers.second.size() + m_unsigned_tx->transfers.first &&
+                            idx >= m_unsigned_tx->transfers.first,
+                    "Invalid transfer index");
+            return m_unsigned_tx->transfers.second[idx - m_unsigned_tx->transfers.first];
         }
-    }
 
-    // Crypto / encryption
-    namespace crypto { namespace chacha {
-        // Constants as defined in RFC 7539.
-        constexpr unsigned IV_SIZE = 12;
-        constexpr unsigned TAG_SIZE = 16;  // crypto_aead_chacha20poly1305_IETF_ABYTES;
+        const wallet::transfer_details& get_source_transfer(size_t idx) const {
+            const auto& sel_transfers = cur_tx().selected_transfers;
+            CHECK_AND_ASSERT_THROW_MES(
+                    idx < m_ct.source_permutation.size(), "Invalid source index - permutation");
+            CHECK_AND_ASSERT_THROW_MES(
+                    m_ct.source_permutation[idx] < sel_transfers.size(), "Invalid source index");
+            return get_transfer(sel_transfers.at(m_ct.source_permutation[idx]));
+        }
 
-        /**
-         * Chacha20Poly1305 decryption with tag verification. RFC 7539.
-         */
-        void decrypt(
-                const void* ciphertext,
-                size_t length,
-                const uint8_t* key,
-                const uint8_t* iv,
-                char* plaintext,
-                size_t* plaintext_len = nullptr);
+        void extract_payment_id();
+        void compute_integrated_indices(TsxData* tsx_data);
+        bool should_compute_bp_now() const;
+        void compute_bproof(messages::monero::MoneroTransactionRsigData& rsig_data);
+        void process_bproof(rct::Bulletproof& bproof);
+        void set_tx_input(
+                MoneroTransactionSourceEntry* dst,
+                size_t idx,
+                bool need_ring_keys = false,
+                bool need_ring_indices = false);
 
-    }}  // namespace crypto::chacha
+      public:
+        Signer(wallet_shim* wallet2,
+               const wallet::unsigned_tx_set* unsigned_tx,
+               size_t tx_idx = 0,
+               hw::tx_aux_data* aux_data = nullptr);
 
-    // Cold Key image sync
-    namespace ki {
+        std::shared_ptr<messages::monero::MoneroTransactionInitRequest> step_init();
+        void step_init_ack(std::shared_ptr<const messages::monero::MoneroTransactionInitAck> ack);
 
-        using MoneroTransferDetails =
-                messages::monero::MoneroKeyImageSyncStepRequest_MoneroTransferDetails;
-        using MoneroSubAddressIndicesList =
-                messages::monero::MoneroKeyImageExportInitRequest_MoneroSubAddressIndicesList;
-        using MoneroExportedKeyImage =
-                messages::monero::MoneroKeyImageSyncStepAck_MoneroExportedKeyImage;
-        using exported_key_image = hw::device_cold::exported_key_image;
+        std::shared_ptr<messages::monero::MoneroTransactionSetInputRequest> step_set_input(
+                size_t idx);
+        void step_set_input_ack(
+                std::shared_ptr<const messages::monero::MoneroTransactionSetInputAck> ack);
 
-        /**
-         * Converts transfer details to the MoneroTransferDetails required for KI sync
-         */
-        bool key_image_data(
-                wallet_shim* wallet,
-                const std::vector<wallet::transfer_details>& transfers,
-                std::vector<MoneroTransferDetails>& res,
-                bool need_all_additionals = false);
+        void sort_ki();
+        std::shared_ptr<messages::monero::MoneroTransactionInputsPermutationRequest>
+        step_permutation();
+        void step_permutation_ack(
+                std::shared_ptr<const messages::monero::MoneroTransactionInputsPermutationAck> ack);
 
-        /**
-         * Computes a hash over MoneroTransferDetails. Commitment used in the KI sync.
-         */
-        std::string compute_hash(const MoneroTransferDetails& rr);
+        std::shared_ptr<messages::monero::MoneroTransactionInputViniRequest> step_set_vini_input(
+                size_t idx);
+        void step_set_vini_input_ack(
+                std::shared_ptr<const messages::monero::MoneroTransactionInputViniAck> ack);
 
-        /**
-         * Generates KI sync request with commitments computed.
-         */
-        void generate_commitment(
-                std::vector<MoneroTransferDetails>& mtds,
-                const std::vector<wallet::transfer_details>& transfers,
-                std::shared_ptr<messages::monero::MoneroKeyImageExportInitRequest>& req,
-                bool need_subaddr_indices = false);
+        std::shared_ptr<messages::monero::MoneroTransactionAllInputsSetRequest>
+        step_all_inputs_set();
+        void step_all_inputs_set_ack(
+                std::shared_ptr<const messages::monero::MoneroTransactionAllInputsSetAck> ack);
 
-        /**
-         * Processes Live refresh step response, parses KI, checks the signature
-         */
-        void live_refresh_ack(
-                const ::crypto::secret_key& view_key_priv,
-                const ::crypto::public_key& out_key,
-                const std::shared_ptr<messages::monero::MoneroLiveRefreshStepAck>& ack,
-                ::cryptonote::keypair& in_ephemeral,
-                ::crypto::key_image& ki);
-    }  // namespace ki
+        std::shared_ptr<messages::monero::MoneroTransactionSetOutputRequest> step_set_output(
+                size_t idx);
+        void step_set_output_ack(
+                std::shared_ptr<const messages::monero::MoneroTransactionSetOutputAck> ack);
 
-    // Cold transaction signing
-    namespace tx {
-        using TsxData = messages::monero::MoneroTransactionInitRequest_MoneroTransactionData;
-        using MoneroTransactionDestinationEntry =
-                messages::monero::MoneroTransactionDestinationEntry;
-        using MoneroAccountPublicAddress =
-                messages::monero::MoneroTransactionDestinationEntry_MoneroAccountPublicAddress;
-        using MoneroTransactionSourceEntry = messages::monero::MoneroTransactionSourceEntry;
-        using MoneroMultisigKLRki =
-                messages::monero::MoneroTransactionSourceEntry_MoneroMultisigKLRki;
-        using MoneroOutputEntry = messages::monero::MoneroTransactionSourceEntry_MoneroOutputEntry;
-        using MoneroRctKey =
-                messages::monero::MoneroTransactionSourceEntry_MoneroOutputEntry_MoneroRctKeyPublic;
-        using MoneroRsigData = messages::monero::MoneroTransactionRsigData;
+        std::shared_ptr<messages::monero::MoneroTransactionSetOutputRequest> step_rsig(size_t idx);
+        void step_set_rsig_ack(
+                std::shared_ptr<const messages::monero::MoneroTransactionSetOutputAck> ack);
 
-        void translate_address(
-                MoneroAccountPublicAddress* dst, const cryptonote::account_public_address* src);
-        void translate_dst_entry(
-                MoneroTransactionDestinationEntry* dst,
-                const cryptonote::tx_destination_entry* src);
-        void translate_klrki(MoneroMultisigKLRki* dst, const rct::multisig_kLRki* src);
-        void translate_rct_key(MoneroRctKey* dst, const rct::ctkey* src);
-        std::string hash_addr(
-                const MoneroAccountPublicAddress* addr,
-                std::optional<uint64_t> amount = std::nullopt,
-                std::optional<bool> is_subaddr = std::nullopt);
-        std::string hash_addr(
-                const std::string& spend_key,
-                const std::string& view_key,
-                std::optional<uint64_t> amount = std::nullopt,
-                std::optional<bool> is_subaddr = std::nullopt);
-        std::string hash_addr(
-                const ::crypto::public_key* spend_key,
-                const ::crypto::public_key* view_key,
-                std::optional<uint64_t> amount = std::nullopt,
-                std::optional<bool> is_subaddr = std::nullopt);
-        ::crypto::secret_key compute_enc_key(
-                const ::crypto::secret_key& private_view_key,
-                const std::string& aux,
-                const std::string& salt);
-        std::string compute_sealing_key(
-                const std::string& master_key, size_t idx, bool is_iv = false);
+        std::shared_ptr<messages::monero::MoneroTransactionAllOutSetRequest> step_all_outs_set();
+        void step_all_outs_set_ack(
+                std::shared_ptr<const messages::monero::MoneroTransactionAllOutSetAck> ack,
+                hw::device& hwdev);
 
-        using rsig_v = std::variant<rct::rangeSig, rct::Bulletproof>;
+        std::shared_ptr<messages::monero::MoneroTransactionSignInputRequest> step_sign_input(
+                size_t idx);
+        void step_sign_input_ack(
+                std::shared_ptr<const messages::monero::MoneroTransactionSignInputAck> ack);
 
-        /**
-         * Transaction signer state holder.
-         */
-        class TData {
-          public:
-            TsxData tsx_data;
-            wallet::tx_construction_data tx_data;
-            cryptonote::transaction tx;
-            rct::RangeProofType rsig_type;
-            int bp_version;
-            std::vector<uint64_t> grouping_vct;
-            std::shared_ptr<MoneroRsigData> rsig_param;
-            size_t cur_input_idx;
-            size_t cur_output_idx;
-            size_t cur_batch_idx;
-            size_t cur_output_in_batch_idx;
+        std::shared_ptr<messages::monero::MoneroTransactionFinalRequest> step_final();
+        void step_final_ack(std::shared_ptr<const messages::monero::MoneroTransactionFinalAck> ack);
 
-            std::vector<std::string> tx_in_hmacs;
-            std::vector<std::string> tx_out_entr_hmacs;
-            std::vector<std::string> tx_out_hmacs;
-            std::vector<rsig_v> tx_out_rsigs;
-            std::vector<rct::ctkey> tx_out_pk;
-            std::vector<rct::ecdhTuple> tx_out_ecdh;
-            std::vector<size_t> source_permutation;
-            std::vector<std::string> alphas;
-            std::vector<std::string> spend_encs;
-            std::vector<std::string> pseudo_outs;
-            std::vector<std::string> pseudo_outs_hmac;
-            std::vector<std::string> couts;
-            std::vector<std::string> couts_dec;
-            std::vector<std::string> signatures;
-            std::vector<rct::key> rsig_gamma;
-            std::string tx_prefix_hash;
-            std::string enc_salt1;
-            std::string enc_salt2;
-            std::string enc_keys;
+        std::string store_tx_aux_info();
 
-            std::shared_ptr<rct::rctSig> rv;
+        unsigned client_version() const { return m_client_version; }
 
-            TData();
-        };
-
-        class Signer {
-          private:
-            TData m_ct;
-            wallet_shim* m_wallet2;
-
-            size_t m_tx_idx;
-            const wallet::unsigned_tx_set* m_unsigned_tx;
-            hw::tx_aux_data* m_aux_data;
-
-            unsigned m_client_version;
-            bool m_multisig;
-
-            const wallet::tx_construction_data& cur_src_tx() const {
-                CHECK_AND_ASSERT_THROW_MES(
-                        m_tx_idx < m_unsigned_tx->txes.size(), "Invalid transaction index");
-                return m_unsigned_tx->txes[m_tx_idx];
+        bool is_simple() const {
+            if (!m_ct.rv) {
+                throw std::invalid_argument("RV not initialized");
             }
+            auto tp = m_ct.rv->type;
+            return tp == rct::RCTType::Simple;
+        }
 
-            const wallet::tx_construction_data& cur_tx() const { return m_ct.tx_data; }
+        bool is_req_bulletproof() const {
+            return m_ct.tx_data.rct_config.range_proof_type != rct::RangeProofType::Borromean;
+        }
 
-            const wallet::transfer_details& get_transfer(size_t idx) const {
-                CHECK_AND_ASSERT_THROW_MES(
-                        idx < m_unsigned_tx->transfers.second.size() +
-                                                m_unsigned_tx->transfers.first &&
-                                idx >= m_unsigned_tx->transfers.first,
-                        "Invalid transfer index");
-                return m_unsigned_tx->transfers.second[idx - m_unsigned_tx->transfers.first];
+        bool is_bulletproof() const {
+            if (!m_ct.rv) {
+                throw std::invalid_argument("RV not initialized");
             }
+            return rct::is_rct_bulletproof(m_ct.rv->type);
+        }
 
-            const wallet::transfer_details& get_source_transfer(size_t idx) const {
-                const auto& sel_transfers = cur_tx().selected_transfers;
-                CHECK_AND_ASSERT_THROW_MES(
-                        idx < m_ct.source_permutation.size(), "Invalid source index - permutation");
-                CHECK_AND_ASSERT_THROW_MES(
-                        m_ct.source_permutation[idx] < sel_transfers.size(),
-                        "Invalid source index");
-                return get_transfer(sel_transfers.at(m_ct.source_permutation[idx]));
-            }
+        bool is_offloading() const {
+            return m_ct.rsig_param && m_ct.rsig_param->offload_type() != 0;
+        }
 
-            void extract_payment_id();
-            void compute_integrated_indices(TsxData* tsx_data);
-            bool should_compute_bp_now() const;
-            void compute_bproof(messages::monero::MoneroTransactionRsigData& rsig_data);
-            void process_bproof(rct::Bulletproof& bproof);
-            void set_tx_input(
-                    MoneroTransactionSourceEntry* dst,
-                    size_t idx,
-                    bool need_ring_keys = false,
-                    bool need_ring_indices = false);
+        size_t num_outputs() const { return m_ct.tx_data.splitted_dsts.size(); }
 
-          public:
-            Signer(wallet_shim* wallet2,
-                   const wallet::unsigned_tx_set* unsigned_tx,
-                   size_t tx_idx = 0,
-                   hw::tx_aux_data* aux_data = nullptr);
+        size_t num_inputs() const { return m_ct.tx_data.sources.size(); }
 
-            std::shared_ptr<messages::monero::MoneroTransactionInitRequest> step_init();
-            void step_init_ack(
-                    std::shared_ptr<const messages::monero::MoneroTransactionInitAck> ack);
+        const TData& tdata() const { return m_ct; }
+    };
 
-            std::shared_ptr<messages::monero::MoneroTransactionSetInputRequest> step_set_input(
-                    size_t idx);
-            void step_set_input_ack(
-                    std::shared_ptr<const messages::monero::MoneroTransactionSetInputAck> ack);
+    // TX Key decryption
+    void load_tx_key_data(hw::device_cold::tx_key_data_t& res, const std::string& data);
 
-            void sort_ki();
-            std::shared_ptr<messages::monero::MoneroTransactionInputsPermutationRequest>
-            step_permutation();
-            void step_permutation_ack(
-                    std::shared_ptr<const messages::monero::MoneroTransactionInputsPermutationAck>
-                            ack);
+    std::shared_ptr<messages::monero::MoneroGetTxKeyRequest> get_tx_key(
+            const hw::device_cold::tx_key_data_t& tx_data);
 
-            std::shared_ptr<messages::monero::MoneroTransactionInputViniRequest>
-            step_set_vini_input(size_t idx);
-            void step_set_vini_input_ack(
-                    std::shared_ptr<const messages::monero::MoneroTransactionInputViniAck> ack);
+    void get_tx_key_ack(
+            std::vector<::crypto::secret_key>& tx_keys,
+            const std::string& tx_prefix_hash,
+            const ::crypto::secret_key& view_key_priv,
+            std::shared_ptr<const messages::monero::MoneroGetTxKeyAck> ack);
+}  // namespace tx
 
-            std::shared_ptr<messages::monero::MoneroTransactionAllInputsSetRequest>
-            step_all_inputs_set();
-            void step_all_inputs_set_ack(
-                    std::shared_ptr<const messages::monero::MoneroTransactionAllInputsSetAck> ack);
-
-            std::shared_ptr<messages::monero::MoneroTransactionSetOutputRequest> step_set_output(
-                    size_t idx);
-            void step_set_output_ack(
-                    std::shared_ptr<const messages::monero::MoneroTransactionSetOutputAck> ack);
-
-            std::shared_ptr<messages::monero::MoneroTransactionSetOutputRequest> step_rsig(
-                    size_t idx);
-            void step_set_rsig_ack(
-                    std::shared_ptr<const messages::monero::MoneroTransactionSetOutputAck> ack);
-
-            std::shared_ptr<messages::monero::MoneroTransactionAllOutSetRequest>
-            step_all_outs_set();
-            void step_all_outs_set_ack(
-                    std::shared_ptr<const messages::monero::MoneroTransactionAllOutSetAck> ack,
-                    hw::device& hwdev);
-
-            std::shared_ptr<messages::monero::MoneroTransactionSignInputRequest> step_sign_input(
-                    size_t idx);
-            void step_sign_input_ack(
-                    std::shared_ptr<const messages::monero::MoneroTransactionSignInputAck> ack);
-
-            std::shared_ptr<messages::monero::MoneroTransactionFinalRequest> step_final();
-            void step_final_ack(
-                    std::shared_ptr<const messages::monero::MoneroTransactionFinalAck> ack);
-
-            std::string store_tx_aux_info();
-
-            unsigned client_version() const { return m_client_version; }
-
-            bool is_simple() const {
-                if (!m_ct.rv) {
-                    throw std::invalid_argument("RV not initialized");
-                }
-                auto tp = m_ct.rv->type;
-                return tp == rct::RCTType::Simple;
-            }
-
-            bool is_req_bulletproof() const {
-                return m_ct.tx_data.rct_config.range_proof_type != rct::RangeProofType::Borromean;
-            }
-
-            bool is_bulletproof() const {
-                if (!m_ct.rv) {
-                    throw std::invalid_argument("RV not initialized");
-                }
-                return rct::is_rct_bulletproof(m_ct.rv->type);
-            }
-
-            bool is_offloading() const {
-                return m_ct.rsig_param && m_ct.rsig_param->offload_type() != 0;
-            }
-
-            size_t num_outputs() const { return m_ct.tx_data.splitted_dsts.size(); }
-
-            size_t num_inputs() const { return m_ct.tx_data.sources.size(); }
-
-            const TData& tdata() const { return m_ct; }
-        };
-
-        // TX Key decryption
-        void load_tx_key_data(hw::device_cold::tx_key_data_t& res, const std::string& data);
-
-        std::shared_ptr<messages::monero::MoneroGetTxKeyRequest> get_tx_key(
-                const hw::device_cold::tx_key_data_t& tx_data);
-
-        void get_tx_key_ack(
-                std::vector<::crypto::secret_key>& tx_keys,
-                const std::string& tx_prefix_hash,
-                const ::crypto::secret_key& view_key_priv,
-                std::shared_ptr<const messages::monero::MoneroGetTxKeyAck> ack);
-    }  // namespace tx
-
-}}}  // namespace hw::trezor::protocol
+}  // namespace hw::trezor::protocol
 
 #endif  // MONERO_PROTOCOL_H

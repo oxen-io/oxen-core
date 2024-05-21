@@ -35,6 +35,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <ratio>
 #include <stdexcept>
 #include <string>
@@ -172,20 +173,21 @@ namespace p2p {
 }  // namespace p2p
 
 // filename constants:
-inline constexpr auto DATA_DIRNAME =
+inline const std::filesystem::path DATA_DIRNAME{
 #ifdef _WIN32
-        "oxen"sv;  // Buried in some windows filesystem maze location
+        u8"oxen"  // Buried in some windows filesystem maze location
 #else
-        ".oxen"sv;      // ~/.oxen
+        u8".oxen"      // ~/.oxen
 #endif
-inline constexpr auto CONF_FILENAME = "oxen.conf"sv;
-inline constexpr auto SOCKET_FILENAME = "oxend.sock"sv;
-inline constexpr auto LOG_FILENAME = "oxen.log"sv;
-inline constexpr auto POOLDATA_FILENAME = "poolstate.bin"sv;
-inline constexpr auto BLOCKCHAINDATA_FILENAME = "data.mdb"sv;
-inline constexpr auto BLOCKCHAINDATA_LOCK_FILENAME = "lock.mdb"sv;
-inline constexpr auto P2P_NET_DATA_FILENAME = "p2pstate.bin"sv;
-inline constexpr auto MINER_CONFIG_FILE_NAME = "miner_conf.json"sv;
+};
+inline const std::filesystem::path CONF_FILENAME{u8"oxen.conf"};
+inline const std::filesystem::path SOCKET_FILENAME{u8"oxend.sock"};
+inline const std::filesystem::path LOG_FILENAME{u8"oxen.log"};
+inline const std::filesystem::path POOLDATA_FILENAME{u8"poolstate.bin"};
+inline const std::filesystem::path BLOCKCHAINDATA_FILENAME{u8"data.mdb"};
+inline const std::filesystem::path BLOCKCHAINDATA_LOCK_FILENAME{u8"lock.mdb"};
+inline const std::filesystem::path P2P_NET_DATA_FILENAME{u8"p2pstate.bin"};
+inline const std::filesystem::path MINER_CONFIG_FILE_NAME{u8"miner_conf.json"};
 
 inline constexpr uint64_t PRUNING_STRIPE_SIZE = 4096;    // the smaller, the smoother the increase
 inline constexpr uint64_t PRUNING_LOG_STRIPES = 3;       // the higher, the more space saved
@@ -317,14 +319,15 @@ namespace old {
         return result;
     }
 
-    inline constexpr auto DATA_DIRNAME =
+    inline const std::filesystem::path DATA_DIRNAME{
 #ifdef _WIN32
-            "loki"sv;  // Buried in some windows filesystem maze location
+            u8"loki"  // Buried in some windows filesystem maze location
 #else
-            ".loki"sv;  // ~/.loki
+            u8".loki"  // ~/.loki
 #endif
-    inline constexpr auto CONF_FILENAME = "loki.conf"sv;
-    inline constexpr auto SOCKET_FILENAME = "lokid.sock"sv;
+    };
+    inline const std::filesystem::path CONF_FILENAME{u8"loki.conf"};
+    inline const std::filesystem::path SOCKET_FILENAME{u8"lokid.sock"};
 
 }  // namespace old
 
@@ -413,6 +416,7 @@ namespace config {
     inline constexpr std::string_view ETHEREUM_REWARDS_CONTRACT = "0x8E7085eEF00064D840FB69e32Ec3CC343DA98CFb";
     inline constexpr std::string_view ETHEREUM_POOL_CONTRACT = "0x7F5D426c9011Df7a98dF3Ef95C9B0dfD2bD4C191";
 
+
     namespace testnet {
         inline constexpr uint64_t HEIGHT_ESTIMATE_HEIGHT = 339767;
         inline constexpr time_t HEIGHT_ESTIMATE_TIMESTAMP = 1595360006;
@@ -481,14 +485,14 @@ namespace config {
                  0x17,
                  0xcb,
                  0x6b,
-                 0x5b,
+                 0x1b,
                  0xf4,
                  0x63,
                  0x79,
                  0x7a,
                  0x57,
                  0xab,
-                 0xd4}};
+                 0xd5}};
         inline constexpr std::string_view GENESIS_TX =
                 "04011e1e01ff00018080c9db97f4fb2702fa27e905f604faa4eb084ee675faca77b0cfea9adec152"
                 "6da33cae5e286f31624201dae05bf3fa1662b7fd373c92426763d921cf3745e10ee43edb510f690c"

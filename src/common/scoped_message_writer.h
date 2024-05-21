@@ -53,7 +53,7 @@ class scoped_message_writer {
             std::optional<fmt::terminal_color> color = std::nullopt,
             std::string prefix = "",
             log::Level log_level = log::Level::info) :
-            m_color{color}, m_log_level{log_level}, m_prefix{std::move(prefix)} {}
+            m_prefix{std::move(prefix)}, m_color{color}, m_log_level{log_level} {}
 
     scoped_message_writer(scoped_message_writer&& o) :
             m_prefix{std::move(o.m_prefix)},
@@ -70,11 +70,13 @@ class scoped_message_writer {
     /// Appends a message and returns *this (so that it can be chained).  If called with more than 1
     /// argument then the first argument is fmt::format'ed with the remaining arguments.
     template <typename... T>
-    scoped_message_writer& append(std::string_view msg, T&&... args) {
-        if constexpr (sizeof...(T))
-            fmt::format_to(std::back_inserter(m_content), msg, std::forward<T>(args)...);
-        else
-            m_content.append(msg);
+    scoped_message_writer& append(fmt::format_string<T...> format, T&&... args) {
+        fmt::format_to(std::back_inserter(m_content), format, std::forward<T>(args)...);
+        return *this;
+    }
+
+    scoped_message_writer& append(std::string_view msg) {
+        m_content.append(msg);
         return *this;
     }
 
@@ -98,17 +100,22 @@ class scoped_message_writer {
 };
 
 template <typename... T>
-scoped_message_writer msg_writer(
-        std::optional<fmt::terminal_color> color = std::nullopt, T&&... args) {
+scoped_message_writer msg_writer(std::optional<fmt::terminal_color> color = std::nullopt) {
     scoped_message_writer writer{color};
-    if constexpr (sizeof...(T))
-        writer.append(std::forward<T>(args)...);
     return writer;
 }
 
 template <typename... T>
-scoped_message_writer msg_writer(std::string_view msg, T&&... args) {
-    return msg_writer(std::nullopt, msg, std::forward<T>(args)...);
+scoped_message_writer msg_writer(
+        std::optional<fmt::terminal_color> color, fmt::format_string<T...> format, T&&... args) {
+    auto writer = msg_writer(std::move(color));
+    writer.append(format, std::forward<T>(args)...);
+    return writer;
+}
+
+template <typename... T>
+scoped_message_writer msg_writer(fmt::format_string<T...> format, T&&... args) {
+    return msg_writer(std::nullopt, format, std::forward<T>(args)...);
 }
 
 constexpr std::optional<fmt::terminal_color> success_color{fmt::terminal_color::green};
@@ -119,11 +126,15 @@ constexpr std::optional<fmt::terminal_color> fail_color{fmt::terminal_color::red
 /// passed to append(...) to set a message (or formatted message, if multiple arguments are given).
 ///
 /// (We deduce the Bool argument here to avoid implicit conversion to bool from non-bool values).
-template <typename Bool, typename... T, std::enable_if_t<std::is_same_v<Bool, bool>, int> = 0>
-scoped_message_writer success_msg_writer(Bool color, T&&... args) {
-    auto writer = msg_writer(color ? success_color : std::nullopt);
-    if constexpr (sizeof...(T))
-        writer.append(std::forward<T>(args)...);
+
+template <std::same_as<bool> Bool>
+scoped_message_writer success_msg_writer(Bool color) {
+    return msg_writer(color ? success_color : std::nullopt);
+}
+template <std::same_as<bool> Bool, typename... T>
+scoped_message_writer success_msg_writer(Bool color, fmt::format_string<T...> format, T&&... args) {
+    auto writer = success_msg_writer(color);
+    writer.append(format, std::forward<T>(args)...);
     return writer;
 }
 
@@ -131,21 +142,23 @@ inline scoped_message_writer success_msg_writer() {
     return success_msg_writer(true);
 }
 
-/// Same as above, but for calling without just a message (with a bool). Color will be true.
+/// Same as above, but for calling with just a message (without a bool). Color will be true.
 template <typename... T>
-scoped_message_writer success_msg_writer(std::string_view msg, T&&... args) {
-    return success_msg_writer(true, msg, std::forward<T>(args)...);
+scoped_message_writer success_msg_writer(fmt::format_string<T...> format, T&&... args) {
+    return success_msg_writer(true, format, std::forward<T>(args)...);
 }
 
 /// Constructs and returns a scoped_message_writer for a typical error message.  Color will be
 /// enabled and the message will be prefixed with "Error: ".  Given arguments, if any, are passed to
 /// .append() and so can specify either a single unformatted string, or a format string + format
 /// arguments.
+inline scoped_message_writer fail_msg_writer() {
+    return scoped_message_writer{fail_color, "Error: ", spdlog::level::err};
+}
 template <typename... T>
-scoped_message_writer fail_msg_writer(T&&... args) {
-    scoped_message_writer writer{fail_color, "Error: ", spdlog::level::err};
-    if constexpr (sizeof...(T))
-        writer.append(std::forward<T>(args)...);
+scoped_message_writer fail_msg_writer(fmt::format_string<T...> format, T&&... args) {
+    auto writer = fail_msg_writer();
+    writer.append(format, std::forward<T>(args)...);
     return writer;
 }
 

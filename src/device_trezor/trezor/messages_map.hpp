@@ -45,47 +45,47 @@
 #include "messages/messages.pb.h"
 #include "trezor_defs.hpp"
 
-namespace hw { namespace trezor {
+namespace hw::trezor {
 
-    class MessageMapper {
-      public:
-        MessageMapper() {}
+class MessageMapper {
+  public:
+    MessageMapper() {}
 
-        static ::google::protobuf::Message* get_message(int wire_number);
-        static ::google::protobuf::Message* get_message(messages::MessageType);
-        static ::google::protobuf::Message* get_message(const std::string& msg_name);
-        static messages::MessageType get_message_wire_number(const google::protobuf::Message* msg);
-        static messages::MessageType get_message_wire_number(const google::protobuf::Message& msg);
-        static messages::MessageType get_message_wire_number(const std::string& msg_name);
-
-        template <class t_message = google::protobuf::Message>
-        static messages::MessageType get_message_wire_number() {
-            static_assert(std::is_base_of_v<google::protobuf::Message, t_message>);
-            return get_message_wire_number(t_message::default_instance().GetDescriptor()->name());
-        }
-    };
+    static ::google::protobuf::Message* get_message(int wire_number);
+    static ::google::protobuf::Message* get_message(messages::MessageType);
+    static ::google::protobuf::Message* get_message(const std::string& msg_name);
+    static messages::MessageType get_message_wire_number(const google::protobuf::Message* msg);
+    static messages::MessageType get_message_wire_number(const google::protobuf::Message& msg);
+    static messages::MessageType get_message_wire_number(const std::string& msg_name);
 
     template <class t_message = google::protobuf::Message>
-    std::shared_ptr<t_message> message_ptr_retype(std::shared_ptr<google::protobuf::Message>& in) {
+    static messages::MessageType get_message_wire_number() {
         static_assert(std::is_base_of_v<google::protobuf::Message, t_message>);
-        if (!in) {
-            return nullptr;
-        }
+        return get_message_wire_number(t_message::default_instance().GetDescriptor()->name());
+    }
+};
 
-        return std::dynamic_pointer_cast<t_message>(in);
+template <class t_message = google::protobuf::Message>
+std::shared_ptr<t_message> message_ptr_retype(std::shared_ptr<google::protobuf::Message>& in) {
+    static_assert(std::is_base_of_v<google::protobuf::Message, t_message>);
+    if (!in) {
+        return nullptr;
     }
 
-    template <class t_message = google::protobuf::Message>
-    std::shared_ptr<t_message> message_ptr_retype_static(
-            std::shared_ptr<google::protobuf::Message>& in) {
-        static_assert(std::is_base_of_v<google::protobuf::Message, t_message>);
-        if (!in) {
-            return nullptr;
-        }
+    return std::dynamic_pointer_cast<t_message>(in);
+}
 
-        return std::static_pointer_cast<t_message>(in);
+template <class t_message = google::protobuf::Message>
+std::shared_ptr<t_message> message_ptr_retype_static(
+        std::shared_ptr<google::protobuf::Message>& in) {
+    static_assert(std::is_base_of_v<google::protobuf::Message, t_message>);
+    if (!in) {
+        return nullptr;
     }
 
-}}  // namespace hw::trezor
+    return std::static_pointer_cast<t_message>(in);
+}
+
+}  // namespace hw::trezor
 
 #endif  // MONERO_MESSAGES_MAP_H

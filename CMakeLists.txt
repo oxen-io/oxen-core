@@ -48,7 +48,7 @@ cmake_minimum_required(VERSION 3.13...3.24)
 message(STATUS "CMake version ${CMAKE_VERSION}")
 
 # Has to be set before `project()`, and ignored on non-macos:
-set(CMAKE_OSX_DEPLOYMENT_TARGET 10.12 CACHE STRING "macOS deployment target (Apple clang only)")
+set(CMAKE_OSX_DEPLOYMENT_TARGET 10.15 CACHE STRING "macOS deployment target (Apple clang only)")
 
 project(oxen
     VERSION 11.0.0
@@ -71,7 +71,10 @@ if(POLICY CMP0079)
   cmake_policy(SET CMP0079 NEW)
 endif()
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20 CACHE STRING "The C++ standard whose features are requested.")
+if(CMAKE_CXX_STANDARD LESS 20)
+    set(CMAKE_CXX_STANDARD 20 CACHE STRING "" FORCE)
+endif()
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_C_STANDARD 11)
@@ -263,13 +266,6 @@ endif()
 
 OPTION(USE_DEVICE_TREZOR "Build Trezor support (currently non-functional)" OFF)
 
-if(NOT MINGW AND NOT ANDROID)
-  set(USE_PYBIND_DEFAULT ON)
-else()
-  set(USE_PYBIND_DEFAULT OFF)
-endif()
-option(BUILD_PYBIND "build python bindings" ${USE_PYBIND_DEFAULT})
-
 find_package(Git)
 if(NOT MANUAL_SUBMODULES)
   if(GIT_FOUND)
@@ -298,14 +294,14 @@ if(NOT MANUAL_SUBMODULES)
     check_submodule(external/rapidjson)
     check_submodule(external/trezor-common)
     check_submodule(external/randomx)
-    check_submodule(external/oxen-mq cppzmq oxen-encoding)
+    check_submodule(external/oxen-encoding)
+    check_submodule(external/oxen-mq cppzmq)
     check_submodule(external/SQLiteCpp)
     if(BUILD_TESTS)
       check_submodule(external/googletest)
       check_submodule(external/Catch2)
     endif()
     check_submodule(external/uWebSockets uSockets)
-    check_submodule(external/ghc-filesystem)
     check_submodule(external/SQLiteCpp)
     check_submodule(external/pybind11)
   endif()
@@ -357,8 +353,6 @@ endif()
 #   set(NETBSD TRUE)
 # elseif(CMAKE_SYSTEM_NAME MATCHES ".*BSDI.*")
 #   set(BSDI TRUE)
-
-include(cmake/check_for_std_filesystem.cmake)
 
 include_directories(external/rapidjson/include src external)
 
@@ -624,8 +618,9 @@ else()
   endif()
 
   # GCC 12's stringop-overflow warnings are really broken, with tons and tons of false positives all
-  # over the place (not just in our code, but also in its own stdlibc++ code).
-  if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 12 AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 13)
+  # over the place (not just in our code, but also in its own stdlibc++ code).  It's better in 13
+  # w.r.t. stdlibc++, but our code still throws tons of warnings, so disable it for now.
+  if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 12)
     set(CXX_WARNINGS "${CXX_WARNINGS} -Wno-stringop-overflow")
   endif()
 
@@ -982,7 +977,3 @@ add_custom_target(create_zip
   DEPENDS ${oxen_exec_tgts})
 
 add_custom_target(create_archive DEPENDS ${default_archive})
-
-if(BUILD_PYBIND)
-  add_subdirectory(pybind)
-endif()

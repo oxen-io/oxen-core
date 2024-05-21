@@ -157,7 +157,7 @@ int main(int argc, char* argv[]) {
     bool opt_verbose = command_line::get_arg(vm, arg_verbose);
     bool opt_dry_run = command_line::get_arg(vm, arg_dry_run);
 
-    const auto input = fs::u8path(command_line::get_arg(vm, arg_input));
+    const auto input = tools::utf8_path(command_line::get_arg(vm, arg_input));
 
     log::warning(logcat, "Initializing source blockchain (BlockchainDB)");
     blockchain_objects_t blockchain_objects = {};
@@ -169,7 +169,8 @@ int main(int argc, char* argv[]) {
     }
 
     const fs::path filename =
-            fs::u8path(command_line::get_arg(vm, cryptonote::arg_data_dir)) / db->get_db_name();
+            tools::utf8_path(command_line::get_arg(vm, cryptonote::arg_data_dir)) /
+            db->get_db_name();
     log::warning(logcat, "Loading blockchain from folder {} ...", filename);
 
     try {

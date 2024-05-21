@@ -353,7 +353,6 @@ bool check_service_node_portions(
 /// Check service node contribution amounts, for HF19+ registrations
 bool check_service_node_stakes(
         cryptonote::hf hf_version,
-        cryptonote::network_type nettype,
         uint64_t staking_requirement,
         const std::vector<uint64_t>& stakes);
 

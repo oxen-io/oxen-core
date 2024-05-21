@@ -1163,5 +1163,5 @@ int main(int argc, char** argv)
     ::testing::InitGoogleTest(&argc, argv);
     Wallet::WalletManagerFactory::setLogLevel(Wallet::WalletManagerFactory::LogLevel_Max);
     return RUN_ALL_TESTS();
-    CATCH_ENTRY_L0("main", 1);
+    CATCH_ENTRY("main", 1);
 }

@@ -39,10 +39,12 @@ namespace daemon_args {
 const command_line::arg_descriptor<std::string> arg_config_file = {
         "config-file",
         "Specify configuration file",
-        "<data-dir>/" + std::string{cryptonote::CONF_FILENAME}};
+        "<data-dir>/" + tools::convert_str<char>(cryptonote::CONF_FILENAME.u8string())};
 
 const command_line::arg_descriptor<std::string> arg_log_file = {
-        "log-file", "Specify log file", "<data-dir>/" + std::string{cryptonote::LOG_FILENAME}};
+        "log-file",
+        "Specify log file",
+        "<data-dir>/" + tools::convert_str<char>(cryptonote::LOG_FILENAME.u8string())};
 const command_line::arg_descriptor<std::size_t> arg_max_log_file_size = {
         "max-log-file-size", "Specify maximum log file size [B]", 104850000};
 const command_line::arg_descriptor<std::size_t> arg_max_log_files = {

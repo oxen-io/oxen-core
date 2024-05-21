@@ -28,6 +28,7 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <fmt/color.h>
+#include <fmt/std.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -39,7 +40,6 @@
 #include "blocks/blocks.h"
 #include "bootstrap_file.h"
 #include "bootstrap_serialization.h"
-#include "common/fs-format.h"
 #include "common/hex.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_core/cryptonote_core.h"
@@ -241,7 +241,7 @@ int import_from_file(
 
     std::cout << "\nPreparing to read blocks...\n\n";
 
-    fs::ifstream import_file{import_file_path, std::ios::binary};
+    std::ifstream import_file{import_file_path, std::ios::binary};
 
     if (import_file.fail()) {
         log::error(logcat, "import_file.open() fail");
@@ -629,9 +629,10 @@ int main(int argc, char* argv[]) {
     fs::path import_file_path;
 
     if (command_line::has_arg(vm, arg_input_file))
-        import_file_path = fs::u8path(command_line::get_arg(vm, arg_input_file));
+        import_file_path = tools::utf8_path(command_line::get_arg(vm, arg_input_file));
     else
-        import_file_path = fs::u8path(m_config_folder) / "export" / BLOCKCHAIN_RAW;
+        import_file_path =
+                tools::utf8_path(m_config_folder) / fs::path(u8"export") / BLOCKCHAIN_RAW;
 
     if (command_line::has_arg(vm, arg_count_blocks)) {
         BootstrapFile bootstrap;

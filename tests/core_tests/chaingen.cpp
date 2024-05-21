@@ -489,8 +489,8 @@ oxen_chain_generator::create_registration_tx(const cryptonote::account_base& src
     reg.fee = mul128_div64(reg.fee, cryptonote::old::STAKING_PORTIONS, cryptonote::STAKING_FEE_BASIS);
     uint64_t total = 0;
     for (auto& [contrib, amount] : reg.reserved) {
-      assert(amount <= oxen::STAKING_REQUIREMENT_TESTNET);
-      amount = mul128_div64(amount, cryptonote::old::STAKING_PORTIONS, oxen::STAKING_REQUIREMENT_TESTNET);
+      assert(amount <= oxen::OXEN_STAKING_REQUIREMENT_TESTNET);
+      amount = mul128_div64(amount, cryptonote::old::STAKING_PORTIONS, oxen::OXEN_STAKING_REQUIREMENT_TESTNET);
       total += amount;
     }
 

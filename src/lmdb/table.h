@@ -1,5 +1,6 @@
 #pragma once
 
+#include <type_traits>
 #include <utility>
 
 #include "common/expect.h"
@@ -49,8 +50,8 @@ struct basic_table : table {
     */
     template <typename U, typename F = U, std::size_t offset = 0>
     static expect<F> get_value(MDB_val value) noexcept {
-        static_assert(std::is_same<U, V>(), "bad MONERO_FIELD?");
-        static_assert(std::is_pod<F>(), "F must be POD");
+        static_assert(std::is_same_v<U, V>, "bad MONERO_FIELD?");
+        static_assert(std::is_standard_layout_v<F> && std::is_trivial_v<F>, "F must be POD");
         static_assert(sizeof(F) + offset <= sizeof(U), "bad field type and/or offset");
 
         if (value.mv_size != sizeof(U))

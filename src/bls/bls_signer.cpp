@@ -1,12 +1,15 @@
 #include "bls_signer.h"
+
+#include <epee/memwipe.h>
+#include <fmt/core.h>
+#include <oxenc/hex.h>
+
+#include <ethyl/utils.hpp>
+
 #include "bls_utils.h"
 #include "common/file.h"
 #include "common/string_util.h"
 #include "logging/oxen_logger.h"
-#include <oxenc/hex.h>
-#include <fmt/core.h>
-#include <ethyl/utils.hpp>
-#include <epee/memwipe.h>
 
 static auto logcat = oxen::log::Cat("bls_signer");
 
@@ -17,7 +20,7 @@ BLSSigner::BLSSigner(const cryptonote::network_type nettype, const fs::path& key
     contractAddress = config.ETHEREUM_REWARDS_CONTRACT;
 
     // NOTE: ioMode is taken from bls::SecretKey operator<< implementation
-    int blsIoMode = 16|bls::IoPrefix;
+    int blsIoMode = 16 | bls::IoPrefix;
     if (fs::exists(key_filepath)) {
         oxen::log::info(logcat, "Loading bls key from: {}", key_filepath.string());
 
@@ -45,26 +48,33 @@ void BLSSigner::initCurve() {
     bls::init(mclBn_CurveSNARK1);
     // Try and Inc method for hashing to the curve
     mclBn_setMapToMode(MCL_MAP_TO_MODE_TRY_AND_INC);
-    // Our generator point was created using the old hash to curve method, redo it again using Try and Inc method
+    // Our generator point was created using the old hash to curve method, redo it again using Try
+    // and Inc method
     mcl::bn::G1 gen;
     bool b;
     mcl::bn::mapToG1(&b, gen, 1);
 
     blsPublicKey publicKey;
-    static_assert(sizeof(publicKey.v) == sizeof(gen), "We memcpy into a C structure hence sizes must be the same");
+    static_assert(
+            sizeof(publicKey.v) == sizeof(gen),
+            "We memcpy into a C structure hence sizes must be the same");
     std::memcpy(&publicKey.v, &gen, sizeof(gen));
 
     blsSetGeneratorOfPublicKey(&publicKey);
 }
 
-std::string BLSSigner::buildTag(std::string_view baseTag, uint32_t chainID, std::string_view contractAddress) {
+std::string BLSSigner::buildTag(
+        std::string_view baseTag, uint32_t chainID, std::string_view contractAddress) {
     std::string_view hexPrefix = "0x";
     std::string_view contractAddressOutput = utils::trimPrefix(contractAddress, hexPrefix);
     std::string baseTagHex = utils::toHexString(baseTag);
-    std::string chainIDHex = utils::padTo32Bytes(utils::decimalToHex(chainID), utils::PaddingDirection::LEFT);
+    std::string chainIDHex =
+            utils::padTo32Bytes(utils::decimalToHex(chainID), utils::PaddingDirection::LEFT);
 
     std::string concatenatedTag;
-    concatenatedTag.reserve(hexPrefix.size() + baseTagHex.size() + chainIDHex.size() + contractAddressOutput.size());
+    concatenatedTag.reserve(
+            hexPrefix.size() + baseTagHex.size() + chainIDHex.size() +
+            contractAddressOutput.size());
     concatenatedTag.append(hexPrefix);
     concatenatedTag.append(baseTagHex);
     concatenatedTag.append(chainIDHex);
@@ -85,24 +95,28 @@ bls::Signature BLSSigner::signHash(const crypto::bytes<32>& hash) {
     return sig;
 }
 
-std::string BLSSigner::proofOfPossession(std::string_view senderEthAddress, std::string_view serviceNodePubkey) {
+std::string BLSSigner::proofOfPossession(
+        std::string_view senderEthAddress, std::string_view serviceNodePubkey) {
     std::string fullTag = buildTag(proofOfPossessionTag, chainID, contractAddress);
     std::string_view hexPrefix = "0x";
     std::string_view senderAddressOutput = utils::trimPrefix(senderEthAddress, hexPrefix);
 
     // TODO(doyle): padTo32Bytes should take a string_view
     std::string publicKeyHex = getPublicKeyHex();
-    std::string serviceNodePubkeyHex = utils::padTo32Bytes(std::string(serviceNodePubkey), utils::PaddingDirection::LEFT);
+    std::string serviceNodePubkeyHex =
+            utils::padTo32Bytes(std::string(serviceNodePubkey), utils::PaddingDirection::LEFT);
 
     std::string message;
-    message.reserve(hexPrefix.size() + fullTag.size() + publicKeyHex.size() + senderAddressOutput.size() + serviceNodePubkeyHex.size());
+    message.reserve(
+            hexPrefix.size() + fullTag.size() + publicKeyHex.size() + senderAddressOutput.size() +
+            serviceNodePubkeyHex.size());
     message.append(hexPrefix);
     message.append(fullTag);
     message.append(publicKeyHex);
     message.append(senderAddressOutput);
     message.append(serviceNodePubkeyHex);
 
-    const crypto::bytes<32> hash = BLSSigner::hash(message); // Get the hash of the publickey
+    const crypto::bytes<32> hash = BLSSigner::hash(message);  // Get the hash of the publickey
     bls::Signature sig;
     secretKey.signHash(sig, hash.data(), hash.size());
     return bls_utils::SignatureToHex(sig);
@@ -134,8 +148,9 @@ crypto::bytes<32> BLSSigner::hashModulus(std::string_view message) {
     x.clear();
     x.setArrayMask(hash.data(), hash.size());
     crypto::bytes<32> serialized_hash;
-    uint8_t *hdst = serialized_hash.data();
-    if (x.serialize(hdst, serialized_hash.data_.max_size(), mcl::IoSerialize | mcl::IoBigEndian) == 0)
+    uint8_t* hdst = serialized_hash.data();
+    if (x.serialize(hdst, serialized_hash.data_.max_size(), mcl::IoSerialize | mcl::IoBigEndian) ==
+        0)
         throw std::runtime_error("size of x is zero");
     return serialized_hash;
 }

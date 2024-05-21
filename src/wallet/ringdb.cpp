@@ -29,10 +29,10 @@
 
 #include "ringdb.h"
 
+#include <fmt/std.h>
 #include <lmdb.h>
 
 #include "common/file.h"
-#include "common/fs-format.h"
 #include "cryptonote_config.h"
 #include "epee/misc_log_ex.h"
 #include "wallet_errors.h"
@@ -254,8 +254,8 @@ ringdb::ringdb(fs::path fn_, const std::string& genesis) : filename_{std::move(f
     THROW_WALLET_EXCEPTION_IF(
             dbr,
             tools::error::wallet_internal_error,
-            "Failed to open rings database file '" + actual_filename.u8string() +
-                    "': " + std::string(mdb_strerror(dbr)));
+            "Failed to open rings database file '{}': {}"_format(
+                    actual_filename, mdb_strerror(dbr)));
 
     dbr = mdb_txn_begin(env, NULL, 0, &txn);
     THROW_WALLET_EXCEPTION_IF(

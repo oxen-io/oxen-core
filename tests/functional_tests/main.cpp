@@ -130,7 +130,7 @@ int main(int argc, char* argv[])
     return 1;
   }
 
-  CATCH_ENTRY_L0("main", 1);
+  CATCH_ENTRY("main", 1);
 
   return 0;
 }

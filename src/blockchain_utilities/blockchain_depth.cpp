@@ -26,10 +26,11 @@
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#include <fmt/std.h>
+
 #include "blockchain_db/blockchain_db.h"
 #include "blockchain_objects.h"
 #include "common/command_line.h"
-#include "common/fs-format.h"
 #include "common/median.h"
 #include "common/varint.h"
 #include "cryptonote_core/cryptonote_core.h"
@@ -134,7 +135,8 @@ int main(int argc, char* argv[]) {
     log::warning(logcat, "database: LMDB");
 
     const fs::path filename =
-            fs::u8path(command_line::get_arg(vm, cryptonote::arg_data_dir)) / db->get_db_name();
+            tools::utf8_path(command_line::get_arg(vm, cryptonote::arg_data_dir)) /
+            db->get_db_name();
     log::warning(logcat, "Loading blockchain from folder {} ...", filename);
 
     try {

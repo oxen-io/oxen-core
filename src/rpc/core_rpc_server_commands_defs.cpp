@@ -2,6 +2,8 @@
 
 #include <nlohmann/json.hpp>
 
+static auto logcat = oxen::log::Cat("rpc");
+
 namespace nlohmann {
 
 template <class T>

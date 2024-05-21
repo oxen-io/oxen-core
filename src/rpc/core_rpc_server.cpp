@@ -641,7 +641,7 @@ namespace {
                     // We aren't given info on whether this is testnet/mainnet, but we can guess by
                     // looking at the operator amount, which has to be <= 100 on testnet, but >=
                     // 3750 on mainnet.
-                    auto nettype = x.amounts[0] > oxen::STAKING_REQUIREMENT_TESTNET
+                    auto nettype = x.amounts[0] > oxen::SENT_STAKING_REQUIREMENT_TESTNET
                                          ? network_type::MAINNET
                                          : network_type::TESTNET;
                     portion = std::lround(
@@ -774,7 +774,6 @@ namespace {
         void operator()(const tx_extra_ethereum_service_node_deregister& x) {
             set("bls_key", tools::type_to_hex(x.bls_key));
         }
-
 
         // Ignore these fields:
         void operator()(const tx_extra_padding&) {}
@@ -949,7 +948,7 @@ void core_rpc_server::invoke(GET_TRANSACTIONS& get, rpc_context context) {
                 }
             }
         } catch (const std::exception& e) {
-            log::error(logcat, e.what());
+            log::error(logcat, "{}", e.what());
             get.response["status"] = "Failed: "s + e.what();
             return;
         }
@@ -1220,12 +1219,12 @@ void core_rpc_server::invoke(START_MINING& start_mining, rpc_context context) {
     if (!get_account_address_from_str(
                 info, m_core.get_nettype(), start_mining.request.miner_address)) {
         start_mining.response["status"] = "Failed, invalid address";
-        log::warning(logcat, start_mining.response["status"]);
+        log::warning(logcat, "{}", start_mining.response["status"].get<std::string_view>());
         return;
     }
     if (info.is_subaddress) {
         start_mining.response["status"] = "Mining to subaddress isn't supported yet";
-        log::warning(logcat, start_mining.response["status"]);
+        log::warning(logcat, "{}", start_mining.response["status"].get<std::string_view>());
         return;
     }
 
@@ -1239,7 +1238,7 @@ void core_rpc_server::invoke(START_MINING& start_mining, rpc_context context) {
     // then we fail and log that.
     if (start_mining.request.threads_count > max_concurrency_count) {
         start_mining.response["status"] = "Failed, too many threads relative to CPU cores.";
-        log::warning(logcat, start_mining.response["status"]);
+        log::warning(logcat, "{}", start_mining.response["status"].get<std::string_view>());
         return;
     }
 
@@ -1255,7 +1254,7 @@ void core_rpc_server::invoke(START_MINING& start_mining, rpc_context context) {
                 start_mining.request.num_blocks,
                 start_mining.request.slow_mining)) {
         start_mining.response["status"] = "Failed, mining not started";
-        log::warning(logcat, start_mining.response["status"]);
+        log::warning(logcat, "{}", start_mining.response["status"].get<std::string_view>());
         return;
     }
 
@@ -1266,12 +1265,12 @@ void core_rpc_server::invoke(STOP_MINING& stop_mining, rpc_context context) {
     cryptonote::miner& miner = m_core.get_miner();
     if (!miner.is_mining()) {
         stop_mining.response["status"] = "Mining never started";
-        log::warning(logcat, stop_mining.response["status"]);
+        log::warning(logcat, "{}", stop_mining.response["status"].get<std::string_view>());
         return;
     }
     if (!miner.stop()) {
         stop_mining.response["status"] = "Failed, mining not stopped";
-        log::warning(logcat, stop_mining.response["status"]);
+        log::warning(logcat, "{}", stop_mining.response["status"].get<std::string_view>());
         return;
     }
 
@@ -1308,14 +1307,13 @@ void core_rpc_server::invoke(MINING_STATUS& mining_status, rpc_context context) 
 void core_rpc_server::invoke(SAVE_BC& save_bc, rpc_context context) {
     if (!m_core.get_blockchain_storage().store_blockchain()) {
         save_bc.response["status"] = "Error while storing blockchain";
-        log::warning(logcat, save_bc.response["status"]);
+        log::warning(logcat, "{}", save_bc.response["status"].get<std::string_view>());
         return;
     }
     save_bc.response["status"] = STATUS_OK;
 }
 
 static nlohmann::json json_peer_info(const nodetool::peerlist_entry& peer) {
-    auto addr_type = peer.adr.get_type_id();
     nlohmann::json p{
             {"id", peer.id},
             {"host", peer.adr.host_str()},
@@ -2490,8 +2488,7 @@ void core_rpc_server::invoke(
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(
-        GET_SERVICE_NODE_REGISTRATION_CMD& get_service_node_registration_cmd,
-        rpc_context context) {
+        GET_SERVICE_NODE_REGISTRATION_CMD& get_service_node_registration_cmd, rpc_context context) {
     if (!m_core.service_node())
         throw rpc_error{
                 ERROR_WRONG_PARAM,
@@ -2506,11 +2503,14 @@ void core_rpc_server::invoke(
 
     {
         try {
-            args.emplace_back(
-                    std::to_string(service_nodes::percent_to_basis_points(get_service_node_registration_cmd.request.operator_cut)));
+            args.emplace_back(std::to_string(service_nodes::percent_to_basis_points(
+                    get_service_node_registration_cmd.request.operator_cut)));
         } catch (const std::exception& e) {
             get_service_node_registration_cmd.response["status"] = "Invalid value: "s + e.what();
-            log::error(logcat, get_service_node_registration_cmd.response["status"]);
+            log::error(
+                    logcat,
+                    "{}",
+                    get_service_node_registration_cmd.response["status"].get<std::string_view>());
             return;
         }
     }
@@ -2554,34 +2554,40 @@ void core_rpc_server::invoke(
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(BLS_REWARDS_REQUEST& bls_rewards_request, rpc_context context) {
-    const aggregateWithdrawalResponse bls_withdrawal_signature_response = m_core.aggregate_withdrawal_request(bls_rewards_request.request.address);
+    const aggregateWithdrawalResponse bls_withdrawal_signature_response =
+            m_core.aggregate_withdrawal_request(bls_rewards_request.request.address);
     bls_rewards_request.response["status"] = STATUS_OK;
     bls_rewards_request.response["address"] = bls_withdrawal_signature_response.address;
     bls_rewards_request.response["height"] = bls_withdrawal_signature_response.height;
     bls_rewards_request.response["amount"] = bls_withdrawal_signature_response.amount;
-    bls_rewards_request.response["signed_message"] = bls_withdrawal_signature_response.signed_message;
+    bls_rewards_request.response["signed_message"] =
+            bls_withdrawal_signature_response.signed_message;
     bls_rewards_request.response["signature"] = bls_withdrawal_signature_response.signature;
-    bls_rewards_request.response["signers_bls_pubkeys"] = bls_withdrawal_signature_response.signers_bls_pubkeys;
+    bls_rewards_request.response["non_signers_bls_pubkeys"] = m_core.get_blockchain_storage().m_l2_tracker->get_non_signers(bls_withdrawal_signature_response.signers_bls_pubkeys);
     return;
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(BLS_EXIT_REQUEST& bls_withdrawal_request, rpc_context context) {
-    const aggregateExitResponse bls_withdrawal_signature_response = m_core.aggregate_exit_request(bls_withdrawal_request.request.bls_key);
+    const aggregateExitResponse bls_withdrawal_signature_response =
+            m_core.aggregate_exit_request(bls_withdrawal_request.request.bls_key);
     bls_withdrawal_request.response["status"] = STATUS_OK;
     bls_withdrawal_request.response["bls_key"] = bls_withdrawal_signature_response.bls_key;
-    bls_withdrawal_request.response["signed_message"] = bls_withdrawal_signature_response.signed_message;
+    bls_withdrawal_request.response["signed_message"] =
+            bls_withdrawal_signature_response.signed_message;
     bls_withdrawal_request.response["signature"] = bls_withdrawal_signature_response.signature;
-    bls_withdrawal_request.response["signers_bls_pubkeys"] = bls_withdrawal_signature_response.signers_bls_pubkeys;
+    bls_withdrawal_request.response["non_signers_bls_pubkeys"] = m_core.get_blockchain_storage().m_l2_tracker->get_non_signers(bls_withdrawal_signature_response.signers_bls_pubkeys);
     return;
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(BLS_LIQUIDATION_REQUEST& bls_withdrawal_request, rpc_context context) {
-    const aggregateExitResponse bls_withdrawal_signature_response = m_core.aggregate_liquidation_request(bls_withdrawal_request.request.bls_key);
+    const aggregateExitResponse bls_withdrawal_signature_response =
+            m_core.aggregate_liquidation_request(bls_withdrawal_request.request.bls_key);
     bls_withdrawal_request.response["status"] = STATUS_OK;
     bls_withdrawal_request.response["bls_key"] = bls_withdrawal_signature_response.bls_key;
-    bls_withdrawal_request.response["signed_message"] = bls_withdrawal_signature_response.signed_message;
+    bls_withdrawal_request.response["signed_message"] =
+            bls_withdrawal_signature_response.signed_message;
     bls_withdrawal_request.response["signature"] = bls_withdrawal_signature_response.signature;
-    bls_withdrawal_request.response["signers_bls_pubkeys"] = bls_withdrawal_signature_response.signers_bls_pubkeys;
+    bls_withdrawal_request.response["non_signers_bls_pubkeys"] = m_core.get_blockchain_storage().m_l2_tracker->get_non_signers(bls_withdrawal_signature_response.signers_bls_pubkeys);
     return;
 }
 //------------------------------------------------------------------------------------------------------------------------------
@@ -2593,13 +2599,15 @@ void core_rpc_server::invoke(BLS_PUBKEYS& bls_pubkey_request, rpc_context contex
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(BLS_REGISTRATION& bls_registration_request, rpc_context context) {
-    const blsRegistrationResponse bls_registration = m_core.bls_registration(bls_registration_request.request.address);
+    const blsRegistrationResponse bls_registration =
+            m_core.bls_registration(bls_registration_request.request.address);
     bls_registration_request.response["status"] = STATUS_OK;
     bls_registration_request.response["address"] = bls_registration.address;
     bls_registration_request.response["bls_pubkey"] = bls_registration.bls_pubkey;
     bls_registration_request.response["proof_of_possession"] = bls_registration.proof_of_possession;
     bls_registration_request.response["service_node_pubkey"] = bls_registration.service_node_pubkey;
-    bls_registration_request.response["service_node_signature"] = bls_registration.service_node_signature;
+    bls_registration_request.response["service_node_signature"] =
+            bls_registration.service_node_signature;
     return;
 }
 //------------------------------------------------------------------------------------------------------------------------------
@@ -2699,9 +2707,10 @@ void core_rpc_server::fill_sn_response_entry(
             "operator_fee",
             microportion(info.portions_for_operator),
             "operator_address",
-            info.operator_ethereum_address ? tools::type_to_hex(info.operator_ethereum_address) :
-            cryptonote::get_account_address_as_str(
-                    m_core.get_nettype(), false /*subaddress*/, info.operator_address),
+            info.operator_ethereum_address
+                    ? tools::type_to_hex(info.operator_ethereum_address)
+                    : cryptonote::get_account_address_as_str(
+                              m_core.get_nettype(), false /*subaddress*/, info.operator_address),
             "swarm_id",
             info.swarm_id,
             "swarm",
@@ -2875,9 +2884,11 @@ void core_rpc_server::fill_sn_response_entry(
             auto& c = contributors.emplace_back(json{
                     {"amount", contributor.amount},
                     {"address",
-                        contributor.ethereum_address ? tools::type_to_hex(contributor.ethereum_address) :
-                        cryptonote::get_account_address_as_str(
-                            m_core.get_nettype(), false /*subaddress*/, contributor.address)}});
+                     contributor.ethereum_address ? tools::type_to_hex(contributor.ethereum_address)
+                                                  : cryptonote::get_account_address_as_str(
+                                                            m_core.get_nettype(),
+                                                            false /*subaddress*/,
+                                                            contributor.address)}});
             if (contributor.reserved != contributor.amount)
                 c["reserved"] = contributor.reserved;
             if (want_locked_c) {
@@ -3000,11 +3011,11 @@ namespace {
         } else if (cur_version < required) {
             status = "Outdated {}. Current: {} Required: {}"_format(
                     name, fmt::join(cur_version, "."), fmt::join(required, "."));
-            log::error(logcat, status);
+            log::error(logcat, "{}", status);
         } else if (ed25519_pubkey != our_ed25519_pubkey) {
             status = "Invalid {} pubkey: expected {}, received {}"_format(
                     name, our_ed25519_pubkey, ed25519_pubkey);
-            log::error(logcat, status);
+            log::error(logcat, "{}", status);
         } else {
             auto now = std::time(nullptr);
             auto old = update.exchange(now);
@@ -3014,7 +3025,7 @@ namespace {
             if (significant)
                 log::info(logcat, fg(fmt::terminal_color::green), "{}", msg);
             else
-                log::debug(logcat, msg);
+                log::debug(logcat, "{}", msg);
             success(significant);
             status = STATUS_OK;
         }
@@ -3405,6 +3416,7 @@ void core_rpc_server::invoke(
     bool at_least_one_succeeded = false;
 
     auto& balances = get_accrued_batched_earnings.response["balances"];
+    balances = json::object();
     auto& req = get_accrued_batched_earnings.request;
     if (req.addresses.size() > 0) {
         for (const auto& address : req.addresses) {

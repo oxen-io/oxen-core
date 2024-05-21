@@ -235,9 +235,7 @@ class device_ledger : public device {
     device_ledger& operator=(const device_ledger&) = delete;
     device_ledger&& operator=(device_ledger&&) = delete;
 
-    bool is_hardware_device() const override {
-        return connected();
-    }
+    bool is_hardware_device() const override { return connected(); }
 
     bool reset();
 
@@ -257,12 +255,8 @@ class device_ledger : public device {
 
     bool set_mode(mode m) override;
 
-    type get_type() const override {
-        return type::LEDGER;
-    };
-    protocol device_protocol() const override {
-        return protocol::PROXY;
-    };
+    type get_type() const override { return type::LEDGER; };
+    protocol device_protocol() const override { return protocol::PROXY; };
 
     /* ======================================================================= */
     /*  LOCKER                                                                 */

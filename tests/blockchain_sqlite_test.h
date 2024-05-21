@@ -2,15 +2,19 @@
 
 namespace test {
 
-inline fs::path check_if_copy_filename(std::string_view db_path) {
-  return (db_path != ":memory:") ? fs::path(std::string(db_path) + "-copy") : fs::path(std::string(db_path));
+inline fs::path check_if_copy_filename(fs::path db_path) {
+  if (db_path.u8string() != u8":memory:")
+      db_path += u8"-copy";
+  return db_path;
 }
 
 class BlockchainSQLiteTest : public cryptonote::BlockchainSQLite
 {
+    private:
+        fs::path filename;
 public:
   BlockchainSQLiteTest(cryptonote::network_type nettype, fs::path db_path)
-    : BlockchainSQLite(nettype, db_path) {};
+    : BlockchainSQLite(nettype, db_path), filename{std::move(db_path)} {};
 
 
   BlockchainSQLiteTest(BlockchainSQLiteTest &other)
@@ -51,7 +55,7 @@ public:
     return prepared_get<int64_t>("SELECT count(*) FROM batched_payments_accrued WHERE amount >= 1000");
   }
   std::optional<uint64_t> retrieve_amount_by_address(const std::string& address) {
-    if (auto maybe = prepared_maybe_get<int64_t>("SELECT amount FROM batched_payments_accrued WHERE address = ?"))
+    if (auto maybe = prepared_maybe_get<int64_t>("SELECT amount FROM batched_payments_accrued WHERE address = ?", address))
       return *maybe;
     return std::nullopt;
   }

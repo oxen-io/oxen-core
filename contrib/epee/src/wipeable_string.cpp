@@ -39,7 +39,7 @@
 #include "epee/wipeable_string.h"
 #include <limits>
 
-static constexpr const char hex[] = u8"0123456789abcdef";
+static constexpr const char hex[] = "0123456789abcdef";
 
 namespace
 {

@@ -35,17 +35,17 @@ Database::StatementWrapper Database::prepared_st(const std::string& query) {
 }
 
 Database::Database(const fs::path& db_path, const std::string_view db_password) :
-        db{db_path.u8string(),
+        db{db_path,
            SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE | SQLite::OPEN_FULLMUTEX,
            5000 /*ms*/} {
     // Don't fail on these because we can still work even if they fail
     if (int rc = db.tryExec("PRAGMA journal_mode = WAL"); rc != SQLITE_OK)
-        log::error(sqlitedb_logcat, "Failed to set journal mode to WAL: {}{}", sqlite3_errstr(rc));
+        log::error(sqlitedb_logcat, "Failed to set journal mode to WAL: {}", sqlite3_errstr(rc));
 
     if (int rc = db.tryExec("PRAGMA synchronous = NORMAL"); rc != SQLITE_OK)
         log::error(
                 sqlitedb_logcat,
-                "Failed to set synchronous mode to NORMAL: {}{}",
+                "Failed to set synchronous mode to NORMAL: {}",
                 sqlite3_errstr(rc));
 
     if (int rc = db.tryExec("PRAGMA foreign_keys = ON"); rc != SQLITE_OK) {

@@ -45,11 +45,11 @@
 #include <boost/multi_index/member.hpp>
 #include <boost/multi_index_container.hpp>
 #include <boost/serialization/list.hpp>
+#include <ethyl/provider.hpp>
 #include <functional>
 #include <thread>
 #include <unordered_map>
 #include <unordered_set>
-#include <ethyl/provider.hpp>
 
 #include "blockchain_db/blockchain_db.h"
 #include "blockchain_db/sqlite/db_sqlite.h"
@@ -65,10 +65,10 @@
 #include "epee/rolling_median.h"
 #include "epee/span.h"
 #include "epee/string_tools.h"
+#include "l2_tracker/l2_tracker.h"
 #include "pulse.h"
 #include "rpc/core_rpc_server_binary_commands.h"
 #include "rpc/core_rpc_server_commands_defs.h"
-#include "l2_tracker/l2_tracker.h"
 
 struct sqlite3;
 namespace service_nodes {
@@ -1641,7 +1641,6 @@ class Blockchain {
      * @return the current time
      */
     uint64_t get_adjusted_time() const;
-
 
     /**
      * @brief finish an alternate chain's timestamp window from the main chain

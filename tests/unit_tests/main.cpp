@@ -51,11 +51,11 @@ namespace cryptonote { template class t_cryptonote_protocol_handler<cryptonote::
 
 int main(int argc, char** argv)
 {
+  auto logcat = oxen::log::Cat("tests");
   TRY_ENTRY();
 
   tools::on_startup();
   epee::string_tools::set_module_name_and_folder(argv[0]);
-  epee::debug::get_set_enable_assert(true, false);
 
   ::testing::InitGoogleTest(&argc, argv);
 
@@ -86,7 +86,7 @@ int main(int argc, char** argv)
   oxen::logging::init("unit_tests.log", log_level);
 
 
-  CATCH_ENTRY_L0("main", 1);
+  CATCH_ENTRY("main", 1);
 
   return RUN_ALL_TESTS();
 }

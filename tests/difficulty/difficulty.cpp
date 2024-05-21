@@ -44,6 +44,7 @@
 #define DIFFICULTY_LAG                        15
 
 int main(int argc, char *argv[]) {
+    auto logcat = oxen::log::Cat("difficulty");
     TRY_ENTRY();
 
     if (argc < 2) {
@@ -85,5 +86,5 @@ int main(int argc, char *argv[]) {
     }
     return 0;
 
-    CATCH_ENTRY_L0("main", 1);
+    CATCH_ENTRY("main", 1);
 }

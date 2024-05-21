@@ -545,5 +545,5 @@ int main(int argc, char** argv)
   std::cout << "Tests finished. Elapsed time: " << elapsed_str(std::chrono::steady_clock::now() - started) << std::endl;
 
   return 0;
-  CATCH_ENTRY_L0("main", 1);
+  CATCH_ENTRY("main", 1);
 }

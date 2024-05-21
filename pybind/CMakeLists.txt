@@ -13,9 +13,7 @@ target_link_libraries(pywallet3
     PUBLIC
     wallet3
     logging
-    oxen::logging
-    spdlog::spdlog
-    fmt::fmt)
+    oxen::logging)
 target_include_directories(pywallet3 PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 file(GENERATE

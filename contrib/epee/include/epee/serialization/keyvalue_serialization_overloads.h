@@ -109,7 +109,8 @@ namespace epee
       std::string blob;
       if(!stg.get_value(pname, blob, parent_section))
         return false;
-      CHECK_AND_ASSERT_MES(blob.size() == sizeof(d), false, "unserialize_t_val_as_blob: size of " << typeid(t_type).name() << " = " << sizeof(t_type) << ", but stored blod size = " << blob.size() << ", value name = " << pname);
+      CHECK_AND_ASSERT_MES(blob.size() == sizeof(d), false, "unserialize_t_val_as_blob: size of {} = {}, but stored blob size = {}, value name = {}",
+              typeid(t_type).name(), sizeof(t_type), blob.size(), pname);
       d = *(const t_type*)blob.data();
       return true;
     } 
@@ -118,7 +119,7 @@ namespace epee
     bool serialize_t_obj(const serializible_type& obj, t_storage& stg, section* parent_section, const char* pname)
     {
       section* child_section = stg.open_section(pname, parent_section, true);
-      CHECK_AND_ASSERT_MES(child_section, false, "serialize_t_obj: failed to open/create section " << pname);
+      CHECK_AND_ASSERT_MES(child_section, false, "serialize_t_obj: failed to open/create section {}", pname);
       return obj.store(stg, child_section);
     }
     //-------------------------------------------------------------------------------------------------------------------
@@ -204,7 +205,8 @@ namespace epee
 
       CHECK_AND_ASSERT_MES(buff.size() % sizeof(T) == 0,
         false, 
-        "size in blob " << buff.size() << " not have not zero modulo for sizeof(value_type) = " << sizeof(T) << ", type " << typeid(T).name());
+        "size in blob {} not have not zero modulo for sizeof(value_type) = {}, type {}",
+        buff.size(), sizeof(T), typeid(T).name());
       if constexpr (is_std_vector<stl_container>)
       {
         container.resize(buff.size() / sizeof(T));
@@ -226,7 +228,7 @@ namespace epee
     {
       if (container.empty()) return true;
       auto* sec_array = stg.template make_array_t<section>(pname, parent_section);
-      CHECK_AND_ASSERT_MES(sec_array, false, "failed to insert first section with section name " << pname);
+      CHECK_AND_ASSERT_MES(sec_array, false, "failed to insert first section with section name {}", pname);
 
       for (auto& elem : container)
         if (!elem.store(stg, &sec_array->emplace_back()))

@@ -33,9 +33,11 @@
 #include <oxenc/endian.h>
 
 #include <chrono>
+#include <concepts>
 #include <memory>
 #include <optional>
 #include <string>
+#include <type_traits>
 
 #include "crypto/hash.h"
 #include "cryptonote_config.h"
@@ -72,10 +74,9 @@ std::string get_human_readable_timestamp(std::time_t ts);
 std::string get_human_readable_timespan(std::chrono::seconds seconds);
 std::string get_human_readable_bytes(uint64_t bytes);
 
-template <
-        typename Duration,
-        std::enable_if_t<!std::is_same_v<Duration, std::chrono::seconds>, int> = 0>
-std::string get_human_readable_timespan(Duration d) {
+template <typename Rep, typename Period>
+    requires(!std::convertible_to<std::chrono::duration<Rep, Period>, std::chrono::seconds>)
+std::string get_human_readable_timespan(std::chrono::duration<Rep, Period> d) {
     return get_human_readable_timespan(std::chrono::duration_cast<std::chrono::seconds>(d));
 }
 
@@ -86,7 +87,7 @@ constexpr uint64_t to_seconds(Duration d) {
 
 namespace detail {
     // Copy an integer type, swapping to little-endian if needed
-    template <typename T, std::enable_if_t<std::is_integral<T>::value, int> = 0>
+    template <std::integral T>
     void memcpy_one(char*& dest, T t) {
         oxenc::host_to_little_inplace(t);
         std::memcpy(dest, &t, sizeof(T));
@@ -99,20 +100,18 @@ namespace detail {
         static std::false_type check(...);
     };
     template <typename T>
-    constexpr bool is_crypto_bytes_derived =
-            decltype(crypto_bytes_base_helper::check((T*)nullptr))::value;
+    concept crypto_bytes_derived = decltype(crypto_bytes_base_helper::check((T*)nullptr))::value;
 
     // Copy the data out of a crypto::bytes<N, true>-derived type.
-    template <typename T, std::enable_if_t<is_crypto_bytes_derived<T>, int> = 0>
+    template <crypto_bytes_derived T>
     void memcpy_one(char*& dest, const T& t) {
         std::memcpy(dest, t.data(), t.size());
         dest += t.size();
     }
 
     // Copy a class byte-for-byte (but only if it is standard layout and has byte alignment)
-    template <
-            typename T,
-            std::enable_if_t<std::is_class<T>::value && !is_crypto_bytes_derived<T>, int> = 0>
+    template <typename T>
+        requires(std::is_class_v<T> && !crypto_bytes_derived<T>)
     void memcpy_one(char*& dest, const T& t) {
         // We don't *actually* require byte alignment here but it's quite possibly an error (i.e.
         // passing in a type containing integer members) so disallow it.
@@ -130,12 +129,17 @@ namespace detail {
             memcpy_one(dest, t);
     }
 
-    template <typename T, typename = void>
-    constexpr size_t memcpy_size = sizeof(T);
+    template <typename T>
+    consteval size_t memcpy_size_val() {
+        if constexpr (crypto_bytes_derived<T>)
+            return T::size();
+        else
+            return sizeof(T);
+    }
 
     template <typename T>
-    inline constexpr size_t memcpy_size<T, std::enable_if_t<is_crypto_bytes_derived<T>>> =
-            T::size();
+    constexpr size_t memcpy_size = memcpy_size_val<T>();
+
 }  // namespace detail
 
 // Does a memcpy of one or more values into a char array; for any given values that are basic

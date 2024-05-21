@@ -269,7 +269,8 @@ bool handle_error_helper(
         const boost::program_options::options_description& desc, std::function<bool()> parser);
 
 template <typename T, bool required, bool dependent, int NUM_DEPS>
-std::enable_if_t<!std::is_same_v<T, bool>, bool> has_arg(
+    requires(!std::same_as<T, bool>)
+bool has_arg(
         const boost::program_options::variables_map& vm,
         const arg_descriptor<T, required, dependent, NUM_DEPS>& arg) {
     auto value = vm[arg.name];

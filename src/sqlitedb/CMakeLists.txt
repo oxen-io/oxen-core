@@ -10,5 +10,4 @@ target_link_libraries(sqlitedb
   PRIVATE
     SQLite::SQLite3
     logging
-    fmt::fmt
     extra)

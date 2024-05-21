@@ -14,27 +14,29 @@
 #undef MCLBN_NO_AUTOLINK
 #pragma GCC diagnostic pop
 
+#include "common/fs.h"
 #include "crypto/base.h"
 #include "cryptonote_config.h"
-#include "common/fs.h"
 
 class BLSSigner {
-private:
+  private:
     bls::SecretKey secretKey;
     uint32_t chainID;
     std::string contractAddress;
 
     void initCurve();
 
-public:
+  public:
     BLSSigner(const cryptonote::network_type nettype, const fs::path& key_filepath);
 
     bls::Signature signHash(const crypto::bytes<32>& hash);
-    std::string proofOfPossession(std::string_view senderEthAddress, std::string_view serviceNodePubkey);
+    std::string proofOfPossession(
+            std::string_view senderEthAddress, std::string_view serviceNodePubkey);
     std::string getPublicKeyHex();
     bls::PublicKey getPublicKey();
 
-    static std::string buildTag(std::string_view baseTag, uint32_t chainID, std::string_view contractAddress);
+    static std::string buildTag(
+            std::string_view baseTag, uint32_t chainID, std::string_view contractAddress);
     std::string buildTag(std::string_view baseTag);
 
     static crypto::bytes<32> hash(std::string_view in);
@@ -45,4 +47,3 @@ public:
     static constexpr inline std::string_view removalTag = "BLS_SIG_TRYANDINCREMENT_REMOVE";
     static constexpr inline std::string_view liquidateTag = "BLS_SIG_TRYANDINCREMENT_LIQUIDATE";
 };
-

@@ -2286,11 +2286,13 @@ struct GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES : PUBLIC, NO_ARGS {
 
 /// RPC: bls rewards request
 ///
-/// Sends a request out for all nodes to sign a BLS signature of the rewards amount that an address is allowed to withdraw
+/// Sends a request out for all nodes to sign a BLS signature of the rewards amount that an address
+/// is allowed to withdraw
 ///
 /// Inputs:
 ///
-/// - `address` -- this address will be looked up in the batching database at the latest height to see how much they can withdraw
+/// - `address` -- this address will be looked up in the batching database at the latest height to
+/// see how much they can withdraw
 ///
 /// Outputs:
 ///
@@ -2311,7 +2313,8 @@ struct BLS_REWARDS_REQUEST : PUBLIC {
 
 /// RPC: bls exit request
 ///
-/// Sends a request out for all nodes to sign a BLS signature that the node with the requested bls pubkey can exit
+/// Sends a request out for all nodes to sign a BLS signature that the node with the requested bls
+/// pubkey can exit
 ///
 /// Inputs:
 ///
@@ -2334,7 +2337,8 @@ struct BLS_EXIT_REQUEST : PUBLIC {
 
 /// RPC: bls liquidation request
 ///
-/// Sends a request out for all nodes to sign a BLS signature that the node with the requested bls pubkey can be liquidated
+/// Sends a request out for all nodes to sign a BLS signature that the node with the requested bls
+/// pubkey can be liquidated
 ///
 /// Inputs:
 ///
@@ -2365,17 +2369,19 @@ struct BLS_LIQUIDATION_REQUEST : PUBLIC {
 ///
 /// - `status` -- generic RPC error code; "OK" means the request was successful.
 /// - `pubkeys` -- The pubkeys for the whole network
-struct BLS_PUBKEYS: PUBLIC, NO_ARGS {
+struct BLS_PUBKEYS : PUBLIC, NO_ARGS {
     static constexpr auto names() { return NAMES("bls_pubkey_request"); }
 };
 
 /// RPC: bls registration request
 ///
-/// Sends a request out to get parameters necessary to register a service node through the ethereum smart contract
+/// Sends a request out to get parameters necessary to register a service node through the ethereum
+/// smart contract
 ///
 /// Inputs:
 ///
-/// - `address` -- this address will be looked up in the batching database at the latest height to see how much they can withdraw
+/// - `address` -- this address will be looked up in the batching database at the latest height to
+/// see how much they can withdraw
 ///
 /// Outputs:
 ///
@@ -2387,7 +2393,7 @@ struct BLS_PUBKEYS: PUBLIC, NO_ARGS {
 /// - `service_node_signature` -- A signature over the registration parameters
 ///
 /// TODO sean - This should not be public
-struct BLS_REGISTRATION: PUBLIC {
+struct BLS_REGISTRATION : PUBLIC {
     static constexpr auto names() { return NAMES("bls_registration_request"); }
 
     struct request_parameters {
@@ -2829,7 +2835,6 @@ using core_rpc_types = tools::type_list<
         TEST_TRIGGER_UPTIME_PROOF,
         ONS_NAMES_TO_OWNERS>;
 
-using FIXME_old_rpc_types =
-        tools::type_list<RELAY_TX, GET_OUTPUT_DISTRIBUTION>;
+using FIXME_old_rpc_types = tools::type_list<RELAY_TX, GET_OUTPUT_DISTRIBUTION>;
 
 }  // namespace cryptonote::rpc

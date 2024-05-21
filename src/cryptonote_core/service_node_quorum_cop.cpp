@@ -529,17 +529,14 @@ void quorum_cop::process_quorums(cryptonote::block const& block) {
                                 if (print_failings) {
                                     log::warning(
                                             logcat,
-                                            "{}{}",
-                                            (info.is_decommissioned() ? "Service Node (yours) is "
-                                                                        "currently decommissioned "
-                                                                        "and being tested in "
-                                                                        "quorum: "
-                                                                      : "Service Node (yours) is "
-                                                                        "active but is not passing "
-                                                                        "tests for quorum: "),
+                                            "Service Node (yours) is {} quorum: {}",
+                                            info.is_decommissioned() ? "currently decommissioned "
+                                                                       "and being tested in"
+                                                                     : "active but is not passing "
+                                                                       "tests for",
                                             m_obligations_height);
                                     if (auto why = my_test_results.why())
-                                        log::warning(logcat, tools::join("\n", *why));
+                                        log::warning(logcat, "{}", fmt::join(*why, "\n"));
                                     else
                                         log::warning(
                                                 logcat, "Service Node is passing all local tests");
@@ -615,7 +612,6 @@ void quorum_cop::process_quorums(cryptonote::block const& block) {
 
             case quorum_type::pulse:
             case quorum_type::blink: break;
-
         }
     }
 }

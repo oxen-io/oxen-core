@@ -55,15 +55,6 @@ DISABLE_VS_WARNINGS(4355)
 #define CURRENCY_PROTOCOL_MAX_OBJECT_REQUEST_COUNT 500
 #define CURRENCY_PROTOCOL_MAX_TXS_REQUEST_COUNT 5000
 
-template <>
-struct fmt::formatter<cryptonote::cryptonote_connection_context> : fmt::formatter<std::string> {
-    auto format(cryptonote::cryptonote_connection_context connection_context, format_context& ctx) {
-        return formatter<std::string>::format(
-                "[{}]"_format(epee::net_utils::print_connection_context_short(connection_context)),
-                ctx);
-    }
-};
-
 namespace cryptonote {
 template <class t_core>
 class t_cryptonote_protocol_handler : public i_cryptonote_protocol {

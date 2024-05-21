@@ -46,19 +46,23 @@ static_assert(SN_REWARD_HF15 + FOUNDATION_REWARD_HF17 == BLOCK_REWARD_HF17);
 //
 // -------------------------------------------------------------------------------------------------
 
-// Fixed staking requirement since HF16 (before that it was height dependent, see
+// Fixed (pre-SENT) OXEN staking requirement since HF16 (before that it was height dependent, see
 // service_node_rules.cpp):
-inline constexpr uint64_t STAKING_REQUIREMENT = 15'000 * COIN;
+inline constexpr uint64_t OXEN_STAKING_REQUIREMENT = 15'000 * COIN;
 // testnet/devnet/fakenet have always had a fixed 100 OXEN staking requirement:
-inline constexpr uint64_t STAKING_REQUIREMENT_TESTNET = 100 * COIN;
+inline constexpr uint64_t OXEN_STAKING_REQUIREMENT_TESTNET = 100 * COIN;
 // Max contributors since HF19:
 inline constexpr size_t MAX_CONTRIBUTORS_HF19 = 10;
 // Max contributors before HF19:
 inline constexpr size_t MAX_CONTRIBUTORS_V1 = 4;
 
-// Required operator contribution is 1/4 of the staking requirement:
-inline constexpr uint64_t MINIMUM_OPERATOR_CONTRIBUTION = STAKING_REQUIREMENT / 4;
-inline constexpr uint64_t MINIMUM_OPERATOR_CONTRIBUTION_TESTNET = STAKING_REQUIREMENT_TESTNET / 4;
+// SENT staking requirement starting at HF20
+inline constexpr uint64_t SENT_STAKING_REQUIREMENT = 25'000 * COIN;
+inline constexpr uint64_t SENT_STAKING_REQUIREMENT_TESTNET = 120 * COIN;
+
+constexpr uint64_t MINIMUM_OPERATOR_CONTRIBUTION(uint64_t staking_requirement) {
+    return staking_requirement / 4;
+}
 
 // -------------------------------------------------------------------------------------------------
 //

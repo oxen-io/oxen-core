@@ -31,6 +31,7 @@
 #include <limits>
 #include <cstdint>
 #include <vector>
+#include "epee/misc_log_ex.h"
 
 #undef OXEN_DEFAULT_LOG_CATEGORY
 #define OXEN_DEFAULT_LOG_CATEGORY "net.buffer"
@@ -96,6 +97,11 @@ void buffer::append(const void *data, size_t sz)
 
   NET_BUFFER_LOG("storage now " << offset << "/" << storage.size() << "/" << storage.capacity());
 }
+
+  void buffer::erase(size_t sz) { NET_BUFFER_LOG("erasing " << sz << "/" << size()); CHECK_AND_ASSERT_THROW_MES(offset + sz <= storage.size(), "erase: sz too large"); offset += sz; if (offset == storage.size()) { storage.resize(0); offset = 0; } }
+  epee::span<const uint8_t> buffer::span(size_t sz) const { CHECK_AND_ASSERT_THROW_MES(sz <= size(), "span is too large"); return epee::span<const uint8_t>(storage.data() + offset, sz); }
+  // carve must keep the data in scope till next call, other API calls (such as append, erase) can invalidate the carved buffer
+  epee::span<const uint8_t> buffer::carve(size_t sz) { CHECK_AND_ASSERT_THROW_MES(sz <= size(), "span is too large"); offset += sz; return epee::span<const uint8_t>(storage.data() + offset - sz, sz); }
 
 }
 }

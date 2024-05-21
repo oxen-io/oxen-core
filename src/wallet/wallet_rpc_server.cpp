@@ -30,17 +30,18 @@
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 #include "wallet_rpc_server.h"
 
+#include <fmt/std.h>
 #include <oxenc/base64.h>
 
 #include <boost/algorithm/string.hpp>
 #include <boost/asio/ip/address.hpp>
 #include <boost/format.hpp>
 #include <chrono>
+#include <concepts>
 #include <cstdint>
 #include <exception>
 
 #include "common/command_line.h"
-#include "common/fs-format.h"
 #include "common/i18n.h"
 #include "common/signal_handler.h"
 #include "crypto/hash.h"
@@ -63,10 +64,11 @@
 namespace rpc = cryptonote::rpc;
 using namespace tools::wallet_rpc;
 
+static auto logcat = oxen::log::Cat("wallet.rpc");
+
 namespace tools {
 
 namespace {
-    auto logcat = log::Cat("wallet.rpc");
 
     constexpr auto DEFAULT_AUTO_REFRESH_PERIOD = 20s;
 
@@ -100,7 +102,7 @@ namespace {
                     std::optional<epee::serialization::storage_entry> params,
                     tools::wallet_rpc_server& server)>;
 
-    template <typename RPC, std::enable_if_t<std::is_base_of_v<RPC_COMMAND, RPC>, int> = 0>
+    template <std::derived_from<RPC_COMMAND> RPC>
     void register_rpc_command(std::unordered_map<std::string, rpc_func_data>& regs) {
         using Request = typename RPC::request;
         using Response = typename RPC::response;
@@ -539,7 +541,7 @@ bool wallet_rpc_server::init() {
                     wallet_args::arg_wallet_file().name);
             return false;
         }
-        m_wallet_dir = fs::u8path(command_line::get_arg(m_vm, arg_wallet_dir));
+        m_wallet_dir = tools::utf8_path(command_line::get_arg(m_vm, arg_wallet_dir));
         if (!m_wallet_dir.empty()) {
             std::error_code ec;
             if (fs::create_directories(m_wallet_dir, ec))
@@ -619,16 +621,16 @@ void wallet_rpc_server::require_open() {
 //------------------------------------------------------------------------------------------------------------------------------
 void wallet_rpc_server::close_wallet(bool save_current) {
     if (m_wallet) {
-        log::debug(logcat, tools::wallet_rpc_server::tr("Closing wallet..."));
+        log::debug(logcat, "{}", tools::wallet_rpc_server::tr("Closing wallet..."));
         stop_long_poll_thread();
         if (save_current) {
-            log::debug(logcat, tools::wallet_rpc_server::tr("Saving wallet..."));
+            log::debug(logcat, "{}", tools::wallet_rpc_server::tr("Saving wallet..."));
             m_wallet->store();
-            log::info(logcat, tools::wallet_rpc_server::tr("Wallet saved"));
+            log::info(logcat, "{}", tools::wallet_rpc_server::tr("Wallet saved"));
         }
         m_wallet->deinit();
         m_wallet.reset();
-        log::info(logcat, tools::wallet_rpc_server::tr("Wallet closed"));
+        log::info(logcat, "{}", tools::wallet_rpc_server::tr("Wallet closed"));
     }
 }
 //------------------------------------------------------------------------------------------------------------------------------
@@ -2552,7 +2554,7 @@ CREATE_WALLET::response wallet_rpc_server::invoke(CREATE_WALLET::request&& req) 
     if (ptr)
         throw wallet_rpc_error{error_code::UNKNOWN_ERROR, "Invalid filename"};
     fs::path wallet_file =
-            req.filename.empty() ? fs::path{} : m_wallet_dir / fs::u8path(req.filename);
+            req.filename.empty() ? fs::path{} : m_wallet_dir / tools::utf8_path(req.filename);
     if (!req.hardware_wallet) {
         std::vector<std::string> languages;
         crypto::ElectrumWords::get_language_list(languages, false);
@@ -2608,7 +2610,7 @@ OPEN_WALLET::response wallet_rpc_server::invoke(OPEN_WALLET::request&& req) {
 
     close_wallet(req.autosave_current);
 
-    fs::path wallet_file = m_wallet_dir / fs::u8path(req.filename);
+    fs::path wallet_file = m_wallet_dir / tools::utf8_path(req.filename);
     auto vm2 = password_arg_hack(req.password, m_vm);
     std::unique_ptr<tools::wallet2> wal =
             tools::wallet2::make_from_file(vm2, true, wallet_file, nullptr).first;
@@ -2665,7 +2667,7 @@ GENERATE_FROM_KEYS::response wallet_rpc_server::invoke(GENERATE_FROM_KEYS::reque
 
     GENERATE_FROM_KEYS::response res{};
 
-    auto wallet_file = get_wallet_path(m_wallet_dir, fs::u8path(req.filename));
+    auto wallet_file = get_wallet_path(m_wallet_dir, tools::utf8_path(req.filename));
 
     auto vm2 = password_arg_hack(req.password, m_vm);
     auto rc = tools::wallet2::make_new(vm2, true, nullptr);
@@ -2734,7 +2736,7 @@ RESTORE_DETERMINISTIC_WALLET::response wallet_rpc_server::invoke(
 
     RESTORE_DETERMINISTIC_WALLET::response res{};
 
-    auto wallet_file = get_wallet_path(m_wallet_dir, fs::u8path(req.filename));
+    auto wallet_file = get_wallet_path(m_wallet_dir, tools::utf8_path(req.filename));
 
     crypto::secret_key recovery_key;
     std::string old_language;
@@ -3472,7 +3474,7 @@ ONS_KNOWN_NAMES::response wallet_rpc_server::invoke(ONS_KNOWN_NAMES::request&& r
                     log::warning(
                             logcat,
                             "Got back invalid entry_index {} for a request for {} entries",
-                            rec["entry_index"],
+                            rec["entry_index"].get<size_t>(),
                             num_entries);
                     continue;
                 }
@@ -3674,7 +3676,7 @@ std::unique_ptr<tools::wallet2> wallet_rpc_server::load_wallet() {
             throw std::logic_error{
                     tr("Must specify --wallet-file or --generate-from-json or --wallet-dir")};
 
-        log::warning(logcat, tools::wallet_rpc_server::tr("Loading wallet..."));
+        log::warning(logcat, "{}", tools::wallet_rpc_server::tr("Loading wallet..."));
         if (!wallet_file.empty())
             wal = tools::wallet2::make_from_file(m_vm, true, wallet_file, password_prompt).first;
         else
@@ -3693,13 +3695,13 @@ std::unique_ptr<tools::wallet2> wallet_rpc_server::load_wallet() {
         wal->refresh(wal->is_trusted_daemon());
         // if we ^C during potentially length load/refresh, there's no server loop yet
         if (quit) {
-            log::info(globallogcat, tools::wallet_rpc_server::tr("Saving wallet..."));
+            log::info(globallogcat, "{}", tools::wallet_rpc_server::tr("Saving wallet..."));
             wal->store();
-            log::info(globallogcat, tools::wallet_rpc_server::tr("Successfully saved"));
+            log::info(globallogcat, "{}", tools::wallet_rpc_server::tr("Successfully saved"));
             throw std::runtime_error{
                     tr("Wallet loading cancelled before initial refresh completed")};
         }
-        log::info(globallogcat, tools::wallet_rpc_server::tr("Successfully loaded"));
+        log::info(globallogcat, "{}", tools::wallet_rpc_server::tr("Successfully loaded"));
     }
     return wal;
 }
@@ -3718,13 +3720,13 @@ bool wallet_rpc_server::run(bool) {
         m_wallet = std::move(wal);
     bool r = init();
     CHECK_AND_ASSERT_MES(
-            r, false, tools::wallet_rpc_server::tr("Failed to initialize wallet RPC server"));
+            r, false, "{}", tools::wallet_rpc_server::tr("Failed to initialize wallet RPC server"));
     tools::signal_handler::install([this](int) {
         log::warning(logcat, "Shutting down...");
         m_stop = true;
     });
 
-    log::warning(globallogcat, tools::wallet_rpc_server::tr("Starting wallet RPC server"));
+    log::warning(globallogcat, "{}", tools::wallet_rpc_server::tr("Starting wallet RPC server"));
     try {
         run_loop();
     } catch (const std::exception& e) {
@@ -3732,7 +3734,7 @@ bool wallet_rpc_server::run(bool) {
                 logcat, "{}{}", tools::wallet_rpc_server::tr("Failed to run wallet: "), e.what());
         return false;
     }
-    log::warning(globallogcat, tools::wallet_rpc_server::tr("Stopped wallet RPC server"));
+    log::warning(globallogcat, "{}", tools::wallet_rpc_server::tr("Stopped wallet RPC server"));
     try {
         close_wallet(true);
     } catch (const std::exception& e) {
@@ -3798,5 +3800,5 @@ int main(int argc, char** argv) {
                  ? 0
                  : 1;
 
-    CATCH_ENTRY_L0("main", 1);
+    CATCH_ENTRY("main", 1);
 }

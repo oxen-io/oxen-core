@@ -19,9 +19,6 @@
 [submodule "external/cpr"]
 	path = external/cpr
 	url = https://github.com/whoshuu/cpr.git
-[submodule "external/ghc-filesystem"]
-	path = external/ghc-filesystem
-	url = https://github.com/gulrak/filesystem.git
 [submodule "external/Catch2"]
 	path = external/Catch2
 	url = https://github.com/catchorg/Catch2
@@ -49,4 +46,7 @@
 	url = https://github.com/oxen-io/ethyl.git
 [submodule "external/bls"]
 	path = external/bls
-	url = https://github.com/herumi/bls.git
+	url = https://github.com/oxen-io/bls.git
+[submodule "external/oxen-encoding"]
+	path = external/oxen-encoding
+	url = https://github.com/oxen-io/oxen-encoding.git

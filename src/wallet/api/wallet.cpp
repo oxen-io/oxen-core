@@ -412,33 +412,33 @@ void Wallet::init(
 EXPORT
 void Wallet::debug(const std::string& category, const std::string& str) {
     if (category.empty())
-        log::debug(logcat, str);
+        log::debug(logcat, "{}", str);
     else
-        log::debug(log::Cat(category), str);
+        log::debug(log::Cat(category), "{}", str);
 }
 
 EXPORT
 void Wallet::info(const std::string& category, const std::string& str) {
     if (category.empty())
-        log::info(logcat, str);
+        log::info(logcat, "{}", str);
     else
-        log::info(log::Cat(category), str);
+        log::info(log::Cat(category), "{}", str);
 }
 
 EXPORT
 void Wallet::warning(const std::string& category, const std::string& str) {
     if (category.empty())
-        log::warning(logcat, str);
+        log::warning(logcat, "{}", str);
     else
-        log::warning(log::Cat(category), str);
+        log::warning(log::Cat(category), "{}", str);
 }
 
 EXPORT
 void Wallet::error(const std::string& category, const std::string& str) {
     if (category.empty())
-        log::error(logcat, str);
+        log::error(logcat, "{}", str);
     else
-        log::error(log::Cat(category), str);
+        log::error(log::Cat(category), "{}", str);
 }
 
 ///////////////////////// WalletImpl implementation ////////////////////////
@@ -508,7 +508,7 @@ EXPORT
 bool WalletImpl::create(
         std::string_view path_, const std::string& password, const std::string& language) {
 
-    auto path = fs::u8path(path_);
+    auto path = tools::utf8_path(path_);
     clearStatus();
     m_recoveringFromSeed = false;
     m_recoveringFromDevice = false;
@@ -527,7 +527,7 @@ bool WalletImpl::create(
         std::string error =
                 "attempting to generate or restore wallet, but specified file(s) exist.  Exiting "
                 "to not risk overwriting.";
-        log::error(logcat, error);
+        log::error(logcat, "{}", error);
         setStatusCritical(error);
         return false;
     }
@@ -551,7 +551,7 @@ bool WalletImpl::create(
 EXPORT
 bool WalletImpl::createWatchOnly(
         std::string_view path_, const std::string& password, const std::string& language) const {
-    auto path = fs::u8path(path_);
+    auto path = tools::utf8_path(path_);
     auto w = wallet();
     clearStatus();
     std::unique_ptr<tools::wallet2> view_wallet(new tools::wallet2(w->nettype()));
@@ -574,7 +574,7 @@ bool WalletImpl::createWatchOnly(
         std::string error =
                 "attempting to generate view only wallet, but specified file(s) exist.  Exiting to "
                 "not risk overwriting.";
-        log::error(logcat, error);
+        log::error(logcat, "{}", error);
         setStatusError(error);
         return false;
     }
@@ -632,7 +632,7 @@ bool WalletImpl::recoverFromKeysWithPassword(
         const std::string& address_string,
         const std::string& viewkey_string,
         const std::string& spendkey_string) {
-    auto path = fs::u8path(path_);
+    auto path = tools::utf8_path(path_);
     cryptonote::address_parse_info info;
     if (!get_account_address_from_str(info, m_wallet_ptr->nettype(), address_string)) {
         setStatusError("failed to parse address");
@@ -702,8 +702,8 @@ bool WalletImpl::recoverFromKeysWithPassword(
             setSeedLanguage(language);
             log::info(
                     logcat,
-                    "Generated deterministic wallet from spend key with seed language: " +
-                            language);
+                    "Generated deterministic wallet from spend key with seed language: {}",
+                    language);
         }
 
     } catch (const std::exception& e) {
@@ -716,14 +716,14 @@ bool WalletImpl::recoverFromKeysWithPassword(
 EXPORT
 bool WalletImpl::recoverFromDevice(
         std::string_view path_, const std::string& password, const std::string& device_name) {
-    auto path = fs::u8path(path_);
+    auto path = tools::utf8_path(path_);
     clearStatus();
     auto w = wallet();
     m_recoveringFromSeed = false;
     m_recoveringFromDevice = true;
     try {
         w->restore_from_device(path, password, device_name);
-        log::info(logcat, "Generated new wallet from device: " + device_name);
+        log::info(logcat, "Generated new wallet from device: {}", device_name);
     } catch (const std::exception& e) {
         setStatusError(std::string("failed to generate new wallet: ") + e.what());
         return false;
@@ -738,7 +738,7 @@ Wallet::Device WalletImpl::getDeviceType() const {
 
 EXPORT
 bool WalletImpl::open(std::string_view path_, const std::string& password) {
-    auto path = fs::u8path(path_);
+    auto path = tools::utf8_path(path_);
     clearStatus();
     auto w = wallet();
     m_recoveringFromSeed = false;
@@ -770,7 +770,7 @@ bool WalletImpl::recover(
         const std::string& password,
         const std::string& seed,
         const std::string& seed_offset /* = {}*/) {
-    auto path = fs::u8path(path_);
+    auto path = tools::utf8_path(path_);
     clearStatus();
     if (seed.empty()) {
         log::error(logcat, "Electrum seed is empty");
@@ -945,12 +945,12 @@ std::string WalletImpl::publicMultisigSignerKey() const {
 
 EXPORT
 std::string WalletImpl::path() const {
-    return wallet()->path().u8string();
+    return tools::convert_str<char>(wallet()->path().u8string());
 }
 
 EXPORT
 bool WalletImpl::store(std::string_view path_) {
-    auto path = fs::u8path(path_);
+    auto path = tools::utf8_path(path_);
     clearStatus();
     try {
         if (path.empty()) {
@@ -969,12 +969,12 @@ bool WalletImpl::store(std::string_view path_) {
 
 EXPORT
 std::string WalletImpl::filename() const {
-    return wallet()->get_wallet_file().u8string();
+    return tools::convert_str<char>(wallet()->get_wallet_file().u8string());
 }
 
 EXPORT
 std::string WalletImpl::keysFilename() const {
-    return wallet()->get_keys_file().u8string();
+    return tools::convert_str<char>(wallet()->get_keys_file().u8string());
 }
 
 EXPORT
@@ -1234,7 +1234,7 @@ int WalletImpl::autoRefreshInterval() const {
 }
 
 UnsignedTransaction* WalletImpl::loadUnsignedTx(std::string_view unsigned_filename_) {
-    auto unsigned_filename = fs::u8path(unsigned_filename_);
+    auto unsigned_filename = tools::utf8_path(unsigned_filename_);
     clearStatus();
     UnsignedTransactionImpl* transaction = new UnsignedTransactionImpl(*this);
     if (!wallet()->load_unsigned_tx(unsigned_filename, transaction->m_unsigned_tx_set)) {
@@ -1263,7 +1263,7 @@ UnsignedTransaction* WalletImpl::loadUnsignedTx(std::string_view unsigned_filena
 
 EXPORT
 bool WalletImpl::submitTransaction(std::string_view filename_) {
-    auto fileName = fs::u8path(filename_);
+    auto fileName = tools::utf8_path(filename_);
     clearStatus();
     std::unique_ptr<PendingTransactionImpl> transaction(new PendingTransactionImpl(*this));
 
@@ -1283,7 +1283,7 @@ bool WalletImpl::submitTransaction(std::string_view filename_) {
 
 EXPORT
 bool WalletImpl::exportKeyImages(std::string_view filename_) {
-    auto filename = fs::u8path(filename_);
+    auto filename = tools::utf8_path(filename_);
     auto w = wallet();
     if (w->watch_only()) {
         setStatusError("Wallet is view only");
@@ -1292,7 +1292,7 @@ bool WalletImpl::exportKeyImages(std::string_view filename_) {
 
     try {
         if (!w->export_key_images_to_file(filename, false /* requested_ki_only */)) {
-            setStatusError("failed to save file " + filename.u8string());
+            setStatusError("failed to save file {}"_format(filename));
             return false;
         }
     } catch (const std::exception& e) {
@@ -1305,7 +1305,7 @@ bool WalletImpl::exportKeyImages(std::string_view filename_) {
 
 EXPORT
 bool WalletImpl::importKeyImages(std::string_view filename_) {
-    auto filename = fs::u8path(filename_);
+    auto filename = tools::utf8_path(filename_);
     if (!trustedDaemon()) {
         setStatusError("Key images can only be imported with a trusted daemon");
         return false;
@@ -2624,7 +2624,7 @@ PendingTransaction* WalletImpl::stakePending(
     crypto::public_key sn_key;
     if (!tools::hex_to_type(sn_key_str, sn_key)) {
         error_msg = "Failed to parse service node pubkey";
-        log::error(logcat, error_msg);
+        log::error(logcat, "{}", error_msg);
         transaction->setError(error_msg);
         return transaction;
     }
@@ -2632,7 +2632,7 @@ PendingTransaction* WalletImpl::stakePending(
     tools::wallet2::stake_result stake_result = wallet()->create_stake_tx(sn_key, amount);
     if (stake_result.status != tools::wallet2::stake_result_status::success) {
         error_msg = "Failed to create a stake transaction: " + stake_result.msg;
-        log::error(logcat, error_msg);
+        log::error(logcat, "{}", error_msg);
         transaction->setError(error_msg);
         return transaction;
     }

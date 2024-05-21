@@ -85,7 +85,7 @@ namespace
       if (m_open_request_target <= id)
         return false;
 
-      bool r = m_tcp_server.connect_async("127.0.0.1", srv_port, CONNECTION_TIMEOUT, [=](const test_connection_context& context, const boost::system::error_code& ec) {
+      bool r = m_tcp_server.connect_async("127.0.0.1", srv_port, CONNECTION_TIMEOUT, [=, this](const test_connection_context& context, const boost::system::error_code& ec) {
         if (!ec)
         {
           m_connections[id] = context.m_connection_id;
@@ -145,7 +145,7 @@ namespace
       if (m_open_request_target <= req_count)
         return false;
 
-      bool r = m_tcp_server.connect_async("127.0.0.1", srv_port, CONNECTION_TIMEOUT, [=](const test_connection_context& context, const boost::system::error_code& ec) {
+      bool r = m_tcp_server.connect_async("127.0.0.1", srv_port, CONNECTION_TIMEOUT, [=, this](const test_connection_context& context, const boost::system::error_code& ec) {
         if (!ec)
         {
           m_open_close_test_helper.handle_new_connection(context.m_connection_id);
@@ -618,13 +618,13 @@ TEST_F(net_load_test_clt, permament_open_and_close_and_connections_closed_by_ser
 
 int main(int argc, char** argv)
 {
+  auto logcat = oxen::log::Cat("net_load_tests");
   TRY_ENTRY();
   tools::on_startup();
-  epee::debug::get_set_enable_assert(true, false);
   //set up logging options
   oxen::logging::init("net_load_tests_clt.log", oxen::log::Level::debug);
 
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
-  CATCH_ENTRY_L0("main", 1);
+  CATCH_ENTRY("main", 1);
 }

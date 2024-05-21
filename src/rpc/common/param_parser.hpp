@@ -123,13 +123,9 @@ template <typename TupleLike, size_t... Is>
 void load_tuple_values(bt_list_consumer&, TupleLike&, std::index_sequence<Is...>);
 
 // Consumes the next value from the dict consumer into `val`
-template <
-        typename BTConsumer,
-        typename T,
-        std::enable_if_t<
-                std::is_same_v<BTConsumer, bt_dict_consumer> ||
-                        std::is_same_v<BTConsumer, bt_list_consumer>,
-                int> = 0>
+template <typename BTConsumer, typename T>
+    requires std::same_as<BTConsumer, bt_dict_consumer> ||
+             std::same_as<BTConsumer, bt_list_consumer>
 void load_value(BTConsumer& c, T& val) {
     if constexpr (std::is_integral_v<T>)
         val = c.template consume_integer<T>();

@@ -28,6 +28,7 @@
 
 #include "gtest/gtest.h"
 
+#include "common/guts.h"
 #include "common/string_util.h"
 #include "common/hex.h"
 
@@ -101,26 +102,6 @@ TEST(common_string_util, parse_int)
   ASSERT_FALSE(tools::parse_int("", i32));
   ASSERT_FALSE(tools::parse_int("+", i32));
   ASSERT_FALSE(tools::parse_int("-", i32));
-}
-
-TEST(common_string_util, starts_with)
-{
-  ASSERT_TRUE(tools::starts_with("xy", "x"));
-  ASSERT_TRUE(tools::starts_with("xy", "xy"));
-  ASSERT_TRUE(tools::starts_with("xyz", "xy"));
-  ASSERT_FALSE(tools::starts_with("xy", "xyz"));
-  ASSERT_FALSE(tools::starts_with("xy", "aaa"));
-  ASSERT_TRUE(tools::starts_with("xy", ""));
-}
-
-TEST(common_string_util, ends_with)
-{
-  ASSERT_TRUE(tools::ends_with("xy", "y"));
-  ASSERT_TRUE(tools::ends_with("xy", "xy"));
-  ASSERT_TRUE(tools::ends_with("xyz", "yz"));
-  ASSERT_FALSE(tools::ends_with("xy", "xyz"));
-  ASSERT_FALSE(tools::ends_with("xy", "aaa"));
-  ASSERT_TRUE(tools::ends_with("xy", ""));
 }
 
 TEST(common_string_util, split)

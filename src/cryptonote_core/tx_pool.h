@@ -43,9 +43,9 @@
 #include "cryptonote_basic/cryptonote_basic_impl.h"
 #include "cryptonote_basic/verification_context.h"
 #include "epee/string_tools.h"
+#include "l2_tracker/l2_tracker.h"
 #include "oxen_economy.h"
 #include "tx_blink.h"
-#include "l2_tracker/l2_tracker.h"
 
 namespace cryptonote {
 class Blockchain;

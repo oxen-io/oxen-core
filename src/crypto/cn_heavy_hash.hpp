@@ -153,17 +153,11 @@ class cn_heavy_hash {
         spad.set(nullptr);
     }
 
-    inline cn_sptr scratchpad_ptr(uint32_t idx) {
-        return lpad.as_byte() + (idx & MASK);
-    }
+    inline cn_sptr scratchpad_ptr(uint32_t idx) { return lpad.as_byte() + (idx & MASK); }
 
 #if !defined(HAS_INTEL_HW) && !defined(HAS_ARM_HW)
-    inline void explode_scratchpad_hard() {
-        assert(false);
-    }
-    inline void implode_scratchpad_hard() {
-        assert(false);
-    }
+    inline void explode_scratchpad_hard() { assert(false); }
+    inline void implode_scratchpad_hard() { assert(false); }
 #else
     void explode_scratchpad_hard();
     void implode_scratchpad_hard();

@@ -39,15 +39,14 @@ endif()
 
 include(system_or_submodule)
 
+system_or_submodule(OXENC oxenc liboxenc>=1.1.0 oxen-encoding)
 system_or_submodule(OXENMQ oxenmq liboxenmq>=1.2.13 oxen-mq)
-system_or_submodule(OXENC oxenc liboxenc>=1.0.3 oxen-mq/oxen-encoding)
 
 add_subdirectory(db_drivers)
 add_subdirectory(randomx EXCLUDE_FROM_ALL)
 add_subdirectory(date EXCLUDE_FROM_ALL)
 
-set(BLS_ETH ON CACHE BOOL "" FORCE)
-add_subdirectory(bls)
+add_subdirectory(bls EXCLUDE_FROM_ALL)
 
 set(JSON_BuildTests OFF CACHE INTERNAL "")
 set(JSON_MultipleHeaders ON CACHE BOOL "") # Allows multi-header nlohmann use
@@ -55,8 +54,9 @@ add_subdirectory(nlohmann-json EXCLUDE_FROM_ALL)
 if(BUILD_STATIC_DEPS)
   set(OXEN_LOGGING_FORCE_SUBMODULES TRUE CACHE BOOL "" FORCE)
 endif()
-set(OXEN_LOGGING_SOURCE_ROOT "${PROJECT_SOURCE_DIR}/src;${PROJECT_SOURCE_DIR}" CACHE INTERNAL "")
 add_subdirectory(oxen-logging)
+oxen_logging_add_source_dir("${PROJECT_SOURCE_DIR}")
+oxen_logging_add_source_dir("${PROJECT_SOURCE_DIR}/src")
 
 # uSockets doesn't really have a proper build system (just a very simple Makefile) so build it
 # ourselves.

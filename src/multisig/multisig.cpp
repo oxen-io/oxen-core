@@ -37,6 +37,8 @@
 #include "cryptonote_config.h"
 #include "ringct/rctOps.h"
 
+static auto logcat = oxen::log::Cat("multisig");
+
 namespace cryptonote {
 //-----------------------------------------------------------------
 crypto::secret_key get_multisig_blinded_secret_key(const crypto::secret_key& key) {

@@ -28,6 +28,8 @@
 
 #pragma once
 
+#include <filesystem>
+
 #include "version.h"
 
 namespace blockchain_utils {
@@ -36,6 +38,6 @@ namespace blockchain_utils {
 inline constexpr size_t BUFFER_SIZE = 2 * 1024 * 1024;
 inline constexpr size_t CHUNK_SIZE_WARNING_THRESHOLD = 500000;
 inline constexpr size_t NUM_BLOCKS_PER_CHUNK = 1;
-inline constexpr const char* BLOCKCHAIN_RAW = "blockchain.raw";
+inline const std::filesystem::path BLOCKCHAIN_RAW{u8"blockchain.raw"};
 
 }  // namespace blockchain_utils

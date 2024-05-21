@@ -40,7 +40,7 @@ namespace epee
   {
     namespace json
     {
-#define CHECK_ISSPACE()  if(!epee::misc_utils::parse::isspace(*it)){ ASSERT_MES_AND_THROW("Wrong JSON character at: " << std::string(it, buf_end));}
+#define CHECK_ISSPACE()  if(!epee::misc_utils::parse::isspace(*it)){ ASSERT_MES_AND_THROW("Wrong JSON character at: {}", std::string(it, buf_end));}
 
       template <typename T>
       T parse_number(const std::string_view str)
@@ -70,7 +70,7 @@ namespace epee
       array_entry* make_array_and_insert(Storage& st, const std::string& value_name, T value, section* parent_section)
       {
         auto* array = st.template make_array<T>(value_name, parent_section);
-        CHECK_AND_ASSERT_THROW_MES(array, "failed to insert " + std::string{typeid(T).name()} + " array");
+        CHECK_AND_ASSERT_THROW_MES(array, "failed to insert {} array", typeid(T).name());
         var::get<array_t<T>>(*array).push_back(std::move(value));
         return array;
       }
@@ -82,7 +82,7 @@ namespace epee
       template<typename It, class t_storage>
       void run_handler(section* current_section, It& sec_buf_begin, It buf_end, t_storage& stg, unsigned int recursion)
       {
-        CHECK_AND_ASSERT_THROW_MES(recursion < EPEE_JSON_RECURSION_LIMIT_INTERNAL, "Wrong JSON data: recursion limitation (" << EPEE_JSON_RECURSION_LIMIT_INTERNAL << ") exceeded");
+        CHECK_AND_ASSERT_THROW_MES(recursion < EPEE_JSON_RECURSION_LIMIT_INTERNAL, "Wrong JSON data: recursion limitation ({}) exceeded", EPEE_JSON_RECURSION_LIMIT_INTERNAL);
 
         std::string::const_iterator sub_element_start;
         std::string name;
@@ -170,13 +170,13 @@ namespace epee
                 state = match_state_wonder_after_value;
               else if(word == "true" || word == "false")
                 stg.set_value(name, word == "true", current_section);              
-              else ASSERT_MES_AND_THROW("Unknown value keyword " << word);
+              else ASSERT_MES_AND_THROW("Unknown value keyword {}", word);
               state = match_state_wonder_after_value;
             }else if(*it == '{')
             {
               //sub section here
               section* new_sec = stg.open_section(name, current_section, true);
-              CHECK_AND_ASSERT_THROW_MES(new_sec, "Failed to insert new section in json: " << std::string(it, buf_end));
+              CHECK_AND_ASSERT_THROW_MES(new_sec, "Failed to insert new section in json: {}", std::string(it, buf_end));
               run_handler(new_sec, it, buf_end, stg, recursion + 1);
               state = match_state_wonder_after_value;
             }else if(*it == '[')
@@ -258,7 +258,7 @@ namespace epee
               if(word == "true" || word == "false")
                 array = make_array_and_insert(stg, name, word == "true", current_section);              
               else
-                ASSERT_MES_AND_THROW("Unknown value keyword " << word)
+                ASSERT_MES_AND_THROW("Unknown value keyword {}", word);
               state = match_state_array_after_value;
               array_md = array_mode_booleans;
             }else CHECK_ISSPACE();
@@ -342,7 +342,7 @@ namespace epee
                   val = true;
                 else if (word == "false")
                   val = false;
-                else ASSERT_MES_AND_THROW("Unknown value keyword " << word);
+                else ASSERT_MES_AND_THROW("Unknown value keyword {}", word);
 
                 if (auto* a = std::get_if<array_t<bool>>(array))
                   a->push_back(val);

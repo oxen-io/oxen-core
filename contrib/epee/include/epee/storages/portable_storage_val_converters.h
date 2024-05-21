@@ -41,7 +41,7 @@ namespace epee
 {
   namespace serialization
   {
-#define ASSERT_AND_THROW_WRONG_CONVERSION() ASSERT_MES_AND_THROW("WRONG DATA CONVERSION @ " << __FILE__ << ":" << __LINE__ << ": " << typeid(from).name() << " to " << typeid(to).name())
+#define ASSERT_AND_THROW_WRONG_CONVERSION() ASSERT_MES_AND_THROW("WRONG DATA CONVERSION: {} to {}", typeid(from).name(), typeid(to).name())
 
     template<typename From, typename To, typename SFINAE = void>
     struct converter
@@ -73,8 +73,11 @@ DISABLE_GCC_AND_CLANG_WARNING(sign-compare)
           in_range = from >= 0 && from <= std::numeric_limits<To>::max();
 
         CHECK_AND_ASSERT_THROW_MES(in_range,
-            "int value overflow: cannot convert value " << +from << " to integer type with range ["
-            << +std::numeric_limits<To>::min() << "," << +std::numeric_limits<To>::max() << "]");
+            "int value overflow: cannot convert value {} to integer type with range [{}, {}]",
+            +from,
+            +std::numeric_limits<To>::min(),
+            +std::numeric_limits<To>::max()
+            );
         to = static_cast<To>(from);
 
 POP_WARNINGS

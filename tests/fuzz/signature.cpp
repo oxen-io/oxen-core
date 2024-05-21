@@ -89,8 +89,9 @@ int SignatureFuzzer::run(const std::string &filename)
 
 int main(int argc, const char **argv)
 {
+  auto logcat = oxen::log::Cat("fuzz");
   TRY_ENTRY();
   SignatureFuzzer fuzzer;
   return run_fuzzer(argc, argv, fuzzer);
-  CATCH_ENTRY_L0("main", 1);
+  CATCH_ENTRY("main", 1);
 }

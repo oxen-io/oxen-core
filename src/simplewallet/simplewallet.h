@@ -541,15 +541,11 @@ class simple_wallet : public tools::i_wallet2_callback {
     tools::periodic_task m_mms_checker{
             std::chrono::seconds(0), true /*start_immediately*/, {90 * 1000000, 115 * 1000000}};
 
-    mms::message_store& get_message_store() const {
-        return m_wallet->get_message_store();
-    };
+    mms::message_store& get_message_store() const { return m_wallet->get_message_store(); };
     mms::multisig_wallet_state get_multisig_wallet_state() const {
         return m_wallet->get_multisig_wallet_state();
     };
-    bool mms_active() const {
-        return get_message_store().get_active();
-    };
+    bool mms_active() const { return get_message_store().get_active(); };
     bool choose_mms_processing(
             const std::vector<mms::processing_data>& data_list, uint32_t& choice);
     void list_mms_messages(const std::vector<mms::message>& messages);

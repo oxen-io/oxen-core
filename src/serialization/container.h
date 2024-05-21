@@ -31,15 +31,22 @@
 
 #pragma once
 
+#include <type_traits>
+
 #include "serialization.h"
 
 namespace serialization {
+
+template <class Archive>
+concept serializing = Archive::is_serializer;
+template <class Archive>
+concept deserializing = Archive::is_deserializer;
 
 // Consumes everything left in a deserialization archiver stream (without knowing the number of
 // elements in advance) into the given container (which must supply an stl-like `emplace_back()`).
 // Throws on serialization error, including the case where we run out of data that *isn't* on a
 // deserialization value boundary.
-template <class Archive, typename Container, std::enable_if_t<Archive::is_deserializer, int> = 0>
+template <deserializing Archive, typename Container>
 void deserialize_all(Archive& ar, Container& c) {
     while (ar.remaining_bytes() > 0)
         value(ar, c.emplace_back());
@@ -48,30 +55,17 @@ void deserialize_all(Archive& ar, Container& c) {
 namespace detail {
 
     /// True if `val.reserve(0)` exists for `T val`.
-    template <typename T, typename = void>
-    constexpr bool has_reserve = false;
     template <typename T>
-    constexpr bool has_reserve<T, std::void_t<decltype(std::declval<T>().reserve(size_t{}))>> =
-            true;
+    concept reservable = requires(T val) { val.reserve(size_t{}); };
 
     /// True if `val.emplace_back()` exists for `T val`, and that T::value_type is default
     /// constructible.
-    template <typename T, typename = void>
-    constexpr bool has_emplace_back = false;
     template <typename T>
-    constexpr bool has_emplace_back<
-            T,
-            std::enable_if_t<
-                    std::is_default_constructible_v<typename T::value_type>,
-                    std::void_t<decltype(std::declval<T>().emplace_back())>>> = true;
+    concept back_emplaceable = requires(T val) { val.emplace_back(); };
 
     /// True if `val.insert(V{})` exists for `T val` and `using V = T::value_type`.
-    template <typename T, typename = void>
-    constexpr bool has_value_insert = false;
     template <typename T>
-    constexpr bool has_value_insert<
-            T,
-            std::void_t<decltype(std::declval<T>().insert(typename T::value_type{}))>> = true;
+    concept value_insertable = requires(T val) { val.insert(typename T::value_type{}); };
 
     template <typename Archive, class T>
     void serialize_container_element(Archive& ar, T& e) {
@@ -83,7 +77,8 @@ namespace detail {
     }
 
     // Deserialize into the container.
-    template <class Archive, typename C, std::enable_if_t<Archive::is_deserializer, int> = 0>
+    template <deserializing Archive, typename C>
+        requires detail::back_emplaceable<C> || detail::value_insertable<C>
     void serialize_container(Archive& ar, C& v) {
         using T = std::remove_cv_t<typename C::value_type>;
 
@@ -91,21 +86,16 @@ namespace detail {
         auto arr = ar.begin_array(cnt);
 
         // very basic sanity check
-        // disabled because it is wrong: a type could, for example, pack multiple values into a byte
-        // (e.g. something like std::vector<bool> does), in which cases values >= bytes need not be
-        // true.
-        // ar.remaining_bytes(cnt);
+        // disabled because it is wrong: a type could, for example, pack multiple values into a
+        // byte (e.g. something like std::vector<bool> does), in which cases values >= bytes
+        // need not be true. ar.remaining_bytes(cnt);
 
         v.clear();
-        if constexpr (detail::has_reserve<C>)
+        if constexpr (reservable<C>)
             v.reserve(cnt);
 
-        static_assert(
-                detail::has_emplace_back<C> || detail::has_value_insert<C>,
-                "Unsupported container type");
-
         for (size_t i = 0; i < cnt; i++) {
-            if constexpr (detail::has_emplace_back<C>)
+            if constexpr (detail::back_emplaceable<C>)
                 detail::serialize_container_element(ar, v.emplace_back());
             else {
                 T e{};
@@ -116,14 +106,13 @@ namespace detail {
     }
 
     // Serialize the container
-    template <class Archive, typename C, std::enable_if_t<Archive::is_serializer, int> = 0>
+    template <serializing Archive, typename C>
     void serialize_container(Archive& ar, C& v) {
         size_t cnt = v.size();
         auto arr = ar.begin_array(cnt);
         for (auto& e : v)
             serialize_container_element(ar, e);
     }
-
 }  // namespace detail
 
 }  // namespace serialization

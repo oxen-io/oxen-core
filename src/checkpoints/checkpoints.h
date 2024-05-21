@@ -38,7 +38,7 @@
 #include "cryptonote_core/service_node_voting.h"
 
 namespace cryptonote {
-constexpr std::string_view JSON_HASH_FILE_NAME = "checkpoints.json"sv;
+const fs::path JSON_HASH_FILE_NAME{u8"checkpoints.json"};
 
 enum struct checkpoint_type {
     hardcoded,

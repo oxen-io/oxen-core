@@ -43,16 +43,16 @@
 namespace net {
 namespace {
     // !TODO only b32 addresses right now
-    constexpr const char tld[] = u8".b32.i2p";
+    constexpr const char tld[] = ".b32.i2p";
     constexpr const char unknown_host[] = "<unknown i2p host>";
 
     constexpr const unsigned b32_length = 52;
 
     constexpr const char base32_alphabet[] =
-            u8"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz234567";
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz234567";
 
     expect<void> host_check(std::string_view host) noexcept {
-        if (!tools::ends_with(host, tld))
+        if (!host.ends_with(tld))
             return {net::error::expected_tld};
 
         host.remove_suffix(sizeof(tld) - 1);

@@ -80,9 +80,7 @@ void hid::init() {
     int r;
     r = hid_init();
     CHECK_AND_ASSERT_THROW_MES(
-            r >= 0,
-            "Unable to init hidapi library. Error " + std::to_string(r) + ": " +
-                    safe_hid_error(usb_device));
+            r >= 0, "Unable to init hidapi library. Error {}: {}", r, safe_hid_error(usb_device));
 }
 
 void hid::connect(const std::vector<hid_conn_params>& hcp) {
@@ -149,8 +147,7 @@ bool hid::connect(
         hwdev = hid_open_path(device->path);
     }
     hid_free_enumeration(hwdev_info_list);
-    CHECK_AND_ASSERT_THROW_MES(
-            hwdev, "Unable to open device " + std::to_string(pid) + ":" + std::to_string(vid));
+    CHECK_AND_ASSERT_THROW_MES(hwdev, "Unable to open device {}: {}", pid, vid);
     usb_vid = vid;
     usb_pid = pid;
     usb_device = hwdev;
@@ -190,8 +187,9 @@ int hid::exchange(
         hid_ret = hid_write(usb_device, padding_buffer, block_size + 1);
         CHECK_AND_ASSERT_THROW_MES(
                 hid_ret >= 0,
-                "Unable to send hidapi command. Error " + std::to_string(result) + ": " +
-                        safe_hid_error(usb_device));
+                "Unable to send hidapi command. Error {}: {}",
+                result,
+                safe_hid_error(usb_device));
         offset += block_size;
         remaining -= block_size;
     }
@@ -205,8 +203,9 @@ int hid::exchange(
     }
     CHECK_AND_ASSERT_THROW_MES(
             hid_ret >= 0,
-            "Unable to read hidapi response. Error " + std::to_string(result) + ": " +
-                    safe_hid_error(usb_device));
+            "Unable to read hidapi response. Error {}: {}",
+            result,
+            safe_hid_error(usb_device));
     result = (unsigned int)hid_ret;
     io_hid_log(1, buffer, result);
     offset = MAX_BLOCK;
@@ -219,8 +218,9 @@ int hid::exchange(
         hid_ret = hid_read_timeout(usb_device, buffer + offset, MAX_BLOCK, timeout);
         CHECK_AND_ASSERT_THROW_MES(
                 hid_ret >= 0,
-                "Unable to receive hidapi response. Error " + std::to_string(result) + ": " +
-                        safe_hid_error(usb_device));
+                "Unable to receive hidapi response. Error {}: {}",
+                result,
+                safe_hid_error(usb_device));
         result = static_cast<unsigned int>(hid_ret);
         io_hid_log(1, buffer + offset, result);
         offset += MAX_BLOCK;
@@ -249,9 +249,8 @@ unsigned int hid::wrapCommand(
     unsigned int offset_out = 0;
     unsigned int block_size;
 
-    CHECK_AND_ASSERT_THROW_MES(
-            packet_size >= 3, "Invalid Packet size: " + std::to_string(packet_size));
-    CHECK_AND_ASSERT_THROW_MES(out_len >= 7, "out_len too short: " + std::to_string(out_len));
+    CHECK_AND_ASSERT_THROW_MES(packet_size >= 3, "Invalid Packet size: {}", packet_size);
+    CHECK_AND_ASSERT_THROW_MES(out_len >= 7, "out_len too short: {}", out_len);
 
     out_len -= 7;
     out[offset_out++] = ((channel >> 8) & 0xff);
@@ -263,14 +262,13 @@ unsigned int hid::wrapCommand(
     out[offset_out++] = ((command_len >> 8) & 0xff);
     out[offset_out++] = (command_len & 0xff);
     block_size = (command_len > packet_size - 7 ? packet_size - 7 : command_len);
-    CHECK_AND_ASSERT_THROW_MES(
-            out_len >= block_size, "out_len too short: " + std::to_string(out_len));
+    CHECK_AND_ASSERT_THROW_MES(out_len >= block_size, "out_len too short: {}", out_len);
     out_len -= block_size;
     memcpy(out + offset_out, command + offset, block_size);
     offset_out += block_size;
     offset += block_size;
     while (offset != command_len) {
-        CHECK_AND_ASSERT_THROW_MES(out_len >= 5, "out_len too short: " + std::to_string(out_len));
+        CHECK_AND_ASSERT_THROW_MES(out_len >= 5, "out_len too short: {}", out_len);
         out_len -= 5;
         out[offset_out++] = ((channel >> 8) & 0xff);
         out[offset_out++] = (channel & 0xff);
@@ -280,15 +278,14 @@ unsigned int hid::wrapCommand(
         sequence_idx++;
         block_size =
                 ((command_len - offset) > packet_size - 5 ? packet_size - 5 : command_len - offset);
-        CHECK_AND_ASSERT_THROW_MES(
-                out_len >= block_size, "out_len too short: " + std::to_string(out_len));
+        CHECK_AND_ASSERT_THROW_MES(out_len >= block_size, "out_len too short: {}", out_len);
         out_len -= block_size;
         memcpy(out + offset_out, command + offset, block_size);
         offset_out += block_size;
         offset += block_size;
     }
     while ((offset_out % packet_size) != 0) {
-        CHECK_AND_ASSERT_THROW_MES(out_len >= 1, "out_len too short: " + std::to_string(out_len));
+        CHECK_AND_ASSERT_THROW_MES(out_len >= 1, "out_len too short: {}", out_len);
         out_len--;
         out[offset_out++] = 0;
     }
@@ -365,4 +362,4 @@ unsigned int hid::unwrapReponse(
 
 }  // namespace hw::io
 
-#endif  //#if defined(HAVE_HIDAPI)
+#endif  // #if defined(HAVE_HIDAPI)

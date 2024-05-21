@@ -1,5 +1,6 @@
 #include "uptime_proof.h"
 
+#include "common/guts.h"
 #include "common/string_util.h"
 #include "epee/string_tools.h"
 #include "logging/oxen_logger.h"
@@ -24,15 +25,15 @@ Proof::Proof(
         const std::array<uint16_t, 3> lokinet_version,
         const service_nodes::service_node_keys& keys) :
         version{OXEN_VERSION},
-        pubkey{keys.pub},
+        storage_server_version{ss_version},
+        lokinet_version{lokinet_version},
         timestamp{static_cast<uint64_t>(time(nullptr))},
-        public_ip{sn_public_ip},
+        pubkey{keys.pub},
         pubkey_ed25519{keys.pub_ed25519},
-        qnet_port{quorumnet_port},
+        public_ip{sn_public_ip},
         storage_https_port{sn_storage_https_port},
         storage_omq_port{sn_storage_omq_port},
-        storage_server_version{ss_version},
-        lokinet_version{lokinet_version} {
+        qnet_port{quorumnet_port} {
     crypto::hash hash = hash_uptime_proof();
 
     crypto::generate_signature(hash, keys.pub, keys.key, sig);

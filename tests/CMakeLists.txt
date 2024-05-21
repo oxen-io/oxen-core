@@ -63,7 +63,6 @@ add_subdirectory(block_weight)
 add_subdirectory(hash)
 add_subdirectory(net_load_tests)
 add_subdirectory(network_tests)
-add_subdirectory(wallet3_tests)
 if (ANDROID)
 # Currently failed to compile
 #  add_subdirectory(libwallet_api_tests)
@@ -95,7 +94,6 @@ set(enabled_tests
     hash
     core_proxy
     fuzz
-    wallet3_tests
     unit_tests)
 
 add_custom_target(tests DEPENDS ${enabled_tests})

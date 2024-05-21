@@ -80,6 +80,8 @@ struct json_archiver : public serializer {
             ar.stack_.pop_back();
         }
 
+        nested_value(json_archiver& ar) : ar{ar} {}
+
         nested_value(const nested_value&) = delete;
         nested_value& operator=(const nested_value&) = delete;
         nested_value(nested_value&&) = delete;
@@ -91,7 +93,7 @@ struct json_archiver : public serializer {
         return {*this};
     }
 
-    [[nodiscard]] nested_value begin_array(size_t s = 0) {
+    [[nodiscard]] nested_value begin_array(size_t /*s*/ = 0) {
         stack_.emplace_back(set(nlohmann::json::array()));
         return {*this};
     }

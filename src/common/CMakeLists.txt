@@ -64,9 +64,7 @@ target_link_libraries(common
   PUBLIC
     cncrypto
     oxenmq::oxenmq
-    filesystem
     oxen::logging
-    fmt::fmt
     nlohmann_json::nlohmann_json
   PRIVATE
     sodium

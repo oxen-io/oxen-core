@@ -28,6 +28,8 @@
 
 #include "notify.h"
 
+#include <fmt/std.h>
+
 #include "epee/misc_log_ex.h"
 #include "logging/oxen_logger.h"
 #include "spawn.h"
@@ -47,8 +49,8 @@ Notify::Notify(std::string_view spec) {
 
     auto pieces = tools::split_any(spec, " \t", true);
     CHECK_AND_ASSERT_THROW_MES(pieces.size() > 0, "Failed to parse spec");
-    filename = fs::u8path(pieces[0]);
-    CHECK_AND_ASSERT_THROW_MES(fs::exists(filename), "File not found: " << filename);
+    filename = tools::utf8_path(pieces[0]);
+    CHECK_AND_ASSERT_THROW_MES(fs::exists(filename), "File not found: {}", filename);
 
     args.reserve(pieces.size());
     for (const auto& piece : pieces)

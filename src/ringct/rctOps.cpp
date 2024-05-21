@@ -30,8 +30,6 @@
 
 #include "rctOps.h"
 
-#include <boost/lexical_cast.hpp>
-
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "epee/misc_log_ex.h"
 #include "logging/oxen_logger.h"
@@ -39,12 +37,12 @@ using namespace crypto;
 
 auto logcat = oxen::log::Cat("ringct");
 
-#define CHECK_AND_ASSERT_THROW_MES_L1(expr, message) \
-    {                                                \
-        if (!(expr)) {                               \
-            oxen::log::warning(logcat, message);     \
-            throw std::runtime_error(message);       \
-        }                                            \
+#define CHECK_AND_ASSERT_THROW_MES_L1(expr, frmt, ...)                \
+    {                                                                 \
+        if (!(expr)) {                                                \
+            oxen::log::warning(logcat, frmt, __VA_ARGS__);            \
+            throw std::runtime_error(fmt::format(frmt, __VA_ARGS__)); \
+        }                                                             \
     }
 
 struct zero_commitment {
@@ -823,8 +821,7 @@ void scalarmultKey(key& aP, const key& P, const key& a) {
     ge_p3 A;
     ge_p2 R;
     CHECK_AND_ASSERT_THROW_MES_L1(
-            ge_frombytes_vartime(&A, P.bytes) == 0,
-            "ge_frombytes_vartime failed at " + boost::lexical_cast<std::string>(__LINE__));
+            ge_frombytes_vartime(&A, P.bytes) == 0, "ge_frombytes_vartime failed at {}", __LINE__);
     ge_scalarmult(&R, a.bytes, &A);
     ge_tobytes(aP.bytes, &R);
 }
@@ -834,8 +831,7 @@ key scalarmultKey(const key& P, const key& a) {
     ge_p3 A;
     ge_p2 R;
     CHECK_AND_ASSERT_THROW_MES_L1(
-            ge_frombytes_vartime(&A, P.bytes) == 0,
-            "ge_frombytes_vartime failed at " + boost::lexical_cast<std::string>(__LINE__));
+            ge_frombytes_vartime(&A, P.bytes) == 0, "ge_frombytes_vartime failed at {}", __LINE__);
     ge_scalarmult(&R, a.bytes, &A);
     key aP;
     ge_tobytes(aP.bytes, &R);
@@ -855,8 +851,7 @@ key scalarmultH(const key& a) {
 key scalarmult8(const key& P) {
     ge_p3 p3;
     CHECK_AND_ASSERT_THROW_MES_L1(
-            ge_frombytes_vartime(&p3, P.bytes) == 0,
-            "ge_frombytes_vartime failed at " + boost::lexical_cast<std::string>(__LINE__));
+            ge_frombytes_vartime(&p3, P.bytes) == 0, "ge_frombytes_vartime failed at {}", __LINE__);
     ge_p2 p2;
     ge_p3_to_p2(&p2, &p3);
     ge_p1p1 p1;
@@ -871,8 +866,7 @@ key scalarmult8(const key& P) {
 void scalarmult8(ge_p3& res, const key& P) {
     ge_p3 p3;
     CHECK_AND_ASSERT_THROW_MES_L1(
-            ge_frombytes_vartime(&p3, P.bytes) == 0,
-            "ge_frombytes_vartime failed at " + boost::lexical_cast<std::string>(__LINE__));
+            ge_frombytes_vartime(&p3, P.bytes) == 0, "ge_frombytes_vartime failed at {}", __LINE__);
     ge_p2 p2;
     ge_p3_to_p2(&p2, &p3);
     ge_p1p1 p1;
@@ -892,11 +886,9 @@ bool isInMainSubgroup(const key& A) {
 void addKeys(key& AB, const key& A, const key& B) {
     ge_p3 B2, A2;
     CHECK_AND_ASSERT_THROW_MES_L1(
-            ge_frombytes_vartime(&B2, B.bytes) == 0,
-            "ge_frombytes_vartime failed at " + boost::lexical_cast<std::string>(__LINE__));
+            ge_frombytes_vartime(&B2, B.bytes) == 0, "ge_frombytes_vartime failed at {}", __LINE__);
     CHECK_AND_ASSERT_THROW_MES_L1(
-            ge_frombytes_vartime(&A2, A.bytes) == 0,
-            "ge_frombytes_vartime failed at " + boost::lexical_cast<std::string>(__LINE__));
+            ge_frombytes_vartime(&A2, A.bytes) == 0, "ge_frombytes_vartime failed at {}", __LINE__);
     ge_cached tmp2;
     ge_p3_to_cached(&tmp2, &B2);
     ge_p1p1 tmp3;
@@ -917,11 +909,13 @@ rct::key addKeys(const keyV& A) {
     ge_p3 p3, tmp;
     CHECK_AND_ASSERT_THROW_MES_L1(
             ge_frombytes_vartime(&p3, A[0].bytes) == 0,
-            "ge_frombytes_vartime failed at " + boost::lexical_cast<std::string>(__LINE__));
+            "ge_frombytes_vartime failed at {}",
+            __LINE__);
     for (size_t i = 1; i < A.size(); ++i) {
         CHECK_AND_ASSERT_THROW_MES_L1(
                 ge_frombytes_vartime(&tmp, A[i].bytes) == 0,
-                "ge_frombytes_vartime failed at " + boost::lexical_cast<std::string>(__LINE__));
+                "ge_frombytes_vartime failed at {}",
+                __LINE__);
         ge_cached p2;
         ge_p3_to_cached(&p2, &tmp);
         ge_p1p1 p1;
@@ -946,8 +940,7 @@ void addKeys2(key& aGbB, const key& a, const key& b, const key& B) {
     ge_p2 rv;
     ge_p3 B2;
     CHECK_AND_ASSERT_THROW_MES_L1(
-            ge_frombytes_vartime(&B2, B.bytes) == 0,
-            "ge_frombytes_vartime failed at " + boost::lexical_cast<std::string>(__LINE__));
+            ge_frombytes_vartime(&B2, B.bytes) == 0, "ge_frombytes_vartime failed at {}", __LINE__);
     ge_double_scalarmult_base_vartime(&rv, b.bytes, &B2, a.bytes);
     ge_tobytes(aGbB.bytes, &rv);
 }
@@ -957,8 +950,7 @@ void addKeys2(key& aGbB, const key& a, const key& b, const key& B) {
 void precomp(ge_dsmp rv, const key& B) {
     ge_p3 B2;
     CHECK_AND_ASSERT_THROW_MES_L1(
-            ge_frombytes_vartime(&B2, B.bytes) == 0,
-            "ge_frombytes_vartime failed at " + boost::lexical_cast<std::string>(__LINE__));
+            ge_frombytes_vartime(&B2, B.bytes) == 0, "ge_frombytes_vartime failed at {}", __LINE__);
     ge_dsm_precomp(rv, &B2);
 }
 
@@ -969,8 +961,7 @@ void addKeys3(key& aAbB, const key& a, const key& A, const key& b, const ge_dsmp
     ge_p2 rv;
     ge_p3 A2;
     CHECK_AND_ASSERT_THROW_MES_L1(
-            ge_frombytes_vartime(&A2, A.bytes) == 0,
-            "ge_frombytes_vartime failed at " + boost::lexical_cast<std::string>(__LINE__));
+            ge_frombytes_vartime(&A2, A.bytes) == 0, "ge_frombytes_vartime failed at {}", __LINE__);
     ge_double_scalarmult_precomp_vartime(&rv, a.bytes, &A2, b.bytes, B);
     ge_tobytes(aAbB.bytes, &rv);
 }
@@ -1015,11 +1006,9 @@ void addKeys_aAbBcC(
 void subKeys(key& AB, const key& A, const key& B) {
     ge_p3 B2, A2;
     CHECK_AND_ASSERT_THROW_MES_L1(
-            ge_frombytes_vartime(&B2, B.bytes) == 0,
-            "ge_frombytes_vartime failed at " + boost::lexical_cast<std::string>(__LINE__));
+            ge_frombytes_vartime(&B2, B.bytes) == 0, "ge_frombytes_vartime failed at {}", __LINE__);
     CHECK_AND_ASSERT_THROW_MES_L1(
-            ge_frombytes_vartime(&A2, A.bytes) == 0,
-            "ge_frombytes_vartime failed at " + boost::lexical_cast<std::string>(__LINE__));
+            ge_frombytes_vartime(&A2, A.bytes) == 0, "ge_frombytes_vartime failed at {}", __LINE__);
     ge_cached tmp2;
     ge_p3_to_cached(&tmp2, &B2);
     ge_p1p1 tmp3;

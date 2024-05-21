@@ -330,15 +330,15 @@ bool rpc_command_executor::print_checkpoints(
                     entry_append,
                     "[{}] Type: {} Height: {} Hash: {}\n",
                     i,
-                    cp["type"],
-                    cp["height"],
-                    cp["block_hash"]);
+                    cp["type"].get<std::string_view>(),
+                    cp["height"].get<int64_t>(),
+                    cp["block_hash"].get<std::string_view>());
         }
         if (entry.empty())
             entry.append("No Checkpoints");
     }
 
-    tools::success_msg_writer(entry);
+    tools::success_msg_writer() + entry;
     return true;
 }
 
@@ -818,19 +818,19 @@ bool rpc_command_executor::print_blockchain_info(
                 "major version: {}, minor version: {}\n"
                 "block id: {}, previous block id: {}\n"
                 "difficulty: {}, nonce {}, reward {}\n",
-                header["height"],
-                header["timestamp"],
+                header["height"].get<int64_t>(),
+                header["timestamp"].get<int64_t>(),
                 tools::get_human_readable_timestamp(header["timestamp"].get<uint64_t>()),
-                header["block_size"],
-                header["block_weight"],
-                header["long_term_weight"],
-                header["num_txes"],
-                header["major_version"],
-                header["minor_version"],
-                header["hash"],
-                header["prev_hash"],
-                header["difficulty"],
-                header["nonce"],
+                header["block_size"].get<int64_t>(),
+                header["block_weight"].get<int64_t>(),
+                header["long_term_weight"].get<int64_t>(),
+                header["num_txes"].get<int64_t>(),
+                header["major_version"].get<int64_t>(),
+                header["minor_version"].get<int64_t>(),
+                header["hash"].get<std::string_view>(),
+                header["prev_hash"].get<std::string_view>(),
+                header["difficulty"].get<uint64_t>(),
+                header["nonce"].get<int64_t>(),
                 cryptonote::print_money(header["reward"].get<uint64_t>()));
     }
 
@@ -854,8 +854,7 @@ bool rpc_command_executor::print_quorum_state(
         return false;
     auto& quorums = *maybe_quorums;
 
-    tools::success_msg_writer(
-            "{{\n\"quorums\": [\n{}\n]\n}}", fmt::join(quorums["quorums"], ",\n"));
+    tools::success_msg_writer("{{\n\"quorums\": {}\n}}", quorums["quorums"].dump(2));
     return true;
 }
 
@@ -904,9 +903,9 @@ bool rpc_command_executor::print_block_by_hash(const crypto::hash& block_hash, b
     auto& block = *maybe_block;
 
     if (include_hex)
-        tools::success_msg_writer(block["blob"].get<std::string_view>()) + "\n";
+        tools::success_msg_writer() + block["blob"].get<std::string_view>() + "\n";
     print_block_header(block["block_header"]);
-    tools::success_msg_writer(block["json"].get<std::string_view>()) + "\n";
+    tools::success_msg_writer() + block["json"].get<std::string_view>() + "\n";
 
     return true;
 }
@@ -922,9 +921,9 @@ bool rpc_command_executor::print_block_by_height(uint64_t height, bool include_h
     auto& block = *maybe_block;
 
     if (include_hex)
-        tools::success_msg_writer("{}\n", block["blob"]);
+        tools::success_msg_writer("{}\n", block["blob"].get<std::string_view>());
     print_block_header(block["block_header"]);
-    tools::success_msg_writer("{}\n", block["json"]);
+    tools::success_msg_writer("{}\n", block["json"].get<std::string_view>());
 
     return true;
 }
@@ -1073,7 +1072,7 @@ static void print_pool(const json& txs) {
         msg.append(
                 "    top required block: {} ({})\n",
                 tx["max_used_height"].get<uint64_t>(),
-                tx["max_used_block"]);
+                tx["max_used_block"].get<std::string_view>());
         if (tx.count("last_failed_height"))
             msg.append(
                     "    last failed block: {} ({})\n",
@@ -1308,7 +1307,10 @@ bool rpc_command_executor::print_bans() {
 
     if (!bans.empty()) {
         for (auto i = bans.begin(); i != bans.end(); ++i) {
-            tools::msg_writer("{} banned for {} seconds", (*i)["host"], (*i)["seconds"]);
+            tools::msg_writer(
+                    "{} banned for {} seconds",
+                    (*i)["host"].get<std::string_view>(),
+                    (*i)["seconds"].get<int64_t>());
         }
     } else
         tools::msg_writer("No IPs are banned");
@@ -1900,7 +1902,9 @@ static void append_printable_service_node_list_entry(
         stream << '\n' << indent2 << "Pulse blocks: ";
         print_votes<std::pair<uint64_t, uint8_t>>(
                 stream, entry, "pulse_votes", [](const auto& val) {
-                    return fmt::format(val.second ? "{} {}" : "{}", val.first, val.second);
+                    if (val.second)
+                        return "{} {}"_format(val.first, val.second);
+                    return "{}"_format(val.first);
                 });
 
         auto print_pass_fail = [&stream, &entry](const std::string& key) {
@@ -2137,24 +2141,15 @@ bool rpc_command_executor::claim_rewards(const std::string& address) {
         return false;
     auto& withdrawal_response = *maybe_withdrawal_response;
 
-    std::ostringstream link;
-    link << "https://oxen-eth-webpage.vercel.app";
-    link << "/?amount=" << withdrawal_response["amount"];
-    link << "?address=" << withdrawal_response["address"];
-    link << "?height=" <<  withdrawal_response["height"];
-    link << "&sig=" <<     withdrawal_response["signature"];
-    for (const auto& non_signer : withdrawal_response["non_signers"]) {
-        link << "&indices=" << non_signer;
-    }
-
     tools::msg_writer(
-                  "Address: {}\n Amount: {}\n Height: {}\n Signature: {}\n Link to claim rewards: {}\n",
-                  withdrawal_response["address"],
-                  withdrawal_response["amount"],
-                  withdrawal_response["height"],
-                  withdrawal_response["signature"],
-                  link.str()
-              );
+            "Address: {0:s}\n Amount: {1:d}\n Height: {2:d}\n Signature: {3:s}\n"
+            " Link to claim rewards: "
+            "https://oxen-eth-webpage.vercel.app/"
+            "?amount={1:d}&address={0:s}&height={2:d}&sig={3:s}\n",
+            withdrawal_response["address"].get<std::string_view>(),
+            withdrawal_response["amount"].get<uint64_t>(),
+            withdrawal_response["height"].get<uint64_t>(),
+            withdrawal_response["signature"].get<std::string_view>());
     return true;
 }
 
@@ -2188,7 +2183,7 @@ bool rpc_command_executor::pop_blocks(uint64_t num_blocks) {
         return false;
     auto& pop_blocks = *maybe_pop_blocks;
 
-    tools::success_msg_writer("new height: {}", pop_blocks["height"]);
+    tools::success_msg_writer("new height: {}", pop_blocks["height"].get<int64_t>());
     return true;
 }
 
@@ -2206,9 +2201,9 @@ bool rpc_command_executor::print_sn_key() {
             "Service Node Public Key: {}\n"
             "     Ed25519 Public Key: {}\n"
             "      X25519 Public Key: {}",
-            my_sn_keys["service_node_pubkey"],
-            my_sn_keys["service_node_ed25519_pubkey"],
-            my_sn_keys["service_node_x25519_pubkey"]);
+            my_sn_keys["service_node_pubkey"].get<std::string_view>(),
+            my_sn_keys["service_node_ed25519_pubkey"].get<std::string_view>(),
+            my_sn_keys["service_node_x25519_pubkey"].get<std::string_view>());
     return true;
 }
 
@@ -2266,13 +2261,15 @@ bool rpc_command_executor::prepare_registration(bool force_registration) {
         return false;
     auto& snode_keys = *maybe_keys;
 
-    //TODO sean use the feature flag instead
+    // TODO sean use the feature flag instead
     if (hf_version > hf::hf20) {
         tools::success_msg_writer(
-            "Service Node Pubkey: {}\n"
-            "Service Node Signature: {}\n", 
-            snode_keys.value<std::string>("service_node_pubkey", ""),
-            snode_keys.value<std::string>("service_node_signature", "")); // Assuming 'service_node_signature' is the key for signature
+                "Service Node Pubkey: {}\n"
+                "Service Node Signature: {}\n",
+                snode_keys.value<std::string>("service_node_pubkey", ""),
+                snode_keys.value<std::string>(
+                        "service_node_signature",
+                        ""));  // Assuming 'service_node_signature' is the key for signature
         return true;
     }
 
@@ -2456,17 +2453,13 @@ bool rpc_command_executor::prepare_registration(bool force_registration) {
             case register_step::ask_amount: {
                 bool is_operator = state.total_reserved_contributions == 0;
                 uint64_t amount_left = staking_requirement - state.total_reserved_contributions;
-                uint64_t
-                        min_contribution = is_operator
-                                                 ? (nettype == cryptonote::network_type::MAINNET
-                                                            ? oxen::MINIMUM_OPERATOR_CONTRIBUTION
-                                                            : oxen::MINIMUM_OPERATOR_CONTRIBUTION_TESTNET)
-                                                 : service_nodes::
-                                                           get_min_node_contribution(
-                                                                   hf_version,
-                                                                   staking_requirement,
-                                                                   state.total_reserved_contributions,
-                                                                   state.contributions.size() - 1 /* -1 because we already added this address to the list */);
+                uint64_t min_contribution = is_operator ? oxen::MINIMUM_OPERATOR_CONTRIBUTION(
+                                                                  staking_requirement)
+                                                        : service_nodes::get_min_node_contribution(
+                                                                  hf_version,
+                                                                  staking_requirement,
+                                                                  state.total_reserved_contributions,
+                                                                  state.contributions.size() - 1 /* -1 because we already added this address to the list */);
 
                 auto [result, contribution_str] = input_line_value(
                         fmt::format(
@@ -2686,7 +2679,8 @@ The Service Node will not activate until the entire stake has been contributed.
             return false;
         auto& registration = *maybe_registration;
 
-        tools::success_msg_writer("\n\n{}\n\n", registration["registration_cmd"]);
+        tools::success_msg_writer(
+                "\n\n{}\n\n", registration["registration_cmd"].get<std::string_view>());
         return true;
     }
 
@@ -2718,7 +2712,7 @@ bool rpc_command_executor::version() {
             "Failed to retrieve node info");
     if (!version)
         return false;
-    tools::success_msg_writer(*version);
+    tools::success_msg_writer() + *version;
     return true;
 }
 

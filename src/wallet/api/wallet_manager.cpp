@@ -156,7 +156,7 @@ EXPORT
 bool WalletManagerImpl::walletExists(std::string_view path) {
     bool keys_file_exists;
     bool wallet_file_exists;
-    tools::wallet2::wallet_exists(fs::u8path(path), keys_file_exists, wallet_file_exists);
+    tools::wallet2::wallet_exists(tools::utf8_path(path), keys_file_exists, wallet_file_exists);
     if (keys_file_exists) {
         return true;
     }
@@ -170,7 +170,7 @@ bool WalletManagerImpl::verifyWalletPassword(
         bool no_spend_key,
         uint64_t kdf_rounds) const {
     return tools::wallet2::verify_password(
-            fs::u8path(keys_file_name),
+            tools::utf8_path(keys_file_name),
             password,
             no_spend_key,
             hw::get_device("default"),
@@ -184,14 +184,15 @@ bool WalletManagerImpl::queryWalletDevice(
         const std::string& password,
         uint64_t kdf_rounds) const {
     hw::device::type type;
-    bool r = tools::wallet2::query_device(type, fs::u8path(keys_file_name), password, kdf_rounds);
+    bool r = tools::wallet2::query_device(
+            type, tools::utf8_path(keys_file_name), password, kdf_rounds);
     device_type = static_cast<Wallet::Device>(type);
     return r;
 }
 
 EXPORT
 std::vector<std::string> WalletManagerImpl::findWallets(std::string_view path_) {
-    auto path = fs::u8path(path_);
+    auto path = tools::utf8_path(path_);
     std::vector<std::string> result;
     // return empty result if path doesn't exist
     if (!fs::is_directory(path)) {
@@ -205,12 +206,12 @@ std::vector<std::string> WalletManagerImpl::findWallets(std::string_view path_) 
 
         log::trace(logcat, "Checking filename: {}", filename.string());
 
-        if (filename.extension() == ".keys") {
+        if (filename.extension().u8string() == u8".keys") {
             // if keys file found, checking if there's wallet file itself
             filename.replace_extension();
             if (fs::exists(filename)) {
                 log::trace(logcat, "Found wallet: {}", filename.string());
-                result.push_back(filename.u8string());
+                result.push_back(tools::convert_str<char>(filename.u8string()));
             }
         }
     }
@@ -224,7 +225,7 @@ std::string WalletManagerImpl::errorString() const {
 
 EXPORT
 void WalletManagerImpl::setDaemonAddress(std::string address) {
-    if (!tools::starts_with(address, "https://") && !tools::starts_with(address, "http://"))
+    if (!address.starts_with("https://") && !address.starts_with("http://"))
         address.insert(0, "http://");
     m_http_client.set_base_url(std::move(address));
 }

@@ -50,968 +50,959 @@
 
 using json = rapidjson::Document;
 
-namespace hw { namespace trezor {
+namespace hw::trezor {
 
-    bool t_serialize(const std::string& in, std::string& out) {
-        out = in;
-        return true;
+bool t_serialize(const std::string& in, std::string& out) {
+    out = in;
+    return true;
+}
+
+bool t_serialize(const epee::wipeable_string& in, std::string& out) {
+    out.assign(in.data(), in.size());
+    return true;
+}
+
+bool t_serialize(const json_val& in, std::string& out) {
+    rapidjson::StringBuffer sb;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+    in.Accept(writer);
+    out = sb.GetString();
+    return true;
+}
+
+std::string t_serialize(const json_val& in) {
+    std::string ret;
+    t_serialize(in, ret);
+    return ret;
+}
+
+bool t_deserialize(const std::string& in, std::string& out) {
+    out = in;
+    return true;
+}
+
+bool t_deserialize(std::string& in, epee::wipeable_string& out) {
+    out = epee::wipeable_string(in);
+    return true;
+}
+
+bool t_deserialize(const std::string& in, json& out) {
+    if (out.Parse(in.c_str()).HasParseError()) {
+        throw exc::CommunicationException("JSON parse error");
     }
+    return true;
+}
 
-    bool t_serialize(const epee::wipeable_string& in, std::string& out) {
-        out.assign(in.data(), in.size());
-        return true;
-    }
+static std::string json_get_string(const rapidjson::Value& in) {
+    return std::string(in.GetString());
+}
 
-    bool t_serialize(const json_val& in, std::string& out) {
-        rapidjson::StringBuffer sb;
-        rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
-        in.Accept(writer);
-        out = sb.GetString();
-        return true;
-    }
+uint64_t pack_version(uint32_t major, uint32_t minor, uint32_t patch) {
+    // packing (major, minor, patch) to 64 B: 16 B | 24 B | 24 B
+    const unsigned bits_1 = 16;
+    const unsigned bits_2 = 24;
+    const uint32_t mask_1 = (1 << bits_1) - 1;
+    const uint32_t mask_2 = (1 << bits_2) - 1;
+    CHECK_AND_ASSERT_THROW_MES(
+            major <= mask_1 && minor <= mask_2 && patch <= mask_2,
+            "Version numbers overflow packing scheme");
+    return patch | (((uint64_t)minor) << bits_2) | (((uint64_t)major) << (bits_1 + bits_2));
+}
 
-    std::string t_serialize(const json_val& in) {
-        std::string ret;
-        t_serialize(in, ret);
-        return ret;
-    }
+typedef struct {
+    uint16_t trezor_type;
+    uint16_t id_vendor;
+    uint16_t id_product;
+} trezor_usb_desc_t;
 
-    bool t_deserialize(const std::string& in, std::string& out) {
-        out = in;
-        return true;
-    }
+static trezor_usb_desc_t TREZOR_DESC_T1 = {1, 0x534C, 0x0001};
+static trezor_usb_desc_t TREZOR_DESC_T2 = {2, 0x1209, 0x53C1};
+static trezor_usb_desc_t TREZOR_DESC_T2_BL = {3, 0x1209, 0x53C0};
 
-    bool t_deserialize(std::string& in, epee::wipeable_string& out) {
-        out = epee::wipeable_string(in);
-        return true;
-    }
+static trezor_usb_desc_t TREZOR_DESCS[] = {
+        TREZOR_DESC_T1,
+        TREZOR_DESC_T2,
+        TREZOR_DESC_T2_BL,
+};
 
-    bool t_deserialize(const std::string& in, json& out) {
-        if (out.Parse(in.c_str()).HasParseError()) {
-            throw exc::CommunicationException("JSON parse error");
-        }
-        return true;
-    }
+static size_t TREZOR_DESCS_LEN = sizeof(TREZOR_DESCS) / sizeof(TREZOR_DESCS[0]);
 
-    static std::string json_get_string(const rapidjson::Value& in) {
-        return std::string(in.GetString());
-    }
-
-    uint64_t pack_version(uint32_t major, uint32_t minor, uint32_t patch) {
-        // packing (major, minor, patch) to 64 B: 16 B | 24 B | 24 B
-        const unsigned bits_1 = 16;
-        const unsigned bits_2 = 24;
-        const uint32_t mask_1 = (1 << bits_1) - 1;
-        const uint32_t mask_2 = (1 << bits_2) - 1;
-        CHECK_AND_ASSERT_THROW_MES(
-                major <= mask_1 && minor <= mask_2 && patch <= mask_2,
-                "Version numbers overflow packing scheme");
-        return patch | (((uint64_t)minor) << bits_2) | (((uint64_t)major) << (bits_1 + bits_2));
-    }
-
-    typedef struct {
-        uint16_t trezor_type;
-        uint16_t id_vendor;
-        uint16_t id_product;
-    } trezor_usb_desc_t;
-
-    static trezor_usb_desc_t TREZOR_DESC_T1 = {1, 0x534C, 0x0001};
-    static trezor_usb_desc_t TREZOR_DESC_T2 = {2, 0x1209, 0x53C1};
-    static trezor_usb_desc_t TREZOR_DESC_T2_BL = {3, 0x1209, 0x53C0};
-
-    static trezor_usb_desc_t TREZOR_DESCS[] = {
-            TREZOR_DESC_T1,
-            TREZOR_DESC_T2,
-            TREZOR_DESC_T2_BL,
-    };
-
-    static size_t TREZOR_DESCS_LEN = sizeof(TREZOR_DESCS) / sizeof(TREZOR_DESCS[0]);
-
-    static ssize_t get_device_idx(uint16_t id_vendor, uint16_t id_product) {
-        for (size_t i = 0; i < TREZOR_DESCS_LEN; ++i) {
-            if (TREZOR_DESCS[i].id_vendor == id_vendor &&
-                TREZOR_DESCS[i].id_product == id_product) {
-                return i;
-            }
-        }
-
-        return -1;
-    }
-
-    static bool is_device_supported(ssize_t device_idx) {
-        CHECK_AND_ASSERT_THROW_MES(
-                device_idx < (ssize_t)TREZOR_DESCS_LEN, "Device desc idx too big");
-        if (device_idx < 0) {
-            return false;
-        }
-
-#ifdef TREZOR_1_SUPPORTED
-        return true;
-#else
-        return TREZOR_DESCS[device_idx].trezor_type != 1;
-#endif
-    }
-
-    //
-    // Helpers
-    //
-
-#define PROTO_HEADER_SIZE 6
-
-    static size_t message_size(const google::protobuf::Message& req) {
-#if GOOGLE_PROTOBUF_VERSION >= 3004000
-        return req.ByteSizeLong();
-#else
-        return req.ByteSize();
-#endif
-    }
-
-    static size_t serialize_message_buffer_size(size_t msg_size) {
-        return PROTO_HEADER_SIZE + msg_size;  // tag 2B + len 4B
-    }
-
-    static void serialize_message_header(void* buff, uint16_t tag, uint32_t len) {
-        uint16_t wire_tag = oxenc::host_to_big(static_cast<uint16_t>(tag));
-        uint32_t wire_len = oxenc::host_to_big(static_cast<uint32_t>(len));
-        memcpy(buff, (void*)&wire_tag, 2);
-        memcpy((uint8_t*)buff + 2, (void*)&wire_len, 4);
-    }
-
-    static void deserialize_message_header(const void* buff, uint16_t& tag, uint32_t& len) {
-        uint16_t wire_tag;
-        uint32_t wire_len;
-        memcpy(&wire_tag, buff, 2);
-        memcpy(&wire_len, (uint8_t*)buff + 2, 4);
-
-        tag = oxenc::big_to_host(wire_tag);
-        len = oxenc::big_to_host(wire_len);
-    }
-
-    static void serialize_message(
-            const google::protobuf::Message& req,
-            size_t msg_size,
-            uint8_t* buff,
-            size_t buff_size) {
-        auto msg_wire_num = MessageMapper::get_message_wire_number(req);
-        const auto req_buffer_size = serialize_message_buffer_size(msg_size);
-        if (req_buffer_size > buff_size) {
-            throw std::invalid_argument("Buffer too small");
-        }
-
-        serialize_message_header(buff, msg_wire_num, msg_size);
-        if (!req.SerializeToArray(buff + 6, msg_size)) {
-            throw exc::EncodingException("Message serialization error");
+static ssize_t get_device_idx(uint16_t id_vendor, uint16_t id_product) {
+    for (size_t i = 0; i < TREZOR_DESCS_LEN; ++i) {
+        if (TREZOR_DESCS[i].id_vendor == id_vendor && TREZOR_DESCS[i].id_product == id_product) {
+            return i;
         }
     }
 
-    //
-    // Communication protocol
-    //
+    return -1;
+}
 
-#define REPLEN 64
-
-    void ProtocolV1::write(Transport& transport, const google::protobuf::Message& req) {
-        const auto msg_size = message_size(req);
-        const auto buff_size = serialize_message_buffer_size(msg_size) + 2;
-
-        epee::wipeable_string req_buff;
-        epee::wipeable_string chunk_buff;
-
-        req_buff.resize(buff_size);
-        chunk_buff.resize(REPLEN);
-
-        uint8_t* req_buff_raw = reinterpret_cast<uint8_t*>(req_buff.data());
-        uint8_t* chunk_buff_raw = reinterpret_cast<uint8_t*>(chunk_buff.data());
-
-        req_buff_raw[0] = '#';
-        req_buff_raw[1] = '#';
-
-        serialize_message(req, msg_size, req_buff_raw + 2, buff_size - 2);
-
-        size_t offset = 0;
-
-        // Chunk by chunk upload
-        while (offset < buff_size) {
-            auto to_copy = std::min((size_t)(buff_size - offset), (size_t)(REPLEN - 1));
-
-            chunk_buff_raw[0] = '?';
-            memcpy(chunk_buff_raw + 1, req_buff_raw + offset, to_copy);
-
-            // Pad with zeros
-            if (to_copy < REPLEN - 1) {
-                memset(chunk_buff_raw + 1 + to_copy, 0, REPLEN - 1 - to_copy);
-            }
-
-            transport.write_chunk(chunk_buff_raw, REPLEN);
-            offset += REPLEN - 1;
-        }
-    }
-
-    void ProtocolV1::read(
-            Transport& transport,
-            std::shared_ptr<google::protobuf::Message>& msg,
-            messages::MessageType* msg_type) {
-        epee::wipeable_string chunk_buff;
-        chunk_buff.resize(REPLEN);
-        char* chunk_buff_raw = chunk_buff.data();
-
-        // Initial chunk read
-        size_t nread = transport.read_chunk(chunk_buff_raw, REPLEN);
-        if (nread != REPLEN) {
-            throw exc::CommunicationException("Read chunk has invalid size");
-        }
-
-        if (memcmp(chunk_buff_raw, "?##", 3) != 0) {
-            throw exc::CommunicationException("Malformed chunk");
-        }
-
-        uint16_t tag;
-        uint32_t len;
-        nread -= 3 + 6;
-        deserialize_message_header(chunk_buff_raw + 3, tag, len);
-
-        epee::wipeable_string data_acc(chunk_buff_raw + 3 + 6, nread);
-        data_acc.reserve(len);
-
-        while (nread < len) {
-            const size_t cur = transport.read_chunk(chunk_buff_raw, REPLEN);
-            if (chunk_buff_raw[0] != '?') {
-                throw exc::CommunicationException("Chunk malformed");
-            }
-
-            data_acc.append(chunk_buff_raw + 1, cur - 1);
-            nread += cur - 1;
-        }
-
-        if (msg_type) {
-            *msg_type = static_cast<messages::MessageType>(tag);
-        }
-
-        if (nread < len) {
-            throw exc::CommunicationException("Response incomplete");
-        }
-
-        std::shared_ptr<google::protobuf::Message> msg_wrap(MessageMapper::get_message(tag));
-        if (!msg_wrap->ParseFromArray(data_acc.data(), len)) {
-            throw exc::CommunicationException("Message could not be parsed");
-        }
-
-        msg = msg_wrap;
-    }
-
-    static void assert_port_number(uint32_t port) {
-        CHECK_AND_ASSERT_THROW_MES(port >= 1024 && port < 65535, "Invalid port number: " << port);
-    }
-
-    Transport::Transport() : m_open_counter(0) {}
-
-    bool Transport::pre_open() {
-        if (m_open_counter > 0) {
-            log::trace(logcat, "Already opened, count: {}", m_open_counter);
-            m_open_counter += 1;
-            return false;
-
-        } else if (m_open_counter < 0) {
-            log::trace(logcat, "Negative open value: {}", m_open_counter);
-        }
-
-        // Caller should set m_open_counter to 1 after open
-        m_open_counter = 0;
-        return true;
-    }
-
-    bool Transport::pre_close() {
-        m_open_counter -= 1;
-
-        if (m_open_counter < 0) {
-            log::debug(logcat, "Already closed. Counter {}", m_open_counter);
-
-        } else if (m_open_counter == 0) {
-            return true;
-        }
-
+static bool is_device_supported(ssize_t device_idx) {
+    CHECK_AND_ASSERT_THROW_MES(device_idx < (ssize_t)TREZOR_DESCS_LEN, "Device desc idx too big");
+    if (device_idx < 0) {
         return false;
     }
 
-    //
-    // Bridge transport
-    //
-
-    const char* BridgeTransport::PATH_PREFIX = "bridge:";
-
-    BridgeTransport::BridgeTransport(
-            std::optional<std::string> device_path, std::optional<std::string> bridge_url) :
-            m_device_path(device_path), m_bridge_url(bridge_url.value_or(DEFAULT_BRIDGE)) {
-        const char* env_bridge_port = nullptr;
-        if (!bridge_url && (env_bridge_port = getenv("TREZOR_BRIDGE_PORT")) != nullptr) {
-            uint16_t bridge_port;
-            CHECK_AND_ASSERT_THROW_MES(
-                    tools::parse_int(env_bridge_port, bridge_port),
-                    "Invalid bridge port: " << env_bridge_port);
-            assert_port_number(bridge_port);
-
-            m_bridge_url = "http://127.0.0.1:" + std::to_string(bridge_port);
-        } else if (
-                !tools::starts_with(m_bridge_url, "http://") &&
-                !tools::starts_with(m_bridge_url, "https://"))
-            m_bridge_url.insert(0, "http://");
-        log::debug(logcat, "Bridge host: {}", m_bridge_url);
-    }
-
-    std::string BridgeTransport::get_path() const {
-        if (!m_device_path) {
-            return "";
-        }
-
-        return PATH_PREFIX + *m_device_path;
-    }
-
-    void BridgeTransport::enumerate(t_transport_vect& res) {
-        json bridge_res;
-        std::string req;
-
-        bool req_status = invoke_bridge_http("/enumerate", req, bridge_res);
-        if (!req_status) {
-            throw exc::CommunicationException("Bridge enumeration failed");
-        }
-
-        for (rapidjson::Value::ConstValueIterator itr = bridge_res.Begin(); itr != bridge_res.End();
-             ++itr) {
-            auto element = itr->GetObject();
-            auto t = std::make_shared<BridgeTransport>(
-                    std::make_optional(json_get_string(element["path"])));
-
-            auto itr_vendor = element.FindMember("vendor");
-            auto itr_product = element.FindMember("product");
-            if (itr_vendor != element.MemberEnd() && itr_product != element.MemberEnd() &&
-                itr_vendor->value.IsNumber() && itr_product->value.IsNumber()) {
-                try {
-                    const auto id_vendor = (uint16_t)itr_vendor->value.GetUint64();
-                    const auto id_product = (uint16_t)itr_product->value.GetUint64();
-                    const auto device_idx = get_device_idx(id_vendor, id_product);
-                    if (!is_device_supported(device_idx)) {
-                        log::debug(
-                                logcat,
-                                "Device with idx {} is not supported. Vendor: {}, product: {}",
-                                device_idx,
-                                id_vendor,
-                                id_product);
-                        continue;
-                    }
-                } catch (const std::exception& e) {
-                    log::error(logcat, "Could not detect vendor & product: {}", e.what());
-                }
-            }
-
-            t->m_device_info.emplace();
-            t->m_device_info->CopyFrom(*itr, t->m_device_info->GetAllocator());
-            res.push_back(t);
-        }
-    }
-
-    void BridgeTransport::open() {
-        if (!pre_open()) {
-            return;
-        }
-
-        if (!m_device_path) {
-            throw exc::CommunicationException("Coud not open, empty device path");
-        }
-
-        std::string uri = "/acquire/" + *m_device_path + "/null";
-        std::string req;
-        json bridge_res;
-        bool req_status = invoke_bridge_http(uri, req, bridge_res);
-        if (!req_status) {
-            throw exc::CommunicationException("Failed to acquire device");
-        }
-
-        m_session = std::make_optional(json_get_string(bridge_res["session"]));
-        m_open_counter = 1;
-    }
-
-    void BridgeTransport::close() {
-        if (!pre_close()) {
-            return;
-        }
-
-        log::trace(logcat, "Closing Trezor:BridgeTransport");
-        if (!m_device_path || !m_session) {
-            throw exc::CommunicationException("Device not open");
-        }
-
-        std::string uri = "/release/" + *m_session;
-        std::string req;
-        json bridge_res;
-        bool req_status = invoke_bridge_http(uri, req, bridge_res);
-        if (!req_status) {
-            throw exc::CommunicationException("Failed to release device");
-        }
-
-        m_session = std::nullopt;
-    }
-
-    void BridgeTransport::write(const google::protobuf::Message& req) {
-        m_response = std::nullopt;
-
-        const auto msg_size = message_size(req);
-        const auto buff_size = serialize_message_buffer_size(msg_size);
-        epee::wipeable_string req_buff;
-        req_buff.resize(buff_size);
-
-        uint8_t* req_buff_raw = reinterpret_cast<uint8_t*>(req_buff.data());
-
-        serialize_message(req, msg_size, req_buff_raw, buff_size);
-
-        std::string uri = "/call/" + *m_session;
-        epee::wipeable_string res_hex;
-        epee::wipeable_string req_hex;
-        req_hex.reserve(buff_size * 2);
-        oxenc::to_hex(req_buff_raw, req_buff_raw + buff_size, std::back_inserter(req_hex));
-
-        bool req_status = invoke_bridge_http(uri, req_hex, res_hex);
-        if (!req_status) {
-            throw exc::CommunicationException("Call method failed");
-        }
-
-        m_response = res_hex;
-    }
-
-    void BridgeTransport::read(
-            std::shared_ptr<google::protobuf::Message>& msg, messages::MessageType* msg_type) {
-        if (!m_response) {
-            throw exc::CommunicationException("Could not read, no response stored");
-        }
-
-        std::optional<epee::wipeable_string> bin_data = m_response->parse_hexstr();
-        if (!bin_data) {
-            throw exc::CommunicationException("Response is not well hexcoded");
-        }
-
-        uint16_t msg_tag;
-        uint32_t msg_len;
-        deserialize_message_header(bin_data->data(), msg_tag, msg_len);
-        if (bin_data->size() != msg_len + 6) {
-            throw exc::CommunicationException("Response is not well hexcoded");
-        }
-
-        if (msg_type) {
-            *msg_type = static_cast<messages::MessageType>(msg_tag);
-        }
-
-        std::shared_ptr<google::protobuf::Message> msg_wrap(MessageMapper::get_message(msg_tag));
-        if (!msg_wrap->ParseFromArray(bin_data->data() + 6, msg_len)) {
-            throw exc::EncodingException("Response is not well hexcoded");
-        }
-        msg = msg_wrap;
-    }
-
-    namespace {
-        class WipingBody : public cpr::Body {
-          public:
-            using cpr::Body::Body;
-            ~WipingBody() override { memwipe(str_.data(), str_.size()); }
-        };
-    }  // namespace
-
-    std::string BridgeTransport::post_json(std::string_view uri, std::string json) {
-        std::string url = m_bridge_url;
-        if (!tools::ends_with(url, "/") && !tools::starts_with(uri, "/"))
-            url += '/';
-        url += uri;
-
-        WipingBody body{std::move(json)};
-
-        m_http_session.SetUrl(std::string{url});
-        m_http_session.SetTimeout(HTTP_TIMEOUT);
-        m_http_session.SetHeader(
-                {{"Origin",
-                  "https://monero.trezor.io"},  // FIXME (oxen) - does this matter to the bridge?
-                 {"Content-Type", "application/json; charset=utf-8"}});
-        m_http_session.SetBody(body);
-
-        cpr::Response res;
-        OXEN_DEFER {
-            if (!res.text.empty())
-                memwipe(res.text.data(), res.text.size());
-        };
-
-        res = m_http_session.Post();
-
-        if (res.error)
-            throw std::runtime_error{"Trezor bridge request failed: " + res.error.message};
-
-        if (res.status_code != 200)
-            throw std::runtime_error{
-                    "Trezor bridge request failed: received bad HTTP status " + res.status_line};
-
-        return std::move(res.text);
-    }
-
-    const std::optional<json>& BridgeTransport::device_info() const {
-        return m_device_info;
-    }
-
-    std::ostream& BridgeTransport::dump(std::ostream& o) const {
-        return o << "BridgeTransport<path=" << (m_device_path ? get_path() : "None")
-                 << ", info=" << (m_device_info ? t_serialize(*m_device_info) : "None")
-                 << ", session=" << m_session.value_or("None") << ">";
-    }
-
-    //
-    // UdpTransport
-    //
-    static void parse_udp_path(std::string& host, int& port, std::string path) {
-        if (tools::starts_with(path, UdpTransport::PATH_PREFIX)) {
-            path = path.substr(strlen(UdpTransport::PATH_PREFIX));
-        }
-
-        auto delim = path.find(':');
-        if (delim == std::string::npos) {
-            host = path;
-        } else {
-            host = path.substr(0, delim);
-            port = std::stoi(path.substr(delim + 1));
-        }
-    }
-
-    UdpTransport::UdpTransport(
-            std::optional<std::string> device_path,
-            std::optional<std::shared_ptr<Protocol>> proto) :
-            m_io_service(), m_deadline(m_io_service) {
-        m_device_host = DEFAULT_HOST;
-        m_device_port = DEFAULT_PORT;
-        const char* env_trezor_path = nullptr;
-
-        if (device_path) {
-            parse_udp_path(m_device_host, m_device_port, *device_path);
-        } else if (
-                (env_trezor_path = getenv("TREZOR_PATH")) != nullptr &&
-                tools::starts_with(env_trezor_path, UdpTransport::PATH_PREFIX)) {
-            parse_udp_path(m_device_host, m_device_port, std::string(env_trezor_path));
-            log::debug(logcat, "Applied TREZOR_PATH: {}:{}", m_device_host, m_device_port);
-        } else {
-            m_device_host = DEFAULT_HOST;
-        }
-
-        assert_port_number((uint32_t)m_device_port);
-        if (m_device_host != "localhost" && m_device_host != DEFAULT_HOST) {
-            throw std::invalid_argument("Local endpoint allowed only");
-        }
-
-        m_proto = proto ? *proto : std::make_shared<ProtocolV1>();
-    }
-
-    std::string UdpTransport::get_path() const {
-        std::string path(PATH_PREFIX);
-        return path + m_device_host + ":" + std::to_string(m_device_port);
-    }
-
-    void UdpTransport::require_socket() {
-        if (!m_socket) {
-            throw exc::NotConnectedException("Socket not connected");
-        }
-    }
-
-    bool UdpTransport::ping() {
-        return ping_int();
-    }
-
-    bool UdpTransport::ping_int(std::chrono::milliseconds timeout) {
-        require_socket();
-        try {
-            std::string req = "PINGPING";
-            char res[8];
-
-            m_socket->send_to(boost::asio::buffer(req.c_str(), req.size()), m_endpoint);
-            receive(res, 8, nullptr, false, timeout);
-
-            return memcmp(res, "PONGPONG", 8) == 0;
-
-        } catch (...) {
-            return false;
-        }
-    }
-
-    void UdpTransport::enumerate(t_transport_vect& res) {
-        std::shared_ptr<UdpTransport> t = std::make_shared<UdpTransport>();
-        bool t_works = false;
-
-        try {
-            t->open();
-            t_works = t->ping();
-        } catch (...) {
-        }
-        t->close();
-        if (t_works) {
-            res.push_back(t);
-        }
-    }
-
-    void UdpTransport::open() {
-        if (!pre_open()) {
-            return;
-        }
-
-        udp::resolver resolver(m_io_service);
-        udp::resolver::query query(udp::v4(), m_device_host, std::to_string(m_device_port));
-        m_endpoint = *resolver.resolve(query);
-
-        m_socket.reset(new udp::socket(m_io_service));
-        m_socket->open(udp::v4());
-
-        m_deadline.expires_at(std::chrono::steady_clock::time_point::max());
-        check_deadline();
-
-        m_proto->session_begin(*this);
-        m_open_counter = 1;
-    }
-
-    void UdpTransport::close() {
-        if (!pre_close()) {
-            return;
-        }
-
-        log::trace(logcat, "Closing Trezor:UdpTransport");
-        if (!m_socket) {
-            throw exc::CommunicationException("Socket is already closed");
-        }
-
-        m_proto->session_end(*this);
-        m_socket->close();
-        m_socket = nullptr;
-    }
-
-    std::shared_ptr<Transport> UdpTransport::find_debug() {
-#ifdef WITH_TREZOR_DEBUGGING
-        std::shared_ptr<UdpTransport> t = std::make_shared<UdpTransport>();
-        t->m_proto = std::make_shared<ProtocolV1>();
-        t->m_device_host = m_device_host;
-        t->m_device_port = m_device_port + 1;
-        return t;
+#ifdef TREZOR_1_SUPPORTED
+    return true;
 #else
-        log::info(logcat, "Debug link is disabled in production");
-        return nullptr;
+    return TREZOR_DESCS[device_idx].trezor_type != 1;
 #endif
+}
+
+//
+// Helpers
+//
+
+#define PROTO_HEADER_SIZE 6
+
+static size_t message_size(const google::protobuf::Message& req) {
+#if GOOGLE_PROTOBUF_VERSION >= 3004000
+    return req.ByteSizeLong();
+#else
+    return req.ByteSize();
+#endif
+}
+
+static size_t serialize_message_buffer_size(size_t msg_size) {
+    return PROTO_HEADER_SIZE + msg_size;  // tag 2B + len 4B
+}
+
+static void serialize_message_header(void* buff, uint16_t tag, uint32_t len) {
+    uint16_t wire_tag = oxenc::host_to_big(static_cast<uint16_t>(tag));
+    uint32_t wire_len = oxenc::host_to_big(static_cast<uint32_t>(len));
+    memcpy(buff, (void*)&wire_tag, 2);
+    memcpy((uint8_t*)buff + 2, (void*)&wire_len, 4);
+}
+
+static void deserialize_message_header(const void* buff, uint16_t& tag, uint32_t& len) {
+    uint16_t wire_tag;
+    uint32_t wire_len;
+    memcpy(&wire_tag, buff, 2);
+    memcpy(&wire_len, (uint8_t*)buff + 2, 4);
+
+    tag = oxenc::big_to_host(wire_tag);
+    len = oxenc::big_to_host(wire_len);
+}
+
+static void serialize_message(
+        const google::protobuf::Message& req, size_t msg_size, uint8_t* buff, size_t buff_size) {
+    auto msg_wire_num = MessageMapper::get_message_wire_number(req);
+    const auto req_buffer_size = serialize_message_buffer_size(msg_size);
+    if (req_buffer_size > buff_size) {
+        throw std::invalid_argument("Buffer too small");
     }
 
-    void UdpTransport::write_chunk(const void* buff, size_t size) {
-        require_socket();
+    serialize_message_header(buff, msg_wire_num, msg_size);
+    if (!req.SerializeToArray(buff + 6, msg_size)) {
+        throw exc::EncodingException("Message serialization error");
+    }
+}
 
-        if (size != 64) {
-            throw exc::CommunicationException("Invalid chunk size");
+//
+// Communication protocol
+//
+
+#define REPLEN 64
+
+void ProtocolV1::write(Transport& transport, const google::protobuf::Message& req) {
+    const auto msg_size = message_size(req);
+    const auto buff_size = serialize_message_buffer_size(msg_size) + 2;
+
+    epee::wipeable_string req_buff;
+    epee::wipeable_string chunk_buff;
+
+    req_buff.resize(buff_size);
+    chunk_buff.resize(REPLEN);
+
+    uint8_t* req_buff_raw = reinterpret_cast<uint8_t*>(req_buff.data());
+    uint8_t* chunk_buff_raw = reinterpret_cast<uint8_t*>(chunk_buff.data());
+
+    req_buff_raw[0] = '#';
+    req_buff_raw[1] = '#';
+
+    serialize_message(req, msg_size, req_buff_raw + 2, buff_size - 2);
+
+    size_t offset = 0;
+
+    // Chunk by chunk upload
+    while (offset < buff_size) {
+        auto to_copy = std::min((size_t)(buff_size - offset), (size_t)(REPLEN - 1));
+
+        chunk_buff_raw[0] = '?';
+        memcpy(chunk_buff_raw + 1, req_buff_raw + offset, to_copy);
+
+        // Pad with zeros
+        if (to_copy < REPLEN - 1) {
+            memset(chunk_buff_raw + 1 + to_copy, 0, REPLEN - 1 - to_copy);
         }
 
-        auto written = m_socket->send_to(boost::asio::buffer(buff, size), m_endpoint);
-        if (size != written) {
-            throw exc::CommunicationException("Could not send the whole chunk");
-        }
+        transport.write_chunk(chunk_buff_raw, REPLEN);
+        offset += REPLEN - 1;
+    }
+}
+
+void ProtocolV1::read(
+        Transport& transport,
+        std::shared_ptr<google::protobuf::Message>& msg,
+        messages::MessageType* msg_type) {
+    epee::wipeable_string chunk_buff;
+    chunk_buff.resize(REPLEN);
+    char* chunk_buff_raw = chunk_buff.data();
+
+    // Initial chunk read
+    size_t nread = transport.read_chunk(chunk_buff_raw, REPLEN);
+    if (nread != REPLEN) {
+        throw exc::CommunicationException("Read chunk has invalid size");
     }
 
-    size_t UdpTransport::read_chunk(void* buff, size_t size) {
-        require_socket();
-        if (size < 64) {
-            throw std::invalid_argument("Buffer too small");
+    if (memcmp(chunk_buff_raw, "?##", 3) != 0) {
+        throw exc::CommunicationException("Malformed chunk");
+    }
+
+    uint16_t tag;
+    uint32_t len;
+    nread -= 3 + 6;
+    deserialize_message_header(chunk_buff_raw + 3, tag, len);
+
+    epee::wipeable_string data_acc(chunk_buff_raw + 3 + 6, nread);
+    data_acc.reserve(len);
+
+    while (nread < len) {
+        const size_t cur = transport.read_chunk(chunk_buff_raw, REPLEN);
+        if (chunk_buff_raw[0] != '?') {
+            throw exc::CommunicationException("Chunk malformed");
         }
 
-        ssize_t len;
-        while (true) {
+        data_acc.append(chunk_buff_raw + 1, cur - 1);
+        nread += cur - 1;
+    }
+
+    if (msg_type) {
+        *msg_type = static_cast<messages::MessageType>(tag);
+    }
+
+    if (nread < len) {
+        throw exc::CommunicationException("Response incomplete");
+    }
+
+    std::shared_ptr<google::protobuf::Message> msg_wrap(MessageMapper::get_message(tag));
+    if (!msg_wrap->ParseFromArray(data_acc.data(), len)) {
+        throw exc::CommunicationException("Message could not be parsed");
+    }
+
+    msg = msg_wrap;
+}
+
+static void assert_port_number(uint32_t port) {
+    CHECK_AND_ASSERT_THROW_MES(port >= 1024 && port < 65535, "Invalid port number: " << port);
+}
+
+Transport::Transport() : m_open_counter(0) {}
+
+bool Transport::pre_open() {
+    if (m_open_counter > 0) {
+        log::trace(logcat, "Already opened, count: {}", m_open_counter);
+        m_open_counter += 1;
+        return false;
+
+    } else if (m_open_counter < 0) {
+        log::trace(logcat, "Negative open value: {}", m_open_counter);
+    }
+
+    // Caller should set m_open_counter to 1 after open
+    m_open_counter = 0;
+    return true;
+}
+
+bool Transport::pre_close() {
+    m_open_counter -= 1;
+
+    if (m_open_counter < 0) {
+        log::debug(logcat, "Already closed. Counter {}", m_open_counter);
+
+    } else if (m_open_counter == 0) {
+        return true;
+    }
+
+    return false;
+}
+
+//
+// Bridge transport
+//
+
+const char* BridgeTransport::PATH_PREFIX = "bridge:";
+
+BridgeTransport::BridgeTransport(
+        std::optional<std::string> device_path, std::optional<std::string> bridge_url) :
+        m_device_path(device_path), m_bridge_url(bridge_url.value_or(DEFAULT_BRIDGE)) {
+    const char* env_bridge_port = nullptr;
+    if (!bridge_url && (env_bridge_port = getenv("TREZOR_BRIDGE_PORT")) != nullptr) {
+        uint16_t bridge_port;
+        CHECK_AND_ASSERT_THROW_MES(
+                tools::parse_int(env_bridge_port, bridge_port),
+                "Invalid bridge port: " << env_bridge_port);
+        assert_port_number(bridge_port);
+
+        m_bridge_url = "http://127.0.0.1:" + std::to_string(bridge_port);
+    } else if (!m_bridge_url.starts_with("http://") && !m_bridge_url.starts_with("https://"))
+        m_bridge_url.insert(0, "http://");
+    log::debug(logcat, "Bridge host: {}", m_bridge_url);
+}
+
+std::string BridgeTransport::get_path() const {
+    if (!m_device_path) {
+        return "";
+    }
+
+    return PATH_PREFIX + *m_device_path;
+}
+
+void BridgeTransport::enumerate(t_transport_vect& res) {
+    json bridge_res;
+    std::string req;
+
+    bool req_status = invoke_bridge_http("/enumerate", req, bridge_res);
+    if (!req_status) {
+        throw exc::CommunicationException("Bridge enumeration failed");
+    }
+
+    for (rapidjson::Value::ConstValueIterator itr = bridge_res.Begin(); itr != bridge_res.End();
+         ++itr) {
+        auto element = itr->GetObject();
+        auto t = std::make_shared<BridgeTransport>(
+                std::make_optional(json_get_string(element["path"])));
+
+        auto itr_vendor = element.FindMember("vendor");
+        auto itr_product = element.FindMember("product");
+        if (itr_vendor != element.MemberEnd() && itr_product != element.MemberEnd() &&
+            itr_vendor->value.IsNumber() && itr_product->value.IsNumber()) {
             try {
-                boost::system::error_code ec;
-                len = receive(buff, size, &ec, true);
-                if (ec == boost::asio::error::operation_aborted) {
+                const auto id_vendor = (uint16_t)itr_vendor->value.GetUint64();
+                const auto id_product = (uint16_t)itr_product->value.GetUint64();
+                const auto device_idx = get_device_idx(id_vendor, id_product);
+                if (!is_device_supported(device_idx)) {
+                    log::debug(
+                            logcat,
+                            "Device with idx {} is not supported. Vendor: {}, product: {}",
+                            device_idx,
+                            id_vendor,
+                            id_product);
                     continue;
-                } else if (ec) {
-                    throw exc::CommunicationException(std::string("Comm error: ") + ec.message());
                 }
-
-                if (len != 64) {
-                    throw exc::CommunicationException("Invalid chunk size");
-                }
-
-                break;
-
-            } catch (exc::CommunicationException const& e) {
-                throw;
-            } catch (std::exception const& e) {
-                log::warning(logcat, "Error reading chunk, reason: {}", e.what());
-                throw exc::CommunicationException(
-                        std::string("Chunk read error: ") + std::string(e.what()));
+            } catch (const std::exception& e) {
+                log::error(logcat, "Could not detect vendor & product: {}", e.what());
             }
         }
 
-        return static_cast<size_t>(len);
+        t->m_device_info.emplace();
+        t->m_device_info->CopyFrom(*itr, t->m_device_info->GetAllocator());
+        res.push_back(t);
+    }
+}
+
+void BridgeTransport::open() {
+    if (!pre_open()) {
+        return;
     }
 
-    ssize_t UdpTransport::receive(
-            void* buff,
-            size_t size,
-            boost::system::error_code* error_code,
-            bool no_throw,
-            std::chrono::milliseconds timeout) {
-        boost::system::error_code ec;
-        boost::asio::mutable_buffer buffer = boost::asio::buffer(buff, size);
+    if (!m_device_path) {
+        throw exc::CommunicationException("Coud not open, empty device path");
+    }
 
-        require_socket();
+    std::string uri = "/acquire/" + *m_device_path + "/null";
+    std::string req;
+    json bridge_res;
+    bool req_status = invoke_bridge_http(uri, req, bridge_res);
+    if (!req_status) {
+        throw exc::CommunicationException("Failed to acquire device");
+    }
 
-        // Set a deadline for the asynchronous operation.
-        m_deadline.expires_from_now(timeout);
+    m_session = std::make_optional(json_get_string(bridge_res["session"]));
+    m_open_counter = 1;
+}
 
-        // Set up the variables that receive the result of the asynchronous
-        // operation. The error code is set to would_block to signal that the
-        // operation is incomplete. Asio guarantees that its asynchronous
-        // operations will never fail with would_block, so any other value in
-        // ec indicates completion.
-        ec = boost::asio::error::would_block;
-        std::size_t length = 0;
+void BridgeTransport::close() {
+    if (!pre_close()) {
+        return;
+    }
 
-        // Start the asynchronous operation itself.
-        m_socket->async_receive_from(
-                boost::asio::buffer(buffer),
-                m_endpoint,
-                [&ec, &length](const boost::system::error_code& ec_, std::size_t length_) {
-                    ec = ec_;
-                    length = length_;
-                });
+    log::trace(logcat, "Closing Trezor:BridgeTransport");
+    if (!m_device_path || !m_session) {
+        throw exc::CommunicationException("Device not open");
+    }
 
-        // Block until the asynchronous operation has completed.
-        do {
-            m_io_service.run_one();
-        } while (ec == boost::asio::error::would_block);
+    std::string uri = "/release/" + *m_session;
+    std::string req;
+    json bridge_res;
+    bool req_status = invoke_bridge_http(uri, req, bridge_res);
+    if (!req_status) {
+        throw exc::CommunicationException("Failed to release device");
+    }
 
-        if (error_code) {
-            *error_code = ec;
+    m_session = std::nullopt;
+}
+
+void BridgeTransport::write(const google::protobuf::Message& req) {
+    m_response = std::nullopt;
+
+    const auto msg_size = message_size(req);
+    const auto buff_size = serialize_message_buffer_size(msg_size);
+    epee::wipeable_string req_buff;
+    req_buff.resize(buff_size);
+
+    uint8_t* req_buff_raw = reinterpret_cast<uint8_t*>(req_buff.data());
+
+    serialize_message(req, msg_size, req_buff_raw, buff_size);
+
+    std::string uri = "/call/" + *m_session;
+    epee::wipeable_string res_hex;
+    epee::wipeable_string req_hex;
+    req_hex.reserve(buff_size * 2);
+    oxenc::to_hex(req_buff_raw, req_buff_raw + buff_size, std::back_inserter(req_hex));
+
+    bool req_status = invoke_bridge_http(uri, req_hex, res_hex);
+    if (!req_status) {
+        throw exc::CommunicationException("Call method failed");
+    }
+
+    m_response = res_hex;
+}
+
+void BridgeTransport::read(
+        std::shared_ptr<google::protobuf::Message>& msg, messages::MessageType* msg_type) {
+    if (!m_response) {
+        throw exc::CommunicationException("Could not read, no response stored");
+    }
+
+    std::optional<epee::wipeable_string> bin_data = m_response->parse_hexstr();
+    if (!bin_data) {
+        throw exc::CommunicationException("Response is not well hexcoded");
+    }
+
+    uint16_t msg_tag;
+    uint32_t msg_len;
+    deserialize_message_header(bin_data->data(), msg_tag, msg_len);
+    if (bin_data->size() != msg_len + 6) {
+        throw exc::CommunicationException("Response is not well hexcoded");
+    }
+
+    if (msg_type) {
+        *msg_type = static_cast<messages::MessageType>(msg_tag);
+    }
+
+    std::shared_ptr<google::protobuf::Message> msg_wrap(MessageMapper::get_message(msg_tag));
+    if (!msg_wrap->ParseFromArray(bin_data->data() + 6, msg_len)) {
+        throw exc::EncodingException("Response is not well hexcoded");
+    }
+    msg = msg_wrap;
+}
+
+namespace {
+    class WipingBody : public cpr::Body {
+      public:
+        using cpr::Body::Body;
+        ~WipingBody() override { memwipe(str_.data(), str_.size()); }
+    };
+}  // namespace
+
+std::string BridgeTransport::post_json(std::string_view uri, std::string json) {
+    std::string url = m_bridge_url;
+    if (!url.ends_with("/") && !uri.starts_with("/"))
+        url += '/';
+    url += uri;
+
+    WipingBody body{std::move(json)};
+
+    m_http_session.SetUrl(std::string{url});
+    m_http_session.SetTimeout(HTTP_TIMEOUT);
+    m_http_session.SetHeader(
+            {{"Origin",
+              "https://monero.trezor.io"},  // FIXME (oxen) - does this matter to the bridge?
+             {"Content-Type", "application/json; charset=utf-8"}});
+    m_http_session.SetBody(body);
+
+    cpr::Response res;
+    OXEN_DEFER {
+        if (!res.text.empty())
+            memwipe(res.text.data(), res.text.size());
+    };
+
+    res = m_http_session.Post();
+
+    if (res.error)
+        throw std::runtime_error{"Trezor bridge request failed: " + res.error.message};
+
+    if (res.status_code != 200)
+        throw std::runtime_error{
+                "Trezor bridge request failed: received bad HTTP status " + res.status_line};
+
+    return std::move(res.text);
+}
+
+const std::optional<json>& BridgeTransport::device_info() const {
+    return m_device_info;
+}
+
+std::ostream& BridgeTransport::dump(std::ostream& o) const {
+    return o << "BridgeTransport<path=" << (m_device_path ? get_path() : "None")
+             << ", info=" << (m_device_info ? t_serialize(*m_device_info) : "None")
+             << ", session=" << m_session.value_or("None") << ">";
+}
+
+//
+// UdpTransport
+//
+static void parse_udp_path(std::string& host, int& port, std::string path) {
+    if (path.starts_with(UdpTransport::PATH_PREFIX)) {
+        path = path.substr(strlen(UdpTransport::PATH_PREFIX));
+    }
+
+    auto delim = path.find(':');
+    if (delim == std::string::npos) {
+        host = path;
+    } else {
+        host = path.substr(0, delim);
+        port = std::stoi(path.substr(delim + 1));
+    }
+}
+
+UdpTransport::UdpTransport(
+        std::optional<std::string> device_path, std::optional<std::shared_ptr<Protocol>> proto) :
+        m_io_service(), m_deadline(m_io_service) {
+    m_device_host = DEFAULT_HOST;
+    m_device_port = DEFAULT_PORT;
+    const char* env_trezor_path = nullptr;
+
+    if (device_path) {
+        parse_udp_path(m_device_host, m_device_port, *device_path);
+    } else if (
+            (env_trezor_path = getenv("TREZOR_PATH")) != nullptr &&
+            env_trezor_path.starts_with(UdpTransport::PATH_PREFIX)) {
+        parse_udp_path(m_device_host, m_device_port, std::string(env_trezor_path));
+        log::debug(logcat, "Applied TREZOR_PATH: {}:{}", m_device_host, m_device_port);
+    } else {
+        m_device_host = DEFAULT_HOST;
+    }
+
+    assert_port_number((uint32_t)m_device_port);
+    if (m_device_host != "localhost" && m_device_host != DEFAULT_HOST) {
+        throw std::invalid_argument("Local endpoint allowed only");
+    }
+
+    m_proto = proto ? *proto : std::make_shared<ProtocolV1>();
+}
+
+std::string UdpTransport::get_path() const {
+    std::string path(PATH_PREFIX);
+    return path + m_device_host + ":" + std::to_string(m_device_port);
+}
+
+void UdpTransport::require_socket() {
+    if (!m_socket) {
+        throw exc::NotConnectedException("Socket not connected");
+    }
+}
+
+bool UdpTransport::ping() {
+    return ping_int();
+}
+
+bool UdpTransport::ping_int(std::chrono::milliseconds timeout) {
+    require_socket();
+    try {
+        std::string req = "PINGPING";
+        char res[8];
+
+        m_socket->send_to(boost::asio::buffer(req.c_str(), req.size()), m_endpoint);
+        receive(res, 8, nullptr, false, timeout);
+
+        return memcmp(res, "PONGPONG", 8) == 0;
+
+    } catch (...) {
+        return false;
+    }
+}
+
+void UdpTransport::enumerate(t_transport_vect& res) {
+    std::shared_ptr<UdpTransport> t = std::make_shared<UdpTransport>();
+    bool t_works = false;
+
+    try {
+        t->open();
+        t_works = t->ping();
+    } catch (...) {
+    }
+    t->close();
+    if (t_works) {
+        res.push_back(t);
+    }
+}
+
+void UdpTransport::open() {
+    if (!pre_open()) {
+        return;
+    }
+
+    udp::resolver resolver(m_io_service);
+    udp::resolver::query query(udp::v4(), m_device_host, std::to_string(m_device_port));
+    m_endpoint = *resolver.resolve(query);
+
+    m_socket.reset(new udp::socket(m_io_service));
+    m_socket->open(udp::v4());
+
+    m_deadline.expires_at(std::chrono::steady_clock::time_point::max());
+    check_deadline();
+
+    m_proto->session_begin(*this);
+    m_open_counter = 1;
+}
+
+void UdpTransport::close() {
+    if (!pre_close()) {
+        return;
+    }
+
+    log::trace(logcat, "Closing Trezor:UdpTransport");
+    if (!m_socket) {
+        throw exc::CommunicationException("Socket is already closed");
+    }
+
+    m_proto->session_end(*this);
+    m_socket->close();
+    m_socket = nullptr;
+}
+
+std::shared_ptr<Transport> UdpTransport::find_debug() {
+#ifdef WITH_TREZOR_DEBUGGING
+    std::shared_ptr<UdpTransport> t = std::make_shared<UdpTransport>();
+    t->m_proto = std::make_shared<ProtocolV1>();
+    t->m_device_host = m_device_host;
+    t->m_device_port = m_device_port + 1;
+    return t;
+#else
+    log::info(logcat, "Debug link is disabled in production");
+    return nullptr;
+#endif
+}
+
+void UdpTransport::write_chunk(const void* buff, size_t size) {
+    require_socket();
+
+    if (size != 64) {
+        throw exc::CommunicationException("Invalid chunk size");
+    }
+
+    auto written = m_socket->send_to(boost::asio::buffer(buff, size), m_endpoint);
+    if (size != written) {
+        throw exc::CommunicationException("Could not send the whole chunk");
+    }
+}
+
+size_t UdpTransport::read_chunk(void* buff, size_t size) {
+    require_socket();
+    if (size < 64) {
+        throw std::invalid_argument("Buffer too small");
+    }
+
+    ssize_t len;
+    while (true) {
+        try {
+            boost::system::error_code ec;
+            len = receive(buff, size, &ec, true);
+            if (ec == boost::asio::error::operation_aborted) {
+                continue;
+            } else if (ec) {
+                throw exc::CommunicationException(std::string("Comm error: ") + ec.message());
+            }
+
+            if (len != 64) {
+                throw exc::CommunicationException("Invalid chunk size");
+            }
+
+            break;
+
+        } catch (exc::CommunicationException const& e) {
+            throw;
+        } catch (std::exception const& e) {
+            log::warning(logcat, "Error reading chunk, reason: {}", e.what());
+            throw exc::CommunicationException(
+                    std::string("Chunk read error: ") + std::string(e.what()));
         }
+    }
 
-        if (no_throw) {
-            return length;
-        }
+    return static_cast<size_t>(len);
+}
 
-        // Operation result
-        if (ec == boost::asio::error::operation_aborted) {
-            throw exc::TimeoutException();
+ssize_t UdpTransport::receive(
+        void* buff,
+        size_t size,
+        boost::system::error_code* error_code,
+        bool no_throw,
+        std::chrono::milliseconds timeout) {
+    boost::system::error_code ec;
+    boost::asio::mutable_buffer buffer = boost::asio::buffer(buff, size);
 
-        } else if (ec) {
-            log::warning(logcat, "Reading from UDP socket failed: {}", ec.message());
-            throw exc::CommunicationException();
-        }
+    require_socket();
 
+    // Set a deadline for the asynchronous operation.
+    m_deadline.expires_from_now(timeout);
+
+    // Set up the variables that receive the result of the asynchronous
+    // operation. The error code is set to would_block to signal that the
+    // operation is incomplete. Asio guarantees that its asynchronous
+    // operations will never fail with would_block, so any other value in
+    // ec indicates completion.
+    ec = boost::asio::error::would_block;
+    std::size_t length = 0;
+
+    // Start the asynchronous operation itself.
+    m_socket->async_receive_from(
+            boost::asio::buffer(buffer),
+            m_endpoint,
+            [&ec, &length](const boost::system::error_code& ec_, std::size_t length_) {
+                ec = ec_;
+                length = length_;
+            });
+
+    // Block until the asynchronous operation has completed.
+    do {
+        m_io_service.run_one();
+    } while (ec == boost::asio::error::would_block);
+
+    if (error_code) {
+        *error_code = ec;
+    }
+
+    if (no_throw) {
         return length;
     }
 
-    void UdpTransport::write(const google::protobuf::Message& req) {
-        m_proto->write(*this, req);
+    // Operation result
+    if (ec == boost::asio::error::operation_aborted) {
+        throw exc::TimeoutException();
+
+    } else if (ec) {
+        log::warning(logcat, "Reading from UDP socket failed: {}", ec.message());
+        throw exc::CommunicationException();
     }
 
-    void UdpTransport::read(
-            std::shared_ptr<google::protobuf::Message>& msg, messages::MessageType* msg_type) {
-        m_proto->read(*this, msg, msg_type);
+    return length;
+}
+
+void UdpTransport::write(const google::protobuf::Message& req) {
+    m_proto->write(*this, req);
+}
+
+void UdpTransport::read(
+        std::shared_ptr<google::protobuf::Message>& msg, messages::MessageType* msg_type) {
+    m_proto->read(*this, msg, msg_type);
+}
+
+void UdpTransport::check_deadline() {
+    if (!m_socket) {
+        return;  // no active socket.
     }
 
-    void UdpTransport::check_deadline() {
-        if (!m_socket) {
-            return;  // no active socket.
-        }
+    // Check whether the deadline has passed. We compare the deadline against
+    // the current time since a new asynchronous operation may have moved the
+    // deadline before this actor had a chance to run.
+    if (m_deadline.expires_at() <= std::chrono::steady_clock::now()) {
+        // The deadline has passed. The outstanding asynchronous operation needs
+        // to be cancelled so that the blocked receive() function will return.
+        //
+        // Please note that cancel() has portability issues on some versions of
+        // Microsoft Windows, and it may be necessary to use close() instead.
+        // Consult the documentation for cancel() for further information.
+        m_socket->cancel();
 
-        // Check whether the deadline has passed. We compare the deadline against
-        // the current time since a new asynchronous operation may have moved the
-        // deadline before this actor had a chance to run.
-        if (m_deadline.expires_at() <= std::chrono::steady_clock::now()) {
-            // The deadline has passed. The outstanding asynchronous operation needs
-            // to be cancelled so that the blocked receive() function will return.
-            //
-            // Please note that cancel() has portability issues on some versions of
-            // Microsoft Windows, and it may be necessary to use close() instead.
-            // Consult the documentation for cancel() for further information.
-            m_socket->cancel();
-
-            // There is no longer an active deadline. The expiry is set to positive
-            // infinity so that the actor takes no action until a new deadline is set.
-            m_deadline.expires_at(std::chrono::steady_clock::time_point::max());
-        }
-
-        // Put the actor back to sleep.
-        m_deadline.async_wait([this](const boost::system::error_code&) { check_deadline(); });
+        // There is no longer an active deadline. The expiry is set to positive
+        // infinity so that the actor takes no action until a new deadline is set.
+        m_deadline.expires_at(std::chrono::steady_clock::time_point::max());
     }
 
-    std::ostream& UdpTransport::dump(std::ostream& o) const {
-        return o << "UdpTransport<path=" << get_path()
-                 << ", socket_alive=" << (m_socket ? "true" : "false") << ">";
-    }
+    // Put the actor back to sleep.
+    m_deadline.async_wait([this](const boost::system::error_code&) { check_deadline(); });
+}
+
+std::ostream& UdpTransport::dump(std::ostream& o) const {
+    return o << "UdpTransport<path=" << get_path()
+             << ", socket_alive=" << (m_socket ? "true" : "false") << ">";
+}
 
 #ifdef WITH_DEVICE_TREZOR_WEBUSB
 
-    static bool is_trezor1(libusb_device_descriptor* info) {
-        return info->idVendor == TREZOR_DESC_T1.id_vendor &&
-               info->idProduct == TREZOR_DESC_T1.id_product;
-    }
+static bool is_trezor1(libusb_device_descriptor* info) {
+    return info->idVendor == TREZOR_DESC_T1.id_vendor &&
+           info->idProduct == TREZOR_DESC_T1.id_product;
+}
 
-    static bool is_trezor2(libusb_device_descriptor* info) {
-        return info->idVendor == TREZOR_DESC_T2.id_vendor &&
-               info->idProduct == TREZOR_DESC_T2.id_product;
-    }
+static bool is_trezor2(libusb_device_descriptor* info) {
+    return info->idVendor == TREZOR_DESC_T2.id_vendor &&
+           info->idProduct == TREZOR_DESC_T2.id_product;
+}
 
-    static bool is_trezor2_bl(libusb_device_descriptor* info) {
-        return info->idVendor == TREZOR_DESC_T2_BL.id_vendor &&
-               info->idProduct == TREZOR_DESC_T2_BL.id_product;
-    }
+static bool is_trezor2_bl(libusb_device_descriptor* info) {
+    return info->idVendor == TREZOR_DESC_T2_BL.id_vendor &&
+           info->idProduct == TREZOR_DESC_T2_BL.id_product;
+}
 
-    static ssize_t get_trezor_dev_id(libusb_device_descriptor* info) {
-        CHECK_AND_ASSERT_THROW_MES(info, "Empty device descriptor");
-        return get_device_idx(info->idVendor, info->idProduct);
-    }
+static ssize_t get_trezor_dev_id(libusb_device_descriptor* info) {
+    CHECK_AND_ASSERT_THROW_MES(info, "Empty device descriptor");
+    return get_device_idx(info->idVendor, info->idProduct);
+}
 
-    static void set_libusb_log(libusb_context* ctx) {
-        CHECK_AND_ASSERT_THROW_MES(ctx, "Null libusb context");
+static void set_libusb_log(libusb_context* ctx) {
+    CHECK_AND_ASSERT_THROW_MES(ctx, "Null libusb context");
 
-        // http://libusb.sourceforge.net/api-1.0/group__libusb__lib.html
+    // http://libusb.sourceforge.net/api-1.0/group__libusb__lib.html
 #if defined(LIBUSB_API_VERSION) && (LIBUSB_API_VERSION >= 0x01000106)
 #define TREZOR_LIBUSB_SET_DEBUG(ctx, level) libusb_set_option(ctx, LIBUSB_OPTION_LOG_LEVEL, level)
 #else
 #define TREZOR_LIBUSB_SET_DEBUG(ctx, level) libusb_set_debug(ctx, level)
 #endif
 
-        if (ELPP->vRegistry()->allowed(el::Level::Debug, OXEN_DEFAULT_LOG_CATEGORY))
-            TREZOR_LIBUSB_SET_DEBUG(ctx, 3);
-        else if (ELPP->vRegistry()->allowed(el::Level::Warning, OXEN_DEFAULT_LOG_CATEGORY))
-            TREZOR_LIBUSB_SET_DEBUG(ctx, 2);
-        else if (ELPP->vRegistry()->allowed(el::Level::Error, OXEN_DEFAULT_LOG_CATEGORY))
-            TREZOR_LIBUSB_SET_DEBUG(ctx, 1);
+    if (ELPP->vRegistry()->allowed(el::Level::Debug, OXEN_DEFAULT_LOG_CATEGORY))
+        TREZOR_LIBUSB_SET_DEBUG(ctx, 3);
+    else if (ELPP->vRegistry()->allowed(el::Level::Warning, OXEN_DEFAULT_LOG_CATEGORY))
+        TREZOR_LIBUSB_SET_DEBUG(ctx, 2);
+    else if (ELPP->vRegistry()->allowed(el::Level::Error, OXEN_DEFAULT_LOG_CATEGORY))
+        TREZOR_LIBUSB_SET_DEBUG(ctx, 1);
 
 #undef TREZOR_LIBUSB_SET_DEBUG
+}
+
+static int get_libusb_ports(libusb_device* dev, std::vector<uint8_t>& path) {
+    uint8_t tmp_path[16];
+    int r = libusb_get_port_numbers(dev, tmp_path, sizeof(tmp_path));
+    CHECK_AND_ASSERT_MES(r != LIBUSB_ERROR_OVERFLOW, -1, "Libusb path array too small");
+    CHECK_AND_ASSERT_MES(r >= 0, -1, "Libusb path array error");
+
+    path.resize(r);
+    for (int i = 0; i < r; i++) {
+        path[i] = tmp_path[i];
     }
 
-    static int get_libusb_ports(libusb_device* dev, std::vector<uint8_t>& path) {
-        uint8_t tmp_path[16];
-        int r = libusb_get_port_numbers(dev, tmp_path, sizeof(tmp_path));
-        CHECK_AND_ASSERT_MES(r != LIBUSB_ERROR_OVERFLOW, -1, "Libusb path array too small");
-        CHECK_AND_ASSERT_MES(r >= 0, -1, "Libusb path array error");
+    return 0;
+}
 
-        path.resize(r);
-        for (int i = 0; i < r; i++) {
-            path[i] = tmp_path[i];
-        }
+static std::string get_usb_path(uint8_t bus_id, const std::vector<uint8_t>& path) {
+    return fmt::format("{}{:03d}:{:d}", WebUsbTransport::PATH_PREFIX, bus_id, fmt::join(path, ":"));
+}
 
-        return 0;
+const char* WebUsbTransport::PATH_PREFIX = "webusb:";
+
+WebUsbTransport::WebUsbTransport(
+        std::optional<libusb_device_descriptor*> descriptor,
+        std::optional<std::shared_ptr<Protocol>> proto) :
+        m_usb_session(nullptr),
+        m_usb_device(nullptr),
+        m_usb_device_handle(nullptr),
+        m_bus_id(-1),
+        m_device_addr(-1) {
+    if (descriptor) {
+        libusb_device_descriptor* desc = new libusb_device_descriptor;
+        memcpy(desc, *descriptor, sizeof(libusb_device_descriptor));
+        this->m_usb_device_desc.reset(desc);
     }
 
-    static std::string get_usb_path(uint8_t bus_id, const std::vector<uint8_t>& path) {
-        return fmt::format(
-                "{}{:03d}:{:d}", WebUsbTransport::PATH_PREFIX, bus_id, fmt::join(path, ":"));
-    }
-
-    const char* WebUsbTransport::PATH_PREFIX = "webusb:";
-
-    WebUsbTransport::WebUsbTransport(
-            std::optional<libusb_device_descriptor*> descriptor,
-            std::optional<std::shared_ptr<Protocol>> proto) :
-            m_usb_session(nullptr),
-            m_usb_device(nullptr),
-            m_usb_device_handle(nullptr),
-            m_bus_id(-1),
-            m_device_addr(-1) {
-        if (descriptor) {
-            libusb_device_descriptor* desc = new libusb_device_descriptor;
-            memcpy(desc, *descriptor, sizeof(libusb_device_descriptor));
-            this->m_usb_device_desc.reset(desc);
-        }
-
-        m_proto = proto ? *proto : std::make_shared<ProtocolV1>();
+    m_proto = proto ? *proto : std::make_shared<ProtocolV1>();
 
 #ifdef WITH_TREZOR_DEBUGGING
-        m_debug_mode = false;
+    m_debug_mode = false;
 #endif
+}
+
+WebUsbTransport::~WebUsbTransport() {
+    if (m_usb_device) {
+        close();
     }
 
-    WebUsbTransport::~WebUsbTransport() {
-        if (m_usb_device) {
-            close();
-        }
-
-        if (m_usb_session) {
-            libusb_exit(m_usb_session);
-            m_usb_session = nullptr;
-        }
+    if (m_usb_session) {
+        libusb_exit(m_usb_session);
+        m_usb_session = nullptr;
     }
+}
 
-    void WebUsbTransport::require_device() const {
-        if (!m_usb_device_desc) {
-            throw std::runtime_error("No USB device specified");
-        }
+void WebUsbTransport::require_device() const {
+    if (!m_usb_device_desc) {
+        throw std::runtime_error("No USB device specified");
     }
+}
 
-    void WebUsbTransport::require_connected() const {
-        require_device();
-        if (!m_usb_device_handle) {
-            throw std::runtime_error("USB Device not opened");
-        }
+void WebUsbTransport::require_connected() const {
+    require_device();
+    if (!m_usb_device_handle) {
+        throw std::runtime_error("USB Device not opened");
     }
+}
 
-    void WebUsbTransport::enumerate(t_transport_vect& res) {
-        int r;
-        libusb_device** devs;
-        libusb_context* ctx = nullptr;
+void WebUsbTransport::enumerate(t_transport_vect& res) {
+    int r;
+    libusb_device** devs;
+    libusb_context* ctx = nullptr;
 
-        r = libusb_init(&ctx);
-        CHECK_AND_ASSERT_THROW_MES(r >= 0, "Unable to init libusb");
+    r = libusb_init(&ctx);
+    CHECK_AND_ASSERT_THROW_MES(r >= 0, "Unable to init libusb");
 
-        set_libusb_log(ctx);
+    set_libusb_log(ctx);
 
-        ssize_t cnt = libusb_get_device_list(ctx, &devs);
-        if (cnt < 0) {
-            libusb_exit(ctx);
-            throw std::runtime_error("Unable to enumerate libusb devices");
-        }
-
-        log::trace(logcat, "Libusb devices: {}", cnt);
-
-        for (ssize_t i = 0; i < cnt; i++) {
-            libusb_device_descriptor desc{};
-            r = libusb_get_device_descriptor(devs[i], &desc);
-            if (r < 0) {
-                log::error(logcat, "Unable to get libusb device descriptor {}", i);
-                continue;
-            }
-
-            const auto trezor_dev_idx = get_trezor_dev_id(&desc);
-            if (!is_device_supported(trezor_dev_idx)) {
-                continue;
-            }
-
-            log::trace(
-                    logcat,
-                    "Found Trezor device: {}:{} dev_idx {}",
-                    desc.idVendor,
-                    desc.idProduct,
-                    (int)trezor_dev_idx);
-
-            auto t = std::make_shared<WebUsbTransport>(std::make_optional(&desc));
-            t->m_bus_id = libusb_get_bus_number(devs[i]);
-            t->m_device_addr = libusb_get_device_address(devs[i]);
-
-            // Port resolution may fail. Non-critical error, just addressing precision is decreased.
-            get_libusb_ports(devs[i], t->m_port_numbers);
-
-            res.push_back(t);
-        }
-
-        libusb_free_device_list(devs, 1);
+    ssize_t cnt = libusb_get_device_list(ctx, &devs);
+    if (cnt < 0) {
         libusb_exit(ctx);
+        throw std::runtime_error("Unable to enumerate libusb devices");
     }
 
-    std::string WebUsbTransport::get_path() const {
-        if (!m_usb_device_desc) {
-            return "";
+    log::trace(logcat, "Libusb devices: {}", cnt);
+
+    for (ssize_t i = 0; i < cnt; i++) {
+        libusb_device_descriptor desc{};
+        r = libusb_get_device_descriptor(devs[i], &desc);
+        if (r < 0) {
+            log::error(logcat, "Unable to get libusb device descriptor {}", i);
+            continue;
         }
 
-        return get_usb_path(static_cast<uint8_t>(m_bus_id), m_port_numbers);
-    };
-
-    void WebUsbTransport::open() {
-        if (!pre_open()) {
-            return;
+        const auto trezor_dev_idx = get_trezor_dev_id(&desc);
+        if (!is_device_supported(trezor_dev_idx)) {
+            continue;
         }
-        const int interface = get_interface();
+
+        log::trace(
+                logcat,
+                "Found Trezor device: {}:{} dev_idx {}",
+                desc.idVendor,
+                desc.idProduct,
+                (int)trezor_dev_idx);
+
+        auto t = std::make_shared<WebUsbTransport>(std::make_optional(&desc));
+        t->m_bus_id = libusb_get_bus_number(devs[i]);
+        t->m_device_addr = libusb_get_device_address(devs[i]);
+
+        // Port resolution may fail. Non-critical error, just addressing precision is decreased.
+        get_libusb_ports(devs[i], t->m_port_numbers);
+
+        res.push_back(t);
+    }
+
+    libusb_free_device_list(devs, 1);
+    libusb_exit(ctx);
+}
+
+std::string WebUsbTransport::get_path() const {
+    if (!m_usb_device_desc) {
+        return "";
+    }
+
+    return get_usb_path(static_cast<uint8_t>(m_bus_id), m_port_numbers);
+};
+
+void WebUsbTransport::open() {
+    if (!pre_open()) {
+        return;
+    }
+    const int interface = get_interface();
 
 #define TREZOR_DESTROY_SESSION()    \
     do {                            \
@@ -1019,337 +1010,335 @@ namespace hw { namespace trezor {
         m_usb_session = nullptr;    \
     } while (0)
 
-        int r;
-        libusb_device** devs = nullptr;
+    int r;
+    libusb_device** devs = nullptr;
 
-        if (m_usb_session) {
-            TREZOR_DESTROY_SESSION();
+    if (m_usb_session) {
+        TREZOR_DESTROY_SESSION();
+    }
+
+    r = libusb_init(&m_usb_session);
+    CHECK_AND_ASSERT_THROW_MES(r >= 0, "Unable to init libusb");
+    set_libusb_log(m_usb_session);
+
+    bool found = false;
+    int open_res = 0;
+
+    ssize_t cnt = libusb_get_device_list(m_usb_session, &devs);
+    if (cnt < 0) {
+        TREZOR_DESTROY_SESSION();
+        throw std::runtime_error("Unable to enumerate libusb devices");
+    }
+
+    for (ssize_t i = 0; i < cnt; i++) {
+        libusb_device_descriptor desc{};
+        r = libusb_get_device_descriptor(devs[i], &desc);
+        if (r < 0) {
+            log::error(logcat, "Unable to get libusb device descriptor {}", i);
+            continue;
         }
 
-        r = libusb_init(&m_usb_session);
-        CHECK_AND_ASSERT_THROW_MES(r >= 0, "Unable to init libusb");
-        set_libusb_log(m_usb_session);
-
-        bool found = false;
-        int open_res = 0;
-
-        ssize_t cnt = libusb_get_device_list(m_usb_session, &devs);
-        if (cnt < 0) {
-            TREZOR_DESTROY_SESSION();
-            throw std::runtime_error("Unable to enumerate libusb devices");
+        const auto trezor_dev_idx = get_trezor_dev_id(&desc);
+        if (!is_device_supported(trezor_dev_idx)) {
+            continue;
         }
 
-        for (ssize_t i = 0; i < cnt; i++) {
-            libusb_device_descriptor desc{};
-            r = libusb_get_device_descriptor(devs[i], &desc);
-            if (r < 0) {
-                log::error(logcat, "Unable to get libusb device descriptor {}", i);
-                continue;
-            }
+        auto bus_id = libusb_get_bus_number(devs[i]);
+        std::vector<uint8_t> path;
 
-            const auto trezor_dev_idx = get_trezor_dev_id(&desc);
-            if (!is_device_supported(trezor_dev_idx)) {
-                continue;
-            }
+        // Port resolution may fail. Non-critical error, just addressing precision is decreased.
+        get_libusb_ports(devs[i], path);
 
-            auto bus_id = libusb_get_bus_number(devs[i]);
-            std::vector<uint8_t> path;
+        log::trace(
+                logcat,
+                "Found Trezor device: {}:{}",
+                desc.idVendor,
+                desc.idProduct << ", dev_idx: " << (int)trezor_dev_idx
+                               << ". path: " << get_usb_path(bus_id, path));
 
-            // Port resolution may fail. Non-critical error, just addressing precision is decreased.
-            get_libusb_ports(devs[i], path);
-
-            log::trace(
-                    logcat,
-                    "Found Trezor device: {}:{}",
-                    desc.idVendor,
-                    desc.idProduct << ", dev_idx: " << (int)trezor_dev_idx
-                                   << ". path: " << get_usb_path(bus_id, path));
-
-            if (bus_id == m_bus_id && path == m_port_numbers) {
-                found = true;
-                m_usb_device = devs[i];
-                open_res = libusb_open(m_usb_device, &m_usb_device_handle);
-                break;
-            }
+        if (bus_id == m_bus_id && path == m_port_numbers) {
+            found = true;
+            m_usb_device = devs[i];
+            open_res = libusb_open(m_usb_device, &m_usb_device_handle);
+            break;
         }
+    }
 
-        libusb_free_device_list(devs, 1);
+    libusb_free_device_list(devs, 1);
 
-        if (!found) {
-            TREZOR_DESTROY_SESSION();
-            throw exc::DeviceAcquireException("Device not found");
+    if (!found) {
+        TREZOR_DESTROY_SESSION();
+        throw exc::DeviceAcquireException("Device not found");
 
-        } else if (found && open_res != 0) {
-            m_usb_device_handle = nullptr;
-            m_usb_device = nullptr;
-            TREZOR_DESTROY_SESSION();
-            throw exc::DeviceAcquireException("Unable to open libusb device");
-        }
+    } else if (found && open_res != 0) {
+        m_usb_device_handle = nullptr;
+        m_usb_device = nullptr;
+        TREZOR_DESTROY_SESSION();
+        throw exc::DeviceAcquireException("Unable to open libusb device");
+    }
 
-        r = libusb_claim_interface(m_usb_device_handle, interface);
+    r = libusb_claim_interface(m_usb_device_handle, interface);
 
-        if (r != 0) {
-            libusb_close(m_usb_device_handle);
-            m_usb_device_handle = nullptr;
-            m_usb_device = nullptr;
-            TREZOR_DESTROY_SESSION();
-            throw exc::DeviceAcquireException("Unable to claim libusb device");
-        }
+    if (r != 0) {
+        libusb_close(m_usb_device_handle);
+        m_usb_device_handle = nullptr;
+        m_usb_device = nullptr;
+        TREZOR_DESTROY_SESSION();
+        throw exc::DeviceAcquireException("Unable to claim libusb device");
+    }
 
-        m_open_counter = 1;
-        m_proto->session_begin(*this);
+    m_open_counter = 1;
+    m_proto->session_begin(*this);
 
 #undef TREZOR_DESTROY_SESSION
-    };
+};
 
-    void WebUsbTransport::close() {
-        if (!pre_close()) {
-            return;
-        }
-
-        log::trace(logcat, "Closing Trezor:WebUsbTransport");
-        m_proto->session_end(*this);
-
-        int r = libusb_release_interface(m_usb_device_handle, get_interface());
-        if (r != 0) {
-            log::error(logcat, "Could not release libusb interface: {}", r);
-        }
-
-        m_usb_device = nullptr;
-        if (m_usb_device_handle) {
-            libusb_close(m_usb_device_handle);
-            m_usb_device_handle = nullptr;
-        }
-
-        if (m_usb_session) {
-            libusb_exit(m_usb_session);
-            m_usb_session = nullptr;
-        }
-    };
-
-    std::shared_ptr<Transport> WebUsbTransport::find_debug() {
-#ifdef WITH_TREZOR_DEBUGGING
-        require_device();
-        auto t = std::make_shared<WebUsbTransport>(std::make_optional(m_usb_device_desc.get()));
-        t->m_bus_id = m_bus_id;
-        t->m_device_addr = m_device_addr;
-        t->m_port_numbers = m_port_numbers;
-        t->m_debug_mode = true;
-        return t;
-#else
-        log::info(logcat, "Debug link is disabled in production");
-        return nullptr;
-#endif
+void WebUsbTransport::close() {
+    if (!pre_close()) {
+        return;
     }
 
-    int WebUsbTransport::get_interface() const {
-        const int INTERFACE_NORMAL = 0;
-#ifdef WITH_TREZOR_DEBUGGING
-        const int INTERFACE_DEBUG = 1;
-        return m_debug_mode ? INTERFACE_DEBUG : INTERFACE_NORMAL;
-#else
-        return INTERFACE_NORMAL;
-#endif
+    log::trace(logcat, "Closing Trezor:WebUsbTransport");
+    m_proto->session_end(*this);
+
+    int r = libusb_release_interface(m_usb_device_handle, get_interface());
+    if (r != 0) {
+        log::error(logcat, "Could not release libusb interface: {}", r);
     }
 
-    unsigned char WebUsbTransport::get_endpoint() const {
-        const unsigned char ENDPOINT_NORMAL = 1;
-#ifdef WITH_TREZOR_DEBUGGING
-        const unsigned char ENDPOINT_DEBUG = 2;
-        return m_debug_mode ? ENDPOINT_DEBUG : ENDPOINT_NORMAL;
-#else
-        return ENDPOINT_NORMAL;
-#endif
+    m_usb_device = nullptr;
+    if (m_usb_device_handle) {
+        libusb_close(m_usb_device_handle);
+        m_usb_device_handle = nullptr;
     }
 
-    void WebUsbTransport::write(const google::protobuf::Message& req) {
-        m_proto->write(*this, req);
-    };
+    if (m_usb_session) {
+        libusb_exit(m_usb_session);
+        m_usb_session = nullptr;
+    }
+};
 
-    void WebUsbTransport::read(
-            std::shared_ptr<google::protobuf::Message>& msg, messages::MessageType* msg_type) {
-        m_proto->read(*this, msg, msg_type);
-    };
+std::shared_ptr<Transport> WebUsbTransport::find_debug() {
+#ifdef WITH_TREZOR_DEBUGGING
+    require_device();
+    auto t = std::make_shared<WebUsbTransport>(std::make_optional(m_usb_device_desc.get()));
+    t->m_bus_id = m_bus_id;
+    t->m_device_addr = m_device_addr;
+    t->m_port_numbers = m_port_numbers;
+    t->m_debug_mode = true;
+    return t;
+#else
+    log::info(logcat, "Debug link is disabled in production");
+    return nullptr;
+#endif
+}
 
-    void WebUsbTransport::write_chunk(const void* buff, size_t size) {
-        require_connected();
-        if (size != REPLEN) {
-            throw exc::CommunicationException("Invalid chunk size: ");
-        }
+int WebUsbTransport::get_interface() const {
+    const int INTERFACE_NORMAL = 0;
+#ifdef WITH_TREZOR_DEBUGGING
+    const int INTERFACE_DEBUG = 1;
+    return m_debug_mode ? INTERFACE_DEBUG : INTERFACE_NORMAL;
+#else
+    return INTERFACE_NORMAL;
+#endif
+}
 
-        unsigned char endpoint = get_endpoint();
-        endpoint = (endpoint & ~LIBUSB_ENDPOINT_DIR_MASK) | LIBUSB_ENDPOINT_OUT;
+unsigned char WebUsbTransport::get_endpoint() const {
+    const unsigned char ENDPOINT_NORMAL = 1;
+#ifdef WITH_TREZOR_DEBUGGING
+    const unsigned char ENDPOINT_DEBUG = 2;
+    return m_debug_mode ? ENDPOINT_DEBUG : ENDPOINT_NORMAL;
+#else
+    return ENDPOINT_NORMAL;
+#endif
+}
 
-        int transferred = 0;
-        int r = libusb_interrupt_transfer(
-                m_usb_device_handle, endpoint, (unsigned char*)buff, (int)size, &transferred, 0);
-        CHECK_AND_ASSERT_THROW_MES(r == 0, "Unable to transfer, r: " << r);
-        if (transferred != (int)size) {
-            throw exc::CommunicationException("Could not transfer chunk");
-        }
-    };
+void WebUsbTransport::write(const google::protobuf::Message& req) {
+    m_proto->write(*this, req);
+};
 
-    size_t WebUsbTransport::read_chunk(void* buff, size_t size) {
-        require_connected();
-        unsigned char endpoint = get_endpoint();
-        endpoint = (endpoint & ~LIBUSB_ENDPOINT_DIR_MASK) | LIBUSB_ENDPOINT_IN;
+void WebUsbTransport::read(
+        std::shared_ptr<google::protobuf::Message>& msg, messages::MessageType* msg_type) {
+    m_proto->read(*this, msg, msg_type);
+};
 
-        int transferred = 0;
-        int r = libusb_interrupt_transfer(
-                m_usb_device_handle, endpoint, (unsigned char*)buff, (int)size, &transferred, 0);
-        CHECK_AND_ASSERT_THROW_MES(r == 0, "Unable to transfer, r: " << r);
-        if (transferred != (int)size) {
-            throw exc::CommunicationException("Could not read the chunk");
-        }
+void WebUsbTransport::write_chunk(const void* buff, size_t size) {
+    require_connected();
+    if (size != REPLEN) {
+        throw exc::CommunicationException("Invalid chunk size: ");
+    }
 
-        return transferred;
-    };
+    unsigned char endpoint = get_endpoint();
+    endpoint = (endpoint & ~LIBUSB_ENDPOINT_DIR_MASK) | LIBUSB_ENDPOINT_OUT;
 
-    std::ostream& WebUsbTransport::dump(std::ostream& o) const {
-        o << "WebUsbTransport<path=" << get_path() << ", vendorId="
-          << (m_usb_device_desc ? std::to_string(m_usb_device_desc->idVendor) : "?")
-          << ", productId="
-          << (m_usb_device_desc ? std::to_string(m_usb_device_desc->idProduct) : "?")
-          << ", deviceType=";
+    int transferred = 0;
+    int r = libusb_interrupt_transfer(
+            m_usb_device_handle, endpoint, (unsigned char*)buff, (int)size, &transferred, 0);
+    CHECK_AND_ASSERT_THROW_MES(r == 0, "Unable to transfer, r: " << r);
+    if (transferred != (int)size) {
+        throw exc::CommunicationException("Could not transfer chunk");
+    }
+};
 
-        if (m_usb_device_desc) {
-            if (is_trezor1(m_usb_device_desc.get()))
-                o << "TrezorOne";
-            else if (is_trezor2(m_usb_device_desc.get()))
-                o << "TrezorT";
-            else if (is_trezor2_bl(m_usb_device_desc.get()))
-                o << "TrezorT BL";
-        } else {
-            o << "?";
-        }
+size_t WebUsbTransport::read_chunk(void* buff, size_t size) {
+    require_connected();
+    unsigned char endpoint = get_endpoint();
+    endpoint = (endpoint & ~LIBUSB_ENDPOINT_DIR_MASK) | LIBUSB_ENDPOINT_IN;
 
-        return o << ">";
-    };
+    int transferred = 0;
+    int r = libusb_interrupt_transfer(
+            m_usb_device_handle, endpoint, (unsigned char*)buff, (int)size, &transferred, 0);
+    CHECK_AND_ASSERT_THROW_MES(r == 0, "Unable to transfer, r: " << r);
+    if (transferred != (int)size) {
+        throw exc::CommunicationException("Could not read the chunk");
+    }
+
+    return transferred;
+};
+
+std::ostream& WebUsbTransport::dump(std::ostream& o) const {
+    o << "WebUsbTransport<path=" << get_path()
+      << ", vendorId=" << (m_usb_device_desc ? std::to_string(m_usb_device_desc->idVendor) : "?")
+      << ", productId=" << (m_usb_device_desc ? std::to_string(m_usb_device_desc->idProduct) : "?")
+      << ", deviceType=";
+
+    if (m_usb_device_desc) {
+        if (is_trezor1(m_usb_device_desc.get()))
+            o << "TrezorOne";
+        else if (is_trezor2(m_usb_device_desc.get()))
+            o << "TrezorT";
+        else if (is_trezor2_bl(m_usb_device_desc.get()))
+            o << "TrezorT BL";
+    } else {
+        o << "?";
+    }
+
+    return o << ">";
+};
 
 #endif  // WITH_DEVICE_TREZOR_WEBUSB
 
-    void enumerate(t_transport_vect& res) {
-        BridgeTransport bt;
-        try {
-            bt.enumerate(res);
-        } catch (const std::exception& e) {
-            log::error(logcat, "BridgeTransport enumeration failed:{}", e.what());
-        }
+void enumerate(t_transport_vect& res) {
+    BridgeTransport bt;
+    try {
+        bt.enumerate(res);
+    } catch (const std::exception& e) {
+        log::error(logcat, "BridgeTransport enumeration failed:{}", e.what());
+    }
 
 #ifdef WITH_DEVICE_TREZOR_WEBUSB
-        hw::trezor::WebUsbTransport btw;
-        try {
-            btw.enumerate(res);
-        } catch (const std::exception& e) {
-            log::error(logcat, "WebUsbTransport enumeration failed:{}", e.what());
-        }
+    hw::trezor::WebUsbTransport btw;
+    try {
+        btw.enumerate(res);
+    } catch (const std::exception& e) {
+        log::error(logcat, "WebUsbTransport enumeration failed:{}", e.what());
+    }
 #endif
 
 #ifdef WITH_DEVICE_TREZOR_UDP
-        hw::trezor::UdpTransport btu;
-        try {
-            btu.enumerate(res);
-        } catch (const std::exception& e) {
-            log::error(logcat, "UdpTransport enumeration failed:{}", e.what());
-        }
+    hw::trezor::UdpTransport btu;
+    try {
+        btu.enumerate(res);
+    } catch (const std::exception& e) {
+        log::error(logcat, "UdpTransport enumeration failed:{}", e.what());
+    }
 #endif
+}
+
+void sort_transports_by_env(t_transport_vect& res) {
+    const char* env_trezor_path = getenv("TREZOR_PATH");
+    if (!env_trezor_path) {
+        return;
     }
 
-    void sort_transports_by_env(t_transport_vect& res) {
-        const char* env_trezor_path = getenv("TREZOR_PATH");
-        if (!env_trezor_path) {
-            return;
+    // Sort transports by the longest matching prefix with TREZOR_PATH
+    std::string trezor_path(env_trezor_path);
+    std::vector<size_t> match_idx(res.size());
+    std::vector<size_t> path_permutation(res.size());
+
+    for (size_t i = 0; i < res.size(); ++i) {
+        auto cpath = res[i]->get_path();
+        std::string* s1 = &trezor_path;
+        std::string* s2 = &cpath;
+
+        // first has to be shorter in std::mismatch(). Returns first non-matching iterators.
+        if (s1->size() >= s2->size()) {
+            std::swap(s1, s2);
         }
 
-        // Sort transports by the longest matching prefix with TREZOR_PATH
-        std::string trezor_path(env_trezor_path);
-        std::vector<size_t> match_idx(res.size());
-        std::vector<size_t> path_permutation(res.size());
-
-        for (size_t i = 0; i < res.size(); ++i) {
-            auto cpath = res[i]->get_path();
-            std::string* s1 = &trezor_path;
-            std::string* s2 = &cpath;
-
-            // first has to be shorter in std::mismatch(). Returns first non-matching iterators.
-            if (s1->size() >= s2->size()) {
-                std::swap(s1, s2);
-            }
-
-            const auto mism = std::mismatch(s1->begin(), s1->end(), s2->begin());
-            match_idx[i] = mism.first - s1->begin();
-            path_permutation[i] = i;
-        }
-
-        std::sort(
-                path_permutation.begin(),
-                path_permutation.end(),
-                [&](const size_t i0, const size_t i1) { return match_idx[i0] > match_idx[i1]; });
-
-        tools::apply_permutation(path_permutation, res);
+        const auto mism = std::mismatch(s1->begin(), s1->end(), s2->begin());
+        match_idx[i] = mism.first - s1->begin();
+        path_permutation[i] = i;
     }
 
-    std::shared_ptr<Transport> transport(const std::string& path) {
-        if (tools::starts_with(path, BridgeTransport::PATH_PREFIX)) {
-            return std::make_shared<BridgeTransport>(
-                    path.substr(strlen(BridgeTransport::PATH_PREFIX)));
+    std::sort(
+            path_permutation.begin(),
+            path_permutation.end(),
+            [&](const size_t i0, const size_t i1) { return match_idx[i0] > match_idx[i1]; });
 
-        } else if (tools::starts_with(path, UdpTransport::PATH_PREFIX)) {
-            return std::make_shared<UdpTransport>(path.substr(strlen(UdpTransport::PATH_PREFIX)));
+    tools::apply_permutation(path_permutation, res);
+}
 
-        } else {
-            throw std::invalid_argument("Unknown Trezor device path: " + path);
-        }
+std::shared_ptr<Transport> transport(const std::string& path) {
+    if (path.starts_with(BridgeTransport::PATH_PREFIX)) {
+        return std::make_shared<BridgeTransport>(path.substr(strlen(BridgeTransport::PATH_PREFIX)));
+
+    } else if (path.starts_with(UdpTransport::PATH_PREFIX)) {
+        return std::make_shared<UdpTransport>(path.substr(strlen(UdpTransport::PATH_PREFIX)));
+
+    } else {
+        throw std::invalid_argument("Unknown Trezor device path: " + path);
+    }
+}
+
+void throw_failure_exception(const messages::common::Failure* failure) {
+    if (failure == nullptr) {
+        throw std::invalid_argument("Failure message cannot be null");
     }
 
-    void throw_failure_exception(const messages::common::Failure* failure) {
-        if (failure == nullptr) {
-            throw std::invalid_argument("Failure message cannot be null");
-        }
-
-        std::optional<std::string> message =
-                failure->has_message() ? std::make_optional(failure->message()) : std::nullopt;
-        std::optional<uint32_t> code =
-                failure->has_code() ? std::make_optional(static_cast<uint32_t>(failure->code()))
-                                    : std::nullopt;
-        if (!code) {
-            throw exc::proto::FailureException(code, message);
-        }
-
-        auto ecode = failure->code();
-        if (ecode == messages::common::Failure_FailureType_Failure_UnexpectedMessage) {
-            throw exc::proto::UnexpectedMessageException(code, message);
-        } else if (ecode == messages::common::Failure_FailureType_Failure_ActionCancelled) {
-            throw exc::proto::CancelledException(code, message);
-        } else if (ecode == messages::common::Failure_FailureType_Failure_PinExpected) {
-            throw exc::proto::PinExpectedException(code, message);
-        } else if (ecode == messages::common::Failure_FailureType_Failure_PinInvalid) {
-            throw exc::proto::InvalidPinException(code, message);
-        } else if (ecode == messages::common::Failure_FailureType_Failure_NotEnoughFunds) {
-            throw exc::proto::NotEnoughFundsException(code, message);
-        } else if (ecode == messages::common::Failure_FailureType_Failure_NotInitialized) {
-            throw exc::proto::NotInitializedException(code, message);
-        } else if (ecode == messages::common::Failure_FailureType_Failure_FirmwareError) {
-            throw exc::proto::FirmwareErrorException(code, message);
-        } else {
-            throw exc::proto::FailureException(code, message);
-        }
+    std::optional<std::string> message =
+            failure->has_message() ? std::make_optional(failure->message()) : std::nullopt;
+    std::optional<uint32_t> code =
+            failure->has_code() ? std::make_optional(static_cast<uint32_t>(failure->code()))
+                                : std::nullopt;
+    if (!code) {
+        throw exc::proto::FailureException(code, message);
     }
 
-    GenericMessage::GenericMessage(
-            messages::MessageType m_type, const shared_ptr<google::protobuf::Message>& m_msg) :
-            m_type(m_type), m_msg(m_msg), m_empty(false) {}
+    auto ecode = failure->code();
+    if (ecode == messages::common::Failure_FailureType_Failure_UnexpectedMessage) {
+        throw exc::proto::UnexpectedMessageException(code, message);
+    } else if (ecode == messages::common::Failure_FailureType_Failure_ActionCancelled) {
+        throw exc::proto::CancelledException(code, message);
+    } else if (ecode == messages::common::Failure_FailureType_Failure_PinExpected) {
+        throw exc::proto::PinExpectedException(code, message);
+    } else if (ecode == messages::common::Failure_FailureType_Failure_PinInvalid) {
+        throw exc::proto::InvalidPinException(code, message);
+    } else if (ecode == messages::common::Failure_FailureType_Failure_NotEnoughFunds) {
+        throw exc::proto::NotEnoughFundsException(code, message);
+    } else if (ecode == messages::common::Failure_FailureType_Failure_NotInitialized) {
+        throw exc::proto::NotInitializedException(code, message);
+    } else if (ecode == messages::common::Failure_FailureType_Failure_FirmwareError) {
+        throw exc::proto::FirmwareErrorException(code, message);
+    } else {
+        throw exc::proto::FailureException(code, message);
+    }
+}
 
-    std::ostream& operator<<(std::ostream& o, hw::trezor::Transport const& t) {
-        return t.dump(o);
+GenericMessage::GenericMessage(
+        messages::MessageType m_type, const shared_ptr<google::protobuf::Message>& m_msg) :
+        m_type(m_type), m_msg(m_msg), m_empty(false) {}
+
+std::ostream& operator<<(std::ostream& o, hw::trezor::Transport const& t) {
+    return t.dump(o);
+}
+
+std::ostream& operator<<(std::ostream& o, std::shared_ptr<hw::trezor::Transport> const& t) {
+    if (!t) {
+        return o << "None";
     }
 
-    std::ostream& operator<<(std::ostream& o, std::shared_ptr<hw::trezor::Transport> const& t) {
-        if (!t) {
-            return o << "None";
-        }
+    return t->dump(o);
+}
 
-        return t->dump(o);
-    }
-
-}}  // namespace hw::trezor
+}  // namespace hw::trezor

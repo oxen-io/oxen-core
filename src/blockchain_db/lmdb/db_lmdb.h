@@ -497,13 +497,9 @@ class BlockchainLMDB : public BlockchainDB {
     bool remove_service_node_proof(const crypto::public_key& pubkey) override;
 
   private:
-    template <
-            typename T,
-            std::enable_if_t<
-                    std::is_same_v<T, cryptonote::block> ||
-                            std::is_same_v<T, cryptonote::block_header> ||
-                            std::is_same_v<T, std::string>,
-                    int> = 0>
+    template <typename T>
+        requires std::is_same_v<T, cryptonote::block> ||
+                 std::is_same_v<T, cryptonote::block_header> || std::is_same_v<T, std::string>
     T get_and_convert_block_blob_from_height(uint64_t height) const;
 
     MDB_env* m_env;

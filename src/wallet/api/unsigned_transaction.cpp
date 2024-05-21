@@ -54,7 +54,7 @@ UnsignedTransactionImpl::~UnsignedTransactionImpl() {
 
 EXPORT
 bool UnsignedTransactionImpl::sign(std::string_view signedFileName_) {
-    auto signedFileName = fs::u8path(signedFileName_);
+    auto signedFileName = tools::utf8_path(signedFileName_);
     if (m_wallet.watchOnly()) {
         m_status = {Status_Error, "This is a watch only wallet"};
         return false;

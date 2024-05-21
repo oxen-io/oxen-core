@@ -55,7 +55,7 @@ constexpr uint8_t TX_EXTRA_TAG_PADDING = 0x00, TX_EXTRA_TAG_PUBKEY = 0x01, TX_EX
                   TX_EXTRA_TAG_OXEN_NAME_SYSTEM = 0x7A,
                   TX_EXTRA_TAG_ETHEREUM_ADDRESS_NOTIFICATION = 0x7B,
                   TX_EXTRA_TAG_ETHEREUM_NEW_SERVICE_NODE = 0x7C,
-                  TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_LEAVE_REQUEST= 0x7D,
+                  TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_LEAVE_REQUEST = 0x7D,
                   TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_DEREGISTER = 0x7E,
                   TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_EXIT = 0x7F,
 
@@ -237,7 +237,8 @@ void inner_serializer(Archive& ar, tx_extra_merge_mining_tag& mm) {
 }
 
 // load
-template <class Archive, std::enable_if_t<Archive::is_deserializer, int> = 0>
+template <class Archive>
+    requires Archive::is_deserializer
 void serialize_value(Archive& ar, tx_extra_merge_mining_tag& mm) {
     // MM tag gets binary-serialized into a string, and then that string gets serialized (as a
     // string).  This is very strange.
@@ -249,7 +250,8 @@ void serialize_value(Archive& ar, tx_extra_merge_mining_tag& mm) {
 }
 
 // store
-template <class Archive, std::enable_if_t<Archive::is_serializer, int> = 0>
+template <class Archive>
+    requires Archive::is_serializer
 void serialize_value(Archive& ar, tx_extra_merge_mining_tag& mm) {
     // As above: first we binary-serialize into a string, then we serialize the string.
     serialization::binary_string_archiver inner_ar;
@@ -643,12 +645,12 @@ struct tx_extra_ethereum_contributor {
     uint64_t amount;
 
     tx_extra_ethereum_contributor() = default;
-    tx_extra_ethereum_contributor(const crypto::eth_address& addr, uint64_t amt)
-        : address(addr), amount(amt) {}
+    tx_extra_ethereum_contributor(const crypto::eth_address& addr, uint64_t amt) :
+            address(addr), amount(amt) {}
 
     BEGIN_SERIALIZE()
-        FIELD(address)
-        FIELD(amount)
+    FIELD(address)
+    FIELD(amount)
     END_SERIALIZE()
 };
 
@@ -662,13 +664,13 @@ struct tx_extra_ethereum_new_service_node {
     std::vector<tx_extra_ethereum_contributor> contributors;
 
     BEGIN_SERIALIZE()
-        FIELD(version)
-        FIELD(bls_key)
-        FIELD(eth_address)
-        FIELD(service_node_pubkey)
-        FIELD(signature)
-        FIELD(fee)
-        FIELD(contributors)
+    FIELD(version)
+    FIELD(bls_key)
+    FIELD(eth_address)
+    FIELD(service_node_pubkey)
+    FIELD(signature)
+    FIELD(fee)
+    FIELD(contributors)
     END_SERIALIZE()
 };
 
@@ -677,8 +679,8 @@ struct tx_extra_ethereum_service_node_leave_request {
     crypto::bls_public_key bls_key;
 
     BEGIN_SERIALIZE()
-        FIELD(version)
-        FIELD(bls_key)
+    FIELD(version)
+    FIELD(bls_key)
     END_SERIALIZE()
 };
 
@@ -689,10 +691,10 @@ struct tx_extra_ethereum_service_node_exit {
     crypto::bls_public_key bls_key;
 
     BEGIN_SERIALIZE()
-        FIELD(version)
-        FIELD(eth_address)
-        FIELD(amount)
-        FIELD(bls_key)
+    FIELD(version)
+    FIELD(eth_address)
+    FIELD(amount)
+    FIELD(bls_key)
     END_SERIALIZE()
 };
 
@@ -701,8 +703,8 @@ struct tx_extra_ethereum_service_node_deregister {
     crypto::bls_public_key bls_key;
 
     BEGIN_SERIALIZE()
-        FIELD(version)
-        FIELD(bls_key)
+    FIELD(version)
+    FIELD(bls_key)
     END_SERIALIZE()
 };
 
@@ -774,12 +776,17 @@ BINARY_VARIANT_TAG(cryptonote::tx_extra_burn, cryptonote::TX_EXTRA_TAG_BURN);
 BINARY_VARIANT_TAG(
         cryptonote::tx_extra_oxen_name_system, cryptonote::TX_EXTRA_TAG_OXEN_NAME_SYSTEM);
 BINARY_VARIANT_TAG(
-        cryptonote::tx_extra_ethereum_address_notification, cryptonote::TX_EXTRA_TAG_ETHEREUM_ADDRESS_NOTIFICATION);
+        cryptonote::tx_extra_ethereum_address_notification,
+        cryptonote::TX_EXTRA_TAG_ETHEREUM_ADDRESS_NOTIFICATION);
 BINARY_VARIANT_TAG(
-        cryptonote::tx_extra_ethereum_new_service_node, cryptonote::TX_EXTRA_TAG_ETHEREUM_NEW_SERVICE_NODE);
+        cryptonote::tx_extra_ethereum_new_service_node,
+        cryptonote::TX_EXTRA_TAG_ETHEREUM_NEW_SERVICE_NODE);
 BINARY_VARIANT_TAG(
-        cryptonote::tx_extra_ethereum_service_node_leave_request, cryptonote::TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_LEAVE_REQUEST);
+        cryptonote::tx_extra_ethereum_service_node_leave_request,
+        cryptonote::TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_LEAVE_REQUEST);
 BINARY_VARIANT_TAG(
-        cryptonote::tx_extra_ethereum_service_node_exit, cryptonote::TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_EXIT);
+        cryptonote::tx_extra_ethereum_service_node_exit,
+        cryptonote::TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_EXIT);
 BINARY_VARIANT_TAG(
-        cryptonote::tx_extra_ethereum_service_node_deregister, cryptonote::TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_DEREGISTER);
+        cryptonote::tx_extra_ethereum_service_node_deregister,
+        cryptonote::TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_DEREGISTER);

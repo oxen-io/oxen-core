@@ -159,6 +159,7 @@ class BlockchainDBTest : public testing::Test
 protected:
   BlockchainDBTest() : m_db(new T())
   {
+    auto logcat = oxen::log::Cat("db_test");
     for (auto& i : t_blocks)
     {
       block bl;
@@ -205,7 +206,7 @@ protected:
     // remove each file the db created, making sure it starts with fname.
     for (auto& f : m_filenames)
     {
-      if (tools::starts_with(f.u8string(), m_prefix.u8string()))
+      if (f.u8string().starts_with(m_prefix.u8string()))
       {
         fs::remove(f);
       }
@@ -219,9 +220,9 @@ protected:
     fs::remove_all(m_prefix);
   }
 
-  void set_prefix(const std::string& prefix)
+  void set_prefix(std::string_view prefix)
   {
-    m_prefix = fs::u8path(prefix);
+    m_prefix = fs::path(tools::convert_sv<char8_t>(prefix));
   }
 };
 

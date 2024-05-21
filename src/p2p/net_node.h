@@ -44,6 +44,7 @@
 #include <vector>
 
 #include "common/command_line.h"
+#include "common/formattable.h"
 #include "common/fs.h"
 #include "common/periodic_task.h"
 #include "common/util.h"
@@ -109,6 +110,14 @@ struct p2p_connection_context_t : base_type  // t_payload_net_handler::connectio
     bool m_in_timedsync;
     std::set<epee::net_utils::network_address> sent_addresses;
 };
+
+enum class PeerType { anchor = 0, white, gray };
+inline constexpr std::string_view to_string(PeerType pt) {
+    return pt == PeerType::anchor ? "anchor"
+         : pt == PeerType::white  ? "white"
+         : pt == PeerType::gray   ? "gray"
+                                  : "unknown";
+}
 
 template <class t_payload_net_handler>
 class node_server
@@ -290,8 +299,6 @@ class node_server
             m_payload_handler, typename t_payload_net_handler::connection_context&)
     END_INVOKE_MAP2()
 
-    enum PeerType { anchor = 0, white, gray };
-
     //----------------- commands handlers ----------------------------------------------
     int handle_handshake(
             int command,
@@ -385,7 +392,7 @@ class node_server
             const epee::net_utils::network_address& na,
             bool just_take_peerlist = false,
             uint64_t last_seen_stamp = 0,
-            PeerType peer_type = white,
+            PeerType peer_type = PeerType::white,
             uint64_t first_seen_stamp = 0);
     size_t get_random_index_with_fixed_probability(size_t max_index);
     bool is_peer_used(const peerlist_entry& peer);
@@ -539,5 +546,8 @@ extern const command_line::arg_descriptor<int64_t> arg_limit_rate_up;
 extern const command_line::arg_descriptor<int64_t> arg_limit_rate_down;
 extern const command_line::arg_descriptor<int64_t> arg_limit_rate;
 }  // namespace nodetool
+
+template <>
+inline constexpr bool formattable::via_to_string<nodetool::PeerType> = true;
 
 POP_WARNINGS

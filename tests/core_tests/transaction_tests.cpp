@@ -35,6 +35,7 @@
 
 using namespace cryptonote;
 
+static auto logcat = oxen::log::Cat("core_tests");
 
 
 bool test_transaction_generation_and_ring_signature()

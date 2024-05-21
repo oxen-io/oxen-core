@@ -389,10 +389,10 @@ bool daemon::run(bool interactive) {
         log::info(logcat, "Node stopped.");
         return true;
     } catch (std::exception const& ex) {
-        log::error(logcat, ex.what());
+        log::error(logcat, "An exception occurred: {}", ex.what());
         return false;
     } catch (...) {
-        log::error(logcat, "Unknown exception occured!");
+        log::error(logcat, "Unknown exception occurred!");
         return false;
     }
 }

@@ -1,26 +1,16 @@
 #pragma once
 
-// Header to load the std::filesystem namespace (or something compatible with it) as the `fs`
-// namespace.  For older compilers (which generally just means macos before pre-10.15) we can't
-// actually use std::filesystem because Apple's libc++ developers are incompetent.
-//
-// Also provides fs::ifstream/ofstream/fstream which will be either directly
-// std::ifstream/ofstream/fstream (if under a proper C++17), or a simple wrapper around them that
-// supports a C++17-style fs::path filename argument.
-
-#ifndef USE_GHC_FILESYSTEM
-
 #include <filesystem>
-namespace fs {
-using namespace std::filesystem;
-using ifstream = std::ifstream;
-using ofstream = std::ofstream;
-using fstream = std::fstream;
-}  // namespace fs
-#else
+#include <string_view>
 
-#include <ghc/filesystem.hpp>
+#include "string_util.h"
 
-namespace fs = ghc::filesystem;
+namespace fs = std::filesystem;
 
-#endif
+namespace tools {
+
+inline fs::path utf8_path(std::string_view p) {
+    return fs::path{convert_sv<char8_t>(p)};
+}
+
+}  // namespace tools

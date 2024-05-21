@@ -46,7 +46,6 @@ target_link_libraries(daemon
     daemon_rpc_server
     logging
     version
-    filesystem
     Boost::program_options
     SQLiteCpp
     systemd

@@ -29,6 +29,7 @@
 #include "db_lmdb.h"
 
 #include <fmt/color.h>
+#include <fmt/std.h>
 #include <oxenc/endian.h>
 
 #include <boost/circular_buffer.hpp>
@@ -39,8 +40,6 @@
 #include <variant>
 
 #include "checkpoints/checkpoints.h"
-#include "common/file.h"
-#include "common/fs-format.h"
 #include "common/hex.h"
 #include "common/median.h"
 #include "common/pruning.h"
@@ -86,13 +85,13 @@ static_assert(
 
 template <typename T>
 void throw0(const T& e) {
-    log::warning(logcat, e.what());
+    log::warning(logcat, "{}", e.what());
     throw e;
 }
 
 template <typename T>
 void throw1(const T& e) {
-    log::error(logcat, e.what());
+    log::error(logcat, "{}", e.what());
     throw e;
 }
 
@@ -496,7 +495,7 @@ mdb_threadinfo::~mdb_threadinfo() {
         mdb_txn_abort(m_ti_rtxn);
 }
 
-mdb_txn_safe::mdb_txn_safe(const bool check) : m_txn(NULL), m_tinfo(NULL), m_check(check) {
+mdb_txn_safe::mdb_txn_safe(const bool check) : m_tinfo(NULL), m_txn(NULL), m_check(check) {
     if (check) {
         while (creation_gate.test_and_set())
             ;
@@ -990,7 +989,7 @@ void BlockchainLMDB::remove_block() {
 }
 
 uint64_t BlockchainLMDB::add_transaction_data(
-        const crypto::hash& blk_hash,
+        const crypto::hash& /*blk_hash*/,
         const std::pair<transaction, std::string>& txp,
         const crypto::hash& tx_hash,
         const crypto::hash& tx_prunable_hash) {
@@ -1465,14 +1464,14 @@ void BlockchainLMDB::open(
             throw0(DB_OPEN_FAILURE("LMDB needs a directory path, but a file was passed"));
     } else {
         if (std::error_code ec; !fs::create_directories(filename, ec))
-            throw0(DB_OPEN_FAILURE("Failed to create directory " + filename.u8string()));
+            throw0(DB_OPEN_FAILURE("Failed to create directory {}"_format(filename)));
     }
 
     // check for existing LMDB files in base directory
     auto old_files = filename.parent_path();
     if (fs::exists(old_files / BLOCKCHAINDATA_FILENAME) ||
         fs::exists(old_files / BLOCKCHAINDATA_LOCK_FILENAME)) {
-        log::warning(logcat, "Found existing LMDB files in {}", old_files.u8string());
+        log::warning(logcat, "Found existing LMDB files in {}", old_files);
         log::warning(
                 logcat,
                 "Move {} and/or {} to {}, or delete them, and then restart",
@@ -2725,13 +2724,9 @@ bool BlockchainLMDB::block_exists(const crypto::hash& h, uint64_t* height) const
     return ret;
 }
 
-template <
-        typename T,
-        std::enable_if_t<
-                std::is_same_v<T, cryptonote::block> ||
-                        std::is_same_v<T, cryptonote::block_header> ||
-                        std::is_same_v<T, std::string>,
-                int>>
+template <typename T>
+    requires std::is_same_v<T, cryptonote::block> || std::is_same_v<T, cryptonote::block_header> ||
+             std::is_same_v<T, std::string>
 T BlockchainLMDB::get_and_convert_block_blob_from_height(uint64_t height) const {
     // NOTE: Avoid any intermediary functions like taking a blob, then converting
     // to block which incurs a copy into std::string then conversion, and prefer
@@ -4656,7 +4651,6 @@ bool BlockchainLMDB::get_output_distribution(
         return false;
     distribution.resize(db_height - from_height, 0);
 
-    bool fret = true;
     MDB_val_set(k, amount);
     MDB_val v;
     MDB_cursor_op op = MDB_SET;
@@ -4904,7 +4898,6 @@ void BlockchainLMDB::fixup(cryptonote::network_type nettype) {
     try {
         uint64_t const BLOCKS_PER_BATCH = 10000;
         uint64_t num_blocks = height() - 1;
-        uint64_t const blocks_in_last_batch = num_blocks % BLOCKS_PER_BATCH;
         uint64_t const num_batches = (num_blocks + (BLOCKS_PER_BATCH - 1)) / BLOCKS_PER_BATCH;
 
         uint64_t curr_cumulative_diff = 1;
@@ -5707,11 +5700,10 @@ void BlockchainLMDB::migrate_0_1() {
 
 void BlockchainLMDB::migrate_1_2() {
     log::trace(logcat, "BlockchainLMDB::{}", __func__);
-    uint64_t i, z;
+    uint64_t i;
     int result;
     mdb_txn_safe txn(false);
     MDB_val k, v;
-    char* ptr;
 
     log::info(
             logcat,
@@ -6035,7 +6027,6 @@ void BlockchainLMDB::migrate_3_4() {
                             throw0(DB_ERROR(
                                     lmdb_error("Failed to enumerate transactions: ", ret).c_str()));
 
-                        const crypto::hash& hash = tx_index->key;
                         tx_index = (txindex const*)val.mv_data;
                         key.mv_data = (void*)&tx_index->data.tx_id;
                         key.mv_size = sizeof(tx_index->data.tx_id);
@@ -6260,7 +6251,7 @@ void BlockchainLMDB::migrate_3_4() {
         throw0(DB_ERROR(lmdb_error("Failed to update version for the db: ", result).c_str()));
 }
 
-void BlockchainLMDB::migrate_4_5(cryptonote::network_type nettype) {
+void BlockchainLMDB::migrate_4_5(cryptonote::network_type /*nettype*/) {
     log::trace(logcat, "BlockchainLMDB::{}", __func__);
     log::info(
             logcat,
@@ -6400,8 +6391,6 @@ void BlockchainLMDB::migrate_5_6() {
 
         auto const* header = static_cast<blk_checkpoint_header const*>(val.mv_data);
         auto num_sigs = oxenc::little_to_host(header->num_signatures);
-        auto const* aligned_signatures = reinterpret_cast<service_nodes::quorum_signature*>(
-                static_cast<uint8_t*>(val.mv_data) + sizeof(*header));
         if (num_sigs == 0)
             continue;  // NOTE: Hardcoded checkpoints
 
@@ -6413,9 +6402,7 @@ void BlockchainLMDB::migrate_5_6() {
 
         bool unaligned_checkpoint = false;
         {
-            std::array<int, service_nodes::CHECKPOINT_QUORUM_SIZE> vote_set = {};
             for (size_t i = 0; i < num_sigs; i++) {
-                auto const& entry = aligned_signatures[i];
                 size_t const actual_num_bytes_for_signatures = val.mv_size - sizeof(*header);
                 size_t const expected_num_bytes_for_signatures =
                         sizeof(service_nodes::quorum_signature) * num_sigs;
@@ -6651,9 +6638,9 @@ struct service_node_proof_serialized_old {
             timestamp{oxenc::host_to_little(info.timestamp)},
             ip{oxenc::host_to_little(info.proof->public_ip)},
             storage_https_port{oxenc::host_to_little(info.proof->storage_https_port)},
-            storage_omq_port{oxenc::host_to_little(info.proof->storage_omq_port)},
             quorumnet_port{oxenc::host_to_little(info.proof->qnet_port)},
             version{host_to_little_container(info.proof->version)},
+            storage_omq_port{oxenc::host_to_little(info.proof->storage_omq_port)},
             pubkey_ed25519{info.proof->pubkey_ed25519} {}
 
     void update(service_nodes::proof_info& info) const {

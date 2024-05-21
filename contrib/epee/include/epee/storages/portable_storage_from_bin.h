@@ -63,7 +63,7 @@ namespace epee
         recursion_limiter(size_t& counter):m_counter_ref(counter)
         {
           ++m_counter_ref;
-          CHECK_AND_ASSERT_THROW_MES(m_counter_ref < RECURSION_LIMIT, "Wrong blob data in portable storage: recursion limit (" << RECURSION_LIMIT << ") exceeded");
+          CHECK_AND_ASSERT_THROW_MES(m_counter_ref < RECURSION_LIMIT, "Wrong blob data in portable storage: recursion limit ({}) exceeded", RECURSION_LIMIT);
         }
         ~recursion_limiter()
         {
@@ -90,7 +90,7 @@ namespace epee
     inline 
     void throwable_buffer_reader::read(void* target, size_t count)
     {
-      CHECK_AND_ASSERT_THROW_MES(m_count >= count, " attempt to read " << count << " bytes from buffer with " << m_count << " bytes remained");
+      CHECK_AND_ASSERT_THROW_MES(m_count >= count, " attempt to read {} bytes from buffer with {} bytes remained", count, m_count);
       memcpy(target, m_ptr, count);
       m_ptr += count;
       m_count -= count;
@@ -158,7 +158,7 @@ namespace epee
         case SERIALIZE_TYPE_TAG<std::string>: return read_ae<std::string>();
         case SERIALIZE_TYPE_TAG<section>:     return read_ae<section>();
         //case SERIALIZE_TYPE_ARRAY:  return read_ae<array_entry>(); // nested arrays not supported
-        default: { CHECK_AND_ASSERT_THROW_MES(false, "unknown entry_type code = " << (int)type); return {}; }
+        default: { CHECK_AND_ASSERT_THROW_MES(false, "unknown entry_type code = {}", +type); return {}; }
       }
     }
 
@@ -211,7 +211,7 @@ namespace epee
         case SERIALIZE_TYPE_TAG<std::string>: return read_se<std::string>();
         case SERIALIZE_TYPE_TAG<section>:     return read_se<section>();
         //case SERIALIZE_TYPE_ARRAY:  return read_se<array_entry>(); // nested arrays not supported
-        default: { CHECK_AND_ASSERT_THROW_MES(false, "unknown entry_type code = " << (int)ent_type); return {}; }
+        default: { CHECK_AND_ASSERT_THROW_MES(false, "unknown entry_type code = {}", +ent_type); return {}; }
       }
     }
     inline 
@@ -231,8 +231,8 @@ namespace epee
     void throwable_buffer_reader::read(std::string& str)
     {
       size_t len = read_varint();
-      CHECK_AND_ASSERT_THROW_MES(len < MAX_STRING_LEN_POSSIBLE, "to big string len value in storage: " << len);
-      CHECK_AND_ASSERT_THROW_MES(m_count >= len, "string len count value " << len << " goes out of remain storage len " << m_count);
+      CHECK_AND_ASSERT_THROW_MES(len < MAX_STRING_LEN_POSSIBLE, "to big string len value in storage: {}", len);
+      CHECK_AND_ASSERT_THROW_MES(m_count >= len, "string len count value {} goes out of remain storage len {}", len, m_count);
       //do this manually to avoid double memory write in huge strings (first time at resize, second at read)
       str.assign(reinterpret_cast<const char*>(m_ptr), len);
       m_ptr += len;

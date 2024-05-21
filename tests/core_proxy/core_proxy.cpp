@@ -143,7 +143,7 @@ int main(int argc, char* argv[])
   oxen::log::info(logcat, "Node stopped.");
   return 0;
 
-  CATCH_ENTRY_L0("main", 1);
+  CATCH_ENTRY("main", 1);
 }
 
 /*

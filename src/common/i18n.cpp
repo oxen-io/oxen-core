@@ -153,7 +153,7 @@ int i18n_set_language(const char* directory, const char* base, std::string langu
     if (language.empty())
         language = i18n_get_language();
     std::string basename = base + "_"s + language + ".qm";
-    auto filename = fs::u8path(directory) / fs::u8path(basename);
+    auto filename = tools::utf8_path(directory) / tools::utf8_path(basename);
     i18n_log("Loading translations for language " << language);
 
     std::string contents;
@@ -171,7 +171,7 @@ int i18n_set_language(const char* directory, const char* base, std::string langu
                 std::string fallback_language =
                         std::string(language, 0, underscore - language.c_str());
                 basename = base + "_"s + fallback_language + ".qm";
-                filename.replace_filename(fs::u8path(basename));
+                filename.replace_filename(tools::utf8_path(basename));
                 i18n_log("Loading translations for language " << fallback_language);
                 if (std::error_code ec; fs::exists(filename, ec)) {
                     if (!tools::slurp_file(filename, contents)) {

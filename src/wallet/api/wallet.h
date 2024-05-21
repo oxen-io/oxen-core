@@ -340,9 +340,7 @@ class WalletImpl : public Wallet {
 
     std::unique_ptr<tools::wallet2> m_wallet_ptr;
     mutable std::mutex m_statusMutex;
-    LockedWallet wallet() const {
-        return {m_wallet_ptr, m_refreshMutex2};
-    }
+    LockedWallet wallet() const { return {m_wallet_ptr, m_refreshMutex2}; }
     mutable std::pair<int, std::string> m_status;
     std::string m_password;
     std::unique_ptr<TransactionHistoryImpl> m_history;

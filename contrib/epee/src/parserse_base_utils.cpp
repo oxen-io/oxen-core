@@ -69,7 +69,7 @@ void match_string2(const char*& star_end_string, const char* buf_end, std::strin
           for (int i = 0; i < 4; ++i)
           {
             const auto c = *++it;
-            CHECK_AND_ASSERT_THROW_MES(oxenc::is_hex_digit(c), "Bad Unicode encoding: " + std::to_string(c));
+            CHECK_AND_ASSERT_THROW_MES(oxenc::is_hex_digit(c), "Bad Unicode encoding: {}", c);
             dst = dst << 4 | oxenc::from_hex_digit(c);
           }
           // encode as UTF-8
@@ -111,7 +111,7 @@ void match_string2(const char*& star_end_string, const char* buf_end, std::strin
       val.push_back(*it); 
     }
   }
-  ASSERT_MES_AND_THROW("Failed to match string in json entry: " << std::string(star_end_string, buf_end));
+  ASSERT_MES_AND_THROW("Failed to match string in json entry: {}", std::string_view{star_end_string, buf_end});
 }
 // The only conclusive thing that can be said about this function is that it does indeed
 // closely match a "number 2". 💩
@@ -147,10 +147,10 @@ void match_number2(const char*& star_end_string, const char* buf_end, std::strin
         return;
       }
       else 
-        ASSERT_MES_AND_THROW("wrong number in json entry: " << std::string(star_end_string, buf_end));
+        ASSERT_MES_AND_THROW("wrong number in json entry: {}", std::string(star_end_string, buf_end));
     }
   }
-  ASSERT_MES_AND_THROW("wrong number in json entry: " << std::string(star_end_string, buf_end));
+  ASSERT_MES_AND_THROW("wrong number in json entry: {}", std::string(star_end_string, buf_end));
 }
 void match_word2(const char*& star_end_string, const char* buf_end, std::string_view& val)
 {
@@ -166,10 +166,10 @@ void match_word2(const char*& star_end_string, const char* buf_end, std::string_
         star_end_string = --it;
         return;
       }else 
-        ASSERT_MES_AND_THROW("failed to match word number in json entry: " << std::string(star_end_string, buf_end));
+        ASSERT_MES_AND_THROW("failed to match word number in json entry: {}", std::string(star_end_string, buf_end));
     }
   }
-  ASSERT_MES_AND_THROW("failed to match word number in json entry: " << std::string(star_end_string, buf_end));
+  ASSERT_MES_AND_THROW("failed to match word number in json entry: {}", std::string(star_end_string, buf_end));
 }
 
 } // namespace epee::misc_utils::parse

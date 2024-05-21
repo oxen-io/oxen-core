@@ -11,10 +11,13 @@ L2Tracker::L2Tracker() {
     service_node = false;
 }
 
-L2Tracker::L2Tracker(const cryptonote::network_type nettype, const std::shared_ptr<Provider>& _provider) 
-    : rewards_contract(std::make_shared<RewardsContract>(std::string(get_rewards_contract_address(nettype)), _provider)),
-      pool_contract(std::make_shared<PoolContract>(std::string(get_pool_contract_address(nettype)), _provider)),
-      stop_thread(false) {
+L2Tracker::L2Tracker(
+        const cryptonote::network_type nettype, const std::shared_ptr<Provider>& _provider) :
+        rewards_contract(std::make_shared<RewardsContract>(
+                std::string(get_rewards_contract_address(nettype)), _provider)),
+        pool_contract(std::make_shared<PoolContract>(
+                std::string(get_pool_contract_address(nettype)), _provider)),
+        stop_thread(false) {
     update_thread = std::thread([this] {
         while (!stop_thread.load()) {
             update_state();
@@ -31,19 +34,20 @@ L2Tracker::~L2Tracker() {
 }
 void L2Tracker::insert_in_order(State&& new_state) {
     // Check if the state with the same height already exists
-    auto it = std::find_if(state_history.begin(), state_history.end(),
-                           [&new_state](const State& state) {
-                               return state.height == new_state.height;
-                           });
+    auto it = std::find_if(
+            state_history.begin(), state_history.end(), [&new_state](const State& state) {
+                return state.height == new_state.height;
+            });
 
     // If it doesn't exist, insert it in the appropriate location
     if (it == state_history.end()) {
-        auto insert_loc = std::upper_bound(state_history.begin(), state_history.end(), new_state,
-                                           [](const State& a, const State& b) {
-                                               return a.height > b.height;
-                                           });
+        auto insert_loc = std::upper_bound(
+                state_history.begin(),
+                state_history.end(),
+                new_state,
+                [](const State& a, const State& b) { return a.height > b.height; });
 
-        state_history.insert(insert_loc, std::move(new_state)); // Use std::move here
+        state_history.insert(insert_loc, std::move(new_state));  // Use std::move here
     }
 }
 
@@ -86,7 +90,7 @@ std::pair<uint64_t, crypto::hash> L2Tracker::latest_state() {
         throw std::runtime_error("Non Service node doesn't keep track of state");
     }
     std::lock_guard lock{mutex};
-    if(state_history.empty()) {
+    if (state_history.empty()) {
         oxen::log::error(logcat, "L2 tracker doesnt have any state history to query");
         throw std::runtime_error("Internal error getting latest state from l2 tracker");
     }
@@ -105,15 +109,17 @@ bool L2Tracker::check_state_in_history(uint64_t height, const std::string& state
     if (!service_node)
         return true;
     std::lock_guard lock{mutex};
-    auto it = std::find_if(state_history.begin(), state_history.end(),
-        [height, &state_root](const State& state) {
-            return state.height == height && state.state == state_root;
-        });
+    auto it = std::find_if(
+            state_history.begin(), state_history.end(), [height, &state_root](const State& state) {
+                return state.height == height && state.state == state_root;
+            });
     return it != state_history.end();
 }
 
-std::shared_ptr<TransactionReviewSession> L2Tracker::initialize_transaction_review(uint64_t ethereum_height) {
-    auto session = std::make_shared<TransactionReviewSession>(oxen_to_ethereum_block_heights[latest_oxen_block], ethereum_height);
+std::shared_ptr<TransactionReviewSession> L2Tracker::initialize_transaction_review(
+        uint64_t ethereum_height) {
+    auto session = std::make_shared<TransactionReviewSession>(
+            oxen_to_ethereum_block_heights[latest_oxen_block], ethereum_height);
     if (!service_node)
         session->service_node = false;
     std::lock_guard lock{mutex};
@@ -122,7 +128,9 @@ std::shared_ptr<TransactionReviewSession> L2Tracker::initialize_transaction_revi
 }
 
 std::shared_ptr<TransactionReviewSession> L2Tracker::initialize_mempool_review() {
-    auto session = std::make_shared<TransactionReviewSession>(oxen_to_ethereum_block_heights[latest_oxen_block], std::numeric_limits<uint64_t>::max());
+    auto session = std::make_shared<TransactionReviewSession>(
+            oxen_to_ethereum_block_heights[latest_oxen_block],
+            std::numeric_limits<uint64_t>::max());
     if (!service_node)
         session->service_node = false;
     std::lock_guard lock{mutex};
@@ -142,20 +150,23 @@ std::string_view L2Tracker::get_pool_contract_address(const cryptonote::network_
 
 void L2Tracker::populate_review_transactions(std::shared_ptr<TransactionReviewSession> session) {
     for (const auto& state : state_history) {
-        if (state.height > session->review_block_height_min && state.height <= session->review_block_height_max) {
+        if (state.height > session->review_block_height_min &&
+            state.height <= session->review_block_height_max) {
             for (const auto& transactionVariant : state.state_changes) {
-                std::visit([&session](auto&& arg) {
-                    using T = std::decay_t<decltype(arg)>;
-                    if constexpr (std::is_same_v<T, NewServiceNodeTx>) {
-                        session->new_service_nodes.push_back(arg);
-                    } else if constexpr (std::is_same_v<T, ServiceNodeLeaveRequestTx>) {
-                        session->leave_requests.push_back(arg);
-                    } else if constexpr (std::is_same_v<T, ServiceNodeExitTx>) {
-                        session->exits.push_back(arg);
-                    } else if constexpr (std::is_same_v<T, ServiceNodeDeregisterTx>) {
-                        session->deregs.push_back(arg);
-                    }
-                }, transactionVariant);
+                std::visit(
+                        [&session](auto&& arg) {
+                            using T = std::decay_t<decltype(arg)>;
+                            if constexpr (std::is_same_v<T, NewServiceNodeTx>) {
+                                session->new_service_nodes.push_back(arg);
+                            } else if constexpr (std::is_same_v<T, ServiceNodeLeaveRequestTx>) {
+                                session->leave_requests.push_back(arg);
+                            } else if constexpr (std::is_same_v<T, ServiceNodeExitTx>) {
+                                session->exits.push_back(arg);
+                            } else if constexpr (std::is_same_v<T, ServiceNodeDeregisterTx>) {
+                                session->deregs.push_back(arg);
+                            }
+                        },
+                        transactionVariant);
             }
         }
         if (state.height <= session->review_block_height_min) {
@@ -178,47 +189,71 @@ std::vector<TransactionStateChangeVariant> L2Tracker::get_block_transactions() {
             }
         }
         if (state.height <= begin_height) {
-            // If we go below our desired begin height then break, as state history should be ordered
+            // If we go below our desired begin height then break, as state history should be
+            // ordered
             break;
         }
     }
     return all_transactions;
 }
 
-void L2Tracker::record_block_height_mapping(uint64_t oxen_block_height, uint64_t ethereum_block_height) {
+void L2Tracker::record_block_height_mapping(
+        uint64_t oxen_block_height, uint64_t ethereum_block_height) {
     std::lock_guard lock{mutex};
     oxen_to_ethereum_block_heights[oxen_block_height] = ethereum_block_height;
     latest_oxen_block = oxen_block_height;
 }
 
-bool TransactionReviewSession::processNewServiceNodeTx(const crypto::bls_public_key& bls_key, const crypto::eth_address& eth_address, const std::string& service_node_pubkey, std::string& fail_reason) {
+bool TransactionReviewSession::processNewServiceNodeTx(
+        const crypto::bls_public_key& bls_key,
+        const crypto::eth_address& eth_address,
+        const std::string& service_node_pubkey,
+        std::string& fail_reason) {
     if (!service_node)
         return true;
     if (review_block_height_max == 0) {
         fail_reason = "Review not initialized";
-        oxen::log::error(logcat, "Failed to process new service node tx height {}", review_block_height_max);
+        oxen::log::error(
+                logcat, "Failed to process new service node tx height {}", review_block_height_max);
         return false;
     }
 
-    oxen::log::info(logcat, "Searching for new_service_node bls_key: " + tools::type_to_hex(bls_key) + " eth_address: " + tools::type_to_hex(eth_address) + " service_node_pubkey: " + service_node_pubkey);
+    oxen::log::info(
+            logcat,
+            "Searching for new_service_node bls_key: {} eth_address {} service_node pubkey {}",
+            tools::type_to_hex(bls_key),
+            tools::type_to_hex(eth_address),
+            service_node_pubkey);
     for (auto it = new_service_nodes.begin(); it != new_service_nodes.end(); ++it) {
-        oxen::log::info(logcat, "new_service_node bls_key: " + tools::type_to_hex(it->bls_key) + " eth_address: " + tools::type_to_hex(it->eth_address) + " service_node_pubkey: " + it->service_node_pubkey);
-        if (it->bls_key == bls_key && it->eth_address == eth_address && it->service_node_pubkey == service_node_pubkey) {
+        oxen::log::info(
+                logcat,
+                "new_service_node bls_key: {} eth_address {} service_node_pubkey: {}",
+                tools::type_to_hex(it->bls_key),
+                tools::type_to_hex(it->eth_address),
+                it->service_node_pubkey);
+        if (it->bls_key == bls_key && it->eth_address == eth_address &&
+            it->service_node_pubkey == service_node_pubkey) {
             new_service_nodes.erase(it);
             return true;
         }
     }
 
-    fail_reason = "New Service Node Transaction not found bls_key: " + tools::type_to_hex(bls_key) + " eth_address: " + tools::type_to_hex(eth_address) + " service_node_pubkey: " + service_node_pubkey;
+    fail_reason = "New Service Node Transaction not found bls_key: " + tools::type_to_hex(bls_key) +
+                  " eth_address: " + tools::type_to_hex(eth_address) +
+                  " service_node_pubkey: " + service_node_pubkey;
     return false;
 }
 
-bool TransactionReviewSession::processServiceNodeLeaveRequestTx(const crypto::bls_public_key& bls_key, std::string& fail_reason) {
+bool TransactionReviewSession::processServiceNodeLeaveRequestTx(
+        const crypto::bls_public_key& bls_key, std::string& fail_reason) {
     if (!service_node)
         return true;
     if (review_block_height_max == 0) {
         fail_reason = "Review not initialized";
-        oxen::log::error(logcat, "Failed to process service node leave request tx height {}", review_block_height_max);
+        oxen::log::error(
+                logcat,
+                "Failed to process service node leave request tx height {}",
+                review_block_height_max);
         return false;
     }
 
@@ -233,12 +268,19 @@ bool TransactionReviewSession::processServiceNodeLeaveRequestTx(const crypto::bl
     return false;
 }
 
-bool TransactionReviewSession::processServiceNodeExitTx(const crypto::eth_address& eth_address, const uint64_t amount, const crypto::bls_public_key& bls_key, std::string& fail_reason) {
+bool TransactionReviewSession::processServiceNodeExitTx(
+        const crypto::eth_address& eth_address,
+        const uint64_t amount,
+        const crypto::bls_public_key& bls_key,
+        std::string& fail_reason) {
     if (!service_node)
         return true;
     if (review_block_height_max == 0) {
         fail_reason = "Review not initialized";
-        oxen::log::error(logcat, "Failed to process service node exit tx height {}", review_block_height_max);
+        oxen::log::error(
+                logcat,
+                "Failed to process service node exit tx height {}",
+                review_block_height_max);
         return false;
     }
 
@@ -253,12 +295,14 @@ bool TransactionReviewSession::processServiceNodeExitTx(const crypto::eth_addres
     return false;
 }
 
-bool TransactionReviewSession::processServiceNodeDeregisterTx(const crypto::bls_public_key& bls_key, std::string& fail_reason) {
+bool TransactionReviewSession::processServiceNodeDeregisterTx(
+        const crypto::bls_public_key& bls_key, std::string& fail_reason) {
     if (!service_node)
         return true;
     if (review_block_height_max == 0) {
         fail_reason = "Review not initialized";
-        oxen::log::error(logcat, "Failed to process deregister tx height {}", review_block_height_max);
+        oxen::log::error(
+                logcat, "Failed to process deregister tx height {}", review_block_height_max);
         return false;
     }
 
@@ -285,8 +329,15 @@ bool TransactionReviewSession::finalize_review() {
     return false;
 }
 
-
 uint64_t L2Tracker::get_pool_block_reward(uint64_t timestamp, uint64_t ethereum_block_height) {
     const auto response = pool_contract->RewardRate(timestamp, ethereum_block_height);
     return response.reward;
+}
+
+std::vector<uint64_t> L2Tracker::get_non_signers(const std::vector<std::string>& bls_public_keys) {
+    return rewards_contract->getNonSigners(bls_public_keys);
+}
+
+std::vector<std::string> L2Tracker::get_all_bls_public_keys(uint64_t blockNumber) {
+    return rewards_contract->getAllBLSPubkeys(blockNumber);
 }

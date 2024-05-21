@@ -32,6 +32,7 @@
 #include <sstream>
 #include <string>
 
+#include "common/guts.h"
 #include "common/string_util.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
 

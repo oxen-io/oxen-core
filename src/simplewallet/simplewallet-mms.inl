@@ -694,7 +694,7 @@ void simple_wallet::mms_export(const std::vector<std::string> &args)
   bool valid_id = get_message_from_arg(args[0], m);
   if (valid_id)
   {
-    fs::path filename = fs::u8path("mms_message_content");
+    fs::path filename = tools::utf8_path("mms_message_content");
     if (m_wallet->save_to_file(filename, m.content))
     {
       success_msg_writer() << tr("Message content saved to: ") << filename;

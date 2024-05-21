@@ -569,7 +569,7 @@ int main(int argc, char* argv[]) {
                                         : network_type::MAINNET;
     bool opt_copy_pruned_database = command_line::get_arg(vm, arg_copy_pruned_database);
     std::string data_dir = command_line::get_arg(vm, cryptonote::arg_data_dir);
-    while (tools::ends_with(data_dir, "/") || tools::ends_with(data_dir, "\\"))
+    while (data_dir.ends_with('/') || data_dir.ends_with('\\'))
         data_dir.pop_back();
 
     std::string db_sync_mode = command_line::get_arg(vm, arg_db_sync_mode);
@@ -606,7 +606,7 @@ int main(int argc, char* argv[]) {
         }
 
         if (n == 1) {
-            paths[1] = fs::u8path(data_dir) / (db->get_db_name() + "-pruned");
+            paths[1] = tools::utf8_path(data_dir) / tools::utf8_path(db->get_db_name() + "-pruned");
             if (fs::exists(paths[1])) {
                 if (!fs::is_directory(paths[1])) {
                     log::error(
@@ -623,7 +623,7 @@ int main(int argc, char* argv[]) {
             }
             db_path = paths[1];
         } else {
-            paths[0] = fs::u8path(data_dir) / db->get_db_name();
+            paths[0] = tools::utf8_path(data_dir) / tools::utf8_path(db->get_db_name());
         }
 
         log::info(logcat, "Loading blockchain from folder {} ...", paths[n]);

@@ -46,6 +46,7 @@ static int __AFL_LOOP(int)
 
 int run_fuzzer(int argc, const char **argv, Fuzzer &fuzzer)
 {
+  auto logcat = oxen::log::Cat("fuzz");
   TRY_ENTRY();
 
   if (argc < 2)
@@ -72,5 +73,5 @@ int run_fuzzer(int argc, const char **argv, Fuzzer &fuzzer)
 
   return 0;
 
-  CATCH_ENTRY_L0("run_fuzzer", 1);
+  CATCH_ENTRY("run_fuzzer", 1);
 }

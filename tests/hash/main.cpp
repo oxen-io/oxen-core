@@ -30,18 +30,16 @@
 
 #include <cstddef>
 #include <fstream>
-#include <iomanip>
 #include <ios>
 #include <string>
+#include <string_view>
 #include <cfenv>
 
-#include "epee/misc_log_ex.h"
-#include "epee/warnings.h"
 #include "crypto/hash.h"
 #include "crypto/variant2_int_sqrt.h"
-#include "cryptonote_core/cryptonote_tx_utils.h"
 #include "../io.h"
 
+using namespace std::literals;
 using namespace crypto;
 typedef crypto::hash chash;
 
@@ -96,7 +94,7 @@ int main(int argc, char *argv[]) {
       }
       return 0;
     }
-    fmt::print(stderr, "Wrong arguments.  Usage: {} TESTTYPE test-file.txt\n");
+    fmt::print(stderr, "Wrong arguments.  Usage: {} TESTTYPE test-file.txt\n", argv[0]);
     return 1;
   }
 
@@ -153,7 +151,6 @@ int main(int argc, char *argv[]) {
     }
 
     if (expected != actual) {
-      size_t i;
       fmt::print(stderr, "Hash mismatch on test {}\nInput: {}\nExpected hash: {}\nActual hash: {}\n",
           test, (data.empty() ? "Empty" : oxenc::to_hex(data.begin(), data.end())), expected, actual);
       error = true;

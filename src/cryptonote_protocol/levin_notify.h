@@ -37,10 +37,10 @@
 #include "epee/shared_sv.h"
 #include "epee/span.h"
 
-namespace epee { namespace levin {
-    template <typename>
-    class async_protocol_handler_config;
-}}  // namespace epee::levin
+namespace epee::levin {
+template <typename>
+class async_protocol_handler_config;
+}  // namespace epee::levin
 
 namespace nodetool {
 template <typename>
@@ -51,73 +51,73 @@ namespace cryptonote {
 struct cryptonote_connection_context;
 }
 
-namespace cryptonote { namespace levin {
-    namespace detail {
-        using p2p_context =
-                nodetool::p2p_connection_context_t<cryptonote::cryptonote_connection_context>;
-        struct zone;  //!< Internal data needed for zone notifications
-    }                 // namespace detail
+namespace cryptonote::levin {
+namespace detail {
+    using p2p_context =
+            nodetool::p2p_connection_context_t<cryptonote::cryptonote_connection_context>;
+    struct zone;  //!< Internal data needed for zone notifications
+}  // namespace detail
 
-    using connections = epee::levin::async_protocol_handler_config<detail::p2p_context>;
+using connections = epee::levin::async_protocol_handler_config<detail::p2p_context>;
 
-    //! Provides tx notification privacy
-    class notify {
-        std::shared_ptr<detail::zone> zone_;
+//! Provides tx notification privacy
+class notify {
+    std::shared_ptr<detail::zone> zone_;
 
-      public:
-        struct status {
-            bool has_noise;
-            bool connections_filled;
-        };
-
-        //! Construct an instance that cannot notify.
-        notify() noexcept : zone_(nullptr) {}
-
-        //! Construct an instance with available notification `zones`.
-        explicit notify(
-                boost::asio::io_service& service,
-                std::shared_ptr<connections> p2p,
-                epee::shared_sv noise,
-                bool is_public);
-
-        notify(const notify&) = delete;
-        notify(notify&&) = default;
-
-        ~notify() noexcept;
-
-        notify& operator=(const notify&) = delete;
-        notify& operator=(notify&&) = default;
-
-        //! \return Status information for zone selection.
-        status get_status() const noexcept;
-
-        //! Probe for new outbound connection - skips if not needed.
-        void new_out_connection();
-
-        //! Run the logic for the next epoch immediately. Only use in testing.
-        void run_epoch();
-
-        //! Run the logic for the next stem timeout imemdiately. Only use in  testing.
-        void run_stems();
-
-        /*! Send txs using `cryptonote_protocol_defs.h` payload format wrapped in a
-            levin header. The message will be sent in a "discreet" manner if
-            enabled - if `!noise.empty()` then the `command`/`payload` will be
-            queued to send at the next available noise interval. Otherwise, a
-            standard Monero flood notification will be used.
-
-            \note Eventually Dandelion++ stem sending will be used here when
-              enabled.
-
-            \param txs The transactions that need to be serialized and relayed.
-            \param source The source of the notification. `is_nil()` indicates this
-              node is the source. Dandelion++ will use this to map a source to a
-              particular stem.
-            \param pad_txs A request to pad txs to help conceal origin via
-              statistical analysis. Ignored if noise was enabled during
-              construction.
-
-          \return True iff the notification is queued for sending. */
-        bool send_txs(std::vector<std::string> txs, const boost::uuids::uuid& source, bool pad_txs);
+  public:
+    struct status {
+        bool has_noise;
+        bool connections_filled;
     };
-}}  // namespace cryptonote::levin
+
+    //! Construct an instance that cannot notify.
+    notify() noexcept : zone_(nullptr) {}
+
+    //! Construct an instance with available notification `zones`.
+    explicit notify(
+            boost::asio::io_service& service,
+            std::shared_ptr<connections> p2p,
+            epee::shared_sv noise,
+            bool is_public);
+
+    notify(const notify&) = delete;
+    notify(notify&&) = default;
+
+    ~notify() noexcept;
+
+    notify& operator=(const notify&) = delete;
+    notify& operator=(notify&&) = default;
+
+    //! \return Status information for zone selection.
+    status get_status() const noexcept;
+
+    //! Probe for new outbound connection - skips if not needed.
+    void new_out_connection();
+
+    //! Run the logic for the next epoch immediately. Only use in testing.
+    void run_epoch();
+
+    //! Run the logic for the next stem timeout imemdiately. Only use in  testing.
+    void run_stems();
+
+    /*! Send txs using `cryptonote_protocol_defs.h` payload format wrapped in a
+        levin header. The message will be sent in a "discreet" manner if
+        enabled - if `!noise.empty()` then the `command`/`payload` will be
+        queued to send at the next available noise interval. Otherwise, a
+        standard Monero flood notification will be used.
+
+        \note Eventually Dandelion++ stem sending will be used here when
+          enabled.
+
+        \param txs The transactions that need to be serialized and relayed.
+        \param source The source of the notification. `is_nil()` indicates this
+          node is the source. Dandelion++ will use this to map a source to a
+          particular stem.
+        \param pad_txs A request to pad txs to help conceal origin via
+          statistical analysis. Ignored if noise was enabled during
+          construction.
+
+      \return True iff the notification is queued for sending. */
+    bool send_txs(std::vector<std::string> txs, const boost::uuids::uuid& source, bool pad_txs);
+};
+}  // namespace cryptonote::levin

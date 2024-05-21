@@ -39,6 +39,7 @@
 using cryptonote::check_hash;
 
 int main(int argc, char *argv[]) {
+    auto logcat = oxen::log::Cat("tests");
   TRY_ENTRY();
   crypto::hash h;
   for (uint64_t diff = 1;; diff += 1 + (diff >> 8)) {
@@ -84,5 +85,5 @@ int main(int argc, char *argv[]) {
     }
   }
   return 0;
-  CATCH_ENTRY_L0("main", 1);
+  CATCH_ENTRY("main", 1);
 }

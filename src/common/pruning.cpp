@@ -36,6 +36,8 @@ namespace tools {
 
 using namespace cryptonote;
 
+static auto logcat = oxen::log::Cat("pruning");
+
 uint32_t make_pruning_seed(uint32_t stripe, uint32_t log_stripes) {
     CHECK_AND_ASSERT_THROW_MES(
             log_stripes <= PRUNING_SEED_LOG_STRIPES_MASK, "log_stripes out of range");

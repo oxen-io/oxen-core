@@ -192,7 +192,9 @@ class core_rpc_server {
     void invoke(GET_BLOCK_HEADERS_RANGE& get_block_headers_range, rpc_context context);
     void invoke(GET_BLOCK_HEADER_BY_HEIGHT& get_block_header_by_height, rpc_context context);
     void invoke(GET_BLOCK& get_block, rpc_context context);
-    void invoke( GET_SERVICE_NODE_REGISTRATION_CMD& get_service_node_registration_cmd, rpc_context context);
+    void invoke(
+            GET_SERVICE_NODE_REGISTRATION_CMD& get_service_node_registration_cmd,
+            rpc_context context);
     void invoke(
             GET_SERVICE_NODE_REGISTRATION_CMD_RAW& get_service_node_registration_cmd_raw,
             rpc_context context);

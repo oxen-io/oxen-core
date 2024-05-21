@@ -454,7 +454,8 @@ double oxen::round(double x) {
         /* Avoid rounding errors for values near 2^k, where k >= DBL_MANT_DIG-1.  */
         else if (z < TWO_MANT_DIG) {
             /* Add 0.5 to the absolute value.  */
-            y = z += 0.5;
+            z += 0.5;
+            y = z;
             /* Round to the next integer (nearest or up or down, doesn't
                matter).  */
             z += TWO_MANT_DIG;
@@ -470,7 +471,8 @@ double oxen::round(double x) {
         /* Avoid rounding errors for values near -2^k, where k >= DBL_MANT_DIG-1.  */
         else if (z > -TWO_MANT_DIG) {
             /* Add 0.5 to the absolute value.  */
-            y = z -= 0.5;
+            z -= 0.5;
+            y = z;
             /* Round to the next integer (nearest or up or down, doesn't
                matter).  */
             z -= TWO_MANT_DIG;

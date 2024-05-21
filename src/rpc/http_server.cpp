@@ -231,6 +231,15 @@ namespace {
         nlohmann::json jsonrpc_id{nullptr};
         std::vector<std::pair<std::string, std::string>> extra_headers;  // Extra headers to send
 
+        call_data(
+                http_server& http,
+                core_rpc_server& core_rpc,
+                HttpResponse& res,
+                std::string uri,
+                const rpc_command* call = nullptr) :
+
+                http{http}, core_rpc{core_rpc}, res{res}, uri{std::move(uri)}, call{call} {}
+
         // If we have to drop the request because we are overloaded we want to reply with an error
         // (so that we close the connection instead of leaking it and leaving it hanging).  We don't
         // do this, of course, if the request got aborted and replied to.
@@ -534,8 +543,7 @@ namespace {
 
 void http_server::handle_base_request(
         HttpResponse& res, HttpRequest& req, const rpc_command& call) {
-    std::shared_ptr<call_data> data{
-            new call_data{*this, m_server, res, std::string{req.getUrl()}, &call}};
+    auto data = std::make_shared<call_data>(*this, m_server, res, std::string{req.getUrl()}, &call);
     auto& request = data->request;
     request.body = std::monostate{};
     request.context.admin = !m_restricted;
@@ -573,7 +581,7 @@ void http_server::handle_base_request(
 }
 
 void http_server::handle_json_rpc_request(HttpResponse& res, HttpRequest& req) {
-    std::shared_ptr<call_data> data{new call_data{*this, m_server, res, std::string{req.getUrl()}}};
+    auto data = std::make_shared<call_data>(*this, m_server, res, std::string{req.getUrl()});
     data->jsonrpc = true;
     auto& request = data->request;
     request.context.admin = !m_restricted;

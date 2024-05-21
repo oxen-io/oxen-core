@@ -33,6 +33,7 @@
 
 #include <cpr/parameters.h>
 #include <fmt/core.h>
+#include <fmt/std.h>
 #include <oxenc/base64.h>
 #include <oxenc/endian.h>
 
@@ -49,7 +50,6 @@
 #include "common/combinator.h"
 #include "common/command_line.h"
 #include "common/file.h"
-#include "common/fs-format.h"
 #include "common/hex.h"
 #include "common/i18n.h"
 #include "common/notify.h"
@@ -73,7 +73,6 @@
 #include "rapidjson/document.h"
 #include "rapidjson/stringbuffer.h"
 #include "rapidjson/writer.h"
-#include "ringct/fmt.h"
 #include "ringct/rctSigs.h"
 #include "ringdb.h"
 #include "rpc/core_rpc_server_commands_defs.h"
@@ -166,9 +165,9 @@ namespace {
         return bytes * 2 / 3;
     }
 
-    std::string get_default_ringdb_path() {
+    fs::path get_default_ringdb_path() {
         // remove .oxen, replace with .shared-ringdb
-        return tools::get_default_data_dir().replace_filename(".shared-ringdb").u8string();
+        return tools::get_default_data_dir().replace_filename(fs::path{u8".shared-ringdb"});
     }
 
     std::string pack_multisignature_keys(
@@ -412,13 +411,14 @@ namespace {
                 [](std::array<bool, 3> test_dev_fake,
                    bool defaulted,
                    std::string val) -> std::string {
-                    if (test_dev_fake[0])
-                        return (fs::u8path(val) / "testnet").u8string();
-                    else if (test_dev_fake[1])
-                        return (fs::u8path(val) / "devnet").u8string();
-                    else if (test_dev_fake[2])
-                        return (fs::u8path(val) / "fake").u8string();
-                    return val;
+                    if (!test_dev_fake[0] && !test_dev_fake[1] && !test_dev_fake[2])
+                        return val;
+                    return tools::convert_str<char>((tools::utf8_path(val) /
+                                                     fs::path{
+                                                             test_dev_fake[0]   ? u8"testnet"
+                                                             : test_dev_fake[1] ? u8"devnet"
+                                                                                : u8"fake"})
+                                                            .u8string());
                 }};
         const command_line::arg_descriptor<uint64_t> kdf_rounds = {
                 "kdf-rounds",
@@ -563,7 +563,7 @@ namespace {
         // address
         if (command_line::get_arg(vm, opts.daemon_ssl) == "enabled") {
             THROW_WALLET_EXCEPTION_IF(
-                    tools::starts_with(daemon_address, "http://"),
+                    daemon_address.starts_with("http://"),
                     tools::error::wallet_internal_error,
                     "Deprecated --daemon-ssl=enabled option conflicts with http://... daemon URL");
             if (!std::regex_search(daemon_address, protocol_re))
@@ -604,12 +604,12 @@ namespace {
             trusted_daemon = command_line::get_arg(vm, opts.trusted_daemon) &&
                              !command_line::get_arg(vm, opts.untrusted_daemon);
         else if (trusted_daemon)
-            log::info(logcat, tools::wallet2::tr("Daemon is local, assuming trusted"));
+            log::info(logcat, "{}", tools::wallet2::tr("Daemon is local, assuming trusted"));
 
         auto wallet = std::make_unique<tools::wallet2>(nettype, kdf_rounds, unattended);
         wallet->init(
                 std::move(daemon_address), std::move(login), std::move(proxy), 0, trusted_daemon);
-        auto ringdb_path = fs::u8path(command_line::get_arg(vm, opts.shared_ringdb_dir));
+        auto ringdb_path = tools::utf8_path(command_line::get_arg(vm, opts.shared_ringdb_dir));
         wallet->set_ring_database(ringdb_path);
 #ifdef WALLET_ENABLE_MMS
         wallet->get_message_store().set_options(vm);
@@ -633,7 +633,7 @@ namespace {
         if (!extra_entropy.empty()) {
             std::string data;
             THROW_WALLET_EXCEPTION_IF(
-                    !tools::slurp_file(fs::u8path(extra_entropy), data),
+                    !tools::slurp_file(tools::utf8_path(extra_entropy), data),
                     tools::error::wallet_internal_error,
                     "Failed to load extra entropy from " + extra_entropy);
             add_extra_entropy_thread_safe(data.data(), data.size());
@@ -671,7 +671,7 @@ namespace {
         if (command_line::has_arg(vm, opts.password_file)) {
             std::string password;
             bool r = tools::slurp_file(
-                    fs::u8path(command_line::get_arg(vm, opts.password_file)), password);
+                    tools::utf8_path(command_line::get_arg(vm, opts.password_file)), password);
             THROW_WALLET_EXCEPTION_IF(
                     !r,
                     tools::error::wallet_internal_error,
@@ -738,7 +738,7 @@ namespace {
                 THROW_WALLET_EXCEPTION(
                         tools::error::wallet_internal_error,
                         std::string(tools::wallet2::tr("Failed to load file ")) +
-                                json_file.u8string());
+                                tools::convert_str<char>(json_file.u8string()));
                 return false;
             }
 
@@ -756,8 +756,9 @@ namespace {
                     field_version > current_version,
                     tools::error::wallet_internal_error,
                     fmt::format(
-                            tools::wallet2::tr("Version {:d} too new; this wallet only supports up "
-                                               "to {:d}"),
+                            fmt::runtime(tools::wallet2::tr("Version {:d} too new; this wallet "
+                                                            "only supports up "
+                                                            "to {:d}")),
                             field_version,
                             current_version));
 
@@ -1572,8 +1573,7 @@ bool wallet2::set_daemon(
         std::string proxy,
         bool trusted_daemon) {
     // If we're given a raw address, prepend http, and (possibly) append the default port
-    if (!tools::starts_with(daemon_address, "http://") &&
-        !tools::starts_with(daemon_address, "https://")) {
+    if (!daemon_address.starts_with("http://") && !daemon_address.starts_with("https://")) {
         if (auto pos = daemon_address.find(':'); pos == std::string::npos)
             daemon_address +=
                     ":" + std::to_string(cryptonote::get_config(m_nettype).RPC_DEFAULT_PORT);
@@ -1585,7 +1585,7 @@ bool wallet2::set_daemon(
         auto [proto, host, port, uri] = rpc::http_client::parse_url(daemon_address);
         localhost = tools::is_local_address(host);
     } catch (const rpc::http_client_error& e) {
-        log::warning(logcat, "Invalid daemon URL: "s + e.what());
+        log::warning(logcat, "Invalid daemon URL: {}", e.what());
         return false;
     }
 
@@ -3787,11 +3787,8 @@ void wallet2::cancel_long_poll() {
     m_long_poll_client.cancel();
 }
 
-template <
-        typename It,
-        std::enable_if_t<
-                std::is_same_v<crypto::hash, std::remove_const_t<typename It::value_type>>,
-                int> = 0>
+template <typename It>
+    requires std::is_same_v<crypto::hash, std::remove_cv_t<typename It::value_type>>
 static std::vector<std::string> hashes_to_hex(It begin, It end) {
     std::vector<std::string> hexes;
     if constexpr (std::is_base_of_v<
@@ -4603,7 +4600,7 @@ bool wallet2::store_keys(
         r = tools::dump_file(tmp_file_name, buf);
     } catch (...) {
     }
-    CHECK_AND_ASSERT_MES(r, false, "failed to generate wallet keys file " << tmp_file_name);
+    CHECK_AND_ASSERT_MES(r, false, "failed to generate wallet keys file {}", tmp_file_name);
 
     unlock_keys_file();
     std::error_code e;
@@ -5313,8 +5310,8 @@ bool wallet2::verify_password(
     } catch (const std::exception& e) {
         THROW_WALLET_EXCEPTION(
                 error::wallet_internal_error,
-                "internal error: failed to deserialize \"" + keys_file_name.u8string() +
-                        "\": " + e.what());
+                "internal error: failed to deserialize \"{}\": {}"_format(
+                        keys_file_name, e.what()));
     }
     crypto::chacha_key key;
     crypto::generate_chacha_key(password.data(), password.size(), key, kdf_rounds);
@@ -5444,8 +5441,8 @@ bool wallet2::query_device(
     } catch (const std::exception& e) {
         THROW_WALLET_EXCEPTION(
                 error::wallet_internal_error,
-                "internal error: failed to deserialize \"" + keys_file_name.u8string() +
-                        "\": " + e.what());
+                "internal error: failed to deserialize \"{}\": {}"_format(
+                        keys_file_name, e.what()));
     }
     crypto::chacha_key key;
     crypto::generate_chacha_key(password.data(), password.size(), key, kdf_rounds);
@@ -5984,7 +5981,7 @@ std::string wallet2::exchange_multisig_keys(
         const epee::wipeable_string& password, const std::vector<std::string>& info) {
     THROW_WALLET_EXCEPTION_IF(info.empty(), error::wallet_internal_error, "Empty multisig info");
 
-    if (!tools::starts_with(info[0], MULTISIG_EXTRA_INFO_MAGIC)) {
+    if (!info[0].starts_with(MULTISIG_EXTRA_INFO_MAGIC)) {
         THROW_WALLET_EXCEPTION(error::wallet_internal_error, "Unsupported info string");
     }
 
@@ -6272,7 +6269,7 @@ std::string wallet2::get_multisig_info() const {
 
 bool wallet2::verify_multisig_info(
         const std::string& data, crypto::secret_key& skey, crypto::public_key& pkey) {
-    if (!tools::starts_with(data, MULTISIG_MAGIC)) {
+    if (!data.starts_with(MULTISIG_MAGIC)) {
         log::error(logcat, "Multisig info header check error");
         return false;
     }
@@ -6308,7 +6305,7 @@ bool wallet2::verify_extra_multisig_info(
         const std::string& data,
         std::unordered_set<crypto::public_key>& pkeys,
         crypto::public_key& signer) {
-    if (!tools::starts_with(data, MULTISIG_EXTRA_INFO_MAGIC)) {
+    if (!data.starts_with(MULTISIG_EXTRA_INFO_MAGIC)) {
         log::error(logcat, "Multisig info header check error");
         return false;
     }
@@ -6334,8 +6331,8 @@ bool wallet2::verify_extra_multisig_info(
     signer = *(const crypto::public_key*)(decoded.data() + offset);
     offset += sizeof(signer);
     const crypto::signature& signature =
-            *(const crypto::
-                      signature*)(decoded.data() + offset + n_keys * sizeof(crypto::public_key));
+            *(const crypto::signature*)(decoded.data() + offset +
+                                        n_keys * sizeof(crypto::public_key));
 
     crypto::hash hash;
     crypto::cn_fast_hash(decoded.data(), decoded.size() - sizeof(signature), hash);
@@ -6475,7 +6472,7 @@ bool wallet2::check_connection(rpc::version_t* version, bool* ssl, bool throw_on
     }
 
     if (ssl)
-        *ssl = tools::starts_with(m_http_client.get_base_url(), "https://");
+        *ssl = m_http_client.get_base_url().starts_with("https://");
 
     if (!m_rpc_version) {
         try {
@@ -6531,8 +6528,7 @@ void wallet2::load(
         THROW_WALLET_EXCEPTION_IF(
                 !is_keys_file_locked(),
                 error::wallet_internal_error,
-                "internal error: \"" + m_keys_file.u8string() +
-                        "\" is opened by another wallet program");
+                "internal error: \"{}\" is opened by another wallet program"_format(m_keys_file));
 
         // this temporary unlocking is necessary for Windows (otherwise the file couldn't be
         // loaded).
@@ -6577,8 +6573,8 @@ void wallet2::load(
             } catch (const std::exception& e) {
                 THROW_WALLET_EXCEPTION(
                         error::wallet_internal_error,
-                        "internal error: failed to deserialize \"" + m_wallet_file.u8string() +
-                                "\": " + e.what());
+                        "internal error: failed to deserialize \"{}\": {}"_format(
+                                m_wallet_file, e.what()));
             }
             std::string cache_data;
             cache_data.resize(cache_file_data.cache_data.size());
@@ -6838,7 +6834,7 @@ void wallet2::store_to(const fs::path& path, const epee::wipeable_string& passwo
         new_file += ".new";
 
         try {
-            fs::ofstream ostr{new_file, std::ios_base::binary | std::ios_base::trunc};
+            std::ofstream ostr{new_file, std::ios_base::binary | std::ios_base::trunc};
             serialization::binary_archiver oar{ostr};
             serialization::serialize(oar, *cache_file_data);
         } catch (const std::exception& e) {
@@ -7265,15 +7261,15 @@ void wallet2::get_transfers(
 std::string wallet2::transfers_to_csv(
         const std::vector<wallet::transfer_view>& transfers, bool formatting) const {
     uint64_t running_balance = 0;
-    auto title_format = "{},{},{},{},{},{},{},{},{},{},{},{},{},{}\n"sv;
-    auto data_format = "{},{},{},{},{},{},{},{},{},{},{},{},{},{}\n"sv;
-    auto coin_format = "{:d}.{:09d}"sv;
+    auto title_format = fmt::runtime("{},{},{},{},{},{},{},{},{},{},{},{},{},{}\n"sv);
+    auto data_format = fmt::runtime("{},{},{},{},{},{},{},{},{},{},{},{},{},{}\n"sv);
+    auto coin_format = fmt::runtime("{:d}.{:09d}"sv);
     if (formatting) {
-        title_format =
-                "{:>8s}, {:>9s}, {:>9s}, {:>12s}, {:^23s}, {:>21s}, {:>21s}, {:^64s}, {:^16s}, {:>21s}, {:^97s}, {:>21s}, {:>5s}, {:s}\n"sv;
-        data_format =
-                "{:>8s}, {:>9s}, {:>9s}, {:>12s}, {:>23s}, {:>21s}, {:>21s}, {:>64s}, {:^16s}, {:>21s}, {:>97s}, {:>21s}, {:>5s}, {:s}\n"sv;
-        coin_format = "{:11d}.{:09d}"sv;
+        title_format = fmt::runtime(
+                "{:>8s}, {:>9s}, {:>9s}, {:>12s}, {:^23s}, {:>21s}, {:>21s}, {:^64s}, {:^16s}, {:>21s}, {:^97s}, {:>21s}, {:>5s}, {:s}\n"sv);
+        data_format = fmt::runtime(
+                "{:>8s}, {:>9s}, {:>9s}, {:>12s}, {:>23s}, {:>21s}, {:>21s}, {:>64s}, {:^16s}, {:>21s}, {:>97s}, {:>21s}, {:>5s}, {:s}\n"sv);
+        coin_format = fmt::runtime("{:11d}.{:09d}"sv);
     }
 
     std::stringstream output;
@@ -7647,11 +7643,9 @@ bool wallet2::is_transfer_unlocked(
 
         for (auto const& entry : blacklist) {
             crypto::key_image check_image;
-            if (!tools::hex_to_type(entry["key_image"].get<std::string_view>(), check_image)) {
-                log::error(
-                        logcat,
-                        "Failed to parse hex representation of key image: {}",
-                        entry["key_image"]);
+            if (auto ki_in = entry["key_image"].get<std::string_view>();
+                !tools::hex_to_type(ki_in, check_image)) {
+                log::error(logcat, "Failed to parse hex representation of key image: {}", ki_in);
                 break;
             }
 
@@ -8078,7 +8072,7 @@ bool wallet2::load_unsigned_tx(
 }
 //----------------------------------------------------------------------------------------------------
 bool wallet2::parse_unsigned_tx_from_str(std::string_view s, unsigned_tx_set& exported_txs) const {
-    if (!tools::starts_with(s, UNSIGNED_TX_PREFIX_NOVER)) {
+    if (!s.starts_with(UNSIGNED_TX_PREFIX_NOVER)) {
         log::warning(logcat, "Bad magic from unsigned tx");
         return false;
     }
@@ -8399,7 +8393,7 @@ bool wallet2::parse_tx_from_str(
         std::vector<tools::wallet2::pending_tx>& ptx,
         std::function<bool(const signed_tx_set&)> accept_func) {
 
-    if (!tools::starts_with(s, SIGNED_TX_PREFIX_NOVER)) {
+    if (!s.starts_with(SIGNED_TX_PREFIX_NOVER)) {
         log::warning(logcat, "Bad magic from signed transaction");
         return false;
     }
@@ -8439,7 +8433,7 @@ bool wallet2::parse_tx_from_str(
     log::warning(
             logcat, "Loaded signed tx data from binary: {} transactions", signed_txs.ptx.size());
     for (auto& c_ptx : signed_txs.ptx)
-        log::warning(logcat, cryptonote::obj_to_json_str(c_ptx.tx));
+        log::warning(logcat, "{}", cryptonote::obj_to_json_str(c_ptx.tx));
 
     if (accept_func && !accept_func(signed_txs)) {
         log::info(logcat, "Transactions rejected by callback");
@@ -8532,7 +8526,7 @@ bool wallet2::save_multisig_tx(
 //----------------------------------------------------------------------------------------------------
 bool wallet2::parse_multisig_tx_from_str(
         std::string_view multisig_tx_st, multisig_tx_set& exported_txs) const {
-    if (!tools::starts_with(multisig_tx_st, MULTISIG_UNSIGNED_TX_PREFIX)) {
+    if (!multisig_tx_st.starts_with(MULTISIG_UNSIGNED_TX_PREFIX)) {
         log::warning(logcat, "Bad magic from multisig tx data");
         return false;
     }
@@ -8590,7 +8584,7 @@ bool wallet2::load_multisig_tx(
             "Loaded multisig tx unsigned data from binary: {} transactions",
             exported_txs.m_ptx.size());
     for (auto& ptx : exported_txs.m_ptx)
-        log::warning(logcat, cryptonote::obj_to_json_str(ptx.tx));
+        log::warning(logcat, "{}", cryptonote::obj_to_json_str(ptx.tx));
 
     if (accept_func && !accept_func(exported_txs)) {
         log::info(logcat, "Transactions rejected by callback");
@@ -8910,7 +8904,7 @@ oxen_construct_tx_params wallet2::construct_params(
 //----------------------------------------------------------------------------------------------------
 bool wallet2::set_ring_database(fs::path filename) {
     m_ring_database = std::move(filename);
-    log::info(logcat, "ringdb path set to {}", m_ring_database.u8string());
+    log::info(logcat, "ringdb path set to {}", m_ring_database);
     m_ringdb.reset();
     if (!m_ring_database.empty()) {
         try {
@@ -9485,7 +9479,6 @@ wallet2::register_service_node_result wallet2::create_register_service_node_tx(
         return {register_service_node_result_status::convert_registration_args_failed,
                 tr("Could not convert registration args: ") + std::string{e.what()}};
     }
-
 
     auto address = registration.reserved[0].first;
     if (!contains_address(address))
@@ -10557,9 +10550,9 @@ void wallet2::get_outs(
                                 logcat,
                                 "Found {}: {} total, {} unlocked, {} recent",
                                 print_money(amount),
-                                he["total_instances"],
-                                he["unlocked_instances"],
-                                he["recent_instances"]);
+                                he["total_instances"].get<uint64_t>(),
+                                he["unlocked_instances"].get<uint64_t>(),
+                                he["recent_instances"].get<uint64_t>());
                         num_outs = he["unlocked_instances"].get<uint64_t>();
                         num_recent_outs = he["recent_instances"].get<uint64_t>();
                         break;
@@ -13202,14 +13195,13 @@ bool wallet2::sanity_check(
             total_received += received;
         }
 
-        std::stringstream ss;
-        ss << "Total received by "
-           << cryptonote::get_account_address_as_str(m_nettype, r.second.second, address) << ": "
-           << cryptonote::print_money(total_received) << ", expected "
-           << cryptonote::print_money(r.second.first);
-        log::debug(logcat, ss.str());
+        auto msg = "Total received by {}: {}, expected {}"_format(
+                cryptonote::get_account_address_as_str(m_nettype, r.second.second, address),
+                cryptonote::print_money(total_received),
+                cryptonote::print_money(r.second.first));
+        log::debug(logcat, "{}", msg);
         THROW_WALLET_EXCEPTION_IF(
-                total_received < r.second.first, error::wallet_internal_error, ss.str());
+                total_received < r.second.first, error::wallet_internal_error, msg);
     }
 
     return true;
@@ -13734,7 +13726,7 @@ void wallet2::cold_sign_tx(
 
     log::debug(logcat, "Signed tx data from hw: {} transactions", exported_txs.ptx.size());
     for (auto& c_ptx : exported_txs.ptx)
-        log::warning(logcat, cryptonote::obj_to_json_str(c_ptx.tx));
+        log::warning(logcat, "{}", cryptonote::obj_to_json_str(c_ptx.tx));
 }
 //----------------------------------------------------------------------------------------------------
 uint64_t wallet2::cold_key_image_sync(uint64_t& spent, uint64_t& unspent) {
@@ -14238,7 +14230,7 @@ std::string wallet2::get_spend_proof(const crypto::hash& txid, std::string_view 
 bool wallet2::check_spend_proof(
         const crypto::hash& txid, std::string_view message, std::string_view sig_str) {
     THROW_WALLET_EXCEPTION_IF(
-            !tools::starts_with(sig_str, SPEND_PROOF_MAGIC),
+            !sig_str.starts_with(SPEND_PROOF_MAGIC),
             error::wallet_internal_error,
             "Signature header check error");
     sig_str.remove_prefix(SPEND_PROOF_MAGIC.size());
@@ -14724,10 +14716,10 @@ bool wallet2::check_tx_proof(
         std::string_view sig_str,
         uint64_t& received) const {
     bool is_out;
-    if (tools::starts_with(sig_str, OUTBOUND_PROOF_MAGIC)) {
+    if (sig_str.starts_with(OUTBOUND_PROOF_MAGIC)) {
         is_out = true;
         sig_str.remove_prefix(OUTBOUND_PROOF_MAGIC.size());
-    } else if (tools::starts_with(sig_str, INBOUND_PROOF_MAGIC)) {
+    } else if (sig_str.starts_with(INBOUND_PROOF_MAGIC)) {
         is_out = false;
         sig_str.remove_prefix(INBOUND_PROOF_MAGIC.size());
     } else {
@@ -15069,7 +15061,7 @@ bool wallet2::check_reserve_proof(
             "Daemon RPC version is too old");
 
     THROW_WALLET_EXCEPTION_IF(
-            tools::starts_with(sig_str, RESERVE_PROOF_MAGIC),
+            sig_str.starts_with(RESERVE_PROOF_MAGIC),
             error::wallet_internal_error,
             "Signature header check error");
     sig_str.remove_prefix(RESERVE_PROOF_MAGIC.size());
@@ -15472,7 +15464,7 @@ bool wallet2::verify(
         std::string_view data,
         const cryptonote::account_public_address& address,
         std::string_view signature) {
-    if (!tools::starts_with(signature, SIG_MAGIC)) {
+    if (!signature.starts_with(SIG_MAGIC)) {
         log::warning(logcat, "Signature header check error");
         return false;
     }
@@ -15510,7 +15502,7 @@ bool wallet2::verify_with_public_key(
         std::string_view data,
         const crypto::public_key& public_key,
         std::string_view signature) const {
-    if (!tools::starts_with(signature, MULTISIG_SIGNATURE_MAGIC)) {
+    if (!signature.starts_with(MULTISIG_SIGNATURE_MAGIC)) {
         log::error(logcat, "Signature header check error");
         return false;
     }
@@ -15705,12 +15697,13 @@ uint64_t wallet2::import_key_images_from_file(
     THROW_WALLET_EXCEPTION_IF(
             !r,
             error::wallet_internal_error,
-            std::string(tr("failed to read file ")) + filename.u8string());
+            std::string(tr("failed to read file ")) +
+                    tools::convert_str<char>(filename.u8string()));
 
-    if (!tools::starts_with(data, KEY_IMAGE_EXPORT_FILE_MAGIC)) {
+    if (!data.starts_with(KEY_IMAGE_EXPORT_FILE_MAGIC)) {
         THROW_WALLET_EXCEPTION(
                 error::wallet_internal_error,
-                std::string("Bad key image export file magic in ") + filename.u8string());
+                "Bad key image export file magic in {}"_format(filename));
     }
 
     try {
@@ -15720,14 +15713,14 @@ uint64_t wallet2::import_key_images_from_file(
     } catch (const std::exception& e) {
         THROW_WALLET_EXCEPTION(
                 error::wallet_internal_error,
-                std::string("Failed to decrypt ") + filename.u8string() + ": " + e.what());
+                "Failed to decrypt {}: {}"_format(filename, e.what()));
     }
 
     const size_t headerlen = 4 + 2 * sizeof(crypto::public_key);
     THROW_WALLET_EXCEPTION_IF(
             data.size() < headerlen,
             error::wallet_internal_error,
-            std::string("Bad data size from file ") + filename.u8string());
+            "Bad data size from file {}"_format(filename));
 
     uint32_t offset = oxenc::load_little_to_host<uint32_t>(data.data());
     THROW_WALLET_EXCEPTION_IF(
@@ -15749,8 +15742,7 @@ uint64_t wallet2::import_key_images_from_file(
             public_view_key != keys.m_view_public_key) {
             THROW_WALLET_EXCEPTION(
                     error::wallet_internal_error,
-                    std::string("Key images from ") + filename.u8string() +
-                            " are for a different account");
+                    "Key images from {} are for a different account"_format(filename));
         }
     }
 
@@ -15759,7 +15751,7 @@ uint64_t wallet2::import_key_images_from_file(
     THROW_WALLET_EXCEPTION_IF(
             record_buffer_size % record_size,
             error::wallet_internal_error,
-            std::string("Bad data size from file ") + filename.u8string());
+            "Bad data size from file {}"_format(filename));
 
     const size_t num_records = record_buffer_size / record_size;
     std::vector<std::pair<crypto::key_image, crypto::signature>> ski(num_records);
@@ -16325,7 +16317,7 @@ size_t wallet2::import_outputs(
 }
 //----------------------------------------------------------------------------------------------------
 size_t wallet2::import_outputs_from_str(std::string data) {
-    if (!tools::starts_with(data, OUTPUT_EXPORT_FILE_MAGIC)) {
+    if (!data.starts_with(OUTPUT_EXPORT_FILE_MAGIC)) {
         THROW_WALLET_EXCEPTION(error::wallet_internal_error, std::string("Bad magic from outputs"));
     }
 
@@ -16586,7 +16578,7 @@ size_t wallet2::import_multisig(std::vector<std::string> blobs) {
     std::unordered_set<crypto::public_key> seen;
     for (std::string& data : blobs) {
         THROW_WALLET_EXCEPTION_IF(
-                !tools::starts_with(data, MULTISIG_EXPORT_FILE_MAGIC),
+                !data.starts_with(MULTISIG_EXPORT_FILE_MAGIC),
                 error::wallet_internal_error,
                 "Bad multisig info file magic in ");
 
@@ -16854,7 +16846,7 @@ bool wallet2::parse_uri(
         std::string& recipient_name,
         std::vector<std::string>& unknown_parameters,
         std::string& error) {
-    if (!tools::starts_with(uri, uri_prefix)) {
+    if (!uri.starts_with(uri_prefix)) {
         error = "URI has wrong scheme (expected \"";
         error += uri_prefix;
         error += "\"): ";

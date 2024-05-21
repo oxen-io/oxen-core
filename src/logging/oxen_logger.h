@@ -2,7 +2,6 @@
 
 #include <oxenmq/oxenmq.h>
 
-#include <filesystem>
 #include <oxen/log.hpp>
 
 #define OXEN_LOG_ENABLED(LVL) logcat->should_log(spdlog::level::LVL)

@@ -224,14 +224,13 @@ class SNNetwork:
         vprint("Submitted registration on ethereum for service node with pubkey: {}".format(self.ethsns[0].sn_key()))
         result = self.servicenodecontract.addBLSPublicKey(ethereum_add_bls_args)
         vprint("added node: number of service nodes in contract {}".format(self.servicenodecontract.numberServiceNodes()))
-        # time.sleep(155)
 
         # Exit Node
         # exit = self.ethsns[0].get_exit_request(ethereum_add_bls_args["bls_pubkey"])
         # result = self.servicenodecontract.removeBLSPublicKeyWithSignature(
                 # exit["result"]["bls_key"],
                 # exit["result"]["signature"],
-                # self.servicenodecontract.getNonSigners(exit["result"]["signers_bls_pubkeys"]))
+                # exit["result"]["non_signers_bls_pubkeys"])
         # vprint("Submitted transaction to exit service node : {}".format(ethereum_add_bls_args["bls_pubkey"]))
         # vprint("exited node: number of service nodes in contract {}".format(self.servicenodecontract.numberServiceNodes()))
 
@@ -240,16 +239,24 @@ class SNNetwork:
         # result = self.servicenodecontract.liquidateBLSPublicKeyWithSignature(
                 # exit["result"]["bls_key"],
                 # exit["result"]["signature"],
-                # self.servicenodecontract.getNonSigners(exit["result"]["signers_bls_pubkeys"]))
+                # exit["result"]["non_signers_bls_pubkeys"])
         # vprint(result)
         # vprint("Submitted transaction to liquidate service node : {}".format(ethereum_add_bls_args["bls_pubkey"]))
         # vprint("liquidated node: number of service nodes in contract {}".format(self.servicenodecontract.numberServiceNodes()))
 
         # Claim rewards for Address
-        # rewards = self.ethsns[0].get_bls_rewards(self.servicenodecontract.hardhatAccountAddress())
-        # vprint(rewards)
-        # result = self.servicenodecontract.updateRewardsBalance(rewards["result"]["address"], rewards["result"]["amount"], rewards["result"]["signature"], [])
-        # result = self.servicenodecontract.claimRewards()
+        time.sleep(155)
+        rewards = self.ethsns[0].get_bls_rewards(self.servicenodecontract.hardhatAccountAddress())
+        vprint(rewards)
+        vprint("Balance before claim {}".format(self.servicenodecontract.erc20balance(self.servicenodecontract.hardhatAccountAddress())))
+        result = self.servicenodecontract.updateRewardsBalance(
+                rewards["result"]["address"],
+                rewards["result"]["amount"],
+                rewards["result"]["signature"],
+                rewards["result"]["non_signers_bls_pubkeys"])
+                # self.servicenodecontract.getNonSigners(rewards["result"]["signers_bls_pubkeys"]))
+        result = self.servicenodecontract.claimRewards()
+        vprint("Balance after claim {}".format(self.servicenodecontract.erc20balance(self.servicenodecontract.hardhatAccountAddress())))
 
         # Initiate Removeal of BLS Key
         # result = self.servicenodecontract.initiateRemoveBLSPublicKey(self.servicenodecontract.getServiceNodeID(ethereum_add_bls_args["bls_pubkey"]))

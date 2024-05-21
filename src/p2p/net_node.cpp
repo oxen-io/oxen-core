@@ -52,6 +52,7 @@
 
 namespace nodetool {
 namespace {
+    auto logcat = oxen::log::Cat("p2p");
 
     constexpr const std::chrono::milliseconds future_poll_interval = 500ms;
     constexpr const std::chrono::seconds socks_connect_timeout{
@@ -201,11 +202,13 @@ std::optional<std::vector<proxy>> get_proxies(boost::program_options::variables_
         CHECK_AND_ASSERT_MES(
                 pieces.size() >= 1 && !pieces[0].empty(),
                 std::nullopt,
-                "No network type for --" << arg_tx_proxy.name);
+                "No network type for --{}",
+                arg_tx_proxy.name);
         CHECK_AND_ASSERT_MES(
                 pieces.size() >= 2 && !pieces[1].empty(),
                 std::nullopt,
-                "No ipv4:port given for --" << arg_tx_proxy.name);
+                "No ipv4:port given for --{}",
+                arg_tx_proxy.name);
         auto& zone = pieces[0];
         auto& proxy = pieces[1];
         auto it = pieces.begin() + 2;
@@ -261,11 +264,13 @@ std::optional<std::vector<anonymous_inbound>> get_anonymous_inbounds(
         CHECK_AND_ASSERT_MES(
                 pieces.size() >= 1 && !pieces[0].empty(),
                 std::nullopt,
-                "No inbound address for --" << arg_anonymous_inbound.name);
+                "No inbound address for --{}",
+                arg_anonymous_inbound.name);
         CHECK_AND_ASSERT_MES(
                 pieces.size() >= 2 && !pieces[1].empty(),
                 std::nullopt,
-                "No local ipv4:port given for --" << arg_anonymous_inbound.name);
+                "No local ipv4:port given for --{}",
+                arg_anonymous_inbound.name);
         auto& address = pieces[0];
         auto& bind = pieces[1];
 
@@ -273,7 +278,8 @@ std::optional<std::vector<anonymous_inbound>> get_anonymous_inbounds(
         CHECK_AND_ASSERT_MES(
                 colon < bind.size(),
                 std::nullopt,
-                "No local port given for --" << arg_anonymous_inbound.name);
+                "No local port given for --{}",
+                arg_anonymous_inbound.name);
 
         if (pieces.size() >= 3) {
             set_inbound.max_connections = get_max_connections(pieces[2]);

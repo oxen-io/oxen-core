@@ -6,7 +6,7 @@ set(Boost_USE_MULTITHREADED ON)
 include_directories(.)
 include_directories(../../include)
 
-find_package(Boost COMPONENTS system filesystem thread)
+find_package(Boost COMPONENTS system thread)
 include_directories( ${Boost_INCLUDE_DIRS} )
 
 IF (MSVC)

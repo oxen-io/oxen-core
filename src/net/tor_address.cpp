@@ -43,17 +43,17 @@
 
 namespace net {
 namespace {
-    constexpr const char tld[] = u8".onion";
+    constexpr const char tld[] = ".onion";
     constexpr const char unknown_host[] = "<unknown tor host>";
 
     constexpr const unsigned v2_length = 16;
     constexpr const unsigned v3_length = 56;
 
     constexpr const char base32_alphabet[] =
-            u8"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz234567";
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz234567";
 
     expect<void> host_check(std::string_view host) noexcept {
-        if (!tools::ends_with(host, tld))
+        if (!host.ends_with(tld))
             return {net::error::expected_tld};
 
         host.remove_suffix(sizeof(tld) - 1);

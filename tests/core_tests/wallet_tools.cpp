@@ -201,7 +201,7 @@ void wallet_tools::gen_block_data(block_tracker &bt, const cryptonote::block *bl
 
   for (const auto &h : bl->tx_hashes) {
     const map_hash2tx_t::const_iterator cit = mtx.find(h);
-    CHECK_AND_ASSERT_THROW_MES(mtx.end() != cit, "block contains an unknown tx hash @ {}, {}"_format(height, h));
+    CHECK_AND_ASSERT_THROW_MES(mtx.end() != cit, "block contains an unknown tx hash @ {}, {}", height, h);
     vtx.push_back(cit->second);
   }
 

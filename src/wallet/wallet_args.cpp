@@ -28,11 +28,12 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "wallet/wallet_args.h"
 
+#include <fmt/std.h>
+
 #include <fstream>
 #include <sstream>
 
 #include "common/file.h"
-#include "common/fs-format.h"
 #include "common/i18n.h"
 #include "common/util.h"
 #include "epee/misc_log_ex.h"
@@ -160,11 +161,11 @@ std::pair<std::optional<boost::program_options::variables_map>, bool> main(
         }
 
         if (command_line::has_arg(vm, arg_config_file)) {
-            fs::path config = fs::u8path(command_line::get_arg(vm, arg_config_file));
+            fs::path config{tools::convert_sv<char8_t>(command_line::get_arg(vm, arg_config_file))};
             if (std::error_code ec; fs::exists(config, ec)) {
-                fs::ifstream cfg{config};
+                std::ifstream cfg{config};
                 if (!cfg.is_open())
-                    throw std::runtime_error{"Unable to open config file: " + config.u8string()};
+                    throw std::runtime_error{"Unable to open config file: {}"_format(config)};
                 po::store(po::parse_config_file<char>(cfg, desc_params), vm);
             } else {
                 log::error(logcat, "{}{}", wallet_args::tr("Can't find config file "), config);

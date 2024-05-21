@@ -27,11 +27,12 @@
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#include <fmt/std.h>
+
 #include "blockchain_objects.h"
 #include "blocksdat_file.h"
 #include "bootstrap_file.h"
 #include "common/command_line.h"
-#include "common/fs-format.h"
 #include "cryptonote_core/cryptonote_core.h"
 #include "cryptonote_core/uptime_proof.h"
 #include "version.h"
@@ -114,11 +115,11 @@ int main(int argc, char* argv[]) {
     }
     bool opt_blocks_dat = command_line::get_arg(vm, arg_blocks_dat);
 
-    auto config_folder = fs::u8path(command_line::get_arg(vm, cryptonote::arg_data_dir));
+    auto config_folder = tools::utf8_path(command_line::get_arg(vm, cryptonote::arg_data_dir));
 
     fs::path output_file_path;
     if (command_line::has_arg(vm, arg_output_file))
-        output_file_path = fs::u8path(command_line::get_arg(vm, arg_output_file));
+        output_file_path = tools::utf8_path(command_line::get_arg(vm, arg_output_file));
     else
         output_file_path = config_folder / "export" / BLOCKCHAIN_RAW;
     log::warning(logcat, "Export output file: {}", output_file_path.string());

@@ -44,309 +44,289 @@
 #include "trezor/debug_link.hpp"
 #endif
 
-namespace hw { namespace trezor {
+namespace hw::trezor {
 
 #ifdef WITH_DEVICE_TREZOR
-    class device_trezor_base;
+class device_trezor_base;
 
 #ifdef WITH_TREZOR_DEBUGGING
-    class trezor_debug_callback : public hw::i_device_callback {
-      public:
-        trezor_debug_callback() = default;
-        explicit trezor_debug_callback(std::shared_ptr<Transport>& debug_transport);
+class trezor_debug_callback : public hw::i_device_callback {
+  public:
+    trezor_debug_callback() = default;
+    explicit trezor_debug_callback(std::shared_ptr<Transport>& debug_transport);
 
-        void on_button_request(uint64_t code = 0) override;
-        std::optional<epee::wipeable_string> on_pin_request() override;
-        std::optional<epee::wipeable_string> on_passphrase_request(bool& on_device) override;
-        void on_passphrase_state_request(const std::string& state);
-        void on_disconnect();
+    void on_button_request(uint64_t code = 0) override;
+    std::optional<epee::wipeable_string> on_pin_request() override;
+    std::optional<epee::wipeable_string> on_passphrase_request(bool& on_device) override;
+    void on_passphrase_state_request(const std::string& state);
+    void on_disconnect();
 
-      protected:
-        std::shared_ptr<DebugLink> m_debug_link;
-    };
+  protected:
+    std::shared_ptr<DebugLink> m_debug_link;
+};
 
 #endif
+
+/**
+ * TREZOR device template with basic functions
+ */
+class device_trezor_base : public hw::core::device_default {
+  protected:
+    // Locker for concurrent access
+    mutable std::recursive_mutex device_locker;
+    mutable std::mutex command_locker;
+
+    std::shared_ptr<Transport> m_transport;
+    i_device_callback* m_callback;
+
+    std::string m_full_name;
+    std::vector<unsigned int> m_wallet_deriv_path;
+    epee::wipeable_string m_device_session_id;  // returned after passphrase entry, session
+    std::shared_ptr<messages::management::Features>
+            m_features;  // features from the last device reset
+    std::optional<epee::wipeable_string> m_pin;
+    std::optional<epee::wipeable_string> m_passphrase;
+    messages::MessageType m_last_msg_type;
+
+    cryptonote::network_type network_type;
+
+#ifdef WITH_TREZOR_DEBUGGING
+    std::shared_ptr<trezor_debug_callback> m_debug_callback;
+    bool m_debug;
+
+    void setup_debug();
+#endif
+
+    //
+    // Internal methods
+    //
+
+    void require_connected() const;
+    void require_initialized() const;
+    void call_ping_unsafe();
+    void test_ping();
+    virtual void device_state_initialize_unsafe();
+    void ensure_derivation_path() noexcept;
+
+    // Communication methods
+
+    void write_raw(const google::protobuf::Message* msg);
+    GenericMessage read_raw();
+    GenericMessage call_raw(const google::protobuf::Message* msg);
+
+    // Trezor message protocol handler. Handles specific signalling messages.
+    bool message_handler(GenericMessage& input);
 
     /**
-     * TREZOR device template with basic functions
+     * Client communication wrapper, handles specific Trezor protocol.
+     *
+     * @throws UnexpectedMessageException if the response message type is different than
+     * expected. Exception contains message type and the message itself.
      */
-    class device_trezor_base : public hw::core::device_default {
-      protected:
-        // Locker for concurrent access
-        mutable std::recursive_mutex device_locker;
-        mutable std::mutex command_locker;
+    template <class t_message = google::protobuf::Message>
+    std::shared_ptr<t_message> client_exchange(
+            const std::shared_ptr<const google::protobuf::Message>& req,
+            const std::optional<messages::MessageType>& resp_type = std::nullopt,
+            const std::optional<std::vector<messages::MessageType>>& resp_types = std::nullopt,
+            const std::optional<messages::MessageType*>& resp_type_ptr = std::nullopt,
+            bool open_session = false) {
+        // Require strictly protocol buffers response in the template.
+        static_assert(std::is_base_of_v<google::protobuf::Message, t_message>);
+        const bool accepting_base = boost::is_same<google::protobuf::Message, t_message>::value;
+        if (resp_types && !accepting_base) {
+            throw std::invalid_argument(
+                    "Cannot specify list of accepted types and not using generic response");
+        }
 
-        std::shared_ptr<Transport> m_transport;
-        i_device_callback* m_callback;
+        // Determine type of expected message response
+        const messages::MessageType required_type =
+                accepting_base ? messages::MessageType_Success
+                : resp_type    ? *resp_type
+                               : MessageMapper::get_message_wire_number<t_message>();
 
-        std::string m_full_name;
-        std::vector<unsigned int> m_wallet_deriv_path;
-        epee::wipeable_string m_device_session_id;  // returned after passphrase entry, session
-        std::shared_ptr<messages::management::Features>
-                m_features;  // features from the last device reset
-        std::optional<epee::wipeable_string> m_pin;
-        std::optional<epee::wipeable_string> m_passphrase;
-        messages::MessageType m_last_msg_type;
-
-        cryptonote::network_type network_type;
-
-#ifdef WITH_TREZOR_DEBUGGING
-        std::shared_ptr<trezor_debug_callback> m_debug_callback;
-        bool m_debug;
-
-        void setup_debug();
-#endif
-
-        //
-        // Internal methods
-        //
-
-        void require_connected() const;
-        void require_initialized() const;
-        void call_ping_unsafe();
-        void test_ping();
-        virtual void device_state_initialize_unsafe();
-        void ensure_derivation_path() noexcept;
-
-        // Communication methods
-
-        void write_raw(const google::protobuf::Message* msg);
-        GenericMessage read_raw();
-        GenericMessage call_raw(const google::protobuf::Message* msg);
-
-        // Trezor message protocol handler. Handles specific signalling messages.
-        bool message_handler(GenericMessage& input);
-
-        /**
-         * Client communication wrapper, handles specific Trezor protocol.
-         *
-         * @throws UnexpectedMessageException if the response message type is different than
-         * expected. Exception contains message type and the message itself.
-         */
-        template <class t_message = google::protobuf::Message>
-        std::shared_ptr<t_message> client_exchange(
-                const std::shared_ptr<const google::protobuf::Message>& req,
-                const std::optional<messages::MessageType>& resp_type = std::nullopt,
-                const std::optional<std::vector<messages::MessageType>>& resp_types = std::nullopt,
-                const std::optional<messages::MessageType*>& resp_type_ptr = std::nullopt,
-                bool open_session = false) {
-            // Require strictly protocol buffers response in the template.
-            static_assert(std::is_base_of_v<google::protobuf::Message, t_message>);
-            const bool accepting_base = boost::is_same<google::protobuf::Message, t_message>::value;
-            if (resp_types && !accepting_base) {
-                throw std::invalid_argument(
-                        "Cannot specify list of accepted types and not using generic response");
+        // Open session if required
+        if (open_session) {
+            try {
+                m_transport->open();
+            } catch (const std::exception& e) {
+                std::throw_with_nested(exc::SessionException("Could not open session"));
             }
+        }
 
-            // Determine type of expected message response
-            const messages::MessageType required_type =
-                    accepting_base ? messages::MessageType_Success
-                    : resp_type    ? *resp_type
-                                   : MessageMapper::get_message_wire_number<t_message>();
-
-            // Open session if required
+        // Scoped session closer
+        OXEN_DEFER {
             if (open_session) {
-                try {
-                    m_transport->open();
-                } catch (const std::exception& e) {
-                    std::throw_with_nested(exc::SessionException("Could not open session"));
-                }
+                this->get_transport()->close();
             }
-
-            // Scoped session closer
-            OXEN_DEFER {
-                if (open_session) {
-                    this->get_transport()->close();
-                }
-            };
-
-            // Write/read the request
-            CHECK_AND_ASSERT_THROW_MES(req, "Request is null");
-            auto msg_resp = call_raw(req.get());
-
-            bool processed = false;
-            do {
-                processed = message_handler(msg_resp);
-            } while (processed);
-
-            // Response section
-            if (resp_type_ptr) {
-                **resp_type_ptr = msg_resp.m_type;
-            }
-
-            if (msg_resp.m_type == messages::MessageType_Failure) {
-                throw_failure_exception(
-                        dynamic_cast<messages::common::Failure*>(msg_resp.m_msg.get()));
-
-            } else if (!accepting_base && msg_resp.m_type == required_type) {
-                return message_ptr_retype<t_message>(msg_resp.m_msg);
-
-            } else if (
-                    accepting_base &&
-                    (!resp_types ||
-                     std::find(resp_types->begin(), resp_types->end(), msg_resp.m_type) !=
-                             resp_types->end())) {
-                return message_ptr_retype<t_message>(msg_resp.m_msg);
-
-            } else {
-                throw exc::UnexpectedMessageException(msg_resp.m_type, msg_resp.m_msg);
-            }
-        }
-
-        /**
-         * Utility method to set address_n and network type to the message requets.
-         */
-        template <class t_message>
-        void set_msg_addr(
-                t_message* msg,
-                const std::optional<std::vector<uint32_t>>& path = std::nullopt,
-                const std::optional<cryptonote::network_type>& network_type = std::nullopt) {
-            CHECK_AND_ASSERT_THROW_MES(msg, "Message is null");
-            msg->clear_address_n();
-            if (path) {
-                for (auto x : *path) {
-                    msg->add_address_n(x);
-                }
-            } else {
-                ensure_derivation_path();
-                for (unsigned int i : DEFAULT_BIP44_PATH) {
-                    msg->add_address_n(i);
-                }
-                for (unsigned int i : m_wallet_deriv_path) {
-                    msg->add_address_n(i);
-                }
-            }
-
-            msg->set_network_type(
-                    static_cast<uint32_t>(network_type ? *network_type : this->network_type));
-        }
-
-      public:
-        device_trezor_base();
-        ~device_trezor_base() override;
-
-        device_trezor_base(const device_trezor_base& device) = delete;
-        device_trezor_base& operator=(const device_trezor_base& device) = delete;
-
-        explicit operator bool() const override {
-            return true;
-        }
-        device_type get_type() const override {
-            return device_type::TREZOR;
         };
 
-        bool reset();
+        // Write/read the request
+        CHECK_AND_ASSERT_THROW_MES(req, "Request is null");
+        auto msg_resp = call_raw(req.get());
 
-        // Default derivation path for Monero
-        static const uint32_t DEFAULT_BIP44_PATH[2];
+        bool processed = false;
+        do {
+            processed = message_handler(msg_resp);
+        } while (processed);
 
-        std::shared_ptr<Transport> get_transport() {
-            return m_transport;
+        // Response section
+        if (resp_type_ptr) {
+            **resp_type_ptr = msg_resp.m_type;
         }
 
-        void set_callback(i_device_callback* callback) override {
-            m_callback = callback;
+        if (msg_resp.m_type == messages::MessageType_Failure) {
+            throw_failure_exception(dynamic_cast<messages::common::Failure*>(msg_resp.m_msg.get()));
+
+        } else if (!accepting_base && msg_resp.m_type == required_type) {
+            return message_ptr_retype<t_message>(msg_resp.m_msg);
+
+        } else if (
+                accepting_base &&
+                (!resp_types ||
+                 std::find(resp_types->begin(), resp_types->end(), msg_resp.m_type) !=
+                         resp_types->end())) {
+            return message_ptr_retype<t_message>(msg_resp.m_msg);
+
+        } else {
+            throw exc::UnexpectedMessageException(msg_resp.m_type, msg_resp.m_msg);
+        }
+    }
+
+    /**
+     * Utility method to set address_n and network type to the message requets.
+     */
+    template <class t_message>
+    void set_msg_addr(
+            t_message* msg,
+            const std::optional<std::vector<uint32_t>>& path = std::nullopt,
+            const std::optional<cryptonote::network_type>& network_type = std::nullopt) {
+        CHECK_AND_ASSERT_THROW_MES(msg, "Message is null");
+        msg->clear_address_n();
+        if (path) {
+            for (auto x : *path) {
+                msg->add_address_n(x);
+            }
+        } else {
+            ensure_derivation_path();
+            for (unsigned int i : DEFAULT_BIP44_PATH) {
+                msg->add_address_n(i);
+            }
+            for (unsigned int i : m_wallet_deriv_path) {
+                msg->add_address_n(i);
+            }
         }
 
-        i_device_callback* get_callback() {
-            return m_callback;
-        }
+        msg->set_network_type(
+                static_cast<uint32_t>(network_type ? *network_type : this->network_type));
+    }
 
-        std::shared_ptr<messages::management::Features>& get_features() {
-            return m_features;
-        }
+  public:
+    device_trezor_base();
+    ~device_trezor_base() override;
 
-        uint64_t get_version() const {
-            CHECK_AND_ASSERT_THROW_MES(m_features, "Features not loaded");
-            CHECK_AND_ASSERT_THROW_MES(
-                    m_features->has_major_version() && m_features->has_minor_version() &&
-                            m_features->has_patch_version(),
-                    "Invalid Trezor firmware version information");
-            return pack_version(
-                    m_features->major_version(),
-                    m_features->minor_version(),
-                    m_features->patch_version());
-        }
+    device_trezor_base(const device_trezor_base& device) = delete;
+    device_trezor_base& operator=(const device_trezor_base& device) = delete;
 
-        void set_derivation_path(const std::string& deriv_path) override;
+    explicit operator bool() const override { return true; }
+    device_type get_type() const override { return device_type::TREZOR; };
 
-        virtual bool has_ki_live_refresh(void) const override {
-            return false;
-        }
+    bool reset();
 
-        virtual void set_pin(const epee::wipeable_string& pin) override {
-            m_pin = pin;
-        }
-        virtual void set_passphrase(const epee::wipeable_string& passphrase) override {
-            m_passphrase = passphrase;
-        }
+    // Default derivation path for Monero
+    static const uint32_t DEFAULT_BIP44_PATH[2];
 
-        /* ======================================================================= */
-        /*                              SETUP/TEARDOWN                             */
-        /* ======================================================================= */
-        bool set_name(std::string_view name) override;
+    std::shared_ptr<Transport> get_transport() { return m_transport; }
 
-        std::string get_name() const override;
-        bool init() override;
-        bool release() override;
-        bool connect() override;
-        bool disconnect() override;
+    void set_callback(i_device_callback* callback) override { m_callback = callback; }
 
-        /* ======================================================================= */
-        /*  LOCKER                                                                 */
-        /* ======================================================================= */
-        void lock() override;
-        void unlock() override;
-        bool try_lock() override;
+    i_device_callback* get_callback() { return m_callback; }
 
-        /* ======================================================================= */
-        /*                              TREZOR PROTOCOL                            */
-        /* ======================================================================= */
+    std::shared_ptr<messages::management::Features>& get_features() { return m_features; }
 
-        /**
-         * Device ping, no-throw
-         */
-        bool ping();
+    uint64_t get_version() const {
+        CHECK_AND_ASSERT_THROW_MES(m_features, "Features not loaded");
+        CHECK_AND_ASSERT_THROW_MES(
+                m_features->has_major_version() && m_features->has_minor_version() &&
+                        m_features->has_patch_version(),
+                "Invalid Trezor firmware version information");
+        return pack_version(
+                m_features->major_version(),
+                m_features->minor_version(),
+                m_features->patch_version());
+    }
 
-        /**
-         * Performs Initialize call to the Trezor, resets to known state.
-         */
-        void device_state_reset();
+    void set_derivation_path(const std::string& deriv_path) override;
 
-        // Protocol callbacks
-        void on_button_request(GenericMessage& resp, const messages::common::ButtonRequest* msg);
-        void on_button_pressed();
-        void on_pin_request(GenericMessage& resp, const messages::common::PinMatrixRequest* msg);
-        void on_passphrase_request(
-                GenericMessage& resp, const messages::common::PassphraseRequest* msg);
-        void on_passphrase_state_request(
-                GenericMessage& resp,
-                const messages::common::Deprecated_PassphraseStateRequest* msg);
+    virtual bool has_ki_live_refresh(void) const override { return false; }
+
+    virtual void set_pin(const epee::wipeable_string& pin) override { m_pin = pin; }
+    virtual void set_passphrase(const epee::wipeable_string& passphrase) override {
+        m_passphrase = passphrase;
+    }
+
+    /* ======================================================================= */
+    /*                              SETUP/TEARDOWN                             */
+    /* ======================================================================= */
+    bool set_name(std::string_view name) override;
+
+    std::string get_name() const override;
+    bool init() override;
+    bool release() override;
+    bool connect() override;
+    bool disconnect() override;
+
+    /* ======================================================================= */
+    /*  LOCKER                                                                 */
+    /* ======================================================================= */
+    void lock() override;
+    void unlock() override;
+    bool try_lock() override;
+
+    /* ======================================================================= */
+    /*                              TREZOR PROTOCOL                            */
+    /* ======================================================================= */
+
+    /**
+     * Device ping, no-throw
+     */
+    bool ping();
+
+    /**
+     * Performs Initialize call to the Trezor, resets to known state.
+     */
+    void device_state_reset();
+
+    // Protocol callbacks
+    void on_button_request(GenericMessage& resp, const messages::common::ButtonRequest* msg);
+    void on_button_pressed();
+    void on_pin_request(GenericMessage& resp, const messages::common::PinMatrixRequest* msg);
+    void on_passphrase_request(
+            GenericMessage& resp, const messages::common::PassphraseRequest* msg);
+    void on_passphrase_state_request(
+            GenericMessage& resp, const messages::common::Deprecated_PassphraseStateRequest* msg);
 
 #ifdef WITH_TREZOR_DEBUGGING
-        void set_debug(bool debug) {
-            m_debug = debug;
-        }
+    void set_debug(bool debug) { m_debug = debug; }
 
-        void set_debug_callback(std::shared_ptr<trezor_debug_callback>& debug_callback) {
-            m_debug_callback = debug_callback;
-        }
+    void set_debug_callback(std::shared_ptr<trezor_debug_callback>& debug_callback) {
+        m_debug_callback = debug_callback;
+    }
 
-        void wipe_device();
-        void init_device();
-        void load_device(
-                const std::string& mnemonic,
-                const std::string& pin = "",
-                bool passphrase_protection = false,
-                const std::string& label = "test",
-                const std::string& language = "english",
-                bool skip_checksum = false,
-                bool expand = false);
+    void wipe_device();
+    void init_device();
+    void load_device(
+            const std::string& mnemonic,
+            const std::string& pin = "",
+            bool passphrase_protection = false,
+            const std::string& label = "test",
+            const std::string& language = "english",
+            bool skip_checksum = false,
+            bool expand = false);
 
 #endif
-    };
+};
 
 #endif
 
-}}      // namespace hw::trezor
+}  // namespace hw::trezor
 #endif  // MONERO_DEVICE_TREZOR_BASE_H

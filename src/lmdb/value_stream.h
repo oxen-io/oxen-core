@@ -32,6 +32,7 @@
 #include <cstdint>
 #include <cstring>
 #include <iterator>
+#include <type_traits>
 #include <utility>
 
 #include "epee/span.h"
@@ -147,9 +148,11 @@ class value_iterator {
     */
     template <typename U, typename G = U, std::size_t uoffset = 0>
     G get_value() const noexcept {
-        static_assert(std::is_same<U, T>(), "bad MONERO_FIELD usage?");
-        static_assert(std::is_pod<U>(), "value type must be pod");
-        static_assert(std::is_pod<G>(), "field type must be pod");
+        static_assert(std::is_same_v<U, T>, "bad MONERO_FIELD usage?");
+        static_assert(
+                std::is_standard_layout_v<U> && std::is_trivial_v<U>, "value type must be pod");
+        static_assert(
+                std::is_standard_layout_v<G> && std::is_trivial_v<G>, "field type must be pod");
         static_assert(sizeof(G) + uoffset <= sizeof(U), "bad field and/or offset");
         assert(sizeof(G) + uoffset <= values.size());
         assert(!is_end());

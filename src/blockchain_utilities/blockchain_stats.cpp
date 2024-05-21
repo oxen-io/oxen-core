@@ -27,6 +27,7 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <date/date.h>
+#include <fmt/std.h>
 
 #include <boost/algorithm/string.hpp>
 #include <chrono>
@@ -34,7 +35,6 @@
 #include "blockchain_db/blockchain_db.h"
 #include "blockchain_objects.h"
 #include "common/command_line.h"
-#include "common/fs-format.h"
 #include "common/signal_handler.h"
 #include "common/varint.h"
 #include "cryptonote_basic/cryptonote_boost_serialization.h"
@@ -143,7 +143,7 @@ int main(int argc, char* argv[]) {
         throw std::runtime_error("Failed to initialize a database");
     }
 
-    const fs::path filename = fs::u8path(opt_data_dir) / db->get_db_name();
+    const fs::path filename = tools::utf8_path(opt_data_dir) / db->get_db_name();
     log::warning(logcat, "Loading blockchain from folder {} ...", filename);
 
     try {

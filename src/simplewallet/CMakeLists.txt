@@ -38,7 +38,6 @@ target_link_libraries(simplewallet
     cryptonote_core
     mnemonics
     Boost::program_options
-    filesystem
     icu
     Boost::thread
     logging

@@ -199,11 +199,10 @@ struct pulse_sort_key {
     END_SERIALIZE()
 };
 
-struct service_node_address
-{
+struct service_node_address {
     crypto::x25519_public_key x_pkey;
-    uint32_t                  ip;
-    uint16_t                  port;
+    uint32_t ip;
+    uint16_t port;
 };
 
 struct service_node_info  // registration information
@@ -476,7 +475,7 @@ class service_node_list {
     bool state_history_exists(uint64_t height);
     bool process_batching_rewards(const cryptonote::block& block);
     bool pop_batching_rewards_block(const cryptonote::block& block);
-    bool process_ethereum_transactions(const cryptonote::network_type nettype, const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs);
+    bool process_ethereum_address_notification_transactions(const cryptonote::network_type nettype, const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs);
     void blockchain_detached(uint64_t height);
     void init();
     void validate_miner_tx(const cryptonote::miner_tx_info& info) const;
@@ -591,7 +590,7 @@ class service_node_list {
             if (const auto& x2_pk = it->second.pubkey_x25519) {
                 service_node_address address = {};
                 address.x_pkey = x2_pk;
-                address.ip = it->second.proof   ? it->second.proof->public_ip : 0;
+                address.ip = it->second.proof ? it->second.proof->public_ip : 0;
                 address.port = it->second.proof ? it->second.proof->qnet_port : 0;
                 *out++ = address;
             }
@@ -880,6 +879,8 @@ class service_node_list {
         return m_state.is_premature_unlock(nettype, hf_version, block_height, tx);
     }
 
+    bool is_recently_expired(std::string_view node_bls_pubkey) const;
+
   private:
     // Note(maxim): private methods don't have to be protected the mutex
     bool m_rescanning = false; /* set to true when doing a rescan so we know not to reset proofs */
@@ -935,6 +936,7 @@ class service_node_list {
 
     state_t m_state;  // NOTE: Not in m_transient due to the non-trivial constructor. We can't
                       // blanket initialise using = {}; needs to be reset in ::reset(...) manually
+    std::unordered_map<std::string, uint64_t> recently_expired_nodes;
 };
 
 struct staking_components {
@@ -978,8 +980,9 @@ bool is_registration_tx(
         uint32_t index,
         crypto::public_key& key,
         service_node_info& info);
-    
-std::pair<crypto::public_key, std::shared_ptr<service_node_info>> validate_and_get_ethereum_registration(
+
+std::pair<crypto::public_key, std::shared_ptr<service_node_info>>
+validate_and_get_ethereum_registration(
         cryptonote::network_type nettype,
         cryptonote::hf hf_version,
         const cryptonote::transaction& tx,
@@ -988,7 +991,8 @@ std::pair<crypto::public_key, std::shared_ptr<service_node_info>> validate_and_g
         uint32_t index);
 
 std::optional<registration_details> reg_tx_extract_fields(const cryptonote::transaction& tx);
-std::optional<registration_details> eth_reg_tx_extract_fields(cryptonote::hf hf_version, const cryptonote::transaction& tx);
+std::optional<registration_details> eth_reg_tx_extract_fields(
+        cryptonote::hf hf_version, const cryptonote::transaction& tx);
 
 uint64_t offset_testing_quorum_height(quorum_type type, uint64_t height);
 

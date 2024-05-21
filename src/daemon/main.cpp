@@ -155,8 +155,8 @@ int main(int argc, char const* argv[]) {
             // the command-line which means *for the purpose of loading the config file* that we use
             // `~/.oxen`, but that after we load the config file it could be something else.  (In
             // such an edge case, we simply ignore a <final-data-dir>/oxen.conf).
-            auto data_dir =
-                    fs::absolute(fs::u8path(command_line::get_arg(vm, cryptonote::arg_data_dir)));
+            auto data_dir = fs::absolute(
+                    tools::utf8_path(command_line::get_arg(vm, cryptonote::arg_data_dir)));
 
             // --regtest should append a /regtest to the data-dir, but this is done here rather than
             // in the defaults because this is a dev-only option that we don't really want the user
@@ -218,7 +218,7 @@ int main(int argc, char const* argv[]) {
             }
         } else {
             // config file explicitly given, no migration
-            load_config = fs::u8path(command_line::get_arg(vm, daemon_args::arg_config_file));
+            load_config = tools::utf8_path(command_line::get_arg(vm, daemon_args::arg_config_file));
             if (std::error_code ec; !fs::exists(*load_config, ec)) {
                 std::cerr << RED << "Can't find config file " << *load_config << RESET << "\n";
                 return 1;
@@ -227,7 +227,7 @@ int main(int argc, char const* argv[]) {
 
         if (load_config) {
             try {
-                fs::ifstream cfg{*load_config};
+                std::ifstream cfg{*load_config};
                 if (!cfg.is_open())
                     throw std::runtime_error{"Unable to open file"};
                 po::store(
@@ -259,7 +259,7 @@ int main(int argc, char const* argv[]) {
 
         // Create data dir if it doesn't exist
         auto data_dir =
-                fs::absolute(fs::u8path(command_line::get_arg(vm, cryptonote::arg_data_dir)));
+                fs::absolute(tools::utf8_path(command_line::get_arg(vm, cryptonote::arg_data_dir)));
 
         // --regtest should append a /regtest to the data-dir, but this is done here rather than in
         // the defaults because this is a dev-only option that we don't really want the user to need

@@ -748,19 +748,11 @@ class wallet2 {
 #endif
     }
 
-    i_wallet2_callback* callback() const {
-        return m_callback;
-    }
-    void callback(i_wallet2_callback* callback) {
-        m_callback = callback;
-    }
+    i_wallet2_callback* callback() const { return m_callback; }
+    void callback(i_wallet2_callback* callback) { m_callback = callback; }
 
-    bool is_trusted_daemon() const {
-        return m_trusted_daemon;
-    }
-    void set_trusted_daemon(bool trusted) {
-        m_trusted_daemon = trusted;
-    }
+    bool is_trusted_daemon() const { return m_trusted_daemon; }
+    void set_trusted_daemon(bool trusted) { m_trusted_daemon = trusted; }
 
     /*!
      * \brief Checks if deterministic wallet
@@ -775,18 +767,12 @@ class wallet2 {
      * \brief Checks if light wallet. A light wallet sends view key to a server where the blockchain
      * is scanned.
      */
-    bool light_wallet() const {
-        return m_light_wallet;
-    }
-    void set_light_wallet(bool light_wallet) {
-        m_light_wallet = light_wallet;
-    }
+    bool light_wallet() const { return m_light_wallet; }
+    void set_light_wallet(bool light_wallet) { m_light_wallet = light_wallet; }
     uint64_t get_light_wallet_scanned_block_height() const {
         return m_light_wallet_scanned_block_height;
     }
-    uint64_t get_light_wallet_blockchain_height() const {
-        return m_light_wallet_blockchain_height;
-    }
+    uint64_t get_light_wallet_blockchain_height() const { return m_light_wallet_blockchain_height; }
 #endif
 
     /*!
@@ -801,9 +787,7 @@ class wallet2 {
     // Subaddress scheme
     cryptonote::account_public_address get_subaddress(
             const cryptonote::subaddress_index& index) const;
-    cryptonote::account_public_address get_address() const {
-        return get_subaddress({0, 0});
-    }
+    cryptonote::account_public_address get_address() const { return get_subaddress({0, 0}); }
     std::optional<cryptonote::subaddress_index> get_subaddress_index(
             const cryptonote::account_public_address& address) const;
     crypto::public_key get_subaddress_spend_public_key(
@@ -811,14 +795,10 @@ class wallet2 {
     std::vector<crypto::public_key> get_subaddress_spend_public_keys(
             uint32_t account, uint32_t begin, uint32_t end) const;
     std::string get_subaddress_as_str(const cryptonote::subaddress_index& index) const;
-    std::string get_address_as_str() const {
-        return get_subaddress_as_str({0, 0});
-    }
+    std::string get_address_as_str() const { return get_subaddress_as_str({0, 0}); }
     std::string get_integrated_address_as_str(const crypto::hash8& payment_id) const;
     void add_subaddress_account(const std::string& label);
-    size_t get_num_subaddress_accounts() const {
-        return m_subaddress_labels.size();
-    }
+    size_t get_num_subaddress_accounts() const { return m_subaddress_labels.size(); }
     size_t get_num_subaddresses(uint32_t index_major) const {
         return index_major < m_subaddress_labels.size() ? m_subaddress_labels[index_major].size()
                                                         : 0;
@@ -850,19 +830,11 @@ class wallet2 {
             bool check_pool = true);
     bool refresh(bool trusted_daemon, uint64_t& blocks_fetched, bool& received_money, bool& ok);
 
-    void set_refresh_type(RefreshType refresh_type) {
-        m_refresh_type = refresh_type;
-    }
-    RefreshType get_refresh_type() const {
-        return m_refresh_type;
-    }
+    void set_refresh_type(RefreshType refresh_type) { m_refresh_type = refresh_type; }
+    RefreshType get_refresh_type() const { return m_refresh_type; }
 
-    cryptonote::network_type nettype() const {
-        return m_nettype;
-    }
-    bool watch_only() const {
-        return m_watch_only;
-    }
+    cryptonote::network_type nettype() const { return m_nettype; }
+    bool watch_only() const { return m_watch_only; }
     bool multisig(bool* ready = NULL, uint32_t* threshold = NULL, uint32_t* total = NULL) const;
     bool has_multisig_partial_key_images() const;
     bool has_unknown_key_images() const;
@@ -870,12 +842,8 @@ class wallet2 {
             epee::wipeable_string& seed,
             const epee::wipeable_string& passphrase = std::string(),
             bool raw = true) const;
-    bool key_on_device() const {
-        return get_device_type() != hw::device::type::SOFTWARE;
-    }
-    hw::device::type get_device_type() const {
-        return m_key_device_type;
-    }
+    bool key_on_device() const { return get_device_type() != hw::device::type::SOFTWARE; }
+    hw::device::type get_device_type() const { return m_key_device_type; }
     bool reconnect_device();
 
     // locked & unlocked balance of given or current subaddress account
@@ -1097,9 +1065,7 @@ class wallet2 {
     // vector of the requested entries.
     //
     // NOTE(oxen): get_all_service_node caches the result, get_service_nodes doesn't
-    auto get_all_service_nodes() const {
-        return m_node_rpc_proxy.get_all_service_nodes();
-    }
+    auto get_all_service_nodes() const { return m_node_rpc_proxy.get_all_service_nodes(); }
     auto get_service_nodes(std::vector<std::string> const& pubkeys) const {
         return m_node_rpc_proxy.get_service_nodes(pubkeys);
     }
@@ -1141,9 +1107,7 @@ class wallet2 {
 
     // Returns the current height up to which the wallet has synchronized the blockchain.  Thread
     // safe (though the value may be behind if another thread is in the middle of adding blocks).
-    uint64_t get_blockchain_current_height() const {
-        return m_cached_height;
-    }
+    uint64_t get_blockchain_current_height() const { return m_cached_height; }
     void rescan_spent();
     void rescan_blockchain(bool hard, bool refresh = true, bool keep_key_images = false);
     bool is_transfer_unlocked(const transfer_details& td) const;
@@ -1153,15 +1117,9 @@ class wallet2 {
             bool unmined_blink,
             crypto::key_image const* key_image = nullptr) const;
 
-    uint64_t get_last_block_reward() const {
-        return m_last_block_reward;
-    }
-    uint64_t get_device_last_key_image_sync() const {
-        return m_device_last_key_image_sync;
-    }
-    uint64_t get_immutable_height() const {
-        return m_immutable_height;
-    }
+    uint64_t get_last_block_reward() const { return m_last_block_reward; }
+    uint64_t get_device_last_key_image_sync() const { return m_device_last_key_image_sync; }
+    uint64_t get_immutable_height() const { return m_immutable_height; }
 
     template <class t_archive>
     void serialize(t_archive& a, const unsigned int ver) {
@@ -1291,141 +1249,57 @@ class wallet2 {
             const fs::path& file_path, bool& keys_file_exists, bool& wallet_file_exists);
     static bool parse_payment_id(std::string_view payment_id_str, crypto::hash& payment_id);
 
-    bool always_confirm_transfers() const {
-        return m_always_confirm_transfers;
-    }
-    void always_confirm_transfers(bool always) {
-        m_always_confirm_transfers = always;
-    }
-    bool print_ring_members() const {
-        return m_print_ring_members;
-    }
-    void print_ring_members(bool value) {
-        m_print_ring_members = value;
-    }
-    bool store_tx_info() const {
-        return m_store_tx_info;
-    }
-    void store_tx_info(bool store) {
-        m_store_tx_info = store;
-    }
-    uint32_t get_default_priority() const {
-        return m_default_priority;
-    }
-    void set_default_priority(uint32_t p) {
-        m_default_priority = p;
-    }
-    bool auto_refresh() const {
-        return m_auto_refresh;
-    }
-    void auto_refresh(bool r) {
-        m_auto_refresh = r;
-    }
-    AskPasswordType ask_password() const {
-        return m_ask_password;
-    }
-    void ask_password(AskPasswordType ask) {
-        m_ask_password = ask;
-    }
-    void set_min_output_count(uint32_t count) {
-        m_min_output_count = count;
-    }
-    uint32_t get_min_output_count() const {
-        return m_min_output_count;
-    }
-    void set_min_output_value(uint64_t value) {
-        m_min_output_value = value;
-    }
-    uint64_t get_min_output_value() const {
-        return m_min_output_value;
-    }
-    void merge_destinations(bool merge) {
-        m_merge_destinations = merge;
-    }
-    bool merge_destinations() const {
-        return m_merge_destinations;
-    }
-    bool confirm_backlog() const {
-        return m_confirm_backlog;
-    }
-    void confirm_backlog(bool always) {
-        m_confirm_backlog = always;
-    }
+    bool always_confirm_transfers() const { return m_always_confirm_transfers; }
+    void always_confirm_transfers(bool always) { m_always_confirm_transfers = always; }
+    bool print_ring_members() const { return m_print_ring_members; }
+    void print_ring_members(bool value) { m_print_ring_members = value; }
+    bool store_tx_info() const { return m_store_tx_info; }
+    void store_tx_info(bool store) { m_store_tx_info = store; }
+    uint32_t get_default_priority() const { return m_default_priority; }
+    void set_default_priority(uint32_t p) { m_default_priority = p; }
+    bool auto_refresh() const { return m_auto_refresh; }
+    void auto_refresh(bool r) { m_auto_refresh = r; }
+    AskPasswordType ask_password() const { return m_ask_password; }
+    void ask_password(AskPasswordType ask) { m_ask_password = ask; }
+    void set_min_output_count(uint32_t count) { m_min_output_count = count; }
+    uint32_t get_min_output_count() const { return m_min_output_count; }
+    void set_min_output_value(uint64_t value) { m_min_output_value = value; }
+    uint64_t get_min_output_value() const { return m_min_output_value; }
+    void merge_destinations(bool merge) { m_merge_destinations = merge; }
+    bool merge_destinations() const { return m_merge_destinations; }
+    bool confirm_backlog() const { return m_confirm_backlog; }
+    void confirm_backlog(bool always) { m_confirm_backlog = always; }
     void set_confirm_backlog_threshold(uint32_t threshold) {
         m_confirm_backlog_threshold = threshold;
     };
-    uint32_t get_confirm_backlog_threshold() const {
-        return m_confirm_backlog_threshold;
-    };
-    bool confirm_export_overwrite() const {
-        return m_confirm_export_overwrite;
-    }
-    void confirm_export_overwrite(bool always) {
-        m_confirm_export_overwrite = always;
-    }
-    bool segregate_pre_fork_outputs() const {
-        return m_segregate_pre_fork_outputs;
-    }
-    void segregate_pre_fork_outputs(bool value) {
-        m_segregate_pre_fork_outputs = value;
-    }
-    bool key_reuse_mitigation2() const {
-        return m_key_reuse_mitigation2;
-    }
-    void key_reuse_mitigation2(bool value) {
-        m_key_reuse_mitigation2 = value;
-    }
-    uint64_t segregation_height() const {
-        return m_segregation_height;
-    }
-    void segregation_height(uint64_t height) {
-        m_segregation_height = height;
-    }
-    bool confirm_non_default_ring_size() const {
-        return m_confirm_non_default_ring_size;
-    }
-    void confirm_non_default_ring_size(bool always) {
-        m_confirm_non_default_ring_size = always;
-    }
-    uint64_t ignore_outputs_above() const {
-        return m_ignore_outputs_above;
-    }
-    void ignore_outputs_above(uint64_t value) {
-        m_ignore_outputs_above = value;
-    }
-    uint64_t ignore_outputs_below() const {
-        return m_ignore_outputs_below;
-    }
-    void ignore_outputs_below(uint64_t value) {
-        m_ignore_outputs_below = value;
-    }
-    bool track_uses() const {
-        return m_track_uses;
-    }
-    void track_uses(bool value) {
-        m_track_uses = value;
-    }
-    std::chrono::seconds inactivity_lock_timeout() const {
-        return m_inactivity_lock_timeout;
-    }
+    uint32_t get_confirm_backlog_threshold() const { return m_confirm_backlog_threshold; };
+    bool confirm_export_overwrite() const { return m_confirm_export_overwrite; }
+    void confirm_export_overwrite(bool always) { m_confirm_export_overwrite = always; }
+    bool segregate_pre_fork_outputs() const { return m_segregate_pre_fork_outputs; }
+    void segregate_pre_fork_outputs(bool value) { m_segregate_pre_fork_outputs = value; }
+    bool key_reuse_mitigation2() const { return m_key_reuse_mitigation2; }
+    void key_reuse_mitigation2(bool value) { m_key_reuse_mitigation2 = value; }
+    uint64_t segregation_height() const { return m_segregation_height; }
+    void segregation_height(uint64_t height) { m_segregation_height = height; }
+    bool confirm_non_default_ring_size() const { return m_confirm_non_default_ring_size; }
+    void confirm_non_default_ring_size(bool always) { m_confirm_non_default_ring_size = always; }
+    uint64_t ignore_outputs_above() const { return m_ignore_outputs_above; }
+    void ignore_outputs_above(uint64_t value) { m_ignore_outputs_above = value; }
+    uint64_t ignore_outputs_below() const { return m_ignore_outputs_below; }
+    void ignore_outputs_below(uint64_t value) { m_ignore_outputs_below = value; }
+    bool track_uses() const { return m_track_uses; }
+    void track_uses(bool value) { m_track_uses = value; }
+    std::chrono::seconds inactivity_lock_timeout() const { return m_inactivity_lock_timeout; }
     void inactivity_lock_timeout(std::chrono::seconds seconds) {
         m_inactivity_lock_timeout = seconds;
     }
-    const std::string& device_name() const {
-        return m_device_name;
-    }
-    const std::string& device_address() const {
-        return m_device_address;
-    }
-    void device_name(std::string device_name) {
-        m_device_name = std::move(device_name);
-    }
+    const std::string& device_name() const { return m_device_name; }
+    const std::string& device_address() const { return m_device_address; }
+    void device_name(std::string device_name) { m_device_name = std::move(device_name); }
     void device_address(std::string device_address) {
         m_device_address = std::move(device_address);
     }
-    const std::string& device_derivation_path() const {
-        return m_device_derivation_path;
-    }
+    const std::string& device_derivation_path() const { return m_device_derivation_path; }
     void device_derivation_path(const std::string& device_derivation_path) {
         m_device_derivation_path = device_derivation_path;
     }
@@ -1526,9 +1400,7 @@ class wallet2 {
     /*!
      * \brief GUI Address book get/store
      */
-    std::vector<address_book_row> get_address_book() const {
-        return m_address_book;
-    }
+    std::vector<address_book_row> get_address_book() const { return m_address_book; }
     bool add_address_book_row(
             const cryptonote::account_public_address& address,
             const crypto::hash8* payment_id,
@@ -1543,9 +1415,7 @@ class wallet2 {
     bool delete_address_book_row(std::size_t row_id);
 
     uint64_t get_num_rct_outputs();
-    size_t get_num_transfer_details() const {
-        return m_transfers.size();
-    }
+    size_t get_num_transfer_details() const { return m_transfers.size(); }
     const transfer_details& get_transfer_details(size_t idx) const;
 
     void get_hard_fork_info(uint8_t version, uint64_t& earliest_height) const;
@@ -1770,9 +1640,7 @@ class wallet2 {
             uint64_t extra_burn = 0,
             ons::mapping_type ons_burn_type = static_cast<ons::mapping_type>(0));
 
-    bool is_unattended() const {
-        return m_unattended;
-    }
+    bool is_unattended() const { return m_unattended; }
 
 #ifdef ENABLE_LIGHT_WALLET
     // Light wallet specific functions
@@ -1879,9 +1747,7 @@ class wallet2 {
     }
 
     bool set_ring_database(fs::path filename);
-    const fs::path& get_ring_database() const {
-        return m_ring_database;
-    }
+    const fs::path& get_ring_database() const { return m_ring_database; }
     bool get_ring(const crypto::key_image& key_image, std::vector<uint64_t>& outs);
     bool get_rings(
             const crypto::hash& txid,
@@ -2045,12 +1911,8 @@ class wallet2 {
 #ifdef WALLET_ENABLE_MMS
     // MMS
     // -------------------------------------------------------------------------------------------------
-    mms::message_store& get_message_store() {
-        return m_message_store;
-    };
-    const mms::message_store& get_message_store() const {
-        return m_message_store;
-    };
+    mms::message_store& get_message_store() { return m_message_store; };
+    const mms::message_store& get_message_store() const { return m_message_store; };
     mms::multisig_wallet_state get_multisig_wallet_state() const;
 #endif
 
@@ -2063,9 +1925,7 @@ class wallet2 {
             const epee::wipeable_string& original_password,
             const epee::wipeable_string& new_password);
 
-    void set_tx_notify(std::shared_ptr<tools::Notify> notify) {
-        m_tx_notify = std::move(notify);
-    }
+    void set_tx_notify(std::shared_ptr<tools::Notify> notify) { m_tx_notify = std::move(notify); }
 
     bool is_tx_spendtime_unlocked(uint64_t unlock_time, uint64_t block_height) const;
     void hash_m_transfer(const transfer_details& transfer, crypto::hash& hash) const;

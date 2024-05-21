@@ -25,7 +25,7 @@ fs::path file_path_from_default_datadir(const Config& c, const fs::path& filenam
     if (filename.string() == ":memory:")
         return filename;
 
-    auto file_location = fs::absolute(fs::u8path(c.general.datadir));
+    auto file_location = fs::absolute(tools::utf8_path(c.general.datadir));
     if (c.general.nettype != "mainnet" && c.general.append_network_type_to_datadir)
         file_location /= c.general.nettype;
     file_location /= filename;

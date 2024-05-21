@@ -31,12 +31,14 @@
 
 #pragma once
 
+#include <concepts>
 #include <exception>
 #include <optional>
 
 #include "common/common_fwd.h"
 #include "common/scoped_message_writer.h"
 #include "cryptonote_basic/cryptonote_basic.h"
+#include "rpc/common/command_decorators.h"
 #include "rpc/core_rpc_server.h"
 #include "rpc/core_rpc_server_commands_defs.h"
 #include "rpc/http_client.h"
@@ -67,12 +69,8 @@ class rpc_command_executor final {
     /// then nothing is printed on failure.
     /// @param check_status_ok whether we require res.status == STATUS_OK to consider the request
     /// successful
-    template <
-            typename RPC,
-            std::enable_if_t<
-                    std::is_base_of_v<cryptonote::rpc::RPC_COMMAND, RPC> &&
-                            cryptonote::rpc::FIXME_has_nested_response_v<RPC>,
-                    int> = 0>
+    template <std::derived_from<cryptonote::rpc::RPC_COMMAND> RPC>
+        requires cryptonote::rpc::FIXME_has_nested_response_v<RPC>
     bool invoke(
             typename RPC::request&& req,
             typename RPC::response& res,
@@ -125,12 +123,8 @@ class rpc_command_executor final {
     /// @param params the "params" value to pass to json_rpc, or std::nullopt to omit it
     /// @param check_status_ok whether we require the result to have a "status" key set to STATUS_OK
     /// to consider the request successful
-    template <
-            typename RPC,
-            std::enable_if_t<
-                    std::is_base_of_v<cryptonote::rpc::RPC_COMMAND, RPC> &&
-                            !cryptonote::rpc::FIXME_has_nested_response_v<RPC>,
-                    int> = 0>
+    template <std::derived_from<cryptonote::rpc::RPC_COMMAND> RPC>
+        requires(!cryptonote::rpc::FIXME_has_nested_response_v<RPC>)
     nlohmann::json invoke(
             std::optional<nlohmann::json> params = std::nullopt, bool check_status_ok = true) {
         return invoke(
@@ -143,21 +137,16 @@ class rpc_command_executor final {
     // Invokes a simple RPC method that doesn't take any arguments and for which we don't care about
     // the return value beyond the "status": "OK" field.  Returns true (and prints a success
     // message) on success, false (with a failure message printed) on failure.
-    template <
-            typename RPC,
-            std::enable_if_t<
-                    std::is_base_of_v<cryptonote::rpc::RPC_COMMAND, RPC> &&
-                            !cryptonote::rpc::FIXME_has_nested_response_v<RPC>,
-                    int> = 0>
+    template <std::derived_from<cryptonote::rpc::RPC_COMMAND> RPC>
+        requires(!cryptonote::rpc::FIXME_has_nested_response_v<RPC>)
     bool invoke_simple(std::string_view error_prefix, std::string_view success_msg) {
         if (!try_running([this] { return invoke<RPC>(); }, error_prefix))
             return false;
 
-        tools::success_msg_writer(success_msg);
+        tools::success_msg_writer() + success_msg;
         return true;
     }
 
-    // TODO sean
     template <typename Response>
     nlohmann::json make_request(nlohmann::json params) {
         return invoke<Response>(params)["response"];

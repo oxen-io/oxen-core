@@ -421,9 +421,7 @@ struct block : public block_header {
     mutable crypto::hash hash;
     std::vector<service_nodes::quorum_signature> signatures;
     uint64_t l2_height;
-    //TODO sean check that hash is 32 bytes in ethereum side
     crypto::hash l2_state;
-    
 };
 
 template <class Archive>
@@ -456,7 +454,7 @@ void serialize_value(Archive& ar, block& b) {
         field(ar, "service_node_winner_key", b.service_node_winner_key);
         field(ar, "reward", b.reward);
     }
-    if (b.major_version >= feature::ETH_BLS) { //HF20
+    if (b.major_version >= feature::ETH_BLS) {  // HF20
         field_varint(ar, "l2_height", b.l2_height);
         field(ar, "l2_state", b.l2_state);
     }

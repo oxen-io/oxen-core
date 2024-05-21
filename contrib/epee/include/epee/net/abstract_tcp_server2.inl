@@ -38,6 +38,7 @@
 #include "../warnings.h"
 #include "../string_tools.h"
 #include "../scope_leaver.h"
+#include "../misc_log_ex.h"
 #include "local_ip.h"
 #include "../pragma_comp_defs.h"
 
@@ -149,7 +150,7 @@ PRAGMA_WARNING_DISABLE_VS(4355)
       const auto ip_ = remote_ep.address().to_v6();
       return start(is_income, is_multithreaded, ipv6_network_address{ip_, remote_ep.port()});
     }
-    CATCH_ENTRY_L0("connection<t_protocol_handler>::start()", false);
+    CATCH_ENTRY("connection<t_protocol_handler>::start()", false);
   }
   //---------------------------------------------------------------------------------
   template<class t_protocol_handler>
@@ -204,7 +205,7 @@ PRAGMA_WARNING_DISABLE_VS(4355)
 	
     return true;
 
-    CATCH_ENTRY_L0("connection<t_protocol_handler>::start()", false);
+    CATCH_ENTRY("connection<t_protocol_handler>::start()", false);
   }
   //---------------------------------------------------------------------------------
   template<class t_protocol_handler>
@@ -217,7 +218,7 @@ PRAGMA_WARNING_DISABLE_VS(4355)
       return false;
 
     strand_.post(boost::bind(&connection<t_protocol_handler>::call_back_starter, self));
-    CATCH_ENTRY_L0("connection<t_protocol_handler>::request_callback()", false);
+    CATCH_ENTRY("connection<t_protocol_handler>::request_callback()", false);
     return true;
   }
   //---------------------------------------------------------------------------------
@@ -242,7 +243,7 @@ PRAGMA_WARNING_DISABLE_VS(4355)
     ++m_reference_count;
     m_self_ref = std::move(self);
     return true;
-    CATCH_ENTRY_L0("connection<t_protocol_handler>::add_ref()", false);
+    CATCH_ENTRY("connection<t_protocol_handler>::add_ref()", false);
   }
   //---------------------------------------------------------------------------------
   template<class t_protocol_handler>
@@ -251,14 +252,15 @@ PRAGMA_WARNING_DISABLE_VS(4355)
     TRY_ENTRY();
     std::shared_ptr<connection<t_protocol_handler> >  back_connection_copy;
     std::lock_guard lock{m_self_refs_lock};
-    CHECK_AND_ASSERT_MES(m_reference_count, false, "[sock " << socket().native_handle() << "] m_reference_count already at 0 at connection<t_protocol_handler>::release() call");
+    CHECK_AND_ASSERT_MES(m_reference_count, false, "[sock {}] m_reference_count already at 0 at connection<t_protocol_handler>::release() call",
+        socket().native_handle());
     // is this the last reference?
     if (--m_reference_count == 0) {
         // move the held reference to a local variable, keeping the object alive until the function terminates
         std::swap(back_connection_copy, m_self_ref);
     }
     return true;
-    CATCH_ENTRY_L0("connection<t_protocol_handler>::release()", false);
+    CATCH_ENTRY("connection<t_protocol_handler>::release()", false);
   }
   //---------------------------------------------------------------------------------
   template<class t_protocol_handler>
@@ -266,7 +268,7 @@ PRAGMA_WARNING_DISABLE_VS(4355)
   {
     TRY_ENTRY();
     m_protocol_handler.handle_qued_callback();
-    CATCH_ENTRY_L0("connection<t_protocol_handler>::call_back_starter()", void());
+    CATCH_ENTRY("connection<t_protocol_handler>::call_back_starter()", void());
   }
   //---------------------------------------------------------------------------------
   template<class t_protocol_handler>
@@ -379,7 +381,7 @@ PRAGMA_WARNING_DISABLE_VS(4355)
     // means that all shared_ptr references to the connection object will
     // disappear and the object will be destroyed automatically after this
     // handler returns. The connection class's destructor closes the socket.
-    CATCH_ENTRY_L0("connection<t_protocol_handler>::handle_read", void());
+    CATCH_ENTRY("connection<t_protocol_handler>::handle_read", void());
   }
   //---------------------------------------------------------------------------------
   template<class t_protocol_handler>
@@ -405,7 +407,7 @@ PRAGMA_WARNING_DISABLE_VS(4355)
     }
     
     return true;
-    CATCH_ENTRY_L0("connection<t_protocol_handler>::call_run_once_service_io", false);
+    CATCH_ENTRY("connection<t_protocol_handler>::call_run_once_service_io", false);
   }
   //---------------------------------------------------------------------------------
     template<class t_protocol_handler>
@@ -446,7 +448,7 @@ PRAGMA_WARNING_DISABLE_VS(4355)
 			return do_send_chunk(std::move(message)); // just send as 1 big chunk
 		}
 
-    CATCH_ENTRY_L0("connection<t_protocol_handler>::do_send", false);
+    CATCH_ENTRY("connection<t_protocol_handler>::do_send", false);
 	} // do_send()
 
   //---------------------------------------------------------------------------------
@@ -542,7 +544,7 @@ PRAGMA_WARNING_DISABLE_VS(4355)
 
     return true;
 
-    CATCH_ENTRY_L0("connection<t_protocol_handler>::do_send_chunk", false);
+    CATCH_ENTRY("connection<t_protocol_handler>::do_send_chunk", false);
   } // do_send_chunk
   //---------------------------------------------------------------------------------
   template<class t_protocol_handler>
@@ -654,7 +656,7 @@ PRAGMA_WARNING_DISABLE_VS(4355)
     }
     
     return true;
-    CATCH_ENTRY_L0("connection<t_protocol_handler>::close", false);
+    CATCH_ENTRY("connection<t_protocol_handler>::close", false);
   }
   //---------------------------------------------------------------------------------
   template<class t_protocol_handler>
@@ -724,7 +726,7 @@ PRAGMA_WARNING_DISABLE_VS(4355)
     {
       shutdown();
     }
-    CATCH_ENTRY_L0("connection<t_protocol_handler>::handle_write", void());
+    CATCH_ENTRY("connection<t_protocol_handler>::handle_write", void());
   }
 
   //---------------------------------------------------------------------------------
@@ -927,7 +929,7 @@ POP_WARNINGS
       }
     }
     return true;
-    CATCH_ENTRY_L0("boosted_tcp_server<t_protocol_handler>::worker_thread", false);
+    CATCH_ENTRY("boosted_tcp_server<t_protocol_handler>::worker_thread", false);
   }
   //---------------------------------------------------------------------------------
   template<class t_protocol_handler>
@@ -987,7 +989,7 @@ POP_WARNINGS
       }
     }
     return true;
-    CATCH_ENTRY_L0("boosted_tcp_server<t_protocol_handler>::run_server", false);
+    CATCH_ENTRY("boosted_tcp_server<t_protocol_handler>::run_server", false);
   }
   //---------------------------------------------------------------------------------
   template<class t_protocol_handler>
@@ -1001,7 +1003,7 @@ POP_WARNINGS
     if(m_threads_count == 1 && std::this_thread::get_id() == m_main_thread_id)
       return true;
     return false;
-    CATCH_ENTRY_L0("boosted_tcp_server<t_protocol_handler>::is_thread_worker", false);
+    CATCH_ENTRY("boosted_tcp_server<t_protocol_handler>::is_thread_worker", false);
   }
   //---------------------------------------------------------------------------------
   template<class t_protocol_handler>
@@ -1012,7 +1014,7 @@ POP_WARNINGS
       if (th.joinable())
         th.join();
     return true;
-    CATCH_ENTRY_L0("boosted_tcp_server<t_protocol_handler>::server_stop", false);
+    CATCH_ENTRY("boosted_tcp_server<t_protocol_handler>::server_stop", false);
   }
   //---------------------------------------------------------------------------------
   template<class t_protocol_handler>
@@ -1030,7 +1032,7 @@ POP_WARNINGS
     connections_.clear();
     connections_mutex.unlock();
     io_service_.stop();
-    CATCH_ENTRY_L0("boosted_tcp_server<t_protocol_handler>::send_stop_signal()", void());
+    CATCH_ENTRY("boosted_tcp_server<t_protocol_handler>::send_stop_signal()", void());
   }
   //---------------------------------------------------------------------------------
   template<class t_protocol_handler>
@@ -1187,7 +1189,7 @@ POP_WARNINGS
 
     return CONNECT_SUCCESS;
 
-    CATCH_ENTRY_L0("boosted_tcp_server<t_protocol_handler>::try_connect", CONNECT_FAILURE);
+    CATCH_ENTRY("boosted_tcp_server<t_protocol_handler>::try_connect", CONNECT_FAILURE);
   }
   //---------------------------------------------------------------------------------
   template<class t_protocol_handler>
@@ -1296,7 +1298,7 @@ POP_WARNINGS
 
     return r;
 
-    CATCH_ENTRY_L0("boosted_tcp_server<t_protocol_handler>::connect", false);
+    CATCH_ENTRY("boosted_tcp_server<t_protocol_handler>::connect", false);
   }
   //---------------------------------------------------------------------------------
   template<class t_protocol_handler> template<class t_callback>
@@ -1385,7 +1387,7 @@ POP_WARNINGS
           }
       });
     //start async connect
-    sock_.async_connect(remote_endpoint, [=](const boost::system::error_code& ec_)
+    sock_.async_connect(remote_endpoint, [=, this](const boost::system::error_code& ec_)
       {
         t_connection_context conn_context{};
         if(!ec_)
@@ -1416,7 +1418,7 @@ POP_WARNINGS
         }
       });
     return true;
-    CATCH_ENTRY_L0("boosted_tcp_server<t_protocol_handler>::connect_async", false);
+    CATCH_ENTRY("boosted_tcp_server<t_protocol_handler>::connect_async", false);
   }
   
 } // namespace

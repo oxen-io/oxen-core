@@ -36,6 +36,7 @@
  */
 
 #include <fmt/color.h>
+#include <fmt/std.h>
 
 #include <algorithm>
 #include <chrono>
@@ -48,6 +49,7 @@
 
 #include <ctype.h>
 #include <fmt/core.h>
+#include <fmt/std.h>
 #include <locale.h>
 #include <oxenc/hex.h>
 
@@ -64,7 +66,6 @@
 
 #include "common/base58.h"
 #include "common/command_line.h"
-#include "common/fs-format.h"
 #include "common/i18n.h"
 #include "common/scoped_message_writer.h"
 #include "common/signal_handler.h"
@@ -106,6 +107,8 @@ struct formatter<boost::basic_format<char>> : formatter<std::string> {
 };
 }  // namespace fmt
 
+static auto logcat = oxen::log::Cat("wallet.simplewallet");
+
 namespace cryptonote {
 
 namespace string_tools = epee::string_tools;
@@ -138,8 +141,6 @@ using sw = cryptonote::simple_wallet;
 #define PRINT_USAGE(usage_help) fail_msg_writer() << boost::format(tr("usage: %s")) % usage_help;
 
 namespace {
-
-    auto logcat = log::Cat("wallet.simplewallet");
 
     const auto arg_wallet_file = wallet_args::arg_wallet_file();
     const command_line::arg_descriptor<std::string> arg_generate_new_wallet = {
@@ -627,13 +628,13 @@ namespace {
             if (filename.extension() == ".keys") {
                 fail_msg_writer() << boost::format(sw::tr("File %s likely stores wallet private "
                                                           "keys! Use a different file name.")) %
-                                             filename.u8string();
+                                             "{}"_format(filename);
                 return false;
             }
             return command_line::is_yes(input_line(
                     (boost::format(sw::tr("File %s already exists. Are you sure to overwrite "
                                           "it?")) %
-                     filename.u8string())
+                     "{}"_format(filename))
                             .str(),
                     true));
         }
@@ -1204,7 +1205,7 @@ bool simple_wallet::export_multisig_main(
         return false;
     }
 
-    const fs::path filename = fs::u8path(args[0]);
+    const fs::path filename = tools::utf8_path(args[0]);
     if (
 #ifdef WALLET_ENABLE_MMS
             !called_by_mms &&
@@ -1226,7 +1227,7 @@ bool simple_wallet::export_multisig_main(
         {
             bool r = tools::dump_file(filename, ciphertext);
             if (!r) {
-                fail_msg_writer() << tr("failed to save file ") << filename.u8string();
+                fail_msg_writer() << tr("failed to save file ") << "{}"_format(filename);
                 return false;
             }
         }
@@ -1236,7 +1237,7 @@ bool simple_wallet::export_multisig_main(
         return false;
     }
 
-    success_msg_writer() << tr("Multisig info exported to ") << filename.u8string();
+    success_msg_writer() << tr("Multisig info exported to ") << "{}"_format(filename);
     return true;
 }
 
@@ -1274,11 +1275,11 @@ bool simple_wallet::import_multisig_main(
         } else
 #endif
         {
-            const fs::path filename = fs::u8path(args[n]);
+            const fs::path filename = tools::utf8_path(args[n]);
             std::string data;
             bool r = tools::slurp_file(filename, data);
             if (!r) {
-                fail_msg_writer() << tr("failed to read file ") << filename.u8string();
+                fail_msg_writer() << tr("failed to read file ") << "{}"_format(filename);
                 return false;
             }
             info.push_back(std::move(data));
@@ -1355,7 +1356,7 @@ bool simple_wallet::sign_multisig_main(
 
     SCOPED_WALLET_UNLOCK_ON_BAD_PASSWORD(return false;);
 
-    fs::path filename = fs::u8path(args[0]);
+    fs::path filename = tools::utf8_path(args[0]);
     std::vector<crypto::hash> txids;
     uint32_t signers = 0;
     try {
@@ -1414,9 +1415,8 @@ bool simple_wallet::sign_multisig_main(
         uint32_t threshold{0};
         m_wallet->multisig(NULL, &threshold);
         uint32_t signers_needed = threshold - signers - 1;
-        success_msg_writer(true) << tr("Transaction successfully signed to file ")
-                                 << filename.u8string() << ", " << signers_needed
-                                 << " more signer(s) needed";
+        success_msg_writer(true) << tr("Transaction successfully signed to file ") << filename
+                                 << ", " << signers_needed << " more signer(s) needed";
         return true;
     } else {
         std::string txids_as_text;
@@ -1425,8 +1425,8 @@ bool simple_wallet::sign_multisig_main(
                 txids_as_text += (", ");
             txids_as_text += tools::type_to_hex(txid);
         }
-        success_msg_writer(true) << tr("Transaction successfully signed to file ")
-                                 << filename.u8string() << ", txid " << txids_as_text;
+        success_msg_writer(true) << tr("Transaction successfully signed to file ") << filename
+                                 << ", txid " << txids_as_text;
         success_msg_writer(true) << tr("It may be relayed to the network with submit_multisig");
     }
     return true;
@@ -1463,7 +1463,7 @@ bool simple_wallet::submit_multisig_main(
 
     SCOPED_WALLET_UNLOCK_ON_BAD_PASSWORD(return false;);
 
-    fs::path filename = fs::u8path(args[0]);
+    fs::path filename = tools::utf8_path(args[0]);
     try {
         tools::wallet2::multisig_tx_set txs;
 #ifdef WALLET_ENABLE_MMS
@@ -1537,7 +1537,7 @@ bool simple_wallet::export_raw_multisig(const std::vector<std::string>& args) {
         return true;
     }
 
-    fs::path filename = fs::u8path(args[0]);
+    fs::path filename = tools::utf8_path(args[0]);
     if (m_wallet->confirm_export_overwrite() && !check_file_overwrite(filename))
         return true;
 
@@ -1565,13 +1565,13 @@ bool simple_wallet::export_raw_multisig(const std::vector<std::string>& args) {
         std::string filenames;
         for (auto& ptx : txs.m_ptx) {
             const crypto::hash txid = cryptonote::get_transaction_hash(ptx.tx);
-            const fs::path fn = fs::u8path("raw_multisig_oxen_tx_" + tools::type_to_hex(txid));
+            const fs::path fn =
+                    tools::utf8_path("raw_multisig_oxen_tx_" + tools::type_to_hex(txid));
             if (!filenames.empty())
                 filenames += ", ";
-            filenames += fn.u8string();
+            filenames += "{}"_format(fn);
             if (!tools::dump_file(fn, cryptonote::tx_to_blob(ptx.tx))) {
-                fail_msg_writer() << tr("Failed to export multisig transaction to file ")
-                                  << fn.u8string();
+                fail_msg_writer() << tr("Failed to export multisig transaction to file ") << fn;
                 return true;
             }
         }
@@ -1634,7 +1634,7 @@ bool simple_wallet::set_ring(const std::vector<std::string>& args) {
 
     // try filename first
     if (args.size() == 1) {
-        auto ring_path = fs::u8path(args[0]);
+        auto ring_path = tools::utf8_path(args[0]);
         if (std::error_code ec; !fs::exists(ring_path, ec) || ec) {
             fail_msg_writer() << tr("File doesn't exist");
             return true;
@@ -1826,7 +1826,7 @@ bool simple_wallet::blackball(const std::vector<std::string>& args) {
     try {
         if (sscanf(args[0].c_str(), "%" PRIu64 "/%" PRIu64, &amount, &offset) == 2) {
             m_wallet->blackball_output(std::make_pair(amount, offset));
-        } else if (std::error_code ec; fs::exists(fs::u8path(args[0]), ec) && !ec) {
+        } else if (std::error_code ec; fs::exists(tools::utf8_path(args[0]), ec) && !ec) {
             std::vector<std::pair<uint64_t, uint64_t>> outputs;
             char str[256];
 
@@ -3263,8 +3263,8 @@ bool simple_wallet::set_variable(const std::vector<std::string>& args) {
         success_msg_writer() << "refresh-type = "
                              << get_refresh_type_name(m_wallet->get_refresh_type());
         success_msg_writer() << "priority = " << priority << " (" << priority_string << ")";
-        success_msg_writer() << "ask-password = " << m_wallet->ask_password() << " ("
-                             << ask_password_string << ")";
+        success_msg_writer() << "ask-password = " << static_cast<int>(m_wallet->ask_password())
+                             << " (" << ask_password_string << ")";
         success_msg_writer() << "min-outputs-count = " << m_wallet->get_min_output_count();
         success_msg_writer() << "min-outputs-value = "
                              << cryptonote::print_money(m_wallet->get_min_output_value());
@@ -3390,7 +3390,7 @@ bool simple_wallet::ask_wallet_create_if_needed() {
 
     do {
         log::trace(logcat, "User asked to specify wallet file name.");
-        wallet_path = fs::u8path(input_line(
+        wallet_path = tools::utf8_path(input_line(
                 tr(m_restoring ? "Specify a new wallet file name for your restored wallet (e.g., "
                                  "MyWallet).\n"
                                  "Wallet file name (or Ctrl-C to quit)"
@@ -3446,7 +3446,7 @@ bool simple_wallet::ask_wallet_create_if_needed() {
                     std::string prompt =
                             tr("No wallet found with that name. Confirm creation of new wallet "
                                "named: ");
-                    prompt += "\"" + wallet_path.u8string() + "\"";
+                    prompt += "\"{}\""_format(wallet_path);
                     confirm_creation = input_line(prompt, true);
                     if (std::cin.eof()) {
                         log::error(
@@ -3730,7 +3730,7 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm) {
             }
 
             auto r = new_wallet(vm, info.address, std::nullopt, viewkey);
-            CHECK_AND_ASSERT_MES(r, false, tr("account creation failed"));
+            CHECK_AND_ASSERT_MES(r, false, "{}", tr("account creation failed"));
             password = *r;
             welcome = true;
         } else if (!m_generate_from_spend_key.empty()) {
@@ -3748,7 +3748,7 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm) {
                 return false;
             }
             auto r = new_wallet(vm, m_recovery_key, true, false, "");
-            CHECK_AND_ASSERT_MES(r, false, tr("account creation failed"));
+            CHECK_AND_ASSERT_MES(r, false, "{}", tr("account creation failed"));
             password = *r;
             welcome = true;
         } else if (!m_generate_from_keys.empty()) {
@@ -3820,7 +3820,7 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm) {
                 return false;
             }
             auto r = new_wallet(vm, info.address, spendkey, viewkey);
-            CHECK_AND_ASSERT_MES(r, false, tr("account creation failed"));
+            CHECK_AND_ASSERT_MES(r, false, "{}", tr("account creation failed"));
             password = *r;
             welcome = true;
         }
@@ -3949,7 +3949,7 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm) {
 
             // create wallet
             auto r = new_wallet(vm, info.address, spendkey, viewkey);
-            CHECK_AND_ASSERT_MES(r, false, tr("account creation failed"));
+            CHECK_AND_ASSERT_MES(r, false, "{}", tr("account creation failed"));
             password = *r;
             welcome = true;
         }
@@ -3971,7 +3971,7 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm) {
             m_wallet_file = m_generate_from_device;
             // create wallet
             auto r = new_device_wallet(vm);
-            CHECK_AND_ASSERT_MES(r, false, tr("account creation failed"));
+            CHECK_AND_ASSERT_MES(r, false, "{}", tr("account creation failed"));
             password = *r;
             welcome = true;
             default_restore_value = "curr";
@@ -3992,7 +3992,7 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm) {
                         m_restore_deterministic_wallet,
                         m_non_deterministic,
                         old_language);
-            CHECK_AND_ASSERT_MES(r, false, tr("account creation failed"));
+            CHECK_AND_ASSERT_MES(r, false, "{}", tr("account creation failed"));
             password = *r;
             welcome = true;
         }
@@ -4091,7 +4091,7 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm) {
             return false;
         }
         auto r = open_wallet(vm);
-        CHECK_AND_ASSERT_MES(r, false, tr("failed to open account"));
+        CHECK_AND_ASSERT_MES(r, false, "{}", tr("failed to open account"));
         password = *r;
     }
     if (!m_wallet) {
@@ -4154,15 +4154,17 @@ bool simple_wallet::deinit() {
 }
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::handle_command_line(const boost::program_options::variables_map& vm) {
-    m_wallet_file = fs::u8path(command_line::get_arg(vm, arg_wallet_file));
-    m_generate_new = fs::u8path(command_line::get_arg(vm, arg_generate_new_wallet));
-    m_generate_from_device = fs::u8path(command_line::get_arg(vm, arg_generate_from_device));
-    m_generate_from_view_key = fs::u8path(command_line::get_arg(vm, arg_generate_from_view_key));
-    m_generate_from_spend_key = fs::u8path(command_line::get_arg(vm, arg_generate_from_spend_key));
-    m_generate_from_keys = fs::u8path(command_line::get_arg(vm, arg_generate_from_keys));
+    m_wallet_file = tools::utf8_path(command_line::get_arg(vm, arg_wallet_file));
+    m_generate_new = tools::utf8_path(command_line::get_arg(vm, arg_generate_new_wallet));
+    m_generate_from_device = tools::utf8_path(command_line::get_arg(vm, arg_generate_from_device));
+    m_generate_from_view_key =
+            tools::utf8_path(command_line::get_arg(vm, arg_generate_from_view_key));
+    m_generate_from_spend_key =
+            tools::utf8_path(command_line::get_arg(vm, arg_generate_from_spend_key));
+    m_generate_from_keys = tools::utf8_path(command_line::get_arg(vm, arg_generate_from_keys));
     m_generate_from_multisig_keys =
-            fs::u8path(command_line::get_arg(vm, arg_generate_from_multisig_keys));
-    m_generate_from_json = fs::u8path(command_line::get_arg(vm, arg_generate_from_json));
+            tools::utf8_path(command_line::get_arg(vm, arg_generate_from_multisig_keys));
+    m_generate_from_json = tools::utf8_path(command_line::get_arg(vm, arg_generate_from_json));
     m_mnemonic_language = command_line::get_arg(vm, arg_mnemonic_language);
     m_electrum_seed = command_line::get_arg(vm, arg_electrum_seed);
     m_restore_deterministic_wallet = command_line::get_arg(vm, arg_restore_deterministic_wallet);
@@ -4731,7 +4733,7 @@ bool simple_wallet::save_watch_only(
         fs::path new_keys_filename;
         m_wallet->write_watch_only_wallet(
                 m_wallet_file, pwd_container->password(), new_keys_filename);
-        success_msg_writer() << tr("Watch only wallet saved as: ") << new_keys_filename.u8string();
+        success_msg_writer() << tr("Watch only wallet saved as: ") << new_keys_filename;
     } catch (const std::exception& e) {
         fail_msg_writer() << tr("Failed to save watch only wallet: ") << e.what();
         return true;
@@ -4851,7 +4853,7 @@ bool simple_wallet::set_daemon(const std::vector<std::string>& args) {
             m_wallet->set_trusted_daemon(false);
         }
     } else if (is_local) {
-        log::info(logcat, tr("Daemon is local, assuming trusted"));
+        log::info(logcat, "{}", tr("Daemon is local, assuming trusted"));
         m_wallet->set_trusted_daemon(true);
     }
     success_msg_writer() << "Daemon set to " << daemon_url << ", "
@@ -5237,7 +5239,7 @@ bool simple_wallet::show_balance_unlocked(bool detailed) {
                             stakes_unlocking += contr["amount"].get<uint64_t>();
                     }
             success_msg_writer() << fmt::format(
-                    tr("Total staked: {}, {} unlocking"),
+                    fmt::runtime(tr("Total staked: {}, {} unlocking")),
                     print_money(total_staked),
                     print_money(stakes_unlocking));
         }
@@ -5248,7 +5250,7 @@ bool simple_wallet::show_balance_unlocked(bool detailed) {
             std::string next_batch_payout =
                     next_payout_block > 0
                             ? fmt::format(
-                                      tr(" (next payout: block {}, in about {})"),
+                                      fmt::runtime(tr(" (next payout: block {}, in about {})")),
                                       next_payout_block,
                                       tools::get_human_readable_timespan(
                                               (next_payout_block - blockchain_height) *
@@ -5789,7 +5791,7 @@ void simple_wallet::check_for_inactivity_lock(bool user) {
 std::string eat_named_argument(std::vector<std::string>& args, std::string_view prefix) {
     std::string result = {};
     for (auto it = args.begin(); it != args.end(); it++) {
-        if (it->size() > prefix.size() && tools::starts_with(*it, prefix)) {
+        if (it->size() > prefix.size() && it->starts_with(prefix)) {
             result = it->substr(prefix.size());
             args.erase(it);
             break;
@@ -6073,7 +6075,7 @@ bool simple_wallet::transfer_main(
             de.original = local_args[i];
             i += 2;
         } else {
-            if (boost::starts_with(local_args[i], "oxen:"))
+            if (local_args[i].starts_with("oxen:"))
                 fail_msg_writer() << tr("Invalid last argument: ") << local_args.back() << ": "
                                   << error;
             else
@@ -6462,7 +6464,8 @@ bool simple_wallet::query_locked_stakes(bool print_details, bool print_key_image
         });
 
         if (contributors.empty() || contributors[0].address != my_addr)
-            continue;  // We filtered out ourself
+            continue;  // We filtered out
+                       // ourself/home/jagerman/src/oxen-core/src/simplewallet/simplewallet.cpp
         auto& me = contributors.front();
 
         has_locked_stakes = true;
@@ -6662,9 +6665,9 @@ static std::optional<ons::mapping_type> guess_ons_type(
         std::string_view name,
         std::string_view value) {
     if (typestr.empty()) {
-        if (tools::ends_with(name, ".loki") && (tools::ends_with(value, ".loki") || value.empty()))
+        if (name.ends_with(".loki") && (value.ends_with(".loki") || value.empty()))
             return ons::mapping_type::lokinet;
-        if (!tools::ends_with(name, ".loki") && tools::starts_with(value, "05") &&
+        if (!name.ends_with(".loki") && value.starts_with("05") &&
             value.length() == 2 * ons::SESSION_PUBLIC_KEY_BINARY_LENGTH)
             return ons::mapping_type::session;
         if (cryptonote::is_valid_address(std::string{value}, wallet.nettype()))
@@ -7184,12 +7187,12 @@ bool simple_wallet::ons_lookup(std::vector<std::string> args) {
         writer << "Name: " << name
                << "\n    Type: " << static_cast<ons::mapping_type>(mapping["type"])
                << "\n    Value: " << value.to_readable_value(m_wallet->nettype(), mapping["type"])
-               << "\n    Owner: " << mapping["owner"];
+               << "\n    Owner: " << mapping["owner"].get<std::string_view>();
         if (auto got = mapping.find("backup_owner"); got != mapping.end())
-            writer << "\n    Backup owner: " << mapping["backup_owner"];
-        writer << "\n    Last updated height: " << mapping["update_height"];
+            writer << "\n    Backup owner: " << mapping["backup_owner"].get<std::string_view>();
+        writer << "\n    Last updated height: " << mapping["update_height"].get<int64_t>();
         if (auto got = mapping.find("expiration_height"); got != mapping.end())
-            writer << "\n    Expiration height: " << mapping["expiration_height"];
+            writer << "\n    Expiration height: " << mapping["expiration_height"].get<int64_t>();
         writer << "\n    Encrypted value: " << enc_hex;
         writer << "\n";
 
@@ -7253,28 +7256,28 @@ bool simple_wallet::ons_by_owner(const std::vector<std::string>& args) {
         if (auto got = cache.find(entry["name_hash"]); got != cache.end()) {
             name = got->second.name;
             ons::mapping_value mv;
-            if (ons::mapping_value::validate_encrypted(
-                        ons_type,
-                        oxenc::from_hex(entry["encrypted_value"].get<std::string>()),
-                        &mv) &&
+            auto enc_val_hex = entry["encrypted_value"].get<std::string_view>();
+            if (oxenc::is_hex(enc_val_hex) &&
+                ons::mapping_value::validate_encrypted(
+                        ons_type, oxenc::from_hex(enc_val_hex), &mv) &&
                 mv.decrypt(name, ons_type))
                 value = mv.to_readable_value(nettype, ons_type);
         }
 
         auto writer = message_writer();
-        writer << "Name (hashed): " << entry["name_hash"];
+        writer << "Name (hashed): " << entry["name_hash"].get<std::string_view>();
         if (!name.empty())
             writer << "\n    Name: " << name;
         writer << "\n    Type: " << ons_type;
         if (!value.empty())
             writer << "\n    Value: " << value;
-        writer << "\n    Owner: " << entry["owner"];
+        writer << "\n    Owner: " << entry["owner"].get<std::string_view>();
         if (auto got = entry.find("backup_owner"); got != entry.end())
-            writer << "\n    Backup owner: " << entry["backup_owner"];
-        writer << "\n    Last updated height: " << entry["update_height"];
+            writer << "\n    Backup owner: " << entry["backup_owner"].get<std::string_view>();
+        writer << "\n    Last updated height: " << entry["update_height"].get<int64_t>();
         if (auto got = entry.find("expiration_height"); got != entry.end())
-            writer << "\n    Expiration height: " << entry["expiration_height"];
-        writer << "\n    Encrypted value: " << entry["encrypted_value"];
+            writer << "\n    Expiration height: " << entry["expiration_height"].get<int64_t>();
+        writer << "\n    Encrypted value: " << entry["encrypted_value"].get<std::string_view>();
     }
     return true;
 }
@@ -8147,7 +8150,7 @@ bool simple_wallet::get_tx_proof(const std::vector<std::string>& args) {
                 txid, info.address, info.is_subaddress, args.size() == 3 ? args[2] : "");
         const fs::path filename{"oxen_tx_proof"};
         if (tools::dump_file(filename, sig_str))
-            success_msg_writer() << tr("signature file saved to: ") << filename.u8string();
+            success_msg_writer() << tr("signature file saved to: ") << filename;
         else
             fail_msg_writer() << tr("failed to save signature file");
     } catch (const std::exception& e) {
@@ -8344,7 +8347,7 @@ bool simple_wallet::get_spend_proof(const std::vector<std::string>& args) {
                 m_wallet->get_spend_proof(txid, args.size() == 2 ? args[1] : "");
         const fs::path filename{"oxen_spend_proof"};
         if (tools::dump_file(filename, sig_str))
-            success_msg_writer() << tr("signature file saved to: ") << filename.u8string();
+            success_msg_writer() << tr("signature file saved to: ") << filename;
         else
             fail_msg_writer() << tr("failed to save signature file");
     } catch (const std::exception& e) {
@@ -8422,7 +8425,7 @@ bool simple_wallet::get_reserve_proof(const std::vector<std::string>& args) {
                 m_wallet->get_reserve_proof(account_minreserve, args.size() == 2 ? args[1] : "");
         const fs::path filename{"oxen_reserve_proof"};
         if (tools::dump_file(filename, sig_str))
-            success_msg_writer() << tr("signature file saved to: ") << filename.u8string();
+            success_msg_writer() << tr("signature file saved to: ") << filename;
         else
             fail_msg_writer() << tr("failed to save signature file");
     } catch (const std::exception& e) {
@@ -8669,7 +8672,7 @@ bool simple_wallet::export_transfers(const std::vector<std::string>& args_) {
         local_args.erase(local_args.begin());
     }
 
-    fs::ofstream file{fs::u8path(filename_str)};
+    std::ofstream file{tools::utf8_path(filename_str)};
 
     const bool formatting = true;
     file << m_wallet->transfers_to_csv(all_transfers, formatting);
@@ -9545,8 +9548,8 @@ bool simple_wallet::sign_string(std::string_view value, const subaddress_index& 
         // Print the string directly if it's ascii without control characters, up to 100 bytes, and
         // doesn't contain any doubled, leading, or trailing spaces (because we can't feed those
         // back into verify_value in the cli wallet).
-        bool printable = value.size() <= 100 && !tools::starts_with(value, " ") &&
-                         !tools::ends_with(value, " ") && value.find("  ") == std::string::npos &&
+        bool printable = value.size() <= 100 && !value.starts_with(" ") && !value.ends_with(" ") &&
+                         value.find("  ") == std::string::npos &&
                          std::all_of(value.begin(), value.end(), [](char x) {
                              return x >= ' ' && x <= '~';
                          });
@@ -9578,10 +9581,10 @@ bool simple_wallet::sign(const std::vector<std::string>& args) {
         }
     }
 
-    const fs::path filename = fs::u8path(args.back());
+    const fs::path filename = tools::utf8_path(args.back());
     std::string data;
     if (!tools::slurp_file(filename, data)) {
-        fail_msg_writer() << tr("failed to read file ") << filename.u8string();
+        fail_msg_writer() << tr("failed to read file ") << filename;
         return true;
     }
 
@@ -9607,10 +9610,10 @@ bool simple_wallet::verify(const std::vector<std::string>& args) {
         PRINT_USAGE(USAGE_VERIFY);
         return true;
     }
-    fs::path filename = fs::u8path(args[0]);
+    fs::path filename = tools::utf8_path(args[0]);
     std::string data;
     if (!tools::slurp_file(filename, data)) {
-        fail_msg_writer() << tr("failed to read file ") << filename.u8string();
+        fail_msg_writer() << tr("failed to read file ") << filename;
         return true;
     }
     return verify_string(data, args[1], args[2]);
@@ -9672,7 +9675,7 @@ bool simple_wallet::export_key_images(const std::vector<std::string>& args) {
         return true;
     }
 
-    fs::path filename = fs::u8path(args[0]);
+    fs::path filename = tools::utf8_path(args[0]);
     if (m_wallet->confirm_export_overwrite() && !check_file_overwrite(filename))
         return true;
 
@@ -9682,7 +9685,7 @@ bool simple_wallet::export_key_images(const std::vector<std::string>& args) {
         /// whether to export requested key images only
         bool requested_only = (args.size() == 2 && args[1] == "requested-only");
         if (!m_wallet->export_key_images_to_file(filename, requested_only)) {
-            fail_msg_writer() << tr("failed to save file ") << filename.u8string();
+            fail_msg_writer() << tr("failed to save file ") << filename;
             return true;
         }
     } catch (const std::exception& e) {
@@ -9691,7 +9694,7 @@ bool simple_wallet::export_key_images(const std::vector<std::string>& args) {
         return true;
     }
 
-    success_msg_writer() << tr("Signed key images exported to ") << filename.u8string();
+    success_msg_writer() << tr("Signed key images exported to ") << filename;
     return true;
 }
 //----------------------------------------------------------------------------------------------------
@@ -9711,7 +9714,7 @@ bool simple_wallet::import_key_images(const std::vector<std::string>& args) {
         return true;
     }
 
-    const fs::path filename = fs::u8path(args[0]);
+    const fs::path filename = tools::utf8_path(args[0]);
     LOCK_IDLE_SCOPE();
     try {
         uint64_t spent = 0, unspent = 0;
@@ -9805,7 +9808,7 @@ bool simple_wallet::export_outputs(const std::vector<std::string>& args) {
         all = true;
     }
 
-    const fs::path filename = fs::u8path(args[filename_index]);
+    const fs::path filename = tools::utf8_path(args[filename_index]);
     if (m_wallet->confirm_export_overwrite() && !check_file_overwrite(filename))
         return true;
 
@@ -9815,7 +9818,7 @@ bool simple_wallet::export_outputs(const std::vector<std::string>& args) {
         std::string data = m_wallet->export_outputs_to_str(all);
         bool r = tools::dump_file(filename, data);
         if (!r) {
-            fail_msg_writer() << tr("failed to save file ") << filename.u8string();
+            fail_msg_writer() << tr("failed to save file ") << filename;
             return true;
         }
     } catch (const std::exception& e) {
@@ -9824,7 +9827,7 @@ bool simple_wallet::export_outputs(const std::vector<std::string>& args) {
         return true;
     }
 
-    success_msg_writer() << tr("Outputs exported to ") << filename.u8string();
+    success_msg_writer() << tr("Outputs exported to ") << filename;
     return true;
 }
 //----------------------------------------------------------------------------------------------------
@@ -9837,12 +9840,12 @@ bool simple_wallet::import_outputs(const std::vector<std::string>& args) {
         PRINT_USAGE(USAGE_IMPORT_OUTPUTS);
         return true;
     }
-    const fs::path filename = fs::u8path(args[0]);
+    const fs::path filename = tools::utf8_path(args[0]);
 
     std::string data;
     bool r = tools::slurp_file(filename, data);
     if (!r) {
-        fail_msg_writer() << tr("failed to read file ") << filename.u8string();
+        fail_msg_writer() << tr("failed to read file ") << filename;
         return true;
     }
 
@@ -9851,7 +9854,7 @@ bool simple_wallet::import_outputs(const std::vector<std::string>& args) {
         size_t n_outputs = m_wallet->import_outputs_from_str(data);
         success_msg_writer() << boost::lexical_cast<std::string>(n_outputs) << " outputs imported";
     } catch (const std::exception& e) {
-        fail_msg_writer() << "Failed to import outputs " << filename.u8string() << ": " << e.what();
+        fail_msg_writer() << "Failed to import outputs " << filename << ": " << e.what();
         return true;
     }
 
@@ -10084,7 +10087,7 @@ void simple_wallet::commit_or_save(
             std::string blob;
             tx_to_blob(ptx.tx, blob);
             const std::string blob_hex = oxenc::to_hex(blob);
-            fs::path filename = fs::u8path("raw_oxen_tx");
+            fs::path filename{u8"raw_oxen_tx"};
             if (ptx_vector.size() > 1)
                 filename += "_" + std::to_string(i++);
             bool success = tools::dump_file(filename, blob_hex);
@@ -10094,7 +10097,7 @@ void simple_wallet::commit_or_save(
             else
                 msg_buf += tr("Failed to save transaction to ");
 
-            msg_buf += filename.u8string();
+            msg_buf += "{}"_format(filename);
             msg_buf += tr(", txid <");
             msg_buf += tools::type_to_hex(txid);
             msg_buf += ">";
@@ -10186,7 +10189,7 @@ int main(int argc, char* argv[]) {
 
     cryptonote::simple_wallet w;
     const bool r = w.init(*vm);
-    CHECK_AND_ASSERT_MES(r, 1, sw::tr("Failed to initialize wallet"));
+    CHECK_AND_ASSERT_MES(r, 1, "{}", sw::tr("Failed to initialize wallet"));
 
     std::vector<std::string> command = command_line::get_arg(*vm, arg_command);
     if (!command.empty()) {
@@ -10217,7 +10220,7 @@ int main(int argc, char* argv[]) {
 
     w.deinit();
     return 0;
-    CATCH_ENTRY_L0("main", 1);
+    CATCH_ENTRY("main", 1);
 }
 
 #ifdef WALLET_ENABLE_MMS

@@ -711,9 +711,8 @@ E get_enum(const bt_dict &d, const std::string &key) {
 
     /// Gets an integer value out of a bt_dict, if present and fits (i.e. get_int<> succeeds); if
     /// not present or conversion falls, returns `fallback`.
-    template <typename I>
-    std::enable_if_t<std::is_integral<I>::value, I> get_or(
-            bt_dict& d, const std::string& key, I fallback) {
+    template <std::integral I>
+    I get_or(bt_dict& d, const std::string& key, I fallback) {
         auto it = d.find(key);
         if (it != d.end()) {
             try {

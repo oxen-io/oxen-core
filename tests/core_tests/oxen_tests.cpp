@@ -493,8 +493,9 @@ bool oxen_core_block_reward_unpenalized_post_pulse::generate(std::vector<test_ev
 
       uint64_t rewards_from_fee = top_block.miner_tx.vout[0].amount;
       CHECK_TEST_CONDITION_MSG(top_block.miner_tx.vout.size() == 2, "1 for miner, 1 for service node");
-      CHECK_TEST_CONDITION_MSG(rewards_from_fee > 0 && rewards_from_fee < tx_fee, "Block producer should receive a penalised tx fee less than " << cryptonote::print_money(tx_fee) << "received, " << cryptonote::print_money(rewards_from_fee) << "");
-      CHECK_TEST_CONDITION_MSG(top_block.miner_tx.vout[1].amount == unpenalized_reward, "Service Node should receive full reward " << unpenalized_reward);
+      CHECK_TEST_CONDITION_MSG(rewards_from_fee > 0 && rewards_from_fee < tx_fee,
+              "Block producer should receive a penalised tx fee less than {}, received {}", cryptonote::print_money(tx_fee), cryptonote::print_money(rewards_from_fee));
+      CHECK_TEST_CONDITION_MSG(top_block.miner_tx.vout[1].amount == unpenalized_reward, "Service Node should receive full reward {}", unpenalized_reward);
 
       oxen::log::info(globallogcat, "rewards_from_fee: {}", cryptonote::print_money(rewards_from_fee));
       oxen::log::info(globallogcat, "tx_fee: {}", cryptonote::print_money(tx_fee));
@@ -1025,8 +1026,8 @@ static bool verify_ons_mapping_record(char const *perr_context,
   if (expiration_height)
     CHECK_EQ(*record.expiration_height, *expiration_height);
   CHECK_EQ(record.txid,            txid);
-  CHECK_TEST_CONDITION_MSG(record.owner == owner, record.owner.to_string(cryptonote::network_type::FAKECHAIN) << " == "<< owner.to_string(cryptonote::network_type::FAKECHAIN));
-  CHECK_TEST_CONDITION_MSG(record.backup_owner == backup_owner, record.backup_owner.to_string(cryptonote::network_type::FAKECHAIN) << " == "<< backup_owner.to_string(cryptonote::network_type::FAKECHAIN));
+  CHECK_TEST_CONDITION_MSG(record.owner == owner, "{} == {}", record.owner.to_string(cryptonote::network_type::FAKECHAIN), owner.to_string(cryptonote::network_type::FAKECHAIN));
+  CHECK_TEST_CONDITION_MSG(record.backup_owner == backup_owner, "{} == {}", record.backup_owner.to_string(cryptonote::network_type::FAKECHAIN), backup_owner.to_string(cryptonote::network_type::FAKECHAIN));
   return true;
 }
 
@@ -1122,8 +1123,9 @@ bool oxen_name_system_expiration::generate(std::vector<test_event_entry> &events
           CHECK_EQ(owner.loaded, true);
           CHECK_EQ(owner.id, 1);
           CHECK_TEST_CONDITION_MSG(miner_key.owner == owner.address,
-              miner_key.owner.to_string(cryptonote::network_type::FAKECHAIN)
-              << " == " << owner.address.to_string(cryptonote::network_type::FAKECHAIN));
+              "{} == {}",
+              miner_key.owner.to_string(cryptonote::network_type::FAKECHAIN),
+              owner.address.to_string(cryptonote::network_type::FAKECHAIN));
 
           ons::mapping_record record = ons_db.get_mapping(mapping_type, name_hash);
           CHECK_TEST_CONDITION(verify_ons_mapping_record(perr_context, record, ons::mapping_type::lokinet, name, miner_key.lokinet_value, height_of_ons_entry, height_of_ons_entry + lokinet_expiry(mapping_type), tx_hash, miner_key.owner, {} /*backup_owner*/));
@@ -1143,8 +1145,9 @@ bool oxen_name_system_expiration::generate(std::vector<test_event_entry> &events
           CHECK_EQ(owner.loaded, true);
           CHECK_EQ(owner.id, 1);
           CHECK_TEST_CONDITION_MSG(miner_key.owner == owner.address,
-              miner_key.owner.to_string(cryptonote::network_type::FAKECHAIN)
-              << " == " << owner.address.to_string(cryptonote::network_type::FAKECHAIN));
+              "{} == {}",
+              miner_key.owner.to_string(cryptonote::network_type::FAKECHAIN),
+              owner.address.to_string(cryptonote::network_type::FAKECHAIN));
 
           ons::mapping_record record = ons_db.get_mapping(mapping_type, name_hash);
           CHECK_TEST_CONDITION(verify_ons_mapping_record(perr_context, record, ons::mapping_type::lokinet, name, miner_key.lokinet_value, height_of_ons_entry, height_of_ons_entry + lokinet_expiry(mapping_type), tx_hash, miner_key.owner, {} /*backup_owner*/));
@@ -1445,8 +1448,9 @@ bool oxen_name_system_handles_duplicate_in_ons_db::generate(std::vector<test_eve
       CHECK_EQ(owner.loaded, true);
       CHECK_EQ(owner.id, 1);
       CHECK_TEST_CONDITION_MSG(miner_key.owner == owner.address,
-          miner_key.owner.to_string(cryptonote::network_type::FAKECHAIN)
-          << " == " << owner.address.to_string(cryptonote::network_type::FAKECHAIN));
+          "{} == {}",
+          miner_key.owner.to_string(cryptonote::network_type::FAKECHAIN),
+          owner.address.to_string(cryptonote::network_type::FAKECHAIN));
 
       std::string session_name_hash = ons::name_to_base64_hash(session_name);
       ons::mapping_record record1 = ons_db.get_mapping(ons::mapping_type::session, session_name_hash);
@@ -1877,8 +1881,9 @@ bool oxen_name_system_name_renewal::generate(std::vector<test_event_entry> &even
     CHECK_EQ(owner.loaded, true);
     CHECK_EQ(owner.id, 1);
     CHECK_TEST_CONDITION_MSG(miner_key.owner == owner.address,
-                             miner_key.owner.to_string(cryptonote::network_type::FAKECHAIN)
-                                 << " == " << owner.address.to_string(cryptonote::network_type::FAKECHAIN));
+                             "{} == {}",
+                             miner_key.owner.to_string(cryptonote::network_type::FAKECHAIN),
+                             owner.address.to_string(cryptonote::network_type::FAKECHAIN));
 
     std::string name_hash = ons::name_to_base64_hash(name);
     ons::mapping_record record = ons_db.get_mapping(ons::mapping_type::lokinet, name_hash);
@@ -1909,8 +1914,9 @@ bool oxen_name_system_name_renewal::generate(std::vector<test_event_entry> &even
     CHECK_EQ(owner.loaded, true);
     CHECK_EQ(owner.id, 1);
     CHECK_TEST_CONDITION_MSG(miner_key.owner == owner.address,
-                             miner_key.owner.to_string(cryptonote::network_type::FAKECHAIN)
-                                 << " == " << owner.address.to_string(cryptonote::network_type::FAKECHAIN));
+                             "{} == {}",
+                             miner_key.owner.to_string(cryptonote::network_type::FAKECHAIN),
+                             owner.address.to_string(cryptonote::network_type::FAKECHAIN));
 
     std::string name_hash = ons::name_to_base64_hash(name);
     ons::mapping_record record = ons_db.get_mapping(ons::mapping_type::lokinet, name_hash);
@@ -2037,8 +2043,9 @@ bool oxen_name_system_update_mapping_after_expiry_fails::generate(std::vector<te
       CHECK_EQ(owner.loaded, true);
       CHECK_EQ(owner.id, 1);
       CHECK_TEST_CONDITION_MSG(miner_key.owner == owner.address,
-                               miner_key.owner.to_string(cryptonote::network_type::FAKECHAIN)
-                                   << " == " << owner.address.to_string(cryptonote::network_type::FAKECHAIN));
+              "{} == {}",
+              miner_key.owner.to_string(cryptonote::network_type::FAKECHAIN),
+              owner.address.to_string(cryptonote::network_type::FAKECHAIN));
 
       std::string name_hash        = ons::name_to_base64_hash(name);
       ons::mapping_record record = ons_db.get_mapping(ons::mapping_type::lokinet, name_hash);
@@ -2605,7 +2612,7 @@ bool oxen_service_nodes_alt_quorums::generate(std::vector<test_event_entry>& eve
 
     std::vector<std::shared_ptr<const service_nodes::quorum>> alt_quorums;
     c.get_quorum(service_nodes::quorum_type::obligations, height_with_fork, false /*include_old*/, &alt_quorums);
-    CHECK_TEST_CONDITION_MSG(alt_quorums.size() == 1, "alt_quorums.size(): " << alt_quorums.size());
+    CHECK_TEST_CONDITION_MSG(alt_quorums.size() == 1, "alt_quorums.size(): {}", alt_quorums.size());
 
     service_nodes::quorum const &fork_obligation_quorum = *fork_quorums.obligations;
     service_nodes::quorum const &real_obligation_quorum = *(alt_quorums[0]);
@@ -2970,7 +2977,7 @@ bool oxen_service_nodes_insufficient_contribution::generate(std::vector<test_eve
   gen.create_and_add_next_block({tx0});
   gen.add_transfer_unlock_blocks();
 
-  uint64_t operator_amt = oxen::STAKING_REQUIREMENT_TESTNET / 2;
+  uint64_t operator_amt = oxen::SENT_STAKING_REQUIREMENT_TESTNET / 2;
   cryptonote::keypair sn_keys{hw::get_device("default")};
   cryptonote::transaction register_tx = gen.create_registration_tx(gen.first_miner_, sn_keys, operator_amt);
   gen.add_tx(register_tx);
@@ -3007,8 +3014,8 @@ bool oxen_service_nodes_insufficient_contribution_HF18::generate(std::vector<tes
   gen.create_and_add_next_block({tx0});
   gen.add_transfer_unlock_blocks();
 
-  uint64_t operator_amount = oxen::MINIMUM_OPERATOR_CONTRIBUTION_TESTNET;
-  uint64_t remaining_amount = oxen::STAKING_REQUIREMENT_TESTNET - operator_amount;
+  uint64_t operator_amount = oxen::MINIMUM_OPERATOR_CONTRIBUTION(oxen::OXEN_STAKING_REQUIREMENT_TESTNET);
+  uint64_t remaining_amount = oxen::OXEN_STAKING_REQUIREMENT_TESTNET - operator_amount;
   // This amount is too small under HF18 rules:
   uint64_t single_contributed_amount = remaining_amount / (oxen::MAX_CONTRIBUTORS_HF19 - 1);
   cryptonote::keypair sn_keys{hw::get_device("default")};
@@ -3049,8 +3056,8 @@ bool oxen_service_nodes_sufficient_contribution_HF19::generate(std::vector<test_
   gen.create_and_add_next_block({tx0});
   gen.add_transfer_unlock_blocks();
 
-  uint64_t operator_amount = oxen::MINIMUM_OPERATOR_CONTRIBUTION_TESTNET;
-  uint64_t remaining_amount = oxen::STAKING_REQUIREMENT_TESTNET - operator_amount;
+  uint64_t operator_amount = oxen::MINIMUM_OPERATOR_CONTRIBUTION(oxen::OXEN_STAKING_REQUIREMENT_TESTNET);
+  uint64_t remaining_amount = oxen::OXEN_STAKING_REQUIREMENT_TESTNET - operator_amount;
   // This amount is too small under HF18 rules, but is accepted under HF19:
   uint64_t single_contributed_amount = remaining_amount / (oxen::MAX_CONTRIBUTORS_HF19 - 1);
   uint64_t total_amount = operator_amount + single_contributed_amount;
@@ -3196,7 +3203,7 @@ bool oxen_service_nodes_insufficient_operator_contribution_HF19::generate(std::v
   gen.add_blocks_until_version(hard_forks.back().version);
   gen.add_mined_money_unlock_blocks();
 
-  uint64_t operator_amount = oxen::MINIMUM_OPERATOR_CONTRIBUTION_TESTNET - 1;
+  uint64_t operator_amount = oxen::MINIMUM_OPERATOR_CONTRIBUTION(oxen::OXEN_STAKING_REQUIREMENT_TESTNET) - 1;
   cryptonote::keypair sn_keys{hw::get_device("default")};
   cryptonote::transaction register_tx = gen.create_registration_tx(gen.first_miner_, sn_keys, operator_amount);
   gen.add_tx(register_tx);

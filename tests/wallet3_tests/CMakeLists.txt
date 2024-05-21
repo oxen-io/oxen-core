@@ -31,7 +31,6 @@ target_link_libraries(jank_wallet_test
   cryptonote_protocol
   blockchain_db
   version
-  filesystem
   extra
   wallet3
   SQLiteCpp

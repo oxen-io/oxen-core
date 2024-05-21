@@ -31,7 +31,7 @@ SpacesInAngles: false
 SpacesInContainerLiterals: false
 SpacesInParentheses: false
 SpacesInSquareBrackets: false
-Standard: c++17
+Standard: c++20
 UseTab: Never
 SortIncludes: true
 ColumnLimit: 100

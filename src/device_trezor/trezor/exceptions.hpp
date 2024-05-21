@@ -34,160 +34,158 @@
 #include <optional>
 #include <string>
 
-namespace hw { namespace trezor { namespace exc {
+namespace hw::trezor::exc {
 
-    using namespace std::literals;
+using namespace std::literals;
 
-    class SecurityException : public std::exception {
-      protected:
-        std::optional<std::string> reason;
+class SecurityException : public std::exception {
+  protected:
+    std::optional<std::string> reason;
 
+  public:
+    SecurityException() : reason("General Security exception") {}
+    explicit SecurityException(std::string what) : reason(what) {}
+
+    virtual const char* what() const noexcept {
+        return reason ? reason->c_str() : "General Security exception";
+    }
+};
+
+class Poly1305TagInvalid : public SecurityException {
+  public:
+    using SecurityException::SecurityException;
+    Poly1305TagInvalid() : SecurityException("Poly1305 authentication tag invalid") {}
+};
+
+class TrezorException : public std::exception {
+  protected:
+    std::optional<std::string> reason;
+
+  public:
+    TrezorException() : reason("General Trezor exception") {}
+    explicit TrezorException(std::string what) : reason(what) {}
+
+    virtual const char* what() const noexcept {
+        return reason ? reason->c_str() : "General Trezor exception";
+    }
+};
+
+class CommunicationException : public TrezorException {
+  public:
+    using TrezorException::TrezorException;
+    CommunicationException() : TrezorException("Trezor communication error") {}
+};
+
+class EncodingException : public CommunicationException {
+  public:
+    using CommunicationException::CommunicationException;
+    EncodingException() : CommunicationException("Trezor message encoding error") {}
+};
+
+class NotConnectedException : public CommunicationException {
+  public:
+    using CommunicationException::CommunicationException;
+    NotConnectedException() : CommunicationException("Trezor not connected") {}
+};
+
+class DeviceNotResponsiveException : public CommunicationException {
+  public:
+    using CommunicationException::CommunicationException;
+    DeviceNotResponsiveException() : CommunicationException("Trezor does not respond to ping") {}
+};
+
+class DeviceAcquireException : public CommunicationException {
+  public:
+    using CommunicationException::CommunicationException;
+    DeviceAcquireException() : CommunicationException("Trezor could not be acquired") {}
+};
+
+class SessionException : public CommunicationException {
+  public:
+    using CommunicationException::CommunicationException;
+    SessionException() : CommunicationException("Trezor session expired") {}
+};
+
+class TimeoutException : public CommunicationException {
+  public:
+    using CommunicationException::CommunicationException;
+    TimeoutException() : CommunicationException("Trezor communication timeout") {}
+};
+
+class ProtocolException : public CommunicationException {
+  public:
+    using CommunicationException::CommunicationException;
+    ProtocolException() : CommunicationException("Trezor protocol error") {}
+};
+
+// Communication protocol namespace
+// Separated to distinguish between client and Trezor side exceptions.
+namespace proto {
+
+    class SecurityException : public ProtocolException {
       public:
-        SecurityException() : reason("General Security exception") {}
-        explicit SecurityException(std::string what) : reason(what) {}
-
-        virtual const char* what() const noexcept {
-            return reason ? reason->c_str() : "General Security exception";
-        }
+        using ProtocolException::ProtocolException;
+        SecurityException() : ProtocolException("Security assertion violated in the protocol") {}
     };
 
-    class Poly1305TagInvalid : public SecurityException {
-      public:
-        using SecurityException::SecurityException;
-        Poly1305TagInvalid() : SecurityException("Poly1305 authentication tag invalid") {}
-    };
-
-    class TrezorException : public std::exception {
-      protected:
-        std::optional<std::string> reason;
+    class FailureException : public ProtocolException {
+      private:
+        std::optional<uint32_t> code;
+        std::optional<std::string> message;
 
       public:
-        TrezorException() : reason("General Trezor exception") {}
-        explicit TrezorException(std::string what) : reason(what) {}
-
-        virtual const char* what() const noexcept {
-            return reason ? reason->c_str() : "General Trezor exception";
-        }
-    };
-
-    class CommunicationException : public TrezorException {
-      public:
-        using TrezorException::TrezorException;
-        CommunicationException() : TrezorException("Trezor communication error") {}
-    };
-
-    class EncodingException : public CommunicationException {
-      public:
-        using CommunicationException::CommunicationException;
-        EncodingException() : CommunicationException("Trezor message encoding error") {}
-    };
-
-    class NotConnectedException : public CommunicationException {
-      public:
-        using CommunicationException::CommunicationException;
-        NotConnectedException() : CommunicationException("Trezor not connected") {}
-    };
-
-    class DeviceNotResponsiveException : public CommunicationException {
-      public:
-        using CommunicationException::CommunicationException;
-        DeviceNotResponsiveException() :
-                CommunicationException("Trezor does not respond to ping") {}
-    };
-
-    class DeviceAcquireException : public CommunicationException {
-      public:
-        using CommunicationException::CommunicationException;
-        DeviceAcquireException() : CommunicationException("Trezor could not be acquired") {}
-    };
-
-    class SessionException : public CommunicationException {
-      public:
-        using CommunicationException::CommunicationException;
-        SessionException() : CommunicationException("Trezor session expired") {}
-    };
-
-    class TimeoutException : public CommunicationException {
-      public:
-        using CommunicationException::CommunicationException;
-        TimeoutException() : CommunicationException("Trezor communication timeout") {}
-    };
-
-    class ProtocolException : public CommunicationException {
-      public:
-        using CommunicationException::CommunicationException;
-        ProtocolException() : CommunicationException("Trezor protocol error") {}
-    };
-
-    // Communication protocol namespace
-    // Separated to distinguish between client and Trezor side exceptions.
-    namespace proto {
-
-        class SecurityException : public ProtocolException {
-          public:
-            using ProtocolException::ProtocolException;
-            SecurityException() :
-                    ProtocolException("Security assertion violated in the protocol") {}
+        using ProtocolException::ProtocolException;
+        FailureException() : ProtocolException("Trezor returned failure") {}
+        FailureException(std::optional<uint32_t> code, std::optional<std::string> message) :
+                code(code), message(message) {
+            reason = "Trezor returned failure: code=" + (code ? std::to_string(*code) : ""s) +
+                     ", message=" + (message ? *message : ""s);
         };
+    };
 
-        class FailureException : public ProtocolException {
-          private:
-            std::optional<uint32_t> code;
-            std::optional<std::string> message;
+    class UnexpectedMessageException : public FailureException {
+      public:
+        using FailureException::FailureException;
+        UnexpectedMessageException() :
+                FailureException("Trezor claims unexpected message received") {}
+    };
 
-          public:
-            using ProtocolException::ProtocolException;
-            FailureException() : ProtocolException("Trezor returned failure") {}
-            FailureException(std::optional<uint32_t> code, std::optional<std::string> message) :
-                    code(code), message(message) {
-                reason = "Trezor returned failure: code=" + (code ? std::to_string(*code) : ""s) +
-                         ", message=" + (message ? *message : ""s);
-            };
-        };
+    class CancelledException : public FailureException {
+      public:
+        using FailureException::FailureException;
+        CancelledException() : FailureException("Trezor returned: cancelled operation") {}
+    };
 
-        class UnexpectedMessageException : public FailureException {
-          public:
-            using FailureException::FailureException;
-            UnexpectedMessageException() :
-                    FailureException("Trezor claims unexpected message received") {}
-        };
+    class PinExpectedException : public FailureException {
+      public:
+        using FailureException::FailureException;
+        PinExpectedException() : FailureException("Trezor claims PIN is expected") {}
+    };
 
-        class CancelledException : public FailureException {
-          public:
-            using FailureException::FailureException;
-            CancelledException() : FailureException("Trezor returned: cancelled operation") {}
-        };
+    class InvalidPinException : public FailureException {
+      public:
+        using FailureException::FailureException;
+        InvalidPinException() : FailureException("Trezor claims PIN is invalid") {}
+    };
 
-        class PinExpectedException : public FailureException {
-          public:
-            using FailureException::FailureException;
-            PinExpectedException() : FailureException("Trezor claims PIN is expected") {}
-        };
+    class NotEnoughFundsException : public FailureException {
+      public:
+        using FailureException::FailureException;
+        NotEnoughFundsException() : FailureException("Trezor claims not enough funds") {}
+    };
 
-        class InvalidPinException : public FailureException {
-          public:
-            using FailureException::FailureException;
-            InvalidPinException() : FailureException("Trezor claims PIN is invalid") {}
-        };
+    class NotInitializedException : public FailureException {
+      public:
+        using FailureException::FailureException;
+        NotInitializedException() : FailureException("Trezor claims not initialized") {}
+    };
 
-        class NotEnoughFundsException : public FailureException {
-          public:
-            using FailureException::FailureException;
-            NotEnoughFundsException() : FailureException("Trezor claims not enough funds") {}
-        };
+    class FirmwareErrorException : public FailureException {
+      public:
+        using FailureException::FailureException;
+        FirmwareErrorException() : FailureException("Trezor returned firmware error") {}
+    };
 
-        class NotInitializedException : public FailureException {
-          public:
-            using FailureException::FailureException;
-            NotInitializedException() : FailureException("Trezor claims not initialized") {}
-        };
-
-        class FirmwareErrorException : public FailureException {
-          public:
-            using FailureException::FailureException;
-            FirmwareErrorException() : FailureException("Trezor returned firmware error") {}
-        };
-
-    }   // namespace proto
-}}}     // namespace hw::trezor::exc
+}  // namespace proto
+}  // namespace hw::trezor::exc
 #endif  // MONERO_EXCEPTIONS_H

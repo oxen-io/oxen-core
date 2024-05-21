@@ -19,7 +19,7 @@ bool sha256sum_str(std::string_view data, crypto::hash& hash) {
 bool sha256sum_file(const fs::path& filename, crypto::hash& hash) {
     if (std::error_code ec; !fs::exists(filename, ec) || ec)
         return false;
-    fs::ifstream f;
+    std::ifstream f;
     f.exceptions(std::ifstream::failbit | std::ifstream::badbit);
     f.open(filename, std::ios_base::binary | std::ios_base::in | std::ios::ate);
     if (!f)

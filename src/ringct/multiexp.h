@@ -48,8 +48,10 @@ struct MultiexpData {
     MultiexpData() {}
     MultiexpData(const rct::key& s, const ge_p3& p) : scalar(s), point(p) {}
     MultiexpData(const rct::key& s, const rct::key& p) : scalar(s) {
-        CHECK_AND_ASSERT_THROW_MES(
-                ge_frombytes_vartime(&point, p.bytes) == 0, "ge_frombytes_vartime failed");
+        if (ge_frombytes_vartime(&point, p.bytes) != 0) {
+            auto logcat = oxen::log::Cat("multiexp");
+            ASSERT_MES_AND_THROW("ge_frombytes_vartime failed");
+        }
     }
 };
 

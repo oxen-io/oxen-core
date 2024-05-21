@@ -30,7 +30,7 @@
 
 #pragma once
 
-//#define DBG
+// #define DBG
 
 #include <cstddef>
 #include <utility>

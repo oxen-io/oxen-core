@@ -25,7 +25,7 @@ namespace {
     auto logcat = log::Cat("pulse");
 
     // Deliberately makes pulse communications flakey for testing purposes:
-    //#define PULSE_TEST_CODE
+    // #define PULSE_TEST_CODE
 
     enum struct round_state {
         null_state,
@@ -528,7 +528,7 @@ void handle_message(void* quorumnet_state, pulse::message const& msg) {
         }
 
         if (print_err)
-            log::error(logcat, sig_check_err);
+            log::error(logcat, "{}", sig_check_err);
 
         return;
     }
@@ -1555,7 +1555,6 @@ namespace {
                                                                                   "block template "
                                                                                   "from block "
                                                                                   "producer"));
-            //TODO sean put this back and use a max block
             // Fill tx_pool with ethereum transactions before we build the block
             blockchain.add_ethereum_transactions_to_tx_pool();
 
@@ -2003,8 +2002,8 @@ void main(void* quorumnet_state, cryptonote::core& core) {
                 break;
 
             case round_state::wait_for_handshake_bitsets:
-                context.state =
-                        wait_for_handshake_bitsets(context, node_list, quorumnet_state, key, blockchain);
+                context.state = wait_for_handshake_bitsets(
+                        context, node_list, quorumnet_state, key, blockchain);
                 break;
 
             case round_state::wait_for_block_template:

@@ -121,7 +121,7 @@ namespace cryptonote
   bool t_cryptonote_protocol_handler<t_core>::on_callback(cryptonote_connection_context& context)
   {
     log::debug(logcat, "callback fired");
-    CHECK_AND_ASSERT_MES_CC( context.m_callback_request_count > 0, false, "false callback fired, but context.m_callback_request_count=" << context.m_callback_request_count);
+    CHECK_AND_ASSERT_MES_CC( context.m_callback_request_count > 0, false, "false callback fired, but context.m_callback_request_count={}", context.m_callback_request_count.load());
     --context.m_callback_request_count;
 
     if(context.m_state == cryptonote_connection_context::state_synchronizing)
@@ -351,7 +351,7 @@ namespace cryptonote
     context.m_pruning_seed = hshd.pruning_seed;
     if constexpr (PRUNING_DEBUG_SPOOF_SEED) {
       context.m_pruning_seed = tools::make_pruning_seed(1 + (context.m_remote_address.as<epee::net_utils::ipv4_network_address>().ip()) % (1 << PRUNING_LOG_STRIPES), PRUNING_LOG_STRIPES);
-      log::info(logcat, "{}{}, seed address {}", context, "New connection posing as pruning seed ", epee::string_tools::to_string_hex(context.m_pruning_seed), &context.m_pruning_seed);
+      log::info(logcat, "{}New connection posing as pruning seed {}", context, tools::type_to_hex(context.m_pruning_seed));
     }
 
     // No chain synchronization over hidden networks (tor, i2p, etc.)
@@ -445,13 +445,12 @@ namespace cryptonote
       Nz. */
       int64_t diff = static_cast<int64_t>(hshd.current_height) - static_cast<int64_t>(curr_height);
       uint64_t abs_diff = std::abs(diff);
-      uint64_t max_block_height = std::max(hshd.current_height, curr_height);
       std::string sync_msg = "{}Sync data returned a new top block candidate: {} -> {} [Your node is {} blocks ({} {})]\nSYNCHRONIZATION started"_format(
               context, curr_height, hshd.current_height, abs_diff, tools::get_human_readable_timespan(abs_diff*TARGET_BLOCK_TIME), (0 <= diff ? "behind" : "ahead"));
       if (is_initial)
-        log::info(globallogcat, fg(fmt::terminal_color::cyan), sync_msg);
+        log::info(globallogcat, fg(fmt::terminal_color::cyan), "{}", sync_msg);
       else
-        log::debug(globallogcat, sync_msg);
+        log::debug(globallogcat, "{}", sync_msg);
 
       m_period_start_time = m_sync_start_time = std::chrono::steady_clock::now();
       m_sync_start_height = curr_height;
@@ -1498,12 +1497,11 @@ namespace cryptonote
               if (bvc.m_verifivation_failed || bvc.m_marked_as_orphaned)
               {
                 if (!m_p2p->for_connection(span_connection_id, [&](cryptonote_connection_context& context, nodetool::peerid_type peer_id)->bool{
-                      std::string const err_msg =
-                      bvc.m_verifivation_failed
-                          ? "Block verification failed, dropping connection"
-                          : "Block received at sync phase was marked as orphaned, dropping connection";
+                    if (bvc.m_verifivation_failed)
+                        log::info(logcat, "Block verification failed, dropping connection");
+                    else
+                        log::info(logcat, "Block received at sync phase was marked as orphaned, dropping connection");
 
-                  log::info(logcat, err_msg);
                   drop_connection(context, true, true);
                   return 1;
                 }))
@@ -1886,7 +1884,7 @@ skip:
       const uint32_t distance = (peer_stripe + (1<<PRUNING_LOG_STRIPES) - next_stripe) % (1<<PRUNING_LOG_STRIPES);
       if ((n_out_peers >= m_max_out_peers && n_peers_on_next_stripe == 0) || (distance > 1 && n_peers_on_next_stripe <= 2) || distance > 2)
       {
-        log::debug(logcat, "{}we want seed {}, and either {} is at max out peers ({}) or distance {} from {} to {} is too large and we have only {} peers on next seed, dropping connection to make space", context, next_stripe, n_out_peers, m_max_out_peers, distance, next_stripe, peer_stripe, n_peers_on_next_stripe);
+        log::debug(logcat, "{}we want seed {}, and either {} is at max out peers ({}) or distance {} from {} to {} is too large and we have only {} peers on next seed, dropping connection to make space", context, next_stripe, n_out_peers, m_max_out_peers.load(), distance, next_stripe, peer_stripe, n_peers_on_next_stripe);
         return true;
       }
     }
@@ -2215,12 +2213,18 @@ skip:
     {
       CHECK_AND_ASSERT_MES(context.m_last_response_height == context.m_remote_blockchain_height-1
                            && !context.m_needed_objects.size()
-                           && !context.m_requested_objects.size(), false, "request_missing_blocks final condition failed!"
-                           << "\r\nm_last_response_height=" << context.m_last_response_height
-                           << "\r\nm_remote_blockchain_height=" << context.m_remote_blockchain_height
-                           << "\r\nm_needed_objects.size()=" << context.m_needed_objects.size()
-                           << "\r\nm_requested_objects.size()=" << context.m_requested_objects.size()
-                           << "\r\non connection [" << epee::net_utils::print_connection_context_short(context)<< "]");
+                           && !context.m_requested_objects.size(), false,
+                           "request_missing_blocks final condition failed!"
+                           "\nm_last_response_height={}"
+                           "\nm_remote_blockchain_height="
+                           "\nm_needed_objects.size()="
+                           "\nm_requested_objects.size()="
+                           "\non connection [{}]",
+                           context.m_last_response_height,
+                           context.m_remote_blockchain_height,
+                           context.m_needed_objects.size(),
+                           context.m_requested_objects.size(),
+                           epee::net_utils::print_connection_context_short(context));
 
       context.m_state = cryptonote_connection_context::state_normal;
       if (context.m_remote_blockchain_height >= m_core.get_target_blockchain_height())
@@ -2554,7 +2558,7 @@ Use the "help" command to see the list of available commands.
     const bool use_next = (n_next > m_max_out_peers / 2 && n_subsequent <= 1) || (n_next > 2 && n_subsequent == 0);
     const uint32_t ret_stripe = use_next ? subsequent_pruning_stripe: next_pruning_stripe;
     const std::string po = get_peers_overview();
-    log::debug(logcat, "get_next_needed_pruning_stripe: want height {} ({} from blockchain, {} from block queue), stripe {} ({}/{} on it and {} on {}, {} others) -> {} (+{}), current peers {}", want_height, want_height_from_blockchain, want_height_from_block_queue, next_pruning_stripe, n_next, m_max_out_peers, n_subsequent, subsequent_pruning_stripe, n_others, ret_stripe, (ret_stripe - next_pruning_stripe + (1 << PRUNING_LOG_STRIPES)) % (1 << PRUNING_LOG_STRIPES), po);
+    log::debug(logcat, "get_next_needed_pruning_stripe: want height {} ({} from blockchain, {} from block queue), stripe {} ({}/{} on it and {} on {}, {} others) -> {} (+{}), current peers {}", want_height, want_height_from_blockchain, want_height_from_block_queue, next_pruning_stripe, n_next, m_max_out_peers.load(), n_subsequent, subsequent_pruning_stripe, n_others, ret_stripe, (ret_stripe - next_pruning_stripe + (1 << PRUNING_LOG_STRIPES)) % (1 << PRUNING_LOG_STRIPES), po);
     return std::make_pair(next_pruning_stripe, ret_stripe);
   }
   //------------------------------------------------------------------------------------------------------------------------

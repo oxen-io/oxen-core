@@ -40,6 +40,7 @@
 #include <mutex>
 
 #include "blockchain.h"
+#include "bls/bls_aggregator.h"
 #include "common/command_line.h"
 #include "crypto/hash.h"
 #include "cryptonote_basic/connection_context.h"
@@ -54,7 +55,6 @@
 #include "service_node_quorum_cop.h"
 #include "service_node_voting.h"
 #include "tx_pool.h"
-#include "bls/bls_aggregator.h"
 PUSH_WARNINGS
 DISABLE_VS_WARNINGS(4355)
 
@@ -955,7 +955,8 @@ class core : public i_miner_handler {
     aggregateExitResponse aggregate_exit_request(const std::string& bls_key);
     aggregateExitResponse aggregate_liquidation_request(const std::string& bls_key);
     std::vector<std::pair<std::string, uint64_t>> get_bls_pubkeys() const;
-    blsRegistrationResponse bls_registration(const std::string& ethereum_address, const uint64_t fee = 0) const;
+    blsRegistrationResponse bls_registration(
+            const std::string& ethereum_address, const uint64_t fee = 0) const;
 
     /**
      * @brief get a snapshot of the service node list state at the time of the call.
@@ -966,6 +967,16 @@ class core : public i_miner_handler {
      */
     std::vector<service_nodes::service_node_pubkey_info> get_service_node_list_state(
             const std::vector<crypto::public_key>& service_node_pubkeys = {}) const;
+    bool is_node_removable(std::string_view node_bls_pubkey);
+    bool is_node_liquidatable(std::string_view node_bls_pubkey);
+
+    /**
+     * @brief get a snapshot of the service node list state and compares to the smart contract state, returns any in the 
+     *        smart contract that are not in the service node list
+     *
+     * @return all the service nodes bls keys that should be removed from the smart contract
+     */
+    std::vector<std::string> get_removable_nodes();
 
     /**
      * @brief get whether `pubkey` is known as a service node.
@@ -1249,7 +1260,6 @@ class core : public i_miner_handler {
 
     tx_memory_pool m_mempool;         //!< transaction pool instance
     Blockchain m_blockchain_storage;  //!< Blockchain instance
-    
 
     service_nodes::service_node_list m_service_node_list;
     service_nodes::quorum_cop m_quorum_cop;

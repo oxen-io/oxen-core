@@ -29,8 +29,9 @@
 
 #include "bootstrap_file.h"
 
+#include <fmt/std.h>
+
 #include "bootstrap_serialization.h"
-#include "common/fs-format.h"
 #include "serialization/binary_utils.h"  // dump_binary(), parse_binary()
 
 using namespace cryptonote;
@@ -323,7 +324,7 @@ bool BootstrapFile::store_blockchain_raw(
     return BootstrapFile::close();
 }
 
-uint64_t BootstrapFile::seek_to_first_chunk(fs::ifstream& import_file) {
+uint64_t BootstrapFile::seek_to_first_chunk(std::ifstream& import_file) {
     uint32_t file_magic;
 
     std::string str1;
@@ -385,7 +386,7 @@ uint64_t BootstrapFile::seek_to_first_chunk(fs::ifstream& import_file) {
 }
 
 uint64_t BootstrapFile::count_bytes(
-        fs::ifstream& import_file, uint64_t blocks, uint64_t& h, bool& quit) {
+        std::ifstream& import_file, uint64_t blocks, uint64_t& h, bool& quit) {
     uint64_t bytes_read = 0;
     uint32_t chunk_size;
     char buf1[sizeof(chunk_size)];
@@ -472,7 +473,7 @@ uint64_t BootstrapFile::count_blocks(
         log::error(logcat, "bootstrap file not found: {}", import_file_path);
         throw std::runtime_error("Aborting");
     }
-    fs::ifstream import_file{import_file_path, std::ios::binary};
+    std::ifstream import_file{import_file_path, std::ios::binary};
 
     uint64_t start_height = seek_height;
     uint64_t h = 0;

@@ -29,7 +29,7 @@
 
 #include "blocksdat_file.h"
 
-#include "common/fs-format.h"
+#include <fmt/std.h>
 
 using namespace cryptonote;
 using namespace blockchain_utils;

@@ -51,7 +51,8 @@ inline constexpr std::string_view to_string(txtype type) {
         case txtype::oxen_name_system: return "oxen_name_system"sv;
         case txtype::ethereum_address_notification: return "ethereum_address_notification"sv;
         case txtype::ethereum_new_service_node: return "ethereum_new_service_node"sv;
-        case txtype::ethereum_service_node_leave_request: return "ethereum_service_node_leave_request"sv;
+        case txtype::ethereum_service_node_leave_request:
+            return "ethereum_service_node_leave_request"sv;
         case txtype::ethereum_service_node_exit: return "ethereum_service_node_exit"sv;
         case txtype::ethereum_service_node_deregister: return "ethereum_service_node_deregister"sv;
         default: assert(false); return "xx_unhandled_type"sv;

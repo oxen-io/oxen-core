@@ -150,13 +150,16 @@ class ServiceNodeRewardContract:
         return self.contract.functions.serviceNodesLength().call()
 
     def updateRewardsBalance(self, recipientAddress, recipientAmount, blsSig, ids):
+        sig_param = {
+                'sigs0': int(blsSig[:64], 16),
+                'sigs1': int(blsSig[64:128], 16),
+                'sigs2': int(blsSig[128:192], 16),
+                'sigs3': int(blsSig[192:256], 16),
+        }
         unsent_tx = self.contract.functions.updateRewardsBalance(
             Web3.to_checksum_address(recipientAddress),
             recipientAmount,
-            int(blsSig[:64], 16),
-            int(blsSig[64:128], 16),
-            int(blsSig[128:192], 16),
-            int(blsSig[192:256], 16),
+            sig_param,
             ids
         ).build_transaction({
             "from": self.acc.address,
@@ -192,7 +195,7 @@ class ServiceNodeRewardContract:
                 raise Exception("Iterated through smart contract list and could not find bls key")
 
     def getNonSigners(self, bls_public_keys):
-        service_node_end_id = 2**64-1
+        service_node_end_id = 0
         service_node_end = self.contract.functions.serviceNodes(service_node_end_id).call()
         service_node_id = service_node_end[0]
         non_signers = []
@@ -210,42 +213,6 @@ class ServiceNodeRewardContract:
 
 contract_abi = json.loads("""
 [
-    {
-      "inputs": [
-        {
-          "internalType": "address",
-          "name": "_token",
-          "type": "address"
-        },
-        {
-          "internalType": "address",
-          "name": "_foundationPool",
-          "type": "address"
-        },
-        {
-          "internalType": "uint256",
-          "name": "__stakingRequirement",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "__liquidatorRewardRatio",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "__poolShareOfLiquidationRatio",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "__recipientRatio",
-          "type": "uint256"
-        }
-      ],
-      "stateMutability": "nonpayable",
-      "type": "constructor"
-    },
     {
       "inputs": [
         {
@@ -292,14 +259,21 @@ contract_abi = json.loads("""
           "type": "uint64"
         },
         {
-          "internalType": "uint256",
-          "name": "pkX",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "pkY",
-          "type": "uint256"
+          "components": [
+            {
+              "internalType": "uint256",
+              "name": "X",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "Y",
+              "type": "uint256"
+            }
+          ],
+          "internalType": "struct BN256G1.G1Point",
+          "name": "pubkey",
+          "type": "tuple"
         }
       ],
       "name": "BLSPubkeyDoesNotMatch",
@@ -329,6 +303,11 @@ contract_abi = json.loads("""
         }
       ],
       "name": "ContributionTotalMismatch",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "DeleteSentinelNodeNotAllowed",
       "type": "error"
     },
     {
@@ -405,6 +384,11 @@ contract_abi = json.loads("""
       "type": "error"
     },
     {
+      "inputs": [],
+      "name": "InvalidInitialization",
+      "type": "error"
+    },
+    {
       "inputs": [
         {
           "internalType": "uint64",
@@ -423,6 +407,11 @@ contract_abi = json.loads("""
         }
       ],
       "name": "LeaveRequestTooEarly",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "NotInitializing",
       "type": "error"
     },
     {
@@ -499,6 +488,32 @@ contract_abi = json.loads("""
       ],
       "name": "ServiceNodeDoesntExist",
       "type": "error"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "newMax",
+          "type": "uint256"
+        }
+      ],
+      "name": "BLSNonSignerThresholdMaxUpdated",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "uint64",
+          "name": "version",
+          "type": "uint64"
+        }
+      ],
+      "name": "Initialized",
+      "type": "event"
     },
     {
       "anonymous": false,
@@ -612,19 +627,6 @@ contract_abi = json.loads("""
         }
       ],
       "name": "NewServiceNode",
-      "type": "event"
-    },
-    {
-      "anonymous": false,
-      "inputs": [
-        {
-          "indexed": false,
-          "internalType": "uint256",
-          "name": "newRequirement",
-          "type": "uint256"
-        }
-      ],
-      "name": "NonSignersLimitUpdated",
       "type": "event"
     },
     {
@@ -880,7 +882,7 @@ contract_abi = json.loads("""
     },
     {
       "inputs": [],
-      "name": "LIST_END",
+      "name": "LIST_SENTINEL",
       "outputs": [
         {
           "internalType": "uint64",
@@ -1064,27 +1066,16 @@ contract_abi = json.loads("""
       "type": "function"
     },
     {
-      "inputs": [
-        {
-          "internalType": "address",
-          "name": "recipientAddress",
-          "type": "address"
-        },
+      "inputs": [],
+      "name": "blsNonSignerThresholdMax",
+      "outputs": [
         {
           "internalType": "uint256",
-          "name": "balance",
+          "name": "",
           "type": "uint256"
         }
       ],
-      "name": "buildRecipientMessage",
-      "outputs": [
-        {
-          "internalType": "bytes",
-          "name": "",
-          "type": "bytes"
-        }
-      ],
-      "stateMutability": "pure",
+      "stateMutability": "view",
       "type": "function"
     },
     {
@@ -1123,6 +1114,44 @@ contract_abi = json.loads("""
     {
       "inputs": [
         {
+          "internalType": "address",
+          "name": "token_",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "foundationPool_",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "stakingRequirement_",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "liquidatorRewardRatio_",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "poolShareOfLiquidationRatio_",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "recipientRatio_",
+          "type": "uint256"
+        }
+      ],
+      "name": "initialize",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
           "internalType": "uint64",
           "name": "serviceNodeID",
           "type": "uint64"
@@ -1141,34 +1170,48 @@ contract_abi = json.loads("""
           "type": "uint64"
         },
         {
-          "internalType": "uint256",
-          "name": "pkX",
-          "type": "uint256"
+          "components": [
+            {
+              "internalType": "uint256",
+              "name": "X",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "Y",
+              "type": "uint256"
+            }
+          ],
+          "internalType": "struct BN256G1.G1Point",
+          "name": "blsPubkey",
+          "type": "tuple"
         },
         {
-          "internalType": "uint256",
-          "name": "pkY",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "sigs0",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "sigs1",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "sigs2",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "sigs3",
-          "type": "uint256"
+          "components": [
+            {
+              "internalType": "uint256",
+              "name": "sigs0",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "sigs1",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "sigs2",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "sigs3",
+              "type": "uint256"
+            }
+          ],
+          "internalType": "struct IServiceNodeRewards.BLSSignatureParams",
+          "name": "blsSignature",
+          "type": "tuple"
         },
         {
           "internalType": "uint64[]",
@@ -1363,34 +1406,48 @@ contract_abi = json.loads("""
           "type": "uint64"
         },
         {
-          "internalType": "uint256",
-          "name": "pkX",
-          "type": "uint256"
+          "components": [
+            {
+              "internalType": "uint256",
+              "name": "X",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "Y",
+              "type": "uint256"
+            }
+          ],
+          "internalType": "struct BN256G1.G1Point",
+          "name": "blsPubkey",
+          "type": "tuple"
         },
         {
-          "internalType": "uint256",
-          "name": "pkY",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "sigs0",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "sigs1",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "sigs2",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "sigs3",
-          "type": "uint256"
+          "components": [
+            {
+              "internalType": "uint256",
+              "name": "sigs0",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "sigs1",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "sigs2",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "sigs3",
+              "type": "uint256"
+            }
+          ],
+          "internalType": "struct IServiceNodeRewards.BLSSignatureParams",
+          "name": "blsSignature",
+          "type": "tuple"
         },
         {
           "internalType": "uint64[]",
@@ -1469,7 +1526,7 @@ contract_abi = json.loads("""
       "inputs": [
         {
           "internalType": "uint64",
-          "name": "i",
+          "name": "serviceNodeID",
           "type": "uint64"
         }
       ],
@@ -1484,7 +1541,7 @@ contract_abi = json.loads("""
             },
             {
               "internalType": "uint64",
-              "name": "previous",
+              "name": "prev",
               "type": "uint64"
             },
             {
@@ -1518,6 +1575,23 @@ contract_abi = json.loads("""
               "internalType": "uint256",
               "name": "deposit",
               "type": "uint256"
+            },
+            {
+              "components": [
+                {
+                  "internalType": "address",
+                  "name": "addr",
+                  "type": "address"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "stakedAmount",
+                  "type": "uint256"
+                }
+              ],
+              "internalType": "struct IServiceNodeRewards.Contributor[]",
+              "name": "contributors",
+              "type": "tuple[]"
             }
           ],
           "internalType": "struct IServiceNodeRewards.ServiceNode",
@@ -1545,11 +1619,11 @@ contract_abi = json.loads("""
       "inputs": [
         {
           "internalType": "uint256",
-          "name": "newRequirement",
+          "name": "newMax",
           "type": "uint256"
         }
       ],
-      "name": "setStakingRequirement",
+      "name": "setBLSNonSignerThresholdMax",
       "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"
@@ -1562,7 +1636,7 @@ contract_abi = json.loads("""
           "type": "uint256"
         }
       ],
-      "name": "setUpperLimitNonSigners",
+      "name": "setStakingRequirement",
       "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"
@@ -1633,24 +1707,31 @@ contract_abi = json.loads("""
           "type": "uint256"
         },
         {
-          "internalType": "uint256",
-          "name": "sigs0",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "sigs1",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "sigs2",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "sigs3",
-          "type": "uint256"
+          "components": [
+            {
+              "internalType": "uint256",
+              "name": "sigs0",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "sigs1",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "sigs2",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "sigs3",
+              "type": "uint256"
+            }
+          ],
+          "internalType": "struct IServiceNodeRewards.BLSSignatureParams",
+          "name": "blsSignature",
+          "type": "tuple"
         },
         {
           "internalType": "uint64[]",
@@ -1668,19 +1749,6 @@ contract_abi = json.loads("""
       "name": "updateServiceNodesLength",
       "outputs": [],
       "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "upperLimitNonSigners",
-      "outputs": [
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        }
-      ],
-      "stateMutability": "view",
       "type": "function"
     }
 ]

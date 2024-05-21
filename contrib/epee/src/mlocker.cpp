@@ -141,7 +141,7 @@ namespace epee
       lock_page(page);
     ++num_locked_objects;
 
-    CATCH_ENTRY_L1("mlocker::lock", void());
+    CATCH_ENTRY("mlocker::lock", void());
 #endif
   }
 
@@ -160,7 +160,7 @@ namespace epee
       unlock_page(page);
     --num_locked_objects;
 
-    CATCH_ENTRY_L1("mlocker::lock", void());
+    CATCH_ENTRY("mlocker::lock", void());
 #endif
   }
 

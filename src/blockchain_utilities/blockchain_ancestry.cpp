@@ -30,6 +30,8 @@
 #define __STDC_FORMAT_MACROS  // NOTE(oxen): Explicitly define the SCNu64 macro on Mingw
 #endif
 
+#include <fmt/std.h>
+
 #include <boost/archive/portable_binary_iarchive.hpp>
 #include <boost/archive/portable_binary_oarchive.hpp>
 #include <cinttypes>
@@ -40,7 +42,6 @@
 #include "blockchain_db/blockchain_db.h"
 #include "blockchain_objects.h"
 #include "common/command_line.h"
-#include "common/fs-format.h"
 #include "common/signal_handler.h"
 #include "common/unordered_containers_boost_serialization.h"
 #include "common/varint.h"
@@ -442,7 +443,7 @@ int main(int argc, char* argv[]) {
     }
     log::warning(logcat, "database: LMDB");
 
-    fs::path filename = fs::u8path(opt_data_dir) / db->get_db_name();
+    fs::path filename = tools::utf8_path(opt_data_dir) / db->get_db_name();
     log::warning(logcat, "Loading blockchain from folder {} ...", filename);
 
     try {
@@ -460,9 +461,9 @@ int main(int argc, char* argv[]) {
 
     ancestry_state_t state;
 
-    fs::path state_file_path = fs::u8path(opt_data_dir) / "ancestry-state.bin";
+    fs::path state_file_path = tools::utf8_path(opt_data_dir) / "ancestry-state.bin";
     log::warning(logcat, "Loading state data from {}", state_file_path);
-    fs::ifstream state_data_in;
+    std::ifstream state_data_in;
     state_data_in.open(state_file_path, std::ios_base::binary | std::ios_base::in);
     if (!state_data_in.fail()) {
         try {

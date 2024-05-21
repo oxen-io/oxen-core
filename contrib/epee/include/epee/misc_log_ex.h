@@ -1,3 +1,5 @@
+#pragma once
+
 // Copyright (c) 2006-2013, Andrey N. Sabelnikov, www.sabelnikov.net
 // All rights reserved.
 //
@@ -25,70 +27,50 @@
 //
 
 
-#ifndef _MISC_LOG_EX_H_
-#define _MISC_LOG_EX_H_
+#ifndef __cplusplus
+#error "this header is c++ only"
+#endif
 
-#ifdef __cplusplus
-
+#include <cassert>
 #include <string>
 #include <sstream>
 #include <iostream>
+#include <oxen/log.hpp>
 
 #undef OXEN_DEFAULT_LOG_CATEGORY
 #define OXEN_DEFAULT_LOG_CATEGORY "default"
 
-#ifndef LOCAL_ASSERT
-#include <assert.h>
-#if (defined _MSC_VER)
-#define LOCAL_ASSERT(expr) {if(epee::debug::get_set_enable_assert()){_ASSERTE(expr);}}
-#else
-#define LOCAL_ASSERT(expr)
-#endif
-
-#endif
-
 namespace epee
 {
-namespace debug
-{
-  inline bool get_set_enable_assert(bool set = false, bool v = false)
-  {
-    static bool e = true;
-    if(set)
-      e = v;
-    return e;
-  }
-}
+namespace log = oxen::log;
 
+inline auto logcat = oxen::log::Cat("epee");
 
-
-#define TRY_ENTRY()   try {
+#define TRY_ENTRY() try {
 #define CATCH_ENTRY(location, return_val) } \
   catch(const std::exception& ex) \
 { \
-  (void)(ex); \
+    oxen::log::error(logcat, "Exception at [{}]: {}", location, ex.what()); \
   return return_val; \
 }\
   catch(...)\
 {\
+    oxen::log::error(logcat, "Unknown exception at [{}]", location); \
   return return_val; \
 }
 
-#define CATCH_ENTRY_L0(lacation, return_val) CATCH_ENTRY(lacation, return_val)
-#define CATCH_ENTRY_L1(lacation, return_val) CATCH_ENTRY(lacation, return_val)
-#define CATCH_ENTRY_L2(lacation, return_val) CATCH_ENTRY(lacation, return_val)
-#define CATCH_ENTRY_L3(lacation, return_val) CATCH_ENTRY(lacation, return_val)
-#define CATCH_ENTRY_L4(lacation, return_val) CATCH_ENTRY(lacation, return_val)
-
-#define ASSERT_MES_AND_THROW(message) {std::stringstream ss; ss << message; throw std::runtime_error(ss.str());}
-#define CHECK_AND_ASSERT_THROW_MES(expr, message) do {if(!(expr)) ASSERT_MES_AND_THROW(message);} while(0)
+#define ASSERT_MES_AND_THROW(...) do { \
+    auto msg = fmt::format(__VA_ARGS__); \
+    oxen::log::error(logcat, "{}", msg); \
+    throw std::runtime_error{msg}; } while(0)
+#define CHECK_AND_ASSERT_THROW_MES(expr, ...) do {if(!(expr)) ASSERT_MES_AND_THROW(__VA_ARGS__);} while(0)
 
 #ifndef CHECK_AND_ASSERT
-#define CHECK_AND_ASSERT(expr, fail_ret_val)   do{if(!(expr)){LOCAL_ASSERT(expr); return fail_ret_val;};}while(0)
+#define CHECK_AND_ASSERT(expr, fail_ret_val)   do{if(!(expr)){return fail_ret_val;};}while(0)
 #endif
 
 #ifndef CHECK_AND_ASSERT_MES
-#define CHECK_AND_ASSERT_MES(expr, fail_ret_val, message)   do{if(!(expr)) {return fail_ret_val;};}while(0)
+#define CHECK_AND_ASSERT_MES(expr, fail_ret_val, ...)   do{if(!(expr)) {oxen::log::error(logcat, __VA_ARGS__); return fail_ret_val;};}while(0)
 #endif
 
 enum console_colors
@@ -105,22 +87,3 @@ enum console_colors
 
 bool is_stdout_a_tty();
 }
-
-extern "C"
-{
-
-#endif
-
-#ifdef __GNUC__
-#define ATTRIBUTE_PRINTF __attribute__((format(printf, 2, 3)))
-#else
-#define ATTRIBUTE_PRINTF
-#endif
-
-#ifdef __cplusplus
-
-}
-
-#endif
-
-#endif //_MISC_LOG_EX_H_

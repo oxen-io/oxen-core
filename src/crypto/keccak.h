@@ -45,4 +45,3 @@ void keccak_finish(KECCAK_CTX* ctx, uint8_t* md);
 }
 #endif
 #endif
-

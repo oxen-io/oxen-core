@@ -31,11 +31,12 @@
 
 #include "checkpoints.h"
 
+#include <fmt/std.h>
+
 #include <vector>
 
 #include "blockchain_db/blockchain_db.h"
 #include "common/file.h"
-#include "common/fs-format.h"
 #include "common/hex.h"
 #include "common/oxen.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"

@@ -43,7 +43,7 @@ int BlockFuzzer::run(const std::string &filename)
 {
   std::string s;
 
-  if (!tools::slurp_file(fs::u8path(filename), s))
+  if (!tools::slurp_file(tools::utf8_path(filename), s))
   {
     std::cout << "Error: failed to load file " << filename << std::endl;
     return 1;
@@ -59,8 +59,9 @@ int BlockFuzzer::run(const std::string &filename)
 
 int main(int argc, const char **argv)
 {
+  auto logcat = oxen::log::Cat("fuzz");
   TRY_ENTRY();
   BlockFuzzer fuzzer;
   return run_fuzzer(argc, argv, fuzzer);
-  CATCH_ENTRY_L0("main", 1);
+  CATCH_ENTRY("main", 1);
 }

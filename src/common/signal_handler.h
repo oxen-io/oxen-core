@@ -56,9 +56,7 @@ class signal_handler {
     }
 #else
     /*! \brief handler for NIX */
-    static void posix_handler(int type) {
-        handle_signal(type);
-    }
+    static void posix_handler(int type) { handle_signal(type); }
 #endif
 
     /*! \brief calles m_handler */

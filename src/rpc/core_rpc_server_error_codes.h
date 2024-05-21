@@ -32,13 +32,13 @@
 #pragma once
 #include <cstdint>
 
-namespace cryptonote { namespace rpc {
+namespace cryptonote::rpc {
 
-    constexpr int16_t ERROR_WRONG_PARAM = -1, ERROR_TOO_BIG_HEIGHT = -2,
-                      ERROR_TOO_BIG_RESERVE_SIZE = -3, ERROR_WRONG_WALLET_ADDRESS = -4,
-                      ERROR_INTERNAL = -5, ERROR_WRONG_BLOCKBLOB = -6,
-                      ERROR_BLOCK_NOT_ACCEPTED = -7, ERROR_CORE_BUSY = -9,
-                      ERROR_WRONG_BLOCKBLOB_SIZE = -10, ERROR_UNSUPPORTED_RPC = -11,
-                      ERROR_MINING_TO_SUBADDRESS = -12, ERROR_REGTEST_REQUIRED = -13;
+constexpr int16_t ERROR_WRONG_PARAM = -1, ERROR_TOO_BIG_HEIGHT = -2,
+                  ERROR_TOO_BIG_RESERVE_SIZE = -3, ERROR_WRONG_WALLET_ADDRESS = -4,
+                  ERROR_INTERNAL = -5, ERROR_WRONG_BLOCKBLOB = -6, ERROR_BLOCK_NOT_ACCEPTED = -7,
+                  ERROR_CORE_BUSY = -9, ERROR_WRONG_BLOCKBLOB_SIZE = -10,
+                  ERROR_UNSUPPORTED_RPC = -11, ERROR_MINING_TO_SUBADDRESS = -12,
+                  ERROR_REGTEST_REQUIRED = -13;
 
-}}  // namespace cryptonote::rpc
+}  // namespace cryptonote::rpc

@@ -31,12 +31,14 @@
 //
 #include "file.h"
 
+#include <fmt/std.h>
 #include <unistd.h>
 
 #include <cstdio>
 #include <fstream>
+#include <string_view>
 
-#include "fs-format.h"
+#include "common/string_util.h"
 #include "logging/oxen_logger.h"
 
 #ifdef WIN32
@@ -267,16 +269,18 @@ static fs::path get_default_parent_dir() {
 #ifdef _WIN32
     return get_special_folder_path(CSIDL_COMMON_APPDATA, true);
 #else
-    char* home = std::getenv("HOME");
-    return home && std::strlen(home) ? fs::u8path(home) : fs::current_path();
+    auto home = std::getenv("HOME");
+    return home && std::strlen(home)
+                 ? fs::path{std::u8string_view{reinterpret_cast<const char8_t*>(home)}}
+                 : fs::current_path();
 #endif
 }
 
 fs::path get_default_data_dir() {
-    return get_default_parent_dir() / fs::u8path(cryptonote::DATA_DIRNAME);
+    return get_default_parent_dir() / cryptonote::DATA_DIRNAME;
 }
 fs::path get_depreciated_default_data_dir() {
-    return get_default_parent_dir() / fs::u8path(cryptonote::old::DATA_DIRNAME);
+    return get_default_parent_dir() / cryptonote::old::DATA_DIRNAME;
 }
 
 void set_strict_default_file_permissions(bool strict) {
@@ -291,7 +295,7 @@ void set_strict_default_file_permissions(bool strict) {
 bool slurp_file(const fs::path& filename, std::string& contents) {
 
     try {
-        fs::ifstream in(filename, std::ios::binary);
+        std::ifstream in{filename, std::ios::binary};
         std::string content(
                 (std::istreambuf_iterator<char>(in)), (std::istreambuf_iterator<char>()));
         contents = std::move(content);
@@ -302,7 +306,7 @@ bool slurp_file(const fs::path& filename, std::string& contents) {
 }
 
 bool dump_file(const fs::path& filename, std::string_view contents) {
-    fs::ofstream out;
+    std::ofstream out;
     out.exceptions(std::ifstream::failbit | std::ifstream::badbit);
     try {
         out.open(filename, std::ios::binary | std::ios::out | std::ios::trunc);

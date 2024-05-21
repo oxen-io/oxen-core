@@ -2,6 +2,7 @@
 extern "C" {
 #include <sodium.h>
 }
+#include <fmt/std.h>
 #include <oxenc/base32z.h>
 #include <oxenc/hex.h>
 
@@ -92,7 +93,8 @@ std::array<unsigned char, crypto_core_ed25519_BYTES> pubkey_from_privkey(ustring
     crypto_scalarmult_ed25519_base_noclamp(pubkey.data(), privkey.data());
     return pubkey;
 }
-template <size_t N, std::enable_if_t<(N >= 32), int> = 0>
+template <size_t N>
+    requires(N >= 32)
 std::array<unsigned char, crypto_core_ed25519_BYTES> pubkey_from_privkey(
         const std::array<unsigned char, N>& privkey) {
     return pubkey_from_privkey(ustring_view{privkey.data(), 32});
@@ -119,7 +121,7 @@ int generate(bool ed25519, std::list<std::string_view> args) {
     if (pubkey_pos != std::string::npos)
         overwrite = true;
 
-    if (!overwrite && fs::exists(fs::u8path(filename)))
+    if (!overwrite && fs::exists(tools::utf8_path(filename)))
         return error(
                 2,
                 filename +
@@ -145,9 +147,11 @@ int generate(bool ed25519, std::list<std::string_view> args) {
 
     if (pubkey_pos != std::string::npos)
         filename.replace(pubkey_pos, 6, oxenc::to_hex(pubkey.begin(), pubkey.end()));
-    fs::ofstream out{fs::u8path(filename), std::ios::trunc | std::ios::binary};
+    std::ofstream out{tools::utf8_path(filename), std::ios::trunc | std::ios::binary};
     if (!out.good())
-        return error(2, "Failed to open output file '" + filename + "': " + std::strerror(errno));
+        return error(
+                2,
+                fmt::format("Failed to open output file '{}': {}", filename, std::strerror(errno)));
     if (ed25519)
         out.write(reinterpret_cast<const char*>(seckey.data()), seckey.size());
     else
@@ -198,45 +202,51 @@ int show(std::list<std::string_view> args) {
     else if (args.size() > 1)
         return error(2, "unknown arguments to 'show'");
 
-    fs::path filename = fs::u8path(args.front());
-    fs::ifstream in{filename, std::ios::binary};
+    auto filename = tools::utf8_path(args.front());
+    std::ifstream in{filename, std::ios::binary};
     if (!in.good())
-        return error(2, "Unable to open '" + filename.u8string() + "': " + std::strerror(errno));
+        return error(2, fmt::format("Unable to open '{}': {}", filename, std::strerror(errno)));
 
     in.seekg(0, std::ios::end);
-    auto size = in.tellg();
+    auto sz = in.tellg();
     in.seekg(0, std::ios::beg);
     if (!legacy && !ed25519) {
-        if (size == 32)
+        if (sz == 32)
             legacy = true;
-        else if (size == 64)
+        else if (sz == 64)
             ed25519 = true;
     }
+    auto size = static_cast<size_t>(sz);
     if (!legacy && !ed25519)
         return error(
                 2,
-                "Could not autodetect key type from " + std::to_string(size) +
-                        "-byte file; check the file or pass the --ed25519 or --legacy argument");
+                fmt::format(
+                        "Could not autodetect key type from {}-byte file; check the file or pass "
+                        "the --ed25519 or --legacy argument",
+                        size));
 
     if (size < 32)
-        return error(
-                2,
-                "File size (" + std::to_string(size) + " bytes) is too small to be a secret key");
+        return error(2, fmt::format("File size ({} bytes) is too small to be a secret key", size));
 
     std::array<unsigned char, crypto_core_ed25519_BYTES> pubkey;
     std::array<unsigned char, crypto_scalarmult_curve25519_BYTES> x_pubkey;
     std::array<unsigned char, crypto_sign_SECRETKEYBYTES> seckey;
     in.read(reinterpret_cast<char*>(seckey.data()), size >= 64 ? 64 : 32);
     if (!in.good())
-        return error(2, "Failed to read from " + filename.u8string() + ": " + std::strerror(errno));
+        return error(
+                2, fmt::format("Failed to read from '{}': {}", filename, std::strerror(errno)));
 
     if (legacy) {
         pubkey = pubkey_from_privkey(seckey);
 
-        std::cout << filename.u8string() << " (legacy SN keypair)"
-                  << "\n=========="
-                  << "\nPrivate key: " << oxenc::to_hex(seckey.begin(), seckey.begin() + 32)
-                  << "\nPublic key:  " << oxenc::to_hex(pubkey.begin(), pubkey.end()) << "\n\n";
+        fmt::print(
+                "{} (legacy SN keypair)\n"
+                "=========="
+                "Private key: {}\n"
+                "Public key:  {}\n\n",
+                filename,
+                oxenc::to_hex(seckey.begin(), seckey.begin() + 32),
+                oxenc::to_hex(pubkey.begin(), pubkey.end()));
         return 0;
     }
 
@@ -361,7 +371,7 @@ int restore(bool ed25519, std::list<std::string_view> args) {
     if (pubkey_pos != std::string::npos)
         filename.replace(pubkey_pos, 6, oxenc::to_hex(pubkey.begin(), pubkey.end()));
 
-    auto filepath = fs::u8path(filename);
+    auto filepath = tools::utf8_path(filename);
     if (!overwrite && fs::exists(filepath))
         return error(
                 2,
@@ -369,7 +379,7 @@ int restore(bool ed25519, std::list<std::string_view> args) {
                         " to generate already exists, pass `--overwrite' if you want to overwrite "
                         "it");
 
-    fs::ofstream out{filepath, std::ios::trunc | std::ios::binary};
+    std::ofstream out{filepath, std::ios::trunc | std::ios::binary};
     if (!out.good())
         return error(2, "Failed to open output file '" + filename + "': " + std::strerror(errno));
     if (ed25519)

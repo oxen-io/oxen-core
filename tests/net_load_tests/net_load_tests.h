@@ -39,7 +39,6 @@
 #include "epee/net/levin_protocol_handler_async.h"
 #include "epee/net/abstract_tcp_server2.h"
 #include "epee/serialization/keyvalue_serialization.h"
-#include "ringct/fmt.h"
 
 #include "../unit_tests/unit_tests_utils.h"
 

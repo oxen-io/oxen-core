@@ -32,6 +32,7 @@
 #include <unordered_map>
 
 #include "account.h"
+#include "common/guts.h"
 #include "common/meta.h"
 #include "common/string_util.h"
 #include "crypto/crypto.h"
@@ -188,10 +189,16 @@ bool get_payment_id_from_tx_extra_nonce(const std::string& extra_nonce, crypto::
 bool get_encrypted_payment_id_from_tx_extra_nonce(
         const std::string& extra_nonce, crypto::hash8& payment_id);
 bool add_burned_amount_to_tx_extra(std::vector<uint8_t>& tx_extra, uint64_t burn);
-bool add_new_service_node_to_tx_extra(std::vector<uint8_t>& tx_extra, const tx_extra_ethereum_new_service_node& new_service_node);
-bool add_service_node_leave_request_to_tx_extra(std::vector<uint8_t>& tx_extra, const tx_extra_ethereum_service_node_leave_request& leave_request);
-bool add_service_node_exit_to_tx_extra(std::vector<uint8_t>& tx_extra, const tx_extra_ethereum_service_node_exit& exit_data);
-bool add_service_node_deregister_to_tx_extra(std::vector<uint8_t>& tx_extra, const tx_extra_ethereum_service_node_deregister& deregister);
+bool add_new_service_node_to_tx_extra(
+        std::vector<uint8_t>& tx_extra, const tx_extra_ethereum_new_service_node& new_service_node);
+bool add_service_node_leave_request_to_tx_extra(
+        std::vector<uint8_t>& tx_extra,
+        const tx_extra_ethereum_service_node_leave_request& leave_request);
+bool add_service_node_exit_to_tx_extra(
+        std::vector<uint8_t>& tx_extra, const tx_extra_ethereum_service_node_exit& exit_data);
+bool add_service_node_deregister_to_tx_extra(
+        std::vector<uint8_t>& tx_extra,
+        const tx_extra_ethereum_service_node_deregister& deregister);
 uint64_t get_burned_amount_from_tx_extra(const std::vector<uint8_t>& tx_extra);
 bool is_out_to_acc(
         const account_keys& acc,
@@ -407,8 +414,9 @@ crypto::secret_key decrypt_key(crypto::secret_key key, const epee::wipeable_stri
     CHECK_AND_ASSERT_MES(                                                                        \
             std::holds_alternative<specific_type>(variant_var),                                  \
             fail_return_val,                                                                     \
-            "wrong variant type: " << tools::type_name(tools::variant_type(variant_var))         \
-                                   << ", expected " << tools::type_name<specific_type>());       \
+            "wrong variant type: {}, expected {}",                                               \
+            tools::type_name(tools::variant_type(variant_var)),                                  \
+            tools::type_name<specific_type>());                                                  \
     auto& variable_name = var::get<specific_type>(variant_var);
 
 // Provide an inline header implementation of this function because device_default needs it (but

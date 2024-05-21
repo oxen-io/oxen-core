@@ -65,7 +65,8 @@ class BlockchainSQLite : public db::Database {
     // exist it will be created.
     bool add_sn_rewards(const std::vector<cryptonote::batch_sn_payment>& payments);
     bool subtract_sn_rewards(const std::vector<cryptonote::batch_sn_payment>& payments);
-    bool update_sn_rewards_address(const std::string& oxen_address, const crypto::eth_address& eth_address);
+    bool update_sn_rewards_address(
+            const std::string& oxen_address, const crypto::eth_address& eth_address);
 
   private:
     bool reward_handler(
@@ -117,7 +118,8 @@ class BlockchainSQLite : public db::Database {
             const cryptonote::block& block,
             const service_nodes::service_node_list::state_t& service_nodes_state);
 
-    bool return_staked_amount_to_user(const crypto::eth_address& eth_address, const uint64_t amount);
+    bool return_staked_amount_to_user(
+            const crypto::eth_address& eth_address, const uint64_t amount);
 
     // validate_batch_payment -> used to make sure that list of miner_tx_vouts is correct. Compares
     // the miner_tx_vouts with a list previously extracted payments to make sure that the correct
@@ -139,7 +141,6 @@ class BlockchainSQLite : public db::Database {
 
   protected:
     cryptonote::network_type m_nettype;
-    std::string filename;
 };
 
 }  // namespace cryptonote
