@@ -1122,6 +1122,8 @@ bool service_node_list::state_t::process_key_image_unlock_tx(
         cryptonote::hf hf_version,
         uint64_t block_height,
         const cryptonote::transaction& tx) {
+    if (hf_version >= cryptonote::feature::ETH_BLS)
+        return false;
     crypto::public_key snode_key;
     if (!cryptonote::get_service_node_pubkey_from_tx_extra(tx.extra, snode_key))
         return false;
@@ -2798,7 +2800,7 @@ void service_node_list::state_t::update_from_block(
     //
     // Remove expired blacklisted key images
     //
-    if (hf_version >= hf::hf11_infinite_staking) {
+    if (hf_version >= hf::hf11_infinite_staking && hf_version < cryptonote::feature::ETH_BLS) {
         for (auto entry = key_image_blacklist.begin(); entry != key_image_blacklist.end();) {
             if (block_height >= entry->unlock_height)
                 entry = key_image_blacklist.erase(entry);
