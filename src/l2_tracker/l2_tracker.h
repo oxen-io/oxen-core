@@ -84,7 +84,7 @@ class L2Tracker {
     void record_block_height_mapping(uint64_t oxen_block_height, uint64_t ethereum_block_height);
 
     std::pair<uint64_t, crypto::hash> latest_state();
-    std::vector<TransactionStateChangeVariant> get_block_transactions();
+    std::vector<TransactionStateChangeVariant> get_block_transactions(const std::vector<crypto::bls_public_key>& bls_pubkeys);
     uint64_t get_last_l2_height();
 
     uint64_t get_pool_block_reward(uint64_t timestamp, uint64_t ethereum_block_height);

@@ -2008,8 +2008,13 @@ void Blockchain::add_ethereum_transactions_to_tx_pool() {
     auto hf_version = get_network_version();
     if (hf_version < feature::ETH_BLS)
         return;
-    std::vector<TransactionStateChangeVariant> eth_transactions =
-            m_l2_tracker->get_block_transactions();
+
+    std::vector<crypto::bls_public_key> bls_pubkeys_in_snl;
+    auto sns = m_service_node_list.get_service_node_list_state();
+    bls_pubkeys_in_snl.reserve(sns.size());
+    for (const auto& sni : sns)
+        bls_pubkeys_in_snl.push_back(sni.info->bls_public_key);
+    std::vector<TransactionStateChangeVariant> eth_transactions = m_l2_tracker->get_block_transactions(bls_pubkeys_in_snl);
     tx_extra_field field;
 
     for (const auto& tx_variant : eth_transactions) {

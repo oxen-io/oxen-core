@@ -184,13 +184,13 @@ void L2Tracker::populate_review_transactions(std::shared_ptr<TransactionReviewSe
     }
 }
 
-std::vector<TransactionStateChangeVariant> L2Tracker::get_block_transactions() {
+std::vector<TransactionStateChangeVariant> L2Tracker::get_block_transactions(const std::vector<crypto::bls_public_key>& bls_pubkeys_in_snl) {
     if (provider.clients.empty()) {
         throw std::runtime_error(std::string(NO_PROVIDER_CLIENTS_ERROR));
     }
     std::lock_guard lock{mutex};
     std::vector<TransactionStateChangeVariant> all_transactions;
-    const auto begin_height = oxen_to_ethereum_block_heights[latest_oxen_block];
+    const uint64_t begin_height = oxen_to_ethereum_block_heights[latest_oxen_block];
     for (const auto& state : state_history) {
         if (state.height > begin_height) {
             for (const auto& transactionVariant : state.state_changes) {
@@ -202,6 +202,30 @@ std::vector<TransactionStateChangeVariant> L2Tracker::get_block_transactions() {
             // ordered
             break;
         }
+    }
+    // Retrieve BLS public keys from the contract at the ethereum height of the last block
+    std::vector<std::string> contract_keys = get_all_bls_public_keys(begin_height);
+    std::vector<std::string> bls_pubkeys_hex;
+    for (const auto& key : bls_pubkeys_in_snl) {
+        bls_pubkeys_hex.push_back(tools::type_to_hex(key));
+    }
+ 
+    std::vector<std::string> missing_nodes;
+    std::sort(bls_pubkeys_hex.begin(), bls_pubkeys_hex.end());
+    std::sort(contract_keys.begin(), contract_keys.end());
+    std::set_difference(
+        bls_pubkeys_hex.begin(), bls_pubkeys_hex.end(),
+        contract_keys.begin(), contract_keys.end(),
+        std::back_inserter(missing_nodes)
+    );
+ 
+    // Generate transactions for nodes missing in the contract
+    for (const auto& hex_key : missing_nodes) {
+        crypto::bls_public_key bls_key;
+        tools::hex_to_type(hex_key, bls_key);
+        ServiceNodeDeregisterTx tx(bls_key);
+        all_transactions.push_back(tx);
+        state_history.back().state_changes.push_back(tx);
     }
     return all_transactions;
 }
