@@ -1,11 +1,34 @@
 from web3 import Web3
+import urllib.request
 import json
+
+PROVIDER_URL = "http://127.0.0.1:8545"
+
+def eth_chainId():
+    method = "eth_chainId"
+    data = json.dumps({
+        "jsonrpc": "2.0",
+        "method": method,
+        "params": [],
+        "id": 1
+    }).encode('utf-8')
+
+    try:
+        req = urllib.request.Request(PROVIDER_URL, data=data, headers={'content-type': 'application/json'}, )
+        with urllib.request.urlopen(req, timeout=2) as response:
+            response      = response.read()
+            response_json = json.loads(response)
+            result        = int(response_json["result"], 16) # Parse chain ID from hex
+    except Exception as e:
+        raise RuntimeError("Failed to query {} from {}: {}".format(method, PROVIDER_URL, e))
+
+    return result
 
 class ServiceNodeRewardContract:
     def __init__(self):
-        self.provider_url = "http://127.0.0.1:8545"
-        self.private_key = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80" # Hardhat account #0
-        self.web3 = Web3(Web3.HTTPProvider(self.provider_url))
+        self.provider_url = PROVIDER_URL
+        self.private_key  = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80" # Hardhat account #0
+        self.web3         = Web3(Web3.HTTPProvider(self.provider_url))
 
         self.contract_address = self.getContractDeployedInLatestBlock()
         self.contract = self.web3.eth.contract(address=self.contract_address, abi=contract_abi)

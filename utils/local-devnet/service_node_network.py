@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 
 from daemons import Daemon, Wallet
+import ethereum
 from ethereum import ServiceNodeRewardContract
 
 import pathlib
@@ -9,11 +10,12 @@ import random
 import time
 import shutil
 import os
-from os import path
+from   os import path
 import asyncio
 import glob
-from datetime import datetime
+from   datetime import datetime
 import uuid
+import subprocess
 
 datadirectory="testdata"
 
@@ -49,15 +51,42 @@ def vprint(*args, timestamp=True, **kwargs):
 
 
 class SNNetwork:
-    def __init__(self, datadir, *, oxen_bin_dir, sns=12, nodes=3):
-        self.datadir = datadir
+    def __init__(self, datadir, *, oxen_bin_dir, anvil_path, eth_sn_contracts_dir, sns=12, nodes=3):
+
+        # Setup directories
+        self.datadir      = datadir
+        self.oxen_bin_dir = oxen_bin_dir
         if not os.path.exists(self.datadir):
             os.makedirs(self.datadir)
-        self.oxen_bin_dir = oxen_bin_dir
+
+        # Setup Anvil, a private Ethereum blockchain (if specified)
+        if anvil_path is not None:
+            if os.path.exists(anvil_path):
+                self.anvil = subprocess.Popen(anvil_path,
+                                              stdin=subprocess.DEVNULL,
+                                              stdout=subprocess.DEVNULL,
+                                              stderr=subprocess.DEVNULL)
+            else:
+                raise RuntimeError('Anvil path \'{}\' specified but does not exist. Exiting'.format(anvil_path))
+
+        # Verify private Ethereum blockchain is reachable
+        eth_chain_id = ethereum.eth_chainId()
+        assert eth_chain_id == 31337, 'Private Ethereum instance did not return correct chain ID {}'.format(eth_chain_id)
+
+        # Deploy smart contracts from eth-sn-contracts (if specified)
+        if eth_sn_contracts_dir is not None:
+            eth_sn_contracts_makefile_path = eth_sn_contracts_dir / 'Makefile'
+            if os.path.exists(eth_sn_contracts_makefile_path):
+                subprocess.run(['make', 'deploy-local'],
+                               cwd=eth_sn_contracts_dir,
+                               check=True)
+            else:
+                raise RuntimeError('eth-sn-contracts expected file to exist \'{}\' but does not. Exiting'.format(anvil_path))
+
+        # Connect rewards contract proxy to blockchain instance
         self.servicenodecontract = ServiceNodeRewardContract()
 
         vprint("Using '{}' for data files and logs".format(datadir))
-
         nodeopts = dict(oxend=str(self.oxen_bin_dir / 'oxend'), datadir=datadir)
 
         self.ethsns = [Daemon(service_node=True, **nodeopts) for _ in range(1)]
@@ -402,17 +431,37 @@ snn = None
 def run():
     arg_parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     arg_parser.add_argument('--oxen-bin-dir',
-                            help=f'Set the directory where Oxen binaries (oxend, wallet rpc, ...) are located',
+                            help=('Set the directory where Oxen binaries (oxend, wallet rpc, ...) '
+                                  'are located.'),
                             default="../../build/bin",
                             type=pathlib.Path)
-    args = arg_parser.parse_args();
+    arg_parser.add_argument('--anvil-path',
+                            help=('Set the path to Foundry\'s `anvil` for launching a private '
+                                  'Ethereum blockchain. If omitted a private Ethereum node must be '
+                                  'running at localhost:8545.'),
+                            type=pathlib.Path)
+    arg_parser.add_argument('--eth-sn-contracts-dir',
+                            help=('Set the path to Oxen\'s `eth-sn-contracts` repository is '
+                                  'located. The script will programmatically launch and deploy the '
+                                  'contracts specified via `make deploy-local`. If omitted, the '
+                                  'private Ethereum blockchain must already be deployed with the '
+                                  'smart contracts prior to invoking this script.'),
+                            type=pathlib.Path)
+    args = arg_parser.parse_args()
+
+    if args.anvil_path is not None:
+        if args.eth_sn_contracts_dir is None:
+            raise RuntimeError('--eth-sn-contracts-dir must be specified when --anvil-path is set')
 
     global snn, verbose
     if not snn:
         if path.isdir(datadirectory+'/'):
             shutil.rmtree(datadirectory+'/', ignore_errors=False, onerror=None)
         vprint("new SNN")
-        snn = SNNetwork(oxen_bin_dir=args.oxen_bin_dir, datadir=datadirectory+'/')
+        snn = SNNetwork(oxen_bin_dir=args.oxen_bin_dir,
+                        anvil_path=args.anvil_path,
+                        eth_sn_contracts_dir=args.eth_sn_contracts_dir,
+                        datadir=datadirectory+'/')
     else:
         vprint("reusing SNN")
         snn.alice.new_wallet()
