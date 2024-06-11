@@ -49,16 +49,16 @@ def vprint(*args, timestamp=True, **kwargs):
 
 
 class SNNetwork:
-    def __init__(self, datadir, *, binpath, sns=12, nodes=3):
+    def __init__(self, datadir, *, oxen_bin_dir, sns=12, nodes=3):
         self.datadir = datadir
         if not os.path.exists(self.datadir):
             os.makedirs(self.datadir)
-        self.binpath = binpath
+        self.oxen_bin_dir = oxen_bin_dir
         self.servicenodecontract = ServiceNodeRewardContract()
 
         vprint("Using '{}' for data files and logs".format(datadir))
 
-        nodeopts = dict(oxend=str(self.binpath / 'oxend'), datadir=datadir)
+        nodeopts = dict(oxend=str(self.oxen_bin_dir / 'oxend'), datadir=datadir)
 
         self.ethsns = [Daemon(service_node=True, **nodeopts) for _ in range(1)]
         self.sns = [Daemon(service_node=True, **nodeopts) for _ in range(sns)]
@@ -71,7 +71,7 @@ class SNNetwork:
             self.wallets.append(Wallet(
                 node=self.nodes[len(self.wallets) % len(self.nodes)],
                 name=name,
-                rpc_wallet=str(self.binpath/'oxen-wallet-rpc'),
+                rpc_wallet=str(self.oxen_bin_dir/'oxen-wallet-rpc'),
                 datadir=datadir))
 
         self.alice, self.bob, self.mike = self.wallets
@@ -81,7 +81,7 @@ class SNNetwork:
             self.extrawallets.append(Wallet(
                 node=self.nodes[len(self.extrawallets) % len(self.nodes)],
                 name="extrawallet-"+str(name),
-                rpc_wallet=str(self.binpath/'oxen-wallet-rpc'),
+                rpc_wallet=str(self.oxen_bin_dir/'oxen-wallet-rpc'),
                 datadir=datadir))
 
         # Interconnections
@@ -401,8 +401,8 @@ snn = None
 
 def run():
     arg_parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    arg_parser.add_argument('--bin-path',
-                            help=f'Set the directory where `oxend` is located',
+    arg_parser.add_argument('--oxen-bin-dir',
+                            help=f'Set the directory where Oxen binaries (oxend, wallet rpc, ...) are located',
                             default="../../build/bin",
                             type=pathlib.Path)
     args = arg_parser.parse_args();
@@ -412,7 +412,7 @@ def run():
         if path.isdir(datadirectory+'/'):
             shutil.rmtree(datadirectory+'/', ignore_errors=False, onerror=None)
         vprint("new SNN")
-        snn = SNNetwork(binpath=args.bin_path, datadir=datadirectory+'/')
+        snn = SNNetwork(oxen_bin_dir=args.oxen_bin_dir, datadir=datadirectory+'/')
     else:
         vprint("reusing SNN")
         snn.alice.new_wallet()
