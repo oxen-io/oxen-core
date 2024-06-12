@@ -247,7 +247,7 @@ class SNNetwork:
         for sn in self.sns:
             sn.send_uptime_proof()
 
-        # Collect all BLS public-keys, note all SNs up to this point submitted 100 OXEN staking requirement
+        # Collect all BLS public-keys, note all SNs up to this point (HF <= feature::ETH_BLS) had a 100 OXEN staking requirement
         bls_pubkey_list = []
         for sn in self.sns:
             bls_pubkey = sn.get_service_keys().bls_pubkey
@@ -255,15 +255,22 @@ class SNNetwork:
                 bls_pubkey_list.append(BLSPublicSeedEntry(bls_pubkey_hex=bls_pubkey, deposit=100))
 
         self.servicenodecontract.seedPublicKeyList(bls_pubkey_list)
-        vprint("Seeded public key list: number of service nodes in contract {}".format(self.servicenodecontract.numberServiceNodes()))
+        vprint("Seeded BLS public keys into contract. Contract has {} SNs".format(self.servicenodecontract.numberServiceNodes()))
 
-        sn0_pubkey = self.ethsns[0].get_service_keys().pubkey
-        ethereum_add_bls_args = self.ethsns[0].get_ethereum_registration_args(self.servicenodecontract.hardhatAccountAddress())
-        vprint("Submitted registration on ethereum for service node with pubkey: {}".format(sn0_pubkey))
+        # Pull out some useful keys to local variables
+        sn0_pubkey            = self.ethsns[0].get_service_keys().pubkey
+        hardhat_account       = self.servicenodecontract.hardhatAccountAddress()
+        hardhat_account_no_0x = hardhat_account[2:42]
+        assert len(hardhat_account) == 42, "Expected Eth address w/ 0x prefix + 40 hex characters. Account was {} ({} chars)".format(hardhat_account, len(hardhat_account))
+
+        # Register a SN via the Ethereum smart contract
+        vprint("Preparing to submit registration to Eth w/ address {} for SN {}".format(hardhat_account, sn0_pubkey))
+        ethereum_add_bls_args = self.ethsns[0].get_ethereum_registration_args(hardhat_account_no_0x)
         self.servicenodecontract.addBLSPublicKey(ethereum_add_bls_args)
 
+        # Verify registration was successful
         contract_num_sn = self.servicenodecontract.numberServiceNodes()
-        vprint("added node: number of service nodes in contract {}".format(contract_num_sn))
+        vprint("Added node via Eth. Contract has {} SNs".format(contract_num_sn))
         assert self.servicenodecontract.numberServiceNodes() == 13, f"Expected 13 service nodes, received {contract_num_sn}"
 
         # Exit Node
@@ -292,16 +299,15 @@ class SNNetwork:
         vprint(f"Waking up after sleeping for {sleep_time}s, blockchain height is {self.ethsns[0].height()}");
 
         # Claim rewards for Address
-        hardhatAccount = self.servicenodecontract.hardhatAccountAddress()
-        rewards        = self.ethsns[0].get_bls_rewards(hardhatAccount)
+        rewards = self.ethsns[0].get_bls_rewards(hardhat_account)
         vprint(rewards)
         rewardsAccount = rewards["result"]["address"]
-        assert rewardsAccount.lower() == hardhatAccount.lower(), f"Rewards account '{rewardsAccount.lower()}' does not match hardhat account '{hardhatAccount.lower()}'. We have the private key for the hardhat account and use it to claim rewards from the contract"
+        assert rewardsAccount.lower() == hardhat_account.lower(), f"Rewards account '{rewardsAccount.lower()}' does not match hardhat account '{hardhat_account.lower()}'. We have the private key for the hardhat account and use it to claim rewards from the contract"
 
         vprint("Contract rewards before updating has ['available', 'claimed'] respectively: ",
-               self.servicenodecontract.recipients(hardhatAccount),
+               self.servicenodecontract.recipients(hardhat_account),
                " for ",
-               hardhatAccount)
+               hardhat_account)
 
         # TODO: We send the required balance from the hardhat account to the
         # contract to guarantee that claiming will succeed. We should hook up
@@ -318,25 +324,25 @@ class SNNetwork:
 
         # NOTE: Then update the rewards blaance
         result = self.servicenodecontract.updateRewardsBalance(
-                hardhatAccount,
+                hardhat_account,
                 rewards["result"]["amount"],
                 rewards["result"]["signature"],
                 rewards["result"]["non_signers_bls_pubkeys"])
 
         vprint("Contract rewards update executed, has ['available', 'claimed'] now respectively: ",
-               self.servicenodecontract.recipients(hardhatAccount),
+               self.servicenodecontract.recipients(hardhat_account),
                " for ",
-               hardhatAccount)
+               hardhat_account)
 
-        vprint("Balance for '{}' before claim {}".format(hardhatAccount, self.servicenodecontract.erc20balance(hardhatAccount)))
+        vprint("Balance for '{}' before claim {}".format(hardhat_account, self.servicenodecontract.erc20balance(hardhat_account)))
 
         # NOTE: Now claim the rewards
         self.servicenodecontract.claimRewards()
         vprint("Contract rewards after claim is now ['available', 'claimed'] respectively: ",
-               self.servicenodecontract.recipients(hardhatAccount),
+               self.servicenodecontract.recipients(hardhat_account),
                " for ",
-               hardhatAccount)
-        vprint("Balance for '{}' after claim {}".format(hardhatAccount, self.servicenodecontract.erc20balance(hardhatAccount)))
+               hardhat_account)
+        vprint("Balance for '{}' after claim {}".format(hardhat_account, self.servicenodecontract.erc20balance(hardhat_account)))
 
         # Initiate Removeal of BLS Key
         # result = self.servicenodecontract.initiateRemoveBLSPublicKey(self.servicenodecontract.getServiceNodeID(ethereum_add_bls_args["bls_pubkey"]))
