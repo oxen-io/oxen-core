@@ -178,22 +178,22 @@ class ServiceNodeRewardContract:
         tx_hash = self.submitSignedTX("Liquidate BLS public key w/ signature", signed_tx)
         return tx_hash
 
-    def seedPublicKeyList(self, args):
+    def seedPublicKeyList(self, bls_pubkey_list):
         pkX = []
         pkY = []
         amounts = []
-        for item in args:
-            pkX.append(int(item[0][:64], 16))  # First 32 bytes as pkX
-            pkY.append(int(item[0][64:], 16))  # Last 32 bytes as pkY
-            amounts.append(item[1])  # Corresponding amount
+        for seed in bls_pubkey_list:
+            pkX.append(int(seed.bls_pubkey_hex[:64], 16)) # First 32 bytes as pkX
+            pkY.append(int(seed.bls_pubkey_hex[64:], 16)) # Last 32 bytes as pkY
+            amounts.append(seed.deposit)                     # Corresponding amount
 
         unsent_tx = self.contract.functions.seedPublicKeyList(pkX, pkY, amounts).build_transaction({
-            "from": self.acc.address,
-            'gas': 3000000,  # Adjust gas limit as necessary
+            "from":  self.acc.address,
+            'gas':   3000000,  # Adjust gas limit as necessary
             'nonce': self.web3.eth.get_transaction_count(self.acc.address)
         })
         signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.acc.key)
-        tx_hash = self.submitSignedTX("Seed public key list", signed_tx)
+        tx_hash   = self.submitSignedTX("Seed public key list", signed_tx)
         return tx_hash
 
     def numberServiceNodes(self):

@@ -2586,6 +2586,7 @@ void core_rpc_server::invoke(
         get_service_keys.response_hex["service_node_pubkey"] = keys.pub;
     get_service_keys.response_hex["service_node_ed25519_pubkey"] = keys.pub_ed25519;
     get_service_keys.response_hex["service_node_x25519_pubkey"] = keys.pub_x25519;
+    get_service_keys.response_hex["service_node_bls_pubkey"] = keys.pub_bls;
     get_service_keys.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------

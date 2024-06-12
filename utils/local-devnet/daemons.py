@@ -134,6 +134,13 @@ class RPCDaemon:
                 if now >= until:
                     raise
 
+class DaemonKeys:
+    def __init__(self):
+        self.pubkey = None
+        self.x25519_pubkey = None
+        self.ed25519_pubkey = None
+        self.bls_pubkey = None
+
 class Daemon(RPCDaemon):
     base_args = ('--dev-allow-local-ips', '--fixed-difficulty=1', '--devnet', '--non-interactive')
 
@@ -150,12 +157,12 @@ class Daemon(RPCDaemon):
             name = 'oxend@{}'.format(self.rpc_port)
         super().__init__(name)
         self.listen_ip = listen_ip or LISTEN_IP
-        self.p2p_port = p2p_port or next_port()
-        self.zmq_port = zmq_port or next_port()
+        self.p2p_port  = p2p_port or next_port()
+        self.zmq_port  = zmq_port or next_port()
         self.qnet_port = qnet_port or next_port()
-        self.ss_port = ss_port or next_port()
-        self.peers = []
-        self.service_node_key = None
+        self.ss_port   = ss_port or next_port()
+        self.peers     = []
+        self.keys      = None
 
         self.args = [oxend] + list(self.__class__.base_args)
         self.args += (
@@ -247,20 +254,21 @@ class Daemon(RPCDaemon):
         """Triggers a p2p resync to happen soon (i.e. at the next p2p idle loop)."""
         self.json_rpc("test_trigger_p2p_resync")
 
-    def sn_key(self):
-        if not self.service_node_key:
-            self.service_node_key = self.json_rpc("get_service_keys").json()["result"]["service_node_pubkey"]
-
-        return self.service_node_key
+    def get_service_keys(self):
+        if not self.keys:
+            json                     = self.json_rpc("get_service_keys").json()["result"]
+            self.keys                = DaemonKeys()
+            self.keys.pubkey         = json["service_node_pubkey"]
+            self.keys.x25519_pubkey  = json["service_node_x25519_pubkey"]
+            self.keys.ed25519_pubkey = json["service_node_ed25519_pubkey"]
+            self.keys.bls_pubkey     = json["service_node_bls_pubkey"]
+        return self.keys
 
     def sn_status(self):
         return self.json_rpc("get_service_node_status").json()["result"]
 
     def get_ethereum_registration_args(self, address):
         return self.json_rpc("bls_registration_request", {"address": address}).json()["result"]
-
-    def get_bls_pubkeys(self):
-        return self.json_rpc("bls_pubkey_request", {}).json()["result"]["nodes"]
 
     def get_bls_rewards(self, address):
         return self.json_rpc("bls_rewards_request", {"address": address}, timeout=1000).json()
@@ -420,7 +428,7 @@ class Wallet(RPCDaemon):
         r = self.json_rpc("stake", {
             "destination": self.address(),
             "amount": amount,
-            "service_node_key": sn.sn_key(),
+            "service_node_key": sn.get_service_keys().pubkey,
         }).json()
         if 'error' in r:
             raise RuntimeError("Failed to submit stake tx: {}".format(r['error']['message']))

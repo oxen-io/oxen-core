@@ -49,6 +49,11 @@ def vprint(*args, timestamp=True, **kwargs):
             print(datetime.now(), end=" ")
         print(*args, **kwargs)
 
+class BLSPublicSeedEntry:
+    def __init__(self, bls_pubkey_hex, deposit):
+        assert len(bls_pubkey_hex) == 128, "BLS pubkey must be 128 hex characters consisting of a 32 byte X & Y component"
+        self.bls_pubkey_hex = bls_pubkey_hex
+        self.deposit        = deposit
 
 class SNNetwork:
     def __init__(self, datadir, *, oxen_bin_dir, anvil_path, eth_sn_contracts_dir, sns=12, nodes=3):
@@ -242,12 +247,20 @@ class SNNetwork:
         for sn in self.sns:
             sn.send_uptime_proof()
 
-        bls_pubkeys = self.ethsns[0].get_bls_pubkeys()
-        self.servicenodecontract.seedPublicKeyList(bls_pubkeys)
+        # Collect all BLS public-keys, note all SNs up to this point submitted 100 OXEN staking requirement
+        bls_pubkey_list = []
+        for sn in self.sns:
+            bls_pubkey = sn.get_service_keys().bls_pubkey
+            if bls_pubkey is not None:
+                bls_pubkey_list.append(BLSPublicSeedEntry(bls_pubkey_hex=bls_pubkey, deposit=100))
+
+        self.servicenodecontract.seedPublicKeyList(bls_pubkey_list)
         vprint("Seeded public key list: number of service nodes in contract {}".format(self.servicenodecontract.numberServiceNodes()))
+
+        sn0_pubkey = self.ethsns[0].get_service_keys().pubkey
         ethereum_add_bls_args = self.ethsns[0].get_ethereum_registration_args(self.servicenodecontract.hardhatAccountAddress())
-        vprint("Submitted registration on ethereum for service node with pubkey: {}".format(self.ethsns[0].sn_key()))
-        result = self.servicenodecontract.addBLSPublicKey(ethereum_add_bls_args)
+        vprint("Submitted registration on ethereum for service node with pubkey: {}".format(sn0_pubkey))
+        self.servicenodecontract.addBLSPublicKey(ethereum_add_bls_args)
 
         contract_num_sn = self.servicenodecontract.numberServiceNodes()
         vprint("added node: number of service nodes in contract {}".format(contract_num_sn))
