@@ -5,12 +5,9 @@
 #include <string>
 #include <vector>
 
-class RewardRateResponse {
-  public:
+struct RewardRateResponse {
     uint64_t timestamp;
     uint64_t reward;
-    RewardRateResponse(uint64_t _timestamp, uint64_t _reward) :
-            timestamp(_timestamp), reward(_reward) {}
 };
 
 class PoolContract {
