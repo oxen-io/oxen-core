@@ -1,6 +1,7 @@
 #include "cryptonote_basic.h"
 
 #include <oxenc/endian.h>
+#include <cpptrace/cpptrace.hpp>
 
 #include "cryptonote_format_utils.h"
 
@@ -20,7 +21,7 @@ std::vector<crypto::public_key> transaction_prefix::get_public_keys() const {
     std::vector<cryptonote::tx_extra_field> fields;
 
     if (!parse_tx_extra(extra, fields)) {
-        throw std::invalid_argument("Failed to parse tx_extra of a transaction.");
+        throw cpptrace::invalid_argument("Failed to parse tx_extra of a transaction.");
     }
 
     std::vector<crypto::public_key> keys;

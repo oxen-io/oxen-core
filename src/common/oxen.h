@@ -94,7 +94,6 @@ template <typename T, size_t N>
 constexpr size_t char_count(T (&)[N]) {
     return N - 1;
 }
-
 };  // namespace oxen
 
 #endif  // OXEN_H

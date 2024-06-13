@@ -34,6 +34,7 @@
 #include <concepts>
 #include <exception>
 #include <optional>
+#include <cpptrace/cpptrace.hpp>
 
 #include "common/common_fwd.h"
 #include "common/scoped_message_writer.h"
@@ -80,7 +81,7 @@ class rpc_command_executor final {
             if (auto* rpc_client = std::get_if<cryptonote::rpc::http_client>(&m_rpc)) {
                 res = rpc_client->json_rpc<RPC>(RPC::names()[0], req);
             } else {
-                throw std::runtime_error{"fixme"};
+                throw cpptrace::runtime_error{"fixme"};
             }
             if (!check_status_ok || res.status == cryptonote::rpc::STATUS_OK)
                 return true;

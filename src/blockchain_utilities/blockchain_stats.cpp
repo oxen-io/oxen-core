@@ -31,6 +31,7 @@
 
 #include <boost/algorithm/string.hpp>
 #include <chrono>
+#include <cpptrace/cpptrace.hpp>
 
 #include "blockchain_db/blockchain_db.h"
 #include "blockchain_objects.h"
@@ -48,6 +49,7 @@ using namespace cryptonote;
 static bool stop_requested = false;
 
 int main(int argc, char* argv[]) {
+    cpptrace::register_terminate_handler();
     static auto logcat = log::Cat("bcutil");
 
     TRY_ENTRY();
@@ -116,7 +118,7 @@ int main(int argc, char* argv[]) {
     } else {
         std::cerr << "Incorrect log level: " << command_line::get_arg(vm, arg_log_level).c_str()
                   << std::endl;
-        throw std::runtime_error{"Incorrect log level"};
+        throw cpptrace::runtime_error{"Incorrect log level"};
     }
     oxen::logging::init(log_file_path, log_level);
     log::warning(logcat, "Starting...");
@@ -140,7 +142,7 @@ int main(int argc, char* argv[]) {
     BlockchainDB* db = new_db();
     if (db == NULL) {
         log::error(logcat, "Failed to initialize a database");
-        throw std::runtime_error("Failed to initialize a database");
+        throw cpptrace::runtime_error("Failed to initialize a database");
     }
 
     const fs::path filename = tools::utf8_path(opt_data_dir) / db->get_db_name();
@@ -276,10 +278,10 @@ int main(int argc, char* argv[]) {
         currsz += bd.size();
         for (const auto& tx_id : blk.tx_hashes) {
             if (!tx_id) {
-                throw std::runtime_error("Aborting: null txid");
+                throw cpptrace::runtime_error("Aborting: null txid");
             }
             if (!db->get_pruned_tx_blob(tx_id, bd)) {
-                throw std::runtime_error("Aborting: tx not found");
+                throw cpptrace::runtime_error("Aborting: tx not found");
             }
             transaction tx;
             if (!parse_and_validate_tx_base_from_blob(bd, tx)) {

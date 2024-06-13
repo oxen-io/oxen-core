@@ -33,6 +33,7 @@
 #include <chrono>
 #include <deque>
 #include <stdexcept>
+#include <cpptrace/cpptrace.hpp>
 
 #include "common/expect.h"
 #include "common/varint.h"
@@ -114,7 +115,7 @@ namespace {
 
         std::string fullBlob;
         if (!epee::serialization::store_t_to_binary(request, fullBlob))
-            throw std::runtime_error{"Failed to serialize to epee binary format"};
+            throw cpptrace::runtime_error{"Failed to serialize to epee binary format"};
 
         return fullBlob;
     }
@@ -472,7 +473,7 @@ notify::notify(
         zone_(std::make_shared<detail::zone>(
                 service, std::move(p2p), std::move(noise), is_public)) {
     if (!zone_->p2p)
-        throw std::logic_error{"cryptonote::levin::notify cannot have nullptr p2p argument"};
+        throw cpptrace::logic_error{"cryptonote::levin::notify cannot have nullptr p2p argument"};
 
     if (!zone_->noise.view.empty()) {
         const auto now = std::chrono::steady_clock::now();

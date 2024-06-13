@@ -2,6 +2,7 @@
 
 #include <thread>
 #include <utility>
+#include <cpptrace/cpptrace.hpp>
 
 #include "common/guts.h"
 #include "crypto/crypto.h"
@@ -93,13 +94,13 @@ static constexpr inline std::string_view NO_PROVIDER_CLIENTS_ERROR = "L2 tracker
 std::pair<uint64_t, crypto::hash> L2Tracker::latest_state() {
     if (provider.clients.empty()) {
         oxen::log::error(logcat, NO_PROVIDER_CLIENTS_ERROR);
-        throw std::runtime_error(std::string(NO_PROVIDER_CLIENTS_ERROR));
+        throw cpptrace::runtime_error(std::string(NO_PROVIDER_CLIENTS_ERROR));
     }
     std::lock_guard lock{mutex};
 
     if (state_history.empty()) {
         oxen::log::error(logcat, "L2 tracker doesnt have any state history to query");
-        throw std::runtime_error("Internal error getting latest state from l2 tracker");
+        throw cpptrace::runtime_error("Internal error getting latest state from l2 tracker");
     }
     auto& latest_state = state_history.front();
     return std::make_pair(latest_state.height, latest_state.block_hash);
@@ -179,7 +180,7 @@ void L2Tracker::populate_review_transactions(std::shared_ptr<TransactionReviewSe
 
 std::vector<TransactionStateChangeVariant> L2Tracker::get_block_transactions() {
     if (provider.clients.empty()) {
-        throw std::runtime_error(std::string(NO_PROVIDER_CLIENTS_ERROR));
+        throw cpptrace::runtime_error(std::string(NO_PROVIDER_CLIENTS_ERROR));
     }
     std::lock_guard lock{mutex};
     std::vector<TransactionStateChangeVariant> all_transactions;

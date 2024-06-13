@@ -28,6 +28,7 @@
 #include "expect.h"
 
 #include <string>
+#include <cpptrace/cpptrace.hpp>
 
 #include "common/fs.h"
 
@@ -57,7 +58,7 @@ namespace {
 
 void expect::throw_(std::error_code ec, const char* msg, const char* file, unsigned line) {
     if (msg || file)
-        throw std::system_error{ec, generate_error(msg, file, line)};
-    throw std::system_error{ec};
+        throw cpptrace::system_error{ec.value(), generate_error(msg, file, line)};
+    throw cpptrace::system_error{ec.value(), msg};
 }
 }  // namespace detail

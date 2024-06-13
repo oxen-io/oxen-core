@@ -34,7 +34,7 @@ namespace tools {
 
 uint64_t combinations_count(uint32_t k, uint32_t n) {
     if (k > n) {
-        throw std::runtime_error("k must not be greater than n");
+        throw cpptrace::runtime_error("k must not be greater than n");
     }
 
     uint64_t c = 1;

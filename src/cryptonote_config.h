@@ -37,8 +37,8 @@
 #include <cstdint>
 #include <filesystem>
 #include <ratio>
-#include <stdexcept>
 #include <string_view>
+#include <cpptrace/cpptrace.hpp>
 
 using namespace std::literals;
 
@@ -757,7 +757,7 @@ inline constexpr const network_config& get_config(network_type nettype) {
         case network_type::TESTNET: return testnet_config;
         case network_type::DEVNET: return devnet_config;
         case network_type::FAKECHAIN: return fakenet_config;
-        default: throw std::runtime_error{"Invalid network type"};
+        default: throw cpptrace::runtime_error{"Invalid network type"};
     }
 }
 

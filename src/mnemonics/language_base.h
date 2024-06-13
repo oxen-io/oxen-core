@@ -38,6 +38,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <cpptrace/cpptrace.hpp>
 
 #include "epee/wipeable_string.h"
 #include "logging/oxen_logger.h"
@@ -86,14 +87,14 @@ inline T utf8canonical(const T& s) {
             bytes = 1;
         } else if ((*ptr & 0xe0) == 0xc0) {
             if (avail < 1)
-                throw std::runtime_error("Invalid UTF-8");
+                throw cpptrace::runtime_error("Invalid UTF-8");
             cp = (*ptr++ & 0x1f) << 6;
             cp |= *ptr++ & 0x3f;
             --avail;
             bytes = 2;
         } else if ((*ptr & 0xf0) == 0xe0) {
             if (avail < 2)
-                throw std::runtime_error("Invalid UTF-8");
+                throw cpptrace::runtime_error("Invalid UTF-8");
             cp = (*ptr++ & 0xf) << 12;
             cp |= (*ptr++ & 0x3f) << 6;
             cp |= *ptr++ & 0x3f;
@@ -101,7 +102,7 @@ inline T utf8canonical(const T& s) {
             bytes = 3;
         } else if ((*ptr & 0xf8) == 0xf0) {
             if (avail < 3)
-                throw std::runtime_error("Invalid UTF-8");
+                throw cpptrace::runtime_error("Invalid UTF-8");
             cp = (*ptr++ & 0x7) << 18;
             cp |= (*ptr++ & 0x3f) << 12;
             cp |= (*ptr++ & 0x3f) << 6;
@@ -109,7 +110,7 @@ inline T utf8canonical(const T& s) {
             avail -= 3;
             bytes = 4;
         } else
-            throw std::runtime_error("Invalid UTF-8");
+            throw cpptrace::runtime_error("Invalid UTF-8");
 
         cp = std::towlower(cp);
         wptr = wbuf;
@@ -130,7 +131,7 @@ inline T utf8canonical(const T& s) {
                 *wptr++ = 0x80 | ((cp >> 6) & 0x3f);
                 *wptr++ = 0x80 | (cp & 0x3f);
                 break;
-            default: throw std::runtime_error("Invalid UTF-8");
+            default: throw cpptrace::runtime_error("Invalid UTF-8");
         }
         *wptr = 0;
         sc += T(wbuf, bytes);
@@ -182,7 +183,7 @@ class Base {
         int ii;
         std::vector<std::string>::const_iterator it;
         if (word_list.size() != NWORDS)
-            throw std::runtime_error("Wrong word list length for " + language_name);
+            throw cpptrace::runtime_error("Wrong word list length for " + language_name);
         for (it = word_list.begin(), ii = 0; it != word_list.end(); it++, ii++) {
             word_map[*it] = ii;
             if ((*it).size() < unique_prefix_length) {
@@ -194,7 +195,7 @@ class Base {
                             *it,
                             unique_prefix_length);
                 else
-                    throw std::runtime_error(
+                    throw cpptrace::runtime_error(
                             "Too short word in " + language_name + " word list: " + *it);
             }
             epee::wipeable_string trimmed;
@@ -211,7 +212,7 @@ class Base {
                             language_name,
                             std::string(trimmed.data(), trimmed.size()));
                 else
-                    throw std::runtime_error(
+                    throw cpptrace::runtime_error(
                             "Duplicate prefix in " + language_name +
                             " word list: " + std::string(trimmed.data(), trimmed.size()));
             }

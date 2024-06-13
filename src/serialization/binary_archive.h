@@ -44,6 +44,7 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <cpptrace/cpptrace.hpp>
 
 #include "base.h"
 #include "common/varint.h"
@@ -103,7 +104,7 @@ class binary_unarchiver : public deserializer {
     void serialize_uvarint(T& v) {
         using It = std::istreambuf_iterator<char>;
         if (tools::read_varint(It{stream_}, It{}, v) < 0)
-            throw std::runtime_error{"deserialization of varint failed"};
+            throw cpptrace::runtime_error{"deserialization of varint failed"};
     }
 
     // RAII class for `begin_array()`/`begin_object()`.  This particular implementation is a no-op.

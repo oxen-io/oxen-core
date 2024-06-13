@@ -40,6 +40,7 @@
 #include <concepts>
 #include <cstdint>
 #include <exception>
+#include <cpptrace/cpptrace.hpp>
 
 #include "common/command_line.h"
 #include "common/guts.h"
@@ -129,7 +130,7 @@ namespace {
                                 throw tools::wallet_rpc_server::parse_error{
                                         "Failed to parse JSON parameters"};
                         } else
-                            throw std::runtime_error{
+                            throw cpptrace::runtime_error{
                                     "only top-level JSON object values are currently supported"};
                     }
                     epee::json_rpc::response<Response> r{
@@ -157,7 +158,7 @@ namespace {
     const auto rpc_commands = register_rpc_commands(wallet_rpc_types{});
 
     // Thrown with a code and message to return a json_rpc error.
-    class wallet_rpc_error : public std::runtime_error {
+    class wallet_rpc_error : public cpptrace::runtime_error {
       public:
         int16_t code;
         std::string message;
@@ -388,7 +389,7 @@ void wallet_rpc_server::run_loop() {
                     for (const auto& [addr, port, required] : m_bind)
                         error << ' ' << addr << ':' << port;
                 }
-                throw std::runtime_error{error.str()};
+                throw cpptrace::runtime_error{error.str()};
             }
         } catch (...) {
             loop_promise.set_exception(std::current_exception());
@@ -3652,7 +3653,7 @@ std::unique_ptr<tools::wallet2> wallet_rpc_server::load_wallet() {
         const bool testnet = tools::wallet2::has_testnet_option(m_vm);
         const bool devnet = tools::wallet2::has_devnet_option(m_vm);
         if (testnet && devnet)
-            throw std::logic_error{tr("Can't specify more than one of --testnet and --devnet")};
+            throw cpptrace::logic_error{tr("Can't specify more than one of --testnet and --devnet")};
 
         const auto arg_wallet_file = wallet_args::arg_wallet_file();
         const auto arg_from_json = wallet_args::arg_generate_from_json();
@@ -3664,14 +3665,14 @@ std::unique_ptr<tools::wallet2> wallet_rpc_server::load_wallet() {
         const auto password_prompt = prompt_for_password ? password_prompter : nullptr;
 
         if (!wallet_file.empty() && !from_json.empty())
-            throw std::logic_error{
+            throw cpptrace::logic_error{
                     tr("Can't specify more than one of --wallet-file and --generate-from-json")};
 
         if (!wallet_dir.empty())
             return nullptr;
 
         if (wallet_file.empty() && from_json.empty())
-            throw std::logic_error{
+            throw cpptrace::logic_error{
                     tr("Must specify --wallet-file or --generate-from-json or --wallet-dir")};
 
         log::warning(logcat, "{}", tools::wallet_rpc_server::tr("Loading wallet..."));
@@ -3681,7 +3682,7 @@ std::unique_ptr<tools::wallet2> wallet_rpc_server::load_wallet() {
             wal = tools::wallet2::make_from_json(m_vm, true, from_json, password_prompt).first;
 
         if (!wal)  // safety check (the above should throw on error)
-            throw std::runtime_error{"Failed to create wallet: (unknown reason)"};
+            throw cpptrace::runtime_error{"Failed to create wallet: (unknown reason)"};
 
         bool quit = false;
         tools::signal_handler::install([&wal, &quit](int) {
@@ -3696,7 +3697,7 @@ std::unique_ptr<tools::wallet2> wallet_rpc_server::load_wallet() {
             log::info(globallogcat, "{}", tools::wallet_rpc_server::tr("Saving wallet..."));
             wal->store();
             log::info(globallogcat, "{}", tools::wallet_rpc_server::tr("Successfully saved"));
-            throw std::runtime_error{
+            throw cpptrace::runtime_error{
                     tr("Wallet loading cancelled before initial refresh completed")};
         }
         log::info(globallogcat, "{}", tools::wallet_rpc_server::tr("Successfully loaded"));
@@ -3750,6 +3751,7 @@ void wallet_rpc_server::stop() {
 }  // namespace tools
 
 int main(int argc, char** argv) {
+    cpptrace::register_terminate_handler();
     TRY_ENTRY();
 
     namespace po = boost::program_options;

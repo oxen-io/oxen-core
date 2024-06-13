@@ -41,7 +41,7 @@ auto logcat = oxen::log::Cat("ringct");
     {                                                                 \
         if (!(expr)) {                                                \
             oxen::log::warning(logcat, frmt, __VA_ARGS__);            \
-            throw std::runtime_error(fmt::format(frmt, __VA_ARGS__)); \
+            throw cpptrace::runtime_error(fmt::format(frmt, __VA_ARGS__)); \
         }                                                             \
     }
 

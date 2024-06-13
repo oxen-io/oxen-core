@@ -38,6 +38,8 @@
 #include "wallet/tx_construction_data.h"
 #include "wallet/tx_sets.h"
 
+#include <cpptrace/cpptrace.hpp>
+
 namespace hw::trezor::protocol {
 
 std::string key_to_string(const ::crypto::ec_point& key);
@@ -340,7 +342,7 @@ namespace tx {
 
         bool is_simple() const {
             if (!m_ct.rv) {
-                throw std::invalid_argument("RV not initialized");
+                throw cpptrace::invalid_argument("RV not initialized");
             }
             auto tp = m_ct.rv->type;
             return tp == rct::RCTType::Simple;
@@ -352,7 +354,7 @@ namespace tx {
 
         bool is_bulletproof() const {
             if (!m_ct.rv) {
-                throw std::invalid_argument("RV not initialized");
+                throw cpptrace::invalid_argument("RV not initialized");
             }
             return rct::is_rct_bulletproof(m_ct.rv->type);
         }

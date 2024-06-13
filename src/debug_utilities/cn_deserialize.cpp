@@ -29,6 +29,8 @@
 
 #include <oxenc/hex.h>
 
+#include <cpptrace/cpptrace.hpp>
+
 #include "common/command_line.h"
 #include "cryptonote_basic/cryptonote_basic.h"
 #include "cryptonote_basic/tx_extra.h"
@@ -176,6 +178,7 @@ constexpr static std::string_view network_type_str(network_type nettype) {
 }
 
 int main(int argc, char* argv[]) {
+    cpptrace::register_terminate_handler();
     uint32_t default_log_level = 0;
     std::string input;
 
@@ -229,7 +232,7 @@ int main(int argc, char* argv[]) {
     } else {
         std::cerr << "Incorrect log level: " << command_line::get_arg(vm, arg_log_level)
                   << std::endl;
-        throw std::runtime_error{"Incorrect log level"};
+        throw cpptrace::runtime_error{"Incorrect log level"};
     }
     oxen::logging::init(log_file_path, log_level);
     log::warning(logcat, "Starting...");

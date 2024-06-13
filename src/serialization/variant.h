@@ -37,6 +37,7 @@
 #pragma once
 
 #include <oxenc/variant.h>
+#include <cpptrace/cpptrace.hpp>
 
 #include "common/meta.h"
 #include "serialization.h"
@@ -111,7 +112,7 @@ namespace detail {
         auto obj = ar.begin_object();
         ar.read_variant_tag(tag);
         if (!(... || read_variant_impl_one<I>(ar, v, tag)))
-            throw std::runtime_error("failed to read variant");
+            throw cpptrace::runtime_error("failed to read variant");
     }
 
     template <

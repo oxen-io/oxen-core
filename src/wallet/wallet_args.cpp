@@ -32,6 +32,7 @@
 
 #include <fstream>
 #include <sstream>
+#include <cpptrace/cpptrace.hpp>
 
 #include "common/file.h"
 #include "common/i18n.h"
@@ -165,7 +166,7 @@ std::pair<std::optional<boost::program_options::variables_map>, bool> main(
             if (std::error_code ec; fs::exists(config, ec)) {
                 std::ifstream cfg{config};
                 if (!cfg.is_open())
-                    throw std::runtime_error{"Unable to open config file: {}"_format(config)};
+                    throw cpptrace::runtime_error{"Unable to open config file: {}"_format(config)};
                 po::store(po::parse_config_file<char>(cfg, desc_params), vm);
             } else {
                 log::error(logcat, "{}{}", wallet_args::tr("Can't find config file "), config);
@@ -193,7 +194,7 @@ std::pair<std::optional<boost::program_options::variables_map>, bool> main(
     } else {
         std::cerr << "Incorrect log level: " << command_line::get_arg(vm, arg_log_level).c_str()
                   << std::endl;
-        throw std::runtime_error{"Incorrect log level"};
+        throw cpptrace::runtime_error{"Incorrect log level"};
     }
 
     oxen::logging::init(log_path, log_level, false /*do not log to stdout.*/);

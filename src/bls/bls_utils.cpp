@@ -6,6 +6,7 @@
 #include <type_traits>
 
 #include "common/guts.h"
+#include "common/exception.h"
 #include "crypto/crypto.h"
 
 #define BLS_ETH
@@ -84,9 +85,9 @@ static CryptoT to_normalized_crypto(const BLS_T& in) {
     Gx point = *point_in;
     point.normalize();
     if (point.x.serialize(x.data(), x.size(), BLS_MODE_BINARY) == 0)
-        throw std::runtime_error("size of x is zero");
+        throw oxen::runtime_error("size of x is zero");
     if (point.y.serialize(y.data(), y.size(), BLS_MODE_BINARY) == 0)
-        throw std::runtime_error("size of y is zero");
+        throw oxen::runtime_error("size of y is zero");
 
     return serialized;
 }
@@ -142,7 +143,7 @@ static BLS_T from_normalized_crypto(const CryptoT& in) {
 
     assert(readZ == z.size());
     if (bool x_fail = readX != x.size(); x_fail || readY != x.size())
-        throw std::runtime_error{
+        throw oxen::runtime_error{
                 "Failed to deserialize BLS {} component from input value '{:x}'"_format(
                         x_fail ? 'x' : 'y', in)};
     return bls;
@@ -173,5 +174,4 @@ std::string SignatureToHex(const bls::Signature& sig) {
     auto s = to_crypto_signature(sig);
     return oxenc::to_hex(s.begin(), s.end());
 }
-
 }  // namespace bls_utils

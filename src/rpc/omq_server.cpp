@@ -6,6 +6,7 @@
 #include <oxenc/bt.h>
 #include <oxenmq/fmt.h>
 #include <oxenmq/oxenmq.h>
+#include <cpptrace/cpptrace.hpp>
 
 #include "cryptonote_config.h"
 #include "rpc/common/param_parser.hpp"
@@ -75,7 +76,7 @@ namespace {
         // Crude check for basic validity; you can specify all sorts of invalid things, but at
         // least we can check the prefix for something that looks zmq-y.
         if (addr.size() < 7 || (addr.substr(0, 6) != "tcp://" && addr.substr(0, 6) != "ipc://"))
-            throw std::runtime_error(
+            throw cpptrace::runtime_error(
                     "Error: omq listen address '" + std::string(addr) +
                     "' is invalid: expected tcp://IP:PORT, tcp://[IPv6]:PORT or "
                     "ipc:///path/to/socket");
@@ -86,7 +87,7 @@ namespace {
         pks.reserve(pk_strings.size());
         for (const auto& pkstr : pk_strings) {
             if (pkstr.size() != 64 || !oxenc::is_hex(pkstr))
-                throw std::runtime_error(
+                throw cpptrace::runtime_error(
                         "Invalid OMQ login pubkey: '" + pkstr + "'; expected 64-char hex pubkey");
             pks.emplace_back();
             oxenc::to_hex(pkstr.begin(), pkstr.end(), reinterpret_cast<char*>(&pks.back()));
@@ -180,12 +181,12 @@ omq_rpc::omq_rpc(
         size_t len = 0;
         umask = std::stoi(umask_str, &len, 8);
         if (len != umask_str.size())
-            throw std::invalid_argument("not an octal value");
+            throw cpptrace::invalid_argument("not an octal value");
         if (umask < 0 || umask > 0777)
-            throw std::invalid_argument("invalid umask value");
+            throw cpptrace::invalid_argument("invalid umask value");
         omq.STARTUP_UMASK = umask;
     } catch (const std::exception& e) {
-        throw std::invalid_argument(
+        throw cpptrace::invalid_argument(
                 "Invalid --lmq-umask value '" + umask_str +
                 "': value must be an octal value between 0 and 0777");
     }

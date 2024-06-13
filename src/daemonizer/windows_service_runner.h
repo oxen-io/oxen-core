@@ -38,6 +38,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <cpptrace/cpptrace.hpp>
 
 #include "daemonizer/windows_service.h"
 
@@ -64,7 +65,7 @@ class service_runner final {
         // This limitation is crappy, but imposed on us by Windows
         auto& instance = get_instance();
         if (instance)
-            throw std::runtime_error("Only one service_runner<T> may exist at a time");
+            throw cpptrace::runtime_error("Only one service_runner<T> may exist at a time");
         instance = this;
 
         m_status.dwServiceType = SERVICE_WIN32;

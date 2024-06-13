@@ -6,6 +6,7 @@
 #include <nlohmann/json.hpp>
 #include <type_traits>
 #include <utility>
+#include <cpptrace/cpptrace.hpp>
 
 #include "common/json_binary_proxy.h"
 
@@ -20,7 +21,7 @@ using json_range = std::pair<json::const_iterator, json::const_iterator>;
 template <typename... Ignore>
 void check_ascending_names(std::string_view name1, std::string_view name2, const Ignore&...) {
     if (!(name2 > name1))
-        throw std::runtime_error{
+        throw cpptrace::runtime_error{
                 "Internal error: request values must be retrieved in ascending order"};
 }
 
@@ -161,27 +162,27 @@ void load_value(json_range& r, T& val) {
             if (b <= 1)
                 val = b;
             else
-                throw std::domain_error{"Invalid value for '" + key + "': expected boolean"};
+                throw cpptrace::domain_error{"Invalid value for '" + key + "': expected boolean"};
         } else {
-            throw std::domain_error{"Invalid value for '" + key + "': expected boolean"};
+            throw cpptrace::domain_error{"Invalid value for '" + key + "': expected boolean"};
         }
     } else if constexpr (std::is_unsigned_v<T>) {
         if (!e.is_number_unsigned())
-            throw std::domain_error{"Invalid value for '" + key + "': non-negative value required"};
+            throw cpptrace::domain_error{"Invalid value for '" + key + "': non-negative value required"};
         auto i = e.get<uint64_t>();
         if (sizeof(T) < sizeof(uint64_t) && i > std::numeric_limits<T>::max())
-            throw std::domain_error{"Invalid value for '" + key + "': value too large"};
+            throw cpptrace::domain_error{"Invalid value for '" + key + "': value too large"};
         val = i;
     } else if constexpr (std::is_integral_v<T>) {
         if (!e.is_number_integer())
-            throw std::domain_error{"Invalid value for '" + key + "': value is not an integer"};
+            throw cpptrace::domain_error{"Invalid value for '" + key + "': value is not an integer"};
         auto i = e.get<int64_t>();
         if (sizeof(T) < sizeof(int64_t)) {
             if (i < std::numeric_limits<T>::lowest())
-                throw std::domain_error{
+                throw cpptrace::domain_error{
                         "Invalid value for '" + key + "': negative value magnitude is too large"};
             else if (i > std::numeric_limits<T>::max())
-                throw std::domain_error{"Invalid value for '" + key + "': value is too large"};
+                throw cpptrace::domain_error{"Invalid value for '" + key + "': value is too large"};
         }
         val = i;
     } else if constexpr (std::is_same_v<T, std::string> || std::is_same_v<T, std::string_view>) {
@@ -190,7 +191,7 @@ void load_value(json_range& r, T& val) {
         try {
             e.get_to(val);
         } catch (const std::exception& e) {
-            throw std::domain_error{"Invalid values in '" + key + "'"};
+            throw cpptrace::domain_error{"Invalid values in '" + key + "'"};
         }
     } else {
         static_assert(std::is_same_v<T, void>, "Unsupported load type");
@@ -231,7 +232,7 @@ void get_next_value(In& in, [[maybe_unused]] std::string_view name, T& val) {
     else if (skip_until(in, name))
         load_curr_value(in, val);
     else if constexpr (is_required_wrapper<T>)
-        throw std::runtime_error{"Required key '" + std::string{name} + "' not found"};
+        throw cpptrace::runtime_error{"Required key '" + std::string{name} + "' not found"};
 }
 
 /// Accessor for simple, flat value retrieval from a json or bt_dict_consumer.  In the later

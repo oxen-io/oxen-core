@@ -5,6 +5,7 @@
 #include <nlohmann/json.hpp>
 #include <string_view>
 #include <unordered_set>
+#include <cpptrace/cpptrace.hpp>
 
 #include "crypto/crypto.h"
 #include "ringct/rctTypes.h"
@@ -156,7 +157,7 @@ struct adl_serializer<T> {
     static_assert(std::is_trivially_copyable_v<T> && std::has_unique_object_representations_v<T>);
 
     static void to_json(json&, const T&) {
-        throw std::logic_error{"Internal error: binary types are not directly serializable"};
+        throw cpptrace::logic_error{"Internal error: binary types are not directly serializable"};
     }
     static void from_json(const json& j, T& val) {
         tools::load_binary_parameter(j.get<std::string_view>(), false /*no raw*/, val);

@@ -31,6 +31,8 @@
 
 #include "common/lock.h"
 
+#include <cpptrace/cpptrace.hpp>
+
 namespace hw::trezor {
 
 #ifdef WITH_DEVICE_TREZOR
@@ -539,7 +541,7 @@ void device_trezor::tx_sign(
                     return true;
                 });
         if (!all_are_txin_to_key) {
-            throw std::invalid_argument("Not all are txin_to_key");
+            throw cpptrace::invalid_argument("Not all are txin_to_key");
         }
         cpend.key_images = key_images.str();
 

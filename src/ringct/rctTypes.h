@@ -35,6 +35,7 @@
 #pragma GCC diagnostic ignored "-Wshadow"
 
 #include <sodium/crypto_verify_32.h>
+#include <cpptrace/cpptrace.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -117,7 +118,7 @@ struct multisig_out {
     FIELD(c)
     FIELD(mu_p)
     if (!mu_p.empty() && mu_p.size() != c.size())
-        throw std::runtime_error{"Invalid multisig output serialization"};
+        throw cpptrace::runtime_error{"Invalid multisig output serialization"};
     END_SERIALIZE()
 };
 
@@ -257,7 +258,7 @@ struct Bulletproof {
     FIELD(t)
 
     if (L.empty() || L.size() != R.size())
-        throw std::runtime_error("Bad bulletproof serialization");
+        throw cpptrace::runtime_error("Bad bulletproof serialization");
     END_SERIALIZE()
 };
 
@@ -272,7 +273,7 @@ auto start_array(Archive& ar, std::string_view tag, std::vector<T>& v, size_t si
     if (Archive::is_deserializer)
         v.resize(size);
     else if (v.size() != size)
-        throw std::invalid_argument{
+        throw cpptrace::invalid_argument{
                 "invalid " + std::string{tag} + " size: " + std::to_string(size) +
                 " (given size) != " + std::to_string(v.size()) + " (# elements)"};
     return ar.begin_array();
@@ -337,7 +338,7 @@ struct rctSigBase {
                     RCTType::Bulletproof,
                     RCTType::Bulletproof2,
                     RCTType::CLSAG))
-            throw std::invalid_argument{"invalid ringct type"};
+            throw cpptrace::invalid_argument{"invalid ringct type"};
 
         field_varint(ar, "txnFee", txnFee);
 
@@ -393,7 +394,7 @@ struct rctSigPrunable {
                     RCTType::Bulletproof,
                     RCTType::Bulletproof2,
                     RCTType::CLSAG))
-            throw std::invalid_argument{"invalid ringct type"};
+            throw cpptrace::invalid_argument{"invalid ringct type"};
         if (rct::is_rct_bulletproof(type)) {
             uint32_t nbp = bulletproofs.size();
             if (tools::equals_any(type, RCTType::Bulletproof2, RCTType::CLSAG))
@@ -401,14 +402,14 @@ struct rctSigPrunable {
             else
                 field(ar, "nbp", nbp);
             if (nbp > outputs)
-                throw std::invalid_argument{"too many bulletproofs"};
+                throw cpptrace::invalid_argument{"too many bulletproofs"};
 
             auto arr = start_array(ar, "bp", bulletproofs, nbp);
             for (auto& b : bulletproofs)
                 value(ar, b);
 
             if (auto n_max = n_bulletproof_max_amounts(bulletproofs); n_max < outputs)
-                throw std::invalid_argument{
+                throw cpptrace::invalid_argument{
                         "invalid bulletproofs: n_max (" + std::to_string(n_max) + ") < outputs (" +
                         std::to_string(outputs) + ")"};
         } else {
@@ -459,7 +460,7 @@ struct rctSigPrunable {
                             if constexpr (Archive::is_deserializer)
                                 ss.resize(mg_ss2_elements);
                             else if (ss.size() != mg_ss2_elements)
-                                throw std::invalid_argument{
+                                throw cpptrace::invalid_argument{
                                         "invalid mg_ss2 size: have " + std::to_string(ss.size()) +
                                         ", expected " + std::to_string(mg_ss2_elements)};
 

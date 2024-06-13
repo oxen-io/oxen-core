@@ -5,7 +5,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <stdexcept>
+#include <cpptrace/cpptrace.hpp>
 
 namespace tools {
 
@@ -35,7 +35,7 @@ template <size_t Bytes>
 uint64_t decode_integer_be(const std::array<std::byte, Bytes>& be_val) {
     for (size_t i = 0; i < Bytes - 8; i++)
         if (be_val[i] != std::byte{0})
-            throw std::overflow_error{"integer too large for u64"};
+            throw cpptrace::overflow_error{"integer too large for u64"};
     return oxenc::load_big_to_host<uint64_t>(be_val.data() + (be_val.size() - 8));
 }
 
@@ -46,7 +46,7 @@ template <size_t Bytes>
 uint64_t decode_integer_le(const std::array<std::byte, Bytes>& le_val) {
     for (size_t i = 8; i < Bytes; i++)
         if (le_val[i] != std::byte{0})
-            throw std::overflow_error{"integer too large for u64"};
+            throw cpptrace::overflow_error{"integer too large for u64"};
     return oxenc::load_little_to_host<uint64_t>(le_val.data());
 }
 
@@ -79,7 +79,7 @@ template <size_t Bytes>
 std::pair<uint64_t, uint64_t> decode_integer_be128(const std::array<std::byte, Bytes>& be_val) {
     for (size_t i = 0; i < Bytes - 16; i++)
         if (be_val[i] != std::byte{0})
-            throw std::overflow_error{"integer too large for u128"};
+            throw cpptrace::overflow_error{"integer too large for u128"};
     return {oxenc::load_big_to_host<uint64_t>(be_val.data() + (be_val.size() - 16)),
             oxenc::load_big_to_host<uint64_t>(be_val.data() + (be_val.size() - 8))};
 }
@@ -92,7 +92,7 @@ template <size_t Bytes>
 std::pair<uint64_t, uint64_t> decode_integer_le128(const std::array<std::byte, Bytes>& le_val) {
     for (size_t i = 16; i < Bytes; i++)
         if (le_val[i] != std::byte{0})
-            throw std::overflow_error{"integer too large for u128"};
+            throw cpptrace::overflow_error{"integer too large for u128"};
     return {oxenc::load_little_to_host<uint64_t>(le_val.data() + 8),
             oxenc::load_little_to_host<uint64_t>(le_val.data())};
 }

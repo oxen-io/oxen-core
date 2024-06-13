@@ -32,6 +32,7 @@
 #include <nlohmann/json.hpp>
 #include <string>
 #include <type_traits>
+#include <cpptrace/cpptrace.hpp>
 
 #include "rpc/core_rpc_server_commands_defs.h"
 #include "rpc/http_client.h"
@@ -88,7 +89,7 @@ class NodeRPCProxy {
                                 (result.status == cryptonote::rpc::STATUS_BUSY ? "daemon is busy"
                                                                                : result.status);
             log::error(globallogcat, error);
-            throw std::runtime_error{error};
+            throw cpptrace::runtime_error{error};
         }
 
         return result;

@@ -33,7 +33,7 @@
 // utils/generate-quorum-matrix.py script.
 
 #include <array>
-#include <stdexcept>
+#include <cpptrace/cpptrace.hpp>
 
 namespace quorumnet {
 
@@ -49,7 +49,7 @@ class quorum_conn_iterator {
     quorum_conn_iterator(const bool* flags_, int N_, bool outgoing_ = true) :
             flags{flags_}, i{0}, N{N_}, step{outgoing_ ? 1 : N} {
         if (flags == nullptr && N != 0)
-            throw std::domain_error("Invalid/unsupported quorum size (" + std::to_string(N) + ")");
+            throw cpptrace::domain_error("Invalid/unsupported quorum size (" + std::to_string(N) + ")");
         if (!flags[0] && N > 0)
             ++*this;
     }

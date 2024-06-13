@@ -32,6 +32,7 @@
 #endif
 
 #include <fmt/std.h>
+#include <cpptrace/cpptrace.hpp>
 
 #include "blockchain_db/blockchain_db.h"
 #include "blockchain_objects.h"
@@ -334,19 +335,19 @@ static bool for_all_transactions(
 
     dbr = mdb_env_create(&env);
     if (dbr)
-        throw std::runtime_error(
+        throw cpptrace::runtime_error(
                 "Failed to create LDMB environment: " + std::string(mdb_strerror(dbr)));
     dbr = mdb_env_set_maxdbs(env, 2);
     if (dbr)
-        throw std::runtime_error("Failed to set max env dbs: " + std::string(mdb_strerror(dbr)));
+        throw cpptrace::runtime_error("Failed to set max env dbs: " + std::string(mdb_strerror(dbr)));
     dbr = mdb_env_open(env, filename.string().c_str(), 0, 0664);
     if (dbr)
-        throw std::runtime_error(
+        throw cpptrace::runtime_error(
                 "Failed to open rings database file '{}': {}"_format(filename, mdb_strerror(dbr)));
 
     dbr = mdb_txn_begin(env, NULL, MDB_RDONLY, &txn);
     if (dbr)
-        throw std::runtime_error(
+        throw cpptrace::runtime_error(
                 "Failed to create LMDB transaction: " + std::string(mdb_strerror(dbr)));
     OXEN_DEFER {
         if (tx_active)
@@ -358,14 +359,14 @@ static bool for_all_transactions(
     if (dbr)
         dbr = mdb_dbi_open(txn, "txs", MDB_INTEGERKEY, &dbi);
     if (dbr)
-        throw std::runtime_error("Failed to open LMDB dbi: " + std::string(mdb_strerror(dbr)));
+        throw cpptrace::runtime_error("Failed to open LMDB dbi: " + std::string(mdb_strerror(dbr)));
     dbr = mdb_cursor_open(txn, dbi, &cur);
     if (dbr)
-        throw std::runtime_error("Failed to create LMDB cursor: " + std::string(mdb_strerror(dbr)));
+        throw cpptrace::runtime_error("Failed to create LMDB cursor: " + std::string(mdb_strerror(dbr)));
     MDB_stat stat;
     dbr = mdb_stat(txn, dbi, &stat);
     if (dbr)
-        throw std::runtime_error("Failed to query m_block_info: " + std::string(mdb_strerror(dbr)));
+        throw cpptrace::runtime_error("Failed to query m_block_info: " + std::string(mdb_strerror(dbr)));
     n_txes = stat.ms_entries;
 
     bool fret = true;
@@ -379,11 +380,11 @@ static bool for_all_transactions(
         if (ret == MDB_NOTFOUND)
             break;
         if (ret)
-            throw std::runtime_error(
+            throw cpptrace::runtime_error(
                     "Failed to enumerate transactions: " + std::string(mdb_strerror(ret)));
 
         if (k.mv_size != sizeof(uint64_t))
-            throw std::runtime_error("Bad key size");
+            throw cpptrace::runtime_error("Bad key size");
         const uint64_t idx = *(uint64_t*)k.mv_data;
         if (idx < start_idx)
             continue;
@@ -407,7 +408,7 @@ static bool for_all_transactions(
     mdb_cursor_close(cur);
     dbr = mdb_txn_commit(txn);
     if (dbr)
-        throw std::runtime_error(
+        throw cpptrace::runtime_error(
                 "Failed to commit db transaction: " + std::string(mdb_strerror(dbr)));
     tx_active = false;
     mdb_dbi_close(env, dbi);
@@ -431,19 +432,19 @@ static bool for_all_transactions(
 
     dbr = mdb_env_create(&env);
     if (dbr)
-        throw std::runtime_error(
+        throw cpptrace::runtime_error(
                 "Failed to create LDMB environment: " + std::string(mdb_strerror(dbr)));
     dbr = mdb_env_set_maxdbs(env, 3);
     if (dbr)
-        throw std::runtime_error("Failed to set max env dbs: " + std::string(mdb_strerror(dbr)));
+        throw cpptrace::runtime_error("Failed to set max env dbs: " + std::string(mdb_strerror(dbr)));
     dbr = mdb_env_open(env, filename.string().c_str(), 0, 0664);
     if (dbr)
-        throw std::runtime_error(
+        throw cpptrace::runtime_error(
                 "Failed to open rings database file '{}': {}"_format(filename, mdb_strerror(dbr)));
 
     dbr = mdb_txn_begin(env, NULL, MDB_RDONLY, &txn);
     if (dbr)
-        throw std::runtime_error(
+        throw cpptrace::runtime_error(
                 "Failed to create LMDB transaction: " + std::string(mdb_strerror(dbr)));
     OXEN_DEFER {
         if (tx_active)
@@ -453,26 +454,26 @@ static bool for_all_transactions(
 
     dbr = mdb_dbi_open(txn, "blocks", MDB_INTEGERKEY, &dbi_blocks);
     if (dbr)
-        throw std::runtime_error("Failed to open LMDB dbi: " + std::string(mdb_strerror(dbr)));
+        throw cpptrace::runtime_error("Failed to open LMDB dbi: " + std::string(mdb_strerror(dbr)));
     dbr = mdb_dbi_open(txn, "txs_pruned", MDB_INTEGERKEY, &dbi_txs);
     if (dbr)
-        throw std::runtime_error("Failed to open LMDB dbi: " + std::string(mdb_strerror(dbr)));
+        throw cpptrace::runtime_error("Failed to open LMDB dbi: " + std::string(mdb_strerror(dbr)));
 
     dbr = mdb_cursor_open(txn, dbi_blocks, &cur_blocks);
     if (dbr)
-        throw std::runtime_error("Failed to create LMDB cursor: " + std::string(mdb_strerror(dbr)));
+        throw cpptrace::runtime_error("Failed to create LMDB cursor: " + std::string(mdb_strerror(dbr)));
     dbr = mdb_cursor_open(txn, dbi_txs, &cur_txs);
     if (dbr)
-        throw std::runtime_error("Failed to create LMDB cursor: " + std::string(mdb_strerror(dbr)));
+        throw cpptrace::runtime_error("Failed to create LMDB cursor: " + std::string(mdb_strerror(dbr)));
 
     MDB_stat stat;
     dbr = mdb_stat(txn, dbi_blocks, &stat);
     if (dbr)
-        throw std::runtime_error("Failed to query txs stat: " + std::string(mdb_strerror(dbr)));
+        throw cpptrace::runtime_error("Failed to query txs stat: " + std::string(mdb_strerror(dbr)));
     uint64_t n_blocks = stat.ms_entries;
     dbr = mdb_stat(txn, dbi_txs, &stat);
     if (dbr)
-        throw std::runtime_error("Failed to query txs stat: " + std::string(mdb_strerror(dbr)));
+        throw cpptrace::runtime_error("Failed to query txs stat: " + std::string(mdb_strerror(dbr)));
     n_txes = stat.ms_entries;
 
     bool fret = true;
@@ -486,21 +487,21 @@ static bool for_all_transactions(
         if (ret == MDB_NOTFOUND)
             break;
         if (ret)
-            throw std::runtime_error(
+            throw cpptrace::runtime_error(
                     "Failed to enumerate blocks: " + std::string(mdb_strerror(ret)));
 
         if (k.mv_size != sizeof(uint64_t))
-            throw std::runtime_error("Bad key size");
+            throw cpptrace::runtime_error("Bad key size");
         uint64_t height = *(const uint64_t*)k.mv_data;
         std::string bd;
         bd.assign(reinterpret_cast<char*>(v.mv_data), v.mv_size);
         block b;
         if (!parse_and_validate_block_from_blob(bd, b))
-            throw std::runtime_error("Failed to parse block from blob retrieved from the db");
+            throw cpptrace::runtime_error("Failed to parse block from blob retrieved from the db");
 
         ret = mdb_cursor_get(cur_txs, &k, &v, op_txs);
         if (ret)
-            throw std::runtime_error{"Failed to fetch transaction {}: {}"_format(
+            throw cpptrace::runtime_error{"Failed to fetch transaction {}: {}"_format(
                     get_transaction_hash(b.miner_tx), mdb_strerror(ret))};
         op_txs = MDB_NEXT;
 
@@ -513,7 +514,7 @@ static bool for_all_transactions(
             const crypto::hash& txid = b.tx_hashes[i];
             ret = mdb_cursor_get(cur_txs, &k, &v, op_txs);
             if (ret)
-                throw std::runtime_error{
+                throw cpptrace::runtime_error{
                         "Failed to fetch transaction {}: {}"_format(txid, mdb_strerror(ret))};
             if (start_idx <= tx_idx++) {
                 cryptonote::transaction_prefix tx;
@@ -563,21 +564,21 @@ static uint64_t find_first_diverging_transaction(
     for (int i = 0; i < 2; ++i) {
         dbr = mdb_env_create(&env[i]);
         if (dbr)
-            throw std::runtime_error(
+            throw cpptrace::runtime_error(
                     "Failed to create LDMB environment: " + std::string(mdb_strerror(dbr)));
         dbr = mdb_env_set_maxdbs(env[i], 2);
         if (dbr)
-            throw std::runtime_error(
+            throw cpptrace::runtime_error(
                     "Failed to set max env dbs: " + std::string(mdb_strerror(dbr)));
         const fs::path& actual_filename = i ? second_filename : first_filename;
         dbr = mdb_env_open(env[i], actual_filename.string().c_str(), 0, 0664);
         if (dbr)
-            throw std::runtime_error("Failed to open rings database file '{}': {}"_format(
+            throw cpptrace::runtime_error("Failed to open rings database file '{}': {}"_format(
                     actual_filename, mdb_strerror(dbr)));
 
         dbr = mdb_txn_begin(env[i], NULL, MDB_RDONLY, &txn[i]);
         if (dbr)
-            throw std::runtime_error(
+            throw cpptrace::runtime_error(
                     "Failed to create LMDB transaction: " + std::string(mdb_strerror(dbr)));
         tx_active[i] = true;
 
@@ -585,21 +586,21 @@ static uint64_t find_first_diverging_transaction(
         if (dbr)
             dbr = mdb_dbi_open(txn[i], "txs", MDB_INTEGERKEY, &dbi[i]);
         if (dbr)
-            throw std::runtime_error("Failed to open LMDB dbi: " + std::string(mdb_strerror(dbr)));
+            throw cpptrace::runtime_error("Failed to open LMDB dbi: " + std::string(mdb_strerror(dbr)));
         dbr = mdb_cursor_open(txn[i], dbi[i], &cur[i]);
         if (dbr)
-            throw std::runtime_error(
+            throw cpptrace::runtime_error(
                     "Failed to create LMDB cursor: " + std::string(mdb_strerror(dbr)));
         MDB_stat stat;
         dbr = mdb_stat(txn[i], dbi[i], &stat);
         if (dbr)
-            throw std::runtime_error(
+            throw cpptrace::runtime_error(
                     "Failed to query m_block_info: " + std::string(mdb_strerror(dbr)));
         n_txes[i] = stat.ms_entries;
     }
 
     if (n_txes[0] == 0 || n_txes[1] == 0)
-        throw std::runtime_error("No transaction in the database");
+        throw cpptrace::runtime_error("No transaction in the database");
     uint64_t lo = 0, hi = std::min(n_txes[0], n_txes[1]) - 1;
     while (lo <= hi) {
         uint64_t mid = (lo + hi) / 2;
@@ -608,11 +609,11 @@ static uint64_t find_first_diverging_transaction(
         k.mv_data = (void*)&mid;
         dbr = mdb_cursor_get(cur[0], &k, &v[0], MDB_SET);
         if (dbr)
-            throw std::runtime_error(
+            throw cpptrace::runtime_error(
                     "Failed to query transaction: " + std::string(mdb_strerror(dbr)));
         dbr = mdb_cursor_get(cur[1], &k, &v[1], MDB_SET);
         if (dbr)
-            throw std::runtime_error(
+            throw cpptrace::runtime_error(
                     "Failed to query transaction: " + std::string(mdb_strerror(dbr)));
         if (v[0].mv_size == v[1].mv_size && !memcmp(v[0].mv_data, v[1].mv_data, v[0].mv_size))
             lo = mid + 1;
@@ -624,7 +625,7 @@ static uint64_t find_first_diverging_transaction(
         mdb_cursor_close(cur[i]);
         dbr = mdb_txn_commit(txn[i]);
         if (dbr)
-            throw std::runtime_error(
+            throw cpptrace::runtime_error(
                     "Failed to query transaction: " + std::string(mdb_strerror(dbr)));
         tx_active[i] = false;
         mdb_dbi_close(env[i], dbi[i]);
@@ -1024,19 +1025,19 @@ static void get_num_outputs(
         rct = 0;
     } else {
         if (dbr)
-            throw std::runtime_error("Record 0 not found: " + std::string(mdb_strerror(dbr)));
+            throw cpptrace::runtime_error("Record 0 not found: " + std::string(mdb_strerror(dbr)));
         mdb_size_t count = 0;
         dbr = mdb_cursor_count(cur, &count);
         if (dbr)
-            throw std::runtime_error("Failed to count records: " + std::string(mdb_strerror(dbr)));
+            throw cpptrace::runtime_error("Failed to count records: " + std::string(mdb_strerror(dbr)));
         rct = count;
     }
     MDB_stat s;
     dbr = mdb_stat(txn, dbi, &s);
     if (dbr)
-        throw std::runtime_error("Failed to count records: " + std::string(mdb_strerror(dbr)));
+        throw cpptrace::runtime_error("Failed to count records: " + std::string(mdb_strerror(dbr)));
     if (s.ms_entries < rct)
-        throw std::runtime_error("Inconsistent records: " + std::string(mdb_strerror(dbr)));
+        throw cpptrace::runtime_error("Inconsistent records: " + std::string(mdb_strerror(dbr)));
     pre_rct = s.ms_entries - rct;
 }
 
@@ -1049,19 +1050,19 @@ static crypto::hash get_genesis_block_hash(const fs::path& filename) {
 
     dbr = mdb_env_create(&env);
     if (dbr)
-        throw std::runtime_error(
+        throw cpptrace::runtime_error(
                 "Failed to create LDMB environment: " + std::string(mdb_strerror(dbr)));
     dbr = mdb_env_set_maxdbs(env, 1);
     if (dbr)
-        throw std::runtime_error("Failed to set max env dbs: " + std::string(mdb_strerror(dbr)));
+        throw cpptrace::runtime_error("Failed to set max env dbs: " + std::string(mdb_strerror(dbr)));
     dbr = mdb_env_open(env, filename.string().c_str(), 0, 0664);
     if (dbr)
-        throw std::runtime_error(
+        throw cpptrace::runtime_error(
                 "Failed to open rings database file '{}': {}"_format(filename, mdb_strerror(dbr)));
 
     dbr = mdb_txn_begin(env, NULL, MDB_RDONLY, &txn);
     if (dbr)
-        throw std::runtime_error(
+        throw cpptrace::runtime_error(
                 "Failed to create LMDB transaction: " + std::string(mdb_strerror(dbr)));
     OXEN_DEFER {
         if (tx_active)
@@ -1072,12 +1073,12 @@ static crypto::hash get_genesis_block_hash(const fs::path& filename) {
     dbr = mdb_dbi_open(txn, "block_info", MDB_INTEGERKEY | MDB_DUPSORT | MDB_DUPFIXED, &dbi);
     mdb_set_dupsort(txn, dbi, compare_uint64);
     if (dbr)
-        throw std::runtime_error("Failed to open LMDB dbi: " + std::string(mdb_strerror(dbr)));
+        throw cpptrace::runtime_error("Failed to open LMDB dbi: " + std::string(mdb_strerror(dbr)));
     uint64_t zero = 0;
     MDB_val k = {sizeof(uint64_t), (void*)&zero}, v;
     dbr = mdb_get(txn, dbi, &k, &v);
     if (dbr)
-        throw std::runtime_error(
+        throw cpptrace::runtime_error(
                 "Failed to retrieve genesis block: " + std::string(mdb_strerror(dbr)));
     crypto::hash genesis_block_hash = *(const crypto::hash*)(((const uint64_t*)v.mv_data) + 5);
     mdb_dbi_close(env, dbi);
@@ -1193,6 +1194,7 @@ static bool export_spent_outputs(MDB_cursor* cur, const fs::path& filename) {
 }
 
 int main(int argc, char* argv[]) {
+    cpptrace::register_terminate_handler();
     TRY_ENTRY();
 
     epee::string_tools::set_module_name_and_folder(argv[0]);
@@ -1277,7 +1279,7 @@ int main(int argc, char* argv[]) {
     } else {
         std::cerr << "Incorrect log level: " << command_line::get_arg(vm, arg_log_level).c_str()
                   << std::endl;
-        throw std::runtime_error{"Incorrect log level"};
+        throw cpptrace::runtime_error{"Incorrect log level"};
     }
     oxen::logging::init(log_file_path, log_level);
     log::warning(logcat, "Starting...");

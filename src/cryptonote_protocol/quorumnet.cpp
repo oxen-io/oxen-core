@@ -34,6 +34,7 @@
 
 #include <iterator>
 #include <shared_mutex>
+#include <cpptrace/cpptrace.hpp>
 
 #include "common/random.h"
 #include "cryptonote_basic/hardfork.h"
@@ -150,7 +151,7 @@ E get_enum(const bt_dict &d, const std::string &key) {
         E result = static_cast<E>(get_int<std::underlying_type_t<E>>(d.at(key)));
         if (result < E::_count)
             return result;
-        throw std::invalid_argument("invalid enum value for field " + key);
+        throw cpptrace::invalid_argument("invalid enum value for field " + key);
     }
 
     struct prepared_relay_destinations {
@@ -585,16 +586,16 @@ E get_enum(const bt_dict &d, const std::string &key) {
         vote.block_height = get_int<uint64_t>(d.at("h"));
         vote.group = get_enum<quorum_group>(d, "g");
         if (vote.group == quorum_group::invalid)
-            throw std::invalid_argument("invalid vote group");
+            throw cpptrace::invalid_argument("invalid vote group");
         vote.index_in_group = get_int<uint16_t>(d.at("i"));
         auto& sig = var::get<std::string>(d.at("s"));
         if (sig.size() != sizeof(vote.signature))
-            throw std::invalid_argument("invalid vote signature size");
+            throw cpptrace::invalid_argument("invalid vote signature size");
         std::memcpy(&vote.signature, sig.data(), sizeof(vote.signature));
         if (vote.type == quorum_type::checkpointing) {
             auto& bh = var::get<std::string>(d.at("bh"));
             if (bh.size() != vote.checkpoint.block_hash.size())
-                throw std::invalid_argument("invalid vote checkpoint block hash");
+                throw cpptrace::invalid_argument("invalid vote checkpoint block hash");
             std::memcpy(vote.checkpoint.block_hash.data(), bh.data(), bh.size());
         } else {
             vote.state_change.worker_index = get_int<uint16_t>(d.at("wi"));
@@ -726,7 +727,7 @@ E get_enum(const bt_dict &d, const std::string &key) {
     // Obtains the blink quorums, verifies that they are of an acceptable size, and verifies the
     // given input quorum checksum matches the computed checksum for the quorums (if provided),
     // otherwise sets the given output checksum (if provided) to the calculated value.  Throws
-    // std::runtime_error on failure.
+    // cpptrace::runtime_error on failure.
     quorum_array get_blink_quorums(
             uint64_t blink_height,
             const service_node_list& snl,
@@ -742,13 +743,13 @@ E get_enum(const bt_dict &d, const std::string &key) {
             auto height =
                     blink_tx::quorum_height(blink_height, static_cast<blink_tx::subquorum>(qi));
             if (!height)
-                throw std::runtime_error("too early in blockchain to create a quorum");
+                throw cpptrace::runtime_error("too early in blockchain to create a quorum");
             result[qi] = snl.get_quorum(quorum_type::blink, height);
             if (!result[qi])
-                throw std::runtime_error("failed to obtain a blink quorum");
+                throw cpptrace::runtime_error("failed to obtain a blink quorum");
             auto& v = result[qi]->validators;
             if (v.size() < BLINK_MIN_VOTES || v.size() > BLINK_SUBQUORUM_SIZE)
-                throw std::runtime_error("not enough blink nodes to form a quorum");
+                throw cpptrace::runtime_error("not enough blink nodes to form a quorum");
             local_checksum += quorum_checksum(v, qi * BLINK_SUBQUORUM_SIZE);
         }
         log::trace(
@@ -758,7 +759,7 @@ E get_enum(const bt_dict &d, const std::string &key) {
 
         if (input_checksum) {
             if (*input_checksum != local_checksum)
-                throw std::runtime_error{"wrong quorum checksum: expected {}, received {}"_format(
+                throw cpptrace::runtime_error{"wrong quorum checksum: expected {}, received {}"_format(
                         local_checksum, *input_checksum)};
 
             log::trace(logcat, "Blink quorum checksum matched");
@@ -1187,7 +1188,7 @@ E get_enum(const bt_dict &d, const std::string &key) {
         try {
             blink_quorums =
                     get_blink_quorums(blink_height, qnet.core.get_service_node_list(), &checksum);
-        } catch (const std::runtime_error& e) {
+        } catch (const cpptrace::runtime_error& e) {
             log::info(logcat, "Rejecting blink tx: {}", e.what());
             if (tag)
                 m.send_back(
@@ -1374,29 +1375,29 @@ E get_enum(const bt_dict &d, const std::string &key) {
             std::list<pending_signature>& signatures,
             Consume consume) {
         if (!data.skip_until(key))
-            throw std::invalid_argument{
+            throw cpptrace::invalid_argument{
                     "Invalid blink signature data: missing required field '{}'"_format(key)};
         auto list = data.consume_list_consumer();
         auto it = signatures.begin();
         for (; !list.is_finished(); ++it) {
             if (it == signatures.end())
-                throw std::invalid_argument{
+                throw cpptrace::invalid_argument{
                         "Invalid blink signature data: {} size > i size"_format(key)};
             std::get<decltype(consume(list))>(*it) = consume(list);
         }
         if (it != signatures.end())
-            throw std::invalid_argument(
+            throw cpptrace::invalid_argument(
                     "Invalid blink signature data: {} size < i size"_format(key));
     }
 
     crypto::signature convert_string_view_bytes_to_signature(std::string_view sig_str) {
         if (sig_str.size() != sizeof(crypto::signature))
-            throw std::invalid_argument{"Invalid signature data size: {}"_format(sig_str.size())};
+            throw cpptrace::invalid_argument{"Invalid signature data size: {}"_format(sig_str.size())};
 
         crypto::signature result;
         std::memcpy(&result, sig_str.data(), sizeof(crypto::signature));
         if (!result)
-            throw std::invalid_argument{"Invalid signature data: null signature given"};
+            throw cpptrace::invalid_argument{"Invalid signature data: null signature given"};
 
         return result;
     }
@@ -1427,7 +1428,7 @@ E get_enum(const bt_dict &d, const std::string &key) {
         log::debug(logcat, "Received a blink tx signature from SN {}", to_hex(m.conn.pubkey()));
 
         if (m.data.size() != 1)
-            throw std::runtime_error{
+            throw cpptrace::runtime_error{
                     "Rejecting blink signature: expected one data entry not {}"_format(
                             m.data.size())};
 
@@ -1437,30 +1438,30 @@ E get_enum(const bt_dict &d, const std::string &key) {
 
         // # - hash (32 bytes)
         if (!data.skip_until("#"))
-            throw std::invalid_argument{"Invalid blink signature data: missing required field '#'"};
+            throw cpptrace::invalid_argument{"Invalid blink signature data: missing required field '#'"};
         auto hash_str = data.consume_string_view();
         if (hash_str.size() != sizeof(crypto::hash))
-            throw std::invalid_argument{"Invalid blink signature data: invalid tx hash"};
+            throw cpptrace::invalid_argument{"Invalid blink signature data: invalid tx hash"};
         crypto::hash tx_hash;
         std::memcpy(tx_hash.data(), hash_str.data(), hash_str.size());
 
         // h - height
         if (!data.skip_until("h"))
-            throw std::invalid_argument{"Invalid blink signature data: missing required field 'h'"};
+            throw cpptrace::invalid_argument{"Invalid blink signature data: missing required field 'h'"};
         uint64_t blink_height = data.consume_integer<uint64_t>();
         if (!blink_height)
-            throw std::invalid_argument{"Invalid blink signature data: height cannot be 0"};
+            throw cpptrace::invalid_argument{"Invalid blink signature data: height cannot be 0"};
 
         std::list<pending_signature> signatures;
 
         // i - list of quorum indices
         if (!data.skip_until("i"))
-            throw std::invalid_argument{"Invalid blink signature data: missing required field 'i'"};
+            throw cpptrace::invalid_argument{"Invalid blink signature data: missing required field 'i'"};
         auto quorum_indices = data.consume_list_consumer();
         while (!quorum_indices.is_finished()) {
             uint8_t q = quorum_indices.consume_integer<uint8_t>();
             if (q >= NUM_BLINK_QUORUMS)
-                throw std::invalid_argument{
+                throw cpptrace::invalid_argument{
                         "Invalid blink signature data: invalid quorum index {}"_format(q)};
             signatures.emplace_back();
             std::get<uint8_t>(signatures.back()) = q;
@@ -1472,14 +1473,14 @@ E get_enum(const bt_dict &d, const std::string &key) {
             if (pos < 0 || pos >= BLINK_SUBQUORUM_SIZE)  // This is only input validation: it might
                                                          // actually have to be smaller depending on
                                                          // the actual quorum (we check later)
-                throw std::invalid_argument{
+                throw cpptrace::invalid_argument{
                         "Invalid blink signature data: invalid quorum position {}"_format(pos)};
             return pos;
         });
 
         // q - quorum membership checksum
         if (!data.skip_until("q"))
-            throw std::invalid_argument{"Invalid blink signature data: missing required field 'q'"};
+            throw cpptrace::invalid_argument{"Invalid blink signature data: missing required field 'q'"};
         // Before 7.1.8 we get a int64_t on the wire, using 2s-complement representation when the
         // value is a uint64_t that exceeds the max of an int64_t so, if negative, pull it off and
         // static cast it back (the static_cast assumes a 2s-complement architecture which isn't
@@ -1910,19 +1911,19 @@ E get_enum(const bt_dict &d, const std::string &key) {
             if (auto const& tag = PULSE_TAG_QUORUM_POSITION; data.skip_until(tag))
                 result.quorum_position = data.consume_integer<int>();
             else
-                throw std::invalid_argument(std::string(error_prefix) + tag + "'");
+                throw cpptrace::invalid_argument(std::string(error_prefix) + tag + "'");
         }
 
         if (auto const& tag = PULSE_TAG_BLOCK_ROUND; data.skip_until(tag))
             result.round = data.consume_integer<uint8_t>();
         else
-            throw std::invalid_argument(std::string(error_prefix) + tag + "'");
+            throw cpptrace::invalid_argument(std::string(error_prefix) + tag + "'");
 
         if (auto const& tag = PULSE_TAG_SIGNATURE; data.skip_until(tag)) {
             auto sig_str = data.consume_string_view();
             result.signature = convert_string_view_bytes_to_signature(sig_str);
         } else {
-            throw std::invalid_argument(std::string(error_prefix) + tag + "'");
+            throw cpptrace::invalid_argument(std::string(error_prefix) + tag + "'");
         }
 
         return result;
@@ -1934,7 +1935,7 @@ E get_enum(const bt_dict &d, const std::string &key) {
     // contents of the message is left to the caller.
     void handle_pulse_participation_bit_or_bitset(Message& m, QnetState& qnet, bool bitset) {
         if (m.data.size() != 1)
-            throw std::runtime_error{
+            throw cpptrace::runtime_error{
                     "Rejecting pulse participation {}: expected one data entry not {}"_format(
                             bitset ? "bitset" : "handshake", m.data.size())};
 
@@ -1950,7 +1951,7 @@ E get_enum(const bt_dict &d, const std::string &key) {
             if (auto const& tag = PULSE_TAG_VALIDATOR_BITSET; data.skip_until(tag))
                 msg.handshakes.validator_bitset = data.consume_integer<uint16_t>();
             else
-                throw std::invalid_argument{"{}{}'"_format(INVALID_ARG_PREFIX, tag)};
+                throw cpptrace::invalid_argument{"{}{}'"_format(INVALID_ARG_PREFIX, tag)};
         }
 
         qnet.omq.job(
@@ -1960,7 +1961,7 @@ E get_enum(const bt_dict &d, const std::string &key) {
 
     void handle_pulse_block_template(Message& m, QnetState& qnet) {
         if (m.data.size() != 1)
-            throw std::runtime_error{
+            throw cpptrace::runtime_error{
                     "Rejecting pulse block template expected one data entry not {}"_format(
                             m.data.size())};
 
@@ -1973,7 +1974,7 @@ E get_enum(const bt_dict &d, const std::string &key) {
         if (auto const& tag = PULSE_TAG_BLOCK_TEMPLATE; data.skip_until(tag))
             msg.block_template.blob = data.consume_string_view();
         else
-            throw std::invalid_argument{"{}{}'"_format(INVALID_ARG_PREFIX, tag)};
+            throw cpptrace::invalid_argument{"{}{}'"_format(INVALID_ARG_PREFIX, tag)};
 
         qnet.omq.job(
                 [&qnet, data = std::move(msg)]() { pulse::handle_message(&qnet, data); },
@@ -1982,7 +1983,7 @@ E get_enum(const bt_dict &d, const std::string &key) {
 
     void handle_pulse_random_value_hash(Message& m, QnetState& qnet) {
         if (m.data.size() != 1)
-            throw std::runtime_error(
+            throw cpptrace::runtime_error(
                     "Rejecting pulse random value hash expected one data entry not "s +
                     std::to_string(m.data.size()));
 
@@ -1996,12 +1997,12 @@ E get_enum(const bt_dict &d, const std::string &key) {
         if (auto const& tag = PULSE_TAG_RANDOM_VALUE_HASH; data.skip_until(tag)) {
             auto str = data.consume_string_view();
             if (str.size() != sizeof(msg.random_value_hash.hash))
-                throw std::invalid_argument(
+                throw cpptrace::invalid_argument(
                         "Invalid hash data size: " + std::to_string(str.size()));
 
             std::memcpy(msg.random_value_hash.hash.data(), str.data(), str.size());
         } else {
-            throw std::invalid_argument{"{}{}'"_format(INVALID_ARG_PREFIX, tag)};
+            throw cpptrace::invalid_argument{"{}{}'"_format(INVALID_ARG_PREFIX, tag)};
         }
 
         qnet.omq.job(
@@ -2011,7 +2012,7 @@ E get_enum(const bt_dict &d, const std::string &key) {
 
     void handle_pulse_random_value(Message& m, QnetState& qnet) {
         if (m.data.size() != 1)
-            throw std::runtime_error(
+            throw cpptrace::runtime_error(
                     "Rejecting pulse random value expected one data entry not "s +
                     std::to_string(m.data.size()));
 
@@ -2024,10 +2025,10 @@ E get_enum(const bt_dict &d, const std::string &key) {
         if (auto const& tag = PULSE_TAG_RANDOM_VALUE; data.skip_until(tag)) {
             auto str = data.consume_string_view();
             if (str.size() != sizeof(msg.random_value.value.data))
-                throw std::invalid_argument("Invalid data size: " + std::to_string(str.size()));
+                throw cpptrace::invalid_argument("Invalid data size: " + std::to_string(str.size()));
             std::memcpy(msg.random_value.value.data, str.data(), str.size());
         } else {
-            throw std::invalid_argument{"{}{}'"_format(INVALID_ARG_PREFIX, tag)};
+            throw cpptrace::invalid_argument{"{}{}'"_format(INVALID_ARG_PREFIX, tag)};
         }
 
         qnet.omq.job(
@@ -2037,7 +2038,7 @@ E get_enum(const bt_dict &d, const std::string &key) {
 
     void handle_pulse_signed_block(Message& m, QnetState& qnet) {
         if (m.data.size() != 1)
-            throw std::runtime_error{
+            throw cpptrace::runtime_error{
                     "Rejecting pulse signed block expected one data entry not {}"_format(
                             m.data.size())};
 
@@ -2052,7 +2053,7 @@ E get_enum(const bt_dict &d, const std::string &key) {
             msg.signed_block.signature_of_final_block_hash =
                     convert_string_view_bytes_to_signature(sig_str);
         } else {
-            throw std::invalid_argument{"{}{}'"_format(INVALID_ARG_PREFIX, tag)};
+            throw cpptrace::invalid_argument{"{}{}'"_format(INVALID_ARG_PREFIX, tag)};
         }
 
         qnet.omq.job(
@@ -2085,7 +2086,7 @@ namespace {
 
         if (core.service_node()) {
             if (!obj)
-                throw std::logic_error{
+                throw cpptrace::logic_error{
                         "qnet initialization failure: quorumnet_new must be called for service "
                         "node operation"};
             auto& qnet = QnetState::from(obj);

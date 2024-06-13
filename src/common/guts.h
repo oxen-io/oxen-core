@@ -11,6 +11,7 @@
 #include <type_traits>
 #include <utility>
 
+#include "common/exception.h"
 #include "epee/span.h"  // epee
 
 namespace tools {
@@ -64,7 +65,7 @@ template <safe_to_memcpy T, byte_spannable Spannable>
 T make_from_guts(const Spannable& s) {
     std::span<const typename Spannable::value_type> span{s};
     if (s.size() != sizeof(T))
-        throw std::runtime_error{"Cannot reconstitute type: wrong data size for type"};
+        throw oxen::runtime_error{"Cannot reconstitute type: wrong data size for type"};
     T x;
     std::memcpy(static_cast<void*>(&x), s.data(), sizeof(T));
     return x;
@@ -77,7 +78,7 @@ template <safe_to_memcpy T, byte_spannable Spannable>
 void load_from_hex_guts(const Spannable& s, T& x, bool check_hex = true) {
     std::span<const typename Spannable::value_type> span{s};
     if (s.size() != sizeof(T) * 2 || (check_hex && !oxenc::is_hex(span.begin(), span.end())))
-        throw std::runtime_error{"Cannot reconstitute type from hex: wrong size or invalid hex"};
+        throw oxen::runtime_error{"Cannot reconstitute type from hex: wrong size or invalid hex"};
     oxenc::from_hex(span.begin(), span.end(), reinterpret_cast<char*>(&x));
 }
 
@@ -255,7 +256,7 @@ constexpr detail::tuple_without_skips<T...> split_guts_into(const Spannable& s) 
     if ((detail::final_is_string_view<T...> || detail::final_is_ignore<T...>)
                 ? span.size() < min_size
                 : span.size() != min_size)
-        throw std::runtime_error{"Invalid split_guts_into string size"};
+        throw oxen::runtime_error{"Invalid split_guts_into string size"};
 
     detail::tuple_without_skips<T...> result;
     detail::load_split_tuple<0, T...>(
@@ -279,7 +280,7 @@ constexpr detail::tuple_without_skips<T...> split_hex_into(std::string_view hex_
     if ((detail::final_is_string_view<T...> ? hex_in.size() < min_size
                                             : hex_in.size() != min_size) ||
         !oxenc::is_hex(hex_in))
-        throw std::runtime_error{
+        throw oxen::runtime_error{
                 "Invalid split_hex_into string input: incorrect hex string size or invalid hex"};
 
     detail::tuple_without_skips<T...> result;

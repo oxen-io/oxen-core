@@ -163,3 +163,8 @@ endif()
 set(ethyl_ENABLE_CRYPTO_LIBRARY FALSE CACHE BOOL "" FORCE)
 add_subdirectory(ethyl)
 
+# NOTE: By default cpptrace is configured to make stack-traces using libdwarf.
+# On this codebase libdward segfaults trying to handle our stack-traces so we
+# switch to a more primitive method, addr2line which does work.
+set(CPPTRACE_GET_SYMBOLS_WITH_ADDR2LINE ON CACHE BOOL "")
+add_subdirectory(cpptrace)

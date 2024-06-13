@@ -66,6 +66,7 @@ target_link_libraries(cncrypto
     epee
     randomx
     Boost::thread
+    cpptrace::cpptrace
     sodium
   PRIVATE
     logging

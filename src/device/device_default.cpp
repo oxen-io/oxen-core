@@ -30,6 +30,7 @@
 #include "device_default.hpp"
 
 #include <sodium/crypto_generichash.h>
+#include <cpptrace/cpptrace.hpp>
 
 #include "crypto/crypto.h"
 #include "cryptonote_basic/account.h"
@@ -96,10 +97,10 @@ bool device_default::generate_chacha_key(
     return true;
 }
 bool device_default::get_public_address(cryptonote::account_public_address& pubkey) {
-    throw std::runtime_error{"device function not supported: get_public_address"};
+    throw cpptrace::runtime_error{"device function not supported: get_public_address"};
 }
 bool device_default::get_secret_keys(crypto::secret_key& viewkey, crypto::secret_key& spendkey) {
-    throw std::runtime_error{"device function not supported: get_secret_keys"};
+    throw cpptrace::runtime_error{"device function not supported: get_secret_keys"};
 }
 /* ======================================================================= */
 /*                               SUB ADDRESS                               */

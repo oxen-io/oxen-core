@@ -5,13 +5,13 @@
 #include <epee/misc_log_ex.h>
 
 #include <cstdlib>
-#include <exception>
 #include <optional>
 #include <shared_mutex>
 #include <string_view>
 #include <thread>
 #include <unordered_map>
 #include <unordered_set>
+#include <cpptrace/cpptrace.hpp>
 
 #include "common/fs.h"
 #include "common/guts.h"
@@ -151,7 +151,7 @@ std::optional<type_or_tuple<T...>> exec_and_maybe_get(SQLite::Statement& st, con
                     sqlitedb_logcat,
                     "Expected single-row result, got multiple rows from {}",
                     st.getQuery());
-            throw std::runtime_error{"DB error: expected single-row result, got multiple rows"};
+            throw cpptrace::runtime_error{"DB error: expected single-row result, got multiple rows"};
         }
         result = get<T...>(st);
     }
@@ -168,7 +168,7 @@ type_or_tuple<T...> exec_and_get(SQLite::Statement& st, const Args&... bind) {
     if (!maybe_result) {
         log::error(
                 sqlitedb_logcat, "Expected single-row result, got no rows from {}", st.getQuery());
-        throw std::runtime_error{"DB error: expected single-row result, got no rows"};
+        throw cpptrace::runtime_error{"DB error: expected single-row result, got no rows"};
     }
     return *std::move(maybe_result);
 }

@@ -35,6 +35,7 @@
 #include <algorithm>
 #include <chrono>
 #include <functional>
+#include <cpptrace/cpptrace.hpp>
 
 #include "crypto/crypto.h"
 #include "cryptonote_config.h"
@@ -1474,7 +1475,7 @@ validate_and_get_ethereum_registration(
 
     auto maybe_reg = eth_reg_tx_extract_fields(hf_version, tx);
     if (!maybe_reg)
-        throw std::runtime_error("Could not extract registration details from transaction");
+        throw cpptrace::runtime_error("Could not extract registration details from transaction");
     auto& reg = *maybe_reg;
 
     uint64_t staking_requirement = get_staking_requirement(nettype, block_height);
@@ -1501,7 +1502,7 @@ validate_and_get_ethereum_registration(
                         logcat,
                         "Invalid registration: duplicate reserved address in registration (tx {})",
                         cryptonote::get_transaction_hash(tx));
-                throw std::runtime_error("duplicate reserved address in registration");
+                throw cpptrace::runtime_error("duplicate reserved address in registration");
             }
         }
 
@@ -2136,7 +2137,7 @@ void service_node_list::verify_block(
                 alt_block ? &alt_quorums : nullptr);
 
         if (!quorum)
-            throw std::runtime_error{"Failed to get testing quorum checkpoint for {} {}"_format(
+            throw cpptrace::runtime_error{"Failed to get testing quorum checkpoint for {} {}"_format(
                     block_type, cryptonote::get_block_hash(block))};
 
         bool failed_checkpoint_verify =
@@ -2152,7 +2153,7 @@ void service_node_list::verify_block(
         }
 
         if (failed_checkpoint_verify)
-            throw std::runtime_error{"Service node checkpoint failed verification for {} {}"_format(
+            throw cpptrace::runtime_error{"Service node checkpoint failed verification for {} {}"_format(
                     block_type, cryptonote::get_block_hash(block))};
     }
 
@@ -2166,7 +2167,7 @@ void service_node_list::verify_block(
         if (alt_block) {
             cryptonote::block prev_block;
             if (!find_block_in_db(m_blockchain.get_db(), block.prev_id, prev_block))
-                throw std::runtime_error{
+                throw cpptrace::runtime_error{
                         "Alt block {} references previous block {} not available in DB."_format(
                                 cryptonote::get_block_hash(block), block.prev_id)};
 
@@ -2177,7 +2178,7 @@ void service_node_list::verify_block(
         }
 
         if (!pulse::get_round_timings(m_blockchain, height, prev_timestamp, timings))
-            throw std::runtime_error{
+            throw cpptrace::runtime_error{
                     "Failed to query the block data for Pulse timings to validate incoming {} at height {}"_format(
                             block_type, height)};
     }
@@ -2253,7 +2254,7 @@ void service_node_list::verify_block(
     }
 
     if (!result)
-        throw std::runtime_error{
+        throw cpptrace::runtime_error{
                 "Failed to verify block components for incoming {} at height {}"_format(
                         block_type, height)};
 }
@@ -2282,9 +2283,9 @@ void service_node_list::block_add(
             std::shared_ptr<const quorum> quorum =
                     get_quorum(quorum_type::pulse, block_height, false, nullptr);
             if (!quorum)
-                throw std::runtime_error{"Unexpected Pulse error: quorum was not generated"};
+                throw cpptrace::runtime_error{"Unexpected Pulse error: quorum was not generated"};
             if (quorum->validators.empty())
-                throw std::runtime_error{"Unexpected Pulse error: quorum was empty"};
+                throw cpptrace::runtime_error{"Unexpected Pulse error: quorum was empty"};
             for (size_t validator_index = 0;
                  validator_index < service_nodes::PULSE_QUORUM_NUM_VALIDATORS;
                  validator_index++) {
@@ -3088,7 +3089,7 @@ static void verify_coinbase_tx_output(
         cryptonote::account_public_address const& receiver,
         uint64_t reward) {
     if (output_index >= miner_tx.vout.size())
-        throw std::out_of_range{
+        throw cpptrace::out_of_range{
                 "Output Index: {}, indexes out of bounds in vout array with size: {}"_format(
                         output_index, miner_tx.vout.size())};
 
@@ -3099,12 +3100,12 @@ static void verify_coinbase_tx_output(
     // 1 ULP difference in the reward calculations.
     // TODO(oxen): eliminate all FP math from reward calculations
     if (!within_one(output.amount, reward))
-        throw std::runtime_error{
+        throw cpptrace::runtime_error{
                 "Service node reward amount incorrect. Should be {}, is: {}"_format(
                         cryptonote::print_money(reward), cryptonote::print_money(output.amount))};
 
     if (!std::holds_alternative<cryptonote::txout_to_key>(output.target))
-        throw std::runtime_error{"Service node output target type should be txout_to_key"};
+        throw cpptrace::runtime_error{"Service node output target type should be txout_to_key"};
 
     // NOTE: Loki uses the governance key in the one-time ephemeral key
     // derivation for both Pulse Block Producer/Queued Service Node Winner rewards
@@ -3113,13 +3114,13 @@ static void verify_coinbase_tx_output(
     cryptonote::keypair gov_key = cryptonote::get_deterministic_keypair_from_height(height);
 
     if (!crypto::generate_key_derivation(receiver.m_view_public_key, gov_key.sec, derivation))
-        throw std::runtime_error{"Failed to generate key derivation"};
+        throw cpptrace::runtime_error{"Failed to generate key derivation"};
     if (!crypto::derive_public_key(
                 derivation, output_index, receiver.m_spend_public_key, out_eph_public_key))
-        throw std::runtime_error{"Failed derive public key"};
+        throw cpptrace::runtime_error{"Failed derive public key"};
 
     if (var::get<cryptonote::txout_to_key>(output.target).key != out_eph_public_key)
-        throw std::runtime_error{
+        throw cpptrace::runtime_error{
                 "Invalid service node reward at output: {}, output key, specifies wrong key"_format(
                         output_index)};
 }
@@ -3146,7 +3147,7 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
         auto const check_block_leader_pubkey =
                 cryptonote::get_service_node_winner_from_tx_extra(miner_tx.extra);
         if (block_leader.key != check_block_leader_pubkey)
-            throw std::runtime_error{
+            throw cpptrace::runtime_error{
                     "Service node reward winner is incorrect! Expected {}, block {} hf{} has {}"_format(
                             block_leader.key,
                             height,
@@ -3179,7 +3180,7 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
                 entropy,
                 block.pulse.round);
         if (!verify_pulse_quorum_sizes(pulse_quorum))
-            throw std::runtime_error{
+            throw cpptrace::runtime_error{
                     "Pulse block received but Pulse has insufficient nodes for quorum, block hash {}, height {}"_format(
                             cryptonote::get_block_hash(block), height)};
 
@@ -3190,7 +3191,7 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
                      : verify_mode::pulse_different_block_producer;
 
         if (block.pulse.round == 0 && (mode == verify_mode::pulse_different_block_producer))
-            throw std::runtime_error{
+            throw cpptrace::runtime_error{
                     "The block producer in pulse round 0 should be the same node as the block leader: {}, actual producer: {}"_format(
                             block_leader.key, block_producer_key)};
     }
@@ -3237,7 +3238,7 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
         case verify_mode::pulse_different_block_producer: {
             auto info_it = m_state.service_nodes_infos.find(block_producer_key);
             if (info_it == m_state.service_nodes_infos.end())
-                throw std::runtime_error{
+                throw cpptrace::runtime_error{
                         "The pulse block producer for round {:d} is not current a Service Node: {}"_format(
                                 block.pulse.round, block_producer_key)};
 
@@ -3267,7 +3268,7 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
     }
 
     if (miner_tx.vout.size() != expected_vouts_size)
-        throw std::runtime_error{
+        throw cpptrace::runtime_error{
                 "Expected {} block, the miner TX specifies a different amount of outputs vs the expected: {}, miner tx outputs: {}"_format(
                         mode == verify_mode::miner                            ? "miner"sv
                         : mode == verify_mode::batched_sn_rewards             ? "batch reward"sv
@@ -3280,7 +3281,7 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
                         miner_tx.vout.size())};
 
     if (hf_version >= hf::hf16_pulse && reward_parts.base_miner != 0)
-        throw std::runtime_error{
+        throw cpptrace::runtime_error{
                 "Miner reward is incorrect expected 0 reward, block specified {}"_format(
                         cryptonote::print_money(reward_parts.base_miner))};
 
@@ -3375,19 +3376,19 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
                 const auto& batch_payment = batched_sn_payments[vout_index];
 
                 if (!std::holds_alternative<cryptonote::txout_to_key>(vout.target))
-                    throw std::runtime_error{
+                    throw cpptrace::runtime_error{
                             "Service node output target type should be txout_to_key"};
 
                 constexpr uint64_t max_amount =
                         std::numeric_limits<uint64_t>::max() / cryptonote::BATCH_REWARD_FACTOR;
                 if (vout.amount > max_amount)
-                    throw std::runtime_error{
+                    throw cpptrace::runtime_error{
                             "Batched reward payout invalid: exceeds maximum possible payout size"};
 
                 auto paid_amount = vout.amount * cryptonote::BATCH_REWARD_FACTOR;
                 total_payout_in_vouts += paid_amount;
                 if (paid_amount != batch_payment.amount)
-                    throw std::runtime_error{
+                    throw cpptrace::runtime_error{
                             "Batched reward payout incorrect: expected {}, not {}"_format(
                                     batch_payment.amount, paid_amount)};
 
@@ -3397,16 +3398,16 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
                             deterministic_keypair,
                             vout_index,
                             out_eph_public_key))
-                    throw std::runtime_error{"Failed to generate output one-time public key"};
+                    throw cpptrace::runtime_error{"Failed to generate output one-time public key"};
 
                 const auto& out_to_key = var::get<cryptonote::txout_to_key>(vout.target);
                 if (tools::view_guts(out_to_key) != tools::view_guts(out_eph_public_key))
-                    throw std::runtime_error{
+                    throw cpptrace::runtime_error{
                             "Output Ephermeral Public Key does not match (payment to wrong "
                             "recipient)"};
             }
             if (total_payout_in_vouts != total_payout_in_our_db)
-                throw std::runtime_error{
+                throw cpptrace::runtime_error{
                         "Total service node reward amount incorrect: expected {}, not {}"_format(
                                 total_payout_in_our_db, total_payout_in_vouts)};
         } break;
@@ -3455,11 +3456,11 @@ void service_node_list::alt_block_add(const cryptonote::block_add_info& info) {
     }
 
     if (!starting_state)
-        throw std::runtime_error{
+        throw cpptrace::runtime_error{
                 "Received alt block but couldn't find parent state in historical state"};
 
     if (starting_state->block_hash != block.prev_id)
-        throw std::runtime_error{
+        throw cpptrace::runtime_error{
                 "Unexpected state_t's hash: {}, does not match the block prev hash: {}"_format(
                         starting_state->block_hash, block.prev_id)};
 
@@ -4043,7 +4044,7 @@ crypto::public_key service_node_list::bls_public_key_lookup(
 
     if (!found) {
         log::error(logcat, "Could not find bls pubkey: {}", bls_pubkey);
-        throw std::runtime_error("Could not find bls key");
+        throw cpptrace::runtime_error("Could not find bls key");
     }
 
     return found_pk;
@@ -4172,7 +4173,7 @@ service_node_list::state_t::state_t(service_node_list* snl, state_serialized&& s
         block_hash{state.block_hash},
         sn_list{snl} {
     if (!sn_list)
-        throw std::logic_error("Cannot deserialize a state_t without a service_node_list");
+        throw cpptrace::logic_error("Cannot deserialize a state_t without a service_node_list");
     if (state.version == state_serialized::version_t::version_0)
         block_hash = sn_list->m_blockchain.get_block_id_by_height(height);
 

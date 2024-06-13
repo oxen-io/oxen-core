@@ -40,6 +40,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <cpptrace/cpptrace.hpp>
 
 #include "blockchain_db/blockchain_db.h"
 #include "common/boost_serialization_helper.h"
@@ -339,7 +340,7 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems() {
         start_height_options.push_back(sqlite_height);
     } else {
         if (m_nettype != network_type::FAKECHAIN)
-            throw std::logic_error("Blockchain missing SQLite Database");
+            throw cpptrace::logic_error("Blockchain missing SQLite Database");
     }
     // If the batching database falls behind it NEEDS the service node list information at that
     // point in time
@@ -531,7 +532,7 @@ bool Blockchain::init(
     m_nettype = test_options != NULL ? network_type::FAKECHAIN : nettype;
 
     if (!m_checkpoints.init(m_nettype, m_db))
-        throw std::runtime_error("Failed to initialize checkpoints");
+        throw cpptrace::runtime_error("Failed to initialize checkpoints");
 
     m_l2_tracker                          = std::make_shared<L2Tracker>(m_nettype);
     m_l2_tracker->provider.connectTimeout = 2000ms;
@@ -578,7 +579,7 @@ bool Blockchain::init(
         m_sqlite_db = std::move(sqlite_db);
     } else {
         if (m_nettype != network_type::FAKECHAIN)
-            throw std::logic_error("Blockchain missing SQLite Database");
+            throw cpptrace::logic_error("Blockchain missing SQLite Database");
     }
 
     // if the blockchain is new, add the genesis block
@@ -665,7 +666,7 @@ bool Blockchain::init(
                 m_db->pop_block(popped_block, popped_txs);
                 if (!m_service_node_list.pop_batching_rewards_block(popped_block)) {
                     log::error(logcat, "Failed to pop to batch rewards DB. throwing");
-                    throw std::runtime_error("Failed to pop to batch reward DB.");
+                    throw cpptrace::runtime_error("Failed to pop to batch reward DB.");
                 }
             }
             // anything that could cause this to throw is likely catastrophic,
@@ -856,7 +857,7 @@ block Blockchain::pop_block_from_blockchain(bool pop_batching_rewards = true) {
 
     if (pop_batching_rewards && !m_service_node_list.pop_batching_rewards_block(popped_block)) {
         log::error(logcat, "Failed to pop to batch rewards DB");
-        throw std::runtime_error("Failed to pop batch rewards DB");
+        throw cpptrace::runtime_error("Failed to pop batch rewards DB");
     }
 
     m_ons_db.block_detach(*this, m_db->height());
@@ -1011,7 +1012,7 @@ bool Blockchain::get_block_by_hash(const crypto::hash& h, block& blk, bool* orph
         if (m_db->get_alt_block(h, &data, &blob, nullptr /*checkpoint*/)) {
             if (!cryptonote::parse_and_validate_block_from_blob(blob, blk)) {
                 log::error(logcat, "Found block {} in alt chain, but failed to parse it", h);
-                throw std::runtime_error("Found block in alt chain, but failed to parse it");
+                throw cpptrace::runtime_error("Found block in alt chain, but failed to parse it");
             }
             if (orphan)
                 *orphan = true;
@@ -1502,7 +1503,7 @@ bool Blockchain::validate_miner_transaction(
             batched_sn_payments = m_sqlite_db->get_sn_payments(height);
     } else {
         if (m_nettype != network_type::FAKECHAIN)
-            throw std::logic_error("Blockchain missing SQLite Database");
+            throw cpptrace::logic_error("Blockchain missing SQLite Database");
     }
     miner_tx_info hook_data{b, reward_parts, batched_sn_payments};
     for (const auto& hook : m_validate_miner_tx_hooks) {
@@ -3170,7 +3171,7 @@ size_t get_transaction_version(const std::string& bd) {
     const char* end = begin + bd.size();
     int read = tools::read_varint(begin, end, version);
     if (read <= 0)
-        throw std::runtime_error("Internal error getting transaction version");
+        throw cpptrace::runtime_error("Internal error getting transaction version");
     return version;
 }
 //------------------------------------------------------------------
@@ -5356,7 +5357,7 @@ bool Blockchain::handle_block_to_main_chain(
         }
     } else {
         if (m_nettype != network_type::FAKECHAIN)
-            throw std::logic_error("Blockchain missing SQLite Database");
+            throw cpptrace::logic_error("Blockchain missing SQLite Database");
     }
 
     if (hf_version >= cryptonote::feature::ETH_BLS)

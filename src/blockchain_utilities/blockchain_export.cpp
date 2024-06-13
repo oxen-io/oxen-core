@@ -28,6 +28,7 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <fmt/std.h>
+#include <cpptrace/cpptrace.hpp>
 
 #include "blockchain_objects.h"
 #include "blocksdat_file.h"
@@ -41,6 +42,7 @@ namespace po = boost::program_options;
 using namespace blockchain_utils;
 
 int main(int argc, char* argv[]) {
+    cpptrace::register_terminate_handler();
     using namespace oxen;
     auto logcat = log::Cat("bcutil");
 
@@ -102,7 +104,7 @@ int main(int argc, char* argv[]) {
     } else {
         std::cerr << "Incorrect log level: " << command_line::get_arg(vm, arg_log_level).c_str()
                   << std::endl;
-        throw std::runtime_error{"Incorrect log level"};
+        throw cpptrace::runtime_error{"Incorrect log level"};
     }
     oxen::logging::init(log_file_path, log_level);
     log::warning(logcat, "Starting...");
@@ -130,7 +132,7 @@ int main(int argc, char* argv[]) {
     BlockchainDB* db = new_db();
     if (db == NULL) {
         log::error(logcat, "Failed to initialize a database");
-        throw std::runtime_error("Failed to initialize a database");
+        throw cpptrace::runtime_error("Failed to initialize a database");
     }
     log::warning(logcat, "database: LMDB");
 

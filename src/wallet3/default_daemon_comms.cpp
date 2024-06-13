@@ -4,6 +4,7 @@
 #include <cryptonote_basic/cryptonote_format_utils.h>
 
 #include <iostream>
+#include <cpptrace/cpptrace.hpp>
 
 #include "block.hpp"
 #include "block_tx.hpp"
@@ -158,7 +159,7 @@ void DefaultDaemonComms::request_top_block_info() {
                 if (not dc.skip_until("hash")) {
                     oxen::log::warning(
                             logcat, "bad response from rpc.get_height, key 'hash' missing");
-                    throw std::runtime_error(
+                    throw cpptrace::runtime_error(
                             "bad response from rpc.get_height, key 'hash' missing");
                 }
                 new_hash = tools::make_from_guts<crypto::hash>(dc.consume_string_view());
@@ -166,7 +167,7 @@ void DefaultDaemonComms::request_top_block_info() {
                 if (not dc.skip_until("height")) {
                     oxen::log::warning(
                             logcat, "bad response from rpc.get_height, key 'height' missing");
-                    throw std::runtime_error(
+                    throw cpptrace::runtime_error(
                             "bad response from rpc.get_height, key 'height' missing");
                 }
                 new_height = dc.consume_integer<int64_t>();
@@ -213,7 +214,7 @@ void DefaultDaemonComms::request_top_block_info() {
                     oxen::log::warning(
                             logcat,
                             "bad response from rpc.get_fee_estimate, key 'fee_per_byte' missing");
-                    throw std::runtime_error(
+                    throw cpptrace::runtime_error(
                             "bad response from rpc.get_fee_estimate, key 'fee_per_byte' missing");
                 }
                 new_fee_per_byte = dc.consume_integer<int64_t>();
@@ -222,7 +223,7 @@ void DefaultDaemonComms::request_top_block_info() {
                     oxen::log::warning(
                             logcat,
                             "bad response from rpc.get_fee_estimate, key 'fee_per_output' missing");
-                    throw std::runtime_error(
+                    throw cpptrace::runtime_error(
                             "bad response from rpc.get_fee_estimate, key 'fee_per_output' missing");
                 }
                 new_fee_per_output = dc.consume_integer<int64_t>();
@@ -400,20 +401,20 @@ std::future<std::string> DefaultDaemonComms::submit_transaction(
     auto req_cb = [p = std::move(p)](bool ok, std::vector<std::string> response) {
         try {
             if (not ok or response.size() != 2 or response[0] != "200")
-                throw std::runtime_error{"Unknown Error"};
+                throw cpptrace::runtime_error{"Unknown Error"};
 
             oxenc::bt_dict_consumer dc{response[1]};
             if (dc.skip_until("reason"))
-                throw std::runtime_error{
+                throw cpptrace::runtime_error{
                         "Submit Transaction rejected, reason: " + dc.consume_string()};
 
             if (not dc.skip_until("status"))
-                throw std::runtime_error{"Invalid response from daemon"};
+                throw cpptrace::runtime_error{"Invalid response from daemon"};
 
             auto status = dc.consume_string();
 
             if (status != "OK")
-                throw std::runtime_error{"Submit Transaction rejected, reason: " + status};
+                throw cpptrace::runtime_error{"Submit Transaction rejected, reason: " + status};
 
             p->set_value("OK");
 
@@ -424,7 +425,7 @@ std::future<std::string> DefaultDaemonComms::submit_transaction(
 
     std::string tx_str;
     if (not cryptonote::tx_to_blob(tx, tx_str))
-        throw std::runtime_error{"wallet daemon comms, failed to serialize transaction"};
+        throw cpptrace::runtime_error{"wallet daemon comms, failed to serialize transaction"};
 
     oxenc::bt_dict req_params_dict;
 
@@ -445,7 +446,7 @@ std::future<std::pair<std::string, crypto::hash>> DefaultDaemonComms::ons_names_
             oxenc::bt_dict_consumer dc{response[1]};
 
             if (not dc.skip_until("result"))
-                throw std::runtime_error{"Invalid response from daemon"};
+                throw cpptrace::runtime_error{"Invalid response from daemon"};
 
             auto result_list = dc.consume_list_consumer();
             auto result = result_list.consume_dict_consumer();
@@ -454,12 +455,12 @@ std::future<std::pair<std::string, crypto::hash>> DefaultDaemonComms::ons_names_
             std::string curr_owner;
 
             if (not result.skip_until("owner"))
-                throw std::runtime_error{"Invalid response from daemon"};
+                throw cpptrace::runtime_error{"Invalid response from daemon"};
 
             curr_owner = dc.consume_string();
 
             if (not result.skip_until("txid"))
-                throw std::runtime_error{"Invalid response from daemon"};
+                throw cpptrace::runtime_error{"Invalid response from daemon"};
 
             tools::load_from_hex_guts(dc.consume_string(), prev_txid);
 

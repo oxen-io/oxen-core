@@ -7,6 +7,7 @@
 #include <chrono>
 #include <type_traits>
 #include <utility>
+#include <cpptrace/cpptrace.hpp>
 
 #include "rpc/common/param_parser.hpp"
 
@@ -103,7 +104,7 @@ void parse_request(GET_TRANSACTION_POOL_STATS& pstats, rpc_input in) {
 void parse_request(HARD_FORK_INFO& hfinfo, rpc_input in) {
     get_values(in, "height", hfinfo.request.height, "version", hfinfo.request.version);
     if (hfinfo.request.height && hfinfo.request.version)
-        throw std::runtime_error{
+        throw cpptrace::runtime_error{
                 "Error: at most one of 'height'" + std::to_string(hfinfo.request.height) + "/" +
                 std::to_string(hfinfo.request.version) + " and 'version' may be specified"};
 }
@@ -132,14 +133,14 @@ void parse_request(GET_TRANSACTIONS& get, rpc_input in) {
             get.request.tx_hashes);
 
     if (get.request.memory_pool && !get.request.tx_hashes.empty())
-        throw std::runtime_error{"Error: 'memory_pool' and 'tx_hashes' are mutually exclusive"};
+        throw cpptrace::runtime_error{"Error: 'memory_pool' and 'tx_hashes' are mutually exclusive"};
 }
 void parse_request(GET_TRANSACTION_POOL& get, rpc_input in) {
     // Deprecated wrapper; GET_TRANSACTION_POOL is a no-member subclass of GET_TRANSACTIONS; it
     // works identically, except that we force `memory_pool` to true.
     parse_request(static_cast<GET_TRANSACTIONS&>(get), std::move(in));
     if (!get.request.tx_hashes.empty())
-        throw std::runtime_error{
+        throw cpptrace::runtime_error{
                 "Error: 'get_transaction_pool' does not support specifying 'tx_hashes'"};
     get.request.memory_pool = true;
 }
@@ -148,9 +149,9 @@ void parse_request(SET_LIMIT& limit, rpc_input in) {
     get_values(in, "limit_down", limit.request.limit_down, "limit_up", limit.request.limit_up);
 
     if (limit.request.limit_down < -1)
-        throw std::domain_error{"limit_down must be >= -1"};
+        throw cpptrace::domain_error{"limit_down must be >= -1"};
     if (limit.request.limit_down < -1)
-        throw std::domain_error{"limit_up must be >= -1"};
+        throw cpptrace::domain_error{"limit_up must be >= -1"};
 }
 
 void parse_request(IS_KEY_IMAGE_SPENT& spent, rpc_input in) {
@@ -167,7 +168,7 @@ void parse_request(SUBMIT_TRANSACTION& tx, rpc_input in) {
 
     if (tx_data.empty())  // required above will make sure it's specified, but doesn't guarantee
                           // against an empty value
-        throw std::domain_error{"Invalid 'tx' value: cannot be empty"};
+        throw cpptrace::domain_error{"Invalid 'tx' value: cannot be empty"};
 
     // tx can be specified as base64, hex, or binary, so try to figure out which one we have by
     // looking at the beginning.
@@ -209,14 +210,14 @@ void parse_request(SUBMIT_TRANSACTION& tx, rpc_input in) {
     }
 
     if (!good)
-        throw std::domain_error{"Invalid 'tx' value: expected hex, base64, or bytes"};
+        throw cpptrace::domain_error{"Invalid 'tx' value: expected hex, base64, or bytes"};
 }
 
 void parse_request(GET_BLOCK_HASH& bh, rpc_input in) {
     get_values(in, "heights", bh.request.heights);
 
     if (bh.request.heights.size() > bh.MAX_HEIGHTS)
-        throw std::domain_error{"Error: too many block heights requested at once"};
+        throw cpptrace::domain_error{"Error: too many block heights requested at once"};
 }
 
 void parse_request(GET_PEER_LIST& pl, rpc_input in) {
@@ -449,7 +450,7 @@ void parse_request(GET_QUORUM_STATE& qs, rpc_input in) {
         if (*qs.request.quorum_type == 255)  // backwards-compat magic value
             qs.request.quorum_type = std::nullopt;
         else if (*qs.request.quorum_type > tools::enum_count<service_nodes::quorum_type>)
-            throw std::domain_error{
+            throw cpptrace::domain_error{
                     "Quorum type specifies an invalid value: "_format(*qs.request.quorum_type)};
     }
 }

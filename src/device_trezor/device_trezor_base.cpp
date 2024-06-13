@@ -33,6 +33,8 @@
 #include "common/string_util.h"
 #include "epee/memwipe.h"
 
+#include <cpptrace/cpptrace.hpp>
+
 namespace hw::trezor {
 
 #ifdef WITH_DEVICE_TREZOR
@@ -577,7 +579,7 @@ void device_trezor_base::load_device(
         bool skip_checksum,
         bool expand) {
     if (m_features && m_features->initialized()) {
-        throw std::runtime_error(
+        throw cpptrace::runtime_error(
                 "Device is initialized already. Call device.wipe() and try again.");
     }
 

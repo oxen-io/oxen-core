@@ -32,6 +32,7 @@ add_library(mnemonics
 
 target_link_libraries(mnemonics
   PRIVATE
+    cpptrace::cpptrace
     cncrypto
     epee
     logging
