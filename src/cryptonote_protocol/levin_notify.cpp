@@ -32,10 +32,8 @@
 #include <boost/system/system_error.hpp>
 #include <chrono>
 #include <deque>
-#include <stdexcept>
-#include <cpptrace/cpptrace.hpp>
 
-#include "common/expect.h"
+#include "common/exception.h"
 #include "common/varint.h"
 #include "crypto/random.h"
 #include "cryptonote_basic/connection_context.h"
@@ -115,7 +113,7 @@ namespace {
 
         std::string fullBlob;
         if (!epee::serialization::store_t_to_binary(request, fullBlob))
-            throw cpptrace::runtime_error{"Failed to serialize to epee binary format"};
+            throw oxen::runtime_error{"Failed to serialize to epee binary format"};
 
         return fullBlob;
     }
@@ -473,7 +471,7 @@ notify::notify(
         zone_(std::make_shared<detail::zone>(
                 service, std::move(p2p), std::move(noise), is_public)) {
     if (!zone_->p2p)
-        throw cpptrace::logic_error{"cryptonote::levin::notify cannot have nullptr p2p argument"};
+        throw oxen::logic_error{"cryptonote::levin::notify cannot have nullptr p2p argument"};
 
     if (!zone_->noise.view.empty()) {
         const auto now = std::chrono::steady_clock::now();

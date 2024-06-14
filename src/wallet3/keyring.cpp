@@ -9,7 +9,7 @@
 
 #include <device/device.hpp>
 #include <stdexcept>
-#include <cpptrace/cpptrace.hpp>
+#include <common/exception.h>
 
 #include "wallet2½.hpp"
 
@@ -28,7 +28,7 @@ crypto::secret_key Keyring::generate_tx_key(cryptonote::hf hf_version) {
                 tx_key,
                 cryptonote::transaction::get_max_version_for_hf(hf_version),
                 cryptonote::txtype::standard))
-        throw cpptrace::runtime_error("Could not generate transaction secret key");
+        throw oxen::runtime_error("Could not generate transaction secret key");
 
     return tx_key;
 }
@@ -36,7 +36,7 @@ crypto::secret_key Keyring::generate_tx_key(cryptonote::hf hf_version) {
 crypto::public_key Keyring::secret_tx_key_to_public_tx_key(const crypto::secret_key a) {
     rct::key aG{};
     if (!key_device.scalarmultBase(aG, rct::sk2rct(a)))
-        throw cpptrace::runtime_error("Could not convert secret tx key to public tx key");
+        throw oxen::runtime_error("Could not convert secret tx key to public tx key");
     return rct::rct2pk(aG);
 }
 
@@ -257,7 +257,7 @@ void Keyring::sign_transaction(PendingTransaction& ptx) {
         crypto::public_key computed_output_pubkey{};
         if (!key_device.secret_key_to_public_key(output_secret_key, computed_output_pubkey) or
             (computed_output_pubkey != src_entr.key))
-            throw cpptrace::runtime_error("computed output secret key wrong, pubkey mismatch");
+            throw oxen::runtime_error("computed output secret key wrong, pubkey mismatch");
 
         // There is a input secret keys structure (inSk) that gets passed to the ringct
         // library/module and it is essentially an array of our output secret keys. It also needs to
@@ -284,7 +284,7 @@ void Keyring::sign_transaction(PendingTransaction& ptx) {
                 src_entr.output_index,
                 src_entr.subaddress_index);
         if (input_to_key.k_image != src_entr.key_image)
-            throw cpptrace::runtime_error("computed key_image wrong");
+            throw oxen::runtime_error("computed key_image wrong");
 
         // The outputs array in the VIN structure lists all the global indexs of the ring decoys,
         // it uses offsets relative to the first output to save space on chain, so they need
@@ -397,7 +397,7 @@ void Keyring::sign_transaction(PendingTransaction& ptx) {
             key_device);  // hw::device& hwdev
 
     if (not rct::verRctNonSemanticsSimple(ptx.tx.rct_signatures))
-        throw cpptrace::runtime_error(
+        throw oxen::runtime_error(
                 "RCT signing went wrong -- verRctNonSemanticsSimple returned false");
 }
 
@@ -406,7 +406,7 @@ void Keyring::sign_transaction(PendingTransaction& ptx) {
 std::vector<crypto::public_key> Keyring::get_subaddress_spend_public_keys(
         uint32_t account, uint32_t begin, uint32_t end) {
     if (begin > end)
-        throw cpptrace::runtime_error("begin > end");
+        throw oxen::runtime_error("begin > end");
 
     std::vector<crypto::public_key> pkeys;
     pkeys.reserve(end - begin + 1);
@@ -415,7 +415,7 @@ std::vector<crypto::public_key> Keyring::get_subaddress_spend_public_keys(
     ge_p3 p3;
     ge_cached cached;
     if (ge_frombytes_vartime(&p3, spend_public_key.data()) != 0)
-        throw cpptrace::runtime_error("ge_frombytes_vartime failed to convert spend public key");
+        throw oxen::runtime_error("ge_frombytes_vartime failed to convert spend public key");
     ge_p3_to_cached(&cached, &p3);
 
     for (uint32_t idx = begin; idx <= end; ++idx) {
@@ -470,7 +470,7 @@ ons::generic_signature Keyring::generate_ons_signature(
     ons::generic_signature result;
     cryptonote::address_parse_info curr_owner_parsed = {};
     if (!cryptonote::get_account_address_from_str(curr_owner_parsed, nettype, curr_owner))
-        throw cpptrace::runtime_error("Could not parse address");
+        throw oxen::runtime_error("Could not parse address");
 
     // TODO sean this should actually get it from the db
     cryptonote::subaddress_index index = {0, 0};
@@ -481,7 +481,7 @@ ons::generic_signature Keyring::generate_ons_signature(
     auto sig_data = ons::tx_extra_signature(
             encrypted_value.to_view(), new_owner, new_backup_owner, prev_txid);
     if (sig_data.empty())
-        throw cpptrace::runtime_error("Could not generate signature");
+        throw oxen::runtime_error("Could not generate signature");
 
     cryptonote::account_base account;
     account.create_from_keys(

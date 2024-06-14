@@ -61,7 +61,7 @@ class size_logger {
 #define SL(type) sl.add(#type, sizeof(type))
 
 int main(int argc, char* argv[]) {
-    cpptrace::register_terminate_handler();
+    std::set_terminate(oxen::on_terminate_handler);
     size_logger sl;
 
     tools::on_startup();

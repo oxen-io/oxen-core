@@ -31,14 +31,13 @@
 #define MONERO_PROTOCOL_H
 
 #include "device/device_cold.hpp"
+#include "common/exception.h"
 #include "messages_map.hpp"
 #include "ringct/rctTypes.h"
 #include "transport.hpp"
 #include "trezor_defs.hpp"
 #include "wallet/tx_construction_data.h"
 #include "wallet/tx_sets.h"
-
-#include <cpptrace/cpptrace.hpp>
 
 namespace hw::trezor::protocol {
 
@@ -342,7 +341,7 @@ namespace tx {
 
         bool is_simple() const {
             if (!m_ct.rv) {
-                throw cpptrace::invalid_argument("RV not initialized");
+                throw oxen::invalid_argument("RV not initialized");
             }
             auto tp = m_ct.rv->type;
             return tp == rct::RCTType::Simple;
@@ -354,7 +353,7 @@ namespace tx {
 
         bool is_bulletproof() const {
             if (!m_ct.rv) {
-                throw cpptrace::invalid_argument("RV not initialized");
+                throw oxen::invalid_argument("RV not initialized");
             }
             return rct::is_rct_bulletproof(m_ct.rv->type);
         }

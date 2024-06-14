@@ -33,8 +33,8 @@
 #include <cstddef>
 #include <mutex>
 #include <string>
-#include <cpptrace/cpptrace.hpp>
 
+#include "common/exception.h"
 #include "cryptonote_config.h"
 #include "device/device.hpp"
 #include "device/device_cold.hpp"
@@ -135,7 +135,7 @@ class device_trezor_base : public hw::core::device_default {
         static_assert(std::is_base_of_v<google::protobuf::Message, t_message>);
         const bool accepting_base = boost::is_same<google::protobuf::Message, t_message>::value;
         if (resp_types && !accepting_base) {
-            throw cpptrace::invalid_argument(
+            throw oxen::invalid_argument(
                     "Cannot specify list of accepted types and not using generic response");
         }
 

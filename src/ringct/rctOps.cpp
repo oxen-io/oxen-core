@@ -30,9 +30,12 @@
 
 #include "rctOps.h"
 
+#include <common/exception.h>
+
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "epee/misc_log_ex.h"
 #include "logging/oxen_logger.h"
+
 using namespace crypto;
 
 auto logcat = oxen::log::Cat("ringct");
@@ -41,7 +44,7 @@ auto logcat = oxen::log::Cat("ringct");
     {                                                                 \
         if (!(expr)) {                                                \
             oxen::log::warning(logcat, frmt, __VA_ARGS__);            \
-            throw cpptrace::runtime_error(fmt::format(frmt, __VA_ARGS__)); \
+            throw oxen::runtime_error(fmt::format(frmt, __VA_ARGS__)); \
         }                                                             \
     }
 

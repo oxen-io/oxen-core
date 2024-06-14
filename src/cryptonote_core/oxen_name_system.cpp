@@ -16,6 +16,7 @@
 #include <cpptrace/cpptrace.hpp>
 
 #include "common/oxen.h"
+#include "common/exception.h"
 #include "common/string_util.h"
 #include "crypto/hash.h"
 #include "cryptonote_basic/cryptonote_basic.h"
@@ -1199,7 +1200,7 @@ mapping_value::mapping_value() : buffer{0}, encrypted(false), len(0) {}
 
 std::string name_hash_bytes_to_base64(std::string_view bytes) {
     if (bytes.size() != NAME_HASH_SIZE)
-        throw cpptrace::runtime_error{"Invalid name hash: expected exactly 32 bytes"};
+        throw oxen::runtime_error{"Invalid name hash: expected exactly 32 bytes"};
     return oxenc::to_base64(bytes);
 }
 

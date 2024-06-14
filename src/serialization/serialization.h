@@ -154,8 +154,8 @@
 #include <stdexcept>
 #include <string_view>
 #include <type_traits>
-#include <cpptrace/cpptrace.hpp>
 
+#include "common/exception.h"
 #include "base.h"
 #include "epee/span.h"  // for detecting epee-wrapped byte spannable objects
 
@@ -242,7 +242,7 @@ template <class Archive, typename T, std::predicate<const T&> Predicate>
 void value(Archive& ar, T& v, Predicate test) {
     value(ar, v);
     if (Archive::is_deserializer && !test(v))
-        throw cpptrace::out_of_range{"Invalid value during deserialization"};
+        throw oxen::out_of_range{"Invalid value during deserialization"};
 }
 
 /// Serializes an integer value using varint encoding.
@@ -272,7 +272,7 @@ template <class Archive, typename T, std::predicate<const T&> Predicate>
 void varint(Archive& ar, T& val, Predicate test) {
     varint(ar, val);
     if (Archive::is_deserializer && !test(val))
-        throw cpptrace::out_of_range{"Invalid integer or enum value during deserialization"};
+        throw oxen::out_of_range{"Invalid integer or enum value during deserialization"};
 }
 
 /// Adds a key-value pair
@@ -322,7 +322,7 @@ template <class Archive>
 void done(Archive& ar) {
     if constexpr (Archive::is_deserializer)
         if (auto remaining = ar.remaining_bytes(); remaining > 0)
-            throw cpptrace::runtime_error(
+            throw oxen::runtime_error(
                     "Expected end of serialization data but not all data was consumed (" +
                     std::to_string(remaining) + ")");
 }

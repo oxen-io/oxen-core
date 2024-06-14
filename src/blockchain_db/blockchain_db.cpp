@@ -30,10 +30,9 @@
 #include "blockchain_db.h"
 
 #include <chrono>
-#include <cpptrace/cpptrace.hpp>
-
 #include "checkpoints/checkpoints.h"
 #include "common/string_util.h"
+#include "common/exception.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_basic/hardfork.h"
 #include "cryptonote_core/service_node_rules.h"
@@ -169,7 +168,7 @@ uint64_t BlockchainDB::add_block(
 
     // sanity
     if (blk.tx_hashes.size() != txs.size())
-        throw cpptrace::runtime_error("Inconsistent tx/hashes sizes");
+        throw oxen::runtime_error("Inconsistent tx/hashes sizes");
 
     auto started = std::chrono::steady_clock::now();
     crypto::hash blk_hash = get_block_hash(blk);

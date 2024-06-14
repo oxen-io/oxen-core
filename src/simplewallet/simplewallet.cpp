@@ -10128,7 +10128,7 @@ void simple_wallet::commit_or_save(
 
 //----------------------------------------------------------------------------------------------------
 int main(int argc, char* argv[]) {
-    cpptrace::register_terminate_handler();
+    std::set_terminate(oxen::on_terminate_handler);
     TRY_ENTRY();
 
     setlocale(LC_CTYPE, "");

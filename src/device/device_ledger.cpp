@@ -31,7 +31,7 @@
 #include "device_ledger.hpp"
 
 #include <oxenc/endian.h>
-#include <cpptrace/cpptrace.hpp>
+#include <common/exception.h>
 
 #include <chrono>
 
@@ -138,7 +138,7 @@ void HMACmap::find_mac(const uint8_t sec[32], uint8_t hmac[32]) {
             return;
         }
     }
-    throw cpptrace::runtime_error("Protocol error: try to send untrusted secret");
+    throw oxen::runtime_error("Protocol error: try to send untrusted secret");
 }
 
 void HMACmap::add_mac(const uint8_t sec[32], const uint8_t hmac[32]) {
@@ -717,7 +717,7 @@ bool device_ledger::connect() {
     else if (auto* tcp = dynamic_cast<io::ledger_tcp*>(hw_device.get()))
         tcp->connect();
     else
-        throw cpptrace::logic_error{"Invalid ledger hardware configure"};
+        throw oxen::logic_error{"Invalid ledger hardware configure"};
     reset();
 
     check_network_type();
@@ -767,10 +767,10 @@ void device_ledger::check_network_type() {
     auto device_nettype = static_cast<cryptonote::network_type>(buffer_recv[4]);
     log::debug(logcat, "Ledger wallet is set to {} {}", coin, nettype_string(device_nettype));
     if (coin != COIN_NETWORK)
-        throw cpptrace::runtime_error{
+        throw oxen::runtime_error{
                 "Invalid wallet app: expected " + std::string{COIN_NETWORK} + ", got " + coin};
     if (device_nettype != nettype)
-        throw cpptrace::runtime_error{
+        throw oxen::runtime_error{
                 "Ledger wallet is set to the wrong network type: expected " +
                 nettype_string(nettype) + " but the device is set to " +
                 nettype_string(device_nettype)};
@@ -1209,7 +1209,7 @@ crypto::secret_key device_ledger::generate_keys(
     auto locks = tools::unique_locks(device_locker, command_locker);
     int offset;
     if (recover) {
-        throw cpptrace::runtime_error("device generate key does not support recover");
+        throw oxen::runtime_error("device generate key does not support recover");
     }
 
 #ifdef DEBUG_HWDEVICE
@@ -1721,7 +1721,7 @@ void device_ledger::get_transaction_prefix_hash(
     } catch (const std::exception& e) {
         auto err = "unable to serialize transaction prefix: {}"_format(e.what());
         log::error(logcat, "{}", err);
-        throw cpptrace::runtime_error{e.what()};
+        throw oxen::runtime_error{e.what()};
     }
 
     unsigned char* send = buffer_send + set_command_header_noopt(INS_PREFIX_HASH, 1);

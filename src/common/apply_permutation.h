@@ -34,8 +34,8 @@
 
 #include <functional>
 #include <vector>
-#include <cpptrace/cpptrace.hpp>
 
+#include "exception.h"
 #include "logging/oxen_logger.h"
 
 namespace tools {
@@ -46,7 +46,7 @@ void apply_permutation(std::vector<size_t> permutation, const F& swap) {
     for (size_t n = 0; n < permutation.size(); ++n)
         if (std::find(permutation.begin(), permutation.end(), n) == permutation.end()) {
             log::error(globallogcat, "Bad permutation");
-            throw cpptrace::runtime_error("Bad permutation");
+            throw oxen::runtime_error("Bad permutation");
             return;
         }
 
@@ -66,7 +66,7 @@ template <typename T>
 void apply_permutation(const std::vector<size_t>& permutation, std::vector<T>& v) {
     if (permutation.size() != v.size()) {
         log::error(globallogcat, "Mismatched vector sizes");
-        throw cpptrace::runtime_error("Mismatched vector sizes");
+        throw oxen::runtime_error("Mismatched vector sizes");
         return;
     }
     apply_permutation(permutation, [&v](size_t i0, size_t i1) { std::swap(v[i0], v[i1]); });

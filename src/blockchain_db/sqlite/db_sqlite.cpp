@@ -9,7 +9,7 @@
 //
 // 2. Redistributions in binary form must reproduce the above copyright notice, this list
 //    of conditions and the following disclaimer in the documentation and/or other
-//    materials provided with the distribution.
+//    materials prooxenvided with the distcribution.
 //
 // 3. Neither the name of the copyright holder nor the names of its contributors may be
 //    used to endorse or promote products derived from this software without specific
@@ -30,7 +30,7 @@
 #include <fmt/core.h>
 #include <sodium.h>
 #include <sqlite3.h>
-#include <cpptrace/cpptrace.hpp>
+#include <common/exception.h>
 
 #include <cassert>
 
@@ -172,7 +172,7 @@ void BlockchainSQLite::upgrade_schema() {
             constexpr auto error =
                     "Batching db update to add offsets failed: not all addresses were converted";
             log::error(logcat, error);
-            throw cpptrace::runtime_error{error};
+            throw oxen::runtime_error{error};
         }
 
         transaction.commit();
@@ -497,7 +497,7 @@ bool BlockchainSQLite::reward_handler(
     // From here on we calculate everything in milli-atomic OXEN (i.e. thousanths of an atomic
     // OXEN) so that our integer math has minimal loss from integer division.
     if (block.reward > std::numeric_limits<uint64_t>::max() / BATCH_REWARD_FACTOR)
-        throw cpptrace::logic_error{"Reward distribution amount is too large"};
+        throw oxen::logic_error{"Reward distribution amount is too large"};
 
     uint64_t block_reward = block.reward * BATCH_REWARD_FACTOR;
     uint64_t service_node_reward =
@@ -511,7 +511,7 @@ bool BlockchainSQLite::reward_handler(
     // Step 1: Pay out the block producer their tx fees (note that, unlike the below, this applies
     // even if the SN isn't currently payable).
     if (block_reward < service_node_reward && m_nettype != cryptonote::network_type::FAKECHAIN)
-        throw cpptrace::logic_error{"Invalid payment: block reward is too small"};
+        throw oxen::logic_error{"Invalid payment: block reward is too small"};
 
     std::lock_guard a_s_lock{address_str_cache_mutex};
 

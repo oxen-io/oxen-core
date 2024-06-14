@@ -6,7 +6,7 @@
 #include <fmt/core.h>
 
 #include <iostream>
-#include <cpptrace/cpptrace.hpp>
+#include <common/exception.h>
 
 #include "common/guts.h"
 #include "wallet3/block.hpp"
@@ -24,7 +24,7 @@ void WalletDB::create_schema(cryptonote::network_type nettype) {
                             cryptonote::network_type_to_string(nettype),
                             cryptonote::network_type_to_string(stored_nettype));
             // TODO: log error as well
-            throw cpptrace::invalid_argument(err);
+            throw oxen::invalid_argument(err);
         }
         return;
     }
@@ -248,7 +248,7 @@ void WalletDB::add_address(int32_t major_index, int32_t minor_index, const std::
 
         // FIXME: better error type
         if (existing_addr != address)
-            throw cpptrace::invalid_argument(
+            throw oxen::invalid_argument(
                     "WalletDB address insertion, new address mismatch with existing address.");
     } else {
         prepared_exec(
@@ -269,7 +269,7 @@ std::string WalletDB::get_address(int32_t major_index, int32_t minor_index) {
     if (addr)
         return *addr;
 
-    throw cpptrace::invalid_argument(
+    throw oxen::invalid_argument(
             "WalletDB address fetch, address for subaddress indices not found in database.");
     return "";  // compilers can be dumb
 }
@@ -462,7 +462,7 @@ void WalletDB::save_keys(const std::shared_ptr<WalletKeys> keys) {
              tools::view_guts(keys->view_privkey())) ||
             (tools::view_guts(maybe_db_keys->view_pubkey()) !=
              tools::view_guts(keys->view_pubkey())))
-            throw cpptrace::runtime_error("provided keys do not match database file");
+            throw oxen::runtime_error("provided keys do not match database file");
     }
 
     set_metadata_blob_guts("spend_priv", keys->spend_privkey());

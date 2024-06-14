@@ -36,14 +36,13 @@
 #include <boost/algorithm/string.hpp>
 #include <cstdio>
 #include <fstream>
-#include <cpptrace/cpptrace.hpp>
 
 #include "blocks/blocks.h"
 #include "bootstrap_file.h"
 #include "bootstrap_serialization.h"
+#include "common/exception.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_core/cryptonote_core.h"
-#include "cryptonote_core/uptime_proof.h"
 #include "cryptonote_protocol/quorumnet.h"
 #include "epee/misc_log_ex.h"
 #include "logging/oxen_logger.h"
@@ -311,14 +310,14 @@ int import_from_file(
         try {
             serialization::parse_binary(std::string_view{buffer1, sizeof(chunk_size)}, chunk_size);
         } catch (const std::exception& e) {
-            throw cpptrace::runtime_error("Error in deserialization of chunk size: "s + e.what());
+            throw oxen::runtime_error("Error in deserialization of chunk size: "s + e.what());
         }
         log::debug(logcat, "chunk_size: {}", chunk_size);
 
         if (chunk_size > BUFFER_SIZE) {
             log::warning(
                     logcat, "WARNING: chunk_size {} > BUFFER_SIZE {}", chunk_size, BUFFER_SIZE);
-            throw cpptrace::runtime_error("Aborting: chunk size exceeds buffer size");
+            throw oxen::runtime_error("Aborting: chunk size exceeds buffer size");
         }
         if (chunk_size > CHUNK_SIZE_WARNING_THRESHOLD) {
             log::info(logcat, "NOTE: chunk_size {} > {}", chunk_size, CHUNK_SIZE_WARNING_THRESHOLD);
@@ -363,7 +362,7 @@ int import_from_file(
             try {
                 serialization::parse_binary(std::string_view{buffer_block, chunk_size}, bp);
             } catch (const std::exception& e) {
-                throw cpptrace::runtime_error("Error in deserialization of chunk"s + e.what());
+                throw oxen::runtime_error("Error in deserialization of chunk"s + e.what());
             }
 
             int display_interval = 1000;
@@ -502,7 +501,7 @@ quitting:
 }
 
 int main(int argc, char* argv[]) {
-    cpptrace::register_terminate_handler();
+    std::set_terminate(oxen::on_terminate_handler);
     TRY_ENTRY();
 
     epee::string_tools::set_module_name_and_folder(argv[0]);
@@ -616,7 +615,7 @@ int main(int argc, char* argv[]) {
     } else {
         std::cerr << "Incorrect log level: " << command_line::get_arg(vm, arg_log_level).c_str()
                   << std::endl;
-        throw cpptrace::runtime_error{"Incorrect log level"};
+        throw oxen::runtime_error{"Incorrect log level"};
     }
 
     oxen::logging::init(log_file_path, log_level);

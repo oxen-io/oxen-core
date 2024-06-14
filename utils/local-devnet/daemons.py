@@ -68,7 +68,7 @@ class RPCDaemon:
         if self.proc and self.proc.poll() is None:
             raise RuntimeError("Cannot start process that is already running!")
         self.proc = subprocess.Popen(self.arguments(),
-                stdin=subprocess.DEVNULL, stdout=sout, stderr=subprocess.DEVNULL)
+                stdin=subprocess.DEVNULL, stdout=sout, stderr=sys.stderr)
         self.terminated = False
 
 

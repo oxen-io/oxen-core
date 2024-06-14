@@ -32,8 +32,9 @@
 // N-quorum establish connections to each other.  The patterns here were determined by the
 // utils/generate-quorum-matrix.py script.
 
+#include <common/exception.h>
+
 #include <array>
-#include <cpptrace/cpptrace.hpp>
 
 namespace quorumnet {
 
@@ -49,7 +50,7 @@ class quorum_conn_iterator {
     quorum_conn_iterator(const bool* flags_, int N_, bool outgoing_ = true) :
             flags{flags_}, i{0}, N{N_}, step{outgoing_ ? 1 : N} {
         if (flags == nullptr && N != 0)
-            throw cpptrace::domain_error("Invalid/unsupported quorum size (" + std::to_string(N) + ")");
+            throw oxen::domain_error("Invalid/unsupported quorum size (" + std::to_string(N) + ")");
         if (!flags[0] && N > 0)
             ++*this;
     }

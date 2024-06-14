@@ -31,7 +31,7 @@
 
 #pragma once
 #include <utility>
-#include <cpptrace/cpptrace.hpp>
+#include <common/exception.h>
 
 #include "serialization.h"
 
@@ -53,7 +53,7 @@ void serialize_value(Archive& ar, std::pair<F, S>& p) {
     size_t cnt;
     auto arr = ar.begin_array(cnt);
     if (!Archive::is_serializer && cnt != 2)
-        throw cpptrace::runtime_error(
+        throw oxen::runtime_error(
                 "Serialization failed: expected pair, found " + std::to_string(cnt) + " values");
 
     detail::serialize_pair_element(ar, p.first);

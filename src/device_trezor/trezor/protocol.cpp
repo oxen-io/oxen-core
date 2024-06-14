@@ -31,13 +31,13 @@
 
 #include <common/apply_permutation.h>
 #include <common/json_util.h>
+#include <common/exception.h>
 #include <crypto/hmac-keccak.h>
 #include <ringct/bulletproofs.h>
 #include <ringct/rctSigs.h>
 #include <sodium.h>
 #include <sodium/crypto_aead_chacha20poly1305.h>
 #include <sodium/crypto_verify_32.h>
-#include <cpptrace/cpptrace.hpp>
 
 #include <set>
 #include <unordered_map>
@@ -68,10 +68,10 @@
                 VAL(name, type, jtype);                                                        \
                 field_##name##_found = true;                                                   \
             } else {                                                                           \
-                throw cpptrace::invalid_argument("Field " #name " found in JSON, but not " #jtype); \
+                throw oxen::invalid_argument("Field " #name " found in JSON, but not " #jtype); \
             }                                                                                  \
         } else if (mandatory) {                                                                \
-            throw cpptrace::invalid_argument("Field " #name " not found in JSON");                  \
+            throw oxen::invalid_argument("Field " #name " not found in JSON");                  \
         }                                                                                      \
     while (0)
 
@@ -95,7 +95,7 @@ std::string key_to_string(const ::rct::key& key) {
 
 void string_to_key(::crypto::ec_scalar& key, const std::string& str) {
     if (str.size() != sizeof(key.data)) {
-        throw cpptrace::invalid_argument(
+        throw oxen::invalid_argument(
                 std::string("Key has to have ") + std::to_string(sizeof(key.data)) + " B");
     }
     memcpy(key.data, str.data(), sizeof(key.data));
@@ -103,7 +103,7 @@ void string_to_key(::crypto::ec_scalar& key, const std::string& str) {
 
 void string_to_key(::crypto::ec_point& key, const std::string& str) {
     if (str.size() != sizeof(key.data)) {
-        throw cpptrace::invalid_argument(
+        throw oxen::invalid_argument(
                 std::string("Key has to have ") + std::to_string(sizeof(key.data)) + " B");
     }
     memcpy(key.data, str.data(), sizeof(key.data));
@@ -111,7 +111,7 @@ void string_to_key(::crypto::ec_point& key, const std::string& str) {
 
 void string_to_key(::rct::key& key, const std::string& str) {
     if (str.size() != sizeof(key.bytes)) {
-        throw cpptrace::invalid_argument(
+        throw oxen::invalid_argument(
                 std::string("Key has to have ") + std::to_string(sizeof(key.bytes)) + " B");
     }
     memcpy(key.bytes, str.data(), sizeof(key.bytes));
@@ -350,7 +350,7 @@ namespace tx {
             std::optional<bool> is_subaddr) {
         ::crypto::public_key spend{}, view{};
         if (spend_key.size() != 32 || view_key.size() != 32) {
-            throw cpptrace::invalid_argument("Public keys have invalid sizes");
+            throw oxen::invalid_argument("Public keys have invalid sizes");
         }
 
         memcpy(spend.data, spend_key.data(), 32);
@@ -414,7 +414,7 @@ namespace tx {
         std::string sep = is_iv ? "sig-iv" : "sig-key";
         std::string idx_data = tools::get_varint_data(idx);
         if (idx_data.size() > 4) {
-            throw cpptrace::invalid_argument("index is too big");
+            throw oxen::invalid_argument("index is too big");
         }
 
         keccak_init(&ctx);
@@ -497,7 +497,7 @@ namespace tx {
 
             } else if (rsig_type == rct::RangeProofType::PaddedBulletproof) {
                 if (num_outputs > BULLETPROOF_MAX_OUTPUTS) {
-                    throw cpptrace::invalid_argument(
+                    throw oxen::invalid_argument(
                             "BP padded can support only BULLETPROOF_MAX_OUTPUTS "
                             "statements");
                 }
@@ -515,7 +515,7 @@ namespace tx {
                 amount_batched += batch_size;
 
             } else {
-                throw cpptrace::invalid_argument("Unknown rsig type");
+                throw oxen::invalid_argument("Unknown rsig type");
             }
         }
     }
@@ -662,7 +662,7 @@ namespace tx {
             fee -= cur_out.amount;
         }
         if (fee < 0) {
-            throw cpptrace::invalid_argument("Fee cannot be negative");
+            throw oxen::invalid_argument("Fee cannot be negative");
         }
 
         tsx_data.set_fee(static_cast<google::protobuf::uint64>(fee));
@@ -1078,7 +1078,7 @@ namespace tx {
             auto& cout_key = ack->cout_key();
             for (auto& cur : m_ct.couts) {
                 if (cur.size() != crypto::chacha::IV_SIZE + 32) {
-                    throw cpptrace::invalid_argument("Encrypted cout has invalid length");
+                    throw oxen::invalid_argument("Encrypted cout has invalid length");
                 }
 
                 char buff[32];
@@ -1182,9 +1182,9 @@ namespace tx {
 
         // The contents should be JSON if the wallet follows the new format.
         if (json.Parse(data.c_str()).HasParseError()) {
-            throw cpptrace::invalid_argument("Data parsing error");
+            throw oxen::invalid_argument("Data parsing error");
         } else if (!json.IsObject()) {
-            throw cpptrace::invalid_argument("Data parsing error - not an object");
+            throw oxen::invalid_argument("Data parsing error - not an object");
         }
 
         GET_FIELD_FROM_JSON(json, version, int, Int, true, -1);
@@ -1194,7 +1194,7 @@ namespace tx {
         GET_STRING_FROM_JSON(json, tx_prefix_hash, std::string, false, std::string());
 
         if (field_version != 1) {
-            throw cpptrace::invalid_argument("Unknown version");
+            throw oxen::invalid_argument("Unknown version");
         }
 
         res.salt1 = field_salt1;

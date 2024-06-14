@@ -3,7 +3,7 @@
 #include <ethyl/utils.hpp>
 #include <common/oxen.h>
 #include <common/string_util.h>
-#include <cpptrace/cpptrace.hpp>
+#include <common/exception.h>
 
 #include "crypto/crypto.h"
 #include "cryptonote_config.h"
@@ -21,7 +21,7 @@ static auto logcat = oxen::log::Cat("l2_tracker");
 
 TransactionType getLogType(const ethyl::LogEntry& log) {
     if (log.topics.empty()) {
-        throw cpptrace::runtime_error("No topics in log entry");
+        throw oxen::runtime_error("No topics in log entry");
     }
     // keccak256('NewServiceNode(uint64,address,(uint256,uint256),(uint256,uint256,uint256,uint16),(address,uint256)[])')
     if (log.topics[0] == "0xe82ed1bfc15e6602fba1a19273171c8a63c1d40b0e0117be4598167b8655498f") {
@@ -81,12 +81,12 @@ TransactionStateChangeVariant getLogTransaction(const ethyl::LogEntry& log) {
 
             fee = tools::decode_integer_be(fee256);
             if (fee > cryptonote::STAKING_FEE_BASIS)
-                throw cpptrace::invalid_argument{
+                throw oxen::invalid_argument{
                     "Invalid NewServiceNode data: fee must be in [0, {}]"_format(cryptonote::STAKING_FEE_BASIS)};
             auto num_contributors = tools::decode_integer_be(c_len);
             if (tools::decode_integer_be(c_size) != 64 ||
                 contrib_hex.size() != 2 * num_contributors * (32 + 32))
-                throw cpptrace::invalid_argument{
+                throw oxen::invalid_argument{
                         "Invalid NewServiceNode data: invalid contributor data"};
 
             contributors.resize(num_contributors);

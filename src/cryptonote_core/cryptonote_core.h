@@ -25,11 +25,11 @@
 #include <ctime>
 #include <future>
 #include <mutex>
-#include <cpptrace/cpptrace.hpp>
 
 #include "blockchain.h"
 #include "bls/bls_aggregator.h"
 #include "common/command_line.h"
+#include "common/exception.h"
 #include "crypto/crypto.h"
 #include "crypto/hash.h"
 #include "cryptonote_basic/connection_context.h"
@@ -753,7 +753,7 @@ class core : public i_miner_handler {
     /// node.
     BLSSigner& get_bls_signer() {
         if (!m_bls_signer)
-            throw cpptrace::logic_error{"Not a service node: no BLS Signer available"};
+            throw oxen::logic_error{"Not a service node: no BLS Signer available"};
         return *m_bls_signer;
     }
 

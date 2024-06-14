@@ -177,7 +177,7 @@ static bool generate_multisig(
 }
 
 int main(int argc, char* argv[]) {
-    cpptrace::register_terminate_handler();
+    std::set_terminate(oxen::on_terminate_handler);
     TRY_ENTRY();
 
     po::options_description desc_params(wallet_args::tr("Wallet options"));

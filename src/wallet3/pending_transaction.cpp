@@ -3,7 +3,7 @@
 #include "oxen_economy.h"
 #include "transaction_constructor.hpp"
 
-#include <cpptrace/cpptrace.hpp>
+#include "common/exception.h"
 
 namespace wallet {
 PendingTransaction::PendingTransaction(
@@ -71,7 +71,7 @@ size_t PendingTransaction::get_tx_weight(int64_t n_inputs) const {
 
     size_t n_outputs = recipients.size() + 1;  // Recipients plus change
     if (n_outputs == 0)
-        throw cpptrace::runtime_error{
+        throw oxen::runtime_error{
                 "Get Transaction Weight called on a transaction with no recipients"};
 
     size += 1 + 6;                                            // tx prefix, first few bytes
