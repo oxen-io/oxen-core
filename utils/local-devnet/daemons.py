@@ -241,7 +241,7 @@ class Daemon(RPCDaemon):
     def ping(self, *, storage=True, lokinet=True):
         """Sends fake storage server and lokinet pings to the running oxend"""
         if storage:
-            self.json_rpc("storage_server_ping", { "version_major": 2, "version_minor": 1, "version_patch": 0 })
+            self.json_rpc("storage_server_ping", { "version": [2, 1, 0], "https_port": 1111, "omq_port": 1112, "pubkey_ed25519": self.get_service_keys().ed25519_pubkey})
         if lokinet:
             self.json_rpc("lokinet_ping", { "version": [9,9,9] })
 
