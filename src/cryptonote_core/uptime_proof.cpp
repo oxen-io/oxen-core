@@ -3,8 +3,8 @@
 #include <oxenc/bt_producer.h>
 
 #include "common/guts.h"
-#include "common/string_util.h"
 #include "common/exception.h"
+#include "bls/bls_signer.h"
 #include "crypto/crypto.h"
 #include "cryptonote_config.h"
 #include "epee/string_tools.h"
@@ -32,7 +32,8 @@ Proof::Proof(
         const std::array<uint16_t, 3> ss_version,
         uint16_t quorumnet_port,
         const std::array<uint16_t, 3> lokinet_version,
-        const service_nodes::service_node_keys& keys) :
+        const service_nodes::service_node_keys& keys,
+        const BLSSigner& bls_signer) :
         version{OXEN_VERSION},
         storage_server_version{ss_version},
         lokinet_version{lokinet_version},
@@ -47,7 +48,7 @@ Proof::Proof(
 
     if (hardfork == feature::ETH_TRANSITION) {
         assert(keys.pub_bls);
-        pop_bls = keys.bls_signer->signHash(crypto::keccak(keys.pub_bls, keys.pub));
+        pop_bls = bls_signer.signHash(crypto::keccak(keys.pub_bls, keys.pub));
     }
 
     serialized_proof = bt_encode_uptime_proof(hardfork);

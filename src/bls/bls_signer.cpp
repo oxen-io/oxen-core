@@ -47,7 +47,7 @@ crypto::hash BLSSigner::buildTagHash(std::string_view baseTag, cryptonote::netwo
             ethyl::utils::fromHexString(config.ETHEREUM_REWARDS_CONTRACT));
 }
 
-crypto::hash BLSSigner::buildTagHash(std::string_view baseTag) {
+crypto::hash BLSSigner::buildTagHash(std::string_view baseTag) const {
     return buildTagHash(baseTag, nettype);
 }
 
@@ -55,22 +55,22 @@ std::string BLSSigner::buildTagHex(std::string_view baseTag, cryptonote::network
     return tools::hex_guts(buildTagHash(baseTag, nettype));
 }
 
-std::string BLSSigner::buildTagHex(std::string_view baseTag) {
+std::string BLSSigner::buildTagHex(std::string_view baseTag) const {
     return buildTagHex(baseTag, nettype);
 }
 
-bls::Signature BLSSigner::signHashSig(const crypto::hash& hash) {
+bls::Signature BLSSigner::signHashSig(const crypto::hash& hash) const {
     bls::Signature sig;
     secretKey.signHash(sig, hash.data(), hash.size());
     return sig;
 }
 
-crypto::bls_signature BLSSigner::signHash(const crypto::hash& hash) {
+crypto::bls_signature BLSSigner::signHash(const crypto::hash& hash) const {
     return bls_utils::to_crypto_signature(signHashSig(hash));
 }
 
 crypto::bls_signature BLSSigner::proofOfPossession(
-        crypto::eth_address sender, const crypto::public_key& serviceNodePubkey) {
+        crypto::eth_address sender, const crypto::public_key& serviceNodePubkey) const {
     auto tag = buildTagHash(proofOfPossessionTag);
     auto hash = crypto::keccak(tag, getCryptoPubkey(), sender, serviceNodePubkey);
 
@@ -79,22 +79,22 @@ crypto::bls_signature BLSSigner::proofOfPossession(
     return bls_utils::to_crypto_signature(sig);
 }
 
-std::string BLSSigner::getPublicKeyHex() {
+std::string BLSSigner::getPublicKeyHex() const {
     auto pk = getCryptoPubkey();
     return oxenc::to_hex(pk.begin(), pk.end());
 }
 
-bls::PublicKey BLSSigner::getPublicKey() {
+bls::PublicKey BLSSigner::getPublicKey() const {
     bls::PublicKey publicKey;
     secretKey.getPublicKey(publicKey);
     return publicKey;
 }
 
-crypto::bls_public_key BLSSigner::getCryptoPubkey() {
+crypto::bls_public_key BLSSigner::getCryptoPubkey() const {
     return bls_utils::to_crypto_pubkey(getPublicKey());
 }
 
-crypto::bls_secret_key BLSSigner::getCryptoSeckey() {
+crypto::bls_secret_key BLSSigner::getCryptoSeckey() const {
     std::string sec_key = secretKey.getStr(mcl::IoSerialize | mcl::IoBigEndian);
     assert(sec_key.size() == sizeof(crypto::bls_secret_key));
 

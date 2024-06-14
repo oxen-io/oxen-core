@@ -47,11 +47,11 @@ extern "C" {
 
 #include "blockchain.h"
 #include "bls/bls_utils.h"
+#include "bls/bls_signer.h"
 #include "common/exception.h"
 #include "common/i18n.h"
 #include "common/lock.h"
 #include "common/random.h"
-#include "common/scoped_message_writer.h"
 #include "common/util.h"
 #include "cryptonote_basic/hardfork.h"
 #include "cryptonote_basic/tx_extra.h"
@@ -67,7 +67,6 @@ extern "C" {
 #include "service_node_rules.h"
 #include "service_node_swarm.h"
 #include "uptime_proof.h"
-#include "version.h"
 
 using cryptonote::hf;
 namespace feature = cryptonote::feature;
@@ -3620,7 +3619,8 @@ uptime_proof::Proof service_node_list::generate_uptime_proof(
         uint16_t storage_omq_port,
         std::array<uint16_t, 3> ss_version,
         uint16_t quorumnet_port,
-        std::array<uint16_t, 3> lokinet_version) const {
+        std::array<uint16_t, 3> lokinet_version,
+        const BLSSigner& signer) const {
     const auto& keys = *m_service_node_keys;
     return uptime_proof::Proof{
             hardfork,
@@ -3630,7 +3630,8 @@ uptime_proof::Proof service_node_list::generate_uptime_proof(
             ss_version,
             quorumnet_port,
             lokinet_version,
-            keys};
+            keys,
+            signer};
 }
 
 template <typename T>

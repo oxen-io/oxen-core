@@ -35,7 +35,6 @@
 #include <string_view>
 #include <span>
 
-#include "bls/bls_signer.h"
 #include "common/util.h"
 #include "crypto/crypto.h"
 #include "cryptonote_basic/cryptonote_basic.h"
@@ -460,7 +459,6 @@ struct service_node_keys {
     /// staking contract.
     crypto::bls_secret_key key_bls;
     crypto::bls_public_key pub_bls;
-    std::shared_ptr<BLSSigner> bls_signer;
 };
 
 class service_node_list {
@@ -625,7 +623,8 @@ class service_node_list {
             uint16_t storage_omq_port,
             std::array<uint16_t, 3> ss_version,
             uint16_t quorumnet_port,
-            std::array<uint16_t, 3> lokinet_version) const;
+            std::array<uint16_t, 3> lokinet_version,
+            const BLSSigner& signer) const;
 
     bool handle_uptime_proof(
             std::unique_ptr<uptime_proof::Proof> proof,

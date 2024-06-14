@@ -988,7 +988,7 @@ bool core::init_service_keys() {
                     sk = bls_signer->getCryptoSeckey();
                     pk = bls_signer->getCryptoPubkey();
                 },
-                keys.bls_signer))
+                m_bls_signer))
         return false;
 
     // Legacy primary SN key file; we only load this if it exists, otherwise we use `key_ed25519`
@@ -2090,6 +2090,7 @@ bool core::submit_uptime_proof() {
     if (!m_service_node)
         return true;
 
+    assert(m_bls_signer.get() && "Service Nodes have a BLS signer defined");
     try {
         cryptonote_connection_context fake_context{};
         bool relayed;
@@ -2103,7 +2104,8 @@ bool core::submit_uptime_proof() {
                 storage_omq_port(),
                 ss_version,
                 m_quorumnet_port,
-                lokinet_version);
+                lokinet_version,
+                *m_bls_signer.get());
         auto req = proof.generate_request(hf_version);
         relayed = get_protocol()->relay_uptime_proof(req, fake_context);
 

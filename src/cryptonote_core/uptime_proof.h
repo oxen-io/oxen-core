@@ -4,10 +4,9 @@
 #include "cryptonote_protocol/cryptonote_protocol_defs.h"
 
 namespace service_nodes {
-
 struct service_node_keys;
-
 }
+class BLSSigner;
 
 namespace uptime_proof {
 
@@ -64,7 +63,8 @@ class Proof {
           std::array<uint16_t, 3> ss_version,
           uint16_t quorumnet_port,
           std::array<uint16_t, 3> lokinet_version,
-          const service_nodes::service_node_keys& keys);
+          const service_nodes::service_node_keys& keys,
+          const BLSSigner& bls_signer);
 
     Proof(cryptonote::hf hardfork, std::string_view serialized_proof);
     std::string bt_encode_uptime_proof(cryptonote::hf hardfork) const;

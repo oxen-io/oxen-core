@@ -31,22 +31,22 @@ class BLSSigner {
     explicit BLSSigner(
             const cryptonote::network_type nettype, const crypto::bls_secret_key* key = nullptr);
 
-    bls::Signature signHashSig(const crypto::hash& hash);
-    crypto::bls_signature signHash(const crypto::hash& hash);
+    bls::Signature signHashSig(const crypto::hash& hash) const;
+    crypto::bls_signature signHash(const crypto::hash& hash) const;
     crypto::bls_signature proofOfPossession(
-            crypto::eth_address sender, const crypto::public_key& serviceNodePubkey);
-    std::string getPublicKeyHex();
-    bls::PublicKey getPublicKey();
+            crypto::eth_address sender, const crypto::public_key& serviceNodePubkey) const;
+    std::string getPublicKeyHex() const;
+    bls::PublicKey getPublicKey() const;
 
     // Gets the public key as our crypto::bls_public_key type
-    crypto::bls_public_key getCryptoPubkey();
+    crypto::bls_public_key getCryptoPubkey() const;
     // Gets the secret key as our crypto::bls_secret_key type
-    crypto::bls_secret_key getCryptoSeckey();
+    crypto::bls_secret_key getCryptoSeckey() const;
 
     static std::string buildTagHex(std::string_view baseTag, cryptonote::network_type nettype);
     static crypto::hash buildTagHash(std::string_view baseTag, cryptonote::network_type nettype);
-    std::string buildTagHex(std::string_view baseTag);
-    crypto::hash buildTagHash(std::string_view baseTag);
+    std::string buildTagHex(std::string_view baseTag) const;
+    crypto::hash buildTagHash(std::string_view baseTag) const;
 
     static constexpr inline std::string_view proofOfPossessionTag = "BLS_SIG_TRYANDINCREMENT_POP";
     static constexpr inline std::string_view rewardTag = "BLS_SIG_TRYANDINCREMENT_REWARD";
