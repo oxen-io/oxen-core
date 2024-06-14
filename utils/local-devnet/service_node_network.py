@@ -211,7 +211,6 @@ class SNNetwork:
             self.mike.transfer(wallet, coins(11))
         self.sync_nodes(self.mine(1), timeout=120)
 
-
         self.print_wallet_balances()
 
         vprint("Sending fake lokinet/ss pings")
@@ -220,7 +219,6 @@ class SNNetwork:
 
         all_service_nodes_proofed = lambda sn: all(x['quorumnet_port'] > 0 for x in
                 sn.json_rpc("get_n_service_nodes", {"fields":{"quorumnet_port":True}}).json()['result']['service_node_states'])
-
 
         vprint("Waiting for proofs to propagate: ", end="", flush=True)
         for sn in self.sns:
@@ -238,7 +236,7 @@ class SNNetwork:
         # This commented out code will register the last SN through Bobs wallet (Has not done any others)
         # and also get 9 other wallets to contribute the rest of the node with a 10% operator fee
         self.bob.register_sn_for_contributions(sn=self.sns[-1], cut=10, amount=coins(28), staking_requirement=self.sns[0].get_staking_requirement())
-        self.sync_nodes(self.mine(10), timeout=120)
+        self.sync_nodes(self.mine(40), timeout=120)
         self.print_wallet_balances()
         for wallet in self.extrawallets:
             wallet.contribute_to_sn(self.sns[-1], coins(8))
@@ -247,7 +245,7 @@ class SNNetwork:
         for sn in self.sns:
             sn.send_uptime_proof()
 
-        # Collect all BLS public-keys, note all SNs up to this point (HF <= feature::ETH_BLS) had a 100 OXEN staking requirement
+        # Collect all BLS public-keys, note all SNs up to this point (HF < feature::ETH_BLS) had a 100 OXEN staking requirement
         bls_pubkey_list = []
         for sn in self.sns:
             bls_pubkey = sn.get_service_keys().bls_pubkey
@@ -299,7 +297,7 @@ class SNNetwork:
         vprint(f"Waking up after sleeping for {sleep_time}s, blockchain height is {self.ethsns[0].height()}");
 
         # Claim rewards for Address
-        rewards = self.ethsns[0].get_bls_rewards(hardhat_account)
+        rewards = self.ethsns[0].get_bls_rewards(hardhat_account_no_0x)
         vprint(rewards)
         rewardsAccount = rewards["result"]["address"]
         assert rewardsAccount.lower() == hardhat_account.lower(), f"Rewards account '{rewardsAccount.lower()}' does not match hardhat account '{hardhat_account.lower()}'. We have the private key for the hardhat account and use it to claim rewards from the contract"
@@ -444,6 +442,8 @@ class SNNetwork:
             n.terminate()
         for w in self.wallets:
             w.terminate()
+        if self.anvil is not None:
+            self.anvil.terminate()
 
 snn = None
 
