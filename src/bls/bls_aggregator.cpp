@@ -45,11 +45,11 @@ BLSRegistrationResponse BLSAggregator::registration(
         const crypto::eth_address& sender, const crypto::public_key& serviceNodePubkey) const {
     auto& signer = core.get_bls_signer();
     return BLSRegistrationResponse{
-            signer.getCryptoPubkey(),
-            signer.proofOfPossession(sender, serviceNodePubkey),
-            sender,
-            serviceNodePubkey,
-            crypto::null<crypto::ed25519_signature>};
+            .bls_pubkey = signer.getCryptoPubkey(),
+            .proof_of_possession = signer.proofOfPossession(sender, serviceNodePubkey),
+            .address = sender,
+            .sn_pubkey = serviceNodePubkey,
+            .ed_signature = crypto::null<crypto::ed25519_signature>};
 }
 
 void BLSAggregator::nodesRequest(

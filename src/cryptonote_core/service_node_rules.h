@@ -2,7 +2,7 @@
 
 #include <chrono>
 
-#include "crypto/crypto.h"
+#include "common/exception.h"
 #include "cryptonote_config.h"
 #include "oxen_economy.h"
 #include "service_node_voting.h"
@@ -10,8 +10,8 @@
 namespace service_nodes {
 
 // validate_registration* and convert_registration_args functions throws this on error:
-struct invalid_registration : std::invalid_argument {
-    using std::invalid_argument::invalid_argument;
+struct invalid_registration : oxen::invalid_argument {
+    using oxen::invalid_argument::invalid_argument;
 };
 
 inline constexpr size_t PULSE_QUORUM_ENTROPY_LAG =

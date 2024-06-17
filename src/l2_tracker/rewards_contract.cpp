@@ -74,16 +74,16 @@ static std::string log_new_service_node_tx(const NewServiceNodeTx& item, std::st
     fmt::format_to(
             std::back_inserter(buffer),
             "New service node TX components were:\n"
-            "- BLS Public Key: {}\n"
-            "- ETH Address:    {}\n"
-            "- SN Public Key:  {}\n"
-            "- SN Signature:   {}\n"
-            "- Fee:            {}\n"
-            "- Contributor(s): {}\n",
-            item.eth_address,
+            "- BLS Public Key:    {}\n"
+            "- ETH Address:       {}\n"
+            "- SN Public Key:     {}\n"
+            "- ED25519 Signature: {}\n"
+            "- Fee:               {}\n"
+            "- Contributor(s):    {}\n",
             item.bls_pubkey,
+            item.eth_address,
             item.sn_pubkey,
-            item.sn_signature,
+            item.ed_signature,
             item.fee,
             item.contributors_size);
 
@@ -157,7 +157,7 @@ TransactionStateChangeVariant getLogTransaction(const ethyl::LogEntry& log) {
                     item.eth_address,
                     item.bls_pubkey,
                     item.sn_pubkey,
-                    item.sn_signature,
+                    item.ed_signature,
                     fee256,
                     c_offset,
                     c_len,

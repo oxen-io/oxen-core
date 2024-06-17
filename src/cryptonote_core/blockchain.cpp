@@ -2032,13 +2032,13 @@ void Blockchain::add_ethereum_transactions_to_tx_pool() {
                             contributors.emplace_back(contributor.addr, contributor.amount);
 
                         tx_extra_ethereum_new_service_node new_service_node = {
-                                0,
-                                arg.bls_pubkey,
-                                arg.eth_address,
-                                arg.sn_pubkey,
-                                arg.sn_signature,
-                                arg.fee,
-                                contributors};
+                                .version = 0,
+                                .bls_pubkey = arg.bls_pubkey,
+                                .eth_address = arg.eth_address,
+                                .service_node_pubkey = arg.sn_pubkey,
+                                .signature = arg.sn_signature,
+                                .fee = arg.fee,
+                                .contributors = contributors};
                         cryptonote::add_new_service_node_to_tx_extra(tx.extra, new_service_node);
 
                     } else if constexpr (std::is_same_v<T, ServiceNodeLeaveRequestTx>) {
