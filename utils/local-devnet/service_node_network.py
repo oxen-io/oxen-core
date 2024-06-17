@@ -6,16 +6,14 @@ from ethereum import ServiceNodeRewardContract
 
 import pathlib
 import argparse
-import random
 import time
 import shutil
 import os
 from   os import path
 import asyncio
-import glob
 from   datetime import datetime
-import uuid
 import subprocess
+import atexit
 
 datadirectory="testdata"
 
@@ -481,6 +479,7 @@ def run():
         if args.eth_sn_contracts_dir is None:
             raise RuntimeError('--eth-sn-contracts-dir must be specified when --anvil-path is set')
 
+    atexit.register(cleanup)
     global snn, verbose
     if not snn:
         if path.isdir(datadirectory+'/'):
@@ -513,9 +512,10 @@ def run():
         print(f'!!! AsyncApplication.run: got KeyboardInterrupt during start')
     finally:
         loop.close()
-        if snn is not None and snn.anvil is not None:
-            snn.anvil.terminate()
 
+def cleanup():
+    if snn is not None and snn.anvil is not None:
+        snn.anvil.terminate()
 
 # Shortcuts for accessing the named wallets
 def alice(net):

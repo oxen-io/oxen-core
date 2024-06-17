@@ -31,10 +31,10 @@ class ServiceNodeRewardContract:
         self.web3         = Web3(Web3.HTTPProvider(self.provider_url))
 
         self.contract_address = self.getContractDeployedInLatestBlock()
-        self.contract = self.web3.eth.contract(address=self.contract_address, abi=contract_abi)
-        self.acc = self.web3.eth.account.from_key(self.private_key)
+        self.contract         = self.web3.eth.contract(address=self.contract_address, abi=contract_abi)
+        self.acc              = self.web3.eth.account.from_key(self.private_key)
 
-        self.foundation_pool_address = self.contract.functions.foundationPool().call();
+        self.foundation_pool_address  = self.contract.functions.foundationPool().call();
         self.foundation_pool_contract = self.web3.eth.contract(address=self.foundation_pool_address, abi=foundation_pool_abi)
 
         # NOTE: Start the rewards contract
@@ -42,9 +42,9 @@ class ServiceNodeRewardContract:
             "from": self.acc.address,
             'nonce': self.web3.eth.get_transaction_count(self.acc.address)})
         signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.acc.key)
-        tx_hash = self.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
+        tx_hash   = self.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
 
-        self.erc20_address = self.contract.functions.designatedToken().call()
+        self.erc20_address  = self.contract.functions.designatedToken().call()
         self.erc20_contract = self.web3.eth.contract(address=self.erc20_address, abi=erc20_contract_abi)
 
         # NOTE: Approve an amount to be sent from the hardhat account to the contract
@@ -52,7 +52,18 @@ class ServiceNodeRewardContract:
             "from": self.acc.address,
             'nonce': self.web3.eth.get_transaction_count(self.acc.address)})
         signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.acc.key)
-        tx_hash = self.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
+        tx_hash   = self.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
+
+        # SENT Contract Address deployed to: 0x5FbDB2315678afecb367f032d93F642f64180aa3
+
+        address_check_err_msg = ("If this assert triggers, the rewards contract ABI has been "
+        "changed OR we're reusing a wallet and creating the contract with a different nonce. The "
+        "ABI in this script is hardcoded to the instance of the contract with that hash. Verify "
+        "and re-update the ABI if necessary and any auxiliary contracts if the ABI has changed or "
+        "that the wallets are _not_ being reused.")
+
+        assert self.contract_address.lower()        == "0x5FC8d32690cc91D4c39d9d3abcBD16989F875707".lower(), (f"{address_check_err_msg}\n\nAddress was: {self.contract_address}")
+        assert self.foundation_pool_address.lower() == "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0".lower(), (f"{address_check_err_msg}\n\nAddress was: {self.foundation_pool_address}")
 
     def call_function(self, function_name, *args, **kwargs):
         contract_function = self.contract.functions[function_name](*args)
