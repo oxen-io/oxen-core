@@ -75,8 +75,18 @@ class SNNetwork:
                 raise RuntimeError('Anvil path \'{}\' specified but does not exist. Exiting'.format(anvil_path))
 
         # Verify private Ethereum blockchain is reachable
-        eth_chain_id = ethereum.eth_chainId()
-        assert eth_chain_id == 31337, 'Private Ethereum instance did not return correct chain ID {}'.format(eth_chain_id)
+        verify_private_blockchain_attempts = 4
+        while verify_private_blockchain_attempts > 0:
+            try:
+                eth_chain_id = ethereum.eth_chainId()
+                assert eth_chain_id == 31337, 'Private Ethereum instance did not return correct chain ID {}'.format(eth_chain_id)
+            except RuntimeError:
+                verify_private_blockchain_attempts -= 1
+                time.sleep(0.25)
+                if verify_private_blockchain_attempts == 0:
+                    raise
+            else:
+                break
 
         # Deploy smart contracts from eth-sn-contracts (if specified)
         if eth_sn_contracts_dir is not None:
@@ -95,8 +105,8 @@ class SNNetwork:
         nodeopts = dict(oxend=str(self.oxen_bin_dir / 'oxend'), datadir=datadir)
 
         self.ethsns = [Daemon(service_node=True, **nodeopts) for _ in range(1)]
-        self.sns = [Daemon(service_node=True, **nodeopts) for _ in range(sns)]
-        self.nodes = [Daemon(**nodeopts) for _ in range(nodes)]
+        self.sns    = [Daemon(service_node=True, **nodeopts) for _ in range(sns)]
+        self.nodes  = [Daemon(**nodeopts) for _ in range(nodes)]
 
         self.all_nodes = self.sns + self.nodes + self.ethsns
 
@@ -124,7 +134,6 @@ class SNNetwork:
                 k = (i + j) % len(self.all_nodes)
                 if i != k:
                     self.all_nodes[i].add_peer(self.all_nodes[k])
-
 
         vprint("Starting new oxend service nodes with RPC on {} ports".format(self.sns[0].listen_ip), end="")
         for sn in self.sns:
@@ -475,7 +484,7 @@ def run():
     global snn, verbose
     if not snn:
         if path.isdir(datadirectory+'/'):
-            shutil.rmtree(datadirectory+'/', ignore_errors=False, onerror=None)
+            shutil.rmtree(datadirectory+'/')
         vprint("new SNN")
         snn = SNNetwork(oxen_bin_dir=args.oxen_bin_dir,
                         anvil_path=args.anvil_path,
@@ -504,6 +513,8 @@ def run():
         print(f'!!! AsyncApplication.run: got KeyboardInterrupt during start')
     finally:
         loop.close()
+        if snn is not None and snn.anvil is not None:
+            snn.anvil.terminate()
 
 
 # Shortcuts for accessing the named wallets
