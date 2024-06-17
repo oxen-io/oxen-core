@@ -1,5 +1,6 @@
 #pragma once
 #include <crypto/crypto.h>
+#include <oxen_economy.h>
 
 #include <ethyl/logs.hpp>
 #include <ethyl/provider.hpp>
@@ -26,7 +27,8 @@ struct NewServiceNodeTx {
     crypto::public_key sn_pubkey;
     crypto::ed25519_signature sn_signature;
     uint64_t fee;
-    std::vector<Contributor> contributors;
+    std::array<Contributor, oxen::MAX_CONTRIBUTORS_HF19> contributors;
+    size_t contributors_size;
 };
 
 struct ServiceNodeLeaveRequestTx {
@@ -66,7 +68,7 @@ struct ContractServiceNode {
     crypto::bls_public_key pubkey;
     uint64_t leaveRequestTimestamp;
     uint64_t deposit;
-    std::array<Contributor, 10> contributors;
+    std::array<Contributor, oxen::MAX_CONTRIBUTORS_HF19> contributors;
     size_t contributorsSize;
 };
 
