@@ -344,12 +344,16 @@ ContractServiceNode RewardsContract::serviceNodes(
     std::string blockNumArg = blockNumber ? "0x{:x}"_format(*blockNumber) : "latest";
     nlohmann::json callResult = provider.callReadFunctionJSON(callData, blockNumArg);
     auto callResultHex = callResult.get<std::string_view>();
+    if (callResultHex.starts_with("0x") || callResultHex.starts_with("0X"))
+        callResultHex.remove_prefix(2);
 
     // NOTE: The ServiceNode struct is a dynamic type (because its child `Contributor` field is
     // dynamic) hence the offset to the struct is encoded in the first 32 byte element.
-    auto [sn_data_offset] = tools::split_hex_into<u256, tools::ignore>(callResultHex);
-    auto sn_data = callResultHex.substr(tools::decode_integer_be(sn_data_offset));
-    auto [next, prev, op_addr, pubkey, leaveRequestTimestamp, deposit, contr_offset] = tools::split_hex_into<
+    std::string_view sn_data_offset_hex =
+            tools::string_safe_substr(callResultHex, /*pos*/ 0, /*size*/ 64);
+    auto sn_data_offset_bytes = tools::make_from_hex_guts<u256>(sn_data_offset_hex);
+    auto sn_data = callResultHex.substr(tools::decode_integer_be(sn_data_offset_bytes) * 2);
+    auto [next, prev, op_addr, pubkey, leaveRequestTimestamp, deposit, contr_offset, remainder] = tools::split_hex_into<
             u256,
             u256,
             skip<12>,
@@ -358,7 +362,7 @@ ContractServiceNode RewardsContract::serviceNodes(
             u256,
             u256,
             u256,
-            tools::ignore>(sn_data);
+            std::string_view>(sn_data);
 
     ContractServiceNode result{};
     result.good = false; // until proven otherwise
@@ -369,8 +373,8 @@ ContractServiceNode RewardsContract::serviceNodes(
     result.leaveRequestTimestamp = tools::decode_integer_be(leaveRequestTimestamp);
     result.deposit = tools::decode_integer_be(deposit);
 
-    auto contrib_data = sn_data.substr(tools::decode_integer_be(contr_offset));
-    auto [contrib_len] = tools::split_hex_into<u256, tools::ignore>(contrib_data);
+    auto contrib_data = sn_data.substr(tools::decode_integer_be(contr_offset) * 2);
+    auto [contrib_len, remainder2] = tools::split_hex_into<u256, std::string_view>(contrib_data);
 
     // NOTE: Start parsing the contributors blobs
     if (auto contributorSize = tools::decode_integer_be(contrib_len);contributorSize <= result.contributors.max_size())

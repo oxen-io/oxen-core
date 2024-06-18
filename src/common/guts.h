@@ -11,6 +11,7 @@
 #include <type_traits>
 #include <utility>
 
+#include "common/format.h"
 #include "common/exception.h"
 #include "epee/span.h"  // epee
 
@@ -65,7 +66,7 @@ template <safe_to_memcpy T, byte_spannable Spannable>
 T make_from_guts(const Spannable& s) {
     std::span<const typename Spannable::value_type> span{s};
     if (s.size() != sizeof(T))
-        throw oxen::runtime_error{"Cannot reconstitute type: wrong data size for type"};
+        throw oxen::runtime_error{"Cannot reconstitute type: wrong data size ({} vs {}) for type"_format(s.size(), sizeof(T))};
     T x;
     std::memcpy(static_cast<void*>(&x), s.data(), sizeof(T));
     return x;
@@ -278,10 +279,15 @@ constexpr detail::tuple_without_skips<T...> split_hex_into(std::string_view hex_
 
     constexpr auto min_size = 2 * (detail::split_guts_piece_size<T>() + ...);
     if ((detail::final_is_string_view<T...> ? hex_in.size() < min_size
-                                            : hex_in.size() != min_size) ||
-        !oxenc::is_hex(hex_in))
+                                            : hex_in.size() != min_size)) {
         throw oxen::runtime_error{
-                "Invalid split_hex_into string input: incorrect hex string size or invalid hex"};
+                "Invalid split_hex_into string input: incorrect hex string size (hex_in {}, min_size {})"_format(hex_in.size(), min_size)};
+    }
+
+    if (!oxenc::is_hex(hex_in)) {
+        throw oxen::runtime_error{
+                "Invalid split_hex_into string input: invalid hex characters encountered"};
+    }
 
     detail::tuple_without_skips<T...> result;
     detail::load_split_tuple_hex<0, T...>(result, hex_in);

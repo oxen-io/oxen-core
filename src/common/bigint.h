@@ -36,7 +36,7 @@ template <size_t Bytes>
 uint64_t decode_integer_be(const std::array<std::byte, Bytes>& be_val) {
     for (size_t i = 0; i < Bytes - 8; i++)
         if (be_val[i] != std::byte{0})
-            throw oxen::overflow_error{"integer too large for u64"};
+            throw oxen::overflow_error{"Big endian integer too large for u64"};
     return oxenc::load_big_to_host<uint64_t>(be_val.data() + (be_val.size() - 8));
 }
 
@@ -47,7 +47,7 @@ template <size_t Bytes>
 uint64_t decode_integer_le(const std::array<std::byte, Bytes>& le_val) {
     for (size_t i = 8; i < Bytes; i++)
         if (le_val[i] != std::byte{0})
-            throw oxen::overflow_error{"integer too large for u64"};
+            throw oxen::overflow_error{"Little endian integer too large for u64"};
     return oxenc::load_little_to_host<uint64_t>(le_val.data());
 }
 
