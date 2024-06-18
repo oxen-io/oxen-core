@@ -2036,7 +2036,7 @@ void Blockchain::add_ethereum_transactions_to_tx_pool() {
                                 .bls_pubkey = arg.bls_pubkey,
                                 .eth_address = arg.eth_address,
                                 .service_node_pubkey = arg.sn_pubkey,
-                                .signature = arg.sn_signature,
+                                .signature = arg.ed_signature,
                                 .fee = arg.fee,
                                 .contributors = contributors};
                         cryptonote::add_new_service_node_to_tx_extra(tx.extra, new_service_node);

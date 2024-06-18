@@ -369,6 +369,55 @@ std::optional<registration_details> reg_tx_extract_fields(const cryptonote::tran
     return reg;
 }
 
+static std::string log_registration_details(cryptonote::network_type nettype, const registration_details& reg)
+{
+    fmt::memory_buffer buffer{};
+    fmt::format_to(
+            std::back_inserter(buffer),
+            "- SN Pubkey:       {}\n"
+            "- Reserved(s):     {}\n",
+            reg.service_node_pubkey,
+            reg.reserved.size());
+
+    for (size_t index = 0; index < reg.reserved.size(); index++) {
+        const contribution& contrib = reg.reserved[index];
+        std::string address = cryptonote::get_account_address_as_str(nettype, /*subaddress*/ false, contrib.first);
+        fmt::format_to(
+                std::back_inserter(buffer),
+                "  - {:02} [{}, {}]\n",
+                index,
+                address,
+                contrib.second);
+    }
+
+    fmt::format_to(
+            std::back_inserter(buffer),
+            "- Uses Portions:   {}\n"
+            "- Signature:       {}\n"
+            "- Contribution(s): {}\n",
+            reg.uses_portions,
+            reg.ed_signature,
+            reg.eth_contributions.size());
+
+    for (size_t index = 0; index < reg.eth_contributions.size(); index++) {
+        const eth_contribution& contrib = reg.eth_contributions[index];
+        fmt::format_to(
+                std::back_inserter(buffer),
+                "  - {:02} [{}, {}]\n",
+                index,
+                contrib.first,
+                contrib.second);
+    }
+
+    fmt::format_to(
+            std::back_inserter(buffer),
+            "- BLS Pubkey:      {}\n",
+            reg.bls_pubkey);
+
+    std::string result = fmt::to_string(buffer);
+    return result;
+}
+
 std::optional<registration_details> eth_reg_tx_extract_fields(
         hf hf_version, const cryptonote::transaction& tx) {
     cryptonote::tx_extra_ethereum_new_service_node registration;
@@ -514,15 +563,27 @@ crypto::hash get_registration_hash(const registration_details& registration) {
 }
 
 void validate_registration_signature(const registration_details& registration) {
-    auto hash = get_registration_hash(registration);
     if (!crypto::check_key(registration.service_node_pubkey))
         throw invalid_registration{"Service Node Key is not a valid public key ({})"_format(
                 registration.service_node_pubkey)};
 
-    if (!crypto::check_signature(hash, registration.service_node_pubkey, registration.signature))
-        throw invalid_registration{
-                "Registration signature verification failed for pubkey/hash: {}/{}"_format(
-                        registration.service_node_pubkey, hash)};
+    if (registration.uses_portions || registration.hf < static_cast<uint64_t>(cryptonote::feature::ETH_BLS)) {
+        auto hash = get_registration_hash(registration);
+        if (!crypto::check_signature(hash, registration.service_node_pubkey, registration.signature))
+            throw invalid_registration{
+                    "Registration signature verification failed for pubkey/hash: {}/{}"_format(
+                            registration.service_node_pubkey, hash)};
+    } else {
+        auto reg_msg = get_registration_message_for_signing(registration);
+        if (crypto_sign_ed25519_verify_detached(registration.signature.data(),
+                                                reg_msg.data(),
+                                                reg_msg.size(),
+                                                registration.service_node_pubkey.data()) != 0) {
+            throw invalid_registration{
+                    "Registration signature verification failed for pubkey: {}"_format(
+                            registration.service_node_pubkey)};
+        }
+    }
 }
 
 struct parsed_tx_contribution {
@@ -1497,11 +1558,11 @@ validate_and_get_ethereum_registration(
         auto& [addr, amount] = *it;
         for (auto it2 = std::next(it); it2 != reg.eth_contributions.end(); ++it2) {
             if (it2->first == addr) {
-                log::info(
-                        logcat,
-                        "Invalid registration: duplicate reserved address in registration (tx {})",
-                        cryptonote::get_transaction_hash(tx));
-                throw oxen::runtime_error("duplicate reserved address in registration");
+                throw oxen::runtime_error(
+                        "Invalid registration: Duplicate reserved address in registration in "
+                        "transaction '{}':\n{}"_format(
+                        cryptonote::get_transaction_hash(tx),
+                        log_registration_details(nettype, reg)));
             }
         }
 

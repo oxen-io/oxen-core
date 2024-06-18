@@ -243,8 +243,7 @@ bool TransactionReviewSession::processNewServiceNodeTx(
                 it->bls_pubkey,
                 it->eth_address,
                 it->sn_pubkey);
-        if (it->bls_pubkey == bls_pubkey && it->eth_address == eth_address &&
-            it->sn_pubkey == service_node_pubkey) {
+        if (it->bls_pubkey == bls_pubkey && it->eth_address == eth_address && it->sn_pubkey == service_node_pubkey) {
             new_service_nodes.erase(it);
             return true;
         }

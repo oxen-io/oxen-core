@@ -85,9 +85,9 @@ static std::string log_new_service_node_tx(const NewServiceNodeTx& item, std::st
             item.sn_pubkey,
             item.ed_signature,
             item.fee,
-            item.contributors_size);
+            item.contributors.size());
 
-    for (size_t index = 0; index < item.contributors_size; index++) {
+    for (size_t index = 0; index < item.contributors.size(); index++) {
         const Contributor& contributor = item.contributors[index];
         fmt::format_to(std::back_inserter(buffer), "  - {:02} [address: {}, amount: {}]\n", index, contributor.addr, contributor.amount);
     }
@@ -182,11 +182,11 @@ TransactionStateChangeVariant getLogTransaction(const ethyl::LogEntry& log) {
             // NOTE: Verify that the number of contributors in the blob is
             // within maximum range
             uint64_t num_contributors = tools::decode_integer_be(c_len);
-            if (num_contributors > item.contributors.max_size()) {
+            if (num_contributors > oxen::MAX_CONTRIBUTORS_HF19) {
                 throw oxen::invalid_argument("Invalid NewServiceNode data: {}\n{}"_format(
                         log_more_contributors_than_allowed(
                                 num_contributors,
-                                item.contributors.max_size(),
+                                oxen::MAX_CONTRIBUTORS_HF19,
                                 item.bls_pubkey,
                                 log.blockNumber,
                                 /*index*/ std::optional<uint64_t>()),
@@ -200,6 +200,7 @@ TransactionStateChangeVariant getLogTransaction(const ethyl::LogEntry& log) {
                         "received 0\n{}"
                         ""_format(log_new_service_node_tx(item, log.data)));
             }
+            item.contributors.reserve(num_contributors);
 
             // NOTE: Verify that the offset to the dynamic part of the
             // contributors array is correct.
@@ -232,7 +233,7 @@ TransactionStateChangeVariant getLogTransaction(const ethyl::LogEntry& log) {
             // TODO: Validate the amount, can't be 0, should be min contribution. Is this done in
             // the SNL? Maybe.
             for (size_t index = 0; index < num_contributors; index++) {
-                auto& [addr, amt] = item.contributors[item.contributors_size++];
+                auto& [addr, amt] = item.contributors.emplace_back();
                 u256 amt256;
                 std::tie(addr, amt256, contrib_hex) = tools::
                         split_hex_into<skip<12>, crypto::eth_address, u256, std::string_view>(
