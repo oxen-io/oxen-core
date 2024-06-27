@@ -92,7 +92,7 @@ static std::string log_new_service_node_tx(const NewServiceNodeTx& item, std::st
         fmt::format_to(std::back_inserter(buffer), "  - {:02} [address: {}, amount: {}]\n", index, contributor.addr, contributor.amount);
     }
 
-    fmt::format_to(std::back_inserter(buffer), "\nThe raw blob was (32 byte chunks/line):\n\n", hex);
+    fmt::format_to(std::back_inserter(buffer), "\nThe raw blob was (32 byte chunks/line):\n\n");
     std::string_view it = hex;
     if (it.starts_with("0x") || it.starts_with("0X"))
         it.remove_prefix(2);
@@ -107,8 +107,9 @@ static std::string log_new_service_node_tx(const NewServiceNodeTx& item, std::st
     return result;
 }
 
-static std::string log_service_node_blob(const ContractServiceNode& result, std::string_view hex) {
-    return "Service node blob components were:\n"
+static std::string log_service_node_blob(const ContractServiceNode& blob, std::string_view hex) {
+    fmt::memory_buffer buffer{};
+    fmt::format_to(std::back_inserter(buffer), "Service node blob components were:\n"
                 "\n"
                 "  - next:                   {}\n"
                 "  - prev:                   {}\n"
@@ -118,15 +119,27 @@ static std::string log_service_node_blob(const ContractServiceNode& result, std:
                 "  - deposit:                {}\n"
                 "  - num contributors:       {}\n"
                 "\n"
-                "The raw blob was:\n\n{}"_format(
-                result.next,
-                result.prev,
-                result.operatorAddr,
-                result.pubkey,
-                result.leaveRequestTimestamp,
-                result.deposit,
-                result.contributorsSize,
-                hex);
+                "The raw blob was (32 byte chunks/line):\n\n",
+                blob.next,
+                blob.prev,
+                blob.operatorAddr,
+                blob.pubkey,
+                blob.leaveRequestTimestamp,
+                blob.deposit,
+                blob.contributorsSize);
+
+    std::string_view it = hex;
+    if (it.starts_with("0x") || it.starts_with("0X"))
+        it.remove_prefix(2);
+
+    while (it.size()) {
+        std::string_view chunk = tools::string_safe_substr(it, 0, 64);  // Grab 32 byte chunk
+        fmt::format_to(std::back_inserter(buffer), "  {}\n", chunk);    // Output the chunk
+        it = tools::string_safe_substr(it, 64, it.size());              // Advance the it
+    }
+
+    std::string result = fmt::to_string(buffer);
+    return result;
 }
 
 TransactionStateChangeVariant getLogTransaction(const ethyl::LogEntry& log) {
@@ -376,8 +389,12 @@ ContractServiceNode RewardsContract::serviceNodes(
     auto contrib_data = sn_data.substr(tools::decode_integer_be(contr_offset) * 2);
     auto [contrib_len, remainder2] = tools::split_hex_into<u256, std::string_view>(contrib_data);
 
+    // NOTE: Set the contrib_data to point to directly after the 32 byte
+    // contrib_len field (e.g. the payload of the contrib_data).
+    contrib_data = remainder2;
+
     // NOTE: Start parsing the contributors blobs
-    if (auto contributorSize = tools::decode_integer_be(contrib_len);contributorSize <= result.contributors.max_size())
+    if (auto contributorSize = tools::decode_integer_be(contrib_len); contributorSize <= result.contributors.max_size())
         result.contributorsSize = contributorSize;
     else {
         oxen::log::error(
