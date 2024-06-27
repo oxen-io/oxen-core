@@ -157,7 +157,16 @@ void BLSAggregator::get_reward_balance(oxenmq::Message& m) {
     // endian integer value.
     auto& signer = core.get_bls_signer();
     const auto tag = signer.buildTagHash(signer.rewardTag);
-    const auto sig = signer.signHash(keccak(tag, eth_addr, tools::encode_integer_be<32>(amount)));
+
+    // TODO(doyle): Pass in a array of spans to avoid having to do this allocation.
+    std::array<std::byte, 32> amount_be = tools::encode_integer_be<32>(amount);
+
+    std::vector<uint8_t> msg;
+    msg.reserve(tag.size() + eth_addr.size() + amount_be.size());
+    msg.insert(msg.end(), tag.begin(), tag.end());
+    msg.insert(msg.end(), eth_addr.begin(), eth_addr.end());
+    msg.insert(msg.end(), reinterpret_cast<uint8_t *>(amount_be.begin()), reinterpret_cast<uint8_t *>(amount_be.end()));
+    const auto sig = signer.signSig2(msg);
 
     oxenc::bt_dict_producer d;
     // Address requesting balance
@@ -332,7 +341,13 @@ void BLSAggregator::get_exit(oxenmq::Message& m) {
 
     auto& signer = core.get_bls_signer();
     const auto tag = signer.buildTagHash(signer.removalTag);
-    const auto sig = signer.signHash(keccak(tag, exiting_pk));
+
+    // TODO(doyle): Pass in a array of spans to avoid having to do this allocation.
+    std::vector<uint8_t> msg;
+    msg.reserve(tag.size() + exiting_pk.size());
+    msg.insert(msg.end(), tag.begin(), tag.end());
+    msg.insert(msg.end(), exiting_pk.begin(), exiting_pk.end());
+    const auto sig = signer.signSig2(msg);
 
     oxenc::bt_dict_producer d;
     // exiting BLS pubkey:
@@ -359,7 +374,13 @@ void BLSAggregator::get_liquidation(oxenmq::Message& m) {
 
     auto& signer = core.get_bls_signer();
     const auto tag = signer.buildTagHash(signer.liquidateTag);
-    const auto sig = signer.signHash(keccak(tag, liquidating_pk));
+
+    // TODO(doyle): Pass in a array of spans to avoid having to do this allocation.
+    std::vector<uint8_t> msg;
+    msg.reserve(tag.size() + liquidating_pk.size());
+    msg.insert(msg.end(), tag.begin(), tag.end());
+    msg.insert(msg.end(), liquidating_pk.begin(), liquidating_pk.end());
+    const auto sig = signer.signSig2(msg);
 
     oxenc::bt_dict_producer d;
     // BLS key of the node being liquidated:

@@ -262,6 +262,9 @@ class SNNetwork:
         self.servicenodecontract.seedPublicKeyList(bls_pubkey_list)
         vprint("Seeded BLS public keys into contract. Contract has {} SNs".format(self.servicenodecontract.numberServiceNodes()))
 
+        # Start the rewards contract after seeding the BLS public keys
+        self.servicenodecontract.start()
+
         # Pull out some useful keys to local variables
         sn0_pubkey            = self.ethsns[0].get_service_keys().pubkey
         hardhat_account       = self.servicenodecontract.hardhatAccountAddress()

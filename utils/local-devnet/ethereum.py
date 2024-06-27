@@ -37,13 +37,7 @@ class ServiceNodeRewardContract:
         self.foundation_pool_address  = self.contract.functions.foundationPool().call();
         self.foundation_pool_contract = self.web3.eth.contract(address=self.foundation_pool_address, abi=foundation_pool_abi)
 
-        # NOTE: Start the rewards contract
-        unsent_tx = self.contract.functions.start().build_transaction({
-            "from": self.acc.address,
-            'nonce': self.web3.eth.get_transaction_count(self.acc.address)})
-        signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.acc.key)
-        tx_hash   = self.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
-
+        # NOTE: Setup ERC20 contract
         self.erc20_address  = self.contract.functions.designatedToken().call()
         self.erc20_contract = self.web3.eth.contract(address=self.erc20_address, abi=erc20_contract_abi)
 
@@ -55,7 +49,6 @@ class ServiceNodeRewardContract:
         tx_hash   = self.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
 
         # SENT Contract Address deployed to: 0x5FbDB2315678afecb367f032d93F642f64180aa3
-
         address_check_err_msg = ("If this assert triggers, the rewards contract ABI has been "
         "changed OR we're reusing a wallet and creating the contract with a different nonce. The "
         "ABI in this script is hardcoded to the instance of the contract with that hash. Verify "
@@ -68,6 +61,13 @@ class ServiceNodeRewardContract:
     def call_function(self, function_name, *args, **kwargs):
         contract_function = self.contract.functions[function_name](*args)
         return contract_function.call(**kwargs)
+
+    def start(self):
+        unsent_tx = self.contract.functions.start().build_transaction({
+            "from": self.acc.address,
+            'nonce': self.web3.eth.get_transaction_count(self.acc.address)})
+        signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.acc.key)
+        self.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
 
     # Add more methods as needed to interact with the smart contract
     def getContractDeployedInLatestBlock(self):
@@ -269,10 +269,6 @@ class ServiceNodeRewardContract:
                 non_signers.append(service_node_id)
             service_node_id = service_node[0]
         return non_signers;
-
-
-
-
 
 contract_abi = json.loads("""
 [

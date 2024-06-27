@@ -31,6 +31,8 @@ class BLSSigner {
     explicit BLSSigner(
             const cryptonote::network_type nettype, const crypto::bls_secret_key* key = nullptr);
 
+    bls::Signature signSig2(std::span<const uint8_t> msg) const;
+
     bls::Signature signHashSig(const crypto::hash& hash) const;
     crypto::bls_signature signHash(const crypto::hash& hash) const;
     crypto::bls_signature proofOfPossession(
@@ -52,4 +54,5 @@ class BLSSigner {
     static constexpr inline std::string_view rewardTag = "BLS_SIG_TRYANDINCREMENT_REWARD";
     static constexpr inline std::string_view removalTag = "BLS_SIG_TRYANDINCREMENT_REMOVE";
     static constexpr inline std::string_view liquidateTag = "BLS_SIG_TRYANDINCREMENT_LIQUIDATE";
+    static constexpr inline std::string_view hashToG2Tag = "BLS_SIG_HASH_TO_FIELD_TAG";
 };

@@ -1,6 +1,7 @@
 #include "bls_utils.h"
 
 #include <oxenc/hex.h>
+#include <oxenc/endian.h>
 
 #include <cstring>
 #include <type_traits>

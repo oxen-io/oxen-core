@@ -33,5 +33,4 @@ std::string SignatureToHex(const bls::Signature& sig);
         const crypto::bls_signature& sig,
         const crypto::hash& hash,
         const crypto::bls_public_key& pk);
-
 }  // namespace bls_utils
