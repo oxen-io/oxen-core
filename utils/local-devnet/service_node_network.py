@@ -310,12 +310,12 @@ class SNNetwork:
         rewards = self.ethsns[0].get_bls_rewards(hardhat_account_no_0x)
         vprint(rewards)
         rewardsAccount = rewards["result"]["address"]
-        assert rewardsAccount.lower() == hardhat_account.lower(), f"Rewards account '{rewardsAccount.lower()}' does not match hardhat account '{hardhat_account.lower()}'. We have the private key for the hardhat account and use it to claim rewards from the contract"
+        assert rewardsAccount.lower() == hardhat_account_no_0x.lower(), f"Rewards account '{rewardsAccount.lower()}' does not match hardhat account '{hardhat_account_no_0x.lower()}'. We have the private key for the hardhat account and use it to claim rewards from the contract"
 
         vprint("Contract rewards before updating has ['available', 'claimed'] respectively: ",
                self.servicenodecontract.recipients(hardhat_account),
                " for ",
-               hardhat_account)
+               hardhat_account_no_0x)
 
         # TODO: We send the required balance from the hardhat account to the
         # contract to guarantee that claiming will succeed. We should hook up
@@ -324,23 +324,23 @@ class SNNetwork:
             "from": self.servicenodecontract.acc.address,
             'nonce': self.servicenodecontract.web3.eth.get_transaction_count(self.servicenodecontract.acc.address)})
         signed_tx = self.servicenodecontract.web3.eth.account.sign_transaction(unsent_tx, private_key=self.servicenodecontract.acc.key)
-        tx_hash = self.servicenodecontract.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
+        self.servicenodecontract.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
         self.servicenodecontract.foundation_pool_contract.functions.payoutReleased().call()
 
         vprint("Foundation pool balance: {}".format(self.servicenodecontract.erc20balance(self.servicenodecontract.foundation_pool_address)))
         vprint("Rewards contract balance: {}".format(self.servicenodecontract.erc20balance(self.servicenodecontract.contract_address)))
 
         # NOTE: Then update the rewards blaance
-        result = self.servicenodecontract.updateRewardsBalance(
+        self.servicenodecontract.updateRewardsBalance(
                 hardhat_account,
                 rewards["result"]["amount"],
                 rewards["result"]["signature"],
-                rewards["result"]["non_signers_bls_pubkeys"])
+                rewards["result"]["non_signer_indices"])
 
         vprint("Contract rewards update executed, has ['available', 'claimed'] now respectively: ",
                self.servicenodecontract.recipients(hardhat_account),
                " for ",
-               hardhat_account)
+               hardhat_account_no_0x)
 
         vprint("Balance for '{}' before claim {}".format(hardhat_account, self.servicenodecontract.erc20balance(hardhat_account)))
 
