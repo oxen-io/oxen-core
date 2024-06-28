@@ -3966,6 +3966,17 @@ bool service_node_list::handle_uptime_proof(
                     proof->pubkey);
     }
 
+    if (vers.first == hf::hf20_eth_transition) {
+        // NOTE: In the transition, we're collecting the BLS pubkeys, we will persist these into the
+        // service node info to bootstrap the keys. Post transition, Arbitrum is activated and BLS
+        // keys of a node will be available in the registration and updated when a node is
+        // registered.
+        if (it->second->bls_public_key != proof->pubkey_bls) {
+            auto& info = duplicate_info(it->second);
+            info.bls_public_key = proof->pubkey_bls;
+        }
+    }
+
     auto old_x25519 = iproof.pubkey_x25519;
     if (iproof.update(
                 std::chrono::system_clock::to_time_t(now),
@@ -3991,17 +4002,6 @@ bool service_node_list::handle_uptime_proof(
 
     if (derived_x25519_pubkey && (old_x25519 != derived_x25519_pubkey))
         x25519_pkey = derived_x25519_pubkey;
-
-    if (vers.first == hf::hf20_eth_transition) {
-        // NOTE: In the transition, we're collecting the BLS pubkeys, we will persist these into the
-        // service node info to bootstrap the keys. Post transition, Arbitrum is activated and BLS
-        // keys of a node will be available in the registration and updated when a node is
-        // registered.
-        if (it->second->bls_public_key != proof->pubkey_bls) {
-            auto& info = duplicate_info(it->second);
-            info.bls_public_key = proof->pubkey_bls;
-        }
-    }
 
     return true;
 }
