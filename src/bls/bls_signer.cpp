@@ -234,6 +234,30 @@ bls::Signature BLSSigner::signSig2(std::span<const uint8_t> msg) const {
     return result;
 }
 
+bool BLSSigner::verifyHash(cryptonote::network_type nettype, const bls::Signature& signature, const bls::PublicKey &pubKey, std::span<const uint8_t> hash)
+{
+    // NOTE: blsVerifyHash => if (cast(&pub->v)->isZero()) return 0;
+    if (blsPublicKeyIsZero(pubKey.getPtr()))
+        return false;
+
+    // NOTE: blsVerifyHash => toG(*cast(&Hm.v), h, size)
+    mcl::bn::G2 Hm;
+    {
+        crypto::hash tag = BLSSigner::buildTagHash(BLSSigner::hashToG2Tag, nettype);
+        Hm = map_to_g2(hash, tag);
+        mcl::bn::BN::param.mapTo.mulByCofactor(Hm);
+    }
+
+    // NOTE: Create the hm_signature to verify pairing by copying the G2 element in to the signature
+    blsSignature hm_signature{};
+    std::memcpy(&hm_signature.v, &Hm, sizeof(Hm));
+    static_assert(sizeof(hm_signature.v) == sizeof(Hm));
+
+    // NOTE: blsVerifyHash => blsVerifyPairing(sig, &Hm, pub);
+    bool result = blsVerifyPairing(signature.getPtr(), &hm_signature, pubKey.getPtr());
+    return result;
+}
+
 bls::Signature BLSSigner::signHashSig(const crypto::hash& hash) const {
     bls::Signature sig;
     secretKey.signHash(sig, hash.data(), hash.size());
