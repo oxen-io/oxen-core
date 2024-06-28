@@ -360,6 +360,18 @@ ContractServiceNode RewardsContract::serviceNodes(
     if (callResultHex.starts_with("0x") || callResultHex.starts_with("0X"))
         callResultHex.remove_prefix(2);
 
+    ContractServiceNode result{};
+    result.good = false; // until proven otherwise
+    if (callResultHex.empty()) {
+        oxen::log::warning(
+                logcat,
+                "Provider returned an empty string when querying contract service node {} at block "
+                "'{}'",
+                index,
+                blockNumArg);
+        return result;
+    }
+
     // NOTE: The ServiceNode struct is a dynamic type (because its child `Contributor` field is
     // dynamic) hence the offset to the struct is encoded in the first 32 byte element.
     std::string_view sn_data_offset_hex =
@@ -377,8 +389,6 @@ ContractServiceNode RewardsContract::serviceNodes(
             u256,
             std::string_view>(sn_data);
 
-    ContractServiceNode result{};
-    result.good = false; // until proven otherwise
     result.next = tools::decode_integer_be(next);
     result.prev = tools::decode_integer_be(prev);
     result.operatorAddr = op_addr;
