@@ -78,8 +78,11 @@ T make_from_guts(const Spannable& s) {
 template <safe_to_memcpy T, byte_spannable Spannable>
 void load_from_hex_guts(const Spannable& s, T& x, bool check_hex = true) {
     std::span<const typename Spannable::value_type> span{s};
-    if (s.size() != sizeof(T) * 2 || (check_hex && !oxenc::is_hex(span.begin(), span.end())))
-        throw oxen::runtime_error{"Cannot reconstitute type from hex: wrong size or invalid hex"};
+    if (s.size() != sizeof(T) * 2)
+        throw oxen::runtime_error{"Cannot reconstitute type from hex: wrong size ({} vs {}) for type"_format(s.size(), sizeof(T) * 2)};
+
+    if (check_hex && !oxenc::is_hex(span.begin(), span.end()))
+        throw oxen::runtime_error{"Cannot reconstitute type from hex: invalid hex characters"_format(s)};
     oxenc::from_hex(span.begin(), span.end(), reinterpret_cast<char*>(&x));
 }
 
