@@ -212,8 +212,8 @@ class SNNetwork:
 
         self.print_wallet_balances()
 
-        vprint("Mining 40 blocks (registrations + blink quorum lag) and waiting for nodes to sync")
-        self.sync_nodes(self.mine(39), timeout=120)
+        vprint("Mining 60 blocks to height 389 (registrations + blink quorum lag) and waiting for nodes to sync")
+        self.sync_nodes(self.mine(59), timeout=120)
         for wallet in self.extrawallets:
             self.mike.transfer(wallet, coins(11))
         self.sync_nodes(self.mine(1), timeout=120)
@@ -223,6 +223,10 @@ class SNNetwork:
         vprint("Sending fake lokinet/ss pings")
         for sn in self.sns:
             sn.ping()
+
+        vprint("Send uptime proofs at height 389 (HF20) to propagate BLS pubkeys")
+        for sn in self.sns:
+            sn.send_uptime_proof()
 
         all_service_nodes_proofed = lambda sn: all(x['quorumnet_port'] > 0 for x in
                 sn.json_rpc("get_n_service_nodes", {"fields":{"quorumnet_port":True}}).json()['result']['service_node_states'])
@@ -240,17 +244,15 @@ class SNNetwork:
         # This commented out code will register the last SN through Bobs wallet (Has not done any others)
         # self.bob.register_sn(self.sns[-1])
 
-        # This commented out code will register the last SN through Bobs wallet (Has not done any others)
+        # Register the last SN through Bobs wallet (Has not done any others)
         # and also get 9 other wallets to contribute the rest of the node with a 10% operator fee
         self.bob.register_sn_for_contributions(sn=self.sns[-1], cut=10, amount=coins(28), staking_requirement=self.sns[0].get_staking_requirement())
-        self.sync_nodes(self.mine(40), timeout=120)
+        self.sync_nodes(self.mine(20), timeout=120) # Mining to 409
         self.print_wallet_balances()
         for wallet in self.extrawallets:
             wallet.contribute_to_sn(self.sns[-1], coins(8))
+
         self.sync_nodes(self.mine(1), timeout=120)
-        time.sleep(10)
-        for sn in self.sns:
-            sn.send_uptime_proof()
 
         # Collect all BLS public-keys, note all SNs up to this point (HF < feature::ETH_BLS) had a 100 OXEN staking requirement
         bls_pubkey_list = []
