@@ -600,7 +600,7 @@ class service_node_list {
             assert(x_pk); // Should always be set to non-null if we have a proof
             *out++ = service_node_address{
                     pk_info.first,
-                    proof.pubkey_bls,
+                    pk_info.second->bls_public_key,
                     it->second.pubkey_x25519,
                     proof.public_ip,
                     proof.qnet_port};

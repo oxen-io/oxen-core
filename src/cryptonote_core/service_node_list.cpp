@@ -1537,7 +1537,6 @@ validate_and_get_ethereum_registration(
     if (!maybe_reg)
         throw oxen::runtime_error("Could not extract registration details from transaction");
     auto& reg = *maybe_reg;
-
     uint64_t staking_requirement = get_staking_requirement(nettype, block_height);
 
     validate_registration(hf_version, nettype, staking_requirement, block_timestamp, reg);
@@ -3992,6 +3991,17 @@ bool service_node_list::handle_uptime_proof(
 
     if (derived_x25519_pubkey && (old_x25519 != derived_x25519_pubkey))
         x25519_pkey = derived_x25519_pubkey;
+
+    if (vers.first == hf::hf20_eth_transition) {
+        // NOTE: In the transition, we're collecting the BLS pubkeys, we will persist these into the
+        // service node info to bootstrap the keys. Post transition, Arbitrum is activated and BLS
+        // keys of a node will be available in the registration and updated when a node is
+        // registered.
+        if (it->second->bls_public_key != proof->pubkey_bls) {
+            auto& info = duplicate_info(it->second);
+            info.bls_public_key = proof->pubkey_bls;
+        }
+    }
 
     return true;
 }
