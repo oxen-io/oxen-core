@@ -166,10 +166,11 @@ static mcl::bn::G2 map_to_g2(std::span<const uint8_t> msg, std::span<const uint8
     for (uint8_t increment = 0;; increment++) {
         messageWithI[messageWithI.size() - 1] = increment;
 
-        // NOTE: Solidity's BN256G2.hashToField(msg, tag) => x1, x2
+        // NOTE: Solidity's BN256G2.hashToField(msg, tag) => (x1, x2, b)
         mcl::bn::Fp x1 = {}, x2 = {};
+        bool b = false;
         {
-            uint8_t expandedBytes[96] = {};
+            uint8_t expandedBytes[128] = {};
             expand_message_xmd_keccak256(expandedBytes, messageWithI, hashToG2Tag);
 
             bool b;
@@ -177,17 +178,21 @@ static mcl::bn::G2 map_to_g2(std::span<const uint8_t> msg, std::span<const uint8
             assert(b);
             x2.setBigEndianMod(&b, expandedBytes + 48, 48);
             assert(b);
+
+            b = ((expandedBytes[127] & 1) == 1);
         }
 
         // NOTE: herumi/bls MapTo::mapToEC
         mcl::bn::G2::Fp x = mcl::bn::G2::Fp(x1, x2);
         mcl::bn::G2::Fp y;
         mcl::bn::G2::getWeierstrass(y, x);
-        if (mcl::bn::G2::Fp::squareRoot(y, y)) {
-            bool b;
-            result.set(&b, x, y, false);
-            assert(b);
-            return result; // Successfully mapped to curve, exit the loop
+        if (mcl::bn::G2::Fp::squareRoot(y, y)) { // Check if this is a point
+            if (b)                               // Let b => {0, 1} to choose between the two roots.
+                y = -y;
+            bool converted;
+            result.set(&converted, x, y, false);
+            assert(converted);
+            return result;                       // Successfully mapped to curve, exit the loop
         }
     }
 
