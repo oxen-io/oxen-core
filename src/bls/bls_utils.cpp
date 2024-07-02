@@ -158,15 +158,6 @@ bls::PublicKey from_crypto_pubkey(const crypto::bls_public_key& pk) {
     return from_normalized_crypto<bls::PublicKey, mcl::bn::G1>(pk);
 }
 
-[[nodiscard]] bool verify(
-        const crypto::bls_signature& sig,
-        const crypto::hash& hash,
-        const crypto::bls_public_key& pk) {
-    init();
-
-    return from_crypto_signature(sig).verifyHash(from_crypto_pubkey(pk), hash.data(), hash.size());
-}
-
 std::string PublicKeyToHex(const bls::PublicKey& publicKey) {
     auto pk = to_crypto_pubkey(publicKey);
     return oxenc::to_hex(pk.begin(), pk.end());

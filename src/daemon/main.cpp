@@ -68,6 +68,8 @@ constexpr auto YELLOW = "\033[33;1m";
 constexpr auto CYAN = "\033[36;1m";
 }  // namespace
 
+#include <crypto/crypto.h>
+
 int main(int argc, char const* argv[]) {
     std::set_terminate(oxen::on_terminate_handler);
     bool logs_initialized = false;

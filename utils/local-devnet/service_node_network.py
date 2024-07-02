@@ -228,14 +228,17 @@ class SNNetwork:
         for sn in self.sns:
             sn.send_uptime_proof()
 
-        all_service_nodes_proofed = lambda sn: all(x['quorumnet_port'] > 0 for x in
-                sn.json_rpc("get_n_service_nodes", {"fields":{"quorumnet_port":True}}).json()['result']['service_node_states'])
+        vprint(self.sns[0].json_rpc("get_n_service_nodes", {"fields":{"quorumnet_port":True, "pubkey_bls":True,}}).json()['result']['service_node_states'])
+
+        all_service_nodes_proofed = lambda sn: all(x['quorumnet_port'] > 0 and x['pubkey_bls'] is not None for x in
+                                                   sn.json_rpc("get_n_service_nodes", {"fields":{"quorumnet_port":True, "pubkey_bls":True,}}).json()['result']['service_node_states'])
 
         vprint("Waiting for proofs to propagate: ", end="", flush=True)
         for sn in self.sns:
             wait_for(lambda: all_service_nodes_proofed(sn), timeout=120)
             vprint(".", end="", flush=True, timestamp=False)
         vprint(timestamp=False)
+
         # This commented out code will register the last SN through Mikes wallet (Has done every other SN)
         # for sn in self.sns[-1:]:
             # self.mike.register_sn(sn)

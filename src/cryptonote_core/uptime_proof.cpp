@@ -48,7 +48,7 @@ Proof::Proof(
 
     if (hardfork == feature::ETH_TRANSITION) {
         assert(keys.pub_bls);
-        pop_bls = bls_signer.signHash(crypto::keccak(keys.pub_bls, keys.pub));
+        pop_bls = bls_signer.signMsg(crypto::keccak(keys.pub_bls, keys.pub));
     }
 
     serialized_proof = bt_encode_uptime_proof(hardfork);

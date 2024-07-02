@@ -279,6 +279,9 @@ class Daemon(RPCDaemon):
     def get_liquidation_request(self, bls_key):
         return self.json_rpc("bls_liquidation_request", {"bls_key": bls_key}).json()
 
+    def get_service_nodes(self):
+        return self.json_rpc("get_service_nodes").json()
+
 
 
 class Wallet(RPCDaemon):

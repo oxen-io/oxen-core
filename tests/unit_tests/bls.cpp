@@ -115,8 +115,8 @@ TEST(BLS, signatures) {
     ASSERT_EQ(
             "{}"_format(hash2), "dc85a6bbfd4658040ef305c9333cf0d5a82ede2854f112549f3925df6b2c0e71");
 
-    auto sig1 = signer.signHash(hash1);
-    auto sig1a = signer.signHashSig(hash1);
+    auto sig1 = signer.signMsg(hash1);
+    auto sig1a = bls_utils::from_crypto_signature(sig1);
     auto sig1b = bls_utils::to_crypto_signature(bls_utils::from_crypto_signature(sig1));
     EXPECT_EQ("{}"_format(sig1), "{}"_format(sig1b));
     EXPECT_EQ(sig1a.getStr(), bls_utils::from_crypto_signature(sig1b).getStr());
@@ -132,14 +132,14 @@ TEST(BLS, signatures) {
             "0900de2368d7bdf4a83233d96cb8ab81461ebfe87ea6e73b56864e03e693a2be"
             "29fcf509fa071fa7d8c569a2f8003ffc386ac07ad787815a5f906c4fd2405bef"
             "2a84e7afd7fcb6d3299312906d0f56b3ea80603ee8688f05f68cb03a7c0db4f6");
-    EXPECT_TRUE(bls_utils::verify(sig1, hash1, pk));
+    EXPECT_TRUE(signer.verifyMsg(sig1, pk, hash1));
 
-    auto sig2 = signer.signHash(hash2);
+    auto sig2 = signer.signMsg(hash2);
     EXPECT_EQ(
             "{}"_format(sig2),
             "3025a58f31717081510467944556989cfb0676e0f135f2cd7151442dd404385e"
             "2671e7a21c2bee7840c54b839718dd2c665cc0376c6d78cd6d5ab62f3036ea14"
             "1d86c93f8884a2ca97b893fbea2d1629c237231668fd86ce43b00abf6d8d68fa"
             "2bc306182916f2d1633c82cd2b78794a049554da9ff68e72fefeb9680590e9fb");
-    EXPECT_TRUE(bls_utils::verify(sig2, hash2, pk));
+    EXPECT_TRUE(signer.verifyMsg(sig2, pk, hash2));
 }

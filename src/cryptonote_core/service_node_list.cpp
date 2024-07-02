@@ -3908,7 +3908,8 @@ bool service_node_list::handle_uptime_proof(
         }
 
         auto pop_hash = crypto::keccak(proof->pubkey_bls, proof->pubkey);
-        if (!bls_utils::verify(proof->pop_bls, pop_hash, proof->pubkey_bls)) {
+        if (!BLSSigner::verifyMsg(
+                    m_blockchain.nettype(), proof->pop_bls, proof->pubkey_bls, pop_hash)) {
             log::debug(
                     logcat,
                     "Rejecting uptime proof from {}: BLS proof of possession verification failed",
@@ -3940,7 +3941,6 @@ bool service_node_list::handle_uptime_proof(
     if (now <= std::chrono::system_clock::from_time_t(iproof.timestamp) +
                        std::chrono::seconds{netconf.UPTIME_PROOF_FREQUENCY} / 2) {
 
-        bool override_timestamp_frequency = false;
 
         // NOTE: In the local devnet we rapidly advance past multiple hard-forks to reach the
         // ETH_TRANSITION hardfork. At this hard-fork the BLS keys are transmitted around the
@@ -3959,13 +3959,13 @@ bool service_node_list::handle_uptime_proof(
         // Note that prior to this branch here, the key has been validated to be non-null and that
         // the node has the secret key. This code will only permit an 'early' proof if the
         // receipient has not received the BLS key for the sender yet.
+        bool reject_proof = true;
 #if defined(OXEN_USE_LOCAL_DEVNET_PARAMS)
         if (vers.first == feature::ETH_TRANSITION)
-            override_timestamp_frequency =
-                    it->second->bls_public_key == crypto::null<crypto::bls_public_key>;
+            reject_proof = it->second->bls_public_key != crypto::null<crypto::bls_public_key>;
 #endif
 
-        if (!override_timestamp_frequency) {
+        if (reject_proof) {
             log::debug(
                     logcat,
                     "Rejecting uptime proof from {}: already received one uptime proof for this node "
@@ -3994,7 +3994,7 @@ bool service_node_list::handle_uptime_proof(
                     proof->pubkey);
     }
 
-    if (vers.first == hf::hf20_eth_transition) {
+    if (vers.first == feature::ETH_TRANSITION) {
         // NOTE: In the transition, we're collecting the BLS pubkeys, we will persist these into the
         // service node info to bootstrap the keys. Post transition, Arbitrum is activated and BLS
         // keys of a node will be available in the registration and updated when a node is

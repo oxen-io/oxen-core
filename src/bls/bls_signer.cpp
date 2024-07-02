@@ -156,7 +156,7 @@ static void expand_message_xmd_keccak256(
 
 
 static mcl::bn::G2 map_to_g2(std::span<const uint8_t> msg, std::span<const uint8_t> hashToG2Tag) {
-
+    bls_utils::init();
     mcl::bn::G2 result = {};
     result.clear();
 
@@ -199,7 +199,18 @@ static mcl::bn::G2 map_to_g2(std::span<const uint8_t> msg, std::span<const uint8
     return result;
 }
 
-bls::Signature BLSSigner::signSig2(std::span<const uint8_t> msg) const {
+crypto::bls_signature BLSSigner::signMsg(std::span<const uint8_t> msg) const {
+    crypto::bls_signature result = signMsg(nettype, secretKey, msg);
+    return result;
+}
+
+bool BLSSigner::verifyMsg(const crypto::bls_signature& signature, const crypto::bls_public_key &pubkey, std::span<const uint8_t> msg) const
+{
+    bool result = verifyMsg(nettype, signature, pubkey, msg);
+    return result;
+}
+
+crypto::bls_signature BLSSigner::signMsg(cryptonote::network_type nettype, const bls::SecretKey &key, std::span<const uint8_t> msg) {
     // NOTE: This is herumi's 'blsSignHash' deconstructed to its primitive
     // function calls but instead of executing herumi's 'tryAndIncMapTo' which
     // maps a hash to a point we execute our own mapping function. herumi's
@@ -215,41 +226,44 @@ bls::Signature BLSSigner::signSig2(std::span<const uint8_t> msg) const {
     // Map a string of `bytes` to a point on the curve for BLS
     mcl::bn::G2 Hm;
     {
-        crypto::hash tag = buildTagHash(hashToG2Tag);
+        crypto::hash tag = BLSSigner::buildTagHash(hashToG2Tag, nettype);
         Hm = map_to_g2(msg, tag);
         mcl::bn::BN::param.mapTo.mulByCofactor(Hm);
     }
 
     // NOTE: mcl::bn::blsSignHash(...) -> GmulCT(...) -> G2::mulCT
-    bls::Signature result = {};
-    result.clear();
+    bls::Signature bls_result = {};
+    bls_result.clear();
     {
         mcl::bn::Fr s;
-        std::memcpy(const_cast<uint64_t*>(s.getUnit()), &secretKey.getPtr()->v, sizeof(s));
-        static_assert(sizeof(s) == sizeof(secretKey.getPtr()->v));
+        std::memcpy(const_cast<uint64_t*>(s.getUnit()), &key.getPtr()->v, sizeof(s));
+        static_assert(sizeof(s) == sizeof(key.getPtr()->v));
 
         mcl::bn::G2 g2;
         mcl::bn::G2::mulCT(g2, Hm, s);
-        std::memcpy(&result.getPtr()->v.x, &g2.x, sizeof(g2.x));
-        std::memcpy(&result.getPtr()->v.y, &g2.y, sizeof(g2.y));
-        std::memcpy(&result.getPtr()->v.z, &g2.z, sizeof(g2.z));
-        static_assert(sizeof(g2) == sizeof(result.getPtr()->v));
+        std::memcpy(&bls_result.getPtr()->v.x, &g2.x, sizeof(g2.x));
+        std::memcpy(&bls_result.getPtr()->v.y, &g2.y, sizeof(g2.y));
+        std::memcpy(&bls_result.getPtr()->v.z, &g2.z, sizeof(g2.z));
+        static_assert(sizeof(g2) == sizeof(bls_result.getPtr()->v));
     }
 
+    crypto::bls_signature result = bls_utils::to_crypto_signature(bls_result);
     return result;
 }
 
-bool BLSSigner::verifyHash(cryptonote::network_type nettype, const bls::Signature& signature, const bls::PublicKey &pubKey, std::span<const uint8_t> hash)
+bool BLSSigner::verifyMsg(cryptonote::network_type nettype, const crypto::bls_signature& signature, const crypto::bls_public_key &pubkey, std::span<const uint8_t> msg)
 {
+    bls::PublicKey bls_pubkey = bls_utils::from_crypto_pubkey(pubkey);
+
     // NOTE: blsVerifyHash => if (cast(&pub->v)->isZero()) return 0;
-    if (blsPublicKeyIsZero(pubKey.getPtr()))
+    if (blsPublicKeyIsZero(bls_pubkey.getPtr()))
         return false;
 
     // NOTE: blsVerifyHash => toG(*cast(&Hm.v), h, size)
     mcl::bn::G2 Hm;
     {
         crypto::hash tag = BLSSigner::buildTagHash(BLSSigner::hashToG2Tag, nettype);
-        Hm = map_to_g2(hash, tag);
+        Hm = map_to_g2(msg, tag);
         mcl::bn::BN::param.mapTo.mulByCofactor(Hm);
     }
 
@@ -259,18 +273,9 @@ bool BLSSigner::verifyHash(cryptonote::network_type nettype, const bls::Signatur
     static_assert(sizeof(hm_signature.v) == sizeof(Hm));
 
     // NOTE: blsVerifyHash => blsVerifyPairing(sig, &Hm, pub);
-    bool result = blsVerifyPairing(signature.getPtr(), &hm_signature, pubKey.getPtr());
+    bls::Signature bls_signature = bls_utils::from_crypto_signature(signature);
+    bool result = blsVerifyPairing(bls_signature.getPtr(), &hm_signature, bls_pubkey.getPtr());
     return result;
-}
-
-bls::Signature BLSSigner::signHashSig(const crypto::hash& hash) const {
-    bls::Signature sig;
-    secretKey.signHash(sig, hash.data(), hash.size());
-    return sig;
-}
-
-crypto::bls_signature BLSSigner::signHash(const crypto::hash& hash) const {
-    return bls_utils::to_crypto_signature(signHashSig(hash));
 }
 
 crypto::bls_signature BLSSigner::proofOfPossession(
@@ -279,7 +284,25 @@ crypto::bls_signature BLSSigner::proofOfPossession(
 
     crypto::bls_public_key bls_pkey = getCryptoPubkey();
 
-    // TODO(doyle): Pass in a array of spans to avoid having to do this allocation.
+    // TODO(doyle): Currently the ServiceNodeRewards.sol contract does
+    //
+    // ```
+    // bytes memory encodedMessage = abi.encodePacked(
+    //     proofOfPossessionTag,
+    //     blsPubkey.X,
+    //     blsPubkey.Y,
+    //     caller,
+    //     serviceNodePubkey
+    // );
+    // BN256G2.G2Point memory Hm = BN256G2.hashToG2(encodedMessage, hashToG2Tag);
+    // ```
+    //
+    // It does not hash the message but forwards it through hashToG2 (e.g. our
+    // signMsg). So we have to do similar and create the same message buffer
+    // instead of forwarding everything to keccak(...params)
+    //
+    // We can probably just run `keccak(encodedMessage)` in solidity to simplify
+    // things and then consequently do the same here.
     std::vector<uint8_t> msg;
     msg.reserve(tag.size() + bls_pkey.size() + sender.size() + serviceNodePubkey.size());
     msg.insert(msg.end(), tag.begin(), tag.end());
@@ -287,8 +310,8 @@ crypto::bls_signature BLSSigner::proofOfPossession(
     msg.insert(msg.end(), sender.begin(), sender.end());
     msg.insert(msg.end(), serviceNodePubkey.begin(), serviceNodePubkey.end());
 
-    bls::Signature sig = signSig2(msg);
-    return bls_utils::to_crypto_signature(sig);
+    crypto::bls_signature result = signMsg(msg);
+    return result;
 }
 
 std::string BLSSigner::getPublicKeyHex() const {

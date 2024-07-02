@@ -26,11 +26,4 @@ std::string PublicKeyToHex(const bls::PublicKey& publicKey);
 crypto::bls_signature to_crypto_signature(const bls::Signature& sig);
 bls::Signature from_crypto_signature(const crypto::bls_signature& sig);
 std::string SignatureToHex(const bls::Signature& sig);
-
-/// Verifies a signed hash, taking the crypto:: primitive types.  Returns true if the signature
-/// passes, false if verification fails.
-[[nodiscard]] bool verify(
-        const crypto::bls_signature& sig,
-        const crypto::hash& hash,
-        const crypto::bls_public_key& pk);
 }  // namespace bls_utils
