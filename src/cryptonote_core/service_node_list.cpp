@@ -3939,12 +3939,40 @@ bool service_node_list::handle_uptime_proof(
 
     if (now <= std::chrono::system_clock::from_time_t(iproof.timestamp) +
                        std::chrono::seconds{netconf.UPTIME_PROOF_FREQUENCY} / 2) {
-        log::debug(
-                logcat,
-                "Rejecting uptime proof from {}: already received one uptime proof for this node "
-                "recently",
-                proof->pubkey);
-        return false;
+
+        bool override_timestamp_frequency = false;
+
+        // NOTE: In the local devnet we rapidly advance past multiple hard-forks to reach the
+        // ETH_TRANSITION hardfork. At this hard-fork the BLS keys are transmitted around the
+        // network with a proof-of-possession ensuring that each node that will participate in the
+        // new network will be added to the new network under their new moniker.
+        //
+        // The local-devnet reaches the transition stage very quickly (<1min) and has a need to
+        // re-submit uptime proofs upon entering the transition hardfork. This time-gate blocks the
+        // uptime proofs from propagating and causes the devnet to migrate the Ethereum w/ no BLS
+        // keys populated.
+        //
+        // This causes all BLS requests like rewards claim to fail. Having this check here
+        // overides that and ensures that in the devnet, when we arrive at the hardfork we're
+        // permitted to submit the proof with the keys.
+        //
+        // Note that prior to this branch here, the key has been validated to be non-null and that
+        // the node has the secret key. This code will only permit an 'early' proof if the
+        // receipient has not received the BLS key for the sender yet.
+#if defined(OXEN_USE_LOCAL_DEVNET_PARAMS)
+        if (vers.first == feature::ETH_TRANSITION)
+            override_timestamp_frequency =
+                    it->second->bls_public_key == crypto::null<crypto::bls_public_key>;
+#endif
+
+        if (!override_timestamp_frequency) {
+            log::debug(
+                    logcat,
+                    "Rejecting uptime proof from {}: already received one uptime proof for this node "
+                    "recently",
+                    proof->pubkey);
+            return false;
+        }
     }
 
     if (m_service_node_keys && proof->pubkey == m_service_node_keys->pub) {

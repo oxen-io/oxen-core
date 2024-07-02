@@ -173,11 +173,11 @@ static mcl::bn::G2 map_to_g2(std::span<const uint8_t> msg, std::span<const uint8
             uint8_t expandedBytes[128] = {};
             expand_message_xmd_keccak256(expandedBytes, messageWithI, hashToG2Tag);
 
-            bool b;
-            x1.setBigEndianMod(&b, expandedBytes + 0,  48);
-            assert(b);
-            x2.setBigEndianMod(&b, expandedBytes + 48, 48);
-            assert(b);
+            bool converted;
+            x1.setBigEndianMod(&converted, expandedBytes + 0,  48);
+            assert(converted);
+            x2.setBigEndianMod(&converted, expandedBytes + 48, 48);
+            assert(converted);
 
             b = ((expandedBytes[127] & 1) == 1);
         }
