@@ -40,7 +40,6 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
-#include <cpptrace/cpptrace.hpp>
 
 #include "blockchain_db/blockchain_db.h"
 #include "common/boost_serialization_helper.h"

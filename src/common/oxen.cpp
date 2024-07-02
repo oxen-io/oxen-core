@@ -484,4 +484,3 @@ double oxen::round(double x) {
     }
     return z;
 }
-

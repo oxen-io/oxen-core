@@ -31,7 +31,11 @@ exception::exception(std::string&& msg, cpptrace::raw_trace&& trace) :
 const char* exception::what() const noexcept {
     if (what_msg.empty()) {
         std::ostringstream oss;
+        #if defined(NDEBUG)
+        raw_trace.resolve().print(oss, /*colour*/ false);
+        #else
         raw_trace.resolve().print_with_snippets(oss, /*colour*/ false);
+        #endif
         what_msg = user_msg + std::string(":\n") + oss.str();
     }
     return what_msg.c_str();
