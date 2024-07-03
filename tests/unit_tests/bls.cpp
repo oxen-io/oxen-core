@@ -83,7 +83,7 @@ TEST(BLS, to_from_crypto) {
             "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"_hex);
     BLSSigner signer{cryptonote::network_type::MAINNET, &sk};
     EXPECT_EQ(
-            oxenc::to_hex(signer.getPublicKey().getStr(bls_utils::BLS_MODE_BINARY)),
+            oxenc::to_hex(signer.getPubkey().getStr(bls_utils::BLS_MODE_BINARY)),
             "2c325c9d9c9593096528b2aa9d0d2cce042915e87a19c2a2a4cfbe4f5c61c694");
     auto pk3 = signer.getCryptoPubkey();
     EXPECT_EQ(
@@ -120,7 +120,7 @@ TEST(BLS, signatures) {
     auto sig1b = bls_utils::to_crypto_signature(bls_utils::from_crypto_signature(sig1));
     EXPECT_EQ("{}"_format(sig1), "{}"_format(sig1b));
     EXPECT_EQ(sig1a.getStr(), bls_utils::from_crypto_signature(sig1b).getStr());
-    EXPECT_TRUE(sig1a.verifyHash(signer.getPublicKey(), hash1.data(), hash1.size()));
+    EXPECT_TRUE(sig1a.verifyHash(signer.getPubkey(), hash1.data(), hash1.size()));
     EXPECT_TRUE(sig1a.verifyHash(bls_utils::from_crypto_pubkey(pk), hash1.data(), hash1.size()));
 
     EXPECT_TRUE(bls_utils::from_crypto_signature(sig1).verifyHash(

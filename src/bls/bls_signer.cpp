@@ -279,7 +279,7 @@ bool BLSSigner::verifyMsg(cryptonote::network_type nettype, const crypto::bls_si
 }
 
 crypto::bls_signature BLSSigner::proofOfPossession(
-        crypto::eth_address sender, const crypto::public_key& serviceNodePubkey) const {
+        const crypto::eth_address& sender, const crypto::public_key& serviceNodePubkey) const {
     auto tag = buildTagHash(proofOfPossessionTag);
 
     crypto::bls_public_key bls_pkey = getCryptoPubkey();
@@ -314,19 +314,19 @@ crypto::bls_signature BLSSigner::proofOfPossession(
     return result;
 }
 
-std::string BLSSigner::getPublicKeyHex() const {
+std::string BLSSigner::getPubkeyHex() const {
     auto pk = getCryptoPubkey();
     return oxenc::to_hex(pk.begin(), pk.end());
 }
 
-bls::PublicKey BLSSigner::getPublicKey() const {
+bls::PublicKey BLSSigner::getPubkey() const {
     bls::PublicKey publicKey;
     secretKey.getPublicKey(publicKey);
     return publicKey;
 }
 
 crypto::bls_public_key BLSSigner::getCryptoPubkey() const {
-    return bls_utils::to_crypto_pubkey(getPublicKey());
+    return bls_utils::to_crypto_pubkey(getPubkey());
 }
 
 crypto::bls_secret_key BLSSigner::getCryptoSeckey() const {

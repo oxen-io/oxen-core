@@ -44,10 +44,16 @@ class BLSSigner {
     // public BLS `pubkey`.
     static bool verifyMsg(cryptonote::network_type nettype, const crypto::bls_signature& signature, const crypto::bls_public_key &pubkey, std::span<const uint8_t> msg);
 
+    // Create a proof signing over the `sender` and `serviceNodePubkey` that this class is in
+    // possession of the secret component of the associated public key.
     crypto::bls_signature proofOfPossession(
-            crypto::eth_address sender, const crypto::public_key& serviceNodePubkey) const;
-    std::string getPublicKeyHex() const;
-    bls::PublicKey getPublicKey() const;
+            const crypto::eth_address& sender, const crypto::public_key& serviceNodePubkey) const;
+
+    // Gets the public key in hex representation
+    std::string getPubkeyHex() const;
+
+    // Gets the public key in herumi/bls representation
+    bls::PublicKey getPubkey() const;
 
     // Gets the public key as our crypto::bls_public_key type
     crypto::bls_public_key getCryptoPubkey() const;

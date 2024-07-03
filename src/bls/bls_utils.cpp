@@ -157,13 +157,4 @@ bls::Signature from_crypto_signature(const crypto::bls_signature& sig) {
 bls::PublicKey from_crypto_pubkey(const crypto::bls_public_key& pk) {
     return from_normalized_crypto<bls::PublicKey, mcl::bn::G1>(pk);
 }
-
-std::string PublicKeyToHex(const bls::PublicKey& publicKey) {
-    auto pk = to_crypto_pubkey(publicKey);
-    return oxenc::to_hex(pk.begin(), pk.end());
-}
-std::string SignatureToHex(const bls::Signature& sig) {
-    auto s = to_crypto_signature(sig);
-    return oxenc::to_hex(s.begin(), s.end());
-}
 }  // namespace bls_utils
