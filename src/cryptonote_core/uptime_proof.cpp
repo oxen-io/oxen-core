@@ -1,16 +1,17 @@
 #include "uptime_proof.h"
+#include "service_node_list.h"
+
+
+#include <common/guts.h>
+#include <common/exception.h>
+#include <crypto/crypto.h>
+#include <cryptonote_config.h>
+#include <epee/string_tools.h>
+#include <logging/oxen_logger.h>
+#include <version.h>
+#include <bls/bls_signer.h>
 
 #include <oxenc/bt_producer.h>
-
-#include "common/guts.h"
-#include "common/exception.h"
-#include "bls/bls_signer.h"
-#include "crypto/crypto.h"
-#include "cryptonote_config.h"
-#include "epee/string_tools.h"
-#include "logging/oxen_logger.h"
-#include "service_node_list.h"
-#include "version.h"
 
 extern "C" {
 #include <sodium/crypto_sign.h>

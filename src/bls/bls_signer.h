@@ -1,5 +1,8 @@
 #pragma once
 
+#include <crypto/crypto.h>
+#include <cryptonote_config.h>
+
 #define BLS_ETH
 #define MCLBN_FP_UNIT_SIZE 4
 #define MCLBN_FR_UNIT_SIZE 4
@@ -13,9 +16,6 @@
 #include <mcl/bn.hpp>
 #undef MCLBN_NO_AUTOLINK
 #pragma GCC diagnostic pop
-
-#include "crypto/crypto.h"
-#include "cryptonote_config.h"
 
 #include <span>
 

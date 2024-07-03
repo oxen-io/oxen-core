@@ -1,14 +1,14 @@
 #pragma once
 
-#include <oxenmq/oxenmq.h>
-
-#include <span>
 #include <string>
 #include <vector>
 
-#include "bls_signer.h"
 #include "crypto/crypto.h"
 #include "cryptonote_core/service_node_list.h"
+
+namespace oxenmq {
+class OxenMq;
+}
 
 struct AggregateSigned {
     std::vector<uint8_t> msg_to_sign;

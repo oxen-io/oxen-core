@@ -52,7 +52,7 @@ extern "C" {
 
 #include "blockchain_db/blockchain_db.h"
 #include "blockchain_db/sqlite/db_sqlite.h"
-#include "bls/bls_utils.h"
+#include "bls/bls_signer.h"
 #include "checkpoints/checkpoints.h"
 #include "common/base58.h"
 #include "common/command_line.h"
