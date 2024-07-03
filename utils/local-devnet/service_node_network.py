@@ -2,7 +2,7 @@
 
 from daemons import Daemon, Wallet
 import ethereum
-from ethereum import ServiceNodeRewardContract
+from ethereum import ServiceNodeRewardContract, ContractSeedServiceNode, ContractServiceNodeContributor
 
 import pathlib
 import argparse
@@ -47,12 +47,6 @@ def vprint(*args, timestamp=True, **kwargs):
         if timestamp:
             print(datetime.now(), end=" ")
         print(*args, **kwargs)
-
-class BLSPublicSeedEntry:
-    def __init__(self, bls_pubkey_hex, deposit):
-        assert len(bls_pubkey_hex) == 128, "BLS pubkey must be 128 hex characters consisting of a 32 byte X & Y component"
-        self.bls_pubkey_hex = bls_pubkey_hex
-        self.deposit        = deposit
 
 class SNNetwork:
     def __init__(self, datadir, *, oxen_bin_dir, anvil_path, eth_sn_contracts_dir, sns=12, nodes=3):
@@ -258,24 +252,32 @@ class SNNetwork:
 
         self.sync_nodes(self.mine(1), timeout=120)
 
-        # Collect all BLS public-keys, note all SNs up to this point (HF < feature::ETH_BLS) had a 100 OXEN staking requirement
-        bls_pubkey_list = []
-        for sn in self.sns:
-            bls_pubkey = sn.get_service_keys().bls_pubkey
-            if bls_pubkey is not None:
-                bls_pubkey_list.append(BLSPublicSeedEntry(bls_pubkey_hex=bls_pubkey, deposit=coins(100)))
-
-        self.sn_contract.seedPublicKeyList(bls_pubkey_list)
-        vprint("Seeded BLS public keys into contract. Contract has {} SNs".format(self.sn_contract.numberServiceNodes()))
-
-        # Start the rewards contract after seeding the BLS public keys
-        self.sn_contract.start()
-
         # Pull out some useful keys to local variables
         sn0_pubkey            = self.ethsns[0].get_service_keys().pubkey
         hardhat_account       = self.sn_contract.hardhatAccountAddress()
         hardhat_account_no_0x = hardhat_account[2:42]
         assert len(hardhat_account) == 42, "Expected Eth address w/ 0x prefix + 40 hex characters. Account was {} ({} chars)".format(hardhat_account, len(hardhat_account))
+
+        # Construct the seed list for initiating the smart contract.
+        # Note all SNs up to this point (HF < feature::ETH_BLS) had a 100 OXEN staking requirement
+        seed_node_list = []
+        for sn in self.sns:
+            deposit   = coins(100)
+            node      = ContractSeedServiceNode(sn.get_service_keys().bls_pubkey, deposit)
+            assert node.pubkey is not None
+            contributors = sn.sn_status()["service_node_state"]["contributors"]
+            for entry in contributors:
+                contributor              = ContractServiceNodeContributor()
+                contributor.addr         = hardhat_account # Default to the hardhat account
+                contributor.stakedAmount = entry["amount"]    # Use the oxen amount as the SENT amount
+                node.contributors.append(contributor)
+            seed_node_list.append(node)
+
+        self.sn_contract.seedPublicKeyList(seed_node_list)
+        vprint("Seeded BLS public keys into contract. Contract has {} SNs".format(self.sn_contract.numberServiceNodes()))
+
+        # Start the rewards contract after seeding the BLS public keys
+        self.sn_contract.start()
 
         # Register a SN via the Ethereum smart contract
         vprint("Preparing to submit registration to Eth w/ address {} for SN {}".format(hardhat_account, sn0_pubkey))
@@ -365,11 +367,11 @@ class SNNetwork:
 
         # Exit Node ################################################################################
         exit_request = self.ethsns[0].get_exit_request(sn_to_remove_bls_pubkey)
+        vprint("Exit request aggregated: {}".format(exit_request))
         self.sn_contract.removeBLSPublicKeyWithSignature(exit_request["result"]["bls_pubkey"],
+                                                         exit_request["result"]["timestamp"],
                                                          exit_request["result"]["signature"],
                                                          exit_request["result"]["non_signer_indices"])
-        # vprint("Submitted transaction to exit service node : {}".format(ethereum_add_bls_args["bls_pubkey"]))
-        # vprint("exited node: number of service nodes in contract {}".format(self.sn_contract.numberServiceNodes()))
 
         # Liquidate Node ###########################################################################
         # exit = self.ethsns[0].get_liquidation_request(ethereum_add_bls_args["bls_pubkey"])

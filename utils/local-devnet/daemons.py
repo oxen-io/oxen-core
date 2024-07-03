@@ -274,15 +274,13 @@ class Daemon(RPCDaemon):
         return self.json_rpc("bls_rewards_request", {"address": address}, timeout=1000).json()
 
     def get_exit_request(self, bls_key):
-        return self.json_rpc("bls_exit_request", {"bls_key": bls_key}).json()
+        return self.json_rpc("bls_exit_request", {"bls_pubkey": bls_key}).json()
 
     def get_liquidation_request(self, bls_key):
-        return self.json_rpc("bls_liquidation_request", {"bls_key": bls_key}).json()
+        return self.json_rpc("bls_liquidation_request", {"bls_pubkey": bls_key}).json()
 
     def get_service_nodes(self):
         return self.json_rpc("get_service_nodes").json()
-
-
 
 class Wallet(RPCDaemon):
     base_args = ('--disable-rpc-login', '--non-interactive', '--password','', '--devnet', '--disable-rpc-long-poll',

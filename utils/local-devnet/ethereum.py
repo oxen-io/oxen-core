@@ -46,6 +46,13 @@ class ContractServiceNode:
         self.deposit               = None
         self.contributors          = None
 
+class ContractSeedServiceNode:
+    def __init__(self, bls_pubkey_hex, deposit):
+        assert len(bls_pubkey_hex) == 128, "BLS pubkey must be 128 hex characters consisting of a 32 byte X & Y component"
+        self.pubkey       = bls_pubkey_hex
+        self.deposit      = deposit
+        self.contributors = []
+
 class ServiceNodeRewardContract:
     def __init__(self):
         self.provider_url = PROVIDER_URL
@@ -172,17 +179,21 @@ class ServiceNodeRewardContract:
         tx_hash = self.submitSignedTX("Remove BLS public key", signed_tx)
         return tx_hash
 
-    def removeBLSPublicKeyWithSignature(self, blsKey, blsSig, ids):
-        unsent_tx = self.contract.functions.removeBLSPublicKeyWithSignature(
-            self.getServiceNodeID(blsKey),
-            int(blsKey[:64], 16),
-            int(blsKey[64:128], 16),
-            int(blsSig[:64], 16),
-            int(blsSig[64:128], 16),
-            int(blsSig[128:192], 16),
-            int(blsSig[192:256], 16),
-            ids
-        ).build_transaction({
+    def removeBLSPublicKeyWithSignature(self, blsKey, timestamp, blsSig, ids):
+        unsent_tx = self.contract.functions.removeBLSPublicKeyWithSignature({
+            'blsPubkey': {
+                'X': int(blsKey[:64],    16),
+                'Y': int(blsKey[64:128], 16),
+            },
+            'timestamp': timestamp,
+            'blsSignature': {
+                'sigs0': int(blsSig[:64],     16),
+                'sigs1': int(blsSig[64:128],  16),
+                'sigs2': int(blsSig[128:192], 16),
+                'sigs3': int(blsSig[192:256], 16),
+            },
+            'ids': ids
+        }).build_transaction({
             "from": self.acc.address,
             'gas': 3000000,  # Adjust gas limit as necessary
             'nonce': self.web3.eth.get_transaction_count(self.acc.address)
@@ -210,16 +221,27 @@ class ServiceNodeRewardContract:
         tx_hash = self.submitSignedTX("Liquidate BLS public key w/ signature", signed_tx)
         return tx_hash
 
-    def seedPublicKeyList(self, bls_pubkey_list):
-        pkX = []
-        pkY = []
-        amounts = []
-        for seed in bls_pubkey_list:
-            pkX.append(int(seed.bls_pubkey_hex[:64], 16)) # First 32 bytes as pkX
-            pkY.append(int(seed.bls_pubkey_hex[64:], 16)) # Last 32 bytes as pkY
-            amounts.append(seed.deposit)                     # Corresponding amount
+    def seedPublicKeyList(self, seed_nodes):
+        contract_seed_nodes = []
+        for item in seed_nodes:
+            entry = {
+                'pubkey': {
+                    'X': int(item.pubkey[:64],    16),
+                    'Y': int(item.pubkey[64:128], 16),
+                },
+                'deposit': item.deposit,
+                'contributors': [],
+            }
 
-        unsent_tx = self.contract.functions.seedPublicKeyList(pkX, pkY, amounts).build_transaction({
+            for contributor in item.contributors:
+                entry['contributors'].append({
+                    'addr':         contributor.addr,
+                    'stakedAmount': contributor.stakedAmount,
+                })
+
+            contract_seed_nodes.append(entry)
+
+        unsent_tx = self.contract.functions.seedPublicKeyList(contract_seed_nodes).build_transaction({
             "from":  self.acc.address,
             'gas':   3000000,  # Adjust gas limit as necessary
             'nonce': self.web3.eth.get_transaction_count(self.acc.address)
@@ -344,11 +366,6 @@ contract_abi = json.loads("""
         }
       ],
       "name": "AddressInsufficientBalance",
-      "type": "error"
-    },
-    {
-      "inputs": [],
-      "name": "ArrayLengthMismatch",
       "type": "error"
     },
     {
@@ -1048,6 +1065,19 @@ contract_abi = json.loads("""
     },
     {
       "inputs": [],
+      "name": "MAX_PERMITTED_PUBKEY_AGGREGATIONS_LOWER_BOUND",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
       "name": "MAX_SERVICE_NODE_REMOVAL_WAIT_TIME",
       "outputs": [
         {
@@ -1071,6 +1101,32 @@ contract_abi = json.loads("""
         {
           "internalType": "uint256",
           "name": "Y",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "_lastHeightPubkeyWasAggregated",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "_numPubkeyAggregationsForHeight",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
           "type": "uint256"
         }
       ],
@@ -1265,6 +1321,19 @@ contract_abi = json.loads("""
       "type": "function"
     },
     {
+      "inputs": [],
+      "name": "hashToG2Tag",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
       "inputs": [
         {
           "internalType": "address",
@@ -1428,6 +1497,19 @@ contract_abi = json.loads("""
         {
           "internalType": "uint256",
           "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "maxPermittedPubkeyAggregations",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "result",
           "type": "uint256"
         }
       ],
@@ -1667,19 +1749,50 @@ contract_abi = json.loads("""
     {
       "inputs": [
         {
-          "internalType": "uint256[]",
-          "name": "pkX",
-          "type": "uint256[]"
-        },
-        {
-          "internalType": "uint256[]",
-          "name": "pkY",
-          "type": "uint256[]"
-        },
-        {
-          "internalType": "uint256[]",
-          "name": "amounts",
-          "type": "uint256[]"
+          "components": [
+            {
+              "components": [
+                {
+                  "internalType": "uint256",
+                  "name": "X",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "Y",
+                  "type": "uint256"
+                }
+              ],
+              "internalType": "struct BN256G1.G1Point",
+              "name": "pubkey",
+              "type": "tuple"
+            },
+            {
+              "internalType": "uint256",
+              "name": "deposit",
+              "type": "uint256"
+            },
+            {
+              "components": [
+                {
+                  "internalType": "address",
+                  "name": "addr",
+                  "type": "address"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "stakedAmount",
+                  "type": "uint256"
+                }
+              ],
+              "internalType": "struct IServiceNodeRewards.Contributor[]",
+              "name": "contributors",
+              "type": "tuple[]"
+            }
+          ],
+          "internalType": "struct IServiceNodeRewards.SeedServiceNode[]",
+          "name": "nodes",
+          "type": "tuple[]"
         }
       ],
       "name": "seedPublicKeyList",
