@@ -24,6 +24,28 @@ def eth_chainId():
 
     return result
 
+def evm_increaseTime(web3, seconds):
+    web3.provider.make_request('evm_increaseTime', [seconds])
+
+def evm_mine(web3):
+    web3.provider.make_request('mine', [])
+
+class ContractServiceNodeContributor:
+    def __init__(self):
+        self.addr         = None
+        self.stakedAmount = None
+
+class ContractServiceNode:
+    def __init__(self):
+        self.next                  = None
+        self.prev                  = None
+        self.operator              = None
+        self.pubkey_x              = None
+        self.pubkey_y              = None
+        self.leaveRequestTimestamp = None
+        self.deposit               = None
+        self.contributors          = None
+
 class ServiceNodeRewardContract:
     def __init__(self):
         self.provider_url = PROVIDER_URL
@@ -140,8 +162,7 @@ class ServiceNodeRewardContract:
         return tx_hash
 
     def initiateRemoveBLSPublicKey(self, service_node_id):
-        # function initiateRemoveBLSPublicKey(uint64 serviceNodeID) public {
-
+        # function initiateRemoveBLSPublicKey(uint64 serviceNodeID) public
         unsent_tx = self.contract.functions.initiateRemoveBLSPublicKey(service_node_id
                     ).build_transaction({
                         "from": self.acc.address,
@@ -268,7 +289,38 @@ class ServiceNodeRewardContract:
             if bls_key not in bls_public_keys:
                 non_signers.append(service_node_id)
             service_node_id = service_node[0]
-        return non_signers;
+        return non_signers
+
+    def serviceNodes(self, u64_id):
+        call_result                  = self.contract.functions.serviceNodes(u64_id).call()
+        result                       = ContractServiceNode()
+        index                        = 0;
+
+        result.next                  = call_result[index]
+        index += 1;
+
+        result.prev                  = call_result[index]
+        index += 1;
+
+        result.operator              = call_result[index]
+        index += 1;
+
+        result.pubkey_x              = call_result[index][0]
+        result.pubkey_y              = call_result[index][1]
+        index += 1;
+
+        result.leaveRequestTimestamp = call_result[index]
+        index += 1;
+
+        result.deposit               = call_result[index]
+        index += 1;
+
+        result.contributors          = call_result[index]
+        index += 1;
+
+        return result
+
+
 
 contract_abi = json.loads("""
 [
