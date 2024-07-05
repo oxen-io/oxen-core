@@ -27,7 +27,7 @@ std::vector<Output> TransactionScanner::scan_received(
         return {};
     }
     if (tx.tx.vout.size() != tx.global_indices.size()) {
-        throw oxen::invalid_argument(
+        throw oxen::traced<std::invalid_argument>(
                 "Invalid wallet::BlockTX, created outputs count != global indices count.");
     }
 
@@ -95,7 +95,7 @@ std::vector<Output> TransactionScanner::scan_received(
 
             received_outputs.push_back(std::move(o));
         } else {
-            throw oxen::invalid_argument(
+            throw oxen::traced<std::invalid_argument>(
                     "Invalid output target variant, only txout_to_key is valid.");
         }
     }

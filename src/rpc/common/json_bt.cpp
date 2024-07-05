@@ -29,7 +29,7 @@ oxenc::bt_value json_to_bt(json&& j) {
         return j.get<uint64_t>();
     if (j.is_number_integer())
         return j.get<int64_t>();
-    throw oxen::domain_error{
+    throw oxen::traced<std::domain_error>{
             "internal error: encountered some unhandled/invalid type in json-to-bt translation"};
 }
 

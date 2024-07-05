@@ -58,7 +58,7 @@ namespace {
 
 void expect::throw_(std::error_code ec, const char* msg, const char* file, unsigned line) {
     if (msg || file)
-        throw oxen::system_error{ec.value(), generate_error(msg, file, line)};
-    throw oxen::system_error{ec.value(), msg};
+        throw oxen::traced<std::system_error>{ec, generate_error(msg, file, line)};
+    throw oxen::traced<std::system_error>{ec, msg};
 }
 }  // namespace detail

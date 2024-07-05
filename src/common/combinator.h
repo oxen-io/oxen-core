@@ -58,11 +58,11 @@ class Combinator {
 template <typename T>
 std::vector<std::vector<T>> Combinator<T>::combine(size_t k) {
     if (k > origin.size()) {
-        throw oxen::runtime_error("k must be smaller than elements number");
+        throw oxen::traced<std::runtime_error>("k must be smaller than elements number");
     }
 
     if (k == 0) {
-        throw oxen::runtime_error("k must be greater than zero");
+        throw oxen::traced<std::runtime_error>("k must be greater than zero");
     }
 
     combinations.clear();

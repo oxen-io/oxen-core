@@ -89,7 +89,7 @@ class NodeRPCProxy {
                                 (result.status == cryptonote::rpc::STATUS_BUSY ? "daemon is busy"
                                                                                : result.status);
             log::error(globallogcat, error);
-            throw oxen::runtime_error{error};
+            throw oxen::traced<std::runtime_error>{error};
         }
 
         return result;

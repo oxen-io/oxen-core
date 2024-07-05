@@ -21,7 +21,7 @@ static auto logcat = oxen::log::Cat("l2_tracker");
 
 TransactionType getLogType(const ethyl::LogEntry& log) {
     if (log.topics.empty()) {
-        throw oxen::runtime_error("No topics in log entry");
+        throw oxen::traced<std::runtime_error>("No topics in log entry");
     }
     // keccak256('NewServiceNode(uint64,address,(uint256,uint256),(uint256,uint256,uint256,uint16),(address,uint256)[])')
     if (log.topics[0] == "0xe82ed1bfc15e6602fba1a19273171c8a63c1d40b0e0117be4598167b8655498f") {
@@ -189,14 +189,14 @@ TransactionStateChangeVariant getLogTransaction(const ethyl::LogEntry& log) {
             // NOTE: Decode fee and that it is within acceptable range
             item.fee = tools::decode_integer_be(fee256);
             if (item.fee > cryptonote::STAKING_FEE_BASIS)
-                throw oxen::invalid_argument{
+                throw oxen::traced<std::invalid_argument>{
                     "Invalid NewServiceNode data: fee must be in [0, {}]"_format(cryptonote::STAKING_FEE_BASIS)};
 
             // NOTE: Verify that the number of contributors in the blob is
             // within maximum range
             uint64_t num_contributors = tools::decode_integer_be(c_len);
             if (num_contributors > oxen::MAX_CONTRIBUTORS_HF19) {
-                throw oxen::invalid_argument("Invalid NewServiceNode data: {}\n{}"_format(
+                throw oxen::traced<std::invalid_argument>("Invalid NewServiceNode data: {}\n{}"_format(
                         log_more_contributors_than_allowed(
                                 num_contributors,
                                 oxen::MAX_CONTRIBUTORS_HF19,
@@ -208,7 +208,7 @@ TransactionStateChangeVariant getLogTransaction(const ethyl::LogEntry& log) {
 
             // NOTE: Verify that there's atleast one contributor
             if (num_contributors <= 0) {
-                throw oxen::invalid_argument(
+                throw oxen::traced<std::invalid_argument>(
                         "Invalid NewServiceNode data: There must be atleast one contributor, "
                         "received 0\n{}"
                         ""_format(log_new_service_node_tx(item, log.data)));
@@ -221,7 +221,7 @@ TransactionStateChangeVariant getLogTransaction(const ethyl::LogEntry& log) {
             const uint64_t expected_c_offset_value = 32 /*ID*/ + 32 /*recipient*/ + 64 /*BLS Key*/ +
                                                      32 /*SN Key*/ + 64 /*SN Sig*/ + 32 /*Fee*/;
             if (c_offset_value != expected_c_offset_value) {
-                throw oxen::invalid_argument(
+                throw oxen::traced<std::invalid_argument>(
                         "Invalid NewServiceNode data: The offset to the contributor payload ({} "
                         "bytes) did not match the offset we derived {}\n{}"
                         ""_format(
@@ -234,7 +234,7 @@ TransactionStateChangeVariant getLogTransaction(const ethyl::LogEntry& log) {
             const size_t expected_contrib_hex_size =
                     2 /*hex*/ * num_contributors * (/*address*/ 32 + /*amount*/ 32);
             if (contrib_hex.size() != expected_contrib_hex_size) {
-                throw oxen::invalid_argument{
+                throw oxen::traced<std::invalid_argument>{
                         "Invalid NewServiceNode data: The hex payload length ({}) derived for "
                         "{} contributors did not match the size we derived of {} hex characters\n{}"_format(
                                 contrib_hex.size(),

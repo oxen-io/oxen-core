@@ -151,7 +151,7 @@ std::optional<type_or_tuple<T...>> exec_and_maybe_get(SQLite::Statement& st, con
                     sqlitedb_logcat,
                     "Expected single-row result, got multiple rows from {}",
                     st.getQuery());
-            throw oxen::runtime_error{"DB error: expected single-row result, got multiple rows"};
+            throw oxen::traced<std::runtime_error>{"DB error: expected single-row result, got multiple rows"};
         }
         result = get<T...>(st);
     }
@@ -168,7 +168,7 @@ type_or_tuple<T...> exec_and_get(SQLite::Statement& st, const Args&... bind) {
     if (!maybe_result) {
         log::error(
                 sqlitedb_logcat, "Expected single-row result, got no rows from {}", st.getQuery());
-        throw oxen::runtime_error{"DB error: expected single-row result, got no rows"};
+        throw oxen::traced<std::runtime_error>{"DB error: expected single-row result, got no rows"};
     }
     return *std::move(maybe_result);
 }

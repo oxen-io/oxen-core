@@ -191,7 +191,7 @@ static void serialize_message(
     auto msg_wire_num = MessageMapper::get_message_wire_number(req);
     const auto req_buffer_size = serialize_message_buffer_size(msg_size);
     if (req_buffer_size > buff_size) {
-        throw oxen::invalid_argument("Buffer too small");
+        throw oxen::traced<std::invalid_argument>("Buffer too small");
     }
 
     serialize_message_header(buff, msg_wire_num, msg_size);
@@ -533,10 +533,10 @@ std::string BridgeTransport::post_json(std::string_view uri, std::string json) {
     res = m_http_session.Post();
 
     if (res.error)
-        throw oxen::runtime_error{"Trezor bridge request failed: " + res.error.message};
+        throw oxen::traced<std::runtime_error>{"Trezor bridge request failed: " + res.error.message};
 
     if (res.status_code != 200)
-        throw oxen::runtime_error{
+        throw oxen::traced<std::runtime_error>{
                 "Trezor bridge request failed: received bad HTTP status " + res.status_line};
 
     return std::move(res.text);
@@ -589,7 +589,7 @@ UdpTransport::UdpTransport(
 
     assert_port_number((uint32_t)m_device_port);
     if (m_device_host != "localhost" && m_device_host != DEFAULT_HOST) {
-        throw oxen::invalid_argument("Local endpoint allowed only");
+        throw oxen::traced<std::invalid_argument>("Local endpoint allowed only");
     }
 
     m_proto = proto ? *proto : std::make_shared<ProtocolV1>();
@@ -704,7 +704,7 @@ void UdpTransport::write_chunk(const void* buff, size_t size) {
 size_t UdpTransport::read_chunk(void* buff, size_t size) {
     require_socket();
     if (size < 64) {
-        throw oxen::invalid_argument("Buffer too small");
+        throw oxen::traced<std::invalid_argument>("Buffer too small");
     }
 
     ssize_t len;
@@ -928,14 +928,14 @@ WebUsbTransport::~WebUsbTransport() {
 
 void WebUsbTransport::require_device() const {
     if (!m_usb_device_desc) {
-        throw oxen::runtime_error("No USB device specified");
+        throw oxen::traced<std::runtime_error>("No USB device specified");
     }
 }
 
 void WebUsbTransport::require_connected() const {
     require_device();
     if (!m_usb_device_handle) {
-        throw oxen::runtime_error("USB Device not opened");
+        throw oxen::traced<std::runtime_error>("USB Device not opened");
     }
 }
 
@@ -952,7 +952,7 @@ void WebUsbTransport::enumerate(t_transport_vect& res) {
     ssize_t cnt = libusb_get_device_list(ctx, &devs);
     if (cnt < 0) {
         libusb_exit(ctx);
-        throw oxen::runtime_error("Unable to enumerate libusb devices");
+        throw oxen::traced<std::runtime_error>("Unable to enumerate libusb devices");
     }
 
     log::trace(logcat, "Libusb devices: {}", cnt);
@@ -1028,7 +1028,7 @@ void WebUsbTransport::open() {
     ssize_t cnt = libusb_get_device_list(m_usb_session, &devs);
     if (cnt < 0) {
         TREZOR_DESTROY_SESSION();
-        throw oxen::runtime_error("Unable to enumerate libusb devices");
+        throw oxen::traced<std::runtime_error>("Unable to enumerate libusb devices");
     }
 
     for (ssize_t i = 0; i < cnt; i++) {
@@ -1288,13 +1288,13 @@ std::shared_ptr<Transport> transport(const std::string& path) {
         return std::make_shared<UdpTransport>(path.substr(strlen(UdpTransport::PATH_PREFIX)));
 
     } else {
-        throw oxen::invalid_argument("Unknown Trezor device path: " + path);
+        throw oxen::traced<std::invalid_argument>("Unknown Trezor device path: " + path);
     }
 }
 
 void throw_failure_exception(const messages::common::Failure* failure) {
     if (failure == nullptr) {
-        throw oxen::invalid_argument("Failure message cannot be null");
+        throw oxen::traced<std::invalid_argument>("Failure message cannot be null");
     }
 
     std::optional<std::string> message =

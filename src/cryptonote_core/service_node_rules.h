@@ -2,7 +2,6 @@
 
 #include <chrono>
 
-#include "common/exception.h"
 #include "cryptonote_config.h"
 #include "oxen_economy.h"
 #include "service_node_voting.h"
@@ -10,8 +9,8 @@
 namespace service_nodes {
 
 // validate_registration* and convert_registration_args functions throws this on error:
-struct invalid_registration : oxen::invalid_argument {
-    using oxen::invalid_argument::invalid_argument;
+struct invalid_registration : std::invalid_argument {
+    using std::invalid_argument::invalid_argument;
 };
 
 inline constexpr size_t PULSE_QUORUM_ENTROPY_LAG =
@@ -305,6 +304,11 @@ inline constexpr uint8_t THRESHOLD_SECONDS_OUT_OF_SYNC = 30;
 
 // If the below percentage of service nodes are out of sync we will consider our clock out of sync
 inline constexpr uint8_t MAXIMUM_EXTERNAL_OUT_OF_SYNC = 80;
+
+// When a service node receives a request to sign an exit request for a BLS node, this values
+// determines how old that request is allowed to be from the time it was initiated to us receiving
+// it, that we will consider signing it.
+inline constexpr std::chrono::seconds BLS_MAX_TIME_ALLOWED_FOR_EXIT_REQUEST = std::chrono::minutes(3);
 
 // The SN operator must contribute at least 25% of the node's requirement, expressed as portions
 // (for pre-HF19 registrations).

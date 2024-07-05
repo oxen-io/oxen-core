@@ -90,7 +90,7 @@ device& device_registry::get_device(const std::string& device_descriptor) {
                 logcat, "Device not found in registry: '{}'. Known devices: ", device_descriptor);
         for (const auto& sm_pair : registry)
             log::error(logcat, " - {}", sm_pair.first);
-        throw oxen::runtime_error("device not found: " + device_descriptor);
+        throw oxen::traced<std::runtime_error>("device not found: " + device_descriptor);
     }
     return *device->second;
 }

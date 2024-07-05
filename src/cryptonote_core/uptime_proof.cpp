@@ -88,7 +88,7 @@ Proof::Proof(cryptonote::hf hardfork, std::string_view serialized_proof) {
 
     if (auto ip = proof.require<std::string>("ip");
         !epee::string_tools::get_ip_int32_from_string(public_ip, ip) || public_ip == 0)
-        throw oxen::runtime_error{"Invalid IP address in proof"};
+        throw oxen::traced<std::runtime_error>{"Invalid IP address in proof"};
 
     lokinet_version = proof.require<std::array<uint16_t, 3>>("lv");
 
@@ -103,7 +103,7 @@ Proof::Proof(cryptonote::hf hardfork, std::string_view serialized_proof) {
 
     qnet_port = proof.require<uint16_t>("q");
     if (qnet_port == 0)
-        throw oxen::runtime_error{"Invalid omq port in proof"};
+        throw oxen::traced<std::runtime_error>{"Invalid omq port in proof"};
 
     // Unlike qnet_port, these *can* be zero (on devnet); but this is checked elsewhere.
     storage_https_port = proof.require<uint16_t>("shp");

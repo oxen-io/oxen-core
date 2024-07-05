@@ -81,7 +81,7 @@ class rpc_command_executor final {
             if (auto* rpc_client = std::get_if<cryptonote::rpc::http_client>(&m_rpc)) {
                 res = rpc_client->json_rpc<RPC>(RPC::names()[0], req);
             } else {
-                throw oxen::runtime_error{"fixme"};
+                throw oxen::traced<std::runtime_error>{"fixme"};
             }
             if (!check_status_ok || res.status == cryptonote::rpc::STATUS_OK)
                 return true;

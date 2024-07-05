@@ -378,13 +378,13 @@ void generate_tx_proof(
     ge_p3 B_p3;
     ge_p3 D_p3;
     if (ge_frombytes_vartime(&R_p3, R.data()) != 0)
-        throw oxen::runtime_error("tx pubkey is invalid");
+        throw oxen::traced<std::runtime_error>("tx pubkey is invalid");
     if (ge_frombytes_vartime(&A_p3, A.data()) != 0)
-        throw oxen::runtime_error("recipient view pubkey is invalid");
+        throw oxen::traced<std::runtime_error>("recipient view pubkey is invalid");
     if (B && ge_frombytes_vartime(&B_p3, B->data()) != 0)
-        throw oxen::runtime_error("recipient spend pubkey is invalid");
+        throw oxen::traced<std::runtime_error>("recipient spend pubkey is invalid");
     if (ge_frombytes_vartime(&D_p3, D.data()) != 0)
-        throw oxen::runtime_error("key derivation is invalid");
+        throw oxen::traced<std::runtime_error>("key derivation is invalid");
 #if !defined(NDEBUG)
     {
         assert(sc_check(r.data()) == 0);

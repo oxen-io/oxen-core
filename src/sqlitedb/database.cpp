@@ -55,7 +55,7 @@ Database::Database(const fs::path& db_path, const std::string_view db_password) 
                 sqlitedb_logcat,
                 "Failed to enable foreign keys constraints: {}",
                 sqlite3_errstr(rc));
-        throw oxen::runtime_error{"Foreign key constrains required"};
+        throw oxen::traced<std::runtime_error>{"Foreign key constrains required"};
     }
     int fk_enabled = db.execAndGet("PRAGMA foreign_keys").getInt();
     if (fk_enabled != 1) {
@@ -63,7 +63,7 @@ Database::Database(const fs::path& db_path, const std::string_view db_password) 
                 sqlitedb_logcat,
                 "Failed to enable foreign key constraints; perhaps this sqlite3 is compiled "
                 "without it?");
-        throw oxen::runtime_error{"Foreign key support is required"};
+        throw oxen::traced<std::runtime_error>{"Foreign key support is required"};
     }
 
     // FIXME: SQLite / SQLiteCPP may not have encryption available

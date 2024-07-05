@@ -66,7 +66,7 @@ template <safe_to_memcpy T, byte_spannable Spannable>
 T make_from_guts(const Spannable& s) {
     std::span<const typename Spannable::value_type> span{s};
     if (s.size() != sizeof(T))
-        throw oxen::runtime_error{"Cannot reconstitute type: wrong data size ({} vs {}) for type"_format(s.size(), sizeof(T))};
+        throw oxen::traced<std::runtime_error>{"Cannot reconstitute type: wrong data size ({} vs {}) for type"_format(s.size(), sizeof(T))};
     T x;
     std::memcpy(static_cast<void*>(&x), s.data(), sizeof(T));
     return x;
@@ -79,10 +79,10 @@ template <safe_to_memcpy T, byte_spannable Spannable>
 void load_from_hex_guts(const Spannable& s, T& x, bool check_hex = true) {
     std::span<const typename Spannable::value_type> span{s};
     if (s.size() != sizeof(T) * 2)
-        throw oxen::runtime_error{"Cannot reconstitute type from hex: wrong size ({} vs {}) for type"_format(s.size(), sizeof(T) * 2)};
+        throw oxen::traced<std::runtime_error>{"Cannot reconstitute type from hex: wrong size ({} vs {}) for type"_format(s.size(), sizeof(T) * 2)};
 
     if (check_hex && !oxenc::is_hex(span.begin(), span.end()))
-        throw oxen::runtime_error{"Cannot reconstitute type from hex: invalid hex characters"_format(s)};
+        throw oxen::traced<std::runtime_error>{"Cannot reconstitute type from hex: invalid hex characters"_format(s)};
     oxenc::from_hex(span.begin(), span.end(), reinterpret_cast<char*>(&x));
 }
 
@@ -260,7 +260,7 @@ constexpr detail::tuple_without_skips<T...> split_guts_into(const Spannable& s) 
     if ((detail::final_is_string_view<T...> || detail::final_is_ignore<T...>)
                 ? span.size() < min_size
                 : span.size() != min_size)
-        throw oxen::runtime_error{"Invalid split_guts_into string size"};
+        throw oxen::traced<std::runtime_error>{"Invalid split_guts_into string size"};
 
     detail::tuple_without_skips<T...> result;
     detail::load_split_tuple<0, T...>(
@@ -283,12 +283,12 @@ constexpr detail::tuple_without_skips<T...> split_hex_into(std::string_view hex_
     constexpr auto min_size = 2 * (detail::split_guts_piece_size<T>() + ...);
     if ((detail::final_is_string_view<T...> ? hex_in.size() < min_size
                                             : hex_in.size() != min_size)) {
-        throw oxen::runtime_error{
+        throw oxen::traced<std::runtime_error>{
                 "Invalid split_hex_into string input: incorrect hex string size (hex_in {}, min_size {})"_format(hex_in.size(), min_size)};
     }
 
     if (!oxenc::is_hex(hex_in)) {
-        throw oxen::runtime_error{
+        throw oxen::traced<std::runtime_error>{
                 "Invalid split_hex_into string input: invalid hex characters encountered"};
     }
 

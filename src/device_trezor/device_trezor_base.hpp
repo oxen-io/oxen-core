@@ -135,7 +135,7 @@ class device_trezor_base : public hw::core::device_default {
         static_assert(std::is_base_of_v<google::protobuf::Message, t_message>);
         const bool accepting_base = boost::is_same<google::protobuf::Message, t_message>::value;
         if (resp_types && !accepting_base) {
-            throw oxen::invalid_argument(
+            throw oxen::traced<std::invalid_argument>(
                     "Cannot specify list of accepted types and not using generic response");
         }
 

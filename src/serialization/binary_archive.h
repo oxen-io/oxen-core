@@ -104,7 +104,7 @@ class binary_unarchiver : public deserializer {
     void serialize_uvarint(T& v) {
         using It = std::istreambuf_iterator<char>;
         if (tools::read_varint(It{stream_}, It{}, v) < 0)
-            throw oxen::runtime_error{"deserialization of varint failed"};
+            throw oxen::traced<std::runtime_error>{"deserialization of varint failed"};
     }
 
     // RAII class for `begin_array()`/`begin_object()`.  This particular implementation is a no-op.

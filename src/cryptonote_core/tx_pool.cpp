@@ -313,7 +313,7 @@ bool tx_memory_pool::add_tx(
     std::unique_lock lock{m_transactions_lock};
     if (blob.size() == 0) {
         oxen::log::error(logcat, "Could not add to txpool, blob is empty of tx: {}", id);
-        throw oxen::runtime_error("Could not add to txpool, blob empty");
+        throw oxen::traced<std::runtime_error>("Could not add to txpool, blob empty");
     }
 
     if (tx.version == txversion::v0) {
@@ -1713,7 +1713,7 @@ bool tx_memory_pool::is_transaction_ready_to_go(
         cryptonote::transaction& operator()() {
             if (!parsed) {
                 if (!parse_and_validate_tx_from_blob(txblob, tx))
-                    throw oxen::runtime_error("failed to parse transaction blob");
+                    throw oxen::traced<std::runtime_error>("failed to parse transaction blob");
                 tx.set_hash(txid);
                 parsed = true;
             }

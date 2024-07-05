@@ -305,10 +305,10 @@ std::optional<double> parse_fee_percent(std::string_view fee) {
 uint16_t percent_to_basis_points(std::string percent_string) {
     const auto percent = parse_fee_percent(percent_string);
     if (!percent)
-        throw invalid_registration{"could not parse fee percent"};
+        throw oxen::traced<invalid_registration>{"could not parse fee percent"};
 
     if (*percent < 0.0 || *percent > 100.0)
-        throw invalid_registration{"fee percent out of bounds"};
+        throw oxen::traced<invalid_registration>{"fee percent out of bounds"};
 
     auto basis_points =
             static_cast<uint16_t>(std::lround(*percent / 100.0 * cryptonote::STAKING_FEE_BASIS));

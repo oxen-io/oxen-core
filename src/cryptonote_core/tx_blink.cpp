@@ -41,9 +41,9 @@ using namespace service_nodes;
 
 static void check_args(blink_tx::subquorum q, int position, const char* func_name) {
     if (q < blink_tx::subquorum::base || q >= blink_tx::subquorum::_count)
-        throw oxen::invalid_argument("Invalid sub-quorum value passed to " + std::string(func_name));
+        throw oxen::traced<std::invalid_argument>("Invalid sub-quorum value passed to " + std::string(func_name));
     if (position < 0 || position >= BLINK_SUBQUORUM_SIZE)
-        throw oxen::invalid_argument("Invalid voter position passed to " + std::string(func_name));
+        throw oxen::traced<std::invalid_argument>("Invalid voter position passed to " + std::string(func_name));
 }
 
 crypto::public_key blink_tx::get_sn_pubkey(
@@ -73,7 +73,7 @@ crypto::hash blink_tx::hash(bool approved) const {
 
 void blink_tx::limit_signatures(subquorum q, size_t max_size) {
     if (max_size > BLINK_SUBQUORUM_SIZE)
-        throw oxen::domain_error("Internal error: too many potential blink signers!");
+        throw oxen::traced<std::domain_error>("Internal error: too many potential blink signers!");
     else if (max_size < BLINK_SUBQUORUM_SIZE)
         for (size_t i = max_size; i < BLINK_SUBQUORUM_SIZE; i++)
             signatures_[static_cast<uint8_t>(q)][i].status = signature_status::rejected;
@@ -171,7 +171,7 @@ void blink_tx::fill_serialization_data(
 crypto::hash blink_tx::tx_hash_visitor::operator()(const transaction& tx) const {
     crypto::hash h;
     if (!cryptonote::get_transaction_hash(tx, h))
-        throw oxen::runtime_error("Failed to calculate transaction hash");
+        throw oxen::traced<std::runtime_error>("Failed to calculate transaction hash");
     return h;
 }
 

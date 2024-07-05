@@ -168,7 +168,7 @@ uint64_t BlockchainDB::add_block(
 
     // sanity
     if (blk.tx_hashes.size() != txs.size())
-        throw oxen::runtime_error("Inconsistent tx/hashes sizes");
+        throw oxen::traced<std::runtime_error>("Inconsistent tx/hashes sizes");
 
     auto started = std::chrono::steady_clock::now();
     crypto::hash blk_hash = get_block_hash(blk);

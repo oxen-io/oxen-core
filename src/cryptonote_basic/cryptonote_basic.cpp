@@ -21,7 +21,7 @@ std::vector<crypto::public_key> transaction_prefix::get_public_keys() const {
     std::vector<cryptonote::tx_extra_field> fields;
 
     if (!parse_tx_extra(extra, fields)) {
-        throw oxen::invalid_argument("Failed to parse tx_extra of a transaction.");
+        throw oxen::traced<std::invalid_argument>("Failed to parse tx_extra of a transaction.");
     }
 
     std::vector<crypto::public_key> keys;

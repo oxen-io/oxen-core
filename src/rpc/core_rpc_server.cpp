@@ -122,7 +122,7 @@ namespace {
             if (auto body = request.body_view())
                 data = *body;
             else
-                throw oxen::runtime_error{
+                throw oxen::traced<std::runtime_error>{
                         "Internal error: can't load binary a RPC command with non-string body"};
             if (!epee::serialization::load_t_from_binary(req, data))
                 throw parse_error{"Failed to parse binary data parameters"};
@@ -871,12 +871,12 @@ void core_rpc_server::invoke(GET_TRANSACTIONS& get, [[maybe_unused]] rpc_context
             auto split_mempool_tx = [](std::pair<const crypto::hash, tx_info>& info) {
                 cryptonote::transaction tx;
                 if (!cryptonote::parse_and_validate_tx_from_blob(info.second.tx_blob, tx))
-                    throw oxen::runtime_error{"Unable to parse and validate tx from blob"};
+                    throw oxen::traced<std::runtime_error>{"Unable to parse and validate tx from blob"};
                 serialization::binary_string_archiver ba;
                 try {
                     tx.serialize_base(ba);
                 } catch (const std::exception& e) {
-                    throw oxen::runtime_error{"Failed to serialize transaction base: "s + e.what()};
+                    throw oxen::traced<std::runtime_error>{"Failed to serialize transaction base: "s + e.what()};
                 }
                 std::string pruned = ba.str();
                 std::string pruned2{info.second.tx_blob, pruned.size()};
@@ -2499,7 +2499,7 @@ void core_rpc_server::invoke(
     auto& amounts = get_service_node_registration_cmd.request.contributor_amounts;
 
     if (addresses.size() != amounts.size()) {
-        throw oxen::runtime_error("Mismatch in sizes of addresses and amounts");
+        throw oxen::traced<std::runtime_error>("Mismatch in sizes of addresses and amounts");
     }
 
     for (size_t i = 0; i < addresses.size(); ++i) {

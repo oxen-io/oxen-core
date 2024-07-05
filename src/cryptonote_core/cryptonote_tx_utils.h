@@ -221,7 +221,7 @@ struct tx_source_entry {
     FIELD(multisig_kLRki)
 
     if (real_output >= outputs.size())
-        throw oxen::invalid_argument{"invalid real_output size"};
+        throw oxen::traced<std::invalid_argument>{"invalid real_output size"};
     END_SERIALIZE()
 };
 

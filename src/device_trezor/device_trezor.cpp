@@ -540,7 +540,7 @@ void device_trezor::tx_sign(
                     return true;
                 });
         if (!all_are_txin_to_key) {
-            throw oxen::invalid_argument("Not all are txin_to_key");
+            throw oxen::traced<std::invalid_argument>("Not all are txin_to_key");
         }
         cpend.key_images = key_images.str();
 

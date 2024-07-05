@@ -63,7 +63,7 @@ endif()
 
 target_link_libraries(common
   PUBLIC
-    cpptrace::cpptrace
+    $<$<CONFIG:Debug>:cpptrace::cpptrace>
     cncrypto
     oxenmq::oxenmq
     oxen::logging

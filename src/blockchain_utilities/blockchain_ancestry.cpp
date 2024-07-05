@@ -103,7 +103,7 @@ struct tx_data_t {
                             cryptonote::relative_output_offsets_to_absolute(txin->key_offsets)));
                 else {
                     log::warning(logcat, "Bad vin type in txid {}", get_transaction_hash(tx));
-                    throw oxen::runtime_error("Bad vin type");
+                    throw oxen::traced<std::runtime_error>("Bad vin type");
                 }
             }
         }
@@ -113,7 +113,7 @@ struct tx_data_t {
                 vout.push_back(txout->key);
             } else {
                 log::warning(logcat, "Bad vout type in txid {}", get_transaction_hash(tx));
-                throw oxen::runtime_error("Bad vout type");
+                throw oxen::traced<std::runtime_error>("Bad vout type");
             }
         }
     }
@@ -210,7 +210,7 @@ static std::unordered_set<ancestor> get_ancestry(
             ancestry.find(txid);
     if (i == ancestry.end()) {
         // log::error(logcat, "txid ancestry not found: {}", txid);
-        // throw oxen::runtime_error("txid ancestry not found");
+        // throw oxen::traced<std::runtime_error>("txid ancestry not found");
         return std::unordered_set<ancestor>();
     }
     return i->second;
@@ -390,7 +390,7 @@ int main(int argc, char* argv[]) {
     } else {
         std::cerr << "Incorrect log level: " << command_line::get_arg(vm, arg_log_level).c_str()
                   << std::endl;
-        throw oxen::runtime_error{"Incorrect log level"};
+        throw oxen::traced<std::runtime_error>{"Incorrect log level"};
     }
     oxen::logging::init(log_file_path, log_level);
     log::warning(logcat, "Starting...");
@@ -438,7 +438,7 @@ int main(int argc, char* argv[]) {
     BlockchainDB* db = new_db();
     if (db == NULL) {
         log::error(logcat, "Failed to initialize a database");
-        throw oxen::runtime_error("Failed to initialize a database");
+        throw oxen::traced<std::runtime_error>("Failed to initialize a database");
     }
     log::warning(logcat, "database: LMDB");
 

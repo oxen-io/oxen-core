@@ -233,7 +233,7 @@ int main(int argc, char* argv[]) {
     } else {
         std::cerr << "Incorrect log level: " << command_line::get_arg(vm, arg_log_level)
                   << std::endl;
-        throw oxen::runtime_error{"Incorrect log level"};
+        throw oxen::traced<std::runtime_error>{"Incorrect log level"};
     }
     oxen::logging::init(log_file_path, log_level);
     log::warning(logcat, "Starting...");

@@ -168,7 +168,7 @@ int main(int argc, char* argv[]) {
     BlockchainDB* db = new_db();
     if (db == NULL) {
         log::error(logcat, "Failed to initialize a database");
-        throw oxen::runtime_error("Failed to initialize a database");
+        throw oxen::traced<std::runtime_error>("Failed to initialize a database");
     }
 
     const fs::path filename =

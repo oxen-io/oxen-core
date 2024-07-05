@@ -66,7 +66,7 @@ class service_runner final {
         // This limitation is crappy, but imposed on us by Windows
         auto& instance = get_instance();
         if (instance)
-            throw oxen::runtime_error("Only one service_runner<T> may exist at a time");
+            throw oxen::traced<std::runtime_error>("Only one service_runner<T> may exist at a time");
         instance = this;
 
         m_status.dwServiceType = SERVICE_WIN32;

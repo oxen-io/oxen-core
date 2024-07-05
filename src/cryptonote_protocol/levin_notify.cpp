@@ -113,7 +113,7 @@ namespace {
 
         std::string fullBlob;
         if (!epee::serialization::store_t_to_binary(request, fullBlob))
-            throw oxen::runtime_error{"Failed to serialize to epee binary format"};
+            throw oxen::traced<std::runtime_error>{"Failed to serialize to epee binary format"};
 
         return fullBlob;
     }
@@ -471,7 +471,7 @@ notify::notify(
         zone_(std::make_shared<detail::zone>(
                 service, std::move(p2p), std::move(noise), is_public)) {
     if (!zone_->p2p)
-        throw oxen::logic_error{"cryptonote::levin::notify cannot have nullptr p2p argument"};
+        throw oxen::traced<std::logic_error>{"cryptonote::levin::notify cannot have nullptr p2p argument"};
 
     if (!zone_->noise.view.empty()) {
         const auto now = std::chrono::steady_clock::now();

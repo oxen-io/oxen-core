@@ -18,6 +18,7 @@ struct AggregateSigned {
 
 struct AggregateExitResponse : AggregateSigned {
     crypto::bls_public_key exit_pubkey;
+    uint64_t timestamp;
 };
 
 struct BLSRewardsResponse : AggregateSigned {

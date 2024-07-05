@@ -32,7 +32,7 @@ add_library(mnemonics
 
 target_link_libraries(mnemonics
   PRIVATE
-    cpptrace::cpptrace
+    $<$<CONFIG:Debug>:cpptrace::cpptrace>
     cncrypto
     epee
     logging
