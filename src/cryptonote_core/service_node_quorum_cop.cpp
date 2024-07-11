@@ -403,11 +403,24 @@ namespace service_nodes
                   }
                 }
 
-                if (vote_for_state == new_state::deregister && height - *cryptonote::get_hard_fork_heights(m_core.get_nettype(), hf_version).first < netconf.HARDFORK_DEREGISTRATION_GRACE_PERIOD) {
-                  LOG_PRINT_L2("Decommissioned service node "
-                               << quorum->workers[node_index]
-                               << " is still not passing required checks, and has no remaining credits left. However it is within the grace period of a hardfork so has not been deregistered.");
-                  continue;
+                if (vote_for_state == new_state::deregister) {
+                  bool grace_period = false;
+                  if (height - *cryptonote::get_hard_fork_heights(m_core.get_nettype(), hf_version).first < netconf.HARDFORK_DEREGISTRATION_GRACE_PERIOD)
+                    grace_period = true;
+                  else if (height >= 1523759 && height <= 1523759 + 720*8)
+                    // Add 8 days grace time for the 10.4.x upgrade because of a bug and required
+                    // update found during the grace period (see 10.4.1 and storage-server 2.6.1
+                    // details).
+                    //
+                    // (This code can be removed after passing the above top height).
+                    grace_period = true;
+
+                  if (grace_period) {
+                    LOG_PRINT_L2("Decommissioned service node "
+                                 << quorum->workers[node_index]
+                                 << " is still not passing required checks, and has no remaining credits left. However it is within the grace period of a hardfork so has not been deregistered.");
+                    continue;
+                  }
                 }
 
                 quorum_vote_t vote = service_nodes::make_state_change_vote(m_obligations_height, static_cast<uint16_t>(index_in_group), node_index, vote_for_state, reason, my_keys);

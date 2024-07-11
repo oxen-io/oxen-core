@@ -2,6 +2,7 @@
 
 #include <sqlite3.h>
 #include <fmt/core.h>
+#include <mutex>
 
 namespace db
 {
