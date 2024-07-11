@@ -26,6 +26,7 @@ override_dh_auto_configure:
 	debian/gen-liboxen-install.sh $(DEB_VERSION_UPSTREAM)
 	dh_auto_configure -- -DCMAKE_BUILD_TYPE=Release -DSTATIC=OFF -DUSE_LTO=ON -DBUILD_SHARED_LIBS=ON \
 		$(DEB_CMAKE_ARCH_OPTIONS) \
+		-DFORCE_OXENC_SUBMODULE=ON \
 		-DOXEN_INSTALL_LIBDIR_SUFFIX=/$(DEB_HOST_MULTIARCH)/oxen -DOXEN_INSTALL_INCLUDEDIR_SUFFIX=/oxen \
 		-DCMAKE_INSTALL_RPATH=/usr/lib/$(DEB_HOST_MULTIARCH)/oxen \
 		-DOXEN_VERSIONTAG=$(call dpkg_late_eval,OXEN_VERSIONTAG,echo '$(DEB_VERSION)' | sed -e 's/.*-//')
