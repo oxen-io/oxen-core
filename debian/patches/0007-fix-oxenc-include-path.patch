@@ -1,0 +1,21 @@
+From: Jason Rhinelander <jason@imaginary.ca>
+Date: Thu, 11 Jul 2024 00:23:48 -0300
+Subject: fix oxenc include path
+
+---
+ src/blockchain_utilities/CMakeLists.txt | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/blockchain_utilities/CMakeLists.txt b/src/blockchain_utilities/CMakeLists.txt
+index dd796d7..78d9c13 100644
+--- a/src/blockchain_utilities/CMakeLists.txt
++++ b/src/blockchain_utilities/CMakeLists.txt
+@@ -111,7 +111,7 @@ target_link_libraries(blockchain_stats PRIVATE blockchain_tools_common_libs)
+ 
+ if (TARGET sodium_vendor OR NOT SODIUM_VERSION VERSION_LESS 1.0.17)
+     oxen_add_executable(sn_key_tool "oxen-sn-keys" sn_key_tool.cpp)
+-    target_link_libraries(sn_key_tool PRIVATE sodium oxenmq filesystem)
++    target_link_libraries(sn_key_tool PRIVATE sodium oxenmq oxenc::oxenc filesystem)
+ else()
+     message(STATUS "Not building oxen-sn-keys tool (requires libsodium >= 1.0.17)")
+ endif()
