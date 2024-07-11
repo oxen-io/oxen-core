@@ -5,3 +5,4 @@
 0006-Make-primary-service-node-key-always-available.patch
 0006-Build-SQLiteCpp-statically.patch
 0007-Allow-older-fmt.patch
+0008-fix-oxenc-include-path.patch
