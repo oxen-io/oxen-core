@@ -4,3 +4,4 @@
 0007-dumb-ARM_ID-ARCH-logic-workaround.patch
 0006-Make-primary-service-node-key-always-available.patch
 0006-Build-SQLiteCpp-statically.patch
+0007-fix-oxenc-include-path.patch
