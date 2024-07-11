@@ -1,3 +1,11 @@
+oxen (10.5.0-1~deb12) bookworm; urgency=medium
+
+  * Bump oxenmq to latest release (1.2.17)
+  * 10.5.0 release with storage server 2.7.0 update
+  * Rediff patches
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Wed, 10 Jul 2024 23:36:40 -0300
+
 oxen (10.4.1-1~deb12) bookworm; urgency=medium
 
   * Add 2.6.1 storage server upgrade with 8 day dereg grace period
