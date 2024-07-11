@@ -1193,6 +1193,16 @@ bool service_node_list::state_t::process_key_image_unlock_tx(
         cryptonote::hf hf_version,
         uint64_t block_height,
         const cryptonote::transaction& tx) {
+
+    if (hf_version >= feature::ETH_BLS) {
+        log::warning(
+                logcat,
+                "Invalid OXEN unlock tx ({} @ {}): SN unlocks must be come from ethereum",
+                cryptonote::get_transaction_hash(tx),
+                block_height);
+        return false;
+    }
+
     crypto::public_key snode_key;
     if (!cryptonote::get_service_node_pubkey_from_tx_extra(tx.extra, snode_key))
         return false;
@@ -1241,22 +1251,11 @@ bool service_node_list::state_t::process_key_image_unlock_tx(
                     return unlock.key_image == contribution.key_image;
                 });
         if (cit != contributor.locked_contributions.end()) {
-            if (hf_version >= feature::ETH_BLS) {
-                if (cit->amount < small_contributor_amount_threshold &&
-                    (block_height - node_info.registration_height) <
-                            small_contributor_unlock_blocks) {
-                    log::info(
-                            logcat,
-                            "Unlock TX: small contributor trying to unlock node before {} blocks "
-                            "have passed, rejected on height: {} for tx: {}",
-                            small_contributor_unlock_blocks,
-                            block_height,
-                            get_transaction_hash(tx));
-                    return false;
-                }
-            }
-            // TODO oxen remove this whole if block after HF21 has occurred
             if (hf_version == hf::hf19_reward_batching) {
+                // NB: this 3749 value is wrong (it should have been < 3749000000000), but it made
+                // it into the HF19 release before the problem was noticed.  In HF20 (eth transition
+                // fork) we don't apply the limit at all, and in HF21 we don't get here at all (the
+                // smart contract handles the small contributor delay).
                 if (cit->amount < 3749 && (block_height - node_info.registration_height) <
                                                   small_contributor_unlock_blocks) {
                     log::info(
@@ -1391,6 +1390,16 @@ bool is_registration_tx(
     if (!maybe_reg)
         return false;
     auto& reg = *maybe_reg;
+
+    if (hf_version >= feature::ETH_TRANSITION) {
+        log::warning(
+                logcat,
+                "Invalid registration ({} @ {}): direct OXEN registrations/stakes are no longer "
+                "permitted",
+                cryptonote::get_transaction_hash(tx),
+                block_height);
+        return false;
+    }
 
     uint64_t staking_requirement = get_staking_requirement(nettype, block_height);
     try {
@@ -2860,11 +2869,7 @@ void service_node_list::state_t::update_from_block(
                     pubkey,
                     block_height);
         else
-            log::info(
-                    logcat,
-                    "Service node expired: {} at block height: {}",
-                    pubkey,
-                    block_height);
+            log::info(logcat, "Service node expired: {} at block height: {}", pubkey, block_height);
 
         need_swarm_update = need_swarm_update || i->second->is_active();
         // NOTE: sn_list is not set in tests when we construct events to replay
@@ -4063,9 +4068,8 @@ bool service_node_list::handle_uptime_proof(
     if (vers.first < feature::SN_PK_IS_ED25519) {
         if (now - x25519_map_last_pruned >= X25519_MAP_PRUNING_INTERVAL) {
             time_t cutoff = std::chrono::system_clock::to_time_t(now - X25519_MAP_PRUNING_LAG);
-            std::erase_if(x25519_to_pub, [&cutoff](const auto& x) {
-                return x.second.second < cutoff;
-            });
+            std::erase_if(
+                    x25519_to_pub, [&cutoff](const auto& x) { return x.second.second < cutoff; });
             x25519_map_last_pruned = now;
         }
 
@@ -4389,7 +4393,7 @@ void service_node_list::state_t::initialize_xpk_map() {
     // X key, which only happens once we get a proof).
     assert(x25519_map.empty());
     if (sn_list && cryptonote::is_hard_fork_at_least(
-                sn_list->m_blockchain.nettype(), feature::SN_PK_IS_ED25519, height))
+                           sn_list->m_blockchain.nettype(), feature::SN_PK_IS_ED25519, height))
         for (const auto& [snpk, _ignore] : service_nodes_infos)
             x25519_map[snpk_to_xpk(snpk)] = snpk;
 }
@@ -4590,7 +4594,7 @@ bool service_node_list::load(const uint64_t current_height) {
     }
 
     if (!cryptonote::is_hard_fork_at_least(
-            m_blockchain.nettype(), feature::SN_PK_IS_ED25519, current_height))
+                m_blockchain.nettype(), feature::SN_PK_IS_ED25519, current_height))
         initialize_x25519_map();
     // else the x25519 map is part of state_t
 
