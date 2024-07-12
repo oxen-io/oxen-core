@@ -13,6 +13,7 @@
 #include <oxenc/bt_producer.h>
 #include <oxenmq/oxenmq.h>
 
+#include <chrono>
 #include <ethyl/utils.hpp>
 
 #define BLS_ETH
@@ -143,8 +144,7 @@ namespace {
                     tools::make_from_guts<bls_public_key>(d.require<std::string_view>("bls_"
                                                                                       "pubke"
                                                                                       "y"));
-            result.timestamp = std::chrono::seconds(
-                    tools::make_from_guts<uint64_t>(d.require<std::string_view>("timestamp")));
+            result.timestamp = std::chrono::seconds{d.require<uint64_t>("timestamp")};
         } catch (const std::exception& e) {
             m.send_reply(
                     "400",
@@ -154,11 +154,9 @@ namespace {
         }
 
         // NOTE: Check if the request is too old. If it's too old we will reject it
-        std::chrono::duration unix_now =
-                std::chrono::high_resolution_clock::now().time_since_epoch();
-        std::chrono::duration time_since_initial_request = result.timestamp > unix_now
-                                                                 ? result.timestamp - unix_now
-                                                                 : unix_now - result.timestamp;
+        auto unix_now = std::chrono::system_clock::now().time_since_epoch();
+        auto time_since_initial_request = result.timestamp > unix_now ? result.timestamp - unix_now
+                                                                      : unix_now - result.timestamp;
         if (time_since_initial_request > service_nodes::BLS_MAX_TIME_ALLOWED_FOR_REMOVAL_REQUEST) {
             m.send_reply(
                     "400",
@@ -519,7 +517,9 @@ AggregateRemovalResponse BLSAggregator::aggregateRemovalOrLiquidate(
 
     AggregateRemovalResponse result;
     result.remove_pubkey = bls_pubkey;
-    result.timestamp = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+    result.timestamp = std::chrono::duration_cast<std::chrono::seconds>(
+                               std::chrono::system_clock::now().time_since_epoch())
+                               .count();
     result.msg_to_sign =
             get_removal_msg_to_sign(core.get_nettype(), type, bls_pubkey, result.timestamp);
 
@@ -529,7 +529,7 @@ AggregateRemovalResponse BLSAggregator::aggregateRemovalOrLiquidate(
 
     oxenc::bt_dict_producer message_dict;
     message_dict.append("bls_pubkey", tools::view_guts(bls_pubkey));
-    message_dict.append("timestamp", tools::view_guts(result.timestamp));
+    message_dict.append("timestamp", result.timestamp);
 
     nodesRequest(
             endpoint,
