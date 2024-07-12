@@ -1180,6 +1180,20 @@ bool service_node_list::state_t::process_ethereum_removal_tx(
                 const auto& [key, info] = pair;
                 return info->bls_public_key == removal_data.bls_pubkey;
             });
+    if (node == service_nodes_infos.end()) {
+        // TODO FIXME: this seems broken: we should *always* be hitting this case because the SN
+        // network wouldn't have signed off on it if it is still in `service_nodes_infos`, i.e.
+        // still active, and so we're erroring out here before we can process the removal (and apply
+        // the returned funds to the accounts).
+        log::warning(
+                logcat,
+                "Unlock TX: unable to process ETH removal transaction ({} @ {}): BLS pubkey {} is "
+                "not registered",
+                cryptonote::get_transaction_hash(tx),
+                block_height,
+                removal_data.bls_pubkey);
+        return false;
+    }
     std::vector<cryptonote::batch_sn_payment> returned_stakes;
     for (const auto& contributor : node->second->contributors)
         returned_stakes.emplace_back(contributor.ethereum_address, contributor.amount);
