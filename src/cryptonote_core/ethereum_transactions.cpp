@@ -44,26 +44,26 @@ bool validate_ethereum_new_service_node_tx(
     return true;
 }
 
-bool validate_ethereum_service_node_leave_request_tx(
+bool validate_ethereum_service_node_removal_request_tx(
         hf hf_version,
         uint64_t blockchain_height,
         cryptonote::transaction const& tx,
-        cryptonote::tx_extra_ethereum_service_node_leave_request& eth_extra,
+        cryptonote::tx_extra_ethereum_service_node_removal_request& eth_extra,
         std::string* reason) {
 
     {
         if (check_condition(
-                    tx.type != cryptonote::txtype::ethereum_service_node_leave_request,
+                    tx.type != cryptonote::txtype::ethereum_service_node_removal_request,
                     reason,
                     "{} uses wrong tx type, expected={}",
                     tx,
-                    cryptonote::txtype::ethereum_service_node_leave_request))
+                    cryptonote::txtype::ethereum_service_node_removal_request))
             return false;
 
         if (check_condition(
                     !cryptonote::get_field_from_tx_extra(tx.extra, eth_extra),
                     reason,
-                    "{} didn't have ethereum service node leave request data in the tx_extra",
+                    "{} didn't have ethereum service node removal request data in the tx_extra",
                     tx))
             return false;
     }
@@ -71,26 +71,26 @@ bool validate_ethereum_service_node_leave_request_tx(
     return true;
 }
 
-bool validate_ethereum_service_node_exit_tx(
+bool validate_ethereum_service_node_removal_tx(
         hf hf_version,
         uint64_t blockchain_height,
         cryptonote::transaction const& tx,
-        cryptonote::tx_extra_ethereum_service_node_exit& eth_extra,
+        cryptonote::tx_extra_ethereum_service_node_removal& eth_extra,
         std::string* reason) {
 
     {
         if (check_condition(
-                    tx.type != cryptonote::txtype::ethereum_service_node_exit,
+                    tx.type != cryptonote::txtype::ethereum_service_node_removal,
                     reason,
                     "{} uses wrong tx type, expected={}",
                     tx,
-                    cryptonote::txtype::ethereum_service_node_exit))
+                    cryptonote::txtype::ethereum_service_node_removal))
             return false;
 
         if (check_condition(
                     !cryptonote::get_field_from_tx_extra(tx.extra, eth_extra),
                     reason,
-                    "{} didn't have ethereum service node exit data in the tx_extra",
+                    "{} didn't have ethereum service node removal data in the tx_extra",
                     tx))
             return false;
     }
@@ -98,26 +98,26 @@ bool validate_ethereum_service_node_exit_tx(
     return true;
 }
 
-bool validate_ethereum_service_node_deregister_tx(
+bool validate_ethereum_service_node_liquidated_tx(
         hf hf_version,
         uint64_t blockchain_height,
         cryptonote::transaction const& tx,
-        cryptonote::tx_extra_ethereum_service_node_deregister& eth_extra,
+        cryptonote::tx_extra_ethereum_service_node_liquidated& eth_extra,
         std::string* reason) {
 
     {
         if (check_condition(
-                    tx.type != cryptonote::txtype::ethereum_service_node_deregister,
+                    tx.type != cryptonote::txtype::ethereum_service_node_liquidated,
                     reason,
                     "{} uses wrong tx type, expected={}",
                     tx,
-                    cryptonote::txtype::ethereum_service_node_deregister))
+                    cryptonote::txtype::ethereum_service_node_liquidated))
             return false;
 
         if (check_condition(
                     !cryptonote::get_field_from_tx_extra(tx.extra, eth_extra),
                     reason,
-                    "{} didn't have ethereum service node deregister data in the tx_extra",
+                    "{} didn't have ethereum service node liquidated data in the tx_extra",
                     tx))
             return false;
     }

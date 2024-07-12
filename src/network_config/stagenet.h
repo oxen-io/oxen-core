@@ -46,7 +46,7 @@ inline constexpr std::array GOVERNANCE_WALLET_ADDRESS = {
 inline constexpr auto UPTIME_PROOF_STARTUP_DELAY = 5s;
 
 // Much shorter than mainnet so that you can test this more easily.
-inline constexpr uint64_t ETH_EXIT_BUFFER = 2h / mainnet::TARGET_BLOCK_TIME;
+inline constexpr uint64_t ETH_REMOVAL_BUFFER = 2h / mainnet::TARGET_BLOCK_TIME;
 
 inline constexpr uint32_t ETHEREUM_CHAIN_ID = 421614;
 inline constexpr auto ETHEREUM_REWARDS_CONTRACT = "0xEF43cd64528eA89966E251d4FE17c660222D2c9d"sv;
@@ -84,7 +84,7 @@ inline constexpr network_config config{
         testnet::SERVICE_NODE_PAYABLE_AFTER_BLOCKS,
         mainnet::HARDFORK_DEREGISTRATION_GRACE_PERIOD,
         mainnet::STORE_LONG_TERM_STATE_INTERVAL,
-        ETH_EXIT_BUFFER,
+        ETH_REMOVAL_BUFFER,
         ETHEREUM_CHAIN_ID,
         ETHEREUM_REWARDS_CONTRACT,
         ETHEREUM_POOL_CONTRACT,

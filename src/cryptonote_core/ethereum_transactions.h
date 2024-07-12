@@ -16,25 +16,25 @@ bool validate_ethereum_new_service_node_tx(
         cryptonote::tx_extra_ethereum_new_service_node& eth_extra,
         std::string* reason);
 
-bool validate_ethereum_service_node_leave_request_tx(
+bool validate_ethereum_service_node_removal_request_tx(
         cryptonote::hf hf_version,
         uint64_t blockchain_height,
         cryptonote::transaction const& tx,
-        cryptonote::tx_extra_ethereum_service_node_leave_request& eth_extra,
+        cryptonote::tx_extra_ethereum_service_node_removal_request& eth_extra,
         std::string* reason);
 
-bool validate_ethereum_service_node_exit_tx(
+bool validate_ethereum_service_node_removal_tx(
         cryptonote::hf hf_version,
         uint64_t blockchain_height,
         cryptonote::transaction const& tx,
-        cryptonote::tx_extra_ethereum_service_node_exit& eth_extra,
+        cryptonote::tx_extra_ethereum_service_node_removal& eth_extra,
         std::string* reason);
 
-bool validate_ethereum_service_node_deregister_tx(
+bool validate_ethereum_service_node_liquidated_tx(
         cryptonote::hf hf_version,
         uint64_t blockchain_height,
         cryptonote::transaction const& tx,
-        cryptonote::tx_extra_ethereum_service_node_deregister& eth_extra,
+        cryptonote::tx_extra_ethereum_service_node_liquidated& eth_extra,
         std::string* reason);
 
 }  // namespace eth

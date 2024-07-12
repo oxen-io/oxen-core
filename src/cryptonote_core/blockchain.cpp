@@ -4107,43 +4107,43 @@ bool Blockchain::check_tx_inputs(
                 tvc.m_verbose_error = std::move(fail_reason);
                 return false;
             }
-        } else if (tx.type == txtype::ethereum_service_node_leave_request) {
-            cryptonote::tx_extra_ethereum_service_node_leave_request entry = {};
+        } else if (tx.type == txtype::ethereum_service_node_removal_request) {
+            cryptonote::tx_extra_ethereum_service_node_removal_request entry = {};
             std::string fail_reason;
-            if (!eth::validate_ethereum_service_node_leave_request_tx(
+            if (!eth::validate_ethereum_service_node_removal_request_tx(
                         hf_version, get_current_blockchain_height(), tx, entry, &fail_reason) ||
                 (ethereum_transaction_review_session &&
-                 !ethereum_transaction_review_session->processServiceNodeLeaveRequestTx(
+                 !ethereum_transaction_review_session->processServiceNodeRemovalRequestTx(
                          entry.bls_pubkey, fail_reason))) {
                 log::error(
                         log::Cat("verify"),
-                        "Failed to validate Ethereum Service Node Leave Request TX reason: {}",
+                        "Failed to validate Ethereum Service Node Removal Request TX reason: {}",
                         fail_reason);
                 tvc.m_verbose_error = std::move(fail_reason);
                 return false;
             }
-        } else if (tx.type == txtype::ethereum_service_node_exit) {
-            cryptonote::tx_extra_ethereum_service_node_exit entry = {};
+        } else if (tx.type == txtype::ethereum_service_node_removal) {
+            cryptonote::tx_extra_ethereum_service_node_removal entry = {};
             std::string fail_reason;
-            if (!eth::validate_ethereum_service_node_exit_tx(
+            if (!eth::validate_ethereum_service_node_removal_tx(
                         hf_version, get_current_blockchain_height(), tx, entry, &fail_reason) ||
                 (ethereum_transaction_review_session &&
-                 !ethereum_transaction_review_session->processServiceNodeExitTx(
+                 !ethereum_transaction_review_session->processServiceNodeRemovalTx(
                          entry.eth_address, entry.amount, entry.bls_pubkey, fail_reason))) {
                 log::error(
                         log::Cat("verify"),
-                        "Failed to validate Ethereum Service Node Exit TX reason: {}",
+                        "Failed to validate Ethereum Service Node Removal TX reason: {}",
                         fail_reason);
                 tvc.m_verbose_error = std::move(fail_reason);
                 return false;
             }
-        } else if (tx.type == txtype::ethereum_service_node_deregister) {
-            cryptonote::tx_extra_ethereum_service_node_deregister entry = {};
+        } else if (tx.type == txtype::ethereum_service_node_liquidated) {
+            cryptonote::tx_extra_ethereum_service_node_liquidated entry = {};
             std::string fail_reason;
-            if (!eth::validate_ethereum_service_node_deregister_tx(
+            if (!eth::validate_ethereum_service_node_liquidated_tx(
                         hf_version, get_current_blockchain_height(), tx, entry, &fail_reason) ||
                 (ethereum_transaction_review_session &&
-                 !ethereum_transaction_review_session->processServiceNodeDeregisterTx(
+                 !ethereum_transaction_review_session->processServiceNodeLiquidatedTx(
                          entry.bls_pubkey, fail_reason))) {
                 log::error(
                         log::Cat("verify"),
@@ -4242,7 +4242,7 @@ bool Blockchain::check_tx_inputs(
 
             // Otherwise is a locked key image, if the unlock_height is set, it has been previously
             // requested to unlock
-            if (unlock_height != service_nodes::KEY_IMAGE_AWAITING_UNLOCK_HEIGHT) {
+            if (unlock_height) {
                 tvc.m_double_spend = true;
                 return false;
             }

@@ -977,10 +977,10 @@ bool add_new_service_node_to_tx_extra(
     return true;
 }
 //---------------------------------------------------------------
-bool add_service_node_leave_request_to_tx_extra(
+bool add_service_node_removal_request_to_tx_extra(
         std::vector<uint8_t>& tx_extra,
-        const tx_extra_ethereum_service_node_leave_request& leave_request) {
-    tx_extra_field field = leave_request;
+        const tx_extra_ethereum_service_node_removal_request& removal_request) {
+    tx_extra_field field = removal_request;
     if (!add_tx_extra_field_to_tx_extra(tx_extra, field)) {
         log::info(
                 logcat, "failed to serialize tx extra for service node leave request transaction");
@@ -989,22 +989,22 @@ bool add_service_node_leave_request_to_tx_extra(
     return true;
 }
 //---------------------------------------------------------------
-bool add_service_node_exit_to_tx_extra(
-        std::vector<uint8_t>& tx_extra, const tx_extra_ethereum_service_node_exit& exit_data) {
-    tx_extra_field field = exit_data;
+bool add_service_node_removal_to_tx_extra(
+        std::vector<uint8_t>& tx_extra, const tx_extra_ethereum_service_node_removal& removal_data) {
+    tx_extra_field field = removal_data;
     if (!add_tx_extra_field_to_tx_extra(tx_extra, field)) {
-        log::info(logcat, "failed to serialize tx extra for service node exit transaction");
+        log::info(logcat, "failed to serialize tx extra for service node removal transaction");
         return false;
     }
     return true;
 }
 //---------------------------------------------------------------
-bool add_service_node_deregister_to_tx_extra(
+bool add_service_node_liquidated_to_tx_extra(
         std::vector<uint8_t>& tx_extra,
-        const tx_extra_ethereum_service_node_deregister& deregister) {
-    tx_extra_field field = deregister;
+        const tx_extra_ethereum_service_node_liquidated& liquidated) {
+    tx_extra_field field = liquidated;
     if (!add_tx_extra_field_to_tx_extra(tx_extra, field)) {
-        log::info(logcat, "failed to serialize tx extra for service node deregister transaction");
+        log::info(logcat, "failed to serialize tx extra for service node liquidated transaction");
         return false;
     }
     return true;

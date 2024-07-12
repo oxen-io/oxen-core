@@ -17,9 +17,9 @@ namespace eth {
 
 enum class TransactionType {
     NewServiceNode,
-    ServiceNodeLeaveRequest,
-    ServiceNodeDeregister,
-    ServiceNodeExit,
+    ServiceNodeRemovalRequest,
+    ServiceNodeLiquidated,
+    ServiceNodeRemoval,
     Other
 };
 
@@ -40,19 +40,19 @@ struct NewServiceNodeTx : L2StateChange {
     std::string to_string() const;
 };
 
-struct ServiceNodeLeaveRequestTx : L2StateChange {
+struct ServiceNodeRemovalRequestTx : L2StateChange {
     bls_public_key bls_pubkey;
 
     std::string to_string() const;
 };
 
-struct ServiceNodeDeregisterTx : L2StateChange {
+struct ServiceNodeLiquidatedTx : L2StateChange {
     bls_public_key bls_pubkey;
 
     std::string to_string() const;
 };
 
-struct ServiceNodeExitTx : L2StateChange {
+struct ServiceNodeRemovalTx : L2StateChange {
     eth::address eth_address;
     uint64_t amount;
     bls_public_key bls_pubkey;
@@ -63,16 +63,16 @@ struct ServiceNodeExitTx : L2StateChange {
 template <std::derived_from<L2StateChange> Tx>
 constexpr std::string_view state_change_name() = delete;
 template <> inline constexpr std::string_view state_change_name<NewServiceNodeTx>() { return "new service node"sv; }
-template <> inline constexpr std::string_view state_change_name<ServiceNodeLeaveRequestTx>() { return "leave request"sv; }
-template <> inline constexpr std::string_view state_change_name<ServiceNodeExitTx>() { return "SN exit"sv; }
-template <> inline constexpr std::string_view state_change_name<ServiceNodeDeregisterTx>() { return "SN liquidation"sv; }
+template <> inline constexpr std::string_view state_change_name<ServiceNodeRemovalRequestTx>() { return "removal request"sv; }
+template <> inline constexpr std::string_view state_change_name<ServiceNodeRemovalTx>() { return "SN removal"sv; }
+template <> inline constexpr std::string_view state_change_name<ServiceNodeLiquidatedTx>() { return "SN liquidation"sv; }
 
 using TransactionStateChangeVariant = std::variant<
         std::monostate,
         NewServiceNodeTx,
-        ServiceNodeLeaveRequestTx,
-        ServiceNodeDeregisterTx,
-        ServiceNodeExitTx>;
+        ServiceNodeRemovalRequestTx,
+        ServiceNodeLiquidatedTx,
+        ServiceNodeRemovalTx>;
 
 TransactionStateChangeVariant getLogTransaction(const ethyl::LogEntry& log);
 inline bool is_state_change(const TransactionStateChangeVariant& v) {

@@ -39,8 +39,8 @@
 #include "blockchain_db/blockchain_db.h"
 #include "blockchain_db/locked_txn.h"
 #include "common/boost_serialization_helper.h"
-#include "common/lock.h"
 #include "common/exception.h"
+#include "common/lock.h"
 #include "common/median.h"
 #include "common/util.h"
 #include "crypto/hash.h"
@@ -245,32 +245,32 @@ bool tx_memory_pool::have_duplicated_non_standard_tx(
                     get_transaction_hash(tx));
             return true;
         }
-    } else if (tx.type == txtype::ethereum_service_node_leave_request) {
-        cryptonote::tx_extra_ethereum_service_node_leave_request data = {};
+    } else if (tx.type == txtype::ethereum_service_node_removal_request) {
+        cryptonote::tx_extra_ethereum_service_node_removal_request data = {};
         if (!cryptonote::get_field_from_tx_extra(tx.extra, data)) {
             log::error(
                     logcat,
-                    "Could not get ethereum service node leave request data from tx: {}, tx to add "
-                    "is possibly invalid, rejecting",
+                    "Could not get ethereum service node removal request data from tx: {}, tx to "
+                    "add is possibly invalid, rejecting",
                     get_transaction_hash(tx));
             return true;
         }
-    } else if (tx.type == txtype::ethereum_service_node_exit) {
-        cryptonote::tx_extra_ethereum_service_node_exit data = {};
+    } else if (tx.type == txtype::ethereum_service_node_removal) {
+        cryptonote::tx_extra_ethereum_service_node_removal data = {};
         if (!cryptonote::get_field_from_tx_extra(tx.extra, data)) {
             log::error(
                     logcat,
-                    "Could not get ethereum service node exit data from tx: {}, tx to add is "
+                    "Could not get ethereum service node removal data from tx: {}, tx to add is "
                     "possibly invalid, rejecting",
                     get_transaction_hash(tx));
             return true;
         }
-    } else if (tx.type == txtype::ethereum_service_node_deregister) {
-        cryptonote::tx_extra_ethereum_service_node_deregister data = {};
+    } else if (tx.type == txtype::ethereum_service_node_liquidated) {
+        cryptonote::tx_extra_ethereum_service_node_liquidated data = {};
         if (!cryptonote::get_field_from_tx_extra(tx.extra, data)) {
             log::error(
                     logcat,
-                    "Could not get ethereum service node leave request data from tx: {}, tx to add "
+                    "Could not get ethereum service node liquidated data from tx: {}, tx to add "
                     "is possibly invalid, rejecting",
                     get_transaction_hash(tx));
             return true;
@@ -570,23 +570,13 @@ bool tx_memory_pool::add_tx(
 }
 //---------------------------------------------------------------------------------
 bool tx_memory_pool::add_tx(
-        transaction& tx,
-        tx_verification_context& tvc,
-        const tx_pool_options& opts,
-        hf version) {
+        transaction& tx, tx_verification_context& tvc, const tx_pool_options& opts, hf version) {
     crypto::hash h{};
     std::string bl;
     t_serializable_object_to_blob(tx, bl);
     if (bl.size() == 0 || !get_transaction_hash(tx, h))
         return false;
-    return add_tx(
-            tx,
-            h,
-            bl,
-            get_transaction_weight(tx, bl.size()),
-            tvc,
-            opts,
-            version);
+    return add_tx(tx, h, bl, get_transaction_weight(tx, bl.size()), tvc, opts, version);
 }
 //---------------------------------------------------------------------------------
 bool tx_memory_pool::add_new_blink(
@@ -608,11 +598,7 @@ bool tx_memory_pool::add_new_blink(
 
     bool approved = blink.approved();
     auto hf_version = m_blockchain.get_network_version(blink.height);
-    bool result =
-            add_tx(tx,
-                   tvc,
-                   tx_pool_options::new_blink(approved, hf_version),
-                   hf_version);
+    bool result = add_tx(tx, tvc, tx_pool_options::new_blink(approved, hf_version), hf_version);
     if (result && approved) {
         auto lock = blink_unique_lock();
         m_blinks[txhash] = blink_ptr;
@@ -1727,11 +1713,7 @@ bool tx_memory_pool::is_transaction_ready_to_go(
 
         tx_verification_context tvc;
         if (!check_tx_inputs(
-                    lazy_tx,
-                    txid,
-                    txd.max_used_block_height,
-                    txd.max_used_block_id,
-                    tvc)) {
+                    lazy_tx, txid, txd.max_used_block_height, txd.max_used_block_id, tvc)) {
             txd.last_failed_height = m_blockchain.get_current_blockchain_height() - 1;
             txd.last_failed_id = m_blockchain.get_block_id_by_height(txd.last_failed_height);
             return false;
@@ -1747,11 +1729,7 @@ bool tx_memory_pool::is_transaction_ready_to_go(
             // transaction become again valid
             tx_verification_context tvc;
             if (!check_tx_inputs(
-                        lazy_tx,
-                        txid,
-                        txd.max_used_block_height,
-                        txd.max_used_block_id,
-                        tvc)) {
+                        lazy_tx, txid, txd.max_used_block_height, txd.max_used_block_id, tvc)) {
                 txd.last_failed_height = m_blockchain.get_current_blockchain_height() - 1;
                 txd.last_failed_id = m_blockchain.get_block_id_by_height(txd.last_failed_height);
                 return false;
@@ -1911,9 +1889,14 @@ bool tx_memory_pool::fill_block_template(
                 max_total_weight,
                 print_money(best_reward));
 
-        if (l2_range && meta.l2_height != 0 && (meta.l2_height < l2_range->first || meta.l2_height > l2_range->second)) {
-            log::debug(logcat, "  state change from L2 height {} is not in L2 range [{}, {}]",
-                    meta.l2_height, l2_range->first, l2_range->second);
+        if (l2_range && meta.l2_height != 0 &&
+            (meta.l2_height < l2_range->first || meta.l2_height > l2_range->second)) {
+            log::debug(
+                    logcat,
+                    "  state change from L2 height {} is not in L2 range [{}, {}]",
+                    meta.l2_height,
+                    l2_range->first,
+                    l2_range->second);
             continue;
         }
 

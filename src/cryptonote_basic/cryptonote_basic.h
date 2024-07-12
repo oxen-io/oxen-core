@@ -535,7 +535,7 @@ inline txversion transaction_prefix::get_max_version_for_hf(hf hf_version) {
 constexpr txtype transaction_prefix::get_max_type_for_hf(hf hf_version) {
     txtype result = txtype::standard;
     if (hf_version >= cryptonote::feature::ETH_BLS)
-        result = txtype::ethereum_service_node_deregister;
+        result = txtype::ethereum_service_node_liquidated;
     else if (hf_version >= hf::hf15_ons)
         result = txtype::oxen_name_system;
     else if (hf_version >= hf::hf14_blink)

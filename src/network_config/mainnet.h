@@ -76,7 +76,7 @@ inline constexpr uint64_t SERVICE_NODE_PAYABLE_AFTER_BLOCKS = 720;
 
 inline constexpr uint64_t STORE_LONG_TERM_STATE_INTERVAL = 10000;
 
-inline constexpr uint64_t ETH_EXIT_BUFFER = 7 * 24h / TARGET_BLOCK_TIME;
+inline constexpr uint64_t ETH_REMOVAL_BUFFER = 7 * 24h / TARGET_BLOCK_TIME;
 
 // TODO: To be set for mainnet during TGE
 inline constexpr uint32_t ETHEREUM_CHAIN_ID = -1;
@@ -120,7 +120,7 @@ inline constexpr network_config config{
         SERVICE_NODE_PAYABLE_AFTER_BLOCKS,
         HARDFORK_DEREGISTRATION_GRACE_PERIOD,
         STORE_LONG_TERM_STATE_INTERVAL,
-        ETH_EXIT_BUFFER,
+        ETH_REMOVAL_BUFFER,
         ETHEREUM_CHAIN_ID,
         ETHEREUM_REWARDS_CONTRACT,
         ETHEREUM_POOL_CONTRACT,

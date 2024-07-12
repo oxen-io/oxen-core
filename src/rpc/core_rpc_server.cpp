@@ -767,18 +767,18 @@ namespace {
             }
             set("contributors", contributors);
         }
-        void operator()(const tx_extra_ethereum_service_node_leave_request& x) {
-            set("type", "ethereum_service_node_leave_request");
+        void operator()(const tx_extra_ethereum_service_node_removal_request& x) {
+            set("type", "ethereum_service_node_removal_request");
             set("bls_pubkey", x.bls_pubkey);
         }
-        void operator()(const tx_extra_ethereum_service_node_exit& x) {
-            set("type", "ethereum_service_node_exit");
+        void operator()(const tx_extra_ethereum_service_node_removal& x) {
+            set("type", "ethereum_service_node_removal");
             set("eth_address", x.eth_address);
             set("amount", x.amount);
             set("bls_pubkey", x.bls_pubkey);
         }
-        void operator()(const tx_extra_ethereum_service_node_deregister& x) {
-            set("type", "ethereum_service_node_deregister");
+        void operator()(const tx_extra_ethereum_service_node_liquidated& x) {
+            set("type", "ethereum_service_node_liquidated");
             set("bls_pubkey", x.bls_pubkey);
         }
 
@@ -2557,9 +2557,9 @@ void core_rpc_server::invoke(BLS_REWARDS_REQUEST& rpc, rpc_context) {
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(BLS_EXIT_REQUEST& rpc, rpc_context) {
-    const auto response = m_core.aggregate_exit_request(rpc.request.bls_pubkey);
+    const auto response = m_core.aggregate_removal_request(rpc.request.bls_pubkey);
     rpc.response["status"] = STATUS_OK;
-    rpc.response_hex["bls_pubkey"] = response.exit_pubkey;
+    rpc.response_hex["bls_pubkey"] = response.remove_pubkey;
     rpc.response_hex["msg_to_sign"] =
             oxenc::to_hex(response.msg_to_sign.begin(), response.msg_to_sign.end());
     rpc.response_hex["signature"] = response.signature;
@@ -2571,7 +2571,7 @@ void core_rpc_server::invoke(BLS_EXIT_REQUEST& rpc, rpc_context) {
 void core_rpc_server::invoke(BLS_LIQUIDATION_REQUEST& rpc, rpc_context) {
     const auto response = m_core.aggregate_liquidation_request(rpc.request.bls_pubkey);
     rpc.response["status"] = STATUS_OK;
-    rpc.response_hex["bls_pubkey"] = response.exit_pubkey;
+    rpc.response_hex["bls_pubkey"] = response.remove_pubkey;
     rpc.response_hex["msg_to_sign"] =
             oxenc::to_hex(response.msg_to_sign.begin(), response.msg_to_sign.end());
     rpc.response_hex["signature"] = response.signature;

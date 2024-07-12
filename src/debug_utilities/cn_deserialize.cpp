@@ -142,16 +142,16 @@ struct extra_printer {
                 contributors_info,
                 x.signature);
     }
-    std::string operator()(const tx_extra_ethereum_service_node_leave_request& x) {
-        return "Ethereum Service Node Leave Request: version {}, bls key {}"_format(
+    std::string operator()(const tx_extra_ethereum_service_node_removal_request& x) {
+        return "Ethereum Service Node Remove Request: version {}, bls key {}"_format(
                 x.version, x.bls_pubkey);
     }
-    std::string operator()(const tx_extra_ethereum_service_node_exit& x) {
-        return "Ethereum Service Node Exit: version {}, eth address {}, amount {}, bls key {}"_format(
+    std::string operator()(const tx_extra_ethereum_service_node_removal& x) {
+        return "Ethereum Service Node Removal: version {}, eth address {}, amount {}, bls key {}"_format(
                 x.version, x.eth_address, print_money(x.amount), x.bls_pubkey);
     }
-    std::string operator()(const tx_extra_ethereum_service_node_deregister& x) {
-        return "Ethereum Service Node Deregister: version {}, bls key {}"_format(
+    std::string operator()(const tx_extra_ethereum_service_node_liquidated& x) {
+        return "Ethereum Service Node Liquidated: version {}, bls key {}"_format(
                 x.version, x.bls_pubkey);
     }
 };

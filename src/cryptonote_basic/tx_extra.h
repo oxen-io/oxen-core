@@ -56,9 +56,9 @@ constexpr uint8_t TX_EXTRA_TAG_PADDING = 0x00, TX_EXTRA_TAG_PUBKEY = 0x01, TX_EX
                   TX_EXTRA_TAG_SERVICE_NODE_STATE_CHANGE = 0x78, TX_EXTRA_TAG_BURN = 0x79,
                   TX_EXTRA_TAG_OXEN_NAME_SYSTEM = 0x7A,
                   TX_EXTRA_TAG_ETHEREUM_NEW_SERVICE_NODE = 0x7C,
-                  TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_LEAVE_REQUEST = 0x7D,
+                  TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_REMOVAL_REQUEST = 0x7D,
                   TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_DEREGISTER = 0x7E,
-                  TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_EXIT = 0x7F,
+                  TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_REMOVAL = 0x7F,
 
                   TX_EXTRA_MYSTERIOUS_MINERGATE_TAG = 0xDE;
 
@@ -661,7 +661,7 @@ struct tx_extra_ethereum_new_service_node {
     END_SERIALIZE()
 };
 
-struct tx_extra_ethereum_service_node_leave_request {
+struct tx_extra_ethereum_service_node_removal_request {
     uint8_t version = 0;
     eth::bls_public_key bls_pubkey;
 
@@ -671,7 +671,7 @@ struct tx_extra_ethereum_service_node_leave_request {
     END_SERIALIZE()
 };
 
-struct tx_extra_ethereum_service_node_exit {
+struct tx_extra_ethereum_service_node_removal {
     uint8_t version = 0;
     eth::address eth_address;
     uint64_t amount;
@@ -685,7 +685,7 @@ struct tx_extra_ethereum_service_node_exit {
     END_SERIALIZE()
 };
 
-struct tx_extra_ethereum_service_node_deregister {
+struct tx_extra_ethereum_service_node_liquidated {
     uint8_t version = 0;
     eth::bls_public_key bls_pubkey;
 
@@ -721,9 +721,9 @@ using tx_extra_field = std::variant<
         tx_extra_merge_mining_tag,
         tx_extra_mysterious_minergate,
         tx_extra_ethereum_new_service_node,
-        tx_extra_ethereum_service_node_leave_request,
-        tx_extra_ethereum_service_node_exit,
-        tx_extra_ethereum_service_node_deregister,
+        tx_extra_ethereum_service_node_removal_request,
+        tx_extra_ethereum_service_node_removal,
+        tx_extra_ethereum_service_node_liquidated,
         tx_extra_padding>;
 }  // namespace cryptonote
 
@@ -765,11 +765,11 @@ BINARY_VARIANT_TAG(
         cryptonote::tx_extra_ethereum_new_service_node,
         cryptonote::TX_EXTRA_TAG_ETHEREUM_NEW_SERVICE_NODE);
 BINARY_VARIANT_TAG(
-        cryptonote::tx_extra_ethereum_service_node_leave_request,
-        cryptonote::TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_LEAVE_REQUEST);
+        cryptonote::tx_extra_ethereum_service_node_removal_request,
+        cryptonote::TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_REMOVAL_REQUEST);
 BINARY_VARIANT_TAG(
-        cryptonote::tx_extra_ethereum_service_node_exit,
-        cryptonote::TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_EXIT);
+        cryptonote::tx_extra_ethereum_service_node_removal,
+        cryptonote::TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_REMOVAL);
 BINARY_VARIANT_TAG(
-        cryptonote::tx_extra_ethereum_service_node_deregister,
+        cryptonote::tx_extra_ethereum_service_node_liquidated,
         cryptonote::TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_DEREGISTER);

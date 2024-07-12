@@ -382,20 +382,20 @@ void L2Tracker::add_to_mempool(
                             contributors};
                     add_new_service_node_to_tx_extra(tx.extra, new_service_node);
 
-                } else if constexpr (std::is_same_v<T, eth::ServiceNodeLeaveRequestTx>) {
-                    tx.type = txtype::ethereum_service_node_leave_request;
-                    tx_extra_ethereum_service_node_leave_request leave_request = {
+                } else if constexpr (std::is_same_v<T, eth::ServiceNodeRemovalRequestTx>) {
+                    tx.type = txtype::ethereum_service_node_removal_request;
+                    tx_extra_ethereum_service_node_removal_request removal_request = {
                             0, arg.bls_pubkey};
-                    add_service_node_leave_request_to_tx_extra(tx.extra, leave_request);
-                } else if constexpr (std::is_same_v<T, eth::ServiceNodeExitTx>) {
-                    tx.type = txtype::ethereum_service_node_exit;
-                    tx_extra_ethereum_service_node_exit exit_data = {
+                    add_service_node_removal_request_to_tx_extra(tx.extra, removal_request);
+                } else if constexpr (std::is_same_v<T, eth::ServiceNodeRemovalTx>) {
+                    tx.type = txtype::ethereum_service_node_removal;
+                    tx_extra_ethereum_service_node_removal removal_data = {
                             0, arg.eth_address, arg.amount, arg.bls_pubkey};
-                    add_service_node_exit_to_tx_extra(tx.extra, exit_data);
-                } else if constexpr (std::is_same_v<T, eth::ServiceNodeDeregisterTx>) {
-                    tx.type = txtype::ethereum_service_node_deregister;
-                    tx_extra_ethereum_service_node_deregister deregister = {0, arg.bls_pubkey};
-                    add_service_node_deregister_to_tx_extra(tx.extra, deregister);
+                    add_service_node_removal_to_tx_extra(tx.extra, removal_data);
+                } else if constexpr (std::is_same_v<T, eth::ServiceNodeLiquidatedTx>) {
+                    tx.type = txtype::ethereum_service_node_liquidated;
+                    tx_extra_ethereum_service_node_liquidated liquidated = {0, arg.bls_pubkey};
+                    add_service_node_liquidated_to_tx_extra(tx.extra, liquidated);
                 } else {
                     static_assert(
                             std::is_same_v<T, std::monostate>,
@@ -581,12 +581,12 @@ TransactionReviewSession L2Tracker::initialize_review(uint64_t l2_height) const 
                     [&session]<typename T>(const T& arg) {
                         if constexpr (std::is_same_v<T, NewServiceNodeTx>) {
                             session.new_service_nodes.push_back(arg);
-                        } else if constexpr (std::is_same_v<T, ServiceNodeLeaveRequestTx>) {
-                            session.leave_requests.push_back(arg);
-                        } else if constexpr (std::is_same_v<T, ServiceNodeExitTx>) {
-                            session.exits.push_back(arg);
-                        } else if constexpr (std::is_same_v<T, ServiceNodeDeregisterTx>) {
-                            session.deregs.push_back(arg);
+                        } else if constexpr (std::is_same_v<T, ServiceNodeRemovalRequestTx>) {
+                            session.removal_requests.push_back(arg);
+                        } else if constexpr (std::is_same_v<T, ServiceNodeRemovalTx>) {
+                            session.removals.push_back(arg);
+                        } else if constexpr (std::is_same_v<T, ServiceNodeLiquidatedTx>) {
+                            session.liquidations.push_back(arg);
                         } else {
                             static_assert(
                                     std::is_same_v<T, std::monostate>,
@@ -661,10 +661,10 @@ bool TransactionReviewSession::processNewServiceNodeTx(
     return false;
 }
 
-bool TransactionReviewSession::processServiceNodeLeaveRequestTx(
+bool TransactionReviewSession::processServiceNodeRemovalRequestTx(
         const eth::bls_public_key& bls_pubkey, std::string& fail_reason) {
     if (process_review_tx(
-                active, leave_requests, [&](const auto& x) { return x.bls_pubkey == bls_pubkey; }))
+                active, removal_requests, [&](const auto& x) { return x.bls_pubkey == bls_pubkey; }))
         return true;
 
     fail_reason = "Leave Request Transaction not found bls_pubkey: {}"_format(bls_pubkey);
@@ -672,12 +672,12 @@ bool TransactionReviewSession::processServiceNodeLeaveRequestTx(
     return false;
 }
 
-bool TransactionReviewSession::processServiceNodeExitTx(
+bool TransactionReviewSession::processServiceNodeRemovalTx(
         const eth::address& eth_address,
         const uint64_t amount,
         const eth::bls_public_key& bls_pubkey,
         std::string& fail_reason) {
-    if (process_review_tx(active, exits, [&](const auto& x) {
+    if (process_review_tx(active, removals, [&](const auto& x) {
             return x.bls_pubkey == bls_pubkey && x.eth_address == eth_address && x.amount == amount;
         }))
         return true;
@@ -686,10 +686,10 @@ bool TransactionReviewSession::processServiceNodeExitTx(
     return false;
 }
 
-bool TransactionReviewSession::processServiceNodeDeregisterTx(
+bool TransactionReviewSession::processServiceNodeLiquidatedTx(
         const eth::bls_public_key& bls_pubkey, std::string& fail_reason) {
     if (process_review_tx(
-                active, deregs, [&](const auto& x) { return x.bls_pubkey == bls_pubkey; }))
+                active, liquidations, [&](const auto& x) { return x.bls_pubkey == bls_pubkey; }))
         return true;
 
     fail_reason = "Deregister Transaction not found bls_pubkey: {}"_format(bls_pubkey);
@@ -698,7 +698,7 @@ bool TransactionReviewSession::processServiceNodeDeregisterTx(
 
 bool TransactionReviewSession::finalize() {
     return !active ||
-           (new_service_nodes.empty() && leave_requests.empty() && deregs.empty() && exits.empty());
+           (new_service_nodes.empty() && removal_requests.empty() && liquidations.empty() && removals.empty());
 }
 
 std::vector<uint64_t> L2Tracker::get_non_signers(

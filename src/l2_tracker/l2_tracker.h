@@ -31,9 +31,9 @@ struct TransactionReviewSession {
     bool active = false;
 
     std::list<NewServiceNodeTx> new_service_nodes;
-    std::list<ServiceNodeLeaveRequestTx> leave_requests;
-    std::list<ServiceNodeDeregisterTx> deregs;
-    std::list<ServiceNodeExitTx> exits;
+    std::list<ServiceNodeRemovalRequestTx> removal_requests;
+    std::list<ServiceNodeLiquidatedTx> liquidations;
+    std::list<ServiceNodeRemovalTx> removals;
 
     friend class L2Tracker;
 
@@ -65,14 +65,14 @@ struct TransactionReviewSession {
             const eth::address& eth_address,
             const crypto::public_key& service_node_pubkey,
             std::string& fail_reason);
-    bool processServiceNodeLeaveRequestTx(
+    bool processServiceNodeRemovalRequestTx(
             const bls_public_key& bls_pubkey, std::string& fail_reason);
-    bool processServiceNodeExitTx(
+    bool processServiceNodeRemovalTx(
             const eth::address& eth_address,
             const uint64_t amount,
             const bls_public_key& bls_pubkey,
             std::string& fail_reason);
-    bool processServiceNodeDeregisterTx(const bls_public_key& bls_pubkey, std::string& fail_reason);
+    bool processServiceNodeLiquidatedTx(const bls_public_key& bls_pubkey, std::string& fail_reason);
 
     /// Called to check that all L2 state changes were found via the process... methods.  Returns
     /// true if there are no leftover expected L2 state changes left, false if there are still L2

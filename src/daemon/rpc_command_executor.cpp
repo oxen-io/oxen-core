@@ -1788,7 +1788,7 @@ static void append_printable_service_node_list_entry(
         stream << indent2
                << "Registration: Hardfork Version: " << entry["registration_hf_version"].get<int>()
                << "; Height: " << entry["registration_height"].get<uint64_t>() << "; Expiry: ";
-        if (expiry_height == service_nodes::KEY_IMAGE_AWAITING_UNLOCK_HEIGHT)
+        if (!expiry_height)
             stream << "Staking Infinitely (stake unlock not requested)\n";
         else {
             uint64_t delta_height =

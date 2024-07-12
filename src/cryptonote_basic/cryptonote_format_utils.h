@@ -191,14 +191,14 @@ bool get_encrypted_payment_id_from_tx_extra_nonce(
 bool add_burned_amount_to_tx_extra(std::vector<uint8_t>& tx_extra, uint64_t burn);
 bool add_new_service_node_to_tx_extra(
         std::vector<uint8_t>& tx_extra, const tx_extra_ethereum_new_service_node& new_service_node);
-bool add_service_node_leave_request_to_tx_extra(
+bool add_service_node_removal_request_to_tx_extra(
         std::vector<uint8_t>& tx_extra,
-        const tx_extra_ethereum_service_node_leave_request& leave_request);
-bool add_service_node_exit_to_tx_extra(
-        std::vector<uint8_t>& tx_extra, const tx_extra_ethereum_service_node_exit& exit_data);
-bool add_service_node_deregister_to_tx_extra(
+        const tx_extra_ethereum_service_node_removal_request& removal_request);
+bool add_service_node_removal_to_tx_extra(
+        std::vector<uint8_t>& tx_extra, const tx_extra_ethereum_service_node_removal& removal_data);
+bool add_service_node_liquidated_to_tx_extra(
         std::vector<uint8_t>& tx_extra,
-        const tx_extra_ethereum_service_node_deregister& deregister);
+        const tx_extra_ethereum_service_node_liquidated& liquidated);
 uint64_t get_burned_amount_from_tx_extra(const std::vector<uint8_t>& tx_extra);
 bool is_out_to_acc(
         const account_keys& acc,

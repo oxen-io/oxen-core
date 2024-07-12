@@ -857,17 +857,17 @@ class service_node_list {
                 const cryptonote::transaction& tx,
                 uint32_t index,
                 const service_node_keys* my_keys);
-        bool process_ethereum_unlock_tx(
+        bool process_ethereum_removal_request_tx(
                 cryptonote::network_type nettype,
                 cryptonote::hf hf_version,
                 uint64_t block_height,
                 const cryptonote::transaction& tx);
-        bool process_ethereum_exit_tx(
+        bool process_ethereum_removal_tx(
                 cryptonote::network_type nettype,
                 cryptonote::hf hf_version,
                 uint64_t block_height,
                 const cryptonote::transaction& tx);
-        bool process_ethereum_deregister_tx(
+        bool process_ethereum_liquidated_tx(
                 cryptonote::network_type nettype,
                 cryptonote::hf hf_version,
                 uint64_t block_height,
@@ -888,7 +888,8 @@ class service_node_list {
     void record_timestamp_participation(crypto::public_key const& pubkey, bool participated);
     void record_timesync_status(crypto::public_key const& pubkey, bool synced);
 
-    // TODO oxen delete this function after HF20
+    // TODO oxen delete this function after HF20 (it is only used for mempool selection, not
+    // consensus).
     bool is_premature_unlock(
             cryptonote::network_type nettype,
             cryptonote::hf hf_version,

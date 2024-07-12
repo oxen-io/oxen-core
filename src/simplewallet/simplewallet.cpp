@@ -6465,7 +6465,7 @@ bool simple_wallet::query_locked_stakes(bool print_details, bool print_key_image
         return a.service_node_pubkey < b.service_node_pubkey;
     });
     std::stable_partition(sns.begin(), sns.end(), [](const auto& a) {
-        return a.requested_unlock_height != service_nodes::KEY_IMAGE_AWAITING_UNLOCK_HEIGHT;
+        return a.requested_unlock_height > 0;
     });
 
     for (auto& node_info : sns) {
@@ -6539,7 +6539,7 @@ bool simple_wallet::query_locked_stakes(bool print_details, bool print_key_image
         // If we aren't showing key images then all the key image details get omitted.
 
         msg += "Service Node: {}\n"_format(node_info.service_node_pubkey);
-        if (node_info.requested_unlock_height != service_nodes::KEY_IMAGE_AWAITING_UNLOCK_HEIGHT)
+        if (node_info.requested_unlock_height)
             msg += "Unlock height: {}\n"_format(node_info.requested_unlock_height);
 
         bool just_me = contributors.size() == 1;

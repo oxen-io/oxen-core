@@ -105,11 +105,12 @@ struct network_config final {
     // event of too many popped or reorged blocks.
     const uint64_t STORE_LONG_TERM_STATE_INTERVAL;
 
-    /// (HF21+) Number of blocks after a registration expires (i.e. regular unlocks, *not* deregs)
-    /// during which the node is protected from liquidation-with-penalty.  Regular exits can still
-    /// be submitted to remove it from the ETH pubkey list, but *not* penalizing liquidation (which
-    /// also remove it but award a penalty reward to the liquidator).
-    const uint64_t ETH_EXIT_BUFFER;
+    /// (HF21+) Number of blocks after a registration expires (i.e. regular requested removals,
+    /// *not* deregs) during which the node is protected from liquidation-with-penalty.  Regular
+    /// removals can still be submitted to remove it from the ETH pubkey list, but *not* penalizing
+    /// liquidation (which also remove it but award a penalty reward to the liquidator) during this
+    /// buffer period.
+    const uint64_t ETH_REMOVAL_BUFFER;
 
     // Details of the ethereum smart contract managing rewards and chain its kept on:
     const uint32_t ETHEREUM_CHAIN_ID;

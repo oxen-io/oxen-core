@@ -81,7 +81,7 @@ inline constexpr network_config config{
         testnet::SERVICE_NODE_PAYABLE_AFTER_BLOCKS,
         mainnet::HARDFORK_DEREGISTRATION_GRACE_PERIOD,
         mainnet::STORE_LONG_TERM_STATE_INTERVAL,
-        testnet::ETH_EXIT_BUFFER,
+        testnet::ETH_REMOVAL_BUFFER,
         ETHEREUM_CHAIN_ID,
         ETHEREUM_REWARDS_CONTRACT,
         ETHEREUM_POOL_CONTRACT,

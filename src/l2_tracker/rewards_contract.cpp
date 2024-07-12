@@ -29,8 +29,8 @@ namespace {
 
         return event_sig == contract::event::NewServiceNode ? TransactionType::NewServiceNode
              : event_sig == contract::event::ServiceNodeRemovalRequest
-                     ? TransactionType::ServiceNodeLeaveRequest
-             : event_sig == contract::event::ServiceNodeRemoval ? TransactionType::ServiceNodeExit
+                     ? TransactionType::ServiceNodeRemovalRequest
+             : event_sig == contract::event::ServiceNodeRemoval ? TransactionType::ServiceNodeRemoval
                                                                 : TransactionType::Other;
     }
 
@@ -254,7 +254,7 @@ TransactionStateChangeVariant getLogTransaction(const ethyl::LogEntry& log) {
             oxen::log::debug(logcat, "{}", log_new_service_node_tx(item, log.data));
             break;
         }
-        case TransactionType::ServiceNodeLeaveRequest: {
+        case TransactionType::ServiceNodeRemovalRequest: {
             // event ServiceNodeRemovalRequest(
             //      uint64 indexed serviceNodeID,
             //      address recipient,
@@ -262,11 +262,11 @@ TransactionStateChangeVariant getLogTransaction(const ethyl::LogEntry& log) {
             // service node id is a topic so only address and pubkey are in data
             // address is 32 bytes (with 12-byte prefix padding)
             // pubkey is 64 bytes,
-            auto& [bls_pk] = result.emplace<ServiceNodeLeaveRequestTx>();
+            auto& [bls_pk] = result.emplace<ServiceNodeRemovalRequestTx>();
             std::tie(bls_pk) = tools::split_hex_into<skip<12 + 20>, bls_public_key>(log.data);
             break;
         }
-        case TransactionType::ServiceNodeDeregister: {
+        case TransactionType::ServiceNodeLiquidated: {
             // event ServiceNodeLiquidated(
             //      uint64 indexed serviceNodeID,
             //      address recipient,
@@ -274,11 +274,11 @@ TransactionStateChangeVariant getLogTransaction(const ethyl::LogEntry& log) {
             // service node id is a topic so only address and pubkey are in data
             // address is 32 bytes (with 12-byte prefix padding)
             // pubkey is 64 bytes
-            auto& [bls_pk] = result.emplace<ServiceNodeDeregisterTx>();
+            auto& [bls_pk] = result.emplace<ServiceNodeLiquidatedTx>();
             std::tie(bls_pk) = tools::split_hex_into<skip<12 + 20>, bls_public_key>(log.data);
             break;
         }
-        case TransactionType::ServiceNodeExit: {
+        case TransactionType::ServiceNodeRemoval: {
             // event ServiceNodeRemoval(
             //      uint64 indexed serviceNodeID,
             //      address recipient,
@@ -287,7 +287,7 @@ TransactionStateChangeVariant getLogTransaction(const ethyl::LogEntry& log) {
             // service node id is a topic so only address and pubkey are in data
             // address is 32 bytes (with 12-byte prefix padding)
             // pubkey is 64 bytes
-            auto& [eth_addr, amount, bls_pk] = result.emplace<ServiceNodeExitTx>();
+            auto& [eth_addr, amount, bls_pk] = result.emplace<ServiceNodeRemovalTx>();
             u256 amt256;
             std::tie(eth_addr, amt256, bls_pk) =
                     tools::split_hex_into<skip<12>, eth::address, u256, bls_public_key>(log.data);
@@ -450,17 +450,17 @@ std::string NewServiceNodeTx::to_string() const {
             state_change_name<NewServiceNodeTx>(), bls_pubkey, eth_address, sn_pubkey);
 }
 
-std::string ServiceNodeLeaveRequestTx::to_string() const {
-    return "{} [bls_pubkey={}]"_format(state_change_name<ServiceNodeLeaveRequestTx>(), bls_pubkey);
+std::string ServiceNodeRemovalRequestTx::to_string() const {
+    return "{} [bls_pubkey={}]"_format(state_change_name<ServiceNodeRemovalRequestTx>(), bls_pubkey);
 }
 
-std::string ServiceNodeDeregisterTx::to_string() const {
-    return "{} [bls_pubkey={}]"_format(state_change_name<ServiceNodeDeregisterTx>(), bls_pubkey);
+std::string ServiceNodeLiquidatedTx::to_string() const {
+    return "{} [bls_pubkey={}]"_format(state_change_name<ServiceNodeLiquidatedTx>(), bls_pubkey);
 }
 
-std::string ServiceNodeExitTx::to_string() const {
+std::string ServiceNodeRemovalTx::to_string() const {
     return "{} [bls_pubkey={}, addr={}, amount={}]"_format(
-            state_change_name<ServiceNodeExitTx>(), bls_pubkey, eth_address, amount);
+            state_change_name<ServiceNodeRemovalTx>(), bls_pubkey, eth_address, amount);
 }
 
 }  // namespace eth

@@ -187,7 +187,6 @@ inline constexpr size_t FILL_SWARM_LOWER_PERCENTILE = 25;
 inline constexpr size_t DECOMMISSIONED_REDISTRIBUTION_LOWER_PERCENTILE = 0;
 // The upper swarm percentile that will be randomly selected during stealing
 inline constexpr size_t STEALING_SWARM_UPPER_PERCENTILE = 75;
-inline constexpr uint64_t KEY_IMAGE_AWAITING_UNLOCK_HEIGHT = 0;
 
 inline constexpr uint64_t STATE_CHANGE_TX_LIFETIME_IN_BLOCKS = VOTE_LIFETIME;
 
@@ -238,10 +237,10 @@ inline constexpr uint8_t THRESHOLD_SECONDS_OUT_OF_SYNC = 30;
 // If the below percentage of service nodes are out of sync we will consider our clock out of sync
 inline constexpr uint8_t MAXIMUM_EXTERNAL_OUT_OF_SYNC = 80;
 
-// When a service node receives a request to sign an exit request for a BLS node, this values
+// When a service node receives a request to sign an removal request for a BLS node, this values
 // determines how old that request is allowed to be from the time it was initiated to us receiving
 // it, that we will consider signing it.
-inline constexpr std::chrono::seconds BLS_MAX_TIME_ALLOWED_FOR_EXIT_REQUEST = std::chrono::minutes(3);
+inline constexpr auto BLS_MAX_TIME_ALLOWED_FOR_REMOVAL_REQUEST = 3min;
 
 // The SN operator must contribute at least 25% of the node's requirement, expressed as portions
 // (for pre-HF19 registrations).

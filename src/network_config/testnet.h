@@ -53,7 +53,7 @@ inline constexpr uint64_t SERVICE_NODE_PAYABLE_AFTER_BLOCKS = 4;
 inline constexpr size_t PULSE_MIN_SERVICE_NODES = 12;  // == pulse quorum size
 
 // Much shorter than mainnet so that you can test this more easily.
-inline constexpr uint64_t ETH_EXIT_BUFFER = 1h / mainnet::TARGET_BLOCK_TIME;
+inline constexpr uint64_t ETH_REMOVAL_BUFFER = 1h / mainnet::TARGET_BLOCK_TIME;
 
 // FIXME!
 inline constexpr uint32_t ETHEREUM_CHAIN_ID = -1;
@@ -92,7 +92,7 @@ inline constexpr network_config config{
         SERVICE_NODE_PAYABLE_AFTER_BLOCKS,
         mainnet::HARDFORK_DEREGISTRATION_GRACE_PERIOD,
         mainnet::STORE_LONG_TERM_STATE_INTERVAL,
-        ETH_EXIT_BUFFER,
+        ETH_REMOVAL_BUFFER,
         ETHEREUM_CHAIN_ID,
         ETHEREUM_REWARDS_CONTRACT,
         ETHEREUM_POOL_CONTRACT,

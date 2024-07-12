@@ -17,8 +17,8 @@ struct AggregateSigned {
     bls_signature signature;
 };
 
-struct AggregateExitResponse : AggregateSigned {
-    bls_public_key exit_pubkey;
+struct AggregateRemovalResponse : AggregateSigned {
+    bls_public_key remove_pubkey;
     uint64_t timestamp;
 };
 
@@ -60,12 +60,12 @@ class BLSAggregator {
     /// amount is `0` or height is greater than the current blockchain height.
     BLSRewardsResponse rewards_request(const eth::address& address);
 
-    AggregateExitResponse aggregateExit(const bls_public_key& bls_pubkey);
-    AggregateExitResponse aggregateLiquidation(const bls_public_key& bls_pubkey);
+    AggregateRemovalResponse aggregateRemoval(const bls_public_key& bls_pubkey);
+    AggregateRemovalResponse aggregateLiquidation(const bls_public_key& bls_pubkey);
     BLSRegistrationResponse registration(
             const eth::address& sender, const crypto::public_key& serviceNodePubkey) const;
 
-    enum class ExitType
+    enum class RemovalType
     {
         Normal,
         Liquidate,
@@ -73,12 +73,12 @@ class BLSAggregator {
 
   private:
     void get_reward_balance(oxenmq::Message& m);
-    void get_exit(oxenmq::Message& m);
+    void get_removal(oxenmq::Message& m);
     void get_liquidation(oxenmq::Message& m);
 
-    AggregateExitResponse aggregateExitOrLiquidate(
+    AggregateRemovalResponse aggregateRemovalOrLiquidate(
             const bls_public_key& bls_pubkey,
-            ExitType type,
+            RemovalType type,
             std::string_view endpoint,
             std::string_view pubkey_key);
 
