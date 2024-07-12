@@ -150,10 +150,6 @@ struct extra_printer {
         return "Ethereum Service Node Removal: version {}, eth address {}, amount {}, bls key {}"_format(
                 x.version, x.eth_address, print_money(x.amount), x.bls_pubkey);
     }
-    std::string operator()(const tx_extra_ethereum_service_node_liquidated& x) {
-        return "Ethereum Service Node Liquidated: version {}, bls key {}"_format(
-                x.version, x.bls_pubkey);
-    }
 };
 
 static void print_extra_fields(const std::vector<cryptonote::tx_extra_field>& fields) {

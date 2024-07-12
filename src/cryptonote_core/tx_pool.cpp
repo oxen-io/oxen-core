@@ -265,16 +265,6 @@ bool tx_memory_pool::have_duplicated_non_standard_tx(
                     get_transaction_hash(tx));
             return true;
         }
-    } else if (tx.type == txtype::ethereum_service_node_liquidated) {
-        cryptonote::tx_extra_ethereum_service_node_liquidated data = {};
-        if (!cryptonote::get_field_from_tx_extra(tx.extra, data)) {
-            log::error(
-                    logcat,
-                    "Could not get ethereum service node liquidated data from tx: {}, tx to add "
-                    "is possibly invalid, rejecting",
-                    get_transaction_hash(tx));
-            return true;
-        }
     } else {
         if (tx.type != txtype::standard && tx.type != txtype::stake) {
             // NOTE(oxen): This is a developer error. If we come across this in production, be

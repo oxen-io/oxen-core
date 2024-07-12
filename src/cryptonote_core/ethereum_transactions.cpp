@@ -98,31 +98,4 @@ bool validate_ethereum_service_node_removal_tx(
     return true;
 }
 
-bool validate_ethereum_service_node_liquidated_tx(
-        hf hf_version,
-        uint64_t blockchain_height,
-        cryptonote::transaction const& tx,
-        cryptonote::tx_extra_ethereum_service_node_liquidated& eth_extra,
-        std::string* reason) {
-
-    {
-        if (check_condition(
-                    tx.type != cryptonote::txtype::ethereum_service_node_liquidated,
-                    reason,
-                    "{} uses wrong tx type, expected={}",
-                    tx,
-                    cryptonote::txtype::ethereum_service_node_liquidated))
-            return false;
-
-        if (check_condition(
-                    !cryptonote::get_field_from_tx_extra(tx.extra, eth_extra),
-                    reason,
-                    "{} didn't have ethereum service node liquidated data in the tx_extra",
-                    tx))
-            return false;
-    }
-
-    return true;
-}
-
 }  // namespace eth

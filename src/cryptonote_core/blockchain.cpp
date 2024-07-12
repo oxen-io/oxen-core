@@ -4137,21 +4137,6 @@ bool Blockchain::check_tx_inputs(
                 tvc.m_verbose_error = std::move(fail_reason);
                 return false;
             }
-        } else if (tx.type == txtype::ethereum_service_node_liquidated) {
-            cryptonote::tx_extra_ethereum_service_node_liquidated entry = {};
-            std::string fail_reason;
-            if (!eth::validate_ethereum_service_node_liquidated_tx(
-                        hf_version, get_current_blockchain_height(), tx, entry, &fail_reason) ||
-                (ethereum_transaction_review_session &&
-                 !ethereum_transaction_review_session->processServiceNodeLiquidatedTx(
-                         entry.bls_pubkey, fail_reason))) {
-                log::error(
-                        log::Cat("verify"),
-                        "Failed to validate Ethereum Service Node Deregister TX reason: {}",
-                        fail_reason);
-                tvc.m_verbose_error = std::move(fail_reason);
-                return false;
-            }
         } else if (tx.type == txtype::state_change) {
             tx_extra_service_node_state_change state_change;
             if (!get_service_node_state_change_from_tx_extra(tx.extra, state_change, hf_version)) {

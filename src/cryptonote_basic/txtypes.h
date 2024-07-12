@@ -27,7 +27,6 @@ enum class txtype : uint16_t {
     ethereum_new_service_node,
     ethereum_service_node_removal_request,
     ethereum_service_node_removal,
-    ethereum_service_node_liquidated,
     _count
 };
 
@@ -52,7 +51,6 @@ inline constexpr std::string_view to_string(txtype type) {
         case txtype::ethereum_service_node_removal_request:
             return "ethereum_service_node_removal_request"sv;
         case txtype::ethereum_service_node_removal: return "ethereum_service_node_removal"sv;
-        case txtype::ethereum_service_node_liquidated: return "ethereum_service_node_liquidated"sv;
         default: assert(false); return "xx_unhandled_type"sv;
     }
 }

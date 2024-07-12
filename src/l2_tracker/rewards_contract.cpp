@@ -266,18 +266,6 @@ TransactionStateChangeVariant getLogTransaction(const ethyl::LogEntry& log) {
             std::tie(bls_pk) = tools::split_hex_into<skip<12 + 20>, bls_public_key>(log.data);
             break;
         }
-        case TransactionType::ServiceNodeLiquidated: {
-            // event ServiceNodeLiquidated(
-            //      uint64 indexed serviceNodeID,
-            //      address recipient,
-            //      BN256G1.G1Point pubkey);
-            // service node id is a topic so only address and pubkey are in data
-            // address is 32 bytes (with 12-byte prefix padding)
-            // pubkey is 64 bytes
-            auto& [bls_pk] = result.emplace<ServiceNodeLiquidatedTx>();
-            std::tie(bls_pk) = tools::split_hex_into<skip<12 + 20>, bls_public_key>(log.data);
-            break;
-        }
         case TransactionType::ServiceNodeRemoval: {
             // event ServiceNodeRemoval(
             //      uint64 indexed serviceNodeID,
@@ -452,10 +440,6 @@ std::string NewServiceNodeTx::to_string() const {
 
 std::string ServiceNodeRemovalRequestTx::to_string() const {
     return "{} [bls_pubkey={}]"_format(state_change_name<ServiceNodeRemovalRequestTx>(), bls_pubkey);
-}
-
-std::string ServiceNodeLiquidatedTx::to_string() const {
-    return "{} [bls_pubkey={}]"_format(state_change_name<ServiceNodeLiquidatedTx>(), bls_pubkey);
 }
 
 std::string ServiceNodeRemovalTx::to_string() const {

@@ -18,7 +18,6 @@ namespace eth {
 enum class TransactionType {
     NewServiceNode,
     ServiceNodeRemovalRequest,
-    ServiceNodeLiquidated,
     ServiceNodeRemoval,
     Other
 };
@@ -46,12 +45,6 @@ struct ServiceNodeRemovalRequestTx : L2StateChange {
     std::string to_string() const;
 };
 
-struct ServiceNodeLiquidatedTx : L2StateChange {
-    bls_public_key bls_pubkey;
-
-    std::string to_string() const;
-};
-
 struct ServiceNodeRemovalTx : L2StateChange {
     eth::address eth_address;
     uint64_t amount;
@@ -65,13 +58,11 @@ constexpr std::string_view state_change_name() = delete;
 template <> inline constexpr std::string_view state_change_name<NewServiceNodeTx>() { return "new service node"sv; }
 template <> inline constexpr std::string_view state_change_name<ServiceNodeRemovalRequestTx>() { return "removal request"sv; }
 template <> inline constexpr std::string_view state_change_name<ServiceNodeRemovalTx>() { return "SN removal"sv; }
-template <> inline constexpr std::string_view state_change_name<ServiceNodeLiquidatedTx>() { return "SN liquidation"sv; }
 
 using TransactionStateChangeVariant = std::variant<
         std::monostate,
         NewServiceNodeTx,
         ServiceNodeRemovalRequestTx,
-        ServiceNodeLiquidatedTx,
         ServiceNodeRemovalTx>;
 
 TransactionStateChangeVariant getLogTransaction(const ethyl::LogEntry& log);

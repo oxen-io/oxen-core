@@ -32,7 +32,6 @@ struct TransactionReviewSession {
 
     std::list<NewServiceNodeTx> new_service_nodes;
     std::list<ServiceNodeRemovalRequestTx> removal_requests;
-    std::list<ServiceNodeLiquidatedTx> liquidations;
     std::list<ServiceNodeRemovalTx> removals;
 
     friend class L2Tracker;
@@ -72,7 +71,6 @@ struct TransactionReviewSession {
             const uint64_t amount,
             const bls_public_key& bls_pubkey,
             std::string& fail_reason);
-    bool processServiceNodeLiquidatedTx(const bls_public_key& bls_pubkey, std::string& fail_reason);
 
     /// Called to check that all L2 state changes were found via the process... methods.  Returns
     /// true if there are no leftover expected L2 state changes left, false if there are still L2

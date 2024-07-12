@@ -999,17 +999,6 @@ bool add_service_node_removal_to_tx_extra(
     return true;
 }
 //---------------------------------------------------------------
-bool add_service_node_liquidated_to_tx_extra(
-        std::vector<uint8_t>& tx_extra,
-        const tx_extra_ethereum_service_node_liquidated& liquidated) {
-    tx_extra_field field = liquidated;
-    if (!add_tx_extra_field_to_tx_extra(tx_extra, field)) {
-        log::info(logcat, "failed to serialize tx extra for service node liquidated transaction");
-        return false;
-    }
-    return true;
-}
-//---------------------------------------------------------------
 bool get_inputs_money_amount(const transaction& tx, uint64_t& money) {
     money = 0;
     for (const auto& in : tx.vin) {

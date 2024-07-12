@@ -1106,49 +1106,6 @@ bool service_node_list::state_t::process_state_change_tx(
     }
 }
 
-bool service_node_list::state_t::process_ethereum_liquidated_tx(
-        cryptonote::network_type nettype,
-        cryptonote::hf hf_version,
-        uint64_t block_height,
-        const cryptonote::transaction& tx,
-        const service_node_keys* my_keys) {
-
-    cryptonote::tx_extra_ethereum_service_node_liquidated liq;
-    if (!cryptonote::get_field_from_tx_extra(tx.extra, liq)) {
-        log::info(
-                logcat,
-                "Unlock TX: couldnt process liquidation, rejected on height: {} "
-                "for tx: {}",
-                block_height,
-                cryptonote::get_transaction_hash(tx));
-        return false;
-    }
-
-    crypto::public_key snode_key = sn_list->bls_public_key_lookup(liq.bls_pubkey);
-    auto iter = service_nodes_infos.find(snode_key);
-    if (iter == service_nodes_infos.end()) {
-        log::debug(
-                logcat,
-                "Received state change tx for non-registered service node {} (perhaps a delayed "
-                "tx?)",
-                snode_key);
-        return false;
-    }
-
-    bool is_me = my_keys && my_keys->pub == snode_key;
-    if (is_me)
-        log::info(
-                logcat,
-                fg(fmt::terminal_color::red),
-                "Deregistration for service node (yours): {}",
-                snode_key);
-    else
-        log::info(logcat, "Deregistration for service node: {}", snode_key);
-
-    erase_info(iter);
-    return true;
-}
-
 bool service_node_list::state_t::process_ethereum_removal_tx(
         cryptonote::network_type nettype,
         cryptonote::hf hf_version,
@@ -2938,9 +2895,6 @@ void service_node_list::state_t::update_from_block(
         } else if (tx.type == cryptonote::txtype::ethereum_service_node_removal) {
             log::debug(logcat, "Processing eth removal tx");
             process_ethereum_removal_tx(nettype, hf_version, block_height, tx);
-        } else if (tx.type == cryptonote::txtype::ethereum_service_node_liquidated) {
-            log::debug(logcat, "Processing eth liquidated tx");
-            process_ethereum_liquidated_tx(nettype, hf_version, block_height, tx, my_keys);
         }
     }
 

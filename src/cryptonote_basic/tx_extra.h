@@ -685,16 +685,6 @@ struct tx_extra_ethereum_service_node_removal {
     END_SERIALIZE()
 };
 
-struct tx_extra_ethereum_service_node_liquidated {
-    uint8_t version = 0;
-    eth::bls_public_key bls_pubkey;
-
-    BEGIN_SERIALIZE()
-    FIELD(version)
-    FIELD(bls_pubkey)
-    END_SERIALIZE()
-};
-
 // tx_extra_field format, except tx_extra_padding and tx_extra_pub_key:
 //   varint tag;
 //   varint size;
@@ -723,7 +713,6 @@ using tx_extra_field = std::variant<
         tx_extra_ethereum_new_service_node,
         tx_extra_ethereum_service_node_removal_request,
         tx_extra_ethereum_service_node_removal,
-        tx_extra_ethereum_service_node_liquidated,
         tx_extra_padding>;
 }  // namespace cryptonote
 
@@ -770,6 +759,3 @@ BINARY_VARIANT_TAG(
 BINARY_VARIANT_TAG(
         cryptonote::tx_extra_ethereum_service_node_removal,
         cryptonote::TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_REMOVAL);
-BINARY_VARIANT_TAG(
-        cryptonote::tx_extra_ethereum_service_node_liquidated,
-        cryptonote::TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_DEREGISTER);

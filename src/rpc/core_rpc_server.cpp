@@ -777,10 +777,6 @@ namespace {
             set("amount", x.amount);
             set("bls_pubkey", x.bls_pubkey);
         }
-        void operator()(const tx_extra_ethereum_service_node_liquidated& x) {
-            set("type", "ethereum_service_node_liquidated");
-            set("bls_pubkey", x.bls_pubkey);
-        }
 
         // Ignore these fields:
         void operator()(const tx_extra_padding&) {}

@@ -867,12 +867,6 @@ class service_node_list {
                 cryptonote::hf hf_version,
                 uint64_t block_height,
                 const cryptonote::transaction& tx);
-        bool process_ethereum_liquidated_tx(
-                cryptonote::network_type nettype,
-                cryptonote::hf hf_version,
-                uint64_t block_height,
-                const cryptonote::transaction& tx,
-                const service_node_keys* my_keys);
         payout get_block_leader() const;
         payout get_block_producer(uint8_t pulse_round) const;
 

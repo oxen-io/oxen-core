@@ -392,10 +392,6 @@ void L2Tracker::add_to_mempool(
                     tx_extra_ethereum_service_node_removal removal_data = {
                             0, arg.eth_address, arg.amount, arg.bls_pubkey};
                     add_service_node_removal_to_tx_extra(tx.extra, removal_data);
-                } else if constexpr (std::is_same_v<T, eth::ServiceNodeLiquidatedTx>) {
-                    tx.type = txtype::ethereum_service_node_liquidated;
-                    tx_extra_ethereum_service_node_liquidated liquidated = {0, arg.bls_pubkey};
-                    add_service_node_liquidated_to_tx_extra(tx.extra, liquidated);
                 } else {
                     static_assert(
                             std::is_same_v<T, std::monostate>,
@@ -585,8 +581,6 @@ TransactionReviewSession L2Tracker::initialize_review(uint64_t l2_height) const 
                             session.removal_requests.push_back(arg);
                         } else if constexpr (std::is_same_v<T, ServiceNodeRemovalTx>) {
                             session.removals.push_back(arg);
-                        } else if constexpr (std::is_same_v<T, ServiceNodeLiquidatedTx>) {
-                            session.liquidations.push_back(arg);
                         } else {
                             static_assert(
                                     std::is_same_v<T, std::monostate>,
@@ -686,19 +680,9 @@ bool TransactionReviewSession::processServiceNodeRemovalTx(
     return false;
 }
 
-bool TransactionReviewSession::processServiceNodeLiquidatedTx(
-        const eth::bls_public_key& bls_pubkey, std::string& fail_reason) {
-    if (process_review_tx(
-                active, liquidations, [&](const auto& x) { return x.bls_pubkey == bls_pubkey; }))
-        return true;
-
-    fail_reason = "Deregister Transaction not found bls_pubkey: {}"_format(bls_pubkey);
-    return false;
-}
-
 bool TransactionReviewSession::finalize() {
     return !active ||
-           (new_service_nodes.empty() && removal_requests.empty() && liquidations.empty() && removals.empty());
+           (new_service_nodes.empty() && removal_requests.empty() && removals.empty());
 }
 
 std::vector<uint64_t> L2Tracker::get_non_signers(
