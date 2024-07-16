@@ -27,6 +27,7 @@ if [ "$1" = configure ]; then
     sed -i '0,/^l2-provider=/{/^l2-provider=/{h;s#.*=.*#l2-provider='"$L2"'#}};${x;/^$/{s##l2-provider='"$L2"'#;H};x}' \
         ${tmpdir}/stagenet.conf
 
+    mkdir --parents /etc/oxen
     for x in stagenet.conf; do
         if ! [ -f /etc/oxen/$x ]; then
             mv ${tmpdir}/$x /etc/oxen/$x
