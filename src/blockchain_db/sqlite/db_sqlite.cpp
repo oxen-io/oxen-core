@@ -419,32 +419,32 @@ std::vector<cryptonote::batch_sn_payment> BlockchainSQLite::get_sn_payments(uint
     return payments;
 }
 
-static std::pair<uint64_t, uint64_t> get_accrued_earnings_impl(BlockchainSQLite& db, const std::string& address, uint64_t height) {
+static std::pair<uint64_t, uint64_t> get_accrued_rewards_impl(BlockchainSQLite& db, const std::string& address, uint64_t height) {
     log::trace(logcat, "BlockchainDB_SQLITE {} for {}", __func__, address);
-    auto earnings = db.prepared_maybe_get<int64_t>(
+    auto rewards = db.prepared_maybe_get<int64_t>(
             R"(
         SELECT amount
         FROM batched_payments_accrued
         WHERE address = ?
     )", address);
-    auto result = std::make_pair(height, static_cast<uint64_t>(earnings.value_or(0) / 1000));
+    auto result = std::make_pair(height, static_cast<uint64_t>(rewards.value_or(0) / 1000));
     return result;
 }
 
-std::pair<uint64_t, uint64_t> BlockchainSQLite::get_accrued_earnings(const eth::address& address) {
+std::pair<uint64_t, uint64_t> BlockchainSQLite::get_accrued_rewards(const eth::address& address) {
     std::string address_string = fmt::format("0x{:x}", address);
-    auto result = get_accrued_earnings_impl(*this, address_string, height);
+    auto result = get_accrued_rewards_impl(*this, address_string, height);
     return result;
 }
 
-std::pair<uint64_t, uint64_t> BlockchainSQLite::get_accrued_earnings(const account_public_address& address) {
+std::pair<uint64_t, uint64_t> BlockchainSQLite::get_accrued_rewards(const account_public_address& address) {
     std::string address_string = get_account_address_as_str(m_nettype, false /*subaddress*/, address);
-    auto result = get_accrued_earnings_impl(*this, address_string, height);
+    auto result = get_accrued_rewards_impl(*this, address_string, height);
     return result;
 }
 
 std::pair<std::vector<std::string>, std::vector<uint64_t>>
-BlockchainSQLite::get_all_accrued_earnings() {
+BlockchainSQLite::get_all_accrued_rewards() {
     log::trace(logcat, "BlockchainDB_SQLITE::{}", __func__);
 
     std::pair<std::vector<std::string>, std::vector<uint64_t>> result;

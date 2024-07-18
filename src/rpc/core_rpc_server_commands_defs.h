@@ -714,7 +714,7 @@ void from_json(const nlohmann::json& j, block_header_response& h);
 ///     to service nodes and governance.  As of Oxen 10 (HF 19) this is the *earned* amount, but
 ///     not the *paid* amount which occurs in batches.
 ///   - `coinbase_payouts` -- The amount of OXEN paid out in this block.  As of Oxen 10 (HF 19),
-///     this reflects the current batched amounts being paid from earnings batched over previous
+///     this reflects the current batched amounts being paid from rewards batched over previous
 ///     blocks, not the amounts *earned* in the current block.
 ///   - `block_size` -- The block size in bytes.
 ///   - `block_weight` -- The block weight in bytes.
@@ -2145,7 +2145,7 @@ struct GET_SERVICE_NODE_STATUS : NO_ARGS {
     static constexpr auto names() { return NAMES("get_service_node_status"); }
 };
 
-/// RPC: blockchain/get_accrued_batched_earnings
+/// RPC: blockchain/get_accrued_rewards
 ///
 /// Retrieve the current "balance" of accrued service node rewards for the given addresses.
 ///
@@ -2155,10 +2155,9 @@ struct GET_SERVICE_NODE_STATUS : NO_ARGS {
 ///
 /// Outputs:
 ///  - `balances` -- a dict where keys are the wallet addresses and values are the balance (in
-///    atomic OXEN units).
-struct GET_ACCRUED_BATCHED_EARNINGS : PUBLIC {
-    static constexpr auto names() { return NAMES("get_accrued_batched_earnings"); }
-
+///    atomic SENT units).
+struct GET_ACCRUED_REWARDS : PUBLIC {
+    static constexpr auto names() { return NAMES("get_accrued_rewards"); }
     struct request_parameters {
         std::vector<std::string> addresses;
     } request;
@@ -2738,7 +2737,7 @@ using core_rpc_types = tools::type_list<
         BANNED,
         FLUSH_CACHE,
         FLUSH_TRANSACTION_POOL,
-        GET_ACCRUED_BATCHED_EARNINGS,
+        GET_ACCRUED_REWARDS,
         GET_ALTERNATE_CHAINS,
         GET_BANS,
         GET_FEE_ESTIMATE,

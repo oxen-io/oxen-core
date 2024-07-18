@@ -78,17 +78,17 @@ class BlockchainSQLite : public db::Database {
     std::mutex address_str_cache_mutex;
 
   public:
-    // get_accrued_earnings -> queries the database for the amount that has been accrued to
+    // get_accrued_rewards -> queries the database for the amount that has been accrued to
     // the Ethereum `address` will return the atomic value in oxen that the service node is owed.
-    std::pair<uint64_t, uint64_t> get_accrued_earnings(const eth::address& address);
+    std::pair<uint64_t, uint64_t> get_accrued_rewards(const eth::address& address);
 
-    // See `get_accrued_earnings`
-    std::pair<uint64_t, uint64_t> get_accrued_earnings(const account_public_address& address);
+    // See `get_accrued_rewards`
+    std::pair<uint64_t, uint64_t> get_accrued_rewards(const account_public_address& address);
 
-    // get_all_accrued_earnings -> queries the database for all the amount that has been accrued to
+    // get_all_accrued_rewards -> queries the database for all the amount that has been accrued to
     // service nodes will return 2 vectors corresponding to the addresses and the atomic value in
     // oxen that the service nodes are owed.
-    std::pair<std::vector<std::string>, std::vector<uint64_t>> get_all_accrued_earnings();
+    std::pair<std::vector<std::string>, std::vector<uint64_t>> get_all_accrued_rewards();
 
     // get_payments -> passing a block height will return an array of payments that should be
     // created in a coinbase transaction on that block given the current batching DB state.

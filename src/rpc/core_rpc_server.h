@@ -200,7 +200,7 @@ class core_rpc_server {
     void invoke(GET_ALTERNATE_CHAINS& get_alternate_chains, rpc_context context);
     void invoke(GET_OUTPUT_HISTOGRAM& get_output_histogram, rpc_context context);
     void invoke(ONS_OWNERS_TO_NAMES& ons_owners_to_names, rpc_context context);
-    void invoke(GET_ACCRUED_BATCHED_EARNINGS& get_accrued_batched_earnings, rpc_context context);
+    void invoke(GET_ACCRUED_REWARDS& rpc, rpc_context context);
     void invoke(ONS_NAMES_TO_OWNERS& ons_names_to_owners, rpc_context context);
 
     // Deprecated Monero NIH binary endpoints:

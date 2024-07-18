@@ -249,7 +249,7 @@ void BLSAggregator::get_reward_balance(oxenmq::Message& m) {
         return;
 
     auto [batchdb_height, amount] =
-            core.get_blockchain_storage().sqlite_db().get_accrued_earnings(eth_addr);
+            core.get_blockchain_storage().sqlite_db().get_accrued_rewards(eth_addr);
     if (amount == 0) {
         m.send_reply("400", "Address '{}' has a zero balance in the database"_format(eth_addr));
         return;
@@ -281,7 +281,7 @@ void BLSAggregator::get_reward_balance(oxenmq::Message& m) {
 
 BLSRewardsResponse BLSAggregator::rewards_request(const eth::address& address) {
 
-    auto [height, amount] = core.get_blockchain_storage().sqlite_db().get_accrued_earnings(address);
+    auto [height, amount] = core.get_blockchain_storage().sqlite_db().get_accrued_rewards(address);
 
     // FIXME: make this async
 

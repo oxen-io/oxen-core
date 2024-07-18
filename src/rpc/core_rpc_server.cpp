@@ -3414,43 +3414,36 @@ void core_rpc_server::invoke(ONS_RESOLVE& resolve, [[maybe_unused]] rpc_context 
     }
 }
 
-void core_rpc_server::invoke(
-        GET_ACCRUED_BATCHED_EARNINGS& get_accrued_batched_earnings,
-        [[maybe_unused]] rpc_context context) {
+void core_rpc_server::invoke(GET_ACCRUED_REWARDS& rpc, [[maybe_unused]] rpc_context context) {
     auto& blockchain = m_core.get_blockchain_storage();
-    bool at_least_one_succeeded = false;
 
-    auto& balances = get_accrued_batched_earnings.response["balances"];
+    auto& balances = rpc.response["balances"];
     balances = json::object();
-    auto& req = get_accrued_batched_earnings.request;
+
+    const auto& req = rpc.request;
     auto net = nettype();
+    BlockchainSQLite& sql_db = blockchain.sqlite_db();
+
     if (req.addresses.size() > 0) {
         for (const auto& address : req.addresses) {
             uint64_t amount = 0;
-
-            // FIXME: eth address!
-
-            if (address_parse_info parse_info{};
-                get_account_address_from_str(parse_info, net, address)) {
-                std::tie(std::ignore, amount) =
-                        blockchain.sqlite_db().get_accrued_earnings(parse_info.address);
-                at_least_one_succeeded = true;
+            if (eth::address eth_address{};
+                tools::try_load_from_hex_guts<eth::address>(address, eth_address)) {
+                std::tie(std::ignore, amount) = sql_db.get_accrued_rewards(eth_address);
+            } else if (address_parse_info parse_info{};
+                       get_account_address_from_str(parse_info, net, address)) {
+                std::tie(std::ignore, amount) = sql_db.get_accrued_rewards(parse_info.address);
             }
             balances[address] = amount;
         }
     } else {
-        auto [addresses, amounts] = blockchain.sqlite_db().get_all_accrued_earnings();
+        auto [addresses, amounts] = sql_db.get_all_accrued_rewards();
         for (size_t i = 0; i < addresses.size(); i++) {
             balances[addresses[i]] = amounts[i];
         }
-        at_least_one_succeeded = true;
     }
 
-    if (!at_least_one_succeeded)
-        throw rpc_error{
-                ERROR_WRONG_PARAM, "Failed to query any service nodes batched amounts at all"};
-
-    get_accrued_batched_earnings.response["status"] = STATUS_OK;
+    rpc.response["status"] = STATUS_OK;
 }
 
 }  // namespace cryptonote::rpc

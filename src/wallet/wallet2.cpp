@@ -15269,12 +15269,12 @@ std::unordered_map<std::string, wallet2::ons_detail> wallet2::get_ons_cache() {
 
 void wallet2::refresh_batching_cache() {
     nlohmann::json req_params{{"addresses", std::vector<std::string>{}}};
-    auto res = m_http_client.json_rpc("get_accrued_batched_earnings", req_params);
+    auto res = m_http_client.json_rpc(rpc::GET_ACCRUED_REWARDS::names()[0], req_params);
     THROW_WALLET_EXCEPTION_IF(
             res["status"] == rpc::STATUS_BUSY, error::daemon_busy, "get_output_histogram");
     THROW_WALLET_EXCEPTION_IF(
             res["status"] != rpc::STATUS_OK,
-            error::get_accrued_batched_earnings_error,
+            error::get_accrued_rewards_error,
             res["status"]);
 
     auto records = res["balances"].get<std::unordered_map<std::string, uint64_t>>();

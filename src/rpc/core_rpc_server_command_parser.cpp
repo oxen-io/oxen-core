@@ -416,8 +416,8 @@ void parse_request(GET_OUTPUT_HISTOGRAM& get_output_histogram, rpc_input in) {
             get_output_histogram.request.unlocked);
 }
 
-void parse_request(GET_ACCRUED_BATCHED_EARNINGS& get_accrued_batched_earnings, rpc_input in) {
-    get_values(in, "addresses", get_accrued_batched_earnings.request.addresses);
+void parse_request(GET_ACCRUED_REWARDS& rpc, rpc_input in) {
+    get_values(in, "addresses", rpc.request.addresses);
 }
 
 void parse_request(ONS_OWNERS_TO_NAMES& ons_owners_to_names, rpc_input in) {

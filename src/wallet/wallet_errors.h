@@ -731,10 +731,10 @@ struct wallet_files_doesnt_correspond : public wallet_logic_error {
                     "File {} does not correspond to {}"_format(wallet_file, keys_file)} {}
 };
 //----------------------------------------------------------------------------------------------------
-struct get_accrued_batched_earnings_error : public wallet_rpc_error {
-    explicit get_accrued_batched_earnings_error(std::string&& loc, const std::string& request) :
+struct get_accrued_rewards_error : public wallet_rpc_error {
+    explicit get_accrued_rewards_error(std::string&& loc, const std::string& request) :
             wallet_rpc_error(
-                    std::move(loc), "Failed to get accrued batched service node rewards", request) {
+                    std::move(loc), "Failed to get accrued rewards", request) {
     }
 };
 //----------------------------------------------------------------------------------------------------

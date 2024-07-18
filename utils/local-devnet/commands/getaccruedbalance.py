@@ -20,8 +20,8 @@ def instruct_daemon(method, params):
     except:
         print('No response from daemon, check daemon is running on this machine')
 
-# answer = instruct_daemon('get_accrued_batched_earnings', {"addresses": [config.wallet_address]})
-answer = instruct_daemon('get_accrued_batched_earnings', {"addresses": []})
+# answer = instruct_daemon('get_accrued_rewards', {"addresses": [config.wallet_address]})
+answer = instruct_daemon('get_accrued_rewards', {"addresses": []})
 print(json.dumps(answer, indent=4, sort_keys=True))
 
 
