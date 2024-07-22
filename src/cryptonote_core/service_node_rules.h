@@ -193,7 +193,7 @@ namespace service_nodes {
   inline constexpr uint64_t VOTE_OR_TX_VERIFY_HEIGHT_BUFFER    = 5;
 
   // The minimum versions that we accept for local oxend pings from our *own* companion services:
-  inline constexpr std::array<uint16_t, 3> MIN_STORAGE_SERVER_VERSION{{2, 6, 0}};
+  inline constexpr std::array<uint16_t, 3> MIN_STORAGE_SERVER_VERSION{{2, 8, 0}};
   inline constexpr std::array<uint16_t, 3> MIN_LOKINET_VERSION{{0, 9, 11}};
 
   // The minimum accepted version number, broadcasted by Service Nodes via uptime proofs for each hardfork
