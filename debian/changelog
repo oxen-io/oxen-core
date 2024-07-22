@@ -1,3 +1,12 @@
+oxen (10.6.0-1~ubuntu2204) jammy; urgency=medium
+
+  * Force use of the oxen-encoding submodule to avoid C++20
+  * fix oxenc include path
+  * 10.6.0 release with storage server 2.8.0 update
+  * Rediff patches
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Mon, 22 Jul 2024 12:39:32 -0300
+
 oxen (10.5.0-1~ubuntu2204) jammy; urgency=medium
 
   * Bump oxenmq to latest release (1.2.17)
