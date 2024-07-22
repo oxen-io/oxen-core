@@ -193,7 +193,7 @@ namespace service_nodes {
   inline constexpr uint64_t VOTE_OR_TX_VERIFY_HEIGHT_BUFFER    = 5;
 
   // The minimum versions that we accept for local oxend pings from our *own* companion services:
-  inline constexpr std::array<uint16_t, 3> MIN_STORAGE_SERVER_VERSION{{2, 6, 0}};
+  inline constexpr std::array<uint16_t, 3> MIN_STORAGE_SERVER_VERSION{{2, 8, 0}};
   inline constexpr std::array<uint16_t, 3> MIN_LOKINET_VERSION{{0, 9, 11}};
 
   // The minimum accepted version number, broadcasted by Service Nodes via uptime proofs for each hardfork
@@ -207,6 +207,7 @@ namespace service_nodes {
 
   // The minimum that we accept in proofs from other Service Nodes:
   inline constexpr std::array MIN_UPTIME_PROOF_VERSIONS = {
+    proof_version{{cryptonote::hf::hf19_reward_batching, 6}, {10,6,0}, {0,9,11}, {2,8,0}},
     proof_version{{cryptonote::hf::hf19_reward_batching, 5}, {10,5,0}, {0,9,11}, {2,7,0}},
     proof_version{{cryptonote::hf::hf19_reward_batching, 4}, {10,4,0}, {0,9,11}, {2,6,1}},
   };
