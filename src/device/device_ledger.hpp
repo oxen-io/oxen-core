@@ -232,7 +232,7 @@ namespace hw::ledger {
         std::string get_name() const override;
         bool init() override;
         bool release() override;
-        bool connect() override;
+        bool connect(bool debug_reset_network = false) override;
         bool disconnect() override;
         bool connected() const;
 

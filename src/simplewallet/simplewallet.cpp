@@ -130,6 +130,7 @@ namespace
   const auto arg_wallet_file = wallet_args::arg_wallet_file();
   const command_line::arg_descriptor<std::string> arg_generate_new_wallet = {"generate-new-wallet", sw::tr("Generate new wallet and save it to <arg>"), ""};
   const command_line::arg_descriptor<std::string> arg_generate_from_device = {"generate-from-device", sw::tr("Generate new wallet from device and save it to <arg>"), ""};
+  const command_line::arg_descriptor<bool> arg_debug_reset_device = {"debug-reset-device", sw::tr("Reset the hardware device when generating the wallet (requires a debugging hardware wallet)"), false};
   const command_line::arg_descriptor<std::string> arg_generate_from_view_key = {"generate-from-view-key", sw::tr("Generate incoming-only wallet from view key"), ""};
   const command_line::arg_descriptor<std::string> arg_generate_from_spend_key = {"generate-from-spend-key", sw::tr("Generate deterministic wallet from spend key"), ""};
   const command_line::arg_descriptor<std::string> arg_generate_from_keys = {"generate-from-keys", sw::tr("Generate wallet from private keys"), ""};
@@ -4058,6 +4059,7 @@ bool simple_wallet::handle_command_line(const boost::program_options::variables_
   m_do_not_relay                  = command_line::get_arg(vm, arg_do_not_relay);
   m_subaddress_lookahead          = command_line::get_arg(vm, arg_subaddress_lookahead);
   m_use_english_language_names    = command_line::get_arg(vm, arg_use_english_language_names);
+  m_debug_reset_device            = command_line::get_arg(vm, arg_debug_reset_device);
   m_restoring                     = !m_generate_from_view_key.empty() ||
                                     !m_generate_from_spend_key.empty() ||
                                     !m_generate_from_keys.empty() ||
@@ -4353,7 +4355,7 @@ std::optional<epee::wipeable_string> simple_wallet::new_device_wallet(const boos
                            "spend key (needed to spend funds) does not leave the device.");
     m_wallet->restore_from_device(
             m_wallet_file, std::move(rc.second).password(), device_desc.empty() ? "Ledger" : device_desc, create_address_file,
-            std::move(create_hwdev_txt), [](const std::string& msg) { message_writer(epee::console_color_green, true) << msg; });
+            std::move(create_hwdev_txt), m_debug_reset_device, [](const std::string& msg) { message_writer(epee::console_color_green, true) << msg; });
     message_writer(epee::console_color_white, true) << tr("Finished setting up wallet from hw device");
   }
   catch (const std::exception& e)

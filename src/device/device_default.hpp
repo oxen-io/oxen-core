@@ -52,7 +52,7 @@ namespace hw {
             bool init() override;
             bool release() override;
 
-            bool connect() override;
+            bool connect(bool ignored) override;
             bool disconnect() override;
  
             type get_type() const override { return type::SOFTWARE; };

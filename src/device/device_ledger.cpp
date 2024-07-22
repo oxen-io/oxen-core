@@ -257,6 +257,7 @@ namespace hw::ledger {
     LEDGER_INS(RESET,                           0x02);
 
     LEDGER_INS(GET_NETWORK,                     0x10);
+    LEDGER_INS(RESET_NETWORK,                   0x11);
 
     LEDGER_INS(GET_KEY,                         0x20);
     LEDGER_INS(DISPLAY_ADDRESS,                 0x21);
@@ -600,7 +601,7 @@ namespace hw::ledger {
         {0x2c97, 0x501c, 0, 0xffa0}, {0x2c97, 0x501d, 0, 0xffa0}, {0x2c97, 0x501e, 0, 0xffa0}, {0x2c97, 0x501f, 0, 0xffa0},
     };
 
-    bool device_ledger::connect() {
+    bool device_ledger::connect(bool debug_reset) {
       disconnect();
       if (auto* hid_io = dynamic_cast<io::hid*>(hw_device.get()))
           hid_io->connect(known_devices);
@@ -609,6 +610,11 @@ namespace hw::ledger {
       else
         throw std::logic_error{"Invalid ledger hardware configure"};
       reset();
+
+      if (debug_reset) {
+        auto locks = tools::unique_locks(device_locker, command_locker);
+        send_simple(INS_RESET_NETWORK, static_cast<uint8_t>(nettype));
+      }
 
       check_network_type();
 

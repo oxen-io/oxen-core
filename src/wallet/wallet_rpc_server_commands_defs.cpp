@@ -883,6 +883,9 @@ KV_SERIALIZE_MAP_CODE_BEGIN(CREATE_WALLET::request)
   KV_SERIALIZE(hardware_wallet)
   KV_SERIALIZE(device_name)
   KV_SERIALIZE(device_label)
+  KV_SERIALIZE(debug_reset)
+  KV_SERIALIZE(subaddress_lookahead_major)
+  KV_SERIALIZE(subaddress_lookahead_minor)
 KV_SERIALIZE_MAP_CODE_END()
 
 

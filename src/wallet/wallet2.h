@@ -538,7 +538,8 @@ private:
      * \param  status_callback callback to invoke with progress messages to display to the user
      */
     void restore_from_device(const fs::path& wallet_, const epee::wipeable_string& password, const std::string &device_name,
-            bool create_address_file = false, std::optional<std::string> hwdev_label = std::nullopt, std::function<void(std::string msg)> status_callback = {});
+            bool create_address_file = false, std::optional<std::string> hwdev_label = std::nullopt, bool debug_reset_device = false,
+            std::function<void(std::string msg)> status_callback = {});
 
     /*!
      * \brief Creates a multisig wallet

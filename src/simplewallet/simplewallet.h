@@ -434,6 +434,7 @@ namespace cryptonote
     bool m_do_not_relay;
     bool m_use_english_language_names;
     bool m_has_locked_key_images;
+    bool m_debug_reset_device;
 
     epee::console_handlers_binder m_cmd_binder;
 

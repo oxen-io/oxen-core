@@ -63,6 +63,7 @@ add_subdirectory(block_weight)
 add_subdirectory(hash)
 add_subdirectory(net_load_tests)
 add_subdirectory(network_tests)
+add_subdirectory(ledger)
 if (ANDROID)
 # Currently failed to compile
 #  add_subdirectory(libwallet_api_tests)

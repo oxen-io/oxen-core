@@ -30,6 +30,7 @@
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
 #include <fstream>
+#include <type_traits>
 
 #include "account.h"
 #include "epee/warnings.h"
@@ -197,19 +198,19 @@ DISABLE_VS_WARNINGS(4244 4345)
   }
 
   //-----------------------------------------------------------------
-  void account_base::create_from_device(const std::string &device_name)
+  void account_base::create_from_device(const std::string &device_name, bool debug_reset)
   {
     hw::device &hwdev =  hw::get_device(device_name);
     hwdev.set_name(device_name);
-    create_from_device(hwdev);
+    create_from_device(hwdev, debug_reset);
   }
 
-  void account_base::create_from_device(hw::device &hwdev)
+  void account_base::create_from_device(hw::device &hwdev, bool debug_reset)
   {
     m_keys.set_device(hwdev);
     MCDEBUG("device", "device type: " << tools::type_name(typeid(hwdev)));
     CHECK_AND_ASSERT_THROW_MES(hwdev.init(), "Device init failed");
-    CHECK_AND_ASSERT_THROW_MES(hwdev.connect(), "Device connect failed");
+    CHECK_AND_ASSERT_THROW_MES(hwdev.connect(debug_reset), "Device connect failed");
     try {
       CHECK_AND_ASSERT_THROW_MES(hwdev.get_public_address(m_keys.m_account_address), "Cannot get a device address");
       CHECK_AND_ASSERT_THROW_MES(hwdev.get_secret_keys(m_keys.m_view_secret_key, m_keys.m_spend_secret_key), "Cannot get device secret");

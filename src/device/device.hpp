@@ -126,7 +126,7 @@ namespace hw {
         virtual bool init() = 0;
         virtual bool release() = 0;
 
-        virtual bool connect() = 0;
+        virtual bool connect(bool debug_reset_network = false) = 0;
         virtual bool disconnect() = 0;
 
         virtual bool set_mode(mode m) { mode_ = m; return true; }

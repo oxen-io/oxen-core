@@ -73,7 +73,7 @@ namespace hw::core {
             return true;
         }
 
-        bool device_default::connect() {
+        bool device_default::connect(bool) {
             return true;
         }
         bool device_default::disconnect() {
