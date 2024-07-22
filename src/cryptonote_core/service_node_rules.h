@@ -207,6 +207,7 @@ namespace service_nodes {
 
   // The minimum that we accept in proofs from other Service Nodes:
   inline constexpr std::array MIN_UPTIME_PROOF_VERSIONS = {
+    proof_version{{cryptonote::hf::hf19_reward_batching, 6}, {10,6,0}, {0,9,11}, {2,8,0}},
     proof_version{{cryptonote::hf::hf19_reward_batching, 5}, {10,5,0}, {0,9,11}, {2,7,0}},
     proof_version{{cryptonote::hf::hf19_reward_batching, 4}, {10,4,0}, {0,9,11}, {2,6,1}},
   };
