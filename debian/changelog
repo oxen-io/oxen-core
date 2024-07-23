@@ -1,3 +1,10 @@
+oxen (10.6.0-2~ubuntu2204) jammy; urgency=medium
+
+  * 10.6.0 release with storage server 2.8.0 update
+  * bump storage server/lokinet versions in oxen-service-node metapackage
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Tue, 23 Jul 2024 16:29:12 -0300
+
 oxen (10.6.0-1~ubuntu2204) jammy; urgency=medium
 
   * Force use of the oxen-encoding submodule to avoid C++20
