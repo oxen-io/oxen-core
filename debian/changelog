@@ -1,3 +1,9 @@
+oxen (10.6.0-2) unstable; urgency=medium
+
+  * bump storage server/lokinet versions in oxen-service-node metapackage
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Tue, 23 Jul 2024 16:28:25 -0300
+
 oxen (10.6.0-1) unstable; urgency=medium
 
   * Force use of the oxen-encoding submodule to avoid C++20
