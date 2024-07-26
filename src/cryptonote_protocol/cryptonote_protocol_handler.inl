@@ -1532,7 +1532,7 @@ namespace cryptonote
                 + std::to_string(previous_stripe) + " -> " + std::to_string(current_stripe);
             if (logcat->should_log(log::Level::debug))
               timing_message += std::string(": ") + m_block_queue.get_overview(current_blockchain_height);
-            log::info(logcat, fg(fmt::terminal_color::yellow), "Synced {}/{} {} {}", current_blockchain_height, target_blockchain_height, progress_message, timing_message);
+            log::info(globallogcat, fg(fmt::terminal_color::yellow), "Synced {}/{} {} {}", current_blockchain_height, target_blockchain_height, progress_message, timing_message);
             if (previous_stripe != current_stripe)
               notify_new_stripe(context, current_stripe);
           }
@@ -2232,7 +2232,7 @@ skip:
           if (synced_seconds == 0s)
             synced_seconds = 1s;
           float blocks_per_second = synced_blocks / (float)synced_seconds.count();
-          log::info(logcat, fg(fmt::terminal_color::yellow), "Synced {} blocks in {} ({} blocks per second)", synced_blocks, tools::get_human_readable_timespan(synced_seconds), blocks_per_second);
+          log::info(globallogcat, fg(fmt::terminal_color::yellow), "Synced {} blocks in {} ({} blocks per second)", synced_blocks, tools::get_human_readable_timespan(synced_seconds), blocks_per_second);
         }
       }
       log::info(globallogcat, fg(fmt::terminal_color::yellow) | fmt::emphasis::bold, R"(
