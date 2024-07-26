@@ -324,6 +324,18 @@ uint64_t get_min_node_contribution(
     if (max_contributors <= num_contributions)
         return UINT64_MAX;
 
+    if (version >= feature::ETH_BLS)
+        // With Eth registrations the minimum contribution is enforced in the multi-contributor
+        // contract side, and not checkable at all in Oxen because Eth registrations are always full
+        // registrations, and *any* set of (non-operator) contributions that make up a full stake
+        // sorted from highest to lowest will always satisfy the contributor staking requirements.
+        // (The proof is pretty easy to see: given N contributions that fill the remaining required
+        // stake, the largest of the contributions will be at least as big as the average
+        // contribution, remaining / N, and thus contribution >= remaining / N >= remaining / M,
+        // where where M >= N is the maximum spots remaining, and remaining / M is the required
+        // contribution rule.
+        return 1;
+
     const size_t num_contributions_remaining_avail = max_contributors - num_contributions;
     return needed / num_contributions_remaining_avail;
 }
