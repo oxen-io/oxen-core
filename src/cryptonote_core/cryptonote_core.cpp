@@ -2812,7 +2812,7 @@ eth::bls_registration_response core::bls_registration(const eth::address& addres
     // keys:
     assert(tools::view_guts(keys.pub) == tools::view_guts(keys.pub_ed25519));
 
-    auto reg_msg = get_registration_message_for_signing(reg);
+    auto reg_msg = get_eth_registration_message_for_signing(reg);
     crypto_sign_ed25519_detached(
             resp.ed_signature.data(),
             nullptr,

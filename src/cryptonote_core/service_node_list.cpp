@@ -528,8 +528,8 @@ void validate_registration(
                 std::to_string(block_timestamp) + ")"};
 }
 
-//---------------------------------------------------------------
-std::basic_string<unsigned char> get_registration_message_for_signing(
+// For ETH_BLS+:
+std::basic_string<unsigned char> get_eth_registration_message_for_signing(
         const registration_details& registration) {
     std::basic_string<unsigned char> buffer;
     size_t size = sizeof(crypto::ed25519_public_key) + sizeof(eth::bls_public_key);
@@ -540,9 +540,22 @@ std::basic_string<unsigned char> get_registration_message_for_signing(
     return buffer;
 }
 
+// For pre-ETH_BLS:
 crypto::hash get_registration_hash(const registration_details& registration) {
-    auto msg = get_registration_message_for_signing(registration);
-    return crypto::cn_fast_hash(msg.data(), msg.size());
+    std::basic_string<unsigned char> buffer;
+    size_t size = sizeof(uint64_t) +  // fee
+                  registration.reserved.size() * (sizeof(cryptonote::account_public_address) +
+                                                  sizeof(uint64_t)) +  // addr+amount for each
+                  sizeof(uint64_t);                                    // expiration timestamp
+    buffer.reserve(size);
+    buffer += tools::view_guts<unsigned char>(oxenc::host_to_little(registration.fee));
+    for (const auto& [addr, amount] : registration.reserved) {
+        buffer += tools::view_guts<unsigned char>(addr);
+        buffer += tools::view_guts<unsigned char>(oxenc::host_to_little(amount));
+    }
+    buffer += tools::view_guts<unsigned char>(oxenc::host_to_little(registration.hf));
+    assert(buffer.size() == size);
+    return crypto::cn_fast_hash(buffer.data(), buffer.size());
 }
 
 void validate_registration_signature(const registration_details& registration) {
@@ -558,8 +571,8 @@ void validate_registration_signature(const registration_details& registration) {
             throw invalid_registration{
                     "Registration signature verification failed for pubkey/hash: {}/{}"_format(
                             registration.service_node_pubkey, hash)};
-    } else {
-        auto reg_msg = get_registration_message_for_signing(registration);
+    } else {  // feature::ETH_BLS:
+        auto reg_msg = get_eth_registration_message_for_signing(registration);
         // Don't need a direct crypto::check_key here because libsodium verify already checks it
         if (crypto_sign_ed25519_verify_detached(
                     registration.ed_signature.data(),

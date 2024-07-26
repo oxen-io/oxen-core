@@ -1046,7 +1046,7 @@ void validate_registration(
 void validate_registration_signature(const registration_details& registration);
 crypto::hash get_registration_hash(const registration_details& registration);
 
-std::basic_string<unsigned char> get_registration_message_for_signing(
+std::basic_string<unsigned char> get_eth_registration_message_for_signing(
         const registration_details& registration);
 
 bool make_registration_cmd(
