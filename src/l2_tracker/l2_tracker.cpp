@@ -96,6 +96,7 @@ void L2Tracker::update_state() {
         log::debug(logcat, "update_state initiating all-providers sync check");
         provider.getAllHeightsAsync([this](std::vector<ethyl::HeightInfo> height_info) {
             log::debug(logcat, "Got all provider heights");
+            next_provider_check = std::chrono::steady_clock::now() + PROVIDERS_CHECK_INTERVAL;
             uint64_t best_height = 0;
             for (auto& hi : height_info)
                 if (hi.height > best_height)

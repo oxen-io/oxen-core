@@ -795,6 +795,8 @@ bool core::init(
     m_l2_tracker->provider.setTimeout(as_duration<std::chrono::milliseconds>(
             1000 * command_line::get_arg(vm, arg_l2_timeout)));
     m_l2_tracker->GETLOGS_MAX_BLOCKS = command_line::get_arg(vm, arg_l2_max_logs);
+    m_l2_tracker->PROVIDERS_CHECK_INTERVAL = as_duration<std::chrono::milliseconds>(command_line::get_arg(vm, arg_l2_check_interval));
+    m_l2_tracker->PROVIDERS_CHECK_THRESHOLD = command_line::get_arg(vm, arg_l2_check_threshold);
 
     const auto l2_provider = command_line::get_arg(vm, arg_l2_provider);
     if (!l2_provider.empty()) {
