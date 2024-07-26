@@ -1117,61 +1117,6 @@ bool service_node_list::state_t::process_state_change_tx(
     }
 }
 
-bool service_node_list::state_t::process_ethereum_removal_tx(
-        cryptonote::network_type nettype,
-        cryptonote::hf hf_version,
-        uint64_t block_height,
-        const cryptonote::transaction& tx) {
-
-    cryptonote::tx_extra_ethereum_service_node_removal removal_data;
-    if (!cryptonote::get_field_from_tx_extra(tx.extra, removal_data)) {
-        log::warning(
-                logcat,
-                "Unlock TX: couldn't process ETH removal transaction ({} @ {}): removal data not "
-                "found in tx",
-                cryptonote::get_transaction_hash(tx),
-                block_height);
-        return false;
-    }
-
-    uint64_t block_delay = 0;
-    uint64_t stake_reduction = 0;
-    uint64_t staking_requirement = get_staking_requirement(nettype, block_height);
-    if (removal_data.amount < staking_requirement) {
-        block_delay = staking_num_lock_blocks(nettype);
-        stake_reduction = staking_requirement - removal_data.amount;
-    }
-    auto node = std::find_if(
-            service_nodes_infos.begin(),
-            service_nodes_infos.end(),
-            [&removal_data](const auto& pair) {
-                const auto& [key, info] = pair;
-                return info->bls_public_key == removal_data.bls_pubkey;
-            });
-    if (node == service_nodes_infos.end()) {
-        // TODO FIXME: this seems broken: we should *always* be hitting this case because the SN
-        // network wouldn't have signed off on it if it is still in `service_nodes_infos`, i.e.
-        // still active, and so we're erroring out here before we can process the removal (and apply
-        // the returned funds to the accounts).
-        log::warning(
-                logcat,
-                "Unlock TX: unable to process ETH removal transaction ({} @ {}): BLS pubkey {} is "
-                "not registered",
-                cryptonote::get_transaction_hash(tx),
-                block_height,
-                removal_data.bls_pubkey);
-        return false;
-    }
-    std::vector<cryptonote::batch_sn_payment> returned_stakes;
-    for (const auto& contributor : node->second->contributors)
-        returned_stakes.emplace_back(contributor.ethereum_address, contributor.amount);
-
-    returned_stakes[0].amount -= stake_reduction;
-
-    return sn_list->m_blockchain.sqlite_db().return_staked_amount_to_user(
-            returned_stakes, block_delay);
-}
-
 bool service_node_list::state_t::process_key_image_unlock_tx(
         cryptonote::network_type nettype,
         cryptonote::hf hf_version,
@@ -1272,48 +1217,6 @@ bool service_node_list::state_t::process_key_image_unlock_tx(
     }
 
     return false;
-}
-
-bool service_node_list::state_t::process_ethereum_removal_request_tx(
-        cryptonote::network_type nettype,
-        cryptonote::hf hf_version,
-        uint64_t block_height,
-        const cryptonote::transaction& tx) {
-
-    cryptonote::tx_extra_ethereum_service_node_removal_request remreq;
-    if (!cryptonote::get_field_from_tx_extra(tx.extra, remreq)) {
-        log::info(
-                logcat,
-                "Unlock TX: couldnt process removal request, rejected on height: {} "
-                "for tx: {}",
-                block_height,
-                cryptonote::get_transaction_hash(tx));
-        return false;
-    }
-
-    crypto::public_key snode_key = sn_list->bls_public_key_lookup(remreq.bls_pubkey);
-    auto it = service_nodes_infos.find(snode_key);
-    if (it == service_nodes_infos.end())
-        return false;
-
-    // allow this transaction to exist but change nothing,
-    // just continue unlock as per usual plan. They had to spend money on eth fees to get here
-    const service_node_info& node_info = *it->second;
-    if (node_info.requested_unlock_height) {
-        log::info(
-                logcat,
-                "Unlock TX: Node already requested an unlock at height: {} rejected on height: {} "
-                "for tx: {}",
-                node_info.requested_unlock_height,
-                block_height,
-                cryptonote::get_transaction_hash(tx));
-        return true;
-    }
-
-    uint64_t unlock_height = get_locked_key_image_unlock_height(
-            nettype, node_info.registration_height, block_height);
-    duplicate_info(it->second).requested_unlock_height = unlock_height;
-    return true;
 }
 
 //------------------------------------------------------------------
@@ -1712,6 +1615,103 @@ bool service_node_list::state_t::process_ethereum_registration_tx(
         log::error(logcat, "Failed to register node from ethereum transaction: {}", e.what());
     }
     return false;
+}
+
+bool service_node_list::state_t::process_ethereum_removal_request_tx(
+        cryptonote::network_type nettype,
+        cryptonote::hf hf_version,
+        uint64_t block_height,
+        const cryptonote::transaction& tx) {
+
+    cryptonote::tx_extra_ethereum_service_node_removal_request remreq;
+    if (!cryptonote::get_field_from_tx_extra(tx.extra, remreq)) {
+        log::info(
+                logcat,
+                "Unlock TX: couldnt process removal request, rejected on height: {} "
+                "for tx: {}",
+                block_height,
+                cryptonote::get_transaction_hash(tx));
+        return false;
+    }
+
+    crypto::public_key snode_key = sn_list->bls_public_key_lookup(remreq.bls_pubkey);
+    auto it = service_nodes_infos.find(snode_key);
+    if (it == service_nodes_infos.end())
+        return false;
+
+    // allow this transaction to exist but change nothing,
+    // just continue unlock as per usual plan. They had to spend money on eth fees to get here
+    const service_node_info& node_info = *it->second;
+    if (node_info.requested_unlock_height) {
+        log::info(
+                logcat,
+                "Unlock TX: Node already requested an unlock at height: {} rejected on height: {} "
+                "for tx: {}",
+                node_info.requested_unlock_height,
+                block_height,
+                cryptonote::get_transaction_hash(tx));
+        return true;
+    }
+
+    uint64_t unlock_height = get_locked_key_image_unlock_height(
+            nettype, node_info.registration_height, block_height);
+    duplicate_info(it->second).requested_unlock_height = unlock_height;
+    return true;
+}
+
+bool service_node_list::state_t::process_ethereum_removal_tx(
+        cryptonote::network_type nettype,
+        cryptonote::hf hf_version,
+        uint64_t block_height,
+        const cryptonote::transaction& tx) {
+
+    cryptonote::tx_extra_ethereum_service_node_removal removal_data;
+    if (!cryptonote::get_field_from_tx_extra(tx.extra, removal_data)) {
+        log::warning(
+                logcat,
+                "Unlock TX: couldn't process ETH removal transaction ({} @ {}): removal data not "
+                "found in tx",
+                cryptonote::get_transaction_hash(tx),
+                block_height);
+        return false;
+    }
+
+    uint64_t block_delay = 0;
+    uint64_t stake_reduction = 0;
+    uint64_t staking_requirement = get_staking_requirement(nettype, block_height);
+    if (removal_data.amount < staking_requirement) {
+        block_delay = staking_num_lock_blocks(nettype);
+        stake_reduction = staking_requirement - removal_data.amount;
+    }
+    auto node = std::find_if(
+            service_nodes_infos.begin(),
+            service_nodes_infos.end(),
+            [&removal_data](const auto& pair) {
+                const auto& [key, info] = pair;
+                return info->bls_public_key == removal_data.bls_pubkey;
+            });
+    if (node == service_nodes_infos.end()) {
+        // TODO FIXME: this seems broken: we should *always* be hitting this case because the SN
+        // network wouldn't have signed off on it if it is still in `service_nodes_infos`, i.e.
+        // still active, and so we're erroring out here before we can process the removal (and apply
+        // the returned funds to the accounts).
+        log::warning(
+                logcat,
+                "Unlock TX: unable to process ETH removal transaction ({} @ {}): BLS pubkey {} is "
+                "not registered",
+                cryptonote::get_transaction_hash(tx),
+                block_height,
+                removal_data.bls_pubkey);
+        return false;
+    }
+    std::vector<cryptonote::batch_sn_payment> returned_stakes;
+    for (const auto& contributor : node->second->contributors)
+        returned_stakes.emplace_back(contributor.ethereum_address, contributor.amount);
+
+    returned_stakes[0].amount -= stake_reduction;
+
+    return sn_list->m_blockchain.sqlite_db().return_staked_amount_to_user(
+            returned_stakes, block_delay);
 }
 
 bool service_node_list::state_t::process_contribution_tx(
