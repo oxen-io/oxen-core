@@ -7,6 +7,8 @@
 #include "common/format.h"
 #include "common/string_util.h"
 
+oxen::log::CategoryLogger globallogcat{"global"};
+
 namespace oxen::logging {
 
 using namespace std::literals;

@@ -27,7 +27,7 @@ namespace eth {
 namespace log = oxen::log;
 }
 
-inline auto globallogcat = oxen::log::Cat("global");
+extern oxen::log::CategoryLogger globallogcat;
 
 namespace oxen::logging {
 void init(const std::string& log_location, std::string_view log_level, bool log_to_stdout = true);
