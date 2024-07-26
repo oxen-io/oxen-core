@@ -77,11 +77,9 @@ namespace detail {
     }
 
     // Deserialize into the container.
-    template <deserializing Archive, typename C>
+    template <deserializing Archive, typename C, typename Value = std::remove_cv_t<typename C::value_type>>
         requires detail::back_emplaceable<C> || detail::value_insertable<C>
     void serialize_container(Archive& ar, C& v) {
-        using T = std::remove_cv_t<typename C::value_type>;
-
         size_t cnt;
         auto arr = ar.begin_array(cnt);
 
@@ -98,15 +96,15 @@ namespace detail {
             if constexpr (detail::back_emplaceable<C>)
                 detail::serialize_container_element(ar, v.emplace_back());
             else {
-                T e{};
+                Value e{};
                 detail::serialize_container_element(ar, e);
-                e.insert(std::move(e));
+                v.insert(std::move(e));
             }
         }
     }
 
     // Serialize the container
-    template <serializing Archive, typename C>
+    template <serializing Archive, typename C, typename = void>
     void serialize_container(Archive& ar, C& v) {
         size_t cnt = v.size();
         auto arr = ar.begin_array(cnt);
