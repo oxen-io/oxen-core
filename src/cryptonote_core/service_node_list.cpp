@@ -4179,26 +4179,16 @@ std::string service_node_list::remote_lookup(std::string_view xpk) {
 
 crypto::public_key service_node_list::bls_public_key_lookup(
         const eth::bls_public_key& bls_pubkey) const {
-    bool found = false;
-    crypto::public_key found_pk;
+    // FIXME: we should have a map for this so that we don't need a linear scan.
     {
         std::lock_guard lock{m_sn_mutex};
-        for (auto it : m_state.service_nodes_infos) {
-            const service_node_info* sn_info = it.second.get();
-            if (tools::view_guts(sn_info->bls_public_key) == tools::view_guts(bls_pubkey)) {
-                found = true;
-                found_pk = it.first;
-                break;
-            }
-        }
+        for (const auto& [snpk, info] : m_state.service_nodes_infos)
+            if (info->bls_public_key == bls_pubkey)
+                return snpk;
     }
 
-    if (!found) {
-        log::error(logcat, "Could not find bls pubkey: {}", bls_pubkey);
-        throw oxen::traced<std::runtime_error>("Could not find bls key");
-    }
-
-    return found_pk;
+    log::error(logcat, "Could not find bls pubkey: {}", bls_pubkey);
+    throw oxen::traced<std::runtime_error>("Could not find bls key");
 }
 
 void service_node_list::record_checkpoint_participation(
