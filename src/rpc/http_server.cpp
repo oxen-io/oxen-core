@@ -312,7 +312,7 @@ namespace {
             rpc::GET_TRANSACTION_POOL_HASHES_BIN::names()[0])
             return invoke_txpool_hashes_bin(std::move(dataptr));
 
-        const bool time_logging = OXEN_LOG_ENABLED(debug);
+        const bool time_logging = logcat->should_log(log::Level::debug);
         std::chrono::steady_clock::time_point start;
         if (time_logging)
             start = std::chrono::steady_clock::now();
@@ -378,7 +378,7 @@ namespace {
         if (time_logging)
             call_duration =
                     " in " + tools::friendly_duration(std::chrono::steady_clock::now() - start);
-        if (OXEN_LOG_ENABLED(debug))
+        if (logcat->should_log(log::Level::debug))
             log::debug(
                     logcat,
                     "HTTP RPC {} [{}] OK ({} bytes){}",

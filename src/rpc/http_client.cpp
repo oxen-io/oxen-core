@@ -157,7 +157,7 @@ cpr::Response http_client::post(const std::string& uri, cpr::Body body, cpr::Hea
     {
         std::shared_lock plock{params_mutex};
         std::chrono::steady_clock::time_point start;
-        if (OXEN_LOG_ENABLED(debug))
+        if (logcat->should_log(log::Level::debug))
             start = std::chrono::steady_clock::now();
         auto url = base_url + uri;
 

@@ -5008,7 +5008,7 @@ void BlockchainLMDB::migrate_0_1() {
         while (1) {
             if (!(i % 2000)) {
                 if (i) {
-                    if (OXEN_LOG_ENABLED(info)) {
+                    if (logcat->should_log(log::Level::info)) {
                         std::cout << i << " / " << z << "  \r" << std::flush;
                     }
                     txn.commit();
@@ -5120,7 +5120,7 @@ void BlockchainLMDB::migrate_0_1() {
             MDB_val k, v;
             if (!(i % 2000)) {
                 if (i) {
-                    if (OXEN_LOG_ENABLED(info)) {
+                    if (logcat->should_log(log::Level::info)) {
                         std::cout << i << " / " << z << "  \r" << std::flush;
                     }
                     txn.commit();
@@ -5285,7 +5285,7 @@ void BlockchainLMDB::migrate_0_1() {
         while (1) {
             if (!(i % 2000)) {
                 if (i) {
-                    if (OXEN_LOG_ENABLED(info)) {
+                    if (logcat->should_log(log::Level::info)) {
                         std::cout << i << " / " << z << "  \r" << std::flush;
                     }
                     txn.commit();
@@ -5471,7 +5471,7 @@ void BlockchainLMDB::migrate_0_1() {
         while (1) {
             if (!(i % 1000)) {
                 if (i) {
-                    if (OXEN_LOG_ENABLED(info)) {
+                    if (logcat->should_log(log::Level::info)) {
                         std::cout << i << " / " << z << "  \r" << std::flush;
                     }
                     MDB_val_set(pk, "txblk");
@@ -5638,7 +5638,7 @@ void BlockchainLMDB::migrate_1_2() {
                     result = mdb_stat(txn, m_txs, &db_stats_txs);
                     if (result)
                         throw0(DB_ERROR("Failed to query m_txs: {}"_format(mdb_strerror(result))));
-                    if (OXEN_LOG_ENABLED(info)) {
+                    if (logcat->should_log(log::Level::info)) {
                         std::cout << i << " / " << (i + db_stats_txs.ms_entries) << "  \r"
                                   << std::flush;
                     }
@@ -5792,7 +5792,7 @@ void BlockchainLMDB::migrate_2_3() {
         while (1) {
             if (!(i % 1000)) {
                 if (i) {
-                    if (OXEN_LOG_ENABLED(info)) {
+                    if (logcat->should_log(log::Level::info)) {
                         std::cout << i << " / " << blockchain_height << "  \r" << std::flush;
                     }
                     txn.commit();
@@ -5941,7 +5941,7 @@ void BlockchainLMDB::migrate_3_4() {
                     }
 
                     if (++tx_count % 1000 == 0) {
-                        if (OXEN_LOG_ENABLED(info)) {
+                        if (logcat->should_log(log::Level::info)) {
                             std::cout << tx_count << " / " << total_tx_count << "  \r"
                                       << std::flush;
                         }
@@ -6021,7 +6021,7 @@ void BlockchainLMDB::migrate_3_4() {
         while (1) {
             if (!(i % 1000)) {
                 if (i) {
-                    if (OXEN_LOG_ENABLED(info)) {
+                    if (logcat->should_log(log::Level::info)) {
                         std::cout << i << " / " << blockchain_height << "  \r" << std::flush;
                     }
                     txn.commit();

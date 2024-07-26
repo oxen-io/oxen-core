@@ -10767,7 +10767,7 @@ void wallet2::get_outs(
                     log::debug(logcat, "picked {}, {} now picked", i, num_found);
                 }
 
-                if (OXEN_LOG_ENABLED(debug)) {
+                if (logcat->should_log(log::Level::debug)) {
                     for (const auto& pick : picks) {
                         std::string outputs;
                         for (const auto& out : pick.second)
@@ -10792,11 +10792,11 @@ void wallet2::get_outs(
                     [](const auto& a, const auto& b) { return a.index < b.index; });
         }
 
-        if (OXEN_LOG_ENABLED(debug)) {
+        if (logcat->should_log(log::Level::debug)) {
             std::map<uint64_t, std::set<uint64_t>> outs;
             for (const auto& i : get_outputs)
                 outs[i.amount].insert(i.index);
-            if (OXEN_LOG_ENABLED(debug)) {
+            if (logcat->should_log(log::Level::debug)) {
                 for (const auto& o : outs) {
                     std::string outputs;
                     for (const auto& out : o.second)

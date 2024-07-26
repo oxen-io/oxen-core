@@ -4,8 +4,6 @@
 
 #include <oxen/log.hpp>
 
-#define OXEN_LOG_ENABLED(LVL) logcat->should_log(spdlog::level::LVL)
-
 // We can't just make a global "log" namespace because it conflicts with global C log()
 namespace cryptonote {
 namespace log = oxen::log;

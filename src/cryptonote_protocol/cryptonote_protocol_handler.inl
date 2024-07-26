@@ -951,7 +951,7 @@ namespace cryptonote
   {
     log::info(log::Cat("net.p2p.msg"), "Received NOTIFY_NEW_TRANSACTIONS ({} txes w/ {} blinks)", arg.txs.size(), arg.blinks.size());
     for (const auto &blob: arg.txs)
-      if(OXEN_LOG_ENABLED(info))
+      if(logcat->should_log(log::Level::info))
       {
         cryptonote::transaction tx;
         crypto::hash hash;
@@ -1524,13 +1524,13 @@ namespace cryptonote
             const uint32_t previous_stripe = tools::get_pruning_stripe(previous_height, target_blockchain_height, PRUNING_LOG_STRIPES);
             const uint32_t current_stripe = tools::get_pruning_stripe(current_blockchain_height, target_blockchain_height, PRUNING_LOG_STRIPES);
             std::string timing_message = "";
-            if (OXEN_LOG_ENABLED(info))
+            if (logcat->should_log(log::Level::info))
               timing_message = std::string(" (") + std::to_string(dt.count()) + " sec, "
                 + std::to_string((current_blockchain_height - previous_height) / dt.count())
                 + " blocks/sec), " + std::to_string(m_block_queue.get_data_size() / 1048576.f) + " MB queued in "
                 + std::to_string(m_block_queue.get_num_filled_spans()) + " spans, stripe "
                 + std::to_string(previous_stripe) + " -> " + std::to_string(current_stripe);
-            if (OXEN_LOG_ENABLED(debug))
+            if (logcat->should_log(log::Level::debug))
               timing_message += std::string(": ") + m_block_queue.get_overview(current_blockchain_height);
             log::info(logcat, fg(fmt::terminal_color::yellow), "Synced {}/{} {} {}", current_blockchain_height, target_blockchain_height, progress_message, timing_message);
             if (previous_stripe != current_stripe)
@@ -2239,7 +2239,7 @@ skip:
 **********************************************************************
 You are now synchronized with the network.
 **********************************************************************)");
-      if (OXEN_LOG_ENABLED(info))
+      if (logcat->should_log(log::Level::info))
       {
         const std::chrono::duration<double> sync_time{std::chrono::steady_clock::now() - m_sync_timer};
         log::info(logcat, fg(fmt::terminal_color::yellow), "Sync time: {:.1f} min, {:.1f} + {:.1f} MB downloaded, {:.2f}% old spans, {:.2f}% bad spans",
