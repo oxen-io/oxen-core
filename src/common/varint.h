@@ -87,7 +87,7 @@ constexpr size_t VARINT_MAX_LENGTH = (sizeof(T) * 8 + 6) / 7;  // i.e. integer c
  * could static cast a signed type to an unsigned type, but note that any actual negative values
  * (which have a high bit set) will always end up full size since the high bit is set.
  */
-template <std::unsigned_integral T, std::output_iterator<T> OutputIt>
+template <std::unsigned_integral T, std::output_iterator<char> OutputIt>
 void write_varint(OutputIt& it, T i) {
 #ifndef NDEBUG
     size_t count = 0;
@@ -103,7 +103,7 @@ void write_varint(OutputIt& it, T i) {
     *it++ = static_cast<char>(i);
 }
 
-template <std::unsigned_integral T, std::output_iterator<T> OutputIt>
+template <std::unsigned_integral T, std::output_iterator<char> OutputIt>
 void write_varint(OutputIt&& it, T i) {
     write_varint(it, i);
 }
@@ -117,9 +117,9 @@ std::string get_varint_data(const T& v) {
     return result;
 }
 
-/*! \brief reads in the varint that is pointed to by InputIt into write.  `it` will modified to
+/*! \brief reads in the varint that is pointed to by InputIt into write.  `it` will be modified to
  * the position after the varint bytes that we read.  Returns the number of bytes read on success,
- * or one of the negative EVARIANT_* constants on failure.
+ * or one of the negative EVARINT_* constants on failure.
  */
 template <std::unsigned_integral T, std::input_iterator It, std::sentinel_for<It> EndIt>
 int read_varint(It& it, const EndIt& end, T& write) {
@@ -156,7 +156,7 @@ int read_varint(It&& it, const EndIt& end, T& write) {
 }
 
 // Overloads to allow {read,write}_varint to be called with const iterators
-template <std::unsigned_integral T, std::output_iterator<T> OutputIt>
+template <std::unsigned_integral T, std::output_iterator<char> OutputIt>
 auto write_varint(const OutputIt& it_, T i) {
     return write_varint(OutputIt{it_}, i);
 }
