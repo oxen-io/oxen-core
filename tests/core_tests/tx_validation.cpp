@@ -199,25 +199,25 @@ bool gen_tx_unlock_time::generate(std::vector<test_event_entry>& events) const
   txs_0.push_back(tx);
 
   tx          = {};
-  unlock_time = get_block_height(blk_money_unlocked) - 1;
+  unlock_time = blk_money_unlocked.get_height() - 1;
   oxen_tx_builder(events, tx, blk_money_unlocked, miner_account, miner_account.get_keys().m_account_address, MK_COINS(1), cryptonote::hf::hf7).with_unlock_time(unlock_time).build();
   events.push_back(tx);
   txs_0.push_back(tx);
 
   tx          = {};
-  unlock_time = get_block_height(blk_money_unlocked);
+  unlock_time = blk_money_unlocked.get_height();
   oxen_tx_builder(events, tx, blk_money_unlocked, miner_account, miner_account.get_keys().m_account_address, MK_COINS(1), cryptonote::hf::hf7).with_unlock_time(unlock_time).build();
   events.push_back(tx);
   txs_0.push_back(tx);
 
   tx          = {};
-  unlock_time = get_block_height(blk_money_unlocked) + 1;
+  unlock_time = blk_money_unlocked.get_height() + 1;
   oxen_tx_builder(events, tx, blk_money_unlocked, miner_account, miner_account.get_keys().m_account_address, MK_COINS(1), cryptonote::hf::hf7).with_unlock_time(unlock_time).build();
   events.push_back(tx);
   txs_0.push_back(tx);
 
   tx          = {};
-  unlock_time = get_block_height(blk_money_unlocked) + 2;
+  unlock_time = blk_money_unlocked.get_height() + 2;
   oxen_tx_builder(events, tx, blk_money_unlocked, miner_account, miner_account.get_keys().m_account_address, MK_COINS(1), cryptonote::hf::hf7).with_unlock_time(unlock_time).build();
   events.push_back(tx);
   txs_0.push_back(tx);
@@ -251,7 +251,7 @@ bool gen_tx_input_is_not_txin_to_key::generate(std::vector<test_event_entry>& ev
   events.pop_back();
 
   DO_CALLBACK(events, "mark_invalid_tx");
-  events.push_back(blk_tmp.miner_tx);
+  events.push_back(blk_tmp.miner_tx.value());
 
   auto make_tx_with_input = [&](const txin_v& tx_input) -> transaction
   {
@@ -579,7 +579,7 @@ bool gen_tx_check_input_unlock_time::generate(std::vector<test_event_entry>& eve
     events.push_back(txs_0.back());
   };
 
-  uint64_t blk_3_height = get_block_height(blk_1r) + 2;
+  uint64_t blk_3_height = blk_1r.get_height() + 2;
   make_tx_to_acc(0, 0);
   make_tx_to_acc(1, blk_3_height - 1);
   make_tx_to_acc(2, blk_3_height);

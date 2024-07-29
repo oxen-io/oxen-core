@@ -31,9 +31,17 @@
 #endif
 
 #include <common/command_line.h>
+#include <common/exception.h>
 #include <common/signal_handler.h>
 #include <common/unordered_containers_boost_serialization.h>
-#include <common/exception.h>
+#include <fmt/std.h>
+
+#include <boost/archive/portable_binary_iarchive.hpp>
+#include <boost/archive/portable_binary_oarchive.hpp>
+#include <cinttypes>
+#include <fstream>
+#include <unordered_map>
+#include <unordered_set>
 
 #include "blockchain_db/blockchain_db.h"
 #include "blockchain_objects.h"
@@ -41,14 +49,6 @@
 #include "cryptonote_core/cryptonote_core.h"
 #include "serialization/boost_std_variant.h"
 #include "version.h"
-
-#include <boost/archive/portable_binary_iarchive.hpp>
-#include <boost/archive/portable_binary_oarchive.hpp>
-#include <cinttypes>
-#include <fstream>
-#include <fmt/std.h>
-#include <unordered_map>
-#include <unordered_set>
 
 namespace po = boost::program_options;
 using namespace cryptonote;
@@ -93,7 +93,7 @@ struct tx_data_t {
 
     tx_data_t() : coinbase(false) {}
     tx_data_t(const cryptonote::transaction& tx) {
-        coinbase = tx.vin.size() == 1 && std::holds_alternative<cryptonote::txin_gen>(tx.vin[0]);
+        coinbase = tx.is_miner_tx();
         if (!coinbase) {
             vin.reserve(tx.vin.size());
             for (size_t ring = 0; ring < tx.vin.size(); ++ring) {
@@ -219,7 +219,8 @@ static std::unordered_set<ancestor> get_ancestry(
 static bool get_block_from_height(
         ancestry_state_t& state, BlockchainDB& db, uint64_t height, cryptonote::block& b) {
     ++total_blocks;
-    if (state.block_cache.size() > height && !state.block_cache[height].miner_tx.vin.empty()) {
+    if (state.block_cache.size() > height && state.block_cache[height].miner_tx &&
+        !state.block_cache[height].miner_tx->vin.empty()) {
         ++cached_blocks;
         b = state.block_cache[height];
         return true;
@@ -282,11 +283,11 @@ static bool get_output_txid(
     if (!get_block_from_height(state, db, od.height, b))
         return false;
 
-    for (size_t out = 0; out < b.miner_tx.vout.size(); ++out) {
+    for (size_t out = 0; b.miner_tx && out < b.miner_tx->vout.size(); ++out) {
         if (const auto* txout =
-                    std::get_if<cryptonote::txout_to_key>(&b.miner_tx.vout[out].target)) {
+                    std::get_if<cryptonote::txout_to_key>(&b.miner_tx->vout[out].target)) {
             if (txout->key == od.pubkey) {
-                txid = cryptonote::get_transaction_hash(b.miner_tx);
+                txid = cryptonote::get_transaction_hash(*b.miner_tx);
                 if (opt_cache_outputs)
                     state.output_cache.insert(std::make_pair(ancestor{amount, offset}, txid));
                 return true;
@@ -295,7 +296,7 @@ static bool get_output_txid(
             log::warning(
                     logcat,
                     "Bad vout type in txid {}",
-                    cryptonote::get_transaction_hash(b.miner_tx));
+                    cryptonote::get_transaction_hash(*b.miner_tx));
             return false;
         }
     }
@@ -484,8 +485,8 @@ int main(int argc, char* argv[]) {
             }
             std::vector<crypto::hash> txids;
             txids.reserve(1 + b.tx_hashes.size());
-            if (opt_include_coinbase)
-                txids.push_back(cryptonote::get_transaction_hash(b.miner_tx));
+            if (opt_include_coinbase && b.miner_tx)
+                txids.push_back(cryptonote::get_transaction_hash(*b.miner_tx));
             for (const auto& h : b.tx_hashes)
                 txids.push_back(h);
             for (const crypto::hash& txid : txids) {
@@ -522,7 +523,6 @@ int main(int argc, char* argv[]) {
                         for (uint64_t offset : absolute_offsets) {
                             add_ancestry(state.ancestry, txid, ancestor{amount, offset});
                             // find the tx which created this output
-                            bool found = false;
                             crypto::hash output_txid;
                             if (!get_output_txid(state, db, amount, offset, output_txid)) {
                                 log::warning(logcat, "Output originating transaction not found");

@@ -5545,7 +5545,8 @@ void BlockchainLMDB::migrate_0_1() {
             if (!parse_and_validate_block_from_blob(bd, b))
                 throw0(DB_ERROR("Failed to parse block from blob retrieved from the db"));
 
-            add_transaction(null<hash>, std::make_pair(b.miner_tx, tx_to_blob(b.miner_tx)));
+            if (b.miner_tx)
+                add_transaction(null<hash>, std::make_pair(*b.miner_tx, tx_to_blob(*b.miner_tx)));
             for (unsigned int j = 0; j < b.tx_hashes.size(); j++) {
                 transaction tx;
                 hk.mv_data = &b.tx_hashes[j];

@@ -207,10 +207,6 @@ std::string get_account_integrated_address_as_str(
             integrated_address_prefix, t_serializable_object_to_blob(iadr));
 }
 //-----------------------------------------------------------------------
-bool is_coinbase(const transaction& tx) {
-    return tx.vin.size() == 1 && std::holds_alternative<txin_gen>(tx.vin[0]);
-}
-//-----------------------------------------------------------------------
 bool get_account_address_from_str(
         address_parse_info& info, network_type nettype, const std::string_view str) {
     auto& conf = get_config(nettype);

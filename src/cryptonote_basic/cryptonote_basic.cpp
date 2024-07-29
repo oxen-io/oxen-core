@@ -96,6 +96,15 @@ size_t transaction::get_signature_size(const txin_v& tx_in) {
     return 0;
 }
 
+uint64_t block::get_height() const {
+    if (major_version >= feature::ETH_BLS) {
+        return height;
+    } else {
+        assert(miner_tx && miner_tx->is_miner_tx());
+        return var::get<txin_gen>(miner_tx->vin.front()).height;
+    }
+}
+
 block::block(const block& b) {
     *this = b;
 }

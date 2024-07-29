@@ -143,8 +143,6 @@ inline std::string address_parse_info::as_str(network_type nettype) const {
 bool get_account_address_from_str(
         address_parse_info& info, network_type nettype, const std::string_view str);
 
-bool is_coinbase(const transaction& tx);
-
 bool operator==(const cryptonote::transaction& a, const cryptonote::transaction& b);
 bool operator==(const cryptonote::block& a, const cryptonote::block& b);
 }  // namespace cryptonote

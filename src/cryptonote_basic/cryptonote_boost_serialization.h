@@ -249,17 +249,31 @@ inline void serialize(
     a& b.timestamp;
     a& b.prev_id;
     a& b.nonce;
-    //------------------
-    a& b.miner_tx;
+    if constexpr (std::is_same_v<Archive, boost::archive::portable_binary_oarchive>) {
+        assert(ver >= 1u);
+        bool have_miner_tx = b.miner_tx.has_value();
+        a&have_miner_tx;
+        if (have_miner_tx)
+            a& *b.miner_tx;
+    } else {
+        static_assert(std::is_same_v<Archive, boost::archive::portable_binary_iarchive>);
+        bool have_miner_tx;
+        if (ver >= 1u)
+            a&have_miner_tx;
+        else
+            have_miner_tx = true;
+        if (have_miner_tx)
+            a & b.miner_tx.emplace();
+    }
+
     a& b.tx_hashes;
-    if (ver < 19)
+    if (ver < 1u)
         return;
     a& b.height;
     a& b.service_node_winner_key;
     a& b.reward;
-    if (ver < 20)
-        return;
     a& b.l2_height;
+    // FIXME: l2_pending
 }
 
 template <class Archive>
@@ -473,3 +487,4 @@ inline void serialize(
 BOOST_CLASS_VERSION(rct::rctSigPrunable, 1)
 BOOST_CLASS_VERSION(rct::rctSig, 1)
 BOOST_CLASS_VERSION(rct::multisig_out, 1)
+BOOST_CLASS_VERSION(cryptonote::block, 1)

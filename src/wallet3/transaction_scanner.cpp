@@ -34,7 +34,7 @@ std::vector<Output> TransactionScanner::scan_received(
     // A derivation is simply the private view key multiplied by the tx public key
     // do this for every tx public key in the transaction
     auto derivations = wallet_keys->generate_key_derivations(tx_public_keys);
-    bool coinbase_transaction = cryptonote::is_coinbase(tx.tx);
+    bool coinbase_transaction = tx.tx.is_miner_tx();
     // Output belongs to public key derived as follows:
     //      let `Hs` := hash_to_scalar
     //      let `B`  := recipient public spend key

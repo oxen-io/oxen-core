@@ -231,17 +231,6 @@ class core_rpc_server {
             const service_nodes::service_node_pubkey_info& sn_info,
             uint64_t top_height);
 
-    // utils
-    uint64_t get_block_reward(const block& blk);
-    void fill_block_header_response(
-            const block& blk,
-            bool orphan_status,
-            uint64_t height,
-            const crypto::hash& hash,
-            block_header_response& response,
-            bool fill_pow_hash,
-            bool get_tx_hashes);
-
     core& m_core;
     nodetool::node_server<cryptonote::t_cryptonote_protocol_handler<cryptonote::core>>& m_p2p;
 };

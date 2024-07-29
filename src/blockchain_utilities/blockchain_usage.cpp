@@ -175,8 +175,7 @@ int main(int argc, char* argv[]) {
     log::warning(logcat, "Reading blockchain from {}", input);
     core_storage->for_all_transactions(
             [&](const crypto::hash& hash, const cryptonote::transaction& tx) -> bool {
-                const bool coinbase =
-                        tx.vin.size() == 1 && std::holds_alternative<txin_gen>(tx.vin[0]);
+                const bool coinbase = tx.is_miner_tx();
                 const uint64_t height = core_storage->get_db().get_tx_block_height(hash);
 
                 // create new outputs

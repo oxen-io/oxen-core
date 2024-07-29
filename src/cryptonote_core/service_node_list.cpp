@@ -884,7 +884,7 @@ bool service_node_list::state_t::process_state_change_tx(
                     "Transaction: {} in block {} {} references quorum height but that height is "
                     "not stored!",
                     cryptonote::get_transaction_hash(tx),
-                    cryptonote::get_block_height(block),
+                    block.get_height(),
                     cryptonote::get_block_hash(block),
                     state_change.block_height);
             return false;
@@ -895,7 +895,7 @@ bool service_node_list::state_t::process_state_change_tx(
     cryptonote::tx_verification_context tvc = {};
     if (!verify_tx_state_change(
                 state_change,
-                cryptonote::get_block_height(block),
+                block.get_height(),
                 tvc,
                 *quorums->obligations,
                 hf_version)) {
@@ -907,7 +907,7 @@ bool service_node_list::state_t::process_state_change_tx(
             quorums = &alt_state.quorums;
             if (!verify_tx_state_change(
                         state_change,
-                        cryptonote::get_block_height(block),
+                        block.get_height(),
                         tvc,
                         *quorums->obligations,
                         hf_version)) {
@@ -949,7 +949,7 @@ bool service_node_list::state_t::process_state_change_tx(
         return false;
     }
 
-    uint64_t block_height = cryptonote::get_block_height(block);
+    uint64_t block_height = block.get_height();
     auto& info = duplicate_info(iter->second);
     bool is_me = my_keys && my_keys->pub == key;
 
@@ -1502,7 +1502,7 @@ bool service_node_list::state_t::process_registration_tx(
         const service_node_keys* my_keys) {
     const auto hf_version = block.major_version;
     uint64_t const block_timestamp = block.timestamp;
-    uint64_t const block_height = cryptonote::get_block_height(block);
+    uint64_t const block_height = block.get_height();
 
     crypto::public_key key;
     auto info_ptr = std::make_shared<service_node_info>();
@@ -1585,7 +1585,7 @@ bool service_node_list::state_t::process_ethereum_registration_tx(
         uint32_t index,
         const service_node_keys* my_keys) {
     const auto hf_version = block.major_version;
-    uint64_t const block_height = cryptonote::get_block_height(block);
+    uint64_t const block_height = block.get_height();
 
     try {
         auto [key, service_node_info] = validate_and_get_ethereum_registration(
@@ -1719,7 +1719,7 @@ bool service_node_list::state_t::process_contribution_tx(
         const cryptonote::block& block,
         const cryptonote::transaction& tx,
         uint32_t index) {
-    uint64_t const block_height = cryptonote::get_block_height(block);
+    uint64_t const block_height = block.get_height();
     const auto hf_version = block.major_version;
 
     staking_components stake = {};
@@ -1935,7 +1935,7 @@ static std::string dump_pulse_block_data(
             block.pulse.validator_bitset;
     std::string s =
             "Block({}): {}\nLeader: {}\nRound: {:d}\nValidator Bitset: {}\nSignatures:"_format(
-                    cryptonote::get_block_height(block),
+                    block.get_height(),
                     cryptonote::get_block_hash(block),
                     !quorum                   ? "(invalid quorum)"
                     : quorum->workers.empty() ? "(invalid leader)"
@@ -1968,7 +1968,7 @@ static bool verify_block_components(
         std::shared_ptr<const quorum> pulse_quorum,
         std::vector<std::shared_ptr<const quorum>>& alt_pulse_quorums) {
     std::string_view block_type = alt_block ? "alt block"sv : "block"sv;
-    uint64_t height = cryptonote::get_block_height(block);
+    uint64_t height = block.get_height();
     crypto::hash hash = cryptonote::get_block_hash(block);
 
     if (miner_block) {
@@ -2132,7 +2132,7 @@ static bool verify_block_components(
                     *pulse_quorum,
                     quorum_type::pulse,
                     block.major_version,
-                    cryptonote::get_block_height(block),
+                    block.get_height(),
                     cryptonote::get_block_hash(block),
                     block.signatures,
                     &block);
@@ -2228,7 +2228,7 @@ void service_node_list::verify_block(
     // NOTE: Get Pulse Block Timing Information
     //
     pulse::timings timings = {};
-    uint64_t height = cryptonote::get_block_height(block);
+    uint64_t height = block.get_height();
     if (block.major_version >= hf::hf16_pulse) {
         uint64_t prev_timestamp = 0;
         if (alt_block) {
@@ -2340,7 +2340,7 @@ void service_node_list::block_add(
         // NOTE: Only record participation if its a block we recently received.
         // Otherwise processing blocks in retrospect/re-loading on restart seeds
         // in old-data.
-        uint64_t const block_height = cryptonote::get_block_height(block);
+        uint64_t const block_height = block.get_height();
         bool newest_block = m_blockchain.get_current_blockchain_height() == (block_height + 1);
         auto now = pulse::clock::now().time_since_epoch();
         const auto target_block_time = get_config(m_blockchain.nettype()).TARGET_BLOCK_TIME;
@@ -2378,7 +2378,7 @@ bool service_node_list::state_history_exists(uint64_t height) {
 }
 
 bool service_node_list::process_batching_rewards(const cryptonote::block& block) {
-    uint64_t block_height = cryptonote::get_block_height(block);
+    uint64_t block_height = block.get_height();
     if (m_blockchain.nettype() != cryptonote::network_type::FAKECHAIN &&
         block.major_version >= hf::hf19_reward_batching && height() != block_height) {
         log::error(
@@ -2393,7 +2393,7 @@ bool service_node_list::process_batching_rewards(const cryptonote::block& block)
     return m_blockchain.sqlite_db().add_block(block, m_state);
 }
 bool service_node_list::pop_batching_rewards_block(const cryptonote::block& block) {
-    uint64_t block_height = cryptonote::get_block_height(block);
+    uint64_t block_height = block.get_height();
     if (m_blockchain.nettype() != cryptonote::network_type::FAKECHAIN &&
         block.major_version >= hf::hf19_reward_batching && height() != block_height) {
         if (auto it = m_transient.state_history.find(block_height);
@@ -2500,7 +2500,7 @@ std::vector<crypto::hash> get_pulse_entropy_for_next_block(
         cryptonote::BlockchainDB const& db,
         cryptonote::block const& top_block,
         uint8_t pulse_round) {
-    uint64_t const top_height = cryptonote::get_block_height(top_block);
+    uint64_t const top_height = top_block.get_height();
     if (top_height < PULSE_QUORUM_ENTROPY_LAG) {
         log::error(
                 logcat,
@@ -2789,7 +2789,7 @@ void service_node_list::state_t::update_from_block(
             sn_list ? "" : " (without sn_list yet)",
             height);
     bool need_swarm_update = false;
-    uint64_t block_height = cryptonote::get_block_height(block);
+    uint64_t block_height = block.get_height();
     assert(height == block_height);
     quorums = {};
     block_hash = cryptonote::get_block_hash(block);
@@ -2803,7 +2803,9 @@ void service_node_list::state_t::update_from_block(
     //   i.e. before any deregistrations, registrations, decommissions, recommissions.
     //
     crypto::public_key winner_pubkey =
-            cryptonote::get_service_node_winner_from_tx_extra(block.miner_tx.extra);
+            hf_version >= feature::ETH_BLS
+                    ? block.service_node_winner_key
+                    : cryptonote::get_service_node_winner_from_tx_extra(block.miner_tx->extra);
     if (hf_version >= hf::hf16_pulse) {
         std::vector<crypto::hash> entropy =
                 get_pulse_entropy_for_next_block(db, block.prev_id, block.pulse.round);
@@ -2955,7 +2957,7 @@ void service_node_list::state_t::update_from_block(
 
 void service_node_list::process_block(
         const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs) {
-    uint64_t block_height = cryptonote::get_block_height(block);
+    uint64_t block_height = block.get_height();
     auto hf_version = block.major_version;
 
     if (hf_version < hf::hf9_service_nodes)
@@ -3231,26 +3233,31 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
         return;
 
     std::lock_guard lock(m_sn_mutex);
-    uint64_t const height = cryptonote::get_block_height(block);
-    cryptonote::transaction const& miner_tx = block.miner_tx;
+    uint64_t const height = block.get_height();
 
+    const auto block_leader = m_state.get_block_leader();
+    crypto::public_key actual_leader;
     // NOTE: Basic queued service node list winner checks
+    if (block.major_version >= feature::ETH_BLS) {
+        actual_leader = block.service_node_winner_key;
+        assert(!block.miner_tx);  // shouldn't have passed basic block validation with a miner_tx
+    } else {
+        assert(block.miner_tx);
+        actual_leader = cryptonote::get_service_node_winner_from_tx_extra(block.miner_tx->extra);
+    }
+
+    if (block_leader.key != actual_leader)
+        throw oxen::traced<std::runtime_error>{
+                "Service node reward winner is incorrect! Expected {}, block {} hf{} has {}"_format(
+                        block_leader.key,
+                        height,
+                        static_cast<size_t>(block.major_version),
+                        actual_leader)};
+
     // NOTE(oxen): Service node reward distribution is calculated from the
     // original amount, i.e. 50% of the original base reward goes to service
     // nodes not 50% of the reward after removing the governance component (the
     // adjusted base reward post hardfork 10).
-    payout const block_leader = m_state.get_block_leader();
-    {
-        auto const check_block_leader_pubkey =
-                cryptonote::get_service_node_winner_from_tx_extra(miner_tx.extra);
-        if (block_leader.key != check_block_leader_pubkey)
-            throw oxen::traced<std::runtime_error>{
-                    "Service node reward winner is incorrect! Expected {}, block {} hf{} has {}"_format(
-                            block_leader.key,
-                            height,
-                            static_cast<size_t>(block.major_version),
-                            check_block_leader_pubkey)};
-    }
 
     enum struct verify_mode {
         miner,
@@ -3304,55 +3311,61 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
 
     // NOTE: Verify miner tx vout composition
     //
-    // Arbitrum
-    // 0       | Arbitrum smart contract distributes rewards to _all_ nodes
-    //
     // Miner Block
     // 1       | Miner
     // Up To 4 | Queued Service Node
     // Up To 1 | Governance
     //
-    // Pulse Block
+    // Pulse Block (pre-batching)
     // Up to 4 | Block Producer (0-3 for Pooled Service Node)
     // Up To 4 | Queued Service Node
     // Up To 1 | Governance
+    //
+    // Oxen Batching (HF19-20):
+    // 0+ | 1 for each recipient with a reward balance >= 1 OXEN who is due a payment in this block
+    //      (each wallet has an offset determined by the wallet address, and is paid out twice a
+    //      week on blocks with % 2520 == that offset).  Governance rewards are added to the reward
+    //      db and pay out exactly the same way as regular service node rewards.
+    //
+    // Arbitrum:
+    // There is (never) any miner_tx at all in blocks.  (Not just no outputs: no miner tx either).
     //
     // NOTE: See cryptonote_tx_utils.cpp construct_miner_tx(...) for payment details.
 
     std::shared_ptr<const service_node_info> block_producer = nullptr;
     size_t expected_vouts_size = 0;
+    bool expected_miner_tx = true;
     switch (mode) {
-        case verify_mode::arbitrum_rewards: {
+        case verify_mode::arbitrum_rewards:
             expected_vouts_size = 0;
-        } break;
+            expected_miner_tx = false;
+            break;
 
-        case verify_mode::batched_sn_rewards: {
+        case verify_mode::batched_sn_rewards:
             expected_vouts_size = batched_sn_payments.size();
-        } break;
+            break;
 
         case verify_mode::pulse_block_leader_is_producer: [[fallthrough]];
-
-        case verify_mode::pulse_different_block_producer: {
-            auto info_it = m_state.service_nodes_infos.find(block_producer_key);
-            if (info_it == m_state.service_nodes_infos.end())
+        case verify_mode::pulse_different_block_producer:
+            if (auto info_it = m_state.service_nodes_infos.find(block_producer_key);
+                info_it != m_state.service_nodes_infos.end()) {
+                block_producer = info_it->second;
+                expected_vouts_size = mode == verify_mode::pulse_different_block_producer &&
+                                                      reward_parts.miner_fee > 0
+                                            ? block_producer->contributors.size()
+                                            : 0;
+            } else {
                 throw oxen::traced<std::runtime_error>{
                         "The pulse block producer for round {:d} is not current a Service Node: {}"_format(
                                 block.pulse.round, block_producer_key)};
+            }
+            break;
 
-            block_producer = info_it->second;
-            expected_vouts_size = mode == verify_mode::pulse_different_block_producer &&
-                                                  reward_parts.miner_fee > 0
-                                        ? block_producer->contributors.size()
-                                        : 0;
-        } break;
-
-        case verify_mode::miner: {
-            expected_vouts_size =
-                    reward_parts.base_miner + reward_parts.miner_fee >
-                                    0  // (HF >= 16) this can be zero, no miner coinbase.
-                            ? 1        /* miner */
-                            : 0;
-        } break;
+        case verify_mode::miner:
+            // In HF >= 16 the miner fee can be zero, in which case we don't include the miner vout:
+            if (reward_parts.base_miner + reward_parts.miner_fee > 0)
+                expected_vouts_size++;
+            break;
     }
 
     // NOTE: Prior to batch rewards, expect the gvernance output and payout to service node leader
@@ -3364,7 +3377,15 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
             expected_vouts_size++;
     }
 
-    if (miner_tx.vout.size() != expected_vouts_size)
+    assert(expected_miner_tx || expected_vouts_size == 0);
+
+    if (expected_miner_tx != block.miner_tx.has_value())
+        throw oxen::traced<std::runtime_error>{
+                "Expected block {} a miner tx, but the block {} one"_format(
+                        expected_miner_tx ? "with" : "without",
+                        block.miner_tx ? "has" : "doesn't have")};
+
+    if (block.miner_tx && block.miner_tx->vout.size() != expected_vouts_size)
         throw oxen::traced<std::runtime_error>{
                 "Expected {} block, the miner TX specifies a different amount of outputs vs the expected: {}, miner tx outputs: {}"_format(
                         mode == verify_mode::miner                            ? "miner"sv
@@ -3375,7 +3396,7 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
                         : mode == verify_mode::arbitrum_rewards   ? "artbitrum rewards"sv
                                                                   : "INTERNAL UNKNOWN ERROR",
                         expected_vouts_size,
-                        miner_tx.vout.size())};
+                        block.miner_tx->vout.size())};
 
     if (hf_version >= hf::hf16_pulse && reward_parts.base_miner != 0)
         throw oxen::traced<std::runtime_error>{
@@ -3401,7 +3422,7 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
                 const auto& payout = block_leader.payouts[i];
                 if (split_rewards[i]) {
                     verify_coinbase_tx_output(
-                            miner_tx, height, vout_index, payout.address, split_rewards[i]);
+                            *block.miner_tx, height, vout_index, payout.address, split_rewards[i]);
                     vout_index++;
                 }
             }
@@ -3418,7 +3439,7 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
                 const auto& payout = block_leader.payouts[i];
                 if (split_rewards[i]) {
                     verify_coinbase_tx_output(
-                            miner_tx, height, vout_index, payout.address, split_rewards[i]);
+                            *block.miner_tx, height, vout_index, payout.address, split_rewards[i]);
                     vout_index++;
                 }
             }
@@ -3437,7 +3458,11 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
                     const auto& payout = block_producer_payouts.payouts[i];
                     if (split_rewards[i]) {
                         verify_coinbase_tx_output(
-                                miner_tx, height, vout_index, payout.address, split_rewards[i]);
+                                *block.miner_tx,
+                                height,
+                                vout_index,
+                                payout.address,
+                                split_rewards[i]);
                         vout_index++;
                     }
                 }
@@ -3451,7 +3476,7 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
                 const auto& payout = block_leader.payouts[i];
                 if (split_rewards[i]) {
                     verify_coinbase_tx_output(
-                            miner_tx, height, vout_index, payout.address, split_rewards[i]);
+                            *block.miner_tx, height, vout_index, payout.address, split_rewards[i]);
                     vout_index++;
                 }
             }
@@ -3468,8 +3493,8 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
             uint64_t total_payout_in_vouts = 0;
             const auto deterministic_keypair =
                     cryptonote::get_deterministic_keypair_from_height(height);
-            for (size_t vout_index = 0; vout_index < block.miner_tx.vout.size(); vout_index++) {
-                const auto& vout = block.miner_tx.vout[vout_index];
+            for (size_t vout_index = 0; vout_index < block.miner_tx->vout.size(); vout_index++) {
+                const auto& vout = block.miner_tx->vout[vout_index];
                 const auto& batch_payment = batched_sn_payments[vout_index];
 
                 if (!std::holds_alternative<cryptonote::txout_to_key>(vout.target))
@@ -3511,7 +3536,7 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
         } break;
 
         case verify_mode::arbitrum_rewards: {
-            // NOTE: No rewards are distributed by Oxen.
+            // NOTE: No OXEN rewards are distributed
         } break;
     }
 }
@@ -3530,7 +3555,7 @@ void service_node_list::alt_block_add(const cryptonote::block_add_info& info) {
     if (block.major_version < hf::hf9_service_nodes)
         return;
 
-    uint64_t block_height = cryptonote::get_block_height(block);
+    uint64_t block_height = block.get_height();
     state_t const* starting_state = nullptr;
     crypto::hash const block_hash = get_block_hash(block);
 
@@ -4428,7 +4453,6 @@ bool service_node_list::load(const uint64_t current_height) {
             // 10k-th interval and need to generate it based on the last state.
 
             if (data_in.states[0].version == state_serialized::version_t::version_0) {
-                size_t const last_index = data_in.states.size() - 1;
                 if ((data_in.states.back().height % STORE_LONG_TERM_STATE_INTERVAL) != 0) {
                     log::warning(
                             logcat,

@@ -2283,7 +2283,7 @@ AND NOT EXISTS   (SELECT * FROM mappings WHERE owner.id = mappings.backup_owner_
         cryptonote::block ons_blk = {};
         bool orphan = false;
         if (blockchain->get_block_by_hash(settings.top_hash, ons_blk, &orphan)) {
-            bool ons_height_matches = settings.top_height == cryptonote::get_block_height(ons_blk);
+            bool ons_height_matches = settings.top_height == ons_blk.get_height();
             if (ons_height_matches && !orphan) {
                 ons_height = settings.top_height;
                 ons_hash = settings.top_hash;
@@ -2514,7 +2514,7 @@ SELECT                type, name_hash, ?,    ?)";
 
 bool name_system_db::add_block(
         const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs) {
-    uint64_t height = cryptonote::get_block_height(block);
+    uint64_t height = block.get_height();
     if (last_processed_height >= height)
         return true;
 

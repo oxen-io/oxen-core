@@ -808,7 +808,7 @@ bool get_round_timings(
     if (!blockchain.get_block_by_height(*hf16 - 1, genesis_block))
         return false;
 
-    uint64_t const delta_height = block_height - cryptonote::get_block_height(genesis_block);
+    uint64_t const delta_height = block_height - genesis_block.get_height();
     times.genesis_timestamp = pulse::time_point(std::chrono::seconds(genesis_block.timestamp));
 
     times.prev_timestamp = pulse::time_point(std::chrono::seconds(prev_timestamp));

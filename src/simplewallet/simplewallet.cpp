@@ -4941,7 +4941,7 @@ void simple_wallet::on_money_received(
                     << tr("WARNING: this transaction uses an unencrypted payment ID: these are "
                           "obsolete and ignored. Use subaddresses instead.");
     }
-    if (unlock_time && !cryptonote::is_coinbase(tx))
+    if (unlock_time && !tx.is_miner_tx())
         message_writer() << tr("NOTE: This transaction is locked, see details with: "
                                "show_transfer ") +
                                     tools::hex_guts(txid);

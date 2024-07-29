@@ -1150,15 +1150,24 @@ namespace cryptonote
         ++m_sync_bad_spans_downloaded;
         return 1;
       }
-      if (b.miner_tx.vin.size() != 1 || !std::holds_alternative<txin_gen>(b.miner_tx.vin.front()))
+      if ((b.major_version >= feature::ETH_BLS) == b.miner_tx.has_value())
       {
-        log::error(logcat, "sent wrong block: block: miner tx does not have exactly one txin_gen input {}, dropping connection", oxenc::to_hex(block_entry.block));
+        log::error(logcat, "sent wrong block: HF {} blocks {} have a miner tx ({}), dropping connection",
+                static_cast<int>(b.major_version), b.major_version >= feature::ETH_BLS ? "must not" : "must",
+                oxenc::to_hex(block_entry.block));
+        drop_connection(context, false, false);
+        ++m_sync_bad_spans_downloaded;
+        return 1;
+      }
+      if (b.miner_tx && !b.miner_tx->is_miner_tx())
+      {
+        log::error(logcat, "sent wrong block: miner tx is invalid, dropping connection", oxenc::to_hex(block_entry.block));
         drop_connection(context, false, false);
         ++m_sync_bad_spans_downloaded;
         return 1;
       }
       if (start_height == std::numeric_limits<uint64_t>::max())
-        start_height = var::get<txin_gen>(b.miner_tx.vin[0]).height;
+        start_height = b.get_height();
 
       auto req_it = context.m_requested_objects.find(block_hash);
       if(req_it == context.m_requested_objects.end())

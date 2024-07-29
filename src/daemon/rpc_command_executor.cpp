@@ -121,7 +121,7 @@ namespace {
                 input.empty() ? default_ : input};
     }
 
-    void print_block_header(block_header_response const& header) {
+    void print_block_header(const nlohmann::json& header) {
         tools::success_msg_writer(
                 R"(timestamp: {} ({})
 previous hash: {}
@@ -141,25 +141,25 @@ reward: {}
 coinbase payouts: {}
 service node winner: {}
 miner tx hash: {})",
-                header.timestamp,
-                tools::get_human_readable_timestamp(header.timestamp),
-                header.prev_hash,
-                header.nonce,
-                header.orphan_status,
-                header.height,
-                header.depth,
-                header.hash,
-                header.difficulty,
-                header.cumulative_difficulty,
-                header.pow_hash.value_or("N/A"),
-                header.block_size,
-                header.block_weight,
-                header.long_term_weight,
-                header.num_txes,
-                cryptonote::print_money(header.reward),
-                cryptonote::print_money(header.coinbase_payouts),
-                header.service_node_winner,
-                header.miner_tx_hash);
+                header["timestamp"].get<uint64_t>(),
+                tools::get_human_readable_timestamp(header["timestamp"].get<uint64_t>()),
+                header["prev_hash"].get<std::string_view>(),
+                header["nonce"].get<uint32_t>(),
+                header["orphan_status"].get<bool>(),
+                header["height"].get<uint64_t>(),
+                header["depth"].get<uint64_t>(),
+                header["hash"].get<std::string_view>(),
+                header["difficulty"].get<uint64_t>(),
+                header["cumulative_difficulty"].get<uint64_t>(),
+                header.value<std::string_view>("pow_hash", "N/A"),
+                header["block_size"].get<uint64_t>(),
+                header["block_weight"].get<uint64_t>(),
+                header["long_term_weight"].get<uint64_t>(),
+                header["num_txes"].get<uint64_t>(),
+                cryptonote::print_money(header["reward"].get<uint64_t>()),
+                cryptonote::print_money(header["coinbase_payouts"].get<uint64_t>()),
+                header["service_node_winner"].get<std::string_view>(),
+                header.value<std::string_view>("miner_tx_hash", "N/A"));
     }
 
     template <typename Rep, typename Period>
@@ -2261,20 +2261,15 @@ namespace {
         return "\x1b[36;1m{}\x1b[0m"_format(cryptonote::format_money(amount));
     };
 
-    bool check_if_node_is_reasonably_synced(rpc_command_executor *rpc, const nlohmann::json& info)
-    {
+    bool check_if_node_is_reasonably_synced(rpc_command_executor* rpc, const nlohmann::json& info) {
         uint64_t block_height =
                 std::max(info["height"].get<uint64_t>(), info["target_height"].get<uint64_t>());
 
-        // Query the latest block we've synced and check that the timestamp is sensible, issue a warning
-        // if not
+        // Query the latest block we've synced and check that the timestamp is sensible, issue a
+        // warning if not
         {
             auto const& maybe_header = try_running(
-                    [rpc] {
-                        return rpc->invoke<GET_LAST_BLOCK_HEADER>()
-                                .at("block_header")
-                                .get<block_header_response>();
-                    },
+                    [rpc] { return rpc->invoke<GET_LAST_BLOCK_HEADER>().at("block_header"); },
                     "Node is syncing, please wait until all blocks are synced");
             if (!maybe_header)
                 return false;
@@ -2282,25 +2277,29 @@ namespace {
             auto const& header = *maybe_header;
 
             const auto now = std::chrono::system_clock::now();
-            const auto block_ts = std::chrono::system_clock::from_time_t(header.timestamp);
+            const auto block_ts =
+                    std::chrono::system_clock::from_time_t(header["timestamp"].get<uint64_t>());
 
             if (now - block_ts >= 10min) {
                 tools::fail_msg_writer(
                         "The last block this Service Node knows about was at least {}\n"
                         "Your node is possibly desynced from the network or still syncing to the "
                         "network.\n\n"
-                        "Registering this node may result in a deregistration due to being out of date "
+                        "Registering this node may result in a deregistration due to being out of "
+                        "date "
                         "with the network\n",
                         get_human_time_ago(now - block_ts));
             }
 
-            if (auto synced_height = header.height; block_height >= synced_height) {
-                uint64_t delta = block_height - header.height;
+            if (auto synced_height = header["height"].get<uint64_t>();
+                block_height >= synced_height) {
+                uint64_t delta = block_height - synced_height;
                 if (delta > 5) {
                     tools::fail_msg_writer(
                             "The last block this Service Node synced is {} blocks away from the "
                             "longest chain we know about.\n\n"
-                            "Registering this node may result in a deregistration due to being out of "
+                            "Registering this node may result in a deregistration due to being out "
+                            "of "
                             "date with the network\n",
                             delta);
                 }

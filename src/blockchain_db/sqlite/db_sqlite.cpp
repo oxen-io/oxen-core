@@ -553,7 +553,7 @@ bool BlockchainSQLite::reward_handler(
         }
     }
 
-    auto block_height = get_block_height(block);
+    auto block_height = block.get_height();
 
     // Step 2: Iterate over the whole service node list and pay each node 1/service_node_list
     // fraction
@@ -599,7 +599,7 @@ bool BlockchainSQLite::reward_handler(
 bool BlockchainSQLite::add_block(
         const cryptonote::block& block,
         const service_nodes::service_node_list::state_t& service_nodes_state) {
-    auto block_height = get_block_height(block);
+    auto block_height = block.get_height();
     log::trace(logcat, "BlockchainDB_SQLITE::{} called on height: {}", __func__, block_height);
 
     auto hf_version = block.major_version;
@@ -637,8 +637,9 @@ bool BlockchainSQLite::add_block(
     // payments miner_tx_vouts this will be compared against calculated_rewards and if they match we
     // know the block is paying the correct people only.
     std::vector<std::pair<crypto::public_key, uint64_t>> miner_tx_vouts;
-    for (auto& vout : block.miner_tx.vout)
-        miner_tx_vouts.emplace_back(var::get<txout_to_key>(vout.target).key, vout.amount);
+    if (block.miner_tx)
+        for (auto& vout : block.miner_tx->vout)
+            miner_tx_vouts.emplace_back(var::get<txout_to_key>(vout.target).key, vout.amount);
 
     try {
         SQLite::Transaction transaction{db, SQLite::TransactionBehavior::IMMEDIATE};
@@ -681,7 +682,7 @@ bool BlockchainSQLite::add_block(
 bool BlockchainSQLite::pop_block(
         const cryptonote::block& block,
         const service_nodes::service_node_list::state_t& service_nodes_state) {
-    auto block_height = get_block_height(block);
+    auto block_height = block.get_height();
 
     log::trace(logcat, "BlockchainDB_SQLITE::{} called on height: {}", __func__, block_height);
     if (height < block_height) {

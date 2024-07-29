@@ -141,7 +141,7 @@ bool test_block_creation()
   CHECK_AND_ASSERT_MES(r, false, "failed to import");
   block b;
   uint64_t block_rewards = 0;
-  std::tie(r, block_rewards) = construct_miner_tx(90, tools::median(std::move(szs)), 3553616528562147, 33094, 10000000, b.miner_tx, cryptonote::oxen_miner_tx_context::miner_block(network_type::FAKECHAIN, info.address), {}, {}, hf_max);
+  std::tie(r, block_rewards) = construct_miner_tx(90, tools::median(std::move(szs)), 3553616528562147, 33094, 10000000, b.miner_tx.emplace(), cryptonote::oxen_miner_tx_context::miner_block(network_type::FAKECHAIN, info.address), {}, {}, hf_max);
   return r;
 }
 

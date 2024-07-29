@@ -260,7 +260,7 @@ void quorum_cop::process_quorums(cryptonote::block const& block) {
     bool voting_enabled =
             m_core.service_node() && m_core.is_service_node(my_keys.pub, /*require_active=*/true);
 
-    uint64_t const height = cryptonote::get_block_height(block);
+    uint64_t const height = block.get_height();
     uint64_t const latest_height =
             std::max(m_core.get_current_blockchain_height(), m_core.get_target_blockchain_height());
     if (latest_height < VOTE_LIFETIME)
@@ -620,8 +620,7 @@ void quorum_cop::process_quorums(cryptonote::block const& block) {
 void quorum_cop::block_add(
         const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs) {
     process_quorums(block);
-    uint64_t const height =
-            cryptonote::get_block_height(block) + 1;  // chain height = new top block height + 1
+    uint64_t const height = block.get_height() + 1;  // chain height = new top block height + 1
     m_vote_pool.remove_expired_votes(height);
     m_vote_pool.remove_used_votes(txs, block.major_version);
 }

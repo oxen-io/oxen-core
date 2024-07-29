@@ -85,11 +85,11 @@ bool gen_v2_tx_validation_base::generate_with(std::vector<test_event_entry>& eve
     sources.resize(sources.size()+1);
     tx_source_entry& src = sources.back();
 
-    src.amount = blocks[0].miner_tx.vout[out_idx[out_idx_idx]].amount;
+    src.amount = blocks[0].miner_tx.value().vout[out_idx[out_idx_idx]].amount;
     for (int m = 0; m <= mixin; ++m) {
-      src.push_output(0, var::get<txout_to_key>(blocks[m].miner_tx.vout[out_idx[out_idx_idx]].target).key, src.amount);
+      src.push_output(0, var::get<txout_to_key>(blocks[m].miner_tx->vout[out_idx[out_idx_idx]].target).key, src.amount);
     }
-    src.real_out_tx_key = cryptonote::get_tx_pub_key_from_extra(blocks[0].miner_tx);
+    src.real_out_tx_key = cryptonote::get_tx_pub_key_from_extra(*blocks[0].miner_tx);
     src.real_output = 0;
     src.rct = false;
     src.real_output_in_tx_index = out_idx[out_idx_idx];

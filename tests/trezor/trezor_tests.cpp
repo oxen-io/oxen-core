@@ -232,7 +232,7 @@ static void rollback_chain(cryptonote::core * core, const cryptonote::block & he
   std::vector<transaction> popped_txs;
 
   crypto::hash head_hash = get_block_hash(head), cur_hash{};
-  uint64_t height = get_block_height(head), cur_height=0;
+  uint64_t height = header.get_height(), cur_height=0;
   oxen::log::debug(logcat, "Rollbacking to {} to hash {}", height, head_hash);
 
   do {

@@ -49,7 +49,7 @@ bool tx_sanity_check(const std::string& tx_blob, uint64_t rct_outs_available) {
         return false;
     }
 
-    if (cryptonote::is_coinbase(tx)) {
+    if (tx.is_miner_tx()) {
         log::error(logcat, "Transaction is coinbase");
         return false;
     }

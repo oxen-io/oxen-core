@@ -155,7 +155,8 @@ bool validate_governance_reward_key(
 }
 
 uint64_t governance_reward_formula(hf hf_version, uint64_t base_reward) {
-    return hf_version >= hf::hf17 ? oxen::FOUNDATION_REWARD_HF17
+    return hf_version >= feature::ETH_BLS ? 0
+         : hf_version >= hf::hf17         ? oxen::FOUNDATION_REWARD_HF17
          : hf_version >= hf::hf16_pulse
                  ? oxen::FOUNDATION_REWARD_HF15 + oxen::CHAINFLIP_LIQUIDITY_HF16
          : hf_version >= hf::hf15_ons ? oxen::FOUNDATION_REWARD_HF15
@@ -163,8 +164,7 @@ uint64_t governance_reward_formula(hf hf_version, uint64_t base_reward) {
 }
 
 bool block_has_governance_output(network_type nettype, cryptonote::block const& block) {
-    bool result =
-            height_has_governance_output(nettype, block.major_version, get_block_height(block));
+    bool result = height_has_governance_output(nettype, block.major_version, block.get_height());
     return result;
 }
 
@@ -191,16 +191,17 @@ uint64_t derive_governance_from_block_reward(
     if (hf_version >= hf::hf15_ons)
         return governance_reward_formula(hf_version);
 
+    assert(block.miner_tx);
     uint64_t result = 0;
     uint64_t snode_reward = 0;
-    size_t vout_end = block.miner_tx.vout.size();
+    size_t vout_end = block.miner_tx->vout.size();
 
     if (block_has_governance_output(nettype, block))
         --vout_end;  // skip the governance output, the governance may be the batched amount. we
                      // want the original base reward
 
     for (size_t vout_index = 1; vout_index < vout_end; ++vout_index) {
-        tx_out const& output = block.miner_tx.vout[vout_index];
+        tx_out const& output = block.miner_tx->vout[vout_index];
         snode_reward += output.amount;
     }
 
@@ -209,7 +210,7 @@ uint64_t derive_governance_from_block_reward(
     uint64_t block_reward = base_reward - governance;
 
     uint64_t actual_reward = 0;  // sanity check
-    for (tx_out const& output : block.miner_tx.vout)
+    for (tx_out const& output : block.miner_tx->vout)
         actual_reward += output.amount;
 
     CHECK_AND_ASSERT_MES(
@@ -278,6 +279,11 @@ std::pair<bool, uint64_t> construct_miner_tx(
         const std::vector<cryptonote::batch_sn_payment>& sn_rwds,
         const std::string& extra_nonce,
         hf hard_fork_version) {
+
+    if (hard_fork_version >= feature::ETH_BLS)
+        throw oxen::traced<std::logic_error>{
+                "Invalid usage: construct_miner_tx cannot be used in HF21+"};
+
     tx.vin.clear();
     tx.vout.clear();
     tx.extra.clear();
@@ -1271,7 +1277,7 @@ bool generate_genesis_block(block& bl, network_type nettype) {
             false,
             "failed to parse coinbase tx from hard coded blob");
     std::string tx_bl = oxenc::from_hex(conf.GENESIS_TX);
-    bool r = parse_and_validate_tx_from_blob(tx_bl, bl.miner_tx);
+    bool r = parse_and_validate_tx_from_blob(tx_bl, bl.miner_tx.emplace());
     CHECK_AND_ASSERT_MES(r, false, "failed to parse coinbase tx from hard coded blob");
     bl.major_version = hf::hf7;
     bl.minor_version = static_cast<uint8_t>(hf::hf7);

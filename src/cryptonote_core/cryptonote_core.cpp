@@ -2363,7 +2363,7 @@ bool core::handle_block_found(block& b, block_verification_context& bvc) {
         std::vector<std::string> txs;
         m_blockchain_storage.get_transactions_blobs(b.tx_hashes, txs, &missed_txs);
         if (missed_txs.size() &&
-            m_blockchain_storage.get_block_id_by_height(get_block_height(b)) != get_block_hash(b)) {
+            m_blockchain_storage.get_block_id_by_height(b.get_height()) != get_block_hash(b)) {
             log::info(
                     logcat,
                     "Block found but, seems that reorganize just happened after that, do not relay "

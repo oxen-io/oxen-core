@@ -196,8 +196,8 @@ void wallet_tools::gen_tx_src(size_t mixin, uint64_t cur_height, const tools::wa
 void wallet_tools::gen_block_data(block_tracker &bt, const cryptonote::block *bl, const map_hash2tx_t &mtx, cryptonote::block_complete_entry &bche, tools::wallet2::parsed_block &parsed_block, uint64_t &height)
 {
   std::vector<const transaction*> vtx;
-  vtx.push_back(&(bl->miner_tx));
-  height = var::get<txin_gen>(*bl->miner_tx.vin.begin()).height;
+  vtx.push_back(&bl->miner_tx.value());
+  height = bl->get_height();
 
   for (const auto &h : bl->tx_hashes) {
     const map_hash2tx_t::const_iterator cit = mtx.find(h);

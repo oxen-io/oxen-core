@@ -1430,7 +1430,7 @@ bool tx_memory_pool::on_blockchain_inc(block const& blk) {
 
     // Otherwise multiple state changes can queue up until they are applicable
     // and be applied on the node.
-    uint64_t const block_height = cryptonote::get_block_height(blk);
+    uint64_t const block_height = blk.get_height();
     auto& service_node_list = m_blockchain.get_service_node_list();
     for (transaction const& pool_tx : pool_txs) {
         tx_extra_service_node_state_change state_change;
@@ -1622,7 +1622,7 @@ bool tx_memory_pool::check_tx_inputs(
                 uint64_t earliest = height;
                 for (auto it = blocks.rbegin(); it != blocks.rend(); it++) {
                     const auto& block = *it;
-                    auto block_height = cryptonote::get_block_height(block);
+                    auto block_height = block.get_height();
                     txs.clear();
                     if (!m_blockchain.get_transactions(block.tx_hashes, txs)) {
                         log::error(logcat, "Unable to get transactions for block {}", block.hash);

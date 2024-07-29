@@ -213,9 +213,9 @@ bool gen_multisig_tx_validation_base::generate_with(std::vector<test_event_entry
   crypto::public_key output_pub_key[n_coinbases];
   for (size_t n = 0; n < n_coinbases; ++n)
   {
-    tx_pub_key[n] = get_tx_pub_key_from_extra(blocks[n].miner_tx);
+    tx_pub_key[n] = get_tx_pub_key_from_extra(blocks[n].miner_tx.value());
     //oxen::log::debug(logcat, "tx_pub_key: {}", tx_pub_key);
-    output_pub_key[n] = var::get<txout_to_key>(blocks[n].miner_tx.vout[0].target).key;
+    output_pub_key[n] = var::get<txout_to_key>(blocks[n].miner_tx->vout[0].target).key;
     //oxen::log::debug(logcat, "output_pub_key: {}", output_pub_key);
   }
 
@@ -334,7 +334,7 @@ bool gen_multisig_tx_validation_base::generate_with(std::vector<test_event_entry
     tx_source_entry& src = sources.back();
 
     src.real_output = n;
-    src.amount = blocks[n].miner_tx.vout[0].amount;
+    src.amount = blocks[n].miner_tx.value().vout[0].amount;
     src.real_out_tx_key = tx_pub_key[n];
     src.real_output_in_tx_index = 0;
     src.mask = rct::identity();
@@ -344,9 +344,9 @@ bool gen_multisig_tx_validation_base::generate_with(std::vector<test_event_entry
     for (size_t m = 0; m <= mixin; ++m)
     {
       rct::ctkey ctkey;
-      ctkey.dest = rct::pk2rct(var::get<txout_to_key>(blocks[m].miner_tx.vout[0].target).key);
+      ctkey.dest = rct::pk2rct(var::get<txout_to_key>(blocks[m].miner_tx.value().vout[0].target).key);
       //oxen::log::debug(logcat, "using {} input {}", (m == n ? "real" : "fake"), ctkey.dest);
-      ctkey.mask = rct::commit(blocks[m].miner_tx.vout[0].amount, rct::identity()); // since those are coinbases, the masks are known
+      ctkey.mask = rct::commit(blocks[m].miner_tx.value().vout[0].amount, rct::identity()); // since those are coinbases, the masks are known
       src.outputs.push_back(std::make_pair(m, ctkey));
     }
   }

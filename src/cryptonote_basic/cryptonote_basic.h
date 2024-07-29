@@ -172,6 +172,9 @@ class transaction_prefix {
                type == txtype::oxen_name_system;
     }
 
+    // True if this is a miner tx: that it, has a single input of type txin_gen.
+    bool is_miner_tx() const { return vin.size() == 1 && std::holds_alternative<txin_gen>(vin[0]); }
+
     // not used after version 2, but remains for compatibility
     uint64_t unlock_time;  // number of block (or time), used as a limitation like: spend this tx
                            // not early then block/time
@@ -412,7 +415,7 @@ struct block : public block_header {
     bool is_hash_valid() const;
     void set_hash_valid(bool v) const;
 
-    transaction miner_tx;
+    std::optional<transaction> miner_tx;
     size_t height;
     crypto::public_key service_node_winner_key;
     uint64_t reward = 0;
@@ -422,6 +425,8 @@ struct block : public block_header {
     mutable crypto::hash hash;
     std::vector<service_nodes::quorum_signature> signatures;
     uint64_t l2_height = 0;
+
+    uint64_t get_height() const;
 };
 
 template <class Archive>
@@ -443,7 +448,19 @@ void serialize_value(Archive& ar, block& b) {
         b.set_hash_valid(false);
 
     serialization::value(ar, static_cast<block_header&>(b));
-    field(ar, "miner_tx", b.miner_tx);
+    if (b.major_version >= feature::ETH_BLS) {
+        // No miner txes ever under ETH_BLS, because we never generate OXEN anymore.
+        if constexpr (Archive::is_deserializer)
+            b.miner_tx = std::nullopt;
+    } else {
+        // Pre-eth, we always have a miner tx, though from HF19 it is only populated with ins/outs
+        // when issuing a batched reward (if no batch payments are issued for the block, it's
+        // basically an empty shell tx).  Before HF19 this contains the SN rewards, and if you go
+        // back before pulse, it includes mining outputs (hence the name).
+        if constexpr (Archive::is_deserializer)
+            b.miner_tx.emplace();
+        field(ar, "miner_tx", *b.miner_tx);
+    }
     field(ar, "tx_hashes", b.tx_hashes);
     if (b.tx_hashes.size() > MAX_TX_PER_BLOCK)
         throw oxen::traced<std::invalid_argument>{"too many txs in block"};

@@ -274,17 +274,18 @@ bool parse_and_validate_block_from_blob(
         const std::string_view b_blob, block& b, crypto::hash& block_hash);
 bool get_inputs_money_amount(const transaction& tx, uint64_t& money);
 uint64_t get_outs_money_amount(const transaction& tx);
+uint64_t get_outs_money_amount(const std::optional<transaction>& tx);
 bool check_inputs_types_supported(const transaction& tx);
 bool check_outs_valid(const transaction& tx);
 std::optional<uint64_t> parse_amount(std::string_view str_amount);
 uint64_t get_transaction_weight(const transaction& tx);
+uint64_t get_transaction_weight(const std::optional<transaction>& tx);
 uint64_t get_transaction_weight(const transaction& tx, size_t blob_size);
 uint64_t get_pruned_transaction_weight(const transaction& tx);
 
 bool check_money_overflow(const transaction& tx);
 bool check_outs_overflow(const transaction& tx);
 bool check_inputs_overflow(const transaction& tx);
-uint64_t get_block_height(const block& b);
 std::vector<uint64_t> relative_output_offsets_to_absolute(const std::vector<uint64_t>& off);
 std::vector<uint64_t> absolute_output_offsets_to_relative(const std::vector<uint64_t>& off);
 constexpr std::string_view get_unit() {

@@ -99,9 +99,9 @@ bool gen_rct_tx_validation_base::generate_with_full(std::vector<test_event_entry
     const size_t index_in_tx = 5;
     src.amount = 30000000000000;
     for (int m = 0; m < 4; ++m) {
-      src.push_output(m, var::get<txout_to_key>(blocks[m].miner_tx.vout[index_in_tx].target).key, src.amount);
+      src.push_output(m, var::get<txout_to_key>(blocks[m].miner_tx.value().vout[index_in_tx].target).key, src.amount);
     }
-    src.real_out_tx_key = cryptonote::get_tx_pub_key_from_extra(blocks[n].miner_tx);
+    src.real_out_tx_key = cryptonote::get_tx_pub_key_from_extra(blocks[n].miner_tx.value());
     src.real_output = n;
     src.real_output_in_tx_index = index_in_tx;
     src.mask = rct::identity();
@@ -199,12 +199,12 @@ bool gen_rct_tx_validation_base::generate_with_full(std::vector<test_event_entry
     {
       // pre rct
       src.amount = 5000000000000;
-      src.real_out_tx_key = cryptonote::get_tx_pub_key_from_extra(blocks[pre_rct_idx].miner_tx);
+      src.real_out_tx_key = cryptonote::get_tx_pub_key_from_extra(blocks[pre_rct_idx].miner_tx.value());
       src.real_output_in_tx_index = 4;
       src.mask = rct::identity();
       src.rct = false;
       for (int m = 0; m <= mixin; ++m) {
-        src.push_output(m, var::get<txout_to_key>(blocks[pre_rct_idx].miner_tx.vout[4].target).key, src.amount);
+        src.push_output(m, var::get<txout_to_key>(blocks[pre_rct_idx].miner_tx.value().vout[4].target).key, src.amount);
         ++pre_rct_idx;
       }
     }

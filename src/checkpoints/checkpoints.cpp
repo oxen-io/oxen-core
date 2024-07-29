@@ -171,7 +171,7 @@ bool checkpoints::update_checkpoint(checkpoint_t const& checkpoint) {
 }
 //---------------------------------------------------------------------------
 void checkpoints::block_add(const block_add_info& info) {
-    uint64_t const height = get_block_height(info.block);
+    uint64_t const height = info.block.get_height();
     if (height < service_nodes::CHECKPOINT_STORE_PERSISTENTLY_INTERVAL ||
         info.block.major_version < hf::hf12_checkpointing)
         return;

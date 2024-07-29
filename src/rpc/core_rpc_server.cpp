@@ -186,7 +186,7 @@ bool core_rpc_server::check_core_ready() {
     } while (0)
 
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(GET_HEIGHT& get_height, [[maybe_unused]] rpc_context context) {
+void core_rpc_server::invoke(GET_HEIGHT& get_height, rpc_context) {
     auto [height, hash] = m_core.get_blockchain_top();
 
     ++height;  // block height to chain height
@@ -202,7 +202,7 @@ void core_rpc_server::invoke(GET_HEIGHT& get_height, [[maybe_unused]] rpc_contex
     }
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(GET_INFO& info, [[maybe_unused]] rpc_context context) {
+void core_rpc_server::invoke(GET_INFO& info, rpc_context context) {
 
     auto& bs = m_core.get_blockchain_storage();
     auto& db = bs.get_db();
@@ -298,7 +298,7 @@ void core_rpc_server::invoke(GET_INFO& info, [[maybe_unused]] rpc_context contex
     info.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(GET_NET_STATS& get_net_stats, [[maybe_unused]] rpc_context context) {
+void core_rpc_server::invoke(GET_NET_STATS& get_net_stats, rpc_context) {
     get_net_stats.response["start_time"] = m_core.get_start_time();
     {
         std::lock_guard lock{
@@ -331,8 +331,7 @@ namespace {
     };
 }  // namespace
 //------------------------------------------------------------------------------------------------------------------------------
-GET_BLOCKS_BIN::response core_rpc_server::invoke(
-        GET_BLOCKS_BIN::request&& req, [[maybe_unused]] rpc_context context) {
+GET_BLOCKS_BIN::response core_rpc_server::invoke(GET_BLOCKS_BIN::request&& req, rpc_context) {
     GET_BLOCKS_BIN::response res{};
 
     std::vector<std::pair<
@@ -392,7 +391,7 @@ GET_BLOCKS_BIN::response core_rpc_server::invoke(
     return res;
 }
 GET_ALT_BLOCKS_HASHES_BIN::response core_rpc_server::invoke(
-        GET_ALT_BLOCKS_HASHES_BIN::request&& req, [[maybe_unused]] rpc_context context) {
+        GET_ALT_BLOCKS_HASHES_BIN::request&&, rpc_context) {
     GET_ALT_BLOCKS_HASHES_BIN::response res{};
 
     std::vector<block> blks;
@@ -414,7 +413,7 @@ GET_ALT_BLOCKS_HASHES_BIN::response core_rpc_server::invoke(
 }
 //------------------------------------------------------------------------------------------------------------------------------
 GET_BLOCKS_BY_HEIGHT_BIN::response core_rpc_server::invoke(
-        GET_BLOCKS_BY_HEIGHT_BIN::request&& req, [[maybe_unused]] rpc_context context) {
+        GET_BLOCKS_BY_HEIGHT_BIN::request&& req, rpc_context) {
     GET_BLOCKS_BY_HEIGHT_BIN::response res{};
 
     res.status = "Failed";
@@ -439,8 +438,7 @@ GET_BLOCKS_BY_HEIGHT_BIN::response core_rpc_server::invoke(
     return res;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-GET_HASHES_BIN::response core_rpc_server::invoke(
-        GET_HASHES_BIN::request&& req, [[maybe_unused]] rpc_context context) {
+GET_HASHES_BIN::response core_rpc_server::invoke(GET_HASHES_BIN::request&& req, rpc_context) {
     GET_HASHES_BIN::response res{};
 
     res.start_height = req.start_height;
@@ -524,7 +522,7 @@ void core_rpc_server::invoke(GET_OUTPUTS& get_outputs, rpc_context context) {
 }
 //------------------------------------------------------------------------------------------------------------------------------
 GET_TX_GLOBAL_OUTPUTS_INDEXES_BIN::response core_rpc_server::invoke(
-        GET_TX_GLOBAL_OUTPUTS_INDEXES_BIN::request&& req, [[maybe_unused]] rpc_context context) {
+        GET_TX_GLOBAL_OUTPUTS_INDEXES_BIN::request&& req, rpc_context) {
     GET_TX_GLOBAL_OUTPUTS_INDEXES_BIN::response res{};
 
     bool r = m_core.get_tx_outputs_gindexs(req.txid, res.o_indexes);
@@ -852,7 +850,7 @@ static tx_memory_pool::key_images_container get_pool_kis(cryptonote::core& core)
 }
 
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(GET_TRANSACTIONS& get, [[maybe_unused]] rpc_context context) {
+void core_rpc_server::invoke(GET_TRANSACTIONS& get, rpc_context) {
     // NB: this also handles the deprecated GET_TRANSACTION_POOL
     std::unordered_set<crypto::hash> missed_txs;
     using split_tx = std::tuple<crypto::hash, std::string, crypto::hash, std::string>;
@@ -1107,7 +1105,7 @@ void core_rpc_server::invoke(GET_TRANSACTIONS& get, [[maybe_unused]] rpc_context
     get.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(IS_KEY_IMAGE_SPENT& spent, [[maybe_unused]] rpc_context context) {
+void core_rpc_server::invoke(IS_KEY_IMAGE_SPENT& spent, rpc_context) {
     spent.response["status"] = STATUS_FAILED;
 
     std::vector<bool> blockchain_spent;
@@ -1141,7 +1139,7 @@ static constexpr auto BLINK_TIMEOUT = "Blink quorum timeout"sv;
 static constexpr auto BLINK_REJECTED = "Transaction rejected by blink quorum"sv;
 
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(SUBMIT_TRANSACTION& tx, [[maybe_unused]] rpc_context context) {
+void core_rpc_server::invoke(SUBMIT_TRANSACTION& tx, rpc_context) {
     if (!check_core_ready()) {
         tx.response["status"] = STATUS_BUSY;
         return;
@@ -1206,7 +1204,7 @@ void core_rpc_server::invoke(SUBMIT_TRANSACTION& tx, [[maybe_unused]] rpc_contex
     tx.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(START_MINING& start_mining, [[maybe_unused]] rpc_context context) {
+void core_rpc_server::invoke(START_MINING& start_mining, rpc_context) {
     // CHECK_CORE_READY();
     if (!check_core_ready()) {
         start_mining.response["status"] = STATUS_BUSY;
@@ -1259,7 +1257,7 @@ void core_rpc_server::invoke(START_MINING& start_mining, [[maybe_unused]] rpc_co
     start_mining.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(STOP_MINING& stop_mining, [[maybe_unused]] rpc_context context) {
+void core_rpc_server::invoke(STOP_MINING& stop_mining, rpc_context) {
     cryptonote::miner& miner = m_core.get_miner();
     if (!miner.is_mining()) {
         stop_mining.response["status"] = "Mining never started";
@@ -1275,7 +1273,7 @@ void core_rpc_server::invoke(STOP_MINING& stop_mining, [[maybe_unused]] rpc_cont
     stop_mining.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(MINING_STATUS& mining_status, [[maybe_unused]] rpc_context context) {
+void core_rpc_server::invoke(MINING_STATUS& mining_status, rpc_context) {
     const miner& lMiner = m_core.get_miner();
     mining_status.response["active"] = lMiner.is_mining();
     mining_status.response["block_target"] =
@@ -1303,7 +1301,7 @@ void core_rpc_server::invoke(MINING_STATUS& mining_status, [[maybe_unused]] rpc_
     mining_status.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(SAVE_BC& save_bc, [[maybe_unused]] rpc_context context) {
+void core_rpc_server::invoke(SAVE_BC& save_bc, rpc_context) {
     if (!m_core.get_blockchain_storage().store_blockchain()) {
         save_bc.response["status"] = "Error while storing blockchain";
         log::warning(logcat, "{}", save_bc.response["status"].get<std::string_view>());
@@ -1324,7 +1322,7 @@ static nlohmann::json json_peer_info(const nodetool::peerlist_entry& peer) {
 }
 
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(GET_PEER_LIST& pl, [[maybe_unused]] rpc_context context) {
+void core_rpc_server::invoke(GET_PEER_LIST& pl, rpc_context) {
     std::vector<nodetool::peerlist_entry> white_list, gray_list;
     if (pl.request.public_only)
         m_p2p.get_public_peerlist(gray_list, white_list);
@@ -1345,10 +1343,13 @@ void core_rpc_server::invoke(GET_PEER_LIST& pl, [[maybe_unused]] rpc_context con
     pl.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(SET_LOG_LEVEL& set_log_level, [[maybe_unused]] rpc_context context) {
+void core_rpc_server::invoke(SET_LOG_LEVEL& set_log_level, rpc_context) {
     auto cats = oxen::logging::extract_categories(set_log_level.request.categories);
     if (cats.empty()) {
-        log::error(logcat, "Invalid log level/categories string for set_log_level: {}", set_log_level.request.categories);
+        log::error(
+                logcat,
+                "Invalid log level/categories string for set_log_level: {}",
+                set_log_level.request.categories);
         set_log_level.response["status"] = "Error: invalid log level/categories string";
         return;
     }
@@ -1379,8 +1380,7 @@ void core_rpc_server::invoke(
     get_transaction_pool_hashes.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(
-        GET_TRANSACTION_POOL_STATS& stats, [[maybe_unused]] rpc_context context) {
+void core_rpc_server::invoke(GET_TRANSACTION_POOL_STATS& stats, rpc_context) {
     auto txpool = m_core.get_pool().get_transaction_stats(stats.request.include_unrelayed);
     json pool_stats{
             {"bytes_total", txpool.bytes_total},
@@ -1405,7 +1405,7 @@ void core_rpc_server::invoke(
     stats.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(STOP_DAEMON& stop_daemon, [[maybe_unused]] rpc_context context) {
+void core_rpc_server::invoke(STOP_DAEMON& stop_daemon, rpc_context) {
     m_p2p.send_stop_signal();
     stop_daemon.response["status"] = STATUS_OK;
 }
@@ -1414,7 +1414,7 @@ void core_rpc_server::invoke(STOP_DAEMON& stop_daemon, [[maybe_unused]] rpc_cont
 // Oxen
 //
 GET_OUTPUT_BLACKLIST_BIN::response core_rpc_server::invoke(
-        GET_OUTPUT_BLACKLIST_BIN::request&& req, [[maybe_unused]] rpc_context context) {
+        GET_OUTPUT_BLACKLIST_BIN::request&&, rpc_context) {
     GET_OUTPUT_BLACKLIST_BIN::response res{};
 
     try {
@@ -1428,12 +1428,12 @@ GET_OUTPUT_BLACKLIST_BIN::response core_rpc_server::invoke(
     return res;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(GET_BLOCK_COUNT& get, [[maybe_unused]] rpc_context context) {
+void core_rpc_server::invoke(GET_BLOCK_COUNT& get, rpc_context) {
     get.response["count"] = m_core.get_current_blockchain_height();
     get.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(GET_BLOCK_HASH& get, [[maybe_unused]] rpc_context context) {
+void core_rpc_server::invoke(GET_BLOCK_HASH& get, rpc_context) {
     auto curr_height = m_core.get_current_blockchain_height();
     for (auto h : get.request.heights) {
         if (h >= curr_height)
@@ -1447,60 +1447,65 @@ void core_rpc_server::invoke(GET_BLOCK_HASH& get, [[maybe_unused]] rpc_context c
     get.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-uint64_t core_rpc_server::get_block_reward(const block& blk) {
+static uint64_t get_block_coinbase_payouts(const block& blk) {
     uint64_t reward = 0;
-    for (const tx_out& out : blk.miner_tx.vout) {
-        reward += out.amount;
-    }
+    if (blk.miner_tx)
+        for (const tx_out& out : blk.miner_tx->vout)
+            reward += out.amount;
     return reward;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::fill_block_header_response(
+static void fill_block_header_response(
         const block& blk,
         bool orphan_status,
-        uint64_t height,
+        std::optional<uint64_t> maybe_height,
         const crypto::hash& hash,
-        block_header_response& response,
         bool fill_pow_hash,
-        bool get_tx_hashes) {
-    // FIXME: this isn't setting binary values properly; this whole `block_header_response` thing
-    // should be deleted and this should set json values directly.
-    response.major_version = static_cast<uint8_t>(blk.major_version);
-    response.minor_version = blk.minor_version;
-    response.timestamp = blk.timestamp;
-    response.prev_hash = tools::hex_guts(blk.prev_id);
-    response.nonce = blk.nonce;
-    response.orphan_status = orphan_status;
-    response.height = height;
-    response.depth = m_core.get_current_blockchain_height() - height - 1;
-    response.hash = tools::hex_guts(hash);
-    response.difficulty = m_core.get_blockchain_storage().block_difficulty(height);
-    response.cumulative_difficulty =
-            m_core.get_blockchain_storage().get_db().get_block_cumulative_difficulty(height);
-    response.block_weight = m_core.get_blockchain_storage().get_db().get_block_weight(height);
-    response.reward = (blk.reward > 0) ? blk.reward : get_block_reward(blk);
-    response.block_size = response.block_weight =
-            m_core.get_blockchain_storage().get_db().get_block_weight(height);
-    response.num_txes = blk.tx_hashes.size();
+        bool get_tx_hashes,
+        nlohmann::json& response,
+        bool is_bt,
+        cryptonote::core& core) {
+
+    auto& bs = core.get_blockchain_storage();
+    auto& db = bs.get_db();
+
+    tools::json_binary_proxy response_hex{
+            response,
+            is_bt ? tools::json_binary_proxy::fmt::bt : tools::json_binary_proxy::fmt::hex};
+
+    uint64_t height = maybe_height ? *maybe_height : blk.get_height();
+
+    response["major_version"] = static_cast<uint8_t>(blk.major_version);
+    response["minor_version"] = static_cast<uint8_t>(blk.minor_version);
+    response["timestamp"] = blk.timestamp;
+    response_hex["prev_hash"] = blk.prev_id;
+    response["nonce"] = blk.nonce;
+    response["orphan_status"] = orphan_status;
+    response["height"] = height;
+    response["depth"] = core.get_current_blockchain_height() - height - 1;
+    response_hex["hash"] = hash;
+    response["difficulty"] = bs.block_difficulty(height);
+    response["cumulative_difficulty"] = db.get_block_cumulative_difficulty(height);
+    response["block_size"] = response["block_weight"] = db.get_block_weight(height);
+    auto coinbase = get_block_coinbase_payouts(blk);
+    response["coinbase_payouts"] = coinbase;
+    response["reward"] = blk.major_version >= cryptonote::feature::ETH_BLS ? blk.reward : coinbase;
+    response["num_txes"] = blk.tx_hashes.size();
     if (fill_pow_hash)
-        response.pow_hash = tools::hex_guts(get_block_longhash_w_blockchain(
-                m_core.get_nettype(), &m_core.get_blockchain_storage(), blk, height, 0));
-    response.long_term_weight =
-            m_core.get_blockchain_storage().get_db().get_block_long_term_weight(height);
-    response.service_node_winner =
-            tools::hex_guts(blk.service_node_winner_key) == ""
-                    ? tools::hex_guts(
-                              cryptonote::get_service_node_winner_from_tx_extra(blk.miner_tx.extra))
-                    : tools::hex_guts(blk.service_node_winner_key);
-    response.coinbase_payouts = get_block_reward(blk);
-    response.l2_height = blk.l2_height;
-    if (blk.miner_tx.vout.size() > 0)
-        response.miner_tx_hash = tools::hex_guts(cryptonote::get_transaction_hash(blk.miner_tx));
-    if (get_tx_hashes) {
-        response.tx_hashes.reserve(blk.tx_hashes.size());
+        response_hex["pow_hash"] =
+                get_block_longhash_w_blockchain(core.get_nettype(), &bs, blk, height, 0);
+    response["long_term_weight"] = db.get_block_long_term_weight(height);
+    response_hex["service_node_winner"] =
+            blk.major_version >= cryptonote::hf::hf19_reward_batching
+                    ? blk.service_node_winner_key
+                    : cryptonote::get_service_node_winner_from_tx_extra(blk.miner_tx.value().extra);
+    if (blk.major_version >= cryptonote::feature::ETH_BLS)
+        response["l2_height"] = blk.l2_height;
+    if (blk.miner_tx && blk.miner_tx->vout.size() > 0)
+        response_hex["miner_tx_hash"] = cryptonote::get_transaction_hash(*blk.miner_tx);
+    if (get_tx_hashes)
         for (const auto& tx_hash : blk.tx_hashes)
-            response.tx_hashes.push_back(tools::hex_guts(tx_hash));
-    }
+            response_hex["tx_hashes"].push_back(tx_hash);
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(GET_LAST_BLOCK_HEADER& get_last_block_header, rpc_context context) {
@@ -1514,26 +1519,24 @@ void core_rpc_server::invoke(GET_LAST_BLOCK_HEADER& get_last_block_header, rpc_c
     bool have_last_block = m_core.get_block_by_height(last_block_height, last_block);
     if (!have_last_block)
         throw rpc_error{ERROR_INTERNAL, "Internal error: can't get last block."};
-    block_header_response header{};
     fill_block_header_response(
             last_block,
             false,
             last_block_height,
             last_block_hash,
-            header,
             get_last_block_header.request.fill_pow_hash && context.admin,
-            get_last_block_header.request.get_tx_hashes);
+            get_last_block_header.request.get_tx_hashes,
+            get_last_block_header.response["block_header"],
+            get_last_block_header.is_bt(),
+            m_core);
 
-    nlohmann::json header_as_json = header;
-    get_last_block_header.response["block_header"] = header_as_json;
     get_last_block_header.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
 
-void core_rpc_server::invoke(
-        GET_BLOCK_HEADER_BY_HASH& gbh, rpc_context context) {
+void core_rpc_server::invoke(GET_BLOCK_HEADER_BY_HASH& gbh, rpc_context context) {
     auto get = [this, &gbh, admin = context.admin](
-                       const std::string& hash, block_header_response& block_header) {
+                       const std::string& hash, nlohmann::json& response) {
         crypto::hash block_hash;
         if (!tools::try_load_from_hex_guts(hash, block_hash))
             throw rpc_error{
@@ -1546,36 +1549,26 @@ void core_rpc_server::invoke(
             throw rpc_error{
                     ERROR_INTERNAL,
                     "Internal error: can't get block by hash. Hash = " + hash + '.'};
-        if (blk.miner_tx.vin.size() != 1 ||
-            !std::holds_alternative<txin_gen>(blk.miner_tx.vin.front()))
-            throw rpc_error{
-                    ERROR_INTERNAL,
-                    "Internal error: coinbase transaction in the block has the wrong type"};
-        uint64_t block_height = var::get<txin_gen>(blk.miner_tx.vin.front()).height;
         fill_block_header_response(
                 blk,
                 orphan,
-                block_height,
+                std::nullopt,
                 block_hash,
-                block_header,
                 gbh.request.fill_pow_hash && admin,
-                gbh.request.get_tx_hashes);
+                gbh.request.get_tx_hashes,
+                response,
+                gbh.is_bt(),
+                m_core);
     };
 
-    if (!gbh.request.hash.empty()) {
-        block_header_response block_header;
-        get(gbh.request.hash, block_header);
-        gbh.response["block_header"] = block_header;
-    }
+    if (!gbh.request.hash.empty())
+        get(gbh.request.hash, gbh.response["block_header"]);
 
     if (!gbh.request.hashes.empty()) {
         auto& out_headers = gbh.response["block_headers"];
         out_headers = json::array();
-        for (const std::string& hash : gbh.request.hashes) {
-            block_header_response block_header;
-            get(hash, block_header);
-            out_headers.push_back(block_header);
-        }
+        for (const std::string& hash : gbh.request.hashes)
+            get(hash, out_headers.emplace_back());
     }
 
     gbh.response["status"] = STATUS_OK;
@@ -1588,7 +1581,6 @@ void core_rpc_server::invoke(
     uint64_t end_height = get_block_headers_range.request.end_height;
     if (start_height >= bc_height || end_height >= bc_height || start_height > end_height)
         throw rpc_error{ERROR_TOO_BIG_HEIGHT, "Invalid start/end heights."};
-    std::vector<block_header_response> headers;
     for (uint64_t h = start_height; h <= end_height; ++h) {
         block blk;
         bool have_block = m_core.get_block_by_height(h, blk);
@@ -1596,37 +1588,26 @@ void core_rpc_server::invoke(
             throw rpc_error{
                     ERROR_INTERNAL,
                     "Internal error: can't get block by height. Height = {}."_format(h)};
-        if (blk.miner_tx.vin.size() != 1 ||
-            !std::holds_alternative<txin_gen>(blk.miner_tx.vin.front()))
-            throw rpc_error{
-                    ERROR_INTERNAL,
-                    "Internal error: coinbase transaction in the block has the wrong type"};
-        uint64_t block_height = var::get<txin_gen>(blk.miner_tx.vin.front()).height;
-        if (block_height != h)
-            throw rpc_error{
-                    ERROR_INTERNAL,
-                    "Internal error: coinbase transaction in the block has the wrong height"};
-        auto& hdr = headers.emplace_back();
         fill_block_header_response(
                 blk,
                 false,
-                block_height,
+                std::nullopt,
                 get_block_hash(blk),
-                hdr,
                 get_block_headers_range.request.fill_pow_hash && context.admin,
-                get_block_headers_range.request.get_tx_hashes);
+                get_block_headers_range.request.get_tx_hashes,
+                get_block_headers_range.response["headers"].emplace_back(),
+                get_block_headers_range.is_bt(),
+                m_core);
     }
-    get_block_headers_range.response["headers"] = headers;
     get_block_headers_range.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(
-        GET_BLOCK_HEADER_BY_HEIGHT& get_block_header_by_height, rpc_context context) {
+void core_rpc_server::invoke(GET_BLOCK_HEADER_BY_HEIGHT& gbh, rpc_context context) {
     auto get = [this,
+                &gbh,
                 curr_height = m_core.get_current_blockchain_height(),
-                pow = get_block_header_by_height.request.fill_pow_hash && context.admin,
-                tx_hashes = get_block_header_by_height.request.get_tx_hashes](
-                       uint64_t height, block_header_response& bhr) {
+                pow = gbh.request.fill_pow_hash && context.admin](
+                       uint64_t height, nlohmann::json& bhr) {
         if (height >= curr_height)
             throw rpc_error{
                     ERROR_TOO_BIG_HEIGHT,
@@ -1640,27 +1621,31 @@ void core_rpc_server::invoke(
                     ERROR_INTERNAL,
                     "Internal error: can't get block by height. Height = " +
                             std::to_string(height) + '.'};
-        fill_block_header_response(blk, false, height, get_block_hash(blk), bhr, pow, tx_hashes);
+        fill_block_header_response(
+                blk,
+                false,
+                height,
+                get_block_hash(blk),
+                pow,
+                gbh.request.get_tx_hashes,
+                bhr,
+                gbh.is_bt(),
+                m_core);
     };
 
-    block_header_response header;
-    if (get_block_header_by_height.request.height) {
-        get(*get_block_header_by_height.request.height, header);
-        get_block_header_by_height.response["block_header"] = header;
-    }
-    std::vector<block_header_response> headers;
-    if (!get_block_header_by_height.request.heights.empty())
-        headers.reserve(get_block_header_by_height.request.heights.size());
-    for (auto height : get_block_header_by_height.request.heights)
-        get(height, headers.emplace_back());
+    if (gbh.request.height)
+        get(*gbh.request.height, gbh.response["block_header"]);
 
-    get_block_header_by_height.response["status"] = STATUS_OK;
-    get_block_header_by_height.response["block_headers"] = headers;
+    if (!gbh.request.heights.empty())
+        for (auto height : gbh.request.heights)
+            get(height, gbh.response["block_headers"].emplace_back());
+
+    gbh.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(GET_BLOCK& get_block, rpc_context context) {
     block blk;
-    uint64_t block_height;
+    std::optional<uint64_t> block_height;
     bool orphan = false;
     crypto::hash block_hash;
     if (!get_block.request.hash.empty()) {
@@ -1674,12 +1659,6 @@ void core_rpc_server::invoke(GET_BLOCK& get_block, rpc_context context) {
                     ERROR_INTERNAL,
                     "Internal error: can't get block by hash. Hash = " + get_block.request.hash +
                             '.'};
-        if (blk.miner_tx.vin.size() != 1 ||
-            !std::holds_alternative<txin_gen>(blk.miner_tx.vin.front()))
-            throw rpc_error{
-                    ERROR_INTERNAL,
-                    "Internal error: coinbase transaction in the block has the wrong type"};
-        block_height = var::get<txin_gen>(blk.miner_tx.vin.front()).height;
     } else {
         if (auto curr_height = m_core.get_current_blockchain_height();
             get_block.request.height >= curr_height)
@@ -1697,16 +1676,16 @@ void core_rpc_server::invoke(GET_BLOCK& get_block, rpc_context context) {
         block_hash = get_block_hash(blk);
         block_height = get_block.request.height;
     }
-    block_header_response header;
     fill_block_header_response(
             blk,
             orphan,
             block_height,
             block_hash,
-            header,
             get_block.request.fill_pow_hash && context.admin,
-            false /*tx hashes*/);
-    get_block.response["block_header"] = header;
+            false /*tx hashes*/,
+            get_block.response["block_header"],
+            get_block.is_bt(),
+            m_core);
     get_block.response_hex["tx_hashes"] = blk.tx_hashes;
     get_block.response_hex["blob"] = t_serializable_object_to_blob(blk);
     get_block.response["json"] = obj_to_json_str(blk);
@@ -1748,8 +1727,7 @@ static json json_connection_info(const connection_info& ci) {
 }
 
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(
-        GET_CONNECTIONS& get_connections, [[maybe_unused]] rpc_context context) {
+void core_rpc_server::invoke(GET_CONNECTIONS& get_connections, rpc_context) {
     auto& c = get_connections.response["connections"];
     c = json::array();
     for (auto& ci : m_p2p.get_payload_object().get_connections())
@@ -1757,7 +1735,7 @@ void core_rpc_server::invoke(
     get_connections.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(HARD_FORK_INFO& hfinfo, [[maybe_unused]] rpc_context context) {
+void core_rpc_server::invoke(HARD_FORK_INFO& hfinfo, rpc_context) {
     const auto& blockchain = m_core.get_blockchain_storage();
     auto version = hfinfo.request.version > 0 ? static_cast<hf>(hfinfo.request.version)
                  : hfinfo.request.height > 0 ? blockchain.get_network_version(hfinfo.request.height)
@@ -1772,7 +1750,7 @@ void core_rpc_server::invoke(HARD_FORK_INFO& hfinfo, [[maybe_unused]] rpc_contex
     hfinfo.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(GET_BANS& get_bans, [[maybe_unused]] rpc_context context) {
+void core_rpc_server::invoke(GET_BANS& get_bans, rpc_context) {
     auto now = time(nullptr);
     std::map<std::string, time_t> blocked_hosts = m_p2p.get_blocked_hosts();
     for (std::map<std::string, time_t>::const_iterator i = blocked_hosts.begin();
@@ -1802,7 +1780,7 @@ void core_rpc_server::invoke(GET_BANS& get_bans, [[maybe_unused]] rpc_context co
     get_bans.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(BANNED& banned, [[maybe_unused]] rpc_context context) {
+void core_rpc_server::invoke(BANNED& banned, rpc_context) {
     auto na_parsed = net::get_network_address(banned.request.address, 0);
     if (!na_parsed)
         throw rpc_error{ERROR_WRONG_PARAM, "Unsupported host type"};
@@ -1820,7 +1798,7 @@ void core_rpc_server::invoke(BANNED& banned, [[maybe_unused]] rpc_context contex
     banned.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(SET_BANS& set_bans, [[maybe_unused]] rpc_context context) {
+void core_rpc_server::invoke(SET_BANS& set_bans, rpc_context) {
     epee::net_utils::network_address na;
     // try subnet first
     auto ns_parsed = net::get_ipv4_subnet_address(set_bans.request.host);
@@ -1846,8 +1824,7 @@ void core_rpc_server::invoke(SET_BANS& set_bans, [[maybe_unused]] rpc_context co
     set_bans.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(
-        FLUSH_TRANSACTION_POOL& flush_transaction_pool, [[maybe_unused]] rpc_context context) {
+void core_rpc_server::invoke(FLUSH_TRANSACTION_POOL& flush_transaction_pool, rpc_context) {
     bool failed = false;
     std::vector<crypto::hash> txids;
     if (flush_transaction_pool.request.txids.empty()) {
@@ -1911,12 +1888,12 @@ void core_rpc_server::invoke(GET_OUTPUT_HISTOGRAM& get_output_histogram, rpc_con
     get_output_histogram.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(GET_VERSION& version, [[maybe_unused]] rpc_context context) {
+void core_rpc_server::invoke(GET_VERSION& version, rpc_context) {
     version.response["version"] = pack_version(VERSION);
     version.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(GET_SERVICE_NODE_STATUS& sns, [[maybe_unused]] rpc_context context) {
+void core_rpc_server::invoke(GET_SERVICE_NODE_STATUS& sns, rpc_context) {
     auto [top_height, top_hash] = m_core.get_blockchain_top();
     sns.response["height"] = top_height;
     sns.response_hex["block_hash"] = top_hash;
@@ -1951,8 +1928,7 @@ void core_rpc_server::invoke(GET_SERVICE_NODE_STATUS& sns, [[maybe_unused]] rpc_
 }
 
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(
-        GET_COINBASE_TX_SUM& get_coinbase_tx_sum, [[maybe_unused]] rpc_context context) {
+void core_rpc_server::invoke(GET_COINBASE_TX_SUM& get_coinbase_tx_sum, rpc_context) {
     if (auto sums = m_core.get_coinbase_tx_sum(
                 get_coinbase_tx_sum.request.height, get_coinbase_tx_sum.request.count)) {
         std::tie(
@@ -1966,8 +1942,7 @@ void core_rpc_server::invoke(
     }
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(
-        GET_FEE_ESTIMATE& get_fee_estimate, [[maybe_unused]] rpc_context context) {
+void core_rpc_server::invoke(GET_FEE_ESTIMATE& get_fee_estimate, rpc_context) {
     auto fees = m_core.get_blockchain_storage().get_dynamic_base_fee_estimate(
             get_fee_estimate.request.grace_blocks);
     get_fee_estimate.response["fee_per_byte"] = fees.first;
@@ -1981,8 +1956,7 @@ void core_rpc_server::invoke(
     get_fee_estimate.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(
-        GET_ALTERNATE_CHAINS& get_alternate_chains, [[maybe_unused]] rpc_context context) {
+void core_rpc_server::invoke(GET_ALTERNATE_CHAINS& get_alternate_chains, rpc_context) {
     try {
         std::vector<GET_ALTERNATE_CHAINS::chain_info> chains;
         std::vector<std::pair<Blockchain::block_extended_info, std::vector<crypto::hash>>>
@@ -2023,14 +1997,14 @@ void core_rpc_server::invoke(
     }
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(GET_LIMIT& limit, [[maybe_unused]] rpc_context context) {
+void core_rpc_server::invoke(GET_LIMIT& limit, rpc_context) {
     limit.response = {
             {"limit_down", epee::net_utils::connection_basic::get_rate_down_limit()},
             {"limit_up", epee::net_utils::connection_basic::get_rate_up_limit()},
             {"status", STATUS_OK}};
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(SET_LIMIT& limit, [[maybe_unused]] rpc_context context) {
+void core_rpc_server::invoke(SET_LIMIT& limit, rpc_context) {
     // -1 = reset to default
     //  0 = do not modify
     if (limit.request.limit_down != 0)
@@ -2048,26 +2022,26 @@ void core_rpc_server::invoke(SET_LIMIT& limit, [[maybe_unused]] rpc_context cont
             {"status", STATUS_OK}};
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(OUT_PEERS& out_peers, [[maybe_unused]] rpc_context context) {
+void core_rpc_server::invoke(OUT_PEERS& out_peers, rpc_context) {
     if (out_peers.request.set)
         m_p2p.change_max_out_public_peers(out_peers.request.out_peers);
     out_peers.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(IN_PEERS& in_peers, [[maybe_unused]] rpc_context context) {
+void core_rpc_server::invoke(IN_PEERS& in_peers, rpc_context) {
     if (in_peers.request.set)
         m_p2p.change_max_in_public_peers(in_peers.request.in_peers);
     in_peers.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(POP_BLOCKS& pop_blocks, [[maybe_unused]] rpc_context context) {
+void core_rpc_server::invoke(POP_BLOCKS& pop_blocks, rpc_context) {
     m_core.get_blockchain_storage().pop_blocks(pop_blocks.request.nblocks);
 
     pop_blocks.response["height"] = m_core.get_current_blockchain_height();
     pop_blocks.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(RELAY_TX& relay_tx, [[maybe_unused]] rpc_context context) {
+void core_rpc_server::invoke(RELAY_TX& relay_tx, rpc_context) {
     std::string status = "";
     for (const auto& txid_hex : relay_tx.request.txids) {
         crypto::hash txid;
@@ -2098,7 +2072,7 @@ void core_rpc_server::invoke(RELAY_TX& relay_tx, [[maybe_unused]] rpc_context co
     relay_tx.response["status"] = status;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(SYNC_INFO& sync, [[maybe_unused]] rpc_context context) {
+void core_rpc_server::invoke(SYNC_INFO& sync, rpc_context) {
     auto [top_height, top_hash] = m_core.get_blockchain_top();
     sync.response["height"] = top_height + 1;  // turn top block height into blockchain height
     if (auto target_height = m_core.get_target_blockchain_height(); target_height > top_height + 1)
@@ -2240,7 +2214,7 @@ namespace detail {
 
 //------------------------------------------------------------------------------------------------------------------------------
 GET_OUTPUT_DISTRIBUTION::response core_rpc_server::invoke(
-        GET_OUTPUT_DISTRIBUTION::request&& req, [[maybe_unused]] rpc_context context, bool binary) {
+        GET_OUTPUT_DISTRIBUTION::request&& req, rpc_context, bool binary) {
     GET_OUTPUT_DISTRIBUTION::response res{};
     try {
         // 0 is placeholder for the whole chain
@@ -2290,8 +2264,7 @@ GET_OUTPUT_DISTRIBUTION_BIN::response core_rpc_server::invoke(
     return invoke(std::move(static_cast<GET_OUTPUT_DISTRIBUTION::request&>(req)), context, true);
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(
-        PRUNE_BLOCKCHAIN& prune_blockchain, [[maybe_unused]] rpc_context context) {
+void core_rpc_server::invoke(PRUNE_BLOCKCHAIN& prune_blockchain, rpc_context) {
     try {
         if (!(prune_blockchain.request.check ? m_core.check_blockchain_pruning()
                                              : m_core.prune_blockchain()))
@@ -2446,7 +2419,7 @@ void core_rpc_server::invoke(GET_QUORUM_STATE& get_quorum_state, rpc_context con
     get_quorum_state.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(FLUSH_CACHE& flush_cache, rpc_context context) {
+void core_rpc_server::invoke(FLUSH_CACHE& flush_cache, rpc_context) {
     if (flush_cache.request.bad_txs)
         m_core.flush_bad_txs_cache();
     if (flush_cache.request.bad_blocks)
@@ -2455,8 +2428,7 @@ void core_rpc_server::invoke(FLUSH_CACHE& flush_cache, rpc_context context) {
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(
-        GET_SERVICE_NODE_REGISTRATION_CMD_RAW& get_service_node_registration_cmd_raw,
-        rpc_context context) {
+        GET_SERVICE_NODE_REGISTRATION_CMD_RAW& get_service_node_registration_cmd_raw, rpc_context) {
     if (!m_core.service_node())
         throw rpc_error{
                 ERROR_WRONG_PARAM,
@@ -2480,8 +2452,7 @@ void core_rpc_server::invoke(
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(
-        GET_SERVICE_NODE_REGISTRATION_CMD& get_service_node_registration_cmd,
-        [[maybe_unused]] rpc_context context) {
+        GET_SERVICE_NODE_REGISTRATION_CMD& get_service_node_registration_cmd, rpc_context) {
     if (!m_core.service_node())
         throw rpc_error{
                 ERROR_WRONG_PARAM,
@@ -2581,8 +2552,7 @@ void core_rpc_server::invoke(BLS_REGISTRATION_REQUEST& rpc, rpc_context) {
     rpc.response_hex["service_node_signature"] = response.ed_signature;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(
-        GET_SERVICE_KEYS& get_service_keys, [[maybe_unused]] rpc_context context) {
+void core_rpc_server::invoke(GET_SERVICE_KEYS& get_service_keys, rpc_context) {
     const auto& keys = m_core.get_service_keys();
     if (keys.pub)
         get_service_keys.response_hex["service_node_pubkey"] = keys.pub;
@@ -2592,8 +2562,7 @@ void core_rpc_server::invoke(
     get_service_keys.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(
-        GET_SERVICE_PRIVKEYS& get_service_privkeys, [[maybe_unused]] rpc_context context) {
+void core_rpc_server::invoke(GET_SERVICE_PRIVKEYS& get_service_privkeys, rpc_context) {
     const auto& keys = m_core.get_service_keys();
     if (keys.key)
         get_service_privkeys.response_hex["service_node_privkey"] =
@@ -2898,7 +2867,7 @@ void core_rpc_server::fill_sn_response_entry(
 }
 
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(GET_SERVICE_NODES& sns, [[maybe_unused]] rpc_context context) {
+void core_rpc_server::invoke(GET_SERVICE_NODES& sns, rpc_context) {
     auto& req = sns.request;
     sns.response["status"] = STATUS_OK;
     auto [top_height, top_hash] = m_core.get_blockchain_top();
@@ -3016,7 +2985,11 @@ namespace {
                                lifetime;  // Print loudly for the first ping after startup/expiry
             auto msg = "Received ping from {} {}"_format(name, fmt::join(cur_version, "."));
             if (significant)
-                log::info(globallogcat, fg(fmt::terminal_color::green) | fmt::emphasis::bold, "{}", msg);
+                log::info(
+                        globallogcat,
+                        fg(fmt::terminal_color::green) | fmt::emphasis::bold,
+                        "{}",
+                        msg);
             else
                 log::debug(logcat, "{}", msg);
             success(significant);
@@ -3027,8 +3000,7 @@ namespace {
 }  // namespace
 
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(
-        STORAGE_SERVER_PING& storage_server_ping, [[maybe_unused]] rpc_context context) {
+void core_rpc_server::invoke(STORAGE_SERVER_PING& storage_server_ping, rpc_context) {
     m_core.ss_version = storage_server_ping.request.version;
     storage_server_ping.response["status"] = handle_ping(
             m_core,
@@ -3047,7 +3019,7 @@ void core_rpc_server::invoke(
             });
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(LOKINET_PING& lokinet_ping, [[maybe_unused]] rpc_context context) {
+void core_rpc_server::invoke(LOKINET_PING& lokinet_ping, rpc_context) {
     m_core.lokinet_version = lokinet_ping.request.version;
     lokinet_ping.response["status"] = handle_ping(
             m_core,
@@ -3064,8 +3036,7 @@ void core_rpc_server::invoke(LOKINET_PING& lokinet_ping, [[maybe_unused]] rpc_co
             });
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(
-        GET_STAKING_REQUIREMENT& get_staking_requirement, [[maybe_unused]] rpc_context context) {
+void core_rpc_server::invoke(GET_STAKING_REQUIREMENT& get_staking_requirement, rpc_context) {
     get_staking_requirement.response["height"] = get_staking_requirement.request.height > 0
                                                        ? get_staking_requirement.request.height
                                                        : m_core.get_current_blockchain_height();
@@ -3120,8 +3091,7 @@ void core_rpc_server::invoke(GET_CHECKPOINTS& get_checkpoints, rpc_context conte
     get_checkpoints.response["checkpoints"] = std::move(checkpoints);
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(
-        GET_SN_STATE_CHANGES& get_sn_state_changes, [[maybe_unused]] rpc_context context) {
+void core_rpc_server::invoke(GET_SN_STATE_CHANGES& get_sn_state_changes, rpc_context) {
     using blob_t = std::string;
     using block_pair_t = std::pair<blob_t, block>;
     std::vector<block_pair_t> blocks;
@@ -3153,7 +3123,7 @@ void core_rpc_server::invoke(
             log::error(
                     logcat,
                     "Could not query block at requested height: {}",
-                    cryptonote::get_block_height(block.second));
+                    block.second.get_height());
             continue;
         }
         const auto hard_fork_version = block.second.major_version;
@@ -3207,8 +3177,7 @@ void core_rpc_server::invoke(
     get_sn_state_changes.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(
-        REPORT_PEER_STATUS& report_peer_status, [[maybe_unused]] rpc_context context) {
+void core_rpc_server::invoke(REPORT_PEER_STATUS& report_peer_status, rpc_context) {
     crypto::public_key pubkey;
     if (!tools::try_load_from_hex_guts(report_peer_status.request.pubkey, pubkey)) {
         log::error(logcat, "Could not parse public key: {}", report_peer_status.request.pubkey);
@@ -3233,15 +3202,12 @@ void core_rpc_server::invoke(
     report_peer_status.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(
-        TEST_TRIGGER_P2P_RESYNC& test_trigger_p2p_resync, [[maybe_unused]] rpc_context context) {
+void core_rpc_server::invoke(TEST_TRIGGER_P2P_RESYNC& test_trigger_p2p_resync, rpc_context) {
     m_p2p.reset_peer_handshake_timer();
     test_trigger_p2p_resync.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(
-        TEST_TRIGGER_UPTIME_PROOF& test_trigger_uptime_proof,
-        [[maybe_unused]] rpc_context context) {
+void core_rpc_server::invoke(TEST_TRIGGER_UPTIME_PROOF& test_trigger_uptime_proof, rpc_context) {
     if (m_core.get_nettype() != cryptonote::network_type::MAINNET)
         m_core.submit_uptime_proof();
 
@@ -3382,7 +3348,7 @@ void core_rpc_server::invoke(ONS_OWNERS_TO_NAMES& ons_owners_to_names, rpc_conte
 }
 
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(ONS_RESOLVE& resolve, [[maybe_unused]] rpc_context context) {
+void core_rpc_server::invoke(ONS_RESOLVE& resolve, rpc_context) {
     auto& req = resolve.request;
     if (req.type < 0 || req.type >= tools::enum_count<ons::mapping_type>)
         throw rpc_error{
@@ -3409,7 +3375,7 @@ void core_rpc_server::invoke(ONS_RESOLVE& resolve, [[maybe_unused]] rpc_context 
     }
 }
 
-void core_rpc_server::invoke(GET_ACCRUED_REWARDS& rpc, [[maybe_unused]] rpc_context context) {
+void core_rpc_server::invoke(GET_ACCRUED_REWARDS& rpc, rpc_context) {
     auto& blockchain = m_core.get_blockchain_storage();
 
     auto& balances = rpc.response["balances"];

@@ -153,7 +153,7 @@ int main(int argc, char* argv[]) {
         for (const crypto::hash& txid : b.tx_hashes)
             start_txids.push_back(txid);
         if (opt_include_coinbase)
-            start_txids.push_back(cryptonote::get_transaction_hash(b.miner_tx));
+            start_txids.push_back(cryptonote::get_transaction_hash(b.miner_tx.value()));
     }
 
     if (start_txids.empty()) {
@@ -204,24 +204,24 @@ int main(int argc, char* argv[]) {
                             }
                             // find the tx which created this output
                             bool found = false;
-                            for (size_t out = 0; out < b.miner_tx.vout.size(); ++out) {
+                            for (size_t out = 0; out < b.miner_tx.value().vout.size(); ++out) {
                                 if (auto* txout = std::get_if<cryptonote::txout_to_key>(
-                                            &b.miner_tx.vout[out].target)) {
+                                            &b.miner_tx->vout[out].target)) {
                                     if (txout->key == od.pubkey) {
                                         found = true;
                                         new_txids.push_back(
-                                                cryptonote::get_transaction_hash(b.miner_tx));
+                                                cryptonote::get_transaction_hash(*b.miner_tx));
                                         log::debug(
                                                 logcat,
                                                 "adding txid: {}",
-                                                cryptonote::get_transaction_hash(b.miner_tx));
+                                                cryptonote::get_transaction_hash(*b.miner_tx));
                                         break;
                                     }
                                 } else {
                                     log::warning(
                                             logcat,
                                             "Bad vout type in txid {}",
-                                            cryptonote::get_transaction_hash(b.miner_tx));
+                                            cryptonote::get_transaction_hash(*b.miner_tx));
                                     return 1;
                                 }
                             }

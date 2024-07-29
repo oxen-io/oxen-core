@@ -342,7 +342,7 @@ public:
   bool construct_block_manually(cryptonote::block& blk, const cryptonote::block& prev_block,
     const cryptonote::account_base& miner_acc, int actual_params = bf_none, hf major_ver = hf::none,
     uint8_t minor_ver = 0, uint64_t timestamp = 0, const crypto::hash& prev_id = crypto::hash(),
-    const cryptonote::difficulty_type& diffic = 1, const cryptonote::transaction& miner_tx = cryptonote::transaction(),
+    const cryptonote::difficulty_type& diffic = 1, const std::optional<cryptonote::transaction>& miner_tx = std::nullopt,
     const std::vector<crypto::hash>& tx_hashes = std::vector<crypto::hash>(), size_t txs_sizes = 0, size_t txn_fee = 0);
   bool construct_block_manually_tx(cryptonote::block& blk, const cryptonote::block& prev_block,
     const cryptonote::account_base& miner_acc, const std::vector<crypto::hash>& tx_hashes, size_t txs_size);
@@ -1485,7 +1485,7 @@ struct oxen_chain_generator
     :tx_table_(other.tx_table_), service_node_keys_(other.service_node_keys_), state_history_(other.state_history_), last_cull_height_(other.last_cull_height_), sqlite_db_(std::make_unique<test::BlockchainSQLiteTest>(*other.sqlite_db_)),
   ons_db_(other.ons_db_ ), db_(other.db_), hf_version_(other.hf_version_), events_(other.events_), hard_forks_(other.hard_forks_), first_miner_(other.first_miner_) {};
 
-  uint64_t                                             height()       const { return cryptonote::get_block_height(db_.blocks.back().block); }
+  uint64_t                                             height()       const { return db_.blocks.back().block.get_height(); }
   uint64_t                                             chain_height() const { return height() + 1; }
   const std::vector<oxen_blockchain_entry>&            blocks()       const { return db_.blocks; }
   size_t                                               event_index()  const { return events_.size() - 1; }

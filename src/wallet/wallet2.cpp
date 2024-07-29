@@ -2129,7 +2129,7 @@ void wallet2::scan_output(
     entry.amount = tx_scan_info.money_transfered;
     entry.unlock_time = unlock_time;
 
-    if (cryptonote::is_coinbase(tx)) {
+    if (tx.is_miner_tx()) {
         // TODO(doyle): When batched governance comes in, this needs to check that the TX has a
         // governance output, can't assume last one is governance
         if (vout_index == 0)
@@ -2156,8 +2156,7 @@ void wallet2::cache_tx_data(
     }
 
     // Don't try to extract tx public key if tx has no ouputs
-    const bool is_miner =
-            tx.vin.size() == 1 && std::holds_alternative<cryptonote::txin_gen>(tx.vin[0]);
+    const bool is_miner = tx.is_miner_tx();
     if (!is_miner || m_refresh_type != RefreshType::RefreshNoCoinbase) {
         const size_t rec_size = is_miner && m_refresh_type == RefreshType::RefreshOptimizeCoinbase
                                       ? 1
@@ -3177,10 +3176,10 @@ void wallet2::process_new_blockchain_entry(
     // day. 1 day is for possible user incorrect time setup
     if (!should_skip_block(b, height)) {
         auto miner_tx_handle_time_start = std::chrono::steady_clock::now();
-        if (m_refresh_type != RefreshNoCoinbase)
+        if (m_refresh_type != RefreshNoCoinbase && b.miner_tx)
             process_new_transaction(
-                    get_transaction_hash(b.miner_tx),
-                    b.miner_tx,
+                    get_transaction_hash(*b.miner_tx),
+                    *b.miner_tx,
                     parsed_block.o_indices["indices"][0]["indices"],
                     height,
                     b.major_version,
@@ -3378,11 +3377,11 @@ void wallet2::process_parsed_blocks(
             txidx += 1 + parsed_blocks[i].block.tx_hashes.size();
             continue;
         }
-        if (m_refresh_type != RefreshNoCoinbase)
+        if (m_refresh_type != RefreshNoCoinbase && parsed_blocks[i].block.miner_tx)
             tpool.submit(&waiter, [&, i, txidx]() {
                 cache_tx_data(
-                        parsed_blocks[i].block.miner_tx,
-                        get_transaction_hash(parsed_blocks[i].block.miner_tx),
+                        *parsed_blocks[i].block.miner_tx,
+                        get_transaction_hash(*parsed_blocks[i].block.miner_tx),
                         tx_cache_data[txidx]);
             });
         ++txidx;
@@ -3471,18 +3470,19 @@ void wallet2::process_parsed_blocks(
         }
 
         if (m_refresh_type != RefreshType::RefreshNoCoinbase &&
-            parsed_blocks[i].block.miner_tx.vout.size() > 0) {
+                parsed_blocks[i].block.miner_tx &&
+            parsed_blocks[i].block.miner_tx->vout.size() > 0) {
             THROW_WALLET_EXCEPTION_IF(
                     txidx >= tx_cache_data.size(),
                     error::wallet_internal_error,
                     "txidx out of range");
             const size_t n_vouts = m_refresh_type == RefreshType::RefreshOptimizeCoinbase
                                          ? 1
-                                         : parsed_blocks[i].block.miner_tx.vout.size();
+                                         : parsed_blocks[i].block.miner_tx->vout.size();
             tpool.submit(
                     &waiter,
                     [&, i, n_vouts, txidx]() {
-                        geniod(parsed_blocks[i].block.miner_tx, n_vouts, txidx);
+                        geniod(*parsed_blocks[i].block.miner_tx, n_vouts, txidx);
                     },
                     true);
         }
@@ -3656,7 +3656,7 @@ void wallet2::pull_and_parse_next_blocks(
         }
         waiter.wait(&tpool);
         last = !blocks.empty() &&
-               cryptonote::get_block_height(parsed_blocks.back().block) + 1 == current_height;
+               parsed_blocks.back().block.get_height() + 1 == current_height;
     } catch (...) {
         error = true;
     }
@@ -15101,8 +15101,7 @@ bool wallet2::check_reserve_proof(
         // But for now, the minimal fix to avoid re-architecting everything prematurely.
 
         // check singature for shared secret
-        const bool is_miner =
-                tx.vin.size() == 1 && std::holds_alternative<cryptonote::txin_gen>(tx.vin[0]);
+        const bool is_miner = tx.is_miner_tx();
         if (is_miner) {
             // NOTE(oxen): The service node reward is added as a duplicate TX public
             // key instead of into the additional public key, so we need to check upto
@@ -15920,7 +15919,7 @@ uint64_t wallet2::import_key_images(
                         !r, error::wallet_internal_error, "Failed to generate key derivation");
             }
             size_t output_index = 0;
-            bool miner_tx = cryptonote::is_coinbase(spent_tx);
+            bool miner_tx = spent_tx.is_miner_tx();
             for (const cryptonote::tx_out& out : spent_tx.vout) {
                 tx_scan_info_t tx_scan_info;
                 check_acc_out_precomp(

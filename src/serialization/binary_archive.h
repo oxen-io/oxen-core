@@ -45,9 +45,9 @@
 #include <istream>
 #include <iterator>
 #include <ostream>
-#include <string>
 #include <string_view>
 #include <type_traits>
+#include <vector>
 
 namespace serialization {
 

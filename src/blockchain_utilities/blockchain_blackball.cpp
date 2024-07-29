@@ -1645,8 +1645,7 @@ int main(int argc, char* argv[]) {
                     }
                     set_processed_txidx(txn, canonical, start_idx + 1);
                     if (!opt_rct_only) {
-                        const bool miner_tx =
-                                tx.vin.size() == 1 && std::holds_alternative<txin_gen>(tx.vin[0]);
+                        const bool miner_tx = tx.is_miner_tx();
                         for (const auto& out : tx.vout) {
                             uint64_t amount = out.amount;
                             if (miner_tx && tx.version >= cryptonote::txversion::v2_ringct)

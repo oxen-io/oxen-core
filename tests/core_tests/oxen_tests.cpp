@@ -39,6 +39,10 @@
 #include "oxen_economy.h"
 #include "common/random.h"
 
+#ifdef __GNUG__
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#endif
+
 extern "C"
 {
 #include <sodium.h>
@@ -144,7 +148,7 @@ bool oxen_checkpointing_alt_chain_more_service_node_checkpoints_less_pow_overtak
 
   cryptonote::checkpoint_t checkpoint = fork_with_more_checkpoints.create_service_node_checkpoint(fork_with_more_checkpoints.height(), service_nodes::CHECKPOINT_MIN_VOTES);
   fork_with_more_checkpoints.create_and_add_next_block({}, &checkpoint);
-  uint64_t const fork_top_height   = cryptonote::get_block_height(fork_with_more_checkpoints.top().block);
+  uint64_t const fork_top_height   = fork_with_more_checkpoints.top().block.get_height();
   crypto::hash const fork_top_hash = cryptonote::get_block_hash(fork_with_more_checkpoints.top().block);
 
   oxen_register_callback(events, "check_switched_to_alt_chain", [fork_top_hash, fork_top_height](cryptonote::core &c, size_t ev_index)
@@ -450,8 +454,9 @@ bool oxen_core_block_reward_unpenalized_pre_pulse::generate(std::vector<test_eve
       cryptonote::block top_block;
       CHECK_TEST_CONDITION(c.get_block_by_hash(top_hash, top_block, &orphan));
       CHECK_TEST_CONDITION(orphan == false);
-      CHECK_TEST_CONDITION_MSG(top_block.miner_tx.vout[0].amount < unpenalized_block_reward, "We should add enough transactions that the penalty is realised on the base block reward");
-      CHECK_EQ(top_block.miner_tx.vout[1].amount, expected_service_node_reward);
+      assert(top_block.miner_tx);
+      CHECK_TEST_CONDITION_MSG(top_block.miner_tx->vout[0].amount < unpenalized_block_reward, "We should add enough transactions that the penalty is realised on the base block reward");
+      CHECK_EQ(top_block.miner_tx->vout[1].amount, expected_service_node_reward);
       return true;
       });
   return true;
@@ -491,11 +496,12 @@ bool oxen_core_block_reward_unpenalized_post_pulse::generate(std::vector<test_ev
 
       CHECK_TEST_CONDITION(orphan == false);
 
-      uint64_t rewards_from_fee = top_block.miner_tx.vout[0].amount;
-      CHECK_TEST_CONDITION_MSG(top_block.miner_tx.vout.size() == 2, "1 for miner, 1 for service node");
+      assert(top_block.miner_tx);
+      uint64_t rewards_from_fee = top_block.miner_tx->vout[0].amount;
+      CHECK_TEST_CONDITION_MSG(top_block.miner_tx->vout.size() == 2, "1 for miner, 1 for service node");
       CHECK_TEST_CONDITION_MSG(rewards_from_fee > 0 && rewards_from_fee < tx_fee,
               "Block producer should receive a penalised tx fee less than {}, received {}", cryptonote::print_money(tx_fee), cryptonote::print_money(rewards_from_fee));
-      CHECK_TEST_CONDITION_MSG(top_block.miner_tx.vout[1].amount == unpenalized_reward, "Service Node should receive full reward {}", unpenalized_reward);
+      CHECK_TEST_CONDITION_MSG(top_block.miner_tx->vout[1].amount == unpenalized_reward, "Service Node should receive full reward {}", unpenalized_reward);
 
       oxen::log::info(globallogcat, "rewards_from_fee: {}", cryptonote::print_money(rewards_from_fee));
       oxen::log::info(globallogcat, "tx_fee: {}", cryptonote::print_money(tx_fee));
@@ -547,7 +553,7 @@ bool oxen_core_fee_burning::generate(std::vector<test_event_entry>& events)
 
   {
     oxen_block_reward_context ctx{};
-    ctx.height = get_block_height(gen.blocks().back().block);
+    ctx.height = gen.blocks().back().block.get_height();
     ctx.fee = send_fee_burn[0][1] + send_fee_burn[1][1] - send_fee_burn[0][2] - send_fee_burn[1][2];
     block_reward_parts reward_parts;
     cryptonote::get_oxen_block_reward(0, 0, 1 /*already generated, needs to be >0 to avoid premine*/, newest_hf, reward_parts, ctx);
@@ -634,7 +640,8 @@ bool oxen_core_governance_batched_reward::generate(std::vector<test_event_entry>
     for (size_t block_height = hf10_height; block_height < blockchain.size() - 1; ++block_height)
     {
       const cryptonote::block &block = blockchain[block_height].block;
-      expected_total_governance_paid += block.miner_tx.vout.back().amount;
+      assert(block.miner_tx);
+      expected_total_governance_paid += block.miner_tx->vout.back().amount;
     }
   }
 
@@ -650,9 +657,10 @@ bool oxen_core_governance_batched_reward::generate(std::vector<test_event_entry>
       uint64_t governance = 0;
       for (size_t block_height = hf10_height; block_height < blockchain.size(); ++block_height)
       {
-      const cryptonote::block &block = blockchain[block_height];
-      if (cryptonote::block_has_governance_output(cryptonote::network_type::FAKECHAIN, block))
-      governance += block.miner_tx.vout.back().amount;
+          const cryptonote::block &block = blockchain[block_height];
+          if (cryptonote::block_has_governance_output(cryptonote::network_type::FAKECHAIN, block))
+              block.miner_tx.value();
+          governance += block.miner_tx->vout.back().amount;
       }
 
       CHECK_EQ(governance, expected_total_governance_paid);
@@ -696,44 +704,44 @@ bool oxen_core_block_rewards_lrc6::generate(std::vector<test_event_entry>& event
       for (size_t block_height = hf15_height; block_height < hf16_height; ++block_height)
       {
         const cryptonote::block &block = blockchain[block_height];
-        CHECK_EQ(block.miner_tx.vout.at(0).amount, oxen::MINER_REWARD_HF15);
-        CHECK_EQ(block.miner_tx.vout.at(1).amount, oxen::SN_REWARD_HF15);
+        CHECK_EQ(block.miner_tx->vout.at(0).amount, oxen::MINER_REWARD_HF15);
+        CHECK_EQ(block.miner_tx->vout.at(1).amount, oxen::SN_REWARD_HF15);
         if (cryptonote::block_has_governance_output(cryptonote::network_type::FAKECHAIN, block))
         {
           hf15_gov++;
-          CHECK_EQ(block.miner_tx.vout.at(2).amount, oxen::FOUNDATION_REWARD_HF15 * interval);
-          CHECK_EQ(block.miner_tx.vout.size(), 3);
+          CHECK_EQ(block.miner_tx->vout.at(2).amount, oxen::FOUNDATION_REWARD_HF15 * interval);
+          CHECK_EQ(block.miner_tx->vout.size(), 3);
         }
         else
-          CHECK_EQ(block.miner_tx.vout.size(), 2);
+          CHECK_EQ(block.miner_tx->vout.size(), 2);
       }
 
       for (size_t block_height = hf16_height; block_height < hf17_height; ++block_height)
       {
         const cryptonote::block &block = blockchain[block_height];
-        CHECK_EQ(block.miner_tx.vout.at(0).amount, oxen::SN_REWARD_HF15);
+        CHECK_EQ(block.miner_tx->vout.at(0).amount, oxen::SN_REWARD_HF15);
         if (cryptonote::block_has_governance_output(cryptonote::network_type::FAKECHAIN, block))
         {
           hf16_gov++;
-          CHECK_EQ(block.miner_tx.vout.at(1).amount, (oxen::FOUNDATION_REWARD_HF15 + oxen::CHAINFLIP_LIQUIDITY_HF16) * interval);
-          CHECK_EQ(block.miner_tx.vout.size(), 2);
+          CHECK_EQ(block.miner_tx->vout.at(1).amount, (oxen::FOUNDATION_REWARD_HF15 + oxen::CHAINFLIP_LIQUIDITY_HF16) * interval);
+          CHECK_EQ(block.miner_tx->vout.size(), 2);
         }
         else
-          CHECK_EQ(block.miner_tx.vout.size(), 1);
+          CHECK_EQ(block.miner_tx->vout.size(), 1);
       }
 
       for (size_t block_height = hf17_height; block_height < height; ++block_height)
       {
         const cryptonote::block &block = blockchain[block_height];
-        CHECK_EQ(block.miner_tx.vout.at(0).amount, oxen::SN_REWARD_HF15);
+        CHECK_EQ(block.miner_tx->vout.at(0).amount, oxen::SN_REWARD_HF15);
         if (cryptonote::block_has_governance_output(cryptonote::network_type::FAKECHAIN, block))
         {
           hf17_gov++;
-          CHECK_EQ(block.miner_tx.vout.at(1).amount, oxen::FOUNDATION_REWARD_HF17 * interval);
-          CHECK_EQ(block.miner_tx.vout.size(), 2);
+          CHECK_EQ(block.miner_tx->vout.at(1).amount, oxen::FOUNDATION_REWARD_HF17 * interval);
+          CHECK_EQ(block.miner_tx->vout.size(), 2);
         }
         else
-          CHECK_EQ(block.miner_tx.vout.size(), 1);
+          CHECK_EQ(block.miner_tx->vout.size(), 1);
       }
 
       CHECK_EQ(hf15_gov, 1);
@@ -1525,7 +1533,7 @@ bool oxen_name_system_invalid_tx_extra_params::generate(std::vector<test_event_e
         cryptonote::tx_extra_oxen_name_system &data,
         bool valid,
         char const *reason) -> void {
-      uint64_t new_height    = cryptonote::get_block_height(gen.top().block) + 1;
+      uint64_t new_height    = gen.top().block.get_height() + 1;
       auto new_hf_version = gen.get_hf_version_at(new_height);
       uint64_t burn_requirement = ons::burn_needed(new_hf_version, static_cast<ons::mapping_type>(data.type));
 
@@ -1949,7 +1957,7 @@ bool oxen_name_system_name_value_max_lengths::generate(std::vector<test_event_en
                                            cryptonote::account_base const &src,
                                            cryptonote::tx_extra_oxen_name_system const &data) -> void {
 
-    uint64_t new_height    = cryptonote::get_block_height(gen.top().block) + 1;
+    uint64_t new_height    = gen.top().block.get_height() + 1;
     auto new_hf_version = gen.get_hf_version_at(new_height);
     uint64_t burn_requirement = ons::burn_needed(new_hf_version, static_cast<ons::mapping_type>(data.type));
     std::vector<uint8_t> extra;
@@ -2534,7 +2542,7 @@ bool oxen_name_system_wrong_burn::generate(std::vector<test_event_entry> &events
         else
             assert("Unhandled type enum" == nullptr);
 
-        uint64_t new_height      = cryptonote::get_block_height(gen.top().block) + 1;
+        uint64_t new_height      = gen.top().block.get_height() + 1;
         auto new_hf_version = gen.get_hf_version_at(new_height);
         uint64_t burn            = ons::burn_needed(new_hf_version, type);
         if (under_burn) burn -= 1;
@@ -2571,7 +2579,7 @@ bool oxen_name_system_wrong_version::generate(std::vector<test_event_entry> &eve
   data.name_hash                             = ons::name_to_hash(name);
   data.encrypted_value                       = miner_key.session_value.make_encrypted(name).to_string();
 
-  uint64_t new_height       = cryptonote::get_block_height(gen.top().block) + 1;
+  uint64_t new_height       = gen.top().block.get_height() + 1;
   auto new_hf_version = gen.get_hf_version_at(new_height);
   uint64_t burn_requirement = ons::burn_needed(new_hf_version, ons::mapping_type::session);
 
@@ -2917,7 +2925,7 @@ bool oxen_service_nodes_test_swarms_basic::generate(std::vector<test_event_entry
   for (size_t i = 0; i < excess; ++i)
   {
     const auto pk = top_quorum.obligations->workers[i];
-    const auto tx = gen.create_and_add_state_change_tx(service_nodes::new_state::deregister, pk, 0, 0, cryptonote::get_block_height(gen.top().block));
+    const auto tx = gen.create_and_add_state_change_tx(service_nodes::new_state::deregister, pk, 0, 0, gen.top().block.get_height());
     dereg_txs.push_back(tx);
   }
 
@@ -3392,7 +3400,7 @@ bool oxen_pulse_reject_miner_block::generate(std::vector<test_event_entry> &even
   gen.block_begin(entry, params, {} /*tx_list*/);
 
   // NOTE: Create an ordinary miner block even when we have enough Service Nodes for Pulse.
-  fill_nonce_with_oxen_generator(&gen, entry.block, TEST_DEFAULT_DIFFICULTY, cryptonote::get_block_height(entry.block));
+  fill_nonce_with_oxen_generator(&gen, entry.block, TEST_DEFAULT_DIFFICULTY, entry.block.get_height());
 
   gen.block_end(entry, params);
   gen.add_block(entry, false /*can_be_added_to_blockchain*/, "Invalid Pulse Block, block was mined with a miner but we have enough nodes for Pulse");
@@ -3691,8 +3699,8 @@ bool oxen_batch_sn_rewards_bad_amount::generate(std::vector<test_event_entry> &e
   //THIS BLOCK WILL CONTAIN THE BATCH TRANSACTION
   oxen_blockchain_entry entry   = gen.create_next_block();
   //Modify batch reward tx amount
-  entry.block.miner_tx.vout[0].amount = entry.block.miner_tx.vout[0].amount + 1;
-  oxen_blockchain_entry &result = gen.add_block(entry, false, "Block with modified amount in batched reward succeeded when it should have failed");
+  entry.block.miner_tx->vout[0].amount = entry.block.miner_tx.value().vout[0].amount + 1;
+  gen.add_block(entry, false, "Block with modified amount in batched reward succeeded when it should have failed");
   
   return true;
 }
@@ -3747,8 +3755,8 @@ bool oxen_batch_sn_rewards_bad_address::generate(std::vector<test_event_entry> &
     return false;
   }
   // Switch Alice as recipient of payment to Bob
-  entry.block.miner_tx.vout[0].target = cryptonote::txout_to_key(bob_deterministic_output_key);
-  oxen_blockchain_entry &result = gen.add_block(entry, false, "Block with modified address in batched reward succeeded when it should have failed");
+  entry.block.miner_tx.value().vout[0].target = cryptonote::txout_to_key(bob_deterministic_output_key);
+  gen.add_block(entry, false, "Block with modified address in batched reward succeeded when it should have failed");
   
   return true;
 }
@@ -3880,7 +3888,7 @@ bool oxen_batch_sn_rewards_pop_blocks_after_big_cycle::generate(std::vector<test
   // get the amount that was to be paid here. Then when we
   // pop back we want the same amount
   oxen_blockchain_entry entry   = gen.create_next_block();
-  uint64_t amount = entry.block.miner_tx.vout[0].amount;
+  uint64_t amount = entry.block.miner_tx.value().vout[0].amount;
   oxen_blockchain_entry &result = gen.add_block(entry);
 
   // Generate blocks up through a few payment cycles and check that we can get back safely.

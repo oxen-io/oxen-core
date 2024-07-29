@@ -30,11 +30,13 @@
 #include "blockchain_db.h"
 
 #include <chrono>
+
 #include "checkpoints/checkpoints.h"
-#include "common/string_util.h"
 #include "common/exception.h"
+#include "common/string_util.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_basic/hardfork.h"
+#include "cryptonote_config.h"
 #include "cryptonote_core/service_node_rules.h"
 #include "epee/string_tools.h"
 #include "lmdb/db_lmdb.h"
@@ -74,7 +76,6 @@ void BlockchainDB::add_transaction(
         const crypto::hash* tx_prunable_hash_ptr) {
     const transaction& tx = txp.first;
 
-    bool miner_tx = false;
     crypto::hash tx_hash, tx_prunable_hash;
     if (!tx_hash_ptr) {
         // should only need to compute hash for miner transactions
@@ -98,23 +99,23 @@ void BlockchainDB::add_transaction(
             has_blacklisted_outputs = true;
     }
 
-    for (const txin_v& tx_input : tx.vin) {
-        if (std::holds_alternative<txin_to_key>(tx_input)) {
-            add_spent_key(var::get<txin_to_key>(tx_input).k_image);
-        } else if (std::holds_alternative<txin_gen>(tx_input)) {
-            /* nothing to do here */
-            miner_tx = true;
-        } else {
-            log::info(
-                    logcat,
-                    "Unsupported input type, removing key images and aborting transaction "
-                    "addition");
-            for (const txin_v& tx_input : tx.vin) {
-                if (std::holds_alternative<txin_to_key>(tx_input)) {
-                    remove_spent_key(var::get<txin_to_key>(tx_input).k_image);
+    bool miner_tx = tx.is_miner_tx();
+    if (!miner_tx) {
+        for (const txin_v& tx_input : tx.vin) {
+            if (std::holds_alternative<txin_to_key>(tx_input)) {
+                add_spent_key(var::get<txin_to_key>(tx_input).k_image);
+            } else {
+                log::info(
+                        logcat,
+                        "Unsupported input type, removing key images and aborting transaction "
+                        "addition");
+                for (const txin_v& tx_input : tx.vin) {
+                    if (std::holds_alternative<txin_to_key>(tx_input)) {
+                        remove_spent_key(var::get<txin_to_key>(tx_input).k_image);
+                    }
                 }
+                return;
             }
-            return;
         }
     }
 
@@ -169,6 +170,10 @@ uint64_t BlockchainDB::add_block(
     // sanity
     if (blk.tx_hashes.size() != txs.size())
         throw oxen::traced<std::runtime_error>("Inconsistent tx/hashes sizes");
+    if ((blk.major_version >= feature::ETH_BLS) == blk.miner_tx.has_value())
+        throw oxen::traced<std::runtime_error>("Block with HF {} {} have a miner_tx"_format(
+                static_cast<int>(blk.major_version),
+                blk.major_version >= feature::ETH_BLS ? "should not" : "should"));
 
     auto started = std::chrono::steady_clock::now();
     crypto::hash blk_hash = get_block_hash(blk);
@@ -181,9 +186,11 @@ uint64_t BlockchainDB::add_block(
     started = std::chrono::steady_clock::now();
 
     uint64_t num_rct_outs = 0;
-    add_transaction(blk_hash, std::make_pair(blk.miner_tx, tx_to_blob(blk.miner_tx)));
-    if (blk.miner_tx.version >= cryptonote::txversion::v2_ringct)
-        num_rct_outs += blk.miner_tx.vout.size();
+    if (blk.miner_tx) {
+        add_transaction(blk_hash, std::make_pair(*blk.miner_tx, tx_to_blob(*blk.miner_tx)));
+        if (blk.miner_tx->version >= cryptonote::txversion::v2_ringct)
+            num_rct_outs += blk.miner_tx->vout.size();
+    }
 
     int tx_i = 0;
     crypto::hash tx_hash{};
@@ -228,7 +235,8 @@ void BlockchainDB::pop_block(block& blk, std::vector<transaction>& txs) {
         txs.push_back(std::move(tx));
         remove_transaction(h);
     }
-    remove_transaction(get_transaction_hash(blk.miner_tx));
+    if (blk.miner_tx)
+        remove_transaction(get_transaction_hash(*blk.miner_tx));
 }
 
 void BlockchainDB::remove_transaction(const crypto::hash& tx_hash) {

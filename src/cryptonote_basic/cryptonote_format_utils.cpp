@@ -31,16 +31,15 @@
 
 #include "cryptonote_format_utils.h"
 
+#include <common/exception.h>
+#include <common/i18n.h>
+#include <common/meta.h>
 #include <oxenc/hex.h>
 
 #include <atomic>
 #include <boost/algorithm/string.hpp>
 #include <limits>
 #include <variant>
-
-#include <common/i18n.h>
-#include <common/meta.h>
-#include <common/exception.h>
 
 #include "crypto/crypto.h"
 #include "crypto/hash.h"
@@ -57,12 +56,12 @@
 
 using namespace crypto;
 
-#define CHECK_AND_ASSERT_THROW_MES_L1(expr, frmt, ...)                \
-    {                                                                 \
-        if (!(expr)) {                                                \
-            log::warning(logcat, frmt, __VA_ARGS__);                  \
+#define CHECK_AND_ASSERT_THROW_MES_L1(expr, frmt, ...)                              \
+    {                                                                               \
+        if (!(expr)) {                                                              \
+            log::warning(logcat, frmt, __VA_ARGS__);                                \
             throw oxen::traced<std::runtime_error>(fmt::format(frmt, __VA_ARGS__)); \
-        }                                                             \
+        }                                                                           \
     }
 
 namespace cryptonote {
@@ -138,7 +137,7 @@ crypto::hash get_transaction_prefix_hash(const transaction_prefix& tx) {
 }
 //---------------------------------------------------------------
 bool expand_transaction_1(transaction& tx, bool base_only) {
-    if (tx.version >= txversion::v2_ringct && !is_coinbase(tx)) {
+    if (tx.version >= txversion::v2_ringct && !tx.is_miner_tx()) {
         rct::rctSig& rv = tx.rct_signatures;
         if (rv.type == rct::RCTType::Null)
             return true;
@@ -576,6 +575,9 @@ uint64_t get_transaction_weight(const transaction& tx) {
 
     return get_transaction_weight(tx, blob_size);
 }
+uint64_t get_transaction_weight(const std::optional<transaction>& tx) {
+    return tx ? get_transaction_weight(*tx) : 0;
+}
 //---------------------------------------------------------------
 bool get_tx_miner_fee(
         const transaction& tx, uint64_t& fee, bool burning_enabled, uint64_t* burned) {
@@ -990,7 +992,8 @@ bool add_service_node_removal_request_to_tx_extra(
 }
 //---------------------------------------------------------------
 bool add_service_node_removal_to_tx_extra(
-        std::vector<uint8_t>& tx_extra, const tx_extra_ethereum_service_node_removal& removal_data) {
+        std::vector<uint8_t>& tx_extra,
+        const tx_extra_ethereum_service_node_removal& removal_data) {
     tx_extra_field field = removal_data;
     if (!add_tx_extra_field_to_tx_extra(tx_extra, field)) {
         log::info(logcat, "failed to serialize tx extra for service node removal transaction");
@@ -1006,29 +1009,6 @@ bool get_inputs_money_amount(const transaction& tx, uint64_t& money) {
         money += tokey_in.amount;
     }
     return true;
-}
-//---------------------------------------------------------------
-uint64_t get_block_height(const block& b) {
-    cryptonote::block bl = b;
-    if (b.miner_tx.vout.size() > 0) {
-        CHECK_AND_ASSERT_MES(
-                b.miner_tx.vin.size() == 1,
-                0,
-                "wrong miner tx in block: {}, b.miner_tx.vin.size() != 1 (size is: {})",
-                get_block_hash(b),
-                b.miner_tx.vin.size());
-        CHECKED_GET_SPECIFIC_VARIANT(b.miner_tx.vin[0], txin_gen, coinbase_in, 0);
-        if (b.major_version >= hf::hf19_reward_batching) {
-            CHECK_AND_ASSERT_MES(
-                    coinbase_in.height == b.height,
-                    0,
-                    "wrong miner tx in block: {}",
-                    get_block_hash(b));
-        }
-        return coinbase_in.height;
-    } else {
-        return b.height;
-    }
 }
 //---------------------------------------------------------------
 bool check_inputs_types_supported(const transaction& tx) {
@@ -1119,6 +1099,9 @@ uint64_t get_outs_money_amount(const transaction& tx) {
     for (const auto& o : tx.vout)
         outputs_amount += o.amount;
     return outputs_amount;
+}
+uint64_t get_outs_money_amount(const std::optional<transaction>& tx) {
+    return tx ? get_outs_money_amount(*tx) : 0;
 }
 //---------------------------------------------------------------
 std::string short_hash_str(const crypto::hash& h) {
@@ -1593,7 +1576,7 @@ bool get_transaction_hash(const transaction& t, crypto::hash& res, size_t& blob_
 }
 //---------------------------------------------------------------
 std::string get_block_hashing_blob(const block& b) {
-    std::string blob = t_serializable_object_to_blob(static_cast<block_header>(b));
+    std::string blob = t_serializable_object_to_blob(static_cast<const block_header&>(b));
     crypto::hash tree_root_hash = get_tx_tree_hash(b);
     blob.append(reinterpret_cast<const char*>(&tree_root_hash), sizeof(tree_root_hash));
     blob.append(tools::get_varint_data(b.tx_hashes.size() + 1));
@@ -1657,7 +1640,8 @@ std::vector<uint64_t> absolute_output_offsets_to_relative(const std::vector<uint
         return false;
     }
     b.invalidate_hashes();
-    b.miner_tx.invalidate_hashes();
+    if (b.miner_tx)
+        b.miner_tx->invalidate_hashes();
     if (block_hash) {
         calculate_block_hash(b, *block_hash);
         b.hash = *block_hash;
@@ -1704,11 +1688,13 @@ crypto::hash get_tx_tree_hash(const std::vector<crypto::hash>& tx_hashes) {
 crypto::hash get_tx_tree_hash(const block& b) {
     std::vector<crypto::hash> txs_ids;
     txs_ids.reserve(1 + b.tx_hashes.size());
-    crypto::hash h{};
-    size_t bl_sz = 0;
-    CHECK_AND_ASSERT_THROW_MES(
-            get_transaction_hash(b.miner_tx, h, bl_sz), "Failed to calculate transaction hash");
-    txs_ids.push_back(h);
+    if (b.major_version < feature::ETH_BLS) {
+        assert(b.miner_tx);
+        auto& h = txs_ids.emplace_back();
+        CHECK_AND_ASSERT_THROW_MES(
+                get_transaction_hash(*b.miner_tx, h, nullptr),
+                "Failed to calculate miner transaction hash");
+    }
     for (auto& th : b.tx_hashes)
         txs_ids.push_back(th);
     return get_tx_tree_hash(txs_ids);

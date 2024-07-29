@@ -188,8 +188,7 @@ int main(int argc, char* argv[]) {
         log::warning(logcat, "Scanning for known spent data...");
         db->for_all_transactions(
                 [&](const crypto::hash& txid, const cryptonote::transaction& tx) {
-                    const bool miner_tx =
-                            tx.vin.size() == 1 && std::holds_alternative<txin_gen>(tx.vin[0]);
+                    const bool miner_tx = tx.is_miner_tx();
                     for (const auto& in : tx.vin)
                         if (const auto* txin = std::get_if<txin_to_key>(&in);
                             txin && txin->amount != 0)

@@ -380,7 +380,7 @@ static void send_notifies(Mutex& mutex, Subs& subs, const char* desc, Call call)
 
 void omq_rpc::send_block_notifications(const block& block) {
     auto& omq = core_.get_omq();
-    std::string height = "{}"_format(get_block_height(block));
+    std::string height = "{}"_format(block.get_height());
     send_notifies(subs_mutex_, block_subs_, "block", [&](auto& conn, auto& sub) {
         omq.send(conn, "notify.block", height, tools::view_guts(block.hash));
     });
@@ -502,11 +502,11 @@ void omq_rpc::on_get_blocks(oxenmq::Message& m) {
 
         std::vector<uint64_t> indices;
 
-        {
+        if (b.miner_tx) {
             bt_dict tx_bt;
 
             crypto::hash miner_tx_hash;
-            cryptonote::get_transaction_hash(b.miner_tx, miner_tx_hash, nullptr);
+            cryptonote::get_transaction_hash(*b.miner_tx, miner_tx_hash, nullptr);
 
             if (not core_.get_tx_outputs_gindexs(miner_tx_hash, indices)) {
                 m.send_reply("Unknown error fetching output info.");
@@ -514,8 +514,8 @@ void omq_rpc::on_get_blocks(oxenmq::Message& m) {
             }
 
             tx_bt["global_indices"] = bt_list(indices.begin(), indices.end());
-            tx_bt["hash"] = std::string{tools::view_guts(miner_tx_hash)};
-            tx_bt["tx"] = tx_to_blob(b.miner_tx);
+            tx_bt["hash"] = tools::copy_guts(miner_tx_hash);
+            tx_bt["tx"] = tx_to_blob(*b.miner_tx);
 
             tx_list_bt.push_back(std::move(tx_bt));
         }

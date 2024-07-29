@@ -184,7 +184,7 @@ bool gen_block_invalid_nonce::generate(std::vector<test_event_entry>& events) co
   do
   {
     ++timestamp;
-    blk_3.miner_tx.set_null();
+    blk_3.miner_tx.value().set_null();
     if (!generator.construct_block_manually(blk_3, blk_last, miner_account,
       test_generator::bf_diffic | test_generator::bf_timestamp, hf::none, 0, timestamp, crypto::hash(), diffic))
       return false;
@@ -214,7 +214,7 @@ bool gen_block_no_miner_tx::generate(std::vector<test_event_entry>& events) cons
 
 #define MAKE_MINER_TX_MANUALLY(TX, BLK)                                                                                \
   transaction TX;                                                                                                      \
-  auto [r, block_rewards] = construct_miner_tx(get_block_height(BLK) + 1,                                              \
+  auto [r, block_rewards] = construct_miner_tx(BLK.get_height() + 1,                                                   \
                           0,                                                                                           \
                           generator.get_already_generated_coins(BLK),                                                  \
                           0,                                                                                           \
@@ -330,7 +330,7 @@ bool gen_block_miner_tx_has_2_tx_gen_in::generate(std::vector<test_event_entry>&
   MAKE_MINER_TX_MANUALLY(miner_tx, blk_0);
 
   txin_gen in;
-  in.height = get_block_height(blk_0) + 1;
+  in.height = blk_0.get_height() + 1;
   miner_tx.vin.push_back(in);
 
   block blk_1;
@@ -350,7 +350,7 @@ bool gen_block_miner_tx_has_2_in::generate(std::vector<test_event_entry>& events
 
   transaction tmp_tx;
 
-  if (!oxen_tx_builder(events, tmp_tx, blk_0r, miner_account, miner_account.get_keys().m_account_address, blk_0.miner_tx.vout[0].amount, cryptonote::hf::hf7).build())
+  if (!oxen_tx_builder(events, tmp_tx, blk_0r, miner_account, miner_account.get_keys().m_account_address, blk_0.miner_tx.value().vout[0].amount, cryptonote::hf::hf7).build())
     return false;
 
   MAKE_MINER_TX_MANUALLY(miner_tx, blk_0r);
@@ -377,7 +377,7 @@ bool gen_block_miner_tx_with_txin_to_key::generate(std::vector<test_event_entry>
   REWIND_BLOCKS(events, blk_1r, blk_1, miner_account);
 
   transaction tmp_tx;
-  if (!oxen_tx_builder(events, tmp_tx, blk_1r, miner_account, miner_account.get_keys().m_account_address, blk_1.miner_tx.vout[0].amount, cryptonote::hf::hf7).build())
+  if (!oxen_tx_builder(events, tmp_tx, blk_1r, miner_account, miner_account.get_keys().m_account_address, blk_1.miner_tx.value().vout[0].amount, cryptonote::hf::hf7).build())
     return false;
 
   MAKE_MINER_TX_MANUALLY(miner_tx, blk_1);
@@ -509,7 +509,7 @@ bool gen_block_miner_tx_has_out_to_alice::generate(std::vector<test_event_entry>
 
   transaction miner_tx;
 
-  const auto height = get_block_height(blk_0);
+  const auto height = blk_0.get_height();
   const auto coins = generator.get_already_generated_coins(blk_0);
   const auto& miner_address = miner_account.get_keys().m_account_address;
   const auto& alice_address = alice.get_keys().m_account_address;

@@ -224,7 +224,7 @@ bool tests::proxy_core::handle_incoming_block(const std::string& block_blob, con
     crypto::hash h = get_block_hash(b);
     crypto::hash lh = get_block_longhash_w_blockchain(network_type::FAKECHAIN, NULL, b, 0, 0);
     fmt::print("BLOCK\n\n{}\n{}\n{}\n{}\n{}\n\nENDBLOCK\n\n",
-        h, lh, get_transaction_hash(b.miner_tx), get_object_blobsize(b.miner_tx), obj_to_json_str(b));
+        h, lh, b.miner_tx ? get_transaction_hash(*b.miner_tx) : crypto::null<crypto::hash>, b.miner_tx ? get_object_blobsize(*b.miner_tx) : 0, obj_to_json_str(b));
 
     if (!add_block(h, lh, b, block_blob, checkpoint))
         return false;

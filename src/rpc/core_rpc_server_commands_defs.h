@@ -651,37 +651,6 @@ struct GET_BLOCK_HASH : PUBLIC {
     } request;
 };
 
-// FIXME: This struct should go; it's just a bit of indirection (in _commands_defs.cpp) that isn't
-// solve anything (because we can just set the fields directly in the output json values rather
-// than use `fill_block_header_response`).
-struct block_header_response {
-    uint8_t major_version;
-    uint8_t minor_version;
-    uint64_t timestamp;
-    std::string prev_hash;
-    uint32_t nonce;
-    bool orphan_status;
-    uint64_t height;
-    uint64_t depth;
-    std::string hash;
-    difficulty_type difficulty;
-    difficulty_type cumulative_difficulty;
-    uint64_t reward;
-    uint64_t coinbase_payouts;
-    uint64_t block_size;
-    uint64_t block_weight;
-    uint64_t num_txes;
-    std::optional<std::string> pow_hash;
-    uint64_t long_term_weight;
-    std::string miner_tx_hash;
-    std::vector<std::string> tx_hashes;
-    std::string service_node_winner;
-    uint64_t l2_height;
-};
-
-void to_json(nlohmann::json& j, const block_header_response& h);
-void from_json(const nlohmann::json& j, block_header_response& h);
-
 /// RPC: blockchain/get_last_block_header
 ///
 /// Block header information for the most recent block is easily retrieved with this method. No
