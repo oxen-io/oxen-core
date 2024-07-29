@@ -1531,8 +1531,8 @@ void core_rpc_server::invoke(GET_LAST_BLOCK_HEADER& get_last_block_header, rpc_c
 //------------------------------------------------------------------------------------------------------------------------------
 
 void core_rpc_server::invoke(
-        GET_BLOCK_HEADER_BY_HASH& get_block_header_by_hash, rpc_context context) {
-    auto get = [this, &get_block_header_by_hash, admin = context.admin](
+        GET_BLOCK_HEADER_BY_HASH& gbh, rpc_context context) {
+    auto get = [this, &gbh, admin = context.admin](
                        const std::string& hash, block_header_response& block_header) {
         crypto::hash block_hash;
         if (!tools::try_load_from_hex_guts(hash, block_hash))
@@ -1558,22 +1558,27 @@ void core_rpc_server::invoke(
                 block_height,
                 block_hash,
                 block_header,
-                get_block_header_by_hash.request.fill_pow_hash && admin,
-                get_block_header_by_hash.request.get_tx_hashes);
+                gbh.request.fill_pow_hash && admin,
+                gbh.request.get_tx_hashes);
     };
 
-    if (!get_block_header_by_hash.request.hash.empty()) {
+    if (!gbh.request.hash.empty()) {
         block_header_response block_header;
-        get(get_block_header_by_hash.request.hash, block_header);
-        get_block_header_by_hash.response["block_header"] = block_header;
+        get(gbh.request.hash, block_header);
+        gbh.response["block_header"] = block_header;
     }
 
-    std::vector<block_header_response> block_headers;
-    for (const std::string& hash : get_block_header_by_hash.request.hashes)
-        get(hash, block_headers.emplace_back());
+    if (!gbh.request.hashes.empty()) {
+        auto& out_headers = gbh.response["block_headers"];
+        out_headers = json::array();
+        for (const std::string& hash : gbh.request.hashes) {
+            block_header_response block_header;
+            get(hash, block_header);
+            out_headers.push_back(block_header);
+        }
+    }
 
-    get_block_header_by_hash.response["block_headers"] = block_headers;
-    get_block_header_by_hash.response["status"] = STATUS_OK;
+    gbh.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(
