@@ -32,7 +32,6 @@ oxen_add_library(cryptonote_protocol
   cryptonote_protocol_handler.inl
   cryptonote_protocol_defs.cpp
   quorumnet.cpp
-  core_protocol_instantiation.cpp
   p2p_net_node_instantiation.cpp
 )
 
