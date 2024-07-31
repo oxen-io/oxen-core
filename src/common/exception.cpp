@@ -23,16 +23,16 @@ void set_terminate_handler() {
             if (ptr) {
                 std::rethrow_exception(ptr);
             } else {
-                fmt::println(stderr, "Terminate called without an active exception");
+                fmt::print(stderr, "Terminate called without an active exception\n");
             }
         } catch (cpptrace::exception& e) {
-            fmt::println(
+            fmt::print(
                     stderr,
                     "Terminate called after throwing an instance of {}: {}\n",
                     cpptrace::demangle(typeid(e).name()),
                     e.what());
         } catch (std::exception& e) {
-            fmt::println(
+            fmt::print(
                     stderr,
                     "Terminate called after throwing an instance of {}: {}\n",
                     cpptrace::demangle(typeid(e).name()),
