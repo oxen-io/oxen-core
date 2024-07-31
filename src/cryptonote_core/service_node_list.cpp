@@ -884,11 +884,7 @@ bool service_node_list::state_t::process_state_change_tx(
     quorum_manager const* quorums = &it->quorums;
     cryptonote::tx_verification_context tvc = {};
     if (!verify_tx_state_change(
-                state_change,
-                block.get_height(),
-                tvc,
-                *quorums->obligations,
-                hf_version)) {
+                state_change, block.get_height(), tvc, *quorums->obligations, hf_version)) {
         quorums = nullptr;
         for (const auto& [hash, alt_state] : alt_states) {
             if (alt_state.height != state_change.block_height)
@@ -896,11 +892,7 @@ bool service_node_list::state_t::process_state_change_tx(
 
             quorums = &alt_state.quorums;
             if (!verify_tx_state_change(
-                        state_change,
-                        block.get_height(),
-                        tvc,
-                        *quorums->obligations,
-                        hf_version)) {
+                        state_change, block.get_height(), tvc, *quorums->obligations, hf_version)) {
                 quorums = nullptr;
                 continue;
             }
@@ -943,16 +935,37 @@ bool service_node_list::state_t::process_state_change_tx(
     auto& info = duplicate_info(iter->second);
     bool is_me = my_keys && my_keys->pub == key;
 
+    // Build a decomm/dereg quorum reason string list if this is a dereg/decom so that we can print
+    // it in the log.  For "is_me" we put full strings, otherwise short codes.
+    std::vector<std::string> reasons;
+    if (state_change.state == new_state::deregister ||
+        state_change.state == new_state::decommission) {
+        auto* get_reasons = is_me ? cryptonote::readable_reasons : cryptonote::coded_reasons;
+        reasons = get_reasons(state_change.reason_consensus_all);
+        auto reasons_some =
+                get_reasons(state_change.reason_consensus_any & ~state_change.reason_consensus_all);
+        if (!reasons_some.empty()) {
+            reasons.reserve(reasons.size() + reasons_some.size());
+            for (const auto& r : reasons_some)
+                reasons.push_back(r + (is_me ? " (non-unanimous)" : "*"));
+        }
+    }
+
     switch (state_change.state) {
         case new_state::deregister:
             if (is_me)
                 log::warning(
                         globallogcat,
                         fg(fmt::terminal_color::red) | fmt::emphasis::bold,
-                        "Deregistration for service node (yours): {}",
-                        key);
+                        "Deregistration for service node (yours): {}; quorum reasons:\n{}",
+                        key,
+                        fmt::join(reasons, ",\n"));
             else
-                log::info(logcat, "Deregistration for service node: {}", key);
+                log::info(
+                        logcat,
+                        "Deregistration for service node: {}; quorum reasons: {{{}}}",
+                        key,
+                        fmt::join(reasons, ","));
 
             if (hf_version >= hf::hf11_infinite_staking) {
                 for (const auto& contributor : info.contributors) {
@@ -989,10 +1002,15 @@ bool service_node_list::state_t::process_state_change_tx(
                 log::warning(
                         globallogcat,
                         fg(fmt::terminal_color::red) | fmt::emphasis::bold,
-                        "Temporary decommission for service node (yours): {}",
-                        key);
+                        "Temporary decommission for service node (yours): {}; quorum reasons:\n{}",
+                        key,
+                        fmt::join(reasons, ",\n"));
             else
-                log::info(logcat, "Temporary decommission for service node: {}", key);
+                log::info(
+                        logcat,
+                        "Temporary decommission for service node: {}; quorum reasons: {{{}}}",
+                        key,
+                        fmt::join(reasons, ","));
 
             info.active_since_height = -info.active_since_height;
             info.last_decommission_height = block_height;
