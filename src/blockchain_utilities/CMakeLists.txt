@@ -62,16 +62,6 @@ if(BUILD_BLOCKCHAIN_UTILS)
     target_link_libraries(blockchain_export PRIVATE blockchain_tools_common_libs)
 
 
-    oxen_add_executable(blockchain_blackball "oxen-blockchain-mark-spent-outputs"
-      blockchain_blackball.cpp
-      )
-
-    target_link_libraries(blockchain_blackball
-      PRIVATE
-        blockchain_tools_common_libs
-        wallet)
-
-
     oxen_add_executable(blockchain_usage "oxen-blockchain-usage"
       blockchain_usage.cpp
       )
