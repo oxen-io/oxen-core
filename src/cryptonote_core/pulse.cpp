@@ -1139,7 +1139,7 @@ namespace {
 
         uint64_t prev_timestamp = 0;
         try {
-            prev_timestamp = blockchain.get_db().get_block_timestamp(chain_height - 1);
+            prev_timestamp = blockchain.db().get_block_timestamp(chain_height - 1);
         } catch (std::exception const& e) {
             for (static uint64_t last_height = 0; last_height != chain_height;
                  last_height = chain_height)
@@ -1254,19 +1254,17 @@ namespace {
                     context.transient.random_value_hashes.wait.stage.end_time +
                     conf.PULSE_STAGE_TIMEOUT;
             context.transient.signed_block.wait.stage.end_time =
-                    context.transient.random_value.wait.stage.end_time +
-                    conf.PULSE_STAGE_TIMEOUT;
+                    context.transient.random_value.wait.stage.end_time + conf.PULSE_STAGE_TIMEOUT;
         }
 
         std::vector<crypto::hash> const entropy = service_nodes::get_pulse_entropy_for_next_block(
-                blockchain.get_db(),
+                blockchain.db(),
                 context.wait_for_next_block.top_hash,
                 context.prepare_for_round.round);
-        auto const active_node_list =
-                blockchain.get_service_node_list().active_service_nodes_infos();
+        auto const active_node_list = blockchain.service_node_list.active_service_nodes_infos();
         auto hf_version = blockchain.get_network_version();
         crypto::public_key const& block_leader =
-                blockchain.get_service_node_list().get_block_leader().key;
+                blockchain.service_node_list.get_block_leader().key;
 
         context.prepare_for_round.quorum = service_nodes::generate_pulse_quorum(
                 blockchain.nettype(),
@@ -1572,7 +1570,7 @@ namespace {
             cryptonote::Blockchain& blockchain) {
         assert(context.prepare_for_round.participant == sn_type::producer);
         std::vector<service_nodes::service_node_pubkey_info> list_state =
-                blockchain.get_service_node_list().get_service_node_list_state({key.pub});
+                blockchain.service_node_list.get_service_node_list_state({key.pub});
 
         // Invariants
         if (list_state.empty()) {
@@ -1947,7 +1945,7 @@ namespace {
 }  // anonymous namespace
 
 void main(void* quorumnet_state, cryptonote::core& core) {
-    cryptonote::Blockchain& blockchain = core.get_blockchain_storage();
+    cryptonote::Blockchain& blockchain = core.blockchain;
     service_nodes::service_node_keys const& key = core.get_service_keys();
 
     //
@@ -1970,7 +1968,7 @@ void main(void* quorumnet_state, cryptonote::core& core) {
         return;
     }
 
-    service_nodes::service_node_list& node_list = core.get_service_node_list();
+    auto& node_list = core.service_node_list;
     for (auto last_state = round_state::null_state;
          last_state != context.state || last_state == round_state::null_state;) {
         last_state = context.state;

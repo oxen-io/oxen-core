@@ -465,7 +465,7 @@ int main(int argc, char* argv[]) {
     tools::signal_handler::install([](int type) { stop_requested = true; });
 
     // forward method
-    auto& db = core_storage->get_db();
+    auto& db = core_storage->db();
     const uint64_t db_height = db.height();
     if (opt_refresh) {
         log::info(logcat, "Starting from height {}", state.height);

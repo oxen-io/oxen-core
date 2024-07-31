@@ -144,12 +144,12 @@ bool gen_chain_switch_1::check_split_not_switched(cryptonote::core& c, size_t ev
   m_recipient_account_4 = var::get<account_base>(events[4]);
 
   std::vector<block> blocks;
-  bool r = c.get_blocks(0, 10000, blocks);
+  bool r = c.blockchain.get_blocks(0, 10000, blocks);
   CHECK_TEST_CONDITION(r);
   CHECK_EQ(5 + 3 * MINED_MONEY_UNLOCK_WINDOW, blocks.size());
   CHECK_TEST_CONDITION(blocks.back() == var::get<block>(events[20 + 3 * MINED_MONEY_UNLOCK_WINDOW]));  // blk_4
 
-  CHECK_EQ(2, c.get_alternative_blocks_count());
+  CHECK_EQ(2, c.blockchain.get_alternative_blocks_count());
 
   std::vector<cryptonote::block> chain;
   map_hash2tx_t mtx;
@@ -161,7 +161,7 @@ bool gen_chain_switch_1::check_split_not_switched(cryptonote::core& c, size_t ev
   CHECK_EQ(MK_COINS(3),  get_balance(m_recipient_account_4, chain, mtx));
 
   std::vector<transaction> tx_pool;
-  c.get_pool().get_transactions(tx_pool);
+  c.mempool.get_transactions(tx_pool);
   CHECK_EQ(1, tx_pool.size());
 
   std::vector<size_t> tx_outs;
@@ -181,7 +181,7 @@ bool gen_chain_switch_1::check_split_switched(cryptonote::core& c, size_t ev_ind
   DEFINE_TESTS_ERROR_CONTEXT("gen_chain_switch_1::check_split_switched");
 
   std::vector<block> blocks;
-  bool r = c.get_blocks(0, 10000, blocks);
+  bool r = c.blockchain.get_blocks(0, 10000, blocks);
   CHECK_TEST_CONDITION(r);
   CHECK_EQ(6 + 3 * MINED_MONEY_UNLOCK_WINDOW, blocks.size());
   auto it = blocks.end();
@@ -190,9 +190,9 @@ bool gen_chain_switch_1::check_split_switched(cryptonote::core& c, size_t ev_ind
   CHECK_TEST_CONDITION(blocks.back() == var::get<block>(events[24 + 3 * MINED_MONEY_UNLOCK_WINDOW]));  // blk_7
 
   std::vector<block> alt_blocks;
-  r = c.get_alternative_blocks(alt_blocks);
+  r = c.blockchain.get_alternative_blocks(alt_blocks);
   CHECK_TEST_CONDITION(r);
-  CHECK_EQ(2, c.get_alternative_blocks_count());
+  CHECK_EQ(2, c.blockchain.get_alternative_blocks_count());
 
   // Some blocks that were in main chain are in alt chain now
   for (block &b : alt_blocks)
@@ -210,7 +210,7 @@ bool gen_chain_switch_1::check_split_switched(cryptonote::core& c, size_t ev_ind
   CHECK_EQ(MK_COINS(16), get_balance(m_recipient_account_4, chain, mtx));
 
   std::vector<transaction> tx_pool;
-  c.get_pool().get_transactions(tx_pool);
+  c.mempool.get_transactions(tx_pool);
   CHECK_EQ(1, tx_pool.size());
   CHECK_TEST_CONDITION(!(tx_pool.front() == m_tx_pool.front()));
 

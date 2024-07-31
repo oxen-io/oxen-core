@@ -39,7 +39,7 @@ namespace cryptonote {
 // the whole prepare/handle/cleanup incoming block sequence.
 class LockedTXN {
   public:
-    LockedTXN(Blockchain& b) : m_db{b.get_db()} { m_batch = m_db.batch_start(); }
+    LockedTXN(Blockchain& b) : m_db{b.db()} { m_batch = m_db.batch_start(); }
     LockedTXN(const LockedTXN&) = delete;
     LockedTXN& operator=(const LockedTXN&) = delete;
     LockedTXN(LockedTXN&& o) : m_db{o.m_db}, m_batch{o.m_batch} { o.m_batch = false; }

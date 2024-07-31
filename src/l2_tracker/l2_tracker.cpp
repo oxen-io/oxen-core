@@ -38,12 +38,12 @@ L2Tracker::L2Tracker(cryptonote::core& core_, std::chrono::milliseconds update_f
     // object starts (which hasn't happened yet when we get constructed).  In the first call, we
     // kick off a state update then replace the timer with one that fires updates at the slower
     // `update_frequency` rate.
-    oxenmq::TaggedThreadID dedicated_thread = core.get_omq().add_tagged_thread("L2 Tracker");
-    core.get_omq().add_timer(
+    oxenmq::TaggedThreadID dedicated_thread = core.omq().add_tagged_thread("L2 Tracker");
+    core.omq().add_timer(
             updater,
             [this, update_frequency, dedicated_thread] {
                 update_state();
-                auto& omq = core.get_omq();
+                auto& omq = core.omq();
                 omq.cancel_timer(updater);
                 updater = omq.add_timer(
                         [this] { update_state(); },
@@ -362,7 +362,7 @@ void L2Tracker::add_to_mempool(
 
     using namespace cryptonote;
 
-    const auto hf_version = core.get_blockchain_storage().get_network_version();
+    const auto hf_version = core.blockchain.get_network_version();
     transaction tx;
     tx.version = transaction_prefix::get_max_version_for_hf(hf_version);
 
@@ -406,7 +406,7 @@ void L2Tracker::add_to_mempool(
     tx_verification_context tvc = {};
 
     // Add transaction to memory pool
-    if (!core.get_pool().add_tx(
+    if (!core.mempool.add_tx(
                 tx,
                 tx_hash,
                 cryptonote::tx_to_blob(tx),
@@ -493,7 +493,7 @@ void L2Tracker::update_logs() {
                     //   (1):         Lock(TX Pool, Blockchain)
                     //   (2):         Lock(Blockchain) -> Lock(L2 Tracker)
                     //
-                    auto locks = tools::unique_locks(mutex, core.get_pool());
+                    auto locks = tools::unique_locks(mutex, core.mempool);
                     if (!logs) {
                         log::warning(logcat, "Failed to retrieve L2 logs for {}-{}", from, to);
                         update_in_progress = false;

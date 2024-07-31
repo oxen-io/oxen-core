@@ -417,7 +417,7 @@ namespace {
             throw parse_error{"Failed to parse binary data parameters"};
 
         std::vector<crypto::hash> pool_hashes;
-        data->core_rpc.get_core().get_pool().get_transaction_hashes(
+        data->core_rpc.get_core().mempool.get_transaction_hashes(
                 pool_hashes,
                 data->request.context.admin,
                 req.blinked_txs_only /*include_only_blinked*/);
@@ -558,7 +558,7 @@ void http_server::handle_base_request(
         if (!done)
             return;
 
-        auto& omq = data->core_rpc.get_core().get_omq();
+        auto& omq = data->core_rpc.get_core().omq();
         std::string cat{data->call->is_public ? "rpc" : "admin"};
         std::string cmd{"http:" + data->uri};  // Used for OMQ job logging; prefixed with http: so
                                                // we can distinguish it
@@ -648,7 +648,7 @@ void http_server::handle_json_rpc_request(HttpResponse& res, HttpRequest& req) {
         if (auto it = jsonrpc.find("params"); it != jsonrpc.end())
             data->request.body = *it;
 
-        auto& omq = data->core_rpc.get_core().get_omq();
+        auto& omq = data->core_rpc.get_core().omq();
         std::string cat{data->call->is_public ? "rpc" : "admin"};
         std::string cmd{"jsonrpc:" + *method};  // Used for OMQ job logging; prefixed with jsonrpc:
                                                 // so we can distinguish it
@@ -675,7 +675,7 @@ void http_server::start() {
     m_sent_startup = true;
     m_listen_socks = m_startup_success.get();
 
-    auto& omq = m_server.get_core().get_omq();
+    auto& omq = m_server.get_core().omq();
     if (timer_started.insert(&omq).second)
         omq.add_timer(long_poll_process_timeouts, 1s);
 }

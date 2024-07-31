@@ -104,12 +104,10 @@ service_node_test_results quorum_cop::check_service_node(
     participation_history<service_nodes::timestamp_participation_entry> timestamp_participation{};
     participation_history<service_nodes::timesync_entry> timesync_status{};
 
-    constexpr std::array<uint16_t, 3> MIN_TIMESTAMP_VERSION{9, 1, 0};
-
     const auto unreachable_threshold =
             netconf.UPTIME_PROOF_VALIDITY - netconf.UPTIME_PROOF_FREQUENCY;
 
-    m_core.get_service_node_list().access_proof(pubkey, [&](const proof_info& proof) {
+    m_core.service_node_list.access_proof(pubkey, [&](const proof_info& proof) {
         ss_reachable = !proof.ss_reachable.unreachable_for(unreachable_threshold);
         lokinet_reachable = !proof.lokinet_reachable.unreachable_for(unreachable_threshold);
         timestamp = std::max(proof.timestamp, proof.effective_timestamp);
@@ -151,7 +149,7 @@ service_node_test_results quorum_cop::check_service_node(
         // Figure out when we last had a blockchain-level IP change penalty (or when we registered);
         // we only consider IP changes starting two hours after the last IP penalty.
         std::vector<cryptonote::block> blocks;
-        if (m_core.get_blocks(info.last_ip_change_height, 1, blocks)) {
+        if (m_core.blockchain.get_blocks(info.last_ip_change_height, 1, blocks)) {
             uint64_t find_ips_used_since = std::max(
                     uint64_t(std::time(nullptr)) - std::chrono::seconds{IP_CHANGE_WINDOW}.count(),
                     uint64_t(blocks[0].timestamp) + std::chrono::seconds{IP_CHANGE_BUFFER}.count());
@@ -257,12 +255,13 @@ void quorum_cop::process_quorums(cryptonote::block const& block) {
                                                       ? REORG_SAFETY_BUFFER_BLOCKS_POST_HF12
                                                       : REORG_SAFETY_BUFFER_BLOCKS_PRE_HF12;
     const auto& my_keys = m_core.get_service_keys();
-    bool voting_enabled =
-            m_core.service_node() && m_core.is_service_node(my_keys.pub, /*require_active=*/true);
+    bool voting_enabled = m_core.service_node() && m_core.service_node_list.is_service_node(
+                                                           my_keys.pub, /*require_active=*/true);
 
     uint64_t const height = block.get_height();
-    uint64_t const latest_height =
-            std::max(m_core.get_current_blockchain_height(), m_core.get_target_blockchain_height());
+    uint64_t const latest_height = std::max(
+            m_core.blockchain.get_current_blockchain_height(),
+            m_core.get_target_blockchain_height());
     if (latest_height < VOTE_LIFETIME)
         return;
 
@@ -299,12 +298,13 @@ void quorum_cop::process_quorums(cryptonote::block const& block) {
                     // before the minimum lifetime for same purposes, note, we still
                     // don't vote for the first 2 hours so this is purely cosmetic
                     if (obligations_height_hf_version >= hf::hf12_checkpointing) {
-                        auto& node_list = m_core.get_service_node_list();
+                        auto& node_list = m_core.service_node_list;
 
                         auto quorum = node_list.get_quorum(
                                 quorum_type::checkpointing, m_obligations_height);
                         std::vector<cryptonote::block> blocks;
-                        if (quorum && m_core.get_blocks(m_obligations_height, 1, blocks)) {
+                        if (quorum &&
+                            m_core.blockchain.get_blocks(m_obligations_height, 1, blocks)) {
                             cryptonote::block const& block = blocks[0];
                             if (start_time < static_cast<ptrdiff_t>(block.timestamp)) {
                                 // NOTE: If we started up before receiving the block, we likely have
@@ -334,7 +334,8 @@ void quorum_cop::process_quorums(cryptonote::block const& block) {
                     if (!m_core.service_node())
                         continue;
 
-                    auto quorum = m_core.get_quorum(quorum_type::obligations, m_obligations_height);
+                    auto quorum = m_core.service_node_list.get_quorum(
+                            quorum_type::obligations, m_obligations_height);
                     if (!quorum) {
                         // TODO(oxen): Fatal error
                         log::error(
@@ -353,7 +354,8 @@ void quorum_cop::process_quorums(cryptonote::block const& block) {
                         //
                         // NOTE: I am in the quorum
                         //
-                        auto worker_states = m_core.get_service_node_list_state(quorum->workers);
+                        auto worker_states = m_core.service_node_list.get_service_node_list_state(
+                                quorum->workers);
                         auto worker_it = worker_states.begin();
                         std::unique_lock lock{m_lock};
                         int good = 0, total = 0;
@@ -512,7 +514,8 @@ void quorum_cop::process_quorums(cryptonote::block const& block) {
                         // based on _our_ data and if so, report it to the user so they
                         // know about it.
 
-                        const auto states_array = m_core.get_service_node_list_state({my_keys.pub});
+                        const auto states_array =
+                                m_core.service_node_list.get_service_node_list_state({my_keys.pub});
                         if (states_array.size()) {
                             const auto& info = *states_array[0].info;
                             if (info.can_be_voted_on(m_obligations_height)) {
@@ -574,7 +577,7 @@ void quorum_cop::process_quorums(cryptonote::block const& block) {
                         if (m_last_checkpointed_height < REORG_SAFETY_BUFFER_BLOCKS)
                             continue;
 
-                        auto quorum = m_core.get_quorum(
+                        auto quorum = m_core.service_node_list.get_quorum(
                                 quorum_type::checkpointing, m_last_checkpointed_height);
                         if (!quorum) {
                             // TODO(oxen): Fatal error
@@ -593,8 +596,8 @@ void quorum_cop::process_quorums(cryptonote::block const& block) {
                         //
                         // NOTE: I am in the quorum, handle checkpointing
                         //
-                        crypto::hash block_hash =
-                                m_core.get_block_id_by_height(m_last_checkpointed_height);
+                        crypto::hash block_hash = m_core.blockchain.get_block_id_by_height(
+                                m_last_checkpointed_height);
                         quorum_vote_t vote = make_checkpointing_vote(
                                 checkpointed_height_hf_version,
                                 block_hash,
@@ -640,14 +643,15 @@ static bool handle_obligations_vote(
         return true;
     }
 
-    auto net = core.get_blockchain_storage().get_network_version();
+    auto net = core.blockchain.get_network_version();
 
     // NOTE: Verify state change is still valid or have we processed some other state change already
     // that makes it invalid
     {
         crypto::public_key const& service_node_pubkey =
                 quorum.workers[vote.state_change.worker_index];
-        auto service_node_infos = core.get_service_node_list_state({service_node_pubkey});
+        auto service_node_infos =
+                core.service_node_list.get_service_node_list_state({service_node_pubkey});
         if (!service_node_infos.size() || !service_node_infos[0].info->can_transition_to_state(
                                                   net, vote.block_height, vote.state_change.state))
             // NOTE: Vote is valid but is invalidated because we cannot apply the change to a
@@ -720,7 +724,7 @@ static bool handle_checkpoint_vote(
     }
 
     cryptonote::checkpoint_t checkpoint{};
-    cryptonote::Blockchain& blockchain = core.get_blockchain_storage();
+    cryptonote::Blockchain& blockchain = core.blockchain;
 
     // NOTE: Multiple network threads are going to try and update the
     // checkpoint, blockchain.update_checkpoint does NOT do any
@@ -768,9 +772,10 @@ static bool handle_checkpoint_vote(
                 }
             }
         }
-    } else if (vote.block_height < core.get_current_blockchain_height())  // Don't accept
-                                                                          // checkpoints for blocks
-                                                                          // we don't have yet
+    } else if (vote.block_height < blockchain.get_current_blockchain_height())  // Don't accept
+                                                                                // checkpoints for
+                                                                                // blocks we don't
+                                                                                // have yet
     {
         update_checkpoint = true;
         checkpoint =
@@ -790,10 +795,11 @@ static bool handle_checkpoint_vote(
 bool quorum_cop::handle_vote(
         quorum_vote_t const& vote, cryptonote::vote_verification_context& vvc) {
     vvc = {};
-    if (!verify_vote_age(vote, m_core.get_current_blockchain_height(), vvc))
+    if (!verify_vote_age(vote, m_core.blockchain.get_current_blockchain_height(), vvc))
         return false;
 
-    std::shared_ptr<const quorum> quorum = m_core.get_quorum(vote.type, vote.block_height);
+    std::shared_ptr<const quorum> quorum =
+            m_core.service_node_list.get_quorum(vote.type, vote.block_height);
     if (!quorum) {
         vvc.m_invalid_block_height = true;
         return false;

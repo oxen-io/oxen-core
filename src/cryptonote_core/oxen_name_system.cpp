@@ -2180,7 +2180,7 @@ AND NOT EXISTS   (SELECT * FROM mappings WHERE owner.id = mappings.backup_owner_
                 return false;
             }
 
-            if (blockchain->get_db().is_read_only()) {
+            if (blockchain->db().is_read_only()) {
                 log::error(logcat, "DB is opened in read-only mode, unable to migrate ONS DB");
                 return false;
             }
@@ -2273,8 +2273,7 @@ AND NOT EXISTS   (SELECT * FROM mappings WHERE owner.id = mappings.backup_owner_
             return nettype == cryptonote::network_type::FAKECHAIN;
         }
 
-        uint64_t ons_height = 0;
-        crypto::hash ons_hash = blockchain->get_tail_id(ons_height);
+        auto [ons_height, ons_hash] = blockchain->get_tail_id();
 
         // Try support out of date ONS databases by checking if the stored
         // settings->[top_hash|top_height] match what we expect. If they match, we

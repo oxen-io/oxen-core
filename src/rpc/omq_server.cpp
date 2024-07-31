@@ -120,7 +120,7 @@ omq_rpc::omq_rpc(
         core_rpc_server& rpc,
         const boost::program_options::variables_map& vm) :
         core_{core}, rpc_{rpc} {
-    auto& omq = core.get_omq();
+    auto& omq = core.omq();
     auto& auth = core._omq_auth_level_map();
 
     // Set up any requested listening sockets.  (Note: if we are a service node, we'll already
@@ -324,11 +324,11 @@ omq_rpc::omq_rpc(
     omq.add_request_command(
             "sub", "block", [this](oxenmq::Message& m) { on_block_sub_request(m); });
 
-    core_.get_blockchain_storage().hook_block_post_add([this](const auto& info) {
+    core_.blockchain.hook_block_post_add([this](const auto& info) {
         send_block_notifications(info.block);
         return true;
     });
-    core_.get_pool().add_notify([this](const crypto::hash& id,
+    core_.mempool.add_notify([this](const crypto::hash& id,
                                        const transaction& tx,
                                        const std::string& blob,
                                        const tx_pool_options& opts) {
@@ -379,19 +379,19 @@ static void send_notifies(Mutex& mutex, Subs& subs, const char* desc, Call call)
 }
 
 void omq_rpc::send_block_notifications(const block& block) {
-    auto& omq = core_.get_omq();
+    auto& omq = core_.omq();
     std::string height = "{}"_format(block.get_height());
-    send_notifies(subs_mutex_, block_subs_, "block", [&](auto& conn, auto& sub) {
+    send_notifies(subs_mutex_, block_subs_, "block", [&](auto& conn, auto& /*sub*/) {
         omq.send(conn, "notify.block", height, tools::view_guts(block.hash));
     });
 }
 
 void omq_rpc::send_mempool_notifications(
         const crypto::hash& id,
-        const transaction& tx,
+        const transaction& /*tx*/,
         const std::string& blob,
         const tx_pool_options& opts) {
-    auto& omq = core_.get_omq();
+    auto& omq = core_.omq();
     send_notifies(subs_mutex_, mempool_subs_, "mempool", [&](auto& conn, auto& sub) {
         if (sub.type == mempool_sub_type::all || opts.approved_blink)
             omq.send(conn, "notify.mempool", tools::view_guts(id), blob);
@@ -457,7 +457,7 @@ void omq_rpc::on_get_blocks(oxenmq::Message& m) {
 
     size_limit = std::min<uint64_t>(size_limit, 2000000);
 
-    auto chain_height = core_.get_current_blockchain_height();
+    auto chain_height = core_.blockchain.get_current_blockchain_height();
     if (start_height > chain_height) {
         m.send_reply(
                 "Invalid rpc.get_blocks request: start_height given is above current chain "
@@ -480,9 +480,9 @@ void omq_rpc::on_get_blocks(oxenmq::Message& m) {
     for (i = start_height; i < end; i++) {
         bt_dict block_bt;
 
-        auto hash = core_.get_block_id_by_height(i);
+        auto hash = core_.blockchain.get_block_id_by_height(i);
         block b;
-        if (!core_.get_block_by_height(i, b)) {
+        if (!core_.blockchain.get_block_by_height(i, b)) {
             m.send_reply("Unknown error fetching blocks.");
             return;
         }
@@ -492,7 +492,7 @@ void omq_rpc::on_get_blocks(oxenmq::Message& m) {
         block_bt["timestamp"] = b.timestamp;
 
         std::vector<std::string> txs;
-        core_.get_transactions(b.tx_hashes, txs);
+        core_.blockchain.get_transactions_blobs(b.tx_hashes, txs);
         if (txs.size() != b.tx_hashes.size()) {
             m.send_reply("Unknown error fetching transactions.");
             return;
@@ -508,7 +508,7 @@ void omq_rpc::on_get_blocks(oxenmq::Message& m) {
             crypto::hash miner_tx_hash;
             cryptonote::get_transaction_hash(*b.miner_tx, miner_tx_hash, nullptr);
 
-            if (not core_.get_tx_outputs_gindexs(miner_tx_hash, indices)) {
+            if (!core_.blockchain.get_tx_outputs_gindexs(miner_tx_hash, indices)) {
                 m.send_reply("Unknown error fetching output info.");
                 return;
             }
@@ -527,7 +527,7 @@ void omq_rpc::on_get_blocks(oxenmq::Message& m) {
 
             const auto& txhash = b.tx_hashes[tx_index];
 
-            if (not core_.get_tx_outputs_gindexs(txhash, indices)) {
+            if (not core_.blockchain.get_tx_outputs_gindexs(txhash, indices)) {
                 m.send_reply("Unknown error fetching output info.");
                 return;
             }

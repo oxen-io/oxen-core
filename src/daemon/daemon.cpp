@@ -353,7 +353,7 @@ bool daemon::run(bool interactive) {
         std::optional<daemonize::command_server> rpc_commands;
         if (interactive) {
             log::info(logcat, "Starting command-line processor");
-            auto& omq = core->get_omq();
+            auto& omq = core->omq();
 
             std::promise<void> p;
             auto conn = omq.connect_inproc(

@@ -198,7 +198,7 @@ class Blockchain {
      */
     bool deinit();
 
-    bool get_blocks_only(
+    bool get_blocks(
             uint64_t start_offset,
             size_t count,
             std::vector<block>& blocks,
@@ -356,20 +356,11 @@ class Blockchain {
     uint64_t get_current_blockchain_height(bool lock = false) const;
 
     /**
-     * @brief get the hash of the most recent block on the blockchain
-     *
-     * @return the hash
-     */
-    crypto::hash get_tail_id() const;
-
-    /**
      * @brief get the height and hash of the most recent block on the blockchain
      *
-     * @param height return-by-reference variable to store the height in
-     *
-     * @return the hash
+     * @return pair of the height and hash
      */
-    crypto::hash get_tail_id(uint64_t& height) const;
+    std::pair<uint64_t, crypto::hash> get_tail_id() const;
 
     /**
      * @brief returns the difficulty target the next block to be added must meet
@@ -1036,21 +1027,17 @@ class Blockchain {
      *
      * @return a reference to the BlockchainDB instance
      */
-    const BlockchainDB& get_db() const { return *m_db; }
+    const BlockchainDB& db() const { return *m_db; }
 
     /**
      * @brief get a reference to the BlockchainDB in use by Blockchain
      *
      * @return a reference to the BlockchainDB instance
      */
-    BlockchainDB& get_db() { return *m_db; }
+    BlockchainDB& db() { return *m_db; }
 
-    /// @brief return a reference to the service node list
-    const service_nodes::service_node_list& get_service_node_list() const {
-        return m_service_node_list;
-    }
-    /// @brief return a reference to the service node list
-    service_nodes::service_node_list& get_service_node_list() { return m_service_node_list; }
+    /// A reference to the service node list
+    service_nodes::service_node_list& service_node_list;
 
     /**
      * @brief get a number of outputs of a specific amount
@@ -1237,7 +1224,6 @@ class Blockchain {
     std::unique_ptr<BlockchainDB> m_db;
 
     tx_memory_pool& m_tx_pool;
-    service_nodes::service_node_list& m_service_node_list;
     ons::name_system_db m_ons_db;
     std::unique_ptr<cryptonote::BlockchainSQLite> m_sqlite_db;
 

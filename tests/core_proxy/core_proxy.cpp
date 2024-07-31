@@ -226,7 +226,7 @@ bool tests::proxy_core::handle_incoming_block(const std::string& block_blob, con
     fmt::print("BLOCK\n\n{}\n{}\n{}\n{}\n{}\n\nENDBLOCK\n\n",
         h, lh, b.miner_tx ? get_transaction_hash(*b.miner_tx) : crypto::null<crypto::hash>, b.miner_tx ? get_object_blobsize(*b.miner_tx) : 0, obj_to_json_str(b));
 
-    if (!add_block(h, lh, b, block_blob, checkpoint))
+    if (!blockchain.add_block(h, lh, b, block_blob, checkpoint))
         return false;
 
     return true;
@@ -238,29 +238,29 @@ bool tests::proxy_core::handle_uptime_proof(const cryptonote::NOTIFY_BTENCODED_U
   return false; // never relay these for tests.
 }
 
-bool tests::proxy_core::get_short_chain_history(std::list<crypto::hash>& ids) {
+bool tests::proxy_core::fake_blockchain::get_short_chain_history(std::list<crypto::hash>& ids) {
     build_short_history(ids, m_lastblk);
     return true;
 }
 
-std::pair<uint64_t, crypto::hash> tests::proxy_core::get_blockchain_top() {
+std::pair<uint64_t, crypto::hash> tests::proxy_core::fake_blockchain::get_tail_id() const {
     return std::make_pair(0, get_block_hash(m_genesis));
 }
 
 bool tests::proxy_core::init(const boost::program_options::variables_map& /*vm*/) {
-    generate_genesis_block(m_genesis, network_type::MAINNET);
-    crypto::hash h = get_block_hash(m_genesis);
-    add_block(h, get_block_longhash(network_type::FAKECHAIN, randomx_longhash_context(NULL, m_genesis, 0), m_genesis, 0, 0), m_genesis, block_to_blob(m_genesis), nullptr /*checkpoint*/);
+    generate_genesis_block(blockchain.m_genesis, network_type::MAINNET);
+    crypto::hash h = get_block_hash(blockchain.m_genesis);
+    blockchain.add_block(h, get_block_longhash(network_type::FAKECHAIN, randomx_longhash_context(NULL, blockchain.m_genesis, 0), blockchain.m_genesis, 0, 0), blockchain.m_genesis, block_to_blob(blockchain.m_genesis), nullptr /*checkpoint*/);
     return true;
 }
 
-bool tests::proxy_core::have_block(const crypto::hash& id) {
+bool tests::proxy_core::fake_blockchain::have_block(const crypto::hash& id) {
     if (m_hash2blkidx.end() == m_hash2blkidx.find(id))
         return false;
     return true;
 }
 
-void tests::proxy_core::build_short_history(std::list<crypto::hash> &m_history, const crypto::hash &m_start) {
+void tests::proxy_core::fake_blockchain::build_short_history(std::list<crypto::hash> &m_history, const crypto::hash &m_start) {
     m_history.push_front(get_block_hash(m_genesis));
     /*std::unordered_map<crypto::hash, tests::block_index>::const_iterator cit = m_hash2blkidx.find(m_lastblk);
 
@@ -275,7 +275,7 @@ void tests::proxy_core::build_short_history(std::list<crypto::hash> &m_history, 
     } while (m_hash2blkidx.end() != cit && get_block_hash(cit->second.blk) != cit->first);*/
 }
 
-bool tests::proxy_core::add_block(const crypto::hash &_id, const crypto::hash &_longhash, const cryptonote::block &_blk, const std::string &_blob, cryptonote::checkpoint_t const *) {
+bool tests::proxy_core::fake_blockchain::add_block(const crypto::hash &_id, const crypto::hash &_longhash, const cryptonote::block &_blk, const std::string &_blob, cryptonote::checkpoint_t const *) {
     size_t height = 0;
 
     if (_blk.prev_id) {

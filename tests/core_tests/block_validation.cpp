@@ -626,8 +626,8 @@ bool gen_block_invalid_binary_format::generate(std::vector<test_event_entry>& ev
   oxen_register_callback(events, "check_blocks_arent_accepted", [last_valid_height](cryptonote::core &c, size_t ev_index)
   {
     DEFINE_TESTS_ERROR_CONTEXT("check_blocks_arent_accepted");
-    CHECK_EQ(c.get_pool().get_transactions_count(), 1);
-    CHECK_EQ(c.get_current_blockchain_height(), last_valid_height + 1);
+    CHECK_EQ(c.mempool.get_transactions_count(), 1);
+    CHECK_EQ(c.blockchain.get_current_blockchain_height(), last_valid_height + 1);
     return true;
   });
 

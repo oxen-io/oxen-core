@@ -653,7 +653,7 @@ class service_node_list {
             bool& my_uptime_proof_confirmation,
             crypto::x25519_public_key& x25519_pkey);
 
-    crypto::public_key bls_public_key_lookup(const eth::bls_public_key& bls_pubkey) const;
+    crypto::public_key public_key_lookup(const eth::bls_public_key& bls_pubkey) const;
 
     void record_checkpoint_participation(
             crypto::public_key const& pubkey, uint64_t height, bool participated);

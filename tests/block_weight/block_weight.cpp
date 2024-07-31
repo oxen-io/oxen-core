@@ -140,7 +140,7 @@ static void test(test_t t, uint64_t blocks)
     cryptonote::block b;
     b.major_version = cryptonote::hf::hf7;
     b.minor_version = static_cast<uint8_t>(cryptonote::hf::hf7);
-    bc.get_db().add_block(std::make_pair(b, ""), 300000, 300000, bc.get_db().height(), bc.get_db().height(), {});
+    bc.db().add_block(std::make_pair(b, ""), 300000, 300000, bc.db().height(), bc.db().height(), {});
     if (!bc.update_next_cumulative_weight_limit())
     {
       fprintf(stderr, "Failed to update cumulative weight limit 1\n");
@@ -174,7 +174,7 @@ static void test(test_t t, uint64_t blocks)
     cryptonote::block b;
     b.major_version = cryptonote::feature::LONG_TERM_BLOCK_WEIGHT;
     b.minor_version = static_cast<uint8_t>(b.major_version);
-    bc.get_db().add_block(std::make_pair(std::move(b), ""), w, ltw, bc.get_db().height(), bc.get_db().height(), {});
+    bc.db().add_block(std::make_pair(std::move(b), ""), w, ltw, bc.db().height(), bc.db().height(), {});
 
     if (!bc.update_next_cumulative_weight_limit())
     {

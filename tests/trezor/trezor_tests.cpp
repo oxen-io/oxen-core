@@ -242,7 +242,7 @@ static void rollback_chain(cryptonote::core * core, const cryptonote::block & he
       return;
 
     CHECK_AND_ASSERT_THROW_MES(cur_height > height, "Height differs");
-    core->get_blockchain_storage().get_db().pop_block(popped_block, popped_txs);
+    core->get_blockchain_storage().db().pop_block(popped_block, popped_txs);
   } while(true);
 }
 
@@ -312,11 +312,11 @@ static bool init_core_replay_events(std::vector<test_event_entry>& events, crypt
 
   core->deinit();
   CHECK_AND_ASSERT_THROW_MES(core->init(vm_core, test_options_), "Core init failed");
-  core->get_blockchain_storage().get_db().set_batch_transactions(true);
+  core->get_blockchain_storage().db().set_batch_transactions(true);
 
   // start with a clean pool
   std::vector<crypto::hash> pool_txs;
-  core->get_pool().get_transaction_hashes(pool_txs);
+  core->mempool.get_transaction_hashes(pool_txs);
   core->get_blockchain_storage().flush_txes_from_pool(pool_txs);
 
   t_test_class validator;

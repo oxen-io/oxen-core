@@ -176,7 +176,7 @@ int main(int argc, char* argv[]) {
     core_storage->for_all_transactions(
             [&](const crypto::hash& hash, const cryptonote::transaction& tx) -> bool {
                 const bool coinbase = tx.is_miner_tx();
-                const uint64_t height = core_storage->get_db().get_tx_block_height(hash);
+                const uint64_t height = core_storage->db().get_tx_block_height(hash);
 
                 // create new outputs
                 for (const auto& out : tx.vout) {

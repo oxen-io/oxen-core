@@ -99,13 +99,13 @@ int pop_blocks(cryptonote::core& core, int num_blocks) {
     bool use_batch = opt_batch;
 
     if (use_batch)
-        core.get_blockchain_storage().get_db().batch_start();
+        core.blockchain.db().batch_start();
 
     try {
-        core.get_blockchain_storage().pop_blocks(num_blocks);
+        core.blockchain.pop_blocks(num_blocks);
         if (use_batch) {
-            core.get_blockchain_storage().get_db().batch_stop();
-            core.get_blockchain_storage().get_db().show_stats();
+            core.blockchain.db().batch_stop();
+            core.blockchain.db().show_stats();
         }
     } catch (const std::exception& e) {
         // There was an error, so don't commit pending data.
@@ -122,7 +122,7 @@ int check_flush(cryptonote::core& core, std::vector<block_complete_entry>& block
         return 0;
 
     // wait till we can verify a full HOH without extra, for speed
-    uint64_t new_height = core.get_blockchain_storage().get_db().height() + blocks.size();
+    uint64_t new_height = core.blockchain.db().height() + blocks.size();
     if (!force && new_height % HASH_OF_HASHES_STEP)
         return 0;
 
@@ -136,7 +136,7 @@ int check_flush(cryptonote::core& core, std::vector<block_complete_entry>& block
         }
         hashes.push_back(cryptonote::get_block_hash(block));
     }
-    core.prevalidate_block_hashes(core.get_blockchain_storage().get_db().height(), hashes);
+    core.blockchain.prevalidate_block_hashes(core.blockchain.db().height(), hashes);
 
     // TODO(doyle): Checkpointing
     std::vector<block> pblocks;
@@ -202,7 +202,7 @@ int import_from_file(
     // Reset stats, in case we're using newly created db, accumulating stats
     // from addition of genesis block.
     // This aligns internal db counts with importer counts.
-    core.get_blockchain_storage().get_db().reset_stats();
+    core.blockchain.db().reset_stats();
 
     if (std::error_code ec; !fs::exists(import_file_path, ec)) {
         log::error(logcat, "bootstrap file not found: {}", import_file_path);
@@ -211,7 +211,7 @@ int import_from_file(
 
     uint64_t start_height = 1, seek_height;
     if (opt_resume)
-        start_height = core.get_blockchain_storage().get_current_blockchain_height();
+        start_height = core.blockchain.get_current_blockchain_height();
 
     seek_height = start_height;
     BootstrapFile bootstrap;
@@ -288,7 +288,7 @@ int import_from_file(
         if (import_file.eof())
             import_file.clear();
         import_file.seekg(pos);
-        core.get_blockchain_storage().get_db().batch_start(db_batch_size, bytes);
+        core.blockchain.db().batch_start(db_batch_size, bytes);
     }
     while (!quit) {
         uint32_t chunk_size;
@@ -426,9 +426,9 @@ int import_from_file(
 
                     try {
                         uint64_t long_term_block_weight =
-                                core.get_blockchain_storage().get_next_long_term_block_weight(
+                                core.blockchain.get_next_long_term_block_weight(
                                         block_weight);
-                        core.get_blockchain_storage().get_db().add_block(
+                        core.blockchain.db().add_block(
                                 std::make_pair(b, block_to_blob(b)),
                                 block_weight,
                                 long_term_block_weight,
@@ -449,14 +449,14 @@ int import_from_file(
                             std::cout << refresh_string;
                             // zero-based height
                             std::cout << "\n[- batch commit at height " << h - 1 << " -]\n";
-                            core.get_blockchain_storage().get_db().batch_stop();
+                            core.blockchain.db().batch_stop();
                             pos = import_file.tellg();
                             bytes = bootstrap.count_bytes(import_file, db_batch_size, h2, q2);
                             import_file.seekg(pos);
-                            core.get_blockchain_storage().get_db().batch_start(
+                            core.blockchain.db().batch_start(
                                     db_batch_size, bytes);
                             std::cout << "\n";
-                            core.get_blockchain_storage().get_db().show_stats();
+                            core.blockchain.db().show_stats();
                         }
                     }
                 }
@@ -483,11 +483,11 @@ quitting:
             // There was an error, so don't commit pending data.
             // Destructor will abort write txn.
         } else {
-            core.get_blockchain_storage().get_db().batch_stop();
+            core.blockchain.db().batch_stop();
         }
     }
 
-    core.get_blockchain_storage().get_db().show_stats();
+    core.blockchain.db().show_stats();
     log::info(logcat, "Number of blocks imported: {}", num_imported);
     if (h > 0)
         // TODO: if there was an error, the last added block is probably at zero-based height h-2
@@ -664,24 +664,24 @@ int main(int argc, char* argv[]) {
             std::cerr << "Failed to initialize core\n";
             return 1;
         }
-        core.get_blockchain_storage().get_db().set_batch_transactions(true);
+        core.blockchain.db().set_batch_transactions(true);
 
         if (!command_line::is_arg_defaulted(vm, arg_pop_blocks)) {
             num_blocks = command_line::get_arg(vm, arg_pop_blocks);
             log::info(
                     logcat,
                     "height: {}",
-                    core.get_blockchain_storage().get_current_blockchain_height());
+                    core.blockchain.get_current_blockchain_height());
             pop_blocks(core, num_blocks);
             log::info(
                     logcat,
                     "height: {}",
-                    core.get_blockchain_storage().get_current_blockchain_height());
+                    core.blockchain.get_current_blockchain_height());
             return 0;
         }
 
         if (command_line::get_arg(vm, arg_recalculate_difficulty))
-            core.get_blockchain_storage().get_db().fixup(core.get_nettype());
+            core.blockchain.db().fixup(core.get_nettype());
 
         import_from_file(core, import_file_path, block_stop);
 

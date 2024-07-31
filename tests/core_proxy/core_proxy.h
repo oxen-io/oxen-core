@@ -38,6 +38,7 @@
 #include "cryptonote_core/cryptonote_core.h"
 #include "cryptonote_core/cryptonote_tx_utils.h"
 #include "cryptonote_core/tx_blink.h"
+#include "cryptonote_protocol/cryptonote_protocol_defs.h"
 #include <unordered_map>
 
 namespace tests
@@ -55,29 +56,23 @@ namespace tests
           : height(_height), id(_id), longhash(_longhash), blk(_blk), blob(_blob), txes(_txes) { }
   };
 
+  struct fake_lockable {
+      void lock() {}
+      void unlock() {}
+      bool try_lock() { return true; }
+      void lock_shared() {}
+      void unlock_shared() {}
+      bool try_lock_shared() { return true; }
+  };
+
   class proxy_core
   {
-      cryptonote::block m_genesis;
-      std::list<crypto::hash> m_known_block_list;
-      std::unordered_map<crypto::hash, block_index> m_hash2blkidx;
-
-      crypto::hash m_lastblk;
-      std::list<cryptonote::transaction> txes;
-
-      bool add_block(const crypto::hash &_id, const crypto::hash &_longhash, const cryptonote::block &_blk, const std::string &_blob, const cryptonote::checkpoint_t *);
-      void build_short_history(std::list<crypto::hash> &m_history, const crypto::hash &m_start);
-      
-
   public:
     void on_synchronized(){}
     void safesyncmode(const bool){}
-    uint64_t get_current_blockchain_height(){return 1;}
     void set_target_blockchain_height(uint64_t) {}
     bool init(const boost::program_options::variables_map& vm);
     bool deinit(){return true;}
-    bool get_short_chain_history(std::list<crypto::hash>& ids);
-    bool have_block(const crypto::hash& id);
-    std::pair<uint64_t, crypto::hash> get_blockchain_top();
     bool handle_incoming_tx(const std::string& tx_blob, cryptonote::tx_verification_context& tvc, const cryptonote::tx_pool_options &opts);
     std::vector<cryptonote::tx_verification_batch_info> parse_incoming_txs(const std::vector<std::string>& tx_blobs, const cryptonote::tx_pool_options &opts);
     bool handle_parsed_txs(std::vector<cryptonote::tx_verification_batch_info> &parsed_txs, const cryptonote::tx_pool_options &opts, uint64_t *blink_rollback_height = nullptr);
@@ -89,9 +84,6 @@ namespace tests
     void pause_mine(){}
     void resume_mine(){}
     bool on_idle(){return true;}
-    bool find_blockchain_supplement(const std::list<crypto::hash>& qblock_ids, cryptonote::NOTIFY_RESPONSE_CHAIN_ENTRY::request& resp){return true;}
-    bool handle_get_blocks(cryptonote::NOTIFY_REQUEST_GET_BLOCKS::request& arg, cryptonote::NOTIFY_RESPONSE_GET_BLOCKS::request& rsp, cryptonote::cryptonote_connection_context& context){return true;}
-    cryptonote::Blockchain &get_blockchain_storage() { throw std::runtime_error("Called invalid member function: please never call get_blockchain_storage on the TESTING class proxy_core."); }
     bool get_test_drop_download() {return true;}
     bool get_test_drop_download_height() {return true;}
     bool prepare_handle_incoming_blocks(const std::vector<cryptonote::block_complete_entry>  &blocks_entry, std::vector<cryptonote::block> &blocks) { return true; }
@@ -101,21 +93,42 @@ namespace tests
     virtual crypto::hash on_transaction_relayed(const std::string& tx) { return crypto::null<crypto::hash>; }
     cryptonote::network_type get_nettype() const { return cryptonote::network_type::MAINNET; }
     const cryptonote::network_config& get_net_config() const { return get_config(get_nettype()); }
-    bool get_blocks(uint64_t start_offset, size_t count, std::vector<std::pair<std::string, cryptonote::block>>& blocks, std::vector<std::string>& txs) const { return false; }
-    bool get_transactions(const std::vector<crypto::hash>& txs_ids, std::vector<cryptonote::transaction>& txs, std::unordered_set<crypto::hash>* missed_txs = nullptr) const { return false; }
-    bool get_block_by_hash(const crypto::hash &h, cryptonote::block &blk, bool *orphan = NULL) const { return false; }
-    uint8_t get_ideal_hard_fork_version() const { return 0; }
-    uint8_t get_ideal_hard_fork_version(uint64_t height) const { return 0; }
-    uint8_t get_hard_fork_version(uint64_t height) const { return 0; }
-    uint64_t get_earliest_ideal_height_for_version(uint8_t version) const { return 0; }
-    cryptonote::difficulty_type get_block_cumulative_difficulty(uint64_t height) const { return 0; }
-    uint64_t prevalidate_block_hashes(uint64_t height, const std::list<crypto::hash> &hashes) { return 0; }
-    uint64_t prevalidate_block_hashes(uint64_t height, const std::vector<crypto::hash> &hashes) { return 0; }
+    class fake_blockchain : public fake_lockable {
+        cryptonote::block m_genesis;
+        std::list<crypto::hash> m_known_block_list;
+        std::list<cryptonote::transaction> txes;
+        crypto::hash m_lastblk;
+        void build_short_history(std::list<crypto::hash> &m_history, const crypto::hash &m_start);
+        std::unordered_map<crypto::hash, block_index> m_hash2blkidx;
+        bool add_block(const crypto::hash &_id, const crypto::hash &_longhash, const cryptonote::block &_blk, const std::string &_blob, const cryptonote::checkpoint_t *);
+        friend class proxy_core;
+      public:
+        uint64_t get_current_blockchain_height(){return 1;}
+        std::pair<uint64_t, crypto::hash> get_tail_id() const;
+        bool handle_get_blocks(cryptonote::NOTIFY_REQUEST_GET_BLOCKS::request& arg, cryptonote::NOTIFY_RESPONSE_GET_BLOCKS::request& rsp){return true;}
+        bool handle_get_txs(cryptonote::NOTIFY_REQUEST_GET_TXS::request&, cryptonote::NOTIFY_NEW_TRANSACTIONS::request&) { return true; }
+        bool find_blockchain_supplement(const std::list<crypto::hash>& qblock_ids, cryptonote::NOTIFY_RESPONSE_CHAIN_ENTRY::request& resp){return true;}
+        bool have_block(const crypto::hash& id);
+        bool get_blocks(uint64_t start_offset, size_t count, std::vector<std::pair<std::string, cryptonote::block>>& blocks, std::vector<std::string>& txs) const { return false; }
+        bool get_transactions(const std::vector<crypto::hash>& txs_ids, std::vector<cryptonote::transaction>& txs, std::unordered_set<crypto::hash>* missed_txs = nullptr) const { return false; }
+        bool get_block_by_hash(const crypto::hash &h, cryptonote::block &blk, bool *orphan = NULL) const { return false; }
+        bool get_short_chain_history(std::list<crypto::hash>& ids);
+        bool blink_rollback(uint64_t rollback_height) { return false; }
+        bool is_within_compiled_block_hash_area(uint64_t height) const { return false; }
+        uint64_t get_immutable_height() const { return 0; }
+        uint64_t prevalidate_block_hashes(uint64_t height, const std::list<crypto::hash> &hashes) { return 0; }
+        uint64_t prevalidate_block_hashes(uint64_t height, const std::vector<crypto::hash> &hashes) { return 0; }
+        uint32_t get_blockchain_pruning_seed() const { return 0; }
+
+        struct fake_db {
+            cryptonote::difficulty_type get_block_cumulative_difficulty(uint64_t height) const { return 0; }
+        } db_;
+        fake_db& db() { return db_; }
+    } blockchain;
     // TODO(oxen): Write tests
     bool add_service_node_vote(const service_nodes::quorum_vote_t& vote, cryptonote::vote_verification_context &vvc) { return false; }
     void set_service_node_votes_relayed(const std::vector<service_nodes::quorum_vote_t> &votes) {}
     bool pad_transactions() const { return false; }
-    uint32_t get_blockchain_pruning_seed() const { return 0; }
     bool prune_blockchain(uint32_t pruning_seed) const { return true; }
 
     bool handle_incoming_blinks(const std::vector<cryptonote::serializable_blink_metadata> &blinks, std::vector<crypto::hash> *bad_blinks = nullptr, std::vector<crypto::hash> *missing_txs = nullptr) { return true; }
@@ -123,24 +136,20 @@ namespace tests
     struct fake_lock { ~fake_lock() { /* avoid unused variable warning by having a destructor */ } };
     fake_lock incoming_tx_lock() { return {}; }
 
-    class fake_pool {
-    public:
+    struct fake_pool : public fake_lockable {
       void add_missing_blink_hashes(const std::map<uint64_t, std::vector<crypto::hash>> &potential) {}
       template <typename... Args>
       int blink_shared_lock(Args &&...args) { return 42; }
-      void lock() {}
-      void unlock() {}
-      bool try_lock() { return true; }
       std::shared_ptr<cryptonote::blink_tx> get_blink(crypto::hash &) { return nullptr; }
       bool get_transaction(const crypto::hash& id, std::string& tx_blob) const { return false; }
       bool have_tx(const crypto::hash &txid) const { return false; }
       std::map<uint64_t, crypto::hash> get_blink_checksums() const { return {}; }
       std::vector<crypto::hash> get_mined_blinks(const std::set<uint64_t> &) const { return {}; }
       void keep_missing_blinks(std::vector<crypto::hash> &tx_hashes) const {}
-    };
-    fake_pool &get_pool() { return m_pool; }
-
-  private:
-    fake_pool m_pool;
+    } mempool;
+    struct fake_miner {
+        void pause() {}
+        void resume() {}
+    } miner;
   };
 }

@@ -244,19 +244,24 @@ quorumnet_pulse_relay_message_to_quorum_proc* quorumnet_pulse_relay_message_to_q
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wuninitialized"
 core::core() :
-        m_mempool(m_blockchain_storage),
-        m_service_node_list(m_blockchain_storage),
-        m_blockchain_storage(m_mempool, m_service_node_list),
+        mempool(blockchain),
+        service_node_list(blockchain),
+        blockchain(mempool, service_node_list),
         m_quorum_cop(*this),
-        m_miner(this,
-                [this](const cryptonote::block& b,
-                       uint64_t height,
-                       unsigned int threads,
-                       crypto::hash& hash) {
-                    hash = cryptonote::get_block_longhash_w_blockchain(
-                            m_nettype, &m_blockchain_storage, b, height, threads);
-                    return true;
-                }),
+        miner{[this](const cryptonote::block& b,
+                     uint64_t height,
+                     unsigned int threads,
+                     crypto::hash& hash) {
+                  hash = cryptonote::get_block_longhash_w_blockchain(
+                          m_nettype, &blockchain, b, height, threads);
+                  return true;
+              },
+              [this](block& b, block_verification_context& bvc) {
+                  return handle_block_found(b, bvc);
+              },
+              [this]<typename... Args>(Args&&... args) {
+                  return blockchain.create_next_miner_block_template(std::forward<Args>(args)...);
+              }},
         m_pprotocol(&m_protocol_stub),
         m_starter_message_showed(false),
         m_target_blockchain_height(0),
@@ -284,7 +289,7 @@ bool core::update_checkpoints_from_json_file() {
     // load json checkpoints every 10min and verify them with respect to what blocks we already have
     bool res = true;
     if (time(NULL) - m_last_json_checkpoints_update >= 600) {
-        res = m_blockchain_storage.update_checkpoints_from_json_file(m_checkpoints_path);
+        res = blockchain.update_checkpoints_from_json_file(m_checkpoints_path);
         m_last_json_checkpoints_update = time(NULL);
     }
     m_checkpoints_updating.clear();
@@ -297,8 +302,8 @@ bool core::update_checkpoints_from_json_file() {
 }
 //-----------------------------------------------------------------------------------
 void core::stop() {
-    m_miner.stop();
-    m_blockchain_storage.cancel();
+    miner.stop();
+    blockchain.cancel();
 }
 //-----------------------------------------------------------------------------------
 void core::init_options(boost::program_options::options_description& desc) {
@@ -358,7 +363,7 @@ bool core::handle_command_line(const boost::program_options::variables_map& vm) 
         test_drop_download();
 
     if (command_line::get_arg(vm, arg_dev_allow_local))
-        m_service_node_list.debug_allow_local_ips = true;
+        service_node_list.debug_allow_local_ips = true;
 
     m_service_node = command_line::get_arg(vm, arg_service_node);
 
@@ -384,7 +389,7 @@ bool core::handle_command_line(const boost::program_options::variables_map& vm) 
             }
 
             if (!epee::net_utils::is_ip_public(m_sn_public_ip)) {
-                if (m_service_node_list.debug_allow_local_ips) {
+                if (service_node_list.debug_allow_local_ips) {
                     log::warning(
                             logcat,
                             "Address given for public-ip is not public; allowing it because "
@@ -426,70 +431,6 @@ bool core::handle_command_line(const boost::program_options::variables_map& vm) 
     return true;
 }
 //-----------------------------------------------------------------------------------------------
-uint64_t core::get_current_blockchain_height() const {
-    return m_blockchain_storage.get_current_blockchain_height();
-}
-//-----------------------------------------------------------------------------------------------
-std::pair<uint64_t, crypto::hash> core::get_blockchain_top() const {
-    std::pair<uint64_t, crypto::hash> result;
-    result.second = m_blockchain_storage.get_tail_id(result.first);
-    return result;
-}
-//-----------------------------------------------------------------------------------------------
-bool core::get_blocks(
-        uint64_t start_offset,
-        size_t count,
-        std::vector<std::pair<std::string, block>>& blocks,
-        std::vector<std::string>& txs) const {
-    return m_blockchain_storage.get_blocks(start_offset, count, blocks, txs);
-}
-//-----------------------------------------------------------------------------------------------
-bool core::get_blocks(
-        uint64_t start_offset,
-        size_t count,
-        std::vector<std::pair<std::string, block>>& blocks) const {
-    return m_blockchain_storage.get_blocks(start_offset, count, blocks);
-}
-//-----------------------------------------------------------------------------------------------
-bool core::get_blocks(uint64_t start_offset, size_t count, std::vector<block>& blocks) const {
-    return m_blockchain_storage.get_blocks_only(start_offset, count, blocks);
-}
-//-----------------------------------------------------------------------------------------------
-bool core::get_blocks(
-        const std::vector<crypto::hash>& block_ids,
-        std::vector<std::pair<std::string, block>> blocks,
-        std::unordered_set<crypto::hash>* missed_bs) const {
-    return m_blockchain_storage.get_blocks(block_ids, blocks, missed_bs);
-}
-//-----------------------------------------------------------------------------------------------
-bool core::get_transactions(
-        const std::vector<crypto::hash>& txs_ids,
-        std::vector<std::string>& txs,
-        std::unordered_set<crypto::hash>* missed_txs) const {
-    return m_blockchain_storage.get_transactions_blobs(txs_ids, txs, missed_txs);
-}
-//-----------------------------------------------------------------------------------------------
-bool core::get_split_transactions_blobs(
-        const std::vector<crypto::hash>& txs_ids,
-        std::vector<std::tuple<crypto::hash, std::string, crypto::hash, std::string>>& txs,
-        std::unordered_set<crypto::hash>* missed_txs) const {
-    return m_blockchain_storage.get_split_transactions_blobs(txs_ids, txs, missed_txs);
-}
-//-----------------------------------------------------------------------------------------------
-bool core::get_transactions(
-        const std::vector<crypto::hash>& txs_ids,
-        std::vector<transaction>& txs,
-        std::unordered_set<crypto::hash>* missed_txs) const {
-    return m_blockchain_storage.get_transactions(txs_ids, txs, missed_txs);
-}
-//-----------------------------------------------------------------------------------------------
-bool core::get_alternative_blocks(std::vector<block>& blocks) const {
-    return m_blockchain_storage.get_alternative_blocks(blocks);
-}
-//-----------------------------------------------------------------------------------------------
-size_t core::get_alternative_blocks_count() const {
-    return m_blockchain_storage.get_alternative_blocks_count();
-}
 
 static std::string time_ago_str(time_t now, time_t then) {
     if (then >= now)
@@ -510,9 +451,8 @@ bool core::is_active_sn() const {
 
 // Returns the service nodes info
 std::shared_ptr<const service_nodes::service_node_info> core::get_my_sn_info() const {
-    auto& snl = get_service_node_list();
     const auto& pubkey = get_service_keys().pub;
-    auto states = snl.get_service_node_list_state({pubkey});
+    auto states = service_node_list.get_service_node_list_state({pubkey});
     if (states.empty())
         return nullptr;
     else {
@@ -528,14 +468,13 @@ std::string core::get_status_string() const {
     s += 'v';
     s += OXEN_VERSION_STR;
     s += "; Height: ";
-    s += std::to_string(get_blockchain_storage().get_current_blockchain_height());
+    s += std::to_string(blockchain.get_current_blockchain_height());
     s += ", SN: ";
     if (!service_node())
         s += "no";
     else {
-        auto& snl = get_service_node_list();
         const auto& pubkey = get_service_keys().pub;
-        auto states = snl.get_service_node_list_state({pubkey});
+        auto states = service_node_list.get_service_node_list_state({pubkey});
         if (states.empty())
             s += "not registered";
         else {
@@ -548,7 +487,8 @@ std::string core::get_status_string() const {
                 s += "decomm.";
 
             uint64_t last_proof = 0;
-            snl.access_proof(pubkey, [&](auto& proof) { last_proof = proof.timestamp; });
+            service_node_list.access_proof(
+                    pubkey, [&](auto& proof) { last_proof = proof.timestamp; });
             s += ", proof: ";
             time_t now = std::time(nullptr);
             s += time_ago_str(now, last_proof);
@@ -605,7 +545,7 @@ bool core::init(
     CHECK_AND_ASSERT_MES(r, false, "Failed to create or load service keys");
     if (m_service_node) {
         // Only use our service keys for our service node if we are running in SN mode:
-        m_service_node_list.set_my_service_node_keys(&m_service_keys);
+        service_node_list.set_my_service_node_keys(&m_service_keys);
     }
 
     auto db = new_db();
@@ -711,33 +651,31 @@ bool core::init(
         return false;
     }
 
-    m_blockchain_storage.set_user_options(
+    blockchain.set_user_options(
             blocks_threads, sync_on_blocks, sync_threshold, sync_mode, fast_sync);
 
     // We need this hook to get added before the block hook below, so that it fires first and
     // catches the start of a reorg before the block hook fires for the block in the reorg.
     try {
         if (!command_line::is_arg_defaulted(vm, arg_reorg_notify))
-            m_blockchain_storage.hook_block_post_add(
-                    [this, notify = tools::Notify(command_line::get_arg(vm, arg_reorg_notify))](
-                            const auto& info) {
-                        if (!info.reorg)
-                            return;
-                        auto h = get_current_blockchain_height();
-                        notify.notify(
-                                "%s", info.split_height, "%h", h, "%n", h - info.split_height);
-                    });
+            blockchain.hook_block_post_add([this,
+                                            notify = tools::Notify(command_line::get_arg(
+                                                    vm, arg_reorg_notify))](const auto& info) {
+                if (!info.reorg)
+                    return;
+                auto h = blockchain.get_current_blockchain_height();
+                notify.notify("%s", info.split_height, "%h", h, "%n", h - info.split_height);
+            });
     } catch (const std::exception& e) {
         log::error(logcat, "Failed to parse reorg notify spec");
     }
 
     try {
         if (!command_line::is_arg_defaulted(vm, arg_block_notify))
-            m_blockchain_storage.hook_block_post_add(
-                    [notify = tools::Notify(command_line::get_arg(vm, arg_block_notify))](
-                            const auto& info) {
-                        notify.notify("%s", tools::hex_guts(get_block_hash(info.block)));
-                    });
+            blockchain.hook_block_post_add([notify = tools::Notify(command_line::get_arg(
+                                                    vm, arg_block_notify))](const auto& info) {
+                notify.notify("%s", tools::hex_guts(get_block_hash(info.block)));
+            });
     } catch (const std::exception& e) {
         log::error(logcat, "Failed to parse block rate notify spec");
     }
@@ -752,31 +690,30 @@ bool core::init(
     }
 
     // Service Nodes
-    m_service_node_list.set_quorum_history_storage(
+    service_node_list.set_quorum_history_storage(
             command_line::get_arg(vm, arg_store_quorum_history));
 
     // NOTE: Implicit dependency. Service node list needs to be hooked before checkpoints.
-    m_blockchain_storage.hook_blockchain_detached(
-            [this](const auto& info) { m_service_node_list.blockchain_detached(info.height); });
-    m_blockchain_storage.hook_init([this] { m_service_node_list.init(); });
-    m_blockchain_storage.hook_validate_miner_tx(
-            [this](const auto& info) { m_service_node_list.validate_miner_tx(info); });
-    m_blockchain_storage.hook_alt_block_add(
-            [this](const auto& info) { m_service_node_list.alt_block_add(info); });
+    blockchain.hook_blockchain_detached(
+            [this](const auto& info) { service_node_list.blockchain_detached(info.height); });
+    blockchain.hook_init([this] { service_node_list.init(); });
+    blockchain.hook_validate_miner_tx(
+            [this](const auto& info) { service_node_list.validate_miner_tx(info); });
+    blockchain.hook_alt_block_add(
+            [this](const auto& info) { service_node_list.alt_block_add(info); });
 
-    m_blockchain_storage.hook_blockchain_detached([this](const auto& info) {
-        m_blockchain_storage.sqlite_db().blockchain_detached(info.height);
-    });
+    blockchain.hook_blockchain_detached(
+            [this](const auto& info) { blockchain.sqlite_db().blockchain_detached(info.height); });
 
     // NOTE: There is an implicit dependency on service node lists being hooked first!
-    m_blockchain_storage.hook_init([this] { m_quorum_cop.init(); });
-    m_blockchain_storage.hook_block_add(
+    blockchain.hook_init([this] { m_quorum_cop.init(); });
+    blockchain.hook_block_add(
             [this](const auto& info) { m_quorum_cop.block_add(info.block, info.txs); });
-    m_blockchain_storage.hook_blockchain_detached([this](const auto& info) {
+    blockchain.hook_blockchain_detached([this](const auto& info) {
         m_quorum_cop.blockchain_detached(info.height, info.by_pop_blocks);
     });
 
-    m_blockchain_storage.hook_block_post_add([this](const auto&) { update_omq_sns(); });
+    blockchain.hook_block_post_add([this](const auto&) { update_omq_sns(); });
 
     // Checkpoints
     m_checkpoints_path = m_config_folder / JSON_HASH_FILE_NAME;
@@ -795,7 +732,8 @@ bool core::init(
     m_l2_tracker->provider.setTimeout(as_duration<std::chrono::milliseconds>(
             1000 * command_line::get_arg(vm, arg_l2_timeout)));
     m_l2_tracker->GETLOGS_MAX_BLOCKS = command_line::get_arg(vm, arg_l2_max_logs);
-    m_l2_tracker->PROVIDERS_CHECK_INTERVAL = as_duration<std::chrono::milliseconds>(command_line::get_arg(vm, arg_l2_check_interval));
+    m_l2_tracker->PROVIDERS_CHECK_INTERVAL = as_duration<std::chrono::milliseconds>(
+            command_line::get_arg(vm, arg_l2_check_interval));
     m_l2_tracker->PROVIDERS_CHECK_THRESHOLD = command_line::get_arg(vm, arg_l2_check_threshold);
 
     const auto l2_provider = command_line::get_arg(vm, arg_l2_provider);
@@ -816,7 +754,7 @@ bool core::init(
         }
     }
 
-    r = m_blockchain_storage.init(
+    r = blockchain.init(
             std::move(db),
             m_nettype,
             ons_db,
@@ -828,15 +766,15 @@ bool core::init(
             get_checkpoints);
     CHECK_AND_ASSERT_MES(r, false, "Failed to initialize blockchain storage");
 
-    r = m_mempool.init(max_txpool_weight);
+    r = mempool.init(max_txpool_weight);
     CHECK_AND_ASSERT_MES(r, false, "Failed to initialize memory pool");
 
-    // now that we have a valid m_blockchain_storage, we can clean out any
+    // now that we have a valid `blockchain`, we can clean out any
     // transactions in the pool that do not conform to the current fork
-    m_mempool.validate(m_blockchain_storage.get_network_version());
+    mempool.validate(blockchain.get_network_version());
 
     bool show_time_stats = command_line::get_arg(vm, arg_show_time_stats) != 0;
-    m_blockchain_storage.set_show_time_stats(show_time_stats);
+    blockchain.set_show_time_stats(show_time_stats);
 
     block_sync_size = command_line::get_arg(vm, arg_block_sync_size);
     if (block_sync_size > BLOCKS_SYNCHRONIZING_MAX_COUNT)
@@ -851,21 +789,21 @@ bool core::init(
             false,
             "One or more checkpoints loaded from json conflicted with existing checkpoints.");
 
-    r = m_miner.init(vm, m_nettype);
+    r = miner.init(vm, m_nettype);
     CHECK_AND_ASSERT_MES(r, false, "Failed to initialize miner instance");
 
-    if (!keep_alt_blocks && !m_blockchain_storage.get_db().is_read_only())
-        m_blockchain_storage.get_db().drop_alt_blocks();
+    if (!keep_alt_blocks && !blockchain.db().is_read_only())
+        blockchain.db().drop_alt_blocks();
 
     if (prune_blockchain) {
         // display a message if the blockchain is not pruned yet
-        if (!m_blockchain_storage.get_blockchain_pruning_seed()) {
+        if (!blockchain.get_blockchain_pruning_seed()) {
             log::info(globallogcat, "Pruning blockchain...");
             CHECK_AND_ASSERT_MES(
-                    m_blockchain_storage.prune_blockchain(), false, "Failed to prune blockchain");
+                    blockchain.prune_blockchain(), false, "Failed to prune blockchain");
         } else {
             CHECK_AND_ASSERT_MES(
-                    m_blockchain_storage.update_blockchain_pruning(),
+                    blockchain.update_blockchain_pruning(),
                     false,
                     "Failed to update blockchain pruning");
         }
@@ -1054,7 +992,7 @@ bool core::init_service_keys() {
                            keys.key,
                            keys.pub,
                            crypto::secret_key_to_public_key,
-                           [](crypto::secret_key& key, crypto::public_key& pubkey) {
+                           [](crypto::secret_key&, crypto::public_key&) {
                                throw oxen::traced<std::runtime_error>{
                                        "Internal error: old-style public keys are no longer "
                                        "generated"};
@@ -1137,7 +1075,7 @@ void core::init_oxenmq(const boost::program_options::variables_map& vm) {
             tools::copy_guts(m_service_keys.key_x25519),
             m_service_node,
             [this](std::string_view x25519_pk) {
-                return m_service_node_list.remote_lookup(x25519_pk);
+                return service_node_list.remote_lookup(x25519_pk);
             },
             [](LogLevel omqlevel, const char* file, int line, std::string msg) {
                 auto level = *oxen::logging::parse_level(omqlevel);
@@ -1180,17 +1118,17 @@ std::vector<eth::bls_public_key> core::get_removable_nodes() {
     uint64_t l2_height;
 
     {
-        std::lock_guard lock{m_blockchain_storage};
+        std::lock_guard lock{blockchain};
 
-        auto sns = m_service_node_list.get_service_node_list_state();
-        auto oxen_height = m_blockchain_storage.get_current_blockchain_height() - 1;
+        auto sns = service_node_list.get_service_node_list_state();
+        auto oxen_height = blockchain.get_current_blockchain_height() - 1;
 
         bls_pubkeys_in_snl.reserve(sns.size());
         for (const auto& sni : sns)
             bls_pubkeys_in_snl.push_back(sni.info->bls_public_key);
 
         std::vector<cryptonote::block> blocks;
-        if (!get_blocks(oxen_height, 1, blocks)) {
+        if (!blockchain.get_blocks(oxen_height, 1, blocks)) {
             std::string msg =
                     "Failed to get the latest block at {} to determine the removable Service Nodes"_format(
                             oxen_height);
@@ -1200,8 +1138,7 @@ std::vector<eth::bls_public_key> core::get_removable_nodes() {
         l2_height = blocks[0].l2_height;
     }
 
-    auto bls_pubkeys_in_smart_contract =
-            m_blockchain_storage.l2_tracker().get_all_bls_public_keys(l2_height);
+    auto bls_pubkeys_in_smart_contract = blockchain.l2_tracker().get_all_bls_public_keys(l2_height);
 
     std::vector<eth::bls_public_key> removable_nodes;
 
@@ -1225,7 +1162,7 @@ bool core::is_node_removable(const eth::bls_public_key& node_bls_pubkey) {
 
 bool core::is_node_liquidatable(const eth::bls_public_key& node_bls_pubkey) {
     return is_node_removable(node_bls_pubkey) &&
-           !m_service_node_list.is_recently_expired(node_bls_pubkey);
+           !service_node_list.is_recently_expired(node_bls_pubkey);
 }
 
 void core::start_oxenmq() {
@@ -1244,10 +1181,6 @@ void core::start_oxenmq() {
 }
 
 //-----------------------------------------------------------------------------------------------
-bool core::set_genesis_block(const block& b) {
-    return m_blockchain_storage.reset_and_set_genesis_block(b);
-}
-//-----------------------------------------------------------------------------------------------
 void core::deinit() {
 #ifdef ENABLE_SYSTEMD
     sd_notify(0, "STOPPING=1\nSTATUS=Shutting down");
@@ -1255,10 +1188,10 @@ void core::deinit() {
     if (m_quorumnet_state)
         quorumnet_delete(m_quorumnet_state);
     m_omq.reset();
-    m_service_node_list.store();
-    m_miner.stop();
-    m_mempool.deinit();
-    m_blockchain_storage.deinit();
+    service_node_list.store();
+    miner.stop();
+    mempool.deinit();
+    blockchain.deinit();
 }
 //-----------------------------------------------------------------------------------------------
 void core::test_drop_download() {
@@ -1277,7 +1210,7 @@ bool core::get_test_drop_download_height() const {
     if (m_test_drop_download_height == 0)
         return true;
 
-    if (get_blockchain_storage().get_current_blockchain_height() <= m_test_drop_download_height)
+    if (blockchain.get_current_blockchain_height() <= m_test_drop_download_height)
         return true;
 
     return false;
@@ -1337,7 +1270,7 @@ static bool is_canonical_bulletproof_layout(const std::vector<rct::Bulletproof>&
 //-----------------------------------------------------------------------------------------------
 void core::parse_incoming_tx_accumulated_batch(
         std::vector<tx_verification_batch_info>& tx_info, bool kept_by_block) {
-    if (kept_by_block && get_blockchain_storage().is_within_compiled_block_hash_area()) {
+    if (kept_by_block && blockchain.is_within_compiled_block_hash_area()) {
         log::trace(logcat, "Skipping semantics check for txs kept by block in embedded hash area");
         return;
     }
@@ -1447,10 +1380,10 @@ std::vector<cryptonote::tx_verification_batch_info> core::parse_incoming_txs(
         if (!info.result)
             continue;
 
-        if (m_mempool.have_tx(info.tx_hash)) {
+        if (mempool.have_tx(info.tx_hash)) {
             log::debug(logcat, "tx {} already has a transaction in tx_pool", info.tx_hash);
             info.already_have = true;
-        } else if (m_blockchain_storage.have_tx(info.tx_hash)) {
+        } else if (blockchain.have_tx(info.tx_hash)) {
             log::debug(logcat, "tx {} already has a transaction in tx_pool", info.tx_hash);
             info.already_have = true;
         }
@@ -1467,7 +1400,7 @@ bool core::handle_parsed_txs(
         uint64_t* blink_rollback_height) {
     // Caller needs to do this around both this *and* parse_incoming_txs
     // auto lock = incoming_tx_lock();
-    auto version = m_blockchain_storage.get_network_version();
+    auto version = blockchain.get_network_version();
     bool ok = true;
     if (blink_rollback_height)
         *blink_rollback_height = 0;
@@ -1480,7 +1413,7 @@ bool core::handle_parsed_txs(
             continue;
         }
         if (opts.kept_by_block)
-            get_blockchain_storage().on_new_tx_from_block(info.tx);
+            blockchain.on_new_tx_from_block(info.tx);
         if (info.already_have)
             continue;  // Not a failure
 
@@ -1492,7 +1425,7 @@ bool core::handle_parsed_txs(
             tx_opts.approved_blink = true;
             local_opts = &tx_opts;
         }
-        if (m_mempool.add_tx(
+        if (mempool.add_tx(
                     info.tx,
                     info.tx_hash,
                     *info.blob,
@@ -1545,7 +1478,7 @@ core::parse_incoming_blinks(const std::vector<serializable_blink_metadata>& blin
     auto& new_blinks = results.first;
     auto& missing_txs = results.second;
 
-    if (m_blockchain_storage.get_network_version() < feature::BLINK)
+    if (blockchain.get_network_version() < feature::BLINK)
         return results;
 
     std::vector<uint8_t> want(
@@ -1562,11 +1495,10 @@ core::parse_incoming_blinks(const std::vector<serializable_blink_metadata>& blin
         for (auto& bm : blinks)
             hashes.emplace_back(bm.tx_hash);
 
-        std::unique_lock<Blockchain> lock(m_blockchain_storage);
+        std::unique_lock<Blockchain> lock(blockchain);
 
-        auto tx_block_heights = m_blockchain_storage.get_transactions_heights(hashes);
-        auto immutable_height = m_blockchain_storage.get_immutable_height();
-        auto& db = m_blockchain_storage.get_db();
+        auto tx_block_heights = blockchain.get_transactions_heights(hashes);
+        auto immutable_height = blockchain.get_immutable_height();
         for (size_t i = 0; i < blinks.size(); i++) {
             if (tx_block_heights[i] == 0 /*mempool or unknown*/ ||
                 tx_block_heights[i] > immutable_height /*mined but not yet immutable*/) {
@@ -1586,9 +1518,9 @@ core::parse_incoming_blinks(const std::vector<serializable_blink_metadata>& blin
 
     // Step 2: filter out any transactions for which we already have a blink signature
     {
-        auto mempool_lock = m_mempool.blink_shared_lock();
+        auto mempool_lock = mempool.blink_shared_lock();
         for (size_t i = 0; i < blinks.size(); i++) {
-            if (want[i] && m_mempool.has_blink(blinks[i].tx_hash)) {
+            if (want[i] && mempool.has_blink(blinks[i].tx_hash)) {
                 log::debug(
                         logcat,
                         "Ignoring blink data for {}: already have blink signatures",
@@ -1658,7 +1590,7 @@ core::parse_incoming_blinks(const std::vector<serializable_blink_metadata>& blin
             auto q_height = blink.quorum_height(static_cast<blink_tx::subquorum>(qi));
             auto& q = quorum_cache[q_height];
             if (!q)
-                q = get_quorum(service_nodes::quorum_type::blink, q_height);
+                q = service_node_list.get_quorum(service_nodes::quorum_type::blink, q_height);
             if (!q) {
                 log::trace(
                         logcat,
@@ -1720,16 +1652,16 @@ int core::add_blinks(const std::vector<std::shared_ptr<blink_tx>>& blinks) {
     if (blinks.empty())
         return added;
 
-    auto lock = m_mempool.blink_unique_lock();
+    auto lock = mempool.blink_unique_lock();
 
     for (auto& b : blinks)
         if (b->approved())
-            if (m_mempool.add_existing_blink(b))
+            if (mempool.add_existing_blink(b))
                 added++;
 
     if (added) {
         log::info(logcat, "Added blink signatures for {} blinks", added);
-        long_poll_trigger(m_mempool);
+        long_poll_trigger(mempool);
     }
 
     return added;
@@ -1813,14 +1745,13 @@ bool core::check_tx_semantic(const transaction& tx, bool keeped_by_block) const 
     }
 
     if (!keeped_by_block &&
-        get_transaction_weight(tx) >=
-                m_blockchain_storage.get_current_cumulative_block_weight_limit() -
-                        COINBASE_BLOB_RESERVED_SIZE) {
+        get_transaction_weight(tx) >= blockchain.get_current_cumulative_block_weight_limit() -
+                                              COINBASE_BLOB_RESERVED_SIZE) {
         log::error(
                 log::Cat("verify"),
                 "tx is too large {}, expected not bigger than {}",
                 get_transaction_weight(tx),
-                m_blockchain_storage.get_current_cumulative_block_weight_limit() -
+                blockchain.get_current_cumulative_block_weight_limit() -
                         COINBASE_BLOB_RESERVED_SIZE);
         return false;
     }
@@ -1848,11 +1779,11 @@ bool core::check_service_node_time() {
         return true;
     }
 
-    crypto::public_key pubkey = m_service_node_list.get_random_pubkey();
+    crypto::public_key pubkey = service_node_list.get_random_pubkey();
     crypto::x25519_public_key x_pkey{0};
     constexpr std::array<uint16_t, 3> MIN_TIMESTAMP_VERSION{9, 1, 0};
     std::array<uint16_t, 3> proofversion;
-    m_service_node_list.access_proof(pubkey, [&](auto& proof) {
+    service_node_list.access_proof(pubkey, [&](auto& proof) {
         x_pkey = proof.pubkey_x25519;
         proofversion = proof.proof->version;
     });
@@ -1890,9 +1821,9 @@ bool core::check_service_node_time() {
                                  100)) {
                                 log::warning(logcat, "service node time might be out of sync");
                                 // If we are out of sync record the other service node as in sync
-                                m_service_node_list.record_timesync_status(pubkey, true);
+                                service_node_list.record_timesync_status(pubkey, true);
                             } else {
-                                m_service_node_list.record_timesync_status(
+                                service_node_list.record_timesync_status(
                                         pubkey,
                                         variance <= service_nodes::THRESHOLD_SECONDS_OUT_OF_SYNC);
                             }
@@ -1900,21 +1831,21 @@ bool core::check_service_node_time() {
                             success = false;
                         }
                     }
-                    m_service_node_list.record_timestamp_participation(pubkey, success);
+                    service_node_list.record_timestamp_participation(pubkey, success);
                 });
     }
     return true;
 }
 //-----------------------------------------------------------------------------------------------
 bool core::is_key_image_spent(const crypto::key_image& key_image) const {
-    return m_blockchain_storage.have_tx_keyimg_as_spent(key_image);
+    return blockchain.have_tx_keyimg_as_spent(key_image);
 }
 //-----------------------------------------------------------------------------------------------
 bool core::are_key_images_spent(
         const std::vector<crypto::key_image>& key_im, std::vector<bool>& spent) const {
     spent.clear();
     for (auto& ki : key_im) {
-        spent.push_back(m_blockchain_storage.have_tx_keyimg_as_spent(ki));
+        spent.push_back(blockchain.have_tx_keyimg_as_spent(ki));
     }
     return true;
 }
@@ -1927,7 +1858,7 @@ bool core::are_key_images_spent_in_pool(
         const std::vector<crypto::key_image>& key_im, std::vector<bool>& spent) const {
     spent.clear();
 
-    return m_mempool.check_for_key_images(key_im, spent);
+    return mempool.check_for_key_images(key_im, spent);
 }
 //-----------------------------------------------------------------------------------------------
 std::optional<std::tuple<int64_t, int64_t, int64_t>> core::get_coinbase_tx_sum(
@@ -1955,7 +1886,7 @@ std::optional<std::tuple<int64_t, int64_t, int64_t>> core::get_coinbase_tx_sum(
     uint64_t cache_to = 0;
     std::chrono::steady_clock::time_point cache_build_started;
     if (start_offset == 0) {
-        uint64_t height = m_blockchain_storage.get_current_blockchain_height();
+        uint64_t height = blockchain.get_current_blockchain_height();
         if (count > height)
             count = height;
         cache_to = height - std::min(CACHE_LAG, height);
@@ -2013,7 +1944,7 @@ std::optional<std::tuple<int64_t, int64_t, int64_t>> core::get_coinbase_tx_sum(
     }
 
     const uint64_t end = start_offset + count - 1;
-    m_blockchain_storage.for_blocks_range(
+    blockchain.for_blocks_range(
             start_offset,
             end,
             [this, &cache_to, &result, &cache_build_started](
@@ -2021,7 +1952,7 @@ std::optional<std::tuple<int64_t, int64_t, int64_t>> core::get_coinbase_tx_sum(
                 auto& [emission_amount, total_fee_amount, burnt_oxen] = *result;
                 std::vector<transaction> txs;
                 auto coinbase_amount = static_cast<int64_t>(get_outs_money_amount(b.miner_tx));
-                get_transactions(b.tx_hashes, txs);
+                blockchain.get_transactions(b.tx_hashes, txs);
                 int64_t tx_fee_amount = 0;
                 for (const auto& tx : txs) {
                     tx_fee_amount += static_cast<int64_t>(
@@ -2069,7 +2000,7 @@ bool core::check_tx_inputs_keyimages_diff(const transaction& tx) const {
 }
 //-----------------------------------------------------------------------------------------------
 bool core::check_tx_inputs_ring_members_diff(const transaction& tx) const {
-    const auto version = m_blockchain_storage.get_network_version();
+    const auto version = blockchain.get_network_version();
     for (const auto& in : tx.vin) {
         CHECKED_GET_SPECIFIC_VARIANT(in, txin_to_key, tokey_in, false);
         for (size_t n = 1; n < tokey_in.key_offsets.size(); ++n)
@@ -2090,14 +2021,10 @@ bool core::check_tx_inputs_keyimages_domain(const transaction& tx) const {
     return true;
 }
 //-----------------------------------------------------------------------------------------------
-size_t core::get_blockchain_total_transactions() const {
-    return m_blockchain_storage.get_total_transactions();
-}
-//-----------------------------------------------------------------------------------------------
 bool core::relay_txpool_transactions() {
     // we attempt to relay txes that should be relayed, but were not
     std::vector<std::pair<crypto::hash, std::string>> txs;
-    if (m_mempool.get_relayable_transactions(txs) && !txs.empty()) {
+    if (mempool.get_relayable_transactions(txs) && !txs.empty()) {
         cryptonote_connection_context fake_context{};
         tx_verification_context tvc{};
         NOTIFY_NEW_TRANSACTIONS::request r{};
@@ -2105,7 +2032,7 @@ bool core::relay_txpool_transactions() {
             r.txs.push_back(it->second);
         }
         get_protocol()->relay_transactions(r, fake_context);
-        m_mempool.set_relayed(txs);
+        mempool.set_relayed(txs);
     }
     return true;
 }
@@ -2118,10 +2045,10 @@ bool core::submit_uptime_proof() {
     try {
         cryptonote_connection_context fake_context{};
         bool relayed;
-        auto height = get_current_blockchain_height();
+        auto height = blockchain.get_current_blockchain_height();
         auto hf_version = get_network_version(m_nettype, height);
 
-        auto proof = m_service_node_list.generate_uptime_proof(
+        auto proof = service_node_list.generate_uptime_proof(
                 hf_version,
                 m_sn_public_ip,
                 storage_https_port(),
@@ -2151,7 +2078,8 @@ bool core::handle_uptime_proof(
     std::unique_ptr<uptime_proof::Proof> proof;
     try {
         proof = std::make_unique<uptime_proof::Proof>(
-                get_network_version(m_nettype, get_current_blockchain_height()), req.proof);
+                get_network_version(m_nettype, blockchain.get_current_blockchain_height()),
+                req.proof);
 
         // devnet/stagenet don't have storage server or lokinet, so these should be 0; everywhere
         // else they should be non-zero.
@@ -2177,9 +2105,9 @@ bool core::handle_uptime_proof(
     proof->sig_ed25519 = tools::make_from_guts<crypto::ed25519_signature>(req.ed_sig);
     auto pubkey = proof->pubkey;
     crypto::x25519_public_key x_pkey{};
-    bool result = m_service_node_list.handle_uptime_proof(
+    bool result = service_node_list.handle_uptime_proof(
             std::move(proof), my_uptime_proof_confirmation, x_pkey);
-    if (result && m_service_node_list.is_service_node(pubkey, true /*require_active*/) && x_pkey) {
+    if (result && service_node_list.is_service_node(pubkey, true /*require_active*/) && x_pkey) {
         oxenmq::pubkey_set added;
         added.insert(tools::copy_guts(x_pkey));
         m_omq->update_active_sns(added, {} /*removed*/);
@@ -2196,12 +2124,12 @@ crypto::hash core::on_transaction_relayed(const std::string& tx_blob) {
         return crypto::null<crypto::hash>;
     }
     txs.push_back(std::make_pair(tx_hash, std::move(tx_blob)));
-    m_mempool.set_relayed(txs);
+    mempool.set_relayed(txs);
     return tx_hash;
 }
 //-----------------------------------------------------------------------------------------------
 bool core::relay_service_node_votes() {
-    auto height = get_current_blockchain_height();
+    auto height = blockchain.get_current_blockchain_height();
     auto hf_version = get_network_version(m_nettype, height);
 
     auto quorum_votes = m_quorum_cop.get_relayable_votes(height, hf_version, true);
@@ -2222,96 +2150,6 @@ void core::set_service_node_votes_relayed(const std::vector<service_nodes::quoru
     m_quorum_cop.set_votes_relayed(votes);
 }
 //-----------------------------------------------------------------------------------------------
-bool core::create_next_miner_block_template(
-        block& b,
-        const account_public_address& adr,
-        difficulty_type& diffic,
-        uint64_t& height,
-        uint64_t& expected_reward,
-        const std::string& ex_nonce) {
-    return m_blockchain_storage.create_next_miner_block_template(
-            b, adr, diffic, height, expected_reward, ex_nonce);
-}
-//-----------------------------------------------------------------------------------------------
-bool core::create_miner_block_template(
-        block& b,
-        const crypto::hash* prev_block,
-        const account_public_address& adr,
-        difficulty_type& diffic,
-        uint64_t& height,
-        uint64_t& expected_reward,
-        const std::string& ex_nonce) {
-    return m_blockchain_storage.create_miner_block_template(
-            b, prev_block, adr, diffic, height, expected_reward, ex_nonce);
-}
-//-----------------------------------------------------------------------------------------------
-bool core::find_blockchain_supplement(
-        const std::list<crypto::hash>& qblock_ids,
-        NOTIFY_RESPONSE_CHAIN_ENTRY::request& resp) const {
-    return m_blockchain_storage.find_blockchain_supplement(qblock_ids, resp);
-}
-//-----------------------------------------------------------------------------------------------
-bool core::find_blockchain_supplement(
-        const uint64_t req_start_block,
-        const std::list<crypto::hash>& qblock_ids,
-        std::vector<std::pair<
-                std::pair<std::string, crypto::hash>,
-                std::vector<std::pair<crypto::hash, std::string>>>>& blocks,
-        uint64_t& total_height,
-        uint64_t& start_height,
-        bool pruned,
-        bool get_miner_tx_hash,
-        size_t max_count) const {
-    return m_blockchain_storage.find_blockchain_supplement(
-            req_start_block,
-            qblock_ids,
-            blocks,
-            total_height,
-            start_height,
-            pruned,
-            get_miner_tx_hash,
-            max_count);
-}
-//-----------------------------------------------------------------------------------------------
-bool core::get_outs(
-        const rpc::GET_OUTPUTS_BIN::request& req, rpc::GET_OUTPUTS_BIN::response& res) const {
-    return m_blockchain_storage.get_outs(req, res);
-}
-//-----------------------------------------------------------------------------------------------
-bool core::get_output_distribution(
-        uint64_t amount,
-        uint64_t from_height,
-        uint64_t to_height,
-        uint64_t& start_height,
-        std::vector<uint64_t>& distribution,
-        uint64_t& base) const {
-    return m_blockchain_storage.get_output_distribution(
-            amount, from_height, to_height, start_height, distribution, base);
-}
-//-----------------------------------------------------------------------------------------------
-void core::get_output_blacklist(std::vector<uint64_t>& blacklist) const {
-    m_blockchain_storage.get_output_blacklist(blacklist);
-}
-//-----------------------------------------------------------------------------------------------
-bool core::get_tx_outputs_gindexs(const crypto::hash& tx_id, std::vector<uint64_t>& indexs) const {
-    return m_blockchain_storage.get_tx_outputs_gindexs(tx_id, indexs);
-}
-//-----------------------------------------------------------------------------------------------
-bool core::get_tx_outputs_gindexs(
-        const crypto::hash& tx_id,
-        size_t n_txes,
-        std::vector<std::vector<uint64_t>>& indexs) const {
-    return m_blockchain_storage.get_tx_outputs_gindexs(tx_id, n_txes, indexs);
-}
-//-----------------------------------------------------------------------------------------------
-void core::pause_mine() {
-    m_miner.pause();
-}
-//-----------------------------------------------------------------------------------------------
-void core::resume_mine() {
-    m_miner.resume();
-}
-//-----------------------------------------------------------------------------------------------
 block_complete_entry get_block_complete_entry(block& b, tx_memory_pool& pool) {
     block_complete_entry bce = {};
     bce.block = cryptonote::block_to_blob(b);
@@ -2329,13 +2167,13 @@ block_complete_entry get_block_complete_entry(block& b, tx_memory_pool& pool) {
 bool core::handle_block_found(block& b, block_verification_context& bvc) {
     bvc = {};
     std::vector<block_complete_entry> blocks;
-    m_miner.pause();
+    miner.pause();
     {
         OXEN_DEFER {
-            m_miner.resume();
+            miner.resume();
         };
         try {
-            blocks.push_back(get_block_complete_entry(b, m_mempool));
+            blocks.push_back(get_block_complete_entry(b, mempool));
         } catch (const std::exception& e) {
             return false;
         }
@@ -2347,7 +2185,7 @@ bool core::handle_block_found(block& b, block_verification_context& bvc) {
         // add_new_block will verify block and set bvc.m_verification_failed accordingly
         add_new_block(b, bvc, nullptr /*checkpoint*/);
         cleanup_handle_incoming_blocks(true);
-        m_miner.on_block_chain_update();
+        miner.on_block_chain_update();
     }
 
     if (bvc.m_verifivation_failed) {
@@ -2361,9 +2199,9 @@ bool core::handle_block_found(block& b, block_verification_context& bvc) {
     } else if (bvc.m_added_to_main_chain) {
         std::unordered_set<crypto::hash> missed_txs;
         std::vector<std::string> txs;
-        m_blockchain_storage.get_transactions_blobs(b.tx_hashes, txs, &missed_txs);
+        blockchain.get_transactions_blobs(b.tx_hashes, txs, &missed_txs);
         if (missed_txs.size() &&
-            m_blockchain_storage.get_block_id_by_height(b.get_height()) != get_block_hash(b)) {
+            blockchain.get_block_id_by_height(b.get_height()) != get_block_hash(b)) {
             log::info(
                     logcat,
                     "Block found but, seems that reorganize just happened after that, do not relay "
@@ -2382,7 +2220,7 @@ bool core::handle_block_found(block& b, block_verification_context& bvc) {
 
         cryptonote_connection_context exclude_context{};
         NOTIFY_NEW_FLUFFY_BLOCK::request arg{};
-        arg.current_blockchain_height = m_blockchain_storage.get_current_blockchain_height();
+        arg.current_blockchain_height = blockchain.get_current_blockchain_height();
         arg.b = blocks[0];
 
         m_pprotocol->relay_block(arg, exclude_context);
@@ -2391,16 +2229,16 @@ bool core::handle_block_found(block& b, block_verification_context& bvc) {
 }
 //-----------------------------------------------------------------------------------------------
 void core::on_synchronized() {
-    m_miner.on_synchronized();
+    miner.on_synchronized();
 }
 //-----------------------------------------------------------------------------------------------
 void core::safesyncmode(const bool onoff) {
-    m_blockchain_storage.safesyncmode(onoff);
+    blockchain.safesyncmode(onoff);
 }
 //-----------------------------------------------------------------------------------------------
 bool core::add_new_block(
         const block& b, block_verification_context& bvc, checkpoint_t const* checkpoint) {
-    bool result = m_blockchain_storage.add_new_block(b, bvc, checkpoint);
+    bool result = blockchain.add_new_block(b, bvc, checkpoint);
     if (result)
         relay_service_node_votes();  // NOTE: nop if synchronising due to not accepting votes whilst
                                      // syncing
@@ -2410,7 +2248,7 @@ bool core::add_new_block(
 bool core::prepare_handle_incoming_blocks(
         const std::vector<block_complete_entry>& blocks_entry, std::vector<block>& blocks) {
     m_incoming_tx_lock.lock();
-    if (!m_blockchain_storage.prepare_handle_incoming_blocks(blocks_entry, blocks)) {
+    if (!blockchain.prepare_handle_incoming_blocks(blocks_entry, blocks)) {
         cleanup_handle_incoming_blocks(false);
         return false;
     }
@@ -2421,7 +2259,7 @@ bool core::prepare_handle_incoming_blocks(
 bool core::cleanup_handle_incoming_blocks(bool force_sync) {
     bool success = false;
     try {
-        success = m_blockchain_storage.cleanup_handle_incoming_blocks(force_sync);
+        success = blockchain.cleanup_handle_incoming_blocks(force_sync);
     } catch (...) {
     }
     m_incoming_tx_lock.unlock();
@@ -2465,7 +2303,7 @@ bool core::handle_incoming_block(
 
     add_new_block(*b, bvc, checkpoint);
     if (update_miner_blocktemplate && bvc.m_added_to_main_chain)
-        m_miner.on_block_chain_update();
+        miner.on_block_chain_update();
     return true;
 
     CATCH_ENTRY("core::handle_incoming_block()", false);
@@ -2478,8 +2316,8 @@ bool core::check_incoming_block_size(const std::string& block_blob) const {
     // blob size against the block weight limit, which acts as a sanity check without
     // having to parse/weigh first; in fact, since the block blob is the block header
     // plus the tx hashes, the weight will typically be much larger than the blob size
-    if (block_blob.size() > m_blockchain_storage.get_current_cumulative_block_weight_limit() +
-                                    BLOCK_SIZE_SANITY_LEEWAY) {
+    if (block_blob.size() >
+        blockchain.get_current_cumulative_block_weight_limit() + BLOCK_SIZE_SANITY_LEEWAY) {
         log::info(
                 logcat,
                 "WRONG BLOCK BLOB, sanity check failed on size {}, rejected",
@@ -2492,32 +2330,8 @@ bool core::check_incoming_block_size(const std::string& block_blob) const {
 void core::update_omq_sns() {
     // TODO: let callers (e.g. lokinet, ss) subscribe to callbacks when this fires
     oxenmq::pubkey_set active_sns;
-    m_service_node_list.copy_x25519_pubkeys(std::inserter(active_sns, active_sns.end()), m_nettype);
+    service_node_list.copy_x25519_pubkeys(std::inserter(active_sns, active_sns.end()), m_nettype);
     m_omq->set_active_sns(std::move(active_sns));
-}
-//-----------------------------------------------------------------------------------------------
-crypto::hash core::get_tail_id() const {
-    return m_blockchain_storage.get_tail_id();
-}
-//-----------------------------------------------------------------------------------------------
-difficulty_type core::get_block_cumulative_difficulty(uint64_t height) const {
-    return m_blockchain_storage.get_db().get_block_cumulative_difficulty(height);
-}
-//-----------------------------------------------------------------------------------------------
-bool core::have_block(const crypto::hash& id) const {
-    return m_blockchain_storage.have_block(id);
-}
-//-----------------------------------------------------------------------------------------------
-crypto::hash core::get_block_id_by_height(uint64_t height) const {
-    return m_blockchain_storage.get_block_id_by_height(height);
-}
-//-----------------------------------------------------------------------------------------------
-bool core::get_block_by_hash(const crypto::hash& h, block& blk, bool* orphan) const {
-    return m_blockchain_storage.get_block_by_hash(h, blk, orphan);
-}
-//-----------------------------------------------------------------------------------------------
-bool core::get_block_by_height(uint64_t height, block& blk) const {
-    return m_blockchain_storage.get_block_by_height(height, blk);
 }
 //-----------------------------------------------------------------------------------------------
 static bool check_external_ping(
@@ -2541,19 +2355,19 @@ void core::reset_proof_interval() {
 //-----------------------------------------------------------------------------------------------
 void core::do_uptime_proof_call() {
     std::vector<service_nodes::service_node_pubkey_info> const states =
-            get_service_node_list_state({m_service_keys.pub});
+            service_node_list.get_service_node_list_state({m_service_keys.pub});
 
     // wait one block before starting uptime proofs (but not on testnet/devnet, where we sometimes
     // have mass registrations/deregistrations where the waiting causes problems).
     uint64_t delay_blocks = m_nettype == network_type::MAINNET ? 1 : 0;
-    if (!states.empty() &&
-        (states[0].info->registration_height + delay_blocks) < get_current_blockchain_height()) {
+    if (!states.empty() && (states[0].info->registration_height + delay_blocks) <
+                                   blockchain.get_current_blockchain_height()) {
         m_check_uptime_proof_interval.do_call([this]() {
             // This timer is not perfectly precise and can leak seconds slightly, so send the uptime
             // proof if we are within half a tick of the target time.  (Essentially our target proof
             // window becomes the first time this triggers in the 59.75-60.25 minute window).
             uint64_t next_proof_time = 0;
-            m_service_node_list.access_proof(
+            service_node_list.access_proof(
                     m_service_keys.pub, [&](auto& proof) { next_proof_time = proof.timestamp; });
             auto& netconf = get_net_config();
             next_proof_time +=
@@ -2565,9 +2379,9 @@ void core::do_uptime_proof_call() {
             if ((uint64_t)std::time(nullptr) < next_proof_time)
                 return;
 
-            auto pubkey = m_service_node_list.get_pubkey_from_x25519(m_service_keys.pub_x25519);
+            auto pubkey = service_node_list.get_pubkey_from_x25519(m_service_keys.pub_x25519);
             if (pubkey && pubkey != m_service_keys.pub &&
-                m_service_node_list.is_service_node(pubkey, false /*don't require active*/)) {
+                service_node_list.is_service_node(pubkey, false /*don't require active*/)) {
                 log::error(
                         globallogcat,
                         fg(fmt::terminal_color::red) | fmt::emphasis::bold,
@@ -2579,12 +2393,12 @@ void core::do_uptime_proof_call() {
 
             {
                 std::vector<crypto::public_key> sn_pks;
-                auto sns = m_service_node_list.get_service_node_list_state();
+                auto sns = service_node_list.get_service_node_list_state();
                 sn_pks.reserve(sns.size());
                 for (const auto& sni : sns)
                     sn_pks.push_back(sni.pubkey);
 
-                m_service_node_list.for_each_service_node_info_and_proof(
+                service_node_list.for_each_service_node_info_and_proof(
                         sn_pks.begin(), sn_pks.end(), [&](auto& pk, auto& sni, auto& proof) {
                             if (pk != m_service_keys.pub &&
                                 proof.proof->public_ip == m_sn_public_ip &&
@@ -2678,7 +2492,7 @@ Use "help <command>" to see a command's documentation.
     m_txpool_auto_relayer.do_call([this] { return relay_txpool_transactions(); });
     m_service_node_vote_relayer.do_call([this] { return relay_service_node_votes(); });
     m_check_disk_space_interval.do_call([this] { return check_disk_space(); });
-    m_sn_proof_cleanup_interval.do_call([&snl = m_service_node_list] {
+    m_sn_proof_cleanup_interval.do_call([&snl = service_node_list] {
         snl.cleanup_proofs();
         return true;
     });
@@ -2691,9 +2505,10 @@ Use "help <command>" to see a command's documentation.
         do_uptime_proof_call();
     }
 
-    m_blockchain_pruning_interval.do_call([this] { return update_blockchain_pruning(); });
-    m_miner.on_idle();
-    m_mempool.on_idle();
+    m_blockchain_pruning_interval.do_call(
+            [this] { return blockchain.update_blockchain_pruning(); });
+    miner.on_idle();
+    mempool.on_idle();
 
 #ifdef ENABLE_SYSTEMD
     m_systemd_notify_interval.do_call(
@@ -2748,14 +2563,7 @@ void core::flush_bad_txs_cache() {
 }
 //-----------------------------------------------------------------------------------------------
 void core::flush_invalid_blocks() {
-    m_blockchain_storage.flush_invalid_blocks();
-}
-bool core::update_blockchain_pruning() {
-    return m_blockchain_storage.update_blockchain_pruning();
-}
-//-----------------------------------------------------------------------------------------------
-bool core::check_blockchain_pruning() {
-    return m_blockchain_storage.check_blockchain_pruning();
+    blockchain.flush_invalid_blocks();
 }
 //-----------------------------------------------------------------------------------------------
 void core::set_target_blockchain_height(uint64_t target_blockchain_height) {
@@ -2766,29 +2574,8 @@ uint64_t core::get_target_blockchain_height() const {
     return m_target_blockchain_height;
 }
 //-----------------------------------------------------------------------------------------------
-uint64_t core::prevalidate_block_hashes(uint64_t height, const std::vector<crypto::hash>& hashes) {
-    return get_blockchain_storage().prevalidate_block_hashes(height, hashes);
-}
-//-----------------------------------------------------------------------------------------------
 uint64_t core::get_free_space() const {
     return fs::space(m_config_folder).available;
-}
-//-----------------------------------------------------------------------------------------------
-std::shared_ptr<const service_nodes::quorum> core::get_quorum(
-        service_nodes::quorum_type type,
-        uint64_t height,
-        bool include_old,
-        std::vector<std::shared_ptr<const service_nodes::quorum>>* alt_states) const {
-    return m_service_node_list.get_quorum(type, height, include_old, alt_states);
-}
-//-----------------------------------------------------------------------------------------------
-bool core::is_service_node(const crypto::public_key& pubkey, bool require_active) const {
-    return m_service_node_list.is_service_node(pubkey, require_active);
-}
-//-----------------------------------------------------------------------------------------------
-const std::vector<service_nodes::key_image_blacklist_entry>&
-core::get_service_node_blacklisted_key_images() const {
-    return m_service_node_list.get_blacklisted_key_images();
 }
 //-----------------------------------------------------------------------------------------------
 eth::bls_rewards_response core::bls_rewards_request(const eth::address& address) {
@@ -2825,22 +2612,9 @@ eth::bls_registration_response core::bls_registration(const eth::address& addres
     return resp;
 }
 //-----------------------------------------------------------------------------------------------
-std::vector<service_nodes::service_node_pubkey_info> core::get_service_node_list_state(
-        const std::vector<crypto::public_key>& service_node_pubkeys) const {
-    return m_service_node_list.get_service_node_list_state(service_node_pubkeys);
-}
-//-----------------------------------------------------------------------------------------------
 bool core::add_service_node_vote(
         const service_nodes::quorum_vote_t& vote, vote_verification_context& vvc) {
     return m_quorum_cop.handle_vote(vote, vvc);
-}
-//-----------------------------------------------------------------------------------------------
-uint32_t core::get_blockchain_pruning_seed() const {
-    return get_blockchain_storage().get_blockchain_pruning_seed();
-}
-//-----------------------------------------------------------------------------------------------
-bool core::prune_blockchain(uint32_t pruning_seed) {
-    return get_blockchain_storage().prune_blockchain(pruning_seed);
 }
 //-----------------------------------------------------------------------------------------------
 std::time_t core::get_start_time() const {

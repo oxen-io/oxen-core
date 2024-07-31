@@ -638,11 +638,11 @@ public:
   {
     log_event("cryptonote::transaction");
     cryptonote::tx_verification_context tvc{};
-    size_t pool_size = m_c.get_pool().get_transactions_count();
+    size_t pool_size = m_c.mempool.get_transactions_count();
     cryptonote::tx_pool_options opts;
     opts.kept_by_block = m_txs_keeped_by_block;
     m_c.handle_incoming_tx(t_serializable_object_to_blob(tx), tvc, opts);
-    bool tx_added = pool_size + 1 == m_c.get_pool().get_transactions_count();
+    bool tx_added = pool_size + 1 == m_c.mempool.get_transactions_count();
     if (!m_validator.check_tx_verification_context(tvc, tx_added, m_ev_index, tx))
     {
       oxen::log::warning(globallogcat, "tx verification context check failed");
@@ -657,7 +657,7 @@ public:
     std::vector<std::string> tx_blobs;
     for (const auto &tx: txs)
       tx_blobs.push_back(t_serializable_object_to_blob(tx));
-    size_t pool_size = m_c.get_pool().get_transactions_count();
+    size_t pool_size = m_c.mempool.get_transactions_count();
     cryptonote::tx_pool_options opts;
     opts.kept_by_block = m_txs_keeped_by_block;
     auto parsed = m_c.handle_incoming_txs(tx_blobs, opts);
@@ -665,7 +665,7 @@ public:
     tvcs.reserve(parsed.size());
     for (auto &i : parsed)
         tvcs.push_back(i.tvc);
-    size_t tx_added = m_c.get_pool().get_transactions_count() - pool_size;
+    size_t tx_added = m_c.mempool.get_transactions_count() - pool_size;
     if (!m_validator.check_tx_verification_context_array(tvcs, tx_added, m_ev_index, txs))
     {
       oxen::log::warning(globallogcat, "tx verification context check failed");
@@ -745,11 +745,11 @@ public:
     log_event("serialized_transaction");
 
     cryptonote::tx_verification_context tvc{};
-    size_t pool_size = m_c.get_pool().get_transactions_count();
+    size_t pool_size = m_c.mempool.get_transactions_count();
     cryptonote::tx_pool_options opts;
     opts.kept_by_block = m_txs_keeped_by_block;
     m_c.handle_incoming_tx(sr_tx.data, tvc, opts);
-    bool tx_added = pool_size + 1 == m_c.get_pool().get_transactions_count();
+    bool tx_added = pool_size + 1 == m_c.mempool.get_transactions_count();
 
     cryptonote::transaction tx;
     serialization::binary_string_unarchiver ba{sr_tx.data};
@@ -799,7 +799,7 @@ public:
   bool operator()(const oxen_blockchain_addable<cryptonote::checkpoint_t> &entry) const
   {
     log_event("oxen_blockchain_addable<cryptonote::checkpoint_t>");
-    cryptonote::Blockchain &blockchain = m_c.get_blockchain_storage();
+    cryptonote::Blockchain &blockchain = m_c.blockchain;
     bool added = blockchain.update_checkpoint(entry.data);
     if (!add_to_blockchain_was_valid("checkpoint", entry.can_be_added_to_blockchain, added, entry.fail_msg))
         return false;
@@ -903,12 +903,12 @@ public:
   {
     log_event("oxen_blockchain_addable<oxen_transaction>");
     cryptonote::tx_verification_context tvc = {};
-    size_t pool_size = m_c.get_pool().get_transactions_count();
+    size_t pool_size = m_c.mempool.get_transactions_count();
     cryptonote::tx_pool_options opts;
     opts.kept_by_block = entry.data.kept_by_block;
     m_c.handle_incoming_tx(t_serializable_object_to_blob(entry.data.tx), tvc, opts);
 
-    bool added = (pool_size + 1) == m_c.get_pool().get_transactions_count();
+    bool added = (pool_size + 1) == m_c.mempool.get_transactions_count();
     if (!add_to_blockchain_was_valid(
                 fmt::format("tx {}", entry.data.tx.hash),
                 entry.can_be_added_to_blockchain,
@@ -947,14 +947,14 @@ inline bool replay_events_through_core_plain(cryptonote::core& cr, const std::ve
   TRY_ENTRY();
   // start with a clean pool
   std::vector<crypto::hash> pool_txs;
-  cr.get_pool().get_transaction_hashes(pool_txs);
-  cr.get_blockchain_storage().flush_txes_from_pool(pool_txs);
+  cr.mempool.get_transaction_hashes(pool_txs);
+  cr.blockchain.flush_txes_from_pool(pool_txs);
 
   //init core here
   if (reinit) {
     CHECK_AND_ASSERT_MES(std::holds_alternative<cryptonote::block>(events[0]), false,
                          "First event must be genesis block creation");
-    cr.set_genesis_block(var::get<cryptonote::block>(events[0]));
+    cr.blockchain.reset_and_set_genesis_block(var::get<cryptonote::block>(events[0]));
   }
 
   bool r = true;
@@ -1027,7 +1027,7 @@ inline bool do_replay_events_get_core(std::vector<test_event_entry>& events, cry
     oxen::log::error(globallogcat, "Failed to init core");
     return false;
   }
-  c.get_blockchain_storage().get_db().set_batch_transactions(true);
+  c.blockchain.db().set_batch_transactions(true);
   bool ret = replay_events_through_core_plain<t_test_class>(c, events, validator, true);
   tools::threadpool::getInstance().recycle();
   return ret;

@@ -217,14 +217,14 @@ void BootstrapFile::write_block(block& block) {
 
     std::vector<transaction> txs;
 
-    uint64_t block_height = var::get<txin_gen>(block.miner_tx.vin.front()).height;
+    uint64_t block_height = block.get_height();
 
     // now add all regular transactions
     for (const auto& tx_id : block.tx_hashes) {
         if (!tx_id) {
             throw oxen::traced<std::runtime_error>("Aborting: null txid");
         }
-        transaction tx = m_blockchain_storage->get_db().get_tx(tx_id);
+        transaction tx = m_blockchain_storage->db().get_tx(tx_id);
 
         txs.push_back(tx);
     }
@@ -236,11 +236,11 @@ void BootstrapFile::write_block(block& block) {
     // verification.
     bool include_extra_block_data = true;
     if (include_extra_block_data) {
-        size_t block_weight = m_blockchain_storage->get_db().get_block_weight(block_height);
+        size_t block_weight = m_blockchain_storage->db().get_block_weight(block_height);
         difficulty_type cumulative_difficulty =
-                m_blockchain_storage->get_db().get_block_cumulative_difficulty(block_height);
+                m_blockchain_storage->db().get_block_cumulative_difficulty(block_height);
         uint64_t coins_generated =
-                m_blockchain_storage->get_db().get_block_already_generated_coins(block_height);
+                m_blockchain_storage->db().get_block_already_generated_coins(block_height);
 
         bp.block_weight = block_weight;
         bp.cumulative_difficulty = cumulative_difficulty;

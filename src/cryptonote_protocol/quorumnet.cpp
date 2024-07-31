@@ -86,7 +86,7 @@ namespace {
 
     struct QnetState {
         cryptonote::core& core;
-        oxenmq::OxenMQ& omq{core.get_omq()};
+        oxenmq::OxenMQ& omq{core.omq()};
 
         // Track submitted blink txes here; unlike the blinks stored in the mempool we store these
         // ones more liberally to track submitted blinks, even if unsigned/unacceptable, while the
@@ -179,7 +179,7 @@ E get_enum(const bt_dict &d, const std::string &key) {
         std::vector<std::tuple<std::string, std::string, decltype(proof_info{}.proof->version)>>
                 remotes;
         remotes.reserve(candidates.size());
-        core.get_service_node_list().for_each_service_node_info_and_proof(
+        core.service_node_list.for_each_service_node_info_and_proof(
                 candidates.begin(),
                 candidates.end(),
                 [&remotes](const auto& pubkey, const auto& info, const auto& proof) {
@@ -243,7 +243,7 @@ E get_enum(const bt_dict &d, const std::string &key) {
             std::string&& data) {
         for (auto const& [x25519_string, connect_string] : destinations) {
             log::info(logcat, "Relaying data to {} @ {}", to_hex(x25519_string), connect_string);
-            core.get_omq().send(
+            core.omq().send(
                     x25519_string, command, std::move(data), send_option::hint{connect_string});
         }
     }
@@ -302,7 +302,7 @@ E get_enum(const bt_dict &d, const std::string &key) {
         template <typename QuorumIt>
         peer_info(
                 QnetState& qnet,
-                quorum_type q_type,
+                quorum_type /*q_type*/,
                 QuorumIt qbegin,
                 QuorumIt qend,
                 bool opportunistic = true,
@@ -343,7 +343,7 @@ E get_enum(const bt_dict &d, const std::string &key) {
             }
 
             // Lookup the x25519 and ZMQ connection string for all peers
-            qnet.core.get_service_node_list().for_each_service_node_info_and_proof(
+            qnet.core.service_node_list.for_each_service_node_info_and_proof(
                     need_remotes.begin(),
                     need_remotes.end(),
                     [this](const auto& pubkey, const auto& info, const auto& proof) {
@@ -412,7 +412,7 @@ E get_enum(const bt_dict &d, const std::string &key) {
         // not already connected) and empty if it's an opportunistic peer (i.e. only send along if
         // we already have a connection).
         template <typename QuorumIt>
-        void compute_validator_peers(QuorumIt qbegin, QuorumIt qend, bool opportunistic) {
+        void compute_validator_peers(QuorumIt qbegin, QuorumIt qend, bool /*opportunistic*/) {
 
             // TODO: when we receive a new block, if our quorum starts soon we can tell SNNetwork to
             // pre-connect (to save the time in handshaking when we get an actual blink tx).
@@ -609,7 +609,6 @@ E get_enum(const bt_dict &d, const std::string &key) {
     void relay_obligation_votes(void* obj, const std::vector<service_nodes::quorum_vote_t>& votes) {
         auto& qnet = QnetState::from(obj);
 
-        const auto& my_keys = qnet.core.get_service_keys();
         assert(qnet.core.service_node());
 
         log::debug(logcat, "Starting relay of {} votes", votes.size());
@@ -626,7 +625,7 @@ E get_enum(const bt_dict &d, const std::string &key) {
             }
 
             auto quorum =
-                    qnet.core.get_service_node_list().get_quorum(vote.type, vote.block_height);
+                    qnet.core.service_node_list.get_quorum(vote.type, vote.block_height);
             if (!quorum) {
                 log::warning(
                         logcat,
@@ -682,7 +681,7 @@ E get_enum(const bt_dict &d, const std::string &key) {
                         logcat, "Received invalid non-obligations vote via quorumnet; ignoring");
                 return;
             }
-            if (vote.block_height > qnet.core.get_current_blockchain_height()) {
+            if (vote.block_height > qnet.core.blockchain.get_current_blockchain_height()) {
                 log::debug(logcat, "Ignoring vote: block height {} is too high", vote.block_height);
                 return;
             }
@@ -775,7 +774,6 @@ E get_enum(const bt_dict &d, const std::string &key) {
     // signature, "R" for a rejection signature, or "-" for no signature.
     std::string debug_known_signatures(blink_tx& btx, quorum_array& blink_quorums) {
         std::ostringstream os;
-        bool first = true;
         for (uint8_t qi = 0; qi < blink_quorums.size(); qi++) {
             if (qi > 0)
                 os << ' ';
@@ -849,7 +847,6 @@ E get_enum(const bt_dict &d, const std::string &key) {
             auto& position = std::get<int>(pending);
             auto& signature = std::get<crypto::signature>(pending);
 
-            auto subquorum = static_cast<blink_tx::subquorum>(qi);
             auto& validators = blink_quorums[qi]->validators;
 
             if (!crypto::check_signature(btx.hash(approval), validators[position], signature)) {
@@ -884,7 +881,6 @@ E get_enum(const bt_dict &d, const std::string &key) {
                 auto& signature = std::get<crypto::signature>(pending);
 
                 auto subquorum = static_cast<blink_tx::subquorum>(qi);
-                auto& validators = blink_quorums[qi]->validators;
 
                 if (btx.add_prechecked_signature(subquorum, position, approval, signature)) {
                     log::debug(
@@ -921,7 +917,7 @@ E get_enum(const bt_dict &d, const std::string &key) {
 
         if (became_approved) {
             log::info(logcat, "Accumulated enough signatures for blink tx: enabling tx relay");
-            auto& pool = qnet.core.get_pool();
+            auto& pool = qnet.core.mempool;
             {
                 auto lock = pool.blink_unique_lock();
                 pool.add_existing_blink(btxptr);
@@ -935,7 +931,7 @@ E get_enum(const bt_dict &d, const std::string &key) {
 
         peer_info::exclude_set relay_exclude;
         if (!received_from.empty()) {
-            auto pubkey = qnet.core.get_service_node_list().get_pubkey_from_x25519(
+            auto pubkey = qnet.core.service_node_list.get_pubkey_from_x25519(
                     x25519_from_string(received_from));
             if (pubkey)
                 relay_exclude.insert(std::move(pubkey));
@@ -1056,7 +1052,7 @@ E get_enum(const bt_dict &d, const std::string &key) {
 
         auto tag = get_or<uint64_t>(data, "!", 0);
 
-        auto local_height = qnet.core.get_current_blockchain_height();
+        auto local_height = qnet.core.blockchain.get_current_blockchain_height();
 
         auto hf_version = get_network_version(qnet.core.get_nettype(), local_height);
         if (hf_version < cryptonote::feature::BLINK) {
@@ -1187,7 +1183,7 @@ E get_enum(const bt_dict &d, const std::string &key) {
         uint64_t checksum = get_int<uint64_t>(data.at("q"));
         try {
             blink_quorums =
-                    get_blink_quorums(blink_height, qnet.core.get_service_node_list(), &checksum);
+                    get_blink_quorums(blink_height, qnet.core.service_node_list, &checksum);
         } catch (const oxen::traced<std::runtime_error>& e) {
             log::info(logcat, "Rejecting blink tx: {}", e.what());
             if (tag)
@@ -1205,7 +1201,7 @@ E get_enum(const bt_dict &d, const std::string &key) {
                 blink_quorums.begin(),
                 blink_quorums.end(),
                 true /*opportunistic*/,
-                {qnet.core.get_service_node_list().get_pubkey_from_x25519(x25519_from_string(
+                {qnet.core.service_node_list.get_pubkey_from_x25519(x25519_from_string(
                         m.conn.pubkey()))}  // exclude the peer that just sent it to us
         };
 
@@ -1343,7 +1339,7 @@ E get_enum(const bt_dict &d, const std::string &key) {
         } else {
             bool already_in_mempool;
             cryptonote::tx_verification_context tvc = {};
-            approved = qnet.core.get_pool().add_new_blink(btxptr, tvc, already_in_mempool);
+            approved = qnet.core.mempool.add_new_blink(btxptr, tvc, already_in_mempool);
 
             log::info(
                     logcat,
@@ -1508,7 +1504,7 @@ E get_enum(const bt_dict &d, const std::string &key) {
 
         auto blink_quorums = get_blink_quorums(
                 blink_height,
-                qnet.core.get_service_node_list(),
+                qnet.core.service_node_list,
                 &checksum);  // throws if bad quorum or checksum mismatch
 
         uint64_t reply_tag = 0;
@@ -1637,10 +1633,10 @@ E get_enum(const bt_dict &d, const std::string &key) {
             return future;
 
         try {
-            uint64_t height = core.get_current_blockchain_height();
+            uint64_t height = core.blockchain.get_current_blockchain_height();
             uint64_t checksum;
             auto quorums =
-                    get_blink_quorums(height, core.get_service_node_list(), nullptr, &checksum);
+                    get_blink_quorums(height, core.service_node_list, nullptr, &checksum);
 
             std::string data = bt_serialize<bt_dict>(
                     {{"!", blink_tag},
@@ -2078,7 +2074,7 @@ namespace {
     void setup_endpoints(cryptonote::core& core, void* obj) {
         using namespace oxenmq;
 
-        auto& omq = core.get_omq();
+        auto& omq = core.omq();
 
         Access sn_to_sn{AuthLevel::none, true /*remote sn*/, true /*local sn*/},
                 sn_incoming{AuthLevel::none, false /*remote sn*/, true /*local sn*/},

@@ -95,7 +95,7 @@ tx_memory_pool::tx_memory_pool(Blockchain& bchs) :
 //---------------------------------------------------------------------------------
 bool tx_memory_pool::have_duplicated_non_standard_tx(
         transaction const& tx, hf hard_fork_version) const {
-    auto& service_node_list = m_blockchain.get_service_node_list();
+    auto& service_node_list = m_blockchain.service_node_list;
     if (tx.type == txtype::state_change) {
         tx_extra_service_node_state_change state_change;
         if (!get_service_node_state_change_from_tx_extra(
@@ -1431,7 +1431,7 @@ bool tx_memory_pool::on_blockchain_inc(block const& blk) {
     // Otherwise multiple state changes can queue up until they are applicable
     // and be applied on the node.
     uint64_t const block_height = blk.get_height();
-    auto& service_node_list = m_blockchain.get_service_node_list();
+    auto& service_node_list = m_blockchain.service_node_list;
     for (transaction const& pool_tx : pool_txs) {
         tx_extra_service_node_state_change state_change;
         crypto::public_key service_node_pubkey;
@@ -1517,7 +1517,7 @@ std::vector<uint8_t> tx_memory_pool::have_txs(const std::vector<crypto::hash>& h
     std::vector<uint8_t> result(hashes.size(), false);
     auto locks = tools::unique_locks(m_transactions_lock, m_blockchain);
 
-    auto& db = m_blockchain.get_db();
+    auto& db = m_blockchain.db();
     for (size_t i = 0; i < hashes.size(); i++)
         result[i] = db.txpool_has_tx(hashes[i]);
 
@@ -1617,7 +1617,7 @@ bool tx_memory_pool::check_tx_inputs(
             // anyway.
             //
             std::vector<cryptonote::block> blocks;
-            if (m_blockchain.get_blocks_only(immutable + 1, height, blocks)) {
+            if (m_blockchain.get_blocks(immutable + 1, height, blocks)) {
                 std::vector<cryptonote::transaction> txs;
                 uint64_t earliest = height;
                 for (auto it = blocks.rbegin(); it != blocks.rend(); it++) {
@@ -1942,7 +1942,7 @@ bool tx_memory_pool::fill_block_template(
             // TODO oxen delete this after HF20 has occurred
             // after here
             if (ready)
-                ready = !m_blockchain.get_service_node_list().is_premature_unlock(
+                ready = !m_blockchain.service_node_list.is_premature_unlock(
                         m_blockchain.nettype(), version, height, tx);
             // before here
         } catch (const std::exception& e) {

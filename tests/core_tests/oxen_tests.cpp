@@ -102,10 +102,10 @@ bool oxen_checkpointing_alt_chain_handle_alt_blocks_at_tip::generate(std::vector
       {
       DEFINE_TESTS_ERROR_CONTEXT("check_alt_block_count");
 
-      const auto [top_height, top_hash] = c.get_blockchain_top();
+      const auto [top_height, top_hash] = c.blockchain.get_tail_id();
       CHECK_EQ(top_height, curr_height);
       CHECK_EQ(top_hash, curr_hash);
-      CHECK_TEST_CONDITION(c.get_blockchain_storage().get_alternative_blocks_count() > 0);
+      CHECK_TEST_CONDITION(c.blockchain.get_alternative_blocks_count() > 0);
       return true;
       });
 
@@ -123,8 +123,8 @@ bool oxen_checkpointing_alt_chain_handle_alt_blocks_at_tip::generate(std::vector
   oxen_register_callback(events, "check_chain_reorged", [expected_top_hash](cryptonote::core &c, size_t ev_index)
       {
       DEFINE_TESTS_ERROR_CONTEXT("check_chain_reorged");
-      CHECK_EQ(c.get_blockchain_storage().get_alternative_blocks_count(), 0);
-      const auto [top_height, top_hash] = c.get_blockchain_top();
+      CHECK_EQ(c.blockchain.get_alternative_blocks_count(), 0);
+      const auto [top_height, top_hash] = c.blockchain.get_tail_id();
       CHECK_EQ(expected_top_hash, top_hash);
       return true;
       });
@@ -154,7 +154,7 @@ bool oxen_checkpointing_alt_chain_more_service_node_checkpoints_less_pow_overtak
   oxen_register_callback(events, "check_switched_to_alt_chain", [fork_top_hash, fork_top_height](cryptonote::core &c, size_t ev_index)
       {
       DEFINE_TESTS_ERROR_CONTEXT("check_switched_to_alt_chain");
-      const auto [top_height, top_hash] = c.get_blockchain_top();
+      const auto [top_height, top_hash] = c.blockchain.get_tail_id();
       CHECK_EQ(top_height, fork_top_height);
       CHECK_EQ(top_hash, fork_top_hash);
       return true;
@@ -217,7 +217,7 @@ bool oxen_checkpointing_alt_chain_receive_checkpoint_votes_should_reorg_back::ge
   oxen_register_callback(events, "check_switched_to_alt_chain", [fork_top_hash](cryptonote::core &c, size_t ev_index)
       {
       DEFINE_TESTS_ERROR_CONTEXT("check_switched_to_alt_chain");
-      const auto [top_height, top_hash] = c.get_blockchain_top();
+      const auto [top_height, top_hash] = c.blockchain.get_tail_id();
       CHECK_EQ(fork_top_hash, top_hash);
       return true;
       });
@@ -283,7 +283,7 @@ bool oxen_checkpointing_alt_chain_with_increasing_service_node_checkpoints::gene
   oxen_register_callback(events, "check_still_on_main_chain", [gen_top_hash](cryptonote::core &c, size_t ev_index)
       {
       DEFINE_TESTS_ERROR_CONTEXT("check_still_on_main_chain");
-      const auto [top_height, top_hash] = c.get_blockchain_top();
+      const auto [top_height, top_hash] = c.blockchain.get_tail_id();
       CHECK_EQ(top_hash, gen_top_hash);
       return true;
       });
@@ -303,7 +303,7 @@ bool oxen_checkpointing_alt_chain_with_increasing_service_node_checkpoints::gene
   oxen_register_callback(events, "check_switched_to_alt_chain", [fork_top_hash](cryptonote::core &c, size_t ev_index)
       {
       DEFINE_TESTS_ERROR_CONTEXT("check_switched_to_alt_chain");
-      const auto [top_height, top_hash] = c.get_blockchain_top();
+      const auto [top_height, top_hash] = c.blockchain.get_tail_id();
       CHECK_EQ(fork_top_hash, top_hash);
       return true;
       });
@@ -354,7 +354,7 @@ bool oxen_checkpointing_service_node_checkpoint_from_votes::generate(std::vector
   oxen_register_callback(events, "check_service_node_checkpoint_rejected_insufficient_votes", [checkpointed_height](cryptonote::core &c, size_t ev_index)
       {
       DEFINE_TESTS_ERROR_CONTEXT("check_service_node_checkpoint_rejected_insufficient_votes");
-      cryptonote::Blockchain const &blockchain = c.get_blockchain_storage();
+      cryptonote::Blockchain const &blockchain = c.blockchain;
       cryptonote::checkpoint_t real_checkpoint;
       CHECK_TEST_CONDITION(blockchain.get_checkpoint(checkpointed_height, real_checkpoint) == false);
       return true;
@@ -365,7 +365,7 @@ bool oxen_checkpointing_service_node_checkpoint_from_votes::generate(std::vector
   oxen_register_callback(events, "check_service_node_checkpoint_accepted", [checkpointed_height](cryptonote::core &c, size_t ev_index)
       {
       DEFINE_TESTS_ERROR_CONTEXT("check_service_node_checkpoint_accepted");
-      cryptonote::Blockchain const &blockchain = c.get_blockchain_storage();
+      cryptonote::Blockchain const &blockchain = c.blockchain;
       cryptonote::checkpoint_t real_checkpoint;
       CHECK_TEST_CONDITION(blockchain.get_checkpoint(checkpointed_height, real_checkpoint));
       return true;
@@ -448,11 +448,11 @@ bool oxen_core_block_reward_unpenalized_pre_pulse::generate(std::vector<test_eve
   oxen_register_callback(events, "check_block_rewards", [unpenalized_block_reward, expected_service_node_reward](cryptonote::core &c, size_t ev_index)
       {
       DEFINE_TESTS_ERROR_CONTEXT("check_block_rewards");
-      const auto [top_height, top_hash] = c.get_blockchain_top();
+      const auto [top_height, top_hash] = c.blockchain.get_tail_id();
 
       bool orphan;
       cryptonote::block top_block;
-      CHECK_TEST_CONDITION(c.get_block_by_hash(top_hash, top_block, &orphan));
+      CHECK_TEST_CONDITION(c.blockchain.get_block_by_hash(top_hash, top_block, &orphan));
       CHECK_TEST_CONDITION(orphan == false);
       assert(top_block.miner_tx);
       CHECK_TEST_CONDITION_MSG(top_block.miner_tx->vout[0].amount < unpenalized_block_reward, "We should add enough transactions that the penalty is realised on the base block reward");
@@ -488,11 +488,11 @@ bool oxen_core_block_reward_unpenalized_post_pulse::generate(std::vector<test_ev
   oxen_register_callback(events, "check_block_rewards", [unpenalized_reward, tx_fee](cryptonote::core &c, size_t ev_index)
       {
       DEFINE_TESTS_ERROR_CONTEXT("check_block_rewards");
-      const auto [top_height, top_hash] = c.get_blockchain_top();
+      const auto [top_height, top_hash] = c.blockchain.get_tail_id();
 
       bool orphan;
       cryptonote::block top_block;
-      CHECK_TEST_CONDITION(c.get_block_by_hash(top_hash, top_block, &orphan));
+      CHECK_TEST_CONDITION(c.blockchain.get_block_by_hash(top_hash, top_block, &orphan));
 
       CHECK_TEST_CONDITION(orphan == false);
 
@@ -577,11 +577,11 @@ bool oxen_core_fee_burning::generate(std::vector<test_event_entry>& events)
   oxen_register_callback(events, "check_fee_burned", [good_hash, good_miner_reward](cryptonote::core &c, size_t ev_index)
       {
       DEFINE_TESTS_ERROR_CONTEXT("check_fee_burned");
-      const auto [top_height, top_hash] = c.get_blockchain_top();
+      const auto [top_height, top_hash] = c.blockchain.get_tail_id();
 
       bool orphan;
       cryptonote::block top_block;
-      CHECK_TEST_CONDITION(c.get_block_by_hash(top_hash, top_block, &orphan));
+      CHECK_TEST_CONDITION(c.blockchain.get_block_by_hash(top_hash, top_block, &orphan));
       CHECK_TEST_CONDITION(orphan == false);
 
       CHECK_EQ(top_hash, good_hash);
@@ -649,9 +649,9 @@ bool oxen_core_governance_batched_reward::generate(std::vector<test_event_entry>
       {
       DEFINE_TESTS_ERROR_CONTEXT("check_batched_governance_amount_matches");
 
-      uint64_t height = c.get_current_blockchain_height();
+      uint64_t height = c.blockchain.get_current_blockchain_height();
       std::vector<cryptonote::block> blockchain;
-      if (!c.get_blocks((uint64_t)0, (size_t)height, blockchain))
+      if (!c.blockchain.get_blocks((uint64_t)0, (size_t)height, blockchain))
         return false;
 
       uint64_t governance = 0;
@@ -695,9 +695,9 @@ bool oxen_core_block_rewards_lrc6::generate(std::vector<test_event_entry>& event
       {
       DEFINE_TESTS_ERROR_CONTEXT("check_lrc6_7_block_rewards");
 
-      uint64_t height = c.get_current_blockchain_height();
+      uint64_t height = c.blockchain.get_current_blockchain_height();
       std::vector<cryptonote::block> blockchain;
-      if (!c.get_blocks((uint64_t)0, (size_t)height, blockchain))
+      if (!c.blockchain.get_blocks((uint64_t)0, (size_t)height, blockchain))
         return false;
 
       int hf15_gov = 0, hf16_gov = 0, hf17_gov = 0;
@@ -785,14 +785,14 @@ bool oxen_core_test_deregister_preferred::generate(std::vector<test_event_entry>
   oxen_register_callback(events, "check_prefer_deregisters", [&events, miner](cryptonote::core &c, size_t ev_index)
       {
       DEFINE_TESTS_ERROR_CONTEXT("check_prefer_deregisters");
-      const auto tx_count = c.get_pool().get_transactions_count();
+      const auto tx_count = c.mempool.get_transactions_count();
       cryptonote::block full_blk;
       {
       cryptonote::difficulty_type diffic;
       uint64_t height;
       uint64_t expected_reward;
       std::string extra_nonce;
-      c.create_next_miner_block_template(full_blk, miner.get_keys().m_account_address, diffic, height, expected_reward, extra_nonce);
+      c.blockchain.create_next_miner_block_template(full_blk, miner.get_keys().m_account_address, diffic, height, expected_reward, extra_nonce);
       }
 
       map_hash2tx_t mtx;
@@ -965,7 +965,7 @@ bool oxen_core_test_deregister_on_split::generate(std::vector<test_event_entry> 
       /// get the block with the deregister
       bool orphan = false;
       cryptonote::block blk;
-      CHECK_TEST_CONDITION(c.get_block_by_hash(expected_block_hash, blk, &orphan));
+      CHECK_TEST_CONDITION(c.blockchain.get_block_by_hash(expected_block_hash, blk, &orphan));
 
       /// find the deregister tx:
       const auto found_tx_hash = std::find(blk.tx_hashes.begin(), blk.tx_hashes.end(), expected_tx_hash);
@@ -1126,7 +1126,7 @@ bool oxen_name_system_expiration::generate(std::vector<test_event_entry> &events
       oxen_register_callback(events, "check_ons_entries", [=](cryptonote::core &c, size_t ev_index)
           {
           DEFINE_TESTS_ERROR_CONTEXT("check_ons_entries");
-          ons::name_system_db &ons_db = c.get_blockchain_storage().name_system_db();
+          ons::name_system_db &ons_db = c.blockchain.name_system_db();
           ons::owner_record owner = ons_db.get_owner_by_key(miner_key.owner);
           CHECK_EQ(owner.loaded, true);
           CHECK_EQ(owner.id, 1);
@@ -1146,7 +1146,7 @@ bool oxen_name_system_expiration::generate(std::vector<test_event_entry> &events
       oxen_register_callback(events, "check_expired", [=, blockchain_height = gen.chain_height()](cryptonote::core &c, size_t ev_index)
           {
           DEFINE_TESTS_ERROR_CONTEXT("check_expired");
-          ons::name_system_db &ons_db = c.get_blockchain_storage().name_system_db();
+          ons::name_system_db &ons_db = c.blockchain.name_system_db();
 
           // TODO(oxen): We should probably expire owners that no longer have any mappings remaining
           ons::owner_record owner = ons_db.get_owner_by_key(miner_key.owner);
@@ -1246,11 +1246,11 @@ bool oxen_name_system_get_mappings_by_owner::generate(std::vector<test_event_ent
   oxen_register_callback(events, "check_ons_entries", [=](cryptonote::core &c, size_t ev_index)
       {
       const char* perr_context = "check_ons_entries";
-      ons::name_system_db &ons_db = c.get_blockchain_storage().name_system_db();
+      ons::name_system_db &ons_db = c.blockchain.name_system_db();
       std::vector<ons::mapping_record> records = ons_db.get_mappings_by_owner(bob_key.owner);
 
       size_t expected_size = 0;
-      auto netv = get_network_version(c.get_nettype(), c.get_current_blockchain_height());
+      auto netv = get_network_version(c.get_nettype(), c.blockchain.get_current_blockchain_height());
       if (ons::mapping_type_allowed(netv, ons::mapping_type::session)) expected_size += 2;
       if (ons::mapping_type_allowed(netv, ons::mapping_type::wallet)) expected_size += 2;
       if (ons::mapping_type_allowed(netv, ons::mapping_type::lokinet)) expected_size += 2;
@@ -1343,7 +1343,7 @@ bool oxen_name_system_get_mappings_by_owners::generate(std::vector<test_event_en
   oxen_register_callback(events, "check_ons_entries", [=](cryptonote::core &c, size_t ev_index)
       {
       DEFINE_TESTS_ERROR_CONTEXT("check_ons_entries");
-      ons::name_system_db &ons_db = c.get_blockchain_storage().name_system_db();
+      ons::name_system_db &ons_db = c.blockchain.name_system_db();
       std::vector<ons::mapping_record> records = ons_db.get_mappings_by_owners({bob_key.owner, miner_key.owner});
       CHECK_EQ(records.size(), 3);
       std::sort(records.begin(), records.end(), [](ons::mapping_record const &lhs, ons::mapping_record const &rhs) {
@@ -1391,7 +1391,7 @@ bool oxen_name_system_get_mappings::generate(std::vector<test_event_entry> &even
   oxen_register_callback(events, "check_ons_entries", [bob_key, session_height, session_name1, session_tx_hash](cryptonote::core &c, size_t ev_index)
       {
       DEFINE_TESTS_ERROR_CONTEXT("check_ons_entries");
-      ons::name_system_db &ons_db = c.get_blockchain_storage().name_system_db();
+      ons::name_system_db &ons_db = c.blockchain.name_system_db();
       std::string session_name_hash = ons::name_to_base64_hash(tools::lowercase_ascii_string(session_name1));
       std::vector<ons::mapping_record> records = ons_db.get_mappings({ons::mapping_type::session}, session_name_hash);
       CHECK_EQ(records.size(), 1);
@@ -1450,7 +1450,7 @@ bool oxen_name_system_handles_duplicate_in_ons_db::generate(std::vector<test_eve
   oxen_register_callback(events, "check_ons_entries", [=, blockchain_height=gen.chain_height()](cryptonote::core &c, size_t ev_index)
       {
       DEFINE_TESTS_ERROR_CONTEXT("check_ons_entries");
-      ons::name_system_db &ons_db = c.get_blockchain_storage().name_system_db();
+      ons::name_system_db &ons_db = c.blockchain.name_system_db();
 
       ons::owner_record owner = ons_db.get_owner_by_key(miner_key.owner);
       CHECK_EQ(owner.loaded, true);
@@ -1465,7 +1465,7 @@ bool oxen_name_system_handles_duplicate_in_ons_db::generate(std::vector<test_eve
       CHECK_TEST_CONDITION(verify_ons_mapping_record(perr_context, record1, ons::mapping_type::session, session_name, bob_key.session_value, height_of_ons_entry, std::nullopt, session_tx_hash, miner_key.owner, {} /*backup_owner*/));
       CHECK_EQ(record1.owner_id, owner.id);
 
-      auto netv = get_network_version(c.get_nettype(), c.get_current_blockchain_height());
+      auto netv = get_network_version(c.get_nettype(), c.blockchain.get_current_blockchain_height());
       if (ons::mapping_type_allowed(netv, ons::mapping_type::lokinet))
       {
       ons::mapping_record record2 = ons_db.get_mapping(ons::mapping_type::lokinet, session_name_hash);
@@ -1698,12 +1698,12 @@ bool oxen_name_system_large_reorg::generate(std::vector<test_event_entry> &event
     oxen_register_callback(events, "check_first_ons_entries", [=](cryptonote::core &c, size_t ev_index)
         {
         DEFINE_TESTS_ERROR_CONTEXT("check_first_ons_entries");
-        ons::name_system_db &ons_db        = c.get_blockchain_storage().name_system_db();
+        ons::name_system_db &ons_db        = c.blockchain.name_system_db();
         std::vector<ons::mapping_record> records = ons_db.get_mappings_by_owner(miner_key.owner);
         CHECK_EQ(ons_db.height(), first_ons_height);
 
         size_t expected_size = 1;
-        auto netv = get_network_version(c.get_nettype(), c.get_current_blockchain_height());
+        auto netv = get_network_version(c.get_nettype(), c.blockchain.get_current_blockchain_height());
         if (ons::mapping_type_allowed(netv, ons::mapping_type::wallet)) expected_size += 1;
         if (ons::mapping_type_allowed(netv, ons::mapping_type::lokinet)) expected_size += 1;
         CHECK_EQ(records.size(), expected_size);
@@ -1753,7 +1753,7 @@ bool oxen_name_system_large_reorg::generate(std::vector<test_event_entry> &event
     oxen_register_callback(events, "check_second_ons_entries", [=](cryptonote::core &c, size_t ev_index)
         {
         DEFINE_TESTS_ERROR_CONTEXT("check_second_ons_entries");
-        ons::name_system_db &ons_db = c.get_blockchain_storage().name_system_db();
+        ons::name_system_db &ons_db = c.blockchain.name_system_db();
         CHECK_EQ(ons_db.height(), second_ons_height);
 
         // NOTE: Check miner's record
@@ -1788,7 +1788,7 @@ bool oxen_name_system_large_reorg::generate(std::vector<test_event_entry> &event
   oxen_register_callback(events, "trigger_blockchain_detach", [=](cryptonote::core &c, size_t ev_index)
       {
       DEFINE_TESTS_ERROR_CONTEXT("trigger_blockchain_detach");
-      cryptonote::Blockchain &blockchain = c.get_blockchain_storage();
+      cryptonote::Blockchain &blockchain = c.blockchain;
 
       // NOTE: Reorg to just before the 2nd round of ONS entries
       uint64_t curr_height   = blockchain.get_current_blockchain_height();
@@ -1810,7 +1810,7 @@ bool oxen_name_system_large_reorg::generate(std::vector<test_event_entry> &event
     {
       std::vector<ons::mapping_record> records = ons_db.get_mappings_by_owner(miner_key.owner);
       size_t expected_size = 1;
-      auto netv = get_network_version(c.get_nettype(), c.get_current_blockchain_height());
+      auto netv = get_network_version(c.get_nettype(), c.blockchain.get_current_blockchain_height());
       if (ons::mapping_type_allowed(netv, ons::mapping_type::wallet)) expected_size += 1;
       if (ons::mapping_type_allowed(netv, ons::mapping_type::lokinet)) expected_size += 1;
       CHECK_EQ(records.size(), expected_size);
@@ -1836,7 +1836,7 @@ bool oxen_name_system_large_reorg::generate(std::vector<test_event_entry> &event
   oxen_register_callback(events, "trigger_blockchain_detach_all_records_gone", [miner_key, first_ons_height](cryptonote::core &c, size_t ev_index)
   {
     DEFINE_TESTS_ERROR_CONTEXT("check_second_ons_entries");
-    cryptonote::Blockchain &blockchain = c.get_blockchain_storage();
+    cryptonote::Blockchain &blockchain = c.blockchain;
 
     // NOTE: Reorg to just before the 2nd round of ONS entries
     uint64_t curr_height   = blockchain.get_current_blockchain_height();
@@ -1883,7 +1883,7 @@ bool oxen_name_system_name_renewal::generate(std::vector<test_event_entry> &even
   oxen_register_callback(events, "check_ons_entries", [=](cryptonote::core &c, size_t ev_index)
   {
     DEFINE_TESTS_ERROR_CONTEXT("check_ons_entries");
-    ons::name_system_db &ons_db = c.get_blockchain_storage().name_system_db();
+    ons::name_system_db &ons_db = c.blockchain.name_system_db();
 
     ons::owner_record owner = ons_db.get_owner_by_key(miner_key.owner);
     CHECK_EQ(owner.loaded, true);
@@ -1916,7 +1916,7 @@ bool oxen_name_system_name_renewal::generate(std::vector<test_event_entry> &even
   oxen_register_callback(events, "check_renewed", [=](cryptonote::core &c, size_t ev_index)
   {
     DEFINE_TESTS_ERROR_CONTEXT("check_renewed");
-    ons::name_system_db &ons_db = c.get_blockchain_storage().name_system_db();
+    ons::name_system_db &ons_db = c.blockchain.name_system_db();
 
     ons::owner_record owner = ons_db.get_owner_by_key(miner_key.owner);
     CHECK_EQ(owner.loaded, true);
@@ -2045,7 +2045,7 @@ bool oxen_name_system_update_mapping_after_expiry_fails::generate(std::vector<te
     oxen_register_callback(events, "check_still_expired", [=, blockchain_height=gen.chain_height()](cryptonote::core &c, size_t ev_index)
     {
       DEFINE_TESTS_ERROR_CONTEXT("check_still_expired");
-      ons::name_system_db &ons_db = c.get_blockchain_storage().name_system_db();
+      ons::name_system_db &ons_db = c.blockchain.name_system_db();
 
       ons::owner_record owner = ons_db.get_owner_by_key(miner_key.owner);
       CHECK_EQ(owner.loaded, true);
@@ -2092,7 +2092,7 @@ bool oxen_name_system_update_mapping::generate(std::vector<test_event_entry> &ev
   oxen_register_callback(events, "check_registered", [=](cryptonote::core &c, size_t ev_index)
   {
     DEFINE_TESTS_ERROR_CONTEXT("check_registered");
-    ons::name_system_db &ons_db = c.get_blockchain_storage().name_system_db();
+    ons::name_system_db &ons_db = c.blockchain.name_system_db();
 
     std::string name_hash = ons::name_to_base64_hash(session_name1);
     std::vector<ons::mapping_record> records = ons_db.get_mappings({ons::mapping_type::session}, name_hash);
@@ -2118,7 +2118,7 @@ bool oxen_name_system_update_mapping::generate(std::vector<test_event_entry> &ev
   oxen_register_callback(events, "check_updated", [=, blockchain_height = gen.height()](cryptonote::core &c, size_t ev_index)
   {
     DEFINE_TESTS_ERROR_CONTEXT("check_updated");
-    ons::name_system_db &ons_db = c.get_blockchain_storage().name_system_db();
+    ons::name_system_db &ons_db = c.blockchain.name_system_db();
 
     std::string name_hash = ons::name_to_base64_hash(session_name1);
     std::vector<ons::mapping_record> records = ons_db.get_mappings({ons::mapping_type::session}, name_hash);
@@ -2180,7 +2180,7 @@ bool oxen_name_system_update_mapping_multiple_owners::generate(std::vector<test_
     oxen_register_callback(events, "check_update0", [=](cryptonote::core &c, size_t ev_index)
     {
       const char* perr_context = "check_update0";
-      ons::name_system_db &ons_db = c.get_blockchain_storage().name_system_db();
+      ons::name_system_db &ons_db = c.blockchain.name_system_db();
       ons::mapping_record const record = ons_db.get_mapping(ons::mapping_type::session, name_hash);
       CHECK_TEST_CONDITION(verify_ons_mapping_record(perr_context, record, ons::mapping_type::session, name, miner_key.session_value, height, std::nullopt, txid, owner1, owner2 /*backup_owner*/));
       return true;
@@ -2200,7 +2200,7 @@ bool oxen_name_system_update_mapping_multiple_owners::generate(std::vector<test_
       oxen_register_callback(events, "check_update1", [=, blockchain_height = gen.height()](cryptonote::core &c, size_t ev_index)
       {
         const char* perr_context = "check_update1";
-        ons::name_system_db &ons_db = c.get_blockchain_storage().name_system_db();
+        ons::name_system_db &ons_db = c.blockchain.name_system_db();
         ons::mapping_record const record = ons_db.get_mapping(ons::mapping_type::session, name_hash);
         CHECK_TEST_CONDITION(verify_ons_mapping_record(perr_context, record, ons::mapping_type::session, name, temp_keys.session_value, blockchain_height, std::nullopt, txid, owner1, owner2 /*backup_owner*/));
         return true;
@@ -2221,7 +2221,7 @@ bool oxen_name_system_update_mapping_multiple_owners::generate(std::vector<test_
       oxen_register_callback(events, "check_update2", [=, blockchain_height = gen.height()](cryptonote::core &c, size_t ev_index)
       {
         const char* perr_context = "check_update2";
-        ons::name_system_db &ons_db = c.get_blockchain_storage().name_system_db();
+        ons::name_system_db &ons_db = c.blockchain.name_system_db();
         ons::mapping_record const record = ons_db.get_mapping(ons::mapping_type::session, name_hash);
         CHECK_TEST_CONDITION(verify_ons_mapping_record(perr_context, record, ons::mapping_type::session, name, temp_keys.session_value, blockchain_height, std::nullopt, txid, owner1, owner2 /*backup_owner*/));
         return true;
@@ -2257,7 +2257,7 @@ bool oxen_name_system_update_mapping_multiple_owners::generate(std::vector<test_
       oxen_register_callback(events, "check_update3", [=, blockchain_height = gen.height()](cryptonote::core &c, size_t ev_index)
       {
         const char* perr_context = "check_update3";
-        ons::name_system_db &ons_db = c.get_blockchain_storage().name_system_db();
+        ons::name_system_db &ons_db = c.blockchain.name_system_db();
         ons::mapping_record const record = ons_db.get_mapping(ons::mapping_type::session, name_hash);
         CHECK_TEST_CONDITION(verify_ons_mapping_record(perr_context, record, ons::mapping_type::session, name, temp_keys.session_value, blockchain_height, std::nullopt, txid, owner1, owner2 /*backup_owner*/));
         return true;
@@ -2278,7 +2278,7 @@ bool oxen_name_system_update_mapping_multiple_owners::generate(std::vector<test_
       oxen_register_callback(events, "check_update3", [=, blockchain_height = gen.height()](cryptonote::core &c, size_t ev_index)
       {
         const char* perr_context = "check_update3";
-        ons::name_system_db &ons_db = c.get_blockchain_storage().name_system_db();
+        ons::name_system_db &ons_db = c.blockchain.name_system_db();
         ons::mapping_record const record = ons_db.get_mapping(ons::mapping_type::session, name_hash);
         CHECK_TEST_CONDITION(verify_ons_mapping_record(perr_context, record, ons::mapping_type::session, name, temp_keys.session_value, blockchain_height, std::nullopt, txid, owner1, owner2 /*backup_owner*/));
         return true;
@@ -2318,7 +2318,7 @@ bool oxen_name_system_update_mapping_multiple_owners::generate(std::vector<test_
       oxen_register_callback(events, "check_update4", [=, blockchain_height = gen.height()](cryptonote::core &c, size_t ev_index)
       {
         const char* perr_context = "check_update4";
-        ons::name_system_db &ons_db = c.get_blockchain_storage().name_system_db();
+        ons::name_system_db &ons_db = c.blockchain.name_system_db();
         ons::mapping_record const record = ons_db.get_mapping(ons::mapping_type::session, name_hash);
         CHECK_TEST_CONDITION(verify_ons_mapping_record(perr_context, record, ons::mapping_type::session, name, temp_keys.session_value, blockchain_height, std::nullopt, txid, owner1, owner2 /*backup_owner*/));
         return true;
@@ -2339,7 +2339,7 @@ bool oxen_name_system_update_mapping_multiple_owners::generate(std::vector<test_
       oxen_register_callback(events, "check_update5", [=, blockchain_height = gen.height()](cryptonote::core &c, size_t ev_index)
       {
         const char* perr_context = "check_update5";
-        ons::name_system_db &ons_db = c.get_blockchain_storage().name_system_db();
+        ons::name_system_db &ons_db = c.blockchain.name_system_db();
         ons::mapping_record const record = ons_db.get_mapping(ons::mapping_type::session, name_hash);
         CHECK_TEST_CONDITION(verify_ons_mapping_record(perr_context, record, ons::mapping_type::session, name, temp_keys.session_value, blockchain_height, std::nullopt, txid, owner1, owner2 /*backup_owner*/));
         return true;
@@ -2379,7 +2379,7 @@ bool oxen_name_system_update_mapping_multiple_owners::generate(std::vector<test_
       oxen_register_callback(events, "check_update6", [=, blockchain_height = gen.height()](cryptonote::core &c, size_t ev_index)
       {
         const char* perr_context = "check_update6";
-        ons::name_system_db &ons_db = c.get_blockchain_storage().name_system_db();
+        ons::name_system_db &ons_db = c.blockchain.name_system_db();
         ons::mapping_record const record = ons_db.get_mapping(ons::mapping_type::session, name_hash);
         CHECK_TEST_CONDITION(verify_ons_mapping_record(perr_context, record, ons::mapping_type::session, name, temp_keys.session_value, blockchain_height, std::nullopt, txid, owner1, owner2 /*backup_owner*/));
         return true;
@@ -2401,7 +2401,7 @@ bool oxen_name_system_update_mapping_multiple_owners::generate(std::vector<test_
       oxen_register_callback(events, "check_update7", [=, blockchain_height = gen.height()](cryptonote::core &c, size_t ev_index)
       {
         const char* perr_context = "check_update7";
-        ons::name_system_db &ons_db = c.get_blockchain_storage().name_system_db();
+        ons::name_system_db &ons_db = c.blockchain.name_system_db();
         ons::mapping_record const record = ons_db.get_mapping(ons::mapping_type::session, name_hash);
         CHECK_TEST_CONDITION(verify_ons_mapping_record(perr_context, record, ons::mapping_type::session, name, temp_keys.session_value, blockchain_height, std::nullopt, txid, owner1, owner2 /*backup_owner*/));
         return true;
@@ -2619,7 +2619,7 @@ bool oxen_service_nodes_alt_quorums::generate(std::vector<test_event_entry>& eve
     DEFINE_TESTS_ERROR_CONTEXT("check_alt_quorums_exist");
 
     std::vector<std::shared_ptr<const service_nodes::quorum>> alt_quorums;
-    c.get_quorum(service_nodes::quorum_type::obligations, height_with_fork, false /*include_old*/, &alt_quorums);
+    c.service_node_list.get_quorum(service_nodes::quorum_type::obligations, height_with_fork, false /*include_old*/, &alt_quorums);
     CHECK_TEST_CONDITION_MSG(alt_quorums.size() == 1, "alt_quorums.size(): {}", alt_quorums.size());
 
     service_nodes::quorum const &fork_obligation_quorum = *fork_quorums.obligations;
@@ -2666,7 +2666,7 @@ bool oxen_service_nodes_checkpoint_quorum_size::generate(std::vector<test_event_
   oxen_register_callback(events, "check_checkpoint_quorum_should_be_empty", [check_height_1 = gen.height()](cryptonote::core &c, size_t ev_index)
   {
     DEFINE_TESTS_ERROR_CONTEXT("check_checkpoint_quorum_should_be_empty");
-    std::shared_ptr<const service_nodes::quorum> quorum = c.get_quorum(service_nodes::quorum_type::checkpointing, check_height_1);
+    std::shared_ptr<const service_nodes::quorum> quorum = c.service_node_list.get_quorum(service_nodes::quorum_type::checkpointing, check_height_1);
     CHECK_TEST_CONDITION(quorum != nullptr);
     CHECK_TEST_CONDITION(quorum->validators.size() == 0);
     return true;
@@ -2678,7 +2678,7 @@ bool oxen_service_nodes_checkpoint_quorum_size::generate(std::vector<test_event_
   oxen_register_callback(events, "check_checkpoint_quorum_should_be_populated", [check_height_2 = gen.height()](cryptonote::core &c, size_t ev_index)
   {
     DEFINE_TESTS_ERROR_CONTEXT("check_checkpoint_quorum_should_be_populated");
-    std::shared_ptr<const service_nodes::quorum> quorum = c.get_quorum(service_nodes::quorum_type::checkpointing, check_height_2);
+    std::shared_ptr<const service_nodes::quorum> quorum = c.service_node_list.get_quorum(service_nodes::quorum_type::checkpointing, check_height_2);
     CHECK_TEST_CONDITION(quorum != nullptr);
     CHECK_TEST_CONDITION(quorum->validators.size() > 0);
     return true;
@@ -2710,7 +2710,7 @@ bool oxen_service_nodes_gen_nodes::generate(std::vector<test_event_entry> &event
   {
     DEFINE_TESTS_ERROR_CONTEXT("gen_service_nodes::check_registered");
     std::vector<cryptonote::block> blocks;
-    bool r = c.get_blocks((uint64_t)0, (uint64_t)-1, blocks);
+    bool r = c.blockchain.get_blocks((uint64_t)0, (uint64_t)-1, blocks);
     CHECK_TEST_CONDITION(r);
     std::vector<cryptonote::block> chain;
     map_hash2tx_t mtx;
@@ -2725,7 +2725,7 @@ bool oxen_service_nodes_gen_nodes::generate(std::vector<test_event_entry> &event
     CHECK_EQ(MK_COINS(101) - TESTS_DEFAULT_FEE - staking_requirement, unlocked_balance);
 
     /// check that alice is registered
-    const auto info_v = c.get_service_node_list_state({});
+    const auto info_v = c.service_node_list.get_service_node_list_state({});
     CHECK_EQ(info_v.size(), 1);
     return true;
   });
@@ -2740,7 +2740,7 @@ bool oxen_service_nodes_gen_nodes::generate(std::vector<test_event_entry> &event
 
     std::vector<cryptonote::block> blocks;
     size_t count = 15 + (2 * cryptonote::MINED_MONEY_UNLOCK_WINDOW) + stake_lock_time;
-    bool r = c.get_blocks((uint64_t)0, count, blocks);
+    bool r = c.blockchain.get_blocks((uint64_t)0, count, blocks);
     CHECK_TEST_CONDITION(r);
     std::vector<cryptonote::block> chain;
     map_hash2tx_t mtx;
@@ -2748,7 +2748,7 @@ bool oxen_service_nodes_gen_nodes::generate(std::vector<test_event_entry> &event
     CHECK_TEST_CONDITION(r);
 
     /// check that alice's registration expired
-    const auto info_v = c.get_service_node_list_state({});
+    const auto info_v = c.service_node_list.get_service_node_list_state({});
     CHECK_EQ(info_v.empty(), true);
 
     /// check that alice received some service node rewards (TODO: check the balance precisely)
@@ -2796,7 +2796,7 @@ bool oxen_service_nodes_test_rollback::generate(std::vector<test_event_entry>& e
   oxen_register_callback(events, "test_registrations", [&events, deregister_index, reg_evnt_idx](cryptonote::core &c, size_t ev_index)
   {
     DEFINE_TESTS_ERROR_CONTEXT("test_registrations");
-    const auto sn_list = c.get_service_node_list_state({});
+    const auto sn_list = c.service_node_list.get_service_node_list_state({});
     /// Test that node A is still registered
     {
       /// obtain public key of node A
@@ -2806,10 +2806,10 @@ bool oxen_service_nodes_test_rollback::generate(std::vector<test_event_entry>& e
       CHECK_TEST_CONDITION(dereg_tx.data.tx.type == cryptonote::txtype::state_change);
 
       cryptonote::tx_extra_service_node_state_change deregistration;
-      auto netv = get_network_version(c.get_nettype(), c.get_current_blockchain_height());
+      auto netv = get_network_version(c.get_nettype(), c.blockchain.get_current_blockchain_height());
       cryptonote::get_service_node_state_change_from_tx_extra(dereg_tx.data.tx.extra, deregistration, netv);
 
-      const auto uptime_quorum = c.get_quorum(service_nodes::quorum_type::obligations, deregistration.block_height);
+      const auto uptime_quorum = c.service_node_list.get_quorum(service_nodes::quorum_type::obligations, deregistration.block_height);
       CHECK_TEST_CONDITION(uptime_quorum);
       const auto pk_a = uptime_quorum->workers.at(deregistration.service_node_index);
 
@@ -2866,7 +2866,7 @@ bool oxen_service_nodes_test_swarms_basic::generate(std::vector<test_event_entry
   oxen_register_callback(events, "test_initial_swarms", [](cryptonote::core &c, size_t ev_index)
   {
     DEFINE_TESTS_ERROR_CONTEXT("test_swarms_basic::test_initial_swarms");
-    const auto sn_list = c.get_service_node_list_state({}); /// Check that there is one active swarm and the swarm queue is not empty
+    const auto sn_list = c.service_node_list.get_service_node_list_state({}); /// Check that there is one active swarm and the swarm queue is not empty
     std::map<service_nodes::swarm_id_t, std::vector<crypto::public_key>> swarms;
     for (const auto& entry : sn_list)
     {
@@ -2888,7 +2888,7 @@ bool oxen_service_nodes_test_swarms_basic::generate(std::vector<test_event_entry
   oxen_register_callback(events, "test_with_one_more_sn", [](cryptonote::core &c, size_t ev_index) /// test that another swarm has been created
   {
     DEFINE_TESTS_ERROR_CONTEXT("test_with_one_more_sn");
-    const auto sn_list = c.get_service_node_list_state({});
+    const auto sn_list = c.service_node_list.get_service_node_list_state({});
     std::map<service_nodes::swarm_id_t, std::vector<crypto::public_key>> swarms;
     for (const auto& entry : sn_list)
     {
@@ -2908,7 +2908,7 @@ bool oxen_service_nodes_test_swarms_basic::generate(std::vector<test_event_entry
   oxen_register_callback(events, "test_with_more_sn", [](cryptonote::core &c, size_t ev_index) /// test that another swarm has been created
   {
     DEFINE_TESTS_ERROR_CONTEXT("test_with_more_sn");
-    const auto sn_list = c.get_service_node_list_state({});
+    const auto sn_list = c.service_node_list.get_service_node_list_state({});
     std::map<service_nodes::swarm_id_t, std::vector<crypto::public_key>> swarms;
     for (const auto& entry : sn_list)
     {
@@ -2933,7 +2933,7 @@ bool oxen_service_nodes_test_swarms_basic::generate(std::vector<test_event_entry
   oxen_register_callback(events, "test_after_first_deregisters", [](cryptonote::core &c, size_t ev_index)
   {
     DEFINE_TESTS_ERROR_CONTEXT("test_after_first_deregisters");
-    const auto sn_list = c.get_service_node_list_state({});
+    const auto sn_list = c.service_node_list.get_service_node_list_state({});
     std::map<service_nodes::swarm_id_t, std::vector<crypto::public_key>> swarms;
     for (const auto& entry : sn_list)
     {
@@ -2956,7 +2956,7 @@ bool oxen_service_nodes_test_swarms_basic::generate(std::vector<test_event_entry
   oxen_register_callback(events, "test_after_final_deregisters", [](cryptonote::core &c, size_t ev_index)
   {
     DEFINE_TESTS_ERROR_CONTEXT("test_after_first_deregisters");
-    const auto sn_list = c.get_service_node_list_state({});
+    const auto sn_list = c.service_node_list.get_service_node_list_state({});
     std::map<service_nodes::swarm_id_t, std::vector<crypto::public_key>> swarms;
     for (const auto &entry : sn_list)
     {
@@ -2998,7 +2998,7 @@ bool oxen_service_nodes_insufficient_contribution::generate(std::vector<test_eve
   oxen_register_callback(events, "test_insufficient_stake_does_not_get_accepted", [sn_keys](cryptonote::core &c, size_t ev_index)
   {
     DEFINE_TESTS_ERROR_CONTEXT("test_insufficient_stake_does_not_get_accepted");
-    const auto sn_list = c.get_service_node_list_state({sn_keys.pub});
+    const auto sn_list = c.service_node_list.get_service_node_list_state({sn_keys.pub});
     CHECK_TEST_CONDITION(sn_list.size() == 1);
 
     service_nodes::service_node_pubkey_info const &pubkey_info = sn_list[0];
@@ -3039,7 +3039,7 @@ bool oxen_service_nodes_insufficient_contribution_HF18::generate(std::vector<tes
   oxen_register_callback(events, "test_insufficient_HF18_stake_does_not_get_accepted", [sn_keys, operator_amount](cryptonote::core &c, size_t ev_index)
   {
     DEFINE_TESTS_ERROR_CONTEXT("test_insufficient_HF18_stake_does_not_get_accepted");
-    const auto sn_list = c.get_service_node_list_state({sn_keys.pub});
+    const auto sn_list = c.service_node_list.get_service_node_list_state({sn_keys.pub});
     CHECK_TEST_CONDITION(sn_list.size() == 1);
     CHECK_TEST_CONDITION(sn_list[0].info->contributors.size() == 1);
 
@@ -3081,7 +3081,7 @@ bool oxen_service_nodes_sufficient_contribution_HF19::generate(std::vector<test_
   oxen_register_callback(events, "test_sufficient_stake_does_get_accepted", [sn_keys, total_amount](cryptonote::core &c, size_t ev_index)
   {
     DEFINE_TESTS_ERROR_CONTEXT("test_sufficient_stake_does_get_accepted");
-    const auto sn_list = c.get_service_node_list_state({sn_keys.pub});
+    const auto sn_list = c.service_node_list.get_service_node_list_state({sn_keys.pub});
     CHECK_TEST_CONDITION(sn_list.size() == 1);
     CHECK_TEST_CONDITION(sn_list[0].info->contributors.size() == 2);
 
@@ -3122,7 +3122,7 @@ bool oxen_service_nodes_small_contribution_early_withdrawal::generate(std::vecto
   oxen_register_callback(events, "test_sufficient_stake_does_get_accepted", [sn_keys, staking_requirement](cryptonote::core &c, size_t ev_index)
   {
     DEFINE_TESTS_ERROR_CONTEXT("test_sufficient_stake_does_get_accepted");
-    const auto sn_list = c.get_service_node_list_state({sn_keys.pub});
+    const auto sn_list = c.service_node_list.get_service_node_list_state({sn_keys.pub});
     CHECK_TEST_CONDITION(sn_list.size() == 1);
     CHECK_TEST_CONDITION(sn_list[0].info->contributors.size() == 2);
     CHECK_TEST_CONDITION(sn_list[0].info->requested_unlock_height == 0);
@@ -3138,7 +3138,7 @@ bool oxen_service_nodes_small_contribution_early_withdrawal::generate(std::vecto
   oxen_register_callback(events, "test_unlock_does_not_get_accepted", [sn_keys](cryptonote::core &c, size_t ev_index)
   {
     DEFINE_TESTS_ERROR_CONTEXT("test_unlock_does_not_get_accepted");
-    const auto sn_list = c.get_service_node_list_state({sn_keys.pub});
+    const auto sn_list = c.service_node_list.get_service_node_list_state({sn_keys.pub});
     CHECK_TEST_CONDITION(sn_list.size() == 1);
     CHECK_TEST_CONDITION(sn_list[0].info->contributors.size() == 2);
     CHECK_TEST_CONDITION(sn_list[0].info->requested_unlock_height == 0);
@@ -3177,7 +3177,7 @@ bool oxen_service_nodes_large_contribution_early_withdrawal::generate(std::vecto
   oxen_register_callback(events, "test_sufficient_stake_does_get_accepted", [sn_keys, staking_requirement](cryptonote::core &c, size_t ev_index)
   {
     DEFINE_TESTS_ERROR_CONTEXT("test_sufficient_stake_does_get_accepted");
-    const auto sn_list = c.get_service_node_list_state({sn_keys.pub});
+    const auto sn_list = c.service_node_list.get_service_node_list_state({sn_keys.pub});
     CHECK_TEST_CONDITION(sn_list.size() == 1);
     CHECK_TEST_CONDITION(sn_list[0].info->contributors.size() == 2);
     CHECK_TEST_CONDITION(sn_list[0].info->requested_unlock_height == 0);
@@ -3193,7 +3193,7 @@ bool oxen_service_nodes_large_contribution_early_withdrawal::generate(std::vecto
   oxen_register_callback(events, "test_unlock_does_get_accepted", [sn_keys](cryptonote::core &c, size_t ev_index)
   {
     DEFINE_TESTS_ERROR_CONTEXT("test_unlock_does_get_accepted");
-    const auto sn_list = c.get_service_node_list_state({sn_keys.pub});
+    const auto sn_list = c.service_node_list.get_service_node_list_state({sn_keys.pub});
     CHECK_TEST_CONDITION(sn_list.size() == 1);
     CHECK_TEST_CONDITION(sn_list[0].info->contributors.size() == 2);
     CHECK_TEST_CONDITION(sn_list[0].info->requested_unlock_height > 0);
@@ -3220,7 +3220,7 @@ bool oxen_service_nodes_insufficient_operator_contribution_HF19::generate(std::v
   oxen_register_callback(events, "test_insufficient_operator_stake_does_not_get_accepted", [sn_keys](cryptonote::core &c, size_t ev_index)
   {
     DEFINE_TESTS_ERROR_CONTEXT("test_insufficient_operator_stake_does_not_get_accepted");
-    const auto sn_list = c.get_service_node_list_state({sn_keys.pub});
+    const auto sn_list = c.service_node_list.get_service_node_list_state({sn_keys.pub});
     CHECK_TEST_CONDITION(sn_list.size() == 0);
     return true;
   });
@@ -3421,8 +3421,8 @@ bool oxen_pulse_generate_blocks::generate(std::vector<test_event_entry> &events)
   oxen_register_callback(events, "check_pulse_blocks", [](cryptonote::core &c, size_t ev_index)
   {
     DEFINE_TESTS_ERROR_CONTEXT("check_pulse_blocks");
-    const auto [top_height, top_hash] = c.get_blockchain_top();
-    cryptonote::block top_block = c.get_blockchain_storage().get_db().get_block(top_hash);
+    const auto [top_height, top_hash] = c.blockchain.get_tail_id();
+    cryptonote::block top_block = c.blockchain.db().get_block(top_hash);
     CHECK_TEST_CONDITION(cryptonote::block_has_pulse_components(top_block));
     return true;
   });
@@ -3462,7 +3462,7 @@ bool oxen_pulse_fallback_to_pow_and_back::generate(std::vector<test_event_entry>
   oxen_register_callback(events, "check_no_pulse_quorum_exists", [](cryptonote::core &c, size_t ev_index)
   {
     DEFINE_TESTS_ERROR_CONTEXT("check_no_pulse_quorum_exists");
-    const auto quorum = c.get_quorum(service_nodes::quorum_type::pulse, c.get_current_blockchain_height() - 1, false, nullptr);
+    const auto quorum = c.service_node_list.get_quorum(service_nodes::quorum_type::pulse, c.blockchain.get_current_blockchain_height() - 1, false, nullptr);
     CHECK_TEST_CONDITION(quorum.get() == nullptr);
     return true;
   });
@@ -3511,7 +3511,7 @@ bool oxen_pulse_chain_split::generate(std::vector<test_event_entry> &events)
   oxen_register_callback(events, "check_reorganized_to_pulse_chain_with_checkpoints", [fork_top_hash](cryptonote::core &c, size_t ev_index)
   {
     DEFINE_TESTS_ERROR_CONTEXT("check_reorganized_to_pulse_chain_with_checkpoints");
-    const auto [top_height, top_hash] = c.get_blockchain_top();
+    const auto [top_height, top_hash] = c.blockchain.get_tail_id();
     CHECK_EQ(fork_top_hash, top_hash);
     return true;
   });
@@ -3541,7 +3541,7 @@ bool oxen_pulse_chain_split_with_no_checkpoints::generate(std::vector<test_event
   oxen_register_callback(events, "check_reorganized_to_pulse_chain_with_no_checkpoints", [fork_top_hash](cryptonote::core &c, size_t ev_index)
   {
     DEFINE_TESTS_ERROR_CONTEXT("check_reorganized_to_pulse_chain_with_no_checkpoints");
-    const auto [top_height, top_hash] = c.get_blockchain_top();
+    const auto [top_height, top_hash] = c.blockchain.get_tail_id();
     CHECK_EQ(fork_top_hash, top_hash);
     return true;
   });
@@ -3586,7 +3586,7 @@ bool oxen_batch_sn_rewards::generate(std::vector<test_event_entry> &events)
   { 
     DEFINE_TESTS_ERROR_CONTEXT("gen_service_nodes::check_registered"); 
     std::vector<cryptonote::block> blocks;
-    bool r = c.get_blocks((uint64_t)0, (uint64_t)-1, blocks);
+    bool r = c.blockchain.get_blocks((uint64_t)0, (uint64_t)-1, blocks);
     CHECK_TEST_CONDITION(r);
     std::vector<cryptonote::block> chain;
     map_hash2tx_t mtx;
@@ -3597,7 +3597,7 @@ bool oxen_batch_sn_rewards::generate(std::vector<test_event_entry> &events)
     CHECK_EQ((MK_COINS(101) - TESTS_DEFAULT_FEE)*min_service_nodes, unlocked_balance);
 
     /// check that alice is registered
-    const auto info_v = c.get_service_node_list_state({});
+    const auto info_v = c.service_node_list.get_service_node_list_state({});
     CHECK_EQ(info_v.size(), min_service_nodes);
     return true;
   });
@@ -3614,7 +3614,7 @@ bool oxen_batch_sn_rewards::generate(std::vector<test_event_entry> &events)
 
 
     std::vector<cryptonote::block> blocks;
-    bool r = c.get_blocks((uint64_t)0, (uint64_t)-1, blocks);
+    bool r = c.blockchain.get_blocks((uint64_t)0, (uint64_t)-1, blocks);
     CHECK_TEST_CONDITION(r);
     std::vector<cryptonote::block> chain;
     map_hash2tx_t mtx;
@@ -3639,7 +3639,7 @@ bool oxen_batch_sn_rewards::generate(std::vector<test_event_entry> &events)
     const auto stake_lock_time = service_nodes::staking_num_lock_blocks(cryptonote::network_type::FAKECHAIN);
 
     std::vector<cryptonote::block> blocks;
-    bool r = c.get_blocks((uint64_t)0, (uint64_t)-1, blocks);
+    bool r = c.blockchain.get_blocks((uint64_t)0, (uint64_t)-1, blocks);
     CHECK_TEST_CONDITION(r);
     std::vector<cryptonote::block> chain;
     map_hash2tx_t mtx;
@@ -3802,7 +3802,7 @@ bool oxen_batch_sn_rewards_pop_blocks::generate(std::vector<test_event_entry> &e
   oxen_register_callback(events, "trigger_blockchain_detach", [=](cryptonote::core &c, size_t ev_index)
   {
     DEFINE_TESTS_ERROR_CONTEXT("trigger_blockchain_detach");
-    cryptonote::Blockchain& blockchain = c.get_blockchain_storage();
+    cryptonote::Blockchain& blockchain = c.blockchain;
     uint64_t curr_height = blockchain.get_current_blockchain_height();
     auto& sqliteDB = blockchain.sqlite_db();
     CHECK_EQ(sqliteDB.height, curr_height - 1);
@@ -3898,7 +3898,7 @@ bool oxen_batch_sn_rewards_pop_blocks_after_big_cycle::generate(std::vector<test
   oxen_register_callback(events, "pop_3_cycles", [amount, alice](cryptonote::core &c, size_t ev_index)
   {
     DEFINE_TESTS_ERROR_CONTEXT("pop_3_cycles");
-    cryptonote::Blockchain& blockchain = c.get_blockchain_storage();
+    cryptonote::Blockchain& blockchain = c.blockchain;
     uint64_t curr_height = blockchain.get_current_blockchain_height();
     auto& sqliteDB = blockchain.sqlite_db();
     CHECK_EQ(sqliteDB.height, curr_height - 1);

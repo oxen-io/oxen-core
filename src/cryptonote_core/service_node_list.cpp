@@ -507,25 +507,15 @@ void validate_registration(
                 reg.uses_portions ? cryptonote::old::STAKING_PORTIONS
                                   : cryptonote::STAKING_FEE_BASIS)};
 
-    if (!valid_stakes) {
-        std::string amount_dump;
-        amount_dump.reserve(22 * extracted_amounts.size());
-        for (size_t i = 0; i < extracted_amounts.size(); i++) {
-            if (i)
-                amount_dump += ", ";
-            amount_dump += std::to_string(extracted_amounts[i]);
-        }
-        throw invalid_registration{
-                "Invalid "s + (reg.uses_portions ? "portions" : "amounts") + ": {" + amount_dump +
-                "}"};
-    }
+    if (!valid_stakes)
+        throw invalid_registration{"Invalid {}: {{{}}}"_format(
+                reg.uses_portions ? "portions" : "amounts", fmt::join(extracted_amounts, ", "))};
 
     // If using portions then `.hf` is actually the registration expiry (HF19+ registrations do not
     // expire).
     if (reg.uses_portions && reg.hf < block_timestamp)
         throw invalid_registration{
-                "Registration expired (" + std::to_string(reg.hf) + " < " +
-                std::to_string(block_timestamp) + ")"};
+                "Registration expired ({} < {})"_format(reg.hf, block_timestamp)};
 }
 
 // For ETH_BLS+:
@@ -1634,7 +1624,7 @@ bool service_node_list::state_t::process_ethereum_removal_request_tx(
         return false;
     }
 
-    crypto::public_key snode_key = sn_list->bls_public_key_lookup(remreq.bls_pubkey);
+    crypto::public_key snode_key = sn_list->public_key_lookup(remreq.bls_pubkey);
     auto it = service_nodes_infos.find(snode_key);
     if (it == service_nodes_infos.end())
         return false;
@@ -2233,7 +2223,7 @@ void service_node_list::verify_block(
         uint64_t prev_timestamp = 0;
         if (alt_block) {
             cryptonote::block prev_block;
-            if (!find_block_in_db(m_blockchain.get_db(), block.prev_id, prev_block))
+            if (!find_block_in_db(m_blockchain.db(), block.prev_id, prev_block))
                 throw oxen::traced<std::runtime_error>{
                         "Alt block {} references previous block {} not available in DB."_format(
                                 cryptonote::get_block_hash(block), block.prev_id)};
@@ -2241,7 +2231,7 @@ void service_node_list::verify_block(
             prev_timestamp = prev_block.timestamp;
         } else {
             uint64_t prev_height = height - 1;
-            prev_timestamp = m_blockchain.get_db().get_block_timestamp(prev_height);
+            prev_timestamp = m_blockchain.db().get_block_timestamp(prev_height);
         }
 
         if (!pulse::get_round_timings(m_blockchain, height, prev_timestamp, timings))
@@ -3014,7 +3004,7 @@ void service_node_list::process_block(
     cryptonote::network_type nettype = m_blockchain.nettype();
     m_transient.state_history.insert(m_transient.state_history.end(), m_state);
     m_state.update_from_block(
-            m_blockchain.get_db(),
+            m_blockchain.db(),
             nettype,
             m_transient.state_history,
             m_transient.state_archive,
@@ -3275,7 +3265,7 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
     //
     if (cryptonote::block_has_pulse_components(block)) {
         std::vector<crypto::hash> entropy = get_pulse_entropy_for_next_block(
-                m_blockchain.get_db(), block.prev_id, block.pulse.round);
+                m_blockchain.db(), block.prev_id, block.pulse.round);
         quorum pulse_quorum = generate_pulse_quorum(
                 m_blockchain.nettype(),
                 block_leader.key,
@@ -3590,7 +3580,7 @@ void service_node_list::alt_block_add(const cryptonote::block_add_info& info) {
     // NOTE: Generate the next Service Node list state from this Alt block.
     state_t alt_state = *starting_state;
     alt_state.update_from_block(
-            m_blockchain.get_db(),
+            m_blockchain.db(),
             m_blockchain.nettype(),
             m_transient.state_history,
             m_transient.state_archive,
@@ -3706,7 +3696,7 @@ bool service_node_list::store() {
         }
         m_transient.cache_data_blob.append(ba.str());
         {
-            auto& db = m_blockchain.get_db();
+            auto& db = m_blockchain.db();
             cryptonote::db_wtxn_guard txn_guard{db};
             db.set_service_node_data(m_transient.cache_data_blob, true /*long_term*/);
         }
@@ -3726,7 +3716,7 @@ bool service_node_list::store() {
         }
         m_transient.cache_data_blob.append(ba.str());
         {
-            auto& db = m_blockchain.get_db();
+            auto& db = m_blockchain.db();
             cryptonote::db_wtxn_guard txn_guard{db};
             db.set_service_node_data(m_transient.cache_data_blob, false /*long_term*/);
         }
@@ -3773,7 +3763,7 @@ void proof_info::store(const crypto::public_key& pubkey, cryptonote::Blockchain&
     if (!proof)
         proof = std::make_unique<uptime_proof::Proof>();
     std::unique_lock lock{blockchain};
-    auto& db = blockchain.get_db();
+    auto& db = blockchain.db();
     db.set_service_node_proof(pubkey, *this);
 }
 
@@ -4105,7 +4095,7 @@ void service_node_list::cleanup_proofs() {
     log::debug(logcat, "Cleaning up expired SN proofs");
     auto locks = tools::unique_locks(m_sn_mutex, m_blockchain);
     uint64_t now = std::time(nullptr);
-    auto& db = m_blockchain.get_db();
+    auto& db = m_blockchain.db();
     cryptonote::db_wtxn_guard guard{db};
     for (auto it = proofs.begin(); it != proofs.end();) {
         auto& pubkey = it->first;
@@ -4202,7 +4192,7 @@ std::string service_node_list::remote_lookup(std::string_view xpk) {
     return "tcp://" + epee::string_tools::get_ip_string_from_int32(ip) + ":" + std::to_string(port);
 }
 
-crypto::public_key service_node_list::bls_public_key_lookup(
+crypto::public_key service_node_list::public_key_lookup(
         const eth::bls_public_key& bls_pubkey) const {
     // FIXME: we should have a map for this so that we don't need a linear scan.
     {
@@ -4430,7 +4420,7 @@ bool service_node_list::load(const uint64_t current_height) {
 
     // NOTE: Deserialize long term state history
     uint64_t bytes_loaded = 0;
-    auto& db = m_blockchain.get_db();
+    auto& db = m_blockchain.db();
     cryptonote::db_rtxn_guard txn_guard{db};
     std::string blob;
     if (db.get_service_node_data(blob, true /*long_term*/)) {
@@ -4619,8 +4609,8 @@ void service_node_list::reset(bool delete_db_entry) {
     m_state = state_t{this};
 
     if (m_blockchain.has_db() && delete_db_entry) {
-        cryptonote::db_wtxn_guard txn_guard{m_blockchain.get_db()};
-        m_blockchain.get_db().clear_service_node_data();
+        cryptonote::db_wtxn_guard txn_guard{m_blockchain.db()};
+        m_blockchain.db().clear_service_node_data();
     }
 
     m_state.height =

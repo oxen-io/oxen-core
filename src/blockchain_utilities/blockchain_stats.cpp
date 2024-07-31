@@ -141,7 +141,7 @@ int main(int argc, char* argv[]) {
 
     tools::signal_handler::install([](int type) { stop_requested = true; });
 
-    auto& db = core_storage->get_db();
+    auto& db = core_storage->db();
     const uint64_t db_height = db.height();
     if (!block_stop)
         block_stop = db_height;

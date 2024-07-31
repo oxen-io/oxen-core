@@ -111,7 +111,7 @@ extern quorumnet_pulse_relay_message_to_quorum_proc* quorumnet_pulse_relay_messa
  * limited to, communication among the Blockchain, the transaction pool,
  * any miners, and the network.
  */
-class core : public i_miner_handler {
+class core final {
   public:
     /**
      * @brief constructor
@@ -125,9 +125,6 @@ class core : public i_miner_handler {
     // Non-copyable:
     core(const core&) = delete;
     core& operator=(const core&) = delete;
-
-    // Default virtual destructor
-    virtual ~core() = default;
 
     /**
      * @brief calls various idle routines
@@ -336,8 +333,6 @@ class core : public i_miner_handler {
      */
     i_cryptonote_protocol* get_protocol() { return m_pprotocol; }
 
-    //-------------------- i_miner_handler -----------------------
-
     /**
      * @brief stores and relays a block found by a miner
      *
@@ -350,48 +345,13 @@ class core : public i_miner_handler {
      *
      * @return true if the block was added to the main chain, otherwise false
      */
-    virtual bool handle_block_found(block& b, block_verification_context& bvc);
-
-    /**
-     * @copydoc Blockchain::create_block_template
-     *
-     * @note see Blockchain::create_block_template
-     */
-    virtual bool create_next_miner_block_template(
-            block& b,
-            const account_public_address& adr,
-            difficulty_type& diffic,
-            uint64_t& height,
-            uint64_t& expected_reward,
-            const std::string& ex_nonce);
-    virtual bool create_miner_block_template(
-            block& b,
-            const crypto::hash* prev_block,
-            const account_public_address& adr,
-            difficulty_type& diffic,
-            uint64_t& height,
-            uint64_t& expected_reward,
-            const std::string& ex_nonce);
+    bool handle_block_found(block& b, block_verification_context& bvc);
 
     /**
      * @brief called when a transaction is relayed; return the hash of the parsed tx, or null hash
      * on parse failure.
      */
-    virtual crypto::hash on_transaction_relayed(const std::string& tx);
-
-    /**
-     * @brief gets the miner instance
-     *
-     * @return a reference to the miner instance
-     */
-    miner& get_miner() { return m_miner; }
-
-    /**
-     * @brief gets the miner instance (const)
-     *
-     * @return a const reference to the miner instance
-     */
-    const miner& get_miner() const { return m_miner; }
+    crypto::hash on_transaction_relayed(const std::string& tx);
 
     /**
      * @brief adds command line options to the given options set
@@ -421,13 +381,6 @@ class core : public i_miner_handler {
             const boost::program_options::variables_map& vm,
             const test_options* test_options = NULL,
             const GetCheckpointsCallback& get_checkpoints = nullptr);
-
-    /**
-     * @copydoc Blockchain::reset_and_set_genesis_block
-     *
-     * @note see Blockchain::reset_and_set_genesis_block
-     */
-    bool set_genesis_block(const block& b);
 
     /**
      * @brief performs safe shutdown steps for core and core components
@@ -465,131 +418,6 @@ class core : public i_miner_handler {
      */
     bool get_test_drop_download_height() const;
 
-    /**
-     * @copydoc Blockchain::get_current_blockchain_height
-     *
-     * @note see Blockchain::get_current_blockchain_height()
-     */
-    uint64_t get_current_blockchain_height() const;
-
-    /**
-     * @brief get the hash and height of the most recent block
-     *
-     * @return height and hash of the top block on the chain
-     */
-    std::pair<uint64_t, crypto::hash> get_blockchain_top() const;
-
-    /**
-     * @copydoc Blockchain::get_blocks(uint64_t, size_t, std::vector<std::pair<std::string,block>>&,
-     * std::vector<transaction>&) const
-     *
-     * @note see Blockchain::get_blocks(uint64_t, size_t,
-     * std::vector<std::pair<std::string,block>>&, std::vector<transaction>&) const
-     */
-    bool get_blocks(
-            uint64_t start_offset,
-            size_t count,
-            std::vector<std::pair<std::string, block>>& blocks,
-            std::vector<std::string>& txs) const;
-
-    /**
-     * @copydoc Blockchain::get_blocks(uint64_t, size_t, std::vector<std::pair<std::string,block>>&)
-     * const
-     *
-     * @note see Blockchain::get_blocks(uint64_t, size_t,
-     * std::vector<std::pair<std::string,block>>&) const
-     */
-    bool get_blocks(
-            uint64_t start_offset,
-            size_t count,
-            std::vector<std::pair<std::string, block>>& blocks) const;
-
-    /**
-     * @copydoc Blockchain::get_blocks(uint64_t, size_t, std::vector<std::pair<std::string,block>>&)
-     * const
-     *
-     * @note see Blockchain::get_blocks(uint64_t, size_t,
-     * std::vector<std::pair<std::string,block>>&) const
-     */
-    bool get_blocks(uint64_t start_offset, size_t count, std::vector<block>& blocks) const;
-
-    /**
-     * @copydoc Blockchain::get_blocks(const t_ids_container&, t_blocks_container&,
-     * t_missed_container&) const
-     *
-     * @note see Blockchain::get_blocks(const t_ids_container&, t_blocks_container&,
-     * t_missed_container&) const
-     */
-    bool get_blocks(
-            const std::vector<crypto::hash>& block_ids,
-            std::vector<std::pair<std::string, block>> blocks,
-            std::unordered_set<crypto::hash>* missed_bs = nullptr) const;
-
-    /**
-     * @copydoc Blockchain::get_block_id_by_height
-     *
-     * @note see Blockchain::get_block_id_by_height
-     */
-    crypto::hash get_block_id_by_height(uint64_t height) const;
-
-    /**
-     * @copydoc Blockchain::get_transactions
-     *
-     * @note see Blockchain::get_transactions
-     */
-    bool get_transactions(
-            const std::vector<crypto::hash>& txs_ids,
-            std::vector<std::string>& txs,
-            std::unordered_set<crypto::hash>* missed_txs = nullptr) const;
-
-    /**
-     * @copydoc Blockchain::get_transactions
-     *
-     * @note see Blockchain::get_transactions
-     */
-    bool get_split_transactions_blobs(
-            const std::vector<crypto::hash>& txs_ids,
-            std::vector<std::tuple<crypto::hash, std::string, crypto::hash, std::string>>& txs,
-            std::unordered_set<crypto::hash>* missed_txs = nullptr) const;
-
-    /**
-     * @copydoc Blockchain::get_transactions
-     *
-     * @note see Blockchain::get_transactions
-     */
-    bool get_transactions(
-            const std::vector<crypto::hash>& txs_ids,
-            std::vector<transaction>& txs,
-            std::unordered_set<crypto::hash>* missed_txs = nullptr) const;
-
-    /**
-     * @copydoc Blockchain::get_block_by_hash
-     *
-     * @note see Blockchain::get_block_by_hash
-     */
-    bool get_block_by_hash(const crypto::hash& h, block& blk, bool* orphan = NULL) const;
-
-    /**
-     * @copydoc Blockchain::get_block_by_height
-     *
-     * @note see Blockchain::get_block_by_height
-     */
-    bool get_block_by_height(uint64_t height, block& blk) const;
-
-    /**
-     * @copydoc Blockchain::get_alternative_blocks
-     *
-     * @note see Blockchain::get_alternative_blocks(std::vector<block>&) const
-     */
-    bool get_alternative_blocks(std::vector<block>& blocks) const;
-
-    /**
-     * @copydoc Blockchain::get_alternative_blocks_count
-     *
-     * @note see Blockchain::get_alternative_blocks_count() const
-     */
-    size_t get_alternative_blocks_count() const;
-
     // Returns a bool on whether the service node is currently active
     bool is_active_sn() const;
 
@@ -609,150 +437,16 @@ class core : public i_miner_handler {
      */
     void set_cryptonote_protocol(i_cryptonote_protocol* pprotocol);
 
-    /**
-     * @copydoc Blockchain::get_total_transactions
-     *
-     * @note see Blockchain::get_total_transactions
-     */
-    size_t get_blockchain_total_transactions() const;
-
-    /**
-     * @copydoc Blockchain::have_block
-     *
-     * @note see Blockchain::have_block
-     */
-    bool have_block(const crypto::hash& id) const;
-
-    /**
-     * @copydoc Blockchain::find_blockchain_supplement(const std::list<crypto::hash>&,
-     * NOTIFY_RESPONSE_CHAIN_ENTRY::request&) const
-     *
-     * @note see Blockchain::find_blockchain_supplement(const std::list<crypto::hash>&,
-     * NOTIFY_RESPONSE_CHAIN_ENTRY::request&) const
-     */
-    bool find_blockchain_supplement(
-            const std::list<crypto::hash>& qblock_ids,
-            NOTIFY_RESPONSE_CHAIN_ENTRY::request& resp) const;
-
-    /**
-     * @copydoc Blockchain::find_blockchain_supplement(const uint64_t, const
-     * std::list<crypto::hash>&, std::vector<std::pair<std::string, std::vector<std::string> > >&,
-     * uint64_t&, uint64_t&, size_t) const
-     *
-     * @note see Blockchain::find_blockchain_supplement(const uint64_t, const
-     * std::list<crypto::hash>&, std::vector<std::pair<std::string, std::vector<transaction> > >&,
-     * uint64_t&, uint64_t&, size_t) const
-     */
-    bool find_blockchain_supplement(
-            const uint64_t req_start_block,
-            const std::list<crypto::hash>& qblock_ids,
-            std::vector<std::pair<
-                    std::pair<std::string, crypto::hash>,
-                    std::vector<std::pair<crypto::hash, std::string>>>>& blocks,
-            uint64_t& total_height,
-            uint64_t& start_height,
-            bool pruned,
-            bool get_miner_tx_hash,
-            size_t max_count) const;
-
-    /**
-     * @copydoc Blockchain::get_tx_outputs_gindexs
-     *
-     * @note see Blockchain::get_tx_outputs_gindexs
-     */
-    bool get_tx_outputs_gindexs(const crypto::hash& tx_id, std::vector<uint64_t>& indexs) const;
-    bool get_tx_outputs_gindexs(
-            const crypto::hash& tx_id,
-            size_t n_txes,
-            std::vector<std::vector<uint64_t>>& indexs) const;
-
-    /**
-     * @copydoc Blockchain::get_tail_id
-     *
-     * @note see Blockchain::get_tail_id
-     */
-    crypto::hash get_tail_id() const;
-
-    /**
-     * @copydoc Blockchain::get_block_cumulative_difficulty
-     *
-     * @note see Blockchain::get_block_cumulative_difficulty
-     */
-    difficulty_type get_block_cumulative_difficulty(uint64_t height) const;
-
-    /**
-     * @copydoc Blockchain::get_outs
-     *
-     * @note see Blockchain::get_outs
-     */
-    bool get_outs(
-            const rpc::GET_OUTPUTS_BIN::request& req, rpc::GET_OUTPUTS_BIN::response& res) const;
-
-    /**
-     * @copydoc Blockchain::get_output_distribution
-     *
-     * @brief get per block distribution of outputs of a given amount
-     */
-    bool get_output_distribution(
-            uint64_t amount,
-            uint64_t from_height,
-            uint64_t to_height,
-            uint64_t& start_height,
-            std::vector<uint64_t>& distribution,
-            uint64_t& base) const;
-
-    void get_output_blacklist(std::vector<uint64_t>& blacklist) const;
-
-    /**
-     * @copydoc miner::pause
-     *
-     * @note see miner::pause
-     */
-    void pause_mine();
-
-    /**
-     * @copydoc miner::resume
-     *
-     * @note see miner::resume
-     */
-    void resume_mine();
-
-    /**
-     * @brief gets the Blockchain instance
-     *
-     * @return a reference to the Blockchain instance
-     */
-    Blockchain& get_blockchain_storage() { return m_blockchain_storage; }
-
-    /**
-     * @brief gets the Blockchain instance (const)
-     *
-     * @return a const reference to the Blockchain instance
-     */
-    const Blockchain& get_blockchain_storage() const { return m_blockchain_storage; }
-
     /// Returns a reference to the Ethereum L2 tracking object
     eth::L2Tracker& l2_tracker() { return *m_l2_tracker; }
 
-    /// @brief return a reference to the service node list
-    const service_nodes::service_node_list& get_service_node_list() const {
-        return m_service_node_list;
-    }
-    /// @brief return a reference to the service node list
-    service_nodes::service_node_list& get_service_node_list() { return m_service_node_list; }
-
-    /// @brief return a reference to the tx pool
-    const tx_memory_pool& get_pool() const { return m_mempool; }
-    /// @brief return a reference to the service node list
-    tx_memory_pool& get_pool() { return m_mempool; }
-
     /// Returns a reference to the OxenMQ object.  Must not be called before init(), and should not
     /// be used for any omq communication until after start_oxenmq() has been called.
-    oxenmq::OxenMQ& get_omq() { return *m_omq; }
+    oxenmq::OxenMQ& omq() { return *m_omq; }
 
     /// Returns a reference to the BLSSigner, if this is a service node.  Throws if not a service
     /// node.
-    eth::BLSSigner& get_bls_signer() {
+    eth::BLSSigner& bls_signer() {
         if (!m_bls_signer)
             throw oxen::traced<std::logic_error>{"Not a service node: no BLS Signer available"};
         return *m_bls_signer;
@@ -896,13 +590,6 @@ class core : public i_miner_handler {
     bool pad_transactions() const { return m_pad_transactions; }
 
     /**
-     * @brief check a set of hashes against the precompiled hash set
-     *
-     * @return number of usable blocks
-     */
-    uint64_t prevalidate_block_hashes(uint64_t height, const std::vector<crypto::hash>& hashes);
-
-    /**
      * @brief get free disk space on the blockchain partition
      *
      * @return free space in bytes
@@ -916,43 +603,11 @@ class core : public i_miner_handler {
      */
     bool offline() const { return m_offline; }
 
-    /**
-     * @brief Get the deterministic quorum of service node's public keys responsible for the
-     * specified quorum type
-     *
-     * @param type The quorum type to retrieve
-     * @param height Block height to deterministically recreate the quorum list from (note that for
-     * a checkpointing quorum this value is automatically reduced by the correct buffer size).
-     * @param include_old whether to look in the old quorum states (does nothing unless running with
-     * --store-full-quorum-history)
-     * @return Null shared ptr if quorum has not been determined yet or is not defined for height
-     */
-    std::shared_ptr<const service_nodes::quorum> get_quorum(
-            service_nodes::quorum_type type,
-            uint64_t height,
-            bool include_old = false,
-            std::vector<std::shared_ptr<const service_nodes::quorum>>* alt_states = nullptr) const;
-
-    /**
-     * @brief Get a non owning reference to the list of blacklisted key images
-     */
-    const std::vector<service_nodes::key_image_blacklist_entry>&
-    get_service_node_blacklisted_key_images() const;
-
     eth::bls_rewards_response bls_rewards_request(const eth::address& address);
     eth::bls_removal_liquidation_response bls_removal_liquidation_request(
             const eth::bls_public_key& bls_pubkey, bool liquidate);
     eth::bls_registration_response bls_registration(const eth::address& ethereum_address) const;
 
-    /**
-     * @brief get a snapshot of the service node list state at the time of the call.
-     *
-     * @param service_node_pubkeys pubkeys to search, if empty this indicates get all the pubkeys
-     *
-     * @return all the service nodes that can be matched from pubkeys in param
-     */
-    std::vector<service_nodes::service_node_pubkey_info> get_service_node_list_state(
-            const std::vector<crypto::public_key>& service_node_pubkeys = {}) const;
     bool is_node_removable(const eth::bls_public_key& node_bls_pubkey);
     bool is_node_liquidatable(const eth::bls_public_key& node_bls_pubkey);
 
@@ -963,17 +618,6 @@ class core : public i_miner_handler {
      * @return all the service nodes bls keys that should be removed from the smart contract
      */
     std::vector<eth::bls_public_key> get_removable_nodes();
-
-    /**
-     * @brief get whether `pubkey` is known as a service node.
-     *
-     * @param pubkey the public key to test
-     * @param require_active if true also require that the service node is active (fully funded
-     * and not decommissioned).
-     *
-     * @return whether `pubkey` is known as a (optionally active) service node
-     */
-    bool is_service_node(const crypto::public_key& pubkey, bool require_active) const;
 
     /**
      * @brief Add a service node vote
@@ -1018,36 +662,6 @@ class core : public i_miner_handler {
      * proof soon (i.e. at the next idle loop).
      */
     void reset_proof_interval();
-
-    /*
-     * @brief get the blockchain pruning seed
-     *
-     * @return the blockchain pruning seed
-     */
-    uint32_t get_blockchain_pruning_seed() const;
-
-    /**
-     * @brief prune the blockchain
-     *
-     * @param pruning_seed the seed to use to prune the chain (0 for default, highly recommended)
-     *
-     * @return true iff success
-     */
-    bool prune_blockchain(uint32_t pruning_seed = 0);
-
-    /**
-     * @brief incrementally prunes blockchain
-     *
-     * @return true on success, false otherwise
-     */
-    bool update_blockchain_pruning();
-
-    /**
-     * @brief checks the blockchain pruning if enabled
-     *
-     * @return true on success, false otherwise
-     */
-    bool check_blockchain_pruning();
 
     /**
      * @brief attempt to relay the pooled checkpoint votes
@@ -1226,6 +840,13 @@ class core : public i_miner_handler {
     std::array<uint16_t, 3> ss_version;
     std::array<uint16_t, 3> lokinet_version;
 
+    tx_memory_pool mempool;         //!< transaction pool instance
+    Blockchain blockchain;  //!< Blockchain instance
+
+    service_nodes::service_node_list service_node_list;
+
+    cryptonote::miner miner;  //!< miner instance
+
   private:
     /**
      * @brief do the uptime proof logic and calls for idle loop.
@@ -1244,10 +865,6 @@ class core : public i_miner_handler {
     uint64_t m_test_drop_download_height =
             0;  //!< height under which to drop incoming blocks, if doing so
 
-    tx_memory_pool m_mempool;         //!< transaction pool instance
-    Blockchain m_blockchain_storage;  //!< Blockchain instance
-
-    service_nodes::service_node_list m_service_node_list;
     service_nodes::quorum_cop m_quorum_cop;
 
     std::unique_ptr<eth::L2Tracker> m_l2_tracker;
@@ -1259,9 +876,6 @@ class core : public i_miner_handler {
     cryptonote_protocol_stub m_protocol_stub;  //!< cryptonote protocol stub instance
 
     std::recursive_mutex m_incoming_tx_lock;  //!< incoming transaction lock
-
-    // m_miner and m_miner_addres are probably temporary here
-    miner m_miner;  //!< miner instance
 
     fs::path m_config_folder;  //!< folder to look in for configs and other files
 

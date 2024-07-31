@@ -62,8 +62,20 @@ namespace {
             "mining-threads", "Specify mining threads count"};
 }  // namespace
 
-miner::miner(i_miner_handler* phandler, const get_block_hash_t& gbh) :
-        m_stop(1), m_template{}, m_phandler(phandler), m_gbh(gbh) {}
+miner::miner(
+        get_block_hash_cb hash,
+        handle_block_found_cb found,
+        create_next_miner_block_template_cb create) :
+        m_stop{1},
+        m_template{},
+        m_get_block_hash{std::move(hash)},
+        m_handle_block_found{std::move(found)},
+        m_create_next_miner_block_template{std::move(create)} {
+    if (!(m_get_block_hash && m_handle_block_found && m_create_next_miner_block_template))
+        throw oxen::traced<std::invalid_argument>{
+                "Invalid miner constructor: required callbacks cannot be null"};
+}
+
 //-----------------------------------------------------------------------------------------------------
 miner::~miner() {
     try {
@@ -97,8 +109,7 @@ bool miner::request_block_template() {
     uint64_t height{};
     uint64_t expected_reward;  // only used for RPC calls - could possibly be useful here too?
 
-    if (!m_phandler->create_next_miner_block_template(
-                bl, m_mine_address, di, height, expected_reward, ""s)) {
+    if (!m_create_next_miner_block_template(bl, m_mine_address, di, height, expected_reward, ""s)) {
         log::error(logcat, "Failed to get_block_template(), stopping mining");
         return false;
     }
@@ -234,7 +245,7 @@ bool miner::stop() {
 }
 //-----------------------------------------------------------------------------------------------------
 bool miner::find_nonce_for_given_block(
-        const get_block_hash_t& gbh, block& bl, const difficulty_type& diffic, uint64_t height) {
+        const get_block_hash_cb& gbh, block& bl, const difficulty_type& diffic, uint64_t height) {
     for (; bl.nonce != std::numeric_limits<uint32_t>::max(); bl.nonce++) {
         crypto::hash h;
         gbh(bl, height, tools::get_max_concurrency(), h);
@@ -318,7 +329,7 @@ bool miner::worker_thread(uint32_t index, bool slow_mining) {
 
         b.nonce = nonce;
         crypto::hash h;
-        m_gbh(b, height, slow_mining ? 0 : tools::get_max_concurrency(), h);
+        m_get_block_hash(b, height, slow_mining ? 0 : tools::get_max_concurrency(), h);
 
         if (check_hash(h, local_diff)) {
             // we lucky!
@@ -330,7 +341,7 @@ bool miner::worker_thread(uint32_t index, bool slow_mining) {
                     height,
                     local_diff);
             cryptonote::block_verification_context bvc;
-            m_phandler->handle_block_found(b, bvc);
+            m_handle_block_found(b, bvc);
         }
 
         nonce += static_cast<uint32_t>(m_threads_total);

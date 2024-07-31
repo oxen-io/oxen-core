@@ -139,7 +139,7 @@ int main(int argc, char* argv[]) {
     CHECK_AND_ASSERT_MES(r, 1, "Failed to initialize source blockchain storage");
     log::warning(logcat, "Source blockchain storage initialized OK");
 
-    auto& db = core_storage->get_db();
+    auto& db = core_storage->db();
     std::vector<crypto::hash> start_txids;
     if (!opt_txid_string.empty()) {
         start_txids.push_back(opt_txid);

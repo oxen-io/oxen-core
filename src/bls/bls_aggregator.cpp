@@ -291,7 +291,7 @@ namespace {
 bls_aggregator::bls_aggregator(cryptonote::core& _core) : core{_core} {
 
     if (core.service_node()) {
-        auto& omq = core.get_omq();
+        auto& omq = core.omq();
         omq.add_category("bls", oxenmq::Access{oxenmq::AuthLevel::none})
                 .add_request_command(
                         "get_reward_balance", [this](auto& m) { get_reward_balance(m); })
@@ -302,7 +302,7 @@ bls_aggregator::bls_aggregator(cryptonote::core& _core) : core{_core} {
 
 bls_registration_response bls_aggregator::registration(
         const address& sender, const crypto::public_key& sn_pubkey) const {
-    auto& signer = core.get_bls_signer();
+    auto& signer = core.bls_signer();
     return bls_registration_response{
             .bls_pubkey = signer.getCryptoPubkey(),
             .proof_of_possession = signer.proofOfPossession(sender, sn_pubkey),
@@ -321,10 +321,10 @@ uint64_t bls_aggregator::nodes_request(
     // FIXME: make this function async rather than blocking
 
     std::vector<service_nodes::service_node_address> snodes;
-    core.get_service_node_list().copy_reachable_active_service_node_addresses(
+    core.service_node_list.copy_reachable_active_service_node_addresses(
             std::back_inserter(snodes), core.get_nettype());
 
-    auto& omq = core.get_omq();
+    auto& omq = core.omq();
     for (size_t i = 0; i < snodes.size(); i++) {
         auto& snode = snodes[i];
         if (1) {
@@ -367,7 +367,7 @@ void bls_aggregator::get_reward_balance(oxenmq::Message& m) {
         return;
 
     auto [batchdb_height, amount] =
-            core.get_blockchain_storage().sqlite_db().get_accrued_rewards(eth_addr);
+            core.blockchain.sqlite_db().get_accrued_rewards(eth_addr);
     if (amount == 0) {
         m.send_reply("400", "Address '{}' has a zero balance in the database"_format(eth_addr));
         return;
@@ -377,7 +377,7 @@ void bls_aggregator::get_reward_balance(oxenmq::Message& m) {
     // recipientAmount),
     // where everything is in bytes, and recipientAmount is a 32-byte big
     // endian integer value.
-    auto& signer = core.get_bls_signer();
+    auto& signer = core.bls_signer();
     std::array<std::byte, 32> amount_be = tools::encode_integer_be<32>(amount);
 
     std::vector<uint8_t> msg =
@@ -400,7 +400,7 @@ void bls_aggregator::get_reward_balance(oxenmq::Message& m) {
 bls_rewards_response bls_aggregator::rewards_request(const address& addr) {
 
     auto begin_ts = std::chrono::high_resolution_clock::now();
-    auto [height, amount] = core.get_blockchain_storage().sqlite_db().get_accrued_rewards(addr);
+    auto [height, amount] = core.blockchain.sqlite_db().get_accrued_rewards(addr);
 
     // FIXME: make this async
     oxen::log::trace(
@@ -410,7 +410,7 @@ bls_rewards_response bls_aggregator::rewards_request(const address& addr) {
             addr,
             height);
 
-    const auto& service_node_list = core.get_service_node_list();
+    const auto& service_node_list = core.service_node_list;
 
     // NOTE: Validate the arguments
     if (!addr) {
@@ -622,7 +622,7 @@ void bls_aggregator::get_removal(oxenmq::Message& m) {
         return;
     }
 
-    auto& signer = core.get_bls_signer();
+    auto& signer = core.bls_signer();
 
     std::vector<uint8_t> msg = get_removal_msg_to_sign(
             core.get_nettype(),
@@ -654,7 +654,7 @@ void bls_aggregator::get_liquidation(oxenmq::Message& m) {
         return;
     }
 
-    auto& signer = core.get_bls_signer();
+    auto& signer = core.bls_signer();
     std::vector<uint8_t> msg = get_removal_msg_to_sign(
             core.get_nettype(),
             bls_aggregator::removal_type::liquidate,

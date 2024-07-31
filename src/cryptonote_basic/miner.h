@@ -64,15 +64,25 @@ struct i_miner_handler {
     ~i_miner_handler(){};
 };
 
-typedef std::function<bool(const cryptonote::block&, uint64_t, unsigned int, crypto::hash&)>
-        get_block_hash_t;
-
 /************************************************************************/
 /*                                                                      */
 /************************************************************************/
 class miner {
   public:
-    miner(i_miner_handler* phandler, const get_block_hash_t& gbh);
+    using get_block_hash_cb =
+            std::function<bool(const cryptonote::block&, uint64_t, unsigned int, crypto::hash&)>;
+    using handle_block_found_cb = std::function<bool(block& b, block_verification_context& bvc)>;
+    using create_next_miner_block_template_cb = std::function<bool(
+            block& b,
+            const account_public_address& adr,
+            difficulty_type& diffic,
+            uint64_t& height,
+            uint64_t& expected_reward,
+            const std::string& ex_nonce)>;
+
+    miner(get_block_hash_cb hash,
+          handle_block_found_cb found,
+          create_next_miner_block_template_cb create);
     ~miner();
     bool init(const boost::program_options::variables_map& vm, network_type nettype);
     static void init_options(boost::program_options::options_description& desc);
@@ -93,7 +103,7 @@ class miner {
     void on_synchronized();
     // synchronous analog (for fast calls)
     static bool find_nonce_for_given_block(
-            const get_block_hash_t& gbh, block& bl, const difficulty_type& diffic, uint64_t height);
+            const get_block_hash_cb& gbh, block& bl, const difficulty_type& diffic, uint64_t height);
     void pause();
     void resume();
     uint64_t get_block_reward() const { return m_block_reward; }
@@ -125,8 +135,9 @@ class miner {
 
     std::list<std::thread> m_threads;
     std::mutex m_threads_lock;
-    i_miner_handler* m_phandler;
-    get_block_hash_t m_gbh;
+    get_block_hash_cb m_get_block_hash;
+    handle_block_found_cb m_handle_block_found;
+    create_next_miner_block_template_cb m_create_next_miner_block_template;
     account_public_address m_mine_address;
     tools::periodic_task m_update_block_template_interval{"mining block template updater", 5s};
     tools::periodic_task m_update_hashrate_interval{"mining hash rate updater", 2s};
