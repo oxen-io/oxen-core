@@ -265,6 +265,18 @@ bool check_service_node_stakes(
         remaining -= stakes[i];
     }
 
+    if (hf_version >= feature::ETH_BLS) {
+        if (remaining != 0) {
+            log::warning(
+                    logcat,
+                    "Registration tx rejected: Eth registrations must contribute the full service "
+                    "node staking requirement ({} contributed of {} required)",
+                    reserved,
+                    staking_requirement);
+            return false;
+        }
+    }
+
     return true;
 }
 
