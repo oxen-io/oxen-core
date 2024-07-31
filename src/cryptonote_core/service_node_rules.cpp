@@ -218,13 +218,13 @@ bool check_service_node_portions(
 bool check_service_node_stakes(
         hf hf_version, uint64_t staking_requirement, const std::vector<uint64_t>& stakes) {
     if (hf_version < hf::hf19_reward_batching) {
-        log::info(
+        log::warning(
                 logcat,
                 "Registration tx rejected: amount-based registrations not accepted before HF19");
         return false;  // OXEN-based registrations not accepted before HF19
     }
     if (stakes.size() > oxen::MAX_CONTRIBUTORS_HF19) {
-        log::info(
+        log::warning(
                 logcat,
                 "Registration tx rejected: too many contributors ({} > {})",
                 stakes.size(),
@@ -242,7 +242,7 @@ bool check_service_node_stakes(
                        : get_min_node_contribution(hf_version, staking_requirement, reserved, i);
 
         if (stakes[i] < min_stake) {
-            log::info(
+            log::warning(
                     logcat,
                     "Registration tx rejected: stake {} too small ({} < {})",
                     i,
@@ -251,7 +251,7 @@ bool check_service_node_stakes(
             return false;
         }
         if (stakes[i] > remaining) {
-            log::info(
+            log::warning(
                     logcat,
                     "Registration tx rejected: stake {} ({}) exceeds available remaining stake "
                     "({})",
