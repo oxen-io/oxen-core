@@ -1376,13 +1376,16 @@ bool is_registration_tx(
         return false;
     auto& reg = *maybe_reg;
 
-    if (hf_version >= feature::ETH_TRANSITION) {
+    // FIXME: if we reboot devnet we can unify this condition:
+    if (hf_version >= (nettype == cryptonote::network_type::DEVNET ? feature::ETH_BLS
+                                                                   : feature::ETH_TRANSITION)) {
         log::warning(
                 logcat,
                 "Invalid registration ({} @ {}): direct OXEN registrations/stakes are no longer "
-                "permitted",
+                "permitted {}",
                 cryptonote::get_transaction_hash(tx),
-                block_height);
+                block_height,
+                (int)hf_version);
         return false;
     }
 
