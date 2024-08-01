@@ -4978,8 +4978,6 @@ bool Blockchain::handle_block_to_main_chain(
     auto t_pool = 0ns;
     auto t_dblspnd = 0ns;
 
-    // XXX old code adds miner tx here
-
     size_t tx_index = 0;
     // Iterate over the block's transaction hashes, grabbing each
     // from the tx_pool and validating them.  Each is then added
@@ -4999,8 +4997,6 @@ bool Blockchain::handle_block_to_main_chain(
         uint64_t fee = 0;
         bool relayed = false, do_not_relay = false, double_spend_seen = false;
         auto aa = std::chrono::steady_clock::now();
-
-        // XXX old code does not check whether tx exists
 
         if (m_db->tx_exists(tx_id)) {
             log::info(
