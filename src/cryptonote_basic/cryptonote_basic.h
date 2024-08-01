@@ -376,6 +376,8 @@ struct pulse_header {
     pulse_random_value random_value;
     uint8_t round;
     uint16_t validator_bitset;
+
+    bool empty() const;
 };
 
 template <typename Archive>
@@ -392,7 +394,12 @@ struct block_header {
     uint64_t timestamp;
     crypto::hash prev_id;
     uint32_t nonce;
+    // HF16+
     pulse_header pulse = {};
+
+    bool has_pulse_header() const {
+        return major_version >= feature::PULSE && !pulse.empty();
+    }
 };
 
 struct block : public block_header {
@@ -426,7 +433,14 @@ struct block : public block_header {
     std::vector<service_nodes::quorum_signature> signatures;
     uint64_t l2_height = 0;
 
+    // Returns the height of this block, which comes in the block header in HF21+, and in the
+    // miner_tx before HF21.
     uint64_t get_height() const;
+
+    // True if this block has pulse components, false if pre-pulse or if pulse fields are empty.
+    bool has_pulse() const {
+        return major_version >= feature::PULSE && (has_pulse_header() || signatures.size());
+    }
 };
 
 template <class Archive>

@@ -1981,7 +1981,7 @@ static bool verify_block_components(
 
     if (miner_block) {
 
-        if (cryptonote::block_has_pulse_components(block)) {
+        if (block.has_pulse()) {
             if (log_errors)
                 log::warning(
                         globallogcat,
@@ -2029,7 +2029,7 @@ static bool verify_block_components(
 
         return true;
     } else {
-        if (!cryptonote::block_has_pulse_components(block)) {
+        if (!block.has_pulse()) {
             if (log_errors)
                 log::warning(
                         globallogcat,
@@ -2344,7 +2344,7 @@ void service_node_list::block_add(
     std::lock_guard lock(m_sn_mutex);
     process_block(block, txs);
     verify_block(block, false /*alt_block*/, checkpoint);
-    if (cryptonote::block_has_pulse_components(block)) {
+    if (block.has_pulse()) {
         // NOTE: Only record participation if its a block we recently received.
         // Otherwise processing blocks in retrospect/re-loading on restart seeds
         // in old-data.
@@ -2482,8 +2482,7 @@ static std::vector<crypto::hash> make_pulse_entropy_from_blocks(
     for (auto it = begin; it != end; it++) {
         cryptonote::block const& block = *it;
         crypto::hash hash = {};
-        if (block.major_version >= hf::hf16_pulse &&
-            cryptonote::block_has_pulse_components(block)) {
+        if (block.has_pulse()) {
             std::array<uint8_t, 1 + sizeof(block.pulse.random_value)> src = {pulse_round};
             std::copy(
                     std::begin(block.pulse.random_value.data),
@@ -3281,7 +3280,7 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
     //
     // NOTE: Setup pulse components
     //
-    if (cryptonote::block_has_pulse_components(block)) {
+    if (block.has_pulse()) {
         std::vector<crypto::hash> entropy = get_pulse_entropy_for_next_block(
                 m_blockchain.db(), block.prev_id, block.pulse.round);
         quorum pulse_quorum = generate_pulse_quorum(

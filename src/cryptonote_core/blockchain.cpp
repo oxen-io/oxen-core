@@ -2261,7 +2261,7 @@ bool Blockchain::handle_alternative_block(
         return false;
     }
 
-    bool const pulse_block = cryptonote::block_has_pulse_components(b);
+    bool const pulse_block = b.has_pulse();
     std::string_view block_type = pulse_block ? "PULSE"sv : "MINER"sv;
 
     // NOTE: Check proof of work
@@ -2459,7 +2459,7 @@ bool Blockchain::handle_alternative_block(
             uint64_t alt_chain_weight = 0;
             for (auto const& block : alt_chain) {
                 alt_chain_weight += MIN_WEIGHT_INCREMENT;
-                if (cryptonote::block_has_pulse_components(block.bl))
+                if (block.bl.has_pulse())
                     alt_chain_weight += PULSE_BASE_WEIGHT /
                                         (1 + block.bl.pulse.round);  // (0-based pulse_round)
             }
@@ -2467,7 +2467,7 @@ bool Blockchain::handle_alternative_block(
             uint64_t main_chain_weight = 0;
             for (auto const& block : blocks) {
                 main_chain_weight += MIN_WEIGHT_INCREMENT;
-                if (cryptonote::block_has_pulse_components(block))
+                if (block.has_pulse())
                     main_chain_weight += PULSE_BASE_WEIGHT / (1 + block.pulse.round);
             }
 
@@ -4943,7 +4943,7 @@ bool Blockchain::handle_block_to_main_chain(
         block_pow_verified blk_pow = {};
     } miner = {};
 
-    bool const pulse_block = cryptonote::block_has_pulse_components(bl);
+    bool const pulse_block = bl.has_pulse();
     uint64_t const chain_height = get_current_blockchain_height();
     uint64_t current_diffic = get_difficulty_for_next_block(pulse_block);
 

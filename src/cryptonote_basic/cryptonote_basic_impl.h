@@ -111,8 +111,6 @@ inline std::string return_first_address(
 /************************************************************************/
 /* Cryptonote helper functions                                          */
 /************************************************************************/
-bool block_header_has_pulse_components(block_header const& blk_header);
-bool block_has_pulse_components(block const& blk);
 size_t get_min_block_weight(hf version);
 uint64_t block_reward_unpenalized_formula_v7(uint64_t already_generated_coins, uint64_t height);
 uint64_t block_reward_unpenalized_formula_v8(uint64_t height);

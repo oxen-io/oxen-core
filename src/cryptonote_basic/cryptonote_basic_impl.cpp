@@ -63,23 +63,6 @@ struct integrated_address {
 /* Cryptonote helper functions                                          */
 /************************************************************************/
 //-----------------------------------------------------------------------------------------------
-bool block_header_has_pulse_components(block_header const& blk_header) {
-    constexpr cryptonote::pulse_random_value empty_random_value = {};
-    bool bitset = blk_header.pulse.validator_bitset > 0;
-    bool random_value = !(blk_header.pulse.random_value == empty_random_value);
-    auto hf_version = blk_header.major_version;
-    bool result = hf_version >= hf::hf16_pulse && (bitset || random_value);
-    return result;
-}
-//-----------------------------------------------------------------------------------------------
-bool block_has_pulse_components(block const& blk) {
-    bool signatures = blk.signatures.size();
-    auto hf_version = blk.major_version;
-    bool result =
-            (hf_version >= hf::hf16_pulse && signatures) || block_header_has_pulse_components(blk);
-    return result;
-}
-//-----------------------------------------------------------------------------------------------
 size_t get_min_block_weight(hf /*version*/) {
     return BLOCK_GRANTED_FULL_REWARD_ZONE_V5;
 }

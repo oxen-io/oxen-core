@@ -2189,7 +2189,7 @@ bool core::handle_block_found(block& b, block_verification_context& bvc) {
     }
 
     if (bvc.m_verifivation_failed) {
-        bool pulse = cryptonote::block_has_pulse_components(b);
+        bool pulse = b.has_pulse();
         log::error(
                 log::Cat("verify"),
                 "{} block failed verification\n{}",

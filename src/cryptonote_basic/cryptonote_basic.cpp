@@ -96,6 +96,11 @@ size_t transaction::get_signature_size(const txin_v& tx_in) {
     return 0;
 }
 
+constexpr cryptonote::pulse_random_value empty_random_value = {};
+bool pulse_header::empty() const {
+    return validator_bitset == 0 && random_value == empty_random_value;
+}
+
 uint64_t block::get_height() const {
     if (major_version >= feature::ETH_BLS) {
         return height;

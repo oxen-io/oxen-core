@@ -3423,7 +3423,7 @@ bool oxen_pulse_generate_blocks::generate(std::vector<test_event_entry> &events)
     DEFINE_TESTS_ERROR_CONTEXT("check_pulse_blocks");
     const auto [top_height, top_hash] = c.blockchain.get_tail_id();
     cryptonote::block top_block = c.blockchain.db().get_block(top_hash);
-    CHECK_TEST_CONDITION(cryptonote::block_has_pulse_components(top_block));
+    CHECK_TEST_CONDITION(top_block.has_pulse());
     return true;
   });
   return true;
