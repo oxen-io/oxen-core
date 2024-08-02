@@ -5315,11 +5315,7 @@ bool Blockchain::handle_block_to_main_chain(
         try {
             hook(hook_data);
         } catch (const std::exception& e) {
-            log::info(
-                    logcat,
-                    fg(fmt::terminal_color::red),
-                    "Block added hook failed with exception: ",
-                    e.what());
+            log::error(logcat, fg(fmt::terminal_color::red), "Failed to add block: {}", e.what());
             bvc.m_verifivation_failed = true;
             return false;
         }
