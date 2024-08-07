@@ -242,3 +242,78 @@ majority of the network thinks something belongs then the two choices are either
 break (i.e. by desyncing a large minority), or to accept the contentious transactions.  Our strategy
 instead should be to steer operators towards a more diverse set of RPC providers rather than all
 piling onto the same one.
+
+## Block rewards
+
+Unlike Oxen's simple, fixed per-block payout, in the SENT era contributors earn a small portion of
+the L2 staking pool (enough so that a continual, compounding removal would result in 14% of the pool
+getting paid out over a 1-year period, assuming no replenishment; see details in the staking
+contracts for more info).
+
+Rewards, however, are computed entirely on the OXEN side, and thus being able to advance the chain
+requires an exact consensus of what the reward is at any given time.
+
+Oxen nodes thus record the *current* L2 reward rate (queried from the contract) in each block, and
+verifying this value is part of the duties of pulse quorum validators.  For all the same reasons
+discussed above, however, this means that it could be a target of abuse by a malicious pulse
+quorum.
+
+For example, just after launch, the per-block SENT reward (distributed across all service nodes) to
+be a little bit less than 23 SENT per 2-minutes (i.e. per Oxen block).  An adversary controlling a
+large number of service nodes (either directly, or via L2 control) could simply lie about the state
+of the contract and set an Oxen block's reward rate to 40 million SENT per block, then racing to be
+the first to unstake and cash out.
+
+To mitigate this, the Oxen 11 design uses two mechanisms:
+
+### Smallest recent reward rate
+
+The first mitigation is that the reward rate that is applied to calculating earned rewards is
+computed by taking the *smallest* published reward rate of the last 15 blocks (i.e. the last 30
+minutes, typically).  Thus it would take 15 consecutive compromised quorums to increase the payout
+rate.
+
+### Cap on relative changes
+
+The second mitigation is that the recorded reward in a block is prevented from increasing more than
+0.002% from one block to the next, or from decreasing more than 0.004%.  Thus block reward changes
+can only change very slowly, with many small steps approved by many quorums.  Although the smallest
+reward solution largely mitigates *upward* changes, it does not prevent a large actor (or even an
+innocent bug) from deliberately harming the network by setting the reward to 0 and thus simply
+stopping all payments for an hour.  This movement cap mitigates that.
+
+The asymmetry in the cap is a reflection of the incentives involved: while there are substantial
+gains to be had from (falsely) increasing the reward, decreasing it has no direct benefits to
+anyone.  By allowing decreases to be twice as large as increases it means that it would take a
+sustained majority of more than 2/3 of the network for an extended period to move the reward level
+at all (without the rest of the network acting honestly to undo the change).
+
+The asymmetry does mean that it would take only 1/3 of the network to (dishonestly) reduce the rate
+below its appropriate value, but as there are few immediately obvious incentives to do so, this
+trade off appears worthwhile.
+
+### Effect on legitimate pool changes
+
+It is also worth noting how these changes affect actual movements in the staking reward pool.
+
+First, the pool withdrawal rate is limited by design to release approximately 0.000057% per 2-minute
+interval, which is well below the 0.004% threshold, and so to very slow release of pool funds is
+easily accommodated by these approaches.
+
+Increases, on the other hand, are more predictable: they can come from payments for Session short
+names, Pro features, Lokinet access, and other future network monetization.  There is no limit
+imposed on a payment increase on the contract side: if someone were to instantly add 20M SENT into a
+pool already containing 40M SENT then, in theory, per-block payments should increase by 50%.
+
+The 0.002% increase cap above does allow for slow increases: it can accommodate a daily increase of
+about 1.45% of the pool (that is about 560k per day being added to a 40M pool).
+
+Sudden, large increases, however, take more time to adjust.  The instant 20M increase discussed
+above, for instance, would require about 28 days to be fully reflected in the reward rate earned by
+Oxen nodes (although rewards would be continually increasing over this period at the maximum
+increase rate) starting from a 40M pool.  Albeit slow, this is an exponential process, and so as the
+pool becomes larger, increases of the same size can be adjusted to more quickly.  For instance, a
+60M pool would fully accommodate a 20M increase in 20 days, and a 100M pool would fully accommodate
+the increase in 13 days.  A severely withdrawn 1M pool (which would take nearly 25 years of
+withdrawals with no replenishment with the SENT launch parameters) would take around 7 months to
+fully respond to the sudden 21x size increase of the pool with these caps.
