@@ -480,9 +480,9 @@ class service_node_list {
     void init();
     void validate_miner_tx(const cryptonote::miner_tx_info& info) const;
     void alt_block_add(const cryptonote::block_add_info& info);
-    payout get_block_leader() const {
+    payout get_next_block_leader() const {
         std::lock_guard lock{m_sn_mutex};
-        return m_state.get_block_leader();
+        return m_state.get_next_block_leader();
     }
     bool is_service_node(const crypto::public_key& pubkey, bool require_active = true) const;
     bool is_key_image_locked(
@@ -878,13 +878,22 @@ class service_node_list {
                 cryptonote::hf hf_version,
                 uint64_t block_height,
                 const cryptonote::transaction& tx);
-        payout get_block_leader() const;
-        payout get_block_producer(uint8_t pulse_round) const;
+        // Returns the block leader of the next block: that is, the round 0 pulse quorum leader, and
+        // (before HF19) the service node that earns the service node reward for the next block.
+        payout get_next_block_leader() const;
+        // Returns the pulse quorum that produced this state's block.  Returns nullopt if this was
+        // not a pulse block.
+        std::optional<quorum> get_pulse_quorum() const;
+        // Similar to the above but returns just the sn pubkey of the pulse quorum leader, or a null
+        // key if there was no pulse quorum for this state_t/block.
+        crypto::public_key get_block_producer() const;
 
       private:
         // Rebuilds the x25519_map from the list of service nodes.  Does nothing if the
         // feature::SN_PK_IS_ED25519 fork hasn't happened for this state height.
         void initialize_xpk_map();
+
+        mutable std::optional<service_nodes::payout> next_block_leader_cache;
     };
 
     // Can be set to true (via --dev-allow-local-ips) for debugging a new testnet on a local private
@@ -906,7 +915,6 @@ class service_node_list {
     bool is_recently_expired(const eth::bls_public_key& node_bls_pubkey) const;
 
   private:
-    // Note(maxim): private methods don't have to be protected the mutex
     bool m_rescanning = false; /* set to true when doing a rescan so we know not to reset proofs */
     void process_block(
             const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs);

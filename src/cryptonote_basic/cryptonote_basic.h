@@ -397,9 +397,67 @@ struct block_header {
     // HF16+
     pulse_header pulse = {};
 
-    bool has_pulse_header() const {
-        return major_version >= feature::PULSE && !pulse.empty();
-    }
+    bool has_pulse_header() const { return major_version >= feature::PULSE && !pulse.empty(); }
+
+    // HF19+:
+    // The height of this block.  This is not used by current Oxen code for the height before HF21+,
+    // but must be present and correct in HF19 for compatibility with Oxen 10.x nodes which *did*
+    // (sometimes) use it.  Before HF21 the height is always present in the miner_tx's txin_gen,
+    // which is always present (even if sometimes mostly empty with just a txin_gen with the height
+    // and no outputs).
+    //
+    // In HF19 this field is serialized as part of the block, rather than block header; in HF20 it
+    // is not serialized at all (because it is redundant with the txin_gen); and from HF21 it is
+    // part of the block header and thus affects the block hash.
+    //
+    // See also the notes in serialization, below, about this value under HF19 once Oxen 10.x
+    // compatibility is dropped.
+    //
+    // Note that you should generally use the `block::get_height()` method rather than using this
+    // value directly to retrieve the block height properly.
+    uint64_t _height = 0;
+
+    // Block reward, in atomic units.  This field is used slightly differently depending on the HF:
+    // HF19 - the total Oxen reward the pulse block leader is claiming, which must equal the base
+    //        pulse reward (16.5 OXEN, shared among all SNs) plus any tx fees (earned just by the
+    //        block leader's stakers).  This is serialized as part of the *block*, not the block
+    //        header, for backwards compatibility with Oxen 10.x clients that had it in the block.
+    //        Does not affect the block hash as a result.
+    // HF20 - same meaning as HF19, except that it is serialized as part of the block header instead
+    //        of the block, and thus affects the block hash.
+    // HF21 - the current SENT per-block reward rate, with various rules imposed upon how it
+    //        can change from one block to the next.  This value is implicitly determined by the
+    //        l2_reward value published in recent blocks.
+    //
+    // Note that this value is technically redundant for any of these HF versions (it can be
+    // computed separately) but serializing it helps ensure that the network is in complete
+    // agreement as to what the precise current reward rate is, and helps simplify internal
+    // calculations by storing it alongside the block.
+    uint64_t reward = 0;
+
+    // HF20+:
+
+    // last 4 bytes of the SN winner pubkey, serving as a simple block winner validation used to
+    // catch potential reward database errors (this field does not determine the actual winner; that
+    // is always known by a syncing node).  Before HF20, the full SN winner is in a tx_extra field
+    // of the miner_tx and this is not included.
+    crypto::hash4 sn_winner_tail = crypto::null<crypto::hash4>;
+
+    // HF21+:
+
+    // A recent (but moderately lagged) height of the L2 tracker the block proposer is using; this
+    // height is the one associated with `reward` and determines which recently observed L2 events
+    // should enter the chain for Pulse quorum validators to approve the block.
+    uint64_t l2_height = 0;
+
+    // The pre-consensus L2 adjusted contract reward balance.  This is *not* the current reward rate
+    // (see `reward` instead), as the normal reward rate is based on the l2_reward values over
+    // several recent blocks.  In normal times, this is simply the true L2 contract pool reward
+    // balance at `l2_height`, but there is a (consensus-required) maximum amount by which this
+    // value can increase from one block to the next; thus sudden shifts in the pool balance can
+    // take time to be fully reflected here, during which this value increases slowly towards the
+    // appropriate value, but a compromised quorum is unable to noticeably affect the reward rate.
+    uint64_t l2_reward = 0;
 };
 
 struct block : public block_header {
@@ -423,15 +481,12 @@ struct block : public block_header {
     void set_hash_valid(bool v) const;
 
     std::optional<transaction> miner_tx;
-    size_t height;
-    crypto::public_key service_node_winner_key;
-    uint64_t reward = 0;
+    crypto::public_key oxen10_pulse_producer;
     std::vector<crypto::hash> tx_hashes;
 
     // hash cache
     mutable crypto::hash hash;
     std::vector<service_nodes::quorum_signature> signatures;
-    uint64_t l2_height = 0;
 
     // Returns the height of this block, which comes in the block header in HF21+, and in the
     // miner_tx before HF21.
@@ -453,7 +508,18 @@ void serialize_value(Archive& ar, block_header& b) {
     field(ar, "nonce", b.nonce);
     if (b.major_version >= hf::hf16_pulse)
         field(ar, "pulse", b.pulse);
+    if (b.major_version >= feature::ETH_TRANSITION) {
+        field_varint(ar, "reward", b.reward);
+        field(ar, "sn_winner_tail", b.sn_winner_tail);
+    }
+    if (b.major_version >= feature::ETH_BLS) {
+        field_varint(ar, "height", b._height);
+        field_varint(ar, "l2_height", b.l2_height);
+    }
 }
+
+// (See comment in serialization below)
+inline constexpr bool SUPPORT_OXEN10_INTEROP = true;
 
 template <class Archive>
 void serialize_value(Archive& ar, block& b) {
@@ -480,13 +546,50 @@ void serialize_value(Archive& ar, block& b) {
         throw oxen::traced<std::invalid_argument>{"too many txs in block"};
     if (b.major_version >= hf::hf16_pulse)
         field(ar, "signatures", b.signatures);
-    if (b.major_version >= hf::hf19_reward_batching) {
-        field_varint(ar, "height", b.height);
-        field(ar, "service_node_winner_key", b.service_node_winner_key);
-        field(ar, "reward", b.reward);
+    if (b.major_version == hf::hf19_reward_batching) {
+        // Oxen 10.x included three fields here, height, service_node_winner_key (which was actually
+        // the pulse block producer, not necessarily the winner), and reward.  None are actually
+        // needed (because we can always compute the values they must have), and only reward is used
+        // as of Oxen 11.x (because it's very useful to keep the reward stored alongside the block).
+        //
+        // Dropping them is a bit tricky, though, because Oxen 10.x nodes still expect/use those
+        // values so we have to keep sending them as long as there are Oxen 10 nodes on the network.
+        // We build a bit of forward compatibility in here, however, by accepting *either*:
+        //
+        // - a single 0 varint value; this is only sent by a future Oxen 11.x release that has
+        //   dropped Oxen 10 interoperability.  In this case we just set the height and producer
+        //   fields to 0/null.  (Thus 11.1.x nodes with compatibility in place will still be able to
+        //   sync from 11.2.x that stop sending these fields).
+        // - Otherwise it's a height and we *also* read the Oxen 10-compatible height/producer
+        //   values immediately after it.
+        //
+        // TODO: come back after all nodes are across the Oxen 11 fork and remove the
+        // interoperability *and* the oxen10_pulse_provider field and leave just the dummy 0 value
+        // height encoding (currently disabled in the `else` below).
+        if constexpr (SUPPORT_OXEN10_INTEROP) {
+            field_varint(ar, "height", b._height);
+            if (Archive::is_deserializer && b._height == 0) {
+                // Incoming from the future where Oxen 11 doesn't use compat mode any more
+                b.oxen10_pulse_producer = crypto::null<crypto::public_key>;
+                b.reward = 0;
+            } else {
+                // Message to/from someone in Oxen 10 compat mode
+                field(ar, "pulse_producer", b.oxen10_pulse_producer);
+                field(ar, "reward", b.reward);
+            }
+        } else {
+            // TODO: enable this code once we only care about supporting Oxen 11+ nodes.
+
+            // Serialize a 0 height, even if the value we have isn't 0 (which it might not be if we
+            // added this block to our DB while running Oxen 10).
+            [[maybe_unused]] uint64_t no_height = 0;
+            field_varint(ar, "height", no_height);
+            if (Archive::is_deserializer) {
+                b._height = 0;
+                b.reward = 0;
+            }
+        }
     }
-    if (b.major_version >= feature::ETH_BLS)
-        field_varint(ar, "l2_height", b.l2_height);
 }
 
 /************************************************************************/

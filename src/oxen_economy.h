@@ -60,6 +60,11 @@ inline constexpr size_t MAX_CONTRIBUTORS_V1 = 4;
 inline constexpr uint64_t SENT_STAKING_REQUIREMENT = 25'000 * COIN;
 inline constexpr uint64_t SENT_STAKING_REQUIREMENT_TESTNET = 120 * COIN;
 
+// Initial SENT reward for the first few blocks of HF21 (before there are L2_REWARD_CONSENSUS_BLOCKS
+// blocks to achieve reward consensus).  This value is based on a 40M initial reward pool with 15.1%
+// annual simple payout rate (= 14% compounding rate).
+inline constexpr uint64_t ETH_BLS_INITIAL_REWARD = 40000000'000000000 * 151 / 1000 / 365 / 720;
+
 constexpr uint64_t MINIMUM_OPERATOR_CONTRIBUTION(uint64_t staking_requirement) {
     return staking_requirement / 4;
 }

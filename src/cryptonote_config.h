@@ -94,6 +94,28 @@ inline constexpr auto ETH_L2_DEFAULT_CHECK_INTERVAL = 2min;
 // out of sync on Arbitrum).
 inline constexpr int ETH_L2_DEFAULT_CHECK_THRESHOLD = 120;
 
+// HF21 Oxen block parameters:
+//
+// How many blocks are used to compute the actual block reward rate.  The smallest l2_reward from the last
+// L2_REWARD_CONSENSUS_BLOCKS blocks is used for the block reward.
+inline constexpr uint64_t L2_REWARD_CONSENSUS_BLOCKS = 15;
+
+// The maximum relative increase in l2_reward allowed from one block to the next.  If the true
+// l2_reward of a block is higher than this (relative to the previous block) then this cap applies
+// to the value broadcast to the blockchain.  The value is the denominator, N, that determines the
+// maximum increase CURRENT/N.  (And so 50000 = maximum block-to-block increase of 0.002%).
+inline constexpr uint64_t L2_REWARD_MAX_INCREASE_DIVISOR = 50000;
+
+// The maximum relative decrease in l2_reward allowed from one block to the next.  Normally the pool
+// contract reward cannot drop more than 0.000057% per block (0.151 / 365 / 720), but erroneous L2
+// values or a malicious node could attempt to increase it and so a larger decrease is permitted as
+// a safety measure to guard the chain against such occurrences.  As with the above, this is the
+// denominator N that defines the max decrease CURR/N.  (And so 25000 = maximum block-to-block
+// decrease of 0.004%).
+inline constexpr uint64_t L2_REWARD_MAX_DECREASE_DIVISOR = 25000;
+
+
+
 // Fallback used in wallet if no fee is available from RPC:
 inline constexpr uint64_t FEE_PER_BYTE_V13 = 215;
 // 0.005 OXEN per tx output (in addition to the per-byte fee), starting in v18:

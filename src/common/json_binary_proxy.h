@@ -22,6 +22,8 @@ inline constexpr bool json_is_binary = false;
 template <>
 inline constexpr bool json_is_binary<crypto::hash> = true;
 template <>
+inline constexpr bool json_is_binary<crypto::hash4> = true;
+template <>
 inline constexpr bool json_is_binary<crypto::public_key> = true;
 template <>
 inline constexpr bool json_is_binary<crypto::ed25519_public_key> = true;

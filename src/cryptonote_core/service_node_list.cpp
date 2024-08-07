@@ -1686,6 +1686,8 @@ bool service_node_list::state_t::process_ethereum_removal_tx(
 
     uint64_t block_delay = 0;
     uint64_t stake_reduction = 0;
+    // FIXME: this value is incorrect: the staking requirement when this node was registered might
+    // not be the same as the *current* staking requirement.
     uint64_t staking_requirement = get_staking_requirement(nettype, block_height);
     if (removal_data.amount < staking_requirement) {
         block_delay = staking_num_lock_blocks(nettype);
@@ -1718,6 +1720,9 @@ bool service_node_list::state_t::process_ethereum_removal_tx(
 
     returned_stakes[0].amount -= stake_reduction;
 
+    // TODO FIXME: this doesn't seem like the right place to add the block delay: if a node gets
+    // deregged then we want the block delay to start from the point of deregistration, *not* the
+    // time when someone submitted a removal request on the ethereum side.
     return sn_list->m_blockchain.sqlite_db().return_staked_amount_to_user(
             returned_stakes, block_delay);
 }
@@ -2809,31 +2814,19 @@ void service_node_list::state_t::update_from_block(
     // TX's included in the block were applied
     //   i.e. before any deregistrations, registrations, decommissions, recommissions.
     //
-    crypto::public_key winner_pubkey =
-            hf_version >= feature::ETH_BLS
-                    ? block.service_node_winner_key
-                    : cryptonote::get_service_node_winner_from_tx_extra(block.miner_tx->extra);
+    crypto::public_key winner_pubkey = get_next_block_leader().key;
     if (hf_version >= hf::hf16_pulse) {
-        std::vector<crypto::hash> entropy =
-                get_pulse_entropy_for_next_block(db, block.prev_id, block.pulse.round);
-        quorum pulse_quorum = generate_pulse_quorum(
-                nettype,
-                winner_pubkey,
-                hf_version,
-                active_service_nodes_infos(),
-                entropy,
-                block.pulse.round);
-        if (verify_pulse_quorum_sizes(pulse_quorum)) {
+        if (auto quorum = get_pulse_quorum()) {
             // NOTE: Send candidate to the back of the list
-            for (size_t quorum_index = 0; quorum_index < pulse_quorum.validators.size();
+            for (size_t quorum_index = 0; quorum_index < quorum->validators.size();
                  quorum_index++) {
-                crypto::public_key const& key = pulse_quorum.validators[quorum_index];
+                crypto::public_key const& key = quorum->validators[quorum_index];
                 service_node_info& new_info = duplicate_info(service_nodes_infos[key]);
                 new_info.pulse_sorter.last_height_validating_in_quorum = height;
                 new_info.pulse_sorter.quorum_index = quorum_index;
             }
 
-            quorums.pulse = std::make_shared<service_nodes::quorum>(std::move(pulse_quorum));
+            quorums.pulse = std::make_shared<service_nodes::quorum>(std::move(*quorum));
         }
     }
 
@@ -2957,6 +2950,7 @@ void service_node_list::state_t::update_from_block(
         }
     }
     generate_other_quorums(*this, active_snode_list, nettype, hf_version);
+    next_block_leader_cache.reset();
 }
 
 void service_node_list::process_block(
@@ -3149,10 +3143,10 @@ std::vector<crypto::public_key> service_node_list::state_t::get_expired_nodes(
     return expired_nodes;
 }
 
-service_nodes::payout service_node_list::state_t::get_block_leader() const {
-    crypto::public_key key{};
-    service_node_info const* info = nullptr;
-    {
+service_nodes::payout service_node_list::state_t::get_next_block_leader() const {
+    if (!next_block_leader_cache) {
+        crypto::public_key key{};
+        service_node_info const* info = nullptr;
         auto oldest_waiting = std::make_tuple(
                 std::numeric_limits<uint64_t>::max(),
                 std::numeric_limits<uint32_t>::max(),
@@ -3171,11 +3165,41 @@ service_nodes::payout service_node_list::state_t::get_block_leader() const {
             }
         }
         key = std::get<2>(oldest_waiting);
+        next_block_leader_cache =
+                key ? service_node_payout_portions(key, *info) : service_nodes::null_payout;
     }
+    return *next_block_leader_cache;
+}
 
-    if (!key)
-        return service_nodes::null_payout;
-    return service_node_payout_portions(key, *info);
+std::optional<quorum> service_node_list::state_t::get_pulse_quorum() const {
+    if (!sn_list)
+        return std::nullopt;
+    cryptonote::block block;
+    auto& bc = sn_list->m_blockchain;
+    if (!find_block_in_db(bc.db(), block_hash, block)) {
+        assert(!"Internal error: state_t::get_pulse_quorum() block doesn't exist");
+        return std::nullopt;
+    }
+    if (!block.has_pulse())
+        return std::nullopt;
+
+    auto quorum = generate_pulse_quorum(
+            bc.nettype(),
+            get_next_block_leader().key,
+            block.major_version,
+            active_service_nodes_infos(),
+            get_pulse_entropy_for_next_block(bc.db(), block.prev_id, block.pulse.round),
+            block.pulse.round);
+    if (!verify_pulse_quorum_sizes(quorum))
+        return std::nullopt;
+    return quorum;
+}
+
+crypto::public_key service_node_list::state_t::get_block_producer() const {
+    auto quorum = get_pulse_quorum();
+    if (quorum)
+        return quorum->workers[0];
+    return crypto::null<crypto::public_key>;
 }
 
 template <typename T>
@@ -3239,24 +3263,37 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
     std::lock_guard lock(m_sn_mutex);
     uint64_t const height = block.get_height();
 
-    const auto block_leader = m_state.get_block_leader();
-    crypto::public_key actual_leader;
+    // Get the expected *block* leader, i.e. the leader of the block's pulse round 0, but *not*
+    // necessarily the pulse leader (if this is a backup round).  If they differ then the block
+    // leader gets the SN reward, while the round leader gets any tx fees.
+    const auto block_leader = m_state.get_next_block_leader();
+
     // NOTE: Basic queued service node list winner checks
+
+    if (block.major_version >= feature::ETH_TRANSITION) {
+        if (tools::view_guts(block.sn_winner_tail) !=
+            tools::view_guts(block_leader.key)
+                    .substr(block_leader.key.size() - block.sn_winner_tail.size()))
+            throw oxen::traced<std::runtime_error>{
+                    "Service node reward winner is incorrect!  Expected …{}, block {} has winner {}"_format(
+                            block.sn_winner_tail, height, block_leader.key)};
+    }
+
     if (block.major_version >= feature::ETH_BLS) {
-        actual_leader = block.service_node_winner_key;
         assert(!block.miner_tx);  // shouldn't have passed basic block validation with a miner_tx
     } else {
         assert(block.miner_tx);
-        actual_leader = cryptonote::get_service_node_winner_from_tx_extra(block.miner_tx->extra);
-    }
+        auto actual_winner =
+                cryptonote::get_service_node_winner_from_tx_extra(block.miner_tx->extra);
 
-    if (block_leader.key != actual_leader)
-        throw oxen::traced<std::runtime_error>{
-                "Service node reward winner is incorrect! Expected {}, block {} hf{} has {}"_format(
-                        block_leader.key,
-                        height,
-                        static_cast<size_t>(block.major_version),
-                        actual_leader)};
+        if (block_leader.key != actual_winner)
+            throw oxen::traced<std::runtime_error>{
+                    "Service node reward winner is incorrect! Expected {}, block {} hf{} has {}"_format(
+                            block_leader.key,
+                            height,
+                            static_cast<size_t>(block.major_version),
+                            actual_winner)};
+    }
 
     // NOTE(oxen): Service node reward distribution is calculated from the
     // original amount, i.e. 50% of the original base reward goes to service
@@ -3315,24 +3352,29 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
 
     // NOTE: Verify miner tx vout composition
     //
-    // Miner Block
+    // Miner Block, pre-HF16:
     // 1       | Miner
     // Up To 4 | Queued Service Node
-    // Up To 1 | Governance
+    // Up To 1 | Governance, only included in blocks divisible by 5040 (= weekly)
     //
-    // Pulse Block (pre-batching)
-    // Up to 4 | Block Producer (0-3 for Pooled Service Node)
+    // Pulse Block, pre-HF19:
+    // 0       | No Miner - mining can still happen as a fallback, but the miner earns nothing
+    // Up to 4 | Block Producer, if different from the Queued Service Node (i.e. backup rounds)
     // Up To 4 | Queued Service Node
-    // Up To 1 | Governance
+    // Up To 1 | Governance, only included in blocks divisible by 5040 (= weekly)
     //
     // Oxen Batching (HF19-20):
     // 0+ | 1 for each recipient with a reward balance >= 1 OXEN who is due a payment in this block
     //      (each wallet has an offset determined by the wallet address, and is paid out twice a
-    //      week on blocks with % 2520 == that offset).  Governance rewards are added to the reward
-    //      db and pay out exactly the same way as regular service node rewards.
+    //      week on blocks with % 2520 == that offset).  Governance rewards are added to the batch
+    //      db and pay out exactly the same way as regular service node rewards (i.e. no special
+    //      governance outputs).  There is still always a miner_tx, but it frequently has no outputs
+    //      when there is no address due a batched amount payout at that height.
     //
-    // Arbitrum:
-    // There is (never) any miner_tx at all in blocks.  (Not just no outputs: no miner tx either).
+    // Arbitrum (HF21+):
+    // NULL | Blocks never have miner_txes at all.  Rewards are still accumulated in the batching
+    //        DB, but they now represent SENT values and are redeemed by getting a signed reward
+    //        balance to submit to the smart contract (and then pay out from there).
     //
     // NOTE: See cryptonote_tx_utils.cpp construct_miner_tx(...) for payment details.
 

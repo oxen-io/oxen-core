@@ -1537,6 +1537,35 @@ class Blockchain {
             hf version);
 
     /**
+     * @brief returns the (consensus-required) calculated ETH reward for the next block.
+     *
+     * This uses the smallest `l2_reward` value of the last L2_REWARD_CONSENSUS_BLOCKS blocks before
+     * `height`.  Returns 0 if given a height before the feature::ETH_BLS hard fork; returns the
+     * hard-coded ETH_BLS_INITIAL_REWARD for the initial ETH_BLS blocks; throws if any of the
+     * previous L2_REWARD_CONSENSUS_BLOCKS blocks don't exist.
+     *
+     * @param height the height of the block to query; the L2_REWARD_CONSENSUS_BLOCKS before this
+     * height must exist in the blockchain db.
+     *
+     * @return the block reward that applies for the given height.
+     */
+    uint64_t eth_consensus_reward(uint64_t height) const;
+
+    /**
+     * @brief returns the (consensus-required) minimum and maximum l2_reward values for a block of
+     * the given height.
+     *
+     * The caps are defined by allowing a maximum relative change from the previous block's
+     * l2_reward value, based on the L2_REWARD_MAX_{DE,IN}CREASE_DIVISOR constants.
+     *
+     * @param height the height of the block being checked; the previous block (height-1) must exist
+     * in the blockchain db.
+     *
+     * @returns pair of [min, max] l2_reward values, or [0,0] if this is not a ETH_BLS block height.
+     */
+    std::pair<uint64_t, uint64_t> l2_reward_range(uint64_t height) const;
+
+    /**
      * @brief reverts the blockchain to its previous state following a failed switch
      *
      * If Blockchain fails to switch to an alternate chain when it means

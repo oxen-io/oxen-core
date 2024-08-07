@@ -225,8 +225,7 @@ void core_rpc_server::invoke(GET_INFO& info, rpc_context context) {
         next_block_is_pulse = pulse::clock::now() < t.miner_fallback_timestamp;
     }
 
-    if (cryptonote::checkpoint_t checkpoint;
-        db.get_immutable_checkpoint(&checkpoint, top_height)) {
+    if (cryptonote::checkpoint_t checkpoint; db.get_immutable_checkpoint(&checkpoint, top_height)) {
         info.response["immutable_height"] = checkpoint.height;
         info.response_hex["immutable_block_hash"] = checkpoint.block_hash;
     }
@@ -260,8 +259,8 @@ void core_rpc_server::invoke(GET_INFO& info, rpc_context context) {
         auto cd = db.get_block_cumulative_difficulty(top_height);
         info.response["cumulative_difficulty"] = cd;
     } catch (std::exception const& e) {
-        info.response["status"] = "Error retrieving cumulative difficulty at height " +
-                                  std::to_string(top_height);
+        info.response["status"] =
+                "Error retrieving cumulative difficulty at height {}"_format(top_height);
         return;
     }
 
@@ -1484,20 +1483,26 @@ static void fill_block_header_response(
     response["block_size"] = response["block_weight"] = db.get_block_weight(height);
     auto coinbase = get_block_coinbase_payouts(blk);
     response["coinbase_payouts"] = coinbase;
-    response["reward"] = blk.major_version >= cryptonote::feature::ETH_BLS ? blk.reward : coinbase;
+    response["reward"] =
+            blk.major_version >= cryptonote::hf::hf19_reward_batching ? blk.reward : coinbase;
     response["num_txes"] = blk.tx_hashes.size();
     if (fill_pow_hash)
-        response_hex["pow_hash"] =
-                get_block_longhash_w_blockchain(core.get_nettype(), &core.blockchain, blk, height, 0);
+        response_hex["pow_hash"] = get_block_longhash_w_blockchain(
+                core.get_nettype(), &core.blockchain, blk, height, 0);
     response["long_term_weight"] = db.get_block_long_term_weight(height);
-    response_hex["service_node_winner"] =
-            blk.major_version >= cryptonote::hf::hf19_reward_batching
-                    ? blk.service_node_winner_key
-                    : cryptonote::get_service_node_winner_from_tx_extra(blk.miner_tx.value().extra);
-    if (blk.major_version >= cryptonote::feature::ETH_BLS)
+    if (blk.major_version < feature::ETH_BLS)
+        response_hex["service_node_winner"] =
+                cryptonote::get_service_node_winner_from_tx_extra(blk.miner_tx.value().extra);
+    else
+        response_hex["service_node_winner_tail"] = blk.sn_winner_tail;
+    if (blk.major_version >= cryptonote::feature::ETH_BLS) {
         response["l2_height"] = blk.l2_height;
-    if (blk.miner_tx && blk.miner_tx->vout.size() > 0)
+        response["l2_reward"] = blk.l2_reward;
+    }
+    if (blk.miner_tx) {
         response_hex["miner_tx_hash"] = cryptonote::get_transaction_hash(*blk.miner_tx);
+        response["miner_tx_outs"] = blk.miner_tx->vout.size();
+    }
     if (get_tx_hashes)
         for (const auto& tx_hash : blk.tx_hashes)
             response_hex["tx_hashes"].push_back(tx_hash);
@@ -2388,7 +2393,7 @@ void core_rpc_server::invoke(GET_QUORUM_STATE& get_quorum_state, rpc_context con
             auto& sn_list = m_core.service_node_list;
             auto quorum = generate_pulse_quorum(
                     m_core.get_nettype(),
-                    sn_list.get_block_leader().key,
+                    sn_list.get_next_block_leader().key,
                     hf_version,
                     sn_list.active_service_nodes_infos(),
                     entropy,

@@ -103,7 +103,7 @@ bool pulse_header::empty() const {
 
 uint64_t block::get_height() const {
     if (major_version >= feature::ETH_BLS) {
-        return height;
+        return _height;
     } else {
         assert(miner_tx && miner_tx->is_miner_tx());
         return var::get<txin_gen>(miner_tx->vin.front()).height;
@@ -123,10 +123,6 @@ block& block::operator=(const block& b) {
     miner_tx = b.miner_tx;
     tx_hashes = b.tx_hashes;
     signatures = b.signatures;
-    height = b.height;
-    service_node_winner_key = b.service_node_winner_key;
-    reward = b.reward;
-    l2_height = b.l2_height;
     copy_hash(b);
     return *this;
 }
@@ -135,10 +131,6 @@ block& block::operator=(block&& b) {
     miner_tx = std::move(b.miner_tx);
     tx_hashes = std::move(b.tx_hashes);
     signatures = std::move(b.signatures);
-    height = std::move(b.height);
-    service_node_winner_key = std::move(b.service_node_winner_key);
-    reward = std::move(b.reward);
-    l2_height = std::move(b.l2_height);
     copy_hash(b);
     return *this;
 }

@@ -517,59 +517,52 @@ bool BlockchainSQLite::reward_handler(
     bool (BlockchainSQLite::*add_or_subtract)(const std::vector<cryptonote::batch_sn_payment>&) =
             add ? &BlockchainSQLite::add_sn_rewards : &BlockchainSQLite::subtract_sn_rewards;
 
+    assert(block.major_version >= hf::hf19_reward_batching);
+
     // From here on we calculate everything in milli-atomic OXEN/SENT (i.e. thousanths of an atomic
     // unit) so that our integer math has reduced loss from integer division.
     if (block.reward > std::numeric_limits<uint64_t>::max() / BATCH_REWARD_FACTOR)
         throw oxen::traced<std::logic_error>{"Reward distribution amount is too large"};
 
     uint64_t block_reward = block.reward * BATCH_REWARD_FACTOR;
-    uint64_t service_node_reward =
-            block.major_version >= feature::ETH_BLS
-                    ? block_reward
-                    : cryptonote::service_node_reward_formula(0, block.major_version) *
-                              BATCH_REWARD_FACTOR;
-
     std::vector<cryptonote::batch_sn_payment> payments;
-
-    // Step 1: Pay out the block producer their tx fees (note that, unlike the below, this applies
-    // even if the SN isn't currently payable).
-    if (block_reward < service_node_reward && m_nettype != cryptonote::network_type::FAKECHAIN)
-        throw oxen::traced<std::logic_error>{"Invalid payment: block reward is too small"};
+    payments.reserve(10);
 
     std::lock_guard a_s_lock{address_str_cache_mutex};
 
-    if (uint64_t tx_fees = block_reward - service_node_reward;
-        tx_fees > 0 && block.service_node_winner_key  // "service_node_winner_key" tracks the pulse
-                                                      // winner; 0 if a mined block
-        && crypto_core_ed25519_is_valid_point(block.service_node_winner_key.data())) {
-
-        if (auto service_node_winner =
-                    service_nodes_state.service_nodes_infos.find(block.service_node_winner_key);
-            service_node_winner != service_nodes_state.service_nodes_infos.end()) {
-            calculate_rewards(block.major_version, tx_fees, *service_node_winner->second, payments);
-            // Takes the block producer and adds its contributors to the batching database for the
-            // transaction fees
-            if (!(this->*add_or_subtract)(payments))
-                return false;
+    if (block.major_version < feature::ETH_BLS) {
+        // Step 1 (pre-ETH only): Pay out the block producer their tx fees (note that, unlike the
+        // below, this applies even if the SN isn't currently payable).
+        constexpr uint64_t base_sn_reward = oxen::SN_REWARD_HF15 * BATCH_REWARD_FACTOR;
+        if (block_reward < base_sn_reward)
+            throw oxen::traced<std::logic_error>{"Invalid payment: block reward is too small"};
+        if (uint64_t tx_fees = block_reward - base_sn_reward; tx_fees > 0 && block.has_pulse()) {
+            if (auto pulse_leader = service_nodes_state.get_block_producer()) {
+                calculate_rewards(
+                        block.major_version,
+                        tx_fees,
+                        *service_nodes_state.service_nodes_infos.at(pulse_leader),
+                        payments);
+                // Takes the block producer and adds its contributors to the batching database for
+                // the transaction fees
+                if (!(this->*add_or_subtract)(payments))
+                    return false;
+            }
         }
+        block_reward = base_sn_reward;
     }
 
-    auto block_height = block.get_height();
-
-    // Step 2: Iterate over the whole service node list and pay each node 1/service_node_list
-    // fraction
+    // Step 2: Iterate over the payable (active for >=24h) N service nodes and pay each node 1/N
+    // fraction of the total block reward.
     const auto payable_service_nodes =
-            service_nodes_state.payable_service_nodes_infos(block_height, m_nettype);
-    size_t total_service_nodes_payable = payable_service_nodes.size();
+            service_nodes_state.payable_service_nodes_infos(block.get_height(), m_nettype);
+    const uint64_t N = payable_service_nodes.size();
     for (const auto& [node_pubkey, node_info] : payable_service_nodes) {
-        auto payable_service_node = service_nodes_state.service_nodes_infos.find(node_pubkey);
-        if (payable_service_node == service_nodes_state.service_nodes_infos.end())
-            continue;
-        calculate_rewards(
-                block.major_version,
-                service_node_reward / total_service_nodes_payable,
-                *payable_service_node->second,
-                payments);
+        // TODO: optimize.  Right now we get each payment to each contributor for each SN then do an
+        // SQL insertion for that amount.  This seems inefficient compared to summing all the
+        // amounts in a data structure and then passing the sums rather than individual summands
+        // into SQLite.
+        calculate_rewards(block.major_version, block_reward / N, *node_info, payments);
         // Takes the node and adds its contributors to the batching database
         if (!(this->*add_or_subtract)(payments))
             return false;

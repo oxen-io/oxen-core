@@ -1813,7 +1813,6 @@ void tx_memory_pool::mark_double_spend(const transaction& tx) {
         ++m_cookie;
 }
 //---------------------------------------------------------------------------------
-// TODO: investigate whether boolean return is appropriate
 bool tx_memory_pool::fill_block_template(
         block& bl,
         size_t median_weight,
@@ -1823,7 +1822,7 @@ bool tx_memory_pool::fill_block_template(
         uint64_t& expected_reward,
         hf version,
         uint64_t height,
-        std::optional<std::pair<uint64_t, uint64_t>> l2_range) {
+        std::optional<uint64_t> l2_max) {
     auto locks = tools::unique_locks(m_transactions_lock, m_blockchain);
 
     total_weight = 0;
@@ -1879,15 +1878,22 @@ bool tx_memory_pool::fill_block_template(
                 max_total_weight,
                 print_money(best_reward));
 
-        if (l2_range && meta.l2_height != 0 &&
-            (meta.l2_height < l2_range->first || meta.l2_height > l2_range->second)) {
-            log::debug(
-                    logcat,
-                    "  state change from L2 height {} is not in L2 range [{}, {}]",
-                    meta.l2_height,
-                    l2_range->first,
-                    l2_range->second);
-            continue;
+        if (meta.l2_height != 0) {
+            if (l2_max && meta.l2_height > *l2_max) {
+                log::debug(
+                        logcat,
+                        "  state change from L2 height {} is not in in admittable L2 heights >= {}",
+                        meta.l2_height,
+                        *l2_max);
+                continue;
+            } else if (!l2_max) {
+                log::debug(
+                        logcat,
+                        "  state change from L2 height {} skipped; L2 transactions not requested for this block",
+                        meta.l2_height,
+                        *l2_max);
+                continue;
+            }
         }
 
         // Can not exceed maximum block weight

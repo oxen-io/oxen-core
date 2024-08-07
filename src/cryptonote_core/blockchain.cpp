@@ -40,6 +40,8 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <limits>
+#include <stdexcept>
 
 #include "blockchain_db/blockchain_db.h"
 #include "blockchain_db/sqlite/db_sqlite.h"
@@ -1362,10 +1364,17 @@ bool Blockchain::prevalidate_miner_transaction(const block& b, uint64_t height, 
             miner_tx.is_miner_tx(), false, "coinbase transaction in the block has the wrong type");
     if (b.get_height() != height) {
         log::warning(
+                logcat, "The block has invalid height: {}, expected: {}", b.get_height(), height);
+        return false;
+    }
+    if (b.major_version == hf::hf19_reward_batching && b._height != 0 && b._height != height) {
+        // Oxen 10 nodes and early Oxen 11 nodes send the height in both the block and the txin_gen;
+        // later Oxen 11 nodes will send 0 for the height instead.
+        log::warning(
                 logcat,
-                "The miner transaction in block has invalid height: {}, expected: {}",
-                b.get_height(),
-                height);
+                "HF19 block with invalid mismatched block/txin_gen heights {}/{}",
+                b._height,
+                b.get_height());
         return false;
     }
     log::debug(logcat, "Miner tx hash: {}", get_transaction_hash(miner_tx));
@@ -1425,32 +1434,20 @@ bool Blockchain::validate_miner_transaction(
         hf version) {
     log::trace(logcat, "Blockchain::{}", __func__);
 
-    if (b.major_version >= feature::ETH_BLS) {
-        if (b.miner_tx) {
-            log::error(
-                    log::Cat("verify"),
-                    "Invalid block: HF {} blocks must not have a miner tx",
-                    static_cast<int>(b.major_version));
-            return false;
-        }
-        return true;
-    }
-
-    if (!b.miner_tx) {
+    if ((b.major_version >= feature::ETH_BLS) == b.miner_tx.has_value()) {
         log::error(
                 log::Cat("verify"),
-                "Invalid block: HF {} blocks must have a miner tx",
-                static_cast<int>(b.major_version));
+                "Invalid block: HF {} blocks {} have a miner tx",
+                static_cast<int>(b.major_version),
+                b.miner_tx ? "must not" : "must");
         return false;
     }
 
     // validate reward
     uint64_t const money_in_use = get_outs_money_amount(b.miner_tx);
-    if (b.miner_tx->vout.size() == 0) {
-        if (b.major_version < hf::hf19_reward_batching) {
-            log::error(log::Cat("verify"), "miner tx has no outputs");
-            return false;
-        }
+    if (b.miner_tx && b.miner_tx->vout.size() == 0 && b.major_version < hf::hf19_reward_batching) {
+        log::error(log::Cat("verify"), "miner tx has no outputs");
+        return false;
     }
 
     uint64_t median_weight;
@@ -1471,7 +1468,7 @@ bool Blockchain::validate_miner_transaction(
         return false;
     }
 
-    block_reward_parts reward_parts{0};
+    block_reward_parts reward_parts{};
 
     if (!get_oxen_block_reward(
                 median_weight,
@@ -1508,7 +1505,7 @@ bool Blockchain::validate_miner_transaction(
         version < hf::hf19_reward_batching) {
         if (version >= hf::hf10_bulletproofs && reward_parts.governance_paid == 0) {
             log::error(
-                    logcat,
+                    log::Cat("verify"),
                     "Governance reward should not be 0 after hardfork v10 if this height has a "
                     "governance output because it is the batched payout height");
             return false;
@@ -1516,7 +1513,7 @@ bool Blockchain::validate_miner_transaction(
 
         if (b.miner_tx->vout.back().amount != reward_parts.governance_paid) {
             log::error(
-                    logcat,
+                    log::Cat("verify"),
                     "Governance reward amount incorrect.  Should be: {}, is: {}",
                     print_money(reward_parts.governance_paid),
                     print_money(b.miner_tx->vout.back().amount));
@@ -1529,7 +1526,7 @@ bool Blockchain::validate_miner_transaction(
                     b.miner_tx->vout.size() - 1,
                     var::get<txout_to_key>(b.miner_tx->vout.back().target).key,
                     m_nettype)) {
-            log::error(logcat, "Governance reward public key incorrect.");
+            log::error(log::Cat("verify"), "Governance reward public key incorrect.");
             return false;
         }
     }
@@ -1553,7 +1550,7 @@ bool Blockchain::validate_miner_transaction(
 
     if (money_in_use > max_money_in_use) {
         log::error(
-                logcat,
+                log::Cat("verify"),
                 "coinbase transaction spends too much money ({}). Maximum block reward is {} (= {} "
                 "base + {} fees)",
                 print_money(money_in_use),
@@ -1567,49 +1564,100 @@ bool Blockchain::validate_miner_transaction(
         CHECK_AND_ASSERT_MES(
                 money_in_use >= reward_parts.miner_fee, false, "base reward calculation bug");
         base_reward = money_in_use - reward_parts.miner_fee;
-    }
 
-    if (version < feature::ETH_BLS) {
-        if (b.reward >
-            reward_parts.base_miner + reward_parts.miner_fee + reward_parts.service_node_total) {
+    } else if (version == hf::hf19_reward_batching) {
+        if (b.reward != reward_parts.miner_fee + reward_parts.service_node_total) {
             log::error(
-                    logcat,
-                    "block reward to be batched spends too much money ({}). Maximum block reward "
-                    "is {} "
-                    "(= {} base + {} fees)",
+                    log::Cat("verify"),
+                    "block reward for batching is incorrect: {} != {} ({} SN + {} tx fees)",
                     print_money(b.reward),
-                    print_money(max_money_in_use),
-                    print_money(max_base_reward),
+                    print_money(reward_parts.miner_fee + reward_parts.service_node_total),
+                    print_money(reward_parts.service_node_total),
                     print_money(reward_parts.miner_fee));
             return false;
         }
-    } else {
 
-        /* FIXME - can't do this if we always trust the quorum
-         * FIXME 2 - but we also need to secure/confirm this amount
-         */
+    } else if (version >= feature::ETH_BLS) {
+        // The block's l2_reward published to the network is only permitted to change slightly from
+        // the previous block's value.
+        uint64_t min_l2r, max_l2r;
+        try {
+            std::tie(min_l2r, max_l2r) = l2_reward_range(b.get_height());
+        } catch (const DB_ERROR& e) {
+            log::error(logcat, "failed to retrieve previous block header from DB: {}", e.what());
+            return false;
+        }
 
-        // NOTE: In SENT era, if provider is not configured- we trust the Service Node quorums to
-        // query the smart contract for the reward amount. Non-service nodes can configure the
-        // provider if they wish to synchronise the network with extra security.
-        const auto pool_block_reward = m_l2_tracker->get_reward_rate(b.l2_height);
-        // if pool_block_reward is nullopt then it *probably* means it's just too old (i.e. because
-        // we're syncing old blocks from the chain), or our L2 tracker is broken: in both of those
-        // cases we want to accept it.
-        // The other case is that it's too *new* (or faked too new): we don't reject that here, but
-        // rather in handle_block_to_main_chain.
-        if (pool_block_reward && b.reward != *pool_block_reward) {
+        if (b.l2_reward > max_l2r || b.l2_reward < min_l2r) {
             log::error(
-                    logcat,
-                    "block reward rate is incorrect: expected {}, got {}",
-                    print_money(*pool_block_reward),
-                    print_money(b.reward));
+                    log::Cat("verify"),
+                    "block has invalid l2_reward {} not in [{}, {}]",
+                    print_money(b.l2_reward),
+                    print_money(min_l2r),
+                    print_money(max_l2r));
+            return false;
+        }
+
+        // The block must also claim the correct (actual) block reward to be paid out at this
+        // height, which is the minimum of the last 15 blocks.
+        if (auto expected_reward = eth_consensus_reward(height); b.reward != expected_reward) {
+            log::error(
+                    log::Cat("verify"),
+                    "block reward for height {} is incorrect; block has {} but expected {}",
+                    height,
+                    print_money(b.reward),
+                    print_money(expected_reward));
             return false;
         }
     }
 
     return true;
 }
+
+uint64_t Blockchain::eth_consensus_reward(uint64_t height) const {
+    auto eth_height = hard_fork_begins(m_nettype, feature::ETH_BLS);
+    if (!eth_height || height < *eth_height)
+        return 0;
+    if (height < *eth_height + L2_REWARD_CONSENSUS_BLOCKS)
+        return oxen::ETH_BLS_INITIAL_REWARD;
+
+    size_t count = 0;
+    uint64_t min_l2_reward = std::numeric_limits<uint64_t>::max();
+    bool okay = db().for_blocks_range(
+            height - L2_REWARD_CONSENSUS_BLOCKS,
+            height - 1,
+            [&count, &min_l2_reward](
+                    uint64_t /*height*/, const crypto::hash& /*hash*/, const block& block) {
+                assert(block.major_version >= feature::ETH_BLS);
+                if (block.l2_reward < min_l2_reward)
+                    min_l2_reward = block.l2_reward;
+                count++;
+                return true;
+            });
+    if (!okay || count != L2_REWARD_CONSENSUS_BLOCKS ||
+        min_l2_reward == std::numeric_limits<uint64_t>::max())
+        throw oxen::traced<std::out_of_range>{
+                "Invalid height for eth_consensus_reward: preceeding blocks not found in "
+                "blockchain db"};
+
+    return min_l2_reward;
+}
+
+std::pair<uint64_t, uint64_t> Blockchain::l2_reward_range(uint64_t height) const {
+    auto eth_begins = hard_fork_begins(m_nettype, feature::ETH_BLS);
+    if (!eth_begins || height < *eth_begins)
+        return {0, 0};
+
+    // For the first ETH_BLS block itself we pretend the previous block had a l2_reward of exactly
+    // ETH_BLS_INITIAL_REWARD.
+    auto prev_l2_reward = height == *eth_begins
+                                ? oxen::ETH_BLS_INITIAL_REWARD
+                                : db().get_block_header_from_height(height - 1).l2_reward;
+
+    return {prev_l2_reward - prev_l2_reward / L2_REWARD_MAX_DECREASE_DIVISOR,
+            prev_l2_reward + prev_l2_reward / L2_REWARD_MAX_INCREASE_DIVISOR};
+}
+
 //------------------------------------------------------------------
 // get the block weights of the last <count> blocks, and return by reference <sz>.
 void Blockchain::get_last_n_blocks_weights(std::vector<uint64_t>& weights, size_t count) const {
@@ -1812,21 +1860,10 @@ bool Blockchain::create_block_template_internal(
     size_t txs_weight;
     uint64_t fee;
 
-    std::optional<std::pair<uint64_t, uint64_t>> l2_range;
-    std::optional<uint64_t> l2_reward;
+    std::optional<uint64_t> l2_mempool_max;
     if (hf_version >= cryptonote::feature::ETH_BLS) {
         b.l2_height = m_l2_tracker->get_safe_height();
-        l2_range.emplace(m_l2_tracker->get_confirmed_height() + 1, b.l2_height);
-
-        l2_reward = m_l2_tracker->get_reward_rate(b.l2_height);
-        if (!l2_reward) {
-            log::error(
-                    logcat,
-                    "L2 Tracker failed to retrieve the current block reward; unable to create a "
-                    "block");
-            return false;
-        }
-        log::trace(logcat, "L2 reward retrieved {} (L2 height {}) for block {}", *l2_reward, b.l2_height, height);
+        l2_mempool_max = b.l2_height;
     }
 
     // Add transactions in mempool to block
@@ -1839,9 +1876,9 @@ bool Blockchain::create_block_template_internal(
                 expected_reward,
                 b.major_version,
                 height,
-                std::move(l2_range))) {
+                l2_mempool_max))
         return false;
-    }
+
     pool_cookie = m_tx_pool.cookie();
 
     /*
@@ -1853,11 +1890,41 @@ bool Blockchain::create_block_template_internal(
     auto miner_tx_context =
             info.is_miner
                     ? oxen_miner_tx_context::miner_block(
-                              m_nettype, info.miner_address, service_node_list.get_block_leader())
+                              m_nettype, info.miner_address, service_node_list.get_next_block_leader())
                     : oxen_miner_tx_context::pulse_block(
                               m_nettype,
                               info.service_node_payout,
-                              service_node_list.get_block_leader());
+                              service_node_list.get_next_block_leader());
+
+    if (hf_version >= cryptonote::feature::ETH_TRANSITION) {
+        std::memcpy(
+                b.sn_winner_tail.data(),
+                miner_tx_context.block_leader.key.data() +
+                        miner_tx_context.block_leader.key.size() - b.sn_winner_tail.size(),
+                b.sn_winner_tail.size());
+    }
+
+    if (hf_version >= cryptonote::feature::ETH_BLS) {
+        auto actual_reward = m_l2_tracker->get_reward_rate(b.l2_height);
+        if (!actual_reward) {
+            log::error(
+                    logcat,
+                    "L2 Tracker failed to retrieve the current block reward; unable to create a "
+                    "block");
+            return false;
+        }
+
+        // Clamp the l2_reward value into the maximum allowed range by the chain (this means sudden
+        // pool reward changes will only show up gradually in l2_reward, but prevents abuse by
+        // faulty/compromised L2 providers or pulse quorums).
+        auto l2r_range = l2_reward_range(height);
+        b.l2_reward = std::clamp(*actual_reward, l2r_range.first, l2r_range.second);
+
+        // No miner tx in HF21+ blocks, so we're done.
+        b.miner_tx = std::nullopt;
+        return true;
+    }
+
     if (!calc_batched_governance_reward(height, miner_tx_context.batched_governance)) {
         log::error(logcat, "Failed to calculate batched governance reward");
         return false;
@@ -1865,7 +1932,7 @@ bool Blockchain::create_block_template_internal(
 
     // This will check the batching database for who is due to be paid out in this block
     std::vector<cryptonote::batch_sn_payment> sn_rwds;
-    if (hf_version < cryptonote::feature::ETH_BLS && hf_version >= hf::hf19_reward_batching) {
+    if (hf_version >= hf::hf19_reward_batching) {
         sn_rwds = m_sqlite_db->get_sn_payments(height);  // Rewards to pay out
     }
 
@@ -1951,17 +2018,12 @@ bool Blockchain::create_block_template_internal(
                     b, info.miner_address, ex_nonce, diffic, height, expected_reward, pool_cookie);
 
         if (miner_tx_context.pulse)
-            b.service_node_winner_key = miner_tx_context.pulse_block_producer.key;
+            b.oxen10_pulse_producer = miner_tx_context.pulse_block_producer.key;
         else
-            b.service_node_winner_key = crypto::null<crypto::public_key>;
-
-        if (hf_version >= cryptonote::feature::ETH_BLS) {
-            assert(l2_reward);
-            block_rewards = *l2_reward;
-        }
+            b.oxen10_pulse_producer = crypto::null<crypto::public_key>;
 
         b.reward = block_rewards;
-        b.height = height;
+        b._height = height;
         return true;
     }
     log::error(logcat, "Failed to create_block_template with {} tries", 10);
@@ -5252,7 +5314,7 @@ bool Blockchain::handle_block_to_main_chain(
         bvc.m_verifivation_failed = true;
         return false;
     }
-    if (is_hard_fork_at_least(m_nettype, feature::ETH_BLS, bl.height)) {
+    if (is_hard_fork_at_least(m_nettype, feature::ETH_BLS, bl.get_height())) {
 
         // FIXME -- I'm not convinced that these height checks are strictly needed, once we
         // implement a confirmation-based approach rather than a hard L2 height transaction

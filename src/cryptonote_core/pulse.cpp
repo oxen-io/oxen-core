@@ -1264,7 +1264,7 @@ namespace {
         auto const active_node_list = blockchain.service_node_list.active_service_nodes_infos();
         auto hf_version = blockchain.get_network_version();
         crypto::public_key const& block_leader =
-                blockchain.service_node_list.get_block_leader().key;
+                blockchain.service_node_list.get_next_block_leader().key;
 
         context.prepare_for_round.quorum = service_nodes::generate_pulse_quorum(
                 blockchain.nettype(),

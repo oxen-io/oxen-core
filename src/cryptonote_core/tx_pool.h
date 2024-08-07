@@ -460,11 +460,10 @@ class tx_memory_pool {
      * penalty.
      * @param version hard fork version to use for consensus rules
      * @height the height this block will have.
-     * @l2_range if specified, this gives a pair of L2 heights, FROM and TO (inclusive), for which
-     * state change transactions that came from our own L2 provider should be included.  If omitted
-     * or nullopt then *no* L2 state change transactions will be included.
+     * @l2_max if specified then L2 state change transactions with L2 heights up to this value are
+     * included.  If omitted or nullopt then *no* L2 state change transactions will be included.
      *
-     * @return true
+     * @return true if the block template creation was successful, false upon failure.
      */
     bool fill_block_template(
             block& bl,
@@ -475,7 +474,7 @@ class tx_memory_pool {
             uint64_t& expected_reward,
             hf version,
             uint64_t height,
-            std::optional<std::pair<uint64_t, uint64_t>> l2_range = std::nullopt);
+            std::optional<uint64_t> l2_max = std::nullopt);
 
     /**
      * @brief get a list of all transactions in the pool

@@ -101,6 +101,13 @@ inline void serialize(
         [[maybe_unused]] const boost::serialization::version_type ver) {
     a& reinterpret_cast<char(&)[sizeof(crypto::hash8)]>(x);
 }
+template <class Archive>
+inline void serialize(
+        Archive& a,
+        crypto::hash4& x,
+        [[maybe_unused]] const boost::serialization::version_type ver) {
+    a& reinterpret_cast<char(&)[sizeof(crypto::hash4)]>(x);
+}
 
 template <class Archive>
 inline void serialize(
@@ -269,11 +276,11 @@ inline void serialize(
     a& b.tx_hashes;
     if (ver < 1u)
         return;
-    a& b.height;
-    a& b.service_node_winner_key;
+    a& b._height;
     a& b.reward;
+    a& b.sn_winner_tail;
     a& b.l2_height;
-    // FIXME: l2_pending
+    a& b.l2_reward;
 }
 
 template <class Archive>
