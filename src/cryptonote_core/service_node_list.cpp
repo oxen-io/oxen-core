@@ -2878,15 +2878,12 @@ void service_node_list::state_t::update_from_block(
     //
     // Advance the list to the next candidate for a reward
     //
-    {
-        auto it = service_nodes_infos.find(winner_pubkey);
-        if (it != service_nodes_infos.end()) {
-            // set the winner as though it was re-registering at transaction index=UINT32_MAX for
-            // this block
-            auto& info = duplicate_info(it->second);
-            info.last_reward_block_height = block_height;
-            info.last_reward_transaction_index = UINT32_MAX;
-        }
+    if (auto it = service_nodes_infos.find(winner_pubkey); it != service_nodes_infos.end()) {
+        // set the winner as though it was re-registering at transaction index=UINT32_MAX for
+        // this block
+        auto& info = duplicate_info(it->second);
+        info.last_reward_block_height = block_height;
+        info.last_reward_transaction_index = UINT32_MAX;
     }
 
     //

@@ -27,10 +27,10 @@
 
 #include "db_sqlite.h"
 
+#include <common/exception.h>
 #include <fmt/core.h>
 #include <sodium.h>
 #include <sqlite3.h>
-#include <common/exception.h>
 
 #include <cassert>
 
@@ -180,8 +180,7 @@ void BlockchainSQLite::upgrade_schema() {
     }
 
     const auto eth_mapping_table_count = prepared_get<int64_t>(
-            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND "
-            "name='eth_mapping';");
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='eth_mapping';");
     if (eth_mapping_table_count == 0) {
         log::info(logcat, "Adding eth mapping table and delayed payments table to batching db");
         SQLite::Transaction transaction{db, SQLite::TransactionBehavior::IMMEDIATE};
@@ -195,9 +194,7 @@ void BlockchainSQLite::upgrade_schema() {
         );
 
         CREATE INDEX eth_mapping_eth_address_idx ON eth_mapping(eth_address);
-        )");
 
-        db.exec(R"(
         CREATE TABLE delayed_payments(
           eth_address VARCHAR NOT NULL,
           amount BIGINT NOT NULL,
@@ -419,14 +416,16 @@ std::vector<cryptonote::batch_sn_payment> BlockchainSQLite::get_sn_payments(uint
     return payments;
 }
 
-static std::pair<uint64_t, uint64_t> get_accrued_rewards_impl(BlockchainSQLite& db, const std::string& address, uint64_t height) {
+static std::pair<uint64_t, uint64_t> get_accrued_rewards_impl(
+        BlockchainSQLite& db, const std::string& address, uint64_t height) {
     log::trace(logcat, "BlockchainDB_SQLITE {} for {}", __func__, address);
     auto rewards = db.prepared_maybe_get<int64_t>(
             R"(
         SELECT amount
         FROM batched_payments_accrued
         WHERE address = ?
-    )", address);
+    )",
+            address);
     auto result = std::make_pair(height, static_cast<uint64_t>(rewards.value_or(0) / 1000));
     return result;
 }
@@ -437,8 +436,10 @@ std::pair<uint64_t, uint64_t> BlockchainSQLite::get_accrued_rewards(const eth::a
     return result;
 }
 
-std::pair<uint64_t, uint64_t> BlockchainSQLite::get_accrued_rewards(const account_public_address& address) {
-    std::string address_string = get_account_address_as_str(m_nettype, false /*subaddress*/, address);
+std::pair<uint64_t, uint64_t> BlockchainSQLite::get_accrued_rewards(
+        const account_public_address& address) {
+    std::string address_string =
+            get_account_address_as_str(m_nettype, false /*subaddress*/, address);
     auto result = get_accrued_rewards_impl(*this, address_string, height);
     return result;
 }
@@ -734,7 +735,8 @@ bool BlockchainSQLite::pop_block(
     return true;
 }
 
-bool BlockchainSQLite::return_staked_amount_to_user(const std::vector<cryptonote::batch_sn_payment>& payments, uint64_t delay_blocks) {
+bool BlockchainSQLite::return_staked_amount_to_user(
+        const std::vector<cryptonote::batch_sn_payment>& payments, uint64_t delay_blocks) {
     log::trace(logcat, "BlockchainDB_SQLITE::{} called", __func__);
 
     try {
@@ -743,22 +745,25 @@ bool BlockchainSQLite::return_staked_amount_to_user(const std::vector<cryptonote
         // Basic checks can be done here
         // if (amount > max_staked_amount)
         // throw std::logic_error{"Invalid payment: staked returned is too large"};
-            
+
         std::lock_guard<std::mutex> a_s_lock{address_str_cache_mutex};
 
         int64_t payout_height = height + (delay_blocks > 0 ? delay_blocks : 1);
         auto insert_payment = prepared_st(
-            "INSERT INTO delayed_payments (eth_address, amount, payout_height, entry_height) VALUES (?, ?, ?, ?)");
+                "INSERT INTO delayed_payments (eth_address, amount, payout_height, entry_height) "
+                "VALUES (?, ?, ?, ?)");
 
         for (auto& payment : payments) {
             auto amt = static_cast<int64_t>(payment.amount);
             const auto address_str = get_address_str(payment);
             log::trace(
                     logcat,
-                    "Adding delayed payment for SN reward contributor {} to database with amount {}",
+                    "Adding delayed payment for SN reward contributor {} to database with amount "
+                    "{}",
                     address_str,
                     amt);
-            db::exec_query(insert_payment, address_str, amt, payout_height, static_cast<int64_t>(height));
+            db::exec_query(
+                    insert_payment, address_str, amt, payout_height, static_cast<int64_t>(height));
             insert_payment->reset();
         }
 

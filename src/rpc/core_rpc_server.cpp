@@ -195,8 +195,7 @@ void core_rpc_server::invoke(GET_HEIGHT& get_height, rpc_context) {
     get_height.response_hex["hash"] = hash;
 
     cryptonote::checkpoint_t checkpoint;
-    if (m_core.blockchain.db().get_immutable_checkpoint(
-                &checkpoint, height - 1)) {
+    if (m_core.blockchain.db().get_immutable_checkpoint(&checkpoint, height - 1)) {
         get_height.response["immutable_height"] = checkpoint.height;
         get_height.response_hex["immutable_hash"] = checkpoint.block_hash;
     }
@@ -856,7 +855,8 @@ void core_rpc_server::invoke(GET_TRANSACTIONS& get, rpc_context) {
     using split_tx = std::tuple<crypto::hash, std::string, crypto::hash, std::string>;
     std::vector<split_tx> txs;
     if (!get.request.tx_hashes.empty()) {
-        if (!m_core.blockchain.get_split_transactions_blobs(get.request.tx_hashes, txs, &missed_txs)) {
+        if (!m_core.blockchain.get_split_transactions_blobs(
+                    get.request.tx_hashes, txs, &missed_txs)) {
             get.response["status"] = STATUS_FAILED;
             return;
         }
@@ -1070,8 +1070,7 @@ void core_rpc_server::invoke(GET_TRANSACTIONS& get, rpc_context) {
         } else {
             height = m_core.blockchain.db().get_tx_block_height(tx_hash);
             e["block_height"] = height;
-            e["block_timestamp"] =
-                    m_core.blockchain.db().get_block_timestamp(height);
+            e["block_timestamp"] = m_core.blockchain.db().get_block_timestamp(height);
             if (height > immutable_height) {
                 if (!blink_lock)
                     blink_lock.lock();
@@ -1939,8 +1938,8 @@ void core_rpc_server::invoke(GET_COINBASE_TX_SUM& get_coinbase_tx_sum, rpc_conte
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(GET_FEE_ESTIMATE& get_fee_estimate, rpc_context) {
-    auto fees = m_core.blockchain.get_dynamic_base_fee_estimate(
-            get_fee_estimate.request.grace_blocks);
+    auto fees =
+            m_core.blockchain.get_dynamic_base_fee_estimate(get_fee_estimate.request.grace_blocks);
     get_fee_estimate.response["fee_per_byte"] = fees.first;
     get_fee_estimate.response["fee_per_output"] = fees.second;
     get_fee_estimate.response["blink_fee_fixed"] = oxen::BLINK_BURN_FIXED;
@@ -1975,9 +1974,8 @@ void core_rpc_server::invoke(GET_ALTERNATE_CHAINS& get_alternate_chains, rpc_con
             }
             cryptonote::block main_chain_parent_block;
             try {
-                main_chain_parent_block =
-                        m_core.blockchain.db().get_block_from_height(
-                                i.first.height - i.second.size());
+                main_chain_parent_block = m_core.blockchain.db().get_block_from_height(
+                        i.first.height - i.second.size());
             } catch (const std::exception& e) {
                 get_alternate_chains.response["status"] =
                         "Error finding alternate chain attachment point";
@@ -2215,7 +2213,8 @@ GET_OUTPUT_DISTRIBUTION::response core_rpc_server::invoke(
     try {
         // 0 is placeholder for the whole chain
         const uint64_t req_to_height =
-                req.to_height ? req.to_height : (m_core.blockchain.get_current_blockchain_height() - 1);
+                req.to_height ? req.to_height
+                              : (m_core.blockchain.get_current_blockchain_height() - 1);
         for (uint64_t amount : req.amounts) {
             auto data = detail::get_output_distribution(
                     [this](auto&&... args) {
@@ -2226,8 +2225,7 @@ GET_OUTPUT_DISTRIBUTION::response core_rpc_server::invoke(
                     req.from_height,
                     req_to_height,
                     [this](uint64_t height) {
-                        return m_core.blockchain.db().get_block_hash_from_height(
-                                height);
+                        return m_core.blockchain.db().get_block_hash_from_height(height);
                     },
                     req.cumulative,
                     m_core.blockchain.get_current_blockchain_height());
@@ -2385,8 +2383,8 @@ void core_rpc_server::invoke(GET_QUORUM_STATE& get_quorum_state, rpc_context con
         if (pulse::get_round_timings(blockchain, curr_height, top_header.timestamp, next_timings) &&
             pulse::convert_time_to_round(
                     nettype(), pulse::clock::now(), next_timings.r0_timestamp, &pulse_round)) {
-            auto entropy = service_nodes::get_pulse_entropy_for_next_block(
-                    blockchain.db(), pulse_round);
+            auto entropy =
+                    service_nodes::get_pulse_entropy_for_next_block(blockchain.db(), pulse_round);
             auto& sn_list = m_core.service_node_list;
             auto quorum = generate_pulse_quorum(
                     m_core.get_nettype(),
@@ -2431,7 +2429,8 @@ void core_rpc_server::invoke(
                 "Daemon has not been started in service node mode, please relaunch with "
                 "--service-node flag."};
 
-    auto hf_version = get_network_version(nettype(), m_core.blockchain.get_current_blockchain_height());
+    auto hf_version =
+            get_network_version(nettype(), m_core.blockchain.get_current_blockchain_height());
     std::string registration_cmd;
     if (!service_nodes::make_registration_cmd(
                 m_core.get_nettype(),
@@ -2520,9 +2519,8 @@ void core_rpc_server::invoke(BLS_REWARDS_REQUEST& rpc, rpc_context) {
     rpc.response_hex["msg_to_sign"] =
             oxenc::to_hex(response.msg_to_sign.begin(), response.msg_to_sign.end());
     rpc.response_hex["signature"] = response.signature;
-    rpc.response["non_signer_indices"] =
-            m_core.blockchain.l2_tracker().get_non_signers(
-                    response.signers_bls_pubkeys.begin(), response.signers_bls_pubkeys.end());
+    rpc.response["non_signer_indices"] = m_core.blockchain.l2_tracker().get_non_signers(
+            response.signers_bls_pubkeys.begin(), response.signers_bls_pubkeys.end());
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(BLS_REMOVAL_LIQUIDATION_REQUEST& rpc, rpc_context) {
@@ -2533,9 +2531,8 @@ void core_rpc_server::invoke(BLS_REMOVAL_LIQUIDATION_REQUEST& rpc, rpc_context) 
     rpc.response_hex["msg_to_sign"] =
             oxenc::to_hex(response.msg_to_sign.begin(), response.msg_to_sign.end());
     rpc.response_hex["signature"] = response.signature;
-    rpc.response["non_signer_indices"] =
-            m_core.blockchain.l2_tracker().get_non_signers(
-                    response.signers_bls_pubkeys.begin(), response.signers_bls_pubkeys.end());
+    rpc.response["non_signer_indices"] = m_core.blockchain.l2_tracker().get_non_signers(
+            response.signers_bls_pubkeys.begin(), response.signers_bls_pubkeys.end());
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(BLS_REGISTRATION_REQUEST& rpc, rpc_context) {
@@ -3033,9 +3030,10 @@ void core_rpc_server::invoke(LOKINET_PING& lokinet_ping, rpc_context) {
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(GET_STAKING_REQUIREMENT& get_staking_requirement, rpc_context) {
-    get_staking_requirement.response["height"] = get_staking_requirement.request.height > 0
-                                                       ? get_staking_requirement.request.height
-                                                       : m_core.blockchain.get_current_blockchain_height();
+    get_staking_requirement.response["height"] =
+            get_staking_requirement.request.height > 0
+                    ? get_staking_requirement.request.height
+                    : m_core.blockchain.get_current_blockchain_height();
     get_staking_requirement.response["staking_requirement"] =
             service_nodes::get_staking_requirement(
                     nettype(), get_staking_requirement.request.height);

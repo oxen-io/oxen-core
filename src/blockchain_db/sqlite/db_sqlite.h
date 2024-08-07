@@ -60,7 +60,7 @@ class BlockchainSQLite : public db::Database {
 
     void blockchain_detached(uint64_t new_height);
 
-    // add_sn_payments/subtract_sn_payments -> passing an array of addresses and amounts. These will
+    // add_sn_rewards/subtract_sn_rewards -> passing an array of addresses and amounts. These will
     // be added or subtracted to the database for each address specified. If the address does not
     // exist it will be created.
     bool add_sn_rewards(const std::vector<cryptonote::batch_sn_payment>& payments);
@@ -96,7 +96,7 @@ class BlockchainSQLite : public db::Database {
 
     // calculate_rewards -> takes the list of contributors from sn_info with their SN contribution
     // amounts and will calculate how much of the block rewards should be the allocated to the
-    // contributors. The function will set a list suitable for passing to add_sn_payments into the
+    // contributors. The function will set a list suitable for passing to add_sn_rewards into the
     // vector (any existing values will be cleared).
     //
     // Note that distribution_amount here is typically passed as milli-atomic OXEN for extra
