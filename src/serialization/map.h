@@ -29,15 +29,51 @@
 #pragma once
 
 #include <map>
+#include <unordered_map>
 
 #include "container.h"
-#include "pair.h"
 
 namespace serialization {
 
-template <class Archive, typename K, typename V>
-void serialize_value(Archive& ar, std::map<K, V>& v) {
-    detail::serialize_container<Archive, std::map<K, V>, std::pair<K, V>>(ar, v);
+namespace detail {
+
+    template <serializing Archive, typename Map>
+    void serialize_map(Archive& ar, Map& m) {
+        size_t cnt = m.size();
+        auto arr = ar.begin_array(cnt);
+        for (auto& [k, v] : m) {
+            // We're serializing so this won't actually change k, despite casting away the
+            // const, but the serialization code is a bit inflexible with const types.
+            serialize_container_element(ar, const_cast<typename Map::key_type&>(k));
+            serialize_container_element(ar, v);
+        }
+    }
+
+    template <deserializing Archive, typename Map>
+    void serialize_map(Archive& ar, Map& m) {
+        size_t cnt;
+        auto arr = ar.begin_array(cnt);
+
+        m.clear();
+
+        for (size_t i = 0; i < cnt; i++) {
+            std::pair<typename Map::key_type, typename Map::mapped_type> e{};
+            auto& [k, v] = e;
+            serialize_container_element(ar, k);
+            serialize_container_element(ar, v);
+            m.insert(std::move(e));
+        }
+    }
+
+}  // namespace detail
+
+template <typename Archive, class K, class V, class Cmp, class Alloc>
+void serialize_value(Archive& ar, std::map<K, V, Cmp, Alloc>& m) {
+    detail::serialize_map(ar, m);
+}
+template <typename Archive, class K, class V, class Hash, class KEq, class Alloc>
+void serialize_value(Archive& ar, std::unordered_map<K, V, Hash, KEq, Alloc>& m) {
+    detail::serialize_map(ar, m);
 }
 
 }  // namespace serialization

@@ -35,6 +35,7 @@
 namespace serialization {
 
 template <class Archive, class T>
+    requires (!std::same_as<T, bool>)
 void serialize_value(Archive& ar, std::vector<T>& v) {
     detail::serialize_container(ar, v);
 }

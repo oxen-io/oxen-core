@@ -58,7 +58,6 @@
 #include "ringct/rctTypes.h"
 #include "rpc/core_rpc_server_binary_commands.h"
 #include "rpc/core_rpc_server_commands_defs.h"
-#include "serialization/pair.h"
 #include "wallet_errors.h"
 #ifdef WALLET_ENABLE_MMS
 #include "message_store.h"

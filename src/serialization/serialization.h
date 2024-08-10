@@ -163,6 +163,11 @@ namespace serialization {
 
 using namespace std::literals;
 
+template <class Archive>
+concept serializing = Archive::is_serializer;
+template <class Archive>
+concept deserializing = Archive::is_deserializer;
+
 /** serialization::binary_serializable<T>
  *
  * a specializable constexpr for indicating a byte-serializable type.  You can specialize this *or*

@@ -37,11 +37,6 @@
 
 namespace serialization {
 
-template <class Archive>
-concept serializing = Archive::is_serializer;
-template <class Archive>
-concept deserializing = Archive::is_deserializer;
-
 // Consumes everything left in a deserialization archiver stream (without knowing the number of
 // elements in advance) into the given container (which must supply an stl-like `emplace_back()`).
 // Throws on serialization error, including the case where we run out of data that *isn't* on a
@@ -77,9 +72,11 @@ namespace detail {
     }
 
     // Deserialize into the container.
-    template <deserializing Archive, typename C, typename Value = std::remove_cv_t<typename C::value_type>>
+    template <deserializing Archive, typename C>
         requires detail::back_emplaceable<C> || detail::value_insertable<C>
     void serialize_container(Archive& ar, C& v) {
+        using T = std::remove_cv_t<typename C::value_type>;
+
         size_t cnt;
         auto arr = ar.begin_array(cnt);
 
@@ -96,7 +93,7 @@ namespace detail {
             if constexpr (detail::back_emplaceable<C>)
                 detail::serialize_container_element(ar, v.emplace_back());
             else {
-                Value e{};
+                T e{};
                 detail::serialize_container_element(ar, e);
                 v.insert(std::move(e));
             }
