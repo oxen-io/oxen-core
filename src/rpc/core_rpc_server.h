@@ -36,6 +36,7 @@
 #include <memory>
 #include <variant>
 
+#include "common/json_binary_proxy.h"
 #include "core_rpc_server_binary_commands.h"
 #include "core_rpc_server_commands_defs.h"
 #include "cryptonote_core/cryptonote_core.h"

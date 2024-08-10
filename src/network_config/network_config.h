@@ -119,8 +119,8 @@ struct network_config final {
 
     // How frequently the reward rate gets recomputed for inclusion into Oxen blocks.  An Oxen block
     // that has a l2_height of x must include the reward computed at the highest block height <= x
-    // that is divisible by this number.  For instance, if this is 1000, an Oxen block with height
-    // l2_height=12345678 must contain the reward value computed at height 12345000.
+    // that is divisible by this number.  For instance, if this is 1000, an Oxen block with
+    // l2_height=12345678 uses the reward value computed at L2 height 12345000.
     const uint64_t L2_REWARD_POOL_UPDATE_BLOCKS;
 
     // How many blocks behind the last known head we use for the "safe" height, i.e. the cutoff

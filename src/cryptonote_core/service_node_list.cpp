@@ -26,18 +26,17 @@
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#include "service_node_list.h"
+
 #include <fmt/chrono.h>
 #include <fmt/color.h>
 #include <fmt/core.h>
 #include <oxenc/endian.h>
 #include <oxenc/hex.h>
+#include <sodium.h>
 
 #include <algorithm>
 #include <chrono>
-
-extern "C" {
-#include <sodium.h>
-}
 
 #include "blockchain.h"
 #include "blockchain_db/sqlite/db_sqlite.h"
@@ -48,18 +47,23 @@ extern "C" {
 #include "common/random.h"
 #include "common/util.h"
 #include "crypto/crypto.h"
+#include "crypto/eth.h"
+#include "cryptonote_basic/cryptonote_basic.h"
 #include "cryptonote_basic/hardfork.h"
 #include "cryptonote_basic/tx_extra.h"
+#include "cryptonote_basic/txtypes.h"
 #include "cryptonote_config.h"
 #include "cryptonote_core/uptime_proof.h"
 #include "cryptonote_tx_utils.h"
 #include "epee/int-util.h"
 #include "epee/net/local_ip.h"
+#include "ethereum_transactions.h"
+#include "l2_tracker/events.h"
+#include "oxen/log.hpp"
 #include "oxen_economy.h"
 #include "pulse.h"
 #include "ringct/rctSigs.h"
 #include "ringct/rctTypes.h"
-#include "service_node_list.h"
 #include "service_node_quorum_cop.h"
 #include "service_node_rules.h"
 #include "service_node_swarm.h"
@@ -92,20 +96,19 @@ static uint64_t short_term_state_cull_height(hf hf_version, uint64_t block_heigh
 }
 
 service_node_list::service_node_list(cryptonote::Blockchain& blockchain) :
-        m_blockchain(
-                blockchain)  // Warning: don't touch `blockchain`, it gets initialized *after* us
+        blockchain(blockchain)  // Warning: don't touch `blockchain`, it gets initialized *after* us
         ,
         m_service_node_keys(nullptr),
         m_state{this} {}
 
 void service_node_list::init() {
     std::lock_guard lock(m_sn_mutex);
-    if (m_blockchain.get_network_version() < hf::hf9_service_nodes) {
+    if (blockchain.get_network_version() < hf::hf9_service_nodes) {
         reset(true);
         return;
     }
 
-    uint64_t current_height = m_blockchain.get_current_blockchain_height();
+    uint64_t current_height = blockchain.get_current_blockchain_height();
     bool loaded = load(current_height);
     if (loaded &&
         m_transient.old_quorum_states.size() < std::min(m_store_quorum_history, uint64_t{10})) {
@@ -408,14 +411,10 @@ static std::string log_registration_details(
     return result;
 }
 
-std::optional<registration_details> eth_reg_tx_extract_fields(
-        hf hf_version, const cryptonote::transaction& tx) {
-    cryptonote::tx_extra_ethereum_new_service_node registration;
-    if (!get_field_from_tx_extra(tx.extra, registration))
-        return std::nullopt;
-
+static registration_details eth_reg_details(
+        hf hf_version, const eth::event::NewServiceNode& registration) {
     registration_details reg{};
-    reg.service_node_pubkey = registration.service_node_pubkey;
+    reg.service_node_pubkey = registration.sn_pubkey;
     reg.bls_pubkey = registration.bls_pubkey;
 
     for (const auto& contributor : registration.contributors)
@@ -425,9 +424,17 @@ std::optional<registration_details> eth_reg_tx_extract_fields(
     reg.uses_portions = false;
 
     reg.fee = registration.fee;
-    reg.ed_signature = registration.signature;
+    reg.ed_signature = registration.ed_signature;
 
     return reg;
+}
+
+static std::optional<registration_details> eth_reg_tx_extract_fields(
+        hf hf_version, const cryptonote::transaction& tx) {
+    eth::event::NewServiceNode registration;
+    if (!cryptonote::get_field_from_tx_extra(tx.extra, registration))
+        return std::nullopt;
+    return eth_reg_details(hf_version, registration);
 }
 
 uint64_t offset_testing_quorum_height(quorum_type type, uint64_t height) {
@@ -1029,7 +1036,7 @@ bool service_node_list::state_t::process_state_change_tx(
             if (sn_list && !sn_list->m_rescanning) {
                 auto& proof = sn_list->proofs[key];
                 proof.timestamp = proof.effective_timestamp = 0;
-                proof.store(key, sn_list->m_blockchain);
+                proof.store(key, sn_list->blockchain);
             }
             return true;
 
@@ -1174,8 +1181,8 @@ bool service_node_list::state_t::process_key_image_unlock_tx(
     uint64_t small_contributor_unlock_blocks =
             get_config(nettype).BLOCKS_IN(SMALL_CONTRIBUTOR_UNLOCK_TIMER);
 
-    uint64_t unlock_height = get_locked_key_image_unlock_height(
-            nettype, node_info.registration_height, block_height);
+    uint64_t unlock_height =
+            get_unlock_height(nettype, node_info.registration_height, block_height);
     uint64_t small_contributor_amount_threshold = mul128_div64(
             service_nodes::get_staking_requirement(nettype, unlock_height),
             service_nodes::SMALL_CONTRIBUTOR_THRESHOLD::num,
@@ -1253,8 +1260,6 @@ bool service_node_list::state_t::is_premature_unlock(
 
     uint64_t small_contributor_unlock_blocks =
             get_config(nettype).BLOCKS_IN(SMALL_CONTRIBUTOR_UNLOCK_TIMER);
-    uint64_t unlock_height = get_locked_key_image_unlock_height(
-            nettype, node_info.registration_height, block_height);
     uint64_t small_contributor_amount_threshold = mul128_div64(
             service_nodes::get_staking_requirement(nettype, block_height),
             service_nodes::SMALL_CONTRIBUTOR_THRESHOLD::num,
@@ -1287,13 +1292,11 @@ bool is_registration_tx(
         return false;
     auto& reg = *maybe_reg;
 
-    // FIXME: if we reboot devnet we can unify this condition:
-    if (hf_version >= (nettype == cryptonote::network_type::DEVNET ? feature::ETH_BLS
-                                                                   : feature::ETH_TRANSITION)) {
+    if (hf_version >= feature::ETH_TRANSITION) {
         log::warning(
                 logcat,
                 "Invalid registration ({} @ {}): direct OXEN registrations/stakes are no longer "
-                "permitted {}",
+                "permitted in HF{}+",
                 cryptonote::get_transaction_hash(tx),
                 block_height,
                 (int)hf_version);
@@ -1443,22 +1446,18 @@ bool is_registration_tx(
     return true;
 }
 
-std::pair<crypto::public_key, std::shared_ptr<service_node_info>>
-validate_and_get_ethereum_registration(
+static std::pair<crypto::public_key, std::shared_ptr<service_node_info>>
+validate_ethereum_registration(
+        const eth::event::NewServiceNode& new_sn,
         cryptonote::network_type nettype,
         hf hf_version,
-        const cryptonote::transaction& tx,
-        uint64_t block_timestamp,
         uint64_t block_height,
         uint32_t index) {
-    auto maybe_reg = eth_reg_tx_extract_fields(hf_version, tx);
-    if (!maybe_reg)
-        throw oxen::traced<std::runtime_error>(
-                "Could not extract registration details from transaction");
-    auto& reg = *maybe_reg;
+    auto reg = eth_reg_details(hf_version, new_sn);
     uint64_t staking_requirement = get_staking_requirement(nettype, block_height);
 
-    validate_registration(hf_version, nettype, staking_requirement, block_timestamp, reg);
+    validate_registration(
+            hf_version, nettype, staking_requirement, 0 /*block_timestamp not used in HF19+*/, reg);
     validate_registration_signature(reg);
 
     auto result = std::make_pair(reg.service_node_pubkey, std::make_shared<service_node_info>());
@@ -1480,15 +1479,12 @@ validate_and_get_ethereum_registration(
 
     for (auto it = reg.eth_contributions.begin(); it != reg.eth_contributions.end(); ++it) {
         auto& [addr, amount] = *it;
-        for (auto it2 = std::next(it); it2 != reg.eth_contributions.end(); ++it2) {
-            if (it2->first == addr) {
+        for (auto it2 = std::next(it); it2 != reg.eth_contributions.end(); ++it2)
+            if (it2->first == addr)
                 throw oxen::traced<std::runtime_error>(
-                        "Invalid registration: Duplicate reserved address in registration in "
-                        "transaction '{}':\n{}"_format(
-                                cryptonote::get_transaction_hash(tx),
-                                log_registration_details(nettype, reg)));
-            }
-        }
+                        "Invalid registration: Duplicate reserved address in registration for "
+                        "SN {}:\n{}"_format(
+                                new_sn.sn_pubkey, log_registration_details(nettype, reg)));
 
         auto& contributor = info.contributors.emplace_back();
         contributor.reserved = amount;
@@ -1531,7 +1527,7 @@ bool service_node_list::state_t::process_registration_tx(
         if (sn_list && !sn_list->m_rescanning) {
             auto& proof = sn_list->proofs[key];
             proof = {};
-            proof.store(key, sn_list->m_blockchain);
+            proof.store(key, sn_list->blockchain);
         }
 
         if (my_keys && my_keys->pub == key)
@@ -1586,120 +1582,223 @@ bool service_node_list::state_t::process_registration_tx(
     return true;
 }
 
-bool service_node_list::state_t::process_ethereum_registration_tx(
-        cryptonote::network_type nettype,
+static eth::event::StateChangeVariant get_event_from_tx(const cryptonote::transaction& tx) {
+    using namespace eth::event;
+    StateChangeVariant result;
+    bool success = false;
+    if (tx.type == cryptonote::txtype::ethereum_new_service_node) {
+        auto& new_sn = result.emplace<NewServiceNode>();
+        success = cryptonote::get_field_from_tx_extra(tx.extra, new_sn);
+    } else if (tx.type == cryptonote::txtype::ethereum_service_node_removal_request) {
+        auto& remreq = result.emplace<ServiceNodeRemovalRequest>();
+        success = cryptonote::get_field_from_tx_extra(tx.extra, remreq);
+    } else if (tx.type == cryptonote::txtype::ethereum_service_node_removal) {
+        auto& removal = result.emplace<ServiceNodeRemoval>();
+        success = cryptonote::get_field_from_tx_extra(tx.extra, removal);
+    }
+    if (!success)
+        result.emplace<std::monostate>();
+    return result;
+}
+
+// Helper primarily used for log messages to extract info about an incoming, unconfirmed eth state
+// change
+static std::pair<crypto::public_key, std::string> eth_tx_info(
+        hf hf_version, const service_node_list& snl, const cryptonote::transaction& tx) {
+    auto result = std::make_pair(crypto::null<crypto::public_key>, "unknown");
+    auto& [pk, type] = result;
+    if (tx.type == cryptonote::txtype::ethereum_new_service_node) {
+        type = "registration";
+        if (auto reg = eth_reg_tx_extract_fields(hf_version, tx))
+            pk = reg->service_node_pubkey;
+    } else if (tx.type == cryptonote::txtype::ethereum_service_node_removal_request) {
+        type = "unlock";
+        if (eth::event::ServiceNodeRemovalRequest remreq;
+            cryptonote::get_field_from_tx_extra(tx.extra, remreq))
+            try {
+                pk = snl.public_key_lookup(remreq.bls_pubkey);
+            } catch (...) {
+            }
+    } else if (tx.type == cryptonote::txtype::ethereum_service_node_removal) {
+        type = "removal";
+        if (eth::event::ServiceNodeRemoval removal;
+            cryptonote::get_field_from_tx_extra(tx.extra, removal))
+            try {
+                pk = snl.public_key_lookup(removal.bls_pubkey);
+            } catch (...) {
+            }
+    }
+    return result;
+}
+
+static uint32_t initial_score(const cryptonote::pulse_header& pulse) {
+    return service_node_list::unconfirmed_l2_tx::FULL_SCORE /
+           (static_cast<uint32_t>(pulse.round) + 1);
+}
+
+void service_node_list::state_t::process_new_ethereum_tx(
         const cryptonote::block& block,
         const cryptonote::transaction& tx,
-        uint32_t index,
         const service_node_keys* my_keys) {
     const auto hf_version = block.major_version;
     uint64_t const block_height = block.get_height();
+    auto tx_hash = get_transaction_hash(tx);
+    if (!sn_list->blockchain.db().tx_exists(tx_hash))
+        throw oxen::traced<std::logic_error>{
+                "Internal error: incoming eth tx {} not found in blockchain db"_format(tx_hash)};
+
+    auto [snpk, type] = eth_tx_info(hf_version, *sn_list, tx);
+    if (my_keys && my_keys->pub == snpk)
+        log::info(
+                globallogcat,
+                fg(fmt::terminal_color::green),
+                "New service node {} tx from ethereum: {} (THIS NODE) @ height: {}; awaiting "
+                "confirmations",
+                type,
+                snpk,
+                block_height);
+    else
+        log::info(
+                logcat,
+                "New service node {} tx from ethereum: {} @ height: {}; awaiting confirmations",
+                type,
+                snpk,
+                block_height);
+
+    if (auto [it, ins] = unconfirmed_l2_txes.emplace(
+                std::piecewise_construct,
+                std::forward_as_tuple(tx_hash),
+                std::forward_as_tuple(block_height, block.pulse));
+        !ins)
+        throw oxen::traced<std::logic_error>{
+                "Internal error: incoming eth tx was processed multiple times!"};
+}
+
+bool service_node_list::state_t::process_confirmed_event(
+        const eth::event::NewServiceNode& new_sn,
+        cryptonote::network_type nettype,
+        cryptonote::hf hf_version,
+        uint64_t height,
+        uint32_t index,
+        const service_node_keys* my_keys) {
+
+    if (service_nodes_infos.count(new_sn.sn_pubkey)) {
+        log::warning(
+                logcat,
+                "Duplicate service node registration from ethereum for {} ignored",
+                new_sn.sn_pubkey);
+        return false;
+    }
+    if (auto it = std::find_if(
+                service_nodes_infos.begin(),
+                service_nodes_infos.end(),
+                [&new_sn](const auto& p) { return p.second->bls_public_key == new_sn.bls_pubkey; });
+        it != service_nodes_infos.end()) {
+        log::warning(
+                logcat,
+                "Duplicate BLS pubkey ({}) in confirmed service node registration for {}; "
+                "registration ignored",
+                new_sn.bls_pubkey,
+                new_sn.sn_pubkey);
+        return false;
+    }
 
     try {
-        auto [key, service_node_info] = validate_and_get_ethereum_registration(
-                nettype, hf_version, tx, block.timestamp, block_height, index);
-        // TODO sean -> explore what happens if registration contains duplicate service node pubkey?
+        auto [key, service_node_info] =
+                validate_ethereum_registration(new_sn, nettype, hf_version, height, index);
         if (sn_list && !sn_list->m_rescanning) {
             auto& proof = sn_list->proofs[key];
             proof = {};
-            proof.store(key, sn_list->m_blockchain);
+            proof.store(key, sn_list->blockchain);
         }
         if (my_keys && my_keys->pub == key)
             log::info(
-                    logcat,
+                    globallogcat,
                     fg(fmt::terminal_color::green),
-                    "Service node registered (yours) from ethereum: {} on height: {}",
+                    "New service node registration from ethereum: {} (THIS NODE) @ height: {}; "
+                    "awaiting confirmations",
                     key,
-                    block_height);
+                    height);
         else
             log::info(
                     logcat,
-                    "New service node registered from ethereum: {} on height: {}",
+                    "New service node registration from ethereum: {} on height: {}; awaiting "
+                    "confirmations",
                     key,
-                    block_height);
+                    height);
         insert_info(key, std::move(service_node_info));
         return true;
     } catch (const std::exception& e) {
         log::error(logcat, "Failed to register node from ethereum transaction: {}", e.what());
-    }
-    return false;
-}
-
-bool service_node_list::state_t::process_ethereum_removal_request_tx(
-        cryptonote::network_type nettype,
-        cryptonote::hf hf_version,
-        uint64_t block_height,
-        const cryptonote::transaction& tx) {
-
-    cryptonote::tx_extra_ethereum_service_node_removal_request remreq;
-    if (!cryptonote::get_field_from_tx_extra(tx.extra, remreq)) {
-        log::info(
-                logcat,
-                "Unlock TX: couldnt process removal request, rejected on height: {} "
-                "for tx: {}",
-                block_height,
-                cryptonote::get_transaction_hash(tx));
         return false;
     }
+}
 
-    crypto::public_key snode_key = sn_list->public_key_lookup(remreq.bls_pubkey);
-    auto it = service_nodes_infos.find(snode_key);
+bool service_node_list::state_t::process_confirmed_event(
+        const eth::event::ServiceNodeRemovalRequest& remreq,
+        cryptonote::network_type nettype,
+        cryptonote::hf,
+        uint64_t height,
+        uint32_t,
+        const service_node_keys* my_keys) {
+
+    crypto::public_key snode_pk;
+    try {
+        snode_pk = sn_list->public_key_lookup(remreq.bls_pubkey);
+    } catch (...) {
+        // Error already logged by the above
+        return false;
+    }
+    auto it = service_nodes_infos.find(snode_pk);
     if (it == service_nodes_infos.end())
         return false;
 
-    // allow this transaction to exist but change nothing,
-    // just continue unlock as per usual plan. They had to spend money on eth fees to get here
-    const service_node_info& node_info = *it->second;
+    const auto& node_info = *it->second;
     if (node_info.requested_unlock_height) {
         log::info(
                 logcat,
-                "Unlock TX: Node already requested an unlock at height: {} rejected on height: {} "
-                "for tx: {}",
-                node_info.requested_unlock_height,
-                block_height,
-                cryptonote::get_transaction_hash(tx));
-        return true;
+                "Duplicate unlock L2 event: Node {} is already unlocking at height {}",
+                snode_pk,
+                node_info.requested_unlock_height);
+        return false;
     }
 
-    uint64_t unlock_height = get_locked_key_image_unlock_height(
-            nettype, node_info.registration_height, block_height);
+    const uint64_t unlock_height =
+            get_unlock_height(nettype, node_info.registration_height, height);
+    if (my_keys && my_keys->pub == snode_pk)
+        log::info(
+                globallogcat,
+                fg(fmt::terminal_color::yellow),
+                "Service node unlock initiated for {} (THIS NODE) @ height {}; unlock height: {}",
+                snode_pk,
+                height,
+                unlock_height);
+    else
+        log::info(
+                logcat,
+                "Service node unlock initiated for {} @ height {}; unlock height: {}",
+                snode_pk,
+                height,
+                unlock_height);
+
     duplicate_info(it->second).requested_unlock_height = unlock_height;
     return true;
 }
 
-bool service_node_list::state_t::process_ethereum_removal_tx(
+bool service_node_list::state_t::process_confirmed_event(
+        const eth::event::ServiceNodeRemoval& removal,
         cryptonote::network_type nettype,
-        cryptonote::hf hf_version,
-        uint64_t block_height,
-        const cryptonote::transaction& tx) {
+        cryptonote::hf,
+        uint64_t,
+        uint32_t,
+        const service_node_keys*) {
 
-    cryptonote::tx_extra_ethereum_service_node_removal removal_data;
-    if (!cryptonote::get_field_from_tx_extra(tx.extra, removal_data)) {
-        log::warning(
-                logcat,
-                "Unlock TX: couldn't process ETH removal transaction ({} @ {}): removal data not "
-                "found in tx",
-                cryptonote::get_transaction_hash(tx),
-                block_height);
-        return false;
-    }
-
-    uint64_t block_delay = 0;
-    uint64_t stake_reduction = 0;
-    // FIXME: this value is incorrect: the staking requirement when this node was registered might
-    // not be the same as the *current* staking requirement.
-    uint64_t staking_requirement = get_staking_requirement(nettype, block_height);
-    if (removal_data.amount < staking_requirement) {
-        block_delay = staking_num_lock_blocks(nettype);
-        stake_reduction = staking_requirement - removal_data.amount;
-    }
     auto node = std::find_if(
-            service_nodes_infos.begin(),
-            service_nodes_infos.end(),
-            [&removal_data](const auto& pair) {
+            service_nodes_infos.begin(), service_nodes_infos.end(), [&removal](const auto& pair) {
                 const auto& [key, info] = pair;
-                return info->bls_public_key == removal_data.bls_pubkey;
+                return info->bls_public_key == removal.bls_pubkey;
             });
+
     if (node == service_nodes_infos.end()) {
         // TODO FIXME: this seems broken: we should *always* be hitting this case because the SN
         // network wouldn't have signed off on it if it is still in `service_nodes_infos`, i.e.
@@ -1707,23 +1806,39 @@ bool service_node_list::state_t::process_ethereum_removal_tx(
         // the returned funds to the accounts).
         log::warning(
                 logcat,
-                "Unlock TX: unable to process ETH removal transaction ({} @ {}): BLS pubkey {} is "
-                "not registered",
-                cryptonote::get_transaction_hash(tx),
-                block_height,
-                removal_data.bls_pubkey);
+                "Unable to process ETH removal event: BLS pubkey {} is not registered",
+                removal.bls_pubkey);
         return false;
     }
+
+    const auto& [snpk, info] = *node;
+    uint64_t staking_requirement = info->staking_requirement;
+
+    uint64_t block_delay = 0;
+    uint64_t stake_reduction = 0;
+    if (removal.returned_amount < staking_requirement) {
+        block_delay = staking_num_lock_blocks(nettype);
+        stake_reduction = staking_requirement - removal.returned_amount;
+    }
+
     std::vector<cryptonote::batch_sn_payment> returned_stakes;
-    for (const auto& contributor : node->second->contributors)
+    for (const auto& contributor : info->contributors)
         returned_stakes.emplace_back(contributor.ethereum_address, contributor.amount);
 
+    if (stake_reduction > returned_stakes[0].amount) {
+        log::error(
+                logcat,
+                "ETH removal of {} rejected: returned amount is less than the non-operator "
+                "contributions",
+                snpk);
+        return false;
+    }
     returned_stakes[0].amount -= stake_reduction;
 
     // TODO FIXME: this doesn't seem like the right place to add the block delay: if a node gets
     // deregged then we want the block delay to start from the point of deregistration, *not* the
     // time when someone submitted a removal request on the ethereum side.
-    return sn_list->m_blockchain.sqlite_db().return_staked_amount_to_user(
+    return sn_list->blockchain.sqlite_db().return_staked_amount_to_user(
             returned_stakes, block_delay);
 }
 
@@ -1734,6 +1849,17 @@ bool service_node_list::state_t::process_contribution_tx(
         uint32_t index) {
     uint64_t const block_height = block.get_height();
     const auto hf_version = block.major_version;
+
+    if (hf_version >= feature::ETH_BLS) {
+        log::warning(
+                logcat,
+                "Invalid contribution ({} @ {}): OXEN contributions are no longer "
+                "permitted in HF{}+",
+                cryptonote::get_transaction_hash(tx),
+                block_height,
+                (int)feature::ETH_BLS);
+        return false;
+    }
 
     staking_components stake = {};
     if (!tx_get_staking_components_and_amounts(nettype, hf_version, tx, block_height, &stake)) {
@@ -2246,7 +2372,7 @@ void service_node_list::verify_block(
         uint64_t prev_timestamp = 0;
         if (alt_block) {
             cryptonote::block prev_block;
-            if (!find_block_in_db(m_blockchain.db(), block.prev_id, prev_block))
+            if (!find_block_in_db(blockchain.db(), block.prev_id, prev_block))
                 throw oxen::traced<std::runtime_error>{
                         "Alt block {} references previous block {} not available in DB."_format(
                                 cryptonote::get_block_hash(block), block.prev_id)};
@@ -2254,10 +2380,10 @@ void service_node_list::verify_block(
             prev_timestamp = prev_block.timestamp;
         } else {
             uint64_t prev_height = height - 1;
-            prev_timestamp = m_blockchain.db().get_block_timestamp(prev_height);
+            prev_timestamp = blockchain.db().get_block_timestamp(prev_height);
         }
 
-        if (!pulse::get_round_timings(m_blockchain, height, prev_timestamp, timings))
+        if (!pulse::get_round_timings(blockchain, height, prev_timestamp, timings))
             throw oxen::traced<std::runtime_error>{
                     "Failed to query the block data for Pulse timings to validate incoming {} at height {}"_format(
                             block_type, height)};
@@ -2278,7 +2404,7 @@ void service_node_list::verify_block(
                 alt_block ? &alt_pulse_quorums : nullptr);
     }
 
-    if (m_blockchain.nettype() != cryptonote::network_type::FAKECHAIN) {
+    if (blockchain.nettype() != cryptonote::network_type::FAKECHAIN) {
         // TODO(doyle): Core tests don't generate proper timestamps for detecting
         // timeout yet. So we don't do a timeout check and assume all blocks
         // incoming from Pulse are valid if they have the correct signatures
@@ -2297,7 +2423,7 @@ void service_node_list::verify_block(
         // This alt block could belong to a chain that is in an arbitrary state.
         if (pulse_hf)
             result = verify_block_components(
-                    m_blockchain.nettype(),
+                    blockchain.nettype(),
                     block,
                     false /*miner_block*/,
                     true /*alt_block*/,
@@ -2308,7 +2434,7 @@ void service_node_list::verify_block(
 
         if (!result)
             result = verify_block_components(
-                    m_blockchain.nettype(),
+                    blockchain.nettype(),
                     block,
                     true /*miner_block*/,
                     true /*alt_block*/,
@@ -2323,7 +2449,7 @@ void service_node_list::verify_block(
         bool miner_block = !pulse_hf || !pulse_quorum;
 
         result = verify_block_components(
-                m_blockchain.nettype(),
+                blockchain.nettype(),
                 block,
                 miner_block,
                 false /*alt_block*/,
@@ -2354,9 +2480,9 @@ void service_node_list::block_add(
         // Otherwise processing blocks in retrospect/re-loading on restart seeds
         // in old-data.
         uint64_t const block_height = block.get_height();
-        bool newest_block = m_blockchain.get_current_blockchain_height() == (block_height + 1);
+        bool newest_block = blockchain.get_current_blockchain_height() == (block_height + 1);
         auto now = pulse::clock::now().time_since_epoch();
-        const auto target_block_time = get_config(m_blockchain.nettype()).TARGET_BLOCK_TIME;
+        const auto target_block_time = get_config(blockchain.nettype()).TARGET_BLOCK_TIME;
         auto earliest_time = std::chrono::seconds(block.timestamp) - target_block_time;
         auto latest_time = std::chrono::seconds(block.timestamp) + target_block_time;
 
@@ -2392,7 +2518,7 @@ bool service_node_list::state_history_exists(uint64_t height) {
 
 bool service_node_list::process_batching_rewards(const cryptonote::block& block) {
     uint64_t block_height = block.get_height();
-    if (m_blockchain.nettype() != cryptonote::network_type::FAKECHAIN &&
+    if (blockchain.nettype() != cryptonote::network_type::FAKECHAIN &&
         block.major_version >= hf::hf19_reward_batching && height() != block_height) {
         log::error(
                 logcat,
@@ -2400,22 +2526,22 @@ bool service_node_list::process_batching_rewards(const cryptonote::block& block)
                 "because the service node list is at height: {} and the batching database is at "
                 "height: {}",
                 height(),
-                m_blockchain.sqlite_db().height + 1);
+                blockchain.sqlite_db().height + 1);
         return false;
     }
-    return m_blockchain.sqlite_db().add_block(block, m_state);
+    return blockchain.sqlite_db().add_block(block, m_state);
 }
 bool service_node_list::pop_batching_rewards_block(const cryptonote::block& block) {
     uint64_t block_height = block.get_height();
-    if (m_blockchain.nettype() != cryptonote::network_type::FAKECHAIN &&
+    if (blockchain.nettype() != cryptonote::network_type::FAKECHAIN &&
         block.major_version >= hf::hf19_reward_batching && height() != block_height) {
         if (auto it = m_transient.state_history.find(block_height);
             it != m_transient.state_history.end())
-            return m_blockchain.sqlite_db().pop_block(block, *it);
-        m_blockchain.sqlite_db().reset_database();
+            return blockchain.sqlite_db().pop_block(block, *it);
+        blockchain.sqlite_db().reset_database();
         return false;
     }
-    return m_blockchain.sqlite_db().pop_block(block, m_state);
+    return blockchain.sqlite_db().pop_block(block, m_state);
 }
 
 static std::mt19937_64 quorum_rng(hf hf_version, crypto::hash const& hash, quorum_type type) {
@@ -2860,7 +2986,7 @@ void service_node_list::state_t::update_from_block(
         else
             log::info(logcat, "Service node expired: {} at block height: {}", pubkey, block_height);
 
-        need_swarm_update = need_swarm_update || i->second->is_active();
+        need_swarm_update += i->second->is_active();
         // NOTE: sn_list is not set in tests when we construct events to replay
         if (sn_list)
             sn_list->recently_expired_nodes.emplace(
@@ -2877,6 +3003,70 @@ void service_node_list::state_t::update_from_block(
         auto& info = duplicate_info(it->second);
         info.last_reward_block_height = block_height;
         info.last_reward_transaction_index = UINT32_MAX;
+    }
+
+    // Process any votes to pending eth state changes (this has to be done before we process
+    // transactions, because that might add new unconfirmed txes and make the vote index no longer
+    // match up).
+    if (hf_version >= feature::ETH_BLS) {
+        // Basic block validation (long before this) is responsible for ensuring this:
+        assert(block.tx_eth_count <= block.tx_hashes.size());
+
+        if (block.l2_votes.size() != unconfirmed_l2_txes.size())
+            throw oxen::traced<std::runtime_error>{
+                    "Block L2 votes {} != pending L2 state change count {}"_format(
+                            block.l2_votes.size(), unconfirmed_l2_txes.size())};
+
+        const uint32_t vote_weight =
+                unconfirmed_l2_tx::FULL_SCORE / (block.has_pulse() ? 1 + block.pulse.round : 1);
+        auto unconf_it = unconfirmed_l2_txes.begin();
+        for (uint32_t i = 0; i < block.l2_votes.size(); i++) {
+            bool vote = block.l2_votes[i];
+            auto& [txhash, unconf] = *unconf_it;
+            (vote ? unconf.confirmations : unconf.denials) += vote_weight;
+
+            if (auto done = unconf.confirmed(height)) {
+                log::debug(
+                        logcat,
+                        "State change tx {} finalized; received {}/{} confirm/deny votes in {} "
+                        "blocks",
+                        txhash,
+                        unconf.confirmations,
+                        unconf.denials,
+                        height - unconf.height_added);
+
+                if (*done) {
+                    log::info(logcat, "State change tx {} confirmed by votes", txhash);
+
+                    std::string fail;
+                    auto event = eth::extract_event(
+                            block.major_version, sn_list->blockchain.db().get_tx(txhash), fail);
+                    if (std::holds_alternative<std::monostate>(event))
+                        throw oxen::traced<std::runtime_error>{
+                                "Internal error: did not find state change tx data in blockchain database: {}"_format(
+                                        fail)};
+                    need_swarm_update += std::visit(
+                            [&](const auto& e) {
+                                return process_confirmed_event(
+                                        e, nettype, hf_version, height, i, my_keys);
+                            },
+                            event);
+
+                } else {
+                    log::warning(
+                            logcat,
+                            "State change tx {} denied by {}",
+                            txhash,
+                            unconf.is_denied() ? "votes" : "expiry");
+
+                    // Nothing to process here
+                }
+
+                unconf_it = unconfirmed_l2_txes.erase(unconf_it);
+            } else {
+                ++unconf_it;
+            }
+        }
     }
 
     //
@@ -2899,27 +3089,34 @@ void service_node_list::state_t::update_from_block(
                                                ? cryptonote::txtype::standard
                                                : cryptonote::txtype::stake;
     for (uint32_t index = 0; index < txs.size(); ++index) {
-        const cryptonote::transaction& tx = txs[index];
-        if (tx.type == staking_tx_type) {
-            log::debug(logcat, "Processing registration tx");
-            process_registration_tx(nettype, block, tx, index, my_keys);
-            need_swarm_update += process_contribution_tx(nettype, block, tx, index);
-        } else if (tx.type == cryptonote::txtype::state_change) {
-            log::debug(logcat, "Processing state change tx");
-            need_swarm_update += process_state_change_tx(
-                    state_history, state_archive, alt_states, nettype, block, tx, my_keys);
-        } else if (tx.type == cryptonote::txtype::key_image_unlock) {
-            log::debug(logcat, "Processing key image unlock tx");
-            process_key_image_unlock_tx(nettype, hf_version, block_height, tx);
-        } else if (tx.type == cryptonote::txtype::ethereum_new_service_node) {
-            log::debug(logcat, "Processing eth registration tx");
-            process_ethereum_registration_tx(nettype, block, tx, index, my_keys);
-        } else if (tx.type == cryptonote::txtype::ethereum_service_node_removal_request) {
-            log::debug(logcat, "Processing eth removal request tx");
-            process_ethereum_removal_request_tx(nettype, hf_version, block_height, tx);
-        } else if (tx.type == cryptonote::txtype::ethereum_service_node_removal) {
-            log::debug(logcat, "Processing eth removal tx");
-            process_ethereum_removal_tx(nettype, hf_version, block_height, tx);
+        using cryptonote::txtype;
+        const auto& tx = txs[index];
+        switch (tx.type) {
+            case txtype::standard:
+            case txtype::stake:
+                if (tx.type == staking_tx_type) {
+                    log::debug(logcat, "Processing registration/stake tx");
+                    process_registration_tx(nettype, block, tx, index, my_keys);
+                    need_swarm_update += process_contribution_tx(nettype, block, tx, index);
+                }
+                break;
+            case txtype::state_change:
+                log::debug(logcat, "Processing state change tx");
+                need_swarm_update += process_state_change_tx(
+                        state_history, state_archive, alt_states, nettype, block, tx, my_keys);
+                break;
+            case txtype::key_image_unlock:
+                log::debug(logcat, "Processing key image unlock tx");
+                process_key_image_unlock_tx(nettype, hf_version, block_height, tx);
+                break;
+            case txtype::ethereum_new_service_node:
+            case txtype::ethereum_service_node_removal:
+            case txtype::ethereum_service_node_removal_request:
+                log::debug(logcat, "Processing new (unconfirmed) eth tx");
+                process_new_ethereum_tx(block, tx, my_keys);
+                break;
+            case txtype::oxen_name_system:
+            case txtype::_count: break;
         }
     }
 
@@ -3009,10 +3206,10 @@ void service_node_list::process_block(
             it++;
     }
 
-    cryptonote::network_type nettype = m_blockchain.nettype();
+    cryptonote::network_type nettype = blockchain.nettype();
     m_transient.state_history.insert(m_transient.state_history.end(), m_state);
     m_state.update_from_block(
-            m_blockchain.db(),
+            blockchain.db(),
             nettype,
             m_transient.state_history,
             m_transient.state_archive,
@@ -3175,7 +3372,7 @@ std::optional<quorum> service_node_list::state_t::get_pulse_quorum() const {
     if (!sn_list)
         return std::nullopt;
     cryptonote::block block;
-    auto& bc = sn_list->m_blockchain;
+    auto& bc = sn_list->blockchain;
     if (!find_block_in_db(bc.db(), block_hash, block)) {
         assert(!"Internal error: state_t::get_pulse_quorum() block doesn't exist");
         return std::nullopt;
@@ -3280,7 +3477,8 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
     }
 
     if (block.major_version >= feature::ETH_BLS) {
-        assert(!block.miner_tx);  // shouldn't have passed basic block validation with a miner_tx
+        assert(!block.miner_tx);  // shouldn't have passed basic block validation with a
+                                  // miner_tx
     } else {
         assert(block.miner_tx);
         auto actual_winner =
@@ -3315,10 +3513,10 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
     // NOTE: Setup pulse components
     //
     if (block.has_pulse()) {
-        std::vector<crypto::hash> entropy = get_pulse_entropy_for_next_block(
-                m_blockchain.db(), block.prev_id, block.pulse.round);
+        std::vector<crypto::hash> entropy =
+                get_pulse_entropy_for_next_block(blockchain.db(), block.prev_id, block.pulse.round);
         quorum pulse_quorum = generate_pulse_quorum(
-                m_blockchain.nettype(),
+                blockchain.nettype(),
                 block_leader.key,
                 hf_version,
                 m_state.active_service_nodes_infos(),
@@ -3414,11 +3612,11 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
             break;
     }
 
-    // NOTE: Prior to batch rewards, expect the gvernance output and payout to service node leader
+    // NOTE: Prior to batch rewards, expect the governance output and payout to service node leader
     if (mode < verify_mode::batched_sn_rewards) {
         expected_vouts_size += block_leader.payouts.size();
-        bool has_governance_output = cryptonote::height_has_governance_output(
-                m_blockchain.nettype(), hf_version, height);
+        bool has_governance_output =
+                cryptonote::height_has_governance_output(blockchain.nettype(), hf_version, height);
         if (has_governance_output)
             expected_vouts_size++;
     }
@@ -3636,8 +3834,8 @@ void service_node_list::alt_block_add(const cryptonote::block_add_info& info) {
     // NOTE: Generate the next Service Node list state from this Alt block.
     state_t alt_state = *starting_state;
     alt_state.update_from_block(
-            m_blockchain.db(),
-            m_blockchain.nettype(),
+            blockchain.db(),
+            blockchain.nettype(),
             m_transient.state_history,
             m_transient.state_archive,
             m_transient.alt_state,
@@ -3656,7 +3854,7 @@ void service_node_list::alt_block_add(const cryptonote::block_add_info& info) {
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 static service_node_list::quorum_for_serialization serialize_quorum_state(
-        hf hf_version, uint64_t height, quorum_manager const& quorums) {
+        hf /*hf_version*/, uint64_t height, quorum_manager const& quorums) {
     service_node_list::quorum_for_serialization result = {};
     result.height = height;
     if (quorums.obligations)
@@ -3673,6 +3871,7 @@ static service_node_list::state_serialized serialize_service_node_state_object(
     service_node_list::state_serialized result = {};
     result.version = service_node_list::state_serialized::get_version(hf_version);
     result.height = state.height;
+    result.unconfirmed_l2_txes = state.unconfirmed_l2_txes;
     result.quorums = serialize_quorum_state(hf_version, state.height, state.quorums);
     result.only_stored_quorums = state.only_loaded_quorums || only_serialize_quorums;
 
@@ -3689,10 +3888,10 @@ static service_node_list::state_serialized serialize_service_node_state_object(
 }
 
 bool service_node_list::store() {
-    if (!m_blockchain.has_db())
+    if (!blockchain.has_db())
         return false;  // Haven't been initialized yet
 
-    auto hf_version = m_blockchain.get_network_version();
+    auto hf_version = blockchain.get_network_version();
     if (hf_version < hf::hf9_service_nodes)
         return true;
 
@@ -3752,7 +3951,7 @@ bool service_node_list::store() {
         }
         m_transient.cache_data_blob.append(ba.str());
         {
-            auto& db = m_blockchain.db();
+            auto& db = blockchain.db();
             cryptonote::db_wtxn_guard txn_guard{db};
             db.set_service_node_data(m_transient.cache_data_blob, true /*long_term*/);
         }
@@ -3772,7 +3971,7 @@ bool service_node_list::store() {
         }
         m_transient.cache_data_blob.append(ba.str());
         {
-            auto& db = m_blockchain.db();
+            auto& db = blockchain.db();
             cryptonote::db_wtxn_guard txn_guard{db};
             db.set_service_node_data(m_transient.cache_data_blob, false /*long_term*/);
         }
@@ -3875,8 +4074,8 @@ bool service_node_list::handle_uptime_proof(
         bool& my_uptime_proof_confirmation,
         crypto::x25519_public_key& x25519_pkey) {
     auto vers = get_network_version_revision(
-            m_blockchain.nettype(), m_blockchain.get_current_blockchain_height());
-    auto& netconf = get_config(m_blockchain.nettype());
+            blockchain.nettype(), blockchain.get_current_blockchain_height());
+    auto& netconf = get_config(blockchain.nettype());
     auto now = std::chrono::system_clock::now();
 
     // Validate proof version, timestamp range,
@@ -3944,8 +4143,8 @@ bool service_node_list::handle_uptime_proof(
         if (tools::view_guts(proof->pubkey) != tools::view_guts(proof->pubkey_ed25519)) {
             log::debug(
                     logcat,
-                    "Rejecting uptime proof from {}: pubkey != pubkey_ed25519 is not allowed since "
-                    "HF{}",
+                    "Rejecting uptime proof from {}: pubkey != pubkey_ed25519 is not allowed in "
+                    "HF{}+",
                     proof->pubkey,
                     static_cast<uint8_t>(feature::SN_PK_IS_ED25519));
             return false;
@@ -3968,8 +4167,8 @@ bool service_node_list::handle_uptime_proof(
         !derived_x25519_pubkey) {
         log::debug(
                 logcat,
-                "Rejecting uptime proof from {}: invalid ed25519 pubkey included in proof (x25519 "
-                "derivation failed)",
+                "Rejecting uptime proof from {}: invalid ed25519 pubkey included in proof "
+                "(x25519 derivation failed)",
                 proof->pubkey);
         return false;
     }
@@ -4020,10 +4219,11 @@ bool service_node_list::handle_uptime_proof(
 
         auto pop = tools::concat_guts<uint8_t>(proof->pubkey_bls, proof->pubkey);
         if (!eth::BLSSigner::verifyMsg(
-                    m_blockchain.nettype(), proof->pop_bls, proof->pubkey_bls, pop)) {
+                    blockchain.nettype(), proof->pop_bls, proof->pubkey_bls, pop)) {
             log::debug(
                     logcat,
-                    "Rejecting uptime proof from {}: BLS proof of possession verification failed",
+                    "Rejecting uptime proof from {}: BLS proof of possession verification "
+                    "failed",
                     proof->pubkey);
             return false;
         }
@@ -4037,7 +4237,7 @@ bool service_node_list::handle_uptime_proof(
         return false;
     }
 
-    auto locks = tools::unique_locks(m_blockchain, m_sn_mutex, m_x25519_map_mutex);
+    auto locks = tools::unique_locks(blockchain, m_sn_mutex, m_x25519_map_mutex);
     auto it = m_state.service_nodes_infos.find(proof->pubkey);
     if (it == m_state.service_nodes_infos.end()) {
         log::debug(
@@ -4079,8 +4279,7 @@ bool service_node_list::handle_uptime_proof(
             log::debug(
                     logcat,
                     "Rejecting uptime proof from {}: already received one uptime proof for this "
-                    "node "
-                    "recently",
+                    "node recently",
                     proof->pubkey);
             return false;
         }
@@ -4122,7 +4321,7 @@ bool service_node_list::handle_uptime_proof(
                 std::chrono::system_clock::to_time_t(now),
                 std::move(proof),
                 derived_x25519_pubkey)) {
-        iproof.store(iproof.proof->pubkey, m_blockchain);
+        iproof.store(iproof.proof->pubkey, blockchain);
     }
 
     if (vers.first < feature::SN_PK_IS_ED25519) {
@@ -4149,9 +4348,9 @@ bool service_node_list::handle_uptime_proof(
 
 void service_node_list::cleanup_proofs() {
     log::debug(logcat, "Cleaning up expired SN proofs");
-    auto locks = tools::unique_locks(m_sn_mutex, m_blockchain);
+    auto locks = tools::unique_locks(m_sn_mutex, blockchain);
     uint64_t now = std::time(nullptr);
-    auto& db = m_blockchain.db();
+    auto& db = blockchain.db();
     cryptonote::db_wtxn_guard guard{db};
     for (auto it = proofs.begin(); it != proofs.end();) {
         auto& pubkey = it->first;
@@ -4170,9 +4369,9 @@ void service_node_list::cleanup_proofs() {
 crypto::public_key service_node_list::get_pubkey_from_x25519(
         const crypto::x25519_public_key& x25519) const {
     if (cryptonote::is_hard_fork_at_least(
-                m_blockchain.nettype(),
+                blockchain.nettype(),
                 feature::SN_PK_IS_ED25519,
-                m_blockchain.get_current_blockchain_height())) {
+                blockchain.get_current_blockchain_height())) {
         std::lock_guard lock{m_sn_mutex};
         auto it = m_state.x25519_map.find(x25519);
         if (it != m_state.x25519_map.end())
@@ -4293,6 +4492,26 @@ bool service_node_list::is_recently_expired(const eth::bls_public_key& node_bls_
     return recently_expired_nodes.count(node_bls_pubkey);
 }
 
+std::vector<bool> service_node_list::l2_pending_state_votes() const {
+    std::lock_guard lock{m_sn_mutex};
+    std::vector<bool> votes;
+    auto& l2_tracker = blockchain.l2_tracker();
+    votes.reserve(m_state.unconfirmed_l2_txes.size());
+    for (auto& [txid, confirm_info] : m_state.unconfirmed_l2_txes) {
+        votes.push_back(std::visit(
+                [&l2_tracker, &txid]<typename T>(const T& evt) -> bool {
+                    if constexpr (std::is_same_v<T, std::monostate>)
+                        throw oxen::traced<std::runtime_error>{
+                                "Internal error: did not find required state data for pending unconfirmed tx {}"_format(
+                                        txid)};
+                    else
+                        return l2_tracker.get_vote_for(evt);
+                },
+                get_event_from_tx(blockchain.db().get_tx(txid))));
+    }
+    return votes;
+}
+
 std::optional<bool> proof_info::reachable_stats::reachable(
         const std::chrono::steady_clock::time_point& now) const {
     if (last_reachable >= last_unreachable)
@@ -4379,24 +4598,25 @@ static quorum_manager quorum_for_serialization_to_quorum_manager(
 }
 
 service_node_list::state_t::state_t(service_node_list* snl, state_serialized&& state) :
-        height{state.height},
-        key_image_blacklist{std::move(state.key_image_blacklist)},
-        only_loaded_quorums{state.only_stored_quorums},
         block_hash{state.block_hash},
+        only_loaded_quorums{state.only_stored_quorums},
+        key_image_blacklist{std::move(state.key_image_blacklist)},
+        height{state.height},
+        unconfirmed_l2_txes{std::move(state.unconfirmed_l2_txes)},
         sn_list{snl} {
     if (!sn_list)
         throw oxen::traced<std::logic_error>(
                 "Cannot deserialize a state_t without a service_node_list");
     if (state.version == state_serialized::version_t::version_0)
-        block_hash = sn_list->m_blockchain.get_block_id_by_height(height);
+        block_hash = sn_list->blockchain.get_block_id_by_height(height);
 
     for (auto& pubkey_info : state.infos) {
         using version_t = service_node_info::version_t;
         auto& info = const_cast<service_node_info&>(*pubkey_info.info);
         if (info.version < version_t::v1_add_registration_hf_version) {
             info.version = version_t::v1_add_registration_hf_version;
-            info.registration_hf_version = sn_list->m_blockchain.get_network_version(
-                    pubkey_info.info->registration_height);
+            info.registration_hf_version =
+                    sn_list->blockchain.get_network_version(pubkey_info.info->registration_height);
         }
         if (info.version < version_t::v4_noproofs) {
             // Nothing to do here (the missing data will be generated in the new proofs db via
@@ -4411,7 +4631,7 @@ service_node_list::state_t::state_t(service_node_list* snl, state_serialized&& s
             if (info.decommission_count <= info.is_decommissioned())
                 // Has never been decommissioned (or is currently in the first decommission), so add
                 // initial starting credit
-                info.recommission_credit = get_config(sn_list->m_blockchain.nettype())
+                info.recommission_credit = get_config(sn_list->blockchain.nettype())
                                                    .BLOCKS_IN(DECOMMISSION_INITIAL_CREDIT);
             else
                 info.recommission_credit = 0;
@@ -4443,7 +4663,7 @@ void service_node_list::state_t::initialize_xpk_map() {
     // X key, which only happens once we get a proof).
     assert(x25519_map.empty());
     if (sn_list && cryptonote::is_hard_fork_at_least(
-                           sn_list->m_blockchain.nettype(), feature::SN_PK_IS_ED25519, height))
+                           sn_list->blockchain.nettype(), feature::SN_PK_IS_ED25519, height))
         for (const auto& [snpk, _ignore] : service_nodes_infos)
             x25519_map[snpk_to_xpk(snpk)] = snpk;
 }
@@ -4453,7 +4673,7 @@ void service_node_list::state_t::insert_info(
     service_nodes_infos[pubkey] = std::move(info_ptr);
 
     if (sn_list && cryptonote::is_hard_fork_at_least(
-                           sn_list->m_blockchain.nettype(), feature::SN_PK_IS_ED25519, height))
+                           sn_list->blockchain.nettype(), feature::SN_PK_IS_ED25519, height))
         x25519_map[snpk_to_xpk(pubkey)] = pubkey;
 }
 
@@ -4461,7 +4681,7 @@ service_nodes_infos_t::iterator service_node_list::state_t::erase_info(
         const service_nodes_infos_t::iterator& it) {
     const auto& snpk = it->first;
     if (sn_list && cryptonote::is_hard_fork_at_least(
-                           sn_list->m_blockchain.nettype(), feature::SN_PK_IS_ED25519, height))
+                           sn_list->blockchain.nettype(), feature::SN_PK_IS_ED25519, height))
         x25519_map.erase(snpk_to_xpk(snpk));
 
     return service_nodes_infos.erase(it);
@@ -4470,13 +4690,13 @@ service_nodes_infos_t::iterator service_node_list::state_t::erase_info(
 bool service_node_list::load(const uint64_t current_height) {
     log::info(logcat, "service_node_list::load()");
     reset(false);
-    if (!m_blockchain.has_db()) {
+    if (!blockchain.has_db()) {
         return false;
     }
 
     // NOTE: Deserialize long term state history
     uint64_t bytes_loaded = 0;
-    auto& db = m_blockchain.db();
+    auto& db = blockchain.db();
     cryptonote::db_rtxn_guard txn_guard{db};
     std::string blob;
     if (db.get_service_node_data(blob, true /*long_term*/)) {
@@ -4502,7 +4722,8 @@ bool service_node_list::load(const uint64_t current_height) {
                 if ((data_in.states.back().height % STORE_LONG_TERM_STATE_INTERVAL) != 0) {
                     log::warning(
                             logcat,
-                            "Last serialised quorum height: {} in archive is unexpectedly not a "
+                            "Last serialised quorum height: {} in archive is unexpectedly not "
+                            "a "
                             "multiple of: {}, regenerating state",
                             data_in.states.back().height,
                             STORE_LONG_TERM_STATE_INTERVAL);
@@ -4532,7 +4753,7 @@ bool service_node_list::load(const uint64_t current_height) {
                         std::vector<cryptonote::transaction> txs = db.get_tx_list(block.tx_hashes);
                         long_term_state.update_from_block(
                                 db,
-                                m_blockchain.nettype(),
+                                blockchain.nettype(),
                                 {} /*state_history*/,
                                 {} /*state_archive*/,
                                 {} /*alt_states*/,
@@ -4623,7 +4844,7 @@ bool service_node_list::load(const uint64_t current_height) {
             for (size_t i = 0; i < last_index; i++) {
                 state_serialized& entry = data_in.states[i];
                 if (!entry.block_hash)
-                    entry.block_hash = m_blockchain.get_block_id_by_height(entry.height);
+                    entry.block_hash = blockchain.get_block_id_by_height(entry.height);
                 m_transient.state_history.emplace_hint(
                         m_transient.state_history.end(), this, std::move(entry));
             }
@@ -4643,7 +4864,7 @@ bool service_node_list::load(const uint64_t current_height) {
     }
 
     if (!cryptonote::is_hard_fork_at_least(
-                m_blockchain.nettype(), feature::SN_PK_IS_ED25519, current_height))
+                blockchain.nettype(), feature::SN_PK_IS_ED25519, current_height))
         initialize_x25519_map();
     // else the x25519 map is part of state_t
 
@@ -4664,13 +4885,12 @@ void service_node_list::reset(bool delete_db_entry) {
     m_transient = {};
     m_state = state_t{this};
 
-    if (m_blockchain.has_db() && delete_db_entry) {
-        cryptonote::db_wtxn_guard txn_guard{m_blockchain.db()};
-        m_blockchain.db().clear_service_node_data();
+    if (blockchain.has_db() && delete_db_entry) {
+        cryptonote::db_wtxn_guard txn_guard{blockchain.db()};
+        blockchain.db().clear_service_node_data();
     }
 
-    m_state.height =
-            hard_fork_begins(m_blockchain.nettype(), hf::hf9_service_nodes).value_or(1) - 1;
+    m_state.height = hard_fork_begins(blockchain.nettype(), hf::hf9_service_nodes).value_or(1) - 1;
 }
 
 size_t service_node_info::total_num_locked_contributions() const {

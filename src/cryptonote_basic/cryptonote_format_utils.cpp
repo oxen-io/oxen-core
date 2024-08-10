@@ -50,9 +50,11 @@
 #include "cryptonote_core/service_node_voting.h"
 #include "epee/string_tools.h"
 #include "epee/wipeable_string.h"
+#include "l2_tracker/events.h"
 #include "ringct/rctSigs.h"
 #include "serialization/binary_utils.h"
 #include "serialization/string.h"
+#include "serialization/vector_bool.h"
 
 using namespace crypto;
 
@@ -970,7 +972,7 @@ bool add_burned_amount_to_tx_extra(std::vector<uint8_t>& tx_extra, uint64_t burn
 //---------------------------------------------------------------
 bool add_new_service_node_to_tx_extra(
         std::vector<uint8_t>& tx_extra,
-        const tx_extra_ethereum_new_service_node& new_service_node) {
+        const eth::event::NewServiceNode& new_service_node) {
     tx_extra_field field = new_service_node;
     if (!add_tx_extra_field_to_tx_extra(tx_extra, field)) {
         log::info(logcat, "failed to serialize tx extra for new service node transaction");
@@ -981,7 +983,7 @@ bool add_new_service_node_to_tx_extra(
 //---------------------------------------------------------------
 bool add_service_node_removal_request_to_tx_extra(
         std::vector<uint8_t>& tx_extra,
-        const tx_extra_ethereum_service_node_removal_request& removal_request) {
+        const eth::event::ServiceNodeRemovalRequest& removal_request) {
     tx_extra_field field = removal_request;
     if (!add_tx_extra_field_to_tx_extra(tx_extra, field)) {
         log::info(
@@ -993,7 +995,7 @@ bool add_service_node_removal_request_to_tx_extra(
 //---------------------------------------------------------------
 bool add_service_node_removal_to_tx_extra(
         std::vector<uint8_t>& tx_extra,
-        const tx_extra_ethereum_service_node_removal& removal_data) {
+        const eth::event::ServiceNodeRemoval& removal_data) {
     tx_extra_field field = removal_data;
     if (!add_tx_extra_field_to_tx_extra(tx_extra, field)) {
         log::info(logcat, "failed to serialize tx extra for service node removal transaction");

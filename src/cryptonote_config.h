@@ -30,7 +30,6 @@
 
 #pragma once
 
-#include <boost/uuid/uuid.hpp>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -80,24 +79,27 @@ inline constexpr size_t DEFAULT_MEMPOOL_MAX_WEIGHT = 72h / 2min * 300'000;
 // file).
 //
 // How long between attempts to refresh the L2 provider state:
-inline constexpr auto ETH_L2_DEFAULT_REFRESH = 10s;
+inline constexpr auto ETH_L2_DEFAULT_REFRESH = 1min;
 // How long until we consider an L2 request to have timed out:
 inline constexpr auto ETH_L2_DEFAULT_REQUEST_TIMEOUT = 5s;
-// The maximum number of ethereum Logs we will request for updated smart contract state in a single
-// request.  If more than this are required multiple requests will be used to retrieve the logs.
-inline constexpr auto ETH_L2_DEFAULT_MAX_LOGS = 100;
-// How long between performing are-we-synced checks among all given L2 providers; only applies when
-// multiple L2 providers are in use.
-inline constexpr auto ETH_L2_DEFAULT_CHECK_INTERVAL = 2min;
-// How much an L2 provider must be behind the best L2 provider height before we consider that
-// provider out of sync and prefer a backup.  (120 blocks as the default corresponds to being 30s
-// out of sync on Arbitrum).
+// The default value for the maximum number of ethereum Logs we will request for updated smart
+// contract state in a single request.  If more than this are required multiple requests will be
+// used to retrieve the logs.  Can be adjusted at runtime using the --l2-max-logs command
+// line/config file setting.
+inline constexpr auto ETH_L2_DEFAULT_MAX_LOGS = 1000;
+// When refreshing, this controls how often we get heights from *all* configured L2 providers
+// (instead of just the primary one) to check whether L2 providers are in sync.  (This only applies
+// when multiple L2 providers are in use).
+inline constexpr auto ETH_L2_DEFAULT_CHECK_INTERVAL = 2min + 50s;
+// How much an L2 provider must be behind (in blocks) the best L2 provider height before we consider
+// that provider out of sync and prefer a backup.  (120 blocks as the default corresponds to being
+// 30s out of sync on Arbitrum).
 inline constexpr int ETH_L2_DEFAULT_CHECK_THRESHOLD = 120;
 
 // HF21 Oxen block parameters:
 //
-// How many blocks are used to compute the actual block reward rate.  The smallest l2_reward from the last
-// L2_REWARD_CONSENSUS_BLOCKS blocks is used for the block reward.
+// How many blocks are used to compute the actual block reward rate.  The smallest l2_reward from
+// the last L2_REWARD_CONSENSUS_BLOCKS blocks is used for the block reward.
 inline constexpr uint64_t L2_REWARD_CONSENSUS_BLOCKS = 15;
 
 // The maximum relative increase in l2_reward allowed from one block to the next.  If the true
@@ -113,8 +115,6 @@ inline constexpr uint64_t L2_REWARD_MAX_INCREASE_DIVISOR = 50000;
 // denominator N that defines the max decrease CURR/N.  (And so 25000 = maximum block-to-block
 // decrease of 0.004%).
 inline constexpr uint64_t L2_REWARD_MAX_DECREASE_DIVISOR = 25000;
-
-
 
 // Fallback used in wallet if no fee is available from RPC:
 inline constexpr uint64_t FEE_PER_BYTE_V13 = 215;
@@ -291,7 +291,15 @@ namespace feature {
     constexpr auto SN_PK_IS_ED25519 = hf::hf21_eth;
 }  // namespace feature
 
-enum class network_type : uint8_t { MAINNET = 0, TESTNET, DEVNET, STAGENET, LOCALDEV, FAKECHAIN, UNDEFINED = 255 };
+enum class network_type : uint8_t {
+    MAINNET = 0,
+    TESTNET,
+    DEVNET,
+    STAGENET,
+    LOCALDEV,
+    FAKECHAIN,
+    UNDEFINED = 255
+};
 
 // Constants for older hard-forks that are mostly irrelevant now, but are still needed to sync the
 // older parts of the blockchain:

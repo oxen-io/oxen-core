@@ -3,6 +3,7 @@
 #include <oxenmq/oxenmq.h>
 
 #include <oxen/log.hpp>
+#include "oxen/log/catlogger.hpp"
 
 // We can't just make a global "log" namespace because it conflicts with global C log()
 namespace cryptonote {

@@ -30,6 +30,7 @@
 
 #include <chrono>
 #include <iterator>
+#include <limits>
 #include <mutex>
 #include <shared_mutex>
 #include <string_view>
@@ -43,8 +44,12 @@
 #include "cryptonote_core/service_node_quorum_cop.h"
 #include "cryptonote_core/service_node_rules.h"
 #include "cryptonote_core/service_node_voting.h"
+#include "l2_tracker/events.h"
 #include "networks.h"
+#include "serialization/crypto.h"
+#include "serialization/map.h"
 #include "serialization/serialization.h"
+#include "serialization/vector_bool.h"
 #include "uptime_proof.h"
 
 namespace cryptonote {
@@ -723,14 +728,96 @@ class service_node_list {
         END_SERIALIZE()
     };
 
+    struct unconfirmed_l2_tx {
+        // Height of the block in which this tx was mined/pulsed
+        uint64_t height_added;
+        // Number of confirmation or denial points.
+        uint32_t confirmations;
+        uint32_t denials;
+
+        // Basis for confirmation points.  A initial inclusion or follow-up confirmation or denial
+        // gets this value divided by (R+1), where R is the round number (e.g. R=0 is the initial
+        // quorum; R=3 is the third backup quorum).
+        //
+        // The specific value here is the smallest number divisible by all integers from 1 to 10 so
+        // that there is no integer precision loss of scores up to the first 10 quorum rounds.  (It
+        // could go higher -- 219060189739591200 is divisible by all integers up to 42 without
+        // leading to overflow --  but doing so increases serialized size and having some small
+        // precision loss in backup quorum votes (especially beyond the first few rounds) really
+        // doesn't matter that much.
+        static constexpr uint32_t FULL_SCORE = 2 * 3 * 2 * 5 * 7 * 2 * 3;
+
+        // Resolution rules:
+        //
+        // - we require at least 5 more (full) votes for the winning side than the losing side
+        // - we require that the winning side votes is at least double the losing side (i.e. >= 2/3
+        //   majority of votes)
+        // - we require that it be resolved within 30 blocks, otherwise it loses (regarldess of the
+        //   votes).
+        static constexpr uint32_t MIN_FINALIZED_DIFFERENCE = FULL_SCORE * 5;
+        static constexpr uint32_t MIN_FINALIZED_RATIO = 2;
+        static constexpr uint64_t MAX_VOTING_BLOCKS = 30;
+
+        // Returns true if the confirmation/denial votes determine that this transaction should be
+        // confirmed as accepted.
+        constexpr bool is_accepted() const {
+            return confirmations >= denials + MIN_FINALIZED_DIFFERENCE &&
+                   confirmations >= denials * MIN_FINALIZED_RATIO;
+        }
+
+        // Returns true if the confirmation/denial votes determine that this transaction should be
+        // confirmed as denied.
+        constexpr bool is_denied() const {
+            return denials >= confirmations + MIN_FINALIZED_DIFFERENCE &&
+                   denials >= confirmations * MIN_FINALIZED_RATIO;
+        }
+
+        // Returns true if this transaction should be denied due to taking too many blocks to reach
+        // consensus.  (Note that it is possible for a tx to become properly confirmed/denied at the
+        // same time it expires, in which case the proper confirmation/denial takes effect).
+        constexpr bool is_expired(uint64_t curr_height) const {
+            return curr_height >= height_added + MAX_VOTING_BLOCKS;
+        }
+
+        // Returns an optional bool indicating the confirmation status:
+        // - std::nullopt -- not yet confirmed, denied, nor expired
+        // - true -- confirmed accepted
+        // - false -- confirmed denied or denied by expiry
+        constexpr std::optional<bool> confirmed(uint64_t curr_height) const {
+            if (is_accepted())
+                return true;
+            if (is_denied() || is_expired(curr_height))
+                return false;
+            return std::nullopt;
+        }
+
+        explicit unconfirmed_l2_tx(
+                uint64_t height = 0, uint32_t confirmations = 0, uint32_t denials = 0) :
+                height_added{height}, confirmations{confirmations}, denials{denials} {}
+        unconfirmed_l2_tx(uint64_t height, const cryptonote::pulse_header& pulse) :
+                unconfirmed_l2_tx{height, FULL_SCORE / (static_cast<uint32_t>(pulse.round) + 1)} {}
+
+        template <class Archive>
+        void serialize_value(Archive& ar) {
+            // We don't include a version here becuse state_serialized is already versioned.  If we
+            // end up needing versioning on this specific value then we can use a class tag
+            // extension to determine which serialization path to follow in state_serialized's
+            // serialization.
+            field_varint(ar, "height", height_added);
+            field_varint(ar, "confirmations", confirmations);
+            field_varint(ar, "denials", denials);
+        }
+    };
+
     struct state_serialized {
         enum struct version_t : uint8_t {
             version_0,
             version_1_serialize_hash,
+            version_2_l2_confirmations,
             count,
         };
         static version_t get_version(cryptonote::hf /*hf_version*/) {
-            return version_t::version_1_serialize_hash;
+            return version_t::version_2_l2_confirmations;
         }
 
         version_t version;
@@ -740,18 +827,23 @@ class service_node_list {
         quorum_for_serialization quorums;
         bool only_stored_quorums;
         crypto::hash block_hash;
+        std::map<crypto::hash, unconfirmed_l2_tx> unconfirmed_l2_txes;
 
-        BEGIN_SERIALIZE()
-        ENUM_FIELD(version, version < version_t::count)
-        VARINT_FIELD(height)
-        FIELD(infos)
-        FIELD(key_image_blacklist)
-        FIELD(quorums)
-        FIELD(only_stored_quorums)
+        template <class Archive>
+        void serialize_value(Archive& ar) {
+            field_varint(ar, "version", version, [](auto v) { return v < version_t::count; });
+            field_varint(ar, "height", height);
+            field(ar, "infos", infos);
+            field(ar, "key_image_blacklist", key_image_blacklist);
+            field(ar, "quorums", quorums);
+            field(ar, "only_stored_quorums", only_stored_quorums);
 
-        if (version >= version_t::version_1_serialize_hash)
-            FIELD(block_hash);
-        END_SERIALIZE()
+            if (version >= version_t::version_1_serialize_hash)
+                field(ar, "block_hash", block_hash);
+
+            if (version >= version_t::version_2_l2_confirmations)
+                field(ar, "unconfirmed_l2", unconfirmed_l2_txes);
+        }
     };
 
     struct data_for_serialization {
@@ -787,8 +879,13 @@ class service_node_list {
         std::vector<key_image_blacklist_entry> key_image_blacklist;
         std::unordered_map<crypto::x25519_public_key, crypto::public_key> x25519_map;
         block_height height{0};
-        mutable quorum_manager quorums;  // Mutable because we are allowed to (and need to) change
-                                         // it via std::set iterator
+        // Mutable because we are allowed to (and need to) change it via std::set iterator:
+        mutable quorum_manager quorums;
+        // blockchaindb-global-transaction-index => confirmation metadata of unconfirmed L2 state
+        // changes.  This is an *ordered* map because confirmation votes in a pulse block depend on
+        // the order of txes in here.
+        std::map<crypto::hash, unconfirmed_l2_tx> unconfirmed_l2_txes;
+
         service_node_list* sn_list;
 
         state_t(service_node_list* snl) : sn_list{snl} {}
@@ -861,23 +958,46 @@ class service_node_list {
                 cryptonote::hf hf_version,
                 uint64_t block_height,
                 const cryptonote::transaction& tx) const;
-        // Returns true if there was a registration:
-        bool process_ethereum_registration_tx(
-                cryptonote::network_type nettype,
+        // Processes a newly observed ETH transaction, starting the confirmation process.  This does
+        // not validate it; that happens once confirmed by the network.
+        void process_new_ethereum_tx(
                 cryptonote::block const& block,
                 const cryptonote::transaction& tx,
+                const service_node_keys* my_keys);
+
+        // Applies a pulse-quorums-confirmed L2 event to the service node list state.  Returns true
+        // if processing the event affects swarms, false if it does not.
+        bool process_confirmed_event(
+                const eth::event::NewServiceNode& new_sn,
+                cryptonote::network_type nettype,
+                cryptonote::hf hf_version,
+                uint64_t height,
                 uint32_t index,
                 const service_node_keys* my_keys);
-        bool process_ethereum_removal_request_tx(
+        bool process_confirmed_event(
+                const eth::event::ServiceNodeRemovalRequest& rem_req,
                 cryptonote::network_type nettype,
                 cryptonote::hf hf_version,
-                uint64_t block_height,
-                const cryptonote::transaction& tx);
-        bool process_ethereum_removal_tx(
+                uint64_t height,
+                uint32_t index,
+                const service_node_keys* my_keys);
+        bool process_confirmed_event(
+                const eth::event::ServiceNodeRemoval& removal,
                 cryptonote::network_type nettype,
                 cryptonote::hf hf_version,
-                uint64_t block_height,
-                const cryptonote::transaction& tx);
+                uint64_t height,
+                uint32_t index,
+                const service_node_keys* my_keys);
+        bool process_confirmed_event(
+                const std::monostate&,  // do-nothing fallback for "not an event" variant
+                cryptonote::network_type,
+                cryptonote::hf,
+                uint64_t,
+                uint32_t,
+                const service_node_keys*) {
+            return false;
+        }
+
         // Returns the block leader of the next block: that is, the round 0 pulse quorum leader, and
         // (before HF19) the service node that earns the service node reward for the next block.
         payout get_next_block_leader() const;
@@ -914,6 +1034,19 @@ class service_node_list {
 
     bool is_recently_expired(const eth::bls_public_key& node_bls_pubkey) const;
 
+    /**
+     * @brief gets the L2 votes (confirm or deny) for all current pending unconfirmed L2 state
+     * changes.
+     *
+     * This is used by pulse block producers and miners, and verified by pulse quorum signers, and
+     * is a pulse quorum consensus value but *not* a chain consensus value.
+     *
+     * @returns vector of votes
+     */
+    std::vector<bool> l2_pending_state_votes() const;
+
+    cryptonote::Blockchain& blockchain;
+
   private:
     bool m_rescanning = false; /* set to true when doing a rescan so we know not to reset proofs */
     void process_block(
@@ -932,7 +1065,6 @@ class service_node_list {
     bool load(uint64_t current_height);
 
     mutable std::recursive_mutex m_sn_mutex;
-    cryptonote::Blockchain& m_blockchain;
     const service_node_keys* m_service_node_keys;
     uint64_t m_store_quorum_history = 0;
     mutable std::shared_mutex m_x25519_map_mutex;
@@ -1022,18 +1154,7 @@ bool is_registration_tx(
         crypto::public_key& key,
         service_node_info& info);
 
-std::pair<crypto::public_key, std::shared_ptr<service_node_info>>
-validate_and_get_ethereum_registration(
-        cryptonote::network_type nettype,
-        cryptonote::hf hf_version,
-        const cryptonote::transaction& tx,
-        uint64_t block_timestamp,
-        uint64_t block_height,
-        uint32_t index);
-
 std::optional<registration_details> reg_tx_extract_fields(const cryptonote::transaction& tx);
-std::optional<registration_details> eth_reg_tx_extract_fields(
-        cryptonote::hf hf_version, const cryptonote::transaction& tx);
 
 uint64_t offset_testing_quorum_height(quorum_type type, uint64_t height);
 

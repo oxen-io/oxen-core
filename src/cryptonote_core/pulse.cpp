@@ -1,6 +1,7 @@
 #include <array>
 #include <chrono>
 #include <mutex>
+#include <variant>
 
 #include "common/random.h"
 #include "cryptonote_basic/hardfork.h"
@@ -8,6 +9,8 @@
 #include "epee/memwipe.h"
 #include "epee/misc_log_ex.h"
 #include "epee/wipeable_string.h"
+#include "ethereum_transactions.h"
+#include "oxen/log/level.hpp"
 #include "service_node_list.h"
 #include "service_node_quorum_cop.h"
 #include "service_node_rules.h"
@@ -1654,18 +1657,94 @@ namespace {
         pulse_wait_stage const& stage = context.transient.wait_for_block_template.stage;
 
         assert(context.prepare_for_round.participant == sn_type::validator);
-        bool timed_out =
-                pulse::clock::now() >= context.transient.wait_for_block_template.stage.end_time;
-        bool received = context.transient.wait_for_block_template.stage.msgs_received == 1;
+        bool timed_out = pulse::clock::now() >= stage.end_time;
+        bool received = stage.msgs_received == 1;
         if (timed_out || received) {
+            const auto prefix = log_prefix(context);
             if (received) {
                 cryptonote::block const& block = context.transient.wait_for_block_template.block;
+
+                // Before we sign off on the block make sure that we support the inclusion of any
+                // eth state change transactions by making sure we have them in our pool *and* that
+                // we have the indicated state change in our L2 tracker.
+                if (block.major_version >= cryptonote::feature::ETH_BLS) {
+                    if (block.tx_eth_count > block.tx_hashes.size()) {
+                        log::warning(
+                                logcat,
+                                "{}Invalid block from producer: block claims eth L2 state change "
+                                "txs {} > tx count {}",
+                                prefix,
+                                block.tx_eth_count,
+                                block.tx_hashes.size());
+                        return goto_preparing_for_next_round(context);
+                    }
+                    auto mempool_txs =
+                            node_list.blockchain.tx_pool.load_transactions(block.tx_hashes);
+                    for (size_t i = 0; i < block.tx_eth_count; i++) {
+                        if (!mempool_txs[i]) {
+                            log::info(
+                                    logcat,
+                                    "{}Rejecting block: eth state change tx {} is not in our "
+                                    "mempool",
+                                    prefix,
+                                    block.tx_hashes[i]);
+                            return goto_preparing_for_next_round(context);
+                        }
+                        auto& tx = *mempool_txs[i];
+                        if (!is_l2_event_tx(tx.type)) {
+                            log::info(
+                                    logcat,
+                                    "{}Rejecting block: claimed state change tx {} is not a state "
+                                    "change tx",
+                                    prefix,
+                                    block.tx_hashes[i]);
+                            return goto_preparing_for_next_round(context);
+                        }
+                        std::string fail;
+                        auto event = eth::extract_event(block.major_version, tx, fail);
+                        if (std::holds_alternative<std::monostate>(event)) {
+                            log::info(
+                                    logcat,
+                                    "{}Rejecting block: failed to extract event from {}: {}",
+                                    prefix,
+                                    tx,
+                                    fail);
+                            return goto_preparing_for_next_round(context);
+                        }
+                        if (!std::visit(
+                                    [&l2 = node_list.blockchain.l2_tracker()](const auto& e) {
+                                        return l2.get_vote_for(e);
+                                    },
+                                    event)) {
+                            log::info(
+                                    logcat,
+                                    "{}Rejecting block: event not found in L2Tracker for tx {}",
+                                    prefix,
+                                    tx);
+                            return goto_preparing_for_next_round(context);
+                        }
+                    }
+                    // NOTE: We only concern ourselves with the claimed [0, tx_eth_count)
+                    // transactions because signing a block containing *those* means we are casting
+                    // a vote in favour of them.  Later state changes in the list aren't valid and
+                    // get rejected during blockchain handling so don't need to be checked here.
+                    log::debug(
+                            logcat,
+                            "{}Block passed state change validation ({} state changes of {} txs)",
+                            prefix,
+                            block.tx_eth_count,
+                            block.tx_hashes.size());
+                }
+
+#ifdef NDEBUG
+                log::info(logcat, "{}Valid block received", prefix);
+#else
                 log::info(
                         logcat,
                         "{}Valid block received: {}",
-                        log_prefix(context),
-                        cryptonote::obj_to_json_str(
-                                context.transient.wait_for_block_template.block));
+                        prefix,
+                        cryptonote::obj_to_json_str(block));
+#endif
 
                 // Generate my random value and its hash
                 crypto::generate_random_bytes_thread_safe(
@@ -1676,10 +1755,7 @@ namespace {
                         sizeof(context.transient.random_value.send.data));
                 return round_state::send_and_wait_for_random_value_hashes;
             } else {
-                log::info(
-                        logcat,
-                        "{}Timed out, block template was not received",
-                        log_prefix(context));
+                log::info(logcat, "{}Timed out, block template was not received", prefix);
                 return goto_preparing_for_next_round(context);
             }
         }

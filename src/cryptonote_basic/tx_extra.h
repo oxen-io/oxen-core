@@ -30,16 +30,16 @@
 
 #pragma once
 
+#include "common/exception.h"
 #include "crypto/crypto.h"
 #include "crypto/eth.h"
 #include "cryptonote_basic.h"
+#include "l2_tracker/events.h"
 #include "oxen_economy.h"
-#include "common/exception.h"
 #include "serialization/binary_archive.h"
 #include "serialization/binary_utils.h"
 #include "serialization/serialization.h"
 #include "serialization/variant.h"
-
 
 namespace cryptonote {
 
@@ -196,7 +196,8 @@ void serialize_value(Archive& ar, tx_extra_padding& pad) {
                                    // tag part of the padding
 
     if (remaining > TX_EXTRA_PADDING_MAX_COUNT - 1)  // - 1 as above.
-        throw oxen::traced<std::invalid_argument>{"tx_extra_padding size is larger than maximum allowed"};
+        throw oxen::traced<std::invalid_argument>{
+                "tx_extra_padding size is larger than maximum allowed"};
 
     char buf[TX_EXTRA_PADDING_MAX_COUNT - 1] = {};
     ar.serialize_blob(buf, remaining);
@@ -452,7 +453,7 @@ std::vector<std::string> readable_reasons(uint16_t decomm_reasons);
 // where we want something in-between a bit field and a human-readable string.
 std::vector<std::string> coded_reasons(uint16_t decomm_reasons);
 
-// Pre-Heimdall service node deregistration data; it doesn't carry the state change (it is only
+// Old (pre-HF12) service node deregistration data; it doesn't carry the state change (it is only
 // used for deregistrations), and is stored slightly less efficiently in the tx extra data.
 struct tx_extra_service_node_deregister_old {
 #pragma pack(push, 4)
@@ -627,64 +628,6 @@ struct tx_extra_oxen_name_system {
     END_SERIALIZE()
 };
 
-struct tx_extra_ethereum_contributor {
-    eth::address address;
-    uint64_t amount;
-
-    tx_extra_ethereum_contributor() = default;
-    tx_extra_ethereum_contributor(const eth::address& addr, uint64_t amt) :
-            address(addr), amount(amt) {}
-
-    BEGIN_SERIALIZE()
-    FIELD(address)
-    FIELD(amount)
-    END_SERIALIZE()
-};
-
-struct tx_extra_ethereum_new_service_node {
-    uint8_t version = 0;
-    eth::bls_public_key bls_pubkey;
-    eth::address eth_address;
-    crypto::public_key service_node_pubkey;
-    crypto::ed25519_signature signature;
-    uint64_t fee;
-    std::vector<tx_extra_ethereum_contributor> contributors;
-
-    BEGIN_SERIALIZE()
-    FIELD(version)
-    FIELD(bls_pubkey)
-    FIELD(eth_address)
-    FIELD(service_node_pubkey)
-    FIELD(signature)
-    FIELD(fee)
-    FIELD(contributors)
-    END_SERIALIZE()
-};
-
-struct tx_extra_ethereum_service_node_removal_request {
-    uint8_t version = 0;
-    eth::bls_public_key bls_pubkey;
-
-    BEGIN_SERIALIZE()
-    FIELD(version)
-    FIELD(bls_pubkey)
-    END_SERIALIZE()
-};
-
-struct tx_extra_ethereum_service_node_removal {
-    uint8_t version = 0;
-    eth::address eth_address;
-    uint64_t amount;
-    eth::bls_public_key bls_pubkey;
-
-    BEGIN_SERIALIZE()
-    FIELD(version)
-    FIELD(eth_address)
-    FIELD(amount)
-    FIELD(bls_pubkey)
-    END_SERIALIZE()
-};
-
 // tx_extra_field format, except tx_extra_padding and tx_extra_pub_key:
 //   varint tag;
 //   varint size;
@@ -707,12 +650,12 @@ using tx_extra_field = std::variant<
         tx_extra_oxen_name_system,
         tx_extra_tx_key_image_proofs,
         tx_extra_tx_key_image_unlock,
+        eth::event::NewServiceNode,
+        eth::event::ServiceNodeRemovalRequest,
+        eth::event::ServiceNodeRemoval,
         tx_extra_burn,
         tx_extra_merge_mining_tag,
         tx_extra_mysterious_minergate,
-        tx_extra_ethereum_new_service_node,
-        tx_extra_ethereum_service_node_removal_request,
-        tx_extra_ethereum_service_node_removal,
         tx_extra_padding>;
 }  // namespace cryptonote
 
@@ -750,12 +693,9 @@ BINARY_VARIANT_TAG(
 BINARY_VARIANT_TAG(cryptonote::tx_extra_burn, cryptonote::TX_EXTRA_TAG_BURN);
 BINARY_VARIANT_TAG(
         cryptonote::tx_extra_oxen_name_system, cryptonote::TX_EXTRA_TAG_OXEN_NAME_SYSTEM);
+BINARY_VARIANT_TAG(eth::event::NewServiceNode, cryptonote::TX_EXTRA_TAG_ETHEREUM_NEW_SERVICE_NODE);
 BINARY_VARIANT_TAG(
-        cryptonote::tx_extra_ethereum_new_service_node,
-        cryptonote::TX_EXTRA_TAG_ETHEREUM_NEW_SERVICE_NODE);
-BINARY_VARIANT_TAG(
-        cryptonote::tx_extra_ethereum_service_node_removal_request,
+        eth::event::ServiceNodeRemovalRequest,
         cryptonote::TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_REMOVAL_REQUEST);
 BINARY_VARIANT_TAG(
-        cryptonote::tx_extra_ethereum_service_node_removal,
-        cryptonote::TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_REMOVAL);
+        eth::event::ServiceNodeRemoval, cryptonote::TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_REMOVAL);

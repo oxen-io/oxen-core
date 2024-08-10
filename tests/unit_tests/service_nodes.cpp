@@ -518,34 +518,34 @@ TEST(service_nodes, service_node_rewards_proportional_to_portions)
   }
 }
 
-TEST(service_nodes, service_node_get_locked_key_image_unlock_height)
+TEST(service_nodes, service_node_get_unlock_height)
 {
   uint64_t lock_duration = service_nodes::staking_num_lock_blocks(cryptonote::network_type::MAINNET) / 2;
 
   {
     uint64_t curr_height   = 100;
     uint64_t expected      = curr_height + lock_duration;
-    uint64_t unlock_height = service_nodes::get_locked_key_image_unlock_height(cryptonote::network_type::MAINNET, 0, curr_height);
+    uint64_t unlock_height = service_nodes::get_unlock_height(cryptonote::network_type::MAINNET, 0, curr_height);
     ASSERT_EQ(unlock_height, expected);
   }
 
   {
     uint64_t curr_height   = lock_duration - 1;
     uint64_t expected      = curr_height + lock_duration;
-    uint64_t unlock_height = service_nodes::get_locked_key_image_unlock_height(cryptonote::network_type::MAINNET, 0, curr_height);
+    uint64_t unlock_height = service_nodes::get_unlock_height(cryptonote::network_type::MAINNET, 0, curr_height);
     ASSERT_EQ(unlock_height, expected);
   }
 
   {
     uint64_t curr_height   = lock_duration + 100;
     uint64_t expected      = curr_height + lock_duration;
-    uint64_t unlock_height = service_nodes::get_locked_key_image_unlock_height(cryptonote::network_type::MAINNET, 0, curr_height);
+    uint64_t unlock_height = service_nodes::get_unlock_height(cryptonote::network_type::MAINNET, 0, curr_height);
     ASSERT_EQ(unlock_height, expected);
   }
 
   {
     uint64_t expected      = lock_duration + lock_duration;
-    uint64_t unlock_height = service_nodes::get_locked_key_image_unlock_height(cryptonote::network_type::MAINNET, lock_duration, lock_duration);
+    uint64_t unlock_height = service_nodes::get_unlock_height(cryptonote::network_type::MAINNET, lock_duration, lock_duration);
     ASSERT_EQ(unlock_height, expected);
   }
 
@@ -553,7 +553,7 @@ TEST(service_nodes, service_node_get_locked_key_image_unlock_height)
     uint64_t register_height = lock_duration + 1;
     uint64_t curr_height     = register_height + 2;
     uint64_t expected        = curr_height + lock_duration;
-    uint64_t unlock_height   = service_nodes::get_locked_key_image_unlock_height(cryptonote::network_type::MAINNET, register_height, curr_height);
+    uint64_t unlock_height   = service_nodes::get_unlock_height(cryptonote::network_type::MAINNET, register_height, curr_height);
     ASSERT_EQ(unlock_height, expected);
   }
 }

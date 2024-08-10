@@ -304,7 +304,7 @@ bool check_service_node_stakes(
         const std::vector<uint64_t>& stakes);
 
 crypto::hash generate_request_stake_unlock_hash(uint32_t nonce);
-uint64_t get_locked_key_image_unlock_height(
+uint64_t get_unlock_height(
         cryptonote::network_type nettype, uint64_t node_register_height, uint64_t curr_height);
 
 // Returns lowest x such that (staking_requirement * x/STAKING_PORTIONS) >= amount

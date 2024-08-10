@@ -39,9 +39,7 @@
 #include "blockchain_db/blockchain_db.h"
 #include "common/periodic_task.h"
 #include "crypto/hash.h"
-#include "cryptonote_basic/cryptonote_basic_impl.h"
 #include "cryptonote_basic/verification_context.h"
-#include "epee/string_tools.h"
 #include "oxen_economy.h"
 #include "tx_blink.h"
 
@@ -51,16 +49,21 @@ class Blockchain;
 /*                                                                      */
 /************************************************************************/
 
-//! tuple of <deregister, transaction fee, receive time> for organization
-using tx_by_fee_and_receive_time_entry =
-        std::pair<std::tuple<bool, double, std::time_t>, crypto::hash>;
+// Our sort priorities for mempool transactions; l2 event transactions (HF21+) must always come
+// first (because the tx list is required to be partitioned into [l2events | other]), then state
+// changes (such as decomms, deregs, recomms, etc.), then finally "standard" oxen transactions.
+enum class tx_priority { l2_event, state_change, standard };
+
+//! tuple of <prio, transaction fee, receive time> for organization
+// where prio
+using tx_by_fee_and_receive_time_entry = std::tuple<tx_priority, double, std::time_t, crypto::hash>;
 
 class txCompare {
   private:
-    // Sort order: non-standard txes, fee (descending), arrival time, hash
+    // Sort order: l2 events, non-standard txes, fee (descending), arrival time, hash
     static auto compare_tuple(const tx_by_fee_and_receive_time_entry& x) {
-        return std::make_tuple(
-                !std::get<0>(x.first), -std::get<1>(x.first), std::get<2>(x.first), x.second);
+        return std::tuple<const tx_priority&, double, const std::time_t&, const crypto::hash&>(
+                std::get<0>(x), -std::get<1>(x), std::get<2>(x), std::get<3>(x));
     }
 
   public:
@@ -559,6 +562,18 @@ class tx_memory_pool {
             std::vector<std::string>& txblobs) const;
 
     /**
+     * @brief gets and parses specific transactions from the pool
+     *
+     * @param tx_hashes - vector of tx hashes of desired transactions
+     *
+     * @return vector of transactions: nullopt for any that were not found (or failed to parse),
+     * otherwise will be the parsed transaction object.  The returned vector has the same size and
+     * order as the input vector.
+     */
+    std::vector<std::optional<transaction>> load_transactions(
+            const std::vector<crypto::hash>& tx_hashes) const;
+
+    /**
      * @brief get a list of all relayable transactions and their hashes
      *
      * "relayable" in this case means:
@@ -746,7 +761,7 @@ class tx_memory_pool {
      *
      * @param txid the transaction id to remove
      * @param meta optional pointer to txpool_tx_meta_t; will be looked up if omitted
-     * @param stc_it an optional iterator to the tx's entry in m_txs_by_fee_and_receive_time to save
+     * @param stc_it an optional iterator to the tx's entry in m_txs_by_priority to save
      * a (linear) scan to find it when already available.  The given iterator will be invalidated if
      * removed.
      *
@@ -807,7 +822,7 @@ class tx_memory_pool {
 
     // TODO: look into doing this better
     //!< container for transactions organized by fee per size and receive time
-    sorted_tx_container m_txs_by_fee_and_receive_time;
+    sorted_tx_container m_txs_by_priority;
 
     std::atomic<uint64_t> m_cookie;  //!< incremented at each change
 

@@ -33,6 +33,7 @@
 #include <fmt/format.h>
 
 #include <atomic>
+#include <variant>
 #include <vector>
 
 #include "common/exception.h"
@@ -48,6 +49,7 @@
 #include "serialization/crypto.h"
 #include "serialization/variant.h"
 #include "serialization/vector.h"
+#include "serialization/vector_bool.h"
 #include "txtypes.h"
 
 namespace service_nodes {
@@ -399,7 +401,7 @@ struct block_header {
 
     bool has_pulse_header() const { return major_version >= feature::PULSE && !pulse.empty(); }
 
-    // HF19+:
+    // HF19, HF21+:
     // The height of this block.  This is not used by current Oxen code for the height before HF21+,
     // but must be present and correct in HF19 for compatibility with Oxen 10.x nodes which *did*
     // (sometimes) use it.  Before HF21 the height is always present in the miner_tx's txin_gen,
@@ -458,6 +460,12 @@ struct block_header {
     // take time to be fully reflected here, during which this value increases slowly towards the
     // appropriate value, but a compromised quorum is unable to noticeably affect the reward rate.
     uint64_t l2_reward = 0;
+
+    // vector of L2 state changes for L2 state change transactions that are still unconfirmed in
+    // this block.  true = vote for confirmation, false = vote for rejection.  Votes are sorted in
+    // blockchain order of unconfirmed transactions (i.e. by the monotonic internal transaction
+    // index).
+    std::vector<bool> l2_votes;
 };
 
 struct block : public block_header {
@@ -483,6 +491,9 @@ struct block : public block_header {
     std::optional<transaction> miner_tx;
     crypto::public_key oxen10_pulse_producer;
     std::vector<crypto::hash> tx_hashes;
+    // As of HF21 this value indicates how many leading values of `tx_hashes` are eth state change
+    // transactions; these *must* be eth state change txes, and any remainder must *not* be.
+    uint32_t tx_eth_count;
 
     // hash cache
     mutable crypto::hash hash;
@@ -515,6 +526,7 @@ void serialize_value(Archive& ar, block_header& b) {
     if (b.major_version >= feature::ETH_BLS) {
         field_varint(ar, "height", b._height);
         field_varint(ar, "l2_height", b.l2_height);
+        field(ar, "l2_votes", b.l2_votes);
     }
 }
 
@@ -544,6 +556,9 @@ void serialize_value(Archive& ar, block& b) {
     field(ar, "tx_hashes", b.tx_hashes);
     if (b.tx_hashes.size() > MAX_TX_PER_BLOCK)
         throw oxen::traced<std::invalid_argument>{"too many txs in block"};
+    if (b.major_version >= hf::hf21_eth)
+        field(ar, "tx_eth_count", b.tx_eth_count);
+
     if (b.major_version >= hf::hf16_pulse)
         field(ar, "signatures", b.signatures);
     if (b.major_version == hf::hf19_reward_batching) {

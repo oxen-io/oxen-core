@@ -35,6 +35,7 @@
 #include <oxenc/base64.h>
 
 #include <numeric>
+#include <stdexcept>
 
 #include "common/command_line.h"
 #include "common/file.h"

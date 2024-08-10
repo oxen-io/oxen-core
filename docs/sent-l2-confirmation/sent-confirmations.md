@@ -118,6 +118,18 @@ unlock, etc.) takes effect.
   where N is the quorum round: so flags in the first backup round (the second overall quorum round
   for a block) contribute 0.5 points; flags in the 4th backup round would contribute 0.2 points, and
   99th backup quorum would contribute 0.01 points.
+- Mined blocks contribute a full-weight vote to the process.  Oxen mined blocks are only accepted on
+  the Oxen chain in one of two cases of extreme conditions: a complete network pulse failure to
+  create a block for more than 4 hours; or a drop in the number of active service nodes below the
+  threshold needed to create a pulse quorum (12).  The former case has happened just one (at the
+  initial pulse hard fork, due to a bug in the pulse activation code), and the latter has never
+  happened on mainnet (though happens from time to time on the ~20 node private testnet/devnet).
+
+  In either case, however, the mined block fallback votes are likely needed to fix the service node
+  state (e.g. to get new L2 node registrations or removals applied to the Oxen chain), and so such
+  extreme fallback cases need to have the potential to push through votes.  It is worth pointing out
+  that a mined block is not accepted and cannot be triggered by the network outside of the two
+  extremes described above.
 - A state change is finalized once the dominant + or - score is at least 5 points larger than the
   lesser score, *and* at least double the lesser score; or when 30 blocks (1 hour, typically) have
   passed since its inclusion without otherwise finalizing it (and in such a case, it is resolved as
@@ -145,6 +157,12 @@ The 30 block vote limit has a couple of purposes: first it suggests that the inc
 contentious, and thus suspect; secondly service nodes typically do not indefinitely retain L2
 tracking data beyond an hour or so and thus are unlikely to be able to confirm a state change once
 hours have passed since its inclusion.
+
+A failed inclusion is also not the end of the world and mainly introduces delays, not stake losses:
+a failed registration would be removable from the smart contract after a waiting period (and could
+then be resubmitted), and a failed unlock or failed removal will be noticed by Oxen nodes as a
+service node that no longer exists in the smart contract and needs to be removed, which will be
+noticed and re-submitted as removal for confirmation, even if the original removal gets denied.
 
 #### Service Node adversary example
 
@@ -253,10 +271,9 @@ contracts for more info).
 Rewards, however, are computed entirely on the OXEN side, and thus being able to advance the chain
 requires an exact consensus of what the reward is at any given time.
 
-Oxen nodes thus record the *current* L2 reward rate (queried from the contract) in each block, and
+Oxen nodes thus record the recent L2 reward rate (queried from the contract) in each block, and
 verifying this value is part of the duties of pulse quorum validators.  For all the same reasons
-discussed above, however, this means that it could be a target of abuse by a malicious pulse
-quorum.
+discussed above, however, this means that it could be a target of abuse by a malicious pulse quorum.
 
 For example, just after launch, the per-block SENT reward (distributed across all service nodes) to
 be a little bit less than 23 SENT per 2-minutes (i.e. per Oxen block).  An adversary controlling a
@@ -317,3 +334,24 @@ pool becomes larger, increases of the same size can be adjusted to more quickly.
 the increase in 13 days.  A severely withdrawn 1M pool (which would take nearly 25 years of
 withdrawals with no replenishment with the SENT launch parameters) would take around 7 months to
 fully respond to the sudden 21x size increase of the pool with these caps.
+
+## Reward rate update frequency
+
+Because the reward rate is a continuously decreasing variable, in order to properly handle pulse
+validation we would need to know the value computed for any possible recent blocks (or else pause
+pulse validation while all validators fetch the value for the leader's l2_height choice).
+
+Unlike contract events—which we can query all-at-once—*each* L2 height we want to know the reward
+for requires a separate RPC call, and thus becomes expensive in terms of the number of queries
+permitted under various RPC provider plans.
+
+To address this, we only fetch updated reward values once every 2400 blocks (approximately once
+every 10 minutes), and our canonical "proper" reward for a height is the reward rate at previous
+such fetched height before the l2 height indicated in the block itself.  For example, when
+constructing a hypothetical Oxen block with `l2_height = 23456789`, the "true" reward rate used to
+compute the reward value that gets recorded into a block would be the reward rate for L2 height
+23455200 (i.e. the last height before 23456789 divisible by 2400).
+
+Note that this does *not* mean that the block reward can only change every 10 minutes: in
+particular, because we still include an l2_reward value in every block, the block reward can still
+move slightly in accordance with the mitigations against large changes described above.

@@ -21,17 +21,19 @@ namespace eth {
 namespace {
     auto logcat = oxen::log::Cat("l2_tracker");
 
-    TransactionType getLogType(const ethyl::LogEntry& log) {
+    enum class EventType { NewServiceNode, ServiceNodeRemovalRequest, ServiceNodeRemoval, Other };
+
+    EventType getLogType(const ethyl::LogEntry& log) {
         if (log.topics.empty())
             throw std::runtime_error("No topics in log entry");
 
         auto event_sig = tools::make_from_hex_guts<crypto::hash>(log.topics[0]);
 
-        return event_sig == contract::event::NewServiceNode ? TransactionType::NewServiceNode
+        return event_sig == contract::event::NewServiceNode ? EventType::NewServiceNode
              : event_sig == contract::event::ServiceNodeRemovalRequest
-                     ? TransactionType::ServiceNodeRemovalRequest
-             : event_sig == contract::event::ServiceNodeRemoval ? TransactionType::ServiceNodeRemoval
-                                                                : TransactionType::Other;
+                     ? EventType::ServiceNodeRemovalRequest
+             : event_sig == contract::event::ServiceNodeRemoval ? EventType::ServiceNodeRemoval
+                                                                : EventType::Other;
     }
 
 }  // namespace
@@ -67,27 +69,31 @@ static std::string log_more_contributors_than_allowed(
     return result;
 }
 
-static std::string log_new_service_node_tx(const NewServiceNodeTx& item, std::string_view hex) {
+static std::string log_new_service_node_tx(
+        const event::NewServiceNode& item, std::string_view hex) {
     fmt::memory_buffer buffer{};
     fmt::format_to(
             std::back_inserter(buffer),
             "New service node TX components were:\n"
-            "- BLS Public Key:    {}\n"
-            "- ETH Address:       {}\n"
             "- SN Public Key:     {}\n"
+            "- BLS Public Key:    {}\n"
             "- ED25519 Signature: {}\n"
             "- Fee:               {}\n"
             "- Contributor(s):    {}\n",
-            item.bls_pubkey,
-            item.eth_address,
             item.sn_pubkey,
+            item.bls_pubkey,
             item.ed_signature,
             item.fee,
             item.contributors.size());
 
     for (size_t index = 0; index < item.contributors.size(); index++) {
-        const Contributor& contributor = item.contributors[index];
-        fmt::format_to(std::back_inserter(buffer), "  - {:02} [address: {}, amount: {}]\n", index, contributor.addr, contributor.amount);
+        const auto& contributor = item.contributors[index];
+        fmt::format_to(
+                std::back_inserter(buffer),
+                "  - {:02} [address: {}, amount: {}]\n",
+                index,
+                contributor.address,
+                contributor.amount);
     }
 
     fmt::format_to(std::back_inserter(buffer), "\nThe raw blob was (32 byte chunks/line):\n\n");
@@ -107,24 +113,26 @@ static std::string log_new_service_node_tx(const NewServiceNodeTx& item, std::st
 
 static std::string log_service_node_blob(const ContractServiceNode& blob, std::string_view hex) {
     fmt::memory_buffer buffer{};
-    fmt::format_to(std::back_inserter(buffer), "Service node blob components were:\n"
-                "\n"
-                "  - next:                   {}\n"
-                "  - prev:                   {}\n"
-                "  - operator:               {}\n"
-                "  - pubkey:                 {}\n"
-                "  - leaveRequestTimestamp:  {}\n"
-                "  - deposit:                {}\n"
-                "  - num contributors:       {}\n"
-                "\n"
-                "The raw blob was (32 byte chunks/line):\n\n",
-                blob.next,
-                blob.prev,
-                blob.operatorAddr,
-                blob.pubkey,
-                blob.leaveRequestTimestamp,
-                blob.deposit,
-                blob.contributorsSize);
+    fmt::format_to(
+            std::back_inserter(buffer),
+            "Service node blob components were:\n"
+            "\n"
+            "  - next:                   {}\n"
+            "  - prev:                   {}\n"
+            "  - operator:               {}\n"
+            "  - pubkey:                 {}\n"
+            "  - leaveRequestTimestamp:  {}\n"
+            "  - deposit:                {}\n"
+            "  - num contributors:       {}\n"
+            "\n"
+            "The raw blob was (32 byte chunks/line):\n\n",
+            blob.next,
+            blob.prev,
+            blob.operatorAddr,
+            blob.pubkey,
+            blob.leaveRequestTimestamp,
+            blob.deposit,
+            blob.contributorsSize);
 
     std::string_view it = hex;
     if (it.starts_with("0x") || it.starts_with("0X"))
@@ -140,13 +148,13 @@ static std::string log_service_node_blob(const ContractServiceNode& blob, std::s
     return result;
 }
 
-TransactionStateChangeVariant getLogTransaction(const ethyl::LogEntry& log) {
-    TransactionStateChangeVariant result;
+event::StateChangeVariant getLogEvent(const ethyl::LogEntry& log) {
+    event::StateChangeVariant result;
     switch (getLogType(log)) {
-        case TransactionType::NewServiceNode: {
+        case EventType::NewServiceNode: {
             // event NewServiceNode(
             //      uint64 indexed serviceNodeID,
-            //      address recipient,
+            //      address initiator,
             //      { // struct ServiceNodeParams
             //          BN256G1.G1Point pubkey,
             //          uint256 serviceNodePubkey,
@@ -159,12 +167,11 @@ TransactionStateChangeVariant getLogTransaction(const ethyl::LogEntry& log) {
             // - address is 32 bytes, the first 12 of which are padding
             // - fee is between 0 and 10000, despite being packed into a gigantic 256-bit int.
 
-            NewServiceNodeTx& item = result.emplace<NewServiceNodeTx>();
+            auto& item = result.emplace<event::NewServiceNode>();
 
             u256 fee256, c_offset, c_len;
             std::string_view contrib_hex;
             std::tie(
-                    item.eth_address,
                     item.bls_pubkey,
                     item.sn_pubkey,
                     item.ed_signature,
@@ -173,8 +180,7 @@ TransactionStateChangeVariant getLogTransaction(const ethyl::LogEntry& log) {
                     c_len,
                     contrib_hex) =
                     tools::split_hex_into<
-                            skip<12>,
-                            address,
+                            skip<12 + 20>,
                             bls_public_key,
                             crypto::public_key,
                             crypto::ed25519_signature,
@@ -187,20 +193,22 @@ TransactionStateChangeVariant getLogTransaction(const ethyl::LogEntry& log) {
             item.fee = tools::decode_integer_be(fee256);
             if (item.fee > cryptonote::STAKING_FEE_BASIS)
                 throw oxen::traced<std::invalid_argument>{
-                    "Invalid NewServiceNode data: fee must be in [0, {}]"_format(cryptonote::STAKING_FEE_BASIS)};
+                        "Invalid NewServiceNode data: fee must be in [0, {}]"_format(
+                                cryptonote::STAKING_FEE_BASIS)};
 
             // NOTE: Verify that the number of contributors in the blob is
             // within maximum range
             uint64_t num_contributors = tools::decode_integer_be(c_len);
             if (num_contributors > oxen::MAX_CONTRIBUTORS_HF19) {
-                throw oxen::traced<std::invalid_argument>("Invalid NewServiceNode data: {}\n{}"_format(
-                        log_more_contributors_than_allowed(
-                                num_contributors,
-                                oxen::MAX_CONTRIBUTORS_HF19,
-                                item.bls_pubkey,
-                                log.blockNumber,
-                                /*index*/ std::optional<uint64_t>()),
-                        log_new_service_node_tx(item, log.data)));
+                throw oxen::traced<std::invalid_argument>(
+                        "Invalid NewServiceNode data: {}\n{}"_format(
+                                log_more_contributors_than_allowed(
+                                        num_contributors,
+                                        oxen::MAX_CONTRIBUTORS_HF19,
+                                        item.bls_pubkey,
+                                        log.blockNumber,
+                                        /*index*/ std::optional<uint64_t>()),
+                                log_new_service_node_tx(item, log.data)));
             }
 
             // NOTE: Verify that there's atleast one contributor
@@ -254,35 +262,35 @@ TransactionStateChangeVariant getLogTransaction(const ethyl::LogEntry& log) {
             oxen::log::debug(logcat, "{}", log_new_service_node_tx(item, log.data));
             break;
         }
-        case TransactionType::ServiceNodeRemovalRequest: {
+        case EventType::ServiceNodeRemovalRequest: {
             // event ServiceNodeRemovalRequest(
             //      uint64 indexed serviceNodeID,
-            //      address recipient,
+            //      address contributor,
             //      BN256G1.G1Point pubkey);
             // service node id is a topic so only address and pubkey are in data
             // address is 32 bytes (with 12-byte prefix padding)
             // pubkey is 64 bytes,
-            auto& [bls_pk] = result.emplace<ServiceNodeRemovalRequestTx>();
+            auto& [bls_pk] = result.emplace<event::ServiceNodeRemovalRequest>();
             std::tie(bls_pk) = tools::split_hex_into<skip<12 + 20>, bls_public_key>(log.data);
             break;
         }
-        case TransactionType::ServiceNodeRemoval: {
+        case EventType::ServiceNodeRemoval: {
             // event ServiceNodeRemoval(
             //      uint64 indexed serviceNodeID,
-            //      address recipient,
+            //      address operator,
             //      uint256 returnedAmount,
             //      BN256G1.G1Point pubkey);
             // service node id is a topic so only address and pubkey are in data
             // address is 32 bytes (with 12-byte prefix padding)
             // pubkey is 64 bytes
-            auto& [eth_addr, amount, bls_pk] = result.emplace<ServiceNodeRemovalTx>();
+            auto& [bls_pk, amount] = result.emplace<event::ServiceNodeRemoval>();
             u256 amt256;
-            std::tie(eth_addr, amt256, bls_pk) =
-                    tools::split_hex_into<skip<12>, eth::address, u256, bls_public_key>(log.data);
+            std::tie(amt256, bls_pk) =
+                    tools::split_hex_into<skip<12 + 20>, u256, bls_public_key>(log.data);
             amount = tools::decode_integer_be(amt256);
             break;
         }
-        case TransactionType::Other:;
+        case EventType::Other: break;
     }
     return result;
 }
@@ -468,7 +476,8 @@ ContractServiceNode RewardsContract::service_nodes(
     contrib_data = remainder2;
 
     // NOTE: Start parsing the contributors blobs
-    if (auto contributorSize = tools::decode_integer_be(contrib_len); contributorSize <= result.contributors.max_size())
+    if (auto contributorSize = tools::decode_integer_be(contrib_len);
+        contributorSize <= result.contributors.max_size())
         result.contributorsSize = contributorSize;
     else {
         oxen::log::error(
@@ -495,9 +504,13 @@ ContractServiceNode RewardsContract::service_nodes(
         } catch (const std::exception& e) {
             oxen::log::error(
                     logcat,
-                    "Failed to parse contributor/contribution [{}] for service node {} with BLS pubkey {} at height {}: {}",
-                    i, index, result.pubkey,
-                    blockNumber ? "{}"_format(*blockNumber) : "(latest)", e.what());
+                    "Failed to parse contributor/contribution [{}] for service node {} with BLS "
+                    "pubkey {} at height {}: {}",
+                    i,
+                    index,
+                    result.pubkey,
+                    blockNumber ? "{}"_format(*blockNumber) : "(latest)",
+                    e.what());
             oxen::log::debug(logcat, "{}", log_service_node_blob(result, call_result_hex));
             return result;
         }
@@ -525,20 +538,6 @@ std::vector<uint64_t> RewardsContract::get_non_signers(
     }
 
     return result;
-}
-
-std::string NewServiceNodeTx::to_string() const {
-    return "{} [bls_pubkey={}, addr={}, sn_pubkey={}]"_format(
-            state_change_name<NewServiceNodeTx>(), bls_pubkey, eth_address, sn_pubkey);
-}
-
-std::string ServiceNodeRemovalRequestTx::to_string() const {
-    return "{} [bls_pubkey={}]"_format(state_change_name<ServiceNodeRemovalRequestTx>(), bls_pubkey);
-}
-
-std::string ServiceNodeRemovalTx::to_string() const {
-    return "{} [bls_pubkey={}, addr={}, amount={}]"_format(
-            state_change_name<ServiceNodeRemovalTx>(), bls_pubkey, eth_address, amount);
 }
 
 }  // namespace eth

@@ -38,6 +38,7 @@
 #include "crypto/crypto.h"
 #include "crypto/hash.h"
 #include "cryptonote_basic_impl.h"
+#include "l2_tracker/events.h"
 #include "logging/oxen_logger.h"
 #include "serialization/binary_utils.h"
 #include "serialization/json_archive.h"
@@ -190,12 +191,12 @@ bool get_encrypted_payment_id_from_tx_extra_nonce(
         const std::string& extra_nonce, crypto::hash8& payment_id);
 bool add_burned_amount_to_tx_extra(std::vector<uint8_t>& tx_extra, uint64_t burn);
 bool add_new_service_node_to_tx_extra(
-        std::vector<uint8_t>& tx_extra, const tx_extra_ethereum_new_service_node& new_service_node);
+        std::vector<uint8_t>& tx_extra, const eth::event::NewServiceNode& new_service_node);
 bool add_service_node_removal_request_to_tx_extra(
         std::vector<uint8_t>& tx_extra,
-        const tx_extra_ethereum_service_node_removal_request& removal_request);
+        const eth::event::ServiceNodeRemovalRequest& removal_request);
 bool add_service_node_removal_to_tx_extra(
-        std::vector<uint8_t>& tx_extra, const tx_extra_ethereum_service_node_removal& removal_data);
+        std::vector<uint8_t>& tx_extra, const eth::event::ServiceNodeRemoval& removal_data);
 uint64_t get_burned_amount_from_tx_extra(const std::vector<uint8_t>& tx_extra);
 bool is_out_to_acc(
         const account_keys& acc,

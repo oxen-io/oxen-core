@@ -980,7 +980,8 @@ bool oxen_chain_generator::block_begin(oxen_blockchain_entry &entry, oxen_create
   cryptonote::block &blk   = entry.block;
   blk.major_version        = params.hf_version;
   blk.minor_version        = static_cast<uint8_t>(params.hf_version);
-  blk.height               = height;
+  if (blk.major_version == hf::hf19_reward_batching || blk.major_version >= hf::hf21_eth)
+      blk._height          = height;
   blk.timestamp            = params.timestamp;
   blk.prev_id              = get_block_hash(params.prev.block);
   blk.miner_tx.emplace();
@@ -1036,12 +1037,10 @@ bool oxen_chain_generator::block_begin(oxen_blockchain_entry &entry, oxen_create
     }
 
     miner_tx_context = cryptonote::oxen_miner_tx_context::pulse_block(cryptonote::network_type::FAKECHAIN, block_producer, params.block_leader);
-    blk.service_node_winner_key = miner_tx_context.pulse_block_producer.key;
   }
   else
   {
     miner_tx_context = cryptonote::oxen_miner_tx_context::miner_block(cryptonote::network_type::FAKECHAIN, params.miner_acc.get_keys().m_account_address, params.block_leader);
-    blk.service_node_winner_key = miner_tx_context.block_leader.key;
   }
 
   if (blk.major_version >= hf::hf10_bulletproofs &&
@@ -1207,7 +1206,7 @@ oxen_create_block_params oxen_chain_generator::next_block_params() const
   result.timestamp                = prev.block.timestamp + tools::to_seconds(get_config(cryptonote::network_type::FAKECHAIN).TARGET_BLOCK_TIME);
   result.block_weights            = last_n_block_weights(height(), cryptonote::REWARD_BLOCKS_WINDOW);
   result.hf_version               = get_hf_version_at(next_height);
-  result.block_leader             = prev.service_node_state.get_block_leader();
+  result.block_leader             = prev.service_node_state.get_next_block_leader();
   result.total_fee                = 0; // Request chain generator to calculate the fee
   return result;
 }
@@ -1523,7 +1522,8 @@ bool test_generator::construct_block_manually(
   blk.tx_hashes     = actual_params & bf_tx_hashes ? tx_hashes : std::vector<crypto::hash>();
 
   size_t height = prev_block.get_height() + 1;
-  blk.height = height;
+  if (blk.major_version == hf::hf19_reward_batching || blk.major_version >= hf::hf21_eth)
+      blk._height = height;
   uint64_t already_generated_coins = get_already_generated_coins(prev_block);
   std::vector<uint64_t> block_weights;
   get_last_n_block_weights(block_weights, get_block_hash(prev_block), cryptonote::REWARD_BLOCKS_WINDOW);

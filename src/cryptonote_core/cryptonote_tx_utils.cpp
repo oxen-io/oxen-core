@@ -35,6 +35,7 @@
 
 #include "blockchain.h"
 #include "common/apply_permutation.h"
+#include "common/exception.h"
 #include "crypto/crypto.h"
 #include "crypto/hash.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"

@@ -73,7 +73,8 @@ inline constexpr network_config config{
         .ETHEREUM_POOL_CONTRACT = "0x0000000000000000000000000000000000000000",
         // Update every ~10 minutes with an Arbitrum ~250ms block time:
         .L2_REWARD_POOL_UPDATE_BLOCKS = 10min / 250ms,
-        // The default is 30s behind with an Arbitrum ~250ms block time:
-        .L2_TRACKER_SAFE_BLOCKS = 30s / 250ms,
+        // The default is 70s behind with an Arbitrum ~250ms block time, so that pulse nodes using
+        // 1min update period will work (with a few seconds for provider and request latencies).
+        .L2_TRACKER_SAFE_BLOCKS = 70s / 250ms,
 };
 }  // namespace cryptonote::config::mainnet

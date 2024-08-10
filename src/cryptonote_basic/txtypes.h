@@ -30,6 +30,11 @@ enum class txtype : uint16_t {
     _count
 };
 
+inline constexpr bool is_l2_event_tx(txtype type) {
+    return type >= txtype::ethereum_new_service_node &&
+           type <= txtype::ethereum_service_node_removal;
+}
+
 inline constexpr std::string_view to_string(txversion v) {
     switch (v) {
         case txversion::v1: return "1"sv;

@@ -9687,7 +9687,7 @@ wallet2::request_stake_unlock_result wallet2::can_request_stake_unlock(
             }
             result.msg.append("\n\n");
 
-            uint64_t unlock_height = service_nodes::get_locked_key_image_unlock_height(
+            uint64_t unlock_height = service_nodes::get_unlock_height(
                     nettype(), node_info["registration_height"], curr_height);
             result.msg.append(
                     "You will continue receiving rewards until the service node expires at the "

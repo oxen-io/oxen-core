@@ -69,6 +69,7 @@
 #include "cryptonote_core/uptime_proof.h"
 #include "epee/net/network_throttle.hpp"
 #include "epee/string_tools.h"
+#include "l2_tracker/events.h"
 #include "logging/oxen_logger.h"
 #include "net/parse.h"
 #include "oxen/log.hpp"
@@ -749,12 +750,11 @@ namespace {
             _load_owner(ons, "owner", x.owner);
             _load_owner(ons, "backup_owner", x.backup_owner);
         }
-        void operator()(const tx_extra_ethereum_new_service_node& x) {
+        void operator()(const eth::event::NewServiceNode& x) {
             set("type", "ethereum_new_service_node");
             set("bls_pubkey", x.bls_pubkey);
-            set("eth_address", x.eth_address);
-            set("service_node_pubkey", x.service_node_pubkey);
-            set("signature", x.signature);
+            set("service_node_pubkey", x.sn_pubkey);
+            set("signature", x.ed_signature);
             set("fee", x.fee);
             auto contributors = json::array();
             for (auto& contributor : x.contributors) {
@@ -764,15 +764,14 @@ namespace {
             }
             set("contributors", contributors);
         }
-        void operator()(const tx_extra_ethereum_service_node_removal_request& x) {
+        void operator()(const eth::event::ServiceNodeRemovalRequest& x) {
             set("type", "ethereum_service_node_removal_request");
             set("bls_pubkey", x.bls_pubkey);
         }
-        void operator()(const tx_extra_ethereum_service_node_removal& x) {
+        void operator()(const eth::event::ServiceNodeRemoval& x) {
             set("type", "ethereum_service_node_removal");
-            set("eth_address", x.eth_address);
-            set("amount", x.amount);
             set("bls_pubkey", x.bls_pubkey);
+            set("returned_amount", x.returned_amount);
         }
 
         // Ignore these fields:
@@ -800,13 +799,13 @@ struct tx_info {
 };
 
 static std::unordered_map<crypto::hash, tx_info> get_pool_txs_impl(cryptonote::core& core) {
-    auto& bc = core.blockchain;
+    auto& db = core.blockchain.db();
     auto& pool = core.mempool;
 
     std::unordered_map<crypto::hash, tx_info> tx_infos;
-    tx_infos.reserve(bc.get_txpool_tx_count());
+    tx_infos.reserve(db.get_txpool_tx_count());
 
-    bc.for_all_txpool_txes(
+    db.for_all_txpool_txes(
             [&tx_infos, &pool](
                     const crypto::hash& txid, const txpool_tx_meta_t& meta, const std::string* bd) {
                 transaction tx;

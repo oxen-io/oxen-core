@@ -6,6 +6,7 @@
 #include <concepts>
 #include <thread>
 #include <utility>
+#include <variant>
 
 #include "common/bigint.h"
 #include "common/guts.h"
@@ -16,6 +17,7 @@
 #include "cryptonote_config.h"
 #include "cryptonote_core/cryptonote_core.h"
 #include "fmt/color.h"
+#include "l2_tracker/events.h"
 #include "logging/oxen_logger.h"
 
 namespace eth {
@@ -30,9 +32,6 @@ static inline uint64_t reward_height(uint64_t l2_height, uint64_t reward_update_
 
 L2Tracker::L2Tracker(cryptonote::core& core_, std::chrono::milliseconds update_frequency) :
         core{core_}, rewards_contract{core.get_nettype(), provider} {
-
-    if (core.get_nettype() == cryptonote::network_type::LOCALDEV)
-        MAX_HIST_FETCH = 4;
 
     // We initially add this on a tiny interval so that it fires almost immediately after the oxenmq
     // object starts (which hasn't happened yet when we get constructed).  In the first call, we
@@ -56,36 +55,17 @@ L2Tracker::L2Tracker(cryptonote::core& core_, std::chrono::milliseconds update_f
             dedicated_thread);
 }
 
-void L2Tracker::prune_old_states(bool to_fetch_limit) {
-    auto hist_size = to_fetch_limit ? std::min(MAX_HIST_FETCH, HIST_SIZE) : HIST_SIZE;
-    if (latest_height < hist_size)
-        hist_size = latest_height;
-    auto min_to_keep = latest_height - hist_size + 1;
-    if (earliest_height >= min_to_keep)
-        return;
-    size_t before = state_history.size();
-    if (earliest_height > synced_height) {
-        // We're pruning everything we have!
-        state_history.clear();
-        earliest_height = 0;
-        synced_height = 0;
-    } else {
-        auto erase_until = state_history.lower_bound(min_to_keep);
-        if (erase_until != state_history.end())
-            state_history.erase(state_history.begin(), erase_until);
-    }
-    earliest_height = min_to_keep;
-    log::debug(
-            logcat,
-            "Pruned {} expired of {} L2 state transactions; state range is now {}-{}",
-            before - state_history.size(),
-            before,
-            earliest_height,
-            synced_height);
+void L2Tracker::prune_old_states() {
+    const auto expiry = latest_height - std::min(latest_height, HIST_SIZE);
+    recent_regs.expire(expiry);
+    recent_unlocks.expire(expiry);
+    recent_removals.expire(expiry);
+    auto reward_exp = reward_height(expiry, core.get_net_config().L2_REWARD_POOL_UPDATE_BLOCKS);
+    reward_rate.erase(reward_rate.begin(), reward_rate.lower_bound(reward_exp));
 }
 
 void L2Tracker::update_state() {
-    // TODO: also check chain id?
+    // TODO: also check chain id?  Perhaps just one on first startup?
 
     std::lock_guard lock{mutex};
     if (update_in_progress)
@@ -238,8 +218,8 @@ void L2Tracker::update_height() {
             std::lock_guard lock{mutex};
             if (height) {
                 latest_height = *height;
-                prune_old_states();
                 log::debug(logcat, "L2 provider height updated to {}", *height);
+                prune_old_states();
             } else {
                 log::warning(logcat, "Failed to retrieve current height from provider");
             }
@@ -259,104 +239,96 @@ void L2Tracker::update_height() {
 }
 
 void L2Tracker::update_rewards(std::optional<std::forward_list<uint64_t>> more) {
-
-    const uint64_t reward_pool_update_blocks =
-            get_config(core.get_nettype()).L2_REWARD_POOL_UPDATE_BLOCKS;
-
-    // NOTE: Initial case of update_rewards from all entry-points has a nullopt
-    // for `more`, e.g. this branch executes. After calling into
-    // callReadFunctionJSONAsync to get the reward rate, `more` is populated and
-    // this function is called again.
+    // Make sure we have the last 3 L2_REWARD_POOL_UPDATE_BLOCKS reward values on hand so that we
+    // can be called on at any time as a pulse validator to validate the l2_reward amount with a
+    // safety margin.  We get called with nullopt initially to determine which heights we need, then
+    // recurse with more set to the list of heights we need to retrieve.  For each one, we retrieve,
+    // remove it from the list, then recurse (as needed) until more is empty.
     if (!more) {
         const auto reward_update_blocks = core.get_net_config().L2_REWARD_POOL_UPDATE_BLOCKS;
-        std::shared_lock lock{mutex};
-        // Check that we have the rewards for all heights we need to cover both the current and the
-        // last MAX_HIST_FETCH L2 block heights.
-        auto r_height = reward_height(latest_height, reward_update_blocks);
-        uint64_t earliest_height_to_get_rewards =
-                latest_height - std::min(latest_height, MAX_HIST_FETCH);
-        log::debug(
-                logcat,
-                "Earliest height to get rewards {} (reward height is {})",
-                earliest_height_to_get_rewards,
-                r_height);
-        do {
-            if (!reward_rate.count(r_height)) {
-                if (!more)
-                    more.emplace();
-                more->push_front(r_height);
-                oxen::log::debug(logcat, "Pushed height: {}", r_height);
+        std::forward_list<uint64_t> need;
+        {
+            std::shared_lock lock{mutex};
+            for (auto r_height = reward_height(
+                         latest_height - std::min(latest_height, reward_update_blocks * 2),
+                         reward_update_blocks);
+                 r_height <= latest_height;
+                 r_height += reward_update_blocks) {
+                if (!reward_rate.count(r_height))
+                    need.push_front(r_height);
             }
-            r_height -= std::min(reward_update_blocks, r_height);
-        } while (r_height > earliest_height_to_get_rewards);
+            log::debug(
+                    logcat, "Need to fetch reward rate for heights: {{{}}}", fmt::join(need, ","));
+        }
+
+        if (!need.empty())
+            update_rewards(std::move(need));
+        else
+            update_logs();
+        return;
     }
 
-    if (more && !more->empty()) {
-        std::shared_lock lock{mutex};
-        auto r_height = more->front();
-        more->pop_front();
-        oxen::log::debug(logcat, "Starting query for reward height {}", r_height);
-        provider.callReadFunctionJSONAsync(
-                contract::pool_address(core.get_nettype()),
-                "0x{:x}"_format(contract::call::Pool_rewardRate),
-                [this, r_height, more = std::move(more), reward_pool_update_blocks](
-                        std::optional<nlohmann::json> result) mutable {
-                    if (!result)
-                        log::warning(logcat, "Failed to fetch reward rate for height {}", r_height);
-                    else if (!result->is_string())
-                        log::warning(logcat, "Unexpected reward rate result: {}", result->dump());
-                    else {
-                        // NOTE: In certain conditions (like when intialising an empty reward pool)
-                        // the returned reward rate can be "0x" which we handle as 0.
-                        std::array<std::byte, 32> rate256{};
-                        std::span<const char> rate256_hex =
-                                tools::hex_span(result->get<std::string_view>());
+    assert(!more->empty());
+    std::shared_lock lock{mutex};
+    auto r_height = more->front();
+    more->pop_front();
+    oxen::log::debug(logcat, "Starting query for reward height {}", r_height);
+    provider.callReadFunctionJSONAsync(
+            contract::pool_address(core.get_nettype()),
+            "0x{:x}"_format(contract::call::Pool_rewardRate),
+            [this, r_height, more = std::move(more)](std::optional<nlohmann::json> result) mutable {
+                if (!result)
+                    log::warning(logcat, "Failed to fetch reward rate for height {}", r_height);
+                else if (!result->is_string())
+                    log::warning(logcat, "Unexpected reward rate result: {}", result->dump());
+                else {
+                    // NOTE: In certain conditions (like when intialising an empty reward pool)
+                    // the returned reward rate can be "0x" which we handle as 0.
+                    std::array<std::byte, 32> rate256{};
+                    std::span<const char> rate256_hex =
+                            tools::hex_span(result->get<std::string_view>());
 
-                        if (rate256_hex.empty() ||
-                            tools::try_load_from_hex_guts(rate256_hex, rate256)) {
-                            try {
-                                auto reward = tools::decode_integer_be(rate256);
-                                {
-                                    std::lock_guard lock{mutex};
-                                    reward_rate[r_height] = reward;
-                                }
-                                log::debug(
-                                        logcat,
-                                        "Block reward for L2 heights {}-{} is {}",
-                                        r_height,
-                                        r_height + reward_pool_update_blocks - 1,
-                                        reward);
-                            } catch (const std::exception& e) {
-                                log::warning(logcat, "Failed to parse reward rate: {}", e.what());
+                    if (rate256_hex.empty() ||
+                        tools::try_load_from_hex_guts(rate256_hex, rate256)) {
+                        try {
+                            auto reward = tools::decode_integer_be(rate256);
+                            {
+                                std::lock_guard lock{mutex};
+                                reward_rate[r_height] = reward;
                             }
-                        } else {
-                            log::warning(
+                            log::debug(
                                     logcat,
-                                    "Unparseable reward rate result: {} {}",
-                                    result->get<std::string_view>(),
-                                    std::string_view(rate256_hex.data(), rate256_hex.size()));
+                                    "Contract reward rate for L2 heights {}-{} is {}",
+                                    r_height,
+                                    r_height + core.get_net_config().L2_REWARD_POOL_UPDATE_BLOCKS -
+                                            1,
+                                    reward);
+                        } catch (const std::exception& e) {
+                            log::warning(logcat, "Failed to parse reward rate: {}", e.what());
                         }
+                    } else {
+                        log::warning(
+                                logcat,
+                                "Unparseable reward rate result: {} {}",
+                                result->get<std::string_view>(),
+                                std::string_view(rate256_hex.data(), rate256_hex.size()));
                     }
+                }
 
-                    oxen::log::debug(
-                            logcat,
-                            "Finished querying reward for height {}, there is more {}",
-                            r_height,
-                            more->empty() ? "no" : "yes");
-                    if (!more->empty())
-                        update_rewards(std::move(more));
-                    else
-                        update_logs();
-                },
-                "0x{:x}"_format(r_height));
-    } else {
-        oxen::log::debug(logcat, "No more rewards to walk, updating logs");
-        update_logs();
-    }
+                oxen::log::debug(
+                        logcat,
+                        "Finished querying reward for height {}, there is more: {}",
+                        r_height,
+                        more->empty() ? "no" : "yes");
+                if (!more->empty())
+                    update_rewards(std::move(more));
+                else
+                    update_logs();
+            },
+            "0x{:x}"_format(r_height));
 }
 
-void L2Tracker::add_to_mempool(
-        uint64_t l2_height, const TransactionStateChangeVariant& tx_variant) {
+void L2Tracker::add_to_mempool(uint64_t l2_height, const event::StateChangeVariant& tx_variant) {
     if (tx_variant.index() == 0)  // monostate, i.e. not a state change log
         return;
 
@@ -368,32 +340,15 @@ void L2Tracker::add_to_mempool(
 
     std::visit(
             [&tx]<typename T>(const T& arg) {
-                if constexpr (std::is_same_v<T, NewServiceNodeTx>) {
+                if constexpr (std::is_same_v<T, event::NewServiceNode>) {
                     tx.type = txtype::ethereum_new_service_node;
-                    std::vector<tx_extra_ethereum_contributor> contributors;
-                    for (const auto& contributor : arg.contributors)
-                        contributors.emplace_back(contributor.addr, contributor.amount);
-
-                    tx_extra_ethereum_new_service_node new_service_node = {
-                            0,
-                            arg.bls_pubkey,
-                            arg.eth_address,
-                            arg.sn_pubkey,
-                            arg.ed_signature,
-                            arg.fee,
-                            contributors};
-                    add_new_service_node_to_tx_extra(tx.extra, new_service_node);
-
-                } else if constexpr (std::is_same_v<T, ServiceNodeRemovalRequestTx>) {
+                    add_new_service_node_to_tx_extra(tx.extra, arg);
+                } else if constexpr (std::is_same_v<T, event::ServiceNodeRemovalRequest>) {
                     tx.type = txtype::ethereum_service_node_removal_request;
-                    tx_extra_ethereum_service_node_removal_request removal_request = {
-                            0, arg.bls_pubkey};
-                    add_service_node_removal_request_to_tx_extra(tx.extra, removal_request);
-                } else if constexpr (std::is_same_v<T, ServiceNodeRemovalTx>) {
+                    add_service_node_removal_request_to_tx_extra(tx.extra, arg);
+                } else if constexpr (std::is_same_v<T, event::ServiceNodeRemoval>) {
                     tx.type = txtype::ethereum_service_node_removal;
-                    tx_extra_ethereum_service_node_removal removal_data = {
-                            0, arg.eth_address, arg.amount, arg.bls_pubkey};
-                    add_service_node_removal_to_tx_extra(tx.extra, removal_data);
+                    add_service_node_removal_to_tx_extra(tx.extra, arg);
                 } else {
                     static_assert(
                             std::is_same_v<T, std::monostate>,
@@ -442,24 +397,8 @@ void L2Tracker::update_logs() {
         oxen::log::trace(logcat, "L2Tracker upgrading shared lock to exclusive");
         auto ex_lock = tools::upgrade_lock(lock);
         update_in_progress = false;
-        oxen::log::debug(logcat, "L2 update step finished");
+        oxen::log::debug(logcat, "L2 update logs finished; nothing to update");
         return;
-    }
-
-    if (latest_height >= from + MAX_HIST_FETCH) {
-        // We are too far behind to fetch the full HIST_SIZE, so prune anything more than
-        // MAX_HIST_FETCH ago and resync from there (so that we don't leave a gap).  (This is also
-        // our "starting up" case to only fetch MAX_HIST_FETCH).
-        oxen::log::debug(
-                logcat,
-                "Begin pruning of state {} >= ({} + {})",
-                latest_height,
-                from,
-                MAX_HIST_FETCH);
-        auto ex_lock = tools::upgrade_lock(lock);
-        prune_old_states(true);
-        from = latest_height - MAX_HIST_FETCH + 1;
-        oxen::log::trace(logcat, "End pruning of old states", from);
     }
 
     uint64_t to = std::min(latest_height, from + GETLOGS_MAX_BLOCKS);
@@ -512,18 +451,20 @@ void L2Tracker::update_logs() {
 
                     for (const auto& log : *logs) {
                         if (!log.blockNumber) {
-                            log::error(
-                                    logcat,
-                                    "Got back Log item from L2 provider without a blockNumber!");
+                            log::error(logcat, "Log item from L2 provider without a blockNumber!");
                             continue;
                         }
                         try {
-                            auto tx = getLogTransaction(log);
-                            if (tx.index() != 0) {
-                                auto& state_txs = state_history[*log.blockNumber];
-                                state_txs.emplace_back(std::move(tx));
-                                add_to_mempool(*log.blockNumber, state_txs.back());
-                            }
+                            auto tx = getLogEvent(log);
+                            add_to_mempool(*log.blockNumber, tx);
+                            if (auto* reg = std::get_if<event::NewServiceNode>(&tx))
+                                recent_regs.add(std::move(*reg), *log.blockNumber);
+                            else if (auto* ul = std::get_if<event::ServiceNodeRemovalRequest>(&tx))
+                                recent_unlocks.add(std::move(*ul), *log.blockNumber);
+                            else if (auto* removal = std::get_if<event::ServiceNodeRemoval>(&tx))
+                                recent_removals.add(std::move(*removal), *log.blockNumber);
+                            else
+                                assert(tx.index() == 0);
                         } catch (const std::exception& e) {
                             log::error(
                                     logcat,
@@ -536,16 +477,15 @@ void L2Tracker::update_logs() {
 
                     synced_height = to;
 
-                    if (to < latest_height)
+                    if (to >= latest_height) {
+                        update_in_progress = false;
+                        oxen::log::debug(logcat, "L2 update step finished");
+                    } else {
                         keep_going = true;
+                    }
                 }
                 if (keep_going)
                     update_logs();
-                else {
-                    std::lock_guard lock{mutex};
-                    update_in_progress = false;
-                    oxen::log::debug(logcat, "L2 update step finished");
-                }
             });
 }
 
@@ -556,58 +496,6 @@ std::optional<uint64_t> L2Tracker::get_reward_rate(uint64_t height) const {
         it != reward_rate.end())
         return it->second;
     return std::nullopt;
-}
-
-TransactionReviewSession L2Tracker::initialize_review(uint64_t l2_height) const {
-    std::shared_lock lock{mutex};
-
-    // NOTE: In local devnet we bootstrap from height 0 which means it's
-    // possible to get a l2_height and confirmed height that can be equal
-    // (e.g l2 = confirmed = 0). If this is the case adding +1 to the confirmed
-    // height will break the bounds check for `active`.
-    uint64_t start_height = l2_height == confirmed_height ? l2_height : confirmed_height + 1;
-
-    TransactionReviewSession session;
-    session.active = provider.numClients() > 0 && start_height <= l2_height &&
-                     start_height >= earliest_height && l2_height <= synced_height;
-
-    if (!session) {
-        log::debug(
-                logcat,
-                "Unable to initialize TransactionReviewSession: L2 block range [{}, {}] is not "
-                "inside our synced L2 range [{}, {}]",
-                start_height,
-                l2_height,
-                earliest_height,
-                synced_height);
-        return session;
-    }
-
-    // FIXME: we shouldn't have an L2Tracker at all without clients.
-    for (auto it = state_history.lower_bound(start_height),
-              end = state_history.upper_bound(l2_height);
-         it != end;
-         ++it) {
-        const auto& [height, state_changes] = *it;
-        for (const auto& transactionVariant : state_changes) {
-            std::visit(
-                    [&session]<typename T>(const T& arg) {
-                        if constexpr (std::is_same_v<T, NewServiceNodeTx>) {
-                            session.new_service_nodes.push_back(arg);
-                        } else if constexpr (std::is_same_v<T, ServiceNodeRemovalRequestTx>) {
-                            session.removal_requests.push_back(arg);
-                        } else if constexpr (std::is_same_v<T, ServiceNodeRemovalTx>) {
-                            session.removals.push_back(arg);
-                        } else {
-                            static_assert(
-                                    std::is_same_v<T, std::monostate>,
-                                    "unhandled state change type");
-                        }
-                    },
-                    transactionVariant);
-        }
-    }
-    return session;
 }
 
 uint64_t L2Tracker::get_latest_height() const {
@@ -621,88 +509,6 @@ uint64_t L2Tracker::get_safe_height() const {
     return config.L2_TRACKER_SAFE_BLOCKS >= latest_height
                  ? 0
                  : latest_height - config.L2_TRACKER_SAFE_BLOCKS;
-}
-
-uint64_t L2Tracker::get_confirmed_height() const {
-    std::shared_lock lock{mutex};
-    return confirmed_height;
-}
-
-void L2Tracker::set_confirmed_height(uint64_t ethereum_block_height) {
-    std::lock_guard lock{mutex};
-    confirmed_height = ethereum_block_height;
-}
-
-template <typename Tx, std::predicate<const Tx&> Match>
-static bool process_review_tx(bool active, std::list<Tx>& txes, Match match) {
-    if (!active) {
-        log::debug(
-                logcat,
-                "ignoring {} review; review session is not active",
-                state_change_name<Tx>());
-        return true;
-    }
-
-    auto it = std::find_if(txes.begin(), txes.end(), std::move(match));
-    if (it != txes.end()) {
-        log::debug(logcat, "review session matched {}", *it);
-        txes.erase(it);
-        return true;
-    }
-
-    return false;
-}
-
-bool TransactionReviewSession::processNewServiceNodeTx(
-        const bls_public_key& bls_pubkey,
-        const address& eth_address,
-        const crypto::public_key& service_node_pubkey,
-        std::string& fail_reason) {
-    /// FIXME XXX TODO -- these should be verifying contributors and fee as well
-    if (process_review_tx(active, new_service_nodes, [&](const auto& x) {
-            return x.bls_pubkey == bls_pubkey && x.eth_address == eth_address &&
-                   x.sn_pubkey == service_node_pubkey;
-        }))
-        return true;
-
-    fail_reason = fmt::format(
-            "New Service Node Transaction not found bls_pubkey: {}, eth_address: {}, "
-            "sn_pubkey: {}",
-            bls_pubkey,
-            eth_address,
-            service_node_pubkey);
-    log::debug(logcat, "{}", fail_reason);
-    return false;
-}
-
-bool TransactionReviewSession::processServiceNodeRemovalRequestTx(
-        const bls_public_key& bls_pubkey, std::string& fail_reason) {
-    if (process_review_tx(active, removal_requests, [&](const auto& x) {
-            return x.bls_pubkey == bls_pubkey;
-        }))
-        return true;
-
-    fail_reason = "Leave Request Transaction not found bls_pubkey: {}"_format(bls_pubkey);
-    log::debug(logcat, "{}", fail_reason);
-    return false;
-}
-
-bool TransactionReviewSession::processServiceNodeRemovalTx(
-        const address& eth_address,
-        const uint64_t amount,
-        const bls_public_key& bls_pubkey,
-        std::string& fail_reason) {
-    if (process_review_tx(active, removals, [&](const auto& x) {
-            return x.bls_pubkey == bls_pubkey && x.eth_address == eth_address && x.amount == amount;
-        }))
-        return true;
-
-    fail_reason = "Exit Transaction not found bls_pubkey: {}"_format(bls_pubkey);
-    return false;
-}
-
-bool TransactionReviewSession::finalize() {
-    return !active || (new_service_nodes.empty() && removal_requests.empty() && removals.empty());
 }
 
 std::vector<uint64_t> L2Tracker::get_non_signers(
@@ -719,4 +525,15 @@ RewardsContract::ServiceNodeIDs L2Tracker::get_all_service_node_ids(
     RewardsContract::ServiceNodeIDs result = rewards_contract.all_service_node_ids(height);
     return result;
 }
+
+bool L2Tracker::get_vote_for(const event::NewServiceNode& reg) const {
+    return recent_regs.contains(reg);
+}
+bool L2Tracker::get_vote_for(const event::ServiceNodeRemoval& removal) const {
+    return recent_removals.contains(removal);
+}
+bool L2Tracker::get_vote_for(const event::ServiceNodeRemovalRequest& unlock) const {
+    return recent_unlocks.contains(unlock);
+}
+
 }  // namespace eth

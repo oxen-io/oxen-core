@@ -718,7 +718,6 @@ class Blockchain {
     bool check_tx_inputs(
             transaction& tx,
             tx_verification_context& tvc,
-            eth::TransactionReviewSession* ethereum_transaction_review_session,
             crypto::hash& max_used_block_id,
             uint64_t& pmax_used_block_height,
             std::unordered_set<crypto::key_image>* key_image_conflicts = nullptr,
@@ -1071,19 +1070,6 @@ class Blockchain {
     std::vector<std::pair<block_extended_info, std::vector<crypto::hash>>> get_alternative_chains()
             const;
 
-    void add_txpool_tx(
-            const crypto::hash& txid, const std::string& blob, const txpool_tx_meta_t& meta);
-    void update_txpool_tx(const crypto::hash& txid, const txpool_tx_meta_t& meta);
-    void remove_txpool_tx(const crypto::hash& txid);
-    uint64_t get_txpool_tx_count(bool include_unrelayed_txes = true) const;
-    bool get_txpool_tx_meta(const crypto::hash& txid, txpool_tx_meta_t& meta) const;
-    bool get_txpool_tx_blob(const crypto::hash& txid, std::string& bd) const;
-    std::string get_txpool_tx_blob(const crypto::hash& txid) const;
-    bool for_all_txpool_txes(
-            std::function<bool(const crypto::hash&, const txpool_tx_meta_t&, const std::string*)>,
-            bool include_blob = false,
-            bool include_unrelayed_txes = true) const;
-
     bool is_within_compiled_block_hash_area(uint64_t height) const;
     bool is_within_compiled_block_hash_area() const {
         return is_within_compiled_block_hash_area(m_db->height());
@@ -1176,6 +1162,8 @@ class Blockchain {
      */
     void flush_invalid_blocks();
 
+    tx_memory_pool& tx_pool;
+
 #ifndef IN_UNIT_TESTS
   private:
 #endif
@@ -1223,7 +1211,6 @@ class Blockchain {
 
     std::unique_ptr<BlockchainDB> m_db;
 
-    tx_memory_pool& m_tx_pool;
     ons::name_system_db m_ons_db;
     std::unique_ptr<cryptonote::BlockchainSQLite> m_sqlite_db;
 
@@ -1403,7 +1390,6 @@ class Blockchain {
     bool check_tx_inputs(
             transaction& tx,
             tx_verification_context& tvc,
-            eth::TransactionReviewSession* ethereum_transaction_review_session = nullptr,
             uint64_t* pmax_used_block_height = nullptr,
             std::unordered_set<crypto::key_image>* key_image_conflicts = nullptr);
 

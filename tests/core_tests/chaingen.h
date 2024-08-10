@@ -840,7 +840,7 @@ public:
     if (!add_to_blockchain_was_valid(
                 fmt::format(
                         "block {} hf{} w/ checkpoint",
-                        block.height,
+                        block.get_height(),
                         static_cast<size_t>(block.major_version)),
                 entry.can_be_added_to_blockchain,
                 added,
@@ -868,7 +868,7 @@ public:
     bool added = !bvc.m_verifivation_failed;
     if (!add_to_blockchain_was_valid(
                 fmt::format(
-                        "block {} hf{}", block.height, static_cast<size_t>(block.major_version)),
+                        "block {} hf{}", block.get_height(), static_cast<size_t>(block.major_version)),
                 entry.can_be_added_to_blockchain,
                 added,
                 entry.fail_msg)) {
