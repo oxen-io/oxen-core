@@ -40,6 +40,7 @@
 #include <vector>
 
 #include "crypto/hash.h"
+#include "cryptonote_protocol_defs.h"
 
 #undef OXEN_DEFAULT_LOG_CATEGORY
 #define OXEN_DEFAULT_LOG_CATEGORY "cn.block_queue"

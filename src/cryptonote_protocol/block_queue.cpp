@@ -37,7 +37,6 @@
 #include <vector>
 
 #include "common/pruning.h"
-#include "cryptonote_protocol_defs.h"
 #include "epee/string_tools.h"
 
 namespace std {
