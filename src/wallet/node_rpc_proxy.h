@@ -81,14 +81,14 @@ class NodeRPCProxy {
         try {
             result = m_http_client.json_rpc<RPC>(RPC::names().front(), req);
         } catch (const std::exception& e) {
-            log::error(globallogcat, e.what());
+            log::error(globallogcat, "{}", e.what());
             throw;
         }
         if (result.status != cryptonote::rpc::STATUS_OK) {
             std::string error = "Request for " + std::string{RPC::names().front()} + " failed: " +
                                 (result.status == cryptonote::rpc::STATUS_BUSY ? "daemon is busy"
                                                                                : result.status);
-            log::error(globallogcat, error);
+            log::error(globallogcat, "{}", error);
             throw oxen::traced<std::runtime_error>{error};
         }
 

@@ -92,7 +92,7 @@ class rpc_command_executor final {
         } catch (...) {
         }
         if (!error.empty())
-            tools::fail_msg_writer(error);
+            tools::fail_msg_writer("{}", error);
         return false;
     }
 
