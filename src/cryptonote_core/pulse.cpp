@@ -1662,7 +1662,7 @@ namespace {
         if (timed_out || received) {
             const auto prefix = log_prefix(context);
             if (received) {
-                cryptonote::block const& block = context.transient.wait_for_block_template.block;
+                cryptonote::block& block = context.transient.wait_for_block_template.block;
 
                 // Before we sign off on the block make sure that we support the inclusion of any
                 // eth state change transactions by making sure we have them in our pool *and* that
