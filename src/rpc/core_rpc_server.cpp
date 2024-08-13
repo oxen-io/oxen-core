@@ -752,6 +752,7 @@ namespace {
         }
         void operator()(const eth::event::NewServiceNode& x) {
             set("type", "ethereum_new_service_node");
+            set("l2_height", x.l2_height);
             set("bls_pubkey", x.bls_pubkey);
             set("service_node_pubkey", x.sn_pubkey);
             set("signature", x.ed_signature);
@@ -766,10 +767,12 @@ namespace {
         }
         void operator()(const eth::event::ServiceNodeRemovalRequest& x) {
             set("type", "ethereum_service_node_removal_request");
+            set("l2_height", x.l2_height);
             set("bls_pubkey", x.bls_pubkey);
         }
         void operator()(const eth::event::ServiceNodeRemoval& x) {
             set("type", "ethereum_service_node_removal");
+            set("l2_height", x.l2_height);
             set("bls_pubkey", x.bls_pubkey);
             set("returned_amount", x.returned_amount);
         }

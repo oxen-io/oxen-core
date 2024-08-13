@@ -31,7 +31,13 @@ bool validate_event_tx(
         return false;
     }
     Event evt;
-    return extract_event(tx, evt, reason);
+    if (!extract_event(tx, evt, reason))
+        return false;
+    if (evt.l2_height == 0) {
+        reason = "{} tx's L2 event is missing l2_height"_format(tx);
+        return false;
+    }
+    return true;
 }
 
 /// Extract the state change event details from a transaction.  If no state change is present in the

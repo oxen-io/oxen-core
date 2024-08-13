@@ -150,6 +150,12 @@ static std::string log_service_node_blob(const ContractServiceNode& blob, std::s
 
 event::StateChangeVariant getLogEvent(const ethyl::LogEntry& log) {
     event::StateChangeVariant result;
+    uint64_t l2_height = log.blockNumber.value_or(0);
+    if (l2_height == 0) {
+        log::warning(logcat, "Received L2 event without a block number; ignoring");
+        return result;
+    }
+
     switch (getLogType(log)) {
         case EventType::NewServiceNode: {
             // event NewServiceNode(
@@ -168,6 +174,7 @@ event::StateChangeVariant getLogEvent(const ethyl::LogEntry& log) {
             // - fee is between 0 and 10000, despite being packed into a gigantic 256-bit int.
 
             auto& item = result.emplace<event::NewServiceNode>();
+            item.l2_height = l2_height;
 
             u256 fee256, c_offset, c_len;
             std::string_view contrib_hex;
@@ -270,8 +277,10 @@ event::StateChangeVariant getLogEvent(const ethyl::LogEntry& log) {
             // service node id is a topic so only address and pubkey are in data
             // address is 32 bytes (with 12-byte prefix padding)
             // pubkey is 64 bytes,
-            auto& [bls_pk] = result.emplace<event::ServiceNodeRemovalRequest>();
-            std::tie(bls_pk) = tools::split_hex_into<skip<12 + 20>, bls_public_key>(log.data);
+            auto& item = result.emplace<event::ServiceNodeRemovalRequest>();
+            item.l2_height = l2_height;
+            std::tie(item.bls_pubkey) =
+                    tools::split_hex_into<skip<12 + 20>, bls_public_key>(log.data);
             break;
         }
         case EventType::ServiceNodeRemoval: {
@@ -283,11 +292,12 @@ event::StateChangeVariant getLogEvent(const ethyl::LogEntry& log) {
             // service node id is a topic so only address and pubkey are in data
             // address is 32 bytes (with 12-byte prefix padding)
             // pubkey is 64 bytes
-            auto& [bls_pk, amount] = result.emplace<event::ServiceNodeRemoval>();
+            auto& item = result.emplace<event::ServiceNodeRemoval>();
+            item.l2_height = l2_height;
             u256 amt256;
-            std::tie(amt256, bls_pk) =
+            std::tie(amt256, item.bls_pubkey) =
                     tools::split_hex_into<skip<12 + 20>, u256, bls_public_key>(log.data);
-            amount = tools::decode_integer_be(amt256);
+            item.returned_amount = tools::decode_integer_be(amt256);
             break;
         }
         case EventType::Other: break;

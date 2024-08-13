@@ -3,7 +3,6 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
-#include <tuple>
 #include <variant>
 #include <vector>
 
@@ -16,7 +15,15 @@ using namespace std::literals;
 
 namespace eth::event {
 
-struct L2StateChange {};
+struct L2StateChange {
+    uint64_t l2_height = 0;
+
+    std::strong_ordering operator<=>(const L2StateChange&) const = default;
+
+  protected:
+    L2StateChange() = default;
+    L2StateChange(uint64_t l2_height) : l2_height{l2_height} {}
+};
 
 struct Contributor {
     eth::address address;
@@ -31,19 +38,28 @@ struct Contributor {
     }
 };
 
-// TODO FIXME: these events are problematic when embedding into a transaction because if you attempt
-// to submit the same details again (i.e. re-registering an expired SN at a later point with same
-// keys/signature/fee/contributors) you'll have identical data and serialization and thus an
-// identical (and duplicate!) tx hash.
-//
-// Perhaps including the l2_height in L2StateChange & serialization to address this?
-
 struct NewServiceNode : L2StateChange {
-    crypto::public_key sn_pubkey;
-    bls_public_key bls_pubkey;
-    crypto::ed25519_signature ed_signature;
-    uint64_t fee;
+    crypto::public_key sn_pubkey = crypto::null<crypto::public_key>;
+    bls_public_key bls_pubkey = crypto::null<bls_public_key>;
+    crypto::ed25519_signature ed_signature = crypto::null<crypto::ed25519_signature>;
+    uint64_t fee = 0;
     std::vector<Contributor> contributors;
+
+    NewServiceNode() = default;
+    NewServiceNode(
+            uint64_t l2_height,
+            crypto::public_key sn_pubkey,
+            bls_public_key bls_pubkey,
+            crypto::ed25519_signature ed_signature,
+            uint64_t fee,
+            std::vector<Contributor> contributors) :
+
+            L2StateChange{l2_height},
+            sn_pubkey{std::move(sn_pubkey)},
+            bls_pubkey{std::move(bls_pubkey)},
+            ed_signature{std::move(ed_signature)},
+            fee{fee},
+            contributors{std::move(contributors)} {}
 
     std::string to_string() const {
         return "{} [sn_pubkey={}, bls_pubkey={}]"_format(description, sn_pubkey, bls_pubkey);
@@ -53,6 +69,7 @@ struct NewServiceNode : L2StateChange {
     void serialize_value(Archive& ar) {
         uint8_t version = 0;
         field_varint(ar, "v", version);
+        field_varint(ar, "l2_height", l2_height);
         field(ar, "service_node_pubkey", sn_pubkey);
         field(ar, "bls_pubkey", bls_pubkey);
         field(ar, "signature", ed_signature);
@@ -60,35 +77,29 @@ struct NewServiceNode : L2StateChange {
         field(ar, "contributors", contributors);
     }
 
-  private:
-    auto compare_tuple() const {
-        return std::tie(bls_pubkey, sn_pubkey, ed_signature, fee, contributors);
-    }
-
-  public:
-    std::strong_ordering operator<=>(const NewServiceNode& o) const {
-        return compare_tuple() <=> o.compare_tuple();
-    }
-    bool operator==(const NewServiceNode& o) const { return *this <=> o == 0; }
+    std::strong_ordering operator<=>(const NewServiceNode& o) const = default;
 
     static constexpr cryptonote::txtype txtype = cryptonote::txtype::ethereum_new_service_node;
     static constexpr std::string_view description = "new service node"sv;
 };
 
 struct ServiceNodeRemovalRequest : L2StateChange {
-    bls_public_key bls_pubkey;
+    bls_public_key bls_pubkey = crypto::null<bls_public_key>;
+
+    ServiceNodeRemovalRequest() = default;
+    ServiceNodeRemovalRequest(uint64_t l2_height, bls_public_key bls_pubkey) :
+            L2StateChange{l2_height}, bls_pubkey{std::move(bls_pubkey)} {}
 
     std::string to_string() const { return "{} [bls_pubkey={}]"_format(description, bls_pubkey); }
 
-    std::strong_ordering operator<=>(const ServiceNodeRemovalRequest& o) const {
-        return bls_pubkey <=> o.bls_pubkey;
-    }
-    bool operator==(const ServiceNodeRemovalRequest& o) const { return *this <=> o == 0; }
+  public:
+    std::strong_ordering operator<=>(const ServiceNodeRemovalRequest& o) const = default;
 
     template <class Archive>
     void serialize_value(Archive& ar) {
         uint8_t version = 0;
-        field(ar, "v", version);
+        field_varint(ar, "v", version);
+        field_varint(ar, "l2_height", l2_height);
         field(ar, "bls_pubkey", bls_pubkey);
     }
 
@@ -98,22 +109,26 @@ struct ServiceNodeRemovalRequest : L2StateChange {
 };
 
 struct ServiceNodeRemoval : L2StateChange {
-    bls_public_key bls_pubkey;
-    uint64_t returned_amount;
+    bls_public_key bls_pubkey = crypto::null<bls_public_key>;
+    uint64_t returned_amount = 0;
+
+    ServiceNodeRemoval() = default;
+    ServiceNodeRemoval(uint64_t l2_height, bls_public_key bls_pubkey, uint64_t returned_amount) :
+            L2StateChange{l2_height},
+            bls_pubkey{std::move(bls_pubkey)},
+            returned_amount{returned_amount} {}
 
     std::string to_string() const {
         return "{} [bls_pubkey={}, returned={}]"_format(description, bls_pubkey, returned_amount);
     }
 
-    std::strong_ordering operator<=>(const ServiceNodeRemoval& o) const {
-        return std::tie(bls_pubkey, returned_amount) <=> std::tie(o.bls_pubkey, o.returned_amount);
-    }
-    bool operator==(const ServiceNodeRemoval& o) const { return *this <=> o == 0; }
+    std::strong_ordering operator<=>(const ServiceNodeRemoval& o) const = default;
 
     template <class Archive>
     void serialize_value(Archive& ar) {
         uint8_t version = 0;
         field_varint(ar, "v", version);
+        field_varint(ar, "l2_height", l2_height);
         field(ar, "bls_pubkey", bls_pubkey);
         field_varint(ar, "returned_amount", returned_amount);
     }

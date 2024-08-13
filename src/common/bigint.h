@@ -1,12 +1,13 @@
 #pragma once
 
-#include "exception.h"
-
 #include <oxenc/endian.h>
 
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <stdexcept>
+
+#include "exception.h"
 
 namespace tools {
 
