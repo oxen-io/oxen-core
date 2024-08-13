@@ -582,15 +582,12 @@ void serialize_value(Archive& ar, block& b) {
         // height encoding (currently disabled in the `else` below).
         if constexpr (SUPPORT_OXEN10_INTEROP) {
             field_varint(ar, "height", b._height);
-            if (Archive::is_deserializer && b._height == 0) {
+            if (Archive::is_deserializer && b._height == 0)
                 // Incoming from the future where Oxen 11 doesn't use compat mode any more
                 b.oxen10_pulse_producer = crypto::null<crypto::public_key>;
-                b.reward = 0;
-            } else {
+            else
                 // Message to/from someone in Oxen 10 compat mode
                 field(ar, "pulse_producer", b.oxen10_pulse_producer);
-                field(ar, "reward", b.reward);
-            }
         } else {
             // TODO: enable this code once we only care about supporting Oxen 11+ nodes.
 
@@ -598,11 +595,10 @@ void serialize_value(Archive& ar, block& b) {
             // added this block to our DB while running Oxen 10).
             [[maybe_unused]] uint64_t no_height = 0;
             field_varint(ar, "height", no_height);
-            if (Archive::is_deserializer) {
+            if (Archive::is_deserializer)
                 b._height = 0;
-                b.reward = 0;
-            }
         }
+        field(ar, "reward", b.reward);
     }
 }
 
