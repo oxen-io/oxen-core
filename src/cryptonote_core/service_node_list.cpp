@@ -1782,7 +1782,7 @@ bool service_node_list::state_t::process_confirmed_event(
                 unlock_height);
 
     duplicate_info(it->second).requested_unlock_height = unlock_height;
-    return true;
+    return false; // false => this doesn't affect swarms
 }
 
 bool service_node_list::state_t::process_confirmed_event(
