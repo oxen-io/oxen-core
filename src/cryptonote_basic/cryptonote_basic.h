@@ -462,9 +462,8 @@ struct block_header {
     uint64_t l2_reward = 0;
 
     // vector of L2 state changes for L2 state change transactions that are still unconfirmed in
-    // this block.  true = vote for confirmation, false = vote for rejection.  Votes are sorted in
-    // blockchain order of unconfirmed transactions (i.e. by the monotonic internal transaction
-    // index).
+    // this block.  true = vote for confirmation, false = vote for rejection.  Votes are sorted by
+    // the hash of any unconfirmed transactions for this block height.
     std::vector<bool> l2_votes;
 };
 
