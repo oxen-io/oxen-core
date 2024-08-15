@@ -2920,29 +2920,24 @@ void service_node_list::state_t::update_from_block(
         const cryptonote::block& block,
         const std::vector<cryptonote::transaction>& txs,
         const service_node_keys* my_keys) {
-    ++height;
     log::debug(
             logcat,
             "Updating state_t{} from block for height {}",
             sn_list ? "" : " (without sn_list yet)",
             height);
     bool need_swarm_update = false;
-    uint64_t block_height = block.get_height();
-    assert(height == block_height);
+    assert(block.get_height() == height + 1);
     quorums = {};
-    block_hash = cryptonote::get_block_hash(block);
     auto hf_version = block.major_version;
     const auto& netconf = get_config(nettype);
 
     //
-    // Generate Pulse Quorum before any SN changes are applied to the list because,
-    // the Leader and Validators for this block generated Pulse Data before any
-    // TX's included in the block were applied
-    //   i.e. before any deregistrations, registrations, decommissions, recommissions.
+    // Generate Pulse Quorum and winner before we make any changes to the state because changing the
+    // height, processing state changes, and so on can affect the block leader and pulse quorums.
     //
     crypto::public_key winner_pubkey = get_next_block_leader().key;
     if (hf_version >= hf::hf16_pulse) {
-        if (auto quorum = get_pulse_quorum()) {
+        if (auto quorum = get_next_pulse_quorum(hf_version, block.pulse.round)) {
             // NOTE: Send candidate to the back of the list
             for (size_t quorum_index = 0; quorum_index < quorum->validators.size();
                  quorum_index++) {
@@ -2956,12 +2951,15 @@ void service_node_list::state_t::update_from_block(
         }
     }
 
+    ++height;
+    block_hash = cryptonote::get_block_hash(block);
+
     //
     // Remove expired blacklisted key images
     //
     if (hf_version >= hf::hf11_infinite_staking) {
         for (auto entry = key_image_blacklist.begin(); entry != key_image_blacklist.end();) {
-            if (block_height >= entry->unlock_height)
+            if (height >= entry->unlock_height)
                 entry = key_image_blacklist.erase(entry);
             else
                 entry++;
@@ -2972,7 +2970,7 @@ void service_node_list::state_t::update_from_block(
     // Expire Nodes
     //
     for (const crypto::public_key& pubkey :
-         get_expired_nodes(db, nettype, block.major_version, block_height)) {
+         get_expired_nodes(db, nettype, block.major_version, height)) {
         auto i = service_nodes_infos.find(pubkey);
         if (i == service_nodes_infos.end())
             continue;
@@ -2982,15 +2980,15 @@ void service_node_list::state_t::update_from_block(
                     fg(fmt::terminal_color::green),
                     "Service node expired (yours): {} at block height: {}",
                     pubkey,
-                    block_height);
+                    height);
         else
-            log::info(logcat, "Service node expired: {} at block height: {}", pubkey, block_height);
+            log::info(logcat, "Service node expired: {} at block height: {}", pubkey, height);
 
         need_swarm_update += i->second->is_active();
         // NOTE: sn_list is not set in tests when we construct events to replay
         if (sn_list)
             sn_list->recently_expired_nodes.emplace(
-                    i->second->bls_public_key, block_height + netconf.ETH_REMOVAL_BUFFER);
+                    i->second->bls_public_key, height + netconf.ETH_REMOVAL_BUFFER);
         erase_info(i);
     }
 
@@ -3001,7 +2999,7 @@ void service_node_list::state_t::update_from_block(
         // set the winner as though it was re-registering at transaction index=UINT32_MAX for
         // this block
         auto& info = duplicate_info(it->second);
-        info.last_reward_block_height = block_height;
+        info.last_reward_block_height = height;
         info.last_reward_transaction_index = UINT32_MAX;
     }
 
@@ -3107,7 +3105,7 @@ void service_node_list::state_t::update_from_block(
                 break;
             case txtype::key_image_unlock:
                 log::debug(logcat, "Processing key image unlock tx");
-                process_key_image_unlock_tx(nettype, hf_version, block_height, tx);
+                process_key_image_unlock_tx(nettype, hf_version, height, tx);
                 break;
             case txtype::ethereum_new_service_node:
             case txtype::ethereum_service_node_removal:
@@ -3148,6 +3146,13 @@ void service_node_list::state_t::update_from_block(
     }
     generate_other_quorums(*this, active_snode_list, nettype, hf_version);
     next_block_leader_cache.reset();
+    log::debug(
+            logcat,
+            "Updated state from block {}; block_leader was {}, now {}",
+            height,
+            block_leader,
+            winner_pubkey);
+    block_leader = std::move(winner_pubkey);
 }
 
 void service_node_list::process_block(
@@ -3368,6 +3373,56 @@ service_nodes::payout service_node_list::state_t::get_next_block_leader() const 
     return *next_block_leader_cache;
 }
 
+crypto::public_key service_node_list::state_t::get_block_leader(const cryptonote::block* b) const {
+    if (!sn_list)
+        return crypto::null<crypto::public_key>;
+
+    if (block_leader ||
+        is_hard_fork_at_least(sn_list->blockchain.nettype(), hf::hf20_eth_transition, height))
+        return block_leader;
+
+    // HF19 or earlier, so we can retrieve the winner from the block's miner_tx.  (We *might*
+    // already have it, above, if we synced the older blocks with a newer Oxen version that stored
+    // it).
+
+    std::optional<cryptonote::block> block;
+    if (!b) {
+        auto& bc = sn_list->blockchain;
+        if (!find_block_in_db(bc.db(), block_hash, block.emplace())) {
+            assert(!"Internal error: state_t::get_block_leader() block doesn't exist");
+            return crypto::null<crypto::public_key>;
+        }
+        b = &*block;
+    }
+    assert(b->get_height() == height);
+    assert(b->miner_tx);  // Should be always present in HF20 and earlier
+
+    auto winner = cryptonote::get_service_node_winner_from_tx_extra(b->miner_tx->extra);
+    log::critical(logcat, "block {}: winner={}, block_leader={}", height, winner, block_leader);
+    return cryptonote::get_service_node_winner_from_tx_extra(b->miner_tx->extra);
+}
+
+std::optional<quorum> service_node_list::state_t::get_next_pulse_quorum(
+        hf hf_version, uint8_t round) const {
+    std::optional<quorum> result;
+    if (!sn_list)
+        return result;
+
+    auto& bc = sn_list->blockchain;
+    auto& db = bc.db();
+    auto winner_pubkey = get_next_block_leader().key;
+    result = generate_pulse_quorum(
+            bc.nettype(),
+            winner_pubkey,
+            hf_version,
+            active_service_nodes_infos(),
+            get_pulse_entropy_for_next_block(db, block_hash, round),
+            round);
+    if (!verify_pulse_quorum_sizes(*result))
+        result.reset();
+    return result;
+}
+
 std::optional<quorum> service_node_list::state_t::get_pulse_quorum() const {
     if (!sn_list)
         return std::nullopt;
@@ -3380,11 +3435,17 @@ std::optional<quorum> service_node_list::state_t::get_pulse_quorum() const {
     if (!block.has_pulse())
         return std::nullopt;
 
+    auto prev_state = sn_list->m_transient.state_history.find(height - 1);
+    if (prev_state == sn_list->m_transient.state_history.end()) {
+        log::error(logcat, "Unable to retrieve state_t history for {}", height - 1);
+        return std::nullopt;
+    }
+
     auto quorum = generate_pulse_quorum(
             bc.nettype(),
-            get_next_block_leader().key,
+            get_block_leader(&block),
             block.major_version,
-            active_service_nodes_infos(),
+            prev_state->active_service_nodes_infos(),
             get_pulse_entropy_for_next_block(bc.db(), block.prev_id, block.pulse.round),
             block.pulse.round);
     if (!verify_pulse_quorum_sizes(quorum))
@@ -3872,6 +3933,7 @@ static service_node_list::state_serialized serialize_service_node_state_object(
     result.version = service_node_list::state_serialized::get_version(hf_version);
     result.height = state.height;
     result.unconfirmed_l2_txes = state.unconfirmed_l2_txes;
+    result.block_leader = state.block_leader;
     result.quorums = serialize_quorum_state(hf_version, state.height, state.quorums);
     result.only_stored_quorums = state.only_loaded_quorums || only_serialize_quorums;
 
@@ -4602,6 +4664,7 @@ service_node_list::state_t::state_t(service_node_list* snl, state_serialized&& s
         only_loaded_quorums{state.only_stored_quorums},
         key_image_blacklist{std::move(state.key_image_blacklist)},
         height{state.height},
+        block_leader{std::move(state.block_leader)},
         unconfirmed_l2_txes{std::move(state.unconfirmed_l2_txes)},
         sn_list{snl} {
     if (!sn_list)

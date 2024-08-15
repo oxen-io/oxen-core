@@ -828,6 +828,7 @@ class service_node_list {
         bool only_stored_quorums;
         crypto::hash block_hash;
         std::map<crypto::hash, unconfirmed_l2_tx> unconfirmed_l2_txes;
+        crypto::public_key block_leader;
 
         template <class Archive>
         void serialize_value(Archive& ar) {
@@ -841,8 +842,10 @@ class service_node_list {
             if (version >= version_t::version_1_serialize_hash)
                 field(ar, "block_hash", block_hash);
 
-            if (version >= version_t::version_2_l2_confirmations)
+            if (version >= version_t::version_2_l2_confirmations) {
                 field(ar, "unconfirmed_l2", unconfirmed_l2_txes);
+                field(ar, "block_leader", block_leader);
+            }
         }
     };
 
@@ -881,6 +884,12 @@ class service_node_list {
         block_height height{0};
         // Mutable because we are allowed to (and need to) change it via std::set iterator:
         mutable quorum_manager quorums;
+
+        // The block leader of the block this state_t belongs to.  Only stored for HF20+ blocks
+        // (before HF20 the winner is in the block's miner tx).  See `get_block_leader()` for a
+        // method that works both before and after HF20.
+        crypto::public_key block_leader;
+
         // blockchaindb-global-transaction-index => confirmation metadata of unconfirmed L2 state
         // changes.  This is an *ordered* map because confirmation votes in a pulse block depend on
         // the order of txes in here.
@@ -1000,12 +1009,32 @@ class service_node_list {
 
         // Returns the block leader of the next block: that is, the round 0 pulse quorum leader, and
         // (before HF19) the service node that earns the service node reward for the next block.
+        // Returns a payout with a null key if the next block cannot be a pulse block.
         payout get_next_block_leader() const;
-        // Returns the pulse quorum that produced this state's block.  Returns nullopt if this was
-        // not a pulse block.
+        // Returns the pubkey of the block leader of *this* block: that is, the round 0 pulse quorum
+        // leader, and (before HF19) the service node that earned the service node reward for this
+        // block.  Returns a null public key if this block was not a pulse block.
+        //
+        // A pointer to the block can be passed as `b` if precomputed as an optimization; if omitted
+        // the block will be looked up from the database when needed (i.e. for HF19 and earlier).
+        crypto::public_key get_block_leader(const cryptonote::block* b = nullptr) const;
+
+        // Returns the pulse quorum for round `round` of the next expected block.  E.g. `round=0`
+        // returns the primary quorum, `round=17` returns the 17th backup quorum.  Returns nullopt
+        // if the next block cannot be a pulse block (e.g. because of insufficient active nodes to
+        // form a full pulse quorum).
+        std::optional<quorum> get_next_pulse_quorum(cryptonote::hf hf_version, uint8_t round) const;
+
+        // Returns the pulse quorum that actually produced this block.  In contrast to
+        // `get_block_leader()`, this returns the leader of the actual pulse quorum, which could be
+        // a backup round (for blocks that failed to produce a block in round 0 and fell back to a
+        // backup round).  Up to the end of OXEN rewards (i.e. up until HF21), this is the service
+        // node that earns any (OXEN) tx fees in the processed block.
+        //
+        // Returns nullopt if this was not a pulse block (i.e. a mined block).
         std::optional<quorum> get_pulse_quorum() const;
-        // Similar to the above but returns just the sn pubkey of the pulse quorum leader, or a null
-        // key if there was no pulse quorum for this state_t/block.
+        // Wrapper around `get_pulse_quorum`, above, that returns just the SN pubkey of the pulse
+        // quorum leader, or a null key if there was no pulse quorum for this state_t/block.
         crypto::public_key get_block_producer() const;
 
       private:
