@@ -1532,15 +1532,25 @@ namespace cryptonote
             }
             const uint32_t previous_stripe = tools::get_pruning_stripe(previous_height, target_blockchain_height, PRUNING_LOG_STRIPES);
             const uint32_t current_stripe = tools::get_pruning_stripe(current_blockchain_height, target_blockchain_height, PRUNING_LOG_STRIPES);
-            std::string timing_message = "";
+            std::string timing_message;
             if (logcat->should_log(log::Level::info))
-              timing_message = std::string(" (") + std::to_string(dt.count()) + " sec, "
-                + std::to_string((current_blockchain_height - previous_height) / dt.count())
-                + " blocks/sec), " + std::to_string(m_block_queue.get_data_size() / 1048576.f) + " MB queued in "
-                + std::to_string(m_block_queue.get_num_filled_spans()) + " spans, stripe "
-                + std::to_string(previous_stripe) + " -> " + std::to_string(current_stripe);
-            if (logcat->should_log(log::Level::debug))
-              timing_message += std::string(": ") + m_block_queue.get_overview(current_blockchain_height);
+                timing_message =
+                        " ({:.3f} sec, {:.3f} blocks/sec), {:.3f} MB queued in {} spans, stripe {} -> {}{}"_format(
+                                dt.count(),
+                                (current_blockchain_height - previous_height) / dt.count(),
+                                m_block_queue.get_data_size() / 1000000.f,
+                                m_block_queue.get_num_filled_spans(),
+                                previous_stripe,
+                                current_stripe,
+                                logcat->should_log(log::Level::debug)
+                                        ? ": {}"_format(m_block_queue.get_overview(
+                                                  current_blockchain_height))
+                                        : "");
+            else {
+                auto speed = (current_blockchain_height - previous_height) / dt.count();
+                timing_message = " ({} blocks/sec)"_format(
+                        speed >= 100 ? "{:.0f}"_format(speed) : "{:.1f}"_format(speed));
+            }
             log::info(globallogcat, fg(fmt::terminal_color::yellow), "Synced {}/{} {} {}", current_blockchain_height, target_blockchain_height, progress_message, timing_message);
             if (previous_stripe != current_stripe)
               notify_new_stripe(context, current_stripe);
