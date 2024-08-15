@@ -5711,19 +5711,6 @@ bool Blockchain::cleanup_handle_incoming_blocks(bool force_sync) {
     return success;
 }
 
-//------------------------------------------------------------------
-void Blockchain::output_scan_worker(
-        const uint64_t amount,
-        const std::vector<uint64_t>& offsets,
-        std::vector<output_data_t>& outputs) const {
-    try {
-        m_db->get_output_key(epee::span<const uint64_t>(&amount, 1), offsets, outputs, true);
-    } catch (const std::exception& e) {
-        log::error(log::Cat("verify"), "EXCEPTION: {}", e.what());
-    } catch (...) {
-    }
-}
-
 uint64_t Blockchain::prevalidate_block_hashes(
         uint64_t height, const std::vector<crypto::hash>& hashes) {
     // new: . . . . . X X X X X . . . . . .
@@ -5998,7 +5985,10 @@ bool Blockchain::prepare_handle_incoming_blocks(
             std::advance(it, 1);
         }
 
-        if (!blocks_exist) {
+        if (!blocks_exist && blocks[0].major_version < feature::PULSE) {
+            // This code multi-threads the pow hash cache (m_blocks_longhash_table), but in pulse we
+            // rarely use those values (and if isn't set all that happens is that the pow hash gets
+            // computed later), so skip this entirely post-pulse.
             m_blocks_longhash_table.clear();
             uint64_t thread_height = height;
             tools::threadpool::waiter waiter;
@@ -6052,15 +6042,13 @@ bool Blockchain::prepare_handle_incoming_blocks(
 
     auto scantable = std::chrono::steady_clock::now();
 
-    // [input] stores all unique amounts found
-    std::vector<uint64_t> amounts;
     // [input] stores all absolute_offsets for each amount
-    std::map<uint64_t, std::vector<uint64_t>> offset_map;
+    std::set<uint64_t> offsets;
     // [output] stores all output_data_t for each absolute_offset
-    std::map<uint64_t, std::vector<output_data_t>> tx_map;
+    std::vector<output_data_t> txs;
     std::vector<std::pair<cryptonote::transaction, crypto::hash>> txes(total_txs);
 
-    // generate sorted tables for all amounts and absolute offsets
+    // generate absolute offsets
     size_t tx_index = 0;
     for (const auto& entry : blocks_entry) {
         if (m_cancel)
@@ -6096,7 +6084,7 @@ bool Blockchain::prepare_handle_incoming_blocks(
             its = m_scan_table.find(tx_prefix_hash);
             assert(its != m_scan_table.end());
 
-            // get all amounts from tx.vin(s)
+            // check all tx.vin(s)
             if (!tx.is_miner_tx()) {
                 for (const auto& txin : tx.vin) {
                     const auto& in_to_key = var::get<txin_to_key>(txin);
@@ -6110,69 +6098,28 @@ bool Blockchain::prepare_handle_incoming_blocks(
                         m_scan_table.clear();
                         return false;
                     }
-
-                    amounts.push_back(in_to_key.amount);
                 }
-            }
 
-            // sort and remove duplicate amounts from amounts list
-            std::sort(amounts.begin(), amounts.end());
-            auto last = std::unique(amounts.begin(), amounts.end());
-            amounts.erase(last, amounts.end());
-
-            // add amount to the offset_map and tx_map
-            for (const uint64_t& amount : amounts) {
-                if (offset_map.find(amount) == offset_map.end())
-                    offset_map.emplace(amount, std::vector<uint64_t>());
-
-                if (tx_map.find(amount) == tx_map.end())
-                    tx_map.emplace(amount, std::vector<output_data_t>());
-            }
-
-            // add new absolute_offsets to offset_map
-            if (!tx.is_miner_tx()) {
-                for (const auto& txin : tx.vin) {
-                    const auto& in_to_key = var::get<txin_to_key>(txin);
-                    // no need to check for duplicate here.
-                    auto absolute_offsets =
-                            relative_output_offsets_to_absolute(in_to_key.key_offsets);
-                    for (const auto& offset : absolute_offsets)
-                        offset_map[in_to_key.amount].push_back(offset);
-                }
+                // add new absolute offsets to offsets
+                if (!tx.is_miner_tx())
+                    for (const auto& txin : tx.vin)
+                        for (auto off : relative_output_offsets_to_absolute(
+                                     var::get<txin_to_key>(txin).key_offsets))
+                            offsets.insert(off);
             }
         }
     }
 
-    // sort and remove duplicate absolute_offsets in offset_map
-    for (auto& offsets : offset_map) {
-        std::sort(offsets.second.begin(), offsets.second.end());
-        auto last = std::unique(offsets.second.begin(), offsets.second.end());
-        offsets.second.erase(last, offsets.second.end());
-    }
-
-    // gather all the output keys
-    threads = tpool.get_max_concurrency();
-    if (!m_db->can_thread_bulk_indices())
-        threads = 1;
-
-    if (threads > 1 && amounts.size() > 1) {
-        tools::threadpool::waiter waiter;
-
-        for (size_t i = 0; i < amounts.size(); i++) {
-            uint64_t amount = amounts[i];
-            tpool.submit(
-                    &waiter,
-                    [this, amount, &offsets = offset_map[amount], &outputs = tx_map[amount]] {
-                        output_scan_worker(amount, offsets, outputs);
-                    },
-                    true);
-        }
-        waiter.wait(&tpool);
-    } else {
-        for (size_t i = 0; i < amounts.size(); i++) {
-            uint64_t amount = amounts[i];
-            output_scan_worker(amount, offset_map[amount], tx_map[amount]);
-        }
+    try {
+        constexpr uint64_t amount{0};
+        m_db->get_output_key(
+                epee::span<const uint64_t>(&amount, 1),
+                std::vector<uint64_t>{offsets.begin(), offsets.end()},
+                txs,
+                true);
+    } catch (const std::exception& e) {
+        log::error(log::Cat("verify"), "EXCEPTION: {}", e.what());
+    } catch (...) {
     }
 
     // now generate a table for each tx_prefix and k_image hashes
@@ -6209,7 +6156,7 @@ bool Blockchain::prepare_handle_incoming_blocks(
                         size_t pos = 0;
                         bool found = false;
 
-                        for (const uint64_t& offset_found : offset_map[in_to_key.amount]) {
+                        for (const uint64_t& offset_found : offsets) {
                             if (offset_needed == offset_found) {
                                 found = true;
                                 break;
@@ -6218,8 +6165,8 @@ bool Blockchain::prepare_handle_incoming_blocks(
                             ++pos;
                         }
 
-                        if (found && pos < tx_map[in_to_key.amount].size())
-                            outputs.push_back(tx_map[in_to_key.amount].at(pos));
+                        if (found && pos < txs.size())
+                            outputs.push_back(txs.at(pos));
                         else
                             break;
                     }

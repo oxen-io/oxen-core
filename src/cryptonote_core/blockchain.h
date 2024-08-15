@@ -1039,18 +1039,6 @@ class Blockchain {
     service_nodes::service_node_list& service_node_list;
 
     /**
-     * @brief get a number of outputs of a specific amount
-     *
-     * @param amount the amount
-     * @param offsets the indices (indexed to the amount) of the outputs
-     * @param outputs return-by-reference the outputs collected
-     */
-    void output_scan_worker(
-            const uint64_t amount,
-            const std::vector<uint64_t>& offsets,
-            std::vector<output_data_t>& outputs) const;
-
-    /**
      * @brief computes the "short" and "long" hashes for a set of blocks
      *
      * @param height the height of the first block
@@ -1238,7 +1226,7 @@ class Blockchain {
     bool m_db_default_sync;
     bool m_db_sync_on_blocks;
     uint64_t m_db_sync_threshold;
-    uint64_t m_max_prepare_blocks_threads;
+    unsigned m_max_prepare_blocks_threads;
     std::chrono::nanoseconds m_fake_pow_calc_time;
     std::chrono::nanoseconds m_fake_scan_time;
     uint64_t m_sync_counter;
