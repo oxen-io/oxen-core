@@ -6043,7 +6043,7 @@ bool Blockchain::prepare_handle_incoming_blocks(
     auto scantable = std::chrono::steady_clock::now();
 
     // [input] stores all absolute_offsets for each amount
-    std::set<uint64_t> offsets;
+    std::vector<uint64_t> offsets;
     // [output] stores all output_data_t for each absolute_offset
     std::vector<output_data_t> txs;
     std::vector<std::pair<cryptonote::transaction, crypto::hash>> txes(total_txs);
@@ -6105,16 +6105,21 @@ bool Blockchain::prepare_handle_incoming_blocks(
                     for (const auto& txin : tx.vin)
                         for (auto off : relative_output_offsets_to_absolute(
                                      var::get<txin_to_key>(txin).key_offsets))
-                            offsets.insert(off);
+                            offsets.push_back(off);
             }
         }
     }
+
+    // sort and remove duplicate absolute_offsets in offset_map
+    std::sort(offsets.begin(), offsets.end());
+    auto last = std::unique(offsets.begin(), offsets.end());
+    offsets.erase(last, offsets.end());
 
     try {
         constexpr uint64_t amount{0};
         m_db->get_output_key(
                 epee::span<const uint64_t>(&amount, 1),
-                std::vector<uint64_t>{offsets.begin(), offsets.end()},
+                offsets,
                 txs,
                 true);
     } catch (const std::exception& e) {
