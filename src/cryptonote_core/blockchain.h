@@ -160,6 +160,8 @@ class Blockchain {
      * @param test_options test parameters
      * @param fixed_difficulty fixed difficulty for testing purposes; 0 means disabled
      * @param get_checkpoints if set, will be called to get checkpoints data
+     * @param abort if set, will be checked periodically during subsystem scanning: if it becomes
+     * true then initialization will be aborted.
      *
      * @return true on success, false if any initialization steps fail
      */
@@ -172,7 +174,8 @@ class Blockchain {
             bool offline = false,
             const cryptonote::test_options* test_options = nullptr,
             difficulty_type fixed_difficulty = 0,
-            const GetCheckpointsCallback& get_checkpoints = nullptr);
+            const GetCheckpointsCallback& get_checkpoints = nullptr,
+            const std::atomic<bool>* abort = nullptr);
 
     // Common initializer for test code
     bool init(
@@ -1188,7 +1191,7 @@ class Blockchain {
             uint64_t& expected_reward,
             const std::string& ex_nonce);
 
-    bool load_missing_blocks_into_oxen_subsystems();
+    bool load_missing_blocks_into_oxen_subsystems(const std::atomic<bool>* abort = nullptr);
 
     // TODO: evaluate whether or not each of these typedefs are left over from blockchain_storage
     typedef std::unordered_set<crypto::key_image> key_images_container;

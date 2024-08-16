@@ -374,13 +374,17 @@ class core final {
      * @param get_checkpoints if set, will be called to get checkpoints data, must return
      * checkpoints data pointer and size or nullptr if there ain't any checkpoints for specific
      * network type
+     * @param abort optional atomic<bool> that will be checked periodically during potentially long
+     * sections of initialization (most notably: service node state/ons/reward rescanning) to
+     * allowing abort initialization.
      *
      * @return false if one of the init steps fails, otherwise true
      */
     bool init(
             const boost::program_options::variables_map& vm,
             const test_options* test_options = NULL,
-            const GetCheckpointsCallback& get_checkpoints = nullptr);
+            const GetCheckpointsCallback& get_checkpoints = nullptr,
+            const std::atomic<bool>* abort = nullptr);
 
     /**
      * @brief performs safe shutdown steps for core and core components

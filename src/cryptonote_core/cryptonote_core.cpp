@@ -510,7 +510,8 @@ static Duration as_duration(double seconds) {
 bool core::init(
         const boost::program_options::variables_map& vm,
         const cryptonote::test_options* test_options,
-        const GetCheckpointsCallback& get_checkpoints /* = nullptr */) {
+        const GetCheckpointsCallback& get_checkpoints /* = nullptr */,
+        const std::atomic<bool>* abort) {
     start_time = std::time(nullptr);
 
     if (test_options != NULL)
@@ -763,7 +764,8 @@ bool core::init(
             m_offline,
             m_nettype == network_type::FAKECHAIN ? &regtest_test_options : test_options,
             command_line::get_arg(vm, arg_fixed_difficulty),
-            get_checkpoints);
+            get_checkpoints,
+            abort);
     CHECK_AND_ASSERT_MES(r, false, "Failed to initialize blockchain storage");
 
     r = mempool.init(max_txpool_weight);

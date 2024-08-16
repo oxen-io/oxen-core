@@ -310,8 +310,10 @@ bool daemon::run(bool interactive) {
     std::thread stop_thread{[&stop_sig, &shutdown, this] {
         while (!stop_sig)
             std::this_thread::sleep_for(100ms);
-        if (shutdown)
+        if (shutdown) {
+            log::error(logcat, "Signal received; shutting down...");
             stop();
+        }
     }};
 
     OXEN_DEFER {
@@ -334,7 +336,7 @@ bool daemon::run(bool interactive) {
         get_checkpoints = blocks::GetCheckpointsData;
 #endif
         log::info(logcat, "Starting core");
-        if (!core->init(vm, nullptr, get_checkpoints))
+        if (!core->init(vm, nullptr, get_checkpoints, &shutdown))
             throw oxen::traced<std::runtime_error>("Failed to start core");
 
         log::info(logcat, "Starting OxenMQ");

@@ -328,7 +328,7 @@ uint64_t Blockchain::get_current_blockchain_height(bool lock) const {
     return m_db->height();
 }
 //------------------------------------------------------------------
-bool Blockchain::load_missing_blocks_into_oxen_subsystems() {
+bool Blockchain::load_missing_blocks_into_oxen_subsystems(const std::atomic<bool>* abort) {
     std::vector<uint64_t> start_height_options;
     uint64_t snl_height = std::max(
             hard_fork_begins(m_nettype, hf::hf9_service_nodes).value_or(0),
@@ -383,8 +383,10 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems() {
 
     for (int64_t block_count = total_blocks, index = 0; block_count > 0;
          block_count -= BLOCK_COUNT, index++) {
+        if (abort && *abort)
+            return false;
         auto duration = dseconds{clock::now() - work_start};
-        if (duration >= 10s) {
+        if (block_count == total_blocks || duration >= 10s) {
             service_node_list.store();
             log::info(
                     globallogcat,
@@ -512,7 +514,8 @@ bool Blockchain::init(
         bool offline,
         const cryptonote::test_options* test_options,
         difficulty_type fixed_difficulty,
-        const GetCheckpointsCallback& get_checkpoints /* = nullptr*/)
+        const GetCheckpointsCallback& get_checkpoints /* = nullptr*/,
+        const std::atomic<bool>* abort)
 
 {
     log::trace(logcat, "Blockchain::{}", __func__);
@@ -612,6 +615,8 @@ bool Blockchain::init(
 
     uint64_t num_popped_blocks = 0;
     while (!m_db->is_read_only()) {
+        if (abort && *abort)
+            return false;
         uint64_t top_height;
         const crypto::hash top_id = m_db->top_block_hash(&top_height);
         const block top_block = m_db->get_top_block();
@@ -686,7 +691,7 @@ bool Blockchain::init(
     for (const auto& hook : m_init_hooks)
         hook();
 
-    if (!m_db->is_read_only() && !load_missing_blocks_into_oxen_subsystems()) {
+    if (!m_db->is_read_only() && !load_missing_blocks_into_oxen_subsystems(abort)) {
         log::error(logcat, "Failed to load blocks into oxen subsystems");
         return false;
     }
