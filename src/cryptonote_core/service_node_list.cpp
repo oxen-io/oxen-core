@@ -1782,7 +1782,7 @@ bool service_node_list::state_t::process_confirmed_event(
                 unlock_height);
 
     duplicate_info(it->second).requested_unlock_height = unlock_height;
-    return false; // false => this doesn't affect swarms
+    return false;  // false => this doesn't affect swarms
 }
 
 bool service_node_list::state_t::process_confirmed_event(
@@ -2323,7 +2323,7 @@ static bool find_block_in_db(
 void service_node_list::verify_block(
         const cryptonote::block& block,
         bool alt_block,
-        cryptonote::checkpoint_t const* checkpoint) {
+        cryptonote::checkpoint_t const* checkpoint) const {
     if (block.major_version < hf::hf9_service_nodes)
         return;
 
@@ -2468,13 +2468,15 @@ void service_node_list::verify_block(
 void service_node_list::block_add(
         const cryptonote::block& block,
         const std::vector<cryptonote::transaction>& txs,
-        cryptonote::checkpoint_t const* checkpoint) {
+        cryptonote::checkpoint_t const* checkpoint,
+        bool skip_verify) {
     if (block.major_version < hf::hf9_service_nodes)
         return;
 
     std::lock_guard lock(m_sn_mutex);
     process_block(block, txs);
-    verify_block(block, false /*alt_block*/, checkpoint);
+    if (!skip_verify)
+        verify_block(block, false /*alt_block*/, checkpoint);
     if (block.has_pulse()) {
         // NOTE: Only record participation if its a block we recently received.
         // Otherwise processing blocks in retrospect/re-loading on restart seeds

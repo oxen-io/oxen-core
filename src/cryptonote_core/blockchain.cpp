@@ -375,7 +375,7 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(const std::atomic<bool
 
     using clock = std::chrono::steady_clock;
     using dseconds = std::chrono::duration<double>;
-    int64_t constexpr BLOCK_COUNT = 500;
+    int64_t constexpr BLOCK_COUNT = 100;
     auto work_start = clock::now();
     auto scan_start = work_start;
     dseconds ons_duration{}, snl_duration{}, sqlite_duration{}, ons_iteration_duration{},
@@ -446,7 +446,10 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(const std::atomic<bool
                     checkpoint_ptr = &checkpoint;
 
                 try {
-                    service_node_list.block_add(blk, txs, checkpoint_ptr);
+                    // We skip verification here because the fact that this block is already in the
+                    // lmdb means it has already been verified:
+                    constexpr bool skip_verify = true;
+                    service_node_list.block_add(blk, txs, checkpoint_ptr, skip_verify);
                 } catch (const std::exception& e) {
                     log::error(
                             logcat,
@@ -5265,8 +5268,8 @@ bool Blockchain::handle_block_to_main_chain(
                 "Blocks that failed verification should not reach here");
     }
 
-    fail_handler.cancel(); // We've added the block now, so need a new failure handler that properly
-                           // removes it if it fail beyond here:
+    fail_handler.cancel();  // We've added the block now, so need a new failure handler that
+                            // properly removes it if it fail beyond here:
     auto abort_block = oxen::defer([this]() {
         pop_block_from_blockchain();
         detached_info hook_data{m_db->height(), false /*by_pop_blocks*/};
@@ -6122,11 +6125,7 @@ bool Blockchain::prepare_handle_incoming_blocks(
 
     try {
         constexpr uint64_t amount{0};
-        m_db->get_output_key(
-                epee::span<const uint64_t>(&amount, 1),
-                offsets,
-                txs,
-                true);
+        m_db->get_output_key(epee::span<const uint64_t>(&amount, 1), offsets, txs, true);
     } catch (const std::exception& e) {
         log::error(log::Cat("verify"), "EXCEPTION: {}", e.what());
     } catch (...) {

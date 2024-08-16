@@ -477,7 +477,8 @@ class service_node_list {
     void block_add(
             const cryptonote::block& block,
             const std::vector<cryptonote::transaction>& txs,
-            const cryptonote::checkpoint_t* checkpoint);
+            const cryptonote::checkpoint_t* checkpoint,
+            bool skip_verify = false);
     bool state_history_exists(uint64_t height);
     bool process_batching_rewards(const cryptonote::block& block);
     bool pop_batching_rewards_block(const cryptonote::block& block);
@@ -1088,7 +1089,7 @@ class service_node_list {
     void verify_block(
             const cryptonote::block& block,
             bool alt_block,
-            cryptonote::checkpoint_t const* checkpoint);
+            cryptonote::checkpoint_t const* checkpoint) const;
 
     void reset(bool delete_db_entry = false);
     bool load(uint64_t current_height);
