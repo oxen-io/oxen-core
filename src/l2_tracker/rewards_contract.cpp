@@ -23,7 +23,7 @@ namespace {
 
     enum class EventType { NewServiceNode, ServiceNodeRemovalRequest, ServiceNodeRemoval, Other };
 
-    EventType getLogType(const ethyl::LogEntry& log) {
+    EventType get_log_type(const ethyl::LogEntry& log) {
         if (log.topics.empty())
             throw std::runtime_error("No topics in log entry");
 
@@ -148,15 +148,15 @@ static std::string log_service_node_blob(const ContractServiceNode& blob, std::s
     return result;
 }
 
-event::StateChangeVariant getLogEvent(const ethyl::LogEntry& log) {
+event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::LogEntry& log) {
     event::StateChangeVariant result;
-    uint64_t l2_height = log.blockNumber.value_or(0);
+    const uint64_t l2_height = log.blockNumber.value_or(0);
     if (l2_height == 0) {
         log::warning(logcat, "Received L2 event without a block number; ignoring");
         return result;
     }
 
-    switch (getLogType(log)) {
+    switch (get_log_type(log)) {
         case EventType::NewServiceNode: {
             // event NewServiceNode(
             //      uint64 indexed serviceNodeID,
@@ -173,8 +173,7 @@ event::StateChangeVariant getLogEvent(const ethyl::LogEntry& log) {
             // - address is 32 bytes, the first 12 of which are padding
             // - fee is between 0 and 10000, despite being packed into a gigantic 256-bit int.
 
-            auto& item = result.emplace<event::NewServiceNode>();
-            item.l2_height = l2_height;
+            auto& item = result.emplace<event::NewServiceNode>(chain_id, l2_height);
 
             u256 fee256, c_offset, c_len;
             std::string_view contrib_hex;
@@ -248,7 +247,8 @@ event::StateChangeVariant getLogEvent(const ethyl::LogEntry& log) {
             if (contrib_hex.size() != expected_contrib_hex_size) {
                 throw oxen::traced<std::invalid_argument>{
                         "Invalid NewServiceNode data: The hex payload length ({}) derived for "
-                        "{} contributors did not match the size we derived of {} hex characters\n{}"_format(
+                        "{} contributors did not match the size we derived of {} hex characters\n"
+                        "{}"_format(
                                 contrib_hex.size(),
                                 num_contributors,
                                 expected_contrib_hex_size,
@@ -277,8 +277,7 @@ event::StateChangeVariant getLogEvent(const ethyl::LogEntry& log) {
             // service node id is a topic so only address and pubkey are in data
             // address is 32 bytes (with 12-byte prefix padding)
             // pubkey is 64 bytes,
-            auto& item = result.emplace<event::ServiceNodeRemovalRequest>();
-            item.l2_height = l2_height;
+            auto& item = result.emplace<event::ServiceNodeRemovalRequest>(chain_id, l2_height);
             std::tie(item.bls_pubkey) =
                     tools::split_hex_into<skip<12 + 20>, bls_public_key>(log.data);
             break;
@@ -292,8 +291,7 @@ event::StateChangeVariant getLogEvent(const ethyl::LogEntry& log) {
             // service node id is a topic so only address and pubkey are in data
             // address is 32 bytes (with 12-byte prefix padding)
             // pubkey is 64 bytes
-            auto& item = result.emplace<event::ServiceNodeRemoval>();
-            item.l2_height = l2_height;
+            auto& item = result.emplace<event::ServiceNodeRemoval>(chain_id, l2_height);
             u256 amt256;
             std::tie(amt256, item.bls_pubkey) =
                     tools::split_hex_into<skip<12 + 20>, u256, bls_public_key>(log.data);
@@ -328,10 +326,9 @@ std::vector<bls_public_key> RewardsContract::get_all_bls_pubkeys(uint64_t blockN
     return result;
 }
 
-RewardsContract::ServiceNodeIDs RewardsContract::all_service_node_ids(std::optional<uint64_t> height)
-{
-    std::string call_data =
-            "0x{:x}"_format(contract::call::ServiceNodeRewards_allServiceNodeIDs);
+RewardsContract::ServiceNodeIDs RewardsContract::all_service_node_ids(
+        std::optional<uint64_t> height) {
+    std::string call_data = "0x{:x}"_format(contract::call::ServiceNodeRewards_allServiceNodeIDs);
     std::string block_num_arg = height ? "0x{:x}"_format(*height) : "latest";
     nlohmann::json call_result =
             provider.callReadFunctionJSON(contract_address, call_data, block_num_arg);
@@ -347,26 +344,33 @@ RewardsContract::ServiceNodeIDs RewardsContract::all_service_node_ids(std::optio
     const uint64_t offset_to_ids = tools::decode_integer_be(offset_to_ids_bytes);
     const uint64_t offset_to_keys = tools::decode_integer_be(offset_to_keys_bytes);
 
-    std::string_view ids_start_hex = tools::string_safe_substr(call_result_hex, offset_to_ids * 2, call_result_hex.size());
-    auto [num_ids_bytes, ids_remainder_hex] = tools::split_hex_into<u256, std::string_view>(ids_start_hex);
+    std::string_view ids_start_hex =
+            tools::string_safe_substr(call_result_hex, offset_to_ids * 2, call_result_hex.size());
+    auto [num_ids_bytes, ids_remainder_hex] =
+            tools::split_hex_into<u256, std::string_view>(ids_start_hex);
     uint64_t num_ids = tools::decode_integer_be(num_ids_bytes);
 
     const size_t ID_SIZE_IN_HEX = sizeof(u256) * 2;
-    std::string_view ids_payload = tools::string_safe_substr(ids_remainder_hex, 0, num_ids * ID_SIZE_IN_HEX);
+    std::string_view ids_payload =
+            tools::string_safe_substr(ids_remainder_hex, 0, num_ids * ID_SIZE_IN_HEX);
 
     // NOTE: Extract the keys payload
-    std::string_view keys_start_hex = tools::string_safe_substr(call_result_hex, offset_to_keys * 2, call_result_hex.size());
-    auto [num_keys_bytes, keys_remainder_hex] = tools::split_hex_into<u256, std::string_view>(keys_start_hex);
+    std::string_view keys_start_hex =
+            tools::string_safe_substr(call_result_hex, offset_to_keys * 2, call_result_hex.size());
+    auto [num_keys_bytes, keys_remainder_hex] =
+            tools::split_hex_into<u256, std::string_view>(keys_start_hex);
     uint64_t num_keys = tools::decode_integer_be(num_keys_bytes);
 
     const size_t KEY_SIZE_IN_HEX = sizeof(bls_public_key) * 2;
-    std::string_view keys_payload = tools::string_safe_substr(keys_remainder_hex, 0, num_keys * KEY_SIZE_IN_HEX);
+    std::string_view keys_payload =
+            tools::string_safe_substr(keys_remainder_hex, 0, num_keys * KEY_SIZE_IN_HEX);
 
     // NOTE: Validate args
     if (num_keys != num_ids) {
         oxen::log::warning(
                 logcat,
-                "The number of ids ({}) and bls public keys ({}) returned do not match at block '{}'",
+                "The number of ids ({}) and bls public keys ({}) returned do not match at block "
+                "'{}'",
                 num_ids,
                 num_keys,
                 block_num_arg);
@@ -406,9 +410,10 @@ RewardsContract::ServiceNodeIDs RewardsContract::all_service_node_ids(std::optio
         result.ids.push_back(tools::decode_integer_be(id_bytes));
         result.bls_pubkeys.push_back(tools::make_from_hex_guts<bls_public_key>(key_hex));
 
-        #if !defined(NDEBUG)
-        log::trace(logcat, "  {:02d} {{{}, {}}}", index, result.ids.back(), result.bls_pubkeys.back());
-        #endif
+#if !defined(NDEBUG)
+        log::trace(
+                logcat, "  {:02d} {{{}, {}}}", index, result.ids.back(), result.bls_pubkeys.back());
+#endif
     }
 
     return result;
@@ -526,8 +531,12 @@ ContractServiceNode RewardsContract::service_nodes(
         }
     }
 
+#ifndef NDEBUG
     oxen::log::trace(
-            logcat, "Successfully parsed new SN. {}", log_service_node_blob(result, call_result_hex));
+            logcat,
+            "Successfully parsed new SN. {}",
+            log_service_node_blob(result, call_result_hex));
+#endif
 
     result.good = true;
     return result;

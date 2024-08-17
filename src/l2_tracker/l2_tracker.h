@@ -39,6 +39,8 @@ class L2Tracker {
     RewardsContract rewards_contract;
     mutable std::shared_mutex mutex;
 
+    const uint64_t chain_id;
+
     // l2_height => recent events at that height
     RecentEvents<event::NewServiceNode> recent_regs;
     RecentEvents<event::ServiceNodeRemovalRequest> recent_unlocks;
@@ -118,6 +120,13 @@ class L2Tracker {
     // were.
     std::chrono::milliseconds PROVIDERS_CHECK_INTERVAL = cryptonote::ETH_L2_DEFAULT_CHECK_INTERVAL;
     uint64_t PROVIDERS_CHECK_THRESHOLD = cryptonote::ETH_L2_DEFAULT_CHECK_THRESHOLD;
+
+    // Does a *synchronous* test of the chainId of all providers; this is intended to be called once
+    // during oxen-core construction, and to abort startup if the provider(s) are providing the
+    // wrong chain.  Logs errors and returns false if any return a chainId that doesn't match the
+    // required L2 chain Id.  Returns true if all providers match.  Any providers that time out
+    // produce a warning, but do not cause a false return value.
+    bool check_chain_id() const;
 
     // Returns the reward rate for the given L2 height.  Returns nullopt if we don't know/haven't
     // retrieved it yet (and so this should generally be called with a safe height, not the current

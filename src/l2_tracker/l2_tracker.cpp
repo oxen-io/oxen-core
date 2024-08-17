@@ -31,7 +31,9 @@ static inline uint64_t reward_height(uint64_t l2_height, uint64_t reward_update_
 }
 
 L2Tracker::L2Tracker(cryptonote::core& core_, std::chrono::milliseconds update_frequency) :
-        core{core_}, rewards_contract{core.get_nettype(), provider} {
+        core{core_},
+        rewards_contract{core.get_nettype(), provider},
+        chain_id{core.get_net_config().ETHEREUM_CHAIN_ID} {
 
     // We initially add this on a tiny interval so that it fires almost immediately after the oxenmq
     // object starts (which hasn't happened yet when we get constructed).  In the first call, we
@@ -71,6 +73,7 @@ void L2Tracker::update_state() {
     if (update_in_progress)
         return;
     update_in_progress = true;
+
     log::trace(logcat, "L2 update state commencing");
     if (provider.numClients() > 1 && std::chrono::steady_clock::now() >= next_provider_check) {
         log::debug(logcat, "update_state initiating all-providers sync check");
@@ -455,7 +458,7 @@ void L2Tracker::update_logs() {
                             continue;
                         }
                         try {
-                            auto tx = getLogEvent(log);
+                            auto tx = get_log_event(chain_id, log);
                             add_to_mempool(*log.blockNumber, tx);
                             if (auto* reg = std::get_if<event::NewServiceNode>(&tx))
                                 recent_regs.add(std::move(*reg), *log.blockNumber);
@@ -487,6 +490,38 @@ void L2Tracker::update_logs() {
                 if (keep_going)
                     update_logs();
             });
+}
+
+bool L2Tracker::check_chain_id() const {
+    auto chain_ids = provider.getAllChainIds();
+    bool bad = false;
+
+    auto clients = provider.getClients();
+    for (auto& ci : chain_ids) {
+        auto& name = clients[ci.index].name;
+        auto& url = clients[ci.index].url;
+        if (!ci.success)
+            log::warning(logcat, "Failed to retrieve L2 chain ID from {} [{}]", name, url);
+        else if (ci.chainId != chain_id) {
+            log::critical(
+                    logcat,
+                    "L2 provider {} [{}] has invalid chain ID 0x{:x} (chainId 0x{:x} is required)",
+                    name,
+                    url,
+                    ci.chainId,
+                    chain_id);
+            bad = true;
+        } else {
+            log::info(
+                    logcat,
+                    "L2 provider {} [{}] returned correct chainId 0x{:x}",
+                    name,
+                    url,
+                    ci.chainId);
+        }
+    }
+
+    return !bad;
 }
 
 std::optional<uint64_t> L2Tracker::get_reward_rate(uint64_t height) const {

@@ -68,7 +68,7 @@ inline constexpr network_config config{
         .STORE_LONG_TERM_STATE_INTERVAL = 10'000,
         .ETH_REMOVAL_BUFFER = 7 * 24h / TARGET_BLOCK_TIME,
         // TODO: To be set closer to mainnet TGE
-        .ETHEREUM_CHAIN_ID = static_cast<uint32_t>(-1),
+        .ETHEREUM_CHAIN_ID = 0xa4b1,
         .ETHEREUM_REWARDS_CONTRACT = "0x0000000000000000000000000000000000000000",
         .ETHEREUM_POOL_CONTRACT = "0x0000000000000000000000000000000000000000",
         // Update every ~10 minutes with an Arbitrum ~250ms block time:

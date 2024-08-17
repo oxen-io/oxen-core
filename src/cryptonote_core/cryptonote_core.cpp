@@ -190,6 +190,10 @@ static const command_line::arg_descriptor<int> arg_l2_check_threshold = {
         "When multiple L2 providers are specified, this is the threshold (in number of blocks) "
         "behind the best provider height before we consider a given provider out of sync",
         ETH_L2_DEFAULT_CHECK_THRESHOLD};
+static const command_line::arg_flag arg_l2_skip_chainid = {
+        "l2-skip-chainid",
+        "Skips the oxend startup chainId check that ensures the configured L2 provider(s) are "
+        "providing data for the the correct L2 chain."};
 static const command_line::arg_descriptor<std::string> arg_block_notify = {
         "block-notify",
         "Run a program for each new block, '%s' will be replaced by the block hash",
@@ -330,6 +334,7 @@ void core::init_options(boost::program_options::options_description& desc) {
     command_line::add_arg(desc, arg_l2_max_logs);
     command_line::add_arg(desc, arg_l2_check_interval);
     command_line::add_arg(desc, arg_l2_check_threshold);
+    command_line::add_arg(desc, arg_l2_skip_chainid);
     command_line::add_arg(desc, arg_storage_server_port);
     command_line::add_arg(desc, arg_quorumnet_port);
 
@@ -754,6 +759,8 @@ bool core::init(
             }
         }
     }
+    if (!command_line::get_arg(vm, arg_l2_skip_chainid) && !m_l2_tracker->check_chain_id())
+        return false;  // the above already logs critical on failure
 
     r = blockchain.init(
             std::move(db),
@@ -2584,7 +2591,8 @@ eth::bls_rewards_response core::bls_rewards_request(const eth::address& address)
     return m_bls_aggregator->rewards_request(address);
 }
 //-----------------------------------------------------------------------------------------------
-eth::bls_removal_liquidation_response core::bls_removal_liquidation_request(const eth::bls_public_key& bls_pubkey, bool liquidate) {
+eth::bls_removal_liquidation_response core::bls_removal_liquidation_request(
+        const eth::bls_public_key& bls_pubkey, bool liquidate) {
     eth::bls_aggregator::removal_type type = liquidate
                                                    ? eth::bls_aggregator::removal_type::normal
                                                    : eth::bls_aggregator::removal_type::liquidate;
