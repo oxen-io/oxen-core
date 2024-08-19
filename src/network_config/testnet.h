@@ -68,7 +68,9 @@ inline constexpr network_config config{
         .ETHEREUM_CHAIN_ID = static_cast<uint32_t>(-1),
         .ETHEREUM_REWARDS_CONTRACT = "0x0000000000000000000000000000000000000000",
         .ETHEREUM_POOL_CONTRACT = "0x0000000000000000000000000000000000000000",
-        .L2_REWARD_POOL_UPDATE_BLOCKS = mainnet::config.L2_REWARD_POOL_UPDATE_BLOCKS,
+        // Sepolia arbitrum sometimes slows down below the typical 250ms seen on mainnet, so for
+        // testnet/devnet we shorten this by half compared to mainnet:
+        .L2_REWARD_POOL_UPDATE_BLOCKS = mainnet::config.L2_REWARD_POOL_UPDATE_BLOCKS / 4,
         .L2_TRACKER_SAFE_BLOCKS = mainnet::config.L2_TRACKER_SAFE_BLOCKS,
 };
 }  // namespace cryptonote::config::testnet

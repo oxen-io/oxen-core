@@ -68,7 +68,7 @@ inline constexpr network_config config{
         .ETHEREUM_CHAIN_ID = 421614,
         .ETHEREUM_REWARDS_CONTRACT = "0xEF43cd64528eA89966E251d4FE17c660222D2c9d"sv,
         .ETHEREUM_POOL_CONTRACT = "0x408bCc6C9b942ECc4F289C080d2A1a2a3617Aff8"sv,
-        .L2_REWARD_POOL_UPDATE_BLOCKS = mainnet::config.L2_REWARD_POOL_UPDATE_BLOCKS,
+        .L2_REWARD_POOL_UPDATE_BLOCKS = testnet::config.L2_REWARD_POOL_UPDATE_BLOCKS,
         .L2_TRACKER_SAFE_BLOCKS = mainnet::config.L2_TRACKER_SAFE_BLOCKS,
 };
 }  // namespace cryptonote::config::stagenet

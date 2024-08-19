@@ -242,7 +242,7 @@ void L2Tracker::update_height() {
 }
 
 void L2Tracker::update_rewards(std::optional<std::forward_list<uint64_t>> more) {
-    // Make sure we have the last 3 L2_REWARD_POOL_UPDATE_BLOCKS reward values on hand so that we
+    // Make sure we have the last 2 L2_REWARD_POOL_UPDATE_BLOCKS reward values on hand so that we
     // can be called on at any time as a pulse validator to validate the l2_reward amount with a
     // safety margin.  We get called with nullopt initially to determine which heights we need, then
     // recurse with more set to the list of heights we need to retrieve.  For each one, we retrieve,
@@ -253,7 +253,7 @@ void L2Tracker::update_rewards(std::optional<std::forward_list<uint64_t>> more) 
         {
             std::shared_lock lock{mutex};
             for (auto r_height = reward_height(
-                         latest_height - std::min(latest_height, reward_update_blocks * 2),
+                         latest_height - std::min(latest_height, reward_update_blocks),
                          reward_update_blocks);
                  r_height <= latest_height;
                  r_height += reward_update_blocks) {
