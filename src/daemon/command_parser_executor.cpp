@@ -444,7 +444,7 @@ bool command_parser_executor::print_transaction_pool_stats(const std::vector<std
 bool command_parser_executor::start_mining(const std::vector<std::string>& args) {
     if (!args.size()) {
         std::cout << "Please specify a wallet address to mine for: start_mining <addr> "
-                     "[<threads>|auto]"
+                     "[threads={N|auto}] [num_blocks=N]"
                   << std::endl;
         return true;
     }
