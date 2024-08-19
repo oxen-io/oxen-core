@@ -1,5 +1,7 @@
 #pragma once
 
+#include <boost/uuid/uuid.hpp>
+
 #include "../cryptonote_config.h"
 
 namespace cryptonote {
@@ -7,6 +9,10 @@ namespace cryptonote {
 struct network_config final {
     // The network type of this config.
     const network_type NETWORK_TYPE;
+
+    // If non-empty, the default path subdir we use for this chain, e.g. ~/.oxen/SUBDIR.  Mainnet
+    // has no subdir, all other networks use a distinct subdirectory.
+    std::string_view DEFAULT_CONFIG_SUBDIR;
 
     // Used to estimate the blockchain height from a timestamp, with some grace time.  This can
     // drift slightly over time (because average block time is not typically *exactly*
@@ -135,7 +141,6 @@ struct network_config final {
                         : hf::hf10_bulletproofs;
         return GOVERNANCE_WALLET_ADDRESS[hard_fork_version >= wallet_switch ? 1 : 0];
     }
-
 };
 
 }  // namespace cryptonote

@@ -6,6 +6,7 @@
 namespace cryptonote::config::devnet {
 inline constexpr network_config config{
         .NETWORK_TYPE = network_type::DEVNET,
+        .DEFAULT_CONFIG_SUBDIR = "devnet"sv,
         .HEIGHT_ESTIMATE_HEIGHT = 0,
         .HEIGHT_ESTIMATE_TIMESTAMP = 1597170000,
         .PUBLIC_ADDRESS_BASE58_PREFIX = 3930,             // ~ dV1 .. dV3

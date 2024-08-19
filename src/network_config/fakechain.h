@@ -6,6 +6,7 @@
 namespace cryptonote::config::fakechain {
 inline constexpr network_config config{
         .NETWORK_TYPE = network_type::FAKECHAIN,
+        .DEFAULT_CONFIG_SUBDIR = "regtest"sv,
         .HEIGHT_ESTIMATE_HEIGHT = mainnet::config.HEIGHT_ESTIMATE_HEIGHT,
         .HEIGHT_ESTIMATE_TIMESTAMP = mainnet::config.HEIGHT_ESTIMATE_TIMESTAMP,
         .PUBLIC_ADDRESS_BASE58_PREFIX = mainnet::config.PUBLIC_ADDRESS_BASE58_PREFIX,

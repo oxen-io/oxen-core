@@ -11,6 +11,7 @@ namespace cryptonote::config::mainnet {
 inline constexpr auto TARGET_BLOCK_TIME = 2min;
 inline constexpr network_config config{
         .NETWORK_TYPE = network_type::MAINNET,
+        .DEFAULT_CONFIG_SUBDIR = ""sv,
         .HEIGHT_ESTIMATE_HEIGHT = 582088,
         .HEIGHT_ESTIMATE_TIMESTAMP = 1595359932,
         .PUBLIC_ADDRESS_BASE58_PREFIX = 114,

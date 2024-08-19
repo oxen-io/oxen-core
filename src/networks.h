@@ -50,12 +50,6 @@ constexpr std::string_view network_type_to_string(network_type t) {
     return "undefined";
 }
 
-inline std::filesystem::path network_config_subdir(network_type t) {
-    if (t == network_type::MAINNET)
-        return {};
-    return tools::utf8_path(network_type_to_string(t));
-}
-
 inline constexpr const network_config& get_config(network_type nettype) {
     switch (nettype) {
         case network_type::MAINNET: return config::mainnet::config;
@@ -68,5 +62,13 @@ inline constexpr const network_config& get_config(network_type nettype) {
     }
     throw oxen::traced<std::runtime_error>{"Invalid network type"};
 }
+
+inline std::filesystem::path network_config_subdir(network_type t) {
+    fs::path result;
+    if (auto subdir = get_config(t).DEFAULT_CONFIG_SUBDIR; !subdir.empty())
+        result = tools::utf8_path(subdir);
+    return result;
+}
+
 
 }  // namespace cryptonote

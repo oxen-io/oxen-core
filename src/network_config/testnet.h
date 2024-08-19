@@ -5,6 +5,7 @@
 namespace cryptonote::config::testnet {
 inline constexpr network_config config{
         .NETWORK_TYPE = network_type::TESTNET,
+        .DEFAULT_CONFIG_SUBDIR = "testnet"sv,
         .HEIGHT_ESTIMATE_HEIGHT = 339767,
         .HEIGHT_ESTIMATE_TIMESTAMP = 1595360006,
         .PUBLIC_ADDRESS_BASE58_PREFIX = 156,

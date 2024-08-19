@@ -18,6 +18,7 @@
 namespace cryptonote::config::localdev {
 inline constexpr network_config config{
         .NETWORK_TYPE = network_type::LOCALDEV,
+        .DEFAULT_CONFIG_SUBDIR = "localdev"sv,
         .HEIGHT_ESTIMATE_HEIGHT = devnet::config.HEIGHT_ESTIMATE_HEIGHT,
         .HEIGHT_ESTIMATE_TIMESTAMP = devnet::config.HEIGHT_ESTIMATE_TIMESTAMP,
         .PUBLIC_ADDRESS_BASE58_PREFIX = devnet::config.PUBLIC_ADDRESS_BASE58_PREFIX,

@@ -6,6 +6,7 @@
 namespace cryptonote::config::stagenet {
 inline constexpr network_config config{
         .NETWORK_TYPE = network_type::STAGENET,
+        .DEFAULT_CONFIG_SUBDIR = "stagenet"sv,
         .HEIGHT_ESTIMATE_HEIGHT = 0,
         .HEIGHT_ESTIMATE_TIMESTAMP = 1720140000,
         .PUBLIC_ADDRESS_BASE58_PREFIX = 4888,             // ~ ST2 .. ST4
