@@ -1849,6 +1849,7 @@ bool Blockchain::create_block_template_internal(
     } else {
         // Creates the block template for next block on main chain
         std::tie(height, b.prev_id) = get_tail_id();
+        ++height;  // Convert to the next block's height
         auto [maj, min] = get_ideal_block_version(m_nettype, height);
         b.major_version = maj;
         b.minor_version = min;
