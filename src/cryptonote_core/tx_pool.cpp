@@ -97,6 +97,10 @@ tx_memory_pool::tx_memory_pool(Blockchain& bchs) :
 //---------------------------------------------------------------------------------
 bool tx_memory_pool::have_duplicated_non_standard_tx(
         transaction const& tx, hf hard_fork_version) const {
+
+    std::vector<transaction> pool_txs;
+    get_transactions(pool_txs);
+
     auto& service_node_list = m_blockchain.service_node_list;
     if (tx.type == txtype::state_change) {
         tx_extra_service_node_state_change state_change;
@@ -123,8 +127,6 @@ bool tx_memory_pool::have_duplicated_non_standard_tx(
                 state_change.service_node_index,
                 service_node_to_change);
 
-        std::vector<transaction> pool_txs;
-        get_transactions(pool_txs);
         for (const transaction& pool_tx : pool_txs) {
             if (pool_tx.type != txtype::state_change)
                 continue;
@@ -173,8 +175,6 @@ bool tx_memory_pool::have_duplicated_non_standard_tx(
             return true;
         }
 
-        std::vector<transaction> pool_txs;
-        get_transactions(pool_txs);
         for (const transaction& pool_tx : pool_txs) {
             if (pool_tx.type != tx.type)
                 continue;
@@ -211,8 +211,6 @@ bool tx_memory_pool::have_duplicated_non_standard_tx(
             return true;
         }
 
-        std::vector<transaction> pool_txs;
-        get_transactions(pool_txs);
         for (const transaction& pool_tx : pool_txs) {
             if (pool_tx.type != tx.type)
                 continue;
@@ -247,6 +245,29 @@ bool tx_memory_pool::have_duplicated_non_standard_tx(
                     get_transaction_hash(tx),
                     fail);
             return true;
+        }
+
+        for (const transaction& pool_tx : pool_txs) {
+            if (pool_tx.type != tx.type)
+                continue;
+
+            auto pool_event = eth::extract_event(hard_fork_version, tx, fail);
+            if (std::holds_alternative<std::monostate>(pool_event)) {
+                log::info(
+                        logcat,
+                        "Could not extract L2 event from tx: {}, possibly corrupt tx in the pool",
+                        get_transaction_hash(tx));
+                return true;
+            }
+
+            if (event == pool_event) {
+                log::info(
+                        logcat,
+                        "New TX: {} has TX: {} from the pool with the same L2 event.",
+                        get_transaction_hash(tx),
+                        get_transaction_hash(pool_tx));
+                return true;
+            }
         }
     } else {
         if (tx.type != txtype::standard && tx.type != txtype::stake) {
