@@ -24,13 +24,6 @@ struct L2StateChange {
   protected:
     L2StateChange(uint64_t chain_id, uint64_t l2_height) :
             chain_id{chain_id}, l2_height{l2_height} {}
-
-    template <class Archive>
-    void serialize_base(Archive& ar, uint8_t version) {
-        field_varint(ar, "version", version);
-        field_varint(ar, "chain_id", chain_id);
-        field_varint(ar, "l2_height", l2_height);
-    }
 };
 
 struct Contributor {
@@ -62,7 +55,10 @@ struct NewServiceNode : L2StateChange {
 
     template <class Archive>
     void serialize_value(Archive& ar) {
-        serialize_base(ar, 0);
+        [[maybe_unused]] uint8_t version = 0;
+        field_varint(ar, "version", version);
+        field_varint(ar, "chain_id", chain_id);
+        field_varint(ar, "l2_height", l2_height);
         field(ar, "service_node_pubkey", sn_pubkey);
         field(ar, "bls_pubkey", bls_pubkey);
         field(ar, "signature", ed_signature);
@@ -89,7 +85,10 @@ struct ServiceNodeRemovalRequest : L2StateChange {
 
     template <class Archive>
     void serialize_value(Archive& ar) {
-        serialize_base(ar, 0);
+        [[maybe_unused]] uint8_t version = 0;
+        field_varint(ar, "version", version);
+        field_varint(ar, "chain_id", chain_id);
+        field_varint(ar, "l2_height", l2_height);
         field(ar, "bls_pubkey", bls_pubkey);
     }
 
@@ -113,7 +112,10 @@ struct ServiceNodeRemoval : L2StateChange {
 
     template <class Archive>
     void serialize_value(Archive& ar) {
-        serialize_base(ar, 0);
+        [[maybe_unused]] uint8_t version = 0;
+        field_varint(ar, "version", version);
+        field_varint(ar, "chain_id", chain_id);
+        field_varint(ar, "l2_height", l2_height);
         field(ar, "bls_pubkey", bls_pubkey);
         field_varint(ar, "returned_amount", returned_amount);
     }
