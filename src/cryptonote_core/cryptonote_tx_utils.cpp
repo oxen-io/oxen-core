@@ -585,6 +585,11 @@ bool get_oxen_block_reward(
         hf hard_fork_version,
         block_reward_parts& result,
         const oxen_block_reward_context& oxen_context) {
+
+    if (hard_fork_version >= feature::ETH_BLS)
+        throw oxen::traced<std::logic_error>{
+                "Invalid usage: get_oxen_block_reward is not applicable in HF21+"};
+
     result = {};
     uint64_t base_reward, base_reward_unpenalized;
     if (!get_base_block_reward(

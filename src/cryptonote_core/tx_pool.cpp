@@ -1845,7 +1845,8 @@ bool tx_memory_pool::fill_block_template(
     total_weight = 0;
     raw_fee = 0;
     uint64_t best_reward = 0;
-    {
+    size_t max_total_weight;
+    if (version < feature::ETH_BLS) {
         // NOTE: Calculate base line empty block reward
         oxen_block_reward_context block_reward_context = {};
         block_reward_context.height = height;
@@ -1864,9 +1865,17 @@ bool tx_memory_pool::fill_block_template(
 
         best_reward = version >= hf::hf16_pulse ? 0 /*Empty block, starts with 0 fee*/
                                                 : reward_parts.base_miner;
+        max_total_weight = 2 * median_weight - COINBASE_BLOB_RESERVED_SIZE;
+    } else {  // HF21+
+        // Before SENT, there was the "full reward" limit (300kB) and then a hard limit of double
+        // that (600kB), but over 300kB a quadratic penalty applied that reduced the miner (or pulse
+        // leader) tx fee reward.
+        //
+        // Under SENT we don't have any Oxen rewards to subtract *from* so all OXEN tx fees just get
+        // burned and the 300kB block weight soft limit (before HF21) just becomes a hard limit.
+        max_total_weight = BLOCK_GRANTED_FULL_REWARD_ZONE_V5 - COINBASE_BLOB_RESERVED_SIZE;
     }
 
-    size_t const max_total_weight = 2 * median_weight - COINBASE_BLOB_RESERVED_SIZE;
     std::unordered_set<crypto::key_image> k_images;
 
     log::debug(
@@ -1901,7 +1910,7 @@ bool tx_memory_pool::fill_block_template(
             if (l2_max && meta.l2_height > *l2_max) {
                 log::debug(
                         logcat,
-                        "  state change from L2 height {} is not in in admittable L2 heights <= {}",
+                        "  state change from L2 height {} is not in in admissable L2 heights <= {}",
                         meta.l2_height,
                         *l2_max);
                 continue;
@@ -1917,42 +1926,47 @@ bool tx_memory_pool::fill_block_template(
         }
 
         // Can not exceed maximum block weight
-        if (max_total_weight < total_weight + meta.weight) {
+        if (total_weight + meta.weight > max_total_weight) {
             log::debug(logcat, "  would exceed maximum block weight");
             continue;
         }
 
-        // NOTE: Calculate the next block reward for the block producer
-        oxen_block_reward_context next_block_reward_context = {};
-        next_block_reward_context.height = height;
-        next_block_reward_context.fee = raw_fee + meta.fee;
-
         block_reward_parts next_reward_parts = {};
-        if (!get_oxen_block_reward(
-                    median_weight,
-                    total_weight + meta.weight,
-                    already_generated_coins,
-                    version,
-                    next_reward_parts,
-                    next_block_reward_context)) {
-            log::debug(logcat, "Block reward calculation bug");
-            return false;
-        }
+        if (version < feature::ETH_BLS) {
+            // We don't check any of this under SENT because we simply have a hard limit that we
+            // can't exceed (see comment above).
 
-        // NOTE: Use the net fee for comparison (after penalty is applied).
-        // After HF16, penalty is applied on the miner fee. Before, penalty is
-        // applied on the base reward.
-        if (version >= hf::hf16_pulse) {
-            next_reward = next_reward_parts.miner_fee;
-        } else {
-            next_reward = next_reward_parts.base_miner + next_reward_parts.miner_fee;
-            assert(next_reward_parts.miner_fee == raw_fee + meta.fee);
-        }
+            // NOTE: Calculate the next block reward for the block producer
+            oxen_block_reward_context next_block_reward_context = {};
+            next_block_reward_context.height = height;
+            next_block_reward_context.fee = raw_fee + meta.fee;
 
-        // If we're getting lower reward tx, don't include this TX
-        if (next_reward < best_reward) {
-            log::debug(logcat, "  would decrease reward to {}", print_money(next_reward));
-            continue;
+            if (!get_oxen_block_reward(
+                        median_weight,
+                        total_weight + meta.weight,
+                        already_generated_coins,
+                        version,
+                        next_reward_parts,
+                        next_block_reward_context)) {
+                log::debug(logcat, "Block reward calculation bug");
+                return false;
+            }
+
+            // NOTE: Use the net fee for comparison (after penalty is applied).
+            // After HF16, penalty is applied on the miner fee. Before, penalty is
+            // applied on the base reward.
+            if (version >= hf::hf16_pulse) {
+                next_reward = next_reward_parts.miner_fee;
+            } else {
+                next_reward = next_reward_parts.base_miner + next_reward_parts.miner_fee;
+                assert(next_reward_parts.miner_fee == raw_fee + meta.fee);
+            }
+
+            // If we're getting lower reward tx, don't include this TX
+            if (next_reward < best_reward) {
+                log::debug(logcat, "  would decrease reward to {}", print_money(next_reward));
+                continue;
+            }
         }
 
         std::string txblob = m_blockchain.db().get_txpool_tx_blob(txid);
