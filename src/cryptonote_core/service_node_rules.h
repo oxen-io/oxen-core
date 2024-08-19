@@ -29,7 +29,6 @@ static_assert(
         "if the amount of blocks to go back from the tip of the Blockchain is less than the blocks "
         "we need.");
 
-
 constexpr uint16_t pulse_validator_bit_mask() {
     uint16_t result = 0;
     for (size_t validator_index = 0; validator_index < PULSE_QUORUM_NUM_VALIDATORS;
@@ -56,7 +55,7 @@ constexpr uint16_t pulse_validator_bit_mask() {
 // deregistration count down.  (Note that it is possible for a server to slightly exceed its
 // decommission time: the first quorum test after the credit expires determines whether the server
 // gets recommissioned or decommissioned).
-inline constexpr auto DECOMMISSION_CREDIT_PER_DAY = 24h / 30; // 24h credit per 30 days
+inline constexpr auto DECOMMISSION_CREDIT_PER_DAY = 24h / 30;  // 24h credit per 30 days
 inline constexpr auto DECOMMISSION_INITIAL_CREDIT = 2h;
 inline constexpr auto DECOMMISSION_MAX_CREDIT = 48h;
 inline constexpr auto DECOMMISSION_MINIMUM = 2h;
@@ -125,7 +124,7 @@ static_assert(
 // node on the network: temporary decommissioning, recommissioning, and permanent deregistration.
 inline constexpr size_t STATE_CHANGE_NTH_OF_THE_NETWORK_TO_TEST = 100;
 inline constexpr size_t STATE_CHANGE_MIN_NODES_TO_TEST = 50;
-inline constexpr auto VOTE_LIFETIME = 60; // blocks
+inline constexpr auto VOTE_LIFETIME = 60;  // blocks
 
 inline constexpr size_t STATE_CHANGE_MIN_VOTES_TO_CHANGE_STATE = 7;
 inline constexpr size_t STATE_CHANGE_QUORUM_SIZE = 10;
@@ -208,9 +207,8 @@ struct proof_version {
 };
 
 inline constexpr std::array MIN_UPTIME_PROOF_VERSIONS = {
-        proof_version{{cryptonote::hf::hf19_reward_batching, 3}, {10, 3, 0}, {0, 9, 11}, {2, 5, 0}},
-        proof_version{{cryptonote::hf::hf19_reward_batching, 2}, {10, 2, 0}, {0, 9, 9}, {2, 4, 0}},
-        proof_version{{cryptonote::hf::hf21_eth,             1}, {11, 0, 2}, {0, 9, 11}, {2, 8, 0}},
+        proof_version{{cryptonote::hf::hf19_reward_batching, 6}, {10, 6, 0}, {0, 9, 11}, {2, 8, 0}},
+        proof_version{{cryptonote::hf::hf21_eth, 0}, {11, 0, 3}, {0, 9, 11}, {2, 8, 0}},
 };
 
 using swarm_id_t = uint64_t;

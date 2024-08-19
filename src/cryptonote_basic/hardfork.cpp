@@ -152,6 +152,7 @@ static constexpr std::array devnet_hard_forks = {
         hard_fork{hf::hf18, 0, 256, 1716310018},
         hard_fork{hf::hf19_reward_batching, 0, 257, 1716310019},
         hard_fork{hf::hf20_eth_transition, 0, 379, 1716310020},
+        hard_fork{hf::hf21_eth, 0, 444, 1716310021},
 };
 
 static constexpr std::array local_devnet_hard_forks = {
@@ -166,10 +167,9 @@ static constexpr std::array local_devnet_hard_forks = {
 };
 
 static constexpr std::array stagenet_hard_forks = {
-        hard_fork{hf::hf7, 0, 0, 1720230000},
-        hard_fork{hf::hf14_blink, 0, 1, 1720230014},
-        hard_fork{hf::hf21_eth, 0, 250, 1720230021},
-        hard_fork{hf::hf21_eth, 1, 24966, 1723505400}, // 2024-08-12T23:30.000Z UTC (09:30:00 GMT+1000 (AEST))
+        hard_fork{hf::hf7, 0, 0, 1724084000},
+        hard_fork{hf::hf14_blink, 0, 1, 1724084014},
+        hard_fork{hf::hf21_eth, 0, 250, 1724084021},
 };
 
 template <size_t N>

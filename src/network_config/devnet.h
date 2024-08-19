@@ -6,7 +6,7 @@
 namespace cryptonote::config::devnet {
 inline constexpr network_config config{
         .NETWORK_TYPE = network_type::DEVNET,
-        .DEFAULT_CONFIG_SUBDIR = "devnet"sv,
+        .DEFAULT_CONFIG_SUBDIR = "devnet2"sv,
         .HEIGHT_ESTIMATE_HEIGHT = 0,
         .HEIGHT_ESTIMATE_TIMESTAMP = 1597170000,
         .PUBLIC_ADDRESS_BASE58_PREFIX = 3930,             // ~ dV1 .. dV3
@@ -16,7 +16,7 @@ inline constexpr network_config config{
         .RPC_DEFAULT_PORT = 38857,
         .QNET_DEFAULT_PORT = 38859,
         .NETWORK_ID =
-                {{0xa9,
+                {{0x02,
                   0xf7,
                   0x5c,
                   0x7d,
@@ -65,8 +65,8 @@ inline constexpr network_config config{
         .STORE_LONG_TERM_STATE_INTERVAL = mainnet::config.STORE_LONG_TERM_STATE_INTERVAL,
         .ETH_REMOVAL_BUFFER = testnet::config.ETH_REMOVAL_BUFFER,
         .ETHEREUM_CHAIN_ID = 421614,
-        .ETHEREUM_REWARDS_CONTRACT = "0xB333811db68888800a23E79b38E401451d97aEdD",
-        .ETHEREUM_POOL_CONTRACT = "0x8B11c5777EE7BFC1F1195A9ef0506Ae7846CC5b8",
+        .ETHEREUM_REWARDS_CONTRACT = "0x94d93f4D002d387b7De849f9FB0c4c918867Da78",
+        .ETHEREUM_POOL_CONTRACT = "0x75CA12bC16411443418fddE32bd17D6166E7AA4c",
         .L2_REWARD_POOL_UPDATE_BLOCKS = mainnet::config.L2_REWARD_POOL_UPDATE_BLOCKS,
         .L2_TRACKER_SAFE_BLOCKS = mainnet::config.L2_TRACKER_SAFE_BLOCKS,
 };
