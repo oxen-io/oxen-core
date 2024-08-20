@@ -373,10 +373,23 @@ void L2Tracker::add_to_mempool(uint64_t l2_height, const event::StateChangeVaria
                 tx_pool_options::from_l2(l2_height),
                 hf_version,
                 nullptr)) {
-        if (tvc.m_verifivation_failed)
-            log::error(log::Cat("verify"), "Transaction verification failed: {}", tx_hash);
-        else if (tvc.m_verifivation_impossible)
-            log::error(log::Cat("verify"), "Transaction verification impossible: {}", tx_hash);
+        if (tvc.m_verifivation_failed) {
+            if (tvc.m_duplicate_nonstandard)
+                log::debug(
+                        log::Cat("verify"), "Transaction was already in the mempool: {}", tx_hash);
+            else
+                log::error(
+                        log::Cat("verify"),
+                        "Transaction verification failed for {}: {}",
+                        tx_hash,
+                        cryptonote::print_tx_verification_context(tvc));
+        } else if (tvc.m_verifivation_impossible) {
+            log::error(
+                    log::Cat("verify"),
+                    "Transaction verification impossible for {}: {}",
+                    tx_hash,
+                    cryptonote::print_tx_verification_context(tvc));
+        }
     }
 }
 
