@@ -1499,6 +1499,7 @@ static void fill_block_header_response(
     if (blk.major_version >= cryptonote::feature::ETH_BLS) {
         response["l2_height"] = blk.l2_height;
         response["l2_reward"] = blk.l2_reward;
+        response["l2_votes"] = blk.l2_votes;
     }
     if (blk.miner_tx) {
         response_hex["miner_tx_hash"] = cryptonote::get_transaction_hash(*blk.miner_tx);
