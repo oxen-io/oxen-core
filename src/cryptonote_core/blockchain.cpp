@@ -3327,7 +3327,7 @@ bool Blockchain::find_blockchain_supplement(
     for (uint64_t i = start_height; i < total_height && count < max_count &&
                                     (size < FIND_BLOCKCHAIN_SUPPLEMENT_MAX_SIZE || count < 3);
          i++, count++) {
-        auto &bd = blocks.emplace_back();
+        auto& bd = blocks.emplace_back();
         bd.block_blob = m_db->get_block_blob_from_height(i);
         block b;
         CHECK_AND_ASSERT_MES(
@@ -3335,8 +3335,8 @@ bool Blockchain::find_blockchain_supplement(
                 false,
                 "internal error, invalid block");
         bd.miner_tx_hash = get_miner_tx_hash && b.miner_tx
-                                           ? cryptonote::get_transaction_hash(*b.miner_tx)
-                                           : crypto::null<crypto::hash>;
+                                 ? cryptonote::get_transaction_hash(*b.miner_tx)
+                                 : crypto::null<crypto::hash>;
         std::vector<std::string> txs;
         if (pruned) {
             CHECK_AND_ASSERT_MES(
@@ -5194,12 +5194,12 @@ bool Blockchain::handle_block_to_main_chain(
             chain_height ? m_db->get_block_already_generated_coins(chain_height - 1) : 0;
 
     if (bl.major_version < feature::ETH_BLS && !validate_miner_transaction(
-                bl,
-                cumulative_block_weight,
-                fee_summary,
-                base_reward,
-                already_generated_coins,
-                get_network_version())) {
+                                                       bl,
+                                                       cumulative_block_weight,
+                                                       fee_summary,
+                                                       base_reward,
+                                                       already_generated_coins,
+                                                       get_network_version())) {
         log::info(
                 logcat,
                 fg(fmt::terminal_color::red),
