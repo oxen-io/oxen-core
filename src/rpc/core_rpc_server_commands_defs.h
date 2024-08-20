@@ -2127,7 +2127,7 @@ struct GET_SERVICE_NODE_STATUS : NO_ARGS {
 ///  - `balances` -- a dict where keys are the wallet addresses and values are the balance (in
 ///    atomic SENT units).
 struct GET_ACCRUED_REWARDS : PUBLIC {
-    static constexpr auto names() { return NAMES("get_accrued_rewards"); }
+    static constexpr auto names() { return NAMES("get_accrued_rewards", "get_accrued_batched_earnings"); }
     struct request_parameters {
         std::vector<std::string> addresses;
     } request;
