@@ -251,7 +251,7 @@ bool tx_memory_pool::have_duplicated_non_standard_tx(
             if (pool_tx.type != tx.type)
                 continue;
 
-            auto pool_event = eth::extract_event(hard_fork_version, tx, fail);
+            auto pool_event = eth::extract_event(hard_fork_version, pool_tx, fail);
             if (std::holds_alternative<std::monostate>(pool_event)) {
                 log::info(
                         logcat,
