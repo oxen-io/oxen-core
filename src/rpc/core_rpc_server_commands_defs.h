@@ -521,7 +521,8 @@ struct MINING_STATUS : LEGACY, NO_ARGS {
 /// - `tx_count` -- Total number of non-coinbase transaction in the chain.
 /// - `tx_pool_size` -- Number of transactions that have been broadcast but not included in a block.
 /// - `mainnet` -- Indicates whether the node is on the main network (`true`) or not (`false`).
-/// - `nettype` -- String value of the network type (mainnet, stagenet, testnet, devnet, localdev, or fakechain).
+/// - `nettype` -- String value of the network type (mainnet, stagenet, testnet, devnet, localdev,
+/// or fakechain).
 /// - `top_block_hash` -- Hash of the highest block in the chain.  Will be hex for JSON requests,
 ///   32-byte binary value for bt requests.
 /// - `immutable_block_hash` -- Hash of the highest block in the chain that can not be reorganized.
@@ -686,8 +687,8 @@ struct GET_BLOCK_HASH : PUBLIC {
 ///   - `coinbase_payouts` -- The amount of OXEN paid out in this block.  As of Oxen 10 (HF 19),
 ///     this reflects the current batched amounts being paid from rewards batched over previous
 ///     blocks, not the amounts *earned* in the current block.
-///   - `block_size` -- The block size in bytes.
-///   - `block_weight` -- The block weight in bytes.
+///   - `block_weight` -- The block weight (i.e. size of all transactions) in bytes.
+///   - `block_size` -- The total block size in bytes (block data size + block_weight)
 ///   - `num_txes` -- Number of transactions in the block, not counting the coinbase tx.
 ///   - `pow_hash` -- The hash of the block's proof of work (requires `fill_pow_hash`)
 ///   - `long_term_weight` -- Long term weight of the block.
@@ -2127,7 +2128,9 @@ struct GET_SERVICE_NODE_STATUS : NO_ARGS {
 ///  - `balances` -- a dict where keys are the wallet addresses and values are the balance (in
 ///    atomic SENT units).
 struct GET_ACCRUED_REWARDS : PUBLIC {
-    static constexpr auto names() { return NAMES("get_accrued_rewards", "get_accrued_batched_earnings"); }
+    static constexpr auto names() {
+        return NAMES("get_accrued_rewards", "get_accrued_batched_earnings");
+    }
     struct request_parameters {
         std::vector<std::string> addresses;
     } request;

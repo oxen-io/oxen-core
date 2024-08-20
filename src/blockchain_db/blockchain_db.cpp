@@ -257,8 +257,8 @@ block_header BlockchainDB::get_block_header(const crypto::hash& h) const {
     return b;
 }
 
-block BlockchainDB::get_block(const crypto::hash& h) const {
-    block b = get_block_from_height(get_block_height(h));
+block BlockchainDB::get_block(const crypto::hash& h, size_t* size) const {
+    block b = get_block_from_height(get_block_height(h), size);
     return b;
 }
 

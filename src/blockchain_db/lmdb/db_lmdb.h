@@ -191,7 +191,7 @@ class BlockchainLMDB : public BlockchainDB {
 
     uint64_t get_block_height(const crypto::hash& h) const override;
 
-    block get_block_from_height(uint64_t height) const override;
+    block get_block_from_height(uint64_t height, size_t* size = nullptr) const override;
 
     block_header get_block_header_from_height(uint64_t height) const override;
 
@@ -500,7 +500,7 @@ class BlockchainLMDB : public BlockchainDB {
     template <typename T>
         requires std::is_same_v<T, cryptonote::block> ||
                  std::is_same_v<T, cryptonote::block_header> || std::is_same_v<T, std::string>
-    T get_and_convert_block_blob_from_height(uint64_t height) const;
+    T get_and_convert_block_blob_from_height(uint64_t height, size_t* size = nullptr) const;
 
     MDB_env* m_env;
 

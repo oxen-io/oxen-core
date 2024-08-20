@@ -868,10 +868,12 @@ class BlockchainDB {
      * If the block does not exist, the subclass should throw BLOCK_DNE
      *
      * @param h the hash to look for
+     * @param size if non-nullptr, will be set to the block's raw size (i.e. just the block data,
+     * not including transaction data)
      *
      * @return the block requested
      */
-    block get_block(const crypto::hash& h) const;
+    block get_block(const crypto::hash& h, size_t* size = nullptr) const;
 
     /**
      * @brief gets the height of the block with a given hash
@@ -935,10 +937,12 @@ class BlockchainDB {
      * that high, then the subclass should throw BLOCK_DNE
      *
      * @param height the height to look for
+     * @param size if non-nullptr, this will be set to the raw stored block data size (i.e. not
+     * including transactions).
      *
      * @return the block
      */
-    virtual block get_block_from_height(uint64_t height) const = 0;
+    virtual block get_block_from_height(uint64_t height, size_t* size = nullptr) const = 0;
 
     /**
      * @brief fetch a block's timestamp

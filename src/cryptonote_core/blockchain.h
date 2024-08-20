@@ -280,21 +280,29 @@ class Blockchain {
      *
      * @param h the hash to look for
      * @param blk return-by-reference variable to put result block in
-     * @param orphan if non-NULL, will be set to true if not in the main chain, false otherwise
+     * @param size if non-nullptr, this will be set to the stored block data size (just the block,
+     * not including txes).
+     * @param orphan if non-nullptr, will be set to true if not in the main chain, false otherwise
      *
      * @return true if the block was found, else false
      */
-    bool get_block_by_hash(const crypto::hash& h, block& blk, bool* orphan = NULL) const;
+    bool get_block_by_hash(
+            const crypto::hash& h,
+            block& blk,
+            size_t* size = nullptr,
+            bool* orphan = nullptr) const;
 
     /**
      * @brief gets the block at the given height
      *
      * @param h the hash to look for
      * @param blk return-by-reference variable to put result block in
+     * @param size if non-nullptr, this will be set to the stored block data size (just the block,
+     * not including txes).
      *
      * @return true if the block was found, else false
      */
-    bool get_block_by_height(uint64_t height, block& blk) const;
+    bool get_block_by_height(uint64_t height, block& blk, size_t* size = nullptr) const;
 
     /**
      * @brief performs some preprocessing on a group of incoming blocks to speed up verification

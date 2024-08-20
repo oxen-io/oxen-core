@@ -2281,7 +2281,7 @@ AND NOT EXISTS   (SELECT * FROM mappings WHERE owner.id = mappings.backup_owner_
 
         cryptonote::block ons_blk = {};
         bool orphan = false;
-        if (blockchain->get_block_by_hash(settings.top_hash, ons_blk, &orphan)) {
+        if (blockchain->get_block_by_hash(settings.top_hash, ons_blk, nullptr, &orphan)) {
             bool ons_height_matches = settings.top_height == ons_blk.get_height();
             if (ons_height_matches && !orphan) {
                 ons_height = settings.top_height;

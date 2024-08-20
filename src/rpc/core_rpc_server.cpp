@@ -1450,6 +1450,7 @@ static uint64_t get_block_coinbase_payouts(const block& blk) {
 //------------------------------------------------------------------------------------------------------------------------------
 static void fill_block_header_response(
         const block& blk,
+        size_t block_size,
         bool orphan_status,
         std::optional<uint64_t> maybe_height,
         const crypto::hash& hash,
@@ -1478,7 +1479,9 @@ static void fill_block_header_response(
     response_hex["hash"] = hash;
     response["difficulty"] = core.blockchain.block_difficulty(height);
     response["cumulative_difficulty"] = db.get_block_cumulative_difficulty(height);
-    response["block_size"] = response["block_weight"] = db.get_block_weight(height);
+    auto weight = db.get_block_weight(height);
+    response["block_weight"] = weight;
+    response["block_size"] = block_size + weight;
     auto coinbase = get_block_coinbase_payouts(blk);
     response["coinbase_payouts"] = coinbase;
     response["reward"] =
@@ -1514,11 +1517,14 @@ void core_rpc_server::invoke(GET_LAST_BLOCK_HEADER& get_last_block_header, rpc_c
 
     auto [last_block_height, last_block_hash] = m_core.blockchain.get_tail_id();
     block last_block;
-    bool have_last_block = m_core.blockchain.get_block_by_height(last_block_height, last_block);
+    size_t block_size;
+    bool have_last_block =
+            m_core.blockchain.get_block_by_height(last_block_height, last_block, &block_size);
     if (!have_last_block)
         throw rpc_error{ERROR_INTERNAL, "Internal error: can't get last block."};
     fill_block_header_response(
             last_block,
+            block_size,
             false,
             last_block_height,
             last_block_hash,
@@ -1541,14 +1547,17 @@ void core_rpc_server::invoke(GET_BLOCK_HEADER_BY_HASH& gbh, rpc_context context)
                     ERROR_WRONG_PARAM,
                     "Failed to parse hex representation of block hash. Hex = " + hash + '.'};
         block blk;
+        size_t block_size;
         bool orphan = false;
-        bool have_block = m_core.blockchain.get_block_by_hash(block_hash, blk, &orphan);
+        bool have_block =
+                m_core.blockchain.get_block_by_hash(block_hash, blk, &block_size, &orphan);
         if (!have_block)
             throw rpc_error{
                     ERROR_INTERNAL,
                     "Internal error: can't get block by hash. Hash = " + hash + '.'};
         fill_block_header_response(
                 blk,
+                block_size,
                 orphan,
                 std::nullopt,
                 block_hash,
@@ -1581,13 +1590,15 @@ void core_rpc_server::invoke(
         throw rpc_error{ERROR_TOO_BIG_HEIGHT, "Invalid start/end heights."};
     for (uint64_t h = start_height; h <= end_height; ++h) {
         block blk;
-        bool have_block = m_core.blockchain.get_block_by_height(h, blk);
+        size_t block_size;
+        bool have_block = m_core.blockchain.get_block_by_height(h, blk, &block_size);
         if (!have_block)
             throw rpc_error{
                     ERROR_INTERNAL,
                     "Internal error: can't get block by height. Height = {}."_format(h)};
         fill_block_header_response(
                 blk,
+                block_size,
                 false,
                 std::nullopt,
                 get_block_hash(blk),
@@ -1613,7 +1624,8 @@ void core_rpc_server::invoke(GET_BLOCK_HEADER_BY_HEIGHT& gbh, rpc_context contex
                             " greater than current top block height: " +
                             std::to_string(curr_height - 1)};
         block blk;
-        bool have_block = m_core.blockchain.get_block_by_height(height, blk);
+        size_t blk_size = 0;
+        bool have_block = m_core.blockchain.get_block_by_height(height, blk, &blk_size);
         if (!have_block)
             throw rpc_error{
                     ERROR_INTERNAL,
@@ -1621,6 +1633,7 @@ void core_rpc_server::invoke(GET_BLOCK_HEADER_BY_HEIGHT& gbh, rpc_context contex
                             std::to_string(height) + '.'};
         fill_block_header_response(
                 blk,
+                blk_size,
                 false,
                 height,
                 get_block_hash(blk),
@@ -1646,36 +1659,36 @@ void core_rpc_server::invoke(GET_BLOCK& get_block, rpc_context context) {
     std::optional<uint64_t> block_height;
     bool orphan = false;
     crypto::hash block_hash;
+    size_t block_size = 0;
     if (!get_block.request.hash.empty()) {
         if (!tools::try_load_from_hex_guts(get_block.request.hash, block_hash))
             throw rpc_error{
                     ERROR_WRONG_PARAM,
-                    "Failed to parse hex representation of block hash. Hex = " +
-                            get_block.request.hash + '.'};
-        if (!m_core.blockchain.get_block_by_hash(block_hash, blk, &orphan))
+                    "Failed to parse hex representation of block hash. Hex = {}."_format(
+                            get_block.request.hash)};
+        if (!m_core.blockchain.get_block_by_hash(block_hash, blk, &block_size, &orphan))
             throw rpc_error{
                     ERROR_INTERNAL,
-                    "Internal error: can't get block by hash. Hash = " + get_block.request.hash +
-                            '.'};
+                    "Internal error: can't get block by hash. Hash = {}."_format(
+                            get_block.request.hash)};
     } else {
         if (auto curr_height = m_core.blockchain.get_current_blockchain_height();
             get_block.request.height >= curr_height)
             throw rpc_error{
                     ERROR_TOO_BIG_HEIGHT,
-                    std::string("Requested block height: ") +
-                            std::to_string(get_block.request.height) +
-                            " greater than current top block height: " +
-                            std::to_string(curr_height - 1)};
-        if (!m_core.blockchain.get_block_by_height(get_block.request.height, blk))
+                    "Requested block height: {} greater than current top block height: {}"_format(
+                            get_block.request.height, curr_height - 1)};
+        if (!m_core.blockchain.get_block_by_height(get_block.request.height, blk, &block_size))
             throw rpc_error{
                     ERROR_INTERNAL,
-                    "Internal error: can't get block by height. Height = " +
-                            std::to_string(get_block.request.height) + '.'};
+                    "Internal error: can't get block by height. Height = {}."_format(
+                            get_block.request.height)};
         block_hash = get_block_hash(blk);
         block_height = get_block.request.height;
     }
     fill_block_header_response(
             blk,
+            block_size,
             orphan,
             block_height,
             block_hash,

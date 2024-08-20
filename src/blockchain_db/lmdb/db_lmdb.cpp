@@ -2679,7 +2679,7 @@ bool BlockchainLMDB::block_exists(const crypto::hash& h, uint64_t* height) const
 template <typename T>
     requires std::is_same_v<T, cryptonote::block> || std::is_same_v<T, cryptonote::block_header> ||
              std::is_same_v<T, std::string>
-T BlockchainLMDB::get_and_convert_block_blob_from_height(uint64_t height) const {
+T BlockchainLMDB::get_and_convert_block_blob_from_height(uint64_t height, size_t* size) const {
     // NOTE: Avoid any intermediary functions like taking a blob, then converting
     // to block which incurs a copy into std::string then conversion, and prefer
     // converting directly from the data initially fetched.
@@ -2715,13 +2715,15 @@ T BlockchainLMDB::get_and_convert_block_blob_from_height(uint64_t height) const 
     } else if constexpr (std::is_same_v<T, std::string>) {
         result = blob;
     }
+    if (size)
+        *size = blob.size();
 
     return result;
 }
 
-block BlockchainLMDB::get_block_from_height(uint64_t height) const {
+block BlockchainLMDB::get_block_from_height(uint64_t height, size_t* size) const {
     log::trace(logcat, "BlockchainLMDB::{}", __func__);
-    block result = get_and_convert_block_blob_from_height<block>(height);
+    block result = get_and_convert_block_blob_from_height<block>(height, size);
     return result;
 }
 

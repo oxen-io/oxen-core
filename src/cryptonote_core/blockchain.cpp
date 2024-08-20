@@ -963,13 +963,14 @@ crypto::hash Blockchain::get_pending_block_id_by_height(uint64_t height) const {
     return get_block_id_by_height(height);
 }
 //------------------------------------------------------------------
-bool Blockchain::get_block_by_hash(const crypto::hash& h, block& blk, bool* orphan) const {
+bool Blockchain::get_block_by_hash(
+        const crypto::hash& h, block& blk, size_t* size, bool* orphan) const {
     log::trace(logcat, "Blockchain::{}", __func__);
     std::unique_lock lock{*this};
 
     // try to find block in main chain
     try {
-        blk = m_db->get_block(h);
+        blk = m_db->get_block(h, size);
         if (orphan)
             *orphan = false;
         return true;
@@ -984,6 +985,8 @@ bool Blockchain::get_block_by_hash(const crypto::hash& h, block& blk, bool* orph
                 throw oxen::traced<std::runtime_error>(
                         "Found block in alt chain, but failed to parse it");
             }
+            if (size)
+                *size = blob.size();
             if (orphan)
                 *orphan = true;
             return true;
@@ -999,9 +1002,9 @@ bool Blockchain::get_block_by_hash(const crypto::hash& h, block& blk, bool* orph
     return false;
 }
 //------------------------------------------------------------------
-bool Blockchain::get_block_by_height(uint64_t height, block& blk) const {
+bool Blockchain::get_block_by_height(uint64_t height, block& blk, size_t* size) const {
     try {
-        blk = m_db->get_block_from_height(height);
+        blk = m_db->get_block_from_height(height, size);
         return true;
     } catch (const BLOCK_DNE& e) {
     }
