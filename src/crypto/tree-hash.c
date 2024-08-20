@@ -77,8 +77,9 @@ void tree_hash(const unsigned char (*hashes)[HASH_SIZE], size_t count, unsigned 
     // was blocking exploitation on normal platforms, how ever we strongly recommend the following
     // fix because it removes mistake in mathematical formula.
 
-    assert(count > 0);
-    if (count == 1) {
+    if (count == 0) {
+        memset(root_hash, 0, HASH_SIZE);
+    } else if (count == 1) {
         memcpy(root_hash, hashes, HASH_SIZE);
     } else if (count == 2) {
         cn_fast_hash(hashes, 2 * HASH_SIZE, root_hash);
