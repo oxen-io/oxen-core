@@ -1211,9 +1211,11 @@ void core_rpc_server::invoke(START_MINING& start_mining, rpc_context) {
         return;
     }
 
-    cryptonote::address_parse_info info;
-    if (!get_account_address_from_str(
-                info, m_core.get_nettype(), start_mining.request.miner_address)) {
+    cryptonote::address_parse_info info{};
+    if (start_mining.request.miner_address == "none") {
+        // use null address
+    } else if (!get_account_address_from_str(
+                       info, m_core.get_nettype(), start_mining.request.miner_address)) {
         start_mining.response["status"] = "Failed, invalid address";
         log::warning(logcat, "{}", start_mining.response["status"].get<std::string_view>());
         return;

@@ -200,10 +200,9 @@ class rpc_command_executor final {
     bool print_transaction_pool_stats();
 
     bool start_mining(
-            const cryptonote::account_public_address& address,
+            std::string address,
             int num_threads,
-            int num_blocks,
-            cryptonote::network_type nettype);
+            int num_blocks);
 
     bool stop_mining();
 

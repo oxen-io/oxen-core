@@ -437,7 +437,8 @@ struct SUBMIT_TRANSACTION : PUBLIC, LEGACY {
 ///
 /// Inputs:
 ///
-/// - `miner_address` -- Account address to mine to.
+/// - `miner_address` -- Account address to mine to, or `"none"` to mine to the 0 address
+///   (discarding any possible rewards).
 /// - `threads_count` -- Number of mining threads to run.  Defaults to 1 thread if omitted or 0.
 /// - `num_blocks` -- Mine until the blockchain has this many new blocks, then stop (no limit if 0,
 ///   the default).

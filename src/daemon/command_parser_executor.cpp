@@ -443,31 +443,27 @@ bool command_parser_executor::print_transaction_pool_stats(const std::vector<std
 
 bool command_parser_executor::start_mining(const std::vector<std::string>& args) {
     if (!args.size()) {
-        std::cout << "Please specify a wallet address to mine for: start_mining <addr> "
-                     "[threads={N|auto}] [num_blocks=N]"
+        std::cout << "Please specify a wallet address to mine for: "
+                     "start_mining {<addr>|none} [threads={N|auto}] [num_blocks=N]"
                   << std::endl;
         return true;
     }
 
-    cryptonote::address_parse_info info;
-    cryptonote::network_type nettype;
-    if (cryptonote::get_account_address_from_str(
-                info, cryptonote::network_type::MAINNET, args.front()))
-        nettype = cryptonote::network_type::MAINNET;
-    else if (cryptonote::get_account_address_from_str(
-                     info, cryptonote::network_type::TESTNET, args.front()))
-        nettype = cryptonote::network_type::TESTNET;
-    else if (cryptonote::get_account_address_from_str(
-                     info, cryptonote::network_type::DEVNET, args.front()))
-        nettype = cryptonote::network_type::DEVNET;
-    else if (cryptonote::get_account_address_from_str(
-                     info, cryptonote::network_type::STAGENET, args.front()))
-        nettype = cryptonote::network_type::STAGENET;
-    else {
+    std::string address = args.front();
+    if (address == "none")
+        ;
+    else if (cryptonote::address_parse_info info;
+             !cryptonote::get_account_address_from_str(
+                     info, cryptonote::network_type::MAINNET, address) &&
+             !cryptonote::get_account_address_from_str(
+                     info, cryptonote::network_type::TESTNET, address) &&
+             !cryptonote::get_account_address_from_str(
+                     info, cryptonote::network_type::DEVNET, address) &&
+             !cryptonote::get_account_address_from_str(
+                     info, cryptonote::network_type::STAGENET, address)) {
         std::cout << "target account address has wrong format" << std::endl;
         return true;
-    }
-    if (info.is_subaddress) {
+    } else if (info.is_subaddress) {
         tools::fail_msg_writer("subaddress for mining reward is not yet supported!");
         return true;
     }
@@ -485,7 +481,7 @@ bool command_parser_executor::start_mining(const std::vector<std::string>& args)
 
     if (num_blocks_val.size())
         tools::parse_int(num_blocks_val, num_blocks);
-    m_executor.start_mining(info.address, threads_count, num_blocks, nettype);
+    m_executor.start_mining(address, threads_count, num_blocks);
     return true;
 }
 

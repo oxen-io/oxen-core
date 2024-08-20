@@ -1212,14 +1212,13 @@ bool rpc_command_executor::print_transaction_pool_stats() {
 }
 
 bool rpc_command_executor::start_mining(
-        const cryptonote::account_public_address& address,
+        std::string address,
         int num_threads,
-        int num_blocks,
-        cryptonote::network_type nettype) {
+        int num_blocks) {
     json args{
             {"num_blocks", num_blocks},
             {"threads_count", num_threads},
-            {"miner_address", cryptonote::get_account_address_as_str(nettype, false, address)}};
+            {"miner_address", std::move(address)}};
     if (!try_running(
                 [this, &args] { return invoke<START_MINING>(args); }, "Unable to start mining"))
         return false;
