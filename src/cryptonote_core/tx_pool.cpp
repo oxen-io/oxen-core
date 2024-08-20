@@ -269,6 +269,14 @@ bool tx_memory_pool::have_duplicated_non_standard_tx(
                 return true;
             }
         }
+
+        std::unique_lock b_lock{m_blockchain};
+        auto txid = get_transaction_hash(tx);
+        if (m_blockchain.have_tx(txid)) {
+            log::info(logcat, "New L2 event TX {} is already in the blockchain.", txid);
+            return true;
+        }
+
     } else {
         if (tx.type != txtype::standard && tx.type != txtype::stake) {
             // NOTE(oxen): This is a developer error. If we come across this in production, be
