@@ -121,7 +121,9 @@ block::block(block&& b) {
 block& block::operator=(const block& b) {
     block_header::operator=(b);
     miner_tx = b.miner_tx;
+    oxen10_pulse_producer = std::move(b.oxen10_pulse_producer);
     tx_hashes = b.tx_hashes;
+    tx_eth_count = b.tx_eth_count;
     signatures = b.signatures;
     copy_hash(b);
     return *this;
@@ -129,7 +131,9 @@ block& block::operator=(const block& b) {
 block& block::operator=(block&& b) {
     block_header::operator=(std::move(b));
     miner_tx = std::move(b.miner_tx);
+    oxen10_pulse_producer = std::move(b.oxen10_pulse_producer);
     tx_hashes = std::move(b.tx_hashes);
+    tx_eth_count = b.tx_eth_count;
     signatures = std::move(b.signatures);
     copy_hash(b);
     return *this;

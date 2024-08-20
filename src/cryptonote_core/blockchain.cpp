@@ -1929,8 +1929,8 @@ bool Blockchain::create_block_template_internal(
         // faulty/compromised L2 providers or pulse quorums).
         auto l2r_range = l2_reward_range(height);
         b.l2_reward = std::clamp(*actual_reward, l2r_range.first, l2r_range.second);
-
         b.l2_votes = service_node_list.l2_pending_state_votes();
+        b._height = height;
 
         // No miner tx in HF21+ blocks, so we're done.
         b.miner_tx = std::nullopt;
@@ -5192,7 +5192,8 @@ bool Blockchain::handle_block_to_main_chain(
     uint64_t base_reward = 0;
     uint64_t already_generated_coins =
             chain_height ? m_db->get_block_already_generated_coins(chain_height - 1) : 0;
-    if (!validate_miner_transaction(
+
+    if (bl.major_version < feature::ETH_BLS && !validate_miner_transaction(
                 bl,
                 cumulative_block_weight,
                 fee_summary,
@@ -5207,6 +5208,8 @@ bool Blockchain::handle_block_to_main_chain(
                 id);
         return false;
     }
+    // Otherwise (ETH_BLS+) we've already checked that there is no miner tx in
+    // prevalidate_miner_transaction
 
     auto vmt_elapsed = std::chrono::steady_clock::now() - vmt;
     // populate various metadata about the block to be stored alongside it.
