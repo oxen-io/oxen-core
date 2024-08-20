@@ -3294,9 +3294,7 @@ bool Blockchain::find_blockchain_supplement(
 bool Blockchain::find_blockchain_supplement(
         const uint64_t req_start_block,
         const std::list<crypto::hash>& qblock_ids,
-        std::vector<std::pair<
-                std::pair<std::string, crypto::hash>,
-                std::vector<std::pair<crypto::hash, std::string>>>>& blocks,
+        std::vector<BlockData>& blocks,
         uint64_t& total_height,
         uint64_t& start_height,
         bool pruned,
@@ -3326,14 +3324,14 @@ bool Blockchain::find_blockchain_supplement(
     for (uint64_t i = start_height; i < total_height && count < max_count &&
                                     (size < FIND_BLOCKCHAIN_SUPPLEMENT_MAX_SIZE || count < 3);
          i++, count++) {
-        blocks.resize(blocks.size() + 1);
-        blocks.back().first.first = m_db->get_block_blob_from_height(i);
+        auto &bd = blocks.emplace_back();
+        bd.block_blob = m_db->get_block_blob_from_height(i);
         block b;
         CHECK_AND_ASSERT_MES(
-                parse_and_validate_block_from_blob(blocks.back().first.first, b),
+                parse_and_validate_block_from_blob(bd.block_blob, b),
                 false,
                 "internal error, invalid block");
-        blocks.back().first.second = get_miner_tx_hash && b.miner_tx
+        bd.miner_tx_hash = get_miner_tx_hash && b.miner_tx
                                            ? cryptonote::get_transaction_hash(*b.miner_tx)
                                            : crypto::null<crypto::hash>;
         std::vector<std::string> txs;
@@ -3348,16 +3346,15 @@ bool Blockchain::find_blockchain_supplement(
             CHECK_AND_ASSERT_MES(
                     mis.empty(), false, "internal error, transaction from block not found");
         }
-        size += blocks.back().first.first.size();
+        size += bd.block_blob.size();
         for (const auto& t : txs)
             size += t.size();
 
         CHECK_AND_ASSERT_MES(
                 txs.size() == b.tx_hashes.size(), false, "mismatched sizes of b.tx_hashes and txs");
-        blocks.back().second.reserve(txs.size());
-        for (size_t i = 0; i < txs.size(); ++i) {
-            blocks.back().second.push_back(std::make_pair(b.tx_hashes[i], std::move(txs[i])));
-        }
+        bd.txs.reserve(txs.size());
+        for (size_t i = 0; i < txs.size(); ++i)
+            bd.txs.emplace_back(b.tx_hashes[i], std::move(txs[i]));
     }
     return true;
 }

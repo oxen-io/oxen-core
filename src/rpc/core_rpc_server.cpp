@@ -333,10 +333,7 @@ namespace {
 GET_BLOCKS_BIN::response core_rpc_server::invoke(GET_BLOCKS_BIN::request&& req, rpc_context) {
     GET_BLOCKS_BIN::response res{};
 
-    std::vector<std::pair<
-            std::pair<std::string, crypto::hash>,
-            std::vector<std::pair<crypto::hash, std::string>>>>
-            bs;
+    std::vector<Blockchain::BlockData> bs;
 
     if (!m_core.blockchain.find_blockchain_supplement(
                 req.start_height,
@@ -355,33 +352,30 @@ GET_BLOCKS_BIN::response core_rpc_server::invoke(GET_BLOCKS_BIN::request&& req, 
     res.blocks.reserve(bs.size());
     res.output_indices.reserve(bs.size());
     for (auto& bd : bs) {
-        res.blocks.resize(res.blocks.size() + 1);
-        res.blocks.back().block = bd.first.first;
-        size += bd.first.first.size();
-        res.output_indices.push_back(GET_BLOCKS_BIN::block_output_indices());
-        ntxes += bd.second.size();
-        res.output_indices.back().indices.reserve(1 + bd.second.size());
+        auto& res_b = res.blocks.emplace_back();
+        res_b.block = std::move(bd.block_blob);
+        size += res_b.block.size();
+        auto& out_ind = res.output_indices.emplace_back().indices;
+        ntxes += bd.txs.size();
+        out_ind.reserve(1 + bd.txs.size());
         if (req.no_miner_tx)
-            res.output_indices.back().indices.push_back(GET_BLOCKS_BIN::tx_output_indices());
-        res.blocks.back().txs.reserve(bd.second.size());
-        for (auto& [txhash, txdata] : bd.second) {
-            size += res.blocks.back().txs.emplace_back(std::move(txdata)).size();
-        }
+            out_ind.emplace_back();
+        res_b.txs.reserve(bd.txs.size());
+        for (auto& [txhash, txdata] : bd.txs)
+            size += res_b.txs.emplace_back(std::move(txdata)).size();
 
-        const size_t n_txes_to_lookup = bd.second.size() + (req.no_miner_tx ? 0 : 1);
+        const bool miner_tx = bd.miner_tx_hash && !req.no_miner_tx;
+        const size_t n_txes_to_lookup = bd.txs.size() + miner_tx;
         if (n_txes_to_lookup > 0) {
             std::vector<std::vector<uint64_t>> indices;
             bool r = m_core.blockchain.get_tx_outputs_gindexs(
-                    req.no_miner_tx ? bd.second.front().first : bd.first.second,
-                    n_txes_to_lookup,
-                    indices);
-            if (!r || indices.size() != n_txes_to_lookup ||
-                res.output_indices.back().indices.size() != (req.no_miner_tx ? 1 : 0)) {
+                    miner_tx ? bd.miner_tx_hash : bd.txs.front().first, n_txes_to_lookup, indices);
+            if (!r || indices.size() != n_txes_to_lookup || out_ind.size() != (miner_tx ? 0 : 1)) {
                 res.status = "Failed";
                 return res;
             }
             for (size_t i = 0; i < indices.size(); ++i)
-                res.output_indices.back().indices.push_back({std::move(indices[i])});
+                out_ind.emplace_back(std::move(indices[i]));
         }
     }
 

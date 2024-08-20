@@ -536,6 +536,12 @@ class Blockchain {
     bool find_blockchain_supplement(
             const std::list<crypto::hash>& qblock_ids, uint64_t& starter_offset) const;
 
+    struct BlockData {
+        std::string block_blob;
+        crypto::hash miner_tx_hash;                             // null if no miner tx
+        std::vector<std::pair<crypto::hash, std::string>> txs;  // hash => tx blob, in block order
+    };
+
     /**
      * @brief get recent blocks for a foreign chain
      *
@@ -557,9 +563,7 @@ class Blockchain {
     bool find_blockchain_supplement(
             const uint64_t req_start_block,
             const std::list<crypto::hash>& qblock_ids,
-            std::vector<std::pair<
-                    std::pair<std::string, crypto::hash>,
-                    std::vector<std::pair<crypto::hash, std::string>>>>& blocks,
+            std::vector<BlockData>& blocks,
             uint64_t& total_height,
             uint64_t& start_height,
             bool pruned,
