@@ -525,6 +525,7 @@ void serialize_value(Archive& ar, block_header& b) {
     if (b.major_version >= feature::ETH_BLS) {
         field_varint(ar, "height", b._height);
         field_varint(ar, "l2_height", b.l2_height);
+        field_varint(ar, "l2_reward", b.l2_reward);
         field(ar, "l2_votes", b.l2_votes);
     }
 }

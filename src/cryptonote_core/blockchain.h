@@ -1489,7 +1489,8 @@ class Blockchain {
             const std::list<block_extended_info>& alt_chain, uint64_t height, bool pulse) const;
 
     /**
-     * @brief sanity checks a miner transaction before validating an entire block
+     * @brief sanity checks a block's rewards (in the block in HF21+, or the miner transaction
+     * before HF21) before validating an entire block.
      *
      * This function merely checks basic things like the structure of the miner
      * transaction, the unlock time, and that the amount doesn't overflow.
@@ -1500,7 +1501,7 @@ class Blockchain {
      *
      * @return false if anything is found wrong with the miner transaction, otherwise true
      */
-    bool prevalidate_miner_transaction(const block& b, uint64_t height, hf hf_version);
+    bool prevalidate_block_rewards(const block& b, uint64_t height, hf hf_version);
 
     /**
      * @brief validates a miner (coinbase) transaction
@@ -1517,7 +1518,7 @@ class Blockchain {
      *
      * @return false if anything is found wrong with the miner transaction, otherwise true
      */
-    bool validate_miner_transaction(
+    bool validate_block_rewards(
             const block& b,
             size_t cumulative_block_weight,
             uint64_t fee,

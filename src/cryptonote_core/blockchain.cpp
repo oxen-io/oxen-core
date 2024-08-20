@@ -1355,7 +1355,7 @@ difficulty_type Blockchain::get_difficulty_for_alternative_chain(
 //   one input, of type txin_gen, with height set to the block's height
 //   correct miner tx unlock time
 //   a non-overflowing tx amount (dubious necessity on this check)
-bool Blockchain::prevalidate_miner_transaction(const block& b, uint64_t height, hf hf_version) {
+bool Blockchain::prevalidate_block_rewards(const block& b, uint64_t height, hf hf_version) {
     log::trace(logcat, "Blockchain::{}", __func__);
     if ((b.major_version >= feature::ETH_BLS) == b.miner_tx.has_value()) {
         log::error(
@@ -1436,8 +1436,8 @@ bool Blockchain::prevalidate_miner_transaction(const block& b, uint64_t height, 
     return true;
 }
 //------------------------------------------------------------------
-// This function validates the miner transaction reward
-bool Blockchain::validate_miner_transaction(
+// This function validates the miner transaction reward (HF20 and earlier) or block rewards (HF21+)
+bool Blockchain::validate_block_rewards(
         const block& b,
         size_t cumulative_block_weight,
         uint64_t fee,
@@ -1446,12 +1446,57 @@ bool Blockchain::validate_miner_transaction(
         hf version) {
     log::trace(logcat, "Blockchain::{}", __func__);
 
-    if ((b.major_version >= feature::ETH_BLS) == b.miner_tx.has_value()) {
+    const uint64_t height = b.get_height();
+
+    if (b.major_version >= feature::ETH_BLS) {
+        if (b.miner_tx) {
+            log::error(
+                    log::Cat("verify"),
+                    "Invalid block: HF {} blocks must not have a miner tx",
+                    static_cast<int>(b.major_version));
+            return false;
+        }
+
+        // The block's l2_reward published to the network is only permitted to change slightly from
+        // the previous block's value.
+        uint64_t min_l2r, max_l2r;
+        try {
+            std::tie(min_l2r, max_l2r) = l2_reward_range(b.get_height());
+        } catch (const DB_ERROR& e) {
+            log::error(logcat, "failed to retrieve previous block header from DB: {}", e.what());
+            return false;
+        }
+
+        if (b.l2_reward > max_l2r || b.l2_reward < min_l2r) {
+            log::error(
+                    log::Cat("verify"),
+                    "block has invalid l2_reward {} not in [{}, {}]",
+                    print_money(b.l2_reward),
+                    print_money(min_l2r),
+                    print_money(max_l2r));
+            return false;
+        }
+
+        // The block must also claim the correct (actual) block reward to be paid out at this
+        // height, which is the minimum of the last 15 blocks.
+        if (auto expected_reward = eth_consensus_reward(height); b.reward != expected_reward) {
+            log::error(
+                    log::Cat("verify"),
+                    "block reward for height {} is incorrect; block has {} but expected {}",
+                    height,
+                    print_money(b.reward),
+                    print_money(expected_reward));
+            return false;
+        }
+
+        return true;
+    }
+
+    if (!b.miner_tx) {
         log::error(
                 log::Cat("verify"),
-                "Invalid block: HF {} blocks {} have a miner tx",
-                static_cast<int>(b.major_version),
-                b.miner_tx ? "must not" : "must");
+                "Invalid block: HF {} blocks must have a miner tx",
+                static_cast<int>(b.major_version));
         return false;
     }
 
@@ -1471,7 +1516,6 @@ bool Blockchain::validate_miner_transaction(
         median_weight = tools::median(std::move(last_blocks_weights));
     }
 
-    uint64_t height = b.get_height();
     oxen_block_reward_context block_reward_context = {};
     block_reward_context.fee = fee;
     block_reward_context.height = height;
@@ -1577,7 +1621,7 @@ bool Blockchain::validate_miner_transaction(
                 money_in_use >= reward_parts.miner_fee, false, "base reward calculation bug");
         base_reward = money_in_use - reward_parts.miner_fee;
 
-    } else if (version == hf::hf19_reward_batching) {
+    } else {  // HF19-20
         if (b.reward != reward_parts.miner_fee + reward_parts.service_node_total) {
             log::error(
                     log::Cat("verify"),
@@ -1586,39 +1630,6 @@ bool Blockchain::validate_miner_transaction(
                     print_money(reward_parts.miner_fee + reward_parts.service_node_total),
                     print_money(reward_parts.service_node_total),
                     print_money(reward_parts.miner_fee));
-            return false;
-        }
-
-    } else if (version >= feature::ETH_BLS) {
-        // The block's l2_reward published to the network is only permitted to change slightly from
-        // the previous block's value.
-        uint64_t min_l2r, max_l2r;
-        try {
-            std::tie(min_l2r, max_l2r) = l2_reward_range(b.get_height());
-        } catch (const DB_ERROR& e) {
-            log::error(logcat, "failed to retrieve previous block header from DB: {}", e.what());
-            return false;
-        }
-
-        if (b.l2_reward > max_l2r || b.l2_reward < min_l2r) {
-            log::error(
-                    log::Cat("verify"),
-                    "block has invalid l2_reward {} not in [{}, {}]",
-                    print_money(b.l2_reward),
-                    print_money(min_l2r),
-                    print_money(max_l2r));
-            return false;
-        }
-
-        // The block must also claim the correct (actual) block reward to be paid out at this
-        // height, which is the minimum of the last 15 blocks.
-        if (auto expected_reward = eth_consensus_reward(height); b.reward != expected_reward) {
-            log::error(
-                    log::Cat("verify"),
-                    "block reward for height {} is incorrect; block has {} but expected {}",
-                    height,
-                    print_money(b.reward),
-                    print_money(expected_reward));
             return false;
         }
     }
@@ -1932,6 +1943,7 @@ bool Blockchain::create_block_template_internal(
         // faulty/compromised L2 providers or pulse quorums).
         auto l2r_range = l2_reward_range(height);
         b.l2_reward = std::clamp(*actual_reward, l2r_range.first, l2r_range.second);
+        b.reward = eth_consensus_reward(height);
         b.l2_votes = service_node_list.l2_pending_state_votes();
         b._height = height;
 
@@ -4963,7 +4975,7 @@ bool Blockchain::basic_block_checks(cryptonote::block const& blk, bool alt_block
     // When verifying an alt block, we're replacing the blk at blk_height, not
     // adding a new block to the chain
     // sanity check basic miner tx properties;
-    if (!prevalidate_miner_transaction(blk, alt_block ? blk_height : chain_height, hf_version)) {
+    if (!prevalidate_block_rewards(blk, alt_block ? blk_height : chain_height, hf_version)) {
         log::info(
                 logcat,
                 fg(fmt::terminal_color::red),
@@ -5193,13 +5205,13 @@ bool Blockchain::handle_block_to_main_chain(
     uint64_t already_generated_coins =
             chain_height ? m_db->get_block_already_generated_coins(chain_height - 1) : 0;
 
-    if (bl.major_version < feature::ETH_BLS && !validate_miner_transaction(
-                                                       bl,
-                                                       cumulative_block_weight,
-                                                       fee_summary,
-                                                       base_reward,
-                                                       already_generated_coins,
-                                                       get_network_version())) {
+    if (!validate_block_rewards(
+                bl,
+                cumulative_block_weight,
+                fee_summary,
+                base_reward,
+                already_generated_coins,
+                get_network_version())) {
         log::info(
                 logcat,
                 fg(fmt::terminal_color::red),
@@ -5209,7 +5221,7 @@ bool Blockchain::handle_block_to_main_chain(
         return false;
     }
     // Otherwise (ETH_BLS+) we've already checked that there is no miner tx in
-    // prevalidate_miner_transaction
+    // prevalidate_block_rewards
 
     auto vmt_elapsed = std::chrono::steady_clock::now() - vmt;
     // populate various metadata about the block to be stored alongside it.
