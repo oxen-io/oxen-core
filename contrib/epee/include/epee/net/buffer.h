@@ -1,21 +1,21 @@
 // Copyright (c) 2018, The Monero Project
-// 
+//
 // All rights reserved.
-// 
+//
 // Redistribution and use in source and binary forms, with or without modification, are
 // permitted provided that the following conditions are met:
-// 
+//
 // 1. Redistributions of source code must retain the above copyright notice, this list of
 //    conditions and the following disclaimer.
-// 
+//
 // 2. Redistributions in binary form must reproduce the above copyright notice, this list
 //    of conditions and the following disclaimer in the documentation and/or other
 //    materials provided with the distribution.
-// 
+//
 // 3. Neither the name of the copyright holder nor the names of its contributors may be
 //    used to endorse or promote products derived from this software without specific
 //    prior written permission.
-// 
+//
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY
 // EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
 // MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL
@@ -29,28 +29,24 @@
 #pragma once
 
 #include <vector>
+
 #include "../span.h"
 
 #define NET_BUFFER_LOG(x) ((void)0)
 
-namespace epee
-{
-namespace net_utils
-{
-class buffer
-{
-public:
-  buffer(size_t reserve = 0): offset(0) { storage.reserve(reserve); }
+namespace epee::net_utils {
+class buffer {
+  public:
+    buffer(size_t reserve = 0) : offset(0) { storage.reserve(reserve); }
 
-  void append(const void *data, size_t sz);
-  void erase(size_t sz);
-  epee::span<const uint8_t> span(size_t sz) const;
-  epee::span<const uint8_t> carve(size_t sz);
-  size_t size() const { return storage.size() - offset; }
+    void append(const void* data, size_t sz);
+    void erase(size_t sz);
+    epee::span<const uint8_t> span(size_t sz) const;
+    epee::span<const uint8_t> carve(size_t sz);
+    size_t size() const { return storage.size() - offset; }
 
-private:
-  std::vector<uint8_t> storage;
-  size_t offset;
+  private:
+    std::vector<uint8_t> storage;
+    size_t offset;
 };
-}
-}
+}  // namespace epee::net_utils

@@ -2,7 +2,7 @@
 
 CLANG_FORMAT_DESIRED_VERSION=16
 
-TARGET_DIRS=(src pybind tests)
+TARGET_DIRS=(src pybind tests contrib/epee)
 
 set -e
 

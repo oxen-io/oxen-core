@@ -1,21 +1,21 @@
 // Copyright (c) 2017-2018, The Monero Project
-// 
+//
 // All rights reserved.
-// 
+//
 // Redistribution and use in source and binary forms, with or without modification, are
 // permitted provided that the following conditions are met:
-// 
+//
 // 1. Redistributions of source code must retain the above copyright notice, this list of
 //    conditions and the following disclaimer.
-// 
+//
 // 2. Redistributions in binary form must reproduce the above copyright notice, this list
 //    of conditions and the following disclaimer in the documentation and/or other
 //    materials provided with the distribution.
-// 
+//
 // 3. Neither the name of the copyright holder nor the names of its contributors may be
 //    used to endorse or promote products derived from this software without specific
 //    prior written permission.
-// 
+//
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY
 // EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
 // MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL
@@ -28,84 +28,85 @@
 
 #pragma once
 
-#include <optional>
 #include <cstddef>
+#include <optional>
+#include <string>
 #include <type_traits>
 #include <vector>
-#include <string>
+
 #include "memwipe.h"
 
-namespace epee
-{
-  class wipeable_string
-  {
+namespace epee {
+class wipeable_string {
   public:
     typedef char value_type;
 
     wipeable_string() {}
-    wipeable_string(const wipeable_string &other);
-    wipeable_string(wipeable_string &&other);
-    wipeable_string(const std::string &other);
-    wipeable_string(std::string &&other);
-    wipeable_string(const char *s);
-    wipeable_string(const char *s, size_t len);
+    wipeable_string(const wipeable_string& other);
+    wipeable_string(wipeable_string&& other);
+    wipeable_string(const std::string& other);
+    wipeable_string(std::string&& other);
+    wipeable_string(const char* s);
+    wipeable_string(const char* s, size_t len);
     ~wipeable_string();
     void wipe();
     void push_back(char c);
     void operator+=(char c);
-    void operator+=(const std::string &s);
-    void operator+=(const epee::wipeable_string &s);
-    void operator+=(const char *s);
-    void append(const char *ptr, size_t len);
+    void operator+=(const std::string& s);
+    void operator+=(const epee::wipeable_string& s);
+    void operator+=(const char* s);
+    void append(const char* ptr, size_t len);
     char pop_back();
-    const char *data() const noexcept { return buffer.data(); }
-    char *data() noexcept { return buffer.data(); }
+    const char* data() const noexcept { return buffer.data(); }
+    char* data() noexcept { return buffer.data(); }
     size_t size() const noexcept { return buffer.size(); }
     size_t length() const noexcept { return buffer.size(); }
     bool empty() const noexcept { return buffer.empty(); }
     void trim();
     std::string_view view() const noexcept { return std::string_view{data(), size()}; }
-    void split(std::vector<wipeable_string> &fields) const;
+    void split(std::vector<wipeable_string>& fields) const;
     std::optional<wipeable_string> parse_hexstr() const;
-    template<typename T> inline bool hex_to_pod(T &pod) const;
-    template<typename T> inline bool hex_to_pod(tools::scrubbed<T> &pod) const { return hex_to_pod(unwrap(pod)); }
+    template <typename T>
+    inline bool hex_to_pod(T& pod) const;
+    template <typename T>
+    inline bool hex_to_pod(tools::scrubbed<T>& pod) const {
+        return hex_to_pod(unwrap(pod));
+    }
     void resize(size_t sz);
     void reserve(size_t sz);
     void clear();
-    bool operator==(const wipeable_string &other) const noexcept { return buffer == other.buffer; }
-    bool operator!=(const wipeable_string &other) const noexcept { return buffer != other.buffer; }
-    wipeable_string &operator=(wipeable_string &&other);
-    wipeable_string &operator=(const wipeable_string &other);
+    bool operator==(const wipeable_string& other) const noexcept { return buffer == other.buffer; }
+    bool operator!=(const wipeable_string& other) const noexcept { return buffer != other.buffer; }
+    wipeable_string& operator=(wipeable_string&& other);
+    wipeable_string& operator=(const wipeable_string& other);
 
   private:
     void grow(size_t sz, size_t reserved = 0);
 
   private:
     std::vector<char> buffer;
-  };
+};
 
-  template<typename T> bool wipeable_string::hex_to_pod(T &pod) const
-  {
+template <typename T>
+bool wipeable_string::hex_to_pod(T& pod) const {
     static_assert(std::is_trivial_v<T> && std::is_standard_layout_v<T>, "expected pod type");
     if (size() != sizeof(T) * 2)
-      return false;
+        return false;
     std::optional<epee::wipeable_string> blob = parse_hexstr();
     if (!blob)
-      return false;
+        return false;
     if (blob->size() != sizeof(T))
-      return false;
+        return false;
     pod = *(const T*)blob->data();
     return true;
-  }
 }
+}  // namespace epee
 
-namespace std
-{
-  template<> struct hash<epee::wipeable_string>
-  {
-    size_t operator()(const epee::wipeable_string &s) const
-    {
-      return hash<std::string_view>{}(s.view());
+namespace std {
+template <>
+struct hash<epee::wipeable_string> {
+    size_t operator()(const epee::wipeable_string& s) const {
+        return hash<std::string_view>{}(s.view());
     }
-  };
-}
+};
+}  // namespace std

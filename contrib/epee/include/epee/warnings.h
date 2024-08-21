@@ -1,5 +1,7 @@
 #pragma once
 
+// clang-format off
+
 #if defined(_MSC_VER)
 
 #define PUSH_WARNINGS __pragma(warning(push))
@@ -25,6 +27,7 @@
 #define DISABLE_CLANG_WARNING(w)
 #endif
 
-#define DISABLE_GCC_AND_CLANG_WARNING(w) _Pragma(BOOST_PP_STRINGIZE(GCC diagnostic ignored BOOST_PP_STRINGIZE(-W##w)))
+#define DISABLE_GCC_AND_CLANG_WARNING(w) \
+    _Pragma(BOOST_PP_STRINGIZE(GCC diagnostic ignored w))
 
 #endif
