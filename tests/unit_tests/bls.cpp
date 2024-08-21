@@ -120,7 +120,10 @@ TEST(BLS, signatures) {
     auto sig1b = bls_utils::to_crypto_signature(bls_utils::from_crypto_signature(sig1));
     EXPECT_EQ("{}"_format(sig1), "{}"_format(sig1b));
     EXPECT_EQ(sig1a.getStr(), bls_utils::from_crypto_signature(sig1b).getStr());
-    EXPECT_TRUE(signer.verifyMsg(bls_utils::to_crypto_signature(sig1a), bls_utils::to_crypto_pubkey(signer.getPubkey()), hash1));
+    EXPECT_TRUE(signer.verifyMsg(
+            bls_utils::to_crypto_signature(sig1a),
+            bls_utils::to_crypto_pubkey(signer.getPubkey()),
+            hash1));
     EXPECT_TRUE(signer.verifyMsg(sig1b, pk, hash1));
 
     EXPECT_EQ(
@@ -133,6 +136,8 @@ TEST(BLS, signatures) {
     auto sig2 = signer.signMsg(hash2);
     EXPECT_EQ(
             "{}"_format(sig2),
-            "0a6f2c1693aceac3220fb57277d33203022339b21fca05bd2751cfdf50359ad628d633ff8e214bfa1fed2334fd1d7db512fcd43bba173a84d443fe6d333d64540960da53f247c635af26128574190e91f40d899fefdda43b9f2c17fccf97cf062f82c037ba9e20e63e0bc72bc672e35643adad660e4afe60357c26c83bce7a2b");
+            "0a6f2c1693aceac3220fb57277d33203022339b21fca05bd2751cfdf50359ad628d633ff8e214bfa1fed23"
+            "34fd1d7db512fcd43bba173a84d443fe6d333d64540960da53f247c635af26128574190e91f40d899fefdd"
+            "a43b9f2c17fccf97cf062f82c037ba9e20e63e0bc72bc672e35643adad660e4afe60357c26c83bce7a2b");
     EXPECT_TRUE(signer.verifyMsg(sig2, pk, hash2));
 }

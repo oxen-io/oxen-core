@@ -26,10 +26,12 @@
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#include <gtest/gtest.h>
+
 #include <algorithm>
 #include <atomic>
-#include <boost/archive/portable_binary_oarchive.hpp>
 #include <boost/archive/portable_binary_iarchive.hpp>
+#include <boost/archive/portable_binary_oarchive.hpp>
 #include <boost/asio/buffer.hpp>
 #include <boost/asio/io_service.hpp>
 #include <boost/asio/ip/tcp.hpp>
@@ -45,37 +47,35 @@
 #include <cstdint>
 #include <cstring>
 #include <functional>
-#include <gtest/gtest.h>
 #include <map>
 #include <memory>
 #include <type_traits>
 
 #include "crypto/crypto.h"
+#include "epee/net/net_utils_base.h"
+#include "epee/serialization/keyvalue_serialization.h"
+#include "epee/storages/portable_storage.h"
 #include "net/dandelionpp.h"
 #include "net/error.h"
 #include "net/i2p_address.h"
-#include "epee/net/net_utils_base.h"
 #include "net/parse.h"
 #include "net/tor_address.h"
 #include "p2p/net_peerlist_boost_serialization.h"
-#include "epee/serialization/keyvalue_serialization.h"
-#include "epee/storages/portable_storage.h"
 
-namespace
-{
-    static constexpr const char v2_onion[] =
-        "xmrto2bturnore26.onion";
-    static constexpr const char v3_onion[] =
+namespace {
+static constexpr const char v2_onion[] = "xmrto2bturnore26.onion";
+static constexpr const char v3_onion[] =
         "vww6ybal4bd7szmgncyruucpgfkqahzddi37ktceo3ah7ngmcopnpyyd.onion";
-}
+}  // namespace
 
 using namespace std::literals;
 
-TEST(tor_address, constants)
-{
+TEST(tor_address, constants) {
     static_assert(!net::tor_address::is_local(), "bad is_local() response");
     static_assert(!net::tor_address::is_loopback(), "bad is_loopback() response");
-    static_assert(net::tor_address::get_type_id() == epee::net_utils::address_type::tor, "bad get_type_id() response");
+    static_assert(
+            net::tor_address::get_type_id() == epee::net_utils::address_type::tor,
+            "bad get_type_id() response");
 
     EXPECT_FALSE(net::tor_address::is_local());
     EXPECT_FALSE(net::tor_address::is_loopback());
@@ -83,16 +83,17 @@ TEST(tor_address, constants)
     EXPECT_EQ(epee::net_utils::address_type::tor, net::tor_address::get_type_id());
 }
 
-TEST(tor_address, invalid)
-{
+TEST(tor_address, invalid) {
     EXPECT_TRUE(net::tor_address::make("").has_error());
     EXPECT_TRUE(net::tor_address::make(":").has_error());
     EXPECT_TRUE(net::tor_address::make(".onion").has_error());
     EXPECT_TRUE(net::tor_address::make(".onion:").has_error());
     EXPECT_TRUE(net::tor_address::make(v2_onion + 1).has_error());
     EXPECT_TRUE(net::tor_address::make(v3_onion + 1).has_error());
-    EXPECT_TRUE(net::tor_address::make(std::string_view{v2_onion, sizeof(v2_onion) - 2}).has_error());
-    EXPECT_TRUE(net::tor_address::make(std::string_view{v3_onion, sizeof(v3_onion) - 2}).has_error());
+    EXPECT_TRUE(
+            net::tor_address::make(std::string_view{v2_onion, sizeof(v2_onion) - 2}).has_error());
+    EXPECT_TRUE(
+            net::tor_address::make(std::string_view{v3_onion, sizeof(v3_onion) - 2}).has_error());
     EXPECT_TRUE(net::tor_address::make(std::string{v2_onion} + ":-").has_error());
     EXPECT_TRUE(net::tor_address::make(std::string{v2_onion} + ":900a").has_error());
     EXPECT_TRUE(net::tor_address::make(std::string{v3_onion} + ":65536").has_error());
@@ -103,8 +104,7 @@ TEST(tor_address, invalid)
     EXPECT_TRUE(net::tor_address::make(onion).has_error());
 }
 
-TEST(tor_address, unblockable_types)
-{
+TEST(tor_address, unblockable_types) {
     net::tor_address tor{};
 
     ASSERT_NE(nullptr, tor.host_str());
@@ -131,8 +131,7 @@ TEST(tor_address, unblockable_types)
     EXPECT_EQ(net::tor_address{}, net::tor_address::unknown());
 }
 
-TEST(tor_address, valid)
-{
+TEST(tor_address, valid) {
     const auto address1 = net::tor_address::make(v3_onion);
 
     ASSERT_TRUE(address1.has_value());
@@ -175,7 +174,8 @@ TEST(tor_address, valid)
     EXPECT_FALSE(address2.less(*address1));
     EXPECT_TRUE(address1->less(address2));
 
-    net::tor_address address3 = MONERO_UNWRAP(net::tor_address::make(std::string{v3_onion} + ":", 65535));
+    net::tor_address address3 =
+            MONERO_UNWRAP(net::tor_address::make(std::string{v3_onion} + ":", 65535));
 
     EXPECT_EQ(65535, address3.port());
     EXPECT_STREQ(v3_onion, address3.host_str());
@@ -204,10 +204,11 @@ TEST(tor_address, valid)
     EXPECT_FALSE(address2.less(address3));
 }
 
-TEST(tor_address, generic_network_address)
-{
-    const epee::net_utils::network_address tor1{MONERO_UNWRAP(net::tor_address::make(v3_onion, 8080))};
-    const epee::net_utils::network_address tor2{MONERO_UNWRAP(net::tor_address::make(v3_onion, 8080))};
+TEST(tor_address, generic_network_address) {
+    const epee::net_utils::network_address tor1{
+            MONERO_UNWRAP(net::tor_address::make(v3_onion, 8080))};
+    const epee::net_utils::network_address tor2{
+            MONERO_UNWRAP(net::tor_address::make(v3_onion, 8080))};
     const epee::net_utils::network_address ip{epee::net_utils::ipv4_network_address{100, 200}};
 
     EXPECT_EQ(tor1, tor2);
@@ -227,20 +228,17 @@ TEST(tor_address, generic_network_address)
     EXPECT_TRUE(ip.is_blockable());
 }
 
-namespace
-{
-    struct test_command_tor
-    {
-        net::tor_address tor;
+namespace {
+struct test_command_tor {
+    net::tor_address tor;
 
-        BEGIN_KV_SERIALIZE_MAP()
-            KV_SERIALIZE(tor);
-        END_KV_SERIALIZE_MAP()
-    };
-}
+    BEGIN_KV_SERIALIZE_MAP()
+    KV_SERIALIZE(tor);
+    END_KV_SERIALIZE_MAP()
+};
+}  // namespace
 
-TEST(tor_address, epee_serializev_v2)
-{
+TEST(tor_address, epee_serializev_v2) {
     std::string buffer{};
     {
         test_command_tor command{MONERO_UNWRAP(net::tor_address::make(v2_onion, 10))};
@@ -281,7 +279,7 @@ TEST(tor_address, epee_serializev_v2)
 
         host.push_back('k');
         EXPECT_TRUE(stg.set_value("host", host, stg.open_section("tor", nullptr, false)));
-        EXPECT_TRUE(command.load(stg)); // poor error reporting from `KV_SERIALIZE`
+        EXPECT_TRUE(command.load(stg));  // poor error reporting from `KV_SERIALIZE`
     }
 
     EXPECT_TRUE(command.tor.is_unknown());
@@ -290,8 +288,7 @@ TEST(tor_address, epee_serializev_v2)
     EXPECT_EQ(0u, command.tor.port());
 }
 
-TEST(tor_address, epee_serializev_v3)
-{
+TEST(tor_address, epee_serializev_v3) {
     std::string buffer{};
     {
         test_command_tor command{MONERO_UNWRAP(net::tor_address::make(v3_onion, 10))};
@@ -332,7 +329,7 @@ TEST(tor_address, epee_serializev_v3)
 
         host.push_back('k');
         EXPECT_TRUE(stg.set_value("host", host, stg.open_section("tor", nullptr, false)));
-        EXPECT_TRUE(command.load(stg)); // poor error reporting from `KV_SERIALIZE`
+        EXPECT_TRUE(command.load(stg));  // poor error reporting from `KV_SERIALIZE`
     }
 
     EXPECT_TRUE(command.tor.is_unknown());
@@ -341,8 +338,7 @@ TEST(tor_address, epee_serializev_v3)
     EXPECT_EQ(0u, command.tor.port());
 }
 
-TEST(tor_address, epee_serialize_unknown)
-{
+TEST(tor_address, epee_serialize_unknown) {
     std::string buffer{};
     {
         test_command_tor command{net::tor_address::unknown()};
@@ -383,7 +379,7 @@ TEST(tor_address, epee_serialize_unknown)
 
         host.push_back('k');
         EXPECT_TRUE(stg.set_value("host", host, stg.open_section("tor", nullptr, false)));
-        EXPECT_TRUE(command.load(stg)); // poor error reporting from `KV_SERIALIZE`
+        EXPECT_TRUE(command.load(stg));  // poor error reporting from `KV_SERIALIZE`
     }
 
     EXPECT_TRUE(command.tor.is_unknown());
@@ -392,8 +388,7 @@ TEST(tor_address, epee_serialize_unknown)
     EXPECT_EQ(0u, command.tor.port());
 }
 
-TEST(tor_address, boost_serialize_v2)
-{
+TEST(tor_address, boost_serialize_v2) {
     std::string buffer{};
     {
         const net::tor_address tor = MONERO_UNWRAP(net::tor_address::make(v2_onion, 10));
@@ -427,8 +422,7 @@ TEST(tor_address, boost_serialize_v2)
     EXPECT_EQ(10u, tor.port());
 }
 
-TEST(tor_address, boost_serialize_v3)
-{
+TEST(tor_address, boost_serialize_v3) {
     std::string buffer{};
     {
         const net::tor_address tor = MONERO_UNWRAP(net::tor_address::make(v3_onion, 10));
@@ -462,8 +456,7 @@ TEST(tor_address, boost_serialize_v3)
     EXPECT_EQ(10u, tor.port());
 }
 
-TEST(tor_address, boost_serialize_unknown)
-{
+TEST(tor_address, boost_serialize_unknown) {
     std::string buffer{};
     {
         const net::tor_address tor{};
@@ -497,10 +490,8 @@ TEST(tor_address, boost_serialize_unknown)
     EXPECT_EQ(0u, tor.port());
 }
 
-TEST(get_network_address, onion)
-{
-    expect<epee::net_utils::network_address> address =
-        net::get_network_address("onion", 0);
+TEST(get_network_address, onion) {
+    expect<epee::net_utils::network_address> address = net::get_network_address("onion", 0);
     EXPECT_EQ(net::error::unsupported_address, address);
 
     address = net::get_network_address(".onion", 0);
@@ -522,19 +513,19 @@ TEST(get_network_address, onion)
     EXPECT_EQ(net::error::invalid_port, address);
 }
 
-namespace
-{
-    static constexpr const char b32_i2p[] =
+namespace {
+static constexpr const char b32_i2p[] =
         "vww6ybal4bd7szmgncyruucpgfkqahzddi37ktceo3ah7ngmcopn.b32.i2p";
-    static constexpr const char b32_i2p_2[] =
+static constexpr const char b32_i2p_2[] =
         "xmrto2bturnore26xmrto2bturnore26xmrto2bturnore26xmr2.b32.i2p";
-}
+}  // namespace
 
-TEST(i2p_address, constants)
-{
+TEST(i2p_address, constants) {
     static_assert(!net::i2p_address::is_local(), "bad is_local() response");
     static_assert(!net::i2p_address::is_loopback(), "bad is_loopback() response");
-    static_assert(net::i2p_address::get_type_id() == epee::net_utils::address_type::i2p, "bad get_type_id() response");
+    static_assert(
+            net::i2p_address::get_type_id() == epee::net_utils::address_type::i2p,
+            "bad get_type_id() response");
 
     EXPECT_FALSE(net::i2p_address::is_local());
     EXPECT_FALSE(net::i2p_address::is_loopback());
@@ -542,8 +533,7 @@ TEST(i2p_address, constants)
     EXPECT_EQ(epee::net_utils::address_type::i2p, net::i2p_address::get_type_id());
 }
 
-TEST(i2p_address, invalid)
-{
+TEST(i2p_address, invalid) {
     EXPECT_TRUE(net::i2p_address::make("").has_error());
     EXPECT_TRUE(net::i2p_address::make(":").has_error());
     EXPECT_TRUE(net::i2p_address::make(".b32.i2p").has_error());
@@ -558,8 +548,7 @@ TEST(i2p_address, invalid)
     EXPECT_TRUE(net::i2p_address::make(i2p).has_error());
 }
 
-TEST(i2p_address, unblockable_types)
-{
+TEST(i2p_address, unblockable_types) {
     net::i2p_address i2p{};
 
     ASSERT_NE(nullptr, i2p.host_str());
@@ -586,8 +575,7 @@ TEST(i2p_address, unblockable_types)
     EXPECT_EQ(net::i2p_address{}, net::i2p_address::unknown());
 }
 
-TEST(i2p_address, valid)
-{
+TEST(i2p_address, valid) {
     const auto address1 = net::i2p_address::make(b32_i2p);
 
     ASSERT_TRUE(address1.has_value());
@@ -630,7 +618,8 @@ TEST(i2p_address, valid)
     EXPECT_FALSE(address2.less(*address1));
     EXPECT_TRUE(address1->less(address2));
 
-    net::i2p_address address3 = MONERO_UNWRAP(net::i2p_address::make(std::string{b32_i2p} + ":", 65535));
+    net::i2p_address address3 =
+            MONERO_UNWRAP(net::i2p_address::make(std::string{b32_i2p} + ":", 65535));
 
     EXPECT_EQ(65535, address3.port());
     EXPECT_STREQ(b32_i2p, address3.host_str());
@@ -659,10 +648,11 @@ TEST(i2p_address, valid)
     EXPECT_FALSE(address2.less(address3));
 }
 
-TEST(i2p_address, generic_network_address)
-{
-    const epee::net_utils::network_address i2p1{MONERO_UNWRAP(net::i2p_address::make(b32_i2p, 8080))};
-    const epee::net_utils::network_address i2p2{MONERO_UNWRAP(net::i2p_address::make(b32_i2p, 8080))};
+TEST(i2p_address, generic_network_address) {
+    const epee::net_utils::network_address i2p1{
+            MONERO_UNWRAP(net::i2p_address::make(b32_i2p, 8080))};
+    const epee::net_utils::network_address i2p2{
+            MONERO_UNWRAP(net::i2p_address::make(b32_i2p, 8080))};
     const epee::net_utils::network_address ip{epee::net_utils::ipv4_network_address{100, 200}};
 
     EXPECT_EQ(i2p1, i2p2);
@@ -682,20 +672,17 @@ TEST(i2p_address, generic_network_address)
     EXPECT_TRUE(ip.is_blockable());
 }
 
-namespace
-{
-    struct test_command_i2p
-    {
-        net::i2p_address i2p;
+namespace {
+struct test_command_i2p {
+    net::i2p_address i2p;
 
-        BEGIN_KV_SERIALIZE_MAP()
-            KV_SERIALIZE(i2p);
-        END_KV_SERIALIZE_MAP()
-    };
-}
+    BEGIN_KV_SERIALIZE_MAP()
+    KV_SERIALIZE(i2p);
+    END_KV_SERIALIZE_MAP()
+};
+}  // namespace
 
-TEST(i2p_address, epee_serializev_b32)
-{
+TEST(i2p_address, epee_serializev_b32) {
     std::string buffer{};
     {
         test_command_i2p command{MONERO_UNWRAP(net::i2p_address::make(b32_i2p, 10))};
@@ -735,8 +722,9 @@ TEST(i2p_address, epee_serializev_b32)
         EXPECT_EQ(std::strlen(b32_i2p), host.size());
 
         host.push_back('k');
-        EXPECT_TRUE(stg.set_value("host", std::string{host}, stg.open_section("i2p", nullptr, false)));
-        EXPECT_TRUE(command.load(stg)); // poor error reporting from `KV_SERIALIZE`
+        EXPECT_TRUE(
+                stg.set_value("host", std::string{host}, stg.open_section("i2p", nullptr, false)));
+        EXPECT_TRUE(command.load(stg));  // poor error reporting from `KV_SERIALIZE`
     }
 
     EXPECT_TRUE(command.i2p.is_unknown());
@@ -745,8 +733,7 @@ TEST(i2p_address, epee_serializev_b32)
     EXPECT_EQ(0u, command.i2p.port());
 }
 
-TEST(i2p_address, epee_serialize_unknown)
-{
+TEST(i2p_address, epee_serialize_unknown) {
     std::string buffer{};
     {
         test_command_i2p command{net::i2p_address::unknown()};
@@ -786,8 +773,9 @@ TEST(i2p_address, epee_serialize_unknown)
         EXPECT_EQ(std::strlen(net::i2p_address::unknown_str()), host.size());
 
         host.push_back('k');
-        EXPECT_TRUE(stg.set_value("host", std::string{host}, stg.open_section("i2p", nullptr, false)));
-        EXPECT_TRUE(command.load(stg)); // poor error reporting from `KV_SERIALIZE`
+        EXPECT_TRUE(
+                stg.set_value("host", std::string{host}, stg.open_section("i2p", nullptr, false)));
+        EXPECT_TRUE(command.load(stg));  // poor error reporting from `KV_SERIALIZE`
     }
 
     EXPECT_TRUE(command.i2p.is_unknown());
@@ -796,8 +784,7 @@ TEST(i2p_address, epee_serialize_unknown)
     EXPECT_EQ(0u, command.i2p.port());
 }
 
-TEST(i2p_address, boost_serialize_b32)
-{
+TEST(i2p_address, boost_serialize_b32) {
     std::string buffer{};
     {
         const net::i2p_address i2p = MONERO_UNWRAP(net::i2p_address::make(b32_i2p, 10));
@@ -831,8 +818,7 @@ TEST(i2p_address, boost_serialize_b32)
     EXPECT_EQ(10u, i2p.port());
 }
 
-TEST(i2p_address, boost_serialize_unknown)
-{
+TEST(i2p_address, boost_serialize_unknown) {
     std::string buffer{};
     {
         const net::i2p_address i2p{};
@@ -866,10 +852,8 @@ TEST(i2p_address, boost_serialize_unknown)
     EXPECT_EQ(0u, i2p.port());
 }
 
-TEST(get_network_address, i2p)
-{
-    expect<epee::net_utils::network_address> address =
-        net::get_network_address("i2p", 0);
+TEST(get_network_address, i2p) {
+    expect<epee::net_utils::network_address> address = net::get_network_address("i2p", 0);
     EXPECT_EQ(net::error::unsupported_address, address);
 
     address = net::get_network_address(".b32.i2p", 0);
@@ -891,10 +875,8 @@ TEST(get_network_address, i2p)
     EXPECT_EQ(net::error::invalid_port, address);
 }
 
-TEST(get_network_address, ipv4)
-{
-    expect<epee::net_utils::network_address> address =
-        net::get_network_address("0.0.0.", 0);
+TEST(get_network_address, ipv4) {
+    expect<epee::net_utils::network_address> address = net::get_network_address("0.0.0.", 0);
     EXPECT_EQ(net::error::unsupported_address, address);
 
     address = net::get_network_address("0.0.0.257", 0);
@@ -913,9 +895,9 @@ TEST(get_network_address, ipv4)
     EXPECT_STREQ("23.0.0.254:2000", address->str().c_str());
 }
 
-TEST(get_network_address, ipv4subnet)
-{
-    expect<epee::net_utils::ipv4_network_subnet> address = net::get_ipv4_subnet_address("0.0.0.0", true);
+TEST(get_network_address, ipv4subnet) {
+    expect<epee::net_utils::ipv4_network_subnet> address =
+            net::get_ipv4_subnet_address("0.0.0.0", true);
     EXPECT_STREQ("0.0.0.0/32", address->str().c_str());
 
     address = net::get_ipv4_subnet_address("0.0.0.0");
@@ -931,8 +913,7 @@ TEST(get_network_address, ipv4subnet)
     EXPECT_STREQ("12.34.0.0/16", address->str().c_str());
 }
 
-TEST(dandelionpp_map, traits)
-{
+TEST(dandelionpp_map, traits) {
     EXPECT_TRUE(std::is_default_constructible<net::dandelionpp::connection_map>());
     EXPECT_TRUE(std::is_move_constructible<net::dandelionpp::connection_map>());
     EXPECT_TRUE(std::is_move_assignable<net::dandelionpp::connection_map>());
@@ -940,8 +921,7 @@ TEST(dandelionpp_map, traits)
     EXPECT_FALSE(std::is_copy_assignable<net::dandelionpp::connection_map>());
 }
 
-TEST(dandelionpp_map, empty)
-{
+TEST(dandelionpp_map, empty) {
     const net::dandelionpp::connection_map mapper{};
 
     EXPECT_EQ(mapper.begin(), mapper.end());
@@ -952,11 +932,10 @@ TEST(dandelionpp_map, empty)
     EXPECT_EQ(0u, cloned.size());
 }
 
-TEST(dandelionpp_map, zero_stems)
-{
+TEST(dandelionpp_map, zero_stems) {
     std::vector<boost::uuids::uuid> connections{6};
-    for (auto &c: connections)
-      c = boost::uuids::random_generator{}();
+    for (auto& c : connections)
+        c = boost::uuids::random_generator{}();
 
     net::dandelionpp::connection_map mapper{connections, 0};
     EXPECT_EQ(mapper.begin(), mapper.end());
@@ -977,11 +956,10 @@ TEST(dandelionpp_map, zero_stems)
     EXPECT_EQ(0u, cloned.size());
 }
 
-TEST(dandelionpp_map, dropped_connection)
-{
+TEST(dandelionpp_map, dropped_connection) {
     std::vector<boost::uuids::uuid> connections{6};
-    for (auto &c: connections)
-      c = boost::uuids::random_generator{}();
+    for (auto& c : connections)
+        c = boost::uuids::random_generator{}();
     std::sort(connections.begin(), connections.end());
 
     // select 3 of 6 outgoing connections
@@ -990,8 +968,7 @@ TEST(dandelionpp_map, dropped_connection)
     EXPECT_EQ(3, mapper.end() - mapper.begin());
     {
         std::set<boost::uuids::uuid> used;
-        for (const boost::uuids::uuid& connection : mapper)
-        {
+        for (const boost::uuids::uuid& connection : mapper) {
             EXPECT_TRUE(used.insert(connection).second);
             EXPECT_TRUE(std::binary_search(connections.begin(), connections.end(), connection));
         }
@@ -1008,8 +985,7 @@ TEST(dandelionpp_map, dropped_connection)
     ASSERT_EQ(3, mapper.end() - mapper.begin());
     {
         std::set<boost::uuids::uuid> used;
-        for (const boost::uuids::uuid& connection : mapper)
-        {
+        for (const boost::uuids::uuid& connection : mapper) {
             EXPECT_FALSE(connection.is_nil());
             EXPECT_TRUE(used.insert(connection).second);
             EXPECT_TRUE(std::binary_search(connections.begin(), connections.end(), connection));
@@ -1017,13 +993,12 @@ TEST(dandelionpp_map, dropped_connection)
     }
     std::map<boost::uuids::uuid, boost::uuids::uuid> mapping;
     std::vector<boost::uuids::uuid> in_connections{9};
-    for (auto &c: in_connections)
-      c = boost::uuids::random_generator{}();
+    for (auto& c : in_connections)
+        c = boost::uuids::random_generator{}();
     {
         std::map<boost::uuids::uuid, std::size_t> used;
         std::multimap<boost::uuids::uuid, boost::uuids::uuid> inverse_mapping;
-        for (const boost::uuids::uuid& connection : in_connections)
-        {
+        for (const boost::uuids::uuid& connection : in_connections) {
             const boost::uuids::uuid out = mapper.get_stem(connection);
             EXPECT_FALSE(out.is_nil());
             EXPECT_TRUE(mapping.emplace(connection, out).second);
@@ -1049,8 +1024,7 @@ TEST(dandelionpp_map, dropped_connection)
         EXPECT_EQ(3u, mapper.size());
         ASSERT_EQ(3, mapper.end() - mapper.begin());
 
-        for (const boost::uuids::uuid& connection : mapper)
-        {
+        for (const boost::uuids::uuid& connection : mapper) {
             EXPECT_FALSE(connection.is_nil());
             EXPECT_NE(lost_connection, connection);
         }
@@ -1059,7 +1033,8 @@ TEST(dandelionpp_map, dropped_connection)
         EXPECT_FALSE(newly_mapped.is_nil());
         EXPECT_NE(lost_connection, newly_mapped);
 
-        for (auto elems = inverse_mapping.equal_range(lost_connection); elems.first != elems.second; ++elems.first)
+        for (auto elems = inverse_mapping.equal_range(lost_connection); elems.first != elems.second;
+             ++elems.first)
             mapping[elems.first->second] = newly_mapped;
     }
     {
@@ -1072,8 +1047,7 @@ TEST(dandelionpp_map, dropped_connection)
     // mappings should remain evenly distributed amongst 2, with 3 sitting in waiting
     {
         std::set<boost::uuids::uuid> used;
-        for (const boost::uuids::uuid& connection : mapper)
-        {
+        for (const boost::uuids::uuid& connection : mapper) {
             EXPECT_FALSE(connection.is_nil());
             EXPECT_TRUE(used.insert(connection).second);
             EXPECT_TRUE(std::binary_search(connections.begin(), connections.end(), connection));
@@ -1081,8 +1055,7 @@ TEST(dandelionpp_map, dropped_connection)
     }
     {
         std::map<boost::uuids::uuid, std::size_t> used;
-        for (const boost::uuids::uuid& connection : in_connections)
-        {
+        for (const boost::uuids::uuid& connection : in_connections) {
             const boost::uuids::uuid& out = mapper.get_stem(connection);
             EXPECT_FALSE(out.is_nil());
             EXPECT_EQ(mapping[connection], out);
@@ -1102,13 +1075,12 @@ TEST(dandelionpp_map, dropped_connection)
     }
 }
 
-TEST(dandelionpp_map, dropped_connection_remapped)
-{
+TEST(dandelionpp_map, dropped_connection_remapped) {
     boost::uuids::random_generator random_uuid{};
 
     std::vector<boost::uuids::uuid> connections{3};
-    for (auto &e: connections)
-      e = random_uuid();
+    for (auto& e : connections)
+        e = random_uuid();
     std::sort(connections.begin(), connections.end());
 
     // select 3 of 3 outgoing connections
@@ -1117,8 +1089,7 @@ TEST(dandelionpp_map, dropped_connection_remapped)
     EXPECT_EQ(3, mapper.end() - mapper.begin());
     {
         std::set<boost::uuids::uuid> used;
-        for (const boost::uuids::uuid& connection : mapper)
-        {
+        for (const boost::uuids::uuid& connection : mapper) {
             EXPECT_FALSE(connection.is_nil());
             EXPECT_TRUE(used.insert(connection).second);
             EXPECT_TRUE(std::binary_search(connections.begin(), connections.end(), connection));
@@ -1129,8 +1100,7 @@ TEST(dandelionpp_map, dropped_connection_remapped)
     ASSERT_EQ(3, mapper.end() - mapper.begin());
     {
         std::set<boost::uuids::uuid> used;
-        for (const boost::uuids::uuid& connection : mapper)
-        {
+        for (const boost::uuids::uuid& connection : mapper) {
             EXPECT_FALSE(connection.is_nil());
             EXPECT_TRUE(used.insert(connection).second);
             EXPECT_TRUE(std::binary_search(connections.begin(), connections.end(), connection));
@@ -1138,13 +1108,12 @@ TEST(dandelionpp_map, dropped_connection_remapped)
     }
     std::map<boost::uuids::uuid, boost::uuids::uuid> mapping;
     std::vector<boost::uuids::uuid> in_connections{9};
-    for (auto &e: in_connections)
-      e = random_uuid();
+    for (auto& e : in_connections)
+        e = random_uuid();
     {
         std::map<boost::uuids::uuid, std::size_t> used;
         std::multimap<boost::uuids::uuid, boost::uuids::uuid> inverse_mapping;
-        for (const boost::uuids::uuid& connection : in_connections)
-        {
+        for (const boost::uuids::uuid& connection : in_connections) {
             const boost::uuids::uuid out = mapper.get_stem(connection);
             EXPECT_FALSE(out.is_nil());
             EXPECT_TRUE(mapping.emplace(connection, out).second);
@@ -1170,7 +1139,8 @@ TEST(dandelionpp_map, dropped_connection_remapped)
         EXPECT_EQ(2u, mapper.size());
         EXPECT_EQ(3, mapper.end() - mapper.begin());
 
-        for (auto elems = inverse_mapping.equal_range(lost_connection); elems.first != elems.second; ++elems.first)
+        for (auto elems = inverse_mapping.equal_range(lost_connection); elems.first != elems.second;
+             ++elems.first)
             mapping[elems.first->second] = boost::uuids::nil_uuid();
     }
     // remap 3 connections and map 1 new connection to 2 remaining out connections
@@ -1178,8 +1148,7 @@ TEST(dandelionpp_map, dropped_connection_remapped)
     in_connections[9] = random_uuid();
     {
         std::map<boost::uuids::uuid, std::size_t> used;
-        for (const boost::uuids::uuid& connection : in_connections)
-        {
+        for (const boost::uuids::uuid& connection : in_connections) {
             const boost::uuids::uuid& out = mapper.get_stem(connection);
             EXPECT_FALSE(out.is_nil());
             used[out]++;
@@ -1203,8 +1172,7 @@ TEST(dandelionpp_map, dropped_connection_remapped)
     EXPECT_EQ(3, mapper.end() - mapper.begin());
     {
         std::map<boost::uuids::uuid, std::size_t> used;
-        for (const boost::uuids::uuid& connection : in_connections)
-        {
+        for (const boost::uuids::uuid& connection : in_connections) {
             const boost::uuids::uuid& out = mapper.get_stem(connection);
             EXPECT_FALSE(out.is_nil());
             used[out]++;
@@ -1219,11 +1187,10 @@ TEST(dandelionpp_map, dropped_connection_remapped)
     // map 8 new incoming connections across 3 outgoing links
     in_connections.resize(18);
     for (size_t i = 10; i < in_connections.size(); ++i)
-      in_connections[i] = random_uuid();
+        in_connections[i] = random_uuid();
     {
         std::map<boost::uuids::uuid, std::size_t> used;
-        for (const boost::uuids::uuid& connection : in_connections)
-        {
+        for (const boost::uuids::uuid& connection : in_connections) {
             const boost::uuids::uuid& out = mapper.get_stem(connection);
             EXPECT_FALSE(out.is_nil());
             used[out]++;
@@ -1241,13 +1208,12 @@ TEST(dandelionpp_map, dropped_connection_remapped)
     }
 }
 
-TEST(dandelionpp_map, dropped_all_connections)
-{
+TEST(dandelionpp_map, dropped_all_connections) {
     boost::uuids::random_generator random_uuid{};
 
     std::vector<boost::uuids::uuid> connections{8};
-    for (auto &e: connections)
-      e = random_uuid();
+    for (auto& e : connections)
+        e = random_uuid();
     std::sort(connections.begin(), connections.end());
 
     // select 3 of 8 outgoing connections
@@ -1256,8 +1222,7 @@ TEST(dandelionpp_map, dropped_all_connections)
     EXPECT_EQ(3, mapper.end() - mapper.begin());
     {
         std::set<boost::uuids::uuid> used;
-        for (const boost::uuids::uuid& connection : mapper)
-        {
+        for (const boost::uuids::uuid& connection : mapper) {
             EXPECT_FALSE(connection.is_nil());
             EXPECT_TRUE(used.insert(connection).second);
             EXPECT_TRUE(std::binary_search(connections.begin(), connections.end(), connection));
@@ -1268,21 +1233,19 @@ TEST(dandelionpp_map, dropped_all_connections)
     ASSERT_EQ(3, mapper.end() - mapper.begin());
     {
         std::set<boost::uuids::uuid> used;
-        for (const boost::uuids::uuid& connection : mapper)
-        {
+        for (const boost::uuids::uuid& connection : mapper) {
             EXPECT_FALSE(connection.is_nil());
             EXPECT_TRUE(used.insert(connection).second);
             EXPECT_TRUE(std::binary_search(connections.begin(), connections.end(), connection));
         }
     }
     std::vector<boost::uuids::uuid> in_connections{9};
-    for (auto &e: in_connections)
-      e = random_uuid();
+    for (auto& e : in_connections)
+        e = random_uuid();
     {
         std::map<boost::uuids::uuid, std::size_t> used;
         std::map<boost::uuids::uuid, boost::uuids::uuid> mapping;
-        for (const boost::uuids::uuid& connection : in_connections)
-        {
+        for (const boost::uuids::uuid& connection : in_connections) {
             const boost::uuids::uuid out = mapper.get_stem(connection);
             EXPECT_FALSE(out.is_nil());
             EXPECT_TRUE(mapping.emplace(connection, out).second);
@@ -1309,13 +1272,12 @@ TEST(dandelionpp_map, dropped_all_connections)
 
     // select 3 of 30 connections, only 7 should be remapped to new indexes (but all to new uuids)
     connections.resize(30);
-    for (auto &e: connections)
-      e = random_uuid();
+    for (auto& e : connections)
+        e = random_uuid();
     EXPECT_TRUE(mapper.update(connections));
     {
         std::map<boost::uuids::uuid, std::size_t> used;
-        for (const boost::uuids::uuid& connection : in_connections)
-        {
+        for (const boost::uuids::uuid& connection : in_connections) {
             const boost::uuids::uuid& out = mapper.get_stem(connection);
             EXPECT_FALSE(out.is_nil());
             used[out]++;

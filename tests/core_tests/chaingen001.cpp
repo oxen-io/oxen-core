@@ -1,21 +1,21 @@
 // Copyright (c) 2014-2018, The Monero Project
-// 
+//
 // All rights reserved.
-// 
+//
 // Redistribution and use in source and binary forms, with or without modification, are
 // permitted provided that the following conditions are met:
-// 
+//
 // 1. Redistributions of source code must retain the above copyright notice, this list of
 //    conditions and the following disclaimer.
-// 
+//
 // 2. Redistributions in binary form must reproduce the above copyright notice, this list
 //    of conditions and the following disclaimer in the documentation and/or other
 //    materials provided with the distribution.
-// 
+//
 // 3. Neither the name of the copyright holder nor the names of its contributors may be
 //    used to endorse or promote products derived from this software without specific
 //    prior written permission.
-// 
+//
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY
 // EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
 // MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL
@@ -25,20 +25,18 @@
 // INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-// 
+//
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
-#include <vector>
 #include <iostream>
-
-#include "epee/console_handler.h"
-
-#include "cryptonote_basic/cryptonote_basic.h"
-#include "cryptonote_basic/cryptonote_format_utils.h"
-#include "cryptonote_core/uptime_proof.h"
+#include <vector>
 
 #include "chaingen.h"
 #include "chaingen_tests_list.h"
+#include "cryptonote_basic/cryptonote_basic.h"
+#include "cryptonote_basic/cryptonote_format_utils.h"
+#include "cryptonote_core/uptime_proof.h"
+#include "epee/console_handler.h"
 
 using namespace cryptonote;
 
@@ -47,13 +45,11 @@ using namespace cryptonote;
 
 using eventV = std::vector<test_event_entry>;
 
-one_block::one_block()
-{
-  REGISTER_CALLBACK(verify_1);
+one_block::one_block() {
+    REGISTER_CALLBACK(verify_1);
 }
 
-bool one_block::generate(eventV &events)
-{
+bool one_block::generate(eventV& events) {
     uint64_t ts_start = 1338224400;
 
     MAKE_GENESIS_BLOCK(events, blk_0, alice, ts_start);
@@ -63,60 +59,70 @@ bool one_block::generate(eventV &events)
     return true;
 }
 
-bool one_block::verify_1(cryptonote::core& c, size_t ev_index, const eventV &events)
-{
+bool one_block::verify_1(cryptonote::core& c, size_t ev_index, const eventV& events) {
     DEFINE_TESTS_ERROR_CONTEXT("one_block::verify_1");
 
     alice = var::get<cryptonote::account_base>(events[1]);
 
     // check balances
-    //std::vector<const cryptonote::block*> chain;
-    //map_hash2tx_t mtx;
-    //CHECK_TEST_CONDITION(find_block_chain(events, chain, mtx, get_block_hash(var::get<cryptonote::block>(events[1]))));
-    //CHECK_TEST_CONDITION(get_block_reward(0) == get_balance(alice, events, chain, mtx));
+    // std::vector<const cryptonote::block*> chain;
+    // map_hash2tx_t mtx;
+    // CHECK_TEST_CONDITION(find_block_chain(events, chain, mtx,
+    // get_block_hash(var::get<cryptonote::block>(events[1]))));
+    // CHECK_TEST_CONDITION(get_block_reward(0) == get_balance(alice, events, chain, mtx));
 
     // check height
     std::vector<cryptonote::block> blocks;
     std::list<crypto::public_key> outs;
     bool r = c.blockchain.get_blocks(0, 100, blocks);
-    //c.get_outs(100, outs);
+    // c.get_outs(100, outs);
     CHECK_TEST_CONDITION(r);
     CHECK_TEST_CONDITION(blocks.size() == 1);
-    //CHECK_TEST_CONDITION(outs.size() == blocks.size());
+    // CHECK_TEST_CONDITION(outs.size() == blocks.size());
     CHECK_TEST_CONDITION(c.blockchain.get_total_transactions() == 1);
     CHECK_TEST_CONDITION(blocks.back() == var::get<cryptonote::block>(events[0]));
 
     return true;
 }
 
-
 ////////
 // class gen_simple_chain_001;
 
-gen_simple_chain_001::gen_simple_chain_001()
-{
-  REGISTER_CALLBACK(verify_callback_1);
-  REGISTER_CALLBACK(verify_callback_2);
+gen_simple_chain_001::gen_simple_chain_001() {
+    REGISTER_CALLBACK(verify_callback_1);
+    REGISTER_CALLBACK(verify_callback_2);
 }
 
-static void make_rct_tx(eventV& events,
-                        std::vector<cryptonote::transaction>& txs,
-                        const cryptonote::block& blk_head,
-                        const cryptonote::account_base& from,
-                        const cryptonote::account_base& to,
-                        uint64_t amount)
-{
+static void make_rct_tx(
+        eventV& events,
+        std::vector<cryptonote::transaction>& txs,
+        const cryptonote::block& blk_head,
+        const cryptonote::account_base& from,
+        const cryptonote::account_base& to,
+        uint64_t amount) {
     txs.emplace_back();
 
-    bool success = oxen_tx_builder(events, txs.back(), blk_head, from, to.get_keys().m_account_address, amount, cryptonote::hf::hf7).build();
+    bool success = oxen_tx_builder(
+                           events,
+                           txs.back(),
+                           blk_head,
+                           from,
+                           to.get_keys().m_account_address,
+                           amount,
+                           cryptonote::hf::hf7)
+                           .build();
     /// TODO: beter error message
-    if (!success) throw std::exception();
+    if (!success)
+        throw std::exception();
     events.push_back(txs.back());
 }
 
 /// generate 30 more blocks to unlock outputs
-static void rewind_blocks(test_generator& gen, eventV& events, std::vector<cryptonote::block>& chain, const cryptonote::account_base& miner)
-{
+static void rewind_blocks(
+        test_generator& gen,
+        eventV& events,
+        std::vector<cryptonote::block>& chain,
+        const cryptonote::account_base& miner) {
     for (auto i = 0u; i < MINED_MONEY_UNLOCK_WINDOW; ++i) {
         chain.emplace_back();
         const auto idx = chain.size() - 1;
@@ -125,17 +131,21 @@ static void rewind_blocks(test_generator& gen, eventV& events, std::vector<crypt
     }
 }
 
-void construct_block(test_generator& gen, eventV& events, std::vector<cryptonote::block>& chain, std::vector<cryptonote::transaction>& txs, const cryptonote::account_base& miner) {
+void construct_block(
+        test_generator& gen,
+        eventV& events,
+        std::vector<cryptonote::block>& chain,
+        std::vector<cryptonote::transaction>& txs,
+        const cryptonote::account_base& miner) {
 
     chain.emplace_back();
     const auto idx = chain.size() - 1;
-        /// todo: change this to take a vector instead?
-    gen.construct_block(chain[idx], chain[idx - 1], miner, { txs.begin(), txs.end() });
+    /// todo: change this to take a vector instead?
+    gen.construct_block(chain[idx], chain[idx - 1], miner, {txs.begin(), txs.end()});
     events.push_back(chain.back());
 }
 
-bool gen_simple_chain_001::generate(eventV& events)
-{
+bool gen_simple_chain_001::generate(eventV& events) {
 
     uint64_t ts_start = 1338224400;
     GENERATE_ACCOUNT(miner);
@@ -156,7 +166,7 @@ bool gen_simple_chain_001::generate(eventV& events)
     while (chain.size() < 10) {
         chain.emplace_back();
         const auto idx = chain.size() - 1;
-        generator.construct_block(chain[idx], chain[idx-1], miner);
+        generator.construct_block(chain[idx], chain[idx - 1], miner);
         events.push_back(chain.back());
     }
 
@@ -193,12 +203,12 @@ bool gen_simple_chain_001::generate(eventV& events)
     return true;
 }
 
-bool gen_simple_chain_001::verify_callback_1(cryptonote::core& c, size_t ev_index, const eventV &events)
-{
-  return true;
+bool gen_simple_chain_001::verify_callback_1(
+        cryptonote::core& c, size_t ev_index, const eventV& events) {
+    return true;
 }
 
-bool gen_simple_chain_001::verify_callback_2(cryptonote::core& c, size_t ev_index, const eventV &events)
-{
-  return true;
+bool gen_simple_chain_001::verify_callback_2(
+        cryptonote::core& c, size_t ev_index, const eventV& events) {
+    return true;
 }
