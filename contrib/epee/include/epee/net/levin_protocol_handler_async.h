@@ -46,10 +46,10 @@
 #define MIN_BYTES_WANTED	512
 #endif
 
-namespace epee
+namespace epee::levin
 {
-namespace levin
-{
+
+using namespace std::literals;
 
 struct uuid_hasher {
   size_t operator()(const boost::uuids::uuid& uid) const
@@ -938,6 +938,5 @@ bool async_protocol_handler_config<t_connection_context>::request_callback(boost
   {
     return false;
   }
-}
 }
 }
