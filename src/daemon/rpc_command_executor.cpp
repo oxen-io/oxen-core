@@ -1211,10 +1211,7 @@ bool rpc_command_executor::print_transaction_pool_stats() {
     return true;
 }
 
-bool rpc_command_executor::start_mining(
-        std::string address,
-        int num_threads,
-        int num_blocks) {
+bool rpc_command_executor::start_mining(std::string address, int num_threads, int num_blocks) {
     json args{
             {"num_blocks", num_blocks},
             {"threads_count", num_threads},
@@ -1848,7 +1845,8 @@ static void append_printable_service_node_list_entry(
                     entry["storage_lmq_port"].get<uint16_t>());
 
         // NOTE: Quorumnet port is omitted if we haven't received a uptime proof yet
-        if (auto quorumnet_port_it = entry.find("quorumnet_port"); quorumnet_port_it != entry.end()) {
+        if (auto quorumnet_port_it = entry.find("quorumnet_port");
+            quorumnet_port_it != entry.end()) {
             uint16_t quorumnet_port = *quorumnet_port_it;
             stream << ": {} (oxen quorums)"_format(quorumnet_port);
         } else {

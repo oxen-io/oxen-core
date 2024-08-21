@@ -8,10 +8,10 @@
 #include <variant>
 
 #include "contracts.h"
-#include "events.h"
 #include "crypto/crypto.h"
 #include "crypto/eth.h"
 #include "cryptonote_config.h"
+#include "events.h"
 
 namespace eth {
 
@@ -47,8 +47,7 @@ class RewardsContract {
 
     std::vector<bls_public_key> get_all_bls_pubkeys(uint64_t block_number);
 
-    struct ServiceNodeIDs
-    {
+    struct ServiceNodeIDs {
         std::vector<uint64_t> ids;
         std::vector<bls_public_key> bls_pubkeys;
     };

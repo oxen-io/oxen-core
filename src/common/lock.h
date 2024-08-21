@@ -49,7 +49,6 @@ concept shared_lockable = requires(T a) {
     { a.try_lock_shared() } -> std::convertible_to<bool>;
 };
 
-
 /// Takes any number of lockable objects, locks them atomically, and returns a tuple of
 /// std::unique_lock holding the individual locks.
 template <lockable... T>
@@ -60,9 +59,13 @@ template <lockable... T>
 }
 
 template <typename T>
-struct shared_or_unique_lock_t { using type = std::unique_lock<T>; };
+struct shared_or_unique_lock_t {
+    using type = std::unique_lock<T>;
+};
 template <shared_lockable T>
-struct shared_or_unique_lock_t<T> { using type = std::shared_lock<T>; };
+struct shared_or_unique_lock_t<T> {
+    using type = std::shared_lock<T>;
+};
 template <typename T>
 using shared_or_unique_lock = typename shared_or_unique_lock_t<T>::type;
 
@@ -70,7 +73,7 @@ using shared_or_unique_lock = typename shared_or_unique_lock_t<T>::type;
 /// std::unique_lock or std::shared_locks holding the individual locks: std::shared_lock is used if
 /// the lockable object supports shared locking, otherwise you get a std::unique_lock.
 template <typename... T>
-requires ((shared_lockable<T> || lockable<T>) && ...)
+    requires((shared_lockable<T> || lockable<T>) && ...)
 [[nodiscard]] std::tuple<shared_or_unique_lock<T>...> shared_locks(T&... lockables) {
     auto locks = std::make_tuple(shared_or_unique_lock<T>(lockables, std::defer_lock)...);
     std::apply(std::lock<shared_or_unique_lock<T>...>, locks);

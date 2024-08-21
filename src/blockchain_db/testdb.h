@@ -297,7 +297,8 @@ class BaseTestDB : public cryptonote::BlockchainDB {
             const uint64_t& coins_generated,
             uint64_t num_rct_outs,
             const crypto::hash& blk_hash) override {}
-    virtual cryptonote::block get_block_from_height(uint64_t height, size_t *size = nullptr) const override {
+    virtual cryptonote::block get_block_from_height(
+            uint64_t height, size_t* size = nullptr) const override {
         return cryptonote::block();
     }
 

@@ -41,9 +41,11 @@ using namespace service_nodes;
 
 static void check_args(blink_tx::subquorum q, int position, const char* func_name) {
     if (q < blink_tx::subquorum::base || q >= blink_tx::subquorum::_count)
-        throw oxen::traced<std::invalid_argument>("Invalid sub-quorum value passed to " + std::string(func_name));
+        throw oxen::traced<std::invalid_argument>(
+                "Invalid sub-quorum value passed to " + std::string(func_name));
     if (position < 0 || position >= BLINK_SUBQUORUM_SIZE)
-        throw oxen::traced<std::invalid_argument>("Invalid voter position passed to " + std::string(func_name));
+        throw oxen::traced<std::invalid_argument>(
+                "Invalid voter position passed to " + std::string(func_name));
 }
 
 crypto::public_key blink_tx::get_sn_pubkey(

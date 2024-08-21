@@ -844,8 +844,8 @@ class core final {
     std::array<uint16_t, 3> ss_version;
     std::array<uint16_t, 3> lokinet_version;
 
-    tx_memory_pool mempool;         //!< transaction pool instance
-    Blockchain blockchain;  //!< Blockchain instance
+    tx_memory_pool mempool;  //!< transaction pool instance
+    Blockchain blockchain;   //!< Blockchain instance
 
     service_nodes::service_node_list service_node_list;
 

@@ -30,11 +30,11 @@
 
 #pragma once
 
-#include <cstring>
-
+#include <common/exception.h>
 #include <common/expect.h>
 #include <common/pruning.h>
-#include <common/exception.h>
+
+#include <cstring>
 
 #include "epee/net/net_utils_base.h"
 #include "net/i2p_address.h"

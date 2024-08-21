@@ -80,7 +80,6 @@ class L2Tracker {
     void add_to_mempool(const event::StateChangeVariant& state_change);
 
   public:
-
     // Constructs an L2Tracker.  The optional `update_frequency` determines how frequently we poll
     // for updated chain state and logs: This defines how many requests we make to the L2 provider:
     // each (this period) we need to make one request to get the current block height, and then at

@@ -3,6 +3,7 @@
 #include <oxenmq/oxenmq.h>
 
 #include <oxen/log.hpp>
+
 #include "oxen/log/catlogger.hpp"
 
 // We can't just make a global "log" namespace because it conflicts with global C log()
@@ -54,7 +55,8 @@ struct LogCats {
     std::optional<log::Level> default_level;
     std::unordered_map<std::string, log::Level> cat_levels;
 
-    // True if this object contains no parsed levels (either neither a default nor any category levels)
+    // True if this object contains no parsed levels (either neither a default nor any category
+    // levels)
     bool empty() const { return !default_level && cat_levels.empty(); }
 
     // Applies the settings in the object to the global logger.  Returns the actual setting applied

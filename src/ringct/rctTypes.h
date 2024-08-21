@@ -34,8 +34,8 @@
 #pragma GCC diagnostic ignored "-Wold-style-cast"
 #pragma GCC diagnostic ignored "-Wshadow"
 
-#include <sodium/crypto_verify_32.h>
 #include <common/exception.h>
+#include <sodium/crypto_verify_32.h>
 
 #include <cstddef>
 #include <cstdint>

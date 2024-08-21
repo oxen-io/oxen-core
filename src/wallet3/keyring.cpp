@@ -1,6 +1,7 @@
 #include "keyring.hpp"
 
 #include <common/apply_permutation.h>
+#include <common/exception.h>
 #include <common/hex.h>
 #include <cryptonote_basic/account.h>
 #include <cryptonote_basic/cryptonote_basic.h>
@@ -9,7 +10,6 @@
 
 #include <device/device.hpp>
 #include <stdexcept>
-#include <common/exception.h>
 
 #include "wallet2½.hpp"
 
@@ -257,7 +257,8 @@ void Keyring::sign_transaction(PendingTransaction& ptx) {
         crypto::public_key computed_output_pubkey{};
         if (!key_device.secret_key_to_public_key(output_secret_key, computed_output_pubkey) or
             (computed_output_pubkey != src_entr.key))
-            throw oxen::traced<std::runtime_error>("computed output secret key wrong, pubkey mismatch");
+            throw oxen::traced<std::runtime_error>(
+                    "computed output secret key wrong, pubkey mismatch");
 
         // There is a input secret keys structure (inSk) that gets passed to the ringct
         // library/module and it is essentially an array of our output secret keys. It also needs to
@@ -415,7 +416,8 @@ std::vector<crypto::public_key> Keyring::get_subaddress_spend_public_keys(
     ge_p3 p3;
     ge_cached cached;
     if (ge_frombytes_vartime(&p3, spend_public_key.data()) != 0)
-        throw oxen::traced<std::runtime_error>("ge_frombytes_vartime failed to convert spend public key");
+        throw oxen::traced<std::runtime_error>(
+                "ge_frombytes_vartime failed to convert spend public key");
     ge_p3_to_cached(&cached, &p3);
 
     for (uint32_t idx = begin; idx <= end; ++idx) {

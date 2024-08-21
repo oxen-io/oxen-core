@@ -155,8 +155,8 @@
 #include <string_view>
 #include <type_traits>
 
-#include "common/exception.h"
 #include "base.h"
+#include "common/exception.h"
 #include "epee/span.h"  // for detecting epee-wrapped byte spannable objects
 
 namespace serialization {
@@ -277,7 +277,8 @@ template <class Archive, typename T, std::predicate<const T&> Predicate>
 void varint(Archive& ar, T& val, Predicate test) {
     varint(ar, val);
     if (Archive::is_deserializer && !test(val))
-        throw oxen::traced<std::out_of_range>{"Invalid integer or enum value during deserialization"};
+        throw oxen::traced<std::out_of_range>{
+                "Invalid integer or enum value during deserialization"};
 }
 
 /// Adds a key-value pair

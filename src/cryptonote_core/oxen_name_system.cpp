@@ -14,8 +14,8 @@
 #include <variant>
 #include <vector>
 
-#include "common/oxen.h"
 #include "common/exception.h"
+#include "common/oxen.h"
 #include "common/string_util.h"
 #include "crypto/hash.h"
 #include "cryptonote_basic/cryptonote_basic.h"

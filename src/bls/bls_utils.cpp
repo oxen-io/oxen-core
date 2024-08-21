@@ -1,13 +1,13 @@
 #include "bls_utils.h"
 
-#include <oxenc/hex.h>
 #include <oxenc/endian.h>
+#include <oxenc/hex.h>
 
 #include <cstring>
 #include <type_traits>
 
-#include "common/guts.h"
 #include "common/exception.h"
+#include "common/guts.h"
 #include "crypto/crypto.h"
 
 #define BLS_ETH

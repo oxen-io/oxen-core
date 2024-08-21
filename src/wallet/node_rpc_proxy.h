@@ -32,8 +32,8 @@
 #include <nlohmann/json.hpp>
 #include <string>
 #include <type_traits>
-#include "common/exception.h"
 
+#include "common/exception.h"
 #include "rpc/core_rpc_server_commands_defs.h"
 #include "rpc/http_client.h"
 

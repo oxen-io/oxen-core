@@ -601,7 +601,8 @@ class service_node_list {
     /// output iterator.  Service nodes that are active but for which we have not yet
     /// received/accepted a proof containing IP info are not included.
     template <std::output_iterator<service_node_address> OutputIt>
-    void copy_reachable_active_service_node_addresses(OutputIt out, cryptonote::network_type nettype) const {
+    void copy_reachable_active_service_node_addresses(
+            OutputIt out, cryptonote::network_type nettype) const {
         std::lock_guard lock{m_sn_mutex};
         bool sn_pk_is_ed25519_hf = cryptonote::is_hard_fork_at_least(
                 nettype, cryptonote::feature::SN_PK_IS_ED25519, m_state.height);

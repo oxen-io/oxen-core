@@ -27,8 +27,9 @@
 
 #include "expect.h"
 
-#include <string>
 #include <common/exception.h>
+
+#include <string>
 
 #include "common/fs.h"
 

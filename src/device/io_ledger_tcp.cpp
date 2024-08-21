@@ -1,11 +1,11 @@
 #include "io_ledger_tcp.hpp"
 
+#include <common/exception.h>
 #include <oxenc/endian.h>
 
 #include <array>
 #include <cstring>
 #include <stdexcept>
-#include <common/exception.h>
 
 #include "common/oxen.h"
 #include "epee/misc_log_ex.h"
@@ -65,10 +65,12 @@ void ledger_tcp::connect() {
 #ifdef _WIN32
     unsigned long blocking_param = 1;  // 1 = make non-blocking, 0 = blocking
     if (auto result = ioctlsocket(fd, FIONBIO, &blocking_param); result != NO_ERROR)
-        throw oxen::traced<std::runtime_error>{"ioctlsocket failed with error: " + std::to_string(result)};
+        throw oxen::traced<std::runtime_error>{
+                "ioctlsocket failed with error: " + std::to_string(result)};
 #else
     if (-1 == fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK))
-        throw oxen::traced<std::runtime_error>{"Failed to set socket non-blocking: "s + strerror(errno)};
+        throw oxen::traced<std::runtime_error>{
+                "Failed to set socket non-blocking: "s + strerror(errno)};
 #endif
 
     addrinfo* addr;
@@ -106,17 +108,20 @@ void ledger_tcp::connect() {
         }
     }
     if (!connected)
-        throw oxen::traced<std::runtime_error>{"Failed to connect to " + host + ":" + port + ": " + err};
+        throw oxen::traced<std::runtime_error>{
+                "Failed to connect to " + host + ":" + port + ": " + err};
 
     log::debug(logcat, "Connected to {}", to_string(a));
 
 #ifdef _WIN32
     blocking_param = 0;
     if (auto result = ioctlsocket(fd, FIONBIO, &blocking_param); result != NO_ERROR)
-        throw oxen::traced<std::runtime_error>{"ioctlsocket failed with error: " + std::to_string(result)};
+        throw oxen::traced<std::runtime_error>{
+                "ioctlsocket failed with error: " + std::to_string(result)};
 #else
     if (-1 == fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) & ~O_NONBLOCK))
-        throw oxen::traced<std::runtime_error>{"Failed to set socket back to blocking: "s + strerror(errno)};
+        throw oxen::traced<std::runtime_error>{
+                "Failed to set socket back to blocking: "s + strerror(errno)};
 #endif
 
     timeval timeo;
@@ -176,7 +181,8 @@ int ledger_tcp::exchange(
         unsigned int max_resp_len,
         bool user_input) {
     if (!sockfd)
-        throw oxen::traced<std::runtime_error>{"Unable to exchange data with hardware wallet: not connected"};
+        throw oxen::traced<std::runtime_error>{
+                "Unable to exchange data with hardware wallet: not connected"};
 
     // Sending: [SIZE][DATA], where SIZE is a uint32_t in network order
     uint32_t size = oxenc::host_to_big(cmd_len);

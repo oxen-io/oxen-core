@@ -30,8 +30,8 @@
 #ifndef MONERO_PROTOCOL_H
 #define MONERO_PROTOCOL_H
 
-#include "device/device_cold.hpp"
 #include "common/exception.h"
+#include "device/device_cold.hpp"
 #include "messages_map.hpp"
 #include "ringct/rctTypes.h"
 #include "transport.hpp"

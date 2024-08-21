@@ -29,9 +29,9 @@
 
 #include "device_trezor_base.hpp"
 
+#include "common/exception.h"
 #include "common/lock.h"
 #include "common/string_util.h"
-#include "common/exception.h"
 #include "epee/memwipe.h"
 
 namespace hw::trezor {

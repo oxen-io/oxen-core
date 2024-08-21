@@ -26,19 +26,19 @@
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#include <common/command_line.h>
+#include <common/exception.h>
+#include <common/signal_handler.h>
+#include <common/varint.h>
+#include <date/date.h>
+#include <fmt/std.h>
+
+#include <boost/algorithm/string.hpp>
+#include <chrono>
+
 #include "blockchain_objects.h"
 #include "cryptonote_core/cryptonote_core.h"
 #include "version.h"
-
-#include <common/exception.h>
-#include <common/command_line.h>
-#include <common/signal_handler.h>
-#include <common/varint.h>
-
-#include <boost/algorithm/string.hpp>
-#include <date/date.h>
-#include <fmt/std.h>
-#include <chrono>
 
 namespace po = boost::program_options;
 using namespace cryptonote;
