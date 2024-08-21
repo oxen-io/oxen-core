@@ -2,7 +2,7 @@
 
 CLANG_FORMAT_DESIRED_VERSION=16
 
-TARGET_DIRS=(src pybind)
+TARGET_DIRS=(src pybind tests)
 
 set -e
 
@@ -23,17 +23,19 @@ if [ $? -ne 0 ]; then
     fi
 fi
 
+file_match='\.([hc](pp)?|inl)$'
+
 cd "$(dirname $0)/../"
 if [ "$1" = "verify" ] ; then
     for d in ${TARGET_DIRS[@]}; do
-        if [ $($binary --output-replacements-xml $(find $d | grep -E '\.([hc](pp)?|inl)$' | grep -v '\#') | grep '</replacement>' | wc -l) -ne 0 ] ; then
+        if [ $($binary --output-replacements-xml $(find $d | grep -E "$file_match" | grep -v '\#') | grep '</replacement>' | wc -l) -ne 0 ] ; then
             exit 1
         fi
     done
 else
     for d in ${TARGET_DIRS[@]}; do
         echo "Formatting $d"
-        $binary -i $(find $d | grep -E '\.([hc](pp)?|mm)$' | grep -v '\#') &> /dev/null
+        $binary -i $(find $d | grep -E "$file_match" | grep -v '\#') &> /dev/null
     done
 fi
 
