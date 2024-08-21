@@ -5116,11 +5116,13 @@ bool Blockchain::handle_block_to_main_chain(
             log::info(
                     logcat,
                     fg(fmt::terminal_color::red),
-                    "Block with id: {} has invalid {}state change at tx index {} ({})",
+                    "Block with id: {} has invalid {}state change at tx index {} ({}); block "
+                    "contains {} L2 state changes",
                     id,
                     require_eth_state_tx ? "non-" : "",
                     i,
-                    tx_id);
+                    tx_id,
+                    bl.tx_eth_count);
             return false;
         }
 

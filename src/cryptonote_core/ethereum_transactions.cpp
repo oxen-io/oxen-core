@@ -29,4 +29,24 @@ event::StateChangeVariant extract_event(
     return result;
 }
 
+std::optional<uint64_t> extract_event_l2_height(
+        cryptonote::hf hf_version, const cryptonote::transaction& tx) {
+    std::string fail;
+    auto result = std::visit(
+            []<typename T>(const T& e) -> std::optional<uint64_t> {
+                if constexpr (std::is_same_v<std::monostate, T>)
+                    return std::nullopt;
+                else
+                    return e.l2_height;
+            },
+            extract_event(hf_version, tx, fail));
+    if (!result)
+        log::debug(
+                log::Cat("l2"),
+                "Failed to extract L2 event height from {}: {}",
+                get_transaction_hash(tx),
+                fail);
+    return result;
+}
+
 }  // namespace eth

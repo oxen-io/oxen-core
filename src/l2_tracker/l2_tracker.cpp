@@ -331,7 +331,7 @@ void L2Tracker::update_rewards(std::optional<std::forward_list<uint64_t>> more) 
             "0x{:x}"_format(r_height));
 }
 
-void L2Tracker::add_to_mempool(uint64_t l2_height, const event::StateChangeVariant& tx_variant) {
+void L2Tracker::add_to_mempool(const event::StateChangeVariant& tx_variant) {
     if (tx_variant.index() == 0)  // monostate, i.e. not a state change log
         return;
 
@@ -370,7 +370,7 @@ void L2Tracker::add_to_mempool(uint64_t l2_height, const event::StateChangeVaria
                 cryptonote::tx_to_blob(tx),
                 tx_weight,
                 tvc,
-                tx_pool_options::from_l2(l2_height),
+                tx_pool_options::new_tx(/*do_not_relay=*/true),
                 hf_version,
                 nullptr)) {
         if (tvc.m_verifivation_failed) {
@@ -472,7 +472,7 @@ void L2Tracker::update_logs() {
                         }
                         try {
                             auto tx = get_log_event(chain_id, log);
-                            add_to_mempool(*log.blockNumber, tx);
+                            add_to_mempool(tx);
                             if (auto* reg = std::get_if<event::NewServiceNode>(&tx))
                                 recent_regs.add(std::move(*reg), *log.blockNumber);
                             else if (auto* ul = std::get_if<event::ServiceNodeRemovalRequest>(&tx))

@@ -99,11 +99,6 @@ struct tx_pool_options {
     /// (additive with burn_fixed, if both > 0)
     uint64_t burn_percent = 0;
 
-    /// For state changes from ETH L2, this contains the L2 block height in which the transaction
-    /// was contained, and can be used during block construction to only select transactions from a
-    /// particular L2 range.
-    uint64_t l2_height = 0;
-
     static tx_pool_options from_block() {
         tx_pool_options o;
         o.kept_by_block = true;
@@ -118,12 +113,6 @@ struct tx_pool_options {
     static tx_pool_options new_tx(bool do_not_relay = false) {
         tx_pool_options o;
         o.do_not_relay = do_not_relay;
-        return o;
-    }
-    static tx_pool_options from_l2(uint64_t l2_height) {
-        tx_pool_options o;
-        o.l2_height = l2_height;
-        o.do_not_relay = true;
         return o;
     }
     static tx_pool_options new_blink(bool approved, hf) {

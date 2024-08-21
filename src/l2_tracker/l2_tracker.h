@@ -77,7 +77,7 @@ class L2Tracker {
     void update_height();
     void update_rewards(std::optional<std::forward_list<uint64_t>> more = std::nullopt);
     void update_logs();
-    void add_to_mempool(uint64_t l2_height, const event::StateChangeVariant& state_change);
+    void add_to_mempool(const event::StateChangeVariant& state_change);
 
   public:
 

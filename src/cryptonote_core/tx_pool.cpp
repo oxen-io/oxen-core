@@ -471,7 +471,8 @@ bool tx_memory_pool::add_tx(
             meta.last_relayed_time = receive_time;
             meta.relayed = opts.relayed;
             meta.do_not_relay = opts.do_not_relay;
-            meta.l2_height = opts.l2_height;
+            if (is_l2_event_tx(tx.type))
+                meta.l2_height = eth::extract_event_l2_height(hf_version, tx).value_or(0);
             meta.double_spend_seen =
                     (have_tx_keyimges_as_spent(tx) ||
                      have_duplicated_non_standard_tx(tx, hf_version));
@@ -513,7 +514,8 @@ bool tx_memory_pool::add_tx(
         meta.last_relayed_time = receive_time;
         meta.relayed = opts.relayed;
         meta.do_not_relay = opts.do_not_relay;
-        meta.l2_height = opts.l2_height;
+        if (is_l2_event_tx(tx.type))
+            meta.l2_height = eth::extract_event_l2_height(hf_version, tx).value_or(0);
         meta.double_spend_seen = false;
         meta.bf_padding = 0;
         memset(meta.padding1, 0, sizeof(meta.padding1));

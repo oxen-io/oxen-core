@@ -45,4 +45,9 @@ bool validate_event_tx(
 event::StateChangeVariant extract_event(
         cryptonote::hf hf_version, const cryptonote::transaction& tx, std::string& fail_reason);
 
+/// Extracts the L2Height from an eth event.  Returns nullopt if not an eth event (or even
+/// extraction fails).
+std::optional<uint64_t> extract_event_l2_height(
+        cryptonote::hf hf_version, const cryptonote::transaction& tx);
+
 }  // namespace eth
