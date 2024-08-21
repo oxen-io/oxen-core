@@ -452,7 +452,7 @@ bool oxen_core_block_reward_unpenalized_pre_pulse::generate(std::vector<test_eve
 
       bool orphan;
       cryptonote::block top_block;
-      CHECK_TEST_CONDITION(c.blockchain.get_block_by_hash(top_hash, top_block, &orphan));
+      CHECK_TEST_CONDITION(c.blockchain.get_block_by_hash(top_hash, top_block, nullptr, &orphan));
       CHECK_TEST_CONDITION(orphan == false);
       assert(top_block.miner_tx);
       CHECK_TEST_CONDITION_MSG(top_block.miner_tx->vout[0].amount < unpenalized_block_reward, "We should add enough transactions that the penalty is realised on the base block reward");
@@ -492,7 +492,7 @@ bool oxen_core_block_reward_unpenalized_post_pulse::generate(std::vector<test_ev
 
       bool orphan;
       cryptonote::block top_block;
-      CHECK_TEST_CONDITION(c.blockchain.get_block_by_hash(top_hash, top_block, &orphan));
+      CHECK_TEST_CONDITION(c.blockchain.get_block_by_hash(top_hash, top_block, nullptr, &orphan));
 
       CHECK_TEST_CONDITION(orphan == false);
 
@@ -581,7 +581,7 @@ bool oxen_core_fee_burning::generate(std::vector<test_event_entry>& events)
 
       bool orphan;
       cryptonote::block top_block;
-      CHECK_TEST_CONDITION(c.blockchain.get_block_by_hash(top_hash, top_block, &orphan));
+      CHECK_TEST_CONDITION(c.blockchain.get_block_by_hash(top_hash, top_block, nullptr, &orphan));
       CHECK_TEST_CONDITION(orphan == false);
 
       CHECK_EQ(top_hash, good_hash);
@@ -965,7 +965,7 @@ bool oxen_core_test_deregister_on_split::generate(std::vector<test_event_entry> 
       /// get the block with the deregister
       bool orphan = false;
       cryptonote::block blk;
-      CHECK_TEST_CONDITION(c.blockchain.get_block_by_hash(expected_block_hash, blk, &orphan));
+      CHECK_TEST_CONDITION(c.blockchain.get_block_by_hash(expected_block_hash, blk, nullptr, &orphan));
 
       /// find the deregister tx:
       const auto found_tx_hash = std::find(blk.tx_hashes.begin(), blk.tx_hashes.end(), expected_tx_hash);

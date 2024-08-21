@@ -107,17 +107,17 @@ uint64_t oxen_chain_generator_db::get_block_height(crypto::hash const &hash) con
   return result;
 }
 
-cryptonote::block oxen_chain_generator_db::get_block_from_height(uint64_t height) const
-{
-  assert(height < blocks.size());
-  cryptonote::block const &result = this->blocks[height].block;
-  assert(result.get_height() == height);
-  return result;
+cryptonote::block oxen_chain_generator_db::get_block_from_height(uint64_t height, size_t *size) const {
+    assert(height < blocks.size());
+    assert(size == nullptr && "Not implemented yet");
+    cryptonote::block const& result = this->blocks[height].block;
+    assert(result.get_height() == height);
+    return result;
 }
 
-cryptonote::block_header oxen_chain_generator_db::get_block_header_from_height(uint64_t height) const
-{
-  return get_block_from_height(height);
+cryptonote::block_header oxen_chain_generator_db::get_block_header_from_height(
+        uint64_t height) const {
+    return get_block_from_height(height, nullptr);
 }
 
 service_nodes::service_node_keys oxen_chain_generator::get_cached_keys(const crypto::public_key &pubkey) const {

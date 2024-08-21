@@ -1436,7 +1436,7 @@ struct oxen_chain_generator_db : public cryptonote::BaseTestDB
 
   uint64_t                              get_block_height(crypto::hash const &hash) const override;
   cryptonote::block_header              get_block_header_from_height(uint64_t height) const override;
-  cryptonote::block                     get_block_from_height(uint64_t height) const override;
+  cryptonote::block                     get_block_from_height(uint64_t height, size_t *size = nullptr) const override;
   bool                                  get_tx(const crypto::hash& h, cryptonote::transaction &tx) const override;
   std::vector<cryptonote::checkpoint_t> get_checkpoints_range(uint64_t start, uint64_t end, size_t num_desired_checkpoints) const override;
   std::vector<cryptonote::block>        get_blocks_range(const uint64_t& h1, const uint64_t& h2) const override;
