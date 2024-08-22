@@ -1701,7 +1701,7 @@ namespace {
                             return goto_preparing_for_next_round(context);
                         }
                         std::string fail;
-                        auto event = eth::extract_event(block.major_version, tx, fail);
+                        auto event = eth::extract_event(tx, &fail);
                         if (std::holds_alternative<std::monostate>(event)) {
                             log::info(
                                     logcat,

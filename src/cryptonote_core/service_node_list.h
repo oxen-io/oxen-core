@@ -41,6 +41,7 @@
 #include "cryptonote_basic/cryptonote_basic_impl.h"
 #include "cryptonote_basic/hardfork.h"
 #include "cryptonote_config.h"
+#include "cryptonote_core/ethereum_transactions.h"
 #include "cryptonote_core/service_node_quorum_cop.h"
 #include "cryptonote_core/service_node_rules.h"
 #include "cryptonote_core/service_node_voting.h"
@@ -601,7 +602,8 @@ class service_node_list {
     /// output iterator.  Service nodes that are active but for which we have not yet
     /// received/accepted a proof containing IP info are not included.
     template <std::output_iterator<service_node_address> OutputIt>
-    void copy_reachable_active_service_node_addresses(OutputIt out, cryptonote::network_type nettype) const {
+    void copy_reachable_active_service_node_addresses(
+            OutputIt out, cryptonote::network_type nettype) const {
         std::lock_guard lock{m_sn_mutex};
         bool sn_pk_is_ed25519_hf = cryptonote::is_hard_fork_at_least(
                 nettype, cryptonote::feature::SN_PK_IS_ED25519, m_state.height);
@@ -1074,6 +1076,30 @@ class service_node_list {
      * @returns vector of votes
      */
     std::vector<bool> l2_pending_state_votes() const;
+
+    /**
+     * @brief iterates through all pending unconfirmed L2 state changes.  `func` should be a generic
+     * lambda that will be called with const reference to an eth::event::NewServiceNode,
+     * eth::event::ServiceNodeRemovalRequest, or eth::event::ServiceNodeRemoval.
+     */
+    template <typename F>
+        requires std::invocable<F, const eth::event::NewServiceNode&, const unconfirmed_l2_tx&> &&
+                 std::invocable<
+                         F,
+                         const eth::event::ServiceNodeRemovalRequest&,
+                         const unconfirmed_l2_tx&> &&
+                 std::invocable<F, const eth::event::ServiceNodeRemoval&, const unconfirmed_l2_tx&>
+    void for_each_pending_l2_state(F&& f) const {
+        std::lock_guard lock{m_sn_mutex};
+        for (auto& [txid, confirm_info] : m_state.unconfirmed_l2_txes) {
+            std::visit(
+                    [&f, &confirm_info]<typename T>(const T& evt) {
+                        if constexpr (!std::is_same_v<T, std::monostate>)
+                            f(evt, confirm_info);
+                    },
+                    eth::extract_event(blockchain, txid));
+        }
+    }
 
     cryptonote::Blockchain& blockchain;
 

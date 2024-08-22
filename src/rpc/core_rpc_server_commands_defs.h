@@ -2116,6 +2116,68 @@ struct GET_SERVICE_NODE_STATUS : NO_ARGS {
     static constexpr auto names() { return NAMES("get_service_node_status"); }
 };
 
+/// RPC: blockchain/get_pending_events
+///
+/// Get information on L2 chain events that have been processed but not yet confirmed by the
+/// network's pulse quorums.  These includes new service node registrations, unlock requests, and
+/// removals, which require multiple pulse quorum votes/consensus before taking effect on the Oxen
+/// chain.
+///
+/// Inputs: none.
+///
+/// Outputs:
+/// - `registrations` -- array of mined by not yet confirmed registrations.  Once confirmed, these
+///   will become new active Oxen service nodes.  Each element is a dict containing fields:
+///   - `sn_pubkey` -- the service node pubkey of the registration.
+///   - `bls_pubkey` -- the BLS pubkey of the registration.
+///   - `signature` -- the signature (signed by the sn_pubkey) of the registration.
+///   - `fee` -- the service node fee, as a percentage.
+///   - `contributors` -- array of contributor info; each is a dict containing `address` and
+///     `amount`.  The *first* element of this array is the service node operator.
+///   - common fields (see below)
+///
+/// - `unlocks` -- array of mined but not yet confirmed removal requests.  Once confirmed, these
+///   will initiate the unlock timer after which the service node leaves active duty and can be
+///   redeemed.  Fields:
+///   - `bls_pubkey` -- BLS pubkey of the node to start unlocking
+///   - common fields (see below)
+///
+/// - `removals` -- array of removals arriving from the L2 communicating service nodes that have
+///   been removed from the contract.  Once confirmed, these also remove and unlock contributors'
+///   stakes.  Each element contains fields:
+///   - `bls_pubkey` -- BLS pubkey of the node removed from the smart contract
+///   - `returned_amount` -- amount of SENT that is returned to contributors.  For normal unlocks
+///     (i.e. nodes that completed an unlock without getting deregistered) this is the full service
+///     node stake; for deregistrations this will have a small penalty removed (which is incurred by
+///     the operator in the returned stakes).
+///   - common fields (see below)
+///
+/// - Common fields included in all of the above entries:
+///   - `chain_id` -- the ethereum chain ID of the L2 network from which this pending state chain
+///     arrived.
+///   - `l2_height` -- the height on the L2 network which contained this state change.
+///   - `height` -- the Oxen chain height when this transaction was first included.
+///   - `confirmations` -- the number of confirmation vote points.  The block being included in or
+///     voted on by a primary pulse quorum = 1.0 votes; the first backup quorum = 0.5 votes, the Nth
+///     backup quorum = 1.0 / (N+1) votes.
+///   - `denial` -- the number of denial vote points received, with the same weight calculations as
+///     confirmations.
+///   - `required` -- the number of additional required confirmations for this event to be accepted
+///     by the network, assuming no additional denials.  Rounding this up to the next integer is the
+///     expected number of blocks for the event to take effect, assuming no disagreement and the
+///     network is fully functional.
+///
+///     In order to be confirmed an event requires both a 2/3 confirmation majority of vote points
+///     *and* a difference of at least 5 points between the confirmations and denials vote points.
+///     For instance, 5 confirmations and 0 denials is the typical everything-working-properly
+///     outcome.  With backup pulse quorums and some denials, you could however have a still
+///     unresolved event with +7.375, -3.5 votes that would require an additional 1.125 confirmation
+///     votes before reaching the acceptance conditions.
+///
+struct GET_PENDING_EVENTS : PUBLIC, NO_ARGS {
+    static constexpr auto names() { return NAMES("get_pending_events"); }
+};
+
 /// RPC: blockchain/get_accrued_rewards
 ///
 /// Retrieve the current "balance" of accrued service node rewards for the given addresses.
@@ -2712,6 +2774,7 @@ using core_rpc_types = tools::type_list<
         GET_OUTPUTS,
         GET_OUTPUT_HISTOGRAM,
         GET_PEER_LIST,
+        GET_PENDING_EVENTS,
         GET_QUORUM_STATE,
         GET_SERVICE_KEYS,
         GET_SERVICE_NODES,

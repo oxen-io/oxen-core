@@ -237,7 +237,7 @@ bool tx_memory_pool::have_duplicated_non_standard_tx(
         }
     } else if (is_l2_event_tx(tx.type)) {
         std::string fail;
-        auto event = eth::extract_event(hard_fork_version, tx, fail);
+        auto event = eth::extract_event(tx, &fail);
         if (std::holds_alternative<std::monostate>(event)) {
             log::error(
                     logcat,
@@ -251,7 +251,7 @@ bool tx_memory_pool::have_duplicated_non_standard_tx(
             if (pool_tx.type != tx.type)
                 continue;
 
-            auto pool_event = eth::extract_event(hard_fork_version, pool_tx, fail);
+            auto pool_event = eth::extract_event(pool_tx, &fail);
             if (std::holds_alternative<std::monostate>(pool_event)) {
                 log::info(
                         logcat,
@@ -472,7 +472,7 @@ bool tx_memory_pool::add_tx(
             meta.relayed = opts.relayed;
             meta.do_not_relay = opts.do_not_relay;
             if (is_l2_event_tx(tx.type))
-                meta.l2_height = eth::extract_event_l2_height(hf_version, tx).value_or(0);
+                meta.l2_height = eth::extract_event_l2_height(tx).value_or(0);
             meta.double_spend_seen =
                     (have_tx_keyimges_as_spent(tx) ||
                      have_duplicated_non_standard_tx(tx, hf_version));
@@ -515,7 +515,7 @@ bool tx_memory_pool::add_tx(
         meta.relayed = opts.relayed;
         meta.do_not_relay = opts.do_not_relay;
         if (is_l2_event_tx(tx.type))
-            meta.l2_height = eth::extract_event_l2_height(hf_version, tx).value_or(0);
+            meta.l2_height = eth::extract_event_l2_height(tx).value_or(0);
         meta.double_spend_seen = false;
         meta.bf_padding = 0;
         memset(meta.padding1, 0, sizeof(meta.padding1));

@@ -3038,8 +3038,7 @@ void service_node_list::state_t::update_from_block(
                     log::info(logcat, "State change tx {} confirmed by votes", txhash);
 
                     std::string fail;
-                    auto event = eth::extract_event(
-                            block.major_version, sn_list->blockchain.db().get_tx(txhash), fail);
+                    auto event = eth::extract_event(sn_list->blockchain.db().get_tx(txhash), &fail);
                     if (std::holds_alternative<std::monostate>(event))
                         throw oxen::traced<std::runtime_error>{
                                 "Internal error: did not find state change tx data in blockchain database: {}"_format(

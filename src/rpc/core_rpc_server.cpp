@@ -2952,6 +2952,54 @@ void core_rpc_server::invoke(GET_SERVICE_NODES& sns, rpc_context) {
                 top_height);
 }
 
+//------------------------------------------------------------------------------------------------------------------------------
+void core_rpc_server::invoke(GET_PENDING_EVENTS& sns, rpc_context) {
+    sns.response["status"] = STATUS_OK;
+
+    sns.response["registrations"] = json::array();
+    sns.response["unlocks"] = json::array();
+    sns.response["removals"] = json::array();
+    m_core.service_node_list.for_each_pending_l2_state(
+            [&sns]<typename Event>(const Event& e, const auto& info) {
+                json entry{
+                        {"l2_height", e.l2_height},
+                        {"chain_id", e.chain_id},
+                        {"height", info.height_added},
+                        {"confirmations", info.confirmations / (double)info.FULL_SCORE},
+                        {"denials", info.denials / (double)info.FULL_SCORE},
+                        {"required",
+                         (std::max(info.denials * 2, info.denials + 5 * info.FULL_SCORE) -
+                          info.confirmations) /
+                                 (double)info.FULL_SCORE}};
+
+                if constexpr (std::is_same_v<Event, eth::event::NewServiceNode>) {
+                    sns.response["registrations"].push_back(std::move(entry));
+                    auto& res = sns.response["registrations"].back();
+                    auto res_hex = sns.response_hex["registrations"].back();
+                    res_hex["sn_pubkey"] = e.sn_pubkey;
+                    res_hex["bls_pubkey"] = e.bls_pubkey;
+                    res_hex["signature"] = e.ed_signature;
+                    res["fee"] = e.fee * 0.01;
+                    res["contributors"] = json::array();
+                    auto& contr = res["contributors"];
+                    auto contr_hex = res_hex["contributors"];
+                    for (const auto& [addr, amt] : e.contributors) {
+                        contr.push_back(json{{"amount", amt}});
+                        contr_hex.back()["address"] = addr;
+                    }
+                } else if constexpr (std::is_same_v<Event, eth::event::ServiceNodeRemovalRequest>) {
+                    sns.response["unlocks"].push_back(std::move(entry));
+                    sns.response_hex["unlocks"].back()["bls_pubkey"] = e.bls_pubkey;
+                } else if constexpr (std::is_same_v<Event, eth::event::ServiceNodeRemoval>) {
+                    sns.response["removals"].push_back(std::move(entry));
+                    sns.response_hex["removals"].back()["bls_pubkey"] = e.bls_pubkey;
+                    sns.response["returned_amount"] = e.returned_amount;
+                } else {
+                    log::error(logcat, "Got unknown event type in rpc GET_PENDING_EVENTS handler!");
+                }
+            });
+}
+
 namespace {
     // Handles a ping.  Returns true if the ping was significant (i.e. first ping after startup, or
     // after the ping had expired).  `Success` is a callback that is invoked with a single boolean
