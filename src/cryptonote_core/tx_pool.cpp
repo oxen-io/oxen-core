@@ -444,7 +444,8 @@ bool tx_memory_pool::add_tx(
 
     crypto::hash max_used_block_id{};
     uint64_t max_used_block_height = 0;
-    cryptonote::txpool_tx_meta_t meta;
+    cryptonote::txpool_tx_meta_t meta{};
+
     bool inputs_okay = check_tx_inputs(
             [&tx]() -> cryptonote::transaction& { return tx; },
             id,
@@ -462,10 +463,6 @@ bool tx_memory_pool::add_tx(
         if (opts.kept_by_block) {
             meta.weight = tx_weight;
             meta.fee = fee;
-            meta.max_used_block_id = null<hash>;
-            meta.max_used_block_height = 0;
-            meta.last_failed_height = 0;
-            meta.last_failed_id = null<hash>;
             meta.kept_by_block = opts.kept_by_block;
             meta.receive_time = receive_time;
             meta.last_relayed_time = receive_time;
@@ -476,9 +473,6 @@ bool tx_memory_pool::add_tx(
             meta.double_spend_seen =
                     (have_tx_keyimges_as_spent(tx) ||
                      have_duplicated_non_standard_tx(tx, hf_version));
-            meta.bf_padding = 0;
-            memset(meta.padding1, 0, sizeof(meta.padding1));
-            memset(meta.padding2, 0, sizeof(meta.padding2));
             try {
                 m_parsed_tx_cache.insert(std::make_pair(id, tx));
                 std::unique_lock b_lock{m_blockchain};
@@ -508,8 +502,6 @@ bool tx_memory_pool::add_tx(
         meta.fee = fee;
         meta.max_used_block_id = max_used_block_id;
         meta.max_used_block_height = max_used_block_height;
-        meta.last_failed_height = 0;
-        meta.last_failed_id = null<hash>;
         meta.receive_time = receive_time;
         meta.last_relayed_time = receive_time;
         meta.relayed = opts.relayed;
@@ -517,9 +509,6 @@ bool tx_memory_pool::add_tx(
         if (is_l2_event_tx(tx.type))
             meta.l2_height = eth::extract_event_l2_height(hf_version, tx).value_or(0);
         meta.double_spend_seen = false;
-        meta.bf_padding = 0;
-        memset(meta.padding1, 0, sizeof(meta.padding1));
-        memset(meta.padding2, 0, sizeof(meta.padding2));
 
         try {
             if (opts.kept_by_block)
