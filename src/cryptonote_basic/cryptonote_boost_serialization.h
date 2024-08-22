@@ -259,18 +259,18 @@ inline void serialize(
     if constexpr (std::is_same_v<Archive, boost::archive::portable_binary_oarchive>) {
         assert(ver >= 1u);
         bool have_miner_tx = b.miner_tx.has_value();
-        a&have_miner_tx;
+        a& have_miner_tx;
         if (have_miner_tx)
-            a& *b.miner_tx;
+            a&* b.miner_tx;
     } else {
         static_assert(std::is_same_v<Archive, boost::archive::portable_binary_iarchive>);
         bool have_miner_tx;
         if (ver >= 1u)
-            a&have_miner_tx;
+            a& have_miner_tx;
         else
             have_miner_tx = true;
         if (have_miner_tx)
-            a & b.miner_tx.emplace();
+            a& b.miner_tx.emplace();
     }
 
     a& b.tx_hashes;

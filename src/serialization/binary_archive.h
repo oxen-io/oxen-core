@@ -34,8 +34,6 @@
  * Portable, little-endian binary archive */
 #pragma once
 
-#include "base.h"
-
 #include <common/exception.h>
 #include <common/varint.h>
 #include <oxenc/endian.h>
@@ -48,6 +46,8 @@
 #include <string_view>
 #include <type_traits>
 #include <vector>
+
+#include "base.h"
 
 namespace serialization {
 

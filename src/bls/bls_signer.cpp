@@ -62,13 +62,12 @@ std::string BLSSigner::buildTagHex(std::string_view baseTag) const {
 }
 
 static void expand_message_xmd_keccak256(
-        std::span<uint8_t> out, std::span<const uint8_t> msg, std::span<const uint8_t> dst)
-{
+        std::span<uint8_t> out, std::span<const uint8_t> msg, std::span<const uint8_t> dst) {
     // NOTE: Setup parameters (note: Our implementation restricts the output to <= 256 bytes)
     const size_t KECCAK256_OUTPUT_SIZE = 256 / 8;
-    const uint16_t len_in_bytes        = static_cast<uint16_t>(out.size());
-    const size_t b_in_bytes            = KECCAK256_OUTPUT_SIZE; // the output size of H [Keccak] in bits
-    const size_t ell                   = len_in_bytes / b_in_bytes;
+    const uint16_t len_in_bytes = static_cast<uint16_t>(out.size());
+    const size_t b_in_bytes = KECCAK256_OUTPUT_SIZE;  // the output size of H [Keccak] in bits
+    const size_t ell = len_in_bytes / b_in_bytes;
 
     // NOTE: Assert invariants
     assert((out.size() % KECCAK256_OUTPUT_SIZE) == 0 && 0 < out.size() && out.size() <= 256);
@@ -78,7 +77,7 @@ static void expand_message_xmd_keccak256(
     //
     //   s_in_bytes = Input Block Size     = 1088 bits = 136 bytes
     //   Z_pad      = I2OSP(0, s_in_bytes) = [0 .. INPUT_BLOCK_SIZE) => {0 .. 0}
-    const        size_t  INPUT_BLOCK_SIZE        = 136;
+    const size_t INPUT_BLOCK_SIZE = 136;
     static const uint8_t Z_pad[INPUT_BLOCK_SIZE] = {};
 
     // NOTE: Construct (5) l_i_b_str
@@ -101,7 +100,7 @@ static void expand_message_xmd_keccak256(
         keccak_init(&msg_prime);
         keccak_update(&msg_prime, Z_pad, sizeof(Z_pad));
         keccak_update(&msg_prime, msg.data(), msg.size());
-        keccak_update(&msg_prime, reinterpret_cast<uint8_t *>(&l_i_b_str), sizeof(l_i_b_str));
+        keccak_update(&msg_prime, reinterpret_cast<uint8_t*>(&l_i_b_str), sizeof(l_i_b_str));
         keccak_update(&msg_prime, &I2OSP_0_1, sizeof(I2OSP_0_1));
         keccak_update(&msg_prime, dst.data(), dst.size());
         keccak_update(&msg_prime, &I2OSP_len_dst, sizeof(I2OSP_len_dst));
@@ -114,7 +113,7 @@ static void expand_message_xmd_keccak256(
     uint8_t b1[KECCAK256_OUTPUT_SIZE] = {};
     {
         uint8_t I2OSP_1_1 = 1;
-        KECCAK_CTX ctx    = {};
+        KECCAK_CTX ctx = {};
         keccak_init(&ctx);
         keccak_update(&ctx, b0, sizeof(b0));
         keccak_update(&ctx, &I2OSP_1_1, sizeof(I2OSP_1_1));
@@ -140,7 +139,7 @@ static void expand_message_xmd_keccak256(
         uint8_t bi[KECCAK256_OUTPUT_SIZE] = {};
         {
             uint8_t I2OSP_i_1 = static_cast<uint8_t>(i + 1);
-            KECCAK_CTX ctx    = {};
+            KECCAK_CTX ctx = {};
             keccak_init(&ctx);
             keccak_update(&ctx, strxor_b0_bi, sizeof(strxor_b0_bi));
             keccak_update(&ctx, &I2OSP_i_1, sizeof(I2OSP_i_1));
@@ -155,7 +154,6 @@ static void expand_message_xmd_keccak256(
         std::memcpy(out.data() + KECCAK256_OUTPUT_SIZE * i, bi, sizeof(bi));
     }
 }
-
 
 static mcl::bn::G2 map_to_g2(std::span<const uint8_t> msg, std::span<const uint8_t> hashToG2Tag) {
     bls_utils::init();
@@ -176,7 +174,7 @@ static mcl::bn::G2 map_to_g2(std::span<const uint8_t> msg, std::span<const uint8
             expand_message_xmd_keccak256(expandedBytes, messageWithI, hashToG2Tag);
 
             bool converted;
-            x1.setBigEndianMod(&converted, expandedBytes + 0,  48);
+            x1.setBigEndianMod(&converted, expandedBytes + 0, 48);
             assert(converted);
             x2.setBigEndianMod(&converted, expandedBytes + 48, 48);
             assert(converted);
@@ -188,13 +186,13 @@ static mcl::bn::G2 map_to_g2(std::span<const uint8_t> msg, std::span<const uint8
         mcl::bn::G2::Fp x = mcl::bn::G2::Fp(x1, x2);
         mcl::bn::G2::Fp y;
         mcl::bn::G2::getWeierstrass(y, x);
-        if (mcl::bn::G2::Fp::squareRoot(y, y)) { // Check if this is a point
-            if (b)                               // Let b => {0, 1} to choose between the two roots.
+        if (mcl::bn::G2::Fp::squareRoot(y, y)) {  // Check if this is a point
+            if (b)  // Let b => {0, 1} to choose between the two roots.
                 y = -y;
             bool converted;
             result.set(&converted, x, y, false);
             assert(converted);
-            return result;                       // Successfully mapped to curve, exit the loop
+            return result;  // Successfully mapped to curve, exit the loop
         }
     }
 
@@ -206,13 +204,16 @@ bls_signature BLSSigner::signMsg(std::span<const uint8_t> msg) const {
     return result;
 }
 
-bool BLSSigner::verifyMsg(const bls_signature& signature, const bls_public_key &pubkey, std::span<const uint8_t> msg) const
-{
+bool BLSSigner::verifyMsg(
+        const bls_signature& signature,
+        const bls_public_key& pubkey,
+        std::span<const uint8_t> msg) const {
     bool result = verifyMsg(nettype, signature, pubkey, msg);
     return result;
 }
 
-bls_signature BLSSigner::signMsg(cryptonote::network_type nettype, const bls::SecretKey &key, std::span<const uint8_t> msg) {
+bls_signature BLSSigner::signMsg(
+        cryptonote::network_type nettype, const bls::SecretKey& key, std::span<const uint8_t> msg) {
     // NOTE: This is herumi's 'blsSignHash' deconstructed to its primitive
     // function calls but instead of executing herumi's 'tryAndIncMapTo' which
     // maps a hash to a point we execute our own mapping function. herumi's
@@ -253,8 +254,11 @@ bls_signature BLSSigner::signMsg(cryptonote::network_type nettype, const bls::Se
     return result;
 }
 
-bool BLSSigner::verifyMsg(cryptonote::network_type nettype, const bls_signature& signature, const bls_public_key &pubkey, std::span<const uint8_t> msg)
-{
+bool BLSSigner::verifyMsg(
+        cryptonote::network_type nettype,
+        const bls_signature& signature,
+        const bls_public_key& pubkey,
+        std::span<const uint8_t> msg) {
     bls::PublicKey bls_pubkey = bls_utils::from_crypto_pubkey(pubkey);
 
     // NOTE: blsVerifyHash => if (cast(&pub->v)->isZero()) return 0;

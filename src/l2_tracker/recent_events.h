@@ -13,7 +13,7 @@ namespace eth {
 template <std::derived_from<event::L2StateChange> Event>
 struct RecentEvents {
   private:
-    std::map<Event, uint64_t> events; // Event -> expiry
+    std::map<Event, uint64_t> events;  // Event -> expiry
 
   public:
     // Adds an event into the container.  If the event is already present and has an older l2_height
@@ -30,9 +30,7 @@ struct RecentEvents {
     }
 
     // Returns true iff this event contain contains the given event.
-    bool contains(const Event& evt) const {
-        return events.count(evt);
-    }
+    bool contains(const Event& evt) const { return events.count(evt); }
 
     // Removes an event from the container.  If the optional max_height is given then the event is
     // only removed if the l2_height of the contained value is <= the given max_height value.
@@ -51,12 +49,11 @@ struct RecentEvents {
     // expiry_height.  Returns the number of removed events.
     size_t expire(uint64_t expiry_height) {
         size_t removed = 0;
-        for (auto it = events.begin(); it != events.end(); ) {
+        for (auto it = events.begin(); it != events.end();) {
             if (it->second <= expiry_height) {
                 it = events.erase(it);
                 removed++;
-            }
-            else
+            } else
                 ++it;
         }
         return removed;

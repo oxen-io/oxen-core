@@ -83,8 +83,7 @@ struct batch_sn_payment {
             address_info{addr_info}, amount{amt} {}
     batch_sn_payment(const cryptonote::account_public_address& addr, uint64_t amt) :
             address_info{addr, 0}, amount{amt} {}
-    batch_sn_payment(const eth::address& addr, uint64_t amt) :
-            eth_address{addr}, amount{amt} {}
+    batch_sn_payment(const eth::address& addr, uint64_t amt) : eth_address{addr}, amount{amt} {}
 };
 
 #pragma pack(push, 1)

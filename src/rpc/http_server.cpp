@@ -7,8 +7,8 @@
 #include <exception>
 #include <variant>
 
-#include "common/exception.h"
 #include "common/command_line.h"
+#include "common/exception.h"
 #include "common/string_util.h"
 #include "cryptonote_config.h"
 #include "cryptonote_core/cryptonote_core.h"

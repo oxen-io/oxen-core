@@ -30,8 +30,8 @@
 #include "protocol.hpp"
 
 #include <common/apply_permutation.h>
-#include <common/json_util.h>
 #include <common/exception.h>
+#include <common/json_util.h>
 #include <crypto/hmac-keccak.h>
 #include <ringct/bulletproofs.h>
 #include <ringct/rctSigs.h>
@@ -58,21 +58,22 @@
 #define GET_FIELD_FROM_JSON(json, name, type, jtype, mandatory, def) \
     GET_FIELD_FROM_JSON_EX(json, name, type, jtype, mandatory, def, GET_FIELD_OTHER)
 
-#define GET_FIELD_FROM_JSON_EX(json, name, type, jtype, mandatory, def, VAL)                   \
-    type field_##name = static_cast<type>(def);                                                \
-    bool field_##name##_found = false;                                                         \
-    (void)field_##name##_found;                                                                \
-    do                                                                                         \
-        if (json.HasMember(#name)) {                                                           \
-            if (json[#name].Is##jtype()) {                                                     \
-                VAL(name, type, jtype);                                                        \
-                field_##name##_found = true;                                                   \
-            } else {                                                                           \
-                throw oxen::traced<std::invalid_argument>("Field " #name " found in JSON, but not " #jtype); \
-            }                                                                                  \
-        } else if (mandatory) {                                                                \
-            throw oxen::traced<std::invalid_argument>("Field " #name " not found in JSON");                  \
-        }                                                                                      \
+#define GET_FIELD_FROM_JSON_EX(json, name, type, jtype, mandatory, def, VAL)                  \
+    type field_##name = static_cast<type>(def);                                               \
+    bool field_##name##_found = false;                                                        \
+    (void)field_##name##_found;                                                               \
+    do                                                                                        \
+        if (json.HasMember(#name)) {                                                          \
+            if (json[#name].Is##jtype()) {                                                    \
+                VAL(name, type, jtype);                                                       \
+                field_##name##_found = true;                                                  \
+            } else {                                                                          \
+                throw oxen::traced<std::invalid_argument>("Field " #name                      \
+                                                          " found in JSON, but not " #jtype); \
+            }                                                                                 \
+        } else if (mandatory) {                                                               \
+            throw oxen::traced<std::invalid_argument>("Field " #name " not found in JSON");   \
+        }                                                                                     \
     while (0)
 
 namespace hw::trezor::protocol {

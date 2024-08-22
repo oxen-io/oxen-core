@@ -29,39 +29,35 @@
 #pragma once
 
 #include <algorithm>
-#include <cstdint>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <type_traits>
 
-namespace epee
-{
-  /*!
-    \brief Non-owning sequence of data. Does not deep copy
+namespace epee {
+/*!
+  \brief Non-owning sequence of data. Does not deep copy
 
-    Inspired by `gsl::span` and/or `boost::iterator_range`. This class is
-    intended to be used as a parameter type for functions that need to take a
-    writable or read-only sequence of data. Most common cases are `span<char>`
-    and `span<std::uint8_t>`. Using as a class member is only recommended if
-    clearly documented as not doing a deep-copy. C-arrays are easily convertible
-    to this type.
+  Inspired by `gsl::span` and/or `boost::iterator_range`. This class is
+  intended to be used as a parameter type for functions that need to take a
+  writable or read-only sequence of data. Most common cases are `span<char>`
+  and `span<std::uint8_t>`. Using as a class member is only recommended if
+  clearly documented as not doing a deep-copy. C-arrays are easily convertible
+  to this type.
 
-    \note Conversion from C string literal to `span<const char>` will include
-      the NULL-terminator.
-    \note Never allows derived-to-base pointer conversion; an array of derived
-      types is not an array of base types.
-   */
-  template<typename T>
-  class span
-  {
-    template<typename U>
-    static constexpr bool safe_conversion() noexcept
-    {
-      // Allow exact matches or `T*` -> `const T*`.
-      using with_const = typename std::add_const<U>::type;
-      return std::is_same<T, U>() ||
-        (std::is_const<T>() && std::is_same<T, with_const>());
+  \note Conversion from C string literal to `span<const char>` will include
+    the NULL-terminator.
+  \note Never allows derived-to-base pointer conversion; an array of derived
+    types is not an array of base types.
+ */
+template <typename T>
+class span {
+    template <typename U>
+    static constexpr bool safe_conversion() noexcept {
+        // Allow exact matches or `T*` -> `const T*`.
+        using with_const = typename std::add_const<U>::type;
+        return std::is_same<T, U>() || (std::is_const<T>() && std::is_same<T, with_const>());
     }
 
   public:
@@ -79,12 +75,11 @@ namespace epee
     constexpr span(std::nullptr_t) noexcept : span() {}
 
     //! Prevent derived-to-base conversions; invalid in this context.
-    template<typename U, typename = typename std::enable_if<safe_conversion<U>()>::type>
-    constexpr span(U* const src_ptr, const std::size_t count) noexcept
-      : ptr(src_ptr), len(count) {}
+    template <typename U, typename = typename std::enable_if<safe_conversion<U>()>::type>
+    constexpr span(U* const src_ptr, const std::size_t count) noexcept : ptr(src_ptr), len(count) {}
 
     //! Conversion from C-array. Prevents common bugs with sizeof + arrays.
-    template<std::size_t N>
+    template <std::size_t N>
     constexpr span(T (&src)[N]) noexcept : span(src, N) {}
 
     constexpr span(const span&) noexcept = default;
@@ -92,8 +87,7 @@ namespace epee
 
     /*! Try to remove `amount` elements from beginning of span.
     \return Number of elements removed. */
-    std::size_t remove_prefix(std::size_t amount) noexcept
-    {
+    std::size_t remove_prefix(std::size_t amount) noexcept {
         amount = std::min(len, amount);
         ptr += amount;
         len -= amount;
@@ -111,64 +105,62 @@ namespace epee
     constexpr std::size_t size() const noexcept { return len; }
     constexpr std::size_t size_bytes() const noexcept { return size() * sizeof(value_type); }
 
-    const T &operator[](size_t idx) const { return ptr[idx]; }
+    const T& operator[](size_t idx) const { return ptr[idx]; }
 
   private:
     T* ptr;
     std::size_t len;
-  };
+};
 
-  //! \return `span<const T::value_type>` from a STL compatible `src`.
-  template<typename T>
-  constexpr span<const typename T::value_type> to_span(const T& src)
-  {
+//! \return `span<const T::value_type>` from a STL compatible `src`.
+template <typename T>
+constexpr span<const typename T::value_type> to_span(const T& src) {
     // compiler provides diagnostic if size() is not size_t.
     return {src.data(), src.size()};
-  }
+}
 
-  //! \return `span<T::value_type>` from a STL compatible `src`.
-  template<typename T>
-  constexpr span<typename T::value_type> to_mut_span(T& src)
-  {
+//! \return `span<T::value_type>` from a STL compatible `src`.
+template <typename T>
+constexpr span<typename T::value_type> to_mut_span(T& src) {
     // compiler provides diagnostic if size() is not size_t.
     return {src.data(), src.size()};
-  }
+}
 
-  template<typename T>
-  constexpr bool is_byte_spannable = std::has_unique_object_representations_v<T>;
+template <typename T>
+constexpr bool is_byte_spannable = std::has_unique_object_representations_v<T>;
 
-  //! \return Cast data from `src` as `span<const std::uint8_t>`.
-  template<typename T>
-  span<const std::uint8_t> to_byte_span(const span<const T> src) noexcept
-  {
+//! \return Cast data from `src` as `span<const std::uint8_t>`.
+template <typename T>
+span<const std::uint8_t> to_byte_span(const span<const T> src) noexcept {
     static_assert(is_byte_spannable<T>, "source type may have padding");
-    return {reinterpret_cast<const std::uint8_t*>(src.data()), src.size_bytes()}; 
-  }
+    return {reinterpret_cast<const std::uint8_t*>(src.data()), src.size_bytes()};
+}
 
-  //! \return `span<const std::uint8_t>` which represents the bytes at `&src`.
-  template<typename T>
-  span<const std::uint8_t> as_byte_span(const T& src) noexcept
-  {
+//! \return `span<const std::uint8_t>` which represents the bytes at `&src`.
+template <typename T>
+span<const std::uint8_t> as_byte_span(const T& src) noexcept {
     static_assert(!std::is_empty<T>(), "empty types cannot be converted to a byte span");
     static_assert(is_byte_spannable<T>, "source type may have padding");
     return {reinterpret_cast<const std::uint8_t*>(std::addressof(src)), sizeof(T)};
-  }
+}
 
-  //! \return `span<std::uint8_t>` which represents the bytes at `&src`.
-  template<typename T>
-  span<std::uint8_t> as_mut_byte_span(T& src) noexcept
-  {
+//! \return `span<std::uint8_t>` which represents the bytes at `&src`.
+template <typename T>
+span<std::uint8_t> as_mut_byte_span(T& src) noexcept {
     static_assert(!std::is_empty<T>(), "empty types cannot be converted to a byte span");
     static_assert(is_byte_spannable<T>, "source type may have padding");
     return {reinterpret_cast<std::uint8_t*>(std::addressof(src)), sizeof(T)};
-  }
-
-  //! make a span from a std::string_view (and thus, implicitly, also std::string or string literal)
-  template<typename T, std::enable_if_t<
-      std::is_same_v<T, char> || std::is_same_v<T, unsigned char> ||
-      std::is_same_v<T, int8_t> || std::is_same_v<T, uint8_t> || std::is_same_v<T, std::byte>, int> = 0>
-  span<const T> strspan(std::string_view s) noexcept
-  {
-    return {reinterpret_cast<const T*>(s.data()), s.size()};
-  }
 }
+
+//! make a span from a std::string_view (and thus, implicitly, also std::string or string literal)
+template <
+        typename T,
+        std::enable_if_t<
+                std::is_same_v<T, char> || std::is_same_v<T, unsigned char> ||
+                        std::is_same_v<T, int8_t> || std::is_same_v<T, uint8_t> ||
+                        std::is_same_v<T, std::byte>,
+                int> = 0>
+span<const T> strspan(std::string_view s) noexcept {
+    return {reinterpret_cast<const T*>(s.data()), s.size()};
+}
+}  // namespace epee

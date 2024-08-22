@@ -37,15 +37,25 @@ class BLSSigner {
     bls_signature signMsg(std::span<const uint8_t> msg) const;
 
     // See free-standing `verifyMsg` except the `msg` is verified by this class's network type.
-    bool verifyMsg(const bls_signature& signature, const bls_public_key &pubkey, std::span<const uint8_t> msg) const;
+    bool verifyMsg(
+            const bls_signature& signature,
+            const bls_public_key& pubkey,
+            std::span<const uint8_t> msg) const;
 
     // Sign an arbitrary length message `msg` with the given BLS `key`. The message has a domain
     // separation tag that is disambiguated with the `nettype`.
-    static bls_signature signMsg(cryptonote::network_type nettype, const bls::SecretKey& key, std::span<const uint8_t> msg);
+    static bls_signature signMsg(
+            cryptonote::network_type nettype,
+            const bls::SecretKey& key,
+            std::span<const uint8_t> msg);
 
     // Verify an arbitrary length message `msg` was signed by the secret key component of the given
     // public BLS `pubkey`.
-    static bool verifyMsg(cryptonote::network_type nettype, const bls_signature& signature, const bls_public_key &pubkey, std::span<const uint8_t> msg);
+    static bool verifyMsg(
+            cryptonote::network_type nettype,
+            const bls_signature& signature,
+            const bls_public_key& pubkey,
+            std::span<const uint8_t> msg);
 
     // Create a proof signing over the `sender` and `serviceNodePubkey` that this class is in
     // possession of the secret component of the associated public key.

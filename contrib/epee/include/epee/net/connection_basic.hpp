@@ -2,30 +2,31 @@
 /// @author rfree (current maintainer in monero.cc project)
 /// @brief base for connection, contains e.g. the ratelimit hooks
 
-// ! This file might contain variable names same as in template class connection<> 
+// ! This file might contain variable names same as in template class connection<>
 // ! from files contrib/epee/include/net/abstract_tcp_server2.*
 // ! I am not a lawyer; afaik APIs, var names etc are not copyrightable ;)
-// ! (how ever if in some wonderful juristdictions that is not the case, then why not make another sub-class withat that members and licence it as epee part)
-// ! Working on above premise, IF this is valid in your juristdictions, then consider this code as released as:
+// ! (how ever if in some wonderful juristdictions that is not the case, then why not make another
+// sub-class withat that members and licence it as epee part) ! Working on above premise, IF this is
+// valid in your juristdictions, then consider this code as released as:
 
 // Copyright (c) 2014-2018, The Monero Project
-// 
+//
 // All rights reserved.
-// 
+//
 // Redistribution and use in source and binary forms, with or without modification, are
 // permitted provided that the following conditions are met:
-// 
+//
 // 1. Redistributions of source code must retain the above copyright notice, this list of
 //    conditions and the following disclaimer.
-// 
+//
 // 2. Redistributions in binary form must reproduce the above copyright notice, this list
 //    of conditions and the following disclaimer in the documentation and/or other
 //    materials provided with the distribution.
-// 
+//
 // 3. Neither the name of the copyright holder nor the names of its contributors may be
 //    used to endorse or promote products derived from this software without specific
 //    prior written permission.
-// 
+//
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY
 // EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
 // MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL
@@ -36,63 +37,58 @@
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-/* rfree: place for hanlers for the non-template base, can be used by connection<> template class in abstract_tcp_server2 file  */
+/* rfree: place for hanlers for the non-template base, can be used by connection<> template class in
+ * abstract_tcp_server2 file  */
 
 #ifndef INCLUDED_p2p_connection_basic_hpp
 #define INCLUDED_p2p_connection_basic_hpp
 
-
+#include <atomic>
+#include <boost/asio.hpp>
+#include <deque>
+#include <memory>
 #include <mutex>
 #include <string>
-#include <atomic>
-#include <memory>
-#include <deque>
 #include <utility>
-
-#include <boost/asio.hpp>
 
 #include "../shared_sv.h"
 
-namespace epee
-{
-namespace net_utils
-{
+namespace epee::net_utils {
 
-	class connection_basic_shared_state
-	{
-	public:
-		std::atomic<long> sock_count;
-		std::atomic<long> sock_number;
+class connection_basic_shared_state {
+  public:
+    std::atomic<long> sock_count;
+    std::atomic<long> sock_number;
 
-		connection_basic_shared_state()
-		  : sock_count(0),
-		    sock_number(0)
-		{}
-	};
+    connection_basic_shared_state() : sock_count(0), sock_number(0) {}
+};
 
-  /************************************************************************/
-  /*                                                                      */
-  /************************************************************************/
-  /// Represents a single connection from a client.
+/************************************************************************/
+/*                                                                      */
+/************************************************************************/
+/// Represents a single connection from a client.
 
-class connection_basic_pimpl; // PIMPL for this class
+class connection_basic_pimpl;  // PIMPL for this class
 
-  enum t_connection_type { // type of the connection (of this server), e.g. so that we will know how to limit it
-	  e_connection_type_NET = 0, // default (not used?)
-	  e_connection_type_RPC = 1, // the rpc commands  (probably not rate limited, not chunked, etc)
-	  e_connection_type_P2P = 2  // to other p2p node (probably limited)
-  };
-  
-  std::string to_string(t_connection_type type);
+enum t_connection_type {  // type of the connection (of this server), e.g. so that we will know
+                          // how to limit it
+    e_connection_type_NET = 0,  // default (not used?)
+    e_connection_type_RPC = 1,  // the rpc commands  (probably not rate limited, not chunked, etc)
+    e_connection_type_P2P = 2   // to other p2p node (probably limited)
+};
 
-class connection_basic { // not-templated base class for rapid developmet of some code parts
-		// beware of removing const, net_utils::connection is sketchily doing a cast to prevent storing ptr twice
-		const std::shared_ptr<connection_basic_shared_state> m_state;
-	public:
+std::string to_string(t_connection_type type);
 
-		std::unique_ptr< connection_basic_pimpl > mI; // my Implementation
+class connection_basic {  // not-templated base class for rapid developmet of some code parts
+    // beware of removing const, net_utils::connection is sketchily doing a cast to prevent
+    // storing ptr twice
+    const std::shared_ptr<connection_basic_shared_state> m_state;
 
-		// moved here from orginal connecton<> - common member variables that do not depend on template in connection<>
+  public:
+    std::unique_ptr<connection_basic_pimpl> mI;  // my Implementation
+
+    // moved here from orginal connecton<> - common member variables that do not depend on
+    // template in connection<>
     std::atomic<bool> m_want_close_connection;
     std::atomic<bool> m_was_shutdown;
     std::mutex m_send_que_lock;
@@ -103,45 +99,58 @@ class connection_basic { // not-templated base class for rapid developmet of som
     /// Socket for the connection.
     boost::asio::ip::tcp::socket socket_;
 
-	public:
-		// first counter is the ++/-- count of current sockets, the other socket_number is only-increasing ++ number generator
-		connection_basic(boost::asio::ip::tcp::socket&& socket, std::shared_ptr<connection_basic_shared_state> state);
-		connection_basic(boost::asio::io_service &io_service, std::shared_ptr<connection_basic_shared_state> state);
+  public:
+    // first counter is the ++/-- count of current sockets, the other socket_number is
+    // only-increasing ++ number generator
+    connection_basic(
+            boost::asio::ip::tcp::socket&& socket,
+            std::shared_ptr<connection_basic_shared_state> state);
+    connection_basic(
+            boost::asio::io_service& io_service,
+            std::shared_ptr<connection_basic_shared_state> state);
 
-		virtual ~connection_basic() noexcept(false);
+    virtual ~connection_basic() noexcept(false);
 
-                //! \return `shared_state` object passed in construction (ptr never changes).
-		connection_basic_shared_state& get_state() noexcept { return *m_state; /* verified in constructor */ }
-		connection_basic(boost::asio::io_service& io_service, std::atomic<long> &ref_sock_count, std::atomic<long> &sock_number);
+    //! \return `shared_state` object passed in construction (ptr never changes).
+    connection_basic_shared_state& get_state() noexcept {
+        return *m_state; /* verified in constructor */
+    }
+    connection_basic(
+            boost::asio::io_service& io_service,
+            std::atomic<long>& ref_sock_count,
+            std::atomic<long>& sock_number);
 
-		boost::asio::ip::tcp::socket& socket() { return socket_; }
+    boost::asio::ip::tcp::socket& socket() { return socket_; }
 
-		// various handlers to be called from connection class:
-		void do_send_handler_write(const void * ptr , size_t cb);
-		void do_send_handler_write_from_queue(const boost::system::error_code& e, size_t cb , int q_len); // from handle_write, sending next part
+    // various handlers to be called from connection class:
+    void do_send_handler_write(const void* ptr, size_t cb);
+    void do_send_handler_write_from_queue(
+            const boost::system::error_code& e,
+            size_t cb,
+            int q_len);  // from handle_write, sending next part
 
-		void logger_handle_net_write(size_t size); // network data written
-		void logger_handle_net_read(size_t size); // network data read
+    void logger_handle_net_write(size_t size);  // network data written
+    void logger_handle_net_read(size_t size);   // network data read
 
-		// config for rate limit
-		
-		static void set_rate_up_limit(uint64_t limit);
-		static void set_rate_down_limit(uint64_t limit);
-		static uint64_t get_rate_up_limit();
-		static uint64_t get_rate_down_limit();
+    // config for rate limit
 
-		// config misc
-		static void set_tos_flag(int tos); // ToS / QoS flag
-		static int get_tos_flag();
+    static void set_rate_up_limit(uint64_t limit);
+    static void set_rate_down_limit(uint64_t limit);
+    static uint64_t get_rate_up_limit();
+    static uint64_t get_rate_down_limit();
 
-		// handlers and sleep
-		void sleep_before_packet(size_t packet_size, int phase, int q_len); // execute a sleep ; phase is not really used now(?)
-		static double get_sleep_time(size_t cb);
+    // config misc
+    static void set_tos_flag(int tos);  // ToS / QoS flag
+    static int get_tos_flag();
+
+    // handlers and sleep
+    void sleep_before_packet(
+            size_t packet_size,
+            int phase,
+            int q_len);  // execute a sleep ; phase is not really used now(?)
+    static double get_sleep_time(size_t cb);
 };
 
-} // nameserver
-} // nameserver
+}  // namespace epee::net_utils
 
 #endif
-
-

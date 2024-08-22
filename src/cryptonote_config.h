@@ -218,7 +218,7 @@ inline const std::filesystem::path DATA_DIRNAME{
 #ifdef _WIN32
         u8"oxen"  // Buried in some windows filesystem maze location
 #else
-        u8".oxen"  // ~/.oxen
+        u8".oxen"      // ~/.oxen
 #endif
 };
 inline const std::filesystem::path CONF_FILENAME{u8"oxen.conf"};

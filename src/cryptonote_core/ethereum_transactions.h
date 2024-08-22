@@ -10,8 +10,7 @@
 namespace eth {
 
 template <std::derived_from<event::L2StateChange> Event>
-bool extract_event(
-        const cryptonote::transaction& tx, Event& evt, std::string& fail_reason) {
+bool extract_event(const cryptonote::transaction& tx, Event& evt, std::string& fail_reason) {
     if (cryptonote::get_field_from_tx_extra(tx.extra, evt))
         return true;
     fail_reason = "{} didn't have ethereum {} data in the tx_extra"_format(tx, Event::description);

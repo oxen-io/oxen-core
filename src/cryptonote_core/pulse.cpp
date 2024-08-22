@@ -240,7 +240,7 @@ namespace {
     }
 
     std::bitset<sizeof(uint16_t) * 8> bitset_view16(uint16_t val) {
-        std::bitset<sizeof(uint16_t) * 8> result = val;
+        std::bitset<sizeof(uint16_t)* 8> result = val;
         return result;
     }
 

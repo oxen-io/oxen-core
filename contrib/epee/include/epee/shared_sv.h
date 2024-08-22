@@ -36,29 +36,32 @@ namespace epee {
 /// Class that holds a shared pointer to a string plus a separate string_view referencing some
 /// substring of that shared string.
 struct shared_sv {
-  std::shared_ptr<std::string> ptr;
-  std::string_view view;
-  shared_sv() = default;
-  /// Constructs from a shared_ptr to a string; the view is initialized to refer to the entire string
-  explicit shared_sv(std::shared_ptr<std::string> src_ptr) : ptr{std::move(src_ptr)}, view{*ptr}  {}
-  /// Constructs a new shared ptr by moving from a given string rvalue reference
-  explicit shared_sv(std::string&& str) : shared_sv{std::make_shared<std::string>(std::move(str))} {}
-  /// Constructs from a shared_ptr and a view
-  shared_sv(std::shared_ptr<std::string> src_ptr, std::string_view view) : ptr{std::move(src_ptr)}, view{view} {}
+    std::shared_ptr<std::string> ptr;
+    std::string_view view;
+    shared_sv() = default;
+    /// Constructs from a shared_ptr to a string; the view is initialized to refer to the entire
+    /// string
+    explicit shared_sv(std::shared_ptr<std::string> src_ptr) :
+            ptr{std::move(src_ptr)}, view{*ptr} {}
+    /// Constructs a new shared ptr by moving from a given string rvalue reference
+    explicit shared_sv(std::string&& str) :
+            shared_sv{std::make_shared<std::string>(std::move(str))} {}
+    /// Constructs from a shared_ptr and a view
+    shared_sv(std::shared_ptr<std::string> src_ptr, std::string_view view) :
+            ptr{std::move(src_ptr)}, view{view} {}
 
-  /// Shortcut for obj.view.size()
-  auto size() const { return view.size(); }
-  /// Shortcut for obj.view.data()
-  auto data() const { return view.data(); }
+    /// Shortcut for obj.view.size()
+    auto size() const { return view.size(); }
+    /// Shortcut for obj.view.data()
+    auto data() const { return view.data(); }
 
-  /// Extracts a view prefix of up to size bytes and returns it in a new shared_sv that shares
-  /// ownership with this shared_sv.  The prefix is removed from the view of this.
-  shared_sv extract_prefix(size_t size) {
-    auto prefix_view = view.substr(0, size);
-    view.remove_prefix(prefix_view.size());
-    return {ptr, prefix_view};
-  }
-
+    /// Extracts a view prefix of up to size bytes and returns it in a new shared_sv that shares
+    /// ownership with this shared_sv.  The prefix is removed from the view of this.
+    shared_sv extract_prefix(size_t size) {
+        auto prefix_view = view.substr(0, size);
+        view.remove_prefix(prefix_view.size());
+        return {ptr, prefix_view};
+    }
 };
 
-} // namespace epee
+}  // namespace epee

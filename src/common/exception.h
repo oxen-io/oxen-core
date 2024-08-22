@@ -14,14 +14,13 @@ using traced = StdExcept;
 // Release build: set_terminate_handler() is a no-op
 inline void set_terminate_handler() {}
 
-}
+}  // namespace oxen
 
 #else
 
+#include <cpptrace/cpptrace.hpp>
 #include <string>
 #include <string_view>
-
-#include <cpptrace/cpptrace.hpp>
 
 namespace oxen {
 

@@ -127,7 +127,7 @@ void keccak_update(KECCAK_CTX& ctx, T&&... piece) {
 //
 // (This is in contract with the `keccak()` function above that does a `Hash`-sized keccak hash).
 template <typename Hash, byte_span_convertible... T>
-requires (std::is_trivially_copyable_v<Hash> && Hash::size() < crypto::hash::size())
+    requires(std::is_trivially_copyable_v<Hash> && Hash::size() < crypto::hash::size())
 Hash keccak_prefix(T&&... piece) {
     crypto::hash full = keccak(std::forward<T>(piece)...);
     Hash result;

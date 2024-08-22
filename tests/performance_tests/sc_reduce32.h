@@ -1,21 +1,21 @@
 // Copyright (c) 2017-2018, The Monero Project
-// 
+//
 // All rights reserved.
-// 
+//
 // Redistribution and use in source and binary forms, with or without modification, are
 // permitted provided that the following conditions are met:
-// 
+//
 // 1. Redistributions of source code must retain the above copyright notice, this list of
 //    conditions and the following disclaimer.
-// 
+//
 // 2. Redistributions in binary form must reproduce the above copyright notice, this list
 //    of conditions and the following disclaimer in the documentation and/or other
 //    materials provided with the distribution.
-// 
+//
 // 3. Neither the name of the copyright holder nor the names of its contributors may be
 //    used to endorse or promote products derived from this software without specific
 //    prior written permission.
-// 
+//
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY
 // EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
 // MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL
@@ -30,24 +30,21 @@
 
 #include "crypto/crypto.h"
 
-class test_sc_reduce32
-{
-public:
-  static const size_t loop_count = 10000000;
+class test_sc_reduce32 {
+  public:
+    static const size_t loop_count = 10000000;
 
-  bool init()
-  {
-    m_hash = crypto::rand<crypto::hash>();
-    return true;
-  }
+    bool init() {
+        m_hash = crypto::rand<crypto::hash>();
+        return true;
+    }
 
-  bool test()
-  {
-    crypto::hash reduced = m_hash;
-    sc_reduce32((unsigned char*)reduced.data);
-    return true;
-  }
+    bool test() {
+        crypto::hash reduced = m_hash;
+        sc_reduce32((unsigned char*)reduced.data);
+        return true;
+    }
 
-private:
-  crypto::hash m_hash;
+  private:
+    crypto::hash m_hash;
 };

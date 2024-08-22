@@ -1,21 +1,21 @@
 // Copyright (c) 2017-2018, The Monero Project
-// 
+//
 // All rights reserved.
-// 
+//
 // Redistribution and use in source and binary forms, with or without modification, are
 // permitted provided that the following conditions are met:
-// 
+//
 // 1. Redistributions of source code must retain the above copyright notice, this list of
 //    conditions and the following disclaimer.
-// 
+//
 // 2. Redistributions in binary form must reproduce the above copyright notice, this list
 //    of conditions and the following disclaimer in the documentation and/or other
 //    materials provided with the distribution.
-// 
+//
 // 3. Neither the name of the copyright holder nor the names of its contributors may be
 //    used to endorse or promote products derived from this software without specific
 //    prior written permission.
-// 
+//
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY
 // EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
 // MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL
@@ -29,9 +29,9 @@
 // Parts of this file Copyright (c) 2009-2015 The Bitcoin Core developers
 
 #define __STDC_WANT_LIB_EXT1__ 1
-#include <string.h>
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 #ifdef HAVE_EXPLICIT_BZERO
 #include <strings.h>
@@ -42,38 +42,33 @@
 #pragma GCC diagnostic ignored "-Wstringop-overflow"
 
 #if defined(_MSC_VER)
-#define SCARECROW \
-    __asm;
+#define SCARECROW __asm;
 #else
-#define SCARECROW \
-    __asm__ __volatile__("" : : "r"(ptr) : "memory");
+#define SCARECROW __asm__ __volatile__("" : : "r"(ptr) : "memory");
 #endif
 
 #ifdef HAVE_MEMSET_S
 
-void *memwipe(void *ptr, size_t n)
-{
-  if (n > 0 && memset_s(ptr, n, 0, n))
-  {
+void* memwipe(void* ptr, size_t n) {
+    if (n > 0 && memset_s(ptr, n, 0, n)) {
 #ifdef NDEBUG
-    fprintf(stderr, "Error: memset_s failed\n");
-    _exit(1);
+        fprintf(stderr, "Error: memset_s failed\n");
+        _exit(1);
 #else
-    abort();
+        abort();
 #endif
-  }
-  SCARECROW // might as well...
-  return ptr;
+    }
+    SCARECROW  // might as well...
+            return ptr;
 }
 
 #elif defined HAVE_EXPLICIT_BZERO
 
-void *memwipe(void *ptr, size_t n)
-{
-  if (n > 0)
-    explicit_bzero(ptr, n);
-  SCARECROW
-  return ptr;
+void* memwipe(void* ptr, size_t n) {
+    if (n > 0)
+        explicit_bzero(ptr, n);
+    SCARECROW
+    return ptr;
 }
 
 #else
@@ -97,8 +92,7 @@ void *memwipe(void *ptr, size_t n)
  * Commit: ad1907fe73334d6c696c8539646c21b11178f20f
  * BoringSSL (LICENSE: ISC)
  */
-static void memory_cleanse(void *ptr, size_t len)
-{
+static void memory_cleanse(void* ptr, size_t len) {
     memset(ptr, 0, len);
 
     /* As best as we can tell, this is sufficient to break any optimisations that
@@ -107,12 +101,11 @@ static void memory_cleanse(void *ptr, size_t len)
     SCARECROW
 }
 
-void *memwipe(void *ptr, size_t n)
-{
-  if (n > 0)
-    memory_cleanse(ptr, n);
-  SCARECROW
-  return ptr;
+void* memwipe(void* ptr, size_t n) {
+    if (n > 0)
+        memory_cleanse(ptr, n);
+    SCARECROW
+    return ptr;
 }
 
 #pragma GCC diagnostic pop

@@ -1,12 +1,12 @@
 #include "transaction_scanner.hpp"
 
 #include <common/string_util.h>
-#include "common/exception.h"
 
 #include <sqlitedb/database.hpp>
 #include <vector>
 
 #include "block_tx.hpp"
+#include "common/exception.h"
 
 namespace wallet {
 namespace log = oxen::log;

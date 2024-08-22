@@ -26,114 +26,104 @@
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#include "common/expect.h"
+
 #include <gtest/gtest.h>
 
-#include <string_view>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <type_traits>
 
-#include "common/expect.h"
-
 using namespace std::literals;
 
-namespace
-{
-    struct move_only;
-    struct throw_construct;
-    struct throw_copies;
-    struct throw_moves;
+namespace {
+struct move_only;
+struct throw_construct;
+struct throw_copies;
+struct throw_moves;
 
-    struct move_only
-    {
-        move_only() = default;
-        move_only(move_only const&) = delete;
-        move_only(move_only&&) = default;
-        ~move_only() = default;
-        move_only& operator=(move_only const&) = delete;
-        move_only& operator=(move_only&&) = default;
-    };
+struct move_only {
+    move_only() = default;
+    move_only(move_only const&) = delete;
+    move_only(move_only&&) = default;
+    ~move_only() = default;
+    move_only& operator=(move_only const&) = delete;
+    move_only& operator=(move_only&&) = default;
+};
 
-    struct throw_construct
-    {
-        throw_construct() {}
-        throw_construct(int) {}
-        throw_construct(throw_construct const&) = default;
-        throw_construct(throw_construct&&) = default;
-        ~throw_construct() = default;
-        throw_construct& operator=(throw_construct const&) = default;
-        throw_construct& operator=(throw_construct&&) = default;
-    };
+struct throw_construct {
+    throw_construct() {}
+    throw_construct(int) {}
+    throw_construct(throw_construct const&) = default;
+    throw_construct(throw_construct&&) = default;
+    ~throw_construct() = default;
+    throw_construct& operator=(throw_construct const&) = default;
+    throw_construct& operator=(throw_construct&&) = default;
+};
 
-    struct throw_copies
-    {
-        throw_copies() noexcept {}
-        throw_copies(throw_copies const&) {}
-        throw_copies(throw_copies&&) = default;
-        ~throw_copies() = default;
-        throw_copies& operator=(throw_copies const&) { return *this; }
-        throw_copies& operator=(throw_copies&&) = default;
-        bool operator==(throw_copies const&) noexcept { return true; }
-        bool operator==(throw_moves const&) noexcept { return true; }
-    };
+struct throw_copies {
+    throw_copies() noexcept {}
+    throw_copies(throw_copies const&) {}
+    throw_copies(throw_copies&&) = default;
+    ~throw_copies() = default;
+    throw_copies& operator=(throw_copies const&) { return *this; }
+    throw_copies& operator=(throw_copies&&) = default;
+    bool operator==(throw_copies const&) noexcept { return true; }
+    bool operator==(throw_moves const&) noexcept { return true; }
+};
 
-    struct throw_moves
-    {
-        throw_moves() noexcept {}
-        throw_moves(throw_moves const&) = default;
-        throw_moves(throw_moves&&) {}
-        ~throw_moves() = default;
-        throw_moves& operator=(throw_moves const&) = default;
-        throw_moves& operator=(throw_moves&&) { return *this; }
-        bool operator==(throw_moves const&) { return true; }
-        bool operator==(throw_copies const&) { return true; }
-    };
+struct throw_moves {
+    throw_moves() noexcept {}
+    throw_moves(throw_moves const&) = default;
+    throw_moves(throw_moves&&) {}
+    ~throw_moves() = default;
+    throw_moves& operator=(throw_moves const&) = default;
+    throw_moves& operator=(throw_moves&&) { return *this; }
+    bool operator==(throw_moves const&) { return true; }
+    bool operator==(throw_copies const&) { return true; }
+};
 
-    template<typename T>
-    void construction_bench()
-    {
-        EXPECT_TRUE(std::is_copy_constructible<expect<T>>());
-        EXPECT_TRUE(std::is_move_constructible<expect<T>>());
-        EXPECT_TRUE(std::is_copy_assignable<expect<T>>());
-        EXPECT_TRUE(std::is_move_assignable<expect<T>>());
-        EXPECT_TRUE(std::is_destructible<expect<T>>());
-    }
-
-    template<typename T>
-    void noexcept_bench()
-    {
-        EXPECT_TRUE(std::is_nothrow_copy_constructible<expect<T>>());
-        EXPECT_TRUE(std::is_nothrow_move_constructible<expect<T>>());
-        EXPECT_TRUE(std::is_nothrow_copy_assignable<expect<T>>());
-        EXPECT_TRUE(std::is_nothrow_move_assignable<expect<T>>());
-        EXPECT_TRUE(std::is_nothrow_destructible<expect<T>>());
-
-        EXPECT_TRUE(noexcept(bool(std::declval<expect<T>>())));
-        EXPECT_TRUE(noexcept(std::declval<expect<T>>().has_error()));
-        EXPECT_TRUE(noexcept(std::declval<expect<T>>().error()));
-        EXPECT_TRUE(noexcept(std::declval<expect<T>>().equal(std::declval<expect<T>>())));
-        EXPECT_TRUE(noexcept(std::declval<expect<T>>() == std::declval<expect<T>>()));
-        EXPECT_TRUE(noexcept(std::declval<expect<T>>() != std::declval<expect<T>>()));
-    }
-
-    template<typename T>
-    void conversion_bench()
-    {
-        EXPECT_TRUE((std::is_convertible<std::error_code, expect<T>>()));
-        EXPECT_TRUE((std::is_convertible<std::error_code&&, expect<T>>()));
-        EXPECT_TRUE((std::is_convertible<std::error_code&, expect<T>>()));
-        EXPECT_TRUE((std::is_convertible<std::error_code const&, expect<T>>()));
-
-        EXPECT_TRUE((std::is_constructible<expect<T>, std::error_code>()));
-        EXPECT_TRUE((std::is_constructible<expect<T>, std::error_code&&>()));
-        EXPECT_TRUE((std::is_constructible<expect<T>, std::error_code&>()));
-        EXPECT_TRUE((std::is_constructible<expect<T>, std::error_code const&>()));
-    }
+template <typename T>
+void construction_bench() {
+    EXPECT_TRUE(std::is_copy_constructible<expect<T>>());
+    EXPECT_TRUE(std::is_move_constructible<expect<T>>());
+    EXPECT_TRUE(std::is_copy_assignable<expect<T>>());
+    EXPECT_TRUE(std::is_move_assignable<expect<T>>());
+    EXPECT_TRUE(std::is_destructible<expect<T>>());
 }
 
+template <typename T>
+void noexcept_bench() {
+    EXPECT_TRUE(std::is_nothrow_copy_constructible<expect<T>>());
+    EXPECT_TRUE(std::is_nothrow_move_constructible<expect<T>>());
+    EXPECT_TRUE(std::is_nothrow_copy_assignable<expect<T>>());
+    EXPECT_TRUE(std::is_nothrow_move_assignable<expect<T>>());
+    EXPECT_TRUE(std::is_nothrow_destructible<expect<T>>());
 
-TEST(Expect, Constructions)
-{
+    EXPECT_TRUE(noexcept(bool(std::declval<expect<T>>())));
+    EXPECT_TRUE(noexcept(std::declval<expect<T>>().has_error()));
+    EXPECT_TRUE(noexcept(std::declval<expect<T>>().error()));
+    EXPECT_TRUE(noexcept(std::declval<expect<T>>().equal(std::declval<expect<T>>())));
+    EXPECT_TRUE(noexcept(std::declval<expect<T>>() == std::declval<expect<T>>()));
+    EXPECT_TRUE(noexcept(std::declval<expect<T>>() != std::declval<expect<T>>()));
+}
+
+template <typename T>
+void conversion_bench() {
+    EXPECT_TRUE((std::is_convertible<std::error_code, expect<T>>()));
+    EXPECT_TRUE((std::is_convertible<std::error_code&&, expect<T>>()));
+    EXPECT_TRUE((std::is_convertible<std::error_code&, expect<T>>()));
+    EXPECT_TRUE((std::is_convertible<std::error_code const&, expect<T>>()));
+
+    EXPECT_TRUE((std::is_constructible<expect<T>, std::error_code>()));
+    EXPECT_TRUE((std::is_constructible<expect<T>, std::error_code&&>()));
+    EXPECT_TRUE((std::is_constructible<expect<T>, std::error_code&>()));
+    EXPECT_TRUE((std::is_constructible<expect<T>, std::error_code const&>()));
+}
+}  // namespace
+
+TEST(Expect, Constructions) {
     construction_bench<void>();
     construction_bench<int>();
 
@@ -145,10 +135,13 @@ TEST(Expect, Constructions)
     EXPECT_TRUE(std::is_move_assignable<expect<move_only>>());
 }
 
-TEST(Expect, Conversions)
-{
-    struct implicit { implicit(int) {} };
-    struct explicit_only { explicit explicit_only(int) {} };
+TEST(Expect, Conversions) {
+    struct implicit {
+        implicit(int) {}
+    };
+    struct explicit_only {
+        explicit explicit_only(int) {}
+    };
 
     conversion_bench<void>();
     conversion_bench<int>();
@@ -208,8 +201,7 @@ TEST(Expect, Conversions)
     EXPECT_EQ(val3.value(), "foo");
 }
 
-TEST(Expect, NoExcept)
-{
+TEST(Expect, NoExcept) {
     noexcept_bench<void>();
     noexcept_bench<int>();
 
@@ -268,20 +260,26 @@ TEST(Expect, NoExcept)
     EXPECT_TRUE(!std::is_nothrow_copy_assignable<expect<throw_copies>>());
     EXPECT_TRUE(std::is_nothrow_move_assignable<expect<throw_copies>>());
     EXPECT_TRUE(std::is_nothrow_destructible<expect<throw_copies>>());
-    EXPECT_TRUE(noexcept(std::declval<expect<throw_copies>>().equal(std::declval<expect<throw_copies>>())));
+    EXPECT_TRUE(noexcept(
+            std::declval<expect<throw_copies>>().equal(std::declval<expect<throw_copies>>())));
     EXPECT_TRUE(noexcept(std::declval<expect<throw_copies>>().equal(std::declval<throw_copies>())));
-    EXPECT_TRUE(noexcept(std::declval<expect<throw_copies>>() == std::declval<expect<throw_copies>>()));
+    EXPECT_TRUE(
+            noexcept(std::declval<expect<throw_copies>>() == std::declval<expect<throw_copies>>()));
     EXPECT_TRUE(noexcept(std::declval<expect<throw_copies>>() == std::declval<throw_copies>()));
     EXPECT_TRUE(noexcept(std::declval<throw_copies>() == std::declval<expect<throw_copies>>()));
-    EXPECT_TRUE(noexcept(std::declval<expect<throw_copies>>() != std::declval<expect<throw_copies>>()));
+    EXPECT_TRUE(
+            noexcept(std::declval<expect<throw_copies>>() != std::declval<expect<throw_copies>>()));
     EXPECT_TRUE(noexcept(std::declval<expect<throw_copies>>() != std::declval<throw_copies>()));
     EXPECT_TRUE(noexcept(std::declval<throw_copies>() != std::declval<expect<throw_copies>>()));
-    EXPECT_TRUE(noexcept(std::declval<expect<throw_copies>>().equal(std::declval<expect<throw_moves>>())));
+    EXPECT_TRUE(noexcept(
+            std::declval<expect<throw_copies>>().equal(std::declval<expect<throw_moves>>())));
     EXPECT_TRUE(noexcept(std::declval<expect<throw_copies>>().equal(std::declval<throw_moves>())));
-    EXPECT_TRUE(noexcept(std::declval<expect<throw_copies>>() == std::declval<expect<throw_moves>>()));
+    EXPECT_TRUE(
+            noexcept(std::declval<expect<throw_copies>>() == std::declval<expect<throw_moves>>()));
     EXPECT_TRUE(noexcept(std::declval<expect<throw_copies>>() == std::declval<throw_moves>()));
     EXPECT_TRUE(noexcept(std::declval<throw_moves>() == std::declval<expect<throw_copies>>()));
-    EXPECT_TRUE(noexcept(std::declval<expect<throw_copies>>() != std::declval<expect<throw_moves>>()));
+    EXPECT_TRUE(
+            noexcept(std::declval<expect<throw_copies>>() != std::declval<expect<throw_moves>>()));
     EXPECT_TRUE(noexcept(std::declval<expect<throw_copies>>() != std::declval<throw_moves>()));
     EXPECT_TRUE(noexcept(std::declval<throw_moves>() != std::declval<expect<throw_copies>>()));
 
@@ -298,33 +296,37 @@ TEST(Expect, NoExcept)
     EXPECT_TRUE(std::is_nothrow_copy_assignable<expect<throw_moves>>());
     EXPECT_TRUE(!std::is_nothrow_move_assignable<expect<throw_moves>>());
     EXPECT_TRUE(std::is_nothrow_destructible<expect<throw_copies>>());
-    EXPECT_TRUE(!noexcept(std::declval<expect<throw_moves>>().equal(std::declval<expect<throw_moves>>())));
+    EXPECT_TRUE(!noexcept(
+            std::declval<expect<throw_moves>>().equal(std::declval<expect<throw_moves>>())));
     EXPECT_TRUE(!noexcept(std::declval<expect<throw_moves>>().equal(std::declval<throw_moves>())));
-    EXPECT_TRUE(!noexcept(std::declval<expect<throw_moves>>() == std::declval<expect<throw_moves>>()));
+    EXPECT_TRUE(
+            !noexcept(std::declval<expect<throw_moves>>() == std::declval<expect<throw_moves>>()));
     EXPECT_TRUE(!noexcept(std::declval<expect<throw_moves>>() == std::declval<throw_moves>()));
     EXPECT_TRUE(!noexcept(std::declval<throw_moves>() == std::declval<expect<throw_moves>>()));
-    EXPECT_TRUE(!noexcept(std::declval<expect<throw_moves>>() != std::declval<expect<throw_moves>>()));
+    EXPECT_TRUE(
+            !noexcept(std::declval<expect<throw_moves>>() != std::declval<expect<throw_moves>>()));
     EXPECT_TRUE(!noexcept(std::declval<expect<throw_moves>>() != std::declval<throw_moves>()));
     EXPECT_TRUE(!noexcept(std::declval<throw_moves>() != std::declval<expect<throw_moves>>()));
-    EXPECT_TRUE(!noexcept(std::declval<expect<throw_moves>>().equal(std::declval<expect<throw_copies>>())));
+    EXPECT_TRUE(!noexcept(
+            std::declval<expect<throw_moves>>().equal(std::declval<expect<throw_copies>>())));
     EXPECT_TRUE(!noexcept(std::declval<expect<throw_moves>>().equal(std::declval<throw_copies>())));
-    EXPECT_TRUE(!noexcept(std::declval<expect<throw_moves>>() == std::declval<expect<throw_copies>>()));
+    EXPECT_TRUE(
+            !noexcept(std::declval<expect<throw_moves>>() == std::declval<expect<throw_copies>>()));
     EXPECT_TRUE(!noexcept(std::declval<expect<throw_moves>>() == std::declval<throw_copies>()));
     EXPECT_TRUE(!noexcept(std::declval<throw_copies>() == std::declval<expect<throw_moves>>()));
-    EXPECT_TRUE(!noexcept(std::declval<expect<throw_moves>>() != std::declval<expect<throw_copies>>()));
+    EXPECT_TRUE(
+            !noexcept(std::declval<expect<throw_moves>>() != std::declval<expect<throw_copies>>()));
     EXPECT_TRUE(!noexcept(std::declval<expect<throw_moves>>() != std::declval<throw_copies>()));
     EXPECT_TRUE(!noexcept(std::declval<throw_copies>() != std::declval<expect<throw_moves>>()));
 }
 
-TEST(Expect, Trivial)
-{
+TEST(Expect, Trivial) {
     EXPECT_TRUE(std::is_trivially_copy_constructible<expect<void>>());
     EXPECT_TRUE(std::is_trivially_move_constructible<expect<void>>());
     EXPECT_TRUE(std::is_trivially_destructible<expect<void>>());
 }
 
-TEST(Expect, Assignment)
-{ 
+TEST(Expect, Assignment) {
     expect<std::string> val1{std::string{}};
     expect<std::string> val2{"foobar"};
 
@@ -534,8 +536,7 @@ TEST(Expect, Assignment)
     EXPECT_TRUE(!val2.matches(std::error_condition{}));
 }
 
-TEST(Expect, AssignmentThrowsOnMove)
-{
+TEST(Expect, AssignmentThrowsOnMove) {
     struct construct_error {};
     struct assignment_error {};
 
@@ -543,14 +544,10 @@ TEST(Expect, AssignmentThrowsOnMove)
         std::string msg;
 
         throw_on_move(const char* msg) : msg(msg) {}
-        throw_on_move(throw_on_move&&) {
-            throw construct_error{};
-        }
+        throw_on_move(throw_on_move&&) { throw construct_error{}; }
         throw_on_move(throw_on_move const&) = default;
         ~throw_on_move() = default;
-        throw_on_move& operator=(throw_on_move&&) {
-            throw assignment_error{};
-        }
+        throw_on_move& operator=(throw_on_move&&) { throw assignment_error{}; }
         throw_on_move& operator=(throw_on_move const&) = default;
     };
 
@@ -592,8 +589,7 @@ TEST(Expect, AssignmentThrowsOnMove)
     EXPECT_STREQ(val2->msg.c_str(), "foobar");
 }
 
-TEST(Expect, EqualWithStrings)
-{
+TEST(Expect, EqualWithStrings) {
     expect<std::string> val1{std::string{}};
     expect<std::string> val2{"barfoo"};
     expect<std::string_view> val3{std::string_view{}};
@@ -717,8 +713,7 @@ TEST(Expect, EqualWithStrings)
     EXPECT_TRUE(!val1.matches(std::errc::invalid_argument));
 }
 
-TEST(Expect, EqualWithVoid)
-{
+TEST(Expect, EqualWithVoid) {
     const expect<void> val1;
     expect<void> val2;
 
@@ -760,20 +755,15 @@ TEST(Expect, EqualWithVoid)
     EXPECT_TRUE(std::error_code{} != val2);
 }
 
-TEST(Expect, EqualNoCopies)
-{
+TEST(Expect, EqualNoCopies) {
     struct copy_error {};
 
     struct throw_on_copy {
         throw_on_copy() = default;
         throw_on_copy(int) noexcept {}
-        throw_on_copy(throw_on_copy const&) {
-            throw copy_error{};
-        }
+        throw_on_copy(throw_on_copy const&) { throw copy_error{}; }
         ~throw_on_copy() = default;
-        throw_on_copy& operator=(throw_on_copy const&) {
-            throw copy_error{};
-        }
+        throw_on_copy& operator=(throw_on_copy const&) { throw copy_error{}; }
 
         bool operator==(throw_on_copy const&) const noexcept { return true; }
     };
@@ -817,100 +807,67 @@ TEST(Expect, EqualNoCopies)
 }
 
 TEST(Expect, Macros) {
-    EXPECT_TRUE(
-        [] () -> ::common_error {
-            MONERO_PRECOND(true);
-            return {common_error::kInvalidErrorCode};
-        } () == common_error::kInvalidErrorCode
-    );
-    EXPECT_TRUE(
-        [] () -> ::common_error {
-            MONERO_PRECOND(false);
-            return {common_error::kInvalidErrorCode};
-        } () == common_error::kInvalidArgument
-    );
-    EXPECT_TRUE(
-        [] () -> std::error_code {
-            MONERO_PRECOND(true);
-            return {common_error::kInvalidErrorCode};
-        } () == common_error::kInvalidErrorCode
-    );
-    EXPECT_TRUE(
-        [] () -> std::error_code {
-            MONERO_PRECOND(false);
-            return {common_error::kInvalidErrorCode};
-        } () == common_error::kInvalidArgument
-    );
-    EXPECT_TRUE(
-        [] () -> expect<void> {
-            MONERO_PRECOND(true);
-            return {common_error::kInvalidErrorCode};
-        } () == common_error::kInvalidErrorCode
-    );
-    EXPECT_TRUE(
-        [] () -> expect<void> {
-            MONERO_PRECOND(false);
-            return {common_error::kInvalidErrorCode};
-        } () == common_error::kInvalidArgument
-    );
-    EXPECT_TRUE(
-        [] () -> expect<int> {
-            MONERO_PRECOND(true);
-            return {common_error::kInvalidErrorCode};
-        } () == common_error::kInvalidErrorCode
-    );
-    EXPECT_TRUE(
-        [] () -> expect<int> {
-            MONERO_PRECOND(false);
-            return {common_error::kInvalidErrorCode};
-        } () == common_error::kInvalidArgument
-    );
+    EXPECT_TRUE([]() -> ::common_error {
+        MONERO_PRECOND(true);
+        return {common_error::kInvalidErrorCode};
+    }() == common_error::kInvalidErrorCode);
+    EXPECT_TRUE([]() -> ::common_error {
+        MONERO_PRECOND(false);
+        return {common_error::kInvalidErrorCode};
+    }() == common_error::kInvalidArgument);
+    EXPECT_TRUE([]() -> std::error_code {
+        MONERO_PRECOND(true);
+        return {common_error::kInvalidErrorCode};
+    }() == common_error::kInvalidErrorCode);
+    EXPECT_TRUE([]() -> std::error_code {
+        MONERO_PRECOND(false);
+        return {common_error::kInvalidErrorCode};
+    }() == common_error::kInvalidArgument);
+    EXPECT_TRUE([]() -> expect<void> {
+        MONERO_PRECOND(true);
+        return {common_error::kInvalidErrorCode};
+    }() == common_error::kInvalidErrorCode);
+    EXPECT_TRUE([]() -> expect<void> {
+        MONERO_PRECOND(false);
+        return {common_error::kInvalidErrorCode};
+    }() == common_error::kInvalidArgument);
+    EXPECT_TRUE([]() -> expect<int> {
+        MONERO_PRECOND(true);
+        return {common_error::kInvalidErrorCode};
+    }() == common_error::kInvalidErrorCode);
+    EXPECT_TRUE([]() -> expect<int> {
+        MONERO_PRECOND(false);
+        return {common_error::kInvalidErrorCode};
+    }() == common_error::kInvalidArgument);
 
-    EXPECT_TRUE(
-        [] () -> std::error_code {
-            MONERO_CHECK(expect<void>{});
-            return {common_error::kInvalidErrorCode};
-        } () == common_error::kInvalidErrorCode
-    );
-    EXPECT_TRUE(
-        [] () -> std::error_code {
-            MONERO_CHECK(expect<void>{common_error::kInvalidArgument});
-            return {common_error::kInvalidErrorCode};
-        } () == common_error::kInvalidArgument
-    );
-    EXPECT_TRUE(
-        [] () -> expect<void> {
-            MONERO_CHECK(expect<void>{});
-            return {common_error::kInvalidErrorCode};
-        } () == common_error::kInvalidErrorCode
-    );
-    EXPECT_TRUE(
-        [] () -> expect<void> {
-            MONERO_CHECK(expect<void>{common_error::kInvalidArgument});
-            return {common_error::kInvalidErrorCode};
-        } () == common_error::kInvalidArgument
-    );
-    EXPECT_TRUE(
-        [] () -> expect<int> {
-            MONERO_CHECK(expect<void>{});
-            return {common_error::kInvalidErrorCode};
-        } () == common_error::kInvalidErrorCode
-    );
-    EXPECT_TRUE(
-        [] () -> expect<int> {
-            MONERO_CHECK(expect<void>{common_error::kInvalidArgument});
-            return {common_error::kInvalidErrorCode};
-        } () == common_error::kInvalidArgument
-    );
+    EXPECT_TRUE([]() -> std::error_code {
+        MONERO_CHECK(expect<void>{});
+        return {common_error::kInvalidErrorCode};
+    }() == common_error::kInvalidErrorCode);
+    EXPECT_TRUE([]() -> std::error_code {
+        MONERO_CHECK(expect<void>{common_error::kInvalidArgument});
+        return {common_error::kInvalidErrorCode};
+    }() == common_error::kInvalidArgument);
+    EXPECT_TRUE([]() -> expect<void> {
+        MONERO_CHECK(expect<void>{});
+        return {common_error::kInvalidErrorCode};
+    }() == common_error::kInvalidErrorCode);
+    EXPECT_TRUE([]() -> expect<void> {
+        MONERO_CHECK(expect<void>{common_error::kInvalidArgument});
+        return {common_error::kInvalidErrorCode};
+    }() == common_error::kInvalidArgument);
+    EXPECT_TRUE([]() -> expect<int> {
+        MONERO_CHECK(expect<void>{});
+        return {common_error::kInvalidErrorCode};
+    }() == common_error::kInvalidErrorCode);
+    EXPECT_TRUE([]() -> expect<int> {
+        MONERO_CHECK(expect<void>{common_error::kInvalidArgument});
+        return {common_error::kInvalidErrorCode};
+    }() == common_error::kInvalidArgument);
 
     EXPECT_NO_THROW(MONERO_UNWRAP(success()));
     EXPECT_NO_THROW(MONERO_UNWRAP(expect<void>{}));
     EXPECT_NO_THROW(MONERO_UNWRAP(expect<int>{0}));
-    EXPECT_THROW(
-        MONERO_UNWRAP(expect<void>{common_error::kInvalidArgument}), std::system_error
-    );
-    EXPECT_THROW(
-        MONERO_UNWRAP(expect<int>{common_error::kInvalidArgument}), std::system_error
-    );
+    EXPECT_THROW(MONERO_UNWRAP(expect<void>{common_error::kInvalidArgument}), std::system_error);
+    EXPECT_THROW(MONERO_UNWRAP(expect<int>{common_error::kInvalidArgument}), std::system_error);
 }
-

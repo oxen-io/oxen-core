@@ -70,5 +70,4 @@ inline std::filesystem::path network_config_subdir(network_type t) {
     return result;
 }
 
-
 }  // namespace cryptonote

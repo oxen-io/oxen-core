@@ -11,8 +11,8 @@
 #include <type_traits>
 #include <utility>
 
-#include "common/format.h"
 #include "common/exception.h"
+#include "common/format.h"
 #include "epee/span.h"  // epee
 
 namespace tools {
@@ -76,7 +76,9 @@ template <safe_to_memcpy T, byte_spannable Spannable>
 T make_from_guts(const Spannable& s) {
     std::span<const typename Spannable::value_type> span{s};
     if (s.size() != sizeof(T))
-        throw oxen::traced<std::runtime_error>{"Cannot reconstitute type: wrong data size ({} vs {}) for type"_format(s.size(), sizeof(T))};
+        throw oxen::traced<std::runtime_error>{
+                "Cannot reconstitute type: wrong data size ({} vs {}) for type"_format(
+                        s.size(), sizeof(T))};
     T x;
     std::memcpy(static_cast<void*>(&x), s.data(), sizeof(T));
     return x;
@@ -100,7 +102,9 @@ template <safe_to_memcpy T, byte_spannable Spannable>
 void load_from_hex_guts(const Spannable& s, T& x, bool check_hex = true) {
     auto span = hex_span(s);
     if (span.size() != sizeof(T) * 2)
-        throw oxen::traced<std::runtime_error>{"Cannot reconstitute type from hex: wrong size ({} vs {}) for type"_format(span.size(), sizeof(T) * 2)};
+        throw oxen::traced<std::runtime_error>{
+                "Cannot reconstitute type from hex: wrong size ({} vs {}) for type"_format(
+                        span.size(), sizeof(T) * 2)};
 
     if (check_hex && !oxenc::is_hex(span.begin(), span.end())) {
         std::string_view span_str = std::string_view(span.data(), span.size());
@@ -309,7 +313,8 @@ constexpr detail::tuple_without_skips<T...> split_hex_into(std::string_view hex_
     if ((detail::final_is_string_view<T...> ? hex_in.size() < min_size
                                             : hex_in.size() != min_size)) {
         throw oxen::traced<std::runtime_error>{
-                "Invalid split_hex_into string input: incorrect hex string size (hex_in {}, min_size {})"_format(hex_in.size(), min_size)};
+                "Invalid split_hex_into string input: incorrect hex string size (hex_in {}, min_size {})"_format(
+                        hex_in.size(), min_size)};
     }
 
     if (!oxenc::is_hex(hex_in)) {

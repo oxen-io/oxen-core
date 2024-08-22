@@ -366,8 +366,7 @@ void bls_aggregator::get_reward_balance(oxenmq::Message& m) {
     if (!extract_1part_msg(m, eth_addr, "BLS rewards", "ETH address"))
         return;
 
-    auto [batchdb_height, amount] =
-            core.blockchain.sqlite_db().get_accrued_rewards(eth_addr);
+    auto [batchdb_height, amount] = core.blockchain.sqlite_db().get_accrued_rewards(eth_addr);
     if (amount == 0) {
         m.send_reply("400", "Address '{}' has a zero balance in the database"_format(eth_addr));
         return;
@@ -675,7 +674,8 @@ void bls_aggregator::get_liquidation(oxenmq::Message& m) {
 // - the endpoint they go to;
 // - the tag that gets used in the msg_to_sign hash; and
 // - the key under which the signed pubkey gets confirmed back to us.
-bls_removal_liquidation_response bls_aggregator::removal_liquidation_request(const bls_public_key& bls_pubkey, removal_type type) {
+bls_removal_liquidation_response bls_aggregator::removal_liquidation_request(
+        const bls_public_key& bls_pubkey, removal_type type) {
     // NOTE: The key in which the pubkey is inserted into the response which is a dictionary that is
     // serialised onto OMQ with by all the service nodes we contacted.
     std::string_view pubkey_key = "";

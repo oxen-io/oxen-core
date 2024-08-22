@@ -120,7 +120,8 @@ class BlockchainSQLite : public db::Database {
             const cryptonote::block& block,
             const service_nodes::service_node_list::state_t& service_nodes_state);
 
-    bool return_staked_amount_to_user(const std::vector<cryptonote::batch_sn_payment>& payments, uint64_t delay_blocks);
+    bool return_staked_amount_to_user(
+            const std::vector<cryptonote::batch_sn_payment>& payments, uint64_t delay_blocks);
 
     // validate_batch_payment -> used to make sure that list of miner_tx_vouts is correct. Compares
     // the miner_tx_vouts with a list previously extracted payments to make sure that the correct
