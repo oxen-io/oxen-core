@@ -671,15 +671,18 @@ bool core::init(
 
     const auto l2_provider = command_line::get_arg(vm, arg_l2_provider);
     if (!l2_provider.empty()) {
+        size_t provider_count = 0;
         for (auto provider : l2_provider) {
             auto provider_urls = tools::split_any(provider, ", \t\n", /*trim=*/true);
 
             try {
-                for (size_t index = 0; index < provider_urls.size(); index++)
+                for (const auto& url : provider_urls) {
                     m_l2_tracker->provider.addClient(
-                            index == 0 ? "Primary L2 provider"s
-                                       : "Backup L2 provider #{}"_format(index),
-                            std::string{provider_urls[index]});
+                            provider_count == 0 ? "Primary L2 provider"s
+                                                : "Backup L2 provider #{}"_format(provider_count),
+                            std::string{url});
+                    provider_count++;
+                }
             } catch (const std::exception& e) {
                 log::critical(logcat, "Invalid l2-provider argument '{}': {}", provider, e.what());
                 return false;
