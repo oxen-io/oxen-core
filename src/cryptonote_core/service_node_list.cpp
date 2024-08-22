@@ -1713,15 +1713,14 @@ bool service_node_list::state_t::process_confirmed_event(
             log::info(
                     globallogcat,
                     fg(fmt::terminal_color::green),
-                    "New service node registration from ethereum: {} (THIS NODE) @ height: {}; "
-                    "awaiting confirmations",
+                    "Confirmed service node registration from ethereum: {} (THIS NODE) @ height: "
+                    "{}",
                     key,
                     height);
         else
             log::info(
                     logcat,
-                    "New service node registration from ethereum: {} on height: {}; awaiting "
-                    "confirmations",
+                    "Confirmed service node registration from ethereum: {} on height: {}",
                     key,
                     height);
         insert_info(key, std::move(service_node_info));
