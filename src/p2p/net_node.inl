@@ -1320,83 +1320,71 @@ bool node_server<t_payload_net_handler>::make_new_connection_from_anchor_peerlis
 template <class t_payload_net_handler>
 bool node_server<t_payload_net_handler>::make_new_connection_from_peerlist(
         network_zone& zone, bool use_white_list) {
-    size_t max_random_index = 0;
 
     std::set<size_t> tried_peers;
 
-    size_t try_count = 0;
-    size_t rand_count = 0;
-    while (rand_count < (max_random_index + 1) * 3 && try_count < 10 &&
-           !zone.m_net_server.is_stop_signal_sent()) {
-        ++rand_count;
+    constexpr auto ipv4_type_id = epee::net_utils::ipv4_network_address::get_type_id();
+
+    for (size_t rand_count = 0; rand_count < 3 && !zone.m_net_server.is_stop_signal_sent();
+         rand_count++) {
         size_t random_index;
         const uint32_t next_needed_pruning_stripe =
                 m_payload_handler.get_next_needed_pruning_stripe().second;
 
-        // build a set of all the /16 we're connected to, and prefer a peer that's not in that set
-        std::set<uint32_t> classB;
-        if (&zone ==
-            &m_network_zones.at(epee::net_utils::zone::public_))  // at returns reference, not copy
-        {
+        // build a set of all the /16s, IPs, peer_ids that we're connected to so that we can prefer
+        // and/or filter them out from our potential peer selection below.
+        struct {
+            std::unordered_set<uint32_t> net;
+            std::set<epee::net_utils::network_address> addr;
+            std::unordered_set<peerid_type> peer;
+        } seen;
+        if (&zone == &m_network_zones.at(epee::net_utils::zone::public_))
             zone.m_net_server.get_config_object().foreach_connection(
                     [&](const p2p_connection_context& cntxt) {
-                        if (cntxt.m_remote_address.get_type_id() ==
-                            epee::net_utils::ipv4_network_address::get_type_id()) {
-
-                            const epee::net_utils::network_address na = cntxt.m_remote_address;
-                            const uint32_t actual_ip =
-                                    na.as<const epee::net_utils::ipv4_network_address>().ip();
-                            classB.insert(actual_ip & 0x0000ffff);
+                        if (cntxt.m_remote_address.get_type_id() == ipv4_type_id) {
+                            seen.net.insert(
+                                    cntxt.m_remote_address
+                                            .template as<
+                                                    const epee::net_utils::ipv4_network_address>()
+                                            .ip() &
+                                    0x0000ffff);
                         }
+                        seen.addr.insert(cntxt.m_remote_address);
+                        seen.peer.insert(cntxt.peer_id);
                         return true;
                     });
-        }
 
-        std::deque<size_t> filtered;
-        const size_t limit = use_white_list ? 20 : std::numeric_limits<size_t>::max();
-        for (int step = 0; step < 2; ++step) {
-            bool skip_duplicate_class_B =
-                    step == 0 && m_nettype == cryptonote::network_type::MAINNET;
-            size_t idx = 0, skipped = 0;
-            zone.m_peerlist.foreach (
-                    use_white_list,
-                    [&classB,
-                     &filtered,
-                     &idx,
-                     &skipped,
-                     skip_duplicate_class_B,
-                     limit,
-                     next_needed_pruning_stripe](const peerlist_entry& pe) {
-                        if (filtered.size() >= limit)
-                            return false;
-                        bool skip = false;
-                        if (skip_duplicate_class_B &&
-                            pe.adr.get_type_id() ==
-                                    epee::net_utils::ipv4_network_address::get_type_id()) {
-                            const epee::net_utils::network_address na = pe.adr;
-                            uint32_t actual_ip =
-                                    na.as<const epee::net_utils::ipv4_network_address>().ip();
-                            skip = classB.find(actual_ip & 0x0000ffff) != classB.end();
-                        }
-                        if (skip)
-                            ++skipped;
-                        else if (next_needed_pruning_stripe == 0 || pe.pruning_seed == 0)
-                            filtered.push_back(idx);
-                        else if (
-                                next_needed_pruning_stripe ==
-                                tools::get_pruning_stripe(pe.pruning_seed))
-                            filtered.push_front(idx);
-                        ++idx;
+        std::deque<std::pair<size_t, bool>> filtered;  // {index, is_duplicate_slash16_network}
+        size_t idx = 0;
+        zone.m_peerlist.foreach (
+                use_white_list,
+                [this, &seen, &filtered, &idx, next_needed_pruning_stripe](
+                        const peerlist_entry& pe) {
+                    // Skip peers we're already connected to:
+                    if (seen.peer.count(pe.id) || seen.addr.count(pe.adr))
                         return true;
-                    });
-            if (skipped == 0 || !filtered.empty())
-                break;
-            if (skipped)
-                log::info(
-                        logcat,
-                        "Skipping {} possible peers as they share a class B with existing peers",
-                        skipped);
-        }
+                    // Don't include this in selection if it recently failed
+                    if (is_addr_recently_failed(pe.adr))
+                        return true;
+
+                    const bool have_net16 =
+                            pe.adr.get_type_id() == ipv4_type_id &&
+                            seen.net.count(
+                                    pe.adr.template as<
+                                                  const epee::net_utils::ipv4_network_address>()
+                                            .ip() &
+                                    0x0000ffff);
+
+                    if (next_needed_pruning_stripe == 0 || pe.pruning_seed == 0)
+                        filtered.emplace_back(idx, have_net16);
+                    else if (
+                            next_needed_pruning_stripe ==
+                            tools::get_pruning_stripe(pe.pruning_seed))
+                        filtered.emplace_front(idx, have_net16);
+                    ++idx;
+                    return true;
+                });
+
         if (filtered.empty()) {
             log::debug(
                     logcat,
@@ -1405,21 +1393,25 @@ bool node_server<t_payload_net_handler>::make_new_connection_from_peerlist(
                     next_needed_pruning_stripe);
             return false;
         }
+
+        // Partition our filtered list to move all peers with /16s to which we are already to the
+        // end of the peer list where they are much less likely to be selected:
+        std::stable_partition(filtered.begin(), filtered.end(), [](const auto& idx_dupenet) {
+            return !idx_dupenet.second;
+        });
+
         if (use_white_list) {
-            // if using the white list, we first pick in the set of peers we've already been using
-            // earlier
-            random_index = get_random_index_with_fixed_probability(
-                    std::min<uint64_t>(filtered.size() - 1, 20));
+            // if using the white list, we bias towards peers we've been using recently
+            random_index = get_random_exp_index(filtered.size());
             std::lock_guard lock{m_used_stripe_peers_mutex};
             if (next_needed_pruning_stripe > 0 &&
                 next_needed_pruning_stripe <= (1ul << cryptonote::PRUNING_LOG_STRIPES) &&
                 !m_used_stripe_peers[next_needed_pruning_stripe - 1].empty()) {
-                const epee::net_utils::network_address na =
-                        m_used_stripe_peers[next_needed_pruning_stripe - 1].front();
+                const auto na = m_used_stripe_peers[next_needed_pruning_stripe - 1].front();
                 m_used_stripe_peers[next_needed_pruning_stripe - 1].pop_front();
                 for (size_t i = 0; i < filtered.size(); ++i) {
                     peerlist_entry pe;
-                    if (zone.m_peerlist.get_white_peer_by_index(pe, filtered[i]) && pe.adr == na) {
+                    if (zone.m_peerlist.get_white_peer_by_index(pe, filtered[i].first) && pe.adr == na) {
                         log::debug(
                                 logcat,
                                 "Reusing stripe {} peer {}",
@@ -1435,7 +1427,7 @@ bool node_server<t_payload_net_handler>::make_new_connection_from_peerlist(
 
         CHECK_AND_ASSERT_MES(
                 random_index < filtered.size(), false, "random_index < filtered.size() failed!!");
-        random_index = filtered[random_index];
+        random_index = filtered[random_index].first;
         CHECK_AND_ASSERT_MES(
                 random_index < (use_white_list ? zone.m_peerlist.get_white_peers_count()
                                                : zone.m_peerlist.get_gray_peers_count()),
@@ -1451,8 +1443,6 @@ bool node_server<t_payload_net_handler>::make_new_connection_from_peerlist(
                                 : zone.m_peerlist.get_gray_peer_by_index(pe, random_index);
         CHECK_AND_ASSERT_MES(
                 r, false, "Failed to get random peer from peerlist(white:{})", use_white_list);
-
-        ++try_count;
 
         log::debug(
                 logcat,
