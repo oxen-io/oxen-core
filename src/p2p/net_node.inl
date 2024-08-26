@@ -43,6 +43,7 @@
 #include <limits>
 #include <memory>
 #include <optional>
+#include <random>
 #include <tuple>
 #include <vector>
 
@@ -1027,17 +1028,26 @@ bool node_server<t_payload_net_handler>::do_peer_timed_sync(
     }
     return true;
 }
+
 //-----------------------------------------------------------------------------------
 template <class t_payload_net_handler>
-size_t node_server<t_payload_net_handler>::get_random_index_with_fixed_probability(
-        size_t max_index) {
-    // divide by zero workaround
-    if (!max_index)
-        return 0;
+size_t node_server<t_payload_net_handler>::get_random_exp_index(const size_t max_index, const double rate) {
+    if (max_index == 0)
+        return max_index;
 
-    size_t x = crypto::rand<size_t>() % (max_index + 1);
-    size_t res = (x * x * x) / (max_index * max_index);  // parabola \/
-    log::debug(logcat, "Random connection index={}(x={}, max_index={})", res, x, max_index);
+    // (See net_node.h)
+
+    crypto::random_device rng;
+    const double u = std::uniform_real_distribution{}(rng);
+    // For non-truncated exponential we could use: -1/rate * log(1-u), (or
+    // std::exponential_distribution) but then we'd have to repeat until we got a value <
+    // max_index+1, which is technically unbounded computational time.  Instead we mutate the
+    // calculation like this, which gives us exponential, but truncated to [0, max_index+1), without
+    // looping:
+    const size_t res = static_cast<size_t>(
+            -1.0 / rate * std::log(1.0 - u * (1.0 - std::exp(-rate * (max_index + 1)))));
+
+    log::debug(logcat, "Random connection index={} (max_index={})", res, max_index);
     return res;
 }
 //-----------------------------------------------------------------------------------

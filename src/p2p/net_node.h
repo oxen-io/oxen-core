@@ -396,7 +396,17 @@ class node_server
             uint64_t last_seen_stamp = 0,
             PeerType peer_type = PeerType::white,
             uint64_t first_seen_stamp = 0);
-    size_t get_random_index_with_fixed_probability(size_t max_index);
+    // Draw from a truncated exponential with the given rate, truncated to produce values in [0,
+    // N+1), and then take the integer floor to get a [0, N] value.  This distribution prefers
+    // earlier values: with the default rate and the *untruncated* distribution, [0] is selected
+    // around 13% of the time, indices in 0-9 are selected with probability 0.75 (this is where the
+    // default comes from), and indices < 20 are selected with probability 0.9375, and indices < 50
+    // with probability ~0.999.
+    //
+    // The *truncated* distribution scales these probabilities up slightly depending on the amount
+    // of truncation.  (For example, with max_index of 19, those probabilities increase by a factor
+    // of 1.06667, and with max_index of 9, they increase by 4/3).
+    size_t get_random_exp_index(size_t max_index, double rate = 0.13862943611198906);
     bool is_peer_used(const peerlist_entry& peer);
     bool is_peer_used(const anchor_peerlist_entry& peer);
     bool is_addr_connected(const epee::net_utils::network_address& peer);
