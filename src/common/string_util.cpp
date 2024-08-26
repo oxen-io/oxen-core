@@ -127,4 +127,33 @@ std::string_view string_safe_substr(std::string_view src, size_t pos, size_t siz
     }
     return result;
 }
+
+std::string mask_string(std::string_view src, size_t unmasked_size)
+{
+    std::string_view prefix;
+    std::string_view suffix;
+
+    // NOTE: Take the first 'unmasked_sizes' bytes from the start and end, the
+    // rest of the string is masked. If a really short string is passed in
+    // then we only take 1 character from the start and end and mask the rest.
+    //
+    // If an empty string is passed in then string_safe_substr is defined to
+    // return the empty string.
+    if ((unmasked_size * 2) >= src.size()) {
+        prefix = tools::string_safe_substr(src, 0, 1);
+        suffix = src.size() ? tools::string_safe_substr(src, src.size() - 1, 1) : "";
+    } else {
+        prefix = tools::string_safe_substr(src, 0, unmasked_size);
+        suffix = tools::string_safe_substr(src, src.size() - unmasked_size, unmasked_size);
+    }
+
+    std::string result = fmt::format("{}...{}", prefix, suffix);
+    return result;
+}
+
+std::string mask_string4(std::string_view src)
+{
+    std::string result = mask_string(src, 4);
+    return result;
+}
 }  // namespace tools

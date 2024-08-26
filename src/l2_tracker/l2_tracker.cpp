@@ -129,7 +129,7 @@ void L2Tracker::update_state() {
                                 level,
                                 "{} [{}] is lagging (height {} < {})",
                                 name,
-                                url,
+                                tools::mask_string4(url),
                                 hi.height,
                                 best_height);
                 }
@@ -159,9 +159,9 @@ void L2Tracker::update_state() {
                                 "{} [{}] is not responding or is behind; switching to {} [{}] as "
                                 "primary L2 source",
                                 old_primary.name,
-                                old_primary.url,
+                                tools::mask_string4(old_primary.url),
                                 new_primary.name,
-                                new_primary.url);
+                                tools::mask_string4(new_primary.url));
                         primary_down = primary_last_warned = std::chrono::steady_clock::now();
                     } else {
                         // We *were* on a backup but now are switching back to the primary
@@ -171,7 +171,7 @@ void L2Tracker::update_state() {
                                 "{} [{}] is available again; switching back to it as primary L2 "
                                 "source",
                                 new_primary.name,
-                                new_primary.url);
+                                tools::mask_string4(new_primary.url));
                         primary_down.reset();
                     }
                 }
@@ -183,7 +183,7 @@ void L2Tracker::update_state() {
                             logcat,
                             "{} [{}] is still unavailable",
                             client_info()[0].name,
-                            client_info()[0].url);
+                            tools::mask_string4(client_info()[0].url));
                     primary_last_warned = now;
                 }
             }
@@ -511,16 +511,17 @@ bool L2Tracker::check_chain_id() const {
 
     auto clients = provider.getClients();
     for (auto& ci : chain_ids) {
-        auto& name = clients[ci.index].name;
-        auto& url = clients[ci.index].url;
+        auto& name             = clients[ci.index].name;
+        auto& url              = clients[ci.index].url;
+        std::string masked_url = tools::mask_string4(url);
         if (!ci.success)
-            log::warning(logcat, "Failed to retrieve L2 chain ID from {} [{}]", name, url);
+            log::warning(logcat, "Failed to retrieve L2 chain ID from {} [{}]", name, masked_url);
         else if (ci.chainId != chain_id) {
             log::critical(
                     logcat,
                     "L2 provider {} [{}] has invalid chain ID 0x{:x} (chainId 0x{:x} is required)",
                     name,
-                    url,
+                    masked_url,
                     ci.chainId,
                     chain_id);
             bad = true;
@@ -529,7 +530,7 @@ bool L2Tracker::check_chain_id() const {
                     logcat,
                     "L2 provider {} [{}] returned correct chainId 0x{:x}",
                     name,
-                    url,
+                    masked_url,
                     ci.chainId);
         }
     }

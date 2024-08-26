@@ -193,4 +193,21 @@ std::string_view find_prefixed_value(It begin, It end, std::string_view prefix) 
 /// out-of-bounds, the a slice to the end of the string is returned of 0 size. This function hence
 /// guarantees that a valid string will always be returned irrespective of input.
 std::string_view string_safe_substr(std::string_view src, size_t pos, size_t size) noexcept;
+
+/// Create a masked string where the first and last 'unmasked_size' bytes are
+/// preserved and the remainder of the string is truncated with '...'.
+///
+/// If 'src' is empty the masked string simply returns '...'. If the mask is
+/// larger than the string then only the first and last character is preserved with the remainder of
+/// the string is masked.
+///
+/// For example:
+///   "hello world" with an unmasked size of 2 results in "he...ld"
+///   "hello world" with an unmasked size of 4 results in "hell...orld"
+///   "hello"       with an unmasked size of 4 results in "h...d"
+///   ""            with an unmasked size of 4 results in "..."
+std::string mask_string(std::string_view src, size_t unmasked_size);
+
+/// Invokes 'mask_string' with an 'unmasked_size' of 4
+std::string mask_string4(std::string_view src);
 }  // namespace tools
