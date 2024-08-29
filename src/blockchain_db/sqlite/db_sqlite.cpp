@@ -123,6 +123,11 @@ void BlockchainSQLite::create_schema() {
     log::debug(logcat, "Database setup complete");
 }
 
+bool BlockchainSQLite::table_exists(const std::string& table_name) {
+    return prepared_get<int>(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name=?)", table_name);
+}
+
 void BlockchainSQLite::upgrade_schema() {
     bool have_offset = false;
     SQLite::Statement msg_cols{db, "PRAGMA main.table_info(batched_payments_accrued)"};
@@ -179,22 +184,10 @@ void BlockchainSQLite::upgrade_schema() {
         transaction.commit();
     }
 
-    const auto eth_mapping_table_count = prepared_get<int64_t>(
-            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='eth_mapping';");
-    if (eth_mapping_table_count == 0) {
-        log::info(logcat, "Adding eth mapping table and delayed payments table to batching db");
+    if (!table_exists("delayed_payments")) {
+        log::info(logcat, "Adding delayed payments table to batching db");
         SQLite::Transaction transaction{db, SQLite::TransactionBehavior::IMMEDIATE};
         db.exec(R"(
-        CREATE TABLE eth_mapping(
-          oxen_address VARCHAR NOT NULL,
-          eth_address VARCHAR NOT NULL,
-          height BIGINT NOT NULL,
-          PRIMARY KEY (oxen_address, height)
-          CHECK(height >= 0)
-        );
-
-        CREATE INDEX eth_mapping_eth_address_idx ON eth_mapping(eth_address);
-
         CREATE TABLE delayed_payments(
           eth_address VARCHAR NOT NULL,
           amount BIGINT NOT NULL,
@@ -216,10 +209,7 @@ void BlockchainSQLite::upgrade_schema() {
         transaction.commit();
     }
 
-    const auto archive_table_count = prepared_get<int64_t>(
-            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND "
-            "name='batched_payments_accrued_archive';");
-    if (archive_table_count == 0) {
+    if (!table_exists("batched_payments_accrued_archive")) {
         log::info(logcat, "Adding archiving to batching db");
         auto& netconf = get_config(m_nettype);
         SQLite::Transaction transaction{db, SQLite::TransactionBehavior::IMMEDIATE};

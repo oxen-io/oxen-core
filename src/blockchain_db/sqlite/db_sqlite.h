@@ -77,6 +77,8 @@ class BlockchainSQLite : public db::Database {
     std::string get_address_str(const cryptonote::batch_sn_payment& addr);
     std::mutex address_str_cache_mutex;
 
+    bool table_exists(const std::string& name);
+
   public:
     // get_accrued_rewards -> queries the database for the amount that has been accrued to
     // the Ethereum `address` will return the atomic value in oxen that the service node is owed.
