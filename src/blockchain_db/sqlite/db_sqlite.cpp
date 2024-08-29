@@ -243,6 +243,48 @@ void BlockchainSQLite::upgrade_schema() {
                 500));
         transaction.commit();
     }
+
+    if (!table_exists("batched_payments_accrued_recent")) {
+        // This table is effectively identical to the above, but because we insert and delete on it
+        // for *every* height, partitioning the recent rows in a separate table makes deletions of
+        // stale rows a bit faster because we can use a simple `height < x` query rather than a much
+        // more complicated (and much less indexable) condition that also worries about not deleting
+        // long-term archive rows.
+        log::info(logcat, "Adding recent rewards to batching db");
+        auto& netconf = get_config(m_nettype);
+        SQLite::Transaction transaction{db, SQLite::TransactionBehavior::IMMEDIATE};
+        db.exec(fmt::format(
+                R"(
+        CREATE TABLE batched_payments_accrued_recent(
+          address VARCHAR NOT NULL,
+          amount BIGINT NOT NULL,
+          payout_offset INTEGER NOT NULL,
+          height BIGINT NOT NULL,
+          CHECK(amount >= 0),
+          CHECK(height >= 0)
+        );
+
+        CREATE INDEX batched_payments_accrued_recent_height_idx ON batched_payments_accrued_recent(height);
+
+        DROP TRIGGER IF EXISTS make_recent;
+        CREATE TRIGGER make_recent AFTER UPDATE ON batch_db_info
+        FOR EACH ROW WHEN NEW.height > OLD.height BEGIN
+            INSERT INTO batched_payments_accrued_recent SELECT *, NEW.height FROM batched_payments_accrued;
+            DELETE FROM batched_payments_accrued_recent WHERE height < NEW.height - {};
+        END;
+
+        DROP TRIGGER IF EXISTS clear_recent;
+        CREATE TRIGGER clear_recent AFTER UPDATE ON batch_db_info
+        FOR EACH ROW WHEN NEW.height < OLD.height BEGIN
+            DELETE FROM batched_payments_accrued_recent WHERE height >= NEW.height;
+        END;
+        )",
+                netconf.STORE_RECENT_REWARDS + 1
+                // +1 here because the trigger above copies the *current* height after it's updated,
+                // but we want to store current plus STORE_RECENT_REWARDS recent ones.
+                ));
+        transaction.commit();
+    }
 }
 
 void BlockchainSQLite::reset_database() {
@@ -252,6 +294,8 @@ void BlockchainSQLite::reset_database() {
       DROP TABLE IF EXISTS batched_payments_accrued;
 
       DROP TABLE IF EXISTS batched_payments_accrued_archive;
+
+      DROP TABLE IF EXISTS batched_payments_accrued_recent;
 
       DROP VIEW IF EXISTS batched_payments_paid;
 
@@ -309,6 +353,8 @@ void BlockchainSQLite::blockchain_detached(uint64_t new_height) {
         FROM batched_payments_accrued_archive WHERE archive_height = {0};
 
       DELETE FROM batched_payments_accrued_archive WHERE archive_height >= {0};
+
+      DELETE FROM batched_payments_accrued_recent WHERE height >= {0};
       )",
             prev_interval));
     update_height(prev_interval);
@@ -406,8 +452,7 @@ std::vector<cryptonote::batch_sn_payment> BlockchainSQLite::get_sn_payments(uint
     return payments;
 }
 
-static std::pair<uint64_t, uint64_t> get_accrued_rewards_impl(
-        BlockchainSQLite& db, const std::string& address, uint64_t height) {
+static uint64_t get_accrued_rewards_impl(BlockchainSQLite& db, const std::string& address) {
     log::trace(logcat, "BlockchainDB_SQLITE {} for {}", __func__, address);
     auto rewards = db.prepared_maybe_get<int64_t>(
             R"(
@@ -416,22 +461,55 @@ static std::pair<uint64_t, uint64_t> get_accrued_rewards_impl(
         WHERE address = ?
     )",
             address);
-    auto result = std::make_pair(height, static_cast<uint64_t>(rewards.value_or(0) / 1000));
-    return result;
+    return static_cast<uint64_t>(rewards.value_or(0) / 1000);
+}
+
+static std::optional<uint64_t> get_accrued_rewards_at_impl(
+        BlockchainSQLite& db, const std::string& address, uint64_t at_height) {
+    log::trace(logcat, "BlockchainDB_SQLITE {} for {}", __func__, address);
+    auto rewards = db.prepared_maybe_get<int64_t>(
+            R"(
+        SELECT amount
+        FROM batched_payments_accrued_recent
+        WHERE address = ? AND height = ?
+    )",
+            address,
+            static_cast<int64_t>(at_height));
+    if (!rewards) {
+        // No rewards found; check to see if we actually have any recent records for that height and
+        // if not, return a "don't know" nullopt value.  Otherwise we fall through and return an
+        // authoritive 0 value.
+        auto min_height = db.prepared_get<int64_t>(
+                "SELECT COALESCE(MIN(height), 0) FROM batched_payments_accrued_recent");
+        if (at_height < static_cast<uint64_t>(min_height))
+            return std::nullopt;
+    }
+    return static_cast<uint64_t>(rewards.value_or(0) / 1000);
 }
 
 std::pair<uint64_t, uint64_t> BlockchainSQLite::get_accrued_rewards(const eth::address& address) {
     std::string address_string = fmt::format("0x{:x}", address);
-    auto result = get_accrued_rewards_impl(*this, address_string, height);
-    return result;
+    return {height, get_accrued_rewards_impl(*this, address_string)};
 }
 
 std::pair<uint64_t, uint64_t> BlockchainSQLite::get_accrued_rewards(
         const account_public_address& address) {
     std::string address_string =
             get_account_address_as_str(m_nettype, false /*subaddress*/, address);
-    auto result = get_accrued_rewards_impl(*this, address_string, height);
-    return result;
+    return {height, get_accrued_rewards_impl(*this, address_string)};
+}
+
+std::optional<uint64_t> BlockchainSQLite::get_accrued_rewards(
+        const eth::address& address, uint64_t height) {
+    std::string address_string = fmt::format("0x{:x}", address);
+    return get_accrued_rewards_at_impl(*this, address_string, height);
+}
+
+std::optional<uint64_t> BlockchainSQLite::get_accrued_rewards(
+        const account_public_address& address, uint64_t height) {
+    std::string address_string =
+            get_account_address_as_str(m_nettype, false /*subaddress*/, address);
+    return get_accrued_rewards_at_impl(*this, address_string, height);
 }
 
 std::pair<std::vector<std::string>, std::vector<uint64_t>>

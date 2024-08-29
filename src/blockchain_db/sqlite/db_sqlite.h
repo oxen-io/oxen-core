@@ -80,12 +80,27 @@ class BlockchainSQLite : public db::Database {
     bool table_exists(const std::string& name);
 
   public:
-    // get_accrued_rewards -> queries the database for the amount that has been accrued to
-    // the Ethereum `address` will return the atomic value in oxen that the service node is owed.
+    // Retrieves the amount (in atomic SENT) that has been accrued to the Ethereum `address`.
+    // Returns the current height and the atomic lifetime value that the address is owed.  (Note
+    // that, unlike Oxen addresses, these rewards never reset to zero; but rather the rewards
+    // contract keeps track of the current paid and current total and pays out the difference).
     std::pair<uint64_t, uint64_t> get_accrued_rewards(const eth::address& address);
 
-    // See `get_accrued_rewards`
+    // Retrieves the amount (in atomic OXEN) that has been accrued but not yet paid out to the Oxen
+    // wallet `address`.  Returns the current height and the atomic unpaid amount that the address
+    // is owed.
     std::pair<uint64_t, uint64_t> get_accrued_rewards(const account_public_address& address);
+
+    // Returns the amount (in atomic SENT) that has been accrued to the Ethereum `address` as of the
+    // given recent height `height`.  Returns a nullopt if `height` is too old (see network_config's
+    // STORE_RECENT_REWARDS), otherwise returns the balance.
+    std::optional<uint64_t> get_accrued_rewards(const eth::address& address, uint64_t height);
+
+    // Returns the amount (in atomic OXEN) that has been accrued to the Oxen wallet `address` as of
+    // the given recent height `height`.  Returns a nullopt if `height` is too old (see
+    // network_config's STORE_RECENT_REWARDS), otherwise returns the balance.
+    std::optional<uint64_t> get_accrued_rewards(
+            const account_public_address& address, uint64_t height);
 
     // get_all_accrued_rewards -> queries the database for all the amount that has been accrued to
     // service nodes will return 2 vectors corresponding to the addresses and the atomic value in

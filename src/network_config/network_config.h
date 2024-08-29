@@ -118,6 +118,11 @@ struct network_config final {
     // event of too many popped or reorged blocks.
     const uint64_t STORE_LONG_TERM_STATE_INTERVAL;
 
+    // batching rewards stores reward balances for this many recent blocks (in addition to the
+    // long-term interval blocks controlled by the above).  This is used to allow lookups of reward
+    // balances at recent heights.
+    const uint64_t STORE_RECENT_REWARDS;
+
     /// (HF21+) Number of blocks after a registration expires (i.e. regular requested removals,
     /// *not* deregs) during which the node is protected from liquidation-with-penalty.  Regular
     /// removals can still be submitted to remove it from the ETH pubkey list, but *not* penalizing
