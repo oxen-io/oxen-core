@@ -2183,7 +2183,9 @@ struct GET_PENDING_EVENTS : PUBLIC, NO_ARGS {
 
 /// RPC: blockchain/get_accrued_rewards
 ///
-/// Retrieve the current "balance" of accrued service node rewards for the given addresses.
+/// Retrieve the current "balance" of accrued service node rewards for the given addresses.  Before
+/// SENT, the returned balances are accumulated OXEN amounts to go into the next reward payout;
+/// after SENT these are the lifetime earnings of the given address.
 ///
 /// Inputs:
 ///  - `addresses` -- a set of addresses about which to query.  If omitted/empty then all addresses
@@ -2306,22 +2308,37 @@ struct GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES : PUBLIC, NO_ARGS {
     static constexpr auto names() { return NAMES("get_service_node_blacklisted_key_images"); }
 };
 
-/// RPC: bls rewards request
+/// RPC: service_node/bls_rewards_request
 ///
 /// Sends a request out for all nodes to sign a BLS signature of the rewards amount that an address
-/// is allowed to withdraw
+/// is allowed to withdraw.  This signs the *lifetime earnings* of that address, not the payable
+/// amount: the smart contract takes care of tracking how much has already been paid, and paying out
+/// the difference.
 ///
 /// Inputs:
 ///
-/// - `address` -- this address will be looked up in the batching database at the latest height to
-/// see how much they can withdraw
+/// - `address` -- this address will be looked up in the batching database at the requested height
+///   to request the updated lifetime balance.
+/// - `height` -- the block height at which to request the balance, or a relative height to the top
+///   block.  If 0 or negative, then this is relative to the current top block height (as known by
+///   *this* node).  That is: 0 returns the current value, -1 returns the balance from a block ago.
+///   The default, if omitted, is -1: using -1 or -2 is recommended over 0 because lagging by a
+///   blocks helps avoid signing problems where the oxend where this RPC request is being made has
+///   an updated block that is still being distributed across the network to some service nodes, and
+///   so there is a higher likelihood that some service nodes will be unable to sign the balance for
+///   the 0 height request.
+///
+///   Note that regardless of whether absolute or relative heights are used, oxen nodes only keep
+///   historic values for 5 blocks, so values less than -5 (or heights less than 5 blocks ago) will
+///   most likely fail.
 ///
 /// Outputs:
 ///
 /// - `status` -- generic RPC error code; "OK" means the request was successful.
 /// - `address` -- The requested address
-/// - `amount` -- The amount that the address can claim
-/// - `height` -- The oxen blockchain height that the rewards have been calculated at
+/// - `amount` -- The lifetime amount that the address can submit to the smart contract (the claimed
+///   amount allowed will be this minus any previously claimed amounts).
+/// - `height` -- The oxen blockchain height that the rewards have been calculated for
 /// - `signed_message` -- The message that has been signed by the network
 /// - `signature` -- BLS signature of the message
 /// - `signers_bls_pubkeys` -- array of bls pubkeys of the nodes that signed
@@ -2330,6 +2347,7 @@ struct BLS_REWARDS_REQUEST : PUBLIC {
 
     struct request_parameters {
         eth::address address;
+        int64_t height = -1;
     } request;
 };
 

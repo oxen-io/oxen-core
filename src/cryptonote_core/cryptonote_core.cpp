@@ -2632,8 +2632,8 @@ uint64_t core::get_free_space() const {
     return fs::space(m_config_folder).available;
 }
 //-----------------------------------------------------------------------------------------------
-eth::bls_rewards_response core::bls_rewards_request(const eth::address& address) {
-    return m_bls_aggregator->rewards_request(address);
+eth::bls_rewards_response core::bls_rewards_request(const eth::address& address, uint64_t height) {
+    return m_bls_aggregator->rewards_request(address, height);
 }
 //-----------------------------------------------------------------------------------------------
 eth::bls_removal_liquidation_response core::bls_removal_liquidation_request(

@@ -2531,7 +2531,11 @@ void core_rpc_server::invoke(
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(BLS_REWARDS_REQUEST& rpc, rpc_context) {
-    const auto response = m_core.bls_rewards_request(rpc.request.address);
+    if (rpc.request.height <= 0) {
+        rpc.request.height += m_core.blockchain.get_current_blockchain_height() - 1;
+    }
+    const auto response = m_core.bls_rewards_request(
+            rpc.request.address, static_cast<uint64_t>(rpc.request.height));
     rpc.response["status"] = STATUS_OK;
     rpc.response_hex["address"] = response.addr;
     rpc.response["amount"] = response.amount;
