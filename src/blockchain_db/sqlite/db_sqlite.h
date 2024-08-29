@@ -41,6 +41,9 @@ namespace cryptonote {
 
 fs::path check_if_copy_filename(std::string_view db_path);
 
+using block_payments = std::
+        unordered_map<std::variant<eth::address, cryptonote::account_public_address>, uint64_t>;
+
 class BlockchainSQLite : public db::Database {
   public:
     explicit BlockchainSQLite(cryptonote::network_type nettype, fs::path db_path);
@@ -60,21 +63,25 @@ class BlockchainSQLite : public db::Database {
 
     void blockchain_detached(uint64_t new_height);
 
-    // add_sn_rewards/subtract_sn_rewards -> passing an array of addresses and amounts. These will
-    // be added or subtracted to the database for each address specified. If the address does not
-    // exist it will be created.
-    bool add_sn_rewards(const std::vector<cryptonote::batch_sn_payment>& payments);
-    bool subtract_sn_rewards(const std::vector<cryptonote::batch_sn_payment>& payments);
+    // add_sn_rewards/subtract_sn_rewards -> passing a map of addresses and amounts. These will be
+    // added or subtracted to the database for each address specified. If the address does not exist
+    // it will be created.
+    bool add_sn_rewards(const block_payments& payments);
+    bool subtract_sn_rewards(const block_payments& payments);
 
   private:
     bool reward_handler(
             const cryptonote::block& block,
             const service_nodes::service_node_list::state_t& service_nodes_state,
-            bool add);
+            bool add,
+            block_payments payments = {});
+
+    block_payments get_delayed_payments(uint64_t height);
 
     std::unordered_map<account_public_address, std::string> address_str_cache;
     std::pair<hf, cryptonote::address_parse_info> parsed_governance_addr = {hf::none, {}};
     std::string get_address_str(const cryptonote::batch_sn_payment& addr);
+    std::pair<int, std::string> get_address_str(const std::variant<eth::address, cryptonote::account_public_address>& addr, uint64_t batching_interval);
     std::mutex address_str_cache_mutex;
 
   public:
@@ -94,18 +101,18 @@ class BlockchainSQLite : public db::Database {
     // created in a coinbase transaction on that block given the current batching DB state.
     std::vector<cryptonote::batch_sn_payment> get_sn_payments(uint64_t block_height);
 
-    // calculate_rewards -> takes the list of contributors from sn_info with their SN contribution
-    // amounts and will calculate how much of the block rewards should be the allocated to the
-    // contributors. The function will set a list suitable for passing to add_sn_rewards into the
-    // vector (any existing values will be cleared).
+    // Takes the list of contributors from sn_info with their SN contribution amounts and will
+    // calculate how much of the block rewards should be the allocated to the contributors. The
+    // function will *add* the calculated amounts to the value in the given `payments`, creating new
+    // entries (at value 0) as needed and adding to values that are already present.  Existing
+    // values in the map are *not* cleared or replaced.
     //
-    // Note that distribution_amount here is typically passed as milli-atomic OXEN for extra
-    // precision.
-    void calculate_rewards(
+    // Note that distribution_amount here is passed as milli-atomic OXEN for extra precision.
+    void add_rewards(
             hf hf_version,
             uint64_t distribution_amount,
             const service_nodes::service_node_info& sn_info,
-            std::vector<cryptonote::batch_sn_payment>& rewards);
+            block_payments& payments) const;
 
     // add/pop_block -> takes a block that contains new block rewards to be batched and added to the
     // database and/or batching payments that need to be subtracted from the database, in addition
@@ -120,7 +127,8 @@ class BlockchainSQLite : public db::Database {
             const cryptonote::block& block,
             const service_nodes::service_node_list::state_t& service_nodes_state);
 
-    bool return_staked_amount_to_user(const std::vector<cryptonote::batch_sn_payment>& payments, uint64_t delay_blocks);
+    bool return_staked_amount_to_user(
+            const std::vector<cryptonote::batch_sn_payment>& payments, uint64_t delay_blocks);
 
     // validate_batch_payment -> used to make sure that list of miner_tx_vouts is correct. Compares
     // the miner_tx_vouts with a list previously extracted payments to make sure that the correct
