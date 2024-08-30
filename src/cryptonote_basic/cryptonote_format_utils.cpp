@@ -1649,6 +1649,22 @@ std::vector<uint64_t> absolute_output_offsets_to_relative(const std::vector<uint
         b.hash = *block_hash;
         b.set_hash_valid(true);
     }
+
+    if ((b.major_version >= feature::ETH_BLS) == b.miner_tx.has_value()) {
+        log::error(
+                logcat,
+                "HF {} blocks {} have a miner tx ({})",
+                static_cast<int>(b.major_version),
+                b.major_version >= feature::ETH_BLS ? "must not" : "must",
+                obj_to_json_str(b),
+                oxenc::to_hex(b_blob));
+        return false;
+    }
+
+    if (b.miner_tx && !b.miner_tx->is_miner_tx()) {
+        log::error(logcat, "Block {} has a miner TX but it is missing the mining output data, blob: {}", obj_to_json_str(b), oxenc::to_hex(b_blob));
+        return false;
+    }
     return true;
 }
 //---------------------------------------------------------------
