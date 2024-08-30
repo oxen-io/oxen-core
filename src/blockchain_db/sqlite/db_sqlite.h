@@ -92,13 +92,15 @@ class BlockchainSQLite : public db::Database {
     std::pair<uint64_t, uint64_t> get_accrued_rewards(const account_public_address& address);
 
     // Returns the amount (in atomic SENT) that has been accrued to the Ethereum `address` as of the
-    // given recent height `height`.  Returns a nullopt if `height` is too old (see network_config's
-    // STORE_RECENT_REWARDS), otherwise returns the balance.
-    std::optional<uint64_t> get_accrued_rewards(const eth::address& address, uint64_t height);
+    // given recent block height `at_height`.  Returns nullopt if `at_height` is higher than the
+    // current block height, or lower than the oldest stored recent height (see network_config's
+    // STORE_RECENT_REWARDS;, otherwise returns the balance.
+    std::optional<uint64_t> get_accrued_rewards(const eth::address& address, uint64_t at_height);
 
     // Returns the amount (in atomic OXEN) that has been accrued to the Oxen wallet `address` as of
-    // the given recent height `height`.  Returns a nullopt if `height` is too old (see
-    // network_config's STORE_RECENT_REWARDS), otherwise returns the balance.
+    // the given recent block height `at_height`.  Returns nullopt if `at_height` is higher than the
+    // known height, or lower than the stored recent heights (see network_config's
+    // STORE_RECENT_REWARDS); otherwise returns the balance.
     std::optional<uint64_t> get_accrued_rewards(
             const account_public_address& address, uint64_t height);
 

@@ -465,8 +465,17 @@ static uint64_t get_accrued_rewards_impl(BlockchainSQLite& db, const std::string
 }
 
 static std::optional<uint64_t> get_accrued_rewards_at_impl(
-        BlockchainSQLite& db, const std::string& address, uint64_t at_height) {
+        BlockchainSQLite& db,
+        const std::string& address,
+        uint64_t at_height,
+        uint64_t curr_top_height) {
     log::trace(logcat, "BlockchainDB_SQLITE {} for {}", __func__, address);
+
+    if (at_height > curr_top_height)
+        return std::nullopt;
+    if (at_height == curr_top_height)
+        return get_accrued_rewards_impl(db, address);
+
     auto rewards = db.prepared_maybe_get<int64_t>(
             R"(
         SELECT amount
@@ -500,16 +509,16 @@ std::pair<uint64_t, uint64_t> BlockchainSQLite::get_accrued_rewards(
 }
 
 std::optional<uint64_t> BlockchainSQLite::get_accrued_rewards(
-        const eth::address& address, uint64_t height) {
+        const eth::address& address, uint64_t at_height) {
     std::string address_string = fmt::format("0x{:x}", address);
-    return get_accrued_rewards_at_impl(*this, address_string, height);
+    return get_accrued_rewards_at_impl(*this, address_string, at_height, height);
 }
 
 std::optional<uint64_t> BlockchainSQLite::get_accrued_rewards(
-        const account_public_address& address, uint64_t height) {
+        const account_public_address& address, uint64_t at_height) {
     std::string address_string =
             get_account_address_as_str(m_nettype, false /*subaddress*/, address);
-    return get_accrued_rewards_at_impl(*this, address_string, height);
+    return get_accrued_rewards_at_impl(*this, address_string, at_height, height);
 }
 
 std::pair<std::vector<std::string>, std::vector<uint64_t>>
