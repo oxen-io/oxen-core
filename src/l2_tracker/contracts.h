@@ -18,6 +18,7 @@ namespace event {
     extern const crypto::hash NewServiceNode;
     extern const crypto::hash ServiceNodeRemovalRequest;
     extern const crypto::hash ServiceNodeRemoval;
+    extern const crypto::hash StakingRequirementUpdated;
 
 }  // namespace event
 

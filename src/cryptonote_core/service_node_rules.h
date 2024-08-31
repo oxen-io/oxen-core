@@ -280,13 +280,11 @@ uint64_t get_min_node_contribution_in_portions(
 uint64_t get_max_node_contribution(
         cryptonote::hf version, uint64_t staking_requirement, uint64_t total_reserved);
 
-// Returns the staking requirement at the given height; since HF16 (and always on testnet/devnet)
-// this is fixed, but before HF16 on mainnet this is height-dependent.
-uint64_t get_staking_requirement(cryptonote::network_type nettype, uint64_t height);
-
-// Return the (fixed) staking requirement for a hardfork.  This is only valid for hardfork 16+ as
-// earlier hardforks had a height-dependent staking requirement.
-uint64_t get_staking_requirement(cryptonote::network_type nettype, cryptonote::hf hardfork);
+// Returns the default staking requirement at the given height.  Generally you should not call this
+// directly if you need compatibility with HF21+ staking requirement, but instead use
+// service_node_list.get_staking_requirement() which calls this when needed.
+uint64_t get_default_staking_requirement(cryptonote::network_type nettype, uint64_t height);
+uint64_t get_default_staking_requirement(cryptonote::network_type nettype, cryptonote::hf hardfork);
 
 uint64_t portions_to_amount(uint64_t portions, uint64_t staking_requirement);
 

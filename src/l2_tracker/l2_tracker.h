@@ -45,6 +45,7 @@ class L2Tracker {
     RecentEvents<event::NewServiceNode> recent_regs;
     RecentEvents<event::ServiceNodeRemovalRequest> recent_unlocks;
     RecentEvents<event::ServiceNodeRemoval> recent_removals;
+    RecentEvents<event::StakingRequirementUpdated> recent_req_changes;
     std::map<uint64_t, uint64_t> reward_rate;
     uint64_t latest_height = 0, synced_height = 0;
     bool initial = true;
@@ -155,6 +156,7 @@ class L2Tracker {
     bool get_vote_for(const event::NewServiceNode& reg) const;
     bool get_vote_for(const event::ServiceNodeRemoval& removal) const;
     bool get_vote_for(const event::ServiceNodeRemovalRequest& unlock) const;
+    bool get_vote_for(const event::StakingRequirementUpdated& req_change) const;
     bool get_vote_for(const std::monostate&) const { return false; }
 
     // TODO FIXME: the entire L2Tracker shouldn't be here if there are no clients

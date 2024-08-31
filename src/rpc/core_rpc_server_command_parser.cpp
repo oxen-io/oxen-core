@@ -360,10 +360,6 @@ void parse_request(SET_BANS& set_bans, rpc_input in) {
             required{set_bans.request.seconds});
 }
 
-void parse_request(GET_STAKING_REQUIREMENT& get_staking_requirement, rpc_input in) {
-    get_values(in, "height", get_staking_requirement.request.height);
-}
-
 void parse_request(GET_BLOCK_HEADERS_RANGE& get_block_headers_range, rpc_input in) {
     get_values(
             in,

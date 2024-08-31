@@ -2393,7 +2393,7 @@ bool rpc_command_executor::prepare_registration(bool force_registration) {
         return false;
 
     const uint64_t staking_requirement =
-            service_nodes::get_staking_requirement(nettype, hf_version);
+            service_nodes::get_default_staking_requirement(nettype, hf_version);
 
     fmt::print(
             "\n\n\x1b[33;1m"

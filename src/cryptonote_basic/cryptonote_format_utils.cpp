@@ -971,8 +971,7 @@ bool add_burned_amount_to_tx_extra(std::vector<uint8_t>& tx_extra, uint64_t burn
 }
 //---------------------------------------------------------------
 bool add_new_service_node_to_tx_extra(
-        std::vector<uint8_t>& tx_extra,
-        const eth::event::NewServiceNode& new_service_node) {
+        std::vector<uint8_t>& tx_extra, const eth::event::NewServiceNode& new_service_node) {
     tx_extra_field field = new_service_node;
     if (!add_tx_extra_field_to_tx_extra(tx_extra, field)) {
         log::info(logcat, "failed to serialize tx extra for new service node transaction");
@@ -994,11 +993,21 @@ bool add_service_node_removal_request_to_tx_extra(
 }
 //---------------------------------------------------------------
 bool add_service_node_removal_to_tx_extra(
-        std::vector<uint8_t>& tx_extra,
-        const eth::event::ServiceNodeRemoval& removal_data) {
+        std::vector<uint8_t>& tx_extra, const eth::event::ServiceNodeRemoval& removal_data) {
     tx_extra_field field = removal_data;
     if (!add_tx_extra_field_to_tx_extra(tx_extra, field)) {
         log::info(logcat, "failed to serialize tx extra for service node removal transaction");
+        return false;
+    }
+    return true;
+}
+//---------------------------------------------------------------
+bool add_staking_requirement_to_tx_extra(
+        std::vector<uint8_t>& tx_extra, const eth::event::StakingRequirementUpdated& req_data) {
+    tx_extra_field field = req_data;
+    if (!add_tx_extra_field_to_tx_extra(tx_extra, field)) {
+        log::info(
+                logcat, "failed to serialize tx extra for staking requirement update transaction");
         return false;
     }
     return true;

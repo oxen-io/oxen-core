@@ -62,6 +62,7 @@ void L2Tracker::prune_old_states() {
     recent_regs.expire(expiry);
     recent_unlocks.expire(expiry);
     recent_removals.expire(expiry);
+    recent_req_changes.expire(expiry);
     auto reward_exp = reward_height(expiry, core.get_net_config().L2_REWARD_POOL_UPDATE_BLOCKS);
     reward_rate.erase(reward_rate.begin(), reward_rate.lower_bound(reward_exp));
 }
@@ -352,6 +353,9 @@ void L2Tracker::add_to_mempool(const event::StateChangeVariant& tx_variant) {
                 } else if constexpr (std::is_same_v<T, event::ServiceNodeRemoval>) {
                     tx.type = txtype::ethereum_service_node_removal;
                     add_service_node_removal_to_tx_extra(tx.extra, arg);
+                } else if constexpr (std::is_same_v<T, event::StakingRequirementUpdated>) {
+                    tx.type = txtype::ethereum_staking_requirement_updated;
+                    add_staking_requirement_to_tx_extra(tx.extra, arg);
                 } else {
                     static_assert(
                             std::is_same_v<T, std::monostate>,
@@ -479,6 +483,8 @@ void L2Tracker::update_logs() {
                                 recent_unlocks.add(std::move(*ul), *log.blockNumber);
                             else if (auto* removal = std::get_if<event::ServiceNodeRemoval>(&tx))
                                 recent_removals.add(std::move(*removal), *log.blockNumber);
+                            else if (auto* req = std::get_if<event::StakingRequirementUpdated>(&tx))
+                                recent_req_changes.add(std::move(*req), *log.blockNumber);
                             else
                                 assert(tx.index() == 0);
                         } catch (const std::exception& e) {
@@ -582,6 +588,9 @@ bool L2Tracker::get_vote_for(const event::ServiceNodeRemoval& removal) const {
 }
 bool L2Tracker::get_vote_for(const event::ServiceNodeRemovalRequest& unlock) const {
     return recent_unlocks.contains(unlock);
+}
+bool L2Tracker::get_vote_for(const event::StakingRequirementUpdated& req_change) const {
+    return recent_req_changes.contains(req_change);
 }
 
 }  // namespace eth

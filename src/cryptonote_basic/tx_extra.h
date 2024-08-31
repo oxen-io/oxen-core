@@ -55,6 +55,7 @@ constexpr uint8_t TX_EXTRA_TAG_PADDING = 0x00, TX_EXTRA_TAG_PUBKEY = 0x01, TX_EX
                   TX_EXTRA_TAG_TX_KEY_IMAGE_PROOFS = 0x76, TX_EXTRA_TAG_TX_KEY_IMAGE_UNLOCK = 0x77,
                   TX_EXTRA_TAG_SERVICE_NODE_STATE_CHANGE = 0x78, TX_EXTRA_TAG_BURN = 0x79,
                   TX_EXTRA_TAG_OXEN_NAME_SYSTEM = 0x7A,
+                  TX_EXTRA_TAG_ETHEREUM_STAKING_REQUIREMENT_UPDATED = 0x7B,
                   TX_EXTRA_TAG_ETHEREUM_NEW_SERVICE_NODE = 0x7C,
                   TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_REMOVAL_REQUEST = 0x7D,
                   TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_DEREGISTER = 0x7E,
@@ -653,6 +654,7 @@ using tx_extra_field = std::variant<
         eth::event::NewServiceNode,
         eth::event::ServiceNodeRemovalRequest,
         eth::event::ServiceNodeRemoval,
+        eth::event::StakingRequirementUpdated,
         tx_extra_burn,
         tx_extra_merge_mining_tag,
         tx_extra_mysterious_minergate,
@@ -699,3 +701,6 @@ BINARY_VARIANT_TAG(
         cryptonote::TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_REMOVAL_REQUEST);
 BINARY_VARIANT_TAG(
         eth::event::ServiceNodeRemoval, cryptonote::TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_REMOVAL);
+BINARY_VARIANT_TAG(
+        eth::event::StakingRequirementUpdated,
+        cryptonote::TX_EXTRA_TAG_ETHEREUM_STAKING_REQUIREMENT_UPDATED);

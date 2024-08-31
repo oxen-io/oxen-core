@@ -2269,22 +2269,15 @@ struct LOKINET_PING : RPC_COMMAND {
 /// For devnet and testnet values, ensure the daemon is started with the
 /// `--devnet` or `--testnet` flags respectively.
 ///
-/// Inputs:
-///
-/// - `height` -- The height to query the staking requirement for.  0 (or omitting) means current
-///   height.
+/// Inputs: None
 ///
 /// Outputs:
 ///
 /// - `status` -- generic RPC error code; "OK" means the request was successful.
 /// - `staking_requirement` -- The staking requirement in Oxen, in atomic units.
-/// - `height` -- The height requested (or current height if 0 was requested)
-struct GET_STAKING_REQUIREMENT : PUBLIC {
+/// - `height` -- The current blockchain height for which the staking requirement applies.
+struct GET_STAKING_REQUIREMENT : PUBLIC, NO_ARGS {
     static constexpr auto names() { return NAMES("get_staking_requirement"); }
-
-    struct request_parameters {
-        uint64_t height;
-    } request;
 };
 
 /// RPC: blockchain/get_service_node_blacklisted_key_images
