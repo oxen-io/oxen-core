@@ -194,20 +194,25 @@ std::string_view find_prefixed_value(It begin, It end, std::string_view prefix) 
 /// guarantees that a valid string will always be returned irrespective of input.
 std::string_view string_safe_substr(std::string_view src, size_t pos, size_t size) noexcept;
 
-/// Create a masked string where the first and last 'unmasked_size' bytes are
-/// preserved and the remainder of the string is truncated with '...'.
-///
-/// If 'src' is empty the masked string simply returns '...'. If the mask is
-/// larger than the string then only the first and last character is preserved with the remainder of
-/// the string is masked.
+/// Trim a URL's contents by masking the path with '...'
 ///
 /// For example:
-///   "hello world" with an unmasked size of 2 results in "he...ld"
-///   "hello world" with an unmasked size of 4 results in "hell...orld"
-///   "hello"       with an unmasked size of 4 results in "h...d"
-///   ""            with an unmasked size of 4 results in "..."
-std::string mask_string(std::string_view src, size_t unmasked_size);
-
-/// Invokes 'mask_string' with an 'unmasked_size' of 4
-std::string mask_string4(std::string_view src);
+///   https://10.24.0.1:9547 --> https://10.24.0.1:9547
+///   https://10.25.0.2:9547 --> https://10.25.0.2:9547
+///   http://10.24.0.1:9547 --> http://10.24.0.1:9547
+///   10.24.0.1:9547 --> 10.24.0.1:9547
+///   10.25.0.1 --> 10.25.0.1
+///   https://10.25.0.1/abcdef --> https://10.25.0.1/…def
+///   http://10.24.0.1:9547 --> http://10.24.0.1:9547
+///   https://10.24.0.1/ --> https://10.24.0.1/
+///   https://10.24.0.1:9547/a --> https://10.24.0.1:9547/a
+///   https://10.24.0.1:9547/ab --> https://10.24.0.1:9547/ab
+///   https://10.24.0.1:9547/abc --> https://10.24.0.1:9547/abc
+///   https://10.24.0.1:9547/abcd --> https://10.24.0.1:9547/…bcd
+///   https://10.24.0.1:9547/abcde --> https://10.24.0.1:9547/…cde
+///   https://10.24.0.1:9547/secret-stuff --> https://10.24.0.1:9547/…uff
+///   https://user:pass@10.24.0.1:9547 --> https://…@10.24.0.1:9547
+///   https://user:pass@10.24.0.1/stuff --> https://…@10.24.0.1/…uff
+///   ws://user:pass@10.24.0.1:9547/stuff --> ws://…@10.24.0.1:9547/…uff
+std::string trim_url(std::string_view src);
 }  // namespace tools

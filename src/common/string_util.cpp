@@ -128,32 +128,39 @@ std::string_view string_safe_substr(std::string_view src, size_t pos, size_t siz
     return result;
 }
 
-std::string mask_string(std::string_view src, size_t unmasked_size)
-{
-    std::string_view prefix;
-    std::string_view suffix;
+std::string trim_url(std::string_view url) {
+    constexpr std::array PROTOCOLS  = {"http://"sv, "https://"sv, "ws://"sv, "wss://"sv};
+    constexpr size_t PATH_TAIL_SIZE = 3;
 
-    // NOTE: Take the first 'unmasked_sizes' bytes from the start and end, the
-    // rest of the string is masked. If a really short string is passed in
-    // then we only take 1 character from the start and end and mask the rest.
-    //
-    // If an empty string is passed in then string_safe_substr is defined to
-    // return the empty string.
-    if ((unmasked_size * 2) >= src.size()) {
-        prefix = tools::string_safe_substr(src, 0, 1);
-        suffix = src.size() ? tools::string_safe_substr(src, src.size() - 1, 1) : "";
-    } else {
-        prefix = tools::string_safe_substr(src, 0, unmasked_size);
-        suffix = tools::string_safe_substr(src, src.size() - unmasked_size, unmasked_size);
+    std::string result;
+    for (const auto& p : PROTOCOLS) {
+        if (url.starts_with(p)) {
+            url.remove_prefix(p.size());
+            result += p;
+            break;
+        }
     }
 
-    std::string result = fmt::format("{}...{}", prefix, suffix);
-    return result;
-}
+    // If the URL ends with /lotsofstuff replace with /…uff
+    std::string_view path_tail;
+    if (auto slash = url.find('/');
+        slash != std::string_view::npos && slash + PATH_TAIL_SIZE + 1 < url.size()) {
+        path_tail = url.substr(url.size() - PATH_TAIL_SIZE);
+        url.remove_suffix(url.size() - 1 - slash);
+    }
 
-std::string mask_string4(std::string_view src)
-{
-    std::string result = mask_string(src, 4);
+    // Strip out a potential HTTP user:pass@ auth
+    if (auto at = url.find('@'); at < url.size()) {
+        result += "…";
+        url.remove_prefix(at);
+    }
+
+    result += url;
+    if (!path_tail.empty()) {
+        result += "…";
+        result += path_tail;
+    }
+
     return result;
 }
 }  // namespace tools

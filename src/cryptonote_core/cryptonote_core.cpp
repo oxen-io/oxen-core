@@ -684,7 +684,7 @@ bool core::init(
                     provider_count++;
                 }
             } catch (const std::exception& e) {
-                log::critical(logcat, "Invalid l2-provider argument '{}': {}", tools::mask_string4(provider), e.what());
+                log::critical(logcat, "Invalid l2-provider argument '{}': {}", tools::trim_url(provider), e.what());
                 return false;
             }
         }
