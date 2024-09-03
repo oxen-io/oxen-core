@@ -3318,7 +3318,7 @@ void service_node_list::process_block(
                      VOTE_LIFETIME + VOTE_OR_TX_VERIFY_HEIGHT_BUFFER);
             if ((it->height % STORE_LONG_TERM_STATE_INTERVAL) == 0 ||
                 need_quorum_for_future_states) {
-                m_transient.state_added_to_archive = true;
+                m_transient.long_term_data_dirty = true;
                 if (need_quorum_for_future_states)  // Preserve just quorum
                 {
                     // This const cast is a little ugly, but is safe because we don't touch
@@ -4084,6 +4084,33 @@ static service_node_list::state_serialized serialize_service_node_state_object(
     return result;
 }
 
+struct data_for_serialization {
+    enum struct version_t : uint8_t {
+        version_0,
+        version_1_create_recently_removed_nodes,
+        version_2_regen_recently_removed_nodes_w_sn_info,
+        count,
+    };
+
+    version_t version{version_t::version_2_regen_recently_removed_nodes_w_sn_info};
+    std::vector<service_node_list::quorum_for_serialization> quorum_states;
+    std::vector<service_node_list::state_serialized> states;
+
+    void clear() {
+        quorum_states.clear();
+        states.clear();
+        version = {};
+    }
+
+
+    template <class Archive>
+    void serialize_value(Archive& ar) {
+        field_varint(ar, "version", version, [](auto v) { return v < version_t::count; });
+        field(ar, "quorum_states", quorum_states);
+        field(ar, "states", states);
+    }
+};
+
 bool service_node_list::store() {
     if (!blockchain.has_db())
         return false;  // Haven't been initialized yet
@@ -4092,27 +4119,29 @@ bool service_node_list::store() {
     if (hf_version < hf::hf9_service_nodes)
         return true;
 
-    data_for_serialization* data[] = {
-            &m_transient.cache_long_term_data, &m_transient.cache_short_term_data};
-    auto const serialize_version = data_for_serialization::get_version(hf_version);
+    // NOTE: We use static here so that we reuse the heap memory allocated from prior 'store'
+    // invocations. This speeds up syncing of the chain. Note that there is only 1 instance of the
+    // SNL for program lifetime (with the exception of maybe the tests, but the tests don't run
+    // concurrently).
+    static data_for_serialization long_term_data{};
+    long_term_data.states.clear();
+    long_term_data.quorum_states.clear();
+
+    static data_for_serialization short_term_data{};
+    short_term_data.states.clear();
+    short_term_data.quorum_states.clear();
+
+    // NOTE: Convert the runtime SNL data into a format suitable for serialization into the DB
     std::lock_guard lock(m_sn_mutex);
-
-    for (data_for_serialization* serialize_entry : data) {
-        if (serialize_entry->version != serialize_version)
-            m_transient.state_added_to_archive = true;
-        serialize_entry->clear();
-        serialize_entry->version = serialize_version;
-    }
-
-    m_transient.cache_short_term_data.quorum_states.reserve(m_transient.old_quorum_states.size());
+    short_term_data.quorum_states.reserve(m_transient.old_quorum_states.size());
     for (const quorums_by_height& entry : m_transient.old_quorum_states)
-        m_transient.cache_short_term_data.quorum_states.push_back(
+        short_term_data.quorum_states.push_back(
                 serialize_quorum_state(hf_version, entry.height, entry.quorums));
 
-    if (m_transient.state_added_to_archive) {
+    if (m_transient.long_term_data_dirty) {
+        long_term_data.states.reserve(m_transient.state_archive.size());
         for (auto const& it : m_transient.state_archive)
-            m_transient.cache_long_term_data.states.push_back(
-                    serialize_service_node_state_object(hf_version, it));
+            long_term_data.states.push_back(serialize_service_node_state_object(hf_version, it));
     }
 
     // NOTE: A state_t may reference quorums up to (VOTE_LIFETIME
@@ -4130,15 +4159,15 @@ bool service_node_list::store() {
          it++) {
         // TODO(oxen): There are 2 places where we convert a state_t to be a serialized state_t
         // without quorums. We should only do this in one location for clarity.
-        m_transient.cache_short_term_data.states.push_back(serialize_service_node_state_object(
+        short_term_data.states.push_back(serialize_service_node_state_object(
                 hf_version, *it, it->height < max_short_term_height /*only_serialize_quorums*/));
     }
 
-    m_transient.cache_data_blob.clear();
-    if (m_transient.state_added_to_archive) {
+    // NOTE: Store the data into the DB
+    if (m_transient.long_term_data_dirty) {
         serialization::binary_string_archiver ba;
         try {
-            serialization::serialize(ba, m_transient.cache_long_term_data);
+            serialization::serialize(ba, long_term_data);
         } catch (const std::exception& e) {
             log::error(
                     logcat,
@@ -4146,19 +4175,16 @@ bool service_node_list::store() {
                     e.what());
             return false;
         }
-        m_transient.cache_data_blob.append(ba.str());
-        {
-            auto& db = blockchain.db();
-            cryptonote::db_wtxn_guard txn_guard{db};
-            db.set_service_node_data(m_transient.cache_data_blob, true /*long_term*/);
-        }
+
+        auto& db = blockchain.db();
+        cryptonote::db_wtxn_guard txn_guard{db};
+        db.set_service_node_data(ba.str(), true /*long_term*/);
     }
 
-    m_transient.cache_data_blob.clear();
     {
         serialization::binary_string_archiver ba;
         try {
-            serialization::serialize(ba, m_transient.cache_short_term_data);
+            serialization::serialize(ba, short_term_data);
         } catch (const std::exception& e) {
             log::error(
                     logcat,
@@ -4166,15 +4192,13 @@ bool service_node_list::store() {
                     e.what());
             return false;
         }
-        m_transient.cache_data_blob.append(ba.str());
-        {
-            auto& db = blockchain.db();
-            cryptonote::db_wtxn_guard txn_guard{db};
-            db.set_service_node_data(m_transient.cache_data_blob, false /*long_term*/);
-        }
+
+        auto& db = blockchain.db();
+        cryptonote::db_wtxn_guard txn_guard{db};
+        db.set_service_node_data(ba.str(), false /*long_term*/);
     }
 
-    m_transient.state_added_to_archive = false;
+    m_transient.long_term_data_dirty = false;
     return true;
 }
 

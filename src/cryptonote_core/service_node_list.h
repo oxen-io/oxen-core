@@ -954,34 +954,6 @@ class service_node_list {
         }
     };
 
-    struct data_for_serialization {
-        enum struct version_t : uint8_t {
-            version_0,
-            version_1_create_recently_removed_nodes,
-            version_2_regen_recently_removed_nodes_w_sn_info,
-            count,
-        };
-        static version_t get_version(cryptonote::hf /*hf_version*/) { return version_t::version_2_regen_recently_removed_nodes_w_sn_info; }
-
-        version_t version{version_t::version_2_regen_recently_removed_nodes_w_sn_info};
-        std::vector<quorum_for_serialization> quorum_states;
-        std::vector<state_serialized> states;
-        void clear() {
-            quorum_states.clear();
-            states.clear();
-            version = {};
-        }
-
-        template <class Archive>
-        void serialize_object(Archive& ar) {
-            field_varint(ar, "version", version, [](auto& version) {
-                return version < version_t::count;
-            });
-            field(ar, "quorum_states", quorum_states);
-            field(ar, "states", states);
-        }
-    };
-
     struct state_t;
     using state_set = std::set<state_t, std::less<>>;
     using block_height = uint64_t;
@@ -1289,10 +1261,10 @@ class service_node_list {
         state_set state_archive;  // Store state_t's where ((height < m_state_history.first()) &&
                                   // (height % STORE_LONG_TERM_STATE_INTERVAL))
         std::unordered_map<crypto::hash, state_t> alt_state;
-        bool state_added_to_archive;
-        data_for_serialization cache_long_term_data;
-        data_for_serialization cache_short_term_data;
-        std::string cache_data_blob;
+
+        // SNL historical data is stored at intervals like a checkpoint. This flag is set if there's
+        // new historical data that has to be stored into the DB.
+        bool long_term_data_dirty;
     } m_transient = {};
 
     state_t m_state;  // NOTE: Not in m_transient due to the non-trivial constructor. We can't
