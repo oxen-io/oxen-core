@@ -74,6 +74,136 @@ using cryptonote::hf;
 namespace feature = cryptonote::feature;
 
 namespace service_nodes {
+
+// Internal intermediate structure to store runtime quorum data in a format suitable for
+// serialisation to binary.
+struct quorum_for_serialization {
+    uint8_t version;
+    uint64_t height;
+    quorum quorums[tools::enum_count<quorum_type>];
+
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field(ar, "version", version);
+        field(ar, "height", height);
+        field(ar, "obligations_quorum", quorums[static_cast<uint8_t>(quorum_type::obligations)]);
+        field(ar,
+              "checkpointing_quorum",
+              quorums[static_cast<uint8_t>(quorum_type::checkpointing)]);
+    }
+};
+
+// Internal intermediate structure to store runtime quorum data in a format suitable for
+// serialisation to binary
+struct quorums_by_height {
+    quorums_by_height() = default;
+    quorums_by_height(uint64_t height, quorum_manager quorums) :
+            height(height), quorums(std::move(quorums)) {}
+    uint64_t height;
+    quorum_manager quorums;
+};
+
+// Internal intermediate structure to store runtime SNL data in a format suitable for serialisation
+// to binary
+struct state_serialized {
+    enum struct version_t : uint8_t {
+        version_0,
+        version_1_serialize_hash,
+        version_2_l2_confirmations,
+        version_3_l2_staking_req,
+        version_4_recently_removed_nodes,
+        count,
+    };
+
+    version_t version{version_t::version_4_recently_removed_nodes};
+    uint64_t height;
+    uint64_t staking_requirement;
+    std::vector<service_node_pubkey_info> infos;
+    std::vector<key_image_blacklist_entry> key_image_blacklist;
+    quorum_for_serialization quorums;
+    bool only_stored_quorums;
+    crypto::hash block_hash;
+    std::map<crypto::hash, service_node_list::unconfirmed_l2_tx> unconfirmed_l2_txes;
+    std::vector<service_node_list::recently_removed_node> recently_removed_nodes;
+    crypto::public_key block_leader;
+
+    template <class Archive>
+    void serialize_value(Archive& ar) {
+        field_varint(ar, "version", version, [](auto v) { return v < version_t::count; });
+        field_varint(ar, "height", height);
+        field(ar, "infos", infos);
+        field(ar, "key_image_blacklist", key_image_blacklist);
+        field(ar, "quorums", quorums);
+        field(ar, "only_stored_quorums", only_stored_quorums);
+
+        if (version >= version_t::version_1_serialize_hash)
+            field(ar, "block_hash", block_hash);
+
+        if (version >= version_t::version_2_l2_confirmations) {
+            field(ar, "unconfirmed_l2", unconfirmed_l2_txes);
+            field(ar, "block_leader", block_leader);
+        }
+
+        if (version >= version_t::version_3_l2_staking_req)
+            field_varint(ar, "staking_requirement", staking_requirement);
+
+        if (version >= version_t::version_4_recently_removed_nodes)
+            field(ar, "recently_removed_nodes", recently_removed_nodes);
+    }
+};
+
+// Internal intermediate structure to store runtime SNL data in a format suitable for serialisation
+// to binary
+struct data_for_serialization {
+    enum struct version_t : uint8_t {
+        version_0,
+        version_1_create_recently_removed_nodes,
+        version_2_regen_recently_removed_nodes_w_sn_info,
+        count,
+    };
+
+    version_t version{version_t::version_2_regen_recently_removed_nodes_w_sn_info};
+    std::vector<quorum_for_serialization> quorum_states;
+    std::vector<state_serialized> states;
+
+    void clear() {
+        quorum_states.clear();
+        states.clear();
+    }
+
+    template <class Archive>
+    void serialize_value(Archive& ar) {
+        field_varint(ar, "version", version, [](auto v) { return v < version_t::count; });
+        field(ar, "quorum_states", quorum_states);
+        field(ar, "states", states);
+    }
+};
+
+// Temporary data that the SNL maintains for various book-keeping tasks. This structure is
+// zero-initialised on `service_node_list::reset` and can be repopulated from scratch.
+struct service_node_list_transient_storage {
+    // Store all old quorum history only if run with --store-full-quorum-history
+    std::deque<quorums_by_height> old_quorum_states;
+
+    // Store state_t's from MIN(2nd oldest checkpoint | height -
+    // DEFAULT_SHORT_TERM_STATE_HISTORY) up to the block height
+    service_node_list::state_set state_history;
+
+    // Store state_t's where ((height < m_state_history.first()) && (height %
+    // STORE_LONG_TERM_STATE_INTERVAL))
+    service_node_list::state_set state_archive;
+
+    std::unordered_map<crypto::hash, service_node_list::state_t> alt_state;
+
+    data_for_serialization long_term_data;
+
+    data_for_serialization short_term_data;
+
+    // SNL historical data is stored at intervals like a checkpoint. This flag is set if there's
+    // new historical data that has to be stored into the DB.
+    bool long_term_data_dirty;
+};
+
 static auto logcat = log::Cat("service_nodes");
 
 size_t constexpr STORE_LONG_TERM_STATE_INTERVAL = 10000;
@@ -102,6 +232,10 @@ service_node_list::service_node_list(cryptonote::Blockchain& blockchain) :
         m_service_node_keys(nullptr),
         m_state{this} {}
 
+// Force the destructor instantiation to be here, where `service_node_list_transient_storage` is
+// visible. `service_node_list_transient_storage` uses the pimpl pattern to hide the decl.
+service_node_list::~service_node_list() = default;
+
 void service_node_list::init() {
     std::lock_guard lock(m_sn_mutex);
     if (blockchain.get_network_version() < hf::hf9_service_nodes) {
@@ -112,11 +246,11 @@ void service_node_list::init() {
     uint64_t current_height = blockchain.get_current_blockchain_height();
     bool loaded = load(current_height);
     if (loaded &&
-        m_transient.old_quorum_states.size() < std::min(m_store_quorum_history, uint64_t{10})) {
+        m_transient->old_quorum_states.size() < std::min(m_store_quorum_history, uint64_t{10})) {
         log::warning(
                 logcat,
                 "Full history storage requested, but {} old quorum states found",
-                m_transient.old_quorum_states.size());
+                m_transient->old_quorum_states.size());
         loaded = false;  // Either we don't have stored history or the history is very short, so
                          // recalculation is necessary or cheap.
     }
@@ -183,35 +317,35 @@ std::shared_ptr<const quorum> service_node_list::get_quorum(
     quorum_manager const* quorums = nullptr;
     if (height == m_state.height)
         quorums = &m_state.quorums;
-    else  // NOTE: Search m_transient.state_history && m_transient.state_archive
+    else  // NOTE: Search m_transient->state_history && m_transient->state_archive
     {
-        auto it = m_transient.state_history.find(height);
-        if (it != m_transient.state_history.end())
+        auto it = m_transient->state_history.find(height);
+        if (it != m_transient->state_history.end())
             quorums = &it->quorums;
 
         if (!quorums) {
-            auto it = m_transient.state_archive.find(height);
-            if (it != m_transient.state_archive.end())
+            auto it = m_transient->state_archive.find(height);
+            if (it != m_transient->state_archive.end())
                 quorums = &it->quorums;
         }
     }
 
-    if (!quorums && include_old)  // NOTE: Search m_transient.old_quorum_states
+    if (!quorums && include_old)  // NOTE: Search m_transient->old_quorum_states
     {
         auto it = std::lower_bound(
-                m_transient.old_quorum_states.begin(),
-                m_transient.old_quorum_states.end(),
+                m_transient->old_quorum_states.begin(),
+                m_transient->old_quorum_states.end(),
                 height,
                 [](quorums_by_height const& entry, uint64_t height) {
                     return entry.height < height;
                 });
 
-        if (it != m_transient.old_quorum_states.end() && it->height == height)
+        if (it != m_transient->old_quorum_states.end() && it->height == height)
             quorums = &it->quorums;
     }
 
     if (alt_quorums) {
-        for (const auto& [hash, alt_state] : m_transient.alt_state) {
+        for (const auto& [hash, alt_state] : m_transient->alt_state) {
             if (alt_state.height == height) {
                 std::shared_ptr<const quorum> alt_result = alt_state.quorums.get(type);
                 if (alt_result)
@@ -2654,7 +2788,7 @@ void service_node_list::block_add(
 }
 
 bool service_node_list::state_history_exists(uint64_t height) {
-    return m_transient.state_history.count(height);
+    return m_transient->state_history.count(height);
 }
 
 bool service_node_list::process_batching_rewards(const cryptonote::block& block) {
@@ -2676,8 +2810,8 @@ bool service_node_list::pop_batching_rewards_block(const cryptonote::block& bloc
     uint64_t block_height = block.get_height();
     if (blockchain.nettype() != cryptonote::network_type::FAKECHAIN &&
         block.major_version >= hf::hf19_reward_batching && height() != block_height) {
-        if (auto it = m_transient.state_history.find(block_height);
-            it != m_transient.state_history.end())
+        if (auto it = m_transient->state_history.find(block_height);
+            it != m_transient->state_history.end())
             return blockchain.sqlite_db().pop_block(block, *it);
         blockchain.sqlite_db().reset_database();
         return false;
@@ -3305,10 +3439,10 @@ void service_node_list::process_block(
     // Cull old history
     uint64_t cull_height = short_term_state_cull_height(hf_version, block_height);
     {
-        auto end_it = m_transient.state_history.upper_bound(cull_height);
-        for (auto it = m_transient.state_history.begin(); it != end_it; it++) {
+        auto end_it = m_transient->state_history.upper_bound(cull_height);
+        for (auto it = m_transient->state_history.begin(); it != end_it; it++) {
             if (m_store_quorum_history)
-                m_transient.old_quorum_states.emplace_back(it->height, it->quorums);
+                m_transient->old_quorum_states.emplace_back(it->height, it->quorums);
 
             uint64_t next_long_term_state = ((it->height / STORE_LONG_TERM_STATE_INTERVAL) + 1) *
                                             STORE_LONG_TERM_STATE_INTERVAL;
@@ -3318,7 +3452,7 @@ void service_node_list::process_block(
                      VOTE_LIFETIME + VOTE_OR_TX_VERIFY_HEIGHT_BUFFER);
             if ((it->height % STORE_LONG_TERM_STATE_INTERVAL) == 0 ||
                 need_quorum_for_future_states) {
-                m_transient.long_term_data_dirty = true;
+                m_transient->long_term_data_dirty = true;
                 if (need_quorum_for_future_states)  // Preserve just quorum
                 {
                     // This const cast is a little ugly, but is safe because we don't touch
@@ -3328,35 +3462,35 @@ void service_node_list::process_block(
                     state.key_image_blacklist = {};
                     state.only_loaded_quorums = true;
                 }
-                m_transient.state_archive.emplace_hint(
-                        m_transient.state_archive.end(), std::move(*it));
+                m_transient->state_archive.emplace_hint(
+                        m_transient->state_archive.end(), std::move(*it));
             }
         }
-        m_transient.state_history.erase(m_transient.state_history.begin(), end_it);
+        m_transient->state_history.erase(m_transient->state_history.begin(), end_it);
 
-        if (m_transient.old_quorum_states.size() > m_store_quorum_history)
-            m_transient.old_quorum_states.erase(
-                    m_transient.old_quorum_states.begin(),
-                    m_transient.old_quorum_states.begin() +
-                            (m_transient.old_quorum_states.size() - m_store_quorum_history));
+        if (m_transient->old_quorum_states.size() > m_store_quorum_history)
+            m_transient->old_quorum_states.erase(
+                    m_transient->old_quorum_states.begin(),
+                    m_transient->old_quorum_states.begin() +
+                            (m_transient->old_quorum_states.size() - m_store_quorum_history));
     }
 
     // Cull alt state history
-    for (auto it = m_transient.alt_state.begin(); it != m_transient.alt_state.end();) {
+    for (auto it = m_transient->alt_state.begin(); it != m_transient->alt_state.end();) {
         state_t const& alt_state = it->second;
         if (alt_state.height < cull_height)
-            it = m_transient.alt_state.erase(it);
+            it = m_transient->alt_state.erase(it);
         else
             it++;
     }
 
     cryptonote::network_type nettype = blockchain.nettype();
-    m_transient.state_history.insert(m_transient.state_history.end(), m_state);
+    m_transient->state_history.insert(m_transient->state_history.end(), m_state);
     m_state.update_from_block(
             blockchain.db(),
             nettype,
-            m_transient.state_history,
-            m_transient.state_archive,
+            m_transient->state_history,
+            m_transient->state_archive,
             {},
             block,
             txs,
@@ -3370,34 +3504,34 @@ void service_node_list::blockchain_detached(uint64_t height) {
     bool reinitialise = false;
     bool using_archive = false;
     {
-        auto it = m_transient.state_history.find(
+        auto it = m_transient->state_history.find(
                 revert_to_height);  // Try finding detached height directly
-        reinitialise = (it == m_transient.state_history.end() || it->only_loaded_quorums);
+        reinitialise = (it == m_transient->state_history.end() || it->only_loaded_quorums);
         if (!reinitialise)
-            m_transient.state_history.erase(std::next(it), m_transient.state_history.end());
+            m_transient->state_history.erase(std::next(it), m_transient->state_history.end());
     }
 
     // Try finding the next closest old state at 10k intervals
     if (reinitialise) {
         uint64_t prev_interval =
                 revert_to_height - (revert_to_height % STORE_LONG_TERM_STATE_INTERVAL);
-        auto it = m_transient.state_archive.find(prev_interval);
-        reinitialise = (it == m_transient.state_archive.end() || it->only_loaded_quorums);
+        auto it = m_transient->state_archive.find(prev_interval);
+        reinitialise = (it == m_transient->state_archive.end() || it->only_loaded_quorums);
         if (!reinitialise) {
-            m_transient.state_history.clear();
-            m_transient.state_archive.erase(std::next(it), m_transient.state_archive.end());
+            m_transient->state_history.clear();
+            m_transient->state_archive.erase(std::next(it), m_transient->state_archive.end());
             using_archive = true;
         }
     }
 
     if (reinitialise) {
-        m_transient.state_history.clear();
-        m_transient.state_archive.clear();
+        m_transient->state_history.clear();
+        m_transient->state_archive.clear();
         init();
         return;
     }
 
-    auto& history = (using_archive) ? m_transient.state_archive : m_transient.state_history;
+    auto& history = (using_archive) ? m_transient->state_archive : m_transient->state_history;
     auto it = std::prev(history.end());
     m_state = std::move(*it);
     history.erase(it);
@@ -3569,8 +3703,8 @@ std::optional<quorum> service_node_list::state_t::get_pulse_quorum() const {
     if (!block.has_pulse())
         return std::nullopt;
 
-    auto prev_state = sn_list->m_transient.state_history.find(height - 1);
-    if (prev_state == sn_list->m_transient.state_history.end()) {
+    auto prev_state = sn_list->m_transient->state_history.find(height - 1);
+    if (prev_state == sn_list->m_transient->state_history.end()) {
         log::error(logcat, "Unable to retrieve state_t history for {}", height - 1);
         return std::nullopt;
     }
@@ -3998,22 +4132,22 @@ void service_node_list::alt_block_add(const cryptonote::block_add_info& info) {
     state_t const* starting_state = nullptr;
     crypto::hash const block_hash = get_block_hash(block);
 
-    auto it = m_transient.alt_state.find(block_hash);
-    if (it != m_transient.alt_state.end())
+    auto it = m_transient->alt_state.find(block_hash);
+    if (it != m_transient->alt_state.end())
         return;  // NOTE: Already processed alt-state for this block
 
     // NOTE: Check if alt block forks off some historical state on the canonical chain
     if (!starting_state) {
-        auto it = m_transient.state_history.find(block_height - 1);
-        if (it != m_transient.state_history.end())
+        auto it = m_transient->state_history.find(block_height - 1);
+        if (it != m_transient->state_history.end())
             if (block.prev_id == it->block_hash)
                 starting_state = &(*it);
     }
 
     // NOTE: Check if alt block forks off some historical alt state on an alt chain
     if (!starting_state) {
-        auto it = m_transient.alt_state.find(block.prev_id);
-        if (it != m_transient.alt_state.end())
+        auto it = m_transient->alt_state.find(block.prev_id);
+        if (it != m_transient->alt_state.end())
             starting_state = &it->second;
     }
 
@@ -4031,26 +4165,26 @@ void service_node_list::alt_block_add(const cryptonote::block_add_info& info) {
     alt_state.update_from_block(
             blockchain.db(),
             blockchain.nettype(),
-            m_transient.state_history,
-            m_transient.state_archive,
-            m_transient.alt_state,
+            m_transient->state_history,
+            m_transient->state_archive,
+            m_transient->alt_state,
             block,
             info.txs,
             m_service_node_keys);
-    auto alt_it = m_transient.alt_state.find(block_hash);
-    if (alt_it != m_transient.alt_state.end())
+    auto alt_it = m_transient->alt_state.find(block_hash);
+    if (alt_it != m_transient->alt_state.end())
         alt_it->second = std::move(alt_state);
     else
-        m_transient.alt_state.emplace(block_hash, std::move(alt_state));
+        m_transient->alt_state.emplace(block_hash, std::move(alt_state));
 
     verify_block(block, true /*alt_block*/, info.checkpoint);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-static service_node_list::quorum_for_serialization serialize_quorum_state(
+static quorum_for_serialization serialize_quorum_state(
         hf /*hf_version*/, uint64_t height, quorum_manager const& quorums) {
-    service_node_list::quorum_for_serialization result = {};
+    quorum_for_serialization result = {};
     result.height = height;
     if (quorums.obligations)
         result.quorums[static_cast<uint8_t>(quorum_type::obligations)] = *quorums.obligations;
@@ -4059,11 +4193,12 @@ static service_node_list::quorum_for_serialization serialize_quorum_state(
     return result;
 }
 
-static service_node_list::state_serialized serialize_service_node_state_object(
+static state_serialized serialize_service_node_state_object(
         hf hf_version,
         service_node_list::state_t const& state,
         bool only_serialize_quorums = false) {
-    service_node_list::state_serialized result = {};
+    state_serialized result = {};
+    assert(static_cast<size_t>(result.version) == (static_cast<size_t>(state_serialized::count) - 1));
     result.height = state.height;
     result.staking_requirement = state.staking_requirement;
     result.unconfirmed_l2_txes = state.unconfirmed_l2_txes;
@@ -4084,33 +4219,6 @@ static service_node_list::state_serialized serialize_service_node_state_object(
     return result;
 }
 
-struct data_for_serialization {
-    enum struct version_t : uint8_t {
-        version_0,
-        version_1_create_recently_removed_nodes,
-        version_2_regen_recently_removed_nodes_w_sn_info,
-        count,
-    };
-
-    version_t version{version_t::version_2_regen_recently_removed_nodes_w_sn_info};
-    std::vector<service_node_list::quorum_for_serialization> quorum_states;
-    std::vector<service_node_list::state_serialized> states;
-
-    void clear() {
-        quorum_states.clear();
-        states.clear();
-        version = {};
-    }
-
-
-    template <class Archive>
-    void serialize_value(Archive& ar) {
-        field_varint(ar, "version", version, [](auto v) { return v < version_t::count; });
-        field(ar, "quorum_states", quorum_states);
-        field(ar, "states", states);
-    }
-};
-
 bool service_node_list::store() {
     if (!blockchain.has_db())
         return false;  // Haven't been initialized yet
@@ -4119,29 +4227,22 @@ bool service_node_list::store() {
     if (hf_version < hf::hf9_service_nodes)
         return true;
 
-    // NOTE: We use static here so that we reuse the heap memory allocated from prior 'store'
-    // invocations. This speeds up syncing of the chain. Note that there is only 1 instance of the
-    // SNL for program lifetime (with the exception of maybe the tests, but the tests don't run
-    // concurrently).
-    static data_for_serialization long_term_data{};
-    long_term_data.states.clear();
-    long_term_data.quorum_states.clear();
-
-    static data_for_serialization short_term_data{};
-    short_term_data.states.clear();
-    short_term_data.quorum_states.clear();
+    // NOTE: Data storage is kept around to reuse heap memory allocated from prior 'store'
+    // invocations, cleared on entry and results in faster syncing of the chain.
+    m_transient->long_term_data.clear();
+    m_transient->short_term_data.clear();
 
     // NOTE: Convert the runtime SNL data into a format suitable for serialization into the DB
     std::lock_guard lock(m_sn_mutex);
-    short_term_data.quorum_states.reserve(m_transient.old_quorum_states.size());
-    for (const quorums_by_height& entry : m_transient.old_quorum_states)
-        short_term_data.quorum_states.push_back(
+    m_transient->short_term_data.quorum_states.reserve(m_transient->old_quorum_states.size());
+    for (const quorums_by_height& entry : m_transient->old_quorum_states)
+        m_transient->short_term_data.quorum_states.push_back(
                 serialize_quorum_state(hf_version, entry.height, entry.quorums));
 
-    if (m_transient.long_term_data_dirty) {
-        long_term_data.states.reserve(m_transient.state_archive.size());
-        for (auto const& it : m_transient.state_archive)
-            long_term_data.states.push_back(serialize_service_node_state_object(hf_version, it));
+    if (m_transient->long_term_data_dirty) {
+        m_transient->long_term_data.states.reserve(m_transient->state_archive.size());
+        for (auto const& it : m_transient->state_archive)
+            m_transient->long_term_data.states.push_back(serialize_service_node_state_object(hf_version, it));
     }
 
     // NOTE: A state_t may reference quorums up to (VOTE_LIFETIME
@@ -4154,20 +4255,20 @@ bool service_node_list::store() {
     uint64_t const max_short_term_height =
             short_term_state_cull_height(hf_version, (m_state.height - 1)) + VOTE_LIFETIME +
             VOTE_OR_TX_VERIFY_HEIGHT_BUFFER;
-    for (auto it = m_transient.state_history.begin();
-         it != m_transient.state_history.end() && it->height <= max_short_term_height;
+    for (auto it = m_transient->state_history.begin();
+         it != m_transient->state_history.end() && it->height <= max_short_term_height;
          it++) {
         // TODO(oxen): There are 2 places where we convert a state_t to be a serialized state_t
         // without quorums. We should only do this in one location for clarity.
-        short_term_data.states.push_back(serialize_service_node_state_object(
+        m_transient->short_term_data.states.push_back(serialize_service_node_state_object(
                 hf_version, *it, it->height < max_short_term_height /*only_serialize_quorums*/));
     }
 
     // NOTE: Store the data into the DB
-    if (m_transient.long_term_data_dirty) {
+    if (m_transient->long_term_data_dirty) {
         serialization::binary_string_archiver ba;
         try {
-            serialization::serialize(ba, long_term_data);
+            serialization::serialize(ba, m_transient->long_term_data);
         } catch (const std::exception& e) {
             log::error(
                     logcat,
@@ -4184,7 +4285,7 @@ bool service_node_list::store() {
     {
         serialization::binary_string_archiver ba;
         try {
-            serialization::serialize(ba, short_term_data);
+            serialization::serialize(ba, m_transient->short_term_data);
         } catch (const std::exception& e) {
             log::error(
                     logcat,
@@ -4198,7 +4299,7 @@ bool service_node_list::store() {
         db.set_service_node_data(ba.str(), false /*long_term*/);
     }
 
-    m_transient.long_term_data_dirty = false;
+    m_transient->long_term_data_dirty = false;
     return true;
 }
 
@@ -4848,7 +4949,7 @@ bool service_node_list::set_lokinet_peer_reachable(
 }
 
 static quorum_manager quorum_for_serialization_to_quorum_manager(
-        service_node_list::quorum_for_serialization const& source) {
+        quorum_for_serialization const& source) {
     quorum_manager result = {};
     result.obligations = std::make_shared<quorum>(
             source.quorums[static_cast<uint8_t>(quorum_type::obligations)]);
@@ -5008,8 +5109,8 @@ bool service_node_list::load(const uint64_t current_height) {
             data_for_serialization data_in = {};
             serialization::parse_binary(blob, data_in);
             for (state_serialized& entry : data_in.states)
-                m_transient.state_archive.emplace_hint(
-                        m_transient.state_archive.end(), this, std::move(entry));
+                m_transient->state_archive.emplace_hint(
+                        m_transient->state_archive.end(), this, std::move(entry));
         } catch (...) {
         }
     }
@@ -5065,7 +5166,7 @@ bool service_node_list::load(const uint64_t current_height) {
                 return false;
             }
             last_loaded_height = states.height;
-            m_transient.old_quorum_states.push_back(entry);
+            m_transient->old_quorum_states.push_back(entry);
         }
     }
 
@@ -5081,8 +5182,8 @@ bool service_node_list::load(const uint64_t current_height) {
             state_serialized& entry = data_in.states[i];
             if (!entry.block_hash)
                 entry.block_hash = blockchain.get_block_id_by_height(entry.height);
-            m_transient.state_history.emplace_hint(
-                    m_transient.state_history.end(), this, std::move(entry));
+            m_transient->state_history.emplace_hint(
+                    m_transient->state_history.end(), this, std::move(entry));
         }
 
         m_state = {this, std::move(data_in.states[last_index])};
@@ -5108,8 +5209,8 @@ bool service_node_list::load(const uint64_t current_height) {
             globallogcat,
             "{} nodes and {} recent states loaded, {} historical states loaded, ({})",
             m_state.service_nodes_infos.size(),
-            m_transient.state_history.size(),
-            m_transient.state_archive.size(),
+            m_transient->state_history.size(),
+            m_transient->state_archive.size(),
             tools::get_human_readable_bytes(bytes_loaded));
 
     log::info(logcat, "service_node_list::load() returning success");
@@ -5117,7 +5218,7 @@ bool service_node_list::load(const uint64_t current_height) {
 }
 
 void service_node_list::reset(bool delete_db_entry) {
-    m_transient = {};
+    m_transient = std::make_unique<service_node_list_transient_storage>();
     m_state = state_t{this};
 
     if (blockchain.has_db() && delete_db_entry) {
