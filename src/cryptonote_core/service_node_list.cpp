@@ -4198,7 +4198,7 @@ static state_serialized serialize_service_node_state_object(
         service_node_list::state_t const& state,
         bool only_serialize_quorums = false) {
     state_serialized result = {};
-    assert(static_cast<size_t>(result.version) == (static_cast<size_t>(state_serialized::count) - 1));
+    assert(static_cast<size_t>(result.version) == (static_cast<size_t>(state_serialized::version_t::count) - 1));
     result.height = state.height;
     result.staking_requirement = state.staking_requirement;
     result.unconfirmed_l2_txes = state.unconfirmed_l2_txes;
