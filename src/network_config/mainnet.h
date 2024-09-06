@@ -69,6 +69,7 @@ inline constexpr network_config config{
         .UNLOCK_DURATION = 15 * 24h,
         .HARDFORK_DEREGISTRATION_GRACE_PERIOD = 7 * 24h / TARGET_BLOCK_TIME,
         .STORE_LONG_TERM_STATE_INTERVAL = 10'000,
+        .STORE_RECENT_REWARDS = 5,
         .ETH_REMOVAL_BUFFER = 7 * 24h / TARGET_BLOCK_TIME,
         // TODO: To be set closer to mainnet TGE
         .ETHEREUM_CHAIN_ID = 0xa4b1,

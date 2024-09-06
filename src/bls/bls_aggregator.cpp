@@ -35,33 +35,6 @@ namespace eth {
 namespace {
     auto logcat = oxen::log::Cat("bls_aggregator");
 
-    // Takes a oxenmq::Message expected to contain a single argument extractable to a `T` that must
-    // be encoded as raw bytes, hex, or 0x-prefixed hex.  Sends an appropriate reply and returns
-    // false on error, otherwise sets `val` and returns true.
-    template <tools::safe_to_memcpy T>
-    bool extract_1part_msg(
-            oxenmq::Message& m, T& val, std::string_view cmd_name, std::string_view value_name) {
-        if (m.data.size() != 1) {
-            m.send_reply(
-                    "400",
-                    "Bad request: {} command should have one {} data part; received {}"_format(
-                            cmd_name, value_name, m.data.size()));
-            return false;
-        }
-        if (m.data[0].size() == sizeof(T)) {
-            val = tools::make_from_guts<T>(m.data[0]);
-            return true;
-        }
-        if (tools::try_load_from_hex_guts(m.data[0], val))
-            return true;
-
-        m.send_reply(
-                "400",
-                "Bad request: {} command data should be a {}-byte {}; got {} bytes"_format(
-                        cmd_name, sizeof(T), value_name, m.data[0].size()));
-        return false;
-    }
-
     std::vector<uint8_t> get_reward_balance_msg_to_sign(
             cryptonote::network_type nettype,
             const address& eth_addr,
@@ -362,16 +335,35 @@ uint64_t bls_aggregator::nodes_request(
 void bls_aggregator::get_reward_balance(oxenmq::Message& m) {
     oxen::log::trace(logcat, "Received omq rewards signature request");
 
-    address eth_addr;
-    if (!extract_1part_msg(m, eth_addr, "BLS rewards", "ETH address"))
-        return;
-
-    auto [batchdb_height, amount] =
-            core.blockchain.sqlite_db().get_accrued_rewards(eth_addr);
-    if (amount == 0) {
-        m.send_reply("400", "Address '{}' has a zero balance in the database"_format(eth_addr));
+    if (m.data.size() != 1) {
+        m.send_reply(
+                "400",
+                "Bad request: BLS rewards signature request should have one data part; received {}"_format(
+                        m.data.size()));
         return;
     }
+
+    eth::address eth_addr;
+    uint64_t height;
+    try {
+        oxenc::bt_dict_consumer d{m.data[0]};
+        eth_addr = tools::make_from_guts<eth::address>(d.require<std::string_view>("address"));
+        height = d.require<uint64_t>("height");
+    } catch (const std::exception& e) {
+        m.send_reply(
+                "400",
+                "Bad request: BLS rewards signature request had address or height: {}"_format(
+                        e.what()));
+        return;
+    }
+
+    auto maybe_amount =
+            core.blockchain.sqlite_db().get_accrued_rewards(eth_addr, height);
+    if (!maybe_amount) {
+        m.send_reply("410", "Balances for height {} are not available"_format(height));
+        return;
+    }
+    auto amount = *maybe_amount;
 
     // We sign H(H(rewardTag || chainid || contract) || recipientAddress ||
     // recipientAmount),
@@ -390,17 +382,18 @@ void bls_aggregator::get_reward_balance(oxenmq::Message& m) {
     // Balance
     d.append("amount", amount);
     // Height of balance
-    d.append("height", batchdb_height);
+    d.append("height", height);
     // Signature of addr + balance
     d.append("signature", tools::view_guts(sig));
 
     m.send_reply("200", std::move(d).str());
 }
 
-bls_rewards_response bls_aggregator::rewards_request(const address& addr) {
+bls_rewards_response bls_aggregator::rewards_request(const address& addr, uint64_t height) {
 
     auto begin_ts = std::chrono::high_resolution_clock::now();
-    auto [height, amount] = core.blockchain.sqlite_db().get_accrued_rewards(addr);
+    auto maybe_amount = core.blockchain.sqlite_db().get_accrued_rewards(addr, height);
+    auto amount = maybe_amount.value_or(0);
 
     // FIXME: make this async
     oxen::log::trace(
@@ -411,6 +404,13 @@ bls_rewards_response bls_aggregator::rewards_request(const address& addr) {
             height);
 
     const auto& service_node_list = core.service_node_list;
+
+    if (!maybe_amount)
+        throw oxen::traced<std::invalid_argument>(fmt::format(
+                "Aggregating a rewards request for '{}' at height {} is invalid because "
+                "reward data is not available for that height. Request rejected.",
+                addr,
+                height));
 
     // NOTE: Validate the arguments
     if (!addr) {
@@ -429,16 +429,6 @@ bls_rewards_response bls_aggregator::rewards_request(const address& addr) {
                 "no rewards are available. Request rejected.",
                 addr,
                 height));
-    }
-
-    if (height > service_node_list.height()) {
-        throw oxen::traced<std::invalid_argument>(fmt::format(
-                "Aggregating a rewards request for '{}' for {} SENT at height {} is invalid "
-                "because the height is greater than the blockchain height {}. Request rejected",
-                addr,
-                amount,
-                height,
-                service_node_list.height()));
     }
 
     // NOTE: Serve the response from our cache if it's a repeated request
@@ -473,11 +463,15 @@ bls_rewards_response bls_aggregator::rewards_request(const address& addr) {
     bls::Signature agg_sig;
     agg_sig.clear();
 
+    oxenc::bt_dict_producer d;
+    d.append("address", tools::view_guts(addr));
+    d.append("height", height);
+
     // NOTE: Send aggregate rewards request to the remainder of the network. This is a blocking
     // call (FIXME -- it should not be!)
     uint64_t total_requests = nodes_request(
             "bls.get_reward_balance",
-            tools::view_guts(addr),
+            std::move(d).str(),
             [&agg_sig, &result, &sig_mutex, nettype = core.get_nettype()](
                     const bls_response& response, const std::vector<std::string>& data) {
                 bls_rewards_response rewards_response = {};

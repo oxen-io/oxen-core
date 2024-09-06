@@ -74,7 +74,7 @@ class ServiceNodeRewardContract:
             "from": self.acc.address,
             'nonce': self.web3.eth.get_transaction_count(self.acc.address)})
         signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.acc.key)
-        tx_hash   = self.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
+        tx_hash   = self.web3.eth.send_raw_transaction(signed_tx.raw_transaction)
 
         # SENT Contract Address deployed to: 0x5FbDB2315678afecb367f032d93F642f64180aa3
         address_check_err_msg = ("If this assert triggers, the rewards contract ABI has been "
@@ -95,7 +95,7 @@ class ServiceNodeRewardContract:
             "from": self.acc.address,
             'nonce': self.web3.eth.get_transaction_count(self.acc.address)})
         signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.acc.key)
-        self.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
+        self.web3.eth.send_raw_transaction(signed_tx.raw_transaction)
 
     # Add more methods as needed to interact with the smart contract
     def getContractDeployedInLatestBlock(self):
@@ -121,7 +121,7 @@ class ServiceNodeRewardContract:
         return self.contract.functions.stakingRequirement().call()
 
     def submitSignedTX(self, tx_label, signed_tx):
-        result     = self.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
+        result     = self.web3.eth.send_raw_transaction(signed_tx.raw_transaction)
         tx_receipt = self.web3.eth.wait_for_transaction_receipt(result)
         self.web3.eth.wait_for_transaction_receipt(result)
 

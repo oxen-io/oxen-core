@@ -325,9 +325,9 @@ class SNNetwork:
         self.sn_contract.addBLSPublicKey(ethereum_add_bls_args)
 
         # Advance the Arbitrum blockchain so that the SN registration is observed in oxen
-        ethereum.evm_mine(self.sn_contract.web3);
-        ethereum.evm_mine(self.sn_contract.web3);
-        ethereum.evm_mine(self.sn_contract.web3);
+        ethereum.evm_mine(self.sn_contract.web3)
+        ethereum.evm_mine(self.sn_contract.web3)
+        ethereum.evm_mine(self.sn_contract.web3)
 
         # NOTE: Log all the SNs in the contract ####################################################
         contract_sn_id_it = 0
@@ -376,7 +376,7 @@ class SNNetwork:
             "from": self.sn_contract.acc.address,
             'nonce': self.sn_contract.web3.eth.get_transaction_count(self.sn_contract.acc.address)})
         signed_tx = self.sn_contract.web3.eth.account.sign_transaction(unsent_tx, private_key=self.sn_contract.acc.key)
-        self.sn_contract.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
+        self.sn_contract.web3.eth.send_raw_transaction(signed_tx.raw_transaction)
         self.sn_contract.foundation_pool_contract.functions.payoutReleased().call()
 
         vprint("Foundation pool balance: {}".format(self.sn_contract.erc20balance(self.sn_contract.foundation_pool_address)))

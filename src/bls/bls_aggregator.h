@@ -55,7 +55,7 @@ class bls_aggregator {
     //
     // This function throws an `invalid_argument` exception if `address` is zero or, the `rewards`
     // amount is `0` or height is greater than the current blockchain height.
-    bls_rewards_response rewards_request(const address& addr);
+    bls_rewards_response rewards_request(const address& addr, uint64_t height);
 
     enum class removal_type {
         normal,
