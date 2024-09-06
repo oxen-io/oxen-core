@@ -3100,13 +3100,12 @@ void core_rpc_server::invoke(LOKINET_PING& lokinet_ping, rpc_context) {
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(GET_STAKING_REQUIREMENT& get_staking_requirement, rpc_context) {
-    get_staking_requirement.response["height"] =
-            get_staking_requirement.request.height > 0
-                    ? get_staking_requirement.request.height
-                    : m_core.blockchain.get_current_blockchain_height();
+    auto height = get_staking_requirement.request.height > 0
+                        ? get_staking_requirement.request.height
+                        : m_core.blockchain.get_current_blockchain_height();
+    get_staking_requirement.response["height"] = height;
     get_staking_requirement.response["staking_requirement"] =
-            service_nodes::get_staking_requirement(
-                    nettype(), get_staking_requirement.request.height);
+            service_nodes::get_staking_requirement(nettype(), height);
     get_staking_requirement.response["status"] = STATUS_OK;
     return;
 }
