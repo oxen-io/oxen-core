@@ -82,7 +82,7 @@ static_assert([]<size_t... I>(std::index_sequence<I...>) {
     return (has_valid_parameters<ALL_NETWORKS[I]>() && ...);
 }(std::make_index_sequence<ALL_NETWORKS.size()>{}));
 
-uint64_t get_staking_requirement(cryptonote::network_type nettype, hf hardfork) {
+uint64_t get_default_staking_requirement(cryptonote::network_type nettype, hf hardfork) {
     assert(hardfork >= hf::hf16_pulse);
     if (hardfork >= feature::ETH_BLS)
         return nettype == network_type::MAINNET ? SENT_STAKING_REQUIREMENT
@@ -92,12 +92,11 @@ uint64_t get_staking_requirement(cryptonote::network_type nettype, hf hardfork) 
                                             : OXEN_STAKING_REQUIREMENT_TESTNET;
 }
 
-// TODO(oxen): Move to oxen_economy, this will also need access to oxen::exp2
-uint64_t get_staking_requirement(cryptonote::network_type nettype, uint64_t height) {
+uint64_t get_default_staking_requirement(cryptonote::network_type nettype, uint64_t height) {
 
     auto hf_version = get_network_version(nettype, height);
     if (hf_version >= hf::hf16_pulse)
-        return get_staking_requirement(nettype, hf_version);
+        return get_default_staking_requirement(nettype, hf_version);
 
     if (nettype != cryptonote::network_type::MAINNET)
         return OXEN_STAKING_REQUIREMENT_TESTNET;

@@ -197,6 +197,8 @@ bool add_service_node_removal_request_to_tx_extra(
         const eth::event::ServiceNodeRemovalRequest& removal_request);
 bool add_service_node_removal_to_tx_extra(
         std::vector<uint8_t>& tx_extra, const eth::event::ServiceNodeRemoval& removal_data);
+bool add_staking_requirement_to_tx_extra(
+        std::vector<uint8_t>& tx_extra, const eth::event::StakingRequirementUpdated& req_change);
 uint64_t get_burned_amount_from_tx_extra(const std::vector<uint8_t>& tx_extra);
 bool is_out_to_acc(
         const account_keys& acc,

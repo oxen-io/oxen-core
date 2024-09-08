@@ -14,6 +14,9 @@ namespace event {
     const crypto::hash ServiceNodeRemoval =
             crypto::keccak("ServiceNodeRemoval(uint64,address,uint256,(uint256,uint256))"sv);
 
+    const crypto::hash StakingRequirementUpdated =
+            crypto::keccak("StakingRequirementUpdated(uint256)"sv);
+
 }  // namespace event
 
 namespace call {
