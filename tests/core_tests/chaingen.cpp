@@ -475,7 +475,7 @@ oxen_chain_generator::create_registration_tx(const cryptonote::account_base& src
   uint64_t new_height = top().block.get_height() + 1;
   auto new_hf_version = get_hf_version_at(new_height);
 
-  uint64_t staking_requirement = service_nodes::get_staking_requirement(cryptonote::network_type::FAKECHAIN, new_height);
+  uint64_t staking_requirement = service_nodes::get_default_staking_requirement(cryptonote::network_type::FAKECHAIN, new_height);
   if (operator_stake == static_cast<uint64_t>(-1))
       operator_stake = staking_requirement;
 
@@ -1587,7 +1587,7 @@ cryptonote::transaction make_registration_tx(std::vector<test_event_entry>& even
                                              hf hf_version)
 {
   const auto new_height          = head.get_height() + 1;
-  const auto staking_requirement = service_nodes::get_staking_requirement(cryptonote::network_type::FAKECHAIN, new_height);
+  const auto staking_requirement = service_nodes::get_default_staking_requirement(cryptonote::network_type::FAKECHAIN, new_height);
   uint64_t amount                = service_nodes::portions_to_amount(portions[0], staking_requirement);
 
   service_nodes::registration_details reg{};

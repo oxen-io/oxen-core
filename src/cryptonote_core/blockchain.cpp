@@ -4185,30 +4185,12 @@ bool Blockchain::check_tx_inputs(
             return false;
         }
 
-        if (tx.type == txtype::ethereum_new_service_node) {
-            if (!eth::validate_event_tx<eth::event::NewServiceNode>(
-                        hf_version, tx, &tvc.m_verbose_error)) {
+        if (is_l2_event_tx(tx.type)) {
+            if (!eth::validate_event_tx(tx.type, hf_version, tx, &tvc.m_verbose_error)) {
                 log::error(
                         log::Cat("verify"),
-                        "Failed to validate Ethereum New Service Node TX reason: {}",
-                        tvc.m_verbose_error);
-                return false;
-            }
-        } else if (tx.type == txtype::ethereum_service_node_removal_request) {
-            if (!eth::validate_event_tx<eth::event::ServiceNodeRemovalRequest>(
-                        hf_version, tx, &tvc.m_verbose_error)) {
-                log::error(
-                        log::Cat("verify"),
-                        "Failed to validate Ethereum Service Node Removal Request TX reason: {}",
-                        tvc.m_verbose_error);
-                return false;
-            }
-        } else if (tx.type == txtype::ethereum_service_node_removal) {
-            if (!eth::validate_event_tx<eth::event::ServiceNodeRemoval>(
-                        hf_version, tx, &tvc.m_verbose_error)) {
-                log::error(
-                        log::Cat("verify"),
-                        "Failed to validate Ethereum Service Node Removal TX reason: {}",
+                        "Failed to validate {} TX: {}",
+                        tx.type,
                         tvc.m_verbose_error);
                 return false;
             }

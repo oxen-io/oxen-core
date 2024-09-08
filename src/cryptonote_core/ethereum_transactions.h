@@ -48,6 +48,12 @@ bool validate_event_tx(
     return true;
 }
 
+bool validate_event_tx(
+        cryptonote::txtype txtype,
+        cryptonote::hf hf_version,
+        const cryptonote::transaction& tx,
+        std::string* reason);
+
 /// Extract the state change event details from a transaction.  If no state change is present in the
 /// transaction then `fail_reason` is set and std::monostate is returned.
 event::StateChangeVariant extract_event(

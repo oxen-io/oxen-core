@@ -638,7 +638,8 @@ namespace {
                                          : network_type::TESTNET;
                     portion = std::lround(
                             amount /
-                            (double)service_nodes::get_staking_requirement(nettype, reg_hf) *
+                            (double)service_nodes::get_default_staking_requirement(
+                                    nettype, reg_hf) *
                             1'000'000.0);
                 } else {
                     amount = 0;
@@ -769,6 +770,11 @@ namespace {
             set("l2_height", x.l2_height);
             set("bls_pubkey", x.bls_pubkey);
             set("returned_amount", x.returned_amount);
+        }
+        void operator()(const eth::event::StakingRequirementUpdated& x) {
+            set("type", "ethereum_staking_requirement_update");
+            set("l2_height", x.l2_height);
+            set("staking_requirement", x.staking_requirement);
         }
 
         // Ignore these fields:
@@ -2476,9 +2482,9 @@ void core_rpc_server::invoke(
 
     std::vector<std::string> args;
 
-    std::optional<uint64_t> height = m_core.blockchain.get_current_blockchain_height();
-    auto hf_version = get_network_version(nettype(), *height);
-    uint64_t staking_requirement = service_nodes::get_staking_requirement(nettype(), *height);
+    auto height = m_core.blockchain.get_current_blockchain_height();
+    auto hf_version = get_network_version(nettype(), height);
+    uint64_t staking_requirement = m_core.service_node_list.get_staking_requirement();
 
     {
         try {
@@ -2531,7 +2537,11 @@ void core_rpc_server::invoke(
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(BLS_REWARDS_REQUEST& rpc, rpc_context) {
-    const auto response = m_core.bls_rewards_request(rpc.request.address);
+    if (rpc.request.height <= 0) {
+        rpc.request.height += m_core.blockchain.get_current_blockchain_height() - 1;
+    }
+    const auto response = m_core.bls_rewards_request(
+            rpc.request.address, static_cast<uint64_t>(rpc.request.height));
     rpc.response["status"] = STATUS_OK;
     rpc.response_hex["address"] = response.addr;
     rpc.response["amount"] = response.amount;
@@ -3099,15 +3109,11 @@ void core_rpc_server::invoke(LOKINET_PING& lokinet_ping, rpc_context) {
             });
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(GET_STAKING_REQUIREMENT& get_staking_requirement, rpc_context) {
-    get_staking_requirement.response["height"] =
-            get_staking_requirement.request.height > 0
-                    ? get_staking_requirement.request.height
-                    : m_core.blockchain.get_current_blockchain_height();
-    get_staking_requirement.response["staking_requirement"] =
-            service_nodes::get_staking_requirement(
-                    nettype(), get_staking_requirement.request.height);
-    get_staking_requirement.response["status"] = STATUS_OK;
+void core_rpc_server::invoke(GET_STAKING_REQUIREMENT& get, rpc_context) {
+    get.response = {
+            {"height", m_core.blockchain.get_current_blockchain_height()},
+            {"staking_requirement", m_core.service_node_list.get_staking_requirement()},
+            {"status", STATUS_OK}};
     return;
 }
 

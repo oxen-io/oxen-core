@@ -21,7 +21,13 @@ namespace eth {
 namespace {
     auto logcat = oxen::log::Cat("l2_tracker");
 
-    enum class EventType { NewServiceNode, ServiceNodeRemovalRequest, ServiceNodeRemoval, Other };
+    enum class EventType {
+        NewServiceNode,
+        ServiceNodeRemovalRequest,
+        ServiceNodeRemoval,
+        StakingRequirementUpdated,
+        Other
+    };
 
     EventType get_log_type(const ethyl::LogEntry& log) {
         if (log.topics.empty())
@@ -33,7 +39,9 @@ namespace {
              : event_sig == contract::event::ServiceNodeRemovalRequest
                      ? EventType::ServiceNodeRemovalRequest
              : event_sig == contract::event::ServiceNodeRemoval ? EventType::ServiceNodeRemoval
-                                                                : EventType::Other;
+             : event_sig == contract::event::StakingRequirementUpdated
+                     ? EventType::StakingRequirementUpdated
+                     : EventType::Other;
     }
 
 }  // namespace
@@ -296,6 +304,14 @@ event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::Lo
             std::tie(amt256, item.bls_pubkey) =
                     tools::split_hex_into<skip<12 + 20>, u256, bls_public_key>(log.data);
             item.returned_amount = tools::decode_integer_be(amt256);
+            break;
+        }
+        case EventType::StakingRequirementUpdated: {
+            // event StakingRequirementUpdated(uint256 newRequirement);
+
+            auto& item = result.emplace<event::StakingRequirementUpdated>(chain_id, l2_height);
+            auto [amt256] = tools::split_hex_into<u256>(log.data);
+            item.staking_requirement = tools::decode_integer_be(amt256);
             break;
         }
         case EventType::Other: break;

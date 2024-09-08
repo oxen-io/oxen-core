@@ -62,6 +62,7 @@ void L2Tracker::prune_old_states() {
     recent_regs.expire(expiry);
     recent_unlocks.expire(expiry);
     recent_removals.expire(expiry);
+    recent_req_changes.expire(expiry);
     auto reward_exp = reward_height(expiry, core.get_net_config().L2_REWARD_POOL_UPDATE_BLOCKS);
     reward_rate.erase(reward_rate.begin(), reward_rate.lower_bound(reward_exp));
 }
@@ -129,7 +130,7 @@ void L2Tracker::update_state() {
                                 level,
                                 "{} [{}] is lagging (height {} < {})",
                                 name,
-                                url,
+                                tools::trim_url(url),
                                 hi.height,
                                 best_height);
                 }
@@ -159,9 +160,9 @@ void L2Tracker::update_state() {
                                 "{} [{}] is not responding or is behind; switching to {} [{}] as "
                                 "primary L2 source",
                                 old_primary.name,
-                                old_primary.url,
+                                tools::trim_url(old_primary.url),
                                 new_primary.name,
-                                new_primary.url);
+                                tools::trim_url(new_primary.url));
                         primary_down = primary_last_warned = std::chrono::steady_clock::now();
                     } else {
                         // We *were* on a backup but now are switching back to the primary
@@ -171,7 +172,7 @@ void L2Tracker::update_state() {
                                 "{} [{}] is available again; switching back to it as primary L2 "
                                 "source",
                                 new_primary.name,
-                                new_primary.url);
+                                tools::trim_url(new_primary.url));
                         primary_down.reset();
                     }
                 }
@@ -183,7 +184,7 @@ void L2Tracker::update_state() {
                             logcat,
                             "{} [{}] is still unavailable",
                             client_info()[0].name,
-                            client_info()[0].url);
+                            tools::trim_url(client_info()[0].url));
                     primary_last_warned = now;
                 }
             }
@@ -352,6 +353,9 @@ void L2Tracker::add_to_mempool(const event::StateChangeVariant& tx_variant) {
                 } else if constexpr (std::is_same_v<T, event::ServiceNodeRemoval>) {
                     tx.type = txtype::ethereum_service_node_removal;
                     add_service_node_removal_to_tx_extra(tx.extra, arg);
+                } else if constexpr (std::is_same_v<T, event::StakingRequirementUpdated>) {
+                    tx.type = txtype::ethereum_staking_requirement_updated;
+                    add_staking_requirement_to_tx_extra(tx.extra, arg);
                 } else {
                     static_assert(
                             std::is_same_v<T, std::monostate>,
@@ -479,6 +483,8 @@ void L2Tracker::update_logs() {
                                 recent_unlocks.add(std::move(*ul), *log.blockNumber);
                             else if (auto* removal = std::get_if<event::ServiceNodeRemoval>(&tx))
                                 recent_removals.add(std::move(*removal), *log.blockNumber);
+                            else if (auto* req = std::get_if<event::StakingRequirementUpdated>(&tx))
+                                recent_req_changes.add(std::move(*req), *log.blockNumber);
                             else
                                 assert(tx.index() == 0);
                         } catch (const std::exception& e) {
@@ -513,14 +519,15 @@ bool L2Tracker::check_chain_id() const {
     for (auto& ci : chain_ids) {
         auto& name = clients[ci.index].name;
         auto& url = clients[ci.index].url;
+        std::string trimmed_url = tools::trim_url(url);
         if (!ci.success)
-            log::warning(logcat, "Failed to retrieve L2 chain ID from {} [{}]", name, url);
+            log::warning(logcat, "Failed to retrieve L2 chain ID from {} [{}]", name, trimmed_url);
         else if (ci.chainId != chain_id) {
             log::critical(
                     logcat,
                     "L2 provider {} [{}] has invalid chain ID 0x{:x} (chainId 0x{:x} is required)",
                     name,
-                    url,
+                    trimmed_url,
                     ci.chainId,
                     chain_id);
             bad = true;
@@ -529,7 +536,7 @@ bool L2Tracker::check_chain_id() const {
                     logcat,
                     "L2 provider {} [{}] returned correct chainId 0x{:x}",
                     name,
-                    url,
+                    trimmed_url,
                     ci.chainId);
         }
     }
@@ -582,6 +589,9 @@ bool L2Tracker::get_vote_for(const event::ServiceNodeRemoval& removal) const {
 }
 bool L2Tracker::get_vote_for(const event::ServiceNodeRemovalRequest& unlock) const {
     return recent_unlocks.contains(unlock);
+}
+bool L2Tracker::get_vote_for(const event::StakingRequirementUpdated& req_change) const {
+    return recent_req_changes.contains(req_change);
 }
 
 }  // namespace eth

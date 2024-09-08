@@ -193,4 +193,26 @@ std::string_view find_prefixed_value(It begin, It end, std::string_view prefix) 
 /// out-of-bounds, the a slice to the end of the string is returned of 0 size. This function hence
 /// guarantees that a valid string will always be returned irrespective of input.
 std::string_view string_safe_substr(std::string_view src, size_t pos, size_t size) noexcept;
+
+/// Trim a URL's contents by masking the path with '...'
+///
+/// For example:
+///   https://10.24.0.1:9547 --> https://10.24.0.1:9547
+///   https://10.25.0.2:9547 --> https://10.25.0.2:9547
+///   http://10.24.0.1:9547 --> http://10.24.0.1:9547
+///   10.24.0.1:9547 --> 10.24.0.1:9547
+///   10.25.0.1 --> 10.25.0.1
+///   https://10.25.0.1/abcdef --> https://10.25.0.1/…def
+///   http://10.24.0.1:9547 --> http://10.24.0.1:9547
+///   https://10.24.0.1/ --> https://10.24.0.1/
+///   https://10.24.0.1:9547/a --> https://10.24.0.1:9547/a
+///   https://10.24.0.1:9547/ab --> https://10.24.0.1:9547/ab
+///   https://10.24.0.1:9547/abc --> https://10.24.0.1:9547/abc
+///   https://10.24.0.1:9547/abcd --> https://10.24.0.1:9547/…bcd
+///   https://10.24.0.1:9547/abcde --> https://10.24.0.1:9547/…cde
+///   https://10.24.0.1:9547/secret-stuff --> https://10.24.0.1:9547/…uff
+///   https://user:pass@10.24.0.1:9547 --> https://…@10.24.0.1:9547
+///   https://user:pass@10.24.0.1/stuff --> https://…@10.24.0.1/…uff
+///   ws://user:pass@10.24.0.1:9547/stuff --> ws://…@10.24.0.1:9547/…uff
+std::string trim_url(std::string_view src);
 }  // namespace tools

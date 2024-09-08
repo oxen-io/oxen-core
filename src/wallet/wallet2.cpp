@@ -9418,7 +9418,7 @@ wallet2::register_service_node_result wallet2::create_register_service_node_tx(
         return {register_service_node_result_status::wallet_not_synced,
                 tr("Wallet is not synced. Please synchronise your wallet to the blockchain")};
 
-    auto staking_requirement = service_nodes::get_staking_requirement(nettype(), bc_height);
+    auto staking_requirement = service_nodes::get_default_staking_requirement(nettype(), bc_height);
     service_nodes::registration_details registration;
     try {
         registration = service_nodes::convert_registration_args(
@@ -9650,7 +9650,7 @@ wallet2::request_stake_unlock_result wallet2::can_request_stake_unlock(
             }
 
             uint64_t small_contributor_amount_threshold = mul128_div64(
-                    service_nodes::get_staking_requirement(nettype(), curr_height),
+                    service_nodes::get_default_staking_requirement(nettype(), curr_height),
                     service_nodes::SMALL_CONTRIBUTOR_THRESHOLD::num,
                     service_nodes::SMALL_CONTRIBUTOR_THRESHOLD::den);
             uint64_t small_contributor_unlock_blocks =
