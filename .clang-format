@@ -8,7 +8,7 @@ AlignOperands: AlignAfterOperator
 AlignTrailingComments: true
 AllowAllArgumentsOnNextLine: true
 AllowAllParametersOfDeclarationOnNextLine: true
-AllowShortBlocksOnASingleLine: false
+AllowShortBlocksOnASingleLine: Never
 AllowShortCaseLabelsOnASingleLine: true
 AllowShortFunctionsOnASingleLine: Inline
 AllowShortIfStatementsOnASingleLine: false
@@ -33,7 +33,7 @@ SpacesInParentheses: false
 SpacesInSquareBrackets: false
 Standard: c++20
 UseTab: Never
-SortIncludes: true
+SortIncludes: CaseSensitive
 ColumnLimit: 100
 IndentWidth: 4
 AccessModifierOffset: -2
