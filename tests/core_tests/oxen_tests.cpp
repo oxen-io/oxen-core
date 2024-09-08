@@ -35,6 +35,7 @@
 #include "cryptonote_config.h"
 #include "cryptonote_core/oxen_name_system.h"
 #include "cryptonote_core/service_node_list.h"
+#include "cryptonote_core/service_node_rules.h"
 #include "cryptonote_core/uptime_proof.h"
 #include "oxen_economy.h"
 #include "common/random.h"
@@ -3107,7 +3108,7 @@ bool oxen_service_nodes_small_contribution_early_withdrawal::generate(std::vecto
   gen.add_transfer_unlock_blocks();
 
   uint64_t operator_portions = cryptonote::old::STAKING_PORTIONS / oxen::MAX_CONTRIBUTORS_HF19 * (oxen::MAX_CONTRIBUTORS_HF19 - 1);
-  uint64_t staking_requirement = service_nodes::get_staking_requirement(cryptonote::network_type::FAKECHAIN, hard_forks.back().height);
+  uint64_t staking_requirement = service_nodes::get_default_staking_requirement(cryptonote::network_type::FAKECHAIN, hard_forks.back().height);
   uint64_t operator_amount = staking_requirement / oxen::MAX_CONTRIBUTORS_HF19 * (oxen::MAX_CONTRIBUTORS_HF19 - 1);
   uint64_t single_contributed_amount = staking_requirement - operator_amount + 1;
   cryptonote::keypair sn_keys{hw::get_device("default")};
@@ -3162,7 +3163,7 @@ bool oxen_service_nodes_large_contribution_early_withdrawal::generate(std::vecto
   gen.add_transfer_unlock_blocks();
 
   uint64_t operator_portions = cryptonote::old::STAKING_PORTIONS / oxen::MAX_CONTRIBUTORS_HF19 * (oxen::MAX_CONTRIBUTORS_HF19 - 4);
-  uint64_t staking_requirement = service_nodes::get_staking_requirement(cryptonote::network_type::FAKECHAIN, hard_forks.back().height);
+  uint64_t staking_requirement = service_nodes::get_default_staking_requirement(cryptonote::network_type::FAKECHAIN, hard_forks.back().height);
   uint64_t operator_amount = staking_requirement / oxen::MAX_CONTRIBUTORS_HF19 * (oxen::MAX_CONTRIBUTORS_HF19- 4);
   uint64_t single_contributed_amount = staking_requirement - operator_amount + 1;
   cryptonote::keypair sn_keys{hw::get_device("default")};

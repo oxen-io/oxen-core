@@ -27,12 +27,13 @@ enum class txtype : uint16_t {
     ethereum_new_service_node,
     ethereum_service_node_removal_request,
     ethereum_service_node_removal,
+    ethereum_staking_requirement_updated,
     _count
 };
 
 inline constexpr bool is_l2_event_tx(txtype type) {
     return type >= txtype::ethereum_new_service_node &&
-           type <= txtype::ethereum_service_node_removal;
+           type <= txtype::ethereum_staking_requirement_updated;
 }
 
 inline constexpr std::string_view to_string(txversion v) {
@@ -56,8 +57,12 @@ inline constexpr std::string_view to_string(txtype type) {
         case txtype::ethereum_service_node_removal_request:
             return "ethereum_service_node_removal_request"sv;
         case txtype::ethereum_service_node_removal: return "ethereum_service_node_removal"sv;
-        default: assert(false); return "xx_unhandled_type"sv;
+        case txtype::ethereum_staking_requirement_updated:
+            return "ethereum_staking_requirement_updated"sv;
+        case txtype::_count:;
     }
+    assert(false);
+    return "xx_unhandled_type"sv;
 }
 
 }  // namespace cryptonote

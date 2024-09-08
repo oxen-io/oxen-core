@@ -5,6 +5,28 @@
 
 namespace eth {
 
+bool validate_event_tx(
+        cryptonote::txtype tx_type,
+        cryptonote::hf hf_version,
+        const cryptonote::transaction& tx,
+        std::string* reason) {
+    using cryptonote::txtype;
+    switch (tx_type) {
+        case txtype::ethereum_new_service_node:
+            return validate_event_tx<event::NewServiceNode>(hf_version, tx, reason);
+        case txtype::ethereum_service_node_removal:
+            return validate_event_tx<event::ServiceNodeRemoval>(hf_version, tx, reason);
+        case txtype::ethereum_service_node_removal_request:
+            return validate_event_tx<event::ServiceNodeRemovalRequest>(hf_version, tx, reason);
+        case txtype::ethereum_staking_requirement_updated:
+            return validate_event_tx<event::StakingRequirementUpdated>(hf_version, tx, reason);
+        default:
+            if (reason)
+                *reason = "Invalid or unhandled event tx type {}"_format(tx_type);
+            return false;
+    }
+}
+
 event::StateChangeVariant extract_event(
         cryptonote::transaction const& tx, std::string* fail_reason) {
     event::StateChangeVariant result;
@@ -13,18 +35,26 @@ event::StateChangeVariant extract_event(
             *fail_reason = "Transaction {} is not a eth state change tx type"_format(tx);
         return result;
     }
-    if (tx.type == cryptonote::txtype::ethereum_new_service_node) {
-        if (extract_event(tx, result.emplace<event::NewServiceNode>(), fail_reason))
-            return result;
-    } else if (tx.type == cryptonote::txtype::ethereum_service_node_removal_request) {
-        if (extract_event(tx, result.emplace<event::ServiceNodeRemovalRequest>(), fail_reason))
-            return result;
-    } else {
-        assert(tx.type == cryptonote::txtype::ethereum_service_node_removal);
-        if (extract_event(tx, result.emplace<event::ServiceNodeRemoval>(), fail_reason))
-            return result;
+    bool success = false;
+    switch (tx.type) {
+        case cryptonote::txtype::ethereum_new_service_node:
+            success = extract_event(tx, result.emplace<event::NewServiceNode>(), fail_reason);
+            break;
+        case cryptonote::txtype::ethereum_service_node_removal_request:
+            success = extract_event(
+                    tx, result.emplace<event::ServiceNodeRemovalRequest>(), fail_reason);
+            break;
+        case cryptonote::txtype::ethereum_service_node_removal:
+            success = extract_event(tx, result.emplace<event::ServiceNodeRemoval>(), fail_reason);
+            break;
+        case cryptonote::txtype::ethereum_staking_requirement_updated:
+            success = extract_event(
+                    tx, result.emplace<event::StakingRequirementUpdated>(), fail_reason);
+            break;
+        default: assert(!"Unhandled ethereum event tx type");
     }
-    result = std::monostate{};
+    if (!success)
+        result.emplace<std::monostate>();
     return result;
 }
 

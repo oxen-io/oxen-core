@@ -127,4 +127,40 @@ std::string_view string_safe_substr(std::string_view src, size_t pos, size_t siz
     }
     return result;
 }
+
+std::string trim_url(std::string_view url) {
+    constexpr std::array PROTOCOLS  = {"http://"sv, "https://"sv, "ws://"sv, "wss://"sv};
+    constexpr size_t PATH_TAIL_SIZE = 3;
+
+    std::string result;
+    for (const auto& p : PROTOCOLS) {
+        if (url.starts_with(p)) {
+            url.remove_prefix(p.size());
+            result += p;
+            break;
+        }
+    }
+
+    // If the URL ends with /lotsofstuff replace with /…uff
+    std::string_view path_tail;
+    if (auto slash = url.find('/');
+        slash != std::string_view::npos && slash + PATH_TAIL_SIZE + 1 < url.size()) {
+        path_tail = url.substr(url.size() - PATH_TAIL_SIZE);
+        url.remove_suffix(url.size() - 1 - slash);
+    }
+
+    // Strip out a potential HTTP user:pass@ auth
+    if (auto at = url.find('@'); at < url.size()) {
+        result += "…";
+        url.remove_prefix(at);
+    }
+
+    result += url;
+    if (!path_tail.empty()) {
+        result += "…";
+        result += path_tail;
+    }
+
+    return result;
+}
 }  // namespace tools

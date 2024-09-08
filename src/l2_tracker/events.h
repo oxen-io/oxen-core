@@ -124,8 +124,36 @@ struct ServiceNodeRemoval : L2StateChange {
     static constexpr std::string_view description = "SN removal"sv;
 };
 
-using StateChangeVariant =
-        std::variant<std::monostate, NewServiceNode, ServiceNodeRemovalRequest, ServiceNodeRemoval>;
+struct StakingRequirementUpdated : L2StateChange {
+    uint64_t staking_requirement = 0;
+
+    explicit StakingRequirementUpdated(uint64_t chain_id = 0, uint64_t l2_height = 0) :
+            L2StateChange{chain_id, l2_height} {}
+
+    std::string to_string() const { return "{} [{}]"_format(description, staking_requirement); }
+
+    std::strong_ordering operator<=>(const StakingRequirementUpdated& o) const = default;
+
+    template <class Archive>
+    void serialize_value(Archive& ar) {
+        [[maybe_unused]] uint8_t version = 0;
+        field_varint(ar, "version", version);
+        field_varint(ar, "chain_id", chain_id);
+        field_varint(ar, "l2_height", l2_height);
+        field_varint(ar, "staking_requirement", staking_requirement);
+    }
+
+    static constexpr cryptonote::txtype txtype =
+            cryptonote::txtype::ethereum_staking_requirement_updated;
+    static constexpr std::string_view description = "staking requirement update"sv;
+};
+
+using StateChangeVariant = std::variant<
+        std::monostate,
+        NewServiceNode,
+        ServiceNodeRemovalRequest,
+        ServiceNodeRemoval,
+        StakingRequirementUpdated>;
 
 }  // namespace eth::event
 
