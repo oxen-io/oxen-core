@@ -742,6 +742,7 @@ class core final {
      * @return true if all the checks pass, otherwise false
      */
     bool check_tx_semantic(const transaction& tx, bool kept_by_block) const;
+    void check_service_node_ip_address();
     bool check_service_node_time();
     void set_semantics_failed(const crypto::hash& tx_hash);
 

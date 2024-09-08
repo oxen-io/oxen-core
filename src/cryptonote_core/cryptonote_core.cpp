@@ -1230,6 +1230,7 @@ void core::start_oxenmq() {
                 false,
                 m_pulse_thread_id);
         m_omq->add_timer([this]() { this->check_service_node_time(); }, 5s, false);
+        m_omq->add_timer([this]() { this->check_service_node_ip_address(); }, 5s, false);
     }
     m_omq->start();
 }
@@ -1826,6 +1827,34 @@ bool core::check_tx_semantic(const transaction& tx, bool keeped_by_block) const 
     }
 
     return true;
+}
+//-----------------------------------------------------------------------------------------------
+void core::check_service_node_ip_address() {
+    if (!is_active_sn()) {
+        return;
+    }
+
+    auto service_node_pubkey = m_service_keys.pub;
+    std::array<uint16_t, 3> proof_version{};
+
+    service_node_list.access_proof(service_node_pubkey, [&](auto& proof) {
+        proof_version = proof.proof->version;
+    });
+
+    constexpr std::array<uint16_t, 3> MIN_TIMESTAMP_VERSION{9, 1, 0};
+
+    if (proof_version < MIN_TIMESTAMP_VERSION) {
+        return;
+    }
+
+    m_omq->request(
+            tools::view_guts(m_service_keys.pub_x25519),
+            "ping.ping",
+            [](bool success, const std::vector<std::string>& data) {
+                if (!success || data.empty())
+                    log::warning(
+                            logcat, "Unable to reach configured service node IP!");
+            });
 }
 //-----------------------------------------------------------------------------------------------
 bool core::check_service_node_time() {
