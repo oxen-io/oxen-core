@@ -1810,15 +1810,26 @@ void core::check_service_node_ip_address() {
         return;
     }
 
+    auto connect_error_message = "Unable to reach configured service node IP!";
+
     // NOTE - this connection won't work as intended if oxenmq's incomplete `SN_ADDR_SELF`
     // gets implemented.
     m_omq->connect_remote(
             oxenmq::address{
                     "tcp://{}:{}"_format(m_sn_public_ip, m_quorumnet_port),
                     tools::view_guts(m_service_keys.pub_x25519)},
-            [&](auto conn) { m_omq->disconnect(conn, 0s); },
+            [&](auto conn) {
+                m_omq->request(
+                        conn,
+                        "ping.ping",
+                        [this, conn](bool success, const std::vector<std::string>& data) {
+                            m_omq->disconnect(conn, 0s);
+                            if (!success || data.empty())
+                                log::warning(globallogcat, connect_error_message);
+                        });
+            },
             [&](auto conn, std::string_view) {
-                log::warning(globallogcat, "Unable to reach configured service node IP!");
+                log::warning(globallogcat, connect_error_message);
             });
 }
 //-----------------------------------------------------------------------------------------------
