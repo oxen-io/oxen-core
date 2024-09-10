@@ -1801,10 +1801,6 @@ bool core::check_tx_semantic(const transaction& tx, bool keeped_by_block) const 
 }
 //-----------------------------------------------------------------------------------------------
 void core::check_service_node_ip_address() {
-    if (!is_active_sn()) {
-        return;
-    }
-
     auto service_node_pubkey = m_service_keys.pub;
     std::array<uint16_t, 3> proof_version{};
 
