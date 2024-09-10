@@ -1820,7 +1820,7 @@ void core::check_service_node_ip_address() {
             [](bool success, const std::vector<std::string>& data) {
                 if (!success || data.empty())
                     log::warning(
-                            logcat, "Unable to reach configured service node IP!");
+                            globallogcat, "Unable to reach configured service node IP!");
             });
 }
 //-----------------------------------------------------------------------------------------------
