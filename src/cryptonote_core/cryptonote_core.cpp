@@ -1823,6 +1823,8 @@ void core::check_service_node_ip_address() {
         return;
     }
 
+    // NOTE - this connection won't work as intended if oxenmq's incomplete `SN_ADDR_SELF`
+    // gets implemented.
     m_omq->request(
             tools::view_guts(m_service_keys.pub_x25519),
             "ping.ping",
