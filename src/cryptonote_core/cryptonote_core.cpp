@@ -1201,7 +1201,7 @@ void core::start_oxenmq() {
                 false,
                 m_pulse_thread_id);
         m_omq->add_timer([this]() { this->check_service_node_time(); }, 5s, false);
-        m_omq->add_timer([this]() { this->check_service_node_ip_address(); }, 900s, false);
+        m_omq->add_timer([this]() { this->check_service_node_ip_address(); }, 15min, false);
     }
     m_omq->start();
 }
