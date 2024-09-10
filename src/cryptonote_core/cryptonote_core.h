@@ -940,6 +940,7 @@ class core final {
 
     bool m_offline;
     bool m_pad_transactions;
+    bool m_has_ip_check_disabled;
 
     struct {
         std::shared_mutex mutex;

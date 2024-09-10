@@ -216,6 +216,8 @@ static const command_line::arg_descriptor<uint64_t> arg_store_quorum_history = {
         "store "
         "the entire history.  Requires considerably more memory and block chain storage.",
         0};
+static const command_line::arg_descriptor<uint64_t> arg_disable_ip_check = {
+        "disable-ip-check", "Disable the periodic Service Node IP check"};
 
 // Loads stubs that fail if invoked.  The stubs are replaced in the
 // cryptonote_protocol/quorumnet.cpp glue code.
@@ -348,6 +350,7 @@ void core::init_options(boost::program_options::options_description& desc) {
 
     command_line::add_arg(desc, arg_store_quorum_history);
     command_line::add_arg(desc, arg_omq_quorumnet_public);
+    command_line::add_arg(desc, arg_disable_ip_check);
 
     miner::init_options(desc);
     BlockchainDB::init_options(desc);
@@ -364,6 +367,7 @@ bool core::handle_command_line(const boost::program_options::variables_map& vm) 
     test_drop_download_height(command_line::get_arg(vm, arg_test_drop_download_height));
     m_pad_transactions = get_arg(vm, arg_pad_transactions);
     m_offline = get_arg(vm, arg_offline);
+    m_has_ip_check_disabled = get_arg(vm, arg_disable_ip_check);
     if (command_line::get_arg(vm, arg_test_drop_download) == true)
         test_drop_download();
 
@@ -1801,6 +1805,11 @@ bool core::check_tx_semantic(const transaction& tx, bool keeped_by_block) const 
 }
 //-----------------------------------------------------------------------------------------------
 void core::check_service_node_ip_address() {
+    if (m_has_ip_check_disabled) {
+        log::debug(logcat, "Skipping Service Node IP check");
+        return;
+    }
+
     auto service_node_pubkey = m_service_keys.pub;
     std::array<uint16_t, 3> proof_version{};
 
