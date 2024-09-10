@@ -128,7 +128,7 @@ struct network_config final {
     /// removals can still be submitted to remove it from the ETH pubkey list, but *not* penalizing
     /// liquidation (which also remove it but award a penalty reward to the liquidator) during this
     /// buffer period.
-    const uint64_t ETH_REMOVAL_BUFFER;
+    const uint64_t ETH_EXIT_BUFFER;
 
     // Details of the ethereum smart contract managing rewards and chain its kept on:
     const uint32_t ETHEREUM_CHAIN_ID;

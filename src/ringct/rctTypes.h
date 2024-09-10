@@ -34,8 +34,8 @@
 #pragma GCC diagnostic ignored "-Wold-style-cast"
 #pragma GCC diagnostic ignored "-Wshadow"
 
-#include <sodium/crypto_verify_32.h>
 #include <common/exception.h>
+#include <sodium/crypto_verify_32.h>
 
 #include <cstddef>
 #include <cstdint>
@@ -114,12 +114,13 @@ struct multisig_out {
     std::vector<key> mu_p;  // for all inputs
     std::vector<key> c0;    // for all inputs
 
-    BEGIN_SERIALIZE_OBJECT()
-    FIELD(c)
-    FIELD(mu_p)
-    if (!mu_p.empty() && mu_p.size() != c.size())
-        throw oxen::traced<std::runtime_error>{"Invalid multisig output serialization"};
-    END_SERIALIZE()
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field(ar, "c", c);
+        field(ar, "mu_p", mu_p);
+        if (!mu_p.empty() && mu_p.size() != c.size())
+            throw oxen::traced<std::runtime_error>{"Invalid multisig output serialization"};
+    }
 };
 
 // data for passing the amount to the receiver secretly
@@ -131,10 +132,11 @@ struct ecdhTuple {
     key mask;
     key amount;
 
-    BEGIN_SERIALIZE_OBJECT()
-    FIELD(mask)  // not saved from v2 BPs
-    FIELD(amount)
-    END_SERIALIZE()
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field(ar, "mask", mask);  // not saved from v2 BPs
+        field(ar, "amount", amount);
+    }
 };
 
 // containers for representing amounts
@@ -160,11 +162,12 @@ struct mgSig {
     key cc;
     keyV II;
 
-    BEGIN_SERIALIZE_OBJECT()
-    FIELD(ss)
-    FIELD(cc)
-    // FIELD(II) - not serialized, it can be reconstructed
-    END_SERIALIZE()
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field(ar, "ss", ss);
+        field(ar, "cc", cc);
+        // FIELD(II) - not serialized, it can be reconstructed
+    }
 };
 
 // CLSAG signature
@@ -175,12 +178,13 @@ struct clsag {
     key I;  // signing key image
     key D;  // commitment key image
 
-    BEGIN_SERIALIZE_OBJECT()
-    FIELD(s)
-    FIELD(c1)
-    // FIELD(I) - not serialized, it can be reconstructed
-    FIELD(D)
-    END_SERIALIZE()
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field(ar, "s", s);
+        field(ar, "c1", c1);
+        // FIELD(I) - not serialized, it can be reconstructed
+        field(ar, "D", D);
+    }
 };
 
 // contains the data for an Borromean sig
@@ -193,10 +197,11 @@ struct rangeSig {
     boroSig asig;
     key64 Ci;
 
-    BEGIN_SERIALIZE_OBJECT()
-    FIELD(asig)
-    FIELD(Ci)
-    END_SERIALIZE()
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field(ar, "asig", asig);
+        field(ar, "Ci", Ci);
+    }
 };
 
 struct Bulletproof {
@@ -242,24 +247,25 @@ struct Bulletproof {
                a == other.a && b == other.b && t == other.t;
     }
 
-    BEGIN_SERIALIZE_OBJECT()
-    // Commitments aren't saved, they're restored via outPk
-    // FIELD(V)
-    FIELD(A)
-    FIELD(S)
-    FIELD(T1)
-    FIELD(T2)
-    FIELD(taux)
-    FIELD(mu)
-    FIELD(L)
-    FIELD(R)
-    FIELD(a)
-    FIELD(b)
-    FIELD(t)
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        // Commitments aren't saved, they're restored via outPk
+        // FIELD(V)
+        field(ar, "A", A);
+        field(ar, "S", S);
+        field(ar, "T1", T1);
+        field(ar, "T2", T2);
+        field(ar, "taux", taux);
+        field(ar, "mu", mu);
+        field(ar, "L", L);
+        field(ar, "R", R);
+        field(ar, "a", a);
+        field(ar, "b", b);
+        field(ar, "t", t);
 
-    if (L.empty() || L.size() != R.size())
-        throw oxen::traced<std::runtime_error>("Bad bulletproof serialization");
-    END_SERIALIZE()
+        if (L.empty() || L.size() != R.size())
+            throw oxen::traced<std::runtime_error>("Bad bulletproof serialization");
+    }
 };
 
 size_t n_bulletproof_amounts(const Bulletproof& proof);

@@ -7,8 +7,8 @@
 #include <exception>
 #include <variant>
 
-#include "common/exception.h"
 #include "common/command_line.h"
+#include "common/exception.h"
 #include "common/string_util.h"
 #include "cryptonote_config.h"
 #include "cryptonote_core/cryptonote_core.h"
@@ -319,6 +319,7 @@ namespace {
 
         int json_error = -32603;
         std::string json_message = "Internal error";
+        nlohmann::json json_error_data;
         std::string http_message;
 
         std::string result;
@@ -347,6 +348,7 @@ namespace {
             json_error = -32602;
             http_message = "Unable to parse request: "s + e.what();
             json_message = "Invalid params";
+            json_error_data = http_message;
         } catch (const rpc_error& e) {
             log::warning(logcat, "HTTP RPC request '{}' failed with: {}", data.uri, e.what());
             json_error = e.code;
@@ -362,9 +364,15 @@ namespace {
         if (json_error != 0) {
             data.http.loop_defer([data = std::move(dataptr),
                                   json_error,
-                                  msg = std::move(data.jsonrpc ? json_message : http_message)] {
+                                  msg = std::move(data.jsonrpc ? json_message : http_message),
+                                  json_err_data = std::move(json_error_data)]() mutable {
                 if (data->jsonrpc)
-                    data->jsonrpc_error_response(data->res, json_error, msg, data->jsonrpc_id);
+                    data->jsonrpc_error_response(
+                            data->res,
+                            json_error,
+                            std::move(msg),
+                            data->jsonrpc_id,
+                            json_err_data.is_null() ? nullptr : &json_err_data);
                 else
                     data->error_response(
                             data->res,

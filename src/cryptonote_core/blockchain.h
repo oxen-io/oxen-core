@@ -412,7 +412,6 @@ class Blockchain {
      * @brief creates a new block to mine against
      *
      * @param b return-by-reference block to be filled in
-     * @param from_block optional block hash to start mining from (main chain tip if NULL)
      * @param miner_address address new coins for the block will go to
      * @param di return-by-reference tells the miner what the difficulty target is
      * @param height return-by-reference tells the miner what height it's mining against
@@ -422,14 +421,6 @@ class Blockchain {
      *
      * @return true if block template filled in successfully, else false
      */
-    bool create_miner_block_template(
-            block& b,
-            const crypto::hash* from_block,
-            const account_public_address& miner_address,
-            difficulty_type& diffic,
-            uint64_t& height,
-            uint64_t& expected_reward,
-            const std::string& ex_nonce);
     bool create_next_miner_block_template(
             block& b,
             const account_public_address& miner_address,
@@ -1158,12 +1149,32 @@ class Blockchain {
 
     cryptonote::BlockchainSQLite& sqlite_db();
 
+    /// NOTE: unchecked access; should only be called in service node more where this is guaranteed
+    /// to be set.
     eth::L2Tracker& l2_tracker() { return *m_l2_tracker; }
 
     /**
      * @brief flush the invalid blocks set
      */
     void flush_invalid_blocks();
+
+    /**
+     * @brief Get the list of nodes that are removable from the network by creating a diff comparing
+     * the nodes that are present in the smart contract but _not_ in the Oxen service node list.
+     *
+     * @return all the service nodes bls keys that should be removed from the smart contract
+     *
+     * TODO: This API is awkward right now because we generate a full-diff of nodes to remove but we
+     * only use this in an RPC call that selects 1 BLS public key at a time to aggregate a signature
+     * for removal. However we were interested in providing a batch API where the network aggregates
+     * a signature over a batch of nodes to liquidate. This would reduce churn but this also makes
+     * this function in its current form more appropriate for the problem we're trying to solve
+     * sensible to call for that purpose.
+     *
+     * This TODO is a reminder that we should utilise the full output of this function instead of
+     * using it in a single-object-at-a-time mindset.
+     */
+    std::vector<eth::bls_public_key> get_removable_nodes() const;
 
     tx_memory_pool& tx_pool;
 
@@ -1196,7 +1207,6 @@ class Blockchain {
 
     bool create_block_template_internal(
             block& b,
-            const crypto::hash* from_block,
             block_template_info const& info,
             difficulty_type& di,
             uint64_t& height,

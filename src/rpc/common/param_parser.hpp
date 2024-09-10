@@ -227,12 +227,11 @@ void load_curr_value(In& in, T& val) {
 // bt_dict_consumer behave analogously here).
 template <typename In, typename T>
 void get_next_value(In& in, [[maybe_unused]] std::string_view name, T& val) {
-    if constexpr (std::is_same_v<std::monostate, In>)
-        ;
-    else if (skip_until(in, name))
-        load_curr_value(in, val);
-    else if constexpr (is_required_wrapper<T>)
-        throw oxen::traced<std::runtime_error>{"Required key '" + std::string{name} + "' not found"};
+    if constexpr (!std::is_same_v<std::monostate, In>)
+        if (skip_until(in, name))
+            return load_curr_value(in, val);
+    if constexpr (is_required_wrapper<T>)
+        throw std::runtime_error{"Required key '" + std::string{name} + "' not found"};
 }
 
 /// Accessor for simple, flat value retrieval from a json or bt_dict_consumer.  In the later

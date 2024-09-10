@@ -71,8 +71,6 @@ const std::string coloured_oxen_release =
         "{}Oxen '{}' (v{}){}"_format(CYAN, OXEN_RELEASE_NAME, OXEN_VERSION_FULL, RESET);
 }  // namespace
 
-#include <crypto/crypto.h>
-
 int main(int argc, char const* argv[]) {
     oxen::set_terminate_handler();
     bool logs_initialized = false;

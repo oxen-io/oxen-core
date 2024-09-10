@@ -55,10 +55,11 @@ struct quorum {
                       //
     std::string to_string() const;
 
-    BEGIN_SERIALIZE()
-    FIELD(validators)
-    FIELD(workers)
-    END_SERIALIZE()
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field(ar, "validators", validators);
+        field(ar, "workers", workers);
+    }
 };
 
 struct quorum_manager {

@@ -1166,57 +1166,28 @@ void core::init_oxenmq(const boost::program_options::variables_map& vm) {
     quorumnet_init(*this, m_quorumnet_state);
 }
 
-std::vector<eth::bls_public_key> core::get_removable_nodes() {
-    // FIXME: this feels out of place here; move to blockchain.h/cpp!
-    std::vector<eth::bls_public_key> bls_pubkeys_in_snl;
-    uint64_t l2_height;
-
-    {
-        std::lock_guard lock{blockchain};
-
-        auto sns = service_node_list.get_service_node_list_state();
-        auto oxen_height = blockchain.get_current_blockchain_height() - 1;
-
-        bls_pubkeys_in_snl.reserve(sns.size());
-        for (const auto& sni : sns)
-            bls_pubkeys_in_snl.push_back(sni.info->bls_public_key);
-
-        std::vector<cryptonote::block> blocks;
-        if (!blockchain.get_blocks(oxen_height, 1, blocks)) {
-            std::string msg =
-                    "Failed to get the latest block at {} to determine the removable Service Nodes"_format(
-                            oxen_height);
-            log::error(logcat, "{}", msg);
-            throw oxen::traced<std::runtime_error>{std::move(msg)};
-        }
-        l2_height = blocks[0].l2_height;
-    }
-
-    auto bls_pubkeys_in_smart_contract = blockchain.l2_tracker().get_all_bls_public_keys(l2_height);
-
-    std::vector<eth::bls_public_key> removable_nodes;
-
-    // Find BLS keys that are in the smart contract but not in the service node list
-    std::sort(bls_pubkeys_in_snl.begin(), bls_pubkeys_in_snl.end());
-    std::sort(bls_pubkeys_in_smart_contract.begin(), bls_pubkeys_in_smart_contract.end());
-    std::set_difference(
-            bls_pubkeys_in_smart_contract.begin(),
-            bls_pubkeys_in_smart_contract.end(),
-            bls_pubkeys_in_snl.begin(),
-            bls_pubkeys_in_snl.end(),
-            std::back_inserter(removable_nodes));
-    return removable_nodes;
-}
-
 bool core::is_node_removable(const eth::bls_public_key& node_bls_pubkey) {
-    auto removable_nodes = get_removable_nodes();
+    auto removable_nodes = blockchain.get_removable_nodes();
     return std::find(removable_nodes.begin(), removable_nodes.end(), node_bls_pubkey) !=
            removable_nodes.end();
 }
 
 bool core::is_node_liquidatable(const eth::bls_public_key& node_bls_pubkey) {
-    return is_node_removable(node_bls_pubkey) &&
-           !service_node_list.is_recently_expired(node_bls_pubkey);
+    if (!is_node_removable(node_bls_pubkey))
+        return false;
+
+    // NOTE: Node exists in the smart contract but not the oxen service node
+    // list, it's been deregistered from _OR_ it voluntarily exited the SNL.
+    uint64_t height = blockchain.get_current_blockchain_height();
+    for (const service_nodes::service_node_list::recently_removed_node& it : service_node_list.recently_removed_nodes()) {
+        assert(it.bls_pubkey && "Invalid null key got inserted into the recently removed list");
+        if (it.bls_pubkey == node_bls_pubkey) {
+            bool result = height >= it.liquidation_height;
+            return result;
+        }
+    }
+
+    return false;
 }
 
 void core::start_oxenmq() {
@@ -2359,7 +2330,16 @@ bool core::handle_incoming_block(
     TRY_ENTRY();
     bvc = {};
 
-    if (!check_incoming_block_size(block_blob)) {
+    // note: we assume block weight is always >= block blob size, so we check incoming
+    // blob size against the block weight limit, which acts as a sanity check without
+    // having to parse/weigh first; in fact, since the block blob is the block header
+    // plus the tx hashes, the weight will typically be much larger than the blob size
+    if (block_blob.size() >
+        blockchain.get_current_cumulative_block_weight_limit() + BLOCK_SIZE_SANITY_LEEWAY) {
+        log::info(
+                logcat,
+                "WRONG BLOCK BLOB, sanity check failed on size {}, rejected",
+                block_blob.size());
         bvc.m_verifivation_failed = true;
         return false;
     }
@@ -2391,24 +2371,6 @@ bool core::handle_incoming_block(
 
     CATCH_ENTRY("core::handle_incoming_block()", false);
 }
-//-----------------------------------------------------------------------------------------------
-// Used by the RPC server to check the size of an incoming
-// block_blob
-bool core::check_incoming_block_size(const std::string& block_blob) const {
-    // note: we assume block weight is always >= block blob size, so we check incoming
-    // blob size against the block weight limit, which acts as a sanity check without
-    // having to parse/weigh first; in fact, since the block blob is the block header
-    // plus the tx hashes, the weight will typically be much larger than the blob size
-    if (block_blob.size() >
-        blockchain.get_current_cumulative_block_weight_limit() + BLOCK_SIZE_SANITY_LEEWAY) {
-        log::info(
-                logcat,
-                "WRONG BLOCK BLOB, sanity check failed on size {}, rejected",
-                block_blob.size());
-        return false;
-    }
-    return true;
-}
 
 void core::update_omq_sns() {
     // TODO: let callers (e.g. lokinet, ss) subscribe to callbacks when this fires
@@ -2416,7 +2378,7 @@ void core::update_omq_sns() {
     service_node_list.copy_x25519_pubkeys(std::inserter(active_sns, active_sns.end()), m_nettype);
     m_omq->set_active_sns(std::move(active_sns));
 }
-//-----------------------------------------------------------------------------------------------
+
 static bool check_external_ping(
         time_t last_ping, std::chrono::seconds lifetime, std::string_view what) {
     const std::chrono::seconds elapsed{std::time(nullptr) - last_ping};
@@ -2612,32 +2574,6 @@ bool core::check_disk_space() {
     return true;
 }
 //-----------------------------------------------------------------------------------------------
-double factorial(unsigned int n) {
-    if (n <= 1)
-        return 1.0;
-    double f = n;
-    while (n-- > 1)
-        f *= n;
-    return f;
-}
-//-----------------------------------------------------------------------------------------------
-static double probability1(unsigned int blocks, unsigned int expected) {
-    // https://www.umass.edu/wsp/resources/poisson/#computing
-    return pow(expected, blocks) / (factorial(blocks) * exp(expected));
-}
-//-----------------------------------------------------------------------------------------------
-static double probability(unsigned int blocks, unsigned int expected) {
-    double p = 0.0;
-    if (blocks <= expected) {
-        for (unsigned int b = 0; b <= blocks; ++b)
-            p += probability1(b, expected);
-    } else if (blocks > expected) {
-        for (unsigned int b = blocks; b <= expected * 3 /* close enough */; ++b)
-            p += probability1(b, expected);
-    }
-    return p;
-}
-//-----------------------------------------------------------------------------------------------
 void core::flush_bad_txs_cache() {
     bad_semantics_txes_lock.lock();
     for (int idx = 0; idx < 2; ++idx)
@@ -2665,12 +2601,11 @@ eth::bls_rewards_response core::bls_rewards_request(const eth::address& address,
     return m_bls_aggregator->rewards_request(address, height);
 }
 //-----------------------------------------------------------------------------------------------
-eth::bls_removal_liquidation_response core::bls_removal_liquidation_request(
-        const eth::bls_public_key& bls_pubkey, bool liquidate) {
-    eth::bls_aggregator::removal_type type = liquidate
-                                                   ? eth::bls_aggregator::removal_type::normal
-                                                   : eth::bls_aggregator::removal_type::liquidate;
-    return m_bls_aggregator->removal_liquidation_request(bls_pubkey, type);
+eth::bls_exit_liquidation_response core::bls_exit_liquidation_request(
+        const crypto::public_key& pubkey, bool liquidate) {
+    eth::bls_exit_type type =
+            liquidate ? eth::bls_exit_type::liquidate : eth::bls_exit_type::normal;
+    return m_bls_aggregator->exit_liquidation_request(pubkey, type);
 }
 //-----------------------------------------------------------------------------------------------
 eth::bls_registration_response core::bls_registration(const eth::address& address) const {

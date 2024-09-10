@@ -2,6 +2,7 @@
 
 #include <fmt/core.h>
 
+#include <array>
 #include <cassert>
 
 namespace tools {

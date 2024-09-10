@@ -120,6 +120,9 @@ class ServiceNodeRewardContract:
     def stakingRequirement(self):
         return self.contract.functions.stakingRequirement().call()
 
+    def aggregatePubkey(self):
+        return self.contract.functions.aggregatePubkey().call()
+
     def submitSignedTX(self, tx_label, signed_tx):
         result     = self.web3.eth.send_raw_transaction(signed_tx.raw_transaction)
         tx_receipt = self.web3.eth.wait_for_transaction_receipt(result)
@@ -181,21 +184,20 @@ class ServiceNodeRewardContract:
         tx_hash = self.submitSignedTX("Remove BLS public key", signed_tx)
         return tx_hash
 
-    def removeBLSPublicKeyWithSignature(self, blsKey, timestamp, blsSig, ids):
-        unsent_tx = self.contract.functions.removeBLSPublicKeyWithSignature({
-            'blsPubkey': {
-                'X': int(blsKey[:64],    16),
-                'Y': int(blsKey[64:128], 16),
-            },
-            'timestamp': timestamp,
-            'blsSignature': {
-                'sigs0': int(blsSig[:64],     16),
-                'sigs1': int(blsSig[64:128],  16),
-                'sigs2': int(blsSig[128:192], 16),
-                'sigs3': int(blsSig[192:256], 16),
-            },
-            'ids': ids
-        }).build_transaction({
+    def removeBLSPublicKeyWithSignature(self, bls_pubkey, timestamp, blsSig, ids):
+        bls_pubkey = {
+            'X': int(bls_pubkey[:64],    16),
+            'Y': int(bls_pubkey[64:128], 16),
+        }
+
+        bls_signature = {
+            'sigs0': int(blsSig[   :64],  16),
+            'sigs1': int(blsSig[64 :128], 16),
+            'sigs2': int(blsSig[128:192], 16),
+            'sigs3': int(blsSig[192:256], 16),
+        }
+
+        unsent_tx = self.contract.functions.removeBLSPublicKeyWithSignature(bls_pubkey, timestamp, bls_signature, ids).build_transaction({
             "from": self.acc.address,
             'gas': 3000000,  # Adjust gas limit as necessary
             'nonce': self.web3.eth.get_transaction_count(self.acc.address)
@@ -204,15 +206,33 @@ class ServiceNodeRewardContract:
         tx_hash = self.submitSignedTX("Remove BLS public key w/ signature", signed_tx)
         return tx_hash
 
-    def liquidateBLSPublicKeyWithSignature(self, blsKey, blsSig, ids):
+    def removeBLSPublicKeyAfterWaitTime(self, serviceNodeID: int):
+        unsent_tx = self.contract.functions.removeBLSPublicKeyAfterWaitTime(serviceNodeID).build_transaction({
+            "from": self.acc.address,
+            'gas': 3000000,  # Adjust gas limit as necessary
+            'nonce': self.web3.eth.get_transaction_count(self.acc.address)
+        })
+        signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.acc.key)
+        tx_hash = self.submitSignedTX("Remove BLS public key after wait time", signed_tx)
+        return tx_hash
+
+    def liquidateBLSPublicKeyWithSignature(self, bls_pubkey, timestamp, bls_sig, ids):
+        contract_bls_pubkey = {
+            'X': int(bls_pubkey[:64],    16),
+            'Y': int(bls_pubkey[64:128], 16),
+        }
+
+        contract_bls_sig = {
+            'sigs0': int(bls_sig[   :64],  16),
+            'sigs1': int(bls_sig[64 :128], 16),
+            'sigs2': int(bls_sig[128:192], 16),
+            'sigs3': int(bls_sig[192:256], 16),
+        }
+
         unsent_tx = self.contract.functions.liquidateBLSPublicKeyWithSignature(
-            self.getServiceNodeID(blsKey),
-            int(blsKey[:64], 16),
-            int(blsKey[64:128], 16),
-            int(blsSig[:64], 16),
-            int(blsSig[64:128], 16),
-            int(blsSig[128:192], 16),
-            int(blsSig[192:256], 16),
+            contract_bls_pubkey,
+            timestamp,
+            contract_bls_sig,
             ids
         ).build_transaction({
             "from": self.acc.address,

@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <concepts>
-#include <deque>
 #include <utility>
 
 #include "l2_tracker/events.h"

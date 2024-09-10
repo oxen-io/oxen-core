@@ -141,9 +141,10 @@ private: // TODO(doyle): Not implemented properly. Just copy pasta. Do we even n
 struct callback_entry
 {
   std::string callback_name;
-  BEGIN_SERIALIZE_OBJECT()
-    FIELD(callback_name)
-  END_SERIALIZE()
+  template <class Archive>
+  void serialize_object(Archive& ar) {
+    field(ar, "callback_name", callback_name);
+  }
 
 private:
   friend class boost::serialization::access;
@@ -166,9 +167,10 @@ struct serialized_object
   }
 
   std::string data;
-  BEGIN_SERIALIZE_OBJECT()
-    FIELD(data)
-    END_SERIALIZE()
+  template <class Archive>
+  void serialize_object(Archive& ar) {
+    field(ar, "data", data);
+  }
 
 private:
   friend class boost::serialization::access;

@@ -51,7 +51,7 @@ struct tx_construction_data {
 };
 
 template <class Archive>
-void serialize_value(Archive& ar, tx_construction_data& x) {
+void serialize_object(Archive& ar, tx_construction_data& x) {
     field(ar, "sources", x.sources);
     field(ar, "change_dts", x.change_dts);
     field(ar, "splitted_dsts", x.splitted_dsts);

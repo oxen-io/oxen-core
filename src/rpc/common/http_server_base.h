@@ -39,7 +39,11 @@ class http_server_base {
     // Similar to the above, but for JSON RPC requests: we send "200 OK" at the HTTP layer; the
     // error code and message gets encoded in JSON inside the response body.
     void jsonrpc_error_response(
-            HttpResponse& res, int code, std::string message, nlohmann::json id) const;
+            HttpResponse& res,
+            int code,
+            std::string message,
+            nlohmann::json id,
+            nlohmann::json* error_data = nullptr) const;
 
     // Posts a callback to the uWebSockets thread loop controlling this connection; all writes must
     // be done from that thread, and so this method is provided to defer a callback from another

@@ -313,15 +313,6 @@ class core final {
      */
     bool cleanup_handle_incoming_blocks(bool force_sync = false);
 
-    /**
-     * @brief check the size of a block against the current maximum
-     *
-     * @param block_blob the block to check
-     *
-     * @return whether or not the block is too big
-     */
-    bool check_incoming_block_size(const std::string& block_blob) const;
-
     /// Called (from service_node_quorum_cop) to tell quorumnet that it need to refresh its list of
     /// active SNs.
     void update_omq_sns();
@@ -440,6 +431,11 @@ class core final {
      * @param pprotocol the pointer to set ours as
      */
     void set_cryptonote_protocol(i_cryptonote_protocol* pprotocol);
+
+    /// Returns true if we have a configured L2 tracking object.  This will always be true for
+    /// service nodes, but non-service node code should check this before attempting to access
+    /// `l2_tracker()`.
+    bool have_l2_tracker() const { return static_cast<bool>(m_l2_tracker); }
 
     /// Returns a reference to the Ethereum L2 tracking object
     eth::L2Tracker& l2_tracker() { return *m_l2_tracker; }
@@ -608,20 +604,13 @@ class core final {
     bool offline() const { return m_offline; }
 
     eth::bls_rewards_response bls_rewards_request(const eth::address& address, uint64_t height);
-    eth::bls_removal_liquidation_response bls_removal_liquidation_request(
-            const eth::bls_public_key& bls_pubkey, bool liquidate);
+    eth::bls_exit_liquidation_response bls_exit_liquidation_request(
+            const crypto::public_key& pubkey, bool liquidate);
     eth::bls_registration_response bls_registration(const eth::address& ethereum_address) const;
 
     bool is_node_removable(const eth::bls_public_key& node_bls_pubkey);
-    bool is_node_liquidatable(const eth::bls_public_key& node_bls_pubkey);
 
-    /**
-     * @brief get a snapshot of the service node list state and compares to the smart contract
-     * state, returns any in the smart contract that are not in the service node list
-     *
-     * @return all the service nodes bls keys that should be removed from the smart contract
-     */
-    std::vector<eth::bls_public_key> get_removable_nodes();
+    bool is_node_liquidatable(const eth::bls_public_key& node_bls_pubkey);
 
     /**
      * @brief Add a service node vote

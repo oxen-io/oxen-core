@@ -192,10 +192,11 @@ struct pulse_sort_key {
         return result;
     }
 
-    BEGIN_SERIALIZE_OBJECT()
-    VARINT_FIELD(last_height_validating_in_quorum)
-    FIELD(quorum_index)
-    END_SERIALIZE()
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field_varint(ar, "last_height_validating_in_quorum", last_height_validating_in_quorum);
+        field(ar, "quorum_index", quorum_index);
+    }
 };
 
 struct service_node_info  // registration information
@@ -233,12 +234,15 @@ struct service_node_info  // registration information
                 uint64_t amount) :
                 version{version}, key_image_pub_key{pubkey}, key_image{key_image}, amount{amount} {}
 
-        BEGIN_SERIALIZE_OBJECT()
-        ENUM_FIELD(version, version < version_t::_count)
-        FIELD(key_image_pub_key)
-        FIELD(key_image)
-        VARINT_FIELD(amount)
-        END_SERIALIZE()
+        template <class Archive>
+        void serialize_object(Archive& ar) {
+            field_varint(ar, "version", version, [](auto& version) {
+                return version < version_t::_count;
+            });
+            field(ar, "key_image_pub_key", key_image_pub_key);
+            field(ar, "key_image", key_image);
+            field_varint(ar, "amount", amount);
+        }
     };
 
     struct contributor_t {
@@ -257,15 +261,17 @@ struct service_node_info  // registration information
             address = address_;
         }
 
-        BEGIN_SERIALIZE_OBJECT()
-        VARINT_FIELD(version)
-        VARINT_FIELD(amount)
-        VARINT_FIELD(reserved)
-        FIELD(address)
-        FIELD(locked_contributions)
-        if (version >= 1)
-            FIELD(ethereum_address);
-        END_SERIALIZE()
+        template <class Archive>
+        void serialize_object(Archive& ar) {
+            field_varint(ar, "version", version);
+            field_varint(ar, "amount", amount);
+            field_varint(ar, "reserved", reserved);
+            field(ar, "address", address);
+            field(ar, "locked_contributions", locked_contributions);
+            if (version >= 1)
+                field(ar, "ethereum_address", ethereum_address);
+            ;
+        }
     };
 
     uint64_t registration_height = 0;
@@ -305,7 +311,9 @@ struct service_node_info  // registration information
     service_node_info() = default;
     bool is_fully_funded() const { return total_contributed >= staking_requirement; }
     bool is_decommissioned() const { return active_since_height < 0; }
+
     bool is_active() const { return is_fully_funded() && !is_decommissioned(); }
+
     bool is_payable(uint64_t at_height, cryptonote::network_type nettype) const {
         auto& netconf = get_config(nettype);
         return is_active() &&
@@ -317,52 +325,60 @@ struct service_node_info  // registration information
     bool can_be_voted_on(uint64_t block_height) const;
     size_t total_num_locked_contributions() const;
 
-    BEGIN_SERIALIZE_OBJECT()
-    ENUM_FIELD(version, version < version_t::_count)
-    VARINT_FIELD(registration_height)
-    VARINT_FIELD(requested_unlock_height)
-    VARINT_FIELD(last_reward_block_height)
-    VARINT_FIELD(last_reward_transaction_index)
-    VARINT_FIELD(decommission_count)
-    VARINT_FIELD(active_since_height)
-    VARINT_FIELD(last_decommission_height)
-    FIELD(contributors)
-    VARINT_FIELD(total_contributed)
-    VARINT_FIELD(total_reserved)
-    VARINT_FIELD(staking_requirement)
-    VARINT_FIELD(portions_for_operator)
-    FIELD(operator_address)
-    VARINT_FIELD(swarm_id)
-    if (version < version_t::v4_noproofs) {
-        uint32_t fake_ip = 0;
-        uint16_t fake_port = 0;
-        VARINT_FIELD_N("public_ip", fake_ip)
-        VARINT_FIELD_N("storage_port", fake_port)
-    }
-    VARINT_FIELD(last_ip_change_height)
-    if (version >= version_t::v1_add_registration_hf_version)
-        VARINT_FIELD(registration_hf_version);
-    if (version >= version_t::v2_ed25519 && version < version_t::v4_noproofs) {
-        crypto::ed25519_public_key fake_pk = crypto::null<crypto::ed25519_public_key>;
-        FIELD_N("pubkey_ed25519", fake_pk)
-        if (version >= version_t::v3_quorumnet) {
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field_varint(
+                ar, "version", version, [](auto& version) { return version < version_t::_count; });
+        field_varint(ar, "registration_height", registration_height);
+        field_varint(ar, "requested_unlock_height", requested_unlock_height);
+        field_varint(ar, "last_reward_block_height", last_reward_block_height);
+        field_varint(ar, "last_reward_transaction_index", last_reward_transaction_index);
+        field_varint(ar, "decommission_count", decommission_count);
+        field_varint(ar, "active_since_height", active_since_height);
+        field_varint(ar, "last_decommission_height", last_decommission_height);
+        field(ar, "contributors", contributors);
+        field_varint(ar, "total_contributed", total_contributed);
+        field_varint(ar, "total_reserved", total_reserved);
+        field_varint(ar, "staking_requirement", staking_requirement);
+        field_varint(ar, "portions_for_operator", portions_for_operator);
+        field(ar, "operator_address", operator_address);
+        field_varint(ar, "swarm_id", swarm_id);
+        if (version < version_t::v4_noproofs) {
+            uint32_t fake_ip = 0;
             uint16_t fake_port = 0;
-            VARINT_FIELD_N("quorumnet_port", fake_port)
+            field_varint(ar, "public_ip", fake_ip);
+            field_varint(ar, "storage_port", fake_port);
+        }
+        field_varint(ar, "last_ip_change_height", last_ip_change_height);
+        if (version >= version_t::v1_add_registration_hf_version)
+            field_varint(ar, "registration_hf_version", registration_hf_version);
+        if (version >= version_t::v2_ed25519 && version < version_t::v4_noproofs) {
+            crypto::ed25519_public_key fake_pk = crypto::null<crypto::ed25519_public_key>;
+            field(ar, "pubkey_ed25519", fake_pk);
+            if (version >= version_t::v3_quorumnet) {
+                uint16_t fake_port = 0;
+                field_varint(ar, "quorumnet_port", fake_port);
+            }
+        }
+        if (version >= version_t::v5_pulse_recomm_credit) {
+            field_varint(ar, "recommission_credit", recommission_credit);
+            field(ar, "pulse_sorter", pulse_sorter);
+        }
+        if (version >= version_t::v7_decommission_reason) {
+            field_varint(
+                    ar,
+                    "last_decommission_reason_consensus_all",
+                    last_decommission_reason_consensus_all);
+            field_varint(
+                    ar,
+                    "last_decommission_reason_consensus_any",
+                    last_decommission_reason_consensus_any);
+        }
+        if (version >= version_t::v8_ethereum_address) {
+            field(ar, "bls_public_key", bls_public_key);
+            field(ar, "operator_ethereum_address", operator_ethereum_address);
         }
     }
-    if (version >= version_t::v5_pulse_recomm_credit) {
-        VARINT_FIELD(recommission_credit)
-        FIELD(pulse_sorter)
-    }
-    if (version >= version_t::v7_decommission_reason) {
-        VARINT_FIELD(last_decommission_reason_consensus_all)
-        VARINT_FIELD(last_decommission_reason_consensus_any)
-    }
-    if (version >= version_t::v8_ethereum_address) {
-        FIELD(bls_public_key)
-        FIELD(operator_ethereum_address)
-    }
-    END_SERIALIZE()
 };
 
 struct service_node_address {
@@ -385,12 +401,13 @@ struct service_node_pubkey_info {
     service_node_pubkey_info(const pubkey_and_sninfo& pair) :
             pubkey{pair.first}, info{pair.second} {}
 
-    BEGIN_SERIALIZE_OBJECT()
-    FIELD(pubkey)
-    if (Archive::is_deserializer)
-        info = std::make_shared<service_node_info>();
-    FIELD_N("info", const_cast<service_node_info&>(*info))
-    END_SERIALIZE()
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field(ar, "pubkey", pubkey);
+        if (Archive::is_deserializer)
+            info = std::make_shared<service_node_info>();
+        field(ar, "info", const_cast<service_node_info&>(*info));
+    }
 };
 
 struct key_image_blacklist_entry {
@@ -417,13 +434,15 @@ struct key_image_blacklist_entry {
     }
     bool operator==(const crypto::key_image& image) const { return key_image == image; }
 
-    BEGIN_SERIALIZE()
-    ENUM_FIELD(version, version < version_t::count)
-    FIELD(key_image)
-    VARINT_FIELD(unlock_height)
-    if (version >= version_t::version_1_serialize_amount)
-        VARINT_FIELD(amount)
-    END_SERIALIZE()
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field_varint(
+                ar, "version", version, [](auto& version) { return version < version_t::count; });
+        field(ar, "key_image", key_image);
+        field_varint(ar, "unlock_height", unlock_height);
+        if (version >= version_t::version_1_serialize_amount)
+            field_varint(ar, "amount", amount);
+    }
 };
 
 struct payout_entry {
@@ -597,20 +616,19 @@ class service_node_list {
         }
     }
 
-    /// Copies `service_node_address`es (pubkeys, ip, port) of all currently active SNs with
-    /// potentially reachable, known addresses (via a recently received valid proof) into the given
-    /// output iterator.  Service nodes that are active but for which we have not yet
-    /// received/accepted a proof containing IP info are not included.
+    /// Copies `service_node_address`es (pubkeys, ip, port) of all current and expired (yet to be
+    /// removed from smart contract) SNs with potentially reachable, known addresses (via a recently
+    /// received valid proof) into the given output iterator.  Service nodes that for which we have
+    /// not yet received/accepted a proof containing IP info are not included.
     template <std::output_iterator<service_node_address> OutputIt>
-    void copy_reachable_active_service_node_addresses(
+    void copy_reachable_service_node_addresses(
             OutputIt out, cryptonote::network_type nettype) const {
         std::lock_guard lock{m_sn_mutex};
         bool sn_pk_is_ed25519_hf = cryptonote::is_hard_fork_at_least(
                 nettype, cryptonote::feature::SN_PK_IS_ED25519, m_state.height);
 
+        // NOTE: Add nodes from the SNL (active & decomm)
         for (const auto& pk_info : m_state.service_nodes_infos) {
-            if (!pk_info.second->is_active())
-                continue;
             auto it = proofs.find(pk_info.first);
             if (it == proofs.end())
                 continue;
@@ -634,6 +652,35 @@ class service_node_list {
                     sn_pk_is_ed25519_hf ? snpk_to_xpk(pk_info.first) : it->second.pubkey_x25519,
                     proof.public_ip,
                     proof.qnet_port};
+        }
+
+        if (sn_pk_is_ed25519_hf) {
+            // NOTE: Add nodes from the recently removed list
+            for (const auto& recently_removed_it : m_state.recently_removed_nodes) {
+
+                // NOTE: Look for their latest IP/port from an uptime proof
+                auto it = proofs.find(recently_removed_it.pubkey);
+                if (it != proofs.end() && it->second.proof) {
+                    auto& proof = *it->second.proof;
+                    *out++ = service_node_address{
+                            recently_removed_it.pubkey,
+                            recently_removed_it.bls_pubkey,
+                            it->second.pubkey_x25519,
+                            proof.public_ip,
+                            proof.qnet_port};
+                    continue;
+                }
+
+                // NOTE: We don't have a proof, we defer to what we last stored for the node.
+                if (recently_removed_it.public_ip == 0 || recently_removed_it.qnet_port == 0)
+                    continue;
+                *out++ = service_node_address{
+                        recently_removed_it.pubkey,
+                        recently_removed_it.bls_pubkey,
+                        snpk_to_xpk(recently_removed_it.pubkey),
+                        recently_removed_it.public_ip,
+                        recently_removed_it.qnet_port};
+            }
         }
     }
 
@@ -714,6 +761,41 @@ class service_node_list {
     bool set_storage_server_peer_reachable(crypto::public_key const& pubkey, bool value);
     bool set_lokinet_peer_reachable(crypto::public_key const& pubkey, bool value);
 
+    struct recently_removed_node {
+        enum struct type_t : uint8_t {
+            voluntary_exit,
+            deregister,
+        };
+
+        crypto::public_key pubkey;       // SN primary ed25519 key
+        eth::bls_public_key bls_pubkey;  // SN primary bls key
+        uint64_t height;                 // Height at which the SN exited/deregistered
+        uint64_t liquidation_height;     // Height at which the SN is eligible for liquidation
+        type_t type;                     // Event that occurred to remove this SN
+        uint64_t staking_requirement;    // Staking requirement this SN had to fulfill
+        std::vector<service_node_info::contributor_t> contributors;  // Contributors for the SN
+        uint32_t public_ip;  // Last known public IP of this SN (may be outdated)
+        uint16_t qnet_port;  // Last known quorumnet port of this SN (may be outdated)
+
+        template <class Archive>
+        void serialize_object(Archive& ar) {
+            uint8_t version = 0;
+            field_varint(ar, "version", version);
+            field(ar, "pubkey", pubkey);
+            field(ar, "bls_pubkey", bls_pubkey);
+            field_varint(ar, "height", height);
+            field_varint(ar, "liquidation_height", liquidation_height);
+            field_varint(ar, "type", type);
+            field(ar, "contributors", contributors);
+            field_varint(ar, "public_ip", public_ip);
+            field_varint(ar, "qnet_port", qnet_port);
+        }
+    };
+
+    std::span<const recently_removed_node> recently_removed_nodes() const {
+        return m_state.recently_removed_nodes;
+    }
+
   private:
     bool set_peer_reachable(bool storage_server, crypto::public_key const& pubkey, bool value);
 
@@ -723,12 +805,17 @@ class service_node_list {
         uint64_t height;
         quorum quorums[tools::enum_count<quorum_type>];
 
-        BEGIN_SERIALIZE()
-        FIELD(version)
-        FIELD(height)
-        FIELD_N("obligations_quorum", quorums[static_cast<uint8_t>(quorum_type::obligations)])
-        FIELD_N("checkpointing_quorum", quorums[static_cast<uint8_t>(quorum_type::checkpointing)])
-        END_SERIALIZE()
+        template <class Archive>
+        void serialize_object(Archive& ar) {
+            field(ar, "version", version);
+            field(ar, "height", height);
+            field(ar,
+                  "obligations_quorum",
+                  quorums[static_cast<uint8_t>(quorum_type::obligations)]);
+            field(ar,
+                  "checkpointing_quorum",
+                  quorums[static_cast<uint8_t>(quorum_type::checkpointing)]);
+        }
     };
 
     struct unconfirmed_l2_tx {
@@ -801,8 +888,8 @@ class service_node_list {
                 unconfirmed_l2_tx{height, FULL_SCORE / (static_cast<uint32_t>(pulse.round) + 1)} {}
 
         template <class Archive>
-        void serialize_value(Archive& ar) {
-            // We don't include a version here because state_serialized is already versioned.  If we
+        void serialize_object(Archive& ar) {
+            // We don't include a version here because state_serialized is already versioned. If we
             // end up needing versioning on this specific value then we can use a class tag
             // extension to determine which serialization path to follow in state_serialized's
             // serialization.
@@ -818,13 +905,10 @@ class service_node_list {
             version_1_serialize_hash,
             version_2_l2_confirmations,
             version_3_l2_staking_req,
+            version_4_recently_removed_nodes,
             count,
         };
-        static version_t get_version(cryptonote::hf /*hf_version*/) {
-            return version_t::version_3_l2_staking_req;
-        }
-
-        version_t version;
+        version_t version{version_t::version_4_recently_removed_nodes};
         uint64_t height;
         uint64_t staking_requirement;
         std::vector<service_node_pubkey_info> infos;
@@ -833,10 +917,11 @@ class service_node_list {
         bool only_stored_quorums;
         crypto::hash block_hash;
         std::map<crypto::hash, unconfirmed_l2_tx> unconfirmed_l2_txes;
+        std::vector<recently_removed_node> recently_removed_nodes;
         crypto::public_key block_leader;
 
         template <class Archive>
-        void serialize_value(Archive& ar) {
+        void serialize_object(Archive& ar) {
             field_varint(ar, "version", version, [](auto v) { return v < version_t::count; });
             field_varint(ar, "height", height);
             field(ar, "infos", infos);
@@ -854,17 +939,21 @@ class service_node_list {
 
             if (version >= version_t::version_3_l2_staking_req)
                 field_varint(ar, "staking_requirement", staking_requirement);
+
+            if (version >= version_t::version_4_recently_removed_nodes)
+                field(ar, "recently_removed_nodes", recently_removed_nodes);
         }
     };
 
     struct data_for_serialization {
         enum struct version_t : uint8_t {
             version_0,
+            version_1,
             count,
         };
-        static version_t get_version(cryptonote::hf /*hf_version*/) { return version_t::version_0; }
+        static version_t get_version(cryptonote::hf /*hf_version*/) { return version_t::version_1; }
 
-        version_t version;
+        version_t version{version_t::version_1};
         std::vector<quorum_for_serialization> quorum_states;
         std::vector<state_serialized> states;
         void clear() {
@@ -873,11 +962,14 @@ class service_node_list {
             version = {};
         }
 
-        BEGIN_SERIALIZE()
-        ENUM_FIELD(version, version < version_t::count)
-        FIELD(quorum_states)
-        FIELD(states)
-        END_SERIALIZE()
+        template <class Archive>
+        void serialize_object(Archive& ar) {
+            field_varint(ar, "version", version, [](auto& version) {
+                return version < version_t::count;
+            });
+            field(ar, "quorum_states", quorum_states);
+            field(ar, "states", states);
+        }
     };
 
     struct state_t;
@@ -903,6 +995,13 @@ class service_node_list {
         // the order of txes in here.
         std::map<crypto::hash, unconfirmed_l2_tx> unconfirmed_l2_txes;
 
+        // List of nodes that have been removed from the SNL. A SN leaves the SNL by
+        // deregistration (by consensus) or requesting a voluntary exit (by initiating a request on
+        // the smart contract and waiting the necessary unlock time). Nodes that have left the SNL
+        // are added to this list at which point they are now eligible for exiting the smart
+        // contract by requesting the network to aggregate a signature for said request.
+        std::vector<recently_removed_node> recently_removed_nodes;
+
         // An overridden staking requirement from the L2 contract (after confirmations); if 0 then
         // the default staking requirement applies.
         uint64_t staking_requirement{0};
@@ -920,7 +1019,9 @@ class service_node_list {
         // dependent fields (such as x25519_map).
         void insert_info(
                 const crypto::public_key& pubkey, std::shared_ptr<service_node_info>&& info_ptr);
-        service_nodes_infos_t::iterator erase_info(const service_nodes_infos_t::iterator& it);
+
+        service_nodes_infos_t::iterator erase_info(
+                const service_nodes_infos_t::iterator& it, recently_removed_node::type_t exit_type);
 
         std::vector<pubkey_and_sninfo> active_service_nodes_infos() const;
         std::vector<pubkey_and_sninfo> decommissioned_service_nodes_infos()
@@ -996,14 +1097,14 @@ class service_node_list {
                 uint32_t index,
                 const service_node_keys* my_keys);
         bool process_confirmed_event(
-                const eth::event::ServiceNodeRemovalRequest& rem_req,
+                const eth::event::ServiceNodeExitRequest& rem_req,
                 cryptonote::network_type nettype,
                 cryptonote::hf hf_version,
                 uint64_t height,
                 uint32_t index,
                 const service_node_keys* my_keys);
         bool process_confirmed_event(
-                const eth::event::ServiceNodeRemoval& removal,
+                const eth::event::ServiceNodeExit& exit,
                 cryptonote::network_type nettype,
                 cryptonote::hf hf_version,
                 uint64_t height,
@@ -1084,8 +1185,6 @@ class service_node_list {
         return m_state.is_premature_unlock(nettype, hf_version, block_height, tx);
     }
 
-    bool is_recently_expired(const eth::bls_public_key& node_bls_pubkey) const;
-
     /**
      * @brief gets the L2 votes (confirm or deny) for all current pending unconfirmed L2 state
      * changes.
@@ -1112,15 +1211,15 @@ class service_node_list {
     /**
      * @brief iterates through all pending unconfirmed L2 state changes.  `func` should be a generic
      * lambda that will be called with const reference to an eth::event::NewServiceNode,
-     * eth::event::ServiceNodeRemovalRequest, or eth::event::ServiceNodeRemoval.
+     * eth::event::ServiceNodeExitRequest, or eth::event::ServiceNodeExit.
      */
     template <typename F>
         requires std::invocable<F, const eth::event::NewServiceNode&, const unconfirmed_l2_tx&> &&
                  std::invocable<
                          F,
-                         const eth::event::ServiceNodeRemovalRequest&,
+                         const eth::event::ServiceNodeExitRequest&,
                          const unconfirmed_l2_tx&> &&
-                 std::invocable<F, const eth::event::ServiceNodeRemoval&, const unconfirmed_l2_tx&>
+                 std::invocable<F, const eth::event::ServiceNodeExit&, const unconfirmed_l2_tx&>
     void for_each_pending_l2_state(F&& f) const {
         std::lock_guard lock{m_sn_mutex};
         for (auto& [txid, confirm_info] : m_state.unconfirmed_l2_txes) {
@@ -1188,10 +1287,6 @@ class service_node_list {
 
     state_t m_state;  // NOTE: Not in m_transient due to the non-trivial constructor. We can't
                       // blanket initialise using = {}; needs to be reset in ::reset(...) manually
-
-    // nodes that can't yet be liquidated; the .second value is the expiry block height at which we
-    // remove them (and thus allow liquidation):
-    std::unordered_map<eth::bls_public_key, uint64_t> recently_expired_nodes;
 };
 
 struct staking_components {

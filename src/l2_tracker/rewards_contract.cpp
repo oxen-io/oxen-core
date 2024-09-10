@@ -1,20 +1,17 @@
 #include "rewards_contract.h"
 
+#include <common/bigint.h>
+#include <common/guts.h>
+#include <common/string_util.h>
+#include <crypto/crypto.h>
+#include <cryptonote_config.h>
+#include <logging/oxen_logger.h>
+
+#include <ethyl/provider.hpp>
 #include <ethyl/utils.hpp>
-
-#include "common/bigint.h"
-#include "common/guts.h"
-#include "common/string_util.h"
-#include "contracts.h"
-#include "crypto/crypto.h"
-#include "crypto/hash.h"
-#include "cryptonote_config.h"
-#include "logging/oxen_logger.h"
-
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wuseless-cast"
 #include <nlohmann/json.hpp>
-#pragma GCC diagnostic pop
+
+#include "contracts.h"
 
 namespace eth {
 
@@ -23,8 +20,8 @@ namespace {
 
     enum class EventType {
         NewServiceNode,
-        ServiceNodeRemovalRequest,
-        ServiceNodeRemoval,
+        ServiceNodeExitRequest,
+        ServiceNodeExit,
         StakingRequirementUpdated,
         Other
     };
@@ -36,9 +33,9 @@ namespace {
         auto event_sig = tools::make_from_hex_guts<crypto::hash>(log.topics[0]);
 
         return event_sig == contract::event::NewServiceNode ? EventType::NewServiceNode
-             : event_sig == contract::event::ServiceNodeRemovalRequest
-                     ? EventType::ServiceNodeRemovalRequest
-             : event_sig == contract::event::ServiceNodeRemoval ? EventType::ServiceNodeRemoval
+             : event_sig == contract::event::ServiceNodeExitRequest
+                     ? EventType::ServiceNodeExitRequest
+             : event_sig == contract::event::ServiceNodeExit ? EventType::ServiceNodeExit
              : event_sig == contract::event::StakingRequirementUpdated
                      ? EventType::StakingRequirementUpdated
                      : EventType::Other;
@@ -103,6 +100,64 @@ static std::string log_new_service_node_tx(
                 contributor.address,
                 contributor.amount);
     }
+
+    fmt::format_to(std::back_inserter(buffer), "\nThe raw blob was (32 byte chunks/line):\n\n");
+    std::string_view it = hex;
+    if (it.starts_with("0x") || it.starts_with("0X"))
+        it.remove_prefix(2);
+
+    while (it.size()) {
+        std::string_view chunk = tools::string_safe_substr(it, 0, 64);  // Grab 32 byte chunk
+        fmt::format_to(std::back_inserter(buffer), "  {}\n", chunk);    // Output the chunk
+        it = tools::string_safe_substr(it, 64, it.size());              // Advance the it
+    }
+
+    std::string result = fmt::to_string(buffer);
+    return result;
+}
+
+static std::string log_new_service_node_exit_request_tx(
+        const event::ServiceNodeExitRequest& item, std::string_view hex) {
+    fmt::memory_buffer buffer{};
+    fmt::format_to(
+            std::back_inserter(buffer),
+            "New service exit request components were:\n"
+            "  - Chain ID:   {}\n"
+            "  - BLS Pubkey: {}\n"
+            "  - L2 Height:  {}\n",
+            item.chain_id,
+            item.bls_pubkey,
+            item.l2_height);
+
+    fmt::format_to(std::back_inserter(buffer), "\nThe raw blob was (32 byte chunks/line):\n\n");
+    std::string_view it = hex;
+    if (it.starts_with("0x") || it.starts_with("0X"))
+        it.remove_prefix(2);
+
+    while (it.size()) {
+        std::string_view chunk = tools::string_safe_substr(it, 0, 64);  // Grab 32 byte chunk
+        fmt::format_to(std::back_inserter(buffer), "  {}\n", chunk);    // Output the chunk
+        it = tools::string_safe_substr(it, 64, it.size());              // Advance the it
+    }
+
+    std::string result = fmt::to_string(buffer);
+    return result;
+}
+
+static std::string log_new_service_node_exit_tx(
+        const event::ServiceNodeExit& item, std::string_view hex) {
+    fmt::memory_buffer buffer{};
+    fmt::format_to(
+            std::back_inserter(buffer),
+            "New service exit components were:\n"
+            "  - Chain ID:          {}\n"
+            "  - BLS Pubkey:        {}\n"
+            "  - L2 Height:         {}\n"
+            "  - Returned Amount:   {}\n",
+            item.chain_id,
+            item.bls_pubkey,
+            item.l2_height,
+            item.returned_amount);
 
     fmt::format_to(std::back_inserter(buffer), "\nThe raw blob was (32 byte chunks/line):\n\n");
     std::string_view it = hex;
@@ -277,7 +332,7 @@ event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::Lo
             oxen::log::debug(logcat, "{}", log_new_service_node_tx(item, log.data));
             break;
         }
-        case EventType::ServiceNodeRemovalRequest: {
+        case EventType::ServiceNodeExitRequest: {
             // event ServiceNodeRemovalRequest(
             //      uint64 indexed serviceNodeID,
             //      address contributor,
@@ -285,12 +340,14 @@ event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::Lo
             // service node id is a topic so only address and pubkey are in data
             // address is 32 bytes (with 12-byte prefix padding)
             // pubkey is 64 bytes,
-            auto& item = result.emplace<event::ServiceNodeRemovalRequest>(chain_id, l2_height);
+            auto& item = result.emplace<event::ServiceNodeExitRequest>(chain_id, l2_height);
             std::tie(item.bls_pubkey) =
                     tools::split_hex_into<skip<12 + 20>, bls_public_key>(log.data);
+
+            oxen::log::debug(logcat, "{}", log_new_service_node_exit_request_tx(item, log.data));
             break;
         }
-        case EventType::ServiceNodeRemoval: {
+        case EventType::ServiceNodeExit: {
             // event ServiceNodeRemoval(
             //      uint64 indexed serviceNodeID,
             //      address operator,
@@ -299,11 +356,13 @@ event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::Lo
             // service node id is a topic so only address and pubkey are in data
             // address is 32 bytes (with 12-byte prefix padding)
             // pubkey is 64 bytes
-            auto& item = result.emplace<event::ServiceNodeRemoval>(chain_id, l2_height);
+            auto& item = result.emplace<event::ServiceNodeExit>(chain_id, l2_height);
             u256 amt256;
             std::tie(amt256, item.bls_pubkey) =
                     tools::split_hex_into<skip<12 + 20>, u256, bls_public_key>(log.data);
             item.returned_amount = tools::decode_integer_be(amt256);
+
+            oxen::log::debug(logcat, "{}", log_new_service_node_exit_tx(item, log.data));
             break;
         }
         case EventType::StakingRequirementUpdated: {
@@ -322,17 +381,17 @@ event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::Lo
 RewardsContract::RewardsContract(cryptonote::network_type nettype, ethyl::Provider& provider) :
         contract_address{contract::rewards_address(nettype)}, provider{provider} {}
 
-std::vector<bls_public_key> RewardsContract::get_all_bls_pubkeys(uint64_t blockNumber) {
+std::vector<bls_public_key> RewardsContract::get_all_bls_pubkeys(uint64_t block_number) {
     // Get the sentinel node to start the iteration
     const uint64_t service_node_sentinel_id = 0;
-    ContractServiceNode sentinel_node = service_nodes(service_node_sentinel_id, blockNumber);
+    ContractServiceNode sentinel_node = service_nodes(service_node_sentinel_id, block_number);
     uint64_t currentNodeId = sentinel_node.next;
 
     std::vector<bls_public_key> result;
 
     // Iterate over the linked list of service nodes
     while (currentNodeId != service_node_sentinel_id) {
-        ContractServiceNode service_node = service_nodes(currentNodeId, blockNumber);
+        ContractServiceNode service_node = service_nodes(currentNodeId, block_number);
         if (!service_node.good)
             break;
         result.push_back(service_node.pubkey);
@@ -432,6 +491,7 @@ RewardsContract::ServiceNodeIDs RewardsContract::all_service_node_ids(
 #endif
     }
 
+    result.success = true;
     return result;
 }
 
@@ -574,5 +634,4 @@ std::vector<uint64_t> RewardsContract::get_non_signers(
 
     return result;
 }
-
 }  // namespace eth

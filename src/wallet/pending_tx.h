@@ -54,7 +54,7 @@ struct pending_tx {
 };
 
 template <class Archive>
-void serialize_value(Archive& ar, pending_tx& x) {
+void serialize_object(Archive& ar, pending_tx& x) {
     field(ar, "tx", x.tx);
     field(ar, "dust", x.dust);
     field(ar, "fee", x.fee);

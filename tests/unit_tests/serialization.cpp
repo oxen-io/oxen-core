@@ -77,10 +77,11 @@ struct Struct1
   std::vector<std::variant<whatever::Struct, int32_t>> si;
   std::vector<int16_t> vi;
 
-  BEGIN_SERIALIZE_OBJECT()
-    FIELD(si)
-    FIELD(vi)
-  END_SERIALIZE()
+  template <class Archive>
+  void serialize_object(Archive& ar) {
+    field(ar, "si", si);
+    field(ar, "vi", vi);
+  }
 };
 
 struct Blob

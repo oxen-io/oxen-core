@@ -46,13 +46,13 @@ struct multisig_info {
 };
 
 template <class Archive>
-void serialize_value(Archive& ar, multisig_info::LR& x) {
+void serialize_object(Archive& ar, multisig_info::LR& x) {
     field(ar, "m_L", x.m_L);
     field(ar, "m_R", x.m_R);
 }
 
 template <class Archive>
-void serialize_value(Archive& ar, multisig_info& x) {
+void serialize_object(Archive& ar, multisig_info& x) {
     field(ar, "m_signer", x.m_signer);
     field(ar, "m_LR", x.m_LR);
     field(ar, "m_partial_key_images", x.m_partial_key_images);

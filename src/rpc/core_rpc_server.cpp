@@ -324,9 +324,10 @@ namespace {
 
       public:
         pruned_transaction(transaction& tx) : tx(tx) {}
-        BEGIN_SERIALIZE_OBJECT()
-        tx.serialize_base(ar);
-        END_SERIALIZE()
+        template <class Archive>
+        void serialize_value(Archive& ar) {
+            tx.serialize_base(ar);
+        }
     };
 }  // namespace
 //------------------------------------------------------------------------------------------------------------------------------
@@ -760,13 +761,13 @@ namespace {
             }
             set("contributors", contributors);
         }
-        void operator()(const eth::event::ServiceNodeRemovalRequest& x) {
-            set("type", "ethereum_service_node_removal_request");
+        void operator()(const eth::event::ServiceNodeExitRequest& x) {
+            set("type", "ethereum_service_node_exit_request");
             set("l2_height", x.l2_height);
             set("bls_pubkey", x.bls_pubkey);
         }
-        void operator()(const eth::event::ServiceNodeRemoval& x) {
-            set("type", "ethereum_service_node_removal");
+        void operator()(const eth::event::ServiceNodeExit& x) {
+            set("type", "ethereum_service_node_exit");
             set("l2_height", x.l2_height);
             set("bls_pubkey", x.bls_pubkey);
             set("returned_amount", x.returned_amount);
@@ -2535,34 +2536,112 @@ void core_rpc_server::invoke(
     get_service_node_blacklisted_key_images.response["status"] = STATUS_OK;
     get_service_node_blacklisted_key_images.response["blacklist"] = blacklist;
 }
+
+void set_contract_signature(
+        nlohmann::json& response,
+        tools::json_binary_proxy& response_hex,
+        const eth::bls_aggregate_signed& sig,
+        eth::L2Tracker& l2_tracker) {
+    response_hex["msg_to_sign"] = std::string_view(
+            reinterpret_cast<const char*>(sig.msg_to_sign.data()), sig.msg_to_sign.size());
+    response_hex["signature"] = sig.signature;
+    response["non_signer_indices"] = l2_tracker.get_non_signers(
+            sig.signers_bls_pubkeys.begin(), sig.signers_bls_pubkeys.end());
+}
+
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(BLS_REWARDS_REQUEST& rpc, rpc_context) {
-    if (rpc.request.height <= 0) {
-        rpc.request.height += m_core.blockchain.get_current_blockchain_height() - 1;
+    try {
+        if (!m_core.have_l2_tracker())
+            throw std::invalid_argument{
+                    "Unable to process request: this RPC node is not configured with an ETH L2 "
+                    "provider"};
+
+        if (rpc.request.height <= 0)
+            rpc.request.height += m_core.blockchain.get_current_blockchain_height() - 1;
+
+        const auto response = m_core.bls_rewards_request(
+                rpc.request.address, static_cast<uint64_t>(rpc.request.height));
+        set_contract_signature(rpc.response, rpc.response_hex, response, m_core.l2_tracker());
+        rpc.response["status"] = STATUS_OK;
+        rpc.response_hex["address"] = response.addr;
+        rpc.response["amount"] = response.amount;
+        rpc.response["height"] = response.height;
+    } catch (const std::exception& e) {
+        throw rpc_error{ERROR_BLS_SIG, e.what()};
     }
-    const auto response = m_core.bls_rewards_request(
-            rpc.request.address, static_cast<uint64_t>(rpc.request.height));
-    rpc.response["status"] = STATUS_OK;
-    rpc.response_hex["address"] = response.addr;
-    rpc.response["amount"] = response.amount;
-    rpc.response["height"] = response.height;
-    rpc.response_hex["msg_to_sign"] =
-            oxenc::to_hex(response.msg_to_sign.begin(), response.msg_to_sign.end());
-    rpc.response_hex["signature"] = response.signature;
-    rpc.response["non_signer_indices"] = m_core.blockchain.l2_tracker().get_non_signers(
-            response.signers_bls_pubkeys.begin(), response.signers_bls_pubkeys.end());
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(BLS_REMOVAL_LIQUIDATION_REQUEST& rpc, rpc_context) {
-    const auto response =
-            m_core.bls_removal_liquidation_request(rpc.request.bls_pubkey, rpc.request.liquidate);
-    rpc.response["status"] = STATUS_OK;
-    rpc.response_hex["bls_pubkey"] = response.remove_pubkey;
-    rpc.response_hex["msg_to_sign"] =
-            oxenc::to_hex(response.msg_to_sign.begin(), response.msg_to_sign.end());
-    rpc.response_hex["signature"] = response.signature;
-    rpc.response["non_signer_indices"] = m_core.blockchain.l2_tracker().get_non_signers(
-            response.signers_bls_pubkeys.begin(), response.signers_bls_pubkeys.end());
+void core_rpc_server::invoke(BLS_EXIT_LIQUIDATION_LIST& rpc, rpc_context) {
+    auto list = nlohmann::json::array();
+    using node_t = service_nodes::service_node_list::recently_removed_node;
+    for (const node_t& elem : m_core.service_node_list.recently_removed_nodes()) {
+        // NOTE: Serialise to JSON
+        serialization::json_archiver ar;
+        serialize(ar, const_cast<node_t&>(elem));
+        nlohmann::json serialized = std::move(ar).json();
+
+        // NOTE: Remove implementation details from the output JSON
+        for (auto& contrib_it : serialized["contributors"]) {
+            constexpr std::string_view ERASE_FIELDS_CONTRIBUTOR[] = {
+                    "address",  // Cryptonote address  (not used in L2, use ETH addresses)
+                    "locked_contributions",  // $OXEN contributions (not used in L2, use $SENT)
+            };
+
+            for (const auto& field : ERASE_FIELDS_CONTRIBUTOR) {
+                auto it = contrib_it.find(field);
+                assert(it != contrib_it.end());
+                contrib_it.erase(it);
+            }
+        }
+
+        // NOTE: Remove implementation details from the contributor JSON
+        constexpr std::string_view ERASE_FIELDS[] = {
+                "public_ip",
+                "qnet_port",
+                "type",
+        };
+
+        for (const auto& field : ERASE_FIELDS) {
+            auto it = serialized.find(field);
+            assert(it != serialized.end());
+            serialized.erase(it);
+        }
+
+        // NOTE: Assign the type
+        switch (elem.type) {
+            case service_nodes::service_node_list::recently_removed_node::type_t::voluntary_exit:
+                serialized["type"] = "exit";
+                break;
+
+            case service_nodes::service_node_list::recently_removed_node::type_t::deregister:
+                serialized["type"] = "deregister";
+                break;
+        }
+
+        // NOTE: Store the object into the RPC response array
+        list.emplace_back(std::move(serialized));
+    }
+
+    rpc.response = std::move(list);
+}
+//------------------------------------------------------------------------------------------------------------------------------
+void core_rpc_server::invoke(BLS_EXIT_LIQUIDATION_REQUEST& rpc, rpc_context) {
+    try {
+        if (!m_core.have_l2_tracker())
+            throw std::invalid_argument{
+                    "Unable to process request: this RPC node is not configured with an ETH L2 "
+                    "provider"};
+
+        const auto response =
+                m_core.bls_exit_liquidation_request(rpc.request.pubkey, rpc.request.liquidate);
+        set_contract_signature(rpc.response, rpc.response_hex, response, m_core.l2_tracker());
+        rpc.response["status"] = STATUS_OK;
+        rpc.response["timestamp"] = response.timestamp;
+        rpc.response_hex["bls_pubkey"] = response.remove_pubkey;
+    } catch (const std::exception& e) {
+        throw rpc_error{ERROR_BLS_SIG, e.what()};
+    }
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(BLS_REGISTRATION_REQUEST& rpc, rpc_context) {
@@ -2669,6 +2748,8 @@ void core_rpc_server::fill_sn_response_entry(
             info.last_reward_transaction_index,
             "active",
             info.is_active(),
+            "payable",
+            info.is_payable(top_height, nettype()),
             "funded",
             info.is_fully_funded(),
             "state_height",
@@ -2973,7 +3054,7 @@ void core_rpc_server::invoke(GET_PENDING_EVENTS& sns, rpc_context) {
 
     sns.response["registrations"] = json::array();
     sns.response["unlocks"] = json::array();
-    sns.response["removals"] = json::array();
+    sns.response["exits"] = json::array();
     m_core.service_node_list.for_each_pending_l2_state(
             [&sns]<typename Event>(const Event& e, const auto& info) {
                 json entry{
@@ -3002,12 +3083,12 @@ void core_rpc_server::invoke(GET_PENDING_EVENTS& sns, rpc_context) {
                         contr.push_back(json{{"amount", amt}});
                         contr_hex.back()["address"] = addr;
                     }
-                } else if constexpr (std::is_same_v<Event, eth::event::ServiceNodeRemovalRequest>) {
+                } else if constexpr (std::is_same_v<Event, eth::event::ServiceNodeExitRequest>) {
                     sns.response["unlocks"].push_back(std::move(entry));
                     sns.response_hex["unlocks"].back()["bls_pubkey"] = e.bls_pubkey;
-                } else if constexpr (std::is_same_v<Event, eth::event::ServiceNodeRemoval>) {
-                    sns.response["removals"].push_back(std::move(entry));
-                    sns.response_hex["removals"].back()["bls_pubkey"] = e.bls_pubkey;
+                } else if constexpr (std::is_same_v<Event, eth::event::ServiceNodeExit>) {
+                    sns.response["exits"].push_back(std::move(entry));
+                    sns.response_hex["exits"].back()["bls_pubkey"] = e.bls_pubkey;
                     sns.response["returned_amount"] = e.returned_amount;
                 } else {
                     log::error(logcat, "Got unknown event type in rpc GET_PENDING_EVENTS handler!");
