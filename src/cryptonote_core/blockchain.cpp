@@ -1759,7 +1759,6 @@ uint64_t Blockchain::get_current_cumulative_block_weight_median() const {
 // This function makes a new block for a miner to mine the hash for
 bool Blockchain::create_block_template_internal(
         block& b,
-        const crypto::hash* from_block,
         const block_template_info& info,
         difficulty_type& diffic,
         uint64_t& height,
@@ -1770,8 +1769,12 @@ bool Blockchain::create_block_template_internal(
     uint64_t already_generated_coins;
     uint64_t pool_cookie;
 
+    if (!m_l2_tracker)
+        throw oxen::traced<std::logic_error>{
+                "Cannot create a block template without a configured L2 provider"};
+
     auto lock = tools::shared_locks(tx_pool, *this, *m_l2_tracker);
-    if (m_btc_valid && !from_block) {
+    if (m_btc_valid) {
         // The pool cookie is atomic. The lack of locking is OK, as if it changes
         // just as we compare it, we'll just use a slightly old template, but
         // this would be the case anyway if we'd lock, and the change happened
@@ -1792,85 +1795,20 @@ bool Blockchain::create_block_template_internal(
         }
         log::debug(
                 logcat,
-                "Not using cached template: address {}, nonce {}, cookie {}, from_block {}",
+                "Not using cached template: address {}, nonce {}, cookie {}",
                 (bool)(info.miner_address != m_btc_address),
                 (m_btc_nonce == ex_nonce),
-                (m_btc_pool_cookie == tx_pool.cookie()),
-                (!!from_block));
+                (m_btc_pool_cookie == tx_pool.cookie()));
         invalidate_block_template_cache();
     }
 
-    // from_block is usually nullptr, used to build altchains
-    if (from_block) {
-        // build alternative subchain, front -> mainchain, back -> alternative head
-        // block is not related with head of main chain
-        // first of all - look in alternative chains container
-        alt_block_data_t prev_data;
-        bool parent_in_alt =
-                m_db->get_alt_block(*from_block, &prev_data, NULL, nullptr /*checkpoint*/);
-        bool parent_in_main = m_db->block_exists(*from_block);
-        if (!parent_in_alt && !parent_in_main) {
-            log::error(logcat, "Unknown from block");
-            return false;
-        }
-
-        // we have new block in alternative chain
-        std::list<block_extended_info> alt_chain;
-        block_verification_context bvc{};
-        std::vector<uint64_t> timestamps;
-        if (!build_alt_chain(
-                    *from_block,
-                    alt_chain,
-                    timestamps,
-                    bvc,
-                    nullptr /*num_alt_checkpoints*/,
-                    nullptr /*num_checkpoints*/))
-            return false;
-
-        if (parent_in_main) {
-            cryptonote::block prev_block;
-            CHECK_AND_ASSERT_MES(
-                    get_block_by_hash(*from_block, prev_block),
-                    false,
-                    "From block not found");  // TODO
-            uint64_t from_block_height = prev_block.get_height();
-            height = from_block_height + 1;
-        } else {
-            height = alt_chain.back().height + 1;
-        }
-        auto [maj, min] = get_ideal_block_version(m_nettype, height);
-        b.major_version = maj;
-        b.minor_version = min;
-        b.prev_id = *from_block;
-
-        // cheat and use the weight of the block we start from, virtually certain to be acceptable
-        // and use 1.9 times rather than 2 times so we're even more sure
-        if (parent_in_main) {
-            median_weight = m_db->get_block_weight(height - 1);
-            already_generated_coins = m_db->get_block_already_generated_coins(height - 1);
-        } else {
-            median_weight = prev_data.cumulative_weight - prev_data.cumulative_weight / 20;
-            already_generated_coins = alt_chain.back().already_generated_coins;
-        }
-
-        // FIXME: consider moving away from block_extended_info at some point
-        block_extended_info bei{};
-        bei.bl = b;
-        bei.height =
-                alt_chain.size() ? prev_data.height + 1 : m_db->get_block_height(*from_block) + 1;
-
-        diffic = get_difficulty_for_alternative_chain(alt_chain, bei.height, !info.is_miner);
-    } else {
-        // Creates the block template for next block on main chain
-        std::tie(height, b.prev_id) = get_tail_id();
-        ++height;  // Convert to the next block's height
-        auto [maj, min] = get_ideal_block_version(m_nettype, height);
-        b.major_version = maj;
-        b.minor_version = min;
-        median_weight = m_current_block_cumul_weight_limit / 2;
-        diffic = get_difficulty_for_next_block(!info.is_miner);
-        already_generated_coins = m_db->get_block_already_generated_coins(height - 1);
-    }
+    // Creates the block template for next block on main chain
+    std::tie(height, b.prev_id) = get_tail_id();
+    ++height;  // Convert to the next block's height
+    std::tie(b.major_version, b.minor_version) = get_ideal_block_version(m_nettype, height);
+    median_weight = m_current_block_cumul_weight_limit / 2;
+    diffic = get_difficulty_for_next_block(!info.is_miner);
+    already_generated_coins = m_db->get_block_already_generated_coins(height - 1);
     b.timestamp = time(NULL);
 
     uint64_t median_ts;
@@ -2040,9 +1978,8 @@ bool Blockchain::create_block_template_internal(
                 txs_weight,
                 get_transaction_weight(b.miner_tx));
 
-        if (!from_block)
-            cache_block_template(
-                    b, info.miner_address, ex_nonce, diffic, height, expected_reward, pool_cookie);
+        cache_block_template(
+                b, info.miner_address, ex_nonce, diffic, height, expected_reward, pool_cookie);
 
         if (miner_tx_context.pulse)
             b.oxen10_pulse_producer = miner_tx_context.pulse_block_producer.key;
@@ -2057,9 +1994,8 @@ bool Blockchain::create_block_template_internal(
     return false;
 }
 //------------------------------------------------------------------
-bool Blockchain::create_miner_block_template(
+bool Blockchain::create_next_miner_block_template(
         block& b,
-        const crypto::hash* from_block,
         const account_public_address& miner_address,
         difficulty_type& diffic,
         uint64_t& height,
@@ -2068,19 +2004,7 @@ bool Blockchain::create_miner_block_template(
     block_template_info info = {};
     info.is_miner = true;
     info.miner_address = miner_address;
-    return create_block_template_internal(
-            b, from_block, info, diffic, height, expected_reward, ex_nonce);
-}
-//------------------------------------------------------------------
-bool Blockchain::create_next_miner_block_template(
-        block& b,
-        const account_public_address& miner_address,
-        difficulty_type& diffic,
-        uint64_t& height,
-        uint64_t& expected_reward,
-        const std::string& ex_nonce) {
-    return create_miner_block_template(
-            b, nullptr /*from_block*/, miner_address, diffic, height, expected_reward, ex_nonce);
+    return create_block_template_internal(b, info, diffic, height, expected_reward, ex_nonce);
 }
 //------------------------------------------------------------------
 bool Blockchain::create_next_pulse_block_template(
@@ -2095,8 +2019,7 @@ bool Blockchain::create_next_pulse_block_template(
     uint64_t diffic = 0;
     std::string nonce = {};
 
-    bool result = create_block_template_internal(
-            b, nullptr /*from_block*/, info, diffic, height, expected_reward, nonce);
+    bool result = create_block_template_internal(b, info, diffic, height, expected_reward, nonce);
     b.pulse.round = round;
     b.pulse.validator_bitset = validator_bitset;
     return result;
@@ -3403,6 +3326,117 @@ void Blockchain::flush_invalid_blocks() {
     log::trace(logcat, "Blockchain::{}", __func__);
     std::unique_lock lock{*this};
     m_invalid_blocks.clear();
+}
+//------------------------------------------------------------------
+std::vector<eth::bls_public_key> Blockchain::get_removable_nodes() const {
+    assert(m_l2_tracker);
+
+    // TODO: Just calculate an acceleration structure on block receive.
+    std::vector<eth::bls_public_key> bls_pubkeys_in_snl;
+    std::vector<eth::bls_public_key> bls_pubkeys_in_smart_contract;
+    {
+        // NOTE: Extract all the service nodes from the Oxen work-chain _excluding_ those that have
+        // been recently removed (e.g. voluntarily exited or dereg by protocol). Recently removed
+        // nodes on the Oxen side need to be removed from the smart contract side and this and can
+        // be done by aggregating a signature (or without if the wait time has elapsed) from the
+        // network to be removed from the smart contract (which gets re-witnessed by Oxen thereby
+        // removing it from the 'recently_removed_nodes' list).
+        auto sns = service_node_list.get_service_node_list_state();
+        bls_pubkeys_in_snl.reserve(sns.size());
+        for (const auto& sni : sns)
+            bls_pubkeys_in_snl.push_back(sni.info->bls_public_key);
+
+        // NOTE: Because of vote confirmations, we have nodes that can exist in the smart contract
+        // but not the service node list for awhile until they get confirmed at which point they get
+        // added to the SNL.
+        //
+        // We assume that these nodes will be added to the SNL. If it does, it will eventually be
+        // removed from this list and show up in the 'get_service_node_list_state()' branch above.
+        //
+        // If the node gets denied, it will be removed from this list and never added to the SNL.
+        service_node_list.for_each_pending_l2_state(
+            [&bls_pubkeys_in_snl]<typename Event>(const Event& e, const service_nodes::service_node_list::unconfirmed_l2_tx&) {
+                if constexpr  (std::is_same_v<Event, eth::event::NewServiceNode>) {
+                    bls_pubkeys_in_snl.push_back(e.bls_pubkey);
+                } else {
+                    static_assert(
+                            std::is_same_v<Event, eth::event::ServiceNodeExitRequest> ||
+                            std::is_same_v<Event, eth::event::ServiceNodeExit> ||
+                            std::is_same_v<Event, eth::event::StakingRequirementUpdated>);
+                }
+        });
+
+        // NOTE: Extract all service nodes from the smart contract
+        eth::RewardsContract::ServiceNodeIDs smart_contract_ids =
+                m_l2_tracker->get_all_service_node_ids(std::nullopt);
+        if (!smart_contract_ids.success)
+            throw oxen::traced<std::runtime_error>("Querying of service node IDs from smart contract failed");
+        bls_pubkeys_in_smart_contract = std::move(smart_contract_ids.bls_pubkeys);
+    }
+
+    // NOTE: Ensure lists are sorted as required for 'set_difference'
+    std::sort(bls_pubkeys_in_snl.begin(), bls_pubkeys_in_snl.end());
+    std::sort(bls_pubkeys_in_smart_contract.begin(), bls_pubkeys_in_smart_contract.end());
+
+    // NOTE: Find BLS keys that are in the smart contract but not in the Oxen SNL.
+    std::vector<eth::bls_public_key> result;
+    std::set_difference(
+            bls_pubkeys_in_smart_contract.begin(),
+            bls_pubkeys_in_smart_contract.end(),
+            bls_pubkeys_in_snl.begin(),
+            bls_pubkeys_in_snl.end(),
+            std::back_inserter(result));
+
+    // NOTE: Print the reason that each node in the list is removable for
+    fmt::memory_buffer buffer;
+    fmt::format_to(std::back_inserter(buffer), "Found {} nodes that are removable", result.size());
+    if (oxen::log::get_level(logcat) <= oxen::log::Level::debug) {
+        if (result.size())
+            fmt::format_to(std::back_inserter(buffer), "\n");
+
+        for (size_t index = 0; index < result.size(); index++) {
+            if (index)
+                fmt::format_to(std::back_inserter(buffer), "\n");
+
+            // NOTE: Determine if the node was unlocked/deregistered or only exists in the contract
+            const eth::bls_public_key& it = result[index];
+            bool protocol_dereg = false;
+            std::optional<uint64_t> unlock_or_dereg_height = {};
+            uint32_t ip = 0;
+            uint16_t port = 0;
+            for (const service_nodes::service_node_list::recently_removed_node&
+                         recently_removed_it : service_node_list.recently_removed_nodes()) {
+                if (it != recently_removed_it.bls_pubkey)
+                    continue;
+                protocol_dereg =
+                        recently_removed_it.type ==
+                        service_nodes::service_node_list::recently_removed_node::type_t::deregister;
+                unlock_or_dereg_height = recently_removed_it.height;
+                ip = recently_removed_it.public_ip;
+                port = recently_removed_it.qnet_port;
+                break;
+            }
+
+            // NOTE: Generate a reason string
+            std::string removable_reason;
+            if (unlock_or_dereg_height) {
+                removable_reason = "node {}; height {} {}:{}"_format(
+                        protocol_dereg ? "dereg" : "expired",
+                        *unlock_or_dereg_height,
+                        epee::string_tools::get_ip_string_from_int32(ip),
+                        port);
+            } else {
+                removable_reason = "node exists only in contract";
+            }
+
+            fmt::format_to(
+                    std::back_inserter(buffer), " {:04d} {} ({})", index, it, removable_reason);
+        }
+    }
+
+    std::string log = fmt::to_string(buffer);
+    oxen::log::debug(logcat, "{}", fmt::to_string(buffer));
+    return result;
 }
 //------------------------------------------------------------------
 bool Blockchain::have_block(const crypto::hash& id) const {

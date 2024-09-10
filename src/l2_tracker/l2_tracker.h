@@ -1,27 +1,24 @@
 #pragma once
 
+#include <cryptonote_config.h>
 #include <oxenmq/oxenmq.h>
 
-#include <concepts>
+#include <ethyl/provider.hpp>
 #include <forward_list>
 #include <iterator>
 #include <shared_mutex>
 #include <unordered_set>
 
-#include "crypto/crypto.h"
-#include "crypto/hash.h"
-#include "cryptonote_config.h"
-#include "l2_tracker/events.h"
 #include "recent_events.h"
 #include "rewards_contract.h"
-
-namespace oxenmq {
-class OxenMQ;
-}
 
 namespace cryptonote {
 class core;
 }
+
+namespace crypto {
+struct public_key;
+};
 
 namespace eth {
 
@@ -43,8 +40,8 @@ class L2Tracker {
 
     // l2_height => recent events at that height
     RecentEvents<event::NewServiceNode> recent_regs;
-    RecentEvents<event::ServiceNodeRemovalRequest> recent_unlocks;
-    RecentEvents<event::ServiceNodeRemoval> recent_removals;
+    RecentEvents<event::ServiceNodeExitRequest> recent_unlocks;
+    RecentEvents<event::ServiceNodeExit> recent_exits;
     RecentEvents<event::StakingRequirementUpdated> recent_req_changes;
     std::map<uint64_t, uint64_t> reward_rate;
     uint64_t latest_height = 0, synced_height = 0;
@@ -154,8 +151,8 @@ class L2Tracker {
     // Returns true/false for whether we have recently observed the given event from the L2 tracker
     // logs.  This is used for pulse confirmation voting.
     bool get_vote_for(const event::NewServiceNode& reg) const;
-    bool get_vote_for(const event::ServiceNodeRemoval& removal) const;
-    bool get_vote_for(const event::ServiceNodeRemovalRequest& unlock) const;
+    bool get_vote_for(const event::ServiceNodeExit& exit) const;
+    bool get_vote_for(const event::ServiceNodeExitRequest& unlock) const;
     bool get_vote_for(const event::StakingRequirementUpdated& req_change) const;
     bool get_vote_for(const std::monostate&) const { return false; }
 
@@ -173,5 +170,4 @@ class L2Tracker {
     // Must hold mutex (in exclusive mode) while calling!
     void prune_old_states();
 };
-
 }  // namespace eth

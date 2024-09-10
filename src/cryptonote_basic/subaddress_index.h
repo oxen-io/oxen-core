@@ -57,7 +57,7 @@ struct subaddress_index {
 };
 
 template <class Archive>
-void serialize_value(Archive& ar, subaddress_index& x) {
+void serialize_object(Archive& ar, subaddress_index& x) {
     field(ar, "major", x.major);
     field(ar, "minor", x.minor);
 }

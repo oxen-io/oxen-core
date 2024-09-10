@@ -64,14 +64,15 @@ struct checkpoint_t {
         }
     }
 
-    BEGIN_SERIALIZE()
-    FIELD(version)
-    ENUM_FIELD(type, type < checkpoint_type::count);
-    FIELD(height)
-    FIELD(block_hash)
-    FIELD(signatures)
-    FIELD(prev_height)
-    END_SERIALIZE()
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field(ar, "version", version);
+        field_varint(ar, "type", type, [](auto& type) { return type < checkpoint_type::count; });
+        field(ar, "height", height);
+        field(ar, "block_hash", block_hash);
+        field(ar, "signatures", signatures);
+        field(ar, "prev_height", prev_height);
+    }
 };
 
 struct height_to_hash {

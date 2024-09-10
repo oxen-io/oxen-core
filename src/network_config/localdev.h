@@ -52,12 +52,18 @@ inline constexpr network_config config{
         .LIMIT_BATCH_OUTPUTS = mainnet::config.LIMIT_BATCH_OUTPUTS,
         .SERVICE_NODE_PAYABLE_AFTER_BLOCKS = 1,
         .DEREGISTRATION_LOCK_DURATION = 10 * TARGET_BLOCK_TIME,
-        .UNLOCK_DURATION = 5 * TARGET_BLOCK_TIME,
+        // There's no unlock duration in localdev tests. This means when the
+        // unlock is confirmed by the nodes, the node can immediately exit the
+        // network.
+        .UNLOCK_DURATION = 0 * TARGET_BLOCK_TIME,
         .HARDFORK_DEREGISTRATION_GRACE_PERIOD =
                 mainnet::config.HARDFORK_DEREGISTRATION_GRACE_PERIOD,
         .STORE_LONG_TERM_STATE_INTERVAL = mainnet::config.STORE_LONG_TERM_STATE_INTERVAL,
         .STORE_RECENT_REWARDS = mainnet::config.STORE_RECENT_REWARDS,
-        .ETH_REMOVAL_BUFFER = testnet::config.ETH_REMOVAL_BUFFER,
+        // Only permit 1 block because we're running an integration test
+        // locally and pulse quorums take time to create blocks which bloat the
+        // test duration.
+        .ETH_EXIT_BUFFER = 1,
         .ETHEREUM_CHAIN_ID = 31337,
         .ETHEREUM_REWARDS_CONTRACT = "0x5FC8d32690cc91D4c39d9d3abcBD16989F875707"sv,
         .ETHEREUM_POOL_CONTRACT = "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0"sv,

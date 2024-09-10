@@ -1280,10 +1280,14 @@ namespace {
         if (!service_nodes::verify_pulse_quorum_sizes(context.prepare_for_round.quorum)) {
             log::info(
                     logcat,
-                    "{}Insufficient Service Nodes to execute Pulse on height {}, we require a PoW "
-                    "miner block. Sleeping until next block.",
+                    "{}There are not enough nodes to execute Pulse for height {}. PoW block is "
+                    "required. Sleeping until next block.\n  Workers: {} (required 1)\n  "
+                    "Validators: {} (required {})",
                     log_prefix(context),
-                    context.wait_for_next_block.height);
+                    context.wait_for_next_block.height,
+                    context.prepare_for_round.quorum.workers.size(),
+                    context.prepare_for_round.quorum.validators.size(),
+                    service_nodes::PULSE_QUORUM_NUM_VALIDATORS);
             return goto_wait_for_next_block_and_clear_round_data(context);
         }
 

@@ -38,11 +38,12 @@ struct file_info {
     uint8_t minor_version;
     uint32_t header_size;
 
-    BEGIN_SERIALIZE_OBJECT()
-    FIELD(major_version);
-    FIELD(minor_version);
-    VARINT_FIELD(header_size);
-    END_SERIALIZE()
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field(ar, "major_version", major_version);
+        field(ar, "minor_version", minor_version);
+        field_varint(ar, "header_size", header_size);
+    }
 };
 
 struct blocks_info {
@@ -53,11 +54,12 @@ struct blocks_info {
     // file position, for directly reading last block
     uint64_t block_last_pos;
 
-    BEGIN_SERIALIZE_OBJECT()
-    VARINT_FIELD(block_first);
-    VARINT_FIELD(block_last);
-    VARINT_FIELD(block_last_pos);
-    END_SERIALIZE()
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field_varint(ar, "block_first", block_first);
+        field_varint(ar, "block_last", block_last);
+        field_varint(ar, "block_last_pos", block_last_pos);
+    }
 };
 
 struct block_package {
@@ -67,13 +69,14 @@ struct block_package {
     difficulty_type cumulative_difficulty;
     uint64_t coins_generated;
 
-    BEGIN_SERIALIZE()
-    FIELD(block)
-    FIELD(txs)
-    VARINT_FIELD(block_weight)
-    VARINT_FIELD(cumulative_difficulty)
-    VARINT_FIELD(coins_generated)
-    END_SERIALIZE()
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field(ar, "block", block);
+        field(ar, "txs", txs);
+        field_varint(ar, "block_weight", block_weight);
+        field_varint(ar, "cumulative_difficulty", cumulative_difficulty);
+        field_varint(ar, "coins_generated", coins_generated);
+    }
 };
 
 }  // namespace cryptonote::bootstrap

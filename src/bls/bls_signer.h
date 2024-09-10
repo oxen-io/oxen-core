@@ -79,7 +79,7 @@ class BLSSigner {
 
     static constexpr inline std::string_view proofOfPossessionTag = "BLS_SIG_TRYANDINCREMENT_POP";
     static constexpr inline std::string_view rewardTag = "BLS_SIG_TRYANDINCREMENT_REWARD";
-    static constexpr inline std::string_view removalTag = "BLS_SIG_TRYANDINCREMENT_REMOVE";
+    static constexpr inline std::string_view exitTag = "BLS_SIG_TRYANDINCREMENT_REMOVE";
     static constexpr inline std::string_view liquidateTag = "BLS_SIG_TRYANDINCREMENT_LIQUIDATE";
     static constexpr inline std::string_view hashToG2Tag = "BLS_SIG_HASH_TO_FIELD_TAG";
 };

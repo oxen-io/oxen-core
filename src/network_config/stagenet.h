@@ -67,7 +67,7 @@ inline constexpr network_config config{
         .STORE_LONG_TERM_STATE_INTERVAL = mainnet::config.STORE_LONG_TERM_STATE_INTERVAL,
         .STORE_RECENT_REWARDS = mainnet::config.STORE_RECENT_REWARDS,
         // Much shorter than mainnet so that you can test this more easily.
-        .ETH_REMOVAL_BUFFER = 2h / mainnet::config.TARGET_BLOCK_TIME,
+        .ETH_EXIT_BUFFER = 2h / mainnet::config.TARGET_BLOCK_TIME,
         .ETHEREUM_CHAIN_ID = 421614,
         .ETHEREUM_REWARDS_CONTRACT = "0xb691e7C159369475D0a3d4694639ae0144c7bAB2"sv,
         .ETHEREUM_POOL_CONTRACT = "0x84a648F74Eaf037dD9558987F6179E692d5F2566"sv,

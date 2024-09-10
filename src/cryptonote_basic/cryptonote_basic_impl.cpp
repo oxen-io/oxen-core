@@ -53,10 +53,11 @@ struct integrated_address {
     account_public_address adr;
     crypto::hash8 payment_id;
 
-    BEGIN_SERIALIZE_OBJECT()
-    FIELD(adr)
-    FIELD(payment_id)
-    END_SERIALIZE()
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field(ar, "adr", adr);
+        field(ar, "payment_id", payment_id);
+    }
 };
 
 /************************************************************************/

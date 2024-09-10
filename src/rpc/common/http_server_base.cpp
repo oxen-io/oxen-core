@@ -84,16 +84,20 @@ void http_server_base::error_response(
 
 // Similar to the above, but for JSON errors (which are 200 OK + error embedded in JSON)
 void http_server_base::jsonrpc_error_response(
-        HttpResponse& res, int code, std::string message, nlohmann::json id) const {
+        HttpResponse& res,
+        int code,
+        std::string message,
+        nlohmann::json id,
+        nlohmann::json* error_data) const {
     res.writeStatus("200 OK"sv);
     res.writeHeader("Server", m_server_header);
     res.writeHeader("Content-Type", "application/json");
     if (m_closing)
         res.writeHeader("Connection", "close");
-    res.end(nlohmann::json{
-            {"jsonrpc", "2.0"},
-            {"id", std::move(id)},
-            {"error", nlohmann::json{{"code", code}, {"message", std::move(message)}}}}
+    nlohmann::json error{{"code", code}, {"message", std::move(message)}};
+    if (error_data)
+        error["data"] = std::move(*error_data);
+    res.end(nlohmann::json{{"jsonrpc", "2.0"}, {"id", std::move(id)}, {"error", std::move(error)}}
                     .dump());
     if (m_closing)
         res.close();

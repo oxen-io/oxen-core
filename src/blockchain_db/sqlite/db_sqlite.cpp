@@ -28,23 +28,22 @@
 #include "db_sqlite.h"
 
 #include <common/exception.h>
+#include <common/guts.h>
+#include <cryptonote_basic/hardfork.h>
+#include <cryptonote_config.h>
+#include <cryptonote_core/blockchain.h>
+#include <cryptonote_core/cryptonote_tx_utils.h>
 #include <fmt/core.h>
 #include <sodium.h>
 #include <sqlite3.h>
 
 #include <cassert>
 
-#include "common/guts.h"
-#include "cryptonote_basic/hardfork.h"
-#include "cryptonote_config.h"
-#include "cryptonote_core/blockchain.h"
-#include "cryptonote_core/service_node_list.h"
-
 namespace cryptonote {
 
 static auto logcat = log::Cat("blockchain.db.sqlite");
 
-BlockchainSQLite::BlockchainSQLite(cryptonote::network_type nettype, fs::path db_path) :
+BlockchainSQLite::BlockchainSQLite(cryptonote::network_type nettype, std::filesystem::path db_path) :
         db::Database(db_path, ""), m_nettype(nettype) {
     log::trace(logcat, "BlockchainDB_SQLITE::{}", __func__);
     height = 0;
@@ -310,19 +309,9 @@ void BlockchainSQLite::reset_database() {
 }
 
 void BlockchainSQLite::update_height(uint64_t new_height) {
-    log::trace(logcat, "BlockchainDB_SQLITE::{} Called with new height: {}", __func__, new_height);
+    log::trace(logcat, "BlockchainDB_SQLITE::{} Changing to height: {}, prev: {}", __func__, new_height, height);
     height = new_height;
     prepared_exec("UPDATE batch_db_info SET height = ?", static_cast<int64_t>(height));
-}
-
-void BlockchainSQLite::increment_height() {
-    log::trace(logcat, "BlockchainDB_SQLITE::{} Called with height: {}", __func__, height + 1);
-    update_height(height + 1);
-}
-
-void BlockchainSQLite::decrement_height() {
-    log::trace(logcat, "BlockchainDB_SQLITE::{} Called with height: {}", __func__, height - 1);
-    update_height(height - 1);
 }
 
 void BlockchainSQLite::blockchain_detached(uint64_t new_height) {
@@ -737,7 +726,7 @@ bool BlockchainSQLite::add_block(
                     block, service_nodes_state, /*add=*/true, get_delayed_payments(block_height)))
             return false;
 
-        increment_height();
+        update_height(height + 1);
 
         transaction.commit();
     } catch (std::exception& e) {
@@ -764,7 +753,7 @@ bool BlockchainSQLite::pop_block(
 
     auto hf_version = block.major_version;
     if (hf_version < hf::hf19_reward_batching) {
-        decrement_height();
+        update_height(height - 1);
         return true;
     }
 
@@ -777,7 +766,7 @@ bool BlockchainSQLite::pop_block(
         // Add back to the database payments that had been made in this block
         delete_block_payments(block_height);
 
-        decrement_height();
+        update_height(height - 1);
         transaction.commit();
     } catch (std::exception& e) {
         log::error(logcat, "Error subtracting reward payments: {}", e.what());

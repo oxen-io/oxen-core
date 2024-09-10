@@ -57,9 +57,8 @@ constexpr uint8_t TX_EXTRA_TAG_PADDING = 0x00, TX_EXTRA_TAG_PUBKEY = 0x01, TX_EX
                   TX_EXTRA_TAG_OXEN_NAME_SYSTEM = 0x7A,
                   TX_EXTRA_TAG_ETHEREUM_STAKING_REQUIREMENT_UPDATED = 0x7B,
                   TX_EXTRA_TAG_ETHEREUM_NEW_SERVICE_NODE = 0x7C,
-                  TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_REMOVAL_REQUEST = 0x7D,
-                  TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_DEREGISTER = 0x7E,
-                  TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_REMOVAL = 0x7F,
+                  TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_EXIT_REQUEST = 0x7D,
+                  TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_EXIT = 0x7F,
 
                   TX_EXTRA_MYSTERIOUS_MINERGATE_TAG = 0xDE;
 
@@ -118,15 +117,18 @@ struct alignas(size_t) generic_owner {
     bool operator==(generic_owner const& other) const;
     bool operator!=(generic_owner const& other) const { return !(*this == other); }
 
-    BEGIN_SERIALIZE()
-    ENUM_FIELD(type, type < generic_owner_sig_type::_count)
-    if (type == generic_owner_sig_type::monero) {
-        FIELD(wallet.address);
-        FIELD(wallet.is_subaddress);
-    } else {
-        FIELD(ed25519);
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field_varint(ar, "type", type, [](auto& type) {
+            return type < generic_owner_sig_type::_count;
+        });
+        if (type == generic_owner_sig_type::monero) {
+            field(ar, "wallet.address", wallet.address);
+            field(ar, "wallet.is_subaddress", wallet.is_subaddress);
+        } else {
+            field(ar, "ed25519", ed25519);
+        }
     }
-    END_SERIALIZE()
 };
 static_assert(
         sizeof(generic_owner) == 80, "Unexpected padding, we store binary blobs into the ONS DB");
@@ -144,10 +146,13 @@ struct generic_signature {
         return other.type == type && memcmp(data, other.data, sizeof(data)) == 0;
     }
 
-    BEGIN_SERIALIZE()
-    ENUM_FIELD(type, type < generic_owner_sig_type::_count)
-    FIELD(ed25519);
-    END_SERIALIZE()
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field_varint(ar, "type", type, [](auto& type) {
+            return type < generic_owner_sig_type::_count;
+        });
+        field(ar, "ed25519", ed25519);
+    }
 };
 
 static_assert(
@@ -213,19 +218,21 @@ void serialize_value(Archive& ar, tx_extra_padding& pad) {
 struct tx_extra_pub_key {
     crypto::public_key pub_key;
 
-    BEGIN_SERIALIZE()
-    FIELD(pub_key)
-    END_SERIALIZE()
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field(ar, "pub_key", pub_key);
+    }
 };
 
 struct tx_extra_nonce {
     std::string nonce;
 
-    BEGIN_SERIALIZE()
-    FIELD(nonce)
-    if (TX_EXTRA_NONCE_MAX_COUNT < nonce.size())
-        throw oxen::traced<std::invalid_argument>{"invalid extra nonce: too long"};
-    END_SERIALIZE()
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field(ar, "nonce", nonce);
+        if (TX_EXTRA_NONCE_MAX_COUNT < nonce.size())
+            throw oxen::traced<std::invalid_argument>{"invalid extra nonce: too long"};
+    }
 };
 
 struct tx_extra_merge_mining_tag {
@@ -268,33 +275,37 @@ void serialize_value(Archive& ar, tx_extra_merge_mining_tag& mm) {
 struct tx_extra_additional_pub_keys {
     std::vector<crypto::public_key> data;
 
-    BEGIN_SERIALIZE()
-    FIELD(data)
-    END_SERIALIZE()
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field(ar, "data", data);
+    }
 };
 
 struct tx_extra_mysterious_minergate {
     std::string data;
 
-    BEGIN_SERIALIZE()
-    FIELD(data)
-    END_SERIALIZE()
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field(ar, "data", data);
+    }
 };
 
 struct tx_extra_service_node_winner {
     crypto::public_key m_service_node_key;
 
-    BEGIN_SERIALIZE()
-    FIELD(m_service_node_key)
-    END_SERIALIZE()
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field(ar, "m_service_node_key", m_service_node_key);
+    }
 };
 
 struct tx_extra_service_node_pubkey {
     crypto::public_key m_service_node_key;
 
-    BEGIN_SERIALIZE()
-    FIELD(m_service_node_key)
-    END_SERIALIZE()
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field(ar, "m_service_node_key", m_service_node_key);
+    }
 };
 
 /// Service node registration details.
@@ -330,14 +341,15 @@ struct tx_extra_service_node_register {
                                   /// || spend[n] || view[n] || amount[n] || hf_expiration ), where
                                   /// integer values are little-endian encoded 8-byte strings
 
-    BEGIN_SERIALIZE()
-    FIELD(public_spend_keys)
-    FIELD(public_view_keys)
-    FIELD(fee)
-    FIELD(amounts)
-    FIELD(hf_or_expiration)
-    FIELD(signature)
-    END_SERIALIZE()
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field(ar, "public_spend_keys", public_spend_keys);
+        field(ar, "public_view_keys", public_view_keys);
+        field(ar, "fee", fee);
+        field(ar, "amounts", amounts);
+        field(ar, "hf_or_expiration", hf_or_expiration);
+        field(ar, "signature", signature);
+    }
 };
 
 /// Service node contributor address.
@@ -345,10 +357,11 @@ struct tx_extra_service_node_contributor {
     crypto::public_key m_spend_public_key;
     crypto::public_key m_view_public_key;
 
-    BEGIN_SERIALIZE()
-    FIELD(m_spend_public_key)
-    FIELD(m_view_public_key)
-    END_SERIALIZE()
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field(ar, "m_spend_public_key", m_spend_public_key);
+        field(ar, "m_view_public_key", m_view_public_key);
+    }
 };
 
 struct tx_extra_service_node_state_change {
@@ -359,10 +372,11 @@ struct tx_extra_service_node_state_change {
         crypto::signature signature;
         uint32_t validator_index;
 
-        BEGIN_SERIALIZE()
-        VARINT_FIELD(validator_index);
-        FIELD(signature);
-        END_SERIALIZE()
+        template <class Archive>
+        void serialize_object(Archive& ar) {
+            field_varint(ar, "validator_index", validator_index);
+            field(ar, "signature", signature);
+        }
     };
 
     enum struct version_t : uint8_t { v0, v4_reasons = 4 };
@@ -402,7 +416,7 @@ struct tx_extra_service_node_state_change {
     }
 
     template <class Archive>
-    void serialize_value(Archive& ar) {
+    void serialize_object(Archive& ar) {
         // Retrofit a field version in here.  Prior to adding reason fields, the first value (in
         // binary serialization) was the `state` enum, which had a maximum acceptable value of 3: so
         // if we get >= 4, that's a version, and otherwise we're implicitly version 0 (and there is
@@ -487,19 +501,21 @@ struct tx_extra_service_node_deregister_old {
         assert(state_change.state == service_nodes::new_state::deregister);
     }
 
-    BEGIN_SERIALIZE()
-    FIELD(block_height)
-    FIELD(service_node_index)
-    FIELD(votes)
-    END_SERIALIZE()
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field(ar, "block_height", block_height);
+        field(ar, "service_node_index", service_node_index);
+        field(ar, "votes", votes);
+    }
 };
 
 struct tx_extra_tx_secret_key {
     crypto::secret_key key;
 
-    BEGIN_SERIALIZE()
-    FIELD(key)
-    END_SERIALIZE()
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field(ar, "key", key);
+    }
 };
 
 struct tx_extra_tx_key_image_proofs {
@@ -513,9 +529,10 @@ struct tx_extra_tx_key_image_proofs {
 
     std::vector<proof> proofs;
 
-    BEGIN_SERIALIZE()
-    FIELD(proofs)
-    END_SERIALIZE()
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field(ar, "proofs", proofs);
+    }
 };
 
 struct tx_extra_tx_key_image_unlock {
@@ -544,19 +561,21 @@ struct tx_extra_tx_key_image_unlock {
         return key_image == other.key_image;
     }
 
-    BEGIN_SERIALIZE()
-    FIELD(key_image)
-    FIELD(signature)
-    FIELD(nonce)
-    END_SERIALIZE()
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field(ar, "key_image", key_image);
+        field(ar, "signature", signature);
+        field(ar, "nonce", nonce);
+    }
 };
 
 struct tx_extra_burn {
     uint64_t amount;
 
-    BEGIN_SERIALIZE()
-    FIELD(amount)
-    END_SERIALIZE()
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field(ar, "amount", amount);
+    }
 };
 
 struct tx_extra_oxen_name_system {
@@ -612,21 +631,25 @@ struct tx_extra_oxen_name_system {
             const ons::generic_owner* backup_owner,
             const crypto::hash& prev_txid);
 
-    BEGIN_SERIALIZE()
-    FIELD(version)
-    ENUM_FIELD(type, type < ons::mapping_type::_count)
-    FIELD(name_hash)
-    FIELD(prev_txid)
-    ENUM_FIELD(fields, fields <= ons::extra_field::all)
-    if (field_is_set(ons::extra_field::owner))
-        FIELD(owner);
-    if (field_is_set(ons::extra_field::backup_owner))
-        FIELD(backup_owner);
-    if (field_is_set(ons::extra_field::signature))
-        FIELD(signature);
-    if (field_is_set(ons::extra_field::encrypted_value))
-        FIELD(encrypted_value);
-    END_SERIALIZE()
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field(ar, "version", version);
+        field_varint(
+                ar, "type", type, [](auto& type) { return type < ons::mapping_type::_count; });
+        field(ar, "name_hash", name_hash);
+        field(ar, "prev_txid", prev_txid);
+        field_varint(ar, "fields", fields, [](auto& fields) {
+            return fields <= ons::extra_field::all;
+        });
+        if (field_is_set(ons::extra_field::owner))
+            field(ar, "owner", owner);
+        if (field_is_set(ons::extra_field::backup_owner))
+            field(ar, "backup_owner", backup_owner);
+        if (field_is_set(ons::extra_field::signature))
+            field(ar, "signature", signature);
+        if (field_is_set(ons::extra_field::encrypted_value))
+            field(ar, "encrypted_value", encrypted_value);
+    }
 };
 
 // tx_extra_field format, except tx_extra_padding and tx_extra_pub_key:
@@ -652,8 +675,8 @@ using tx_extra_field = std::variant<
         tx_extra_tx_key_image_proofs,
         tx_extra_tx_key_image_unlock,
         eth::event::NewServiceNode,
-        eth::event::ServiceNodeRemovalRequest,
-        eth::event::ServiceNodeRemoval,
+        eth::event::ServiceNodeExitRequest,
+        eth::event::ServiceNodeExit,
         eth::event::StakingRequirementUpdated,
         tx_extra_burn,
         tx_extra_merge_mining_tag,
@@ -697,10 +720,10 @@ BINARY_VARIANT_TAG(
         cryptonote::tx_extra_oxen_name_system, cryptonote::TX_EXTRA_TAG_OXEN_NAME_SYSTEM);
 BINARY_VARIANT_TAG(eth::event::NewServiceNode, cryptonote::TX_EXTRA_TAG_ETHEREUM_NEW_SERVICE_NODE);
 BINARY_VARIANT_TAG(
-        eth::event::ServiceNodeRemovalRequest,
-        cryptonote::TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_REMOVAL_REQUEST);
+        eth::event::ServiceNodeExitRequest,
+        cryptonote::TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_EXIT_REQUEST);
 BINARY_VARIANT_TAG(
-        eth::event::ServiceNodeRemoval, cryptonote::TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_REMOVAL);
+        eth::event::ServiceNodeExit, cryptonote::TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_EXIT);
 BINARY_VARIANT_TAG(
         eth::event::StakingRequirementUpdated,
         cryptonote::TX_EXTRA_TAG_ETHEREUM_STAKING_REQUIREMENT_UPDATED);

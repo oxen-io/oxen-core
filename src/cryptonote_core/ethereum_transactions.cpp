@@ -14,10 +14,10 @@ bool validate_event_tx(
     switch (tx_type) {
         case txtype::ethereum_new_service_node:
             return validate_event_tx<event::NewServiceNode>(hf_version, tx, reason);
-        case txtype::ethereum_service_node_removal:
-            return validate_event_tx<event::ServiceNodeRemoval>(hf_version, tx, reason);
-        case txtype::ethereum_service_node_removal_request:
-            return validate_event_tx<event::ServiceNodeRemovalRequest>(hf_version, tx, reason);
+        case txtype::ethereum_service_node_exit:
+            return validate_event_tx<event::ServiceNodeExit>(hf_version, tx, reason);
+        case txtype::ethereum_service_node_exit_request:
+            return validate_event_tx<event::ServiceNodeExitRequest>(hf_version, tx, reason);
         case txtype::ethereum_staking_requirement_updated:
             return validate_event_tx<event::StakingRequirementUpdated>(hf_version, tx, reason);
         default:
@@ -40,12 +40,12 @@ event::StateChangeVariant extract_event(
         case cryptonote::txtype::ethereum_new_service_node:
             success = extract_event(tx, result.emplace<event::NewServiceNode>(), fail_reason);
             break;
-        case cryptonote::txtype::ethereum_service_node_removal_request:
-            success = extract_event(
-                    tx, result.emplace<event::ServiceNodeRemovalRequest>(), fail_reason);
+        case cryptonote::txtype::ethereum_service_node_exit_request:
+            success =
+                    extract_event(tx, result.emplace<event::ServiceNodeExitRequest>(), fail_reason);
             break;
-        case cryptonote::txtype::ethereum_service_node_removal:
-            success = extract_event(tx, result.emplace<event::ServiceNodeRemoval>(), fail_reason);
+        case cryptonote::txtype::ethereum_service_node_exit:
+            success = extract_event(tx, result.emplace<event::ServiceNodeExit>(), fail_reason);
             break;
         case cryptonote::txtype::ethereum_staking_requirement_updated:
             success = extract_event(

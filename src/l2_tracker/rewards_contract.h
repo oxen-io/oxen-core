@@ -1,17 +1,19 @@
 #pragma once
-#include <oxen_economy.h>
+#include <common/formattable.h>
+#include <crypto/crypto.h>
+#include <crypto/eth.h>
+#include <cryptonote_config.h>
+#include <oxen_economy.h>  // oxen::MAX_CONTRIBUTORS_HF19
 
-#include <ethyl/logs.hpp>
-#include <ethyl/provider.hpp>
 #include <string>
 #include <unordered_set>
-#include <variant>
 
-#include "contracts.h"
 #include "events.h"
-#include "crypto/crypto.h"
-#include "crypto/eth.h"
-#include "cryptonote_config.h"
+
+namespace ethyl {
+struct Provider;
+struct LogEntry;
+};
 
 namespace eth {
 
@@ -24,7 +26,7 @@ struct ContractServiceNode {
     bool good;
     uint64_t next;
     uint64_t prev;
-    eth::address operatorAddr;
+    address operatorAddr;
     bls_public_key pubkey;
     uint64_t addedTimestamp;
     uint64_t leaveRequestTimestamp;
@@ -49,6 +51,7 @@ class RewardsContract {
 
     struct ServiceNodeIDs
     {
+        bool success;
         std::vector<uint64_t> ids;
         std::vector<bls_public_key> bls_pubkeys;
     };

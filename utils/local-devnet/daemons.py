@@ -40,6 +40,11 @@ class RPCFailed(RuntimeError):
         self.json = json
         super().__init__(self.message)
 
+class AccruedRewards:
+    def __init__(self):
+        self.address = ""
+        self.balance = 0
+
 class RPCDaemon:
     def __init__(self, name):
         self.name = name
@@ -104,14 +109,14 @@ class RPCDaemon:
         return requests.post('http://{}:{}/json_rpc'.format(self.listen_ip, self.rpc_port), json=json, timeout=timeout)
 
 
-    def rpc(self, path, params=None, *, timeout=10):
+    def rpc(self, path, params=None, *, timeout=30):
         """Sends a non-json_rpc rpc request to the rpc port at path `path`, e.g. /get_info.  Returns the response object."""
         if not self.proc:
             raise RuntimeError("Cannot make rpc request before calling start()")
         return requests.post('http://{}:{}{}'.format(self.listen_ip, self.rpc_port, path), json=params, timeout=timeout)
 
 
-    def wait_for_json_rpc(self, method, params=None, *, timeout=10):
+    def wait_for_json_rpc(self, method, params=None, *, timeout=30):
         """Calls `json_rpc', sleeping if it fails for up time `timeout' seconds.  Returns the
         response if it succeeds, raises the last exception if timeout is reached.  If the process
         exit, raises a RuntimeError"""
@@ -267,17 +272,35 @@ class Daemon(RPCDaemon):
     def sn_status(self):
         return self.json_rpc("get_service_node_status").json()["result"]
 
+    def sn_is_payable(self):
+        json   = self.json_rpc("get_service_nodes", {"service_node_pubkeys": [self.get_service_keys().pubkey]}).json()
+        sn_info_array = json['result']['service_node_states']
+        result = False
+        if len(sn_info_array) >= 1:
+            sn_info = sn_info_array[0]
+            result  = 'payable' in sn_info and sn_info['payable']
+        return result
+
     def get_ethereum_registration_args(self, address):
         return self.json_rpc("bls_registration_request", {"address": address}).json()["result"]
 
     def get_bls_rewards(self, address):
         return self.json_rpc("bls_rewards_request", {"address": address}, timeout=1000).json()
 
-    def get_exit_request(self, bls_key):
-        return self.json_rpc("bls_exit_request", {"bls_pubkey": bls_key}).json()
+    def get_exit_liquidation_request(self, ed25519_pubkey, liquidate=False):
+        return self.json_rpc("bls_exit_liquidation_request", {"pubkey": ed25519_pubkey, "liquidate": liquidate}, timeout=1000).json()
 
-    def get_liquidation_request(self, bls_key):
-        return self.json_rpc("bls_liquidation_request", {"bls_pubkey": bls_key}).json()
+    def get_accrued_rewards(self, ed25519_keys) -> list[AccruedRewards]:
+        json                         = self.json_rpc("get_accrued_rewards", {"addresses": ed25519_keys}).json()
+        balance_array                = json['result']['balances']
+        result: list[AccruedRewards] = []
+        for address, balance in balance_array.items():
+            item = AccruedRewards()
+            item.address = address
+            item.balance = balance
+            result.append(item)
+        return result
+
 
     def get_service_nodes(self):
         return self.json_rpc("get_service_nodes").json()

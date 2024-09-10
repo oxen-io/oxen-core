@@ -38,14 +38,14 @@
  * In order to use this serialization to serialize an entire, self-contained value you generally
  * want to call:
  *
- *     serialization::serialize(archive, value);
+ *     serialize(archive, value);
  *
  * or, to append a serialized value to an ongoing composite serialization:
  *
- *     serialization::value(archive, value);
- *     serialization::varint(archive, value);
- *     serialization::field(archive, "key", value);
- *     serialization::field_varint(archive, "key", value);
+ *     value(archive, value);
+ *     varint(archive, value);
+ *     field(archive, "key", value);
+ *     field_varint(archive, "key", value);
  *
  * where `archive` is a serializer or deserializer from binary_archive.h or json_archive.h (or
  * something compatible with their shared interface).  Depending on whether `archive` is a
@@ -72,31 +72,38 @@
  * approaches.
  *
  * Approach 1: create a free function to do serialization.  Ideally put this in the same namespace
- * as your type, named `serialize_value` that takes a templated Archive type and the type to be
- * serialized as a non-const lvalue reference.  For example:
+ * as your type, named either `serialize_value` or `serialize_object` that takes a templated Archive
+ * type and the type to be serialized as a non-const lvalue reference.
+ *
+ * `serialize_object` is equivalent to using `serialize_value` but automatically adds a `auto o =
+ * ar.begin_object();` around the function; this is generally what you want when using the `field`
+ * functions for properly supporting named fields.
+ *
+ * For example:
  *
  *     namespace myns {
  *     struct MyType { int v1; int v2; };
  *
  *     template <class Archive>
- *     void serialize_value(Archive& ar, MyType& x) {
- *       serialization::value(ar, x.v1);
- *       serialization::value(ar, x.v2);
+ *     void serialize_object(Archive& ar, MyType& x) {
+ *       field(ar, "v1", x.v1);
+ *       field(ar, "v2", x.v2);
  *     }
  *     }
  *
- * The `serialize_value` function will be found via ADL.  If you cannot define it in the same
- * namespace (for example, because you want to serialization some type from some external namespace
- * such as an stl type) then you can also define the function inside the `serialization` namespace:
+ * The `serialize_value`/`serialize_object` function will be found via ADL.  If you cannot define it
+ * in the same namespace (for example, because you want to serialization some type from some
+ * external namespace such as an stl type) then you can also define the function inside the
+ * `serialization` namespace:
  *
  *     namespace serialization {
  *     template <class Archive>
  *     void serialize_value(Archive& ar, myns::MyType& x) { ... }
  *     }
  *
- * Approach 2: create a public serialize_value member function in the type itself that takes the
- * generic Archive type as the only argument.  This is useful, in particular, where the
- * serialization logic must access private members.  For example:
+ * Approach 2: create a public `serialize_value` or `serialize_object` member function in the type
+ * itself that takes the generic Archive type as the only argument.  This is useful, in particular,
+ * where the serialization logic must access private members.  For example:
  *
  *     struct MyType {
  *     private:
@@ -106,9 +113,9 @@
  *
  *     public:
  *       template <class Archive>
- *       void serialize_value(Archive& ar) {
- *         serialization::value(ar, v1);
- *         serialization::value(ar, v2);
+ *       void serialize_object(Archive& ar) {
+ *         field(ar, v1);
+ *         field(ar, v2);
  *       }
  *     };
  *
@@ -116,10 +123,12 @@
  * approach 2, above).  New code should avoid such nasty macros.
  *
  * Within the serialize_value function you generally want to perform sub-serialization, as shown in
- * the above examples.  Typically this involves calling `serialization::value(ar, val)` or one of
- * the `serialization::field` methods which let you append an existing serialized value.  Unlike
- * serialization::serialize, these functions append (or read) an additional value but do not require
- * that the additional value consume the entire serialization.
+ * the above examples.  Typically this involves calling a single `serialization::value(ar, val)` or
+ * else starting an RAII `auto obj = ar.begin_object();` (or just providing a `serialize_object`
+ * instead of `serialize_value` to do this for you) and then writing multiple fields using calls to
+ * the the `field...` functions.  Unlike serialization::serialize, these functions append (or read)
+ * an additional value but do not require that the additional value consume the entire
+ * serialization.
  *
  * In the case of error, throw an exception that is derived from std::exception.  (Custom exception
  * types *not* ultimately derived from std::exception are not handled and should not be used).
@@ -155,8 +164,8 @@
 #include <string_view>
 #include <type_traits>
 
-#include "common/exception.h"
 #include "base.h"
+#include "common/exception.h"
 #include "epee/span.h"  // for detecting epee-wrapped byte spannable objects
 
 namespace serialization {
@@ -189,9 +198,17 @@ namespace detail {
     template <typename T, typename Archive>
     concept free_serializable_value = requires(Archive& a, T v) { serialize_value(a, v); };
 
+    /// Likewise, for `serialize_object(ar, t)`.
+    template <typename T, typename Archive>
+    concept free_serializable_object = requires(Archive& a, T v) { serialize_object(a, v); };
+
     /// True if `t.serialize_value(ar)` exists (and returns void) for non-const `ar` and `t`
     template <typename T, typename Archive>
     concept memfn_serializable_value = requires(Archive& a, T v) { v.serialize_value(a); };
+
+    /// Likewise, for `t.serialize_object(ar)`.
+    template <typename T, typename Archive>
+    concept memfn_serializable_object = requires(Archive& a, T v) { v.serialize_object(a); };
 
 }  // namespace detail
 
@@ -218,11 +235,21 @@ template <class Archive, detail::free_serializable_value<Archive> T>
 void value(Archive& ar, T& v) {
     serialize_value(ar, v);
 }
+template <class Archive, detail::free_serializable_object<Archive> T>
+void value(Archive& ar, T& v) {
+    auto o = ar.begin_object();
+    serialize_object(ar, v);
+}
 
 // Serializes some non-integer, non-binary value, when a `x.serialize_value(ar)` exists.
 template <class Archive, detail::memfn_serializable_value<Archive> T>
 void value(Archive& ar, T& v) {
     v.serialize_value(ar);
+}
+template <class Archive, detail::memfn_serializable_object<Archive> T>
+void value(Archive& ar, T& v) {
+    auto o = ar.begin_object();
+    v.serialize_object(ar);
 }
 
 // Helper bool used in the serialize() fallback to annotate what went wrong.  (Templatized so that
@@ -277,7 +304,8 @@ template <class Archive, typename T, std::predicate<const T&> Predicate>
 void varint(Archive& ar, T& val, Predicate test) {
     varint(ar, val);
     if (Archive::is_deserializer && !test(val))
-        throw oxen::traced<std::out_of_range>{"Invalid integer or enum value during deserialization"};
+        throw oxen::traced<std::out_of_range>{
+                "Invalid integer or enum value during deserialization"};
 }
 
 /// Adds a key-value pair
@@ -334,105 +362,11 @@ void done(Archive& ar) {
 
 /// Serializes a value and then calls done() to make sure that the entire stream was consumed.  You
 /// do *not* want to call this to serialize a single value as part of a larger serialization: you
-/// want serialization::value() or serialization::field() for that.
+/// want value() or field() for that.
 template <class Archive, typename T>
 void serialize(Archive& ar, T& v) {
     value(ar, v);
     done(ar);
 }
-
-constexpr int _serialization_macro /*[[deprecated]]*/ = 0;
-
-/*! \macro BEGIN_SERIALIZE
- *
- * \brief macro to start a serialize_value member function.
- *
- * Deprecated.  Define your own serialize_value member function instead.
- */
-#define BEGIN_SERIALIZE()               \
-    template <class Archive>            \
-    void serialize_value(Archive& ar) { \
-        (void)serialization::_serialization_macro;
-
-#define SERIALIZE_PASTE_(a, b) a##b
-#define SERIALIZE_PASTE(a, b) SERIALIZE_PASTE_(a, b)
-
-/*! \macro BEGIN_SERIALIZE_OBJECT
- *
- *  \brief begins the environment of an object (in the JSON sense) serialization
- *
- *  Deprecated.  Just expand this manually instead.
- */
-#define BEGIN_SERIALIZE_OBJECT() \
-    BEGIN_SERIALIZE()            \
-    auto _obj = ar.begin_object();
-
-/*! \macro END_SERIALIZE
- *
- * Deprecated.  Just use `}` instead.
- */
-#define END_SERIALIZE()                        \
-    (void)serialization::_serialization_macro; \
-    }
-
-/*! \macro FIELD_N(tag, val)
- *
- * \brief serializes a field \a val tagged \a tag
- *
- * Deprecated.  Call `serialization::field(ar, "name", val);` instead.  (In rare cases you may need
- * to qualify the call with the serialization namespace (`serialization::field(ar, "name", val)`)
- * but usually you can omit it to use ADL).
- */
-#define FIELD_N(tag, val) \
-    ((void)serialization::_serialization_macro, serialization::field(ar, tag, val));
-
-/*! \macro FIELD(val)
- *
- * \brief tags the field with the variable name and then serializes it
- *
- * Deprecated.  Call `field(ar, "val", val);` instead.
- */
-#define FIELD(val) FIELD_N(#val, val)
-
-/*! \macro FIELDS(f)
- *
- * \brief does not add a tag to the serialized value
- *
- * Deprecated.  Call `serialization::value(ar, f);` instead.
- */
-#define FIELDS(f) ((void)serialization::_serialization_macro, serialization::value(ar, f));
-
-/*! \macro VARINT_FIELD(f)
- *  \brief tags and serializes the varint \a f
- */
-#define VARINT_FIELD(f) VARINT_FIELD_N(#f, f)
-
-/*! \macro VARINT_FIELD_N(tag, val)
- *
- * \brief tags (as \a tag) and serializes the varint \a val
- *
- * Deprecated.  Call `field_varint(ar, "tag", val);` instead.
- */
-#define VARINT_FIELD_N(tag, val) \
-    ((void)serialization::_serialization_macro, serialization::field_varint(ar, tag, val));
-
-/*! \macro ENUM_FIELD(f, test)
- *  \brief tags and serializes (as a varint) the scoped enum \a f with a requirement that expression
- *  \a test be true (typically for range testing).
- *
- * Deprecated.  Call `field_varint(ar, "f", f, predicate)` instead.
- */
-#define ENUM_FIELD(f, test) ENUM_FIELD_N(#f, f, test)
-
-/*! \macro ENUM_FIELD_N(t, f, test)
- *
- * \brief tags (as \a t) and serializes (as a varint) the scoped enum \a f with a requirement that
- * expession \a test be true (typically for range testing).
- *
- * Deprecated.  Call `field_varint(ar, "t", f, predicate)` instead.
- */
-#define ENUM_FIELD_N(tag, field, test)          \
-    ((void)serialization::_serialization_macro, \
-     serialization::field_varint(ar, tag, field, [](auto& field) { return test; }));
 
 }  // namespace serialization

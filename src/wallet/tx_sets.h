@@ -54,7 +54,7 @@ struct multisig_tx_set {
 };
 
 template <class Archive>
-void serialize_value(Archive& ar, multisig_tx_set& x) {
+void serialize_object(Archive& ar, multisig_tx_set& x) {
     field(ar, "m_ptx", x.m_ptx);
     field(ar, "m_signers", x.m_signers);
 };

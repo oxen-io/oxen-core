@@ -29,15 +29,15 @@
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
 #pragma once
-#include "cryptonote_basic/cryptonote_format_utils.h"
-#include "cryptonote_basic/verification_context.h"
-#include "cryptonote_core/service_node_list.h"
-#include "ringct/rctOps.h"
-
 #include <common/exception.h>
 
 #include <boost/serialization/utility.hpp>
 #include <boost/serialization/vector.hpp>
+
+#include "cryptonote_basic/cryptonote_format_utils.h"
+#include "cryptonote_basic/verification_context.h"
+#include "cryptonote_core/service_node_list.h"
+#include "ringct/rctOps.h"
 
 namespace cryptonote {
 //---------------------------------------------------------------
@@ -209,20 +209,21 @@ struct tx_source_entry {
                 std::make_pair(idx, rct::ctkey({rct::pk2rct(k), rct::zeroCommit(amount)})));
     }
 
-    BEGIN_SERIALIZE_OBJECT()
-    FIELD(outputs)
-    FIELD(real_output)
-    FIELD(real_out_tx_key)
-    FIELD(real_out_additional_tx_keys)
-    FIELD(real_output_in_tx_index)
-    FIELD(amount)
-    FIELD(rct)
-    FIELD(mask)
-    FIELD(multisig_kLRki)
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field(ar, "outputs", outputs);
+        field(ar, "real_output", real_output);
+        field(ar, "real_out_tx_key", real_out_tx_key);
+        field(ar, "real_out_additional_tx_keys", real_out_additional_tx_keys);
+        field(ar, "real_output_in_tx_index", real_output_in_tx_index);
+        field(ar, "amount", amount);
+        field(ar, "rct", rct);
+        field(ar, "mask", mask);
+        field(ar, "multisig_kLRki", multisig_kLRki);
 
-    if (real_output >= outputs.size())
-        throw oxen::traced<std::invalid_argument>{"invalid real_output size"};
-    END_SERIALIZE()
+        if (real_output >= outputs.size())
+            throw oxen::traced<std::invalid_argument>{"invalid real_output size"};
+    }
 };
 
 struct tx_destination_entry {
@@ -259,13 +260,14 @@ struct tx_destination_entry {
         return get_account_address_as_str(nettype, is_subaddress, addr);
     }
 
-    BEGIN_SERIALIZE_OBJECT()
-    FIELD(original)
-    VARINT_FIELD(amount)
-    FIELD(addr)
-    FIELD(is_subaddress)
-    FIELD(is_integrated)
-    END_SERIALIZE()
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field(ar, "original", original);
+        field_varint(ar, "amount", amount);
+        field(ar, "addr", addr);
+        field(ar, "is_subaddress", is_subaddress);
+        field(ar, "is_integrated", is_integrated);
+    }
 };
 
 struct oxen_construct_tx_params {
@@ -395,17 +397,17 @@ namespace boost::serialization {
 template <class Archive>
 inline void serialize(
         Archive& a, cryptonote::tx_source_entry& x, const boost::serialization::version_type ver) {
-    a& x.outputs;
-    a& x.real_output;
-    a& x.real_out_tx_key;
-    a& x.real_output_in_tx_index;
-    a& x.amount;
-    a& x.rct;
-    a& x.mask;
+    a & x.outputs;
+    a & x.real_output;
+    a & x.real_out_tx_key;
+    a & x.real_output_in_tx_index;
+    a & x.amount;
+    a & x.rct;
+    a & x.mask;
     if (ver < 1)
         return;
-    a& x.multisig_kLRki;
-    a& x.real_out_additional_tx_keys;
+    a & x.multisig_kLRki;
+    a & x.real_out_additional_tx_keys;
 }
 
 template <class Archive>
@@ -413,16 +415,16 @@ inline void serialize(
         Archive& a,
         cryptonote::tx_destination_entry& x,
         const boost::serialization::version_type ver) {
-    a& x.amount;
-    a& x.addr;
+    a & x.amount;
+    a & x.addr;
     if (ver < 1)
         return;
-    a& x.is_subaddress;
+    a & x.is_subaddress;
     if (ver < 2) {
         x.is_integrated = false;
         return;
     }
-    a& x.original;
-    a& x.is_integrated;
+    a & x.original;
+    a & x.is_integrated;
 }
 }  // namespace boost::serialization

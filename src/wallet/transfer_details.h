@@ -68,7 +68,7 @@ struct transfer_details {
 };
 
 template <class Archive>
-void serialize_value(Archive& ar, transfer_details& x) {
+void serialize_object(Archive& ar, transfer_details& x) {
     field(ar, "m_block_height", x.m_block_height);
     field(ar, "m_tx", x.m_tx);
     field(ar, "m_txid", x.m_txid);
