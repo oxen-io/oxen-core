@@ -1810,28 +1810,15 @@ void core::check_service_node_ip_address() {
         return;
     }
 
-    auto service_node_pubkey = m_service_keys.pub;
-    std::array<uint16_t, 3> proof_version{};
-
-    service_node_list.access_proof(service_node_pubkey, [&](auto& proof) {
-        proof_version = proof.proof->version;
-    });
-
-    constexpr std::array<uint16_t, 3> MIN_TIMESTAMP_VERSION{9, 1, 0};
-
-    if (proof_version < MIN_TIMESTAMP_VERSION) {
-        return;
-    }
-
     // NOTE - this connection won't work as intended if oxenmq's incomplete `SN_ADDR_SELF`
     // gets implemented.
-    m_omq->request(
-            tools::view_guts(m_service_keys.pub_x25519),
-            "ping.ping",
-            [](bool success, const std::vector<std::string>& data) {
-                if (!success || data.empty())
-                    log::warning(
-                            globallogcat, "Unable to reach configured service node IP!");
+    m_omq->connect_remote(
+            oxenmq::address{
+                    "tcp://{}:{}"_format(m_sn_public_ip, m_quorumnet_port),
+                    tools::view_guts(m_service_keys.pub_x25519)},
+            [&](auto conn) { m_omq->disconnect(conn, 0s); },
+            [&](auto conn, std::string_view) {
+                log::warning(globallogcat, "Unable to reach configured service node IP!");
             });
 }
 //-----------------------------------------------------------------------------------------------
