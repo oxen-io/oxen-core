@@ -216,7 +216,7 @@ static const command_line::arg_descriptor<uint64_t> arg_store_quorum_history = {
         "store "
         "the entire history.  Requires considerably more memory and block chain storage.",
         0};
-static const command_line::arg_descriptor<uint64_t> arg_disable_ip_check = {
+static const command_line::arg_flag arg_disable_ip_check = {
         "disable-ip-check", "Disable the periodic Service Node IP check"};
 
 // Loads stubs that fail if invoked.  The stubs are replaced in the
