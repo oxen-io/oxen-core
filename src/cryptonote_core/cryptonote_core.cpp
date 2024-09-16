@@ -1208,6 +1208,7 @@ void core::start_oxenmq() {
         m_omq->add_timer([this]() { this->check_service_node_ip_address(); }, 15min, false);
     }
     m_omq->start();
+    check_service_node_ip_address();
 }
 
 //-----------------------------------------------------------------------------------------------
@@ -1805,8 +1806,7 @@ bool core::check_tx_semantic(const transaction& tx, bool keeped_by_block) const 
 }
 //-----------------------------------------------------------------------------------------------
 void core::check_service_node_ip_address() {
-    if (m_has_ip_check_disabled) {
-        log::debug(logcat, "Skipping Service Node IP check");
+    if (m_has_ip_check_disabled || !m_service_node) {
         return;
     }
 
