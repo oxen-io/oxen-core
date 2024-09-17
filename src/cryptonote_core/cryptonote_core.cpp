@@ -1806,7 +1806,7 @@ bool core::check_tx_semantic(const transaction& tx, bool keeped_by_block) const 
 }
 //-----------------------------------------------------------------------------------------------
 void core::check_service_node_ip_address() {
-    if (m_has_ip_check_disabled || !m_service_node) {
+    if (!m_service_node || m_has_ip_check_disabled || service_node_list.debug_allow_local_ips) {
         return;
     }
 
