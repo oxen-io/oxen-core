@@ -47,7 +47,6 @@ int64_t PendingTransaction::get_fee() const {
 }
 int64_t PendingTransaction::get_fee(int64_t n_inputs) const {
     int64_t fixed_fee = burn_fixed;
-    // TODO sean add this
     int64_t burn_pct = 0;
     int64_t fee_percent = oxen::BLINK_BURN_TX_FEE_PERCENT_V18;  // 100%
     if (blink)

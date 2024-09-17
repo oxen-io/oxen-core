@@ -80,10 +80,14 @@ def load_test_wallet():
         click.echo("Wallet already loaded")
         return
 
-    spend_priv = "e6c9165356c619a64a0d26fafd99891acccccf8717a8067859d972ecd8bcfc0a"
-    spend_pub = "b76f2d7c8a036ff65c564dcb27081c04fe3f2157942e23b0496ca797ba728e4f"
-    view_priv = "961d67bb5b3ed1af8678bbfcf621f9c15c2b7bff080892890020bdfd47fe4f0a"
-    view_pub = "8a0ebacd613e0b03b8f27bc64bd961ea2ebf4c671c6e7f3268651acf0823fed5"
+    # spend_priv = "e6c9165356c619a64a0d26fafd99891acccccf8717a8067859d972ecd8bcfc0a"
+    # spend_pub = "b76f2d7c8a036ff65c564dcb27081c04fe3f2157942e23b0496ca797ba728e4f"
+    # view_priv = "961d67bb5b3ed1af8678bbfcf621f9c15c2b7bff080892890020bdfd47fe4f0a"
+    # view_pub = "8a0ebacd613e0b03b8f27bc64bd961ea2ebf4c671c6e7f3268651acf0823fed5"
+    view_pub = "ed26f4f9ed44baccb0aa32bfd91fd546115a60c77e6e8098cd4debf8f33cb9f9"
+    spend_pub = "9834c238ebecb78b1f30115c50b956e9e5e0d86072c61d57e65ee04f9c650b40"
+    view_priv = "5f51194e0f839ee32fdd85765be009b1fceb70e78204e4bfa3010e2ade61fc0d"
+    spend_priv = "0ac3dc5fff3a7a303b893a50119ff2da3125f6a51b980e409d6c8a3a3f7ec80b"
 
     keyring = pywallet3.Keyring(spend_priv, spend_pub, view_priv, view_pub, context.options["network"])
     click.echo("Wallet address " + click.style("{}", fg='cyan', bold=True).format(keyring.get_main_address()) + " loaded")
@@ -195,12 +199,70 @@ def transfer():
     if address == "" or amount == 0.0:
         click.prompt("Invalid address/amount entered")
         return
-    amount_in_atomic_units = round(amount * OXEN_ATOMIC_UNITS, 0);
+    amount_in_atomic_units = round(amount * OXEN_ATOMIC_UNITS);
     destination = {"address": address, "amount": amount_in_atomic_units}
     transfer_params = {"destinations": [destination]}
     transfer_future = context.rpc_future("restricted.transfer", args=transfer_params);
     transfer_response = transfer_future.get();
     click.echo("Transfer Response: {}".format(transfer_response))
+
+@walletcli.command(name='register_service_node')
+@click.argument('fee', nargs=1, type=click.INT)
+@click.argument('address_amount', nargs=-1)
+@click.argument('hardfork', nargs=1, type=click.INT)
+@click.argument('service_node_pubkey', nargs=1)
+@click.argument('signature', nargs=1)
+def register_service_node(fee, address_amount, hardfork, service_node_pubkey, signature):
+
+    addresses = address_amount[::2]
+    amounts   = [int(x) for x in address_amount[1::2]]
+    print(fee)
+
+    register_params= {
+        "fee": fee,
+        "addresses": addresses,
+        "amounts": amounts,
+        "hardfork": hardfork,
+        "service_node_key": service_node_pubkey,
+        "signature": signature
+    }
+    register_future = context.rpc_future("restricted.register_service_node", args=register_params);
+    register_response = register_future.get();
+    click.echo("Register Service Node Response: {}".format(register_response))
+
+@walletcli.command()
+def stake():
+    service_node_key = click.prompt("Enter the public key of the service node you wish to stake to: ", default="").strip()
+    amount = click.prompt("Enter the amount in oxen to be contributed to (Optional: 0 will automatically contribute the minimum){}".format(service_node_key), default=0.0)
+    if service_node_key == "":
+        click.prompt("Invalid public key entered")
+        return
+    amount_in_atomic_units = round(amount * OXEN_ATOMIC_UNITS);
+
+    get_address_future = context.rpc_future("rpc.get_address");
+    get_address_response = get_address_future.get();
+
+    stake_params = {
+            "destination": get_address_response['address'],
+            "service_node_key": service_node_key,
+            "amount": amount_in_atomic_units
+            }
+    stake_future = context.rpc_future("restricted.stake", args=stake_params);
+    stake_response = stake_future.get();
+    click.echo("Stake Response: {}".format(stake_response))
+
+@walletcli.command()
+def unstake():
+    service_node_key = click.prompt("Enter the public key of the service node you wish to unstake from: ", default="").strip()
+    if service_node_key == "":
+        click.prompt("Invalid public key entered")
+        return
+    unstake_params = {
+            "service_node_key": service_node_key,
+            }
+    stake_future = context.rpc_future("restricted.request_stake_unlock", args=unstake_params);
+    stake_response = stake_future.get();
+    click.echo("Unstake Response: {}".format(stake_response))
 
 lokinet_years_dict = {"1": "lokinet", "2": "lokinet_2years", "5": "lokinet_5years", "10": "lokinet_10years"}
 
@@ -241,13 +303,13 @@ def ons_update_mapping():
            }
     ons_value = click.prompt("Optional: Please enter a value to modify the ons mapping", default="").strip()
     if len(ons_value) > 0:
-        ons_buy_params["value"] = ons_value
+        ons_update_params["value"] = ons_value
     ons_owner = click.prompt("Optional: Please enter an address to modify the owner", default="").strip()
     if len(ons_owner) > 0:
-        ons_buy_params["owner"] = ons_owner
+        ons_update_params["owner"] = ons_owner
     ons_backup_owner = click.prompt("Optional: Please enter an address to modify the backup owner", default="").strip()
     if len(ons_backup_owner) > 0:
-        ons_buy_params["backup_owner"] = ons_backup_owner
+        ons_update_params["backup_owner"] = ons_backup_owner
 
     transfer_future = context.rpc_future("restricted.ons_update_mapping", args=ons_update_params);
     transfer_response = transfer_future.get();

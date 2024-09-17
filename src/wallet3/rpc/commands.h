@@ -2182,58 +2182,63 @@ struct GET_VERSION : RPC_COMMAND {
 struct STAKE : RESTRICTED {
     static constexpr auto names() { return NAMES("stake"); }
 
-    struct REQUEST {
-        std::string destination;             // Primary Public address that the rewards will go to.
-        uint64_t amount;                     // Amount of Loki to stake in atomic units.
-        std::set<uint32_t> subaddr_indices;  // (Optional) Transfer from this set of subaddresses.
-                                             // (Defaults to 0)
-        std::string service_node_key;        // Service Node Public Address.
-        uint32_t priority;  // Set a priority for the transaction. Accepted values are: or 0-4 for:
-                            // default, unimportant, normal, elevated, priority.
-        bool get_tx_key;    // (Optional) Return the transaction key after sending.
-        bool do_not_relay;  // (Optional) If true, the newly created transaction will not be relayed
-                            // to the oxen network. (Defaults to false)
-        bool get_tx_hex;  // Return the transaction as hex string after sending (Defaults to false)
-        bool get_tx_metadata;  // Return the metadata needed to relay the transaction. (Defaults to
-                               // false)
+    struct REQUEST
+    {
+      std::string           destination;      // Primary Public address that the rewards will go to.
+      uint64_t              amount;           // Amount of Loki to stake in atomic units.
+      std::vector<uint32_t> subaddr_indices;  // (Optional) Transfer from this set of subaddresses. (Defaults to 0)
+      std::string           service_node_key; // Service Node Public Address.
+      uint32_t              priority;         // Set a priority for the transaction. Accepted values are: or 0-4 for: default, unimportant, normal, elevated, priority.
+      bool                  get_tx_key;       // (Optional) Return the transaction key after sending.
+      bool                  do_not_relay;     // (Optional) If true, the newly created transaction will not be relayed to the oxen network. (Defaults to false)
+      bool                  get_tx_hex;       // Return the transaction as hex string after sending (Defaults to false)
+      bool                  get_tx_metadata;  // Return the metadata needed to relay the transaction. (Defaults to false)
     } request;
 };
 
-/// Register Service Node.
-///
-/// Inputs:
-///
-/// - \p register_service_node_str -- String supplied by the prepare_registration command.
-/// - \p get_tx_key -- (Optional) Return the transaction key after sending.
-/// - \p do_not_relay -- (Optional) If true, the newly created transaction will not be relayed to
-/// the oxen network. (Defaults to false)
-/// - \p get_tx_hex -- Return the transaction as hex string after sending (Defaults to false)
-/// - \p get_tx_metadata -- Return the metadata needed to relay the transaction. (Defaults to false)
-///
-/// Outputs:
-///
-/// - \p tx_hash -- Publicly searchable transaction hash.
-/// - \p tx_key -- Transaction key if get_tx_key is true, otherwise, blank string.
-/// - \p amount -- Amount transferred for the transaction in atomic units.
-/// - \p fee -- Value in atomic units of the fee charged for the tx.
-/// - \p tx_blob -- Raw transaction represented as hex string, if get_tx_hex is true.
-/// - \p tx_metadata -- Set of transaction metadata needed to relay this transfer later, if
-/// `get_tx_metadata` is `true`.
-/// - \p multisig_txset -- Set of multisig transactions in the process of being signed (empty for
-/// non-multisig).
-/// - \p unsigned_txset -- Set of unsigned tx for cold-signing purposes.
-struct REGISTER_SERVICE_NODE : RESTRICTED {
+  OXEN_RPC_DOC_INTROSPECT
+  /// Register Service Node.
+  ///
+  /// Inputs:
+  ///
+  /// - \p fee_basis_points -- 
+  /// - \p addresses -- 
+  /// - \p amounts -- 
+  /// - \p fee -- 
+  /// - \p timestamp -- 
+  /// - \p service_node_key -- 
+  /// - \p signature -- 
+  /// - \p get_tx_key -- (Optional) Return the transaction key after sending.
+  /// - \p do_not_relay -- (Optional) If true, the newly created transaction will not be relayed to the oxen network. (Defaults to false)
+  /// - \p get_tx_hex -- Return the transaction as hex string after sending (Defaults to false)
+  /// - \p get_tx_metadata -- Return the metadata needed to relay the transaction. (Defaults to false)
+  ///
+  /// Outputs:
+  ///
+  /// - \p tx_hash -- Publicly searchable transaction hash.
+  /// - \p tx_key -- Transaction key if get_tx_key is true, otherwise, blank string.
+  /// - \p amount -- Amount transferred for the transaction in atomic units.
+  /// - \p fee -- Value in atomic units of the fee charged for the tx.
+  /// - \p tx_blob -- Raw transaction represented as hex string, if get_tx_hex is true.
+  /// - \p tx_metadata -- Set of transaction metadata needed to relay this transfer later, if `get_tx_metadata` is `true`.
+  /// - \p multisig_txset -- Set of multisig transactions in the process of being signed (empty for non-multisig).
+  /// - \p unsigned_txset -- Set of unsigned tx for cold-signing purposes.
+  struct REGISTER_SERVICE_NODE : RESTRICTED
+  {
     static constexpr auto names() { return NAMES("register_service_node"); }
 
-    struct REQUEST {
-        std::string
-                register_service_node_str;  // String supplied by the prepare_registration command.
-        bool get_tx_key;                    // (Optional) Return the transaction key after sending.
-        bool do_not_relay;  // (Optional) If true, the newly created transaction will not be relayed
-                            // to the oxen network. (Defaults to false)
-        bool get_tx_hex;  // Return the transaction as hex string after sending (Defaults to false)
-        bool get_tx_metadata;  // Return the metadata needed to relay the transaction. (Defaults to
-                               // false)
+    struct REQUEST
+    {
+      uint64_t fee;
+      std::vector<std::string> addresses;
+      std::vector<uint64_t> amounts;
+      uint64_t hardfork;
+      std::string service_node_key;
+      std::string signature;
+      bool        get_tx_key;                // (Optional) Return the transaction key after sending.
+      bool        do_not_relay;              // (Optional) If true, the newly created transaction will not be relayed to the oxen network. (Defaults to false)
+      bool        get_tx_hex;                // Return the transaction as hex string after sending (Defaults to false)
+      bool        get_tx_metadata;           // Return the metadata needed to relay the transaction. (Defaults to false)
     } request;
 };
 
@@ -2252,7 +2257,7 @@ struct REQUEST_STAKE_UNLOCK : RESTRICTED {
 
     struct REQUEST {
         std::string service_node_key;  // Service Node Public Key.
-    };
+    } request;
 };
 
 /// Check if Service Node can unlock its stake.

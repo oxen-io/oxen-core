@@ -93,6 +93,10 @@ class WalletDB : public db::Database {
     // TODO: subaddress specification
     std::vector<Output> available_outputs(std::optional<int64_t> min_amount);
 
+    // Finds a single output from our available spends with the provided key image
+    // used when unstaking a service node
+    Output get_output_from_key_image(const std::string& key_image);
+
     // Gets the total number of outputs on the chain.  Since all Oxen outputs are RingCT
     // and thus mixable, this can be used for decoy selection.
     int64_t chain_output_count();

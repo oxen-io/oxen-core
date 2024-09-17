@@ -478,8 +478,42 @@ std::future<std::pair<std::string, crypto::hash>> DefaultDaemonComms::ons_names_
     return fut;
 }
 
-void DefaultDaemonComms::register_wallet(
-        wallet::Wallet& wallet, int64_t height, bool check_sync_height, bool new_wallet) {
+  std::future<oxenc::bt_list_consumer>
+  DefaultDaemonComms::get_service_nodes(const std::vector<std::string>& service_node_keys)
+  {
+    auto p = std::make_shared<std::promise<oxenc::bt_list_consumer>>();
+    auto fut = p->get_future();
+    auto req_cb = [p=std::move(p)](bool ok, std::vector<std::string> response)
+    {
+      try 
+      {
+        oxenc::bt_dict_consumer dc{response[1]};
+
+        if (not dc.skip_until("service_node_states"))
+          throw std::runtime_error{"Invalid response from daemon"};
+
+        auto result_list = dc.consume_list_consumer();
+        p->set_value(result_list);
+      } catch (...) {
+        p->set_exception(std::current_exception());
+      }
+    };
+
+
+    oxenc::bt_list key_list_bt;
+    std::copy( service_node_keys.begin(), service_node_keys.end(), std::back_inserter( key_list_bt) );
+    oxenc::bt_dict req_params_dict{
+      {"service_node_pubkeys", key_list_bt}
+    };
+
+    omq->request(conn, "rpc.get_service_nodes", req_cb, oxenc::bt_serialize(req_params_dict));
+
+    return fut;
+  }
+
+  void
+  DefaultDaemonComms::register_wallet(wallet::Wallet& wallet, int64_t height, bool check_sync_height, bool new_wallet)
+  {
     oxen::log::trace(logcat, "Daemon Comms register_wallet called");
     omq->job(
             [this, w = wallet.shared_from_this(), height, check_sync_height, new_wallet]() {

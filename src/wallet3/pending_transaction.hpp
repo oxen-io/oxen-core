@@ -37,6 +37,8 @@ struct PendingTransaction {
 
     uint64_t burn_fixed = 0;
 
+    std::optional<crypto::secret_key> tx_secret_key = std::nullopt;
+
     std::vector<uint8_t> extra = {};
     size_t extra_size() const { return extra.size(); };
 

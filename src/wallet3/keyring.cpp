@@ -102,6 +102,22 @@ crypto::key_image Keyring::key_image(
     return ret;
 }
 
+crypto::key_image Keyring::generate_key_image(const crypto::secret_key& output_private_key) {
+    crypto::key_image ret;
+    crypto::public_key output_pubkey_computed;
+    key_device.secret_key_to_public_key(output_private_key, output_pubkey_computed);
+    key_device.generate_key_image(output_pubkey_computed, output_private_key, ret);
+    return ret;
+}
+
+crypto::signature Keyring::generate_key_image_signature(const crypto::secret_key& output_private_key, const crypto::key_image& key_image) {
+    crypto::signature ret;
+    crypto::public_key output_pubkey_computed;
+    key_device.secret_key_to_public_key(output_private_key, output_pubkey_computed);
+    key_device.generate_key_image_signature(key_image, output_pubkey_computed, output_private_key, ret);
+    return ret;
+}
+
 // TODO: replace later when removing wallet2½ layer
 std::pair<uint64_t, rct::key> Keyring::output_amount_and_mask(
         const rct::rctSig& rv, const crypto::key_derivation& derivation, unsigned int i) {
@@ -214,7 +230,7 @@ crypto::hash Keyring::get_transaction_prefix_hash(const cryptonote::transaction_
 
 void Keyring::sign_transaction(PendingTransaction& ptx) {
     auto hf_version = cryptonote::hf::hf19_reward_batching;
-    auto tx_key = generate_tx_key(hf_version);
+    auto tx_key = ptx.tx_secret_key.value_or(generate_tx_key(hf_version));
 
     rct::ctkeyV inSk;
     rct::keyV dest_keys;
@@ -494,6 +510,22 @@ ons::generic_signature Keyring::generate_ons_signature(
     result.type = ons::generic_owner_sig_type::monero;
 
     return result;
+}
+
+crypto::signature Keyring::generate_stake_unlock_signature(const Output& locked_stake_output) {
+    crypto::signature signature;
+
+    // Calculate the outputs spending keypair
+    auto output_private_key = derive_output_secret_key(locked_stake_output.derivation, locked_stake_output.output_index, locked_stake_output.subaddress_index);
+
+    crypto::public_key output_pubkey_computed;
+    key_device.secret_key_to_public_key(output_private_key, output_pubkey_computed);
+
+    // Use the keypair for our signature to go into the txextra for stake unlock
+    if (!key_device.generate_unlock_signature(output_pubkey_computed, output_private_key, signature))
+        throw std::runtime_error("Hardware device failed to sign the unlock request");
+
+    return signature;
 }
 
 }  // namespace wallet
