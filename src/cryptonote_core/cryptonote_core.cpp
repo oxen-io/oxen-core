@@ -1810,11 +1810,12 @@ void core::check_service_node_ip_address() {
         return;
     }
 
+    auto service_node_ip = epee::string_tools::get_ip_string_from_int32(m_sn_public_ip);
     // NOTE - this connection won't work as intended if oxenmq's incomplete `SN_ADDR_SELF`
     // gets implemented.
     m_omq->connect_remote(
             oxenmq::address{
-                    "tcp://{}:{}"_format(m_sn_public_ip, m_quorumnet_port),
+                    "tcp://{}:{}"_format(service_node_ip, m_quorumnet_port),
                     tools::view_guts(m_service_keys.pub_x25519)},
             [&](auto conn) {
                 m_omq->request(
