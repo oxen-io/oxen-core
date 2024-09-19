@@ -1204,10 +1204,12 @@ void core::start_oxenmq() {
                 std::chrono::milliseconds(500),
                 false,
                 m_pulse_thread_id);
-        m_omq->add_timer([this]() { this->check_service_node_time(); }, 5s, false);
-        m_omq->add_timer([this]() { this->check_service_node_ip_address(); }, 15min, false);
+        m_omq->add_timer([this]() { check_service_node_time(); }, 5s, false);
+        m_omq->add_timer([this]() { check_service_node_ip_address(); }, 15min, false);
     }
     m_omq->start();
+
+    // This forces an IP check after initialization instead of deferring it 15 minutes.
     check_service_node_ip_address();
 }
 
@@ -1811,8 +1813,7 @@ void core::check_service_node_ip_address() {
     }
 
     auto service_node_ip = epee::string_tools::get_ip_string_from_int32(m_sn_public_ip);
-    // NOTE - this connection won't work as intended if oxenmq's incomplete `SN_ADDR_SELF`
-    // gets implemented.
+
     m_omq->connect_remote(
             oxenmq::address{
                     "tcp://{}:{}"_format(service_node_ip, m_quorumnet_port),
