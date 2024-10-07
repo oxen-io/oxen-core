@@ -1813,17 +1813,17 @@ void core::check_service_node_ip_address() {
     }
 
     auto service_node_ip = epee::string_tools::get_ip_string_from_int32(m_sn_public_ip);
+    auto service_node_address = "tcp://{}:{}"_format(service_node_ip, m_quorumnet_port);
     auto connection_error_callback = [this, service_node_ip]() {
         log::warning(
                 globallogcat,
-                "Unable to ping configured service node address ({}:{})!",
-                service_node_ip,
-                m_quorumnet_port);
+                "Unable to ping configured service node address ({})!",
+                service_node_address);
     };
 
     m_omq->connect_remote(
             oxenmq::address{
-                    "tcp://{}:{}"_format(service_node_ip, m_quorumnet_port),
+                    service_node_address,
                     tools::view_guts(m_service_keys.pub_x25519)},
             [&](auto conn) {
                 m_omq->request(
