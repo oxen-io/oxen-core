@@ -31,6 +31,23 @@ static constexpr std::string_view to_string(bls_exit_type type) {
     return "bls_exit_type_label_ERROR";
 }
 
+std::string bytes_to_hex_dot_truncate_middle(std::span<const unsigned char> bytes) {
+    size_t dot_size = 3;  // How many dots to show in the middle
+    size_t head_hex = 6;  // How many hex characters to preserve from head of string
+    size_t tail_hex = 6;  // How many hex characters to preserve from tail of string
+
+    std::string hex = oxenc::to_hex(bytes.begin(), bytes.end());
+
+    head_hex = std::min(head_hex, hex.size());
+    std::string_view head = tools::string_safe_substr(hex, 0, head_hex);
+
+    tail_hex = std::min(tail_hex, head.size());
+    std::string_view tail = tools::string_safe_substr(head, head.size() - tail_hex, tail_hex);
+
+    std::string result = fmt::format("{}{:.>{}}{}", head, "", dot_size, tail);
+    return result;
+}
+
 namespace {
     auto logcat = oxen::log::Cat("bls_aggregator");
     constexpr std::string_view OMQ_BLS_CATEGORY = "bls";
@@ -240,14 +257,72 @@ namespace {
     }
 #endif
 
+    struct agg_log {
+        service_nodes::service_node_address addr;
+        std::string msg;
+    };
+
+    struct agg_log_list {
+        std::vector<agg_log> success;
+        std::vector<agg_log> error;
+    };
+
+    void dump_agg_log_list(const agg_log_list& lister) {
+        size_t total_aggs = lister.error.size() + lister.success.size();
+        size_t success_pct = lister.success.size() / static_cast<float>(total_aggs) * 100.f;
+        fmt::memory_buffer buffer;
+        fmt::format_to(
+                std::back_inserter(buffer),
+                "{} results {}/{} sigs ({}% success, {} failures):\n",
+                OMQ_BLS_REWARDS_ENDPOINT,
+                lister.success.size(),
+                total_aggs,
+                success_pct,
+                lister.error.size());
+
+        struct agg_log_entry {
+            std::span<const agg_log> list;
+            bool success;
+        } array[] = {
+                {lister.success, true},
+                {lister.error, false},
+        };
+
+        for (auto it : array) {
+            if (it.list.empty())
+                continue;
+
+            fmt::format_to(
+                    std::back_inserter(buffer), "{} runs:\n", it.success ? "Successful" : "Failed");
+            for (const auto& item : it.list) {
+                fmt::format_to(
+                        std::back_inserter(buffer),
+                        "  - SN {} BLS {} XKEY {} @ {:<21} => {}\n",
+                        bytes_to_hex_dot_truncate_middle(item.addr.sn_pubkey),
+                        bytes_to_hex_dot_truncate_middle(item.addr.bls_pubkey),
+                        bytes_to_hex_dot_truncate_middle(item.addr.x_pubkey),
+                        "{}:{}"_format(
+                                epee::string_tools::get_ip_string_from_int32(item.addr.ip),
+                                item.addr.port),
+                        item.msg);
+            }
+        }
+        oxen::log::debug(logcat, "{}", fmt::to_string(buffer));
+    }
+
     void log_aggregation_result(
             std::string_view agg_type,
             std::span<const bls_public_key> signers,
             std::chrono::high_resolution_clock::time_point started,
             const bls_signature& sig,
+            const agg_log_list& agg_log_lister,
             // Used only in a debug build:
             [[maybe_unused]] cryptonote::core& core,
             [[maybe_unused]] std::span<const uint8_t> msg) {
+
+        if (oxen::log::get_level(logcat) <= oxen::log::Level::debug)
+            dump_agg_log_list(agg_log_lister);
+
 #ifndef NDEBUG
         eth::bls_public_key agg_pub;
         {
@@ -601,89 +676,107 @@ bls_rewards_response bls_aggregator::rewards_request(const address& addr, uint64
 
     // NOTE: Send aggregate rewards request to the remainder of the network. This is a blocking
     // call (FIXME -- it should not be!)
+    agg_log_list agg_log_lister = {};
     uint64_t total_requests = nodes_request(
             OMQ_BLS_REWARDS_ENDPOINT,
             std::move(d).str(),
-            [&agg_sig, &result, &sig_mutex, nettype = core.get_nettype()](
+            [&agg_log_lister, &agg_sig, &result, &sig_mutex, nettype = core.get_nettype()](
                     const bls_response& response, const std::vector<std::string>& data) {
                 bls_rewards_response rewards_response = {};
-                bool partially_parsed = true;
-                try {
-                    if (!response.success || data.size() != 2 || data[0] != "200")
-                        throw oxen::traced<std::runtime_error>{
-                                "Error retrieving reward balance: {}"_format(fmt::join(data, " "))};
+                if (!response.success || data.size() != 2 || data[0] != "200") {
+                    agg_log_lister.error.emplace_back(
+                            response.sn,
+                            "Data payload was not valid, {}"_format(fmt::join(data, " ")));
+                    return;
+                }
 
-                    // NOTE: Extract parameters
-                    oxenc::bt_dict_consumer d{data[1]};
+                // NOTE: Extract parameters
+                oxenc::bt_dict_consumer d{data[1]};
+                try {
                     rewards_response.addr =
                             tools::make_from_guts<address>(d.require<std::string_view>("address"));
+                } catch (const std::exception& e) {
+                    agg_log_lister.error.emplace_back(
+                            response.sn,
+                            "Address was not {} bytes, {}"_format(
+                                    sizeof(address), fmt::join(data, " ")));
+                    return;
+                }
+
+                try {
                     rewards_response.amount = d.require<uint64_t>("amount");
+                } catch (const std::exception& e) {
+                    agg_log_lister.error.emplace_back(
+                            response.sn,
+                            "Amount was not a valid U64, {}"_format(fmt::join(data, " ")));
+                    return;
+                }
+
+                try {
                     rewards_response.height = d.require<uint64_t>("height");
+                } catch (const std::exception& e) {
+                    agg_log_lister.error.emplace_back(
+                            response.sn,
+                            "Height was not a valid U64, {}"_format(fmt::join(data, " ")));
+                    return;
+                }
+
+                try {
                     rewards_response.signature =
                             tools::make_from_guts<bls_signature>(d.require<std::string_view>("signa"
                                                                                              "tur"
                                                                                              "e"));
-                    rewards_response.msg_to_sign = get_reward_balance_msg_to_sign(
-                            nettype,
-                            rewards_response.addr,
-                            tools::encode_integer_be<32>(rewards_response.amount));
-
-                    // NOTE: Verify parameters
-                    if (rewards_response.addr != result.addr)
-                        throw oxen::traced<std::runtime_error>{
-                                "Response ETH address {} does not match the request address {}"_format(
-                                        rewards_response.addr, result.addr)};
-                    if (rewards_response.amount != result.amount ||
-                        rewards_response.height != result.height)
-                        throw oxen::traced<std::runtime_error>{
-                                "Balance/height mismatch: expected {}/{}, got {}/{}"_format(
-                                        result.amount,
-                                        result.height,
-                                        rewards_response.amount,
-                                        rewards_response.height)};
-
-                    if (!eth::verify(
-                                nettype,
-                                rewards_response.signature,
-                                response.sn.bls_pubkey,
-                                result.msg_to_sign)) {
-                        throw oxen::traced<std::runtime_error>{
-                                "Invalid BLS signature for BLS pubkey {}."_format(
-                                        response.sn.bls_pubkey)};
-                    }
-
-                    // NOTE: Aggregate parameters
-                    {
-                        std::lock_guard lock{sig_mutex};
-                        agg_sig.add(rewards_response.signature);
-                        result.signers_bls_pubkeys.push_back(response.sn.bls_pubkey);
-                    }
-
-                    partially_parsed = false;
-
-                    oxen::log::trace(
-                            logcat,
-                            "Reward balance response accepted from {} (BLS {} XKEY {} {}:{})\nWe "
-                            "requested: {}\nThe response had: {}",
-                            response.sn.sn_pubkey,
-                            response.sn.bls_pubkey,
-                            response.sn.x_pubkey,
-                            epee::string_tools::get_ip_string_from_int32(response.sn.ip),
-                            response.sn.port,
-                            result,
-                            rewards_response);
-
                 } catch (const std::exception& e) {
-                    oxen::log::debug(
-                            logcat,
-                            "Reward balance response rejected from {}: {}\nWe requested: {}\nThe "
-                            "response had{}: {}",
-                            response.sn.sn_pubkey,
-                            e.what(),
-                            result,
-                            partially_parsed ? " (partially parsed)" : "",
-                            rewards_response);
+                    agg_log_lister.error.emplace_back(
+                            response.sn,
+                            "Signature was not a valid U64, {}"_format(fmt::join(data, " ")));
+                    return;
                 }
+
+                rewards_response.msg_to_sign = get_reward_balance_msg_to_sign(
+                        nettype,
+                        rewards_response.addr,
+                        tools::encode_integer_be<32>(rewards_response.amount));
+
+                // NOTE: Verify parameters
+                if (rewards_response.addr != result.addr) {
+                    agg_log_lister.error.emplace_back(
+                            response.sn,
+                            "Response ETH address {} does not match the request address {}"_format(
+                                    rewards_response.addr, result.addr));
+                    return;
+                }
+
+                if (rewards_response.amount != result.amount ||
+                    rewards_response.height != result.height) {
+                    agg_log_lister.error.emplace_back(
+                            response.sn,
+                            "Balance/height mismatch: expected {:L}/{:L}, got {:L}/{:L}"_format(
+                                    result.amount,
+                                    result.height,
+                                    rewards_response.amount,
+                                    rewards_response.height));
+                    return;
+                }
+
+                if (!eth::verify(
+                            nettype,
+                            rewards_response.signature,
+                            response.sn.bls_pubkey,
+                            result.msg_to_sign)) {
+                    agg_log_lister.error.emplace_back(response.sn, "Invalid BLS signature");
+                    return;
+                }
+
+                // NOTE: Aggregate parameters
+                {
+                    std::lock_guard lock{sig_mutex};
+                    agg_sig.add(rewards_response.signature);
+                    result.signers_bls_pubkeys.push_back(response.sn.bls_pubkey);
+                }
+
+                agg_log_lister.success.emplace_back(
+                        response.sn, "Success, sig: {}"_format(rewards_response.signature));
             });
 
     result.signature = agg_sig.get();
@@ -694,6 +787,7 @@ bls_rewards_response bls_aggregator::rewards_request(const address& addr, uint64
             result.signers_bls_pubkeys,
             begin_ts,
             result.signature,
+            agg_log_lister,
             core,
             result.msg_to_sign);
 
@@ -842,79 +936,73 @@ bls_exit_liquidation_response bls_aggregator::exit_liquidation_request(
     message_dict.append("timestamp", result.timestamp);
 
     // FIXME: make this async
+    agg_log_list agg_log_lister = {};
     uint64_t total_requests = nodes_request(
             endpoint,
             std::move(message_dict).str(),
-            [endpoint, &agg_sig, &result, &signers_mutex, nettype = core.get_nettype()](
+            [&agg_log_lister, &agg_sig, &result, &signers_mutex, nettype = core.get_nettype()](
                     const bls_response& response, const std::vector<std::string>& data) {
                 bls_exit_liquidation_response exit_response = {};
-                bool partially_parsed = true;
+                if (!response.success || data.size() != 2 || data[0] != "200")
+                    throw oxen::traced<std::runtime_error>{
+                            "Request returned an error: {}"_format(fmt::join(data, " "))};
+
+                oxenc::bt_dict_consumer d{data[1]};
+
+                // NOTE: Extract parameters
                 try {
-                    if (!response.success || data.size() != 2 || data[0] != "200")
-                        throw oxen::traced<std::runtime_error>{
-                                "Request returned an error: {}"_format(fmt::join(data, " "))};
-
-                    oxenc::bt_dict_consumer d{data[1]};
-
-                    // NOTE: Extract parameters
                     exit_response.remove_pubkey =
                             tools::make_from_guts<bls_public_key>(d.require<std::string_view>("remo"
                                                                                               "v"
                                                                                               "e"));
+                } catch (const std::exception& e) {
+                    agg_log_lister.error.emplace_back(
+                            response.sn,
+                            "Remove (pubkey) was not {} bytes, {}"_format(
+                                    sizeof(bls_public_key), fmt::join(data, " ")));
+                    return;
+                }
+
+                try {
                     exit_response.signature =
                             tools::make_from_guts<bls_signature>(d.require<std::string_view>("signa"
                                                                                              "tur"
                                                                                              "e"));
-
-                    // NOTE: Verify parameters
-                    if (exit_response.remove_pubkey != result.remove_pubkey)
-                        throw oxen::traced<std::runtime_error>{
-                                "BLS response pubkey {} does not match the request pubkey {}"_format(
-                                        exit_response.remove_pubkey, result.remove_pubkey)};
-
-                    if (!eth::verify(
-                                nettype,
-                                exit_response.signature,
-                                response.sn.bls_pubkey,
-                                result.msg_to_sign)) {
-                        throw oxen::traced<std::runtime_error>{
-                                "Invalid BLS signature for BLS pubkey {}"_format(
-                                        response.sn.bls_pubkey)};
-                    }
-
-                    // NOTE: Aggregate parameters
-                    {
-                        std::lock_guard<std::mutex> lock(signers_mutex);
-                        agg_sig.add(exit_response.signature);
-                        result.signers_bls_pubkeys.push_back(response.sn.bls_pubkey);
-                    }
-
-                    partially_parsed = false;
-
-                    oxen::log::debug(
-                            logcat,
-                            "{} response accepted from {} (BLS {} XKEY {} {}:{})\nWe "
-                            "requested: {}\nThe response had: {}",
-                            endpoint,
-                            response.sn.sn_pubkey,
-                            response.sn.bls_pubkey,
-                            response.sn.x_pubkey,
-                            epee::string_tools::get_ip_string_from_int32(response.sn.ip),
-                            response.sn.port,
-                            result,
-                            exit_response);
                 } catch (const std::exception& e) {
-                    oxen::log::debug(
-                            logcat,
-                            "{} response rejected from {}: {}\nWe requested: {}\nThe "
-                            "response had{}: {}",
-                            endpoint,
-                            response.sn.sn_pubkey,
-                            e.what(),
-                            result,
-                            partially_parsed ? " (partially parsed)" : "",
-                            exit_response);
+                    agg_log_lister.error.emplace_back(
+                            response.sn,
+                            "Signature was not {} bytes, {}"_format(
+                                    sizeof(bls_signature), fmt::join(data, " ")));
+                    return;
                 }
+
+                // NOTE: Verify parameters
+                if (exit_response.remove_pubkey != result.remove_pubkey) {
+                    agg_log_lister.error.emplace_back(
+                            response.sn,
+                            "BLS response pubkey {} does not match the request pubkey {}"_format(
+                                    exit_response.remove_pubkey, result.remove_pubkey));
+                    return;
+                }
+
+                if (!eth::verify(
+                            nettype,
+                            exit_response.signature,
+                            response.sn.bls_pubkey,
+                            result.msg_to_sign)) {
+                    agg_log_lister.error.emplace_back(response.sn, "Invalid BLS signature");
+                    return;
+                }
+
+                // NOTE: Aggregate parameters
+                {
+                    std::lock_guard<std::mutex> lock(signers_mutex);
+                    agg_sig.add(exit_response.signature);
+                    result.signers_bls_pubkeys.push_back(response.sn.bls_pubkey);
+                }
+
+                agg_log_lister.success.emplace_back(
+                        response.sn, "Success, sig: {}"_format(exit_response.signature));
             });
 
     result.signature = agg_sig.get();
@@ -925,6 +1013,7 @@ bls_exit_liquidation_response bls_aggregator::exit_liquidation_request(
             result.signers_bls_pubkeys,
             begin_ts,
             result.signature,
+            agg_log_lister,
             core,
             result.msg_to_sign);
 
