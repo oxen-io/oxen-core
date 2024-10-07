@@ -1813,7 +1813,7 @@ void core::check_service_node_ip_address() {
     }
 
     auto service_node_ip = epee::string_tools::get_ip_string_from_int32(m_sn_public_ip);
-    auto log_warning_callback = [this, service_node_ip]() {
+    auto connection_error_callback = [this, service_node_ip]() {
         log::warning(
                 globallogcat,
                 "Unable to ping configured service node address ({}:{})!",
@@ -1829,11 +1829,11 @@ void core::check_service_node_ip_address() {
                 m_omq->request(
                         conn,
                         "ping.ping",
-                        [this, conn, log_warning_callback](
+                        [this, conn, connection_error_callback](
                                 bool success, const std::vector<std::string>& data) {
                             m_omq->disconnect(conn, 0s);
                             if (!success || data.empty()) {
-                                log_warning_callback();
+                                connection_error_callback();
                             } else {
                                 log::debug(
                                         logcat,
@@ -1844,7 +1844,7 @@ void core::check_service_node_ip_address() {
                             }
                         });
             },
-            [&](auto conn, std::string_view) { log_warning_callback(); });
+            [&](auto conn, std::string_view) { connection_error_callback(); });
 }
 //-----------------------------------------------------------------------------------------------
 bool core::check_service_node_time() {
