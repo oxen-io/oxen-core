@@ -1813,6 +1813,13 @@ void core::check_service_node_ip_address() {
     }
 
     auto service_node_ip = epee::string_tools::get_ip_string_from_int32(m_sn_public_ip);
+    auto log_warning_callback = [this, service_node_ip]() {
+        log::warning(
+                globallogcat,
+                "Unable to ping configured service node address ({}:{})!",
+                service_node_ip,
+                m_quorumnet_port);
+    };
 
     m_omq->connect_remote(
             oxenmq::address{
@@ -1822,16 +1829,22 @@ void core::check_service_node_ip_address() {
                 m_omq->request(
                         conn,
                         "ping.ping",
-                        [this, conn](bool success, const std::vector<std::string>& data) {
+                        [this, conn, log_warning_callback](
+                                bool success, const std::vector<std::string>& data) {
                             m_omq->disconnect(conn, 0s);
-                            if (!success || data.empty())
-                                log::warning(
-                                        globallogcat, "Unable to ping configured service node IP!");
+                            if (!success || data.empty()) {
+                                log_warning_callback();
+                            } else {
+                                log::debug(
+                                        logcat,
+                                        "Successfully pinged our own service node IP "
+                                        "(received: "
+                                        "{})",
+                                        data.front());
+                            }
                         });
             },
-            [&](auto conn, std::string_view) {
-                log::warning(globallogcat, "Unable to reach configured service node IP!");
-            });
+            [&](auto conn, std::string_view) { log_warning_callback(); });
 }
 //-----------------------------------------------------------------------------------------------
 bool core::check_service_node_time() {
