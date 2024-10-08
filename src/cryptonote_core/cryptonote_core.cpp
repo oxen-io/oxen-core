@@ -1823,11 +1823,11 @@ void core::check_service_node_ip_address() {
 
     m_omq->connect_remote(
             oxenmq::address{service_node_address, tools::view_guts(m_service_keys.pub_x25519)},
-            [&](auto conn) {
+            [this, connection_error_callback](auto conn) {
                 m_omq->request(
                         conn,
                         "ping.ping",
-                        [this, conn = conn, connection_error_callback = connection_error_callback](
+                        [this, conn, connection_error_callback](
                                 bool success, const std::vector<std::string>& data) {
                             m_omq->disconnect(conn, 0s);
                             if (!success || data.empty()) {
