@@ -11151,7 +11151,7 @@ void wallet2::transfer_selected_rct(
 
     // prepare inputs
     log::debug(logcat, "preparing outputs");
-    size_t i = 0, out_index = 0;
+    size_t out_index = 0;
     std::vector<cryptonote::tx_source_entry> sources;
     std::unordered_set<rct::key> used_L;
     for (size_t idx : selected_transfers) {
@@ -11179,7 +11179,6 @@ void wallet2::transfer_selected_rct(
             oe.second.mask = std::get<2>(outs[out_index][n]);
             src.outputs.push_back(oe);
         }
-        ++i;
 
         // paste real transaction to the random index
         auto it_to_replace =

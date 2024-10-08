@@ -32,6 +32,7 @@
 #include <memory>
 
 #include "epee/misc_log_ex.h"
+#include "epee/net/net_utils_base.h"
 #include "epee/storages/levin_abstract_invoke2.h"
 #include "common/util.h"
 #include "logging/oxen_logger.h"
@@ -49,7 +50,7 @@ namespace
   {
     srv_levin_commands_handler(test_tcp_server& tcp_server)
       : m_tcp_server(tcp_server)
-      , m_open_close_test_conn_id(boost::uuids::nil_uuid())
+      , m_open_close_test_conn_id{}
     {
     }
 
@@ -75,7 +76,7 @@ namespace
       if (context.m_connection_id == m_open_close_test_conn_id)
       {
         oxen::log::warning(globallogcat, "Stop open/close test");
-        m_open_close_test_conn_id = boost::uuids::nil_uuid();
+        m_open_close_test_conn_id = {};
         m_open_close_test_helper.reset(0);
       }
     }
@@ -141,7 +142,7 @@ namespace
 
     int handle_send_data_requests(int /*command*/, const CMD_SEND_DATA_REQUESTS::request& req, test_connection_context& context)
     {
-      boost::uuids::uuid cmd_conn_id = context.m_connection_id;
+      auto cmd_conn_id = context.m_connection_id;
       m_tcp_server.get_config_object().foreach_connection([&](test_connection_context& ctx) {
         if (ctx.m_connection_id != cmd_conn_id)
         {
@@ -165,7 +166,7 @@ namespace
     }
 
   private:
-    void close_connections(boost::uuids::uuid cmd_conn_id)
+    void close_connections(const epee::connection_id_t& cmd_conn_id)
     {
       oxen::log::warning(globallogcat, "Closing connections. Number of opened connections: {}", m_tcp_server.get_config_object().get_connections_count());
 
@@ -209,7 +210,7 @@ namespace
   private:
     test_tcp_server& m_tcp_server;
 
-    boost::uuids::uuid m_open_close_test_conn_id;
+    epee::connection_id_t m_open_close_test_conn_id;
     std::mutex m_open_close_test_mutex;
     std::unique_ptr<open_close_test_helper> m_open_close_test_helper;
   };

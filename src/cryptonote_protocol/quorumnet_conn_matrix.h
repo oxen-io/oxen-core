@@ -50,7 +50,8 @@ class quorum_conn_iterator {
     quorum_conn_iterator(const bool* flags_, int N_, bool outgoing_ = true) :
             flags{flags_}, i{0}, N{N_}, step{outgoing_ ? 1 : N} {
         if (flags == nullptr && N != 0)
-            throw oxen::traced<std::domain_error>("Invalid/unsupported quorum size (" + std::to_string(N) + ")");
+            throw oxen::traced<std::domain_error>(
+                    "Invalid/unsupported quorum size (" + std::to_string(N) + ")");
         if (!flags[0] && N > 0)
             ++*this;
     }
@@ -87,9 +88,7 @@ class quorum_conn_iterator {
 };
 
 template <int N>
-constexpr void requested_quorum_size_is_not_defined() {
-    static_assert(N != N, "Requested quorum size is not implemented");
-}
+constexpr void requested_quorum_size_is_not_defined() = delete;
 
 /// Base implementation for quorum matrices; instantiating this is an error; all supported sizes are
 /// defined below.
@@ -98,27 +97,27 @@ constexpr static std::array<bool, N* N> quorum_conn_matrix =
         requested_quorum_size_is_not_defined<N>();
 
 template <>
-constexpr std::array<bool, 7 * 7> quorum_conn_matrix<7>{{
+inline constexpr std::array<bool, 7 * 7> quorum_conn_matrix<7>{{
         0, 1, 0, 1, 0, 1, 0, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0,
         1, 1, 1, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0,
 }};
 
 template <>
-constexpr std::array<bool, 8 * 8> quorum_conn_matrix<8>{{
+inline constexpr std::array<bool, 8 * 8> quorum_conn_matrix<8>{{
         0, 1, 1, 1, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1,
         1, 0, 0, 0, 0, 0, 1, 0, 1, 1, 1, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0,
         0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 0, 0,
 }};
 
 template <>
-constexpr std::array<bool, 9 * 9> quorum_conn_matrix<9>{{
+inline constexpr std::array<bool, 9 * 9> quorum_conn_matrix<9>{{
         0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 1,
         0, 0, 0, 0, 1, 0, 1, 1, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0,
         1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 0,
 }};
 
 template <>
-constexpr std::array<bool, 10 * 10> quorum_conn_matrix<10>{{
+inline constexpr std::array<bool, 10 * 10> quorum_conn_matrix<10>{{
         0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 1, 0,
         0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0,
         0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0,
@@ -126,7 +125,7 @@ constexpr std::array<bool, 10 * 10> quorum_conn_matrix<10>{{
 }};
 
 template <>
-constexpr std::array<bool, 11 * 11> quorum_conn_matrix<11>{{
+inline constexpr std::array<bool, 11 * 11> quorum_conn_matrix<11>{{
         0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0,
         0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0,
@@ -134,7 +133,7 @@ constexpr std::array<bool, 11 * 11> quorum_conn_matrix<11>{{
 }};
 
 template <>
-constexpr std::array<bool, 12 * 12> quorum_conn_matrix<12>{{
+inline constexpr std::array<bool, 12 * 12> quorum_conn_matrix<12>{{
         0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0,
         1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1,
         0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0,
@@ -143,7 +142,7 @@ constexpr std::array<bool, 12 * 12> quorum_conn_matrix<12>{{
 }};
 
 template <>
-constexpr std::array<bool, 13 * 13> quorum_conn_matrix<13>{{
+inline constexpr std::array<bool, 13 * 13> quorum_conn_matrix<13>{{
         0, 1, 1, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0,
         1, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0,
         0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0,
@@ -153,7 +152,7 @@ constexpr std::array<bool, 13 * 13> quorum_conn_matrix<13>{{
 }};
 
 template <>
-constexpr std::array<bool, 14 * 14> quorum_conn_matrix<14>{{
+inline constexpr std::array<bool, 14 * 14> quorum_conn_matrix<14>{{
         0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0,
         0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 0, 0,
         1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0,
@@ -164,7 +163,7 @@ constexpr std::array<bool, 14 * 14> quorum_conn_matrix<14>{{
 }};
 
 template <>
-constexpr std::array<bool, 15 * 15> quorum_conn_matrix<15>{{
+inline constexpr std::array<bool, 15 * 15> quorum_conn_matrix<15>{{
         0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0,
         0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 0,
         0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0,
@@ -176,7 +175,7 @@ constexpr std::array<bool, 15 * 15> quorum_conn_matrix<15>{{
 }};
 
 template <>
-constexpr std::array<bool, 16 * 16> quorum_conn_matrix<16>{{
+inline constexpr std::array<bool, 16 * 16> quorum_conn_matrix<16>{{
         0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1,
         1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0,
         0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1,
@@ -189,7 +188,7 @@ constexpr std::array<bool, 16 * 16> quorum_conn_matrix<16>{{
 }};
 
 template <>
-constexpr std::array<bool, 17 * 17> quorum_conn_matrix<17>{{
+inline constexpr std::array<bool, 17 * 17> quorum_conn_matrix<17>{{
         0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1,
         0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -203,7 +202,7 @@ constexpr std::array<bool, 17 * 17> quorum_conn_matrix<17>{{
 }};
 
 template <>
-constexpr std::array<bool, 18 * 18> quorum_conn_matrix<18>{{
+inline constexpr std::array<bool, 18 * 18> quorum_conn_matrix<18>{{
         0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0,
         0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 1, 0,
         1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0,
@@ -218,7 +217,7 @@ constexpr std::array<bool, 18 * 18> quorum_conn_matrix<18>{{
 }};
 
 template <>
-constexpr std::array<bool, 19 * 19> quorum_conn_matrix<19>{{
+inline constexpr std::array<bool, 19 * 19> quorum_conn_matrix<19>{{
         0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 1, 0, 0,
         0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1,
         0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0,
@@ -234,7 +233,7 @@ constexpr std::array<bool, 19 * 19> quorum_conn_matrix<19>{{
 }};
 
 template <>
-constexpr std::array<bool, 20 * 20> quorum_conn_matrix<20>{{
+inline constexpr std::array<bool, 20 * 20> quorum_conn_matrix<20>{{
         0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0,
         0, 0, 1, 1, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1,
@@ -251,11 +250,11 @@ constexpr std::array<bool, 20 * 20> quorum_conn_matrix<20>{{
 }};
 
 /// Returns the maximum possible outgoing connections for a single quorum of any supported size.
-constexpr int max_outgoing_conns() {
+inline constexpr int max_outgoing_conns() {
     return 5;
 }
 
-constexpr const bool* get_matrix(int N) {
+inline constexpr const bool* get_matrix(int N) {
     switch (N) {
         case 7: return &quorum_conn_matrix<7>[0];
         case 8: return &quorum_conn_matrix<8>[0];

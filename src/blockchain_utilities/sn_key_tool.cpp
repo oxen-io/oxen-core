@@ -10,18 +10,15 @@
 #include <fstream>
 #include <iostream>
 #include <list>
-#include <mcl/bn.hpp>
 #include <optional>
 #include <string>
 #include <string_view>
 
-#include "bls/bls_signer.h"
-#include "bls/bls_utils.h"
+#include "bls/bls_crypto.h"
 #include "common/fs.h"
 #include "common/guts.h"
 #include "crypto/crypto.h"
 #include "crypto/eth.h"
-#include "mcl/op.hpp"
 
 std::string_view arg0;
 
@@ -195,14 +192,9 @@ int generate(key_type type, std::list<std::string_view> args) {
         }
         hex_pk = tools::hex_guts(pubkey);
     } else {  // bls
-        bls::SecretKey bls_sec;
-        bls_sec.init();
-        key_bytes =
-                "0x" + oxenc::to_hex(bls_sec.getStr(mcl::IoSerialize | mcl::IoBigEndian)) + "\n";
-
-        bls::PublicKey bls_pub;
-        bls_sec.getPublicKey(bls_pub);
-        auto bls_pubkey = bls_utils::to_crypto_pubkey(bls_pub);
+        eth::bls_secret_key seckey = eth::generate_bls_key();
+        key_bytes = "0x" + tools::hex_guts(seckey);
+        eth::bls_public_key bls_pubkey = eth::get_pubkey(seckey);
         hex_pk = tools::hex_guts(bls_pubkey);
         pk_display = display_bls(bls_pubkey);
     }
@@ -373,16 +365,9 @@ Lokinet address: {2:a}.snode
     }
 
     if (bls) {
-        bls::SecretKey bls_sec;
-        try {
-            bls_sec.setStr(key_data, mcl::IoSerialize | mcl::IoBigEndian);
-        } catch (const std::runtime_error& e) {
-            return error(14, fmt::format("Failed to load BLS secret key: {}", e.what()));
-        }
-        bls::PublicKey bls_pub;
-        bls_sec.getPublicKey(bls_pub);
-        auto eth_bls_pk = bls_utils::to_crypto_pubkey(bls_pub);
-        auto eth_bls_sk_hex = oxenc::to_hex(bls_sec.getStr(mcl::IoSerialize | mcl::IoBigEndian));
+        auto bls_sec = tools::make_from_guts<eth::bls_secret_key>(key_data);
+        auto eth_bls_pk = get_pubkey(bls_sec);
+        auto eth_bls_sk_hex = tools::hex_guts(bls_sec);
 
         fmt::print(
                 R"(
@@ -482,12 +467,8 @@ int restore(key_type type, std::list<std::string_view> args) {
         if (skey_hex.size() != 64 || !oxenc::is_hex(skey_hex))
             return error(7, "Invalid input: provide the secret key as 64 hex characters");
 
-        sk_data = oxenc::from_hex(skey_hex);
-        bls::SecretKey bls_sec;
-        bls_sec.setStr(sk_data, mcl::IoSerialize | mcl::IoBigEndian);
-        bls::PublicKey bls_pub;
-        bls_sec.getPublicKey(bls_pub);
-        auto eth_bls_pk = bls_utils::to_crypto_pubkey(bls_pub);
+        auto bls_sec = tools::make_from_hex_guts<eth::bls_secret_key>(skey_hex);
+        auto eth_bls_pk = get_pubkey(bls_sec);
         fmt::print("{}", display_bls(eth_bls_pk));
         hex_pk = tools::hex_guts(eth_bls_pk);
     }
@@ -573,7 +554,6 @@ int main(int argc, char* argv[]) {
         std::cerr << "Sodium initialization failed! Unable to continue.\n\n";
         return 3;
     }
-    bls_utils::init();
 
     for (auto& flag : {"--help"sv, "-h"sv, "-?"sv})
         for (auto& arg : args)

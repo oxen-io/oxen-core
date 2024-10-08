@@ -29,8 +29,8 @@
 
 #include "device_trezor.hpp"
 
-#include "common/lock.h"
 #include "common/exception.h"
+#include "common/lock.h"
 
 namespace hw::trezor {
 

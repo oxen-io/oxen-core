@@ -36,8 +36,6 @@
 // (may contain code and/or modifications by other developers)
 // developer rfree: this code is caller of our new network code, and is modded; e.g. for rate limiting
 
-#include <boost/uuid/uuid_io.hpp>
-#include <boost/uuid/nil_generator.hpp>
 #include <list>
 #include <ctime>
 #include <chrono>
@@ -1284,7 +1282,7 @@ namespace cryptonote
           const uint64_t previous_height = m_core.blockchain.get_current_blockchain_height();
           uint64_t start_height;
           std::vector<cryptonote::block_complete_entry> blocks;
-          boost::uuids::uuid span_connection_id;
+          connection_id_t span_connection_id;
           if (!m_block_queue.get_next_span(start_height, blocks, span_connection_id))
           {
             log::debug(logcat, "{} no next span found, going back to download", context);
@@ -1662,7 +1660,7 @@ skip:
 
     log::trace(logcat, "Checking for outgoing syncing peers...");
     unsigned n_syncing = 0, n_synced = 0;
-    boost::uuids::uuid last_synced_peer_id(boost::uuids::nil_uuid());
+    connection_id_t last_synced_peer_id{};
     m_p2p->for_each_connection([&](cryptonote_connection_context& context, nodetool::peerid_type peer_id)->bool
     {
       if (!peer_id || context.m_is_income) // only consider connected outgoing peers
@@ -1680,7 +1678,7 @@ skip:
     log::trace(logcat, "{} syncing, {} synced", n_syncing, n_synced);
 
     // if we're at max out peers, and not enough are syncing
-    if (n_synced + n_syncing >= m_max_out_peers && n_syncing < p2p::DEFAULT_SYNC_SEARCH_CONNECTIONS_COUNT && last_synced_peer_id != boost::uuids::nil_uuid())
+    if (n_synced + n_syncing >= m_max_out_peers && n_syncing < p2p::DEFAULT_SYNC_SEARCH_CONNECTIONS_COUNT && !last_synced_peer_id.is_nil())
     {
       if (!m_p2p->for_connection(last_synced_peer_id, [&](cryptonote_connection_context& ctx, nodetool::peerid_type peer_id)->bool{
         log::debug(logcat, "{}dropping synced peer, {} syncing, {} synced", ctx, n_syncing, n_synced);
@@ -1729,7 +1727,7 @@ skip:
   bool t_cryptonote_protocol_handler<t_core>::should_download_next_span(cryptonote_connection_context& context, bool standby)
   {
     std::chrono::steady_clock::time_point request_time;
-    boost::uuids::uuid connection_id;
+    connection_id_t connection_id{};
     std::pair<uint64_t, uint64_t> span;
     bool filled;
 
@@ -1892,7 +1890,7 @@ skip:
   bool t_cryptonote_protocol_handler<t_core>::request_missing_objects(cryptonote_connection_context& context, bool check_having_blocks, bool force_next_span)
   {
     // flush stale spans
-    std::set<boost::uuids::uuid> live_connections;
+    std::set<connection_id_t> live_connections;
     m_p2p->for_each_connection([&](cryptonote_connection_context& context, nodetool::peerid_type peer_id)->bool{
       live_connections.insert(context.m_connection_id);
       return true;
@@ -1962,7 +1960,7 @@ skip:
         {
           bool filled = false;
           std::chrono::steady_clock::time_point time;
-          boost::uuids::uuid connection_id;
+          connection_id_t connection_id;
           if (m_block_queue.has_next_span(m_core.blockchain.get_current_blockchain_height(), filled, time, connection_id) && filled)
           {
             log::debug(logcat, "{}No other thread is adding blocks, and next span needed is ready, resuming", context);
@@ -2018,7 +2016,7 @@ skip:
         if (span.second == 0)
         {
           std::vector<crypto::hash> hashes;
-          boost::uuids::uuid span_connection_id;
+          connection_id_t span_connection_id;
           span = m_block_queue.get_next_span_if_scheduled(hashes, span_connection_id);
           if (span.second > 0)
           {
@@ -2060,7 +2058,7 @@ skip:
       {
         log::debug(logcat, "{} still no span reserved, we may be in the corner case of next span scheduled and everything else scheduled/filled", context);
         std::vector<crypto::hash> hashes;
-        boost::uuids::uuid span_connection_id;
+        connection_id_t span_connection_id;
         span = m_block_queue.get_next_span_if_scheduled(hashes, span_connection_id);
         if (span.second > 0 && !tools::has_unpruned_block(span.first, context.m_remote_blockchain_height, context.m_pruning_seed))
           span = std::make_pair(0, 0);
@@ -2153,7 +2151,7 @@ skip:
       {
         uint64_t start_height;
         std::vector<cryptonote::block_complete_entry> blocks;
-        boost::uuids::uuid span_connection_id;
+        connection_id_t span_connection_id;
         bool filled = false;
         if (m_block_queue.get_next_span(start_height, blocks, span_connection_id, filled) && filled)
         {
@@ -2390,7 +2388,7 @@ You are now synchronized with the network.
   bool t_cryptonote_protocol_handler<t_core>::relay_block(NOTIFY_NEW_FLUFFY_BLOCK::request& arg, cryptonote_connection_context& exclude_context)
   {
     // sort peers between fluffy ones and others
-    std::vector<std::pair<epee::net_utils::zone, boost::uuids::uuid>> fluffyConnections;
+    std::vector<std::pair<epee::net_utils::zone, connection_id_t>> fluffyConnections;
     m_p2p->for_each_connection([&exclude_context, &fluffyConnections](connection_context& context, nodetool::peerid_type peer_id)
     {
       if (peer_id && exclude_context.m_connection_id != context.m_connection_id && context.m_remote_address.get_zone() == epee::net_utils::zone::public_)

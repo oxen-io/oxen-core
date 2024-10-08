@@ -26,26 +26,27 @@
 # STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-oxen_add_library(bls_utils
-    bls_utils.cpp)
-target_link_libraries(bls_utils
+oxen_add_library(bls_crypto
+    bls_crypto.cpp)
+
+target_link_libraries(bls_crypto
     PUBLIC
-    bls::bls256
     cncrypto
-    PRIVATE
-    common)
-
-oxen_add_library(oxen_bls
-  bls_signer.cpp
-  bls_aggregator.cpp)
-
-target_link_libraries(oxen_bls
-  PUBLIC
-    bls_utils
-    cryptonote_basic
-  PRIVATE
-    SQLiteCpp
     common
+    PRIVATE
+    logging
+    bn256
+    gmp::gmp)
+
+oxen_add_library(bls_aggregator
+    bls_aggregator.cpp)
+
+target_link_libraries(bls_aggregator
+    PUBLIC
+    bls_crypto
+    cryptonote_basic
+    PRIVATE
+    SQLiteCpp
     logging
     ethyl
     extra)

@@ -26,17 +26,16 @@
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#include <common/command_line.h>
+#include <common/exception.h>
+#include <common/guts.h>
+#include <common/median.h>
+#include <fmt/std.h>
+
 #include "blockchain_db/blockchain_db.h"
 #include "blockchain_objects.h"
 #include "cryptonote_core/cryptonote_core.h"
 #include "version.h"
-
-#include <common/command_line.h>
-#include <common/guts.h>
-#include <common/median.h>
-#include <common/exception.h>
-
-#include <fmt/std.h>
 
 namespace po = boost::program_options;
 using namespace cryptonote;

@@ -28,11 +28,9 @@
 // 
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
-#include <boost/uuid/uuid.hpp>
-#include <boost/uuid/uuid_io.hpp>
-#include <boost/uuid/random_generator.hpp>
 #include <unordered_map>
 
+#include "epee/net/net_utils_base.h"
 #include "wallet/wallet2.h"
 using namespace cryptonote;
 
@@ -45,7 +43,7 @@ namespace
 std::string generate_random_wallet_name()
 {
   std::stringstream ss;
-  ss << boost::uuids::random_generator()();
+  ss << epee::connection_id_t::random();
   return ss.str();
 }
 

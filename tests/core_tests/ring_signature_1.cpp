@@ -54,8 +54,7 @@ namespace
 
 bool gen_ring_signature_1::generate(std::vector<test_event_entry>& events) const
 {
-  const get_test_options<gen_ring_signature_1> test_options;
-  oxen_chain_generator gen(events, test_options.hard_forks);
+  oxen_chain_generator gen(events, get_test_options<gen_ring_signature_1>{}.test_options.hard_forks);
 
   const auto miner = gen.first_miner();
   const auto bob = gen.add_account(); /// event 1

@@ -26,7 +26,6 @@
 
 #pragma once
 #include <boost/asio/steady_timer.hpp>
-#include <boost/uuid/uuid_generators.hpp>
 #include <mutex>
 #include <unordered_map>
 
@@ -51,13 +50,6 @@ namespace epee
 namespace levin
 {
 
-struct uuid_hasher {
-  size_t operator()(const boost::uuids::uuid& uid) const
-  {
-    return boost::uuids::hash_value(uid);
-  }
-};
-
 /************************************************************************/
 /*                                                                      */
 /************************************************************************/
@@ -67,15 +59,15 @@ class async_protocol_handler;
 template<class t_connection_context>
 class async_protocol_handler_config
 {
-  typedef std::unordered_map<boost::uuids::uuid, async_protocol_handler<t_connection_context>*, uuid_hasher > connections_map;
+  using connections_map = std::unordered_map<connection_id_t, async_protocol_handler<t_connection_context>*>;
   std::recursive_mutex m_connects_lock;
   connections_map m_connects;
 
   void add_connection(async_protocol_handler<t_connection_context>* pc);
   void del_connection(async_protocol_handler<t_connection_context>* pc);
 
-  async_protocol_handler<t_connection_context>* find_connection(boost::uuids::uuid connection_id) const;
-  int find_and_lock_connection(boost::uuids::uuid connection_id, async_protocol_handler<t_connection_context>*& aph);
+  async_protocol_handler<t_connection_context>* find_connection(connection_id_t connection_id) const;
+  int find_and_lock_connection(connection_id_t connection_id, async_protocol_handler<t_connection_context>*& aph);
 
   friend class async_protocol_handler<t_connection_context>;
 
@@ -89,19 +81,19 @@ public:
   uint64_t m_max_packet_size; 
   std::chrono::nanoseconds m_invoke_timeout;
 
-  int invoke(int command, const epee::span<const uint8_t> in_buff, std::string& buff_out, boost::uuids::uuid connection_id);
+  int invoke(int command, const epee::span<const uint8_t> in_buff, std::string& buff_out, connection_id_t connection_id);
   template<class callback_t>
-  int invoke_async(int command, const epee::span<const uint8_t> in_buff, boost::uuids::uuid connection_id, const callback_t &cb, std::chrono::nanoseconds timeout = 0s);
+  int invoke_async(int command, const epee::span<const uint8_t> in_buff, connection_id_t connection_id, const callback_t &cb, std::chrono::nanoseconds timeout = 0s);
 
-  int notify(int command, const epee::span<const uint8_t> in_buff, boost::uuids::uuid connection_id);
-  int send(epee::shared_sv message, const boost::uuids::uuid& connection_id);
-  bool close(boost::uuids::uuid connection_id);
+  int notify(int command, const epee::span<const uint8_t> in_buff, connection_id_t connection_id);
+  int send(epee::shared_sv message, const connection_id_t& connection_id);
+  bool close(connection_id_t connection_id);
   bool update_connection_context(const t_connection_context& contxt);
-  bool request_callback(boost::uuids::uuid connection_id);
+  bool request_callback(connection_id_t connection_id);
   template<class callback_t>
   bool foreach_connection(const callback_t &cb);
   template<class callback_t>
-  bool for_connection(const boost::uuids::uuid &connection_id, const callback_t &cb);
+  bool for_connection(const connection_id_t &connection_id, const callback_t &cb);
   size_t get_connections_count();
   size_t get_out_connections_count();
   size_t get_in_connections_count();
@@ -188,7 +180,7 @@ public:
       if(m_con.start_outer_call())
       {
         m_timer.expires_from_now(std::chrono::milliseconds(timeout));
-        m_timer.async_wait([&con, command, cb, timeout](const boost::system::error_code& ec)
+        m_timer.async_wait([&con, cb](const boost::system::error_code& ec)
         {
           if(ec == boost::asio::error::operation_aborted)
             return;
@@ -248,9 +240,8 @@ public:
       {
         callback_t& cb = m_cb;
         async_protocol_handler& con = m_con;
-        int command = m_command;
         m_timer.expires_from_now(m_timeout);
-        m_timer.async_wait([&con, cb, command, timeout=m_timeout](const boost::system::error_code& ec)
+        m_timer.async_wait([&con, cb](const boost::system::error_code& ec)
         {
           if(ec == boost::asio::error::operation_aborted)
             return;
@@ -718,7 +709,7 @@ public:
     return 1;
   }
   //------------------------------------------------------------------------------------------
-  boost::uuids::uuid get_connection_id() {return m_connection_context.m_connection_id;}
+  connection_id_t get_connection_id() {return m_connection_context.m_connection_id;}
   //------------------------------------------------------------------------------------------
   t_connection_context& get_context_ref() {return m_connection_context;}
 };
@@ -736,7 +727,7 @@ void async_protocol_handler_config<t_connection_context>::del_connection(async_p
 template<class t_connection_context>
 void async_protocol_handler_config<t_connection_context>::delete_connections(size_t count, bool incoming)
 {
-  std::vector <boost::uuids::uuid> connections;
+  std::vector <connection_id_t> connections;
   std::lock_guard lock{m_connects_lock};
   for (auto& c: m_connects)
   {
@@ -788,14 +779,14 @@ void async_protocol_handler_config<t_connection_context>::add_connection(async_p
 }
 //------------------------------------------------------------------------------------------
 template<class t_connection_context>
-async_protocol_handler<t_connection_context>* async_protocol_handler_config<t_connection_context>::find_connection(boost::uuids::uuid connection_id) const
+async_protocol_handler<t_connection_context>* async_protocol_handler_config<t_connection_context>::find_connection(connection_id_t connection_id) const
 {
   auto it = m_connects.find(connection_id);
   return it == m_connects.end() ? 0 : it->second;
 }
 //------------------------------------------------------------------------------------------
 template<class t_connection_context>
-int async_protocol_handler_config<t_connection_context>::find_and_lock_connection(boost::uuids::uuid connection_id, async_protocol_handler<t_connection_context>*& aph)
+int async_protocol_handler_config<t_connection_context>::find_and_lock_connection(connection_id_t connection_id, async_protocol_handler<t_connection_context>*& aph)
 {
   std::lock_guard lock{m_connects_lock};
   aph = find_connection(connection_id);
@@ -807,7 +798,7 @@ int async_protocol_handler_config<t_connection_context>::find_and_lock_connectio
 }
 //------------------------------------------------------------------------------------------
 template<class t_connection_context>
-int async_protocol_handler_config<t_connection_context>::invoke(int command, const epee::span<const uint8_t> in_buff, std::string& buff_out, boost::uuids::uuid connection_id)
+int async_protocol_handler_config<t_connection_context>::invoke(int command, const epee::span<const uint8_t> in_buff, std::string& buff_out, connection_id_t connection_id)
 {
   async_protocol_handler<t_connection_context>* aph;
   int r = find_and_lock_connection(connection_id, aph);
@@ -815,7 +806,7 @@ int async_protocol_handler_config<t_connection_context>::invoke(int command, con
 }
 //------------------------------------------------------------------------------------------
 template<class t_connection_context> template<class callback_t>
-int async_protocol_handler_config<t_connection_context>::invoke_async(int command, const epee::span<const uint8_t> in_buff, boost::uuids::uuid connection_id, const callback_t &cb, std::chrono::nanoseconds timeout)
+int async_protocol_handler_config<t_connection_context>::invoke_async(int command, const epee::span<const uint8_t> in_buff, connection_id_t connection_id, const callback_t &cb, std::chrono::nanoseconds timeout)
 {
   async_protocol_handler<t_connection_context>* aph;
   int r = find_and_lock_connection(connection_id, aph);
@@ -836,7 +827,7 @@ bool async_protocol_handler_config<t_connection_context>::foreach_connection(con
 }
 //------------------------------------------------------------------------------------------
 template<class t_connection_context> template<class callback_t>
-bool async_protocol_handler_config<t_connection_context>::for_connection(const boost::uuids::uuid &connection_id, const callback_t &cb)
+bool async_protocol_handler_config<t_connection_context>::for_connection(const connection_id_t &connection_id, const callback_t &cb)
 {
   std::lock_guard lock{m_connects_lock};
   async_protocol_handler<t_connection_context>* aph = find_connection(connection_id);
@@ -886,7 +877,7 @@ void async_protocol_handler_config<t_connection_context>::set_handler(levin_comm
 }
 //------------------------------------------------------------------------------------------
 template<class t_connection_context>
-int async_protocol_handler_config<t_connection_context>::notify(int command, const epee::span<const uint8_t> in_buff, boost::uuids::uuid connection_id)
+int async_protocol_handler_config<t_connection_context>::notify(int command, const epee::span<const uint8_t> in_buff, connection_id_t connection_id)
 {
   async_protocol_handler<t_connection_context>* aph;
   int r = find_and_lock_connection(connection_id, aph);
@@ -894,7 +885,7 @@ int async_protocol_handler_config<t_connection_context>::notify(int command, con
 }
 //------------------------------------------------------------------------------------------
 template<class t_connection_context>
-int async_protocol_handler_config<t_connection_context>::send(shared_sv message, const boost::uuids::uuid& connection_id)
+int async_protocol_handler_config<t_connection_context>::send(shared_sv message, const connection_id_t& connection_id)
 {
   async_protocol_handler<t_connection_context>* aph;
   int r = find_and_lock_connection(connection_id, aph);
@@ -902,7 +893,7 @@ int async_protocol_handler_config<t_connection_context>::send(shared_sv message,
 }
 //------------------------------------------------------------------------------------------
 template<class t_connection_context>
-bool async_protocol_handler_config<t_connection_context>::close(boost::uuids::uuid connection_id)
+bool async_protocol_handler_config<t_connection_context>::close(connection_id_t connection_id)
 {
   std::lock_guard lock{m_connects_lock};
   async_protocol_handler<t_connection_context>* aph = find_connection(connection_id);
@@ -925,7 +916,7 @@ bool async_protocol_handler_config<t_connection_context>::update_connection_cont
 }
 //------------------------------------------------------------------------------------------
 template<class t_connection_context>
-bool async_protocol_handler_config<t_connection_context>::request_callback(boost::uuids::uuid connection_id)
+bool async_protocol_handler_config<t_connection_context>::request_callback(connection_id_t connection_id)
 {
   async_protocol_handler<t_connection_context>* aph;
   int r = find_and_lock_connection(connection_id, aph);

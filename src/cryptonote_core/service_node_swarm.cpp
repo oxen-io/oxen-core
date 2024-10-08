@@ -2,12 +2,6 @@
 
 #include "common/random.h"
 
-#ifdef UNIT_TEST
-#define prod_static
-#else
-#define prod_static static
-#endif
-
 namespace service_nodes {
 static auto logcat = log::Cat("service_nodes");
 
@@ -56,7 +50,7 @@ uint64_t get_new_swarm_id(const swarm_snode_map_t& swarm_to_snodes) {
 }
 
 /// The excess is calculated as the total number of snodes above MIN_SWARM_SIZE across all swarms
-prod_static size_t calc_excess(const swarm_snode_map_t& swarm_to_snodes) {
+size_t calc_excess(const swarm_snode_map_t& swarm_to_snodes) {
     const size_t excess = std::accumulate(
             swarm_to_snodes.begin(),
             swarm_to_snodes.end(),
@@ -73,20 +67,20 @@ prod_static size_t calc_excess(const swarm_snode_map_t& swarm_to_snodes) {
 /// The threshold should be such that
 /// 1. there is enough excess to create a new swarm of size NEW_SWARM_SIZE AND
 /// 2. there is enough excess to leave IDEAL_SWARM_MARGIN excess in the existing swarms
-prod_static size_t calc_threshold(const swarm_snode_map_t& swarm_to_snodes) {
+size_t calc_threshold(const swarm_snode_map_t& swarm_to_snodes) {
     const size_t threshold = NEW_SWARM_SIZE + (swarm_to_snodes.size() * IDEAL_SWARM_MARGIN);
     log::debug(logcat, "Calculated threshold: {}", threshold);
     return threshold;
 };
 
-prod_static const excess_pool_snode& pick_from_excess_pool(
+const excess_pool_snode& pick_from_excess_pool(
         const std::vector<excess_pool_snode>& excess_pool, std::mt19937_64& mt) {
     /// Select random snode
     const auto idx = tools::uniform_distribution_portable(mt, excess_pool.size());
     return excess_pool.at(idx);
 }
 
-prod_static void remove_excess_snode_from_swarm(
+void remove_excess_snode_from_swarm(
         const excess_pool_snode& excess_snode, swarm_snode_map_t& swarm_to_snodes) {
     auto& swarm_sn_vec = swarm_to_snodes.at(excess_snode.swarm_id);
     swarm_sn_vec.erase(
@@ -94,7 +88,7 @@ prod_static void remove_excess_snode_from_swarm(
             swarm_sn_vec.end());
 }
 
-prod_static void get_excess_pool(
+void get_excess_pool(
         size_t threshold,
         const swarm_snode_map_t& swarm_to_snodes,
         std::vector<excess_pool_snode>& pool_snodes,
@@ -119,8 +113,7 @@ prod_static void get_excess_pool(
     }
 }
 
-prod_static void create_new_swarm_from_excess(
-        swarm_snode_map_t& swarm_to_snodes, std::mt19937_64& mt) {
+void create_new_swarm_from_excess(swarm_snode_map_t& swarm_to_snodes, std::mt19937_64& mt) {
     const bool has_starving_swarms = std::any_of(
             swarm_to_snodes.begin(),
             swarm_to_snodes.end(),
@@ -163,7 +156,7 @@ prod_static void create_new_swarm_from_excess(
     }
 }
 
-prod_static void calc_swarm_sizes(
+void calc_swarm_sizes(
         const swarm_snode_map_t& swarm_to_snodes, std::vector<swarm_size>& sorted_swarm_sizes) {
     sorted_swarm_sizes.clear();
     sorted_swarm_sizes.reserve(swarm_to_snodes.size());
@@ -179,7 +172,7 @@ prod_static void calc_swarm_sizes(
 /// Assign each snode from snode_pubkeys into the FILL_SWARM_LOWER_PERCENTILE percentile of swarms
 /// and run the excess/threshold logic after each assignment to ensure new swarms are generated when
 /// required.
-prod_static void assign_snodes(
+void assign_snodes(
         const std::vector<crypto::public_key>& snode_pubkeys,
         swarm_snode_map_t& swarm_to_snodes,
         std::mt19937_64& mt,

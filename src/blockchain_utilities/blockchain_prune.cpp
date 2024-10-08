@@ -30,11 +30,11 @@
 
 #include <array>
 
-#include "common/exception.h"
 #include "blockchain_db/blockchain_db.h"
 #include "blockchain_db/lmdb/db_lmdb.h"
 #include "blockchain_objects.h"
 #include "common/command_line.h"
+#include "common/exception.h"
 #include "common/fs.h"
 #include "common/pruning.h"
 #include "common/string_util.h"
@@ -85,7 +85,8 @@ static void open(MDB_env*& env, const fs::path& path, uint64_t db_flags, bool re
                 "Failed to create LDMB environment: " + std::string(mdb_strerror(dbr)));
     dbr = mdb_env_set_maxdbs(env, 32);
     if (dbr)
-        throw oxen::traced<std::runtime_error>("Failed to set max env dbs: " + std::string(mdb_strerror(dbr)));
+        throw oxen::traced<std::runtime_error>(
+                "Failed to set max env dbs: " + std::string(mdb_strerror(dbr)));
     dbr = mdb_env_open(env, path.string().c_str(), flags, 0664);
     if (dbr)
         throw oxen::traced<std::runtime_error>(
@@ -150,7 +151,8 @@ static bool resize_point(size_t nrecords, MDB_env* env, MDB_txn** txn, size_t& b
         return false;
     int dbr = mdb_txn_commit(*txn);
     if (dbr)
-        throw oxen::traced<std::runtime_error>("Failed to commit txn: " + std::string(mdb_strerror(dbr)));
+        throw oxen::traced<std::runtime_error>(
+                "Failed to commit txn: " + std::string(mdb_strerror(dbr)));
     check_resize(env, bytes);
     dbr = mdb_txn_begin(env, NULL, 0, txn);
     if (dbr)
@@ -195,19 +197,22 @@ static void copy_table(
 
     dbr = mdb_dbi_open(txn0, table, flags, &dbi0);
     if (dbr)
-        throw oxen::traced<std::runtime_error>("Failed to open LMDB dbi: " + std::string(mdb_strerror(dbr)));
+        throw oxen::traced<std::runtime_error>(
+                "Failed to open LMDB dbi: " + std::string(mdb_strerror(dbr)));
     if (cmp)
         ((flags & MDB_DUPSORT) ? mdb_set_dupsort : mdb_set_compare)(txn0, dbi0, cmp);
 
     dbr = mdb_dbi_open(txn1, table, flags, &dbi1);
     if (dbr)
-        throw oxen::traced<std::runtime_error>("Failed to open LMDB dbi: " + std::string(mdb_strerror(dbr)));
+        throw oxen::traced<std::runtime_error>(
+                "Failed to open LMDB dbi: " + std::string(mdb_strerror(dbr)));
     if (cmp)
         ((flags & MDB_DUPSORT) ? mdb_set_dupsort : mdb_set_compare)(txn1, dbi1, cmp);
 
     dbr = mdb_txn_commit(txn1);
     if (dbr)
-        throw oxen::traced<std::runtime_error>("Failed to commit txn: " + std::string(mdb_strerror(dbr)));
+        throw oxen::traced<std::runtime_error>(
+                "Failed to commit txn: " + std::string(mdb_strerror(dbr)));
     tx_active1 = false;
     MDB_stat stats;
     dbr = mdb_env_stat(env0, &stats);
@@ -233,10 +238,12 @@ static void copy_table(
 
     dbr = mdb_cursor_open(txn0, dbi0, &cur0);
     if (dbr)
-        throw oxen::traced<std::runtime_error>("Failed to create LMDB cursor: " + std::string(mdb_strerror(dbr)));
+        throw oxen::traced<std::runtime_error>(
+                "Failed to create LMDB cursor: " + std::string(mdb_strerror(dbr)));
     dbr = mdb_cursor_open(txn1, dbi1, &cur1);
     if (dbr)
-        throw oxen::traced<std::runtime_error>("Failed to create LMDB cursor: " + std::string(mdb_strerror(dbr)));
+        throw oxen::traced<std::runtime_error>(
+                "Failed to create LMDB cursor: " + std::string(mdb_strerror(dbr)));
 
     MDB_val k;
     MDB_val v;
@@ -319,36 +326,44 @@ static void prune(MDB_env* env0, MDB_env* env1) {
 
     dbr = mdb_dbi_open(txn0, "txs_pruned", MDB_INTEGERKEY, &dbi0_txs_pruned);
     if (dbr)
-        throw oxen::traced<std::runtime_error>("Failed to open LMDB dbi: " + std::string(mdb_strerror(dbr)));
+        throw oxen::traced<std::runtime_error>(
+                "Failed to open LMDB dbi: " + std::string(mdb_strerror(dbr)));
     mdb_set_compare(txn0, dbi0_txs_pruned, BlockchainLMDB::compare_uint64);
     dbr = mdb_cursor_open(txn0, dbi0_txs_pruned, &cur0_txs_pruned);
     if (dbr)
-        throw oxen::traced<std::runtime_error>("Failed to create LMDB cursor: " + std::string(mdb_strerror(dbr)));
+        throw oxen::traced<std::runtime_error>(
+                "Failed to create LMDB cursor: " + std::string(mdb_strerror(dbr)));
 
     dbr = mdb_dbi_open(txn0, "txs_prunable", MDB_INTEGERKEY, &dbi0_txs_prunable);
     if (dbr)
-        throw oxen::traced<std::runtime_error>("Failed to open LMDB dbi: " + std::string(mdb_strerror(dbr)));
+        throw oxen::traced<std::runtime_error>(
+                "Failed to open LMDB dbi: " + std::string(mdb_strerror(dbr)));
     mdb_set_compare(txn0, dbi0_txs_prunable, BlockchainLMDB::compare_uint64);
     dbr = mdb_cursor_open(txn0, dbi0_txs_prunable, &cur0_txs_prunable);
     if (dbr)
-        throw oxen::traced<std::runtime_error>("Failed to create LMDB cursor: " + std::string(mdb_strerror(dbr)));
+        throw oxen::traced<std::runtime_error>(
+                "Failed to create LMDB cursor: " + std::string(mdb_strerror(dbr)));
 
     dbr = mdb_dbi_open(
             txn0, "tx_indices", MDB_INTEGERKEY | MDB_DUPSORT | MDB_DUPFIXED, &dbi0_tx_indices);
     if (dbr)
-        throw oxen::traced<std::runtime_error>("Failed to open LMDB dbi: " + std::string(mdb_strerror(dbr)));
+        throw oxen::traced<std::runtime_error>(
+                "Failed to open LMDB dbi: " + std::string(mdb_strerror(dbr)));
     mdb_set_dupsort(txn0, dbi0_tx_indices, BlockchainLMDB::compare_hash32);
     dbr = mdb_cursor_open(txn0, dbi0_tx_indices, &cur0_tx_indices);
     if (dbr)
-        throw oxen::traced<std::runtime_error>("Failed to create LMDB cursor: " + std::string(mdb_strerror(dbr)));
+        throw oxen::traced<std::runtime_error>(
+                "Failed to create LMDB cursor: " + std::string(mdb_strerror(dbr)));
 
     dbr = mdb_dbi_open(txn1, "txs_prunable", MDB_INTEGERKEY, &dbi1_txs_prunable);
     if (dbr)
-        throw oxen::traced<std::runtime_error>("Failed to open LMDB dbi: " + std::string(mdb_strerror(dbr)));
+        throw oxen::traced<std::runtime_error>(
+                "Failed to open LMDB dbi: " + std::string(mdb_strerror(dbr)));
     mdb_set_compare(txn1, dbi1_txs_prunable, BlockchainLMDB::compare_uint64);
     dbr = mdb_cursor_open(txn1, dbi1_txs_prunable, &cur1_txs_prunable);
     if (dbr)
-        throw oxen::traced<std::runtime_error>("Failed to create LMDB cursor: " + std::string(mdb_strerror(dbr)));
+        throw oxen::traced<std::runtime_error>(
+                "Failed to create LMDB cursor: " + std::string(mdb_strerror(dbr)));
 
     dbr = mdb_dbi_open(
             txn1,
@@ -356,22 +371,27 @@ static void prune(MDB_env* env0, MDB_env* env1) {
             MDB_INTEGERKEY | MDB_DUPSORT | MDB_DUPFIXED,
             &dbi1_txs_prunable_tip);
     if (dbr)
-        throw oxen::traced<std::runtime_error>("Failed to open LMDB dbi: " + std::string(mdb_strerror(dbr)));
+        throw oxen::traced<std::runtime_error>(
+                "Failed to open LMDB dbi: " + std::string(mdb_strerror(dbr)));
     mdb_set_dupsort(txn1, dbi1_txs_prunable_tip, BlockchainLMDB::compare_uint64);
     dbr = mdb_cursor_open(txn1, dbi1_txs_prunable_tip, &cur1_txs_prunable_tip);
     if (dbr)
-        throw oxen::traced<std::runtime_error>("Failed to create LMDB cursor: " + std::string(mdb_strerror(dbr)));
+        throw oxen::traced<std::runtime_error>(
+                "Failed to create LMDB cursor: " + std::string(mdb_strerror(dbr)));
 
     dbr = mdb_drop(txn1, dbi1_txs_prunable, 0);
     if (dbr)
-        throw oxen::traced<std::runtime_error>("Failed to empty LMDB table: " + std::string(mdb_strerror(dbr)));
+        throw oxen::traced<std::runtime_error>(
+                "Failed to empty LMDB table: " + std::string(mdb_strerror(dbr)));
     dbr = mdb_drop(txn1, dbi1_txs_prunable_tip, 0);
     if (dbr)
-        throw oxen::traced<std::runtime_error>("Failed to empty LMDB table: " + std::string(mdb_strerror(dbr)));
+        throw oxen::traced<std::runtime_error>(
+                "Failed to empty LMDB table: " + std::string(mdb_strerror(dbr)));
 
     dbr = mdb_dbi_open(txn1, "properties", 0, &dbi1_properties);
     if (dbr)
-        throw oxen::traced<std::runtime_error>("Failed to open LMDB dbi: " + std::string(mdb_strerror(dbr)));
+        throw oxen::traced<std::runtime_error>(
+                "Failed to open LMDB dbi: " + std::string(mdb_strerror(dbr)));
 
     MDB_val k, v;
     uint32_t pruning_seed =
@@ -383,12 +403,14 @@ static void prune(MDB_env* env0, MDB_env* env1) {
     v.mv_size = sizeof(pruning_seed);
     dbr = mdb_put(txn1, dbi1_properties, &k, &v, 0);
     if (dbr)
-        throw oxen::traced<std::runtime_error>("Failed to save pruning seed: " + std::string(mdb_strerror(dbr)));
+        throw oxen::traced<std::runtime_error>(
+                "Failed to save pruning seed: " + std::string(mdb_strerror(dbr)));
 
     MDB_stat stats;
     dbr = mdb_dbi_open(txn0, "blocks", 0, &dbi0_blocks);
     if (dbr)
-        throw oxen::traced<std::runtime_error>("Failed to open LMDB dbi: " + std::string(mdb_strerror(dbr)));
+        throw oxen::traced<std::runtime_error>(
+                "Failed to open LMDB dbi: " + std::string(mdb_strerror(dbr)));
     dbr = mdb_stat(txn0, dbi0_blocks, &stats);
     if (dbr)
         throw oxen::traced<std::runtime_error>(

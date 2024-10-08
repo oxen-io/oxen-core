@@ -36,27 +36,26 @@
 #include <sodium.h>
 #include <sqlite3.h>
 
+#ifdef ENABLE_SYSTEMD
+extern "C" {
+#include <systemd/sd-daemon.h>
+}
+#endif
+
 #include <boost/algorithm/string.hpp>
 #include <csignal>
 #include <iomanip>
 #include <unordered_set>
 
-#include "common/exception.h"
-#include "common/guts.h"
-
-extern "C" {
-#ifdef ENABLE_SYSTEMD
-#include <systemd/sd-daemon.h>
-#endif
-}
-
 #include "blockchain_db/blockchain_db.h"
 #include "blockchain_db/sqlite/db_sqlite.h"
-#include "bls/bls_signer.h"
+#include "bls/bls_crypto.h"
 #include "checkpoints/checkpoints.h"
 #include "common/base58.h"
 #include "common/command_line.h"
+#include "common/exception.h"
 #include "common/file.h"
+#include "common/guts.h"
 #include "common/i18n.h"
 #include "common/notify.h"
 #include "common/sha256sum.h"
@@ -684,7 +683,11 @@ bool core::init(
                     provider_count++;
                 }
             } catch (const std::exception& e) {
-                log::critical(logcat, "Invalid l2-provider argument '{}': {}", tools::trim_url(provider), e.what());
+                log::critical(
+                        logcat,
+                        "Invalid l2-provider argument '{}': {}",
+                        tools::trim_url(provider),
+                        e.what());
                 return false;
             }
         }
@@ -699,7 +702,8 @@ bool core::init(
             sqliteDB.release(),
             m_l2_tracker.get(),
             m_offline,
-            m_nettype == network_type::FAKECHAIN ? &regtest_test_options : test_options,
+            (m_nettype == network_type::FAKECHAIN && !test_options) ? &regtest_test_options
+                                                                    : test_options,
             command_line::get_arg(vm, arg_fixed_difficulty),
             get_checkpoints,
             abort);
@@ -985,30 +989,20 @@ bool core::init_service_keys() {
     crypto_sign_ed25519_sk_to_curve25519(keys.key_x25519.data(), keys.key_ed25519.data());
 
     // BLS pubkey, used by service nodes when interacting with the Ethereum smart contract
-    if (m_service_node &&
-        !init_key(
-                m_config_folder / "key_bls",
-                keys.key_bls,
-                keys.pub_bls,
-                [this](const auto& sk, auto& pk, auto& bls_signer) {
-                    // Load from existing
-
-                    try {
-                        bls_signer = eth::BLSSigner{m_nettype, &sk};
-                    } catch (const std::exception& e) {
-                        log::critical(logcat, "Invalid BLS key: {}", e.what());
-                        return false;
-                    }
-                    pk = bls_signer->getCryptoPubkey();
-                    return true;
-                },
-                [this](eth::bls_secret_key& sk, eth::bls_public_key& pk, auto& bls_signer) {
-                    // Generate new one
-                    bls_signer = eth::BLSSigner{m_nettype};
-                    sk = bls_signer->getCryptoSeckey();
-                    pk = bls_signer->getCryptoPubkey();
-                },
-                m_bls_signer))
+    if (m_service_node && !init_key(
+                                  m_config_folder / "key_bls",
+                                  keys.key_bls,
+                                  keys.pub_bls,
+                                  [](const auto& sk, auto& pk) {
+                                      // Load from existing
+                                      pk = get_pubkey(sk);
+                                      return true;
+                                  },
+                                  [](eth::bls_secret_key& sk, eth::bls_public_key& pk) {
+                                      // Generate new one
+                                      sk = eth::generate_bls_key();
+                                      pk = get_pubkey(sk);
+                                  }))
         return false;
 
     // Legacy primary SN key file; we only load this if it exists, otherwise we use `key_ed25519`
@@ -1179,9 +1173,11 @@ bool core::is_node_liquidatable(const eth::bls_public_key& node_bls_pubkey) {
     // NOTE: Node exists in the smart contract but not the oxen service node
     // list, it's been deregistered from _OR_ it voluntarily exited the SNL.
     uint64_t height = blockchain.get_current_blockchain_height();
-    for (const service_nodes::service_node_list::recently_removed_node& it : service_node_list.recently_removed_nodes()) {
-        assert(it.bls_pubkey && "Invalid null key got inserted into the recently removed list");
-        if (it.bls_pubkey == node_bls_pubkey) {
+    for (const service_nodes::service_node_list::recently_removed_node& it :
+         service_node_list.recently_removed_nodes()) {
+        assert(it.info.bls_public_key &&
+               "Invalid null key got inserted into the recently removed list");
+        if (it.info.bls_public_key == node_bls_pubkey) {
             bool result = height >= it.liquidation_height;
             return result;
         }
@@ -1500,8 +1496,7 @@ bool core::handle_incoming_tx(
 std::pair<std::vector<std::shared_ptr<blink_tx>>, std::unordered_set<crypto::hash>>
 core::parse_incoming_blinks(const std::vector<serializable_blink_metadata>& blinks) {
     std::pair<std::vector<std::shared_ptr<blink_tx>>, std::unordered_set<crypto::hash>> results;
-    auto& new_blinks = results.first;
-    auto& missing_txs = results.second;
+    auto& [new_blinks, missing_txs] = results;
 
     if (blockchain.get_network_version() < feature::BLINK)
         return results;
@@ -2066,7 +2061,6 @@ bool core::submit_uptime_proof() {
     if (!m_service_node)
         return true;
 
-    assert(m_bls_signer && "Service Nodes have a BLS signer defined");
     try {
         cryptonote_connection_context fake_context{};
         bool relayed;
@@ -2080,8 +2074,7 @@ bool core::submit_uptime_proof() {
                 storage_omq_port(),
                 ss_version,
                 m_quorumnet_port,
-                lokinet_version,
-                *m_bls_signer);
+                lokinet_version);
         auto req = proof.generate_request(hf_version);
         relayed = get_protocol()->relay_uptime_proof(req, fake_context);
 
@@ -2585,7 +2578,7 @@ eth::bls_registration_response core::bls_registration(const eth::address& addres
 
     service_nodes::registration_details reg{};
     reg.service_node_pubkey = keys.pub;
-    reg.bls_pubkey = m_bls_signer->getCryptoPubkey();
+    reg.bls_pubkey = keys.pub_bls;
 
     // If we're constructing a BLS registration then dual keys should have been unified in our own
     // keys:

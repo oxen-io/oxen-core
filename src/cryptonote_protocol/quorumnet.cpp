@@ -624,8 +624,7 @@ E get_enum(const bt_dict &d, const std::string &key) {
                 continue;
             }
 
-            auto quorum =
-                    qnet.core.service_node_list.get_quorum(vote.type, vote.block_height);
+            auto quorum = qnet.core.service_node_list.get_quorum(vote.type, vote.block_height);
             if (!quorum) {
                 log::warning(
                         logcat,
@@ -742,7 +741,8 @@ E get_enum(const bt_dict &d, const std::string &key) {
             auto height =
                     blink_tx::quorum_height(blink_height, static_cast<blink_tx::subquorum>(qi));
             if (!height)
-                throw oxen::traced<std::runtime_error>("too early in blockchain to create a quorum");
+                throw oxen::traced<std::runtime_error>(
+                        "too early in blockchain to create a quorum");
             result[qi] = snl.get_quorum(quorum_type::blink, height);
             if (!result[qi])
                 throw oxen::traced<std::runtime_error>("failed to obtain a blink quorum");
@@ -758,8 +758,9 @@ E get_enum(const bt_dict &d, const std::string &key) {
 
         if (input_checksum) {
             if (*input_checksum != local_checksum)
-                throw oxen::traced<std::runtime_error>{"wrong quorum checksum: expected {}, received {}"_format(
-                        local_checksum, *input_checksum)};
+                throw oxen::traced<std::runtime_error>{
+                        "wrong quorum checksum: expected {}, received {}"_format(
+                                local_checksum, *input_checksum)};
 
             log::trace(logcat, "Blink quorum checksum matched");
         }
@@ -1182,8 +1183,7 @@ E get_enum(const bt_dict &d, const std::string &key) {
         quorum_array blink_quorums;
         uint64_t checksum = get_int<uint64_t>(data.at("q"));
         try {
-            blink_quorums =
-                    get_blink_quorums(blink_height, qnet.core.service_node_list, &checksum);
+            blink_quorums = get_blink_quorums(blink_height, qnet.core.service_node_list, &checksum);
         } catch (const oxen::traced<std::runtime_error>& e) {
             log::info(logcat, "Rejecting blink tx: {}", e.what());
             if (tag)
@@ -1388,12 +1388,14 @@ E get_enum(const bt_dict &d, const std::string &key) {
 
     crypto::signature convert_string_view_bytes_to_signature(std::string_view sig_str) {
         if (sig_str.size() != sizeof(crypto::signature))
-            throw oxen::traced<std::invalid_argument>{"Invalid signature data size: {}"_format(sig_str.size())};
+            throw oxen::traced<std::invalid_argument>{
+                    "Invalid signature data size: {}"_format(sig_str.size())};
 
         crypto::signature result;
         std::memcpy(&result, sig_str.data(), sizeof(crypto::signature));
         if (!result)
-            throw oxen::traced<std::invalid_argument>{"Invalid signature data: null signature given"};
+            throw oxen::traced<std::invalid_argument>{
+                    "Invalid signature data: null signature given"};
 
         return result;
     }
@@ -1434,25 +1436,30 @@ E get_enum(const bt_dict &d, const std::string &key) {
 
         // # - hash (32 bytes)
         if (!data.skip_until("#"))
-            throw oxen::traced<std::invalid_argument>{"Invalid blink signature data: missing required field '#'"};
+            throw oxen::traced<std::invalid_argument>{
+                    "Invalid blink signature data: missing required field '#'"};
         auto hash_str = data.consume_string_view();
         if (hash_str.size() != sizeof(crypto::hash))
-            throw oxen::traced<std::invalid_argument>{"Invalid blink signature data: invalid tx hash"};
+            throw oxen::traced<std::invalid_argument>{
+                    "Invalid blink signature data: invalid tx hash"};
         crypto::hash tx_hash;
         std::memcpy(tx_hash.data(), hash_str.data(), hash_str.size());
 
         // h - height
         if (!data.skip_until("h"))
-            throw oxen::traced<std::invalid_argument>{"Invalid blink signature data: missing required field 'h'"};
+            throw oxen::traced<std::invalid_argument>{
+                    "Invalid blink signature data: missing required field 'h'"};
         uint64_t blink_height = data.consume_integer<uint64_t>();
         if (!blink_height)
-            throw oxen::traced<std::invalid_argument>{"Invalid blink signature data: height cannot be 0"};
+            throw oxen::traced<std::invalid_argument>{
+                    "Invalid blink signature data: height cannot be 0"};
 
         std::list<pending_signature> signatures;
 
         // i - list of quorum indices
         if (!data.skip_until("i"))
-            throw oxen::traced<std::invalid_argument>{"Invalid blink signature data: missing required field 'i'"};
+            throw oxen::traced<std::invalid_argument>{
+                    "Invalid blink signature data: missing required field 'i'"};
         auto quorum_indices = data.consume_list_consumer();
         while (!quorum_indices.is_finished()) {
             uint8_t q = quorum_indices.consume_integer<uint8_t>();
@@ -1476,7 +1483,8 @@ E get_enum(const bt_dict &d, const std::string &key) {
 
         // q - quorum membership checksum
         if (!data.skip_until("q"))
-            throw oxen::traced<std::invalid_argument>{"Invalid blink signature data: missing required field 'q'"};
+            throw oxen::traced<std::invalid_argument>{
+                    "Invalid blink signature data: missing required field 'q'"};
         // Before 7.1.8 we get a int64_t on the wire, using 2s-complement representation when the
         // value is a uint64_t that exceeds the max of an int64_t so, if negative, pull it off and
         // static cast it back (the static_cast assumes a 2s-complement architecture which isn't
@@ -1635,8 +1643,7 @@ E get_enum(const bt_dict &d, const std::string &key) {
         try {
             uint64_t height = core.blockchain.get_current_blockchain_height();
             uint64_t checksum;
-            auto quorums =
-                    get_blink_quorums(height, core.service_node_list, nullptr, &checksum);
+            auto quorums = get_blink_quorums(height, core.service_node_list, nullptr, &checksum);
 
             std::string data = bt_serialize<bt_dict>(
                     {{"!", blink_tag},
@@ -2021,7 +2028,8 @@ E get_enum(const bt_dict &d, const std::string &key) {
         if (auto const& tag = PULSE_TAG_RANDOM_VALUE; data.skip_until(tag)) {
             auto str = data.consume_string_view();
             if (str.size() != sizeof(msg.random_value.value.data))
-                throw oxen::traced<std::invalid_argument>("Invalid data size: " + std::to_string(str.size()));
+                throw oxen::traced<std::invalid_argument>(
+                        "Invalid data size: " + std::to_string(str.size()));
             std::memcpy(msg.random_value.value.data, str.data(), str.size());
         } else {
             throw oxen::traced<std::invalid_argument>{"{}{}'"_format(INVALID_ARG_PREFIX, tag)};

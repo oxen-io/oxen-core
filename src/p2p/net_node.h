@@ -37,7 +37,6 @@
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/program_options/options_description.hpp>
 #include <boost/program_options/variables_map.hpp>
-#include <boost/uuid/uuid.hpp>
 #include <functional>
 #include <shared_mutex>
 #include <utility>
@@ -219,8 +218,7 @@ class node_server
             m_allow_local_ip(false),
             m_hide_my_port(false),
             m_offline(false),
-            is_closing(false),
-            m_network_id() {}
+            is_closing(false) {}
     virtual ~node_server();
 
     static void init_options(
@@ -337,11 +335,11 @@ class node_server
     virtual bool relay_notify_to_list(
             int command,
             const epee::span<const uint8_t> data_buff,
-            std::vector<std::pair<epee::net_utils::zone, boost::uuids::uuid>> connections);
+            std::vector<std::pair<epee::net_utils::zone, connection_id_t>> connections);
     virtual epee::net_utils::zone send_txs(
             std::vector<std::string> txs,
             const epee::net_utils::zone origin,
-            const boost::uuids::uuid& source,
+            const connection_id_t& source,
             const bool pad_txs);
     virtual bool invoke_command_to_peer(
             int command,
@@ -358,7 +356,7 @@ class node_server
             std::function<bool(typename t_payload_net_handler::connection_context&, peerid_type)>
                     f);
     virtual bool for_connection(
-            const boost::uuids::uuid&,
+            const connection_id_t&,
             std::function<bool(typename t_payload_net_handler::connection_context&, peerid_type)>
                     f);
     virtual bool add_host_fail(const epee::net_utils::network_address& address);
@@ -526,7 +524,7 @@ class node_server
     std::array<std::list<epee::net_utils::network_address>, 1 << cryptonote::PRUNING_LOG_STRIPES>
             m_used_stripe_peers;
 
-    boost::uuids::uuid m_network_id;
+    epee::connection_id_t m_network_id{};
     cryptonote::network_type m_nettype;
 };
 

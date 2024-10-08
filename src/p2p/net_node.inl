@@ -37,7 +37,6 @@
 
 #include <algorithm>
 #include <atomic>
-#include <boost/uuid/uuid_io.hpp>
 #include <chrono>
 #include <functional>
 #include <limits>
@@ -58,6 +57,7 @@
 #include "cryptonote_core/cryptonote_core.h"
 #include "epee/misc_log_ex.h"
 #include "epee/net/local_ip.h"
+#include "epee/net/net_utils_base.h"
 #include "epee/storages/levin_abstract_invoke2.h"
 #include "epee/string_tools.h"
 #include "net/error.h"
@@ -73,6 +73,8 @@
 
 namespace nodetool {
 static auto logcat = log::Cat("net.p2p");
+
+using epee::connection_id_t;
 
 template <class t_payload_net_handler>
 node_server<t_payload_net_handler>::~node_server() {
@@ -155,7 +157,7 @@ void node_server<t_payload_net_handler>::for_each_connection(
 //-----------------------------------------------------------------------------------
 template <class t_payload_net_handler>
 bool node_server<t_payload_net_handler>::for_connection(
-        const boost::uuids::uuid& connection_id,
+        const connection_id_t& connection_id,
         std::function<bool(typename t_payload_net_handler::connection_context&, peerid_type)> f) {
     for (auto& zone : m_network_zones) {
         const bool result = zone.second.m_net_server.get_config_object().for_connection(
@@ -237,7 +239,7 @@ bool node_server<t_payload_net_handler>::block_host(
     // drop any connection to that address. This should only have to look into
     // the zone related to the connection, but really make sure everything is
     // swept ...
-    std::vector<boost::uuids::uuid> conns;
+    std::vector<connection_id_t> conns;
     for (auto& zone : m_network_zones) {
         zone.second.m_net_server.get_config_object().foreach_connection(
                 [&](const p2p_connection_context& cntxt) {
@@ -284,7 +286,7 @@ bool node_server<t_payload_net_handler>::block_subnet(
     // drop any connection to that subnet. This should only have to look into
     // the zone related to the connection, but really make sure everything is
     // swept ...
-    std::vector<boost::uuids::uuid> conns;
+    std::vector<connection_id_t> conns;
     for (auto& zone : m_network_zones) {
         zone.second.m_net_server.get_config_object().foreach_connection(
                 [&](const p2p_connection_context& cntxt) {
@@ -623,7 +625,7 @@ bool node_server<t_payload_net_handler>::init(const boost::program_options::vari
     bool res = handle_command_line(vm);
     CHECK_AND_ASSERT_MES(res, false, "Failed to handle command line");
 
-    memcpy(&m_network_id, &get_config(m_nettype).NETWORK_ID, 16);
+    static_cast<std::array<unsigned char, 16>&>(m_network_id) = get_config(m_nettype).NETWORK_ID;
 
     m_config_folder = fs::path{
             tools::convert_sv<char8_t>(command_line::get_arg(vm, cryptonote::arg_data_dir))};
@@ -844,7 +846,7 @@ bool node_server<t_payload_net_handler>::send_stop_signal() {
     log::debug(logcat, "[node] Stop signal sent");
 
     for (auto& zone : m_network_zones) {
-        std::list<boost::uuids::uuid> connection_ids;
+        std::list<connection_id_t> connection_ids;
         zone.second.m_net_server.get_config_object().foreach_connection(
                 [&](const p2p_connection_context& cntxt) {
                     connection_ids.push_back(cntxt.m_connection_id);
@@ -1031,7 +1033,8 @@ bool node_server<t_payload_net_handler>::do_peer_timed_sync(
 
 //-----------------------------------------------------------------------------------
 template <class t_payload_net_handler>
-size_t node_server<t_payload_net_handler>::get_random_exp_index(const size_t size, const double rate) {
+size_t node_server<t_payload_net_handler>::get_random_exp_index(
+        const size_t size, const double rate) {
     if (size <= 1)
         return 0;
 
@@ -1043,8 +1046,8 @@ size_t node_server<t_payload_net_handler>::get_random_exp_index(const size_t siz
     // std::exponential_distribution) but then we'd have to repeat until we got a value < size,
     // which is technically unbounded computational time.  Instead we mutate the calculation like
     // this, which gives us exponential, but truncated to [0, size), without looping:
-    const size_t res = static_cast<size_t>(
-            -1.0 / rate * std::log(1.0 - u * (1.0 - std::exp(-rate * size))));
+    const size_t res =
+            static_cast<size_t>(-1.0 / rate * std::log(1.0 - u * (1.0 - std::exp(-rate * size))));
 
     log::debug(logcat, "Random connection index={} (size={})", res, size);
     return res;
@@ -1410,7 +1413,8 @@ bool node_server<t_payload_net_handler>::make_new_connection_from_peerlist(
                 m_used_stripe_peers[next_needed_pruning_stripe - 1].pop_front();
                 for (size_t i = 0; i < filtered.size(); ++i) {
                     peerlist_entry pe;
-                    if (zone.m_peerlist.get_white_peer_by_index(pe, filtered[i].first) && pe.adr == na) {
+                    if (zone.m_peerlist.get_white_peer_by_index(pe, filtered[i].first) &&
+                        pe.adr == na) {
                         log::debug(
                                 logcat,
                                 "Reusing stripe {} peer {}",
@@ -1953,7 +1957,7 @@ template <class t_payload_net_handler>
 bool node_server<t_payload_net_handler>::relay_notify_to_list(
         int command,
         const epee::span<const uint8_t> data_buff,
-        std::vector<std::pair<epee::net_utils::zone, boost::uuids::uuid>> connections) {
+        std::vector<std::pair<epee::net_utils::zone, connection_id_t>> connections) {
     std::sort(connections.begin(), connections.end());
     auto zone = m_network_zones.begin();
     for (const auto& c_id : connections) {
@@ -1977,7 +1981,7 @@ template <class t_payload_net_handler>
 epee::net_utils::zone node_server<t_payload_net_handler>::send_txs(
         std::vector<std::string> txs,
         const epee::net_utils::zone origin,
-        const boost::uuids::uuid& source,
+        const connection_id_t& source,
         const bool pad_txs) {
     namespace enet = epee::net_utils;
 
@@ -2706,12 +2710,7 @@ void node_server<t_payload_net_handler>::add_used_stripe_peer(
     const uint32_t index = stripe - 1;
     std::lock_guard lock{m_used_stripe_peers_mutex};
     log::info(logcat, "adding stripe {} peer: {}", stripe, context.m_remote_address.str());
-    std::remove_if(
-            m_used_stripe_peers[index].begin(),
-            m_used_stripe_peers[index].end(),
-            [&context](const epee::net_utils::network_address& na) {
-                return context.m_remote_address == na;
-            });
+    std::erase(m_used_stripe_peers[index], context.m_remote_address);
     m_used_stripe_peers[index].push_back(context.m_remote_address);
 }
 
@@ -2724,12 +2723,7 @@ void node_server<t_payload_net_handler>::remove_used_stripe_peer(
     const uint32_t index = stripe - 1;
     std::lock_guard lock{m_used_stripe_peers_mutex};
     log::info(logcat, "removing stripe {} peer: {}", stripe, context.m_remote_address.str());
-    std::remove_if(
-            m_used_stripe_peers[index].begin(),
-            m_used_stripe_peers[index].end(),
-            [&context](const epee::net_utils::network_address& na) {
-                return context.m_remote_address == na;
-            });
+    std::erase(m_used_stripe_peers[index], context.m_remote_address);
 }
 
 template <class t_payload_net_handler>

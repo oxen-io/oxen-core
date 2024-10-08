@@ -28,7 +28,6 @@
 
 #include "blockchain.h"
 #include "bls/bls_aggregator.h"
-#include "bls/bls_signer.h"
 #include "common/command_line.h"
 #include "common/exception.h"
 #include "crypto/crypto.h"
@@ -444,14 +443,6 @@ class core final {
     /// be used for any omq communication until after start_oxenmq() has been called.
     oxenmq::OxenMQ& omq() { return *m_omq; }
 
-    /// Returns a reference to the BLSSigner, if this is a service node.  Throws if not a service
-    /// node.
-    eth::BLSSigner& bls_signer() {
-        if (!m_bls_signer)
-            throw oxen::traced<std::logic_error>{"Not a service node: no BLS Signer available"};
-        return *m_bls_signer;
-    }
-
     /**
      * @copydoc miner::on_synchronized
      *
@@ -865,7 +856,6 @@ class core final {
 
     std::unique_ptr<eth::L2Tracker> m_l2_tracker;
 
-    std::optional<eth::BLSSigner> m_bls_signer;
     std::unique_ptr<eth::bls_aggregator> m_bls_aggregator;
 
     i_cryptonote_protocol* m_pprotocol;        //!< cryptonote protocol instance

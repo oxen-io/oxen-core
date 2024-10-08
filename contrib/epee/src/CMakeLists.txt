@@ -67,3 +67,7 @@ target_link_libraries(epee
     Boost::thread
     oxen::logging
     extra)
+
+# Force boost 1.76-ish to use std::invoke_result instead of the removed-from-C++20 std::result_of
+target_compile_definitions(epee
+    PUBLIC BOOST_ASIO_HAS_STD_INVOKE_RESULT)

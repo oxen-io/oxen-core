@@ -118,8 +118,7 @@ void http_client::copy_params_from(const http_client& other) {
     auth = other.auth;
 }
 
-nlohmann::json http_client::json_rpc(
-        std::string_view method, nlohmann::json params) {
+nlohmann::json http_client::json_rpc(std::string_view method, nlohmann::json params) {
     nlohmann::json shell{{"id", json_rpc_id++}, {"jsonrpc", "2.0"}, {"method", method}};
     if (!params.is_null())
         shell["params"] = std::move(params);

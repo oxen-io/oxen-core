@@ -329,22 +329,25 @@ uint64_t Blockchain::get_current_blockchain_height(bool lock) const {
 }
 //------------------------------------------------------------------
 bool Blockchain::load_missing_blocks_into_oxen_subsystems(const std::atomic<bool>* abort) {
+    constexpr auto no_hf_height = std::numeric_limits<uint64_t>::max();
     std::vector<uint64_t> start_height_options;
     uint64_t snl_height = std::max(
-            hard_fork_begins(m_nettype, hf::hf9_service_nodes).value_or(0),
+            hard_fork_begins(m_nettype, hf::hf9_service_nodes).value_or(no_hf_height),
             service_node_list.height() + 1);
-    uint64_t const ons_height =
-            std::max(hard_fork_begins(m_nettype, hf::hf15_ons).value_or(0), m_ons_db.height() + 1);
+    uint64_t const ons_height = std::max(
+            hard_fork_begins(m_nettype, hf::hf15_ons).value_or(no_hf_height),
+            m_ons_db.height() + 1);
     start_height_options.push_back(ons_height);
-    uint64_t sqlite_height = 0;
+    uint64_t sqlite_height;
     if (m_sqlite_db) {
         sqlite_height = std::max(
-                hard_fork_begins(m_nettype, hf::hf19_reward_batching).value_or(0) - 1,
+                hard_fork_begins(m_nettype, hf::hf19_reward_batching).value_or(no_hf_height) - 1,
                 m_sqlite_db->height + 1);
         start_height_options.push_back(sqlite_height);
     } else {
         if (m_nettype != network_type::FAKECHAIN)
             throw oxen::traced<std::logic_error>("Blockchain missing SQLite Database");
+        sqlite_height = no_hf_height;
     }
     // If the batching database falls behind it NEEDS the service node list information at that
     // point in time
@@ -1597,7 +1600,7 @@ bool Blockchain::validate_block_rewards(
                 batched_sn_payments.begin(),
                 batched_sn_payments.end(),
                 uint64_t{0},
-                [&](auto a, auto b) { return a + b.amount; });
+                [&](auto a, auto b) { return a + b.coin_amount(); });
     } else {
         max_base_reward += reward_parts.base_miner + reward_parts.service_node_total;
     }
@@ -2972,9 +2975,8 @@ bool Blockchain::find_blockchain_supplement(
     // how can we expect to sync from the client that the block list came from?
     if (qblock_ids.empty()) {
         log::info(
-                log::Cat("net.p2p"),
-                "Client sent wrong NOTIFY_REQUEST_CHAIN: m_block_ids.size()={}, dropping "
-                "connection",
+                logcat,
+                "Invalid blockchain supplement call: queried block ids is empty",
                 qblock_ids.size());
         return false;
     }
@@ -2985,9 +2987,9 @@ bool Blockchain::find_blockchain_supplement(
     auto gen_hash = m_db->get_block_hash_from_height(0);
     if (qblock_ids.back() != gen_hash) {
         log::info(
-                log::Cat("net.p2p"),
-                "Client sent wrong NOTIFY_REQUEST_CHAIN: genesis block mismatch: id: {}, expected: "
-                "{}, dropping connection",
+                logcat,
+                "Invalid blockchain supplement call: genesis block mismatch: "
+                "request {} != block genesis {}",
                 qblock_ids.back(),
                 gen_hash);
         return false;
@@ -3244,7 +3246,13 @@ bool Blockchain::find_blockchain_supplement(
     // if a specific start height has been requested
     if (req_start_block > 0) {
         // if requested height is higher than our chain, return false -- we can't help
-        if (req_start_block >= m_db->height()) {
+        if (auto bc_height = m_db->height(); req_start_block >= bc_height) {
+            log::debug(
+                    logcat,
+                    "Failed to find blockchain supplement: "
+                    "requested start height {} >= blockchain height {}",
+                    req_start_block,
+                    bc_height);
             return false;
         }
         start_height = req_start_block;
@@ -3355,22 +3363,25 @@ std::vector<eth::bls_public_key> Blockchain::get_removable_nodes() const {
         //
         // If the node gets denied, it will be removed from this list and never added to the SNL.
         service_node_list.for_each_pending_l2_state(
-            [&bls_pubkeys_in_snl]<typename Event>(const Event& e, const service_nodes::service_node_list::unconfirmed_l2_tx&) {
-                if constexpr  (std::is_same_v<Event, eth::event::NewServiceNode>) {
-                    bls_pubkeys_in_snl.push_back(e.bls_pubkey);
-                } else {
-                    static_assert(
-                            std::is_same_v<Event, eth::event::ServiceNodeExitRequest> ||
-                            std::is_same_v<Event, eth::event::ServiceNodeExit> ||
-                            std::is_same_v<Event, eth::event::StakingRequirementUpdated>);
-                }
-        });
+                [&bls_pubkeys_in_snl]<typename Event>(
+                        const Event& e,
+                        const service_nodes::service_node_list::unconfirmed_l2_tx&) {
+                    if constexpr (std::is_same_v<Event, eth::event::NewServiceNode>) {
+                        bls_pubkeys_in_snl.push_back(e.bls_pubkey);
+                    } else {
+                        static_assert(
+                                std::is_same_v<Event, eth::event::ServiceNodeExitRequest> ||
+                                std::is_same_v<Event, eth::event::ServiceNodeExit> ||
+                                std::is_same_v<Event, eth::event::StakingRequirementUpdated>);
+                    }
+                });
 
         // NOTE: Extract all service nodes from the smart contract
         eth::RewardsContract::ServiceNodeIDs smart_contract_ids =
                 m_l2_tracker->get_all_service_node_ids(std::nullopt);
         if (!smart_contract_ids.success)
-            throw oxen::traced<std::runtime_error>("Querying of service node IDs from smart contract failed");
+            throw oxen::traced<std::runtime_error>(
+                    "Querying of service node IDs from smart contract failed");
         bls_pubkeys_in_smart_contract = std::move(smart_contract_ids.bls_pubkeys);
     }
 
@@ -3406,7 +3417,7 @@ std::vector<eth::bls_public_key> Blockchain::get_removable_nodes() const {
             uint16_t port = 0;
             for (const service_nodes::service_node_list::recently_removed_node&
                          recently_removed_it : service_node_list.recently_removed_nodes()) {
-                if (it != recently_removed_it.bls_pubkey)
+                if (it != recently_removed_it.info.bls_public_key)
                     continue;
                 protocol_dereg =
                         recently_removed_it.type ==
@@ -4937,11 +4948,10 @@ bool Blockchain::basic_block_checks(cryptonote::block const& blk, bool alt_block
             log::warning(
                     globallogcat,
                     fg(fmt::terminal_color::red),
-                    "Block with id: {}, has invalid version {}.{}; current: {}.{} for height {}",
+                    "Block with id: {}, has invalid version {}.{}; current: {}.x for height {}",
                     blk_hash,
                     static_cast<int>(blk.major_version),
                     +blk.minor_version,
-                    static_cast<int>(required_major_version),
                     static_cast<int>(required_major_version),
                     blk_height);
             return false;

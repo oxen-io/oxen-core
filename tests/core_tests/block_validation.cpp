@@ -181,6 +181,7 @@ bool gen_block_invalid_nonce::generate(std::vector<test_event_entry>& events) co
   const block& blk_last = var::get<block>(events.back());
   uint64_t timestamp = blk_last.timestamp;
   block blk_3;
+  blk_3.miner_tx.emplace();
   do
   {
     ++timestamp;

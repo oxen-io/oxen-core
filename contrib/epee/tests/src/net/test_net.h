@@ -119,7 +119,6 @@ namespace tests
     };
     typedef epee::misc_utils::struct_init<response_t> response;
   };
-  typedef boost::uuids::uuid uuid;
 
   class test_levin_server: public levin::levin_commands_handler<>
   {
@@ -146,13 +145,13 @@ namespace tests
     }
 
     template<class t_request, class t_response>
-    bool invoke(uuid con_id, int command, t_request& req, t_response& resp)
+    bool invoke(connection_id_t con_id, int command, t_request& req, t_response& resp)
     {
       return invoke_remote_command(con_id, command, req, resp, m_net_server.get_config_object());
     }
 
     template< class t_response, class t_request, class callback_t>
-    bool invoke_async(uuid con_id, int command, t_request& req, callback_t cb)
+    bool invoke_async(connection_id_t con_id, int command, t_request& req, callback_t cb)
     {
       return async_invoke_remote_command<t_response>(con_id, command, req, m_net_server.get_config_object(), cb);
     }

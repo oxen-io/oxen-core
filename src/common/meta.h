@@ -1,10 +1,11 @@
 #pragma once
 #include <oxenc/variant.h>
-#include "common/exception.h"
 
 #include <array>
 #include <string>
 #include <typeinfo>
+
+#include "common/exception.h"
 #ifdef __GNUG__
 #include <cxxabi.h>
 

@@ -78,7 +78,7 @@ namespace epee
     }
 
     template<class t_arg, class t_result, class t_transport>
-    bool invoke_remote_command2(boost::uuids::uuid conn_id, int command, const t_arg& out_struct, t_result& result_struct, t_transport& transport)
+    bool invoke_remote_command2(connection_id_t conn_id, int command, const t_arg& out_struct, t_result& result_struct, t_transport& transport)
     {
 
       typename serialization::portable_storage stg;
@@ -100,13 +100,13 @@ namespace epee
     }
 
     template<class t_result, class t_arg, class callback_t, class t_transport>
-    bool async_invoke_remote_command2(boost::uuids::uuid conn_id, int command, const t_arg& out_struct, t_transport& transport, const callback_t &cb, std::chrono::nanoseconds inv_timeout = 0ns)
+    bool async_invoke_remote_command2(connection_id_t conn_id, int command, const t_arg& out_struct, t_transport& transport, const callback_t &cb, std::chrono::nanoseconds inv_timeout = 0ns)
     {
       typename serialization::portable_storage stg;
       const_cast<t_arg&>(out_struct).store(stg);//TODO: add true const support to searilzation
       std::string buff_to_send;
       stg.store_to_binary(buff_to_send);
-      int res = transport.invoke_async(command, epee::strspan<uint8_t>(buff_to_send), conn_id, [cb, command](int code, const epee::span<const uint8_t> buff, typename t_transport::connection_context& context)->bool 
+      int res = transport.invoke_async(command, epee::strspan<uint8_t>(buff_to_send), conn_id, [cb](int code, const epee::span<const uint8_t> buff, typename t_transport::connection_context& context)
       {
         t_result result_struct{};
         if( code <=0 )
@@ -136,7 +136,7 @@ namespace epee
     }
 
     template<class t_arg, class t_transport>
-    bool notify_remote_command2(boost::uuids::uuid conn_id, int command, const t_arg& out_struct, t_transport& transport)
+    bool notify_remote_command2(connection_id_t conn_id, int command, const t_arg& out_struct, t_transport& transport)
     {
 
       serialization::portable_storage stg;

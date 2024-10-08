@@ -73,12 +73,12 @@ TEST(SQLITE, AddSNRewards)
   p2 = sqliteDB.get_sn_payments(expected_payout);
   EXPECT_EQ(p2.size(), 1);
   // We shouldn't get a fractional atomic OXEN amount in the payment amount:
-  uint64_t expected_amount = 8250000000'000;
+  auto expected_amount = cryptonote::reward_money::coin_amount(8'250'000'000);
   EXPECT_EQ(p2[0].amount, expected_amount);
 
   // Pay an amount less than the database expects and test for failure
   std::vector<cryptonote::batch_sn_payment> t2;
-  t2.emplace_back(wallet_address.address, expected_amount - 1000);
+  t2.emplace_back(wallet_address.address, expected_amount - cryptonote::reward_money::coin_amount(1));
   EXPECT_FALSE(sqliteDB.save_payments(expected_payout, t2));
 
   // Pay the amount back out and expect the database to be empty

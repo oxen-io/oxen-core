@@ -397,17 +397,17 @@ namespace boost::serialization {
 template <class Archive>
 inline void serialize(
         Archive& a, cryptonote::tx_source_entry& x, const boost::serialization::version_type ver) {
-    a & x.outputs;
-    a & x.real_output;
-    a & x.real_out_tx_key;
-    a & x.real_output_in_tx_index;
-    a & x.amount;
-    a & x.rct;
-    a & x.mask;
+    a& x.outputs;
+    a& x.real_output;
+    a& x.real_out_tx_key;
+    a& x.real_output_in_tx_index;
+    a& x.amount;
+    a& x.rct;
+    a& x.mask;
     if (ver < 1)
         return;
-    a & x.multisig_kLRki;
-    a & x.real_out_additional_tx_keys;
+    a& x.multisig_kLRki;
+    a& x.real_out_additional_tx_keys;
 }
 
 template <class Archive>
@@ -415,16 +415,16 @@ inline void serialize(
         Archive& a,
         cryptonote::tx_destination_entry& x,
         const boost::serialization::version_type ver) {
-    a & x.amount;
-    a & x.addr;
+    a& x.amount;
+    a& x.addr;
     if (ver < 1)
         return;
-    a & x.is_subaddress;
+    a& x.is_subaddress;
     if (ver < 2) {
         x.is_integrated = false;
         return;
     }
-    a & x.original;
-    a & x.is_integrated;
+    a& x.original;
+    a& x.is_integrated;
 }
 }  // namespace boost::serialization

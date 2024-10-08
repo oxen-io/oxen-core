@@ -34,6 +34,7 @@
 #include "cryptonote_basic/cryptonote_basic.h"
 #include "cryptonote_basic/tx_extra.h"
 #include "cryptonote_core/blockchain.h"
+#include "l2_tracker/events.h"
 #include "oxen_economy.h"
 #include "version.h"
 
@@ -125,30 +126,32 @@ struct extra_printer {
         return "SN state change: {} for block height {}, SN index {}"_format(
                 type, x.block_height, x.service_node_index);
     }
-    std::string operator()(const tx_extra_ethereum_new_service_node& x) {
-        std::string contributors_info;
-        for (const auto& contributor : x.contributors) {
-            contributors_info += fmt::format(
-                    "{{address: {}, amount: {}}}, ",
-                    contributor.address,
-                    print_money(contributor.amount));
-        }
-        return "New Ethereum Service Node: version {}, bls key {}, eth address {}, sn pubkey {}, fee {}, contributors [{}] signature {}"_format(
-                x.version,
+    std::string operator()(const eth::event::NewServiceNode& x) {
+
+        std::vector<std::string> contributors;
+        for (const auto& contributor : x.contributors)
+            contributors.push_back("{{address: {}, amount: {}}}"_format(
+                    contributor.address, print_money(contributor.amount)));
+        return "New Ethereum Service Node: L2 0x{:x}@{}, SN: {}, BLS pub: {}, fee: {}, contributors: [{}], signature: {}"_format(
+                x.chain_id,
+                x.l2_height,
+                x.sn_pubkey,
                 x.bls_pubkey,
-                x.eth_address,
-                x.service_node_pubkey,
-                print_money(x.fee),
-                contributors_info,
-                x.signature);
+                x.fee,
+                fmt::join(contributors, ", "),
+                x.ed_signature);
     }
-    std::string operator()(const tx_extra_ethereum_service_node_exit_request& x) {
-        return "Ethereum Service Node Exit Request: version {}, bls key {}"_format(
-                x.version, x.bls_pubkey);
+    std::string operator()(const eth::event::ServiceNodeExitRequest& x) {
+        return "Ethereum Service Node Exit Request: L2 0x{:x}@{}, BLS pub: {}"_format(
+                x.chain_id, x.l2_height, x.bls_pubkey);
     }
-    std::string operator()(const tx_extra_ethereum_service_node_exit& x) {
-        return "Ethereum Service Node Exit: version {}, eth address {}, amount {}, bls key {}"_format(
-                x.version, x.eth_address, print_money(x.amount), x.bls_pubkey);
+    std::string operator()(const eth::event::ServiceNodeExit& x) {
+        return "Ethereum Service Node Exit: L2 0x{:x}@{}, BLS pub: {}, returned: {}"_format(
+                x.chain_id, x.l2_height, x.bls_pubkey, print_money(x.returned_amount));
+    }
+    std::string operator()(const eth::event::StakingRequirementUpdated& x) {
+        return "Ethereum Staking Requirement Update: L2 0x{:x}@{}, new staking requirement: {}"_format(
+                x.chain_id, x.l2_height, print_money(x.staking_requirement));
     }
 };
 
@@ -163,15 +166,13 @@ static void print_extra_fields(const std::vector<cryptonote::tx_extra_field>& fi
 
 int main(int argc, char* argv[]) {
     oxen::set_terminate_handler();
-    uint32_t default_log_level = 0;
     std::string input;
 
     tools::on_startup();
 
     po::options_description desc_cmd_only("Command line options");
     po::options_description desc_cmd_sett("Command line options and settings options");
-    const command_line::arg_descriptor<uint32_t> arg_log_level = {
-            "log-level", "", default_log_level};
+    const command_line::arg_descriptor<std::string> arg_log_level{"log-level", "", "warning"};
     const command_line::arg_descriptor<std::string> arg_input = {
             "input",
             "Specify a wallet address or hex string of a Cryptonote type for decoding, supporting\n"

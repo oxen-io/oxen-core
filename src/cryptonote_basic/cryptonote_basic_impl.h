@@ -74,17 +74,59 @@ struct address_parse_info {
     KV_MAP_SERIALIZABLE
 };
 
+// Strongly-typed money amount used to calculate rewards at a higher precision by a factory of
+// `BATCH_REWARD_FACTOR`. Money amounts are stored at the higher precision in the DB.
+struct reward_money {
+
+    // Construct a money value from an atomic $COIN amount.
+    static reward_money coin_amount(uint64_t amount) {
+        return {._amount = amount * BATCH_REWARD_FACTOR};
+    }
+
+    // Construct a money value from an atomic $COIN amount denoted with the extra precision
+    // (pre-multiplied with `BATCH_REWARD_FACTOR`) suitable for storing in the DB. There is more
+    // precision to minimise integer division errors in reward calculations.
+    static reward_money db_amount(uint64_t amount) { return {._amount = amount}; }
+
+    constexpr uint64_t to_coin() const { return _amount / BATCH_REWARD_FACTOR; }
+
+    constexpr uint64_t to_db() const { return _amount; }
+
+    constexpr auto operator<=>(const reward_money& rhs) const = default;
+
+    constexpr reward_money operator+(const reward_money& rhs) const {
+        return {._amount = _amount + rhs._amount};
+    }
+    constexpr reward_money operator-(const reward_money& rhs) const {
+        return {._amount = _amount - rhs._amount};
+    }
+    constexpr reward_money& operator+=(const reward_money& rhs) {
+        _amount += rhs._amount;
+        return *this;
+    }
+    constexpr reward_money& operator-=(const reward_money& rhs) {
+        _amount -= rhs._amount;
+        return *this;
+    }
+
+    uint64_t _amount{0};
+
+    std::string to_string() const;
+};
+
 struct batch_sn_payment {
     cryptonote::address_parse_info address_info{};
     eth::address eth_address{};
-    uint64_t amount;
+    reward_money amount;
+
     batch_sn_payment() = default;
-    batch_sn_payment(const cryptonote::address_parse_info& addr_info, uint64_t amt) :
+    batch_sn_payment(const cryptonote::address_parse_info& addr_info, reward_money amt) :
             address_info{addr_info}, amount{amt} {}
-    batch_sn_payment(const cryptonote::account_public_address& addr, uint64_t amt) :
+    batch_sn_payment(const cryptonote::account_public_address& addr, reward_money amt) :
             address_info{addr, 0}, amount{amt} {}
-    batch_sn_payment(const eth::address& addr, uint64_t amt) :
-            eth_address{addr}, amount{amt} {}
+    batch_sn_payment(const eth::address& addr, reward_money amt) : eth_address{addr}, amount{amt} {}
+
+    uint64_t coin_amount() const { return amount.to_coin(); }
 };
 
 #pragma pack(push, 1)
@@ -100,13 +142,6 @@ struct public_integrated_address_outer_blob {
     uint8_t check_sum;
 };
 #pragma pack(pop)
-
-inline std::string return_first_address(
-        const std::string_view url, const std::vector<std::string>& addresses, bool dnssec_valid) {
-    if (addresses.empty())
-        return {};
-    return addresses[0];
-}
 
 /************************************************************************/
 /* Cryptonote helper functions                                          */
@@ -144,3 +179,6 @@ bool get_account_address_from_str(
 bool operator==(const cryptonote::transaction& a, const cryptonote::transaction& b);
 bool operator==(const cryptonote::block& a, const cryptonote::block& b);
 }  // namespace cryptonote
+
+template <>
+inline constexpr bool formattable::via_to_string<cryptonote::reward_money> = true;

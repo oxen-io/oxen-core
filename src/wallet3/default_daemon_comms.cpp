@@ -414,7 +414,8 @@ std::future<std::string> DefaultDaemonComms::submit_transaction(
             auto status = dc.consume_string();
 
             if (status != "OK")
-                throw oxen::traced<std::runtime_error>{"Submit Transaction rejected, reason: " + status};
+                throw oxen::traced<std::runtime_error>{
+                        "Submit Transaction rejected, reason: " + status};
 
             p->set_value("OK");
 
@@ -425,7 +426,8 @@ std::future<std::string> DefaultDaemonComms::submit_transaction(
 
     std::string tx_str;
     if (not cryptonote::tx_to_blob(tx, tx_str))
-        throw oxen::traced<std::runtime_error>{"wallet daemon comms, failed to serialize transaction"};
+        throw oxen::traced<std::runtime_error>{
+                "wallet daemon comms, failed to serialize transaction"};
 
     oxenc::bt_dict req_params_dict;
 

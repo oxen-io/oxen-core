@@ -134,6 +134,12 @@ TEST(long_term_block_weight, empty_short)
   ASSERT_EQ(bc->get_current_cumulative_block_weight_limit(), cryptonote::BLOCK_GRANTED_FULL_REWARD_ZONE_V5 * 2);
 }
 
+static cryptonote::block empty_block() {
+    cryptonote::block b{};
+    b.miner_tx.emplace();
+    return b;
+}
+
 TEST(long_term_block_weight, identical_before_fork)
 {
   PREFIX(cryptonote::hf::hf9_service_nodes);
@@ -142,7 +148,7 @@ TEST(long_term_block_weight, identical_before_fork)
   {
     size_t w = h < cryptonote::REWARD_BLOCKS_WINDOW ? cryptonote::BLOCK_GRANTED_FULL_REWARD_ZONE_V5 : bc->get_current_cumulative_block_weight_limit();
     uint64_t ltw = bc->get_next_long_term_block_weight(w);
-    bc->db().add_block(std::make_pair(cryptonote::block(), ""), w, ltw, h, h, {});
+    bc->db().add_block(std::make_pair(empty_block(), ""), w, ltw, h, h, {});
     ASSERT_TRUE(bc->update_next_cumulative_weight_limit());
   }
   for (uint64_t h = 0; h < 10 * TEST_LONG_TERM_BLOCK_WEIGHT_WINDOW; ++h)
@@ -159,7 +165,7 @@ TEST(long_term_block_weight, identical_after_fork_before_long_term_window)
   {
     size_t w = h < TEST_LONG_TERM_BLOCK_WEIGHT_WINDOW ? cryptonote::BLOCK_GRANTED_FULL_REWARD_ZONE_V5 : bc->get_current_cumulative_block_weight_limit();
     uint64_t ltw = bc->get_next_long_term_block_weight(w);
-    bc->db().add_block(std::make_pair(cryptonote::block(), ""), w, ltw, h, h, {});
+    bc->db().add_block(std::make_pair(empty_block(), ""), w, ltw, h, h, {});
     ASSERT_TRUE(bc->update_next_cumulative_weight_limit());
   }
   for (uint64_t h = 0; h < TEST_LONG_TERM_BLOCK_WEIGHT_WINDOW; ++h)
@@ -176,7 +182,7 @@ TEST(long_term_block_weight, ceiling_at_30000000)
   {
     size_t w = h < TEST_LONG_TERM_BLOCK_WEIGHT_WINDOW ? cryptonote::BLOCK_GRANTED_FULL_REWARD_ZONE_V5 : bc->get_current_cumulative_block_weight_limit();
     uint64_t ltw = bc->get_next_long_term_block_weight(w);
-    bc->db().add_block(std::make_pair(cryptonote::block(), ""), w, ltw, h, h, {});
+    bc->db().add_block(std::make_pair(empty_block(), ""), w, ltw, h, h, {});
     ASSERT_TRUE(bc->update_next_cumulative_weight_limit());
   }
   ASSERT_EQ(bc->get_current_cumulative_block_weight_median(), 15000000);
@@ -191,7 +197,7 @@ TEST(long_term_block_weight, multi_pop)
   {
     size_t w = h < TEST_LONG_TERM_BLOCK_WEIGHT_WINDOW ? cryptonote::BLOCK_GRANTED_FULL_REWARD_ZONE_V5 : bc->get_current_cumulative_block_weight_limit();
     uint64_t ltw = bc->get_next_long_term_block_weight(w);
-    bc->db().add_block(std::make_pair(cryptonote::block(), ""), w, ltw, h, h, {});
+    bc->db().add_block(std::make_pair(empty_block(), ""), w, ltw, h, h, {});
     ASSERT_TRUE(bc->update_next_cumulative_weight_limit());
   }
 
@@ -203,7 +209,7 @@ TEST(long_term_block_weight, multi_pop)
   {
     size_t w = bc->get_current_cumulative_block_weight_limit();
     uint64_t ltw = bc->get_next_long_term_block_weight(w);
-    bc->db().add_block(std::make_pair(cryptonote::block(), ""), w, ltw, h, h, {});
+    bc->db().add_block(std::make_pair(empty_block(), ""), w, ltw, h, h, {});
     ASSERT_TRUE(bc->update_next_cumulative_weight_limit());
   }
 
@@ -225,7 +231,7 @@ TEST(long_term_block_weight, multiple_updates)
   {
     size_t w = h < TEST_LONG_TERM_BLOCK_WEIGHT_WINDOW ? cryptonote::BLOCK_GRANTED_FULL_REWARD_ZONE_V5 : bc->get_current_cumulative_block_weight_limit();
     uint64_t ltw = bc->get_next_long_term_block_weight(w);
-    bc->db().add_block(std::make_pair(cryptonote::block(), ""), w, ltw, h, h, {});
+    bc->db().add_block(std::make_pair(empty_block(), ""), w, ltw, h, h, {});
     ASSERT_TRUE(bc->update_next_cumulative_weight_limit());
     const uint64_t effective_median = bc->get_current_cumulative_block_weight_median();
     const uint64_t effective_limit = bc->get_current_cumulative_block_weight_limit();
@@ -249,7 +255,7 @@ TEST(long_term_block_weight, pop_invariant_max)
   {
     size_t w = bc->db().height() < TEST_LONG_TERM_BLOCK_WEIGHT_WINDOW ? cryptonote::BLOCK_GRANTED_FULL_REWARD_ZONE_V5 : bc->get_current_cumulative_block_weight_limit();
     uint64_t ltw = bc->get_next_long_term_block_weight(w);
-    bc->db().add_block(std::make_pair(cryptonote::block(), ""), w, ltw, h, h, {});
+    bc->db().add_block(std::make_pair(empty_block(), ""), w, ltw, h, h, {});
     ASSERT_TRUE(bc->update_next_cumulative_weight_limit());
   }
 
@@ -277,7 +283,7 @@ TEST(long_term_block_weight, pop_invariant_max)
     {
       size_t w = bc->db().height() < TEST_LONG_TERM_BLOCK_WEIGHT_WINDOW ? cryptonote::BLOCK_GRANTED_FULL_REWARD_ZONE_V5 : bc->get_current_cumulative_block_weight_limit();
       uint64_t ltw = bc->get_next_long_term_block_weight(w);
-      bc->db().add_block(std::make_pair(cryptonote::block(), ""), w, ltw, bc->db().height(), bc->db().height(), {});
+      bc->db().add_block(std::make_pair(empty_block(), ""), w, ltw, bc->db().height(), bc->db().height(), {});
       ASSERT_TRUE(bc->update_next_cumulative_weight_limit());
     }
 
@@ -299,7 +305,7 @@ TEST(long_term_block_weight, pop_invariant_random)
     uint32_t r = lcg();
     size_t w = bc->db().height() < TEST_LONG_TERM_BLOCK_WEIGHT_WINDOW ? cryptonote::BLOCK_GRANTED_FULL_REWARD_ZONE_V5 : (r % bc->get_current_cumulative_block_weight_limit());
     uint64_t ltw = bc->get_next_long_term_block_weight(w);
-    bc->db().add_block(std::make_pair(cryptonote::block(), ""), w, ltw, h, h, {});
+    bc->db().add_block(std::make_pair(empty_block(), ""), w, ltw, h, h, {});
     ASSERT_TRUE(bc->update_next_cumulative_weight_limit());
   }
 
@@ -334,7 +340,7 @@ TEST(long_term_block_weight, pop_invariant_random)
       uint32_t r = lcg();
       size_t w = bc->db().height() < TEST_LONG_TERM_BLOCK_WEIGHT_WINDOW ? cryptonote::BLOCK_GRANTED_FULL_REWARD_ZONE_V5 : (r % bc->get_current_cumulative_block_weight_limit());
       uint64_t ltw = bc->get_next_long_term_block_weight(w);
-      bc->db().add_block(std::make_pair(cryptonote::block(), ""), w, ltw, bc->db().height(), bc->db().height(), {});
+      bc->db().add_block(std::make_pair(empty_block(), ""), w, ltw, bc->db().height(), bc->db().height(), {});
       ASSERT_TRUE(bc->update_next_cumulative_weight_limit());
       const uint64_t effective_median = bc->get_current_cumulative_block_weight_median();
       const uint64_t effective_limit = bc->get_current_cumulative_block_weight_limit();
@@ -362,7 +368,7 @@ TEST(long_term_block_weight, long_growth_spike_and_drop)
   {
     size_t w = cryptonote::BLOCK_GRANTED_FULL_REWARD_ZONE_V5;
     uint64_t ltw = bc->get_next_long_term_block_weight(w);
-    bc->db().add_block(std::make_pair(cryptonote::block(), ""), w, ltw, h, h, {});
+    bc->db().add_block(std::make_pair(empty_block(), ""), w, ltw, h, h, {});
     ASSERT_TRUE(bc->update_next_cumulative_weight_limit(&long_term_effective_median_block_weight));
   }
   ASSERT_EQ(long_term_effective_median_block_weight, 300000);
@@ -374,7 +380,7 @@ TEST(long_term_block_weight, long_growth_spike_and_drop)
     float t = h / float(365 * 720 * TEST_LONG_TERM_BLOCK_WEIGHT_WINDOW / 100000);
     size_t w = 300000 + t * 30000;
     uint64_t ltw = bc->get_next_long_term_block_weight(w);
-    bc->db().add_block(std::make_pair(cryptonote::block(), ""), w, ltw, h, h, {});
+    bc->db().add_block(std::make_pair(empty_block(), ""), w, ltw, h, h, {});
     ASSERT_TRUE(bc->update_next_cumulative_weight_limit(&long_term_effective_median_block_weight));
   }
   ASSERT_GT(long_term_effective_median_block_weight, 300000 * 1.07);
@@ -385,7 +391,7 @@ TEST(long_term_block_weight, long_growth_spike_and_drop)
   {
     size_t w = bc->get_current_cumulative_block_weight_limit();
     uint64_t ltw = bc->get_next_long_term_block_weight(w);
-    bc->db().add_block(std::make_pair(cryptonote::block(), ""), w, ltw, h, h, {});
+    bc->db().add_block(std::make_pair(empty_block(), ""), w, ltw, h, h, {});
     ASSERT_TRUE(bc->update_next_cumulative_weight_limit(&long_term_effective_median_block_weight));
   }
   ASSERT_GT(long_term_effective_median_block_weight, 300000 * 1.07);
@@ -396,7 +402,7 @@ TEST(long_term_block_weight, long_growth_spike_and_drop)
   {
     size_t w = bc->get_current_cumulative_block_weight_median() * .25;
     uint64_t ltw = bc->get_next_long_term_block_weight(w);
-    bc->db().add_block(std::make_pair(cryptonote::block(), ""), w, ltw, h, h, {});
+    bc->db().add_block(std::make_pair(empty_block(), ""), w, ltw, h, h, {});
     ASSERT_TRUE(bc->update_next_cumulative_weight_limit(&long_term_effective_median_block_weight));
   }
   ASSERT_GT(long_term_effective_median_block_weight, 300000 * 1.07);

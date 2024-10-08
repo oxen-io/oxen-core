@@ -240,7 +240,7 @@ namespace {
     }
 
     std::bitset<sizeof(uint16_t) * 8> bitset_view16(uint16_t val) {
-        std::bitset<sizeof(uint16_t) * 8> result = val;
+        std::bitset<sizeof(uint16_t)* 8> result = val;
         return result;
     }
 
@@ -440,7 +440,6 @@ namespace {
     bool enforce_validator_participation_and_timeouts(
             round_context const& context,
             pulse_wait_stage const& stage,
-            service_nodes::service_node_list& node_list,
             bool timed_out,
             bool all_received) {
         assert(context.state > round_state::wait_for_handshake_bitsets);
@@ -1110,54 +1109,30 @@ namespace {
     }
 
     round_state wait_for_next_block(
-            uint64_t hf16_height,
-            round_context& context,
-            cryptonote::Blockchain const& blockchain) {
+            round_context& context, cryptonote::Blockchain const& blockchain) {
         //
-        // NOTE: If already processing pulse for height, wait for next height
+        // NOTE: If the top hash stored in the pulse context is the same as the top block's hash
+        // then we've already attempted Pulse with the current state of the blockchain and
+        // encountered a failure.
         //
-        uint64_t chain_height = blockchain.get_current_blockchain_height(true /*lock*/);
-        if (context.wait_for_next_block.height == chain_height) {
-            for (static uint64_t last_height = 0; last_height != chain_height;
-                 last_height = chain_height)
+        cryptonote::block top_block = blockchain.db().get_top_block();
+        crypto::hash top_hash = cryptonote::get_block_hash(top_block);
+        uint64_t chain_height = top_block.get_height() + 1;
+        if (context.wait_for_next_block.top_hash == top_hash) {
+            for (static crypto::hash last_hash = {}; last_hash != top_hash; last_hash = top_hash)
                 log::debug(
                         logcat,
-                        "{}Network is currently producing block {}, waiting until next block",
+                        "{}Network is currently producing block {} (w/ parent {}), "
+                        "waiting until next block",
                         log_prefix(context),
-                        chain_height);
-            return round_state::wait_for_next_block;
-        }
-
-        crypto::hash prev_hash = blockchain.get_block_id_by_height(chain_height - 1);
-        if (!prev_hash) {
-            for (static uint64_t last_height = 0; last_height != chain_height;
-                 last_height = chain_height)
-                log::debug(
-                        logcat,
-                        "{}Failed to query the block hash for height {}",
-                        log_prefix(context),
-                        chain_height - 1);
-            return round_state::wait_for_next_block;
-        }
-
-        uint64_t prev_timestamp = 0;
-        try {
-            prev_timestamp = blockchain.db().get_block_timestamp(chain_height - 1);
-        } catch (std::exception const& e) {
-            for (static uint64_t last_height = 0; last_height != chain_height;
-                 last_height = chain_height)
-                log::debug(
-                        logcat,
-                        "{}Failed to query the block hash for height {}",
-                        log_prefix(context),
-                        chain_height - 1);
+                        chain_height,
+                        top_hash);
             return round_state::wait_for_next_block;
         }
 
         pulse::timings times = {};
-        if (!get_round_timings(blockchain, chain_height, prev_timestamp, times)) {
-            for (static uint64_t last_height = 0; last_height != chain_height;
-                 last_height = chain_height)
+        if (!get_round_timings(blockchain, chain_height, top_block.timestamp, times)) {
+            for (static crypto::hash last_hash = {}; last_hash != top_hash; last_hash = top_hash)
                 log::error(
                         logcat,
                         "{}Failed to query the block data for Pulse timings",
@@ -1167,7 +1142,7 @@ namespace {
 
         context.wait_for_next_block.round_0_start_time = times.r0_timestamp;
         context.wait_for_next_block.height = chain_height;
-        context.wait_for_next_block.top_hash = prev_hash;
+        context.wait_for_next_block.top_hash = top_hash;
         context.prepare_for_round = {};
 
         return round_state::prepare_for_round;
@@ -1202,8 +1177,9 @@ namespace {
 
             // Also check if the blockchain has changed, in which case we stop and
             // restart Pulse stages.
-            if (context.wait_for_next_block.height !=
-                blockchain.get_current_blockchain_height(true /*lock*/))
+            std::pair<uint64_t, crypto::hash> tail = blockchain.get_tail_id();
+            const crypto::hash& top_hash = tail.second;
+            if (context.wait_for_next_block.top_hash != top_hash)
                 return goto_wait_for_next_block_and_clear_round_data(context);
 
             // 'queue_for_next_round' is set when an intermediate Pulse stage has failed
@@ -1223,8 +1199,7 @@ namespace {
                             : (now - context.wait_for_next_block.round_0_start_time);
             size_t round_usize = time_since_block / conf.PULSE_ROUND_TIMEOUT;
 
-            if (round_usize > 255)  // Network stalled
-            {
+            if (round_usize > 255) {  // Network stalled
                 log::info(
                         logcat,
                         "{}Pulse has timed out, reverting to accepting miner blocks only.",
@@ -1325,12 +1300,16 @@ namespace {
     }
 
     round_state wait_for_round(round_context& context, cryptonote::Blockchain const& blockchain) {
-        const auto curr_height = blockchain.get_current_blockchain_height(true /*lock*/);
-        if (context.wait_for_next_block.height != curr_height) {
+        std::pair<uint64_t, crypto::hash> tail = blockchain.get_tail_id();
+        const crypto::hash& top_hash = tail.second;
+        if (context.wait_for_next_block.top_hash != top_hash) {
             log::debug(
                     logcat,
-                    "{}Block height changed whilst waiting for round {}, restarting Pulse stages",
+                    "{}Top block changed (from {} to {}) whilst waiting for round {}, "
+                    "restarting Pulse stages",
                     log_prefix(context),
+                    context.wait_for_next_block.top_hash,
+                    top_hash,
                     +context.prepare_for_round.round);
             return goto_wait_for_next_block_and_clear_round_data(context);
         }
@@ -1471,12 +1450,7 @@ namespace {
         }
     }
 
-    round_state wait_for_handshake_bitsets(
-            round_context& context,
-            service_nodes::service_node_list& node_list,
-            void* quorumnet_state,
-            service_nodes::service_node_keys const& key,
-            cryptonote::Blockchain& blockchain) {
+    round_state wait_for_handshake_bitsets(round_context& context, void* quorumnet_state) {
         handle_messages_received_early_for(
                 context.transient.wait_for_handshake_bitsets.stage, quorumnet_state);
         pulse_wait_stage const& stage = context.transient.wait_for_handshake_bitsets.stage;
@@ -1653,9 +1627,7 @@ namespace {
     round_state wait_for_block_template(
             round_context& context,
             service_nodes::service_node_list& node_list,
-            void* quorumnet_state,
-            service_nodes::service_node_keys const& key,
-            cryptonote::Blockchain& blockchain) {
+            void* quorumnet_state) {
         handle_messages_received_early_for(
                 context.transient.wait_for_block_template.stage, quorumnet_state);
         pulse_wait_stage const& stage = context.transient.wait_for_block_template.stage;
@@ -1798,14 +1770,13 @@ namespace {
                 context.transient.random_value_hashes.wait.stage, quorumnet_state);
         pulse_wait_stage const& stage = context.transient.random_value_hashes.wait.stage;
 
-        auto const& quorum = context.transient.random_value_hashes.wait.data;
         bool const timed_out = pulse::clock::now() >= stage.end_time;
         bool const all_hashes =
                 stage.bitset == context.transient.wait_for_handshake_bitsets.best_bitset;
 
         if (timed_out || all_hashes) {
             if (!enforce_validator_participation_and_timeouts(
-                        context, stage, node_list, timed_out, all_hashes))
+                        context, stage, timed_out, all_hashes))
                 return goto_preparing_for_next_round(context);
 
             log::info(
@@ -1858,7 +1829,7 @@ namespace {
 
         if (timed_out || all_values) {
             if (!enforce_validator_participation_and_timeouts(
-                        context, stage, node_list, timed_out, all_values))
+                        context, stage, timed_out, all_values))
                 return goto_preparing_for_next_round(context);
 
             // Generate Final Random Value
@@ -1963,8 +1934,7 @@ namespace {
                 stage.bitset >= context.transient.wait_for_handshake_bitsets.best_bitset;
 
         if (timed_out || enough) {
-            if (!enforce_validator_participation_and_timeouts(
-                        context, stage, node_list, timed_out, enough))
+            if (!enforce_validator_participation_and_timeouts(context, stage, timed_out, enough))
                 return goto_preparing_for_next_round(context);
 
             // Select signatures randomly so we don't always just take the first N required
@@ -2057,7 +2027,7 @@ void main(void* quorumnet_state, cryptonote::core& core) {
             case round_state::null_state: context.state = round_state::wait_for_next_block; break;
 
             case round_state::wait_for_next_block:
-                context.state = wait_for_next_block(*hf16, context, blockchain);
+                context.state = wait_for_next_block(context, blockchain);
                 break;
 
             case round_state::prepare_for_round:
@@ -2077,13 +2047,11 @@ void main(void* quorumnet_state, cryptonote::core& core) {
                 break;
 
             case round_state::wait_for_handshake_bitsets:
-                context.state = wait_for_handshake_bitsets(
-                        context, node_list, quorumnet_state, key, blockchain);
+                context.state = wait_for_handshake_bitsets(context, quorumnet_state);
                 break;
 
             case round_state::wait_for_block_template:
-                context.state = wait_for_block_template(
-                        context, node_list, quorumnet_state, key, blockchain);
+                context.state = wait_for_block_template(context, node_list, quorumnet_state);
                 break;
 
             case round_state::send_block_template:

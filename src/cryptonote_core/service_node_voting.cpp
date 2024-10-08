@@ -590,7 +590,7 @@ bool verify_vote_signature(
 
     result = crypto::check_signature(hash, key, vote.signature);
     if (result)
-        log::debug(
+        log::trace(
                 logcat,
                 "Signature accepted for {} voter {}/{} voting for worker {} at height {}",
                 vote.type,
