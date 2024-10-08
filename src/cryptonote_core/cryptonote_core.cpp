@@ -1814,7 +1814,7 @@ void core::check_service_node_ip_address() {
 
     auto service_node_ip = epee::string_tools::get_ip_string_from_int32(m_sn_public_ip);
     auto service_node_address = "tcp://{}:{}"_format(service_node_ip, m_quorumnet_port);
-    auto connection_error_callback = [this, service_node_ip]() {
+    auto connection_error_callback = [service_node_address]() {
         log::warning(
                 globallogcat,
                 "Unable to ping configured service node address ({})!",
