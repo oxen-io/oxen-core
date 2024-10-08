@@ -29,7 +29,6 @@
 #ifndef _NET_UTILS_BASE_H_
 #define _NET_UTILS_BASE_H_
 
-#include <boost/uuid/uuid.hpp>
 #include <boost/asio/io_service.hpp>
 #include <boost/asio/ip/address_v6.hpp>
 #include <typeinfo>
@@ -56,6 +55,18 @@
 
 namespace epee
 {
+
+struct connection_id_t : std::array<unsigned char, 16> {
+    // Makes a random connection id.  *NOT* cryptographically secure random.
+    static connection_id_t random();
+
+    constexpr bool is_nil() const {
+        return std::all_of(begin(), end(), [](auto x) { return x == 0; });
+    }
+};
+
+std::ostream& operator<<(std::ostream& out, const connection_id_t& c);
+
 namespace net_utils
 {
 	class ipv4_network_address
@@ -350,7 +361,7 @@ namespace net_utils
 	/************************************************************************/
 	struct connection_context_base
 	{
-    const boost::uuids::uuid m_connection_id;
+    const connection_id_t m_connection_id;
     const network_address m_remote_address;
     const bool     m_is_income;
     std::chrono::steady_clock::time_point m_started;
@@ -363,7 +374,7 @@ namespace net_utils
     double m_max_speed_down;
     double m_max_speed_up;
 
-    connection_context_base(boost::uuids::uuid connection_id,
+    connection_context_base(connection_id_t connection_id,
                             const network_address &remote_address, bool is_income,
                             std::chrono::steady_clock::time_point last_recv = std::chrono::steady_clock::time_point::min(),
                             std::chrono::steady_clock::time_point last_send = std::chrono::steady_clock::time_point::min(),
@@ -410,7 +421,7 @@ namespace net_utils
   private:
     template<class t_protocol_handler>
     friend class connection;
-    void set_details(boost::uuids::uuid connection_id, const network_address &remote_address, bool is_income)
+    void set_details(connection_id_t connection_id, const network_address &remote_address, bool is_income)
     {
       this->~connection_context_base();
       new(this) connection_context_base(connection_id, remote_address, is_income);
@@ -451,6 +462,21 @@ namespace net_utils
 
 }
 }
+
+namespace std {
+template <>
+struct hash<epee::connection_id_t> {
+    size_t operator()(const epee::connection_id_t& id) const {
+        constexpr size_t inverse_golden_ratio = sizeof(size_t) >= 8 ? 0x9e37'79b9'7f4a'7c15 : 0x9e37'79b9;
+
+        uint64_t a, b;
+        std::memcpy(&a, id.data(), 8);
+        std::memcpy(&b, id.data() + 8, 8);
+        auto h = hash<uint64_t>{}(a);
+        return hash<uint64_t>{}(b) + inverse_golden_ratio + (h << 6) + (h >> 2);
+    }
+};
+}  // namespace std
 
 template <std::derived_from<epee::net_utils::connection_context_base> T, typename Char>
 struct fmt::formatter<

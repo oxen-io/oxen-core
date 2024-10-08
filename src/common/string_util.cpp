@@ -130,7 +130,7 @@ std::string_view string_safe_substr(std::string_view src, size_t pos, size_t siz
 }
 
 std::string trim_url(std::string_view url) {
-    constexpr std::array PROTOCOLS  = {"http://"sv, "https://"sv, "ws://"sv, "wss://"sv};
+    constexpr std::array PROTOCOLS = {"http://"sv, "https://"sv, "ws://"sv, "wss://"sv};
     constexpr size_t PATH_TAIL_SIZE = 3;
 
     std::string result;

@@ -323,7 +323,7 @@ TEST(node_server, bind_same_p2p_port)
     return std::unique_ptr<test_data_t>(d);
   };
 
-  const auto init = [](const std::unique_ptr<test_data_t>& server, const char* port) -> bool {
+  const auto init = [](const std::unique_ptr<test_data_t>& server, uint16_t port) -> bool {
     boost::program_options::options_description desc_options("Command line options");
     boost::program_options::options_description hidden("Hidden options");
     cryptonote::core::init_options(desc_options);
@@ -333,15 +333,15 @@ TEST(node_server, bind_same_p2p_port)
     boost::program_options::variables_map vm;
     boost::program_options::store(boost::program_options::parse_command_line(1, argv, desc_options), vm);
 
-    vm.find(nodetool::arg_p2p_bind_port.name)->second = boost::program_options::variable_value(std::string(port), false);
+    vm.find(nodetool::arg_p2p_bind_port.name)->second = boost::program_options::variable_value(port, false);
 
     boost::program_options::notify(vm);
 
     return server->server->init(vm);
   };
 
-  constexpr char port[] = "48080";
-  constexpr char port_another[] = "58080";
+  constexpr uint16_t port = 48080;
+  constexpr uint16_t port_another = 58080;
 
   const auto node = new_node();
   EXPECT_TRUE(init(node, port));

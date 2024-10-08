@@ -38,8 +38,9 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include "epee/wipeable_string.h"
+
 #include "common/exception.h"
+#include "epee/wipeable_string.h"
 #include "logging/oxen_logger.h"
 
 /*!

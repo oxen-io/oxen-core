@@ -28,20 +28,23 @@
 
 #pragma once
 
-#include <boost/uuid/uuid.hpp>
 #include <cstddef>
 #include <memory>
 #include <utility>
 #include <vector>
 
+#include "epee/net/net_utils_base.h"
 #include "epee/span.h"
 
 namespace net::dandelionpp {
+
+using epee::connection_id_t;
+
 //! Assists with mapping source -> stem and tracking connections for stem.
 class connection_map {
     // Make sure to update clone method if changing members
-    std::vector<boost::uuids::uuid> out_mapping_;  //<! Current outgoing uuid connection at index.
-    std::vector<std::pair<boost::uuids::uuid, std::size_t>>
+    std::vector<connection_id_t> out_mapping_;  //<! Current outgoing uuid connection at index.
+    std::vector<std::pair<connection_id_t, std::size_t>>
             in_mapping_;  //<! uuid source to an `out_mapping_` index.
     std::vector<std::size_t> usage_count_;
 
@@ -49,19 +52,19 @@ class connection_map {
     connection_map(const connection_map&) = default;
 
   public:
-    using value_type = boost::uuids::uuid;
-    using size_type = std::vector<boost::uuids::uuid>::size_type;
-    using difference_type = std::vector<boost::uuids::uuid>::difference_type;
-    using reference = const boost::uuids::uuid&;
+    using value_type = connection_id_t;
+    using size_type = std::vector<connection_id_t>::size_type;
+    using difference_type = std::vector<connection_id_t>::difference_type;
+    using reference = const connection_id_t&;
     using const_reference = reference;
-    using iterator = std::vector<boost::uuids::uuid>::const_iterator;
+    using iterator = std::vector<connection_id_t>::const_iterator;
     using const_iterator = iterator;
 
     //! Initialized with zero stem connections.
-    explicit connection_map() : connection_map(std::vector<boost::uuids::uuid>{}, 0) {}
+    explicit connection_map() : connection_map(std::vector<connection_id_t>{}, 0) {}
 
     //! Initialized with `out_connections` and `stem_count`.
-    explicit connection_map(std::vector<boost::uuids::uuid> out_connections, std::size_t stems);
+    explicit connection_map(std::vector<connection_id_t> out_connections, std::size_t stems);
 
     connection_map(connection_map&&) = default;
     ~connection_map() noexcept;
@@ -83,12 +86,12 @@ class connection_map {
 
         \param connections Current outbound connection ids.
         \return True if any updates to `get_connections()` was made. */
-    bool update(std::vector<boost::uuids::uuid> current);
+    bool update(std::vector<connection_id_t> current);
 
     //! \return Number of outgoing connections in use.
     std::size_t size() const noexcept;
 
     //! \return Current stem mapping for `source` or `nil_uuid()` if none is possible.
-    boost::uuids::uuid get_stem(const boost::uuids::uuid& source);
+    connection_id_t get_stem(const connection_id_t& source);
 };
 }  // namespace net::dandelionpp

@@ -119,9 +119,8 @@ struct alignas(size_t) generic_owner {
 
     template <class Archive>
     void serialize_object(Archive& ar) {
-        field_varint(ar, "type", type, [](auto& type) {
-            return type < generic_owner_sig_type::_count;
-        });
+        field_varint(
+                ar, "type", type, [](auto& type) { return type < generic_owner_sig_type::_count; });
         if (type == generic_owner_sig_type::monero) {
             field(ar, "wallet.address", wallet.address);
             field(ar, "wallet.is_subaddress", wallet.is_subaddress);
@@ -148,9 +147,8 @@ struct generic_signature {
 
     template <class Archive>
     void serialize_object(Archive& ar) {
-        field_varint(ar, "type", type, [](auto& type) {
-            return type < generic_owner_sig_type::_count;
-        });
+        field_varint(
+                ar, "type", type, [](auto& type) { return type < generic_owner_sig_type::_count; });
         field(ar, "ed25519", ed25519);
     }
 };
@@ -634,13 +632,11 @@ struct tx_extra_oxen_name_system {
     template <class Archive>
     void serialize_object(Archive& ar) {
         field(ar, "version", version);
-        field_varint(
-                ar, "type", type, [](auto& type) { return type < ons::mapping_type::_count; });
+        field_varint(ar, "type", type, [](auto& type) { return type < ons::mapping_type::_count; });
         field(ar, "name_hash", name_hash);
         field(ar, "prev_txid", prev_txid);
-        field_varint(ar, "fields", fields, [](auto& fields) {
-            return fields <= ons::extra_field::all;
-        });
+        field_varint(
+                ar, "fields", fields, [](auto& fields) { return fields <= ons::extra_field::all; });
         if (field_is_set(ons::extra_field::owner))
             field(ar, "owner", owner);
         if (field_is_set(ons::extra_field::backup_owner))

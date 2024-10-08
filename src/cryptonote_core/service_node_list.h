@@ -659,12 +659,12 @@ class service_node_list {
             for (const auto& recently_removed_it : m_state.recently_removed_nodes) {
 
                 // NOTE: Look for their latest IP/port from an uptime proof
-                auto it = proofs.find(recently_removed_it.pubkey);
+                auto it = proofs.find(recently_removed_it.service_node_pubkey);
                 if (it != proofs.end() && it->second.proof) {
                     auto& proof = *it->second.proof;
                     *out++ = service_node_address{
-                            recently_removed_it.pubkey,
-                            recently_removed_it.bls_pubkey,
+                            recently_removed_it.service_node_pubkey,
+                            recently_removed_it.info.bls_public_key,
                             it->second.pubkey_x25519,
                             proof.public_ip,
                             proof.qnet_port};
@@ -675,9 +675,9 @@ class service_node_list {
                 if (recently_removed_it.public_ip == 0 || recently_removed_it.qnet_port == 0)
                     continue;
                 *out++ = service_node_address{
-                        recently_removed_it.pubkey,
-                        recently_removed_it.bls_pubkey,
-                        snpk_to_xpk(recently_removed_it.pubkey),
+                        recently_removed_it.service_node_pubkey,
+                        recently_removed_it.info.bls_public_key,
+                        snpk_to_xpk(recently_removed_it.service_node_pubkey),
                         recently_removed_it.public_ip,
                         recently_removed_it.qnet_port};
             }
@@ -700,8 +700,7 @@ class service_node_list {
             uint16_t storage_omq_port,
             std::array<uint16_t, 3> ss_version,
             uint16_t quorumnet_port,
-            std::array<uint16_t, 3> lokinet_version,
-            const eth::BLSSigner& signer) const;
+            std::array<uint16_t, 3> lokinet_version) const;
 
     bool handle_uptime_proof(
             std::unique_ptr<uptime_proof::Proof> proof,
@@ -767,28 +766,37 @@ class service_node_list {
             deregister,
         };
 
-        crypto::public_key pubkey;       // SN primary ed25519 key
-        eth::bls_public_key bls_pubkey;  // SN primary bls key
-        uint64_t height;                 // Height at which the SN exited/deregistered
-        uint64_t liquidation_height;     // Height at which the SN is eligible for liquidation
-        type_t type;                     // Event that occurred to remove this SN
-        uint64_t staking_requirement;    // Staking requirement this SN had to fulfill
-        std::vector<service_node_info::contributor_t> contributors;  // Contributors for the SN
-        uint32_t public_ip;  // Last known public IP of this SN (may be outdated)
-        uint16_t qnet_port;  // Last known quorumnet port of this SN (may be outdated)
+        uint64_t height;              // Height at which the SN exited/deregistered
+        uint64_t liquidation_height;  // Height at which the SN is eligible for liquidation
+        type_t type;                  // Event that occurred to remove this SN
+        uint32_t public_ip;           // Last known public IP of this SN (may be outdated)
+        uint16_t qnet_port;           // Last known quorumnet port of this SN (may be outdated)
+        crypto::public_key service_node_pubkey;  // SN primary ed25519 key
+        service_node_info info;  // Info copied from the SNL and frozen at point of exit
 
         template <class Archive>
         void serialize_object(Archive& ar) {
-            uint8_t version = 0;
+            uint8_t version = 1;
             field_varint(ar, "version", version);
-            field(ar, "pubkey", pubkey);
-            field(ar, "bls_pubkey", bls_pubkey);
+            if (version == 0) {  // NOTE: v0 we completely discard and force a full-rescan
+                crypto::public_key pubkey;
+                eth::bls_public_key bls_pubkey;
+                field(ar, "pubkey", pubkey);
+                field(ar, "bls_pubkey", bls_pubkey);
+            }
             field_varint(ar, "height", height);
             field_varint(ar, "liquidation_height", liquidation_height);
             field_varint(ar, "type", type);
-            field(ar, "contributors", contributors);
+            if (version == 0) {
+                std::vector<service_node_info::contributor_t> contributors;
+                field(ar, "contributors", contributors);
+            }
             field_varint(ar, "public_ip", public_ip);
             field_varint(ar, "qnet_port", qnet_port);
+            if (version >= 1) {
+                field(ar, "service_node_pubkey", service_node_pubkey);
+                field(ar, "info", info);
+            }
         }
     };
 
@@ -948,12 +956,15 @@ class service_node_list {
     struct data_for_serialization {
         enum struct version_t : uint8_t {
             version_0,
-            version_1,
+            version_1_create_recently_removed_nodes,
+            version_2_regen_recently_removed_nodes_w_sn_info,
             count,
         };
-        static version_t get_version(cryptonote::hf /*hf_version*/) { return version_t::version_1; }
+        static version_t get_version(cryptonote::hf /*hf_version*/) {
+            return version_t::version_2_regen_recently_removed_nodes_w_sn_info;
+        }
 
-        version_t version{version_t::version_1};
+        version_t version{version_t::version_2_regen_recently_removed_nodes_w_sn_info};
         std::vector<quorum_for_serialization> quorum_states;
         std::vector<state_serialized> states;
         void clear() {
@@ -1008,8 +1019,8 @@ class service_node_list {
 
         service_node_list* sn_list;
 
-        state_t(service_node_list* snl) : sn_list{snl} {}
-        state_t(service_node_list* snl, state_serialized&& state);
+        explicit state_t(service_node_list* snl) : sn_list{snl} {}
+        state_t(service_node_list& snl, state_serialized&& state);
 
         friend bool operator<(const state_t& a, const state_t& b) { return a.height < b.height; }
         friend bool operator<(const state_t& s, block_height h) { return s.height < h; }
@@ -1143,7 +1154,15 @@ class service_node_list {
         // returns the primary quorum, `round=17` returns the 17th backup quorum.  Returns nullopt
         // if the next block cannot be a pulse block (e.g. because of insufficient active nodes to
         // form a full pulse quorum).
-        std::optional<quorum> get_next_pulse_quorum(cryptonote::hf hf_version, uint8_t round) const;
+        //
+        // `bdb` and `nettype` are usually just the values from sn_list, but can be provided
+        // separately (this is mainly for use in the test suite that manipulates state_t's without
+        // having a service node list).
+        std::optional<quorum> get_next_pulse_quorum(
+                cryptonote::hf hf_version,
+                uint8_t round,
+                const cryptonote::BlockchainDB& bdb,
+                cryptonote::network_type nettype) const;
 
         // Returns the pulse quorum that actually produced this block.  In contrast to
         // `get_block_leader()`, this returns the leader of the actual pulse quorum, which could be

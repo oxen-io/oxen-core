@@ -33,6 +33,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <vector>
+
 #include "cryptonote_config.h"
 
 namespace crypto {

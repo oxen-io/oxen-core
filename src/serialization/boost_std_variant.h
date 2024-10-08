@@ -5,6 +5,12 @@
 // interchangeable).
 //
 
+#if BOOST_VERSION >= 108400
+
+#include <boost/serialization/variant.hpp>
+
+#else
+
 #include <oxenc/variant.h>
 
 #include <boost/archive/archive_exception.hpp>
@@ -49,3 +55,5 @@ inline void serialize(Archive& ar, std::variant<T...>& v, const unsigned int fil
 }
 
 }  // namespace boost::serialization
+
+#endif

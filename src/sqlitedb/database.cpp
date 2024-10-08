@@ -1,7 +1,6 @@
 #include "database.hpp"
 
 #include <common/exception.h>
-
 #include <fmt/core.h>
 #include <sqlite3.h>
 

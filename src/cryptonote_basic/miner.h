@@ -103,7 +103,10 @@ class miner {
     void on_synchronized();
     // synchronous analog (for fast calls)
     static bool find_nonce_for_given_block(
-            const get_block_hash_cb& gbh, block& bl, const difficulty_type& diffic, uint64_t height);
+            const get_block_hash_cb& gbh,
+            block& bl,
+            const difficulty_type& diffic,
+            uint64_t height);
     void pause();
     void resume();
     uint64_t get_block_reward() const { return m_block_reward; }

@@ -247,6 +247,14 @@ bool get_account_address_from_str(
 
     return true;
 }
+
+std::string reward_money::to_string() const {
+    static_assert(BATCH_REWARD_FACTOR * oxen::COIN == 1'000'000'000'000);
+    return "{:d}.{:012d}"_format(
+            _amount / (BATCH_REWARD_FACTOR * oxen::COIN),
+            _amount % (BATCH_REWARD_FACTOR * oxen::COIN));
+}
+
 //--------------------------------------------------------------------------------
 bool operator==(const cryptonote::transaction& a, const cryptonote::transaction& b) {
     return cryptonote::get_transaction_hash(a) == cryptonote::get_transaction_hash(b);

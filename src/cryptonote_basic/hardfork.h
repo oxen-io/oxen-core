@@ -30,10 +30,11 @@
 
 #include <cstdint>
 #include <ctime>
+#include <optional>
 #include <span>
 #include <vector>
 
-#include "cryptonote_basic/cryptonote_basic.h"
+#include "cryptonote_config.h"
 
 namespace cryptonote {
 
@@ -57,6 +58,11 @@ std::span<const hard_fork> get_hard_forks(network_type type);
 // nullopt for A if the version indicates a hardfork we do not know about (i.e. we are likely
 // outdated), and returns nullopt for B if the version indicates that top network version we know
 // about (i.e. there is no subsequent hardfork scheduled).
+//
+// This method only returns exact hard fork matches and will return a pair of nullopt for skipped
+// hard forks.  As a result you should *not* call this method to detecting "are we on HF N or
+// higher" because this method will return a pair of nullopts for hardforks that are skipped (such
+// as on devnet/testnet); you instead want to use `hard_fork_begins`.
 std::pair<std::optional<uint64_t>, std::optional<uint64_t>> get_hard_fork_heights(
         network_type type, hf version);
 
@@ -90,10 +96,15 @@ inline hf get_network_version(network_type nettype, uint64_t height) {
     return get_network_version_revision(nettype, height).first;
 }
 
-// Returns the first height at which the given network version rules become active.  This is
-// a shortcut for `get_hard_fork_heights(type, hard_fork_ceil(type, version)).first`, i.e. it
-// returns the first height at which `version` rules become active (even if they became active at
-// a hard fork > the given value).
+// Returns the height at which the given HF (or a later HF) became active.  Somewhat similar to
+// `get_hard_fork_heights(...).first`, except that this returns the start height of the first hard
+// fork >= the requested hardfork (which matters when the specified hardfork was skipped, such as
+// occurs on testnet/devnet/stagenet).
+//
+// For example, stagenet jumps from HF14 to HF21: `get_hard_fork_heights(stagenet, hf16).first` will
+// be nullopt, but `hard_fork_begins(stagenet, hf16)` will return the HF21 fork height.
+//
+// Equivalent to `get_hard_fork_heights(type, hard_fork_ceil(type, version)).first`
 inline std::optional<uint64_t> hard_fork_begins(network_type type, hf version) {
     return get_hard_fork_heights(type, hard_fork_ceil(type, version)).first;
 }

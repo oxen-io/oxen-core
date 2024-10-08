@@ -426,8 +426,7 @@ int import_from_file(
 
                     try {
                         uint64_t long_term_block_weight =
-                                core.blockchain.get_next_long_term_block_weight(
-                                        block_weight);
+                                core.blockchain.get_next_long_term_block_weight(block_weight);
                         core.blockchain.db().add_block(
                                 std::make_pair(b, block_to_blob(b)),
                                 block_weight,
@@ -453,8 +452,7 @@ int import_from_file(
                             pos = import_file.tellg();
                             bytes = bootstrap.count_bytes(import_file, db_batch_size, h2, q2);
                             import_file.seekg(pos);
-                            core.blockchain.db().batch_start(
-                                    db_batch_size, bytes);
+                            core.blockchain.db().batch_start(db_batch_size, bytes);
                             std::cout << "\n";
                             core.blockchain.db().show_stats();
                         }
@@ -668,15 +666,9 @@ int main(int argc, char* argv[]) {
 
         if (!command_line::is_arg_defaulted(vm, arg_pop_blocks)) {
             num_blocks = command_line::get_arg(vm, arg_pop_blocks);
-            log::info(
-                    logcat,
-                    "height: {}",
-                    core.blockchain.get_current_blockchain_height());
+            log::info(logcat, "height: {}", core.blockchain.get_current_blockchain_height());
             pop_blocks(core, num_blocks);
-            log::info(
-                    logcat,
-                    "height: {}",
-                    core.blockchain.get_current_blockchain_height());
+            log::info(logcat, "height: {}", core.blockchain.get_current_blockchain_height());
             return 0;
         }
 

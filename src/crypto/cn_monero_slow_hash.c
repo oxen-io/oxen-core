@@ -713,7 +713,7 @@ void cn_monero_hash(
     uint64_t* p = NULL;
     int useAes = !force_software_aes() && check_aes_hw();
 
-    static void (*const extra_hashes[4])(const void*, size_t, char*) = {
+    static void (*const extra_hashes[4])(const void*, size_t, unsigned char*) = {
             hash_extra_blake, hash_extra_groestl, hash_extra_jh, hash_extra_skein};
 
     // this isn't supposed to happen, but guard against it for now.

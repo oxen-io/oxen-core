@@ -30,8 +30,6 @@
 
 #pragma once
 
-#include <boost/uuid/uuid.hpp>
-
 #include "crypto/crypto.h"
 #include "cryptonote_config.h"
 #include "cryptonote_protocol/cryptonote_protocol_defs.h"
@@ -42,7 +40,6 @@
 #include "net/tor_address.h"  // needed for serialization
 
 namespace nodetool {
-using boost::uuids::uuid;
 using peerid_type = uint64_t;
 
 #pragma pack(push, 1)
@@ -90,7 +87,7 @@ struct network_config {
 };
 
 struct basic_node_data {
-    uuid network_id;
+    epee::connection_id_t network_id;
     uint32_t my_port;
     peerid_type peer_id;
 

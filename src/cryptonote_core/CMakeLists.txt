@@ -54,7 +54,7 @@ target_link_libraries(cryptonote_core
     device
     checkpoints
     SQLite::SQLite3
-    oxen_bls
+    bls_aggregator
     l2_tracker
     ethyl
   PRIVATE

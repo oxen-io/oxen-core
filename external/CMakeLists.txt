@@ -47,10 +47,10 @@ add_subdirectory(randomx EXCLUDE_FROM_ALL)
 oxen_install_library(randomx)
 add_subdirectory(date EXCLUDE_FROM_ALL)
 
-set(BLS_ETH ON CACHE BOOL "" FORCE)
-set(MCL_STATIC_LIB ON CACHE BOOL "" FORCE)
-add_subdirectory(bls EXCLUDE_FROM_ALL)
-oxen_install_library(bls256)
+set(BN256_ENABLE_TEST OFF CACHE BOOL "" FORCE)
+set(BUILD_DOC OFF CACHE BOOL "" FORCE)
+add_subdirectory(bn256 EXCLUDE_FROM_ALL)
+oxen_install_library(bn256)
 
 if(BUILD_STATIC_DEPS)
   set(OXEN_LOGGING_FORCE_SUBMODULES TRUE CACHE BOOL "" FORCE)
@@ -96,7 +96,14 @@ file(COPY uWebSockets/src/ DESTINATION uWebSockets/uWebSockets FILES_MATCHING PA
 add_library(uWebSockets INTERFACE)
 target_include_directories(uWebSockets INTERFACE ${CMAKE_CURRENT_BINARY_DIR}/uWebSockets)
 target_link_libraries(uWebSockets INTERFACE uSockets)
-target_compile_definitions(uWebSockets INTERFACE UWS_HTTPRESPONSE_NO_WRITEMARK UWS_NO_ZLIB)
+target_compile_definitions(uWebSockets INTERFACE UWS_HTTPRESPONSE_NO_WRITEMARK)
+if(TARGET zlib)
+    target_link_libraries(uWebSockets INTERFACE zlib)
+else()
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(ZLIB zlib REQUIRED IMPORTED_TARGET)
+    target_link_libraries(uWebSockets INTERFACE PkgConfig::ZLIB)
+endif()
 
 
 # Hack around SQLiteCpp's attempts to locate sqlite3 because we *don't* want to link against the
@@ -127,7 +134,12 @@ if(BUILD_PYBIND)
 endif()
 
 
+if(NOT WIN32 AND NOT APPLE)
+  set(CPR_FORCE_OPENSSL_BACKEND ON CACHE BOOL "" FORCE)
+endif()
 set(ethyl_ENABLE_CRYPTO_LIBRARY FALSE CACHE BOOL "" FORCE)
+set(ethyl_ENABLE_SIGNER FALSE CACHE BOOL "" FORCE)
+set(ethyl_ENABLE_LTO FALSE CACHE BOOL "" FORCE)
 add_subdirectory(ethyl EXCLUDE_FROM_ALL)
 oxen_install_library(ethyl)
 oxen_install_library(cpr)  # comes via ethyl

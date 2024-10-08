@@ -145,7 +145,11 @@ class BaseTestDB : public cryptonote::BlockchainDB {
             *block_height = 0;
         return crypto::hash();
     }
-    virtual cryptonote::block get_top_block() const override { return cryptonote::block(); }
+    virtual cryptonote::block get_top_block() const override {
+        cryptonote::block b{};
+        b.miner_tx.emplace();
+        return b;
+    }
     virtual uint64_t height() const override { return 1; }
     virtual bool tx_exists(const crypto::hash& h) const override { return false; }
     virtual bool tx_exists(const crypto::hash& h, uint64_t& tx_index) const override {
@@ -297,8 +301,11 @@ class BaseTestDB : public cryptonote::BlockchainDB {
             const uint64_t& coins_generated,
             uint64_t num_rct_outs,
             const crypto::hash& blk_hash) override {}
-    virtual cryptonote::block get_block_from_height(uint64_t height, size_t *size = nullptr) const override {
-        return cryptonote::block();
+    virtual cryptonote::block get_block_from_height(
+            uint64_t height, size_t* size = nullptr) const override {
+        cryptonote::block b{};
+        b.miner_tx.emplace();
+        return b;
     }
 
     virtual uint32_t get_blockchain_pruning_seed() const override { return 0; }

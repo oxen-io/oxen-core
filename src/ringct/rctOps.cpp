@@ -40,12 +40,12 @@ using namespace crypto;
 
 auto logcat = oxen::log::Cat("ringct");
 
-#define CHECK_AND_ASSERT_THROW_MES_L1(expr, frmt, ...)                \
-    {                                                                 \
-        if (!(expr)) {                                                \
-            oxen::log::warning(logcat, frmt, __VA_ARGS__);            \
+#define CHECK_AND_ASSERT_THROW_MES_L1(expr, frmt, ...)                              \
+    {                                                                               \
+        if (!(expr)) {                                                              \
+            oxen::log::warning(logcat, frmt, __VA_ARGS__);                          \
             throw oxen::traced<std::runtime_error>(fmt::format(frmt, __VA_ARGS__)); \
-        }                                                             \
+        }                                                                           \
     }
 
 struct zero_commitment {

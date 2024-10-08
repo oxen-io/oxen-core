@@ -1,9 +1,9 @@
 #include "cryptonote_basic.h"
 
-#include "cryptonote_format_utils.h"
-
-#include <oxenc/endian.h>
 #include <common/exception.h>
+#include <oxenc/endian.h>
+
+#include "cryptonote_format_utils.h"
 
 namespace cryptonote {
 

@@ -51,7 +51,7 @@ message(STATUS "CMake version ${CMAKE_VERSION}")
 set(CMAKE_OSX_DEPLOYMENT_TARGET 10.15 CACHE STRING "macOS deployment target (Apple clang only)")
 
 project(oxen
-    VERSION 11.0.4
+    VERSION 11.0.5
     LANGUAGES CXX C)
 set(OXEN_RELEASE_CODENAME "Wistful Wagyu")
 # Version update notes:
@@ -260,9 +260,6 @@ enable_testing()
 
 option(BUILD_DOCUMENTATION "Build the Doxygen documentation." ON)
 option(BUILD_TESTS "Build tests." OFF)
-if (BUILD_TESTS)
-  add_definitions(-DUNIT_TEST)
-endif()
 
 OPTION(USE_DEVICE_TREZOR "Build Trezor support (currently non-functional)" OFF)
 
@@ -434,10 +431,6 @@ endif()
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads)
 
-if (APPLE AND NOT IOS)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=x86-64 -fvisibility=default")
-endif()
-
 add_definition_if_library_exists(c memset_s "string.h" HAVE_MEMSET_S)
 add_definition_if_library_exists(c explicit_bzero "strings.h" HAVE_EXPLICIT_BZERO)
 add_definition_if_function_found(strptime HAVE_STRPTIME)
@@ -489,9 +482,14 @@ endif()
 
 if(NOT BUILD_STATIC_DEPS)
   find_package(PkgConfig REQUIRED)
+
   pkg_check_modules(SQLITE3 REQUIRED sqlite3>=3.24.0 IMPORTED_TARGET GLOBAL)
   message(STATUS "Found sqlite3 ${SQLITE3_VERSION}")
   add_library(SQLite::SQLite3 ALIAS PkgConfig::SQLITE3)
+
+  pkg_check_modules(GMP REQUIRED gmp IMPORTED_TARGET GLOBAL)
+  message(STATUS "Found gmp ${GMP_VERSION}")
+  add_library(gmp::gmp ALIAS PkgConfig::GMP)
 endif()
 
 set(OXEN_EXECUTABLE_SUFFIX "" CACHE STRING "suffix to add to executable names")
@@ -962,7 +960,7 @@ set(default_archive create_tarxz)
 if(tar_os STREQUAL "Linux")
   set(tar_os "linux-${CMAKE_SYSTEM_PROCESSOR}")
 elseif(tar_os STREQUAL "Darwin")
-  set(tar_os "macos")
+  set(tar_os "macos-${CMAKE_SYSTEM_PROCESSOR}")
 elseif(tar_os STREQUAL "Windows")
   if(CMAKE_CROSSCOMPILING AND ARCH_TRIPLET MATCHES i686-.*mingw)
     set(tar_os "win-x86")

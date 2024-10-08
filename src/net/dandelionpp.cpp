@@ -29,7 +29,6 @@
 #include "dandelionpp.h"
 
 #include <boost/container/small_vector.hpp>
-#include <boost/uuid/nil_generator.hpp>
 #include <chrono>
 
 #include "common/expect.h"
@@ -54,7 +53,7 @@ namespace {
     };
 
     std::size_t select_stem(
-            epee::span<const std::size_t> usage, epee::span<const boost::uuids::uuid> out_map) {
+            epee::span<const std::size_t> usage, epee::span<const connection_id_t> out_map) {
         assert(usage.size() < std::numeric_limits<std::size_t>::max());  // prevented in constructor
         if (usage.size() < out_map.size())
             return std::numeric_limits<std::size_t>::max();
@@ -64,7 +63,7 @@ namespace {
         boost::container::small_vector<std::size_t, expected_max_channels> choices;
         static_assert(sizeof(choices) < 256, "choices is too large based on current configuration");
 
-        for (const boost::uuids::uuid& out : out_map) {
+        for (const connection_id_t& out : out_map) {
             if (!out.is_nil()) {
                 const std::size_t location = std::addressof(out) - out_map.begin();
                 if (usage[location] < lowest) {
@@ -86,7 +85,7 @@ namespace {
 }  // namespace
 
 connection_map::connection_map(
-        std::vector<boost::uuids::uuid> out_connections, const std::size_t stems) :
+        std::vector<connection_id_t> out_connections, const std::size_t stems) :
         out_mapping_(std::move(out_connections)), in_mapping_(), usage_count_() {
     // max value is used by `select_stem` as error case
     if (stems == std::numeric_limits<std::size_t>::max())
@@ -111,14 +110,14 @@ connection_map connection_map::clone() const {
     return {*this};
 }
 
-bool connection_map::update(std::vector<boost::uuids::uuid> current) {
+bool connection_map::update(std::vector<connection_id_t> current) {
     std::sort(current.begin(), current.end());
 
     bool replace = false;
     for (auto& existing_out : out_mapping_) {
         const auto elem = std::lower_bound(current.begin(), current.end(), existing_out);
         if (elem == current.end() || *elem != existing_out) {
-            existing_out = boost::uuids::nil_uuid();
+            existing_out = {};
             replace = true;
         } else  // already using connection, remove it from candidate list
             current.erase(elem);
@@ -145,20 +144,20 @@ bool connection_map::update(std::vector<boost::uuids::uuid> current) {
 
 std::size_t connection_map::size() const noexcept {
     std::size_t count = 0;
-    for (const boost::uuids::uuid& connection : out_mapping_) {
+    for (const connection_id_t& connection : out_mapping_) {
         if (!connection.is_nil())
             ++count;
     }
     return count;
 }
 
-boost::uuids::uuid connection_map::get_stem(const boost::uuids::uuid& source) {
+connection_id_t connection_map::get_stem(const connection_id_t& source) {
     auto elem = std::lower_bound(in_mapping_.begin(), in_mapping_.end(), source, key_less{});
     if (elem == in_mapping_.end() || elem->first != source) {
         const std::size_t index =
                 select_stem(epee::to_span(usage_count_), epee::to_span(out_mapping_));
         if (out_mapping_.size() < index)
-            return boost::uuids::nil_uuid();
+            return {};
 
         elem = in_mapping_.emplace(elem, source, index);
         usage_count_[index]++;
@@ -170,7 +169,7 @@ boost::uuids::uuid connection_map::get_stem(const boost::uuids::uuid& source) {
                 select_stem(epee::to_span(usage_count_), epee::to_span(out_mapping_));
         if (out_mapping_.size() < index) {
             in_mapping_.erase(elem);
-            return boost::uuids::nil_uuid();
+            return {};
         }
 
         elem->second = index;

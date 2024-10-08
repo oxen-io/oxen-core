@@ -36,11 +36,11 @@
  */
 #pragma once
 
-#include "serialization.h"
-
-#include <oxenc/variant.h>
 #include <common/exception.h>
 #include <common/meta.h>
+#include <oxenc/variant.h>
+
+#include "serialization.h"
 
 namespace serialization {
 

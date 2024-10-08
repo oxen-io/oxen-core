@@ -30,14 +30,15 @@
 #define __STDC_FORMAT_MACROS  // NOTE(oxen): Explicitly define the PRIu64 macro on Mingw
 #endif
 
+#include <common/command_line.h>
+
+#include <common/exception.hpp>
+
 #include "blockchain_db/blockchain_db.h"
 #include "blockchain_objects.h"
 #include "cryptonote_core/cryptonote_core.h"
 #include "serialization/crypto.h"
 #include "version.h"
-
-#include <common/exception.hpp>
-#include <common/command_line.h>
 
 namespace po = boost::program_options;
 using namespace cryptonote;

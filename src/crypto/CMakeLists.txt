@@ -72,7 +72,7 @@ target_link_libraries(cncrypto
     logging
     extra)
 
-if (CMAKE_CXX_COMPILER_ID MATCHES Clang OR CMAKE_CXX_COMPILER_ID STREQUAL GNU)
+if (CMAKE_CXX_COMPILER_ID MATCHES "^(.*Clang|GNU)$" AND CMAKE_SYSTEM_PROCESSOR MATCHES "^([xX]86[_-]|[aA][mM][dD])64$")
   # If we're compiling for x86/amd64 then we need to force on -maes -msse2 for the hard intel code:
   # it has a run-time check to not actually call it if not supported by the running CPU.
   # Unfortunately CMake sucks for actually reliably giving us the target architecture, so we'll just

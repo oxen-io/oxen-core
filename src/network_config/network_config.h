@@ -1,6 +1,6 @@
 #pragma once
 
-#include <boost/uuid/uuid.hpp>
+#include <array>
 
 #include "../cryptonote_config.h"
 
@@ -26,7 +26,7 @@ struct network_config final {
     const uint16_t P2P_DEFAULT_PORT;
     const uint16_t RPC_DEFAULT_PORT;
     const uint16_t QNET_DEFAULT_PORT;
-    const boost::uuids::uuid NETWORK_ID;
+    const std::array<unsigned char, 16> NETWORK_ID;
     const std::string_view GENESIS_TX;
     const uint32_t GENESIS_NONCE;
     const std::chrono::seconds GOVERNANCE_REWARD_INTERVAL;

@@ -1,6 +1,5 @@
 #pragma once
 
-#include <boost/uuid/uuid.hpp>
 #include <string_view>
 
 #include "common/exception.h"
@@ -69,6 +68,5 @@ inline std::filesystem::path network_config_subdir(network_type t) {
         result = tools::utf8_path(subdir);
     return result;
 }
-
 
 }  // namespace cryptonote

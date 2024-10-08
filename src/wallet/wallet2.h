@@ -244,9 +244,9 @@ class hashchain {
 
     template <class t_archive>
     void serialize(t_archive& a, const unsigned int ver) {
-        a & m_offset;
-        a & m_genesis;
-        a & m_blockchain;
+        a& m_offset;
+        a& m_genesis;
+        a& m_blockchain;
     }
 
   private:
@@ -1131,41 +1131,41 @@ class wallet2 {
             return;
         if (ver < 19) {
             std::vector<crypto::hash> blockchain;
-            a & blockchain;
+            a& blockchain;
             for (const auto& b : blockchain) {
                 m_blockchain.push_back(b);
             }
         } else {
-            a & m_blockchain;
+            a& m_blockchain;
         }
         m_cached_height = m_blockchain.size();
-        a & m_transfers;
-        a & m_account_public_address;
-        a & m_key_images;
+        a& m_transfers;
+        a& m_account_public_address;
+        a& m_key_images;
         if (ver < 6)
             return;
-        a & m_unconfirmed_txs;
+        a& m_unconfirmed_txs;
         if (ver < 7)
             return;
-        a & m_payments;
+        a& m_payments;
         if (ver < 8)
             return;
-        a & m_tx_keys;
+        a& m_tx_keys;
         if (ver < 9)
             return;
-        a & m_confirmed_txs;
+        a& m_confirmed_txs;
         if (ver < 11)
             return;
-        a & dummy_refresh_height;
+        a& dummy_refresh_height;
         if (ver < 12)
             return;
-        a & m_tx_notes;
+        a& m_tx_notes;
         if (ver < 13)
             return;
         if (ver < 17) {
             // we're loading an old version, where m_unconfirmed_payments was a std::map
             std::unordered_map<crypto::hash, payment_details> m;
-            a & m;
+            a& m;
             for (std::unordered_map<crypto::hash, payment_details>::const_iterator i = m.begin();
                  i != m.end();
                  ++i)
@@ -1184,17 +1184,17 @@ class wallet2 {
             }
             return;
         }
-        a & m_pub_keys;
+        a& m_pub_keys;
         if (ver < 16)
             return;
-        a & m_address_book;
+        a& m_address_book;
         if (ver < 17)
             return;
         if (ver < 22) {
             // we're loading an old version, where m_unconfirmed_payments payload was
             // payment_details
             std::unordered_multimap<crypto::hash, payment_details> m;
-            a & m;
+            a& m;
             for (const auto& i : m)
                 m_unconfirmed_payments.insert(
                         std::make_pair(i.first, pool_payment_details{i.second, false}));
@@ -1205,41 +1205,41 @@ class wallet2 {
         a& m_scanned_pool_txs[1];
         if (ver < 20)
             return;
-        a & m_subaddresses;
+        a& m_subaddresses;
         std::unordered_map<cryptonote::subaddress_index, crypto::public_key> dummy_subaddresses_inv;
-        a & dummy_subaddresses_inv;
-        a & m_subaddress_labels;
-        a & m_additional_tx_keys;
+        a& dummy_subaddresses_inv;
+        a& m_subaddress_labels;
+        a& m_additional_tx_keys;
         if (ver < 21)
             return;
-        a & m_attributes;
+        a& m_attributes;
         if (ver < 22)
             return;
-        a & m_unconfirmed_payments;
+        a& m_unconfirmed_payments;
         if (ver < 23)
             return;
-        a & m_account_tags;
+        a& m_account_tags;
         if (ver < 24)
             return;
-        a & m_ring_history_saved;
+        a& m_ring_history_saved;
         if (ver < 25)
             return;
-        a & m_last_block_reward;
+        a& m_last_block_reward;
         if (ver < 26)
             return;
-        a & m_tx_device;
+        a& m_tx_device;
         if (ver < 27)
             return;
-        a & m_device_last_key_image_sync;
+        a& m_device_last_key_image_sync;
         if (ver < 28)
             return;
-        a & m_cold_key_images;
+        a& m_cold_key_images;
         if (ver < 29)
             return;
-        a & m_immutable_height;
+        a& m_immutable_height;
         if (ver < 30)
             return;
-        a & ons_records_cache;
+        a& ons_records_cache;
     }
 
     /*!
@@ -2369,43 +2369,43 @@ BOOST_CLASS_VERSION(tools::wallet2::ons_detail, 1)
 namespace boost::serialization {
 template <class Archive>
 void serialize(Archive& a, tools::wallet2::ons_detail& x, const unsigned int ver) {
-    a & x.type;
-    a & x.name;
-    a & x.hashed_name;
+    a& x.type;
+    a& x.name;
+    a& x.hashed_name;
     if (ver < 1) {  // Old fields, no longer used:
         std::string value, owner, backup_owner;
-        a & value & owner & backup_owner;
+        a& value& owner& backup_owner;
     }
 }
 
 template <class Archive>
 void serialize(
         Archive& a, tools::wallet2::unconfirmed_transfer_details& x, const unsigned int ver) {
-    a & x.m_change;
-    a & x.m_sent_time;
+    a& x.m_change;
+    a& x.m_sent_time;
     if (ver < 5) {
         cryptonote::transaction tx;
-        a & tx;
+        a& tx;
         x.m_tx = (const cryptonote::transaction_prefix&)tx;
     } else {
-        a & x.m_tx;
+        a& x.m_tx;
     }
     if (ver < 9)
         x.m_pay_type = wallet::pay_type::out;
     if (ver < 1)
         return;
-    a & x.m_dests;
-    a & x.m_payment_id;
+    a& x.m_dests;
+    a& x.m_payment_id;
     if (ver < 2)
         return;
-    a & x.m_state;
+    a& x.m_state;
     if (ver < 3)
         return;
-    a & x.m_timestamp;
+    a& x.m_timestamp;
     if (ver < 4)
         return;
-    a & x.m_amount_in;
-    a & x.m_amount_out;
+    a& x.m_amount_in;
+    a& x.m_amount_out;
     if (ver < 6) {
         // v<6 may not have change accumulated in m_amount_out, which is a pain,
         // as it's readily understood to be sum of outputs.
@@ -2417,31 +2417,31 @@ void serialize(
         x.m_subaddr_account = 0;
         return;
     }
-    a & x.m_subaddr_account;
-    a & x.m_subaddr_indices;
+    a& x.m_subaddr_account;
+    a& x.m_subaddr_indices;
     if (ver < 8)
         return;
-    a & x.m_rings;
+    a& x.m_rings;
     if (ver < 9)
         return;
-    a & x.m_pay_type;
+    a& x.m_pay_type;
 }
 
 template <class Archive>
 void serialize(Archive& a, tools::wallet2::confirmed_transfer_details& x, const unsigned int ver) {
-    a & x.m_amount_in;
-    a & x.m_amount_out;
-    a & x.m_change;
-    a & x.m_block_height;
+    a& x.m_amount_in;
+    a& x.m_amount_out;
+    a& x.m_change;
+    a& x.m_block_height;
     if (ver < 8)
         x.m_pay_type = wallet::pay_type::out;
     if (ver < 1)
         return;
-    a & x.m_dests;
-    a & x.m_payment_id;
+    a& x.m_dests;
+    a& x.m_payment_id;
     if (ver < 2)
         return;
-    a & x.m_timestamp;
+    a& x.m_timestamp;
     if (ver < 3) {
         // v<3 may not have change accumulated in m_amount_out, which is a pain,
         // as it's readily understood to be sum of outputs. Whether it got added
@@ -2459,31 +2459,31 @@ void serialize(Archive& a, tools::wallet2::confirmed_transfer_details& x, const 
             x.m_unlock_time = 0;
         return;
     }
-    a & x.m_unlock_time;
+    a& x.m_unlock_time;
     if (ver < 5) {
         x.m_subaddr_account = 0;
         return;
     }
-    a & x.m_subaddr_account;
-    a & x.m_subaddr_indices;
+    a& x.m_subaddr_account;
+    a& x.m_subaddr_indices;
     if (ver < 6)
         return;
-    a & x.m_rings;
+    a& x.m_rings;
 
     if (ver < 7)
         return;
-    a & x.m_unlock_times;
+    a& x.m_unlock_times;
     if (ver < 8)
         return;
-    a & x.m_pay_type;
+    a& x.m_pay_type;
 }
 
 template <class Archive>
 void serialize(Archive& a, tools::wallet2::payment_details& x, const unsigned int ver) {
-    a & x.m_tx_hash;
-    a & x.m_amount;
-    a & x.m_block_height;
-    a & x.m_unlock_time;
+    a& x.m_tx_hash;
+    a& x.m_amount;
+    a& x.m_block_height;
+    a& x.m_unlock_time;
 
     // Set defaults for old versions:
     if (ver < 1)
@@ -2501,36 +2501,36 @@ void serialize(Archive& a, tools::wallet2::payment_details& x, const unsigned in
 
     if (ver < 1)
         return;
-    a & x.m_timestamp;
+    a& x.m_timestamp;
     if (ver < 2)
         return;
-    a & x.m_subaddr_index;
+    a& x.m_subaddr_index;
     if (ver < 3)
         return;
-    a & x.m_fee;
+    a& x.m_fee;
     if (ver < 4)
         return;
-    a & x.m_type;
+    a& x.m_type;
     if (ver < 5)
         return;
-    a & x.m_unmined_blink;
+    a& x.m_unmined_blink;
     if (ver < 6)
         return;
-    a & x.m_was_blink;
+    a& x.m_was_blink;
 }
 
 template <class Archive>
 void serialize(Archive& a, tools::wallet2::pool_payment_details& x, const unsigned int ver) {
-    a & x.m_pd;
-    a & x.m_double_spend_seen;
+    a& x.m_pd;
+    a& x.m_double_spend_seen;
 }
 
 template <class Archive>
 void serialize(Archive& a, tools::wallet2::address_book_row& x, const unsigned int ver) {
-    a & x.m_address;
+    a& x.m_address;
     if (ver < 18) {
         crypto::hash payment_id;
-        a & payment_id;
+        a& payment_id;
         x.m_has_payment_id = (bool)payment_id;
         if (x.m_has_payment_id) {
             bool is_long = false;
@@ -2546,27 +2546,27 @@ void serialize(Archive& a, tools::wallet2::address_book_row& x, const unsigned i
                 memcpy(x.m_payment_id.data(), payment_id.data(), 8);
         }
     }
-    a & x.m_description;
+    a& x.m_description;
     if (ver < 17) {
         x.m_is_subaddress = false;
         return;
     }
-    a & x.m_is_subaddress;
+    a& x.m_is_subaddress;
     if (ver < 18)
         return;
-    a & x.m_has_payment_id;
+    a& x.m_has_payment_id;
     if (x.m_has_payment_id)
-        a & x.m_payment_id;
+        a& x.m_payment_id;
 }
 
 template <class Archive>
 void serialize(Archive& a, tools::wallet2::reserve_proof_entry& x, const unsigned int ver) {
-    a & x.txid;
-    a & x.index_in_tx;
-    a & x.shared_secret;
-    a & x.key_image;
-    a & x.shared_secret_sig;
-    a & x.key_image_sig;
+    a& x.txid;
+    a& x.index_in_tx;
+    a& x.shared_secret;
+    a& x.key_image;
+    a& x.shared_secret_sig;
+    a& x.key_image_sig;
 }
 
 }  // namespace boost::serialization

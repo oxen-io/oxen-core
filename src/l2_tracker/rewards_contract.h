@@ -13,7 +13,7 @@
 namespace ethyl {
 struct Provider;
 struct LogEntry;
-};
+};  // namespace ethyl
 
 namespace eth {
 
@@ -49,8 +49,7 @@ class RewardsContract {
 
     std::vector<bls_public_key> get_all_bls_pubkeys(uint64_t block_number);
 
-    struct ServiceNodeIDs
-    {
+    struct ServiceNodeIDs {
         bool success;
         std::vector<uint64_t> ids;
         std::vector<bls_public_key> bls_pubkeys;

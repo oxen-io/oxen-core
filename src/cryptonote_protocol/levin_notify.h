@@ -29,11 +29,11 @@
 #pragma once
 
 #include <boost/asio/io_service.hpp>
-#include <boost/uuid/uuid.hpp>
 #include <memory>
 #include <vector>
 
 #include "epee/net/enums.h"
+#include "epee/net/net_utils_base.h"
 #include "epee/shared_sv.h"
 #include "epee/span.h"
 
@@ -118,6 +118,6 @@ class notify {
           construction.
 
       \return True iff the notification is queued for sending. */
-    bool send_txs(std::vector<std::string> txs, const boost::uuids::uuid& source, bool pad_txs);
+    bool send_txs(std::vector<std::string> txs, const epee::connection_id_t& source, bool pad_txs);
 };
 }  // namespace cryptonote::levin

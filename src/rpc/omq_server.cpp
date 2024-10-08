@@ -329,9 +329,9 @@ omq_rpc::omq_rpc(
         return true;
     });
     core_.mempool.add_notify([this](const crypto::hash& id,
-                                       const transaction& tx,
-                                       const std::string& blob,
-                                       const tx_pool_options& opts) {
+                                    const transaction& tx,
+                                    const std::string& blob,
+                                    const tx_pool_options& opts) {
         send_mempool_notifications(id, tx, blob, opts);
     });
 }

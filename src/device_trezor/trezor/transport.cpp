@@ -40,8 +40,8 @@
 #include <chrono>
 #include <iomanip>
 
-#include "common/exception.h"
 #include "common/apply_permutation.h"
+#include "common/exception.h"
 #include "common/string_util.h"
 #include "messages/messages-common.pb.h"
 #include "transport.hpp"
@@ -533,7 +533,8 @@ std::string BridgeTransport::post_json(std::string_view uri, std::string json) {
     res = m_http_session.Post();
 
     if (res.error)
-        throw oxen::traced<std::runtime_error>{"Trezor bridge request failed: " + res.error.message};
+        throw oxen::traced<std::runtime_error>{
+                "Trezor bridge request failed: " + res.error.message};
 
     if (res.status_code != 200)
         throw oxen::traced<std::runtime_error>{

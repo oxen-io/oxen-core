@@ -1,8 +1,5 @@
 #pragma once
 
-#include <boost/uuid/uuid.hpp>
-#include <cstdint>
-
 #include "../cryptonote_config.h"
 #include "network_config.h"
 
@@ -35,12 +32,12 @@ inline constexpr network_config config{
                   0x75,
                   0x66,
                   0x65,
-                  0x79}},  // Bender's nightmare
+                  0x79}},
         .GENESIS_TX =
                 "021e01ff000380808d93f5d771027c4fd4553bc9886f1f49e3f76d945bf71e8632a94e6c177b19cbc7"
                 "80e7e6bdb48080b4ccd4dfc60302c8b9f6461f58ef3f2107e577c7425d06af584a1c7482bf19060e84"
                 "059c98b4c3808088fccdbcc32302732b53b0b0db706fcc3087074fb4b786da5ab72b2065699f945344"
-                "8b0db27f892101ed71f2ce3fc70d7b2036f8a4e4b3fb75c66c12184b55a908e7d1a1d6995566cf00",
+                "8b0db27f892101ed71f2ce3fc70d7b2036f8a4e4b3fb75c66c12184b55a908e7d1a1d6995566cf00"sv,
         .GENESIS_NONCE = 1022201,
         .GOVERNANCE_REWARD_INTERVAL = 7 * 24h,
         .GOVERNANCE_WALLET_ADDRESS =

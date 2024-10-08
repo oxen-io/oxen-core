@@ -33,7 +33,6 @@
 
 
 #include <boost/bind/bind.hpp>
-#include <boost/uuid/random_generator.hpp>
 #include <boost/asio/steady_timer.hpp>
 #include "../warnings.h"
 #include "../string_tools.h"
@@ -166,11 +165,9 @@ PRAGMA_WARNING_DISABLE_VS(4355)
     m_is_multithreaded = is_multithreaded;
     m_local = real_remote.is_loopback() || real_remote.is_local();
 
-    // create a random uuid, we don't need crypto strength here
-    const boost::uuids::uuid random_uuid = boost::uuids::random_generator()();
-
+    // create a random id, we don't need crypto strength here
     context = t_connection_context{};
-    context.set_details(random_uuid, std::move(real_remote), is_income);
+    context.set_details(connection_id_t::random(), std::move(real_remote), is_income);
 
     if(static_cast<shared_state&>(get_state()).pfilter && !static_cast<shared_state&>(get_state()).pfilter->is_remote_host_allowed(context.m_remote_address))
     {
@@ -253,7 +250,13 @@ PRAGMA_WARNING_DISABLE_VS(4355)
     std::shared_ptr<connection<t_protocol_handler> >  back_connection_copy;
     std::lock_guard lock{m_self_refs_lock};
     CHECK_AND_ASSERT_MES(m_reference_count, false, "[sock {}] m_reference_count already at 0 at connection<t_protocol_handler>::release() call",
-        socket().native_handle());
+#ifdef _WIN32
+        ""  // The below is some godforsaken unformattable type on Windows and it doesn't seem worth
+            // figuring out how to print it for this one obscure assertion.
+#else
+        socket().native_handle()
+#endif
+        );
     // is this the last reference?
     if (--m_reference_count == 0) {
         // move the held reference to a local variable, keeping the object alive until the function terminates

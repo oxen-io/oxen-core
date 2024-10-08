@@ -4,8 +4,7 @@
 
 #include <cstdint>
 
-#include "bls/bls_signer.h"
-#include "bls/bls_utils.h"
+#include "bls/bls_crypto.h"
 #include "common/guts.h"
 #include "crypto/eth.h"
 
@@ -63,45 +62,11 @@ TEST(BLS, equality) {
     EXPECT_GT(pk1, pk2);
 }
 
-TEST(BLS, to_from_crypto) {
-    auto pk = tools::make_from_guts<eth::bls_public_key>(
-            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"_hex);
-    auto pk2 = bls_utils::to_crypto_pubkey(bls_utils::from_crypto_pubkey(pk));
-    EXPECT_EQ("{}"_format(pk), "{}"_format(pk2));
-
-    auto sig = tools::make_from_guts<eth::bls_signature>(
-            "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
-            "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
-            "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
-            "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"_hex);
-
-    auto sig2 = bls_utils::to_crypto_signature(bls_utils::from_crypto_signature(sig));
-    EXPECT_EQ("{}"_format(sig), "{}"_format(sig2));
-
-    auto sk = tools::make_from_guts<eth::bls_secret_key>(
-            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"_hex);
-    eth::BLSSigner signer{cryptonote::network_type::MAINNET, &sk};
-    EXPECT_EQ(
-            oxenc::to_hex(signer.getPubkey().getStr(bls_utils::BLS_MODE_BINARY)),
-            "2c325c9d9c9593096528b2aa9d0d2cce042915e87a19c2a2a4cfbe4f5c61c694");
-    auto pk3 = signer.getCryptoPubkey();
-    EXPECT_EQ(
-            tools::hex_guts(pk3),
-            "14c6615c4fbecfa4a2c2197ae8152904ce2c0d9daab228650993959c9d5c322c"
-            "1310113ec96bd4f56c1a3abb96dea45ffb8d785ea7a55faf38e12bfd92ba179b");
-    auto pk4 = bls_utils::from_crypto_pubkey(pk3);
-    EXPECT_EQ(
-            oxenc::to_hex(pk4.getStr(bls_utils::BLS_MODE_BINARY)),
-            "2c325c9d9c9593096528b2aa9d0d2cce042915e87a19c2a2a4cfbe4f5c61c694");
-}
-
 TEST(BLS, signatures) {
     auto sk = tools::make_from_guts<eth::bls_secret_key>(
             "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"_hex);
-    eth::BLSSigner signer{cryptonote::network_type::MAINNET, &sk};
 
-    auto pk = signer.getCryptoPubkey();
+    auto pk = get_pubkey(sk);
     ASSERT_EQ(
             "{}"_format(pk),
             "14c6615c4fbecfa4a2c2197ae8152904ce2c0d9daab228650993959c9d5c322c"
@@ -115,24 +80,33 @@ TEST(BLS, signatures) {
     ASSERT_EQ(
             "{}"_format(hash2), "dc85a6bbfd4658040ef305c9333cf0d5a82ede2854f112549f3925df6b2c0e71");
 
-    auto sig1 = signer.signMsg(hash1);
-    auto sig1a = bls_utils::from_crypto_signature(sig1);
-    auto sig1b = bls_utils::to_crypto_signature(bls_utils::from_crypto_signature(sig1));
-    EXPECT_EQ("{}"_format(sig1), "{}"_format(sig1b));
-    EXPECT_EQ(sig1a.getStr(), bls_utils::from_crypto_signature(sig1b).getStr());
-    EXPECT_TRUE(signer.verifyMsg(bls_utils::to_crypto_signature(sig1a), bls_utils::to_crypto_pubkey(signer.getPubkey()), hash1));
-    EXPECT_TRUE(signer.verifyMsg(sig1b, pk, hash1));
+    constexpr auto mainnet = cryptonote::network_type::MAINNET;
+    auto sig1 = eth::sign(mainnet, sk, hash1);
+    EXPECT_TRUE(eth::verify(mainnet, sig1, pk, hash1));
 
     EXPECT_EQ(
             "{}"_format(sig1),
-            "0935f61237111bdf49d7b67232def51e267ff84a9c76503d95aee6ba3a94443c16558636a14f7ab3767cde"
-            "88e5b2021157888ca26908d0d052dfd44b3b8b5c6617a1f756b90523ecc8e9d9744b0e1f6a1ca310533227"
-            "378fd44012cdf44bbaf826559955b29a5fc7a5af1ff0f0318747ce80101abe9ed97ab256977b7c25a7d6");
-    EXPECT_TRUE(signer.verifyMsg(sig1, pk, hash1));
+            "28dcb2b1512acd2eb2405c6e25cdfa3172b3f3244f4f13b32c5cb0a6e52de22f"
+            "1d1c84e8b728675709c43c53d465601fb7cde902470547fc92e39f47820a2cc3"
+            "25c76fabbab649f9e786d727cc4c5123e1ec677087b920cc3bcd7e6701ed3953"
+            "236410a224c9ba5eccf6189533838c9ef8e0b4354ae11556c705650b9d6a7cc6");
 
-    auto sig2 = signer.signMsg(hash2);
+    auto sig2 = eth::sign(mainnet, sk, hash2);
     EXPECT_EQ(
             "{}"_format(sig2),
-            "0a6f2c1693aceac3220fb57277d33203022339b21fca05bd2751cfdf50359ad628d633ff8e214bfa1fed2334fd1d7db512fcd43bba173a84d443fe6d333d64540960da53f247c635af26128574190e91f40d899fefdda43b9f2c17fccf97cf062f82c037ba9e20e63e0bc72bc672e35643adad660e4afe60357c26c83bce7a2b");
-    EXPECT_TRUE(signer.verifyMsg(sig2, pk, hash2));
+            "04da80bc677397dbd11c1a1a68ba0525e5e461c0eed3011af2445173c5331536"
+            "2f72a0cb8043ac3f5345b218e0cb4d5e2a76da9450d18eeccc8b10a0e97abed7"
+            "2bd7d00154ca33fa1491457dddfcd3874c2892a1e7bead5b4a9b8a588bb8edfe"
+            "23b92cef33ef5fe950f166b4902ac98d6b96c7bc6a537c275bc9044c6b42ff3d");
+    EXPECT_TRUE(eth::verify(mainnet, sig2, pk, hash2));
+    EXPECT_FALSE(eth::verify(mainnet, sig1, pk, hash2));
+    EXPECT_FALSE(eth::verify(mainnet, sig2, pk, hash1));
+    EXPECT_FALSE(eth::verify(mainnet, sig1, get_pubkey(eth::generate_bls_key()), hash1));
+
+    auto sig1_broken = sig1;
+    *(sig1_broken.data() + 127) = 0xc7;
+    auto sig2_broken = sig2;
+    *(sig2_broken.data() + 25) = 0x42;
+    EXPECT_FALSE(eth::verify(mainnet, sig1_broken, pk, hash1));
+    EXPECT_FALSE(eth::verify(mainnet, sig2_broken, pk, hash2));
 }

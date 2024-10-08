@@ -43,9 +43,9 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include "common/exception.h"
 
 #include "chinese_simplified.h"
+#include "common/exception.h"
 #include "common/oxen.h"
 #include "dutch.h"
 #include "english.h"

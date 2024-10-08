@@ -35,6 +35,7 @@
 #include <boost/thread/thread.hpp>
 #include <vector>
 
+#include "epee/net/net_utils_base.h"
 #include "gtest/gtest.h"
 
 #include "epee/misc_log_ex.h"
@@ -45,6 +46,8 @@
 #include "net_load_tests.h"
 
 using namespace net_load_tests;
+
+using epee::connection_id_t;
 
 namespace
 {
@@ -76,7 +79,7 @@ namespace
       , m_connections(open_request_target)
     {
       for (auto& conn_id : m_connections)
-        conn_id = boost::uuids::nil_uuid();
+        conn_id = {};
     }
 
     bool open()
@@ -124,7 +127,7 @@ namespace
     size_t m_open_request_target;
     std::atomic<size_t> m_next_id;
     std::atomic<size_t> m_error_count;
-    std::vector<boost::uuids::uuid> m_connections;
+    std::vector<connection_id_t> m_connections;
   };
 
   class t_connection_opener_2
@@ -200,7 +203,7 @@ namespace
 
       // Connect to server
       std::atomic<int> conn_status(0);
-      m_cmd_conn_id = boost::uuids::nil_uuid();
+      m_cmd_conn_id = {};
       ASSERT_TRUE(m_tcp_server.connect_async("127.0.0.1", srv_port, CONNECTION_TIMEOUT, [&](const test_connection_context& context, const boost::system::error_code& ec) {
         if (!ec)
         {
@@ -248,7 +251,7 @@ namespace
 
       // Connect to server and invoke shutdown command
       std::atomic<int> conn_status(0);
-      boost::uuids::uuid cmd_conn_id = boost::uuids::nil_uuid();
+      connection_id_t cmd_conn_id = {};
       tcp_server.connect_async("127.0.0.1", srv_port, CONNECTION_TIMEOUT, [&](const test_connection_context& context, const boost::system::error_code& ec) {
         cmd_conn_id = context.m_connection_id;
         conn_status.store(!ec ? 1 : -1, std::memory_order_seq_cst);
@@ -342,7 +345,7 @@ namespace
     test_tcp_server m_tcp_server;
     test_levin_commands_handler m_commands_handler;
     size_t m_thread_count;
-    boost::uuids::uuid m_cmd_conn_id;
+    connection_id_t m_cmd_conn_id;
   };
 }
 

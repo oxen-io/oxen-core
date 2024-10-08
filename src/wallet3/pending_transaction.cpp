@@ -1,9 +1,8 @@
 #include "pending_transaction.hpp"
 
+#include "common/exception.h"
 #include "oxen_economy.h"
 #include "transaction_constructor.hpp"
-
-#include "common/exception.h"
 
 namespace wallet {
 PendingTransaction::PendingTransaction(

@@ -1146,7 +1146,7 @@ bool simple_wallet::exchange_multisig_keys_main(
 #endif
             return true;
         } else {
-            uint32_t threshold, total;
+            uint32_t threshold = 0, total = 0;
             m_wallet->multisig(NULL, &threshold, &total);
             success_msg_writer() << tr("Multisig wallet has been successfully created. Current "
                                        "wallet type: ")
@@ -6973,10 +6973,12 @@ bool simple_wallet::ons_update_mapping(std::vector<std::string> args) {
         }
 
         if (owner.size()) {
-            std::cout << "Old Owner:        {}"_format(response[0]["owner"].get<std::string_view>());
+            std::cout << "Old Owner:        {}"_format(
+                    response[0]["owner"].get<std::string_view>());
             std::cout << "New Owner:        {}"_format(owner);
         } else {
-            std::cout << "Owner:            {} (unchanged)"_format(response[0]["owner"].get<std::string_view>());
+            std::cout << "Owner:            {} (unchanged)"_format(
+                    response[0]["owner"].get<std::string_view>());
         }
         std::cout << std::endl;
 
@@ -8246,9 +8248,8 @@ bool simple_wallet::check_tx_proof(const std::vector<std::string>& args) {
     }
 
     try {
-        uint64_t received;
+        uint64_t received = 0, confirmations = 0;
         bool in_pool = false;
-        uint64_t confirmations;
         if (m_wallet->check_tx_proof(
                     txid,
                     info.address,

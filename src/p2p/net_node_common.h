@@ -30,7 +30,6 @@
 
 #pragma once
 
-#include <boost/uuid/uuid.hpp>
 #include <utility>
 #include <vector>
 
@@ -40,19 +39,18 @@
 
 namespace nodetool {
 
-typedef boost::uuids::uuid uuid;
-typedef boost::uuids::uuid net_connection_id;
+using epee::connection_id_t;
 
 template <class t_connection_context>
 struct i_p2p_endpoint {
     virtual bool relay_notify_to_list(
             int command,
             const epee::span<const uint8_t> data_buff,
-            std::vector<std::pair<epee::net_utils::zone, boost::uuids::uuid>> connections) = 0;
+            std::vector<std::pair<epee::net_utils::zone, connection_id_t>> connections) = 0;
     virtual epee::net_utils::zone send_txs(
             std::vector<std::string> txs,
             const epee::net_utils::zone origin,
-            const boost::uuids::uuid& source,
+            const connection_id_t& source,
             const bool pad_txs) = 0;
     virtual bool invoke_command_to_peer(
             int command,
@@ -68,8 +66,7 @@ struct i_p2p_endpoint {
     virtual uint64_t get_public_connections_count() = 0;
     virtual void for_each_connection(std::function<bool(t_connection_context&, peerid_type)> f) = 0;
     virtual bool for_connection(
-            const boost::uuids::uuid&,
-            std::function<bool(t_connection_context&, peerid_type)> f) = 0;
+            const connection_id_t&, std::function<bool(t_connection_context&, peerid_type)> f) = 0;
     virtual bool block_host(
             const epee::net_utils::network_address& address, time_t seconds = 0) = 0;
     virtual bool unblock_host(const epee::net_utils::network_address& address) = 0;
@@ -86,13 +83,13 @@ struct p2p_endpoint_stub : public i_p2p_endpoint<t_connection_context> {
     virtual bool relay_notify_to_list(
             int command,
             const epee::span<const uint8_t> data_buff,
-            std::vector<std::pair<epee::net_utils::zone, boost::uuids::uuid>> connections) {
+            std::vector<std::pair<epee::net_utils::zone, connection_id_t>> connections) {
         return false;
     }
     virtual epee::net_utils::zone send_txs(
             std::vector<std::string> txs,
             const epee::net_utils::zone origin,
-            const boost::uuids::uuid& source,
+            const connection_id_t& source,
             const bool pad_txs) {
         return epee::net_utils::zone::invalid;
     }
@@ -115,7 +112,7 @@ struct p2p_endpoint_stub : public i_p2p_endpoint<t_connection_context> {
     virtual void request_callback(const epee::net_utils::connection_context_base& context) {}
     virtual void for_each_connection(std::function<bool(t_connection_context&, peerid_type)> f) {}
     virtual bool for_connection(
-            const boost::uuids::uuid&, std::function<bool(t_connection_context&, peerid_type)> f) {
+            const connection_id_t&, std::function<bool(t_connection_context&, peerid_type)> f) {
         return false;
     }
 

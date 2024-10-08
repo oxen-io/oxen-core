@@ -265,7 +265,12 @@ json rpc_command_executor::invoke(
                 conn,
                 endpoint,
                 [endpoint, &result_p](bool success, const std::vector<std::string>& data) {
-                    oxen::log::trace(oxen::log::Cat("rpc"), "{} RPC response ({}) {}", endpoint, data.size(), tools::join(" ", data));
+                    oxen::log::trace(
+                            oxen::log::Cat("rpc"),
+                            "{} RPC response ({}) {}",
+                            endpoint,
+                            data.size(),
+                            tools::join(" ", data));
                     try {
                         if (!success)
                             throw oxen::traced<std::runtime_error>{"Request timed out"};

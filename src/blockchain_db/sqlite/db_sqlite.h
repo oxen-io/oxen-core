@@ -28,9 +28,9 @@
 #pragma once
 
 #include <SQLiteCpp/SQLiteCpp.h>
-#include <cryptonote_basic/cryptonote_basic_impl.h> // cryptonote::address_parse_info...
+#include <cryptonote_basic/cryptonote_basic_impl.h>  // cryptonote::address_parse_info...
 #include <cryptonote_config.h>
-#include <cryptonote_core/service_node_list.h> // service_node_list::state_t...
+#include <cryptonote_core/service_node_list.h>  // service_node_list::state_t...
 
 #include <filesystem>
 #include <sqlitedb/database.hpp>
@@ -75,7 +75,9 @@ class BlockchainSQLite : public db::Database {
     std::unordered_map<account_public_address, std::string> address_str_cache;
     std::pair<hf, cryptonote::address_parse_info> parsed_governance_addr = {hf::none, {}};
     std::string get_address_str(const cryptonote::batch_sn_payment& addr);
-    std::pair<int, std::string> get_address_str(const std::variant<eth::address, cryptonote::account_public_address>& addr, uint64_t batching_interval);
+    std::pair<int, std::string> get_address_str(
+            const std::variant<eth::address, cryptonote::account_public_address>& addr,
+            uint64_t batching_interval);
     std::mutex address_str_cache_mutex;
 
     bool table_exists(const std::string& name);
@@ -156,7 +158,6 @@ class BlockchainSQLite : public db::Database {
     // to be marked as paid in the paid_amounts vector. Block height will be added to the
     // batched_payments_paid database as height_paid.
     bool save_payments(uint64_t block_height, const std::vector<batch_sn_payment>& paid_amounts);
-    std::vector<cryptonote::batch_sn_payment> get_block_payments(uint64_t block_height);
     bool delete_block_payments(uint64_t block_height);
 
     uint64_t height;

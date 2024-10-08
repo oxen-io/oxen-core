@@ -85,7 +85,7 @@ inline fs::path get_default_data_dir() {
 }
 
 inline fs::path get_relative_path_base(boost::program_options::variables_map const& vm) {
-    if (command_line::has_arg(vm, arg_is_service)) {
+    if (command_line::get_arg(vm, arg_is_service)) {
         if (command_line::has_arg(vm, cryptonote::arg_data_dir)) {
             return command_line::get_arg(vm, cryptonote::arg_data_dir);
         } else {
@@ -105,27 +105,27 @@ bool daemonize(
         Args&&... args) {
     std::string arguments = get_argument_string(argc, argv);
 
-    if (command_line::has_arg(vm, arg_is_service)) {
+    if (command_line::get_arg(vm, arg_is_service)) {
         windows::service_runner<Application> runner{
                 name, std::move(vm), std::forward<Args>(args)...};
         runner.run();
         return true;
-    } else if (command_line::has_arg(vm, arg_install_service)) {
+    } else if (command_line::get_arg(vm, arg_install_service)) {
         if (windows::ensure_admin(arguments)) {
             arguments += " --run-as-service";
             return windows::install_service(name, arguments);
         }
-    } else if (command_line::has_arg(vm, arg_uninstall_service)) {
+    } else if (command_line::get_arg(vm, arg_uninstall_service)) {
         if (windows::ensure_admin(arguments))
             return windows::uninstall_service(name);
-    } else if (command_line::has_arg(vm, arg_start_service)) {
+    } else if (command_line::get_arg(vm, arg_start_service)) {
         if (windows::ensure_admin(arguments))
             return windows::start_service(name);
-    } else if (command_line::has_arg(vm, arg_stop_service)) {
+    } else if (command_line::get_arg(vm, arg_stop_service)) {
         if (windows::ensure_admin(arguments))
             return windows::stop_service(name);
     } else {
-        bool interactive = !command_line::has_arg(vm, arg_non_interactive);
+        bool interactive = !command_line::get_arg(vm, arg_non_interactive);
         return Application{std::move(vm), std::forward<Args>(args)...}.run(interactive);
     }
     return false;

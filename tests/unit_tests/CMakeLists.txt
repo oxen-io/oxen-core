@@ -52,7 +52,6 @@ add_executable(unit_tests
   logging.cpp
   oxen_name_system.cpp
   long_term_block_weight.cpp
-  lmdb.cpp
   main.cpp
   median.cpp
   memwipe.cpp
@@ -97,7 +96,6 @@ target_link_libraries(unit_tests
     cryptonote_protocol
     cryptonote_core
     blockchain_db
-    lmdb_lib
     rpc
     net
     wallet

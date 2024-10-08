@@ -1,12 +1,12 @@
 #pragma once
 
+#include <common/exception.h>
 #include <oxenc/bt_serialize.h>
 
 #include <chrono>
 #include <nlohmann/json.hpp>
 #include <type_traits>
 #include <utility>
-#include <common/exception.h>
 
 #include "common/json_binary_proxy.h"
 
@@ -162,27 +162,33 @@ void load_value(json_range& r, T& val) {
             if (b <= 1)
                 val = b;
             else
-                throw oxen::traced<std::domain_error>{"Invalid value for '" + key + "': expected boolean"};
+                throw oxen::traced<std::domain_error>{
+                        "Invalid value for '" + key + "': expected boolean"};
         } else {
-            throw oxen::traced<std::domain_error>{"Invalid value for '" + key + "': expected boolean"};
+            throw oxen::traced<std::domain_error>{
+                    "Invalid value for '" + key + "': expected boolean"};
         }
     } else if constexpr (std::is_unsigned_v<T>) {
         if (!e.is_number_unsigned())
-            throw oxen::traced<std::domain_error>{"Invalid value for '" + key + "': non-negative value required"};
+            throw oxen::traced<std::domain_error>{
+                    "Invalid value for '" + key + "': non-negative value required"};
         auto i = e.get<uint64_t>();
         if (sizeof(T) < sizeof(uint64_t) && i > std::numeric_limits<T>::max())
-            throw oxen::traced<std::domain_error>{"Invalid value for '" + key + "': value too large"};
+            throw oxen::traced<std::domain_error>{
+                    "Invalid value for '" + key + "': value too large"};
         val = i;
     } else if constexpr (std::is_integral_v<T>) {
         if (!e.is_number_integer())
-            throw oxen::traced<std::domain_error>{"Invalid value for '" + key + "': value is not an integer"};
+            throw oxen::traced<std::domain_error>{
+                    "Invalid value for '" + key + "': value is not an integer"};
         auto i = e.get<int64_t>();
         if (sizeof(T) < sizeof(int64_t)) {
             if (i < std::numeric_limits<T>::lowest())
                 throw oxen::traced<std::domain_error>{
                         "Invalid value for '" + key + "': negative value magnitude is too large"};
             else if (i > std::numeric_limits<T>::max())
-                throw oxen::traced<std::domain_error>{"Invalid value for '" + key + "': value is too large"};
+                throw oxen::traced<std::domain_error>{
+                        "Invalid value for '" + key + "': value is too large"};
         }
         val = i;
     } else if constexpr (std::is_same_v<T, std::string> || std::is_same_v<T, std::string_view>) {

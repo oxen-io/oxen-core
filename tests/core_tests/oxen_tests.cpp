@@ -61,9 +61,6 @@ static void add_service_nodes(oxen_chain_generator &gen, size_t count, hf hf_ver
   gen.create_and_add_next_block(registration_txs);
 }
 
-#undef OXEN_DEFAULT_LOG_CATEGORY
-#define OXEN_DEFAULT_LOG_CATEGORY "sn_core_tests"
-
 // Suppose we have checkpoint and alt block at height 40 and the main chain is at height 40 with a differing block.
 // Main chain receives checkpoints for height 40 on the alt chain via votes and reorgs back to height 39.
 // Now main chain has an alt block sitting in its DB for height 40 which actually starts beyond the chain.
@@ -660,8 +657,7 @@ bool oxen_core_governance_batched_reward::generate(std::vector<test_event_entry>
       {
           const cryptonote::block &block = blockchain[block_height];
           if (cryptonote::block_has_governance_output(cryptonote::network_type::FAKECHAIN, block))
-              block.miner_tx.value();
-          governance += block.miner_tx->vout.back().amount;
+              governance += block.miner_tx.value().vout.back().amount;
       }
 
       CHECK_EQ(governance, expected_total_governance_paid);
@@ -757,7 +753,7 @@ bool oxen_core_block_rewards_lrc6::generate(std::vector<test_event_entry>& event
 
 bool oxen_core_test_deregister_preferred::generate(std::vector<test_event_entry> &events)
 {
-  auto hard_forks = oxen_generate_hard_fork_table(hf::hf19_reward_batching);
+  auto hard_forks = oxen_generate_hard_fork_table();
   oxen_chain_generator gen(events, hard_forks);
   const auto miner                 = gen.first_miner();
   const auto alice                 = gen.add_account();
@@ -2067,7 +2063,7 @@ bool oxen_name_system_update_mapping_after_expiry_fails::generate(std::vector<te
   return true;
 }
 
-hf oxen_name_system_update_mapping::hf() { return cryptonote::hf_max; }
+hf oxen_name_system_update_mapping::hf() { return cryptonote::hf::hf20_eth_transition; } // max HF20: see TODO-HF21-plus-reward-generation in chaingen.cpp
 hf oxen_name_system_update_mapping_argon2::hf() { return cryptonote::hf::hf15_ons; }
 bool oxen_name_system_update_mapping::generate(std::vector<test_event_entry> &events)
 {
@@ -2986,7 +2982,7 @@ bool oxen_service_nodes_insufficient_contribution::generate(std::vector<test_eve
   gen.create_and_add_next_block({tx0});
   gen.add_transfer_unlock_blocks();
 
-  uint64_t operator_amt = oxen::SENT_STAKING_REQUIREMENT_TESTNET / 2;
+  uint64_t operator_amt = oxen::OXEN_STAKING_REQUIREMENT_TESTNET / 2;
   cryptonote::keypair sn_keys{hw::get_device("default")};
   cryptonote::transaction register_tx = gen.create_registration_tx(gen.first_miner_, sn_keys, operator_amt);
   gen.add_tx(register_tx);
@@ -3109,8 +3105,13 @@ bool oxen_service_nodes_small_contribution_early_withdrawal::generate(std::vecto
 
   uint64_t operator_portions = cryptonote::old::STAKING_PORTIONS / oxen::MAX_CONTRIBUTORS_HF19 * (oxen::MAX_CONTRIBUTORS_HF19 - 1);
   uint64_t staking_requirement = service_nodes::get_default_staking_requirement(cryptonote::network_type::FAKECHAIN, hard_forks.back().height);
-  uint64_t operator_amount = staking_requirement / oxen::MAX_CONTRIBUTORS_HF19 * (oxen::MAX_CONTRIBUTORS_HF19 - 1);
-  uint64_t single_contributed_amount = staking_requirement - operator_amount + 1;
+  // Oxen 10 at blockchain consensus level has a bug that applies the stake unlock restriction only
+  // for 3749 atomic unit stakes, so we test here with a stake of 3748.  (The proper 1/4 of a stake
+  // logic rule was applied later in 10.1.x, without changing consensus, by applying the rule in the
+  // wallet and mempool selection but not at the underlying block level).  Post HF20 (assuming no
+  // one does something sketchy in the remaining life of HF19) this entire test can get dropped.
+  uint64_t operator_amount = staking_requirement - 3748;
+  uint64_t single_contributed_amount = staking_requirement - operator_amount;
   cryptonote::keypair sn_keys{hw::get_device("default")};
   cryptonote::transaction register_tx = gen.create_registration_tx(gen.first_miner_, sn_keys, operator_amount);
   gen.add_tx(register_tx);
@@ -3243,9 +3244,9 @@ static oxen_chain_generator setup_pulse_tests(std::vector<test_event_entry> &eve
 
   uint64_t curr_height   = result.height();
   std::vector<cryptonote::transaction> registration_txs(pulse_min_sns());
-  for (auto i = 0u; i < pulse_min_sns(); ++i) {
-    registration_txs[i] = result.create_and_add_registration_tx(result.first_miner());
-    result.process_registration_tx(registration_txs[i], curr_height + 1, hard_forks.back().version);
+  for (auto& regtx : registration_txs) {
+    regtx = result.create_and_add_registration_tx(result.first_miner());
+    result.process_registration_tx(regtx, curr_height + 1, hard_forks.back().version);
   }
 
   // NOTE: Generate Valid Blocks
@@ -3552,7 +3553,7 @@ bool oxen_pulse_chain_split_with_no_checkpoints::generate(std::vector<test_event
 bool oxen_batch_sn_rewards::generate(std::vector<test_event_entry> &events)
 {
   constexpr auto& conf = cryptonote::get_config(cryptonote::network_type::FAKECHAIN);
-  auto hard_forks = oxen_generate_hard_fork_table(hf::hf19_reward_batching);
+  auto hard_forks = oxen_generate_hard_fork_table();
   oxen_chain_generator gen(events, hard_forks);
   const auto miner                      = gen.first_miner();
   const auto alice                      = gen.add_account();
@@ -3663,7 +3664,7 @@ bool oxen_batch_sn_rewards_bad_amount::generate(std::vector<test_event_entry> &e
 {
 
   constexpr auto& conf = cryptonote::get_config(cryptonote::network_type::FAKECHAIN);
-  auto hard_forks = oxen_generate_hard_fork_table(hf::hf19_reward_batching);
+  auto hard_forks = oxen_generate_hard_fork_table();
   oxen_chain_generator gen(events, hard_forks);
   const auto miner                      = gen.first_miner();
   const auto alice                      = gen.add_account();
@@ -3710,7 +3711,7 @@ bool oxen_batch_sn_rewards_bad_address::generate(std::vector<test_event_entry> &
 {
   cryptonote::keypair const txkey{hw::get_device("default")};
   constexpr auto& conf = cryptonote::get_config(cryptonote::network_type::FAKECHAIN);
-  auto hard_forks = oxen_generate_hard_fork_table(hf::hf19_reward_batching);
+  auto hard_forks = oxen_generate_hard_fork_table();
   oxen_chain_generator gen(events, hard_forks);
   const auto miner                      = gen.first_miner();
   const auto alice                      = gen.add_account();
@@ -3765,7 +3766,7 @@ bool oxen_batch_sn_rewards_bad_address::generate(std::vector<test_event_entry> &
 bool oxen_batch_sn_rewards_pop_blocks::generate(std::vector<test_event_entry> &events)
 {
   constexpr auto& conf = cryptonote::get_config(cryptonote::network_type::FAKECHAIN);
-  auto hard_forks = oxen_generate_hard_fork_table(hf::hf19_reward_batching);
+  auto hard_forks = oxen_generate_hard_fork_table();
   oxen_chain_generator gen(events, hard_forks);
   const auto miner                      = gen.first_miner();
   const auto alice                      = gen.add_account();
@@ -3827,7 +3828,8 @@ bool oxen_batch_sn_rewards_pop_blocks::generate(std::vector<test_event_entry> &e
       CHECK_EQ((*records).size(), 1);
       // Check that the database has a lower amount that does not include the popped block
       batched_rewards_earned = MK_COINS(1) * 16.5 * (more_blocks - conf.SERVICE_NODE_PAYABLE_AFTER_BLOCKS - 1);
-      CHECK_EQ((*records)[0].amount, batched_rewards_earned * cryptonote::BATCH_REWARD_FACTOR);
+      CHECK_EQ((*records)[0].amount,
+              cryptonote::reward_money::coin_amount(batched_rewards_earned));
       CHECK_EQ(tools::view_guts((*records)[0].address_info.address), tools::view_guts(alice.get_keys().m_account_address));
     }
     else
@@ -3850,7 +3852,7 @@ bool oxen_batch_sn_rewards_pop_blocks_after_big_cycle::generate(std::vector<test
 {
 
   constexpr auto& conf = cryptonote::get_config(cryptonote::network_type::FAKECHAIN);
-  auto hard_forks = oxen_generate_hard_fork_table(hf::hf19_reward_batching);
+  auto hard_forks = oxen_generate_hard_fork_table();
   oxen_chain_generator gen(events, hard_forks);
   const auto miner                      = gen.first_miner();
   const cryptonote::account_base alice  = gen.add_account();
@@ -3914,7 +3916,7 @@ bool oxen_batch_sn_rewards_pop_blocks_after_big_cycle::generate(std::vector<test
 
     auto records = sqliteDB.get_sn_payments(curr_height);
     CHECK_EQ(records.size(), 1);
-    CHECK_EQ(records[0].amount, amount * cryptonote::BATCH_REWARD_FACTOR);
+    CHECK_EQ(records[0].amount, cryptonote::reward_money::coin_amount(amount));
     CHECK_EQ(tools::view_guts(records[0].address_info.address), tools::view_guts(alice.get_keys().m_account_address));
 
     return true;

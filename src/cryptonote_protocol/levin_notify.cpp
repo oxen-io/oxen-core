@@ -45,6 +45,8 @@
 namespace cryptonote::levin {
 static auto logcat = log::Cat("net.p2p.tx");
 
+using epee::connection_id_t;
+
 namespace {
     constexpr std::size_t connection_id_reserve_size = 100;
 
@@ -61,8 +63,8 @@ namespace {
     }
 
     //! \return All outgoing connections supporting fragments in `connections`.
-    std::vector<boost::uuids::uuid> get_out_connections(connections& p2p) {
-        std::vector<boost::uuids::uuid> outs;
+    std::vector<connection_id_t> get_out_connections(connections& p2p) {
+        std::vector<connection_id_t> outs;
         outs.reserve(connection_id_reserve_size);
 
         /* The foreach call is serialized with a lock, but should be quick due to
@@ -150,10 +152,7 @@ namespace {
     //! A queue of levin messages for a noise i2p/tor link
     struct noise_channel {
         explicit noise_channel(boost::asio::io_service& io_service) :
-                queue(),
-                strand(io_service),
-                next_noise(io_service),
-                connection(boost::uuids::nil_uuid()) {}
+                queue(), strand(io_service), next_noise(io_service), connection{} {}
 
         // `asio::io_service::strand` cannot be copied or moved
         noise_channel(const noise_channel&) = delete;
@@ -165,7 +164,7 @@ namespace {
         std::deque<epee::shared_sv> queue;
         boost::asio::io_service::strand strand;
         boost::asio::steady_timer next_noise;
-        boost::uuids::uuid connection;
+        connection_id_t connection;
     };
 }  // namespace
 
@@ -242,13 +241,13 @@ namespace {
     class flood_notify {
         std::shared_ptr<detail::zone> zone_;
         epee::shared_sv message_;  // Requires manual copy
-        boost::uuids::uuid source_;
+        connection_id_t source_;
 
       public:
         explicit flood_notify(
                 std::shared_ptr<detail::zone> zone,
                 epee::shared_sv message,
-                const boost::uuids::uuid& source) :
+                const connection_id_t& source) :
                 zone_(std::move(zone)), message_(message), source_(source) {}
 
         flood_notify(flood_notify&&) = default;
@@ -267,7 +266,7 @@ namespace {
                algorithm changes or the locking strategy within the levin config
                class changes. */
 
-            std::vector<boost::uuids::uuid> connections;
+            std::vector<connection_id_t> connections;
             connections.reserve(connection_id_reserve_size);
             zone_->p2p->foreach_connection([this, &connections](detail::p2p_context& context) {
                 /* Only send to outgoing connections when "flooding" over i2p/tor.
@@ -279,7 +278,7 @@ namespace {
                 return true;
             });
 
-            for (const boost::uuids::uuid& connection : connections)
+            for (const connection_id_t& connection : connections)
                 zone_->p2p->send(message_, connection);
         }
     };
@@ -288,7 +287,7 @@ namespace {
     struct update_channel {
         std::shared_ptr<detail::zone> zone_;
         const std::size_t channel_;
-        const boost::uuids::uuid connection_;
+        const connection_id_t connection_;
 
         //! \pre Called within `stem_.strand`.
         void operator()() const {
@@ -319,7 +318,7 @@ namespace {
     //! Merges `out_connections_` into the existing `zone_->map`.
     struct update_channels {
         std::shared_ptr<detail::zone> zone_;
-        std::vector<boost::uuids::uuid> out_connections_;
+        std::vector<connection_id_t> out_connections_;
 
         //! \pre Called within `zone->strand`.
         static void post(std::shared_ptr<detail::zone> zone) {
@@ -418,7 +417,7 @@ namespace {
                         channel.queue.pop_front();
                 } else {
                     channel.active = {};
-                    channel.connection = boost::uuids::nil_uuid();
+                    channel.connection = {};
 
                     auto connections = get_out_connections(*zone_->p2p);
                     if (connections.empty())
@@ -471,7 +470,8 @@ notify::notify(
         zone_(std::make_shared<detail::zone>(
                 service, std::move(p2p), std::move(noise), is_public)) {
     if (!zone_->p2p)
-        throw oxen::traced<std::logic_error>{"cryptonote::levin::notify cannot have nullptr p2p argument"};
+        throw oxen::traced<std::logic_error>{
+                "cryptonote::levin::notify cannot have nullptr p2p argument"};
 
     if (!zone_->noise.view.empty()) {
         const auto now = std::chrono::steady_clock::now();
@@ -512,7 +512,7 @@ void notify::run_stems() {
 }
 
 bool notify::send_txs(
-        std::vector<std::string> txs, const boost::uuids::uuid& source, const bool pad_txs) {
+        std::vector<std::string> txs, const connection_id_t& source, const bool pad_txs) {
     if (!zone_)
         return false;
 

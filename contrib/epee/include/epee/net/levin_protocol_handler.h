@@ -29,7 +29,6 @@
 #ifndef _LEVIN_PROTOCOL_HANDLER_H_
 #define _LEVIN_PROTOCOL_HANDLER_H_
 
-#include <boost/uuid/uuid_generators.hpp>
 #include "levin_base.h"
 #include "../int-util.h"
 

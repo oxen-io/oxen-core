@@ -431,11 +431,9 @@ static constexpr double TWO_MANT_DIG =
         /* Assume DBL_MANT_DIG <= 5 * 31.
            Use the identity
            n = floor(n/5) + floor((n+1)/5) + ... + floor((n+4)/5).  */
-        (double)(1U << ((DBL_MANT_DIG - 1) / 5)) *
-        (double)(1U << ((DBL_MANT_DIG - 1 + 1) / 5)) *
+        (double)(1U << ((DBL_MANT_DIG - 1) / 5)) * (double)(1U << ((DBL_MANT_DIG - 1 + 1) / 5)) *
         (double)(1U << ((DBL_MANT_DIG - 1 + 2) / 5)) *
-        (double)(1U << ((DBL_MANT_DIG - 1 + 3) / 5)) *
-        (double)(1U << ((DBL_MANT_DIG - 1 + 4) / 5));
+        (double)(1U << ((DBL_MANT_DIG - 1 + 3) / 5)) * (double)(1U << ((DBL_MANT_DIG - 1 + 4) / 5));
 
 double oxen::round(double x) {
     /* The use of 'volatile' guarantees that excess precision bits are dropped at

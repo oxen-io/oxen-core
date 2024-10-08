@@ -199,10 +199,7 @@ class rpc_command_executor final {
 
     bool print_transaction_pool_stats();
 
-    bool start_mining(
-            std::string address,
-            int num_threads,
-            int num_blocks);
+    bool start_mining(std::string address, int num_threads, int num_blocks);
 
     bool stop_mining();
 

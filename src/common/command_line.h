@@ -92,10 +92,6 @@ namespace {
     std::string arg_stringify(const T& a) {
         return "{}"_format(a);
     }
-    template <>
-    std::string arg_stringify(const bool& b) {
-        return b ? "true" : "";
-    }
     template <typename T>
     std::string arg_stringify(const std::vector<T>& v) {
         return v.empty() ? "" : "[{}]"_format(fmt::join(v, ","));

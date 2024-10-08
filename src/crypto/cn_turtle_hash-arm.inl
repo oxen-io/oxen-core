@@ -28,7 +28,9 @@ union cn_turtle_hash_state
 };
 #pragma pack(pop)
 
-#if defined(__aarch64__) && defined(__ARM_FEATURE_CRYPTO)
+/// This code doesn't appear to work: it produced invalid hashes (at least on Apple arm).  Disable
+/// it for now.
+#if 0 && defined(__aarch64__) && defined(__ARM_FEATURE_CRYPTO)
 
 /* ARMv8-A optimized with NEON and AES instructions.
  * Copied from the x86-64 AES-NI implementation. It has much the same
@@ -440,7 +442,6 @@ STATIC INLINE void xor_blocks(uint8_t* a, const uint8_t* b)
 
 void cn_turtle_hash(const void *data, size_t length, unsigned char *hash, int light, int variant, int prehashed, uint32_t scratchpad, uint32_t iterations)
 {
-  fprintf(stderr, "%s:%d OMG", __FILE__, __LINE__);
   uint32_t init_rounds = (scratchpad / INIT_SIZE_BYTE);
   uint32_t aes_rounds = (iterations / 2);
   size_t lightFlag = (light ? 2: 1);

@@ -138,6 +138,7 @@ static void test(test_t t, uint64_t blocks)
   for (uint64_t h = 0; h < LONG_TERM_BLOCK_WEIGHT_WINDOW; ++h)
   {
     cryptonote::block b;
+    b.miner_tx.emplace();
     b.major_version = cryptonote::hf::hf7;
     b.minor_version = static_cast<uint8_t>(cryptonote::hf::hf7);
     bc.db().add_block(std::make_pair(b, ""), 300000, 300000, bc.db().height(), bc.db().height(), {});
@@ -172,6 +173,7 @@ static void test(test_t t, uint64_t blocks)
     }
     uint64_t ltw = bc.get_next_long_term_block_weight(w);
     cryptonote::block b;
+    b.miner_tx.emplace();
     b.major_version = cryptonote::feature::LONG_TERM_BLOCK_WEIGHT;
     b.minor_version = static_cast<uint8_t>(b.major_version);
     bc.db().add_block(std::make_pair(std::move(b), ""), w, ltw, bc.db().height(), bc.db().height(), {});
@@ -188,10 +190,12 @@ static void test(test_t t, uint64_t blocks)
 int main()
 {
   auto logcat = oxen::log::Cat("block_weight");
-  TRY_ENTRY();
-  test(test_max, 2 * LONG_TERM_BLOCK_WEIGHT_WINDOW);
-  test(test_lcg, 9 * LONG_TERM_BLOCK_WEIGHT_WINDOW);
-  test(test_min, 1 * LONG_TERM_BLOCK_WEIGHT_WINDOW);
-  return 0;
-  CATCH_ENTRY("main", 1);
+  try {
+      test(test_max, 2 * LONG_TERM_BLOCK_WEIGHT_WINDOW);
+      test(test_lcg, 9 * LONG_TERM_BLOCK_WEIGHT_WINDOW);
+      test(test_min, 1 * LONG_TERM_BLOCK_WEIGHT_WINDOW);
+  } catch (const std::exception& e) {
+      std::cerr << "caught exception: " << e.what() << "\n";
+      return 1;
+  }
 }

@@ -27,9 +27,6 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <algorithm>
-#include <boost/uuid/nil_generator.hpp>
-#include <boost/uuid/random_generator.hpp>
-#include <boost/uuid/uuid.hpp>
 #include <cstring>
 #include <gtest/gtest.h>
 #include <limits>
@@ -49,6 +46,8 @@
 
 namespace
 {
+    using epee::connection_id_t;
+
     class test_endpoint final : public epee::net_utils::i_service_endpoint
     {
         boost::asio::io_service& io_service_;
@@ -120,13 +119,13 @@ namespace
         epee::levin::async_protocol_handler<cryptonote::levin::detail::p2p_context> handler_;
 
     public:
-        test_connection(boost::asio::io_service& io_service, cryptonote::levin::connections& connections, boost::uuids::random_generator& random_generator, const bool is_incoming)
+        test_connection(boost::asio::io_service& io_service, cryptonote::levin::connections& connections, const bool is_incoming)
           : endpoint_(io_service),
             context_(),
             handler_(std::addressof(endpoint_), connections, context_)
         {
             using base_type = epee::net_utils::connection_context_base;
-            static_cast<base_type&>(context_) = base_type{random_generator(), {}, is_incoming};
+            static_cast<base_type&>(context_) = base_type{connection_id_t::random(), {}, is_incoming};
             handler_.after_init_connection();
         }
 
@@ -142,7 +141,7 @@ namespace
             return count;
         }
 
-        const boost::uuids::uuid& get_id() const noexcept
+        const connection_id_t& get_id() const noexcept
         {
             return context_.m_connection_id;
         }
@@ -150,7 +149,7 @@ namespace
 
     struct received_message
     {
-        boost::uuids::uuid connection;
+        connection_id_t connection;
         int command;
         std::string payload;
     };
@@ -161,7 +160,7 @@ namespace
         std::deque<received_message> notified_;
 
         template<typename T>
-        static std::pair<boost::uuids::uuid, typename T::request> get_message(std::deque<received_message>& queue)
+        static std::pair<connection_id_t, typename T::request> get_message(std::deque<received_message>& queue)
         {
             if (queue.empty())
                 throw std::logic_error{"Queue has no received messges"};
@@ -177,7 +176,7 @@ namespace
             if (!request.load(storage))
                 throw std::logic_error{"Unable to load into expected request"};
 
-            boost::uuids::uuid connection = queue.front().connection;
+            connection_id_t connection = queue.front().connection;
             queue.pop_front();
             return {connection, std::move(request)};
         }
@@ -228,13 +227,13 @@ namespace
         }
 
         template<typename T>
-        std::pair<boost::uuids::uuid, typename T::request> get_invoked()
+        std::pair<connection_id_t, typename T::request> get_invoked()
         {
             return get_message<T>(invoked_);
         }
 
         template<typename T>
-        std::pair<boost::uuids::uuid, typename T::request> get_notification()
+        std::pair<connection_id_t, typename T::request> get_notification()
         {
             return get_message<T>(notified_);
         }
@@ -243,14 +242,13 @@ namespace
     class levin_notify : public ::testing::Test
     {
         const std::shared_ptr<cryptonote::levin::connections> connections_;
-        std::set<boost::uuids::uuid> connection_ids_;
+        std::set<connection_id_t> connection_ids_;
 
     public:
         levin_notify()
           : ::testing::Test(),
             connections_(std::make_shared<cryptonote::levin::connections>()),
             connection_ids_(),
-            random_generator_(),
             io_service_(),
             receiver_(),
             contexts_()
@@ -266,7 +264,7 @@ namespace
 
         void add_connection(const bool is_incoming)
         {
-            contexts_.emplace_back(io_service_, *connections_, random_generator_, is_incoming);
+            contexts_.emplace_back(io_service_, *connections_, is_incoming);
             EXPECT_TRUE(connection_ids_.emplace(contexts_.back().get_id()).second);
             EXPECT_EQ(connection_ids_.size(), connections_->get_connections_count());
         }
@@ -279,7 +277,6 @@ namespace
             return cryptonote::levin::notify{io_service_, connections_, std::move(noise), is_public};
         }
 
-        boost::uuids::random_generator random_generator_;
         boost::asio::io_service io_service_;
         test_receiver receiver_;
         std::deque<test_connection> contexts_;
@@ -434,7 +431,7 @@ TEST_F(levin_notify, defaulted)
         EXPECT_FALSE(status.has_noise);
         EXPECT_FALSE(status.connections_filled);
     }
-    EXPECT_FALSE(notifier.send_txs({}, random_generator_(), false));
+    EXPECT_FALSE(notifier.send_txs({}, connection_id_t::random(), false));
 }
 
 TEST_F(levin_notify, flood)
@@ -583,7 +580,7 @@ TEST_F(levin_notify, noise)
     std::vector<std::string> txs(1);
     txs[0].resize(1900, 'h');
 
-    const boost::uuids::uuid incoming_id = random_generator_();
+    const auto incoming_id = connection_id_t::random();
     cryptonote::levin::notify notifier = make_notifier(2048, false);
 
     {

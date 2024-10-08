@@ -70,8 +70,8 @@ struct ancestor {
 
     template <typename t_archive>
     void serialize(t_archive& a, const unsigned int ver) {
-        a & amount;
-        a & offset;
+        a& amount;
+        a& offset;
     }
 };
 BOOST_CLASS_VERSION(ancestor, 0)
@@ -120,9 +120,9 @@ struct tx_data_t {
 
     template <typename t_archive>
     void serialize(t_archive& a, const unsigned int ver) {
-        a & coinbase;
-        a & vin;
-        a & vout;
+        a& coinbase;
+        a& vin;
+        a& vout;
     }
 };
 
@@ -137,25 +137,25 @@ struct ancestry_state_t {
 
     template <typename t_archive>
     void serialize(t_archive& a, const unsigned int ver) {
-        a & height;
-        a & ancestry;
-        a & output_cache;
+        a& height;
+        a& ancestry;
+        a& output_cache;
         if (ver < 1) {
             std::unordered_map<crypto::hash, cryptonote::transaction> old_tx_cache;
-            a & old_tx_cache;
+            a& old_tx_cache;
             for (const auto& [hash, tx] : old_tx_cache)
                 tx_cache.insert(std::make_pair(hash, ::tx_data_t(tx)));
         } else {
-            a & tx_cache;
+            a& tx_cache;
         }
         if (ver < 2) {
             std::unordered_map<uint64_t, cryptonote::block> old_block_cache;
-            a & old_block_cache;
+            a& old_block_cache;
             block_cache.reserve(old_block_cache.size());
             for (auto& [i, block] : old_block_cache)
                 block_cache.push_back(std::move(block));
         } else {
-            a & block_cache;
+            a& block_cache;
         }
     }
 };

@@ -502,7 +502,6 @@ mdb_txn_safe::mdb_txn_safe(const bool check) : m_tinfo(NULL), m_txn(NULL), m_che
 mdb_txn_safe::~mdb_txn_safe() {
     if (!m_check)
         return;
-    log::trace(logcat, "mdb_txn_safe: destructor");
     if (m_tinfo != nullptr) {
         mdb_txn_reset(m_tinfo->m_ti_rtxn);
         memset(&m_tinfo->m_ti_rflags, 0, sizeof(m_tinfo->m_ti_rflags));
@@ -2651,7 +2650,7 @@ bool BlockchainLMDB::for_all_alt_blocks(
 }
 
 bool BlockchainLMDB::block_exists(const crypto::hash& h, uint64_t* height) const {
-    log::trace(logcat, "BlockchainLMDB::{}", __func__);
+    log::trace(logcat, "BlockchainLMDB::{} {}", __func__, h);
     check_open();
 
     TXN_PREFIX_RDONLY();
@@ -2687,7 +2686,7 @@ T BlockchainLMDB::get_and_convert_block_blob_from_height(uint64_t height, size_t
     // Avoid casting block to block_header so we only have to deserialize the
     // header, not the full-block (of which a good chunk is thrown away because we
     // only want the header).
-    log::trace(logcat, "BlockchainLMDB::{}", __func__);
+    log::trace(logcat, "BlockchainLMDB::{} {}", __func__, height);
 
     check_open();
 
@@ -2722,20 +2721,20 @@ T BlockchainLMDB::get_and_convert_block_blob_from_height(uint64_t height, size_t
 }
 
 block BlockchainLMDB::get_block_from_height(uint64_t height, size_t* size) const {
-    log::trace(logcat, "BlockchainLMDB::{}", __func__);
+    log::trace(logcat, "BlockchainLMDB::{} {}", __func__, height);
     block result = get_and_convert_block_blob_from_height<block>(height, size);
     return result;
 }
 
 std::string BlockchainLMDB::get_block_blob(const crypto::hash& h) const {
-    log::trace(logcat, "BlockchainLMDB::{}", __func__);
+    log::trace(logcat, "BlockchainLMDB::{} {}", __func__, h);
     check_open();
 
     return get_block_blob_from_height(get_block_height(h));
 }
 
 uint64_t BlockchainLMDB::get_block_height(const crypto::hash& h) const {
-    log::trace(logcat, "BlockchainLMDB::{}", __func__);
+    log::trace(logcat, "BlockchainLMDB::{} {}", __func__, h);
     check_open();
 
     TXN_PREFIX_RDONLY();
@@ -2759,13 +2758,13 @@ block_header BlockchainLMDB::get_block_header_from_height(uint64_t height) const
 }
 
 std::string BlockchainLMDB::get_block_blob_from_height(uint64_t height) const {
-    log::trace(logcat, "BlockchainLMDB::{}", __func__);
+    log::trace(logcat, "BlockchainLMDB::{} {}", __func__, height);
     std::string result = get_and_convert_block_blob_from_height<std::string>(height);
     return result;
 }
 
 uint64_t BlockchainLMDB::get_block_timestamp(const uint64_t& height) const {
-    log::trace(logcat, "BlockchainLMDB::{}", __func__);
+    log::trace(logcat, "BlockchainLMDB::{} {}", __func__, height);
     check_open();
 
     TXN_PREFIX_RDONLY();
@@ -3968,14 +3967,10 @@ bool BlockchainLMDB::block_rtxn_start(MDB_txn** mtxn, mdb_txn_cursors** mcur) co
         tinfo->m_ti_rflags.m_rf_txn = true;
     *mtxn = tinfo->m_ti_rtxn;
     *mcur = &tinfo->m_ti_rcursors;
-
-    if (ret)
-        log::trace(logcat, "BlockchainLMDB::{}", __func__);
     return ret;
 }
 
 void BlockchainLMDB::block_rtxn_stop() const {
-    log::trace(logcat, "BlockchainLMDB::{}", __func__);
     mdb_txn_reset(m_tinfo->m_ti_rtxn);
     memset(&m_tinfo->m_ti_rflags, 0, sizeof(m_tinfo->m_ti_rflags));
 }
@@ -4695,7 +4690,7 @@ bool BlockchainLMDB::get_alt_block(
         alt_block_data_t* data,
         std::string* block,
         std::string* checkpoint) const {
-    log::trace(logcat, "BlockchainLMDB:: {}", __func__);
+    log::trace(logcat, "BlockchainLMDB::{} {}", __func__, blkid);
     check_open();
 
     TXN_PREFIX_RDONLY();

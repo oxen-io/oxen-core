@@ -1200,7 +1200,10 @@ struct IN_PEERS : LEGACY {
 /// Outputs:
 ///
 /// - `status` -- General RPC status string. `"OK"` means everything looks good.
-/// - `version` -- The major block version for the fork.
+/// - `version` -- The major version of the fork.  When using the `version` input, this returned
+///   value will be higher than the requested version if the requested version was skipped on this
+///   network; for example, stagenet jumps from v14 to v21 so requesting any of v15-v21 will return
+///   the same v21 results on a stagenet node.
 /// - `enabled` -- Indicates whether the hard fork is enforced on the blockchain (that is, whether
 ///   the blockchain height is at or above the requested hardfork).
 /// - `earliest_height` -- Block height at which the hard fork will become enabled.

@@ -9,7 +9,7 @@ anybad=
 for bin in oxend oxen-{wallet-{cli,rpc},gen-trusted-multisig,blockchain-{ancestry,depth,export,import,mark-spent-outputs,stats,usage}}; do
     bad=
     if [ "$DRONE_STAGE_OS" == "darwin" ]; then
-        if otool -L bin/$bin | grep -Ev '^bin/'$bin':|^\s*(/usr/lib/lib(System|c\+\+|objc)\.|/System/Library/Frameworks/(AppKit|CoreFoundation|IOKit|SystemConfiguration))'; then
+        if otool -L bin/$bin | grep -Ev '^bin/'$bin':|^\s*(/usr/lib/lib(System|c\+\+|objc)\.|/System/Library/Frameworks/(AppKit|CoreFoundation|IOKit|SystemConfiguration|Security))'; then
             bad=1
         fi
     elif [ "$DRONE_STAGE_OS" == "linux" ]; then

@@ -33,8 +33,8 @@
 #include <atomic>
 
 #include <boost/asio/io_service.hpp>
-#include <boost/uuid/uuid_io.hpp>
 
+#include "epee/net/net_utils_base.h"
 #include "epee/string_tools.h"
 #include "epee/net/levin_protocol_handler_async.h"
 #include "epee/net/abstract_tcp_server2.h"
@@ -144,10 +144,10 @@ namespace net_load_tests
       , m_connections(open_request_target)
     {
       for (auto& conn_id : m_connections)
-        conn_id = boost::uuids::nil_uuid();
+        conn_id = {};
     }
 
-    bool handle_new_connection(const boost::uuids::uuid& connection_id, bool ignore_close_fails = false)
+    bool handle_new_connection(const epee::connection_id_t& connection_id, bool ignore_close_fails = false)
     {
       size_t idx = m_next_opened_conn_idx.fetch_add(1, std::memory_order_relaxed);
       if (idx >= m_connections.size())
@@ -193,7 +193,7 @@ namespace net_load_tests
         }
       }
 
-      m_connections[idx] = boost::uuids::nil_uuid();
+      m_connections[idx] = {};
       m_opened_connection_count.fetch_sub(1, std::memory_order_relaxed);
       return true;
     }
@@ -206,7 +206,7 @@ namespace net_load_tests
     std::atomic<size_t> m_opened_connection_count;
     std::atomic<size_t> m_next_opened_conn_idx;
     std::atomic<size_t> m_next_closed_conn_idx;
-    std::vector<boost::uuids::uuid> m_connections;
+    std::vector<epee::connection_id_t> m_connections;
   };
 
   const unsigned int min_thread_count = 2;

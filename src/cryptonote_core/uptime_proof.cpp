@@ -1,6 +1,5 @@
 #include "uptime_proof.h"
 
-#include <bls/bls_signer.h>
 #include <common/exception.h>
 #include <common/guts.h>
 #include <crypto/crypto.h>
@@ -10,6 +9,7 @@
 #include <oxenc/bt_producer.h>
 #include <version.h>
 
+#include "bls/bls_crypto.h"
 #include "service_node_list.h"
 
 extern "C" {
@@ -26,14 +26,14 @@ namespace feature = cryptonote::feature;
 // Constructor for the uptime proof, will take the service node keys as a param and sign
 Proof::Proof(
         hf hardfork,
+        cryptonote::network_type nettype,
         uint32_t sn_public_ip,
         uint16_t sn_storage_https_port,
         uint16_t sn_storage_omq_port,
         const std::array<uint16_t, 3> ss_version,
         uint16_t quorumnet_port,
         const std::array<uint16_t, 3> lokinet_version,
-        const service_nodes::service_node_keys& keys,
-        const eth::BLSSigner& bls_signer) :
+        const service_nodes::service_node_keys& keys) :
         version{OXEN_VERSION},
         storage_server_version{ss_version},
         lokinet_version{lokinet_version},
@@ -48,7 +48,8 @@ Proof::Proof(
 
     if (hardfork == feature::ETH_TRANSITION) {
         assert(keys.pub_bls);
-        pop_bls = bls_signer.signMsg(tools::concat_guts<uint8_t>(keys.pub_bls, keys.pub));
+        pop_bls = eth::sign(
+                nettype, keys.key_bls, tools::concat_guts<uint8_t>(keys.pub_bls, keys.pub));
     }
 
     serialized_proof = bt_encode_uptime_proof(hardfork);

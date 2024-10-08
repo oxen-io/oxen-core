@@ -7,10 +7,6 @@ namespace service_nodes {
 struct service_node_keys;
 }
 
-namespace eth {
-class BLSSigner;
-};
-
 namespace uptime_proof {
 
 // Class containing uptime proof details and serialization code.
@@ -60,14 +56,14 @@ class Proof {
 
     Proof() = default;
     Proof(cryptonote::hf hardfork,
+          cryptonote::network_type nettype,
           uint32_t sn_public_ip,
           uint16_t sn_storage_https_port,
           uint16_t sn_storage_omq_port,
           std::array<uint16_t, 3> ss_version,
           uint16_t quorumnet_port,
           std::array<uint16_t, 3> lokinet_version,
-          const service_nodes::service_node_keys& keys,
-          const eth::BLSSigner& bls_signer);
+          const service_nodes::service_node_keys& keys);
 
     Proof(cryptonote::hf hardfork, std::string_view serialized_proof);
     std::string bt_encode_uptime_proof(cryptonote::hf hardfork) const;

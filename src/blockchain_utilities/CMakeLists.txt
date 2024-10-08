@@ -111,7 +111,7 @@ if (TARGET sodium_vendor OR NOT SODIUM_VERSION VERSION_LESS 1.0.17)
         oxenmq::oxenmq
         oxen::logging
         oxenc::oxenc
-        bls_utils)
+        bls_crypto)
 else()
     message(STATUS "Not building oxen-sn-keys tool (requires libsodium >= 1.0.17)")
 endif()

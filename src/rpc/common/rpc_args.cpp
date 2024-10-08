@@ -28,9 +28,10 @@
 //
 #include "rpc_args.h"
 
+#include <common/exception.h>
+
 #include <boost/asio/ip/address.hpp>
 #include <boost/version.hpp>
-#include <common/exception.h>
 
 #include "common/command_line.h"
 #include "common/i18n.h"
@@ -47,8 +48,7 @@ rpc_args::descriptors::descriptors() :
                 rpc_args::tr("Specify IPv6 address to bind RPC server"),
                 "::1"},
         rpc_use_ipv6{"rpc-use-ipv6", rpc_args::tr("Allow IPv6 for RPC")},
-        rpc_ignore_ipv4{
-                "rpc-ignore-ipv4", rpc_args::tr("Ignore unsuccessful IPv4 bind for RPC")},
+        rpc_ignore_ipv4{"rpc-ignore-ipv4", rpc_args::tr("Ignore unsuccessful IPv4 bind for RPC")},
         rpc_login{
                 "rpc-login",
                 rpc_args::tr("Specify username[:password] required for RPC server"),

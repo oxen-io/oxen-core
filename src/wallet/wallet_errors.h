@@ -733,9 +733,7 @@ struct wallet_files_doesnt_correspond : public wallet_logic_error {
 //----------------------------------------------------------------------------------------------------
 struct get_accrued_rewards_error : public wallet_rpc_error {
     explicit get_accrued_rewards_error(std::string&& loc, const std::string& request) :
-            wallet_rpc_error(
-                    std::move(loc), "Failed to get accrued rewards", request) {
-    }
+            wallet_rpc_error(std::move(loc), "Failed to get accrued rewards", request) {}
 };
 //----------------------------------------------------------------------------------------------------
 struct mms_error : public wallet_logic_error {

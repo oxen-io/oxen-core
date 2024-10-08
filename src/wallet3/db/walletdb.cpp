@@ -1,12 +1,12 @@
 #include "walletdb.hpp"
 
+#include <common/exception.h>
 #include <common/hex.h>
 #include <common/string_util.h>
 #include <cryptonote_basic/cryptonote_basic.h>
 #include <fmt/core.h>
 
 #include <iostream>
-#include <common/exception.h>
 
 #include "common/guts.h"
 #include "wallet3/block.hpp"

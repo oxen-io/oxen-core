@@ -157,6 +157,13 @@ namespace {
         return (value + quantum - 1) / quantum * quantum;
     }
 
+    void rename_key(nlohmann::json& obj, std::string_view old_key, std::string_view new_key) {
+        if (auto it = obj.find(old_key); it != obj.end()) {
+            auto val = std::move(*it);
+            obj.erase(it);
+            obj[std::string{new_key}] = std::move(val);
+        }
+    }
 }  // namespace
 
 const std::unordered_map<std::string, std::shared_ptr<const rpc_command>> rpc_commands =
@@ -294,6 +301,11 @@ void core_rpc_server::invoke(GET_INFO& info, rpc_context context) {
                                                  : "v" + std::to_string(OXEN_VERSION[0]) +
                                                            "; Height: " + std::to_string(height);
 
+    uint64_t staking_requirement = m_core.service_node_list.get_staking_requirement();
+    info.response["staking_requirement"] = staking_requirement;
+    info.response["max_contributors"] = oxen::MAX_CONTRIBUTORS_HF19;
+    info.response["min_operator_contribution"] =
+            oxen::MINIMUM_OPERATOR_CONTRIBUTION(staking_requirement);
     info.response["status"] = STATUS_OK;
 }
 //------------------------------------------------------------------------------------------------------------------------------
@@ -359,7 +371,7 @@ GET_BLOCKS_BIN::response core_rpc_server::invoke(GET_BLOCKS_BIN::request&& req, 
         auto& out_ind = res.output_indices.emplace_back().indices;
         ntxes += bd.txs.size();
         out_ind.reserve(1 + bd.txs.size());
-        if (req.no_miner_tx)
+        if (req.no_miner_tx || !bd.miner_tx_hash)
             out_ind.emplace_back();
         res_b.txs.reserve(bd.txs.size());
         for (auto& [txhash, txdata] : bd.txs)
@@ -371,7 +383,7 @@ GET_BLOCKS_BIN::response core_rpc_server::invoke(GET_BLOCKS_BIN::request&& req, 
             std::vector<std::vector<uint64_t>> indices;
             bool r = m_core.blockchain.get_tx_outputs_gindexs(
                     miner_tx ? bd.miner_tx_hash : bd.txs.front().first, n_txes_to_lookup, indices);
-            if (!r || indices.size() != n_txes_to_lookup || out_ind.size() != (miner_tx ? 0 : 1)) {
+            if (!r || indices.size() != n_txes_to_lookup) {
                 res.status = "Failed";
                 return res;
             }
@@ -1756,10 +1768,12 @@ void core_rpc_server::invoke(GET_CONNECTIONS& get_connections, rpc_context) {
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(HARD_FORK_INFO& hfinfo, rpc_context) {
     const auto& blockchain = m_core.blockchain;
-    auto version = hfinfo.request.version > 0 ? static_cast<hf>(hfinfo.request.version)
-                 : hfinfo.request.height > 0 ? blockchain.get_network_version(hfinfo.request.height)
-                                             : blockchain.get_network_version();
-    hfinfo.response["version"] = version;
+    auto version =
+            hfinfo.request.version > 0
+                    ? hard_fork_ceil(m_core.get_nettype(), static_cast<hf>(hfinfo.request.version))
+            : hfinfo.request.height > 0 ? blockchain.get_network_version(hfinfo.request.height)
+                                        : blockchain.get_network_version();
+    hfinfo.response["version"] = static_cast<std::underlying_type_t<hf>>(version);
     hfinfo.response["enabled"] = blockchain.get_network_version() >= version;
     auto heights = get_hard_fork_heights(m_core.get_nettype(), version);
     if (heights.first)
@@ -2580,9 +2594,10 @@ void core_rpc_server::invoke(BLS_EXIT_LIQUIDATION_LIST& rpc, rpc_context) {
         serialization::json_archiver ar;
         serialize(ar, const_cast<node_t&>(elem));
         nlohmann::json serialized = std::move(ar).json();
+        nlohmann::json& sn_info = serialized["info"];
 
-        // NOTE: Remove implementation details from the output JSON
-        for (auto& contrib_it : serialized["contributors"]) {
+        // NOTE: Remove implementation details from the contributor JSON
+        for (auto& contrib_it : sn_info["contributors"]) {
             constexpr std::string_view ERASE_FIELDS_CONTRIBUTOR[] = {
                     "address",  // Cryptonote address  (not used in L2, use ETH addresses)
                     "locked_contributions",  // $OXEN contributions (not used in L2, use $SENT)
@@ -2593,9 +2608,15 @@ void core_rpc_server::invoke(BLS_EXIT_LIQUIDATION_LIST& rpc, rpc_context) {
                 assert(it != contrib_it.end());
                 contrib_it.erase(it);
             }
+
+            // NOTE: Remove operator cryptonote address and replace with ethereum address
+            rename_key(contrib_it, "ethereum_address", "address");
         }
 
-        // NOTE: Remove implementation details from the contributor JSON
+        // NOTE: Remove operator cryptonote address and replace with ethereum address
+        rename_key(sn_info, "operator_ethereum_address", "operator_address");
+
+        // NOTE: Remove implementation details from the output JSON
         constexpr std::string_view ERASE_FIELDS[] = {
                 "public_ip",
                 "qnet_port",
