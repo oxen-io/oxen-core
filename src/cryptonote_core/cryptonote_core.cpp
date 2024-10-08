@@ -1822,9 +1822,7 @@ void core::check_service_node_ip_address() {
     };
 
     m_omq->connect_remote(
-            oxenmq::address{
-                    service_node_address,
-                    tools::view_guts(m_service_keys.pub_x25519)},
+            oxenmq::address{service_node_address, tools::view_guts(m_service_keys.pub_x25519)},
             [&](auto conn) {
                 m_omq->request(
                         conn,
@@ -1844,7 +1842,7 @@ void core::check_service_node_ip_address() {
                             }
                         });
             },
-            [&](auto conn, std::string_view) { connection_error_callback(); });
+            [connection_error_callback](auto, std::string_view) { connection_error_callback(); });
 }
 //-----------------------------------------------------------------------------------------------
 bool core::check_service_node_time() {
