@@ -1827,7 +1827,7 @@ void core::check_service_node_ip_address() {
                 m_omq->request(
                         conn,
                         "ping.ping",
-                        [this, conn, connection_error_callback](
+                        [this, conn = conn, connection_error_callback = connection_error_callback](
                                 bool success, const std::vector<std::string>& data) {
                             m_omq->disconnect(conn, 0s);
                             if (!success || data.empty()) {
