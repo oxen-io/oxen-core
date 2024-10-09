@@ -661,43 +661,59 @@ bool core::init(
     init_oxenmq(vm);
     m_bls_aggregator = std::make_unique<eth::bls_aggregator>(*this);
 
-    // FIXME: this is optional if we aren't a service node
-    m_l2_tracker = std::make_unique<eth::L2Tracker>(
-            *this,
-            as_duration<std::chrono::milliseconds>(command_line::get_arg(vm, arg_l2_refresh)));
-    m_l2_tracker->provider.setTimeout(as_duration<std::chrono::milliseconds>(
-            1000 * command_line::get_arg(vm, arg_l2_timeout)));
-    m_l2_tracker->GETLOGS_MAX_BLOCKS = command_line::get_arg(vm, arg_l2_max_logs);
-    m_l2_tracker->PROVIDERS_CHECK_INTERVAL = as_duration<std::chrono::milliseconds>(
-            command_line::get_arg(vm, arg_l2_check_interval));
-    m_l2_tracker->PROVIDERS_CHECK_THRESHOLD = command_line::get_arg(vm, arg_l2_check_threshold);
-
     const auto l2_provider = command_line::get_arg(vm, arg_l2_provider);
     if (!l2_provider.empty()) {
-        size_t provider_count = 0;
-        for (auto provider : l2_provider) {
-            auto provider_urls = tools::split_any(provider, ", \t\n", /*trim=*/true);
+        // We support both multiple --l2-provider options, each of which can be a delimited list, so
+        // go extract all the actual values (and skip any empty ones, so that `--l2-provider ''` is
+        // treat as not specifying the value at all).
+        std::vector<std::string_view> provider_urls;
+        for (const auto& provider : l2_provider) {
+            auto urls = tools::split_any(provider, ", \t\n", /*trim=*/true);
+            provider_urls.insert(provider_urls.end(), urls.begin(), urls.end());
+        }
 
-            try {
-                for (const auto& url : provider_urls) {
+        if (provider_urls.empty()) {
+            if (m_service_node) {
+                log::error(
+                        globallogcat,
+                        "At least one ethereum L2 provider must be specified for a service node");
+                return false;
+            }
+        } else {
+            m_l2_tracker = std::make_unique<eth::L2Tracker>(
+                    *this,
+                    as_duration<std::chrono::milliseconds>(
+                            command_line::get_arg(vm, arg_l2_refresh)));
+            m_l2_tracker->provider.setTimeout(as_duration<std::chrono::milliseconds>(
+                    1000 * command_line::get_arg(vm, arg_l2_timeout)));
+            m_l2_tracker->GETLOGS_MAX_BLOCKS = command_line::get_arg(vm, arg_l2_max_logs);
+            m_l2_tracker->PROVIDERS_CHECK_INTERVAL = as_duration<std::chrono::milliseconds>(
+                    command_line::get_arg(vm, arg_l2_check_interval));
+            m_l2_tracker->PROVIDERS_CHECK_THRESHOLD =
+                    command_line::get_arg(vm, arg_l2_check_threshold);
+
+            size_t provider_count = 0;
+            for (const auto& url : provider_urls) {
+                try {
                     m_l2_tracker->provider.addClient(
                             provider_count == 0 ? "Primary L2 provider"s
                                                 : "Backup L2 provider #{}"_format(provider_count),
                             std::string{url});
                     provider_count++;
+                } catch (const std::exception& e) {
+                    log::critical(
+                            globallogcat,
+                            "Invalid l2-provider URL '{}': {}",
+                            tools::trim_url(url),
+                            e.what());
+                    return false;
                 }
-            } catch (const std::exception& e) {
-                log::critical(
-                        logcat,
-                        "Invalid l2-provider argument '{}': {}",
-                        tools::trim_url(provider),
-                        e.what());
-                return false;
             }
+
+            if (!command_line::get_arg(vm, arg_l2_skip_chainid) && !m_l2_tracker->check_chain_id())
+                return false;  // the above already logs critical on failure
         }
     }
-    if (!command_line::get_arg(vm, arg_l2_skip_chainid) && !m_l2_tracker->check_chain_id())
-        return false;  // the above already logs critical on failure
 
     r = blockchain.init(
             std::move(db),
