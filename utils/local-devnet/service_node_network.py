@@ -4,6 +4,7 @@ from daemons import Daemon, Wallet
 import ethereum
 from ethereum import ServiceNodeRewardContract, ContractSeedServiceNode, ContractServiceNodeContributor, ContractServiceNodeStaker
 import enum
+import json
 
 import pathlib
 import argparse
@@ -108,8 +109,23 @@ class SNNetwork:
             else:
                 raise RuntimeError('eth-sn-contracts expected file to exist \'{}\' but does not. Exiting'.format(anvil_path))
 
+        sn_rewards_json:       dict = {}
+        reward_rate_pool_json: dict = {}
+        erc20_contract_json:   dict = {}
+
+        with open(eth_sn_contracts_dir / 'artifacts/contracts/ServiceNodeRewards.sol/ServiceNodeRewards.json', 'r') as file:
+            sn_rewards_json = json.load(file)
+
+        with open(eth_sn_contracts_dir / 'artifacts/contracts/RewardRatePool.sol/RewardRatePool.json', 'r') as file:
+            reward_rate_pool_json = json.load(file)
+
+        with open(eth_sn_contracts_dir / 'artifacts/contracts/SENT.sol/SENT.json', 'r') as file:
+            erc20_contract_json = json.load(file)
+
         # Connect rewards contract proxy to blockchain instance
-        self.sn_contract = ServiceNodeRewardContract()
+        self.sn_contract = ServiceNodeRewardContract(sn_rewards_json=sn_rewards_json,
+                                                     reward_rate_pool_json=reward_rate_pool_json,
+                                                     erc20_contract_json=erc20_contract_json)
 
         vprint("Using '{}' for data files and logs".format(datadir))
         nodeopts = dict(oxend=str(self.oxen_bin_dir / 'oxend'), datadir=datadir)
@@ -329,25 +345,22 @@ class SNNetwork:
         # Register a SN via the Ethereum smart contract
         for sn in self.ethsns:
             sn_pubkey = sn.get_service_keys().pubkey
-            json      = sn.get_ethereum_registration_args(staker_eth_addr_no_0x)
-            vprint("Preparing to submit registration to Eth w/ address {} for SN {} ({})".format(staker_eth_addr,
-                                                                                                 sn_pubkey,
-                                                                                                 json))
+            reg_json  = sn.get_ethereum_registration_args(staker_eth_addr_no_0x)
 
             bls_pubkey = {
-                'X': int(json["bls_pubkey"][:64], 16),
-                'Y': int(json["bls_pubkey"][64:128], 16),
+                'X': int(reg_json["bls_pubkey"][:64], 16),
+                'Y': int(reg_json["bls_pubkey"][64:128], 16),
             }
             bls_sig = {
-                'sigs0': int(json["proof_of_possession"][:64], 16),
-                'sigs1': int(json["proof_of_possession"][64:128], 16),
-                'sigs2': int(json["proof_of_possession"][128:192], 16),
-                'sigs3': int(json["proof_of_possession"][192:256], 16),
+                'sigs0': int(reg_json["proof_of_possession"][:64], 16),
+                'sigs1': int(reg_json["proof_of_possession"][64:128], 16),
+                'sigs2': int(reg_json["proof_of_possession"][128:192], 16),
+                'sigs3': int(reg_json["proof_of_possession"][192:256], 16),
             }
             sn_params = {
-                'serviceNodePubkey':     int(json["service_node_pubkey"], 16),
-                'serviceNodeSignature1': int(json["service_node_signature"][:64], 16),
-                'serviceNodeSignature2': int(json["service_node_signature"][64:128], 16),
+                'serviceNodePubkey':     int(reg_json["service_node_pubkey"], 16),
+                'serviceNodeSignature1': int(reg_json["service_node_signature"][:64], 16),
+                'serviceNodeSignature2': int(reg_json["service_node_signature"][64:128], 16),
                 'fee': int(0),
             }
             contributors = [{
@@ -358,6 +371,10 @@ class SNNetwork:
                 'stakedAmount': contract_staking_requirement,
             }]
 
+            vprint("Preparing to submit registration to Eth w/ address {} for SN {} ({})\nContributors {}".format(staker_eth_addr,
+                                                                                                                  sn_pubkey,
+                                                                                                                  reg_json,
+                                                                                                                  contributors))
             self.sn_contract.addBLSPublicKey(bls_pubkey,
                                              bls_sig,
                                              sn_params,
@@ -372,9 +389,9 @@ class SNNetwork:
         contract_sn_id_it = 0
         contract_sn_dump  = ""
         while True:
-            contract_sn           = self.sn_contract.serviceNodes(contract_sn_id_it)
-            contract_sn_dump += "  SN ID {} {}\n".format(contract_sn_id_it, vars(contract_sn))
-            contract_sn_id_it     = contract_sn.next
+            contract_sn        = self.sn_contract.serviceNodes(contract_sn_id_it)
+            contract_sn_dump  += "  SN ID {} {}\n".format(contract_sn_id_it, vars(contract_sn))
+            contract_sn_id_it  = contract_sn.next
             if contract_sn_id_it == 0:
                 break
 
@@ -494,9 +511,9 @@ class SNNetwork:
                 unlocks_confirmed_count = 0
                 for index in SNExitMode:
                     if unlocks_confirmed[index.value] == False:
-                        json = self.ethsns[sn_to_remove_indexes[index.value]].sn_status()
-                        if json['service_node_state']['requested_unlock_height'] != 0:
-                            max_requested_unlock_height = max(max_requested_unlock_height, json['service_node_state']['requested_unlock_height'])
+                        status_json = self.ethsns[sn_to_remove_indexes[index.value]].sn_status()
+                        if status_json['service_node_state']['requested_unlock_height'] != 0:
+                            max_requested_unlock_height = max(max_requested_unlock_height, status_json['service_node_state']['requested_unlock_height'])
                             unlocks_confirmed[index.value] = True
 
                     if unlocks_confirmed[index.value] == True:
