@@ -155,8 +155,6 @@ class L2Tracker {
     bool get_vote_for(const event::StakingRequirementUpdated& req_change) const;
     bool get_vote_for(const std::monostate&) const { return false; }
 
-    // TODO FIXME: the entire L2Tracker shouldn't be here if there are no clients
-    bool provider_has_clients() const { return provider.numClients(); }
 
     // Allow public shared locking of current state.  Note that exclusive locking is *not* publicly
     // exposed, and is used internally when updating the data (holding the shared lock is sufficient
