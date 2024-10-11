@@ -68,9 +68,9 @@ inline constexpr network_config config{
         // Much shorter than mainnet so that you can test this more easily.
         .ETH_EXIT_BUFFER = 1h / mainnet::config.TARGET_BLOCK_TIME,
         // FIXME!
-        .ETHEREUM_CHAIN_ID = static_cast<uint32_t>(-1),
-        .ETHEREUM_REWARDS_CONTRACT = "0x0000000000000000000000000000000000000000",
-        .ETHEREUM_POOL_CONTRACT = "0x0000000000000000000000000000000000000000",
+        .ETHEREUM_CHAIN_ID = 421614,  // Arbitrum Sepolia
+        .ETHEREUM_REWARDS_CONTRACT = "",
+        .ETHEREUM_POOL_CONTRACT = "",
         // Sepolia arbitrum sometimes slows down below the typical 250ms seen on mainnet, so for
         // testnet/devnet we shorten this by half compared to mainnet:
         .L2_REWARD_POOL_UPDATE_BLOCKS = mainnet::config.L2_REWARD_POOL_UPDATE_BLOCKS / 4,

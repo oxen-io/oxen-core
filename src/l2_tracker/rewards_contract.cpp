@@ -379,7 +379,7 @@ event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::Lo
 }
 
 RewardsContract::RewardsContract(cryptonote::network_type nettype, ethyl::Provider& provider) :
-        contract_address{contract::rewards_address(nettype)}, provider{provider} {}
+        contract_address{get_config(nettype).ETHEREUM_REWARDS_CONTRACT}, provider{provider} {}
 
 std::vector<bls_public_key> RewardsContract::get_all_bls_pubkeys(uint64_t block_number) {
     // Get the sentinel node to start the iteration

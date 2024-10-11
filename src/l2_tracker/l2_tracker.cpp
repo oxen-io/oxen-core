@@ -261,6 +261,22 @@ void L2Tracker::update_height() {
             keep_going = latest_height > 0;
         }
 
+        // If the contract addresses aren't set yet (i.e. for HF20 before the contract is deployed)
+        // then there's nothing else to actually update yet and so we're done.
+        const auto& conf = core.get_net_config();
+        if (keep_going &&
+            (conf.ETHEREUM_POOL_CONTRACT.empty() || conf.ETHEREUM_REWARDS_CONTRACT.empty())) {
+            if (core.blockchain.get_network_version() >= cryptonote::feature::ETH_BLS) {
+                log::critical(
+                        globallogcat,
+                        "Error: we are on HF21, but pool and/or reward contract addresses are not "
+                        "set!");
+                assert(!"missing contract addresses");
+            }
+            oxen::log::debug(logcat, "No L2 contract addresses yet to update; L2 update finished.");
+            keep_going = false;
+        }
+
         if (keep_going)
             update_rewards();
         else {
@@ -309,7 +325,7 @@ void L2Tracker::update_rewards(std::optional<std::forward_list<uint64_t>> more) 
     more->pop_front();
     oxen::log::debug(logcat, "Starting query for reward height {}", r_height);
     provider.callReadFunctionJSONAsync(
-            contract::pool_address(core.get_nettype()),
+            core.get_net_config().ETHEREUM_REWARDS_CONTRACT,
             "0x{:x}"_format(contract::call::Pool_rewardRate),
             [this, r_height, more = std::move(more)](std::optional<nlohmann::json> result) mutable {
                 if (!result)
